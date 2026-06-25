@@ -69,7 +69,7 @@ except Exception:  # pragma: no cover - fallback difensivo
         cat = str(categoria or "").strip()
         if cat and cat.upper() != "DA CLASSIFICARE":
             return cat, False
-        return "SERVIZI E CONSULENZE", True
+        return "Da Classificare", True
 
 try:
     from services.ai_service import descrizione_e_dubbia
@@ -86,10 +86,38 @@ except Exception:  # pragma: no cover - fallback difensivo
             return cat
         try:
             if float(prezzo or 0) != 0:
-                return "SERVIZI E CONSULENZE"
+                return "Da Classificare"
         except (TypeError, ValueError):
-            return "SERVIZI E CONSULENZE"
+            return cat
         return cat
+
+# Conferma deterministica: dizionario keyword + regole forti del runtime. Se entrambe
+# (eseguite SENZA apporto GPT) producono la stessa categoria scelta da GPT, abbiamo due
+# fonti indipendenti che concordano: una confidence GPT "media" non basta più a mandare
+# la riga in coda. Fallback difensivo: senza le funzioni, nessuna conferma (comportamento
+# prudente = la riga resta in coda come prima).
+try:
+    from services.ai_service import (
+        applica_correzioni_dizionario as _applica_correzioni_dizionario,
+        applica_regole_categoria_forti as _applica_regole_categoria_forti,
+    )
+
+    def _runtime_conferma_categoria(descrizione, categoria) -> bool:
+        cat = str(categoria or "").strip()
+        if not cat or cat.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+            return False
+        try:
+            cat_dz = _applica_correzioni_dizionario(descrizione, "Da Classificare")
+            cat_rf, _motivo = _applica_regole_categoria_forti(descrizione, cat_dz)
+            finale = (cat_rf or cat_dz or "").strip()
+        except Exception:  # pragma: no cover - difensivo: in dubbio NON confermare
+            return False
+        if not finale or finale.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+            return False
+        return finale.upper() == cat.upper()
+except Exception:  # pragma: no cover - fallback difensivo
+    def _runtime_conferma_categoria(_descrizione, _categoria) -> bool:
+        return False
 
 logger = logging.getLogger(__name__)
 
@@ -235,16 +263,36 @@ def _auto_classify_saved_rows(
             categoria = _applica_guardrail_note_con_importo(
                 desc, categoria, desc_importo.get(desc, 0.0)
             )
-            # Confidence routing: media → pre-classificato ma in coda per review.
-            # + segnali deterministici (descrizione criptica, fornitore non-food su
-            # categoria food): rendono visibile nella coda "Solo verifica" ciò che
-            # GPT classifica "con sicurezza" ma è probabilmente sbagliato.
+            # PRINCIPIO (rev. 24/06): una categoria viene SCRITTA solo se affidabile.
+            # Nel dubbio NON si indovina: si lascia 'Da Classificare'. Così il cliente
+            # può fidarsi al 100% di ciò che è categorizzato e concentrarsi solo sulle
+            # poche righe esplicitamente Da Classificare.
+            #
+            # Affidabile =
+            #   - il runtime deterministico (dizionario + regole forti) conferma la
+            #     categoria proposta (vale anche per GPT 'media': due fonti concordano), OPPURE
+            #   - GPT è 'alta' E la descrizione non presenta segnali di dubbio.
+            # Tutto il resto (GPT 'bassa', GPT 'media' NON confermata, fallback,
+            # descrizione dubbia non confermata) → 'Da Classificare' + coda.
             _forn = desc_map.get(desc, ("", 0))[0]
-            needs_review = (
-                bool(fallback_forzato)
-                or conf in ('bassa', 'media')
-                or descrizione_e_dubbia(desc, _forn, categoria)
+            _confermata_runtime = _runtime_conferma_categoria(desc, categoria)
+            _alta_affidabile = (
+                conf == 'alta'
+                and not fallback_forzato
+                and not descrizione_e_dubbia(desc, _forn, categoria)
             )
+            affidabile = _confermata_runtime or _alta_affidabile
+
+            if affidabile:
+                needs_review = False
+            else:
+                # Categoria non affidabile: non la scriviamo, resta Da Classificare.
+                categoria = "Da Classificare"
+                needs_review = True
+
+            # Invariante di sicurezza: qualunque riga 'Da Classificare' va in coda.
+            if str(categoria).strip() == "Da Classificare":
+                needs_review = True
             target_ids = desc_to_ids.get(desc, [])
             if not target_ids:
                 continue

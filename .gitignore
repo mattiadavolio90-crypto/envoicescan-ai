@@ -48,6 +48,7 @@ debug.log*
 # Script di test
 test_*.py
 !tests/test_*.py
+!scripts/test_accettazione_import.py
 *_test.py
 !tests/*_test.py
 
@@ -222,3 +223,10 @@ pre-ripristino-*.sql
 
 # Script con credenziali
 comandi.ps1
+
+# Baseline test accettazione import (artefatti locali)
+scripts/_baseline_*.json
+scripts/_attesi_*.json
+
+# Cartelle di fatture reali per test accettazione (dati cliente, non committare)
+test villaguardia/

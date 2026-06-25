@@ -20,6 +20,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from config.logger_setup import get_logger
+
+logger = get_logger("router_gruppo")
+
 
 def _fw():
     import services.fastapi_worker as fw
@@ -762,7 +766,8 @@ def gruppo_margini_coperti(
     except Exception:
         incompleti_set = set()
     agg: Dict[str, Dict[str, float]] = {
-        rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0, "cop": 0.0} for rid in ids
+        rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0, "cop": 0.0, "cop_fb": 0.0}
+        for rid in ids
     }
     for r in (mm_resp.data or []):
         rid = str(r.get("ristorante_id"))
@@ -776,12 +781,22 @@ def gruppo_margini_coperti(
             + float(r.get("altri_ricavi_noiva") or 0)
         )
         a["mol"] += float(r.get("mol") or 0)
-        a["fb"] += float(r.get("costi_fb_totali") or 0)
-        a["cop"] += float(r.get("coperti") or 0)
+        fb_mese = float(r.get("costi_fb_totali") or 0)
+        cop_mese = float(r.get("coperti") or 0)
+        a["fb"] += fb_mese
+        a["cop"] += cop_mese
+        # €MP/coperto: stesso metodo di Margini/Coperti del PV. Un mese conta nel
+        # rapporto solo se ha SIA costo F&B SIA coperti; i mesi con coperti ma
+        # fatture costo non ancora arrivate diluirebbero falsamente la media verso
+        # il basso. Così catena e Margini mostrano lo stesso numero, e il valore si
+        # aggiorna man mano che il cliente carica i costi.
+        if fb_mese > 0:
+            a["cop_fb"] += cop_mese
 
     def _riga(rid: str, nome: str, a: Dict[str, float], incompleti: bool) -> MarginiCopertiPV:
         netto = a["netto"]
         cop = int(round(a["cop"]))
+        cop_fb = int(round(a["cop_fb"]))  # coperti dei soli mesi con costo F&B
         # Tutto su base NETTA, coerente con la pagina Margini/Coperti del PV: così
         # fatturato, margine % e scontrino medio quadrano tra loro (scontrino =
         # fatturato/coperti). Il LORDO (IVA inclusa) resta nei "conti del gruppo".
@@ -792,7 +807,7 @@ def gruppo_margini_coperti(
             fatturato=round(netto, 2),
             coperti=cop,
             scontrino_medio=round(netto / cop, 2) if cop > 0 else None,
-            mp_per_coperto=round(a["fb"] / cop, 2) if cop > 0 else None,
+            mp_per_coperto=round(a["fb"] / cop_fb, 2) if (cop_fb > 0 and a["fb"] > 0) else None,
             dati_incompleti=incompleti,
         )
 
@@ -808,6 +823,7 @@ def gruppo_margini_coperti(
         "mol": sum(a["mol"] for a in agg.values()),
         "fb": sum(a["fb"] for a in agg.values()),
         "cop": sum(a["cop"] for a in agg.values()),
+        "cop_fb": sum(a["cop_fb"] for a in agg.values()),
     }
     gruppo = _riga("", f"Gruppo {nome_gruppo}", tot, tot["netto"] <= 0)
 
@@ -817,6 +833,163 @@ def gruppo_margini_coperti(
         righe=righe,
         gruppo=gruppo,
         n_incompleti=sum(1 for r in righe if r.dati_incompleti),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FINESTRA "SPRECO PER CATEGORIA" — €MP/coperto per categoria, CONFRONTO PV
+# ═══════════════════════════════════════════════════════════════════════════
+# Stessa analisi del PV singolo (coperti-tab → "Costo materia prima per coperto ·
+# per categoria"), ma PIVOTATA per confronto tra punti vendita: righe = categoria,
+# colonne = PV. Cella = costo F&B della categoria ÷ coperti, sui SOLI mesi con
+# costo (stesso metodo di margini-coperti: i mesi con coperti ma fatture non
+# ancora arrivate non diluiscono la media). SHOP escluso (merce da rivendita).
+
+
+class SprecoCategoriaCella(BaseModel):
+    ristorante_id: str
+    valore: Optional[float] = None      # €MP/coperto della categoria per quel PV
+
+
+class SprecoCategoriaRiga(BaseModel):
+    categoria: str
+    per_pv: List[SprecoCategoriaCella]  # un valore per ogni PV (stesso ordine di pv)
+    media_gruppo: Optional[float] = None  # costo totale ÷ coperti totali (pesata)
+
+
+class SprecoCategoriePV(BaseModel):
+    ristorante_id: str
+    nome: str
+    dati_incompleti: bool
+
+
+class SprecoCategorieResponse(BaseModel):
+    nome_gruppo: str
+    periodo_label: str
+    pv: List[SprecoCategoriePV]          # intestazioni colonne (i punti vendita)
+    righe: List[SprecoCategoriaRiga]     # ordinate per media gruppo decrescente
+
+
+# SHOP fuori: è merce da rivendita, non materia prima di cucina (come nel PV).
+_SPRECO_CAT_ESCLUSE = {"SHOP"}
+
+
+@router.get(
+    "/api/gruppo/spreco-categorie",
+    tags=["Catena"],
+    summary="Finestra Spreco per categoria (€MP/coperto per PV), anno corrente",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_spreco_categorie(
+    mese: Optional[int] = None,
+    authorization: Optional[str] = Header(None),
+) -> SprecoCategorieResponse:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    anno, mese_corr = _anno_mese_corrente()
+    mese_sel = mese if (mese and 1 <= mese <= 12) else None
+    periodo_label = (
+        f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}" if mese_sel else f"Anno {anno}"
+    )
+    fw = _fw()
+
+    # Periodo: mese singolo o anno fino al mese corrente (no mesi futuri, come
+    # margini-coperti). Le date servono all'aggregatore fatture per categoria.
+    if mese_sel:
+        mesi_target = [(anno, mese_sel)]
+    else:
+        mesi_target = [(anno, m) for m in range(1, mese_corr + 1)]
+    data_da = f"{mesi_target[0][0]}-{mesi_target[0][1]:02d}-01"
+    ult_y, ult_m = mesi_target[-1]
+    ult_giorno = 31 if ult_m in (1, 3, 5, 7, 8, 10, 12) else (29 if ult_m == 2 else 30)
+    data_a = f"{ult_y}-{ult_m:02d}-{ult_giorno:02d}"
+
+    try:
+        incompleti_set = set(_completezza_dati_pv(sb, ids).keys())
+    except Exception:
+        incompleti_set = set()
+
+    # Coperti per (rid, anno, mese): margini_mensili + override mensile (stessa
+    # fonte del PV). Una sola lettura per tutti i PV.
+    mm_resp = (
+        sb.table("margini_mensili")
+        .select("ristorante_id,anno,mese,coperti")
+        .in_("ristorante_id", ids)
+        .eq("anno", anno)
+        .execute()
+    )
+    cop_map: Dict[tuple, int] = {}
+    for r in (mm_resp.data or []):
+        if r.get("coperti") is None:
+            continue
+        cop_map[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = int(r["coperti"])
+    for rid in ids:
+        try:
+            ov = fw._load_mensile_overrides(sb, rid, [anno])
+        except Exception:
+            ov = {}
+        for (y, m), o in ov.items():
+            if o.get("coperti") is not None:
+                cop_map[(rid, y, m)] = o["coperti"]
+
+    # Costo F&B per (anno, mese, categoria) per ogni PV. Riuso l'aggregatore del
+    # worker, una chiamata per PV (i PV sono pochi: niente N+1 di rilievo).
+    # acc[(categoria, rid)] = {"costo": Σ costo (mesi con costo), "cop": Σ coperti}
+    acc: Dict[tuple, Dict[str, float]] = {}
+    categorie_viste: set = set()
+    for rid in ids:
+        try:
+            cat_map = fw._load_fatture_fb_per_categoria_e_mese(sb, rid, data_da, data_a)
+        except Exception as exc:
+            logger.warning("spreco-categorie: aggregazione fatture fallita (%s): %s", rid, exc)
+            cat_map = {}
+        for (y, m, cat) in list(cat_map.keys()):
+            if cat in _SPRECO_CAT_ESCLUSE:
+                continue
+            if (y, m) not in mesi_target:
+                continue
+            costo = float(cat_map.get((y, m, cat), 0.0))
+            cop = cop_map.get((rid, y, m), 0)
+            if costo <= 0 or cop <= 0:
+                continue
+            categorie_viste.add(cat)
+            a = acc.setdefault((cat, rid), {"costo": 0.0, "cop": 0.0})
+            a["costo"] += costo
+            a["cop"] += cop
+
+    pv = [
+        SprecoCategoriePV(
+            ristorante_id=rid,
+            nome=rid_to_nome[rid],
+            dati_incompleti=(rid in incompleti_set),
+        )
+        for rid in ids
+    ]
+
+    righe: List[SprecoCategoriaRiga] = []
+    for cat in sorted(categorie_viste):
+        celle: List[SprecoCategoriaCella] = []
+        tot_costo = 0.0
+        tot_cop = 0.0
+        for rid in ids:
+            a = acc.get((cat, rid))
+            if a and a["cop"] > 0 and a["costo"] > 0:
+                celle.append(SprecoCategoriaCella(
+                    ristorante_id=rid, valore=round(a["costo"] / a["cop"], 2),
+                ))
+                tot_costo += a["costo"]
+                tot_cop += a["cop"]
+            else:
+                celle.append(SprecoCategoriaCella(ristorante_id=rid, valore=None))
+        media = round(tot_costo / tot_cop, 2) if (tot_cop > 0 and tot_costo > 0) else None
+        righe.append(SprecoCategoriaRiga(categoria=cat, per_pv=celle, media_gruppo=media))
+
+    righe.sort(key=lambda r: (r.media_gruppo if r.media_gruppo is not None else -1), reverse=True)
+
+    return SprecoCategorieResponse(
+        nome_gruppo=nome_gruppo,
+        periodo_label=periodo_label,
+        pv=pv,
+        righe=righe,
     )
 
 

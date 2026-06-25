@@ -94,10 +94,11 @@ class FakeSB:
         return _Query(self._rows, self.updates)
 
 
-def _run(rows, categorie):
+def _run(rows, categorie, confidenze=None):
     sb = FakeSB(rows)
+    conf = confidenze if confidenze is not None else ["alta"] * len(categorie)
     with patch.object(qp, "classifica_via_worker_con_confidenza",
-                      return_value=(categorie, ["alta"] * len(categorie))), \
+                      return_value=(categorie, conf)), \
          patch.object(qp, "aggiorna_streak_classificazione", return_value=None), \
          patch.object(qp, "filter_active", side_effect=lambda q: q):
         qp._auto_classify_saved_rows(
@@ -107,14 +108,15 @@ def _run(rows, categorie):
 
 
 def test_note_su_importo_positivo_viene_corretta():
-    """AI/regole assegnano NOTE E DICITURE a una riga con importo > 0 → deve
-    diventare SERVIZI E CONSULENZE, non restare NOTE."""
+    """AI/regole assegnano NOTE E DICITURE a una riga con importo > 0 → non può
+    restare NOTE: va riportata a 'Da Classificare' (non più SERVIZI travestito)."""
     rows = [
         {"id": 1, "descrizione": "COUPON SCONTO", "fornitore": "X", "iva_percentuale": 22,
          "totale_riga": 15.0, "categoria": None},
     ]
     sb = _run(rows, categorie=["📝 NOTE E DICITURE"])
-    assert sb._rows[0]["categoria"] == "SERVIZI E CONSULENZE"
+    assert sb._rows[0]["categoria"] == "Da Classificare"
+    assert sb._rows[0]["needs_review"] is True
 
 
 def test_note_su_importo_zero_resta_note():
@@ -138,10 +140,70 @@ def test_categoria_normale_non_viene_toccata():
 
 
 def test_note_su_importo_negativo_viene_corretta():
-    """Anche un importo negativo (reso/abbuono con segno) è != 0 → fuori da NOTE."""
+    """Anche un importo negativo (reso/abbuono con segno) è != 0 → fuori da NOTE,
+    riportato a 'Da Classificare'."""
     rows = [
         {"id": 1, "descrizione": "ABBUONO", "fornitore": "X", "iva_percentuale": 22,
          "totale_riga": -5.0, "categoria": None},
     ]
     sb = _run(rows, categorie=["📝 NOTE E DICITURE"])
-    assert sb._rows[0]["categoria"] == "SERVIZI E CONSULENZE"
+    assert sb._rows[0]["categoria"] == "Da Classificare"
+
+
+# ─── Confidence routing: 'media' confermata dal runtime NON va in coda ─────────
+# Contesto (23/06): un import via worker (LAND DEI SAPORI) aveva riempito la coda
+# "Da controllare" di 207 prodotti OVVI (ICEBERG, SALMONE, LATTE...) solo perché GPT
+# li aveva classificati con confidence 'media'. Se dizionario + regole forti del
+# runtime confermano la stessa categoria, due fonti indipendenti concordano: niente
+# revisione. La confidence 'bassa' resta sempre in coda.
+
+def test_media_confermata_dal_runtime_non_va_in_review():
+    """GPT 'media' su SALMONE→PESCE: le regole forti confermano PESCE → NO review."""
+    rows = [
+        {"id": 1, "descrizione": "SALMONE 5-6", "fornitore": "ADC SRL", "iva_percentuale": 10,
+         "totale_riga": 40.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["PESCE"], confidenze=["media"])
+    assert sb._rows[0]["categoria"] == "PESCE"
+    assert sb._rows[0]["needs_review"] is False
+
+
+def test_media_non_confermata_NON_viene_scritta_resta_da_classificare():
+    """PRINCIPIO 24/06: GPT 'media' su descrizione che il runtime NON conferma →
+    la categoria proposta da GPT NON viene scritta (sarebbe un'ipotesi). La riga
+    resta 'Da Classificare' + coda: meglio onesta che classificata male.
+
+    Sigla inventata (non prodotto reale) così il test resta valido anche con
+    dizionario arricchito."""
+    rows = [
+        {"id": 1, "descrizione": "XQZ TLP GERGALE 88", "fornitore": "MEFON SRL", "iva_percentuale": 4,
+         "totale_riga": 12.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["VERDURE"], confidenze=["media"])
+    assert sb._rows[0]["categoria"] == "Da Classificare"   # NON la VERDURE ipotizzata da GPT
+    assert sb._rows[0]["needs_review"] is True
+
+
+def test_bassa_non_confermata_NON_viene_scritta_resta_da_classificare():
+    """GPT 'bassa' su descrizione che il runtime non conferma → Da Classificare.
+    Non si scrive un'ipotesi incerta."""
+    rows = [
+        {"id": 1, "descrizione": "ZZWQ IGNOTO 77", "fornitore": "MEFON SRL", "iva_percentuale": 4,
+         "totale_riga": 8.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["VERDURE"], confidenze=["bassa"])
+    assert sb._rows[0]["categoria"] == "Da Classificare"
+    assert sb._rows[0]["needs_review"] is True
+
+
+def test_bassa_MA_confermata_dal_dizionario_e_affidabile():
+    """GPT 'bassa' ma il dizionario CONFERMA (ICEBERG→VERDURE): la certezza viene
+    dal dizionario deterministico, non da GPT → categoria scritta, niente coda.
+    Due fonti d'accordo = affidabile, anche se GPT era incerto."""
+    rows = [
+        {"id": 1, "descrizione": "ICEBERG", "fornitore": "MEFON SRL", "iva_percentuale": 4,
+         "totale_riga": 8.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["VERDURE"], confidenze=["bassa"])
+    assert sb._rows[0]["categoria"] == "VERDURE"
+    assert sb._rows[0]["needs_review"] is False

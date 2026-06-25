@@ -262,6 +262,23 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     }
   }
 
+  const [sdiSaving, setSdiSaving] = useState<string | null>(null);
+  async function toggleSdiSede(sede: Sede) {
+    const nuovo = !sede.sdi_attivo;
+    setSdiSaving(sede.id);
+    try {
+      const updated: Sede = await patch(`/api/admin/clienti/${c.id}/sedi/${sede.id}`, "PATCH", {
+        sdi_attivo: nuovo,
+      });
+      setC((prev) => ({ ...prev, sedi: prev.sedi.map((s) => (s.id === updated.id ? updated : s)) }));
+      toast.success(nuovo ? "Ricezione SDI attivata" : "Ricezione SDI disattivata");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setSdiSaving(null);
+    }
+  }
+
   async function handleToggleFlag(key: string, enabled: boolean) {
     try {
       await patch(`/api/admin/clienti/${c.id}/flags`, "PATCH", {
@@ -506,6 +523,21 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleSdiSede(sede)}
+                        disabled={sdiSaving === sede.id}
+                        title={sede.sdi_attivo
+                          ? "Ricezione SDI automatica ATTIVA — clic per disattivare"
+                          : "Ricezione SDI automatica spenta — clic per attivare (caricamento manuale)"}
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-50 ${
+                          sede.sdi_attivo
+                            ? "bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25"
+                            : "bg-muted text-muted-foreground hover:bg-muted/70"
+                        }`}
+                      >
+                        {sede.sdi_attivo ? "SDI ✓" : "SDI off"}
+                      </button>
                       <span className={`text-xs font-medium ${sede.attivo ? "text-emerald-600" : "text-red-500"}`}>
                         {sede.attivo ? "Attiva" : "Inattiva"}
                       </span>

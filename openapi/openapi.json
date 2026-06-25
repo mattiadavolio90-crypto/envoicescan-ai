@@ -14452,6 +14452,87 @@
         }
       }
     },
+    "/api/gruppo/spreco-categorie": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Finestra Spreco per categoria (€MP/coperto per PV), anno corrente",
+        "operationId": "gruppo_spreco_categorie_api_gruppo_spreco_categorie_get",
+        "parameters": [
+          {
+            "name": "mese",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mese"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SprecoCategorieResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/segnali": {
       "get": {
         "tags": [
@@ -19687,6 +19768,17 @@
               }
             ],
             "title": "Piano Inizio At"
+          },
+          "sdi_attivo": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdi Attivo"
           }
         },
         "type": "object",
@@ -21943,6 +22035,119 @@
           "ristorante_id"
         ],
         "title": "SpostaSedeBody"
+      },
+      "SprecoCategoriaCella": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "valore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id"
+        ],
+        "title": "SprecoCategoriaCella"
+      },
+      "SprecoCategoriaRiga": {
+        "properties": {
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "per_pv": {
+            "items": {
+              "$ref": "#/components/schemas/SprecoCategoriaCella"
+            },
+            "type": "array",
+            "title": "Per Pv"
+          },
+          "media_gruppo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Gruppo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categoria",
+          "per_pv"
+        ],
+        "title": "SprecoCategoriaRiga"
+      },
+      "SprecoCategoriePV": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "dati_incompleti": {
+            "type": "boolean",
+            "title": "Dati Incompleti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome",
+          "dati_incompleti"
+        ],
+        "title": "SprecoCategoriePV"
+      },
+      "SprecoCategorieResponse": {
+        "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
+          "periodo_label": {
+            "type": "string",
+            "title": "Periodo Label"
+          },
+          "pv": {
+            "items": {
+              "$ref": "#/components/schemas/SprecoCategoriePV"
+            },
+            "type": "array",
+            "title": "Pv"
+          },
+          "righe": {
+            "items": {
+              "$ref": "#/components/schemas/SprecoCategoriaRiga"
+            },
+            "type": "array",
+            "title": "Righe"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome_gruppo",
+          "periodo_label",
+          "pv",
+          "righe"
+        ],
+        "title": "SprecoCategorieResponse"
       },
       "StoricoPrezzoPoint": {
         "properties": {

@@ -115,6 +115,32 @@ export type MarginiCoperti = {
   n_incompleti: number;
 };
 
+// ─── Finestra "Spreco per categoria" (€MP/coperto, confronto PV) ───────────
+
+export type SprecoCategoriaCella = {
+  ristorante_id: string;
+  valore: number | null;
+};
+
+export type SprecoCategoriaRiga = {
+  categoria: string;
+  per_pv: SprecoCategoriaCella[]; // stesso ordine di pv
+  media_gruppo: number | null;
+};
+
+export type SprecoCategoriePV = {
+  ristorante_id: string;
+  nome: string;
+  dati_incompleti: boolean;
+};
+
+export type SprecoCategorie = {
+  nome_gruppo: string;
+  periodo_label: string;
+  pv: SprecoCategoriePV[];
+  righe: SprecoCategoriaRiga[];
+};
+
 // ─── Segnali "Da vedere nella catena" ─────────────────────────────────────
 
 export type Segnale = {

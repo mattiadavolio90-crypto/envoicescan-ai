@@ -54,6 +54,14 @@ def _sb(margini_rows, incasso_ieri=True, modalita_rows=None, ha_storia=True):
     storia_rows = [{"data": "2026-05-01"}] if ha_storia else []
     modalita_rows = modalita_rows or []
 
+    # Il codice ora indicizza i margini per 'mese' (scansione anno). I test passano
+    # righe senza 'mese': le attribuiamo al mese precedente (il riferimento storico
+    # dei test), cosi' il comportamento single-mese resta verificabile.
+    _mp_anno, _mp_mese = _mese_precedente()
+    margini_rows = [
+        ({**r, "mese": r.get("mese", _mp_mese)}) for r in (margini_rows or [])
+    ]
+
     state = {"table": None, "rg_query": None}
 
     def _table(name):
@@ -135,9 +143,12 @@ def test_personale_extra_conta():
     assert out == []
 
 
-def test_nessuna_riga_entrambi_mancanti():
+def test_nessuna_riga_solo_fatturato():
+    # Nuova semantica (25/06): senza alcun fatturato non c'e' "mese attivo", quindi
+    # NON si pretende il costo personale (il personale si chiede solo dove c'e'
+    # fatturato). Resta il solo alert fatturato del mese precedente.
     out = _briefing_dati_mensili_mancanti(RID, _sb([]))
-    assert _topics(out) == {"fatturato_mancante", "costo_personale_mancante"}
+    assert _topics(out) == {"fatturato_mancante"}
 
 
 def test_formato_notifica_compatibile_inbox():
@@ -160,6 +171,44 @@ def test_errore_db_non_propaga():
     q.limit.return_value = q
     q.execute.side_effect = RuntimeError("boom")
     assert _briefing_dati_mensili_mancanti(RID, q) == []
+
+
+# ── Costo personale mancante su PIU' mesi (25/06) ───────────────────────────
+
+def test_personale_mancante_multi_mese_conteggio_e_range():
+    # VILLA GUARDIA: fatturato su piu' mesi, personale a zero ovunque. Il briefing
+    # deve dire "in N mesi (range)", non "manca <mese precedente>".
+    anno, mp = _mese_precedente()
+    # Tre mesi attivi (<= mese precedente) tutti senza personale.
+    mesi = sorted({1, 2, mp})
+    rows = [{
+        "mese": m, "fatturato_iva10": 100000, "fatturato_iva22": 0,
+        "altri_ricavi_noiva": 0, "costo_dipendenti": 0, "costo_personale_extra": 0,
+    } for m in mesi]
+    out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=True))
+    pers = [n for n in out if n["topic_key"] == "costo_personale_mancante"]
+    assert len(pers) == 1
+    p = pers[0]["payload"]
+    assert p["n_mesi"] == len(mesi)
+    assert sorted(p["mesi"]) == mesi
+    # Una sola card/dedupe per l'anno (non una per mese).
+    assert pers[0]["dedupe_key"].endswith(str(anno))
+
+
+def test_personale_presente_in_un_mese_non_conta_quel_mese():
+    # Se un mese ha il personale e un altro no, conta SOLO quello senza.
+    anno, mp = _mese_precedente()
+    altro = 1 if mp != 1 else 2
+    rows = [
+        {"mese": altro, "fatturato_iva10": 100000, "fatturato_iva22": 0,
+         "altri_ricavi_noiva": 0, "costo_dipendenti": 5000, "costo_personale_extra": 0},
+        {"mese": mp, "fatturato_iva10": 100000, "fatturato_iva22": 0,
+         "altri_ricavi_noiva": 0, "costo_dipendenti": 0, "costo_personale_extra": 0},
+    ]
+    out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=True))
+    pers = [n for n in out if n["topic_key"] == "costo_personale_mancante"]
+    assert len(pers) == 1
+    assert pers[0]["payload"]["mesi"] == [mp]
 
 
 # ── Incasso di ieri ─────────────────────────────────────────────────────────
@@ -197,18 +246,28 @@ def test_incasso_ieri_mancante_ma_senza_storia_nessun_alert():
 
 
 def test_incasso_e_mensili_insieme():
-    # Tutto mancante: i tre topic compaiono insieme.
-    out = _briefing_dati_mensili_mancanti(RID, _sb([], incasso_ieri=False))
-    assert _topics(out) == {
-        "fatturato_mancante", "costo_personale_mancante", "incasso_mancante",
-    }
+    # Fatturato presente ma personale a zero + incasso di ieri mancante: i tre
+    # topic compaiono insieme (il personale serve un mese attivo con fatturato).
+    rows = [{
+        "fatturato_iva10": 100000, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "costo_dipendenti": 0, "costo_personale_extra": 0,
+    }]
+    # Manca solo il fatturato del MESE PRECEDENTE: per averlo assente lo mettiamo a
+    # zero ma teniamo un altro mese attivo? Semplifichiamo: fatturato presente ->
+    # niente fatturato_mancante; restano personale (mese attivo a zero) + incasso.
+    out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=False))
+    assert _topics(out) == {"costo_personale_mancante", "incasso_mancante"}
 
 
 def test_toggle_spento_non_genera_il_topic():
-    # Toggle-gating 19/06: i topic spenti NON vengono generati (la funzione non
-    # gira il singolo check). Spengo fatturato e incasso: resta solo personale.
+    # Toggle-gating 19/06: i topic spenti NON vengono generati. Mese attivo (con
+    # fatturato) ma personale a zero: spengo fatturato e incasso -> resta personale.
+    rows = [{
+        "fatturato_iva10": 100000, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "costo_dipendenti": 0, "costo_personale_extra": 0,
+    }]
     out = _briefing_dati_mensili_mancanti(
-        RID, _sb([], incasso_ieri=False),
+        RID, _sb(rows, incasso_ieri=False),
         spenti={"fatturato_mancante", "incasso_mancante"},
     )
     assert _topics(out) == {"costo_personale_mancante"}

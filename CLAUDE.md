@@ -31,8 +31,8 @@ genera report su margini, prezzi fornitori, foodcost.
 
 ## Regole di dominio critiche — NON violare mai
 
-1. **`categoria = 'Da Clasificare'` è VIETATA** nel DB — constraint `fatture_categoria_not_unclassified_chk`. Fallback corretto: `"SERVIZI E CONSULENZE"`.
-2. **`"📝 NOTE E DICITURE"`** è consentita SOLO per righe con `totale_riga == 0`. Su qualsiasi importo > 0 va usata una categoria reale.
+1. **Flusso categorizzazione = onesto** (rev. 23/06): una riga si classifica SOLO se dizionario/regole o l'AI la riconoscono con sicurezza. Se nessuno ci riesce resta `"Da Classificare"` (stato esplicito, visibile al cliente dal filtro "Da classificare" in Analisi Fatture → tab Articoli, con `needs_review=True`). **NIENTE fallback travestito in `"SERVIZI E CONSULENZE"`** (vecchio comportamento, eliminato). Il constraint DB ora è `fatture_categoria_not_empty_chk` (vieta solo NULL/vuoto, consente `"Da Classificare"`). Costante: `CATEGORIA_NON_CLASSIFICATA` in `config/constants.py`; `CATEGORIA_FALLBACK` ne è alias. Attenzione grafia: la variante errata `'Da Clasificare'` (una sola "s") resta sbagliata. Le righe `Da Classificare` sono escluse dai margini finché non vengono classificate (per non falsare il MOL).
+2. **`"📝 NOTE E DICITURE"`** è consentita SOLO per righe con `totale_riga == 0`. Una dicitura con importo != 0 NON può restare in NOTE: il guardrail (`_applica_guardrail_note_con_importo`) la riporta a `"Da Classificare"` (non più SERVIZI), così resta visibile in coda e non entra nei margini con una categoria inventata.
 3. **Chiave Supabase**: usare sempre `service_role_key` (non `key`) — non toccare `services/__init__.py` senza capire l'auth flow.
 4. **`ADMIN_EMAILS`** normalizzato lowercase — confronti email sempre `.strip().lower()`.
 5. **Soft delete**: query su `fatture` e `prodotti` devono filtrare `deleted_at IS NULL`. Usare `filter_active()` da `services.db_service`. Non rimuovere `.not_.is_("deleted_at", "null")` nelle query cestino (quelle sono intenzionali).

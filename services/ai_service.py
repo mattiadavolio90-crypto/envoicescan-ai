@@ -84,6 +84,7 @@ from config.constants import (
     CATEGORIA_PER_FORNITORE,
     UNITA_MISURA_CATEGORIA,
     CATEGORIA_FALLBACK,
+    CATEGORIA_NON_CLASSIFICATA,
 )
 # PROP-6: pre-normalizza chiavi fornitore una volta sola (evita .upper() per riga)
 _CATEGORIA_PER_FORNITORE_NORM: tuple[tuple[str, str], ...] = tuple(
@@ -433,7 +434,9 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
     # --- Pesce e frutti di mare (incluso tonno; lo stato di conservazione non cambia la categoria) ---
     (
         "PESCE",
-        r"\b(PESCE|SALMON[EI]|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZIN[OI]|SPIGOLA|"
+        # SALAR = Salmo salar (nome scientifico del salmone atlantico): compare nelle
+        # fatture ittiche ed è robusto ai typo del nome comune (es. "SALOMNE", "SALMOM").
+        r"\b(PESCE|SALMON[EI]|SALAR|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZIN[OI]|SPIGOLA|"
         r"CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|"
         r"VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTIC[EI]|"
         r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|CANNOLICCHI[OA]?|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA|"
@@ -514,23 +517,27 @@ def enforce_no_unclassified_category(
     *,
     source: str = "pipeline",
 ) -> tuple[str, bool]:
-    """Garantisce che la categoria non sia mai vuota/'Da Classificare'.
+    """Normalizza una categoria assente/non risolta nello stato esplicito 'Da Classificare'.
+
+    NON inventa più una categoria di comodo (storicamente 'SERVIZI E CONSULENZE'):
+    una riga che né dizionario/regole né AI sanno classificare deve restare
+    onestamente 'Da Classificare' e finire in coda di verifica. Il secondo valore
+    di ritorno (True quando la riga è non risolta) viene usato a valle per marcare
+    needs_review e per ripescarla in riclassificazione AI.
 
     Returns:
-        (categoria_finale, fallback_forzato)
+        (categoria_finale, da_classificare)
     """
     cat = str(categoria or "").strip()
     if cat and cat.upper() != "DA CLASSIFICARE":
         return cat, False
 
-    fallback = _FALLBACK_CATEGORIA_NON_CLASSIFICATO
-    logger.warning(
-        "🛟 FALLBACK CATEGORIA: source=%s, descrizione='%s' -> %s",
+    logger.info(
+        "🏷️ NON CLASSIFICATA: source=%s, descrizione='%s' -> Da Classificare",
         source,
         (descrizione or "")[:80],
-        fallback,
     )
-    return fallback, True
+    return CATEGORIA_NON_CLASSIFICATA, True
 
 # Eccezioni: pattern nel descrizione che BLOCCANO una specifica regola forte.
 # Se (desc matcha eccezione_pattern) E (regola target == regola_bloccata) → skip.
@@ -2872,13 +2879,13 @@ def _build_compiled_patterns() -> Tuple[list, list]:
     """
     Costruisce le liste di (pattern_compilato, categoria) ordinate per lunghezza keyword decrescente.
     Chiamata UNA VOLTA all'import del modulo. Ritorna (patterns_alimenti, patterns_contenitori).
-    
+
     Il pattern boundary accetta anche cifre come separatore sinistro per gestire
     codici GDO con numeri incollati (es. "200CANGURINO", "G500STOP-TOAST").
     """
     patterns_alimenti = []
     patterns_contenitori = []
-    
+
     for keyword, categoria in sorted(DIZIONARIO_CORREZIONI.items(), key=lambda x: len(x[0]), reverse=True):
         # Boundary sinistro: inizio stringa, whitespace, non-alfanumerico, O cifra (per codici GDO)
         pattern = re.compile(r'(?:^|[\s\W\d])' + re.escape(keyword) + r'(?:[\s\W]|$)')
@@ -2886,7 +2893,7 @@ def _build_compiled_patterns() -> Tuple[list, list]:
             patterns_contenitori.append((pattern, categoria))
         else:
             patterns_alimenti.append((pattern, categoria))
-    
+
     return patterns_alimenti, patterns_contenitori
 
 # Compilati una volta all'avvio (0 overhead nelle chiamate successive)
@@ -2896,8 +2903,179 @@ except Exception as e:
     logger.error(f"Errore buildcompiledpatterns: {e}")
     _PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = [], []
 
+
+# ── MATCH TOLLERANTE AI REFUSI TIPOGRAFICI (doppie) ─────────────────────────
+# Obiettivo: catturare refusi comuni nelle descrizioni fornitore senza introdurre
+# errori. Trasformazione UNICA e reversibile: collasso le lettere doppie a singola
+# (MOZZARELLA->MOZZARELA, MOZZARELA->MOZZARELA: convergono alla stessa forma).
+# Applicata IDENTICA a descrizione e keyword, quindi non puo' creare falsi match
+# tra parole diverse (al massimo unisce varianti della STESSA parola).
+# IMPORTANTE: usata SOLO come fallback quando il match esatto fallisce, mai prima
+# (un match gia' funzionante non puo' essere rotto).
+_DOPPIE_RE = re.compile(r'(.)\1+')
+
+
+def _collassa_doppie(testo: str) -> str:
+    return _DOPPIE_RE.sub(r'\1', testo)
+
+
+def _build_patterns_collassati() -> Tuple[list, list]:
+    """Stessa logica di _build_compiled_patterns ma su keyword con doppie collassate.
+
+    Salta le keyword troppo corte (<=2 char dopo collasso) per non generare match
+    troppo larghi, e quelle che collassando diventerebbero identiche a un'altra
+    keyword di categoria diversa (ambiguita' -> meglio non rischiare).
+    """
+    from collections import defaultdict
+    collapsed_map: dict = defaultdict(set)
+    for keyword, categoria in DIZIONARIO_CORREZIONI.items():
+        ck = _collassa_doppie(keyword)
+        if len(ck) <= 2:
+            continue
+        collapsed_map[ck].add((keyword, categoria))
+
+    patterns_alimenti = []
+    patterns_contenitori = []
+    for ck, items in collapsed_map.items():
+        categorie = {cat for _kw, cat in items}
+        # Se la forma collassata e' ambigua (piu' categorie) o coincide gia' con
+        # una keyword non-collassata diversa, NON la uso: priorita' alla correttezza.
+        if len(categorie) != 1:
+            continue
+        categoria = next(iter(categorie))
+        # Se la keyword collassata e' identica alla originale, il match esatto la
+        # copre gia': inutile duplicarla.
+        if any(ck == kw for kw, _ in items):
+            continue
+        pattern = re.compile(r'(?:^|[\s\W\d])' + re.escape(ck) + r'(?:[\s\W]|$)')
+        if any(kw in _KEYWORDS_CONTENITORI for kw, _ in items):
+            patterns_contenitori.append((pattern, categoria))
+        else:
+            patterns_alimenti.append((pattern, categoria))
+    # Ordina per lunghezza decrescente come i pattern principali
+    patterns_alimenti.sort(key=lambda x: len(x[0].pattern), reverse=True)
+    patterns_contenitori.sort(key=lambda x: len(x[0].pattern), reverse=True)
+    return patterns_alimenti, patterns_contenitori
+
+try:
+    _PATTERNS_ALIMENTI_COLLASSATI, _PATTERNS_CONTENITORI_COLLASSATI = _build_patterns_collassati()
+except Exception as e:
+    logger.error(f"Errore build_patterns_collassati: {e}")
+    _PATTERNS_ALIMENTI_COLLASSATI, _PATTERNS_CONTENITORI_COLLASSATI = [], []
+
 # Regex controllo caratteri (compilata a livello modulo, non ad ogni chiamata)
 _CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+# ── REGOLA DOMINIO (Mattia 25/06): VERDURE/FRUTTA solo freschi o surgelati ───
+# La frutta/verdura TRASFORMATA o CONSERVATA (in scatola, sciroppata, sottolio,
+# concentrata, essiccata...) va in SCATOLAME E CONSERVE, non in VERDURE/FRUTTA.
+# I SURGELATI/CONGELATI NON sono marcatori di conservazione: restano ortofrutta.
+# Si applica SOLO quando la categoria risultante sarebbe VERDURE o FRUTTA, così
+# non tocca altri alimenti (es. "tonno sottolio" resta gestito altrove).
+_CATEGORIE_ORTOFRUTTA = {"VERDURE", "FRUTTA"}
+_MARCATORI_CONSERVAZIONE = re.compile(
+    r"(?:"
+    r"IN\s+SCATOLA|SCATOLAT|IN\s+BARATTOLO|BARATTOL|LATTINA|"           # in scatola/barattolo
+    r"SCIROPPAT|IN\s+SALAMOIA|SALAMOIA|SOTT[O']?\s?OLIO|SOTTOLIO|"      # sciroppato/salamoia/sottolio
+    r"SOTT[A']?\s?ACETO|SOTTACET|"                                       # sottaceto
+    r"CONCENTRAT|PASSAT|ESSICCAT|DISIDRATAT|IN\s+POLVERE"               # concentrato/essiccato
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _ortofrutta_trasformata_in_scatolame(descrizione: str, categoria: str) -> str:
+    """Se la categoria e' VERDURE/FRUTTA ma la descrizione indica un prodotto
+    trasformato/conservato, riporta a SCATOLAME E CONSERVE (regola dominio 25/06)."""
+    if categoria in _CATEGORIE_ORTOFRUTTA and _MARCATORI_CONSERVAZIONE.search(descrizione or ""):
+        return "SCATOLAME E CONSERVE"
+    return categoria
+
+
+# ── REGOLA DOMINIO (Mattia 25/06): ZUCCHERO monodose-bar vs da-cucina ────────
+# Lo zucchero MONODOSE per il caffe' (bustine 4g, scatole da centinaia/migliaia di
+# pezzi, "monodose") e' un consumabile di servizio bar → VARIE BAR. Lo zucchero in
+# confezione grande (busta/sacco kg, velo, semolato, canna da cucina) → SCATOLAME.
+# La parola "bustina" da sola NON discrimina (esiste "busta 10kg"): conta il
+# marcatore monodose. Scatta solo su prodotti ZUCCHERO.
+_RE_ZUCCHERO = re.compile(r"ZUCCHER", re.IGNORECASE)
+_RE_ZUCCHERO_MONODOSE = re.compile(
+    r"(?:"
+    r"MONODOSE|"
+    r"BUSTIN[EA]\s*(?:DA\s*)?\d{1,2}\s*G(?:R)?\b|"   # bustine 4g / bustina 5 gr
+    r"\bGR?\.?\s*\d{1,2}\b\s*X|"                        # GR.4 X ... (grammatura monodose)
+    r"\d{3,}\s*PZ|X\s*\d{3,}\b|\(\s*\d{3,}\s*PZ"      # 1000 PZ / X 2000 / (1000 PZ)
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _zucchero_monodose_bar(descrizione: str, categoria: str) -> str:
+    """Se e' zucchero MONODOSE (bustine caffe') → VARIE BAR, altrimenti lascia
+    la categoria (default zucchero = SCATOLAME via dizionario)."""
+    d = descrizione or ""
+    if _RE_ZUCCHERO.search(d) and _RE_ZUCCHERO_MONODOSE.search(d):
+        return "VARIE BAR"
+    return categoria
+
+
+# ── REGOLA DOMINIO (Mattia 25/06): pasta ripiena per FORMA, non per ripieno ──
+# Raviolo/wonton/gyoza/dumpling/involtino-primavera = pasta ripiena → PASTA E
+# CEREALI a prescindere dal ripieno. Il ripieno (gamberi→PESCE, manzo→CARNE) NON
+# deve vincere: "ravioli di gamberi" è pasta, non pesce. L'involtino "di carne"
+# all'italiana NON è coperto (manca il marcatore asiatico) → resta CARNE.
+_RE_PASTA_RIPIENA = re.compile(
+    r"(?:"
+    r"RAVIOL|WONTON|WANTAN|GYOZ|GYOUZA|DUMPLING|JIAOZI|BAOZI|XIAOLONGBAO|"
+    r"HAUKAU|HAR\s*GOW|SHUMAI|SHAOMAI|"
+    r"INVOLTIN[OI]\s+(?:PRIMAVERA|VIETNAM|CINES|THAI|ASIATIC)|"
+    r"SPRING\s*ROLL|HARUMAKI"
+    r")",
+    re.IGNORECASE,
+)
+# Categorie "ripieno" che la forma-pasta deve scavalcare.
+_CATEGORIE_RIPIENO = {"PESCE", "CARNE", "VERDURE", "SCATOLAME E CONSERVE", "LATTICINI"}
+
+
+def _pasta_ripiena_per_forma(descrizione: str, categoria: str) -> str:
+    """Se è pasta ripiena (raviolo/wonton/gyoza/dumpling/involtino-asiatico) ma la
+    categoria riflette il RIPIENO (pesce/carne/verdure...), riporta a PASTA E CEREALI."""
+    if categoria in _CATEGORIE_RIPIENO and _RE_PASTA_RIPIENA.search(descrizione or ""):
+        return "PASTA E CEREALI"
+    return categoria
+
+
+# ── REGOLA DOMINIO (Mattia 25/06): CORNETTO gelato vs brioche ────────────────
+# "CORNETTO" di default è la brioche da forno → PASTICCERIA. Ma il CORNETTO GELATO
+# (Algida/Almagel/Sammontana, "cornetto max/classico") è un gelato → GELATI E
+# DESSERT. Discrimine: CORNETTO + marcatore-gelato (marchio gelataio o variante
+# tipica del cono gelato o la parola GELATO). Senza marcatore resta PASTICCERIA.
+_RE_CORNETTO = re.compile(r"\bCORNETT[OI]\b", re.IGNORECASE)
+_RE_MARCATORE_GELATO = re.compile(
+    r"(?:ALGIDA|ALMAGEL|SAMMONTANA|MOTTA|SANSON|GELATO|GELATI|"
+    r"CORNETT[OI]\s+(?:MAX|CLASSICO|REB|RHUMBA|DARK|WHITE))",
+    re.IGNORECASE,
+)
+
+
+def _cornetto_gelato_in_dessert(descrizione: str, categoria: str) -> str:
+    """Se è un CORNETTO con contesto gelato (marchio/variante) ma è stato messo in
+    PASTICCERIA, riporta a GELATI E DESSERT. La brioche-cornetto resta PASTICCERIA."""
+    d = descrizione or ""
+    if categoria == "PASTICCERIA" and _RE_CORNETTO.search(d) and _RE_MARCATORE_GELATO.search(d):
+        return "GELATI E DESSERT"
+    return categoria
+
+
+def _post_regole_dominio(descrizione: str, categoria: str) -> str:
+    """Applica in sequenza le regole di dominio post-match (25/06):
+    pasta ripiena per forma → PASTA E CEREALI, ortofrutta trasformata → SCATOLAME,
+    zucchero monodose → VARIE BAR, cornetto-gelato → GELATI E DESSERT."""
+    categoria = _pasta_ripiena_per_forma(descrizione, categoria)
+    categoria = _ortofrutta_trasformata_in_scatolame(descrizione, categoria)
+    categoria = _zucchero_monodose_bar(descrizione, categoria)
+    categoria = _cornetto_gelato_in_dessert(descrizione, categoria)
+    return categoria
 
 
 def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
@@ -2927,22 +3105,39 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     desc_upper = descrizione.upper()
     _brand_set = _get_brand_union_set()
     if any(brand in desc_upper for brand in _brand_set):
-        return categoria_ai
+        return _post_regole_dominio(desc_upper, categoria_ai)
 
     # Padding per garantire match ai bordi (i pattern usano boundary [\s\W])
     desc_padded = ' ' + desc_upper + ' '
 
-    # STEP 1: Cerca ALIMENTI (priorità alta) - se trovi uno, ritorna subito
+    # STEP 1: Cerca ALIMENTI (priorità alta) - se trovi uno, ritorna subito.
+    # Regola dominio: se l'alimento e' ortofrutta MA trasformata/conservata
+    # (concentrato, sciroppata, sottolio, in scatola...) → SCATOLAME E CONSERVE.
     for pattern, categoria in _PATTERNS_ALIMENTI:
         if pattern.search(desc_padded):
-            return categoria
-    
+            return _post_regole_dominio(desc_upper, categoria)
+
     # STEP 2: Cerca CONTENITORI (priorità bassa) - solo se nessun alimento trovato
     for pattern, categoria in _PATTERNS_CONTENITORI:
         if pattern.search(desc_padded):
             return categoria
-    
-    return categoria_ai
+
+    # STEP 3: FALLBACK refusi tipografici (doppie). Solo se i match esatti sopra
+    # hanno fallito: collasso le doppie nella descrizione e cerco tra le keyword
+    # anch'esse collassate. Cattura es. "MOZZARELA"->LATTICINI, "POMODOLLO"->VERDURE
+    # senza poter rompere alcun match esatto preesistente (questo blocco non viene
+    # nemmeno raggiunto se sopra c'e' stato un match).
+    desc_padded_collassato = ' ' + _collassa_doppie(desc_upper) + ' '
+    for pattern, categoria in _PATTERNS_ALIMENTI_COLLASSATI:
+        if pattern.search(desc_padded_collassato):
+            return _post_regole_dominio(desc_upper, categoria)
+    for pattern, categoria in _PATTERNS_CONTENITORI_COLLASSATI:
+        if pattern.search(desc_padded_collassato):
+            return categoria
+
+    # Nessun match dizionario: filtra comunque la proposta AI (es. AI dice FRUTTA
+    # ma e' "pesche sciroppate" → SCATOLAME).
+    return _post_regole_dominio(desc_upper, categoria_ai)
 
 
 _LOW_FOOD_IVA_VALUES = {4, 5, 10}
@@ -3044,7 +3239,14 @@ def _applica_guardrail_note_con_importo(
     categoria: str,
     prezzo: float,
 ) -> str:
-    """NOTE E DICITURE e' consentita solo per righe a importo zero."""
+    """NOTE E DICITURE e' consentita solo per righe a importo zero.
+
+    Una dicitura con importo != 0 non e' davvero una nota a costo nullo: ma il
+    sistema non sa quale categoria di costo sia (acconto? servizio? merce non
+    dettagliata?). Anziche' forzarla a SERVIZI E CONSULENZE (fallback travestito),
+    la lascia 'Da Classificare' cosi' resta visibile in coda al cliente e non
+    entra nei margini con una categoria inventata. Appena classificata, rientra.
+    """
     categoria_norm = _normalize_category_name(categoria) or categoria
     if categoria_norm not in {"📝 NOTE E DICITURE", "NOTE E DICITURE"}:
         return categoria_norm
@@ -3057,12 +3259,12 @@ def _applica_guardrail_note_con_importo(
     if prezzo_val != 0:
         label = "importo positivo" if prezzo_val > 0 else "importo negativo"
         logger.info(
-            "🛡️ GUARDRAIL NOTE: '%s' con %s (%.2f) non puo' restare in NOTE E DICITURE -> SERVIZI E CONSULENZE",
+            "🛡️ GUARDRAIL NOTE: '%s' con %s (%.2f) non puo' restare in NOTE E DICITURE -> Da Classificare",
             str(descrizione or "")[:60],
             label,
             prezzo_val,
         )
-        return "SERVIZI E CONSULENZE"
+        return CATEGORIA_NON_CLASSIFICATA
 
     return "📝 NOTE E DICITURE"
 

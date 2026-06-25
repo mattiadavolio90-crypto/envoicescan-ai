@@ -63,12 +63,13 @@ def test_conta_tutte_senza_finestra_temporale():
 
 # ── Fatture mancanti: stesso pattern (voce 1 della Salute) ──
 
-def _sb_fatture(count, partita_iva=None, ultima_created_at=None):
+def _sb_fatture(count, sdi_attivo=False, ultima_created_at=None):
     """Mock a tre tabelle del caso A:
-      - 'ristoranti' (.single -> P.IVA + user_id)
+      - 'ristoranti' (.single -> user_id + sdi_attivo, decide il canale)
       - 'margini_mensili' (caso B: vuoto -> fatturato 0 -> caso B saltato)
       - 'fatture' (caso A: ultima fattura via order/limit created_at).
     count=0 -> nessuna fattura recente -> avviso; count>0 -> fattura di OGGI -> ok.
+    sdi_attivo=True -> canale sdi; False -> manuale.
     """
     from datetime import datetime, timezone
     sb = MagicMock()
@@ -83,7 +84,7 @@ def _sb_fatture(count, partita_iva=None, ultima_created_at=None):
 
     def _execute():
         if state["table"] == "ristoranti":
-            return MagicMock(data={"partita_iva": partita_iva, "user_id": "u1"})
+            return MagicMock(data={"user_id": "u1", "sdi_attivo": sdi_attivo})
         if state["table"] == "margini_mensili":
             return MagicMock(data=[])  # nessun fatturato -> caso B non scatta
         # fatture: ultima fattura (order created_at desc, limit 1)
@@ -110,8 +111,8 @@ def test_con_fatture_recenti_nessuna_notifica():
 
 
 def test_senza_fatture_recenti_canale_manuale():
-    # Nessuna P.IVA -> caricamento manuale -> "carica le fatture".
-    out = _briefing_fatture_mancanti(RID, _sb_fatture(0, partita_iva=None))
+    # sdi_attivo=False -> caricamento manuale -> "carica le fatture".
+    out = _briefing_fatture_mancanti(RID, _sb_fatture(0, sdi_attivo=False))
     assert out is not None
     assert out["topic_key"] == "fatture_mancanti"
     assert out["payload"]["canale"] == "manuale"
@@ -119,11 +120,19 @@ def test_senza_fatture_recenti_canale_manuale():
 
 
 def test_senza_fatture_recenti_canale_sdi():
-    # Con P.IVA -> ricezione automatica SDI -> messaggio sul flusso, non "carica".
-    out = _briefing_fatture_mancanti(RID, _sb_fatture(0, partita_iva="12345678901"))
+    # sdi_attivo=True -> ricezione automatica -> messaggio sul flusso, non "carica".
+    out = _briefing_fatture_mancanti(RID, _sb_fatture(0, sdi_attivo=True))
     assert out is not None
     assert out["payload"]["canale"] == "sdi"
     assert "automatico" in out["title"].lower()
+
+
+def test_default_senza_flag_e_manuale():
+    # Default prudente: senza sdi_attivo (False) il canale e' manuale, mai mandare
+    # a verificare un flusso automatico non attivo (stato attuale di tutti i clienti).
+    out = _briefing_fatture_mancanti(RID, _sb_fatture(0))
+    assert out is not None
+    assert out["payload"]["canale"] == "manuale"
 
 
 def test_ultima_fattura_oltre_7_giorni_scatta():
@@ -131,7 +140,7 @@ def test_ultima_fattura_oltre_7_giorni_scatta():
     from datetime import datetime, timezone, timedelta
     otto_gg_fa = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
     out = _briefing_fatture_mancanti(
-        RID, _sb_fatture(1, partita_iva=None, ultima_created_at=otto_gg_fa)
+        RID, _sb_fatture(1, sdi_attivo=False, ultima_created_at=otto_gg_fa)
     )
     assert out is not None
     assert out["topic_key"] == "fatture_mancanti"
@@ -141,6 +150,6 @@ def test_ultima_fattura_entro_7_giorni_silenzio():
     from datetime import datetime, timezone, timedelta
     tre_gg_fa = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     out = _briefing_fatture_mancanti(
-        RID, _sb_fatture(1, partita_iva=None, ultima_created_at=tre_gg_fa)
+        RID, _sb_fatture(1, sdi_attivo=False, ultima_created_at=tre_gg_fa)
     )
     assert out is None

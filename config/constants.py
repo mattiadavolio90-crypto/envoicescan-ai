@@ -412,8 +412,8 @@ DIZIONARIO_CORREZIONI = {
     "LITCHI": "FRUTTA",
     "ARBUTUS": "FRUTTA",
     "CORBEZZOLO": "FRUTTA",
-    "SCIROPPATO": "FRUTTA",
-    "SCIROPPATA": "FRUTTA",
+    "SCIROPPATO": "SCATOLAME E CONSERVE",   # frutta sciroppata = conserva (regola dominio 25/06)
+    "SCIROPPATA": "SCATOLAME E CONSERVE",
     "NAVEL": "FRUTTA",
     
     # ===== LATTICINI =====
@@ -579,6 +579,31 @@ DIZIONARIO_CORREZIONI = {
     "TORTELLINI": "PASTA E CEREALI",
     "TORTELLONI": "PASTA E CEREALI",
     "AGNOLOTTI": "PASTA E CEREALI",
+    # ===== PASTA RIPIENA (anche asiatica): classificata per FORMA, non per ripieno =====
+    # Regola dominio Mattia 25/06: raviolo/wonton/gyoza/dumpling/involtino-primavera
+    # = pasta ripiena → PASTA E CEREALI sempre, a prescindere dal contenuto
+    # (gamberi/manzo/verza). L'involtino "di carne" all'italiana resta gestito a parte.
+    "RAVIOLO": "PASTA E CEREALI",
+    "RAVIOLINI": "PASTA E CEREALI",
+    "GYOUZA": "PASTA E CEREALI",
+    "GYOZE": "PASTA E CEREALI",
+    "WANTAN": "PASTA E CEREALI",
+    "WONTON SKIN": "PASTA E CEREALI",
+    "GYOZA SKIN": "PASTA E CEREALI",
+    "DUMPLING": "PASTA E CEREALI",
+    "JIAOZI": "PASTA E CEREALI",
+    "BAOZI": "PASTA E CEREALI",
+    "XIAOLONGBAO": "PASTA E CEREALI",
+    "HAUKAU": "PASTA E CEREALI",
+    "HAR GOW": "PASTA E CEREALI",
+    "SHUMAI": "PASTA E CEREALI",
+    "INVOLTINO PRIMAVERA": "PASTA E CEREALI",
+    "INVOLTINI PRIMAVERA": "PASTA E CEREALI",
+    "INVOLTINO VIETNAM": "PASTA E CEREALI",
+    "INVOLTINI VIETNAM": "PASTA E CEREALI",
+    "INVOLTINO CINESE": "PASTA E CEREALI",
+    "SPRING ROLL": "PASTA E CEREALI",
+    "HARUMAKI": "PASTA E CEREALI",
     "CAPPELLETTI": "PASTA E CEREALI",
     "GNOCCHI": "PASTA E CEREALI",
     "CANNELLONI": "PASTA E CEREALI",
@@ -588,7 +613,7 @@ DIZIONARIO_CORREZIONI = {
     "BUCATINI": "PASTA E CEREALI",
     "RISO": "PASTA E CEREALI",
     "FARINA": "PASTA E CEREALI",
-    "ZUCCHERO": "VARIE BAR",
+    "ZUCCHERO": "SCATOLAME E CONSERVE",   # default: zucchero da cucina/dispensa (busta, velo, semolato). Monodose bar → VARIE BAR via keyword specifiche + _zucchero_monodose_bar (scelta dominio Mattia 25/06)
     "FECOLA": "PASTA E CEREALI",
     "ROUX": "PASTA E CEREALI",
     "CEREALI": "PASTA E CEREALI",
@@ -663,6 +688,55 @@ DIZIONARIO_CORREZIONI = {
     "BESCIAMELLA": "SALSE E CREME",
     "SALSA": "SALSE E CREME",
     
+    # ===== PRODOTTI ETNICI/ASIATICI (fornitori SHIDU, MEFON, ASIANTRADE, METRO) =====
+    # Ricorrenti nei ristoranti sushi/asiatici, ignoti al dizionario base: il GPT
+    # li tirava a indovinare (spesso in VERDURE). Categorie confermate con l'owner.
+    # Verdure/ortaggi cinesi
+    "CRAUDI": "VERDURE",
+    "BERGA": "VERDURE",
+    "PIATTONE": "VERDURE",
+    "PIATONE": "VERDURE",
+    "KANKONG": "VERDURE",
+    "CAISUN": "VERDURE",
+    "ZUCCA": "VERDURE",
+    # Sfoglie/impasti asiatici -> PASTA E CEREALI
+    "WONTON": "PASTA E CEREALI",
+    "KADAIFI": "PASTA E CEREALI",
+    "RICE FLAKES": "PASTA E CEREALI",
+    "GNOCCO DA FRIGGERE": "PASTA E CEREALI",
+    # Salse/condimenti asiatici -> SALSE E CREME
+    "PEKING DUCK SAUCE": "SALSE E CREME",
+    "BLACK PEPPER SAUCE": "SALSE E CREME",
+    "MUSTARD": "SALSE E CREME",
+    # Brodi/dadi/preparati -> SCATOLAME E CONSERVE
+    "BOUILLON": "SCATOLAME E CONSERVE",
+    "BUILLON": "SCATOLAME E CONSERVE",
+    "HUMMUS": "SCATOLAME E CONSERVE",
+    "PURE PFANNI": "SCATOLAME E CONSERVE",
+    # Altri ricorrenti GDO/METRO
+    "PANZEROTTINI": "PRODOTTI DA FORNO",
+    "MOZZ BUFALA": "LATTICINI",
+    "MERLUZ": "PESCE",
+    # Sfoglie tempura giapponesi (Shidu): impasto -> PASTA E CEREALI
+    "PASTELLA": "PASTA E CEREALI",
+    "PASTO DI WONTON": "PASTA E CEREALI",
+    # Foglie/alghe fresche per sushi (Asiantrade)
+    "FOGLIE FRESCA": "SUSHI VARIE",
+    # Latticini abbreviati che il GPT non riconosceva
+    "MOZZAR": "LATTICINI",          # MOZZAR.JULIENNE; MOZZARELLA/MOZZARELLE gia' coperte
+    "FORM GRATTUGIATI": "LATTICINI", # MIX FORM GRATTUGIATI
+    "FORM GRATTUGIATO": "LATTICINI",
+    "CHEESE MONTEROSA": "LATTICINI",
+    # Uova: mancavano del tutto nel dizionario
+    "UOVA": "UOVA",
+    "UOVO": "UOVA",
+    # Semi di finocchio = spezia (FINOCCHI da solo resta VERDURE)
+    "FINOCCHIO SEMI": "SPEZIE E AROMI",
+    "SEMI FINOCCHIO": "SPEZIE E AROMI",
+    "SEMI DI FINOCCHIO": "SPEZIE E AROMI",
+    # Gelato confezionato M&M
+    "TWITTY": "GELATI E DESSERT",
+
     # ===== CONSERVE (include scatolame, marmellate, sott'olio) =====
     # Scatolame
     "PELATI": "SCATOLAME E CONSERVE",
@@ -761,13 +835,17 @@ DIZIONARIO_CORREZIONI = {
     # ===== PASTICCERIA =====
     "TORTA": "PASTICCERIA",
     "CROSTATA": "PASTICCERIA",
-    "TIRAMISÃ™": "PASTICCERIA",
-    "PANNA COTTA": "PASTICCERIA",
-    "MOUSSE": "PASTICCERIA",
-    "CHEESECAKE": "PASTICCERIA",
+    # Dessert al cucchiaio/finiti da servire → GELATI E DESSERT (scelta dominio Mattia 25/06).
+    # PASTICCERIA resta il da-forno/banco/frolla (croissant, cannoli, crostate, millefoglie).
+    "TIRAMISÃ™": "GELATI E DESSERT",
+    "TIRAMISU": "GELATI E DESSERT",
+    "PANNA COTTA": "GELATI E DESSERT",
+    "MOUSSE": "GELATI E DESSERT",
+    "CHEESECAKE": "GELATI E DESSERT",
+    "PROFITEROLES": "GELATI E DESSERT",
+    "PROFITEROL": "GELATI E DESSERT",
     "MILLEFOGLIE": "PASTICCERIA",
     "CANNOLI": "PASTICCERIA",
-    "PROFITEROLES": "PASTICCERIA",
     "BIGNÃˆ": "PASTICCERIA",
     "ARAGOSTELLE": "PASTICCERIA",  # Dolci a forma di aragosta (con pistacchio/cioccolato)
     "TARTUFI": "PASTICCERIA",  # Default per dolci (se Ã¨ tartufo vero, viene sovrascritto da admin)
@@ -1232,6 +1310,14 @@ DIZIONARIO_CORREZIONI = {
         "GAMB.ROSSO": "PESCE",
         "SEPPIOLINE": "PESCE",
     
+    # ===== "VINO/SAKE da cucina": NON bevanda da tavola → dispensa (scelta dominio Mattia 25/06) =====
+    # Fornitori asiatici vendono sake/vino di riso da CUCINA: non vanno tra i VINI (margini bevande)
+    # ma trattati come ingrediente/conserva. Stringhe lunghe = match prioritario (longest-first).
+    "SAKE PER CUCINA": "SCATOLAME E CONSERVE",
+    "SAKE DA CUCINA": "SCATOLAME E CONSERVE",
+    "VINO FERMENTATO": "SCATOLAME E CONSERVE",
+    "VINO DI RISO": "SCATOLAME E CONSERVE",
+
     # ===== SALSE ASIATICHE =====
     "SAKE CUCINA": "SALSE E CREME",
     "MIRIN": "SALSE E CREME",
@@ -1257,7 +1343,15 @@ DIZIONARIO_CORREZIONI = {
     "SILVER CAN": "BIRRE",
     
     # ===== MATERIALE CONSUMO SPECIFICO =====
+    # Bambù-POSATA (bacchette/bastoncini/spiedini monouso) → MATERIALE.
+    # Il bambù-CIBO (germogli/conservato) resta SUSHI VARIE via keyword "BAMBU".
     "BASTONCINO BAMBU": "MATERIALE DI CONSUMO",
+    "BASTONCINI BAMBU": "MATERIALE DI CONSUMO",
+    "BASTONCINI DI BAMBU": "MATERIALE DI CONSUMO",
+    "SPIEDINI BAMBU": "MATERIALE DI CONSUMO",
+    "SPIEDINI DI BAMBU": "MATERIALE DI CONSUMO",
+    "SPIEDINI BAMBU NODO": "MATERIALE DI CONSUMO",
+    "BACCHETTE BAMBU": "MATERIALE DI CONSUMO",
     "BACCHETTE": "MATERIALE DI CONSUMO",
     "BOBINA": "MATERIALE DI CONSUMO",
     "STRAPI": "MATERIALE DI CONSUMO",
@@ -1283,6 +1377,9 @@ DIZIONARIO_CORREZIONI = {
     "MOUSSE MANI": "MATERIALE DI CONSUMO",
     "PASSATA POMOD": "SCATOLAME E CONSERVE",
     "PASSATA POMODORO": "SCATOLAME E CONSERVE",
+    # Concentrato/passata/sciroppata ecc. ora gestiti dalla regola generale
+    # _ortofrutta_trasformata_in_scatolame (ai_service): ortofrutta + marcatore
+    # di conservazione → SCATOLAME. Niente keyword per-prodotto da mantenere.
     "SALAME CIOCCOLATO": "PASTICCERIA",
     "SALAME DI CIOCCOLATO": "PASTICCERIA",
 
@@ -1402,7 +1499,7 @@ DIZIONARIO_CORREZIONI = {
     "SOIA": "BEVANDE",
     "SOJA": "BEVANDE",
     "SPESE DI BOLLO": "SERVIZI E CONSULENZE",
-    "STRUDEL": "PASTICCERIA",
+    "STRUDEL": "GELATI E DESSERT",   # dessert finito da servire (scelta dominio Mattia 25/06)
 
     # ===== BATCH FIX: Plurali/singolari mancanti =====
     # PESCE - varianti plurali/singolari
@@ -1448,6 +1545,8 @@ DIZIONARIO_CORREZIONI = {
     "MELOGRANO": "FRUTTA",
     "MANDORLE": "SCATOLAME E CONSERVE",    # frutta secca da dispensa/banco (scelta dominio Mattia 16/06)
     "MANDORLA": "SCATOLAME E CONSERVE",
+    "MANDORE": "SCATOLAME E CONSERVE",     # refuso fornitore (MANDORE FETTATO = mandorle a fette)
+    "GRANELLA": "SCATOLAME E CONSERVE",    # granella di pistacchio/mandorle = ingrediente da dispensa (scelta dominio Mattia 25/06)
 
     # ===== BATCH FIX: Carne - keyword generiche sicure =====
     "BOVINO": "CARNE",           # copre: roast-beef bovino, coscia bovino, nervetti bovino (×5)
@@ -1542,7 +1641,15 @@ DIZIONARIO_CORREZIONI = {
     "SALE MARINO": "SPEZIE E AROMI",
     # Shop - snack
     "TARALLINI": "SHOP",
+    "TARALLI": "SHOP",
+    "TARTINE": "SHOP",
     "ARACHIDI": "SHOP",
+    # Miele: confezione grande = dispensa → SCATOLAME; bustine monodose bar → VARIE BAR
+    "MIELE": "SCATOLAME E CONSERVE",
+    "MIELE MILLEFIORI": "SCATOLAME E CONSERVE",
+    "MIELE BUSTINE": "VARIE BAR",
+    "MIELE IN BUSTINE": "VARIE BAR",
+    "MIELE IN BUSTINA": "VARIE BAR",
     "S.CARLO": "SHOP",
     # Salumi
     "SPIANATA": "SALUMI",
@@ -1713,10 +1820,16 @@ TRUNCATE_DESC_LOG = 40
 TRUNCATE_DESC_QUERY = 30
 TRUNCATE_ERROR_DISPLAY = 150
 
-# Categoria di fallback quando la classificazione non produce un valore valido
-# (regola di dominio #1). Il constraint DB vieta 'DA CLASSIFICARE'; questo e' il
-# rimpiazzo canonico. Fonte unica: prima era un literal ripetuto in piu' moduli.
-CATEGORIA_FALLBACK = "SERVIZI E CONSULENZE"
+# Stato esplicito per le righe che né dizionario/regole né AI sanno classificare.
+# Sostituisce il vecchio fallback travestito in 'SERVIZI E CONSULENZE': una riga
+# non riconosciuta resta onestamente 'Da Classificare' e finisce in coda di
+# verifica (visibile al cliente dal filtro "Da classificare" in Analisi Fatture).
+# Il constraint DB ora la consente (vieta solo NULL/vuoto). Fonte unica.
+CATEGORIA_NON_CLASSIFICATA = "Da Classificare"
+
+# Alias storico mantenuto per compatibilità: tutti i punti che invocavano il
+# "fallback" ora ricadono sullo stato non-classificato, non più su SERVIZI.
+CATEGORIA_FALLBACK = CATEGORIA_NON_CLASSIFICATA
 
 # Limiti upload e batch
 MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB (decimali) — usato dai validatori storici

@@ -20,6 +20,7 @@ admin. Tutto il resto resta nel worker ed e' importato:
 Path/gate/response/forma dei body invariati rispetto all'originale.
 """
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -382,7 +383,8 @@ def admin_dettaglio_cliente(cliente_id: str):
         raise HTTPException(status_code=403, detail="Non puoi gestire account admin")
 
     sedi_resp = sb.table("ristoranti").select(
-        "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo"
+        "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,"
+        "sdi_attivo,sdi_attivo_dal"
     ).eq("user_id", cliente_id).execute()
     sedi = sedi_resp.data or []
 
@@ -666,6 +668,42 @@ def _descrizioni_impronta_umana(sb, allowed_ids: list) -> set:
     return umane
 
 
+def _suggerimento_deterministico(desc: str, cat_attuale: str):
+    """Suggerimento di categoria affidabile per la coda di revisione.
+
+    Restituisce (categoria_suggerita, fonte) oppure (None, None). Il suggerimento
+    "deterministico" compare SOLO se l'INTERA pipeline del runtime (dizionario →
+    regole forti, stesso ordine di categorizza_con_memoria, dove le regole forti
+    hanno l'ultima parola) produce una categoria REALE e diversa dall'attuale.
+
+    Prima dizionario e regole erano valutati separatamente: bastava un match cieco
+    su una parola (es. "VASC. LIMONE" → FRUTTA dal dizionario) per proporre di
+    rovinare una categoria già giusta (gelato al limone). Inoltre, se la descrizione
+    cita un contenitore/formato (VASC, BUSTA, CONF...) e a suggerire è il solo
+    dizionario, il caso è ambiguo (alimento dentro un confezionato) e NON si
+    auto-suggerisce: lo decide l'admin con "Scegli".
+    """
+    from services.ai_service import (
+        applica_regole_categoria_forti,
+        applica_correzioni_dizionario,
+        _KEYWORDS_CONTENITORI,
+    )
+    desc = str(desc or "")
+    if not desc:
+        return None, None
+    cat_attuale = str(cat_attuale or "")
+    cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
+    cat_runtime, motivo_forte = applica_regole_categoria_forti(desc, cat_dict)
+    consolidata = (cat_runtime or cat_dict or "").strip()
+    if not consolidata or consolidata in ("Da Classificare", "SERVIZI E CONSULENZE", cat_attuale):
+        return None, None
+    if not motivo_forte:
+        desc_tokens = {t for t in re.findall(r"[A-ZÀ-Ý]+", desc.upper()) if len(t) >= 3}
+        if desc_tokens & _KEYWORDS_CONTENITORI:
+            return None, None
+    return consolidata, ("regola" if motivo_forte else "memoria")
+
+
 @router.get("/api/admin/qualita-ai/coda", tags=["Admin"])
 def admin_qualita_coda(
     cliente_id: Optional[str] = None,
@@ -771,8 +809,6 @@ def admin_qualita_coda(
     grp["prezzo_max"] = grp["prezzo_max"].fillna(0).round(4)
     grp = grp.sort_values(["bucket", "count"], ascending=[True, False])
 
-    from services.ai_service import applica_regole_categoria_forti, applica_correzioni_dizionario
-
     # A2: pre-carica i suggerimenti AI gia' preparati (categoria_suggerita su prodotti_master)
     descrizioni_coda = grp["descrizione"].dropna().astype(str).tolist()
     suggerimenti_ai: dict = {}
@@ -805,23 +841,14 @@ def admin_qualita_coda(
         else:
             g["cliente"] = f"{len(uids)} clienti"
 
-        # A2: suggerimento a 3 livelli con FONTE esplicita
+        # A2: suggerimento con FONTE esplicita (deterministico affidabile, poi AI).
         desc = str(g.get("descrizione") or "")
         cat_attuale = str(g.get("categoria") or "")
-        suggerita = None
-        fonte = None
-        if desc:
-            cat_forte, _ = applica_regole_categoria_forti(desc, "Da Classificare")
-            if cat_forte and cat_forte not in ("Da Classificare", cat_attuale):
-                suggerita, fonte = cat_forte, "regola"
-            if not suggerita:
-                cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
-                if cat_dict and cat_dict not in ("Da Classificare", cat_attuale):
-                    suggerita, fonte = cat_dict, "memoria"
-            if not suggerita:
-                ai = suggerimenti_ai.get(desc.strip().upper())
-                if ai and ai[0] and ai[0] != cat_attuale:
-                    suggerita, fonte = ai[0], (ai[1] or "ai")
+        suggerita, fonte = _suggerimento_deterministico(desc, cat_attuale)
+        if not suggerita and desc:
+            ai = suggerimenti_ai.get(desc.strip().upper())
+            if ai and ai[0] and ai[0] != cat_attuale:
+                suggerita, fonte = ai[0], (ai[1] or "ai")
         g["categoria_suggerita"] = suggerita
         g["fonte"] = fonte
 
@@ -1172,7 +1199,7 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
         try:
             row = df[df["descrizione"] == desc].iloc[0]
             cat = row.get("categoria") or ""
-            if not cat or cat == "Da Clasificare":
+            if not cat or cat in ("Da Classificare", "Da Clasificare"):
                 continue
             ids = df[df["descrizione"] == desc]["id"].tolist()
             sb.table("fatture").update({
@@ -2394,7 +2421,7 @@ def admin_impersona_exit(body: ImpersonaExitBody, admin_user: dict = Depends(_ve
 # sedi con stessa P.IVA: un trigger DB calcola `indirizzo_match` da questi tre e il
 # webhook Invoicetronic lo confronta con l'indirizzo della fattura. Senza, le
 # fatture multi-sede finiscono in coda `da_assegnare` (smistamento manuale).
-_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo"
+_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,sdi_attivo,sdi_attivo_dal"
 
 
 class NuovaSedeBody(BaseModel):
@@ -2417,6 +2444,10 @@ class ModificaSedeBody(BaseModel):
     comune: Optional[str] = Field(None, max_length=100)
     piano: Optional[str] = Field(None, pattern="^(free|base|plus|pro)$")
     piano_inizio_at: Optional[str] = None
+    # Ricezione SDI automatica (Invoicetronic) attiva per la sede. Lo accende
+    # l'admin all'attivazione del servizio: decide il canale del briefing
+    # fatture-mancanti ("verifica flusso" vs "carica a mano").
+    sdi_attivo: Optional[bool] = None
 
 
 @router.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
@@ -2510,11 +2541,25 @@ def admin_modifica_sede(
         upd["piano"] = body.piano
     if body.piano_inizio_at is not None:
         upd["piano_inizio_at"] = body.piano_inizio_at or None
+    if body.sdi_attivo is not None:
+        upd["sdi_attivo"] = bool(body.sdi_attivo)
+        # Traccia la data di attivazione la prima volta che si accende; la azzera
+        # quando si spegne. Informativa (non usata dalla logica del canale).
+        from datetime import date as _date
+        upd["sdi_attivo_dal"] = _date.today().isoformat() if body.sdi_attivo else None
 
     if not upd:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
 
     sb.table("ristoranti").update(upd).eq("id", sede_id).execute()
+    # Il canale del briefing dipende da sdi_attivo: invalida il briefing di oggi
+    # della sede cosi' il messaggio fatture-mancanti si aggiorna subito.
+    if body.sdi_attivo is not None:
+        try:
+            from services.daily_briefing_service import invalidate_today_briefing
+            invalidate_today_briefing(cliente_id, sede_id, sb)
+        except Exception as exc:
+            logger.warning("admin_modifica_sede: invalidazione briefing SDI fallita: %s", exc)
     logger.info("admin_modifica_sede: sede=%s campi=%s | admin=%s", sede_id, list(upd.keys()), admin_user.get("email"))
     resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("id", sede_id).single().execute()
     return resp.data or {"ok": True}
