@@ -37,7 +37,8 @@ logger = get_logger('daily_briefing')
 # STORICO bump (per non perdere il filo):
 #   1 -> baseline
 #   2 -> 23/06: righe da controllare = totale, canale SDI da flag, tono testi
-_BRIEFING_CODE_VERSION = 2
+#   3 -> 25/06: costo personale mancante su TUTTI i mesi dell'anno (conteggio+range)
+_BRIEFING_CODE_VERSION = 3
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -375,6 +376,10 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         return "\U0001F4B6 L'incasso di ieri non \u00e8 ancora stato inserito \u2014 mettilo per tenere i margini aggiornati."
 
     if topic == 'costo_personale_mancante':
+        descr = payload.get('descrizione')
+        n_mesi = int(payload.get('n_mesi') or 0)
+        if descr and n_mesi >= 2:
+            return f"\U0001F465 Costo del personale mancante in {descr}."
         mese = payload.get('mese')
         anno = payload.get('anno')
         if mese and anno:
@@ -584,6 +589,16 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
         )
 
     if topic == 'costo_personale_mancante':
+        # Multi-mese (decisione 25/06): se manca in piu' mesi, dirne il numero e il
+        # periodo invece di citarne solo uno. payload['descrizione'] e' gia' la
+        # forma compatta ("5 mesi (gen-mag)", "aprile e maggio", "maggio").
+        descr = payload.get('descrizione')
+        n_mesi = int(payload.get('n_mesi') or 0)
+        if descr and n_mesi >= 2:
+            return (
+                f"Il costo del personale manca in {descr}: "
+                f"senza, MOL e margini di quei mesi non sono affidabili."
+            )
         mese = payload.get('mese')
         anno = payload.get('anno')
         if not (mese and anno):
@@ -709,10 +724,13 @@ def _compose_narrative(
     sentences: List[str] = []
     skip_topics: set = set()
 
-    # Fusione fatturato + costo personale stesso mese/anno
+    # Fusione fatturato + costo personale stesso mese/anno. NON si fonde se il
+    # personale e' multi-mese (n_mesi>=2): la frase fusa parla di un singolo mese
+    # e perderebbe l'informazione "in N mesi". In quel caso restano due frasi.
     fat = next((n for n in selected if n.get('topic_key') == 'fatturato_mancante'), None)
     costo = next((n for n in selected if n.get('topic_key') == 'costo_personale_mancante'), None)
-    if fat and costo:
+    costo_multi = costo is not None and int((costo.get('payload') or {}).get('n_mesi') or 0) >= 2
+    if fat and costo and not costo_multi:
         fp = fat.get('payload') or {}
         cp = costo.get('payload') or {}
         fat_mese = fp.get('mese') or _parse_mese_anno_from_title(str(fat.get('title') or ''))[0]

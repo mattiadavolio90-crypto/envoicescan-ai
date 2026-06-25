@@ -3637,6 +3637,32 @@ _MESI_IT_BRIEFING = [
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 ]
 
+# Abbreviazioni per il range compatto ("gen-giu") quando i mesi scoperti sono molti.
+_MESI_ABBR_BRIEFING = [
+    "", "gen", "feb", "mar", "apr", "mag", "giu",
+    "lug", "ago", "set", "ott", "nov", "dic",
+]
+
+
+def _descrivi_mesi_mancanti(mesi: List[int]) -> str:
+    """Descrive in modo compatto l'insieme di mesi scoperti (stesso anno).
+
+    Regole (decisione Mattia 25/06: dire QUANTI mesi e il periodo, non solo
+    'maggio' quando in realta' i buchi sono molti):
+      - 1 mese  -> "maggio"
+      - 2 mesi  -> "aprile e maggio"
+      - 3+ mesi -> "5 mesi (gen-mag)" — conteggio + range abbreviato min..max
+    Input gia' ordinato o no: si ordina qui. Mesi 1..12.
+    """
+    ms = sorted(set(int(m) for m in mesi if 1 <= int(m) <= 12))
+    if not ms:
+        return ""
+    if len(ms) == 1:
+        return _MESI_IT_BRIEFING[ms[0]]
+    if len(ms) == 2:
+        return f"{_MESI_IT_BRIEFING[ms[0]]} e {_MESI_IT_BRIEFING[ms[1]]}"
+    return f"{len(ms)} mesi ({_MESI_ABBR_BRIEFING[ms[0]]}-{_MESI_ABBR_BRIEFING[ms[-1]]})"
+
 # Giorni di silenzio della pipeline fatture oltre i quali si segnala "non arrivano
 # fatture" (caso A di _briefing_fatture_mancanti). Decisione 19/06: 7 giorni.
 FATTURE_MANCANTI_GIORNI = 7
@@ -4041,44 +4067,61 @@ def _briefing_dati_mensili_mancanti(
     mese_label = _MESI_IT_BRIEFING[mc_mese]
     spenti = spenti or set()
 
-    fatturato_ok = False
-    personale_ok = False
+    # Scansione di TUTTO l'anno corrente, non solo il mese precedente (decisione
+    # Mattia 25/06): una sede con fatturato su 6 mesi ma personale a 0 ovunque non
+    # deve vedere "manca maggio" (fa sembrare un buco isolato) ma "in N mesi". Un
+    # mese e' "attivo" se ha fatturato (margini_mensili o override mensile): solo
+    # su quelli ha senso pretendere il costo personale. mc_mese (mese precedente)
+    # resta il riferimento per il singolo-mese e per il fatturato.
+    righe_anno: Dict[int, Dict[str, float]] = {}
     try:
         resp = (
             supabase_client.table("margini_mensili")
-            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
+            .select("mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
                     "costo_dipendenti,costo_personale_extra")
             .eq("ristorante_id", ristorante_id)
             .eq("anno", mc_anno)
-            .eq("mese", mc_mese)
             .execute()
         )
         for r in (resp.data or []):
-            netto = (
-                float(r.get("fatturato_iva10") or 0)
-                + float(r.get("fatturato_iva22") or 0)
-                + float(r.get("altri_ricavi_noiva") or 0)
-            )
-            if netto > 0:
-                fatturato_ok = True
-            if (float(r.get("costo_dipendenti") or 0)
-                    + float(r.get("costo_personale_extra") or 0)) > 0:
-                personale_ok = True
+            m = int(r.get("mese") or 0)
+            if 1 <= m <= 12:
+                righe_anno[m] = {
+                    "netto": (float(r.get("fatturato_iva10") or 0)
+                              + float(r.get("fatturato_iva22") or 0)
+                              + float(r.get("altri_ricavi_noiva") or 0)),
+                    "personale": (float(r.get("costo_dipendenti") or 0)
+                                  + float(r.get("costo_personale_extra") or 0)),
+                }
     except Exception as exc:
         logger.warning("briefing dati mensili: lettura margini fallita: %s", exc)
         return []
 
-    # Modalità 'mensile': il fatturato è in ricavi_modalita_mensile, non in
-    # margini_mensili (l'aggregato del trigger resta a 0 perché non ci sono
-    # giornalieri). Stessa fonte della pagina Margini (_load_mensile_overrides):
-    # se una delle due modalità è soddisfatta, l'alert non deve comparire.
-    if not fatturato_ok:
-        try:
-            ov = _load_mensile_overrides(supabase_client, ristorante_id, [mc_anno]).get((mc_anno, mc_mese))
-            if ov and (ov.get("iva10", 0) + ov.get("iva22", 0) + ov.get("altri", 0)) > 0:
-                fatturato_ok = True
-        except Exception as exc:
-            logger.warning("briefing dati mensili: lettura override mensile fallita: %s", exc)
+    # Override modalità mensile: il fatturato può stare in ricavi_modalita_mensile
+    # (non in margini_mensili). Lo fondo nel netto per mese: un mese con override
+    # conta come "attivo" anche se margini_mensili è a 0.
+    overrides: Dict[tuple, Dict[str, float]] = {}
+    try:
+        overrides = _load_mensile_overrides(supabase_client, ristorante_id, [mc_anno])
+    except Exception as exc:
+        logger.warning("briefing dati mensili: lettura override mensile fallita: %s", exc)
+    for (a, m), ov in overrides.items():
+        if a != mc_anno:
+            continue
+        ov_netto = ov.get("iva10", 0) + ov.get("iva22", 0) + ov.get("altri", 0)
+        if ov_netto > 0:
+            righe_anno.setdefault(m, {"netto": 0.0, "personale": 0.0})
+            righe_anno[m]["netto"] = max(righe_anno[m]["netto"], ov_netto)
+
+    # Mesi "attivi" = con fatturato. Fino al mese precedente (mc_mese) incluso: il
+    # mese in corso non e' ancora chiuso, non si pretende il personale.
+    mesi_attivi = sorted(
+        m for m, d in righe_anno.items() if d["netto"] > 0 and m <= mc_mese
+    )
+    # Mesi attivi senza costo personale inserito.
+    mesi_senza_personale = [m for m in mesi_attivi if righe_anno.get(m, {}).get("personale", 0) <= 0]
+    # Fatturato del solo mese precedente (per l'alert fatturato, che resta mensile).
+    fatturato_ok = bool(righe_anno.get(mc_mese, {}).get("netto", 0) > 0)
 
     out: List[Dict[str, Any]] = []
     if not fatturato_ok and "fatturato_mancante" not in spenti:
@@ -4094,18 +4137,25 @@ def _briefing_dati_mensili_mancanti(
             "source_event_at": None,
             "dedupe_key": f"fatturato-mancante-live-{mc_anno}-{mc_mese:02d}",
         })
-    if not personale_ok and "costo_personale_mancante" not in spenti:
+    if mesi_senza_personale and "costo_personale_mancante" not in spenti:
+        descr = _descrivi_mesi_mancanti(mesi_senza_personale)
+        n = len(mesi_senza_personale)
+        if n == 1:
+            title = f"Costo del personale di {descr} {mc_anno} non ancora inserito"
+        else:
+            title = f"Costo del personale mancante in {descr}"
         out.append({
-            "id": f"costo-personale-mancante-live-{mc_anno}-{mc_mese:02d}",
+            "id": f"costo-personale-mancante-live-{mc_anno}",
             "topic_key": "costo_personale_mancante",
             "source_type": "live",
             "severity": "warning",
-            "title": f"Costo del personale di {mese_label} {mc_anno} non ancora inserito",
+            "title": title,
             "body": "",
             "action_page": "/margini",
-            "payload": {"mese": mese_label, "anno": mc_anno},
+            "payload": {"mese": mese_label, "anno": mc_anno,
+                        "mesi": mesi_senza_personale, "n_mesi": n, "descrizione": descr},
             "source_event_at": None,
-            "dedupe_key": f"costo-personale-mancante-live-{mc_anno}-{mc_mese:02d}",
+            "dedupe_key": f"costo-personale-mancante-live-{mc_anno}",
         })
 
     # Incasso di IERI mancante: stessa logica dell'endpoint dedicato
