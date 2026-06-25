@@ -800,13 +800,17 @@ DIZIONARIO_CORREZIONI = {
     # ===== PASTICCERIA =====
     "TORTA": "PASTICCERIA",
     "CROSTATA": "PASTICCERIA",
-    "TIRAMISÃ™": "PASTICCERIA",
-    "PANNA COTTA": "PASTICCERIA",
-    "MOUSSE": "PASTICCERIA",
-    "CHEESECAKE": "PASTICCERIA",
+    # Dessert al cucchiaio/finiti da servire → GELATI E DESSERT (scelta dominio Mattia 25/06).
+    # PASTICCERIA resta il da-forno/banco/frolla (croissant, cannoli, crostate, millefoglie).
+    "TIRAMISÃ™": "GELATI E DESSERT",
+    "TIRAMISU": "GELATI E DESSERT",
+    "PANNA COTTA": "GELATI E DESSERT",
+    "MOUSSE": "GELATI E DESSERT",
+    "CHEESECAKE": "GELATI E DESSERT",
+    "PROFITEROLES": "GELATI E DESSERT",
+    "PROFITEROL": "GELATI E DESSERT",
     "MILLEFOGLIE": "PASTICCERIA",
     "CANNOLI": "PASTICCERIA",
-    "PROFITEROLES": "PASTICCERIA",
     "BIGNÃˆ": "PASTICCERIA",
     "ARAGOSTELLE": "PASTICCERIA",  # Dolci a forma di aragosta (con pistacchio/cioccolato)
     "TARTUFI": "PASTICCERIA",  # Default per dolci (se Ã¨ tartufo vero, viene sovrascritto da admin)
@@ -1452,7 +1456,7 @@ DIZIONARIO_CORREZIONI = {
     "SOIA": "BEVANDE",
     "SOJA": "BEVANDE",
     "SPESE DI BOLLO": "SERVIZI E CONSULENZE",
-    "STRUDEL": "PASTICCERIA",
+    "STRUDEL": "GELATI E DESSERT",   # dessert finito da servire (scelta dominio Mattia 25/06)
 
     # ===== BATCH FIX: Plurali/singolari mancanti =====
     # PESCE - varianti plurali/singolari
