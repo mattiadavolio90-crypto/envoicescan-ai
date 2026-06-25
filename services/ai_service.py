@@ -2997,13 +2997,36 @@ def _pasta_ripiena_per_forma(descrizione: str, categoria: str) -> str:
     return categoria
 
 
+# ── REGOLA DOMINIO (Mattia 25/06): CORNETTO gelato vs brioche ────────────────
+# "CORNETTO" di default è la brioche da forno → PASTICCERIA. Ma il CORNETTO GELATO
+# (Algida/Almagel/Sammontana, "cornetto max/classico") è un gelato → GELATI E
+# DESSERT. Discrimine: CORNETTO + marcatore-gelato (marchio gelataio o variante
+# tipica del cono gelato o la parola GELATO). Senza marcatore resta PASTICCERIA.
+_RE_CORNETTO = re.compile(r"\bCORNETT[OI]\b", re.IGNORECASE)
+_RE_MARCATORE_GELATO = re.compile(
+    r"(?:ALGIDA|ALMAGEL|SAMMONTANA|MOTTA|SANSON|GELATO|GELATI|"
+    r"CORNETT[OI]\s+(?:MAX|CLASSICO|REB|RHUMBA|DARK|WHITE))",
+    re.IGNORECASE,
+)
+
+
+def _cornetto_gelato_in_dessert(descrizione: str, categoria: str) -> str:
+    """Se è un CORNETTO con contesto gelato (marchio/variante) ma è stato messo in
+    PASTICCERIA, riporta a GELATI E DESSERT. La brioche-cornetto resta PASTICCERIA."""
+    d = descrizione or ""
+    if categoria == "PASTICCERIA" and _RE_CORNETTO.search(d) and _RE_MARCATORE_GELATO.search(d):
+        return "GELATI E DESSERT"
+    return categoria
+
+
 def _post_regole_dominio(descrizione: str, categoria: str) -> str:
     """Applica in sequenza le regole di dominio post-match (25/06):
     pasta ripiena per forma → PASTA E CEREALI, ortofrutta trasformata → SCATOLAME,
-    zucchero monodose → VARIE BAR."""
+    zucchero monodose → VARIE BAR, cornetto-gelato → GELATI E DESSERT."""
     categoria = _pasta_ripiena_per_forma(descrizione, categoria)
     categoria = _ortofrutta_trasformata_in_scatolame(descrizione, categoria)
     categoria = _zucchero_monodose_bar(descrizione, categoria)
+    categoria = _cornetto_gelato_in_dessert(descrizione, categoria)
     return categoria
 
 
