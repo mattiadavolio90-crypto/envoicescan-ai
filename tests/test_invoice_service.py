@@ -104,6 +104,56 @@ def _xml_td04_minimal():
 </p:FatturaElettronica>"""
 
 
+def _xml_td04_segni_misti():
+    """TD04 a SEGNI MISTI (caso reale LODI): un riaddebito positivo e uno storno
+    negativo, netto = imponibile di testata. NON va invertito riga-per-riga
+    (lo farebbe diventare -4247 invece di +102)."""
+    return b"""<?xml version="1.0" encoding="UTF-8"?>
+<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+  <FatturaElettronicaHeader>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <Anagrafica><Denominazione>FORNITORE TEST SRL</Denominazione></Anagrafica>
+      </DatiAnagrafici>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA>
+      </DatiAnagrafici>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD04</TipoDocumento>
+        <Data>2026-04-27</Data>
+        <Numero>1/3997</Numero>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>SALMONE LEROY 5/6 FRESCHI</Descrizione>
+        <Quantita>283.90</Quantita>
+        <UnitaMisura>KG</UnitaMisura>
+        <PrezzoUnitario>7.66</PrezzoUnitario>
+        <PrezzoTotale>2174.67</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>2</NumeroLinea>
+        <Descrizione>SALMONE LEROY 5/6 FRESCHI</Descrizione>
+        <Quantita>283.90</Quantita>
+        <UnitaMisura>KG</UnitaMisura>
+        <PrezzoUnitario>-7.30</PrezzoUnitario>
+        <PrezzoTotale>-2072.47</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+      </DettaglioLinee>
+    </DatiBeniServizi>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>"""
+
+
 def _xml_td01_zero_price_with_description():
     """XML con riga a prezzo zero ma descrizione valida: deve essere mantenuta e marcata review."""
     return b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -342,6 +392,32 @@ class TestTD04NotaDiCredito:
         assert len(righe) >= 1
         assert righe[0]['Totale_Riga'] < 0, \
             "Un valore già negativo in TD04 deve rimanere negativo (non doppia negazione)"
+
+    def test_td04_segni_misti_rispetta_documento(self):
+        """REGRESSIONE LODI: una TD04 con righe a segni misti (riaddebito + /
+        storno -) NON va invertita riga-per-riga. I segni del documento sono già
+        corretti: la riga + resta +, la riga - resta -. Netto = +102.20 (= imponibile),
+        non -4247.14."""
+        righe = _run_estrai_xml(_xml_td04_segni_misti())
+        assert len(righe) == 2, f"Attese 2 righe, trovate {len(righe)}"
+        per_tot = sorted(r['Totale_Riga'] for r in righe)
+        # la riga di storno resta negativa, il riaddebito resta positivo
+        assert per_tot[0] == pytest.approx(-2072.47, abs=0.01), \
+            f"Storno deve restare -2072.47, trovato {per_tot[0]}"
+        assert per_tot[1] == pytest.approx(2174.67, abs=0.01), \
+            f"Riaddebito deve restare +2174.67 (NON invertito), trovato {per_tot[1]}"
+        netto = sum(r['Totale_Riga'] for r in righe)
+        assert netto == pytest.approx(102.20, abs=0.02), \
+            f"Netto deve quadrare con l'imponibile (+102.20), trovato {netto}"
+
+    def test_td04_tutto_positivo_inverte_in_blocco(self):
+        """Contro-prova: una TD04 con TUTTE le righe positive (convenzione
+        gestionale 'sempre positivo') deve essere invertita in blocco → netto
+        negativo (riduce i costi)."""
+        righe = _run_estrai_xml(_xml_td04_minimal())  # singola riga +20
+        assert len(righe) >= 1
+        assert sum(r['Totale_Riga'] for r in righe) < 0, \
+            "TD04 tutta positiva deve diventare negativa in blocco"
 
 
 class TestRighePrezzoZero:

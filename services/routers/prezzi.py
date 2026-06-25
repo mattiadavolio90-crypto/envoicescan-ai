@@ -47,6 +47,22 @@ _CATEGORIE_SPESE_PREZZI = [
 ]
 _PRICE_ALERT_DEFAULT = 5.0
 
+# Il worker salva le note di credito con tipo_documento='TD04'. Il vecchio
+# pattern "NC|NOTA DI CREDITO|CREDIT" NON includeva TD04: va sempre usato
+# questo regex per riconoscere una NC dalla colonna tipo_documento.
+_NC_TIPO_REGEX = r"TD04|NOTA DI CREDITO|NOTA CREDITO|\bNC\b|CREDIT"
+
+
+def _mask_nota_credito(df):
+    """Serie booleana: True dove la riga appartiene a una nota di credito.
+    Basato su tipo_documento (TD04 incluso). Robusto a colonna assente."""
+    import pandas as pd
+    if 'tipo_documento' not in df.columns:
+        return pd.Series(False, index=df.index)
+    return df['tipo_documento'].astype(str).str.upper().str.contains(
+        _NC_TIPO_REGEX, na=False, regex=True
+    )
+
 # Suffissi UI aggiunti al nome prodotto nelle variazioni (es. " ⚠️ >6m"): vanno
 # rimossi prima di usarlo come chiave preferiti, altrimenti la stella non
 # combacerebbe con la riga al ricaricamento.
@@ -577,7 +593,11 @@ def get_sconti_omaggi(
     df['quantita'] = pd.to_numeric(df.get('quantita', pd.Series(dtype=float)), errors='coerce').fillna(1.0)
     df = df[~df['categoria'].isin(_CATEGORIE_SPESE_PREZZI)].copy()
 
-    mask_sconto = (df['prezzo_unitario'] < -1e-9) | (df['totale_riga'] < -1e-9)
+    # Le righe negative di una NOTA DI CREDITO (TD04) sono resi di merce, NON
+    # sconti commerciali: vanno nel tab Note di Credito, non qui. Escluderle
+    # toglie il doppio conteggio e il "Risparmiato" gonfiato.
+    nc_mask = _mask_nota_credito(df)
+    mask_sconto = (~nc_mask) & ((df['prezzo_unitario'] < -1e-9) | (df['totale_riga'] < -1e-9))
     mask_omaggio = (
         ~mask_sconto
         & (df['totale_riga'].abs() < 1e-9)
@@ -657,7 +677,7 @@ def get_note_credito(
     df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0.0)
     df['quantita'] = pd.to_numeric(df.get('quantita', pd.Series(dtype=float)), errors='coerce').fillna(1.0)
 
-    mask_tipo_nc = df['tipo_documento'].astype(str).str.upper().str.contains("NC|NOTA DI CREDITO|CREDIT", na=False)
+    mask_tipo_nc = _mask_nota_credito(df)
     mask_totale_neg = (df['totale_riga'] < -0.01) & (df['file_origine'].isin(nc_files))
     df_nc = df[mask_tipo_nc | mask_totale_neg].copy()
 
@@ -1266,7 +1286,7 @@ def _nc_credito_per_fornitore(sb, ristorante_id: str, data_da: str, data_a: str,
     nc_files = _load_nc_file_origini(sb, ristorante_id, data_da, data_a)
     df = pd.DataFrame(rows)
     df["totale_riga"] = pd.to_numeric(df["totale_riga"], errors="coerce").fillna(0.0)
-    mask_tipo_nc = df["tipo_documento"].astype(str).str.upper().str.contains("NC|NOTA DI CREDITO|CREDIT", na=False)
+    mask_tipo_nc = _mask_nota_credito(df)
     mask_totale_neg = (df["totale_riga"] < -0.01) & (df["file_origine"].isin(nc_files))
     df_nc = df[mask_tipo_nc | mask_totale_neg].copy()
     if df_nc.empty:

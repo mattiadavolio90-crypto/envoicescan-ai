@@ -344,7 +344,7 @@ export function ArticoliTab({
             onChange={(e) => setUrlParam({ verifica: e.target.checked ? "1" : undefined })}
           />
           <AlertTriangle className="size-3.5 text-amber-500" />
-          Solo da classificare
+          Solo da verificare
         </label>
       </div>
 
@@ -504,7 +504,8 @@ const ArticoloRiga = memo(function ArticoloRiga({
     }
   }
 
-  const icon = categoriaIcon(currentCat);
+  const daScegliere = needsReview && (!currentCat || currentCat === "Da Classificare");
+  const icon = daScegliere ? "⚠️" : categoriaIcon(currentCat);
   const trendPct = articolo.prezzo_unit_trend_pct;
 
   const fbCats = useMemo(
@@ -533,38 +534,46 @@ const ArticoloRiga = memo(function ArticoloRiga({
         </td>
         <td className="px-3 py-2 text-xs">
           <div className="flex items-center gap-1.5">
+            {articolo.is_nuovo && (
+              <span
+                className="size-1.5 shrink-0 rounded-full bg-amber-400"
+                title="Caricato di recente"
+                aria-label="Caricato di recente"
+              />
+            )}
             <span className="font-medium truncate max-w-72" title={articolo.descrizione}>
               {articolo.descrizione}
             </span>
-            {articolo.is_nuovo && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
-                Nuovo
-              </span>
-            )}
-            {needsReview && (
-              <>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
-                  <AlertTriangle className="size-2.5" />{" "}
-                  {!currentCat || currentCat === "Da Classificare" ? "Da classificare" : "Verifica"}
-                </span>
-                {currentCat && (
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => saveCategoria(currentCat, true)}
-                    title={`Conferma categoria «${currentCat}»`}
-                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-60"
-                  >
-                    {saving ? (
-                      <Loader2 className="size-2.5 animate-spin" />
-                    ) : (
-                      <Check className="size-2.5" />
-                    )}
-                    Conferma
-                  </button>
-                )}
-              </>
-            )}
+            {/* needsReview = categoria incerta. Due casi:
+                - categoria proposta (≠ Da Classificare): badge Verifica + Conferma verde
+                - categoria mancante (Da Classificare/vuota): solo badge Verifica,
+                  niente Conferma (non c'è nulla da confermare, va scelta nel dropdown). */}
+            {needsReview && (() => {
+              const haProposta = Boolean(currentCat) && currentCat !== "Da Classificare";
+              return (
+                <>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
+                    <AlertTriangle className="size-2.5" /> Verifica
+                  </span>
+                  {haProposta && (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => saveCategoria(currentCat, true)}
+                      title={`Conferma categoria «${currentCat}»`}
+                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-60"
+                    >
+                      {saving ? (
+                        <Loader2 className="size-2.5 animate-spin" />
+                      ) : (
+                        <Check className="size-2.5" />
+                      )}
+                      Conferma
+                    </button>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </td>
         <td className="px-3 py-2">
@@ -574,16 +583,18 @@ const ArticoloRiga = memo(function ArticoloRiga({
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={saving}
-              className="text-xs inline-flex items-center gap-1.5 hover:text-primary hover:underline text-left disabled:opacity-60"
+              className={`text-xs inline-flex items-center gap-1.5 hover:underline text-left disabled:opacity-60 ${
+                daScegliere ? "text-rose-700 hover:text-rose-800" : "hover:text-primary"
+              }`}
             >
               <span className="text-base leading-none">{icon}</span>
               <span className="font-medium">
-                {currentCat || <em className="text-muted-foreground">N/D</em>}
+                {daScegliere ? "Scegli categoria" : currentCat || <em className="text-muted-foreground">N/D</em>}
               </span>
               {saving ? (
                 <Loader2 className="size-3 animate-spin" />
               ) : (
-                <ChevronDown className="size-3 text-muted-foreground" />
+                <ChevronDown className={`size-3 ${daScegliere ? "text-rose-500" : "text-muted-foreground"}`} />
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-80 min-w-52">
