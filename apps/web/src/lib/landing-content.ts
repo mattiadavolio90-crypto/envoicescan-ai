@@ -13,28 +13,39 @@ export const LANDING = {
   },
 
   // --- Hero ----------------------------------------------------------------
+  // L'hero ospita la demo VIVA: la barra del chiedi si digita da sola e l'AI
+  // risponde (componente client ChatDemo). Gli "scambi" qui sotto sono lo
+  // script di quella demo e fanno da prova del differenziatore.
   hero: {
     eyebrow: "In collaborazione con Recoma System",
     title: "Il gestionale che non devi compilare.",
     subtitle:
-      "Niente magazzino. Niente inventario. Niente Excel. Le fatture entrano da sole, l'intelligenza artificiale le mette in ordine e tu, per sapere come va il locale, fai una domanda. Come a un dipendente sveglio.",
+      "Niente magazzino, niente inventario, niente Excel. Le fatture entrano da sole, l'AI le legge e tu — per sapere come va il locale — fai una domanda.",
     note: "Pensato per chi sta ai fornelli, non al computer.",
     ctaPrimary: "Provalo sul tuo locale",
     ctaSecondary: "Accedi",
-    // Domande d'esempio mostrate sotto la "barra del chiedi" nell'hero.
-    chips: [
-      "Quanto ho speso di carne questo mese?",
-      "Quale fornitore ha alzato i prezzi?",
-      "Com'è andato maggio?",
+    // Script della demo dell'hero: domande che si digitano e ricevono risposta a rotazione.
+    scambi: [
+      {
+        q: "Quanto ho speso di carne a maggio?",
+        a: "A maggio € 4.180 di carne, +12% su aprile. Il rincaro arriva quasi tutto dal tuo macellaio abituale.",
+      },
+      {
+        q: "Quale fornitore ha alzato i prezzi?",
+        a: "Negli ultimi 90 giorni l'olio EVO è salito del 9% (≈ €120/mese in più) e la farina del 6%. Gli altri stabili.",
+      },
+      {
+        q: "Com'è andato il mese?",
+        a: "Maggio chiuso con € 12.480 di margine, +14% su aprile. Food cost al 28%, in linea. Bel mese 👏",
+      },
     ],
-    askPlaceholder: "Chiedi qualsiasi cosa sui tuoi numeri…",
   },
 
-  // --- Contrasto: gli altri vs ONEFLUX ------------------------------------
+  // --- Contrasto: gli altri vs ONEFLUX (assorbe "cosa tieni sotto controllo") -
   contrasto: {
     title: "Tutti i gestionali ti chiedono di lavorare. Questo no.",
     subtitle:
-      "Il motivo per cui non hai mai usato un software di food cost è sempre lo stesso: troppo lavoro manuale. ONEFLUX toglie proprio quello.",
+      "Il motivo per cui non hai mai usato un software di food cost è sempre lo stesso: troppo lavoro manuale. ONEFLUX toglie proprio quello — e ciò che gli altri ti fanno calcolare, qui lo chiedi e basta.",
     righe: [
       {
         tema: "Magazzino e inventario",
@@ -47,31 +58,9 @@ export const LANDING = {
         oneflux: "Calcolati da soli sui tuoi numeri veri.",
       },
       {
-        tema: "Imparare il software",
-        altri: "Corsi, manuali, schermate piene di tabelle.",
-        oneflux: "Fai una domanda. Ti risponde. Fine.",
-      },
-    ],
-  },
-
-  // --- WOW: la conversazione con l'AI -------------------------------------
-  chat: {
-    title: "Non studi grafici. Fai una domanda.",
-    subtitle:
-      "Dentro l'app c'è un assistente che conosce i tuoi numeri. Gli parli normale, lui risponde con i tuoi dati reali. Niente da imparare.",
-    // Conversazione mostrata nel mockup (alternanza domanda cliente / risposta AI).
-    scambi: [
-      {
-        q: "Quanto ho speso di carne a maggio?",
-        a: "A maggio hai speso € 4.180 di carne, il 12% in più di aprile. Il rincaro arriva quasi tutto dal tuo macellaio abituale.",
-      },
-      {
-        q: "Quale fornitore ha alzato i prezzi?",
-        a: "Negli ultimi 90 giorni l'olio EVO è salito del 9% (≈ €120/mese in più) e la farina del 6%. Gli altri sono stabili.",
-      },
-      {
-        q: "Com'è andato il mese?",
-        a: "Maggio chiuso con € 12.480 di margine, +14% su aprile. Food cost al 28%, in linea. Bel mese 👏",
+        tema: "Sapere come va il locale",
+        altri: "Studi tabelle e grafici che non hai tempo di leggere.",
+        oneflux: "Fai una domanda all'assistente. Ti risponde. Fine.",
       },
     ],
     nota: "Non sei tecnologico? Meglio. Qui non c'è niente da imparare.",
@@ -99,9 +88,9 @@ export const LANDING = {
     ],
   },
 
-  // --- Cosa tieni sotto controllo (senza alzare un dito) ------------------
+  // --- Cosa ottieni (strip compatta sotto "come funziona", non sezione a sé) -
   controllo: {
-    title: "Tutto sotto controllo, senza alzare un dito",
+    title: "E intanto hai sotto controllo:",
     chips: [
       "Food cost reale, mese per mese",
       "Margini e andamento dei conti",

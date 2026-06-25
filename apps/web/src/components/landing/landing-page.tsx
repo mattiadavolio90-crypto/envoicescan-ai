@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Sparkles, Check, X, ArrowRight, MessageCircle, Send } from "lucide-react";
+import { Check, X, ArrowRight, MessageCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
 import { WHATSAPP_NUMERO } from "@/lib/assistenza";
 import { LANDING, WHATSAPP_LANDING_MSG } from "@/lib/landing-content";
+import { ChatDemo } from "@/components/landing/chat-demo";
 
 function waLink(msg: string = WHATSAPP_LANDING_MSG): string {
   return `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(msg)}`;
@@ -34,48 +35,29 @@ export function LandingPage() {
       </header>
 
       <main>
-        {/* ---- Hero ---- */}
+        {/* ---- Hero: titolo + demo VIVA dell'assistente ---- */}
         <section className="relative overflow-hidden">
           <div
             aria-hidden
             className="pointer-events-none absolute -top-40 left-1/2 size-[640px] -translate-x-1/2 rounded-full bg-primary/20 blur-[130px]"
           />
-          <div className="relative mx-auto max-w-6xl px-5 pt-20 pb-14 text-center sm:pt-28">
+          <div className="relative mx-auto max-w-3xl px-5 pt-20 pb-16 text-center sm:pt-28">
             <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
-              <Sparkles className="size-4" />
               {c.hero.eyebrow}
             </span>
-            <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight sm:text-6xl">
+            <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-bold leading-[1.08] tracking-tight sm:text-6xl">
               {c.hero.title}
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground sm:text-xl">
               {c.hero.subtitle}
             </p>
 
-            {/* finta barra "chiedi" + chips di domande */}
-            <div className="mx-auto mt-9 max-w-xl">
-              <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-2 pl-4 shadow-lg ring-1 ring-foreground/5">
-                <Sparkles className="size-5 shrink-0 text-primary" />
-                <span className="flex-1 truncate text-left text-sm text-muted-foreground">
-                  {c.hero.askPlaceholder}
-                </span>
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                  <Send className="size-4" />
-                </span>
-              </div>
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {c.hero.chips.map((q) => (
-                  <span
-                    key={q}
-                    className="rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground"
-                  >
-                    {q}
-                  </span>
-                ))}
-              </div>
+            {/* la prova: la barra del chiedi si scrive da sola e l'AI risponde */}
+            <div className="mt-10">
+              <ChatDemo scambi={c.hero.scambi} />
             </div>
 
-            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a href={waLink()} target="_blank" rel="noopener noreferrer" className={CTA_PRIMARY}>
                 <MessageCircle className="size-5" />
                 {c.hero.ctaPrimary}
@@ -99,10 +81,7 @@ export function LandingPage() {
             </div>
             <div className="mt-12 space-y-4">
               {c.contrasto.righe.map((r) => (
-                <div
-                  key={r.tema}
-                  className="grid items-stretch gap-3 sm:grid-cols-[1fr_1fr_1fr]"
-                >
+                <div key={r.tema} className="grid items-stretch gap-3 sm:grid-cols-[1fr_1fr_1fr]">
                   <div className="flex items-center justify-center rounded-xl border border-border bg-card px-4 py-4 text-center font-semibold sm:justify-start sm:text-left">
                     {r.tema}
                   </div>
@@ -131,57 +110,46 @@ export function LandingPage() {
                 </div>
               ))}
             </div>
-          </div>
-        </section>
-
-        {/* ---- WOW: la conversazione AI ---- */}
-        <section className="mx-auto max-w-5xl px-5 py-20">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{c.chat.title}</h2>
-            <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-              {c.chat.subtitle}
+            <p className="mt-10 text-center text-base font-medium text-primary">
+              {c.contrasto.nota}
             </p>
           </div>
-          <ChatMockup />
-          <p className="mt-7 text-center text-base font-medium text-primary">{c.chat.nota}</p>
         </section>
 
-        {/* ---- Come funziona (3 step) ---- */}
-        <section className="border-y border-border/60 bg-muted/30">
-          <div className="mx-auto max-w-6xl px-5 py-20">
-            <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
-              {c.comeFunziona.title}
-            </h2>
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-              {c.comeFunziona.step.map((s) => (
-                <div
-                  key={s.n}
-                  className="relative rounded-2xl border border-border bg-card p-6 ring-1 ring-foreground/5"
+        {/* ---- Come funziona (3 step) + strip "cosa ottieni" ---- */}
+        <section className="mx-auto max-w-6xl px-5 py-20">
+          <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+            {c.comeFunziona.title}
+          </h2>
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
+            {c.comeFunziona.step.map((s) => (
+              <div
+                key={s.n}
+                className="relative rounded-2xl border border-border bg-card p-6 ring-1 ring-foreground/5"
+              >
+                <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-lg font-bold text-primary">
+                  {s.n}
+                </span>
+                <h3 className="mt-4 text-lg font-semibold">{s.titolo}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">{s.testo}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* strip compatta: cosa ottieni in cambio (assorbe l'ex sezione "controllo") */}
+          <div className="mt-10 rounded-2xl border border-border bg-muted/30 px-6 py-6 text-center">
+            <p className="text-sm font-medium text-muted-foreground">{c.controllo.title}</p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2.5">
+              {c.controllo.chips.map((chip) => (
+                <span
+                  key={chip}
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-sm"
                 >
-                  <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-lg font-bold text-primary">
-                    {s.n}
-                  </span>
-                  <h3 className="mt-4 text-lg font-semibold">{s.titolo}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{s.testo}</p>
-                </div>
+                  <Check className="size-4 text-primary" />
+                  {chip}
+                </span>
               ))}
             </div>
-          </div>
-        </section>
-
-        {/* ---- Cosa tieni sotto controllo ---- */}
-        <section className="mx-auto max-w-4xl px-5 py-20 text-center">
-          <h2 className="text-3xl font-bold tracking-tight">{c.controllo.title}</h2>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            {c.controllo.chips.map((chip) => (
-              <span
-                key={chip}
-                className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm"
-              >
-                <Check className="size-4 text-primary" />
-                {chip}
-              </span>
-            ))}
           </div>
         </section>
 
@@ -194,9 +162,7 @@ export function LandingPage() {
             <h2 className="mx-auto mt-5 max-w-2xl text-3xl font-bold tracking-tight">
               {c.offerta.title}
             </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-              {c.offerta.text}
-            </p>
+            <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">{c.offerta.text}</p>
             <a
               href={waLink()}
               target="_blank"
@@ -337,53 +303,6 @@ export function LandingPage() {
           © {new Date().getFullYear()} ONEFLUX
         </div>
       </footer>
-    </div>
-  );
-}
-
-// Mockup della conversazione con l'assistente AI: il pezzo "wow". Mostra qualche
-// scambio domanda-cliente / risposta-AI, stilizzato come la chat dell'app.
-function ChatMockup() {
-  return (
-    <div className="relative mx-auto mt-12 max-w-2xl">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-10 -top-6 bottom-0 rounded-3xl bg-primary/20 blur-2xl"
-      />
-      <div className="relative rounded-3xl border border-border bg-card p-4 shadow-2xl ring-1 ring-foreground/10 sm:p-6">
-        {/* intestazione chat */}
-        <div className="mb-5 flex items-center gap-3 border-b border-border/60 pb-4">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10">
-            <Logo variant="icon" size={20} />
-          </span>
-          <div className="text-left">
-            <p className="text-sm font-semibold">Assistente ONEFLUX</p>
-            <p className="text-xs text-emerald-500">● sa tutto dei tuoi numeri</p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {LANDING.chat.scambi.map((s) => (
-            <div key={s.q} className="space-y-3">
-              {/* domanda cliente (destra) */}
-              <div className="flex justify-end">
-                <p className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-left text-sm text-primary-foreground">
-                  {s.q}
-                </p>
-              </div>
-              {/* risposta AI (sinistra) */}
-              <div className="flex items-end gap-2">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                  <Logo variant="icon" size={14} />
-                </span>
-                <p className="max-w-[85%] rounded-2xl rounded-bl-md border border-border bg-background/60 px-4 py-2.5 text-left text-sm">
-                  {s.a}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
