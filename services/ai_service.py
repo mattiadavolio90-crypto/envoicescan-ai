@@ -2944,6 +2944,41 @@ def _ortofrutta_trasformata_in_scatolame(descrizione: str, categoria: str) -> st
     return categoria
 
 
+# ── REGOLA DOMINIO (Mattia 25/06): ZUCCHERO monodose-bar vs da-cucina ────────
+# Lo zucchero MONODOSE per il caffe' (bustine 4g, scatole da centinaia/migliaia di
+# pezzi, "monodose") e' un consumabile di servizio bar → VARIE BAR. Lo zucchero in
+# confezione grande (busta/sacco kg, velo, semolato, canna da cucina) → SCATOLAME.
+# La parola "bustina" da sola NON discrimina (esiste "busta 10kg"): conta il
+# marcatore monodose. Scatta solo su prodotti ZUCCHERO.
+_RE_ZUCCHERO = re.compile(r"ZUCCHER", re.IGNORECASE)
+_RE_ZUCCHERO_MONODOSE = re.compile(
+    r"(?:"
+    r"MONODOSE|"
+    r"BUSTIN[EA]\s*(?:DA\s*)?\d{1,2}\s*G(?:R)?\b|"   # bustine 4g / bustina 5 gr
+    r"\bGR?\.?\s*\d{1,2}\b\s*X|"                        # GR.4 X ... (grammatura monodose)
+    r"\d{3,}\s*PZ|X\s*\d{3,}\b|\(\s*\d{3,}\s*PZ"      # 1000 PZ / X 2000 / (1000 PZ)
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _zucchero_monodose_bar(descrizione: str, categoria: str) -> str:
+    """Se e' zucchero MONODOSE (bustine caffe') → VARIE BAR, altrimenti lascia
+    la categoria (default zucchero = SCATOLAME via dizionario)."""
+    d = descrizione or ""
+    if _RE_ZUCCHERO.search(d) and _RE_ZUCCHERO_MONODOSE.search(d):
+        return "VARIE BAR"
+    return categoria
+
+
+def _post_regole_dominio(descrizione: str, categoria: str) -> str:
+    """Applica in sequenza le regole di dominio post-match (25/06):
+    ortofrutta trasformata → SCATOLAME, zucchero monodose → VARIE BAR."""
+    categoria = _ortofrutta_trasformata_in_scatolame(descrizione, categoria)
+    categoria = _zucchero_monodose_bar(descrizione, categoria)
+    return categoria
+
+
 def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     """
     Applica correzioni basate su keyword nel dizionario con PRIORITÀ INTELLIGENTE.
@@ -2971,7 +3006,7 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     desc_upper = descrizione.upper()
     _brand_set = _get_brand_union_set()
     if any(brand in desc_upper for brand in _brand_set):
-        return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria_ai)
+        return _post_regole_dominio(desc_upper, categoria_ai)
 
     # Padding per garantire match ai bordi (i pattern usano boundary [\s\W])
     desc_padded = ' ' + desc_upper + ' '
@@ -2981,7 +3016,7 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     # (concentrato, sciroppata, sottolio, in scatola...) → SCATOLAME E CONSERVE.
     for pattern, categoria in _PATTERNS_ALIMENTI:
         if pattern.search(desc_padded):
-            return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria)
+            return _post_regole_dominio(desc_upper, categoria)
 
     # STEP 2: Cerca CONTENITORI (priorità bassa) - solo se nessun alimento trovato
     for pattern, categoria in _PATTERNS_CONTENITORI:
@@ -2996,14 +3031,14 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     desc_padded_collassato = ' ' + _collassa_doppie(desc_upper) + ' '
     for pattern, categoria in _PATTERNS_ALIMENTI_COLLASSATI:
         if pattern.search(desc_padded_collassato):
-            return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria)
+            return _post_regole_dominio(desc_upper, categoria)
     for pattern, categoria in _PATTERNS_CONTENITORI_COLLASSATI:
         if pattern.search(desc_padded_collassato):
             return categoria
 
     # Nessun match dizionario: filtra comunque la proposta AI (es. AI dice FRUTTA
     # ma e' "pesche sciroppate" → SCATOLAME).
-    return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria_ai)
+    return _post_regole_dominio(desc_upper, categoria_ai)
 
 
 _LOW_FOOD_IVA_VALUES = {4, 5, 10}

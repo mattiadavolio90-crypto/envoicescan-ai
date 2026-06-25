@@ -578,7 +578,7 @@ DIZIONARIO_CORREZIONI = {
     "BUCATINI": "PASTA E CEREALI",
     "RISO": "PASTA E CEREALI",
     "FARINA": "PASTA E CEREALI",
-    "ZUCCHERO": "VARIE BAR",
+    "ZUCCHERO": "SCATOLAME E CONSERVE",   # default: zucchero da cucina/dispensa (busta, velo, semolato). Monodose bar → VARIE BAR via keyword specifiche + _zucchero_monodose_bar (scelta dominio Mattia 25/06)
     "FECOLA": "PASTA E CEREALI",
     "ROUX": "PASTA E CEREALI",
     "CEREALI": "PASTA E CEREALI",
