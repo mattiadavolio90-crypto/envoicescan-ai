@@ -402,8 +402,8 @@ DIZIONARIO_CORREZIONI = {
     "LITCHI": "FRUTTA",
     "ARBUTUS": "FRUTTA",
     "CORBEZZOLO": "FRUTTA",
-    "SCIROPPATO": "FRUTTA",
-    "SCIROPPATA": "FRUTTA",
+    "SCIROPPATO": "SCATOLAME E CONSERVE",   # frutta sciroppata = conserva (regola dominio 25/06)
+    "SCIROPPATA": "SCATOLAME E CONSERVE",
     "NAVEL": "FRUTTA",
     
     # ===== LATTICINI =====
@@ -1330,9 +1330,9 @@ DIZIONARIO_CORREZIONI = {
     "MOUSSE MANI": "MATERIALE DI CONSUMO",
     "PASSATA POMOD": "SCATOLAME E CONSERVE",
     "PASSATA POMODORO": "SCATOLAME E CONSERVE",
-    "CONCENTRATO DI POMODORO": "SCATOLAME E CONSERVE",  # conserva da dispensa (scelta dominio Mattia 25/06); i pomodori freschi restano VERDURE
-    "DOPPIO CONCENTRATO": "SCATOLAME E CONSERVE",
-    "CONCENTRATO POMODORO": "SCATOLAME E CONSERVE",
+    # Concentrato/passata/sciroppata ecc. ora gestiti dalla regola generale
+    # _ortofrutta_trasformata_in_scatolame (ai_service): ortofrutta + marcatore
+    # di conservazione → SCATOLAME. Niente keyword per-prodotto da mantenere.
     "SALAME CIOCCOLATO": "PASTICCERIA",
     "SALAME DI CIOCCOLATO": "PASTICCERIA",
 

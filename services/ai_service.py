@@ -2918,6 +2918,31 @@ except Exception as e:
 # Regex controllo caratteri (compilata a livello modulo, non ad ogni chiamata)
 _CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 
+# ── REGOLA DOMINIO (Mattia 25/06): VERDURE/FRUTTA solo freschi o surgelati ───
+# La frutta/verdura TRASFORMATA o CONSERVATA (in scatola, sciroppata, sottolio,
+# concentrata, essiccata...) va in SCATOLAME E CONSERVE, non in VERDURE/FRUTTA.
+# I SURGELATI/CONGELATI NON sono marcatori di conservazione: restano ortofrutta.
+# Si applica SOLO quando la categoria risultante sarebbe VERDURE o FRUTTA, così
+# non tocca altri alimenti (es. "tonno sottolio" resta gestito altrove).
+_CATEGORIE_ORTOFRUTTA = {"VERDURE", "FRUTTA"}
+_MARCATORI_CONSERVAZIONE = re.compile(
+    r"(?:"
+    r"IN\s+SCATOLA|SCATOLAT|IN\s+BARATTOLO|BARATTOL|LATTINA|"           # in scatola/barattolo
+    r"SCIROPPAT|IN\s+SALAMOIA|SALAMOIA|SOTT[O']?\s?OLIO|SOTTOLIO|"      # sciroppato/salamoia/sottolio
+    r"SOTT[A']?\s?ACETO|SOTTACET|"                                       # sottaceto
+    r"CONCENTRAT|PASSAT|ESSICCAT|DISIDRATAT|IN\s+POLVERE"               # concentrato/essiccato
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _ortofrutta_trasformata_in_scatolame(descrizione: str, categoria: str) -> str:
+    """Se la categoria e' VERDURE/FRUTTA ma la descrizione indica un prodotto
+    trasformato/conservato, riporta a SCATOLAME E CONSERVE (regola dominio 25/06)."""
+    if categoria in _CATEGORIE_ORTOFRUTTA and _MARCATORI_CONSERVAZIONE.search(descrizione or ""):
+        return "SCATOLAME E CONSERVE"
+    return categoria
+
 
 def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     """
@@ -2946,15 +2971,17 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     desc_upper = descrizione.upper()
     _brand_set = _get_brand_union_set()
     if any(brand in desc_upper for brand in _brand_set):
-        return categoria_ai
+        return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria_ai)
 
     # Padding per garantire match ai bordi (i pattern usano boundary [\s\W])
     desc_padded = ' ' + desc_upper + ' '
 
-    # STEP 1: Cerca ALIMENTI (priorità alta) - se trovi uno, ritorna subito
+    # STEP 1: Cerca ALIMENTI (priorità alta) - se trovi uno, ritorna subito.
+    # Regola dominio: se l'alimento e' ortofrutta MA trasformata/conservata
+    # (concentrato, sciroppata, sottolio, in scatola...) → SCATOLAME E CONSERVE.
     for pattern, categoria in _PATTERNS_ALIMENTI:
         if pattern.search(desc_padded):
-            return categoria
+            return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria)
 
     # STEP 2: Cerca CONTENITORI (priorità bassa) - solo se nessun alimento trovato
     for pattern, categoria in _PATTERNS_CONTENITORI:
@@ -2969,12 +2996,14 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     desc_padded_collassato = ' ' + _collassa_doppie(desc_upper) + ' '
     for pattern, categoria in _PATTERNS_ALIMENTI_COLLASSATI:
         if pattern.search(desc_padded_collassato):
-            return categoria
+            return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria)
     for pattern, categoria in _PATTERNS_CONTENITORI_COLLASSATI:
         if pattern.search(desc_padded_collassato):
             return categoria
 
-    return categoria_ai
+    # Nessun match dizionario: filtra comunque la proposta AI (es. AI dice FRUTTA
+    # ma e' "pesche sciroppate" → SCATOLAME).
+    return _ortofrutta_trasformata_in_scatolame(desc_upper, categoria_ai)
 
 
 _LOW_FOOD_IVA_VALUES = {4, 5, 10}
