@@ -522,12 +522,12 @@ def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
     if tokens_alfa and criptici / len(tokens_alfa) >= 0.6:
         return True
 
-    # Fornitore non-food generico + categoria food → verifica.
-    if fornitore and categoria:
-        forn_u = str(fornitore).upper()
-        if any(f in forn_u for f in _FORNITORI_NON_FOOD_GENERICI):
-            if str(categoria).strip().upper() in {c.upper() for c in _CATEGORIE_FOOD_PER_REVIEW}:
-                return True
+    # NB (26/06): RIMOSSO il trigger "fornitore GDO generico (Esselunga/Amazon...)
+    # -> verifica". Era logica sbagliata: un GDO vende di tutto, quindi una sua riga
+    # categorizzata bene NON va flaggata solo per il fornitore. La verifica per
+    # fornitore ha senso solo al CONTRARIO (fornitori mono-merce -> categoria certa,
+    # gestiti da CATEGORIA_PER_FORNITORE / _is_fornitore_utenze_sempre, che NON
+    # marcano review). Esselunga & co. non devono avere regole né review automatiche.
 
     return False
 

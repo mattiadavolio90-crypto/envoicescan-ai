@@ -47,10 +47,13 @@ class TestNonRegressioneTriggerRimanenti:
         # token senza vocali → resta da rivedere anche se categoria food
         assert descrizione_e_dubbia("KRFT GRND MDLE", "X", "PASTA E CEREALI") is True
 
-    def test_fornitore_non_food_generico_resta_dubbio(self):
-        # Esselunga vende di tutto: una sua riga food merita verifica anche se
-        # la descrizione coincide con un ortofrutta noto.
-        assert descrizione_e_dubbia("RUCOLA", "ESSELUNGA S.P.A", "VERDURE") is True
+    def test_gdo_generico_NON_e_piu_dubbio(self):
+        # 26/06: regola capovolta. Un GDO (Esselunga/Amazon) vende di tutto, ma una
+        # sua riga categorizzata BENE non va flaggata solo per il fornitore. La
+        # verifica-per-fornitore ha senso solo al contrario (mono-merce -> certo).
+        assert descrizione_e_dubbia("RUCOLA", "ESSELUNGA S.P.A", "VERDURE") is False
+        assert descrizione_e_dubbia("BANANE-KG 1", "ESSELUNGA S.P.A", "FRUTTA") is False
+        assert descrizione_e_dubbia("PHILADELPHIA 200G", "AMAZON EU", "LATTICINI") is False
 
     def test_esotici_ambigui_senza_regola_forte_restano_dubbi(self):
         # Verdure asiatiche ambigue: nessuna regola forte → restano da classificare/rivedere.

@@ -744,10 +744,13 @@ class TestDescrizioneEDubbia:
     def test_vuota_e_dubbia(self):
         assert ai_mod.descrizione_e_dubbia("", "X", "FRUTTA") is True
 
-    def test_fornitore_non_food_su_categoria_food(self):
-        # Esselunga (catalogo misto) su categoria food → verifica.
-        assert ai_mod.descrizione_e_dubbia("FIORI RECISI-UN 1", "ESSELUNGA S.P.A", "FRUTTA") is True
-        assert ai_mod.descrizione_e_dubbia("PRO COTTO NAZ", "ESSELUNGA S.P.A", "SALUMI") is True
+    def test_fornitore_gdo_generico_NON_e_piu_dubbio(self):
+        # 26/06: regola capovolta. Un GDO che vende di tutto (Esselunga) NON deve
+        # marcare review le proprie righe food categorizzate: la verifica-per-fornitore
+        # vale solo al contrario (mono-merce -> categoria certa). Restano dubbie solo
+        # per i trigger oggettivi (descrizione vuota/criptica), non per il fornitore.
+        assert ai_mod.descrizione_e_dubbia("BANANE-KG 1", "ESSELUNGA S.P.A", "FRUTTA") is False
+        assert ai_mod.descrizione_e_dubbia("PHILADELPHIA 200G", "ESSELUNGA S.P.A", "LATTICINI") is False
 
     @pytest.mark.parametrize("descrizione,categoria", [
         ("MOZZARELLA DI BUFALA KG1", "LATTICINI"),
