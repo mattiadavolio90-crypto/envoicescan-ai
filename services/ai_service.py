@@ -1276,7 +1276,17 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "vino_brand_acqua"
         return cat, None
 
-    if _ACQUA_CONFEZIONATA_RE.search(desc_u) and not _UTENZE_IDRICHE_RE.search(desc_u) and not _BEVANDE_ANALCOLICHE_RE.search(desc_u):
+    # Guard pescheria (cert. San Giuliano L2): "DENTICE...PESCATO FAO...ACQUA PORTOGALLO"
+    # è PESCE, la parola ACQUA è la zona di provenienza, non il prodotto. Senza questo
+    # la regola acqua (ora non-negoziabile) dirottava il pesce in ACQUA.
+    _e_provenienza_pesca = bool(
+        _PESCE_RE.search(desc_u)
+        or re.search(r"\b(PESCAT[OAIE]|PESCA\b|FAO\s*\d|ATL\.|ATLANTIC|MEDITERR|ALLEVAT\w*)\b", desc_u)
+    )
+    if (_ACQUA_CONFEZIONATA_RE.search(desc_u)
+            and not _UTENZE_IDRICHE_RE.search(desc_u)
+            and not _BEVANDE_ANALCOLICHE_RE.search(desc_u)
+            and not _e_provenienza_pesca):
         mapped = "ACQUA"
         if cat != mapped:
             return mapped, "acqua_confezionata"
