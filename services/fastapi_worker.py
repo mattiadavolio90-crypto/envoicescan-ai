@@ -1726,6 +1726,18 @@ async def upload_invoice(
         routing_status = "auto"
         cross_sede = dest.get("cross_sede")
 
+    # Account senza alcuna sede configurata: il fallback non ha una sede attiva
+    # (ristorante_id None) -> il salvataggio fallirebbe con un errore criptico.
+    # Messaggio esplicito: l'admin deve aggiungere almeno una sede prima.
+    if not ristorante_id:
+        return UploadInvoiceResponse(
+            success=False,
+            filename=filename[:-4] if ext == "p7m" else filename,
+            righe_salvate=0,
+            error="NESSUNA_SEDE_CONFIGURATA",
+            elapsed_ms=int((_time.monotonic() - t0) * 1000),
+        )
+
     # Nome canonico per il check duplicati. NB: per i P7M `filename` e' GIA' stato
     # accorciato a .xml nel blocco P7M sopra (estrazione spostata prima dello
     # smistamento), quindi qui NON si toglie di nuovo l'estensione: un secondo

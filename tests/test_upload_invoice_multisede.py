@@ -96,3 +96,19 @@ def test_monosede_fattura_di_terzi_scartata():
     sedi = [{"id": "only", "nome_ristorante": "UNICA", "partita_iva": SG, "indirizzo_match": "via x"}]
     d = decidi_destinazione_upload("11111111111", "via y", sedi, sede_attiva_id="only")
     assert d["mode"] == "piva_estranea"
+
+
+# ─── Account senza sedi: fallback senza sede attiva -> ristorante_id None ──────
+
+def test_account_senza_sedi_piva_assente_fallback_none():
+    # Account appena creato (zero sedi), P.IVA dest assente: fallback ma nessuna
+    # sede -> ristorante_id None. L'endpoint deve poi rispondere NESSUNA_SEDE_CONFIGURATA.
+    d = decidi_destinazione_upload(None, None, [], sede_attiva_id=None)
+    assert d["mode"] == "fallback"
+    assert d["ristorante_id"] is None
+
+
+def test_account_senza_sedi_con_piva_e_estranea():
+    # Zero sedi + P.IVA presente: non matcha nulla -> piva_estranea (scartata).
+    d = decidi_destinazione_upload(SG, "via x", [], sede_attiva_id=None)
+    assert d["mode"] == "piva_estranea"

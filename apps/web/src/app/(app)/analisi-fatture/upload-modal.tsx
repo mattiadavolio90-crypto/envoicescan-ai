@@ -252,11 +252,17 @@ export function UploadModal() {
                         ? "Non è stato possibile capire da quale punto vendita arriva questa fattura: caricala selezionando la sede giusta."
                         : entry.skip_motivo === "PIVA_NESSUNA_SEDE"
                           ? "Questa fattura è intestata a una partita IVA che non corrisponde a nessuna tua sede: non è stata caricata."
-                          : "Fattura scartata perché già caricata in precedenza."}
+                          : entry.sede_assegnata
+                            ? `Già caricata in precedenza su ${entry.sede_assegnata}.`
+                            : "Fattura scartata perché già caricata in precedenza."}
                     </p>
                   )}
                   {entry.status === "error" && (
-                    <p className="text-destructive mt-0.5">{entry.error}</p>
+                    <p className="text-destructive mt-0.5">
+                      {entry.error === "NESSUNA_SEDE_CONFIGURATA"
+                        ? "Nessuna sede configurata su questo account: aggiungi una sede dal pannello prima di caricare le fatture."
+                        : entry.error}
+                    </p>
                   )}
                 </div>
                 {entry.status !== "uploading" && (
