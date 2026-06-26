@@ -33,6 +33,7 @@ type FileEntry = {
   needs_review?: number;
   error?: string;
   skip_motivo?: string;
+  sede_assegnata?: string;
 };
 
 const ACCEPTED_EXTS = [".xml", ".p7m"];
@@ -111,6 +112,9 @@ export function UploadModal() {
         } else {
           const errStr = String(data.error ?? "");
           const isAlreadyLoaded = errStr.startsWith("ALREADY_LOADED:");
+          // Sede non determinabile dall'indirizzo (cliente multi-sede stessa P.IVA):
+          // non e' un errore di file, e' una fattura da gestire a parte -> "skipped".
+          const isSedeAmbigua = errStr === "SEDE_AMBIGUA";
           setFiles((prev) =>
             prev.map((f) =>
               f.id === entry.id
@@ -118,7 +122,7 @@ export function UploadModal() {
                     ...f,
                     status: data.success
                       ? "success"
-                      : isAlreadyLoaded
+                      : isAlreadyLoaded || isSedeAmbigua
                         ? "skipped"
                         : "error",
                     righe: data.righe_salvate,
@@ -126,10 +130,13 @@ export function UploadModal() {
                     fornitore: data.fornitore,
                     data_documento: data.data_documento,
                     needs_review: data.needs_review_count,
-                    error: data.success || isAlreadyLoaded ? undefined : data.error,
+                    sede_assegnata: data.sede_assegnata,
+                    error: data.success || isAlreadyLoaded || isSedeAmbigua ? undefined : data.error,
                     skip_motivo: isAlreadyLoaded
                       ? errStr.slice("ALREADY_LOADED:".length) || "fattura già presente"
-                      : undefined,
+                      : isSedeAmbigua
+                        ? "SEDE_AMBIGUA"
+                        : undefined,
                   }
                 : f,
             ),
@@ -220,6 +227,9 @@ export function UploadModal() {
                       {entry.fornitore ? `${entry.fornitore} · ` : ""}
                       {entry.righe} righe
                       {entry.data_documento ? ` · ${entry.data_documento}` : ""}
+                      {entry.sede_assegnata && (
+                        <span className="text-sky-600 ml-1">→ {entry.sede_assegnata}</span>
+                      )}
                       {(entry.needs_review ?? 0) > 0 && (
                         <span className="text-amber-500 ml-1">
                           <AlertTriangle className="size-3 inline mr-0.5" />
@@ -230,7 +240,9 @@ export function UploadModal() {
                   )}
                   {entry.status === "skipped" && (
                     <p className="text-amber-600 mt-0.5">
-                      Fattura scartata perché già caricata in precedenza.
+                      {entry.skip_motivo === "SEDE_AMBIGUA"
+                        ? "Non è stato possibile capire da quale punto vendita arriva questa fattura: caricala selezionando la sede giusta."
+                        : "Fattura scartata perché già caricata in precedenza."}
                     </p>
                   )}
                   {entry.status === "error" && (
