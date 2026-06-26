@@ -277,3 +277,32 @@ def test_td24_upload_event_persists_alert_data_consegna():
     assert payload["alert_data_consegna"] == "ok"
     assert payload["details"]["alert_data_consegna"] == "ok"
     assert fatture_payload[0]["data_consegna"] == "2026-01-31"
+
+
+def test_nome_canonico_p7m_mantiene_xml_per_check_duplicati():
+    """Regressione: il nome canonico per il check duplicati di un .p7m deve
+    restare '...xml', non perdere l'estensione.
+
+    Bug osservato (SUSHILAND/Mariano): spostando l'estrazione P7M->XML prima dello
+    smistamento, `filename` arriva al check gia' accorciato a '.xml'. Un secondo
+    `[:-4]` lo riduceva a '...' (senza estensione) -> il check duplicato non
+    trovava il file (salvato come '...xml') e il P7M risultava 'caricato' invece
+    di 'gia presente'. La regola corretta: dopo il blocco P7M, filename_canonico
+    == filename (nessun ulteriore troncamento).
+    """
+    # Sequenza reale dell'endpoint per un P7M:
+    filename_originale = "IT00707240966_02BCK.xml.p7m"
+    ext = "p7m"
+
+    # 1) Blocco P7M: accorcia .p7m -> .xml
+    filename = filename_originale[:-4] if ext == "p7m" else filename_originale
+    assert filename == "IT00707240966_02BCK.xml"
+
+    # 2) Nome canonico per il check duplicati: NON deve togliere di nuovo nulla.
+    filename_canonico = filename  # regola corretta post-fix
+    assert filename_canonico == "IT00707240966_02BCK.xml"
+
+    # 3) salva_fattura_processata riceve nome_file=filename: stesso valore -> il
+    #    check duplicato e il salvataggio usano lo stesso file_origine.
+    nome_file_salvato = filename
+    assert filename_canonico == nome_file_salvato

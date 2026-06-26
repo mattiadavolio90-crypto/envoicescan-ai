@@ -1726,8 +1726,12 @@ async def upload_invoice(
         routing_status = "auto"
         cross_sede = dest.get("cross_sede")
 
-    # Calcola nome canonico (dopo eventuale .p7m → .xml) per check duplicati
-    filename_canonico = filename[:-4] if ext == "p7m" else filename
+    # Nome canonico per il check duplicati. NB: per i P7M `filename` e' GIA' stato
+    # accorciato a .xml nel blocco P7M sopra (estrazione spostata prima dello
+    # smistamento), quindi qui NON si toglie di nuovo l'estensione: un secondo
+    # [:-4] mangerebbe ".xml" e il check duplicato mancherebbe (file_origine nel DB
+    # e' "...xml"). Bug osservato su SUSHILAND/Mariano (duplicato non rilevato).
+    filename_canonico = filename
 
     # Genera variante "normalizzata" rimuovendo suffissi tipo " (1)", " (2)" ecc.
     import re as _re
