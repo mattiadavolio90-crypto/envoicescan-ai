@@ -1,81 +1,98 @@
-"""Gating dello smistamento multi-sede nell'upload manuale.
+"""Decisione di destinazione dell'upload manuale (guardia P.IVA + smistamento).
 
-L'endpoint /api/upload/invoice e' async con molte dipendenze (parser, salvataggio,
-streamlit): qui si testa la logica DECISIONALE nuova in isolamento —
-  - _upload_e_multisede_stessa_piva: quando si attiva lo smistamento
-  - _carica_sedi_attive_per_user: query sedi
-La decisione di routing vera e propria e' coperta da test_multisede_routing.py;
-lo smistamento end-to-end su XML reali si verifica caricando le fatture del cliente.
+Testa decidi_destinazione_upload (services/multisede_routing.py), la funzione pura
+che l'endpoint /api/upload/invoice usa per decidere su quale sede salvare una
+fattura. Copre lo scenario reale che ha motivato la fix (SUSHILAND: 7/10 fatture
+finite sulla sede sbagliata) e la compatibilita' con OFFSIDE (stessa P.IVA).
 """
-from unittest.mock import MagicMock
+from services.multisede_routing import decidi_destinazione_upload, _piva_norm
 
-import services.fastapi_worker as fw
-from services.fastapi_worker import (
-    _carica_sedi_attive_per_user,
-    _upload_e_multisede_stessa_piva,
-)
+# Sedi SUSHILAND reali (P.IVA diverse per sede).
+SG = "12557550964"   # San Giuliano
+VG = "12222020963"   # Villa Guardia
+MA = "04140610132"   # Mariano
+SUSHILAND = [
+    {"id": "sg", "nome_ristorante": "SAN GIULIANO", "partita_iva": SG, "indirizzo_match": "via roma 1 milano"},
+    {"id": "vg", "nome_ristorante": "VILLA GUARDIA", "partita_iva": VG, "indirizzo_match": "via como 2 villa guardia"},
+    {"id": "ma", "nome_ristorante": "MARIANO", "partita_iva": MA, "indirizzo_match": "via brera 3 mariano comense"},
+]
 
-
-# ─── _upload_e_multisede_stessa_piva: gating ──────────────────────────────────
-
-def test_gating_due_sedi_stessa_piva_attiva():
-    sedi = [
-        {"id": "a", "partita_iva": "07863990961", "indirizzo_match": "via losanna 46 20154 milano"},
-        {"id": "b", "partita_iva": "07863990961", "indirizzo_match": "via settembrini 36 20124 milano"},
-    ]
-    assert _upload_e_multisede_stessa_piva(sedi) is True
-
-
-def test_gating_una_sola_sede_non_attiva():
-    sedi = [{"id": "a", "partita_iva": "07863990961", "indirizzo_match": "x"}]
-    assert _upload_e_multisede_stessa_piva(sedi) is False
+# Sedi OFFSIDE (STESSA P.IVA, indirizzi diversi).
+OFF = "07863990961"
+OFFSIDE = [
+    {"id": "pub", "nome_ristorante": "OFFSIDE SPORTS PUB", "partita_iva": OFF, "indirizzo_match": "via losanna 46 20154 milano"},
+    {"id": "ov", "nome_ristorante": "OVERTIME", "partita_iva": OFF, "indirizzo_match": "via luigi settembrini 36 20124 milano"},
+]
 
 
-def test_gating_due_sedi_piva_diverse_non_attiva():
-    # Stesso account, sedi con P.IVA diverse: NON e' lo scenario indirizzo-discriminante.
-    sedi = [
-        {"id": "a", "partita_iva": "11111111111", "indirizzo_match": "x"},
-        {"id": "b", "partita_iva": "22222222222", "indirizzo_match": "y"},
-    ]
-    assert _upload_e_multisede_stessa_piva(sedi) is False
+# ─── _piva_norm ───────────────────────────────────────────────────────────────
+
+def test_piva_norm_pulisce():
+    assert _piva_norm(" 1255 7550964 ") == "12557550964"
+    assert _piva_norm("IT12557550964") == "12557550964"
+    assert _piva_norm(None) == ""
 
 
-def test_gating_piva_mancante_non_attiva():
-    sedi = [
-        {"id": "a", "partita_iva": None, "indirizzo_match": "x"},
-        {"id": "b", "partita_iva": "", "indirizzo_match": "y"},
-    ]
-    assert _upload_e_multisede_stessa_piva(sedi) is False
+# ─── SUSHILAND: smistamento per P.IVA (1 match) ───────────────────────────────
+
+def test_sushiland_fattura_villaguardia_su_sangiuliano_va_a_villaguardia():
+    # Sto su San Giuliano ma carico una fattura di Villa Guardia: deve andare a VG.
+    d = decidi_destinazione_upload(VG, "via como 2 villa guardia", SUSHILAND, sede_attiva_id="sg")
+    assert d["mode"] == "auto"
+    assert d["ristorante_id"] == "vg"
+    assert d["cross_sede"] is True   # diversa dalla sede attiva (sg) -> evidenziata
 
 
-def test_gating_tre_sedi_due_condividono_attiva():
-    sedi = [
-        {"id": "a", "partita_iva": "07863990961", "indirizzo_match": "x"},
-        {"id": "b", "partita_iva": "07863990961", "indirizzo_match": "y"},
-        {"id": "c", "partita_iva": "99999999999", "indirizzo_match": "z"},
-    ]
-    assert _upload_e_multisede_stessa_piva(sedi) is True
+def test_sushiland_fattura_propria_sede_non_cross():
+    d = decidi_destinazione_upload(SG, "via roma 1 milano", SUSHILAND, sede_attiva_id="sg")
+    assert d["mode"] == "auto"
+    assert d["ristorante_id"] == "sg"
+    assert d["cross_sede"] is False
 
 
-# ─── _carica_sedi_attive_per_user: query ──────────────────────────────────────
+# ─── Guardia: P.IVA non di nessuna sede -> scartata ───────────────────────────
 
-def _sb_sedi(data):
-    sb = MagicMock()
-    q = MagicMock()
-    sb.table.return_value = q
-    for m in ("select", "eq"):
-        getattr(q, m).return_value = q
-    q.execute.return_value = MagicMock(data=data)
-    return sb
+def test_piva_estranea_scartata():
+    d = decidi_destinazione_upload("99999999999", "via x", SUSHILAND, sede_attiva_id="sg")
+    assert d["mode"] == "piva_estranea"
+    assert "ristorante_id" not in d
 
 
-def test_carica_sedi_ritorna_lista():
-    data = [{"id": "a", "nome_ristorante": "PUB", "partita_iva": "0786", "indirizzo_match": "via x"}]
-    out = _carica_sedi_attive_per_user("u1", _sb_sedi(data))
-    assert out == data
+# ─── P.IVA destinatario assente -> fallback sede attiva ───────────────────────
+
+def test_piva_assente_fallback_sede_attiva():
+    d = decidi_destinazione_upload(None, None, SUSHILAND, sede_attiva_id="sg")
+    assert d["mode"] == "fallback"
+    assert d["ristorante_id"] == "sg"
 
 
-def test_carica_sedi_errore_ritorna_vuoto():
-    sb = MagicMock()
-    sb.table.side_effect = RuntimeError("DB giu'")
-    assert _carica_sedi_attive_per_user("u1", sb) == []
+# ─── OFFSIDE: stessa P.IVA -> distingue per indirizzo (>=2 match) ──────────────
+
+def test_offside_due_sedi_stessa_piva_smista_per_indirizzo():
+    d = decidi_destinazione_upload(OFF, "Via Losanna 46 20154 Milano", OFFSIDE, sede_attiva_id="ov")
+    assert d["mode"] == "auto"
+    assert d["ristorante_id"] == "pub"
+    assert d["cross_sede"] is True   # stavo su OVERTIME, va al PUB
+
+
+def test_offside_stessa_piva_indirizzo_ambiguo_scartata():
+    # Indirizzo generico che non distingue le due sedi OFFSIDE.
+    d = decidi_destinazione_upload(OFF, "Via Mazzini 1 Milano", OFFSIDE, sede_attiva_id="pub")
+    assert d["mode"] == "ambiguo"
+
+
+# ─── Mono-sede: comportamento invariato (protetto) ────────────────────────────
+
+def test_monosede_fattura_propria_va_alla_sede():
+    sedi = [{"id": "only", "nome_ristorante": "UNICA", "partita_iva": SG, "indirizzo_match": "via x"}]
+    d = decidi_destinazione_upload(SG, "via x", sedi, sede_attiva_id="only")
+    assert d["mode"] == "auto"
+    assert d["ristorante_id"] == "only"
+    assert d["cross_sede"] is False
+
+
+def test_monosede_fattura_di_terzi_scartata():
+    # Cliente mono-sede a cui arriva (per errore) una fattura di un'altra azienda.
+    sedi = [{"id": "only", "nome_ristorante": "UNICA", "partita_iva": SG, "indirizzo_match": "via x"}]
+    d = decidi_destinazione_upload("11111111111", "via y", sedi, sede_attiva_id="only")
+    assert d["mode"] == "piva_estranea"

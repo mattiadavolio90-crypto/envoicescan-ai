@@ -34,6 +34,7 @@ type FileEntry = {
   error?: string;
   skip_motivo?: string;
   sede_assegnata?: string;
+  cross_sede?: boolean;
 };
 
 const ACCEPTED_EXTS = [".xml", ".p7m"];
@@ -112,31 +113,33 @@ export function UploadModal() {
         } else {
           const errStr = String(data.error ?? "");
           const isAlreadyLoaded = errStr.startsWith("ALREADY_LOADED:");
-          // Sede non determinabile dall'indirizzo (cliente multi-sede stessa P.IVA):
-          // non e' un errore di file, e' una fattura da gestire a parte -> "skipped".
+          // Casi "scartata" non-errore (multi-sede): indirizzo non distingue le sedi
+          // a parita' di P.IVA (SEDE_AMBIGUA) o P.IVA non di nessuna sede del cliente
+          // (PIVA_NESSUNA_SEDE). Non sono errori di file -> "skipped" con messaggio.
           const isSedeAmbigua = errStr === "SEDE_AMBIGUA";
+          const isPivaEstranea = errStr === "PIVA_NESSUNA_SEDE";
+          const isSkip = isAlreadyLoaded || isSedeAmbigua || isPivaEstranea;
           setFiles((prev) =>
             prev.map((f) =>
               f.id === entry.id
                 ? {
                     ...f,
-                    status: data.success
-                      ? "success"
-                      : isAlreadyLoaded || isSedeAmbigua
-                        ? "skipped"
-                        : "error",
+                    status: data.success ? "success" : isSkip ? "skipped" : "error",
                     righe: data.righe_salvate,
                     righe_preesistenti: data.righe_preesistenti ?? 0,
                     fornitore: data.fornitore,
                     data_documento: data.data_documento,
                     needs_review: data.needs_review_count,
                     sede_assegnata: data.sede_assegnata,
-                    error: data.success || isAlreadyLoaded || isSedeAmbigua ? undefined : data.error,
+                    cross_sede: data.cross_sede ?? false,
+                    error: data.success || isSkip ? undefined : data.error,
                     skip_motivo: isAlreadyLoaded
                       ? errStr.slice("ALREADY_LOADED:".length) || "fattura già presente"
                       : isSedeAmbigua
                         ? "SEDE_AMBIGUA"
-                        : undefined,
+                        : isPivaEstranea
+                          ? "PIVA_NESSUNA_SEDE"
+                          : undefined,
                   }
                 : f,
             ),
@@ -228,7 +231,12 @@ export function UploadModal() {
                       {entry.righe} righe
                       {entry.data_documento ? ` · ${entry.data_documento}` : ""}
                       {entry.sede_assegnata && (
-                        <span className="text-sky-600 ml-1">→ {entry.sede_assegnata}</span>
+                        <span
+                          className={`ml-1 ${entry.cross_sede ? "text-amber-600 font-medium" : "text-sky-600"}`}
+                        >
+                          → {entry.sede_assegnata}
+                          {entry.cross_sede && " (altra sede)"}
+                        </span>
                       )}
                       {(entry.needs_review ?? 0) > 0 && (
                         <span className="text-amber-500 ml-1">
@@ -242,7 +250,9 @@ export function UploadModal() {
                     <p className="text-amber-600 mt-0.5">
                       {entry.skip_motivo === "SEDE_AMBIGUA"
                         ? "Non è stato possibile capire da quale punto vendita arriva questa fattura: caricala selezionando la sede giusta."
-                        : "Fattura scartata perché già caricata in precedenza."}
+                        : entry.skip_motivo === "PIVA_NESSUNA_SEDE"
+                          ? "Questa fattura è intestata a una partita IVA che non corrisponde a nessuna tua sede: non è stata caricata."
+                          : "Fattura scartata perché già caricata in precedenza."}
                     </p>
                   )}
                   {entry.status === "error" && (

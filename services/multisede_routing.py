@@ -141,3 +141,62 @@ def decidi_sede(indirizzo_raw: Optional[str], sedi: List[Dict[str, Any]]) -> Dic
             "gap": round(gap, 4),
         }
     return {"mode": "ambiguo", "best_score": round(best_score, 4), "gap": round(gap, 4)}
+
+
+def _piva_norm(v: Any) -> str:
+    """Solo le cifre della P.IVA (toglie spazi, prefisso IT eventuale, punteggiatura)."""
+    return "".join(ch for ch in str(v or "") if ch.isdigit())
+
+
+def decidi_destinazione_upload(
+    piva_dest: Optional[str],
+    indirizzo_dest: Optional[str],
+    sedi_attive: List[Dict[str, Any]],
+    sede_attiva_id: Optional[str],
+) -> Dict[str, Any]:
+    """Decide la sede di destinazione di una fattura caricata a mano.
+
+    Logica unica (guardia P.IVA + smistamento), gemella concettuale del webhook:
+      - P.IVA destinatario assente -> fallback alla sede attiva (XML anomalo: non
+        scartare una fattura valida). mode='fallback'.
+      - nessuna sede del cliente con quella P.IVA -> 'piva_estranea' (scartata):
+        la fattura non e' del cliente / sede non configurata.
+      - 1 sede con quella P.IVA -> 'auto' su quella sede (caso P.IVA-per-sede).
+      - >=2 sedi con quella P.IVA (stessa P.IVA) -> distingui per indirizzo via
+        decidi_sede(); 'auto' o 'ambiguo' (scartata).
+
+    cross_sede = True quando la sede dedotta != sede attiva selezionata.
+
+    Ritorna un dict con 'mode' in {'auto','fallback','piva_estranea','ambiguo'},
+    e per auto/fallback: ristorante_id, nome, cross_sede.
+    """
+    if not piva_dest:
+        return {
+            "mode": "fallback",
+            "ristorante_id": sede_attiva_id,
+            "nome": None,
+            "cross_sede": None,
+        }
+
+    piva_dest_n = _piva_norm(piva_dest)
+    sedi_match = [s for s in sedi_attive if _piva_norm(s.get("partita_iva")) == piva_dest_n]
+
+    if not sedi_match:
+        return {"mode": "piva_estranea", "piva_dest": piva_dest_n}
+
+    if len(sedi_match) == 1:
+        rid = sedi_match[0].get("id")
+        nome = sedi_match[0].get("nome_ristorante")
+    else:
+        decision = decidi_sede(indirizzo_dest, sedi_match)
+        if decision["mode"] != "auto":
+            return {
+                "mode": "ambiguo",
+                "best_score": decision["best_score"],
+                "gap": decision["gap"],
+            }
+        rid = decision["ristorante_id"]
+        nome = decision["nome"]
+
+    cross = bool(sede_attiva_id and str(rid) != str(sede_attiva_id))
+    return {"mode": "auto", "ristorante_id": rid, "nome": nome, "cross_sede": cross}

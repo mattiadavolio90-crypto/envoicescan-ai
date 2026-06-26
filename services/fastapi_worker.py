@@ -1517,11 +1517,15 @@ class UploadInvoiceResponse(BaseModel):
     data_documento: Optional[str] = None
     error: Optional[str] = None
     elapsed_ms: int = 0
-    # Smistamento multi-sede (clienti con >1 sede stessa P.IVA): 'auto' = fattura
-    # assegnata alla sede dedotta dall'indirizzo; 'ambiguo' = sede non determinabile
-    # (scartata). None per i clienti mono-sede. sede_assegnata = nome sede vinta.
+    # Smistamento multi-sede. routing_status: 'auto' = assegnata alla sede dedotta
+    # dalla P.IVA (o indirizzo se P.IVA condivisa); 'piva_estranea' = nessuna sede
+    # del cliente ha quella P.IVA (scartata); 'ambiguo' = stessa P.IVA, indirizzo
+    # non distingue (scartata). None = fallback sede attiva (P.IVA dest assente).
+    # sede_assegnata = nome sede vinta. cross_sede = la sede dedotta e' diversa da
+    # quella attiva (la fattura e' stata spostata su un'altra sede del cliente).
     routing_status: Optional[str] = None
     sede_assegnata: Optional[str] = None
+    cross_sede: Optional[bool] = None
 
 
 def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
@@ -1569,15 +1573,6 @@ def _carica_sedi_attive_per_user(user_id: str, supabase_client) -> List[Dict[str
     except Exception as exc:
         logger.warning("upload multi-sede: lettura sedi fallita: %s", exc)
         return []
-
-
-def _upload_e_multisede_stessa_piva(sedi: List[Dict[str, Any]]) -> bool:
-    """True se >=2 sedi attive condividono la stessa P.IVA non vuota."""
-    from collections import Counter
-    pive = [str(s.get("partita_iva")).strip() for s in sedi if s.get("partita_iva")]
-    if len(pive) < 2:
-        return False
-    return any(c >= 2 for c in Counter(pive).values())
 
 
 @app.post("/api/upload/start-session", tags=["Upload"])
@@ -1660,52 +1655,76 @@ async def upload_invoice(
         contents = xml_bytes.read() if hasattr(xml_bytes, "read") else xml_bytes
         filename = filename[:-4]
 
-    # ── Risoluzione sede ───────────────────────────────────────────────────────
-    # Mono-sede (caso normale): la sede attiva corrente. Multi-sede stessa P.IVA:
-    # si smista per indirizzo del CessionarioCommittente come fa il webhook SDI,
-    # cosi' un mucchio di XML misti (scaricati dal cassetto fiscale) finisce sulla
-    # sede giusta senza scelta manuale. Sede ambigua -> scartata (decisione 26/06).
+    # ── Risoluzione sede: guardia P.IVA + smistamento ──────────────────────────
+    # La fattura va sulla sede la cui P.IVA combacia con il CessionarioCommittente
+    # (chi RICEVE), non sulla sede attiva "a fiducia". Cosi':
+    #   - una fattura di un'altra sede dello stesso cliente finisce sulla sede
+    #     giusta (smistamento per P.IVA — caso SUSHILAND, P.IVA diversa per sede);
+    #   - piu' sedi con la STESSA P.IVA (caso OFFSIDE) si distinguono per indirizzo;
+    #   - una fattura intestata a una P.IVA che non e' di nessuna sede del cliente
+    #     viene SCARTATA (guardia: niente caricamenti su sede sbagliata).
+    # Decisione 26/06 dopo bug reale: 7/10 fatture finite sulla sede sbagliata.
     routing_status: Optional[str] = None
     sede_assegnata: Optional[str] = None
+    cross_sede: Optional[bool] = None
     sedi_attive = _carica_sedi_attive_per_user(user_id, supabase_client)
 
-    if _upload_e_multisede_stessa_piva(sedi_attive):
-        from services.multisede_routing import (
-            estrai_indirizzo_destinatario,
-            decidi_sede,
-        )
-        try:
-            import xmltodict
-            doc = xmltodict.parse(contents)
-            _root = list(doc.keys())
-            fattura_dict = doc[_root[0]] if _root else {}
-            if not isinstance(fattura_dict, dict):
-                fattura_dict = {}
-        except Exception as parse_err:
-            logger.warning("upload multi-sede: parse indirizzo fallito: %s", parse_err)
+    # Parse del dict XML una sola volta (serve a P.IVA cessionario + indirizzo).
+    try:
+        import xmltodict
+        _doc = xmltodict.parse(contents)
+        _root = list(_doc.keys())
+        fattura_dict = _doc[_root[0]] if _root else {}
+        if not isinstance(fattura_dict, dict):
             fattura_dict = {}
+    except Exception as parse_err:
+        logger.warning("upload: parse XML per smistamento fallito: %s", parse_err)
+        fattura_dict = {}
 
-        indirizzo_dest = estrai_indirizzo_destinatario(fattura_dict)
-        decision = decidi_sede(indirizzo_dest, sedi_attive)
+    from services.invoice_service import estrai_piva_cessionario_xml
+    from services.multisede_routing import (
+        estrai_indirizzo_destinatario,
+        decidi_destinazione_upload,
+    )
+    piva_dest = estrai_piva_cessionario_xml(fattura_dict) if fattura_dict else None
+    indirizzo_dest = estrai_indirizzo_destinatario(fattura_dict) if fattura_dict else None
+    sede_attiva_id = _get_ristorante_id_for_user(user_id, supabase_client)
 
-        if decision["mode"] != "auto":
-            logger.info(
-                "upload multi-sede AMBIGUO: user=%s file=%s best=%.2f gap=%.2f ind=%r",
-                user_id, filename, decision["best_score"], decision["gap"], indirizzo_dest,
-            )
-            return UploadInvoiceResponse(
-                success=False,
-                filename=filename[:-4] if ext == "p7m" else filename,
-                righe_salvate=0,
-                error="SEDE_AMBIGUA",
-                routing_status="ambiguo",
-                elapsed_ms=int((_time.monotonic() - t0) * 1000),
-            )
-        ristorante_id = decision["ristorante_id"]
-        sede_assegnata = decision["nome"]
+    dest = decidi_destinazione_upload(piva_dest, indirizzo_dest, sedi_attive, sede_attiva_id)
+
+    if dest["mode"] == "piva_estranea":
+        logger.info(
+            "upload SCARTATA P.IVA estranea: user=%s file=%s piva_dest=%s",
+            user_id, filename, dest.get("piva_dest"),
+        )
+        return UploadInvoiceResponse(
+            success=False,
+            filename=filename[:-4] if ext == "p7m" else filename,
+            righe_salvate=0,
+            error="PIVA_NESSUNA_SEDE",
+            routing_status="piva_estranea",
+            elapsed_ms=int((_time.monotonic() - t0) * 1000),
+        )
+    if dest["mode"] == "ambiguo":
+        logger.info(
+            "upload multi-sede AMBIGUO: user=%s file=%s best=%.2f gap=%.2f ind=%r",
+            user_id, filename, dest.get("best_score", 0), dest.get("gap", 0), indirizzo_dest,
+        )
+        return UploadInvoiceResponse(
+            success=False,
+            filename=filename[:-4] if ext == "p7m" else filename,
+            righe_salvate=0,
+            error="SEDE_AMBIGUA",
+            routing_status="ambiguo",
+            elapsed_ms=int((_time.monotonic() - t0) * 1000),
+        )
+
+    # mode == 'auto' (smistata per P.IVA/indirizzo) o 'fallback' (P.IVA dest assente).
+    ristorante_id = dest["ristorante_id"]
+    if dest["mode"] == "auto":
+        sede_assegnata = dest["nome"]
         routing_status = "auto"
-    else:
-        ristorante_id = _get_ristorante_id_for_user(user_id, supabase_client)
+        cross_sede = dest.get("cross_sede")
 
     # Calcola nome canonico (dopo eventuale .p7m → .xml) per check duplicati
     filename_canonico = filename[:-4] if ext == "p7m" else filename
@@ -1739,6 +1758,7 @@ async def upload_invoice(
                     error=f"ALREADY_LOADED:{trovato}",
                     routing_status=routing_status,
                     sede_assegnata=sede_assegnata,
+                    cross_sede=cross_sede,
                     elapsed_ms=int((_time.monotonic() - t0) * 1000),
                 )
         except Exception as dup_err:
@@ -1817,6 +1837,7 @@ async def upload_invoice(
         elapsed_ms=elapsed_ms,
         routing_status=routing_status,
         sede_assegnata=sede_assegnata,
+        cross_sede=cross_sede,
     )
 
 
