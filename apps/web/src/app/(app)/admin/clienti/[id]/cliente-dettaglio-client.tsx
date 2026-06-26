@@ -115,9 +115,10 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     if (!nuovaPwd.trim()) return;
     setPwdSaving(true);
     try {
+      const eraAttivo = c.attivo;
       await patch(`/api/admin/clienti/${c.id}/imposta-password`, "POST", { password: nuovaPwd });
       setC((prev) => ({ ...prev, attivo: true }));
-      toast.success("Password impostata. Account attivo.");
+      toast.success(eraAttivo ? "Password aggiornata." : "Password impostata. Account attivo.");
       setPwdDialog(false);
       setNuovaPwd("");
       setPwdVisibile(false);
@@ -426,7 +427,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
               <KeyRound className="size-4 mr-2" /> Invia reset password
             </Button>
             <Button variant="outline" className="w-full justify-start" onClick={() => { setNuovaPwd(""); setPwdVisibile(false); setPwdDialog(true); }}>
-              <Lock className="size-4 mr-2" /> Crea password
+              <Lock className="size-4 mr-2" /> {c.attivo ? "Modifica password" : "Crea password"}
             </Button>
             <Button variant="outline" className="w-full justify-start" onClick={() => setEmailDialog(true)}>
               <Mail className="size-4 mr-2" /> Cambia email
@@ -631,10 +632,13 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
       <Dialog open={pwdDialog} onOpenChange={setPwdDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Crea password</DialogTitle>
+            <DialogTitle>{c.attivo ? "Modifica password" : "Crea password"}</DialogTitle>
             <DialogDescription>
-              Imposti tu la password per <strong>{c.email}</strong>. L&apos;account viene attivato
-              e ogni sessione aperta del cliente viene chiusa. Da comunicare al cliente a voce.
+              Imposti tu la password per <strong>{c.email}</strong>.
+              {c.attivo
+                ? " Sostituisce quella attuale e chiude ogni sessione aperta del cliente."
+                : " L'account viene attivato e ogni sessione aperta del cliente viene chiusa."}
+              {" "}Da comunicare al cliente a voce.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
