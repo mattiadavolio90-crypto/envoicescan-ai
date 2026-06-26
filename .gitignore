@@ -238,3 +238,5 @@ scripts/_attesi_*.json
 test villaguardia/
 
 SUSHILAND FATTURE/
+scripts/_carica_san_giuliano.py
+scripts/_simula_review_sangiuliano.py

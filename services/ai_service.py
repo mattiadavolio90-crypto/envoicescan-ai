@@ -492,18 +492,27 @@ def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
     desc_u = desc.upper()
     tokens_alfa = [t for t in re.findall(r"[A-ZÀ-Ý]+", desc_u) if len(t) >= 2]
 
-    # Una regola forte deterministica che assegna ESATTAMENTE la categoria finale
-    # è ad alta confidenza: la brevità della descrizione non la rende dubbia.
+    # Una categoria CONFERMATA da un runtime deterministico (regola forte O dizionario
+    # keyword) è ad alta confidenza: le sigle commerciali in testa (KG1, ML10X198, G500,
+    # CF X 12 PZ) NON rendono dubbia la riga. Senza questo, prodotti ovvi ma con codici/
+    # quantità ("KG1 BURRO MC"→LATTICINI, "175GR PRINGLES"→SHOP) finivano needs_review
+    # in massa (cert. San Giuliano: ~450 falsi allarmi su 487), svuotando di senso la coda.
     cat_da_regola_forte = False
     if categoria:
+        cat_target = str(categoria).strip().upper()
         try:
             cat_forte, motivo_forte = applica_regole_categoria_forti(desc, "Da Classificare")
-            cat_da_regola_forte = bool(
-                motivo_forte
-                and cat_forte.strip().upper() == str(categoria).strip().upper()
-            )
+            if motivo_forte and cat_forte.strip().upper() == cat_target:
+                cat_da_regola_forte = True
         except Exception:
-            cat_da_regola_forte = False
+            pass
+        if not cat_da_regola_forte:
+            try:
+                cat_dz = applica_correzioni_dizionario(desc, "Da Classificare")
+                if cat_dz and cat_dz.strip().upper() == cat_target:
+                    cat_da_regola_forte = True
+            except Exception:
+                pass
 
     # Troppo pochi token alfabetici significativi (resto numeri/sigle/formati).
     # Skippato se una regola forte ha già deciso la categoria con certezza.
@@ -1166,6 +1175,10 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "giappo_fritto_pasta",
     "giappo_pesce",
     "pet_food_non_alimento",
+    # 26/06 (post-upload San Giuliano): ACQ PANNA/S.PELLEGRINO restavano BEVANDE perché
+    # la memoria globale era inquinata e l'override non scattava (acqua non era non-negoziabile).
+    # L'acqua minerale è merceologicamente certa → deve battere la cache sporca.
+    "acqua_confezionata",
 }
 
 

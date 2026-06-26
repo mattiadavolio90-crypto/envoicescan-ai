@@ -62,16 +62,43 @@ class TestNonRegressioneTriggerRimanenti:
         assert descrizione_e_dubbia("BANANE-KG 1", "ESSELUNGA S.P.A", "FRUTTA") is False
         assert descrizione_e_dubbia("PHILADELPHIA 200G", "AMAZON EU", "LATTICINI") is False
 
-    def test_esotici_ambigui_senza_regola_forte_restano_dubbi(self):
-        # Verdure asiatiche ambigue: nessuna regola forte → restano da classificare/rivedere.
-        for desc in ["CRAUDI", "BERGA", "CAISUN", "KANKONG", "PIATONE"]:
-            _, motivo = applica_regole_categoria_forti(desc, "Da Classificare")
-            assert motivo is None, f"{desc} non deve avere regola forte"
+    def test_criptico_vero_senza_conferma_resta_dubbio(self):
+        # Token illeggibili (senza vocali) e categoria NON confermata da dizionario/regola:
+        # resta dubbio. NB: BERGA/CAISUN/CRAUDI NON sono più qui — il dizionario li censisce
+        # come VERDURE (verdure asiatiche note), quindi non sono dubbi (vedi sotto).
+        from services.ai_service import applica_correzioni_dizionario
+        for desc in ["TRSSE TLTTE GM", "KRFT GRND MDLE", "SC XPLT NQR"]:
+            assert applica_correzioni_dizionario(desc, "Da Classificare") == "Da Classificare", desc
             assert descrizione_e_dubbia(desc, "MEFON SRL", "VERDURE") is True, desc
+
+    def test_voce_censita_in_dizionario_non_e_dubbia(self):
+        # Cert. San Giuliano 26/06: una categoria CONFERMATA dal dizionario non è dubbia
+        # anche con sigle/codici commerciali. Le verdure asiatiche note (BERGA, CAISUN)
+        # sono nel dizionario → VERDURE certo → niente needs_review inutile.
+        from services.ai_service import applica_correzioni_dizionario
+        for desc in ["BERGA", "CAISUN", "CRAUDI"]:
+            assert applica_correzioni_dizionario(desc, "Da Classificare") == "VERDURE", desc
+            assert descrizione_e_dubbia(desc, "MEFON SRL", "VERDURE") is False, desc
 
     def test_descrizione_vuota_resta_dubbia(self):
         assert descrizione_e_dubbia("", "X", "PESCE") is True
         assert descrizione_e_dubbia(None, "X", "PESCE") is True
+
+    def test_sigle_commerciali_con_categoria_certa_non_dubbie(self):
+        # Cert. San Giuliano 26/06: il fastidio #1. Prodotti ovvi ma con codici/quantità
+        # in testa (KG1, ML10X198, G500, GR 120) finivano needs_review in massa.
+        # Se dizionario/regola conferma la categoria, le sigle NON la rendono dubbia.
+        casi = [
+            ("KG1 BURRO MC", "LATTICINI"),
+            ("PATATE GRANDI 10KG", "VERDURE"),
+            ("ZUCCHERO IN BUSTA DA 1KGX10", "SCATOLAME E CONSERVE"),
+            ("KG5 PASTA SEM BARIL PEN.RIG.73", "PASTA E CEREALI"),
+            ("ML10X198 BS.KETCHUP CALVE", "SALSE E CREME"),
+            ("OLIO DI GIRASOLE PET 2X10LT", "OLIO E CONDIMENTI"),
+            ("QUARTO POLLO HAL.ATM 2,5KG", "CARNE"),
+        ]
+        for desc, cat in casi:
+            assert descrizione_e_dubbia(desc, "METRO ITALIA S.P.A", cat) is False, desc
 
 
 class TestLacuneMerceologicheSushiland:
