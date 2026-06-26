@@ -592,8 +592,25 @@ class WebhookResponse(BaseModel):
     response_description="Stato del worker",
 )
 def health() -> Dict[str, str]:
-    """Endpoint di health check — usato da Docker healthcheck e load balancer."""
-    return {"status": "ok", "version": app.version}
+    """Endpoint di health check — usato da Docker healthcheck e load balancer.
+
+    Espone anche il commit git (RAILWAY_GIT_COMMIT_SHA su Railway) e i flag delle
+    capability recenti, così un GET conferma QUALE codice gira prima di caricare
+    fatture (evita di caricare in silenzio su un worker vecchio).
+    """
+    commit = (
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("GIT_COMMIT_SHA")
+        or os.getenv("SOURCE_COMMIT")
+        or "unknown"
+    )
+    return {
+        "status": "ok",
+        "version": app.version,
+        "commit": commit[:12],
+        # Cert. SUSHILAND 26/06: conferma che l'upload fa girare l'AI post-salvataggio.
+        "upload_ai": "on",
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
