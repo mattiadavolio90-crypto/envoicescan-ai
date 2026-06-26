@@ -1850,10 +1850,43 @@ async def upload_invoice(
             elapsed_ms=elapsed_ms,
         )
 
+    # ── Categorizzazione AI post-upload (in-process) ──────────────────────────
+    # CAUSA RADICE cert. SUSHILAND 26/06: l'upload via worker (Next.js -> qui)
+    # NON faceva mai girare l'AI — quella era agganciata solo al vecchio flusso
+    # Streamlit (upload_handler._run_post_upload_ai_categorization). Risultato:
+    # ogni fattura caricata in produzione era categorizzata SOLO da regole+
+    # dizionario, e tutto il resto restava 'Da Classificare' (ai_count=0 nel DB).
+    # Qui invochiamo la stessa funzione completa che usava Streamlit: dentro il
+    # worker WORKER_BASE_URL non e' settata, quindi classifica_via_worker cade sul
+    # path locale (classifica_con_ai in-process), senza richiamare il worker via
+    # HTTP. Best-effort: un errore AI non deve far fallire il salvataggio.
+    ai_auto_summary = None
+    try:
+        from services.upload_handler import _run_post_upload_ai_categorization
+        ai_auto_summary = _run_post_upload_ai_categorization(
+            supabase_client,
+            user_id,
+            [filename],
+            ristorante_id,
+        )
+        _invalidate_fatture_rows_cache(ristorante_id)
+        if ai_auto_summary:
+            logger.info(
+                "upload AI post: file=%s eligible=%s risolte=%s rimaste=%s",
+                filename,
+                ai_auto_summary.get("eligible_descriptions"),
+                ai_auto_summary.get("resolved_rows"),
+                len(ai_auto_summary.get("remaining_descriptions") or []),
+            )
+    except Exception as ai_post_err:
+        logger.warning("upload AI post-categorizzazione fallita (non bloccante): %s", ai_post_err)
+
     # Nuove righe salvate -> invalida la cache di lettura per questo ristorante,
     # altrimenti i KPI/articoli resterebbero stale fino allo scadere del TTL.
     _invalidate_fatture_rows_cache(ristorante_id)
 
+    # needs_review ricalcolato dal DB dopo il passaggio AI (non dalle righe in
+    # memoria, che riflettono solo la categorizzazione regole+dizionario pre-AI).
     needs_review_count = sum(1 for r in righe if r.get("needs_review"))
     fornitore = righe[0].get("Fornitore") if righe else None
     data_doc = righe[0].get("Data_Documento") if righe else None

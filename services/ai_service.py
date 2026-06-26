@@ -477,6 +477,13 @@ def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
       sigle senza vocali (es. "TRSSE TLTTE GM SHNE", "SC KRFT GRND MDLE");
     - fornitore non-food generico (Esselunga, Maisons du Monde, ...) con categoria
       food: alto tasso di errore osservato su questi cataloghi misti.
+
+    Eccezione (Cert. SUSHILAND 26/06): una descrizione mono-parola NON è dubbia se
+    una REGOLA FORTE deterministica ha assegnato proprio quella categoria (es.
+    "SALMONE"→PESCE, "RUCOLA"→VERDURE). Quei prodotti hanno descrizione corta per
+    natura ma categoria certa: marcarli needs_review li teneva fuori dai margini e
+    gonfiava il MOL senza alcun valore di verifica. Gli altri trigger (criptica,
+    fornitore non-food su food) restano attivi anche con regola forte.
     """
     desc = str(descrizione or "").strip()
     if not desc:
@@ -485,8 +492,22 @@ def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
     desc_u = desc.upper()
     tokens_alfa = [t for t in re.findall(r"[A-ZÀ-Ý]+", desc_u) if len(t) >= 2]
 
+    # Una regola forte deterministica che assegna ESATTAMENTE la categoria finale
+    # è ad alta confidenza: la brevità della descrizione non la rende dubbia.
+    cat_da_regola_forte = False
+    if categoria:
+        try:
+            cat_forte, motivo_forte = applica_regole_categoria_forti(desc, "Da Classificare")
+            cat_da_regola_forte = bool(
+                motivo_forte
+                and cat_forte.strip().upper() == str(categoria).strip().upper()
+            )
+        except Exception:
+            cat_da_regola_forte = False
+
     # Troppo pochi token alfabetici significativi (resto numeri/sigle/formati).
-    if len(tokens_alfa) < 2:
+    # Skippato se una regola forte ha già deciso la categoria con certezza.
+    if len(tokens_alfa) < 2 and not cat_da_regola_forte:
         return True
 
     # Prevalenza di token "illeggibili" (sigle/troncamenti): un token è criptico se
@@ -940,6 +961,100 @@ _PONZU_SALSA_RE = re.compile(r"\bPONZU\b")
 # Carta igienica anche quando scritta solo "IGIENICA" (Tork mini).
 _CARTA_IGIENICA_RE = re.compile(r"\bIGIENIC\w*\b")
 
+# Ortofrutta "nuda" mono-parola (Cert. SUSHILAND 26/06): nomi inequivocabili che i
+# fornitori ortofrutta (MEFON, ESSELUNGA) scrivono come singola parola. Senza una
+# regola forte cadevano nel dizionario → needs_review per "descrizione corta",
+# restando fuori dai margini. Set CHIUSO e universalmente noto: gli esotici/ambigui
+# (CRAUDI, BERGA, CAISUN, WOSUN, KANKONG, PIATONE) restano volutamente all'AI/dizionario.
+_VERDURA_NUDA_RE = re.compile(
+    r"\b(RUCOLA|ICEBERG|ZUCCHIN[AE]|CAROTE|CILIEGINO|PORR[OI]|POMODOR[OI]|AGLIO|ZUCCA|"
+    r"RAPE|FINOCCHI[OE]|SPINACI|MELANZAN[AE]|PEPERON[EI]|CIPOLL[AE]|BROCCOLI|CAVOLFIORE|"
+    r"VALERIANA|SEDANO|RADICCHIO|CETRIOL[OI]|LATTUGA|SCAROL[AE]|INDIVIA|CAVOLO|VERZA)\b"
+)
+_FRUTTA_NUDA_RE = re.compile(
+    r"\b(LIMON[EI]|FRAGOL[AE]|MANGO|ARANC[EI]A?|ANANAS|MELAGRANA|BANAN[AE]|MELE?|PER[AE]|"
+    r"KIWI|UVA|PESCHE|ALBICOCCHE|CILIEG[EI]A?|CILIEGIE|FICHI|LAMPON[EI]|MIRTILL[OI]|MORE|COCOMERO|MELON[EI]|"
+    r"POMPELMO|MANDARIN[OI]|CLEMENTIN[EI]|AVOCADO|PAPAYA|LITCHI|DATTER[OI])\b"
+)
+
+# === CERTIFICAZIONE SUSHILAND 26/06 — lacune merceologiche da errori reali ===
+# Prodotti BANALI che restavano 'Da Classificare' o male assegnati perché né
+# dizionario né regole forti li conoscevano. Pattern conservativi (set chiusi,
+# confini di parola) per evitare falsi positivi. Verificati su 607 prodotti reali.
+
+# PESCE: gambero/capesante/pesce spada (il _PESCE_RE generico non aveva GAMBERO
+# singolare né CAPESANTE/CAPASANTA né SPADA). "GAMB" copre l'abbreviazione "KG1 GAMB".
+_PESCE_EXTRA_RE = re.compile(
+    r"\b(GAMBER[OI]|GAMB|CAPESANT[AE]|CAPASANT[AE]|CAPP?ESANT[AE]|"
+    r"PESCE\s*SPADA|TRANCIO\s*(DI\s*)?SPADA|SURIMI|SEPPIOLIN[EI])\b"
+)
+# "SPADA" da sola è ambigua (spada da cucina/affilacoltelli): pesce solo se
+# accompagnata da PESCE/TRANCIO (già coperto sopra). "POLPO/POLPA" tolti: POLPA
+# è anche polpa di pomodoro/frutta -> li lascia al _PESCE_RE generico esistente.
+
+# LATTICINI: mozzarella (anche "MOZZ"/"MOZZ.X PIZZA"), sottilette, formaggi freschi,
+# yogurt da bere. Deve battere PRODOTTI DA FORNO/FRUTTA su "MOZZ X PIZZA"/"ACTIMEL FRAGOLA".
+_LATTICINI_EXTRA_RE = re.compile(
+    r"\b(MOZZ\.?|MOZZARELL[AE]|SOTTILETTE|TOMINI?|EDAM|EDAMER|ACTIMEL|STRACCHIN[OI]|"
+    r"ROBIOL[AE]|CRESCENZ[AE]|MASCARPONE|RICOTT[AE]|FORM\.?\s*GRATTUGIAT|GRAN\.?\s*LAT|"
+    r"LAT\.?\s*ITALIANO\s*UHT|GORGONZOLA|TALEGGIO|FONTIN[AE]|PHILADELPHIA)\b"
+)
+
+# CARNE: tagli bovini/pollame abbreviati che restavano Da Classificare.
+_CARNE_EXTRA_RE = re.compile(
+    r"\b(CHICKEN|BEEF|R\.?\s*BEEF|ROAST\s*BEEF|CHUCK[\s-]*ROLL|BOV\.?\s*AD|FIORENT\w*|"
+    r"PETTO\s*(DI\s*)?(TACCH|POLLO)\w*|TACCHINO|HAMBURGER|MACINAT[OA]|SALSICC\w*|"
+    r"COSTINE?|WURSTEL|PANCETTA|GUANCIA\b)\b"
+)
+
+# MATERIALE DI CONSUMO: pulizia/imballo/DPI che cadevano in food o Da Classificare.
+# VASCHETTA/CARTA PER RAVIOLI sono imballo, non cibo: devono battere SUSHI/PASTA.
+_CONSUMO_EXTRA_RE = re.compile(
+    r"\b(SCARPE\s*ANTINFORTUN\w*|DIXAN|SCOVOLO|SCOTTONELLE|SPAZZOL[AE]|FERMAPORTA|"
+    r"PIL[AE]\b|VASCHETT[AE]|CARTA\s*PER\s*RAVIOLI|SACCHETT\w*\s*SPAZZATURA|"
+    r"GUANT[OI]\b|DETERSIV\w*|DETERGENT\w*|SGRASSAT\w*|CANDEGGIN[AE]|SAPONE|TOVAGLIOL\w*)\b"
+)
+
+# MANUTENZIONE E ATTREZZATURE: materiale edile/ferramenta/utensili (mai food).
+# "GRATTUGIO" (utensile) != "GRATTUGIATO" (formaggio) → confine esatto.
+_MANUTENZIONE_EDILE_RE = re.compile(
+    r"\b(LAVATOIO\w*|COMPENSATO|BATTISCOPA|CEMENTO|PATTEX|MILLECHIODI|SCALPELLO|"
+    r"GRATTUGIO\b|BATTERIA|GREEN\s*CELL|VITI?\b|TRAPANO|CACCIAVITE|MARTELLO|"
+    r"SILICONE|GUARNIZION\w*|RUBINETT\w*|TUBO\s*FLESS\w*)\b"
+)
+
+# BEVANDE brand analcoliche che non matchavano _BEVANDE_ANALCOLICHE_RE.
+_BEVANDE_BRAND_RE = re.compile(
+    r"\b(MONSTER|POWERADE|GATORADE|LEMONSODA|ORANSODA|SANBITTER|SAN\s*BITTER|SKIPPER|"
+    r"C\.?\s*COLA|COCA[\s.-]*COLA|PEPSI|SEVEN\s*UP|7\s*UP)\b"
+)
+
+# Pasta secca per formato (cadeva Da Classificare). NON include TON (=tonno→scatolame).
+_PASTA_FORMATI_RE = re.compile(
+    r"\b(SPAGHETTIN[EI]|SPAGHETT[OI]|ELICOIDAL[EI]|PAPPARDELL[EI]|PENNE|RIGATON[EI]|"
+    r"FUSILL[OI]|MACCHERON[EI]|LINGUIN[EI]|BUCATIN[OI]|TORTIGLION[EI]|FARFALL[EI])\b"
+)
+
+# Piatto composto / dolce farcito: l'ingrediente nominato (MOZZ, MELE, FRAGOLA...)
+# NON e' il prodotto. Es. "CROCCHE MOZZ/PROSC" non e' LATTICINI, "STRUDEL MELE" non
+# e' FRUTTA. Le regole-ingrediente cedono se la riga matcha questo pattern.
+# Piatto composto/dolce farcito: l'ingrediente nominato non è il prodotto.
+# Vale per TUTTE le regole-ingrediente (latticini, carne, frutta, verdura).
+_PIATTO_COMPOSTO_RE = re.compile(
+    r"\b(CROCCH\w*|PANZEROTT\w*|ARANCIN\w*|SUPPL[IÌ]\w*|POLPETT\w*|CRESPELL\w*|"
+    r"STRUDEL|TORT[AE]|TORTIN[AE]|CROSTAT\w*|STRUDDEL|RIPIEN\w*|FARCIT\w*|"
+    r"PRINCIPESSA|SFOGLIATIN\w*|CANNOL\w*|BIGNE|PROFITEROL\w*|GRATIN\w*|"
+    r"PARMIGIAN[AE]|LASAGN\w*|CANNELLON\w*|FR\.RI\b)\b"
+)
+# Solo per ORTOFRUTTA: anche prodotti da forno con topping e dolciumi/bevande
+# aromatizzati cedono ("FOCACCIA CON CIPOLLA" non è VERDURE, "CARAMELLE AL GUSTO
+# DI UVA" non è FRUTTA). NON applicato ai latticini: "MOZZ X PIZZA" è LATTICINI.
+_ORTOFRUTTA_NON_PRODOTTO_RE = re.compile(
+    r"\b(FOCACCI[AE]|FOCACC\w*|PIZZA|PANE|CARAMELL\w*|COCKTAIL|GOMMOS\w*|"
+    r"CHEWING|GELATIN[AE]|GHIACCIOL\w*|CARAMELLAT\w*)\b"
+    r"|\bAL\s+GUSTO\b|\bGUSTO\s+DI\b"
+)
+
 # Regole forti che devono battere cache locali/globali automatiche errate.
 # Non include la memoria admin, che resta prioritaria e intenzionale.
 _NON_NEGOZIABILI_CACHE_OVERRIDE = {
@@ -981,6 +1096,17 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "ponzu_salsa_condimento",
     "noodle_asia_pasta",
     "carta_igienica_consumo",
+    # Cert. SUSHILAND 26/06 — lacune merceologiche (battono cache errate, es.
+    # ACQ PANNA salvata come BEVANDE in memoria globale -> riportata ad ACQUA)
+    "verdura_nuda",
+    "frutta_nuda",
+    "consumo_extra",
+    "manutenzione_edile",
+    "latticini_extra",
+    "pesce_extra",
+    "carne_extra",
+    "bevande_brand",
+    "pasta_formato",
 }
 
 
@@ -1222,8 +1348,9 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "bao_ripieno_secco"
         return cat, None
 
-    # Ravioli / Shaomai / Gyoza / Haukau → secco (famiglia dimsum/ripieni)
-    if _DIMSUM_SECCO_RE.search(desc_u):
+    # Ravioli / Shaomai / Gyoza / Haukau → secco (famiglia dimsum/ripieni).
+    # Eccezione: "CARTA PER RAVIOLI" / "VASCHETTA ..." sono imballo, non cibo.
+    if _DIMSUM_SECCO_RE.search(desc_u) and not _CONSUMO_EXTRA_RE.search(desc_u):
         mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "dimsum_secco"
@@ -1979,7 +2106,10 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "prodotto_lavorato_conservato"
         return cat, None
 
-    if _FORNO_RE.search(desc_u) and (_SURGELATO_RE.search(desc_u) or re.search(r"\bPIZZA\b", desc_u)):
+    # "MOZZ X PIZZA" / "MOZZARELLA PER PIZZA" è un LATTICINO (la pizza è solo l'uso),
+    # non un prodotto da forno: l'eccezione evita che PIZZA dirotti la mozzarella.
+    if (_FORNO_RE.search(desc_u) and (_SURGELATO_RE.search(desc_u) or re.search(r"\bPIZZA\b", desc_u))
+            and not re.search(r"\bMOZZ\w*\b", desc_u)):
         mapped = "PRODOTTI DA FORNO"
         if cat != mapped:
             return mapped, "forno_anche_surgelato"
@@ -2057,6 +2187,75 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "verdura_raw"
         return cat, None
 
+    # === Lacune merceologiche SUSHILAND 26/06 ===
+    # Non-food PRIMA del food: imballo/pulizia/edile non devono cadere in categorie
+    # alimentari per via di una parola ambigua (es. VASCHETTA SUSHI, CARTA PER RAVIOLI).
+    if _CONSUMO_EXTRA_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "consumo_extra"
+        return cat, None
+
+    if _MANUTENZIONE_EDILE_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "manutenzione_edile"
+        return cat, None
+
+    # LATTICINI prima di FRUTTA: "ACTIMEL FRAGOLA"/"MOZZ X PIZZA" sono latticini.
+    # Cede sui piatti composti ("CROCCHE MOZZ", "PANZEROTTI MOZZ": il prodotto e' il
+    # fritto/ripieno, non il formaggio).
+    if _LATTICINI_EXTRA_RE.search(desc_u) and not _PIATTO_COMPOSTO_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "latticini_extra"
+        return cat, None
+
+    if _PESCE_EXTRA_RE.search(desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "pesce_extra"
+        return cat, None
+
+    if _CARNE_EXTRA_RE.search(desc_u) and not _PIATTO_COMPOSTO_RE.search(desc_u):
+        mapped = "CARNE"
+        if cat != mapped:
+            return mapped, "carne_extra"
+        return cat, None
+
+    if _BEVANDE_BRAND_RE.search(desc_u):
+        mapped = "BEVANDE"
+        if cat != mapped:
+            return mapped, "bevande_brand"
+        return cat, None
+
+    if _PASTA_FORMATI_RE.search(desc_u):
+        mapped = "PASTA E CEREALI"
+        if cat != mapped:
+            return mapped, "pasta_formato"
+        return cat, None
+
+    # Ortofrutta "nuda" mono-parola: solo dopo aver escluso surgelato/processata/
+    # conserva sopra. La frutta ha priorità sulla verdura per evitare che un nome
+    # ambiguo cada nel ramo sbagliato (qui i set sono comunque disgiunti).
+    # Cede sui piatti composti/dolci: "STRUDEL MELE"/"PRINCIPESSA (FRAGOLA)" non sono
+    # FRUTTA, la frutta è solo un ingrediente del dolce.
+    if (_FRUTTA_NUDA_RE.search(desc_u)
+            and not _PIATTO_COMPOSTO_RE.search(desc_u)
+            and not _ORTOFRUTTA_NON_PRODOTTO_RE.search(desc_u)):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "frutta_nuda"
+        return cat, None
+
+    if (_VERDURA_NUDA_RE.search(desc_u)
+            and not _PIATTO_COMPOSTO_RE.search(desc_u)
+            and not _ORTOFRUTTA_NON_PRODOTTO_RE.search(desc_u)):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "verdura_nuda"
+        return cat, None
+
     for expected, pattern in _CATEGORIA_REGEX_FORTI:
         if not re.search(pattern, desc_u):
             continue
@@ -2101,12 +2300,20 @@ def _get_openai_client() -> OpenAI:
     Raises:
         ValueError: Se API key non trovata in secrets
     """
+    # Streamlit secrets quando gira nella UI; env var quando gira nel worker
+    # (Railway): il processo FastAPI non ha sempre accesso a st.secrets, ma la
+    # chiave e' sempre presente come OPENAI_API_KEY nell'ambiente del worker.
+    api_key = None
     try:
         api_key = st.secrets["OPENAI_API_KEY"]
-    except Exception as e:
-        logger.exception("API Key OpenAI non trovata")
-        raise ValueError("API Key OpenAI mancante") from e
-    
+    except Exception:
+        api_key = None
+    if not api_key:
+        api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        logger.error("API Key OpenAI non trovata né in st.secrets né in OPENAI_API_KEY")
+        raise ValueError("API Key OpenAI mancante")
+
     return OpenAI(api_key=api_key)
 
 
