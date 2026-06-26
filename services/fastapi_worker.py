@@ -1068,13 +1068,29 @@ def _is_admin_email(email: Optional[str]) -> bool:
     return email.strip().lower() in admin_emails
 
 
+# Chiavi-pagina canoniche (i flag in navMain lato frontend). pagine_abilitate è un
+# dict di flag misti: oltre alle pagine può contenere impostazioni non-pagina
+# (es. 'blocco_mesi_precedenti'). Solo queste chiavi decidono il menu del PV.
+_PAGINE_FLAG = frozenset({
+    "analisi_fatture", "margini", "analisi_e_tag", "prezzi",
+    "scadenziario", "agenda", "workspace",
+})
+
+
 def _normalize_pagine(raw) -> Optional[List[str]]:
     if raw is None:
         return None
     if isinstance(raw, list):
         return [str(p) for p in raw]
     if isinstance(raw, dict):
-        return [k for k, v in raw.items() if v]
+        # Un dict che NON contiene alcuna chiave-pagina (solo impostazioni come
+        # 'blocco_mesi_precedenti') NON significa "tutte le pagine bloccate": è un
+        # account a cui non è ancora stato definito il set pagine → default APERTO
+        # (None), come per pagine_abilitate=NULL. Senza questa guardia un toggle
+        # impostato prima delle pagine svuotava il menu del PV (bug OFFSIDE).
+        if not any(k in _PAGINE_FLAG for k in raw):
+            return None
+        return [k for k, v in raw.items() if v and k in _PAGINE_FLAG]
     return None
 
 
