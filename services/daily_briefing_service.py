@@ -38,7 +38,7 @@ logger = get_logger('daily_briefing')
 #   1 -> baseline
 #   2 -> 23/06: righe da controllare = totale, canale SDI da flag, tono testi
 #   3 -> 25/06: costo personale mancante su TUTTI i mesi dell'anno (conteggio+range)
-_BRIEFING_CODE_VERSION = 3
+_BRIEFING_CODE_VERSION = 4
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -361,6 +361,10 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
                 f"\U0001F4C4 Mancano le fatture costo {coda}\u2014 il food cost di "
                 f"quel mese risulta 0 e il margine non \u00e8 reale."
             )
+        if str(payload.get('fase') or '') == 'onboarding':
+            if str(payload.get('canale') or '') == 'sdi':
+                return "\U0001F4C4 Stai iniziando: appena la ricezione automatica \u00e8 attiva le fatture compaiono qui."
+            return "\U0001F4C4 Stai iniziando: carica le prime fatture per vedere food cost e margini."
         if str(payload.get('canale') or '') == 'sdi':
             return "\U0001F4C4 Non stanno arrivando fatture dal flusso automatico \u2014 verifica la ricezione."
         return "\U0001F4C4 Non ci sono fatture caricate di recente \u2014 senza i costi d'acquisto food cost e margini non sono calcolabili."
@@ -542,6 +546,17 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
                 f"Mancano le fatture costo {coda}: il food cost di quel mese "
                 "risulta 0, quindi il margine che vedi non è reale. Appena "
                 "arrivano i conti tornano veri."
+            )
+        if str(payload.get('fase') or '') == 'onboarding':
+            if str(payload.get('canale') or '') == 'sdi':
+                return (
+                    "Stai iniziando: appena la ricezione automatica è attiva le "
+                    "fatture compaiono qui da sole e food cost e margini si "
+                    "calcolano. Per ora è tutto regolare."
+                )
+            return (
+                "Stai iniziando: carica le prime fatture d'acquisto e food cost "
+                "e margini si calcolano da soli. Per ora è tutto regolare."
             )
         if str(payload.get('canale') or '') == 'sdi':
             return (

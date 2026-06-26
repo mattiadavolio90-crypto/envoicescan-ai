@@ -21,8 +21,13 @@ from services.daily_briefing_service import _bullet_for, _narrative_phrase_for
 RID = "rist-land"
 
 
-def _sb_multi(fatturato, fatture_count, user_id="u1", partita_iva=None):
-    """Mock multi-tabella: ristoranti(.single), margini_mensili, fatture(count)."""
+def _sb_multi(fatturato, fatture_count, user_id="u1", partita_iva=None,
+              sdi_attivo=False, sede_created_at=None, ultima_fattura_at=None):
+    """Mock multi-tabella: ristoranti(.single), margini_mensili, fatture(count).
+
+    ultima_fattura_at: created_at dell'ultima fattura (per il caso A pipeline).
+    sede_created_at: created_at della sede (per distinguere onboarding).
+    """
     sb = MagicMock()
     state = {"table": None}
 
@@ -33,16 +38,24 @@ def _sb_multi(fatturato, fatture_count, user_id="u1", partita_iva=None):
     def _execute():
         t = state["table"]
         if t == "ristoranti":
-            return MagicMock(data={"partita_iva": partita_iva, "user_id": user_id})
+            return MagicMock(data={
+                "partita_iva": partita_iva, "user_id": user_id,
+                "sdi_attivo": sdi_attivo, "created_at": sede_created_at,
+            })
         if t == "margini_mensili":
             rows = [{"fatturato_iva10": fatturato}] if fatturato else []
             return MagicMock(data=rows, count=None)
-        return MagicMock(count=fatture_count,
-                         data=[{"id": i} for i in range(fatture_count or 0)])
+        # Default: se ci sono fatture ma non e' specificata una data, sono recenti
+        # (oggi) -> pipeline viva. I test del caso A passano una data esplicita.
+        from datetime import datetime as _dt
+        _fatt_at = ultima_fattura_at if ultima_fattura_at is not None else _dt.now().isoformat()
+        rows = [{"id": i, "created_at": _fatt_at}
+                for i in range(fatture_count or 0)]
+        return MagicMock(count=fatture_count, data=rows)
 
     q = MagicMock()
     sb.table.side_effect = _table
-    for m in ("select", "eq", "is_", "gte", "limit", "single"):
+    for m in ("select", "eq", "is_", "gte", "limit", "single", "order"):
         getattr(q, m).return_value = q
     q.execute.side_effect = _execute
     return sb
@@ -109,6 +122,49 @@ def test_rpc_indisponibile_ricade_su_caso_a(monkeypatch):
     # valuta solo la pipeline: con fatture recenti -> None.
     monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: None)
     assert _briefing_fatture_mancanti(RID, _sb_multi(fatturato=516152, fatture_count=5)) is None
+
+
+# ── _briefing_fatture_mancanti: caso A onboarding (sede nuova, mai fatture) ──
+
+def _giorni_fa(n):
+    from datetime import datetime, timedelta
+    return (datetime.now() - timedelta(days=n)).isoformat()
+
+
+def test_sede_nuova_senza_fatture_e_onboarding_morbido(monkeypatch):
+    # Sede creata 2 giorni fa, zero fatture, zero ricavi: e' un avvio, non un guasto.
+    monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: None)
+    out = _briefing_fatture_mancanti(
+        RID, _sb_multi(fatturato=0, fatture_count=0, sdi_attivo=True,
+                       sede_created_at=_giorni_fa(2)),
+    )
+    assert out is not None
+    assert out["payload"]["fase"] == "onboarding"
+    assert out["severity"] == "info"
+    assert "inizi" in out["title"].lower()
+
+
+def test_sede_vecchia_senza_fatture_resta_warning(monkeypatch):
+    # Sede creata 60 giorni fa con zero fatture: problema reale, tono di allerta.
+    monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: None)
+    out = _briefing_fatture_mancanti(
+        RID, _sb_multi(fatturato=0, fatture_count=0, sdi_attivo=True,
+                       sede_created_at=_giorni_fa(60)),
+    )
+    assert out is not None
+    assert out["payload"]["fase"] == "attivo"
+    assert out["severity"] == "warning"
+
+
+def test_onboarding_sdi_narrativa_accogliente():
+    notif = {
+        "topic_key": "fatture_mancanti",
+        "title": "Stai iniziando",
+        "payload": {"fase": "onboarding", "canale": "sdi"},
+    }
+    frase = _narrative_phrase_for(notif)
+    assert "inizi" in frase.lower()
+    assert "regolare" in frase.lower()
 
 
 # ── Narrativa del briefing ──

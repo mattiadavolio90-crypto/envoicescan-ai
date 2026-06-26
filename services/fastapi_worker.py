@@ -3667,6 +3667,10 @@ def _descrivi_mesi_mancanti(mesi: List[int]) -> str:
 # fatture" (caso A di _briefing_fatture_mancanti). Decisione 19/06: 7 giorni.
 FATTURE_MANCANTI_GIORNI = 7
 
+# Finestra dopo la creazione della sede entro cui "zero fatture mai ricevute" e'
+# considerato avvio (onboarding, tono accogliente) e non pipeline ferma (warning).
+ONBOARDING_GIORNI = 14
+
 # Finestra in cui il briefing puo' parlare del MOL del mese chiuso (decisione
 # 19/06): l'ULTIMO giorno del mese (anteprima, tono prudente) + i PRIMI N giorni
 # del mese nuovo (mese chiuso, dato di fatto). Fuori da qui il MOL del mese in
@@ -4314,16 +4318,18 @@ def _briefing_fatture_mancanti(
     # manuale = "carica le fatture". user_id_r serve alla RPC dei costi (caso B).
     canale = "manuale"
     user_id_r = None
+    sede_creata_at = None
     try:
         rinfo = (
             supabase_client.table("ristoranti")
-            .select("user_id,sdi_attivo")
+            .select("user_id,sdi_attivo,created_at")
             .eq("id", ristorante_id)
             .single()
             .execute()
         )
         rd = rinfo.data or {}
         user_id_r = rd.get("user_id")
+        sede_creata_at = rd.get("created_at")
         if rd.get("sdi_attivo"):
             canale = "sdi"
     except Exception as exc:
@@ -4399,20 +4405,39 @@ def _briefing_fatture_mancanti(
         if ultima >= soglia_dt.isoformat():
             return None
 
-    if canale == "sdi":
+    # Fase ONBOARDING: la sede non ha MAI ricevuto una fattura (rows vuoto) ed e'
+    # stata creata da poco. Non e' una pipeline che si e' fermata, e' un account
+    # in avvio: tono accogliente, non un warning di guasto. Una sede vecchia con
+    # zero fatture invece e' un problema reale (resta il warning standard).
+    mai_ricevute = not rows
+    onboarding = False
+    if mai_ricevute and sede_creata_at:
+        soglia_onb = _dt2.combine(oggi - _td2(days=ONBOARDING_GIORNI), _dt2.min.time())
+        if str(sede_creata_at) >= soglia_onb.isoformat():
+            onboarding = True
+
+    if onboarding:
+        if canale == "sdi":
+            title = "Stai iniziando: le fatture arriveranno qui appena la ricezione è attiva"
+        else:
+            title = "Stai iniziando: carica le prime fatture per vedere food cost e margini"
+        severity = "info"
+    elif canale == "sdi":
         title = "Non arrivano fatture dal flusso automatico da oltre una settimana"
+        severity = "warning"
     else:
         title = "Nessuna fattura caricata nell'ultima settimana"
+        severity = "warning"
 
     return {
         "id": f"fatture-mancanti-live-{ristorante_id}",
         "topic_key": "fatture_mancanti",
         "source_type": "live",
-        "severity": "warning",
+        "severity": severity,
         "title": title,
         "body": "",
         "action_page": "/analisi-fatture",
-        "payload": {"canale": canale},
+        "payload": {"canale": canale, "fase": "onboarding" if onboarding else "attivo"},
         "source_event_at": None,
         "dedupe_key": f"fatture-mancanti-live-{ristorante_id}",
     }
