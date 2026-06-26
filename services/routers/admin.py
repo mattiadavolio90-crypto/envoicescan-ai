@@ -2273,6 +2273,51 @@ def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_adm
     return {"ok": True, "email_inviata": email_inviata, "link": link}
 
 
+class ImpostaPasswordBody(BaseModel):
+    password: str = Field(..., min_length=1, max_length=256)
+
+
+@router.post("/api/admin/clienti/{cliente_id}/imposta-password", tags=["Admin"])
+def admin_imposta_password(
+    cliente_id: str,
+    body: ImpostaPasswordBody,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Imposta direttamente la password del cliente (fallback quando la mail non parte).
+
+    L'admin sceglie la password e attiva l'account in un colpo solo, senza token
+    email. Valida la stessa compliance GDPR del flusso self-service, invalida ogni
+    token/sessione pendente e mette `attivo=True`. Vietato sugli account admin.
+    """
+    from services.auth_service import valida_password_compliance, hash_password
+
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    resp = sb.table("users").select("email,nome_ristorante").eq("id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    u = resp.data[0]
+    if u["email"].lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
+
+    errori = valida_password_compliance(body.password, u["email"], u.get("nome_ristorante") or "")
+    if errori:
+        raise HTTPException(status_code=400, detail=" ".join(errori))
+
+    _now = datetime.now(timezone.utc).isoformat()
+    sb.table("users").update({
+        "password_hash": hash_password(body.password),
+        "attivo": True,
+        "reset_code": None,
+        "reset_expires": None,
+        "password_changed_at": _now,
+        "session_token": None,
+    }).eq("id", cliente_id).execute()
+
+    logger.info("admin_imposta_password: cliente=%s | admin=%s", cliente_id, admin_user.get("email"))
+    return {"ok": True, "email": u["email"], "attivo": True}
+
+
 class CambioEmailBody(BaseModel):
     nuova_email: str = Field(..., max_length=254)
 

@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
 import {
-  LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil, Send
+  LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil, Send, Lock
 } from "lucide-react";
 import { ClienteDettaglio, Sede, PIANO_LABEL, PIANO_COLOR, fmtDate, fmtDateTime } from "@/lib/admin";
 
@@ -37,6 +37,12 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [emailDialog, setEmailDialog] = useState(false);
   const [nuovaEmail, setNuovaEmail] = useState("");
   const [emailSaving, setEmailSaving] = useState(false);
+
+  // Crea/imposta password dialog (fallback manuale quando la mail non parte)
+  const [pwdDialog, setPwdDialog] = useState(false);
+  const [nuovaPwd, setNuovaPwd] = useState("");
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [pwdVisibile, setPwdVisibile] = useState(false);
 
   // Sede dialog (crea)
   const [sedeDialog, setSedeDialog] = useState(false);
@@ -102,6 +108,23 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
       toast.success(data.email_inviata ? "Email reset inviata" : `Email NON inviata. Link: ${data.link}`);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
+  async function handleImpostaPassword() {
+    if (!nuovaPwd.trim()) return;
+    setPwdSaving(true);
+    try {
+      await patch(`/api/admin/clienti/${c.id}/imposta-password`, "POST", { password: nuovaPwd });
+      setC((prev) => ({ ...prev, attivo: true }));
+      toast.success("Password impostata. Account attivo.");
+      setPwdDialog(false);
+      setNuovaPwd("");
+      setPwdVisibile(false);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setPwdSaving(false);
     }
   }
 
@@ -402,6 +425,9 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             <Button variant="outline" className="w-full justify-start" onClick={handleResetPassword}>
               <KeyRound className="size-4 mr-2" /> Invia reset password
             </Button>
+            <Button variant="outline" className="w-full justify-start" onClick={() => { setNuovaPwd(""); setPwdVisibile(false); setPwdDialog(true); }}>
+              <Lock className="size-4 mr-2" /> Crea password
+            </Button>
             <Button variant="outline" className="w-full justify-start" onClick={() => setEmailDialog(true)}>
               <Mail className="size-4 mr-2" /> Cambia email
             </Button>
@@ -596,6 +622,50 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             <Button variant="outline" onClick={() => setEmailDialog(false)} disabled={emailSaving}>Annulla</Button>
             <Button onClick={handleCambioEmail} disabled={emailSaving || !nuovaEmail.trim()}>
               {emailSaving ? "Salvataggio…" : "Conferma"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog crea/imposta password */}
+      <Dialog open={pwdDialog} onOpenChange={setPwdDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Crea password</DialogTitle>
+            <DialogDescription>
+              Imposti tu la password per <strong>{c.email}</strong>. L&apos;account viene attivato
+              e ogni sessione aperta del cliente viene chiusa. Da comunicare al cliente a voce.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nuova-pwd">Nuova password</Label>
+              <div className="relative">
+                <Input
+                  id="nuova-pwd"
+                  type={pwdVisibile ? "text" : "password"}
+                  value={nuovaPwd}
+                  onChange={(e) => setNuovaPwd(e.target.value)}
+                  placeholder="Almeno 10 caratteri"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPwdVisibile((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {pwdVisibile ? "Nascondi" : "Mostra"}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Min. 10 caratteri con maiuscola, minuscola, numero e simbolo. No email o nome del locale.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwdDialog(false)} disabled={pwdSaving}>Annulla</Button>
+            <Button onClick={handleImpostaPassword} disabled={pwdSaving || !nuovaPwd.trim()}>
+              {pwdSaving ? "Salvataggio…" : "Imposta e attiva"}
             </Button>
           </DialogFooter>
         </DialogContent>
