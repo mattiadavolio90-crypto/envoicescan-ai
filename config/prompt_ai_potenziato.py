@@ -221,6 +221,8 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ✅ BICCHIERE / TAZZA senza contesto monouso → default MANUTENZIONE E ATTREZZATURE
 ✅ GAS / LUCE / SERVIZIO IDRICO / AFFITTO / LOCAZIONE / MUTUO IMMOBILE → UTENZE E LOCALI
 ✅ Se il fornitore è utility/telecom (TIM, Vodafone, Fastweb, Wind, Iliad, ENI, A2A, Enel), tutte le righe della fattura → UTENZE E LOCALI
+✅ NON-FOOD da giardinaggio/ferramenta/edilizia → MANUTENZIONE E ATTREZZATURE: TERRICCIO, CONCIME, FERTILIZZANTE, TORBA, SEMENTI PRATO, TAPPETI ERBOSI, VASI, CEMENTO, COMPENSATO, BATTISCOPA, VITI, SILICONE, ATTREZZI. ⚠️ Un fornitore con "GIARDINAGGIO"/"BRICO"/"FERRAMENTA"/"EDIL" nel nome NON vende cibo: nel dubbio → MANUTENZIONE E ATTREZZATURE, MAI categorie food (PESCE, CARNE...).
+✅ DELIVERY (Just-Eat, Deliveroo, Glovo): commissioni/cancellazioni → SERVIZI E CONSULENZE
 ✅ ACQUA NATURALE / FRIZZANTE / SAN BENEDETTO / PELLEGRINO → ACQUA
 ✅ DOLCI/BISCOTTI/CANNOLI sempre → PASTICCERIA
 ✅ BEVANDE ALCOLICHE SPECIFICHE → categoria alcol appropriata

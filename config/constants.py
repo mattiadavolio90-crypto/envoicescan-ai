@@ -285,6 +285,11 @@ CATEGORIA_PER_FORNITORE = {
     "PARAMIDANI": "MANUTENZIONE E ATTREZZATURE",   # Carpenteria/materiali metallici
     "HAL SERVICE": "UTENZE E LOCALI",              # Telefonia/connettività (canoni)
     "TAURUSLAB": "SERVIZI E CONSULENZE",           # Servizi IT/web
+    # --- Cert. SUSHILAND 26/06: fornitori mono-merce (vendono UNA cosa sola) ---
+    "CENTRO GIARDINAGGIO": "MANUTENZIONE E ATTREZZATURE",  # Terriccio/concimi/attrezzi giardino
+    "GIARDINAGGIO": "MANUTENZIONE E ATTREZZATURE",         # variante nome
+    "JUST-EAT": "SERVIZI E CONSULENZE",            # Commissioni delivery (solo servizio)
+    "DELIVEROO": "SERVIZI E CONSULENZE",           # Commissioni delivery
 }
 
 

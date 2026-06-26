@@ -709,7 +709,10 @@ _YOGURT_RE = re.compile(r"\b(YOGURT|YOGHURT)\b")
 _FECOLA_RE = re.compile(r"\bFECOLA\b")
 _BREAKFAST_FLAKES_SECCO_RE = re.compile(r"\b((?:RICE|CORN|BRAN|WHEAT)\s+FLAKES?|MUESLI|GRANOLA)\b")
 _RIGA_FATTURA_TECNICA_RE = re.compile(r"\bRIGA\s+FATTURA\b")
-_CAFFE_THE_RE = re.compile(r"\b(TEA|THE|TE\b|TISANA|TISANE|INFUSO|INFUSI)\b")
+# NB: "TE" da solo RIMOSSO — matchava "P.TE" (abbreviazione di "punte", es.
+# "CIUFFI P.TE DI PREZZEMOLO") dirottando il prezzemolo in CAFFE E THE. Restano
+# solo le forme inequivocabili. Il tè vero è quasi sempre "THE"/"TEA"/"TISANA".
+_CAFFE_THE_RE = re.compile(r"\b(TEA|THE|THÈ|TÈ|TISANA|TISANE|INFUSO|INFUSI)\b")
 _BEVANDA_VEGETALE_RE = re.compile(
     r"\b(BEVANDA\s+(?:DI\s+)?)\b.*\b(MANDORL\w*|SOI[AJ]\w*|RISO|AVENA|COCCO|NOCCIOL\w*)\b|"
     r"\b(LATTE\s+DI)\b.*\b(MANDORL\w*|SOI[AJ]\w*|RISO|AVENA|COCCO|NOCCIOL\w*)\b"
@@ -1022,7 +1025,11 @@ _CONSUMO_EXTRA_RE = re.compile(
 _MANUTENZIONE_EDILE_RE = re.compile(
     r"\b(LAVATOIO\w*|COMPENSATO|BATTISCOPA|CEMENTO|PATTEX|MILLECHIODI|SCALPELLO|"
     r"GRATTUGIO\b|BATTERIA|GREEN\s*CELL|VITI?\b|TRAPANO|CACCIAVITE|MARTELLO|"
-    r"SILICONE|GUARNIZION\w*|RUBINETT\w*|TUBO\s*FLESS\w*)\b"
+    r"SILICONE|GUARNIZION\w*|RUBINETT\w*|TUBO\s*FLESS\w*|"
+    # Giardinaggio/esterni (mai food): terriccio, concime, vasi, attrezzi da giardino
+    r"TERRICCIO|TERRICCI|CONCIME|CONCIMI|FERTILIZZANTE|TORBA|VAS[OI]\s*(DA\s*)?(GIARDIN|FIOR)|"
+    r"TAPPET[OI]\s*ERBOS|SEMENT[EI]\s*PRAT|RASTRELLO|ANNAFFIATOIO|INNAFFIATOIO|"
+    r"DECESPUGLIATORE|TOSAERBA|TOSAERB|VANGA|ZAPPA|PIANTANA)\b"
 )
 
 # BEVANDE brand analcoliche che non matchavano _BEVANDE_ANALCOLICHE_RE.
