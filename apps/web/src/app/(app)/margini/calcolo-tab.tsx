@@ -4,10 +4,10 @@ import React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil, Sigma, Divide } from "lucide-react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell as RCell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { toast } from "sonner";
-import { formatEuro, formatEuroCompact, scorporoNetto } from "./periodi";
+import { formatEuro, formatEuroCompact, scorporoNetto, IVA_DIVISORE_10, IVA_DIVISORE_22 } from "./periodi";
 import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
@@ -1053,6 +1053,9 @@ function Gauge({
 type RicavoGiorno = {
   data: string;
   fatturato_netto: number;
+  netto_iva10: number;
+  netto_iva22: number;
+  netto_noiva: number;
 };
 
 function DettaglioGiornalieroDialog({
@@ -1085,12 +1088,24 @@ function DettaglioGiornalieroDialog({
         const items: { data: string; fatturato_iva10: number; fatturato_iva22: number; altri_ricavi_noiva: number }[] = d?.items ?? [];
         const byDate = new Map(items.map((i) => [
           i.data,
-          scorporoNetto(i.fatturato_iva10, i.fatturato_iva22, i.altri_ricavi_noiva),
+          {
+            netto_iva10: i.fatturato_iva10 / IVA_DIVISORE_10,
+            netto_iva22: i.fatturato_iva22 / IVA_DIVISORE_22,
+            netto_noiva: i.altri_ricavi_noiva,
+            fatturato_netto: scorporoNetto(i.fatturato_iva10, i.fatturato_iva22, i.altri_ricavi_noiva),
+          },
         ]));
         const result: RicavoGiorno[] = [];
         for (let d = 1; d <= lastDay; d++) {
           const key = `${anno}-${pad(meseNum)}-${pad(d)}`;
-          result.push({ data: key, fatturato_netto: byDate.get(key) ?? 0 });
+          const v = byDate.get(key);
+          result.push({
+            data: key,
+            fatturato_netto: v?.fatturato_netto ?? 0,
+            netto_iva10: v?.netto_iva10 ?? 0,
+            netto_iva22: v?.netto_iva22 ?? 0,
+            netto_noiva: v?.netto_noiva ?? 0,
+          });
         }
         setGiorni(result);
       })
@@ -1107,6 +1122,9 @@ function DettaglioGiornalieroDialog({
   const chartData = giorni.map((g) => ({
     giorno: parseInt(g.data.slice(8), 10),
     netto: g.fatturato_netto,
+    iva10: g.netto_iva10,
+    iva22: g.netto_iva22,
+    noiva: g.netto_noiva,
   }));
 
   return (
@@ -1169,17 +1187,20 @@ function DettaglioGiornalieroDialog({
                   />
                   <Tooltip
                     cursor={{ fill: "var(--muted)", opacity: 0.4 }}
-                    formatter={(v: unknown) => [formatEuro(typeof v === "number" ? v : 0), "Fatturato netto"]}
+                    formatter={(v: unknown, name: unknown) => [formatEuro(typeof v === "number" ? v : 0), String(name)]}
                     labelFormatter={(l) => `Giorno ${l}`}
                     contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
                     labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
                     itemStyle={{ color: "var(--foreground)" }}
                   />
-                  <Bar dataKey="netto" radius={[3, 3, 0, 0]} maxBarSize={28}>
-                    {chartData.map((entry, i) => (
-                      <RCell key={i} fill={entry.netto > 0 ? "#0ea5e9" : "var(--muted)"} opacity={entry.netto > 0 ? 0.9 : 0.3} />
-                    ))}
-                  </Bar>
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    iconType="circle"
+                    iconSize={8}
+                  />
+                  <Bar dataKey="iva10" name="IVA 10%" stackId="netto" fill="#0ea5e9" opacity={0.9} maxBarSize={28} />
+                  <Bar dataKey="iva22" name="IVA 22%" stackId="netto" fill="#10b981" opacity={0.9} maxBarSize={28} />
+                  <Bar dataKey="noiva" name="Senza IVA" stackId="netto" fill="#eab308" opacity={0.9} maxBarSize={28} radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
 

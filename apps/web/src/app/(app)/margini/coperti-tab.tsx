@@ -173,7 +173,6 @@ export function CopertiTab({ dataDa, dataA }: Props) {
       {dettaglioOpen && (
         <DettaglioCopertiDialog
           giorni={data.giorni}
-          mediaPeriodo={k.coperti_medi_giorno ?? 0}
           onClose={() => setDettaglioOpen(false)}
         />
       )}
@@ -678,23 +677,49 @@ function formatDataBreve(iso: string): string {
   return `${d.getDate()} ${["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"][d.getMonth()]}`;
 }
 
+const MESI_SHORT = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+
 function DettaglioCopertiDialog({
-  giorni, mediaPeriodo, onClose,
+  giorni, onClose,
 }: {
   giorni: CopertiGiorno[];
-  mediaPeriodo: number;
   onClose: () => void;
 }) {
-  const chartData = giorni.map((g) => ({
+  // Mesi disponibili ricavati dai giorni stessi (i dati coprono l'intero periodo).
+  const mesi = useMemo(() => {
+    const seen = new Map<string, { anno: number; mese: number; label: string }>();
+    for (const g of giorni) {
+      const anno = parseInt(g.data.slice(0, 4), 10);
+      const mese = parseInt(g.data.slice(5, 7), 10);
+      const key = `${anno}-${mese}`;
+      if (!seen.has(key)) seen.set(key, { anno, mese, label: `${MESI_SHORT[mese - 1]} ${anno}` });
+    }
+    return Array.from(seen.values()).sort((a, b) => a.anno - b.anno || a.mese - b.mese);
+  }, [giorni]);
+
+  const [sel, setSel] = useState<{ anno: number; mese: number } | null>(null);
+  // Default: ultimo mese disponibile.
+  const attivo = useMemo(
+    () => sel ?? (mesi.length > 0 ? { anno: mesi[mesi.length - 1].anno, mese: mesi[mesi.length - 1].mese } : null),
+    [sel, mesi],
+  );
+
+  const giorniMese = useMemo(
+    () => (attivo
+      ? giorni.filter((g) => parseInt(g.data.slice(0, 4), 10) === attivo.anno && parseInt(g.data.slice(5, 7), 10) === attivo.mese)
+      : []),
+    [giorni, attivo],
+  );
+
+  const chartData = giorniMese.map((g) => ({
     data: g.data,
-    label: formatDataBreve(g.data),
+    label: `${parseInt(g.data.slice(8), 10)}`,
     coperti: g.coperti,
-    sopra: g.coperti >= mediaPeriodo,
   }));
 
-  const top = giorni.reduce<CopertiGiorno | null>((b, g) => (!b || g.coperti > b.coperti ? g : b), null);
-  const min = giorni.reduce<CopertiGiorno | null>((w, g) => (!w || g.coperti < w.coperti ? g : w), null);
-  const totale = giorni.reduce((s, g) => s + g.coperti, 0);
+  const top = giorniMese.reduce<CopertiGiorno | null>((b, g) => (!b || g.coperti > b.coperti ? g : b), null);
+  const min = giorniMese.reduce<CopertiGiorno | null>((w, g) => (!w || g.coperti < w.coperti ? g : w), null);
+  const totale = giorniMese.reduce((s, g) => s + g.coperti, 0);
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -708,9 +733,27 @@ function DettaglioCopertiDialog({
               <XIcon className="size-4" />
             </button>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Verde = sopra la media periodo ({fmtInt(mediaPeriodo)}/giorno) · Rosso = sotto
-          </p>
+          {/* Selettore mese */}
+          {mesi.length > 1 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {mesi.map((m) => {
+                const active = attivo?.anno === m.anno && attivo?.mese === m.mese;
+                return (
+                  <button
+                    key={`${m.anno}-${m.mese}`}
+                    onClick={() => setSel({ anno: m.anno, mese: m.mese })}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
+                      active
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-input hover:bg-muted"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-5">
@@ -726,20 +769,17 @@ function DettaglioCopertiDialog({
                   <Tooltip
                     cursor={{ fill: "var(--muted)", opacity: 0.4 }}
                     formatter={(v: unknown) => [fmtInt(typeof v === "number" ? v : 0), "Coperti"]}
+                    labelFormatter={(l) => `Giorno ${l}`}
                     contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
                     labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
                     itemStyle={{ color: "var(--foreground)" }}
                   />
-                  <Bar dataKey="coperti" radius={[3, 3, 0, 0]} maxBarSize={26}>
-                    {chartData.map((entry, i) => (
-                      <RCell key={i} fill={entry.sopra ? "#10b981" : "#f43f5e"} opacity={0.85} />
-                    ))}
-                  </Bar>
+                  <Bar dataKey="coperti" radius={[3, 3, 0, 0]} maxBarSize={26} fill="#0ea5e9" opacity={0.9} />
                 </BarChart>
               </ResponsiveContainer>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatBox label="Giorni con dati" value={`${giorni.length}`} />
+                <StatBox label="Giorni con dati" value={`${giorniMese.length}`} />
                 <StatBox label="Coperti totali" value={fmtInt(totale)} color="text-sky-600 dark:text-sky-400" />
                 <StatBox label="Giorno più pieno" value={top ? fmtInt(top.coperti) : "—"} sub={top ? formatDataBreve(top.data) : undefined} color="text-emerald-600 dark:text-emerald-400" />
                 <StatBox label="Giorno più scarico" value={min ? fmtInt(min.coperti) : "—"} sub={min ? formatDataBreve(min.data) : undefined} color="text-rose-600 dark:text-rose-400" />
