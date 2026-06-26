@@ -610,6 +610,10 @@ def health() -> Dict[str, str]:
         "commit": commit[:12],
         # Cert. SUSHILAND 26/06: conferma che l'upload fa girare l'AI post-salvataggio.
         "upload_ai": "on",
+        # Diagnostica: se WORKER_BASE_URL e' settata qui, l'AI post-upload la azzera
+        # per girare in-process (evita HTTP self-call). openai_key conferma la chiave.
+        "worker_base_set": "1" if os.getenv("WORKER_BASE_URL") else "0",
+        "openai_key": "1" if os.getenv("OPENAI_API_KEY") else "0",
     }
 
 
@@ -1878,8 +1882,19 @@ async def upload_invoice(
     # path locale (classifica_con_ai in-process), senza richiamare il worker via
     # HTTP. Best-effort: un errore AI non deve far fallire il salvataggio.
     ai_auto_summary = None
+    # Forza il path AI IN-PROCESS: se WORKER_BASE_URL fosse settata anche nel
+    # processo worker (Railway), classifica_via_worker tenterebbe una HTTP POST del
+    # worker verso se stesso (auth/timeout -> fallback Da Classificare silenzioso).
+    # Azzeriamo la var solo per la durata della chiamata cosi' gira classifica_con_ai
+    # diretto. Ripristino in finally.
+    _saved_worker_base = os.environ.pop("WORKER_BASE_URL", None)
     try:
         from services.upload_handler import _run_post_upload_ai_categorization
+        logger.info(
+            "upload AI post START: file=%s ristorante=%s openai_key=%s worker_base_era=%s",
+            filename, ristorante_id, bool(os.getenv("OPENAI_API_KEY")),
+            bool(_saved_worker_base),
+        )
         ai_auto_summary = _run_post_upload_ai_categorization(
             supabase_client,
             user_id,
@@ -1889,14 +1904,18 @@ async def upload_invoice(
         _invalidate_fatture_rows_cache(ristorante_id)
         if ai_auto_summary:
             logger.info(
-                "upload AI post: file=%s eligible=%s risolte=%s rimaste=%s",
+                "upload AI post DONE: file=%s scanned=%s eligible=%s risolte=%s rimaste=%s",
                 filename,
+                ai_auto_summary.get("rows_scanned"),
                 ai_auto_summary.get("eligible_descriptions"),
                 ai_auto_summary.get("resolved_rows"),
                 len(ai_auto_summary.get("remaining_descriptions") or []),
             )
     except Exception as ai_post_err:
-        logger.warning("upload AI post-categorizzazione fallita (non bloccante): %s", ai_post_err)
+        logger.exception("upload AI post-categorizzazione FALLITA: %s", ai_post_err)
+    finally:
+        if _saved_worker_base is not None:
+            os.environ["WORKER_BASE_URL"] = _saved_worker_base
 
     # Nuove righe salvate -> invalida la cache di lettura per questo ristorante,
     # altrimenti i KPI/articoli resterebbero stale fino allo scadere del TTL.
