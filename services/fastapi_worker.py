@@ -1888,6 +1888,14 @@ async def upload_invoice(
     # Azzeriamo la var solo per la durata della chiamata cosi' gira classifica_con_ai
     # diretto. Ripristino in finally.
     _saved_worker_base = os.environ.pop("WORKER_BASE_URL", None)
+    # Propaga ristorante_id/user_id al contesto AI: classifica_con_ai usa
+    # _resolve_ristorante_id() (ContextVar) per il tracking quota/costi, che fuori
+    # da Streamlit sarebbe None -> "ristorante_id mancante", contatore mai aggiornato.
+    try:
+        from services.ai_service import set_ai_context
+        set_ai_context(ristorante_id=ristorante_id, user_id=user_id)
+    except Exception:
+        pass
     try:
         from services.upload_handler import _run_post_upload_ai_categorization
         logger.info(

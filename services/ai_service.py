@@ -513,13 +513,15 @@ def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
     # Prevalenza di token "illeggibili" (sigle/troncamenti): un token è criptico se
     # ha pochissime vocali rispetto alla lunghezza (es. "TRSSE", "TLTTE", "GM", "SHNE",
     # "KRFT", "MDLE"). Vale per token >= 3 lettere; ratio vocali < 1/3 = criptico.
+    # Anche il trigger "criptico" cede a una regola forte: es. "BERNARDI PROSECCO
+    # VALDOB.DOCG ML 750 (5X6)" è pieno di sigle (VALDOB/DOCG/ML/5X6) ma è VINO certo.
     def _criptico(t: str) -> bool:
         if len(t) < 3:
             return True  # sigla corta senza contesto
         vocali = len(re.findall(r"[AEIOUÀ-Ý]", t))
         return (vocali / len(t)) < 0.34
     criptici = sum(1 for t in tokens_alfa if _criptico(t))
-    if tokens_alfa and criptici / len(tokens_alfa) >= 0.6:
+    if tokens_alfa and criptici / len(tokens_alfa) >= 0.6 and not cat_da_regola_forte:
         return True
 
     # NB (26/06): RIMOSSO il trigger "fornitore GDO generico (Esselunga/Amazon...)

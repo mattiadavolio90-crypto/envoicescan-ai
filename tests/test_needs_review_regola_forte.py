@@ -47,6 +47,13 @@ class TestNonRegressioneTriggerRimanenti:
         # token senza vocali → resta da rivedere anche se categoria food
         assert descrizione_e_dubbia("KRFT GRND MDLE", "X", "PASTA E CEREALI") is True
 
+    def test_vino_con_sigle_e_formato_non_dubbio(self):
+        # 26/06: "BERNARDI PROSECCO VALDOB.DOCG ML 750 (5X6)" è pieno di sigle
+        # (VALDOB/DOCG/ML/5X6) ma è VINO certo da regola forte → NON deve essere review.
+        for d in ["BERNARDI PROSECCO VALDOB.DOCG ML 750 (5X6)",
+                  "VAL D'OCA NERO DOCG ML 750 (1X6)"]:
+            assert descrizione_e_dubbia(d, "VAV SRL", "VINI") is False, d
+
     def test_gdo_generico_NON_e_piu_dubbio(self):
         # 26/06: regola capovolta. Un GDO (Esselunga/Amazon) vende di tutto, ma una
         # sua riga categorizzata BENE non va flaggata solo per il fornitore. La
