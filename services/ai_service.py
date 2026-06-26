@@ -439,7 +439,7 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
         r"\b(PESCE|SALMON[EI]|SALAR|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZIN[OI]|SPIGOLA|"
         r"CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|"
         r"VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTIC[EI]|"
-        r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|CANNOLICCHI[OA]?|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA|"
+        r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|CANNOLICCHI[OA]?|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|"
         r"PAGR[OA]|PAGARO|PAGRUS)\b",
     ),
     # --- Salumi (solo keyword ultra-specifici; COPPA/LONZA/PANCETTA esclusi: troppo ambigui) ---
@@ -678,7 +678,7 @@ _PESCE_RE = re.compile(
     r"ORATE|BRANZIN[OI]|SPIGOLA|CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|"
     r"ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|"
     r"RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTIC[EI]|ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|"
-    r"CANNOLICCHI[OA]?|CAVIALE|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA|"
+    r"CANNOLICCHI[OA]?|CAVIALE|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|"
     r"PAGR[OA]|PAGARO|PAGRUS)\b"
 )
 _SALSA_CREMA_RE = re.compile(
@@ -1024,7 +1024,7 @@ _CONSUMO_EXTRA_RE = re.compile(
 # "GRATTUGIO" (utensile) != "GRATTUGIATO" (formaggio) → confine esatto.
 _MANUTENZIONE_EDILE_RE = re.compile(
     r"\b(LAVATOIO\w*|COMPENSATO|BATTISCOPA|CEMENTO|PATTEX|MILLECHIODI|SCALPELLO|"
-    r"GRATTUGIO\b|BATTERIA|GREEN\s*CELL|VITI?\b|TRAPANO|CACCIAVITE|MARTELLO|"
+    r"GRATTUGIO\b|BATTERIA|GREEN\s*CELL|VIT[EI]\s*(AUTOFILETT|A\s*LEGNO|METRIC)\w*|TRAPANO|CACCIAVITE|MARTELLO|"
     r"SILICONE|GUARNIZION\w*|RUBINETT\w*|TUBO\s*FLESS\w*|"
     # Giardinaggio/esterni (mai food): terriccio, concime, vasi, attrezzi da giardino
     r"TERRICCIO|TERRICCI|CONCIME|CONCIMI|FERTILIZZANTE|TORBA|VAS[OI]\s*(DA\s*)?(GIARDIN|FIOR)|"
@@ -1062,6 +1062,50 @@ _ORTOFRUTTA_NON_PRODOTTO_RE = re.compile(
     r"\b(FOCACCI[AE]|FOCACC\w*|PIZZA|PANE|CARAMELL\w*|COCKTAIL|GOMMOS\w*|"
     r"CHEWING|GELATIN[AE]|GHIACCIOL\w*|CARAMELLAT\w*)\b"
     r"|\bAL\s+GUSTO\b|\bGUSTO\s+DI\b"
+)
+
+# === Cert. SUSHILAND 26/06: 3 famiglie di errore ricorrenti su catene sushi ===
+# Le condividono TUTTI i modelli (mini/4.1-mini/4o): non è scarsa intelligenza,
+# è gergo di settore/ambiguità che vanno insegnate una volta e valgono per sempre.
+
+# (1) Stoviglie da servizio MONOUSO/asporto → MATERIALE DI CONSUMO.
+# Gli item più costosi del dataset (ALCHEMY PIATTO COUPE BOWL, INKED OBLONG ~3600€)
+# finivano in MANUTENZIONE su tutti i modelli: sono PLA da asporto (codici PLA/DAF),
+# vanno in MATERIALE. ATTENZIONE: il vasellame DUREVOLE professionale (PIATTO CERAMICA/
+# PORCELLANA, POSATE INOX, VASSOIO DA ESPOSIZIONE) resta MANUTENZIONE — regola di dominio
+# consolidata. Quindi questa regola scatta SOLO se la stoviglia ha un marcatore monouso.
+# I termini che sono solo il FORMATO di un alimento (BICCHIERE, CALICE, COPPA, VASCHETTA)
+# sono esclusi: "BURRATA BICCHIERE" è un latticino.
+_STOVIGLIA_FORMA_RE = re.compile(
+    r"\b(PIATT[OI]|BOWL|COUPE|COUPELLE|OBLONG|VASSOI[OI]?|CIOTOL\w*|RAMEKIN\w*|"
+    r"POSAT\w*|FORCHETT\w*|BACCHETT\w*|HASHI|TOVAGLIETT\w*|SOTTOPIATT\w*)\b"
+)
+_STOVIGLIA_MONOUSO_MARK_RE = re.compile(
+    r"\b(MONOUS\w*|USA\s*[E&]?\s*GETTA|BIODEGRAD\w*|COMPOST\w*|"
+    r"PLA\d*|CPLA|BAGAS\w*|POLPA\s*(DI\s*)?CELLUL|CELLULOSA|CANNA\s*ZUCCH|"
+    r"BAMB[UÙ]|PALMA|KRAFT|DISPOSABLE|TAKE\s*AWAY|ASPORTO|"
+    r"APRDAF\w*|TDBK\w*|DAF\d)\b"
+)
+# (2) Voci di BOLLETTA/utenza (energia, gas, telefonia) → UTENZE E LOCALI, non
+# SERVIZI/SALSE. TARIFFA ECCEDENZA, TRASMISSIONE, SPREAD, dispacciamento, oneri...
+_VOCE_BOLLETTA_RE = re.compile(
+    r"\b(TARIFFA\s*ECCEDENZA|DISPACCIAMENT\w*|TRASMISSIONE|SPREAD|"
+    r"ONERI\s*DI\s*SISTEMA|ONERI\s*GENERAL\w*|QUOTA\s*(ENERGIA|POTENZA|FISSA)|"
+    r"ACCISA|ACCISE|MATERIA\s*ENERGIA|COMPONENTE\s*(ENERGIA|GAS|UC\w*)|"
+    r"PCV\b|PPE\b|CMOR\b|CTS\b|PERDITE\s*DI\s*RETE|CORRISPETTIVO\s*(PCV|CMOR))\b"
+)
+# (3) Fritti/preparazioni giapponesi che l'AI butta nel calderone SUSHI VARIE:
+# TEMPURA/PASTELLA = pastella da friggere → PASTA E CEREALI;
+# TAKOYAKI = polpette di polpo → PESCE; GYOZA/HARUMAKI sono già in _DIMSUM_RE.
+_GIAPPO_FRITTO_PASTA_RE = re.compile(r"\b(TEMPURA|PASTELLA|TENKASU|KARAAGE\s*MIX)\b")
+_GIAPPO_PESCE_RE = re.compile(r"\b(TAKOYAKI|EBI\s*FRY|EBIFRY|SURIMI\s*GRANCHIO)\b")
+
+# Pet-food: NON è alimento del ristorante. "SALMONE per gatti" non deve cadere in
+# PESCE. Resta Da Classificare (onesto): è una spesa estranea, non un ingrediente.
+_PET_FOOD_RE = re.compile(
+    r"\b(CATISFACTION|FRISKIES|FELIX|WHISKAS|GOURMET\s*GATT|SHEBA|KITEKAT|"
+    r"PURINA|PEDIGREE|CESAR|MIGLIORGATTO|MIO\s*GATT|PET\s*FOOD|"
+    r"CROCCHETT\w*\s*(GATT|CAN[EI]|PER\s*ANIMAL))\b"
 )
 
 # Regole forti che devono battere cache locali/globali automatiche errate.
@@ -1116,6 +1160,12 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "carne_extra",
     "bevande_brand",
     "pasta_formato",
+    # Cert. SUSHILAND 26/06 — 3 famiglie ricorrenti su catene sushi
+    "voce_bolletta_utenza",
+    "stoviglie_servizio",
+    "giappo_fritto_pasta",
+    "giappo_pesce",
+    "pet_food_non_alimento",
 }
 
 
@@ -1138,6 +1188,38 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "SERVIZI E CONSULENZE"
         if cat != mapped:
             return mapped, f"termine_ambiguo:{desc_u}"
+        return cat, None
+
+    # === Cert. SUSHILAND 26/06: guard a PRIORITÀ MASSIMA (prima di pesce/carne/food).
+    # Chiudono le 3 famiglie di errore ricorrenti su catene sushi + il pet-food. Devono
+    # vincere su keyword ambigue (es. "CATISFACTION SALMONE" pet-food NON è PESCE,
+    # "PIATTO COUPE BOWL" stoviglia NON è MANUTENZIONE). ===
+    if _PET_FOOD_RE.search(desc_u):
+        # NON è alimento del ristorante → resta Da Classificare (onesto), MAI PESCE.
+        return CATEGORIA_NON_CLASSIFICATA, "pet_food_non_alimento"
+
+    if _VOCE_BOLLETTA_RE.search(desc_u):
+        mapped = "UTENZE E LOCALI"
+        if cat != mapped:
+            return mapped, "voce_bolletta_utenza"
+        return cat, None
+
+    if _STOVIGLIA_FORMA_RE.search(desc_u) and _STOVIGLIA_MONOUSO_MARK_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "stoviglie_servizio"
+        return cat, None
+
+    if _GIAPPO_FRITTO_PASTA_RE.search(desc_u):
+        mapped = "PASTA E CEREALI"
+        if cat != mapped:
+            return mapped, "giappo_fritto_pasta"
+        return cat, None
+
+    if _GIAPPO_PESCE_RE.search(desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "giappo_pesce"
         return cat, None
 
     # --- Cert. SUSHILAND: regole forti che battono il gusto/keyword generiche ---
@@ -4274,8 +4356,9 @@ def _chiama_gpt_classificazione(
 
     prompt = get_prompt_classificazione(articoli_json)
     
+    _model = os.getenv("ONEFLUX_AI_MODEL", "gpt-4.1-mini")
     response = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=max_tokens,
         temperature=0.1,
@@ -4294,6 +4377,7 @@ def _chiama_gpt_classificazione(
                 completion_tokens=usage.completion_tokens,
                 ristorante_id=_resolve_ristorante_id(),
                 item_count=len(da_chiedere_gpt),
+                model=_model,
                 metadata={
                     'source': 'categorization-batch',
                     'batch_size': len(da_chiedere_gpt),

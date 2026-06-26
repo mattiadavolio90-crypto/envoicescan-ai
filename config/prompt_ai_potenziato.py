@@ -81,8 +81,14 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 21. **SPEZIE E AROMI** - Spezie, erbe aromatiche, condimenti secchi
     Esempi: "PEPE NERO", "ORIGANO SECCO", "ROSMARINO", "VANIGLIA", "CURRY"
 
-22. **SUSHI VARIE** - Ingredienti specifici e decorazione sushi
-    Esempi: "ALGHE NORI", "YAKI NORI", "PANKO", "FOGLIE BAMBU", "WASABI", "TOBIKO", "TEMPURA MIX", "MASAGO"
+22. **SUSHI VARIE** - SOLO accessori, decorazioni e ingredienti tipici NON assegnabili
+    ad altra categoria food: alghe, uova di pesce volante, semi/polveri da impiattamento.
+    Esempi: "ALGHE NORI", "YAKI NORI", "WAKAME", "TOBIKO", "MASAGO", "FOGLIE BAMBU", "WASABI"
+    NON è una categoria-calderone "giapponese". Classifica per COSA È il prodotto:
+    - TEMPURA / PASTELLA / PANKO (pastella e impanatura da friggere) → PASTA E CEREALI
+    - TAKOYAKI (polpette di polpo), EBI FRY (gambero) → PESCE
+    - GYOZA / RAVIOLI / HARUMAKI / BAO → PASTA E CEREALI
+    - salse giapponesi (SOIA, TERIYAKI, UNAGI, PONZU) → SALSE E CREME; MIRIN/ACETO RISO → OLIO E CONDIMENTI
 
 23. **UOVA** - Uova fresche
     Esempi: "UOVA BOX 30", "UOVA BIOLOGICHE"

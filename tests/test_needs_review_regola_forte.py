@@ -142,3 +142,65 @@ class TestLacuneMerceologicheSushiland:
                   "COCKTAIL AL GUSTO DI UVA VERDE"]:
             cat, motivo = self._cat(d)
             assert motivo not in ("frutta_nuda", "verdura_nuda"), d
+
+
+class TestTreFamiglieSushiland2606:
+    """Cert. SUSHILAND 26/06: dopo la simulazione sui 607, gli errori più costosi e
+    ricorrenti su TUTTI i modelli erano 3 famiglie + il pet-food. Regole forti che
+    le chiudono una volta sola, valide per ogni catena sushi futura."""
+
+    def _cat(self, desc):
+        return applica_regole_categoria_forti(desc, "Da Classificare")
+
+    def test_stoviglie_monouso_in_materiale_non_manutenzione(self):
+        # I 2 item più costosi del dataset (PLA da asporto) finivano in MANUTENZIONE
+        # su mini/4.1-mini/4o. Sono monouso → MATERIALE.
+        for d in ["ALCHEMY ABSTRACT PIATTO COUPE BOWL 20,3 CM APRDAF8 1",
+                  "INKED BLACK NATURAL ORGANIC OBLONG CM 26X20 TDBKPLA31",
+                  "PIATTO BIO COMPOSTABILE 23CM 50PZ", "BACCHETTE BAMBU MONOUSO 100PZ"]:
+            assert self._cat(d)[0] == "MATERIALE DI CONSUMO", d
+
+    def test_stoviglie_durevoli_restano_manutenzione(self):
+        # regola di dominio consolidata: vasellame durevole professionale ≠ monouso
+        for d in ["PIATTO CERAMICA 26CM", "POSATE ACCIAIO INOX SET 24PZ",
+                  "VASSOIO DA ESPOSIZIONE 60*20"]:
+            assert self._cat(d)[0] == "MANUTENZIONE E ATTREZZATURE", d
+
+    def test_voci_bolletta_in_utenze(self):
+        for d in ["TARIFFA ECCEDENZA III", "TRASMISSIONE", "SPREAD",
+                  "ONERI DI SISTEMA", "DISPACCIAMENTO ENERGIA", "QUOTA POTENZA"]:
+            assert self._cat(d)[0] == "UTENZE E LOCALI", d
+
+    def test_fritti_giapponesi_non_sono_sushi_varie(self):
+        assert self._cat("TEMPURA")[0] == "PASTA E CEREALI"
+        assert self._cat("PASTELLA TEMPURA NISSHIN 1KG")[0] == "PASTA E CEREALI"
+        assert self._cat("TAKOYAKI(MISURAKI) 500GX20PCX25PZ")[0] == "PESCE"
+        assert self._cat("EBI FRY GAMBERO IMPANATO")[0] == "PESCE"
+
+    def test_pet_food_resta_da_classificare(self):
+        # non è alimento del ristorante: onesto -> Da Classificare, MAI PESCE
+        for d in ["CATISFACTION SALMONE 400G", "FRISKIES CROCCHETTE GATTO",
+                  "FELIX BUSTE MANZO 100G"]:
+            cat, motivo = self._cat(d)
+            assert cat == "Da Classificare", d
+            assert motivo == "pet_food_non_alimento", d
+
+
+class TestRuleTrapRimosse2606:
+    """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
+
+    def _cat(self, desc):
+        return applica_regole_categoria_forti(desc, "Da Classificare")
+
+    def test_spumilia_non_e_pesce(self):
+        # SPUMILIA = cavolfiore siciliano (VERDURE), era hardcoded in _PESCE_RE
+        assert self._cat("SPUMILIA FRESCA KG")[0] != "PESCE"
+
+    def test_vit_troncato_non_e_manutenzione(self):
+        # "VIT." abbreviazione di vitello: non deve cadere in MANUTENZIONE per "VITI"
+        assert self._cat("VIT. SCALOPPINE 1KG")[1] != "manutenzione_edile"
+        assert self._cat("FETTINE DI VIT.")[1] != "manutenzione_edile"
+
+    def test_viti_ferramenta_vere_restano_manutenzione(self):
+        # le viti vere (ferramenta) sì
+        assert self._cat("VITI AUTOFILETTANTI 4X40 100PZ")[0] == "MANUTENZIONE E ATTREZZATURE"

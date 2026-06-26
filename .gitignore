@@ -118,6 +118,12 @@ ricavi_*.xlsx
 *ricavi*.xls
 *ricavi*.xlsx
 
+# Cert. SUSHILAND: export prodotti reali + dataset di simulazione (dati cliente, MAI versionare)
+*daverificare*.xlsx
+_sangiu_*.json
+scripts/_confronta_modelli_ai.py
+scripts/_simula_finale_607.py
+
 # Backup
 *.backup
 *.bak

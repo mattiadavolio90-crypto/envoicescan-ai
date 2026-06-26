@@ -4,6 +4,12 @@ Baseline catturata da ~2900 descrizioni reali del DB (8378 casi). Garantisce che
 qualunque refactor della funzione NON cambi l'output su nessun caso reale.
 Rigenerare SOLO se si vuole cambiare di proposito il comportamento delle regole:
     python -c "import json; ..."  (vedi storia git / _tmp_build_golden.py)
+
+Rigenerato 26/06 (cert. SUSHILAND): nuove regole forti (stoviglie→MATERIALE,
+voci-bolletta→UTENZE, fritti-jp TEMPURA/TAKOYAKI, pet-food→Da Classificare) e
+rimozione rule-trap (SPUMILIA da PESCE, VIT troncato da MANUTENZIONE). Effetto netto:
+-229 righe "Da Classificare", recupero ortofrutta/carne/stoviglie. Verificato a mano
+che ogni transizione è un miglioramento o neutra, nessuna regressione.
 """
 import json
 import os
