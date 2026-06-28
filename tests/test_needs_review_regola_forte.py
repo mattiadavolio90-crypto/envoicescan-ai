@@ -114,6 +114,12 @@ class TestLacuneMerceologicheSushiland:
                   "CAPESANTE CONGELATO 900G", "TRANCIO DI SPADA -WOFCO-", "PESCE SPADA"]:
             assert self._cat(d)[0] == "PESCE", d
 
+    def test_mazzancolle_abbreviato_e_pesce(self):
+        # cert. SUSHILAND 28/06: "MAZZANC." troncato (1 riga su ~200) finiva in FRUTTA;
+        # la grafia abbreviata col punto è inequivocabilmente mazzancolla = PESCE.
+        assert self._cat("MAZZANC. TROPICALE (EQCUADOR) 10X2,27KG 31/35")[0] == "PESCE"
+        assert self._cat("MAZZANCOLLE TROPICALE(EQUADOR) 10X2,27KG 36/40")[0] == "PESCE"
+
     def test_latticini_extra(self):
         for d in ["MOZZ.X PIZZA ESS.-GR 350", "S.LUCIA MOZZ.4X100", "SOTTILETTE CLAS",
                   "TOMINI FRESCHI 140 G", "ACTIMEL FRAGOLA X12", "PHILADELPHIA 1650G"]:
