@@ -139,14 +139,9 @@ export function LandingPage() {
           <Reveal delay={260}>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.prova.sotto}</p>
           </Reveal>
-          {/* eroe prezzi nitido + jolly mail semi-nitido accanto */}
+          {/* rettifica: una sola immagine, l'eroe prezzi nitido (jolly mail rimosso) */}
           <Reveal delay={380}>
-            <div className="mt-10 flex w-full max-w-5xl flex-col items-end justify-center gap-5 md:flex-row">
-              <HeroShot src={s.prova.hero} alt="Avviso rincari prezzi" className="md:w-3/5" />
-              <div className="md:w-2/5 md:-mb-6 md:translate-y-6 opacity-90 [mask-image:linear-gradient(to_bottom,black_60%,transparent)]">
-                <HeroShot src={s.prova.jolly} alt="La mail di rinegoziazione già pronta" />
-              </div>
-            </div>
+            <HeroShot src={s.prova.hero} alt="Avviso rincari prezzi" wide />
           </Reveal>
           <Reveal delay={520}>
             <p className="mt-10 font-display text-2xl font-bold text-primary sm:text-3xl">
