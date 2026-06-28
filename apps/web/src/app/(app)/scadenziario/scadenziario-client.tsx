@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ArchiveRestore, Calendar, CalendarDays, Check, ChevronDown,
-  ChevronRight, Filter, List, Loader2, MapPin, Pencil, Search, Settings2, Trash2, X,
+  AlertTriangle, ArchiveRestore, ArrowUpDown, Calendar, CalendarDays, Check, ChevronDown,
+  ChevronRight, Download, Filter, List, Loader2, MapPin, Pencil, Search, Settings2, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,8 @@ type KpiCardProps = {
   count: number;
   totale: number;
   tone: "rose" | "orange" | "sky" | "emerald";
+  active?: boolean;
+  onClick?: () => void;
 };
 
 const TONE_CLASSES = {
@@ -61,17 +63,32 @@ const TONE_VALUE = {
   sky:     "text-sky-600 dark:text-sky-400",
   emerald: "text-emerald-600 dark:text-emerald-400",
 };
+const TONE_ACTIVE = {
+  rose:    "border-rose-500 ring-2 ring-rose-500/30",
+  orange:  "border-orange-500 ring-2 ring-orange-500/30",
+  sky:     "border-sky-500 ring-2 ring-sky-500/30",
+  emerald: "border-emerald-500 ring-2 ring-emerald-500/30",
+};
 
-function KpiCard({ label, count, totale, tone }: KpiCardProps) {
+function KpiCard({ label, count, totale, tone, active = false, onClick }: KpiCardProps) {
   const valRef = useCountUp(totale);
+  const clickable = !!onClick;
   return (
-    <div className={`rounded-xl border bg-card px-4 pt-3 pb-3 transition-colors flex flex-col gap-1 ${TONE_CLASSES[tone]}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable}
+      aria-pressed={clickable ? active : undefined}
+      className={`text-left rounded-xl border bg-card px-4 pt-3 pb-3 transition-all flex flex-col gap-1
+        ${active ? TONE_ACTIVE[tone] : TONE_CLASSES[tone]}
+        ${clickable ? "cursor-pointer hover:-translate-y-0.5" : "cursor-default"}`}
+    >
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
       <p className={`text-2xl font-bold tracking-tight tabular-nums ${TONE_VALUE[tone]}`}>
         <span ref={valRef as RefObject<HTMLSpanElement>}>{formatEuro(totale)}</span>
       </p>
       <p className="text-[11px] text-muted-foreground">{count} fattur{count === 1 ? "a" : "e"}</p>
-    </div>
+    </button>
   );
 }
 
@@ -445,6 +462,82 @@ function CalendarView({ documenti }: CalendarViewProps) {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Cash-flow bar (esposizione futura aggregata) ──────────────────────────────
+
+type CashFascia = { label: string; totale: number; count: number; tone: string };
+
+function buildCashFlow(documenti: Documento[]): CashFascia[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = (n: number) => { const x = new Date(today); x.setDate(x.getDate() + n); return x; };
+  const in7 = d(7), in30 = d(30), in60 = d(60), in90 = d(90);
+
+  const fasce: CashFascia[] = [
+    { label: "Scadute", totale: 0, count: 0, tone: "bg-rose-500" },
+    { label: "Entro 7gg", totale: 0, count: 0, tone: "bg-orange-500" },
+    { label: "8–30gg", totale: 0, count: 0, tone: "bg-amber-500" },
+    { label: "31–60gg", totale: 0, count: 0, tone: "bg-sky-500" },
+    { label: "61–90gg", totale: 0, count: 0, tone: "bg-indigo-500" },
+    { label: "Oltre 90gg", totale: 0, count: 0, tone: "bg-slate-400" },
+  ];
+
+  for (const doc of documenti) {
+    if (doc.pagata || doc.is_nota_credito) continue;
+    const s = parseLocalDate(doc.scadenza_effettiva);
+    if (!s) continue; // le senza scadenza hanno già il loro alert dedicato
+    const t = doc.totale_documento || 0;
+    let i: number;
+    if (s < today) i = 0;
+    else if (s <= in7) i = 1;
+    else if (s <= in30) i = 2;
+    else if (s <= in60) i = 3;
+    else if (s <= in90) i = 4;
+    else i = 5;
+    fasce[i].totale += t;
+    fasce[i].count += 1;
+  }
+  return fasce;
+}
+
+function CashFlowBar({ documenti }: { documenti: Documento[] }) {
+  const fasce = useMemo(() => buildCashFlow(documenti), [documenti]);
+  const totale = fasce.reduce((s, f) => s + f.totale, 0);
+  const max = Math.max(1, ...fasce.map(f => f.totale));
+  if (totale === 0) return null;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Esposizione futura
+        </p>
+        <p className="text-sm font-bold tabular-nums">{formatEuro(totale)}</p>
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {fasce.map(f => (
+          <div key={f.label} className="flex flex-col gap-1.5">
+            <div className="flex items-end h-16">
+              <div className="w-full flex flex-col justify-end h-full">
+                <div
+                  className={`w-full rounded-t ${f.tone} ${f.totale === 0 ? "opacity-20" : ""}`}
+                  style={{ height: `${Math.max(f.totale > 0 ? 6 : 2, (f.totale / max) * 100)}%` }}
+                  title={`${f.label}: ${formatEuro(f.totale)} · ${f.count} fatt.`}
+                />
+              </div>
+            </div>
+            <div className="text-center leading-tight">
+              <p className="text-[10px] text-muted-foreground font-medium">{f.label}</p>
+              <p className="text-xs font-semibold tabular-nums">
+                {f.totale >= 1000 ? `${(f.totale / 1000).toFixed(1)}k€` : `${Math.round(f.totale)}€`}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1162,6 +1255,31 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
 
 type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 type View = "agenda" | "calendario";
+type Ordine = "scadenza" | "importo" | "fornitore";
+
+const ORDINE_LABELS: Record<Ordine, string> = {
+  scadenza: "Scadenza (prima le vicine)",
+  importo: "Importo (prima i più alti)",
+  fornitore: "Fornitore (A→Z)",
+};
+
+// Ordina i documenti di un bucket secondo il criterio scelto. Le fatture senza
+// scadenza finiscono in fondo quando si ordina per scadenza.
+function ordinaDocumenti(docs: Documento[], ordine: Ordine): Documento[] {
+  const arr = [...docs];
+  if (ordine === "importo") {
+    arr.sort((a, b) => (b.totale_documento || 0) - (a.totale_documento || 0));
+  } else if (ordine === "fornitore") {
+    arr.sort((a, b) => (a.fornitore || "").localeCompare(b.fornitore || "", "it"));
+  } else {
+    arr.sort((a, b) => {
+      const da = parseLocalDate(a.scadenza_effettiva)?.getTime() ?? Infinity;
+      const db = parseLocalDate(b.scadenza_effettiva)?.getTime() ?? Infinity;
+      return da - db;
+    });
+  }
+  return arr;
+}
 
 type CestinoItem = {
   file_origine: string;
@@ -1206,6 +1324,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   const [filtroDateDa, setFiltroDateDa] = useState("");
   const [filtroDateA, setFiltroDateA] = useState("");
   const [filtroSoloNuove, setFiltroSoloNuove] = useState(false);
+  const [ordine, setOrdine] = useState<Ordine>("scadenza");
 
   const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove;
 
@@ -1272,7 +1391,18 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
 
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
-  const buckets = useMemo(() => bucketizeDocumenti(documentiFiltrati), [documentiFiltrati]);
+  const buckets = useMemo(() => {
+    const b = bucketizeDocumenti(documentiFiltrati);
+    return {
+      scadute: ordinaDocumenti(b.scadute, ordine),
+      settimana: ordinaDocumenti(b.settimana, ordine),
+      mese: ordinaDocumenti(b.mese, ordine),
+      oltre: ordinaDocumenti(b.oltre, ordine),
+      senzaScadenza: ordinaDocumenti(b.senzaScadenza, ordine),
+      pagate: ordinaDocumenti(b.pagate, ordine),
+      noteCredito: ordinaDocumenti(b.noteCredito, ordine),
+    };
+  }, [documentiFiltrati, ordine]);
 
   // Il calendario ha già la propria navigazione mensile: applica solo il filtro
   // fornitore (i chip periodo sono specifici dell'agenda).
@@ -1450,6 +1580,45 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     finally { setCestinoActionLoading(false); }
   }
 
+  // Export CSV dell'elenco visibile (rispetta i filtri attivi, ordinato come a
+  // video). Formato Excel-IT: separatore ";", BOM UTF-8, importi con virgola.
+  function exportCsv() {
+    const righe = ordinaDocumenti(documentiFiltrati, ordine);
+    if (righe.length === 0) { toast.error("Nessuna fattura da esportare"); return; }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const headers = ["Fornitore", "N. documento", "Data fattura", "Scadenza", "Importo", "Stato"];
+    const num = (n: number | null | undefined) =>
+      (n ?? 0).toFixed(2).replace(".", ",");
+    const stato = (d: Documento) => {
+      if (d.is_nota_credito) return "Nota di credito";
+      if (d.pagata) return "Pagata";
+      const s = parseLocalDate(d.scadenza_effettiva);
+      if (s && s < today) return "Scaduta";
+      if (!s) return "Senza scadenza";
+      return "Da pagare";
+    };
+    const body = righe.map(d => [
+      d.fornitore || "",
+      d.numero_documento || "",
+      d.data_documento ? formatDate(d.data_documento) : "",
+      d.scadenza_effettiva ? formatDate(d.scadenza_effettiva) : "",
+      num(d.totale_documento),
+      stato(d),
+    ]);
+    const csv = [headers, ...body]
+      .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
+      .join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "scadenziario.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV scaricato — aprilo con Excel");
+  }
+
   const totaleNonPagateFiltrate = documentiFiltrati.filter(d => !d.pagata).length;
 
   const sharedProps = {
@@ -1462,11 +1631,28 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
 
   return (
     <div className="space-y-5 pb-20">
-      {/* KPI bar */}
+      {/* KPI bar — le card sono cliccabili e applicano il filtro periodo
+          corrispondente (toggle: riclicco la card attiva → torno a "tutti").
+          "Pagate (mese)" è un consuntivo, non un filtro: resta informativa. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label={filtriAttivi ? "Scadute (filtro)" : "Scadute"} count={kpi.scadute_count} totale={kpi.scadute_totale} tone="rose" />
-        <KpiCard label={filtriAttivi ? "Settimana (filtro)" : "Questa settimana"} count={kpi.settimana_count} totale={kpi.settimana_totale} tone="orange" />
-        <KpiCard label={filtriAttivi ? "Da pagare (filtro)" : "Da pagare"} count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="sky" />
+        <KpiCard
+          label={filtriAttivi ? "Scadute (filtro)" : "Scadute"}
+          count={kpi.scadute_count} totale={kpi.scadute_totale} tone="rose"
+          active={filtroPeriodo === "scadute"}
+          onClick={() => setFiltroPeriodo(p => p === "scadute" ? "tutti" : "scadute")}
+        />
+        <KpiCard
+          label={filtriAttivi ? "Settimana (filtro)" : "Questa settimana"}
+          count={kpi.settimana_count} totale={kpi.settimana_totale} tone="orange"
+          active={filtroPeriodo === "settimana"}
+          onClick={() => setFiltroPeriodo(p => p === "settimana" ? "tutti" : "settimana")}
+        />
+        <KpiCard
+          label={filtriAttivi ? "Da pagare (filtro)" : "Da pagare"}
+          count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="sky"
+          active={filtroPeriodo === "tutti" && !filtriAttivi}
+          onClick={() => resetFiltri()}
+        />
         <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="emerald" />
       </div>
 
@@ -1500,6 +1686,10 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
 
         <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setRegoleOpen(true)}>
           <Settings2 className="size-3.5" /> Regole fornitore
+        </Button>
+
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={exportCsv}>
+          <Download className="size-3.5" /> Esporta CSV
         </Button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -1680,6 +1870,23 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           >
             Nuove
           </button>
+
+          {/* Ordinamento — rilevante solo nella vista lista */}
+          {view === "agenda" && (
+            <div className="ml-auto flex items-center gap-1.5">
+              <ArrowUpDown className="size-3.5 text-muted-foreground flex-shrink-0" />
+              <NativeSelect
+                value={ordine}
+                onValueChange={(v) => setOrdine(v as Ordine)}
+                className="h-8 text-xs w-auto"
+                aria-label="Ordina fatture"
+              >
+                {(Object.keys(ORDINE_LABELS) as Ordine[]).map(k => (
+                  <option key={k} value={k}>{ORDINE_LABELS[k]}</option>
+                ))}
+              </NativeSelect>
+            </div>
+          )}
         </div>
 
         {/* Risultati + select all */}
@@ -1709,6 +1916,12 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
       {/* Content */}
       {view === "agenda" ? (
         <div className="space-y-3">
+          {/* Cash-flow: vista d'insieme dell'esposizione. Mostrata solo senza
+              filtro periodo attivo (col filtro la barra perde senso aggregato).
+              Usa documentiCalendario = filtrati per fornitore/nuove ma non periodo. */}
+          {filtroPeriodo === "tutti" && (
+            <CashFlowBar documenti={documentiCalendario} />
+          )}
           <AgendaSection title="Scadute" docs={buckets.scadute} accentClass="text-rose-600 dark:text-rose-400" {...sharedProps} />
           <AgendaSection title="Questa settimana" docs={buckets.settimana} accentClass="text-orange-600 dark:text-orange-400" {...sharedProps} />
           <AgendaSection title="Questo mese" docs={buckets.mese} {...sharedProps} />
