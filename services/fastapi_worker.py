@@ -4453,25 +4453,36 @@ def _briefing_dati_mensili_mancanti(
 def _briefing_righe_da_classificare(
     ristorante_id: str, supabase_client,
 ) -> Optional[Dict[str, Any]]:
-    """Notifica LIVE 'righe da controllare': conta TUTTE le righe needs_review.
+    """Notifica LIVE 'da controllare': conta i PRODOTTI DISTINTI needs_review.
 
     Decisione Mattia 19/06: il numero del briefing deve corrispondere a quello
     che il cliente trova aprendo Analisi Fatture (nessuna finestra temporale). Se
     il briefing dicesse "2" (solo le caricate negli ultimi 30 giorni) e in pagina
-    ce ne fossero 9, il cliente non si raccapezza. Quindi contiamo TUTTE le righe
-    con needs_review=True non cancellate (caso LAND: 2 recenti, 9 totali -> 9).
+    ce ne fossero 9, il cliente non si raccapezza. Si conta su TUTTO lo storico
+    (caso LAND: 2 recenti, 9 totali -> 9).
+
+    Affinamento 28/06: la pagina Analisi Fatture AGGREGA per descrizione (una voce
+    è da controllare se almeno una sua riga lo è). Contare le RIGHE qui sfasava il
+    numero: 3 righe "COMPENSAZIONE RIGA OMAGGIO" = 1 sola voce in pagina, quindi
+    la Salute diceva 6 e la pagina ne mostrava 4. Contiamo i PRODOTTI DISTINTI
+    (per descrizione), così il numero combacia con cosa vede e clicca il cliente.
     None se non c'e' nulla da controllare (zero rumore).
     """
     try:
         resp = (
             supabase_client.table("fatture")
-            .select("id", count="exact")
+            .select("descrizione")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .eq("needs_review", True)
             .execute()
         )
-        n = resp.count if resp.count is not None else len(resp.data or [])
+        descrizioni = {
+            (r.get("descrizione") or "").strip()
+            for r in (resp.data or [])
+            if (r.get("descrizione") or "").strip()
+        }
+        n = len(descrizioni)
     except Exception as exc:
         logger.warning("briefing righe da controllare: lettura fallita: %s", exc)
         return None
@@ -4484,7 +4495,7 @@ def _briefing_righe_da_classificare(
         "topic_key": "uncategorized_rows",
         "source_type": "live",
         "severity": "warning",
-        "title": f"{n} {'riga' if n == 1 else 'righe'} da controllare",
+        "title": f"{n} {'prodotto' if n == 1 else 'prodotti'} da controllare",
         "body": "",
         "action_page": "/analisi-fatture?tab=articoli&verifica=1",
         "payload": {"uncategorized_rows": n, "count": n},

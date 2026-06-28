@@ -1,9 +1,12 @@
 """Test guardia: il briefing segnala le righe da controllare come la pagina.
 
-_briefing_righe_da_classificare ricalcola il segnale LIVE contando TUTTE le
-righe needs_review non cancellate (decisione Mattia 19/06: niente finestra 30gg,
-il numero deve combaciare con cio' che il cliente trova in Analisi Fatture; caso
-LAND: 2 recenti ma 9 totali -> il briefing deve dire 9).
+_briefing_righe_da_classificare ricalcola il segnale LIVE contando i PRODOTTI
+DISTINTI (per descrizione) con needs_review non cancellati (decisione Mattia
+19/06: niente finestra 30gg, il numero deve combaciare con cio' che il cliente
+trova in Analisi Fatture; caso LAND: 2 recenti ma 9 totali -> 9).
+
+Affinamento 28/06: la pagina aggrega per descrizione, quindi qui si contano i
+prodotti distinti e NON le righe (3 righe stessa descrizione = 1 voce in pagina).
 """
 from unittest.mock import MagicMock
 
@@ -15,7 +18,8 @@ from services.fastapi_worker import (
 RID = "rist-xyz"
 
 
-def _sb(count):
+def _sb(descrizioni):
+    """descrizioni: lista di descrizioni (con eventuali duplicati = piu' righe)."""
     sb = MagicMock()
     q = MagicMock()
     q.select.return_value = q
@@ -23,40 +27,59 @@ def _sb(count):
     q.is_.return_value = q
     q.gte.return_value = q
     q.limit.return_value = q
-    q.execute.return_value = MagicMock(count=count, data=[{"id": i} for i in range(count or 0)])
+    q.execute.return_value = MagicMock(
+        count=len(descrizioni),
+        data=[{"descrizione": d} for d in descrizioni],
+    )
     sb.table.return_value = q
     return sb
 
 
 def test_nessuna_riga_da_classificare_nessuna_notifica():
-    assert _briefing_righe_da_classificare(RID, _sb(0)) is None
+    assert _briefing_righe_da_classificare(RID, _sb([])) is None
 
 
 def test_righe_da_classificare_genera_notifica_live():
-    out = _briefing_righe_da_classificare(RID, _sb(2))
+    out = _briefing_righe_da_classificare(RID, _sb(["A", "B"]))
     assert out is not None
     assert out["topic_key"] == "uncategorized_rows"
     assert out["source_type"] == "live"
     assert out["payload"]["uncategorized_rows"] == 2
     assert out["payload"]["count"] == 2
-    assert "2 righe" in out["title"]
+    assert "2 prodotti" in out["title"]
     # Deep-link al tab Articoli filtrato sulle righe da controllare.
     assert "verifica=1" in out["action_page"]
 
 
-def test_singolare_una_riga():
-    out = _briefing_righe_da_classificare(RID, _sb(1))
+def test_singolare_un_prodotto():
+    out = _briefing_righe_da_classificare(RID, _sb(["UNICO"]))
     assert out is not None
-    assert "1 riga" in out["title"]
+    assert "1 prodotto" in out["title"]
+
+
+def test_righe_duplicate_contano_come_un_prodotto():
+    # IL FIX del 28/06: 6 righe ma 4 descrizioni distinte (la pagina ne mostra 4).
+    # "COMPENSAZIONE" x3 + altre 3 voci uniche -> 4 prodotti, non 6 righe.
+    sei_righe = [
+        "COMPENSAZIONE RIGA OMAGGIO",
+        "COMPENSAZIONE RIGA OMAGGIO",
+        "COMPENSAZIONE RIGA OMAGGIO",
+        "COUPON LIDL PLUS 5",
+        "FATTURA DI ACCONTO",
+        "RIGA FATTURA",
+    ]
+    out = _briefing_righe_da_classificare(RID, _sb(sei_righe))
+    assert out["payload"]["count"] == 4, "deve contare i prodotti distinti, non le righe"
+    assert "4 prodotti" in out["title"]
 
 
 def test_conta_tutte_senza_finestra_temporale():
     # Decisione 19/06: NESSUN filtro su created_at (.gte). Se qualcuno reintroduce
     # la finestra 30gg, questo test si rompe.
-    sb = _sb(9)
+    sb = _sb([f"prod-{i}" for i in range(9)])
     out = _briefing_righe_da_classificare(RID, sb)
     assert out["payload"]["count"] == 9
-    assert "9 righe" in out["title"]
+    assert "9 prodotti" in out["title"]
     q = sb.table.return_value
     assert not q.gte.called, "Il conteggio non deve filtrare per created_at (niente finestra 30gg)"
 

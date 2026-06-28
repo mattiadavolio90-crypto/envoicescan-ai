@@ -38,7 +38,9 @@ logger = get_logger('daily_briefing')
 #   1 -> baseline
 #   2 -> 23/06: righe da controllare = totale, canale SDI da flag, tono testi
 #   3 -> 25/06: costo personale mancante su TUTTI i mesi dell'anno (conteggio+range)
-_BRIEFING_CODE_VERSION = 4
+#   5 -> 28/06: "da controllare" conta PRODOTTI DISTINTI (non righe), per combaciare
+#               col numero che il cliente vede in Analisi Fatture (fix 6 vs 4)
+_BRIEFING_CODE_VERSION = 5
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -420,8 +422,8 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
     if topic == 'uncategorized_rows':
         count = payload.get('uncategorized_rows') or payload.get('count')
         if count:
-            righe = 'riga da controllare' if count == 1 else 'righe da controllare'
-            return f"\U0001F3F7\ufe0f {count} {righe}."
+            voce = 'prodotto da controllare' if count == 1 else 'prodotti da controllare'
+            return f"\U0001F3F7\ufe0f {count} {voce}."
         return f"\U0001F3F7\ufe0f {title}"
 
     if topic == 'appuntamento_imminente':

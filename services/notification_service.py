@@ -1228,23 +1228,13 @@ def build_da_classificare_notifications(
             from services import get_supabase_client
             supabase_client = get_supabase_client()
 
-        # Conta righe che richiedono review: needs_review=True o categoria assente
+        # Conta PRODOTTI DISTINTI (per descrizione) da controllare, NON le righe:
+        # la pagina /analisi-fatture aggrega per descrizione e una voce è
+        # needs_review se almeno una sua riga lo è. Contare righe qui sfasava il
+        # numero (es. 3 righe "COMPENSAZIONE RIGA OMAGGIO" = 1 sola voce in pagina:
+        # Salute diceva 6, la pagina ne mostrava 4). Si conta su TUTTO lo storico
+        # (nessuna finestra temporale), coerente con la regola "totale, non 30gg".
         query = (
-            supabase_client.table('fatture')
-            .select('id', count='exact')
-            .eq('user_id', user_id)
-            .is_('deleted_at', 'null')
-            .or_('needs_review.eq.true,categoria.is.null,categoria.eq.')
-        )
-        if ristorante_id:
-            query = query.eq('ristorante_id', ristorante_id)
-        result = query.limit(0).execute()
-        count = getattr(result, 'count', None)
-        if count is None or count <= 0:
-            return []
-
-        # Recupera esempi (max 5 descrizioni)
-        sample_query = (
             supabase_client.table('fatture')
             .select('descrizione')
             .eq('user_id', user_id)
@@ -1252,19 +1242,25 @@ def build_da_classificare_notifications(
             .or_('needs_review.eq.true,categoria.is.null,categoria.eq.')
         )
         if ristorante_id:
-            sample_query = sample_query.eq('ristorante_id', ristorante_id)
-        sample_result = sample_query.limit(5).execute()
-        examples = []
-        seen_desc: set = set()
-        for row in (sample_result.data or []):
-            desc = str(row.get('descrizione') or '').strip()
-            if desc and desc not in seen_desc:
-                examples.append(_html.escape(desc))
-                seen_desc.add(desc)
+            query = query.eq('ristorante_id', ristorante_id)
+        result = query.execute()
 
-        righe_label = _pluralize(count, 'riga richiede', 'righe richiedono')
+        seen_desc: set = set()
+        examples = []
+        for row in (result.data or []):
+            desc = str(row.get('descrizione') or '').strip()
+            if not desc or desc in seen_desc:
+                continue
+            seen_desc.add(desc)
+            if len(examples) < 5:
+                examples.append(_html.escape(desc))
+        count = len(seen_desc)
+        if count <= 0:
+            return []
+
+        prod_label = _pluralize(count, 'prodotto richiede', 'prodotti richiedono')
         body = (
-            f"{count} {righe_label} classificazione manuale perché la descrizione è "
+            f"{count} {prod_label} classificazione manuale perché la descrizione è "
             "ambigua o troppo generica per una categorizzazione automatica affidabile."
         )
         if examples:
@@ -1277,7 +1273,7 @@ def build_da_classificare_notifications(
             'title': f'{count} {_pluralize(count, "prodotto da classificare", "prodotti da classificare")}',
             'body': body,
             'toast': (
-                f'{count} {_pluralize(count, "riga da classificare", "righe da classificare")} '
+                f'{count} {_pluralize(count, "prodotto da classificare", "prodotti da classificare")} '
                 f'richied{_pluralize(count, "e", "ono")} attenzione'
             ),
             'action_label': 'Vai alla gestione',
