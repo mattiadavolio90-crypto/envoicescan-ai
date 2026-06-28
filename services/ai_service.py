@@ -1101,7 +1101,13 @@ _VOCE_BOLLETTA_RE = re.compile(
     r"\b(TARIFFA\s*ECCEDENZA|DISPACCIAMENT\w*|TRASMISSIONE|SPREAD|"
     r"ONERI\s*DI\s*SISTEMA|ONERI\s*GENERAL\w*|QUOTA\s*(ENERGIA|POTENZA|FISSA)|"
     r"ACCISA|ACCISE|MATERIA\s*ENERGIA|COMPONENTE\s*(ENERGIA|GAS|UC\w*)|"
-    r"PCV\b|PPE\b|CMOR\b|CTS\b|PERDITE\s*DI\s*RETE|CORRISPETTIVO\s*(PCV|CMOR))\b"
+    r"PCV\b|PPE\b|CMOR\b|CTS\b|PERDITE\s*DI\s*RETE|CORRISPETTIVO\s*(PCV|CMOR)|"
+    # Sottovoci gergali di bolletta gas/luce/acqua: terminologia tecnica che
+    # NON compare mai su prodotti alimentari (SMC=metro cubo gas, COMP. RE/UGx=
+    # componenti tariffarie regolate, COMM. AL DETTAGLIO=commercializzazione,
+    # BONIFICA VILLORESI=contributo consortile idrico).
+    r"\bSMC\b|COMP\.?\s*(RE|RS|GS|UG\d+|UC\d+)\b|COMM\.?\s*AL\s*DETTAGLIO|"
+    r"BONIFICA\s*VILLORESI|CONSUMO\s*FATTURATO|QUOTA\s*VARIABILE\s*GAS)\b"
 )
 # (3) Fritti/preparazioni giapponesi che l'AI butta nel calderone SUSHI VARIE:
 # TEMPURA/PASTELLA = pastella da friggere → PASTA E CEREALI;

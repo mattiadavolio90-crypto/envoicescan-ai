@@ -10,6 +10,12 @@ voci-bolletta→UTENZE, fritti-jp TEMPURA/TAKOYAKI, pet-food→Da Classificare) 
 rimozione rule-trap (SPUMILIA da PESCE, VIT troncato da MANUTENZIONE). Effetto netto:
 -229 righe "Da Classificare", recupero ortofrutta/carne/stoviglie. Verificato a mano
 che ogni transizione è un miglioramento o neutra, nessuna regressione.
+
+Aggiornato 28/06 (cert. SUSHILAND, misura accuratezza): _VOCE_BOLLETTA_RE estesa con
+sottovoci gergali di bolletta gas/acqua (SMC, COMP. RE/UGx/UCx, COMM. AL DETTAGLIO,
+BONIFICA VILLORESI, CONSUMO FATTURATO) → UTENZE E LOCALI. Riconosce la voce dalla
+terminologia tecnica, NON dal fornitore (zero rischio di trascinare prodotti di un
+fornitore scambiato per utility). Effetto: 1 sola riga del golden cambiata.
 """
 import json
 import os

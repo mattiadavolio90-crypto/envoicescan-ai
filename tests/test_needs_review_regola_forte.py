@@ -198,6 +198,25 @@ class TestTreFamiglieSushiland2606:
                   "ONERI DI SISTEMA", "DISPACCIAMENTO ENERGIA", "QUOTA POTENZA"]:
             assert self._cat(d)[0] == "UTENZE E LOCALI", d
 
+    def test_sottovoci_bolletta_gergali_in_utenze(self):
+        # cert. SUSHILAND 28/06: sottovoci di bolletta gas/acqua che NON contengono
+        # parole-chiave evidenti (es. TARIFFA) ma terminologia tecnica inconfondibile.
+        for d in ["COMP. RE FINO A 200.000 SMC", "COMP. UG1 FINO A 200.000 SMC",
+                  "COMP. UC3 FINO A", "COMM.AL DETTAGLIO - PARTE FISSA",
+                  "BONIFICA VILLORESI", "CONSUMO FATTURATO GAS"]:
+            cat, motivo = self._cat(d)
+            assert cat == "UTENZE E LOCALI", d
+            assert motivo == "voce_bolletta_utenza", d
+
+    def test_sottovoci_bolletta_non_toccano_alimenti(self):
+        # guardia anti-falso-positivo: token come RE/UG/AL/SMC NON devono dirottare
+        # prodotti alimentari che li contengono per caso.
+        for d, cat_attesa in [("RE PESCE FRESCO", "PESCE"),
+                              ("PROSCIUTTO COTTO AL DETTAGLIO", "SALUMI"),
+                              ("UGO ROSSO VINO", "VINI"),
+                              ("COMPOSTO PER TEMPURA", "PASTA E CEREALI")]:
+            assert applica_regole_categoria_forti(d, cat_attesa)[0] == cat_attesa, d
+
     def test_fritti_giapponesi_non_sono_sushi_varie(self):
         assert self._cat("TEMPURA")[0] == "PASTA E CEREALI"
         assert self._cat("PASTELLA TEMPURA NISSHIN 1KG")[0] == "PASTA E CEREALI"
