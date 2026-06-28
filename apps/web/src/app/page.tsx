@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { LandingPage } from "@/components/landing/landing-page";
 
 export const metadata: Metadata = {
-  title: "ONEFLUX — Il gestionale del ristorante che non devi compilare",
+  title: "ONEFLUX — Tutto sotto controllo. Mentre pensi ad altro.",
   description:
-    "Niente magazzino, niente inventario, niente Excel. Le fatture entrano da sole, l'AI le legge e tu, per sapere come va il locale, fai una domanda all'assistente.",
+    "Il cervello operativo della tua gestione. Ti dice com'è andata prima che tu lo chieda, e gli rispondi come a una persona. Le fatture entrano da sole. Provalo sul tuo locale, 7 giorni gratis.",
   openGraph: {
-    title: "ONEFLUX — Il gestionale del ristorante che non devi compilare",
+    title: "ONEFLUX — Tutto sotto controllo. Mentre pensi ad altro.",
     description:
-      "Data-entry free: niente magazzino né Excel. Le fatture le legge l'AI e per sapere food cost, margini e rincari basta chiedere all'assistente.",
+      "Il braccio destro che tiene il tuo locale sotto controllo — e te lo dice prima che tu lo chieda. 7 giorni gratis.",
     type: "website",
     locale: "it_IT",
   },

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Quicksand } from "next/font/google";
+import { Inter, Quicksand, Sora } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,9 @@ import { PwaRegister } from "@/components/pwa-register";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const quicksand = Quicksand({ subsets: ["latin"], weight: ["700"], variable: "--font-wordmark" });
+// Font display della landing scrollytelling (geometrico, deciso). Solo --font-sora:
+// non viene applicato globalmente, lo usa la landing via la classe font-display.
+const sora = Sora({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-sora" });
 
 export const metadata: Metadata = {
   title: {
@@ -49,7 +52,7 @@ export default function RootLayout({
   const tema = "dark";
 
   return (
-    <html lang="it" suppressHydrationWarning className={cn(tema, "font-sans", inter.variable, quicksand.variable)}>
+    <html lang="it" suppressHydrationWarning className={cn(tema, "font-sans", inter.variable, quicksand.variable, sora.variable)}>
       <body className="antialiased">
         {/* Boot overlay PWA: NON e' nel JSX. Lo crea e lo rimuove interamente
             boot-overlay.js (gira beforeInteractive, prima di React). Motivo: un
