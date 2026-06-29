@@ -87,7 +87,7 @@ export function LandingPage() {
           <Reveal delay={260}>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.briefing.sotto}</p>
           </Reveal>
-          <Reveal delay={380}>
+          <Reveal delay={420} variant="zoom">
             <HeroShot src={s.briefing.hero} alt="Il briefing del mattino di ONEFLUX" wide />
           </Reveal>
         </Scene>
@@ -119,7 +119,7 @@ export function LandingPage() {
           <Reveal delay={260}>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.categorie.sotto}</p>
           </Reveal>
-          <Reveal delay={380}>
+          <Reveal delay={420} variant="zoom">
             <HeroShot src={s.categorie.hero} alt="Migliaia di prodotti categorizzati in automatico" wide />
           </Reveal>
         </Scene>
@@ -137,7 +137,7 @@ export function LandingPage() {
           </Reveal>
           {/* immagine + chiusura raggruppate: la chiusura è LA conclusione di
               questa scena, vicina alla tabella a cui si riferisce (non orfana). */}
-          <Reveal delay={380}>
+          <Reveal delay={420} variant="zoom">
             <HeroShot src={s.prezzi.hero} alt="Avviso rincari prezzi" wide />
             <p className="mt-7 font-display text-2xl font-bold text-primary sm:text-3xl">
               {s.prezzi.chiusura}
@@ -162,7 +162,7 @@ export function LandingPage() {
                 <p className="mt-6 text-lg text-muted-foreground">{s.potere.sotto}</p>
               </Reveal>
             </div>
-            <Reveal delay={380} className="flex justify-center md:justify-end">
+            <Reveal delay={420} variant="zoom" className="flex justify-center md:justify-end">
               <PhoneShot src={s.potere.heroMobile} alt="L'assistente ONEFLUX sul telefono" />
             </Reveal>
           </div>
@@ -179,7 +179,7 @@ export function LandingPage() {
           <Reveal delay={260}>
             <p className="mt-6 text-lg text-muted-foreground">{s.invito.sotto}</p>
           </Reveal>
-          <Reveal delay={380}>
+          <Reveal delay={420} variant="zoom">
             <HeroShot src={s.invito.hero} alt="I conti del locale: tutto verde, MOL positivo" wide />
           </Reveal>
           {/* niente CTA qui: l'unico "Inizia ora" sta sotto i piani (dopo i prezzi),

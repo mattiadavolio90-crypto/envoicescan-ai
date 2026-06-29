@@ -9,14 +9,25 @@ import { cn } from "@/lib/utils";
 
 // Reveal: il figlio entra (fade + leggero translate) quando la scena è in viewport.
 // Con reduced-motion appare subito visibile, senza animazione.
+// variant "up" = sale dal basso (testi); "zoom" = sale + scala leggera (immagini,
+// dà profondità). L'entrata è ampia abbastanza da percepirsi, ma morbida.
+type RevealVariant = "up" | "zoom";
+
+const REVEAL_HIDDEN: Record<RevealVariant, string> = {
+  up: "translate-y-8 opacity-0",
+  zoom: "translate-y-10 scale-[0.94] opacity-0",
+};
+
 export function Reveal({
   children,
   className,
   delay = 0,
+  variant = "up",
 }: {
   children: ReactNode;
   className?: string;
   delay?: number;
+  variant?: RevealVariant;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visibile, setVisibile] = useState(false);
@@ -36,7 +47,7 @@ export function Reveal({
           io.disconnect();
         }
       },
-      { threshold: 0.35 },
+      { threshold: 0.2 },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -46,8 +57,8 @@ export function Reveal({
     <div
       ref={ref}
       className={cn(
-        "transition-all duration-700 ease-out will-change-transform",
-        visibile ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+        "transition-all duration-[850ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] will-change-transform motion-reduce:transition-none",
+        visibile ? "translate-y-0 scale-100 opacity-100" : REVEAL_HIDDEN[variant],
         className,
       )}
       style={{ transitionDelay: visibile ? `${delay}ms` : "0ms" }}
