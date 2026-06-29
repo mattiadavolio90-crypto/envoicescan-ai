@@ -335,14 +335,14 @@ File: `.github/workflows/queue-worker.yml`
 
 | Dominio | Destinazione | Stato |
 |---------|-------------|-------|
-| `nuovo.oneflux.it` | Vercel (Next.js) | Attivo — clienti di test |
-| `app.oneflux.it` | Railway (Streamlit) | Attivo — clienti operativi |
-| `old.oneflux.it` | Railway (Streamlit) | Pianificato per Fase 10 (backup 30gg) |
+| `app.oneflux.it` | Vercel (Next.js) | **Attivo** — produzione, tutti i clienti |
+| `nuovo.oneflux.it` | — | Rimosso (era il dominio temporaneo di test pre-switch) |
+| `old.oneflux.it` | — | Mai attivato; lo switch è avvenuto direttamente l'8/6 |
 
-**Fase 10 (switch DNS):**
-1. `app.oneflux.it` → punterà a Next.js (Vercel)
-2. `old.oneflux.it` → punterà a Streamlit (backup 30 giorni)
-3. Dopo 30 giorni senza problemi → Streamlit spento (Fase 11)
+**Switch DNS — COMPLETATO l'8/6/2026:** `app.oneflux.it` ora punta a Next.js (Vercel).
+Streamlit è stato dismesso (servizio Railway/Streamlit Cloud spento), il dominio
+temporaneo `nuovo.oneflux.it` rimosso. Il container Railway serve solo il worker
+FastAPI + queue-worker (vedi `docker/docker-entrypoint.sh`).
 
 ---
 

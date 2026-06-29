@@ -1,28 +1,35 @@
 # ONEFLUX — Contesto per Claude Code
 
 ## Cos'è il progetto
-Piattaforma SaaS (v5.5) per la gestione automatizzata dei costi di ristoranti.
+Piattaforma SaaS (prodotto v5.5) per la gestione automatizzata dei costi di ristoranti.
 Analizza fatture elettroniche XML/P7M/PDF, categorizza prodotti con AI (GPT-4o-mini),
 genera report su margini, prezzi fornitori, foodcost.
 
 **Owner:** Mattia D'Avolio — sviluppatore singolo. 2 clienti in test + 1 operativo.
+**Go-live clienti:** 1 luglio 2026.
 
 ---
 
 ## Architettura attuale
 
+Il frontend di **produzione è Next.js** su Vercel (`app.oneflux.it`). Streamlit è
+stato **dismesso** con lo switch DNS dell'8/6/2026: `app.py`, `pages/*.py` e
+`components/*.py` (Python) sono **legacy congelato**, non più serviti ai clienti —
+non aggiungerci feature. Il container Railway serve il worker FastAPI, non Streamlit
+(vedi `docker/docker-entrypoint.sh`).
+
 | Layer | Percorso | Note |
 |---|---|---|
-| Frontend | `app.py` + `pages/*.py` | Streamlit multi-page — in migrazione a Next.js |
+| Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — ~17 pagine app + auth/legal/mobile, ~150 route API |
+| Frontend (legacy) | `app.py` + `pages/*.py` + `components/*.py` | Streamlit storico, DISMESSO 8/6 — non serve più ai clienti, non estendere |
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
-| Componenti riusabili | `components/*.py` | category_editor, dashboard_renderer, ecc. |
-| Utilità | `utils/*.py` | Formatters, validatori, sidebar helpers |
+| Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` | FastAPI — `/health`, `/api/classify`, `/api/parse` |
-| Worker async | `worker/run.py` | Processo separato per operazioni pesanti |
-| Edge Functions | `supabase/functions/` | Deno — webhook Invoicetronic |
+| Worker API | `services/fastapi_worker.py` (~7450 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
+| Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | ~760 test pytest |
+| Test | `tests/*.py` | ~9500 test pytest (molti parametrizzati) + test Deno per le Edge Functions |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
@@ -36,28 +43,32 @@ genera report su margini, prezzi fornitori, foodcost.
 3. **Chiave Supabase**: usare sempre `service_role_key` (non `key`) — non toccare `services/__init__.py` senza capire l'auth flow.
 4. **`ADMIN_EMAILS`** normalizzato lowercase — confronti email sempre `.strip().lower()`.
 5. **Soft delete**: query su `fatture` e `prodotti` devono filtrare `deleted_at IS NULL`. Usare `filter_active()` da `services.db_service`. Non rimuovere `.not_.is_("deleted_at", "null")` nelle query cestino (quelle sono intenzionali).
-6. **Worker separato**: operazioni pesanti (classificazione AI, parsing fatture) vanno nel worker — non bloccare il thread Streamlit.
+6. **Worker separato**: operazioni pesanti (classificazione AI, parsing fatture) vanno nel worker FastAPI / queue-worker — il frontend Next.js non esegue logica pesante, chiama le route `/api/*` del worker.
 
 ---
 
 ## Stato della migrazione Next.js
 
-Riferimento: `ONEFLUX_MASTER.md` (visione + piano + stato + roadmap)
+Riferimento: `ONEFLUX_MASTER.md` (visione + piano + stato + roadmap).
+Stato sintetico migrazione: `DOCUMENTAZIONE/DOC COMPLETA/MIGRAZIONE_NEXTJS.md`.
 
-- **Fase 0-1b** ✅ — Next.js 16 online su `nuovo.oneflux.it`, design system completo
-- **Fase 5** ✅ — Ricavi e Margini chiusa e consolidata (hardening 29/5)
-- **Prossimo**: Scadenziario → Cestino → Reset password → Home AI
+- **Migrazione COMPLETATA** ✅ — switch DNS 8/6/2026, `app.oneflux.it` → Next.js su Vercel, Streamlit dismesso (dominio `nuovo.oneflux.it` rimosso).
+- Tutte le sezioni principali sono su Next.js (Home/Briefing, Ricavi e Margini, Prezzi, Analisi Fatture, Scadenziario, Cestino, Catena, Agenda, Workspace, Admin, mobile `/m`).
+- Lavoro in corso post-migrazione: rifinitura Admin Panel, landing/SEO pubblica, feature roadmap (vedi `IMPLEMENTAZIONI.md`).
 
 ---
 
 ## Comandi utili
 
 ```powershell
-# Test
+# Test suite Python
 python -m pytest tests/
 
-# Avvia app locale
-streamlit run app.py
+# Avvia il frontend Next.js (produzione) in locale
+cd apps/web; npm install; npm run dev          # :3000
+
+# Avvia il worker FastAPI in locale
+python -m services.fastapi_worker              # API su :8000
 
 # Esporta schema OpenAPI (dopo modifiche a fastapi_worker.py)
 python scripts/export_openapi.py
@@ -65,6 +76,9 @@ python scripts/export_openapi.py
 # Verifica drift schema
 python scripts/export_openapi.py --check-drift
 ```
+
+> Guida completa servizi locali: `DEV_SERVICES_GUIDE.md`.
+> `streamlit run app.py` è LEGACY (frontend dismesso) — non usare per sviluppo nuovo.
 
 ---
 

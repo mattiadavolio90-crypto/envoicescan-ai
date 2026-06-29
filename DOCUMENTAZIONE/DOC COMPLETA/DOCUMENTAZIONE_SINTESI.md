@@ -34,8 +34,8 @@ Piattaforma SaaS AI-first per ristoratori italiani. Automatizza l'analisi delle 
 
 | Layer | Tecnologia | Note |
 |-------|-----------|------|
-| Frontend | Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 | Vercel, `nuovo.oneflux.it` |
-| Frontend legacy | Streamlit | Railway, `app.oneflux.it` (fino Fase 10) |
+| Frontend | Next.js 16 + Tailwind v4 + shadcn/ui v4 | Vercel, `app.oneflux.it` (produzione) |
+| Frontend legacy | Streamlit (`app.py` + `pages/`) | DISMESSO 8/6 — codice congelato nel repo, non servito |
 | Backend API | FastAPI + Uvicorn | 122+ endpoint, Railway, threadpool 100 thread |
 | Database | Supabase PostgreSQL 15 | EU Frankfurt, RLS attivo, `service_role_key` |
 | Edge Function | Deno / TypeScript | Supabase, `invoicetronic-webhook` |
@@ -302,4 +302,4 @@ python scripts/export_openapi.py --check-drift
 
 ---
 
-*Sintesi v6.0 — 5 Giugno 2026 | Per dettagli tecnici: [DOCUMENTAZIONE_COMPLETA.md](DOCUMENTAZIONE_COMPLETA.md)*
+*Sintesi v6.2 — 19 Giugno 2026 | Per dettagli tecnici: [DOCUMENTAZIONE_COMPLETA.md](DOCUMENTAZIONE_COMPLETA.md)*

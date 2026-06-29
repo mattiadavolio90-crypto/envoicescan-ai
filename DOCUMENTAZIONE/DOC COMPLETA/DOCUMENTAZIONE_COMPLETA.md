@@ -186,13 +186,17 @@ STRATO 3 — SERVIZI (pay-per-use, upselling)
            └──────────────────────────────────────┘
 ```
 
-### Coesistenza Streamlit + Next.js
+### Migrazione Streamlit → Next.js (completata)
 
-Durante il periodo di migrazione (Fasi 1–9), entrambi i frontend coesistono e puntano allo **stesso database Supabase**. Un cliente che carica una fattura su Streamlit la vede immediatamente anche su Next.js.
+Durante il periodo di migrazione (Fasi 1–9) i due frontend coesistevano sullo
+**stesso database Supabase**. Lo switch DNS definitivo è avvenuto **l'8/6/2026**:
 
-- `app.oneflux.it` → Streamlit (clienti attivi, legacy)
-- `nuovo.oneflux.it` → Next.js (nuovo frontend, clienti di test)
-- Switch DNS definitivo → Fase 10 (previsto dopo test completi)
+- `app.oneflux.it` → **Next.js** (Vercel) — unico frontend di produzione
+- Streamlit (`app.py` + `pages/`) → **dismesso**, codice legacy congelato nel repo
+- `nuovo.oneflux.it` (dominio temporaneo di test) → **rimosso**
+
+> Le sezioni di questo documento che descrivono Streamlit come "attivo" sono
+> storiche: oggi gira solo Next.js + worker FastAPI.
 
 ### Pattern architetturali
 
@@ -221,8 +225,8 @@ Durante il periodo di migrazione (Fasi 1–9), entrambi i frontend coesistono e 
 | Icone | Lucide React | |
 | Grafici | Recharts | Sparkline, line chart, donut |
 | Export XLS | SheetJS | Client-side, 3 fogli |
-| Legacy frontend | Streamlit | Resta attivo fino Fase 10 |
-| Grafici legacy | Plotly | Solo su Streamlit |
+| Legacy frontend | Streamlit | DISMESSO 8/6 — codice congelato nel repo, non servito |
+| Grafici legacy | Plotly | Solo su Streamlit (legacy, non più in produzione) |
 
 ### Backend
 
@@ -1003,8 +1007,8 @@ Vedi documento dedicato: [DEPLOY_INFRASTRUTTURA.md](DEPLOY_INFRASTRUTTURA.md)
 
 | Componente | Piattaforma | URL |
 |-----------|------------|-----|
-| Next.js frontend | Vercel | nuovo.oneflux.it |
-| Streamlit (legacy) | Railway / Streamlit Cloud | app.oneflux.it |
+| Next.js frontend (produzione) | Vercel | app.oneflux.it |
+| Streamlit | — | Dismesso (8/6/2026), codice legacy nel repo |
 | FastAPI Worker | Railway | Railway interno + URL pubblico |
 | Queue Worker | Railway | Nessun URL pubblico |
 | Database | Supabase | vthikmfpywilukizputn.supabase.co |
@@ -1121,6 +1125,6 @@ Vedi documento dedicato: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ---
 
-*Documentazione tecnica completa v6.0 — 5 Giugno 2026*
+*Documentazione tecnica completa v6.2 — 19 Giugno 2026*
 *Per lo stato dettagliato della migrazione Next.js: [MIGRAZIONE_NEXTJS.md](MIGRAZIONE_NEXTJS.md)*
 *Documento di riferimento vision/piano: `ONEFLUX_MASTER.md`*
