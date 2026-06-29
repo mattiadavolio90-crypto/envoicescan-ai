@@ -2443,6 +2443,34 @@ def _build_chat_system_prompt(
         except Exception as exc:
             logger.warning("chat: agenda di oggi non disponibile: %s", exc)
 
+    # 4) Alert attivi: righe da classificare + salute rosso. Iniettati nel prompt
+    # cosi' l'AI puo' citarli quando la risposta e' influenzata da dati incompleti.
+    alert_testo = ""
+    try:
+        user_id_str = str(user["id"])
+        q_nr = (
+            supabase_client.table("fatture")
+            .select("id", count="exact")
+            .eq("user_id", user_id_str)
+            .is_("deleted_at", "null")
+            .eq("needs_review", True)
+        )
+        if ristorante_id:
+            q_nr = q_nr.eq("ristorante_id", ristorante_id)
+        nr_count = (q_nr.execute().count) or 0
+        if nr_count > 0:
+            alert_testo += (
+                f"\n- ⚠️ {nr_count} righe fattura in attesa di classificazione"
+                f" (categoria 'Da Classificare'): questi prodotti NON rientrano"
+                f" nei calcoli di food cost e margine finché non vengono classificati."
+                f" Se un numero sembra basso o il food cost è n/d, potrebbe dipendere da questo."
+            )
+    except Exception as exc:
+        logger.warning("chat: alert needs_review non disponibile: %s", exc)
+
+    if alert_testo:
+        kpi_testo += f"\n\n## Avvisi attivi nell'app{alert_testo}"
+
     if not kpi_testo:
         kpi_testo = "\n\n(Nessun dato di costo o margine ancora registrato.)"
 
@@ -2517,7 +2545,14 @@ Formato ITALIANO sempre: punto per le migliaia, virgola per i decimali (es. €5
 Una risposta non è un muro di numeri: dai PRIMA il dato chiave (in grassetto), poi al massimo 1-2 numeri di contesto. Non elencare fatturato+MOL+food+spese tutti insieme se non te li hanno chiesti tutti.
 
 ## Proiezioni: onestà sui limiti
-NON fare previsioni su giorni futuri basandoti su tendenze generiche. Se mancano giorni al mese, dì solo: "mancano X giorni — il dato definitivo sarà disponibile a fine mese." Non dire "probabilmente resterà sotto" se non hai un dato concreto che lo supporta. Meglio tacere che inventare una tendenza.
+NON fare previsioni su giorni futuri o mesi futuri basandoti su tendenze generiche. Né per il mese corrente né per mesi successivi ("a luglio spenderai di più?"): non hai dati sugli ordini futuri, quindi non puoi saperlo. Rispondi: "Non posso prevederlo — posso dirti quanto hai speso nei mesi scorsi come riferimento." Meglio tacere che inventare una tendenza.
+
+## Dati incompleti o insufficienti: dichiaralo sempre
+Se i dati su cui stai rispondendo sono parziali, dichiaralo esplicitamente nella risposta:
+- Se mancano mesi di fatture: "sulla base dei dati presenti (gen-mar 2026) il food cost è X — se hai fatture non ancora caricate il valore cambierà."
+- Se ci sono righe Da Classificare (vedi Avvisi attivi): "questo valore potrebbe essere sottostimato: hai X righe non ancora classificate che non rientrano nel calcolo."
+- Se il dato è di un solo mese o periodo breve: "con un solo mese di dati è presto per trarre conclusioni — torna a fine trimestre per un quadro più solido."
+NON dare una risposta secca su un numero incompleto senza avvertire. Un numero parziale presentato come definitivo è peggio di nessun numero.
 
 ## Domande di follow-up: solo quando aggiungono valore
 NON chiudere ogni risposta con "Vuoi sapere altro?" o "Vuoi che controlli X?" come formula automatica. Proponi un follow-up SOLO se c'è davvero qualcosa di rilevante da aggiungere che l'utente probabilmente non ha ancora visto (es. un'anomalia collegata). Se la risposta è completa, fermati lì.
@@ -2560,7 +2595,7 @@ Regole per gli strumenti:
 - Per qualsiasi numero specifico (categoria, fornitore, prodotto, periodo preciso) usa SEMPRE lo strumento giusto — non rispondere a memoria.
 - Per domande generiche sull'andamento ("com'è il mio food cost?", "sto guadagnando?") usa i dati qui sotto.
 - query_costi cerca in automatico tra categorie, fornitori e prodotti: se cerchi "birra" e non c'e' come categoria, prova anche come prodotto. Fidati del risultato dello strumento.
-- Per CONFRONTARE due periodi ("ho speso più a marzo o ad aprile?", "quest'anno vs l'anno scorso") chiama query_costi DUE volte (una per periodo) e confronta tu i totali nella risposta.
+- Per CONFRONTARE due periodi ("ho speso più a marzo o ad aprile?", "quest'anno vs l'anno scorso") chiama query_costi DUE VOLTE IN PARALLELO nello stesso round (una per periodo) e confronta tu i totali nella risposta. Puoi chiamare più strumenti contemporaneamente nello stesso messaggio — fallo sempre quando le query sono indipendenti tra loro.
 - Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
 - Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
 - Per appuntamenti e impegni in agenda ("cosa ho oggi", "appuntamenti di questa settimana") usa query_appuntamenti.
