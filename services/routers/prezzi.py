@@ -700,7 +700,14 @@ def get_note_credito(
 
     note.sort(key=lambda x: x.data, reverse=True)
     n_docs = df_nc['file_origine'].nunique()
-    totale = round(df_nc['totale_riga'].abs().sum(), 2)
+    # Credito totale = somma del NETTO per documento (poi abs), NON dei valori
+    # assoluti riga-per-riga. Per una NC a segni misti (riaddebito + / storno -)
+    # il credito reale è il netto del documento (es. +2174.67 - 2072.47 = 102.20),
+    # non 4247.14. Raggruppo per file_origine così ogni NC contribuisce col suo
+    # netto e documenti distinti non si compensano tra loro.
+    totale = round(
+        df_nc.groupby('file_origine')['totale_riga'].sum().abs().sum(), 2
+    )
 
     return NoteCreditoResponse(note=note, totale_credito=totale, n_documenti=n_docs)
 
@@ -1292,8 +1299,13 @@ def _nc_credito_per_fornitore(sb, ristorante_id: str, data_da: str, data_a: str,
     if df_nc.empty:
         return {}
     df_nc["_forn_key"] = df_nc["fornitore"].astype(str).str.strip().str.upper()
-    grouped = df_nc.groupby("_forn_key")["totale_riga"].apply(lambda s: float(s.abs().sum()))
-    return grouped.to_dict()
+    # Credito per fornitore = somma del NETTO per documento (poi abs), coerente con
+    # get_note_credito: una NC a segni misti non deve gonfiare il credito sommando
+    # i valori assoluti riga-per-riga. Netto per (fornitore, documento) → abs →
+    # somma per fornitore.
+    netto_per_doc = df_nc.groupby(["_forn_key", "file_origine"])["totale_riga"].sum().abs()
+    grouped = netto_per_doc.groupby("_forn_key").sum()
+    return {k: float(v) for k, v in grouped.to_dict().items()}
 
 
 @router.get("/api/prezzi/score-fornitori", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])

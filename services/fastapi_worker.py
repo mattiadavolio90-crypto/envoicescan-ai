@@ -49,6 +49,22 @@ def _oggi_rome() -> date:
     from zoneinfo import ZoneInfo
     return datetime.now(tz=ZoneInfo("Europe/Rome")).date()
 
+
+def _sanitize_postgrest_term(termine: object) -> str:
+    """Ripulisce un termine prima di interpolarlo in un filtro PostgREST .or_().
+
+    .or_() prende una stringa di filtro RAW (categoria.ilike.%X%,descrizione...):
+    virgole/parentesi/asterischi nel termine possono alterare la sintassi del
+    gruppo OR. NON e' una falla cross-tenant (l'isolamento .eq("user_id") resta un
+    filtro AND di primo livello impostato in Python), ma un termine "sporco" puo'
+    rompere la query. I termini arrivano dal modello AI: li rendiamo inerti
+    togliendo i metacaratteri PostgREST. % e _ (wildcard ilike) sono ammessi.
+    """
+    s = str(termine or "")
+    for ch in (",", "(", ")", "*", ":", "\\", "\"", "'"):
+        s = s.replace(ch, " ")
+    return " ".join(s.split()).strip()
+
 from dotenv import load_dotenv
 
 # Carica .env dalla root progetto indipendentemente dalla working directory.
@@ -2555,8 +2571,8 @@ def _chat_top_cat_forn(
     except Exception as exc:
         logger.warning("chat: RPC top cat/forn non disponibile, fallback Python: %s", exc)
 
-    from datetime import date as _date, timedelta as _td
-    da = (_date.today() - _td(days=giorni)).isoformat()
+    from datetime import timedelta as _td
+    da = (_oggi_rome() - _td(days=giorni)).isoformat()
     q = (
         supabase_client.table("fatture")
         .select("totale_riga,categoria,fornitore")
@@ -2667,15 +2683,19 @@ def _build_chat_system_prompt(
     # sono opzionali e non vengono mai segnalati come problema.
     alert_testo = ""
     try:
-        from datetime import date as _da, timedelta as _tda
+        from datetime import timedelta as _tda
+        from calendar import monthrange as _monthrange
         user_id_str = str(user["id"])
-        _oggi_a = _da.today()
+        _oggi_a = _oggi_rome()  # Europe/Rome, non UTC: niente sfasamento notturno
         if _oggi_a.month == 1:
             _mc_anno, _mc_mese = _oggi_a.year - 1, 12
         else:
             _mc_anno, _mc_mese = _oggi_a.year, _oggi_a.month - 1
         _mc_inizio = f"{_mc_anno}-{_mc_mese:02d}-01"
-        _mc_fine = f"{_mc_anno}-{_mc_mese:02d}-28"  # safe lower bound
+        # Ultimo giorno REALE del mese precedente: mai "-31" hardcoded (giugno=30,
+        # febbraio=28/29 → "2026-06-31" è una data invalida e fa fallire la query).
+        _mc_ultimo_g = _monthrange(_mc_anno, _mc_mese)[1]
+        _mc_fine = f"{_mc_anno}-{_mc_mese:02d}-{_mc_ultimo_g:02d}"
 
         # Alert 1: fatture fornitori mancanti nel mese precedente
         try:
@@ -2685,7 +2705,7 @@ def _build_chat_system_prompt(
                 .eq("user_id", user_id_str)
                 .is_("deleted_at", "null")
                 .gte("data_documento", _mc_inizio)
-                .lte("data_documento", f"{_mc_anno}-{_mc_mese:02d}-31")
+                .lte("data_documento", _mc_fine)
             )
             if ristorante_id:
                 q_fat = q_fat.eq("ristorante_id", ristorante_id)
@@ -2772,7 +2792,7 @@ def _build_chat_system_prompt(
                 .is_("deleted_at", "null")
                 .ilike("categoria", "%SPESE%")
                 .gte("data_documento", _mc_inizio)
-                .lte("data_documento", f"{_mc_anno}-{_mc_mese:02d}-31")
+                .lte("data_documento", _mc_fine)
             )
             if ristorante_id:
                 q_spese_auto = q_spese_auto.eq("ristorante_id", ristorante_id)
@@ -3289,7 +3309,8 @@ def _chat_query_costi(
                 q = q.ilike("descrizione", f"%{termine_val}%")
             elif termine_su == "ovunque":
                 # categoria OR descrizione: cattura sia "birra" categoria che prodotto
-                q = q.or_(f"categoria.ilike.%{termine_val}%,descrizione.ilike.%{termine_val}%")
+                _tv = _sanitize_postgrest_term(termine_val)
+                q = q.or_(f"categoria.ilike.%{_tv}%,descrizione.ilike.%{_tv}%")
         # Ordina per data desc: se il limite tronca su clienti con molte righe,
         # conserva le piu' recenti invece di un taglio arbitrario.
         return (q.order("data_documento", desc=True).limit(_CHAT_COSTI_LIMIT).execute().data) or []
@@ -3412,10 +3433,10 @@ def _chat_query_appuntamenti(
 
     Sola lettura. Default: da oggi ai prossimi 7 giorni — copre 'oggi' e 'questa
     settimana' senza affollare. Fonte = stessa tabella della vista Appuntamenti."""
-    from datetime import date as _date, timedelta as _td
+    from datetime import timedelta as _td
     if not ristorante_id:
         return {"appuntamenti": [], "da": da, "a": a}
-    oggi = _date.today()
+    oggi = _oggi_rome()  # Europe/Rome: 'oggi/questa settimana' coerenti per il cliente IT
     d_da = da or oggi.isoformat()
     d_a = a or (oggi + _td(days=7)).isoformat()
     righe = (
@@ -3462,7 +3483,7 @@ def _chat_ultimi_acquisti(
     if ristorante_id:
         q = q.eq("ristorante_id", ristorante_id)
     if prodotto:
-        q = q.or_(f"descrizione.ilike.%{prodotto}%,categoria.ilike.%{prodotto}%")
+        q = q.or_((lambda _p: f"descrizione.ilike.%{_p}%,categoria.ilike.%{_p}%")(_sanitize_postgrest_term(prodotto)))
     if fornitore:
         q = q.ilike("fornitore", f"%{fornitore}%")
 
@@ -3496,12 +3517,12 @@ def _chat_trend_prezzo(
     Prezzo medio ponderato per mese (somma totale_riga / somma quantita') sugli
     ultimi 6 mesi con acquisti; confronta il primo mese utile con l'ultimo.
     """
-    from datetime import date as _date, timedelta as _td
+    from datetime import timedelta as _td
 
     if not prodotto or not prodotto.strip():
         return {"prodotto": prodotto, "punti": [], "variazione_pct": None}
 
-    da = (_date.today() - _td(days=210)).isoformat()  # ~7 mesi di finestra
+    da = (_oggi_rome() - _td(days=210)).isoformat()  # ~7 mesi di finestra
     q = (
         supabase_client.table("fatture")
         .select("descrizione,fornitore,prezzo_unitario,quantita,totale_riga,data_documento")
@@ -3513,7 +3534,7 @@ def _chat_trend_prezzo(
     if ristorante_id:
         q = q.eq("ristorante_id", ristorante_id)
     # Cerca su descrizione OR categoria (tollerante come query_costi)
-    q = q.or_(f"descrizione.ilike.%{prodotto}%,categoria.ilike.%{prodotto}%")
+    q = q.or_((lambda _p: f"descrizione.ilike.%{_p}%,categoria.ilike.%{_p}%")(_sanitize_postgrest_term(prodotto)))
     # Ordina per data desc: il trend usa la finestra ~7 mesi, se tronca conserva
     # i mesi piu' recenti (quelli che servono al confronto primo<->ultimo).
     righe = (q.order("data_documento", desc=True).limit(5000).execute().data) or []
@@ -3664,9 +3685,9 @@ def _chat_confronto_prezzi(
 ) -> Dict[str, Any]:
     """Confronta il prezzo unitario di un prodotto tra i fornitori (ultimi 180gg).
     Cuore di ONEFLUX: trova chi lo fa al prezzo migliore."""
-    from datetime import date as _date, timedelta as _td
+    from datetime import timedelta as _td
     user_id = str(user["id"])
-    da = (_date.today() - _td(days=180)).isoformat()
+    da = (_oggi_rome() - _td(days=180)).isoformat()
     q = (
         supabase_client.table("fatture")
         .select("descrizione,fornitore,prezzo_unitario,data_documento")
@@ -3674,7 +3695,7 @@ def _chat_confronto_prezzi(
         .is_("deleted_at", "null")
         # Tollerante come gli altri tool: cerca su descrizione OR categoria, cosi'
         # "mozzarella" trova anche righe categorizzate ma con descrizione diversa.
-        .or_(f"descrizione.ilike.%{prodotto}%,categoria.ilike.%{prodotto}%")
+        .or_((lambda _p: f"descrizione.ilike.%{_p}%,categoria.ilike.%{_p}%")(_sanitize_postgrest_term(prodotto)))
         .gte("data_documento", da)
     )
     if ristorante_id:
@@ -3749,6 +3770,19 @@ def chat_ai(
             status_code=403,
             detail="La chat dell'assistente di catena è disattivata. Riattivala da «Configura assistente».",
         )
+
+    # Sede: rispetta il toggle chat_ai_enabled (lo imposta il cliente in «Configura
+    # assistente» o l'admin per contenere abusi). Il gating frontend è solo
+    # cosmetico: senza questo controllo un client potrebbe chiamare /api/chat
+    # direttamente e consumare quota/costi OpenAI a chat "spenta". Simmetrico al
+    # gate catena. Default True se la preferenza non è impostata.
+    if not is_catena and ristorante_id:
+        _pref_chat = _get_assistant_preferences(ristorante_id, supabase_client)
+        if _pref_chat.get("chat_ai_enabled") is False:
+            raise HTTPException(
+                status_code=403,
+                detail="La chat dell'assistente è disattivata per questa sede. Riattivala da «Configura assistente».",
+            )
 
     # Rate limit giornaliero atomico (RPC): conta+inserisce in un solo statement
     # PRIMA della chiamata OpenAI. Elimina la race (N richieste concorrenti che

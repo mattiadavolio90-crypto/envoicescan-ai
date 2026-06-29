@@ -159,20 +159,26 @@ def tocca_sessione(token: str, supabase_client=None) -> None:
         logger.exception("Errore aggiornamento last_seen_at sessione (non bloccante)")
 
 
-def revoca_tutte_sessioni(user_id: str, supabase_client=None) -> int:
-    """Revoca TUTTE le sessioni attive di un utente (logout globale: cambio password,
-    trial scaduto, logout forzato di sicurezza). Ritorna il numero di sessioni revocate."""
+def revoca_tutte_sessioni(user_id: str, supabase_client=None, escludi_token: str | None = None) -> int:
+    """Revoca le sessioni attive di un utente (logout globale: cambio password,
+    trial scaduto, logout forzato di sicurezza). Ritorna il numero di sessioni revocate.
+
+    `escludi_token`: se passato, NON revoca quella sessione (per il cambio password
+    self-service: slogga gli altri dispositivi ma tiene attivo quello corrente).
+    """
     if not user_id:
         return 0
     try:
         sb = _client(supabase_client)
-        res = (
+        q = (
             sb.table("sessioni")
             .update({"revoked_at": _now_iso()})
             .eq("user_id", str(user_id))
             .is_("revoked_at", "null")
-            .execute()
         )
+        if escludi_token:
+            q = q.neq("token", escludi_token)
+        res = q.execute()
         return len(res.data or [])
     except Exception:
         logger.exception("Errore revoca tutte le sessioni")

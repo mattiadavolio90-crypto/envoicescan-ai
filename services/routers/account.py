@@ -201,6 +201,15 @@ def account_cambia_password(
         "password_changed_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", user_id).execute()
 
+    # Cambio password = logout dagli ALTRI dispositivi (la sessione corrente resta
+    # attiva, così l'utente non viene sloggato subito dopo il cambio). Best-effort.
+    try:
+        from services.session_service import revoca_tutte_sessioni
+        token_corrente = (authorization or "").split(" ", 1)[-1].strip() or None
+        revoca_tutte_sessioni(user_id, sb, escludi_token=token_corrente)
+    except Exception:
+        pass
+
     return {"ok": True}
 
 

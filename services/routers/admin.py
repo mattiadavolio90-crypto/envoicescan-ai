@@ -2270,7 +2270,13 @@ def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_adm
     email_inviata = _brevo_send(u["email"], nome_safe, "Reset Password — ONEFLUX", html_body, contesto="reset")
 
     logger.info("admin_reset_password: cliente=%s | admin=%s | email_inviata=%s", cliente_id, admin_user.get("email"), email_inviata)
-    return {"ok": True, "email_inviata": email_inviata, "link": link}
+    # Il link contiene il token reset in chiaro: lo restituisco solo come fallback
+    # quando Brevo non ha inviato l'email (così l'admin può girarlo a mano), non di
+    # default — evita di esporre il token nella response/log quando non serve.
+    out = {"ok": True, "email_inviata": email_inviata}
+    if not email_inviata:
+        out["link"] = link
+    return out
 
 
 class ImpostaPasswordBody(BaseModel):
@@ -2314,7 +2320,14 @@ def admin_imposta_password(
         "session_token": None,
     }).eq("id", cliente_id).execute()
 
-    logger.info("admin_imposta_password: cliente=%s | admin=%s", cliente_id, admin_user.get("email"))
+    # Estromette davvero il cliente: con il sistema multi-token la sessione vive
+    # nella tabella `sessioni`, non in users.session_token (legacy). Senza questo
+    # il cliente (o chi detiene il suo token) resterebbe loggato dopo il reset.
+    from services.session_service import revoca_tutte_sessioni
+    n_revocate = revoca_tutte_sessioni(cliente_id, sb)
+
+    logger.info("admin_imposta_password: cliente=%s | admin=%s | sessioni_revocate=%d",
+                cliente_id, admin_user.get("email"), n_revocate)
     return {"ok": True, "email": u["email"], "attivo": True}
 
 
@@ -2351,7 +2364,12 @@ def admin_cambia_email(
         "session_token": None,
         "session_token_created_at": None,
     }).eq("id", cliente_id).execute()
-    logger.info("admin_cambia_email: %s → %s | admin=%s", old_email, new_email, admin_user.get("email"))
+
+    # Invalida le sessioni multi-token (tabella `sessioni`), non solo il token legacy.
+    from services.session_service import revoca_tutte_sessioni
+    n_revocate = revoca_tutte_sessioni(cliente_id, sb)
+    logger.info("admin_cambia_email: %s → %s | admin=%s | sessioni_revocate=%d",
+                old_email, new_email, admin_user.get("email"), n_revocate)
     return {"ok": True}
 
 

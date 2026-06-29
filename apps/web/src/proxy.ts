@@ -30,32 +30,41 @@ function isHostApp(req: NextRequest): boolean {
 }
 
 export function proxy(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-  const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
+  // Il proxy gira a edge ed e' il single-point-of-failure del routing: se lancia
+  // un'eccezione imprevista ogni rotta che matcha andrebbe in 500. Avvolgiamo
+  // tutto in try/catch e in caso di errore lasciamo proseguire (NextResponse.next):
+  // l'auth e' comunque garantita dalla difesa in profondita' in (app)/layout.tsx.
+  try {
+    const { pathname } = req.nextUrl;
+    const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
 
-  // Sul dominio app, "/" -> /dashboard (poi il layout manda a /login se serve).
-  // La landing resta invisibile su app.oneflux.it.
-  if (pathname === "/" && isHostApp(req)) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    // Sul dominio app, "/" non mostra mai la landing. Se l'utente ha la sessione
+    // -> /dashboard; se non ce l'ha -> direttamente /login (un hop in meno, niente
+    // /dashboard intermedio che il layout rimanderebbe comunque al login).
+    if (pathname === "/" && isHostApp(req)) {
+      const url = req.nextUrl.clone();
+      url.pathname = hasSession ? "/dashboard" : "/login";
+      return NextResponse.redirect(url);
+    }
+
+    // La root "/" e' la landing pubblica (app/page.tsx): la lasciamo passare
+    // (sul dominio vetrina; sul dominio app e' gia' stata rediretta sopra).
+    const isPublic =
+      pathname === "/" ||
+      PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+
+    // Rotta protetta senza sessione -> manda al login conservando la destinazione.
+    if (!isPublic && !hasSession) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url);
+    }
+
+    return NextResponse.next();
+  } catch {
+    return NextResponse.next();
   }
-
-  // La root "/" e' la landing pubblica (app/page.tsx): la lasciamo passare
-  // (sul dominio vetrina; sul dominio app e' gia' stata rediretta sopra).
-  const isPublic =
-    pathname === "/" ||
-    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-
-  // Rotta protetta senza sessione -> manda al login conservando la destinazione.
-  if (!isPublic && !hasSession) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {

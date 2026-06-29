@@ -445,3 +445,60 @@ class TestRighePrezzoZero:
         righe = _run_estrai_xml(_xml_td01_discount_comma_decimal())
         assert len(righe) == 1
         assert righe[0]['Totale_Riga'] == 76.0
+
+
+class TestGuardrailNoteConImporto:
+    """Il guardrail NOTE nel parser XML: una riga classificata
+    '📝 NOTE E DICITURE' con importo != 0 NON può restare NOTE e NON deve finire
+    in una categoria inventata (niente fallback travestito in SERVIZI E
+    CONSULENZE). Deve tornare a 'Da Classificare' + needs_review, così resta in
+    coda e fuori dai margini. Regressione del flusso onesto (CLAUDE.md regole #1/#2)."""
+
+    def _run_con_categoria_note(self, xml_bytes, user_id='user_test'):
+        """Come _run_estrai_xml ma forza categorizza_con_memoria a restituire NOTE."""
+        import sys
+        import importlib
+        sys.modules.pop('xmltodict', None)
+        real_xmltodict = importlib.import_module('xmltodict')
+        from services.invoice_service import estrai_dati_da_xml
+
+        file_mock = io.BytesIO(xml_bytes)
+        file_mock.name = 'test_fattura.xml'
+
+        def _session_state_get(key, default=None):
+            if key == 'user_data':
+                return {'id': user_id}
+            return default
+
+        mock_st = MagicMock()
+        mock_st.session_state.get = _session_state_get
+
+        with patch('services.invoice_service.st', mock_st), \
+             patch('services.invoice_service.xmltodict', real_xmltodict), \
+             patch('services.ai_service.carica_memoria_completa', return_value=None), \
+             patch('services.ai_service.categorizza_con_memoria',
+                   return_value=('📝 NOTE E DICITURE', False)):
+            return estrai_dati_da_xml(file_mock)
+
+    def test_note_con_importo_non_resta_servizi(self):
+        """Riga NOTE con importo != 0 NON deve diventare 'SERVIZI E CONSULENZE'."""
+        righe = self._run_con_categoria_note(_xml_td04_minimal())  # importo -20.00
+        assert len(righe) >= 1
+        assert righe[0]['Categoria'] != 'SERVIZI E CONSULENZE', \
+            "Il guardrail NON deve più inventare la categoria SERVIZI E CONSULENZE"
+
+    def test_note_con_importo_torna_da_classificare(self):
+        """Riga NOTE con importo != 0 deve tornare a 'Da Classificare' + needs_review."""
+        righe = self._run_con_categoria_note(_xml_td04_minimal())  # importo -20.00
+        assert len(righe) >= 1
+        assert righe[0]['Categoria'] == 'Da Classificare', \
+            f"Atteso 'Da Classificare', trovato {righe[0]['Categoria']!r}"
+        assert righe[0]['needs_review'] is True, \
+            "Una riga riportata a Da Classificare deve restare in coda (needs_review)"
+
+    def test_note_con_importo_zero_resta_note(self):
+        """Contro-prova: una dicitura a importo 0 resta legittimamente in NOTE."""
+        righe = self._run_con_categoria_note(_xml_td01_zero_price_with_description())
+        assert len(righe) == 1
+        assert righe[0]['Categoria'] == '📝 NOTE E DICITURE', \
+            "Una dicitura a importo zero deve poter restare in NOTE E DICITURE"

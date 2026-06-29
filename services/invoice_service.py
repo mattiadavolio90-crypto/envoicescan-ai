@@ -1133,14 +1133,21 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                         f"🔍 NEEDS_REVIEW (fornitore sorvegliato): '{fornitore}' → needs_review=True, cat={categoria_finale}"
                     )
 
-                if categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario != 0:
-                    # GUARDRAIL: NOTE E DICITURE consentita solo per righe a importo zero.
-                    # Esteso a importi negativi (oltre ai positivi già coperti) per coerenza.
+                # GUARDRAIL NOTE: "📝 NOTE E DICITURE" è consentita SOLO per righe a
+                # importo zero. Con importo != 0 la riga NON può restare NOTE e NON va
+                # in una categoria inventata (niente fallback travestito in SERVIZI):
+                # torna a "Da Classificare" così resta visibile in coda e fuori dai
+                # margini finché il cliente non la classifica. Coerente con il worker
+                # (_applica_guardrail_note_con_importo) e con upload/PDF. Uso il totale
+                # riga (fallback al prezzo unitario) per coprire anche il caso
+                # prezzo_unitario==0 ma totale!=0.
+                _imp_guardrail = totale_riga if totale_riga not in (None, 0) else prezzo_unitario
+                if categoria_finale == "📝 NOTE E DICITURE" and _imp_guardrail not in (None, 0):
                     needs_review = True
-                    categoria_finale = "SERVIZI E CONSULENZE"
+                    categoria_finale = "Da Classificare"
                     logger.warning(
-                        f"⚠️ GUARDRAIL NOTE→SERVIZI: '{descrizione[:50]}' con €{prezzo_unitario:.2f} "
-                        f"non può restare NOTE E DICITURE → categoria corretta nel DB"
+                        f"⚠️ GUARDRAIL NOTE→Da Classificare: '{descrizione[:50]}' con €{_imp_guardrail:.2f} "
+                        f"non può restare NOTE E DICITURE → resta in coda, fuori dai margini"
                     )
 
                 # Segnali deterministici di categorizzazione poco affidabile
