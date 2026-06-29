@@ -2726,7 +2726,7 @@ def _chat_esegui_tool_gruppo(nome: str, args: Dict[str, Any], authorization: Opt
     return {"errore": f"strumento sconosciuto: {nome}"}
 
 
-_CHAT_MAX_ROUND = 3
+_CHAT_MAX_ROUND = 2
 
 
 def _chat_loop_openai(client, messages, tools, esegui_tool, *, log_ctx: str = "chat"):
@@ -2752,7 +2752,7 @@ def _chat_loop_openai(client, messages, tools, esegui_tool, *, log_ctx: str = "c
         # 1 retry su errori transienti (timeout/5xx). forza_testo => niente tool.
         kwargs: Dict[str, Any] = dict(
             model=CHAT_MODEL, messages=messages,
-            max_tokens=900, temperature=0.3,
+            max_tokens=600, temperature=0.1,
         )
         if not forza_testo:
             kwargs["tools"] = tools
@@ -2823,7 +2823,7 @@ def _chat_loop_openai(client, messages, tools, esegui_tool, *, log_ctx: str = "c
 # righe sono poche; questo tetto morde solo su "tutto lo storico" senza filtri di
 # un cliente molto grande. Se viene raggiunto, lo segnaliamo all'AI (totale
 # parziale) invece di spacciarlo per completo.
-_CHAT_COSTI_LIMIT = 8000
+_CHAT_COSTI_LIMIT = 3000
 
 # Mesi italiani -> numero, per interpretare i periodi richiesti via chat.
 _MESI_MAP = {
