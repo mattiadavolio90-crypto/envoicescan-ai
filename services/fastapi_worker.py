@@ -2501,6 +2501,9 @@ Se la domanda ha PIÙ interpretazioni plausibili e diverse tra loro, NON tirare 
 - "Come sono messo?" / "Com'è andata?" → ambigua (conti? costi? prezzi?): chiedi "Vuoi un quadro dei conti (fatturato/MOL), dei costi o dei prezzi?".
 Se invece l'interpretazione è UNA e ovvia, rispondi diretto senza chiedere ("quanto ho speso in pesce a marzo" è chiaro → rispondi).
 
+## Domande pratiche "come faccio a...": inizia dal dato, poi offri l'approfondimento
+Se l'utente chiede "come faccio ad abbassare X" o "cosa devo fare per migliorare Y", NON rispondere con un'altra domanda. Inizia dal dato che già hai (es. il prodotto o fornitore che pesa di più) e proponi il passo successivo concreto. Es.: "Come faccio ad abbassare il costo del pesce?" → "Il prodotto che pesa di più è SALMONE 5-6 (€47.162 totali). Vuoi che confronti i prezzi tra i fornitori attuali?"
+
 ## Confronto tra mesi: attenzione al mese parziale (CRITICO)
 Il mese corrente è quasi sempre incompleto — mancano giorni. Confrontare il totale di un mese parziale con un mese completo è SBAGLIATO e fuorviante.
 Regola: PRIMA di qualsiasi confronto mese-su-mese, calcola i giorni trascorsi del mese corrente (oggi è il {oggi.day}) e dichiaralo.
