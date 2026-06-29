@@ -27,16 +27,6 @@ function CtaButton({ className }: { className?: string }) {
         <ArrowRight className="size-5" />
       </a>
       <span className="text-sm text-muted-foreground">{CTA.nota}</span>
-      {/* contatto soft per chi vuole parlare prima di provare */}
-      <a
-        href={waLink("Ciao! Ho qualche dubbio su ONEFLUX, posso chiedervi?")}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
-      >
-        <MessageCircle className="size-4" />
-        {CTA.dubbi}
-      </a>
     </div>
   );
 }
@@ -60,19 +50,6 @@ export function LandingPage() {
 
   return (
     <div className="bg-background text-foreground">
-      {/* Accedi discreto, fisso in alto a destra */}
-      <header className="fixed inset-x-0 top-0 z-50">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
-          <Logo size={26} />
-          <Link
-            href={LANDING.nav.accediHref}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {LANDING.nav.accediLabel}
-          </Link>
-        </div>
-      </header>
-
       <main>
         {/* ===== SCENA 0 — Aggancio + Specchio (FUSE, niente kicker) ===== */}
         <Scene className="bg-[#05070A]">
@@ -206,7 +183,7 @@ export function LandingPage() {
             <CtaButton className="mt-10" />
           </Reveal>
           <Reveal delay={660}>
-            <p className="mt-8 pb-2 font-display text-base text-muted-foreground">{s.invito.firma}</p>
+            <p className="mt-8 pb-2 font-display text-base font-medium text-primary">{s.invito.firma}</p>
           </Reveal>
         </Scene>
 
@@ -232,7 +209,12 @@ export function LandingPage() {
                     <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       {p.nome}
                     </p>
-                    <p className="mt-3 font-display text-5xl font-bold">{p.prezzo}</p>
+                    <p className="mt-3 font-display text-5xl font-bold">
+                      {p.prezzo}
+                      <span className="ml-1 align-top text-sm font-medium text-muted-foreground">
+                        {LANDING.piani.iva}
+                      </span>
+                    </p>
                     <p className="text-sm text-muted-foreground">/mese</p>
                     <div className="mt-6 space-y-2 text-sm">
                       <p className="flex items-center justify-center gap-2">
@@ -261,8 +243,7 @@ export function LandingPage() {
                 </Reveal>
               ))}
             </div>
-            <p className="mt-6 text-center text-xs text-muted-foreground">{LANDING.piani.iva}</p>
-            <p className="mt-4 text-center text-sm text-muted-foreground">{LANDING.piani.catena}</p>
+            <p className="mt-8 text-center text-sm text-muted-foreground">{LANDING.piani.catena}</p>
             <div className="mt-12">
               <CtaButton />
             </div>

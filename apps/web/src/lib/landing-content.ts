@@ -17,8 +17,6 @@ export const LANDING = {
   cta: {
     label: "Inizia ora — 7 giorni gratis",
     nota: "Senza carta, senza obblighi",
-    // Invito soft per chi vuole parlare prima di provare (rettifica §G).
-    dubbi: "Hai dubbi? Scrivici su WhatsApp",
     // Attivazione via WhatsApp: l'account lo configura Mattia.
   },
 
@@ -115,7 +113,7 @@ export const LANDING = {
       { nome: "Plus", prezzo: "59€", fatture: "100 fatture / mese", ai: "20 domande AI / giorno", evidenza: true },
       { nome: "Pro", prezzo: "79€", fatture: "200 fatture / mese", ai: "30 domande AI / giorno", evidenza: false },
     ],
-    iva: "Prezzi IVA esclusa.",
+    iva: "+IVA",
     catena: "Più locali? C'è la modalità catena, su ogni piano",
   },
 
@@ -124,7 +122,7 @@ export const LANDING = {
   footer: {
     tagline: "La tecnologia che la tua gestione aspettava",
     whatsappLabel: "Scrivici su WhatsApp",
-    email: "info@oneflux.it",
+    email: "mattia.davolio@recomasystem.it",
     privacyHref: "/privacy",
     terminiHref: "/termini",
     recoma: "In collaborazione con Recoma System",
