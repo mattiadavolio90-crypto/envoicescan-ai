@@ -197,17 +197,16 @@ export function LandingPage() {
                 {LANDING.piani.title}
               </h2>
             </Reveal>
+            <Reveal delay={120}>
+              <p className="mx-auto mt-4 max-w-2xl text-center text-base text-muted-foreground">
+                {LANDING.piani.sottotitolo}
+              </p>
+            </Reveal>
+            {/* Card tutte uguali: nessun piano in risalto (cambia solo il volume). */}
             <div className="mt-12 grid gap-6 md:grid-cols-3">
               {LANDING.piani.lista.map((p, i) => (
                 <Reveal key={p.nome} delay={i * 100}>
-                  <div
-                    className={cn(
-                      "relative flex h-full flex-col items-center rounded-2xl border bg-card/60 p-7 text-center",
-                      p.evidenza
-                        ? "border-primary ring-2 ring-primary/40"
-                        : "border-border ring-1 ring-foreground/5",
-                    )}
-                  >
+                  <div className="relative flex h-full flex-col items-center rounded-2xl border border-border bg-card/60 p-7 text-center ring-1 ring-foreground/5">
                     <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       {p.nome}
                     </p>
@@ -232,12 +231,7 @@ export function LandingPage() {
                       href={waLink(`Ciao! Vorrei provare ONEFLUX, piano ${p.nome}.`)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={cn(
-                        "mt-7 inline-flex w-full items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors",
-                        p.evidenza
-                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                          : "border border-border hover:bg-muted",
-                      )}
+                      className="mt-7 inline-flex w-full items-center justify-center rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
                     >
                       Inizia
                     </a>

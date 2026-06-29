@@ -107,11 +107,14 @@ export const LANDING = {
   // Numeri reali dal prodotto (verificati nel codice): fatture/mese 50/100/200,
   // domande AI/giorno 10/20/30, prezzi 39/59/79 +IVA.
   piani: {
-    title: "Un prezzo, zero lavoro in cambio",
+    title: "Tutto incluso, in ogni piano",
+    // Nessun piano "consigliato": tutti full optional, cambia solo il volume.
+    sottotitolo:
+      "Ogni piano ha tutte le funzioni e l'assistente AI. Cambia solo il volume di fatture e domande: scegli in base alla dimensione del tuo locale.",
     lista: [
-      { nome: "Base", prezzo: "39€", fatture: "50 fatture / mese", ai: "10 domande AI / giorno", evidenza: false },
-      { nome: "Plus", prezzo: "59€", fatture: "100 fatture / mese", ai: "20 domande AI / giorno", evidenza: true },
-      { nome: "Pro", prezzo: "79€", fatture: "200 fatture / mese", ai: "30 domande AI / giorno", evidenza: false },
+      { nome: "Base", prezzo: "39€", fatture: "50 fatture / mese", ai: "10 domande AI / giorno" },
+      { nome: "Plus", prezzo: "59€", fatture: "100 fatture / mese", ai: "20 domande AI / giorno" },
+      { nome: "Pro", prezzo: "79€", fatture: "200 fatture / mese", ai: "30 domande AI / giorno" },
     ],
     iva: "+IVA",
     catena: "Più locali? C'è la modalità catena, su ogni piano",
