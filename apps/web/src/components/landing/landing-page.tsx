@@ -76,23 +76,8 @@ export function LandingPage() {
           </div>
         </Scene>
 
-        {/* ===== SCENA 1 — Briefing (lui ti parla) ===== */}
-        <Scene className="bg-[#05070A]">
-          <Reveal>
-            <Kicker>{s.briefing.kicker}</Kicker>
-          </Reveal>
-          <Reveal delay={120}>
-            <SceneTitle>{s.briefing.title}</SceneTitle>
-          </Reveal>
-          <Reveal delay={260}>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.briefing.sotto}</p>
-          </Reveal>
-          <Reveal delay={420} variant="zoom">
-            <HeroShot src={s.briefing.hero} alt="Il briefing del mattino di ONEFLUX" wide />
-          </Reveal>
-        </Scene>
-
-        {/* ===== SCENA 2 — Chat (tu gli parli, la rivelazione) ===== */}
+        {/* ===== SCENA 1 — Chat (tu gli parli, la rivelazione): subito dopo l'hero,
+             così il differenziatore AI colpisce per primo ===== */}
         <Scene className="bg-[#05070A]">
           <Reveal>
             <Kicker>{s.chat.kicker}</Kicker>
@@ -105,6 +90,22 @@ export function LandingPage() {
           </div>
           <Reveal delay={200}>
             <p className="mx-auto mt-8 max-w-xl text-lg text-muted-foreground">{s.chat.sotto}</p>
+          </Reveal>
+        </Scene>
+
+        {/* ===== SCENA 2 — Briefing (lui ti parla) ===== */}
+        <Scene className="bg-[#05070A]">
+          <Reveal>
+            <Kicker>{s.briefing.kicker}</Kicker>
+          </Reveal>
+          <Reveal delay={120}>
+            <SceneTitle>{s.briefing.title}</SceneTitle>
+          </Reveal>
+          <Reveal delay={260}>
+            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.briefing.sotto}</p>
+          </Reveal>
+          <Reveal delay={420} variant="zoom">
+            <HeroShot src={s.briefing.hero} alt="Il briefing del mattino di ONEFLUX" wide />
           </Reveal>
         </Scene>
 
@@ -301,6 +302,7 @@ function Footer() {
           <div className="flex flex-col gap-3">
             <Logo size={36} />
             <p className="max-w-xs text-sm text-muted-foreground">{f.tagline}</p>
+            <p className="max-w-xs text-sm text-foreground/80">{f.umano}</p>
           </div>
 
           {/* contatti: entrambi i canali */}

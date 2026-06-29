@@ -33,7 +33,7 @@ export const LANDING = {
     aggancio: {
       bg: "/landing/bg-marginalita.png",
       title: "Un unico flusso operativo.\nTutto sotto controllo",
-      sotto: "Il tuo lavoro è gestire, non fare data entry — al resto pensa OneFlux",
+      sotto: "Tu pensa alla sala e alla cucina. Ai numeri pensa OneFlux — e quando vuoi sapere come va, glielo chiedi",
       scrollHint: "scorri",
     },
 
@@ -123,6 +123,9 @@ export const LANDING = {
   // collaborazione Recoma con P.IVA, copyright.
   footer: {
     tagline: "La tecnologia che la tua gestione aspettava",
+    // Microcopy caldo (solo footer): rassicura che c'è una persona vera, non un
+    // call center. Non cambia il senso, ammorbidisce il tono.
+    umano: "Dall'altra parte c'è una persona vera, non un call center. Scrivici quando vuoi.",
     whatsappLabel: "Scrivici su WhatsApp",
     email: "mattia.davolio@recomasystem.it",
     privacyHref: "/privacy",
