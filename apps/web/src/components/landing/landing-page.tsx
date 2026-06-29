@@ -261,25 +261,32 @@ function HeroShot({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "mx-auto mt-10 overflow-hidden rounded-2xl border border-primary/20 bg-card shadow-2xl shadow-primary/10 ring-1 ring-foreground/10",
-        wide ? "max-w-4xl" : "max-w-2xl",
-        className,
-      )}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="w-full" loading="lazy" />
+    <div className={cn("relative mx-auto mt-10", wide ? "max-w-4xl" : "max-w-2xl", className)}>
+      {/* alone azzurro diffuso dietro l'immagine: dà profondità e accento brand */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] bg-primary/25 blur-3xl"
+      />
+      <div className="overflow-hidden rounded-2xl border border-primary/30 bg-card shadow-2xl shadow-primary/30 ring-1 ring-primary/20">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={alt} className="w-full" loading="lazy" />
+      </div>
     </div>
   );
 }
 
-// Screenshot verticale del telefono: cornice stretta, bordo glow, scala contenuta.
+// Screenshot verticale del telefono: cornice stretta, bordo glow, alone azzurro.
 function PhoneShot({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="w-[260px] overflow-hidden rounded-[2rem] border-4 border-card bg-card shadow-2xl shadow-primary/20 ring-1 ring-primary/20 sm:w-[300px]">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="w-full" loading="lazy" />
+    <div className="relative w-[260px] sm:w-[300px]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -inset-8 -z-10 rounded-[3rem] bg-primary/30 blur-3xl"
+      />
+      <div className="overflow-hidden rounded-[2rem] border-4 border-card bg-card shadow-2xl shadow-primary/40 ring-1 ring-primary/30">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={alt} className="w-full" loading="lazy" />
+      </div>
     </div>
   );
 }
