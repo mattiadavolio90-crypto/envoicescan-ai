@@ -76,11 +76,13 @@ export const LANDING = {
     },
 
     // SCENA 4 — Alert prezzi (automazioni, seconda metà).
+    // È la promessa più "a guardia" del ristoratore: il rincaro che passa
+    // inosservato è soldi persi. Tono più diretto, secondo riga che chiude il colpo.
     prezzi: {
       hero: "/landing/hero-prezzi.png",
       kicker: "E se qualcosa cambia",
-      title: "Te ne accorgi subito",
-      sotto: "Quando un fornitore alza un prezzo, OneFlux te lo segnala — con l'impatto reale sui tuoi costi",
+      title: "Un fornitore alza i prezzi.\nLo sai prima di pagare",
+      sotto: "OneFlux confronta ogni fattura con lo storico e ti avvisa quando un costo sale — con quanto ti pesa davvero, prima che diventi un problema",
     },
 
     // SCENA 5 — Il potere (mobile). LAYOUT 2 COLONNE: testo sx, telefono dx (verticale).
@@ -108,15 +110,20 @@ export const LANDING = {
   piani: {
     title: "Tutto incluso, in ogni piano",
     // Nessun piano "consigliato": tutti full optional, cambia solo il volume.
+    // Niente "AI" nel copy (coerenza col resto della landing): "il tuo assistente".
     sottotitolo:
-      "Ogni piano ha tutte le funzioni e l'assistente AI. Cambia solo il volume di fatture e domande: scegli in base alla dimensione del tuo locale.",
+      "Ogni piano ha tutte le funzioni e il tuo assistente sempre attivo. Cambia solo il volume di fatture e domande: scegli in base alla dimensione del tuo locale.",
     lista: [
-      { nome: "Base", prezzo: "39€", fatture: "50 fatture / mese", ai: "10 domande AI / giorno" },
-      { nome: "Plus", prezzo: "59€", fatture: "100 fatture / mese", ai: "20 domande AI / giorno" },
-      { nome: "Pro", prezzo: "79€", fatture: "200 fatture / mese", ai: "30 domande AI / giorno" },
+      { nome: "Base", prezzo: "39€", fatture: "50 fatture / mese", ai: "10 domande / giorno" },
+      { nome: "Plus", prezzo: "59€", fatture: "100 fatture / mese", ai: "20 domande / giorno" },
+      { nome: "Pro", prezzo: "79€", fatture: "200 fatture / mese", ai: "30 domande / giorno" },
     ],
     iva: "+IVA",
     catena: "Più locali? C'è la modalità catena, su ogni piano",
+    // Rassicurazione umana sopra il prezzo: chi c'è dietro. Il target (ristoratore
+    // poco tecnologico) prima di provare vuole sapere che non è solo un software.
+    rassicurazione:
+      "Non sei solo con un software: dall'altra parte c'è una persona vera che ti segue, non un call center",
   },
 
   // Footer completo (rettifica §F): logo leggibile, WhatsApp + email, legali,

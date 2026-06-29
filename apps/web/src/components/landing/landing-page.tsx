@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, ArrowRight, Check, MessageCircle, Mail } from "lucide-react";
+import { ChevronDown, ArrowRight, Check, MessageCircle, Mail, Heart } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
@@ -7,6 +7,7 @@ import { WHATSAPP_NUMERO } from "@/lib/assistenza";
 import { LANDING, WHATSAPP_LANDING_MSG } from "@/lib/landing-content";
 import { Scene, Reveal, BlurBg, Kicker } from "@/components/landing/scene-kit";
 import { ChatScene } from "@/components/landing/chat-scene";
+import { StructuredData } from "@/components/landing/structured-data";
 
 function waLink(msg: string = WHATSAPP_LANDING_MSG): string {
   return `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(msg)}`;
@@ -32,16 +33,27 @@ function CtaButton({ className }: { className?: string }) {
 }
 
 // Titolo di scena con font display (Sora). Supporta "\n" come a-capo forzato.
-function SceneTitle({ children, className }: { children: string; className?: string }) {
+// `as`: la scena 0 (apertura) usa <h1> — è il titolo principale della pagina e
+// SEO vuole un solo h1; tutte le altre scene restano <h2>. Stile identico in
+// entrambi i casi: nessun cambiamento visivo.
+function SceneTitle({
+  children,
+  className,
+  as: Tag = "h2",
+}: {
+  children: string;
+  className?: string;
+  as?: "h1" | "h2";
+}) {
   return (
-    <h2
+    <Tag
       className={cn(
         "mx-auto max-w-3xl whitespace-pre-line font-display text-3xl font-bold leading-[1.12] tracking-tight sm:text-5xl",
         className,
       )}
     >
       {children}
-    </h2>
+    </Tag>
   );
 }
 
@@ -54,6 +66,8 @@ export function LandingPage() {
     // E' il div stesso a scrollare (h-dvh overflow-y-scroll), cosi' lo snap e'
     // affidabile su mobile. prefers-reduced-motion disattiva lo smooth/snap.
     <div className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth bg-background text-foreground motion-reduce:snap-none motion-reduce:scroll-auto">
+      {/* JSON-LD per i motori (invisibile): Organization + SoftwareApplication + FAQ */}
+      <StructuredData />
       <main>
         {/* ===== SCENA 0 — Aggancio + Specchio (FUSE, niente kicker) ===== */}
         <Scene className="bg-[#05070A]">
@@ -62,7 +76,9 @@ export function LandingPage() {
             <Logo size={84} glow />
           </Reveal>
           <Reveal delay={150}>
-            <SceneTitle className="mt-10">{s.aggancio.title}</SceneTitle>
+            <SceneTitle as="h1" className="mt-10">
+              {s.aggancio.title}
+            </SceneTitle>
           </Reveal>
           <Reveal delay={300}>
             <p className="mx-auto mt-6 max-w-xl text-base text-muted-foreground sm:text-lg">
@@ -179,9 +195,17 @@ export function LandingPage() {
             <HeroShot src={s.invito.hero} alt="I conti del locale: tutto verde, MOL positivo" wide />
           </Reveal>
           {/* niente CTA qui: l'unico "Inizia ora" sta sotto i piani (dopo i prezzi),
-              così non ci sono due bottoni ravvicinati. La firma chiude la scena. */}
-          <Reveal delay={520}>
-            <p className="mt-9 font-display text-lg font-medium text-primary">{s.invito.firma}</p>
+              così non ci sono due bottoni ravvicinati. La firma chiude la scena:
+              è il momento emotivo del finale, quindi ha respiro e presenza (grande,
+              con un filo di alone azzurro dietro), non una riga sussurrata. */}
+          <Reveal delay={560}>
+            <p className="relative mx-auto mt-12 max-w-2xl font-display text-2xl font-semibold leading-snug tracking-tight text-primary sm:text-3xl">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -inset-x-8 -inset-y-6 -z-10 rounded-full bg-primary/15 blur-3xl"
+              />
+              {s.invito.firma}
+            </p>
           </Reveal>
         </Scene>
 
@@ -201,6 +225,13 @@ export function LandingPage() {
             <Reveal delay={120}>
               <p className="mx-auto mt-4 max-w-2xl text-center text-base text-muted-foreground">
                 {LANDING.piani.sottotitolo}
+              </p>
+            </Reveal>
+            {/* Rassicurazione umana PRIMA del prezzo: chip caldo, accento brand. */}
+            <Reveal delay={200}>
+              <p className="mx-auto mt-6 flex max-w-2xl items-center justify-center gap-2.5 rounded-full border border-primary/25 bg-primary/5 px-5 py-2.5 text-center text-sm text-foreground/90">
+                <Heart className="size-4 shrink-0 text-primary" />
+                {LANDING.piani.rassicurazione}
               </p>
             </Reveal>
             {/* Card tutte uguali: nessun piano in risalto (cambia solo il volume). */}
