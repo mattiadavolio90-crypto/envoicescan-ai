@@ -2157,7 +2157,8 @@ def crea_marketplace_lead(
 # Limite domande/giorno per piano: rete di sicurezza sui costi OpenAI e leva
 # commerciale. Visibile al cliente nelle Impostazioni (contatore).
 # free = chat disattivata; base 10, plus 20, pro 30.
-# Tetto costi massimo assoluto con gpt-4.1-mini: base ~$0.72, plus ~$1.44, pro ~$2.16/mese.
+# Costo stimato per sede/mese con gpt-4.1-mini (post-ottimizzazione: max_tokens=600, round=2):
+# base ~$0.02, plus ~$0.03, pro ~$0.06. Per 10 clienti tutti Pro: ~$0.63/mese totale.
 CHAT_LIMITI_PIANO: Dict[str, int] = {
     "free": 0,
     "base": 10,
