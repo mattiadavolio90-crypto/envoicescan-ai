@@ -41,7 +41,7 @@ export const LANDING = {
     // Testi generici di proposito: NON promettere numeri specifici (dipendono dai dati).
     briefing: {
       hero: "/landing/hero-briefing.png",
-      kicker: "Ogni mattina",
+      kicker: "Il buongiorno",
       title: "Ogni giorno ti dice come sta andando. Prima che tu lo chieda",
       sotto: "Cosa è cambiato, cosa controllare, dove serve attenzione — confrontato con il tuo andamento",
     },
