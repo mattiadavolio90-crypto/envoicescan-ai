@@ -206,7 +206,7 @@ export function LandingPage() {
             <div className="mt-12 grid gap-6 md:grid-cols-3">
               {LANDING.piani.lista.map((p, i) => (
                 <Reveal key={p.nome} delay={i * 100}>
-                  <div className="relative flex h-full flex-col items-center rounded-2xl border border-border bg-card/60 p-7 text-center ring-1 ring-foreground/5">
+                  <div className="relative flex h-full flex-col items-center rounded-2xl border border-primary bg-card/60 p-7 text-center ring-1 ring-primary/30">
                     <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       {p.nome}
                     </p>
