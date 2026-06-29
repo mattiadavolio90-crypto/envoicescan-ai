@@ -1743,16 +1743,21 @@ async def upload_invoice(
     indirizzo_dest = estrai_indirizzo_destinatario(fattura_dict) if fattura_dict else None
     sede_attiva_id = _get_ristorante_id_for_user(user_id, supabase_client)
 
-    # Ambiente test: se la sede attiva ha bypass_guardia_piva, l'upload manuale
-    # accetta qualsiasi fattura (P.IVA estranea/ambigua -> sede attiva, non
-    # scartata). Default false: clienti reali protetti dalla guardia.
-    _bypass_guardia = any(
-        str(s.get("id")) == str(sede_attiva_id) and bool(s.get("bypass_guardia_piva"))
-        for s in sedi_attive
+    # Ambiente test: se UNA QUALSIASI sede del cliente ha bypass_guardia_piva
+    # (tipicamente account test mono-sede), l'upload manuale accetta qualsiasi
+    # fattura. Non dipende da quale sia la sede attiva (ultimo_ristorante_id puo'
+    # essere NULL): la destinazione e' la sede col flag. Default false: clienti
+    # reali protetti dalla guardia.
+    _sede_bypass = next(
+        (s for s in sedi_attive if bool(s.get("bypass_guardia_piva"))), None
     )
+    _bypass_guardia = _sede_bypass is not None
+    # Con bypass attivo la destinazione del fallback e' la sede col flag (non la
+    # sede attiva, che potrebbe non essere risolta).
+    _sede_dest_id = str(_sede_bypass["id"]) if _bypass_guardia else sede_attiva_id
 
     dest = decidi_destinazione_upload(
-        piva_dest, indirizzo_dest, sedi_attive, sede_attiva_id,
+        piva_dest, indirizzo_dest, sedi_attive, _sede_dest_id,
         bypass_guardia=_bypass_guardia,
     )
 
