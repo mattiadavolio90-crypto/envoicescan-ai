@@ -9,6 +9,12 @@ const SESSION_COOKIE = "oneflux_session";
 // piu') lasciando le rotte nuove scoperte a edge.
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
 
+// Asset SEO/social a route (NON file statici: non hanno estensione nel path, quindi
+// il matcher non li esclude e finirebbero rediretti al login dalla regola "rotta
+// protetta senza sessione"). Devono restare pubblici: i crawler social/motori non
+// hanno cookie di sessione. opengraph-image è generata da Next come route.
+const SEO_PATHS = ["/opengraph-image", "/sitemap.xml", "/robots.txt"];
+
 // Gira a edge e decide i redirect SOLO sulla presenza del cookie, senza chiamare
 // il worker. La validazione vera del token resta in (app)/layout.tsx (difesa in
 // profondita'): qui evitiamo il round-trip per il caso ovvio (utente senza
@@ -51,6 +57,7 @@ export function proxy(req: NextRequest) {
     // (sul dominio vetrina; sul dominio app e' gia' stata rediretta sopra).
     const isPublic =
       pathname === "/" ||
+      SEO_PATHS.includes(pathname) ||
       PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
     // Rotta protetta senza sessione -> manda al login conservando la destinazione.

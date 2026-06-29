@@ -18,12 +18,24 @@ const sora = Sora({ subsets: ["latin"], weight: ["600", "700", "800"], variable:
 // NB: manifest e flag PWA (appleWebApp, mobile-web-app-capable) NON stanno qui,
 // ma nel layout (app): la landing pubblica "/" non deve far comparire il prompt
 // "Installa ONEFLUX" di Chrome. Il manifest vive solo dentro l'app.
+// metadataBase: indispensabile perché Next risolva in URL assoluti le immagini
+// Open Graph/Twitter (anteprime social) e il canonical. Senza, le anteprime dei
+// link condivisi (WhatsApp, LinkedIn) restano nude. Il title/description di
+// default qui sotto è il fallback per le pagine dell'app; la landing "/" ha i
+// propri in page.tsx.
 export const metadata: Metadata = {
+  metadataBase: new URL("https://oneflux.it"),
   title: {
-    default: "ONEFLUX",
+    default: "ONEFLUX — Il braccio destro del tuo ristorante",
     template: "%s · ONEFLUX",
   },
-  description: "Gestione costi ristorante",
+  description:
+    "Controllo costi, food cost e marginalità per ristoranti. Le fatture entrano da sole, l'assistente le legge e ti dice ogni mattina come va. Prova 7 giorni gratis.",
+  applicationName: "ONEFLUX",
+  authors: [{ name: "Recoma System S.r.l." }],
+  creator: "Recoma System S.r.l.",
+  publisher: "Recoma System S.r.l.",
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
