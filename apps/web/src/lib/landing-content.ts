@@ -137,7 +137,11 @@ export const LANDING = {
     email: "mattia.davolio@recomasystem.it",
     privacyHref: "/privacy",
     terminiHref: "/termini",
-    recoma: "In collaborazione con Recoma System",
+    // "Recoma System" reso rosso e cliccabile (RecomaLink) sia qui sia in cima
+    // alla scena 0; il prefisso resta testo normale.
+    recomaPrefisso: "In collaborazione con",
+    recomaNome: "Recoma System",
+    recomaHref: "https://www.recomasystem.it",
     piva: "Recoma System S.r.l. · P.IVA IT09599210961",
   },
 } as const;

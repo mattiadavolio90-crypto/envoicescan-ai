@@ -15,6 +15,24 @@ function waLink(msg: string = WHATSAPP_LANDING_MSG): string {
 
 const CTA = LANDING.cta;
 
+// "Recoma System" rosso e cliccabile verso il sito Recoma. Usato sia in cima alla
+// scena 0 sia nel footer: un solo punto di verita' per colore e link.
+function RecomaLink({ className }: { className?: string }) {
+  return (
+    <a
+      href={LANDING.footer.recomaHref}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "font-semibold text-red-500 transition-opacity hover:opacity-80",
+        className,
+      )}
+    >
+      {LANDING.footer.recomaNome}
+    </a>
+  );
+}
+
 function CtaButton({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-col items-center gap-2.5", className)}>
@@ -73,12 +91,11 @@ export function LandingPage() {
         <Scene className="bg-[#05070A]">
           <BlurBg src={s.aggancio.bg} />
           {/* Co-branding in alto: l'avallo Recoma da' autorevolezza subito, prima
-              dello scroll. Discreto ma LEGGIBILE su nero (foreground/70, non il
-              muted scuro che spariva). top-8/safe-area: non finisce sotto la barra
-              del telefono. z-10 sopra il BlurBg. */}
+              dello scroll. Minuscolo, spaziatura ridotta; "Recoma System" rosso e
+              cliccabile. z-10 sopra il BlurBg; top-8/10 non finisce sotto la barra. */}
           <div className="absolute inset-x-0 top-8 z-10 flex justify-center px-4 sm:top-10">
-            <span className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-foreground/70 sm:text-xs">
-              {LANDING.footer.recoma}
+            <span className="text-xs tracking-tight text-foreground/70 sm:text-sm">
+              {LANDING.footer.recomaPrefisso} <RecomaLink />
             </span>
           </div>
           <Reveal>
@@ -389,7 +406,9 @@ function Footer() {
         </div>
 
         <div className="flex flex-col gap-2 border-t border-border/60 pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>{f.recoma}</span>
+          <span>
+            {f.recomaPrefisso} <RecomaLink />
+          </span>
           <span>
             {f.piva} · © {new Date().getFullYear()} OneFlux
           </span>
