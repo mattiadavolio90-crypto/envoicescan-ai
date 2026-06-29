@@ -1,10 +1,11 @@
-// Contenuti della landing pubblica (route "/"). Tutto il copy vive qui: per
-// cambiare testi, prezzi, conversazione AI o offerta si tocca SOLO questo file.
+// Contenuti della landing pubblica scrollytelling (route "/"). Tutto il copy vive
+// qui: per cambiare testi, immagini, sequenza chat o piani si tocca SOLO questo file.
 //
-// Posizionamento (v2): il wedge non e' "sai se guadagni" (lo dicono tutti), ma
-// "NON devi compilare niente — niente magazzino, niente inventario, niente
-// Excel — e per sapere come va PARLI con un assistente AI". Data-entry free +
-// agente conversazionale = il vero effetto wow. Tono: ristoratore, non corporate.
+// Impianto (brief giugno 2026, validato): landing a SCENE a tutto schermo, una alla
+// volta, reveal-on-scroll. Tono misterioso ma sicuro. Ogni scena fa UNA promessa,
+// non spiega una funzione. La parola "AI" quasi mai: la sensazione di AI ovunque.
+// Doppio cuore: LUI ti parla (briefing) + TU gli parli (chat). Le automazioni sono
+// la PROVA, non l'eroe. Le immagini sono screenshot reali in /public/landing/.
 
 export const LANDING = {
   nav: {
@@ -12,193 +13,127 @@ export const LANDING = {
     accediHref: "/login",
   },
 
-  // --- Hero ----------------------------------------------------------------
-  // L'hero ospita la demo VIVA: la barra del chiedi si digita da sola e l'AI
-  // risponde (componente client ChatDemo). Gli "scambi" qui sotto sono lo
-  // script di quella demo e fanno da prova del differenziatore.
-  hero: {
-    eyebrow: "In collaborazione con Recoma System",
-    title: "Il gestionale che non devi compilare.",
-    subtitle:
-      "Niente magazzino, niente inventario, niente Excel. Le fatture entrano da sole, l'AI le legge e tu — per sapere come va il locale — fai una domanda.",
-    note: "Pensato per chi sta ai fornelli, non al computer.",
-    ctaPrimary: "Provalo sul tuo locale",
-    ctaSecondary: "Accedi",
-    // Script della demo dell'hero: domande che si digitano e ricevono risposta a rotazione.
-    scambi: [
-      {
-        q: "Quanto ho speso di carne a maggio?",
-        a: "A maggio € 4.180 di carne, +12% su aprile. Il rincaro arriva quasi tutto dal tuo macellaio abituale.",
-      },
-      {
-        q: "Quale fornitore ha alzato i prezzi?",
-        a: "Negli ultimi 90 giorni l'olio EVO è salito del 9% (≈ €120/mese in più) e la farina del 6%. Gli altri stabili.",
-      },
-      {
-        q: "Com'è andato il mese?",
-        a: "Maggio chiuso con € 12.480 di margine, +14% su aprile. Food cost al 28%, in linea. Bel mese 👏",
-      },
+  // CTA prova gratuita reale (campi trial_active/trial_activated_at nel DB).
+  cta: {
+    label: "Inizia ora — 7 giorni gratis",
+    nota: "Senza carta, senza obblighi",
+    // Attivazione via WhatsApp: l'account lo configura Mattia.
+  },
+
+  // --- SCENE -----------------------------------------------------------------
+  // Ogni scena: kicker (occhiello), titolo (1 frase), sotto (1 frase). `bg` =
+  // sfondo sfocato atmosferico (mostra una pagina che il testo NON nomina);
+  // `hero` = screenshot nitido protagonista su nero pulito.
+  // Struttura a 8 scene (rettifica 2): 0=aggancio+specchio FUSE; automazioni
+  // SDOPPIATE in 3=categorizzazione + 4=alert prezzi; 5=potere mobile (2 colonne).
+  // Regola tipografica: NIENTE punto a fine frase (solo come stacco nei titoli doppi).
+  // Kicker blu su tutte le scene 1–6; la scena 0 sta NUDA (nessun kicker).
+  scene: {
+    // SCENA 0 — Aggancio + Specchio (FUSE). Niente kicker: è l'apertura.
+    aggancio: {
+      bg: "/landing/bg-marginalita.png",
+      title: "Un unico flusso operativo.\nTutto sotto controllo",
+      sotto: "Tu pensa alla sala e alla cucina. Ai numeri pensa OneFlux — e quando vuoi sapere come va, glielo chiedi",
+      scrollHint: "scorri",
+    },
+
+    // SCENA 1 — Lui ti parla (briefing · PRIMO CUORE).
+    // Testi generici di proposito: NON promettere numeri specifici (dipendono dai dati).
+    briefing: {
+      hero: "/landing/hero-briefing.png",
+      kicker: "Il buongiorno",
+      title: "Ogni giorno ti dice come sta andando. Prima che tu lo chieda",
+      sotto: "Cosa è cambiato, cosa controllare, dove serve attenzione — confrontato con il tuo andamento",
+    },
+
+    // SCENA 2 — Tu gli parli (chat · SECONDO CUORE · la rivelazione)
+    chat: {
+      hero: "/landing/hero-chat.png",
+      kicker: "Quando vuoi",
+      title: "Glielo chiedi. E ti risponde",
+      sotto: "Scrivi come a una persona, ti risponde come il tuo miglior collaboratore",
+      // Sequenza reale dell'app. I messaggi compaiono UNO ALLA VOLTA, con ritardo
+      // e indicatore "sta scrivendo": il wow è nel ritmo, non nella grafica.
+      sequenza: [
+        { da: "ai", testo: "Il salmone è costato € 7,29/kg, comprato il 27/05 da ADC." },
+        { da: "user", testo: "Pensi che vada bene come prezzo di acquisto?" },
+        {
+          da: "ai",
+          testo:
+            "Posso confrontarlo con i prezzi degli ultimi 6 mesi dai fornitori. Vuoi che faccia il confronto?",
+        },
+      ],
+    },
+
+    // SCENA 3 — Categorizzazione (automazioni, prima metà). Immagine pulita: solo
+    // descrizione + categoria, niente prezzi/fornitori.
+    categorie: {
+      hero: "/landing/hero-categorie.png",
+      kicker: "Nel frattempo",
+      title: "I dati entrano da soli",
+      sotto:
+        "Le fatture arrivano in automatico e l'assistente le legge e le categorizza — migliaia di prodotti, in ordine da soli",
+    },
+
+    // SCENA 4 — Alert prezzi (automazioni, seconda metà).
+    prezzi: {
+      hero: "/landing/hero-prezzi.png",
+      kicker: "E se qualcosa cambia",
+      title: "Te ne accorgi subito",
+      sotto: "Quando un fornitore alza un prezzo, OneFlux te lo segnala — con l'impatto reale sui tuoi costi",
+    },
+
+    // SCENA 5 — Il potere (mobile). LAYOUT 2 COLONNE: testo sx, telefono dx (verticale).
+    // Chat su tema gestione (diversa dalla scena 2 sul salmone): niente ridondanza.
+    potere: {
+      heroMobile: "/landing/hero-mobile.jpeg",
+      kicker: "Ovunque",
+      title: "Da dove vuoi. Anche fuori dal locale",
+      sotto: "In sala, dal fornitore, sul divano — il tuo locale ti risponde dove sei tu",
+    },
+
+    // SCENA 6 — L'invito + rivelazione (hero-conti: tutto verde, salute 100%)
+    invito: {
+      hero: "/landing/hero-conti.png",
+      kicker: "Provalo",
+      title: "E questo è solo l'inizio",
+      sotto: "Provalo sul tuo locale, adesso",
+      firma: "La tecnologia che la tua gestione aspettava",
+    },
+  },
+
+  // --- SCENA 7 — Piani (fondo pagina, minimal) -------------------------------
+  // Numeri reali dal prodotto (verificati nel codice): fatture/mese 50/100/200,
+  // domande AI/giorno 10/20/30, prezzi 39/59/79 +IVA.
+  piani: {
+    title: "Tutto incluso, in ogni piano",
+    // Nessun piano "consigliato": tutti full optional, cambia solo il volume.
+    sottotitolo:
+      "Ogni piano ha tutte le funzioni e l'assistente AI. Cambia solo il volume di fatture e domande: scegli in base alla dimensione del tuo locale.",
+    lista: [
+      { nome: "Base", prezzo: "39€", fatture: "50 fatture / mese", ai: "10 domande AI / giorno" },
+      { nome: "Plus", prezzo: "59€", fatture: "100 fatture / mese", ai: "20 domande AI / giorno" },
+      { nome: "Pro", prezzo: "79€", fatture: "200 fatture / mese", ai: "30 domande AI / giorno" },
     ],
+    iva: "+IVA",
+    catena: "Più locali? C'è la modalità catena, su ogni piano",
   },
 
-  // --- Contrasto: gli altri vs ONEFLUX (assorbe "cosa tieni sotto controllo") -
-  contrasto: {
-    title: "Tutti i gestionali ti chiedono di lavorare. Questo no.",
-    subtitle:
-      "Il motivo per cui non hai mai usato un software di food cost è sempre lo stesso: troppo lavoro manuale. ONEFLUX toglie proprio quello — e ciò che gli altri ti fanno calcolare, qui lo chiedi e basta.",
-    righe: [
-      {
-        tema: "Magazzino e inventario",
-        altri: "Conti tutto a mano, scaffale per scaffale, ogni settimana.",
-        oneflux: "Non lo fai. Mai.",
-      },
-      {
-        tema: "Food cost, margini, calcoli",
-        altri: "Fogli Excel, formule, ore perse a fine servizio.",
-        oneflux: "Calcolati da soli sui tuoi numeri veri.",
-      },
-      {
-        tema: "Sapere come va il locale",
-        altri: "Studi tabelle e grafici che non hai tempo di leggere.",
-        oneflux: "Fai una domanda all'assistente. Ti risponde. Fine.",
-      },
-    ],
-    nota: "Non sei tecnologico? Meglio. Qui non c'è niente da imparare.",
-  },
-
-  // --- Come funziona (3 step) ---------------------------------------------
-  comeFunziona: {
-    title: "Tu non fai niente. Ecco come.",
-    step: [
-      {
-        n: "1",
-        titolo: "Le fatture arrivano da sole",
-        testo: "Colleghiamo il tuo codice SDI: ogni fattura elettronica entra in automatico. Oppure la trascini al volo, una e via.",
-      },
-      {
-        n: "2",
-        titolo: "L'AI legge ogni riga",
-        testo: "Riconosce prodotti, categorie e prezzi da sola, fattura dopo fattura. Niente da sistemare, niente da inserire.",
-      },
-      {
-        n: "3",
-        titolo: "Tu chiedi, lui risponde",
-        testo: "Apri l'app e fai la domanda. Food cost, margini, rincari dei fornitori: la risposta è già pronta.",
-      },
-    ],
-  },
-
-  // --- Cosa ottieni (strip compatta sotto "come funziona", non sezione a sé) -
-  controllo: {
-    title: "E intanto hai sotto controllo:",
-    chips: [
-      "Food cost reale, mese per mese",
-      "Margini e andamento dei conti",
-      "Rincari dei fornitori, segnalati in tempo",
-      "Il buongiorno che ti dice com'è andata",
-    ],
-  },
-
-  // --- Offerta lancio Recoma ----------------------------------------------
-  // NB (Mattia): conferma/aggiusta i termini.
-  offerta: {
-    badge: "Riservato ai clienti Recoma",
-    title: "Parti con il Check-up Operativo incluso",
-    text: "Configuriamo noi il tuo account e facciamo insieme una prima analisi dei tuoi numeri (valore 49€). Tu non devi preparare niente. Nessun vincolo, disdici quando vuoi.",
-    cta: "Attiva il tuo account",
-  },
-
-  // --- Prezzi (dal business plan, +IVA) -----------------------------------
-  prezzi: {
-    title: "Un prezzo, zero lavoro in cambio",
-    subtitle: "Tutti i piani includono ogni funzione e l'assistente AI. Cambia solo il volume di fatture. Prezzi +IVA.",
-    piani: [
-      {
-        nome: "Base",
-        prezzo: "39€",
-        periodo: "/mese",
-        descrizione: "Per il locale singolo che vuole ordine nei conti.",
-        evidenza: false,
-        features: [
-          "Fino a 50 fatture/mese",
-          "Lettura e categorizzazione AI",
-          "Food cost, margini e briefing",
-          "Assistente AI: 10 domande/giorno",
-        ],
-      },
-      {
-        nome: "Plus",
-        prezzo: "59€",
-        periodo: "/mese",
-        descrizione: "Il più scelto: per chi ordina spesso e vuole gli alert.",
-        evidenza: true,
-        features: [
-          "Fino a 100 fatture/mese",
-          "Tutto del piano Base",
-          "Alert prezzi fornitori e scadenziario",
-          "Assistente AI: 20 domande/giorno",
-        ],
-      },
-      {
-        nome: "Pro",
-        prezzo: "79€",
-        periodo: "/mese",
-        descrizione: "Per i volumi alti e chi vuole il massimo dall'analisi.",
-        evidenza: false,
-        features: [
-          "Fino a 200 fatture/mese",
-          "Tutto del piano Plus",
-          "Analisi e tag avanzati",
-          "Assistente AI: 30 domande/giorno",
-        ],
-      },
-    ],
-    nota: "Non sai quale piano fa per te? Scrivici: te lo diciamo in due minuti.",
-  },
-
-  // --- FAQ -----------------------------------------------------------------
-  faq: {
-    title: "Domande frequenti",
-    items: [
-      {
-        q: "Devo fare il magazzino o l'inventario?",
-        a: "No, mai. È la differenza con tutti gli altri gestionali: ONEFLUX lavora sulle fatture, non ti chiede di contare o inserire niente a mano.",
-      },
-      {
-        q: "Come arrivano le fatture nell'app?",
-        a: "In automatico dal Sistema di Interscambio (colleghiamo il tuo codice SDI), oppure le trascini tu quando vuoi: XML, P7M o PDF. In entrambi i casi le legge l'AI.",
-      },
-      {
-        q: "Devo cambiare commercialista o gestionale?",
-        a: "No. ONEFLUX si affianca a quello che già usi: serve a te per tenere sotto controllo costi e margini, non sostituisce nessuno.",
-      },
-      {
-        q: "Non sono pratico di tecnologia, è un problema?",
-        a: "Al contrario. Non c'è niente da imparare: apri e fai una domanda a parole tue. Se vuoi, configuriamo e ti mostriamo tutto noi.",
-      },
-      {
-        q: "Posso disdire quando voglio?",
-        a: "Sì, nessun vincolo di durata. Continui finché ti è utile.",
-      },
-    ],
-  },
-
-  // --- CTA finale ----------------------------------------------------------
-  ctaFinale: {
-    title: "Smetti di lavorare per il software. Fallo lavorare per te.",
-    text: "Iniziamo dal tuo locale: configuriamo noi e ti facciamo vedere i tuoi numeri come non li hai mai visti. Senza che tu inserisca niente.",
-    cta: "Scrivici su WhatsApp",
-  },
-
-  // --- Footer --------------------------------------------------------------
+  // Footer completo (rettifica §F): logo leggibile, WhatsApp + email, legali,
+  // collaborazione Recoma con P.IVA, copyright.
   footer: {
-    tagline: "Il gestionale data-entry free per la ristorazione.",
-    // NB (Mattia): conferma l'email pubblica (dominio Aruba) o togli la riga.
-    email: "info@oneflux.it",
+    tagline: "La tecnologia che la tua gestione aspettava",
+    // Microcopy caldo (solo footer): rassicura che c'è una persona vera, non un
+    // call center. Non cambia il senso, ammorbidisce il tono.
+    umano: "Dall'altra parte c'è una persona vera, non un call center. Scrivici quando vuoi.",
+    whatsappLabel: "Scrivici su WhatsApp",
+    email: "mattia.davolio@recomasystem.it",
     privacyHref: "/privacy",
     terminiHref: "/termini",
+    recoma: "In collaborazione con Recoma System",
+    piva: "Recoma System S.r.l. · P.IVA IT09599210961",
   },
 } as const;
 
 export const WHATSAPP_LANDING_MSG =
-  "Ciao! Ho visto ONEFLUX e vorrei capire come funziona per il mio ristorante.";
+  "Ciao! Vorrei provare ONEFLUX sul mio locale.";
