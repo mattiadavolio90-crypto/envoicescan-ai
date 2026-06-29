@@ -135,13 +135,8 @@ export function LandingPage() {
           <Reveal delay={260}>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.prezzi.sotto}</p>
           </Reveal>
-          {/* immagine + chiusura raggruppate: la chiusura è LA conclusione di
-              questa scena, vicina alla tabella a cui si riferisce (non orfana). */}
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.prezzi.hero} alt="Avviso rincari prezzi" wide />
-            <p className="mt-7 font-display text-2xl font-bold text-primary sm:text-3xl">
-              {s.prezzi.chiusura}
-            </p>
           </Reveal>
         </Scene>
 

@@ -81,7 +81,6 @@ export const LANDING = {
       kicker: "E se qualcosa cambia",
       title: "Te ne accorgi subito",
       sotto: "Quando un fornitore alza un prezzo, OneFlux te lo segnala — con l'impatto reale sui tuoi costi",
-      chiusura: "Tu non tocchi niente",
     },
 
     // SCENA 5 — Il potere (mobile). LAYOUT 2 COLONNE: testo sx, telefono dx (verticale).
