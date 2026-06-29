@@ -73,10 +73,11 @@ export function LandingPage() {
         <Scene className="bg-[#05070A]">
           <BlurBg src={s.aggancio.bg} />
           {/* Co-branding in alto: l'avallo Recoma da' autorevolezza subito, prima
-              dello scroll. Discreto (in alto, piccolo, attenuato) per non rubare la
-              scena al logo ONEFLUX protagonista. */}
-          <div className="absolute inset-x-0 top-6 flex justify-center sm:top-8">
-            <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground/80">
+              dello scroll. Discreto ma LEGGIBILE su nero (foreground/70, non il
+              muted scuro che spariva). top-8/safe-area: non finisce sotto la barra
+              del telefono. z-10 sopra il BlurBg. */}
+          <div className="absolute inset-x-0 top-8 z-10 flex justify-center px-4 sm:top-10">
+            <span className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-foreground/70 sm:text-xs">
               {LANDING.footer.recoma}
             </span>
           </div>
