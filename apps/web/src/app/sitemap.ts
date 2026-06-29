@@ -4,7 +4,9 @@ import type { MetadataRoute } from "next";
 // "/privacy", "/termini"). Le aree applicative sono dietro login e fuori dalla
 // sitemap. Quando nascerà l'hub contenuti (/risorse), i nuovi articoli si
 // aggiungono qui — è il segnale primario con cui Google scopre le pagine.
-const BASE = "https://oneflux.it";
+// Dominio canonico reale: oneflux.it redirige 308 a www.oneflux.it, quindi i
+// segnali SEO (sitemap, canonical, robots) devono puntare a www per coerenza.
+const BASE = "https://www.oneflux.it";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

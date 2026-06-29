@@ -45,8 +45,8 @@ export function StructuredData() {
       "@type": "Organization",
       name: "ONEFLUX",
       legalName: "Recoma System S.r.l.",
-      url: "https://oneflux.it",
-      logo: "https://oneflux.it/icon.svg",
+      url: "https://www.oneflux.it",
+      logo: "https://www.oneflux.it/icon.svg",
       vatID: "IT09599210961",
       email: "mattia.davolio@recomasystem.it",
       contactPoint: {
@@ -62,7 +62,7 @@ export function StructuredData() {
       name: "ONEFLUX",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
-      url: "https://oneflux.it",
+      url: "https://www.oneflux.it",
       description:
         "Software di controllo costi, food cost e marginalità per ristoranti. Le fatture elettroniche entrano in automatico, l'assistente le categorizza e ti dice ogni mattina come va il locale, con avvisi sui rincari dei fornitori.",
       inLanguage: "it",

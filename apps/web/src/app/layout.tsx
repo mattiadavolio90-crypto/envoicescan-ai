@@ -24,7 +24,7 @@ const sora = Sora({ subsets: ["latin"], weight: ["600", "700", "800"], variable:
 // default qui sotto è il fallback per le pagine dell'app; la landing "/" ha i
 // propri in page.tsx.
 export const metadata: Metadata = {
-  metadataBase: new URL("https://oneflux.it"),
+  metadataBase: new URL("https://www.oneflux.it"),
   title: {
     default: "ONEFLUX — Il braccio destro del tuo ristorante",
     template: "%s · ONEFLUX",

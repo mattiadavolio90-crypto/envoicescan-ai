@@ -10,7 +10,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/login", "/dashboard", "/admin", "/m", "/api"],
     },
-    sitemap: "https://oneflux.it/sitemap.xml",
-    host: "https://oneflux.it",
+    sitemap: "https://www.oneflux.it/sitemap.xml",
+    host: "https://www.oneflux.it",
   };
 }
