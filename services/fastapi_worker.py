@@ -1752,6 +1752,13 @@ async def upload_invoice(
         (s for s in sedi_attive if bool(s.get("bypass_guardia_piva"))), None
     )
     _bypass_guardia = _sede_bypass is not None
+    # DIAGNOSTICA TEMPORANEA bypass guardia P.IVA — rimuovere dopo la verifica.
+    logger.info(
+        "DIAG upload bypass: user=%s piva_dest=%r sede_attiva=%r n_sedi=%d flags=%r bypass=%s",
+        user_id, piva_dest, sede_attiva_id, len(sedi_attive),
+        [(str(s.get("id"))[:8], s.get("bypass_guardia_piva")) for s in sedi_attive],
+        _bypass_guardia,
+    )
     # Con bypass attivo la destinazione del fallback e' la sede col flag (non la
     # sede attiva, che potrebbe non essere risolta).
     _sede_dest_id = str(_sede_bypass["id"]) if _bypass_guardia else sede_attiva_id
