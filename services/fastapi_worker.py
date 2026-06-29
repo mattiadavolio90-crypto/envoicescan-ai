@@ -2506,7 +2506,34 @@ def _build_chat_system_prompt(
         except Exception:
             pass
 
-        # Alert 3: righe Da Classificare (abbassano food cost silenziosamente)
+        # Alert 3: costo personale mancante nel mese precedente (falsa il MOL)
+        try:
+            q_per = (
+                supabase_client.table("margini_mensili")
+                .select("costo_dipendenti,costo_personale_extra")
+                .eq("user_id", user_id_str)
+                .eq("anno", _mc_anno)
+                .eq("mese", _mc_mese)
+            )
+            if ristorante_id:
+                q_per = q_per.eq("ristorante_id", ristorante_id)
+            per_data = q_per.execute().data or []
+            personale_ok = any(
+                (float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)) > 0
+                for r in per_data
+            )
+            if not personale_ok:
+                _mesi_n2 = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                            "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                alert_testo += (
+                    f"\n- ⚠️ Costo del personale non registrato per {_mesi_n2[_mc_mese]} {_mc_anno}:"
+                    f" il MOL risulta sovrastimato senza questa voce."
+                    f" Suggerisci di inserirlo in Movimenti → Ricavi (sezione Personale)."
+                )
+        except Exception:
+            pass
+
+        # Alert 5: righe Da Classificare (abbassano food cost silenziosamente)
         try:
             q_nr = (
                 supabase_client.table("fatture")
