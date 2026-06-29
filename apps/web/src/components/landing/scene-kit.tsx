@@ -101,9 +101,11 @@ export function Scene({
     <section
       id={id}
       className={cn(
-        // h-dvh esatto + snap-start: il bordo alto della scena aggancia al bordo
-        // alto del viewport -> niente spazio nero tra le scene. flex-col centrato.
-        "relative flex h-dvh w-full shrink-0 snap-start flex-col items-center justify-center overflow-hidden px-5 py-16 text-center",
+        // min-h-dvh + snap-start: la scena aggancia in cima al viewport (snap
+        // preciso, niente spazio nero) ma puo' CRESCERE se il contenuto e' alto,
+        // senza tagliarlo (overflow-y-auto invece di hidden). justify-center
+        // centra quando c'e' spazio. py contenuto perche' tutto ci stia.
+        "relative flex min-h-dvh w-full shrink-0 snap-start flex-col items-center justify-center overflow-y-auto px-5 py-14 text-center",
         className,
       )}
     >

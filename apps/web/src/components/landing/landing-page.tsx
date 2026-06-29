@@ -268,7 +268,7 @@ function HeroShot({
   className?: string;
 }) {
   return (
-    <div className={cn("relative mx-auto mt-10", wide ? "max-w-4xl" : "max-w-2xl", className)}>
+    <div className={cn("relative mx-auto mt-7", wide ? "max-w-3xl" : "max-w-2xl", className)}>
       {/* alone azzurro diffuso dietro l'immagine: dà profondità e accento brand */}
       <div
         aria-hidden
