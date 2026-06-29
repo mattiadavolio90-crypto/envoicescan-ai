@@ -3,7 +3,7 @@
 // Primitivi dello scrollytelling: wrapper scena a tutto schermo, reveal-on-scroll
 // e sfondo sfocato atmosferico. Reveal e snap rispettano prefers-reduced-motion.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -53,15 +53,34 @@ export function Reveal({
     return () => io.disconnect();
   }, []);
 
+  // Due velocità: i TESTI entrano svelti (850ms); le IMMAGINI più lente e con
+  // dissolvenza più morbida (transform 1500ms, opacity 1900ms) -> il fade si
+  // "stende" oltre il movimento, dando l'entrata graduale richiesta.
+  const ease = "cubic-bezier(0.16, 1, 0.3, 1)";
+  const style: CSSProperties =
+    variant === "zoom"
+      ? {
+          transitionProperty: "transform, opacity",
+          transitionDuration: "1500ms, 1900ms",
+          transitionTimingFunction: `${ease}, ease-out`,
+          transitionDelay: visibile ? `${delay}ms` : "0ms",
+        }
+      : {
+          transitionProperty: "transform, opacity",
+          transitionDuration: "850ms",
+          transitionTimingFunction: ease,
+          transitionDelay: visibile ? `${delay}ms` : "0ms",
+        };
+
   return (
     <div
       ref={ref}
       className={cn(
-        "transition-all duration-[850ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] will-change-transform motion-reduce:transition-none",
+        "will-change-transform motion-reduce:!transition-none",
         visibile ? "translate-y-0 scale-100 opacity-100" : REVEAL_HIDDEN[variant],
         className,
       )}
-      style={{ transitionDelay: visibile ? `${delay}ms` : "0ms" }}
+      style={style}
     >
       {children}
     </div>
