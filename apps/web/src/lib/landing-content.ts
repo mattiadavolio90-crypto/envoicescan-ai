@@ -120,10 +120,6 @@ export const LANDING = {
     ],
     iva: "+IVA",
     catena: "Più locali? C'è la modalità catena, su ogni piano",
-    // Rassicurazione umana sopra il prezzo: chi c'è dietro. Il target (ristoratore
-    // poco tecnologico) prima di provare vuole sapere che non è solo un software.
-    rassicurazione:
-      "Non sei solo con un software: dall'altra parte c'è una persona vera che ti segue, non un call center",
   },
 
   // Footer completo (rettifica §F): logo leggibile, WhatsApp + email, legali,
@@ -142,7 +138,14 @@ export const LANDING = {
     recomaPrefisso: "In collaborazione con",
     recomaNome: "Recoma System",
     recomaHref: "https://www.recomasystem.it",
-    piva: "Recoma System S.r.l. · P.IVA IT09599210961",
+    // Dati legali Recoma sotto la collaborazione (lato sinistro footer).
+    recomaRagione: "RECOMASYSTEM Srl",
+    recomaIndirizzo: "Via Leonardo da Vinci 249 · 20090 Trezzano sul Naviglio (MI)",
+    recomaPiva: "P.IVA 12993240154",
+    // Copyright OneFlux (lato destro). Per ora solo ©: il marchio e' in corso di
+    // deposito (non ancora depositato). NON scrivere "marchio depositato/registrato"
+    // ne' ® finche' Mattia non conferma il deposito col relativo numero.
+    copyrightOneflux: "© 2026 OneFlux · Mattia D'Avolio",
   },
 } as const;
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, ArrowRight, Check, MessageCircle, Mail, Heart } from "lucide-react";
+import { ChevronDown, ArrowRight, Check, MessageCircle, Mail } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
@@ -253,13 +253,6 @@ export function LandingPage() {
                 {LANDING.piani.sottotitolo}
               </p>
             </Reveal>
-            {/* Rassicurazione umana PRIMA del prezzo: chip caldo, accento brand. */}
-            <Reveal delay={200}>
-              <p className="mx-auto mt-6 flex max-w-2xl items-center justify-center gap-2.5 rounded-full border border-primary/25 bg-primary/5 px-5 py-2.5 text-center text-sm text-foreground/90">
-                <Heart className="size-4 shrink-0 text-primary" />
-                {LANDING.piani.rassicurazione}
-              </p>
-            </Reveal>
             {/* Card tutte uguali: nessun piano in risalto (cambia solo il volume). */}
             <div className="mt-12 grid gap-6 md:grid-cols-3">
               {LANDING.piani.lista.map((p, i) => (
@@ -405,13 +398,18 @@ function Footer() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-border/60 pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            {f.recomaPrefisso} <RecomaLink />
-          </span>
-          <span>
-            {f.piva} · © {new Date().getFullYear()} OneFlux
-          </span>
+        <div className="flex flex-col gap-4 border-t border-border/60 pt-6 text-xs text-muted-foreground sm:flex-row sm:items-end sm:justify-between">
+          {/* sinistra: collaborazione + dati legali Recoma */}
+          <div className="flex flex-col gap-1">
+            <span>
+              {f.recomaPrefisso} <RecomaLink />
+            </span>
+            <span className="text-muted-foreground/80">{f.recomaRagione}</span>
+            <span className="text-muted-foreground/80">{f.recomaIndirizzo}</span>
+            <span className="text-muted-foreground/80">{f.recomaPiva}</span>
+          </div>
+          {/* destra: copyright OneFlux */}
+          <span className="text-muted-foreground/80">{f.copyrightOneflux}</span>
         </div>
       </div>
     </footer>
