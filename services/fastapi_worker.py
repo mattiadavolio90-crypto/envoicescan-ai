@@ -2533,7 +2533,45 @@ def _build_chat_system_prompt(
         except Exception:
             pass
 
-        # Alert 5: righe Da Classificare (abbassano food cost silenziosamente)
+        # Alert 5: spese generali mancanti nel mese precedente (affitto/utenze sempre presenti)
+        try:
+            q_spese = (
+                supabase_client.table("margini_mensili")
+                .select("altri_costi_spese")
+                .eq("user_id", user_id_str)
+                .eq("anno", _mc_anno)
+                .eq("mese", _mc_mese)
+            )
+            if ristorante_id:
+                q_spese = q_spese.eq("ristorante_id", ristorante_id)
+            spese_data = q_spese.execute().data or []
+            # Controlla anche i costi automatici da fatture categoria SPESE
+            q_spese_auto = (
+                supabase_client.table("fatture")
+                .select("id", count="exact")
+                .eq("user_id", user_id_str)
+                .is_("deleted_at", "null")
+                .ilike("categoria", "%SPESE%")
+                .gte("data_documento", _mc_inizio)
+                .lte("data_documento", f"{_mc_anno}-{_mc_mese:02d}-31")
+            )
+            if ristorante_id:
+                q_spese_auto = q_spese_auto.eq("ristorante_id", ristorante_id)
+            spese_auto_count = (q_spese_auto.execute().count) or 0
+            spese_manuali_ok = any(float(r.get("altri_costi_spese") or 0) > 0 for r in spese_data)
+            if not spese_manuali_ok and spese_auto_count == 0:
+                _mesi_n3 = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                            "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                alert_testo += (
+                    f"\n- ⚠️ Spese generali non registrate per {_mesi_n3[_mc_mese]} {_mc_anno}:"
+                    f" affitto, utenze e altri costi fissi sono sempre presenti — se mancano"
+                    f" il MOL risulta sovrastimato."
+                    f" Suggerisci di inserirle in Movimenti → Ricavi (sezione Spese) o caricare le fatture relative."
+                )
+        except Exception:
+            pass
+
+        # Alert 7: righe Da Classificare (abbassano food cost silenziosamente)
         try:
             q_nr = (
                 supabase_client.table("fatture")
