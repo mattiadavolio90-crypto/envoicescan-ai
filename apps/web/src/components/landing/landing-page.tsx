@@ -72,6 +72,14 @@ export function LandingPage() {
         {/* ===== SCENA 0 — Aggancio + Specchio (FUSE, niente kicker) ===== */}
         <Scene className="bg-[#05070A]">
           <BlurBg src={s.aggancio.bg} />
+          {/* Co-branding in alto: l'avallo Recoma da' autorevolezza subito, prima
+              dello scroll. Discreto (in alto, piccolo, attenuato) per non rubare la
+              scena al logo ONEFLUX protagonista. */}
+          <div className="absolute inset-x-0 top-6 flex justify-center sm:top-8">
+            <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground/80">
+              {LANDING.footer.recoma}
+            </span>
+          </div>
           <Reveal>
             <Logo size={84} glow />
           </Reveal>
