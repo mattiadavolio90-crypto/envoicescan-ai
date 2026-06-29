@@ -153,6 +153,7 @@ def decidi_destinazione_upload(
     indirizzo_dest: Optional[str],
     sedi_attive: List[Dict[str, Any]],
     sede_attiva_id: Optional[str],
+    bypass_guardia: bool = False,
 ) -> Dict[str, Any]:
     """Decide la sede di destinazione di una fattura caricata a mano.
 
@@ -166,6 +167,11 @@ def decidi_destinazione_upload(
         decidi_sede(); 'auto' o 'ambiguo' (scartata).
 
     cross_sede = True quando la sede dedotta != sede attiva selezionata.
+
+    `bypass_guardia` (ambienti di TEST): se True, la guardia P.IVA non scarta mai.
+    Una P.IVA estranea o un caso ambiguo finiscono in 'fallback' sulla sede attiva
+    invece di essere respinti. NON usare per i clienti reali (default False): la
+    guardia protegge dal caricare fatture sulla sede sbagliata.
 
     Ritorna un dict con 'mode' in {'auto','fallback','piva_estranea','ambiguo'},
     e per auto/fallback: ristorante_id, nome, cross_sede.
@@ -182,6 +188,14 @@ def decidi_destinazione_upload(
     sedi_match = [s for s in sedi_attive if _piva_norm(s.get("partita_iva")) == piva_dest_n]
 
     if not sedi_match:
+        if bypass_guardia:
+            # Ambiente test: accetta comunque, tutto sulla sede attiva.
+            return {
+                "mode": "fallback",
+                "ristorante_id": sede_attiva_id,
+                "nome": None,
+                "cross_sede": None,
+            }
         return {"mode": "piva_estranea", "piva_dest": piva_dest_n}
 
     if len(sedi_match) == 1:
@@ -190,6 +204,13 @@ def decidi_destinazione_upload(
     else:
         decision = decidi_sede(indirizzo_dest, sedi_match)
         if decision["mode"] != "auto":
+            if bypass_guardia:
+                return {
+                    "mode": "fallback",
+                    "ristorante_id": sede_attiva_id,
+                    "nome": None,
+                    "cross_sede": None,
+                }
             return {
                 "mode": "ambiguo",
                 "best_score": decision["best_score"],

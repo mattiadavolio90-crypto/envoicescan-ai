@@ -112,3 +112,56 @@ def test_account_senza_sedi_con_piva_e_estranea():
     # Zero sedi + P.IVA presente: non matcha nulla -> piva_estranea (scartata).
     d = decidi_destinazione_upload(SG, "via x", [], sede_attiva_id=None)
     assert d["mode"] == "piva_estranea"
+
+
+# ─── bypass_guardia (ambiente TEST) ──────────────────────────────────────────
+# Sede di test mono-sede con P.IVA fittizia (come "Ambiente Test Admin").
+TEST_SEDE = [
+    {"id": "test", "nome_ristorante": "Ambiente Test Admin", "partita_iva": "00000000000", "indirizzo_match": "via test 1"},
+]
+
+
+def test_bypass_accetta_piva_estranea_su_sede_attiva():
+    # Senza bypass una P.IVA reale qualsiasi sarebbe scartata; con bypass entra
+    # sulla sede attiva (mode fallback), cosi' il test accetta qualsiasi fattura.
+    d = decidi_destinazione_upload(
+        SG, "via x", TEST_SEDE, sede_attiva_id="test", bypass_guardia=True
+    )
+    assert d["mode"] == "fallback"
+    assert d["ristorante_id"] == "test"
+
+
+def test_bypass_off_mantiene_la_guardia():
+    # Contro-prova: senza bypass (default), la P.IVA estranea resta scartata.
+    d = decidi_destinazione_upload(
+        SG, "via x", TEST_SEDE, sede_attiva_id="test"
+    )
+    assert d["mode"] == "piva_estranea"
+
+
+def test_bypass_non_tocca_i_clienti_reali():
+    # I clienti reali (SUSHILAND) NON hanno bypass: la guardia regge invariata.
+    d = decidi_destinazione_upload(
+        "99999999999", "via x", SUSHILAND, sede_attiva_id="sg", bypass_guardia=False
+    )
+    assert d["mode"] == "piva_estranea"
+
+
+def test_bypass_converte_ambiguo_in_fallback():
+    # Caso multi-sede stessa P.IVA con indirizzo non risolvibile: senza bypass e'
+    # 'ambiguo' (scartata); con bypass entra sulla sede attiva.
+    d = decidi_destinazione_upload(
+        OFF, "indirizzo che non matcha nulla", OFFSIDE, sede_attiva_id="pub", bypass_guardia=True
+    )
+    assert d["mode"] == "fallback"
+    assert d["ristorante_id"] == "pub"
+
+
+def test_bypass_non_disturba_lo_smistamento_corretto():
+    # Con bypass attivo ma P.IVA che matcha una sola sede: smista comunque
+    # correttamente (auto), il bypass interviene solo sui casi che scarterebbe.
+    d = decidi_destinazione_upload(
+        VG, "via como 2 villa guardia", SUSHILAND, sede_attiva_id="sg", bypass_guardia=True
+    )
+    assert d["mode"] == "auto"
+    assert d["ristorante_id"] == "vg"

@@ -1617,7 +1617,7 @@ def _carica_sedi_attive_per_user(user_id: str, supabase_client) -> List[Dict[str
     try:
         resp = (
             supabase_client.table("ristoranti")
-            .select("id, nome_ristorante, partita_iva, indirizzo_match")
+            .select("id, nome_ristorante, partita_iva, indirizzo_match, bypass_guardia_piva")
             .eq("user_id", user_id)
             .eq("attivo", True)
             .execute()
@@ -1743,7 +1743,18 @@ async def upload_invoice(
     indirizzo_dest = estrai_indirizzo_destinatario(fattura_dict) if fattura_dict else None
     sede_attiva_id = _get_ristorante_id_for_user(user_id, supabase_client)
 
-    dest = decidi_destinazione_upload(piva_dest, indirizzo_dest, sedi_attive, sede_attiva_id)
+    # Ambiente test: se la sede attiva ha bypass_guardia_piva, l'upload manuale
+    # accetta qualsiasi fattura (P.IVA estranea/ambigua -> sede attiva, non
+    # scartata). Default false: clienti reali protetti dalla guardia.
+    _bypass_guardia = any(
+        str(s.get("id")) == str(sede_attiva_id) and bool(s.get("bypass_guardia_piva"))
+        for s in sedi_attive
+    )
+
+    dest = decidi_destinazione_upload(
+        piva_dest, indirizzo_dest, sedi_attive, sede_attiva_id,
+        bypass_guardia=_bypass_guardia,
+    )
 
     if dest["mode"] == "piva_estranea":
         logger.info(
