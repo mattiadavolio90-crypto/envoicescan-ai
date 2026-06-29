@@ -71,7 +71,7 @@ export function Scene({
     <section
       id={id}
       className={cn(
-        "relative flex min-h-dvh w-full flex-col items-center justify-center overflow-hidden px-5 py-24 text-center",
+        "relative flex min-h-dvh w-full snap-center flex-col items-center justify-center overflow-hidden px-5 py-24 text-center",
         className,
       )}
     >

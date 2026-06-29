@@ -49,7 +49,10 @@ export function LandingPage() {
   const s = LANDING.scene;
 
   return (
-    <div className="bg-background text-foreground">
+    // snap-proximity (non mandatory): aiuta a centrare le scene a scroll fermo
+    // senza "intrappolare" quando una scena eccede il viewport. scroll-smooth
+    // disattivato da prefers-reduced-motion via la media query del browser.
+    <div className="snap-y snap-proximity scroll-smooth bg-background text-foreground motion-reduce:scroll-auto">
       <main>
         {/* ===== SCENA 0 — Aggancio + Specchio (FUSE, niente kicker) ===== */}
         <Scene className="bg-[#05070A]">
@@ -65,8 +68,9 @@ export function LandingPage() {
               {s.aggancio.sotto}
             </p>
           </Reveal>
-          {/* hint scorri: alto abbastanza da non finire sotto il cookie banner */}
-          <div className="absolute bottom-24 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-16">
+          {/* hint scorri: su mobile sta più in alto per non finire sotto il
+              cookie banner (più alto su telefono). */}
+          <div className="absolute bottom-40 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-16">
             <span className="text-xs uppercase tracking-[0.2em]">{s.aggancio.scrollHint}</span>
             <ChevronDown className="size-5 animate-bounce" />
           </div>
@@ -131,12 +135,11 @@ export function LandingPage() {
           <Reveal delay={260}>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.prezzi.sotto}</p>
           </Reveal>
+          {/* immagine + chiusura raggruppate: la chiusura è LA conclusione di
+              questa scena, vicina alla tabella a cui si riferisce (non orfana). */}
           <Reveal delay={380}>
             <HeroShot src={s.prezzi.hero} alt="Avviso rincari prezzi" wide />
-          </Reveal>
-          {/* chiusura staccata: deve respirare, mai coperta dal cookie banner */}
-          <Reveal delay={520}>
-            <p className="mt-12 pb-4 font-display text-2xl font-bold text-primary sm:text-3xl">
+            <p className="mt-7 font-display text-2xl font-bold text-primary sm:text-3xl">
               {s.prezzi.chiusura}
             </p>
           </Reveal>
@@ -179,11 +182,10 @@ export function LandingPage() {
           <Reveal delay={380}>
             <HeroShot src={s.invito.hero} alt="I conti del locale: tutto verde, MOL positivo" wide />
           </Reveal>
+          {/* niente CTA qui: l'unico "Inizia ora" sta sotto i piani (dopo i prezzi),
+              così non ci sono due bottoni ravvicinati. La firma chiude la scena. */}
           <Reveal delay={520}>
-            <CtaButton className="mt-10" />
-          </Reveal>
-          <Reveal delay={660}>
-            <p className="mt-8 pb-2 font-display text-base font-medium text-primary">{s.invito.firma}</p>
+            <p className="mt-9 font-display text-lg font-medium text-primary">{s.invito.firma}</p>
           </Reveal>
         </Scene>
 
