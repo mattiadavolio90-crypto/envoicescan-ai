@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, ArrowRight, Check } from "lucide-react";
+import { ChevronDown, ArrowRight, Check, MessageCircle, Mail } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
@@ -16,7 +16,7 @@ const CTA = LANDING.cta;
 
 function CtaButton({ className }: { className?: string }) {
   return (
-    <div className={cn("flex flex-col items-center", className)}>
+    <div className={cn("flex flex-col items-center gap-2.5", className)}>
       <a
         href={waLink()}
         target="_blank"
@@ -26,7 +26,17 @@ function CtaButton({ className }: { className?: string }) {
         {CTA.label}
         <ArrowRight className="size-5" />
       </a>
-      <span className="mt-2.5 text-sm text-muted-foreground">{CTA.nota}</span>
+      <span className="text-sm text-muted-foreground">{CTA.nota}</span>
+      {/* contatto soft per chi vuole parlare prima di provare */}
+      <a
+        href={waLink("Ciao! Ho qualche dubbio su ONEFLUX, posso chiedervi?")}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+      >
+        <MessageCircle className="size-4" />
+        {CTA.dubbi}
+      </a>
     </div>
   );
 }
@@ -64,7 +74,7 @@ export function LandingPage() {
       </header>
 
       <main>
-        {/* ===== SCENA 0 — Aggancio ===== */}
+        {/* ===== SCENA 0 — Aggancio + Specchio (FUSE, niente kicker) ===== */}
         <Scene className="bg-[#05070A]">
           <BlurBg src={s.aggancio.bg} />
           <Reveal>
@@ -74,29 +84,18 @@ export function LandingPage() {
             <SceneTitle className="mt-10">{s.aggancio.title}</SceneTitle>
           </Reveal>
           <Reveal delay={300}>
-            <p className="mt-6 text-base text-muted-foreground sm:text-lg">{s.aggancio.firma}</p>
+            <p className="mx-auto mt-6 max-w-xl text-base text-muted-foreground sm:text-lg">
+              {s.aggancio.sotto}
+            </p>
           </Reveal>
-          <div className="absolute bottom-10 flex flex-col items-center gap-1 text-muted-foreground">
+          {/* hint scorri: alto abbastanza da non finire sotto il cookie banner */}
+          <div className="absolute bottom-24 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-16">
             <span className="text-xs uppercase tracking-[0.2em]">{s.aggancio.scrollHint}</span>
             <ChevronDown className="size-5 animate-bounce" />
           </div>
         </Scene>
 
-        {/* ===== SCENA 1 — Lo specchio ===== */}
-        <Scene>
-          <BlurBg src={s.specchio.bg} />
-          <Reveal>
-            <Kicker>{s.specchio.kicker}</Kicker>
-          </Reveal>
-          <Reveal delay={120}>
-            <SceneTitle>{s.specchio.title}</SceneTitle>
-          </Reveal>
-          <Reveal delay={260}>
-            <p className="mt-6 max-w-xl text-lg text-muted-foreground">{s.specchio.sotto}</p>
-          </Reveal>
-        </Scene>
-
-        {/* ===== SCENA 2 — Lui ti parla (briefing) ===== */}
+        {/* ===== SCENA 1 — Briefing (lui ti parla) ===== */}
         <Scene className="bg-[#05070A]">
           <Reveal>
             <Kicker>{s.briefing.kicker}</Kicker>
@@ -112,7 +111,7 @@ export function LandingPage() {
           </Reveal>
         </Scene>
 
-        {/* ===== SCENA 3 — Tu gli parli (chat, la rivelazione) ===== */}
+        {/* ===== SCENA 2 — Chat (tu gli parli, la rivelazione) ===== */}
         <Scene className="bg-[#05070A]">
           <Reveal>
             <Kicker>{s.chat.kicker}</Kicker>
@@ -128,40 +127,65 @@ export function LandingPage() {
           </Reveal>
         </Scene>
 
-        {/* ===== SCENA 4 — La prova (automazioni) ===== */}
+        {/* ===== SCENA 3 — Categorizzazione ===== */}
         <Scene>
           <Reveal>
-            <Kicker>{s.prova.kicker}</Kicker>
+            <Kicker>{s.categorie.kicker}</Kicker>
           </Reveal>
           <Reveal delay={120}>
-            <SceneTitle>{s.prova.title}</SceneTitle>
+            <SceneTitle>{s.categorie.title}</SceneTitle>
           </Reveal>
           <Reveal delay={260}>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.prova.sotto}</p>
+            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.categorie.sotto}</p>
           </Reveal>
-          {/* rettifica: una sola immagine, l'eroe prezzi nitido (jolly mail rimosso) */}
           <Reveal delay={380}>
-            <HeroShot src={s.prova.hero} alt="Avviso rincari prezzi" wide />
+            <HeroShot src={s.categorie.hero} alt="Migliaia di prodotti categorizzati in automatico" wide />
           </Reveal>
+        </Scene>
+
+        {/* ===== SCENA 4 — Alert prezzi ===== */}
+        <Scene>
+          <Reveal>
+            <Kicker>{s.prezzi.kicker}</Kicker>
+          </Reveal>
+          <Reveal delay={120}>
+            <SceneTitle>{s.prezzi.title}</SceneTitle>
+          </Reveal>
+          <Reveal delay={260}>
+            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.prezzi.sotto}</p>
+          </Reveal>
+          <Reveal delay={380}>
+            <HeroShot src={s.prezzi.hero} alt="Avviso rincari prezzi" wide />
+          </Reveal>
+          {/* chiusura staccata: deve respirare, mai coperta dal cookie banner */}
           <Reveal delay={520}>
-            <p className="mt-10 font-display text-2xl font-bold text-primary sm:text-3xl">
-              {s.prova.chiusura}
+            <p className="mt-12 pb-4 font-display text-2xl font-bold text-primary sm:text-3xl">
+              {s.prezzi.chiusura}
             </p>
           </Reveal>
         </Scene>
 
-        {/* ===== SCENA 5 — Il potere ===== */}
+        {/* ===== SCENA 5 — Il potere (mobile, 2 colonne) ===== */}
         <Scene>
-          <BlurBg src={s.potere.bg} />
-          <Reveal>
-            <Kicker>{s.potere.kicker}</Kicker>
-          </Reveal>
-          <Reveal delay={120}>
-            <SceneTitle>{s.potere.title}</SceneTitle>
-          </Reveal>
-          <Reveal delay={260}>
-            <p className="mt-6 max-w-xl text-lg text-muted-foreground">{s.potere.sotto}</p>
-          </Reveal>
+          <BlurBg src={s.invito.hero} />
+          <div className="mx-auto grid w-full max-w-5xl items-center gap-10 md:grid-cols-2 md:text-left">
+            <div className="md:pr-6">
+              <Reveal>
+                <Kicker>{s.potere.kicker}</Kicker>
+              </Reveal>
+              <Reveal delay={120}>
+                <h2 className="font-display text-3xl font-bold leading-[1.12] tracking-tight sm:text-5xl">
+                  {s.potere.title}
+                </h2>
+              </Reveal>
+              <Reveal delay={260}>
+                <p className="mt-6 text-lg text-muted-foreground">{s.potere.sotto}</p>
+              </Reveal>
+            </div>
+            <Reveal delay={380} className="flex justify-center md:justify-end">
+              <PhoneShot src={s.potere.heroMobile} alt="L'assistente ONEFLUX sul telefono" />
+            </Reveal>
+          </div>
         </Scene>
 
         {/* ===== SCENA 6 — Invito + rivelazione ===== */}
@@ -181,8 +205,8 @@ export function LandingPage() {
           <Reveal delay={520}>
             <CtaButton className="mt-10" />
           </Reveal>
-          <Reveal delay={640}>
-            <p className="mt-8 font-display text-base text-muted-foreground">{s.invito.firma}</p>
+          <Reveal delay={660}>
+            <p className="mt-8 pb-2 font-display text-base text-muted-foreground">{s.invito.firma}</p>
           </Reveal>
         </Scene>
 
@@ -245,33 +269,14 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ===== Footer ===== */}
-        <footer className="border-t border-border/60 px-5 py-10">
-          <div className="mx-auto flex max-w-5xl flex-col items-center gap-5 sm:flex-row sm:justify-between">
-            <div className="flex flex-col items-center gap-2 sm:items-start">
-              <Logo size={24} />
-              <p className="text-sm text-muted-foreground">{LANDING.footer.tagline}</p>
-            </div>
-            <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-              <a href={`mailto:${LANDING.footer.email}`} className="transition-colors hover:text-foreground">
-                {LANDING.footer.email}
-              </a>
-              <Link href={LANDING.footer.privacyHref} className="transition-colors hover:text-foreground">
-                Privacy
-              </Link>
-              <Link href={LANDING.footer.terminiHref} className="transition-colors hover:text-foreground">
-                Termini
-              </Link>
-            </nav>
-          </div>
-          <p className="mt-8 text-center text-xs text-muted-foreground">© {new Date().getFullYear()} ONEFLUX</p>
-        </footer>
+        {/* ===== Footer completo ===== */}
+        <Footer />
       </main>
     </div>
   );
 }
 
-// Screenshot nitido protagonista (eroe), in cornice scura con bordo glow.
+// Screenshot orizzontale (eroe), in cornice scura con bordo glow.
 function HeroShot({
   src,
   alt,
@@ -294,5 +299,75 @@ function HeroShot({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt={alt} className="w-full" loading="lazy" />
     </div>
+  );
+}
+
+// Screenshot verticale del telefono: cornice stretta, bordo glow, scala contenuta.
+function PhoneShot({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="w-[260px] overflow-hidden rounded-[2rem] border-4 border-card bg-card shadow-2xl shadow-primary/20 ring-1 ring-primary/20 sm:w-[300px]">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} className="w-full" loading="lazy" />
+    </div>
+  );
+}
+
+// Footer: logo leggibile, contatti (WhatsApp + email), legali, Recoma + P.IVA.
+function Footer() {
+  const f = LANDING.footer;
+  return (
+    <footer className="border-t border-border/60 px-5 py-14">
+      <div className="mx-auto flex max-w-5xl flex-col gap-10">
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3">
+            <Logo size={36} />
+            <p className="max-w-xs text-sm text-muted-foreground">{f.tagline}</p>
+          </div>
+
+          {/* contatti: entrambi i canali */}
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Contatti
+            </p>
+            <a
+              href={waLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary"
+            >
+              <MessageCircle className="size-4 text-primary" />
+              {f.whatsappLabel}
+            </a>
+            <a
+              href={`mailto:${f.email}`}
+              className="inline-flex items-center gap-2 text-sm transition-colors hover:text-primary"
+            >
+              <Mail className="size-4 text-primary" />
+              {f.email}
+            </a>
+          </div>
+
+          {/* legali */}
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Legale
+            </p>
+            <Link href={f.privacyHref} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+              Privacy
+            </Link>
+            <Link href={f.terminiHref} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+              Termini
+            </Link>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-border/60 pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>{f.recoma}</span>
+          <span>
+            {f.piva} · © {new Date().getFullYear()} OneFlux
+          </span>
+        </div>
+      </div>
+    </footer>
   );
 }

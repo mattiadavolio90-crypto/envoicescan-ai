@@ -17,6 +17,8 @@ export const LANDING = {
   cta: {
     label: "Inizia ora — 7 giorni gratis",
     nota: "Senza carta, senza obblighi",
+    // Invito soft per chi vuole parlare prima di provare (rettifica §G).
+    dubbi: "Hai dubbi? Scrivici su WhatsApp",
     // Attivazione via WhatsApp: l'account lo configura Mattia.
   },
 
@@ -24,39 +26,29 @@ export const LANDING = {
   // Ogni scena: kicker (occhiello), titolo (1 frase), sotto (1 frase). `bg` =
   // sfondo sfocato atmosferico (mostra una pagina che il testo NON nomina);
   // `hero` = screenshot nitido protagonista su nero pulito.
+  // Struttura a 8 scene (rettifica 2): 0=aggancio+specchio FUSE; automazioni
+  // SDOPPIATE in 3=categorizzazione + 4=alert prezzi; 5=potere mobile (2 colonne).
+  // Regola tipografica: NIENTE punto a fine frase (solo come stacco nei titoli doppi).
+  // Kicker blu su tutte le scene 1–6; la scena 0 sta NUDA (nessun kicker).
   scene: {
-    // Regola tipografica (rettifica): NIENTE punto a fine frase. Il punto si usa
-    // solo come stacco interno tra le due frasi di un titolo doppio.
-
-    // SCENA 0 — Aggancio (mistero)
+    // SCENA 0 — Aggancio + Specchio (FUSE). Niente kicker: è l'apertura.
     aggancio: {
       bg: "/landing/bg-marginalita.png",
       title: "Un unico flusso operativo.\nTutto sotto controllo",
-      firma: "Lavora per te mentre ti occupi di altro",
+      sotto: "Il tuo lavoro è gestire, non fare data entry — al resto pensa OneFlux",
       scrollHint: "scorri",
     },
 
-    // SCENA 1 — Lo specchio (riconoscimento)
-    specchio: {
-      bg: "/landing/bg-personale.png",
-      kicker: "Tu",
-      title: "Il tuo lavoro è gestire. Non fare data entry",
-      sotto: "Il tuo posto è nelle decisioni, non a compilare un foglio Excel a notte fonda",
-    },
-
-    // SCENA 2 — Lui ti parla (briefing · PRIMO CUORE)
-    // Testi generici di proposito: il briefing accenna, sotto ci sono notifiche+card.
-    // NON promettere numeri specifici (incassi/coperti): dipendono da come il cliente
-    // carica i dati. Si parla del MODO in cui l'assistente lavora, non dei numeri.
+    // SCENA 1 — Lui ti parla (briefing · PRIMO CUORE).
+    // Testi generici di proposito: NON promettere numeri specifici (dipendono dai dati).
     briefing: {
       hero: "/landing/hero-briefing.png",
       kicker: "Ogni mattina",
       title: "Ogni giorno ti dice come sta andando. Prima che tu lo chieda",
-      sotto:
-        "Cosa è cambiato, cosa controllare, dove serve attenzione — confrontato con il tuo andamento.",
+      sotto: "Cosa è cambiato, cosa controllare, dove serve attenzione — confrontato con il tuo andamento",
     },
 
-    // SCENA 3 — Tu gli parli (chat · SECONDO CUORE · la rivelazione)
+    // SCENA 2 — Tu gli parli (chat · SECONDO CUORE · la rivelazione)
     chat: {
       hero: "/landing/hero-chat.png",
       kicker: "Quando vuoi",
@@ -75,25 +67,35 @@ export const LANDING = {
       ],
     },
 
-    // SCENA 4 — La prova (automazioni). Rettifica: jolly mail RIMOSSO, solo hero-prezzi.
-    prova: {
-      hero: "/landing/hero-prezzi.png",
+    // SCENA 3 — Categorizzazione (automazioni, prima metà). Immagine pulita: solo
+    // descrizione + categoria, niente prezzi/fornitori.
+    categorie: {
+      hero: "/landing/hero-categorie.png",
       kicker: "Nel frattempo",
       title: "I dati entrano da soli",
       sotto:
-        "Le fatture dei fornitori arrivano in automatico, l'assistente le legge, le categorizza e ti segnala se un prezzo cambia.",
+        "Le fatture arrivano in automatico e l'assistente le legge e le categorizza — migliaia di prodotti, in ordine da soli",
+    },
+
+    // SCENA 4 — Alert prezzi (automazioni, seconda metà).
+    prezzi: {
+      hero: "/landing/hero-prezzi.png",
+      kicker: "E se qualcosa cambia",
+      title: "Te ne accorgi subito",
+      sotto: "Quando un fornitore alza un prezzo, OneFlux te lo segnala — con l'impatto reale sui tuoi costi",
       chiusura: "Tu non tocchi niente",
     },
 
-    // SCENA 5 — Il potere (LA frase che deve restare)
+    // SCENA 5 — Il potere (mobile). LAYOUT 2 COLONNE: testo sx, telefono dx (verticale).
+    // Chat su tema gestione (diversa dalla scena 2 sul salmone): niente ridondanza.
     potere: {
-      bg: "/landing/bg-coperti.png",
+      heroMobile: "/landing/hero-mobile.jpeg",
       kicker: "Ovunque",
       title: "Da dove vuoi. Anche fuori dal locale",
-      sotto: "In sala, dal fornitore, sul divano — il tuo locale ti risponde dove sei tu.",
+      sotto: "In sala, dal fornitore, sul divano — il tuo locale ti risponde dove sei tu",
     },
 
-    // SCENA 6 — L'invito + rivelazione (hero-conti NUOVA: tutto verde, salute 100%)
+    // SCENA 6 — L'invito + rivelazione (hero-conti: tutto verde, salute 100%)
     invito: {
       hero: "/landing/hero-conti.png",
       kicker: "Provalo",
@@ -117,11 +119,16 @@ export const LANDING = {
     catena: "Più locali? C'è la modalità catena, su ogni piano",
   },
 
+  // Footer completo (rettifica §F): logo leggibile, WhatsApp + email, legali,
+  // collaborazione Recoma con P.IVA, copyright.
   footer: {
-    tagline: "La tecnologia che la tua gestione aspettava.",
+    tagline: "La tecnologia che la tua gestione aspettava",
+    whatsappLabel: "Scrivici su WhatsApp",
     email: "info@oneflux.it",
     privacyHref: "/privacy",
     terminiHref: "/termini",
+    recoma: "In collaborazione con Recoma System",
+    piva: "Recoma System S.r.l. · P.IVA IT09599210961",
   },
 } as const;
 
