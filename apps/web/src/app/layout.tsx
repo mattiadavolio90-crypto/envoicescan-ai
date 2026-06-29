@@ -15,21 +15,15 @@ const quicksand = Quicksand({ subsets: ["latin"], weight: ["700"], variable: "--
 // non viene applicato globalmente, lo usa la landing via la classe font-display.
 const sora = Sora({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-sora" });
 
+// NB: manifest e flag PWA (appleWebApp, mobile-web-app-capable) NON stanno qui,
+// ma nel layout (app): la landing pubblica "/" non deve far comparire il prompt
+// "Installa ONEFLUX" di Chrome. Il manifest vive solo dentro l'app.
 export const metadata: Metadata = {
   title: {
     default: "ONEFLUX",
     template: "%s · ONEFLUX",
   },
   description: "Gestione costi ristorante",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "ONEFLUX",
-  },
-  other: {
-    "mobile-web-app-capable": "yes",
-  },
 };
 
 export const viewport: Viewport = {

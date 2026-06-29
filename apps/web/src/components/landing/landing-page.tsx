@@ -49,10 +49,11 @@ export function LandingPage() {
   const s = LANDING.scene;
 
   return (
-    // snap-proximity (non mandatory): aiuta a centrare le scene a scroll fermo
-    // senza "intrappolare" quando una scena eccede il viewport. scroll-smooth
-    // disattivato da prefers-reduced-motion via la media query del browser.
-    <div className="snap-y snap-proximity scroll-smooth bg-background text-foreground motion-reduce:scroll-auto">
+    // Contenitore di scroll a tutta altezza con snap MANDATORY: ogni scena si
+    // aggancia al centro del viewport, niente piu' stop a meta' negli spazi neri.
+    // E' il div stesso a scrollare (h-dvh overflow-y-scroll), cosi' lo snap e'
+    // affidabile su mobile. prefers-reduced-motion disattiva lo smooth/snap.
+    <div className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth bg-background text-foreground motion-reduce:snap-none motion-reduce:scroll-auto">
       <main>
         {/* ===== SCENA 0 — Aggancio + Specchio (FUSE, niente kicker) ===== */}
         <Scene className="bg-[#05070A]">
@@ -186,7 +187,7 @@ export function LandingPage() {
         </Scene>
 
         {/* ===== SCENA 7 — Piani ===== */}
-        <section className="border-t border-border/60 px-5 py-24">
+        <section className="snap-start border-t border-border/60 px-5 py-24">
           <div className="mx-auto max-w-5xl">
             <Reveal>
               <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -8,6 +9,20 @@ import { getCurrentSession } from "@/lib/auth";
 import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 import { MobileRedirect } from "@/components/mobile-redirect";
 import { LifeBuoy, WifiOff } from "lucide-react";
+
+// PWA solo dentro l'app: manifest + flag installazione vivono qui, non nel root,
+// cosi' la landing pubblica "/" non mostra il prompt "Installa ONEFLUX" di Chrome.
+export const metadata: Metadata = {
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "ONEFLUX",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
+};
 
 function getInitials(nome: string | null, email: string): string {
   if (nome) {
