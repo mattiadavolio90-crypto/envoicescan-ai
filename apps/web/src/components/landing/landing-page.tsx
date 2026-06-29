@@ -69,9 +69,8 @@ export function LandingPage() {
               {s.aggancio.sotto}
             </p>
           </Reveal>
-          {/* hint scorri: su mobile sta più in alto per non finire sotto il
-              cookie banner (più alto su telefono). */}
-          <div className="absolute bottom-40 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-16">
+          {/* hint scorri: staccato dal contenuto ma sopra il cookie banner */}
+          <div className="absolute bottom-28 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-10">
             <span className="text-xs uppercase tracking-[0.2em]">{s.aggancio.scrollHint}</span>
             <ChevronDown className="size-5 animate-bounce" />
           </div>
@@ -186,8 +185,13 @@ export function LandingPage() {
           </Reveal>
         </Scene>
 
+        {/* Coda finale (piani + footer): un unico blocco snap-start. Mandatory ci
+            aggancia (cosi' lo raggiungi dall'ultima scena), ed essendo piu' alto
+            del viewport si scorre dentro fino al footer. scroll-snap-stop normal
+            non blocca il proseguimento. */}
+        <div className="snap-start">
         {/* ===== SCENA 7 — Piani ===== */}
-        <section className="snap-start border-t border-border/60 px-5 py-24">
+        <section className="border-t border-border/60 px-5 py-24">
           <div className="mx-auto max-w-5xl">
             <Reveal>
               <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
@@ -245,6 +249,7 @@ export function LandingPage() {
 
         {/* ===== Footer completo ===== */}
         <Footer />
+        </div>
       </main>
     </div>
   );

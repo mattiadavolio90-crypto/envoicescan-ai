@@ -101,7 +101,9 @@ export function Scene({
     <section
       id={id}
       className={cn(
-        "relative flex min-h-dvh w-full snap-center flex-col items-center justify-center overflow-hidden px-5 py-24 text-center",
+        // h-dvh esatto + snap-start: il bordo alto della scena aggancia al bordo
+        // alto del viewport -> niente spazio nero tra le scene. flex-col centrato.
+        "relative flex h-dvh w-full shrink-0 snap-start flex-col items-center justify-center overflow-hidden px-5 py-16 text-center",
         className,
       )}
     >

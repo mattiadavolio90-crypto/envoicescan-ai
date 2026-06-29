@@ -92,7 +92,7 @@ export function ChatScene({ sequenza }: { sequenza: readonly ChatMsg[] }) {
         </div>
 
         {/* messaggi */}
-        <div className="flex min-h-[280px] flex-col justify-end gap-3">
+        <div className="flex min-h-[280px] flex-col justify-start gap-3">
           {sequenza.slice(0, n).map((m, i) => (
             <Bolla key={i} msg={m} />
           ))}
@@ -114,7 +114,7 @@ function Bolla({ msg }: { msg: ChatMsg }) {
       ) : null}
       <p
         className={cn(
-          "max-w-[82%] animate-in fade-in slide-in-from-bottom-2 rounded-2xl px-4 py-2.5 text-left text-sm leading-relaxed duration-300",
+          "max-w-[82%] animate-in fade-in slide-in-from-top-2 rounded-2xl px-4 py-2.5 text-left text-sm leading-relaxed duration-300",
           isUser
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md border border-border bg-background/70",
