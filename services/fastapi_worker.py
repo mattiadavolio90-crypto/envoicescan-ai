@@ -2443,33 +2443,96 @@ def _build_chat_system_prompt(
         except Exception as exc:
             logger.warning("chat: agenda di oggi non disponibile: %s", exc)
 
-    # 4) Alert attivi: righe da classificare + salute rosso. Iniettati nel prompt
-    # cosi' l'AI puo' citarli quando la risposta e' influenzata da dati incompleti.
+    # 4) Alert fondamentali: solo i dati OBBLIGATORI per i calcoli core
+    # (fatture fornitori, ricavi, classificazione). Agenda/coperti/scadenzario
+    # sono opzionali e non vengono mai segnalati come problema.
     alert_testo = ""
     try:
+        from datetime import date as _da, timedelta as _tda
         user_id_str = str(user["id"])
-        q_nr = (
-            supabase_client.table("fatture")
-            .select("id", count="exact")
-            .eq("user_id", user_id_str)
-            .is_("deleted_at", "null")
-            .eq("needs_review", True)
-        )
-        if ristorante_id:
-            q_nr = q_nr.eq("ristorante_id", ristorante_id)
-        nr_count = (q_nr.execute().count) or 0
-        if nr_count > 0:
-            alert_testo += (
-                f"\n- ⚠️ {nr_count} righe fattura in attesa di classificazione"
-                f" (categoria 'Da Classificare'): questi prodotti NON rientrano"
-                f" nei calcoli di food cost e margine finché non vengono classificati."
-                f" Se un numero sembra basso o il food cost è n/d, potrebbe dipendere da questo."
+        _oggi_a = _da.today()
+        if _oggi_a.month == 1:
+            _mc_anno, _mc_mese = _oggi_a.year - 1, 12
+        else:
+            _mc_anno, _mc_mese = _oggi_a.year, _oggi_a.month - 1
+        _mc_inizio = f"{_mc_anno}-{_mc_mese:02d}-01"
+        _mc_fine = f"{_mc_anno}-{_mc_mese:02d}-28"  # safe lower bound
+
+        # Alert 1: fatture fornitori mancanti nel mese precedente
+        try:
+            q_fat = (
+                supabase_client.table("fatture")
+                .select("id", count="exact")
+                .eq("user_id", user_id_str)
+                .is_("deleted_at", "null")
+                .gte("data_documento", _mc_inizio)
+                .lte("data_documento", f"{_mc_anno}-{_mc_mese:02d}-31")
             )
+            if ristorante_id:
+                q_fat = q_fat.eq("ristorante_id", ristorante_id)
+            fat_count = (q_fat.execute().count) or 0
+            if fat_count == 0:
+                _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                           "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                alert_testo += (
+                    f"\n- ⚠️ Nessuna fattura fornitore caricata per {_mesi_n[_mc_mese]} {_mc_anno}:"
+                    f" food cost e costi di quel mese non sono calcolabili."
+                    f" Suggerisci di caricare le fatture in Analisi Fatture."
+                )
+        except Exception:
+            pass
+
+        # Alert 2: ricavi mancanti nel mese precedente
+        try:
+            q_ric = (
+                supabase_client.table("margini_mensili")
+                .select("fatturato")
+                .eq("user_id", user_id_str)
+                .eq("anno", _mc_anno)
+                .eq("mese", _mc_mese)
+            )
+            if ristorante_id:
+                q_ric = q_ric.eq("ristorante_id", ristorante_id)
+            ric_data = q_ric.execute().data or []
+            fatturato_ok = any((r.get("fatturato") or 0) > 0 for r in ric_data)
+            if not fatturato_ok:
+                _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                           "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                alert_testo += (
+                    f"\n- ⚠️ Fatturato/ricavi non registrati per {_mesi_n[_mc_mese]} {_mc_anno}:"
+                    f" MOL e food cost % non sono calcolabili senza il fatturato."
+                    f" Suggerisci di registrare i ricavi in Movimenti → Ricavi."
+                )
+        except Exception:
+            pass
+
+        # Alert 3: righe Da Classificare (abbassano food cost silenziosamente)
+        try:
+            q_nr = (
+                supabase_client.table("fatture")
+                .select("id", count="exact")
+                .eq("user_id", user_id_str)
+                .is_("deleted_at", "null")
+                .eq("needs_review", True)
+            )
+            if ristorante_id:
+                q_nr = q_nr.eq("ristorante_id", ristorante_id)
+            nr_count = (q_nr.execute().count) or 0
+            if nr_count > 0:
+                alert_testo += (
+                    f"\n- ⚠️ {nr_count} righe fattura 'Da Classificare':"
+                    f" non rientrano nei calcoli di food cost e margine."
+                    f" Se un valore sembra basso, potrebbe dipendere da questo."
+                    f" Suggerisci di classificarle in Analisi Fatture → Da Classificare."
+                )
+        except Exception:
+            pass
+
     except Exception as exc:
-        logger.warning("chat: alert needs_review non disponibile: %s", exc)
+        logger.warning("chat: alert fondamentali non disponibili: %s", exc)
 
     if alert_testo:
-        kpi_testo += f"\n\n## Avvisi attivi nell'app{alert_testo}"
+        kpi_testo += f"\n\n## Avvisi fondamentali (dati mancanti che impattano i calcoli){alert_testo}"
 
     if not kpi_testo:
         kpi_testo = "\n\n(Nessun dato di costo o margine ancora registrato.)"
