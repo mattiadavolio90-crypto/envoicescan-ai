@@ -78,7 +78,7 @@ export const LANDING = {
       kicker: "Nel frattempo",
       title: "I dati entrano da soli",
       sotto:
-        "Le fatture arrivano in automatico e l'assistente le legge e le categorizza: migliaia di prodotti, in ordine da soli",
+        "Le tue fatture di acquisto arrivano in automatico e l'assistente le legge e le categorizza: migliaia di prodotti, in ordine da soli",
       // chiusura sotto l'immagine: il ribaltamento concreto (niente data entry).
       // "automatizzato" parola-chiave azzurra (gestita nel componente).
       chiusura: "Niente magazzino, niente anagrafiche, niente ore al computer: tutto automatizzato",
@@ -91,7 +91,7 @@ export const LANDING = {
       hero: "/landing/hero-prezzi.png",
       kicker: "E se qualcosa cambia",
       title: "Un fornitore alza i prezzi.\nLo sai prima di pagare",
-      sotto: "OneFlux confronta ogni fattura con lo storico e ti avvisa quando un costo sale, con quanto ti pesa davvero, prima che diventi un problema",
+      sotto: "OneFlux confronta ogni fattura con lo storico e ti avvisa quando un costo sale, e quanto impatta sulla gestione",
     },
 
     // SCENA 5 — Il potere (mobile). LAYOUT 2 COLONNE: testo sx, telefono dx (verticale).
@@ -100,7 +100,7 @@ export const LANDING = {
       heroMobile: "/landing/hero-mobile.jpeg",
       kicker: "Ovunque",
       title: "Da dove vuoi. Anche fuori dal locale",
-      sotto: "In sala, dal fornitore, sul divano: ti risponde dove sei tu, come un consulente sempre in tasca",
+      sotto: "In sala, dal fornitore, sul divano: ti risponde dove sei tu, come un consulente, sempre a portata di mano",
     },
 
     // SCENA 6 — L'invito + rivelazione (hero-conti: tutto verde, salute 100%)
@@ -123,11 +123,18 @@ export const LANDING = {
     // Nessun piano "consigliato": tutti full optional, cambia solo il volume.
     sottotitolo:
       "Ogni piano ha tutte le funzioni e il tuo assistente sempre attivo. Cambia solo il volume di fatture e crediti: scegli in base alla dimensione del tuo locale.",
+    // Voci con spunta blu (uguali per tutti, mostrate in ogni card): fatture,
+    // crediti, SDI, check-up. `creditiNota` NON è una spunta: è la spiegazione
+    // piccola sotto la riga crediti (quanti crediti ≈ quante richieste/giorno).
     lista: [
       { nome: "Base", prezzo: "39€", fatture: "Fino a 50 fatture / mese", crediti: "1.000 crediti AI / mese", creditiNota: "~10 richieste al giorno" },
       { nome: "Plus", prezzo: "59€", fatture: "Fino a 100 fatture / mese", crediti: "2.000 crediti AI / mese", creditiNota: "~20 richieste al giorno" },
       { nome: "Pro", prezzo: "79€", fatture: "Fino a 200 fatture / mese", crediti: "3.000 crediti AI / mese", creditiNota: "~30 richieste al giorno" },
     ],
+    // Voci uguali in ogni piano (oltre a fatture/crediti).
+    sdi: "Ricezione fatture via SDI inclusa",
+    checkup: "1 check-up gratuito dopo il primo mese",
+    checkupDettaglio: "maggiori dettagli in Servizi",
     iva: "+IVA",
     catena: "Più locali? C'è la modalità catena, su ogni piano",
     // chiarimento sotto la riga catena: i prezzi sono per singola sede.

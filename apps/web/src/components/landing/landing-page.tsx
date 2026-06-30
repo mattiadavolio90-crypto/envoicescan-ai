@@ -328,21 +328,37 @@ export function LandingPage() {
                       </span>
                       <span className="text-base font-medium text-muted-foreground"> /mese</span>
                     </p>
-                    {/* tre voci uguali (stessa dimensione/colore, spunta blu): fatture,
-                        crediti, richieste/giorno. Niente cifra grande a parte. */}
-                    <div className="mt-5 w-full space-y-2 text-left text-sm">
+                    {/* voci con spunta blu (uguali per tutti): fatture, crediti,
+                        SDI, check-up. La richieste/giorno NON è una spunta: è la
+                        spiegazione dei crediti, piccola e rientrata sotto la riga. */}
+                    <div className="mt-5 w-full space-y-2.5 text-left text-sm">
                       <p className="flex items-center gap-2">
                         <Check className="size-4 shrink-0 text-primary" />
                         {p.fatture}
                       </p>
+                      <div>
+                        <p className="flex items-center gap-2">
+                          <Check className="size-4 shrink-0 text-primary" />
+                          {p.crediti}
+                        </p>
+                        <p className="ml-6 text-xs text-white/55">{p.creditiNota}</p>
+                      </div>
                       <p className="flex items-center gap-2">
                         <Check className="size-4 shrink-0 text-primary" />
-                        {p.crediti}
+                        {LANDING.piani.sdi}
                       </p>
-                      <p className="flex items-center gap-2">
-                        <Check className="size-4 shrink-0 text-primary" />
-                        {p.creditiNota}
-                      </p>
+                      <div>
+                        <p className="flex items-center gap-2">
+                          <Check className="size-4 shrink-0 text-primary" />
+                          {LANDING.piani.checkup}
+                        </p>
+                        <p className="ml-6 text-xs">
+                          <ServiziModal
+                            triggerLabel={LANDING.piani.checkupDettaglio}
+                            triggerClassName="text-xs font-medium"
+                          />
+                        </p>
+                      </div>
                     </div>
                     <a
                       href={waLink(`Ciao! Vorrei provare ONEFLUX, piano ${p.nome}.`)}

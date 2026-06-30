@@ -6,10 +6,17 @@ import { LandingPage } from "@/components/landing/landing-page";
 // elettroniche, controllo costi, marginalità) vivono SOLO qui nei metadata e nel
 // JSON-LD: invisibili in pagina, lette dai motori. Canonical su oneflux.it per
 // separare nettamente la landing dall'app (app.oneflux.it).
+// Titolo/descrizione anteprima social = stesso messaggio della scena 0 (coerenza
+// con cio' che il visitatore vede aprendo il link). Le keyword SEO restano sotto,
+// invisibili. og:image = /og-image.png statico 1200x630; metadataBase
+// (https://www.oneflux.it nel layout) lo risolve in URL assoluto per gli scraper.
+const OG_TITLE = "Un nuovo modo di pensare alla gestione";
+const OG_DESC =
+  "Gestisci il tuo locale senza diventare un contabile. Ai dati pensa OneFlux — si adatta a te.";
+
 export const metadata: Metadata = {
-  title: "ONEFLUX — Controllo costi e food cost per il tuo ristorante",
-  description:
-    "Il braccio destro del tuo ristorante: le fatture elettroniche entrano da sole, l'assistente le categorizza, calcola food cost e marginalità e ti dice ogni mattina come va. Avvisi sui rincari dei fornitori. Provalo sul tuo locale, 7 giorni gratis.",
+  title: OG_TITLE,
+  description: OG_DESC,
   keywords: [
     "software food cost ristorante",
     "controllo di gestione ristorante",
@@ -22,28 +29,26 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/" },
   openGraph: {
-    title: "ONEFLUX — Il braccio destro del tuo ristorante",
-    description:
-      "Le fatture entrano da sole, l'assistente le legge e ti dice ogni mattina come va il locale. Food cost, marginalità e avvisi sui rincari, sotto controllo. 7 giorni gratis.",
-    url: "/",
-    siteName: "ONEFLUX",
+    title: OG_TITLE,
+    description: OG_DESC,
+    url: "https://www.oneflux.it",
+    siteName: "OneFlux",
     type: "website",
     locale: "it_IT",
     images: [
       {
-        url: "/opengraph-image",
+        url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "ONEFLUX — Il braccio destro del tuo ristorante",
+        alt: OG_TITLE,
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ONEFLUX — Il braccio destro del tuo ristorante",
-    description:
-      "Le fatture entrano da sole, l'assistente le legge e ti dice ogni mattina come va. Food cost, marginalità e avvisi rincari. 7 giorni gratis.",
-    images: ["/opengraph-image"],
+    title: OG_TITLE,
+    description: OG_DESC,
+    images: ["/og-image.png"],
   },
 };
 

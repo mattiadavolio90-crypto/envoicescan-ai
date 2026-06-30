@@ -15,11 +15,12 @@ import {
   FileSearch,
   PiggyBank,
   Globe,
+  ExternalLink,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { SERVIZI, WHATSAPP_NUMERO, type ServizioIconName } from "@/lib/assistenza";
+import { SERVIZI, WHATSAPP_NUMERO, type Servizio, type ServizioIconName } from "@/lib/assistenza";
 import { LANDING } from "@/lib/landing-content";
 
 const SERVIZIO_ICONS: Record<ServizioIconName, LucideIcon> = {
@@ -29,6 +30,26 @@ const SERVIZIO_ICONS: Record<ServizioIconName, LucideIcon> = {
   FileSearch,
   PiggyBank,
   Globe,
+};
+
+// Stessi gruppi-colore della pagina servizi reale dell'app (marketplace.tsx),
+// adattati al tema scuro della landing: featured=GIALLO/amber (civetta, sollevata),
+// default=AZZURRO OneFlux, partner=ROSSO. Cosi' l'overlay "somiglia" alla pagina vera.
+const CARD_VARIANT: Record<NonNullable<Servizio["variant"]>, string> = {
+  default: "border-sky-500/40 bg-sky-500/[0.04] hover:border-sky-500/60",
+  featured:
+    "border-amber-400/60 bg-amber-400/[0.06] ring-1 ring-amber-400/20 sm:scale-[1.02] shadow-lg shadow-amber-500/15",
+  partner: "border-red-500/40 bg-red-500/[0.04] hover:border-red-500/60",
+};
+const ICON_TILE: Record<NonNullable<Servizio["variant"]>, string> = {
+  default: "bg-sky-500/15 text-sky-400",
+  featured: "bg-amber-400/20 text-amber-400",
+  partner: "bg-red-500/15 text-red-400",
+};
+const PARTNER_BADGE: Record<NonNullable<Servizio["variant"]>, string> = {
+  default: "bg-sky-500/10 text-sky-400",
+  featured: "bg-amber-400/15 text-amber-400",
+  partner: "bg-red-500/10 text-red-400",
 };
 
 function waServizi(): string {
@@ -102,39 +123,55 @@ export function ServiziModal({
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {SERVIZI.map((sv) => {
                 const Icon = SERVIZIO_ICONS[sv.icon];
-                const isPartner = sv.variant === "partner";
+                const variant = sv.variant ?? "default";
                 return (
                   <div
                     key={sv.key}
                     className={cn(
-                      "flex h-full flex-col rounded-2xl border bg-background/40 p-5 text-left",
-                      sv.variant === "featured"
-                        ? "border-primary/50 ring-1 ring-primary/20"
-                        : "border-border/70",
+                      "flex h-full flex-col rounded-xl border-2 p-5 text-left transition-colors",
+                      CARD_VARIANT[variant],
                     )}
                   >
-                    <div className="flex items-center gap-3">
+                    {/* badge in cima, in tinta col gruppo: featured = "Punto di
+                        partenza" (giallo), partner = label collaborazione (rosso) */}
+                    {variant === "featured" ? (
+                      <span className="mb-3 inline-flex w-fit items-center rounded-full bg-amber-400/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-400">
+                        Punto di partenza
+                      </span>
+                    ) : null}
+                    {sv.partnerLabel ? (
                       <span
                         className={cn(
-                          "flex size-10 shrink-0 items-center justify-center rounded-xl",
-                          sv.variant === "featured" ? "bg-primary/15" : "bg-muted",
-                        )}
-                      >
-                        <Icon className="size-5 text-primary" />
-                      </span>
-                      <h3 className="font-display text-base font-semibold leading-tight">{sv.label}</h3>
-                    </div>
-                    {sv.partnerLabel ? (
-                      <p
-                        className={cn(
-                          "mt-3 text-xs font-medium uppercase tracking-wide",
-                          isPartner ? "text-yellow-400/90" : "text-muted-foreground",
+                          "mb-3 inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+                          PARTNER_BADGE[variant],
                         )}
                       >
                         {sv.partnerLabel}
-                      </p>
+                      </span>
                     ) : null}
-                    <p className="mt-3 text-sm leading-relaxed text-white/[0.7]">{sv.descrizione}</p>
+
+                    <div className="flex items-center gap-3">
+                      <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", ICON_TILE[variant])}>
+                        <Icon className="size-5" />
+                      </span>
+                      <h3 className="font-semibold leading-tight">{sv.label}</h3>
+                    </div>
+
+                    <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
+                      {sv.descrizione}
+                    </p>
+
+                    {sv.partnerUrl ? (
+                      <a
+                        href={sv.partnerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex w-fit items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        Scopri Recoma System
+                        <ExternalLink className="size-3" />
+                      </a>
+                    ) : null}
                   </div>
                 );
               })}

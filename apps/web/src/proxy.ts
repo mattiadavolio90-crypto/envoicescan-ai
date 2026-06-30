@@ -12,8 +12,9 @@ const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
 // Asset SEO/social a route (NON file statici: non hanno estensione nel path, quindi
 // il matcher non li esclude e finirebbero rediretti al login dalla regola "rotta
 // protetta senza sessione"). Devono restare pubblici: i crawler social/motori non
-// hanno cookie di sessione. opengraph-image è generata da Next come route.
-const SEO_PATHS = ["/opengraph-image", "/sitemap.xml", "/robots.txt"];
+// hanno cookie di sessione. (og-image.png è un file statico in public/, già escluso
+// dal matcher per via dell'estensione.)
+const SEO_PATHS = ["/sitemap.xml", "/robots.txt"];
 
 // Gira a edge e decide i redirect SOLO sulla presenza del cookie, senza chiamare
 // il worker. La validazione vera del token resta in (app)/layout.tsx (difesa in
