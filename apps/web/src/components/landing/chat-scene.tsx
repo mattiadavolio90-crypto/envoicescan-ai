@@ -10,7 +10,15 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
 
-export type ChatMsg = { da: "ai" | "user"; testo: string };
+export type ChatMsg = {
+  da: "ai" | "user";
+  testo: string;
+  // dato sensibile (es. nome fornitore) da oscurare: reso come barretta sfocata
+  // al posto del nome, stesso trattamento dei nomi nella slide variazioni prezzo.
+  // `coda` = eventuale testo dopo la parte censurata (es. il punto finale).
+  censura?: string;
+  coda?: string;
+};
 
 // ms di "sta scrivendo" prima che il messaggio dell'AI compaia.
 const TYPING_AI = 1400;
@@ -121,6 +129,18 @@ function Bolla({ msg }: { msg: ChatMsg }) {
         )}
       >
         {msg.testo}
+        {msg.censura ? (
+          <>
+            {/* nome fornitore oscurato: barretta sfocata, dato sensibile non leggibile */}
+            <span
+              aria-label="dato oscurato"
+              className="mx-0.5 select-none rounded bg-foreground/45 px-2 align-middle text-transparent blur-[3px]"
+            >
+              {msg.censura}
+            </span>
+            {msg.coda}
+          </>
+        ) : null}
       </p>
     </div>
   );

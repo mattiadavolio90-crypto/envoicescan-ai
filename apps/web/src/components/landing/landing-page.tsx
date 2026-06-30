@@ -1,9 +1,22 @@
 import Link from "next/link";
-import { ChevronDown, ArrowRight, Check, MessageCircle, Mail } from "lucide-react";
+import {
+  ChevronDown,
+  ArrowRight,
+  Check,
+  MessageCircle,
+  Mail,
+  Stethoscope,
+  LineChart,
+  Headset,
+  FileSearch,
+  PiggyBank,
+  Globe,
+  type LucideIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
-import { WHATSAPP_NUMERO } from "@/lib/assistenza";
+import { WHATSAPP_NUMERO, SERVIZI, type ServizioIconName } from "@/lib/assistenza";
 import { LANDING, WHATSAPP_LANDING_MSG } from "@/lib/landing-content";
 import { Scene, Reveal, BlurBg, Kicker } from "@/components/landing/scene-kit";
 import { ChatScene } from "@/components/landing/chat-scene";
@@ -30,6 +43,96 @@ function RecomaLink({ className }: { className?: string }) {
     >
       {LANDING.footer.recomaNome}
     </a>
+  );
+}
+
+// Mappa nome-icona (dal catalogo) -> componente lucide. Tipata sul union del
+// catalogo: un'icona non gestita e' errore a compile-time.
+const SERVIZIO_ICONS: Record<ServizioIconName, LucideIcon> = {
+  Stethoscope,
+  LineChart,
+  Headset,
+  FileSearch,
+  PiggyBank,
+  Globe,
+};
+
+// Sezione Servizi PUBBLICA. Legge il catalogo condiviso `SERVIZI` (lib/assistenza)
+// — stessa fonte dell'app: un servizio modificato lì cambia in entrambe. Mostra
+// solo label/descrizione/icona/partnerLabel; prezzi e note interne (fase 2) NON
+// vengono renderizzati. Ancora #servizi: target del link giallo nel footer.
+function ServiziSection() {
+  const t = LANDING.servizi;
+  return (
+    <section id="servizi" className="scroll-mt-8 border-t border-border/60 px-5 py-24">
+      <div className="mx-auto max-w-5xl">
+        <Reveal>
+          <Kicker>{t.kicker}</Kicker>
+        </Reveal>
+        <Reveal delay={120}>
+          <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
+            {t.title}
+          </h2>
+        </Reveal>
+        <Reveal delay={200}>
+          <p className="mx-auto mt-4 max-w-2xl text-center text-base text-white/[0.72]">
+            {t.sottotitolo}
+          </p>
+        </Reveal>
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {SERVIZI.map((sv, i) => {
+            const Icon = SERVIZIO_ICONS[sv.icon];
+            const isPartner = sv.variant === "partner";
+            return (
+              <Reveal key={sv.key} delay={(i % 3) * 90}>
+                <div
+                  className={cn(
+                    "flex h-full flex-col rounded-2xl border bg-card/50 p-6 text-left transition-colors",
+                    sv.variant === "featured"
+                      ? "border-primary/50 ring-1 ring-primary/20"
+                      : "border-border/70 hover:border-border",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={cn(
+                        "flex size-10 shrink-0 items-center justify-center rounded-xl",
+                        sv.variant === "featured" ? "bg-primary/15" : "bg-muted",
+                      )}
+                    >
+                      <Icon className="size-5 text-primary" />
+                    </span>
+                    <h3 className="font-display text-lg font-semibold leading-tight">{sv.label}</h3>
+                  </div>
+                  {sv.partnerLabel ? (
+                    <p
+                      className={cn(
+                        "mt-3 text-xs font-medium uppercase tracking-wide",
+                        isPartner ? "text-yellow-400/90" : "text-muted-foreground",
+                      )}
+                    >
+                      {sv.partnerLabel}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 text-sm leading-relaxed text-white/[0.7]">{sv.descrizione}</p>
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+        <p className="mt-10 text-center text-sm text-muted-foreground">
+          Ti interessa un servizio?{" "}
+          <a
+            href={waLink("Ciao! Vorrei sapere di più sui vostri servizi.")}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-primary hover:underline"
+          >
+            Scrivici su WhatsApp
+          </a>
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -75,6 +178,41 @@ function SceneTitle({
   );
 }
 
+// Sottotitolo di scena UNIFORME: bianco attenuato (~72%, non grigio spento), misura
+// e spaziatura identiche tra tutte le scene. `parolaChiave` (opzionale) viene resa
+// in azzurro OneFlux per dare ritmo (una keyword per slide). Match case-insensitive
+// sulla prima occorrenza; se assente, testo invariato.
+function SceneSub({
+  children,
+  parolaChiave,
+  className,
+}: {
+  children: string;
+  parolaChiave?: string;
+  className?: string;
+}) {
+  let content: React.ReactNode = children;
+  if (parolaChiave) {
+    const i = children.toLowerCase().indexOf(parolaChiave.toLowerCase());
+    if (i >= 0) {
+      content = (
+        <>
+          {children.slice(0, i)}
+          <span className="font-medium text-primary">
+            {children.slice(i, i + parolaChiave.length)}
+          </span>
+          {children.slice(i + parolaChiave.length)}
+        </>
+      );
+    }
+  }
+  return (
+    <p className={cn("mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-white/[0.72]", className)}>
+      {content}
+    </p>
+  );
+}
+
 export function LandingPage() {
   const s = LANDING.scene;
 
@@ -101,15 +239,26 @@ export function LandingPage() {
           <Reveal>
             <Logo size={84} glow />
           </Reveal>
-          <Reveal delay={150}>
-            <SceneTitle as="h1" className="mt-10">
+          {/* Payoff del nome (ONEFLUX -> "un unico flusso"): firma del brand sotto il
+              logo, piccola ed elegante, azzurro tenue. Discreta per non competere col
+              logo grande. */}
+          <Reveal delay={80}>
+            <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-primary/70 sm:text-sm">
+              Un unico flusso, tutto sotto controllo
+            </p>
+          </Reveal>
+          <Reveal delay={180}>
+            <SceneTitle as="h1" className="mt-9">
               {s.aggancio.title}
             </SceneTitle>
           </Reveal>
-          <Reveal delay={300}>
-            <p className="mx-auto mt-6 max-w-xl text-base text-muted-foreground sm:text-lg">
+          <Reveal delay={320}>
+            <SceneSub parolaChiave="contabile" className="max-w-xl">
               {s.aggancio.sotto}
-            </p>
+            </SceneSub>
+          </Reveal>
+          <Reveal delay={420}>
+            <p className="mx-auto mt-2 max-w-xl text-base text-white/55">{s.aggancio.sotto2}</p>
           </Reveal>
           {/* hint scorri: staccato dal contenuto ma sopra il cookie banner */}
           <div className="absolute bottom-28 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-10">
@@ -131,7 +280,9 @@ export function LandingPage() {
             <ChatScene sequenza={s.chat.sequenza} />
           </div>
           <Reveal delay={200}>
-            <p className="mx-auto mt-8 max-w-xl text-lg text-muted-foreground">{s.chat.sotto}</p>
+            <SceneSub parolaChiave="assistente" className="max-w-xl">
+              {s.chat.sotto}
+            </SceneSub>
           </Reveal>
         </Scene>
 
@@ -144,7 +295,7 @@ export function LandingPage() {
             <SceneTitle>{s.briefing.title}</SceneTitle>
           </Reveal>
           <Reveal delay={260}>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.briefing.sotto}</p>
+            <SceneSub parolaChiave="andamento">{s.briefing.sotto}</SceneSub>
           </Reveal>
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.briefing.hero} alt="Il briefing del mattino di ONEFLUX" wide />
@@ -160,10 +311,16 @@ export function LandingPage() {
             <SceneTitle>{s.categorie.title}</SceneTitle>
           </Reveal>
           <Reveal delay={260}>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.categorie.sotto}</p>
+            <SceneSub parolaChiave="assistente">{s.categorie.sotto}</SceneSub>
           </Reveal>
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.categorie.hero} alt="Migliaia di prodotti categorizzati in automatico" wide />
+          </Reveal>
+          {/* chiusura sotto l'immagine: il ribaltamento "niente data entry" */}
+          <Reveal delay={560}>
+            <SceneSub parolaChiave="automatizzato" className="mt-7 text-base">
+              {s.categorie.chiusura}
+            </SceneSub>
           </Reveal>
         </Scene>
 
@@ -176,7 +333,7 @@ export function LandingPage() {
             <SceneTitle>{s.prezzi.title}</SceneTitle>
           </Reveal>
           <Reveal delay={260}>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">{s.prezzi.sotto}</p>
+            <SceneSub parolaChiave="ti avvisa">{s.prezzi.sotto}</SceneSub>
           </Reveal>
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.prezzi.hero} alt="Avviso rincari prezzi" wide />
@@ -197,7 +354,9 @@ export function LandingPage() {
                 </h2>
               </Reveal>
               <Reveal delay={260}>
-                <p className="mt-6 text-lg text-muted-foreground">{s.potere.sotto}</p>
+                <SceneSub parolaChiave="consulente" className="mx-0 mt-6 max-w-none">
+                  {s.potere.sotto}
+                </SceneSub>
               </Reveal>
             </div>
             <Reveal delay={420} variant="zoom" className="flex justify-center md:justify-end">
@@ -215,7 +374,7 @@ export function LandingPage() {
             <SceneTitle>{s.invito.title}</SceneTitle>
           </Reveal>
           <Reveal delay={260}>
-            <p className="mt-6 text-lg text-muted-foreground">{s.invito.sotto}</p>
+            <SceneSub>{s.invito.sotto}</SceneSub>
           </Reveal>
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.invito.hero} alt="I conti del locale: tutto verde, MOL positivo" wide />
@@ -268,14 +427,16 @@ export function LandingPage() {
                       </span>
                     </p>
                     <p className="text-sm text-muted-foreground">/mese</p>
-                    <div className="mt-6 space-y-2 text-sm">
+                    {/* crediti AI: cifra grande (potenza) + riferimento concreto
+                        piccolo sotto (rassicura il ristoratore) */}
+                    <div className="mt-6 w-full border-y border-border/50 py-5">
+                      <p className="font-display text-2xl font-bold text-primary">{p.crediti}</p>
+                      <p className="mt-0.5 text-xs text-white/55">{p.creditiNota}</p>
+                    </div>
+                    <div className="mt-5 text-sm">
                       <p className="flex items-center justify-center gap-2">
                         <Check className="size-4 text-primary" />
                         {p.fatture}
-                      </p>
-                      <p className="flex items-center justify-center gap-2">
-                        <Check className="size-4 text-primary" />
-                        {p.ai}
                       </p>
                     </div>
                     <a
@@ -296,6 +457,9 @@ export function LandingPage() {
             </div>
           </div>
         </section>
+
+        {/* ===== Sezione Servizi (pubblica, fonte = catalogo app) ===== */}
+        <ServiziSection />
 
         {/* ===== Footer completo ===== */}
         <Footer />
@@ -358,7 +522,12 @@ function Footer() {
           <div className="flex flex-col gap-3">
             <Logo size={36} />
             <p className="max-w-xs text-sm text-muted-foreground">{f.tagline}</p>
-            <p className="max-w-xs text-sm text-foreground/80">{f.umano}</p>
+            <p className="max-w-sm text-sm text-foreground/80">
+              {f.umanoPre}
+              <a href={f.umanoServiziHref} className="font-semibold text-yellow-400 hover:underline">
+                {f.umanoServizi}
+              </a>
+            </p>
           </div>
 
           {/* contatti: entrambi i canali */}
