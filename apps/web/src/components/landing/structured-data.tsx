@@ -34,7 +34,7 @@ const FAQ = [
   },
   {
     q: "Serve un commercialista o competenze tecniche per usarlo?",
-    a: "No. ONEFLUX è pensato per chi gestisce il locale, non per tecnici: gli scrivi come a una persona e ti risponde. Dall'altra parte c'è una persona vera che ti segue, non un call center.",
+    a: "No. ONEFLUX è pensato per chi gestisce il locale, non per tecnici: gli scrivi come a una persona e ti risponde. Dall'altra parte c'è una persona vera che ti segue.",
   },
 ] as const;
 

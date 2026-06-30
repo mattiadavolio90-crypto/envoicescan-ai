@@ -138,7 +138,7 @@ export const LANDING = {
   // della sezione; le card leggono label/descrizione/icona dal catalogo.
   servizi: {
     kicker: "Non solo software",
-    title: "C'è una persona dietro, non un call center",
+    title: "C'è una persona dietro, che ti segue davvero",
     sottotitolo:
       "Oltre all'app, ti affianchiamo con servizi su misura per il tuo locale — dall'analisi dei numeri all'assistenza continuativa.",
   },
