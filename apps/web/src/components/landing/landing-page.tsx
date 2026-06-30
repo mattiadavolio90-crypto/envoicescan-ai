@@ -153,12 +153,12 @@ export function LandingPage() {
               {s.aggancio.title}
             </SceneTitle>
           </Reveal>
-          {/* sotto + sotto2: entrambi su due righe (whitespace-pre-line) e TUTTI in
-              azzurro OneFlux. Niente parola-chiave singola: l'intero blocco è azzurro. */}
+          {/* sotto: stile sottotitolo standard (bianco attenuato, come le altre
+              scene), su due righe. sotto2: azzurro OneFlux, su due righe. */}
           <Reveal delay={300}>
-            <p className="mx-auto mt-6 max-w-xl whitespace-pre-line text-lg font-medium leading-snug text-primary">
+            <SceneSub className="max-w-xl whitespace-pre-line leading-snug">
               {s.aggancio.sotto}
-            </p>
+            </SceneSub>
           </Reveal>
           <Reveal delay={400}>
             <p className="mx-auto mt-4 max-w-xl whitespace-pre-line text-lg font-medium leading-snug text-primary">
@@ -185,7 +185,6 @@ export function LandingPage() {
               {s.chat.sotto}
             </SceneSub>
           </Reveal>
-          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 2 — Briefing (lui ti parla) ===== */}
@@ -202,7 +201,6 @@ export function LandingPage() {
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.briefing.hero} alt="Il briefing del mattino di ONEFLUX" wide />
           </Reveal>
-          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 3 — Categorizzazione ===== */}
@@ -225,7 +223,6 @@ export function LandingPage() {
               {s.categorie.chiusura}
             </SceneSub>
           </Reveal>
-          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 4 — Alert prezzi ===== */}
@@ -242,7 +239,6 @@ export function LandingPage() {
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.prezzi.hero} alt="Avviso rincari prezzi" wide />
           </Reveal>
-          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 5 — Il potere (mobile, 2 colonne) ===== */}
@@ -268,7 +264,6 @@ export function LandingPage() {
               <PhoneShot src={s.potere.heroMobile} alt="L'assistente ONEFLUX sul telefono" />
             </Reveal>
           </div>
-          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 6 — Invito + rivelazione ===== */}
