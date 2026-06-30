@@ -126,11 +126,16 @@ export function LandingPage() {
   const s = LANDING.scene;
 
   return (
-    // Contenitore di scroll a tutta altezza con snap MANDATORY: ogni scena si
-    // aggancia al centro del viewport, niente piu' stop a meta' negli spazi neri.
-    // E' il div stesso a scrollare (h-dvh overflow-y-scroll), cosi' lo snap e'
-    // affidabile su mobile. prefers-reduced-motion disattiva lo smooth/snap.
-    <div className="h-dvh snap-y snap-mandatory overflow-y-scroll scroll-smooth bg-background text-foreground motion-reduce:snap-none motion-reduce:scroll-auto">
+    // Contenitore di scroll a tutta altezza. data-scroll-root: lo usa Reveal come
+    // root dell'IntersectionObserver (le animazioni vivono dentro QUESTO div, non
+    // nel viewport). Snap: PROXIMITY su mobile (lo scorrimento col dito resta
+    // fluido e non viene "strappato" al ricentraggio di mandatory) e MANDATORY da
+    // sm in su (desktop, dove l'aggancio preciso funziona bene). overscroll-contain
+    // evita il rimbalzo della pagina sotto. reduced-motion disattiva snap/smooth.
+    <div
+      data-scroll-root
+      className="h-dvh snap-y snap-proximity overflow-y-scroll overscroll-y-contain scroll-smooth bg-background text-foreground sm:snap-mandatory motion-reduce:snap-none motion-reduce:scroll-auto"
+    >
       {/* JSON-LD per i motori (invisibile): Organization + SoftwareApplication + FAQ */}
       <StructuredData />
       <main>
@@ -313,10 +318,12 @@ export function LandingPage() {
                 {LANDING.piani.sottotitolo}
               </p>
             </Reveal>
-            {/* Card tutte uguali: nessun piano in risalto (cambia solo il volume). */}
+            {/* Card tutte uguali: nessun piano in risalto (cambia solo il volume).
+                variant zoom: entrano con la stessa dissolvenza percepibile delle
+                immagini (richiesto: animazione anche sui blocchi prezzi). */}
             <div className="mt-12 grid gap-6 md:grid-cols-3">
               {LANDING.piani.lista.map((p, i) => (
-                <Reveal key={p.nome} delay={i * 100}>
+                <Reveal key={p.nome} delay={i * 120} variant="zoom">
                   <div className="relative flex h-full flex-col items-center rounded-2xl border border-primary bg-card/60 p-6 text-center ring-1 ring-primary/30">
                     <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       {p.nome}

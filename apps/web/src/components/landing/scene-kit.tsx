@@ -14,8 +14,10 @@ import { cn } from "@/lib/utils";
 type RevealVariant = "up" | "zoom";
 
 const REVEAL_HIDDEN: Record<RevealVariant, string> = {
-  up: "translate-y-8 opacity-0",
-  zoom: "translate-y-10 scale-[0.94] opacity-0",
+  up: "translate-y-10 opacity-0",
+  // dissolvenza immagini piu' marcata: scala piu' bassa + risalita maggiore, cosi'
+  // l'entrata si percepisce bene (richiesto su PC e mobile).
+  zoom: "translate-y-14 scale-[0.88] opacity-0",
 };
 
 export function Reveal({
@@ -40,6 +42,12 @@ export function Reveal({
       setVisibile(true);
       return;
     }
+    // root = il contenitore che scrolla davvero (div h-dvh overflow-y-scroll), non
+    // il viewport: su mobile lo scroll-snap vive dentro quel div, e osservare la
+    // FINESTRA faceva partire l'animazione tardi/mai (sembrava "senza dissolvenza").
+    // rootMargin negativo in basso: la scena si rivela quando entra davvero, non al
+    // primo pixel. threshold 0 + rootMargin = scatto affidabile anche col dito.
+    const scroller = el.closest<HTMLElement>("[data-scroll-root]") ?? null;
     const io = new IntersectionObserver(
       ([e]) => {
         if (e.isIntersecting) {
@@ -47,7 +55,7 @@ export function Reveal({
           io.disconnect();
         }
       },
-      { threshold: 0.2 },
+      { root: scroller, threshold: 0.01, rootMargin: "0px 0px -12% 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
