@@ -124,12 +124,14 @@ export const LANDING = {
     sottotitolo:
       "Ogni piano ha tutte le funzioni e il tuo assistente sempre attivo. Cambia solo il volume di fatture e crediti: scegli in base alla dimensione del tuo locale.",
     lista: [
-      { nome: "Base", prezzo: "39€", fatture: "50 fatture / mese", crediti: "1.000 crediti AI / mese", creditiNota: "~10 richieste al giorno" },
-      { nome: "Plus", prezzo: "59€", fatture: "100 fatture / mese", crediti: "2.000 crediti AI / mese", creditiNota: "~20 richieste al giorno" },
-      { nome: "Pro", prezzo: "79€", fatture: "200 fatture / mese", crediti: "3.000 crediti AI / mese", creditiNota: "~30 richieste al giorno" },
+      { nome: "Base", prezzo: "39€", fatture: "Fino a 50 fatture / mese", crediti: "1.000 crediti AI / mese", creditiNota: "~10 richieste al giorno" },
+      { nome: "Plus", prezzo: "59€", fatture: "Fino a 100 fatture / mese", crediti: "2.000 crediti AI / mese", creditiNota: "~20 richieste al giorno" },
+      { nome: "Pro", prezzo: "79€", fatture: "Fino a 200 fatture / mese", crediti: "3.000 crediti AI / mese", creditiNota: "~30 richieste al giorno" },
     ],
     iva: "+IVA",
     catena: "Più locali? C'è la modalità catena, su ogni piano",
+    // chiarimento sotto la riga catena: i prezzi sono per singola sede.
+    perPuntoVendita: "I prezzi esposti sono per punto vendita",
   },
 
   // --- Sezione SERVIZI (pubblica) -------------------------------------------

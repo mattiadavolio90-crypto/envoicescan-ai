@@ -317,34 +317,38 @@ export function LandingPage() {
             <div className="mt-12 grid gap-6 md:grid-cols-3">
               {LANDING.piani.lista.map((p, i) => (
                 <Reveal key={p.nome} delay={i * 100}>
-                  <div className="relative flex h-full flex-col items-center rounded-2xl border border-primary bg-card/60 p-7 text-center ring-1 ring-primary/30">
+                  <div className="relative flex h-full flex-col items-center rounded-2xl border border-primary bg-card/60 p-6 text-center ring-1 ring-primary/30">
                     <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       {p.nome}
                     </p>
-                    <p className="mt-3 font-display text-5xl font-bold">
+                    <p className="mt-2 font-display text-4xl font-bold">
                       {p.prezzo}
                       <span className="ml-1 align-top text-sm font-medium text-muted-foreground">
                         {LANDING.piani.iva}
                       </span>
+                      <span className="text-base font-medium text-muted-foreground"> /mese</span>
                     </p>
-                    <p className="text-sm text-muted-foreground">/mese</p>
-                    {/* crediti AI: cifra grande (potenza) + riferimento concreto
-                        piccolo sotto (rassicura il ristoratore) */}
-                    <div className="mt-6 w-full border-y border-border/50 py-5">
-                      <p className="font-display text-2xl font-bold text-primary">{p.crediti}</p>
-                      <p className="mt-0.5 text-xs text-white/55">{p.creditiNota}</p>
-                    </div>
-                    <div className="mt-5 text-sm">
-                      <p className="flex items-center justify-center gap-2">
-                        <Check className="size-4 text-primary" />
+                    {/* tre voci uguali (stessa dimensione/colore, spunta blu): fatture,
+                        crediti, richieste/giorno. Niente cifra grande a parte. */}
+                    <div className="mt-5 w-full space-y-2 text-left text-sm">
+                      <p className="flex items-center gap-2">
+                        <Check className="size-4 shrink-0 text-primary" />
                         {p.fatture}
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <Check className="size-4 shrink-0 text-primary" />
+                        {p.crediti}
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <Check className="size-4 shrink-0 text-primary" />
+                        {p.creditiNota}
                       </p>
                     </div>
                     <a
                       href={waLink(`Ciao! Vorrei provare ONEFLUX, piano ${p.nome}.`)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-7 inline-flex w-full items-center justify-center rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+                      className="mt-6 inline-flex w-full items-center justify-center rounded-xl border border-border px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
                     >
                       Inizia
                     </a>
@@ -353,6 +357,9 @@ export function LandingPage() {
               ))}
             </div>
             <p className="mt-8 text-center text-sm text-muted-foreground">{LANDING.piani.catena}</p>
+            <p className="mt-1.5 text-center text-xs text-muted-foreground/70">
+              {LANDING.piani.perPuntoVendita}
+            </p>
             <div className="mt-12">
               <CtaButton />
             </div>
