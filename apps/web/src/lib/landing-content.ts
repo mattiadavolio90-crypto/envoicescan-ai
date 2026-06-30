@@ -15,7 +15,7 @@ export const LANDING = {
 
   // CTA prova gratuita reale (campi trial_active/trial_activated_at nel DB).
   cta: {
-    label: "Inizia ora — 7 giorni gratis",
+    label: "Inizia ora, 7 giorni gratis",
     nota: "Senza carta, senza obblighi",
     // Attivazione via WhatsApp: l'account lo configura Mattia.
   },
@@ -30,13 +30,13 @@ export const LANDING = {
   // Kicker blu su tutte le scene 1–6; la scena 0 sta NUDA (nessun kicker).
   scene: {
     // SCENA 0 — Aggancio + Specchio (FUSE). Niente kicker: è l'apertura.
-    // sotto2 più tenue: il ribaltamento "si adatta a te". "OneFlux" in azzurro
-    // (parola-chiave della scena) gestito nel componente.
+    // sotto + sotto2 entrambi su due righe e TUTTI in azzurro OneFlux (gestito nel
+    // componente). Niente payoff "un unico flusso" sopra (rimosso). Niente trattini.
     aggancio: {
       bg: "/landing/bg-marginalita.png",
       title: "Un nuovo modo di pensare alla gestione",
-      sotto: "Gestisci il tuo locale senza diventare un contabile",
-      sotto2: "Ai dati pensa OneFlux — si adatta a te, non il contrario",
+      sotto: "Gestisci il tuo locale\nsenza diventare un contabile",
+      sotto2: "Ai dati pensa OneFlux\nsi adatta a te, non il contrario",
       scrollHint: "scorri",
     },
 
@@ -46,7 +46,7 @@ export const LANDING = {
       hero: "/landing/hero-briefing.png",
       kicker: "Il buongiorno",
       title: "Ogni giorno ti dice come sta andando. Prima che tu lo chieda",
-      sotto: "Cosa è cambiato, cosa controllare, dove serve attenzione — confrontato con il tuo andamento",
+      sotto: "Cosa è cambiato, cosa controllare, dove serve attenzione, confrontato con il tuo andamento",
     },
 
     // SCENA 2 — Tu gli parli (chat · SECONDO CUORE · la rivelazione)
@@ -54,7 +54,7 @@ export const LANDING = {
       hero: "/landing/hero-chat.png",
       kicker: "Quando vuoi",
       title: "Glielo chiedi. E ti risponde",
-      sotto: "Quando vuoi sapere come va, glielo chiedi e lui risponde — è il tuo assistente",
+      sotto: "Quando vuoi sapere come va, glielo chiedi e lui risponde: è il tuo assistente",
       // Sequenza reale dell'app. I messaggi compaiono UNO ALLA VOLTA, con ritardo
       // e indicatore "sta scrivendo": il wow è nel ritmo, non nella grafica.
       // `censura`: porzione del testo da oscurare (dato sensibile = nome fornitore),
@@ -78,10 +78,10 @@ export const LANDING = {
       kicker: "Nel frattempo",
       title: "I dati entrano da soli",
       sotto:
-        "Le fatture arrivano in automatico e l'assistente le legge e le categorizza — migliaia di prodotti, in ordine da soli",
+        "Le fatture arrivano in automatico e l'assistente le legge e le categorizza: migliaia di prodotti, in ordine da soli",
       // chiusura sotto l'immagine: il ribaltamento concreto (niente data entry).
       // "automatizzato" parola-chiave azzurra (gestita nel componente).
-      chiusura: "Niente magazzino, niente anagrafiche, niente ore al computer — tutto automatizzato",
+      chiusura: "Niente magazzino, niente anagrafiche, niente ore al computer: tutto automatizzato",
     },
 
     // SCENA 4 — Alert prezzi (automazioni, seconda metà).
@@ -91,7 +91,7 @@ export const LANDING = {
       hero: "/landing/hero-prezzi.png",
       kicker: "E se qualcosa cambia",
       title: "Un fornitore alza i prezzi.\nLo sai prima di pagare",
-      sotto: "OneFlux confronta ogni fattura con lo storico e ti avvisa quando un costo sale — con quanto ti pesa davvero, prima che diventi un problema",
+      sotto: "OneFlux confronta ogni fattura con lo storico e ti avvisa quando un costo sale, con quanto ti pesa davvero, prima che diventi un problema",
     },
 
     // SCENA 5 — Il potere (mobile). LAYOUT 2 COLONNE: testo sx, telefono dx (verticale).
@@ -100,7 +100,7 @@ export const LANDING = {
       heroMobile: "/landing/hero-mobile.jpeg",
       kicker: "Ovunque",
       title: "Da dove vuoi. Anche fuori dal locale",
-      sotto: "In sala, dal fornitore, sul divano — ti risponde dove sei tu, come un consulente sempre in tasca",
+      sotto: "In sala, dal fornitore, sul divano: ti risponde dove sei tu, come un consulente sempre in tasca",
     },
 
     // SCENA 6 — L'invito + rivelazione (hero-conti: tutto verde, salute 100%)
@@ -140,7 +140,7 @@ export const LANDING = {
     kicker: "Non solo software",
     title: "C'è una persona dietro, che ti segue davvero",
     sottotitolo:
-      "Oltre all'app, ti affianchiamo con servizi su misura per il tuo locale — dall'analisi dei numeri all'assistenza continuativa.",
+      "Oltre all'app, ti affianchiamo con servizi su misura per il tuo locale: dall'analisi dei numeri all'assistenza continuativa.",
   },
 
   // Footer completo (rettifica §F): logo leggibile, WhatsApp + email, legali,
@@ -151,9 +151,8 @@ export const LANDING = {
     // giallo (coerente con la card servizi) e linkato alla sezione Servizi pubblica
     // (#servizi nella landing, stessa fonte del catalogo dell'app). Rimosso "non un
     // call center" (suonava polemico).
-    umanoPre: "Dall'altra parte c'è una persona vera. Scrivici quando vuoi — niente ticket, niente attese. ",
+    umanoPre: "Dall'altra parte c'è una persona vera. Scrivici quando vuoi, niente ticket, niente attese. ",
     umanoServizi: "Guarda i nostri servizi",
-    umanoServiziHref: "#servizi",
     whatsappLabel: "Scrivici su WhatsApp",
     email: "mattia.davolio@recomasystem.it",
     privacyHref: "/privacy",

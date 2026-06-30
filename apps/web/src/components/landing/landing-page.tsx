@@ -1,26 +1,14 @@
 import Link from "next/link";
-import {
-  ChevronDown,
-  ArrowRight,
-  Check,
-  MessageCircle,
-  Mail,
-  Stethoscope,
-  LineChart,
-  Headset,
-  FileSearch,
-  PiggyBank,
-  Globe,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, ArrowRight, Check, MessageCircle, Mail } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
-import { WHATSAPP_NUMERO, SERVIZI, type ServizioIconName } from "@/lib/assistenza";
+import { WHATSAPP_NUMERO } from "@/lib/assistenza";
 import { LANDING, WHATSAPP_LANDING_MSG } from "@/lib/landing-content";
 import { Scene, Reveal, BlurBg, Kicker } from "@/components/landing/scene-kit";
 import { ChatScene } from "@/components/landing/chat-scene";
 import { StructuredData } from "@/components/landing/structured-data";
+import { ServiziModal } from "@/components/landing/servizi-modal";
 
 function waLink(msg: string = WHATSAPP_LANDING_MSG): string {
   return `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(msg)}`;
@@ -46,93 +34,14 @@ function RecomaLink({ className }: { className?: string }) {
   );
 }
 
-// Mappa nome-icona (dal catalogo) -> componente lucide. Tipata sul union del
-// catalogo: un'icona non gestita e' errore a compile-time.
-const SERVIZIO_ICONS: Record<ServizioIconName, LucideIcon> = {
-  Stethoscope,
-  LineChart,
-  Headset,
-  FileSearch,
-  PiggyBank,
-  Globe,
-};
-
-// Sezione Servizi PUBBLICA. Legge il catalogo condiviso `SERVIZI` (lib/assistenza)
-// — stessa fonte dell'app: un servizio modificato lì cambia in entrambe. Mostra
-// solo label/descrizione/icona/partnerLabel; prezzi e note interne (fase 2) NON
-// vengono renderizzati. Ancora #servizi: target del link giallo nel footer.
-function ServiziSection() {
-  const t = LANDING.servizi;
+// Hint "scorri" con freccetta, in basso alla scena. Presente su tutte le scene
+// tranne l'ultima (l'invito) — invita a proseguire lo scrollytelling.
+function ScrollHint({ label = "scorri" }: { label?: string }) {
   return (
-    <section id="servizi" className="scroll-mt-8 border-t border-border/60 px-5 py-24">
-      <div className="mx-auto max-w-5xl">
-        <Reveal>
-          <Kicker>{t.kicker}</Kicker>
-        </Reveal>
-        <Reveal delay={120}>
-          <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
-            {t.title}
-          </h2>
-        </Reveal>
-        <Reveal delay={200}>
-          <p className="mx-auto mt-4 max-w-2xl text-center text-base text-white/[0.72]">
-            {t.sottotitolo}
-          </p>
-        </Reveal>
-        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {SERVIZI.map((sv, i) => {
-            const Icon = SERVIZIO_ICONS[sv.icon];
-            const isPartner = sv.variant === "partner";
-            return (
-              <Reveal key={sv.key} delay={(i % 3) * 90}>
-                <div
-                  className={cn(
-                    "flex h-full flex-col rounded-2xl border bg-card/50 p-6 text-left transition-colors",
-                    sv.variant === "featured"
-                      ? "border-primary/50 ring-1 ring-primary/20"
-                      : "border-border/70 hover:border-border",
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={cn(
-                        "flex size-10 shrink-0 items-center justify-center rounded-xl",
-                        sv.variant === "featured" ? "bg-primary/15" : "bg-muted",
-                      )}
-                    >
-                      <Icon className="size-5 text-primary" />
-                    </span>
-                    <h3 className="font-display text-lg font-semibold leading-tight">{sv.label}</h3>
-                  </div>
-                  {sv.partnerLabel ? (
-                    <p
-                      className={cn(
-                        "mt-3 text-xs font-medium uppercase tracking-wide",
-                        isPartner ? "text-yellow-400/90" : "text-muted-foreground",
-                      )}
-                    >
-                      {sv.partnerLabel}
-                    </p>
-                  ) : null}
-                  <p className="mt-3 text-sm leading-relaxed text-white/[0.7]">{sv.descrizione}</p>
-                </div>
-              </Reveal>
-            );
-          })}
-        </div>
-        <p className="mt-10 text-center text-sm text-muted-foreground">
-          Ti interessa un servizio?{" "}
-          <a
-            href={waLink("Ciao! Vorrei sapere di più sui vostri servizi.")}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-primary hover:underline"
-          >
-            Scrivici su WhatsApp
-          </a>
-        </p>
-      </div>
-    </section>
+    <div className="absolute bottom-28 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-10">
+      <span className="text-xs uppercase tracking-[0.2em]">{label}</span>
+      <ChevronDown className="size-5 animate-bounce" />
+    </div>
   );
 }
 
@@ -239,32 +148,24 @@ export function LandingPage() {
           <Reveal>
             <Logo size={84} glow />
           </Reveal>
-          {/* Payoff del nome (ONEFLUX -> "un unico flusso"): firma del brand sotto il
-              logo, piccola ed elegante, azzurro tenue. Discreta per non competere col
-              logo grande. */}
-          <Reveal delay={80}>
-            <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-primary/70 sm:text-sm">
-              Un unico flusso, tutto sotto controllo
-            </p>
-          </Reveal>
-          <Reveal delay={180}>
+          <Reveal delay={150}>
             <SceneTitle as="h1" className="mt-9">
               {s.aggancio.title}
             </SceneTitle>
           </Reveal>
-          <Reveal delay={320}>
-            <SceneSub parolaChiave="contabile" className="max-w-xl">
+          {/* sotto + sotto2: entrambi su due righe (whitespace-pre-line) e TUTTI in
+              azzurro OneFlux. Niente parola-chiave singola: l'intero blocco è azzurro. */}
+          <Reveal delay={300}>
+            <p className="mx-auto mt-6 max-w-xl whitespace-pre-line text-lg font-medium leading-snug text-primary">
               {s.aggancio.sotto}
-            </SceneSub>
+            </p>
           </Reveal>
-          <Reveal delay={420}>
-            <p className="mx-auto mt-2 max-w-xl text-base text-white/55">{s.aggancio.sotto2}</p>
+          <Reveal delay={400}>
+            <p className="mx-auto mt-4 max-w-xl whitespace-pre-line text-lg font-medium leading-snug text-primary">
+              {s.aggancio.sotto2}
+            </p>
           </Reveal>
-          {/* hint scorri: staccato dal contenuto ma sopra il cookie banner */}
-          <div className="absolute bottom-28 flex flex-col items-center gap-1 text-muted-foreground sm:bottom-10">
-            <span className="text-xs uppercase tracking-[0.2em]">{s.aggancio.scrollHint}</span>
-            <ChevronDown className="size-5 animate-bounce" />
-          </div>
+          <ScrollHint label={s.aggancio.scrollHint} />
         </Scene>
 
         {/* ===== SCENA 1 — Chat (tu gli parli, la rivelazione): subito dopo l'hero,
@@ -284,6 +185,7 @@ export function LandingPage() {
               {s.chat.sotto}
             </SceneSub>
           </Reveal>
+          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 2 — Briefing (lui ti parla) ===== */}
@@ -300,6 +202,7 @@ export function LandingPage() {
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.briefing.hero} alt="Il briefing del mattino di ONEFLUX" wide />
           </Reveal>
+          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 3 — Categorizzazione ===== */}
@@ -322,6 +225,7 @@ export function LandingPage() {
               {s.categorie.chiusura}
             </SceneSub>
           </Reveal>
+          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 4 — Alert prezzi ===== */}
@@ -338,6 +242,7 @@ export function LandingPage() {
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.prezzi.hero} alt="Avviso rincari prezzi" wide />
           </Reveal>
+          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 5 — Il potere (mobile, 2 colonne) ===== */}
@@ -363,6 +268,7 @@ export function LandingPage() {
               <PhoneShot src={s.potere.heroMobile} alt="L'assistente ONEFLUX sul telefono" />
             </Reveal>
           </div>
+          <ScrollHint />
         </Scene>
 
         {/* ===== SCENA 6 — Invito + rivelazione ===== */}
@@ -458,8 +364,8 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ===== Sezione Servizi (pubblica, fonte = catalogo app) ===== */}
-        <ServiziSection />
+        {/* I servizi NON sono elencati in pagina: si aprono in overlay cliccando
+            "Guarda i nostri servizi" nel footer (ServiziModal). */}
 
         {/* ===== Footer completo ===== */}
         <Footer />
@@ -524,9 +430,7 @@ function Footer() {
             <p className="max-w-xs text-sm text-muted-foreground">{f.tagline}</p>
             <p className="max-w-sm text-sm text-foreground/80">
               {f.umanoPre}
-              <a href={f.umanoServiziHref} className="font-semibold text-yellow-400 hover:underline">
-                {f.umanoServizi}
-              </a>
+              <ServiziModal triggerLabel={f.umanoServizi} />
             </p>
           </div>
 
