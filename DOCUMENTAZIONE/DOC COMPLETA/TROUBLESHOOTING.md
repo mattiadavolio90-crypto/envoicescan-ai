@@ -280,7 +280,7 @@ docker-compose -f docker/docker-compose.prod.yml up -d
 
 Queste regole sono critiche e violarne anche una può corrompere i dati o rompere il sistema:
 
-1. **`categoria = 'Da Clasificare'` è VIETATA** — constraint DB `fatture_categoria_not_unclassified_chk`. Fallback corretto: `"SERVIZI E CONSULENZE"`.
+1. **`categoria = 'Da Classificare'` è uno stato LEGITTIMO** (categorizzazione onesta, rev. 23/06) — una riga che né dizionario/regole né AI riconoscono con sicurezza resta `Da Classificare`, visibile in coda di verifica. **NIENTE fallback travestito in `"SERVIZI E CONSULENZE"`** (comportamento eliminato). Constraint DB reale: `fatture_categoria_not_empty_chk` (vieta solo NULL/vuoto). Costante: `CATEGORIA_NON_CLASSIFICATA` in `config/constants.py`.
 
 2. **`"📝 NOTE E DICITURE"` solo per `totale_riga == 0`** — su qualsiasi importo > 0 va usata una categoria reale.
 

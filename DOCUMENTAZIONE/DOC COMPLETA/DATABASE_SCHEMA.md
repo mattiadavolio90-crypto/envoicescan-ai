@@ -88,7 +88,7 @@ Soft-delete: query su `fatture` e `prodotti` filtrare sempre `deleted_at IS NULL
 | deleted_at | TIMESTAMPTZ | Soft-delete: NULL = attiva; valorizzata = nel cestino |
 | created_at | TIMESTAMPTZ | Inserimento |
 
-**Constraint:** `fatture_categoria_not_unclassified_chk` — `categoria != 'Da Clasificare'`
+**Constraint:** `fatture_categoria_not_empty_chk` — `categoria IS NOT NULL AND btrim(categoria) <> ''` (vieta solo NULL/vuoto; `'Da Classificare'` è uno stato legittimo). Più `fatture_note_diciture_solo_importo_zero_chk` — `'📝 NOTE E DICITURE'` ammessa solo con `totale_riga = 0`.
 **Dedup:** `UNIQUE(file_origine, numero_riga, user_id, ristorante_id)`
 
 ---

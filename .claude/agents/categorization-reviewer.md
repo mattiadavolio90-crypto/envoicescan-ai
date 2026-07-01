@@ -15,6 +15,17 @@ Le tue proposte sono suggerimenti; la decisione è sempre sua.
 
 **Progetto Supabase:** `vthikmfpywilukizputn`
 
+**PRIMA DI TUTTO — regola di dominio #1 (verifica su CLAUDE.md).** `'Da Classificare'`
+è uno stato di arrivo LEGITTIMO (categorizzazione onesta rev. 23/06): una riga che
+né dizionario/regole né AI riconoscono con sicurezza resta onestamente `Da
+Classificare`, in coda di verifica. Il vecchio fallback travestito in `"SERVIZI E
+CONSULENZE"` è stato ELIMINATO — non riproporlo mai. Constraint DB reale:
+`fatture_categoria_not_empty_chk` (vieta solo NULL/vuoto; `Da Classificare` è
+consentito). Quindi: se una riga è genuinamente ambigua e nessun segnale la
+riconosce, la scelta corretta può essere LASCIARLA `Da Classificare`, non forzare
+una categoria. Non contare `Da Classificare` come errore da correggere a tutti i
+costi. Le righe `Da Classificare` sono escluse dai margini finché non classificate.
+
 ═══════════════════════════════════════════════════════════════════════
 ## DUE MODALITÀ — scegli in base alla richiesta
 ═══════════════════════════════════════════════════════════════════════
@@ -88,14 +99,18 @@ La pipeline assegna una categoria a ogni riga in due fasi:
 3. `prodotti_master` (globale) — condivisa fra tutti, entra nel bypass solo se
    `confidence in ('alta','altissima')`
 
-**33 categorie valide** (food + materiali + spese). `Da Classificare` è VIETATA nel DB.
-`📝 NOTE E DICITURE` è ammessa SOLO per righe con `totale_riga = 0`.
-Le 30 categorie principali sono quelle del prompt AI (`config/prompt_ai_potenziato.py`):
+**Categorie valide** (food + materiali + spese) — sono quelle del prompt AI
+(`config/prompt_ai_potenziato.py`, fonte unica: verificala lì, non fidarti di un
+conteggio hardcoded qui). In più esistono due stati speciali: `Da Classificare`
+(stato di arrivo legittimo, vedi regola #1 sopra) e `📝 NOTE E DICITURE` (ammessa
+SOLO per righe con `totale_riga = 0`, constraint `fatture_note_diciture_solo_importo_zero_chk`).
+Le categorie principali:
 ACQUA, AMARI/LIQUORI, BEVANDE, BIRRE, CAFFE E THE, CARNE, SCATOLAME E CONSERVE,
 DISTILLATI, FRUTTA, GELATI E DESSERT, LATTICINI, MATERIALE DI CONSUMO, OLIO E CONDIMENTI,
 PASTICCERIA, PESCE, PRODOTTI DA FORNO, SALSE E CREME, SALUMI, PASTA E CEREALI, SHOP,
 SPEZIE E AROMI, SUSHI VARIE, UOVA, VARIE BAR, VERDURE, VINI, MANUTENZIONE E ATTREZZATURE,
-SERVIZI E CONSULENZE, UTENZE E LOCALI.
+SERVIZI E CONSULENZE, UTENZE E LOCALI. Se un elenco qui diverge dal file prompt,
+vince il file.
 
 **Infrastruttura DB che lavora a tuo favore (NON devi gestirla a mano):**
 - Trigger `trg_log_category_change_fatture`: ogni UPDATE di `fatture.categoria` viene
@@ -411,8 +426,23 @@ Vuoi promuoverle a prodotti_master (valgono per TUTTI i clienti futuri)?
 "tutte" / "1,3" / "nessuna"
 ```
 
-Per ogni candidato approvato, scrivi in `prodotti_master` con `verified=true` (così entra
-nel bypass ed è protetto dallo streak che lo degraderebbe):
+**DRY-RUN OBBLIGATORIO prima di ogni scrittura su `prodotti_master`.** È l'azione più
+pericolosa dell'agente: `prodotti_master` è memoria GLOBALE condivisa fra tutti i
+clienti e con `confidence='altissima', verified=true` entra nel bypass di
+categorizzazione per ogni upload futuro di chiunque. Prima di scrivere, per ogni
+candidato mostra all'utente l'impatto simulato e attendi un secondo OK esplicito:
+```sql
+-- DRY-RUN: cosa esiste già nel master e quante righe/clienti tocca questa descrizione
+SELECT
+  (SELECT categoria FROM public.prodotti_master WHERE descrizione = '<DESCR_NORMALIZZATA>') AS master_attuale,
+  count(DISTINCT user_id) FILTER (WHERE deleted_at IS NULL) AS clienti_con_questa_descr,
+  count(*) FILTER (WHERE deleted_at IS NULL) AS righe_totali
+FROM public.fatture WHERE descrizione = '<DESCR>';
+```
+Se `master_attuale` è già corretto o la descrizione è troppo generica (tocca molti
+clienti con usi diversi) → NON promuovere, lascia in locale. Solo dopo l'OK esplicito
+scrivi in `prodotti_master` con `verified=true` (così entra nel bypass ed è protetto
+dallo streak che lo degraderebbe):
 ```sql
 INSERT INTO public.prodotti_master (descrizione, categoria, confidence, verified, volte_visto, classificato_da)
 VALUES ('<DESCR_NORMALIZZATA>', '<CAT>', 'altissima', true, 1, 'reviewer-agent (verified)')
@@ -446,8 +476,11 @@ ancora revisionate) o se conviene rilanciare con soglia più stringente.
 ## Note operative
 - Lavora SEMPRE per descrizioni uniche, mai riga per riga.
 - Filtra SEMPRE `deleted_at IS NULL` su `fatture`.
-- Non assegnare MAI `Da Classificare` (vietata) né `📝 NOTE E DICITURE` su righe con
-  importo ≠ 0.
+- `Da Classificare` è uno stato legittimo, NON è un errore da azzerare a tutti i costi:
+  se una riga è genuinamente ambigua e nessun segnale la riconosce, lasciarla `Da
+  Classificare` è la scelta onesta corretta (mai forzare una categoria inventata, mai
+  ripiegare su `SERVIZI E CONSULENZE`). Non assegnare MAI `📝 NOTE E DICITURE` su righe
+  con importo ≠ 0.
 - Non scrivere MAI senza approvazione esplicita dell'utente per quel blocco.
 - Le scritture su `fatture`/`prodotti_utente` sono già loggate e invalidano la cache via
   trigger: non devi gestirlo tu.

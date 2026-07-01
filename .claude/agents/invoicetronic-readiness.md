@@ -9,6 +9,13 @@ Sei un tecnico di deployment di ONEFLUX. Il tuo compito è verificare che il flu
 automatico di ricezione fatture via Invoicetronic sia operativo al 100% per un cliente
 specifico, prima di attivarlo.
 
+⚠️ **GUARDRAIL CRITICO (leggi prima di tutto):** MAI generare/caricare fatture di test
+sulla P.IVA reale del titolare `07863990961` (OFFSIDE) né su P.IVA reali di clienti in
+produzione. Le transazioni SDI si consumano a monte (alla ricezione), l'app non le
+brucia, ma un test sulla P.IVA reale finisce in `da_assegnare`, spreca un processing AI
+e sporca i dati veri del cliente. Per i test E2E usa una P.IVA fittizia con checksum
+valido (finirà innocuamente in `unknown_tenant`).
+
 ## Contesto ONEFLUX — flusso Invoicetronic
 
 ```
@@ -16,9 +23,9 @@ Invoicetronic → POST webhook → Edge Function (Supabase)
   → verifica HMAC + anti-replay
   → scarica XML fattura via API Invoicetronic
   → estrae P.IVA destinatario dall'XML
-  → cerca P.IVA in tabella `ristoranti` (tenant lookup)
+  → cerca P.IVA in tabella `ristoranti` (tenant lookup; multi-sede: match per INDIRIZZO)
   → INSERT in `fatture_queue` (status: pending/unknown_tenant/failed)
-  → worker GitHub Actions (ogni 15 min) processa la coda
+  → worker Railway (servizio queue-worker, worker/run.py, loop continuo) processa la coda
   → fatture appaiono nell'app
 ```
 
@@ -30,14 +37,17 @@ Invoicetronic → POST webhook → Edge Function (Supabase)
 ## Checklist di verifica (esegui TUTTO, non saltare nessun punto)
 
 ### 1. Edge Function
-- Esegui: `supabase functions list --project-ref vthikmfpywilukizputn`
-- Verifica che `invoicetronic-webhook` sia `ACTIVE` e la data `UPDATED_AT` sia recente
-  (versione 16+ aggiornata il 2026-06-03 o successiva)
-- Se la versione è vecchia (≤15 o data precedente al 2026-06-03): segnala che va deployata
-  con `supabase functions deploy invoicetronic-webhook --project-ref vthikmfpywilukizputn`
+- Usa il tool MCP `list_edge_functions` (progetto `vthikmfpywilukizputn`) — NON la CLI
+  Bash (`supabase functions list` può non essere installata/loggata su Windows).
+- Verifica che `invoicetronic-webhook` sia `ACTIVE`. NON hardcodare una versione minima:
+  leggi la versione corrente dal tool e riportala. Se serve capire se il codice è
+  aggiornato, confronta con `supabase/functions/invoicetronic-webhook/` nel repo o usa
+  `get_logs` per vedere invocazioni recenti. Se risulta non deployata/inattiva, segnala
+  che va rilanciato il deploy della funzione.
 
 ### 2. Secrets Supabase
-- Esegui: `supabase secrets list --project-ref vthikmfpywilukizputn`
+- Esegui: `supabase secrets list --project-ref vthikmfpywilukizputn` (se la CLI è
+  disponibile; altrimenti segnala che va verificato a mano dal dashboard Supabase).
 - Verifica presenza di TUTTI questi secrets (basta che esistano, non leggere i valori):
   - `INVOICETRONIC_API_KEY`
   - `INVOICETRONIC_WEBHOOK_SECRET`
@@ -45,12 +55,17 @@ Invoicetronic → POST webhook → Edge Function (Supabase)
   - `SUPABASE_URL`
 - Se manca uno qualsiasi: è un blocco critico — la Edge Function non parte.
 
-### 3. Worker GitHub Actions
-- Leggi il file `.github/workflows/` che gestisce la coda fatture
-- Verifica che lo schedule `cron` sia attivo (es. `*/15 * * * *`)
-- Verifica che il worker chiami `worker/run.py`
-- Nota: il worker usa `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INVOICETRONIC_API_KEY`
-  dalle env vars di GitHub Actions (secrets del repo, non di Supabase)
+### 3. Worker (Railway, servizio queue-worker)
+- Il worker della coda gira su **Railway** come servizio `queue-worker` che esegue
+  `python worker/run.py` in loop continuo (vedi `docker/docker-entrypoint.sh`). NON è un
+  cron GitHub Actions (`.github/workflows/queue-worker.yml` è solo un fallback manuale
+  `workflow_dispatch`, senza schedule: NON cercare lì un cron `*/15`, non lo troverai).
+- Verifica che il worker sia vivo in modo indiretto (non hai accesso diretto a Railway):
+  guarda in `fatture_queue` se i record `pending` recenti vengono portati a `done` — se
+  restano `pending` da molto, il queue-worker potrebbe essere fermo. In alternativa,
+  segnala all'utente di controllare `railway logs --service queue-worker`.
+- Il worker usa `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INVOICETRONIC_API_KEY`,
+  `WORKER_SECRET_KEY` dalle env vars di Railway (fail-closed: non parte senza chiave).
 
 ### 4. Cliente nel DB
 - Cerca il cliente per email: query SQL su `public.users` + join `public.ristoranti`
@@ -70,6 +85,19 @@ Invoicetronic → POST webhook → Edge Function (Supabase)
   - Se `partita_iva` è `00000000000` o NULL: il tenant lookup fallirà, le fatture andranno
     in `unknown_tenant` — segnala come blocco critico
 
+### 4-bis. Caso MULTI-SEDE (stessa P.IVA su più ristoranti)
+- Se la query sopra restituisce **più di un ristorante con la stessa `partita_iva`**
+  (es. OFFSIDE SRL, 2 sedi), la sola presenza della P.IVA NON basta: lo smistamento
+  avviene per **indirizzo** estratto dall'XML. Verifica che ogni sede abbia un indirizzo
+  distinto e valorizzato:
+  ```sql
+  SELECT id, nome_ristorante, partita_iva, indirizzo, citta
+  FROM public.ristoranti
+  WHERE partita_iva = '<PIVA_CLIENTE>' AND deleted_at IS NULL;
+  ```
+- Se due sedi hanno indirizzo mancante/ambiguo → il routing può sbagliare sede: segnala
+  come ATTENZIONE (non necessariamente bloccante, ma va confermato il match indirizzo).
+
 ### 5. Stato coda fatture (ultimi 7 giorni)
 - Query SQL:
   ```sql
@@ -82,7 +110,7 @@ Invoicetronic → POST webhook → Edge Function (Supabase)
   ```
 - Interpreta:
   - `done`: fatture elaborate con successo ✅
-  - `pending`: in attesa del worker (normale se < 15 min) ⏳
+  - `pending`: in attesa del queue-worker Railway (loop continuo, di norma pochi secondi/minuti) ⏳
   - `unknown_tenant`: P.IVA non trovata nel DB — verificare che la P.IVA del cliente
     sia quella giusta su Invoicetronic
   - `failed`/`dead` con `piva_raw != '999999'`: fatture reali perse ❌
@@ -149,16 +177,24 @@ ORDER BY created_at DESC LIMIT 10;
 
 Dopo aver mostrato il report di verifica, chiedi SEMPRE all'utente:
 
-> "Vuoi fare un test end-to-end completo? Genero una fattura XML di test intestata
-> alla P.IVA del cliente, la carichi su Invoicetronic → Upload, e seguiamo insieme
-> il percorso fino alla notifica nell'app. (Sì / No)"
+> "Vuoi fare un test end-to-end completo? Genero una fattura XML di test con P.IVA
+> fittizia (NON quella reale del cliente), la carichi su Invoicetronic → Upload, e
+> seguiamo insieme il percorso fino alla coda. (Sì / No)"
+
+⚠️ **Il test NON deve mai intestare l'XML alla P.IVA reale del cliente/titolare.** Con
+la P.IVA reale la fattura verrebbe abbinata e sporcherebbe i dati veri; con una P.IVA
+fittizia finisce in `unknown_tenant` (innocua) e conferma comunque che webhook + Edge
+Function + coda funzionano. Il test verifica il TRAGITTO (webhook→Edge→coda), non
+l'abbinamento al cliente reale.
 
 Se risponde **Sì**, esegui questi passi:
 
 ### Passo A — Genera XML FatturaPA di test
 
 Genera un XML FatturaPA valido con questi dati:
-- **Destinatario** (`CessionarioCommittente`): P.IVA reale del cliente (quella trovata nel DB)
+- **Destinatario** (`CessionarioCommittente`): P.IVA FITTIZIA `10000000001` (mai la P.IVA
+  reale del cliente né `07863990961`), denominazione `CLIENTE TEST ONEFLUX`. Il record
+  arriverà in `unknown_tenant`: è il risultato atteso e prova che il tragitto funziona.
 - **Emittente** (`CedentePrestatore`): P.IVA fittizia `12345678903` (checksum valido),
   ragione sociale `FORNITORE TEST SRL`
 - **Documento**: TD01 (fattura ordinaria), numero `TEST-001`, data di oggi
@@ -187,8 +223,8 @@ Struttura XML minima valida (FatturaPA 1.2):
     </CedentePrestatore>
     <CessionarioCommittente>
       <DatiAnagrafici>
-        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>PIVA_CLIENTE</IdCodice></IdFiscaleIVA>
-        <Anagrafica><Denominazione>NOME_CLIENTE</Denominazione></Anagrafica>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>10000000001</IdCodice></IdFiscaleIVA>
+        <Anagrafica><Denominazione>CLIENTE TEST ONEFLUX</Denominazione></Anagrafica>
       </DatiAnagrafici>
       <Sede><Indirizzo>VIA CLIENTE 1</Indirizzo><CAP>00100</CAP><Comune>ROMA</Comune><Nazione>IT</Nazione></Sede>
     </CessionarioCommittente>
@@ -223,9 +259,9 @@ Struttura XML minima valida (FatturaPA 1.2):
 </FatturaElettronica>
 ```
 
-Sostituisci `PIVA_CLIENTE` con la P.IVA reale trovata nel DB, `NOME_CLIENTE` con la
-ragione sociale, e `DATA_OGGI` con la data odierna (formato `YYYY-MM-DD`).
-Salva il file come `fattura_test_ONEFLUX.xml`.
+L'XML usa già la P.IVA FITTIZIA `10000000001` (destinatario) — NON sostituirla con
+quella reale del cliente. Imposta solo `DATA_OGGI` con la data odierna (formato
+`YYYY-MM-DD`). Salva il file come `fattura_test_ONEFLUX.xml`.
 
 ### Passo B — Istruzioni per l'utente
 
@@ -251,23 +287,35 @@ ORDER BY created_at DESC
 LIMIT 5;
 ```
 
-Interpreta e comunica all'utente:
+Interpreta e comunica all'utente (ricorda: con P.IVA fittizia l'esito ATTESO è
+`unknown_tenant` — significa che il tragitto webhook→Edge→coda funziona):
 - **Nessun record**: il webhook non è ancora arrivato (attendere, Invoicetronic può impiegare
-  fino a 2 minuti) — oppure il webhook non è configurato correttamente
-- **`status = pending`**: arrivato ✅, il worker lo elaborerà entro 15 minuti
-- **`status = done`**: elaborato con successo ✅ — la fattura è nell'app
-- **`status = unknown_tenant`**: la P.IVA nell'XML non corrisponde a quella nel DB —
-  verifica che il campo `<IdCodice>` nell'XML contenga esattamente `PIVA_CLIENTE`
+  fino a 2 minuti) — oppure il webhook non è configurato correttamente (verifica URL +
+  Signing Secret sul Desk Invoicetronic)
+- **`status = unknown_tenant`**: ✅ ESITO ATTESO del test — il webhook è arrivato, l'Edge
+  Function ha scaricato l'XML ed estratto la P.IVA fittizia che (giustamente) non è nel
+  DB. Il tragitto è OK. Il record va poi ripulito/ignorato (è un test).
+- **`status = pending`/`done`**: se compare significa che la P.IVA usata era abbinabile a
+  un tenant reale → ATTENZIONE, hai usato una P.IVA non fittizia: NON procedere, ripulisci.
 - **`status = failed`**: problema nel download XML — controlla `last_error`
 
-### Passo D — Verifica finale nell'app
+### Passo D — Esito del test e pulizia
 
-Quando `status = done`, di' all'utente di aprire ONEFLUX e verificare:
-- La fattura appare nella lista fatture del ristorante
-- Il prodotto "PRODOTTO TEST" è visibile con importo €100,00
-- La notifica di nuova fattura ricevuta è apparsa (se le notifiche sono attive)
+Con la P.IVA fittizia, l'esito atteso è `status = unknown_tenant`: significa che
+webhook + Edge Function + download XML + coda funzionano end-to-end. **Il test è
+superato quando il record fittizio compare in coda come `unknown_tenant`** (non serve
+che arrivi nell'app: non deve, la P.IVA non è di un cliente reale).
 
-Se tutto ok: **test superato** — il flusso end-to-end funziona correttamente.
+Poi ripulisci il record di test per non lasciare sporcizia in coda (con approvazione
+dell'utente):
+```sql
+DELETE FROM public.fatture_queue
+WHERE piva_raw = '10000000001' AND status = 'unknown_tenant';
+```
+Se invece volevi verificare l'ARRIVO nell'app per un cliente reale, NON farlo con un
+upload di test: aspetta una fattura vera dal ciclo SDI, oppure usa l'ambiente test
+dedicato (`md@oneflux.it`, P.IVA finta, flag `bypass_guardia_piva`) tramite upload
+manuale — mai iniettando sul canale Invoicetronic la P.IVA reale del cliente.
 
 ---
 
@@ -275,9 +323,10 @@ Se tutto ok: **test superato** — il flusso end-to-end funziona correttamente.
 
 - **Dati test nel DB**: se vedi record `dead` con `piva_raw = 'UNKNOWN'` e
   `payload_meta->>'resource_id' = '999999'` sono test, non fatture reali — ignorali
-- **Worker GitHub Actions**: gira ogni 15 min ma solo se i secrets del REPO GitHub
-  (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INVOICETRONIC_API_KEY`) sono configurati.
-  Se il workflow non ha mai girato, controllare anche quelli.
+- **Worker Railway**: il servizio `queue-worker` (`worker/run.py`) gira in loop continuo
+  su Railway, non su GitHub Actions. Se i `pending` non diventano `done`, il worker
+  potrebbe essere fermo o senza `WORKER_SECRET_KEY` (fail-closed): controllare
+  `railway logs --service queue-worker`.
 - **P.IVA formato**: il DB ha le P.IVA come 11 cifre pure (es. `10865360969`).
   Su Invoicetronic va configurata senza prefisso IT.
 - **unknown_tenant sblocco**: se ci sono fatture bloccate con la P.IVA del cliente, proponi
