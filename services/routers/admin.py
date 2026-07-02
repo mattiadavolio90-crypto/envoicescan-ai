@@ -41,6 +41,14 @@ import asyncio
 import logging
 logger = logging.getLogger("fastapi_worker")
 
+from utils.ttl_cache import TTLCache
+
+# Cache in-process per gli endpoint Admin pesanti (overview, badge...). Sono dati
+# di monitoraggio che l'admin guarda: un TTL breve e' accettabile e li toglie dal
+# percorso caldo, cosi' un refresh admin non rifa' ogni volta le query aggregate
+# mentre i clienti usano l'app. Per-processo (vedi utils/ttl_cache.py).
+_ADMIN_CACHE = TTLCache(ttl=45.0)
+
 
 def _fw():
     import services.fastapi_worker as fw
@@ -214,7 +222,14 @@ def admin_overview():
 
     Difensivo: ogni sezione è isolata. Non solleva mai 500 — ritorna i dati
     calcolabili e accumula gli errori in `_errors` per diagnosi.
+
+    Cache 45s: sono KPI di monitoraggio, non realtime. Toglie le query aggregate
+    dal percorso caldo cosi' i refresh admin non pesano sul threadpool condiviso.
     """
+    return _ADMIN_CACHE.get_or_set("overview", _compute_admin_overview)
+
+
+def _compute_admin_overview():
     sb = get_supabase_client()
     errors: list = []
 
@@ -245,20 +260,18 @@ def admin_overview():
             logger.exception("admin_overview: fatture count failed")
             errors.append(f"fatture_mese: {type(e2).__name__}: {e2}")
 
-    # Breakdown mensile ultimi 12 mesi
+    # Breakdown mensile ultimi 12 mesi. Il GROUP BY per mese lo fa il DB (RPC
+    # admin_fatture_per_mese): torna ~12 righe invece di scaricare fino a 50.000
+    # righe e contarle in Python, che teneva occupato un thread del worker per
+    # secondi (fonte di saturazione del threadpool sotto carico).
     fatture_per_mese: list = []
     try:
         twelve_ago = (datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=365)).isoformat()
-        per_mese: dict = {}
-        try:
-            rows = sb.table("fatture_documenti").select("data_documento").gte("data_documento", twelve_ago).limit(50000).execute().data or []
-        except Exception:
-            rows = sb.table("fatture").select("data_documento").gte("data_documento", twelve_ago).is_("deleted_at", "null").limit(50000).execute().data or []
-        for r in rows:
-            d = r.get("data_documento") or ""
-            if len(d) >= 7:
-                per_mese[d[:7]] = per_mese.get(d[:7], 0) + 1
-        fatture_per_mese = [{"mese": k, "count": v} for k, v in sorted(per_mese.items())]
+        resp = sb.rpc("admin_fatture_per_mese", {"p_dal": twelve_ago}).execute()
+        fatture_per_mese = [
+            {"mese": r["mese"], "count": int(r["n"])}
+            for r in (resp.data or [])
+        ]
     except Exception as e:
         logger.exception("admin_overview: breakdown mensile failed")
         errors.append(f"fatture_per_mese: {type(e).__name__}: {e}")
@@ -1821,7 +1834,15 @@ def admin_badges():
         entrano nell'app: P.IVA sconosciuta, multi-sede da smistare, errori);
       - categorie: righe fatture con needs_review (proposte AI da approvare a mano);
       - richieste: lead marketplace ancora in stato 'nuovo'.
+
+    Cache 45s: i badge girano a ogni apertura home admin e il conteggio categorie
+    scandisce prodotti_utente/prodotti_master (paginati). Cacharli li toglie dal
+    percorso caldo senza farli divergere in modo percettibile dai contatori pagina.
     """
+    return _ADMIN_CACHE.get_or_set("badges", _compute_admin_badges)
+
+
+def _compute_admin_badges():
     sb = get_supabase_client()
 
     def _count(build) -> int:

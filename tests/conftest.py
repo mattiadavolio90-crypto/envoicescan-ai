@@ -47,14 +47,25 @@ def _reset_worker_caches():
     test che cacha un valore per un ristorante_id lo farebbe leggere stantio al
     test successivo che usa lo stesso id (isolamento rotto).
     """
+    def _reset(_c):
+        # Le cache in-process sono dict ad-hoc oppure TTLCache (utils/ttl_cache):
+        # svuotiamo entrambe le forme.
+        if isinstance(_c, dict):
+            _c.clear()
+        elif hasattr(_c, "invalidate"):
+            _c.invalidate()
+
     try:
         import services.fastapi_worker as _fw
         for _name in ("_ASSIST_PREF_CACHE", "_SEDE_ATTIVA_CACHE",
                       "_LIVE_SEGNALI_CACHE", "_HOME_KPI_CACHE",
                       "_DASHBOARD_STATS_CACHE"):
-            _c = getattr(_fw, _name, None)
-            if isinstance(_c, dict):
-                _c.clear()
+            _reset(getattr(_fw, _name, None))
+    except Exception:
+        pass
+    try:
+        import services.routers.admin as _admin
+        _reset(getattr(_admin, "_ADMIN_CACHE", None))
     except Exception:
         pass
     yield

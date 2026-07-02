@@ -525,6 +525,7 @@ def _build_allowed_origins() -> List[str]:
     return list(dict.fromkeys(origins))
 
 from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centralizzato
+from utils.ttl_cache import TTLCache  # cache TTL thread-safe con single-flight
 
 
 class _ContentSizeLimitMiddleware(BaseHTTPMiddleware):
@@ -5127,16 +5128,12 @@ def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[st
 # valore fino allo scadere del TTL. Accettato consapevolmente: il TTL e' breve e i
 # dati (toggle/nome) cambiano di rado. Per coerenza immediata cross-processo
 # servirebbe una cache condivisa (Redis), sproporzionata all'attuale scala.
-_ASSIST_PREF_CACHE: Dict[str, tuple] = {}
-_ASSIST_PREF_TTL = 30.0  # secondi
+_ASSIST_PREF_CACHE = TTLCache(ttl=30.0)  # single-flight: vedi utils/ttl_cache.py
 
 
 def _invalidate_assist_pref_cache(ristorante_id: Optional[str] = None) -> None:
     """Invalida la cache assistant_preferences (una sede, o tutta)."""
-    if ristorante_id is None:
-        _ASSIST_PREF_CACHE.clear()
-    else:
-        _ASSIST_PREF_CACHE.pop(str(ristorante_id), None)
+    _ASSIST_PREF_CACHE.invalidate(str(ristorante_id) if ristorante_id is not None else None)
 
 
 def _get_assistant_preferences(ristorante_id: str, supabase_client) -> Dict[str, Any]:
@@ -5145,29 +5142,32 @@ def _get_assistant_preferences(ristorante_id: str, supabase_client) -> Dict[str,
     Fonte unica condivisa dai 4 call-site della Home. Ritorna {} se assente o su
     errore (fail-open: nessun nome override, nessun topic spento). Seleziona tutte
     le colonne usate dai chiamanti, cosi' ognuno prende quello che gli serve.
+
+    Single-flight (utils/ttl_cache): la Home chiama i 4 endpoint in PARALLELO; con
+    la sola cache TTL, al primo load a cache fredda tutti e 4 colpivano il DB prima
+    che uno scrivesse in cache. Ora solo il primo esegue la SELECT, gli altri 3
+    aspettano il suo risultato -> 1 query invece di 4 anche sul load iniziale.
     """
     if not ristorante_id:
         return {}
-    import time as _t
-    _now = _t.monotonic()
-    _cached = _ASSIST_PREF_CACHE.get(str(ristorante_id))
-    if _cached and (_now - _cached[0]) < _ASSIST_PREF_TTL:
-        return dict(_cached[1])
-    pref: Dict[str, Any] = {}
-    try:
-        resp = (
-            supabase_client.table("assistant_preferences")
-            .select("nome_referente,topics_disabled,chat_ai_enabled,alert_prezzi_solo_preferiti,giorni_chiusura_settimanali")
-            .eq("ristorante_id", ristorante_id)
-            .limit(1)
-            .execute()
-        )
-        if resp.data:
-            pref = dict(resp.data[0])
-    except Exception as exc:
-        logger.warning("_get_assistant_preferences: lettura fallita: %s", exc)
-    _ASSIST_PREF_CACHE[str(ristorante_id)] = (_now, dict(pref))
-    return pref
+
+    def _fetch() -> Dict[str, Any]:
+        pref: Dict[str, Any] = {}
+        try:
+            resp = (
+                supabase_client.table("assistant_preferences")
+                .select("nome_referente,topics_disabled,chat_ai_enabled,alert_prezzi_solo_preferiti,giorni_chiusura_settimanali")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                pref = dict(resp.data[0])
+        except Exception as exc:
+            logger.warning("_get_assistant_preferences: lettura fallita: %s", exc)
+        return pref
+
+    return dict(_ASSIST_PREF_CACHE.get_or_set(str(ristorante_id), _fetch))
 
 
 def _briefing_nome_referente(
