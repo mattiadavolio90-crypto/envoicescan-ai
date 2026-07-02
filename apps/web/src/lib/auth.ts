@@ -11,8 +11,11 @@ export const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
 // Timeout su tutte le chiamate worker: evita che il render appeso a un cold-start
 // di Railway blocchi ogni pagina autenticata (getCurrentUser gira nel layout).
 // Override via env per lo sviluppo locale (worker a freddo + init Supabase può
-// avvicinarsi al limite); in produzione resta il default 8s se la var non è settata.
-export const WORKER_TIMEOUT_MS = Number(process.env.WORKER_TIMEOUT_MS) || 8000;
+// avvicinarsi al limite); in produzione resta il default 12s se la var non è settata.
+// Alzato da 8s a 12s: /api/auth/me fa una cascata di query Supabase e, sotto
+// contesa sull'unica istanza Railway, un singolo colpo di lentezza superava gli 8s
+// e mandava OGNI pagina alla schermata "Servizio non raggiungibile".
+export const WORKER_TIMEOUT_MS = Number(process.env.WORKER_TIMEOUT_MS) || 12000;
 
 export type SessionUser = {
   id: string;
@@ -77,23 +80,29 @@ export type SessionResult =
   | { status: "unavailable" }; // timeout / 5xx / rete: worker non raggiungibile
 
 export async function verifySession(token: string): Promise<SessionResult> {
-  try {
-    const res = await fetch(`${WORKER_URL}/api/auth/me`, {
-      method: "GET",
-      headers: workerHeaders({ Authorization: `Bearer ${token}` }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-    });
-    if (res.ok) return { status: "ok", user: (await res.json()) as SessionUser };
-    if (res.status === 401 || res.status === 403) return { status: "invalid" };
-    // 5xx o altri: il worker c'e' ma e' in difficolta' -> non invalidare la sessione
-    console.error("[auth.me] worker error:", res.status);
-    return { status: "unavailable" };
-  } catch (err) {
-    // Timeout o errore di rete: worker non raggiungibile, sessione NON compromessa
-    console.error("[auth.me] worker fetch error:", err);
-    return { status: "unavailable" };
+  // Un solo colpo di lentezza sul worker (contesa sull'unica istanza Railway,
+  // cold-start) non deve buttare l'utente sulla schermata "non raggiungibile":
+  // ritentiamo UNA volta su timeout/5xx/rete. Un 401/403 invece e' definitivo
+  // (token davvero non valido) e non va ritentato.
+  const attempts = 2;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(`${WORKER_URL}/api/auth/me`, {
+        method: "GET",
+        headers: workerHeaders({ Authorization: `Bearer ${token}` }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+      });
+      if (res.ok) return { status: "ok", user: (await res.json()) as SessionUser };
+      if (res.status === 401 || res.status === 403) return { status: "invalid" };
+      // 5xx o altri: il worker c'e' ma e' in difficolta' -> non invalidare la sessione
+      console.error(`[auth.me] worker error (tentativo ${attempt}/${attempts}):`, res.status);
+    } catch (err) {
+      // Timeout o errore di rete: worker non raggiungibile, sessione NON compromessa
+      console.error(`[auth.me] worker fetch error (tentativo ${attempt}/${attempts}):`, err);
+    }
   }
+  return { status: "unavailable" };
 }
 
 // Compat: alcune callsite vogliono solo l'utente (o null). Mantiene il vecchio
