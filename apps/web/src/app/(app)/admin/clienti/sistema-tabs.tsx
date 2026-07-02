@@ -169,3 +169,95 @@ export function RetentionTab() {
     </div>
   );
 }
+
+// ─── TAB SALUTE WORKER (spia latenza / saturazione) ───────────────────────────
+type SwRoute = { route: string; count: number; p50_ms: number; p95_ms: number; max_ms: number; slow: number; errors: number };
+
+export function SaluteWorkerTab() {
+  const [data, setData] = useState<{ routes: SwRoute[]; totale: { count: number; slow: number; errors: number }; slow_soglia_ms: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/sistema/salute-worker");
+      if (!res.ok) { toast.error("Errore caricamento salute worker"); return; }
+      setData(await res.json());
+    } catch { toast.error("Errore di connessione"); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const soglia = data?.slow_soglia_ms ?? 4000;
+  const routes = data?.routes ?? [];
+  const tot = data?.totale ?? { count: 0, slow: 0, errors: 0 };
+
+  // Colore p95: verde < metà soglia, ambra fino a soglia, rosso oltre.
+  const p95Color = (ms: number) =>
+    ms >= soglia ? "text-red-600" : ms >= soglia / 2 ? "text-amber-600" : "text-emerald-600";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Misura la velocità del worker. Se il <b>p95</b> di una rotta si avvicina a {(soglia / 1000).toFixed(0)}s è ora di potenziare Railway.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Richieste (dal riavvio)", value: tot.count.toLocaleString(), warn: false },
+          { label: `Lente (> ${(soglia / 1000).toFixed(0)}s)`, value: tot.slow.toLocaleString(), warn: tot.slow > 0 },
+          { label: "Errori (5xx)", value: tot.errors.toLocaleString(), warn: tot.errors > 0 },
+        ].map((k) => (
+          <Card key={k.label}>
+            <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-muted-foreground">{k.label}</CardTitle></CardHeader>
+            <CardContent><p className={`text-xl font-bold tabular-nums ${k.warn ? "text-red-600" : ""}`}>{k.value}</p></CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {routes.length > 0 ? (
+        <div className="rounded-md border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-muted-foreground">
+              <tr>
+                <th className="text-left font-medium px-3 py-2">Rotta</th>
+                <th className="text-right font-medium px-3 py-2">Richieste</th>
+                <th className="text-right font-medium px-3 py-2">p50</th>
+                <th className="text-right font-medium px-3 py-2">p95</th>
+                <th className="text-right font-medium px-3 py-2">max</th>
+                <th className="text-right font-medium px-3 py-2">lente</th>
+                <th className="text-right font-medium px-3 py-2">errori</th>
+              </tr>
+            </thead>
+            <tbody>
+              {routes.map((r) => (
+                <tr key={r.route} className="border-t">
+                  <td className="px-3 py-2 font-mono text-xs">{r.route}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.count.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.p50_ms} ms</td>
+                  <td className={`px-3 py-2 text-right tabular-nums font-semibold ${p95Color(r.p95_ms)}`}>{r.p95_ms} ms</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.max_ms} ms</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${r.slow > 0 ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>{r.slow}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${r.errors > 0 ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>{r.errors}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        loading ? <p className="text-muted-foreground text-sm">Caricamento…</p> :
+        <p className="text-muted-foreground text-sm">Ancora nessuna richiesta misurata su questo processo.</p>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        Dati per-processo, azzerati a ogni riavvio del worker. p50 = tempo tipico, p95 = i casi peggiori (quelli che generano la schermata &quot;servizio non raggiungibile&quot;). Verde = sano, ambra = attenzione, rosso = oltre soglia.
+      </p>
+    </div>
+  );
+}

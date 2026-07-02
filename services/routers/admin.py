@@ -1604,6 +1604,22 @@ def admin_sistema_retention():
     return status
 
 
+# ── Sistema/Salute — Latenza worker (spia saturazione) ───────────────────────
+
+@router.get("/api/admin/sistema/salute-worker", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+def admin_sistema_salute_worker():
+    """Metriche di latenza del worker per rotta (p50/p95/max, richieste lente,
+    errori 5xx), ordinate per p95 discendente.
+
+    Serve a vedere QUANDO il worker inizia a soffrire: se p95 di /api/auth/me o
+    della Home si avvicina alla soglia lenti (4s) / al timeout SSR (12s), è il
+    momento di potenziare Railway. Dati per-processo, finestra scorrevole in-memory
+    (nessun costo, nessun servizio esterno). Si azzerano al riavvio del worker.
+    """
+    from services import worker_metrics
+    return worker_metrics.snapshot()
+
+
 # ── Sistema/Salute — Import ricavi problematici ──────────────────────────────
 
 @router.get("/api/admin/sistema/ricavi-import", tags=["Admin"], dependencies=[Depends(_verify_admin)])

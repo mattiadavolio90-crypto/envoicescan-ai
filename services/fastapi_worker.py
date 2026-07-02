@@ -547,7 +547,50 @@ class _ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+import re as _re_metrics
+
+_UUID_RE = _re_metrics.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", _re_metrics.I
+)
+_NUM_SEG_RE = _re_metrics.compile(r"/\d+(?=/|$)")
+
+
+def _metrics_route_label(path: str) -> str:
+    """Normalizza il path per le metriche: gli ID variabili (UUID, numeri) diventano
+    ':id' cosi' le richieste della stessa rotta si aggregano invece di esplodere."""
+    p = _UUID_RE.sub(":id", path)
+    p = _NUM_SEG_RE.sub("/:id", p)
+    return p
+
+
+class _LatencyMetricsMiddleware(BaseHTTPMiddleware):
+    """Misura la durata di ogni richiesta e la registra in worker_metrics.
+
+    In-process, costo trascurabile (un time.monotonic e un append in deque). Serve
+    all'Admin per vedere QUANDO il worker rallenta (p95 vicino al timeout SSR) e
+    decidere il potenziamento Railway sui numeri reali. /health escluso (rumore)."""
+    async def dispatch(self, request, call_next):
+        import time as _t
+        from services import worker_metrics as _wm
+        path = request.url.path
+        if path == "/health":
+            return await call_next(request)
+        t0 = _t.monotonic()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            ms = (_t.monotonic() - t0) * 1000.0
+            try:
+                _wm.record(_metrics_route_label(path), ms, status)
+            except Exception:
+                pass
+
+
 app.add_middleware(_ContentSizeLimitMiddleware)
+app.add_middleware(_LatencyMetricsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_build_allowed_origins(),
