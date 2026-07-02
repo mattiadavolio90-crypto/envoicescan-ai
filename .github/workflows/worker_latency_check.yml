@@ -32,7 +32,7 @@ permissions:
 
 env:
   WORKER_URL: 'https://worker-production-a552.up.railway.app'
-  LATENCY_THRESHOLD_MS: '3000'
+  LATENCY_THRESHOLD_MS: '1'
 
 jobs:
   check-latency:
