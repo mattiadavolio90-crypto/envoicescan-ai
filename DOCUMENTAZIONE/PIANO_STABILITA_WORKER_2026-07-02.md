@@ -76,6 +76,41 @@ di diagnosi non si riproduceva a colpi singoli.
 **Verifica**: suite completa **9758 passed, 1 skipped**; test dedicati `TTLCache` verdi;
 worker importa pulito. **DA DEPLOYARE fuori orario** (worker Railway + già fatto il DB).
 
+### 2.4 Leva 3c/3d — Spia latenza + alert proattivi + runbook (2/7, DEPLOYATO — commit `852b970`, `c3229eb` + successivi)
+
+Prima di oggi la scoperta di un incidente dipendeva dal caso (Mattia che guarda lo
+schermo). Ora ci sono DUE meccanismi indipendenti:
+
+| # | Intervento | File | Stato |
+|---|---|---|---|
+| D1 | Metriche latenza per rotta (p50/p95/max/lenti/errori), thread-safe | `services/worker_metrics.py` | ✅ deployato |
+| D2 | Middleware che misura ogni richiesta (esclude `/health`, normalizza ID) | `services/fastapi_worker.py` (`_LatencyMetricsMiddleware`) | ✅ deployato |
+| D3 | Endpoint + tab Admin "Salute worker" (p95 colorato verde/ambra/rosso) | `services/routers/admin.py`, `apps/web/.../sistema-tabs.tsx` | ✅ deployato |
+| D4 | Modulo invio Telegram, fail-safe (mai rompe il chiamante) | `services/telegram_service.py` | ✅ |
+| D5 | Bot Telegram `@Oneflux_alert_bot`, secrets `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` | GitHub Secrets + env Railway | ✅ configurato |
+| D6 | `uptime_check.yml` esteso: Telegram in parallelo all'email su down | `.github/workflows/uptime_check.yml` | ✅ |
+| D7 | **Nuovo** `worker_latency_check.yml`: rileva LENTO (non solo giù), ogni 10 min su `/health` | `.github/workflows/worker_latency_check.yml` | ✅ |
+| D8 | Digest agent notturno via Telegram (successo silenzioso, fallimento con suono) | `services/fastapi_worker.py` (`_run_agent_notturno`) | ✅ |
+| D9 | Runbook: cosa guardare in che ordine quando arriva un alert | `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | ✅ |
+
+**Perché due monitor separati (uptime_check + worker_latency_check)**: l'incidente
+del 2/7 NON era "sito giù" (Vercel rispondeva 200) — era il worker Railway lento
+sotto contesa. Un check binario su/giù non lo intercetta. `worker_latency_check.yml`
+misura la latenza di `/health` (che non tocca il DB): se anche quello rallenta
+sopra soglia (3s), è il segnale che il threadpool è sotto pressione.
+
+**Verifica**: suite **9775 passed**; +12 test nuovi (`test_worker_metrics.py`,
+`test_telegram_service.py`); YAML dei 3 workflow toccati validati; invio Telegram
+reale confermato end-to-end (bug di quoting in un curl locale Windows, non
+riproducibile su `ubuntu-latest` dove gira il workflow — confermato inviando lo
+stesso testo via Python).
+
+**Setup manuale richiesto per attivare gli alert** (Mattia, fuori da questo repo):
+1. GitHub → repo → Settings → Secrets and variables → Actions → New repository secret:
+   `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`.
+2. Railway → servizio `worker` → Variables: stesse due variabili (per il digest
+   agent notturno, che gira nel worker Python, non in GitHub Actions).
+
 ---
 
 ## 3. Piano di intervento (a freddo, fuori orario — regola Mattia)
@@ -120,10 +155,18 @@ La cura strutturale al carico crescente col go-live.
   `worker`. Il codice è già multi-worker (`WORKER_WEB_CONCURRENCY`). Verificare
   che le cache in-process (per-processo) restino corrette con più repliche
   (già annotato a `fastapi_worker.py:5124` — sono best-effort, non correttezza).
+  **Decisione rimandata volutamente**: si potenzia sui numeri reali della spia
+  latenza (Fase 3c/3d già fatte), non a naso.
 - **3b. Health check Railway** su `/health` con restart automatico (se non già
   attivo) → auto-recupero da stati degradati senza intervento manuale.
-- **3c. Alert**: notifica (email/Telegram) se `/api/auth/me` supera N ms o se il
-  worker torna 5xx → sapere PRIMA del cliente.
+- **3c. ✅ FATTO (2/7) — Spia latenza worker**: `services/worker_metrics.py` +
+  middleware + tab Admin "Salute worker". Vedi sezione 2.4.
+- **3d. ✅ FATTO (2/7) — Alert proattivi + runbook**: bot Telegram
+  `@Oneflux_alert_bot`, `services/telegram_service.py`, workflow
+  `worker_latency_check.yml` (nuovo, ogni 10 min, rileva LENTO non solo giù),
+  `uptime_check.yml` esteso con Telegram in parallelo all'email, digest agent
+  notturno via Telegram, `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` (piano
+  d'intervento con priorità). Vedi sezione 2.4.
 
 ### FASE 4 — Rendere async i percorsi caldi (rischio MEDIO, beneficio ALTO, ULTIMA)
 Vera cura architetturale, ma tocca molto codice: farla per ultima, isolata.

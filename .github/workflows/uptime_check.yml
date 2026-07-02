@@ -73,3 +73,28 @@ jobs:
               \"subject\": \"🚨 ONEFLUX è offline\",
               \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://app.oneflux.it/'>https://app.oneflux.it/</a></p><p>Controlla su <a href='https://vercel.com'>Vercel Dashboard</a> per lo stato del deploy.</p>\"
             }"
+
+      # Canale ridondante e indipendente dall'email: se Brevo è giù o l'email
+      # finisce in spam, Telegram arriva comunque come push sul telefono.
+      # Se i secrets Telegram non sono configurati, curl fallisce silenziosamente
+      # (nessuna guardia esplicita: l'email resta comunque la garanzia primaria).
+      - name: Invia alert Telegram
+        if: steps.ping.outputs.down == 'true' && steps.wakeup.outputs.woke_up != 'true'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
+            echo "Telegram non configurato (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID mancanti), salto."
+            exit 0
+          fi
+          HTTP_CODE="${{ steps.ping.outputs.http_code }}"
+          if [ "$HTTP_CODE" = "000" ]; then
+            DETAIL="Timeout: nessuna risposta entro 60s"
+          else
+            DETAIL="HTTP $HTTP_CODE"
+          fi
+          MSG=$(printf '🚨 ONEFLUX è offline\n%s\nhttps://app.oneflux.it/\nRunbook: DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md' "$DETAIL")
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_CHAT_ID}" \
+            --data-urlencode "text=${MSG}"

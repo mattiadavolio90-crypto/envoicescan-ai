@@ -424,6 +424,18 @@ def _run_agent_notturno() -> dict:
         _agent_notturno_persist()
 
         logger.info("🤖 Agent notturno completato: %s", digest)
+        try:
+            from services.telegram_service import invia_messaggio
+            invia_messaggio(
+                "Agent notturno completato\n"
+                f"Classificate: {digest['classificate']} (auto={digest['auto_review']}, suggerite={digest['suggerite']})\n"
+                f"Suggerimenti AI preparati: {digest['suggerite_ai']}\n"
+                f"Errori: {digest['errori']}\n"
+                f"Durata: {digest['elapsed_s']}s",
+                silenzioso=True,  # digest di routine, non deve svegliare
+            )
+        except Exception:
+            pass  # un alert che non parte non deve mai far fallire l'agent notturno
         return digest
 
     except Exception as exc:
@@ -431,6 +443,11 @@ def _run_agent_notturno() -> dict:
         _agent_notturno_state["last_run_at"] = datetime.now(timezone.utc).isoformat()
         _agent_notturno_state["last_digest"] = {"errore": str(exc)[:200]}
         _agent_notturno_persist()
+        try:
+            from services.telegram_service import invia_messaggio
+            invia_messaggio(f"Agent notturno FALLITO\nErrore: {str(exc)[:300]}")  # non silenzioso: è un'anomalia
+        except Exception:
+            pass
         return {}
     finally:
         _agent_notturno_state["running"] = False
