@@ -795,8 +795,15 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         if supabase_client is None:
             supabase_client = get_supabase_client()
 
+        # Email sempre normalizzata prima del confronto DB (users.email e' salvata
+        # lowercase in fase di creazione account, vedi crea_account/registra_utente):
+        # prima un'email digitata con maiuscole diverse dalla registrazione
+        # (es. "Mario@Gmail.com" vs "mario@gmail.com" salvato) veniva rifiutata
+        # come "credenziali errate" pur essendo corretta.
+        email_norm = email.strip().lower()
+
         # Rate limiting su DB: controlla lockout
-        bloccato, minuti = controlla_rate_limit(email, supabase_client)
+        bloccato, minuti = controlla_rate_limit(email_norm, supabase_client)
         if bloccato:
             return None, f"Troppi tentativi falliti. Riprova tra {minuti} minuti."
 
@@ -804,7 +811,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         response = supabase_client.table("users") \
             .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
                 "password_hash, partita_iva, created_at, last_login") \
-            .eq("email", email) \
+            .eq("email", email_norm) \
             .eq("attivo", True) \
             .execute()
 

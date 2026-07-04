@@ -27,15 +27,16 @@ export function ConfigAssistenteCatena() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nome, setNome] = useState("");
   const [chatEnabled, setChatEnabled] = useState(true);
   const [segnali, setSegnali] = useState<SegnaleCfg[]>([]);
   const [pv, setPv] = useState<PvCfg[]>([]);
 
-  useEffect(() => {
-    if (!open) return;
+  function caricaConfig() {
     setLoading(true);
+    setLoadError(false);
     fetch("/api/gruppo/assistant-config", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j) => {
@@ -44,8 +45,22 @@ export function ConfigAssistenteCatena() {
         setSegnali(j.segnali ?? []);
         setPv(j.pv ?? []);
       })
-      .catch(() => toast.error("Errore nel caricamento della configurazione"))
+      .catch(() => {
+        // Se il load fallisce, segnali/pv restano [] (stato iniziale): salvare in
+        // questo stato manderebbe segnali_disattivati/pv_esclusi vuoti, che il
+        // backend legge come "niente escluso" — riattivando silenziosamente
+        // tutto cio' che l'utente aveva escluso in precedenza. Blocca il Salva
+        // finche' non c'e' un retry riuscito.
+        setLoadError(true);
+        toast.error("Errore nel caricamento della configurazione");
+      })
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    caricaConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   function toggleSegnale(key: string, v: boolean) {
@@ -96,6 +111,15 @@ export function ConfigAssistenteCatena() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Caricamento…</p>
+          ) : loadError ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Non sono riuscito a caricare la configurazione attuale.
+              </p>
+              <Button size="sm" variant="outline" onClick={caricaConfig}>
+                Riprova
+              </Button>
+            </div>
           ) : (
             <div className="space-y-5 py-2">
               <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
@@ -167,7 +191,7 @@ export function ConfigAssistenteCatena() {
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
             Annulla
           </Button>
-          <Button onClick={salva} disabled={saving || loading}>
+          <Button onClick={salva} disabled={saving || loading || loadError}>
             {saving && <Loader2 className="size-4 animate-spin" />}
             Salva
           </Button>

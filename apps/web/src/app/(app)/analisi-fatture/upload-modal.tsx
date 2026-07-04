@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   CheckCircle,
@@ -62,10 +63,28 @@ export function UploadModal() {
   const inputRef = useRef<HTMLInputElement>(null);
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
+    const estensioneInvalida: string[] = [];
+    const troppoGrandi: string[] = [];
     const valid = arr.filter((f) => {
       const ext = "." + f.name.split(".").pop()?.toLowerCase();
-      return ACCEPTED_EXTS.includes(ext) && f.size <= MAX_SIZE_MB * 1024 * 1024;
+      const extOk = ACCEPTED_EXTS.includes(ext);
+      const sizeOk = f.size <= MAX_SIZE_MB * 1024 * 1024;
+      if (!extOk) estensioneInvalida.push(f.name);
+      else if (!sizeOk) troppoGrandi.push(f.name);
+      return extOk && sizeOk;
     });
+    // Prima questi file sparivano senza traccia: l'utente trascinava N file e ne
+    // vedeva meno nella lista senza sapere quali erano stati esclusi o perché.
+    if (estensioneInvalida.length > 0) {
+      toast.warning(
+        `Formato non supportato, ${estensioneInvalida.length === 1 ? "escluso" : "esclusi"}: ${estensioneInvalida.join(", ")}`,
+      );
+    }
+    if (troppoGrandi.length > 0) {
+      toast.warning(
+        `Oltre ${MAX_SIZE_MB}MB, ${troppoGrandi.length === 1 ? "escluso" : "esclusi"}: ${troppoGrandi.join(", ")}`,
+      );
+    }
     setFiles((prev) => {
       const existing = new Set(prev.map((e) => e.file.name));
       const ne = valid
@@ -164,6 +183,7 @@ export function UploadModal() {
   const pending = files.filter((f) => f.status === "waiting" || f.status === "error").length;
   const success = files.filter((f) => f.status === "success").length;
   const skipped = files.filter((f) => f.status === "skipped").length;
+  const errored = files.filter((f) => f.status === "error").length;
   const totRighe = files.reduce((sum, f) => sum + (f.righe ?? 0), 0);
 
   return (
@@ -290,10 +310,32 @@ export function UploadModal() {
                 · {skipped} {skipped === 1 ? "scartata" : "scartate"}
               </span>
             )}
+            {errored > 0 && (
+              <span className="text-destructive font-medium ml-2">
+                · {errored} {errored === 1 ? "non caricata" : "non caricate"}
+              </span>
+            )}
           </span>
           <div className="flex gap-2">
             {(success > 0 || skipped > 0) && (
-              <Button variant="outline" size="sm" onClick={closeAndRefresh}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Chiudere qui fa un reload completo (vedi closeAndRefresh): lo stato
+                  // dei file in errore (nome, motivo) va perso. Se ce ne sono ancora,
+                  // meglio far confermare esplicitamente piuttosto che farli sparire
+                  // senza che l'utente li abbia notati.
+                  if (
+                    errored === 0 ||
+                    confirm(
+                      `${errored} ${errored === 1 ? "file non è stato caricato" : "file non sono stati caricati"}. Chiudendo perderai l'elenco di quali. Continuare?`,
+                    )
+                  ) {
+                    closeAndRefresh();
+                  }
+                }}
+              >
                 Chiudi e aggiorna
               </Button>
             )}

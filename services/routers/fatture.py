@@ -783,13 +783,21 @@ def categoria_batch(
     nuova_cat = body.nuova_categoria.strip()
     if not nuova_cat or nuova_cat in ("Da Clasificare", "Da Classificare"):
         raise HTTPException(status_code=400, detail="Categoria non valida")
+    # Stesso whitelist della PATCH singola riga (aggiorna_categoria_riga): il
+    # constraint DB rifiuta solo "Da Clasificare", una categoria inventata/refuso
+    # passerebbe e sporcherebbe margini e report su TUTTE le righe della descrizione.
+    _categorie_ammesse = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
+    if nuova_cat not in _categorie_ammesse:
+        raise HTTPException(status_code=400, detail=f"Categoria '{nuova_cat}' non riconosciuta")
 
     descrizione = body.descrizione.strip()
     if not descrizione:
         raise HTTPException(status_code=400, detail="Descrizione mancante")
 
     supabase_client = _get_supabase_client()
-    # Aggiorna tutte le righe con stessa descrizione del ristorante
+    # Aggiorna le righe con stessa descrizione del ristorante; se riga_ids e'
+    # fornito, restringe l'update a quelle righe (prima il campo era dichiarato
+    # ma ignorato: l'update toccava sempre TUTTE le righe con quella descrizione).
     update_q = (
         supabase_client.table("fatture")
         .update({"categoria": nuova_cat, "needs_review": False})
@@ -797,6 +805,8 @@ def categoria_batch(
         .eq("descrizione", descrizione)
         .is_("deleted_at", "null")
     )
+    if body.riga_ids:
+        update_q = update_q.in_("id", body.riga_ids)
     res_update = update_q.execute()
     righe_aggiornate = len(res_update.data or [])
     if righe_aggiornate:

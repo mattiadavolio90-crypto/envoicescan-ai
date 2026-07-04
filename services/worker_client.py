@@ -15,6 +15,7 @@ Uso in sviluppo locale (senza Docker):
 import io
 import os
 import logging
+from contextvars import ContextVar
 from typing import Any, List, Optional
 
 import requests
@@ -28,9 +29,27 @@ _WORKER_KEY = os.environ.get("WORKER_SECRET_KEY", "")
 _CLASSIFY_TIMEOUT = 90   # OpenAI può richiedere 30-60s per batch grandi
 _PARSE_TIMEOUT = 30
 
+# Override per-richiesta del path locale (vedi force_local_worker_path sotto):
+# ContextVar invece di mutare os.environ, che e' globale al PROCESSO. FastAPI
+# esegue le route sync in un threadpool che eredita il ContextVar corrente
+# (stesso pattern di ai_service.set_ai_context) — quindi due upload concorrenti
+# di tenant diversi non si "rubano" a vicenda lo stato, cosa che accadeva prima
+# quando il worker faceva os.environ.pop("WORKER_BASE_URL") per la durata della
+# chiamata: un secondo upload nello stesso processo poteva vedere la variabile
+# gia' rimossa da un altro, o vedersela ripristinare a meta' esecuzione.
+_force_local: ContextVar[bool] = ContextVar("worker_client_force_local", default=False)
+
+
+def force_local_worker_path(active: bool) -> None:
+    """Forza (True) o ripristina (False) il path locale per il thread/task corrente."""
+    _force_local.set(active)
+
 
 def _worker_base_url() -> str:
-    """Restituisce WORKER_BASE_URL dall'ambiente, o stringa vuota se non configurato."""
+    """Restituisce WORKER_BASE_URL dall'ambiente, o stringa vuota se non configurato
+    o se force_local_worker_path(True) e' attivo per la richiesta corrente."""
+    if _force_local.get():
+        return ""
     return os.environ.get("WORKER_BASE_URL", "").rstrip("/")
 
 

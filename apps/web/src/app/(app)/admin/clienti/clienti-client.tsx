@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ function AttivitaLabel({ lastSeen }: { lastSeen: string | null }) {
 type Props = { clientiIniziali: Cliente[] };
 
 export function ClientiClient({ clientiIniziali }: Props) {
+  const router = useRouter();
   const [clienti, setClienti] = useState<Cliente[]>(clientiIniziali);
   const [search, setSearch] = useState("");
   const [filtroStato, setFiltroStato] = useState<"tutti" | "attivi" | "disattivi">("tutti");
@@ -115,7 +117,16 @@ export function ClientiClient({ clientiIniziali }: Props) {
       // Aggiorna la lista in-place (no full reload): il router.refresh ridondante
       // ricaricava l'intera pagina server inutilmente.
       const refresh = await fetch("/api/admin/clienti");
-      if (refresh.ok) setClienti(await refresh.json());
+      if (refresh.ok) {
+        setClienti(await refresh.json());
+      } else {
+        // L'account E' stato creato (toast sopra confermato da res.ok): un
+        // refresh fallito qui non deve far pensare che la creazione sia fallita,
+        // altrimenti si rischia una creazione doppia per lo stesso cliente.
+        // Ricarica la pagina intera come fallback per mostrare la lista aggiornata.
+        toast.info("Account creato, ma la lista non si e' aggiornata: ricarico la pagina.");
+        router.refresh();
+      }
     } catch {
       toast.error("Errore di connessione");
     } finally {

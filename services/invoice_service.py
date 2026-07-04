@@ -67,7 +67,14 @@ logger = get_logger('invoice')
 
 
 def _to_float_safe(value: Any, default: Optional[float] = None) -> Optional[float]:
-    """Converte valori numerici XML/DB in float gestendo virgola decimale."""
+    """Converte valori numerici XML/DB in float gestendo virgola decimale.
+
+    Il formato SDI standard usa il punto come decimale (es. "2174.67"), ma
+    alcuni fornitori esportano in formato it-IT con virgola (es. "5,00" o,
+    su importi >= 1000, "2.174,67"). Se c'e' una virgola i punti prima sono
+    migliaia e vanno rimossi prima di convertire la virgola in punto; senza
+    virgola il valore e' gia' conforme SDI e non va toccato.
+    """
     if value is None:
         return default
     if isinstance(value, (int, float)):
@@ -75,7 +82,8 @@ def _to_float_safe(value: Any, default: Optional[float] = None) -> Optional[floa
     text = str(value).strip()
     if not text:
         return default
-    text = text.replace(',', '.')
+    if ',' in text:
+        text = text.replace('.', '').replace(',', '.')
     try:
         return float(text)
     except (TypeError, ValueError):
@@ -649,6 +657,71 @@ def estrai_xml_da_p7m(file_caricato):
     return xml_stream
 
 
+def decodifica_xml_sicuro(contenuto_bytes) -> str:
+    """Decodifica bytes XML con fallback encoding robusto + validazione XXE.
+
+    Condivisa da estrai_dati_da_xml e dallo smistamento multi-sede (upload):
+    prima di questo fix lo smistamento chiamava xmltodict.parse(contents) nudo,
+    senza questa cascata ne' il guard XXE, quindi una fattura con encoding non-UTF8
+    (es. fornitori cinesi) falliva silenziosamente il parse -> fattura_dict vuoto
+    -> P.IVA/indirizzo non estratti -> routing ricade sul fallback (sede attiva)
+    bypassando la guardia P.IVA invece di smistare per P.IVA/indirizzo.
+
+    Solleva ValueError se il contenuto non supera la validazione XXE.
+    """
+    if isinstance(contenuto_bytes, bytes):
+        # ── Step 1: Leggi encoding dichiarato nel prolog XML ─────────────
+        # Es: <?xml version='1.0' encoding='GB2312'?>
+        xml_prolog = contenuto_bytes[:300].decode('ascii', errors='ignore')
+        _enc_match = re.search(r'encoding=["\']([^"\']+)["\']', xml_prolog, re.IGNORECASE)
+        declared_enc = _enc_match.group(1).strip().lower() if _enc_match else None
+        if declared_enc:
+            logger.info(f"📄 Encoding dichiarato nel prolog XML: {declared_enc}")
+
+        # ── Step 2: Costruisci lista priorità encoding ────────────────────
+        # Prima il dichiarato (se non è UTF-8, già incluso sotto), poi UTF-8,
+        # poi Windows-1252 (comune fatture italiane su Windows), poi CJK, poi latin-1
+        encodings_to_try = []
+        if declared_enc and declared_enc not in ('utf-8', 'utf8', 'utf_8'):
+            encodings_to_try.append(declared_enc)
+        encodings_to_try.extend(['utf-8-sig', 'utf-8', 'cp1252', 'gb2312', 'gbk', 'big5', 'latin-1'])
+
+        contenuto = None
+        for encoding in encodings_to_try:
+            try:
+                contenuto = contenuto_bytes.decode(encoding)
+                logger.info(f"✅ File XML decodificato con encoding: {encoding}")
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        if contenuto is None:
+            # ── Step 3: Usa charset-normalizer per rilevamento automatico ─
+            try:
+                from charset_normalizer import from_bytes as _from_bytes
+                _result = _from_bytes(contenuto_bytes).best()
+                if _result:
+                    contenuto = str(_result)
+                    logger.info(f"✅ Encoding rilevato da charset-normalizer: {_result.encoding}")
+                else:
+                    raise ValueError("charset-normalizer non ha riconosciuto l'encoding")
+            except (ImportError, ValueError) as enc_err:
+                # Fallback finale: sostituisci caratteri non decodificabili
+                contenuto = contenuto_bytes.decode('utf-8', errors='replace')
+                logger.warning(f"⚠️ Encoding fallback UTF-8 con sostituzione: {enc_err}")
+    else:
+        contenuto = contenuto_bytes
+
+    # 🔒 Validazione XXE: verifica assenza entità esterne prima del parsing
+    try:
+        _DefusedET.fromstring(contenuto if isinstance(contenuto, str) else contenuto.decode('utf-8', errors='replace'))
+    except Exception as xxe_err:
+        logger.warning(f"⚠️ Validazione XML sicurezza fallita: {xxe_err}")
+        raise ValueError(f"XML non valido o potenzialmente pericoloso: {xxe_err}")
+
+    return contenuto
+
+
 def estrai_dati_da_xml(file_caricato, user_id: str = None):
     """
     Estrae dati da fatture XML elettroniche italiane.
@@ -693,58 +766,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             logger.info("✅ Cache memoria precaricata per elaborazione XML")
         
         contenuto_bytes = file_caricato.read()
-        
-        # Gestione encoding robusta per caratteri speciali (cinesi, ecc.)
-        if isinstance(contenuto_bytes, bytes):
-            # ── Step 1: Leggi encoding dichiarato nel prolog XML ─────────────
-            # Es: <?xml version='1.0' encoding='GB2312'?>
-            xml_prolog = contenuto_bytes[:300].decode('ascii', errors='ignore')
-            _enc_match = re.search(r'encoding=["\']([^"\']+)["\']', xml_prolog, re.IGNORECASE)
-            declared_enc = _enc_match.group(1).strip().lower() if _enc_match else None
-            if declared_enc:
-                logger.info(f"📄 Encoding dichiarato nel prolog XML: {declared_enc}")
 
-            # ── Step 2: Costruisci lista priorità encoding ────────────────────
-            # Prima il dichiarato (se non è UTF-8, già incluso sotto), poi UTF-8,
-            # poi Windows-1252 (comune fatture italiane su Windows), poi CJK, poi latin-1
-            encodings_to_try = []
-            if declared_enc and declared_enc not in ('utf-8', 'utf8', 'utf_8'):
-                encodings_to_try.append(declared_enc)
-            encodings_to_try.extend(['utf-8-sig', 'utf-8', 'cp1252', 'gb2312', 'gbk', 'big5', 'latin-1'])
+        # Encoding robusto (caratteri speciali, cinesi, ecc.) + validazione XXE
+        contenuto = decodifica_xml_sicuro(contenuto_bytes)
 
-            contenuto = None
-            for encoding in encodings_to_try:
-                try:
-                    contenuto = contenuto_bytes.decode(encoding)
-                    logger.info(f"✅ File XML decodificato con encoding: {encoding}")
-                    break
-                except (UnicodeDecodeError, LookupError):
-                    continue
-
-            if contenuto is None:
-                # ── Step 3: Usa charset-normalizer per rilevamento automatico ─
-                try:
-                    from charset_normalizer import from_bytes as _from_bytes
-                    _result = _from_bytes(contenuto_bytes).best()
-                    if _result:
-                        contenuto = str(_result)
-                        logger.info(f"✅ Encoding rilevato da charset-normalizer: {_result.encoding}")
-                    else:
-                        raise ValueError("charset-normalizer non ha riconosciuto l'encoding")
-                except (ImportError, ValueError) as enc_err:
-                    # Fallback finale: sostituisci caratteri non decodificabili
-                    contenuto = contenuto_bytes.decode('utf-8', errors='replace')
-                    logger.warning(f"⚠️ Encoding fallback UTF-8 con sostituzione: {enc_err}")
-        else:
-            contenuto = contenuto_bytes
-        
-        # 🔒 Validazione XXE: verifica assenza entità esterne prima del parsing
-        try:
-            _DefusedET.fromstring(contenuto if isinstance(contenuto, str) else contenuto.decode('utf-8', errors='replace'))
-        except Exception as xxe_err:
-            logger.warning(f"⚠️ Validazione XML sicurezza fallita: {xxe_err}")
-            raise ValueError(f"XML non valido o potenzialmente pericoloso: {xxe_err}")
-        
         doc = xmltodict.parse(contenuto)
         
         root_key = list(doc.keys())[0]
@@ -1009,7 +1034,12 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     needs_review_flag = True
                 
                 # QUANTITÀ: Default = 1 per servizi (se manca ma c'è PrezzoTotale)
-                if quantita_raw is None or float(quantita_raw or 0) == 0:
+                # _to_float_safe: la quantità può arrivare con virgola decimale
+                # ("1,5") o malformata; float() nudo solleverebbe e scarterebbe
+                # l'intera riga (era una riga persa silenziosamente, non un errore
+                # visibile — bug reale su fornitori che esportano in formato it-IT).
+                quantita_val = _to_float_safe(quantita_raw, 0.0) or 0.0
+                if quantita_raw is None or quantita_val == 0:
                     if totale_riga and totale_riga != 0:  # Accetta anche negativi (note di credito)
                         quantita = 1.0
                     else:
@@ -1020,7 +1050,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                         )
                         continue
                 else:
-                    quantita = float(quantita_raw)
+                    quantita = quantita_val
                 
                 # SKIP: Descrizione vuota o invalida (DDT, numeri)
                 # ============================================================
@@ -1099,6 +1129,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     iva_percentuale=aliquota_iva,
                     pending_local_saves=_pending_local_saves,
                     return_fallback_flag=True,
+                    totale_riga=totale_riga,
                 )
                 categoria_finale, _enforce_fallback = enforce_no_unclassified_category(
                     categoria_finale,

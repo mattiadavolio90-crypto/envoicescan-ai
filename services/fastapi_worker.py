@@ -687,8 +687,9 @@ def health() -> Dict[str, str]:
         "commit": commit[:12],
         # Cert. SUSHILAND 26/06: conferma che l'upload fa girare l'AI post-salvataggio.
         "upload_ai": "on",
-        # Diagnostica: se WORKER_BASE_URL e' settata qui, l'AI post-upload la azzera
-        # per girare in-process (evita HTTP self-call). openai_key conferma la chiave.
+        # Diagnostica: se WORKER_BASE_URL e' settata qui, l'AI post-upload forza
+        # comunque il path in-process (force_local_worker_path, evita HTTP self-call).
+        # openai_key conferma la chiave.
         "worker_base_set": "1" if os.getenv("WORKER_BASE_URL") else "0",
         "openai_key": "1" if os.getenv("OPENAI_API_KEY") else "0",
     }
@@ -1763,9 +1764,10 @@ async def upload_invoice(
     # la sede, quindi il contenuto deve essere gia' XML a questo punto.
     if ext == "p7m":
         from services.invoice_service import estrai_xml_da_p7m
-        xml_bytes = estrai_xml_da_p7m(io.BytesIO(contents))
-        if xml_bytes is None:
-            raise HTTPException(status_code=422, detail="Impossibile estrarre XML dal file P7M.")
+        try:
+            xml_bytes = estrai_xml_da_p7m(io.BytesIO(contents))
+        except ValueError as p7m_err:
+            raise HTTPException(status_code=422, detail=str(p7m_err))
         contents = xml_bytes.read() if hasattr(xml_bytes, "read") else xml_bytes
         filename = filename[:-4]
 
@@ -1784,9 +1786,16 @@ async def upload_invoice(
     sedi_attive = _carica_sedi_attive_per_user(user_id, supabase_client)
 
     # Parse del dict XML una sola volta (serve a P.IVA cessionario + indirizzo).
+    # Stesso decoder con fallback encoding + guard XXE di estrai_dati_da_xml
+    # (decodifica_xml_sicuro): prima qui si chiamava xmltodict.parse(contents)
+    # nudo, che su encoding non-UTF8 (fornitori cinesi ecc.) falliva silenziosamente
+    # -> fattura_dict vuoto -> P.IVA/indirizzo non estratti -> routing ricadeva sul
+    # fallback (sede attiva) bypassando la guardia P.IVA invece di smistare.
     try:
         import xmltodict
-        _doc = xmltodict.parse(contents)
+        from services.invoice_service import decodifica_xml_sicuro
+        _contenuto = decodifica_xml_sicuro(contents)
+        _doc = xmltodict.parse(_contenuto)
         _root = list(_doc.keys())
         fattura_dict = _doc[_root[0]] if _root else {}
         if not isinstance(fattura_dict, dict):
@@ -1978,9 +1987,14 @@ async def upload_invoice(
     # Forza il path AI IN-PROCESS: se WORKER_BASE_URL fosse settata anche nel
     # processo worker (Railway), classifica_via_worker tenterebbe una HTTP POST del
     # worker verso se stesso (auth/timeout -> fallback Da Classificare silenzioso).
-    # Azzeriamo la var solo per la durata della chiamata cosi' gira classifica_con_ai
-    # diretto. Ripristino in finally.
-    _saved_worker_base = os.environ.pop("WORKER_BASE_URL", None)
+    # force_local_worker_path usa un ContextVar (non os.environ, che e' globale
+    # al PROCESSO): due upload concorrenti di tenant diversi nello stesso worker
+    # process avevano una race qui — un secondo upload poteva trovare la variabile
+    # gia' rimossa dal primo, o vedersela ripristinare a meta' esecuzione dal
+    # finally di un'altra richiesta. Il ContextVar e' isolato per thread/task
+    # (FastAPI propaga il contesto al threadpool, stesso meccanismo di set_ai_context).
+    from services.worker_client import force_local_worker_path
+    force_local_worker_path(True)
     # Propaga ristorante_id/user_id al contesto AI: classifica_con_ai usa
     # _resolve_ristorante_id() (ContextVar) per il tracking quota/costi, che fuori
     # da Streamlit sarebbe None -> "ristorante_id mancante", contatore mai aggiornato.
@@ -1992,9 +2006,8 @@ async def upload_invoice(
     try:
         from services.upload_handler import _run_post_upload_ai_categorization
         logger.info(
-            "upload AI post START: file=%s ristorante=%s openai_key=%s worker_base_era=%s",
+            "upload AI post START: file=%s ristorante=%s openai_key=%s",
             filename, ristorante_id, bool(os.getenv("OPENAI_API_KEY")),
-            bool(_saved_worker_base),
         )
         ai_auto_summary = _run_post_upload_ai_categorization(
             supabase_client,
@@ -2015,8 +2028,7 @@ async def upload_invoice(
     except Exception as ai_post_err:
         logger.exception("upload AI post-categorizzazione FALLITA: %s", ai_post_err)
     finally:
-        if _saved_worker_base is not None:
-            os.environ["WORKER_BASE_URL"] = _saved_worker_base
+        force_local_worker_path(False)
 
     # Nuove righe salvate -> invalida la cache di lettura per questo ristorante,
     # altrimenti i KPI/articoli resterebbero stale fino allo scadere del TTL.
@@ -7108,6 +7120,7 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .neq("categoria", "Da Classificare")
             .or_(
                 f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
                 f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"
@@ -7167,6 +7180,7 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .neq("categoria", "Da Classificare")
             .or_(
                 f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
                 f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"

@@ -276,6 +276,12 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
     df['quantita'] = pd.to_numeric(df.get('quantita', pd.Series(dtype=float)), errors='coerce').fillna(1.0)
 
     df = df[~df['categoria'].isin(_CATEGORIE_SPESE_PREZZI)].copy()
+    # Note di credito (TD04): il filtro prezzo_unitario > 0 sotto esclude la
+    # maggior parte (importo tipicamente negativo), ma alcuni fornitori emettono
+    # TD04 con importo positivo (valore assoluto) — quelle passerebbero come un
+    # vero acquisto e comparirebbero nel confronto prezzi come "aumento/calo"
+    # fasullo. Escludiamo esplicitamente per tipo_documento, non per segno.
+    df = df[~_mask_nota_credito(df)].copy()
     df = df[df['prezzo_unitario'] > 0].copy()
 
     if df.empty:
@@ -965,6 +971,10 @@ def _calcola_score_fornitori(
     df["_data"] = pd.to_datetime(df["data_documento"], errors="coerce", utc=True)
     # Spese pure (utenze, servizi…) non sono "fornitura": le escludiamo dallo score
     df = df[~df["categoria"].isin(_CATEGORIE_SPESE_PREZZI)].copy()
+    # Note di credito (storni) non sono documenti di fornitura reale: contarle in
+    # n_fatture gonfiava il campione del fornitore (e quindi affidabilita/score)
+    # senza che rappresentassero un vero acquisto.
+    df = df[~_mask_nota_credito(df)].copy()
 
     # Variazioni raggruppate per fornitore (chiave UPPER, gemella di _forn_key)
     var_per_forn: dict = {}

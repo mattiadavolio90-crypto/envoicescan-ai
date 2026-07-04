@@ -3986,6 +3986,7 @@ def categorizza_con_memoria(
     iva_percentuale: Optional[float] = None,
     pending_local_saves: Optional[List[Dict[str, Any]]] = None,
     return_fallback_flag: bool = False,
+    totale_riga: Optional[float] = None,
 ) -> Union[str, Tuple[str, bool]]:
     """
     Categorizza usando memoria GLOBALE multi-livello con CACHE IN-MEMORY.
@@ -4025,6 +4026,14 @@ def categorizza_con_memoria(
         # I match veri (memoria/regole/fornitore/UM/dizionario) NON sono fallback.
         return (categoria, is_fallback) if return_fallback_flag else categoria
 
+    # Il guardrail NOTE E DICITURE (dominio: consentita SOLO a totale_riga == 0,
+    # non a prezzo_unitario == 0 — es. un omaggio puo' avere prezzo di listino > 0
+    # ma totale_riga a zero per sconto 100%) deve valutare il vero importo della
+    # riga. Se il chiamante lo passa esplicitamente lo usiamo, altrimenti si
+    # ricade su 'prezzo' (comportamento storico, invariato per i chiamanti che
+    # non forniscono totale_riga).
+    _importo_guardrail = totale_riga if totale_riga is not None else prezzo
+
     # Usa client iniettato o fallback
     if supabase_client is None:
         try:
@@ -4042,7 +4051,7 @@ def categorizza_con_memoria(
                 f"⚡ FORNITORE UTENZE HARD OVERRIDE: '{descrizione[:60]}' -> UTENZE E LOCALI "
                 f"(fornitore: {fornitore}, match: {matched_key})"
             )
-            return _ret(_applica_guardrail_note_con_importo(descrizione, "UTENZE E LOCALI", prezzo))
+            return _ret(_applica_guardrail_note_con_importo(descrizione, "UTENZE E LOCALI", _importo_guardrail))
 
     # PROP-5: snapshot normalizzazione una sola volta (riusato in L2 + L3 + canon)
     desc_stripped = descrizione.strip()
@@ -4066,15 +4075,15 @@ def categorizza_con_memoria(
             record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → DICITURA (validata admin)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", _importo_guardrail))
             else:
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → {record['categoria']} (validata admin)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, record['categoria'], prezzo))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, record['categoria'], _importo_guardrail))
 
         # LIVELLO 1.5: Override forti non negoziabili prima della memoria automatica.
         categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
         if motivo_forzato in _NON_NEGOZIABILI_CACHE_OVERRIDE:
-            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria_forzata, prezzo))
+            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria_forzata, _importo_guardrail))
     
     except Exception as e:
         logger.warning(f"Errore check memoria admin (cache): {e}")
@@ -4086,24 +4095,24 @@ def categorizza_con_memoria(
             if desc_stripped in locale_dict:
                 categoria = locale_dict[desc_stripped]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
 
             locale_dict_norm = cache.get('prodotti_utente_norm', {}).get(user_id, {})
             if desc_normalized in locale_dict_norm:
                 categoria = locale_dict_norm[desc_normalized]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
-    
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
+
     except Exception as e:
         logger.warning(f"Errore check memoria locale utente (cache): {e}")
-    
+
     # LIVELLO 3: Check memoria GLOBALE (da cache, 0 query!)
     try:
         if not _disable_global_memory:
             if desc_normalized in cache['prodotti_master']:
                 categoria = cache['prodotti_master'][desc_normalized]
                 logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
 
             # PROP-2: fallback canonico (chiave robusta a varianti formato/quantita)
             master_canon = cache.get('prodotti_master_canon') or {}
@@ -4115,15 +4124,15 @@ def categorizza_con_memoria(
                         f"🟢 MEMORIA GLOBALE CANON (cache): '{descrizione}' → {categoria} "
                         f"(canon: '{canon_key}')"
                     )
-                    return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
+                    return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
 
     except Exception as e:
         logger.warning(f"Errore check memoria globale (cache): {e}")
 
     # LIVELLO 4: Check dicitura (se prezzo = 0)
     if prezzo == 0 and is_dicitura_sicura(descrizione, prezzo, quantita):
-        return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo))
-    
+        return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", _importo_guardrail))
+
     # LIVELLO 5: Regola FORNITORE specifico (priorità ALTA)
     if fornitore:
         fornitore_upper = fornitore.strip().upper()
@@ -4132,7 +4141,7 @@ def categorizza_con_memoria(
             if fornitore_key_upper in fornitore_upper or fornitore_upper in fornitore_key_upper:
                 logger.info(f"🏭 FORNITORE: '{descrizione}' → {categoria} (fornitore: {fornitore})")
                 # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
 
     # LIVELLO 6: Regola UNITÀ MISURA (priorità ALTA)
     if unita_misura:
@@ -4141,7 +4150,7 @@ def categorizza_con_memoria(
             categoria = UNITA_MISURA_CATEGORIA[unita_upper]
             logger.info(f"📏 UNITÀ MISURA: '{descrizione}' → {categoria} (U.M.: {unita_misura})")
             # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
-            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
+            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
     
     # LIVELLO 7: Dizionario keyword (fallback)
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")

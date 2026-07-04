@@ -245,6 +245,7 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
     import pandas as pd
     from datetime import date as _date, datetime as _dt
     from collections import defaultdict
+    from services.routers.ricavi import _to_float_it
 
     headers = None
     header_idx = None
@@ -316,13 +317,7 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
                 continue
         return None
 
-    def _to_float(v):
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return 0.0
-        try:
-            return max(0.0, float(str(v).replace(",", ".")))
-        except Exception:
-            return 0.0
+    _to_float = _to_float_it
 
     aggregato = defaultdict(lambda: {"iva10": 0.0, "iva22": 0.0, "altri": 0.0, "coperti": 0.0})
     coperti_seen = set()  # giorni con almeno una riga coperti valorizzata
@@ -336,10 +331,13 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
         data_iso = _parse_date(vals[idx_data] if idx_data < len(vals) else None)
         if data_iso is None:
             continue
-        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
-        if importo <= 0:
-            continue
 
+        # Risolvi ristorante + guardia ownership PRIMA del check importo: una riga
+        # con importo 0/negativo puo' comunque avere coperti valorizzati per quel
+        # giorno — se il continue scattasse prima di leggerli, si perderebbero anche
+        # se altre righe dello stesso giorno hanno importo positivo (bug reale
+        # confermato su file SushiLand). L'ownership resta invariata: deve girare
+        # PRIMA di scrivere in aggregato[key], indipendentemente dall'importo.
         raw_ragione = ""
         if idx_ragione is not None and idx_ragione < len(vals):
             raw_ragione = str(vals[idx_ragione]).strip()
@@ -360,12 +358,6 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
             foreign.add(str(target))
             continue
 
-        tipo_doc = ""
-        if idx_tipo is not None and idx_tipo < len(vals):
-            tipo_doc = str(vals[idx_tipo]).strip().lower()
-        raw_iva = vals[idx_iva] if (idx_iva is not None and idx_iva < len(vals)) else None
-        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
-
         key = (target, data_iso)
 
         # Coperti: somma su tutti i tipi documento del giorno (frazionari per riga).
@@ -377,6 +369,16 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
                     coperti_seen.add(key)
                 except (ValueError, TypeError):
                     pass
+
+        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
+        if importo <= 0:
+            continue
+
+        tipo_doc = ""
+        if idx_tipo is not None and idx_tipo < len(vals):
+            tipo_doc = str(vals[idx_tipo]).strip().lower()
+        raw_iva = vals[idx_iva] if (idx_iva is not None and idx_iva < len(vals)) else None
+        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
 
         if tipo_doc in ("proforma", "") or iva_str == "":
             aggregato[key]["altri"] += importo
@@ -390,6 +392,12 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
                 aggregato[key]["iva10"] += importo
             elif iva_val == 22:
                 aggregato[key]["iva22"] += importo
+            elif iva_val > 0:
+                # Aliquote reali diverse da 10/22 (es. 4%, 5%): niente colonna
+                # dedicata, finiscono in "altri" che a valle e' sempre trattato
+                # come gia' netto (nessuno scorporo) — un lordo qui gonfiava il
+                # netto/MOL della differenza IVA. Scorporiamo prima di sommare.
+                aggregato[key]["altri"] += importo / (1 + iva_val / 100)
             else:
                 aggregato[key]["altri"] += importo
 

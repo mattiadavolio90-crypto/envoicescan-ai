@@ -389,7 +389,7 @@ async def import_ricavi_xls(
     dettaglio_sedi: List[RicaviImportSedeDettaglio] = []
     for rid, items in per_ristorante.items():
         ins, upd, errs = await asyncio.to_thread(
-            _upsert_ricavi_ristorante, sb, rid, user["id"], items, source_meta
+            _upsert_ricavi_ristorante, sb, rid, user["id"], items, source_meta, nomi_sedi.get(rid)
         )
         inserted += ins
         updated += upd
@@ -430,6 +430,33 @@ async def import_ricavi_xls(
 
 
 # ─── Parser gestionale (condivisi con worker/email_queue_processor.py) ─────────
+def _to_float_it(v) -> float:
+    """Converte un importo it-IT (es. "2.450,00") in float, clampato a >= 0.
+
+    Prima ogni parser Passbi (qui e in worker/email_queue_processor.py) faceva
+    solo .replace(",", ".") : su un importo con separatore delle migliaia
+    ("2.450,00" -> "2.450.00") float() solleva, l'except silenzioso ritorna 0.0
+    e la riga/giorno viene scartata a valle (if importo <= 0: continue). Bug
+    live su qualsiasi giorno con incasso >= 1000 € (footer reali verificati:
+    367.159,76 / 9.869.784,247 — sempre in questo formato).
+    Regola: se c'e' una virgola e' il separatore decimale -> i punti prima sono
+    migliaia e vanno rimossi; se non c'e' virgola il valore e' gia' un numero
+    semplice (es. "12.5") e non va toccato.
+    """
+    if v is None:
+        return 0.0
+    import pandas as pd
+    if isinstance(v, float) and pd.isna(v):
+        return 0.0
+    s = str(v).strip()
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return max(0.0, float(s))
+    except Exception:
+        return 0.0
+
+
 def _detect_gestionale_version(raw_df) -> str:
     """Identifica il formato del file dal contenuto della prima riga."""
     import pandas as pd
@@ -529,16 +556,7 @@ def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
                 continue
         return None
 
-    def _to_float(v) -> float:
-        if v is None:
-            return 0.0
-        import pandas as pd
-        if isinstance(v, float) and pd.isna(v):
-            return 0.0
-        try:
-            return max(0.0, float(str(v).replace(",", ".")))
-        except Exception:
-            return 0.0
+    _to_float = _to_float_it
 
     # Aggrega per (ristorante_id, data) → {iva10, iva22, altri, coperti}.
     # I coperti Passbi sono frazionari PER RIGA (ripartizione proporzionale): si
@@ -561,11 +579,11 @@ def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
         if data_iso is None:
             continue
 
-        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
-        if importo <= 0:
-            continue
-
-        # Risolvi ristorante
+        # Risolvi ristorante PRIMA del check importo: una riga con importo 0/negativo
+        # (proforma annullata, nota di credito) puo' comunque avere coperti valorizzati
+        # per quel giorno — se il continue scattasse qui sotto prima di leggere i
+        # coperti, quel valore andrebbe perso anche se altre righe dello stesso
+        # giorno hanno importo positivo (bug reale confermato su file SushiLand).
         raw_ragione = str(vals[idx_ragione]).strip() if idx_ragione is not None and idx_ragione < len(vals) else ""
         import pandas as pd
         if not raw_ragione or raw_ragione.lower() in ("nan", "none"):
@@ -577,13 +595,10 @@ def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
                 warnings_ragione.add(raw_ragione)
                 target_ristorante = ristorante_id  # fallback: usa ristorante corrente
 
-        tipo_doc = str(vals[idx_tipo]).strip().lower() if idx_tipo is not None and idx_tipo < len(vals) else ""
-        raw_iva = vals[idx_iva] if idx_iva is not None and idx_iva < len(vals) else None
-        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
-
         key = (target_ristorante, data_iso)
 
-        # Coperti: somma su tutti i tipi documento del giorno (frazionari per riga).
+        # Coperti: somma su tutti i tipi documento del giorno (frazionari per riga),
+        # letti indipendentemente dall'importo della riga.
         if idx_coperti is not None and idx_coperti < len(vals):
             cop_val = vals[idx_coperti]
             if not (cop_val is None or (isinstance(cop_val, float) and pd.isna(cop_val))):
@@ -592,6 +607,14 @@ def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
                     coperti_seen.add(key)
                 except (ValueError, TypeError):
                     pass
+
+        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
+        if importo <= 0:
+            continue
+
+        tipo_doc = str(vals[idx_tipo]).strip().lower() if idx_tipo is not None and idx_tipo < len(vals) else ""
+        raw_iva = vals[idx_iva] if idx_iva is not None and idx_iva < len(vals) else None
+        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
 
         # Applica regole mapping
         if tipo_doc in ("proforma", "") or iva_str == "":
@@ -606,7 +629,15 @@ def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
                 aggregato[key]["iva10"] += importo
             elif iva_val == 22:
                 aggregato[key]["iva22"] += importo
+            elif iva_val > 0:
+                # Aliquote reali diverse da 10/22 (es. 4%, 5%) non hanno una colonna
+                # dedicata in ricavi_giornalieri: finiscono in "altri", MA quel campo
+                # e' trattato ovunque a valle (calcolo netto/MOL) come gia' netto,
+                # senza scorporo. Un importo lordo con IVA 4/5 sommato li' gonfiava
+                # il netto della differenza IVA. Scorporiamo qui, prima di sommarlo.
+                aggregato[key]["altri"] += importo / (1 + iva_val / 100)
             else:
+                # iva_val == 0 (o negativo, non atteso): nessuna IVA, importo gia' netto.
                 aggregato[key]["altri"] += importo
 
     if warnings_ragione:
@@ -735,13 +766,7 @@ def _parse_passbi_v1_multisede(raw_df, fallback_ristorante_id: str, user_id, sb)
                 continue
         return None
 
-    def _to_float(v) -> float:
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return 0.0
-        try:
-            return max(0.0, float(str(v).replace(",", ".")))
-        except Exception:
-            return 0.0
+    _to_float = _to_float_it
 
     aggregato: Dict[tuple, Dict[str, float]] = defaultdict(
         lambda: {"iva10": 0.0, "iva22": 0.0, "altri": 0.0, "coperti": 0.0}
@@ -757,10 +782,13 @@ def _parse_passbi_v1_multisede(raw_df, fallback_ristorante_id: str, user_id, sb)
         data_iso = _parse_date(vals[idx_data] if idx_data < len(vals) else None)
         if data_iso is None:
             continue
-        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
-        if importo <= 0:
-            continue
 
+        # Risolvi ristorante + guardia ownership PRIMA del check importo: una riga
+        # con importo 0/negativo puo' comunque avere coperti valorizzati per quel
+        # giorno — se il continue scattasse prima di leggerli, si perderebbero anche
+        # se altre righe dello stesso giorno hanno importo positivo (bug reale
+        # confermato su file SushiLand). L'ownership resta invariata: deve girare
+        # PRIMA di scrivere in aggregato[key], indipendentemente dall'importo.
         raw_ragione = ""
         if idx_ragione is not None and idx_ragione < len(vals):
             raw_ragione = str(vals[idx_ragione]).strip()
@@ -777,12 +805,6 @@ def _parse_passbi_v1_multisede(raw_df, fallback_ristorante_id: str, user_id, sb)
             foreign.add(str(target))
             continue
 
-        tipo_doc = ""
-        if idx_tipo is not None and idx_tipo < len(vals):
-            tipo_doc = str(vals[idx_tipo]).strip().lower()
-        raw_iva = vals[idx_iva] if (idx_iva is not None and idx_iva < len(vals)) else None
-        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
-
         key = (target, data_iso)
 
         if idx_coperti is not None and idx_coperti < len(vals):
@@ -793,6 +815,16 @@ def _parse_passbi_v1_multisede(raw_df, fallback_ristorante_id: str, user_id, sb)
                     coperti_seen.add(key)
                 except (ValueError, TypeError):
                     pass
+
+        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
+        if importo <= 0:
+            continue
+
+        tipo_doc = ""
+        if idx_tipo is not None and idx_tipo < len(vals):
+            tipo_doc = str(vals[idx_tipo]).strip().lower()
+        raw_iva = vals[idx_iva] if (idx_iva is not None and idx_iva < len(vals)) else None
+        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
 
         if tipo_doc in ("proforma", "") or iva_str == "":
             aggregato[key]["altri"] += importo
@@ -806,6 +838,12 @@ def _parse_passbi_v1_multisede(raw_df, fallback_ristorante_id: str, user_id, sb)
                 aggregato[key]["iva10"] += importo
             elif iva_val == 22:
                 aggregato[key]["iva22"] += importo
+            elif iva_val > 0:
+                # Aliquote reali diverse da 10/22 (es. 4%, 5%): niente colonna
+                # dedicata, finiscono in "altri" che a valle e' sempre trattato
+                # come gia' netto (nessuno scorporo) — un lordo qui gonfiava il
+                # netto/MOL della differenza IVA. Scorporiamo prima di sommare.
+                aggregato[key]["altri"] += importo / (1 + iva_val / 100)
             else:
                 aggregato[key]["altri"] += importo
 
@@ -830,13 +868,18 @@ def _parse_passbi_v1_multisede(raw_df, fallback_ristorante_id: str, user_id, sb)
     return dict(per_ristorante), errors, parsed_rows
 
 
-def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_meta) -> tuple:
+def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_meta, nome_ristorante: Optional[str] = None) -> tuple:
     """Upsert dei ricavi di UN ristorante con user_id/ristorante_id espliciti.
 
     Usato dall'import manuale multi-sede (la UI può scrivere su sedi diverse da
     quella del token, purché appartengano allo stesso account: la verifica avviene
     a monte in _parse_passbi_v1_multisede). Ritorna (inserted, updated, errors).
+
+    nome_ristorante e' opzionale (solo per messaggi errore leggibili): se
+    fallisce l'upsert di una sede su piu', il cliente vedeva un UUID crittico
+    invece del nome del locale nella risposta import-xls.
     """
+    _sede_label = nome_ristorante or ristorante_id
     inserted = 0
     updated = 0
     errors: List[str] = []
@@ -856,7 +899,7 @@ def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_met
             )
             existing_set = {str(r["data"]) for r in (existing.data or [])}
         except Exception as exc:
-            errors.append(f"pre-check {ristorante_id}: {exc}")
+            errors.append(f"pre-check {_sede_label}: {exc}")
 
     rows_to_upsert = []
     for it in items:
@@ -893,7 +936,7 @@ def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_met
                 else:
                     inserted += 1
         except Exception as exc:
-            errors.append(f"upsert {ristorante_id}: {exc}")
+            errors.append(f"upsert {_sede_label}: {exc}")
 
     if inserted or updated:
         try:

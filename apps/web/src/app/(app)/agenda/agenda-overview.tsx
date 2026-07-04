@@ -100,7 +100,7 @@ export function AgendaOverview() {
       const [evRes, spRes, tuRes] = await Promise.allSettled([
         fetch(`/api/workspace/diario?mese=${mISO}`).then(r => r.json()),
         fetch(`/api/workspace/spese?da=${d0}&a=${dN}`).then(r => r.json()),
-        fetch(`/api/workspace/personale?da=${d0}&a=${dN}`).then(r => r.json()),
+        fetch(`/api/workspace/personale?da=${d0}&a=${dN}&mensile=false`).then(r => r.json()),
       ]);
 
       const out: VoceAgenda[] = [];

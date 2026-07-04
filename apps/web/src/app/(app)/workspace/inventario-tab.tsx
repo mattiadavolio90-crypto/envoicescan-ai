@@ -107,6 +107,7 @@ export function InventarioTab() {
     if (!confirm(`Eliminare tutte le ${voci.length} voci dell'inventario del ${fmtData(dataInventario)}?`)) return;
     try {
       const res = await fetch(`/api/workspace/inventario?data=${dataInventario}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
       const d = await res.json();
       toast.success(`${d.n_eliminate ?? voci.length} voci eliminate`);
       load();

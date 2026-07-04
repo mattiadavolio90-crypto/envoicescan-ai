@@ -31,7 +31,7 @@ export function LayerSwitcher({ active }: { active: string }) {
       try {
         const [ev, tu] = await Promise.allSettled([
           fetch(`/api/workspace/diario?mese=${mese}`).then(r => r.json()),
-          fetch(`/api/workspace/personale?da=${t}&a=${t}`).then(r => r.json()),
+          fetch(`/api/workspace/personale?da=${t}&a=${t}&mensile=false`).then(r => r.json()),
         ]);
         const appuntamenti = ev.status === "fulfilled"
           ? (ev.value?.eventi ?? []).filter((e: { data_evento: string }) => e.data_evento === t).length

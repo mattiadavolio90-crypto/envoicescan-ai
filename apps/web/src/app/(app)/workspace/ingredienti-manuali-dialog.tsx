@@ -46,6 +46,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
     setLoading(true);
     try {
       const res = await fetch("/api/workspace/foodcost/ingredienti-manuali");
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setLista(data.ingredienti ?? []);
     } catch {
@@ -86,11 +87,12 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
   async function handleAggiorna(id: string) {
     setSaving(true);
     try {
-      await fetch(`/api/workspace/foodcost/ingredienti-manuali/${id}`, {
+      const res = await fetch(`/api/workspace/foodcost/ingredienti-manuali/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nome: editNome.trim(), prezzo_per_um: parseFloat(editPrezzo), um: editUm }),
       });
+      if (!res.ok) throw new Error();
       toast.success("Salvato");
       setEditId(null);
       await load();
@@ -104,10 +106,15 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
 
   async function handleElimina(id: string, nome: string) {
     if (!confirm(`Eliminare "${nome}"?`)) return;
-    await fetch(`/api/workspace/foodcost/ingredienti-manuali/${id}`, { method: "DELETE" });
-    toast.success("Eliminato");
-    await load();
-    onSaved();
+    try {
+      const res = await fetch(`/api/workspace/foodcost/ingredienti-manuali/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Eliminato");
+      await load();
+      onSaved();
+    } catch {
+      toast.error("Errore eliminazione");
+    }
   }
 
   return (

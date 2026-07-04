@@ -226,6 +226,7 @@ export function SpeseView() {
     setLoading(true);
     try {
       const res = await fetch(`/api/workspace/spese?da=${d}&a=${f}`);
+      if (!res.ok) throw new Error();
       const j: SpeseResponse = await res.json();
       setRisposta(j);
     } catch {
@@ -255,9 +256,14 @@ export function SpeseView() {
 
   async function elimina(s: Spesa) {
     if (!confirm(`Eliminare la spesa "${s.descrizione}" (${fmtData(s.data_spesa)} · ${fmtEuro(s.importo)})?`)) return;
-    await fetch(`/api/workspace/spese/${s.id}`, { method: "DELETE" });
-    toast.success("Spesa eliminata");
-    load(da, fine);
+    try {
+      const res = await fetch(`/api/workspace/spese/${s.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Spesa eliminata");
+      load(da, fine);
+    } catch {
+      toast.error("Errore eliminazione spesa");
+    }
   }
 
   function esportaCSV() {

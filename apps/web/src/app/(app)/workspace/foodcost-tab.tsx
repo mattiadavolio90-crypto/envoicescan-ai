@@ -76,6 +76,7 @@ export function FoodcostTab() {
   async function duplica(r: Ricetta) {
     try {
       const res = await fetch(`/api/workspace/foodcost/ricette/${r.id}`);
+      if (!res.ok) throw new Error();
       const d: RicettaDettaglio = await res.json();
       const cr = await fetch("/api/workspace/foodcost/ricette", {
         method: "POST",
