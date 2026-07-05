@@ -4405,9 +4405,12 @@ def _chiama_gpt_classificazione(
 
     prompt = get_prompt_classificazione(articoli_json)
     
-    # Decisione di dominio: categorizzazione resta su gpt-4o-mini fino ad A/B test
-    # (vs gpt-4.1-mini, ~2.7x piu' costoso) — vedi ai_cost_service._MODEL_TARIFFE.
-    _model = os.getenv("ONEFLUX_AI_MODEL", "gpt-4o-mini")
+    # Decisione di dominio (A/B test 5/7/2026 su 213 correzioni manuali reali,
+    # vedi scripts/ab_test_modello_categorizzazione.py): gpt-4.1-mini +5.1 punti
+    # di accuratezza (44.1% vs 39.0%) rispetto a gpt-4o-mini, costo +~0.50€/cliente/mese
+    # (~2.7x piu' costoso — vedi ai_cost_service._MODEL_TARIFFE). Trascurabile a
+    # regime (10-20 clienti), accettato.
+    _model = os.getenv("ONEFLUX_AI_MODEL", "gpt-4.1-mini")
     response = openai_client.chat.completions.create(
         model=_model,
         messages=[{"role": "user", "content": prompt}],
