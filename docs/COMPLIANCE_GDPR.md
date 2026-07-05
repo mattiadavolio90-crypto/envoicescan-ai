@@ -4,7 +4,7 @@ Documento di sintesi della conformità al Regolamento UE 2016/679 (GDPR) e al
 D.lgs. 196/2003 (Codice Privacy). Uso interno + materiale da fornire a clienti B2B
 che lo richiedano o in caso di controllo.
 
-**Ultimo aggiornamento:** 19 giugno 2026
+**Ultimo aggiornamento:** 6 luglio 2026 (riverifica post go-live 1/7; audit sicurezza precedente 19/06)
 **Titolare del trattamento:** Recoma System S.r.l. — P.IVA IT09599210961
 **Sede legale:** Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
 **Email:** md@oneflux.it
@@ -65,9 +65,15 @@ Contrattuali Standard UE (SCC)**. Il database con i dati persistiti resta in UE.
 
 **Organizzative:**
 - Suite di test automatizzati (~9530 Python + 18 Deno) eseguiti in CI su ogni rilascio.
-- Audit di sicurezza periodico: ultimo 19/06/2026 — advisor Supabase **0 ERROR
-  sicurezza, 0 WARN performance**; chiusi 2 vettori di lettura non autorizzata
-  (tabella sessioni e RPC interne) prima del go-live.
+- Audit di sicurezza periodico: 19/06/2026 (pre go-live, 2 vettori di lettura
+  non autorizzata chiusi) + riverifica 06/07/2026 (post go-live) — advisor
+  Supabase **0 ERROR sicurezza, 0 WARN performance** invariato. Un nuovo item
+  emerso il 6/7: `auth_leaked_password_protection` disabilitato su Supabase
+  Auth (controllo contro password compromesse via HaveIBeenPwned) — il bridge
+  Supabase Auth nativo è attivo in produzione (`SKIP_SUPABASE_AUTH` non
+  settata), quindi rilevante; da attivare manualmente dal pannello Supabase
+  (Authentication → Sign In / Providers → Password), nessuna modifica di
+  codice richiesta.
 - Backup database: Point-in-Time Recovery (piano Supabase Pro).
 - Segregazione segreti: chiavi solo lato server (Railway/Vercel/Supabase), mai nel
   bundle client né nel repository.
@@ -130,9 +136,22 @@ Tutti `HttpOnly + Secure + SameSite=Lax`.
 
 ---
 
-## 8. Materiale da completare / verificare prima del go-live (1/7/2026)
+## 8. Materiale da completare / verificare
 
 - [x] **Sede legale del Titolare** inserita in informativa (`/privacy`, `/termini`) e
       in questo dossier: Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI).
+- [x] **Consenso privacy retroattivo** (06/07/2026): 7 dei 9 account clienti reali
+      attivi (creati prima del 2/6/2026, quando è stato introdotto il consenso
+      esplicito checkbox+timestamp in onboarding) avevano `privacy_accepted_at`
+      NULL — mai avuto occasione di accettare esplicitamente. Aggiunto un modale
+      bloccante (`PrivacyConsentModal`, mostrato al primo accesso su desktop e
+      `/m`) che richiede l'accettazione esplicita e registra il consenso reale
+      (endpoint `/api/auth/accetta-privacy`, GDPR Art. 7.1: valorizza
+      `privacy_accepted_at` solo su azione utente reale, mai in automatico).
+- [ ] **Attivare "Leaked Password Protection"** su Supabase Auth (pannello,
+      Authentication → Sign In / Providers → Password) — vedi §3.
 - [ ] Eventuale **nomina formale dei sub-responsabili** (DPA firmati con i fornitori),
       se richiesto da clienti B2B strutturati.
+- [ ] **DPIA (Data Protection Impact Assessment)** non ancora documentata —
+      opportuna dato il profilo di rischio (dati finanziari, categorizzazione AI,
+      trasferimenti extra-UE verso OpenAI/Railway).

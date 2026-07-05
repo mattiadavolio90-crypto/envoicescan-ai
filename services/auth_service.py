@@ -1181,7 +1181,7 @@ def verifica_sessione_da_cookie(
                     # Carica dati custom da public.users
                     user_resp = supabase_client.table("users") \
                         .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, tema, "
-                                "ultimo_ristorante_id, last_seen_at, session_token_created_at") \
+                                "ultimo_ristorante_id, last_seen_at, session_token_created_at, privacy_accepted_at") \
                         .eq("id", auth_uid) \
                         .eq("attivo", True) \
                         .execute()
@@ -1226,7 +1226,7 @@ def verifica_sessione_da_cookie(
         if _sess_user_id:
             _ur = supabase_client.table('users') \
                 .select("id, email, nome_ristorante, nome_referente, attivo, "
-                        "pagine_abilitate, tema, last_seen_at, ultimo_ristorante_id") \
+                        "pagine_abilitate, tema, last_seen_at, ultimo_ristorante_id, privacy_accepted_at") \
                 .eq('id', _sess_user_id) \
                 .eq('attivo', True) \
                 .execute()
@@ -1246,7 +1246,7 @@ def verifica_sessione_da_cookie(
         response = supabase_client.table('users') \
             .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, tema, "
                     "session_token, session_token_created_at, last_seen_at, "
-                    "ultimo_ristorante_id") \
+                    "ultimo_ristorante_id, privacy_accepted_at") \
             .eq('session_token', token) \
             .eq('attivo', True) \
             .execute()
@@ -1269,7 +1269,7 @@ def verifica_sessione_da_cookie(
                             ur = supabase_client.table("users") \
                                 .select("id, email, nome_ristorante, nome_referente, attivo, "
                                         "pagine_abilitate, tema, ultimo_ristorante_id, last_seen_at, "
-                                        "session_token_created_at") \
+                                        "session_token_created_at, privacy_accepted_at") \
                                 .eq("id", auth_uid).eq("attivo", True).execute()
                             if ur.data:
                                 u2 = ur.data[0]

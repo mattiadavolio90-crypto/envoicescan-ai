@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { getCurrentSession } from "@/lib/auth";
 import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 import { MobileRedirect } from "@/components/mobile-redirect";
+import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
 import { LifeBuoy, WifiOff } from "lucide-react";
 
 // PWA solo dentro l'app: manifest + flag installazione vivono qui, non nel root,
@@ -70,6 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <>
     <MobileRedirect />
+    <PrivacyConsentModal needsConsent={user.privacy_accepted === false} />
     <ImpersonaBanner />
     <SidebarProvider>
       <AppSidebar

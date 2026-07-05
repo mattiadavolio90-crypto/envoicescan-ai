@@ -10,6 +10,7 @@ import { NotificheBell } from "./notifiche-bell";
 import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
 import { IncassoReminder } from "./incasso-reminder";
+import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   // Le tre chiamate al worker partono insieme (prima auth era awaitata da sola,
@@ -34,6 +35,7 @@ export default async function MobileLayout({ children }: { children: React.React
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
+      <PrivacyConsentModal needsConsent={user.privacy_accepted === false} />
       {/* Header compatto: solo logo + nome ristorante, niente sidebar */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-2.5 border-b border-border bg-background/95 px-4 backdrop-blur-sm"

@@ -1152,6 +1152,11 @@ class UserPublic(BaseModel):
     pagine_abilitate: Optional[List[str]] = None
     is_admin: bool = False
     tema: str = "dark"
+    # False per gli account creati prima dell'introduzione del consenso esplicito
+    # (colonna privacy_accepted_at aggiunta 24/5, meccanismo reale dal 2/6): la UI
+    # mostra un modale bloccante di accettazione al primo accesso finche' non
+    # viene registrato un consenso reale (GDPR Art. 7.1).
+    privacy_accepted: bool = True
 
 
 class LoginResponse(BaseModel):
@@ -1320,7 +1325,41 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
         is_admin=_is_admin_email(user.get("email")),
         tema=(user.get("tema") or "dark"),
+        privacy_accepted=bool(user.get("privacy_accepted_at")),
     )
+
+
+@app.post(
+    "/api/auth/accetta-privacy",
+    summary="Registra il consenso privacy esplicito (retroattivo per account pre-esistenti)",
+    tags=["Auth"],
+    responses={401: {"description": "Sessione non valida"}},
+    dependencies=[Depends(_verify_worker_key)],
+)
+def auth_accetta_privacy(authorization: Optional[str] = Header(None)) -> Dict[str, bool]:
+    """Chiamato dal modale bloccante di accettazione privacy per gli account
+    creati prima del 2/6/2026 (introduzione del consenso esplicito in onboarding),
+    che non hanno mai avuto occasione di accettare esplicitamente.
+    GDPR Art. 7(1): valorizza privacy_accepted_at SOLO su questa chiamata reale,
+    mai in automatico altrove.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Token mancante")
+
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token vuoto")
+
+    from services.auth_service import verifica_sessione_da_cookie
+    user = verifica_sessione_da_cookie(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sessione non valida o scaduta")
+
+    sb = _get_supabase_client()
+    _now = datetime.now(timezone.utc).isoformat()
+    sb.table("users").update({"privacy_accepted_at": _now}).eq("id", user["id"]).execute()
+    logger.info(f"✅ Consenso privacy retroattivo registrato per user_id={user['id']}")
+    return {"success": True}
 
 
 @app.post(

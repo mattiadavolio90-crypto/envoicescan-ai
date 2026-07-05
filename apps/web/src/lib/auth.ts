@@ -31,6 +31,11 @@ export type SessionUser = {
   pagine_abilitate: string[] | null;
   is_admin: boolean;
   tema?: "dark" | "light";
+  // False per gli account creati prima dell'introduzione del consenso esplicito
+  // (2/6/2026): la UI mostra un modale bloccante finche' non viene registrato
+  // un consenso reale (GDPR Art. 7.1). Default true per compatibilita' coi
+  // vecchi token che non lo includono ancora nella risposta.
+  privacy_accepted?: boolean;
 };
 
 function workerHeaders(extra: HeadersInit = {}): HeadersInit {
@@ -121,6 +126,21 @@ export async function logoutSession(token: string): Promise<void> {
     });
   } catch (err) {
     console.error("[auth.logout] worker fetch error:", err);
+  }
+}
+
+export async function accettaPrivacy(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${WORKER_URL}/api/auth/accetta-privacy`, {
+      method: "POST",
+      headers: workerHeaders({ Authorization: `Bearer ${token}` }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("[auth.accettaPrivacy] worker fetch error:", err);
+    return false;
   }
 }
 
