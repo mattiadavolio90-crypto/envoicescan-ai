@@ -17,7 +17,7 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 
 - Analisi automatica fatture XML/P7M/PDF
 - Ricezione automatica fatture SDI via Invoicetronic
-- Categorizzazione prodotti con AI (OpenAI GPT-4o-mini)
+- Categorizzazione prodotti con AI (OpenAI GPT-4.1-mini)
 - Dashboard margini mensili (Food, Beverage, Spese Generali)
 - Confronto prezzi fornitori con alert configurabili per soglia
 - Gestione multi-ristorante
@@ -43,7 +43,7 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 | Ingestion SDI | Invoicetronic + Supabase Edge Function |
 | Worker API | FastAPI (Railway) |
 | Queue worker | `python worker/run.py` (Railway, servizio dedicato) |
-| AI | OpenAI GPT-4o-mini |
+| AI | OpenAI GPT-4.1-mini (categorizzazione+chat) / GPT-4o-mini (briefing) |
 | Email | Brevo SMTP API |
 | Password hashing | Argon2 |
 | Hosting | Vercel (frontend) + Railway (worker) |

@@ -83,9 +83,10 @@ uno strumento che legge il DB**, mai dalla memoria del modello. L'LLM decide
 | `plus` | 20 |
 | `pro` | 30 |
 
-> ⚠️ Il modello chat (`gpt-4.1-mini`) è **diverso** da quello del briefing/
-> categorizzazione (`gpt-4o-mini`). Scelto per il tool-calling migliore. Budget
-> chat Pro ≤ ~3€/mese (vedi memoria `project_chat_ai_decisions`).
+> ⚠️ Il modello chat (`gpt-4.1-mini`) è lo stesso della categorizzazione (dal
+> 5/7/2026, dopo A/B test su dati reali), ma **diverso** dal briefing (`gpt-4o-mini`,
+> invariato). Scelto per il tool-calling migliore. Budget chat Pro ≤ ~3€/mese
+> (vedi memoria `project_chat_ai_decisions`).
 
 **Costo monetario:** ogni risposta accumula i token di **tutti i round** del loop
 e li scrive nel ledger via `track_ai_usage(operation_type="chat", ...)` — stesso

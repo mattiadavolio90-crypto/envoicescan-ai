@@ -34,7 +34,7 @@ il parsing dei diversi formati file, il sistema di memoria e il briefing AI gior
 │     600+ regole deterministiche: "SALMONE" → PESCE         │
 │     Priorità alimenti > contenitori                         │
 │                                                             │
-│  5. AI GPT-4o-mini (ultima risorsa)                         │
+│  5. AI GPT-4.1-mini (ultima risorsa)                        │
 │     Batch da 50 articoli, prompt con 31 categorie           │
 │     Retry con exponential backoff (tenacity)                │
 └─────────────────────────────────────────────────────────────┘
@@ -183,11 +183,11 @@ KEYWORD_RULES = {
 
 ---
 
-## 5. Prompt GPT-4o-mini
+## 5. Prompt GPT-4.1-mini
 
 File: `config/prompt_ai_potenziato.py`
 
-Il prompt fornisce a GPT-4o-mini:
+Il prompt fornisce a GPT-4.1-mini:
 - Lista completa 31 categorie con descrizione dettagliata
 - 3+ esempi reali per categoria
 - Istruzioni per formati tipici fattura italiano (abbreviazioni, unità di misura)
@@ -229,7 +229,7 @@ La tabella `brand_ambigui` traccia automaticamente i brand che vengono corretti 
 2. Se brand ha ≥3 correzioni su ≥2 categorie diverse con `tasso_correzione > 20%`:
    → `aggiunto_automaticamente = TRUE`
    → il dizionario lo bypassa completamente
-   → passa direttamente a GPT-4o-mini per massima flessibilità
+   → passa direttamente a GPT-4.1-mini per massima flessibilità
 
 **Esempio:** un fornitore che vende sia carne che verdure → il brand viene marcato come ambiguo → GPT decide categoria per categoria basandosi sul contesto della descrizione.
 
@@ -411,9 +411,9 @@ track_ai_usage(
 )
 ```
 
-**Prezzi GPT-4o-mini:**
-- Input: $0.15 / 1M token
-- Output: $0.60 / 1M token
+**Prezzi per modello** (`_MODEL_TARIFFE` in `ai_cost_service.py`):
+- GPT-4o-mini (briefing): Input $0.15 / Output $0.60 per 1M token
+- GPT-4.1-mini (categorizzazione, chat): Input $0.40 / Output $1.60 per 1M token
 
 **Budget chat AI:**
 - Free: 0 domande/giorno

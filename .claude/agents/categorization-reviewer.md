@@ -89,7 +89,7 @@ La pipeline assegna una categoria a ogni riga in due fasi:
 - **Fase A (upload):** `categorizza_con_memoria` — memoria admin → memoria locale
   cliente (`prodotti_utente`) → memoria globale (`prodotti_master`, solo confidence
   alta/altissima) → regole fornitore/UM → dizionario + ~250 regole forti regex.
-- **Fase B (recupero AI):** le righe rimaste `Da Classificare` vanno a GPT (gpt-4o-mini),
+- **Fase B (recupero AI):** le righe rimaste `Da Classificare` vanno a GPT (gpt-4.1-mini, dal 5/7/2026),
   poi le regole forti **validano e correggono** anche l'output GPT (fix V0). I risultati
   AI sono salvati SOLO in memoria locale del cliente, mai globale.
 
@@ -319,7 +319,7 @@ Interpreta:
 cross-cliente (Segnale 2) e, nei casi ambigui, con la GPT, prima di concludere.
 
 Per casi davvero ambigui dove i segnali 0-2 non bastano, usa la GPT come parere
-aggiuntivo (gpt-4o-mini, costo irrisorio: ~0,001€ ogni 12 descrizioni). Importa
+aggiuntivo (gpt-4.1-mini, costo irrisorio). Importa
 `classifica_con_ai` dal progetto in modo analogo allo snippet sopra. NB dalla prova reale
 su TIME CAFE: la GPT spesso dà una risposta corretta IN ASSOLUTO che però diverge dalla
 PREFERENZA del cliente (es. STRUDEL → la GPT dice PASTICCERIA, il cliente vuole GELATI E

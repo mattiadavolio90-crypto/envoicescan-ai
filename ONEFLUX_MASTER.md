@@ -97,7 +97,7 @@ Il counter "Hai usato 47/100 fatture del tuo piano" deve essere SEMPRE visibile 
 - **Database**: Supabase PostgreSQL
 - **Storage**: Supabase Storage (PDF/XML fatture)
 - **Edge Functions**: Deno (`invoicetronic-webhook`)
-- **AI**: GPT-4o-mini (valutiamo Claude Haiku 4.5 in Fase 7)
+- **AI**: categorizzazione GPT-4.1-mini (dal 5/7/2026, A/B test su dati reali), chat GPT-4.1-mini, briefing GPT-4o-mini (valutiamo Claude Haiku 4.5 in Fase 7)
 
 ### Infrastruttura
 | Servizio | Piano | Note |
@@ -293,7 +293,7 @@ Marketplace servizi (pagina `/assistenza`, voce sidebar "Servizi" sotto Impostaz
 
 **Chat AI** (assistente conversazionale sui dati): ✅ **fatto (2/6)**.
 - Widget flottante in basso a destra **solo sulla Home** (`/dashboard`), bottone a contorno col logo ONEFLUX ("sembra che ONEFLUX risponde"). Cronologia nella sessione (no DB messaggi).
-- **Function calling** (`gpt-4o-mini`): l'AI interroga il DB su misura. 4 strumenti: `query_costi` (periodo/categoria/fornitore/prodotto), `query_scadenze`, `query_margini` (andamento MOL/food cost ultimi 6 mesi), `confronto_prezzi` (chi fa un prodotto al prezzo migliore). Stessi numeri della Home (riusa `home_kpi`/`margine_service`).
+- **Function calling** (`gpt-4.1-mini`): l'AI interroga il DB su misura. 4 strumenti: `query_costi` (periodo/categoria/fornitore/prodotto), `query_scadenze`, `query_margini` (andamento MOL/food cost ultimi 6 mesi), `confronto_prezzi` (chi fa un prodotto al prezzo migliore). Stessi numeri della Home (riusa `home_kpi`/`margine_service`).
 - **Proattività**: messaggio di benvenuto + 4 domande suggerite (chip) all'apertura.
 - **Toggle on/off** per cliente nel configuratore assistente (`assistant_preferences.chat_ai_enabled`, default true).
 - **Limite domande/giorno per piano** (rete costi + leva commerciale): free 0 (chat non disponibile, widget nascosto, 403), base 10, plus 20, pro 30. Tabella `chat_usage_log`, contatore visibile in Impostazioni (X/limite, si azzera a mezzanotte). Costo ~€0,0007/domanda.
@@ -327,7 +327,7 @@ Realizzata in `upload_handler.py` + `worker/queue_processor.py` via `classifica_
 - **media** → `needs_review=True` — pre-classificato MA messo in coda admin per review (dizionario fallback, GPT incerto)
 - **bassa** → `needs_review=True` — fallback canonico + coda
 - Guardrail BUG1: nessuna dicitura con prezzo > 0 entra in memoria globale
-- **MAI** inserire `categoria = 'Da Clasificare'` (constraint DB) — vedi CLAUDE.md. Fallback: `"SERVIZI E CONSULENZE"`
+- Se nessuno riconosce la riga con sicurezza resta `"Da Classificare"` (grafia corretta, doppia "s" — stato esplicito, needs_review=True, escluso dai margini). **NIENTE fallback in `"SERVIZI E CONSULENZE"`** (comportamento vecchio, eliminato rev. 23/06) — vedi CLAUDE.md.
 
 ### Agent notturno AI — ✅ nuovo (30/5)
 Processo di manutenzione AI schedulabile, gestito da `/admin/sistema` con **toggle on/off** + "Esegui ora". Endpoint worker `/api/admin/sistema/agent-notturno/{toggle,esegui-ora}`. Automatizza la pulizia della coda review (auto-review delle diciture/sconti sicuri) senza intervento manuale dell'admin.
@@ -923,8 +923,14 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 
 ## 15. STRATEGIA BRANCH GIT
 
+> ⚠️ **SUPERATA (migrazione completata 8/6/2026)**: questa sezione descriveva il
+> workflow durante la CONVIVENZA Streamlit+Next.js. Oggi `main` è produzione
+> Next.js, Streamlit è dismesso/congelato — non esistono più branch
+> `feature/streamlit-*` né un deploy Streamlit separato. Lasciata per traccia
+> storica di come è stata gestita la transizione.
+
 ```
-main                  → produzione Streamlit (clienti attivi)
+main                  → [STORICO] produzione Streamlit (clienti attivi)
                        solo bugfix testati, mai lavorare direttamente
 
 migration/nextjs      → branch di lavoro principale per Next.js
@@ -947,6 +953,10 @@ feature/migration-*   → feature Next.js (es. feature/migration-login)
 ---
 
 ## 16. PASSAGGIO DEFINITIVO (Fase 10 — dettaglio)
+
+> ⚠️ **COMPLETATA (8/6/2026)**: piano eseguito, switch DNS fatto, Streamlit
+> spento (Railway + Community Cloud), `nuovo.oneflux.it` e `old.oneflux.it`
+> rimossi. Lasciata per traccia storica di come è stato pianificato lo switch.
 
 **Settimana 1 — Coesistenza monitorata**
 - `app.oneflux.it` resta su Streamlit (default per tutti)

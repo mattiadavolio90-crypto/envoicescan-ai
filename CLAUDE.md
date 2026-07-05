@@ -2,7 +2,7 @@
 
 ## Cos'è il progetto
 Piattaforma SaaS (prodotto v5.5) per la gestione automatizzata dei costi di ristoranti.
-Analizza fatture elettroniche XML/P7M/PDF, categorizza prodotti con AI (GPT-4o-mini),
+Analizza fatture elettroniche XML/P7M/PDF, categorizza prodotti con AI (GPT-4.1-mini),
 genera report su margini, prezzi fornitori, foodcost.
 
 **Owner:** Mattia D'Avolio — sviluppatore singolo. 2 clienti in test + 1 operativo.

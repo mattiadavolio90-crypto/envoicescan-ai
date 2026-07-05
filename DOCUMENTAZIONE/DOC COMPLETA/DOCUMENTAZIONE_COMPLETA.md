@@ -57,7 +57,7 @@ ONEFLUX è una piattaforma SaaS web-based per ristoratori italiani che automatiz
 **Funzionalità core:**
 - Ricezione automatica fatture via SDI (Invoicetronic, codice dest. `7HD37X0`)
 - Upload manuale di fatture (XML, P7M, PDF, JPG/PNG)
-- Classificazione AI automatica in 31 categorie merceologiche (600+ keyword + GPT-4o-mini)
+- Classificazione AI automatica in 31 categorie merceologiche (600+ keyword + GPT-4.1-mini)
 - Dashboard KPI, grafici, pivot mensili per categoria e fornitore
 - Calcolo Margine Operativo Lordo (MOL) con centri di produzione
 - Import ricavi da gestionali (XLS Passbi v1, email automatica)
@@ -236,7 +236,7 @@ Durante il periodo di migrazione (Fasi 1–9) i due frontend coesistevano sullo
 | API Framework | FastAPI + Uvicorn | 122+ endpoint, threadpool 100 thread |
 | Database | Supabase (PostgreSQL 15) | EU Frankfurt, RLS attivo |
 | Edge Functions | Deno / TypeScript | Supabase Edge, invoicetronic-webhook |
-| AI/ML | OpenAI GPT-4o-mini | Batch 50 articoli, $0.15/1M token input |
+| AI/ML | OpenAI GPT-4.1-mini (categorizzazione+chat) / GPT-4o-mini (briefing) | Batch 50 articoli, $0.40/1M token input (categorizzazione) |
 | Email | Brevo SMTP API v3 | 300 email/giorno (free tier) |
 | Password | Argon2id | m=65536, parametri default `argon2-cffi` |
 | SDI | Invoicetronic | Codice dest. `7HD37X0` |
@@ -258,7 +258,7 @@ Durante il periodo di migrazione (Fasi 1–9) i due frontend coesistevano sullo
 |-----------|-----|
 | `fastapi` + `uvicorn` | Worker REST API |
 | `supabase` | Client PostgreSQL managed |
-| `openai` | Client GPT-4o-mini |
+| `openai` | Client GPT-4.1-mini (categorizzazione+chat) / GPT-4o-mini (briefing) |
 | `argon2-cffi` | Password hashing sicuro |
 | `pandas` | Data processing e aggregazione |
 | `plotly` | Grafici interattivi (Streamlit) |
@@ -396,7 +396,7 @@ ONEFLUX/
 ├── config/
 │   ├── constants.py                   # 31 categorie, 600+ keyword, regex, soglie KPI
 │   ├── logger_setup.py                # RotatingFileHandler (50 MB × 10)
-│   └── prompt_ai_potenziato.py        # Prompt GPT-4o-mini classificazione
+│   └── prompt_ai_potenziato.py        # Prompt GPT-4.1-mini classificazione
 │
 ├── migrations/                        # SQL legacy storico (001→082, congelato — vedi _LEGGIMI_STATO.md)
 ├── tests/                             # ~9530 test pytest
@@ -568,7 +568,7 @@ Vedi documento dedicato: [AI_PIPELINE.md](AI_PIPELINE.md)
 2. Memoria Locale (`prodotti_utente`) — per singolo cliente
 3. Memoria Globale (`prodotti_master`) — per tutti i clienti
 4. Dizionario keyword (`constants.py`) — 600+ regole deterministiche
-5. GPT-4o-mini — batch 50 articoli, retry con backoff esponenziale
+5. GPT-4.1-mini — batch 50 articoli, retry con backoff esponenziale
 
 **Routing confidenza (sull'ingest):**
 - `altissima / alta` → `needs_review=False`, bypassa coda admin

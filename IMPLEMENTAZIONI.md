@@ -163,7 +163,7 @@ Genera lock-in naturale: dopo 12-18 mesi l'utente non può "portare via" questa 
 Il ristoratore ha domande sui suoi dati che oggi richiedono di navigare in più pagine, filtrare, ricordare numeri e fare calcoli a mente. Domande come "quanto ho speso in carne questo mese rispetto al mese scorso?" richiedono 4-5 passaggi manuali. Con decine di categorie e fornitori, le domande comparative sono sempre un percorso multi-step tedioso.
 
 ### Come funziona
-Un box chat in linguaggio naturale dove il ristoratore fa domande sui PROPRI dati reali e riceve risposte immediate. Non è un chatbot generico — conosce le fatture, i fornitori, i margini di quel ristorante specifico. GPT-4o-mini è già attivo nell'app per la classificazione fatture — zero infrastruttura aggiuntiva.
+Un box chat in linguaggio naturale dove il ristoratore fa domande sui PROPRI dati reali e riceve risposte immediate. Non è un chatbot generico — conosce le fatture, i fornitori, i margini di quel ristorante specifico. GPT-4.1-mini è già attivo nell'app per la classificazione fatture — zero infrastruttura aggiuntiva.
 
 Esempi di domande reali:
 - "Quanto ho speso in carne questo mese rispetto al mese scorso?"

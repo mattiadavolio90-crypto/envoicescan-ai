@@ -52,13 +52,13 @@ I costi fissi NON sono tutti uguali: alcuni sono davvero fissi, altri **scalano 
 
 Scalano con l'uso di ciascun cliente.
 
-### AI Categorizzazione — gpt-4o-mini (~750 token/fattura)
+### AI Categorizzazione — gpt-4.1-mini (~750 token/fattura, dal 5/7/2026, era gpt-4o-mini)
 
 | Piano | Limite doc/mese | Costo AI cat. |
 |---|---|---|
-| Base | 50 | €0,08 |
-| Plus | 100 | €0,16 |
-| Pro | 200 | €0,32 |
+| Base | 50 | €0,21 |
+| Plus | 100 | €0,43 |
+| Pro | 200 | €0,85 |
 
 ### AI Assistente Chat — gpt-4.1-mini (~600 token/domanda)
 
@@ -82,9 +82,9 @@ Il costo unitario scende all'aumentare del volume aggregato (tutti i clienti).
 
 | Piano | AI cat. | AI chat | SDI max | **Var. tot./cliente** |
 |---|---|---|---|---|
-| Base €39 | €0,08 | €0,67 | €5,00 | **€5,75** |
-| Plus €59 | €0,16 | €1,33 | €10,00 | **€11,49** |
-| Pro €79 | €0,32 | €2,00 | €20,00 | **€22,32** |
+| Base €39 | €0,21 | €0,67 | €5,00 | **€5,88** |
+| Plus €59 | €0,43 | €1,33 | €10,00 | **€11,76** |
+| Pro €79 | €0,85 | €2,00 | €20,00 | **€22,85** |
 
 ---
 
@@ -94,17 +94,17 @@ Il costo unitario scende all'aumentare del volume aggregato (tutti i clienti).
 
 | Piano | Ricavo | Costi AI | Margine | % |
 |---|---|---|---|---|
-| Base €39 | €39 | €0,75 | €38,25 | **98%** |
-| Plus €59 | €59 | €1,49 | €57,51 | **97%** |
-| Pro €79 | €79 | €2,32 | €76,68 | **97%** |
+| Base €39 | €39 | €0,88 | €38,12 | **98%** |
+| Plus €59 | €59 | €1,76 | €57,24 | **97%** |
+| Pro €79 | €79 | €2,85 | €76,15 | **96%** |
 
 ### Scenario worst case — tutte le fatture via SDI (fascia €0,10)
 
 | Piano | Ricavo | AI + SDI | Margine | % |
 |---|---|---|---|---|
-| Base €39 | €39 | €5,75 | €33,25 | **85%** |
-| Plus €59 | €59 | €11,49 | €47,51 | **81%** |
-| Pro €79 | €79 | €22,32 | €56,68 | **72%** ⚠ |
+| Base €39 | €39 | €5,88 | €33,12 | **85%** |
+| Plus €59 | €59 | €11,76 | €47,24 | **80%** |
+| Pro €79 | €79 | €22,85 | €56,15 | **71%** ⚠ |
 
 > Il margine lordo per cliente resta ≥80% tranne il Pro in fascia €0,10 con uso SDI massimo (fase early). Dalla fascia €0,06 in poi tutti i piani tornano sopra l'80%.
 

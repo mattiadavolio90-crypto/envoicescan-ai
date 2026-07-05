@@ -17,7 +17,7 @@ Piattaforma SaaS AI-first per ristoratori italiani. Automatizza l'analisi delle 
 
 **Funzionalità principali:**
 - Ricezione automatica fatture SDI via Invoicetronic (codice `7HD37X0`)
-- Classificazione AI in 31 categorie (600+ keyword + GPT-4o-mini)
+- Classificazione AI in 31 categorie (600+ keyword + GPT-4.1-mini)
 - Dashboard KPI, pivot mensili per categoria e fornitore
 - Calcolo MOL con centri di produzione (FOOD/BEVERAGE/ALCOLICI/DOLCI)
 - Import ricavi da gestionali (XLS Passbi v1 + email automatica)
@@ -39,7 +39,7 @@ Piattaforma SaaS AI-first per ristoratori italiani. Automatizza l'analisi delle 
 | Backend API | FastAPI + Uvicorn | 122+ endpoint, Railway, threadpool 100 thread |
 | Database | Supabase PostgreSQL 15 | EU Frankfurt, RLS attivo, `service_role_key` |
 | Edge Function | Deno / TypeScript | Supabase, `invoicetronic-webhook` |
-| AI | OpenAI GPT-4o-mini | Classificazione ($0.15/1M token) + Chat AI |
+| AI | OpenAI GPT-4.1-mini (categorizzazione+chat) / GPT-4o-mini (briefing) | Classificazione ($0.40/1M token input) |
 | Email | Brevo SMTP API v3 | 300 email/giorno (free tier) |
 | Auth | Argon2id m=65536 | Cookie HttpOnly (Next.js) / Secure+SameSite (Streamlit) |
 | SDI | Invoicetronic | Intermediario SDI, codice dest. `7HD37X0` |
@@ -52,11 +52,11 @@ Piattaforma SaaS AI-first per ristoratori italiani. Automatizza l'analisi delle 
 ```
 Browser → Next.js (Vercel) → /api/* proxy → FastAPI Worker (Railway)
                                                     ↓
-Browser → Streamlit (Railway) → worker_client.py → FastAPI Worker
-                                                    ↓
                                                Supabase PostgreSQL
-                                               OpenAI GPT-4o-mini
+                                               OpenAI GPT-4.1-mini / GPT-4o-mini
                                                Brevo SMTP
+
+(Streamlit `app.py`/`pages/` DISMESSO 8/6 — codice congelato nel repo, non più servito ai clienti)
 
 SDI → Invoicetronic → webhook → Supabase Edge Function → fatture_queue
                                                                ↓
@@ -129,7 +129,7 @@ ONEFLUX/
 2. Memoria Locale (`prodotti_utente`) — per singolo cliente
 3. Memoria Globale (`prodotti_master`) — per tutti i clienti
 4. Dizionario keyword (`constants.py`) — 600+ regole deterministiche
-5. GPT-4o-mini — batch 50 articoli, retry esponenziale
+5. GPT-4.1-mini — batch 50 articoli, retry esponenziale
 
 **Routing confidenza (sull'ingest):**
 - `altissima / alta` → `needs_review=False`, nessuna coda
