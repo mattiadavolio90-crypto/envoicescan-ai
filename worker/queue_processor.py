@@ -227,6 +227,7 @@ def _auto_classify_saved_rows(
                 iva=iva_list,
                 hint=None,
                 user_id=user_id,
+                ristorante_id=ristorante_id,
             )
         except Exception as ai_exc:
             logger.warning(

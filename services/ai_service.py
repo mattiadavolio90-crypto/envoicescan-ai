@@ -141,6 +141,12 @@ logger = get_logger('ai')
 # ============================================================
 MEMORIA_AI_FILE = "memoria_ai_correzioni.json"
 RETRIABLE_ERRORS = (RateLimitError, APITimeoutError, APIConnectionError, APIError)
+# ValueError copre anche json.JSONDecodeError (sottoclasse) e il caso "risposta GPT
+# vuota" sollevato esplicitamente in _chiama_gpt_classificazione: un output
+# malformato/vuoto e' spesso un glitch puntuale del modello, non un errore
+# persistente — vale la pena un retry prima di degradare l'intero batch a
+# solo-dizionario (vedi fallback in classifica_con_ai).
+RETRIABLE_ERRORS_PARSING = RETRIABLE_ERRORS + (ValueError,)
 
 # ============================================================
 # CACHE GLOBALE IN-MEMORY (ELIMINA N+1 QUERY)
@@ -1203,7 +1209,12 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
     if not desc:
         return cat, None
 
-    if desc_u in {"OMAGGIO", "SPESE FISSE"}:
+    # NB: "OMAGGIO" da solo NON è mappato qui — un omaggio non è un servizio/
+    # consulenza (violerebbe la regola "niente fallback travestito in SERVIZI"),
+    # e classify_special_row gestisce già il bucket dedicato SPECIAL_ROW_SCONTO_OMAGGIO
+    # con logica più fine (segno importo, marker dicitura). Un mapping forte qui
+    # lo scavalcava sempre, forzando SERVIZI ad alta confidenza senza coda.
+    if desc_u == "SPESE FISSE":
         mapped = "SERVIZI E CONSULENZE"
         if cat != mapped:
             return mapped, f"termine_ambiguo:{desc_u}"
@@ -4156,7 +4167,7 @@ def categorizza_con_memoria(
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
     categoria_keyword, motivo_override = applica_regole_categoria_forti(descrizione, categoria_keyword)
     # A1: usa helper centralizzato per applicare entrambi i guardrail in sequenza
-    categoria_keyword = _applica_tutti_guardrail(descrizione, categoria_keyword, prezzo, iva_percentuale)
+    categoria_keyword = _applica_tutti_guardrail(descrizione, categoria_keyword, _importo_guardrail, iva_percentuale)
     if motivo_override:
         logger.info(
             f"🧭 OVERRIDE SICUREZZA (keyword): '{descrizione[:60]}' -> {categoria_keyword} [{motivo_override}]"
@@ -4316,7 +4327,7 @@ def _mappa_categorie_ai_per_idx(dati: Dict[str, Any]) -> Tuple[Dict[int, str], D
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=30),
-    retry=retry_if_exception_type(RETRIABLE_ERRORS)
+    retry=retry_if_exception_type(RETRIABLE_ERRORS_PARSING)
 )
 def _chiama_gpt_classificazione(
     da_chiedere_gpt: List[str],
@@ -4394,7 +4405,9 @@ def _chiama_gpt_classificazione(
 
     prompt = get_prompt_classificazione(articoli_json)
     
-    _model = os.getenv("ONEFLUX_AI_MODEL", "gpt-4.1-mini")
+    # Decisione di dominio: categorizzazione resta su gpt-4o-mini fino ad A/B test
+    # (vs gpt-4.1-mini, ~2.7x piu' costoso) — vedi ai_cost_service._MODEL_TARIFFE.
+    _model = os.getenv("ONEFLUX_AI_MODEL", "gpt-4o-mini")
     response = openai_client.chat.completions.create(
         model=_model,
         messages=[{"role": "user", "content": prompt}],
@@ -4702,7 +4715,13 @@ def classifica_con_ai(
         output = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-            categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+            # Stesso safety net del percorso normale (regole forti PRIMA del
+            # dizionario, coerenza con righe 4650-4664): un batch intero degradato
+            # da un errore di rete/parsing non deve perdere il livello di
+            # precisione piu' alto disponibile offline.
+            categoria, _reason = applica_regole_categoria_forti(desc, "Da Classificare")
+            if categoria == "Da Classificare":
+                categoria = applica_correzioni_dizionario(desc, "Da Classificare")
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
         if return_confidenze:
             return output, ["bassa"] * len(output)
@@ -4712,7 +4731,9 @@ def classifica_con_ai(
         output = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-            categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+            categoria, _reason = applica_regole_categoria_forti(desc, "Da Classificare")
+            if categoria == "Da Classificare":
+                categoria = applica_correzioni_dizionario(desc, "Da Classificare")
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
         if return_confidenze:
             return output, ["bassa"] * len(output)

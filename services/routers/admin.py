@@ -1066,6 +1066,12 @@ def prepara_suggerimenti_ai(sb, allowed_ids: list, only_ids: Optional[list] = No
     from config.constants import TUTTE_LE_CATEGORIE
     _categorie_valide = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE"}
 
+    # Questo tool opera sulla memoria GLOBALE (prodotti_master), non su un singolo
+    # ristorante: non ha un ristorante_id da attribuire nel ledger ai_usage_events
+    # (track_ai_usage lo richiede). Il costo va comunque reso visibile in log,
+    # altrimenti resta invisibile all'alert soglia mensile senza alcuna traccia.
+    _batch_calls = 0
+
     for i in range(0, len(descs), BATCH):
         chunk_d = descs[i:i + BATCH]
         chunk_f = forns[i:i + BATCH]
@@ -1075,6 +1081,7 @@ def prepara_suggerimenti_ai(sb, allowed_ids: list, only_ids: Optional[list] = No
                 lista_fornitori=chunk_f,
                 return_confidenze=True,
             )
+            _batch_calls += 1
         except Exception as exc:
             errori += len(chunk_d)
             logger.warning("suggerisci-ai batch %d-%d errore GPT: %s", i, i + BATCH, exc)
@@ -1097,8 +1104,11 @@ def prepara_suggerimenti_ai(sb, allowed_ids: list, only_ids: Optional[list] = No
                 errori += 1
                 logger.warning("suggerisci-ai upsert '%s' errore: %s", desc[:40], exc)
 
-    logger.info("prepara_suggerimenti_ai: suggerite=%d saltate=%d errori=%d | attore=%s",
-                suggerite, saltate, errori, attore)
+    logger.info(
+        "prepara_suggerimenti_ai: suggerite=%d saltate=%d errori=%d batch_gpt=%d "
+        "(fuori dal ledger ai_usage_events: nessun ristorante_id, tool globale) | attore=%s",
+        suggerite, saltate, errori, _batch_calls, attore,
+    )
     return {"suggerite": suggerite, "saltate": saltate, "errori": errori}
 
 

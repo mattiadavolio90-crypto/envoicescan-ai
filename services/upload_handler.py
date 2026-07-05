@@ -683,8 +683,12 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     # come NOTE E DICITURE (violazione). Una riga riportata a Da Classificare
                     # va sempre rivista a mano.
                     if categoria_target in ('📝 NOTE E DICITURE', 'NOTE E DICITURE'):
-                        _imp = totale_riga if totale_riga != 0 else prezzo
-                        categoria_target = _applica_guardrail_note_con_importo(desc, categoria_target, _imp)
+                        # totale_riga e' sempre un float qui (mai None, vedi conversione
+                        # sopra): e' la fonte di verita', anche quando vale 0 esplicito
+                        # (es. omaggio con prezzo di listino > 0 ma sconto 100%). Ricadere
+                        # su prezzo in quel caso annullerebbe proprio lo scenario che il
+                        # guardrail deve permettere.
+                        categoria_target = _applica_guardrail_note_con_importo(desc, categoria_target, totale_riga)
                         needs_review_target_force = categoria_target == 'Da Classificare'
                     else:
                         needs_review_target_force = False
@@ -709,8 +713,14 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     if str(categoria_target).strip() == 'Da Classificare':
                         needs_review_target = True
                     chunk_update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
-                    if special_row['include_in_dashboard']:
-                        memory_candidate_ids.append(row_id)
+                    # Salviamo in memoria SOLO le categorie che hanno superato il gating
+                    # (PRINCIPIO 24/06): una categoria scartata (needs_review_target=True,
+                    # 'Da Classificare') non deve diventare "verità" per la prossima
+                    # occorrenza della stessa descrizione — altrimenti al prossimo upload
+                    # categorizza_con_memoria la tratterebbe come match autorevole
+                    # (is_fallback=False) e il flusso onesto sarebbe aggirato.
+                    if special_row['include_in_dashboard'] and not needs_review_target and categoria_target != 'Da Classificare':
+                        memory_candidate_ids.append((row_id, categoria_target))
 
                 if memory_candidate_ids:
                     # 🔑 BUG-3 FIX: chiave normalizzata per coerenza con auto-save keyword
@@ -720,11 +730,15 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     except Exception:
                         desc_for_memory = desc.strip()
                     desc_for_memory = (desc_for_memory or '').replace('\x00', '').strip()
+                    # Categoria salvata in memoria = quella POST-gating (categoria_target
+                    # dell'ultima riga ammessa), MAI categoria_finale (guess grezzo AI):
+                    # una categoria scartata dal gating non deve mai finire in memoria.
+                    _categoria_per_memoria = memory_candidate_ids[-1][1]
                     if desc_for_memory:
                         ai_memory_upserts.append({
                             'user_id': user_id,
                             'descrizione': desc_for_memory,
-                            'categoria': categoria_finale,
+                            'categoria': _categoria_per_memoria,
                             'volte_visto': 1,
                             'classificato_da': 'AI (auto-upload)',
                             'updated_at': datetime.now(timezone.utc).isoformat(),

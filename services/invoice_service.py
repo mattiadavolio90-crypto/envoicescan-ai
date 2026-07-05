@@ -1169,10 +1169,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 # in una categoria inventata (niente fallback travestito in SERVIZI):
                 # torna a "Da Classificare" così resta visibile in coda e fuori dai
                 # margini finché il cliente non la classifica. Coerente con il worker
-                # (_applica_guardrail_note_con_importo) e con upload/PDF. Uso il totale
-                # riga (fallback al prezzo unitario) per coprire anche il caso
-                # prezzo_unitario==0 ma totale!=0.
-                _imp_guardrail = totale_riga if totale_riga not in (None, 0) else prezzo_unitario
+                # (_applica_guardrail_note_con_importo) e con upload/PDF. Il totale riga
+                # è la fonte di verità (anche quando vale esplicitamente 0, es. omaggio
+                # con prezzo di listino > 0 ma sconto 100%): il fallback al prezzo
+                # unitario scatta SOLO quando totale_riga non è disponibile (None).
+                _imp_guardrail = totale_riga if totale_riga is not None else prezzo_unitario
                 if categoria_finale == "📝 NOTE E DICITURE" and _imp_guardrail not in (None, 0):
                     needs_review = True
                     categoria_finale = "Da Classificare"
@@ -1355,6 +1356,7 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
             ottieni_categoria_prodotto,
             carica_memoria_completa,
             enforce_no_unclassified_category,
+            _applica_guardrail_note_con_importo,
         )
         from openai import OpenAI
         
@@ -1610,7 +1612,23 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             if special_row['force_categoria']:
                 categoria_iniziale = str(special_row['force_categoria'])
 
-            needs_review = bool(special_row['should_review'])
+            # GUARDRAIL NOTE (stesso del path XML, vedi estrai_dati_da_xml): "📝 NOTE
+            # E DICITURE" e' consentita SOLO a totale_riga == 0. classify_special_row
+            # puo' forzare NOTE anche su una riga con importo pieno (es. "SPESE
+            # TRASPORTO" non tra le keyword di servizio economico) -> senza questo
+            # guard l'INSERT in DB fallirebbe sul constraint
+            # fatture_note_diciture_solo_importo_zero_chk. Riportiamo a Da
+            # Classificare + needs_review, mai in una categoria inventata.
+            if categoria_iniziale in ('📝 NOTE E DICITURE', 'NOTE E DICITURE') and totale_riga != 0:
+                categoria_iniziale = _applica_guardrail_note_con_importo(
+                    descrizione, categoria_iniziale, totale_riga
+                )
+                if categoria_iniziale == 'Da Classificare':
+                    needs_review = True
+                else:
+                    needs_review = bool(special_row['should_review'])
+            else:
+                needs_review = bool(special_row['should_review'])
             
             # Prezzo standard
             prezzo_std = None

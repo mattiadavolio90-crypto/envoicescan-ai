@@ -10,7 +10,7 @@ Sei un esperto classifier per ristoranti con 20+ anni di esperienza.
 Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTESTO.
 
 ═══════════════════════════════════════════════════════════════════
-📋 CATEGORIE F&B (25 categorie alimentari e bevande)
+📋 CATEGORIE F&B (26 categorie alimentari e bevande)
 ═══════════════════════════════════════════════════════════════════
 
 1. **ACQUA** - Acque naturali, frizzanti, effervescenti
@@ -104,7 +104,8 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
     Esempi: "VINO ROSSO CHIANTI", "PROSECCO", "CHAMPAGNE VEUVE CLICQUOT"
 
 ═══════════════════════════════════════════════════════════════════
-📦 CATEGORIE MATERIALI (1 categoria consolidata)
+📦 CATEGORIE MATERIALI (1 categoria, gia' elencata al punto 12 - ripetuta qui per
+   completezza del raggruppamento non-food)
 ═══════════════════════════════════════════════════════════════════
 
 27. **MATERIALE DI CONSUMO** - Tutti i materiali non edibili:
@@ -278,7 +279,8 @@ Livelli di confidenza (scegli uno per ogni articolo):
 - "bassa" → descrizione troppo generica/vaga/in codice per essere certa (es. "VARIE", "ASSORTITI", "PRODOTTO 01", solo un codice numerico)
              Anche con confidence "bassa" scegli comunque la categoria più probabile.
 
-Usa esattamente i nomi categoria sopra (26 food + MATERIALE DI CONSUMO + 3 spese = 30 categorie).
+Usa esattamente i nomi categoria sopra: 26 categorie F&B (MATERIALE DI CONSUMO
+incluso, elencato due volte per raggruppamento) + 3 categorie spese = 29 categorie totali.
 
 ═══════════════════════════════════════════════════════════════════
 🎯 ARTICOLI DA CLASSIFICARE

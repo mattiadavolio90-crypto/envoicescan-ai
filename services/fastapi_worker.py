@@ -742,6 +742,13 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
             except Exception as mem_err:
                 logger.warning(f"⚠️ Memoria non caricata per user_id={body.user_id}: {mem_err}")
 
+        # set_ai_context propaga ristorante_id/user_id al ContextVar che
+        # track_ai_usage (dentro classifica_con_ai) usa per il tracking costi:
+        # senza questa chiamata il tracking risultava "NON tracked" (ristorante_id
+        # risolto sempre None) anche quando body.ristorante_id era valorizzato.
+        from services.ai_service import set_ai_context
+        set_ai_context(ristorante_id=body.ristorante_id, user_id=body.user_id)
+
         openai_client = OpenAI(api_key=openai_api_key)
         categorie, confidenze = classifica_con_ai(
             lista_descrizioni=body.descrizioni,
@@ -767,6 +774,14 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
 
     except HTTPException:
         raise
+    except RuntimeError as rl_err:
+        # classifica_con_ai solleva RuntimeError per il rate limit giornaliero AI
+        # (vedi MAX_AI_CALLS_PER_DAY): va mappato sul 429 gia' documentato nello
+        # schema OpenAPI dell'endpoint, non sul 500 generico (i client trattano
+        # il 5xx come errore transiente e fanno fallback locale, dove la quota
+        # non viene ricontrollata).
+        logger.warning(f"⚠️ /api/classify rate limit: {rl_err}")
+        raise HTTPException(status_code=429, detail=str(rl_err))
     except Exception as exc:
         logger.exception(f"❌ /api/classify errore: {exc}")
         raise HTTPException(status_code=500, detail="Errore durante la classificazione.")
@@ -852,20 +867,11 @@ async def parse_invoice(
         file_like = io.BytesIO(contents)
         file_like.name = filename  # type: ignore[attr-defined]
 
-        # Patch temporanea session_state (solo per la durata della chiamata)
-        # Necessaria perché estrai_dati_da_xml accede a st.session_state.
-        # Alternativa a lungo termine: fare PR su invoice_service per accettare user_id param.
-        import streamlit as _st
-        _previous_user_data = _st.session_state.get("user_data")
-        try:
-            _st.session_state["user_data"] = {"id": user_id} if user_id else {}
-            righe = estrai_dati_da_xml(file_like)
-        finally:
-            # Ripristina sempre lo state precedente (safe anche in caso di eccezione)
-            if _previous_user_data is None:
-                _st.session_state.pop("user_data", None)
-            else:
-                _st.session_state["user_data"] = _previous_user_data
+        # user_id passato come parametro esplicito: estrai_dati_da_xml lo accetta
+        # direttamente (niente piu' bisogno di patchare st.session_state, che e'
+        # uno shim modulo-globale condiviso — due richieste concorrenti di tenant
+        # diversi potevano leggersi a vicenda lo user_id patchato).
+        righe = estrai_dati_da_xml(file_like, user_id=user_id)
 
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
@@ -1931,16 +1937,10 @@ async def upload_invoice(
     file_like = io.BytesIO(contents)
     file_like.name = filename  # type: ignore[attr-defined]
 
-    import streamlit as _st
-    _prev = _st.session_state.get("user_data")
-    try:
-        _st.session_state["user_data"] = {"id": user_id}
-        righe = estrai_dati_da_xml(file_like)
-    finally:
-        if _prev is None:
-            _st.session_state.pop("user_data", None)
-        else:
-            _st.session_state["user_data"] = _prev
+    # user_id come parametro esplicito (estrai_dati_da_xml lo accetta direttamente):
+    # niente piu' patch di st.session_state, uno shim modulo-globale condiviso fra
+    # richieste concorrenti di tenant diversi nello stesso processo worker.
+    righe = estrai_dati_da_xml(file_like, user_id=user_id)
 
     if not righe:
         return UploadInvoiceResponse(
@@ -5857,7 +5857,14 @@ def _briefing_rigenera_async(user_id: str, ristorante_id: Optional[str]) -> None
         return
     try:
         from services import get_supabase_client
+        from services.ai_service import set_ai_context
         from services.daily_briefing_service import generate_and_save_briefing
+
+        # Propaga il contesto AI: la narrazione del briefing chiama track_ai_usage,
+        # che senza questo risolveva ristorante_id sempre None (ContextVar mai
+        # settato in questo path in background) -> costo "NON tracked", fuori dal
+        # ledger e dall'alert soglia mensile.
+        set_ai_context(ristorante_id=ristorante_id, user_id=user_id)
 
         supabase_client = get_supabase_client()
         notifications = _briefing_raccogli_notifiche(user_id, ristorante_id, supabase_client)

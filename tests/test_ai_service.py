@@ -226,14 +226,17 @@ class TestRegoleFortiCategorizzazione:
 
 
 class TestClassificaConAiFallback:
-    def test_json_non_valido_non_collassa_su_materiale(self):
+    def test_json_non_valido_usa_regole_forti_prima_del_dizionario(self):
+        """Il fallback su JSON malformato applica lo stesso safety net del percorso
+        normale (regole forti PRIMA del dizionario, audit AI 5/7/2026): un errore di
+        parsing puntuale non deve degradare la precisione rispetto al caso felice."""
         fake_client = MagicMock()
         with patch('services.ai_service._chiama_gpt_classificazione', side_effect=json.JSONDecodeError('msg', 'doc', 0)):
             result = ai_mod.classifica_con_ai([
                 'BLEND T GUNPOWDER 15 FILTRI',
                 'CREAMI - RICARICA PISTACCHIO',
             ], openai_client=fake_client)
-        assert result == ['Da Classificare', 'Da Classificare']
+        assert result == ['CAFFE E THE', 'PASTICCERIA']
 
     def test_eccezione_ai_usa_fallback_neutro(self):
         fake_client = MagicMock()
