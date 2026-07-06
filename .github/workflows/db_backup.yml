@@ -1,0 +1,81 @@
+name: DB Backup - ONEFLUX
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Backup indipendente del database Supabase, verificato assente il 6/7/2026:
+# il progetto è sul piano Free (niente PITR), e nel repo non esisteva alcun
+# meccanismo di dump/export — il README dichiarava "Point in Time Recovery,
+# continuo" ma è una descrizione dello stato desiderato (piano Pro), mai
+# messa in pratica. Con clienti reali attivi dall'1/7, un comando distruttivo
+# (bug, errore umano) su fatture/margini/ricavi sarebbe oggi irrecuperabile.
+#
+# pg_dump in formato custom (-Fc, compresso, ripristinabile con pg_restore)
+# caricato come artifact GitHub — indipendente dal piano Supabase, protegge
+# anche da un eventuale problema lato Supabase stesso.
+#
+# GITHUB SECRET richiesto (da aggiungere, non ancora presente al 6/7/2026):
+#   SUPABASE_DB_URL   connection string in modalità "Session pooler" (porta
+#                     5432, host aws-*.pooler.supabase.com) — Project Settings
+#                     → Database → Connect → "Session pooler". OBBLIGATORIO
+#                     questa modalità e non la connessione diretta: quella è
+#                     IPv6-only sul piano Free e GitHub Actions (runner
+#                     ubuntu-latest) e' IPv4-only, la connessione fallirebbe.
+#                     Contiene la password del DB: mai loggarla né stamparla
+#                     in chiaro negli step.
+#
+# COSTO: 1 run/giorno, pochi secondi (DB piccolo, <50MB all'8/6). Artifact
+# storage GitHub free tier: 500MB totali, ampiamente sufficiente. Retention
+# 14 giorni: oltre quella finestra l'artifact scade automaticamente.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    # Ogni giorno alle 03:11 UTC (~05:11 CEST) — fuori orario clienti.
+    - cron: '11 3 * * *'
+  workflow_dispatch: # avvio manuale per test
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verifica secret presente
+        id: check-secret
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "⚠️ SUPABASE_DB_URL non configurato — backup saltato. Vedi commento in testa al file per come aggiungerlo."
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Installa client PostgreSQL 17
+        if: steps.check-secret.outputs.configured == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 2>/dev/null || sudo apt-get install -y -qq postgresql-client
+
+      - name: Esegui pg_dump
+        if: steps.check-secret.outputs.configured == 'true'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          STAMP=$(date -u +%Y%m%d_%H%M%S)
+          echo "STAMP=$STAMP" >> $GITHUB_ENV
+          # -Fc: formato custom compresso, ripristinabile selettivamente con
+          # pg_restore. --no-owner/--no-privileges: evita di portarsi dietro
+          # ruoli specifici dell'istanza Supabase che non esistono altrove.
+          pg_dump "$DB_URL" -Fc --no-owner --no-privileges -f "oneflux_backup_${STAMP}.dump"
+          ls -lh "oneflux_backup_${STAMP}.dump"
+
+      - name: Carica come artifact
+        if: steps.check-secret.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneflux-db-backup-${{ env.STAMP }}
+          path: oneflux_backup_${{ env.STAMP }}.dump
+          retention-days: 14
+          compression-level: 0 # già compresso da pg_dump -Fc, evita doppio lavoro
