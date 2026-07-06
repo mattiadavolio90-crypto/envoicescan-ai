@@ -67,14 +67,21 @@ Contrattuali Standard UE (SCC)**. Il database con i dati persistiti resta in UE.
 - Suite di test automatizzati (~9530 Python + 18 Deno) eseguiti in CI su ogni rilascio.
 - Audit di sicurezza periodico: 19/06/2026 (pre go-live, 2 vettori di lettura
   non autorizzata chiusi) + riverifica 06/07/2026 (post go-live) — advisor
-  Supabase **0 ERROR sicurezza, 0 WARN performance** invariato. Un nuovo item
+  Supabase **0 ERROR sicurezza, 0 WARN performance** invariato. Un item
   emerso il 6/7: `auth_leaked_password_protection` disabilitato su Supabase
   Auth (controllo contro password compromesse via HaveIBeenPwned) — il bridge
   Supabase Auth nativo è attivo in produzione (`SKIP_SUPABASE_AUTH` non
-  settata), quindi rilevante; da attivare manualmente dal pannello Supabase
-  (Authentication → Sign In / Providers → Password), nessuna modifica di
-  codice richiesta.
-- Backup database: Point-in-Time Recovery (piano Supabase Pro).
+  settata), quindi rilevante. Verificato visivamente il 6/7 sul pannello
+  (Authentication → Sign In / Providers → Email → "Prevent use of leaked
+  passwords"): il controllo è **disattivato e non attivabile**, etichettato
+  esplicitamente "Only available on Pro plan and above" — non è una
+  configurazione mancante ma un limite del piano Free. Nessuna azione
+  possibile lato codice o pannello finché il progetto resta su Free.
+- Backup database: nessun PITR nativo (piano Free, "Daily backups" è incluso
+  solo dal piano Pro e comunque non equivale a PITR continuo). Colmato con
+  workflow indipendente `pg_dump` giornaliero (`.github/workflows/db_backup.yml`,
+  6/7/2026) — artifact GitHub, 14gg di retention; attivo solo dopo
+  l'aggiunta del secret `SUPABASE_DB_URL` (in sospeso).
 - Segregazione segreti: chiavi solo lato server (Railway/Vercel/Supabase), mai nel
   bundle client né nel repository.
 
@@ -148,8 +155,10 @@ Tutti `HttpOnly + Secure + SameSite=Lax`.
       `/m`) che richiede l'accettazione esplicita e registra il consenso reale
       (endpoint `/api/auth/accetta-privacy`, GDPR Art. 7.1: valorizza
       `privacy_accepted_at` solo su azione utente reale, mai in automatico).
-- [ ] **Attivare "Leaked Password Protection"** su Supabase Auth (pannello,
-      Authentication → Sign In / Providers → Password) — vedi §3.
+- [x] **"Leaked Password Protection"** verificata sul pannello Supabase (06/07/2026):
+      bloccata dal piano Free ("Only available on Pro plan and above"), non da
+      configurazione mancante — nessuna azione possibile finché resta su Free;
+      da riattivare in caso di upgrade a Pro (un click, vedi §3).
 - [ ] Eventuale **nomina formale dei sub-responsabili** (DPA firmati con i fornitori),
       se richiesto da clienti B2B strutturati.
 - [ ] **DPIA (Data Protection Impact Assessment)** non ancora documentata —
