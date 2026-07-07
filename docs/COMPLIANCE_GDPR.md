@@ -4,7 +4,7 @@ Documento di sintesi della conformità al Regolamento UE 2016/679 (GDPR) e al
 D.lgs. 196/2003 (Codice Privacy). Uso interno + materiale da fornire a clienti B2B
 che lo richiedano o in caso di controllo.
 
-**Ultimo aggiornamento:** 6 luglio 2026 (riverifica post go-live 1/7; audit sicurezza precedente 19/06)
+**Ultimo aggiornamento:** 8 luglio 2026 (verifica stato DPA sub-responsabili; riverifica post go-live 6/7; audit sicurezza precedente 19/06)
 **Titolare del trattamento:** Recoma System S.r.l. — P.IVA IT09599210961
 **Sede legale:** Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
 **Email:** md@oneflux.it
@@ -32,17 +32,22 @@ su larga scala di categorie particolari, no monitoraggio sistematico su larga sc
 
 ## 2. Sub-responsabili del Trattamento (Art. 28)
 
-| Fornitore | Ruolo | Sede dati | Garanzie trasferimento |
-|---|---|---|---|
-| Supabase Inc. | Hosting database PostgreSQL | UE — Frankfurt 🇩🇪 | Dati persistiti solo in UE |
-| OpenAI LP | Categorizzazione AI | USA | SCC UE; dati elaborati on-the-fly, non usati per training |
-| Brevo SAS | Email transazionale (SMTP) | UE — Francia 🇫🇷 | Nessun contenuto fattura trasmesso |
-| Invoicetronic S.r.l. | Ricezione fatture SDI + webhook | Italia 🇮🇹 | XML grezzo non archiviato dopo la consegna |
-| Vercel Inc. | Hosting frontend (Next.js) | UE / USA | SCC UE; nessun dato applicativo persistito |
-| Railway Corp. | Worker elaborazione + API | USA | SCC UE; elaborazione in memoria, nessun dato persistito |
+| Fornitore | Ruolo | Sede dati | Garanzie trasferimento | Stato DPA (verificato 08/07/2026) |
+|---|---|---|---|---|
+| Supabase Inc. | Hosting database PostgreSQL | UE — Frankfurt 🇩🇪 | Dati persistiti solo in UE | Disponibile, **non automatico**: da richiedere dal dashboard org ("legal documents") → firma via PandaDoc. [supabase.com/legal/dpa](https://supabase.com/legal/dpa) |
+| OpenAI LP | Categorizzazione AI | USA | SCC UE; dati elaborati on-the-fly, non usati per training | Disponibile, **non automatico**: serve account business (non personale) + modulo online con ragione sociale/org ID → firma elettronica. [openai.com/policies/data-processing-addendum](https://openai.com/policies/data-processing-addendum/) |
+| Brevo SAS | Email transazionale (SMTP) | UE — Francia 🇫🇷 | Nessun contenuto fattura trasmesso | **Automatico** — incluso come Annex 2 delle General Terms accettate alla creazione account, nessuna azione richiesta |
+| Invoicetronic S.r.l. | Ricezione fatture SDI + webhook | Italia 🇮🇹 | XML grezzo non archiviato dopo la consegna | **Non trovato** un DPA pubblico standard (piccola società IT) — da richiedere via email/supporto diretto |
+| Vercel Inc. | Hosting frontend (Next.js) | UE / USA | SCC UE; nessun dato applicativo persistito | Disponibile ([vercel.com/legal/dpa](https://vercel.com/legal/dpa)), non verificato con certezza se automatico o da accettare esplicitamente — da confermare |
+| Railway Corp. | Worker elaborazione + API | USA | SCC UE; elaborazione in memoria, nessun dato persistito | Disponibile, **non automatico**: da compilare un modulo DocuSign dedicato. [railway.com/legal/dpa](https://railway.com/legal/dpa) |
 
 I trasferimenti extra-UE (OpenAI, Railway, Vercel) sono coperti da **Clausole
 Contrattuali Standard UE (SCC)**. Il database con i dati persistiti resta in UE.
+
+Ricerca 08/07/2026 fatta su fonti pubbliche (pagine ufficiali dei fornitori);
+alcuni fetch diretti (Brevo, OpenAI) hanno restituito 403 e le informazioni
+derivano da snippet aggregati — consigliata verifica manuale diretta prima
+di considerare l'attivazione conclusa per ciascun fornitore.
 
 ---
 
@@ -159,8 +164,15 @@ Tutti `HttpOnly + Secure + SameSite=Lax`.
       bloccata dal piano Free ("Only available on Pro plan and above"), non da
       configurazione mancante — nessuna azione possibile finché resta su Free;
       da riattivare in caso di upgrade a Pro (un click, vedi §3).
-- [ ] Eventuale **nomina formale dei sub-responsabili** (DPA firmati con i fornitori),
-      se richiesto da clienti B2B strutturati.
+- [ ] **Nomina formale dei sub-responsabili** (DPA firmati con i fornitori) —
+      verificato 08/07/2026 cosa serve per ciascuno (vedi §2 per i link):
+      - [ ] Supabase: richiedere DPA dal dashboard org → firma PandaDoc
+      - [ ] OpenAI: serve account business + modulo online → firma elettronica
+      - [x] Brevo: automatico, incluso nei ToS già accettati — nessuna azione
+      - [ ] Invoicetronic: nessun DPA pubblico trovato, contattare via email/supporto
+      - [ ] Vercel: verificare se richiede accettazione esplicita o è già incluso
+      - [ ] Railway: compilare modulo DocuSign dedicato
+      Da fare quando richiesto da un cliente B2B strutturato o per completezza.
 - [ ] **DPIA (Data Protection Impact Assessment)** non ancora documentata —
       opportuna dato il profilo di rischio (dati finanziari, categorizzazione AI,
       trasferimenti extra-UE verso OpenAI/Railway).
