@@ -4,7 +4,7 @@ Documento di sintesi della conformità al Regolamento UE 2016/679 (GDPR) e al
 D.lgs. 196/2003 (Codice Privacy). Uso interno + materiale da fornire a clienti B2B
 che lo richiedano o in caso di controllo.
 
-**Ultimo aggiornamento:** 8 luglio 2026 (verifica stato DPA sub-responsabili; riverifica post go-live 6/7; audit sicurezza precedente 19/06)
+**Ultimo aggiornamento:** 8 luglio 2026 (screening DPIA + verifica stato DPA sub-responsabili; riverifica post go-live 6/7; audit sicurezza precedente 19/06)
 **Titolare del trattamento:** Recoma System S.r.l. — P.IVA IT09599210961
 **Sede legale:** Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
 **Email:** md@oneflux.it
@@ -138,6 +138,33 @@ Tutti `HttpOnly + Secure + SameSite=Lax`.
 
 ---
 
+## 6bis. Screening DPIA (Art. 35 GDPR) — 08/07/2026
+
+Valutazione sui 9 criteri di "rischio elevato" delle linee guida EDPB (WP248),
+che se soddisfatti in numero ≥2 rendono raccomandata una DPIA formale.
+Verifica fatta leggendo il codice, non per assunzione.
+
+| Criterio EDPB | Esito | Evidenza |
+|---|---|---|
+| 1. Scoring/valutazione di persone fisiche | NO | L'AI classifica articoli di fattura (`services/ai_service.py`), non persone; unico "score" è similarità indirizzo per instradamento fatture tra sedi aziendali e indice "Salute" del ristorante (completezza dati operativi) |
+| 2. Decisione automatizzata con effetti giuridici/significativi | NO | La chat AI (`DOCUMENTAZIONE/DOC COMPLETA/CHAT_ASSISTENTE.md`) usa solo tool read-only su dati aggregati; nessuna azione automatica con effetto pratico (non blocca conti, non fissa prezzi, non nega servizi) |
+| 3. Monitoraggio sistematico area pubblica | NO | Il briefing/"Salute" monitora metriche del business (fatture mancanti, scadenze, costi), non persone in spazi pubblici |
+| 4. Dati sensibili / categorie particolari (Art. 9) | NO | Nessun dato sanitario, biometrico, etnia, orientamento, opinioni politiche nello schema. `turni_personale` (nome dipendente + orario + costo) è dato ordinario, usato solo in aggregato per monte-ore, mai valutazione individuale |
+| 5. Trattamento su larga scala | NO | 9 account clienti reali attivi (2 test + 1 operativo, poi 7 con consenso retroattivo) — ordine di grandezza minimo rispetto alle soglie WP248 |
+| 6. Combinazione/incrocio di dataset | PARZIALE | Fatture + ricavi + turni + agenda incrociati per margini/MOL, ma sono dati dello stesso titolare/contratto per un'unica finalità dichiarata, non arricchimento con fonti esterne |
+| 7. Soggetti vulnerabili | NO | Nessun riferimento a minori o categorie vulnerabili nel modello dati |
+| 8. Uso innovativo di nuove tecnologie | PARZIALE | Uso di LLM (GPT-4.1-mini) per classificazione/chat, ma tecnologia ormai consolidata e a basso rischio per il tipo di dato trattato (prodotti, non persone) |
+| 9. Impedire l'esercizio di un diritto/servizio | NO | Unico meccanismo di blocco è anti-brute-force login (15 min, generico, non basato su profilazione) — non rientra nel senso EDPB |
+
+**Conclusione: 0 criteri pieni, 2 parziali — sotto la soglia (2+ pieni) che
+rende raccomandata una DPIA formale.** La DPIA non è necessaria allo stato
+attuale. Da rivalutare se cambiano in modo sostanziale: scala (crescita
+clienti oltre l'ordine delle decine/centinaia), natura del trattamento
+(es. l'AI inizia a profilare persone fisiche invece di prodotti), o se
+un cliente/audit la richiede esplicitamente.
+
+---
+
 ## 7. Note ed esclusioni
 
 - Il servizio **non effettua Conservazione Sostitutiva** ai sensi del D.M. 17/06/2014:
@@ -173,6 +200,8 @@ Tutti `HttpOnly + Secure + SameSite=Lax`.
       - [ ] Vercel: verificare se richiede accettazione esplicita o è già incluso
       - [ ] Railway: compilare modulo DocuSign dedicato
       Da fare quando richiesto da un cliente B2B strutturato o per completezza.
-- [ ] **DPIA (Data Protection Impact Assessment)** non ancora documentata —
-      opportuna dato il profilo di rischio (dati finanziari, categorizzazione AI,
-      trasferimenti extra-UE verso OpenAI/Railway).
+- [x] **DPIA (Data Protection Impact Assessment)** — screening formale fatto
+      08/07/2026 (vedi §6bis): 0 dei 9 criteri EDPB di rischio elevato pieni,
+      2 parziali, sotto soglia. **DPIA non necessaria allo stato attuale.**
+      Da rivalutare in caso di crescita sostanziale della scala clienti o
+      cambio di natura del trattamento AI (da prodotti a persone).
