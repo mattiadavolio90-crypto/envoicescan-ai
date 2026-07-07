@@ -78,7 +78,10 @@ jobs:
           # -Fc: formato custom compresso, ripristinabile selettivamente con
           # pg_restore. --no-owner/--no-privileges: evita di portarsi dietro
           # ruoli specifici dell'istanza Supabase che non esistono altrove.
-          pg_dump "$DB_URL" -Fc --no-owner --no-privileges -f "oneflux_backup_${STAMP}.dump"
+          # Percorso esplicito: update-alternatives gestisce solo psql, non
+          # pg_dump — "pg_dump" nudo continuerebbe a risolvere alla v16
+          # preinstallata sul runner (mismatch con il server 17.x di Supabase).
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" -Fc --no-owner --no-privileges -f "oneflux_backup_${STAMP}.dump"
           ls -lh "oneflux_backup_${STAMP}.dump"
 
       - name: Carica come artifact
