@@ -56,12 +56,16 @@ jobs:
         # Il repo Ubuntu di default non ha il pacchetto versionato -17 (resta su
         # pg_dump 16), che rifiuta di collegarsi a un server 17.x ("server version
         # mismatch"). Serve il repo APT ufficiale PostgreSQL per la v17 giusta.
+        # L'update e' limitato al solo repo appena aggiunto (Dir::Etc::sourcelist)
+        # perche' il runner GitHub-hosted ha altri repo preinstallati (es. Azure
+        # CLI) che falliscono saltuariamente la verifica firma e farebbero fallire
+        # un "apt-get update" globale anche se PostgreSQL non c'entra.
         if: steps.check-secret.outputs.configured == 'true'
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update -qq
+          sudo apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/pgdg.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
           sudo apt-get install -y -qq postgresql-client-17
 
       - name: Esegui pg_dump
