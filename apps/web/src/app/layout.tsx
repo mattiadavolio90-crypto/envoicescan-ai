@@ -26,7 +26,7 @@ const sora = Sora({ subsets: ["latin"], weight: ["600", "700", "800"], variable:
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.oneflux.it"),
   title: {
-    default: "ONEFLUX — Il braccio destro del tuo ristorante",
+    default: "ONEFLUX — Il tuo assistente per il ristorante",
     template: "%s · ONEFLUX",
   },
   description:
