@@ -150,6 +150,18 @@ export function LandingPage() {
               {LANDING.footer.recomaPrefisso} <RecomaLink />
             </span>
           </div>
+          {/* Link demo interattiva, alto a destra: unico ingresso a bassa frizione
+              per chi non e' ancora pronto a scrollare tutto o scrivere su WhatsApp.
+              Solo nella scena 0 (non sticky): sparisce scrollando come il resto. */}
+          <div className="absolute right-4 top-8 z-10 sm:right-8 sm:top-10">
+            <a
+              href={LANDING.nav.demoHref}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground/70 transition-colors hover:text-primary sm:text-sm"
+            >
+              {LANDING.nav.demoLabel}
+              <ArrowRight className="size-3.5" />
+            </a>
+          </div>
           <Reveal>
             <Logo size={84} glow />
           </Reveal>
@@ -317,6 +329,22 @@ export function LandingPage() {
               <p className="mx-auto mt-4 max-w-2xl text-center text-base text-muted-foreground">
                 {LANDING.piani.sottotitolo}
               </p>
+            </Reveal>
+            {/* Secondo ingresso alla demo, prima delle card: intercetta chi è
+                interessato ma esita sul prezzo. Gradino a bassa frizione ("guarda
+                prima di scegliere"), non un bottone che compete con "Inizia ora"
+                (quello resta unico, sotto i piani). L'unico altro link demo è
+                nell'hero (scena 0), che qui è ormai fuori scroll. */}
+            <Reveal delay={200}>
+              <div className="mt-6 flex justify-center">
+                <Link
+                  href={LANDING.nav.demoHref}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                >
+                  {LANDING.piani.demoNota}
+                  <ArrowRight className="size-4" />
+                </Link>
+              </div>
             </Reveal>
             {/* Card tutte uguali: nessun piano in risalto (cambia solo il volume).
                 variant zoom: entrano con la stessa dissolvenza percepibile delle

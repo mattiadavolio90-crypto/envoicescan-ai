@@ -7,7 +7,10 @@ const SESSION_COOKIE = "oneflux_session";
 // notifiche, impostazioni, admin, style-guide) e' protetto. Prima si usava una
 // whitelist di prefissi che era rimasta indietro (/fatture, /ricavi non esistono
 // piu') lasciando le rotte nuove scoperte a edge.
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
+// /demo = Demo Tour pubblico (route-group (demo)): mockup senza login pensato
+// per essere aperto da un link WhatsApp/mail da chi non ha un account. Deve
+// restare accessibile senza sessione, come /login.
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/demo"];
 
 // Asset SEO/social a route (NON file statici: non hanno estensione nel path, quindi
 // il matcher non li esclude e finirebbero rediretti al login dalla regola "rotta
@@ -36,6 +39,15 @@ function isHostApp(req: NextRequest): boolean {
   return host.startsWith("app.");
 }
 
+// demo.oneflux.it: stesso alias della stessa app (nessun progetto Vercel
+// separato), solo un CNAME Aruba in piu' puntato allo stesso deploy. Sulla
+// root del sottodominio riscriviamo (rewrite, non redirect: l'URL nella barra
+// resta demo.oneflux.it/) alla route pubblica /demo gia' esistente.
+function isHostDemo(req: NextRequest): boolean {
+  const host = (req.headers.get("host") ?? "").toLowerCase();
+  return host.startsWith("demo.");
+}
+
 export function proxy(req: NextRequest) {
   // Il proxy gira a edge ed e' il single-point-of-failure del routing: se lancia
   // un'eccezione imprevista ogni rotta che matcha andrebbe in 500. Avvolgiamo
@@ -52,6 +64,15 @@ export function proxy(req: NextRequest) {
       const url = req.nextUrl.clone();
       url.pathname = hasSession ? "/dashboard" : "/login";
       return NextResponse.redirect(url);
+    }
+
+    // Sul dominio demo, "/" mostra direttamente il Demo Tour (rewrite, l'URL
+    // visibile resta demo.oneflux.it/). isPublic sotto lascia comunque passare
+    // "/" quindi qui basta riscrivere il pathname prima del check.
+    if (pathname === "/" && isHostDemo(req)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/demo";
+      return NextResponse.rewrite(url);
     }
 
     // La root "/" e' la landing pubblica (app/page.tsx): la lasciamo passare

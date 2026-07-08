@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Sparkles, Lock, Loader2, MessageCircle } from "lucide-react";
@@ -17,10 +17,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { type AssistantConfig, type ConfigTopic } from "@/lib/home";
+import { cn } from "@/lib/utils";
 
-export function ConfigAssistente({ config }: { config: AssistantConfig }) {
+// defaultOpen / dialogClassName: usati SOLO dalla demo (tour guidato) per aprire
+// e posizionare il pannello da fuori. Nell'app restano ai default (comportamento
+// invariato: si apre al click, dialog centrato).
+export function ConfigAssistente({
+  config,
+  defaultOpen = false,
+  dialogClassName,
+}: {
+  config: AssistantConfig;
+  defaultOpen?: boolean;
+  dialogClassName?: string;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+
+  // Demo: il pannello segue lo step del tour — si apre entrando nello step
+  // "config" e si RICHIUDE uscendone (senza rimontare). Nell'app defaultOpen è
+  // sempre false e costante: l'effetto gira una volta a false (no-op).
+  useEffect(() => {
+    setOpen(defaultOpen);
+  }, [defaultOpen]);
   const [nome, setNome] = useState(config.nome_referente);
   const [topics, setTopics] = useState<ConfigTopic[]>(config.topics);
   const [chatEnabled, setChatEnabled] = useState(config.chat_ai_enabled);
@@ -85,7 +104,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
         <Sparkles className="size-4" />
         Configura assistente
       </DialogTrigger>
-      <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-md">
+      <DialogContent className={cn("flex max-h-[90dvh] flex-col sm:max-w-md", dialogClassName)}>
         <DialogHeader className="shrink-0">
           <DialogTitle>Configura il tuo assistente</DialogTitle>
           <DialogDescription>

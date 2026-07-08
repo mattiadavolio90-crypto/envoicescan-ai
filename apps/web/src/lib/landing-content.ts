@@ -11,6 +11,12 @@ export const LANDING = {
   nav: {
     accediLabel: "Accedi",
     accediHref: "/login",
+    // Demo interattiva pubblica (route-group (demo)): per chi vuole toccare con
+    // mano prima di scrollare tutta la landing o scrivere su WhatsApp.
+    // "(1 minuto)" dichiara il costo in tempo: abbassa la soglia d'ingresso
+    // più di qualsiasi copy persuasivo.
+    demoLabel: "Guarda la demo (1 minuto)",
+    demoHref: "/demo",
   },
 
   // CTA prova gratuita reale (campi trial_active/trial_activated_at nel DB).
@@ -139,6 +145,11 @@ export const LANDING = {
     catena: "Più locali? C'è la modalità catena, su ogni piano",
     // chiarimento sotto la riga catena: i prezzi sono per singola sede.
     perPuntoVendita: "I prezzi esposti sono per punto vendita",
+    // Invito alla demo prima delle card: gradino a bassa frizione. Tono POSITIVO
+    // (mai "non sei sicuro?", che pianta un dubbio dove vuoi la scelta): invita a
+    // vederlo dal vivo. Ripete il "1 minuto" dell'hero — dichiara il costo in
+    // tempo e abbassa la soglia più di qualsiasi copy persuasivo.
+    demoNota: "Guardalo in azione, ti basta 1 minuto",
   },
 
   // --- Sezione SERVIZI (pubblica) -------------------------------------------
