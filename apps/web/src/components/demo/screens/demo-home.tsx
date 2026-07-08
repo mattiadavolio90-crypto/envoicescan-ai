@@ -19,12 +19,14 @@ export function DemoHome({ openConfig = false }: { openConfig?: boolean }) {
       {/* Nello step "config" il pannello si apre da solo (defaultOpen) e si
           posiziona SOTTO la barra-guida (top fisso invece del centro-schermo),
           con altezza limitata così il contenuto scorre senza finire sotto la
-          barra. Uscendo dallo step si richiude da solo. */}
+          barra. Uscendo dallo step si richiude da solo. Offset responsivo:
+          su mobile la topbar è più alta (etichetta va a capo, micro-CTA extra),
+          quindi serve più margine di quanto basti su desktop. */}
       <DemoAnchor id="config" className="flex justify-end">
         <ConfigAssistente
           config={demoConfig}
           defaultOpen={openConfig}
-          dialogClassName="top-[11rem] translate-y-0 max-h-[calc(100dvh-12.5rem)]"
+          dialogClassName="top-[13.5rem] translate-y-0 max-h-[calc(100dvh-15rem)] sm:top-[11rem] sm:max-h-[calc(100dvh-12.5rem)]"
         />
       </DemoAnchor>
 

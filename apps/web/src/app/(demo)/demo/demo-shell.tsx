@@ -59,7 +59,10 @@ export function DemoShell() {
         <DemoSidebar screen={step.screen} />
         <SidebarInset className="h-svh overflow-hidden">
           <header className="relative flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
-            <SidebarTrigger className="-ml-1" />
+            {/* Trigger disattivato: la sidebar reale (drawer a tutto schermo su
+                mobile) aprirebbe una via d'uscita dal tour guidato. La demo si
+                naviga SOLO con i controlli della topbar. */}
+            <SidebarTrigger className="-ml-1 pointer-events-none opacity-40" tabIndex={-1} aria-hidden />
             <Separator orientation="vertical" className="h-4" />
             <Wordmark className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-2xl" />
           </header>

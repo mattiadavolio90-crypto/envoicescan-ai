@@ -37,8 +37,10 @@ export function DemoTopBar({ step, index, total, onPrev, onNext, onClose, onSkip
     // Sfondo OPACO (bg-background + velo ambra come background-image): niente
     // trasparenze — quello che passa sotto la barra non deve intravedersi mai.
     <div className="relative z-[70] shrink-0 border-b-2 border-amber-400/60 bg-background bg-[linear-gradient(rgba(245,158,11,0.14),rgba(245,158,11,0.14))] px-4 py-2.5 sm:px-6">
-      {/* riga 1: identità demo + avanzamento + controlli */}
-      <div className="flex items-center gap-3">
+      {/* riga 1: identità demo + avanzamento + controlli. flex-wrap: su mobile
+          (< 375px) etichetta + 3 bottoni non stanno su una riga sola — meglio
+          andare a capo che schiacciare/tagliare i bottoni di navigazione. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
           <Logo variant="icon" size={16} />
           Demo ONEFLUX
@@ -70,9 +72,10 @@ export function DemoTopBar({ step, index, total, onPrev, onNext, onClose, onSkip
           </button>
           <button
             onClick={onNext}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-500 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600 sm:px-4"
           >
-            {isLast ? "Voglio provarlo" : "Avanti"}
+            <span className="hidden sm:inline">{isLast ? "Voglio provarlo" : "Avanti"}</span>
+            <span className="sm:hidden">{isLast ? "Provalo" : "Avanti"}</span>
             <ArrowRight className="size-4" />
           </button>
           <button
