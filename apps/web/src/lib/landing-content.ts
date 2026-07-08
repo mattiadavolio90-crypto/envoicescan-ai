@@ -15,7 +15,7 @@ export const LANDING = {
     // mano prima di scrollare tutta la landing o scrivere su WhatsApp.
     // "(1 minuto)" dichiara il costo in tempo: abbassa la soglia d'ingresso
     // più di qualsiasi copy persuasivo.
-    demoLabel: "Guarda la demo (1 minuto)",
+    demoLabel: "Guarda la demo (1min)",
     demoHref: "/demo",
   },
 

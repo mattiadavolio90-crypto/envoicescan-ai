@@ -153,13 +153,17 @@ export function LandingPage() {
           {/* Link demo interattiva, alto a destra: unico ingresso a bassa frizione
               per chi non e' ancora pronto a scrollare tutto o scrivere su WhatsApp.
               Solo nella scena 0 (non sticky): sparisce scrollando come il resto.
-              Reso come pill azzurro (non testo grigio quasi invisibile): deve
-              competere in visibilita' col resto della scena, non nascondersi. */}
+              Pill azzurro con alone diffuso dietro (stesso trattamento delle
+              HeroShot/PhoneShot) + bordo pieno: deve leggersi a colpo d'occhio. */}
           <div className="absolute right-4 top-8 z-10 sm:right-8 sm:top-10">
             <a
               href={LANDING.nav.demoHref}
-              className="inline-flex items-center gap-1.5 rounded-full border border-primary/50 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary shadow-[0_0_20px_-4px] shadow-primary/40 transition-all hover:bg-primary/20 hover:shadow-primary/60 sm:text-sm"
+              className="group relative inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/15 px-4 py-2 text-xs font-semibold text-primary transition-all hover:bg-primary/25 sm:text-sm"
             >
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -inset-2 -z-10 rounded-full bg-primary/40 blur-xl transition-opacity group-hover:bg-primary/55"
+              />
               {LANDING.nav.demoLabel}
               <ArrowRight className="size-3.5" />
             </a>
