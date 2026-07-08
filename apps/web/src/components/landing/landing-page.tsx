@@ -152,11 +152,13 @@ export function LandingPage() {
           </div>
           {/* Link demo interattiva, alto a destra: unico ingresso a bassa frizione
               per chi non e' ancora pronto a scrollare tutto o scrivere su WhatsApp.
-              Solo nella scena 0 (non sticky): sparisce scrollando come il resto. */}
+              Solo nella scena 0 (non sticky): sparisce scrollando come il resto.
+              Reso come pill azzurro (non testo grigio quasi invisibile): deve
+              competere in visibilita' col resto della scena, non nascondersi. */}
           <div className="absolute right-4 top-8 z-10 sm:right-8 sm:top-10">
             <a
               href={LANDING.nav.demoHref}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground/70 transition-colors hover:text-primary sm:text-sm"
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/50 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary shadow-[0_0_20px_-4px] shadow-primary/40 transition-all hover:bg-primary/20 hover:shadow-primary/60 sm:text-sm"
             >
               {LANDING.nav.demoLabel}
               <ArrowRight className="size-3.5" />
