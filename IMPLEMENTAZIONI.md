@@ -1,191 +1,169 @@
-# 🚀 ONEFLUX — Roadmap Nuove Implementazioni
-*Sessione brainstorming 13 maggio 2026 — Mattia D'Avolio, Recoma System srl*
+# 🗺 ONEFLUX — Roadmap Nuove Implementazioni
+*Sessione pianificazione 8 luglio 2026 — Mattia D'Avolio, Recoma System srl*
 
-## 1. Home Intelligente — Score "Pulse" + Briefing Contestuale
-
-### Il problema che risolve
-Oggi il ristoratore apre l'app e vede una lista di notifiche. Non ha però una risposta immediata alla domanda più importante: "Come sto andando? C'è qualcosa di urgente da fare oggi?" Per capirlo deve leggere tutte le notifiche, aprire le varie pagine, fare da solo il collegamento tra i dati. Un ristoratore impegnato in cucina non ha questo tempo.
-
-### Come funziona
-
-**Score "Pulse"** — un cerchio visivo grande con un numero da 0 a 100 e colore dinamico:
-- 90-100 → verde → "Tutto sotto controllo 🟢"
-- 70-89 → giallo → "Buono, qualcosa da sistemare 🟡"
-- 50-69 → arancio → "Attenzione richiesta 🟠"
-- < 50 → rosso → "Situazione critica — agisci oggi 🔴"
-
-Il punteggio parte da 100 e scala in base a questi fattori (tutti da dati già disponibili, zero query aggiuntive):
-- Fatturato mese precedente non inserito → -15 pt
-- Costo personale mese precedente non inserito → -10 pt
-- Scadenze già scadute → fino a -20 pt (3 pt per scadenza)
-- Scadenze imminenti entro 7 giorni → fino a -10 pt
-- Fatture non categorizzate > 20% → -15 pt
-- Nessun upload negli ultimi 30 giorni → -10 pt
-- Più di 3 alert prezzi attivi → -10 pt
-- 1-3 alert prezzi attivi → -5 pt
-
-**Briefing Contestuale** — massimo 4 righe sotto lo score che spiegano perché il punteggio è quello. Struttura a 6 slot con gerarchia fissa — si mostrano i primi 4 attivi:
-- Slot 1: "Hai X scadenze scadute per totale €YYY"
-- Slot 2: "Fornitore [Nome] ha aumentato i prezzi del X% questo mese"
-- Slot 3: "Il fatturato di [mese] non è ancora stato inserito"
-- Slot 4: "Questa settimana hai caricato X fatture per €YYY totali"
-- Slot 5: "Hai X fatture SDI da confermare"
-- Slot 6 (solo se score > 90): "Ottimo lavoro — tutto in ordine! 🎉"
-
-Se uno slot non ha la condizione vera viene saltato — nessuna riga banale appare mai.
-
-### Flusso utente completo
-Apre l'app → vede score "78/100 — Buono" → legge briefing "Hai 2 scadenze per €1.400" → scende alle notifiche che mostrano il dettaglio con link diretto per agire. Trenta secondi dall'apertura all'azione.
-
-### File da toccare
-- `pages/5_notifiche_e_gestione.py` — aggiungere il blocco sopra le notifiche esistenti
-- Nessun nuovo service necessario — tutti i dati già calcolati durante l'ingestion in app.py
+> Questa versione SOSTITUISCE la roadmap del 13 maggio 2026. I punti superati
+> (Score Pulse/Briefing → assorbito da Home AI; Chef AI → è la Chat AI attuale)
+> e i punti non più di interesse sono stati rimossi. I punti relativi a
+> benchmark prezzi prodotto, bacheca offerte fornitori e clausola ToS per dati
+> aggregati sono confluiti nel documento separato GRUPPO_ACQUISTO.md, di cui
+> sono componenti.
 
 ---
 
-
-## 3. Progress Bar KPI con Target Automatico
-
-### Il problema che risolve
-La pagina Calcolo Marginalità mostra i KPI come numeri statici. Il ristoratore vede "food cost 34%" ma non sa se è tanto o poco, se sta sforando rispetto alla sua storia. Deve ricordare a mente il valore del mese scorso per fare il confronto. La pagina è informativa ma non azionabile.
-
-### Come funziona
-Ogni KPI riceve una barra di avanzamento. Il target viene calcolato automaticamente come media rolling degli ultimi 3 mesi dello stesso ristorante — non impostato manualmente dall'utente (troppo attrito, nessuno lo farebbe).
-
-Esempio visivo:
-- Food Cost: `████████░░` €4.200 / €5.800 target → 72% ✅ In linea
-- Bevande: `████████████` €1.900 / €1.600 target → 119% ⚠️ Stai sforando
-- Personale: `██████░░░░` €3.100 / €4.200 target → 74% ✅ In linea
-
-Colori dinamici: Verde < 90% target / Giallo 90-100% / Rosso > 100%.
-
-### Perché cambia l'esperienza
-- Prima: apri la pagina a fine mese, constati cosa è già successo → esperienza **retrospettiva**
-- Dopo: apri a metà mese, vedi le barre, sai se stai sforando e puoi ancora agire → esperienza **predittiva**
-
-Ogni upload aggiorna le barre in tempo reale — il caricamento diventa un gesto con significato immediato.
-
-### File da toccare
-- `pages/calcolo_marginalita.py` — modificare render KPI
-- Aggiungere query per calcolo media rolling 3 mesi per ogni KPI
-
-
-## 5. Digest Email Lunedì Mattina
+## 1. Notifiche Push Proattive (PWA)
 
 ### Il problema che risolve
-L'app è uno strumento passivo: dà valore solo quando il ristoratore la apre. Se passa una settimana senza accedere, scadenze si accumulano e dati restano mancanti. Il ristoratore deve essere raggiunto proattivamente, non aspettare che lui venga dall'app.
+L'app oggi è uno strumento "pull": dà valore solo se il ristoratore la apre.
+Più l'app è automatizzata (fatture via SDI, classificazione AI), meno motivi
+naturali ci sono per entrare. Il briefing giornaliero esiste ma aspetta che il
+cliente arrivi a leggerlo.
 
 ### Come funziona
-Ogni lunedì alle 7:00 una email automatica personalizzata con il briefing basato sui dati reali del ristorante. Stessa logica del Briefing Contestuale (punto 1) — si riusa lo stesso codice Python, si adatta solo il formato di output da widget Streamlit a testo email.
+Notifica push nativa della PWA (`/m`), inviata quando c'è un evento rilevante:
+scadenza imminente/scaduta, alert prezzo sopra soglia, promemoria dato mensile
+mancante. Riusa la stessa logica di priorità/gerarchia già presente nel
+briefing (`daily_briefing_service.py`) — non è un nuovo motore decisionale,
+solo un nuovo canale di consegna dello stesso contenuto.
 
-Struttura email proposta:
-- Oggetto: "📊 Il tuo lunedì — [Nome Ristorante], [data]"
-- Score Pulse testuale: "Il tuo punteggio questa settimana: 78/100"
-- I 3-4 punti del briefing contestuale
-- Bottone CTA: "→ Apri ONEFLUX"
-- Footer con link opt-out (obbligatorio GDPR)
+Vincolo tecnico: funziona solo per chi ha installato la PWA e accettato le
+notifiche browser. Non è un canale universale (a differenza di un domani
+WhatsApp), va comunicato come "attivalo nelle impostazioni" — non dato per
+scontato attivo su tutta la base clienti.
 
-**Attenzione importante:** il contenuto preciso degli slot va definito e validato PRIMA di implementare. Il rischio è inviare email con informazioni banali che il ristoratore inizia a ignorare e poi disattiva.
+### Perché ora
+Costo di infrastruttura pressoché zero (Web Push API, nessun provider a
+pagamento), riuso quasi totale della logica briefing esistente. Il rapporto
+sforzo/beneficio è il più favorevole dell'intera lista.
 
-### Infrastruttura
-- Supabase Edge Function schedulata (cron ogni lunedì ore 7:00)
-- Resend come provider email (piano free: 3.000 email/mese)
-- Costo effettivo: zero fino a centinaia di clienti attivi
-- Opt-out nelle impostazioni account (obbligatorio GDPR)
+### File probabilmente coinvolti
+- `apps/web/public/sw.js` — service worker, gestione evento push
+- Nuovo endpoint worker per invio push (subscription storage + trigger)
+- `services/daily_briefing_service.py` — riuso della selezione/priorità topic esistente
+- Tabella nuova per le push subscription per utente (endpoint, chiavi)
+- UI opt-in nelle Impostazioni
 
-### File da toccare
-- `supabase/functions/weekly_digest/` (nuova Edge Function)
-- `pages/gestione_account.py` (toggle opt-in/opt-out email)
-- Tabella `users`: aggiungere campo `email_digest_enabled` (boolean, default true)
+### Criteri di completamento
+- Il cliente può attivare/disattivare le notifiche push da Impostazioni
+- Almeno 1 topic (es. scadenza imminente) genera una push reale e testata
+- Nessuna push per topic già disattivati dal configuratore Home (stessa
+  regola di coerenza toggle già esistente per il briefing)
+
+### Stato
+Da approfondire tecnicamente con Claude Code (fattibilità Web Push su
+Vercel/service worker attuale) prima di stimare i tempi.
 
 ---
 
-## 6. Benchmark Anonimo tra Ristoranti
+## 2. Data Entry via Assistente AI (ricavi, coperti, personale, spese)
 
 ### Il problema che risolve
-Il ristoratore sa che il suo food cost è 34% ma non sa se è tanto o poco rispetto ai competitor. Senza un riferimento esterno i numeri sono solo numeri — non diventano mai una leva per migliorare. Questa informazione oggi non è accessibile per le PMI della ristorazione italiana.
+La filosofia dell'app è "zero data entry obbligatorio", e resta tale. Ma
+alcuni dati (fatturato del mese, costo personale, coperti, spese extra) non
+arrivano da nessuna fonte automatica — richiedono che il cliente li inserisca
+a mano nel form di Margini/Agenda. Molti non lo fanno, e questo è oggi la
+causa principale della "Salute della gestione" bassa: senza quei dati,
+food cost % e MOL restano falsi o incompleti.
 
 ### Come funziona
-Aggregazione anonima dei KPI di tutti i clienti ONEFLUX con profilo simile. Il singolo ristoratore vede i propri KPI confrontati con la media — senza che nessun dato individuale venga esposto. Minimo 10 ristoranti nel pool prima di mostrare la media (privacy).
+Il cliente scrive in chat, in linguaggio naturale: *"ieri ho incassato 2.340€
+con 87 coperti"* oppure *"il costo del personale di giugno è stato 8.400€"*.
+L'assistente AI riconosce il tipo di dato, lo struttura e lo salva nella
+tabella corretta (`margini_mensili`, `ricavi_giornalieri`, costo personale),
+con conferma esplicita prima del salvataggio (mai scrittura silenziosa).
 
-Esempio di output per ogni KPI:
-- Food Cost: Tu 34% — Media ONEFLUX 28% → ⚠️ Superiore alla media del 6%
-- Bevande: Tu 12% — Media ONEFLUX 13% → ✅ In linea
-- Personale: Tu 31% — Media ONEFLUX 29% → 🟡 Leggermente sopra
+Non sostituisce i form esistenti — resta un canale alternativo, più veloce,
+per chi preferisce "raccontarlo" piuttosto che compilare un campo. Il cliente
+che preferisce il form continua a usarlo.
 
-### Dove si integra — da decidere prima di implementare
-- **Opzione A:** accanto a ogni KPI in Calcolo Marginalità, sotto la progress bar del punto 3
-- **Opzione B:** come slot nel Briefing Contestuale (punto 1) quando il delta supera il 10%
+### Perché è la priorità più alta
+Attacca direttamente il collo di bottiglia reale (dati mensili mancanti →
+Salute rossa/gialla → briefing meno utile → MOL falso). Riusa l'infrastruttura
+Chat AI già esistente (function calling, rate limiting per piano) — non serve
+nuova infrastruttura AI, solo nuovi "tool" lato chat che scrivono invece di
+solo leggere.
+
+### Vincoli da rispettare (regole del progetto)
+- Ogni scrittura via chat filtrata per `user_id` + `ristorante_id` come tutte
+  le altre operazioni (regola multi-tenant)
+- Conferma esplicita dell'utente prima di ogni salvataggio — la chat oggi è
+  sola lettura, questo è un cambio di categoria (da "risponde" a "agisce") e
+  richiede più cautela sugli errori di interpretazione
+- Nessun nome di prodotto/fornitore reale verso OpenAI in questo flusso,
+  come da regola GDPR esistente — ma qui il rischio è più basso: si parla di
+  aggregati (fatturato, coperti), non di righe fattura con nomi prodotto
+
+### File probabilmente coinvolti
+- `services/fastapi_worker.py` — nuovi tool di scrittura per la chat
+  (function calling), accanto a quelli di lettura esistenti
+- Chat AI service (il modulo che gestisce i tool della chat)
+- Possibile nuova UI di conferma inline in chat prima del salvataggio
+
+### Criteri di completamento
+- L'assistente riconosce almeno: fatturato giorno/mese, coperti, costo
+  personale, spesa extra
+- Ogni inserimento richiede conferma esplicita dell'utente, mai automatico
+- I dati inseriti via chat appaiono correttamente in Margini/Agenda,
+  indistinguibili da quelli inseriti via form
+- Test su ambiguità: cosa succede se il cliente scrive qualcosa di
+  interpretabile in due modi (da definire con Claude Code)
+
+### Stato
+Pronto per essere trasformato in brief tecnico quando vuoi procedere.
+
+---
+
+## 3. Benchmark KPI Aggregati (food cost %, incidenza personale %, ecc.)
+
+### Il problema che risolve
+Il ristoratore vede il proprio food cost (es. 34%) ma non ha un riferimento
+esterno per sapere se è tanto o poco. Il numero resta isolato, senza diventare
+una leva per agire.
+
+### Come funziona
+Media aggregata e anonima dei KPI di tutti i clienti OneFlux con profilo
+simile (es. stessa fascia di fatturato o tipologia cucina, se disponibile).
+Il cliente vede solo: "Tu 34% — Media OneFlux 28% — sopra la media del 6%".
+Nessun dato individuale di altri clienti è mai esposto.
+
+**Importante — a differenza del benchmark sui prezzi prodotto (che vive nel
+documento Gruppo d'Acquisto):** questo benchmark lavora su percentuali già
+calcolate (food cost %, incidenza personale %), non su righe fattura da
+normalizzare prodotto per prodotto. Zero rischio di match sbagliati tra
+descrizioni fornitore diverse — è puro calcolo aggregato su dati che l'app
+già possiede. Per questo può partire prima e con meno rischio del benchmark
+prezzi.
 
 ### Prerequisiti
-Richiede base clienti minima per essere statisticamente significativo. I dati sono già tutti in DB — zero raccolta aggiuntiva. Da attivare quando il numero di clienti attivi è adeguato.
+- Soglia minima di clienti nel pool prima di mostrare una media (proposta:
+  almeno 10, per solidità statistica e per evitare che il dato sia
+  riconducibile a pochi ristoranti) — verificare la soglia esatta anche sotto
+  il profilo privacy con la clausola ToS del punto F del documento Gruppo
+  d'Acquisto, che copre anche questo utilizzo
+- Nessuna raccolta dati aggiuntiva: tutto già in DB
 
-### File da toccare
-- `services/benchmark_service.py` (nuovo — query aggregate anonime cross-tenant)
-- `pages/calcolo_marginalita.py` (visualizzazione benchmark)
-- Supabase RLS: aggiornare per query aggregate cross-tenant sicure
+### File probabilmente coinvolti
+- Nuovo service di aggregazione cross-tenant (query aggregate, mai per singolo
+  cliente)
+- Verifica RLS Supabase per garantire che l'aggregazione non esponga righe
+  individuali nemmeno per errore di query
+- Punto di visualizzazione: dentro Margini, accanto ai KPI esistenti
 
+### Criteri di completamento
+- La media si mostra solo sopra la soglia minima di pool
+- Nessuna query espone dati a livello di singolo cliente
+- Clausola ToS aggiornata prima del lancio (vedi GRUPPO_ACQUISTO.md, sezione
+  ToS — condivisa tra i due usi)
 
-## 8. DNA Ristorante — Profilo Narrativo Annuale
-
-### Il problema che risolve
-Dopo mesi di utilizzo il ristoratore ha accumulato un patrimonio di dati prezioso ma non lo percepisce come tale. Vede fatture e numeri ma non ha mai una visione di insieme della "storia" del suo ristorante. Non sa rispondere a "come è cambiata la mia spesa in 12 mesi?" senza cercare manualmente mese per mese.
-
-### Come funziona
-Una pagina dedicata che costruisce nel tempo un profilo narrativo unico del ristorante, con frasi generate da template Python — nessuna AI. Ispirazione: Spotify Wrapped. Aggiornamento mensile automatico.
-
-Esempi di frasi generate automaticamente:
-- "Il tuo ristorante spende di più a dicembre e agosto — la tua stagionalità principale."
-- "Il tuo fornitore più fedele è Birra & Co: presente da 18 mesi senza interruzioni."
-- "La tua categoria più volatile è Pesce: varia in media del ±34% mese su mese."
-- "Il tuo mese migliore per il margine è stato ottobre 2025 (MOL: 24%)."
-- "Hai gestito 847 fatture per €124.000 di spese da quando usi ONEFLUX"
-- "Il tuo fornitore più costoso in assoluto è [Nome]: €XX.XXX negli ultimi 12 mesi."
-
-### Perché è differenziante strategicamente
-Genera lock-in naturale: dopo 12-18 mesi l'utente non può "portare via" questa storia cambiando app. L'account ONEFLUX diventa un asset unico e personale. Nessun competitor nel segmento PMI italiano lo offre.
-
-### Prerequisiti temporali
-- 3 mesi di dati → sezione base (top fornitore, categoria più costosa, totale gestito)
-- 6 mesi di dati → stagionalità, trend semestrale
-- 12 mesi di dati → versione completa con confronto anno su anno
-
-### File da toccare
-- `pages/dna_ristorante.py` (nuova pagina)
-- `services/dna_service.py` (nuovo — aggregazione e template narrativi)
-- `utils/sidebar_helper.py` (aggiunta voce menu)
+### Stato
+Da attivare quando il numero di clienti attivi è adeguato. Fondazione tecnica
+(query aggregate) può essere preparata prima, senza attendere la soglia.
 
 ---
 
-## 9. Chef AI — Assistente Contestuale sui Propri Dati
+## Riepilogo priorità
 
-### Il problema che risolve
-Il ristoratore ha domande sui suoi dati che oggi richiedono di navigare in più pagine, filtrare, ricordare numeri e fare calcoli a mente. Domande come "quanto ho speso in carne questo mese rispetto al mese scorso?" richiedono 4-5 passaggi manuali. Con decine di categorie e fornitori, le domande comparative sono sempre un percorso multi-step tedioso.
-
-### Come funziona
-Un box chat in linguaggio naturale dove il ristoratore fa domande sui PROPRI dati reali e riceve risposte immediate. Non è un chatbot generico — conosce le fatture, i fornitori, i margini di quel ristorante specifico. GPT-4.1-mini è già attivo nell'app per la classificazione fatture — zero infrastruttura aggiuntiva.
-
-Esempi di domande reali:
-- "Quanto ho speso in carne questo mese rispetto al mese scorso?"
-- "Quali fornitori mi stanno aumentando i prezzi più rapidamente?"
-- "Sto guadagnando o perdendo sul reparto bevande?"
-- "Quante fatture ho caricato ad aprile e per che importo totale?"
-
-### Come controllare qualità e costi
-
-**Qualità:** modalità default con 6-8 domande predefinite cliccabili (le più frequenti). L'AI risponde con contesto ottimizzato per quella domanda specifica — risposta controllata e precisa. Chat libera disponibile come opzione secondaria avanzata.
-
-**Costi:** rate limiting (max 10 domande/giorno/cliente) + contesto ridotto (solo aggregati, non fatture singole). Costo stimato: ~2-3€/mese per cliente attivo.
-
-### Posizione nell'app — da decidere prima di implementare
-- **Opzione A:** box collassabile in fondo al tab Notifiche
-- **Opzione B:** pagina dedicata "🤖 Chef AI" nel menu laterale
-
-### Perché è il differenziante a lungo termine
-Trasforma ONEFLUX da "software gestionale" a "consulente digitale del ristoratore". Nessun competitor nel segmento PMI italiano della ristorazione lo offre oggi.
-
-### File da toccare
-- `services/chef_ai_service.py` (nuovo)
-- `pages/chef_ai.py` (nuova pagina) oppure inserimento in `pages/5_notifiche_e_gestione.py`
-- Tabella `ai_usage_log` su Supabase per rate limiting (user_id, date, count)
-- `pages/gestione_account.py` (toggle on/off Chef AI)
+| # | Punto | Priorità | Blocco principale |
+|---|-------|----------|--------------------|
+| 1 | Push proattive PWA | Alta — quick win | Verifica fattibilità tecnica Web Push |
+| 2 | Data entry via assistente | Alta — impatto diretto su Salute | Nessuno, pronta per brief |
+| 3 | Benchmark KPI aggregati | Media | Soglia minima clienti nel pool |
