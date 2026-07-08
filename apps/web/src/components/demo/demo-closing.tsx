@@ -9,11 +9,11 @@ import {
   DEMO_WHATSAPP_NUMBER,
 } from "@/lib/demo-steps";
 
-// Schermata di CONVERSIONE. Impianto "incassa la demo":
-//   1. Il disclaimer "dati di esempio" RIBALTATO in aggancio: Marea è finta,
-//      le fatture del prospect no — e i suoi rincari veri nessuno li cerca.
-//   2. Il bottino della demo (220 €/mese, stesso numero del contatore in barra)
-//      come prova concreta di cosa fa il prodotto in 60 secondi.
+// Schermata di CONVERSIONE. Impianto "incassa la demo" (il disclaimer "dati di
+// esempio" è già stato detto in copertina, qui non si ripete):
+//   1. Titolo-domanda che sposta l'attenzione da Marea al SUO locale.
+//   2. Il bottino della demo (220 €/mese) come prova concreta di cosa fa il
+//      prodotto in 60 secondi, e gap di curiosità sui suoi numeri veri.
 //   3. Il messaggio WhatsApp GIÀ SCRITTO in una bolla, firmato dall'assistente
 //      ("come faccio coi fornitori"): richiama il momento più forte della demo
 //      (il messaggio di trattativa) e azzera lo sforzo del click.
@@ -32,21 +32,22 @@ export function DemoClosing({ onRestart }: { onRestart: () => void }) {
           <Wordmark className="text-2xl" />
         </div>
 
-        {/* Il disclaimer diventa l'aggancio */}
+        {/* Titolo-domanda: spinge verso "e sul mio locale?" invece di ribadire
+            reale/finto (già detto in copertina, qui sarebbe ridondante) */}
         <h1 className="mt-8 text-2xl font-bold leading-snug tracking-tight sm:text-3xl">
-          Marea è una demo.
+          E sul tuo locale, quanto
           <br />
-          Il tuo locale no.
+          nasconde la tua gestione?
         </h1>
 
         {/* Incassa la demo: il bottino + il gap di curiosità sui SUOI numeri */}
         <p className="mt-3 text-base text-muted-foreground">
-          Il tuo locale e le tue fatture sono reali. In un minuto ho trovato{" "}
+          Qui ho trovato{" "}
           <span className="font-semibold text-foreground">
             {DEMO_RINCARI_TROVATI} € al mese di rincari
           </span>{" "}
-          — su un ristorante finto. Nelle tue fatture ce ne sono di veri, e oggi
-          nessuno li sta cercando.
+          in un minuto, su dati di esempio. Nelle tue fatture vere nessuno li
+          sta cercando — ancora.
         </p>
 
         {/* Il messaggio già pronto: richiama la trattativa vista in chat */}

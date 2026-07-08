@@ -12,6 +12,7 @@ import { DemoSidebar } from "@/components/demo/demo-sidebar";
 import { DemoChat } from "@/components/demo/demo-chat";
 import { SpotlightTour } from "@/components/demo/spotlight-tour";
 import { DemoTopBar } from "@/components/demo/demo-topbar";
+import { DemoCover } from "@/components/demo/demo-cover";
 import { DemoClosing } from "@/components/demo/demo-closing";
 import { DemoHome } from "@/components/demo/screens/demo-home";
 import { DemoAnalisi } from "@/components/demo/screens/demo-analisi";
@@ -20,6 +21,7 @@ import { DemoMargini } from "@/components/demo/screens/demo-margini";
 import { DEMO_STEPS, type DemoScreen } from "@/lib/demo-steps";
 
 // Orchestratore del Demo Tour. Tiene l'indice dello step corrente:
+//   -1      → copertina d'ingresso (DemoCover), nessun chrome/spotlight
 //   0..N-1  → step di contenuto (chrome dell'app + schermata + spotlight)
 //   N       → schermata di conversione (DemoClosing)
 // Il chrome (sidebar + header) è identico al layout (app), ma inerte: sidebar
@@ -39,9 +41,14 @@ function Screen({ screen, openConfig }: { screen: DemoScreen; openConfig: boolea
 }
 
 export function DemoShell() {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(-1);
   const total = DEMO_STEPS.length;
+  const inCover = index === -1;
   const inClosing = index >= total;
+
+  if (inCover) {
+    return <DemoCover onStart={() => setIndex(0)} />;
+  }
 
   if (inClosing) {
     return <DemoClosing onRestart={() => setIndex(0)} />;
@@ -87,6 +94,16 @@ export function DemoShell() {
           </main>
         </SidebarInset>
       </SidebarProvider>
+
+      {/* Velo dietro la chat: sullo step chat la Home sotto (badge, testi)
+          competeva con le bolle e infastidiva soprattutto su schermi piccoli.
+          z-20: sopra il contenuto (z-0), sotto la chat (z-30) e la topbar (z-70). */}
+      {step.openChat && (
+        <div
+          aria-hidden
+          className="fixed inset-0 z-20 bg-background/70 backdrop-blur-sm"
+        />
+      )}
 
       {/* Chat AI: montata sempre, si "apre" solo nello step dedicato. */}
       <DemoChat open={Boolean(step.openChat)} />

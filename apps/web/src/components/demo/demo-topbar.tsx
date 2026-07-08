@@ -37,15 +37,19 @@ export function DemoTopBar({ step, index, total, onPrev, onNext, onClose, onSkip
     // Sfondo OPACO (bg-background + velo ambra come background-image): niente
     // trasparenze — quello che passa sotto la barra non deve intravedersi mai.
     <div className="relative z-[70] shrink-0 border-b-2 border-amber-400/60 bg-background bg-[linear-gradient(rgba(245,158,11,0.14),rgba(245,158,11,0.14))] px-4 py-2.5 sm:px-6">
-      {/* riga 1: identità demo + avanzamento + controlli. flex-wrap: su mobile
-          (< 375px) etichetta + 3 bottoni non stanno su una riga sola — meglio
-          andare a capo che schiacciare/tagliare i bottoni di navigazione. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-          <Logo variant="icon" size={16} />
-          Demo ONEFLUX
-          <span className="text-amber-500/60">·</span>
-          <span className="font-semibold">Passo {index + 1} di {total}</span>
+      {/* riga 1: identità demo + avanzamento + controlli, SEMPRE su una riga
+          sola (niente wrap): su mobile l'etichetta si accorcia a "2/6" invece
+          di "Demo ONEFLUX · Passo 2 di 6", che è troppo lunga e costringeva i
+          bottoni ad andare a capo in modo disallineato. */}
+      <div className="flex items-center gap-2">
+        <span className="inline-flex min-w-0 shrink items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+          <Logo variant="icon" size={16} className="shrink-0" />
+          <span className="hidden sm:inline">Demo ONEFLUX</span>
+          <span className="hidden text-amber-500/60 sm:inline">·</span>
+          <span className="font-semibold">
+            <span className="sm:hidden">{index + 1}/{total}</span>
+            <span className="hidden sm:inline">Passo {index + 1} di {total}</span>
+          </span>
         </span>
 
         {/* puntini avanzamento */}
