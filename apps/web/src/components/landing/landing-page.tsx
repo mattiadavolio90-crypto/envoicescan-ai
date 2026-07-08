@@ -150,19 +150,22 @@ export function LandingPage() {
               {LANDING.footer.recomaPrefisso} <RecomaLink />
             </span>
           </div>
-          {/* Link demo interattiva, alto a destra: unico ingresso a bassa frizione
-              per chi non e' ancora pronto a scrollare tutto o scrivere su WhatsApp.
-              Solo nella scena 0 (non sticky): sparisce scrollando come il resto.
-              Pill azzurro con alone diffuso dietro (stesso trattamento delle
-              HeroShot/PhoneShot) + bordo pieno: deve leggersi a colpo d'occhio. */}
-          <div className="absolute right-4 top-8 z-10 sm:right-8 sm:top-10">
+          {/* Link demo interattiva: unico ingresso a bassa frizione per chi non
+              e' ancora pronto a scrollare tutto o scrivere su WhatsApp. Solo
+              nella scena 0 (non sticky): sparisce scrollando come il resto.
+              Pill azzurro con alone diffuso dietro + bordo pieno: deve leggersi
+              a colpo d'occhio. Su mobile sta SOTTO la riga "In collaborazione
+              con" (centrato, propria riga): affiancarli in alto a destra alla
+              stessa altezza li faceva sovrapporre e il glow invadeva anche il
+              testo sopra. Da sm in su tornano affiancati come in origine. */}
+          <div className="absolute inset-x-0 top-16 z-10 flex justify-center px-4 sm:inset-x-auto sm:right-8 sm:top-10 sm:block sm:px-0">
             <a
               href={LANDING.nav.demoHref}
-              className="group relative inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/15 px-4 py-2 text-xs font-semibold text-primary transition-all hover:bg-primary/25 sm:text-sm"
+              className="group relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-primary bg-primary/15 px-3.5 py-1.5 text-xs font-semibold text-primary transition-all hover:bg-primary/25 sm:px-4 sm:py-2 sm:text-sm"
             >
               <span
                 aria-hidden
-                className="pointer-events-none absolute -inset-2 -z-10 rounded-full bg-primary/40 blur-xl transition-opacity group-hover:bg-primary/55"
+                className="pointer-events-none absolute -inset-1 -z-10 rounded-full bg-primary/30 blur-lg transition-opacity group-hover:bg-primary/45"
               />
               {LANDING.nav.demoLabel}
               <ArrowRight className="size-3.5" />
