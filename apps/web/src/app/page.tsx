@@ -10,7 +10,7 @@ import { LandingPage } from "@/components/landing/landing-page";
 // con cio' che il visitatore vede aprendo il link). Le keyword SEO restano sotto,
 // invisibili. og:image = /og-image.png statico 1200x630; metadataBase
 // (https://www.oneflux.it nel layout) lo risolve in URL assoluto per gli scraper.
-const OG_TITLE = "Un nuovo modo di pensare alla gestione";
+const OG_TITLE = "Prova ONEFLUX — il tuo assistente per i costi del ristorante";
 const OG_DESC =
   "Gestisci il tuo locale senza diventare un contabile. Ai dati pensa OneFlux — si adatta a te.";
 
