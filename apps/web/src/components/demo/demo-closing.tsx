@@ -14,9 +14,8 @@ import {
 //   1. Titolo-domanda che sposta l'attenzione da Marea al SUO locale.
 //   2. Il bottino della demo (220 €/mese) come prova concreta di cosa fa il
 //      prodotto in 60 secondi, e gap di curiosità sui suoi numeri veri.
-//   3. Il messaggio WhatsApp GIÀ SCRITTO in una bolla, firmato dall'assistente
-//      ("come faccio coi fornitori"): richiama il momento più forte della demo
-//      (il messaggio di trattativa) e azzera lo sforzo del click.
+//   3. Il messaggio WhatsApp GIÀ SCRITTO in una bolla: richiama il momento più
+//      forte della demo (il messaggio di trattativa) e azzera lo sforzo del click.
 //   4. Sprone ONESTO = vicinanza della ricompensa, non scadenze finte:
 //      "domani mattina hai il primo briefing sul tuo locale".
 export function DemoClosing({ onRestart }: { onRestart: () => void }) {
@@ -52,11 +51,7 @@ export function DemoClosing({ onRestart }: { onRestart: () => void }) {
 
         {/* Il messaggio già pronto: richiama la trattativa vista in chat */}
         <div className="mt-8 rounded-2xl border border-border bg-card px-4 py-3 text-left shadow-sm">
-          <p className="text-xs font-medium text-muted-foreground">
-            Il messaggio te l&apos;ho già scritto io — come faccio coi fornitori.
-            Tu devi solo premere invia:
-          </p>
-          <p className="mt-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm leading-snug">
+          <p className="rounded-xl bg-emerald-500/10 px-3 py-2 text-sm leading-snug">
             {DEMO_WHATSAPP_MESSAGE}
           </p>
         </div>
