@@ -100,4 +100,4 @@ export const DEMO_LAST_INDEX = DEMO_STEPS.length; // indice della schermata di c
 // Numero WhatsApp per la CTA di conversione.
 export const DEMO_WHATSAPP_NUMBER = "393488014534";
 export const DEMO_WHATSAPP_MESSAGE =
-  "Ciao! Ho visto la demo di ONEFLUX e vorrei attivare i 7 giorni gratis sul mio locale.";
+  "Ciao! Vorrei attivare la prova gratuita di 7 giorni sul mio locale.";

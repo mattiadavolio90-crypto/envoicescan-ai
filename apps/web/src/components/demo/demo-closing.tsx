@@ -66,14 +66,11 @@ export function DemoClosing({ onRestart }: { onRestart: () => void }) {
           </a>
           {/* Sprone onesto: ricompensa a 12 ore, non countdown */}
           <p className="max-w-sm text-sm text-muted-foreground">
-            Ti risponde chi ha costruito ONEFLUX: ti apre l&apos;account e{" "}
+            E avrai l&apos;account aperto e{" "}
             <span className="font-medium text-foreground">
               domani mattina hai il primo briefing sul tuo locale
             </span>
-            .
-          </p>
-          <p className="text-xs text-muted-foreground">
-            7 giorni gratis · senza carta · risposta in poche ore
+            . Senza carta · risposta in poche ore
           </p>
           <button
             onClick={onRestart}
