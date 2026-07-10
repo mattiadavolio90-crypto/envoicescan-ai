@@ -11,18 +11,25 @@ export const LANDING = {
   nav: {
     accediLabel: "Accedi",
     accediHref: "/login",
-    // Demo interattiva pubblica (route-group (demo)): per chi vuole toccare con
-    // mano prima di scrollare tutta la landing o scrivere su WhatsApp.
-    // "(1 minuto)" dichiara il costo in tempo: abbassa la soglia d'ingresso
-    // più di qualsiasi copy persuasivo.
-    demoLabel: "Guarda la demo (1min)",
+    // Demo interattiva pubblica (route-group (demo)): CTA PRIMARIA dell'hero
+    // (audit CRO 10/07). È il passo a frizione più bassa del funnel e fa il
+    // selling pesante (il bottino 220€): bottone vero centrato, non più pill
+    // nell'angolo. "(1 minuto)" dichiara il costo in tempo: abbassa la soglia
+    // d'ingresso più di qualsiasi copy persuasivo.
+    demoLabel: "Guarda la demo (1 minuto)",
     demoHref: "/demo",
+    // Via secondaria sotto il bottone demo, per chi vuole subito il contatto.
+    demoAltWhatsapp: "oppure scrivici su WhatsApp",
   },
 
   // CTA prova gratuita reale (campi trial_active/trial_activated_at nel DB).
+  // nota/nota2: risk reversal + canale nella lingua del target (il ristoratore
+  // ordina dai fornitori su WhatsApp: il canale è comfort zone, non ripiego).
+  // "si disdice con un messaggio" confermato da Mattia (10/07): dev'essere vero.
   cta: {
     label: "Inizia ora, 7 giorni gratis",
-    nota: "Senza carta, senza obblighi",
+    nota: "Senza carta, senza obblighi · si disdice con un messaggio",
+    nota2: "Ci scrivi come scrivi a un fornitore — risponde una persona vera",
     // Attivazione via WhatsApp: l'account lo configura Mattia.
   },
 
@@ -36,12 +43,14 @@ export const LANDING = {
   // Kicker blu su tutte le scene 1–6; la scena 0 sta NUDA (nessun kicker).
   scene: {
     // SCENA 0 — Aggancio + Specchio (FUSE). Niente kicker: è l'apertura.
-    // sotto + sotto2 entrambi su due righe e TUTTI in azzurro OneFlux (gestito nel
-    // componente). Niente payoff "un unico flusso" sopra (rimosso). Niente trattini.
+    // Gerarchia invertita (audit CRO 10/07): il BENEFICIO sta nell'h1 (controllo
+    // + rimozione del dolore "contabile"), la frase aspirazionale scende a
+    // sottotitolo. L'h1 precedente ("Un nuovo modo di pensare...") era una
+    // frase-template: nessuna categoria, nessun beneficio.
     aggancio: {
       bg: "/landing/bg-marginalita.png",
-      title: "Un nuovo modo di pensare alla gestione",
-      sotto: "Gestisci il tuo locale\nsenza diventare un contabile",
+      title: "Il tuo locale sotto controllo.\nSenza diventare un contabile",
+      sotto: "Un nuovo modo di pensare alla gestione",
       sotto2: "Ai dati pensa OneFlux\nsi adatta a te, non il contrario",
       scrollHint: "scorri",
     },
@@ -66,8 +75,11 @@ export const LANDING = {
       // `censura`: porzione del testo da oscurare (dato sensibile = nome fornitore),
       // stesso trattamento dei nomi nella slide prezzi. Il componente la rende come
       // barretta sfocata/oscurata al posto del testo.
+      // Branzino (non salmone): il salmone è il filo narrativo della DEMO con
+      // prezzi diversi (18,90→21,90 €/kg) — chi fa landing→demo non deve trovare
+      // lo stesso pesce a due prezzi.
       sequenza: [
-        { da: "ai", testo: "Il salmone è costato € 7,29/kg, comprato il 27/05 da ", censura: "ADC", coda: "." },
+        { da: "ai", testo: "Il branzino è costato € 14,90/kg, comprato il 27/05 da ", censura: "ADC", coda: "." },
         { da: "user", testo: "Pensi che vada bene come prezzo di acquisto?" },
         {
           da: "ai",
@@ -142,9 +154,19 @@ export const LANDING = {
     checkup: "1 check-up gratuito dopo il primo mese",
     checkupDettaglio: "maggiori dettagli in Servizi",
     iva: "+IVA",
-    catena: "Più locali? C'è la modalità catena, su ogni piano",
+    // Riga catena sul dolore vero del multi-sede: non essere più in ogni locale.
+    catena: "Più locali? Tutte le sedi confrontate in un colpo d'occhio, anche da casa — modalità catena, su ogni piano",
     // chiarimento sotto la riga catena: i prezzi sono per singola sede.
     perPuntoVendita: "I prezzi esposti sono per punto vendita",
+    // Attivazione in 3 passi sopra la CTA finale: ammazza l'obiezione "sarà
+    // complicato / non sono capace" nel momento esatto in cui riaffiora.
+    attivazione: [
+      "Ci scrivi su WhatsApp",
+      "Colleghiamo noi le tue fatture, tu non configuri niente",
+      "Domani mattina hai il primo briefing",
+    ],
+    // Trust signal GDPR (lavoro compliance già fatto, qui solo esposto).
+    trust: "I tuoi dati restano tuoi · GDPR · server in UE",
     // Invito alla demo prima delle card: gradino a bassa frizione. Tono POSITIVO
     // (mai "non sei sicuro?", che pianta un dubbio dove vuoi la scelta): invita a
     // vederlo dal vivo. Ripete il "1 minuto" dell'hero — dichiara il costo in

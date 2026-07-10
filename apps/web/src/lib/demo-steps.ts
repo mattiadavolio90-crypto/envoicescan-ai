@@ -38,13 +38,15 @@ export type DemoStep = {
 // Il salmone +16% è il filo: briefing → chat → prezzi → margini, DICHIARATO
 // nei testi ("ci torniamo", "eccolo", "dove sono finiti").
 export const DEMO_STEPS: DemoStep[] = [
+  // La presentazione ("Ciao, sono l'assistente") ora vive in copertina
+  // (DemoCover): qui lo step 1 parte subito operativo, senza ripresentarsi.
   {
     id: "home-briefing",
     screen: "home",
     anchorId: "briefing",
-    title: "Ciao, sono l'assistente di ONEFLUX",
+    title: "Ogni mattina ti preparo questo briefing",
     body:
-      "Questo è il briefing che ti preparo ogni mattina: com'è andata e cosa guardare. Oggi ho notato un rincaro sul salmone — tienilo a mente, ci torniamo.",
+      "Com'è andata e cosa guardare, prima che tu lo chieda. Oggi ho notato un rincaro sul salmone — tienilo a mente, ci torniamo.",
   },
   {
     id: "home-chat",
@@ -63,13 +65,16 @@ export const DEMO_STEPS: DemoStep[] = [
     body:
       "Ogni rincaro lo traduco in euro al mese: il salmone +16% vale +148 €, poi prosecco e vermentino — 220 € di rincari in tutto. In cima ciò che pesa di più, con storico e fattura di origine a un click.",
   },
+  // Lingua da bancone, non da commercialista: "MOL al 21%" tradotto in
+  // "su 100 € incassati te ne restano 21" — stesso dato (MOL maggio 21%),
+  // ma il target lo SENTE invece di doverlo decodificare.
   {
     id: "margini-mol",
     screen: "margini",
     anchorId: "mol",
     title: "E qui vedi dove sono finiti",
     body:
-      "Fatturato meno costi, mese per mese: a maggio il MOL è al 21%, tre punti meno di aprile. Ti dico subito quale costo si è mangiato il margine.",
+      "Fatturato meno costi, mese per mese. Su 100 € incassati, a maggio te ne sono rimasti 21 — tre in meno di aprile: ti dico subito quale costo se li è mangiati.",
   },
   {
     id: "analisi-articoli",

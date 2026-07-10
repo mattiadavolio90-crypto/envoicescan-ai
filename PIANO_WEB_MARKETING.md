@@ -99,9 +99,10 @@ parallelo quando serve traffico immediato mentre la SEO organica matura.
 - ✅ `next build` pulito (151 pagine)
 
 ### 3.3 Cosa resta sul Pilastro 1
-- [ ] **Deploy** (regola: solo fuori orario; push-to-main → Vercel+Railway auto).
-- [ ] Dopo deploy: **validare l'OG image** con il Facebook Sharing Debugger e il
-      LinkedIn Post Inspector (forzano il refresh della cache social).
+- [x] **Deploy** (commit `35f8a90` + fix www `cfaa9b9`). ✅ Live e verificato.
+- [x] **Google Search Console** attiva + sitemap inviata (30/06). ✅
+- [ ] **Validare l'OG image** con Facebook Sharing Debugger + LinkedIn Post
+      Inspector (forzano il refresh della cache social). — utile fare ora.
 - [ ] Validare il JSON-LD con il **Rich Results Test** di Google.
 - [ ] (Opzionale) `favicon.ico` oltre all'`icon.svg` già presente, per browser legacy.
 
@@ -145,8 +146,8 @@ parallelo quando serve traffico immediato mentre la SEO organica matura.
       quando pronti) — anche solo frase + nome locale. Oggi: zero.
 - [ ] **Sezione FAQ visibile** (oltre al JSON-LD già fatto): "I miei dati sono al
       sicuro?", "Come arrivano le fatture?", "Funziona col mio gestionale di cassa?".
-- [ ] **Trust signal:** "I tuoi dati restano tuoi · GDPR · server in UE" — il lavoro
-      GDPR è già fatto (`docs/COMPLIANCE_GDPR.md`), va solo esposto.
+- [x] **Trust signal:** "I tuoi dati restano tuoi · GDPR · server in UE" — esposto
+      sotto la CTA finale della landing (10/07).
 - [ ] **CTA WhatsApp tracciabile** (vedi Pilastro 4): oggi i link `wa.me` non danno
       nessun segnale di conversione misurabile.
 
@@ -215,7 +216,10 @@ Continuo                   → misurare in Search Console, raddoppiare sui conte
 
 | Data | Avanzamento |
 |---|---|
-| 29/06/2026 | Documento creato. **Pilastro 1 completato e verificato** in prod locale (metadataBase, OG image, sitemap/robots, JSON-LD, h1, fix proxy `/opengraph-image`). Decisione "landing intatta + hub separato" presa con Mattia. Panorama competitivo rilevato. **Resta: deploy.** |
+| 29/06/2026 | Documento creato. **Pilastro 1 completato e verificato** in prod locale (metadataBase, OG image, sitemap/robots, JSON-LD, h1, fix proxy `/opengraph-image`). Decisione "landing intatta + hub separato" presa con Mattia. Panorama competitivo rilevato. |
+| 29/06/2026 | **Pilastro 1 DEPLOYATO** (commit `35f8a90`). Verificato live: robots/sitemap/og-image `200` su produzione. Scoperto che il dominio reale è **`www.oneflux.it`** (oneflux.it → 308). **Fix www** (commit `cfaa9b9`): allineati metadataBase/sitemap/robots/JSON-LD a www. **DNS gestito su Aruba** (nameserver Aruba, sito su Vercel `76.76.21.21`) — il record TXT di verifica Search Console va su Aruba. |
+| 30/06/2026 | **Google Search Console ATTIVA.** Proprietà tipo "Dominio" `oneflux.it` (copre landing + app + www) verificata via record TXT su Aruba (`google-site-verification=MK3x...`, NON rimuovere mai). **Sitemap `https://www.oneflux.it/sitemap.xml` inviata ed elaborata correttamente** (3 pagine rilevate). Pilastro 4-misurazione: primo blocco fatto. |
+| 10/07/2026 | **Audit CRO landing+demo implementato** (Pilastro 3, calibrato sul target ristoratore medio/catena). Landing: h1 col beneficio ("Il tuo locale sotto controllo. Senza diventare un contabile"), **demo = CTA primaria hero** (bottone centrato, via il pill), CtaButton anche in scena 6 (picco emotivo), note CTA (disdetta con un messaggio + persona vera), attivazione in 3 passi + trust GDPR sopra la CTA finale, riga catena rinforzata, link Recoma smorzato, branzino al posto del salmone in chat scena 1. Demo: cover in voce-assistente con open loop sui soldi, step MOL in lingua da bancone ("su 100 € te ne restano 21"), chiusura col bottone-offerta ("Attiva la prova gratuita — 7 giorni"), bottino annualizzato (2.640 €/anno), frame ROI prezzo + link `/#piani`. **Fix entità legale ovunque: RECOMASYSTEM Srl · P.IVA 12993240154** (era Recoma System S.r.l. IT09599210961 su demo/legali). Restano (Pilastro 3): testimonianze (fine luglio), FAQ visibili, CTA WhatsApp tracciabile; verifica mobile demo + analytics per-step. |
 
 ---
 

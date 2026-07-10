@@ -16,8 +16,11 @@ function waLink(msg: string = WHATSAPP_LANDING_MSG): string {
 
 const CTA = LANDING.cta;
 
-// "Recoma System" rosso e cliccabile verso il sito Recoma. Usato sia in cima alla
+// "Recoma System" cliccabile verso il sito Recoma. Usato sia in cima alla
 // scena 0 sia nel footer: un solo punto di verita' per colore e link.
+// Colore smorzato (non più rosso brand Recoma): il rosso era il primo elemento
+// cromaticamente dominante della pagina e portava FUORI dal sito prima ancora
+// dell'h1. L'avallo resta, il richiamo visivo no.
 function RecomaLink({ className }: { className?: string }) {
   return (
     <a
@@ -25,7 +28,7 @@ function RecomaLink({ className }: { className?: string }) {
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        "font-semibold text-red-500 transition-opacity hover:opacity-80",
+        "font-semibold text-foreground/80 underline-offset-2 transition-colors hover:text-foreground hover:underline",
         className,
       )}
     >
@@ -58,6 +61,7 @@ function CtaButton({ className }: { className?: string }) {
         <ArrowRight className="size-5" />
       </a>
       <span className="text-sm text-muted-foreground">{CTA.nota}</span>
+      <span className="-mt-1 text-sm text-muted-foreground/80">{CTA.nota2}</span>
     </div>
   );
 }
@@ -150,27 +154,6 @@ export function LandingPage() {
               {LANDING.footer.recomaPrefisso} <RecomaLink />
             </span>
           </div>
-          {/* Link demo interattiva: unico ingresso a bassa frizione per chi non
-              e' ancora pronto a scrollare tutto o scrivere su WhatsApp. Solo
-              nella scena 0 (non sticky): sparisce scrollando come il resto.
-              Pill azzurro con alone diffuso dietro + bordo pieno: deve leggersi
-              a colpo d'occhio. Su mobile sta SOTTO la riga "In collaborazione
-              con" (centrato, propria riga): affiancarli in alto a destra alla
-              stessa altezza li faceva sovrapporre e il glow invadeva anche il
-              testo sopra. Da sm in su tornano affiancati come in origine. */}
-          <div className="absolute inset-x-0 top-16 z-10 flex justify-center px-4 sm:inset-x-auto sm:right-8 sm:top-10 sm:block sm:px-0">
-            <a
-              href={LANDING.nav.demoHref}
-              className="group relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-primary bg-primary/15 px-3.5 py-1.5 text-xs font-semibold text-primary transition-all hover:bg-primary/25 sm:px-4 sm:py-2 sm:text-sm"
-            >
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -inset-1 -z-10 rounded-full bg-primary/30 blur-lg transition-opacity group-hover:bg-primary/45"
-              />
-              {LANDING.nav.demoLabel}
-              <ArrowRight className="size-3.5" />
-            </a>
-          </div>
           <Reveal>
             <Logo size={84} glow />
           </Reveal>
@@ -190,6 +173,33 @@ export function LandingPage() {
             <p className="mx-auto mt-4 max-w-xl whitespace-pre-line text-lg font-medium leading-snug text-primary">
               {s.aggancio.sotto2}
             </p>
+          </Reveal>
+          {/* CTA primaria dell'hero = la DEMO (frizione minima, fa il selling
+              lei). WhatsApp resta come via secondaria testuale: chi vuole il
+              contatto diretto lo trova, chi esita ha il gradino da 1 minuto.
+              Il vecchio pill nell'angolo era facile da mancare su desktop. */}
+          <Reveal delay={520}>
+            <div className="mt-9 flex flex-col items-center gap-2.5">
+              <a
+                href={LANDING.nav.demoHref}
+                className="group relative inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-7 py-3.5 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition-all hover:bg-primary/90 hover:shadow-primary/50"
+              >
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -inset-1.5 -z-10 rounded-2xl bg-primary/25 blur-xl transition-opacity group-hover:bg-primary/40"
+                />
+                {LANDING.nav.demoLabel}
+                <ArrowRight className="size-5" />
+              </a>
+              <a
+                href={waLink()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-muted-foreground transition-colors hover:text-primary"
+              >
+                {LANDING.nav.demoAltWhatsapp}
+              </a>
+            </div>
           </Reveal>
           <ScrollHint label={s.aggancio.scrollHint} />
         </Scene>
@@ -306,12 +316,18 @@ export function LandingPage() {
           <Reveal delay={420} variant="zoom">
             <HeroShot src={s.invito.hero} alt="I conti del locale: tutto verde, MOL positivo" wide />
           </Reveal>
-          {/* niente CTA qui: l'unico "Inizia ora" sta sotto i piani (dopo i prezzi),
-              così non ci sono due bottoni ravvicinati. La firma chiude la scena:
-              è il momento emotivo del finale, quindi ha respiro e presenza (grande,
-              con un filo di alone azzurro dietro), non una riga sussurrata. */}
-          <Reveal delay={560}>
-            <p className="relative mx-auto mt-12 max-w-2xl font-display text-2xl font-semibold leading-snug tracking-tight text-primary sm:text-3xl">
+          {/* CTA al picco emotivo (audit CRO 10/07): "Provalo, adesso" + conti
+              tutto verde senza bottone era una perdita secca — chi si convinceva
+              qui doveva attraversare i PREZZI prima di trovare l'azione. Il
+              secondo "Inizia ora" resta sotto i piani, a più di una viewport
+              di distanza: non competono. */}
+          <Reveal delay={520}>
+            <CtaButton className="mt-10" />
+          </Reveal>
+          {/* La firma chiude la scena: momento emotivo del finale, con respiro
+              e presenza (grande, alone azzurro dietro), non una riga sussurrata. */}
+          <Reveal delay={640}>
+            <p className="relative mx-auto mt-10 max-w-2xl font-display text-2xl font-semibold leading-snug tracking-tight text-primary sm:text-3xl">
               <span
                 aria-hidden
                 className="pointer-events-none absolute -inset-x-8 -inset-y-6 -z-10 rounded-full bg-primary/15 blur-3xl"
@@ -327,7 +343,9 @@ export function LandingPage() {
             non blocca il proseguimento. */}
         <div className="snap-start">
         {/* ===== SCENA 7 — Piani ===== */}
-        <section className="border-t border-border/60 px-5 py-24">
+        {/* id="piani": ancora raggiunta dal link "Guarda i piani" in chiusura
+            della demo (/#piani). */}
+        <section id="piani" className="border-t border-border/60 px-5 py-24">
           <div className="mx-auto max-w-5xl">
             <Reveal>
               <h2 className="text-center font-display text-3xl font-bold tracking-tight sm:text-4xl">
@@ -420,9 +438,24 @@ export function LandingPage() {
             <p className="mt-1.5 text-center text-xs text-muted-foreground/70">
               {LANDING.piani.perPuntoVendita}
             </p>
-            <div className="mt-12">
+            {/* Attivazione in 3 passi sopra la CTA finale: l'obiezione "sarà
+                complicato" riaffiora esattamente qui, davanti al bottone. */}
+            <div className="mx-auto mt-12 flex max-w-2xl flex-col items-center gap-2 text-sm text-foreground/85 sm:flex-row sm:justify-center sm:gap-6">
+              {LANDING.piani.attivazione.map((passo, i) => (
+                <span key={passo} className="inline-flex items-center gap-2 text-center">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+                    {i + 1}
+                  </span>
+                  {passo}
+                </span>
+              ))}
+            </div>
+            <div className="mt-8">
               <CtaButton />
             </div>
+            <p className="mt-6 text-center text-xs text-muted-foreground/70">
+              {LANDING.piani.trust}
+            </p>
           </div>
         </section>
 

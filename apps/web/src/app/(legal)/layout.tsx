@@ -30,7 +30,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
 
       <footer className="border-t border-border">
         <div className="mx-auto w-full max-w-3xl px-4 py-6 text-xs text-muted-foreground">
-          Recoma System S.r.l. — P.IVA IT09599210961 ·{" "}
+          RECOMASYSTEM Srl — P.IVA 12993240154 ·{" "}
           <a href="mailto:md@oneflux.it" className="hover:text-foreground">
             md@oneflux.it
           </a>

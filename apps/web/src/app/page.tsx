@@ -12,7 +12,7 @@ import { LandingPage } from "@/components/landing/landing-page";
 // (https://www.oneflux.it nel layout) lo risolve in URL assoluto per gli scraper.
 const OG_TITLE = "Prova ONEFLUX — il tuo assistente per i costi del ristorante";
 const OG_DESC =
-  "Gestisci il tuo locale senza diventare un contabile. Ai dati pensa OneFlux — si adatta a te.";
+  "Il tuo locale sotto controllo, senza diventare un contabile. Ai dati pensa OneFlux — si adatta a te.";
 
 export const metadata: Metadata = {
   title: OG_TITLE,

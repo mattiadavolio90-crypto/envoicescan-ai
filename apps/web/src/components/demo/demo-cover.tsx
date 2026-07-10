@@ -7,10 +7,13 @@ import { DEMO_STEPS } from "@/lib/demo-steps";
 
 // Schermata "0": copertina d'ingresso, PRIMA dello step 1. Chi arriva dal link
 // diretto (WhatsApp/email) o dal tasto in landing non deve trovarsi già dentro
-// il tour senza sapere cos'è: qui si dice in una riga cos'è ("Marea", dati di
-// esempio), quanto dura (N passi) e si dà il via col bottone — niente scroll o
-// spotlight in questa schermata, stessa impaginazione della chiusura per
-// coerenza visiva apertura/chiusura del tour.
+// il tour senza sapere cos'è. Impianto (audit CRO 10/07):
+//   - VOCE ASSISTENTE fin da qui ("Ciao, sono l'assistente"): la presentazione
+//     avviene in copertina, non allo step 1 — narratore unico per tutto il tour.
+//   - OPEN LOOP sui soldi ("quanti soldi trovo nelle fatture"): la promessa che
+//     la chiusura incassa col bottino 220 €. Niente copy da manuale d'uso.
+//   - Bottone BLU brand (primary): il verde è riservato al momento-soldi
+//     (chiusura + skip), così in chiusura è un segnale, non una tinta ricorrente.
 export function DemoCover({ onStart }: { onStart: () => void }) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center bg-gradient-to-br from-sky-500/10 via-background to-background px-6 py-12">
@@ -21,21 +24,22 @@ export function DemoCover({ onStart }: { onStart: () => void }) {
         </div>
 
         <h1 className="mt-8 text-2xl font-bold leading-snug tracking-tight sm:text-3xl">
-          Benvenuto nella demo di ONEFLUX
+          Ciao, sono l&apos;assistente di ONEFLUX
         </h1>
 
         <p className="mt-3 text-base text-muted-foreground">
-          Ti mostro in {DEMO_STEPS.length} passi (circa 1 minuto) come lavora il
-          tuo assistente, su un ristorante di esempio — &quot;Marea&quot;.
+          Dammi 1 minuto: in {DEMO_STEPS.length} passi ti mostro quanti soldi
+          trovo nelle fatture di &quot;Marea&quot;, un ristorante di esempio.
+          Poi immagina le tue.
         </p>
 
         <div className="mt-8 flex flex-col items-center gap-3">
           <Button
             size="lg"
             onClick={onStart}
-            className="h-12 w-full max-w-sm gap-2 bg-emerald-600 text-base text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700"
+            className="h-12 w-full max-w-sm gap-2 text-base shadow-lg shadow-primary/30"
           >
-            Inizia il tour
+            Fammi vedere
             <ArrowRight className="size-5" />
           </Button>
           <p className="text-xs text-muted-foreground">

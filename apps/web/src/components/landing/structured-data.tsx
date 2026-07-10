@@ -44,10 +44,10 @@ export function StructuredData() {
       "@context": "https://schema.org",
       "@type": "Organization",
       name: "ONEFLUX",
-      legalName: "Recoma System S.r.l.",
+      legalName: "RECOMASYSTEM Srl",
       url: "https://www.oneflux.it",
       logo: "https://www.oneflux.it/icon.svg",
-      vatID: "IT09599210961",
+      vatID: "IT12993240154",
       email: "mattia.davolio@recomasystem.it",
       contactPoint: {
         "@type": "ContactPoint",

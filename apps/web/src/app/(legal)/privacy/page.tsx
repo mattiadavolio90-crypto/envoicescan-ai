@@ -17,11 +17,11 @@ export default function PrivacyPage() {
 
       <h2>Titolare del Trattamento</h2>
       <p>
-        <strong>Recoma System S.r.l.</strong>
+        <strong>RECOMASYSTEM Srl</strong>
         <br />
-        Sede legale: Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
+        Sede legale: Via Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
         <br />
-        P.IVA: IT09599210961
+        P.IVA: 12993240154
         <br />
         Email: <a href="mailto:md@oneflux.it">md@oneflux.it</a>
       </p>

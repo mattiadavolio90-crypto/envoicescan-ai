@@ -32,9 +32,9 @@ export const metadata: Metadata = {
   description:
     "Controllo costi, food cost e marginalità per ristoranti. Le fatture entrano da sole, l'assistente le legge e ti dice ogni mattina come va. Prova 7 giorni gratis.",
   applicationName: "ONEFLUX",
-  authors: [{ name: "Recoma System S.r.l." }],
-  creator: "Recoma System S.r.l.",
-  publisher: "Recoma System S.r.l.",
+  authors: [{ name: "Mattia D'Avolio" }],
+  creator: "Mattia D'Avolio",
+  publisher: "RECOMASYSTEM Srl",
   formatDetection: { telephone: false },
 };
 
