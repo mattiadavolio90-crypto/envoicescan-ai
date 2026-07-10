@@ -19,7 +19,7 @@ export default function PrivacyPage() {
       <p>
         <strong>RECOMASYSTEM Srl</strong>
         <br />
-        Sede legale: Via Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
+        Sede legale: Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
         <br />
         P.IVA: 12993240154
         <br />

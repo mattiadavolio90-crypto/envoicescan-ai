@@ -206,7 +206,7 @@ export const LANDING = {
     recomaHref: "https://www.recomasystem.it",
     // Dati legali Recoma sotto la collaborazione (lato sinistro footer).
     recomaRagione: "RECOMASYSTEM Srl",
-    recomaIndirizzo: "Via Leonardo da Vinci 249 · 20090 Trezzano sul Naviglio (MI)",
+    recomaIndirizzo: "Viale Leonardo da Vinci 249 · 20090 Trezzano sul Naviglio (MI)",
     recomaPiva: "P.IVA 12993240154",
     // Copyright OneFlux (lato destro). Per ora solo ©: il marchio e' in corso di
     // deposito (non ancora depositato). NON scrivere "marchio depositato/registrato"

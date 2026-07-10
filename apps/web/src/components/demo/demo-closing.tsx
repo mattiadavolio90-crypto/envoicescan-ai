@@ -28,7 +28,12 @@ export function DemoClosing({ onRestart }: { onRestart: () => void }) {
   const waHref = `https://wa.me/${DEMO_WHATSAPP_NUMBER}?text=${encodeURIComponent(
     DEMO_WHATSAPP_MESSAGE,
   )}`;
-  const rincariAnnui = (DEMO_RINCARI_TROVATI * 12).toLocaleString("it-IT");
+  // Separatore migliaia manuale: toLocaleString("it-IT") non è affidabile su
+  // ogni ambiente (verificato: rendeva "2640" senza punto).
+  const rincariAnnui = String(DEMO_RINCARI_TROVATI * 12).replace(
+    /\B(?=(\d{3})+(?!\d))/g,
+    ".",
+  );
 
   return (
     <div className="flex min-h-svh flex-col items-center justify-center bg-gradient-to-br from-sky-500/10 via-background to-background px-6 py-12">
@@ -50,8 +55,9 @@ export function DemoClosing({ onRestart }: { onRestart: () => void }) {
           <span className="font-semibold text-foreground">
             {DEMO_RINCARI_TROVATI} € al mese di rincari
           </span>{" "}
-          — {rincariAnnui} € l&apos;anno, su dati di esempio. Nelle tue fatture
-          vere nessuno li cerca.
+          — {rincariAnnui}{" "}
+          € l&apos;anno, su dati di esempio. Nelle tue fatture vere nessuno li
+          cerca.
         </p>
 
         {/* CTA unica dominante: il bottone porta l'offerta */}

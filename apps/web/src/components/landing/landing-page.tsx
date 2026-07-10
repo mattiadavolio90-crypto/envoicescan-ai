@@ -60,8 +60,8 @@ function CtaButton({ className }: { className?: string }) {
         {CTA.label}
         <ArrowRight className="size-5" />
       </a>
-      <span className="text-sm text-muted-foreground">{CTA.nota}</span>
-      <span className="-mt-1 text-sm text-muted-foreground/80">{CTA.nota2}</span>
+      <span className="text-center text-sm text-muted-foreground">{CTA.nota}</span>
+      <span className="-mt-1 text-center text-sm text-muted-foreground/80">{CTA.nota2}</span>
     </div>
   );
 }
@@ -440,10 +440,13 @@ export function LandingPage() {
             </p>
             {/* Attivazione in 3 passi sopra la CTA finale: l'obiezione "sarà
                 complicato" riaffiora esattamente qui, davanti al bottone. */}
-            <div className="mx-auto mt-12 flex max-w-2xl flex-col items-center gap-2 text-sm text-foreground/85 sm:flex-row sm:justify-center sm:gap-6">
+            {/* Su mobile lista in colonna allineata a sinistra (col testo su due
+                righe il numerino centrato restava disancorato); da sm in su riga
+                unica centrata. */}
+            <div className="mx-auto mt-12 flex w-fit flex-col gap-2.5 text-sm text-foreground/85 sm:w-auto sm:max-w-2xl sm:flex-row sm:justify-center sm:gap-6">
               {LANDING.piani.attivazione.map((passo, i) => (
-                <span key={passo} className="inline-flex items-center gap-2 text-center">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+                <span key={passo} className="inline-flex items-start gap-2 text-left sm:items-center">
+                  <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary sm:mt-0">
                     {i + 1}
                   </span>
                   {passo}

@@ -17,7 +17,7 @@ export default function TerminiPage() {
       <p>
         Il servizio <strong>ONEFLUX</strong> (di seguito &quot;Servizio&quot;) è una piattaforma SaaS
         di analisi e gestione dei costi per attività di ristorazione, fornita da{" "}
-        <strong>RECOMASYSTEM Srl</strong> (P.IVA: 12993240154, sede legale in Via
+        <strong>RECOMASYSTEM Srl</strong> (P.IVA: 12993240154, sede legale in Viale
         Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)). ONEFLUX è ideato e
         sviluppato da <strong>Mattia D&apos;Avolio</strong>, fondatore e creatore della
         piattaforma.
@@ -140,7 +140,7 @@ export default function TerminiPage() {
       <p>
         <strong>RECOMASYSTEM Srl</strong>
         <br />
-        Sede legale: Via Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
+        Sede legale: Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
         <br />
         P.IVA: 12993240154
         <br />

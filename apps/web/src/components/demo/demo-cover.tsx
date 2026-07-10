@@ -27,10 +27,13 @@ export function DemoCover({ onStart }: { onStart: () => void }) {
           Ciao, sono l&apos;assistente di ONEFLUX
         </h1>
 
+        {/* {" "} esplicito dopo l'espressione: il compilatore JSX (SWC) mangia
+            lo spazio quando il testo che segue va a capo nel sorgente
+            (verificato in prod locale: "in 6passi"). */}
         <p className="mt-3 text-base text-muted-foreground">
-          Dammi 1 minuto: in {DEMO_STEPS.length} passi ti mostro quanti soldi
-          trovo nelle fatture di &quot;Marea&quot;, un ristorante di esempio.
-          Poi immagina le tue.
+          Dammi 1 minuto: in {DEMO_STEPS.length}{" "}
+          passi ti mostro quanti soldi trovo nelle fatture di &quot;Marea&quot;,
+          un ristorante di esempio. Poi immagina le tue.
         </p>
 
         <div className="mt-8 flex flex-col items-center gap-3">
