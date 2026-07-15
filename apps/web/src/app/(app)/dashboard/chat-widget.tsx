@@ -311,15 +311,16 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
       )}
 
       {/* Bottone flottante: da chiuso e' una pillola azzurra "Chiedi a ONEFLUX"
-          (esplicita, per clienti poco tecnici); da aperto si richiude in un tondo
-          con la X per non rubare spazio sopra il pannello. */}
+          (esplicita, per clienti poco tecnici). A riposo e' compatto e semi-
+          trasparente per non coprire il contenuto sottostante; all'hover torna
+          pieno e leggermente ingrandito. Da aperto si richiude in un tondo con la X. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex items-center justify-center gap-2 rounded-full bg-primary text-primary-foreground shadow-lg transition-all",
-          "hover:scale-105 hover:bg-primary/90 active:scale-95",
-          open ? "size-14" : "h-14 px-5",
+          "flex items-center justify-center gap-2 rounded-full bg-primary text-primary-foreground shadow-lg backdrop-blur-sm transition-all",
+          "hover:scale-105 hover:bg-primary hover:opacity-100 active:scale-95",
+          open ? "size-14 opacity-100" : "h-11 px-4 opacity-75",
         )}
         aria-label={open ? "Chiudi chat" : "Apri assistente AI"}
       >
@@ -327,7 +328,7 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
           <X className="size-6" />
         ) : (
           <>
-            <Logo variant="mono" size={26} className="shrink-0" />
+            <Logo variant="mono" size={22} className="shrink-0" />
             <span className="text-sm font-semibold whitespace-nowrap">Chiedi a ONEFLUX</span>
           </>
         )}

@@ -19,6 +19,7 @@ import {
   type GruppoOverview,
   type GruppoBriefing,
   type SalutePV,
+  type RankingPV,
   type MolMensile,
 } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
@@ -330,22 +331,27 @@ function SaluteGruppoCard({
   indice,
   colore,
   salutePv,
+  ranking,
   onApriPV,
   switching,
 }: {
   indice: number;
   colore: ColoreTint;
   salutePv: SalutePV[];
+  ranking: RankingPV[];
   onApriPV: (id: string) => void;
   switching: boolean;
 }) {
   const tint = TINT[colore];
+  // Margine% e fatturato per PV (dal ranking) → mostrati accanto all'indice di salute,
+  // così questa card assorbe il vecchio "Ranking punti vendita" (una lista di PV sola).
+  const rankById = new Map(ranking.map((r) => [r.ristorante_id, r]));
   return (
     <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7", tint.card)}>
       <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
       <div className={cn("pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full blur-3xl", tint.orb2)} />
       <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Salute del gruppo</h2>
+        <h2 className="text-sm font-semibold">Salute e margini per sede</h2>
         <span className="text-xs text-muted-foreground/70">media {salutePv.length} {salutePv.length === 1 ? "sede" : "sedi"}</span>
       </div>
       <div className="flex flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">
@@ -355,6 +361,7 @@ function SaluteGruppoCard({
           <ul className="space-y-1.5">
             {salutePv.map((pv) => {
               const t = TINT[pv.colore];
+              const r = rankById.get(pv.ristorante_id);
               return (
                 <li key={pv.ristorante_id}>
                   <button
@@ -364,8 +371,15 @@ function SaluteGruppoCard({
                     className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3 py-2 text-left text-sm transition-colors hover:bg-background/70 disabled:opacity-50"
                   >
                     <span className={cn("size-2.5 shrink-0 rounded-full", t.dot)} />
-                    <span className="flex-1 truncate">{pv.nome}</span>
-                    <span className={cn("text-sm font-semibold tabular-nums", t.text)}>{pv.indice}</span>
+                    <span className="min-w-0 flex-1 truncate">{pv.nome}</span>
+                    {r && !r.dati_incompleti && r.margine_perc != null ? (
+                      <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
+                        margine {pct(r.margine_perc)}
+                      </span>
+                    ) : r?.dati_incompleti ? (
+                      <span className="shrink-0 text-xs text-muted-foreground/60">dati incompleti</span>
+                    ) : null}
+                    <span className={cn("w-8 text-right text-sm font-semibold tabular-nums", t.text)}>{pv.indice}</span>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
                   </button>
                 </li>
@@ -435,8 +449,6 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
     }
   }
 
-  const { ranking } = overview;
-
   return (
     <div className="space-y-6">
       {/* Header gruppo (lo switch PV è nella sidebar, in basso a sinistra) */}
@@ -463,6 +475,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           indice={overview.salute_indice}
           colore={overview.salute_colore}
           salutePv={overview.salute_pv}
+          ranking={overview.ranking}
           onApriPV={(id) => vaiAlPV(id)}
           switching={switching}
         />
@@ -483,46 +496,6 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
 
       {/* Da vedere nella catena (segnali) */}
       <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />
-
-      {/* Ranking punti vendita per margine % */}
-      <div className="rounded-2xl border bg-card">
-        <div className="flex items-baseline justify-between gap-2 border-b px-5 py-4">
-          <h2 className="text-sm font-semibold">Ranking punti vendita</h2>
-          <span className="flex items-baseline gap-3 text-xs text-muted-foreground">
-            <span>{overview.periodo_label} · per margine %</span>
-            <button type="button" onClick={() => setMarginiOpen(true)} className="font-medium text-primary hover:underline">
-              Confronta →
-            </button>
-          </span>
-        </div>
-        <ul className="divide-y">
-          {ranking.map((pv) => {
-            const t = TINT[(pv.colore as ColoreTint) ?? "grigio"];
-            return (
-              <li key={pv.ristorante_id}>
-                <button
-                  type="button"
-                  disabled={switching}
-                  onClick={() => vaiAlPV(pv.ristorante_id)}
-                  className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-accent disabled:opacity-50"
-                >
-                  <span className={cn("size-2.5 shrink-0 rounded-full", t.dot)} />
-                  <span className="flex-1 truncate text-sm font-medium">{pv.nome}</span>
-                  {pv.dati_incompleti ? (
-                    <span className="text-xs text-muted-foreground">dati incompleti</span>
-                  ) : (
-                    <span className="flex items-baseline gap-3">
-                      <span className={cn("text-sm font-semibold tabular-nums", t.text)}>{pct(pv.margine_perc)}</span>
-                      <span className="w-24 text-right text-xs text-muted-foreground tabular-nums">{euro(pv.fatturato)}</span>
-                    </span>
-                  )}
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
 
       {/* Finestre: caricano i dati solo all'apertura (lazy). */}
       <FinestraSpesaPV open={spesaOpen} onOpenChange={setSpesaOpen} />

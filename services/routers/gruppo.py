@@ -153,6 +153,7 @@ def _build_briefing(
     sev_max: str,
     salute_pv: Optional[List["SalutePV"]] = None,
     incompleti_ids: Optional[set] = None,
+    n_fatture_da_collocare: int = 0,
 ) -> "GruppoBriefing":
     """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
     overview + segnali → coerente per costruzione, tono sobrio.
@@ -205,17 +206,26 @@ def _build_briefing(
             + " i dati di costo ancora da completare: lì il margine non è reale."
         )
 
-    # "Tutto sotto controllo" SOLO se non manca davvero nulla: niente segnali,
-    # salute non rossa, nessuna sede incompleta. Mai dire che va tutto bene mentre
-    # la salute è bassa (la contraddizione segnalata da Mattia).
-    tutto_ok = (n_segnali == 0 and salute_colore != "rosso" and n_incompleti == 0)
-    if n_segnali > 0:
+    # Azione concreta del giorno: fatture di gruppo da collocare (arrivano a nome
+    # della società, l'app non le ha attribuite a un locale). È un'azione che il
+    # cliente può fare SUBITO, non una diagnosi → la mettiamo nel briefing invece
+    # del vecchio rimando-indice "N cose da vedere più sotto" (che ripeteva le card).
+    if n_fatture_da_collocare > 0:
         frasi.append(
-            f"{n_segnali} "
-            + ("cosa da vedere" if n_segnali == 1 else "cose da vedere")
-            + " più sotto."
+            f"Ci sono {n_fatture_da_collocare} "
+            + ("fattura di gruppo da collocare" if n_fatture_da_collocare == 1
+               else "fatture di gruppo da collocare")
+            + ": assegnale a una sede o dividile fra i locali."
         )
-    elif tutto_ok:
+
+    # "Tutto sotto controllo" SOLO se non manca davvero nulla: niente segnali,
+    # salute non rossa, nessuna sede incompleta, niente fatture in sospeso. Mai dire
+    # che va tutto bene mentre la salute è bassa (la contraddizione segnalata da Mattia).
+    tutto_ok = (
+        n_segnali == 0 and salute_colore != "rosso"
+        and n_incompleti == 0 and n_fatture_da_collocare == 0
+    )
+    if tutto_ok:
         frasi.append("Nessuna segnalazione aperta: tutto in ordine.")
 
     if salute_colore == "rosso":
@@ -585,9 +595,24 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # ricalcolo qui → overview resta leggera; i segnali si calcolano alla loro
     # chiamata). Se la cache manca, il briefing parla solo di margini/salute.
     n_segnali, sev_max = _conta_segnali_cache(sb, user_id)
+    # Fatture di gruppo ancora in coda 'da_assegnare' (COUNT leggero, no full-load):
+    # entrano nel briefing come azione concreta del giorno.
+    n_da_collocare = 0
+    try:
+        cnt = (
+            sb.table("fatture_queue")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("status", "da_assegnare")
+            .execute()
+        )
+        n_da_collocare = int(cnt.count or 0)
+    except Exception:
+        n_da_collocare = 0
     briefing = _build_briefing(
         nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max,
         salute_pv=salute_pv, incompleti_ids=incompleti_ids,
+        n_fatture_da_collocare=n_da_collocare,
     )
 
     return GruppoOverviewResponse(

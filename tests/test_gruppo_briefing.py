@@ -77,15 +77,32 @@ def test_salute_rossa_mai_sotto_controllo_anche_senza_segnali():
     assert "salute del gruppo è bassa" in out.narrativa.lower()
 
 
-def test_segnali_aperti_mostra_conteggio():
+def test_segnali_aperti_non_dice_tutto_ok():
+    # Con segnali aperti il briefing NON deve dire "tutto in ordine" (le card sotto
+    # mostrano già i dettagli); e non ripete più il vecchio rimando-indice "N cose
+    # da vedere più sotto" (che duplicava le card).
     ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
     salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
     out = _build_briefing(
         "GRUPPO", ranking, salute_indice=88, salute_colore="verde",
         n_segnali=2, sev_max="warning", salute_pv=salute_pv,
     )
-    assert "2 cose da vedere" in out.narrativa
-    assert "tutto sotto controllo" not in out.narrativa.lower()
+    assert "cose da vedere" not in out.narrativa
+    assert "tutto in ordine" not in out.narrativa.lower()
+
+
+def test_fatture_da_collocare_come_azione():
+    # Le fatture di gruppo in coda entrano nel briefing come azione concreta.
+    ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
+    salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
+    out = _build_briefing(
+        "GRUPPO", ranking, salute_indice=88, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_da_collocare=3,
+    )
+    assert "3 fatture di gruppo da collocare" in out.narrativa
+    # Con fatture in sospeso non si dice "tutto in ordine".
+    assert "tutto in ordine" not in out.narrativa.lower()
 
 
 def test_completezza_per_presenza_dati_non_salute():
