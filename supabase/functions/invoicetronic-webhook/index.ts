@@ -207,15 +207,89 @@ async function sha256Hex(s: string): Promise<string> {
     .join('')
 }
 
-// ─── Utility: decodifica base64 → stringa UTF-8 ───────────────────────────────
-// atob() produce latin-1; serve TextDecoder per UTF-8 corretto (caratteri accentati
-// in nomi/ragioni sociali nei file FatturaPA).
+// ─── Utility: decodifica base64 → bytes grezzi ────────────────────────────────
+// atob() produce latin-1 (1 char = 1 byte); ricostruiamo l'array di byte esatto.
 
-function base64ToUtf8(b64: string): string {
+function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64)
   const buf = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i)
-  return new TextDecoder('utf-8').decode(buf)
+  return buf
+}
+
+// ─── Utility: decodifica base64 → stringa UTF-8 ───────────────────────────────
+// serve TextDecoder per UTF-8 corretto (caratteri accentati in nomi/ragioni
+// sociali nei file FatturaPA).
+
+function base64ToUtf8(b64: string): string {
+  return new TextDecoder('utf-8').decode(base64ToBytes(b64))
+}
+
+// ─── Utility: estrazione XML FatturaPA da busta P7M firmata (CAdES) ────────────
+// Un file .xml.p7m è una struttura CMS/PKCS#7 (CAdES-BES) che INCAPSULA l'XML
+// FatturaPA in chiaro (firma, non cifratura): l'XML è presente per intero, con
+// attorno strati binari di firma/certificati che contengono byte nulli e sequenze
+// non-UTF8. Decodificarlo direttamente come testo produce byte nulli che Postgres
+// rifiuta nelle colonne text (causa dei 500 storici sulle fatture firmate).
+//
+// Strategia: individuiamo gli offset di BYTE di `<?xml … </…FatturaElettronica>`
+// lavorando su una vista latin1 (1 byte = 1 char, nessuna perdita/rimappatura),
+// poi ridecodifichiamo SOLO quella porzione come UTF-8. Robusto al prefisso di
+// namespace variabile (ns0:, ns3:, p:, o assente) e a più occorrenze (prende
+// l'ultima chiusura). Nessuna dipendenza da librerie ASN.1/CMS.
+//
+// Ritorna l'XML estratto, o null se la busta non contiene un XML FatturaPA
+// riconoscibile (in tal caso il chiamante prosegue col fallback esistente).
+
+export function extractXmlFromP7m(bytes: Uint8Array): string | null {
+  // Vista latin1 a blocchi (evita "Maximum call stack" su fromCharCode.apply con
+  // input grandi).
+  let latin1 = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    latin1 += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+
+  const start = latin1.indexOf('<?xml')
+  if (start < 0) return null
+
+  const endRe = /<\/(?:[\w.-]+:)?FatturaElettronica\s*>/g
+  let lastEnd = -1
+  let m: RegExpExecArray | null
+  while ((m = endRe.exec(latin1)) !== null) {
+    lastEnd = m.index + m[0].length
+  }
+  if (lastEnd < 0) return null
+
+  return new TextDecoder('utf-8').decode(bytes.subarray(start, lastEnd))
+}
+
+// ─── Utility: byte grezzi → XML FatturaPA (gestisce XML puro e P7M firmato) ────
+// Rilevamento sul CONTENUTO (prologo "<?xml" + assenza di byte nulli), non sul
+// nome file: così copre anche P7M annunciati con `encoding: Xml`. Se non è XML
+// pulito, tenta l'estrazione dalla busta P7M; se anche quella fallisce, torna
+// alla decodifica diretta (il chiamante applica i suoi guardrail).
+
+export function bytesToXml(bytes: Uint8Array): string {
+  const looksLikeCleanXml =
+    bytes.length >= 5 &&
+    bytes[0] === 0x3c && bytes[1] === 0x3f &&   // "<?"
+    !bytes.includes(0x00)
+
+  if (looksLikeCleanXml) return new TextDecoder('utf-8').decode(bytes)
+
+  return extractXmlFromP7m(bytes) ?? new TextDecoder('utf-8').decode(bytes)
+}
+
+// ─── Utility: decodifica payload fattura (XML semplice o P7M firmato) ──────────
+// Wrapper su bytesToXml che prima porta il payload a byte grezzi in base
+// all'encoding dichiarato dall'API (Base64 vs testo).
+
+function decodePayloadToXml(rawPayload: string, encoding: string): string {
+  const bytes = encoding === 'Base64'
+    ? base64ToBytes(rawPayload)
+    : new TextEncoder().encode(rawPayload)
+  return bytesToXml(bytes)
 }
 
 function toNumberOrNull(value: unknown): number | null {
@@ -500,17 +574,16 @@ export const handler = async (req: Request): Promise<Response> => {
       // ── 6. Ottieni XML (base64 inline o URL remoto) ──────────────────────
       if (typeof data.payload === 'string' && data.payload.length > 0) {
         // API v1 corrente: l'XML arriva in `payload`, plain text o base64.
+        // decodePayloadToXml gestisce sia XML puro sia buste P7M firmate.
         const normalizedPayload = data.payload.trim()
         const encoding = typeof data.encoding === 'string' ? data.encoding : 'Xml'
-        const decoded = encoding === 'Base64'
-          ? base64ToUtf8(normalizedPayload)
-          : normalizedPayload
+        const decoded = decodePayloadToXml(normalizedPayload, encoding)
         if (decoded.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
         xmlContent = decoded
 
       } else if (typeof data.xml_file === 'string' && data.xml_file.length > 0) {
-        // Caso A: XML in base64 direttamente nel response JSON
-        const decoded = base64ToUtf8(data.xml_file)
+        // Caso A: XML in base64 direttamente nel response JSON (anche P7M firmato)
+        const decoded = decodePayloadToXml(data.xml_file, 'Base64')
         if (decoded.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
         xmlContent = decoded
         // Mantieni xml_url se presente (utile per recupero futuro post-purge GDPR)
@@ -521,9 +594,10 @@ export const handler = async (req: Request): Promise<Response> => {
         xmlUrl = data.xml_url
         const xmlResp = await safeFetch(xmlUrl, {}, XML_TIMEOUT_MS)
         if (!xmlResp.ok) throw new Error(`Download XML fallito: HTTP ${xmlResp.status}`)
-        const text = await xmlResp.text()
-        if (text.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
-        xmlContent = text
+        // Leggiamo i byte grezzi: il file remoto può essere XML puro o P7M firmato.
+        const rawBytes = new Uint8Array(await xmlResp.arrayBuffer())
+        if (rawBytes.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
+        xmlContent = bytesToXml(rawBytes)
 
       } else {
         // API risponde OK ma senza XML (caso anomalo, loggare per debug)
@@ -532,6 +606,15 @@ export const handler = async (req: Request): Promise<Response> => {
 
       // ── 7. Estrazione dati dall'XML ────────────────────────────────────────
       if (xmlContent) {
+        // Difesa in profondità: se per un formato non riconosciuto fossero rimasti
+        // byte nulli, l'INSERT in una colonna text di Postgres fallirebbe con 500
+        // (storicamente il caso delle fatture P7M firmate). Li rimuoviamo e lo
+        // segnaliamo in meta per tracciabilità.
+        if (xmlContent.includes(' ')) {
+          xmlContent = xmlContent.replace(/ /g, '')
+          meta.payload_sanitized = 'null_bytes_removed'
+        }
+
         xmlHash = await sha256Hex(xmlContent)
 
         // P.IVA destinatario (necessaria per tenant lookup)
