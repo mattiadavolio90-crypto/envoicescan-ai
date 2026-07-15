@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } fro
 import { toast } from "sonner";
 import {
   AlertTriangle, ArchiveRestore, ArrowUpDown, Calendar, CalendarDays, Check, ChevronDown,
-  ChevronRight, Download, Filter, List, Loader2, MapPin, Pencil, Search, Settings2, Trash2, X,
+  ChevronRight, Download, Filter, List, Loader2, MapPin, Pencil, Search, Settings2, Split, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { Separator } from "@/components/ui/separator";
+import { RipartisciDialog } from "@/components/fatture/ripartisci-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -579,6 +580,7 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
   // resta invisibile: niente UI inutile.
   const [sedi, setSedi] = useState<SedeOpt[]>([]);
   const [spostandoVerso, setSpostandoVerso] = useState<string | null>(null);
+  const [ripartisciOpen, setRipartisciOpen] = useState(false);
 
   useEffect(() => {
     if (doc) { setScadenzaInput(doc.scadenza_effettiva ?? ""); }
@@ -860,6 +862,38 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
                       ))}
                     </div>
                   </div>
+
+                  {/* Ripartisci sul gruppo — costi di struttura comuni (commercialista,
+                      auto…) intestati alla sede legale, divisi fra i punti vendita.
+                      La quota di ogni sede entra nel suo MOL; il documento resta intero. */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <Split className="size-4 text-muted-foreground" />
+                      <Label className="text-sm font-medium">Costo comune del gruppo</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Se questo costo va diviso fra i punti vendita (es. commercialista, auto
+                      aziendale), ripartiscilo sul gruppo.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => setRipartisciOpen(true)}
+                    >
+                      <Split className="size-3.5" />
+                      Ripartisci sul gruppo
+                    </Button>
+                  </div>
+
+                  <RipartisciDialog
+                    open={ripartisciOpen}
+                    onOpenChange={setRipartisciOpen}
+                    fileOrigine={doc.file_origine}
+                    descrizioneDefault={doc.fornitore ?? ""}
+                    sedi={sedi.map((s) => ({ id: s.id, nome: s.nome }))}
+                    onDone={() => onClose()}
+                  />
                 </>
               )}
 

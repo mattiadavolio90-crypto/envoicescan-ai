@@ -1047,7 +1047,7 @@ def fatture_sposta_sede(
 
     owns = (
         sb.table("fatture")
-        .select("id")
+        .select("id, ripartita_su_gruppo")
         .eq("file_origine", fo)
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
@@ -1056,6 +1056,15 @@ def fatture_sposta_sede(
     )
     if not owns.data:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    # Guard: una fattura ripartita sul gruppo non si sposta (avrebbe quote su sedi
+    # diverse dalla sede intestataria → stato incoerente). Prima si toglie il
+    # riparto (DELETE /api/riparto/{id}), poi eventualmente si sposta.
+    if bool(owns.data[0].get("ripartita_su_gruppo")):
+        raise HTTPException(
+            status_code=409,
+            detail="Questa fattura è ripartita sul gruppo: rimuovi prima la ripartizione, poi potrai spostarla.",
+        )
 
     try:
         res = sb.rpc(

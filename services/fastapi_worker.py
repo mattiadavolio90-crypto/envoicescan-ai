@@ -23,6 +23,7 @@ ENV VARS richieste:
 
 import asyncio
 import anyio
+import hashlib
 import io
 import json
 import logging
@@ -1680,12 +1681,18 @@ class UploadInvoiceResponse(BaseModel):
     # Smistamento multi-sede. routing_status: 'auto' = assegnata alla sede dedotta
     # dalla P.IVA (o indirizzo se P.IVA condivisa); 'piva_estranea' = nessuna sede
     # del cliente ha quella P.IVA (scartata); 'ambiguo' = stessa P.IVA, indirizzo
-    # non distingue (scartata). None = fallback sede attiva (P.IVA dest assente).
+    # non distingue -> messa in coda 'da_assegnare' (NON piu' scartata, vedi
+    # queue_id); None = fallback sede attiva (P.IVA dest assente).
     # sede_assegnata = nome sede vinta. cross_sede = la sede dedotta e' diversa da
     # quella attiva (la fattura e' stata spostata su un'altra sede del cliente).
     routing_status: Optional[str] = None
     sede_assegnata: Optional[str] = None
     cross_sede: Optional[bool] = None
+    # Esito 'ambiguo' -> id in fatture_queue (status=da_assegnare): la fattura NON
+    # e' scartata, attende che il cliente/admin scelga la sede o la ripartisca sul
+    # gruppo. queue_created=False se il file era gia' in coda (re-upload idempotente).
+    queue_id: Optional[int] = None
+    queue_created: Optional[bool] = None
 
 
 def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
@@ -1890,16 +1897,93 @@ async def upload_invoice(
             elapsed_ms=int((_time.monotonic() - t0) * 1000),
         )
     if dest["mode"] == "ambiguo":
+        # NON piu' scartata: la P.IVA e' del cliente (guardia superata), solo la
+        # sede e' incerta. La mettiamo in coda 'da_assegnare' — stesso binario del
+        # canale SDI — cosi' il cliente/admin sceglie la sede o la ripartisce sul
+        # gruppo (costi di struttura intestati alla sede legale). L'XML e' gia'
+        # decodificato in `contents`; il worker lo riprendera' dopo l'assegnazione.
+        nome_file_canonico = filename  # per i P7M gia' accorciato a .xml sopra
+        try:
+            _xml_str = contents.decode("utf-8", errors="replace") if isinstance(contents, (bytes, bytearray)) else str(contents)
+        except Exception:
+            _xml_str = None
+        _xml_hash = hashlib.sha256(
+            contents if isinstance(contents, (bytes, bytearray)) else str(contents).encode("utf-8")
+        ).hexdigest()
+        # payload_meta con gli stessi campi che la coda /da-assegnare mostra al
+        # cliente (piva_cedente, numero, data, importo, indirizzo_destinatario) —
+        # estratti dal dict XML gia' parsato sopra. Cosi' l'ambiguo manuale appare
+        # nella CodaDaAssegnare esistente con dati utili, non solo il nome file.
+        _payload_meta_ambiguo = {"nome_file": nome_file_canonico}
+        if indirizzo_dest:
+            _payload_meta_ambiguo["indirizzo_destinatario"] = indirizzo_dest
+        try:
+            from utils.formatters import safe_get as _safe_get
+            _hdr = fattura_dict.get("FatturaElettronicaHeader", {}) if isinstance(fattura_dict, dict) else {}
+            _body = fattura_dict.get("FatturaElettronicaBody", {}) if isinstance(fattura_dict, dict) else {}
+            if isinstance(_body, list):
+                _body = _body[0] if _body else {}
+            _pc = _safe_get(_hdr, ["CedentePrestatore", "DatiAnagrafici", "IdFiscaleIVA", "IdCodice"], default=None, keep_list=False)
+            _num = _safe_get(_body, ["DatiGenerali", "DatiGeneraliDocumento", "Numero"], default=None, keep_list=False)
+            _data = _safe_get(_body, ["DatiGenerali", "DatiGeneraliDocumento", "Data"], default=None, keep_list=False)
+            _imp = _safe_get(_body, ["DatiGenerali", "DatiGeneraliDocumento", "ImportoTotaleDocumento"], default=None, keep_list=False)
+            if _pc:
+                _payload_meta_ambiguo["piva_cedente"] = str(_pc)
+            if _num:
+                _payload_meta_ambiguo["numero_fattura"] = str(_num)
+            if _data:
+                _payload_meta_ambiguo["data_fattura"] = str(_data)
+            if _imp is not None:
+                try:
+                    _payload_meta_ambiguo["importo_totale"] = float(str(_imp).replace(",", "."))
+                except (TypeError, ValueError):
+                    pass
+        except Exception as meta_err:
+            logger.warning("upload AMBIGUO: estrazione payload_meta fallita (non bloccante): %s", meta_err)
+        try:
+            _res = supabase_client.rpc(
+                "accoda_upload_ambiguo",
+                {
+                    "p_user_id": user_id,
+                    "p_piva_raw": piva_dest or "",
+                    "p_xml_content": _xml_str,
+                    "p_nome_file": nome_file_canonico,
+                    "p_indirizzo_raw": indirizzo_dest,
+                    "p_xml_hash": _xml_hash,
+                    "p_payload_meta": _payload_meta_ambiguo,
+                },
+            ).execute()
+            _row = (_res.data or [{}])[0] if isinstance(_res.data, list) else (_res.data or {})
+            _queue_id = _row.get("queue_id")
+            _created = bool(_row.get("created"))
+        except Exception as accoda_err:
+            logger.error(
+                "upload AMBIGUO: accoda_upload_ambiguo fallita user=%s file=%s: %s",
+                user_id, filename, accoda_err,
+            )
+            # Fallback allo scarto esplicito: meglio un errore chiaro che una
+            # fattura persa silenziosamente.
+            return UploadInvoiceResponse(
+                success=False,
+                filename=nome_file_canonico,
+                righe_salvate=0,
+                error="SEDE_AMBIGUA",
+                routing_status="ambiguo",
+                elapsed_ms=int((_time.monotonic() - t0) * 1000),
+            )
         logger.info(
-            "upload multi-sede AMBIGUO: user=%s file=%s best=%.2f gap=%.2f ind=%r",
-            user_id, filename, dest.get("best_score", 0), dest.get("gap", 0), indirizzo_dest,
+            "upload multi-sede AMBIGUO -> coda da_assegnare: user=%s file=%s queue_id=%s created=%s best=%.2f gap=%.2f ind=%r",
+            user_id, filename, _queue_id, _created,
+            dest.get("best_score", 0), dest.get("gap", 0), indirizzo_dest,
         )
         return UploadInvoiceResponse(
-            success=False,
-            filename=filename[:-4] if ext == "p7m" else filename,
+            success=True,
+            filename=nome_file_canonico,
             righe_salvate=0,
-            error="SEDE_AMBIGUA",
+            error=None,
             routing_status="ambiguo",
+            queue_id=_queue_id,
+            queue_created=_created,
             elapsed_ms=int((_time.monotonic() - t0) * 1000),
         )
 
@@ -7539,6 +7623,7 @@ from services.routers.margini import router as _margini_router  # noqa: E402
 from services.routers.workspace import router as _workspace_router  # noqa: E402
 from services.routers.admin import router as _admin_router  # noqa: E402
 from services.routers.gruppo import router as _gruppo_router  # noqa: E402
+from services.routers.riparto import router as _riparto_router  # noqa: E402
 app.include_router(_tag_router)
 app.include_router(_scadenziario_router)
 app.include_router(_cestino_router)
@@ -7550,6 +7635,7 @@ app.include_router(_margini_router)
 app.include_router(_workspace_router)
 app.include_router(_admin_router)
 app.include_router(_gruppo_router)
+app.include_router(_riparto_router)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

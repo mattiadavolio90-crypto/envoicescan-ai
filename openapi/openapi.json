@@ -12,7 +12,7 @@
           "System"
         ],
         "summary": "Health check",
-        "description": "Endpoint di health check — usato da Docker healthcheck e load balancer.",
+        "description": "Endpoint di health check — usato da Docker healthcheck e load balancer.\n\nEspone anche il commit git (RAILWAY_GIT_COMMIT_SHA su Railway) e i flag delle\ncapability recenti, così un GET conferma QUALE codice gira prima di caricare\nfatture (evita di caricare in silenzio su un worker vecchio).",
         "operationId": "health_health_get",
         "responses": {
           "200": {
@@ -266,6 +266,79 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UserPublic"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessione non valida"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/accetta-privacy": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Registra il consenso privacy esplicito (retroattivo per account pre-esistenti)",
+        "description": "Chiamato dal modale bloccante di accettazione privacy per gli account\ncreati prima del 2/6/2026 (introduzione del consenso esplicito in onboarding),\nche non hanno mai avuto occasione di accettare esplicitamente.\nGDPR Art. 7(1): valorizza privacy_accepted_at SOLO su questa chiamata reale,\nmai in automatico altrove.",
+        "operationId": "auth_accetta_privacy_api_auth_accetta_privacy_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Auth Accetta Privacy Api Auth Accetta Privacy Post"
                 }
               }
             }
@@ -10879,7 +10952,7 @@
           "Admin"
         ],
         "summary": "Admin Overview",
-        "description": "KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese.\n\nDifensivo: ogni sezione è isolata. Non solleva mai 500 — ritorna i dati\ncalcolabili e accumula gli errori in `_errors` per diagnosi.",
+        "description": "KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese.\n\nDifensivo: ogni sezione è isolata. Non solleva mai 500 — ritorna i dati\ncalcolabili e accumula gli errori in `_errors` per diagnosi.\n\nCache 45s: sono KPI di monitoraggio, non realtime. Toglie le query aggregate\ndal percorso caldo cosi' i refresh admin non pesano sul threadpool condiviso.",
         "operationId": "admin_overview_api_admin_overview_get",
         "parameters": [
           {
@@ -12428,6 +12501,70 @@
         }
       }
     },
+    "/api/admin/sistema/salute-worker": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Sistema Salute Worker",
+        "description": "Metriche di latenza del worker per rotta (p50/p95/max, richieste lente,\nerrori 5xx), ordinate per p95 discendente.\n\nServe a vedere QUANDO il worker inizia a soffrire: se p95 di /api/auth/me o\ndella Home si avvicina alla soglia lenti (4s) / al timeout SSR (12s), è il\nmomento di potenziare Railway. Dati per-processo, finestra scorrevole in-memory\n(nessun costo, nessun servizio esterno). Si azzerano al riavvio del worker.",
+        "operationId": "admin_sistema_salute_worker_api_admin_sistema_salute_worker_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/sistema/ricavi-import": {
       "get": {
         "tags": [
@@ -12572,7 +12709,7 @@
           "Admin"
         ],
         "summary": "Admin Badges",
-        "description": "Conteggi rapidi per i badge \"da controllare\" sulle card del pannello admin.\n\nSolo COUNT veloci (mai full-load): pensato per girare a ogni apertura della\nhome senza rallentarla. Ogni conteggio è isolato in try/except così un errore\nsu una tabella non azzera gli altri badge.\n\n  - flusso_dati: record fatture_queue in stato problematico (fatture che non\n    entrano nell'app: P.IVA sconosciuta, multi-sede da smistare, errori);\n  - categorie: righe fatture con needs_review (proposte AI da approvare a mano);\n  - richieste: lead marketplace ancora in stato 'nuovo'.",
+        "description": "Conteggi rapidi per i badge \"da controllare\" sulle card del pannello admin.\n\nSolo COUNT veloci (mai full-load): pensato per girare a ogni apertura della\nhome senza rallentarla. Ogni conteggio è isolato in try/except così un errore\nsu una tabella non azzera gli altri badge.\n\n  - flusso_dati: record fatture_queue in stato problematico (fatture che non\n    entrano nell'app: P.IVA sconosciuta, multi-sede da smistare, errori);\n  - categorie: righe fatture con needs_review (proposte AI da approvare a mano);\n  - richieste: lead marketplace ancora in stato 'nuovo'.\n\nCache 45s: i badge girano a ogni apertura home admin e il conteggio categorie\nscandisce prodotti_utente/prodotti_master (paginati). Cacharli li toglie dal\npercorso caldo senza farli divergere in modo percettibile dai contatori pagina.",
         "operationId": "admin_badges_api_admin_badges_get",
         "parameters": [
           {
@@ -13262,6 +13399,89 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/clienti/{cliente_id}/imposta-password": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Imposta Password",
+        "description": "Imposta direttamente la password del cliente (fallback quando la mail non parte).\n\nL'admin sceglie la password e attiva l'account in un colpo solo, senza token\nemail. Valida la stessa compliance GDPR del flusso self-service, invalida ogni\ntoken/sessione pendente e mette `attivo=True`. Vietato sugli account admin.",
+        "operationId": "admin_imposta_password_api_admin_clienti__cliente_id__imposta_password_post",
+        "parameters": [
+          {
+            "name": "cliente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cliente Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImpostaPasswordBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -15393,6 +15613,469 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GruppoChatConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/riparto/da-fattura": {
+      "post": {
+        "summary": "Riparto Da Fattura",
+        "description": "Ripartisce una fattura di struttura sul gruppo. Legge importo e periodo dalla\nfattura, calcola le quote (equa/percentuali), marca le righe ripartite ed esclude\ncosì il costo dalla porta automatica (rientra distribuito dalle quote).",
+        "operationId": "riparto_da_fattura_api_riparto_da_fattura_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RipartoDaFatturaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Da Fattura Api Riparto Da Fattura Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/riparto/manuale": {
+      "post": {
+        "summary": "Riparto Manuale",
+        "description": "Voce di costo di gruppo senza fattura (es. stipendi ufficio).",
+        "operationId": "riparto_manuale_api_riparto_manuale_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RipartoManualeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Manuale Api Riparto Manuale Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/riparto/{riparto_id}": {
+      "patch": {
+        "summary": "Riparto Modifica",
+        "description": "Modifica regola/percentuali/importo di un riparto → ricalcola le quote.",
+        "operationId": "riparto_modifica_api_riparto__riparto_id__patch",
+        "parameters": [
+          {
+            "name": "riparto_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Riparto Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RipartoModificaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Modifica Api Riparto  Riparto Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Riparto Elimina",
+        "description": "Elimina un riparto. Se da fattura → smarca le righe (il costo torna intero\nsulla sede intestataria). Le quote spariscono via ON DELETE CASCADE.",
+        "operationId": "riparto_elimina_api_riparto__riparto_id__delete",
+        "parameters": [
+          {
+            "name": "riparto_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Riparto Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Elimina Api Riparto  Riparto Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/riparto/{riparto_id}/duplica": {
+      "post": {
+        "summary": "Riparto Duplica",
+        "description": "Duplica una voce (di norma manuale, ricorrente) sul mese successivo.",
+        "operationId": "riparto_duplica_api_riparto__riparto_id__duplica_post",
+        "parameters": [
+          {
+            "name": "riparto_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Riparto Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Duplica Api Riparto  Riparto Id  Duplica Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/costi-comuni": {
+      "get": {
+        "summary": "Gruppo Costi Comuni",
+        "description": "Lista dei costi di gruppo del mese con le quote per sede (finestra catena).\nSola lettura, aggregazione SQL. Gating 2+ sedi.",
+        "operationId": "gruppo_costi_comuni_api_gruppo_costi_comuni_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "mese",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Mese"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Gruppo Costi Comuni Api Gruppo Costi Comuni Get"
                 }
               }
             }
@@ -18758,6 +19441,21 @@
         "type": "object",
         "title": "ImpersonaExitBody"
       },
+      "ImpostaPasswordBody": {
+        "properties": {
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "ImpostaPasswordBody"
+      },
       "KpiResponse": {
         "properties": {
           "totale": {
@@ -19382,6 +20080,16 @@
           "costi_spese_auto": {
             "type": "number",
             "title": "Costi Spese Auto",
+            "default": 0.0
+          },
+          "quote_riparto_fb": {
+            "type": "number",
+            "title": "Quote Riparto Fb",
+            "default": 0.0
+          },
+          "quote_riparto_spese": {
+            "type": "number",
+            "title": "Quote Riparto Spese",
             "default": 0.0
           }
         },
@@ -21343,6 +22051,158 @@
         ],
         "title": "RiordinaBody"
       },
+      "RipartoDaFatturaBody": {
+        "properties": {
+          "file_origine": {
+            "type": "string",
+            "title": "File Origine"
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo",
+            "default": "generale"
+          },
+          "regola": {
+            "type": "string",
+            "title": "Regola",
+            "default": "equa"
+          },
+          "percentuali": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentuali"
+          },
+          "salva_regola_fornitore": {
+            "type": "boolean",
+            "title": "Salva Regola Fornitore",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_origine",
+          "descrizione"
+        ],
+        "title": "RipartoDaFatturaBody"
+      },
+      "RipartoManualeBody": {
+        "properties": {
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "importo_totale": {
+            "type": "number",
+            "title": "Importo Totale"
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo",
+            "default": "generale"
+          },
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "regola": {
+            "type": "string",
+            "title": "Regola",
+            "default": "equa"
+          },
+          "percentuali": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentuali"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizione",
+          "importo_totale",
+          "anno",
+          "mese"
+        ],
+        "title": "RipartoManualeBody"
+      },
+      "RipartoModificaBody": {
+        "properties": {
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo"
+          },
+          "regola": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regola"
+          },
+          "percentuali": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentuali"
+          },
+          "importo_totale": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo Totale"
+          }
+        },
+        "type": "object",
+        "title": "RipartoModificaBody"
+      },
       "RiprovaQueueBody": {
         "properties": {
           "queue_id": {
@@ -22682,6 +23542,61 @@
             "type": "integer",
             "title": "Elapsed Ms",
             "default": 0
+          },
+          "routing_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing Status"
+          },
+          "sede_assegnata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sede Assegnata"
+          },
+          "cross_sede": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cross Sede"
+          },
+          "queue_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Id"
+          },
+          "queue_created": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Created"
           }
         },
         "type": "object",
@@ -22763,6 +23678,11 @@
             "type": "string",
             "title": "Tema",
             "default": "dark"
+          },
+          "privacy_accepted": {
+            "type": "boolean",
+            "title": "Privacy Accepted",
+            "default": true
           }
         },
         "type": "object",

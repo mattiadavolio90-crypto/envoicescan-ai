@@ -100,6 +100,11 @@ class MarginiMeseData(BaseModel):
     costo_personale_extra: float = 0.0
     costi_fb_auto: float = 0.0
     costi_spese_auto: float = 0.0
+    # Quote dei costi di gruppo ripartiti su questa sede nel mese. Popolate SOLO
+    # dal motore riparto (riparto_quote_mensili), sola lettura per l'utente: si
+    # sommano ai costi F&B / spese nel MOL ma non sono editabili qui.
+    quote_riparto_fb: float = 0.0
+    quote_riparto_spese: float = 0.0
 
 
 class MarginiAnnoResponse(BaseModel):
@@ -157,7 +162,7 @@ def get_margini(
 
     resp = (
         sb.table("margini_mensili")
-        .select("mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,costo_dipendenti,costo_personale_extra")
+        .select("mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,costo_dipendenti,costo_personale_extra,quote_riparto_fb,quote_riparto_spese")
         .eq("ristorante_id", ristorante_id)
         .eq("anno", anno)
         .execute()
@@ -188,6 +193,8 @@ def get_margini(
             costo_personale_extra=float(s.get("costo_personale_extra") or 0),
             costi_fb_auto=float(costi_fb_auto.get(m, 0)),
             costi_spese_auto=float(costi_spese_auto.get(m, 0)),
+            quote_riparto_fb=float(s.get("quote_riparto_fb") or 0),
+            quote_riparto_spese=float(s.get("quote_riparto_spese") or 0),
         ))
 
     return MarginiAnnoResponse(anno=anno, mesi=mesi)
@@ -209,7 +216,7 @@ def save_margini(
     try:
         ex_resp = (
             sb.table("margini_mensili")
-            .select("mese,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci")
+            .select("mese,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci,quote_riparto_fb,quote_riparto_spese")
             .eq("ristorante_id", ristorante_id)
             .eq("anno", body.anno)
             .execute()
@@ -223,14 +230,19 @@ def save_margini(
     for m in body.mesi:
         if not 1 <= m.mese <= 12:
             continue
+        ec = existing_centri.get(m.mese, {})
+        # Quote riparto: mai dal body (l'utente non le edita qui), sempre dal DB.
+        # Vanno nel MOL come addendo ai costi auto/manuali E ri-scritte invariate
+        # nel record, altrimenti il bulk-upsert postgrest le azzererebbe.
+        q_fb = float(ec.get("quote_riparto_fb") or 0)
+        q_spese = float(ec.get("quote_riparto_spese") or 0)
         fatt_netto = (m.fatturato_iva10 / 1.10) + (m.fatturato_iva22 / 1.22) + m.altri_ricavi_noiva
-        costi_fb_tot = m.costi_fb_auto + m.altri_costi_fb
-        costi_spese_tot = m.costi_spese_auto + m.altri_costi_spese
+        costi_fb_tot = m.costi_fb_auto + m.altri_costi_fb + q_fb
+        costi_spese_tot = m.costi_spese_auto + m.altri_costi_spese + q_spese
         costi_pers = m.costo_dipendenti + m.costo_personale_extra
         primo_margine = fatt_netto - costi_fb_tot
         mol = primo_margine - costi_spese_tot - costi_pers
         fn = fatt_netto if fatt_netto > 0 else 1.0
-        ec = existing_centri.get(m.mese, {})
         records.append({
             "user_id": user_id,
             "ristorante_id": ristorante_id,
@@ -245,6 +257,8 @@ def save_margini(
             "costo_personale_extra": m.costo_personale_extra,
             "costi_fb_auto": m.costi_fb_auto,
             "costi_spese_auto": m.costi_spese_auto,
+            "quote_riparto_fb": q_fb,
+            "quote_riparto_spese": q_spese,
             "fatturato_netto": round(fatt_netto, 2),
             "costi_fb_totali": round(costi_fb_tot, 2),
             "primo_margine": round(primo_margine, 2),

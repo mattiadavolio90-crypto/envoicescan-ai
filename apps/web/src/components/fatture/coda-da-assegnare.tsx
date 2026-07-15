@@ -88,8 +88,10 @@ export function CodaDaAssegnare() {
               : `${items.length} fatture da assegnare a una sede`}
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Non sono riuscito a capire da solo a quale sede appartengono. Scegli tu la sede giusta:
-            la fattura rientra subito in elaborazione.
+            Non sono riuscito a capire da solo a quale sede appartengono (indirizzo della sede legale
+            o non riconosciuto). Scegli la sede giusta e la fattura rientra subito in elaborazione.
+            Se è un <span className="font-medium">costo comune</span> (commercialista, auto…),
+            assegnala a una sede e poi dal suo dettaglio scegli <span className="font-medium">“Ripartisci sul gruppo”</span>.
           </p>
         </div>
       </div>

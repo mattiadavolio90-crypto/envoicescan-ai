@@ -8,6 +8,7 @@ import {
   FileText,
   Info,
   Loader2,
+  MapPin,
   Upload,
   X,
   XCircle,
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-type FileStatus = "waiting" | "uploading" | "success" | "error" | "skipped";
+type FileStatus = "waiting" | "uploading" | "success" | "error" | "skipped" | "queued";
 
 type FileEntry = {
   id: string;
@@ -36,6 +37,7 @@ type FileEntry = {
   skip_motivo?: string;
   sede_assegnata?: string;
   cross_sede?: boolean;
+  queue_created?: boolean;
 };
 
 const ACCEPTED_EXTS = [".xml", ".p7m"];
@@ -44,6 +46,7 @@ const MAX_SIZE_MB = 50;
 function StatusIcon({ status }: { status: FileStatus }) {
   if (status === "uploading") return <Loader2 className="size-4 animate-spin text-primary shrink-0" />;
   if (status === "success") return <CheckCircle className="size-4 text-emerald-500 shrink-0" />;
+  if (status === "queued") return <MapPin className="size-4 text-amber-500 shrink-0" />;
   if (status === "skipped") return <Info className="size-4 text-sky-500 shrink-0" />;
   if (status === "error") return <XCircle className="size-4 text-destructive shrink-0" />;
   return <FileText className="size-4 text-muted-foreground shrink-0" />;
@@ -132,18 +135,26 @@ export function UploadModal() {
         } else {
           const errStr = String(data.error ?? "");
           const isAlreadyLoaded = errStr.startsWith("ALREADY_LOADED:");
-          // Casi "scartata" non-errore (multi-sede): indirizzo non distingue le sedi
-          // a parita' di P.IVA (SEDE_AMBIGUA) o P.IVA non di nessuna sede del cliente
-          // (PIVA_NESSUNA_SEDE). Non sono errori di file -> "skipped" con messaggio.
-          const isSedeAmbigua = errStr === "SEDE_AMBIGUA";
+          // Multi-sede AMBIGUO: la P.IVA e' del cliente ma l'indirizzo non distingue
+          // la sede. NON piu' scartata: il worker l'ha messa in coda 'da_assegnare'
+          // (data.success=true, routing_status='ambiguo', queue_id valorizzato). Il
+          // cliente la assegnera' a una sede o la ripartira' sul gruppo dalla coda.
+          const isQueuedAmbiguo = data.success === true && data.routing_status === "ambiguo";
+          // P.IVA non di nessuna sede del cliente: ancora scartata (guardia intatta).
           const isPivaEstranea = errStr === "PIVA_NESSUNA_SEDE";
-          const isSkip = isAlreadyLoaded || isSedeAmbigua || isPivaEstranea;
+          const isSkip = isAlreadyLoaded || isPivaEstranea;
           setFiles((prev) =>
             prev.map((f) =>
               f.id === entry.id
                 ? {
                     ...f,
-                    status: data.success ? "success" : isSkip ? "skipped" : "error",
+                    status: isQueuedAmbiguo
+                      ? "queued"
+                      : data.success
+                        ? "success"
+                        : isSkip
+                          ? "skipped"
+                          : "error",
                     righe: data.righe_salvate,
                     righe_preesistenti: data.righe_preesistenti ?? 0,
                     fornitore: data.fornitore,
@@ -151,14 +162,13 @@ export function UploadModal() {
                     needs_review: data.needs_review_count,
                     sede_assegnata: data.sede_assegnata,
                     cross_sede: data.cross_sede ?? false,
+                    queue_created: data.queue_created ?? undefined,
                     error: data.success || isSkip ? undefined : data.error,
                     skip_motivo: isAlreadyLoaded
                       ? errStr.slice("ALREADY_LOADED:".length) || "fattura già presente"
-                      : isSedeAmbigua
-                        ? "SEDE_AMBIGUA"
-                        : isPivaEstranea
-                          ? "PIVA_NESSUNA_SEDE"
-                          : undefined,
+                      : isPivaEstranea
+                        ? "PIVA_NESSUNA_SEDE"
+                        : undefined,
                   }
                 : f,
             ),
@@ -183,6 +193,7 @@ export function UploadModal() {
   const pending = files.filter((f) => f.status === "waiting" || f.status === "error").length;
   const success = files.filter((f) => f.status === "success").length;
   const skipped = files.filter((f) => f.status === "skipped").length;
+  const queued = files.filter((f) => f.status === "queued").length;
   const errored = files.filter((f) => f.status === "error").length;
   const totRighe = files.reduce((sum, f) => sum + (f.righe ?? 0), 0);
 
@@ -266,15 +277,20 @@ export function UploadModal() {
                       )}
                     </p>
                   )}
+                  {entry.status === "queued" && (
+                    <p className="text-amber-600 mt-0.5">
+                      {entry.queue_created === false
+                        ? "Già in coda: questa fattura è intestata alla sede legale. Assegnala a un punto vendita o ripartiscila sul gruppo dalla coda “Da assegnare”."
+                        : "Intestata alla sede legale, non a un punto vendita: l’ho messa in coda. Assegnala a un locale o ripartiscila sul gruppo dalla coda “Da assegnare”."}
+                    </p>
+                  )}
                   {entry.status === "skipped" && (
                     <p className="text-amber-600 mt-0.5">
-                      {entry.skip_motivo === "SEDE_AMBIGUA"
-                        ? "Non è stato possibile capire da quale punto vendita arriva questa fattura: caricala selezionando la sede giusta."
-                        : entry.skip_motivo === "PIVA_NESSUNA_SEDE"
-                          ? "Questa fattura è intestata a una partita IVA che non corrisponde a nessuna tua sede: non è stata caricata."
-                          : entry.sede_assegnata
-                            ? `Già caricata in precedenza su ${entry.sede_assegnata}.`
-                            : "Fattura scartata perché già caricata in precedenza."}
+                      {entry.skip_motivo === "PIVA_NESSUNA_SEDE"
+                        ? "Questa fattura è intestata a una partita IVA che non corrisponde a nessuna tua sede: non è stata caricata."
+                        : entry.sede_assegnata
+                          ? `Già caricata in precedenza su ${entry.sede_assegnata}.`
+                          : "Fattura scartata perché già caricata in precedenza."}
                     </p>
                   )}
                   {entry.status === "error" && (
@@ -303,6 +319,11 @@ export function UploadModal() {
             {success > 0 && (
               <span className="text-emerald-600 font-medium">
                 {success === 1 ? "1 caricata" : `${success} caricate`} · {totRighe} righe
+              </span>
+            )}
+            {queued > 0 && (
+              <span className="text-amber-600 font-medium ml-2">
+                · {queued} da assegnare
               </span>
             )}
             {skipped > 0 && (

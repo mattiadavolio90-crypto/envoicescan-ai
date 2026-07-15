@@ -172,3 +172,45 @@ def test_decidi_gap_insufficiente_ambiguo():
     d = decidi_sede("Via Roma 1 20100 Milano", sedi)
     assert d["mode"] == "ambiguo"
     assert d["gap"] < MIN_GAP
+
+
+# ─── decidi_destinazione_upload: contratto ingresso ambiguo vs scartata ────────
+# Blindano il flusso "upload ambiguo -> coda da_assegnare" (fastapi_worker): l'esito
+# 'ambiguo' (P.IVA del cliente, sede incerta) DEVE restare distinto da 'piva_estranea'
+# (P.IVA di nessuna sede). Il primo va in coda, il secondo resta scartato (guardia).
+
+from services.multisede_routing import decidi_destinazione_upload  # noqa: E402
+
+# Due sedi OFFSIDE con la STESSA P.IVA (caso reale), indirizzi diversi.
+_SEDI_UPLOAD = [
+    {"id": "sp", "nome_ristorante": "Sports Pub", "partita_iva": "07863990961",
+     "indirizzo_match": "via losanna 46 20154 milano"},
+    {"id": "ov", "nome_ristorante": "Overtime", "partita_iva": "07863990961",
+     "indirizzo_match": "via luigi settembrini 36 20124 milano"},
+]
+
+
+def test_upload_piva_del_cliente_indirizzo_ignoto_e_ambiguo_non_scartato():
+    # Indirizzo sede legale (Fulvio Testi) -> non matcha nessun locale -> ambiguo.
+    # NON deve essere 'piva_estranea': la P.IVA è del cliente, va messo in coda.
+    d = decidi_destinazione_upload(
+        "07863990961", "Viale Fulvio Testi 68 20126 Milano", _SEDI_UPLOAD, "sp",
+    )
+    assert d["mode"] == "ambiguo"
+
+
+def test_upload_piva_estranea_resta_scartata():
+    # P.IVA che non è di nessuna sede del cliente -> guardia, scartata (non in coda).
+    d = decidi_destinazione_upload(
+        "99999999999", "Via Losanna 46 20154 Milano", _SEDI_UPLOAD, "sp",
+    )
+    assert d["mode"] == "piva_estranea"
+
+
+def test_upload_indirizzo_locale_riconosciuto_auto():
+    # Indirizzo che matcha un locale -> auto, non entra in coda.
+    d = decidi_destinazione_upload(
+        "07863990961", "Via Luigi Settembrini 36 20124 Milano", _SEDI_UPLOAD, "sp",
+    )
+    assert d["mode"] == "auto"
+    assert d["ristorante_id"] == "ov"

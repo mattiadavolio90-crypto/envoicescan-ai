@@ -88,6 +88,10 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
             .eq('ristorante_id', ristorante_id)
             .is_('deleted_at', 'null')
             .neq('categoria', 'Da Classificare')
+            # Anti-doppio-conteggio: le righe di una fattura ripartita sul gruppo
+            # NON entrano nel costo automatico della sede intestataria — il loro
+            # costo rientra distribuito via quote_riparto_* (riparto_quote_mensili).
+            .neq('ripartita_su_gruppo', True)
         )
 
         # Query unica: data_documento OPPURE data_competenza nell'anno.
@@ -631,7 +635,7 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
         centri_cols_present = True
         try:
             resp = supabase.table('margini_mensili') \
-                .select('mese,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci') \
+                .select('mese,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci,quote_riparto_fb,quote_riparto_spese') \
                 .eq('ristorante_id', ristorante_id) \
                 .eq('anno', anno) \
                 .execute()
@@ -692,6 +696,15 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                 rec['fatturato_beverage'] = float(existing.get('fatturato_beverage') or 0)
             else:
                 rec['fatturato_bar'] = float(existing.get('fatturato_bar') or 0)
+
+            # Stessa protezione per le quote di riparto costi di gruppo: sono
+            # popolate dal motore riparto (riparto_quote_mensili), MAI dall'utente.
+            # Se non le re-includessimo, il bulk-upsert dei margini utente le
+            # azzererebbe (stesso comportamento postgrest dei centri). Le rileggiamo
+            # e le riscriviamo invariate. Assenti nello schema legacy → default 0.
+            if centri_cols_present is True:
+                rec['quote_riparto_fb'] = float(existing.get('quote_riparto_fb') or 0)
+                rec['quote_riparto_spese'] = float(existing.get('quote_riparto_spese') or 0)
 
             records.append(rec)
         

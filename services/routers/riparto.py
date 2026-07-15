@@ -1,0 +1,454 @@
+"""Router dominio RIPARTIZIONE COSTI DI GRUPPO (catene multi-sede).
+
+Un costo di struttura intestato alla sede legale (commercialista, auto aziendale,
+ecc.) viene diviso in quote fra i punti vendita, così il MOL di ogni sede è onesto.
+Modello dati: migration 20260714130000_riparto_costi_catena.sql. Motore aggregazione:
+RPC riparto_quote_mensili (20260714140000). Anti-doppio-conteggio: flag
+fatture.ripartita_su_gruppo escluso dal costo automatico (20260714150000).
+
+Principi (PIANO_RIPARTIZIONE_COSTI_CATENA.md 1/7):
+  - La fattura resta sacra: non si spezzano/riscrivono le righe. Le quote vivono in
+    tabelle separate a livello account.
+  - Il motore MOL non cambia: le quote alimentano margini_mensili.quote_riparto_*.
+  - Aggregazione SQL 1×/scrittura, mai loop Python.
+  - Gating 2+ sedi: la ripartizione esiste solo per le catene.
+
+Pattern import lazy identico a fatture.py (evita il ciclo router<->fastapi_worker).
+"""
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
+
+import logging
+logger = logging.getLogger("fastapi_worker")
+
+
+def _fw():
+    import services.fastapi_worker as fw
+    return fw
+
+
+def _resolve_user_from_token(*args, **kwargs):
+    return _fw()._resolve_user_from_token(*args, **kwargs)
+
+
+def _get_supabase_client(*args, **kwargs):
+    return _fw()._get_supabase_client(*args, **kwargs)
+
+
+def _invalidate_fatture_rows_cache(*args, **kwargs):
+    return _fw()._invalidate_fatture_rows_cache(*args, **kwargs)
+
+
+def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
+    return _fw()._verify_worker_key(x_worker_key)
+
+
+router = APIRouter()
+
+
+# ─── Helper condivisi ────────────────────────────────────────────────────────
+
+def _carica_sedi_attive(user_id: str, sb) -> List[Dict[str, Any]]:
+    """Sedi attive dell'account (id, nome). Serve al gating 2+ sedi e al riparto equo."""
+    resp = (
+        sb.table("ristoranti")
+        .select("id, nome_ristorante")
+        .eq("user_id", user_id)
+        .eq("attivo", True)
+        .execute()
+    )
+    return resp.data or []
+
+
+def _quote_equa(importo: float, sedi_ids: List[str]) -> List[Dict[str, Any]]:
+    """Divide importo in parti uguali fra le sedi. L'ultima assorbe l'arrotondamento
+    così la somma delle quote pareggia SEMPRE l'importo totale (no centesimi persi)."""
+    n = len(sedi_ids)
+    if n == 0:
+        return []
+    perc = round(100.0 / n, 3)
+    base = round(importo / n, 2)
+    quote = []
+    acc = 0.0
+    for i, rid in enumerate(sedi_ids):
+        if i < n - 1:
+            q = base
+            p = perc
+        else:
+            q = round(importo - acc, 2)      # l'ultima pareggia
+            p = round(100.0 - perc * (n - 1), 3)
+        acc += q
+        quote.append({"ristorante_id": rid, "quota_perc": p, "quota_importo": q})
+    return quote
+
+
+def _quote_percentuali(importo: float, percentuali: Dict[str, float]) -> List[Dict[str, Any]]:
+    """Quote da percentuali esplicite {ristorante_id: %}. Somma % deve fare ~100.
+    L'ultima quota pareggia l'importo (evita derive di arrotondamento)."""
+    items = [(rid, float(p or 0)) for rid, p in percentuali.items() if float(p or 0) > 0]
+    if not items:
+        return []
+    tot_perc = sum(p for _, p in items)
+    if abs(tot_perc - 100.0) > 0.5:
+        raise HTTPException(status_code=400, detail=f"Le percentuali devono sommare 100 (attuale: {tot_perc:.1f})")
+    quote = []
+    acc = 0.0
+    for i, (rid, p) in enumerate(items):
+        if i < len(items) - 1:
+            q = round(importo * p / 100.0, 2)
+        else:
+            q = round(importo - acc, 2)
+        acc += q
+        quote.append({"ristorante_id": rid, "quota_perc": round(p, 3), "quota_importo": q})
+    return quote
+
+
+def _post_scrittura_riparto(sb, user_id: str, anno: int, mese: int) -> None:
+    """Dopo ogni scrittura riparto: ricalcola le quote mensili (motore SQL) e
+    invalida briefing + cache righe delle sedi coinvolte. Best-effort: un errore
+    di invalidazione non deve far fallire l'operazione principale."""
+    try:
+        sb.rpc("riparto_quote_mensili", {"p_user_id": user_id, "p_anno": anno, "p_mese": mese}).execute()
+    except Exception as exc:
+        logger.error("riparto_quote_mensili fallita user=%s %d-%d: %s", user_id, anno, mese, exc)
+        raise HTTPException(status_code=500, detail="Ricalcolo quote fallito")
+    # Il MOL delle sedi coinvolte è cambiato: invalida briefing di tutte le sedi
+    # del cliente (semplice e sicuro; azione rara) + cache righe fatture.
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        for s in _carica_sedi_attive(user_id, sb):
+            invalidate_today_briefing(user_id, str(s["id"]), sb)
+    except Exception as exc:
+        logger.warning("invalidazione briefing post-riparto fallita (non bloccante): %s", exc)
+    try:
+        _invalidate_fatture_rows_cache()
+    except Exception:
+        pass
+
+
+# ─── Modelli ─────────────────────────────────────────────────────────────────
+
+class RipartoDaFatturaBody(BaseModel):
+    file_origine: str
+    descrizione: str
+    tipo: str = "generale"            # 'generale' | 'fb'
+    regola: str = "equa"             # 'equa' | 'percentuali'
+    percentuali: Optional[Dict[str, float]] = None   # {ristorante_id: %} se regola='percentuali'
+    salva_regola_fornitore: bool = False
+
+
+class RipartoManualeBody(BaseModel):
+    descrizione: str
+    importo_totale: float
+    tipo: str = "generale"
+    anno: int
+    mese: int
+    regola: str = "equa"
+    percentuali: Optional[Dict[str, float]] = None
+
+
+class RipartoModificaBody(BaseModel):
+    tipo: Optional[str] = None
+    regola: Optional[str] = None
+    percentuali: Optional[Dict[str, float]] = None
+    importo_totale: Optional[float] = None       # solo per voci manuali
+
+
+# ─── Gating 2+ sedi ──────────────────────────────────────────────────────────
+
+def _require_catena(user_id: str, sb) -> List[Dict[str, Any]]:
+    sedi = _carica_sedi_attive(user_id, sb)
+    if len(sedi) < 2:
+        raise HTTPException(status_code=400, detail="La ripartizione è disponibile solo per gli account con più sedi.")
+    return sedi
+
+
+# ─── Endpoint ────────────────────────────────────────────────────────────────
+
+@router.post("/api/riparto/da-fattura", dependencies=[Depends(_verify_worker_key)])
+def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Ripartisce una fattura di struttura sul gruppo. Legge importo e periodo dalla
+    fattura, calcola le quote (equa/percentuali), marca le righe ripartite ed esclude
+    così il costo dalla porta automatica (rientra distribuito dalle quote)."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    sedi = _require_catena(user_id, sb)
+    fo = (body.file_origine or "").strip()
+    if not fo:
+        raise HTTPException(status_code=400, detail="file_origine mancante")
+    if body.tipo not in ("generale", "fb"):
+        raise HTTPException(status_code=400, detail="tipo non valido")
+
+    # Carica le righe della fattura (importo = somma totale_riga, periodo da data).
+    righe = (
+        sb.table("fatture")
+        .select("id, totale_riga, data_documento, data_competenza, fornitore, piva_cedente, ripartita_su_gruppo")
+        .eq("user_id", user_id)
+        .eq("file_origine", fo)
+        .is_("deleted_at", "null")
+        .execute()
+    ).data or []
+    if not righe:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    if any(bool(r.get("ripartita_su_gruppo")) for r in righe):
+        raise HTTPException(status_code=409, detail="Fattura già ripartita sul gruppo")
+
+    importo = round(sum(float(r.get("totale_riga") or 0) for r in righe), 2)
+    # Periodo di competenza: data_competenza se presente, altrimenti data_documento.
+    _data = None
+    for r in righe:
+        _data = r.get("data_competenza") or r.get("data_documento")
+        if _data:
+            break
+    if not _data:
+        raise HTTPException(status_code=400, detail="Data fattura assente: impossibile determinare il mese di competenza")
+    anno, mese = int(str(_data)[0:4]), int(str(_data)[5:7])
+    fornitore = next((r.get("piva_cedente") or r.get("fornitore") for r in righe if (r.get("piva_cedente") or r.get("fornitore"))), None)
+
+    if body.regola == "percentuali":
+        quote = _quote_percentuali(importo, body.percentuali or {})
+    else:
+        quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
+
+    # Crea il riparto + quote.
+    ins = (
+        sb.table("riparto_costi_catena")
+        .insert({
+            "user_id": user_id, "origine": "fattura", "file_origine": fo,
+            "fornitore": fornitore, "descrizione": body.descrizione.strip() or "Costo di gruppo",
+            "importo_totale": importo, "tipo": body.tipo, "anno": anno, "mese": mese,
+            "regola": body.regola,
+        })
+        .execute()
+    )
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Creazione riparto fallita")
+    riparto_id = ins.data[0]["id"]
+    sb.table("riparto_costi_catena_quote").insert(
+        [{"riparto_id": riparto_id, **q} for q in quote]
+    ).execute()
+
+    # Marca le righe della fattura come ripartite (anti-doppio-conteggio).
+    sb.table("fatture").update({"ripartita_su_gruppo": True}) \
+        .eq("user_id", user_id).eq("file_origine", fo).is_("deleted_at", "null").execute()
+
+    # Regola fornitore opzionale (propone la volta dopo, non applica).
+    if body.salva_regola_fornitore and fornitore:
+        sb.table("riparto_regole_fornitore").upsert({
+            "user_id": user_id, "fornitore": str(fornitore), "regola": body.regola,
+            "tipo": body.tipo, "percentuali": body.percentuali, "attiva": True,
+        }, on_conflict="user_id,fornitore").execute()
+
+    _post_scrittura_riparto(sb, user_id, anno, mese)
+    return {"ok": True, "riparto_id": riparto_id, "importo": importo, "anno": anno, "mese": mese, "quote": quote}
+
+
+@router.post("/api/riparto/manuale", dependencies=[Depends(_verify_worker_key)])
+def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Voce di costo di gruppo senza fattura (es. stipendi ufficio)."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    sedi = _require_catena(user_id, sb)
+    if body.tipo not in ("generale", "fb"):
+        raise HTTPException(status_code=400, detail="tipo non valido")
+    if not 1 <= body.mese <= 12:
+        raise HTTPException(status_code=400, detail="mese non valido")
+    importo = round(float(body.importo_totale or 0), 2)
+    if importo <= 0:
+        raise HTTPException(status_code=400, detail="importo non valido")
+
+    if body.regola == "percentuali":
+        quote = _quote_percentuali(importo, body.percentuali or {})
+    else:
+        quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
+
+    ins = (
+        sb.table("riparto_costi_catena")
+        .insert({
+            "user_id": user_id, "origine": "manuale", "file_origine": None,
+            "descrizione": body.descrizione.strip() or "Costo di gruppo",
+            "importo_totale": importo, "tipo": body.tipo, "anno": body.anno, "mese": body.mese,
+            "regola": body.regola,
+        })
+        .execute()
+    )
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Creazione riparto fallita")
+    riparto_id = ins.data[0]["id"]
+    sb.table("riparto_costi_catena_quote").insert(
+        [{"riparto_id": riparto_id, **q} for q in quote]
+    ).execute()
+
+    _post_scrittura_riparto(sb, user_id, body.anno, body.mese)
+    return {"ok": True, "riparto_id": riparto_id, "quote": quote}
+
+
+@router.patch("/api/riparto/{riparto_id}", dependencies=[Depends(_verify_worker_key)])
+def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Modifica regola/percentuali/importo di un riparto → ricalcola le quote."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    sedi = _require_catena(user_id, sb)
+
+    rip = (
+        sb.table("riparto_costi_catena").select("*")
+        .eq("id", riparto_id).eq("user_id", user_id).limit(1).execute()
+    ).data
+    if not rip:
+        raise HTTPException(status_code=404, detail="Riparto non trovato")
+    rip = rip[0]
+
+    tipo = body.tipo or rip["tipo"]
+    regola = body.regola or rip["regola"]
+    importo = round(float(body.importo_totale), 2) if body.importo_totale is not None else float(rip["importo_totale"])
+    if rip["origine"] == "fattura" and body.importo_totale is not None:
+        raise HTTPException(status_code=400, detail="L'importo di un riparto da fattura non è modificabile (deriva dal documento)")
+    if tipo not in ("generale", "fb"):
+        raise HTTPException(status_code=400, detail="tipo non valido")
+
+    if regola == "percentuali":
+        quote = _quote_percentuali(importo, body.percentuali or {})
+    else:
+        quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
+
+    sb.table("riparto_costi_catena").update({
+        "tipo": tipo, "regola": regola, "importo_totale": importo,
+    }).eq("id", riparto_id).eq("user_id", user_id).execute()
+    # Rimpiazza le quote (delete + insert).
+    sb.table("riparto_costi_catena_quote").delete().eq("riparto_id", riparto_id).execute()
+    sb.table("riparto_costi_catena_quote").insert(
+        [{"riparto_id": riparto_id, **q} for q in quote]
+    ).execute()
+
+    _post_scrittura_riparto(sb, user_id, int(rip["anno"]), int(rip["mese"]))
+    return {"ok": True, "quote": quote}
+
+
+@router.delete("/api/riparto/{riparto_id}", dependencies=[Depends(_verify_worker_key)])
+def riparto_elimina(riparto_id: str, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Elimina un riparto. Se da fattura → smarca le righe (il costo torna intero
+    sulla sede intestataria). Le quote spariscono via ON DELETE CASCADE."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+
+    rip = (
+        sb.table("riparto_costi_catena").select("id, origine, file_origine, anno, mese")
+        .eq("id", riparto_id).eq("user_id", user_id).limit(1).execute()
+    ).data
+    if not rip:
+        raise HTTPException(status_code=404, detail="Riparto non trovato")
+    rip = rip[0]
+
+    sb.table("riparto_costi_catena").delete().eq("id", riparto_id).eq("user_id", user_id).execute()
+    if rip["origine"] == "fattura" and rip.get("file_origine"):
+        sb.table("fatture").update({"ripartita_su_gruppo": False}) \
+            .eq("user_id", user_id).eq("file_origine", rip["file_origine"]).execute()
+
+    _post_scrittura_riparto(sb, user_id, int(rip["anno"]), int(rip["mese"]))
+    return {"ok": True}
+
+
+@router.post("/api/riparto/{riparto_id}/duplica", dependencies=[Depends(_verify_worker_key)])
+def riparto_duplica(riparto_id: str, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Duplica una voce (di norma manuale, ricorrente) sul mese successivo."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    _require_catena(user_id, sb)
+
+    rip = (
+        sb.table("riparto_costi_catena").select("*")
+        .eq("id", riparto_id).eq("user_id", user_id).limit(1).execute()
+    ).data
+    if not rip:
+        raise HTTPException(status_code=404, detail="Riparto non trovato")
+    rip = rip[0]
+    if rip["origine"] == "fattura":
+        raise HTTPException(status_code=400, detail="Un riparto da fattura non si duplica (la fattura del mese dopo è un altro documento)")
+
+    quote = (
+        sb.table("riparto_costi_catena_quote").select("ristorante_id, quota_perc, quota_importo")
+        .eq("riparto_id", riparto_id).execute()
+    ).data or []
+
+    # Mese successivo (con rollover anno).
+    anno, mese = int(rip["anno"]), int(rip["mese"])
+    if mese == 12:
+        anno_n, mese_n = anno + 1, 1
+    else:
+        anno_n, mese_n = anno, mese + 1
+
+    ins = (
+        sb.table("riparto_costi_catena")
+        .insert({
+            "user_id": user_id, "origine": "manuale", "file_origine": None,
+            "descrizione": rip["descrizione"], "importo_totale": rip["importo_totale"],
+            "tipo": rip["tipo"], "anno": anno_n, "mese": mese_n, "regola": rip["regola"],
+        })
+        .execute()
+    ).data
+    if not ins:
+        raise HTTPException(status_code=500, detail="Duplicazione fallita")
+    nuovo_id = ins[0]["id"]
+    if quote:
+        sb.table("riparto_costi_catena_quote").insert(
+            [{"riparto_id": nuovo_id, **q} for q in quote]
+        ).execute()
+
+    _post_scrittura_riparto(sb, user_id, anno_n, mese_n)
+    return {"ok": True, "riparto_id": nuovo_id, "anno": anno_n, "mese": mese_n}
+
+
+@router.get("/api/gruppo/costi-comuni", dependencies=[Depends(_verify_worker_key)])
+def gruppo_costi_comuni(anno: int, mese: int, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Lista dei costi di gruppo del mese con le quote per sede (finestra catena).
+    Sola lettura, aggregazione SQL. Gating 2+ sedi."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    sedi = _require_catena(user_id, sb)
+    nomi = {str(s["id"]): s.get("nome_ristorante") for s in sedi}
+
+    costi = (
+        sb.table("riparto_costi_catena")
+        .select("id, origine, file_origine, fornitore, descrizione, importo_totale, tipo, regola")
+        .eq("user_id", user_id).eq("anno", anno).eq("mese", mese)
+        .order("descrizione")
+        .execute()
+    ).data or []
+    if not costi:
+        return {"anno": anno, "mese": mese, "costi": [], "totale": 0.0}
+
+    ids = [c["id"] for c in costi]
+    quote = (
+        sb.table("riparto_costi_catena_quote")
+        .select("riparto_id, ristorante_id, quota_perc, quota_importo")
+        .in_("riparto_id", ids)
+        .execute()
+    ).data or []
+    quote_by_rip: Dict[str, List[Dict[str, Any]]] = {}
+    for q in quote:
+        quote_by_rip.setdefault(q["riparto_id"], []).append({
+            "ristorante_id": q["ristorante_id"],
+            "sede": nomi.get(str(q["ristorante_id"]), "—"),
+            "quota_perc": float(q["quota_perc"]),
+            "quota_importo": float(q["quota_importo"]),
+        })
+
+    out = []
+    tot = 0.0
+    for c in costi:
+        tot += float(c["importo_totale"] or 0)
+        out.append({
+            "id": c["id"], "origine": c["origine"], "file_origine": c.get("file_origine"),
+            "fornitore": c.get("fornitore"), "descrizione": c["descrizione"],
+            "importo_totale": float(c["importo_totale"] or 0), "tipo": c["tipo"], "regola": c["regola"],
+            "quote": quote_by_rip.get(c["id"], []),
+        })
+    return {"anno": anno, "mese": mese, "costi": out, "totale": round(tot, 2)}

@@ -13,6 +13,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowRight,
+  Split,
 } from "lucide-react";
 import {
   type GruppoOverview,
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
+import { FinestraCostiGruppo } from "./finestra-costi-gruppo";
 import { CardSegnali } from "./card-segnali";
 import { TagCatenaDialog } from "./gruppo-tag-section";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
@@ -411,6 +413,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
   const [spesaOpen, setSpesaOpen] = useState(false);
   const [marginiOpen, setMarginiOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
+  const [costiGruppoOpen, setCostiGruppoOpen] = useState(false);
 
   // Deep link catena→PV: cambia la sede attiva e naviga alla pagina giusta del PV
   // (default Home). Il "fare" è nel PV; la catena indirizza.
@@ -465,8 +468,9 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
       </div>
 
       {/* Strumenti di confronto del gruppo: si aprono in finestra (no pagine) */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ConfrontoCard icon={Receipt} titolo="Spesa per PV" sottotitolo="Dove spende di più ogni sede" onClick={() => setSpesaOpen(true)} />
+        <ConfrontoCard icon={Split} titolo="Costi di gruppo" sottotitolo="Costi comuni divisi fra le sedi" onClick={() => setCostiGruppoOpen(true)} />
         <ConfrontoCard icon={TrendingUp} titolo="Margini e coperti" sottotitolo="Chi rende di più, per metrica" onClick={() => setMarginiOpen(true)} />
         <ConfrontoCard icon={Tags} titolo="Tag di catena" sottotitolo="Confronta un prodotto fra i PV" onClick={() => setTagOpen(true)} />
       </div>
@@ -516,6 +520,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
 
       {/* Finestre: caricano i dati solo all'apertura (lazy). */}
       <FinestraSpesaPV open={spesaOpen} onOpenChange={setSpesaOpen} />
+      <FinestraCostiGruppo open={costiGruppoOpen} onOpenChange={setCostiGruppoOpen} />
       <FinestraMarginiCoperti open={marginiOpen} onOpenChange={setMarginiOpen} />
       <TagCatenaDialog open={tagOpen} onOpenChange={setTagOpen} />
     </div>
