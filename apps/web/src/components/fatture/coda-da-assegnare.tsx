@@ -152,12 +152,19 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
       <Dialog open={finestraOpen} onOpenChange={setFinestraOpen}>
         <DialogContent className="max-h-[90vh] w-[min(96vw,48rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
           <DialogHeader className="border-b px-5 py-4">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Split className="size-4 text-amber-500" />
-              Gestione fatture di gruppo
-              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-                {items.length}
+            <DialogTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
+              <span className="flex items-center gap-2">
+                <Split className="size-4 text-amber-500" />
+                Gestione fatture di gruppo
+                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                  {items.length}
+                </span>
               </span>
+              {!vuoto && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  Totale <span className="font-semibold tabular-nums text-foreground">{euro(totale)}</span>
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
 

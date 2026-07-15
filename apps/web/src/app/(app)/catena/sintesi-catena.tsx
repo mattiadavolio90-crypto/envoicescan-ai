@@ -372,14 +372,25 @@ function SaluteGruppoCard({
                   >
                     <span className={cn("size-2.5 shrink-0 rounded-full", t.dot)} />
                     <span className="min-w-0 flex-1 truncate">{pv.nome}</span>
-                    {r && !r.dati_incompleti && r.margine_perc != null ? (
+                    {r?.dati_incompleti ? (
+                      // Dati incompleti: l'indice sotto è inaffidabile (calcolato su dati
+                      // parziali), quindi NON lo affianchiamo a un margine% che darebbe
+                      // l'illusione di due numeri attendibili. Il dettaglio di cosa manca
+                      // vive in "Da vedere nella catena" — un solo posto per quell'info.
+                      <span className="shrink-0 text-xs text-muted-foreground/60">dati incompleti</span>
+                    ) : r && r.margine_perc != null ? (
                       <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
                         margine {pct(r.margine_perc)}
                       </span>
-                    ) : r?.dati_incompleti ? (
-                      <span className="shrink-0 text-xs text-muted-foreground/60">dati incompleti</span>
                     ) : null}
-                    <span className={cn("w-8 text-right text-sm font-semibold tabular-nums", t.text)}>{pv.indice}</span>
+                    <span
+                      className={cn(
+                        "w-8 text-right text-sm font-semibold tabular-nums",
+                        r?.dati_incompleti ? "text-muted-foreground/40" : t.text,
+                      )}
+                    >
+                      {pv.indice}
+                    </span>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
                   </button>
                 </li>
@@ -464,6 +475,13 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
       {/* Briefing di gruppo — la voce macro, in cima */}
       <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
 
+      {/* Gestione fatture di gruppo: subito dopo il briefing, che la nomina per
+          primo come azione del giorno. Fatture che l'app non ha saputo attribuire a
+          un locale (P.IVA condivisa) — un tema di gruppo, non delle Home PV.
+          Si auto-nasconde se non ci sono sedi multiple o la coda è già vuota
+          (torna null solo per contesto "pv"; qui mostra lo stato vuoto positivo). */}
+      <CodaDaAssegnare contesto="catena" />
+
       {/* Due card grandi come la Home PV: Conti + Salute */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
         <ContiGruppoCard
@@ -489,13 +507,12 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
         <ConfrontoCard icon={Tags} titolo="Tag di catena" sottotitolo="Confronta un prodotto fra i PV" onClick={() => setTagOpen(true)} />
       </div>
 
-      {/* Gestione fatture di gruppo: fatture che l'app non ha saputo attribuire a un
-          locale (P.IVA condivisa). È un tema di gruppo → sta qui, non nelle Home PV.
-          Si auto-nasconde se non ci sono sedi multiple. */}
-      <CodaDaAssegnare contesto="catena" />
-
       {/* Da vedere nella catena (segnali) */}
       <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />
+
+      {/* Spazio riservato in fondo: il FAB "Chiedi a ONEFLUX" (fixed bottom-right)
+          altrimenti resta sovrapposto all'ultimo contenuto durante lo scroll. */}
+      <div aria-hidden className="h-20" />
 
       {/* Finestre: caricano i dati solo all'apertura (lazy). */}
       <FinestraSpesaPV open={spesaOpen} onOpenChange={setSpesaOpen} />

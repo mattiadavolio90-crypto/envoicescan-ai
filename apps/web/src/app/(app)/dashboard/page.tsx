@@ -157,6 +157,10 @@ export default async function DashboardPage() {
         <Suspense fallback={<div className="grid gap-4 lg:grid-cols-2"><CardSkeleton /><CardSkeleton /></div>}>
           <KpiSaluteBlock />
         </Suspense>
+
+        {/* Spazio riservato in fondo: il FAB "Chiedi a ONEFLUX" (fixed bottom-right)
+            altrimenti resta sovrapposto all'ultimo contenuto durante lo scroll. */}
+        <div aria-hidden className="h-20" />
       </div>
 
       <Suspense fallback={null}>
