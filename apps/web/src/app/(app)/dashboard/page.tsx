@@ -75,9 +75,16 @@ async function KpiSaluteBlock() {
   //   - entrambi null  => il worker NON ha risposto (cold-start/timeout): retry,
   //     non lo stato "vuoto", altrimenti a un cliente con dati veri comparirebbe
   //     "Nessuna fattura" finche' non ricarica.
-  //   - dati ricevuti ma kpi.has_data === false => cliente davvero senza fatture.
+  //   - dati ricevuti ma kpi.has_data === false => cliente davvero senza fatture
+  //     per il mese/periodo mostrato. Indipendente da salute: un account puo'
+  //     avere un indice di salute (calcolato su altre componenti) e ZERO dati di
+  //     margine allo stesso tempo (es. cliente nuovo appena partito) — prima
+  //     questo caso lasciava un buco silenzioso a destra, perche' KpiBlock si
+  //     autonullifica su has_data=false (component-level) MA vuotoReale
+  //     richiedeva anche !salute per scattare, quindi non mostrava mai il
+  //     messaggio quando salute era presente. Ora i due stati sono indipendenti.
   const workerGiu = !salute && !kpi;
-  const vuotoReale = kpi?.has_data === false && !salute;
+  const kpiVuoto = kpi?.has_data === false;
 
   if (workerGiu) {
     return (
@@ -91,26 +98,21 @@ async function KpiSaluteBlock() {
   }
 
   return (
-    <>
-      {(salute || kpi) && (
-        <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-          {salute && <SaluteCard salute={salute} />}
-          {kpi && <KpiBlock kpi={kpi} />}
-        </div>
-      )}
-
-      {vuotoReale && (
+    <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+      {salute && <SaluteCard salute={salute} />}
+      {kpi && !kpiVuoto && <KpiBlock kpi={kpi} />}
+      {kpiVuoto && (
         <Card>
-          <CardContent className="py-16 text-center">
+          <CardContent className="flex h-full flex-col items-center justify-center py-16 text-center">
             <Receipt className="mx-auto size-12 text-muted-foreground/40" />
-            <p className="mt-4 text-base font-medium">Nessuna fattura registrata</p>
+            <p className="mt-4 text-base font-medium">Nessun dato di margine per questo mese</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Carica le tue prime fatture dalla sezione Upload per iniziare.
+              Carica le fatture e inserisci il fatturato per vedere qui food cost e MOL.
             </p>
           </CardContent>
         </Card>
       )}
-    </>
+    </div>
   );
 }
 
