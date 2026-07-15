@@ -289,7 +289,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           stimata da dizionario/regole — la classificazione definitiva arriva quando il
           documento viene collocato su un locale). */}
       <Dialog open={anteprima !== null} onOpenChange={(v) => !v && setAnteprima(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] w-[min(96vw,64rem)] max-w-none overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Anteprima fattura {anteprima?.numero_fattura ? `n° ${anteprima.numero_fattura}` : ""}

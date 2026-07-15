@@ -327,7 +327,7 @@ def admin_lista_clienti():
     try:
         for i in range(0, len(user_ids), 100):
             chunk = user_ids[i : i + 100]
-            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo").in_("user_id", chunk).execute()
+            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo").eq("sede_tecnica", False).in_("user_id", chunk).execute()
             for r in (resp.data or []):
                 sedi_map.setdefault(r["user_id"], []).append(r)
     except Exception:
@@ -2575,7 +2575,7 @@ class ModificaSedeBody(BaseModel):
 @router.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 def admin_lista_sedi(cliente_id: str):
     sb = get_supabase_client()
-    resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("user_id", cliente_id).execute()
+    resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("user_id", cliente_id).eq("sede_tecnica", False).execute()
     return resp.data or []
 
 
