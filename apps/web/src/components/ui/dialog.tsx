@@ -81,13 +81,10 @@ function DialogContent({
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
-  // pr-8: riserva lo spazio della X di chiusura (assoluta, top-2 right-2 in
-  // DialogContent) così un titolo con contenuto a destra (badge, totale,
-  // select) non ci finisce mai sotto.
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 pr-8", className)}
+      className={cn("flex flex-col gap-2", className)}
       {...props}
     />
   )
@@ -121,11 +118,16 @@ function DialogFooter({
 }
 
 function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
+  // mr-8: riserva lo spazio della X di chiusura (assoluta, top-2 right-2,
+  // size-7 → occupa fino a ~36px dal bordo del popup). Sul TITLE stesso e non
+  // su DialogHeader: un className passato dal chiamante (es. "px-5") sovrascrive
+  // il padding dell'header via twMerge, quindi lì il margine si perdeva in
+  // silenzio ogni volta che un titolo aveva contenuto a destra (badge, totale).
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "text-base leading-none font-medium",
+        "mr-8 text-base leading-none font-medium",
         className
       )}
       {...props}

@@ -16085,6 +16085,80 @@
         }
       }
     },
+    "/api/riparto/anteprima-coda": {
+      "get": {
+        "summary": "Riparto Anteprima Coda",
+        "description": "Anteprima delle righe di una fattura ancora in coda 'da_assegnare' (non ancora\ncollocata su un locale, quindi non presente in `fatture`).\n\nRiusa estrai_dati_da_xml() in SOLA LETTURA passando user_id=None: la funzione fa\nparsing/sconti/note di credito (puro calcolo, nessun I/O) + categorizza_con_memoria\n(memoria/regole/dizionario, NESSUNA chiamata AI) SENZA memoria personalizzata né\nscritture (carica_memoria_completa e flush_pending_local_saves sono entrambe\ncondizionate a user_id essere valorizzato — con None restano no-op). La categoria\nmostrata è quindi una stima (dizionario/regole globali), non la classificazione\ndefinitiva che il documento riceverà una volta collocato su un locale.",
+        "operationId": "riparto_anteprima_coda_api_riparto_anteprima_coda_get",
+        "parameters": [
+          {
+            "name": "queue_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Queue Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Anteprima Coda Api Riparto Anteprima Coda Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/riparto/regola-fornitore": {
       "get": {
         "summary": "Riparto Regola Fornitore",

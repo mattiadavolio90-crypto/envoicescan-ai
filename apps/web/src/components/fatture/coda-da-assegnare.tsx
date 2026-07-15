@@ -24,12 +24,28 @@ type FatturaDaAssegnare = {
 
 type Sede = { id: string; nome: string; indirizzo: string | null; comune: string | null };
 
+type RigaAnteprima = {
+  numero_riga: number;
+  descrizione: string;
+  quantita: number | null;
+  unita_misura: string | null;
+  prezzo_unitario: number | null;
+  iva_percentuale: number | null;
+  totale_riga: number | null;
+  categoria: string | null;
+};
+
 function euro(n: number): string {
   return new Intl.NumberFormat("it-IT", {
     style: "currency",
     currency: "EUR",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+function fmtEuro4(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `€ ${new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2 }).format(v)}`;
 }
 
 // Coda delle fatture che l'app non ha saputo attribuire a un locale (P.IVA condivisa
@@ -50,6 +66,33 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   const [ripartisci, setRipartisci] = useState<FatturaDaAssegnare | null>(null);
   const [finestraOpen, setFinestraOpen] = useState(false);
   const [anteprima, setAnteprima] = useState<FatturaDaAssegnare | null>(null);
+  const [righeAnteprima, setRigheAnteprima] = useState<RigaAnteprima[]>([]);
+  const [anteprimaDisponibile, setAnteprimaDisponibile] = useState(true);
+  const [loadingAnteprima, setLoadingAnteprima] = useState(false);
+
+  useEffect(() => {
+    if (!anteprima) return;
+    let alive = true;
+    setLoadingAnteprima(true);
+    setRigheAnteprima([]);
+    setAnteprimaDisponibile(true);
+    fetch(`/api/riparto/anteprima-coda?queue_id=${anteprima.queue_id}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!alive) return;
+        setRigheAnteprima(data?.righe ?? []);
+        setAnteprimaDisponibile(data?.disponibile !== false);
+      })
+      .catch(() => {
+        if (alive) setAnteprimaDisponibile(false);
+      })
+      .finally(() => {
+        if (alive) setLoadingAnteprima(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [anteprima]);
 
   useEffect(() => {
     if (contesto !== "catena") return;
@@ -237,52 +280,95 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
         </DialogContent>
       </Dialog>
 
-      {/* Anteprima essenziale: la fattura è ancora in coda (non ancora processata,
-          nessuna riga prodotto disponibile) → mostriamo i metadati del documento
-          già noti dal webhook, in un formato leggibile. Il dettaglio riga-per-riga
-          (come in Gestione Fatture) richiede un parser XML dedicato non ancora
-          pronto — pianificato dopo il go-live. */}
+      {/* Anteprima: righe reali della fattura, stesso dettaglio di Gestione Fatture.
+          Parsing "a caldo" dal documento ancora in coda (nessuna scrittura, categoria
+          stimata da dizionario/regole — la classificazione definitiva arriva quando il
+          documento viene collocato su un locale). */}
       <Dialog open={anteprima !== null} onOpenChange={(v) => !v && setAnteprima(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Anteprima fattura</DialogTitle>
+            <DialogTitle>
+              Anteprima fattura {anteprima?.numero_fattura ? `n° ${anteprima.numero_fattura}` : ""}
+            </DialogTitle>
           </DialogHeader>
           {anteprima && (
-            <div className="space-y-3 text-sm">
-              <p className="text-xs text-muted-foreground">
-                Documento ancora in coda: il dettaglio riga per riga sarà disponibile dopo averlo
-                collocato.
-              </p>
-              <dl className="space-y-2 rounded-lg border bg-muted/30 p-3">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Fornitore</dt>
-                  <dd className="text-right font-medium">
-                    {anteprima.fornitore ? `P.IVA ${anteprima.fornitore}` : "—"}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Numero</dt>
-                  <dd className="text-right font-medium">{anteprima.numero_fattura ?? "—"}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Data</dt>
-                  <dd className="text-right font-medium">{anteprima.data_fattura ?? "—"}</dd>
-                </div>
-                <div className="flex justify-between gap-3 border-t pt-2">
-                  <dt className="text-muted-foreground">Importo</dt>
-                  <dd className="text-right text-base font-bold tabular-nums">
-                    {anteprima.importo_totale != null
-                      ? `€ ${anteprima.importo_totale.toLocaleString("it-IT", { minimumFractionDigits: 2 })}`
-                      : "—"}
-                  </dd>
-                </div>
-                {anteprima.indirizzo_destinatario && (
-                  <div className="border-t pt-2">
-                    <dt className="text-muted-foreground">Indirizzo in fattura</dt>
-                    <dd className="mt-0.5 font-medium">{anteprima.indirizzo_destinatario}</dd>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {anteprima.fornitore && <span>P.IVA {anteprima.fornitore}</span>}
+                {anteprima.data_fattura && <span>{anteprima.data_fattura}</span>}
+                {anteprima.indirizzo_destinatario && <span>{anteprima.indirizzo_destinatario}</span>}
+              </div>
+
+              <div className="rounded-lg border overflow-hidden">
+                {loadingAnteprima ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Caricamento…
+                  </div>
+                ) : !anteprimaDisponibile ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Documento non ancora disponibile per l&apos;anteprima. Riprova tra poco o
+                    colloca la fattura per vederla in Gestione Fatture.
+                  </div>
+                ) : righeAnteprima.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Nessuna riga trovata.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">Descrizione</th>
+                          <th className="text-right px-3 py-2 text-muted-foreground font-medium">Qtà</th>
+                          <th className="text-left px-3 py-2 text-muted-foreground font-medium">UM</th>
+                          <th className="text-right px-3 py-2 text-muted-foreground font-medium">Prezzo</th>
+                          <th className="text-right px-3 py-2 text-muted-foreground font-medium">IVA%</th>
+                          <th className="text-right px-3 py-2 text-muted-foreground font-medium">Totale</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {righeAnteprima.map((r, i) => (
+                          <tr key={i} className="hover:bg-muted/20">
+                            <td className="px-3 py-2 max-w-[260px]">
+                              <p className="truncate" title={r.descrizione}>{r.descrizione}</p>
+                              {r.categoria && (
+                                <p className="text-[10px] text-muted-foreground">{r.categoria}</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{r.quantita ?? "—"}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{r.unita_misura ?? ""}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {r.prezzo_unitario != null ? `€${r.prezzo_unitario.toFixed(4)}` : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                              {r.iva_percentuale ?? "—"}%
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                              {fmtEuro4(r.totale_riga)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="border-t bg-muted/30">
+                        <tr>
+                          <td colSpan={5} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
+                            Totale
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold">
+                            {fmtEuro4(righeAnteprima.reduce((s, r) => s + (r.totale_riga || 0), 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
                 )}
-              </dl>
+              </div>
+              {!loadingAnteprima && anteprimaDisponibile && righeAnteprima.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Categoria stimata: il documento non è ancora collocato su un locale, la
+                  classificazione definitiva arriva dopo.
+                </p>
+              )}
             </div>
           )}
         </DialogContent>

@@ -510,6 +510,83 @@ def riparto_duplica(riparto_id: str, authorization: Optional[str] = Header(None)
     return {"ok": True, "riparto_id": nuovo_id, "anno": anno_n, "mese": mese_n}
 
 
+class _AnteprimaFileLike:
+    """File-like minimale per estrai_dati_da_xml() (accetta UploadedFile/BytesIO con
+    .name, .read()). Non tocca disco né rete: wrappa i bytes già in memoria."""
+
+    def __init__(self, data: bytes, name: str):
+        import io
+        self.name = name
+        self._buf = io.BytesIO(data)
+
+    def read(self, *a):
+        return self._buf.read(*a)
+
+    def seek(self, *a):
+        return self._buf.seek(*a)
+
+
+@router.get("/api/riparto/anteprima-coda", dependencies=[Depends(_verify_worker_key)])
+def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Anteprima delle righe di una fattura ancora in coda 'da_assegnare' (non ancora
+    collocata su un locale, quindi non presente in `fatture`).
+
+    Riusa estrai_dati_da_xml() in SOLA LETTURA passando user_id=None: la funzione fa
+    parsing/sconti/note di credito (puro calcolo, nessun I/O) + categorizza_con_memoria
+    (memoria/regole/dizionario, NESSUNA chiamata AI) SENZA memoria personalizzata né
+    scritture (carica_memoria_completa e flush_pending_local_saves sono entrambe
+    condizionate a user_id essere valorizzato — con None restano no-op). La categoria
+    mostrata è quindi una stima (dizionario/regole globali), non la classificazione
+    definitiva che il documento riceverà una volta collocato su un locale."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+
+    q = (
+        sb.table("fatture_queue")
+        .select("id, user_id, xml_content, payload_meta")
+        .eq("id", queue_id)
+        .eq("user_id", user_id)
+        .eq("status", "da_assegnare")
+        .limit(1)
+        .execute()
+    ).data
+    if not q:
+        raise HTTPException(status_code=404, detail="Fattura non trovata in coda")
+    row = q[0]
+    xml_content = row.get("xml_content")
+    if not xml_content:
+        return {"righe": [], "disponibile": False}
+
+    from services.invoice_service import estrai_dati_da_xml
+    nome_file = (row.get("payload_meta") or {}).get("nome_file") or f"queue_{queue_id}.xml"
+    xml_bytes = xml_content.encode("utf-8") if isinstance(xml_content, str) else xml_content
+    file_like = _AnteprimaFileLike(xml_bytes, nome_file)
+
+    try:
+        righe = estrai_dati_da_xml(file_like, user_id=None) or []
+    except Exception as exc:
+        logger.warning("Anteprima coda: parsing fallito queue_id=%s: %s", queue_id, exc)
+        return {"righe": [], "disponibile": False}
+
+    return {
+        "disponibile": True,
+        "righe": [
+            {
+                "numero_riga": r.get("Numero_Riga"),
+                "descrizione": r.get("Descrizione"),
+                "quantita": r.get("Quantita"),
+                "unita_misura": r.get("Unita_Misura"),
+                "prezzo_unitario": r.get("Prezzo_Unitario"),
+                "iva_percentuale": r.get("IVA_Percentuale"),
+                "totale_riga": r.get("Totale_Riga"),
+                "categoria": r.get("Categoria"),
+            }
+            for r in righe
+        ],
+    }
+
+
 @router.get("/api/riparto/regola-fornitore", dependencies=[Depends(_verify_worker_key)])
 def riparto_regola_fornitore(fornitore: str, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Regola di ripartizione memorizzata per un fornitore ("fai sempre così").
