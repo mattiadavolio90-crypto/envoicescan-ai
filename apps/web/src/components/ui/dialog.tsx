@@ -81,10 +81,13 @@ function DialogContent({
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  // pr-8: riserva lo spazio della X di chiusura (assoluta, top-2 right-2 in
+  // DialogContent) così un titolo con contenuto a destra (badge, totale,
+  // select) non ci finisce mai sotto.
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("flex flex-col gap-2 pr-8", className)}
       {...props}
     />
   )

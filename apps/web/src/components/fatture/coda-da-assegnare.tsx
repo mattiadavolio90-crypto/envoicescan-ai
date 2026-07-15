@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin, Split, CheckCircle2, ChevronRight } from "lucide-react";
+import { MapPin, Split, CheckCircle2, ChevronRight, Eye } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +49,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   const [busy, setBusy] = useState<number | null>(null);
   const [ripartisci, setRipartisci] = useState<FatturaDaAssegnare | null>(null);
   const [finestraOpen, setFinestraOpen] = useState(false);
+  const [anteprima, setAnteprima] = useState<FatturaDaAssegnare | null>(null);
 
   useEffect(() => {
     if (contesto !== "catena") return;
@@ -169,12 +170,8 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           </DialogHeader>
 
           <div className="max-h-[calc(90vh-5rem)] overflow-auto px-5 pb-5 pt-3">
-            <p className="mb-3 text-sm text-muted-foreground">
-              Sono arrivate a nome della società ma non indicano il locale: dimmi tu dove vanno.
-              Se è di un singolo locale, scegli la sede. Se è un{" "}
-              <span className="font-medium">costo comune</span> (commercialista, auto…), premi{" "}
-              <span className="font-medium">“Dividi tra i locali”</span>: il costo viene diviso fra
-              le sedi senza finire dentro un solo locale.
+            <p className="mb-3 text-sm font-medium text-amber-600 dark:text-amber-400">
+              Scegli la sede se è di un locale, oppure “Dividi tra i locali” se è un costo comune.
             </p>
 
             {items.length === 0 ? (
@@ -205,6 +202,13 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                     )}
 
                     <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        onClick={() => setAnteprima(f)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
+                      >
+                        <Eye className="size-3.5" />
+                        Anteprima
+                      </button>
                       {sedi.map((s) => (
                         <button
                           key={s.id}
@@ -230,6 +234,57 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
               </ul>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Anteprima essenziale: la fattura è ancora in coda (non ancora processata,
+          nessuna riga prodotto disponibile) → mostriamo i metadati del documento
+          già noti dal webhook, in un formato leggibile. Il dettaglio riga-per-riga
+          (come in Gestione Fatture) richiede un parser XML dedicato non ancora
+          pronto — pianificato dopo il go-live. */}
+      <Dialog open={anteprima !== null} onOpenChange={(v) => !v && setAnteprima(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Anteprima fattura</DialogTitle>
+          </DialogHeader>
+          {anteprima && (
+            <div className="space-y-3 text-sm">
+              <p className="text-xs text-muted-foreground">
+                Documento ancora in coda: il dettaglio riga per riga sarà disponibile dopo averlo
+                collocato.
+              </p>
+              <dl className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Fornitore</dt>
+                  <dd className="text-right font-medium">
+                    {anteprima.fornitore ? `P.IVA ${anteprima.fornitore}` : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Numero</dt>
+                  <dd className="text-right font-medium">{anteprima.numero_fattura ?? "—"}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Data</dt>
+                  <dd className="text-right font-medium">{anteprima.data_fattura ?? "—"}</dd>
+                </div>
+                <div className="flex justify-between gap-3 border-t pt-2">
+                  <dt className="text-muted-foreground">Importo</dt>
+                  <dd className="text-right text-base font-bold tabular-nums">
+                    {anteprima.importo_totale != null
+                      ? `€ ${anteprima.importo_totale.toLocaleString("it-IT", { minimumFractionDigits: 2 })}`
+                      : "—"}
+                  </dd>
+                </div>
+                {anteprima.indirizzo_destinatario && (
+                  <div className="border-t pt-2">
+                    <dt className="text-muted-foreground">Indirizzo in fattura</dt>
+                    <dd className="mt-0.5 font-medium">{anteprima.indirizzo_destinatario}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
