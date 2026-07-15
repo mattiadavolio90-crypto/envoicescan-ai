@@ -364,6 +364,7 @@ def _resolve_gruppo(authorization: Optional[str]):
         .select("id, nome_ristorante")
         .eq("user_id", user_id)
         .eq("attivo", True)
+        .eq("sede_tecnica", False)   # la sede-contenitore "Costi comuni" non è un PV del gruppo
         .order("created_at")
         .execute()
     )

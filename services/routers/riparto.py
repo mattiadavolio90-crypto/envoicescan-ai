@@ -51,12 +51,15 @@ router = APIRouter()
 # ─── Helper condivisi ────────────────────────────────────────────────────────
 
 def _carica_sedi_attive(user_id: str, sb) -> List[Dict[str, Any]]:
-    """Sedi attive dell'account (id, nome). Serve al gating 2+ sedi e al riparto equo."""
+    """Sedi REALI attive dell'account (id, nome). Serve al gating 2+ sedi e al riparto
+    equo. Esclude la sede tecnica "Costi comuni di gruppo" (sede_tecnica=TRUE): non è
+    un locale reale, non deve contare nel gating né ricevere quote."""
     resp = (
         sb.table("ristoranti")
         .select("id, nome_ristorante")
         .eq("user_id", user_id)
         .eq("attivo", True)
+        .eq("sede_tecnica", False)
         .execute()
     )
     return resp.data or []
@@ -136,6 +139,15 @@ class RipartoDaFatturaBody(BaseModel):
     tipo: str = "generale"            # 'generale' | 'fb'
     regola: str = "equa"             # 'equa' | 'percentuali'
     percentuali: Optional[Dict[str, float]] = None   # {ristorante_id: %} se regola='percentuali'
+    salva_regola_fornitore: bool = False
+
+
+class RipartoDaCodaBody(BaseModel):
+    queue_id: int
+    descrizione: str
+    tipo: str = "generale"            # 'generale' | 'fb'
+    regola: str = "equa"             # 'equa' | 'percentuali'
+    percentuali: Optional[Dict[str, float]] = None
     salva_regola_fornitore: bool = False
 
 
@@ -234,6 +246,99 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
     # Marca le righe della fattura come ripartite (anti-doppio-conteggio).
     sb.table("fatture").update({"ripartita_su_gruppo": True}) \
         .eq("user_id", user_id).eq("file_origine", fo).is_("deleted_at", "null").execute()
+
+    # Regola fornitore opzionale (propone la volta dopo, non applica).
+    if body.salva_regola_fornitore and fornitore:
+        sb.table("riparto_regole_fornitore").upsert({
+            "user_id": user_id, "fornitore": str(fornitore), "regola": body.regola,
+            "tipo": body.tipo, "percentuali": body.percentuali, "attiva": True,
+        }, on_conflict="user_id,fornitore").execute()
+
+    _post_scrittura_riparto(sb, user_id, anno, mese)
+    return {"ok": True, "riparto_id": riparto_id, "importo": importo, "anno": anno, "mese": mese, "quote": quote}
+
+
+@router.post("/api/riparto/da-coda", dependencies=[Depends(_verify_worker_key)])
+def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Ripartisce una fattura ambigua DIRETTAMENTE dalla coda 'da_assegnare', senza
+    prima assegnarla a un locale reale. UX istantanea (decisione utente): registra
+    subito il riparto dai metadati della coda (importo/fornitore/periodo/file_origine
+    sono in payload_meta), poi chiama assegna_fattura_a_sede_tecnica → il worker atterra
+    la fattura sulla sede tecnica "Costi comuni di gruppo" (mai un locale reale) e la
+    auto-marca ripartita_su_gruppo. Nessun locale reale viene toccato."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    sedi = _require_catena(user_id, sb)
+    if body.tipo not in ("generale", "fb"):
+        raise HTTPException(status_code=400, detail="tipo non valido")
+
+    # Record di coda del chiamante, ancora da_assegnare (guard ownership + stato).
+    q = (
+        sb.table("fatture_queue")
+        .select("id, user_id, status, piva_raw, payload_meta")
+        .eq("id", body.queue_id)
+        .eq("user_id", user_id)
+        .eq("status", "da_assegnare")
+        .limit(1)
+        .execute()
+    ).data
+    if not q:
+        raise HTTPException(status_code=404, detail="Fattura non trovata in coda o già assegnata")
+    meta = (q[0].get("payload_meta") or {})
+
+    # Metadati necessari: importo, periodo, file_origine (già salvati dal webhook /
+    # dall'upload ambiguo). Fallback prudente se qualcuno manca.
+    fo = str(meta.get("nome_file") or "").strip()
+    if not fo:
+        raise HTTPException(status_code=400, detail="Metadati fattura incompleti (nome_file assente): impossibile ripartire dalla coda")
+    try:
+        importo = round(float(meta.get("importo_totale") or 0), 2)
+    except (TypeError, ValueError):
+        importo = 0.0
+    if importo <= 0:
+        raise HTTPException(status_code=400, detail="Importo fattura non disponibile nei metadati: impossibile ripartire dalla coda")
+    _data = str(meta.get("data_fattura") or "").strip()
+    if len(_data) < 7:
+        raise HTTPException(status_code=400, detail="Data fattura non disponibile nei metadati: impossibile determinare il mese di competenza")
+    anno, mese = int(_data[0:4]), int(_data[5:7])
+    fornitore = meta.get("piva_cedente") or None
+
+    if body.regola == "percentuali":
+        quote = _quote_percentuali(importo, body.percentuali or {})
+    else:
+        quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
+
+    # 1) Registra subito il riparto + quote (UX istantanea).
+    ins = (
+        sb.table("riparto_costi_catena")
+        .insert({
+            "user_id": user_id, "origine": "fattura", "file_origine": fo,
+            "fornitore": fornitore, "descrizione": body.descrizione.strip() or "Costo di gruppo",
+            "importo_totale": importo, "tipo": body.tipo, "anno": anno, "mese": mese,
+            "regola": body.regola,
+        })
+        .execute()
+    )
+    if not ins.data:
+        raise HTTPException(status_code=500, detail="Creazione riparto fallita")
+    riparto_id = ins.data[0]["id"]
+    sb.table("riparto_costi_catena_quote").insert(
+        [{"riparto_id": riparto_id, **qq} for qq in quote]
+    ).execute()
+
+    # 2) Marcatura idempotente per file_origine: colpisce 0 righe finché la fattura non
+    # è atterrata (innocuo); il worker la marca comunque all'atterraggio (sede tecnica).
+    sb.table("fatture").update({"ripartita_su_gruppo": True}) \
+        .eq("user_id", user_id).eq("file_origine", fo).is_("deleted_at", "null").execute()
+
+    # 3) Assegna alla sede tecnica → il worker processa la fattura in background.
+    res = sb.rpc("assegna_fattura_a_sede_tecnica", {"p_queue_id": body.queue_id}).execute()
+    sede_tecnica_id = res.data if res.data else None
+    if not sede_tecnica_id:
+        # Race: assegnata da un altro click. Il riparto resta valido (idempotente sul
+        # file_origine); non è un errore per la UI.
+        logger.warning("assegna_fattura_a_sede_tecnica no-op per queue_id=%s (race)", body.queue_id)
 
     # Regola fornitore opzionale (propone la volta dopo, non applica).
     if body.salva_regola_fornitore and fornitore:

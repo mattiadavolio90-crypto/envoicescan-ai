@@ -13,21 +13,26 @@ import { Button } from "@/components/ui/button";
 
 type Sede = { id: string; nome: string };
 
-// Dialog per ripartire una fattura di struttura sul gruppo. Usato dal dettaglio
-// fattura (Scadenziario) e — dopo l'assegnazione a una sede — dalla coda ambigui.
-// La fattura DEVE già esistere in `fatture` (identificata da file_origine): il
-// riparto marca le sue righe come ripartite ed esclude il costo dalla porta auto.
+// Dialog per ripartire una fattura di struttura sul gruppo. Due modalità:
+//  - da FATTURA (fileOrigine): il documento è già in `fatture`, usato dal dettaglio
+//    fattura (Scadenziario) → POST /api/riparto/da-fattura.
+//  - da CODA (queueId): la fattura è ancora in coda 'da_assegnare', si ripartisce
+//    direttamente senza assegnarla a un locale → POST /api/riparto/da-coda. Il worker
+//    la atterra sulla sede tecnica "Costi comuni di gruppo" in background.
+// Passare esattamente uno tra fileOrigine e queueId.
 export function RipartisciDialog({
   open,
   onOpenChange,
   fileOrigine,
+  queueId,
   descrizioneDefault,
   sedi,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  fileOrigine: string;
+  fileOrigine?: string;
+  queueId?: number;
   descrizioneDefault?: string;
   sedi: Sede[];
   onDone?: () => void;
@@ -61,19 +66,20 @@ export function RipartisciDialog({
     }
     setSaving(true);
     try {
+      const daCoda = queueId != null;
       const body: Record<string, unknown> = {
-        file_origine: fileOrigine,
         descrizione: descrizione.trim(),
         tipo,
         regola,
         salva_regola_fornitore: salvaRegola,
+        ...(daCoda ? { queue_id: queueId } : { file_origine: fileOrigine }),
       };
       if (regola === "percentuali") {
         body.percentuali = Object.fromEntries(
           Object.entries(perc).map(([id, v]) => [id, Number(v.replace(",", ".")) || 0]),
         );
       }
-      const res = await fetch("/api/riparto/da-fattura", {
+      const res = await fetch(daCoda ? "/api/riparto/da-coda" : "/api/riparto/da-fattura", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

@@ -1037,6 +1037,7 @@ def _resolve_tenant_by_piva(supabase, piva_raw: str) -> tuple[Optional[str], Opt
             .select("id,user_id")
             .eq("partita_iva", piva)
             .eq("attivo", True)
+            .eq("sede_tecnica", False)   # il routing SDI non atterra mai sulla sede-contenitore
             .limit(1)
             .execute()
         )
@@ -1251,6 +1252,7 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
             .select("id", count="exact")
             .eq("user_id", user["id"])
             .eq("attivo", True)
+            .eq("sede_tecnica", False)   # la sede-contenitore non conta come PV
             .execute()
         )
         if cnt.count is not None:
@@ -1309,6 +1311,7 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
             .select("id", count="exact")
             .eq("user_id", user.get("id"))
             .eq("attivo", True)
+            .eq("sede_tecnica", False)   # la sede-contenitore non conta come PV
             .execute()
         )
         if cnt.count is not None:
@@ -1734,7 +1737,8 @@ def _carica_sedi_attive_per_user(user_id: str, supabase_client) -> List[Dict[str
             .select("id, nome_ristorante, partita_iva, indirizzo_match, bypass_guardia_piva")
             .eq("user_id", user_id)
             .eq("attivo", True)
-            .execute()
+            .eq("sede_tecnica", False)   # la sede-contenitore condivide la P.IVA reale
+            .execute()                    # ma NON è un locale: non deve attivare lo smistamento
         )
         return resp.data or []
     except Exception as exc:
@@ -2652,6 +2656,7 @@ def _chat_quota_pool(user: Dict[str, Any], supabase_client) -> tuple[int, bool]:
             .select("piano")
             .eq("user_id", str(user["id"]))
             .eq("attivo", True)
+            .eq("sede_tecnica", False)   # la sede-contenitore non ha piano né conta per il pool
             .execute()
         ).data or []
         if sedi:
@@ -6866,6 +6871,7 @@ def _resolve_ristorante_id(user: Dict[str, Any], supabase_client) -> Optional[st
             .select("id")
             .eq("user_id", uid)
             .eq("attivo", True)
+            .eq("sede_tecnica", False)   # mai la sede-contenitore come sede di default
             .order("created_at")
             .limit(1)
             .execute()
@@ -6914,6 +6920,7 @@ def _resolve_sede_attiva(user: Dict[str, Any], supabase_client) -> tuple[Optiona
                 .select("id, nome_ristorante")
                 .eq("user_id", uid)
                 .eq("attivo", True)
+                .eq("sede_tecnica", False)   # mai la sede-contenitore come sede attiva
                 .order("created_at")
                 .limit(1)
                 .execute()

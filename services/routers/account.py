@@ -427,6 +427,7 @@ def account_sedi(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         .select("id, nome_ristorante, indirizzo, comune")
         .eq("user_id", user_id)
         .eq("attivo", True)
+        .eq("sede_tecnica", False)   # esclude la sede-contenitore "Costi comuni di gruppo"
         .order("created_at")
         .execute()
     )
@@ -487,6 +488,7 @@ def account_cambia_sede(
         .eq("id", rid)
         .eq("user_id", user_id)
         .eq("attivo", True)
+        .eq("sede_tecnica", False)   # non ci si può posizionare sulla sede-contenitore
         .execute()
     )
     if not chk.data:

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin, AlertTriangle } from "lucide-react";
+import { MapPin, AlertTriangle, Split } from "lucide-react";
+import { RipartisciDialog } from "@/components/fatture/ripartisci-dialog";
 
 type FatturaDaAssegnare = {
   queue_id: number;
@@ -27,6 +28,7 @@ export function CodaDaAssegnare() {
   const [items, setItems] = useState<FatturaDaAssegnare[]>([]);
   const [sedi, setSedi] = useState<Sede[]>([]);
   const [busy, setBusy] = useState<number | null>(null);
+  const [ripartisci, setRipartisci] = useState<FatturaDaAssegnare | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -89,9 +91,10 @@ export function CodaDaAssegnare() {
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Non sono riuscito a capire da solo a quale sede appartengono (indirizzo della sede legale
-            o non riconosciuto). Scegli la sede giusta e la fattura rientra subito in elaborazione.
-            Se è un <span className="font-medium">costo comune</span> (commercialista, auto…),
-            assegnala a una sede e poi dal suo dettaglio scegli <span className="font-medium">“Ripartisci sul gruppo”</span>.
+            o non riconosciuto). Se appartiene a un locale, scegli la sede e la fattura rientra subito
+            in elaborazione. Se è un <span className="font-medium">costo comune</span> (commercialista,
+            auto…), premi <span className="font-medium">“Ripartisci sul gruppo”</span>: il costo viene
+            diviso fra le sedi senza finire dentro un singolo locale.
           </p>
         </div>
       </div>
@@ -133,10 +136,31 @@ export function CodaDaAssegnare() {
                   {s.nome}
                 </button>
               ))}
+              <button
+                disabled={busy !== null}
+                onClick={() => setRipartisci(f)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 hover:border-primary disabled:opacity-50"
+              >
+                <Split className="size-3.5" />
+                Ripartisci sul gruppo
+              </button>
             </div>
           </li>
         ))}
       </ul>
+
+      <RipartisciDialog
+        open={ripartisci !== null}
+        onOpenChange={(v) => !v && setRipartisci(null)}
+        queueId={ripartisci?.queue_id}
+        descrizioneDefault={ripartisci?.fornitore ? `Costo comune ${ripartisci.fornitore}` : ""}
+        sedi={sedi.map((s) => ({ id: s.id, nome: s.nome }))}
+        onDone={() => {
+          if (ripartisci) setItems((prev) => prev.filter((i) => i.queue_id !== ripartisci.queue_id));
+          setRipartisci(null);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

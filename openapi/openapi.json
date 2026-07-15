@@ -15705,6 +15705,81 @@
         }
       }
     },
+    "/api/riparto/da-coda": {
+      "post": {
+        "summary": "Riparto Da Coda",
+        "description": "Ripartisce una fattura ambigua DIRETTAMENTE dalla coda 'da_assegnare', senza\nprima assegnarla a un locale reale. UX istantanea (decisione utente): registra\nsubito il riparto dai metadati della coda (importo/fornitore/periodo/file_origine\nsono in payload_meta), poi chiama assegna_fattura_a_sede_tecnica → il worker atterra\nla fattura sulla sede tecnica \"Costi comuni di gruppo\" (mai un locale reale) e la\nauto-marca ripartita_su_gruppo. Nessun locale reale viene toccato.",
+        "operationId": "riparto_da_coda_api_riparto_da_coda_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RipartoDaCodaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Da Coda Api Riparto Da Coda Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/riparto/manuale": {
       "post": {
         "summary": "Riparto Manuale",
@@ -22050,6 +22125,53 @@
           "ordine"
         ],
         "title": "RiordinaBody"
+      },
+      "RipartoDaCodaBody": {
+        "properties": {
+          "queue_id": {
+            "type": "integer",
+            "title": "Queue Id"
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo",
+            "default": "generale"
+          },
+          "regola": {
+            "type": "string",
+            "title": "Regola",
+            "default": "equa"
+          },
+          "percentuali": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentuali"
+          },
+          "salva_regola_fornitore": {
+            "type": "boolean",
+            "title": "Salva Regola Fornitore",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "queue_id",
+          "descrizione"
+        ],
+        "title": "RipartoDaCodaBody"
       },
       "RipartoDaFatturaBody": {
         "properties": {

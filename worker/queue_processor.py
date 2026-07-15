@@ -522,6 +522,17 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
             error=f"salva_fattura_processata error={err}",
         )
 
+    # Sede tecnica "Costi comuni di gruppo": ogni fattura che vi atterra è per
+    # definizione un costo comune di catena da ripartire, quindi va esclusa dal costo
+    # automatico (anti-doppio-conteggio) — il suo € rientra distribuito via quote.
+    # Marcamento generico (dipende dal flag sede, non dal concetto di riparto): copre
+    # anche il caso in cui l'endpoint /api/riparto/da-coda abbia registrato il riparto
+    # prima che la fattura atterrasse. Best-effort: non deve far fallire l'item.
+    try:
+        _mark_ripartita_se_sede_tecnica(supabase, ristorante_id, user_id, nome_file)
+    except Exception as exc:
+        logger.warning("[item=%d] marcatura ripartita_su_gruppo (sede tecnica) fallita: %s", queue_id, exc)
+
     # Auto-classificazione post-salvataggio: stesso comportamento atteso del flusso manuale.
     try:
         classified_rows = _auto_classify_saved_rows(
@@ -555,6 +566,39 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
         event_id=event_id,
         status="done",
         righe=result.get("righe", 0),
+    )
+
+
+def _mark_ripartita_se_sede_tecnica(
+    supabase, ristorante_id: str, user_id: str, nome_file: str
+) -> None:
+    """Se la fattura è atterrata sulla sede tecnica "Costi comuni di gruppo", marca le
+    sue righe fatture.ripartita_su_gruppo=TRUE (esclude dal costo automatico/MOL).
+
+    Idempotente: l'UPDATE riscrive TRUE su righe già TRUE senza effetti. Chiamata dopo
+    ogni salvataggio riuscito; fa una sola SELECT leggera sul flag della sede e agisce
+    solo se tecnica.
+    """
+    res = (
+        supabase.table("ristoranti")
+        .select("sede_tecnica")
+        .eq("id", ristorante_id)
+        .single()
+        .execute()
+    )
+    if not bool((res.data or {}).get("sede_tecnica")):
+        return
+    (
+        supabase.table("fatture")
+        .update({"ripartita_su_gruppo": True})
+        .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .eq("file_origine", nome_file)
+        .execute()
+    )
+    logger.info(
+        "Fattura %s su sede tecnica %s → marcata ripartita_su_gruppo",
+        nome_file, ristorante_id,
     )
 
 

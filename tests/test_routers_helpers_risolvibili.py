@@ -37,6 +37,7 @@ _ROUTERS = [
     "margini",
     "prezzi",
     "ricavi",
+    "riparto",
     "scadenziario",
     "tag",
     "workspace",
