@@ -16085,6 +16085,80 @@
         }
       }
     },
+    "/api/riparto/regola-fornitore": {
+      "get": {
+        "summary": "Riparto Regola Fornitore",
+        "description": "Regola di ripartizione memorizzata per un fornitore (\"fai sempre così\").\n\nSola lettura: NON applica nulla. Serve al dialog di riparto per PRE-COMPILARE il\ncriterio (regola/tipo/percentuali) alla fattura successiva dello stesso fornitore;\nil cliente conferma sempre. Ritorna {regola: null} se non c'è una regola attiva.",
+        "operationId": "riparto_regola_fornitore_api_riparto_regola_fornitore_get",
+        "parameters": [
+          {
+            "name": "fornitore",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Fornitore"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Regola Fornitore Api Riparto Regola Fornitore Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/costi-comuni": {
       "get": {
         "summary": "Gruppo Costi Comuni",

@@ -510,6 +510,40 @@ def riparto_duplica(riparto_id: str, authorization: Optional[str] = Header(None)
     return {"ok": True, "riparto_id": nuovo_id, "anno": anno_n, "mese": mese_n}
 
 
+@router.get("/api/riparto/regola-fornitore", dependencies=[Depends(_verify_worker_key)])
+def riparto_regola_fornitore(fornitore: str, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Regola di ripartizione memorizzata per un fornitore ("fai sempre così").
+
+    Sola lettura: NON applica nulla. Serve al dialog di riparto per PRE-COMPILARE il
+    criterio (regola/tipo/percentuali) alla fattura successiva dello stesso fornitore;
+    il cliente conferma sempre. Ritorna {regola: null} se non c'è una regola attiva."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    _require_catena(user_id, sb)
+    piva = (fornitore or "").strip()
+    if not piva:
+        return {"regola": None}
+
+    res = (
+        sb.table("riparto_regole_fornitore")
+        .select("regola, tipo, percentuali")
+        .eq("user_id", user_id)
+        .eq("fornitore", piva)
+        .eq("attiva", True)
+        .limit(1)
+        .execute()
+    ).data
+    if not res:
+        return {"regola": None}
+    r = res[0]
+    return {
+        "regola": r.get("regola"),
+        "tipo": r.get("tipo"),
+        "percentuali": r.get("percentuali"),
+    }
+
+
 @router.get("/api/gruppo/costi-comuni", dependencies=[Depends(_verify_worker_key)])
 def gruppo_costi_comuni(anno: int, mese: int, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Lista dei costi di gruppo del mese con le quote per sede (finestra catena).

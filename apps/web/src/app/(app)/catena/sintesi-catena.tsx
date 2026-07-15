@@ -26,6 +26,7 @@ import { AscoltaButton } from "@/components/ascolta-button";
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
 import { FinestraCostiGruppo } from "./finestra-costi-gruppo";
+import { CodaDaAssegnare } from "@/components/fatture/coda-da-assegnare";
 import { CardSegnali } from "./card-segnali";
 import { TagCatenaDialog } from "./gruppo-tag-section";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
@@ -474,6 +475,11 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
         <ConfrontoCard icon={TrendingUp} titolo="Margini e coperti" sottotitolo="Chi rende di più, per metrica" onClick={() => setMarginiOpen(true)} />
         <ConfrontoCard icon={Tags} titolo="Tag di catena" sottotitolo="Confronta un prodotto fra i PV" onClick={() => setTagOpen(true)} />
       </div>
+
+      {/* Gestione fatture di gruppo: fatture che l'app non ha saputo attribuire a un
+          locale (P.IVA condivisa). È un tema di gruppo → sta qui, non nelle Home PV.
+          Si auto-nasconde se non ci sono sedi multiple. */}
+      <CodaDaAssegnare contesto="catena" />
 
       {/* Da vedere nella catena (segnali) */}
       <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />

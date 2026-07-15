@@ -25,6 +25,7 @@ export function RipartisciDialog({
   onOpenChange,
   fileOrigine,
   queueId,
+  fornitore,
   descrizioneDefault,
   sedi,
   onDone,
@@ -33,6 +34,7 @@ export function RipartisciDialog({
   onOpenChange: (v: boolean) => void;
   fileOrigine?: string;
   queueId?: number;
+  fornitore?: string;
   descrizioneDefault?: string;
   sedi: Sede[];
   onDone?: () => void;
@@ -43,15 +45,48 @@ export function RipartisciDialog({
   const [perc, setPerc] = useState<Record<string, string>>({});
   const [salvaRegola, setSalvaRegola] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [regolaMemorizzata, setRegolaMemorizzata] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setDescrizione(descrizioneDefault ?? "");
-      // Percentuali iniziali: parti uguali come suggerimento editabile.
-      const eq = sedi.length > 0 ? (100 / sedi.length).toFixed(1) : "0";
-      setPerc(Object.fromEntries(sedi.map((s) => [s.id, eq])));
-    }
-  }, [open, descrizioneDefault, sedi]);
+    if (!open) return;
+    setDescrizione(descrizioneDefault ?? "");
+    // Percentuali iniziali: parti uguali come suggerimento editabile.
+    const eq = sedi.length > 0 ? (100 / sedi.length).toFixed(1) : "0";
+    const percEque = Object.fromEntries(sedi.map((s) => [s.id, eq]));
+    setPerc(percEque);
+    setTipo("generale");
+    setRegola("equa");
+    setRegolaMemorizzata(false);
+
+    // Se il fornitore ha una regola salvata ("fai sempre così"), pre-compila il
+    // criterio (regola/tipo/percentuali). Sola PROPOSTA: il cliente conferma comunque.
+    if (!fornitore) return;
+    let alive = true;
+    fetch(`/api/riparto/regola-fornitore?fornitore=${encodeURIComponent(fornitore)}`, {
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!alive || !data?.regola) return;
+        setRegolaMemorizzata(true);
+        setTipo(data.tipo === "fb" ? "fb" : "generale");
+        setRegola(data.regola === "percentuali" ? "percentuali" : "equa");
+        if (data.regola === "percentuali" && data.percentuali) {
+          setPerc((cur) => {
+            const next = { ...cur };
+            for (const s of sedi) {
+              const v = data.percentuali[s.id];
+              if (v != null) next[s.id] = String(v);
+            }
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [open, descrizioneDefault, sedi, fornitore]);
 
   const sommaPerc = Object.values(perc).reduce((a, v) => a + (Number(v.replace(",", ".")) || 0), 0);
 
@@ -107,6 +142,12 @@ export function RipartisciDialog({
             Costo di struttura comune (es. commercialista, auto): la quota di ogni sede entra nel suo
             MOL. Il documento resta intero nell&apos;analisi fatture.
           </p>
+          {regolaMemorizzata && (
+            <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
+              Criterio memorizzato per questo fornitore: l&apos;abbiamo già impostato qui sotto.
+              Controlla e conferma.
+            </p>
+          )}
           <div>
             <label className="mb-1 block text-xs font-medium">Descrizione</label>
             <input

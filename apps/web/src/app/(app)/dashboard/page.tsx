@@ -3,7 +3,6 @@ import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { HomeBriefing } from "./home-briefing";
 import { NotificheWidget } from "./notifiche-widget";
-import { CodaDaAssegnare } from "@/components/fatture/coda-da-assegnare";
 import { ChatWidget } from "./chat-widget";
 import { SaluteCard } from "./salute-card";
 import { KpiBlock } from "./kpi-block";
@@ -151,10 +150,9 @@ export default async function DashboardPage() {
           <NotificheBlock />
         </Suspense>
 
-        {/* Coda fatture multi-sede da assegnare: si auto-nasconde se vuota o
-            account mono-sede. Posto naturale = qui, con le notifiche, perche'
-            e' un avviso che richiede un'azione del cliente (scegliere la sede). */}
-        <CodaDaAssegnare />
+        {/* La coda fatture "da assegnare" NON vive più qui: è un fenomeno di gruppo
+            (catene same-P.IVA) e si gestisce solo in modalità catena, dove non si
+            duplica per ogni PV. Vedi CodaDaAssegnare contesto="catena" in sintesi-catena. */}
 
         <Suspense fallback={<div className="grid gap-4 lg:grid-cols-2"><CardSkeleton /><CardSkeleton /></div>}>
           <KpiSaluteBlock />
