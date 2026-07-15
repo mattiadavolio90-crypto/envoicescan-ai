@@ -6550,6 +6550,7 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     # fino a 6 mesi: cosi' mostriamo sempre l'ultima fotografia reale disponibile.
     mese_usato = anno_usato = None
     kpi = None
+    mese_in_corso = False
     mm, aa = oggi.month - 1, oggi.year
     if mm == 0:
         mm, aa = 12, oggi.year - 1
@@ -6562,6 +6563,18 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         mm -= 1
         if mm == 0:
             mm, aa = 12, aa - 1
+
+    # Fallback: nessun mese COMPLETO passato ha dati, ma il MESE IN CORSO sì
+    # (tipico del cliente appena partito: ha caricato le prime fatture del mese
+    # corrente e nient'altro). Senza questo, la card KPI resterebbe vuota per
+    # settimane fino a fine mese. Mostriamo il mese in corso, etichettato come
+    # parziale e senza confronto (un mese a metà non si confronta col precedente).
+    if kpi is None:
+        margini_c, fb_c, spese_c = _anno(oggi.year)
+        cand = _kpi_periodo(margini_c, fb_c, spese_c, oggi.month)
+        if cand["has_data"]:
+            kpi, mese_usato, anno_usato = cand, oggi.month, oggi.year
+            mese_in_corso = True
 
     if kpi is None:
         return _vuoto
@@ -6580,7 +6593,9 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
 
     confronto_label = None
     fatturato_delta = food_cost_delta = personale_delta = spese_delta = mol_delta = None
-    if kpi_cmp["has_data"]:
+    # Mese in corso = parziale: confrontarlo con un mese completo darebbe delta
+    # fuorvianti (metà mese sembra sempre "in calo"). Niente confronto.
+    if kpi_cmp["has_data"] and not mese_in_corso:
         confronto_label = f"vs {_MESI_IT[cmp_mese].lower()}"
         fatturato_delta = _delta_pct(kpi["fatturato"], kpi_cmp["fatturato"])
         personale_delta = _delta_pct(kpi["costo_personale"], kpi_cmp["costo_personale"])
@@ -6614,8 +6629,10 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         mol_mensile = []
 
     resp = HomeKpiResponse(
-        periodo_label=_MESI_IT[mese_usato],
-        is_mese_in_corso=False,
+        periodo_label=(
+            f"{_MESI_IT[mese_usato]} · in corso" if mese_in_corso else _MESI_IT[mese_usato]
+        ),
+        is_mese_in_corso=mese_in_corso,
         fatturato=kpi["fatturato"],
         food_cost_pct=kpi["food_cost_pct"],
         costo_personale=kpi["costo_personale"],

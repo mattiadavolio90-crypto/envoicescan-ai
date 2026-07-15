@@ -78,3 +78,33 @@ def test_sparkline_vuoto_se_un_solo_mese():
     assert resp.has_data
     assert resp.mol_mensile == []
     assert resp.mol_mensile_anno is None
+
+
+def test_fallback_mese_in_corso_se_nessun_mese_completo():
+    # Cliente appena partito: dati SOLO nel mese in corso (maggio, oggi=15 mag),
+    # nessun mese completo passato. La card deve mostrare maggio "in corso"
+    # invece di restare vuota. Confronto soppresso (mese parziale).
+    margini = {2026: {5: _row(2000)}}
+    resp = _call_kpi(margini)
+    assert resp.has_data
+    assert resp.is_mese_in_corso is True
+    assert "in corso" in resp.periodo_label.lower()
+    assert resp.periodo_label.startswith("Maggio")
+    assert resp.confronto_label is None
+    assert resp.fatturato == 2000
+
+
+def test_mese_completo_ha_priorita_sul_mese_in_corso():
+    # Se esiste un mese completo con dati (aprile), NON si ripiega sul mese in
+    # corso: si mostra aprile, con is_mese_in_corso False.
+    margini = {2026: {4: _row(1300), 5: _row(2000)}}
+    resp = _call_kpi(margini)
+    assert resp.has_data
+    assert resp.is_mese_in_corso is False
+    assert resp.periodo_label == "Aprile"
+
+
+def test_nessun_dato_da_nessuna_parte_resta_vuoto():
+    # Nessun dato in nessun mese (nemmeno quello in corso): card vuota.
+    resp = _call_kpi({2026: {}})
+    assert resp.has_data is False
