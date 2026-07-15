@@ -77,11 +77,15 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     setRigheAnteprima([]);
     setAnteprimaDisponibile(true);
     fetch(`/api/riparto/anteprima-coda?queue_id=${anteprima.queue_id}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+      // Una risposta non-ok (o rete) NON è una fattura "senza righe": è
+      // anteprima indisponibile. Distinguerle evita il messaggio fuorviante
+      // "Nessuna riga trovata" quando in realtà il documento non si è potuto
+      // leggere (es. XML firmato .p7m estratto male a monte).
+      .then((r) => (r.ok ? r.json() : { disponibile: false, righe: [] }))
       .then((data) => {
         if (!alive) return;
-        setRigheAnteprima(data?.righe ?? []);
-        setAnteprimaDisponibile(data?.disponibile !== false);
+        setRigheAnteprima(Array.isArray(data?.righe) ? data.righe : []);
+        setAnteprimaDisponibile(data?.disponibile === true);
       })
       .catch(() => {
         if (alive) setAnteprimaDisponibile(false);
@@ -247,7 +251,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                     <div className="flex flex-wrap gap-2 pt-1">
                       <button
                         onClick={() => setAnteprima(f)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 px-3 py-1.5 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/10 hover:border-amber-500 dark:text-amber-400"
                       >
                         <Eye className="size-3.5" />
                         Anteprima
@@ -306,8 +310,9 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                   </div>
                 ) : !anteprimaDisponibile ? (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Documento non ancora disponibile per l&apos;anteprima. Riprova tra poco o
-                    colloca la fattura per vederla in Gestione Fatture.
+                    Anteprima non disponibile per questa fattura (documento firmato non
+                    leggibile in anteprima). Puoi collocarla comunque: assegnala a un locale
+                    o dividila tra i locali, e la vedrai in Gestione Fatture.
                   </div>
                 ) : righeAnteprima.length === 0 ? (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
