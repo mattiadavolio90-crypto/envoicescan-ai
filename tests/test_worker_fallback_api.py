@@ -75,6 +75,48 @@ def test_xml_file_base64(monkeypatch):
     assert out == xml
 
 
+def _make_chunked_der_p7m(xml: str, chunk_len: int = 40) -> bytes:
+    """Busta P7M "a chunk DER": XML in un Constructed OCTET STRING (0x24 0x80)
+    spezzato in chunk primitivi 0x04 <len> <dati>, chiuso da end-of-contents 0x00 0x00.
+    È la variante CAdES che il decode UTF-8 diretto corromperebbe."""
+    xml_bytes = xml.encode("utf-8")
+    head = bytes([0x30, 0x82, 0x25, 0x00, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x24, 0x80])
+    parts = bytearray(head)
+    for i in range(0, len(xml_bytes), chunk_len):
+        chunk = xml_bytes[i:i + chunk_len]
+        parts += bytes([0x04, len(chunk)]) + chunk
+    parts += bytes([0x00, 0x00])  # end-of-contents
+    parts += bytes([0x31, 0x0f, 0x00, 0xde, 0xad, 0xbe, 0xef])  # coda binaria firma
+    return bytes(parts)
+
+
+def test_payload_base64_p7m_chunked_der(monkeypatch):
+    # Rigenerazione del bug OFFSIDE: p7m "a chunk DER" scaricato via fallback API.
+    # Prima il decode UTF-8 diretto lasciava gli header DER dentro i tag (XML
+    # corrotto); ora _bytes_to_xml_str delega a estrai_xml_da_p7m e riassembla.
+    monkeypatch.setenv("INVOICETRONIC_API_KEY", "k")
+    monkeypatch.setattr(qp, "_INVOICETRONIC_API_BASE", "https://api.invoicetronic.com/v1")
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">'
+        '<FatturaElettronicaHeader><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA>'
+        '<IdPaese>IT</IdPaese><IdCodice>00484960588</IdCodice></IdFiscaleIVA></DatiAnagrafici>'
+        '</CessionarioCommittente></FatturaElettronicaHeader>'
+        '<FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>'
+    )
+    p7m = _make_chunked_der_p7m(xml, chunk_len=40)
+    b64 = base64.b64encode(p7m).decode()
+    body = json.dumps({"payload": b64, "encoding": "Base64"})
+    with mock.patch("urllib.request.urlopen", return_value=_fake_response(body)):
+        out = qp._fetch_xml_via_api(123)
+    assert out is not None
+    # XML ricomposto: nessun byte di controllo residuo, P.IVA intatta.
+    assert "<IdCodice>00484960588</IdCodice>" in out
+    assert "FatturaElettronica" in out
+    for ch in out:
+        assert ord(ch) >= 32 or ch in "\t\n\r", "nessun control char residuo nell'XML"
+
+
 def test_response_without_xml_returns_none(monkeypatch):
     monkeypatch.setenv("INVOICETRONIC_API_KEY", "k")
     monkeypatch.setattr(qp, "_INVOICETRONIC_API_BASE", "https://api.invoicetronic.com/v1")

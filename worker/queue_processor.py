@@ -53,7 +53,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from services.db_service import filter_active
-from services.invoice_service import estrai_dati_da_xml, salva_fattura_processata, _to_int_safe
+from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
 from services.worker_client import classifica_via_worker_con_confidenza
 
 try:
@@ -717,6 +717,30 @@ _INVOICETRONIC_API_BASE = os.environ.get(
 )
 
 
+def _bytes_to_xml_str(raw: bytes) -> str | None:
+    """Byte grezzi del payload Invoicetronic → stringa XML FatturaPA.
+
+    Speculare a bytesToXml della Edge Function: se i byte sono già XML puro li
+    decodifica direttamente; se sono una busta P7M firmata (CAdES, anche "a chunk
+    DER") delega a estrai_xml_da_p7m — che riassembla i chunk DER correttamente.
+    Prima si faceva un decode('utf-8') diretto: sui p7m chunked-DER produceva XML
+    corrotto (header DER dentro i tag), identico al bug della Edge Function.
+    """
+    import io
+
+    looks_clean_xml = raw[:2] == b"<?" and b"\x00" not in raw
+    if looks_clean_xml:
+        return raw.decode("utf-8", errors="replace")
+    try:
+        stream = io.BytesIO(raw)
+        stream.name = "fallback_api.xml.p7m"
+        xml_stream = estrai_xml_da_p7m(stream)
+        return xml_stream.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        logger.warning("Fallback API: estrazione P7M fallita, decode diretto: %s", exc)
+        return raw.decode("utf-8", errors="replace")
+
+
 def _fetch_xml_via_api(resource_id: Any) -> str | None:
     """
     Fallback di secondo livello: ricostruisce l'endpoint API Invoicetronic dal
@@ -778,20 +802,22 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
         if encoding == "Base64":
             try:
                 import base64
-                return base64.b64decode(payload.strip()).decode("utf-8", errors="replace")
+                raw = base64.b64decode(payload.strip())
             except Exception as exc:
                 logger.warning("Fallback API: decode base64 fallito: %s", exc)
                 return None
+            return _bytes_to_xml_str(raw)
         return payload.strip()
 
     xml_file = data.get("xml_file")
     if isinstance(xml_file, str) and xml_file.strip():
         try:
             import base64
-            return base64.b64decode(xml_file.strip()).decode("utf-8", errors="replace")
+            raw = base64.b64decode(xml_file.strip())
         except Exception as exc:
             logger.warning("Fallback API: decode xml_file fallito: %s", exc)
             return None
+        return _bytes_to_xml_str(raw)
 
     nested_url = data.get("xml_url")
     if isinstance(nested_url, str) and nested_url.strip():

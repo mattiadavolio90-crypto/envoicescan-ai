@@ -241,9 +241,136 @@ function base64ToUtf8(b64: string): string {
 // Ritorna l'XML estratto, o null se la busta non contiene un XML FatturaPA
 // riconoscibile (in tal caso il chiamante prosegue col fallback esistente).
 
+// Sotto-caso CAdES: OCTET STRING "a chunk DER". In molte firme italiane l'XML NON
+// è contiguo nella busta: è dentro un Constructed OCTET STRING (tag 0x24, lunghezza
+// indefinita 0x80) spezzato in più chunk primitivi `0x04 <len> <dati>`. Lo slice
+// grezzo `<?xml … </FatturaElettronica>` di sotto include allora gli header DER
+// intermedi (tipicamente `0x04 <len>` ogni ~1004 byte) DENTRO i tag → XML non
+// well-formed che il worker poi rifiuta (byte di controllo a metà elemento).
+//
+// Questa funzione riassembla i chunk droppando gli header DER — porta di Deno del
+// metodo `_estrai_xml_con_der_scan` del worker Python (services/invoice_service.py),
+// che gestiva già correttamente il caso. Ritorna i byte XML riassemblati, o null se
+// la busta non è "a chunk DER" (allora vale lo slice contiguo).
+function reassembleDerChunks(bytes: Uint8Array): Uint8Array | null {
+  // Trova il primo <?xml (o BOM che lo precede).
+  let xmlPos = indexOfBytes(bytes, [0x3c, 0x3f, 0x78, 0x6d, 0x6c]) // "<?xml"
+  if (xmlPos < 0) {
+    const bomPos = indexOfBytes(bytes, [0xef, 0xbb, 0xbf])
+    if (bomPos < 0) return null
+    xmlPos = bomPos
+  }
+
+  // Cerca il Constructed OCTET STRING (0x24 0x80) subito prima di <?xml.
+  let pos = -1
+  for (let i = xmlPos - 1; i >= Math.max(0, xmlPos - 20); i--) {
+    if (bytes[i] === 0x80 && i > 0 && bytes[i - 1] === 0x24) {
+      pos = i + 1
+      break
+    }
+  }
+  if (pos < 0) return null
+
+  // Leggi chunk per chunk (0x04 <len> <dati>) fino a 0x00 0x00 (end-of-contents).
+  const parts: Uint8Array[] = []
+  let chunks = 0
+  while (pos < bytes.length - 2) {
+    if (bytes[pos] === 0x00 && bytes[pos + 1] === 0x00) break
+    if (bytes[pos] !== 0x04) break
+
+    const lb = bytes[pos + 1]
+    let chunkLen: number
+    let headerLen: number
+    if (lb < 0x80) {
+      chunkLen = lb
+      headerLen = 2
+    } else if (lb === 0x81) {
+      chunkLen = bytes[pos + 2]
+      headerLen = 3
+    } else if (lb === 0x82) {
+      chunkLen = (bytes[pos + 2] << 8) | bytes[pos + 3]
+      headerLen = 4
+    } else if (lb === 0x83) {
+      chunkLen = (bytes[pos + 2] << 16) | (bytes[pos + 3] << 8) | bytes[pos + 4]
+      headerLen = 5
+    } else {
+      break
+    }
+
+    if (pos + headerLen + chunkLen > bytes.length) break
+
+    parts.push(bytes.subarray(pos + headerLen, pos + headerLen + chunkLen))
+    pos += headerLen + chunkLen
+    chunks++
+  }
+
+  if (chunks <= 1) return null
+
+  // Concatena i chunk.
+  let total = 0
+  for (const p of parts) total += p.length
+  const out = new Uint8Array(total)
+  let off = 0
+  for (const p of parts) {
+    out.set(p, off)
+    off += p.length
+  }
+  if (indexOfBytes(out, [0x46, 0x61, 0x74, 0x74, 0x75, 0x72, 0x61]) < 0) return null // "Fattura"
+  return out
+}
+
+// Ricerca di una sottosequenza di byte (piccolo helper: niente dipendenze).
+function indexOfBytes(hay: Uint8Array, needle: number[]): number {
+  outer:
+  for (let i = 0; i + needle.length <= hay.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (hay[i + j] !== needle[j]) continue outer
+    }
+    return i
+  }
+  return -1
+}
+
+// Ritaglia dai byte XML riassemblati l'intervallo `<?xml … </…FatturaElettronica>`
+// e verifica che non restino byte di controllo invalidi per XML (0x00-0x08, 0x0B,
+// 0x0C, 0x0E-0x1F): se ne restano, l'estrazione è sporca → si scarta e si prova
+// lo slice contiguo. Speculare al controllo `bad_bytes` del worker Python.
+function ritagliaXmlPulito(bytes: Uint8Array): string | null {
+  let latin1 = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    latin1 += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  const start = latin1.indexOf('<?xml')
+  if (start < 0) return null
+
+  const endRe = /<\/(?:[\w.-]+:)?FatturaElettronica\s*>/g
+  let lastEnd = -1
+  let m: RegExpExecArray | null
+  while ((m = endRe.exec(latin1)) !== null) {
+    lastEnd = m.index + m[0].length
+  }
+  if (lastEnd < 0) return null
+
+  const slice = bytes.subarray(start, lastEnd)
+  for (const b of slice) {
+    if (b < 32 && b !== 9 && b !== 10 && b !== 13) return null // control char invalido
+  }
+  return new TextDecoder('utf-8').decode(slice)
+}
+
 export function extractXmlFromP7m(bytes: Uint8Array): string | null {
-  // Vista latin1 a blocchi (evita "Maximum call stack" su fromCharCode.apply con
-  // input grandi).
+  // 1° tentativo: riassemblaggio chunk DER (p7m "a chunk OCTET STRING"). Se la
+  // busta è di questo tipo, lo slice grezzo qui sotto produrrebbe XML corrotto.
+  const reassembled = reassembleDerChunks(bytes)
+  if (reassembled) {
+    const xml = ritagliaXmlPulito(reassembled)
+    if (xml) return xml
+  }
+
+  // 2° tentativo (busta contigua "classica"): l'XML è già intero nella busta, basta
+  // ritagliare l'intervallo di byte. Vista latin1 a blocchi (evita "Maximum call
+  // stack" su fromCharCode.apply con input grandi).
   let latin1 = ''
   const CHUNK = 0x8000
   for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -454,6 +581,106 @@ function extractDocMeta(xml: string): Record<string, unknown> {
   }
 }
 
+// ─── Utility: scarica il payload fattura da Invoicetronic ed estrai l'XML ─────
+// Condivisa dal flusso webhook e dalla modalità reprocess. Ritorna l'XML estratto
+// (con la logica p7m corretta, incluso chunked-DER) o lancia in caso di errore.
+export async function fetchXmlForResource(
+  resourceId: number | string,
+  apiKey: string,
+): Promise<{ xmlContent: string; xmlUrl: string | null }> {
+  const apiUrl  = `${INVOICETRONIC_API_BASE}/receive/${resourceId}?include_payload=true`
+  const authHdr = `Basic ${btoa(`${apiKey}:`)}`
+  const apiResp = await safeFetch(
+    apiUrl,
+    { headers: { Authorization: authHdr, Accept: 'application/json' } },
+    API_TIMEOUT_MS,
+  )
+  if (!apiResp.ok) throw new Error(`API Invoicetronic HTTP ${apiResp.status}`)
+
+  const data = await apiResp.json() as ReceiveApiRecord
+  let xmlContent: string | null = null
+  let xmlUrl: string | null = null
+
+  if (typeof data.payload === 'string' && data.payload.length > 0) {
+    const encoding = typeof data.encoding === 'string' ? data.encoding : 'Xml'
+    xmlContent = decodePayloadToXml(data.payload.trim(), encoding)
+  } else if (typeof data.xml_file === 'string' && data.xml_file.length > 0) {
+    xmlContent = decodePayloadToXml(data.xml_file, 'Base64')
+    if (typeof data.xml_url === 'string') xmlUrl = data.xml_url
+  } else if (typeof data.xml_url === 'string' && data.xml_url.length > 0) {
+    xmlUrl = data.xml_url
+    const xmlResp = await safeFetch(xmlUrl, {}, XML_TIMEOUT_MS)
+    if (!xmlResp.ok) throw new Error(`Download XML fallito: HTTP ${xmlResp.status}`)
+    const rawBytes = new Uint8Array(await xmlResp.arrayBuffer())
+    if (rawBytes.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
+    xmlContent = bytesToXml(rawBytes)
+  }
+
+  if (!xmlContent) throw new Error('API ok ma payload/xml_file/xml_url assenti')
+  if (xmlContent.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
+  if (xmlContent.includes('\x00')) xmlContent = xmlContent.replace(/\x00/g, '')
+  return { xmlContent, xmlUrl }
+}
+
+// ─── Modalità reprocess (riparazione righe già in coda) ────────────────────────
+// Uso: POST firmato HMAC con body { "reprocess_queue_ids": [id, …] }.
+// Ri-scarica ogni riga dalla sua resource_id e RISCRIVE xml_content/xml_hash/
+// indirizzo con l'estrazione p7m corretta — SENZA toccarne lo status (una riga
+// 'da_assegnare' resta 'da_assegnare', solo con XML ora leggibile). Serve a
+// recuperare le fatture salvate con XML corrotto PRIMA del fix chunked-DER.
+// Non è un percorso Invoicetronic: è un canale di manutenzione protetto dallo
+// stesso secret del webhook (nessun nuovo secret, nessun endpoint pubblico in più).
+// deno-lint-ignore no-explicit-any
+async function handleReprocess(ids: unknown, db: any, apiKey: string): Promise<Response> {
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 50) {
+    return new Response(JSON.stringify({ error: 'reprocess_queue_ids: array 1..50 richiesto' }), {
+      status: 400, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const results: Array<Record<string, unknown>> = []
+  for (const rawId of ids) {
+    const id = typeof rawId === 'number' ? rawId : parseInt(String(rawId), 10)
+    if (!Number.isFinite(id)) { results.push({ id: rawId, ok: false, error: 'id non valido' }); continue }
+
+    const { data: row, error: selErr } = await db
+      .from('fatture_queue')
+      .select('id, status, payload_meta')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (selErr)  { results.push({ id, ok: false, error: `select: ${selErr.message}` }); continue }
+    if (!row)    { results.push({ id, ok: false, error: 'riga non trovata' }); continue }
+
+    const resourceId = (row.payload_meta ?? {}).resource_id
+    if (resourceId == null) { results.push({ id, ok: false, error: 'resource_id assente in payload_meta' }); continue }
+
+    try {
+      const { xmlContent, xmlUrl } = await fetchXmlForResource(resourceId, apiKey)
+      const xmlHash = await sha256Hex(xmlContent)
+      const indirizzo = extractIndirizzoDestinatario(xmlContent)
+      const meta = { ...(row.payload_meta ?? {}), reprocessed_at: new Date().toISOString() }
+      if (indirizzo) meta.indirizzo_destinatario = indirizzo
+
+      const { error: updErr } = await db
+        .from('fatture_queue')
+        .update({ xml_content: xmlContent, xml_url: xmlUrl, xml_hash: xmlHash, payload_meta: meta })
+        .eq('id', id)
+
+      if (updErr) { results.push({ id, ok: false, error: `update: ${updErr.message}` }); continue }
+      results.push({ id, ok: true, xml_len: xmlContent.length, status: row.status })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      results.push({ id, ok: false, error: msg })
+    }
+  }
+
+  console.info(`[wh] reprocess completato: ${results.filter(r => r.ok).length}/${results.length} ok`)
+  return new Response(JSON.stringify({ reprocessed: results }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 // ─── Handler principale ───────────────────────────────────────────────────────
 
 export const handler = async (req: Request): Promise<Response> => {
@@ -482,6 +709,28 @@ export const handler = async (req: Request): Promise<Response> => {
     rawBody = await req.text()
   } catch {
     return new Response('Bad Request: body non leggibile', { status: 400 })
+  }
+
+  // ── 2a. Modalità reprocess (manutenzione, NON è un evento Invoicetronic) ────
+  // Canale di riparazione delle righe già in coda con xml_content corrotto (bug
+  // p7m chunked-DER pre-fix). NON usa l'HMAC del webhook (secret detenuto da
+  // Invoicetronic): si autentica con la service_role key via header X-Reprocess-Key,
+  // confrontata timing-safe. Riconosciuto PRIMA della verifica HMAC così può
+  // funzionare senza conoscere il segreto di firma dei webhook reali.
+  const reprocessKey = req.headers.get('X-Reprocess-Key')
+  if (reprocessKey) {
+    if (!timingSafeEqual(reprocessKey, serviceKey)) {
+      console.warn('[wh] reprocess: X-Reprocess-Key non valida')
+      return new Response('Unauthorized', { status: 401 })
+    }
+    let parsed: Record<string, unknown>
+    try {
+      parsed = JSON.parse(rawBody) as Record<string, unknown>
+    } catch {
+      return new Response('Bad Request: JSON non valido', { status: 400 })
+    }
+    const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+    return await handleReprocess(parsed['reprocess_queue_ids'], db, apiKey)
   }
 
   // ── 2. Verifica firma HMAC-SHA256 + anti-replay ────────────────────────────
@@ -610,8 +859,8 @@ export const handler = async (req: Request): Promise<Response> => {
         // byte nulli, l'INSERT in una colonna text di Postgres fallirebbe con 500
         // (storicamente il caso delle fatture P7M firmate). Li rimuoviamo e lo
         // segnaliamo in meta per tracciabilità.
-        if (xmlContent.includes(' ')) {
-          xmlContent = xmlContent.replace(/ /g, '')
+        if (xmlContent.includes('\x00')) {
+          xmlContent = xmlContent.replace(/\x00/g, '')
           meta.payload_sanitized = 'null_bytes_removed'
         }
 
