@@ -447,15 +447,19 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     anno, mese_corr = _anno_mese_corrente()
     periodo_label = f"Anno {anno}"
 
-    # UNICA lettura aggregabile: righe margini_mensili dell'anno FINO AL MESE
-    # CORRENTE per le sedi del gruppo (niente mesi futuri: sarebbero proiezioni/seed
-    # che gonfiano i totali). margini_mensili è già pre-aggregata (1 riga per
-    # PV×mese): qui sommiamo per ristorante_id — niente loop sulle righe fattura.
+    # Righe margini_mensili dell'anno FINO AL MESE CORRENTE per le sedi del gruppo
+    # (niente mesi futuri: sarebbero proiezioni/seed che gonfiano i totali). Da qui
+    # prendiamo ricavi, costi MANUALI (altri_costi_*/personale) e quote riparto —
+    # tutti valori già 1-riga-per-sede×mese, nessun loop sulle righe fattura.
+    # I costi AUTOMATICI (food/spese da fatture) NON si leggono più dallo snapshot
+    # costi_fb_totali/mol (a 0 finché nessuno salva la pagina Margini della sede):
+    # si ricalcolano LIVE come la pagina Margini del PV, così Sintesi e PV combaciano.
     mm_resp = (
         sb.table("margini_mensili")
         .select(
             "ristorante_id,mese,fatturato_netto,fatturato_iva10,fatturato_iva22,"
-            "altri_ricavi_noiva,mol,costi_fb_totali,costi_spese_auto,altri_costi_spese,"
+            "altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,"
+            "quote_riparto_fb,quote_riparto_spese,"
             "costo_dipendenti,costo_personale_extra"
         )
         .in_("ristorante_id", ids)
@@ -463,6 +467,13 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         .lte("mese", mese_corr)
         .execute()
     )
+
+    # Costi automatici F&B/spese LIVE per (sede, mese) su tutto il gruppo in UNA RPC
+    # SQL (esclude 'Da Classificare' e le fatture ripartite → anti-doppio-conteggio,
+    # identico alla pagina Margini). Fallback per-sede interno alla funzione.
+    from services.margine_service import calcola_costi_automatici_gruppo_sql
+    costi_auto_gruppo = calcola_costi_automatici_gruppo_sql(user_id, ids, anno)
+
     # Fatturato LORDO (iva10+iva22+altri): è quello che mostra la Home del PV.
     # Il NETTO (scorporo IVA) resta per il margine % (come pagina Margini).
     agg: Dict[str, Dict[str, float]] = {
@@ -476,24 +487,40 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         a = agg.get(rid)
         if a is None:
             continue
+        try:
+            m = int(r.get("mese"))
+        except (TypeError, ValueError):
+            m = 0
         lordo = (
             float(r.get("fatturato_iva10") or 0)
             + float(r.get("fatturato_iva22") or 0)
             + float(r.get("altri_ricavi_noiva") or 0)
         )
-        a["netto"] += float(r.get("fatturato_netto") or 0)
+        netto = float(r.get("fatturato_netto") or 0)
+        # Costo automatico live del mese (RPC gruppo) + costi manuali + quote riparto,
+        # esattamente come _aggrega_mensili_margini / pagina Margini del PV.
+        fb_auto_m, spese_auto_m = costi_auto_gruppo.get(rid, ({}, {}))
+        fb_tot = (
+            float(fb_auto_m.get(m, 0.0))
+            + float(r.get("altri_costi_fb") or 0)
+            + float(r.get("quote_riparto_fb") or 0)
+        )
+        sp_tot = (
+            float(spese_auto_m.get(m, 0.0))
+            + float(r.get("altri_costi_spese") or 0)
+            + float(r.get("quote_riparto_spese") or 0)
+        )
+        pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
+        mol_v = (netto - fb_tot) - sp_tot - pers
+        a["netto"] += netto
         a["lordo"] += lordo
-        a["mol"] += float(r.get("mol") or 0)
-        a["fb"] += float(r.get("costi_fb_totali") or 0)
-        a["spese"] += float(r.get("costi_spese_auto") or 0) + float(r.get("altri_costi_spese") or 0)
-        a["pers"] += float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
-        try:
-            m = int(r.get("mese"))
-        except (TypeError, ValueError):
-            m = 0
+        a["mol"] += mol_v
+        a["fb"] += fb_tot
+        a["spese"] += sp_tot
+        a["pers"] += pers
         if m:
-            mol_per_mese[m] = mol_per_mese.get(m, 0.0) + float(r.get("mol") or 0)
-            netto_per_mese[m] = netto_per_mese.get(m, 0.0) + float(r.get("fatturato_netto") or 0)
+            mol_per_mese[m] = mol_per_mese.get(m, 0.0) + mol_v
+            netto_per_mese[m] = netto_per_mese.get(m, 0.0) + netto
 
     tot_netto = sum(a["netto"] for a in agg.values())
     tot_lordo = sum(a["lordo"] for a in agg.values())
@@ -769,20 +796,28 @@ def gruppo_margini_coperti(
         f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}" if mese_sel else f"Anno {anno}"
     )
 
-    # margini_mensili è già pre-aggregata: una lettura, somma per ristorante_id.
-    # Mese specifico se richiesto, altrimenti l'anno FINO AL MESE CORRENTE (no mesi
-    # futuri, vedi gruppo_overview).
+    # margini_mensili: ricavi + costi MANUALI + quote riparto + coperti (già
+    # pre-aggregata, 1 riga per sede×mese). Mese specifico se richiesto, altrimenti
+    # l'anno FINO AL MESE CORRENTE (no mesi futuri, vedi gruppo_overview).
     q = (
         sb.table("margini_mensili")
         .select(
-            "ristorante_id,fatturato_netto,fatturato_iva10,fatturato_iva22,"
-            "altri_ricavi_noiva,mol,costi_fb_totali,coperti"
+            "ristorante_id,mese,fatturato_netto,fatturato_iva10,fatturato_iva22,"
+            "altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,"
+            "quote_riparto_fb,quote_riparto_spese,"
+            "costo_dipendenti,costo_personale_extra,coperti"
         )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
     )
     q = q.eq("mese", mese_sel) if mese_sel else q.lte("mese", mese_corr)
     mm_resp = q.execute()
+
+    # Costi automatici F&B/spese LIVE per (sede, mese), come gruppo_overview e la
+    # pagina Margini del PV: MOL e €MP/coperto non dipendono più dallo snapshot
+    # costi_fb_totali/mol (a 0 finché nessuno salva la pagina Margini della sede).
+    from services.margine_service import calcola_costi_automatici_gruppo_sql
+    costi_auto_gruppo = calcola_costi_automatici_gruppo_sql(user_id, ids, anno)
 
     # Un PV è "incompleto" se gli mancano i dati base (fatturato/fatture costo/
     # personale): stesso criterio del briefing/overview. Senza, mostrerebbe 0% in
@@ -800,14 +835,32 @@ def gruppo_margini_coperti(
         a = agg.get(rid)
         if a is None:
             continue
-        a["netto"] += float(r.get("fatturato_netto") or 0)
+        try:
+            m = int(r.get("mese"))
+        except (TypeError, ValueError):
+            m = 0
+        netto = float(r.get("fatturato_netto") or 0)
+        a["netto"] += netto
         a["lordo"] += (
             float(r.get("fatturato_iva10") or 0)
             + float(r.get("fatturato_iva22") or 0)
             + float(r.get("altri_ricavi_noiva") or 0)
         )
-        a["mol"] += float(r.get("mol") or 0)
-        fb_mese = float(r.get("costi_fb_totali") or 0)
+        # Costo F&B e MOL live (RPC gruppo + costi manuali + quote riparto), identico
+        # a gruppo_overview: il €MP/coperto usa il costo F&B totale del mese.
+        fb_auto_m, spese_auto_m = costi_auto_gruppo.get(rid, ({}, {}))
+        fb_mese = (
+            float(fb_auto_m.get(m, 0.0))
+            + float(r.get("altri_costi_fb") or 0)
+            + float(r.get("quote_riparto_fb") or 0)
+        )
+        sp_mese = (
+            float(spese_auto_m.get(m, 0.0))
+            + float(r.get("altri_costi_spese") or 0)
+            + float(r.get("quote_riparto_spese") or 0)
+        )
+        pers_mese = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
+        a["mol"] += (netto - fb_mese) - sp_mese - pers_mese
         cop_mese = float(r.get("coperti") or 0)
         a["fb"] += fb_mese
         a["cop"] += cop_mese

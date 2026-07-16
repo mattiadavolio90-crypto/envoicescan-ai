@@ -204,6 +204,54 @@ def calcola_costi_automatici_per_anno_sql(user_id: str, ristorante_id: str, anno
         return calcola_costi_automatici_per_anno(user_id, ristorante_id, anno)
 
 
+def calcola_costi_automatici_gruppo_sql(user_id: str, ristorante_ids: list, anno: int) -> dict:
+    """Come calcola_costi_automatici_per_anno_sql ma per TUTTE le sedi di un gruppo
+    in UNA query (RPC costi_automatici_mensili_gruppo). Serve alla Sintesi di catena
+    per ricalcolare i costi LIVE senza dipendere dallo snapshot margini_mensili e
+    senza fare N chiamate per sede (regola catena: aggregazione SQL, mai loop righe).
+
+    Ritorna {ristorante_id(str): (dict_fb {mese: €}, dict_spese {mese: €})}.
+    Le sedi/mesi senza righe semplicemente non compaiono. Fallback per-sede sul
+    metodo storico se la RPC fallisce, così la Sintesi non si rompe mai.
+    """
+    ids = [str(r) for r in (ristorante_ids or [])]
+    if not ids:
+        return {}
+    try:
+        supabase = get_supabase_client()
+        resp = supabase.rpc(
+            "costi_automatici_mensili_gruppo",
+            {
+                "p_user_id": user_id,
+                "p_ristorante_ids": ids,
+                "p_anno": int(anno),
+                "p_cat_food": list(CATEGORIE_FOOD),
+                "p_cat_spese": list(CATEGORIE_SPESE_GENERALI),
+            },
+        ).execute()
+        out: dict = {rid: ({}, {}) for rid in ids}
+        for r in (resp.data or []):
+            rid = str(r.get("ristorante_id"))
+            if rid not in out:
+                out[rid] = ({}, {})
+            mese = int(r["mese"])
+            food = float(r.get("food") or 0)
+            spese = float(r.get("spese") or 0)
+            if food:
+                out[rid][0][mese] = food
+            if spese:
+                out[rid][1][mese] = spese
+        return out
+    except Exception as e:
+        logger.warning(
+            f"⚠️ RPC costi_automatici_mensili_gruppo fallita (anno {anno}), fallback per-sede: {e}"
+        )
+        return {
+            rid: calcola_costi_automatici_per_anno_sql(user_id, rid, anno)
+            for rid in ids
+        }
+
+
 # ============================================
 # COSTI PER CATEGORIA (Analisi Avanzate)
 # ============================================

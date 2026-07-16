@@ -1077,9 +1077,14 @@ def get_margini_analisi(
         altri_sp = float(r.get("altri_costi_spese") or 0)
         cd = float(r.get("costo_dipendenti") or 0)
         cpe = float(r.get("costo_personale_extra") or 0)
+        # Quote dei costi di gruppo ripartiti su questa sede (modalità catena):
+        # vanno sommate ai costi F&B/spese come già fa GET /api/margini, altrimenti
+        # tabella-analisi e KPI mostrerebbero un MOL diverso dal conto economico.
+        q_fb = float(r.get("quote_riparto_fb") or 0)
+        q_spese = float(r.get("quote_riparto_spese") or 0)
 
-        fb_tot = fb_auto + altri_fb
-        sp_tot = spese_auto + altri_sp
+        fb_tot = fb_auto + altri_fb + q_fb
+        sp_tot = spese_auto + altri_sp + q_spese
         pers = cd + cpe
         pm = netto - fb_tot
         mol_v = pm - sp_tot - pers

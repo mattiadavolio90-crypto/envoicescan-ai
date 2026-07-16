@@ -7406,8 +7406,10 @@ def _aggrega_mensili_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
         altri = ov["altri"] if ov else float(r.get("altri_ricavi_noiva") or 0)
         lordo = iva10 + iva22 + altri
         netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
-        fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0)
-        sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0)
+        # Quote costi di gruppo ripartiti su questa sede (catena): sommate ai costi
+        # come in GET /api/margini, così KPI/sparkline non divergono dal conto economico.
+        fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0) + float(r.get("quote_riparto_fb") or 0)
+        sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0) + float(r.get("quote_riparto_spese") or 0)
         pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
         pm = netto - fb_tot
         mol_v = pm - sp_tot - pers
@@ -7462,8 +7464,10 @@ def _aggrega_totali_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
         altri = ov["altri"] if ov else float(r.get("altri_ricavi_noiva") or 0)
         lordo = iva10 + iva22 + altri
         netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
-        fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0)
-        sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0)
+        # Quote costi di gruppo ripartiti su questa sede (catena): sommate ai costi
+        # come in GET /api/margini, così i totali periodo non divergono dal conto economico.
+        fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0) + float(r.get("quote_riparto_fb") or 0)
+        sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0) + float(r.get("quote_riparto_spese") or 0)
         pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
         pm = netto - fb_tot
         mol_v = pm - sp_tot - pers
