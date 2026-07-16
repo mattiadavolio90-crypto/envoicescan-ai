@@ -528,27 +528,88 @@ def _brevo_send(to_email: str, to_name: str, subject: str, html_body: str, *, co
         return False
 
 
+def _email_template(*, titolo: str, corpo_html: str, cta_label: str, cta_link: str, nota: str = "") -> str:
+    """Template HTML condiviso per le email transazionali (onboarding, reset).
+
+    Tabella con attributi bgcolor/width invece di solo CSS: i client aziendali
+    (Outlook desktop su motore Word) ignorano gran parte del CSS moderno.
+    """
+    nota_html = f'<tr><td align="center" style="padding:20px 40px 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#f59e0b;text-align:center;">{nota}</td></tr>' if nota else ""
+    return f"""
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e14;padding:32px 16px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#12161f;border:1px solid #232936;border-radius:12px;">
+        <tr>
+          <td style="padding:32px 40px 8px;font-family:Arial,Helvetica,sans-serif;">
+            <table role="presentation" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding-right:10px;vertical-align:middle;">
+                  <img src="https://app.oneflux.it/icons/icon-192.png" width="28" height="28" alt="ONEFLUX" style="display:block;border-radius:50%;">
+                </td>
+                <td style="vertical-align:middle;">
+                  <span style="font-size:20px;font-weight:bold;color:#38bdf8;">ONEFLUX</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 40px 0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#f1f5f9;">
+            {titolo}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 40px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#cbd5e1;">
+            {corpo_html}
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:28px 40px 8px;">
+            <table role="presentation" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center" bgcolor="#0ea5e9" style="border-radius:8px;">
+                  <a href="{cta_link}" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">
+                    {cta_label}
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {nota_html}
+        <tr>
+          <td style="padding:24px 40px 32px;">
+            <hr style="border:none;border-top:1px solid #232936;margin:0 0 16px;">
+            <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">
+              ONEFLUX Team — <a href="mailto:agent@oneflux.it" style="color:#64748b;">agent@oneflux.it</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>"""
+
+
 def _invia_email_onboarding(email: str, nome_ristorante: str, link: str) -> bool:
     """Invia (o reinvia) l'email di attivazione account via Brevo."""
     import html as _html_mod
 
     nome_safe = _html_mod.escape(nome_ristorante)
     email_safe = _html_mod.escape(email)
-    html_body = f"""
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-  <h2 style="color:#0ea5e9;">Benvenuto in ONEFLUX</h2>
-  <p>Ciao <strong>{nome_safe}</strong>,</p>
-  <p>Il tuo account è stato creato. Imposta la tua password per iniziare:</p>
-  <div style="text-align:center;margin:30px 0;">
-    <a href="{link}" style="background:#0ea5e9;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
-      Attiva il mio account
-    </a>
-  </div>
-  <p style="color:#dc2626;"><strong>⚠️ Il link scade tra 24 ore.</strong></p>
-  <p><strong>Email di accesso:</strong> {email_safe}</p>
-  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
-  <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
-</div>"""
+    corpo = f"""
+      Ciao <strong style="color:#f1f5f9;">{nome_safe}</strong>,<br><br>
+      Il tuo account è pronto. Scegli una password per accedere e iniziare a gestire la tua attività con tutta la potenza di OneFlux.<br><br>
+      <span style="color:#94a3b8;font-size:13px;">Email di accesso: <strong style="color:#cbd5e1;">{email_safe}</strong></span>
+    """
+    html_body = _email_template(
+        titolo="Benvenuto in ONEFLUX",
+        corpo_html=corpo,
+        cta_label="Attiva il mio account",
+        cta_link=link,
+        nota="⚠️ Il link scade tra 24 ore.",
+    )
     return _brevo_send(
         email, nome_safe,
         f"Benvenuto {nome_safe} — Attiva il tuo account ONEFLUX",
@@ -2295,25 +2356,23 @@ def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_adm
         raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
 
     token = secrets.token_urlsafe(32)
-    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
     sb.table("users").update({"reset_code": token, "reset_expires": expires}).eq("id", cliente_id).execute()
 
     link = f"https://app.oneflux.it/reset-password?token={token}"
     nome_safe = _html_mod.escape(u.get("nome_ristorante") or u["email"])
-    html_body = f"""
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-  <h2 style="color:#0ea5e9;">Reset Password ONEFLUX</h2>
-  <p>Ciao <strong>{nome_safe}</strong>,</p>
-  <p>L'amministratore ha richiesto un reset della tua password.</p>
-  <div style="text-align:center;margin:30px 0;">
-    <a href="{link}" style="background:#0ea5e9;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
-      Imposta nuova password
-    </a>
-  </div>
-  <p style="color:#dc2626;"><strong>⚠️ Il link scade tra 1 ora.</strong></p>
-  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
-  <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
-</div>"""
+    corpo = f"""
+      Ciao <strong style="color:#f1f5f9;">{nome_safe}</strong>,<br><br>
+      Hai richiesto un reset della password del tuo account.<br>
+      Clicca qui sotto per impostarne una nuova.
+    """
+    html_body = _email_template(
+        titolo="Reset password",
+        corpo_html=corpo,
+        cta_label="Imposta nuova password",
+        cta_link=link,
+        nota="⚠️ Il link scade tra 24 ore.",
+    )
     email_inviata = _brevo_send(u["email"], nome_safe, "Reset Password — ONEFLUX", html_body, contesto="reset")
 
     logger.info("admin_reset_password: cliente=%s | admin=%s | email_inviata=%s", cliente_id, admin_user.get("email"), email_inviata)
