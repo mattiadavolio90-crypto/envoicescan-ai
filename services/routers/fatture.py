@@ -6,6 +6,8 @@ _invalidate_fatture_rows_cache) resta nel worker perche' _invalidate_fatture_row
 e' usata anche dalla route upload (worker) e _load_num_documento_map e' condivisa
 con il router prezzi: tutto importato da qui. Path/gate/response invariati.
 """
+import re
+from html import unescape
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -939,6 +941,37 @@ def aggiorna_categoria_riga(
 # fra le sedi di un cliente (indirizzo ambiguo), la mette in status='da_assegnare'.
 # Qui il cliente la vede e sceglie la sede; la RPC assegna_fattura_a_sede() completa.
 
+_RE_DENOMINAZIONE = re.compile(r"<Denominazione>(.*?)</Denominazione>", re.DOTALL)
+_RE_NOME = re.compile(r"<Nome>(.*?)</Nome>", re.DOTALL)
+_RE_COGNOME = re.compile(r"<Cognome>(.*?)</Cognome>", re.DOTALL)
+
+
+def _denominazione_cedente(xml: Optional[str]) -> Optional[str]:
+    """Ragione sociale del fornitore letta dall'XML ancora in coda.
+
+    Né il webhook SDI né l'upload manuale salvano la denominazione in payload_meta:
+    entrambi mettono solo `piva_cedente`. La coda mostrava quindi "Fornitore P.IVA
+    02910260963", illeggibile per chi deve decidere a quale locale appartiene la
+    fattura. Il nome però è nell'XML, che per gli item da_assegnare è ancora in
+    tabella (viene azzerato solo a lavorazione finita) → lo leggiamo qui, senza
+    dover ri-scaricare nulla e recuperando anche gli item già in coda.
+
+    Si taglia l'XML su CessionarioCommittente e si cerca solo nella parte prima:
+    Denominazione compare in entrambi i blocchi, e il primo è il CedentePrestatore.
+    Ditte individuali: niente Denominazione ma Nome+Cognome.
+    """
+    if not xml:
+        return None
+    testa = xml.split("CessionarioCommittente", 1)[0]
+    m = _RE_DENOMINAZIONE.search(testa)
+    if m and m.group(1).strip():
+        return unescape(m.group(1).strip())
+    nome = _RE_NOME.search(testa)
+    cognome = _RE_COGNOME.search(testa)
+    parti = [p.group(1).strip() for p in (nome, cognome) if p and p.group(1).strip()]
+    return unescape(" ".join(parti)) if parti else None
+
+
 @router.get("/api/fatture/da-assegnare", dependencies=[Depends(_verify_worker_key)])
 def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Elenca le fatture in attesa di assegnazione sede per l'account chiamante.
@@ -946,6 +979,8 @@ def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[st
     Non espone l'XML: solo i metadati non-PII salvati dal webhook in payload_meta
     (fornitore, numero, data, importo) + l'indirizzo del destinatario letto in
     fattura, che è ciò che serve al cliente per capire a quale sede appartiene.
+    L'XML si legge (non si restituisce) per ricavarne la ragione sociale del
+    fornitore, che in payload_meta non c'è.
     """
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -953,7 +988,7 @@ def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[st
 
     resp = (
         sb.table("fatture_queue")
-        .select("id, piva_raw, payload_meta, created_at")
+        .select("id, piva_raw, payload_meta, created_at, xml_content")
         .eq("user_id", user_id)
         .eq("status", "da_assegnare")
         .order("created_at", desc=True)
@@ -962,9 +997,16 @@ def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[st
     items = []
     for r in (resp.data or []):
         meta = r.get("payload_meta") or {}
+        try:
+            fornitore_nome = _denominazione_cedente(r.get("xml_content"))
+        except Exception:
+            # Il nome è una comodità: se l'XML è malformato la coda resta usabile
+            # con la sola P.IVA, non si perde la fattura.
+            fornitore_nome = None
         items.append({
             "queue_id": r["id"],
             "fornitore": meta.get("piva_cedente"),
+            "fornitore_nome": fornitore_nome,
             "numero_fattura": meta.get("numero_fattura"),
             "data_fattura": meta.get("data_fattura"),
             "importo_totale": meta.get("importo_totale"),
@@ -972,6 +1014,42 @@ def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[st
             "created_at": r.get("created_at"),
         })
     return {"items": items, "count": len(items)}
+
+
+class ScartaCodaBody(BaseModel):
+    queue_id: int
+
+
+@router.post("/api/fatture/scarta-da-coda", dependencies=[Depends(_verify_worker_key)])
+def fatture_scarta_da_coda(
+    body: ScartaCodaBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Toglie dalla coda una fattura che non va assegnata a nessun locale.
+
+    Senza questo, dalla coda si esce SOLO assegnando o ripartendo — entrambe fanno
+    entrare il documento nei costi. Un documento non pertinente (o un doppione
+    arrivato con un altro nome file) restava in coda per sempre, gonfiando il
+    contatore del briefing di gruppo.
+
+    Lo scarto è definitivo per quel file: l'event_id resta in tabella, quindi un
+    ri-upload dello stesso identico file NON lo rimette in coda (idempotenza su
+    event_id). Il file sorgente resta sul computer del cliente: per recuperarlo si
+    ricarica dopo averlo rinominato.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+
+    res = sb.rpc(
+        "scarta_fattura_da_coda",
+        {"p_queue_id": body.queue_id, "p_user_id": user_id},
+    ).execute()
+    if not bool(res.data):
+        # Non è del chiamante, non esiste, o è stata assegnata da un altro click
+        # nel frattempo. Per la UI non è un errore: la riga sparisce comunque.
+        return {"ok": False, "motivo": "gia_gestita"}
+    return {"ok": True, "queue_id": body.queue_id}
 
 
 class AssegnaSedeBody(BaseModel):

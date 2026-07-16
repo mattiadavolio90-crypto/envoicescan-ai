@@ -6871,7 +6871,7 @@
     "/api/fatture/da-assegnare": {
       "get": {
         "summary": "Fatture Da Assegnare",
-        "description": "Elenca le fatture in attesa di assegnazione sede per l'account chiamante.\n\nNon espone l'XML: solo i metadati non-PII salvati dal webhook in payload_meta\n(fornitore, numero, data, importo) + l'indirizzo del destinatario letto in\nfattura, che è ciò che serve al cliente per capire a quale sede appartiene.",
+        "description": "Elenca le fatture in attesa di assegnazione sede per l'account chiamante.\n\nNon espone l'XML: solo i metadati non-PII salvati dal webhook in payload_meta\n(fornitore, numero, data, importo) + l'indirizzo del destinatario letto in\nfattura, che è ciò che serve al cliente per capire a quale sede appartiene.\nL'XML si legge (non si restituisce) per ricavarne la ragione sociale del\nfornitore, che in payload_meta non c'è.",
         "operationId": "fatture_da_assegnare_api_fatture_da_assegnare_get",
         "parameters": [
           {
@@ -6916,6 +6916,81 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Fatture Da Assegnare Api Fatture Da Assegnare Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/scarta-da-coda": {
+      "post": {
+        "summary": "Fatture Scarta Da Coda",
+        "description": "Toglie dalla coda una fattura che non va assegnata a nessun locale.\n\nSenza questo, dalla coda si esce SOLO assegnando o ripartendo — entrambe fanno\nentrare il documento nei costi. Un documento non pertinente (o un doppione\narrivato con un altro nome file) restava in coda per sempre, gonfiando il\ncontatore del briefing di gruppo.\n\nLo scarto è definitivo per quel file: l'event_id resta in tabella, quindi un\nri-upload dello stesso identico file NON lo rimette in coda (idempotenza su\nevent_id). Il file sorgente resta sul computer del cliente: per recuperarlo si\nricarica dopo averlo rinominato.",
+        "operationId": "fatture_scarta_da_coda_api_fatture_scarta_da_coda_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScartaCodaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Fatture Scarta Da Coda Api Fatture Scarta Da Coda Post"
                 }
               }
             }
@@ -22654,6 +22729,19 @@
           "file_origine"
         ],
         "title": "ScadenzaOverrideRequest"
+      },
+      "ScartaCodaBody": {
+        "properties": {
+          "queue_id": {
+            "type": "integer",
+            "title": "Queue Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queue_id"
+        ],
+        "title": "ScartaCodaBody"
       },
       "ScontiOmaggiResponse": {
         "properties": {

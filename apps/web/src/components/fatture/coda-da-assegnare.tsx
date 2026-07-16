@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin, Split, CheckCircle2, ChevronRight, Eye } from "lucide-react";
+import { MapPin, Split, CheckCircle2, ChevronRight, Eye, Ban } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import { RipartisciDialog } from "@/components/fatture/ripartisci-dialog";
 type FatturaDaAssegnare = {
   queue_id: number;
   fornitore: string | null;
+  fornitore_nome: string | null;
   numero_fattura: string | null;
   data_fattura: string | null;
   importo_totale: number | null;
@@ -62,7 +63,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   const [items, setItems] = useState<FatturaDaAssegnare[]>([]);
   const [sedi, setSedi] = useState<Sede[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState<number | null>(null);
+  const [busy, setBusy] = useState<Set<number>>(new Set());
   const [ripartisci, setRipartisci] = useState<FatturaDaAssegnare | null>(null);
   const [finestraOpen, setFinestraOpen] = useState(false);
   const [anteprima, setAnteprima] = useState<FatturaDaAssegnare | null>(null);
@@ -139,9 +140,25 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     };
   }, [contesto]);
 
+  // `busy` tiene i queue_id in lavorazione, non un id solo: con un valore singolo
+  // assegnare UNA riga disabilitava i bottoni di TUTTE (i test erano `busy !== null`),
+  // e la lista intera si spegneva a ogni click. Le assegnazioni sono indipendenti fra
+  // loro — ognuna tocca il suo record di coda — quindi si bloccano solo i bottoni
+  // della riga su cui si sta lavorando.
+  const inCorso = (queueId: number) => busy.has(queueId);
+
+  function segnaBusy(queueId: number, attivo: boolean) {
+    setBusy((prev) => {
+      const next = new Set(prev);
+      if (attivo) next.add(queueId);
+      else next.delete(queueId);
+      return next;
+    });
+  }
+
   async function assegna(queueId: number, ristoranteId: string) {
-    if (busy !== null) return;
-    setBusy(queueId);
+    if (inCorso(queueId)) return;
+    segnaBusy(queueId, true);
     try {
       const res = await fetch("/api/fatture/da-assegnare", {
         method: "POST",
@@ -156,7 +173,43 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     } catch {
       toast.error("Impossibile assegnare la fattura");
     } finally {
-      setBusy(null);
+      segnaBusy(queueId, false);
+    }
+  }
+
+  // Via d'uscita dalla coda per i documenti che non vanno in nessun locale (non
+  // pertinenti, doppioni arrivati con un altro nome file). Senza questa, l'unico
+  // modo di svuotare la coda era assegnare — cioè far entrare nei costi qualcosa
+  // che nei costi non ci deve stare.
+  async function scarta(f: FatturaDaAssegnare) {
+    if (inCorso(f.queue_id)) return;
+    const chi = f.fornitore_nome || (f.fornitore ? `P.IVA ${f.fornitore}` : "questa fattura");
+    if (
+      !confirm(
+        `Togliere dalla coda la fattura di ${chi}?\n\nNon verrà caricata in nessun locale e non comparirà nei costi. ` +
+          `Se in futuro ti serve, ricaricala dal file originale.`,
+      )
+    ) {
+      return;
+    }
+    segnaBusy(f.queue_id, true);
+    try {
+      const res = await fetch("/api/fatture/scarta-da-coda", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queue_id: f.queue_id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail || data?.error);
+      setItems((prev) => prev.filter((i) => i.queue_id !== f.queue_id));
+      // ok:false = assegnata da un altro click nel frattempo: la riga sparisce
+      // comunque ed è giusto così, non è un errore da mostrare.
+      toast.success("Fattura tolta dalla coda");
+      router.refresh();
+    } catch {
+      toast.error("Impossibile togliere la fattura dalla coda");
+    } finally {
+      segnaBusy(f.queue_id, false);
     }
   }
 
@@ -242,8 +295,10 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                 {items.map((f) => (
                   <li key={f.queue_id} className="rounded-xl border border-border bg-card p-3 space-y-2">
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                      {/* Il nome del fornitore è ciò che fa riconoscere la fattura:
+                          la P.IVA da sola non dice niente a chi deve decidere il locale. */}
                       <span className="font-medium">
-                        {f.fornitore ? `Fornitore P.IVA ${f.fornitore}` : "Fattura"}
+                        {f.fornitore_nome || (f.fornitore ? `Fornitore P.IVA ${f.fornitore}` : "Fattura")}
                       </span>
                       {f.numero_fattura && <span className="text-muted-foreground">n. {f.numero_fattura}</span>}
                       {f.data_fattura && <span className="text-muted-foreground">{f.data_fattura}</span>}
@@ -271,7 +326,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                       {sedi.map((s) => (
                         <button
                           key={s.id}
-                          disabled={busy !== null}
+                          disabled={inCorso(f.queue_id)}
                           onClick={() => assegna(f.queue_id, s.id)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-sky-500/10 hover:border-sky-500 disabled:opacity-50"
                         >
@@ -280,12 +335,23 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                         </button>
                       ))}
                       <button
-                        disabled={busy !== null}
+                        disabled={inCorso(f.queue_id)}
                         onClick={() => setRipartisci(f)}
                         className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 hover:border-primary disabled:opacity-50"
                       >
                         <Split className="size-3.5" />
                         Dividi tra i locali
+                      </button>
+                      {/* Terza via, oltre ad assegnare e dividere: il documento non
+                          riguarda nessun locale. Defilato (ml-auto, grigio) perché è
+                          l'eccezione, non l'azione attesa. */}
+                      <button
+                        disabled={inCorso(f.queue_id)}
+                        onClick={() => scarta(f)}
+                        className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                      >
+                        <Ban className="size-3.5" />
+                        Non è di nessun locale
                       </button>
                     </div>
                   </li>
@@ -310,6 +376,9 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           {anteprima && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {anteprima.fornitore_nome && (
+                  <span className="font-medium text-foreground">{anteprima.fornitore_nome}</span>
+                )}
                 {anteprima.fornitore && <span>P.IVA {anteprima.fornitore}</span>}
                 {anteprima.data_fattura && <span>{anteprima.data_fattura}</span>}
                 {anteprima.indirizzo_destinatario && <span>{anteprima.indirizzo_destinatario}</span>}
@@ -396,8 +465,14 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
         open={ripartisci !== null}
         onOpenChange={(v) => !v && setRipartisci(null)}
         queueId={ripartisci?.queue_id}
-        fornitore={ripartisci?.fornitore ?? undefined}
-        descrizioneDefault={ripartisci?.fornitore ? `Costo comune ${ripartisci.fornitore}` : ""}
+        fornitore={ripartisci?.fornitore_nome ?? ripartisci?.fornitore ?? undefined}
+        descrizioneDefault={
+          ripartisci?.fornitore_nome
+            ? `Costo comune ${ripartisci.fornitore_nome}`
+            : ripartisci?.fornitore
+              ? `Costo comune ${ripartisci.fornitore}`
+              : ""
+        }
         sedi={sedi.map((s) => ({ id: s.id, nome: s.nome }))}
         onDone={() => {
           if (ripartisci) setItems((prev) => prev.filter((i) => i.queue_id !== ripartisci.queue_id));

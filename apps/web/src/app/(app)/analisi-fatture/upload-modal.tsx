@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle,
   FileText,
   Info,
@@ -58,7 +60,13 @@ function humanSize(b: number): string {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function UploadModal() {
+// `contesto` cambia SOLO cosa si dice delle fatture finite in coda, mai come si
+// caricano: il worker decide il locale dal documento (P.IVA + indirizzo) e non
+// riceve alcun ristorante_id dal client, quindi caricare dalla catena o da un PV
+// dà lo stesso identico esito. Ma la coda "da assegnare" vive solo in catena: da
+// un PV va detto dove sono finite, altrimenti spariscono in un posto che da lì
+// non si vede.
+export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } = {}) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -280,8 +288,8 @@ export function UploadModal() {
                   {entry.status === "queued" && (
                     <p className="text-amber-600 mt-0.5">
                       {entry.queue_created === false
-                        ? "Già in coda: questa fattura è intestata alla sede legale. Assegnala a un punto vendita o ripartiscila sul gruppo dalla coda “Da assegnare”."
-                        : "Intestata alla sede legale, non a un punto vendita: l’ho messa in coda. Assegnala a un locale o ripartiscila sul gruppo dalla coda “Da assegnare”."}
+                        ? "Era già in attesa: intestata alla società, non a un locale."
+                        : "Intestata alla società, non a un locale: è in attesa che tu scelga dove va."}
                     </p>
                   )}
                   {entry.status === "skipped" && (
@@ -314,6 +322,37 @@ export function UploadModal() {
           </div>
         )}
 
+        {/* Fatture finite in coda: l'istruzione su cosa fare va data UNA volta, qui,
+            non ripetuta su ogni riga. Dal PV la coda non è raggiungibile (vive solo
+            in catena): senza questo avviso le fatture sparirebbero in un posto che
+            da qui non si vede. */}
+        {queued > 0 && !uploading && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+            <MapPin className="size-4 shrink-0 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-amber-700 dark:text-amber-400">
+                {queued === 1
+                  ? "1 fattura è intestata alla società, non a un locale"
+                  : `${queued} fatture sono intestate alla società, non a un locale`}
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                {contesto === "catena"
+                  ? "Le trovi qui sotto in “Gestione fatture di gruppo”: assegnale a un locale o dividile tra i locali."
+                  : "Per assegnarle a un locale o dividerle tra i locali, vai nella vista del gruppo."}
+              </p>
+              {contesto === "pv" && (
+                <Link
+                  href="/catena"
+                  className="mt-1.5 inline-flex items-center gap-1 font-medium text-amber-700 underline underline-offset-2 hover:text-amber-800 dark:text-amber-400"
+                >
+                  Vai alla vista del gruppo
+                  <ArrowRight className="size-3" />
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-2 -mx-4 -mb-4 mt-2 px-4 py-3 border-t bg-muted/50 rounded-b-xl">
           <span className="text-xs text-muted-foreground">
             {success > 0 && (
@@ -338,7 +377,11 @@ export function UploadModal() {
             )}
           </span>
           <div className="flex gap-2">
-            {(success > 0 || skipped > 0) && (
+            {/* `queued` va incluso: caricando SOLO fatture che finiscono in coda
+                (tipico di OFFSIDE, che ha la sede legale su quasi tutte) il bottone
+                non compariva e restava la sola X del Dialog, che non ricarica —
+                l'utente tornava a una pagina che non sapeva del nuovo caricamento. */}
+            {(success > 0 || skipped > 0 || queued > 0) && (
               <Button
                 variant="outline"
                 size="sm"

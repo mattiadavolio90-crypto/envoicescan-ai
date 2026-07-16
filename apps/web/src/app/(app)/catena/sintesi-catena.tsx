@@ -29,6 +29,7 @@ import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
 import { FinestraCostiGruppo } from "./finestra-costi-gruppo";
 import { CodaDaAssegnare } from "@/components/fatture/coda-da-assegnare";
+import { UploadModal } from "@/app/(app)/analisi-fatture/upload-modal";
 import { CardSegnali } from "./card-segnali";
 import { TagCatenaDialog } from "./gruppo-tag-section";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
@@ -478,7 +479,17 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           Gruppo {overview.nome_gruppo}
           <span className="text-base font-normal text-muted-foreground">· {overview.num_pv} punti vendita</span>
         </h1>
-        <ConfigAssistenteCatena />
+        <div className="flex items-center gap-2">
+          {/* Caricare fatture dalla catena: il documento decide da solo il locale
+              (P.IVA/indirizzo), la sede da cui si carica non c'entra. Prima l'unico
+              punto di upload era dentro una pagina PV, quindi da qui bisognava
+              scendere in un locale a caso per caricare — e per le catene same-P.IVA
+              (OFFSIDE) le ambigue finivano nella coda qui sotto, cioè in un posto
+              che dal PV non si vede. Qui invece carico e le colloco nello stesso
+              schermo. Stesso identico componente del PV: nessun secondo canale. */}
+          <UploadModal contesto="catena" />
+          <ConfigAssistenteCatena />
+        </div>
       </div>
 
       {/* Briefing di gruppo — la voce macro, in cima */}
