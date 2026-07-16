@@ -12,6 +12,18 @@ function workerHeaders(token: string): Record<string, string> {
   return h;
 }
 
+// L'anteprima parsa il documento a caldo su un endpoint worker sincrono: sotto
+// contesa sull'unica istanza Railway un colpo di lentezza superava i 15s fissi
+// e faceva scattare l'abort lato Vercel PRIMA che il worker rispondesse — il
+// frontend lo mostrava come "documento non leggibile" (fuorviante: il documento
+// e' sano, era solo lento). Timeout piu' generoso perche' e' un'azione on-demand
+// che l'utente sa di dover attendere qualche secondo.
+const ANTEPRIMA_TIMEOUT_MS = 30000;
+
+// La function serverless deve poter vivere piu' del timeout della fetch verso il
+// worker (30s), altrimenti Vercel la ucciderebbe prima e il timeout non servirebbe.
+export const maxDuration = 35;
+
 // GET: anteprima righe di una fattura ancora in coda 'da_assegnare' (parsing a caldo,
 // nessuna scrittura, categoria stimata da dizionario/regole).
 export async function GET(req: NextRequest) {
@@ -21,11 +33,18 @@ export async function GET(req: NextRequest) {
   try {
     const res = await fetch(
       `${WORKER_URL}/api/riparto/anteprima-coda?queue_id=${encodeURIComponent(queueId)}`,
-      { headers: workerHeaders(token), cache: "no-store", signal: AbortSignal.timeout(15000) },
+      { headers: workerHeaders(token), cache: "no-store", signal: AbortSignal.timeout(ANTEPRIMA_TIMEOUT_MS) },
     );
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
-  } catch {
-    return NextResponse.json({ error: "Worker unreachable" }, { status: 502 });
+  } catch (err) {
+    // Distinguere il timeout (worker lento/occupato, il documento e' probabilmente
+    // sano) da un errore di rete: il frontend mostra un messaggio onesto e diverso
+    // da "documento non leggibile", cosi' l'utente sa che puo' riprovare.
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    return NextResponse.json(
+      { error: isTimeout ? "Worker timeout" : "Worker unreachable", motivo: isTimeout ? "timeout" : "rete" },
+      { status: isTimeout ? 504 : 502 },
+    );
   }
 }

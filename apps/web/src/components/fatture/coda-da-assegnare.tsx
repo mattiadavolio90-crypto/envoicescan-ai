@@ -67,7 +67,12 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   const [finestraOpen, setFinestraOpen] = useState(false);
   const [anteprima, setAnteprima] = useState<FatturaDaAssegnare | null>(null);
   const [righeAnteprima, setRigheAnteprima] = useState<RigaAnteprima[]>([]);
-  const [anteprimaDisponibile, setAnteprimaDisponibile] = useState(true);
+  // Esito anteprima: "ok" mostra le righe, "illeggibile" = documento davvero non
+  // parsabile (p7m estratto male ecc.), "occupato" = worker lento/irraggiungibile
+  // (il documento è probabilmente sano, basta riprovare). Distinguerli evita il
+  // messaggio fuorviante "documento non leggibile" quando in realtà il server
+  // era solo occupato e ha tagliato la richiesta per timeout.
+  const [esitoAnteprima, setEsitoAnteprima] = useState<"ok" | "illeggibile" | "occupato">("ok");
   const [loadingAnteprima, setLoadingAnteprima] = useState(false);
 
   useEffect(() => {
@@ -75,20 +80,27 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     let alive = true;
     setLoadingAnteprima(true);
     setRigheAnteprima([]);
-    setAnteprimaDisponibile(true);
+    setEsitoAnteprima("ok");
     fetch(`/api/riparto/anteprima-coda?queue_id=${anteprima.queue_id}`, { cache: "no-store" })
-      // Una risposta non-ok (o rete) NON è una fattura "senza righe": è
-      // anteprima indisponibile. Distinguerle evita il messaggio fuorviante
-      // "Nessuna riga trovata" quando in realtà il documento non si è potuto
-      // leggere (es. XML firmato .p7m estratto male a monte).
-      .then((r) => (r.ok ? r.json() : { disponibile: false, righe: [] }))
-      .then((data) => {
+      .then(async (r) => {
+        // 200 con disponibile:false → documento realmente illeggibile.
+        // 504/502 (o rete) → worker occupato/lento: NON è colpa del documento.
+        if (r.ok) {
+          const data = await r.json();
+          return {
+            righe: Array.isArray(data?.righe) ? data.righe : [],
+            esito: data?.disponibile === true ? ("ok" as const) : ("illeggibile" as const),
+          };
+        }
+        return { righe: [] as RigaAnteprima[], esito: "occupato" as const };
+      })
+      .then((res) => {
         if (!alive) return;
-        setRigheAnteprima(Array.isArray(data?.righe) ? data.righe : []);
-        setAnteprimaDisponibile(data?.disponibile === true);
+        setRigheAnteprima(res.righe);
+        setEsitoAnteprima(res.esito);
       })
       .catch(() => {
-        if (alive) setAnteprimaDisponibile(false);
+        if (alive) setEsitoAnteprima("occupato");
       })
       .finally(() => {
         if (alive) setLoadingAnteprima(false);
@@ -308,7 +320,14 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Caricamento…
                   </div>
-                ) : !anteprimaDisponibile ? (
+                ) : esitoAnteprima === "occupato" ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Non è stato possibile caricare l&apos;anteprima in tempo: il server era
+                    momentaneamente occupato. Il documento è a posto — chiudi e riprova tra
+                    qualche secondo, oppure collocalo comunque (assegna a un locale o dividi
+                    tra i locali) e lo vedrai in Gestione Fatture.
+                  </div>
+                ) : esitoAnteprima === "illeggibile" ? (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                     Anteprima non disponibile per questa fattura (documento firmato non
                     leggibile in anteprima). Puoi collocarla comunque: assegnala a un locale
@@ -368,7 +387,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                   </div>
                 )}
               </div>
-              {!loadingAnteprima && anteprimaDisponibile && righeAnteprima.length > 0 && (
+              {!loadingAnteprima && esitoAnteprima === "ok" && righeAnteprima.length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   Categoria stimata: il documento non è ancora collocato su un locale, la
                   classificazione definitiva arriva dopo.
