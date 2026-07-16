@@ -121,6 +121,130 @@ class GruppoOverviewResponse(BaseModel):
     ranking: List[RankingPV]
 
 
+def _overrides_mese_sede(sb, ristorante_id: str, anno: int) -> Dict[int, Dict[str, float]]:
+    """Override ricavi 'modalità mensile' di UNA sede per l'anno, riindicizzati {mese: {...}}.
+
+    Riusa _load_mensile_overrides del worker (stessa fonte del PV: ricavi_modalita_mensile)
+    così catena e pagina Margini leggono gli stessi ricavi. Best-effort: se la lettura
+    fallisce si torna {} e i ricavi ricadono sullo snapshot (comportamento storico).
+    """
+    try:
+        raw = _fw()._load_mensile_overrides(sb, ristorante_id, [int(anno)])
+    except Exception:
+        return {}
+    return {int(m): v for (a, m), v in (raw or {}).items() if int(a) == int(anno)}
+
+
+def _aggrega_sedi_mensili(
+    ids: List[str],
+    righe_mm: List[Dict[str, Any]],
+    costi_auto: Dict[str, tuple],
+    overrides: Dict[str, Dict[int, Dict[str, float]]],
+    mesi: List[int],
+    per_mese: bool = False,
+) -> Dict[str, Any]:
+    """Aggrega per sede il conto economico dei mesi richiesti, con la STESSA formula
+    della pagina Margini del PV (_aggrega_mensili_margini in fastapi_worker).
+
+    È il punto unico di verità della catena: gruppo_overview e gruppo_margini_coperti
+    la condividono, così non possono più divergere fra loro né dal PV (ogni copia
+    della formula è un bug che aspetta di nascere — è già successo).
+
+    Due asimmetrie col PV, corrette qui perché causavano MOL diversi tra le viste:
+      • si itera sui MESI DI CALENDARIO, non sulle righe margini_mensili esistenti:
+        una sede con fatture ma senza riga del mese (ricavi non ancora inseriti) ha
+        comunque i suoi costi nel MOL, come sul PV;
+      • i ricavi dei mesi in modalità mensile vengono dagli OVERRIDE
+        (ricavi_modalita_mensile), che vincono sullo snapshot fatturato_netto.
+
+    `overrides` è {ristorante_id: {mese: {iva10, iva22, altri, coperti}}} (per sede:
+    ogni PV ha la sua modalità mensile). `costi_auto` è {ristorante_id: (dict_fb
+    {mese:€}, dict_spese {mese:€})}.
+    Con per_mese=True aggiunge le serie _mol_per_mese/_netto_per_mese (sparkline).
+    """
+    per_sede_mese: Dict[tuple, Dict[str, Any]] = {}
+    for r in (righe_mm or []):
+        rid = str(r.get("ristorante_id"))
+        try:
+            m = int(r.get("mese"))
+        except (TypeError, ValueError):
+            continue
+        per_sede_mese[(rid, m)] = r
+
+    out: Dict[str, Any] = {
+        rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0,
+              "spese": 0.0, "pers": 0.0, "cop": 0.0, "cop_fb": 0.0}
+        for rid in ids
+    }
+    mol_per_mese: Dict[int, float] = {}
+    netto_per_mese: Dict[int, float] = {}
+
+    for rid in ids:
+        fb_auto_m, spese_auto_m = costi_auto.get(rid, ({}, {}))
+        ov_sede = overrides.get(rid) or {}
+        a = out[rid]
+        for m in mesi:
+            r = per_sede_mese.get((rid, m), {})
+            # Ricavi: override del mese se in modalità mensile, altrimenti snapshot.
+            # Scorporo IVA identico al PV (iva10/1.10 + iva22/1.22 + altri).
+            ov = ov_sede.get(m)
+            if ov:
+                iva10 = float(ov.get("iva10") or 0)
+                iva22 = float(ov.get("iva22") or 0)
+                altri = float(ov.get("altri") or 0)
+            else:
+                iva10 = float(r.get("fatturato_iva10") or 0)
+                iva22 = float(r.get("fatturato_iva22") or 0)
+                altri = float(r.get("altri_ricavi_noiva") or 0)
+            lordo = iva10 + iva22 + altri
+            netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
+
+            fb_tot = (
+                float(fb_auto_m.get(m, 0.0))
+                + float(r.get("altri_costi_fb") or 0)
+                + float(r.get("quote_riparto_fb") or 0)
+            )
+            sp_tot = (
+                float(spese_auto_m.get(m, 0.0))
+                + float(r.get("altri_costi_spese") or 0)
+                + float(r.get("quote_riparto_spese") or 0)
+            )
+            pers = (
+                float(r.get("costo_dipendenti") or 0)
+                + float(r.get("costo_personale_extra") or 0)
+            )
+            mol_v = (netto - fb_tot) - sp_tot - pers
+
+            a["netto"] += netto
+            a["lordo"] += lordo
+            a["fb"] += fb_tot
+            a["spese"] += sp_tot
+            a["pers"] += pers
+            a["mol"] += mol_v
+
+            # Coperti: override del mese se presente (stessa fonte dei ricavi),
+            # altrimenti il valore su margini_mensili.
+            cop_mese = 0.0
+            if ov and ov.get("coperti") is not None:
+                cop_mese = float(ov["coperti"] or 0)
+            else:
+                cop_mese = float(r.get("coperti") or 0)
+            a["cop"] += cop_mese
+            # €MP/coperto: contano solo i mesi con costo F&B, altrimenti i mesi con
+            # coperti ma fatture non ancora arrivate diluirebbero la media (come PV).
+            if fb_tot > 0:
+                a["cop_fb"] += cop_mese
+
+            if per_mese:
+                mol_per_mese[m] = mol_per_mese.get(m, 0.0) + mol_v
+                netto_per_mese[m] = netto_per_mese.get(m, 0.0) + netto
+
+    if per_mese:
+        out["_mol_per_mese"] = mol_per_mese
+        out["_netto_per_mese"] = netto_per_mese
+    return out
+
+
 def _colore_margine(mol_perc: Optional[float]) -> str:
     """Pallino ranking dal margine %: stesse soglie di lettura dei conti PV.
 
@@ -479,53 +603,22 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     from services.margine_service import calcola_costi_automatici_gruppo_sql
     costi_auto_gruppo = calcola_costi_automatici_gruppo_sql(user_id, ids, anno)
 
-    # Fatturato LORDO (iva10+iva22+altri): è quello che mostra la Home del PV.
-    # Il NETTO (scorporo IVA) resta per il margine % (come pagina Margini).
-    agg: Dict[str, Dict[str, float]] = {
-        rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0, "spese": 0.0, "pers": 0.0}
-        for rid in ids
-    }
-    mol_per_mese: Dict[int, float] = {}
-    netto_per_mese: Dict[int, float] = {}
-    for r in (mm_resp.data or []):
-        rid = str(r.get("ristorante_id"))
-        a = agg.get(rid)
-        if a is None:
-            continue
-        try:
-            m = int(r.get("mese"))
-        except (TypeError, ValueError):
-            m = 0
-        lordo = (
-            float(r.get("fatturato_iva10") or 0)
-            + float(r.get("fatturato_iva22") or 0)
-            + float(r.get("altri_ricavi_noiva") or 0)
-        )
-        netto = float(r.get("fatturato_netto") or 0)
-        # Costo automatico live del mese (RPC gruppo) + costi manuali + quote riparto,
-        # esattamente come _aggrega_mensili_margini / pagina Margini del PV.
-        fb_auto_m, spese_auto_m = costi_auto_gruppo.get(rid, ({}, {}))
-        fb_tot = (
-            float(fb_auto_m.get(m, 0.0))
-            + float(r.get("altri_costi_fb") or 0)
-            + float(r.get("quote_riparto_fb") or 0)
-        )
-        sp_tot = (
-            float(spese_auto_m.get(m, 0.0))
-            + float(r.get("altri_costi_spese") or 0)
-            + float(r.get("quote_riparto_spese") or 0)
-        )
-        pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
-        mol_v = (netto - fb_tot) - sp_tot - pers
-        a["netto"] += netto
-        a["lordo"] += lordo
-        a["mol"] += mol_v
-        a["fb"] += fb_tot
-        a["spese"] += sp_tot
-        a["pers"] += pers
-        if m:
-            mol_per_mese[m] = mol_per_mese.get(m, 0.0) + mol_v
-            netto_per_mese[m] = netto_per_mese.get(m, 0.0) + netto
+    # Ricavi in modalità mensile: vincono sullo snapshot, come sul PV. Per sede,
+    # perché ogni PV ha la sua modalità (una lettura per sede su una tabella piccola,
+    # 1 riga per mese: niente loop sulle righe fattura).
+    overrides_gruppo = {rid: _overrides_mese_sede(sb, rid, anno) for rid in ids}
+
+    mesi_periodo = list(range(1, mese_corr + 1))
+    agg = _aggrega_sedi_mensili(
+        ids=ids,
+        righe_mm=(mm_resp.data or []),
+        costi_auto=costi_auto_gruppo,
+        overrides=overrides_gruppo,
+        mesi=mesi_periodo,
+        per_mese=True,
+    )
+    mol_per_mese: Dict[int, float] = agg.pop("_mol_per_mese", {})
+    netto_per_mese: Dict[int, float] = agg.pop("_netto_per_mese", {})
 
     tot_netto = sum(a["netto"] for a in agg.values())
     tot_lordo = sum(a["lordo"] for a in agg.values())
@@ -824,6 +917,9 @@ def gruppo_margini_coperti(
     from services.margine_service import calcola_costi_automatici_gruppo_sql
     costi_auto_gruppo = calcola_costi_automatici_gruppo_sql(user_id, ids, anno)
 
+    # Ricavi/coperti in modalità mensile: stessa fonte del PV (vedi gruppo_overview).
+    overrides_gruppo = {rid: _overrides_mese_sede(sb, rid, anno) for rid in ids}
+
     # Un PV è "incompleto" se gli mancano i dati base (fatturato/fatture costo/
     # personale): stesso criterio del briefing/overview. Senza, mostrerebbe 0% in
     # rosso (sembra in perdita) invece di "dati incompleti".
@@ -831,51 +927,16 @@ def gruppo_margini_coperti(
         incompleti_set = set(_completezza_dati_pv(sb, ids).keys())
     except Exception:
         incompleti_set = set()
-    agg: Dict[str, Dict[str, float]] = {
-        rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0, "cop": 0.0, "cop_fb": 0.0}
-        for rid in ids
-    }
-    for r in (mm_resp.data or []):
-        rid = str(r.get("ristorante_id"))
-        a = agg.get(rid)
-        if a is None:
-            continue
-        try:
-            m = int(r.get("mese"))
-        except (TypeError, ValueError):
-            m = 0
-        netto = float(r.get("fatturato_netto") or 0)
-        a["netto"] += netto
-        a["lordo"] += (
-            float(r.get("fatturato_iva10") or 0)
-            + float(r.get("fatturato_iva22") or 0)
-            + float(r.get("altri_ricavi_noiva") or 0)
-        )
-        # Costo F&B e MOL live (RPC gruppo + costi manuali + quote riparto), identico
-        # a gruppo_overview: il €MP/coperto usa il costo F&B totale del mese.
-        fb_auto_m, spese_auto_m = costi_auto_gruppo.get(rid, ({}, {}))
-        fb_mese = (
-            float(fb_auto_m.get(m, 0.0))
-            + float(r.get("altri_costi_fb") or 0)
-            + float(r.get("quote_riparto_fb") or 0)
-        )
-        sp_mese = (
-            float(spese_auto_m.get(m, 0.0))
-            + float(r.get("altri_costi_spese") or 0)
-            + float(r.get("quote_riparto_spese") or 0)
-        )
-        pers_mese = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
-        a["mol"] += (netto - fb_mese) - sp_mese - pers_mese
-        cop_mese = float(r.get("coperti") or 0)
-        a["fb"] += fb_mese
-        a["cop"] += cop_mese
-        # €MP/coperto: stesso metodo di Margini/Coperti del PV. Un mese conta nel
-        # rapporto solo se ha SIA costo F&B SIA coperti; i mesi con coperti ma
-        # fatture costo non ancora arrivate diluirebbero falsamente la media verso
-        # il basso. Così catena e Margini mostrano lo stesso numero, e il valore si
-        # aggiorna man mano che il cliente carica i costi.
-        if fb_mese > 0:
-            a["cop_fb"] += cop_mese
+
+    # Stessa formula di gruppo_overview e del PV (helper condiviso: una sola copia).
+    mesi_periodo = [mese_sel] if mese_sel else list(range(1, mese_corr + 1))
+    agg = _aggrega_sedi_mensili(
+        ids=ids,
+        righe_mm=(mm_resp.data or []),
+        costi_auto=costi_auto_gruppo,
+        overrides=overrides_gruppo,
+        mesi=mesi_periodo,
+    )
 
     def _riga(rid: str, nome: str, a: Dict[str, float], incompleti: bool) -> MarginiCopertiPV:
         netto = a["netto"]
