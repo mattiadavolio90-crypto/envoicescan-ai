@@ -301,7 +301,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           stimata da dizionario/regole — la classificazione definitiva arriva quando il
           documento viene collocato su un locale). */}
       <Dialog open={anteprima !== null} onOpenChange={(v) => !v && setAnteprima(null)}>
-        <DialogContent className="max-h-[85vh] w-[min(96vw,64rem)] max-w-none overflow-y-auto">
+        <DialogContent className="max-h-[85vh] w-[min(96vw,64rem)] max-w-none sm:max-w-none overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Anteprima fattura {anteprima?.numero_fattura ? `n° ${anteprima.numero_fattura}` : ""}
@@ -387,12 +387,6 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                   </div>
                 )}
               </div>
-              {!loadingAnteprima && esitoAnteprima === "ok" && righeAnteprima.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Categoria stimata: il documento non è ancora collocato su un locale, la
-                  classificazione definitiva arriva dopo.
-                </p>
-              )}
             </div>
           )}
         </DialogContent>
