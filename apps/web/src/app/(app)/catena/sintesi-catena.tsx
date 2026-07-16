@@ -14,6 +14,7 @@ import {
   ArrowDown,
   ArrowRight,
   Split,
+  ClipboardList,
 } from "lucide-react";
 import {
   type GruppoOverview,
@@ -111,6 +112,14 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
       <p className="mt-4 max-w-none text-base leading-relaxed text-foreground/90 sm:text-lg">
         {briefing.narrativa}
       </p>
+      {(briefing.n_fatture_da_collocare ?? 0) > 0 && (
+        <p className="mt-3 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-500">
+          <ClipboardList className="size-4 shrink-0" />
+          {briefing.n_fatture_da_collocare === 1
+            ? "C'è 1 fattura di gruppo da collocare qui sotto: assegnala a una sede o dividila fra i locali."
+            : `Ci sono ${briefing.n_fatture_da_collocare} fatture di gruppo da collocare qui sotto: assegnale a una sede o dividile fra i locali.`}
+        </p>
+      )}
     </div>
   );
 }

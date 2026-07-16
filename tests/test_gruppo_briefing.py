@@ -91,8 +91,10 @@ def test_segnali_aperti_non_dice_tutto_ok():
     assert "tutto in ordine" not in out.narrativa.lower()
 
 
-def test_fatture_da_collocare_come_azione():
-    # Le fatture di gruppo in coda entrano nel briefing come azione concreta.
+def test_fatture_da_collocare_campo_strutturato_non_narrativa():
+    # Le fatture di gruppo in coda escono dalla narrativa (l'imperativo
+    # "assegnale/dividile" non è azionabile su mobile) e vivono nel campo
+    # strutturato n_fatture_da_collocare: ogni client sceglie wording e CTA.
     ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
     salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
     out = _build_briefing(
@@ -100,9 +102,25 @@ def test_fatture_da_collocare_come_azione():
         n_segnali=0, sev_max="info", salute_pv=salute_pv,
         n_fatture_da_collocare=3,
     )
-    assert "3 fatture di gruppo da collocare" in out.narrativa
+    # Conteggio esposto come campo strutturato, NON più incastrato nel testo.
+    assert out.n_fatture_da_collocare == 3
+    assert "da collocare" not in out.narrativa.lower()
+    assert "assegnale" not in out.narrativa.lower()
     # Con fatture in sospeso non si dice "tutto in ordine".
     assert "tutto in ordine" not in out.narrativa.lower()
+
+
+def test_nessuna_fattura_da_collocare_campo_a_zero():
+    ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
+    salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
+    out = _build_briefing(
+        "GRUPPO", ranking, salute_indice=88, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_da_collocare=0,
+    )
+    assert out.n_fatture_da_collocare == 0
+    # Senza sospesi né altri problemi, torna il "tutto in ordine".
+    assert "tutto in ordine" in out.narrativa.lower()
 
 
 def test_completezza_per_presenza_dati_non_salute():

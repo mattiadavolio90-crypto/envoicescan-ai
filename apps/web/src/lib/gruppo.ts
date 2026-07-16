@@ -42,6 +42,9 @@ export type GruppoBriefing = {
   saluto: string;
   narrativa: string;
   severity_max: "info" | "warning" | "error";
+  // Fatture di gruppo da collocare (a nome società, non attribuite a un locale).
+  // Fuori dalla narrativa: desktop ha la coda sotto (azionabile), mobile rimanda al PC.
+  n_fatture_da_collocare?: number;
 };
 
 export type GruppoOverview = {

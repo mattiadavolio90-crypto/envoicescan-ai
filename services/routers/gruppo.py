@@ -99,6 +99,12 @@ class GruppoBriefing(BaseModel):
     saluto: str                 # "Buongiorno / Buon pomeriggio / Buonasera"
     narrativa: str              # voce macro deterministica "chi va meglio/peggio"
     severity_max: str           # "info" | "warning" | "error" (dai segnali)
+    # Fatture di gruppo ancora da collocare (a nome della società, non attribuite a
+    # un locale). Fuori dalla narrativa perché l'AZIONE non è uguale ovunque: sul
+    # desktop c'è la coda subito sotto il briefing → l'imperativo "assegnale/dividile"
+    # è azionabile; sul mobile la coda non esiste → il testo rimanda al computer.
+    # Il conteggio è strutturato così ogni client sceglie il proprio wording.
+    n_fatture_da_collocare: int = 0
 
 
 class GruppoOverviewResponse(BaseModel):
@@ -207,16 +213,10 @@ def _build_briefing(
         )
 
     # Azione concreta del giorno: fatture di gruppo da collocare (arrivano a nome
-    # della società, l'app non le ha attribuite a un locale). È un'azione che il
-    # cliente può fare SUBITO, non una diagnosi → la mettiamo nel briefing invece
-    # del vecchio rimando-indice "N cose da vedere più sotto" (che ripeteva le card).
-    if n_fatture_da_collocare > 0:
-        frasi.append(
-            f"Ci sono {n_fatture_da_collocare} "
-            + ("fattura di gruppo da collocare" if n_fatture_da_collocare == 1
-               else "fatture di gruppo da collocare")
-            + ": assegnale a una sede o dividile fra i locali."
-        )
+    # della società, l'app non le ha attribuite a un locale). NON entra nella
+    # narrativa condivisa (l'imperativo "assegnale/dividile" non è azionabile su
+    # mobile, dove la coda non esiste): resta nel campo strutturato
+    # n_fatture_da_collocare e ogni client sceglie il wording e il CTA giusti.
 
     # "Tutto sotto controllo" SOLO se non manca davvero nulla: niente segnali,
     # salute non rossa, nessuna sede incompleta, niente fatture in sospeso. Mai dire
@@ -235,7 +235,12 @@ def _build_briefing(
         )
 
     narrativa = " ".join(frasi) if frasi else "Ecco la sintesi della catena."
-    return GruppoBriefing(saluto=_saluto_ora(), narrativa=narrativa, severity_max=sev_max)
+    return GruppoBriefing(
+        saluto=_saluto_ora(),
+        narrativa=narrativa,
+        severity_max=sev_max,
+        n_fatture_da_collocare=n_fatture_da_collocare,
+    )
 
 
 def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:

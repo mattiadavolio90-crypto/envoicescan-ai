@@ -19164,6 +19164,11 @@
           "severity_max": {
             "type": "string",
             "title": "Severity Max"
+          },
+          "n_fatture_da_collocare": {
+            "type": "integer",
+            "title": "N Fatture Da Collocare",
+            "default": 0
           }
         },
         "type": "object",

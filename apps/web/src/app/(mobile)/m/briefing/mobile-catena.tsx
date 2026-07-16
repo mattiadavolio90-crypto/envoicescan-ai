@@ -108,6 +108,16 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           {overview.briefing.saluto}, {overview.nome_gruppo}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-foreground/90">{overview.briefing.narrativa}</p>
+        {(overview.briefing.n_fatture_da_collocare ?? 0) > 0 && (
+          <p className="mt-3 flex items-start gap-2 text-sm font-medium text-amber-700 dark:text-amber-500">
+            <ClipboardList className="mt-0.5 size-4 shrink-0" />
+            <span>
+              {overview.briefing.n_fatture_da_collocare === 1
+                ? "C'è 1 fattura di gruppo da collocare: falla dal computer per assegnarla a una sede o dividerla fra i locali."
+                : `Ci sono ${overview.briefing.n_fatture_da_collocare} fatture di gruppo da collocare: falle dal computer per assegnarle a una sede o dividerle fra i locali.`}
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Conti del gruppo (compatto) — MOL se completo, altrimenti food cost */}
