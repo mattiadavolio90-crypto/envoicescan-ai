@@ -19,8 +19,33 @@
 >   aperto" senza aver verificato i chiamanti — l'errore che questo piano stesso
 >   avverte di non fare: "diagnosi accertata, non ipotizzata".)*
 > - **Fase 2** (endpoint aggregato Home) e **Fase 4** (async percorsi caldi):
->   non risultano fatte (nessun `home/bootstrap` nel codice).
-> - **§5 "Verifica finale"**: nessuna casella spuntata.
+>   **NON FATTE e non necessarie allo stato attuale** — decisione 17/7 presa sui
+>   numeri, come questo piano prescrive ("si potenzia sui numeri reali della spia
+>   latenza, non a naso", §3 Fase 3a):
+>
+>   | Misura | Valore (17/7) | Soglia del piano |
+>   |---|---|---|
+>   | Risposta `app.oneflux.it` | **0,3–0,5s** | — |
+>   | `worker_latency_check` (ogni 10 min dal 2/7) | **100 esecuzioni su 100 verdi** | 3s |
+>   | Alert latenza scattati | **0** | — |
+>
+>   Il sintomo che questo piano doveva curare **non si manifesta più** dal
+>   cuscinetto SSR + Fase 1. La Fase 4 tocca ~110 endpoint sincroni che servono
+>   clienti reali (il piano stesso la marca "rischio MEDIO, ULTIMA, isolata"):
+>   farla ora sarebbe rischio senza un problema da risolvere.
+>
+>   **Cosa le riapre** (non serve rileggere tutto il piano, basta uno di questi):
+>   - la spia latenza scatta (alert Telegram "worker lento") più di una volta
+>     isolata, oppure
+>   - crescita clienti/carico oltre l'ordine di grandezza attuale (10 sedi), oppure
+>   - ricompare la schermata "Servizio momentaneamente non raggiungibile".
+>
+>   In quel caso l'ordine resta quello di §4: prima Fase 2 (rischio basso), poi
+>   Fase 3a (+1 replica Railway, costo €), Fase 4 solo per ultima.
+>
+> - **§5 "Verifica finale"**: le caselle restano non spuntate perché il piano non è
+>   stato eseguito fino in fondo — ma il criterio pratico ("l'app non è più
+>   irraggiungibile / lenta") è soddisfatto e misurato.
 
 ---
 

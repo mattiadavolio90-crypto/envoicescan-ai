@@ -152,9 +152,23 @@ Regole:
   rossa e nessuna sede incompleta. Mai dire che va tutto bene mentre la salute del
   gruppo è bassa.
 
-> **Da fare:** la card "I conti del gruppo" può ancora mostrare numeri gonfiati
-> (food cost basso, MOL irreale) quando più sedi non hanno i costi inseriti — stesso
-> problema dei costi mancanti ma a livello di gruppo, non ancora affrontato.
+### La cascata dei dati del gruppo (RISOLTO, verificato 17/7)
+
+La card "I conti del gruppo" **non mostra più numeri gonfiati** quando alle sedi
+mancano i costi. Funziona a tre livelli, decisi dalla presenza dei dati (non dalla
+percentuale di salute):
+
+| Livello | Quando | Cosa mostra |
+|---|---|---|
+| **nessuno** | il gruppo non ha né fatturato né spese food | Nessun numero: "Dati ancora incompleti, completa i punti vendita" |
+| **food** | ci sono le spese food, ma a qualche sede manca il **personale** | Food cost sì, **MOL nascosto** + "N PV senza costo personale: MOL non ancora calcolabile". Card gialla, mai verde/rosso |
+| **completo** | tutte le sedi hanno fatturato + food + personale | MOL e margine, colore verde/rosso |
+
+**Perché:** senza il costo del personale di una sede il MOL aggregato è falso — e
+un MOL falso è peggio di un MOL mancante.
+
+> Verificato il 17/7 su SUSHILAND: 3 sedi su 4 non hanno il costo personale, quindi
+> il gruppo è al livello "food" e il MOL è correttamente nascosto.
 
 ---
 

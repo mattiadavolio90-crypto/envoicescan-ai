@@ -132,8 +132,13 @@ beneficio; lo shim costa zero e non mente.
 
 ## 5. Stato noto (verificato 17/7/2026)
 
-- **Aperto:** il dedup dell'upload confronta il **nome** del file, non il
-  contenuto.
+- **Chiuso come falso allarme (17/7):** "il dedup dell'upload guarda il nome
+  non il contenuto" era segnato come bug. Verificato sui dati reali: il nome SDI
+  (`IT<piva-emittente>_<progressivo>.xml`) **contiene già la P.IVA di chi emette**,
+  quindi è univoco per costruzione. Su 24.776 righe: **zero** nomi file associati a
+  due fornitori diversi, e zero casi di stesso nome con documento diverso.
+  Un dedup su `piva+data+totale` sarebbe **peggio**: cancellerebbe fatture vere
+  (Amazon ha 4 fatture identiche da 69,85€ lo stesso giorno — 4 ordini reali).
 - **Aperto:** la card "I conti del gruppo" può mostrare numeri gonfiati quando
   più sedi non hanno i costi (vedi `LOGICA_BRIEFING.md` §8).
 - **Chiuso come falso allarme:** il `.limit(50000)` in `notification_service.py`,
