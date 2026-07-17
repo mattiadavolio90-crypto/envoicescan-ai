@@ -1,4 +1,23 @@
-"""Notifiche in-app per promemoria operativi e dati mancanti."""
+"""LEGACY — Notifiche in-app della vecchia interfaccia Streamlit.
+
+⚠️  NON è nel percorso di produzione. Verificato il 17/7/2026: nessun modulo di
+`services/`, `services/routers/` o `worker/` importa questo file. L'unico
+chiamante è `components/notifications_panel.py`, cioè Streamlit, dismesso con lo
+switch DNS dell'8/6/2026.
+
+**Le notifiche vive le costruisce `services/notification_inbox_service.py`**
+(usato da fastapi_worker, scadenziario, upload_handler, anomaly_radar,
+tag_suggestion). Il briefing non chiama nulla di qui.
+
+Conservato perché coperto da 44 test e recuperabile, ma **non estenderlo**: una
+feature aggiunta qui non raggiunge nessun cliente.
+
+Nota storica: il `.limit(50000)` in `build_controllo_prezzi_notifications` era
+elencato come bersaglio della Fase 1a del piano stabilità worker
+(`DOCUMENTAZIONE/PIANO_STABILITA_WORKER_2026-07-02.md`). Non è mai stato un
+problema di produzione — la migrazione a Next.js aveva già tolto questo codice
+dal percorso servito, e nessuno se n'era accorto.
+"""
 
 import html as _html
 import hashlib

@@ -83,7 +83,9 @@ jobs:
         env:
           ELAPSED: ${{ steps.check.outputs.elapsed_ms }}
         run: |
-          curl -s -X POST https://api.brevo.com/v3/smtp/email \
+          # Vedi nota in uptime_check.yml: senza -w il passo resta verde anche se
+          # l'email non parte, e l'allerta diventa una finzione.
+          RESP=$(curl -s -w "\n%{http_code}" -X POST https://api.brevo.com/v3/smtp/email \
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{
@@ -91,4 +93,11 @@ jobs:
               \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
               \"subject\": \"⚠️ ONEFLUX worker lento (${ELAPSED}ms)\",
               \"htmlContent\": \"<h2>⚠️ Worker Railway sotto pressione</h2><p><code>/health</code> ha impiegato <strong>${ELAPSED}ms</strong> (soglia ${{ env.LATENCY_THRESHOLD_MS }}ms).</p><p>I clienti potrebbero vedere la schermata 'Servizio momentaneamente non raggiungibile'.</p><p>Controlla <a href='https://app.oneflux.it/admin/clienti'>Admin &gt; Clienti &gt; Salute worker</a> per il dettaglio per rotta (p50/p95).</p>\"
-            }"
+            }")
+          BREVO_CODE=$(echo "$RESP" | tail -n1)
+          if [ "$BREVO_CODE" != "201" ] && [ "$BREVO_CODE" != "202" ]; then
+            echo "::error::Alert email NON inviato (Brevo HTTP $BREVO_CODE). Rigenera BREVO_API_KEY su Brevo e aggiornala nei GitHub Secrets."
+            echo "$RESP" | head -n-1
+            exit 1
+          fi
+          echo "Alert email inviato (Brevo HTTP $BREVO_CODE)."

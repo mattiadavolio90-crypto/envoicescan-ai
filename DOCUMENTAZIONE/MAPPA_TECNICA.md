@@ -49,8 +49,13 @@ Tutto il resto del prodotto è al servizio di questa catena.
 | `price_impact_service.py` | Alert prezzi per **impatto** (peso × aumento) |
 | `margine_service.py` | MOL, food cost, margini |
 | `multisede_routing.py` | Smista fatture fra sedi con la stessa P.IVA |
-| `notification_service.py` | Costruisce le notifiche |
+| `notification_inbox_service.py` | Costruisce le notifiche (**questo è il vivo**) |
 | `auth_service.py` / `session_service.py` | Auth custom (non Supabase Auth) |
+
+> ⚠️ `notification_service.py` (1.284 righe) **non è nel percorso di produzione**:
+> lo importa solo `components/notifications_panel.py`, cioè Streamlit dismesso.
+> Il nome quasi identico inganna — le notifiche vere passano da
+> `notification_inbox_service.py`. Non estendere il primo.
 
 ### I router del worker
 
@@ -123,13 +128,15 @@ aggiungerci nulla.
 
 ## 5. Stato noto (verificato 17/7/2026)
 
-- **Aperto:** `services/notification_service.py:999` fa ancora `.limit(50000)` —
-  è un obiettivo dichiarato e mai eseguito della Fase 1a del piano stabilità
-  worker (`DOCUMENTAZIONE/PIANO_STABILITA_WORKER_2026-07-02.md`).
 - **Aperto:** il dedup dell'upload confronta il **nome** del file, non il
   contenuto.
 - **Aperto:** la card "I conti del gruppo" può mostrare numeri gonfiati quando
   più sedi non hanno i costi (vedi `LOGICA_BRIEFING.md` §8).
+- **Chiuso come falso allarme:** il `.limit(50000)` in `notification_service.py`,
+  bersaglio della Fase 1a del piano stabilità worker, non è mai stato un problema
+  di produzione: quel modulo è raggiungibile solo da Streamlit dismesso. Un
+  "bug aperto" può sparire perché il codice che lo conteneva è uscito dal
+  percorso servito — verificare i chiamanti prima di ottimizzare.
 
 ---
 

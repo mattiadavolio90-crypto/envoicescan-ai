@@ -64,7 +64,12 @@ jobs:
           else
             DETAIL="Codice HTTP ricevuto: <strong>$HTTP_CODE</strong>"
           fi
-          curl -s -X POST https://api.brevo.com/v3/smtp/email \
+          # -w scrive lo stato HTTP in coda alla risposta: senza, `curl -s` esce 0
+          # anche con api-key invalida e il passo risulta VERDE mentre l'email non
+          # parte. Un canale d'allerta che mente sul proprio stato è peggio di
+          # nessun canale: BREVO_API_KEY è risultata invalida il 2/7 e nessuno se
+          # n'era accorto proprio per questo.
+          RESP=$(curl -s -w "\n%{http_code}" -X POST https://api.brevo.com/v3/smtp/email \
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{
@@ -72,7 +77,14 @@ jobs:
               \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
               \"subject\": \"🚨 ONEFLUX è offline\",
               \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://app.oneflux.it/'>https://app.oneflux.it/</a></p><p>Controlla su <a href='https://vercel.com'>Vercel Dashboard</a> per lo stato del deploy.</p>\"
-            }"
+            }")
+          BREVO_CODE=$(echo "$RESP" | tail -n1)
+          if [ "$BREVO_CODE" != "201" ] && [ "$BREVO_CODE" != "202" ]; then
+            echo "::error::Alert email NON inviato (Brevo HTTP $BREVO_CODE). Rigenera BREVO_API_KEY su Brevo e aggiornala nei GitHub Secrets."
+            echo "$RESP" | head -n-1
+            exit 1
+          fi
+          echo "Alert email inviato (Brevo HTTP $BREVO_CODE)."
 
       # Canale ridondante e indipendente dall'email: se Brevo è giù o l'email
       # finisce in spam, Telegram arriva comunque come push sul telefono.

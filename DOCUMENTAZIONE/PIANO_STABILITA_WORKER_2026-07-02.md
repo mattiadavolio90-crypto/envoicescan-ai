@@ -4,14 +4,23 @@
 > "Servizio momentaneamente non raggiungibile" e della lentezza/crash percepiti,
 > senza regressioni, con clienti paganti già live.
 
-> **Verificato 17/7/2026 — piano PARZIALMENTE eseguito, non archiviabile.** Fase 1
-> (isolare admin) fatta: `admin_fatture_per_mese` RPC e `TTLCache` confermati nel
-> codice. **Bug concreto ancora aperto**: `services/notification_service.py:999`
-> ha ANCORA `.limit(50000)` — uno dei 3 target espliciti della Fase 1a (§1,
-> "Amplificatore"; §6 "Full-load notifiche") non è mai stato corretto. Fase 2
-> (endpoint aggregato Home) e Fase 4 (async percorsi caldi) non risultano fatte
-> (nessun `home/bootstrap` nel codice). §5 "Verifica finale" non ha nessuna
-> casella spuntata.
+> **Verificato 17/7/2026 — piano PARZIALMENTE eseguito, non archiviabile.**
+>
+> - **Fase 1 (isolare admin): FATTA** — `admin_fatture_per_mese` RPC e `TTLCache`
+>   confermati nel codice.
+> - **Fase 1a, target "Full-load notifiche" (§6): FALSO ALLARME, chiuso.** Il
+>   `.limit(50000)` in `notification_service.py` esiste ancora ma quel modulo
+>   **non è nel percorso di produzione**: lo importa solo
+>   `components/notifications_panel.py` (Streamlit, dismesso l'8/6/2026). Nessun
+>   file di `services/`, `services/routers/` o `worker/` lo importa. Le notifiche
+>   vive passano da `notification_inbox_service.py`. Non c'è niente da
+>   ottimizzare: la migrazione a Next.js aveva già tolto questo codice dal
+>   percorso servito. *(Una revisione precedente di questa nota lo dava per "bug
+>   aperto" senza aver verificato i chiamanti — l'errore che questo piano stesso
+>   avverte di non fare: "diagnosi accertata, non ipotizzata".)*
+> - **Fase 2** (endpoint aggregato Home) e **Fase 4** (async percorsi caldi):
+>   non risultano fatte (nessun `home/bootstrap` nel codice).
+> - **§5 "Verifica finale"**: nessuna casella spuntata.
 
 ---
 
