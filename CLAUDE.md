@@ -49,8 +49,9 @@ non aggiungerci feature. Il container Railway serve il worker FastAPI, non Strea
 
 ## Stato della migrazione Next.js
 
-Riferimento: `ONEFLUX_MASTER.md` (visione + piano + stato + roadmap).
-Stato sintetico migrazione: `DOCUMENTAZIONE/DOC COMPLETA/MIGRAZIONE_NEXTJS.md`.
+Visione/filosofia/modello commerciale: `ONEFLUX_MASTER.md`. Stato tecnico
+corrente: `DOCUMENTAZIONE/DOC COMPLETA/DOCUMENTAZIONE_COMPLETA.md`. Traccia
+storica dello switch: `docs/storico/MIGRAZIONE_APP.md`.
 
 - **Migrazione COMPLETATA** ✅ — switch DNS 8/6/2026, `app.oneflux.it` → Next.js su Vercel, Streamlit dismesso (dominio `nuovo.oneflux.it` rimosso).
 - Tutte le sezioni principali sono su Next.js (Home/Briefing, Ricavi e Margini, Prezzi, Analisi Fatture, Scadenziario, Cestino, Catena, Agenda, Workspace, Admin, mobile `/m`).

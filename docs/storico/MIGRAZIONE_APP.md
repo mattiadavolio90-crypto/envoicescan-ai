@@ -1,7 +1,9 @@
 # MIGRAZIONE APP — Piano switch Streamlit → Next.js
 
 **Creato:** 3 giugno 2026
-**Riferimento completo:** `ONEFLUX_MASTER.md` §14-16
+**Nota (17/7/2026):** questo file è ora l'unica traccia dettagliata del piano di
+migrazione — le sezioni §14-16 di `ONEFLUX_MASTER.md` che lo riassumevano sono
+state ritirate (ridondanti, il documento master oggi copre solo visione/filosofia).
 
 > ✅ **MIGRAZIONE COMPLETATA (switch 8/6/2026).** `app.oneflux.it` serve Next.js su
 > Vercel; Streamlit e `nuovo.oneflux.it` sono dismessi. Questo documento è il piano

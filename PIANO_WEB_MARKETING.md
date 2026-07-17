@@ -203,7 +203,7 @@ Continuo                   → misurare in Search Console, raddoppiare sui conte
 ## 9. Riferimenti incrociati
 
 - `BRIEF_LANDING_ONEFLUX_1.md` — brief e copy della landing (vincoli di tono/stile).
-- `ONEFLUX_MASTER.md` — visione e stato della migrazione Next.js.
+- `ONEFLUX_MASTER.md` — visione, filosofia e modello commerciale.
 - `docs/COMPLIANCE_GDPR.md` — dossier privacy (da sfruttare come trust signal).
 - Proxy/hostname split: `apps/web/src/proxy.ts` (commenti su landing vs app).
 - Memoria di lavoro: `project_seo_landing_pilastro1` (stato sintetico cross-sessione).

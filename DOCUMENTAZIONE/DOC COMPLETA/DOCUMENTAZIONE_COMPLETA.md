@@ -2,11 +2,11 @@
 
 **Sistema SaaS di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 6.2
-Ultimo aggiornamento: 19 Giugno 2026
+Versione: 6.3
+Ultimo aggiornamento: 17 Luglio 2026
 Autore: Mattia D'Avolio
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)
-Titolare: Recoma System S.r.l. (P.IVA IT09599210961)
+Titolare: RECOMASYSTEM S.r.l. (P.IVA 12993240154, Trezzano)
 URL produzione (Next.js su Vercel): https://app.oneflux.it
 
 > **v6.2 (19/06/2026)** — Migrazione Next.js COMPLETATA: lo switch è avvenuto l'8/6,
@@ -16,6 +16,21 @@ URL produzione (Next.js su Vercel): https://app.oneflux.it
 > worker FastAPI. Audit 19/06: sicurezza advisor 0 ERROR, performance 0 WARN,
 > ~9530 test Python + 18 Deno. Codice Streamlit (`app.py`, `pages/`) ancora nel repo
 > ma non servito; archiviazione post go-live (1/7/2026).
+>
+> **v6.3 (17/07/2026)** — §8 arricchita con le decisioni architetturali della
+> migrazione Next.js tuttora attive nel codice (middleware blacklist invertita,
+> gating per-pagina `requirePagina`, cache `getCurrentUser`, tassonomia feature
+> flags), estratte da `MIGRAZIONE_NEXTJS.md` prima della sua eliminazione (il resto
+> del documento era cronaca dell'evento switch, ormai priva di valore predittivo).
+> Corretta P.IVA titolare in tutte le occorrenze (era IT09599210961, sbagliata —
+> corretta 12993240154). Corretto §7: il fallback categoria "SERVIZI E
+> CONSULENZE" descritto qui era il comportamento VECCHIO, eliminato — oggi resta
+> "Da Classificare" (vedi CLAUDE.md regola di dominio #1). Corretto §11: la
+> cartella `migrations/` legacy arriva a 082, non 68. Eliminato
+> `DOCUMENTAZIONE_SINTESI.md` (duplicato quasi totale di questo documento, con
+> rischio di disallineamento — conteneva lo stesso errore sul fallback categoria
+> più un link morto a `MIGRAZIONE_NEXTJS.md`): questo file resta l'unico
+> riferimento tecnico completo.
 
 ---
 
@@ -408,7 +423,7 @@ ONEFLUX/
 ├── railway.toml                       # Config deploy Railway
 ├── requirements.txt / requirements-lock.txt
 ├── pytest.ini
-├── ONEFLUX_MASTER.md                  # Documento vision + piano + stato (fonte unica)
+├── ONEFLUX_MASTER.md                  # Visione, filosofia, modello commerciale
 └── CLAUDE.md                          # Istruzioni per Claude Code
 ```
 
@@ -552,7 +567,7 @@ Accessibile solo agli admin (`is_admin=True` verificato lato worker). Vedi sezio
 
 ### Pagine legali (pubbliche, senza login)
 
-- `/privacy` — Privacy & Cookie Policy v4.0 (Recoma System S.r.l., P.IVA IT09599210961)
+- `/privacy` — Privacy & Cookie Policy v4.0 (RECOMASYSTEM S.r.l., P.IVA 12993240154)
 - `/termini` — Terms of Service
 
 ---
@@ -574,7 +589,7 @@ Vedi documento dedicato: [AI_PIPELINE.md](AI_PIPELINE.md)
 - `altissima / alta` → `needs_review=False`, bypassa coda admin
 - `media / bassa` → `needs_review=True`, entra nella coda review admin
 
-**31 categorie:** 25 Food & Beverage + 1 Materiale di Consumo + 3 Spese Operative + 2 speciali (Note e Diciture solo per €0, Da Classificare vietata per constraint DB — fallback: "SERVIZI E CONSULENZE")
+**31 categorie:** 25 Food & Beverage + 1 Materiale di Consumo + 3 Spese Operative + 2 speciali (Note e Diciture solo per €0, "Da Classificare" — stato esplicito quando né regole né AI riconoscono la riga con sicurezza, `needs_review=True`, escluso dai margini finché non classificata. Il constraint DB `fatture_categoria_not_empty_chk` vieta solo NULL/vuoto, non "Da Classificare". NIENTE fallback travestito in "SERVIZI E CONSULENZE" — comportamento eliminato)
 
 ---
 
@@ -599,9 +614,38 @@ Vedi documento dedicato: [SICUREZZA_GDPR.md](SICUREZZA_GDPR.md)
 - Login: 5 tentativi → 15 min lockout (persistente su tabella `login_attempts`)
 - Reset password: 1 richiesta / 5 min (in-memory thread-safe)
 
-**Admin guard (`_verify_admin` in FastAPI):**
-- Verifica worker key + bearer token → identità utente → `is_admin`
-- Introdotto in Fase 7: prima il guard non verificava l'identità admin
+**Admin guard (doppio, Next.js + FastAPI):**
+- Next.js: `admin/layout.tsx` → redirect se non admin
+- FastAPI: `_verify_admin` — verifica worker key + bearer token → identità utente → `is_admin`
+- Introdotto in Fase 7: prima il guard FastAPI non verificava l'identità admin
+
+**Middleware Next.js — blacklist invertita:**
+Il middleware protegge tutto tranne le 3 rotte pubbliche (`login`, `forgot-password`,
+`reset-password`). In precedenza era una whitelist delle rotte protette → molte
+rotte reali non erano protette a edge; la blacklist invertita chiude quel gap per
+costruzione (ogni rotta nuova è protetta di default).
+
+**Gating per-pagina (`requirePagina`):**
+`apps/web/src/lib/page-guard.ts` — chiamato in cima a ogni `page.tsx` con flag (7
+pagine: `analisi-fatture`, `margini`, `prezzi`, `analisi-e-tag`, `agenda`,
+`workspace`, `scadenziario`). Semantica coerente con la sidebar:
+`pagine_abilitate` null → passa (admin); flag nella lista → passa; altrimenti
+`notFound()` (404). Prima di questo guard, `pagine_abilitate` nascondeva solo le
+voci di sidebar ma l'URL diretto restava accessibile col flag spento. Usa
+`getCurrentSession` (vedi cache `getCurrentUser` sotto → nessuna chiamata worker
+extra). Fratello del gate tool della chat AI (`_TOOL_FLAG`, vedi
+[CHAT_ASSISTENTE.md](CHAT_ASSISTENTE.md) §5.1).
+
+**`getCurrentUser` con `cache()`:** avvolto in `cache()` di React — una sola
+chiamata `/api/auth/me` per render, anche se più layout (app + admin) lo
+richiamano nello stesso ciclo.
+
+**Feature flags — tassonomia:** chiavi in `users.pagine_abilitate`:
+`analisi_fatture`, `prezzi`, `margini`, `analisi_e_tag`, `agenda`, `workspace`,
+`scadenziario`, `blocco_anno_precedente`, `blocco_mesi_precedenti`.
+`pagine_abilitate` può essere un **dict** `{flag: bool}` o `null` (admin = tutte
+abilitate); `_normalize_pagine` (worker) lo normalizza. I vecchi nomi flag
+Streamlit (`calcolo_margine`, ecc.) sono abbandonati e restano orfani nel DB.
 
 ---
 
@@ -704,7 +748,7 @@ Vedi documento dedicato: [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)
 | `ricette` | Ricette con ingredienti JSON, foodcost, prezzo vendita |
 | `ingredienti_workspace` | Ingredienti manuali (nome, prezzo_per_um, um) |
 
-**Migration SQL:** 68 file legacy (001→068) + migration timestamp-based Supabase (`20260417*.sql` → `20260601*.sql`)
+**Migration SQL:** cartella `migrations/` legacy congelata (001→082, storica — vedi `migrations/_LEGGIMI_STATO.md`); canonica = `supabase/migrations/` (nome timestamp `AAAAMMGGHHMMSS_nome.sql`)
 
 ---
 
@@ -1047,7 +1091,7 @@ Script on-demand da implementare progressivamente:
 
 ## 22. Compliance GDPR
 
-**Titolare del trattamento:** Recoma System S.r.l., P.IVA IT09599210961, referente Mattia D'Avolio, md@oneflux.it
+**Titolare del trattamento:** RECOMASYSTEM S.r.l., P.IVA 12993240154 (Trezzano), referente Mattia D'Avolio, md@oneflux.it
 
 ### Documenti legali
 
@@ -1125,6 +1169,6 @@ Vedi documento dedicato: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ---
 
-*Documentazione tecnica completa v6.2 — 19 Giugno 2026*
-*Per lo stato dettagliato della migrazione Next.js: [MIGRAZIONE_NEXTJS.md](MIGRAZIONE_NEXTJS.md)*
-*Documento di riferimento vision/piano: `ONEFLUX_MASTER.md`*
+*Documentazione tecnica completa v6.3 — 17 Luglio 2026*
+*Traccia storica della migrazione Next.js: `docs/storico/MIGRAZIONE_APP.md`*
+*Visione, filosofia e modello commerciale: `ONEFLUX_MASTER.md`*
