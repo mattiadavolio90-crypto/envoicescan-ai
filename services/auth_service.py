@@ -1047,12 +1047,13 @@ def riepilogo_fatture_auto_da_ultimo_login(
         needs_review_count = 0
         if unique_files:
             try:
-                fres = supabase_client.table('fatture') \
-                    .select('file_origine, fornitore, data_documento, totale_riga, created_at, needs_review') \
-                    .eq('user_id', user_id) \
-                    .in_('file_origine', unique_files) \
-                    .order('created_at', desc=True) \
-                    .execute()
+                from services.db_service import filter_active as _fa
+                fres = _fa(
+                    supabase_client.table('fatture')
+                    .select('file_origine, fornitore, data_documento, totale_riga, created_at, needs_review')
+                    .eq('user_id', user_id)
+                    .in_('file_origine', unique_files)
+                ).order('created_at', desc=True).execute()
                 all_rows = fres.data or []
                 # Raggruppa per file_origine
                 grouped = defaultdict(list)

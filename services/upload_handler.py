@@ -510,7 +510,8 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
         return summary
 
     try:
-        query = (
+        from services.db_service import filter_active as _fa
+        query = _fa(
             supabase_client.table('fatture')
             .select('id, descrizione, fornitore, iva_percentuale, prezzo_unitario, totale_riga, quantita, categoria, needs_review, tipo_documento, file_origine')
             .eq('user_id', user_id)
@@ -821,7 +822,8 @@ def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_name
         return checks
 
     try:
-        query = (
+        from services.db_service import filter_active as _fa
+        query = _fa(
             supabase_client.table('fatture')
             .select('file_origine, prezzo_unitario, categoria, needs_review, descrizione')
             .eq('user_id', user_id)

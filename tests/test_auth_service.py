@@ -65,6 +65,10 @@ def _make_query_mock(data):
     query.in_.return_value = query
     query.order.return_value = query
     query.limit.return_value = query
+    # filter_active() aggiunge .is_("deleted_at", "null"): il mock deve
+    # conoscerlo come il client vero, altrimenti i test passano solo finché
+    # nessuno rispetta la regola soft-delete di CLAUDE.md §5.
+    query.is_.return_value = query
     query.execute.return_value = MagicMock(data=data)
     return query
 
