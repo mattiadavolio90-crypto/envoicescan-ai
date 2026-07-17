@@ -242,7 +242,7 @@ def get_mesi_disponibili(
 
     supabase_client = _get_supabase_client()
     res = (
-        supabase_client.table("fatture")
+        supabase_client.table("fatture_documenti")
         .select("data_documento")
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
