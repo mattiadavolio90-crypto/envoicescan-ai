@@ -117,6 +117,32 @@ def test_nessuna_piva_errata_nei_doc_vivi(doc: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# 2bis. I doc non devono proporre comandi su file che non esistono più
+# --------------------------------------------------------------------------
+
+# Un comando copiaincollabile che punta a un file rimosso fa perdere tempo prima
+# ancora di far capire l'errore. `streamlit run app.py` è rimasto in CLAUDE.md
+# per ore dopo la rimozione del frontend: il test lo avrebbe visto subito.
+_COMANDO_SU_FILE = re.compile(
+    r"(?:python|streamlit run|uvicorn|py)\s+(?:-m\s+)?([\w./\\-]+\.py)\b"
+)
+
+
+@pytest.mark.parametrize("doc", _doc_esistenti(), ids=lambda p: p.name)
+def test_comandi_citano_file_esistenti(doc: Path) -> None:
+    """Se un doc dice `python X.py`, X.py deve esistere."""
+    inesistenti = []
+    for match in _COMANDO_SU_FILE.finditer(_leggi(doc)):
+        target = match.group(1)
+        if not (ROOT / target).exists():
+            inesistenti.append(match.group(0))
+    assert not inesistenti, (
+        f"{doc.name} propone comandi su file inesistenti: {inesistenti}. "
+        f"Il file è stato rimosso o rinominato: aggiorna il comando."
+    )
+
+
+# --------------------------------------------------------------------------
 # 3. Streamlit è dismesso: i doc vivi non devono descriverlo come attivo
 # --------------------------------------------------------------------------
 

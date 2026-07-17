@@ -1,56 +1,20 @@
-"""
-Test mirati per custom tag e helper puri di Analisi Personalizzata.
+"""Test per custom tag e KPI di Analisi Personalizzata.
 
-Nota: pages/4_analisi_personalizzata.py contiene molto runtime Streamlit
-eseguito a top-level. Per testare le funzioni pure senza eseguire la UI,
-estraiamo via AST solo le funzioni necessarie.
-"""
-import ast
-from pathlib import Path
+Storia: questi test estraevano le funzioni via AST da
+`pages/4_analisi_personalizzata.py`, perche' la pagina Streamlit eseguiva
+runtime a top-level e non era importabile. Rimosso il frontend Streamlit il
+17/7/2026, puntano direttamente al codice vivo:
+`_normalize_custom_tag_key` (db_service) e `_compute_kpi` (tag_analytics_service)
+sono gli stessi che servono i clienti su Next.js.
 
+`_compute_orfani` e `_build_usage_notice` esistevano SOLO nella pagina Streamlit
+(logica di presentazione): i loro test sono stati rimossi insieme al codice.
+"""
 import pandas as pd
 import pytest
 
-from config.constants import ORPHAN_CHECK_DAYS
 from services.db_service import _normalize_custom_tag_key
-
-
-PAGE_FILE = Path(__file__).resolve().parents[1] / "pages" / "4_analisi_personalizzata.py"
-
-
-def _load_page_functions(*function_names):
-    """Estrae funzioni pure dal file pagina senza importare il modulo Streamlit."""
-    source = PAGE_FILE.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(PAGE_FILE))
-
-    wanted = set(function_names)
-    selected_nodes = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name in wanted
-    ]
-
-    found = {node.name for node in selected_nodes}
-    missing = wanted - found
-    if missing:
-        raise AssertionError(f"Funzioni non trovate in {PAGE_FILE.name}: {sorted(missing)}")
-
-    module = ast.Module(body=selected_nodes, type_ignores=[])
-    ast.fix_missing_locations(module)
-
-    namespace = {
-        "pd": pd,
-        "ORPHAN_CHECK_DAYS": ORPHAN_CHECK_DAYS,
-        "_normalize_custom_tag_key": _normalize_custom_tag_key,
-    }
-    exec(compile(module, str(PAGE_FILE), "exec"), namespace)
-    return [namespace[name] for name in function_names]
-
-
-_compute_kpi, _compute_orfani, _build_usage_notice = _load_page_functions(
-    "_compute_kpi",
-    "_compute_orfani",
-    "_build_usage_notice",
-)
+from services.tag_analytics_service import _compute_kpi
 
 
 class TestNormalizeCustomTagKey:
@@ -95,7 +59,9 @@ class TestComputeKpi:
 
         assert result["spesa_totale"] == pytest.approx(32.0)
         assert result["quantita_norm_totale"] == pytest.approx(3.0)
-        assert result["prezzo_medio_ponderato"] == pytest.approx(32.0 / 3.0)
+        # La versione viva arrotonda a 4 decimali (tag_analytics_service:146);
+        # quella Streamlit restituiva il float grezzo.
+        assert result["prezzo_medio_ponderato"] == pytest.approx(32.0 / 3.0, abs=1e-4)
         assert result["num_fornitori"] == 2
         assert result["num_fatture"] == 2
         assert result["quantita_label"] == "⚖️ Quantità Totale KG"
@@ -123,77 +89,3 @@ class TestComputeKpi:
         assert result["num_fatture"] == 1
         assert result["quantita_label"] == "⚖️ Quantità Normalizzata"
         assert result["prezzo_label"] == "💶 Prezzo Medio €/unità norm."
-
-
-class TestBuildUsageNotice:
-    def test_notice_non_selezionata_e_solo_informativa(self):
-        level, text = _build_usage_notice(["Salmone Fresco", "Salmone Fresco", "Pesce Premium"], False)
-
-        assert level == "info"
-        assert "Già presente in altri tag" in text
-        assert "Salmone Fresco" in text
-        assert "Pesce Premium" in text
-
-    def test_notice_selezionata_diventa_warning(self):
-        level, text = _build_usage_notice(["Salmone Fresco"], True)
-
-        assert level == "warning"
-        assert "Se salvi questo tag" in text
-        assert "Salmone Fresco" in text
-
-
-class TestComputeOrfani:
-    """Verifica associazioni presenti e assenti nelle fatture recenti."""
-
-    def test_compute_orfani_associazione_presente_nelle_fatture_recenti(self):
-        data_recente = (pd.Timestamp.now().normalize() - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-        df_all = pd.DataFrame(
-            [
-                {
-                    "DataDocumento": data_recente,
-                    "Descrizione": "  Pane   Bianco  ",
-                }
-            ]
-        )
-        associazioni_tag = [
-            {
-                "id": 1,
-                "descrizione": "Pane Bianco",
-                "descrizione_key": _normalize_custom_tag_key("Pane Bianco"),
-            }
-        ]
-
-        result = _compute_orfani(df_all, associazioni_tag)
-
-        assert result == []
-
-    def test_compute_orfani_associazione_assente_nelle_fatture_recenti(self):
-        data_vecchia = (
-            pd.Timestamp.now().normalize() - pd.Timedelta(days=ORPHAN_CHECK_DAYS + 5)
-        ).strftime("%Y-%m-%d")
-        data_recente = (pd.Timestamp.now().normalize() - pd.Timedelta(days=2)).strftime("%Y-%m-%d")
-        df_all = pd.DataFrame(
-            [
-                {
-                    "DataDocumento": data_vecchia,
-                    "Descrizione": "Latte Intero",
-                },
-                {
-                    "DataDocumento": data_recente,
-                    "Descrizione": "Acqua Naturale",
-                },
-            ]
-        )
-        associazioni_tag = [
-            {
-                "id": 7,
-                "descrizione": "Latte Intero",
-                "descrizione_key": _normalize_custom_tag_key("Latte Intero"),
-            }
-        ]
-
-        result = _compute_orfani(df_all, associazioni_tag)
-
-        assert len(result) == 1
-        assert result[0]["id"] == 7
-        assert result[0]["descrizione_key"] == "LATTE INTERO"

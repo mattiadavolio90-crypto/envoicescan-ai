@@ -4,8 +4,12 @@ from pathlib import Path
 import re
 import sys
 
+# Pacchetti la cui versione deve restare allineata fra requirements.txt e il
+# lock: un disallineamento su questi rompe la produzione o riapre una CVE.
+# `streamlit` era in questa lista fino al 17/7/2026, quando il frontend Streamlit
+# e' stato rimosso dal repo: il worker non lo importa (lo shim in
+# services/_streamlit_shim.py lo sostituisce) e non e' piu' installato.
 CRITICAL_PACKAGES = {
-    "streamlit",
     "supabase",
     "openai",
     "cryptography",

@@ -1,65 +1,26 @@
 # ============================================================
-# OH YEAH! — Docker Compose PRODUZIONE (Railway / VPS)
+# ONEFLUX — Docker Compose PRODUZIONE (VPS)
 # ============================================================
-# Differenze rispetto a docker-compose.yml:
-#   - Niente volumi hot-reload (immagine già compilata)
-#   - WORKER_RELOAD=false
-#   - Healthcheck più conservativo
-#   - API FastAPI e queue worker separati
-#   - Variables da Railway env (non da file .env)
+# Riferimento per un deploy self-hosted. NON e' il path Railway:
+# Railway builda docker/Dockerfile e distingue i servizi con lo Start
+# Command (vedi docs/DEPLOY_RUNBOOK.md, che e' la fonte autorevole).
 #
-# Deploy Railway:
-#   1. Collega repo GitHub a Railway
-#   2. Aggiungi tre servizi: frontend, api, queue-worker
-#   3. Imposta le env vars sul dashboard Railway (non committare .env)
+# Differenze rispetto a docker-compose.yml:
+#   - Niente volumi hot-reload (immagine gia' compilata)
+#   - WORKER_RELOAD=false
+#   - Healthcheck piu' conservativo
+#   - API FastAPI e queue worker separati
+#
+# Il servizio Streamlit (`ohyeah`, porta 8501) e' stato rimosso il
+# 17/7/2026: il frontend e' Next.js su Vercel, fuori da questo compose.
 #
 # Deploy VPS manuale:
 #   docker-compose -f docker-compose.prod.yml up -d
 # ============================================================
 
-name: ohyeah-hub-prod
+name: oneflux-prod
 
 services:
-  # ──────────────────────────────────────────
-  # STREAMLIT FRONTEND
-  # ──────────────────────────────────────────
-  ohyeah:
-    image: ${DOCKER_IMAGE:-ohyeah-hub}:${IMAGE_TAG:-latest}
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: ohyeah-app-prod
-    ports:
-      - "8501:8501"
-    environment:
-      # Supabase
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      # OpenAI
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # Notifiche
-      - SENDINBLUE_API_KEY=${SENDINBLUE_API_KEY}
-      # Worker endpoint (Streamlit chiama questo URL per classify/parse)
-      - WORKER_BASE_URL=${WORKER_BASE_URL:-http://worker:8000}
-      # App
-      - REGENERATE_SECRETS=1
-    restart: unless-stopped
-    depends_on:
-      worker:
-        condition: service_healthy
-      queue-worker:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
-  # ──────────────────────────────────────────
-  # FASTAPI WORKER (AI + parsing)
-  # ──────────────────────────────────────────
   worker:
     image: ${DOCKER_IMAGE:-ohyeah-hub}:${IMAGE_TAG:-latest}
     build:

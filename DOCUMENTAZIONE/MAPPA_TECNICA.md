@@ -49,13 +49,8 @@ Tutto il resto del prodotto è al servizio di questa catena.
 | `price_impact_service.py` | Alert prezzi per **impatto** (peso × aumento) |
 | `margine_service.py` | MOL, food cost, margini |
 | `multisede_routing.py` | Smista fatture fra sedi con la stessa P.IVA |
-| `notification_inbox_service.py` | Costruisce le notifiche (**questo è il vivo**) |
+| `notification_inbox_service.py` | Costruisce le notifiche |
 | `auth_service.py` / `session_service.py` | Auth custom (non Supabase Auth) |
-
-> ⚠️ `notification_service.py` (1.284 righe) **non è nel percorso di produzione**:
-> lo importa solo `components/notifications_panel.py`, cioè Streamlit dismesso.
-> Il nome quasi identico inganna — le notifiche vere passano da
-> `notification_inbox_service.py`. Non estendere il primo.
 
 ### I router del worker
 
@@ -105,9 +100,18 @@ di più. RLS è solo la seconda rete.
 `_BRIEFING_CODE_VERSION`: se cambi la logica, bumpa quella costante. Altrimenti
 il cliente vede il testo vecchio col codice nuovo.
 
-**Streamlit è congelato, non morto.** `app.py`, `pages/`, `components/` restano
-nel repo ma non sono serviti a nessuno dallo switch DNS dell'8/6/2026. Non
-aggiungerci nulla.
+**Streamlit non c'è più.** Dismesso l'8/6/2026, **rimosso dal repo il 17/7/2026**:
+`app.py`, `pages/`, `components/`, `controllers/`, `static/` e i due servizi che
+usava solo lui (`email_service`, `notification_service`) sono in git history.
+Rimosso anche dalle dipendenze: il container non lo installa più.
+
+Restano `import streamlit as st` dentro `services/`: **non è codice vivo**.
+`services/_streamlit_shim.py` sostituisce il pacchetto con un guscio vuoto
+(`session_state` = dict, `secrets` da env, rendering no-op) prima che i moduli
+vengano importati. Motivo per cui lo shim esiste invece di ripulire i 206 `st.`:
+sono dentro `upload_handler`, `ai_service`, `invoice_service` — il codice che
+processa le fatture dei clienti. Riscriverlo per estetica è rischio senza
+beneficio; lo shim costa zero e non mente.
 
 ---
 

@@ -1,63 +1,26 @@
 # ============================================
-# OH YEAH! — Docker Compose
-# Ambiente sviluppo locale + produzione
+# ONEFLUX — Docker Compose (sviluppo locale)
 # ============================================
+# Il frontend di produzione è Next.js su Vercel (apps/web/) e NON sta in questo
+# compose: si avvia con `npm run dev` (vedi DEV_SERVICES_GUIDE.md).
+# Qui resta il solo worker FastAPI, per chi preferisce containerizzarlo invece
+# di lanciarlo con `python -m services.fastapi_worker`.
+#
+# Il servizio `ohyeah` (container Streamlit, porta 8501) è stato rimosso il
+# 17/7/2026 insieme al frontend Streamlit: montava `app.py`, `pages/`,
+# `components/`, `static/` e `.streamlit/config.toml`, che non esistono più.
+#
+# Questo file NON è il path di produzione: Railway builda `docker/Dockerfile`
+# con uno Start Command per servizio (vedi docs/DEPLOY_RUNBOOK.md).
 
-name: ohyeah-hub
+name: oneflux
 
 services:
-  ohyeah:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: ohyeah-app
-    ports:
-      - "8501:8501"
-    env_file:
-      - ../.env
-    environment:
-      - REGENERATE_SECRETS=1
-      # WORKER_BASE_URL: imposta solo se avvii il profilo worker (--profile worker)
-      # Commentato: Streamlit usa le funzioni locali (nessun worker esterno)
-      # - WORKER_BASE_URL=http://worker:8000
-    volumes:
-      # Hot-reload: monta il codice sorgente per sviluppo locale
-      - ../app.py:/app/app.py:ro
-      - ../pages:/app/pages:ro
-      - ../services:/app/services:ro
-      - ../utils:/app/utils:ro
-      - ../config:/app/config:ro
-      - ../components:/app/components:ro
-      - ../static:/app/static:ro
-      - ../.streamlit/config.toml:/app/.streamlit/config.toml:ro
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1.0'
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-
-  # ============================================
-  # FASTAPI WORKER (Fase 3 — AI/parsing separato)
-  # Scala orizzontalmente indipendente da Streamlit.
-  # Attiva solo se necessario: docker-compose up worker
-  # ============================================
   worker:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: ohyeah-worker
+    container_name: oneflux-worker
     command: >
       uvicorn services.fastapi_worker:app
       --host 0.0.0.0
@@ -93,5 +56,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    profiles:
-      - worker   # avvio esplicito: docker-compose --profile worker up

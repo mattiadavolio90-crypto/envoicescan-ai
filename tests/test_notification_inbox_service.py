@@ -633,31 +633,18 @@ class TestIntegrationScenarios:
 # ════════════════════════════════════════════════
 # NON REGRESSIONE — operational_notifications
 # ════════════════════════════════════════════════
-
 class TestNonRegressione:
+    """Struttura del context di upload attesa da chi lo consuma.
 
-    @patch('services.notification_service.carica_margini_anno')
-    def test_operational_notifications_structure_unchanged(self, mock_carica):
-        """build_monthly_data_notifications restituisce struttura dicts con campi attesi."""
-        from services.notification_service import build_monthly_data_notifications
-        mock_carica.return_value = {}
-
-        notifs = build_monthly_data_notifications(
-            user_id=UID, ristorante_id=RID,
-            reference_dt=datetime(2026, 4, 8, tzinfo=timezone.utc),
-        )
-        assert len(notifs) == 2
-        for n in notifs:
-            # Campi richiesti dal render dashboard esistente
-            assert 'id' in n
-            assert 'level' in n
-            assert 'title' in n
-            assert 'body' in n
-            assert 'toast' in n
-            assert 'action_label' in n
+    Storia: questa classe verificava che il servizio non rompesse il render
+    Streamlit durante la migrazione. Il frontend Streamlit e' stato rimosso il
+    17/7/2026 e con lui `services/notification_service.py`: i due test che lo
+    importavano sono spariti insieme alla loro premessa. Resta il contratto
+    sulle chiavi del context, che upload_handler produce tuttora.
+    """
 
     def test_last_upload_notification_context_structure(self):
-        """upload_notification_context mantiene tutte le chiavi attese dal render esistente."""
+        """upload_notification_context mantiene tutte le chiavi attese."""
         required_keys = {
             'upload_id', 'created_at', 'successful_files', 'successful_count',
             'credit_note_files', 'problematic_files', 'problematic_count',
@@ -678,27 +665,3 @@ class TestNonRegressione:
             'stats': {'caricate_successo': 1, 'errori': 0},
         }
         assert required_keys.issubset(set(ctx.keys()))
-
-    def test_build_notification_record_does_not_alter_operational_notification_dict(self):
-        """build_notification_record non modifica l'operational_notification originale."""
-        from services.notification_service import build_monthly_data_notifications
-        with patch('services.notification_service.carica_margini_anno', return_value={}):
-            notifs = build_monthly_data_notifications(
-                user_id=UID, ristorante_id=RID,
-                reference_dt=datetime(2026, 4, 8, tzinfo=timezone.utc),
-            )
-        original_ids = [n['id'] for n in notifs]
-
-        # Step 6 legge notifs senza modificarle
-        for n in notifs:
-            _ = build_notification_record(
-                user_id=UID, ristorante_id=RID,
-                topic_key='fatturato_mancante', source_type='operativa', severity='warning',
-                title=str(n.get('title') or ''),
-                body=str(n.get('body') or ''),
-            )
-
-        # I dict originali devono essere intatti
-        assert [n['id'] for n in notifs] == original_ids
-        for n in notifs:
-            assert 'refresh_on_conflict' not in n  # Non inquinato da campi inbox

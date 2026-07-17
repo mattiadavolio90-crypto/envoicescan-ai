@@ -13,15 +13,18 @@ genera report su margini, prezzi fornitori, foodcost.
 ## Architettura attuale
 
 Il frontend di **produzione è Next.js** su Vercel (`app.oneflux.it`). Streamlit è
-stato **dismesso** con lo switch DNS dell'8/6/2026: `app.py`, `pages/*.py` e
-`components/*.py` (Python) sono **legacy congelato**, non più serviti ai clienti —
-non aggiungerci feature. Il container Railway serve il worker FastAPI, non Streamlit
-(vedi `docker/docker-entrypoint.sh`).
+stato dismesso con lo switch DNS dell'8/6/2026 e **rimosso dal repo il 17/7/2026**
+(`app.py`, `pages/`, `components/`, `controllers/`, `static/`): se ti serve, sta
+nella git history. Il container Railway serve il worker FastAPI.
+
+> I moduli di `services/` fanno ancora `import streamlit as st`, ma il pacchetto
+> **non è installato**: `services/_streamlit_shim.py` lo sostituisce con un guscio
+> vuoto (`session_state` = dict, `secrets` da env, rendering no-op). Non
+> reintrodurre la dipendenza; gli `st.` residui sono no-op, non codice vivo.
 
 | Layer | Percorso | Note |
 |---|---|---|
 | Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — ~17 pagine app + auth/legal/mobile, ~150 route API |
-| Frontend (legacy) | `app.py` + `pages/*.py` + `components/*.py` | Streamlit storico, DISMESSO 8/6 — non serve più ai clienti, non estendere |
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
@@ -90,7 +93,6 @@ python scripts/export_openapi.py --check-drift
 ```
 
 > Guida completa servizi locali: `DEV_SERVICES_GUIDE.md`.
-> `streamlit run app.py` è LEGACY (frontend dismesso) — non usare per sviluppo nuovo.
 
 ---
 

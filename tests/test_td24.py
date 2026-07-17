@@ -1,107 +1,13 @@
-"""Test estrazione data_consegna da TD24 e notification builder."""
+"""Test estrazione data_consegna dalle fatture differite TD24.
+
+Il builder di notifiche TD24 (`build_td24_date_notifications`) viveva in
+`services/notification_service.py`, rimosso il 17/7/2026 insieme al frontend
+Streamlit: era il wrapper di presentazione per la UI dismessa. La logica di
+dominio TD24 (estrazione DatiDDT, copertura, normalizzazione) sta in
+`utils/formatters.py` ed e' viva in `invoice_service` — ed e' quella coperta qui.
+"""
 import pytest
-from services.notification_service import build_td24_date_notifications
 from utils.formatters import normalizza_data_consegna_td24
-
-
-# ── Notification builder ─────────────────────────────────────────────
-
-
-class TestBuildTd24DateNotifications:
-
-    def test_none_context(self):
-        assert build_td24_date_notifications(None) == []
-
-    def test_empty_context(self):
-        assert build_td24_date_notifications({}) == []
-
-    def test_no_alerts(self):
-        ctx = {
-            'upload_id': '20260417120000',
-            'td24_date_alerts': [],
-        }
-        assert build_td24_date_notifications(ctx) == []
-
-    def test_missing_alert(self):
-        ctx = {
-            'upload_id': '20260417120000',
-            'td24_date_alerts': [{
-                'file_name': 'FATTURA_TD24.xml',
-                'fornitore': 'METRO',
-                'status': 'missing',
-                'lines_total': 15,
-                'lines_with_date': 0,
-                'pct': 0.0,
-            }],
-        }
-        notifs = build_td24_date_notifications(ctx)
-        assert len(notifs) == 1
-        n = notifs[0]
-        assert n['level'] == 'info'
-        assert n['icon'] == 'ℹ️'
-        assert 'td24-date-noddt-' in n['id']
-        assert 'METRO' in n['body']
-        assert '0/15' in n['body']
-        assert 'nessuna azione richiesta' in n['body']
-
-    def test_warning_alert(self):
-        ctx = {
-            'upload_id': '20260417120000',
-            'td24_date_alerts': [{
-                'file_name': 'FATTURA_TD24.xml',
-                'fornitore': 'Nordfish',
-                'status': 'warning',
-                'lines_total': 10,
-                'lines_with_date': 6,
-                'pct': 60.0,
-            }],
-        }
-        notifs = build_td24_date_notifications(ctx)
-        assert len(notifs) == 1
-        n = notifs[0]
-        assert n['level'] == 'info'
-        assert 'td24-date-warning-' in n['id']
-        assert 'Nordfish' in n['body']
-        assert '6/10' in n['body']
-
-    def test_mixed_missing_and_warning(self):
-        ctx = {
-            'upload_id': '20260417120000',
-            'td24_date_alerts': [
-                {
-                    'file_name': 'A.xml', 'fornitore': 'METRO',
-                    'status': 'missing', 'lines_total': 10,
-                    'lines_with_date': 2, 'pct': 20.0,
-                },
-                {
-                    'file_name': 'B.xml', 'fornitore': 'Nordfish',
-                    'status': 'warning', 'lines_total': 8,
-                    'lines_with_date': 5, 'pct': 62.5,
-                },
-            ],
-        }
-        notifs = build_td24_date_notifications(ctx)
-        assert len(notifs) == 2
-        levels = {n['level'] for n in notifs}
-        assert levels == {'warning', 'info'}
-
-    def test_xss_protection(self):
-        ctx = {
-            'upload_id': '20260417120000',
-            'td24_date_alerts': [{
-                'file_name': '<script>alert(1)</script>.xml',
-                'fornitore': '<b>XSS</b>',
-                'status': 'missing',
-                'lines_total': 5,
-                'lines_with_date': 0,
-                'pct': 0.0,
-            }],
-        }
-        notifs = build_td24_date_notifications(ctx)
-        body = notifs[0]['body']
-        assert '<script>' not in body
-        assert '&lt;script&gt;' in body
-        assert '<b>' not in body
 
 
 # ── Parser: DatiDDT extraction ───────────────────────────────────────
