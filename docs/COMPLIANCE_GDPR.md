@@ -5,7 +5,7 @@ D.lgs. 196/2003 (Codice Privacy). Uso interno + materiale da fornire a clienti B
 che lo richiedano o in caso di controllo.
 
 **Ultimo aggiornamento:** 8 luglio 2026 (screening DPIA + verifica stato DPA sub-responsabili; riverifica post go-live 6/7; audit sicurezza precedente 19/06)
-**Titolare del trattamento:** Recoma System S.r.l. — P.IVA IT09599210961
+**Titolare del trattamento:** RECOMASYSTEM S.r.l. — P.IVA IT12993240154
 **Sede legale:** Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
 **Email:** md@oneflux.it
 **Fondatore e creatore della piattaforma / referente tecnico:** Mattia D'Avolio
@@ -147,7 +147,7 @@ Verifica fatta leggendo il codice, non per assunzione.
 | Criterio EDPB | Esito | Evidenza |
 |---|---|---|
 | 1. Scoring/valutazione di persone fisiche | NO | L'AI classifica articoli di fattura (`services/ai_service.py`), non persone; unico "score" è similarità indirizzo per instradamento fatture tra sedi aziendali e indice "Salute" del ristorante (completezza dati operativi) |
-| 2. Decisione automatizzata con effetti giuridici/significativi | NO | La chat AI (`DOCUMENTAZIONE/DOC COMPLETA/CHAT_ASSISTENTE.md`) usa solo tool read-only su dati aggregati; nessuna azione automatica con effetto pratico (non blocca conti, non fissa prezzi, non nega servizi) |
+| 2. Decisione automatizzata con effetti giuridici/significativi | NO | La chat AI (`DOCUMENTAZIONE/tecnica/CHAT_ASSISTENTE.md`) usa solo tool read-only su dati aggregati; nessuna azione automatica con effetto pratico (non blocca conti, non fissa prezzi, non nega servizi) |
 | 3. Monitoraggio sistematico area pubblica | NO | Il briefing/"Salute" monitora metriche del business (fatture mancanti, scadenze, costi), non persone in spazi pubblici |
 | 4. Dati sensibili / categorie particolari (Art. 9) | NO | Nessun dato sanitario, biometrico, etnia, orientamento, opinioni politiche nello schema. `turni_personale` (nome dipendente + orario + costo) è dato ordinario, usato solo in aggregato per monte-ore, mai valutazione individuale |
 | 5. Trattamento su larga scala | NO | 9 account clienti reali attivi (2 test + 1 operativo, poi 7 con consenso retroattivo) — ordine di grandezza minimo rispetto alle soglie WP248 |

@@ -47,15 +47,26 @@ non aggiungerci feature. Il container Railway serve il worker FastAPI, non Strea
 
 ---
 
-## Stato della migrazione Next.js
+## Dove trovare il resto
 
-Visione/filosofia/modello commerciale: `ONEFLUX_MASTER.md`. Stato tecnico
-corrente: `DOCUMENTAZIONE/DOC COMPLETA/DOCUMENTAZIONE_COMPLETA.md`. Traccia
-storica dello switch: `docs/storico/MIGRAZIONE_APP.md`.
+Questo file è l'unico sempre in contesto: contiene solo ciò che, se ignorato,
+rompe qualcosa. Tutto il resto sta altrove e si apre alla bisogna:
 
-- **Migrazione COMPLETATA** ✅ — switch DNS 8/6/2026, `app.oneflux.it` → Next.js su Vercel, Streamlit dismesso (dominio `nuovo.oneflux.it` rimosso).
-- Tutte le sezioni principali sono su Next.js (Home/Briefing, Ricavi e Margini, Prezzi, Analisi Fatture, Scadenziario, Cestino, Catena, Agenda, Workspace, Admin, mobile `/m`).
-- Lavoro in corso post-migrazione: rifinitura Admin Panel, landing/SEO pubblica, feature roadmap (vedi `IMPLEMENTAZIONI.md`).
+| Serve… | Documento |
+|---|---|
+| Dove sta cosa, e perché è fatto così | `DOCUMENTAZIONE/MAPPA_TECNICA.md` |
+| Cambiare cosa dice il briefing (soglie, priorità, tono) | `LOGICA_BRIEFING.md` |
+| Schema DB, pipeline AI, chat, sicurezza, troubleshooting | `DOCUMENTAZIONE/tecnica/` |
+| Deploy Railway, incidenti | `docs/DEPLOY_RUNBOOK.md`, `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` |
+| Visione, filosofia, modello commerciale | `ONEFLUX_MASTER.md` |
+| Roadmap feature | `IMPLEMENTAZIONI.md` |
+
+> La documentazione viva è protetta da `tests/test_documentazione_onesta.py`:
+> se un doc cita un simbolo o un percorso che non esiste più, il test fallisce.
+> Non è burocrazia — è l'unico modo perché un .md non menta per mesi in silenzio.
+
+**Migrazione Next.js: COMPLETATA** (switch DNS 8/6/2026). Tutte le sezioni sono
+su Next.js, mobile incluso (`/m`). Streamlit è congelato: non estenderlo.
 
 ---
 
@@ -80,6 +91,21 @@ python scripts/export_openapi.py --check-drift
 
 > Guida completa servizi locali: `DEV_SERVICES_GUIDE.md`.
 > `streamlit run app.py` è LEGACY (frontend dismesso) — non usare per sviluppo nuovo.
+
+---
+
+## Trappole che sono già costate ore
+
+- **Briefing:** dopo una modifica alla logica, **bumpa `_BRIEFING_CODE_VERSION`**
+  o il cliente continua a vedere il testo vecchio (cache giornaliera + TTL 30').
+- **Deploy solo fuori orario** (sera/notte/mattina presto): i clienti usano l'app
+  di giorno.
+- **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
+- **Worker locale senza `--reload`** tiene in memoria il codice vecchio: riavvialo.
+- **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in
+  produzione (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
+- **`/m` è un frontend separato**, non responsive: se estendi il desktop, va
+  allineato a mano.
 
 ---
 

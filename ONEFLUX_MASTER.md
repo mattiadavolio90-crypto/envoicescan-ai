@@ -3,15 +3,12 @@
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Titolare:** RECOMASYSTEM S.r.l. (P.IVA 12993240154, Trezzano)
 
-> Questo documento copre **visione, filosofia e modello commerciale** — parti
-> che non cambiano con ogni deploy. Per lo stato tecnico corrente (architettura,
-> stack, sezioni implementate) vedi `CLAUDE.md` e
-> `DOCUMENTAZIONE/DOC COMPLETA/DOCUMENTAZIONE_COMPLETA.md`. Questo file **non è
-> più** il documento di stato/piano — quel ruolo, insieme al changelog fase per
-> fase della migrazione Next.js (conclusa l'8/6/2026), è stato ritirato il
-> 17/7/2026 perché duplicava e disallineava rispetto a quei due documenti,
-> aggiornati più spesso. Traccia storica della migrazione:
-> `docs/storico/MIGRAZIONE_APP.md`.
+> Questo documento copre **visione, filosofia e modello commerciale** — le parti
+> che non cambiano a ogni deploy. Per lo stato tecnico: `CLAUDE.md` (le regole) e
+> `DOCUMENTAZIONE/MAPPA_TECNICA.md` (dove sta cosa). Questo file **non è più** il
+> documento di stato/piano: quel ruolo è stato ritirato il 17/7/2026 perché
+> duplicava e disallineava rispetto a documenti aggiornati più spesso. Traccia
+> storica della migrazione: `docs/storico/MIGRAZIONE_APP.md`.
 
 ---
 

@@ -4,7 +4,7 @@ Non è un archivio generico: un documento sta qui solo se il suo contenuto ha
 ancora valore predittivo per un problema che si può ripresentare (pattern
 d'errore, causa radice non ovvia, percorso diagnostico) — non solo perché
 descrive un evento passato. Non descrivono lo stato attuale del sistema: per
-quello vedi `README.md` (root), `CLAUDE.md` e `DOCUMENTAZIONE/DOC COMPLETA/`.
+quello vedi `README.md` (root), `CLAUDE.md` e `DOCUMENTAZIONE/tecnica/`.
 Se un documento chiuso non insegna nulla di riusabile, va eliminato, non
 archiviato qui.
 

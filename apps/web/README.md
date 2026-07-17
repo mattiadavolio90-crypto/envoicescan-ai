@@ -21,5 +21,5 @@ locali (worker, queue-worker, variabili d'ambiente).
 ## Riferimenti
 
 - `CLAUDE.md` (root) — architettura, regole di dominio, convenzioni
-- `DOCUMENTAZIONE/DOC COMPLETA/DOCUMENTAZIONE_COMPLETA.md` — documentazione tecnica completa
+- `DOCUMENTAZIONE/MAPPA_TECNICA.md` — dove sta cosa e perché
 - `DEV_SERVICES_GUIDE.md` — guida servizi locali

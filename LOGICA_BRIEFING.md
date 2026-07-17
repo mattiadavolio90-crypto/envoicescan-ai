@@ -102,7 +102,8 @@ In testa al briefing, nell'ordine: prima il rientro, poi la buona notizia
 4. **Ordina per importanza dell'argomento**, e a parità di argomento per gravità
    (errore prima, poi attenzione, poi informazione). Regola: prima il tema, poi la
    gravità dentro lo stesso tema.
-5. **Tiene le prime 5** — il resto resta nella campanella.
+5. **Tiene le prime 4** — il resto resta nella campanella. (Tua decisione del
+   19/06: l'andamento sta nel testo del briefing, le card sono SOLO cose da fare.)
 
 Ordine di importanza degli argomenti (dal più al meno urgente):
 
@@ -161,7 +162,7 @@ Regole:
 
 | Cosa vuoi cambiare | Valore attuale |
 |---|---|
-| Quante card mostra al massimo | 5 |
+| Quante card mostra al massimo | 4 |
 | L'ordine di importanza degli argomenti | vedi §5 |
 | Quali avvisi si possono spegnere | tutti tranne gli upload falliti |
 | Dopo quanti giorni dice "bentornato" | 7 giorni |

@@ -1,6 +1,9 @@
-# ONEFLUX — Troubleshooting e Riferimento Tecnico
+# ONEFLUX — Troubleshooting e limiti
 
-Versione: 6.0 | Aggiornamento: 5 Giugno 2026
+**Aggiornamento:** 17 luglio 2026 — verificato contro il codice.
+
+Sintomi già visti e cosa farci, più la tabella dei limiti tecnici (l'unica del
+repo). Le regole di dominio **non** stanno qui: stanno in `CLAUDE.md`.
 
 ---
 
@@ -42,6 +45,9 @@ Versione: 6.0 | Aggiornamento: 5 Giugno 2026
    - `retry` → errore temporaneo, il worker riproverà
    - `dead` → troppi tentativi falliti → vedere `error_message`
    - `unknown_tenant` → P.IVA destinatario non registrata su ONEFLUX
+   - `da_assegnare` → **normale, non è un errore**: P.IVA condivisa fra più sedi
+     e indirizzo ambiguo. La fattura aspetta in coda che tu scelga la sede
+     (Admin → Flusso dati). Vale per i clienti catena tipo OFFSIDE.
 
 2. Se `unknown_tenant`: aggiungere il ristorante con P.IVA corretta, poi:
    ```sql
@@ -86,8 +92,11 @@ Versione: 6.0 | Aggiornamento: 5 Giugno 2026
 
 1. Verificare `GET /health` sul worker → deve rispondere `{"status": "ok"}`
 2. Se timeout o errore: verificare service `worker` su Railway dashboard
-3. Se `worker_client.py` (Streamlit) → ha fallback automatico sulle funzioni Python locali
-4. In Docker: verificare che il service `worker` sia `healthy` prima di avviare `ohyeah`
+
+> ⚠️ **"Servizio non raggiungibile" non significa che il worker è down.**
+> L'incidente del 2/7 era un **timeout SSR** su `/api/auth/me`: il worker era
+> vivo ma saturo (Railway Hobby = 1 container, endpoint sincroni su threadpool,
+> full-load admin). Prima di riavviare, guarda la latenza — non solo lo stato.
 
 ---
 
@@ -103,20 +112,20 @@ Versione: 6.0 | Aggiornamento: 5 Giugno 2026
 
 ---
 
-### Celle categoria bianche in Streamlit
-
-Bug noto di Streamlit: se il valore non è nelle opzioni del SelectboxColumn, appare vuoto. Il sistema applica automaticamente `valida_categoria()` per forzare un valore valido.
-
----
-
 ### Briefing AI non si aggiorna
 
-Il briefing ha una cache giornaliera (`daily_briefing_state`). Si rigenera solo se:
+Il briefing ha una cache giornaliera (`daily_briefing_state`). Si auto-scarta se:
 - Cambia la data (nuovo giorno)
-- Cambiano le notifiche attive (nuovo `notif_fingerprint`)
-- Cambiano le preferenze assistente
+- **Cambia `_BRIEFING_CODE_VERSION`** (auto-invalidazione su deploy, dal 19/6)
+- Scade il TTL di 30 minuti
+- Un evento chiama `invalidate_today_briefing` (upload fatture, inserimento
+  ricavi/costi manuale, ricavi batch)
 
-Se si vuole forzare la rigenerazione: modificare una preferenza assistente (es. nome referente) → salva → briefing si rigenera.
+> ⚠️ **Se hai modificato la logica del briefing e non vedi il cambiamento:**
+> hai dimenticato di bumpare `_BRIEFING_CODE_VERSION`. Senza quel bump lo
+> snapshot vecchio resta valido e il cliente vede il testo pre-deploy.
+
+Forzare a mano: `DELETE FROM daily_briefing_state` per la sede interessata.
 
 ---
 
@@ -209,10 +218,10 @@ docker-compose -f docker/docker-compose.prod.yml up -d
 | Variabile | Dove | Descrizione |
 |-----------|------|-------------|
 | `SUPABASE_URL` | Ovunque | URL progetto Supabase |
-| `SUPABASE_KEY` | Streamlit | `service_role_key` |
+| `SUPABASE_KEY` | Fallback in `services/__init__.py` | Contiene la `service_role_key` **nonostante il nome** (residuo storico) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Railway, GitHub, Supabase EF | `service_role_key` |
-| `OPENAI_API_KEY` | Worker, Streamlit | Chiave API OpenAI |
-| `WORKER_BASE_URL` | Streamlit, Next.js | URL FastAPI worker |
+| `OPENAI_API_KEY` | Worker, GitHub | Chiave API OpenAI |
+| `WORKER_BASE_URL` | Worker, `worker_client.py` | URL FastAPI worker |
 | `WORKER_SECRET_KEY` | Worker (Railway), Next.js (Vercel) | Chiave 64 char, fail-closed |
 | `WORKER_DEV_MODE` | Solo sviluppo | `1` = boot senza chiave |
 | `WORKER_WEB_CONCURRENCY` | Railway service worker | Processi Uvicorn (prod: 4) |
@@ -226,7 +235,7 @@ docker-compose -f docker/docker-compose.prod.yml up -d
 | `WORKER_BATCH_SIZE` | queue-worker | Record per ciclo (default: 10) |
 | `WORKER_XML_RETENTION_HOURS` | queue-worker | Ore prima del purge XML (default: 24) |
 | `WORKER_STALE_LOCK_MINUTES` | queue-worker | Timeout lock crash (default: 10) |
-| `ADMIN_EMAILS` | Streamlit | Email admin (lowercase, virgola-separati) |
+| `ADMIN_EMAILS` | Worker (Railway) | Email admin (lowercase, virgola-separati) |
 
 ---
 
@@ -276,21 +285,14 @@ docker-compose -f docker/docker-compose.prod.yml up -d
 
 ---
 
-## 6. Regole di Dominio — NON Violare Mai
+## 6. Regole di dominio
 
-Queste regole sono critiche e violarne anche una può corrompere i dati o rompere il sistema:
+Stanno in **`CLAUDE.md`**, che è l'unica copia.
 
-1. **`categoria = 'Da Classificare'` è uno stato LEGITTIMO** (categorizzazione onesta, rev. 23/06) — una riga che né dizionario/regole né AI riconoscono con sicurezza resta `Da Classificare`, visibile in coda di verifica. **NIENTE fallback travestito in `"SERVIZI E CONSULENZE"`** (comportamento eliminato). Constraint DB reale: `fatture_categoria_not_empty_chk` (vieta solo NULL/vuoto). Costante: `CATEGORIA_NON_CLASSIFICATA` in `config/constants.py`.
-
-2. **`"📝 NOTE E DICITURE"` solo per `totale_riga == 0`** — su qualsiasi importo > 0 va usata una categoria reale.
-
-3. **`service_role_key` sempre** — non usare la anon key. Non toccare `services/__init__.py` senza capire l'auth flow.
-
-4. **`ADMIN_EMAILS` normalizzato lowercase** — confronti email sempre con `.strip().lower()`.
-
-5. **Soft-delete**: query su `fatture` e `prodotti` devono filtrare `deleted_at IS NULL`. Usare `filter_active()` da `services.db_service`. Non rimuovere `.not_.is_("deleted_at", "null")` nelle query cestino (quelle sono intenzionali).
-
-6. **Worker separato**: operazioni pesanti (classificazione AI, parsing fatture) vanno nel worker — non bloccare il thread Streamlit o l'event loop Next.js.
+Erano duplicate anche qui, ed è esattamente così che nasce il drift: due copie
+della stessa regola divergono, e quella sbagliata corrompe i dati in silenzio.
+Questo file era rimasto indietro sul fallback `"SERVIZI E CONSULENZE"`, eliminato
+dal prodotto ma ancora descritto qui come attivo.
 
 7. **Password Argon2id** — parametri `m=65536, t=3` non vanno mai modificati.
 
