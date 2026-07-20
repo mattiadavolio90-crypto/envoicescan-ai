@@ -147,10 +147,19 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
           // la sede. NON piu' scartata: il worker l'ha messa in coda 'da_assegnare'
           // (data.success=true, routing_status='ambiguo', queue_id valorizzato). Il
           // cliente la assegnera' a una sede o la ripartira' sul gruppo dalla coda.
-          const isQueuedAmbiguo = data.success === true && data.routing_status === "ambiguo";
+          //
+          // queue_created distingue NUOVA (true, appena entrata in coda) da GIA'
+          // PRESENTE (false, la RPC l'ha riconosciuta via hash e non ha creato nulla
+          // — stesso event_id). Prima entrambe finivano su "queued" col contatore
+          // "N da assegnare", indistinguibili a schermo dalle nuove: un ricaricamento
+          // dell'intera cartella sembrava aggiungere N fatture quando in realta' non
+          // aggiungeva nulla. Ora una duplicata-in-coda e' "skipped", come qualsiasi
+          // altro doppione (stesso trattamento di ALREADY_LOADED).
+          const isQueuedAmbiguo = data.success === true && data.routing_status === "ambiguo" && data.queue_created !== false;
+          const isGiaInCoda = data.success === true && data.routing_status === "ambiguo" && data.queue_created === false;
           // P.IVA non di nessuna sede del cliente: ancora scartata (guardia intatta).
           const isPivaEstranea = errStr === "PIVA_NESSUNA_SEDE";
-          const isSkip = isAlreadyLoaded || isPivaEstranea;
+          const isSkip = isAlreadyLoaded || isPivaEstranea || isGiaInCoda;
           setFiles((prev) =>
             prev.map((f) =>
               f.id === entry.id
@@ -176,7 +185,9 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                       ? errStr.slice("ALREADY_LOADED:".length) || "fattura già presente"
                       : isPivaEstranea
                         ? "PIVA_NESSUNA_SEDE"
-                        : undefined,
+                        : isGiaInCoda
+                          ? "GIA_IN_CODA"
+                          : undefined,
                   }
                 : f,
             ),
@@ -287,18 +298,18 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                   )}
                   {entry.status === "queued" && (
                     <p className="text-amber-600 mt-0.5">
-                      {entry.queue_created === false
-                        ? "Era già in attesa: intestata alla società, non a un locale."
-                        : "Intestata alla società, non a un locale: è in attesa che tu scelga dove va."}
+                      Intestata alla società, non a un locale: è in attesa che tu scelga dove va.
                     </p>
                   )}
                   {entry.status === "skipped" && (
                     <p className="text-amber-600 mt-0.5">
                       {entry.skip_motivo === "PIVA_NESSUNA_SEDE"
                         ? "Questa fattura è intestata a una partita IVA che non corrisponde a nessuna tua sede: non è stata caricata."
-                        : entry.sede_assegnata
-                          ? `Già caricata in precedenza su ${entry.sede_assegnata}.`
-                          : "Fattura scartata perché già caricata in precedenza."}
+                        : entry.skip_motivo === "GIA_IN_CODA"
+                          ? "Fattura scartata perché già caricata. In coda da assegnare."
+                          : entry.sede_assegnata
+                            ? `Già caricata in precedenza su ${entry.sede_assegnata}.`
+                            : "Fattura scartata perché già caricata in precedenza."}
                     </p>
                   )}
                   {entry.status === "error" && (
