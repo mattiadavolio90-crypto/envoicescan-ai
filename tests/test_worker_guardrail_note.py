@@ -207,3 +207,71 @@ def test_bassa_MA_confermata_dal_dizionario_e_affidabile():
     sb = _run(rows, categorie=["VERDURE"], confidenze=["bassa"])
     assert sb._rows[0]["categoria"] == "VERDURE"
     assert sb._rows[0]["needs_review"] is False
+
+
+# ─── Retry auto-classificazione: l'AI transitoriamente giù non deve bruciare le righe ──
+# Contesto (20/07): caricando 76 fatture OFFSIDE in blocco, l'AI andava in timeout
+# su alcuni chunk. Il codice si arrendeva al PRIMO errore -> ~100 righe food banali
+# (hamburger, nuggets, mozzarelline) restavano "Da Classificare", mentre riprovando
+# a freddo l'AI le riconosceva con confidenza 'alta'. Ora il chunk si ritenta con
+# backoff prima di ripiegare su Da Classificare.
+
+def _run_con_side_effect(rows, side_effect):
+    """Come _run, ma classifica_via_worker_con_confidenza usa side_effect
+    (per simulare fallimenti seguiti da successo)."""
+    sb = FakeSB(rows)
+    with patch.object(qp, "classifica_via_worker_con_confidenza", side_effect=side_effect), \
+         patch.object(qp, "aggiorna_streak_classificazione", return_value=None), \
+         patch.object(qp, "time") as fake_time, \
+         patch.object(qp, "filter_active", side_effect=lambda q: q):
+        fake_time.sleep = lambda *_a, **_k: None  # niente attese reali nei test
+        qp._auto_classify_saved_rows(
+            supabase=sb, user_id="u1", ristorante_id="r1", nome_file="F.xml"
+        )
+    return sb
+
+
+def test_ai_fallisce_poi_risponde_categoria_scritta():
+    """L'AI va in timeout ai primi 2 tentativi, poi risponde: la riga NON deve
+    restare Da Classificare, la categoria del 3° tentativo va scritta."""
+    rows = [
+        {"id": 1, "descrizione": "ANGUSBURGER IRLANDA", "fornitore": "RISTOPIU", "iva_percentuale": 10,
+         "totale_riga": 51.0, "categoria": None},
+    ]
+    side_effect = [
+        TimeoutError("worker classify timeout"),
+        TimeoutError("worker classify timeout"),
+        (["CARNE"], ["alta"]),  # 3° tentativo: successo
+    ]
+    sb = _run_con_side_effect(rows, side_effect)
+    assert sb._rows[0]["categoria"] == "CARNE"
+    assert sb._rows[0]["needs_review"] is False
+
+
+def test_ai_sempre_giu_resta_da_classificare():
+    """Se l'AI fallisce a TUTTI i tentativi, la riga resta Da Classificare
+    (nel dubbio non si indovina) — ma solo DOPO aver ritentato, non al primo colpo."""
+    rows = [
+        {"id": 1, "descrizione": "ANGUSBURGER IRLANDA", "fornitore": "RISTOPIU", "iva_percentuale": 10,
+         "totale_riga": 51.0, "categoria": None},
+    ]
+    # Più fallimenti dei tentativi massimi: esaurisce i retry.
+    side_effect = [TimeoutError("giù")] * (qp._MAX_CLASSIFY_RETRY + 2)
+    sb = _run_con_side_effect(rows, side_effect)
+    assert sb._rows[0]["categoria"] == "Da Classificare"
+    assert sb._rows[0]["needs_review"] is True
+
+
+def test_risposta_disallineata_viene_ritentata():
+    """Se l'AI risponde ma con una lista di lunghezza sbagliata (1 riga, 0 categorie),
+    è come un fallimento: si ritenta, e il tentativo valido successivo vince."""
+    rows = [
+        {"id": 1, "descrizione": "MOZZARELLINE PANATE", "fornitore": "RISTOPIU", "iva_percentuale": 10,
+         "totale_riga": 8.0, "categoria": None},
+    ]
+    side_effect = [
+        ([], []),                 # disallineata (0 vs 1)
+        (["LATTICINI"], ["alta"]),  # valida
+    ]
+    sb = _run_con_side_effect(rows, side_effect)
+    assert sb._rows[0]["categoria"] == "LATTICINI"

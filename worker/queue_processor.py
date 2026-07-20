@@ -121,6 +121,14 @@ except Exception:  # pragma: no cover - fallback difensivo
 
 logger = logging.getLogger(__name__)
 
+# Retry auto-classificazione: quante volte ritentare un chunk quando l'AI fallisce
+# (timeout, rate-limit, errore HTTP transitorio) prima di lasciare le righe
+# 'Da Classificare'. Nato dal caricamento massivo OFFSIDE (20/07): l'AI andava in
+# timeout sotto carico e senza retry ~100 righe food banali restavano non
+# classificate. Backoff esponenziale: _CLASSIFY_RETRY_BACKOFF, poi ×2, ×4...
+_MAX_CLASSIFY_RETRY = int(os.environ.get("WORKER_CLASSIFY_MAX_RETRY", "3"))
+_CLASSIFY_RETRY_BACKOFF = float(os.environ.get("WORKER_CLASSIFY_RETRY_BACKOFF", "2.0"))
+
 
 def get_supabase_client():
     """Client Supabase per worker CLI, senza dipendenze da Streamlit UI."""
@@ -220,30 +228,59 @@ def _auto_classify_saved_rows(
         chunk = descrizioni[i:i + chunk_size]
         fornitori = [desc_map[d][0] for d in chunk]
         iva_list = [desc_map[d][1] for d in chunk]
-        try:
-            categorie, confidenze = classifica_via_worker_con_confidenza(
-                chunk,
-                fornitori=fornitori,
-                iva=iva_list,
-                hint=None,
-                user_id=user_id,
-                ristorante_id=ristorante_id,
-            )
-        except Exception as ai_exc:
-            logger.warning(
-                "[auto_classify] classifica_via_worker fallita per chunk %d-%d: %s",
-                i, i + len(chunk), ai_exc,
-            )
-            categorie = None
-            confidenze = None
+        # Retry con backoff sul chunk: un fallimento dell'AI (timeout, rate-limit,
+        # errore HTTP transitorio del worker /api/classify) NON deve tradursi
+        # subito in "Da Classificare" per 50 righe. Caso reale 20/07: caricando 76
+        # fatture in blocco l'AI andava in timeout su alcuni chunk e il codice si
+        # arrendeva al primo errore -> ~100 righe food banali (hamburger, nuggets)
+        # restavano non classificate, mentre riprovando a freddo l'AI le riconosceva
+        # con confidenza 'alta'. tenacity in ai_service ritenta la singola chiamata
+        # OpenAI, ma se l'intero flusso HTTP fallisce l'eccezione risaliva qui senza
+        # protezione. Ora si ritenta il chunk fino a _MAX_CLASSIFY_RETRY volte.
+        categorie = None
+        confidenze = None
+        for _tentativo in range(_MAX_CLASSIFY_RETRY):
+            try:
+                categorie, confidenze = classifica_via_worker_con_confidenza(
+                    chunk,
+                    fornitori=fornitori,
+                    iva=iva_list,
+                    hint=None,
+                    user_id=user_id,
+                    ristorante_id=ristorante_id,
+                )
+                if isinstance(categorie, list) and len(categorie) == len(chunk):
+                    break  # risposta valida e allineata: esci dal retry
+                # Risposta ricevuta ma disallineata: ritenta (non è un successo).
+                logger.warning(
+                    "[auto_classify] risposta AI disallineata chunk %d-%d "
+                    "(atteso %d, ottenuto %s), tentativo %d/%d",
+                    i, i + len(chunk), len(chunk),
+                    None if not isinstance(categorie, list) else len(categorie),
+                    _tentativo + 1, _MAX_CLASSIFY_RETRY,
+                )
+                categorie = None
+            except Exception as ai_exc:
+                logger.warning(
+                    "[auto_classify] classifica_via_worker fallita chunk %d-%d "
+                    "(tentativo %d/%d): %s",
+                    i, i + len(chunk), _tentativo + 1, _MAX_CLASSIFY_RETRY, ai_exc,
+                )
+                categorie = None
+                confidenze = None
+            # Non è l'ultimo tentativo: attendi con backoff crescente prima di ritentare.
+            if _tentativo < _MAX_CLASSIFY_RETRY - 1:
+                time.sleep(_CLASSIFY_RETRY_BACKOFF * (2 ** _tentativo))
 
-        # Fallback robusto: se l'AI non ha ritornato una lista allineata, usa
-        # il fallback canonico (enforce_no_unclassified_category lo normalizzerà).
+        # Esauriti i retry senza risposta valida: solo ORA si ripiega su
+        # 'Da Classificare' (categoria neutra). enforce_no_unclassified_category
+        # la normalizzerà. Meglio lasciarle in coda di rifinitura che scrivere
+        # una categoria inventata (principio: nel dubbio non si indovina).
         if not isinstance(categorie, list) or len(categorie) != len(chunk):
-            logger.warning(
-                "[auto_classify] risultato AI inatteso (atteso %d, ottenuto %s) - fallback su categoria neutra",
-                len(chunk),
-                None if not isinstance(categorie, list) else len(categorie),
+            logger.error(
+                "[auto_classify] AI non disponibile dopo %d tentativi per chunk "
+                "%d-%d: %d righe restano Da Classificare",
+                _MAX_CLASSIFY_RETRY, i, i + len(chunk), len(chunk),
             )
             categorie = [None] * len(chunk)
             confidenze = ['bassa'] * len(chunk)
