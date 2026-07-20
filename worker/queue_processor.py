@@ -102,20 +102,38 @@ try:
         applica_regole_categoria_forti as _applica_regole_categoria_forti,
     )
 
-    def _runtime_conferma_categoria(descrizione, categoria) -> bool:
-        cat = str(categoria or "").strip()
-        if not cat or cat.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
-            return False
+    def _categoria_deterministica_runtime(descrizione):
+        """Categoria CERTA del runtime (dizionario keyword + regole forti), calcolata
+        SENZA apporto dell'AI. Ritorna la categoria oppure None se il runtime non ha
+        una risposta deterministica.
+
+        È il curato-a-mano del dominio (config.constants + regole forti): quando parla,
+        è più affidabile di una singola chiamata GPT. Usato per due scopi: (1) confermare
+        una proposta AI concordante, (2) SCAVALCARE una proposta AI errata quando il
+        runtime è certo (es. "BLACK BURGER"→CARNE mentre GPT diceva PRODOTTI DA FORNO).
+        """
         try:
             cat_dz = _applica_correzioni_dizionario(descrizione, "Da Classificare")
             cat_rf, _motivo = _applica_regole_categoria_forti(descrizione, cat_dz)
             finale = (cat_rf or cat_dz or "").strip()
-        except Exception:  # pragma: no cover - difensivo: in dubbio NON confermare
-            return False
+        except Exception:  # pragma: no cover - difensivo: in dubbio NON decidere
+            return None
         if not finale or finale.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+            return None
+        return finale
+
+    def _runtime_conferma_categoria(descrizione, categoria) -> bool:
+        cat = str(categoria or "").strip()
+        if not cat or cat.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+            return False
+        finale = _categoria_deterministica_runtime(descrizione)
+        if not finale:
             return False
         return finale.upper() == cat.upper()
 except Exception:  # pragma: no cover - fallback difensivo
+    def _categoria_deterministica_runtime(_descrizione):
+        return None
+
     def _runtime_conferma_categoria(_descrizione, _categoria) -> bool:
         return False
 
@@ -294,13 +312,6 @@ def _auto_classify_saved_rows(
                 desc,
                 source="worker_queue_auto_classify",
             )
-            # Guardrail NOTE E DICITURE: vietata su righe con importo != 0 (regola di
-            # dominio #2). Il path upload manuale lo applica già; qui serve perché le
-            # regole forti / il dizionario possono restituire NOTE E DICITURE (es.
-            # COUPON, "RIGA FATTURA") anche su righe con totale_riga > 0.
-            categoria = _applica_guardrail_note_con_importo(
-                desc, categoria, desc_importo.get(desc, 0.0)
-            )
             # PRINCIPIO (rev. 24/06): una categoria viene SCRITTA solo se affidabile.
             # Nel dubbio NON si indovina: si lascia 'Da Classificare'. Così il cliente
             # può fidarsi al 100% di ciò che è categorizzato e concentrarsi solo sulle
@@ -313,6 +324,22 @@ def _auto_classify_saved_rows(
             # Tutto il resto (GPT 'bassa', GPT 'media' NON confermata, fallback,
             # descrizione dubbia non confermata) → 'Da Classificare' + coda.
             _forn = desc_map.get(desc, ("", 0))[0]
+            # OVERRIDE deterministico (rev. 20/07): il dizionario+regole forti sono
+            # curati a mano per prodotto → quando esprimono una categoria CERTA,
+            # scavalcano una proposta AI divergente. Prima venivano usati solo per
+            # CONFERMARE la scelta AI: se GPT sbagliava (es. BLACK BURGER→PRODOTTI DA
+            # FORNO, media) il dizionario che sapeva "CARNE" restava muto e la riga
+            # finiva Da Classificare. Ora il runtime, se certo, decide lui.
+            _cat_runtime = _categoria_deterministica_runtime(desc)
+            if _cat_runtime and _cat_runtime.upper() != str(categoria).strip().upper():
+                categoria = _cat_runtime
+            # Guardrail NOTE E DICITURE: vietata su righe con importo != 0 (regola di
+            # dominio #2). DEVE girare DOPO l'override: le regole forti / il dizionario
+            # (via AI o via override) possono restituire NOTE E DICITURE (es. COUPON,
+            # "RIGA FATTURA") anche su righe con totale_riga > 0.
+            categoria = _applica_guardrail_note_con_importo(
+                desc, categoria, desc_importo.get(desc, 0.0)
+            )
             _confermata_runtime = _runtime_conferma_categoria(desc, categoria)
             _alta_affidabile = (
                 conf == 'alta'

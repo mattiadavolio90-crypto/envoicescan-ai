@@ -530,11 +530,32 @@ def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
     # "KRFT", "MDLE"). Vale per token >= 3 lettere; ratio vocali < 1/3 = criptico.
     # Anche il trigger "criptico" cede a una regola forte: es. "BERNARDI PROSECCO
     # VALDOB.DOCG ML 750 (5X6)" è pieno di sigle (VALDOB/DOCG/ML/5X6) ma è VINO certo.
+    #
+    # NB (20/07 — cert. OFFSIDE, menù anglofono): la sola densità di vocali marcava
+    # "criptiche" parole INGLESI vere — "PORK" (1/4), "BLACK" (1/5), "PULLED" (2/6),
+    # "BURGER" (2/6) — perché l'inglese ha meno vocali dell'italiano. Risultato: un
+    # pub (BLACK BURGER, PULLED PORK, NUGGETS) vedeva ogni riga food marcata dubbia
+    # e ricacciata in coda anche quando l'AI rispondeva 'alta' e corretta. Fix: una
+    # parola PRONUNCIABILE non è criptica anche se povera di vocali. Discriminante
+    # robusta = nessuna corsa di consonanti troppo lunga: "PORK"/"BURGER" hanno al
+    # massimo 2 consonanti di fila, le sigle troncate ("KRFT","TRSSE","MDLE") ne
+    # hanno 3+. Soglia: run di consonanti >= 4 → criptico (sigla), altrimenti no.
+    def _pronunciabile(t: str) -> bool:
+        # Parola plausibile solo se: ha almeno una vocale E non presenta corse di
+        # consonanti troppo lunghe. "PORK"/"BURGER" (1-2 cons. di fila, 1+ vocale)
+        # passano; "MRR"/"TRMA"/"KRFT" (0 vocali o >=3 consonanti secche) no.
+        vocali = len(re.findall(r"[AEIOUÀ-Ý]", t))
+        if vocali == 0:
+            return False  # nessuna parola vera è priva di vocali
+        return re.search(r"[^AEIOUÀ-Ý]{3,}", t) is None
     def _criptico(t: str) -> bool:
         if len(t) < 3:
             return True  # sigla corta senza contesto
         vocali = len(re.findall(r"[AEIOUÀ-Ý]", t))
-        return (vocali / len(t)) < 0.34
+        if (vocali / len(t)) >= 0.34:
+            return False
+        # Poche vocali ma pronunciabile (parola EN/IT vera) → NON criptico.
+        return not _pronunciabile(t)
     criptici = sum(1 for t in tokens_alfa if _criptico(t))
     if tokens_alfa and criptici / len(tokens_alfa) >= 0.6 and not cat_da_regola_forte:
         return True

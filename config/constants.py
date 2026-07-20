@@ -346,6 +346,14 @@ DIZIONARIO_CORREZIONI = {
     "COSTATA": "CARNE",
     "BISTECCA": "CARNE",
     "HAMBURGER": "CARNE",
+    # Menù pub/fast-food (cert. OFFSIDE 20/07): prodotti anglofoni ricorrenti che
+    # il dizionario non conosceva → restavano "Da Classificare" dipendendo dall'AI.
+    "BURGER": "CARNE",
+    "NUGGETS": "CARNE",
+    "NUGGET": "CARNE",
+    "PULLED PORK": "CARNE",
+    "PULLED": "CARNE",
+    "STINCO": "CARNE",
     "SPEZZATINO": "CARNE",
     "ARROSTO": "CARNE",
     "BRASATO": "CARNE",
@@ -433,6 +441,8 @@ DIZIONARIO_CORREZIONI = {
     "STRACCHINO": "LATTICINI",
     "EMMENTAL": "LATTICINI",
     "MOZZARELLA": "LATTICINI",
+    "MOZZARELLINE": "LATTICINI",
+    "MOZZARELLINA": "LATTICINI",
     "BURRATA": "LATTICINI",
     "RICOTTA": "LATTICINI",
     "MASCARPONE": "LATTICINI",
@@ -559,6 +569,7 @@ DIZIONARIO_CORREZIONI = {
 
     "PIZZETTA": "PRODOTTI DA FORNO",
     "CIABATTA": "PRODOTTI DA FORNO",
+    "CIABAT": "PRODOTTI DA FORNO",
     "FRANCESINO": "PRODOTTI DA FORNO",
     "MICHETTA": "PRODOTTI DA FORNO",
     "BAGUETTE": "PRODOTTI DA FORNO",

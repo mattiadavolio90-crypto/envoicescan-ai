@@ -238,6 +238,73 @@ class TestTreFamiglieSushiland2606:
             assert motivo == "pet_food_non_alimento", d
 
 
+class TestMenuPubAnglofono2007:
+    """Cert. OFFSIDE 20/07: un pub ha il menù in inglese (BLACK BURGER, PULLED PORK,
+    NUGGETS). Due bug indipendenti tenevano queste righe food ovvie in "Da Classificare":
+
+      1. descrizione_e_dubbia marcava CRIPTICA ogni parola povera di vocali. L'inglese
+         ne ha meno dell'italiano ("PORK" 1/4, "BLACK" 1/5, "PULLED" 2/6): parole vere
+         venivano scambiate per sigle troncate → riga dubbia anche con AI 'alta' corretta.
+      2. il DIZIONARIO non conosceva il vocabolario pub → nessuna conferma runtime, la
+         riga dipendeva al 100% dall'umore dell'AI (spesso 'media' → coda).
+
+    Fix: (1) una parola PRONUNCIABILE (nessuna corsa di >=4 consonanti) non è criptica
+    anche se povera di vocali; (2) BURGER/NUGGETS/PULLED PORK->CARNE, CIABAT->FORNO,
+    MOZZARELLIN->LATTICINI nel dizionario. Ora si categorizzano da sole, senza AI.
+    """
+
+    def _cat(self, desc):
+        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        dz = applica_correzioni_dizionario(desc, "Da Classificare")
+        rf, _ = applica_regole_categoria_forti(desc, dz)
+        return rf or dz
+
+    def test_food_pub_confermato_dal_dizionario(self):
+        # descrizioni REALI dal DB OFFSIDE: ora il dizionario le conferma da solo.
+        casi = [
+            ("BLACK BURGER G.100X20PZ EDNA", "CARNE"),
+            ("BLACK NUGGETS CEDDAR C/JALAPENO KG1 AVIK", "CARNE"),
+            ("PULLED PORK BITES KG.1 SALOMON", "CARNE"),
+            ("PULLED PORK GELO 2PZ P.V.KG.1CA BALDI", "CARNE"),
+            ("STINCO PROSCIUT PREC COLLEMILIA 550GRX12", "CARNE"),
+            ("CIABAT.RUST.PRET. G.100X36PZ MASTERFOOD", "PRODOTTI DA FORNO"),
+            ("MOZZARELLINE FRITTE 1KG", "LATTICINI"),
+        ]
+        for desc, cat in casi:
+            assert self._cat(desc) == cat, f"{desc} atteso {cat}, avuto {self._cat(desc)}"
+
+    def test_food_pub_non_e_piu_dubbio(self):
+        # confermato dal dizionario => descrizione_e_dubbia deve dire False anche con
+        # sigle/codici commerciali in coda (G.100X20PZ, KG1, ...).
+        for desc, cat in [("BLACK BURGER G.100X20PZ EDNA", "CARNE"),
+                          ("PULLED PORK BITES KG.1 SALOMON", "CARNE"),
+                          ("CIABAT.RUST.PRET. G.100X36PZ MASTERFOOD", "PRODOTTI DA FORNO")]:
+            assert descrizione_e_dubbia(desc, "RISTOPIU LOMBARDIA", cat) is False, desc
+
+    def test_parola_inglese_non_e_criptica(self):
+        # il cuore del fix #1: parole EN vere, povere di vocali, NON sono dubbie da sole.
+        # Nessuna conferma dizionario passata (categoria None) → isola il trigger criptico.
+        for desc in ["PULLED PORK BITES", "FILLET SOUTHERN FRIED", "BLACK BURGER"]:
+            assert descrizione_e_dubbia(desc, "X", None) is False, desc
+
+    def test_sigla_troncata_vera_resta_dubbia(self):
+        # non-regressione: le vere sigle senza vocali (corsa di >=4 consonanti) restano
+        # criptiche → riga dubbia se non confermata.
+        assert descrizione_e_dubbia("KRFT GRND MDLE", "X", None) is True
+        assert descrizione_e_dubbia("TRSSE TLTTE", "X", None) is True
+
+    def test_portapanini_non_diventa_carne(self):
+        # guardia falso-positivo: "50PORTA HAMBURG.COMP" è packaging monouso, NON carne.
+        # "BURGER" non deve dirottare un contenitore. "HAMBURG" è troncato (non matcha
+        # HAMBURGER né BURGER col boundary), quindi la riga NON finisce in CARNE.
+        assert self._cat("50PORTA HAMBURG.COMP.15X15MP") != "CARNE"
+
+    def test_panburger_resta_prodotti_da_forno(self):
+        # "PANBURGER" (il pane del panino) contiene "BURGER" ma è preceduto da lettera:
+        # il boundary del dizionario impedisce il match interno → resta PRODOTTI DA FORNO.
+        assert self._cat("G100 PANBURGER SESAMO 50PZ") == "PRODOTTI DA FORNO"
+
+
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
 

@@ -130,13 +130,26 @@ def test_note_su_importo_zero_resta_note():
 
 
 def test_categoria_normale_non_viene_toccata():
-    """Una categoria reale su riga con importo passa invariata."""
+    """Una categoria reale su riga con importo passa invariata (nessuna regola di
+    dominio la corregge)."""
+    rows = [
+        {"id": 1, "descrizione": "INSALATA GENTILE", "fornitore": "X", "iva_percentuale": 10,
+         "totale_riga": 30.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["VERDURE"])
+    assert sb._rows[0]["categoria"] == "VERDURE"
+
+
+def test_override_corregge_ortofrutta_trasformata():
+    """Override deterministico: 'POMODORI PELATI' è una conserva, non verdura fresca.
+    Il dizionario (regola di dominio ortofrutta trasformata) dice SCATOLAME E CONSERVE
+    e scavalca la proposta AI 'VERDURE'. Prima passava VERDURE (errata)."""
     rows = [
         {"id": 1, "descrizione": "POMODORI PELATI", "fornitore": "X", "iva_percentuale": 10,
          "totale_riga": 30.0, "categoria": None},
     ]
     sb = _run(rows, categorie=["VERDURE"])
-    assert sb._rows[0]["categoria"] == "VERDURE"
+    assert sb._rows[0]["categoria"] == "SCATOLAME E CONSERVE"
 
 
 def test_note_su_importo_negativo_viene_corretta():
@@ -207,6 +220,48 @@ def test_bassa_MA_confermata_dal_dizionario_e_affidabile():
     sb = _run(rows, categorie=["VERDURE"], confidenze=["bassa"])
     assert sb._rows[0]["categoria"] == "VERDURE"
     assert sb._rows[0]["needs_review"] is False
+
+
+# ─── Override deterministico: il dizionario certo SCAVALCA una proposta AI errata ──
+# Contesto (cert. OFFSIDE 20/07): un pub ha il menù in inglese. GPT sbagliava spesso
+# categoria ("BLACK BURGER"→PRODOTTI DA FORNO invece di CARNE) con confidenza 'media'.
+# Prima il dizionario veniva usato solo per CONFERMARE la scelta AI: proposta diversa =
+# nessuna conferma → Da Classificare, buttando via la risposta giusta che il dizionario
+# conosceva. Ora, se il runtime (dizionario+regole forti) è CERTO, decide lui.
+
+def test_dizionario_certo_scavalca_ai_errata():
+    """GPT 'media' dice PRODOTTI DA FORNO su BLACK BURGER, ma il dizionario sa CARNE:
+    vince il dizionario deterministico, categoria scritta e non in coda."""
+    rows = [
+        {"id": 1, "descrizione": "BLACK BURGER G.100X20PZ EDNA", "fornitore": "RISTOPIU",
+         "iva_percentuale": 10, "totale_riga": 45.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["PRODOTTI DA FORNO"], confidenze=["media"])
+    assert sb._rows[0]["categoria"] == "CARNE"
+    assert sb._rows[0]["needs_review"] is False
+
+
+def test_pulled_pork_ai_sbagliata_recuperato_dal_dizionario():
+    """PULLED PORK: GPT lo mette in PESCE (errore), il dizionario lo sa CARNE."""
+    rows = [
+        {"id": 1, "descrizione": "PULLED PORK BITES KG.1 SALOMON", "fornitore": "RISTOPIU",
+         "iva_percentuale": 10, "totale_riga": 22.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["PESCE"], confidenze=["media"])
+    assert sb._rows[0]["categoria"] == "CARNE"
+    assert sb._rows[0]["needs_review"] is False
+
+
+def test_override_non_scatta_se_dizionario_muto():
+    """Se il dizionario NON ha una risposta certa, l'override non tocca nulla:
+    resta il comportamento prudente (proposta AI incerta non confermata → coda)."""
+    rows = [
+        {"id": 1, "descrizione": "XQZ TLP GERGALE 88", "fornitore": "MEFON SRL",
+         "iva_percentuale": 4, "totale_riga": 12.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["VERDURE"], confidenze=["media"])
+    assert sb._rows[0]["categoria"] == "Da Classificare"
+    assert sb._rows[0]["needs_review"] is True
 
 
 # ─── Retry auto-classificazione: l'AI transitoriamente giù non deve bruciare le righe ──
