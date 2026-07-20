@@ -1375,15 +1375,11 @@ DIZIONARIO_CORREZIONI = {
     "SILVER CAN": "BIRRE",
     
     # ===== MATERIALE CONSUMO SPECIFICO =====
-    # Bambù-POSATA (bacchette/bastoncini/spiedini monouso) → MATERIALE.
-    # Il bambù-CIBO (germogli/conservato) resta SUSHI VARIE via keyword "BAMBU".
-    "BASTONCINO BAMBU": "MATERIALE DI CONSUMO",
-    "BASTONCINI BAMBU": "MATERIALE DI CONSUMO",
-    "BASTONCINI DI BAMBU": "MATERIALE DI CONSUMO",
-    "SPIEDINI BAMBU": "MATERIALE DI CONSUMO",
-    "SPIEDINI DI BAMBU": "MATERIALE DI CONSUMO",
-    "SPIEDINI BAMBU NODO": "MATERIALE DI CONSUMO",
-    "BACCHETTE BAMBU": "MATERIALE DI CONSUMO",
+    # NB (20/07): le vecchie toppe per-prodotto (BASTONCINO/SPIEDINI/BACCHETTE BAMBU)
+    # sono state RIMOSSE: le copre ora la regola universale "oggetto_non_edibile" in
+    # applica_regole_categoria_forti (oggetto ambiguo + materiale-non-edibile →
+    # MATERIALE). Quella regola cattura anche le forme mai enumerate ("SPIEDI BAMBU"
+    # senza -NI, che sfuggiva). "BACCHETTE" da sola resta qui: è intrinsecamente utensile.
     "BACCHETTE": "MATERIALE DI CONSUMO",
     "BOBINA": "MATERIALE DI CONSUMO",
     "STRAPI": "MATERIALE DI CONSUMO",

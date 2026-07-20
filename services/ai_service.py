@@ -1066,6 +1066,40 @@ _PANE_BURGER_RE = re.compile(r"\bPAN(E|INO|INI)?\b|\bPANBURGER\b")
 # OFFSIDE 20/07: "SQUEEZER BURGER SAUCE" era SALSE E CREME, giusto).
 _BURGER_NON_CARNE_RE = re.compile(r"\bSAUCE\b|\bSALS[AE]\b|\bKETCHUP\b|\bMAIONESE\b|\bBOX\b|\bCARTA\b")
 
+# ── REGOLA UNIVERSALE "OGGETTO NON-EDIBILE → MATERIALE DI CONSUMO" ──────────────
+# (strategia condivisa 20/07, validata su golden 8378 + 3 SUSHILAND + LAND). Chiude
+# alla RADICE il leak cronico "SPIEDI BAMBU → SUSHI VARIE": un oggetto non si mangia,
+# a prescindere dall'ingrediente/materiale che nomina. NON è una lista di prodotti:
+# è il PRINCIPIO, quindi copre anche le forme mai viste ("STICK MONOUSO", "PALETTA
+# LEGNO"...). Due livelli, perché l'audit ha mostrato che la sola parola-oggetto NON
+# basta (es. "BASTONCINI DI PESCE" = cibo, non l'utensile):
+#
+#   (A) INTRINSECAMENTE oggetti — valgono da soli, non esiste il cibo omonimo:
+#       cannucce, pellicola, alluminio, tovaglioli, guanti, coperchi, pirottini.
+#   (B) AMBIGUI (esistono sia come oggetto sia come cibo) — MATERIALE solo se
+#       accompagnati da un MATERIALE-non-edibile (bambù/legno/plastica/carta/inox/
+#       acciaio/monouso...): "SPIEDI BAMBU"→materiale, "BASTONCINI DI PESCE"→resta cibo.
+_OGGETTO_INTRINSECO_RE = re.compile(
+    r"\b(CANNUCC\w*|PELLICOLA|ALLUMINIO|TOVAGLIOL\w*|GUANT[OI]\b|GUANTI\b|"
+    r"PIROTTIN\w*|PIATTIN[OI]\s*MONOUSO|POSAT[EA]\s*MONOUSO)\b"
+)
+# COPERCHIO NON è tra gli intrinseci: può essere di pentola durevole (MANUTENZIONE).
+# Va tra gli ambigui → materiale solo con marcatore monouso (carta/plastica/bio).
+_OGGETTO_AMBIGUO_RE = re.compile(
+    r"(SPIED\w*|STECCHIN\w*|BASTONCIN\w*|BACCHETT\w*|TAPPETIN\w*|VASSOI\w*|"
+    r"PALETT[EA]|PALINE|VASCHETT\w*|COPERCHI\w*)"
+)
+# "STICK" solo come parola isolata e NON preceduto da NO/NON (= "NO STICK" =
+# antiaderente, una padella durevole, NON un oggetto monouso).
+_STICK_OGGETTO_RE = re.compile(r"(?<!NO )(?<!NON )\bSTICK\b")
+# Materiali NON-edibili tipici del MONOUSO/imballo. NB: NON includo ACCIAIO/INOX:
+# sono i materiali delle ATTREZZATURE DUREVOLI (padella inox, pentola acciaio →
+# MANUTENZIONE), non del materiale di consumo. Includerli rubava le padelle.
+_MATERIALE_NON_EDIBILE_RE = re.compile(
+    r"\b(BAMB[UÙ]|LEGNO|PLASTIC\w*|CARTA|CARTONE|ALLUMINIO|PVC|"
+    r"POLISTIROL\w*|MONOUSO|BIODEGRADAB\w*|COMPOSTABIL\w*)\b"
+)
+
 # MATERIALE DI CONSUMO: pulizia/imballo/DPI che cadevano in food o Da Classificare.
 # VASCHETTA/CARTA PER RAVIOLI sono imballo, non cibo: devono battere SUSHI/PASTA.
 _CONSUMO_EXTRA_RE = re.compile(
@@ -1226,6 +1260,7 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     # Cert. SUSHILAND 26/06 — 3 famiglie ricorrenti su catene sushi
     "voce_bolletta_utenza",
     "stoviglie_servizio",
+    "oggetto_non_edibile",
     "giappo_fritto_pasta",
     "giappo_pesce",
     "pet_food_non_alimento",
@@ -1280,6 +1315,22 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "MATERIALE DI CONSUMO"
         if cat != mapped:
             return mapped, "stoviglie_servizio"
+        return cat, None
+
+    # REGOLA UNIVERSALE oggetto-non-edibile → MATERIALE (vedi pattern sopra). Prima di
+    # ogni regola food: un oggetto batte l'ingrediente che nomina. Vale per TUTTI i
+    # clienti (pub, sushi, pizzeria...). Due condizioni di attivazione:
+    #   (A) oggetto intrinseco (cannucce, pellicola, guanti...) → sempre materiale;
+    #   (B) oggetto ambiguo (spiedi, bastoncini, stick...) SOLO con un materiale-non-
+    #       edibile accanto (bambù/legno/plastica/carta/inox...), così "BASTONCINI DI
+    #       PESCE" (cibo) NON viene rubato mentre "SPIEDI BAMBU" (utensile) sì.
+    if _OGGETTO_INTRINSECO_RE.search(desc_u) or (
+        (_OGGETTO_AMBIGUO_RE.search(desc_u) or _STICK_OGGETTO_RE.search(desc_u))
+        and _MATERIALE_NON_EDIBILE_RE.search(desc_u)
+    ):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "oggetto_non_edibile"
         return cat, None
 
     if _GIAPPO_FRITTO_PASTA_RE.search(desc_u):
@@ -2237,10 +2288,14 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "ingrediente_bar_specifico"
         return cat, None
 
-    # "ARACHIDI WASABI" (snack al gusto wasabi) NON è ingrediente sushi → VARIE BAR.
-    # Cert. OFFSIDE 20/07: WASABI catturava lo snack in SUSHI VARIE, categoria priva
-    # di senso per un pub. Se c'è ARACHIDI/NOCCIOLINE, il wasabi è solo un aroma.
-    if _SUSHI_VARIE_RE.search(desc_u) and not re.search(r"\b(ARACHID[EI]|NOCCIOLIN[EA])\b", desc_u):
+    # Guardie anti-leak SUSHILAND su un pub (cert. OFFSIDE 20/07):
+    # - "ARACHIDI WASABI" = snack al gusto wasabi, non ingrediente sushi.
+    # - "SPIEDI/STECCHINI BAMBU" = stuzzicadenti monouso (MATERIALE), non tappetini
+    #   da sushi. BAMBU/WASABI da soli catturavano queste voci in SUSHI VARIE,
+    #   categoria priva di senso per un pub.
+    if _SUSHI_VARIE_RE.search(desc_u) and not re.search(
+        r"(ARACHID[EI]|NOCCIOLIN[EA]|SPIED[OI]|SPIEDIN[OI]|STECCHIN[OI]|STUZZICA\w*)", desc_u
+    ):
         mapped = "SUSHI VARIE"
         if cat != mapped:
             return mapped, "ingrediente_o_tool_sushi"

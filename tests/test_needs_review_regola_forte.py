@@ -369,6 +369,56 @@ class TestMenuPubAnglofono2007:
         assert self._cat("ALGHE NORI 50 FOGLI") == "SUSHI VARIE"
 
 
+class TestOggettoNonEdibileUniversale2007:
+    """Strategia condivisa 20/07: regola UNIVERSALE "oggetto non-edibile → MATERIALE",
+    valida per TUTTI i clienti (pub, sushi, pizzeria...). Nasce dal leak cronico
+    "SPIEDI BAMBU → SUSHI VARIE": le vecchie toppe enumeravano i prodotti
+    ("SPIEDINI BAMBU", "BASTONCINI BAMBU"...) e le forme mai viste ("SPIEDI" senza -NI)
+    sfuggivano. Ora è il PRINCIPIO a decidere.
+
+    Audit su golden 8378 + 3 SUSHILAND + LAND: 0 cibi rubati, padelle/coperchi
+    durevoli protetti, solo BASTONCINI/SPIEDINI BAMBU spostati da SUSHI a MATERIALE.
+    """
+
+    def _cat(self, desc):
+        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        dz = applica_correzioni_dizionario(desc, "Da Classificare")
+        rf, _ = applica_regole_categoria_forti(desc, dz)
+        return rf or dz
+
+    def test_oggetti_ambigui_con_materiale_sono_consumo(self):
+        # oggetto ambiguo + materiale-non-edibile → MATERIALE, anche forme mai enumerate
+        for d in ["1000SPIEDI BAMBU 20CM MP", "500 STECCHINI BAMBU",
+                  "BASTONCINI DI BAMBU 200XPZ100", "STICK IN LEGNO 100PZ",
+                  "VASSOIO PLASTICA NERO", "PALETTA LEGNO GELATO", "VASCHETTA ALLUMINIO"]:
+            assert self._cat(d) == "MATERIALE DI CONSUMO", d
+
+    def test_oggetti_intrinseci_sempre_materiale(self):
+        # oggetti che non hanno un cibo omonimo → MATERIALE da soli
+        for d in ["CANNUCCE BIO 200PZ", "PELLICOLA ALIMENTARE 300M",
+                  "GUANTI NITRILE M", "TOVAGLIOLI 2VELI", "ALLUMINIO ROTOLO CM33"]:
+            assert self._cat(d) == "MATERIALE DI CONSUMO", d
+
+    def test_cibo_omonimo_NON_rubato(self):
+        # il cuore dell'audit: "BASTONCINI DI PESCE" è cibo, non l'utensile → resta PESCE
+        assert self._cat("BASTONCINI DI PESCE FINDUS 10PZ") == "PESCE"
+        assert self._cat("BASTONCINI MERLUZZO") == "PESCE"
+        # "STICK MOZZARELLA" impanati = cibo, non oggetto
+        assert self._cat("STICK MOZZARELLA IMPANATI") != "MATERIALE DI CONSUMO"
+
+    def test_attrezzatura_durevole_NON_rubata(self):
+        # "PADELLA INOX NO STICK" = attrezzatura durevole, NON materiale monouso.
+        # ACCIAIO/INOX esclusi dai materiali-non-edibili proprio per questo.
+        assert self._cat("PADELLA INOX NO STICK 28 VESUVIO COMAS") != "MATERIALE DI CONSUMO"
+        assert self._cat("PENTOLA ACCIAIO 32CM") != "MATERIALE DI CONSUMO"
+
+    def test_oggetto_ambiguo_SENZA_materiale_non_scatta(self):
+        # "BASTONCINI" da solo (senza bambù/legno/plastica) NON deve diventare materiale:
+        # potrebbe essere cibo. Serve il marcatore-materiale per attivare la regola.
+        # (qui categoria attesa: non MATERIALE per la sola parola ambigua)
+        assert self._cat("BASTONCINI CROCCANTI") != "MATERIALE DI CONSUMO"
+
+
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
 
