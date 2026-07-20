@@ -450,6 +450,15 @@ class TestCertificatoreSemestre2007:
                   "TOPPING CIOCCOLATO 1KG"]:
             assert self._cat(d) == "GELATI E DESSERT", d
 
+    def test_olio_aceto_monodose_e_condimento(self):
+        # olio/aceto in bustine monodose = CONDIMENTO, non materiale (era catturato da
+        # consumo_rapido_monouso). Come le salse monodose, ma categoria OLIO E CONDIMENTI.
+        for d in ["OLIO OL. EX BUST.PZ.100 DA10ML", "OLIO EVO BST ML10X100 ESP CONDI",
+                  "ACETO BALSAMICO MONODOSE X100"]:
+            assert self._cat(d) == "OLIO E CONDIMENTI", d
+        # non-regressione: buste NON alimentari restano materiale
+        assert self._cat("BUSTE SPAZZATURA 100L") == "MATERIALE DI CONSUMO"
+
 
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""

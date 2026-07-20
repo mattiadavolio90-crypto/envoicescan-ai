@@ -972,6 +972,15 @@ _SALSE_MONODOSE_RE = re.compile(
     r"\b(BUST|MONODOSE|PORZION|DOSE)\w*\b.*\b(HEINZ|KETCHUP|MAIONESE|MAYONNAISE|SENAPE|MUSTARD)\b"
 )
 
+# OLIO/ACETO in bustine monodose = CONDIMENTO, non materiale (cert. OFFSIDE 20/07:
+# "OLIO OL. EX BUST.PZ.100" finiva in MATERIALE via consumo_rapido_monouso). Stesso
+# principio di _SALSE_MONODOSE_RE ma la categoria giusta è OLIO E CONDIMENTI. Deve
+# girare PRIMA di _MATERIALE_CONSUMO_RE.
+_OLIO_ACETO_MONODOSE_RE = re.compile(
+    r"\b(OLIO|OL\.|ACETO|OIL|VINEGAR|BALSAMIC\w*)\b.*\b(BUST|MONODOSE|MONOP|PORZION|DOSE)\w*\b|"
+    r"\b(BUST|MONODOSE|MONOP|PORZION|DOSE)\w*\b.*\b(OLIO|ACETO|OIL|VINEGAR|BALSAMIC\w*)\b"
+)
+
 # --- Regole nuovi prodotti non coperti ---
 _LIQ_CL_RE = re.compile(r"\bLIQ\.?\b.*\bCL\.?\s*\d")
 _AMARO_BRAND_EXTRA_RE = re.compile(r"\b(UNICUM|MALIBU['\u2019]?|MARZADRO|STREGA|VECCHIA\s+ROMAGNA)\b")
@@ -1274,6 +1283,7 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "oggetto_non_edibile",
     "brand_distillato",
     "topping_dessert",
+    "olio_aceto_monodose",
     "giappo_fritto_pasta",
     "giappo_pesce",
     "pet_food_non_alimento",
@@ -2299,6 +2309,12 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "SALSE E CREME"
         if cat != mapped:
             return mapped, "salsa_monodose_alimentare"
+        return cat, None
+
+    if _OLIO_ACETO_MONODOSE_RE.search(desc_u):
+        mapped = "OLIO E CONDIMENTI"
+        if cat != mapped:
+            return mapped, "olio_aceto_monodose"
         return cat, None
 
     if _MATERIALE_CONSUMO_RE.search(desc_u):
