@@ -1045,7 +1045,7 @@ _LATTICINI_EXTRA_RE = re.compile(
 _CARNE_EXTRA_RE = re.compile(
     r"\b(CHICKEN|BEEF|R\.?\s*BEEF|ROAST\s*BEEF|CHUCK[\s-]*ROLL|BOV\.?\s*AD|FIORENT\w*|"
     r"PETTO\s*(DI\s*)?(TACCH|POLLO)\w*|TACCHINO|HAMBURGER|MACINAT[OA]|SALSICC\w*|"
-    r"ALETT[AE]|ALETTE|WING[S]?|"
+    r"ALETT[AE]|ALETTE|WING[S]?|SOUTHERN\s*FRIED|FILLET\s*SOUTHERN|"
     r"COSTINE?|WURSTEL|PANCETTA|GUANCIA\b)\b"
 )
 
@@ -1213,6 +1213,7 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "manutenzione_edile",
     "latticini_extra",
     "pesce_extra",
+    "fish_and_chips",
     "carne_extra",
     "burger_composto",
     "pane_da_burger",
@@ -2232,7 +2233,10 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "ingrediente_bar_specifico"
         return cat, None
 
-    if _SUSHI_VARIE_RE.search(desc_u):
+    # "ARACHIDI WASABI" (snack al gusto wasabi) NON è ingrediente sushi → VARIE BAR.
+    # Cert. OFFSIDE 20/07: WASABI catturava lo snack in SUSHI VARIE, categoria priva
+    # di senso per un pub. Se c'è ARACHIDI/NOCCIOLINE, il wasabi è solo un aroma.
+    if _SUSHI_VARIE_RE.search(desc_u) and not re.search(r"\b(ARACHID[EI]|NOCCIOLIN[EA])\b", desc_u):
         mapped = "SUSHI VARIE"
         if cat != mapped:
             return mapped, "ingrediente_o_tool_sushi"
@@ -2377,6 +2381,14 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "LATTICINI"
         if cat != mapped:
             return mapped, "latticini_extra"
+        return cat, None
+
+    # FISH & CHIPS: piatto di pesce impanato, NON patatine da rivendita. "CHIPS" da
+    # solo → SHOP nel dizionario catturava il pesce → SHOP (cert. OFFSIDE 20/07).
+    if re.search(r"\bFISH\b.*\bCHIPS?\b", desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "fish_and_chips"
         return cat, None
 
     if _PESCE_EXTRA_RE.search(desc_u):

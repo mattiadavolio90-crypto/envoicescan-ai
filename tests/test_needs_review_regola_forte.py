@@ -325,6 +325,36 @@ class TestMenuPubAnglofono2007:
                   "CHICKEN WINGS HOT"]:
             assert self._cat(d) == "CARNE", d
 
+    def test_pattern_certificatore_marzo(self):
+        # Cert. OFFSIDE 20/07 (golive-certificatore su gen-mar): food inequivocabile
+        # che restava Da Classificare o mal categorizzato. Chiusi nel dizionario/regole.
+        casi = [
+            ("CAPRINI X 7 PZ LOTTO 8005", "LATTICINI"),
+            ("PORCHETTA ALLA ROMANA TRANCIO LOTTO 60079", "SALUMI"),
+            ("FARCITOAST KG1.7 LOTTO 031", "PRODOTTI DA FORNO"),
+            ("FILLET SOUTHERN FRIED", "CARNE"),
+            ("CL 70 PETRUS BOONEKAM 45.0", "AMARI/LIQUORI"),
+            ("BIB GOLDBERG TONIC WATER LATT 15CLX24", "BEVANDE"),
+            ("MONTELLO FAG. FRIJOLES-GR 400", "SCATOLAME E CONSERVE"),
+        ]
+        for d, cat in casi:
+            assert self._cat(d) == cat, f"{d} atteso {cat}, avuto {self._cat(d)}"
+
+    def test_fish_and_chips_e_pesce_non_shop(self):
+        # "FISH & CHIPS" è pesce impanato, NON patatine da rivendita: "CHIPS"→SHOP
+        # nel dizionario catturava il piatto. Regola forte fish_and_chips lo corregge.
+        for d in ["FISH & CHIPS BEER BATT. ALASKA POLLAK 120/130 GR",
+                  "FISH AND CHIPS SURGELATO"]:
+            assert self._cat(d) == "PESCE", d
+
+    def test_arachidi_wasabi_non_e_sushi(self):
+        # Leak SUSHILAND su un pub: "ARACHIDI WASABI" (snack al gusto wasabi) finiva
+        # in SUSHI VARIE per la keyword WASABI. Non deve più: è uno snack, non sushi.
+        assert self._cat("G800 ARACHIDI WASABI") != "SUSHI VARIE"
+        # ma il wasabi/nori VERI restano SUSHI VARIE
+        assert self._cat("PASTA DI WASABI TUBO 43G") == "SUSHI VARIE"
+        assert self._cat("ALGHE NORI 50 FOGLI") == "SUSHI VARIE"
+
 
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""

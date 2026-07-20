@@ -22,6 +22,10 @@ Aggiornato 20/07 (cert. OFFSIDE, menù pub): regola "burger" come sotto-stringa
 HAMBURGER, PANBURGER → PRODOTTI DA FORNO) + ALETTE/WINGS → CARNE. Effetto: 6 righe
 cambiate su 8378, tutte miglioria o neutre — inclusa la CORREZIONE di "PANE MAXI
 HAMBURGER" che la baseline classificava CARNE (era il pane, non la carne).
+
+Aggiornato 20/07 (golive-certificatore su gen-mar): regole forti FILLET SOUTHERN
+FRIED → CARNE e FISH & CHIPS → PESCE (era catturato da "CHIPS"→SHOP). Effetto: 2
+righe, entrambe da Da Classificare a categoria corretta.
 """
 import json
 import os
