@@ -312,6 +312,19 @@ class TestMenuPubAnglofono2007:
                   "CHICKENBURGER SURGELATO", "DOUBLE BACONBURGER"]:
             assert self._cat(d) == "CARNE", d
 
+    def test_burger_sauce_non_e_carne(self):
+        # guardia falso-positivo (cert. OFFSIDE 20/07): "SQUEEZER BURGER SAUCE" è una
+        # SALSA, non carne. La regola burger-sotto-stringa NON deve dirottare salse/
+        # packaging che nominano "burger".
+        for d in ["SQUEEZER BURGER SAUCE TOP DOWN ML220 HEI", "BURGER SAUCE 500ML"]:
+            assert self._cat(d) != "CARNE", d
+
+    def test_nuggets_anche_cheese_sono_carne(self):
+        # NUGGETS (finger food fritto) → CARNE via regola forte, anche i "cheese nuggets".
+        for d in ["BLACK NUGGETS CEDDAR C/JALAPENO KG1 AVIK",
+                  "HABANERO CHEESE NUGGETS KG.1 AVIKO", "CHICKEN NUGGETS 1KG"]:
+            assert self._cat(d) == "CARNE", d
+
     def test_panburger_non_travolto_dal_burger_composto(self):
         # guardia critica dell'eccezione: la regola burger-sotto-stringa NON deve
         # dirottare il PANE del panino. PANBURGER resta PRODOTTI DA FORNO.

@@ -348,9 +348,9 @@ DIZIONARIO_CORREZIONI = {
     "HAMBURGER": "CARNE",
     # Menù pub/fast-food (cert. OFFSIDE 20/07): prodotti anglofoni ricorrenti che
     # il dizionario non conosceva → restavano "Da Classificare" dipendendo dall'AI.
-    "BURGER": "CARNE",
-    "NUGGETS": "CARNE",
-    "NUGGET": "CARNE",
+    # NB: BURGER e NUGGETS NON sono qui come keyword secche (catturerebbero "BURGER
+    # SAUCE", "CHEESE NUGGETS"): li gestiscono le regole forti burger_composto e
+    # _CARNE_EXTRA_RE, che hanno le eccezioni salsa/formaggio.
     "PULLED PORK": "CARNE",
     "PULLED": "CARNE",
     "STINCO": "CARNE",

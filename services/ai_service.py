@@ -1045,7 +1045,7 @@ _LATTICINI_EXTRA_RE = re.compile(
 _CARNE_EXTRA_RE = re.compile(
     r"\b(CHICKEN|BEEF|R\.?\s*BEEF|ROAST\s*BEEF|CHUCK[\s-]*ROLL|BOV\.?\s*AD|FIORENT\w*|"
     r"PETTO\s*(DI\s*)?(TACCH|POLLO)\w*|TACCHINO|HAMBURGER|MACINAT[OA]|SALSICC\w*|"
-    r"ALETT[AE]|ALETTE|WING[S]?|SOUTHERN\s*FRIED|FILLET\s*SOUTHERN|"
+    r"ALETT[AE]|ALETTE|WING[S]?|SOUTHERN\s*FRIED|FILLET\s*SOUTHERN|NUGGET[S]?|"
     r"COSTINE?|WURSTEL|PANCETTA|GUANCIA\b)\b"
 )
 
@@ -1061,6 +1061,10 @@ _BURGER_COMPOSTO_RE = re.compile(r"BURGER")
 # Basta la presenza di PANE/PAN come parola nella descrizione: un prodotto che
 # nomina il pane è pane. (Un vero burger di carne non si chiama "PANE ... BURGER".)
 _PANE_BURGER_RE = re.compile(r"\bPAN(E|INO|INI)?\b|\bPANBURGER\b")
+# Eccezione NON-CARNE: "BURGER SAUCE"/"BURGER SALSA" è una salsa, "BURGER BOX/CARTA"
+# è packaging. La regola burger-sotto-stringa NON deve dirottarli in CARNE (cert.
+# OFFSIDE 20/07: "SQUEEZER BURGER SAUCE" era SALSE E CREME, giusto).
+_BURGER_NON_CARNE_RE = re.compile(r"\bSAUCE\b|\bSALS[AE]\b|\bKETCHUP\b|\bMAIONESE\b|\bBOX\b|\bCARTA\b")
 
 # MATERIALE DI CONSUMO: pulizia/imballo/DPI che cadevano in food o Da Classificare.
 # VASCHETTA/CARTA PER RAVIOLI sono imballo, non cibo: devono battere SUSHI/PASTA.
@@ -2409,8 +2413,9 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     # "burger" sotto-stringa (ANGUSBURGER, CHEESEBURGER...) → CARNE. Il pane è già
-    # stato deviato sopra, qui resta solo la carne. Prima di _CARNE_EXTRA_RE.
-    if _BURGER_COMPOSTO_RE.search(desc_u):
+    # stato deviato sopra; qui escludo anche salse/packaging che nominano "burger"
+    # (BURGER SAUCE, BURGER BOX) → non sono carne. Prima di _CARNE_EXTRA_RE.
+    if _BURGER_COMPOSTO_RE.search(desc_u) and not _BURGER_NON_CARNE_RE.search(desc_u):
         mapped = "CARNE"
         if cat != mapped:
             return mapped, "burger_composto"
