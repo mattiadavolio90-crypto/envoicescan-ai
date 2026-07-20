@@ -165,12 +165,17 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
               f.id === entry.id
                 ? {
                     ...f,
+                    // isSkip PRIMA di data.success: il worker ritorna sempre
+                    // success=true sul ramo ambiguo (anche quando la fattura era
+                    // già in coda, queue_created=false) — controllare data.success
+                    // per primo faceva vincere "success" su isGiaInCoda, mostrando
+                    // "0 righe" con icona verde invece di "scartata".
                     status: isQueuedAmbiguo
                       ? "queued"
-                      : data.success
-                        ? "success"
-                        : isSkip
-                          ? "skipped"
+                      : isSkip
+                        ? "skipped"
+                        : data.success
+                          ? "success"
                           : "error",
                     righe: data.righe_salvate,
                     righe_preesistenti: data.righe_preesistenti ?? 0,
