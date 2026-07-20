@@ -304,10 +304,14 @@ def test_ai_fallisce_poi_risponde_categoria_scritta():
 
 
 def test_ai_sempre_giu_resta_da_classificare():
-    """Se l'AI fallisce a TUTTI i tentativi, la riga resta Da Classificare
-    (nel dubbio non si indovina) — ma solo DOPO aver ritentato, non al primo colpo."""
+    """Se l'AI fallisce a TUTTI i tentativi E il dizionario è muto, la riga resta
+    Da Classificare (nel dubbio non si indovina) — ma solo DOPO aver ritentato.
+
+    NB: descrizione una sigla inventata SENZA match nel dizionario, altrimenti
+    l'override deterministico la salverebbe anche con l'AI giù (che è il
+    comportamento giusto, testato altrove: dizionario certo > AI morta)."""
     rows = [
-        {"id": 1, "descrizione": "ANGUSBURGER IRLANDA", "fornitore": "RISTOPIU", "iva_percentuale": 10,
+        {"id": 1, "descrizione": "XKZQ TRBLN 88", "fornitore": "IGNOTO SRL", "iva_percentuale": 10,
          "totale_riga": 51.0, "categoria": None},
     ]
     # Più fallimenti dei tentativi massimi: esaurisce i retry.

@@ -16,6 +16,12 @@ sottovoci gergali di bolletta gas/acqua (SMC, COMP. RE/UGx/UCx, COMM. AL DETTAGL
 BONIFICA VILLORESI, CONSUMO FATTURATO) → UTENZE E LOCALI. Riconosce la voce dalla
 terminologia tecnica, NON dal fornitore (zero rischio di trascinare prodotti di un
 fornitore scambiato per utility). Effetto: 1 sola riga del golden cambiata.
+
+Aggiornato 20/07 (cert. OFFSIDE, menù pub): regola "burger" come sotto-stringa
+(ANGUSBURGER/CHEESEBURGER/... → CARNE) + eccezione pane (PANE BURGER, PANE MAXI
+HAMBURGER, PANBURGER → PRODOTTI DA FORNO) + ALETTE/WINGS → CARNE. Effetto: 6 righe
+cambiate su 8378, tutte miglioria o neutre — inclusa la CORREZIONE di "PANE MAXI
+HAMBURGER" che la baseline classificava CARNE (era il pane, non la carne).
 """
 import json
 import os

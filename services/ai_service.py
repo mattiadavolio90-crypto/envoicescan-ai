@@ -1045,8 +1045,22 @@ _LATTICINI_EXTRA_RE = re.compile(
 _CARNE_EXTRA_RE = re.compile(
     r"\b(CHICKEN|BEEF|R\.?\s*BEEF|ROAST\s*BEEF|CHUCK[\s-]*ROLL|BOV\.?\s*AD|FIORENT\w*|"
     r"PETTO\s*(DI\s*)?(TACCH|POLLO)\w*|TACCHINO|HAMBURGER|MACINAT[OA]|SALSICC\w*|"
+    r"ALETT[AE]|ALETTE|WING[S]?|"
     r"COSTINE?|WURSTEL|PANCETTA|GUANCIA\b)\b"
 )
+
+# CARNE — "burger" come SOTTO-STRINGA (cert. OFFSIDE 20/07). Il menù di un pub è
+# pieno di parole composte: ANGUSBURGER, CHEESEBURGER, CHICKENBURGER. Il confine di
+# parola di HAMBURGER non le prendeva → restavano Da Classificare (ANGUSBURGER ×6,
+# 107€/riga). Qualsiasi token che CONTIENE "burger" è carne, con UNA eccezione:
+# "PANBURGER" è il PANE del panino (→ PRODOTTI DA FORNO), gestita a monte dal
+# dizionario e dal guard esplicito nel punto d'uso.
+_BURGER_COMPOSTO_RE = re.compile(r"BURGER")
+# Eccezione PANE: "PANBURGER" (attaccato), "PANE BURGER", "PANE MAXI HAMBURGER",
+# "PANE PER BURGER" — è il PANE del panino, non la carne → PRODOTTI DA FORNO.
+# Basta la presenza di PANE/PAN come parola nella descrizione: un prodotto che
+# nomina il pane è pane. (Un vero burger di carne non si chiama "PANE ... BURGER".)
+_PANE_BURGER_RE = re.compile(r"\bPAN(E|INO|INI)?\b|\bPANBURGER\b")
 
 # MATERIALE DI CONSUMO: pulizia/imballo/DPI che cadevano in food o Da Classificare.
 # VASCHETTA/CARTA PER RAVIOLI sono imballo, non cibo: devono battere SUSHI/PASTA.
@@ -1200,6 +1214,8 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "latticini_extra",
     "pesce_extra",
     "carne_extra",
+    "burger_composto",
+    "pane_da_burger",
     "bevande_brand",
     "pasta_formato",
     # Cert. SUSHILAND 26/06 — 3 famiglie ricorrenti su catene sushi
@@ -2367,6 +2383,25 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "PESCE"
         if cat != mapped:
             return mapped, "pesce_extra"
+        return cat, None
+
+    # PANE da burger → PRODOTTI DA FORNO. Deve girare PRIMA di ogni regola carne
+    # (burger_composto E carne_extra): "PANE BURGER", "PANE MAXI HAMBURGER",
+    # "PANBURGER" nominano il pane del panino, non la carne.
+    if _PANE_BURGER_RE.search(desc_u) and (
+        _BURGER_COMPOSTO_RE.search(desc_u) or "HAMBURGER" in desc_u
+    ):
+        mapped = "PRODOTTI DA FORNO"
+        if cat != mapped:
+            return mapped, "pane_da_burger"
+        return cat, None
+
+    # "burger" sotto-stringa (ANGUSBURGER, CHEESEBURGER...) → CARNE. Il pane è già
+    # stato deviato sopra, qui resta solo la carne. Prima di _CARNE_EXTRA_RE.
+    if _BURGER_COMPOSTO_RE.search(desc_u):
+        mapped = "CARNE"
+        if cat != mapped:
+            return mapped, "burger_composto"
         return cat, None
 
     if _CARNE_EXTRA_RE.search(desc_u) and not _PIATTO_COMPOSTO_RE.search(desc_u):

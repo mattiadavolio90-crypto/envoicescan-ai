@@ -304,6 +304,27 @@ class TestMenuPubAnglofono2007:
         # il boundary del dizionario impedisce il match interno → resta PRODOTTI DA FORNO.
         assert self._cat("G100 PANBURGER SESAMO 50PZ") == "PRODOTTI DA FORNO"
 
+    def test_burger_composto_e_carne(self):
+        # Cert. OFFSIDE 20/07 (2° giro, febbraio): parole composte col burger attaccato
+        # (ANGUSBURGER ×6 a 107€!) sfuggivano al confine di parola di HAMBURGER.
+        # Ora "burger" come sotto-stringa → CARNE, per ogni cliente futuro.
+        for d in ["ANGUSBURGER IRLANDA G.200X14PZ BALDI", "CHEESEBURGER 150G",
+                  "CHICKENBURGER SURGELATO", "DOUBLE BACONBURGER"]:
+            assert self._cat(d) == "CARNE", d
+
+    def test_panburger_non_travolto_dal_burger_composto(self):
+        # guardia critica dell'eccezione: la regola burger-sotto-stringa NON deve
+        # dirottare il PANE del panino. PANBURGER resta PRODOTTI DA FORNO.
+        for d in ["PANBURGER CLASSICO", "G100 PANBURGER SESAMO 50PZ",
+                  "PANBURGER SENZA GLUTINE X6"]:
+            assert self._cat(d) == "PRODOTTI DA FORNO", d
+
+    def test_alette_pollo_sono_carne(self):
+        # "DOR ALETTE DURANGO KG.5 AIA" ×4 a 139€ restava Da Classificare.
+        for d in ["DOR ALETTE DURANGO KG.5 AIA", "ALETTE DI POLLO PICCANTI",
+                  "CHICKEN WINGS HOT"]:
+            assert self._cat(d) == "CARNE", d
+
 
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
