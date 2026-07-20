@@ -419,6 +419,38 @@ class TestOggettoNonEdibileUniversale2007:
         assert self._cat("BASTONCINI CROCCANTI") != "MATERIALE DI CONSUMO"
 
 
+class TestCertificatoreSemestre2007:
+    """Cert. OFFSIDE finale (semestre gen-giu, golive-certificatore): ultimi 2 pattern.
+    BACARDI e HAVANA CLUB finivano in MATERIALE perché il nome commerciale contiene
+    'CARTA' (Bacardi Carta Blanca/Oro) → il dizionario keyword CARTA vinceva. TOPPING
+    oscillava tra MATERIALE e VARIE BAR per il suffisso 'MC' (codice Metro).
+    """
+
+    def _cat(self, desc):
+        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        dz = applica_correzioni_dizionario(desc, "Da Classificare")
+        rf, _ = applica_regole_categoria_forti(desc, dz)
+        return rf or dz
+
+    def test_brand_distillato_batte_carta(self):
+        # BACARDI è rum SEMPRE, anche quando il nome dice "CARTA BLANCA/ORO" e non "RUM".
+        for d in ["BACARDI CARTA BLANCA 1LT", "BACARDI CARTA ORO 1LT RUM",
+                  "RHUM BACARDI CARTA BIANCA L1", "HAVANA CLUB 7 ANNI",
+                  "CAPTAIN MORGAN SPICED 1LT"]:
+            assert self._cat(d) == "DISTILLATI", d
+
+    def test_carta_food_non_rubata_dal_brand(self):
+        # non-regressione: "CARTA PESCE" resta PESCE, "CARTA FORNO" resta MATERIALE.
+        assert self._cat("CARTA PESCE") == "PESCE"
+        assert self._cat("CARTA FORNO 100MT") == "MATERIALE DI CONSUMO"
+
+    def test_topping_e_dessert_stabile(self):
+        # TOPPING → GELATI E DESSERT, ignorando il suffisso MC (prima oscillava).
+        for d in ["KG1 TOPPING FR.BOSCO MC", "KG1 TOPPING CARAMELLO MC",
+                  "TOPPING CIOCCOLATO 1KG"]:
+            assert self._cat(d) == "GELATI E DESSERT", d
+
+
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
 

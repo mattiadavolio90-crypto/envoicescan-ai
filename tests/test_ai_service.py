@@ -172,8 +172,10 @@ class TestRegoleFortiCategorizzazione:
             ("CREAMI - DISPENSER SINGOLO", "MANUTENZIONE E ATTREZZATURE"),
             ("BLEND T GUNPOWDER 15 FILTRI", "CAFFE E THE"),
             ("LATTIERA EUROPA 50 CL LOGO", "LATTICINI"),
-            ("TOPPING CIOCCOLATO CACAO 1KG", "VARIE BAR"),
-            ("TOPPING FRUTTI BOSCO KG.1 TOSCHI", "VARIE BAR"),
+            # Cert. OFFSIDE 20/07: TOPPING (per gelati/dessert) → GELATI E DESSERT.
+            # Prima oscillava tra VARIE BAR e MATERIALE (suffisso MC); ora è stabile.
+            ("TOPPING CIOCCOLATO CACAO 1KG", "GELATI E DESSERT"),
+            ("TOPPING FRUTTI BOSCO KG.1 TOSCHI", "GELATI E DESSERT"),
             ("VASSOIO DA ESPOSIZIONE 60*20", "MANUTENZIONE E ATTREZZATURE"),
             ("ORZO 200GR", "CAFFE E THE"),
             ("PACK PROTEZIONE (6 SHOCK SENSOR) 1 UN", "MANUTENZIONE E ATTREZZATURE"),

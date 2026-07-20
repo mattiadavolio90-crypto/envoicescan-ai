@@ -672,6 +672,7 @@ DIZIONARIO_CORREZIONI = {
     "MAIONESE": "SALSE E CREME",
     "SENAPE": "SALSE E CREME",
     "SAUCE": "SALSE E CREME",
+    "TOPPING": "GELATI E DESSERT",
     
     # ===== PROBLEMI AI: Aggiunti al dizionario =====
     # Prodotti che l'AI non riesce a classificare correttamente

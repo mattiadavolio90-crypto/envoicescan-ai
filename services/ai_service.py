@@ -869,6 +869,17 @@ _ALCOHOL_FREE_RE = re.compile(r"\b(ALCOHOL\s*FREE|ANALCOLIC\w*)\b")
 _ALCOHOL_FREE_BIRRE_RE = re.compile(r"\b(BIRRA|BIRRE|HEINEKEN|ICHNUSA|PERONI|MORETTI|MENABREA|TENNENT|TSINGTAO|NASTRO\s*AZZURRO)\b")
 _ALCOHOL_FREE_VINI_RE = re.compile(r"\b(VINO|CHIANTI|MONTEPULCIANO|FRANCIACORTA|PROSECCO|MOSCATO|FALANGHINA|GEWURZTRAMINER|PINOT|RIESLING|MERLOT|SYRAH|CABERNET|BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO|DOCG)\b")
 _ALCOHOL_FREE_DISTILLATI_RE = re.compile(r"\b(GIN|TANQUERAY|VODKA|WHISKY|WHISKEY|RHUM|RUM|TEQUILA|GRAPPA|BOURBON|COGNAC|MEZCAL|CACHACA|CACHAÇA|ASSENZIO|BRANDY)\b")
+
+# BRAND di distillati veri (cert. OFFSIDE 20/07). Regola forte autonoma: "BACARDI
+# CARTA BLANCA" non contiene "RUM" → il dizionario lo dava MATERIALE per la keyword
+# "CARTA" (nome commerciale del rum). Il brand identifica la categoria da solo, e
+# come regola forte scavalca il dizionario. Distinto da _ALCOHOL_FREE_* che gestisce
+# solo gli ANALCOLICI (gate _ALCOHOL_FREE_RE = "ALCOHOL FREE"/"ANALCOLICO").
+_BRAND_DISTILLATI_RE = re.compile(
+    r"\b(BACARDI|HAVANA\s*CLUB|CAPTAIN\s*MORGAN|PAMPERO|ZACAPA|DIPLOMATICO|BOMBAY\s*SAPPHIRE|"
+    r"BEEFEATER|ABSOLUT|SMIRNOFF|BELVEDERE|JACK\s*DANIEL|JAMESON|BALLANTINE|"
+    r"JOHNNIE\s*WALKER|GLENFIDDICH|JOSE\s*CUERVO)\b"
+)
 _ALCOHOL_FREE_AMARI_RE = re.compile(r"\b(AMARO|LIQUORE|LIMONCELLO|SAMBUCA|JAGERMEISTER|AVERNA|MONTENEGRO|NONINO|KAHLUA|BAILEYS|CYNAR|BRANCAMENTA|FERNET|MIRTO|MARASCHINO|APEROL|CAMPARI|ANGOSTURA|PASSOA|CURACAO|TRIPLE\s+SEC|BOLS|PORTO|LILLET|VERMOUTH)\b")
 _CREAMI_RICARICA_RE = re.compile(r"\bCREAMI\b.*\bRICARICA\b|\bRICARICA\b.*\bCREAMI\b")
 _CREAMI_DISPENSER_RE = re.compile(r"\bCREAMI\b.*\bDISPENSER\b|\bDISPENSER\b.*\bCREAMI\b")
@@ -1261,6 +1272,8 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "voce_bolletta_utenza",
     "stoviglie_servizio",
     "oggetto_non_edibile",
+    "brand_distillato",
+    "topping_dessert",
     "giappo_fritto_pasta",
     "giappo_pesce",
     "pet_food_non_alimento",
@@ -1331,6 +1344,24 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "MATERIALE DI CONSUMO"
         if cat != mapped:
             return mapped, "oggetto_non_edibile"
+        return cat, None
+
+    # Brand di distillati veri (BACARDI, HAVANA CLUB...) → DISTILLATI, anche senza la
+    # parola "RUM"/"GIN" nel testo. Scavalca il dizionario che dava MATERIALE quando il
+    # nome commerciale conteneva "CARTA" (Bacardi Carta Blanca/Oro).
+    if _BRAND_DISTILLATI_RE.search(desc_u):
+        mapped = "DISTILLATI"
+        if cat != mapped:
+            return mapped, "brand_distillato"
+        return cat, None
+
+    # TOPPING (per dessert/gelati) → GELATI E DESSERT, ignorando il suffisso "MC"
+    # (codice Metro) che confondeva il classificatore facendolo oscillare tra
+    # MATERIALE e VARIE BAR. Cert. OFFSIDE 20/07.
+    if re.search(r"\bTOPPING\b", desc_u):
+        mapped = "GELATI E DESSERT"
+        if cat != mapped:
+            return mapped, "topping_dessert"
         return cat, None
 
     if _GIAPPO_FRITTO_PASTA_RE.search(desc_u):
