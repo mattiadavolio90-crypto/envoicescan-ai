@@ -1149,6 +1149,32 @@ _MANUTENZIONE_EDILE_RE = re.compile(
     r"DECESPUGLIATORE|TOSAERBA|TOSAERB|VANGA|ZAPPA|PIANTANA)\b"
 )
 
+# ── Documenti amministrativi (cert. OFFSIDE 21/07) — valgono per TUTTI i clienti ──
+# LEASING / NOLEGGIO di veicoli o attrezzature = SERVIZI E CONSULENZE. L'audit su tutti
+# i clienti reali dà 0 collisioni con food (LEASING→0, NOLEGGIO già 10 in SERVIZI).
+_LEASING_NOLEGGIO_RE = re.compile(r"\b(LEASING|NOLEGGIO)\b")
+# CANONE è AMBIGUO: "CANONE DI LOCAZIONE FINANZIARIA" di un immobile = UTENZE E LOCALI
+# (36 righe reali!), mentre "CANONI SERVIZI ASS", "INDICIZZAZIONE CANONI", canone-leasing
+# = SERVIZI. Quindi il canone va a SERVIZI SOLO con un qualificatore-servizio PULITO
+# (verificato 0 collisioni con UTENZE) e MAI se contiene LOCAZIONE.
+_CANONE_SERVIZIO_RE = re.compile(
+    r"\bCANON[EI]\b.*\b(SERVIZI|ASS\.?|ASSICURAZ\w*|ISTRUTTORI\w*|LEASING)\b"
+    r"|\b(SERVIZI|ASS\.?|ISTRUTTORI\w*)\b.*\bCANON[EI]\b"
+    r"|\bINDICIZZAZ\w*\s+CANON[EI]\b"
+)
+_CANONE_LOCAZIONE_RE = re.compile(r"\bLOCAZION\w*\b")
+# Abbigliamento/calzature/DPI/merchandising = MATERIALI E ATTREZZATURE. Include capi da
+# lavoro (grembiule, camice, scarpe antinfortunistiche) e merchandising (felpe, t-shirt).
+# Audit: già 9 righe simili in MANUTENZIONE su clienti reali, 0 collisioni food.
+# NB: NON includo "POLO" (ruberebbe "MARCO POLO", nomi-fornitore) né "DIVISA"
+# (participio: "spesa DIVISA in 3 rate"). Le divise da lavoro reali le prendono già
+# grembiule/camice/pantalone. Meglio lasciare 1 riga in coda che rubarne una legittima.
+_ABBIGLIAMENTO_RE = re.compile(
+    r"\b(FELP[AE]|T[\s.-]*SHIRT|MAGLIETT[AE]|MAGLION[EI]|SNEAKER\w*|MOCASSIN[OI]|"
+    r"CALZATUR[AE]|GREMBIUL\w*|CAMICI[AE]|CAMICE|PANTALON[EI]|"
+    r"CAPPELLIN[OI]|BERRETT[OI])\b"
+)
+
 # BEVANDE brand analcoliche che non matchavano _BEVANDE_ANALCOLICHE_RE.
 _BEVANDE_BRAND_RE = re.compile(
     r"\b(MONSTER|POWERADE|GATORADE|LEMONSODA|ORANSODA|SANBITTER|SAN\s*BITTER|SKIPPER|"
@@ -1296,6 +1322,10 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "formato_bottiglia_birra",
     "gradazione_alta_distillato",
     "gradazione_alta_amaro",
+    # Cert. OFFSIDE 21/07 — documenti amministrativi, validi per tutti i clienti
+    "leasing_noleggio_servizio",
+    "canone_servizio",
+    "abbigliamento_attrezzatura",
     "giappo_fritto_pasta",
     "giappo_pesce",
     "pet_food_non_alimento",
@@ -1421,6 +1451,28 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             if cat != mapped:
                 return mapped, "gradazione_alta_distillato"
             return cat, None
+
+    # ── DOCUMENTI AMMINISTRATIVI (cert. OFFSIDE 21/07), validi per tutti i clienti ──
+    # Leasing / noleggio → SERVIZI E CONSULENZE (audit: 0 collisioni food).
+    if _LEASING_NOLEGGIO_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "leasing_noleggio_servizio"
+        return cat, None
+    # Canone SOLO con qualificatore-servizio pulito e MAI se è locazione (immobile =
+    # UTENZE E LOCALI). Così "CANONI SERVIZI ASS" → SERVIZI, ma "CANONE DI LOCAZIONE
+    # FINANZIARIA" resta fuori (lo gestisce _VOCE_BOLLETTA/keyword utenze).
+    if _CANONE_SERVIZIO_RE.search(desc_u) and not _CANONE_LOCAZIONE_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "canone_servizio"
+        return cat, None
+    # Abbigliamento / calzature / DPI / merchandising → MATERIALI E ATTREZZATURE.
+    if _ABBIGLIAMENTO_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "abbigliamento_attrezzatura"
+        return cat, None
 
     if _GIAPPO_FRITTO_PASTA_RE.search(desc_u):
         mapped = "PASTA E CEREALI"

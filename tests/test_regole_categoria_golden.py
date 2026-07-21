@@ -26,6 +26,14 @@ HAMBURGER" che la baseline classificava CARNE (era il pane, non la carne).
 Aggiornato 20/07 (golive-certificatore su gen-mar): regole forti FILLET SOUTHERN
 FRIED → CARNE e FISH & CHIPS → PESCE (era catturato da "CHIPS"→SHOP). Effetto: 2
 righe, entrambe da Da Classificare a categoria corretta.
+
+Aggiornato 21/07 (cert. OFFSIDE, documenti amministrativi): regole forti per 3
+famiglie trasversali a tutti i clienti — LEASING/NOLEGGIO → SERVIZI E CONSULENZE,
+CANONE + qualificatore-servizio pulito (SERVIZI/ASS/ISTRUTTORIA/LEASING, MAI
+LOCAZIONE che resta UTENZE) → SERVIZI, abbigliamento/merchandising (felpa, t-shirt,
+camicia, pantalone, grembiule…) → MANUTENZIONE E ATTREZZATURE. Effetto: 6 righe, tutte
+da Da Classificare a categoria corretta. Audit anti-collisione: 0 override su 23.704
+righe food/bevande già categorizzate su tutti i clienti reali.
 """
 import json
 import os

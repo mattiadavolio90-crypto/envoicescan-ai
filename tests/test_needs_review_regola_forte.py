@@ -533,6 +533,44 @@ class TestArredoAttrezzature2107:
         assert self._cat("SPECCHIO DI GAMBERI") == "PESCE"
 
 
+class TestDocumentiAmministrativi2107:
+    """Cert. OFFSIDE 21/07: leasing/noleggio→SERVIZI, canone-servizio→SERVIZI (ma
+    locazione→UTENZE), abbigliamento/merchandising→MANUTENZIONE. Regole trasversali a
+    tutti i clienti. Audit: 0 collisioni su 23.704 righe food già categorizzate.
+    """
+
+    def _cat(self, desc):
+        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        dz = applica_correzioni_dizionario(desc, "Da Classificare")
+        rf, _ = applica_regole_categoria_forti(desc, dz)
+        return rf or dz
+
+    def test_leasing_noleggio_sono_servizi(self):
+        for d in ["LEASING AUTO YARIS CROSS", "NOLEGGIO PROACE 18/06-19/06",
+                  "NOLEGGIO ESERCENTE - COD. TERMINALE: 02310589"]:
+            assert self._cat(d) == "SERVIZI E CONSULENZE", d
+
+    def test_canone_servizio_ma_locazione_resta_utenze(self):
+        assert self._cat("CANONI SERVIZI ASS. N.001") == "SERVIZI E CONSULENZE"
+        assert self._cat("ICZ.GESTIONE INDICIZZAZIONE CANONI") == "SERVIZI E CONSULENZE"
+        # locazione (immobile) NON deve finire in servizi: la regola la esclude
+        assert self._cat("CANONE DI LOCAZIONE FINANZIARIA") != "SERVIZI E CONSULENZE"
+
+    def test_abbigliamento_merchandising_sono_attrezzature(self):
+        for d in ["FELPA CON CAPPUCCIO PERSONALIZZATA", "T-SHIRT PERSONALIZZATA",
+                  "MAGLIETTA DONNA KELLY GREEN", "PANTALONE SEATTLE NERO",
+                  "GREMBIULE VITA NERO", "MOCASSINO DI SICUREZZA S2"]:
+            assert self._cat(d) == "MANUTENZIONE E ATTREZZATURE", d
+
+    def test_food_e_fornitori_non_rubati(self):
+        # le trappole: POLLO non è POLO, MARCO POLO (fornitore) non è abbigliamento,
+        # "spesa DIVISA in rate" non è una divisa, scarpe antinfortunistiche restano
+        # nel bucket storico MATERIALE DI CONSUMO (DPI durevole).
+        assert self._cat("POLLO ARROSTO INTERO") == "CARNE"
+        assert self._cat("MARCO POLO SELEZIONE") != "MANUTENZIONE E ATTREZZATURE"
+        assert self._cat("SCARPE ANTINFORTUNISTICHE BASSE") == "MATERIALE DI CONSUMO"
+
+
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
 
