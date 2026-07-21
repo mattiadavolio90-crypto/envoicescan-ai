@@ -446,6 +446,32 @@ class TestCertificatoreSemestre2007:
         assert self._cat("CARTA PESCE") == "MATERIALE DI CONSUMO"
         assert self._cat("CARTA FORNO 100MT") == "MATERIALE DI CONSUMO"
 
+    def test_pesce_animale_terra_non_e_pesce(self):
+        # Cert. SUSHILAND San Giuliano 21/07: "PESCE BOVINO S/V" (HONG YUN) e' un
+        # taglio di manzo sottovuoto con nome commerciale improprio (calco del
+        # fornitore), non pesce alimentare. Il vero pesce resta PESCE.
+        assert self._cat("PESCE BOVINO S/V") == "CARNE"
+        assert self._cat("SALMONE FRESCO") == "PESCE"
+        assert self._cat("BASTONCINI DI PESCE") == "PESCE"
+
+    def test_sake_bere_vs_cucina(self):
+        # Cert. SUSHILAND Vimodrone 21/07: stesso prodotto (GEKKEIKAN in bottiglia)
+        # era sparso su 4 categorie diverse. Formato bottiglia/gradazione = da bere
+        # (DISTILLATI); formato tanica/"PER CUCINA" = condimento (SCATOLAME E CONSERVE).
+        for d in ["SAKE IN BOTTIGLIA GEKKEIKAN 6X1.8LT", "GEKKEIKAN SAKE 1,8LT 14,5% 6*1,8LT",
+                  "SHIRAYUKI SAKE IN BOTTIGLIA 6X1,8LT SAKE"]:
+            assert self._cat(d) == "DISTILLATI", d
+        for d in ["SAKE PER CUCINA(MISURAKI) 18 LT", "SAKE IN SCATOLE 18 LT MISURAKI",
+                  "HUAXIA SAKE GIAPPONESE 18KG"]:
+            assert self._cat(d) == "SCATOLAME E CONSERVE", d
+
+    def test_filtro_olio_ricambio_non_e_condimento(self):
+        # Cert. SUSHILAND Vimodrone/San Giuliano 21/07: "FILTRO OLIO" da officine
+        # auto (LARIO MI AUTO, LOMBARDA MOTORI) rubato dalla keyword food "OLIO".
+        assert self._cat("FILTRO OLIO (ELEMENTO)") == "MANUTENZIONE E ATTREZZATURE"
+        assert self._cat("FILTRO OLIO") == "MANUTENZIONE E ATTREZZATURE"
+        assert self._cat("OLIO EXTRAVERGINE OLIVA 5LT") == "OLIO E CONDIMENTI"
+
     def test_topping_e_dessert_stabile(self):
         # TOPPING → GELATI E DESSERT, ignorando il suffisso MC (prima oscillava).
         for d in ["KG1 TOPPING FR.BOSCO MC", "KG1 TOPPING CARAMELLO MC",

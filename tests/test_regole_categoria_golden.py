@@ -34,6 +34,15 @@ LOCAZIONE che resta UTENZE) → SERVIZI, abbigliamento/merchandising (felpa, t-s
 camicia, pantalone, grembiule…) → MANUTENZIONE E ATTREZZATURE. Effetto: 6 righe, tutte
 da Da Classificare a categoria corretta. Audit anti-collisione: 0 override su 23.704
 righe food/bevande già categorizzate su tutti i clienti reali.
+
+Aggiornato 21/07 (cert. SUSHILAND Vimodrone/San Giuliano): SAKE distinto per
+formato/uso — da bere (bottiglia) → DISTILLATI, da cucina ("PER CUCINA"/tanica
+18L) → SCATOLAME E CONSERVE. Prima lo stesso prodotto era sparso su 4 categorie
+diverse (AMARI/LIQUORI, DISTILLATI, SERVIZI, SCATOLAME). Effetto: 3 righe golden,
+tutte da Da Classificare a categoria corretta. Stesso commit: "PESCE <animale di
+terra>" (es. "PESCE BOVINO S/V" = manzo) tolto da PESCE via _ECCEZIONI_REGOLE, e
+"FILTRO OLIO" (ricambio officina) → MANUTENZIONE (non più rubato da keyword OLIO) —
+questi due non erano nel campione golden, verificati a parte.
 """
 import json
 import os

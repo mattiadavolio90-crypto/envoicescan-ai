@@ -655,6 +655,11 @@ _ECCEZIONI_REGOLE: list[tuple[str, str]] = [
     (r"\bGINGER\b", "BIRRE"),
     # Utensili da cucina (forbici, coltelli) con nomi pesce → MATERIALE/MANUTENZIONE, non PESCE
     (r"\b(FORBICE|FORBICI|COLTELLO|COLTELLI|PINZA|PINZE)\b", "PESCE"),
+    # "PESCE <animale di terra>" = nome commerciale improprio del fornitore (es.
+    # "PESCE BOVINO S/V" = taglio di manzo sottovuoto), non pesce alimentare.
+    # Cert. SUSHILAND San Giuliano 21/07.
+    (r"\bPESCE\b.*\b(BOVIN[OA]|MANZO|VITELL\w*|MAIALE|SUIN[OA]|POLLO|POLLAME|TACCHINO|AGNELLO|CAVALLO|ANATRA)\b|"
+     r"\b(BOVIN[OA]|MANZO|VITELL\w*|MAIALE|SUIN[OA]|POLLO|POLLAME|TACCHINO|AGNELLO|CAVALLO|ANATRA)\b.*\bPESCE\b", "PESCE"),
     # SALMONI/SALMONE con "BRAVO" (brand fornitore pesce) non è una BEVANDA
     (r"\bSALMON\w*\b", "BEVANDE"),
     # INSALATA DI MARE non è VERDURE
@@ -1277,6 +1282,31 @@ _VOCE_BOLLETTA_RE = re.compile(
 _GIAPPO_FRITTO_PASTA_RE = re.compile(r"\b(TEMPURA|PASTELLA|TENKASU|KARAAGE\s*MIX)\b")
 _GIAPPO_PESCE_RE = re.compile(r"\b(TAKOYAKI|EBI\s*FRY|EBIFRY|SURIMI\s*GRANCHIO)\b")
 
+# Cert. SUSHILAND Vimodrone/San Giuliano 21/07: "PESCE <animale di terra>" è un nome
+# commerciale improprio del fornitore (calco di traduzione), non pesce alimentare —
+# es. "PESCE BOVINO S/V" è un taglio di manzo sottovuoto (prezzo/kg in linea con gli
+# altri tagli bovino dello stesso fornitore). La regola _PESCE_RE generica altrimenti
+# vince sempre sulla parola letterale "PESCE".
+_PESCE_ANIMALE_TERRA_RE = re.compile(
+    r"\bPESCE\b.*\b(BOVIN[OA]|MANZO|VITELL\w*|MAIALE|SUIN[OA]|POLLO|POLLAME|TACCHINO|AGNELLO|CAVALLO|ANATRA)\b|"
+    r"\b(BOVIN[OA]|MANZO|VITELL\w*|MAIALE|SUIN[OA]|POLLO|POLLAME|TACCHINO|AGNELLO|CAVALLO|ANATRA)\b.*\bPESCE\b"
+)
+
+# SAKE: formato/nome distingue la bevanda da bere (bottiglia, ~14-15% vol) dal sake
+# da cucina (tanica 18L/18KG, "PER CUCINA" nel nome, basso pregio) — decisione di
+# dominio cert. SUSHILAND Vimodrone 21/07: da bere → DISTILLATI, da cucina →
+# SCATOLAME E CONSERVE. Prima erano sparsi su 4 categorie diverse per lo stesso
+# prodotto (AMARI/LIQUORI, DISTILLATI, SERVIZI E CONSULENZE, SCATOLAME).
+_SAKE_CUCINA_RE = re.compile(r"\bSAKE\b.*\bCUCINA\b|\bPER\s*CUCINA\b.*\bSAKE\b|\bSAKE\b.*\b1[68]\s*(KG|LT|L)\b")
+_SAKE_RE = re.compile(r"\bSAKE\b")
+
+# LARIO/officine auto: "FILTRO OLIO" è un ricambio veicolo, non un condimento — la
+# keyword "OLIO" del dizionario base lo intercetta prima. Cert. SUSHILAND Vimodrone
+# 21/07 (LARIO MI AUTO) + San Giuliano (LOMBARDA MOTORI): stesso errore, 2 fornitori
+# officina diversi → non è un caso isolato, è la keyword "OLIO" senza eccezione
+# ricambistica.
+_FILTRO_RICAMBIO_RE = re.compile(r"\bFILTRO\b.*\bOLIO\b|\bOLIO\b.*\bFILTRO\b")
+
 # Pet-food: NON è alimento del ristorante. "SALMONE per gatti" non deve cadere in
 # PESCE. Resta Da Classificare (onesto): è una spesa estranea, non un ingrediente.
 _PET_FOOD_RE = re.compile(
@@ -1397,6 +1427,29 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
     if _PET_FOOD_RE.search(desc_u):
         # NON è alimento del ristorante → resta Da Classificare (onesto), MAI PESCE.
         return CATEGORIA_NON_CLASSIFICATA, "pet_food_non_alimento"
+
+    # SAKE: da cucina (tanica/formato grande, "PER CUCINA") → SCATOLAME E CONSERVE;
+    # da bere (bottiglia) → DISTILLATI. Prima erano sparsi su 4 categorie diverse
+    # per lo stesso identico prodotto (AMARI/LIQUORI, DISTILLATI, SERVIZI, SCATOLAME).
+    if _SAKE_RE.search(desc_u):
+        if _SAKE_CUCINA_RE.search(desc_u):
+            mapped = "SCATOLAME E CONSERVE"
+            if cat != mapped:
+                return mapped, "sake_cucina"
+            return cat, None
+        mapped = "DISTILLATI"
+        if cat != mapped:
+            return mapped, "sake_da_bere"
+        return cat, None
+
+    # Ricambi officina auto ("FILTRO OLIO", "OLIO FILTRO...") rubati dalla keyword
+    # "OLIO" del dizionario food. Verificato su 2 fornitori-officina diversi
+    # (LARIO MI AUTO, LOMBARDA MOTORI): non è un caso isolato.
+    if _FILTRO_RICAMBIO_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "ricambio_filtro_olio"
+        return cat, None
 
     if _VOCE_BOLLETTA_RE.search(desc_u):
         mapped = "UTENZE E LOCALI"
@@ -2545,8 +2598,14 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "pasta_di_pesce"
         return cat, None
 
-    # Eccezione: "CARTA PESCE" (imballo da banco) non è pesce alimentare.
-    if _PESCE_RE.search(desc_u) and not _CONSUMO_EXTRA_RE.search(desc_u):
+    # Eccezioni: "CARTA PESCE" (imballo da banco) e "PESCE <animale di terra>"
+    # (nome commerciale improprio, es. "PESCE BOVINO S/V" = taglio di manzo) non
+    # sono pesce alimentare.
+    if (
+        _PESCE_RE.search(desc_u)
+        and not _CONSUMO_EXTRA_RE.search(desc_u)
+        and not _PESCE_ANIMALE_TERRA_RE.search(desc_u)
+    ):
         mapped = "PESCE"
         if cat != mapped:
             return mapped, "pesce_in_qualsiasi_stato"

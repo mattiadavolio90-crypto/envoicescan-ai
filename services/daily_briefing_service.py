@@ -44,7 +44,10 @@ logger = get_logger('daily_briefing')
 #               (whitelist) sulle righe che la GPT lascia Da Classificare
 #   9 -> 21/07: "CARTA PESCE"/"CARTA PER RAVIOLI" (imballo) non vengono piu' rubate
 #               dalla regola forte PESCE/dizionario RAVIOLI (cert. SUSHILAND Villa Guardia)
-_BRIEFING_CODE_VERSION = 9
+#  10 -> 21/07: SAKE distinto bere(DISTILLATI)/cucina(SCATOLAME); "PESCE <animale
+#               di terra>" non e' piu' PESCE; "FILTRO OLIO" officina -> MANUTENZIONE
+#               (cert. SUSHILAND Vimodrone/San Giuliano)
+_BRIEFING_CODE_VERSION = 10
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
