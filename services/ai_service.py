@@ -1295,6 +1295,7 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "olio_aceto_monodose",
     "formato_bottiglia_birra",
     "gradazione_alta_distillato",
+    "gradazione_alta_amaro",
     "giappo_fritto_pasta",
     "giappo_pesce",
     "pet_food_non_alimento",
@@ -1407,6 +1408,15 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         except (TypeError, ValueError):
             _gradi = 0.0
         if _gradi >= 20.0:
+            # Eccezione: un AMARO/LIQUORE/DIGESTIVO con gradazione alta resta AMARI/
+            # LIQUORI (es. "AMARO MONTENEGRO 23% VOL"), NON distillato. Il dominio ha
+            # una categoria dedicata: la gradazione dice "alcolico forte", il nome dice
+            # quale bucket.
+            if _ALCOHOL_FREE_AMARI_RE.search(desc_u):
+                mapped = "AMARI/LIQUORI"
+                if cat != mapped:
+                    return mapped, "gradazione_alta_amaro"
+                return cat, None
             mapped = "DISTILLATI"
             if cat != mapped:
                 return mapped, "gradazione_alta_distillato"

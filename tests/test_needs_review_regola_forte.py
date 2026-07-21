@@ -476,7 +476,7 @@ class TestSegnaliBevandaAlcolica2107:
     def test_gradazione_alta_e_distillato(self):
         # il caso che aveva colpito Mattia: 700ml + ALC.38%VOL + "distilleria" = ovvio.
         for d in ["ANNO DECIMO ML.700 ALC.38%VOL", "GRAPPA RISERVA 42% VOL",
-                  "AMARO ARTIGIANALE ALC 30%VOL CL70"]:
+                  "CL 70 VODKA BELUGA 40 GRADI", "THE KRAKEN 70CL RUM 40% VOL"]:
             assert self._cat(d) == "DISTILLATI", d
 
     def test_formato_bottiglia_birra(self):
@@ -486,6 +486,12 @@ class TestSegnaliBevandaAlcolica2107:
                   "BOTT. WESTMALLE TRIPLE VAP CL.33 X24",
                   "BOTT. DUCHESSE DE BOURGOGNE VAP CL.25 X24"]:
             assert self._cat(d) == "BIRRE", d
+
+    def test_amaro_alta_gradazione_resta_amari(self):
+        # un AMARO/LIQUORE forte (>=20%) resta AMARI/LIQUORI, non DISTILLATI: il
+        # dominio ha un bucket dedicato. "AMARO MONTENEGRO 23% VOL".
+        assert self._cat("AMARO MONTENEGRO 70CL 23% VOL") == "AMARI/LIQUORI"
+        assert self._cat("LIQUORE ALLE ERBE 25% VOL") == "AMARI/LIQUORI"
 
     def test_vino_e_birra_bassa_gradazione_NON_distillato(self):
         # la soglia 20% protegge vino (12-16%) e birra (3-12%): non diventano distillati.
