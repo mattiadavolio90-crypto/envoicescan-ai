@@ -72,7 +72,7 @@ interface WebhookEvent {
   api_version?: number | string
 }
 
-interface NormalizedWebhookEvent {
+export interface NormalizedWebhookEvent {
   eventId: number | null
   userId: number | null
   companyId: number | null
@@ -457,6 +457,30 @@ function normalizeWebhookEvent(ev: WebhookEvent): NormalizedWebhookEvent {
   }
 }
 
+// ─── Riconoscimento tipo evento webhook ───────────────────────────────────────
+// Un match troppo stretto (`endpoint === 'receive'`) ha causato lo scarto
+// silenzioso di fatture reali con 200 senza salvarle (bug 21/7/2026): il payload
+// live di Invoicetronic porta in `endpoint` l'API endpoint effettivo, che può
+// essere "receive", "receive/86940", "/v1/receive", ecc. — non sempre il secco
+// "receive" usato nei test. Riconosciamo quindi qualsiasi endpoint che contenga
+// il segmento "receive", più l'alias storico `event` che inizia per "receive".
+
+export function isReceiveWebhook(ev: NormalizedWebhookEvent): boolean {
+  const endpointMatch = ev.endpoint != null && /(^|[^a-z])receive([^a-z]|$)/.test(ev.endpoint)
+  const eventMatch    = ev.eventName != null && ev.eventName.startsWith('receive')
+  return endpointMatch || eventMatch
+}
+
+// Evento sicuramente NON di ricezione (send/status/…): endpoint valorizzato che
+// non menziona "receive" e nessun eventName di ricezione → ignorabile senza
+// traccia. Distinto da "receive non riconosciuto per naming anomalo", che invece
+// va registrato dalla rete di sicurezza (mai perso in silenzio).
+export function isOtherWebhook(ev: NormalizedWebhookEvent): boolean {
+  return ev.endpoint != null &&
+    !/receive/.test(ev.endpoint) &&
+    (ev.eventName == null || !ev.eventName.startsWith('receive'))
+}
+
 // ─── Utility: estrazione P.IVA del destinatario da XML FatturaPA ──────────────
 // Cerca nel blocco <CessionarioCommittente> (destinatario della fattura):
 //   1° tentativo: <IdCodice>  → P.IVA italiana (11 cifre) o estera
@@ -753,15 +777,83 @@ export const handler = async (req: Request): Promise<Response> => {
 
   // ── 4. Filtra: processa solo "receive" con successo ────────────────────────
   // Altri eventi (send, status, ecc.) → ignora silenziosamente → 200.
-  // Alcuni webhook usano `event=receive.add` invece di `endpoint=receive`.
-  const isReceiveEvent = ev.endpoint === 'receive' || ev.eventName === 'receive.add'
-  if (!isReceiveEvent || ev.success !== true) {
+  const isReceiveEvent   = isReceiveWebhook(ev)
+  const looksLikeOther   = isOtherWebhook(ev)
+
+  // Altri eventi legittimi (send/status/…), con firma valida ma NON di ricezione:
+  // ignorabili senza traccia, non sono fatture in ingresso.
+  if (looksLikeOther && ev.success === true) {
     return new Response('OK', { status: 200 })
   }
 
-  if (ev.eventId == null || ev.resourceId == null) {
-    console.warn('[wh] Webhook firmato ma senza event_id/resource_id validi')
-    return new Response('OK', { status: 200 })
+  // ── 4b. Rete di sicurezza: MAI perdere una fattura firmata in silenzio ─────
+  // Se siamo qui l'HMAC è già valido → l'evento viene DAVVERO da Invoicetronic.
+  // Se non lo riconosciamo come "receive" valido, o mancano i dati minimi per
+  // scaricare l'XML, NON rispondiamo 200-e-via (che perderebbe la fattura per
+  // sempre: Invoicetronic non ritenta sui 2xx). La registriamo invece in coda
+  // con status 'failed' + il payload NON-PII completo in payload_meta, così
+  // resta visibile negli avvisi Admin e recuperabile a mano. Il campo
+  // `unrecognized_event` è la traccia per un fix mirato del parser.
+  const missingCore = ev.eventId == null || ev.resourceId == null
+  if (!isReceiveEvent || ev.success !== true || missingCore) {
+    const reason = !isReceiveEvent
+      ? 'endpoint/event non riconosciuto come receive'
+      : ev.success !== true
+        ? 'success != true'
+        : 'event_id o resource_id mancante'
+    console.error(
+      `[wh] Evento firmato NON processabile (${reason}) — ` +
+      `endpoint=${ev.endpoint} event=${ev.eventName} ` +
+      `event_id=${ev.eventId} resource_id=${ev.resourceId} success=${ev.success}`,
+    )
+
+    const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+    // event_id univoco anche quando ev.eventId è null: fallback su resource_id o
+    // hash del body, così due eventi diversi non collidono su ON CONFLICT.
+    const fallbackKey =
+      ev.eventId != null ? String(ev.eventId)
+      : ev.resourceId != null ? `res:${ev.resourceId}`
+      : `sig:${(await sha256Hex(rawBody)).slice(0, 32)}`
+    const { error: insErr } = await db
+      .from('fatture_queue')
+      .upsert(
+        {
+          event_id:  fallbackKey,
+          piva_raw:  'UNKNOWN',
+          source:    'invoicetronic',
+          status:    'failed',
+          payload_meta: {
+            unrecognized_event: reason,
+            raw_endpoint: ev.endpoint,
+            raw_event:    ev.eventName,
+            resource_id:  ev.resourceId,
+            invoicetronic_event_id: ev.eventId,
+            invoicetronic_company_id: ev.companyId,
+            date_time:    ev.dateTime,
+            success:      ev.success,
+          },
+          correlation_id: req.headers.get('X-Request-ID') ?? req.headers.get('X-Correlation-ID') ?? null,
+        },
+        { onConflict: 'event_id', ignoreDuplicates: true },
+      )
+    if (insErr) {
+      // Non riusciamo nemmeno a registrarla → 500, così Invoicetronic ritenta e
+      // non perdiamo l'unica occasione di catturarla.
+      console.error(`[wh] Errore INSERT evento non riconosciuto: ${insErr.message}`)
+      return new Response('Internal Server Error', { status: 500 })
+    }
+    // Se manca proprio il resource_id non possiamo scaricare l'XML: la lasciamo
+    // in coda come 'failed' registrata e chiudiamo 200 (l'abbiamo salvata).
+    // Se invece è un vero receive con resource_id ma qualche altro campo non
+    // tornava, proseguiamo comunque il flusso normale sotto quando possibile.
+    if (missingCore) {
+      return new Response('OK', { status: 200 })
+    }
+    // isReceiveEvent falso ma abbiamo comunque event_id+resource_id: l'abbiamo
+    // registrata; non tentiamo il parse ottimistico per non mascherare il caso.
+    if (!isReceiveEvent) {
+      return new Response('OK', { status: 200 })
+    }
   }
 
   const eventId       = String(ev.eventId)
