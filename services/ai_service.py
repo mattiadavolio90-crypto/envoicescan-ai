@@ -90,6 +90,34 @@ from config.constants import (
 _CATEGORIA_PER_FORNITORE_NORM: tuple[tuple[str, str], ...] = tuple(
     (str(k).strip().upper(), v) for k, v in CATEGORIA_PER_FORNITORE.items()
 )
+
+# Fornitori VERIFICATI mono-categoria a DB (una sola categoria reale su TUTTI i
+# clienti): solo per questi la regola-fornitore può recuperare, nel safety net di
+# classifica_con_ai, una riga che la GPT ha lasciato "Da Classificare". La lista
+# CATEGORIA_PER_FORNITORE completa NON è sicura qui: molti "sembrano" mono-merce
+# ma a DB hanno righe sparse (M&M 4 cat., CENTRO GIARDINAGGIO 6, NOVA HORECA 3…),
+# e forzare a categoria-fornitore una riga food-persa sarebbe un downgrade. Questa
+# whitelist ristretta è l'unico sottoinsieme dove il recupero è a rischio zero.
+# Verificato 21/07/2026: ciascuna chiave → 1 fornitore, 1 sola categoria a DB.
+# Aggiungere una chiave SOLO dopo aver riverificato la purezza (query per fornitore).
+_FORNITORI_MONOCAT_SAFE: frozenset[str] = frozenset({
+    "DELIVEROO", "JUST-EAT", "CIESSECI", "CP S.P.A",
+})
+
+
+def _categoria_da_fornitore_monocat(fornitore: Optional[str]) -> Optional[str]:
+    """Categoria della regola-fornitore SOLO se il fornitore è nella whitelist
+    mono-categoria verificata. Ritorna None altrimenti (nessun recupero forzato).
+    """
+    if not fornitore:
+        return None
+    forn_u = fornitore.strip().upper()
+    for key_u, categoria in _CATEGORIA_PER_FORNITORE_NORM:
+        if key_u not in _FORNITORI_MONOCAT_SAFE:
+            continue
+        if key_u in forn_u or forn_u in key_u:
+            return categoria
+    return None
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 
 # === [C2] Context propagation per chiamate AI fuori thread Streamlit ===
@@ -4940,6 +4968,23 @@ def classifica_con_ai(
                     confidenze_risultati[desc] = "media"  # dizionario → confidence media
                     _fallback_count += 1
                     logger.info(f"📖 DIZIONARIO FALLBACK: '{desc[:40]}' → {cat_dict}")
+                    continue
+                # Then try supplier rule — ONLY for verified mono-category suppliers
+                # (whitelist). La regola-fornitore vive in categorizza_con_memoria
+                # (LIVELLO 5) e NON era raggiungibile da questo percorso: una riga
+                # con descrizione generica che la GPT non riconosce (es. Deliveroo
+                # "COMMISSION") restava Da Classificare pur avendo un fornitore
+                # mono-merce noto. Recupero SOLO da whitelist per non rubare righe a
+                # fornitori misti (vedi _FORNITORI_MONOCAT_SAFE).
+                _forn_row = None
+                if lista_fornitori and len(lista_fornitori) == len(lista_descrizioni):
+                    _forn_row = lista_fornitori[_idx_map[desc]]
+                cat_forn = _categoria_da_fornitore_monocat(_forn_row)
+                if cat_forn:
+                    risultati[desc] = cat_forn
+                    confidenze_risultati[desc] = "alta"  # fornitore mono-cat → confidence alta
+                    _fallback_count += 1
+                    logger.info(f"🏭 FORNITORE MONOCAT FALLBACK: '{desc[:40]}' → {cat_forn} (forn: {_forn_row})")
         if _fallback_count > 0:
             logger.info(f"🔧 SAFETY NET: {_fallback_count} descrizioni recuperate con regole forti/dizionario")
 

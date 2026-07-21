@@ -40,7 +40,9 @@ logger = get_logger('daily_briefing')
 #   3 -> 25/06: costo personale mancante su TUTTI i mesi dell'anno (conteggio+range)
 #   5 -> 28/06: "da controllare" conta PRODOTTI DISTINTI (non righe), per combaciare
 #               col numero che il cliente vede in Analisi Fatture (fix 6 vs 4)
-_BRIEFING_CODE_VERSION = 7
+#   8 -> 21/07: safety net classifica_con_ai consulta la regola-fornitore mono-cat
+#               (whitelist) sulle righe che la GPT lascia Da Classificare
+_BRIEFING_CODE_VERSION = 8
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
