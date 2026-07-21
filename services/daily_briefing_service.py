@@ -42,7 +42,9 @@ logger = get_logger('daily_briefing')
 #               col numero che il cliente vede in Analisi Fatture (fix 6 vs 4)
 #   8 -> 21/07: safety net classifica_con_ai consulta la regola-fornitore mono-cat
 #               (whitelist) sulle righe che la GPT lascia Da Classificare
-_BRIEFING_CODE_VERSION = 8
+#   9 -> 21/07: "CARTA PESCE"/"CARTA PER RAVIOLI" (imballo) non vengono piu' rubate
+#               dalla regola forte PESCE/dizionario RAVIOLI (cert. SUSHILAND Villa Guardia)
+_BRIEFING_CODE_VERSION = 9
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

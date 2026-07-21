@@ -440,8 +440,10 @@ class TestCertificatoreSemestre2007:
             assert self._cat(d) == "DISTILLATI", d
 
     def test_carta_food_non_rubata_dal_brand(self):
-        # non-regressione: "CARTA PESCE" resta PESCE, "CARTA FORNO" resta MATERIALE.
-        assert self._cat("CARTA PESCE") == "PESCE"
+        # Cert. SUSHILAND Villa Guardia 21/07: "CARTA PESCE" e' la carta da imballo
+        # del banco pesce (fornitore MEFON, prezzo fisso 22€/collo su 23 fatture,
+        # gemella di "CARTA MANO" gia' MATERIALE), non pesce alimentare.
+        assert self._cat("CARTA PESCE") == "MATERIALE DI CONSUMO"
         assert self._cat("CARTA FORNO 100MT") == "MATERIALE DI CONSUMO"
 
     def test_topping_e_dessert_stabile(self):

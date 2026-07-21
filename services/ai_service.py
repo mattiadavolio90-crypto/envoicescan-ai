@@ -1158,10 +1158,10 @@ _MATERIALE_NON_EDIBILE_RE = re.compile(
 )
 
 # MATERIALE DI CONSUMO: pulizia/imballo/DPI che cadevano in food o Da Classificare.
-# VASCHETTA/CARTA PER RAVIOLI sono imballo, non cibo: devono battere SUSHI/PASTA.
+# VASCHETTA/CARTA PER RAVIOLI/CARTA PESCE sono imballo, non cibo: devono battere SUSHI/PASTA/PESCE.
 _CONSUMO_EXTRA_RE = re.compile(
     r"\b(SCARPE\s*ANTINFORTUN\w*|DIXAN|SCOVOLO|SCOTTONELLE|SPAZZOL[AE]|FERMAPORTA|"
-    r"PIL[AE]\b|VASCHETT[AE]|CARTA\s*PER\s*RAVIOLI|SACCHETT\w*\s*SPAZZATURA|"
+    r"PIL[AE]\b|VASCHETT[AE]|CARTA\s*PER\s*RAVIOLI|CARTA\s*PESCE|SACCHETT\w*\s*SPAZZATURA|"
     r"GUANT[OI]\b|DETERSIV\w*|DETERGENT\w*|SGRASSAT\w*|CANDEGGIN[AE]|SAPONE|TOVAGLIOL\w*)\b"
 )
 
@@ -2545,7 +2545,8 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "pasta_di_pesce"
         return cat, None
 
-    if _PESCE_RE.search(desc_u):
+    # Eccezione: "CARTA PESCE" (imballo da banco) non è pesce alimentare.
+    if _PESCE_RE.search(desc_u) and not _CONSUMO_EXTRA_RE.search(desc_u):
         mapped = "PESCE"
         if cat != mapped:
             return mapped, "pesce_in_qualsiasi_stato"
