@@ -505,6 +505,34 @@ class TestSegnaliBevandaAlcolica2107:
             assert self._cat(d) != "DISTILLATI", d
 
 
+class TestArredoAttrezzature2107:
+    """Cert. OFFSIDE 21/07: arredo/edile/attrezzatura (IKEA/Leroy/Mediamarket) via
+    keyword parola-intera. L'audit ha bloccato i prefissi pericolosi: "LAMP" rubava
+    35 LAMPONI, "MISCEL" rubava 21 MISCELE di caffè. Keyword verificate a 0 collisioni.
+    """
+
+    def _cat(self, desc):
+        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        dz = applica_correzioni_dizionario(desc, "Da Classificare")
+        rf, _ = applica_regole_categoria_forti(desc, dz)
+        return rf or dz
+
+    def test_arredo_edile_e_attrezzatura(self):
+        for d in ["SCAFFALE B2000 1580X420X2000H 6 PIANI", "NATU NEW MISCELATORE BIDET CROMO",
+                  "COMPRESSORE 1.5HP AIRKIT STANLEY", "SPECCHIO MODERN C/LED STONE 60X80CM",
+                  "/TERMOARREDO BAGNO DE'LONGHI 154.6X55 CM", "SCALD.ELETT.EQUATION 80LT ORIZZ",
+                  "NYMANE FARET SOF 1 LUC BIANCO", "STEFANPLAST 72000 PORTAOMBRELLO",
+                  "EDSBRUK CORNICE 21X30 BIANCO"]:
+            assert self._cat(d) == "MANUTENZIONE E ATTREZZATURE", d
+
+    def test_food_omonimo_non_rubato_da_arredo(self):
+        # le trappole che l'audit ha rivelato: LAMPONE non è lampada, MISCELA non è
+        # miscelatore, "SPECCHIO DI GAMBERI" (piatto) non è lo specchio da bagno.
+        assert self._cat("LAMPONI FRESCHI VASCHETTA") != "MANUTENZIONE E ATTREZZATURE"
+        assert self._cat("MISCELA CAFFE ARABICA 1KG") == "CAFFE E THE"
+        assert self._cat("SPECCHIO DI GAMBERI") == "PESCE"
+
+
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
 
