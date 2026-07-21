@@ -460,6 +460,45 @@ class TestCertificatoreSemestre2007:
         assert self._cat("BUSTE SPAZZATURA 100L") == "MATERIALE DI CONSUMO"
 
 
+class TestSegnaliBevandaAlcolica2107:
+    """Cert. OFFSIDE 21/07: segnali di bevanda alcolica presi dalla DESCRIZIONE (non
+    dal fornitore — l'audit ha mostrato che i fornitori non sono mono-merce puri).
+    - gradazione "ALC.XX%VOL"/"XX°"/"GRAD" ≥20% → DISTILLATI (nessun food ha gradi);
+    - formato "BOTT ... VAP CL.33/25" → BIRRE (chiude le belghe ANESA).
+    """
+
+    def _cat(self, desc):
+        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        dz = applica_correzioni_dizionario(desc, "Da Classificare")
+        rf, _ = applica_regole_categoria_forti(desc, dz)
+        return rf or dz
+
+    def test_gradazione_alta_e_distillato(self):
+        # il caso che aveva colpito Mattia: 700ml + ALC.38%VOL + "distilleria" = ovvio.
+        for d in ["ANNO DECIMO ML.700 ALC.38%VOL", "GRAPPA RISERVA 42% VOL",
+                  "AMARO ARTIGIANALE ALC 30%VOL CL70"]:
+            assert self._cat(d) == "DISTILLATI", d
+
+    def test_formato_bottiglia_birra(self):
+        # belghe ANESA: BOTT ... VAP CL.33/25 → BIRRE senza fidarsi del fornitore.
+        for d in ["BOTT. BLANCHE DE BRUXELLES VAP CL.33 X12",
+                  "BOTT. ROCHEFORT 10 VAP CL.33 X12",
+                  "BOTT. WESTMALLE TRIPLE VAP CL.33 X24",
+                  "BOTT. DUCHESSE DE BOURGOGNE VAP CL.25 X24"]:
+            assert self._cat(d) == "BIRRE", d
+
+    def test_vino_e_birra_bassa_gradazione_NON_distillato(self):
+        # la soglia 20% protegge vino (12-16%) e birra (3-12%): non diventano distillati.
+        assert self._cat("VINO ROSSO TOSCANA 13,5% VOL") != "DISTILLATI"
+        assert self._cat("BIRRA MORETTI 4,6% VOL CL33") != "DISTILLATI"
+
+    def test_percentuali_non_gradazione_non_toccate(self):
+        # SCONTO/IVA/CACAO% NON sono gradazione (serve %VOL/gradi): niente falso positivo.
+        for d in ["SCONTO 20% SU IMPONIBILE", "IVA 22% ORDINARIA",
+                  "CACAO 70% FONDENTE", "MAGLIA COTONE 100%"]:
+            assert self._cat(d) != "DISTILLATI", d
+
+
 class TestRuleTrapRimosse2606:
     """Le rule-trap che scavalcavano risposte AI corrette: ora NON devono più scattare."""
 

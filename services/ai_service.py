@@ -880,6 +880,15 @@ _BRAND_DISTILLATI_RE = re.compile(
     r"BEEFEATER|ABSOLUT|SMIRNOFF|BELVEDERE|JACK\s*DANIEL|JAMESON|BALLANTINE|"
     r"JOHNNIE\s*WALKER|GLENFIDDICH|JOSE\s*CUERVO)\b"
 )
+# GRADAZIONE ALCOLICA (cert. OFFSIDE 21/07): un prodotto con gradazione ("ALC.38%VOL",
+# "12,5% VOL", "40°", "GRAD 21") è CERTAMENTE una bevanda alcolica. Nessun materiale/
+# food ha una gradazione. È un segnale universale fortissimo che il sistema ignorava
+# ("ANNO DECIMO ML.700 ALC.38%VOL" restava Da Classificare). Cattura il numero di gradi.
+_GRADAZIONE_RE = re.compile(r"(?:ALC\.?\s*)?(\d{1,2}(?:[.,]\d)?)\s*(?:%\s*VOL|°\s|GRAD)")
+# Formato "bottiglia di birra": BOTT/VAP + CL.33/CL.25/CL.75 (i formati birra classici).
+# Chiude le belghe ANESA (BOTT. ROCHEFORT/WESTMALLE/DUCHESSE VAP CL.33) senza dover
+# fidarsi del fornitore (l'audit ha mostrato che ANESA non è mono-merce puro).
+_BOTT_BIRRA_RE = re.compile(r"\bBOTT\b.*\bVAP\b.*\bCL\.?\s*(25|33|50|75)\b|\bVAP\b.*\bCL\.?\s*(25|33|50|75)\b")
 _ALCOHOL_FREE_AMARI_RE = re.compile(r"\b(AMARO|LIQUORE|LIMONCELLO|SAMBUCA|JAGERMEISTER|AVERNA|MONTENEGRO|NONINO|KAHLUA|BAILEYS|CYNAR|BRANCAMENTA|FERNET|MIRTO|MARASCHINO|APEROL|CAMPARI|ANGOSTURA|PASSOA|CURACAO|TRIPLE\s+SEC|BOLS|PORTO|LILLET|VERMOUTH)\b")
 _CREAMI_RICARICA_RE = re.compile(r"\bCREAMI\b.*\bRICARICA\b|\bRICARICA\b.*\bCREAMI\b")
 _CREAMI_DISPENSER_RE = re.compile(r"\bCREAMI\b.*\bDISPENSER\b|\bDISPENSER\b.*\bCREAMI\b")
@@ -1284,6 +1293,8 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "brand_distillato",
     "topping_dessert",
     "olio_aceto_monodose",
+    "formato_bottiglia_birra",
+    "gradazione_alta_distillato",
     "giappo_fritto_pasta",
     "giappo_pesce",
     "pet_food_non_alimento",
@@ -1373,6 +1384,33 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         if cat != mapped:
             return mapped, "topping_dessert"
         return cat, None
+
+    # ── SEGNALI BEVANDA ALCOLICA (cert. OFFSIDE 21/07) — dalla descrizione, non dal
+    # fornitore (l'audit ha mostrato che i fornitori non sono mono-merce puri). ──
+    # 1) Formato bottiglia-birra: BOTT/VAP + CL.33/25/50/75 → BIRRE. Va PRIMA della
+    #    gradazione: una belga forte (Rochefort 11%) è birra, non distillato.
+    if _BOTT_BIRRA_RE.search(desc_u):
+        mapped = "BIRRE"
+        if cat != mapped:
+            return mapped, "formato_bottiglia_birra"
+        return cat, None
+    # 2) Gradazione alcolica: la presenza di gradi = bevanda alcolica CERTA. Affino:
+    #    - gradazione ALTA (>=20%): distillato/liquore forte (grappa, rum, vodka...) → DISTILLATI
+    #    - gradazione medio-bassa (<20%): potrebbe essere vino/birra → NON forzo la
+    #      categoria fine (lascio decidere keyword/AI), ma se è ancora Da Classificare
+    #      almeno non resta orfana: la mando a VINI solo se ci sono indizi di vino,
+    #      altrimenti resta com'è. Qui gestisco solo il caso certo (alta gradazione).
+    _grad_match = _GRADAZIONE_RE.search(desc_u)
+    if _grad_match:
+        try:
+            _gradi = float(_grad_match.group(1).replace(",", "."))
+        except (TypeError, ValueError):
+            _gradi = 0.0
+        if _gradi >= 20.0:
+            mapped = "DISTILLATI"
+            if cat != mapped:
+                return mapped, "gradazione_alta_distillato"
+            return cat, None
 
     if _GIAPPO_FRITTO_PASTA_RE.search(desc_u):
         mapped = "PASTA E CEREALI"
