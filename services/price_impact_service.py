@@ -15,6 +15,7 @@ da Streamlit. Il backend calcola, la Home racconta.
 
 from __future__ import annotations
 
+import os
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -294,21 +295,27 @@ def _leggi_soglia_perc_cliente(user_id: str, supabase_client=None) -> float:
 
 
 def _leggi_solo_preferiti(ristorante_id: str, supabase_client=None) -> bool:
-    """Flag 'avvisi prezzi solo preferiti' da assistant_preferences. Default False."""
-    try:
-        sb = supabase_client
-        if sb is None:
-            from services import get_supabase_client
-            sb = get_supabase_client()
-        resp = (
-            sb.table("assistant_preferences").select("alert_prezzi_solo_preferiti")
-            .eq("ristorante_id", ristorante_id).limit(1).execute()
-        )
-        if resp.data:
-            return bool(resp.data[0].get("alert_prezzi_solo_preferiti"))
-    except Exception as exc:
-        logger.warning("price_impact: lettura flag solo_preferiti fallita: %s", exc)
-    return False
+    """Decide se l'alert prezzi guarda SOLO i prodotti preferiti (+ tag) oppure la
+    fascia Pareto automatica.
+
+    Decisione Mattia 22/07: da ora in poi, per TUTTI i clienti, l'alert prezzi
+    considera SOLO i prodotti segnati come preferiti (stella nel tab Variazione
+    prezzi) piu' i tag costruiti. Niente piu' Pareto automatico su prodotti
+    qualsiasi (rumore). Quindi qui il default e' True.
+
+    Conseguenza voluta: un cliente senza preferiti e senza tag NON vede alert
+    prezzi finche' non ne crea; e' il comportamento richiesto, non un bug.
+
+    Resta un interruttore di sicurezza via env (PREZZI_SOLO_PREFERITI=0) per
+    tornare al vecchio comportamento senza rimettere mano al codice, se mai
+    servisse. Il flag per-sede assistant_preferences.alert_prezzi_solo_preferiti
+    non puo' piu' DISATTIVARE il vincolo (il default globale vince): resta letto
+    solo per retro-compatibilita', ma "solo preferiti" e' ormai lo standard.
+    """
+    if os.getenv("PREZZI_SOLO_PREFERITI", "1") == "0":
+        # Kill-switch esplicito: torna al Pareto automatico (comportamento pre-22/07).
+        return False
+    return True
 
 
 def _carica_preferiti_keys(ristorante_id: str, supabase_client=None) -> set:

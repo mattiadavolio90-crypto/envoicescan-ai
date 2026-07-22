@@ -168,3 +168,23 @@ def test_pareto_invariato_quando_solo_preferiti_off():
     nomi = {a["nome"].upper() for a in alerts}
     assert any("CAFFE" in n for n in nomi)
     assert not any("LIMONI" in n for n in nomi)
+
+
+# ── Decisione 22/07: alert prezzi SOLO preferiti+tag per tutti (Fase 2a) ─────
+
+def test_solo_preferiti_e_default_per_tutti(monkeypatch):
+    """Da 22/07 il default e' 'solo preferiti': _leggi_solo_preferiti torna True
+    a prescindere dal flag per-sede. Se questo test cade, qualcuno ha rimesso il
+    Pareto automatico come default (rumore su prodotti qualsiasi)."""
+    from services.price_impact_service import _leggi_solo_preferiti
+    monkeypatch.delenv("PREZZI_SOLO_PREFERITI", raising=False)
+    # Nessuna chiamata al DB deve servire: il default vince a monte.
+    assert _leggi_solo_preferiti("rist-qualsiasi", supabase_client=None) is True
+
+
+def test_kill_switch_riporta_al_pareto(monkeypatch):
+    """L'interruttore di sicurezza PREZZI_SOLO_PREFERITI=0 torna al Pareto
+    (comportamento pre-22/07) senza toccare il codice."""
+    from services.price_impact_service import _leggi_solo_preferiti
+    monkeypatch.setenv("PREZZI_SOLO_PREFERITI", "0")
+    assert _leggi_solo_preferiti("rist-qualsiasi", supabase_client=None) is False

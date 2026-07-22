@@ -2627,6 +2627,11 @@ CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4.1-mini")
 import concurrent.futures as _concurrent_futures
 from concurrent.futures import TimeoutError as _cf_TimeoutError
 _ALERT_PREZZI_TIMEOUT_SEC = float(os.getenv("ALERT_PREZZI_TIMEOUT_SEC", "4.0"))
+# Budget GENEROSO per il path async (_briefing_rigenera_async): li' nessuno
+# aspetta la risposta, quindi l'alert prezzi puo' prendersi il tempo che serve
+# sui clienti grossi (SUSHILAND) senza rischiare di essere saltato in silenzio.
+# Nel path SINCRONO (fast-path Home) resta _ALERT_PREZZI_TIMEOUT_SEC stretto.
+_ALERT_PREZZI_TIMEOUT_ASYNC_SEC = float(os.getenv("ALERT_PREZZI_TIMEOUT_ASYNC_SEC", "25.0"))
 # Executor condiviso: i thread "fuggiti" (alert lento) finiscono in background
 # senza bloccare la risposta. max_workers limita l'accumulo sotto carico.
 _ALERT_PREZZI_EXECUTOR = _concurrent_futures.ThreadPoolExecutor(
@@ -4337,6 +4342,11 @@ _MESI_ABBR_BRIEFING = [
     "lug", "ago", "set", "ott", "nov", "dic",
 ]
 
+# Giorni della settimana indicizzati come datetime.weekday() (0 = lunedi').
+_GIORNI_IT_BRIEFING = [
+    "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica",
+]
+
 
 def _descrivi_mesi_mancanti(mesi: List[int]) -> str:
     """Descrive in modo compatto l'insieme di mesi scoperti (stesso anno).
@@ -4384,6 +4394,179 @@ def _in_finestra_mol(oggi) -> bool:
 
 class _SaltaBloccoMol(Exception):
     """Segnale interno: fuori dalla finestra MOL, salta al blocco incasso di ieri."""
+
+
+# Confronto incasso di ieri: soglie e requisiti.
+# - Serve un minimo di stessi-giorni-settimana perche' la media sia affidabile
+#   (un martedi' non fa media): sotto questa soglia niente confronto (silenzio).
+# - Sotto la soglia di scostamento si dice "in linea" senza enfasi: un +3% non e'
+#   una notizia, e' rumore. Decisione: confronto SOLO robusto, mai fuorviante.
+_CONFRONTO_GIORNO_MIN_OCCORRENZE = 4
+_CONFRONTO_GIORNO_FINESTRA_GIORNI = 90
+_CONFRONTO_GIORNO_SOGLIA_PCT = 0.08
+
+
+def _incasso_confronto_giorno_settimana(
+    ristorante_id: str, supabase_client, ieri_d, incasso_ieri: float,
+) -> Optional[Dict[str, Any]]:
+    """Confronto dell'incasso di ieri con la media degli STESSI giorni della
+    settimana (tutti i martedi', ecc.) nelle ultime ~13 settimane, ieri escluso.
+
+    E' l'unico confronto ammesso nel quotidiano: il "vs ieri" o "vs settimana
+    scorsa" e' fuorviante (un martedi' non e' un sabato; una singola settimana
+    puo' avere una sagra/chiusura). La media dello stesso giorno-settimana e'
+    stabile (SD ~15-20% sui dati SUSHILAND) e assorbe le oscillazioni.
+
+    Ritorna {'cfr_media', 'cfr_delta_pct', 'cfr_verso'} dove cfr_verso e'
+    'sopra' | 'sotto' | 'in_linea'. None se la baseline e' troppo corta
+    (< _CONFRONTO_GIORNO_MIN_OCCORRENZE occorrenze) o l'incasso non e' valido.
+    """
+    from datetime import date as _date, timedelta as _tdc
+    if incasso_ieri is None or incasso_ieri <= 0:
+        return None
+    inizio = ieri_d - _tdc(days=_CONFRONTO_GIORNO_FINESTRA_GIORNI)
+    target_dow = ieri_d.weekday()
+    try:
+        resp = (
+            supabase_client.table("ricavi_giornalieri")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,data")
+            .eq("ristorante_id", ristorante_id)
+            .gte("data", inizio.isoformat())
+            .lt("data", ieri_d.isoformat())
+            .execute()
+        )
+    except Exception:
+        return None
+    valori = []
+    for x in (resp.data or []):
+        try:
+            d = _date.fromisoformat(str(x.get("data")))
+        except (ValueError, TypeError):
+            continue
+        if d.weekday() != target_dow:
+            continue
+        lordo = (
+            float(x.get("fatturato_iva10") or 0)
+            + float(x.get("fatturato_iva22") or 0)
+            + float(x.get("altri_ricavi_noiva") or 0)
+        )
+        if lordo > 0:
+            valori.append(lordo)
+    if len(valori) < _CONFRONTO_GIORNO_MIN_OCCORRENZE:
+        return None
+    media = sum(valori) / len(valori)
+    if media <= 0:
+        return None
+    delta = (incasso_ieri - media) / media
+    if abs(delta) < _CONFRONTO_GIORNO_SOGLIA_PCT:
+        verso = "in_linea"
+    else:
+        verso = "sopra" if delta > 0 else "sotto"
+    return {
+        "cfr_media": round(media, 0),
+        "cfr_delta_pct": abs(round(delta * 100)),
+        "cfr_verso": verso,
+    }
+
+
+def _coperti_scontrino_ieri(coperti_ieri, netto_ieri: float) -> Optional[Dict[str, Any]]:
+    """Coperti e scontrino medio di ieri, da mostrare SEMPRE se il dato esiste
+    (coperti valorizzato e > 0). Nessuna soglia: se il ristorante inserisce i
+    coperti, il briefing li racconta; se non li inserisce (es. OFFSIDE), non si
+    aggiunge nulla e si parla solo dell'incasso. Decisione Mattia 22/07.
+
+    Diverso da _scontrino_medio_significativo, che resta per il caso "anomalia
+    forte" (scostamento dalla media del mese) ed e' una segnalazione, non un dato
+    d'apertura. Qui e' contesto, non allarme.
+    """
+    if coperti_ieri is None:
+        return None
+    try:
+        cop = int(coperti_ieri)
+    except (ValueError, TypeError):
+        return None
+    if cop <= 0 or netto_ieri <= 0:
+        return None
+    return {
+        "coperti": cop,
+        "scontrino_medio": round(netto_ieri / cop, 2),
+    }
+
+
+def _fatture_arrivate_ieri_sdi(
+    ristorante_id: str, supabase_client, ieri_d,
+) -> Optional[Dict[str, Any]]:
+    """Fatture COMPARSE ieri nel sistema per una sede SDI, come apertura positiva.
+
+    Serve alle sedi con `sdi_attivo=true` che NON inseriscono l'incasso
+    giornaliero (es. OFFSIDE): senza incasso non avrebbero mai un'apertura
+    positiva, e il briefing resterebbe una pura to-do list. Il loro dato fresco
+    e' l'arrivo delle fatture: "ieri sono arrivate N fatture per € X".
+
+    "Arrivata ieri" = `created_at` (giorno di INSERIMENTO in DB, fuso Rome) uguale
+    a ieri: e' il momento in cui la fattura e' comparsa al cliente, a prescindere
+    dalla data del documento o dalla ricezione SDI a monte. E' quello che il
+    cliente percepisce come "novità di ieri". Una fattura = un `file_origine`
+    distinto (la tabella e' a livello di riga).
+
+    Ritorna {n_fatture, importo, righe_da_controllare} SOLO se sdi_attivo E c'e'
+    almeno una fattura comparsa ieri; altrimenti None (niente apertura forzata).
+
+    ANTI-RIDONDANZA (piano 22/07, Strada A): finche' NON esiste una card
+    dedicata "fatture ricevute via SDI" in Home, l'accenno puo' portare un paio
+    di numeri (n + importo). Se un giorno nasce quella card (Strada B), il
+    DETTAGLIO diventa suo e questo payload va ridotto: il briefing rimanda alla
+    card senza ripetere gli importi, esattamente come fa oggi price_alert. La
+    logica qui non cambia: si toglie solo qualche numero dal payload/template.
+    """
+    from datetime import datetime as _dtf, time as _tf
+    from zoneinfo import ZoneInfo as _ZIf
+    try:
+        rinfo = (
+            supabase_client.table("ristoranti")
+            .select("sdi_attivo")
+            .eq("id", ristorante_id)
+            .single()
+            .execute()
+        )
+        if not (rinfo.data or {}).get("sdi_attivo"):
+            return None
+    except Exception as exc:
+        logger.warning("briefing fatture arrivate: lettura ristorante fallita: %s", exc)
+        return None
+
+    # Finestra = il giorno di ieri in fuso Rome, convertito nell'istante di
+    # confronto sul created_at (timestamptz). [inizio_ieri, inizio_oggi).
+    _tz = _ZIf("Europe/Rome")
+    inizio_ieri = _dtf.combine(ieri_d, _tf.min, tzinfo=_tz)
+    inizio_oggi = _dtf.combine(ieri_d + timedelta(days=1), _tf.min, tzinfo=_tz)
+    try:
+        resp = (
+            supabase_client.table("fatture")
+            .select("file_origine,totale_riga,needs_review")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .gte("created_at", inizio_ieri.isoformat())
+            .lt("created_at", inizio_oggi.isoformat())
+            .execute()
+        )
+        righe = resp.data or []
+    except Exception as exc:
+        logger.warning("briefing fatture arrivate: lettura fatture fallita: %s", exc)
+        return None
+
+    if not righe:
+        return None
+    files = {r.get("file_origine") for r in righe if r.get("file_origine")}
+    if not files:
+        return None
+    importo = sum(float(r.get("totale_riga") or 0) for r in righe)
+    da_controllare = sum(1 for r in righe if r.get("needs_review"))
+    return {
+        "n_fatture": len(files),
+        "importo": round(importo, 0),
+        "righe_da_controllare": da_controllare,
+    }
 
 
 def _scontrino_medio_significativo(
@@ -4610,15 +4793,33 @@ def _briefing_buona_notizia(
                 + float(r.get("altri_ricavi_noiva") or 0)
             )
             if incasso > 0:
-                payload: Dict[str, Any] = {"tipo": "incasso_ieri", "incasso": round(incasso, 0)}
-                # Arricchimento scontrino medio: SOLO se ieri ha coperti e lo
-                # scostamento dalla media del mese è importante (COPERTI_ALERT).
-                sm = _scontrino_medio_significativo(
-                    ristorante_id, supabase_client, ieri_d,
-                    r.get("coperti"), netto_ieri,
+                payload: Dict[str, Any] = {
+                    "tipo": "incasso_ieri",
+                    "incasso": round(incasso, 0),
+                    "giorno_settimana": _GIORNI_IT_BRIEFING[ieri_d.weekday()],
+                }
+                # Confronto con la media dello stesso giorno-settimana (l'unico
+                # confronto non fuorviante). Assente se baseline troppo corta.
+                cfr = _incasso_confronto_giorno_settimana(
+                    ristorante_id, supabase_client, ieri_d, incasso,
                 )
-                if sm:
-                    payload.update(sm)
+                if cfr:
+                    payload.update(cfr)
+                # Coperti + scontrino medio SEMPRE se presenti (contesto, non
+                # allarme). Se il ristorante non inserisce coperti -> solo incasso.
+                cs = _coperti_scontrino_ieri(r.get("coperti"), netto_ieri)
+                if cs:
+                    payload.update(cs)
+                    # Anomalia forte dello scontrino (scostamento dalla media del
+                    # mese): solo il flag, lo scontrino e' gia' nel payload. Evita
+                    # di ripetere il numero.
+                    sm = _scontrino_medio_significativo(
+                        ristorante_id, supabase_client, ieri_d,
+                        r.get("coperti"), netto_ieri,
+                    )
+                    if sm:
+                        payload["scontrino_delta_pct"] = sm["scontrino_delta_pct"]
+                        payload["scontrino_su"] = sm["scontrino_su"]
                 return {
                     "id": f"buona-notizia-incasso-{ieri}",
                     "topic_key": "buona_notizia",
@@ -4633,6 +4834,42 @@ def _briefing_buona_notizia(
                 }
     except Exception as exc:
         logger.warning("briefing buona notizia: blocco incasso fallito: %s", exc)
+
+    # ── 3) Fatture arrivate ieri (solo sedi SDI senza incasso giornaliero) ──
+    # Ultima risorsa di apertura POSITIVA: una sede SDI (es. OFFSIDE) che non
+    # inserisce l'incasso giornaliero non ha ne' MOL in finestra ne' incasso di
+    # ieri -> senza questo il briefing sarebbe solo to-do. Il suo dato fresco e'
+    # l'arrivo delle fatture. Sta DOPO l'incasso di proposito: dove c'e' incasso
+    # (SUSHILAND) quella resta l'apertura; qui subentra solo se manca. Nessun
+    # rischio di contraddire l'alert "fatture mancanti": se ieri sono arrivate
+    # fatture, il caso A ("non arrivano da >7gg") non scatta (ultima fattura
+    # recente); il caso B (mese chiuso senza costi) e' un altro orizzonte e puo'
+    # coesistere onestamente ("ieri arrivate 3 fatture" + "mancano i costi di
+    # giugno") senza smentirsi.
+    try:
+        ieri_fd = _oggi_rome() - _td2(days=1)
+        ieri_fs = ieri_fd.isoformat()
+        fa = _fatture_arrivate_ieri_sdi(ristorante_id, supabase_client, ieri_fd)
+        if fa and fa.get("n_fatture"):
+            return {
+                "id": f"buona-notizia-fatture-{ieri_fs}",
+                "topic_key": "buona_notizia",
+                "source_type": "live",
+                "severity": "success",
+                "title": "",
+                "body": "",
+                "action_page": "/analisi-fatture",
+                "payload": {
+                    "tipo": "fatture_arrivate",
+                    "n_fatture": fa["n_fatture"],
+                    "importo": fa["importo"],
+                    "righe_da_controllare": fa["righe_da_controllare"],
+                },
+                "source_event_at": None,
+                "dedupe_key": f"buona-notizia-fatture-{ieri_fs}",
+            }
+    except Exception as exc:
+        logger.warning("briefing buona notizia: blocco fatture arrivate fallito: %s", exc)
 
     return None
 
@@ -5686,6 +5923,7 @@ def _briefing_aggiorna_last_seen(user_id: str, supabase_client) -> None:
 def _briefing_raccogli_notifiche(
     user_id: str, ristorante_id: Optional[str], supabase_client,
     includi_alert_prezzi: bool = True,
+    alert_prezzi_budget_generoso: bool = False,
 ) -> List[Dict[str, Any]]:
     """Raccoglie le notifiche attive + i segnali LIVE che alimentano il briefing.
 
@@ -5698,6 +5936,12 @@ def _briefing_raccogli_notifiche(
     budget 4s): tutti gli altri segnali live (fatture/righe/dati mancanti) sono
     leggeri. Serve al briefing ISTANTANEO del fast-path 2, che cosi' resta
     coerente (mai un falso "tutto in ordine") senza pagare i 4s dell'alert prezzi.
+
+    `alert_prezzi_budget_generoso=True` usa _ALERT_PREZZI_TIMEOUT_ASYNC_SEC (25s)
+    invece dei 4s: da passare SOLO dal path async (_briefing_rigenera_async), dove
+    nessuno aspetta la risposta. Cosi' su clienti grossi (SUSHILAND) l'alert non
+    viene piu' saltato in silenzio: la Home resta veloce (fast-path senza prezzi)
+    e il load successivo serve lo snapshot con i prezzi calcolati dalla cache.
 
     Toggle-gating (decisione 19/06): se un avviso e' SPENTO nel configuratore, la
     sua funzione NON gira proprio (non si limita a filtrare il risultato a valle).
@@ -5770,7 +6014,11 @@ def _briefing_raccogli_notifiche(
                 calcola_alert_prezzi_impatto, user_id, ristorante_id,
                 supabase_client=supabase_client,
             )
-            ap = _fut.result(timeout=_ALERT_PREZZI_TIMEOUT_SEC)
+            _budget = (
+                _ALERT_PREZZI_TIMEOUT_ASYNC_SEC if alert_prezzi_budget_generoso
+                else _ALERT_PREZZI_TIMEOUT_SEC
+            )
+            ap = _fut.result(timeout=_budget)
             if ap.get("count") and ap.get("top"):
                 top = ap["top"]
                 notifications.append({
@@ -5798,7 +6046,7 @@ def _briefing_raccogli_notifiche(
         except _cf_TimeoutError:
             logger.warning(
                 "home_briefing: alert prezzi oltre %ss per ristorante=%s — saltato (briefing comunque generato)",
-                _ALERT_PREZZI_TIMEOUT_SEC, ristorante_id,
+                _budget, ristorante_id,
             )
         except Exception as exc:
             logger.warning("home_briefing: motore alert prezzi fallito: %s", exc)
@@ -5998,7 +6246,14 @@ def _briefing_rigenera_async(user_id: str, ristorante_id: Optional[str]) -> None
         set_ai_context(ristorante_id=ristorante_id, user_id=user_id)
 
         supabase_client = get_supabase_client()
-        notifications = _briefing_raccogli_notifiche(user_id, ristorante_id, supabase_client)
+        # Path async: nessuno aspetta -> l'alert prezzi puo' usare il budget
+        # generoso (25s) senza rischiare di essere saltato in silenzio sui
+        # clienti grossi. Il risultato entra nello snapshot e al load successivo
+        # e' istantaneo dalla cache.
+        notifications = _briefing_raccogli_notifiche(
+            user_id, ristorante_id, supabase_client,
+            alert_prezzi_budget_generoso=True,
+        )
         _, topics_disabled = _briefing_nome_referente(None, ristorante_id, supabase_client)
         generate_and_save_briefing(
             user_id, ristorante_id, notifications, supabase_client,

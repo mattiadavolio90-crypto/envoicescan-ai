@@ -4,38 +4,47 @@ from services.tag_suggestion_service import (
     _build_extend_tag_suggestions,
     _build_new_tag_suggestions,
     _get_product_root,
+    _get_product_token,
 )
 
 
 # ── _get_product_root ───────────────────────────────────────────────────────
 
 def test_root_primo_token_significativo():
-    assert _get_product_root("SALMONE NORVEGESE") == "SALMONE"
+    # La radice è la forma canonica singolare (stemmata): SALMONE→SALMON
+    assert _get_product_root("SALMONE NORVEGESE") == "SALMON"
 
 
-def test_root_salta_stopword_iniziale():
-    # "DI" è stopword, "POLLO" è la radice
-    assert _get_product_root("DI POLLO INTERO") == "POLLO"
+def test_root_singolare_e_plurale_stessa_radice():
+    # Cuore della fix: "SALMONI" (plurale del fornitore) e "SALMONE" (singolare
+    # del cliente) devono condividere la stessa radice per agganciarsi.
+    assert _get_product_root("SALMONI 5/6 FRESCHI") == _get_product_root("SALMONE 5-6")
 
 
-def test_root_salta_token_con_cifre():
-    # "1LT" ha cifre → escluso, "ACQUA" è la radice
-    assert _get_product_root("ACQUA 1LT NATURALE") == "ACQUA"
+def test_token_salta_stopword_iniziale():
+    # "DI" è stopword, "POLLO" è il token scelto (grezzo, non stemmato)
+    assert _get_product_token("DI POLLO INTERO") == "POLLO"
 
 
-def test_root_salta_token_corti():
-    # "EVO" è 3 chars → escluso, "OLIO" è la radice
-    assert _get_product_root("OLIO EVO") == "OLIO"
+def test_token_salta_token_con_cifre():
+    # "1LT" ha cifre → escluso, "ACQUA" è il token scelto
+    assert _get_product_token("ACQUA 1LT NATURALE") == "ACQUA"
 
 
-def test_root_none_se_solo_stopwords_e_cifre():
+def test_token_salta_token_corti():
+    # "EVO" è 3 chars → escluso, "OLIO" è il token scelto
+    assert _get_product_token("OLIO EVO") == "OLIO"
+
+
+def test_token_none_se_solo_stopwords_e_cifre():
     # nessun token valido
+    assert _get_product_token("1LT 500ML KG") is None
     assert _get_product_root("1LT 500ML KG") is None
 
 
-def test_root_token_con_cifre_esclusi():
-    # "33CL" ha cifre, "BIRRA" è la radice
-    assert _get_product_root("BIRRA 33CL") == "BIRRA"
+def test_token_con_cifre_esclusi():
+    # "33CL" ha cifre, "BIRRA" è il token scelto
+    assert _get_product_token("BIRRA 33CL") == "BIRRA"
 
 
 # ── _build_new_tag_suggestions ──────────────────────────────────────────────
@@ -53,9 +62,10 @@ def test_new_tag_suggerito_per_radice_comune():
     assert len(out) == 1
     s = out[0]
     assert s["suggestion_type"] == "new_tag"
-    assert s["cluster_key"] == "new_tag::SALMONE"
+    assert s["cluster_key"] == "new_tag::SALMON"
     assert s["matched_products_count"] == 3
     assert s["matched_rows_count"] == 12
+    # Il nome mostrato resta la forma reale leggibile, non la radice stemmata
     assert s["suggested_tag_name"] == "Salmone"
 
 
@@ -113,6 +123,38 @@ def test_extend_tag_radice_corrisponde():
     assert s["target_tag_id"] == 10
     assert s["matched_products_count"] == 1
     assert s["confidence_score"] == 95.0
+
+
+def test_extend_tag_plurale_aggancia_singolare():
+    """Caso reale LAND: tag con 'SALMONE', nuovo prodotto 'SALMONI' → suggerito.
+
+    Regressione: prima il match era esatto e il plurale del fornitore non
+    agganciava mai il singolare taggato dal cliente.
+    """
+    tags = [{"id": 19, "nome": "Salmone Sushi"}]
+    tag_assoc_keys = {19: ["SALMONE 5-6", "SALMONE 5-6 ADC TOP QUALITY"]}
+    untagged_pool = {
+        "SALMONI 5/6 FRESCHI SJOR ACQUACUL SALMO SALAR": {
+            "descrizione": "Salmoni 5/6 Freschi Sjor",
+            "descrizione_key": "SALMONI 5/6 FRESCHI SJOR ACQUACUL SALMO SALAR",
+            "occorrenze": 6, "fornitori_count": 1, "ultima_data": "2026-06-24",
+        },
+    }
+    out = _build_extend_tag_suggestions(tags, tag_assoc_keys, untagged_pool, min_occurrenze=1, window_days=90)
+    assert len(out) == 1
+    assert out[0]["target_tag_id"] == 19
+
+
+def test_extend_tag_una_sola_occorrenza_suggerito_con_soglia_1():
+    """Con MIN_OCCORRENZE_EXTEND=1 anche un prodotto visto una volta è proposto."""
+    tags = [{"id": 10, "nome": "Salmone"}]
+    tag_assoc_keys = {10: ["SALMONE NORVEGESE"]}
+    untagged_pool = {
+        "SALMONE PREAFFETTATO": {"descrizione": "Salmone Preaffettato", "descrizione_key": "SALMONE PREAFFETTATO", "occorrenze": 1, "fornitori_count": 1, "ultima_data": "2026-06-22"},
+    }
+    out = _build_extend_tag_suggestions(tags, tag_assoc_keys, untagged_pool, min_occurrenze=1, window_days=90)
+    assert len(out) == 1
+    assert out[0]["target_tag_id"] == 10
 
 
 def test_extend_tag_radice_diversa_non_suggerito():

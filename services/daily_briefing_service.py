@@ -47,7 +47,7 @@ logger = get_logger('daily_briefing')
 #  10 -> 21/07: SAKE distinto bere(DISTILLATI)/cucina(SCATOLAME); "PESCE <animale
 #               di terra>" non e' piu' PESCE; "FILTRO OLIO" officina -> MANUTENZIONE
 #               (cert. SUSHILAND Vimodrone/San Giuliano)
-_BRIEFING_CODE_VERSION = 10
+_BRIEFING_CODE_VERSION = 12
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -159,6 +159,13 @@ def _euro_it(valore: float) -> str:
     return f"{int(round(valore)):,}".replace(",", ".")
 
 
+def _euro_it_cent(valore: float) -> str:
+    """Formatta un importo con 2 decimali in stile italiano: 27.5 -> '27,50'.
+    Per importi dove i centesimi contano (es. scontrino medio)."""
+    s = f"{valore:,.2f}"  # '1,234.50'
+    return s.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
 def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
     """Bullet deterministico dell'apertura positiva (MOL in crescita o incasso ieri).
 
@@ -188,15 +195,63 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
         )
     if tipo == 'incasso_ieri':
         incasso = _euro_it(float(payload.get('incasso') or 0))
-        base = f"\U0001F4B0 Ieri sono entrati € {incasso} di incasso."
+        giorno = str(payload.get('giorno_settimana') or '').strip()
+        if giorno:
+            base = f"\U0001F4B0 Ieri ({giorno}) sono entrati € {incasso} di incasso"
+        else:
+            base = f"\U0001F4B0 Ieri sono entrati € {incasso} di incasso"
+        verso = str(payload.get('cfr_verso') or '')
+        media = payload.get('cfr_media')
+        if verso and media is not None:
+            media_it = _euro_it(float(media))
+            if verso == 'in_linea':
+                base += f", in linea con la media {('dei ' + giorno) if giorno else 'del giorno'} (~€ {media_it})"
+            else:
+                dp = payload.get('cfr_delta_pct')
+                dir_txt = "sopra" if verso == 'sopra' else "sotto"
+                base += f", {dp}% {dir_txt} la media {('dei ' + giorno) if giorno else 'del giorno'} (~€ {media_it})"
+        base += "."
+        coperti = payload.get('coperti')
         sm = payload.get('scontrino_medio')
-        if sm:
-            su = bool(payload.get('scontrino_su'))
+        if coperti and sm:
+            base += f" {int(coperti)} coperti, scontrino medio € {_euro_it_cent(float(sm))}"
             dp = payload.get('scontrino_delta_pct')
-            verso = "sopra" if su else "sotto"
-            base += f" Scontrino medio € {_euro_it(float(sm))}, {dp}% {verso} la media del mese."
+            if dp is not None:
+                su = bool(payload.get('scontrino_su'))
+                base += f" ({dp}% {'sopra' if su else 'sotto'} la media del mese)"
+            base += "."
         return base
+    if tipo == 'fatture_arrivate':
+        return _fatture_arrivate_frase(payload)
     return ""
+
+
+def _fatture_arrivate_frase(payload: Dict[str, Any]) -> str:
+    """Accenno alle fatture comparse ieri (apertura positiva per le sedi SDI che
+    non inseriscono l'incasso, es. OFFSIDE). Un paio di numeri (quante + importo)
+    e, se ci sono, le righe da controllare — che rimandano alla card sotto.
+
+    ANTI-RIDONDANZA (piano 22/07, Strada A): OGGI non esiste una card "fatture
+    ricevute via SDI" in Home, quindi l'accenno puo' portare gli importi. Se un
+    giorno nasce quella card (Strada B), qui si toglie l'importo e si rimanda alla
+    card ("sono arrivate fatture nuove, le trovi qui sotto"), come gia' fa
+    price_alert col suo dettaglio: un solo posto possiede i numeri, il briefing
+    accenna. Cambia solo questo template, non la logica.
+    """
+    n = int(payload.get('n_fatture') or 0)
+    importo = _euro_it(float(payload.get('importo') or 0))
+    da_contr = int(payload.get('righe_da_controllare') or 0)
+    if n <= 0:
+        return ""
+    if n == 1:
+        base = f"\U0001F4E5 Ieri è arrivata una fattura per € {importo}, già registrata"
+    else:
+        base = f"\U0001F4E5 Ieri sono arrivate {n} fatture per € {importo}, già registrate"
+    if da_contr == 1:
+        base += "; una riga è da controllare, la trovi qui sotto"
+    elif da_contr > 1:
+        base += f"; {da_contr} righe sono da controllare, le trovi qui sotto"
+    return base + "."
 
 
 def _rientro_bullet(payload: Dict[str, Any]) -> str:
@@ -700,14 +755,41 @@ def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
         )
     if tipo == 'incasso_ieri':
         incasso = _euro_it(float(payload.get('incasso') or 0))
-        base = f"Ieri sono entrati € {incasso} di incasso."
+        giorno = str(payload.get('giorno_settimana') or '').strip()
+        # Apertura: "Ieri (martedì) sono entrati € X". Il giorno aiuta a leggere il
+        # confronto ("sopra la media dei martedì") ed è un dato, non un confronto.
+        if giorno:
+            base = f"Ieri ({giorno}) sono entrati € {incasso} di incasso"
+        else:
+            base = f"Ieri sono entrati € {incasso} di incasso"
+
+        # Confronto con la media dello stesso giorno-settimana (se disponibile).
+        verso = str(payload.get('cfr_verso') or '')
+        media = payload.get('cfr_media')
+        if verso and media is not None:
+            media_it = _euro_it(float(media))
+            gg = f"i {giorno}" if giorno else "gli altri giorni uguali"
+            if verso == 'in_linea':
+                base += f", in linea con {gg} (media ~€ {media_it})"
+            else:
+                dp = payload.get('cfr_delta_pct')
+                dir_txt = "sopra" if verso == 'sopra' else "sotto"
+                base += f", {dp}% {dir_txt} la media {('dei ' + giorno) if giorno else 'del giorno'} (~€ {media_it})"
+        base += "."
+
+        # Coperti + scontrino medio, se il dato esiste (contesto).
+        coperti = payload.get('coperti')
         sm = payload.get('scontrino_medio')
-        if sm:
-            su = bool(payload.get('scontrino_su'))
+        if coperti and sm:
+            frase_cop = f" {int(coperti)} coperti, scontrino medio € {_euro_it_cent(float(sm))}"
             dp = payload.get('scontrino_delta_pct')
-            verso = "sopra" if su else "sotto"
-            base += f" Lo scontrino medio è stato € {_euro_it(float(sm))}, {dp}% {verso} la media del mese."
+            if dp is not None:
+                su = bool(payload.get('scontrino_su'))
+                frase_cop += f" ({dp}% {'sopra' if su else 'sotto'} la media del mese)"
+            base += frase_cop + "."
         return base
+    if tipo == 'fatture_arrivate':
+        return _fatture_arrivate_frase(payload)
     return ""
 
 
@@ -810,9 +892,15 @@ _NARRATION_SYSTEM_PROMPT = (
     "'che notizia'. Un margine in crescita si riferisce con un fatto neutro "
     "(es. 'A maggio il margine e' stato di X, +Y% su aprile'), senza esclamazioni. "
     "3-ter) Se la PRIMA voce e' una buona notizia (margine in crescita, perdita "
-    "che si riduce, incasso — emoji 🔥 💪 o 💰), riportala per prima con tono "
-    "FATTUALE, poi passa alle cose da sistemare. Non confrontare ne' commentare "
-    "l'incasso oltre quello che ti viene detto. "
+    "che si riduce, incasso, fatture arrivate — emoji 🔥 💪 💰 o 📥), riportala per "
+    "prima con tono FATTUALE, poi passa alle cose da sistemare. Non INVENTARE "
+    "confronti sull'incasso: ma se il bullet ti fornisce gia' un confronto (es. "
+    "giorno della settimana, media dei martedi', coperti, scontrino medio), "
+    "riportalo cosi' com'e' — e' un dato calcolato, NON tagliarlo. Non aggiungerne "
+    "di tuoi. Per l'apertura 'fatture arrivate' (📥): riporta quante fatture e "
+    "l'importo cosi' come dati, e se il bullet dice che ci sono righe da "
+    "controllare rimanda alla card sotto SENZA ripetere quante — quel dettaglio "
+    "vive nelle card, come per l'alert prezzi. "
     "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋), apri con un saluto "
     "breve e pacato, senza enfasi. Se include un'offerta di aiuto, riportala UNA "
     "volta sola, gentile e senza insistere: mai una pressione ne' un rimprovero. "

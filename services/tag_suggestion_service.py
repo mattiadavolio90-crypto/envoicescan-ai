@@ -20,10 +20,10 @@ from services.notification_inbox_service import build_notification_record, upser
 
 logger = get_logger('tag_suggestion_service')
 
-WINDOW_DAYS_DEFAULT = 30
+WINDOW_DAYS_DEFAULT = 90   # finestra ampia: molti clienti caricano le fatture in ritardo
 MIN_PRODUCTS_DEFAULT = 3   # new_tag: minimo prodotti distinti con stessa radice
 MIN_ROWS_DEFAULT = 5       # new_tag: minimo occorrenze totali
-MIN_OCCORRENZE_EXTEND = 2  # extend_tag: il prodotto deve essere stato acquistato ≥ N volte
+MIN_OCCORRENZE_EXTEND = 1  # extend_tag: il tag esiste già, basta 1 acquisto per proporre l'aggiunta
 MAX_POOL_ROWS = 12000
 MAX_SUGGESTIONS_PER_TYPE = 20
 
@@ -47,11 +47,30 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _get_product_root(descrizione_key: str) -> Optional[str]:
-    """Prima parola significativa della descrizione (radice = nome del prodotto).
+def _stem_root(token: str) -> str:
+    """Riduce un token alla radice canonica invariante per genere/numero.
 
-    Criteri: lunghezza ≥ 4, non in STOPWORDS, nessuna cifra nel token.
-    Restituisce il primo token che soddisfa tutti i criteri, None se nessuno.
+    Serve a far combaciare le flessioni della stessa parola, così che "SALMONI"
+    (plurale del fornitore) agganci un tag che contiene "SALMONE" (singolare del
+    cliente). Rimuove la vocale flessiva finale italiana (-O/-I maschile,
+    -A/-E femminile) in modo uniforme, così che tutte le forme convergano:
+    SALMONE/SALMONI→SALMON, TONNO/TONNI→TONN, PATATA/PATATE→PATAT.
+
+    Conservativo: lascia intatte le radici troppo corte (< 4 lettere residue),
+    per non fondere parole brevi e distinte.
+    """
+    t = token
+    if len(t) >= 5 and t[-1] in 'OIAE':
+        t = t[:-1]
+    return t
+
+
+def _get_product_token(descrizione_key: str) -> Optional[str]:
+    """Primo token significativo grezzo (non stemmato) della descrizione.
+
+    Criteri: lunghezza ≥ 4, non in STOPWORDS, nessuna cifra. È la parola reale
+    così come scritta (es. "SALMONE" o "SALMONI"): utile per dare al tag un nome
+    leggibile, mentre il raggruppamento avviene sulla radice canonica.
     """
     for token in str(descrizione_key or '').split():
         token = token.strip()
@@ -62,6 +81,55 @@ def _get_product_root(descrizione_key: str) -> Optional[str]:
     return None
 
 
+def _get_product_root(descrizione_key: str) -> Optional[str]:
+    """Radice canonica del prodotto: primo token significativo, forma singolare.
+
+    Combina :func:`_get_product_token` con :func:`_stem_root` così che singolare
+    e plurale ("SALMONE"/"SALMONI") condividano la stessa radice e combacino.
+    """
+    token = _get_product_token(descrizione_key)
+    return _stem_root(token) if token else None
+
+
+def _pick_display_token(
+    keys: List[str],
+    pool: Dict[str, Dict[str, Any]],
+) -> Optional[str]:
+    """Token grezzo più rappresentativo del gruppo, per nominare il tag.
+
+    Fra le varianti (es. "SALMONE" vs "SALMONI") sceglie quella con più
+    occorrenze totali, così il nome proposto riflette la forma reale dominante.
+    """
+    weight: Dict[str, int] = defaultdict(int)
+    for key in keys:
+        token = _get_product_token(key)
+        if token:
+            weight[token] += int(pool.get(key, {}).get('occorrenze', 0)) or 1
+    if not weight:
+        return None
+    return max(weight.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+
+def _latest_invoice_date(
+    user_id: str,
+    ristorante_id: str,
+    supabase_client=None,
+) -> Optional[str]:
+    """Data dell'ultima fattura caricata per la sede (ISO date), None se assente."""
+    sb = supabase_client or get_supabase_client()
+    rows = (
+        sb.table('fatture')
+        .select('data_documento')
+        .eq('user_id', user_id)
+        .eq('ristorante_id', ristorante_id)
+        .is_('deleted_at', 'null')
+        .order('data_documento', desc=True)
+        .limit(1)
+        .execute().data or []
+    )
+    return rows[0].get('data_documento') if rows else None
+
+
 def _fetch_recent_rows(
     user_id: str,
     ristorante_id: str,
@@ -69,7 +137,16 @@ def _fetch_recent_rows(
     supabase_client=None,
 ) -> List[Dict[str, Any]]:
     sb = supabase_client or get_supabase_client()
-    since_iso = (_utcnow() - timedelta(days=max(1, int(window_days)))).date().isoformat()
+
+    # La finestra si àncora all'ultima fattura caricata, non a "oggi": molti
+    # clienti caricano le fatture con settimane di ritardo e altrimenti i
+    # prodotti nuovi uscirebbero dalla finestra prima di essere mai proposti.
+    anchor_iso = _latest_invoice_date(user_id, ristorante_id, supabase_client=sb)
+    if anchor_iso:
+        anchor_date = datetime.fromisoformat(str(anchor_iso)).date()
+    else:
+        anchor_date = _utcnow().date()
+    since_iso = (anchor_date - timedelta(days=max(1, int(window_days)))).isoformat()
 
     rows = (
         sb.table('fatture')
@@ -198,12 +275,13 @@ def _build_new_tag_suggestions(
             for k in uniq_keys
         ]
 
+        display_name = _pick_display_token(uniq_keys, untagged_pool) or root
         confidence = min(100.0, 70.0 + len(uniq_keys) * 3.0)
         suggestions.append(
             {
                 'suggestion_type': 'new_tag',
                 'status': 'pending',
-                'suggested_tag_name': root.title(),
+                'suggested_tag_name': display_name.title(),
                 'target_tag_id': None,
                 'cluster_key': f'new_tag::{root}',
                 'confidence_score': round(confidence, 2),

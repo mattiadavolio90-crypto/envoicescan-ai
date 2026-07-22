@@ -40,9 +40,11 @@ export type AssistantConfig = {
   // Soglia % alert prezzi: da qui si imposta quando scatta l'avviso "Alert prezzi".
   // In pagina Prezzi resta solo come filtro di visualizzazione.
   price_alert_threshold: number;
-  // Se true, gli avvisi prezzi si limitano ai prodotti preferiti (stella in pagina
-  // Prezzi) + tag. Se non hai preferiti, ricevi solo gli avvisi sui tag.
-  alert_prezzi_solo_preferiti: boolean;
+  // DEPRECATO (22/07): "solo preferiti + tag" e' ora il comportamento fisso per
+  // tutti (deciso lato backend, price_impact_service._leggi_solo_preferiti). Il
+  // toggle nel configuratore e' stato rimosso; il campo resta nel payload GET solo
+  // per retro-compatibilita' e non e' piu' letto dall'UI.
+  alert_prezzi_solo_preferiti?: boolean;
   // Giorni di chiusura a settimana (0-6): tolleranza dell'avviso "ricavi automatici
   // assenti". 0 = sempre aperto -> avviso dopo 1 giorno senza ricavi.
   giorni_chiusura_settimanali: number;

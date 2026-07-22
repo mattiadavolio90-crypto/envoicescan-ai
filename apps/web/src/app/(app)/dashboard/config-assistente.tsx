@@ -46,7 +46,6 @@ export function ConfigAssistente({
   // Soglia alert prezzi: qui e' l'unico posto dove si IMPOSTA (in pagina Prezzi e'
   // solo un filtro di visualizzazione). Stringa per gestire input parziali ("5,").
   const [soglia, setSoglia] = useState(String(config.price_alert_threshold ?? 5));
-  const [soloPreferiti, setSoloPreferiti] = useState(config.alert_prezzi_solo_preferiti ?? false);
   const [giorniChiusura, setGiorniChiusura] = useState(config.giorni_chiusura_settimanali ?? 0);
   const [saving, setSaving] = useState(false);
 
@@ -74,7 +73,6 @@ export function ConfigAssistente({
           topics_disabled,
           chat_ai_enabled: chatEnabled,
           price_alert_threshold: sogliaNum,
-          alert_prezzi_solo_preferiti: soloPreferiti,
           giorni_chiusura_settimanali: giorniChiusura,
         }),
       });
@@ -181,14 +179,8 @@ export function ConfigAssistente({
                         />
                         <span className="text-xs text-muted-foreground">% in su</span>
                       </div>
-                      <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/30 px-2.5 py-2">
-                        <div className="text-xs">
-                          <p className="font-medium">Solo sui prodotti preferiti</p>
-                          <p className="text-muted-foreground">
-                            Avvisami solo sui prodotti con la ⭐ nell&apos;Osservatorio (e sui tuoi tag). Se non hai preferiti, ricevi solo gli avvisi sui tag.
-                          </p>
-                        </div>
-                        <Switch checked={soloPreferiti} onCheckedChange={(v: boolean) => setSoloPreferiti(v)} />
+                      <div className="rounded-md border bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">
+                        Gli avvisi sui prezzi seguono i prodotti che segni con la ⭐ nell&apos;Osservatorio e i tag che crei. Se non hai preferiti né tag, non ricevi avvisi sui prezzi.
                       </div>
                     </div>
                   )}

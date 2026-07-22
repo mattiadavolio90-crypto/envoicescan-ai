@@ -151,3 +151,20 @@ def test_senza_segnali_live_dice_tutto_ok():
     m_gen.assert_not_called()
     bt.add_task.assert_called_once()
     assert bt.add_task.call_args.args[0] is fw._briefing_rigenera_async
+
+
+def test_async_usa_budget_prezzi_generoso():
+    """Fase 2b: il path async (_briefing_rigenera_async) raccoglie le notifiche
+    con alert_prezzi_budget_generoso=True. Cosi' su clienti grossi l'alert prezzi
+    NON viene saltato in silenzio: la Home resta veloce (fast-path senza prezzi) e
+    il load successivo serve lo snapshot con i prezzi dalla cache."""
+    sb = _make_sb()
+    with patch("services.get_supabase_client", return_value=sb), \
+         patch("services.ai_service.set_ai_context"), \
+         patch.object(fw, "_briefing_raccogli_notifiche", return_value=[]) as m_racc, \
+         patch.object(fw, "_briefing_nome_referente", return_value=("Marco", set())), \
+         patch("services.daily_briefing_service.generate_and_save_briefing"):
+        fw._briefing_rigenera_async("u-1", _RID)
+
+    m_racc.assert_called_once()
+    assert m_racc.call_args.kwargs.get("alert_prezzi_budget_generoso") is True
