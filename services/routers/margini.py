@@ -893,6 +893,12 @@ def update_margini_cella(
         }
         sb.table("margini_mensili").insert(new_row).execute()
 
+    # Il briefing Home e la card "I tuoi conti" leggono margini_mensili da cache:
+    # senza invalidazione esplicita il cliente vede l'avviso vecchio finche' scade il TTL.
+    from services.daily_briefing_service import invalidate_today_briefing
+    invalidate_today_briefing(user["id"], ristorante_id, sb)
+    _invalidate_home_kpi_cache(ristorante_id)
+
     return MarginiCellaResponse(anno=body.anno, mese=body.mese, field=body.field, value=val)
 
 
