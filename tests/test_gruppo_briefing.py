@@ -91,10 +91,12 @@ def test_segnali_aperti_non_dice_tutto_ok():
     assert "tutto in ordine" not in out.narrativa.lower()
 
 
-def test_fatture_da_collocare_campo_strutturato_non_narrativa():
-    # Le fatture di gruppo in coda escono dalla narrativa (l'imperativo
-    # "assegnale/dividile" non è azionabile su mobile) e vivono nel campo
-    # strutturato n_fatture_da_collocare: ogni client sceglie wording e CTA.
+def test_fatture_da_collocare_accenno_asciutto_senza_numero():
+    # Decisione 22/07 (piano briefing dinamico, Fase 3 estesa alla catena): il
+    # numero (365) resta SOLO nella card sotto (n_fatture_da_collocare, campo
+    # strutturato); la narrativa può accennare che ce ne sono, senza ripetere
+    # il numero né usare l'imperativo "assegnale/dividile" (non azionabile su
+    # mobile, dove la coda non esiste).
     ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
     salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
     out = _build_briefing(
@@ -102,9 +104,11 @@ def test_fatture_da_collocare_campo_strutturato_non_narrativa():
         n_segnali=0, sev_max="info", salute_pv=salute_pv,
         n_fatture_da_collocare=3,
     )
-    # Conteggio esposto come campo strutturato, NON più incastrato nel testo.
+    # Conteggio esposto come campo strutturato (il numero vero, per la card).
     assert out.n_fatture_da_collocare == 3
-    assert "da collocare" not in out.narrativa.lower()
+    # La narrativa accenna ma NON riporta il numero né l'imperativo.
+    assert "da collocare" in out.narrativa.lower()
+    assert "3 fatture" not in out.narrativa
     assert "assegnale" not in out.narrativa.lower()
     # Con fatture in sospeso non si dice "tutto in ordine".
     assert "tutto in ordine" not in out.narrativa.lower()
@@ -120,6 +124,93 @@ def test_nessuna_fattura_da_collocare_campo_a_zero():
     )
     assert out.n_fatture_da_collocare == 0
     # Senza sospesi né altri problemi, torna il "tutto in ordine".
+    assert "tutto in ordine" in out.narrativa.lower()
+
+
+# ── Fase 3 estesa alla catena (22/07): apertura "fatture arrivate ieri" ──────
+# Caso OFFSIDE: P.IVA condivisa fra sedi → le fatture arrivate ieri restano in
+# coda 'da_assegnare' finché non le smisti (fatture_ieri_da_assegnare=True).
+# Caso SUSHILAND: ogni PV ha la propria P.IVA → le fatture arrivate ieri sono
+# GIÀ sui PV (fatture_ieri_da_assegnare=False), il rimando va al singolo PV.
+# Stessa formula per entrambi: cambia solo il flag, non il codice — e infatti
+# man mano che il routing per indirizzo copre più fornitori OFFSIDE, il peso si
+# sposta da 'in coda' a 'già assegnate' senza toccare questa funzione.
+
+def test_fatture_arrivate_ieri_in_coda_rimanda_alla_card():
+    ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
+    salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
+    out = _build_briefing(
+        "OFFSIDE", ranking, salute_indice=88, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_arrivate_ieri=11, fatture_ieri_da_assegnare=True,
+    )
+    assert "11 fatture" in out.narrativa
+    assert "da assegnare a un locale" in out.narrativa
+    assert "qui sotto" in out.narrativa
+
+
+def test_fatture_arrivate_ieri_gia_sui_pv_rimanda_al_pv():
+    ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
+    salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
+    out = _build_briefing(
+        "SUSHILAND", ranking, salute_indice=88, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_arrivate_ieri=14, fatture_ieri_da_assegnare=False,
+    )
+    assert "14 fatture" in out.narrativa
+    assert "punto vendita" in out.narrativa
+    assert "da assegnare a un locale" not in out.narrativa
+
+
+def test_fatture_arrivate_ieri_singolare():
+    ranking = [_rank("a", "PV A", 30.0)]
+    salute_pv = [_sal("a", "PV A", 90)]
+    out = _build_briefing(
+        "GRUPPO", ranking, salute_indice=90, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_arrivate_ieri=1, fatture_ieri_da_assegnare=True,
+    )
+    assert "è arrivata una fattura" in out.narrativa
+
+
+def test_novita_di_ieri_non_ripete_arretrato_non_ridondante():
+    # Se ieri sono arrivate fatture (novità), NON si ripete anche l'accenno
+    # all'arretrato generico nella stessa narrativa — sono due concetti diversi
+    # (novità vs arretrato) ma il messaggio "da collocare" del blocco arretrato
+    # diventerebbe ridondante col dettaglio già dato dal blocco novità.
+    ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
+    salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
+    out = _build_briefing(
+        "OFFSIDE", ranking, salute_indice=88, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_da_collocare=365, n_fatture_arrivate_ieri=11,
+        fatture_ieri_da_assegnare=True,
+    )
+    assert out.narrativa.count("da collocare") <= 1
+    assert "11 fatture" in out.narrativa
+
+
+def test_senza_novita_ma_con_arretrato_accenna_senza_numero():
+    ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
+    salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
+    out = _build_briefing(
+        "OFFSIDE", ranking, salute_indice=88, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_da_collocare=365, n_fatture_arrivate_ieri=None,
+    )
+    assert "365" not in out.narrativa
+    assert "da collocare" in out.narrativa.lower()
+
+
+def test_senza_novita_senza_arretrato_silenzio_sul_tema_fatture():
+    ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
+    salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
+    out = _build_briefing(
+        "GRUPPO", ranking, salute_indice=88, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        n_fatture_da_collocare=0, n_fatture_arrivate_ieri=None,
+    )
+    assert "fattur" not in out.narrativa.lower()
     assert "tutto in ordine" in out.narrativa.lower()
 
 

@@ -45,6 +45,12 @@ export type GruppoBriefing = {
   // Fatture di gruppo da collocare (a nome società, non attribuite a un locale).
   // Fuori dalla narrativa: desktop ha la coda sotto (azionabile), mobile rimanda al PC.
   n_fatture_da_collocare?: number;
+  // Fatture comparse ieri per il gruppo (apertura positiva, 22/07): somma PV
+  // assegnati + coda da assegnare. null/assente = ieri non è arrivato nulla.
+  n_fatture_arrivate_ieri?: number | null;
+  // true = parte delle fatture di ieri è ancora da assegnare a un locale
+  // (rimanda alla coda sotto); false = erano già tutte sui PV (rimanda al PV).
+  fatture_ieri_da_assegnare?: boolean;
 };
 
 export type GruppoOverview = {

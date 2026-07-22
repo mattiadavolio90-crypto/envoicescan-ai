@@ -105,6 +105,16 @@ class GruppoBriefing(BaseModel):
     # è azionabile; sul mobile la coda non esiste → il testo rimanda al computer.
     # Il conteggio è strutturato così ogni client sceglie il proprio wording.
     n_fatture_da_collocare: int = 0
+    # Fatture COMPARSE ieri per il gruppo (assegnate a un PV + ancora in coda),
+    # come apertura positiva — stesso ruolo di "buona notizia" della Home PV
+    # (_fatture_arrivate_ieri_sdi), qui aggregato: un accenno con un numero, mai
+    # l'importo (quello resta un dettaglio della card/PV). None se ieri non è
+    # arrivato nulla: niente apertura forzata.
+    n_fatture_arrivate_ieri: Optional[int] = None
+    # True se, delle fatture arrivate ieri, una parte resta da assegnare a un
+    # locale (rimanda alla card sotto). False/irrilevante se n_fatture_arrivate_ieri
+    # è None o se erano tutte già assegnate ai PV (rimanda al singolo PV).
+    fatture_ieri_da_assegnare: bool = False
 
 
 class GruppoOverviewResponse(BaseModel):
@@ -284,6 +294,8 @@ def _build_briefing(
     salute_pv: Optional[List["SalutePV"]] = None,
     incompleti_ids: Optional[set] = None,
     n_fatture_da_collocare: int = 0,
+    n_fatture_arrivate_ieri: Optional[int] = None,
+    fatture_ieri_da_assegnare: bool = False,
 ) -> "GruppoBriefing":
     """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
     overview + segnali → coerente per costruzione, tono sobrio.
@@ -307,6 +319,21 @@ def _build_briefing(
 
     completi = [r for r in ranking if _affidabile(r)]
     frasi: List[str] = []
+
+    # Apertura positiva: fatture comparse ieri per il gruppo (accenno, non
+    # elenco — l'importo e il dettaglio restano nella card/PV). Va PRIMA del
+    # resto, come le altre buone notizie del prodotto (stesso ordine della Home
+    # PV: prima cosa e' andata bene, poi cosa c'e' da sistemare).
+    if n_fatture_arrivate_ieri:
+        base = (
+            "Ieri è arrivata una fattura per il gruppo"
+            if n_fatture_arrivate_ieri == 1
+            else f"Ieri sono arrivate {n_fatture_arrivate_ieri} fatture per il gruppo"
+        )
+        if fatture_ieri_da_assegnare:
+            frasi.append(base + ", da assegnare a un locale: le trovi qui sotto.")
+        else:
+            frasi.append(base + ": entra nel punto vendita per il dettaglio.")
 
     if len(completi) >= 2:
         best = completi[0]   # ranking già ordinato per margine% desc
@@ -341,6 +368,13 @@ def _build_briefing(
     # narrativa condivisa (l'imperativo "assegnale/dividile" non è azionabile su
     # mobile, dove la coda non esiste): resta nel campo strutturato
     # n_fatture_da_collocare e ogni client sceglie il wording e il CTA giusti.
+    # ECCEZIONE: se ieri non è arrivato nulla di nuovo ma resta arretrato, un
+    # accenno asciutto SENZA numero (il numero vive solo nella card sotto — non è
+    # ridondante col blocco sopra: qui parliamo di arretrato, non di novità). Se
+    # invece ieri è arrivato qualcosa, quel blocco ha già gestito il rimando: non
+    # ripetiamo qui per non duplicare lo stesso concetto due volte.
+    if not n_fatture_arrivate_ieri and n_fatture_da_collocare:
+        frasi.append("Ci sono fatture di gruppo da collocare: le trovi qui sotto.")
 
     # "Tutto sotto controllo" SOLO se non manca davvero nulla: niente segnali,
     # salute non rossa, nessuna sede incompleta, niente fatture in sospeso. Mai dire
@@ -364,7 +398,75 @@ def _build_briefing(
         narrativa=narrativa,
         severity_max=sev_max,
         n_fatture_da_collocare=n_fatture_da_collocare,
+        n_fatture_arrivate_ieri=n_fatture_arrivate_ieri,
+        fatture_ieri_da_assegnare=fatture_ieri_da_assegnare,
     )
+
+
+def _fatture_arrivate_ieri_gruppo(sb, user_id: str, ids: List[str]) -> Dict[str, int]:
+    """Fatture COMPARSE ieri per il gruppo, sommando le DUE sorgenti possibili:
+
+      A) già assegnate a un PV (tabella `fatture`, per tutte le sedi del gruppo) —
+         il caso normale quando ogni PV ha la propria P.IVA (es. SUSHILAND) o
+         quando il routing per indirizzo ha già smistato la fattura da solo;
+      B) ancora in coda da collocare (`fatture_queue`, status='da_assegnare') —
+         il caso di una P.IVA condivisa fra sedi (es. OFFSIDE), dove l'app non
+         sa ancora a quale locale appartiene la fattura finché non la assegni.
+
+    Nessun doppio conteggio: una fattura o è 'da_assegnare' in coda (non ancora
+    in `fatture`) o è già stata smistata ('done', righe nate in `fatture`) — mai
+    entrambe nello stesso istante. Man mano che il routing per indirizzo copre
+    più fornitori di OFFSIDE, il peso si sposta da B ad A senza cambiare formula
+    (stesso identico calcolo per OFFSIDE-oggi, OFFSIDE-futuro, SUSHILAND).
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from zoneinfo import ZoneInfo
+        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt.now().date()
+    ieri = oggi - _td(days=1)
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        tz = _ZI("Europe/Rome")
+        inizio = _dt.combine(ieri, _dt.min.time(), tzinfo=tz)
+        fine = _dt.combine(ieri + _td(days=1), _dt.min.time(), tzinfo=tz)
+    except Exception:
+        inizio = _dt.combine(ieri, _dt.min.time())
+        fine = _dt.combine(ieri + _td(days=1), _dt.min.time())
+
+    n_assegnate = 0
+    try:
+        resp = (
+            sb.table("fatture")
+            .select("file_origine")
+            .in_("ristorante_id", ids)
+            .is_("deleted_at", "null")
+            .gte("created_at", inizio.isoformat())
+            .lt("created_at", fine.isoformat())
+            .execute()
+        )
+        files = {r.get("file_origine") for r in (resp.data or []) if r.get("file_origine")}
+        n_assegnate = len(files)
+    except Exception as exc:
+        logger.warning("briefing gruppo: lettura fatture assegnate fallita: %s", exc)
+
+    n_in_coda = 0
+    try:
+        resp = (
+            sb.table("fatture_queue")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("status", "da_assegnare")
+            .gte("created_at", inizio.isoformat())
+            .lt("created_at", fine.isoformat())
+            .execute()
+        )
+        n_in_coda = int(resp.count or 0)
+    except Exception as exc:
+        logger.warning("briefing gruppo: lettura coda fallita: %s", exc)
+
+    return {"n_assegnate": n_assegnate, "n_in_coda": n_in_coda}
 
 
 def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:
@@ -734,10 +836,17 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         n_da_collocare = int(cnt.count or 0)
     except Exception:
         n_da_collocare = 0
+    # Fatture comparse ieri per il gruppo (apertura positiva): somma le due
+    # sorgenti possibili (assegnate ai PV + ancora in coda). None se ieri non è
+    # arrivato nulla, per non forzare un'apertura vuota.
+    arrivate_ieri = _fatture_arrivate_ieri_gruppo(sb, user_id, ids)
+    n_arrivate_ieri_tot = arrivate_ieri["n_assegnate"] + arrivate_ieri["n_in_coda"]
     briefing = _build_briefing(
         nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max,
         salute_pv=salute_pv, incompleti_ids=incompleti_ids,
         n_fatture_da_collocare=n_da_collocare,
+        n_fatture_arrivate_ieri=n_arrivate_ieri_tot or None,
+        fatture_ieri_da_assegnare=arrivate_ieri["n_in_coda"] > 0,
     )
 
     return GruppoOverviewResponse(
