@@ -1431,11 +1431,14 @@ class DashboardStats(BaseModel):
 
 # Micro-cache della sede attiva (ultimo_ristorante_id) keyed per token. La Home
 # fa ~6 chiamate worker per load, ognuna passa di qui: senza cache erano 6 SELECT
-# su users per render. TTL 5s: abbastanza per condividere il valore entro un
-# singolo load (chiamate quasi simultanee) senza reintrodurre la stantia' che lo
-# switch sede deve evitare. Invalidata esplicitamente al cambio sede.
+# su users per render. TTL 1s: basta a condividere il valore entro un singolo
+# load (chiamate quasi simultanee) senza reintrodurre la stantia'. Invalidata
+# esplicitamente al cambio sede, MA la cache e' per-processo (WORKER_WEB_CONCURRENCY=4):
+# l'invalidazione tocca solo il processo che ha servito la POST di cambio sede,
+# gli altri 3 possono servire il valore vecchio fino allo scadere del TTL. Un TTL
+# piu' basso (era 5s) accorcia questa finestra multi-processo, non la elimina.
 _SEDE_ATTIVA_CACHE: Dict[str, tuple] = {}
-_SEDE_ATTIVA_TTL = 5.0  # secondi
+_SEDE_ATTIVA_TTL = 1.0  # secondi
 
 
 def _invalidate_sede_attiva_cache(token: Optional[str] = None) -> None:

@@ -150,6 +150,15 @@ export function AppSidebar({
 
   const hasMultiSede = sedi.length > 1;
 
+  // Nome da mostrare in testata: se conosciamo le sedi (multi-sede caricato),
+  // la fonte di verità è lo stato client `sedi` — lo stesso che pilota la
+  // spunta nel menu — non la prop `ristoranteNome` del server, che resta
+  // quella del render iniziale finché il refresh dopo un cambio sede non
+  // completa. Le due fonti potevano disallinearsi (spunta già sulla sede
+  // nuova, testata ancora sulla vecchia) fino al giro server. Fallback alla
+  // prop per i mono-sede (sedi vuoto: nessun fetch multi-sede necessario).
+  const sedeAttivaNome = sedi.find((s) => s.attiva)?.nome ?? ristoranteNome;
+
   // /catena e le pagine operative del PV impostano la modalità in modo
   // deterministico; le pagine condivise (Impostazioni, Servizi) la EREDITANO dal
   // cookie. Così resto in catena finché non scendo esplicitamente in un PV.
@@ -190,6 +199,27 @@ export function AppSidebar({
       // Sposta subito il ✓ sulla nuova sede senza aspettare il refetch: il selettore
       // dava un feedback ritardato e sembrava "tornare sempre alla prima sede".
       setSedi((prev) => prev.map((s) => ({ ...s, attiva: s.id === ristoranteId })));
+
+      // Il worker gira su più processi (WORKER_WEB_CONCURRENCY); l'invalidazione
+      // della cache sede lato server tocca solo il processo che ha servito questa
+      // POST. Un refresh immediato può atterrare su un altro processo e vedere
+      // ancora la sede vecchia (testata/dati non aggiornati, serviva un reload
+      // manuale). Verifichiamo con /api/account/sedi (no-store, sempre fresco dal
+      // DB) che il cambio sia visibile prima di annunciare successo e ricaricare
+      // il resto della pagina.
+      let confermato = false;
+      for (let tentativo = 0; tentativo < 5 && !confermato; tentativo++) {
+        await new Promise((r) => setTimeout(r, 300));
+        try {
+          const check = await fetch("/api/account/sedi", { cache: "no-store" });
+          const data = check.ok ? await check.json() : null;
+          const attiva = (data?.sedi as Sede[] | undefined)?.find((s) => s.attiva);
+          if (attiva?.id === ristoranteId) confermato = true;
+        } catch {
+          // riprova al prossimo giro
+        }
+      }
+
       // Scegliere una sede dalla catena = SCENDERE in quel PV (vai alla sua Home);
       // cambiare sede mentre sei già in un PV = resta sulla pagina, dati nuovi.
       if (inChain) {
@@ -197,7 +227,15 @@ export function AppSidebar({
       } else {
         router.refresh();
       }
-      toast.success(inChain ? "Apro il punto vendita" : "Sede cambiata");
+
+      if (confermato) {
+        toast.success(inChain ? "Apro il punto vendita" : "Sede cambiata");
+      } else {
+        // Il cambio è comunque avvenuto lato DB (la POST è andata a buon fine):
+        // solo la propagazione alla cache dei processi worker è più lenta del
+        // solito. Non è un errore, ma non mentiamo con un successo immediato.
+        toast.message("Sede in aggiornamento, un attimo…");
+      }
     } catch {
       toast.error("Impossibile cambiare sede");
     } finally {
@@ -341,7 +379,7 @@ export function AppSidebar({
                           ? nomeGruppo
                             ? `Gruppo ${nomeGruppo}`
                             : "Tutti i punti vendita"
-                          : ristoranteNome}
+                          : sedeAttivaNome}
                       </span>
                       <span className="text-xs text-muted-foreground truncate">{userEmail}</span>
                     </div>
