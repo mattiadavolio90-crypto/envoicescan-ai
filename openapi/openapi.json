@@ -16163,7 +16163,7 @@
     "/api/riparto/anteprima-coda": {
       "get": {
         "summary": "Riparto Anteprima Coda",
-        "description": "Anteprima delle righe di una fattura ancora in coda 'da_assegnare' (non ancora\ncollocata su un locale, quindi non presente in `fatture`).\n\nRiusa estrai_dati_da_xml() in SOLA LETTURA passando user_id=None: la funzione fa\nparsing/sconti/note di credito (puro calcolo, nessun I/O) + categorizza_con_memoria\n(memoria/regole/dizionario, NESSUNA chiamata AI) SENZA memoria personalizzata né\nscritture (carica_memoria_completa e flush_pending_local_saves sono entrambe\ncondizionate a user_id essere valorizzato — con None restano no-op). La categoria\nmostrata è quindi una stima (dizionario/regole globali), non la classificazione\ndefinitiva che il documento riceverà una volta collocato su un locale.",
+        "description": "Anteprima delle righe di una fattura ancora in coda 'da_assegnare' (non ancora\ncollocata su un locale, quindi non presente in `fatture`).\n\nFase 4 (23/07): anteprima PERSISTENTE. Al primo accesso parsa l'XML una volta e\nsalva le righe in fatture_queue.anteprima_righe; le aperture successive leggono da\nlì → istantanee, nessun ri-parse a caldo, nessuna contesa sul container singolo\n(era la causa radice dell'intermittenza \"documento non leggibile\"). La cache è di\nsola visualizzazione, derivata dall'XML e rigenerabile: azzerando anteprima_righe\nil prossimo accesso la ricalcola.\n\nRiusa estrai_dati_da_xml() in SOLA LETTURA passando user_id=None: la funzione fa\nparsing/sconti/note di credito (puro calcolo, nessun I/O) + categorizza_con_memoria\n(memoria/regole/dizionario, NESSUNA chiamata AI) SENZA memoria personalizzata né\nscritture (carica_memoria_completa e flush_pending_local_saves sono entrambe\ncondizionate a user_id essere valorizzato — con None restano no-op). La categoria\nmostrata è quindi una stima (dizionario/regole globali), non la classificazione\ndefinitiva che il documento riceverà una volta collocato su un locale.",
         "operationId": "riparto_anteprima_coda_api_riparto_anteprima_coda_get",
         "parameters": [
           {
@@ -19244,6 +19244,22 @@
             "type": "integer",
             "title": "N Fatture Da Collocare",
             "default": 0
+          },
+          "n_fatture_arrivate_ieri": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Fatture Arrivate Ieri"
+          },
+          "fatture_ieri_da_assegnare": {
+            "type": "boolean",
+            "title": "Fatture Ieri Da Assegnare",
+            "default": false
           }
         },
         "type": "object",

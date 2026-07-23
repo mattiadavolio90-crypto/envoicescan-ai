@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin, Split, CheckCircle2, ChevronRight, Eye, Ban } from "lucide-react";
+import { MapPin, Split, CheckCircle2, ChevronRight, Eye, Ban, Wand2, CheckSquare, Square } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RipartisciDialog } from "@/components/fatture/ripartisci-dialog";
+import { RipartisciDialog, type RegolaPreset } from "@/components/fatture/ripartisci-dialog";
 
 type FatturaDaAssegnare = {
   queue_id: number;
@@ -21,7 +21,15 @@ type FatturaDaAssegnare = {
   importo_totale: number | null;
   indirizzo_destinatario: string | null;
   created_at: string | null;
+  // Se il fornitore ha una regola "fai sempre così" salvata, la coda la riceve già
+  // pronta: la fattura si evidenzia e offre la conferma rapida ("Dividi come al solito").
+  regola_fornitore: RegolaPreset | null;
 };
+
+function descriveRegola(r: RegolaPreset, nSedi: number): string {
+  if (r.regola === "equa") return nSedi > 0 ? `parti uguali fra ${nSedi} locali` : "parti uguali";
+  return "percentuali per locale";
+}
 
 type Sede = { id: string; nome: string; indirizzo: string | null; comune: string | null };
 
@@ -75,6 +83,12 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   // era solo occupato e ha tagliato la richiesta per timeout.
   const [esitoAnteprima, setEsitoAnteprima] = useState<"ok" | "illeggibile" | "occupato">("ok");
   const [loadingAnteprima, setLoadingAnteprima] = useState(false);
+  // Selezione multipla: quando il cliente ha molte fatture con la stessa destinazione
+  // (o lo stesso fornitore), le flagga e le smista con un'azione sola. Le assegnazioni
+  // restano indipendenti per queue_id — la barra bulk fa un loop sulle stesse chiamate
+  // delle azioni singole e riporta gli esiti uno per uno (niente "fatto!" globale finto).
+  const [selezione, setSelezione] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     if (!anteprima) return;
@@ -156,9 +170,10 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     });
   }
 
-  async function assegna(queueId: number, ristoranteId: string) {
-    if (inCorso(queueId)) return;
-    segnaBusy(queueId, true);
+  // Nucleo dell'assegnazione: una sola chiamata, ritorna l'esito. Non tocca UI
+  // (toast/refresh) così può essere riusato tale e quale dall'azione singola e dalla
+  // barra bulk, che decidono loro come comunicare l'esito (una riga vs. un riepilogo).
+  async function assegnaCore(queueId: number, ristoranteId: string): Promise<boolean> {
     try {
       const res = await fetch("/api/fatture/da-assegnare", {
         method: "POST",
@@ -168,10 +183,28 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail || data?.error);
       setItems((prev) => prev.filter((i) => i.queue_id !== queueId));
-      toast.success("Fattura assegnata alla sede");
-      router.refresh();
+      setSelezione((prev) => {
+        if (!prev.has(queueId)) return prev;
+        const next = new Set(prev);
+        next.delete(queueId);
+        return next;
+      });
+      return true;
     } catch {
-      toast.error("Impossibile assegnare la fattura");
+      return false;
+    }
+  }
+
+  async function assegna(queueId: number, ristoranteId: string) {
+    if (inCorso(queueId)) return;
+    segnaBusy(queueId, true);
+    try {
+      if (await assegnaCore(queueId, ristoranteId)) {
+        toast.success("Fattura assegnata alla sede");
+        router.refresh();
+      } else {
+        toast.error("Impossibile assegnare la fattura");
+      }
     } finally {
       segnaBusy(queueId, false);
     }
@@ -194,23 +227,89 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     }
     segnaBusy(f.queue_id, true);
     try {
-      const res = await fetch("/api/fatture/scarta-da-coda", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ queue_id: f.queue_id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.detail || data?.error);
-      setItems((prev) => prev.filter((i) => i.queue_id !== f.queue_id));
-      // ok:false = assegnata da un altro click nel frattempo: la riga sparisce
-      // comunque ed è giusto così, non è un errore da mostrare.
-      toast.success("Fattura tolta dalla coda");
-      router.refresh();
-    } catch {
-      toast.error("Impossibile togliere la fattura dalla coda");
+      if (await scartaCore(f.queue_id)) {
+        toast.success("Fattura tolta dalla coda");
+        router.refresh();
+      } else {
+        toast.error("Impossibile togliere la fattura dalla coda");
+      }
     } finally {
       segnaBusy(f.queue_id, false);
     }
+  }
+
+  async function scartaCore(queueId: number): Promise<boolean> {
+    try {
+      const res = await fetch("/api/fatture/scarta-da-coda", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queue_id: queueId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail || data?.error);
+      setItems((prev) => prev.filter((i) => i.queue_id !== queueId));
+      setSelezione((prev) => {
+        if (!prev.has(queueId)) return prev;
+        const next = new Set(prev);
+        next.delete(queueId);
+        return next;
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function toggleSelezione(queueId: number) {
+    setSelezione((prev) => {
+      const next = new Set(prev);
+      if (next.has(queueId)) next.delete(queueId);
+      else next.add(queueId);
+      return next;
+    });
+  }
+
+  // "Seleziona tutte": se sono già tutte selezionate, deseleziona (toggle intuitivo).
+  function toggleTutte() {
+    setSelezione((prev) =>
+      prev.size === items.length ? new Set() : new Set(items.map((i) => i.queue_id)),
+    );
+  }
+
+  // Esegue un'azione (assegna a sede, oppure scarta) su tutte le selezionate, in
+  // sequenza, e riporta l'esito onestamente: quante fatte, quante no. Niente atomicità
+  // finta — se 8 su 10 vanno e 2 no, il cliente lo vede nel messaggio.
+  async function eseguiBulk(azione: (queueId: number) => Promise<boolean>, verbo: string) {
+    const ids = items.filter((i) => selezione.has(i.queue_id)).map((i) => i.queue_id);
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    let ok = 0;
+    let ko = 0;
+    for (const id of ids) {
+      // eslint-disable-next-line no-await-in-loop
+      if (await azione(id)) ok += 1;
+      else ko += 1;
+    }
+    setBulkBusy(false);
+    if (ko === 0) toast.success(`${ok} ${ok === 1 ? "fattura" : "fatture"} ${verbo}.`);
+    else if (ok === 0) toast.error(`Nessuna fattura ${verbo}: ${ko} non riuscite.`);
+    else toast.warning(`${ok} ${verbo}, ${ko} non riuscite. Riprova su quelle rimaste.`);
+    if (ok > 0) router.refresh();
+  }
+
+  async function bulkScarta() {
+    const n = items.filter((i) => selezione.has(i.queue_id)).length;
+    if (n === 0 || bulkBusy) return;
+    if (
+      !confirm(
+        `Togliere dalla coda ${n} ${n === 1 ? "fattura" : "fatture"}?\n\n` +
+          `Non verranno caricate in nessun locale e non compariranno nei costi. ` +
+          `Se in futuro ti servono, ricaricale dai file originali.`,
+      )
+    ) {
+      return;
+    }
+    await eseguiBulk(scartaCore, "tolte dalla coda");
   }
 
   if (contesto !== "catena" || (loaded && sedi.length < 2)) return null;
@@ -218,6 +317,8 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
 
   const totale = items.reduce((a, f) => a + (f.importo_totale ?? 0), 0);
   const vuoto = items.length === 0;
+  const nSelezionate = items.reduce((n, f) => (selezione.has(f.queue_id) ? n + 1 : n), 0);
+  const tutteSelezionate = items.length > 0 && nSelezionate === items.length;
 
   return (
     <>
@@ -262,7 +363,13 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
       </button>
 
       {/* Finestra con la lista completa e le azioni. */}
-      <Dialog open={finestraOpen} onOpenChange={setFinestraOpen}>
+      <Dialog
+        open={finestraOpen}
+        onOpenChange={(v) => {
+          setFinestraOpen(v);
+          if (!v) setSelezione(new Set());
+        }}
+      >
         <DialogContent className="max-h-[90vh] w-[min(96vw,48rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
           <DialogHeader className="border-b px-5 py-4">
             <DialogTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
@@ -286,6 +393,55 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
               Scegli la sede se è di un locale, oppure “Dividi tra i locali” se è un costo comune.
             </p>
 
+            {/* Riga selezione: "seleziona tutte" + barra azioni bulk quando c'è almeno
+                una fattura flaggata. Le azioni bulk valgono per la destinazione comune
+                (stessa sede) o per lo scarto; il riparto resta per-fattura (ogni costo
+                comune ha le sue quote), quindi non entra nel bulk. */}
+            {items.length > 0 && (
+              <div className="mb-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={toggleTutte}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {tutteSelezionate ? (
+                    <CheckSquare className="size-3.5 text-primary" />
+                  ) : (
+                    <Square className="size-3.5" />
+                  )}
+                  {tutteSelezionate ? "Deseleziona tutte" : "Seleziona tutte"}
+                </button>
+
+                {nSelezionate > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                    <span className="text-xs font-semibold text-primary">
+                      {nSelezionate} {nSelezionate === 1 ? "selezionata" : "selezionate"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">→ assegna a:</span>
+                    {sedi.map((s) => (
+                      <button
+                        key={s.id}
+                        disabled={bulkBusy}
+                        onClick={() => eseguiBulk((id) => assegnaCore(id, s.id), `assegnate a ${s.nome}`)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-sky-500/10 hover:border-sky-500 disabled:opacity-50"
+                      >
+                        <MapPin className="size-3.5" />
+                        {s.nome}
+                      </button>
+                    ))}
+                    <button
+                      disabled={bulkBusy}
+                      onClick={bulkScarta}
+                      className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                    >
+                      <Ban className="size-3.5" />
+                      Non sono di nessun locale
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {items.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
                 Nessuna fattura da collocare.
@@ -293,8 +449,27 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
             ) : (
               <ul className="space-y-3">
                 {items.map((f) => (
-                  <li key={f.queue_id} className="rounded-xl border border-border bg-card p-3 space-y-2">
+                  <li
+                    key={f.queue_id}
+                    className={
+                      selezione.has(f.queue_id)
+                        ? "rounded-xl border border-primary/50 bg-primary/5 p-3 space-y-2"
+                        : "rounded-xl border border-border bg-card p-3 space-y-2"
+                    }
+                  >
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelezione(f.queue_id)}
+                        aria-label={selezione.has(f.queue_id) ? "Deseleziona fattura" : "Seleziona fattura"}
+                        className="self-center text-muted-foreground transition-colors hover:text-primary"
+                      >
+                        {selezione.has(f.queue_id) ? (
+                          <CheckSquare className="size-4 text-primary" />
+                        ) : (
+                          <Square className="size-4" />
+                        )}
+                      </button>
                       {/* Il nome del fornitore è ciò che fa riconoscere la fattura:
                           la P.IVA da sola non dice niente a chi deve decidere il locale. */}
                       <span className="font-medium">
@@ -315,6 +490,16 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                       </div>
                     )}
 
+                    {/* Regola memorizzata per questo fornitore: la fattura è già pronta
+                        da dividere come le volte scorse. Un click apre il dialog
+                        pre-compilato (il cliente conferma sempre, mai auto-applicazione). */}
+                    {f.regola_fornitore && (
+                      <div className="rounded-md bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
+                        Criterio memorizzato per questo fornitore:{" "}
+                        <span className="font-medium">{descriveRegola(f.regola_fornitore, sedi.length)}</span>.
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2 pt-1">
                       <button
                         onClick={() => setAnteprima(f)}
@@ -323,6 +508,16 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                         <Eye className="size-3.5" />
                         Anteprima
                       </button>
+                      {f.regola_fornitore && (
+                        <button
+                          disabled={inCorso(f.queue_id)}
+                          onClick={() => setRipartisci(f)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                        >
+                          <Wand2 className="size-3.5" />
+                          Dividi come al solito
+                        </button>
+                      )}
                       {sedi.map((s) => (
                         <button
                           key={s.id}
@@ -465,7 +660,8 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
         open={ripartisci !== null}
         onOpenChange={(v) => !v && setRipartisci(null)}
         queueId={ripartisci?.queue_id}
-        fornitore={ripartisci?.fornitore_nome ?? ripartisci?.fornitore ?? undefined}
+        fornitore={ripartisci?.fornitore ?? undefined}
+        regolaPreset={ripartisci?.regola_fornitore ?? null}
         descrizioneDefault={
           ripartisci?.fornitore_nome
             ? `Costo comune ${ripartisci.fornitore_nome}`

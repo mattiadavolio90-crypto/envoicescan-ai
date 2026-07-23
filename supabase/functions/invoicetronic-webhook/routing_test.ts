@@ -16,6 +16,7 @@ Deno.env.set('WEBHOOK_TEST_MODE', '1')
 
 const {
   extractIndirizzoDestinatario,
+  extractIndirizzoCandidati,
   normalizeIndirizzo,
   indirizzoSimilarity,
 } = await import('./index.ts')
@@ -122,4 +123,95 @@ Deno.test('extractIndirizzoDestinatario: prende la Sede del CessionarioCommitten
 
 Deno.test('extractIndirizzoDestinatario: XML senza CessionarioCommittente → null', () => {
   assertEquals(extractIndirizzoDestinatario('<x>niente</x>'), null)
+})
+
+// ─── extractIndirizzoCandidati: fallback P2 (indirizzo fuori da <Sede>) ────────
+// Caso OFFSIDE reale: la <Sede> del CessionarioCommittente riporta la sede LEGALE
+// generica (uguale per tutte le sedi), mentre il locale reale sta in
+// AltriDatiGestionali/RiferimentoTesto, in Causale, o dentro le Descrizioni riga.
+
+const XML_SEDE_LEGALE_GENERICA = `<?xml version="1.0"?>
+<p:FatturaElettronica>
+  <FatturaElettronicaHeader>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>Viale Fulvio Testi</Indirizzo>
+        <NumeroCivico>68</NumeroCivico>
+        <CAP>20092</CAP>
+        <Comune>Cinisello Balsamo</Comune>
+      </Sede>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <Causale>Consegna presso Via Settembrini 15 Milano</Causale>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <Descrizione>Materie prime per punto vendita Losanna</Descrizione>
+        <AltriDatiGestionali>
+          <TipoDato>CONSEGNA</TipoDato>
+          <RiferimentoTesto>Via Losanna 8 20144 Milano</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+    </DatiBeniServizi>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>`
+
+Deno.test('extractIndirizzoCandidati: la <Sede> è sempre il primo candidato', () => {
+  const cands = extractIndirizzoCandidati(XML_SEDE_LEGALE_GENERICA)
+  assert(cands.length > 0)
+  assert(cands[0].includes('Fulvio Testi'),
+    `il primo candidato deve essere la Sede, ottenuto: ${cands[0]}`)
+})
+
+Deno.test('extractIndirizzoCandidati: raccoglie RiferimentoTesto, Causale e Descrizione', () => {
+  const cands = extractIndirizzoCandidati(XML_SEDE_LEGALE_GENERICA)
+  const joined = cands.join(' | ')
+  assert(joined.includes('Via Losanna 8 20144 Milano'), `manca RiferimentoTesto: ${joined}`)
+  assert(joined.includes('Via Settembrini 15 Milano'), `manca Causale: ${joined}`)
+  assert(joined.includes('Losanna'), `manca Descrizione: ${joined}`)
+})
+
+Deno.test('extractIndirizzoCandidati: nessun duplicato, scarta frammenti corti', () => {
+  const xml = `<CessionarioCommittente><Sede><Indirizzo>Via A</Indirizzo><Comune>X</Comune></Sede></CessionarioCommittente>
+    <FatturaElettronicaBody><Causale>ok</Causale><Descrizione>Via A X</Descrizione></FatturaElettronicaBody>`
+  const cands = extractIndirizzoCandidati(xml)
+  // "ok" (3 char) scartato; "Via A X" compare una sola volta anche se == Sede.
+  assert(!cands.includes('ok'), 'frammento troppo corto non deve entrare')
+  assertEquals(new Set(cands).size, cands.length, 'nessun duplicato')
+})
+
+// Scenario end-to-end del fallback: la <Sede> generica NON distingue le due sedi
+// note (score ~ uguale, gap sotto soglia), ma il RiferimentoTesto "Via Losanna"
+// distacca nettamente la sede Losanna. Simuliamo lo scoring che fa il routing.
+Deno.test('scenario fallback: <Sede> generica indistinta, RiferimentoTesto risolve', () => {
+  const sedeLosanna     = normalizeIndirizzo('Via Losanna 8 20144 Milano')
+  const sedeSettembrini = normalizeIndirizzo('Via Settembrini 15 20124 Milano')
+  const MIN_SCORE = 0.40, MIN_GAP = 0.20
+
+  const cands = extractIndirizzoCandidati(XML_SEDE_LEGALE_GENERICA)
+
+  const decide = (cand: string) => {
+    const t = normalizeIndirizzo(cand)
+    const s = [
+      indirizzoSimilarity(t, sedeLosanna),
+      indirizzoSimilarity(t, sedeSettembrini),
+    ].sort((a, b) => b - a)
+    return { best: s[0], gap: s[0] - s[1] }
+  }
+
+  // La Sede (Fulvio Testi) non somiglia a nessuna delle due → non passa le soglie.
+  const sede = decide(cands[0])
+  assert(!(sede.best >= MIN_SCORE && sede.gap >= MIN_GAP),
+    'la sede legale generica non deve risolvere da sola')
+
+  // Fra i candidati fallback c'è quello che risolve Losanna sopra le soglie.
+  const risolutore = cands.slice(1).map(decide).find(d => d.best >= MIN_SCORE && d.gap >= MIN_GAP)
+  assert(risolutore, 'un candidato fallback deve superare le soglie e risolvere')
 })

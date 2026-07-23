@@ -1066,6 +1066,78 @@ except Exception as _e:
         )
 
 
+def _pulisci_riparto_orfano(supabase_client, user_id: str, file_origine: str) -> None:
+    """Dopo l'eliminazione (soft o hard) di una fattura, rimuove l'eventuale riparto
+    costi-catena generato da quello stesso documento se NON resta più alcuna riga
+    viva con quel file_origine nell'account, poi ri-aggrega le quote mensili.
+
+    Perché serve: riparto_costi_catena è un aggregato a livello account, senza FK a
+    fatture. Cancellare una fattura non toccava il suo riparto → le quote restavano
+    nei margini (margini_mensili.quote_riparto_*) come costo fantasma, gonfiando/
+    abbassando il MOL di sedi in mesi senza fattura viva. Chiudiamo il buco alla
+    fonte: l'eliminazione della fattura elimina anche il suo riparto orfano.
+
+    Scoping anti-collisione: filtriamo SEMPRE per user_id. Lo stesso file_origine SDI
+    può esistere su account diversi (es. ambiente di test) — qui tocchiamo solo i
+    riparti e le fatture di QUESTO account.
+
+    Best-effort: un errore qui non deve far fallire l'eliminazione già avvenuta.
+    """
+    try:
+        rip = (
+            supabase_client.table("riparto_costi_catena")
+            .select("id, anno, mese")
+            .eq("user_id", user_id)
+            .eq("file_origine", file_origine)
+            .execute()
+        )
+        righe_rip = rip.data or []
+        if not righe_rip:
+            return
+
+        # Resta ancora una riga VIVA con questo file_origine nell'account? Se sì, il
+        # riparto è ancora legittimo (altra sede lo tiene): non toccarlo.
+        vive = (
+            _filter_active(
+                supabase_client.table("fatture")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .eq("file_origine", file_origine)
+            )
+            .execute()
+        )
+        n_vive = vive.count if vive.count is not None else (len(vive.data) if vive.data else 0)
+        if n_vive > 0:
+            return
+
+        periodi = {(r.get("anno"), r.get("mese")) for r in righe_rip}
+        ids = [r["id"] for r in righe_rip]
+        supabase_client.table("riparto_costi_catena").delete().in_("id", ids).execute()
+        logger.info(
+            "🧹 Riparto orfano rimosso: file=%s user=%s riparti=%d periodi=%s",
+            file_origine, user_id, len(ids), sorted(p for p in periodi if p[0]),
+        )
+
+        for anno, mese in periodi:
+            if anno is None or mese is None:
+                continue
+            try:
+                supabase_client.rpc(
+                    "riparto_quote_mensili",
+                    {"p_user_id": user_id, "p_anno": int(anno), "p_mese": int(mese)},
+                ).execute()
+            except Exception:
+                logger.exception(
+                    "Ricalcolo quote post-cleanup riparto fallito user=%s %s-%s",
+                    user_id, anno, mese,
+                )
+    except Exception:
+        logger.exception(
+            "Cleanup riparto orfano fallito (non blocca l'eliminazione) file=%s user=%s",
+            file_origine, user_id,
+        )
+
+
 def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=None, ristoranteid: str = None, soft_delete: bool = True) -> Dict[str, Any]:
     """
     Elimina una fattura completa (tutti i prodotti) dal database.
@@ -1138,6 +1210,7 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
                 query_retry.execute()
             
             logger.info(f"🗑️ Fattura spostata nel cestino: {file_origine} ({num_righe} righe) da user {user_id}")
+            _pulisci_riparto_orfano(supabase_client, user_id, file_origine)
         else:
             # HARD DELETE: eliminazione definitiva (usato per rifiuto automatico)
             query_delete = supabase_client.table("fatture").delete().eq("user_id", user_id).eq("file_origine", file_origine)
@@ -1166,7 +1239,8 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
                     return {"success": False, "error": f"Eliminazione parziale: {v2.count} righe non eliminate", "righe_eliminate": num_righe - (v2.count or 0)}
             
             logger.info(f"❌ Fattura eliminata definitivamente: {file_origine} ({num_righe} righe) da user {user_id}")
-        
+            _pulisci_riparto_orfano(supabase_client, user_id, file_origine)
+
         return {"success": True, "error": None, "righe_eliminate": num_righe}
         
     except Exception as e:

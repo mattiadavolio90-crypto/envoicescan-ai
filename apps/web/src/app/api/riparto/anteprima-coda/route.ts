@@ -12,12 +12,14 @@ function workerHeaders(token: string): Record<string, string> {
   return h;
 }
 
-// L'anteprima parsa il documento a caldo su un endpoint worker sincrono: sotto
-// contesa sull'unica istanza Railway un colpo di lentezza superava i 15s fissi
-// e faceva scattare l'abort lato Vercel PRIMA che il worker rispondesse — il
-// frontend lo mostrava come "documento non leggibile" (fuorviante: il documento
-// e' sano, era solo lento). Timeout piu' generoso perche' e' un'azione on-demand
-// che l'utente sa di dover attendere qualche secondo.
+// Fase 4 (23/07): l'anteprima ora e' PERSISTENTE lato worker — parsa l'XML una
+// sola volta e salva le righe; le aperture successive leggono dal DB e tornano
+// istantanee. Il parsing a caldo (e quindi questo timeout) scatta solo al PRIMO
+// accesso di ogni fattura. Storicamente, sotto contesa sull'unica istanza Railway
+// un colpo di lentezza superava i 15s fissi e l'abort Vercel scattava PRIMA della
+// risposta worker → il frontend mostrava "documento non leggibile" (fuorviante: il
+// documento e' sano, era solo lento). Timeout generoso per assorbire quel primo
+// parse; dalla seconda apertura in poi la contesa non c'e' piu'.
 const ANTEPRIMA_TIMEOUT_MS = 30000;
 
 // La function serverless deve poter vivere piu' del timeout della fetch verso il

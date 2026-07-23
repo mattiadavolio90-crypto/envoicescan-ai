@@ -201,6 +201,13 @@ def elimina_fattura_soft(
             raise HTTPException(status_code=409, detail="already_in_trash")
 
         logger.info(f"Fattura spostata nel cestino: {file_origine} | user={user_id} | ristorante={ristorante_id} | righe={righe}")
+
+        # Chiude il buco delete→riparto: se questo documento aveva generato un riparto
+        # costi-catena e non resta piu' alcuna riga viva nell'account, rimuovilo e
+        # ri-aggrega le quote mensili (altrimenti il costo resta fantasma nel MOL).
+        from services.db_service import _pulisci_riparto_orfano
+        _pulisci_riparto_orfano(sb, user_id, file_origine)
+
         return {"success": True, "righe_eliminate": righe}
 
     except HTTPException:

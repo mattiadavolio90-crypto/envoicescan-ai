@@ -531,6 +531,13 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
     """Anteprima delle righe di una fattura ancora in coda 'da_assegnare' (non ancora
     collocata su un locale, quindi non presente in `fatture`).
 
+    Fase 4 (23/07): anteprima PERSISTENTE. Al primo accesso parsa l'XML una volta e
+    salva le righe in fatture_queue.anteprima_righe; le aperture successive leggono da
+    lì → istantanee, nessun ri-parse a caldo, nessuna contesa sul container singolo
+    (era la causa radice dell'intermittenza "documento non leggibile"). La cache è di
+    sola visualizzazione, derivata dall'XML e rigenerabile: azzerando anteprima_righe
+    il prossimo accesso la ricalcola.
+
     Riusa estrai_dati_da_xml() in SOLA LETTURA passando user_id=None: la funzione fa
     parsing/sconti/note di credito (puro calcolo, nessun I/O) + categorizza_con_memoria
     (memoria/regole/dizionario, NESSUNA chiamata AI) SENZA memoria personalizzata né
@@ -544,7 +551,7 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
 
     q = (
         sb.table("fatture_queue")
-        .select("id, user_id, xml_content, payload_meta")
+        .select("id, user_id, xml_content, payload_meta, anteprima_righe")
         .eq("id", queue_id)
         .eq("user_id", user_id)
         .eq("status", "da_assegnare")
@@ -554,6 +561,13 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
     if not q:
         raise HTTPException(status_code=404, detail="Fattura non trovata in coda")
     row = q[0]
+
+    # Cache: righe già parsate e salvate → risposta istantanea, nessun ri-parse.
+    # Sopravvive anche alla purge di xml_content, quindi va tentata PRIMA.
+    cache = row.get("anteprima_righe")
+    if isinstance(cache, list):
+        return {"disponibile": True, "righe": cache, "cache": True}
+
     xml_content = row.get("xml_content")
     if not xml_content:
         return {"righe": [], "disponibile": False}
@@ -569,22 +583,33 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
         logger.warning("Anteprima coda: parsing fallito queue_id=%s: %s", queue_id, exc)
         return {"righe": [], "disponibile": False}
 
-    return {
-        "disponibile": True,
-        "righe": [
-            {
-                "numero_riga": r.get("Numero_Riga"),
-                "descrizione": r.get("Descrizione"),
-                "quantita": r.get("Quantita"),
-                "unita_misura": r.get("Unita_Misura"),
-                "prezzo_unitario": r.get("Prezzo_Unitario"),
-                "iva_percentuale": r.get("IVA_Percentuale"),
-                "totale_riga": r.get("Totale_Riga"),
-                "categoria": r.get("Categoria"),
-            }
-            for r in righe
-        ],
-    }
+    righe_out = [
+        {
+            "numero_riga": r.get("Numero_Riga"),
+            "descrizione": r.get("Descrizione"),
+            "quantita": r.get("Quantita"),
+            "unita_misura": r.get("Unita_Misura"),
+            "prezzo_unitario": r.get("Prezzo_Unitario"),
+            "iva_percentuale": r.get("IVA_Percentuale"),
+            "totale_riga": r.get("Totale_Riga"),
+            "categoria": r.get("Categoria"),
+        }
+        for r in righe
+    ]
+
+    # Persisti la cache per le aperture successive. Il salvataggio è un di più: se
+    # fallisce, l'utente riceve comunque le righe appena parsate (verrà ricalcolata
+    # al prossimo accesso). Un parsing riuscito ma vuoto ([]) viene salvato lo stesso:
+    # è un esito legittimo e va cacheato per non ri-parsare a vuoto ogni volta.
+    try:
+        from datetime import datetime, timezone
+        sb.table("fatture_queue").update(
+            {"anteprima_righe": righe_out, "anteprima_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", queue_id).eq("user_id", user_id).execute()
+    except Exception as exc:
+        logger.warning("Anteprima coda: salvataggio cache fallito queue_id=%s: %s", queue_id, exc)
+
+    return {"disponibile": True, "righe": righe_out, "cache": False}
 
 
 @router.get("/api/riparto/regola-fornitore", dependencies=[Depends(_verify_worker_key)])

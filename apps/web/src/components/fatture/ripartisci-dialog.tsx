@@ -13,6 +13,15 @@ import { Button } from "@/components/ui/button";
 
 type Sede = { id: string; nome: string };
 
+// Regola memorizzata per un fornitore, così com'è già salvata sul server. Se la coda
+// la conosce già (l'ha ricevuta nell'elenco), la passa qui e il dialog parte pronto
+// senza rifare la fetch. Se assente, il dialog la cerca da sé come prima.
+export type RegolaPreset = {
+  regola: "equa" | "percentuali";
+  tipo: "generale" | "fb";
+  percentuali?: Record<string, number> | null;
+};
+
 // Dialog per ripartire una fattura di struttura sul gruppo. Due modalità:
 //  - da FATTURA (fileOrigine): il documento è già in `fatture`, usato dal dettaglio
 //    fattura (Scadenziario) → POST /api/riparto/da-fattura.
@@ -27,6 +36,7 @@ export function RipartisciDialog({
   queueId,
   fornitore,
   descrizioneDefault,
+  regolaPreset,
   sedi,
   onDone,
 }: {
@@ -36,6 +46,7 @@ export function RipartisciDialog({
   queueId?: number;
   fornitore?: string;
   descrizioneDefault?: string;
+  regolaPreset?: RegolaPreset | null;
   sedi: Sede[];
   onDone?: () => void;
 }) {
@@ -58,8 +69,32 @@ export function RipartisciDialog({
     setRegola("equa");
     setRegolaMemorizzata(false);
 
-    // Se il fornitore ha una regola salvata ("fai sempre così"), pre-compila il
-    // criterio (regola/tipo/percentuali). Sola PROPOSTA: il cliente conferma comunque.
+    // Applica una regola memorizzata (regola/tipo/percentuali) al criterio del dialog.
+    // Sola PROPOSTA: il cliente conferma comunque.
+    const applica = (data: { regola?: string; tipo?: string; percentuali?: Record<string, number> | null } | null) => {
+      if (!data?.regola) return;
+      setRegolaMemorizzata(true);
+      setTipo(data.tipo === "fb" ? "fb" : "generale");
+      setRegola(data.regola === "percentuali" ? "percentuali" : "equa");
+      if (data.regola === "percentuali" && data.percentuali) {
+        setPerc((cur) => {
+          const next = { ...cur };
+          for (const s of sedi) {
+            const v = data.percentuali?.[s.id];
+            if (v != null) next[s.id] = String(v);
+          }
+          return next;
+        });
+      }
+    };
+
+    // Se la coda ci ha già passato la regola, la usiamo subito senza rifare la fetch.
+    if (regolaPreset) {
+      applica(regolaPreset);
+      return;
+    }
+
+    // Altrimenti (ingresso dal dettaglio fattura) la cerchiamo da soli per P.IVA.
     if (!fornitore) return;
     let alive = true;
     fetch(`/api/riparto/regola-fornitore?fornitore=${encodeURIComponent(fornitore)}`, {
@@ -67,26 +102,13 @@ export function RipartisciDialog({
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!alive || !data?.regola) return;
-        setRegolaMemorizzata(true);
-        setTipo(data.tipo === "fb" ? "fb" : "generale");
-        setRegola(data.regola === "percentuali" ? "percentuali" : "equa");
-        if (data.regola === "percentuali" && data.percentuali) {
-          setPerc((cur) => {
-            const next = { ...cur };
-            for (const s of sedi) {
-              const v = data.percentuali[s.id];
-              if (v != null) next[s.id] = String(v);
-            }
-            return next;
-          });
-        }
+        if (alive) applica(data);
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [open, descrizioneDefault, sedi, fornitore]);
+  }, [open, descrizioneDefault, sedi, fornitore, regolaPreset]);
 
   const sommaPerc = Object.values(perc).reduce((a, v) => a + (Number(v.replace(",", ".")) || 0), 0);
 

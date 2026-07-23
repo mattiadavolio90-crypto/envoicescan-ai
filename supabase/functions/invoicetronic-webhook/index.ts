@@ -593,6 +593,55 @@ export function extractIndirizzoDestinatario(xml: string): string | null {
   return joined.length > 0 ? joined : null
 }
 
+// ─── Utility: candidati-indirizzo per il fallback multi-sede (risolve P2) ──────
+// PROBLEMA REALE (OFFSIDE, 23/07): 319/383 fatture riportano in <Sede> la sede
+// LEGALE generica ("V.LE FULVIO TESTI 68"), uguale per tutte le sedi → <Sede> non
+// distingue nulla. L'indirizzo del locale reale (Losanna/Settembrini) i fornitori
+// lo scrivono altrove: AltriDatiGestionali/RiferimentoTesto, Causale, o dentro la
+// Descrizione delle righe. Questa funzione raccoglie TUTTI i punti dove può stare,
+// così il routing può ripiegarci SOLO quando <Sede> non dà già un match forte.
+//
+// Ritorna una lista ordinata per affidabilità (Sede prima, poi i punti "sporchi").
+// Non decide nulla: si limita a offrire testo-candidato allo scoring del routing.
+// La <Sede> resta il primo candidato e il comportamento storico invariato: se dà
+// un match forte e univoco, gli altri candidati non vengono nemmeno guardati.
+export function extractIndirizzoCandidati(xml: string): string[] {
+  const candidati: string[] = []
+  const push = (s: string | null | undefined): void => {
+    const v = (s ?? '').trim()
+    // Solo candidati con un minimo di sostanza (evita rumore di 1-2 caratteri).
+    if (v.length >= 4 && !candidati.includes(v)) candidati.push(v)
+  }
+
+  // 1) <Sede> del destinatario — comportamento storico, primo e più affidabile.
+  push(extractIndirizzoDestinatario(xml))
+
+  // Il resto va cercato nel corpo <FatturaElettronicaBody> (dati riga/documento),
+  // non nell'header. Se non isolabile, si usa l'intero XML come ripiego.
+  const body = xml.match(
+    /<FatturaElettronicaBody\b[^>]*>([\s\S]*?)<\/FatturaElettronicaBody>/,
+  )?.[1] ?? xml
+
+  const allTexts = (n: string, src: string): string[] => {
+    const re = new RegExp(`<${n}>\\s*([^<]+?)\\s*<\\/${n}>`, 'gi')
+    const out: string[] = []
+    for (const m of src.matchAll(re)) out.push(m[1].trim())
+    return out
+  }
+
+  // 2) AltriDatiGestionali/RiferimentoTesto — dove OFFSIDE trova il locale reale.
+  //    Sta sia a livello DatiGeneraliDocumento sia dentro le DettaglioLinee.
+  for (const t of allTexts('RiferimentoTesto', body)) push(t)
+
+  // 3) <Causale> a livello documento (0..N ripetizioni ammesse da FatturaPA).
+  for (const t of allTexts('Causale', body)) push(t)
+
+  // 4) <Descrizione> delle righe — ultimo tentativo, il più rumoroso.
+  for (const t of allTexts('Descrizione', body)) push(t)
+
+  return candidati
+}
+
 // ─── Utility: normalizzazione indirizzo (gemella della SQL normalizza_indirizzo_match) ─
 // DEVE restare allineata a public.normalizza_indirizzo_match() (migration
 // 20260611140000_multi_sede_routing): stesse abbreviazioni, stesso output, così
@@ -1118,35 +1167,67 @@ export const handler = async (req: Request): Promise<Response> => {
       const MIN_SCORE = 0.40
       const MIN_GAP   = 0.20
 
-      const target = indirizzoRaw ? normalizeIndirizzo(indirizzoRaw) : ''
-      const scored = sedi
-        .map(r => ({
-          id:    r.id as string,
-          score: target && r.indirizzo_match
-            ? indirizzoSimilarity(target, r.indirizzo_match as string)
-            : 0,
-        }))
-        .sort((a, b) => b.score - a.score)
+      // Dato un testo-candidato, restituisce le sedi ordinate per somiglianza e la
+      // decisione (best/second/gap). Riusata per <Sede> e per i candidati fallback.
+      const scoreCandidato = (candidato: string) => {
+        const target = candidato ? normalizeIndirizzo(candidato) : ''
+        const scored = sedi
+          .map(r => ({
+            id:    r.id as string,
+            score: target && r.indirizzo_match
+              ? indirizzoSimilarity(target, r.indirizzo_match as string)
+              : 0,
+          }))
+          .sort((a, b) => b.score - a.score)
+        const best   = scored[0]
+        const gap    = best.score - (scored[1]?.score ?? 0)
+        return { best, gap }
+      }
 
-      const best   = scored[0]
-      const second = scored[1]
-      const gap    = best.score - (second?.score ?? 0)
+      // 1° tentativo: la <Sede> (comportamento storico). Se dà già un match forte e
+      // univoco, si assegna e NON si scava oltre — nessun rischio di regressione sui
+      // casi che oggi funzionano (P2 non deve peggiorare i buoni).
+      const sedeDec = scoreCandidato(indirizzoRaw ?? '')
 
-      if (best.score >= MIN_SCORE && gap >= MIN_GAP) {
-        ristoranteId = best.id
-        meta.routing = { mode: 'auto', score: best.score, gap }
-        console.info(`[wh] Multi-sede risolto auto piva=${pivaRaw} score=${best.score.toFixed(2)} gap=${gap.toFixed(2)}`)
+      if (sedeDec.best.score >= MIN_SCORE && sedeDec.gap >= MIN_GAP) {
+        ristoranteId = sedeDec.best.id
+        meta.routing = { mode: 'auto', source: 'sede', score: sedeDec.best.score, gap: sedeDec.gap }
+        console.info(`[wh] Multi-sede risolto auto (sede) piva=${pivaRaw} score=${sedeDec.best.score.toFixed(2)} gap=${sedeDec.gap.toFixed(2)}`)
       } else {
-        // Ambiguo o indirizzo assente/non distintivo → coda manuale.
-        status       = 'da_assegnare'
-        ristoranteId = null
-        meta.routing = {
-          mode:       'manual',
-          best_score: best.score,
-          gap,
-          sedi_count: sedi.length,
+        // <Sede> ambigua/generica (caso OFFSIDE: sede legale uguale per tutte). Si
+        // ripiega sugli altri punti dell'XML dove i fornitori scrivono il locale
+        // reale (RiferimentoTesto / Causale / Descrizione righe). Si sceglie il
+        // MIGLIOR candidato che superi le stesse soglie di sicurezza; il primo che
+        // vince (i candidati sono ordinati per affidabilità) assegna.
+        const candidati = xmlContent ? extractIndirizzoCandidati(xmlContent) : []
+        let vincente: { id: string; score: number; gap: number; testo: string } | null = null
+        for (const cand of candidati) {
+          const dec = scoreCandidato(cand)
+          if (dec.best.score >= MIN_SCORE && dec.gap >= MIN_GAP) {
+            vincente = { id: dec.best.id, score: dec.best.score, gap: dec.gap, testo: cand }
+            break
+          }
         }
-        console.info(`[wh] Multi-sede ambiguo → da_assegnare piva=${pivaRaw} best=${best.score.toFixed(2)} gap=${gap.toFixed(2)}`)
+
+        if (vincente) {
+          ristoranteId = vincente.id
+          meta.routing = { mode: 'auto', source: 'fallback', score: vincente.score, gap: vincente.gap }
+          meta.indirizzo_fallback = vincente.testo
+          console.info(`[wh] Multi-sede risolto auto (fallback) piva=${pivaRaw} score=${vincente.score.toFixed(2)} gap=${vincente.gap.toFixed(2)}`)
+        } else {
+          // Nessun punto dell'XML distingue le sedi → coda manuale (invariato:
+          // meglio in coda che smistata male).
+          status       = 'da_assegnare'
+          ristoranteId = null
+          meta.routing = {
+            mode:       'manual',
+            best_score: sedeDec.best.score,
+            gap:        sedeDec.gap,
+            sedi_count: sedi.length,
+            fallback_tried: candidati.length,
+          }
+          console.info(`[wh] Multi-sede ambiguo → da_assegnare piva=${pivaRaw} best=${sedeDec.best.score.toFixed(2)} gap=${sedeDec.gap.toFixed(2)} fallback=${candidati.length}`)
+        }
       }
     }
   }

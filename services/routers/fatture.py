@@ -994,8 +994,32 @@ def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[st
         .order("created_at", desc=True)
         .execute()
     )
+    righe = resp.data or []
+
+    # Regole fornitore memorizzate ("fai sempre così"): una sola query per tutto il
+    # lotto (no loop per-fattura). Serve a evidenziare in coda le fatture già pronte
+    # da ripartire e offrire la conferma rapida ("Dividi come al solito"). La regola
+    # PROPONE, non applica mai da sola: il cliente conferma comunque.
+    regole_by_piva: Dict[str, Dict[str, Any]] = {}
+    pive = {str(p) for r in righe if (p := (r.get("payload_meta") or {}).get("piva_cedente"))}
+    if pive:
+        try:
+            regs = (
+                sb.table("riparto_regole_fornitore")
+                .select("fornitore, regola, tipo, percentuali")
+                .eq("user_id", user_id)
+                .eq("attiva", True)
+                .in_("fornitore", list(pive))
+                .execute()
+            ).data or []
+            regole_by_piva = {str(g["fornitore"]): g for g in regs}
+        except Exception as exc:
+            # La regola è un di più: se la lettura fallisce la coda resta pienamente
+            # usabile con la ripartizione manuale, non si perde nessuna fattura.
+            logger.warning("da-assegnare: lettura regole fornitore fallita user=%s: %s", user_id, exc)
+
     items = []
-    for r in (resp.data or []):
+    for r in righe:
         meta = r.get("payload_meta") or {}
         try:
             fornitore_nome = _denominazione_cedente(r.get("xml_content"))
@@ -1003,15 +1027,21 @@ def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[st
             # Il nome è una comodità: se l'XML è malformato la coda resta usabile
             # con la sola P.IVA, non si perde la fattura.
             fornitore_nome = None
+        piva = meta.get("piva_cedente")
+        reg = regole_by_piva.get(str(piva)) if piva else None
         items.append({
             "queue_id": r["id"],
-            "fornitore": meta.get("piva_cedente"),
+            "fornitore": piva,
             "fornitore_nome": fornitore_nome,
             "numero_fattura": meta.get("numero_fattura"),
             "data_fattura": meta.get("data_fattura"),
             "importo_totale": meta.get("importo_totale"),
             "indirizzo_destinatario": meta.get("indirizzo_destinatario"),
             "created_at": r.get("created_at"),
+            "regola_fornitore": (
+                {"regola": reg["regola"], "tipo": reg["tipo"], "percentuali": reg.get("percentuali")}
+                if reg else None
+            ),
         })
     return {"items": items, "count": len(items)}
 
