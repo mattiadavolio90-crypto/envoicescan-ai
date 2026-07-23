@@ -76,12 +76,14 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   const [finestraOpen, setFinestraOpen] = useState(false);
   const [anteprima, setAnteprima] = useState<FatturaDaAssegnare | null>(null);
   const [righeAnteprima, setRigheAnteprima] = useState<RigaAnteprima[]>([]);
-  // Esito anteprima: "ok" mostra le righe, "illeggibile" = documento davvero non
-  // parsabile (p7m estratto male ecc.), "occupato" = worker lento/irraggiungibile
-  // (il documento è probabilmente sano, basta riprovare). Distinguerli evita il
-  // messaggio fuorviante "documento non leggibile" quando in realtà il server
-  // era solo occupato e ha tagliato la richiesta per timeout.
-  const [esitoAnteprima, setEsitoAnteprima] = useState<"ok" | "illeggibile" | "occupato">("ok");
+  // Esito anteprima: "ok" mostra le righe; "occupato" = worker lento/irraggiungibile
+  // (documento sano, basta riprovare); "perso" = il contenuto è stato purgato e non è
+  // più recuperabile lato server (fatture storiche caricate prima della guardia purge)
+  // — resta comunque assegnabile su fornitore/data/importo; "illeggibile" = XML davvero
+  // non parsabile. Distinguerli evita il messaggio fuorviante "documento non leggibile"
+  // quando in realtà il server era occupato o il contenuto era stato semplicemente
+  // cancellato per retention.
+  const [esitoAnteprima, setEsitoAnteprima] = useState<"ok" | "illeggibile" | "occupato" | "perso">("ok");
   const [loadingAnteprima, setLoadingAnteprima] = useState(false);
   // Selezione multipla: quando il cliente ha molte fatture con la stessa destinazione
   // (o lo stesso fornitore), le flagga e le smista con un'azione sola. Le assegnazioni
@@ -98,13 +100,20 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     setEsitoAnteprima("ok");
     fetch(`/api/riparto/anteprima-coda?queue_id=${anteprima.queue_id}`, { cache: "no-store" })
       .then(async (r) => {
-        // 200 con disponibile:false → documento realmente illeggibile.
+        // 200 con disponibile:false → il server dice ONESTAMENTE perché: motivo="perso"
+        // (contenuto purgato, non recuperabile) vs "illeggibile" (XML non parsabile).
         // 504/502 (o rete) → worker occupato/lento: NON è colpa del documento.
         if (r.ok) {
           const data = await r.json();
+          const esito =
+            data?.disponibile === true
+              ? ("ok" as const)
+              : data?.motivo === "perso"
+                ? ("perso" as const)
+                : ("illeggibile" as const);
           return {
             righe: Array.isArray(data?.righe) ? data.righe : [],
-            esito: data?.disponibile === true ? ("ok" as const) : ("illeggibile" as const),
+            esito,
           };
         }
         return { righe: [] as RigaAnteprima[], esito: "occupato" as const };
@@ -590,6 +599,14 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                     momentaneamente occupato. Il documento è a posto — chiudi e riprova tra
                     qualche secondo, oppure collocalo comunque (assegna a un locale o dividi
                     tra i locali) e lo vedrai in Gestione Fatture.
+                  </div>
+                ) : esitoAnteprima === "perso" ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Il contenuto di questa fattura non è più disponibile in anteprima (è
+                    stato rimosso per scadenza dei dati grezzi). Puoi collocarla comunque
+                    usando fornitore, data e importo qui sopra: assegnala a un locale o
+                    dividila tra i locali, e la vedrai in Gestione Fatture. I documenti
+                    caricati d&apos;ora in poi mantengono sempre l&apos;anteprima.
                   </div>
                 ) : esitoAnteprima === "illeggibile" ? (
                   <div className="px-4 py-8 text-center text-sm text-muted-foreground">

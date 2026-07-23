@@ -154,11 +154,27 @@ def test_salvataggio_cache_in_errore_serve_comunque_le_righe():
 
 
 def test_no_xml_no_cache_non_disponibile():
-    sb = _FakeSB(_row(xml_content=None, anteprima_righe=None))
+    # xml assente, MAI purgato → motivo 'assente' (caso degenere, non "perso").
+    sb = _FakeSB(_row(xml_content=None, anteprima_righe=None, xml_url=None, xml_purged_at=None))
     with _patch(sb), patch.object(invoice_service, "estrai_dati_da_xml") as parse:
         out = riparto.riparto_anteprima_coda(queue_id=7, authorization="Bearer x")
     parse.assert_not_called()
-    assert out == {"righe": [], "disponibile": False}
+    assert out == {"righe": [], "disponibile": False, "motivo": "assente"}
+    assert sb.updates == []
+
+
+def test_xml_purgato_senza_url_ritorna_perso():
+    # Contenuto purgato e niente xml_url da cui riscaricare (canale manuale storico):
+    # il server lo dice ONESTAMENTE con motivo='perso', così la UI non mente parlando
+    # di "documento illeggibile". Nessun parse tentato, nessuna scrittura.
+    sb = _FakeSB(_row(
+        xml_content=None, anteprima_righe=None, xml_url=None,
+        xml_purged_at="2026-07-20T09:22:54Z",
+    ))
+    with _patch(sb), patch.object(invoice_service, "estrai_dati_da_xml") as parse:
+        out = riparto.riparto_anteprima_coda(queue_id=7, authorization="Bearer x")
+    parse.assert_not_called()
+    assert out == {"righe": [], "disponibile": False, "motivo": "perso"}
     assert sb.updates == []
 
 
@@ -168,5 +184,5 @@ def test_parsing_fallito_non_scrive_cache():
         invoice_service, "estrai_dati_da_xml", side_effect=RuntimeError("boom parse")
     ):
         out = riparto.riparto_anteprima_coda(queue_id=7, authorization="Bearer x")
-    assert out == {"righe": [], "disponibile": False}
+    assert out == {"righe": [], "disponibile": False, "motivo": "illeggibile"}
     assert sb.updates == []

@@ -526,6 +526,27 @@ class _AnteprimaFileLike:
         return self._buf.seek(*a)
 
 
+def costruisci_anteprima_righe(righe_parsate) -> list:
+    """Converte l'output di estrai_dati_da_xml() nella forma dell'anteprima coda
+    (le stesse chiavi che l'endpoint /api/riparto/anteprima-coda ritorna e che il
+    frontend legge). Fonte UNICA della forma: usata sia dall'ingestione (per salvare
+    la cache all'ingresso, così l'anteprima non dipende dalla prima apertura) sia
+    dall'endpoint stesso. Nessun I/O — puro rimappaggio di chiavi."""
+    return [
+        {
+            "numero_riga": r.get("Numero_Riga"),
+            "descrizione": r.get("Descrizione"),
+            "quantita": r.get("Quantita"),
+            "unita_misura": r.get("Unita_Misura"),
+            "prezzo_unitario": r.get("Prezzo_Unitario"),
+            "iva_percentuale": r.get("IVA_Percentuale"),
+            "totale_riga": r.get("Totale_Riga"),
+            "categoria": r.get("Categoria"),
+        }
+        for r in (righe_parsate or [])
+    ]
+
+
 @router.get("/api/riparto/anteprima-coda", dependencies=[Depends(_verify_worker_key)])
 def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Anteprima delle righe di una fattura ancora in coda 'da_assegnare' (non ancora
@@ -551,7 +572,7 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
 
     q = (
         sb.table("fatture_queue")
-        .select("id, user_id, xml_content, payload_meta, anteprima_righe")
+        .select("id, user_id, xml_content, xml_url, xml_purged_at, payload_meta, anteprima_righe")
         .eq("id", queue_id)
         .eq("user_id", user_id)
         .eq("status", "da_assegnare")
@@ -563,14 +584,34 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
     row = q[0]
 
     # Cache: righe già parsate e salvate → risposta istantanea, nessun ri-parse.
-    # Sopravvive anche alla purge di xml_content, quindi va tentata PRIMA.
+    # Sopravvive anche alla purge di xml_content, quindi va tentata PRIMA. Da quando
+    # l'anteprima è generata all'ingresso (accoda_upload_ambiguo con p_anteprima_righe),
+    # questo ramo copre di fatto tutti i documenti nuovi.
     cache = row.get("anteprima_righe")
     if isinstance(cache, list):
         return {"disponibile": True, "righe": cache, "cache": True}
 
     xml_content = row.get("xml_content")
+
+    # Fallback recupero: xml_content assente ma xml_url presente (canale SDI) → lo
+    # riscarico al volo. Il canale manuale non ha xml_url: se anche l'xml_content è
+    # sparito (purga storica pre-guardia), il contenuto NON è recuperabile lato server
+    # e va detto onestamente ("perso"), non spacciato per "documento illeggibile".
     if not xml_content:
-        return {"righe": [], "disponibile": False}
+        xml_url = row.get("xml_url")
+        if xml_url:
+            try:
+                from worker.queue_processor import _fetch_xml_from_url
+                xml_content = _fetch_xml_from_url(xml_url)
+            except Exception as exc:
+                logger.warning("Anteprima coda: refetch xml_url fallito queue_id=%s: %s", queue_id, exc)
+                xml_content = None
+        if not xml_content:
+            # Distinzione onesta per la UI: motivo="perso" quando il documento è stato
+            # purgato e non è più ricostruibile (niente cache, niente XML, niente url);
+            # la fattura resta comunque assegnabile su fornitore/data/importo (payload_meta).
+            motivo = "perso" if row.get("xml_purged_at") else "assente"
+            return {"righe": [], "disponibile": False, "motivo": motivo}
 
     from services.invoice_service import estrai_dati_da_xml
     nome_file = (row.get("payload_meta") or {}).get("nome_file") or f"queue_{queue_id}.xml"
@@ -581,21 +622,9 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
         righe = estrai_dati_da_xml(file_like, user_id=None) or []
     except Exception as exc:
         logger.warning("Anteprima coda: parsing fallito queue_id=%s: %s", queue_id, exc)
-        return {"righe": [], "disponibile": False}
+        return {"righe": [], "disponibile": False, "motivo": "illeggibile"}
 
-    righe_out = [
-        {
-            "numero_riga": r.get("Numero_Riga"),
-            "descrizione": r.get("Descrizione"),
-            "quantita": r.get("Quantita"),
-            "unita_misura": r.get("Unita_Misura"),
-            "prezzo_unitario": r.get("Prezzo_Unitario"),
-            "iva_percentuale": r.get("IVA_Percentuale"),
-            "totale_riga": r.get("Totale_Riga"),
-            "categoria": r.get("Categoria"),
-        }
-        for r in righe
-    ]
+    righe_out = costruisci_anteprima_righe(righe)
 
     # Persisti la cache per le aperture successive. Il salvataggio è un di più: se
     # fallisce, l'utente riceve comunque le righe appena parsate (verrà ricalcolata

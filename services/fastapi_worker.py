@@ -1947,6 +1947,26 @@ async def upload_invoice(
                     pass
         except Exception as meta_err:
             logger.warning("upload AMBIGUO: estrazione payload_meta fallita (non bloccante): %s", meta_err)
+
+        # Anteprima generata ALL'INGRESSO: parso qui le righe una volta e le salvo in
+        # coda insieme alla fattura. Così l'anteprima non dipende più dalla "prima
+        # apertura" (che poteva non arrivare mai prima della purga dell'xml_content) e
+        # il tasto Anteprima funziona sempre, per ogni nuovo documento. Best-effort:
+        # se il parse fallisce la fattura entra comunque in coda (l'endpoint riproverà
+        # dall'xml_content, ora protetto dalla guardia purge).
+        _anteprima_righe = None
+        try:
+            from services.invoice_service import estrai_dati_da_xml as _estrai_ant
+            from services.routers.riparto import (
+                _AnteprimaFileLike as _AntFL,
+                costruisci_anteprima_righe as _build_ant,
+            )
+            _ant_bytes = contents if isinstance(contents, (bytes, bytearray)) else str(contents).encode("utf-8")
+            _righe_ant = _estrai_ant(_AntFL(_ant_bytes, nome_file_canonico), user_id=None) or []
+            _anteprima_righe = _build_ant(_righe_ant)
+        except Exception as ant_err:
+            logger.warning("upload AMBIGUO: anteprima all'ingresso fallita (non bloccante): %s", ant_err)
+
         try:
             _res = supabase_client.rpc(
                 "accoda_upload_ambiguo",
@@ -1958,6 +1978,7 @@ async def upload_invoice(
                     "p_indirizzo_raw": indirizzo_dest,
                     "p_xml_hash": _xml_hash,
                     "p_payload_meta": _payload_meta_ambiguo,
+                    "p_anteprima_righe": _anteprima_righe,
                 },
             ).execute()
             _row = (_res.data or [{}])[0] if isinstance(_res.data, list) else (_res.data or {})

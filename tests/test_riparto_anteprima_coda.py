@@ -95,7 +95,7 @@ def test_xml_assente_ritorna_non_disponibile():
     sb, p = _patch([riga])
     with p:
         out = riparto.riparto_anteprima_coda(queue_id=42, authorization="Bearer x")
-    assert out == {"righe": [], "disponibile": False}
+    assert out == {"righe": [], "disponibile": False, "motivo": "assente"}
 
 
 def test_parsing_fallito_non_propaga():
@@ -103,4 +103,4 @@ def test_parsing_fallito_non_propaga():
     with p, patch("services.invoice_service.estrai_dati_da_xml") as mock_parse:
         mock_parse.side_effect = RuntimeError("XML malformato")
         out = riparto.riparto_anteprima_coda(queue_id=42, authorization="Bearer x")
-    assert out == {"righe": [], "disponibile": False}
+    assert out == {"righe": [], "disponibile": False, "motivo": "illeggibile"}
