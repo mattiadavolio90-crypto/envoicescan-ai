@@ -438,6 +438,57 @@ function toBool(value: unknown): boolean | null {
   return null
 }
 
+// ─── Estrazione dell'oggetto Event dal body grezzo ────────────────────────────
+// Bug 22/7/2026: il webhook nativo arriva (POST 200, HMAC valido) ma
+// resource_id/endpoint/event/id risultavano SEMPRE null dopo il parse diretto
+// — il fix del 21/7 assumeva l'oggetto Event al ROOT del body, come nei payload
+// di test. Il body live reale può invece arrivare come ARRAY (batch di eventi,
+// anche con un solo elemento) o annidato in un wrapper (`data`/`event`/`payload`/
+// `events`/`items`). Questa funzione "scava" fino a trovare l'oggetto Event vero.
+// Ritorna anche `extra` = quanti eventi restavano nell'array (per log, mai perso
+// in silenzio se ne arrivasse più di uno in un solo POST).
+export function extractEventObject(body: unknown): { ev: WebhookEvent; extraCount: number } {
+  let current: unknown = body
+  let extraCount = 0
+
+  if (Array.isArray(current)) {
+    extraCount = Math.max(0, current.length - 1)
+    current = current[0]
+  }
+
+  // Un wrapper ha tipicamente UNA sola chiave "contenitore" e non porta già i
+  // campi noti dell'Event (evita di scartare un Event legittimo che avesse per
+  // caso un campo extra chiamato "data").
+  // NB: "event" è ambiguo — nell'Event è il NOME evento (stringa, es. "receive.add"),
+  // ma può anche essere una chiave WRAPPER che contiene l'oggetto. Lo consideriamo
+  // campo-Event solo se il suo valore è una stringa; altrimenti è un wrapper.
+  const wrapperKeys = ['data', 'event', 'payload', 'events', 'items', 'result', 'body']
+  const hasKnownEventField = (obj: Record<string, unknown>): boolean => {
+    if ('id' in obj || 'resource_id' in obj || 'resourceId' in obj ||
+        'endpoint' in obj || 'company_id' in obj) return true
+    if ('event' in obj && typeof obj.event === 'string') return true
+    return false
+  }
+  for (let depth = 0; depth < 3; depth++) {
+    if (typeof current !== 'object' || current === null || Array.isArray(current)) break
+    const obj = current as Record<string, unknown>
+    if (hasKnownEventField(obj)) break
+    const wrapperKey = wrapperKeys.find(k => k in obj)
+    if (!wrapperKey) break
+    let inner = obj[wrapperKey]
+    if (Array.isArray(inner)) {
+      extraCount += Math.max(0, inner.length - 1)
+      inner = inner[0]
+    }
+    current = inner
+  }
+
+  if (typeof current !== 'object' || current === null || Array.isArray(current)) {
+    return { ev: {}, extraCount }
+  }
+  return { ev: current as WebhookEvent, extraCount }
+}
+
 function normalizeWebhookEvent(ev: WebhookEvent): NormalizedWebhookEvent {
   const statusCode = toNumberOrNull(ev.status_code ?? ev.statusCode)
   const explicitSuccess = toBool(ev.success)
@@ -766,11 +817,19 @@ export const handler = async (req: Request): Promise<Response> => {
   }
 
   // ── 3. Deserializza JSON ───────────────────────────────────────────────────
-  let parsedEvent: WebhookEvent
+  // Il body live può arrivare come oggetto Event piatto, come ARRAY di eventi, o
+  // annidato in un wrapper: extractEventObject scava fino all'Event reale (vedi
+  // bug 22/7). extraCount>0 = più eventi in un solo POST (raro): processiamo il
+  // primo e logghiamo, mai perso in silenzio.
+  let parsedBody: unknown
   try {
-    parsedEvent = JSON.parse(rawBody) as WebhookEvent
+    parsedBody = JSON.parse(rawBody)
   } catch {
     return new Response('Bad Request: JSON non valido', { status: 400 })
+  }
+  const { ev: parsedEvent, extraCount } = extractEventObject(parsedBody)
+  if (extraCount > 0) {
+    console.warn(`[wh] POST con ${extraCount + 1} eventi nel body: processo il primo, gli altri NON persi (Invoicetronic invia un evento per POST di norma — verificare se ricorre)`)
   }
 
   const ev = normalizeWebhookEvent(parsedEvent)
@@ -795,6 +854,10 @@ export const handler = async (req: Request): Promise<Response> => {
   // resta visibile negli avvisi Admin e recuperabile a mano. Il campo
   // `unrecognized_event` è la traccia per un fix mirato del parser.
   const missingCore = ev.eventId == null || ev.resourceId == null
+  // true quando siamo passati dalla rete di sicurezza (riga 'failed' già scritta)
+  // e proseguiamo col recupero: l'upsert finale dovrà SOVRASCRIVERE quella riga,
+  // non ignorarla (altrimenti resterebbe 'failed' + una seconda riga buona).
+  let passedSafetyNet = false
   if (!isReceiveEvent || ev.success !== true || missingCore) {
     const reason = !isReceiveEvent
       ? 'endpoint/event non riconosciuto come receive'
@@ -831,6 +894,12 @@ export const handler = async (req: Request): Promise<Response> => {
             invoicetronic_company_id: ev.companyId,
             date_time:    ev.dateTime,
             success:      ev.success,
+            // Campione del body grezzo (troncato) per diagnosticare la struttura
+            // reale del payload al primo evento non riconosciuto. L'oggetto Event
+            // NON contiene PII (solo id numerici/endpoint/timestamp), sicuro da
+            // conservare. Se una forma nuova sfugge ancora all'unwrap, questo
+            // campo dice ESATTAMENTE com'è fatta, senza aspettare un secondo giro.
+            raw_body_sample: rawBody.slice(0, 2048),
           },
           correlation_id: req.headers.get('X-Request-ID') ?? req.headers.get('X-Correlation-ID') ?? null,
         },
@@ -842,21 +911,28 @@ export const handler = async (req: Request): Promise<Response> => {
       console.error(`[wh] Errore INSERT evento non riconosciuto: ${insErr.message}`)
       return new Response('Internal Server Error', { status: 500 })
     }
-    // Se manca proprio il resource_id non possiamo scaricare l'XML: la lasciamo
-    // in coda come 'failed' registrata e chiudiamo 200 (l'abbiamo salvata).
-    // Se invece è un vero receive con resource_id ma qualche altro campo non
-    // tornava, proseguiamo comunque il flusso normale sotto quando possibile.
-    if (missingCore) {
+    // Senza resource_id non possiamo scaricare l'XML: resta 'failed' registrata
+    // (visibile + raw_body_sample per il fix), chiudiamo 200 (l'abbiamo salvata).
+    if (ev.resourceId == null) {
       return new Response('OK', { status: 200 })
     }
-    // isReceiveEvent falso ma abbiamo comunque event_id+resource_id: l'abbiamo
-    // registrata; non tentiamo il parse ottimistico per non mascherare il caso.
-    if (!isReceiveEvent) {
-      return new Response('OK', { status: 200 })
-    }
+    // Abbiamo un resource_id valido (anche se l'endpoint/event non è stato
+    // riconosciuto come "receive" per naming anomalo, o mancava solo l'event_id):
+    // NON ci fermiamo. Proseguiamo il flusso di download XML sotto — è
+    // l'auto-recupero che rende il canale autonomo (bug 22/7: senza questo, una
+    // fattura con payload in forma imprevista restava failed e moriva). La riga
+    // 'failed' appena scritta verrà sovrascritta a 'da_assegnare'/'done'
+    // dall'upsert finale (stesso event_id/resource_id).
+    passedSafetyNet = true
+    console.warn(`[wh] Recupero comunque via resource_id=${ev.resourceId} nonostante "${reason}"`)
   }
 
-  const eventId       = String(ev.eventId)
+  // Chiave idempotente COERENTE con quella usata dalla rete di sicurezza sopra:
+  // se l'evento è già stato registrato lì come 'failed' (naming anomalo, event_id
+  // assente), l'upsert finale deve colpire LA STESSA riga per sovrascriverla a
+  // 'da_assegnare'/'done' — non crearne una seconda. Quindi: event_id se c'è,
+  // altrimenti res:{resourceId} (mai la stringa letterale "null").
+  const eventId       = ev.eventId != null ? String(ev.eventId) : `res:${ev.resourceId}`
   const resourceId    = ev.resourceId
   const correlationId = (
     req.headers.get('X-Request-ID') ??
@@ -887,6 +963,13 @@ export const handler = async (req: Request): Promise<Response> => {
     date_time:                ev.dateTime,
     webhook_event:            ev.eventName,
     webhook_endpoint:         ev.endpoint,
+  }
+  // Se stiamo promuovendo una riga passata dalla rete di sicurezza, conserva la
+  // traccia del payload anomalo che l'ha attivata (utile per confermare la forma
+  // reale del body e affinare l'unwrap) — senza più bloccare la fattura.
+  if (passedSafetyNet) {
+    meta.recovered_from_safety_net = true
+    meta.raw_body_sample = rawBody.slice(0, 2048)
   }
 
   // ── 5. Recupera dettaglio fattura da API Invoicetronic ─────────────────────
@@ -1069,8 +1152,12 @@ export const handler = async (req: Request): Promise<Response> => {
   }
 
   // ── 9. INSERT idempotente in fatture_queue ─────────────────────────────────
-  // upsert con ignoreDuplicates=true → ON CONFLICT (event_id) DO NOTHING
-  // Re-invii dello stesso webhook da Invoicetronic vengono ignorati senza errore.
+  // Flusso normale: ignoreDuplicates=true → ON CONFLICT (event_id) DO NOTHING,
+  // così i re-invii dello stesso webhook non causano errori né sovrascritture.
+  // Eccezione (passedSafetyNet): la riga con questo event_id è stata scritta poco
+  // fa come 'failed' dalla rete di sicurezza e ora abbiamo l'XML: dobbiamo
+  // PROMUOVERLA (ON CONFLICT DO UPDATE), altrimenti il DO NOTHING la lascerebbe
+  // 'failed' e la fattura recuperata andrebbe persa. Merge, non doppione.
   const { error: dbErr } = await db
     .from('fatture_queue')
     .upsert(
@@ -1089,7 +1176,7 @@ export const handler = async (req: Request): Promise<Response> => {
       },
       {
         onConflict:       'event_id',
-        ignoreDuplicates: true, // ON CONFLICT (event_id) DO NOTHING
+        ignoreDuplicates: !passedSafetyNet,
       },
     )
 
