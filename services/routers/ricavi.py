@@ -1472,6 +1472,14 @@ class RicaviModalitaResponse(BaseModel):
     fatturato_iva22: float = 0.0
     altri_ricavi_noiva: float = 0.0
     coperti: Optional[int] = None
+    # Valori aggregati già presenti in margini_mensili per questo mese, se ci sono.
+    # Servono al dialog per precompilare la vista mensile quando i ricavi sono
+    # stati caricati direttamente come totali mensili (non da giornalieri né da
+    # un override in ricavi_modalita_mensile). Sola informazione, non un override.
+    margini_iva10: float = 0.0
+    margini_iva22: float = 0.0
+    margini_altri: float = 0.0
+    margini_coperti: Optional[int] = None
 
 
 class RicaviModalitaUpsertRequest(BaseModel):
@@ -1496,6 +1504,21 @@ def get_ricavi_modalita(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
+    mm = (
+        sb.table("margini_mensili")
+        .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti")
+        .eq("ristorante_id", ristorante_id)
+        .eq("anno", anno)
+        .eq("mese", mese)
+        .limit(1)
+        .execute()
+    )
+    mm_row = mm.data[0] if mm.data else {}
+    margini_iva10 = float(mm_row.get("fatturato_iva10") or 0)
+    margini_iva22 = float(mm_row.get("fatturato_iva22") or 0)
+    margini_altri = float(mm_row.get("altri_ricavi_noiva") or 0)
+    margini_coperti = int(mm_row["coperti"]) if mm_row.get("coperti") is not None else None
+
     resp = (
         sb.table("ricavi_modalita_mensile")
         .select("anno,mese,modalita,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti")
@@ -1514,8 +1537,14 @@ def get_ricavi_modalita(
             fatturato_iva22=float(r.get("fatturato_iva22") or 0),
             altri_ricavi_noiva=float(r.get("altri_ricavi_noiva") or 0),
             coperti=(int(r["coperti"]) if r.get("coperti") is not None else None),
+            margini_iva10=margini_iva10, margini_iva22=margini_iva22,
+            margini_altri=margini_altri, margini_coperti=margini_coperti,
         )
-    return RicaviModalitaResponse(anno=anno, mese=mese, modalita="giornaliero")
+    return RicaviModalitaResponse(
+        anno=anno, mese=mese, modalita="giornaliero",
+        margini_iva10=margini_iva10, margini_iva22=margini_iva22,
+        margini_altri=margini_altri, margini_coperti=margini_coperti,
+    )
 
 
 @router.post("/api/ricavi/modalita", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])

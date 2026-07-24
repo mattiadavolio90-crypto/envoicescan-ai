@@ -156,14 +156,22 @@ function GrigliaView({
         setMensiCoperti(modalitaData.coperti != null ? String(modalitaData.coperti) : "");
       } else {
         const items = ricaviData?.items ?? [];
-        const sommaIva10 = items.reduce((s, it) => s + (it.fatturato_iva10 || 0), 0);
-        const sommaIva22 = items.reduce((s, it) => s + (it.fatturato_iva22 || 0), 0);
-        const sommaAltri = items.reduce((s, it) => s + (it.altri_ricavi_noiva || 0), 0);
-        const sommaCoperti = items.reduce((s, it) => s + (it.coperti || 0), 0);
-        setMensiIva10(sommaIva10 > 0 ? String(sommaIva10) : "");
-        setMensiIva22(sommaIva22 > 0 ? String(sommaIva22) : "");
-        setMensiAltri(sommaAltri > 0 ? String(sommaAltri) : "");
-        setMensiCoperti(sommaCoperti > 0 ? String(sommaCoperti) : "");
+        let precIva10 = items.reduce((s, it) => s + (it.fatturato_iva10 || 0), 0);
+        let precIva22 = items.reduce((s, it) => s + (it.fatturato_iva22 || 0), 0);
+        let precAltri = items.reduce((s, it) => s + (it.altri_ricavi_noiva || 0), 0);
+        let precCoperti = items.reduce((s, it) => s + (it.coperti || 0), 0);
+        // Nessun giornaliero: ricadi sui totali già in margini_mensili (ricavi
+        // caricati come totale mensile fuori dal dialog).
+        if (precIva10 === 0 && precIva22 === 0 && precAltri === 0) {
+          precIva10 = modalitaData?.margini_iva10 || 0;
+          precIva22 = modalitaData?.margini_iva22 || 0;
+          precAltri = modalitaData?.margini_altri || 0;
+          precCoperti = modalitaData?.margini_coperti || 0;
+        }
+        setMensiIva10(precIva10 > 0 ? String(precIva10) : "");
+        setMensiIva22(precIva22 > 0 ? String(precIva22) : "");
+        setMensiAltri(precAltri > 0 ? String(precAltri) : "");
+        setMensiCoperti(precCoperti > 0 ? String(precCoperti) : "");
       }
       setLoadingDati(false);
     });
@@ -323,7 +331,7 @@ function GrigliaView({
             </p>
           </div>
           <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm flex items-center justify-between">
-            <span className="text-muted-foreground">Fatturato netto stimato del mese</span>
+            <span className="text-muted-foreground">Fatturato netto del mese</span>
             <strong className="text-primary tabular-nums text-lg">{nettoMensile > 0 ? formatEuro(nettoMensile) : "—"}</strong>
           </div>
         </div>

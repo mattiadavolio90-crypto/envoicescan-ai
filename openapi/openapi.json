@@ -22026,6 +22026,32 @@
               }
             ],
             "title": "Coperti"
+          },
+          "margini_iva10": {
+            "type": "number",
+            "title": "Margini Iva10",
+            "default": 0.0
+          },
+          "margini_iva22": {
+            "type": "number",
+            "title": "Margini Iva22",
+            "default": 0.0
+          },
+          "margini_altri": {
+            "type": "number",
+            "title": "Margini Altri",
+            "default": 0.0
+          },
+          "margini_coperti": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margini Coperti"
           }
         },
         "type": "object",
