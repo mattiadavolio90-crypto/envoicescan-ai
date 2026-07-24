@@ -136,3 +136,34 @@ Deno.test('alias: array con resourceId camelCase → estratto (normalize gestisc
   assert(ev.resourceId === 87454 || ev.resource_id === undefined)
   assertEquals(ev.resourceId, 87454)
 })
+
+// ─── PascalCase nativo: body reale Invoicetronic (bug 24/7) ───────────────────
+// Payload catturato dal DB live (riga fatture_queue 656): TUTTE le chiavi in
+// PascalCase. Prima del fix, il riconoscimento dei campi-Event leggeva solo
+// lower/camelCase, quindi un Event PascalCase dentro un WRAPPER ({data: …}) non
+// veniva riconosciuto come Event e lo scavo poteva comportarsi male. Qui
+// verifichiamo che extractEventObject riconosca l'Event PascalCase in tutte le
+// forme (root, array, wrapper) e conservi le chiavi Pascal per normalizeWebhookEvent.
+const pascalNative = {
+  UserId: 60, ApiKeyId: 1, CompanyId: 1756, Method: 'POST', Endpoint: 'receive',
+  ApiVersion: 1, StatusCode: 201, DateTime: '2026-07-24T03:54:26.919218Z',
+  Error: null, ResourceId: 88509, UserAgent: 'RestSharp/112.1.0.0',
+  Success: true, Id: 1572149, Created: '2026-07-24T03:54:27.832046Z', Version: 74358439,
+}
+
+Deno.test('pascal: Event PascalCase al root → riconosciuto come Event, non scavato', () => {
+  const { ev, extraCount } = extractEventObject(pascalNative)
+  assertEquals((ev as Record<string, unknown>).ResourceId, 88509)
+  assertEquals((ev as Record<string, unknown>).Endpoint, 'receive')
+  assertEquals(extraCount, 0)
+})
+
+Deno.test('pascal: [Event PascalCase] in array → estrae il primo', () => {
+  const { ev } = extractEventObject([pascalNative])
+  assertEquals((ev as Record<string, unknown>).ResourceId, 88509)
+})
+
+Deno.test('pascal: { data: Event PascalCase } wrapper → scava e riconosce', () => {
+  const { ev } = extractEventObject({ data: pascalNative })
+  assertEquals((ev as Record<string, unknown>).ResourceId, 88509)
+})

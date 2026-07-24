@@ -419,6 +419,37 @@ function decodePayloadToXml(rawPayload: string, encoding: string): string {
   return bytesToXml(bytes)
 }
 
+// ─── Lettura case-insensitive di un campo dall'oggetto Event ──────────────────
+// Il payload nativo Invoicetronic arriva in PascalCase (`Endpoint`, `ResourceId`,
+// `Id`, `StatusCode`, `Success`, `CompanyId`, `DateTime`…) — verificato sul body
+// live 24/7/2026. I payload di test/replay e la doc storica usano invece
+// snake_case/camelCase (`endpoint`, `resource_id`/`resourceId`, `id`…). Senza
+// questa lettura tollerante al case, un webhook reale finiva con TUTTI i campi a
+// null → non riconosciuto come `receive` → fattura persa (bug PascalCase). Legge
+// la prima delle chiavi passate che esista nell'oggetto, confrontando i nomi in
+// minuscolo: così una sola chiamata copre `Endpoint`/`endpoint`, `ResourceId`/
+// `resource_id`/`resourceId`, ecc. Non muta l'oggetto e non dipende dall'ordine.
+function pickCI(obj: Record<string, unknown>, ...names: string[]): unknown {
+  const wanted = new Set(names.map(n => n.toLowerCase()))
+  for (const k of Object.keys(obj)) {
+    if (wanted.has(k.toLowerCase())) {
+      const v = obj[k]
+      if (v !== undefined) return v
+    }
+  }
+  return undefined
+}
+
+// Vero se l'oggetto contiene ALMENO un campo noto dell'Event, confrontando i nomi
+// in modo case-insensitive (copre PascalCase nativo e snake/camelCase di test).
+function hasEventFieldCI(obj: Record<string, unknown>): boolean {
+  if (pickCI(obj, 'id', 'resource_id', 'resourceId', 'endpoint', 'company_id') !== undefined) {
+    return true
+  }
+  const evName = pickCI(obj, 'event')
+  return typeof evName === 'string'
+}
+
 function toNumberOrNull(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim() !== '') {
@@ -458,21 +489,17 @@ export function extractEventObject(body: unknown): { ev: WebhookEvent; extraCoun
 
   // Un wrapper ha tipicamente UNA sola chiave "contenitore" e non porta già i
   // campi noti dell'Event (evita di scartare un Event legittimo che avesse per
-  // caso un campo extra chiamato "data").
+  // caso un campo extra chiamato "data"). Il riconoscimento dei campi-Event è
+  // case-insensitive (hasEventFieldCI) così scava correttamente anche i payload
+  // PascalCase nativi.
   // NB: "event" è ambiguo — nell'Event è il NOME evento (stringa, es. "receive.add"),
   // ma può anche essere una chiave WRAPPER che contiene l'oggetto. Lo consideriamo
   // campo-Event solo se il suo valore è una stringa; altrimenti è un wrapper.
   const wrapperKeys = ['data', 'event', 'payload', 'events', 'items', 'result', 'body']
-  const hasKnownEventField = (obj: Record<string, unknown>): boolean => {
-    if ('id' in obj || 'resource_id' in obj || 'resourceId' in obj ||
-        'endpoint' in obj || 'company_id' in obj) return true
-    if ('event' in obj && typeof obj.event === 'string') return true
-    return false
-  }
   for (let depth = 0; depth < 3; depth++) {
     if (typeof current !== 'object' || current === null || Array.isArray(current)) break
     const obj = current as Record<string, unknown>
-    if (hasKnownEventField(obj)) break
+    if (hasEventFieldCI(obj)) break
     const wrapperKey = wrapperKeys.find(k => k in obj)
     if (!wrapperKey) break
     let inner = obj[wrapperKey]
@@ -489,22 +516,29 @@ export function extractEventObject(body: unknown): { ev: WebhookEvent; extraCoun
   return { ev: current as WebhookEvent, extraCount }
 }
 
-function normalizeWebhookEvent(ev: WebhookEvent): NormalizedWebhookEvent {
-  const statusCode = toNumberOrNull(ev.status_code ?? ev.statusCode)
-  const explicitSuccess = toBool(ev.success)
+export function normalizeWebhookEvent(ev: WebhookEvent): NormalizedWebhookEvent {
+  // Lettura case-insensitive di ogni campo: il body nativo è PascalCase
+  // (`Endpoint`, `ResourceId`, `Id`…), i payload di test snake/camelCase.
+  const obj = (ev ?? {}) as Record<string, unknown>
+  const statusCode = toNumberOrNull(pickCI(obj, 'status_code', 'statusCode'))
+  const explicitSuccess = toBool(pickCI(obj, 'success'))
+  const endpoint  = pickCI(obj, 'endpoint')
+  const eventName = pickCI(obj, 'event')
+  const method    = pickCI(obj, 'method')
+  const dateTime  = pickCI(obj, 'date_time', 'dateTime')
 
   return {
-    eventId:   toNumberOrNull(ev.id),
-    userId:    toNumberOrNull(ev.user_id),
-    companyId: toNumberOrNull(ev.company_id),
-    resourceId: toNumberOrNull(ev.resource_id ?? ev.resourceId),
-    endpoint:  typeof ev.endpoint === 'string' ? ev.endpoint.trim().toLowerCase() : null,
-    eventName: typeof ev.event === 'string' ? ev.event.trim().toLowerCase() : null,
-    method:    typeof ev.method === 'string' ? ev.method.trim().toUpperCase() : null,
+    eventId:   toNumberOrNull(pickCI(obj, 'id')),
+    userId:    toNumberOrNull(pickCI(obj, 'user_id', 'userId')),
+    companyId: toNumberOrNull(pickCI(obj, 'company_id', 'companyId')),
+    resourceId: toNumberOrNull(pickCI(obj, 'resource_id', 'resourceId')),
+    endpoint:  typeof endpoint === 'string' ? endpoint.trim().toLowerCase() : null,
+    eventName: typeof eventName === 'string' ? eventName.trim().toLowerCase() : null,
+    method:    typeof method === 'string' ? method.trim().toUpperCase() : null,
     statusCode,
     success: explicitSuccess ?? (statusCode != null && statusCode >= 200 && statusCode < 300),
-    dateTime: typeof ev.date_time === 'string' ? ev.date_time : (typeof ev.dateTime === 'string' ? ev.dateTime : null),
-    apiVersion: toNumberOrNull(ev.api_version),
+    dateTime: typeof dateTime === 'string' ? dateTime : null,
+    apiVersion: toNumberOrNull(pickCI(obj, 'api_version', 'apiVersion')),
   }
 }
 
