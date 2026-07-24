@@ -103,7 +103,7 @@ export function CopertiTab({ dataDa, dataA }: Props) {
         <CaricaRicaviDialog
           open={caricaOpen} onOpenChange={setCaricaOpen}
           dataDa={dataDa} dataA={dataA}
-          onImported={() => { setCaricaOpen(false); load(); }}
+          onImported={load}
         />
       </>
     );
@@ -167,7 +167,7 @@ export function CopertiTab({ dataDa, dataA }: Props) {
       <CaricaRicaviDialog
         open={caricaOpen} onOpenChange={setCaricaOpen}
         dataDa={dataDa} dataA={dataA}
-        onImported={() => { setCaricaOpen(false); load(); }}
+        onImported={load}
       />
 
       {dettaglioOpen && (

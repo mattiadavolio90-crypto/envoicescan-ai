@@ -2,8 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Upload, FileSpreadsheet, X, CheckCircle2, AlertCircle, Calendar,
-  ChevronLeft, ChevronRight, Trash2, RefreshCw, Users,
+  Upload, X,
+  ChevronLeft, ChevronRight, Trash2, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { formatEuro, MESI_NOMI_SHORT, scorporoNetto } from "./periodi";
 import type {
   RicaviGiornalieriResponse, RicavoGiornaliero,
-  RicaviBatchUpsertResponse, RicaviImportXlsResponse,
+  RicaviBatchUpsertResponse,
 } from "@/lib/ricavi";
 
 type Props = {
@@ -27,8 +27,6 @@ type Props = {
   onImported: () => void;
 };
 
-type View = "home" | "xls" | "griglia";
-
 const SOURCE_LABEL: Record<string, { label: string; color: string }> = {
   manuale: { label: "Manuale", color: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
   xls: { label: "XLS", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
@@ -36,16 +34,8 @@ const SOURCE_LABEL: Record<string, { label: string; color: string }> = {
 };
 
 export function CaricaRicaviDialog({ open, onOpenChange, dataDa, dataA, onImported }: Props) {
-  const [view, setView] = useState<View>("home");
-
   function handleClose() {
     onOpenChange(false);
-    setTimeout(() => setView("home"), 250);
-  }
-
-  function handleImported() {
-    onImported();
-    handleClose();
   }
 
   return (
@@ -55,14 +45,10 @@ export function CaricaRicaviDialog({ open, onOpenChange, dataDa, dataA, onImport
           <div className="space-y-1">
             <DialogTitle className="flex items-center gap-2 text-base">
               <Upload className="size-4 text-primary" />
-              {view === "home" && "Carica ricavi"}
-              {view === "xls" && "Importa da gestionale (XLS)"}
-              {view === "griglia" && "Inserimento manuale"}
+              Inserimento manuale
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {view === "home" && "Scegli come vuoi inserire i ricavi nel piano di marginalità."}
-              {view === "xls" && "Carica il file esportato dal gestionale Passbi · rolling 7 giorni."}
-              {view === "griglia" && "Clicca un giorno del calendario per inserire o modificare i ricavi."}
+              Scegli se inserire i ricavi mensilmente o giornalmente.
             </DialogDescription>
           </div>
           <button
@@ -75,207 +61,10 @@ export function CaricaRicaviDialog({ open, onOpenChange, dataDa, dataA, onImport
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {view === "home" && (
-            <HomeView onSelectXls={() => setView("xls")} onSelectGriglia={() => setView("griglia")} />
-          )}
-          {view === "xls" && (
-            <XlsView onImported={handleImported} onBack={() => setView("home")} />
-          )}
-          {view === "griglia" && (
-            <GrigliaView dataDa={dataDa} dataA={dataA} onSaved={handleImported} onBack={() => setView("home")} onClose={handleClose} />
-          )}
+          <GrigliaView dataDa={dataDa} dataA={dataA} onSaved={onImported} onClose={handleClose} />
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/* ─── Home ──────────────────────────────────────────────────────────────── */
-function HomeView({ onSelectXls, onSelectGriglia }: { onSelectXls: () => void; onSelectGriglia: () => void }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
-      <button
-        onClick={onSelectXls}
-        className="flex items-start gap-4 rounded-xl border border-border p-5 hover:bg-muted/40 hover:border-emerald-500/40 transition-all text-left group"
-      >
-        <div className="size-12 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
-          <FileSpreadsheet className="size-6 text-emerald-600" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">Importa da XLS</p>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            File esportato dal gestionale Passbi. Rolling 7 giorni con aggiornamento automatico.
-          </p>
-          <span className="inline-block mt-2 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-            Passbi v1
-          </span>
-        </div>
-      </button>
-
-      <button
-        onClick={onSelectGriglia}
-        className="flex items-start gap-4 rounded-xl border border-border p-5 hover:bg-muted/40 hover:border-sky-500/40 transition-all text-left group"
-      >
-        <div className="size-12 rounded-xl bg-sky-500/10 flex items-center justify-center shrink-0 group-hover:bg-sky-500/20 transition-colors">
-          <Calendar className="size-6 text-sky-600" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">Inserimento manuale</p>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            Calendario mensile: clicca un giorno per inserire i ricavi. Oppure imposta il totale del mese.
-          </p>
-          <span className="inline-block mt-2 text-[10px] font-medium px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-400">
-            Giornaliero · Mensile
-          </span>
-        </div>
-      </button>
-    </div>
-  );
-}
-
-/* ─── XLS View ──────────────────────────────────────────────────────────── */
-function XlsView({ onImported, onBack }: { onImported: () => void; onBack: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<RicaviImportXlsResponse | null>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  function reset() {
-    setFile(null);
-    setResult(null);
-    setLoading(false);
-    if (inputRef.current) inputRef.current.value = "";
-  }
-
-  async function handleUpload() {
-    if (!file) return;
-    setLoading(true);
-    setResult(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/ricavi/import-xls", { method: "POST", body: fd });
-      if (!res.ok) throw new Error();
-      const data: RicaviImportXlsResponse = await res.json();
-      setResult(data);
-      if (data.inserted + data.updated > 0) {
-        toast.success(`${data.inserted + data.updated} giorni importati`);
-        onImported();
-      } else {
-        toast.warning("Nessuna riga valida importata");
-      }
-    } catch {
-      toast.error("Errore nell'import del file");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="max-w-xl mx-auto space-y-5">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        ← Indietro
-      </button>
-
-      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-        <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
-        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Passbi v1</span>
-        <span className="text-xs text-muted-foreground">· formato riconosciuto automaticamente</span>
-      </div>
-
-      {!result && (
-        <>
-          <label
-            htmlFor="xls-file-dialog"
-            className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed py-12 cursor-pointer transition-colors ${
-              file ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/20"
-            }`}
-          >
-            <Upload className="size-10 text-muted-foreground/50 mb-3" />
-            {file ? (
-              <>
-                <p className="text-sm font-semibold">{file.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">{(file.size / 1024).toFixed(1)} KB · clicca per cambiare</p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold">Clicca per selezionare il file</p>
-                <p className="text-xs text-muted-foreground mt-1">.xlsx · .xls · .csv</p>
-              </>
-            )}
-            <input
-              ref={inputRef}
-              id="xls-file-dialog"
-              type="file"
-              accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-              className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-
-          <div className="flex gap-2 justify-end">
-            <Button variant="ghost" size="sm" onClick={onBack}>Annulla</Button>
-            <Button size="sm" disabled={!file || loading} onClick={handleUpload} className="min-w-24">
-              {loading ? "Importazione…" : "Importa"}
-            </Button>
-          </div>
-        </>
-      )}
-
-      {result && (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-border p-4 space-y-2">
-            <div className="flex items-center gap-2 font-medium text-sm">
-              <CheckCircle2 className="size-4 text-emerald-500" />
-              Import completato
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="rounded-md bg-muted/30 p-2"><p className="text-muted-foreground">Righe lette</p><p className="font-bold text-base mt-0.5">{result.parsed_rows}</p></div>
-              <div className="rounded-md bg-emerald-500/10 p-2"><p className="text-emerald-700 dark:text-emerald-400">Inserite</p><p className="font-bold text-base mt-0.5 text-emerald-700 dark:text-emerald-400">{result.inserted}</p></div>
-              <div className="rounded-md bg-sky-500/10 p-2"><p className="text-sky-700 dark:text-sky-400">Aggiornate</p><p className="font-bold text-base mt-0.5 text-sky-700 dark:text-sky-400">{result.updated}</p></div>
-              <div className="rounded-md bg-muted/30 p-2"><p className="text-muted-foreground">Scartate</p><p className="font-bold text-base mt-0.5">{result.skipped}</p></div>
-            </div>
-            {result.coperti_giorni > 0 && (
-              <p className="text-xs text-violet-700 dark:text-violet-400 flex items-center gap-1.5">
-                <Users className="size-3.5" /> Coperti importati su {result.coperti_giorni} giorni
-              </p>
-            )}
-          </div>
-          {result.dettaglio_sedi && result.dettaglio_sedi.length > 1 && (
-            <div className="rounded-lg border border-border p-4 space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                Ripartizione per sede ({result.dettaglio_sedi.length} locali)
-              </p>
-              <ul className="space-y-1.5">
-                {result.dettaglio_sedi.map((s) => (
-                  <li key={s.ristorante_id} className="flex items-center justify-between text-xs">
-                    <span className="font-medium truncate">{s.nome ?? s.ristorante_id}</span>
-                    <span className="text-muted-foreground tabular-nums shrink-0 ml-3">
-                      {s.giorni} giorni{s.coperti_giorni > 0 ? ` · ${s.coperti_giorni} con coperti` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {result.errors.length > 0 && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 max-h-32 overflow-y-auto">
-              <div className="flex items-center gap-2 font-medium text-sm text-amber-700 dark:text-amber-400 mb-1.5">
-                <AlertCircle className="size-4" />Avvisi ({result.errors.length})
-              </div>
-              <ul className="text-xs space-y-0.5 text-muted-foreground">
-                {result.errors.slice(0, 10).map((e, i) => <li key={i}>· {e}</li>)}
-                {result.errors.length > 10 && <li className="italic">… e altri {result.errors.length - 10}</li>}
-              </ul>
-            </div>
-          )}
-          <div className="flex gap-2 justify-end">
-            <Button variant="ghost" size="sm" onClick={reset}>Carica un altro</Button>
-            <Button size="sm" onClick={onBack}><X className="size-3.5 mr-1" />Chiudi</Button>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -316,8 +105,8 @@ function daysInMonth(anno: number, mese: number): string[] {
 }
 
 function GrigliaView({
-  dataDa, dataA, onSaved, onBack, onClose,
-}: { dataDa: string; dataA: string; onSaved: () => void; onBack: () => void; onClose: () => void }) {
+  dataDa, dataA, onSaved, onClose,
+}: { dataDa: string; dataA: string; onSaved: () => void; onClose: () => void }) {
   const mesi = useMemo(() => buildMesiList(dataDa, dataA), [dataDa, dataA]);
   const [meseSel, setMeseSel] = useState(mesi[mesi.length - 1]);
   const [righe, setRighe] = useState<GiornoEdit[]>([]);
@@ -395,13 +184,17 @@ function GrigliaView({
     parseFloat(mensiAltri.replace(",", ".")) || 0,
   ), [mensiIva10, mensiIva22, mensiAltri]);
 
-  async function handleSave() {
+  async function handleSave(opts?: { silentIfClean?: boolean }) {
     if (!meseSel) return;
     setSaving(true);
     try {
       if (modalita === "giornaliero") {
         const dirty = righe.filter((r) => r.dirty);
-        if (dirty.length === 0) { toast.info("Nessuna modifica da salvare"); setSaving(false); return; }
+        if (dirty.length === 0) {
+          if (!opts?.silentIfClean) toast.info("Nessuna modifica da salvare");
+          setSaving(false);
+          return;
+        }
         const res = await fetch("/api/ricavi/batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -457,10 +250,6 @@ function GrigliaView({
 
   return (
     <div className="space-y-4">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        ← Indietro
-      </button>
-
       {/* Selettore mese + toggle modalità */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
@@ -501,7 +290,7 @@ function GrigliaView({
         /* Blocco mensile */
         <div className="space-y-4 max-w-xl">
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            ⚠️ In modalità Mensile i Margini usano questo totale. I dati giornalieri esistenti restano salvati ma vengono ignorati.
+            ⚠️ Inserendo i dati in modalità mensile, avranno precedenza rispetto ai dati inseriti giornalieri. Usare la modalità mensile solo se non si caricano i ricavi giornalieri.
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
@@ -600,13 +389,18 @@ function GrigliaView({
           {modalita === "giornaliero" && dirtyCount > 0 && `${dirtyCount} giorni modificati`}
         </span>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => { onSaved(); onClose(); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={saving}
+            onClick={async () => { await handleSave({ silentIfClean: true }); onClose(); }}
+          >
             <RefreshCw className="size-3 mr-1" />
             Aggiorna e chiudi
           </Button>
           <Button
             size="sm"
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={saving || (modalita === "giornaliero" && dirtyCount === 0)}
             className="min-w-28"
           >

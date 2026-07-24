@@ -359,7 +359,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
         onOpenChange={setCaricaOpen}
         dataDa={dataDa}
         dataA={dataA}
-        onImported={() => { setCaricaOpen(false); load(); }}
+        onImported={load}
       />
 
       {dettaglioOpen && (
