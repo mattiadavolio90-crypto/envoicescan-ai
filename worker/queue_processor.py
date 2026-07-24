@@ -665,6 +665,44 @@ def _mark_ripartita_se_sede_tecnica(
         nome_file, ristorante_id,
     )
 
+    # Voce 6: ora che le righe della fattura sono salvate e categorizzate sulla sede
+    # tecnica, se esiste già un riparto per questo file (flusso /api/riparto/da-coda, che
+    # registra il riparto PRIMA dell'atterraggio) esplodi le sue quote per categoria e
+    # ricalcola il MOL del mese. Best-effort: un fallimento non deve rompere l'item
+    # (la fattura resta valida, le quote restano monolitiche = comportamento legacy).
+    try:
+        _esplodi_riparto_sede_tecnica(supabase, user_id, nome_file)
+    except Exception as exc:
+        logger.warning(
+            "esplosione quote per categoria (sede tecnica) fallita per %s: %s",
+            nome_file, exc,
+        )
+
+
+def _esplodi_riparto_sede_tecnica(supabase, user_id: str, file_origine: str) -> None:
+    """Trova il riparto associato a `file_origine` (se registrato dal flusso da-coda) e
+    ne esplode le quote per categoria, poi ricalcola le quote mensili del suo mese.
+    No-op se non c'è riparto per questo file (fattura di sede tecnica non ripartita
+    esplicitamente)."""
+    rip = (
+        supabase.table("riparto_costi_catena")
+        .select("id, anno, mese")
+        .eq("user_id", user_id)
+        .eq("file_origine", file_origine)
+        .limit(1)
+        .execute()
+    ).data
+    if not rip:
+        return
+    riparto_id = rip[0]["id"]
+    from services.riparto_service import esplodi_quote_per_categoria
+    changed = esplodi_quote_per_categoria(supabase, user_id, riparto_id, file_origine)
+    if changed:
+        supabase.rpc("riparto_quote_mensili", {
+            "p_user_id": user_id, "p_anno": int(rip[0]["anno"]), "p_mese": int(rip[0]["mese"]),
+        }).execute()
+        logger.info("Riparto %s esploso per categoria + MOL ricalcolato", riparto_id)
+
 
 def _advance_nuovi_da_daily(supabase, ristorante_id: str) -> None:
     """Avanza ristoranti.nuovi_da a mezzanotte (Europe/Rome) di OGGI.

@@ -243,6 +243,15 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
         [{"riparto_id": riparto_id, **q} for q in quote]
     ).execute()
 
+    # Esplodi le quote per categoria dalle righe reali della fattura (già in `fatture`):
+    # ogni sede vede la sua porzione F&B e la sua porzione spese nel MOL. Se la fattura
+    # non ha righe categorizzabili resta il modello legacy per-tipo (helper ritorna False).
+    try:
+        from services.riparto_service import esplodi_quote_per_categoria
+        esplodi_quote_per_categoria(sb, user_id, riparto_id, fo)
+    except Exception as exc:
+        logger.warning("esplosione quote per categoria fallita (resta legacy) riparto=%s: %s", riparto_id, exc)
+
     # Marca le righe della fattura come ripartite (anti-doppio-conteggio).
     sb.table("fatture").update({"ripartita_su_gruppo": True}) \
         .eq("user_id", user_id).eq("file_origine", fo).is_("deleted_at", "null").execute()

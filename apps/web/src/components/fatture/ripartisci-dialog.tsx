@@ -162,7 +162,9 @@ export function RipartisciDialog({
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
             Costo di struttura comune (es. commercialista, auto): la quota di ogni sede entra nel suo
-            MOL. Il documento resta intero nell&apos;analisi fatture.
+            MOL. Ogni riga della fattura è categorizzata da sola (cibo sotto F&amp;B, spese sotto
+            spese generali), così la quota di ogni sede è divisa correttamente. Il documento resta
+            intero nell&apos;analisi fatture.
           </p>
           {regolaMemorizzata && (
             <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
@@ -179,21 +181,12 @@ export function RipartisciDialog({
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium">Tipo di costo</label>
-              <NativeSelect value={tipo} onValueChange={(v) => setTipo(v as "generale" | "fb")} className="h-[38px] text-sm">
-                <option value="generale">Spese generali</option>
-                <option value="fb">F&B</option>
-              </NativeSelect>
-            </div>
-            <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium">Ripartizione</label>
-              <NativeSelect value={regola} onValueChange={(v) => setRegola(v as "equa" | "percentuali")} className="h-[38px] text-sm">
-                <option value="equa">Parti uguali</option>
-                <option value="percentuali">Percentuali</option>
-              </NativeSelect>
-            </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">Ripartizione</label>
+            <NativeSelect value={regola} onValueChange={(v) => setRegola(v as "equa" | "percentuali")} className="h-[38px] text-sm">
+              <option value="equa">Parti uguali</option>
+              <option value="percentuali">Percentuali</option>
+            </NativeSelect>
           </div>
 
           {regola === "percentuali" && (
