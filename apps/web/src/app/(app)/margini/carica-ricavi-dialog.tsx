@@ -110,7 +110,7 @@ function GrigliaView({
   const mesi = useMemo(() => buildMesiList(dataDa, dataA), [dataDa, dataA]);
   const [meseSel, setMeseSel] = useState(mesi[mesi.length - 1]);
   const [righe, setRighe] = useState<GiornoEdit[]>([]);
-  const [modalita, setModalita] = useState<ModalitaMese>("giornaliero");
+  const [modalita, setModalita] = useState<ModalitaMese>("mensile");
   const [loadingDati, setLoadingDati] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mensiIva10, setMensiIva10] = useState("");
@@ -149,14 +149,21 @@ function GrigliaView({
         };
       }));
       const mod: ModalitaMese = modalitaData?.modalita ?? "giornaliero";
-      setModalita(mod);
       if (mod === "mensile" && modalitaData) {
         setMensiIva10(String(modalitaData.fatturato_iva10 || ""));
         setMensiIva22(String(modalitaData.fatturato_iva22 || ""));
         setMensiAltri(String(modalitaData.altri_ricavi_noiva || ""));
         setMensiCoperti(modalitaData.coperti != null ? String(modalitaData.coperti) : "");
       } else {
-        setMensiIva10(""); setMensiIva22(""); setMensiAltri(""); setMensiCoperti("");
+        const items = ricaviData?.items ?? [];
+        const sommaIva10 = items.reduce((s, it) => s + (it.fatturato_iva10 || 0), 0);
+        const sommaIva22 = items.reduce((s, it) => s + (it.fatturato_iva22 || 0), 0);
+        const sommaAltri = items.reduce((s, it) => s + (it.altri_ricavi_noiva || 0), 0);
+        const sommaCoperti = items.reduce((s, it) => s + (it.coperti || 0), 0);
+        setMensiIva10(sommaIva10 > 0 ? String(sommaIva10) : "");
+        setMensiIva22(sommaIva22 > 0 ? String(sommaIva22) : "");
+        setMensiAltri(sommaAltri > 0 ? String(sommaAltri) : "");
+        setMensiCoperti(sommaCoperti > 0 ? String(sommaCoperti) : "");
       }
       setLoadingDati(false);
     });
