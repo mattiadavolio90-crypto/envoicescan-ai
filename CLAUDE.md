@@ -57,6 +57,7 @@ rompe qualcosa. Tutto il resto sta altrove e si apre alla bisogna:
 
 | Serve… | Documento |
 |---|---|
+| Come si lavora a una feature (planning/esecuzione, modello-per-fase, gate deploy) | `WORKFLOW.md` |
 | Dove sta cosa, e perché è fatto così | `DOCUMENTAZIONE/MAPPA_TECNICA.md` |
 | Cambiare cosa dice il briefing (soglie, priorità, tono) | `LOGICA_BRIEFING.md` |
 | Schema DB, pipeline AI, chat, sicurezza, troubleshooting | `DOCUMENTAZIONE/tecnica/` |

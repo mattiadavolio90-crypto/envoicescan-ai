@@ -86,7 +86,13 @@ create_admin*.py
 *SISTEMA*.md
 *TAB2*.md
 *WORKFLOW*.md
+!WORKFLOW.md
 *DIAGRAMMA*.txt
+
+# Piani di lavoro per-feature: effimeri, si eliminano a feature deployata (vedi WORKFLOW.md).
+# La cartella e il suo README restano tracciati, i singoli piani no.
+docs/piani/*.md
+!docs/piani/README.md
 *QUICK_START*.txt
 START_HERE.txt
 TEST_FIX*.md

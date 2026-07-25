@@ -24,3 +24,9 @@ archiviato qui.
 > il pattern `*DIAGNOSI*.md` in `.gitignore` (pensato per scratch temporanei) e sono stati aggiunti
 > con `git add -f`: restano intenzionalmente tracciati qui, a differenza degli scratch non archiviati
 > dello stesso pattern.
+>
+> **Convenzione piani di lavoro** (formalizzata in `WORKFLOW.md`): i piani per-feature vivono in
+> `docs/piani/PIANO_<feature>.md`, sono git-ignorati e **si eliminano a feature deployata** — l'esito
+> passa nella memoria persistente, non qui. Un piano finisce archiviato in `docs/storico/` solo se il
+> suo contenuto ha valore predittivo su problemi futuri (la regola in cima a questo file); altrimenti
+> si elimina, come già fatto sopra per i due piani della ripartizione costi catena.
