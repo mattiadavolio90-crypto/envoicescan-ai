@@ -10,7 +10,12 @@ testata con un fake client minimale che ritorna righe predefinite.
 """
 import pytest
 
-from services.riparto_service import _spezza_importo_per_pesi, _pesi_categoria_fattura
+from services.riparto_service import (
+    _spezza_importo_per_pesi,
+    _pesi_categoria_fattura,
+    _proietta_riparto,
+    _mesi_nella_finestra,
+)
 
 
 # ─── _spezza_importo_per_pesi (puro) ─────────────────────────────────────────
@@ -114,3 +119,115 @@ def test_pesi_righe_senza_categoria_ignorate():
     pesi = _pesi_categoria_fattura(_FakeSB(rows), "u", "f.xml")
     assert set(pesi.keys()) == {"CARNE"}
     assert pesi["CARNE"] == pytest.approx(1.0, abs=1e-9)
+
+
+# ─── _proietta_riparto (Lettura B: quote → righe sul PV) ─────────────────────
+#
+# Invariante non negoziabile: la SOMMA dei totali delle righe proiettate di una
+# categoria pareggia AL CENTESIMO la quota_importo di quella categoria per il PV.
+# È ciò che garantisce che il PV non veda né più né meno della sua quota reale.
+
+def _id_gen():
+    c = {"n": 0}
+    def _next():
+        c["n"] -= 1
+        return c["n"]
+    return _next
+
+
+def _righe(*coppie):
+    """helper: crea righe reali (categoria, quantita, prezzo, totale)."""
+    return [
+        {"categoria": cat, "quantita": q, "prezzo_unitario": p, "totale_riga": t,
+         "descrizione": f"{cat} art", "fornitore": "METRO", "unita_misura": "KG",
+         "file_origine": "f.xml", "numero_riga": i}
+        for i, (cat, q, p, t) in enumerate(coppie)
+    ]
+
+
+def test_proietta_pareggia_la_quota_per_categoria():
+    # 3 righe VERDURE reali (tot 100), il PV ne prende il 65% → 65.00 esatti.
+    reali = _righe(
+        ("VERDURE", 10, 3.0, 30.0),
+        ("VERDURE", 20, 2.0, 40.0),
+        ("VERDURE", 15, 2.0, 30.0),
+    )
+    quote = [{"categoria": "VERDURE", "quota_importo": 65.00}]
+    out = _proietta_riparto(reali, quote, 65.0, _id_gen())
+    somma = round(sum(r["totale_riga"] for r in out), 2)
+    assert somma == 65.00
+    # prezzo unitario REALE (non scalato), quantità scalata del 65%
+    assert out[0]["prezzo_unitario"] == 3.0
+    assert out[0]["quantita"] == pytest.approx(6.5, abs=1e-6)
+    # id sintetici negativi (inerti alle batch operations)
+    assert all(r["id"] < 0 for r in out)
+    assert all(r["ripartita_su_gruppo"] for r in out)
+
+
+def test_proietta_piu_categorie_ognuna_pareggia():
+    reali = _righe(
+        ("VERDURE", 10, 5.0, 50.0),
+        ("CARNE", 4, 25.0, 100.0),
+    )
+    quote = [
+        {"categoria": "VERDURE", "quota_importo": 25.00},  # 50% di 50
+        {"categoria": "CARNE", "quota_importo": 50.00},    # 50% di 100
+    ]
+    out = _proietta_riparto(reali, quote, 50.0, _id_gen())
+    per_cat = {}
+    for r in out:
+        per_cat.setdefault(r["categoria"], 0.0)
+        per_cat[r["categoria"]] += r["totale_riga"]
+    assert round(per_cat["VERDURE"], 2) == 25.00
+    assert round(per_cat["CARNE"], 2) == 50.00
+
+
+def test_proietta_arrotondamento_ultima_riga_pareggia():
+    # quota che non si divide in centesimi netti: l'ultima riga assorbe il resto.
+    reali = _righe(
+        ("VERDURE", 1, 1.0, 33.33),
+        ("VERDURE", 1, 1.0, 33.33),
+        ("VERDURE", 1, 1.0, 33.34),
+    )
+    quote = [{"categoria": "VERDURE", "quota_importo": 21.67}]  # 21.666 arrotondato
+    out = _proietta_riparto(reali, quote, 21.667, _id_gen())
+    assert round(sum(r["totale_riga"] for r in out), 2) == 21.67
+
+
+def test_proietta_fallback_sintetico_senza_righe_vive():
+    # storico purgato (GDPR): nessuna riga reale → una riga sintetica per categoria.
+    quote = [{"categoria": "MANUTENZIONE E ATTREZZATURE", "quota_importo": 120.00}]
+    out = _proietta_riparto([], quote, 40.0, _id_gen())
+    assert len(out) == 1
+    r = out[0]
+    assert r["totale_riga"] == 120.00
+    assert r["prezzo_unitario"] == 120.00
+    assert r["categoria"] == "MANUTENZIONE E ATTREZZATURE"
+    assert r["ripartita_su_gruppo"] is True
+    assert "Quota di gruppo" in r["descrizione"]
+
+
+def test_proietta_quota_categoria_senza_righe_reali_corrispondenti():
+    # il PV ha una quota per una categoria che non compare fra le righe reali
+    # (es. classificazione cambiata): fallback sintetico, quadra comunque.
+    reali = _righe(("VERDURE", 10, 3.0, 30.0))
+    quote = [{"categoria": "CARNE", "quota_importo": 15.00}]
+    out = _proietta_riparto(reali, quote, 50.0, _id_gen())
+    assert len(out) == 1
+    assert out[0]["categoria"] == "CARNE"
+    assert out[0]["totale_riga"] == 15.00
+
+
+# ─── _mesi_nella_finestra ────────────────────────────────────────────────────
+
+def test_mesi_finestra_singolo_mese():
+    assert _mesi_nella_finestra("2026-03-01", "2026-03-31") == {(2026, 3)}
+
+
+def test_mesi_finestra_a_cavallo_anno():
+    m = _mesi_nella_finestra("2025-12-15", "2026-02-10")
+    assert m == {(2025, 12), (2026, 1), (2026, 2)}
+
+
+def test_mesi_finestra_aperta_none():
+    assert _mesi_nella_finestra(None, None) is None

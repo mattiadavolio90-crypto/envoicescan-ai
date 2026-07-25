@@ -20,6 +20,7 @@ export type RigaFattura = {
   piva_cedente: string | null;
   created_at: string | null;
   numero_documento: string | null;
+  ripartita_su_gruppo?: boolean;
 };
 
 export type ArticoloAggregato = {
@@ -37,6 +38,7 @@ export type ArticoloAggregato = {
   righe_ids: number[];
   needs_review: boolean;
   is_nuovo: boolean;
+  ripartita_su_gruppo?: boolean;
 };
 
 export type ArticoliResponse = {

@@ -7307,9 +7307,55 @@ def _invalidate_fatture_rows_cache(ristorante_id: Optional[str] = None) -> None:
     """Invalida la cache righe fatture (tutto, o solo un ristorante)."""
     if ristorante_id is None:
         _FATTURE_ROWS_CACHE.clear()
+        _RISTORANTE_QUOTE_META.clear()
         return
     for k in [k for k in _FATTURE_ROWS_CACHE if k.startswith(f"{ristorante_id}::")]:
         _FATTURE_ROWS_CACHE.pop(k, None)
+    _RISTORANTE_QUOTE_META.pop(ristorante_id, None)
+
+
+# Cache (ristorante_id -> (user_id, ha_quote_ripartite)) per decidere se un PV va
+# arricchito con le righe di gruppo proiettate. TTL lungo: l'anagrafica sede e
+# l'essere-o-no PV di catena cambiano di rado. Invalidata insieme alle righe.
+_RISTORANTE_QUOTE_META: Dict[str, tuple] = {}  # rid -> (expires_at, user_id, ha_quote)
+_RISTORANTE_QUOTE_TTL = 300.0  # secondi
+
+
+def _ristorante_quote_meta(supabase_client, ristorante_id: str) -> tuple:
+    """(user_id, ha_quote_ripartite) per un ristorante. Un PV è "di catena" ai fini
+    della proiezione se esiste almeno una quota riparto a suo carico."""
+    import time as _time
+    _now = _time.time()
+    cached = _RISTORANTE_QUOTE_META.get(ristorante_id)
+    if cached is not None and cached[0] > _now:
+        return cached[1], cached[2]
+    user_id = None
+    ha_quote = False
+    try:
+        row = (
+            supabase_client.table("ristoranti")
+            .select("user_id")
+            .eq("id", ristorante_id)
+            .single()
+            .execute()
+        )
+        user_id = (row.data or {}).get("user_id")
+    except Exception:
+        user_id = None
+    if user_id:
+        try:
+            q = (
+                supabase_client.table("riparto_costi_catena_quote")
+                .select("id")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            ha_quote = bool(q.data)
+        except Exception:
+            ha_quote = False
+    _RISTORANTE_QUOTE_META[ristorante_id] = (_now + _RISTORANTE_QUOTE_TTL, user_id, ha_quote)
+    return user_id, ha_quote
 
 
 def _fetch_fatture_rows(
@@ -7361,6 +7407,32 @@ def _fetch_fatture_rows(
             break
 
     all_rows = _exclude_note_rows(all_rows)
+
+    # Righe di gruppo proiettate (Lettura B): se questo ristorante è un PV di catena
+    # con quote a suo carico, aggiungiamo le righe della sua quota sui costi di gruppo
+    # — in sola lettura, senza toccare `fatture`. Da qui in poi si comportano come righe
+    # reali in ogni consumatore (aggregati, pivot, grafici, trend). Il search testuale è
+    # già applicato alle righe reali via query; per coerenza filtriamo anche le proiettate.
+    _uid, _ha_quote = _ristorante_quote_meta(supabase_client, ristorante_id)
+    if _ha_quote and _uid:
+        try:
+            from services.riparto_service import righe_ripartite_proiettate
+            proiettate = righe_ripartite_proiettate(
+                supabase_client, str(_uid), ristorante_id, data_da, data_a
+            )
+            if search:
+                term = (search or "").strip().lower()
+                if term:
+                    proiettate = [
+                        r for r in proiettate
+                        if term in (r.get("descrizione") or "").lower()
+                        or term in (r.get("fornitore") or "").lower()
+                        or term in (r.get("categoria") or "").lower()
+                    ]
+            all_rows = all_rows + proiettate
+        except Exception:
+            logger.exception("Proiezione righe ripartite fallita per %s", ristorante_id)
+
     all_rows = _apply_tipo_prodotti_filter(all_rows, tipo_prodotti)
     _FATTURE_ROWS_CACHE[cache_key] = (_now + _FATTURE_ROWS_TTL, all_rows)
     return all_rows

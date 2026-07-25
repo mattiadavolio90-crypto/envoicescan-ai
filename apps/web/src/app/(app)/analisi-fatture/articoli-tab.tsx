@@ -14,6 +14,7 @@ import {
   Loader2,
   Search,
   Sparkles,
+  Split,
 } from "lucide-react";
 // xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
@@ -34,6 +35,7 @@ type Props = {
   categorie: string[];
   soloNuovi: boolean;
   soloVerifica: boolean;
+  soloRipartite: boolean;
   filtri: {
     data_da?: string;
     data_a?: string;
@@ -116,8 +118,15 @@ export function ArticoliTab({
   categorie,
   soloNuovi,
   soloVerifica,
+  soloRipartite,
   filtri,
 }: Props) {
+  // C'è almeno un articolo ripartito? Se no, il toggle "Solo ripartite" non serve
+  // (sede non di catena) → non lo mostriamo, per non aggiungere rumore al 99% dei clienti.
+  const hasRipartite = useMemo(
+    () => articoli.some((a) => a.ripartita_su_gruppo),
+    [articoli],
+  );
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -138,7 +147,7 @@ export function ArticoliTab({
   // Reset paginazione quando cambiano filtri client / URL
   useEffect(() => {
     setPage(1);
-  }, [search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, sort]);
+  }, [search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, soloRipartite, sort]);
 
   // Reset dropdown selection quando cambia tipo (il valore scelto potrebbe non esistere nel nuovo set)
   useEffect(() => {
@@ -195,6 +204,7 @@ export function ArticoliTab({
       // già filtrati e con totale_speso/quantita ricalcolati sulle sole righe nuove.
       // Nessun filtro client qui, altrimenti i totali resterebbero quelli storici.
       if (soloVerifica && !a.needs_review) return false;
+      if (soloRipartite && !a.ripartita_su_gruppo) return false;
       if (term) {
         const inDesc = a.descrizione.toLowerCase().includes(term);
         const inForn = a.fornitore_principale.toLowerCase().includes(term);
@@ -203,7 +213,7 @@ export function ArticoliTab({
       }
       return true;
     });
-  }, [articoli, search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica]);
+  }, [articoli, search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, soloRipartite]);
 
   const sorted = useMemo(() => {
     if (!sort.key || !sort.dir) return filtered;
@@ -346,6 +356,17 @@ export function ArticoliTab({
           <AlertTriangle className="size-3.5 text-amber-500" />
           Solo da verificare
         </label>
+        {hasRipartite && (
+          <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-violet-500/30 bg-violet-500/5">
+            <input
+              type="checkbox"
+              checked={soloRipartite}
+              onChange={(e) => setUrlParam({ ripartite: e.target.checked ? "1" : undefined })}
+            />
+            <Split className="size-3.5 text-violet-500" />
+            Solo ripartite
+          </label>
+        )}
       </div>
 
       {/* Counter + totale filtrato */}
@@ -507,6 +528,10 @@ const ArticoloRiga = memo(function ArticoloRiga({
   const daScegliere = needsReview && (!currentCat || currentCat === "Da Classificare");
   const icon = daScegliere ? "⚠️" : categoriaIcon(currentCat);
   const trendPct = articolo.prezzo_unit_trend_pct;
+  // Articolo che include quote di gruppo proiettate: la categoria riflette il
+  // documento di gruppo (sede tecnica) e NON è modificabile da qui — cambiarla
+  // dovrebbe avvenire sulla fattura di struttura. Blocchiamo il dropdown.
+  const ripartita = Boolean(articolo.ripartita_su_gruppo);
 
   const fbCats = useMemo(
     () =>
@@ -544,6 +569,14 @@ const ArticoloRiga = memo(function ArticoloRiga({
             <span className="font-medium truncate max-w-72" title={articolo.descrizione}>
               {articolo.descrizione}
             </span>
+            {ripartita && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap"
+                title="Include la tua quota di un costo ripartito sul gruppo"
+              >
+                <Split className="size-2.5" /> Ripartita
+              </span>
+            )}
             {/* needsReview = categoria incerta. Due casi:
                 - categoria proposta (≠ Da Classificare): badge Verifica + Conferma verde
                 - categoria mancante (Da Classificare/vuota): solo badge Verifica,
@@ -577,9 +610,16 @@ const ArticoloRiga = memo(function ArticoloRiga({
           </div>
         </td>
         <td className="px-3 py-2">
-          {/* Dropdown in portale (base-ui Menu): si apre ancorato alla cella senza
+          {ripartita ? (
+            // Categoria di sola lettura: riflette il documento di gruppo, non si cambia da qui.
+            <span className="text-xs inline-flex items-center gap-1.5 text-muted-foreground" title="Categoria del costo di gruppo — modificabile solo sulla fattura di struttura">
+              <span className="text-base leading-none">{categoriaIcon(currentCat)}</span>
+              <span className="font-medium">{currentCat || <em>N/D</em>}</span>
+            </span>
+          ) : (
+          /* Dropdown in portale (base-ui Menu): si apre ancorato alla cella senza
               scrollare la pagina, quindi la riga NON salta più fuori vista come
-              accadeva col <select> nativo + autoFocus. */}
+              accadeva col <select> nativo + autoFocus. */
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={saving}
@@ -642,6 +682,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </td>
         <td className="px-3 py-2 text-xs">
           <span className="truncate inline-block max-w-32" title={articolo.fornitore_principale}>

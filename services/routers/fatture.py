@@ -90,6 +90,7 @@ class RigaFattura(BaseModel):
     piva_cedente: Optional[str]
     created_at: Optional[str] = None
     numero_documento: Optional[str] = None
+    ripartita_su_gruppo: bool = False
 
 
 class ArticoloAggregato(BaseModel):
@@ -104,9 +105,10 @@ class ArticoloAggregato(BaseModel):
     prezzo_unit_trend_pct: Optional[float]  # % rispetto al periodo precedente
     totale_speso: float
     num_acquisti: int
-    righe_ids: List[int]  # per batch operations
+    righe_ids: List[int]  # per batch operations (solo righe reali, id>0)
     needs_review: bool
     is_nuovo: bool  # arrivato dopo l'ultimo accesso utente
+    ripartita_su_gruppo: bool = False  # ha almeno una riga di quota di gruppo proiettata
 
 
 class ArticoliResponse(BaseModel):
@@ -394,6 +396,7 @@ def get_articoli_aggregati(
     search: Optional[str] = None,
     solo_nuovi: bool = False,
     solo_da_verificare: bool = False,
+    solo_ripartite: bool = False,
     authorization: Optional[str] = Header(None),
 ) -> ArticoliResponse:
     user = _resolve_user_from_token(authorization)
@@ -422,6 +425,8 @@ def get_articoli_aggregati(
         rows = [r for r in rows if r.get("fornitore") == fornitore]
     if solo_da_verificare:
         rows = [r for r in rows if r.get("needs_review")]
+    if solo_ripartite:
+        rows = [r for r in rows if r.get("ripartita_su_gruppo")]
     # solo_nuovi: filtra le righe PRIMA dell'aggregazione, così totale_speso/quantita/
     # num_acquisti di ogni articolo riflettono SOLO le righe dell'ultima sessione di
     # upload (non lo storico del prodotto nel periodo).
@@ -492,6 +497,10 @@ def get_articoli_aggregati(
         # needs_review se almeno una riga
         nr = any(it.get("needs_review") for it in items)
 
+        # ripartita_su_gruppo: l'articolo include almeno una riga di quota di gruppo
+        # proiettata (id sintetico < 0). Serve al badge nel tab Articoli.
+        ripartita = any(it.get("ripartita_su_gruppo") for it in items)
+
         # is_nuovo: created_at di almeno una riga >= cutoff (ultima sessione upload).
         # Con solo_nuovi=True le righe vecchie sono già state filtrate a monte, quindi
         # qui resta sempre True.
@@ -514,9 +523,10 @@ def get_articoli_aggregati(
             prezzo_unit_trend_pct=trend_pct,
             totale_speso=round(totale_speso, 2),
             num_acquisti=num_acq,
-            righe_ids=[int(it["id"]) for it in items if it.get("id")],
+            righe_ids=[int(it["id"]) for it in items if it.get("id") and int(it["id"]) > 0],
             needs_review=nr,
             is_nuovo=is_nuovo,
+            ripartita_su_gruppo=ripartita,
         ))
 
     # Ordina per totale_speso desc (i piu impattanti in alto)
@@ -539,16 +549,17 @@ def get_righe_articolo(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    q = _build_fatture_base_query(supabase_client, ristorante_id).eq("descrizione", descrizione)
-    if data_da:
-        q = q.gte("data_documento", data_da)
-    if data_a:
-        q = q.lte("data_documento", data_a)
-    q = q.order("data_documento", desc=True)
-    res = q.execute()
+    # Passa dal funnel _fetch_fatture_rows così l'espansione di un articolo mostra
+    # anche le eventuali righe di gruppo proiettate (PV di catena), coerente con
+    # l'aggregato. Filtro sulla descrizione esatta come faceva la query diretta.
+    rows = [
+        r for r in _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a)
+        if (r.get("descrizione") or "") == descrizione
+    ]
+    rows.sort(key=lambda r: (r.get("data_documento") or ""), reverse=True)
     num_map = _load_num_documento_map(supabase_client, ristorante_id)
     result = []
-    for r in (res.data or []):
+    for r in rows:
         fields = {k: v for k, v in r.items() if k in RigaFattura.model_fields}
         fields["numero_documento"] = num_map.get(r.get("file_origine", ""), "") or None
         result.append(RigaFattura(**fields))

@@ -32,6 +32,7 @@ type SearchParams = {
   cat?: string;
   nuovi?: string;
   verifica?: string;
+  ripartite?: string;
 };
 
 function resolvePeriodo(sp: SearchParams): {
@@ -75,6 +76,7 @@ export default async function AnalisiFatturePage({
   const tipoProdotti = normalizeTipo(sp.tipo);
   const soloNuovi = sp.nuovi === "1";
   const soloVerifica = sp.verifica === "1";
+  const soloRipartite = sp.ripartite === "1";
 
   // Tutte le fetch indipendenti in un UNICO Promise.all: prima erano due batch
   // sequenziali (waterfall) e il payload pesante (articoli/pivot) restava bloccato
@@ -142,6 +144,7 @@ export default async function AnalisiFatturePage({
           categorie={categorieRes.categorie}
           soloNuovi={soloNuovi}
           soloVerifica={soloVerifica}
+          soloRipartite={soloRipartite}
           filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}
         />
       )}
