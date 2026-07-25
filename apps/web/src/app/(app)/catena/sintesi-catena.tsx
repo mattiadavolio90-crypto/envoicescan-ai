@@ -502,12 +502,21 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
       {/* Briefing di gruppo — la voce macro, in cima */}
       <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
 
-      {/* Gestione fatture di gruppo: subito dopo il briefing, che la nomina per
-          primo come azione del giorno. Fatture che l'app non ha saputo attribuire a
-          un locale (P.IVA condivisa) — un tema di gruppo, non delle Home PV.
-          Si auto-nasconde se non ci sono sedi multiple o la coda è già vuota
-          (torna null solo per contesto "pv"; qui mostra lo stato vuoto positivo). */}
-      <CodaDaAssegnare contesto="catena" />
+      {/* Fatture di gruppo + Costi di gruppo: stessa origine (documenti a nome
+          società, non di un singolo locale) → un unico riquadro con le due card
+          affiancate, così la parentela si vede dalla posizione e non solo dal
+          colore. La coda resta la voce prominente (bordo ambra, badge conteggio);
+          "Costi di gruppo" era isolata in mezzo alle altre 3 card di confronto,
+          lontana dalla coda che la alimenta. */}
+      <div className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.03] p-3 sm:p-4">
+        <span className="mb-2 inline-block px-1 text-xs font-medium uppercase tracking-wide text-sky-700/70 dark:text-sky-400/70">
+          Gruppo
+        </span>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CodaDaAssegnare contesto="catena" />
+          <ConfrontoCard icon={Split} titolo="Costi di gruppo" sottotitolo="Costi comuni divisi fra le sedi" onClick={() => setCostiGruppoOpen(true)} />
+        </div>
+      </div>
 
       {/* Due card grandi come la Home PV: Conti + Salute */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
@@ -527,9 +536,8 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
       </div>
 
       {/* Strumenti di confronto del gruppo: si aprono in finestra (no pagine) */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <ConfrontoCard icon={Receipt} titolo="Spesa per PV" sottotitolo="Dove spende di più ogni sede" onClick={() => setSpesaOpen(true)} />
-        <ConfrontoCard icon={Split} titolo="Costi di gruppo" sottotitolo="Costi comuni divisi fra le sedi" onClick={() => setCostiGruppoOpen(true)} />
         <ConfrontoCard icon={TrendingUp} titolo="Margini e coperti" sottotitolo="Chi rende di più, per metrica" onClick={() => setMarginiOpen(true)} />
         <ConfrontoCard icon={Tags} titolo="Tag di catena" sottotitolo="Confronta un prodotto fra i PV" onClick={() => setTagOpen(true)} />
       </div>
