@@ -846,7 +846,11 @@ def get_documenti_scadenziario(
 
         # Totale: preferisce fatture_documenti se presente (più accurato), fallback su sum(righe)
         totale_doc = _to_float_safe(extra.get("totale_documento")) if extra.get("totale_documento") else None
-        totale = totale_doc if totale_doc is not None else round(base["totale_documento"], 2)
+        totale_righe = round(base["totale_documento"], 2)
+        totale = totale_doc if totale_doc is not None else totale_righe
+        # Segnala divergenza (riga soft-deleted, ripartizione, ecc.) senza bloccare nulla:
+        # il totale mostrato resta quello autorevole di fatture_documenti.
+        totale_incoerente = totale_doc is not None and abs(totale_doc - totale_righe) > 0.01
 
         pagata = bool(extra.get("pagata", False))
         pagata_at = _to_date_iso(extra.get("pagata_at")) if extra else None
@@ -885,9 +889,11 @@ def get_documenti_scadenziario(
         result.append({
             "file_origine": fo,
             "fornitore": base.get("fornitore") or "Sconosciuto",
+            "piva_fornitore": extra.get("piva_fornitore"),
             "tipo_documento": tipo_doc,
             "is_nota_credito": is_nota_credito,
             "totale_documento": round(totale, 2),
+            "totale_incoerente": totale_incoerente,
             "data_documento": base.get("data_documento"),
             "numero_documento": extra.get("numero_documento"),
             "scadenza_effettiva": scadenza_eff,
@@ -933,7 +939,7 @@ def set_scadenza_override(
                 sb.table("fatture_documenti")
                 .select(
                     "id,fornitore,piva_fornitore,data_documento,"
-                    "scadenza_xml,giorni_termini_xml"
+                    "scadenza_xml,giorni_termini_xml,pagata"
                 )
                 .eq("user_id", str(user_id))
                 .eq("ristorante_id", str(ristorante_id))
@@ -988,6 +994,11 @@ def set_scadenza_override(
             "ok": True,
             "scadenza_override": scadenza_override,
             "scadenza_effettiva": update_payload.get("scadenza_effettiva"),
+            "stato_scadenza": _compute_stato_scadenza(
+                update_payload.get("scadenza_effettiva"),
+                pagata=bool(row.get("pagata", False)),
+                today=date.today(),
+            ),
         }
     except Exception as exc:
         logger.error("set_scadenza_override error: %s", exc)

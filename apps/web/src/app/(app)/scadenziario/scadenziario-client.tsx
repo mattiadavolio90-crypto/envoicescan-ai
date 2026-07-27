@@ -1189,8 +1189,10 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
 
 // ── Fornitore Multi-Select ────────────────────────────────────────────────────
 
+type FornitoreEntry = { key: string; label: string };
+
 type FornitoreMultiSelectProps = {
-  fornitori: string[];
+  fornitori: FornitoreEntry[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
 };
@@ -1200,22 +1202,22 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? fornitori.filter(f => f.toLowerCase().includes(q)) : fornitori;
+    return q ? fornitori.filter(f => f.label.toLowerCase().includes(q)) : fornitori;
   }, [fornitori, search]);
 
-  function toggle(f: string) {
+  function toggle(key: string) {
     const next = new Set(selected);
-    if (next.has(f)) next.delete(f); else next.add(f);
+    if (next.has(key)) next.delete(key); else next.add(key);
     onChange(next);
   }
 
-  function selectAll() { onChange(new Set(fornitori)); }
+  function selectAll() { onChange(new Set(fornitori.map(f => f.key))); }
   function clearAll() { onChange(new Set()); }
 
   const label = selected.size === 0
     ? "Tutti i fornitori"
     : selected.size === 1
-      ? Array.from(selected)[0]
+      ? (fornitori.find(f => f.key === Array.from(selected)[0])?.label ?? Array.from(selected)[0])
       : `${selected.size} fornitori`;
 
   return (
@@ -1266,16 +1268,16 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
           ) : (
             filtered.map(f => (
               <label
-                key={f}
+                key={f.key}
                 className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-xs"
               >
                 <input
                   type="checkbox"
-                  checked={selected.has(f)}
-                  onChange={() => toggle(f)}
+                  checked={selected.has(f.key)}
+                  onChange={() => toggle(f.key)}
                   className="size-3.5 accent-primary flex-shrink-0"
                 />
-                <span className="truncate">{f}</span>
+                <span className="truncate">{f.label}</span>
               </label>
             ))
           )}
@@ -1286,6 +1288,12 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+
+// Chiave di raggruppamento fornitore: P.IVA se nota, altrimenti nome (fatture
+// senza fatture_documenti collegata, es. pre-esistenti al join).
+function fornitoreKey(d: Documento): string {
+  return d.piva_fornitore || d.fornitore;
+}
 
 type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 type View = "agenda" | "calendario";
@@ -1370,11 +1378,24 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     setFiltroSoloNuove(false);
   }
 
-  // Lista fornitori unici ordinati
-  const fornitoriUnici = useMemo(() =>
-    [...new Set(documenti.map(d => d.fornitore).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it")),
-    [documenti]
-  );
+  // Lista fornitori unici raggruppati per P.IVA (fallback nome se assente): la
+  // stessa P.IVA con ragione sociale scritta diversa non deve apparire come
+  // voci multiple nel filtro. Mostra il nome più frequente per quella chiave.
+  const fornitoriUnici = useMemo(() => {
+    const counts = new Map<string, Map<string, number>>();
+    for (const d of documenti) {
+      const key = fornitoreKey(d);
+      if (!key) continue;
+      const nomi = counts.get(key) ?? new Map<string, number>();
+      nomi.set(d.fornitore, (nomi.get(d.fornitore) ?? 0) + 1);
+      counts.set(key, nomi);
+    }
+    const entries: FornitoreEntry[] = [...counts.entries()].map(([key, nomi]) => {
+      const label = [...nomi.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      return { key, label };
+    });
+    return entries.sort((a, b) => a.label.localeCompare(b.label, "it"));
+  }, [documenti]);
 
   // ── Documenti filtrati
   const documentiFiltrati = useMemo(() => {
@@ -1385,7 +1406,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
 
     return documenti.filter(d => {
       // Filtro fornitori (multi)
-      if (filtroFornitori.size > 0 && !filtroFornitori.has(d.fornitore)) return false;
+      if (filtroFornitori.size > 0 && !filtroFornitori.has(fornitoreKey(d))) return false;
 
       // Filtro "Nuove": solo i documenti arrivati dall'ultimo caricamento
       // (flag is_nuovo calcolato server-side da nuovi_da, stesso criterio del tab Articoli).
@@ -1442,7 +1463,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   // fornitore (i chip periodo sono specifici dell'agenda).
   const documentiCalendario = useMemo(() =>
     documenti.filter(d =>
-      (filtroFornitori.size === 0 || filtroFornitori.has(d.fornitore)) &&
+      (filtroFornitori.size === 0 || filtroFornitori.has(fornitoreKey(d))) &&
       (!filtroSoloNuove || d.is_nuovo)
     ),
     [documenti, filtroFornitori, filtroSoloNuove]
@@ -1496,11 +1517,15 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file_origini: [doc.file_origine], pagata }),
       });
-      if (!res.ok) { toast.error("Errore nel salvataggio"); return; }
+      if (!res.ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(pagata ? "Fattura segnata come pagata" : "Pagamento annullato");
-      await loadData();
+      const pagata_at = pagata ? new Date().toISOString() : null;
+      setDocumenti(prev => prev.map(d =>
+        d.file_origine === doc.file_origine ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
+      ));
     } catch {
       toast.error("Errore di connessione");
+      await loadData();
     }
   }
 
@@ -1514,12 +1539,17 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
         body: JSON.stringify({ file_origini: Array.from(selectedFileOrigini), pagata: true }),
       });
       const data = await res.json();
-      if (!res.ok) { toast.error("Errore nel salvataggio"); return; }
+      if (!res.ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(`${data.aggiornate} fattur${data.aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`);
+      const pagata_at = new Date().toISOString();
+      const paidSet = selectedFileOrigini;
+      setDocumenti(prev => prev.map(d =>
+        paidSet.has(d.file_origine) ? { ...d, pagata: true, pagata_at, data_pagamento: pagata_at } : d
+      ));
       setSelectedFileOrigini(new Set());
-      await loadData();
     } catch {
       toast.error("Errore di connessione");
+      await loadData();
     } finally {
       setBulkPaying(false);
     }
@@ -1531,8 +1561,18 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ file_origine: doc.file_origine, scadenza_override }),
     });
-    if (!res.ok) throw new Error("Errore salvataggio");
-    await loadData();
+    if (!res.ok) { await loadData(); throw new Error("Errore salvataggio"); }
+    const data = await res.json();
+    setDocumenti(prev => prev.map(d =>
+      d.file_origine === doc.file_origine
+        ? {
+            ...d,
+            scadenza_effettiva: data.scadenza_effettiva ?? null,
+            scadenza_source: scadenza_override ? "override" : d.scadenza_source,
+            stato_scadenza: data.stato_scadenza ?? d.stato_scadenza,
+          }
+        : d
+    ));
   }
 
   async function handleElimina(doc: Documento) {

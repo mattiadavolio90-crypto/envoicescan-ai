@@ -13,7 +13,7 @@ Pattern: Dependency Injection per Supabase client
 import re
 import time
 from collections import defaultdict
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Union
 import pandas as pd
 try:
     import streamlit as st
@@ -1655,27 +1655,41 @@ def clear_fatture_cache() -> None:
 # ============================================================
 
 @_make_cache(ttl=60, show_spinner=False)
-def get_fatture_cestino(user_id: str, ristorante_id: str = None, supabase_client=None) -> List[Dict[str, Any]]:
+def get_fatture_cestino(
+    user_id: str,
+    ristorante_id: Union[str, List[str], None] = None,
+    supabase_client=None,
+    sedi_nomi: Optional[Dict[str, str]] = None,
+) -> List[Dict[str, Any]]:
     """
     Restituisce le fatture nel cestino raggruppate per file_origine.
-    
+
+    ristorante_id accetta anche una lista (modalità catena): in quel caso il
+    risultato include ristorante_id e sede_nome per ogni item, aggregando in
+    un'unica query invece di un loop per sede.
+
     Returns:
         Lista di dict con: file_origine, fornitore, num_righe, totale, deleted_at
+        (+ ristorante_id, sede_nome se ristorante_id è una lista)
     """
     if supabase_client is None:
         from services import get_supabase_client
         supabase_client = get_supabase_client()
-    
+
+    is_multi = isinstance(ristorante_id, (list, tuple, set))
+
     try:
         query = (
             supabase_client.table("fatture")
-            .select("file_origine,fornitore,totale_riga,deleted_at,data_documento")
+            .select("file_origine,fornitore,totale_riga,deleted_at,data_documento,ristorante_id")
             .eq("user_id", user_id)
             .not_.is_("deleted_at", "null")
         )
-        if ristorante_id:
+        if is_multi:
+            query = query.in_("ristorante_id", list(ristorante_id))
+        elif ristorante_id:
             query = query.eq("ristorante_id", ristorante_id)
-        
+
         # Paginazione per supportare >1000 righe nel cestino
         all_rows = []
         page_size = 1000
@@ -1688,14 +1702,15 @@ def get_fatture_cestino(user_id: str, ristorante_id: str = None, supabase_client
             if len(resp.data) < page_size:
                 break
             offset += page_size
-        
+
         if not all_rows:
             return []
-        
-        # Raggruppa per file_origine
-        grouped = defaultdict(lambda: {"num_righe": 0, "totale": 0.0, "fornitore": "", "deleted_at": "", "data_documento": ""})
+
+        # Raggruppa per (file_origine, ristorante_id): lo stesso file_origine può
+        # esistere su più sedi con stessa P.IVA (routing multi-sede).
+        grouped = defaultdict(lambda: {"num_righe": 0, "totale": 0.0, "fornitore": "", "deleted_at": "", "data_documento": "", "ristorante_id": ""})
         for row in all_rows:
-            key = row["file_origine"]
+            key = (row["file_origine"], row.get("ristorante_id") or "")
             grouped[key]["num_righe"] += 1
             grouped[key]["totale"] += float(row.get("totale_riga") or 0)
             if not grouped[key]["fornitore"]:
@@ -1704,18 +1719,24 @@ def get_fatture_cestino(user_id: str, ristorante_id: str = None, supabase_client
                 grouped[key]["deleted_at"] = row.get("deleted_at", "")
             if not grouped[key]["data_documento"]:
                 grouped[key]["data_documento"] = row.get("data_documento", "")
-        
+            if not grouped[key]["ristorante_id"]:
+                grouped[key]["ristorante_id"] = row.get("ristorante_id") or ""
+
         result = []
-        for file_orig, info in grouped.items():
-            result.append({
+        for (file_orig, _rid), info in grouped.items():
+            item = {
                 "file_origine": file_orig,
                 "fornitore": info["fornitore"],
                 "num_righe": info["num_righe"],
                 "totale": info["totale"],
                 "deleted_at": info["deleted_at"],
                 "data_documento": info["data_documento"],
-            })
-        
+            }
+            if is_multi:
+                item["ristorante_id"] = info["ristorante_id"]
+                item["sede_nome"] = (sedi_nomi or {}).get(info["ristorante_id"], "")
+            result.append(item)
+
         # Ordina per deleted_at decrescente (più recenti prima)
         result.sort(key=lambda x: x["deleted_at"], reverse=True)
         return result
