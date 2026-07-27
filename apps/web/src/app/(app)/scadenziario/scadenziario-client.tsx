@@ -1559,7 +1559,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [modalitaCatena]);
 
   function toggleSelect(fo: string) {
     setSelectedFileOrigini(prev => {

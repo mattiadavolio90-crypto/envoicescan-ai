@@ -192,6 +192,11 @@ FILE/*.xml
 # Dati cliente reali e residui operativi (NON devono stare nel repo)
 FATTURE CASATI/
 "FATTURE CASATI/"
+FATTURE CATENA SUSHILAND/
+OFFSIDE GENNAIO-GIUGNO 2026/
+# Backup con suffisso dopo .bak: "*.bak" non li prende (es. .bak_pre_esclusione)
+*.bak_*
+scripts/_attesi_*.json.bak*
 data/
 data/backfill_fatture/
 data/audit_*.json
