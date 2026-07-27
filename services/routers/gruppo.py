@@ -1355,9 +1355,14 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
-_SOGLIA_PREZZO_SOPRA = 1.10        # prezzo categoria PV > media catena × 1.10
-_PREZZI_MIN_RIGHE = 5              # min righe per categoria/PV per essere affidabile
-_PREZZI_MIN_PV = 2                 # serve almeno 2 PV con la categoria per la media
+
+# Segnale "peso categoria": quanto pesa una categoria sul totale acquisti F&B del
+# PV, contro la media della catena. Sostituisce il confronto sui PREZZI UNITARI,
+# che misurava rumore (unità di misura e formati diversi fra fornitori davano
+# +300% su categorie eterogenee, mentre la composizione della spesa era identica).
+_SOGLIA_PESO_SCARTO_PT = 3.0       # scarto ≥ 3 punti percentuali sul peso catena
+_PESO_MIN_SPESA_EUR = 1000.0       # sotto questa spesa nel periodo è irrilevante
+_PESO_MIN_PV = 2                   # serve almeno 2 PV con la categoria per la media
 
 
 class Segnale(BaseModel):
@@ -1394,8 +1399,8 @@ _SEGNALI_CATALOGO = [
      "descrizione": "Avvisa quando a un PV mancano fatturato, fatture costo o costo personale: senza, i confronti di margine sono falsi."},
     {"key": "margine_calo", "label": "Margine in calo",
      "descrizione": "Avvisa quando il margine di un PV scende sotto la media dei mesi precedenti."},
-    {"key": "prezzi_sopra", "label": "Prezzi sopra la media catena",
-     "descrizione": "Avvisa quando un PV paga una categoria più della media del gruppo."},
+    {"key": "prezzi_sopra", "label": "Categorie fuori media",
+     "descrizione": "Avvisa quando in un PV una categoria pesa sulla spesa cibo molto più che nelle altre sedi del gruppo."},
     {"key": "ricavi_mancanti", "label": "Ricavi mancanti",
      "descrizione": "Avvisa quando un PV non ha ricavi registrati nel mese in corso."},
 ]
@@ -1614,18 +1619,21 @@ def _calcola_segnali(
                     "cta_page": "/margini",
                 })
 
-    # ── Segnale 2: prezzi categoria sopra la media catena (PV vs media catena) ──
+    # ── Segnale 2: peso categoria sopra la media catena (PV vs media catena) ──
+    # "Quanto pesa questa categoria sulla tua spesa cibo, contro le altre sedi".
+    # Numero leggibile e con controtermine esplicito, a differenza del prezzo
+    # medio unitario che confrontava merci non comparabili fra fornitori.
     # Finestra: ultimi ~90 giorni sull'effective date. RPC aggregata.
     from datetime import timedelta as _td
     da = (oggi - _td(days=90)).isoformat()
     a = oggi.isoformat()
     try:
-        pr = sb.rpc("gruppo_prezzi_categoria", {
+        pr = sb.rpc("gruppo_peso_categoria", {
             "p_ristorante_ids": ids,
             "p_data_da": da,
             "p_data_a": a,
         }).execute()
-        # raggruppa per categoria: {cat: {rid: (prezzo, n_righe)}}
+        # {cat: {rid: (peso_perc, spesa)}}
         from collections import defaultdict
         per_cat: Dict[str, Dict[str, tuple]] = defaultdict(dict)
         for row in (pr.data or []):
@@ -1633,31 +1641,38 @@ def _calcola_segnali(
             if rid not in rid_to_nome:
                 continue
             cat = row.get("categoria") or "N/D"
-            prezzo = float(row.get("prezzo_medio") or 0)
-            n = int(row.get("n_righe") or 0)
-            if prezzo > 0:
-                per_cat[cat][rid] = (prezzo, n)
-        # per ogni categoria con ≥2 PV: media catena, poi PV sopra soglia
-        # (solo il PV più sopra per categoria, per non inondare di segnali).
+            peso = float(row.get("peso_perc") or 0)
+            spesa = float(row.get("spesa") or 0)
+            if peso > 0:
+                per_cat[cat][rid] = (peso, spesa)
+        # Per ogni categoria con ≥2 PV: media catena dei pesi, poi il PV più
+        # sopra soglia (uno solo per categoria, per non inondare di segnali).
         for cat, pv_map in per_cat.items():
-            affidabili = {rid: p for rid, (p, n) in pv_map.items() if n >= _PREZZI_MIN_RIGHE}
-            if len(affidabili) < _PREZZI_MIN_PV:
+            if len(pv_map) < _PESO_MIN_PV:
                 continue
-            media_catena = sum(affidabili.values()) / len(affidabili)
+            media_catena = sum(p for p, _ in pv_map.values()) / len(pv_map)
             if media_catena <= 0:
                 continue
-            peggiore = max(affidabili.items(), key=lambda kv: kv[1])
-            rid_p, prezzo_p = peggiore
-            if prezzo_p > media_catena * _SOGLIA_PREZZO_SOPRA:
-                scarto = (prezzo_p / media_catena - 1) * 100
-                segnali.append({
-                    "tipo": "prezzi_sopra",
-                    "severity": "warning",
-                    "ristorante_id": rid_p,
-                    "pv_nome": rid_to_nome[rid_p],
-                    "testo": f"{cat.title()}: prezzo medio +{scarto:.0f}% sulla media catena",
-                    "cta_page": "/prezzi",
-                })
+            rid_p, (peso_p, spesa_p) = max(pv_map.items(), key=lambda kv: kv[1][0])
+            scarto_pt = peso_p - media_catena
+            if scarto_pt < _SOGLIA_PESO_SCARTO_PT or spesa_p < _PESO_MIN_SPESA_EUR:
+                continue
+            # Quanto vale lo scostamento in euro: punti di scarto applicati al
+            # totale F&B del PV (spesa_p / peso_p × 100 = totale F&B del PV).
+            extra_eur = scarto_pt / 100.0 * (spesa_p / peso_p * 100.0)
+            segnali.append({
+                "tipo": "prezzi_sopra",
+                "severity": "warning",
+                "ristorante_id": rid_p,
+                "pv_nome": rid_to_nome[rid_p],
+                "testo": (
+                    f"{cat.title()}: {peso_p:.0f}% della spesa cibo, "
+                    f"contro {media_catena:.0f}% medio del gruppo "
+                    f"(circa {extra_eur:,.0f}€ in più negli ultimi 3 mesi)"
+                    .replace(",", ".")
+                ),
+                "cta_page": "/prezzi",
+            })
     except Exception:
         pass
 
