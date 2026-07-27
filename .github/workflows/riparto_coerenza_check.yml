@@ -1,0 +1,87 @@
+name: Riparto Coerenza Check - ONEFLUX
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sorveglia le fatture di gruppo delle catene (Voce 7, 27/7/2026).
+#
+# Causa che questo monitor previene: un costo di gruppo può finire in uno di due
+# stati incoerenti fra fatture e riparto_costi_catena, entrambi osservati live su
+# OFFSIDE prima della rete di sicurezza applicativa (verifica_documento_vivo su
+# /api/riparto/da-coda):
+#   - orfano: fattura marcata ripartita_su_gruppo senza un riparto dietro → il costo
+#     sparisce dal MOL di ogni sede (buco reale, es. FASTWEB 362€ 22/7).
+#   - riparto_senza_documento: riparto senza più righe vive → il MOL lo conta comunque
+#     come costo fantasma (materializzato in margini_mensili, es. 4 Amazon 182,64€/sede).
+#
+# La rete di sicurezza applicativa impedisce che se ne creino di nuovi; questo
+# monitor è la seconda linea — rileva se qualcosa la aggira (bypass diretto DB,
+# bug non previsto) senza che serva una query manuale.
+#
+# GITHUB SECRETS richiesti:
+#   WORKER_SECRET_KEY   NUOVO secret da aggiungere — stesso valore già configurato
+#                        su Railway/Vercel come WORKER_SECRET_KEY (vedi
+#                        reference_worker_secret_key in memoria). Nessun altro
+#                        workflow lo usa ancora: gli altri check colpiscono solo
+#                        /health, che è pubblico.
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   già presenti (uptime_check.yml)
+#
+# COSTO: 1 run/giorno, < 5s. GitHub Actions free tier ampiamente coperto.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    # Una volta al giorno, 06:30 UTC (fuori dall'orario di utilizzo clienti).
+    - cron: '30 6 * * *'
+  workflow_dispatch: # avvio manuale per test
+
+permissions:
+  contents: read
+
+env:
+  WORKER_URL: 'https://worker-production-a552.up.railway.app'
+
+jobs:
+  check-coerenza:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Interroga /api/admin/riparto/incoerenze
+        id: check
+        run: |
+          RESP=$(curl -s -w "\n%{http_code}" \
+            -H "X-Worker-Key: ${{ secrets.WORKER_SECRET_KEY }}" \
+            --max-time 30 \
+            "${WORKER_URL}/api/admin/riparto/incoerenze" || echo -e "\n000")
+          HTTP_CODE=$(echo "$RESP" | tail -n1)
+          BODY=$(echo "$RESP" | sed '$d')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Endpoint incoerenze non raggiungibile (HTTP $HTTP_CODE)"
+            echo "totale=-1" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          TOTALE=$(echo "$BODY" | jq -r '.totale // 0')
+          echo "totale=$TOTALE" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Incoerenze riparto trovate: $TOTALE"
+
+      - name: Invia alert Telegram
+        if: steps.check.outputs.totale != '0'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOTALE: ${{ steps.check.outputs.totale }}
+        run: |
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
+            echo "Telegram non configurato, salto."
+            exit 0
+          fi
+          if [ "$TOTALE" = "-1" ]; then
+            MSG="⚠️ Riparto coerenza check: endpoint non raggiungibile, verifica il worker."
+          else
+            MSG=$(printf '⚠️ Fatture di gruppo: %s incoerenza/e trovate\nDettaglio: GET /api/admin/riparto/incoerenze\nRunbook: DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md' "$TOTALE")
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_CHAT_ID}" \
+            --data-urlencode "text=${MSG}"

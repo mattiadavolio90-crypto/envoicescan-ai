@@ -1138,6 +1138,55 @@ def _pulisci_riparto_orfano(supabase_client, user_id: str, file_origine: str) ->
         )
 
 
+def _smarca_fatture_senza_riparto(supabase_client, user_id: str, file_origine: str) -> int:
+    """Caso inverso di _pulisci_riparto_orfano: righe VIVE marcate ripartita_su_gruppo
+    ma il cui riparto_costi_catena non esiste (mai creato, o cancellato altrove senza
+    passare da riparto_elimina). Smarca ripartita_su_gruppo così il costo torna a
+    contare nella porta automatica della sede che lo tiene, invece di sparire dal MOL.
+
+    Fonte di verità = la fattura (decisione Mattia 27/7): se non c'è un riparto dietro,
+    la marcatura è un errore da correggere, non uno stato da preservare.
+
+    Ritorna il numero di righe smarcate. Best-effort: un errore non deve propagare.
+    """
+    try:
+        rip = (
+            supabase_client.table("riparto_costi_catena")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("file_origine", file_origine)
+            .limit(1)
+            .execute()
+        )
+        n_rip = rip.count if rip.count is not None else (len(rip.data) if rip.data else 0)
+        if n_rip > 0:
+            return 0
+
+        upd = (
+            _filter_active(
+                supabase_client.table("fatture")
+                .update({"ripartita_su_gruppo": False})
+                .eq("user_id", user_id)
+                .eq("file_origine", file_origine)
+                .eq("ripartita_su_gruppo", True)
+            )
+            .execute()
+        )
+        n = len(upd.data) if upd.data else 0
+        if n:
+            logger.info(
+                "🧹 Fattura marcata senza riparto: smarcata file=%s user=%s righe=%d",
+                file_origine, user_id, n,
+            )
+        return n
+    except Exception:
+        logger.exception(
+            "Smarcatura fattura-senza-riparto fallita (best-effort) file=%s user=%s",
+            file_origine, user_id,
+        )
+        return 0
+
+
 def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=None, ristoranteid: str = None, soft_delete: bool = True) -> Dict[str, Any]:
     """
     Elimina una fattura completa (tutti i prodotti) dal database.

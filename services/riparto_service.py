@@ -42,6 +42,23 @@ _CAMPI_RIGA = (
 )
 
 
+def verifica_documento_vivo(sb, user_id: str, file_origine: str) -> int:
+    """Conta le righe vive (deleted_at IS NULL) in `fatture` per questo file_origine.
+
+    Unico punto di verità per "il documento esiste ancora": usato da da-coda per
+    rifiutare la creazione di un riparto su un documento già cestinato o mai atterrato,
+    e da _pulisci_riparto_orfano per decidere se un riparto è orfano."""
+    resp = (
+        sb.table("fatture")
+        .select("id", count="exact")
+        .eq("user_id", user_id)
+        .eq("file_origine", file_origine)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    return resp.count if resp.count is not None else (len(resp.data) if resp.data else 0)
+
+
 def _pesi_categoria_fattura(sb, user_id: str, file_origine: str) -> Optional[Dict[str, float]]:
     """Peso (0..1) di ogni categoria sull'imponibile della fattura, dalle righe reali.
 

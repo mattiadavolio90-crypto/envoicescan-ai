@@ -26,9 +26,14 @@ class _Query:
         self._t = table
         self._payload = None
         self._is_insert = False
+        self._is_count = False
 
     # builder no-op che ritorna self
-    def select(self, *a, **k): return self
+    def select(self, *a, **k):
+        if k.get("count") == "exact":
+            self._is_count = True
+        return self
+
     def eq(self, *a, **k): return self
     def is_(self, *a, **k): return self
     def order(self, *a, **k): return self
@@ -57,6 +62,10 @@ class _Query:
             return SimpleNamespace(data=[{"id": "riparto-1"}])
         if self._t == "fatture_queue":
             return SimpleNamespace(data=self._c.queue_rows)
+        if self._t == "fatture" and self._is_count:
+            # Nessuna riga già atterrata con questo file_origine: il guard di
+            # coerenza (Fase 1, Voce 7) non scatta, comportamento pre-esistente.
+            return SimpleNamespace(count=0, data=[])
         return SimpleNamespace(data=[])
 
 

@@ -318,6 +318,24 @@ def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Head
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 
+    # 0) Guard di coerenza: il record di coda è già stato verificato ownership+stato
+    # sopra (da_assegnare), quindi il documento esiste ancora nella coda. Se però nel
+    # frattempo una riga con questo file_origine fosse già atterrata E fosse già stata
+    # cestinata (race: doppio invio, o riparto duplicato su un documento già smaltito),
+    # non creare un riparto senza alcun documento vivo dietro (classe di bug Amazon
+    # 20-23/7: riparto nato dopo che le righe erano già soft-deleted). Verifica
+    # apposta: deve vedere ANCHE le righe cestinate, per distinguere "mai atterrato"
+    # (guard non applicabile, comportamento invariato) da "atterrato e poi cestinato"
+    # (409). Stesso pattern delle verify post-eliminazione in db_service.py.
+    from services.riparto_service import verifica_documento_vivo
+    query_verify_esistenza = (
+        sb.table("fatture").select("id", count="exact")
+        .eq("user_id", user_id).eq("file_origine", fo).limit(1).execute()
+    )
+    n_atterrate = query_verify_esistenza.count if query_verify_esistenza.count is not None else (len(query_verify_esistenza.data) if query_verify_esistenza.data else 0)
+    if n_atterrate > 0 and verifica_documento_vivo(sb, user_id, fo) == 0:
+        raise HTTPException(status_code=409, detail="Documento già cestinato: impossibile ripartire dalla coda")
+
     # 1) Registra subito il riparto + quote (UX istantanea).
     ins = (
         sb.table("riparto_costi_catena")
@@ -462,7 +480,8 @@ def riparto_elimina(riparto_id: str, authorization: Optional[str] = Header(None)
     sb.table("riparto_costi_catena").delete().eq("id", riparto_id).eq("user_id", user_id).execute()
     if rip["origine"] == "fattura" and rip.get("file_origine"):
         sb.table("fatture").update({"ripartita_su_gruppo": False}) \
-            .eq("user_id", user_id).eq("file_origine", rip["file_origine"]).execute()
+            .eq("user_id", user_id).eq("file_origine", rip["file_origine"]) \
+            .is_("deleted_at", "null").execute()
 
     _post_scrittura_riparto(sb, user_id, int(rip["anno"]), int(rip["mese"]))
     return {"ok": True}
@@ -681,6 +700,46 @@ def riparto_regola_fornitore(fornitore: str, authorization: Optional[str] = Head
         "regola": r.get("regola"),
         "tipo": r.get("tipo"),
         "percentuali": r.get("percentuali"),
+    }
+
+
+@router.get("/api/admin/riparto/incoerenze", dependencies=[Depends(_verify_worker_key)])
+def riparto_incoerenze() -> Dict[str, Any]:
+    """Diagnostica sola lettura (Voce 7, 27/7): incoerenze fra fatture di gruppo e
+    riparto_costi_catena, per account. Legge v_riparto_incoerenze (migration
+    20260727230000). Due classi possibili, mai sommabili in un unico numero perché
+    hanno impatto opposto sul MOL:
+
+      - orfano: fattura viva marcata ripartita_su_gruppo ma senza riparto → costo
+        sparito dal MOL (buco).
+      - riparto_senza_documento: riparto senza più righe vive dietro → costo fantasma
+        ancora contato dal MOL (materializzato in margini_mensili).
+
+    Usato dal workflow GitHub Actions riparto_coerenza_check.yml (alert Telegram
+    quando il totale è > 0) e disponibile per ispezione manuale. Non corregge nulla:
+    la correzione resta un passo esplicito separato."""
+    sb = _get_supabase_client()
+    righe = sb.table("v_riparto_incoerenze").select("*").execute().data or []
+
+    per_account: Dict[str, Dict[str, Any]] = {}
+    for r in righe:
+        uid = str(r["user_id"])
+        acc = per_account.setdefault(uid, {"user_id": uid, "orfani": [], "riparti_senza_documento": []})
+        voce = {
+            "file_origine": r.get("file_origine"),
+            "riparto_id": r.get("riparto_id"),
+            "fornitore": r.get("fornitore"),
+            "importo": float(r["importo"]) if r.get("importo") is not None else None,
+            "data_documento": r.get("data_documento"),
+        }
+        if r["tipo_incoerenza"] == "orfano":
+            acc["orfani"].append(voce)
+        else:
+            acc["riparti_senza_documento"].append(voce)
+
+    return {
+        "totale": len(righe),
+        "account": list(per_account.values()),
     }
 
 
