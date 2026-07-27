@@ -1296,7 +1296,7 @@ def gruppo_spreco_categorie(
 
 class GruppoScadenziarioResponse(BaseModel):
     nome_gruppo: str
-    sedi: List[Dict[str, Any]]        # [{id, nome, is_sede_tecnica}] per il filtro Sede
+    sedi: List[Dict[str, Any]]        # [{id, nome_ristorante, is_sede_tecnica}] per il filtro Sede
     documenti: List[Dict[str, Any]]   # stessa forma di /api/scadenziario + ristorante_id/sede_nome
 
 
@@ -1317,7 +1317,7 @@ def gruppo_scadenziario(authorization: Optional[str] = Header(None)) -> GruppoSc
     return GruppoScadenziarioResponse(
         nome_gruppo=nome_gruppo,
         sedi=[
-            {"id": s["id"], "nome": s.get("nome_ristorante") or "Sede", "is_sede_tecnica": bool(s.get("is_sede_tecnica"))}
+            {"id": s["id"], "nome_ristorante": s.get("nome_ristorante") or "Sede", "is_sede_tecnica": bool(s.get("is_sede_tecnica"))}
             for s in sedi
         ],
         documenti=documenti,

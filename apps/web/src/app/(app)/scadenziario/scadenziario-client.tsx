@@ -1830,39 +1830,6 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="emerald" />
       </div>
 
-      {/* Striscia KPI per sede — solo modalità catena. Cliccabile: applica il
-          filtro Sede corrispondente (toggle: riclicco la sede attiva → "tutte"). */}
-      {modalitaCatena && kpiPerSede.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-card px-3 py-2.5">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium flex-shrink-0">Per sede</span>
-          {kpiPerSede.map(s => {
-            const value = s.is_sede_tecnica ? "gruppo" : s.id;
-            const active = filtroSede === value;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setFiltroSede(f => f === value ? "tutte" : value)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors
-                  ${active ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted text-muted-foreground"}`}
-              >
-                {s.is_sede_tecnica && <Split className="size-3" />}
-                {s.nome}
-                <span className="opacity-70">· {formatEuro(s.totale)}</span>
-              </button>
-            );
-          })}
-          {filtroSede !== "tutte" && (
-            <button
-              onClick={() => setFiltroSede("tutte")}
-              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="size-3" /> Tutte le sedi
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Alert senza scadenza (solo senza filtri attivi per non confondere) */}
       {!filtriAttivi && buckets.senzaScadenza.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 text-sm">
@@ -2012,27 +1979,63 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       {/* Filtri (visibili in entrambe le viste) */}
       <div className="rounded-lg border bg-card p-3 space-y-3">
-        {/* Periodo quick chips */}
+        {/* Riga 1 — stato scadenza vs finestra temporale: due assi concettualmente
+            diversi, separati da un divider verticale così non sembrano un'unica
+            lista di pillole equivalenti. "Personalizzato" è un'azione che apre un
+            pannello (icona calendario), non una pillola di stato/finestra. */}
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="size-3.5 text-muted-foreground flex-shrink-0" />
-          {(["tutti", "scadute", "settimana", "mese", "personalizzato"] as Periodo[]).map(p => {
-            const labels: Record<Periodo, string> = {
-              tutti: "Tutti", scadute: "Solo scadute", settimana: "Questa settimana",
-              mese: "Questo mese", personalizzato: "Personalizzato",
-            };
-            return (
-              <button
-                key={p}
-                onClick={() => setFiltroPeriodo(p)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
-                  ${filtroPeriodo === p
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border hover:bg-muted text-muted-foreground"}`}
-              >
-                {labels[p]}
-              </button>
-            );
-          })}
+
+          {/* Stato scadenza */}
+          <div className="flex items-center gap-1.5">
+            {(["tutti", "scadute"] as Periodo[]).map(p => {
+              const labels: Partial<Record<Periodo, string>> = { tutti: "Tutti", scadute: "Solo scadute" };
+              return (
+                <button
+                  key={p}
+                  onClick={() => setFiltroPeriodo(p)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+                    ${filtroPeriodo === p
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:bg-muted text-muted-foreground"}`}
+                >
+                  {labels[p]}
+                </button>
+              );
+            })}
+          </div>
+
+          <Separator orientation="vertical" className="h-5" />
+
+          {/* Finestra temporale */}
+          <div className="flex items-center gap-1.5">
+            {(["settimana", "mese"] as Periodo[]).map(p => {
+              const labels: Partial<Record<Periodo, string>> = { settimana: "Questa settimana", mese: "Questo mese" };
+              return (
+                <button
+                  key={p}
+                  onClick={() => setFiltroPeriodo(f => f === p ? "tutti" : p)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+                    ${filtroPeriodo === p
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:bg-muted text-muted-foreground"}`}
+                >
+                  {labels[p]}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setFiltroPeriodo(f => f === "personalizzato" ? "tutti" : "personalizzato")}
+              title="Intervallo di date personalizzato"
+              className={`flex items-center justify-center size-7 rounded-full border transition-colors flex-shrink-0
+                ${filtroPeriodo === "personalizzato"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border hover:bg-muted text-muted-foreground"}`}
+            >
+              <Calendar className="size-3.5" />
+            </button>
+          </div>
 
           {filtriAttivi && (
             <button
@@ -2054,6 +2057,48 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           </div>
         )}
 
+        {/* Per sede — solo modalità catena. Stesso livello delle altre pillole di
+            filtro (fornitori/nuove): un unico sistema di filtro, non più una
+            striscia isolata sopra. Nome sede come contenuto primario, importo
+            come sottotesto; badge/icona coerenti con SedeBadge (viola+Split per
+            la sede tecnica "Gruppo", MapPin per le sedi reali). */}
+        {modalitaCatena && kpiPerSede.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <MapPin className="size-3.5 text-muted-foreground flex-shrink-0" />
+            {kpiPerSede.map(s => {
+              const value = s.is_sede_tecnica ? "gruppo" : s.id;
+              const active = filtroSede === value;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setFiltroSede(f => f === value ? "tutte" : value)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold border transition-colors
+                    ${active
+                      ? s.is_sede_tecnica
+                        ? "bg-violet-600 text-white border-violet-600"
+                        : "bg-primary text-primary-foreground border-primary"
+                      : s.is_sede_tecnica
+                        ? "border-violet-500/40 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300 dark:hover:bg-violet-900/30"
+                        : "border-border hover:bg-muted text-foreground"}`}
+                >
+                  {s.is_sede_tecnica ? <Split className="size-3.5 flex-shrink-0" /> : <MapPin className="size-3.5 flex-shrink-0" />}
+                  {s.nome}
+                  <span className={`font-normal ${active ? "opacity-80" : "opacity-60"}`}>· {formatEuro(s.totale)}</span>
+                </button>
+              );
+            })}
+            {filtroSede !== "tutte" && (
+              <button
+                onClick={() => setFiltroSede("tutte")}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="size-3" /> Tutte le sedi
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Filtro fornitori multi-select + toggle "Nuove" */}
         <div className="flex items-center gap-2 flex-wrap">
           <FornitoreMultiSelect
@@ -2066,6 +2111,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               <X className="size-3" /> Rimuovi
             </button>
           )}
+          <Separator orientation="vertical" className="h-5" />
           <button
             type="button"
             onClick={() => setFiltroSoloNuove(v => !v)}
