@@ -16,6 +16,19 @@ export type Documento = {
   pagata_at: string | null;
   stato_scadenza: string;
   is_nuovo?: boolean;
+  // Presenti SOLO in modalità catena (endpoint /api/gruppo/scadenziario):
+  // assenti in mono-sede, coerente con get_documenti_scadenziario lato worker.
+  ristorante_id?: string;
+  sede_nome?: string;
+};
+
+// Sede di catena: elenco esposto da /api/gruppo/scadenziario, usato per il
+// filtro Sede e la colonna per riga. La sede tecnica ("Costi comuni di
+// gruppo") appare qui con is_sede_tecnica=true.
+export type SedeCatena = {
+  id: string;
+  nome_ristorante: string;
+  is_sede_tecnica: boolean;
 };
 
 export type RegolaPagamento = {

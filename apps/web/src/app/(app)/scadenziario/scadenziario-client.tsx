@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
 import {
-  type Documento, type RegolaPagamento,
+  type Documento, type RegolaPagamento, type SedeCatena,
   computeKpi, bucketizeDocumenti, formatEuro, formatDate, parseLocalDate, MODALITA_LABELS,
 } from "@/lib/scadenziario";
 
@@ -114,15 +114,36 @@ function ScadenzaBadge({ source }: { source: string | null }) {
 
 // ── Documento row ────────────────────────────────────────────────────────────
 
+// Badge Sede — solo modalità catena. Stesso stile del badge "Ripartita" in
+// articoli-tab.tsx:572-579 per la sede tecnica (viola + Split, "Gruppo").
+function SedeBadge({ nome, isSedeTecnica }: { nome: string; isSedeTecnica: boolean }) {
+  if (isSedeTecnica) {
+    return (
+      <span
+        className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap"
+        title="Costo comune di gruppo, non attribuito a un singolo punto vendita"
+      >
+        <Split className="size-2.5" /> Gruppo
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium inline-flex items-center gap-0.5 whitespace-nowrap">
+      <MapPin className="size-2.5" /> {nome}
+    </span>
+  );
+}
+
 type DocumentoRowProps = {
   doc: Documento;
   selected: boolean;
   onToggleSelect: () => void;
   onPaga: (doc: Documento) => void;
   onPeek: (doc: Documento) => void;
+  sedeTecnicaId?: string;
 };
 
-function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek }: DocumentoRowProps) {
+function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecnicaId }: DocumentoRowProps) {
   const scad = parseLocalDate(doc.scadenza_effettiva);
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
@@ -150,6 +171,9 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek }: Documen
             <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
           )}
           <ScadenzaBadge source={doc.scadenza_source} />
+          {doc.sede_nome && (
+            <SedeBadge nome={doc.sede_nome} isSedeTecnica={!!doc.ristorante_id && doc.ristorante_id === sedeTecnicaId} />
+          )}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
           {doc.data_documento && <span>Fattura: {formatDate(doc.data_documento)}</span>}
@@ -191,11 +215,12 @@ type AgendaSectionProps = {
   onPaga: (doc: Documento) => void;
   onPeek: (doc: Documento) => void;
   accentClass?: string;
+  sedeTecnicaId?: string;
 };
 
 function AgendaSection({
   title, docs, defaultOpen = true,
-  selectedFileOrigini, onToggleSelect, onToggleAll, onPaga, onPeek, accentClass = "",
+  selectedFileOrigini, onToggleSelect, onToggleAll, onPaga, onPeek, accentClass = "", sedeTecnicaId,
 }: AgendaSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const checkboxRef = useRef<HTMLInputElement>(null);
@@ -252,6 +277,7 @@ function AgendaSection({
               onToggleSelect={() => onToggleSelect(doc.file_origine)}
               onPaga={onPaga}
               onPeek={onPeek}
+              sedeTecnicaId={sedeTecnicaId}
             />
           ))}
         </div>
@@ -265,9 +291,11 @@ function AgendaSection({
 function NoteCreditoSection({
   docs,
   onPeek,
+  sedeTecnicaId,
 }: {
   docs: Documento[];
   onPeek: (doc: Documento) => void;
+  sedeTecnicaId?: string;
 }) {
   const [open, setOpen] = useState(false);
   if (docs.length === 0) return null;
@@ -306,6 +334,9 @@ function NoteCreditoSection({
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
                     nota di credito
                   </span>
+                  {doc.sede_nome && (
+                    <SedeBadge nome={doc.sede_nome} isSedeTecnica={!!doc.ristorante_id && doc.ristorante_id === sedeTecnicaId} />
+                  )}
                 </div>
                 {doc.data_documento && (
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
@@ -564,9 +595,13 @@ type PeekDialogProps = {
   onPaga: (doc: Documento, pagata: boolean) => void;
   onSetScadenza: (doc: Documento, data: string | null) => Promise<void>;
   onElimina: (doc: Documento) => Promise<void>;
+  // Modalità catena: "Sposta sede"/"Ripartisci sul gruppo" restano nascosti
+  // (agiscono sulla sede ATTIVA del PV loggato, non su quella del documento —
+  // fuori scope Fase 3, si riprende in una fase dedicata se serve).
+  modalitaCatena?: boolean;
 };
 
-function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDialogProps) {
+function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, modalitaCatena = false }: PeekDialogProps) {
   const [editingScadenza, setEditingScadenza] = useState(false);
   const [scadenzaInput, setScadenzaInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -596,14 +631,14 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
   // stabile per l'account). Se la fetch fallisce o c'è una sola sede, la sezione
   // sposta semplicemente non compare.
   useEffect(() => {
-    if (!doc || sedi.length > 0) return;
+    if (!doc || sedi.length > 0 || modalitaCatena) return;
     let alive = true;
     fetch("/api/account/sedi", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive && d?.sedi) setSedi(d.sedi as SedeOpt[]); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [doc, sedi.length]);
+  }, [doc, sedi.length, modalitaCatena]);
 
   async function handleSposta(ristoranteId: string) {
     if (!doc || spostandoVerso) return;
@@ -1344,8 +1379,18 @@ function daysToCestino(deleted_at: string) {
   return Math.max(0, Math.ceil((expiry.getTime() - Date.now()) / 86400000));
 }
 
-export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Documento[] }) {
+type ScadenziarioClientProps = {
+  initialDocumenti: Documento[];
+  // Modalità catena (Fase 3): assenti/false → comportamento identico a oggi.
+  modalitaCatena?: boolean;
+  sedi?: SedeCatena[];
+};
+
+export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [] }: ScadenziarioClientProps) {
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
+  const sedeTecnicaId = sedi.find(s => s.is_sede_tecnica)?.id;
+  const [filtroSede, setFiltroSede] = useState<string>("tutte"); // "tutte" | ristorante_id | "gruppo"
+  const matchFiltriComuniRef = useRef<(d: Documento) => boolean>(() => true);
   const [view, setView] = useState<View>("agenda");
   const [selectedFileOrigini, setSelectedFileOrigini] = useState<Set<string>>(new Set());
   const [peekDoc, setPeekDoc] = useState<Documento | null>(null);
@@ -1368,7 +1413,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   const [filtroSoloNuove, setFiltroSoloNuove] = useState(false);
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
 
-  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove;
+  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove || filtroSede !== "tutte";
 
   function resetFiltri() {
     setFiltroPeriodo("tutti");
@@ -1376,6 +1421,13 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     setFiltroDateDa("");
     setFiltroDateA("");
     setFiltroSoloNuove(false);
+    setFiltroSede("tutte");
+  }
+
+  function matchFiltroSede(d: Documento): boolean {
+    if (filtroSede === "tutte") return true;
+    if (filtroSede === "gruppo") return d.ristorante_id === sedeTecnicaId;
+    return d.ristorante_id === filtroSede;
   }
 
   // Lista fornitori unici raggruppati per P.IVA (fallback nome se assente): la
@@ -1404,12 +1456,11 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
     const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
 
-    return documenti.filter(d => {
-      // Filtro fornitori (multi)
+    // Filtri comuni (periodo/fornitori/nuove), esclusa la sede: riusati anche
+    // dal KPI per-sede, che deve riflettere gli altri filtri attivi ma non
+    // quello di sede stesso (altrimenti sarebbe sempre un'unica barra).
+    function matchFiltriComuni(d: Documento): boolean {
       if (filtroFornitori.size > 0 && !filtroFornitori.has(fornitoreKey(d))) return false;
-
-      // Filtro "Nuove": solo i documenti arrivati dall'ultimo caricamento
-      // (flag is_nuovo calcolato server-side da nuovi_da, stesso criterio del tab Articoli).
       if (filtroSoloNuove && !d.is_nuovo) return false;
 
       // Filtro periodo (solo su non pagate con scadenza, tranne "tutti").
@@ -1441,11 +1492,38 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
       }
 
       return true;
-    });
-  }, [documenti, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA, filtroSoloNuove]);
+    }
+    matchFiltriComuniRef.current = matchFiltriComuni;
+
+    return documenti.filter(d => matchFiltroSede(d) && matchFiltriComuni(d));
+  }, [documenti, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA, filtroSoloNuove, filtroSede, sedeTecnicaId]);
 
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
+
+  // KPI per sede (striscia cliccabile, solo modalità catena): stessi filtri
+  // comuni di documentiFiltrati ma SENZA il filtro sede, aggregati per
+  // ristorante_id. Usa il ref per evitare di duplicare la logica filtri.
+  const kpiPerSede = useMemo(() => {
+    if (!modalitaCatena || sedi.length === 0) return [];
+    const match = matchFiltriComuniRef.current;
+    const perSede = new Map<string, { count: number; totale: number }>();
+    for (const d of documenti) {
+      if (!d.ristorante_id || !match(d)) continue;
+      if (d.is_nota_credito || d.pagata) continue;
+      const acc = perSede.get(d.ristorante_id) ?? { count: 0, totale: 0 };
+      acc.count += 1;
+      acc.totale += d.totale_documento || 0;
+      perSede.set(d.ristorante_id, acc);
+    }
+    return sedi.map(s => ({
+      id: s.id,
+      nome: s.nome_ristorante,
+      is_sede_tecnica: s.is_sede_tecnica,
+      count: perSede.get(s.id)?.count ?? 0,
+      totale: perSede.get(s.id)?.totale ?? 0,
+    }));
+  }, [documenti, modalitaCatena, sedi, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA, filtroSoloNuove]);
   const buckets = useMemo(() => {
     const b = bucketizeDocumenti(documentiFiltrati);
     return {
@@ -1463,16 +1541,17 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   // fornitore (i chip periodo sono specifici dell'agenda).
   const documentiCalendario = useMemo(() =>
     documenti.filter(d =>
+      matchFiltroSede(d) &&
       (filtroFornitori.size === 0 || filtroFornitori.has(fornitoreKey(d))) &&
       (!filtroSoloNuove || d.is_nuovo)
     ),
-    [documenti, filtroFornitori, filtroSoloNuove]
+    [documenti, filtroFornitori, filtroSoloNuove, filtroSede, sedeTecnicaId]
   );
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/scadenziario");
+      const res = await fetch(modalitaCatena ? "/api/gruppo/scadenziario" : "/api/scadenziario");
       if (res.ok) {
         const data = await res.json();
         setDocumenti(data.documenti ?? []);
@@ -1515,7 +1594,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
       const res = await fetch("/api/scadenziario/pagata", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_origini: [doc.file_origine], pagata }),
+        body: JSON.stringify({ file_origini: [doc.file_origine], pagata, ristorante_id: doc.ristorante_id }),
       });
       if (!res.ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(pagata ? "Fattura segnata come pagata" : "Pagamento annullato");
@@ -1533,14 +1612,34 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     if (selectedFileOrigini.size === 0) return;
     setBulkPaying(true);
     try {
-      const res = await fetch("/api/scadenziario/pagata", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_origini: Array.from(selectedFileOrigini), pagata: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
-      toast.success(`${data.aggiornate} fattur${data.aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`);
+      // L'endpoint risolve UN ristorante_id per l'intera richiesta: se la
+      // selezione attraversa più sedi (modalità catena), raggruppa per sede
+      // e chiama l'endpoint una volta per gruppo, altrimenti i documenti delle
+      // sedi "in più" fallirebbero silenziosamente lato worker.
+      const perSede = new Map<string | undefined, string[]>();
+      for (const d of documenti) {
+        if (!selectedFileOrigini.has(d.file_origine)) continue;
+        const key = d.ristorante_id;
+        const arr = perSede.get(key) ?? [];
+        arr.push(d.file_origine);
+        perSede.set(key, arr);
+      }
+
+      let aggiornate = 0;
+      let ok = true;
+      for (const [ristorante_id, file_origini] of perSede) {
+        const res = await fetch("/api/scadenziario/pagata", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file_origini, pagata: true, ristorante_id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { ok = false; continue; }
+        aggiornate += data.aggiornate ?? 0;
+      }
+
+      if (!ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
+      toast.success(`${aggiornate} fattur${aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`);
       const pagata_at = new Date().toISOString();
       const paidSet = selectedFileOrigini;
       setDocumenti(prev => prev.map(d =>
@@ -1559,7 +1658,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     const res = await fetch("/api/scadenziario/scadenza", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_origine: doc.file_origine, scadenza_override }),
+      body: JSON.stringify({ file_origine: doc.file_origine, scadenza_override, ristorante_id: doc.ristorante_id }),
     });
     if (!res.ok) { await loadData(); throw new Error("Errore salvataggio"); }
     const data = await res.json();
@@ -1579,7 +1678,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     const res = await fetch("/api/fatture/elimina", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_origine: doc.file_origine }),
+      body: JSON.stringify({ file_origine: doc.file_origine, ristorante_id: doc.ristorante_id }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -1597,7 +1696,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   async function loadCestino() {
     setCestinoLoading(true);
     try {
-      const res = await fetch("/api/cestino");
+      const res = await fetch(modalitaCatena ? "/api/gruppo/cestino" : "/api/cestino");
       if (res.ok) { const d = await res.json(); setCestinoItems(d.cestino ?? []); }
     } finally { setCestinoLoading(false); }
   }
@@ -1701,6 +1800,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     onToggleAll: toggleAll,
     onPaga: (doc: Documento) => handlePaga(doc, true),
     onPeek: setPeekDoc,
+    sedeTecnicaId,
   };
 
   return (
@@ -1729,6 +1829,39 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
         />
         <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="emerald" />
       </div>
+
+      {/* Striscia KPI per sede — solo modalità catena. Cliccabile: applica il
+          filtro Sede corrispondente (toggle: riclicco la sede attiva → "tutte"). */}
+      {modalitaCatena && kpiPerSede.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap rounded-lg border bg-card px-3 py-2.5">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium flex-shrink-0">Per sede</span>
+          {kpiPerSede.map(s => {
+            const value = s.is_sede_tecnica ? "gruppo" : s.id;
+            const active = filtroSede === value;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setFiltroSede(f => f === value ? "tutte" : value)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors
+                  ${active ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted text-muted-foreground"}`}
+              >
+                {s.is_sede_tecnica && <Split className="size-3" />}
+                {s.nome}
+                <span className="opacity-70">· {formatEuro(s.totale)}</span>
+              </button>
+            );
+          })}
+          {filtroSede !== "tutte" && (
+            <button
+              onClick={() => setFiltroSede("tutte")}
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="size-3" /> Tutte le sedi
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Alert senza scadenza (solo senza filtri attivi per non confondere) */}
       {!filtriAttivi && buckets.senzaScadenza.length > 0 && (
@@ -2002,7 +2135,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           <AgendaSection title="Oltre il mese" docs={buckets.oltre} defaultOpen={false} {...sharedProps} />
           <AgendaSection title="Senza scadenza" docs={buckets.senzaScadenza} defaultOpen={false} accentClass="text-muted-foreground" {...sharedProps} />
           <AgendaSection title="Pagate" docs={buckets.pagate} defaultOpen={false} accentClass="text-emerald-600 dark:text-emerald-400" {...sharedProps} />
-          <NoteCreditoSection docs={buckets.noteCredito} onPeek={setPeekDoc} />
+          <NoteCreditoSection docs={buckets.noteCredito} onPeek={setPeekDoc} sedeTecnicaId={sedeTecnicaId} />
 
           {documentiFiltrati.length === 0 && (
             <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
@@ -2045,6 +2178,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
         onPaga={(doc, pagata) => handlePaga(doc, pagata)}
         onSetScadenza={handleSetScadenza}
         onElimina={handleElimina}
+        modalitaCatena={modalitaCatena}
       />
 
       <RegoleDialog open={regoleOpen} onClose={() => setRegoleOpen(false)} />

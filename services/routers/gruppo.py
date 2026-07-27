@@ -636,6 +636,45 @@ def _resolve_gruppo(authorization: Optional[str]):
     return sb, user_id, sedi, nome_gruppo, rid_to_nome, ids
 
 
+def _resolve_gruppo_con_tecnica(authorization: Optional[str]):
+    """Come _resolve_gruppo, ma include anche la sede tecnica "Costi comuni di
+    gruppo" nell'elenco sedi. Funzione PARALLELA: _resolve_gruppo (592-636)
+    resta invariata per le viste esistenti (overview/spesa-pivot/margini-coperti/
+    segnali), che ragionano solo sui PV reali. Serve a /api/gruppo/scadenziario,
+    dove un documento intestato alla sede tecnica è un documento reale del
+    gruppo (non una quota proiettata) e va mostrato come le altre sedi.
+
+    Ritorna (sb, user_id, sedi, nome_gruppo, rid_to_nome, ids) con sedi/ids che
+    includono anche la sede tecnica; rid_to_nome espone in più is_sede_tecnica
+    per riga tramite il dict `sedi` (non tramite rid_to_nome, che resta
+    {id: nome} per compatibilità con l'uso esistente altrove).
+    """
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+
+    tecnica_resp = (
+        sb.table("ristoranti")
+        .select("id, nome_ristorante")
+        .eq("user_id", user_id)
+        .eq("attivo", True)
+        .eq("sede_tecnica", True)
+        .limit(1)
+        .execute()
+    )
+    tecnica_rows = tecnica_resp.data or []
+    sedi_out = list(sedi)
+    for s in sedi_out:
+        s["is_sede_tecnica"] = False
+    if tecnica_rows:
+        t = tecnica_rows[0]
+        rid_t = str(t["id"])
+        nome_t = t.get("nome_ristorante") or "Costi comuni di gruppo"
+        sedi_out.append({"id": rid_t, "nome_ristorante": nome_t, "is_sede_tecnica": True})
+        rid_to_nome = {**rid_to_nome, rid_t: nome_t}
+        ids = ids + [rid_t]
+
+    return sb, user_id, sedi_out, nome_gruppo, rid_to_nome, ids
+
+
 _MESI_IT = [
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
@@ -1245,6 +1284,65 @@ def gruppo_spreco_categorie(
         pv=pv,
         righe=righe,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SCADENZIARIO DI GRUPPO — documenti di TUTTE le sedi (+ sede tecnica), 1 riga
+# per documento reale. Le quote ripartite proiettate sui PV (Lettura B) NON
+# entrano qui: solo documenti reali, ognuno nella sua unica sede (regola
+# guida decisa in PIANO_catena_fatture.md).
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class GruppoScadenziarioResponse(BaseModel):
+    nome_gruppo: str
+    sedi: List[Dict[str, Any]]        # [{id, nome, is_sede_tecnica}] per il filtro Sede
+    documenti: List[Dict[str, Any]]   # stessa forma di /api/scadenziario + ristorante_id/sede_nome
+
+
+@router.get(
+    "/api/gruppo/scadenziario",
+    tags=["Catena"],
+    summary="Scadenziario di gruppo: documenti di tutte le sedi (PV + sede tecnica) in un'unica vista",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_scadenziario(authorization: Optional[str] = Header(None)) -> GruppoScadenziarioResponse:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo_con_tecnica(authorization)
+
+    from services.documenti_service import get_documenti_scadenziario
+    documenti = get_documenti_scadenziario(
+        user_id, ristorante_id=ids, supabase_client=sb, sedi_nomi=rid_to_nome,
+    )
+
+    return GruppoScadenziarioResponse(
+        nome_gruppo=nome_gruppo,
+        sedi=[
+            {"id": s["id"], "nome": s.get("nome_ristorante") or "Sede", "is_sede_tecnica": bool(s.get("is_sede_tecnica"))}
+            for s in sedi
+        ],
+        documenti=documenti,
+    )
+
+
+class GruppoCestinoResponse(BaseModel):
+    nome_gruppo: str
+    cestino: List[Dict[str, Any]]
+    count: int
+
+
+@router.get(
+    "/api/gruppo/cestino",
+    tags=["Catena"],
+    summary="Cestino di gruppo: fatture eliminate di tutte le sedi (PV + sede tecnica)",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestinoResponse:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo_con_tecnica(authorization)
+
+    from services.db_service import get_fatture_cestino
+    items = get_fatture_cestino(user_id, ristorante_id=ids, supabase_client=sb, sedi_nomi=rid_to_nome)
+
+    return GruppoCestinoResponse(nome_gruppo=nome_gruppo, cestino=items, count=len(items))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

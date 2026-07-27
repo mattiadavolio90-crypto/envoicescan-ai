@@ -52,6 +52,31 @@ class CestinoEliminaRequest(BaseModel):
 
 class FatturaEliminaRequest(BaseModel):
     file_origine: str
+    ristorante_id: Optional[str] = None
+
+
+def _resolve_ristorante_scrivibile(user, sb, ristorante_id_body: Optional[str]) -> str:
+    """Risolve la sede su cui scrivere: sede ATTIVA se il body non la specifica,
+    altrimenti la sede indicata PREVIO controllo di appartenenza all'account
+    (stesso pattern di scadenziario.py — necessario in modalità catena, dove la
+    sede del documento può differire dalla sede attiva dell'utente loggato)."""
+    rid_body = str(ristorante_id_body or "").strip()
+    if not rid_body:
+        ristorante_id = _resolve_ristorante_id(user, sb)
+        if not ristorante_id:
+            raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+        return ristorante_id
+    owns = (
+        sb.table("ristoranti")
+        .select("id")
+        .eq("id", rid_body)
+        .eq("user_id", str(user["id"]))
+        .limit(1)
+        .execute()
+    )
+    if not owns.data:
+        raise HTTPException(status_code=404, detail="Sede non trovata")
+    return rid_body
 
 
 @router.get("/api/cestino", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
@@ -146,11 +171,8 @@ def elimina_fattura_soft(
     """Soft-delete: sposta una fattura attiva nel cestino (deleted_at = now)."""
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, sb)
+    ristorante_id = _resolve_ristorante_scrivibile(user, sb, body.ristorante_id)
     user_id = str(user["id"])
-
-    if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     file_origine = str(body.file_origine or "").strip()
     if not file_origine:

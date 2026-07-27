@@ -47,14 +47,45 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
 router = APIRouter()
 
 
+def _resolve_ristorante_scrivibile(user, sb, ristorante_id_body: Optional[str]) -> str:
+    """Risolve la sede su cui scrivere pagata/scadenza: se il body porta
+    ristorante_id (chiamata dalla vista catena, dove la sede selezionata NON è
+    necessariamente quella attiva dell'account) verifica l'OWNERSHIP prima di
+    usarla — pattern identico a fatture_sposta_sede (fatture.py:1146-1211).
+    Include anche la sede tecnica (un documento di gruppo si paga da lì).
+    Assente → comportamento identico a oggi (_resolve_ristorante_id).
+    404 se la sede non esiste o non è dell'account (niente scrittura cross-tenant).
+    """
+    rid_body = str(ristorante_id_body or "").strip()
+    if not rid_body:
+        ristorante_id = _resolve_ristorante_id(user, sb)
+        if not ristorante_id:
+            raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+        return ristorante_id
+
+    owns = (
+        sb.table("ristoranti")
+        .select("id")
+        .eq("id", rid_body)
+        .eq("user_id", str(user["id"]))
+        .limit(1)
+        .execute()
+    )
+    if not owns.data:
+        raise HTTPException(status_code=404, detail="Sede non trovata")
+    return rid_body
+
+
 class PagataRequest(BaseModel):
     file_origini: List[str]
     pagata: bool = True
+    ristorante_id: Optional[str] = None
 
 
 class ScadenzaOverrideRequest(BaseModel):
     file_origine: str
     scadenza_override: Optional[str] = None
+    ristorante_id: Optional[str] = None
 
 
 class FornitoreRegolaRequest(BaseModel):
@@ -127,9 +158,7 @@ def segna_pagata_endpoint(body: PagataRequest, authorization: Optional[str] = He
     from services.documenti_service import segna_fattura_pagata
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, sb)
-    if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    ristorante_id = _resolve_ristorante_scrivibile(user, sb, body.ristorante_id)
 
     results = []
     for fo in body.file_origini:
@@ -152,9 +181,7 @@ def set_scadenza_override_endpoint(
     from services.documenti_service import set_scadenza_override
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, sb)
-    if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    ristorante_id = _resolve_ristorante_scrivibile(user, sb, body.ristorante_id)
 
     file_origine = str(body.file_origine or "").strip()
     if not file_origine:

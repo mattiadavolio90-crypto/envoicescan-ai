@@ -162,7 +162,7 @@ export function AppSidebar({
   // /catena e le pagine operative del PV impostano la modalità in modo
   // deterministico; le pagine condivise (Impostazioni, Servizi) la EREDITANO dal
   // cookie. Così resto in catena finché non scendo esplicitamente in un PV.
-  const isCatenaPage = pathname === "/catena";
+  const isCatenaPage = pathname === "/catena" || pathname.startsWith("/catena/");
   const isPerPvPage = navMain.some(
     (i) => pathname === i.url || pathname.startsWith(`${i.url}/`),
   );
@@ -271,19 +271,33 @@ export function AppSidebar({
           <SidebarGroupLabel>{inChain ? "Catena" : "Menu principale"}</SidebarGroupLabel>
           <SidebarMenu>
             {inChain ? (
-              /* CONTESTO CATENA: la catena è UNA pagina. Niente pagine del PV qui —
-                 i confronti, i segnali e i tag di catena vivono come finestre/widget
-                 dentro /catena. Le pagine del PV compaiono solo scendendo in un PV. */
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  render={<Link href="/catena" />}
-                  isActive={isCatenaPage}
-                  className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
-                >
-                  <Building2 />
-                  <span>Catena</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              /* CONTESTO CATENA: la catena è di norma UNA pagina (confronti, segnali
+                 e tag vivono come finestre dentro /catena). "Gestione Fatture" è
+                 un'eccezione voluta: la lista documenti di gruppo (con ownership
+                 check per sede sulle azioni di scrittura) è troppo densa per stare
+                 in una finestra, quindi ha una voce di navigazione dedicata. */
+              <>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    render={<Link href="/catena" />}
+                    isActive={pathname === "/catena"}
+                    className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                  >
+                    <Building2 />
+                    <span>Catena</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    render={<Link href="/catena/fatture" />}
+                    isActive={pathname === "/catena/fatture"}
+                    className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                  >
+                    <CalendarCheck />
+                    <span>Gestione Fatture</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </>
             ) : (
               <>
                 {/* CONTESTO PV (account catena dentro un punto vendita): ritorno

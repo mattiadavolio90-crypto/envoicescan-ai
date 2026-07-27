@@ -5970,6 +5970,16 @@
             }
           },
           {
+            "name": "solo_ripartite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Solo Ripartite"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "required": false,
@@ -14828,6 +14838,136 @@
         }
       }
     },
+    "/api/gruppo/scadenziario": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Scadenziario di gruppo: documenti di tutte le sedi (PV + sede tecnica) in un'unica vista",
+        "operationId": "gruppo_scadenziario_api_gruppo_scadenziario_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoScadenziarioResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/cestino": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Cestino di gruppo: fatture eliminate di tutte le sedi (PV + sede tecnica)",
+        "operationId": "gruppo_cestino_api_gruppo_cestino_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoCestinoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/segnali": {
       "get": {
         "tags": [
@@ -16308,6 +16448,55 @@
         }
       }
     },
+    "/api/admin/riparto/incoerenze": {
+      "get": {
+        "summary": "Riparto Incoerenze",
+        "description": "Diagnostica sola lettura (Voce 7, 27/7): incoerenze fra fatture di gruppo e\nriparto_costi_catena, per account. Legge v_riparto_incoerenze (migration\n20260727230000). Due classi possibili, mai sommabili in un unico numero perché\nhanno impatto opposto sul MOL:\n\n  - orfano: fattura viva marcata ripartita_su_gruppo ma senza riparto → costo\n    sparito dal MOL (buco).\n  - riparto_senza_documento: riparto senza più righe vive dietro → costo fantasma\n    ancora contato dal MOL (materializzato in margini_mensili).\n\nUsato dal workflow GitHub Actions riparto_coerenza_check.yml (alert Telegram\nquando il totale è > 0) e disponibile per ispezione manuale. Non corregge nulla:\nla correzione resta un passo esplicito separato.",
+        "operationId": "riparto_incoerenze_api_admin_riparto_incoerenze_get",
+        "parameters": [
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Incoerenze Api Admin Riparto Incoerenze Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/costi-comuni": {
       "get": {
         "summary": "Gruppo Costi Comuni",
@@ -17343,6 +17532,11 @@
           "is_nuovo": {
             "type": "boolean",
             "title": "Is Nuovo"
+          },
+          "ripartita_su_gruppo": {
+            "type": "boolean",
+            "title": "Ripartita Su Gruppo",
+            "default": false
           }
         },
         "type": "object",
@@ -18902,6 +19096,17 @@
           "file_origine": {
             "type": "string",
             "title": "File Origine"
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
           }
         },
         "type": "object",
@@ -19270,6 +19475,33 @@
         ],
         "title": "GruppoBriefing"
       },
+      "GruppoCestinoResponse": {
+        "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
+          "cestino": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cestino"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome_gruppo",
+          "cestino",
+          "count"
+        ],
+        "title": "GruppoCestinoResponse"
+      },
       "GruppoChatConfig": {
         "properties": {
           "enabled": {
@@ -19422,6 +19654,37 @@
           "ranking"
         ],
         "title": "GruppoOverviewResponse"
+      },
+      "GruppoScadenziarioResponse": {
+        "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
+          "sedi": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sedi"
+          },
+          "documenti": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Documenti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome_gruppo",
+          "sedi",
+          "documenti"
+        ],
+        "title": "GruppoScadenziarioResponse"
       },
       "GruppoTagAnalisiResponse": {
         "properties": {
@@ -21516,6 +21779,17 @@
             "type": "boolean",
             "title": "Pagata",
             "default": true
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
           }
         },
         "type": "object",
@@ -22358,6 +22632,11 @@
               }
             ],
             "title": "Numero Documento"
+          },
+          "ripartita_su_gruppo": {
+            "type": "boolean",
+            "title": "Ripartita Su Gruppo",
+            "default": false
           }
         },
         "type": "object",
@@ -22764,6 +23043,17 @@
               }
             ],
             "title": "Scadenza Override"
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
           }
         },
         "type": "object",

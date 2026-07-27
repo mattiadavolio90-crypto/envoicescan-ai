@@ -736,8 +736,9 @@ def segna_fattura_pagata(
 
 def get_documenti_scadenziario(
     user_id: str,
-    ristorante_id: str,
+    ristorante_id: "str | List[str]",
     supabase_client=None,
+    sedi_nomi: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Restituisce documenti per lo scadenziario usando `fatture` come fonte primaria.
@@ -745,8 +746,14 @@ def get_documenti_scadenziario(
     Garantisce visibilità di tutte le fatture anche quando fatture_documenti
     è vuota o parzialmente popolata (es. fatture caricate prima dell'implementazione).
 
+    ristorante_id accetta anche una lista (modalità catena, pattern di
+    get_fatture_cestino): in quel caso il risultato include ristorante_id e
+    sede_nome per ogni documento, in un'unica query invece di un loop per sede.
+    Le regole fornitore/cutoff "nuovo" restano per-sede (si leggono una volta
+    per ogni sede del gruppo, non per riga).
+
     Step:
-    1. Aggrega `fatture` per file_origine (totale, fornitore, data)
+    1. Aggrega `fatture` per (file_origine, ristorante_id) (totale, fornitore, data)
     2. Arricchisce con fatture_documenti (scadenza, pagata, piva_fornitore)
     3. Applica regole fornitore per calcolo scadenza_effettiva
     """
@@ -755,34 +762,37 @@ def get_documenti_scadenziario(
     sb = supabase_client or get_supabase_client()
     today = date.today()
 
-    # cutoff "Nuovo": stesso criterio del tab Articoli (nuovi_da del ristorante,
-    # fallback 24h). Un documento e' "nuovo" se arrivato dall'ultimo caricamento
-    # (manuale: inizio sessione upload; automatico: blocco giornaliero da worker).
-    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
-    try:
-        _rist = (
-            sb.table("ristoranti").select("nuovi_da").eq("id", ristorante_id).single().execute()
-        )
-        _nuovi_da_raw = (_rist.data or {}).get("nuovi_da")
-    except Exception:
-        _nuovi_da_raw = None
-    cutoff_nuovo = _nuovi_da_raw or (_dt.now(_tz.utc) - _td(hours=24)).isoformat()
+    is_multi = isinstance(ristorante_id, (list, tuple, set))
+    ids = [str(r) for r in ristorante_id] if is_multi else [str(ristorante_id)]
 
-    # ── Step 1: leggi tutte le righe fatture (filter_active, group per file_origine)
+    # cutoff "Nuovo": stesso criterio del tab Articoli (nuovi_da del ristorante,
+    # fallback 24h), letto per OGNI sede (il cutoff è per-sede, dipende
+    # dall'ultimo caricamento di quella sede).
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    cutoff_default = (_dt.now(_tz.utc) - _td(hours=24)).isoformat()
+    cutoff_per_sede: Dict[str, str] = {}
+    for rid in ids:
+        try:
+            _rist = (
+                sb.table("ristoranti").select("nuovi_da").eq("id", rid).single().execute()
+            )
+            _nuovi_da_raw = (_rist.data or {}).get("nuovi_da")
+        except Exception:
+            _nuovi_da_raw = None
+        cutoff_per_sede[rid] = _nuovi_da_raw or cutoff_default
+
+    # ── Step 1: leggi tutte le righe fatture (filter_active, group per (file_origine, ristorante_id))
     fatture_rows: List[Dict[str, Any]] = []
     page_size = 1000
     offset = 0
     while True:
-        q = (
-            filter_active(
-                sb.table("fatture")
-                .select("file_origine,fornitore,tipo_documento,totale_riga,data_documento,created_at")
-                .eq("user_id", user_id)
-                .eq("ristorante_id", ristorante_id)
-            )
-            .range(offset, offset + page_size - 1)
-            .execute()
+        q = filter_active(
+            sb.table("fatture")
+            .select("file_origine,fornitore,tipo_documento,totale_riga,data_documento,created_at,ristorante_id")
+            .eq("user_id", user_id)
         )
+        q = q.in_("ristorante_id", ids) if is_multi else q.eq("ristorante_id", ids[0])
+        q = q.range(offset, offset + page_size - 1).execute()
         if not q.data:
             break
         fatture_rows.extend(q.data)
@@ -793,56 +803,64 @@ def get_documenti_scadenziario(
     if not fatture_rows:
         return []
 
-    # ── Step 2: aggrega per file_origine
-    agg: Dict[str, Dict[str, Any]] = {}
+    # ── Step 2: aggrega per (file_origine, ristorante_id)
+    agg: Dict[tuple, Dict[str, Any]] = {}
     for row in fatture_rows:
         fo = str(row.get("file_origine") or "").strip()
         if not fo:
             continue
-        if fo not in agg:
-            agg[fo] = {
+        rid = str(row.get("ristorante_id") or "")
+        key = (fo, rid)
+        if key not in agg:
+            agg[key] = {
                 "file_origine": fo,
+                "ristorante_id": rid,
                 "fornitore": row.get("fornitore") or "Sconosciuto",
                 "tipo_documento": row.get("tipo_documento") or "TD01",
                 "totale_documento": 0.0,
                 "data_documento": row.get("data_documento"),
                 "created_at": row.get("created_at"),
             }
-        agg[fo]["totale_documento"] += float(row.get("totale_riga") or 0)
+        agg[key]["totale_documento"] += float(row.get("totale_riga") or 0)
 
     # ── Step 3: carica fatture_documenti per scadenza/pagata/piva
-    docs_extra: Dict[str, Dict[str, Any]] = {}
+    docs_extra: Dict[tuple, Dict[str, Any]] = {}
     try:
         q2 = (
             sb.table("fatture_documenti")
             .select(
-                "file_origine,piva_fornitore,numero_documento,totale_documento,"
+                "file_origine,ristorante_id,piva_fornitore,numero_documento,totale_documento,"
                 "scadenza_xml,giorni_termini_xml,scadenza_effettiva,scadenza_source,"
                 "scadenza_override,pagata,pagata_at"
             )
             .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .execute()
         )
+        q2 = q2.in_("ristorante_id", ids) if is_multi else q2.eq("ristorante_id", ids[0])
+        q2 = q2.execute()
         for row in (q2.data or []):
             fo = str(row.get("file_origine") or "").strip()
+            rid = str(row.get("ristorante_id") or "")
             if fo:
-                docs_extra[fo] = row
+                docs_extra[(fo, rid)] = row
     except Exception as e:
         logger.warning("get_documenti_scadenziario: errore fatture_documenti: %s", e)
 
-    # ── Step 4: carica regole fornitore
-    regole_list = _get_fornitori_pagamenti_config_cached(user_id, ristorante_id)
-    regole_map: Dict[str, Dict[str, Any]] = {
-        str(r.get("piva_fornitore", "")).strip(): r
-        for r in regole_list
-        if r.get("piva_fornitore")
-    }
+    # ── Step 4: carica regole fornitore (una volta per sede, non per riga)
+    regole_map_per_sede: Dict[str, Dict[str, Any]] = {}
+    for rid in ids:
+        regole_list = _get_fornitori_pagamenti_config_cached(user_id, rid)
+        regole_map_per_sede[rid] = {
+            str(r.get("piva_fornitore", "")).strip(): r
+            for r in regole_list
+            if r.get("piva_fornitore")
+        }
 
     # ── Step 5: merge + calcola scadenza_effettiva
     result: List[Dict[str, Any]] = []
-    for fo, base in agg.items():
-        extra = docs_extra.get(fo, {})
+    for (fo, rid), base in agg.items():
+        extra = docs_extra.get((fo, rid), {})
+        regole_map = regole_map_per_sede.get(rid, {})
+        cutoff_nuovo = cutoff_per_sede.get(rid, cutoff_default)
 
         # Totale: preferisce fatture_documenti se presente (più accurato), fallback su sum(righe)
         totale_doc = _to_float_safe(extra.get("totale_documento")) if extra.get("totale_documento") else None
@@ -869,7 +887,7 @@ def get_documenti_scadenziario(
                 scadenza_xml=extra.get("scadenza_xml"),
                 giorni_termini_xml=extra.get("giorni_termini_xml"),
                 user_id=user_id,
-                ristorante_id=ristorante_id,
+                ristorante_id=rid,
                 regole_map=regole_map,
             )
             # Fallback: usa scadenza_effettiva già calcolata e salvata in DB
@@ -886,7 +904,7 @@ def get_documenti_scadenziario(
         tipo_doc = base.get("tipo_documento") or "TD01"
         is_nota_credito = tipo_doc.upper().strip() == "TD04"
 
-        result.append({
+        doc_out = {
             "file_origine": fo,
             "fornitore": base.get("fornitore") or "Sconosciuto",
             "piva_fornitore": extra.get("piva_fornitore"),
@@ -904,7 +922,11 @@ def get_documenti_scadenziario(
             "stato_scadenza": _compute_stato_scadenza(scadenza_eff, pagata=pagata, today=today),
             "created_at": base.get("created_at"),
             "is_nuovo": (base.get("created_at") or "") >= cutoff_nuovo,
-        })
+        }
+        if is_multi:
+            doc_out["ristorante_id"] = rid
+            doc_out["sede_nome"] = (sedi_nomi or {}).get(rid, "")
+        result.append(doc_out)
 
     result.sort(key=lambda d: (
         d.get("scadenza_effettiva") or "9999-99-99",

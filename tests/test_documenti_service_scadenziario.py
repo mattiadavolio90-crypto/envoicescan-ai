@@ -261,6 +261,96 @@ def test_totale_fallback_su_somma_righe_senza_fatture_documenti(monkeypatch):
     assert result[0]["piva_fornitore"] is None
 
 
+def test_get_documenti_scadenziario_lista_sedi_aggrega_e_marca_sede(monkeypatch):
+    monkeypatch.setattr(
+        "services.documenti_service._get_fornitori_pagamenti_config_cached",
+        lambda *a, **k: [],
+    )
+    fatture_rows = [
+        {
+            "user_id": "u1", "ristorante_id": "rist-1", "file_origine": "doc1.xml",
+            "fornitore": "Fornitore A", "tipo_documento": "TD01", "totale_riga": 50.0,
+            "data_documento": "2026-01-10", "created_at": "2026-01-10T10:00:00Z",
+        },
+        {
+            "user_id": "u1", "ristorante_id": "rist-tecnica", "file_origine": "doc2.xml",
+            "fornitore": "Fornitore B", "tipo_documento": "TD01", "totale_riga": 30.0,
+            "data_documento": "2026-01-11", "created_at": "2026-01-11T10:00:00Z",
+        },
+    ]
+    ristoranti_rows = [
+        {"id": "rist-1", "nuovi_da": None},
+        {"id": "rist-tecnica", "nuovi_da": None},
+    ]
+    sb = _FakeSupabase(_base_tables(fatture_rows, [], ristoranti_rows))
+    sedi_nomi = {"rist-1": "OFFSIDE San Giuliano", "rist-tecnica": "Costi comuni di gruppo"}
+
+    result = get_documenti_scadenziario(
+        user_id="u1",
+        ristorante_id=["rist-1", "rist-tecnica"],
+        supabase_client=sb,
+        sedi_nomi=sedi_nomi,
+    )
+
+    assert len(result) == 2
+    by_file = {r["file_origine"]: r for r in result}
+    assert by_file["doc1.xml"]["ristorante_id"] == "rist-1"
+    assert by_file["doc1.xml"]["sede_nome"] == "OFFSIDE San Giuliano"
+    assert by_file["doc2.xml"]["ristorante_id"] == "rist-tecnica"
+    assert by_file["doc2.xml"]["sede_nome"] == "Costi comuni di gruppo"
+    assert by_file["doc1.xml"]["totale_documento"] == 50.0
+
+
+def test_get_documenti_scadenziario_ristorante_singolo_non_espone_sede(monkeypatch):
+    monkeypatch.setattr(
+        "services.documenti_service._get_fornitori_pagamenti_config_cached",
+        lambda *a, **k: [],
+    )
+    fatture_rows = [
+        {
+            "user_id": "u1", "ristorante_id": "rist-1", "file_origine": "doc1.xml",
+            "fornitore": "Fornitore A", "tipo_documento": "TD01", "totale_riga": 50.0,
+            "data_documento": "2026-01-10", "created_at": "2026-01-10T10:00:00Z",
+        },
+    ]
+    sb = _FakeSupabase(_base_tables(fatture_rows, []))
+
+    result = get_documenti_scadenziario(user_id="u1", ristorante_id="rist-1", supabase_client=sb)
+
+    assert len(result) == 1
+    assert "ristorante_id" not in result[0]
+    assert "sede_nome" not in result[0]
+
+
+def test_get_documenti_scadenziario_stesso_file_origine_su_piu_sedi_non_si_confonde(monkeypatch):
+    monkeypatch.setattr(
+        "services.documenti_service._get_fornitori_pagamenti_config_cached",
+        lambda *a, **k: [],
+    )
+    fatture_rows = [
+        {
+            "user_id": "u1", "ristorante_id": "rist-1", "file_origine": "dup.xml",
+            "fornitore": "F1", "tipo_documento": "TD01", "totale_riga": 10.0,
+            "data_documento": "2026-01-01", "created_at": "2026-01-01T00:00:00Z",
+        },
+        {
+            "user_id": "u1", "ristorante_id": "rist-2", "file_origine": "dup.xml",
+            "fornitore": "F1", "tipo_documento": "TD01", "totale_riga": 15.0,
+            "data_documento": "2026-01-01", "created_at": "2026-01-01T00:00:00Z",
+        },
+    ]
+    ristoranti_rows = [{"id": "rist-1", "nuovi_da": None}, {"id": "rist-2", "nuovi_da": None}]
+    sb = _FakeSupabase(_base_tables(fatture_rows, [], ristoranti_rows))
+
+    result = get_documenti_scadenziario(
+        user_id="u1", ristorante_id=["rist-1", "rist-2"], supabase_client=sb, sedi_nomi={},
+    )
+
+    assert len(result) == 2
+    totali = sorted(r["totale_documento"] for r in result)
+    assert totali == [10.0, 15.0]
+
+
 def test_get_fatture_cestino_ristorante_singolo_invariato():
     rows = [
         {"user_id": "u1", "file_origine": "a.xml", "fornitore": "F1", "totale_riga": 10.0, "deleted_at": "2026-01-01T00:00:00Z", "data_documento": "2026-01-01", "ristorante_id": "rist-1"},

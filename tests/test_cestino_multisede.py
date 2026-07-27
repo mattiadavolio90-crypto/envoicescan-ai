@@ -93,6 +93,47 @@ def test_soft_delete_409_se_gia_nel_cestino(monkeypatch):
     assert ei.value.status_code == 409
 
 
+# ─── Fase 4 (catena): ristorante_id opzionale nel body con ownership check ────
+
+def test_soft_delete_con_ristorante_id_esplicito_di_unaltra_sede_ok(monkeypatch):
+    """Modalità catena: la sede ATTIVA dell'utente è r1, ma la fattura da
+    eliminare è sulla sede tecnica r2 (stesso account). Con ristorante_id=r2
+    esplicito nel body, l'ownership check passa e cestina su r2, non su r1."""
+    sb = FakeClient({
+        "fatture": [
+            {"id": "b1", "user_id": "u1", "ristorante_id": "r2", "file_origine": "F.xml", "numero_riga": 1, "deleted_at": None},
+        ],
+        "ristoranti": [{"id": "r2", "user_id": "u1", "attivo": True}],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")  # sede attiva r1
+
+    res = cestino.elimina_fattura_soft(
+        cestino.FatturaEliminaRequest(file_origine="F.xml", ristorante_id="r2"),
+        authorization="Bearer x",
+    )
+    assert res["success"] is True
+    assert sb.dump("fatture")[0]["deleted_at"] is not None
+
+
+def test_soft_delete_ristorante_id_di_altro_account_404(monkeypatch):
+    """ristorante_id nel body appartiene a un ALTRO utente: 404, niente scrittura."""
+    sb = FakeClient({
+        "fatture": [
+            {"id": "c1", "user_id": "u2", "ristorante_id": "r9", "file_origine": "F.xml", "numero_riga": 1, "deleted_at": None},
+        ],
+        "ristoranti": [{"id": "r9", "user_id": "u2", "attivo": True}],  # non di u1
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    with pytest.raises(HTTPException) as ei:
+        cestino.elimina_fattura_soft(
+            cestino.FatturaEliminaRequest(file_origine="F.xml", ristorante_id="r9"),
+            authorization="Bearer x",
+        )
+    assert ei.value.status_code == 404
+    assert sb.dump("fatture")[0]["deleted_at"] is None
+
+
 def test_soft_delete_conta_le_righe_reali(monkeypatch):
     """Una fattura con 3 righe deve riportare righe_eliminate=3, non 1 hardcoded."""
     sb = FakeClient({
