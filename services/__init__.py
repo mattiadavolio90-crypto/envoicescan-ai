@@ -83,6 +83,7 @@ __all__ = [
 # ============================================
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from supabase import create_client
 from supabase.lib.client_options import SyncClientOptions
@@ -204,35 +205,24 @@ def _get_supabase_credentials() -> tuple[str, str]:
     )
 
 
-def get_supabase_client():
-    """
-    Restituisce un client Supabase con service_role_key.
-    Usato da: admin, worker, impersonazione, operazioni batch.
-    Bypassa RLS: in questo progetto l'auth e' custom (auth.uid() sempre NULL),
-    quindi tutto l'accesso DB passa da qui. L'isolamento per tenant e' applicativo
-    (filtri user_id/ristorante_id nelle query), non via RLS.
-
-    - Dentro Streamlit: usa st.secrets + cache @st.cache_resource.
-    - Fuori Streamlit (worker CLI): crea client diretto da env vars.
-    """
+@lru_cache(maxsize=1)
+def _cached_client():
     options = SyncClientOptions(
         postgrest_client_timeout=30,
         storage_client_timeout=30,
     )
-    # Usa cache Streamlit solo quando Streamlit è in esecuzione
-    try:
-        import streamlit as st
-        # Verifica che lo script context sia attivo (non solo il modulo importato)
-        _ = st.secrets["supabase"]["url"]
+    url, key = _get_supabase_credentials()
+    return create_client(url, key, options=options)
 
-        # Definizione locale della versione cached — eseguita solo in contesto Streamlit
-        @st.cache_resource
-        def _cached_client():
-            url, key = _get_supabase_credentials()
-            return create_client(url, key, options=options)
 
-        return _cached_client()
-    except Exception:
-        # Fuori Streamlit: client senza cache (worker gestisce il proprio ciclo di vita)
-        url, key = _get_supabase_credentials()
-        return create_client(url, key, options=options)
+def get_supabase_client():
+    """
+    Restituisce un client Supabase con service_role_key, cachato a livello di
+    processo (un solo client, una sola volta: create_client ricrea il contesto
+    SSL ad ogni chiamata, costo non trascurabile su 300+ call site).
+    Usato da: admin, worker, impersonazione, operazioni batch.
+    Bypassa RLS: in questo progetto l'auth e' custom (auth.uid() sempre NULL),
+    quindi tutto l'accesso DB passa da qui. L'isolamento per tenant e' applicativo
+    (filtri user_id/ristorante_id nelle query), non via RLS.
+    """
+    return _cached_client()
