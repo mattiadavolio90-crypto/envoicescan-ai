@@ -1,6 +1,18 @@
 # PIANO — Smistamento coda catena OFFSIDE + collaudo totale del flusso
 
-**Data:** 23/07/2026
+> ✅ **CHIUSO 28/7/2026** — verificato nel codice: Fasi 1/3/4 già marcate ✅ nel
+> documento (deployate commit `0575aea`). **Fase 2** (regole fornitore
+> auto-proposte) non era mai stata marcata qui, ma risulta implementata:
+> `services/routers/fatture.py:1052` (`fatture_da_assegnare`) popola
+> `regola_fornitore` per voce in coda via join su `piva_cedente`; frontend
+> `coda-da-assegnare.tsx` (righe 505-520) mostra il badge con `descriveRegola` +
+> passa `regolaPreset` al dialog di ripartizione. Test:
+> `tests/test_da_assegnare_regola_fornitore.py`, `tests/test_riparto_regola_fornitore.py`.
+> Fase 5 (fattura mista `da_righe`) resta **non implementata per scelta esplicita**
+> (opzionale, rimandata: "2 fatture su 383, farla dopo"). Fase 6 (collaudo)
+> conclusa con sanamento riparto stale (vedi corpo del documento).
+>
+> **Data:** 23/07/2026
 **Origine:** 2 problemi + 1 richiesta feature segnalati dal cliente OFFSIDE (catena, P.IVA unica 07863990961, sedi Via Losanna e Via Settembrini).
 **Stato:** PIANO — nessuna modifica al codice ancora fatta. Si procede solo al "procedi" di Mattia.
 **Vincolo di dominio non negoziabile:** *LA FATTURA RESTA SACRA*. Non si spezzano né si riscrivono le righe della fattura elettronica (integrità fiscale). Le quote di riparto vivono in tabelle separate a livello ACCOUNT.

@@ -1,5 +1,17 @@
 # Piano — Briefing dinamico e contestuale
 
+> ✅ **CHIUSO 28/7/2026** — verificato nel codice: tutte e 3 le fasi sono
+> implementate e deployate (`_BRIEFING_CODE_VERSION = 12`,
+> `services/daily_briefing_service.py`). Fase 1 (`_incasso_confronto_giorno_settimana`,
+> `_coperti_scontrino_ieri`), Fase 2 (`_leggi_solo_preferiti` default `True` +
+> precalcolo async via `_briefing_rigenera_async`), Fase 3
+> (`_fatture_arrivate_ieri_sdi`) tutte presenti in `services/fastapi_worker.py`.
+> Resta volutamente in sospeso solo il punto "DOPO le 3 fasi" più sotto (Strada B,
+> card fatture) — non è una parte mancante di questo piano, è un'estensione
+> rimandata su scelta esplicita, il cui documento (`PIANO_RIEPILOGO_FATTURE_NUOVE.md`)
+> è già stato rimosso dalla root (vedi memoria `piano-riepilogo-fatture-nuove`).
+> Documento mantenuto per riferimento di design, non per un lavoro ancora aperto.
+>
 > Redatto 22/07/2026, rivisto dopo verifica delle INERENZE (cosa la Home già
 > mostra, per non creare doppioni). Obiettivo: trasformare il briefing Home da
 > "lista di dati nudi" a "sintesi con contesto". Il problema non è la scrittura AI
