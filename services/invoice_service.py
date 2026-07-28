@@ -1690,6 +1690,63 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         return []
 
 
+def _trova_documento_duplicato_per_identita(
+    supabase_client,
+    user_id: str,
+    ristorante_id: str,
+    nome_file: str,
+    header: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Cerca in fatture_documenti un documento ATTIVO con la stessa identità naturale
+    (P.IVA fornitore + numero documento + data + tipo) ma file_origine diverso.
+
+    Copre il caso in cui lo stesso documento arrivi due volte con nomi file diversi
+    (SDI + upload manuale, oppure stesso upload con estensione diversa dopo la
+    sbustatura P7M: es. 'X.xml.p7m' e 'X.xml'). La chiave (user_id, ristorante_id,
+    file_origine, numero_riga) da sola non basta a prevenirlo, perché il nome file
+    non è un identificatore del documento.
+
+    Richiede identità completa (piva+numero+data); se anche solo uno manca (es. XML
+    con header incompleto) non blocca nulla — non falsare mai un caricamento legittimo
+    per un dato mancante.
+    """
+    from services.documenti_service import _to_date_iso, _tipo_documento_safe
+
+    piva = str(header.get("piva_cedente") or "").strip()
+    numero = str(header.get("numero_documento") or "").strip()
+    data_doc = _to_date_iso(header.get("Data_Documento") or header.get("data_documento"))
+    tipo_doc = _tipo_documento_safe(header.get("tipo_documento") or header.get("Tipo_Documento"))
+
+    if not piva or not numero or not data_doc:
+        return None
+
+    try:
+        from services.db_service import filter_active
+
+        resp = (
+            filter_active(
+                supabase_client.table("fatture_documenti")
+                .select("file_origine,fornitore,numero_documento,data_documento,created_at")
+                .eq("user_id", user_id)
+                .eq("ristorante_id", ristorante_id)
+                .eq("piva_fornitore", piva)
+                .eq("numero_documento", numero)
+                .eq("data_documento", data_doc)
+                .eq("tipo_documento", tipo_doc)
+            )
+            .neq("file_origine", nome_file)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        return rows[0] if rows else None
+    except Exception as exc:
+        logger.warning(
+            "Guardia duplicato documento fallita (non bloccante) per %s: %s", nome_file, exc
+        )
+        return None
+
+
 def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                              supabase_client=None, silent: bool = False,
                              ristoranteid: str = None,
@@ -1757,6 +1814,33 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 return {"success": False, "error": "no_data", "righe": 0, "location": None}
             
             normalizza_data_consegna_td24(dati_prodotti)
+
+            # Guardia anti-doppione: stesso documento (P.IVA+numero+data+tipo) già
+            # salvato sotto un altro nome file (es. arrivo via SDI + upload manuale,
+            # o stessa fattura ricaricata con estensione diversa dopo sbustatura P7M).
+            _header_per_guardia = dati_prodotti[0] if dati_prodotti else {}
+            _doc_duplicato = _trova_documento_duplicato_per_identita(
+                supabase_client, user_id, ristorante_id, nome_file, _header_per_guardia
+            )
+            if _doc_duplicato is not None:
+                logger.warning(
+                    "🚫 Documento duplicato: '%s' ha stessa identità di '%s' già presente "
+                    "(user=%s, ristorante=%s)",
+                    nome_file, _doc_duplicato.get("file_origine"), user_id, ristorante_id,
+                )
+                if not silent:
+                    _ui_msg(
+                        "warning",
+                        f"⚠️ Documento già caricato come '{_doc_duplicato.get('file_origine')}' "
+                        f"(stesso fornitore, numero e data). Non ricaricato per evitare doppioni.",
+                    )
+                return {
+                    "success": False,
+                    "error": "duplicate_document",
+                    "righe": 0,
+                    "location": None,
+                    "duplicate_of": _doc_duplicato.get("file_origine"),
+                }
 
             # Prepara records
             records = []

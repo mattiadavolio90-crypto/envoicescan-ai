@@ -279,6 +279,220 @@ def test_td24_upload_event_persists_alert_data_consegna():
     assert fatture_payload[0]["data_consegna"] == "2026-01-31"
 
 
+def _make_query_chain(execute_return):
+    """Costruisce un MagicMock che risponde in modo fluente a .select/.eq/.neq/.limit/.is_
+    e ritorna execute_return sul .execute() finale (stesso pattern degli altri test)."""
+    query = MagicMock()
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.neq.return_value = query
+    query.limit.return_value = query
+    query.is_.return_value = query
+    query.execute.return_value = MagicMock(data=execute_return)
+    return query
+
+
+def test_guardia_duplicato_blocca_stesso_documento_nome_file_diverso():
+    """Stesso documento (piva+numero+data+tipo) già salvato con un altro nome file
+    (es. arrivato via SDI e poi ricaricato a mano, o stesso file con estensione
+    diversa dopo sbustatura P7M) NON deve essere risalvato."""
+    from services.invoice_service import salva_fattura_processata
+
+    fatture_documenti_query = _make_query_chain([
+        {"file_origine": "IT02355260981_ecVtT.xml.p7m", "fornitore": "COMAVICOLA",
+         "numero_documento": "11889/V1/2026", "data_documento": "2026-03-19",
+         "created_at": "2026-05-11T15:20:15Z"}
+    ])
+    fatture_documenti_table = MagicMock()
+    fatture_documenti_table.select.return_value = fatture_documenti_query
+
+    supabase = MagicMock()
+    supabase.table.side_effect = lambda name: {
+        "fatture_documenti": fatture_documenti_table,
+    }.get(name, MagicMock())
+
+    row = {
+        "Numero_Riga": 1,
+        "Descrizione": "COSCE POLLO",
+        "Quantita": 10,
+        "Unita_Misura": "KG",
+        "Prezzo_Unitario": 3.5,
+        "IVA_Percentuale": 10.0,
+        "Totale_Riga": 35.0,
+        "Fornitore": "COMAVICOLA",
+        "Categoria": "CARNI",
+        "Data_Documento": "2026-03-19",
+        "numero_documento": "11889/V1/2026",
+        "piva_cedente": "00813270154",
+        "tipo_documento": "TD01",
+        "needs_review": False,
+    }
+
+    fake_st = MagicMock()
+    fake_st.session_state.user_data = {"email": "test@example.com"}
+
+    with patch("services.invoice_service.st", fake_st):
+        result = salva_fattura_processata(
+            "IT02355260981_ecVtT.xml",
+            [row],
+            supabase_client=supabase,
+            silent=True,
+            ristoranteid="rist-1",
+            user_id="user-1",
+        )
+
+    assert result["success"] is False
+    assert result["error"] == "duplicate_document"
+    assert result["duplicate_of"] == "IT02355260981_ecVtT.xml.p7m"
+    # Non deve mai arrivare a toccare la tabella fatture (righe), solo fatture_documenti.
+    tabelle_toccate = {c.args[0] for c in supabase.table.call_args_list if c.args}
+    assert "fatture" not in tabelle_toccate
+
+
+def test_guardia_duplicato_non_blocca_se_identita_incompleta():
+    """Se manca P.IVA/numero/data (es. header XML incompleto, backfill storico),
+    la guardia non deve mai bloccare un caricamento legittimo."""
+    from services.invoice_service import salva_fattura_processata
+
+    table = MagicMock()
+    upsert_query = MagicMock()
+    upsert_query.execute.return_value = MagicMock(data=[{"id": 1}])
+    table.upsert.return_value = upsert_query
+
+    delete_query = MagicMock()
+    delete_query.eq.return_value = delete_query
+    delete_query.is_.return_value = delete_query
+    delete_query.not_.in_.return_value = delete_query
+    delete_query.execute.return_value = MagicMock(data=[])
+    table.delete.return_value = delete_query
+
+    supabase = MagicMock()
+    supabase.table.return_value = table
+
+    row = {
+        "Numero_Riga": 1,
+        "Descrizione": "PANE",
+        "Quantita": 1,
+        "Unita_Misura": "KG",
+        "Prezzo_Unitario": 2.0,
+        "IVA_Percentuale": 10.0,
+        "Totale_Riga": 2.0,
+        "Fornitore": "FORNAIO",
+        "Categoria": "PANE",
+        "Data_Documento": "2026-03-19",
+        # niente numero_documento / piva_cedente: identità incompleta
+        "needs_review": False,
+    }
+
+    fake_st = MagicMock()
+    fake_st.session_state.user_data = {"email": "test@example.com"}
+
+    with patch("services.invoice_service.st", fake_st), \
+         patch("services.invoice_service.verifica_integrita_fattura", return_value={"integrita_ok": True, "righe_parsed": 1, "righe_db": 1}), \
+         patch("services.invoice_service.log_upload_event"):
+        result = salva_fattura_processata(
+            "pane.xml",
+            [row],
+            supabase_client=supabase,
+            silent=True,
+            ristoranteid="rist-1",
+            user_id="user-1",
+        )
+
+    assert result["success"] is True
+
+
+def test_guardia_duplicato_non_blocca_stesso_file_ricaricato():
+    """Il re-upload dello STESSO nome file (stesso file_origine) non deve mai essere
+    considerato un doppione: la query esclude esplicitamente il file corrente (.neq)."""
+    from services.invoice_service import salva_fattura_processata
+
+    table = MagicMock()
+    upsert_query = MagicMock()
+    upsert_query.execute.return_value = MagicMock(data=[{"id": 1}])
+    table.upsert.return_value = upsert_query
+
+    delete_query = MagicMock()
+    delete_query.eq.return_value = delete_query
+    delete_query.is_.return_value = delete_query
+    delete_query.not_.in_.return_value = delete_query
+    delete_query.execute.return_value = MagicMock(data=[])
+    table.delete.return_value = delete_query
+
+    # fatture_documenti: la query con .neq esclude il file corrente -> nessun match
+    fatture_documenti_query = _make_query_chain([])
+    fatture_documenti_table = MagicMock()
+    fatture_documenti_table.select.return_value = fatture_documenti_query
+
+    supabase = MagicMock()
+    supabase.table.side_effect = lambda name: {
+        "fatture": table,
+        "fatture_documenti": fatture_documenti_table,
+    }.get(name, MagicMock())
+
+    row = {
+        "Numero_Riga": 1,
+        "Descrizione": "COSCE POLLO",
+        "Quantita": 10,
+        "Unita_Misura": "KG",
+        "Prezzo_Unitario": 3.5,
+        "IVA_Percentuale": 10.0,
+        "Totale_Riga": 35.0,
+        "Fornitore": "COMAVICOLA",
+        "Categoria": "CARNI",
+        "Data_Documento": "2026-03-19",
+        "numero_documento": "11889/V1/2026",
+        "piva_cedente": "00813270154",
+        "tipo_documento": "TD01",
+        "needs_review": False,
+    }
+
+    fake_st = MagicMock()
+    fake_st.session_state.user_data = {"email": "test@example.com"}
+
+    with patch("services.invoice_service.st", fake_st), \
+         patch("services.invoice_service.verifica_integrita_fattura", return_value={"integrita_ok": True, "righe_parsed": 1, "righe_db": 1}), \
+         patch("services.invoice_service.log_upload_event"):
+        result = salva_fattura_processata(
+            "IT02355260981_ecVtT.xml",
+            [row],
+            supabase_client=supabase,
+            silent=True,
+            ristoranteid="rist-1",
+            user_id="user-1",
+        )
+
+    assert result["success"] is True
+    fatture_documenti_query.neq.assert_called_with("file_origine", "IT02355260981_ecVtT.xml")
+
+
+def test_guardia_duplicato_non_blocca_tipo_documento_diverso():
+    """Una nota di credito (TD04) con lo stesso numero di una fattura (TD01) non è
+    un doppione: la guardia filtra anche per tipo_documento."""
+    from services.invoice_service import _trova_documento_duplicato_per_identita
+
+    fatture_documenti_query = _make_query_chain([])  # DB filtra già per tipo_documento
+    fatture_documenti_table = MagicMock()
+    fatture_documenti_table.select.return_value = fatture_documenti_query
+
+    supabase = MagicMock()
+    supabase.table.return_value = fatture_documenti_table
+
+    header = {
+        "piva_cedente": "00813270154",
+        "numero_documento": "11889/V1/2026",
+        "Data_Documento": "2026-03-19",
+        "tipo_documento": "TD04",
+    }
+
+    result = _trova_documento_duplicato_per_identita(
+        supabase, "user-1", "rist-1", "nota_credito.xml", header
+    )
+
+    assert result is None
+    fatture_documenti_query.eq.assert_any_call("tipo_documento", "TD04")
+
+
 def test_nome_canonico_p7m_mantiene_xml_per_check_duplicati():
     """Regressione: il nome canonico per il check duplicati di un .p7m deve
     restare '...xml', non perdere l'estensione.

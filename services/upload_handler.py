@@ -1102,7 +1102,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         
         # Regola hard: blocca come duplicato SOLO se il file esiste nel DB ATTIVO
         # (upload_events è solo informativo e non deve bloccare da solo).
-        if is_exact_match and not is_force_reimport:
+        if (is_exact_match or is_base_match) and not is_force_reimport:
             file_gia_processati.append(filename)
             if existing_saved_ok:
                 imported_at_label = _format_saved_ok_date(existing_saved_ok.get('created_at'))
@@ -1114,6 +1114,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 reason = []
                 if is_exact_match:
                     reason.append('nome esatto in DB')
+                elif is_base_match:
+                    reason.append('stesso nome base (estensione diversa) già in DB')
                 logger.info(f"📋 SKIP '{filename}' → {', '.join(reason)}")
             file_gia_processati_reason[filename] = reason.copy()
         elif is_just_uploaded and not is_force_reimport:
