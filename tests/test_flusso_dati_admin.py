@@ -335,3 +335,61 @@ def test_badges_tutto_pulito_a_zero(monkeypatch):
     })
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
     assert admin.admin_badges() == {"flusso_dati": 0, "categorie": 0, "richieste": 0}
+
+
+# ─── A6: eventi-sconosciuti (Voce 7, Strato 2 — ronda giornaliera) ────────────
+
+def test_eventi_sconosciuti_filtra_solo_unrecognized_event(monkeypatch):
+    monkeypatch.setattr(admin, "_verify_worker_key", lambda **k: None)
+    sb = FakeClient({
+        "fatture_queue": [
+            # failed CON unrecognized_event → deve comparire
+            {"id": 1, "status": "failed", "created_at": "2026-07-28T06:00:00+00:00",
+             "payload_meta": {"unrecognized_event": "endpoint/event non riconosciuto come receive",
+                              "raw_endpoint": "strano/xyz", "raw_event": None}},
+            # failed per un motivo diverso (es. errore rete API) → non è unrecognized_event
+            {"id": 2, "status": "failed", "created_at": "2026-07-28T06:05:00+00:00",
+             "payload_meta": {"api_error": "HTTP 503"}},
+            # unknown_tenant: non è 'failed', esclusa a prescindere
+            {"id": 3, "status": "unknown_tenant", "created_at": "2026-07-28T06:10:00+00:00",
+             "payload_meta": {"unrecognized_event": "non dovrebbe mai capitare qui"}},
+            # done: sana, esclusa
+            {"id": 4, "status": "done", "created_at": "2026-07-28T06:15:00+00:00", "payload_meta": {}},
+        ],
+    })
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+
+    res = admin.admin_invoicetronic_eventi_sconosciuti(giorni=1)
+    assert res["totale"] == 1
+    assert res["eventi"][0]["queue_id"] == 1
+    assert res["eventi"][0]["motivo"] == "endpoint/event non riconosciuto come receive"
+    assert res["eventi"][0]["raw_endpoint"] == "strano/xyz"
+
+
+def test_eventi_sconosciuti_rispetta_finestra_giorni(monkeypatch):
+    monkeypatch.setattr(admin, "_verify_worker_key", lambda **k: None)
+    sb = FakeClient({
+        "fatture_queue": [
+            {"id": 1, "status": "failed", "created_at": "2020-01-01T00:00:00+00:00",
+             "payload_meta": {"unrecognized_event": "vecchio, fuori finestra"}},
+        ],
+    })
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+
+    res = admin.admin_invoicetronic_eventi_sconosciuti(giorni=1)
+    assert res["totale"] == 0
+    assert res["eventi"] == []
+
+
+def test_eventi_sconosciuti_zero_pulito(monkeypatch):
+    monkeypatch.setattr(admin, "_verify_worker_key", lambda **k: None)
+    sb = FakeClient({"fatture_queue": []})
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+
+    res = admin.admin_invoicetronic_eventi_sconosciuti(giorni=1)
+    assert res == {"totale": 0, "eventi": [], "giorni": 1}
+
+
+def test_modulo_admin_importa_helper_eventi_sconosciuti():
+    assert hasattr(admin, "admin_invoicetronic_eventi_sconosciuti")
+    assert hasattr(admin, "_verify_worker_key")

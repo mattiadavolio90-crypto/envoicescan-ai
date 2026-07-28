@@ -96,6 +96,10 @@ def _worker_secret_key():
     return _fw().WORKER_SECRET_KEY
 
 
+def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
+    return _fw()._verify_worker_key(x_worker_key)
+
+
 # I modelli Marketplace sono del dominio admin e usati a IMPORT-TIME nei decorator
 # (response_model / annotazioni body): non possono essere lazy. Erano rimasti in
 # fastapi_worker dopo lo split god-file; spostati qui (non usati altrove).
@@ -2161,6 +2165,53 @@ def admin_sistema_invoicetronic_salute(giorni: int = 30):
     ordine = {"critico": 0, "warning": 1, "ok": 2}
     items.sort(key=lambda it: (ordine.get(it["stato"], 9), it["nome"]))
     return {"items": items, "counts": counts, "orfane": orfane, "giorni": giorni}
+
+
+# ── Flusso dati — ronda giornaliera webhook non riconosciuti (Voce 7, Strato 2) ─
+# Sorveglia il caso specifico che la rete di sicurezza del webhook (Edge Function
+# invoicetronic-webhook) intercetta ma non risolve da sola: un evento firmato
+# arrivato con successo ma non riconosciuto come "receive" valido (naming payload
+# anomalo, bug di parsing tipo il PascalCase del 24/7). Quella riga finisce in
+# fatture_queue con status='failed' e payload_meta.unrecognized_event valorizzato
+# — visibile ma silenziosa finché qualcuno non apre l'admin. Lo Strato 1 (alert
+# Telegram immediato dentro l'Edge Function) copre l'istante dell'evento; questo
+# endpoint è la seconda linea schedulata (GitHub Actions, 1x/giorno), sul modello
+# di /api/admin/riparto/incoerenze — stesso gate leggero _verify_worker_key
+# (nessuna sessione admin: è chiamato da uno script, non da un browser).
+@router.get("/api/admin/sistema/invoicetronic-eventi-sconosciuti",
+            tags=["Admin"], dependencies=[Depends(_verify_worker_key)])
+def admin_invoicetronic_eventi_sconosciuti(giorni: int = 1):
+    """Conta le righe fatture_queue con payload_meta.unrecognized_event nelle
+    ultime `giorni` giornate. Sola lettura, nessuna azione correttiva qui
+    (per quella: /api/admin/fatture-queue/riprova, già esistente)."""
+    sb = get_supabase_client()
+    giorni = max(1, min(30, int(giorni or 1)))
+    da_iso = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+
+    try:
+        rows = (
+            sb.table("fatture_queue")
+            .select("id,status,created_at,payload_meta")
+            .eq("status", "failed")
+            .gte("created_at", da_iso)
+            .execute()
+        ).data or []
+    except Exception as exc:
+        logger.error("admin invoicetronic-eventi-sconosciuti: query fallita: %s", exc)
+        raise HTTPException(status_code=502, detail="Query fatture_queue fallita")
+
+    eventi = [
+        {
+            "queue_id": r.get("id"),
+            "created_at": r.get("created_at"),
+            "motivo": (r.get("payload_meta") or {}).get("unrecognized_event"),
+            "raw_endpoint": (r.get("payload_meta") or {}).get("raw_endpoint"),
+            "raw_event": (r.get("payload_meta") or {}).get("raw_event"),
+        }
+        for r in rows
+        if (r.get("payload_meta") or {}).get("unrecognized_event")
+    ]
+    return {"totale": len(eventi), "eventi": eventi, "giorni": giorni}
 
 
 # ── Flusso dati — azioni correttive sulla coda fatture ────────────────────────

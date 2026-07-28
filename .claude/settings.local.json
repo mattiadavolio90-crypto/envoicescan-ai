@@ -14,7 +14,10 @@
       "mcp__claude_ai_Supabase__list_projects",
       "mcp__claude_ai_Supabase__apply_migration",
       "mcp__claude_ai_Supabase__list_tables",
-      "mcp__claude_ai_Supabase__list_migrations"
+      "mcp__claude_ai_Supabase__list_migrations",
+      "Bash(timeout 300 python scripts/test_accettazione_import.py --pv \"LAND DEI SAPORI\" --report)",
+      "Bash(timeout 200 python scripts/verifica_coerenza_pagine.py --rid fd7ac484-b562-498d-a6d1-00c4c6fd09dd)",
+      "Bash(python -c ' *)"
     ]
   }
 }

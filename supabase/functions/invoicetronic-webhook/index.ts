@@ -198,6 +198,52 @@ export async function verifyHmac(
   return timingSafeEqual(hex, sig)
 }
 
+// ─── Utility: alert Telegram immediato (Voce 7 / Strato 1, 28/7/2026) ─────────
+// Quando un evento firmato non viene riconosciuto come "receive" valido (rete
+// di sicurezza sopra), la fattura resta comunque visibile in coda come
+// 'failed' — ma nessuno la guarda finché non arriva la ronda giornaliera
+// (Strato 2, GitHub Actions) o un'apertura manuale dell'admin. Questo alert
+// notifica SUBITO, così un bug di parsing tipo il PascalCase del 24/7 (200 OK,
+// nessun errore visibile, fattura persa per una settimana) si scopre in minuti
+// invece che in giorni. Fire-and-forget: un errore qui non deve MAI far
+// fallire la risposta al webhook né bloccarla (await, ma dentro try/catch).
+// Silenzioso se i secret non sono configurati (stesso comportamento tollerante
+// di services/telegram_service.invia_messaggio in Python).
+export async function notifyTelegramUnrecognizedEvent(
+  reason: string,
+  ev: NormalizedWebhookEvent,
+): Promise<void> {
+  const token  = Deno.env.get('TELEGRAM_BOT_TOKEN')
+  const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
+  if (!token || !chatId) return // non configurato: no-op, mai bloccante
+
+  const msg = [
+    '⚠️ Webhook Invoicetronic: evento non riconosciuto',
+    `Motivo: ${reason}`,
+    `endpoint=${ev.endpoint ?? '—'} event=${ev.eventName ?? '—'}`,
+    `resource_id=${ev.resourceId ?? '—'} event_id=${ev.eventId ?? '—'}`,
+    'Dettaglio: fatture_queue status=failed, payload_meta.unrecognized_event',
+  ].join('\n')
+
+  try {
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(), 5000)
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ chat_id: chatId, text: msg }),
+        signal:  ac.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  } catch (err) {
+    // Mai propagare: l'alert è un extra, non deve mai far fallire il webhook.
+    console.warn(`[wh] notifica Telegram fallita (non bloccante): ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 // ─── Utility: SHA-256 hex (per xml_hash) ──────────────────────────────────────
 
 async function sha256Hex(s: string): Promise<string> {
@@ -994,6 +1040,8 @@ export const handler = async (req: Request): Promise<Response> => {
       console.error(`[wh] Errore INSERT evento non riconosciuto: ${insErr.message}`)
       return new Response('Internal Server Error', { status: 500 })
     }
+    // Registrata con successo: alert immediato (Strato 1), non bloccante.
+    await notifyTelegramUnrecognizedEvent(reason, ev)
     // Senza resource_id non possiamo scaricare l'XML: resta 'failed' registrata
     // (visibile + raw_body_sample per il fix), chiudiamo 200 (l'abbiamo salvata).
     if (ev.resourceId == null) {
