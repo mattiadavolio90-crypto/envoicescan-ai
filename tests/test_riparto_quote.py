@@ -47,7 +47,7 @@ def test_equa_zero_sedi():
 # ─── _quote_percentuali ───────────────────────────────────────────────────────
 
 def test_percentuali_70_30():
-    q = _quote_percentuali(1000.0, {"A": 70.0, "B": 30.0})
+    q = _quote_percentuali(1000.0, {"A": 70.0, "B": 30.0}, {"A", "B"})
     importi = {x["ristorante_id"]: x["quota_importo"] for x in q}
     assert importi["A"] == 700.0
     assert importi["B"] == 300.0
@@ -56,13 +56,13 @@ def test_percentuali_70_30():
 
 def test_percentuali_pareggio_su_terzi():
     # 33.33/33.33/33.34 su 900 → l'ultima pareggia, somma = 900 esatta.
-    q = _quote_percentuali(900.0, {"A": 33.33, "B": 33.33, "C": 33.34})
+    q = _quote_percentuali(900.0, {"A": 33.33, "B": 33.33, "C": 33.34}, {"A", "B", "C"})
     assert sum(x["quota_importo"] for x in q) == pytest.approx(900.0, abs=1e-9)
 
 
 def test_percentuali_escludi_una_sede_con_zero():
     # "solo 2 sedi su 3": la terza a 0% non riceve quota.
-    q = _quote_percentuali(500.0, {"A": 50.0, "B": 50.0, "C": 0.0})
+    q = _quote_percentuali(500.0, {"A": 50.0, "B": 50.0, "C": 0.0}, {"A", "B", "C"})
     ids = {x["ristorante_id"] for x in q}
     assert ids == {"A", "B"}
     assert sum(x["quota_importo"] for x in q) == 500.0
@@ -70,16 +70,31 @@ def test_percentuali_escludi_una_sede_con_zero():
 
 def test_percentuali_somma_diversa_da_100_errore():
     with pytest.raises(HTTPException) as exc:
-        _quote_percentuali(1000.0, {"A": 60.0, "B": 30.0})  # somma 90
+        _quote_percentuali(1000.0, {"A": 60.0, "B": 30.0}, {"A", "B"})  # somma 90
     assert exc.value.status_code == 400
 
 
 def test_percentuali_vuote():
-    assert _quote_percentuali(1000.0, {}) == []
+    assert _quote_percentuali(1000.0, {}, set()) == []
 
 
 def test_percentuali_tolleranza_arrotondamento():
     # 99.9 e 100.1 devono passare (tolleranza 0.5); 99.4 no.
-    _quote_percentuali(100.0, {"A": 49.95, "B": 49.95})  # somma 99.9: ok
+    _quote_percentuali(100.0, {"A": 49.95, "B": 49.95}, {"A", "B"})  # somma 99.9: ok
     with pytest.raises(HTTPException):
-        _quote_percentuali(100.0, {"A": 50.0, "B": 49.4})  # somma 99.4: ko
+        _quote_percentuali(100.0, {"A": 50.0, "B": 49.4}, {"A", "B"})  # somma 99.4: ko
+
+
+def test_percentuali_sede_estranea_rifiutata():
+    # CRITICAL fix (audit Security 29/7): un ristorante_id fuori dalle sedi
+    # del chiamante deve essere rifiutato con 400, non silenziosamente accettato
+    # (altrimenti si scrive nel MOL di un altro account).
+    with pytest.raises(HTTPException) as exc:
+        _quote_percentuali(1000.0, {"A": 50.0, "SEDE-ALTRUI": 50.0}, {"A", "B"})
+    assert exc.value.status_code == 400
+
+
+def test_percentuali_tutte_sedi_estranee_rifiutate():
+    with pytest.raises(HTTPException) as exc:
+        _quote_percentuali(1000.0, {"SEDE-ALTRUI": 100.0}, {"A", "B"})
+    assert exc.value.status_code == 400

@@ -67,12 +67,12 @@ def test_worker_importa_parser_ricavi_senza_fastapi_worker() -> None:
     """Riproduce il path del worker: i parser ricavi senza trascinare fastapi_worker.
 
     E' il caso reale che si era rotto: worker/email_queue_processor.py importa
-    _detect_gestionale_version/_parse_passbi_v1/_parse_generico da services.routers.ricavi.
+    _detect_gestionale_version/_parse_generico da services.routers.ricavi.
     """
     code = (
         "import sys; "
         "from services.routers.ricavi import ("
-        "_detect_gestionale_version, _parse_passbi_v1, _parse_generico); "
+        "_detect_gestionale_version, _parse_passbi_v1_multisede, _parse_generico); "
         "assert 'services.fastapi_worker' not in sys.modules, "
         "'import parser ricavi trascina fastapi_worker'"
     )

@@ -87,10 +87,15 @@ def _quote_equa(importo: float, sedi_ids: List[str]) -> List[Dict[str, Any]]:
     return quote
 
 
-def _quote_percentuali(importo: float, percentuali: Dict[str, float]) -> List[Dict[str, Any]]:
+def _quote_percentuali(importo: float, percentuali: Dict[str, float], sedi_ok: set) -> List[Dict[str, Any]]:
     """Quote da percentuali esplicite {ristorante_id: %}. Somma % deve fare ~100.
-    L'ultima quota pareggia l'importo (evita derive di arrotondamento)."""
+    L'ultima quota pareggia l'importo (evita derive di arrotondamento).
+    sedi_ok: id delle sedi attive del chiamante — ogni chiave fuori da questo
+    insieme viene rifiutata (altrimenti si scrive nel MOL di un altro account)."""
     items = [(rid, float(p or 0)) for rid, p in percentuali.items() if float(p or 0) > 0]
+    ignote = {rid for rid, _ in items} - sedi_ok
+    if ignote:
+        raise HTTPException(status_code=400, detail="Sede non appartenente all'account")
     if not items:
         return []
     tot_perc = sum(p for _, p in items)
@@ -221,7 +226,7 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
     fornitore = next((r.get("piva_cedente") or r.get("fornitore") for r in righe if (r.get("piva_cedente") or r.get("fornitore"))), None)
 
     if body.regola == "percentuali":
-        quote = _quote_percentuali(importo, body.percentuali or {})
+        quote = _quote_percentuali(importo, body.percentuali or {}, {str(s["id"]) for s in sedi})
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 
@@ -314,7 +319,7 @@ def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Head
     fornitore = meta.get("piva_cedente") or None
 
     if body.regola == "percentuali":
-        quote = _quote_percentuali(importo, body.percentuali or {})
+        quote = _quote_percentuali(importo, body.percentuali or {}, {str(s["id"]) for s in sedi})
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 
@@ -394,7 +399,7 @@ def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Hea
         raise HTTPException(status_code=400, detail="importo non valido")
 
     if body.regola == "percentuali":
-        quote = _quote_percentuali(importo, body.percentuali or {})
+        quote = _quote_percentuali(importo, body.percentuali or {}, {str(s["id"]) for s in sedi})
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 
@@ -444,7 +449,7 @@ def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: 
         raise HTTPException(status_code=400, detail="tipo non valido")
 
     if regola == "percentuali":
-        quote = _quote_percentuali(importo, body.percentuali or {})
+        quote = _quote_percentuali(importo, body.percentuali or {}, {str(s["id"]) for s in sedi})
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 

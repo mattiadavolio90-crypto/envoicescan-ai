@@ -229,12 +229,14 @@ def ws_ricetta_detail(ricetta_id: str, authorization: Optional[str] = Header(Non
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
 
     resp = (
         sb.table("ricette")
         .select("id,nome,categoria,foodcost_totale,prezzo_vendita_ivainc,ingredienti,ordine_visualizzazione")
         .eq("id", ricetta_id)
         .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
         .limit(1)
         .execute()
     )
@@ -329,6 +331,7 @@ def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
 
     if body.categoria not in CATEGORIE_RICETTE:
         raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
@@ -341,7 +344,7 @@ def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: 
         "foodcost_totale": fc_totale,
         "prezzo_vendita_ivainc": round(body.prezzo_vendita_ivainc, 2) if body.prezzo_vendita_ivainc else None,
     }
-    sb.table("ricette").update(payload).eq("id", ricetta_id).eq("user_id", user_id).execute()
+    sb.table("ricette").update(payload).eq("id", ricetta_id).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True, "foodcost_totale": fc_totale}
 
 
@@ -351,7 +354,8 @@ def ws_elimina_ricetta(ricetta_id: str, authorization: Optional[str] = Header(No
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    sb.table("ricette").delete().eq("id", ricetta_id).eq("user_id", user_id).execute()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    sb.table("ricette").delete().eq("id", ricetta_id).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
 
@@ -365,8 +369,9 @@ def ws_riordina_ricette(body: RiordinaBody, authorization: Optional[str] = Heade
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     for idx, rid in enumerate(body.ordine):
-        sb.table("ricette").update({"ordine_visualizzazione": idx + 1}).eq("id", rid).eq("user_id", user_id).execute()
+        sb.table("ricette").update({"ordine_visualizzazione": idx + 1}).eq("id", rid).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
 
@@ -408,10 +413,11 @@ def ws_aggiorna_ingrediente_manuale(ing_id: str, body: AggiornaIngredienteManual
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     if "um" in payload:
         payload["um"] = payload["um"].upper()
-    sb.table("ingredienti_workspace").update(payload).eq("id", ing_id).eq("user_id", user_id).execute()
+    sb.table("ingredienti_workspace").update(payload).eq("id", ing_id).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
 
@@ -420,7 +426,8 @@ def ws_elimina_ingrediente_manuale(ing_id: str, authorization: Optional[str] = H
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    sb.table("ingredienti_workspace").delete().eq("id", ing_id).eq("user_id", user_id).execute()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    sb.table("ingredienti_workspace").delete().eq("id", ing_id).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
 

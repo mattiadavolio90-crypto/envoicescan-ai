@@ -7390,7 +7390,7 @@ def _fetch_fatture_rows(
         if data_a:
             q = q.lte("data_documento", data_a)
         if search:
-            term = search.strip()
+            term = _sanitize_postgrest_term(search)
             if term:
                 # cerca trasversalmente in descrizione, fornitore, categoria
                 q = q.or_(
@@ -8035,4 +8035,9 @@ if __name__ == "__main__":
         reload=_reload,
         workers=_workers if (_workers > 1 and not _reload) else None,
         log_level="info",
+        # Railway espone il worker solo dietro il suo proxy: senza questo,
+        # request.client.host e' sempre l'IP del proxy e il rate limiter per-IP
+        # (_check_rate_limit) condivide un unico bucket per tutto il traffico.
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )

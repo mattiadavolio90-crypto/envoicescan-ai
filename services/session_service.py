@@ -179,6 +179,7 @@ def revoca_tutte_sessioni(user_id: str, supabase_client=None, escludi_token: str
         if escludi_token:
             q = q.neq("token", escludi_token)
         res = q.execute()
+        _clear_sessione_cache_auth()
         return len(res.data or [])
     except Exception:
         logger.exception("Errore revoca tutte le sessioni")
@@ -199,7 +200,20 @@ def revoca_sessione(token: str, supabase_client=None) -> bool:
             .execute()
         )
         _LAST_SEEN_THROTTLE.pop(token, None)
+        _clear_sessione_cache_auth(token)
         return bool(res.data)
     except Exception:
         logger.exception("Errore revoca sessione")
         return False
+
+
+def _clear_sessione_cache_auth(token: Optional[str] = None) -> None:
+    """Invalida la cache di validazione sessione di auth_service (TTL 30s per
+    processo). Senza questa chiamata un token revocato qui resta accettato
+    fino a 30s da ogni processo uvicorn con la cache calda — inaccettabile
+    per un logout o un reset password di sicurezza."""
+    try:
+        from services.auth_service import _clear_sessione_cache
+        _clear_sessione_cache(token)
+    except Exception:
+        logger.exception("Errore invalidazione cache sessione auth_service (non bloccante)")

@@ -15,16 +15,28 @@ import pandas as pd
 import pytest
 
 from services.routers.ricavi import (
-    _parse_passbi_v1, _parse_passbi_v1_multisede, _parse_generico,
+    _parse_passbi_v1_multisede, _parse_generico,
 )
 
 
-# ── Mock supabase per il mapping ragione sociale ──────────────────────────────
-def _sb_ragione(mapping_rows):
+# ── Mock supabase per owned_ids + mapping ragione sociale ─────────────────────
+def _sb_ragione(mapping_rows, ristorante_id="RID"):
+    """_parse_passbi_v1_multisede fa 2 query in sequenza: prima gli id posseduti
+    dall'utente (ristoranti.user_id), poi il mapping ragione sociale. Qui l'unico
+    ristorante posseduto è quello passato come fallback nei test (mono-sede)."""
+    calls = {"n": 0}
+
+    def _execute():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return MagicMock(data=[{"id": ristorante_id}])
+        return MagicMock(data=mapping_rows)
+
     q = MagicMock()
     q.table.return_value = q
     q.select.return_value = q
-    q.execute.return_value = MagicMock(data=mapping_rows)
+    q.eq.return_value = q
+    q.execute.side_effect = _execute
     return q
 
 
@@ -53,7 +65,8 @@ def test_passbi_coperti_sommati_e_arrotondati():
         ("10/06/2026 00:00:00", "LAND DEI SAPORI", "proforma", 10, 2622.0224, 109.9797),
     ])
     sb = _sb_ragione([{"ragione_sociale_norm": "land dei sapori", "ristorante_id": "RID"}])
-    items, errors, parsed = _parse_passbi_v1(df, "RID", sb)
+    per_ristorante, errors, parsed = _parse_passbi_v1_multisede(df, "RID", "USER", sb)
+    items = per_ristorante["RID"]
     assert len(items) == 1
     assert items[0].data == "2026-06-10"
     assert items[0].coperti == 435
@@ -64,7 +77,8 @@ def test_passbi_senza_colonna_coperti_none():
         ("11/06/2026 00:00:00", "LAND DEI SAPORI", "Scontrino", 10, 1000.0),
     ], with_coperti=False)
     sb = _sb_ragione([{"ragione_sociale_norm": "land dei sapori", "ristorante_id": "RID"}])
-    items, errors, parsed = _parse_passbi_v1(df, "RID", sb)
+    per_ristorante, errors, parsed = _parse_passbi_v1_multisede(df, "RID", "USER", sb)
+    items = per_ristorante["RID"]
     assert len(items) == 1
     assert items[0].coperti is None  # nessuna colonna → non pervenuto, non 0
 
@@ -74,7 +88,8 @@ def test_passbi_coperti_zero_reale_resta_zero():
         ("12/06/2026 00:00:00", "LAND DEI SAPORI", "Scontrino", 10, 500.0, 0),
     ])
     sb = _sb_ragione([{"ragione_sociale_norm": "land dei sapori", "ristorante_id": "RID"}])
-    items, errors, parsed = _parse_passbi_v1(df, "RID", sb)
+    per_ristorante, errors, parsed = _parse_passbi_v1_multisede(df, "RID", "USER", sb)
+    items = per_ristorante["RID"]
     assert len(items) == 1
     # colonna presente con valore 0 → coperti visto = 0 (non None)
     assert items[0].coperti == 0

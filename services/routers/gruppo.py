@@ -2004,7 +2004,9 @@ def gruppo_tag_prodotti_add(
 @router.delete("/api/gruppo/tag/prodotti/{assoc_id}", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
 def gruppo_tag_prodotti_remove(assoc_id: int, authorization: Optional[str] = Header(None)):
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
-    sb.table("gruppo_tag_prodotti").delete().eq("id", int(assoc_id)).eq("user_id", user_id).execute()
+    res = sb.table("gruppo_tag_prodotti").delete().eq("id", int(assoc_id)).eq("user_id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Associazione non trovata")
     return {"ok": True}
 
 
