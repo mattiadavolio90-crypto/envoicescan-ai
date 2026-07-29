@@ -33,6 +33,7 @@ DOC_VIVI = [
     ROOT / "docs" / "COMPLIANCE_GDPR.md",
     ROOT / "LOGICA_BRIEFING.md",
     ROOT / "README.md",
+    ROOT / "WORKFLOW.md",
 ]
 
 # P.IVA reale del titolare (RECOMASYSTEM Srl, Trezzano sul Naviglio).

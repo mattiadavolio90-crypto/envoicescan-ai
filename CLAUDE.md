@@ -64,6 +64,7 @@ rompe qualcosa. Tutto il resto sta altrove e si apre alla bisogna:
 | Deploy Railway, incidenti | `docs/DEPLOY_RUNBOOK.md`, `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` |
 | Visione, filosofia, modello commerciale | `ONEFLUX_MASTER.md` |
 | Roadmap feature | `IMPLEMENTAZIONI.md` |
+| Tutto il resto (marketing, GDPR, business plan, storico incidenti) | Indice completo in `DOCUMENTAZIONE/MAPPA_TECNICA.md` §6 |
 
 > La documentazione viva è protetta da `tests/test_documentazione_onesta.py`:
 > se un doc cita un simbolo o un percorso che non esiste più, il test fallisce.

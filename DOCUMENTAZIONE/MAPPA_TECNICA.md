@@ -139,8 +139,9 @@ beneficio; lo shim costa zero e non mente.
   due fornitori diversi, e zero casi di stesso nome con documento diverso.
   Un dedup su `piva+data+totale` sarebbe **peggio**: cancellerebbe fatture vere
   (Amazon ha 4 fatture identiche da 69,85€ lo stesso giorno — 4 ordini reali).
-- **Aperto:** la card "I conti del gruppo" può mostrare numeri gonfiati quando
-  più sedi non hanno i costi (vedi `LOGICA_BRIEFING.md` §8).
+- **Chiuso (17/7):** la card "I conti del gruppo" non mostra più numeri gonfiati
+  quando più sedi non hanno i costi — cascata a 3 livelli (nessuno/food/completo),
+  verificata su SUSHILAND (vedi `LOGICA_BRIEFING.md` §8).
 - **Chiuso come falso allarme:** il `.limit(50000)` in `notification_service.py`,
   bersaglio della Fase 1a del piano stabilità worker, non è mai stato un problema
   di produzione: quel modulo è raggiungibile solo da Streamlit dismesso. Un
@@ -149,20 +150,97 @@ beneficio; lo shim costa zero e non mente.
 
 ---
 
-## 6. Gli altri documenti, e quando servono
+## 6. Indice completo — ogni documento del repo, per domanda
 
+Questa è la **mappa unica**: se un documento esiste nel repo e non è qui, è un
+segnale che va spostato/archiviato/eliminato, non ignorato. Organizzata per
+"cosa devo fare", non per cartella — la cartella fisica conta meno di trovarlo.
+
+**Come sono divise le due cartelle documentazione** (motivo storico, non
+riordinabile senza toccare CI/Docker — vedi nota in fondo): `DOCUMENTAZIONE/`
+= riferimento tecnico su come è fatto il prodotto oggi; `docs/` = processo
+operativo (deploy, compliance, piani di lavoro correnti, know-how su incidenti
+chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
+
+### Voglio capire l'architettura / le regole di dominio
 | Documento | Quando aprirlo |
 |---|---|
 | `CLAUDE.md` | Sempre — è il contratto, già in contesto |
-| `LOGICA_BRIEFING.md` | Per cambiare **cosa dice** il briefing (soglie, priorità, tono) |
-| `docs/DEPLOY_RUNBOOK.md` | Per ricreare/verificare i servizi Railway |
-| `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert |
-| `DOCUMENTAZIONE/tecnica/DATABASE_SCHEMA.md` | Per lo schema tabella per tabella |
-| `DOCUMENTAZIONE/tecnica/AI_PIPELINE.md` | Per la pipeline di classificazione |
-| `DOCUMENTAZIONE/tecnica/CHAT_ASSISTENTE.md` | Per la chat AI (tool, limiti) |
-| `DOCUMENTAZIONE/tecnica/TROUBLESHOOTING.md` | Quando qualcosa non parte |
-| `docs/COMPLIANCE_GDPR.md` | Per domande legali/privacy |
-| `docs/storico/` | Solo per problemi già visti (diagnosi Invoicetronic) |
+| `DOCUMENTAZIONE/MAPPA_TECNICA.md` (questo file) | Dove sta cosa e perché è fatto così |
+| `ONEFLUX_MASTER.md` | Visione, filosofia prodotto, modello commerciale — cosa non cambia a ogni deploy |
+
+### Voglio lavorare su una feature (implementazione)
+| Documento | Quando aprirlo |
+|---|---|
+| `WORKFLOW.md` | Come si pianifica/esegue (plan mode, `docs/piani/PIANO_<feature>.md`, modello per fase) |
+| `scripts/check_documentazione.py` | A fine feature (WORKFLOW.md §6): trova documenti chiusi da archiviare/eliminare, link rotti, indice fuori sync |
+| `IMPLEMENTAZIONI.md` | Roadmap feature future non ancora iniziate |
+| `docs/piani/PIANO_<feature>.md` | Solo se esiste — lavoro multi-sessione in corso ora (git-ignorato, effimero) |
+| `LOGICA_BRIEFING.md` | Per cambiare **cosa dice** il briefing Home (soglie, priorità, tono) |
+
+### Voglio capire un dominio tecnico specifico
+| Documento | Quando aprirlo |
+|---|---|
+| `DOCUMENTAZIONE/tecnica/DATABASE_SCHEMA.md` | Schema tabella per tabella |
+| `DOCUMENTAZIONE/tecnica/AI_PIPELINE.md` | Pipeline di classificazione fatture |
+| `DOCUMENTAZIONE/tecnica/CHAT_ASSISTENTE.md` | Chat AI (tool, limiti) |
+| `DOCUMENTAZIONE/tecnica/BRIEFING_HOME.md` | Come è costruito tecnicamente il briefing (non cosa dice — quello è `LOGICA_BRIEFING.md`) |
+| `DOCUMENTAZIONE/tecnica/DEPLOY_INFRASTRUTTURA.md` | Come sono collegati Vercel/Railway/Supabase |
+| `DOCUMENTAZIONE/tecnica/SICUREZZA_GDPR.md` | Misure di sicurezza tecniche (non il dossier legale — quello è `docs/COMPLIANCE_GDPR.md`) |
+| `DOCUMENTAZIONE/tecnica/PAGINA_SERVIZI_MARKETING.md` | La pagina pubblica "servizi" |
+| `DOCUMENTAZIONE/tecnica/TROUBLESHOOTING.md` | Quando qualcosa non parte in locale |
+
+### Qualcosa non va (incidente in produzione)
+| Documento | Quando aprirlo |
+|---|---|
+| `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert — primo posto dove guardare |
+| `docs/DEPLOY_RUNBOOK.md` | Per ricreare/verificare i servizi Railway da zero |
+| `docs/storico/` | Solo se il problema somiglia a uno già visto (diagnosi Invoicetronic, migration legacy) — indice in `docs/storico/README.md` |
+
+### Voglio setup locale / comandi
+| Documento | Quando aprirlo |
+|---|---|
+| `DEV_SERVICES_GUIDE.md` | Avviare worker/queue-worker/Next.js in locale |
+| `README.md` | Descrizione pubblica del progetto (anche per chi non sviluppa) |
+
+### Legale, GDPR, business
+| Documento | Quando aprirlo |
+|---|---|
+| `docs/COMPLIANCE_GDPR.md` | Dossier GDPR completo — anche per audit/richieste clienti B2B |
+| `docs/business-plan-costi.md` | Costi infrastruttura, pricing interno |
+
+### Marketing, brand, roadmap commerciale
+| Documento | Quando aprirlo |
+|---|---|
+| `PIANO_WEB_MARKETING.md` | Piano SEO/marketing vivo, 4 pilastri, si aggiorna nel tempo |
+| `BRIEF_LANDING_ONEFLUX_1.md` | Copy/stile validato della landing pubblica |
+| `GRUPPO_ACQUISTO.md` | Concept prodotto "gruppo d'acquisto" (non ancora costruito) |
+| `LOGO.md` | Tool per rigenerare logo/wordmark |
+
+### Storico riusabile (problemi chiusi con valore predittivo)
+| Documento | Cosa insegna |
+|---|---|
+| `docs/storico/README.md` | Indice — criterio di cosa sta lì e perché |
+| `docs/storico/INVOICETRONIC_DIAGNOSI_2026-07-02.md` | Precedenza Codice Destinatario su cassetto fiscale, conflitto multi-provider |
+| `docs/storico/DIAGNOSI_OFFSIDE_INVOICETRONIC_2026-07-14.md` | Sandbox-vs-live Invoicetronic, bug P7M byte nulli |
+| `docs/storico/MIGRAZIONE_APP.md` | Come fu fatto lo switch Streamlit → Next.js |
+| `docs/storico/CHECKLIST_069_072.md` | Migration legacy applicate (cartella `migrations/` congelata) |
+| `docs/storico/WEBHOOK_PARSER_BODY_2026-07-22.md`, `WEBHOOK_SCARTO_SILENZIOSO_2026-07-21.md` | Pattern di debug sui webhook Edge Function |
+
+### Stato/decisioni tra sessioni (non file — memoria persistente)
+Lavori chiusi, decisioni prese, contesto cliente: **non stanno più in file
+`.md` nel repo**, stanno nella memoria auto-persistente di Claude Code
+(`memory/project_*.md`, `memory/feedback_*.md`, `memory/reference_*.md`,
+fuori dal repo). Un file `.md` di stato/riepilogo nel repo che non ha valore
+predittivo futuro (vedi criterio in `docs/storico/README.md`) va eliminato
+dopo che il suo contenuto è confluito in memoria, non tenuto "per sicurezza".
+
+> **Nota sulla separazione `DOCUMENTAZIONE/` vs `docs/`:** non è stata unificata
+> in una sola cartella perché 4 GitHub Actions, 2 Dockerfile/`.dockerignore` e
+> `tests/test_documentazione_onesta.py` (`DOC_VIVI`) hanno percorsi hardcoded
+> su entrambe — un merge fisico è rischio CI per un guadagno solo estetico.
+> Se in futuro si fa, va fatto in un commit dedicato che aggiorna tutti quei
+> riferimenti insieme, mai come effetto collaterale di un altro lavoro.
 
 ---
 

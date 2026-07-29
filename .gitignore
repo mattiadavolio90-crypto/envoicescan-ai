@@ -63,6 +63,9 @@ riclassifica_*.py
 normalizza_*.py
 aggiungi_*.py
 popola_*.py
+# check_*.py: eccezione scripts/check_documentazione.py, tracciato con
+# `git add -f` perché è infrastruttura di processo permanente (WORKFLOW.md
+# §6), non uno scratch one-off come gli altri script di questo blocco.
 check_*.py
 reset_*.py
 cancella_*.py

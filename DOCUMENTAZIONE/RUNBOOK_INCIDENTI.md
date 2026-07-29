@@ -2,7 +2,7 @@
 
 > Cosa fare, in che ordine, quando arriva un alert (Telegram/email) o un cliente
 > segnala "l'app non va". Scritto sulla base dell'incidente reale del 2/7/2026
-> (vedi `PIANO_STABILITA_WORKER_2026-07-02.md` per l'analisi completa).
+> (analisi completa: memoria `project_stabilita_worker_2026-07-02`).
 
 ---
 
@@ -91,7 +91,7 @@ Deve essere `1`. Se è `0` o assente → il queue-worker non processa nulla, ria
 
 1. Verifica che l'alert non si ripresenti (aspetta il prossimo ciclo del monitor, 10-15 min).
 2. Se hai deployato un fix: **svuota `daily_briefing_state`** della sede di test se il fix tocca il briefing (regola esistente, vedi memoria `feedback_svuota_cache_briefing_dopo_deploy`).
-3. Se la causa era saturazione ricorrente → considera se è il momento di potenziare Railway (vedi `PIANO_STABILITA_WORKER_2026-07-02.md`, Leva 3): i dati storici del p95 nella tab "Salute worker" sono l'evidenza su cui decidere, non l'intuito.
+3. Se la causa era saturazione ricorrente → considera se è il momento di potenziare Railway: i dati storici del p95 nella tab "Salute worker" sono l'evidenza su cui decidere, non l'intuito.
 4. Annota nel changelog/memoria se l'incidente ha rivelato qualcosa di nuovo (nuova causa, nuova soglia da tarare).
 
 ---
@@ -107,4 +107,3 @@ Deve essere `1`. Se è `0` o assente → il queue-worker non processa nulla, ria
 | Spia latenza | Admin → Clienti → "Salute worker" (o `GET /api/admin/sistema/salute-worker`) |
 | Vercel deployments | https://vercel.com dashboard progetto |
 | DB / query live | Supabase MCP `execute_sql`, o dashboard Supabase → SQL Editor |
-| Piano stabilità completo | `DOCUMENTAZIONE/PIANO_STABILITA_WORKER_2026-07-02.md` |

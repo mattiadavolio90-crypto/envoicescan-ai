@@ -115,3 +115,41 @@ Questo documento risolve l'oblio delle *decisioni concordate* e il costo/token
 delle sessioni lunghe. Sono leve complementari: l'hook parla nel momento
 dell'azione, il piano/memoria conservano l'intento tra sessioni. Nessuno dei due
 va rimosso in favore dell'altro.
+
+---
+
+## 6. Manutenzione della documentazione: automatica, non su richiesta
+
+**Regola vincolante, non un consiglio**: quando una fase/feature/piano si
+chiude (checklist tutta `[x]`, `docs/piani/PIANO_<feature>.md` eliminato
+secondo §2), prima di considerare il lavoro finito esegui:
+
+```powershell
+python scripts/check_documentazione.py
+```
+
+Poi agisci **subito, senza chiedere conferma**, sui casi ovvi che riguardano
+il lavoro appena chiuso:
+- un documento marcato chiuso/deployato il cui contenuto è già confluito in
+  memoria (`memory/project_*.md`) o in un commit → **elimina**
+- un documento chiuso ma con valore predittivo futuro (pattern di debug,
+  causa radice non ovvia) → **sposta in `docs/storico/`** seguendo il
+  criterio di `docs/storico/README.md`
+- un link rotto generato dal tuo stesso lavoro (es. hai rinominato/spostato
+  un file citato altrove) → **ripara** il riferimento
+- un documento nuovo che hai creato e che rientra nelle categorie di
+  `DOCUMENTAZIONE/MAPPA_TECNICA.md` §6 → **aggiungi la riga all'indice**
+  nello stesso momento, non "poi"
+
+Segnala invece (non decidere da solo) solo quando è dubbio se un documento
+abbia ancora valore — es. un piano chiuso che non hai scritto tu in questa
+sessione e di cui non conosci il contesto completo.
+
+**Perché non è un hook automatico**: nessun evento del sistema (Edit, Stop,
+fine sessione) può distinguere da solo "una feature si è appena chiusa" da
+"ho appena risposto a una domanda" — quel giudizio richiede leggere il
+contesto della conversazione, cosa che solo la sessione stessa può fare. Per
+questo la regola è comportamentale (in questo file, sempre in contesto),
+rinforzata da uno script che rende il controllo meccanico e verificabile
+invece che "a sensazione". Puoi anche lanciarlo tu in qualunque momento per
+un controllo generale, indipendente da un lavoro specifico.
