@@ -9,6 +9,8 @@
 Fake client Supabase in-memory che riproduce il chaining usato dal router
 (table/select/eq/in_/gte/order/update/limit/execute + rpc).
 """
+from datetime import datetime, timedelta, timezone
+
 import services.fastapi_worker  # noqa: F401 — carica i moduli condivisi
 import services.routers.admin as admin
 import pytest
@@ -341,20 +343,25 @@ def test_badges_tutto_pulito_a_zero(monkeypatch):
 
 def test_eventi_sconosciuti_filtra_solo_unrecognized_event(monkeypatch):
     monkeypatch.setattr(admin, "_verify_worker_key", lambda **k: None)
+    now = datetime.now(timezone.utc)
+
+    def _iso(minuti_fa):
+        return (now - timedelta(minutes=minuti_fa)).isoformat()
+
     sb = FakeClient({
         "fatture_queue": [
             # failed CON unrecognized_event → deve comparire
-            {"id": 1, "status": "failed", "created_at": "2026-07-28T06:00:00+00:00",
+            {"id": 1, "status": "failed", "created_at": _iso(60),
              "payload_meta": {"unrecognized_event": "endpoint/event non riconosciuto come receive",
                               "raw_endpoint": "strano/xyz", "raw_event": None}},
             # failed per un motivo diverso (es. errore rete API) → non è unrecognized_event
-            {"id": 2, "status": "failed", "created_at": "2026-07-28T06:05:00+00:00",
+            {"id": 2, "status": "failed", "created_at": _iso(55),
              "payload_meta": {"api_error": "HTTP 503"}},
             # unknown_tenant: non è 'failed', esclusa a prescindere
-            {"id": 3, "status": "unknown_tenant", "created_at": "2026-07-28T06:10:00+00:00",
+            {"id": 3, "status": "unknown_tenant", "created_at": _iso(50),
              "payload_meta": {"unrecognized_event": "non dovrebbe mai capitare qui"}},
             # done: sana, esclusa
-            {"id": 4, "status": "done", "created_at": "2026-07-28T06:15:00+00:00", "payload_meta": {}},
+            {"id": 4, "status": "done", "created_at": _iso(45), "payload_meta": {}},
         ],
     })
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
