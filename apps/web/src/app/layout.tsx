@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Quicksand, Sora } from "next/font/google";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -75,6 +76,7 @@ export default function RootLayout({
             <PwaRegister />
           </TooltipProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
