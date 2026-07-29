@@ -74,7 +74,6 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
 
   // Elimina account dialog
   const [eliminaDialog, setEliminaDialog] = useState(false);
-  const [eliminaMemoria, setEliminaMemoria] = useState(false);
   const [eliminaSaving, setEliminaSaving] = useState(false);
 
   // Elimina sede dialog
@@ -328,7 +327,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   async function handleEliminaAccount() {
     setEliminaSaving(true);
     try {
-      const res = await fetch(`/api/admin/clienti/${c.id}?elimina_memoria=${eliminaMemoria}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/clienti/${c.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || "Eliminazione non riuscita");
@@ -844,12 +843,6 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <li>Upload events, ricette, ingredienti</li>
                 <li>Tutti i ristoranti/sedi</li>
               </ul>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch id="elimina-memoria" checked={eliminaMemoria} onCheckedChange={setEliminaMemoria} />
-              <Label htmlFor="elimina-memoria" className="text-sm">
-                Elimina anche i contributi alla memoria AI globale
-              </Label>
             </div>
           </div>
           <DialogFooter>

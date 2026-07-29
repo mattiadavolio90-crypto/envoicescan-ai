@@ -647,7 +647,15 @@ def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verif
     email_inviata = _invia_email_onboarding(body.email, body.nome_ristorante, link)
 
     logger.info("Admin crea_cliente: %s | admin=%s | email_inviata=%s", body.email, admin_user.get("email"), email_inviata)
-    return {"ok": True, "email": body.email, "link_attivazione": link, "email_inviata": email_inviata, "warning": messaggio if "⚠️" in messaggio else None}
+    return {
+        "ok": True,
+        "email": body.email,
+        # Il token in chiaro serve solo come fallback manuale: se l'email e' partita
+        # l'admin non deve vederlo (stesso criterio di admin_reset_password).
+        "link_attivazione": None if email_inviata else link,
+        "email_inviata": email_inviata,
+        "warning": messaggio if "⚠️" in messaggio else None,
+    }
 
 
 @router.post("/api/admin/clienti/{cliente_id}/rinvia-attivazione", tags=["Admin"])
@@ -1404,9 +1412,14 @@ def admin_qualita_memoria_update(
     admin_user: dict = Depends(_verify_admin),
 ):
     from datetime import datetime, timezone
+    from config.constants import TUTTE_LE_CATEGORIE
+
     sb = get_supabase_client()
     update: dict = {"ultima_modifica": datetime.now(timezone.utc).isoformat()}
     if body.categoria is not None:
+        _categorie_valide = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE"}
+        if body.categoria not in _categorie_valide:
+            raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
         update["categoria"] = body.categoria
         update["verified"] = True
     if body.verified is not None:
@@ -2533,7 +2546,6 @@ def admin_cambia_email(
 @router.delete("/api/admin/clienti/{cliente_id}", tags=["Admin"])
 def admin_elimina_cliente(
     cliente_id: str,
-    elimina_memoria: bool = False,
     admin_user: dict = Depends(_verify_admin),
 ):
     """Elimina account cliente e tutti i suoi dati (cascade)."""
@@ -2577,15 +2589,11 @@ def admin_elimina_cliente(
         except Exception as exc:
             logger.warning("Errore eliminazione %s: %s", table, exc)
 
-    if elimina_memoria:
-        try:
-            r = sb.table("prodotti_master").delete().eq("user_id", cliente_id).execute()
-            deleted["prodotti_master"] = len(r.data or [])
-        except Exception as exc:
-            logger.warning("Errore eliminazione prodotti_master: %s", exc)
-
+    # prodotti_master (memoria AI globale) NON ha user_id: è condivisa fra tutti
+    # i clienti e non è dato personale del singolo (stessa policy documentata in
+    # account.py per l'auto-cancellazione). Non va toccata qui.
     sb.table("users").delete().eq("id", cliente_id).execute()
-    logger.warning("ELIMINAZIONE_ACCOUNT: cliente=%s | admin=%s | deleted=%s | memoria=%s", email_target, admin_user.get("email"), deleted, elimina_memoria)
+    logger.warning("ELIMINAZIONE_ACCOUNT: cliente=%s | admin=%s | deleted=%s", email_target, admin_user.get("email"), deleted)
     return {"ok": True, "deleted": deleted}
 
 

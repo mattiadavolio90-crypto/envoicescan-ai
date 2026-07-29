@@ -46,11 +46,9 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   const token = await getToken();
   if (!token) return unauthorized();
   const { id } = await params;
-  const { searchParams } = new URL(req.url);
-  const eliminaMemoria = searchParams.get("elimina_memoria") === "true";
   try {
     const res = await fetch(
-      `${WORKER_URL}/api/admin/clienti/${id}?elimina_memoria=${eliminaMemoria}`,
+      `${WORKER_URL}/api/admin/clienti/${id}`,
       {
         method: "DELETE",
         headers: workerHeaders(token),

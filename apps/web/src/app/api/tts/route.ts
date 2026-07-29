@@ -57,8 +57,9 @@ export async function GET(request: Request) {
 
   const q = new URL(request.url).searchParams.get("q")?.trim();
   if (!q) return NextResponse.json({ error: "Testo mancante" }, { status: 400 });
-  // Cap di sicurezza sulla lunghezza totale (un briefing e' breve).
-  const testo = q.slice(0, 1200);
+  // Cap di sicurezza sulla lunghezza totale (un briefing e' breve): tenuto basso
+  // per limitare quanti fetch sequenziali verso Google una richiesta puo' generare.
+  const testo = q.slice(0, 600);
 
   try {
     const parti = chunk(testo);
@@ -75,6 +76,7 @@ export async function GET(request: Request) {
           Referer: "https://translate.google.com/",
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) {
         return NextResponse.json({ error: "TTS non disponibile" }, { status: 502 });
