@@ -6,4 +6,5 @@ export {
   unauthorized,
   workerError,
   workerFetch,
+  workerUnreachable,
 } from "@/lib/worker-config";
