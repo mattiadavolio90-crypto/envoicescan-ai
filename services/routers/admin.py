@@ -2566,8 +2566,8 @@ def admin_elimina_cliente(
         # esplicitamente qui, altrimenti restano dati del cliente cancellato (GDPR).
         ("daily_briefing_state", "user_id"),
         ("ristoranti", "user_id"),
-        ("ricette", "userid"),
-        ("ingredienti_workspace", "userid"),
+        ("ricette", "user_id"),
+        ("ingredienti_workspace", "user_id"),
     ]:
         try:
             if table == "ristoranti" and sedi_ids:

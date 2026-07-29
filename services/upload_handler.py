@@ -944,7 +944,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     status_text = st.empty()
     status_text.text(f"🔍 Analisi di {len(uploaded_files)} file in corso...")
     
-    # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
+    # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro user_id obbligatorio)
     file_su_supabase = set()
     file_su_supabase_full = set()
     try:

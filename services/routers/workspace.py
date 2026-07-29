@@ -5,8 +5,7 @@ Estratto da fastapi_worker.py. Gli helper condivisi (_verify_worker_key,
 _resolve_user_from_token, _get_supabase_client, _get_ristorante_id_for_user,
 _oggi_rome, _ore_turno, logger) restano nel worker e sono importati da qui.
 _ore_turno in particolare e' condiviso col router margini, quindi NON viene
-spostato. Le tabelle ricette/ingredienti usano la colonna `userid` (non user_id),
-logica copiata identica. Path/gate/response invariati.
+spostato. Logica copiata identica. Path/gate/response invariati.
 """
 import json
 from typing import Optional
@@ -97,7 +96,7 @@ def ws_ingredienti(authorization: Optional[str] = Header(None)):
     manuali_resp = (
         sb.table("ingredienti_workspace")
         .select("id,nome,prezzo_per_um,um")
-        .eq("userid", user_id)
+        .eq("user_id", user_id)
         .eq("ristorante_id", ristorante_id)
         .order("nome")
         .execute()
@@ -107,7 +106,7 @@ def ws_ingredienti(authorization: Optional[str] = Header(None)):
     semi_resp = (
         sb.table("ricette")
         .select("id,nome,foodcost_totale")
-        .eq("userid", user_id)
+        .eq("user_id", user_id)
         .eq("ristorante_id", ristorante_id)
         .eq("categoria", "SEMILAVORATI")
         .execute()
@@ -153,7 +152,7 @@ def ws_ricette(authorization: Optional[str] = Header(None)):
     resp = (
         sb.table("ricette")
         .select("id,nome,categoria,foodcost_totale,prezzo_vendita_ivainc,ordine_visualizzazione,ingredienti")
-        .eq("userid", user_id)
+        .eq("user_id", user_id)
         .eq("ristorante_id", ristorante_id)
         .order("ordine_visualizzazione")
         .execute()
@@ -235,7 +234,7 @@ def ws_ricetta_detail(ricetta_id: str, authorization: Optional[str] = Header(Non
         sb.table("ricette")
         .select("id,nome,categoria,foodcost_totale,prezzo_vendita_ivainc,ingredienti,ordine_visualizzazione")
         .eq("id", ricetta_id)
-        .eq("userid", user_id)
+        .eq("user_id", user_id)
         .limit(1)
         .execute()
     )
@@ -300,14 +299,14 @@ def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Heade
     fc_totale = calcola_ricetta(body.righe)
 
     try:
-        next_ordine_resp = sb.rpc("get_next_ordine_ricetta", {"p_userid": user_id, "p_ristorante_id": ristorante_id}).execute()
+        next_ordine_resp = sb.rpc("get_next_ordine_ricetta", {"p_user_id": user_id, "p_ristorante_id": ristorante_id}).execute()
         next_ordine = next_ordine_resp.data if next_ordine_resp.data else 1
     except Exception:
-        q = sb.table("ricette").select("ordine_visualizzazione").eq("userid", user_id).eq("ristorante_id", ristorante_id).order("ordine_visualizzazione", desc=True).limit(1).execute()
+        q = sb.table("ricette").select("ordine_visualizzazione").eq("user_id", user_id).eq("ristorante_id", ristorante_id).order("ordine_visualizzazione", desc=True).limit(1).execute()
         next_ordine = (q.data[0]["ordine_visualizzazione"] + 1) if q.data else 1
 
     payload = {
-        "userid": user_id,
+        "user_id": user_id,
         "ristorante_id": ristorante_id,
         "nome": body.nome.strip(),
         "categoria": body.categoria,
@@ -342,7 +341,7 @@ def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: 
         "foodcost_totale": fc_totale,
         "prezzo_vendita_ivainc": round(body.prezzo_vendita_ivainc, 2) if body.prezzo_vendita_ivainc else None,
     }
-    sb.table("ricette").update(payload).eq("id", ricetta_id).eq("userid", user_id).execute()
+    sb.table("ricette").update(payload).eq("id", ricetta_id).eq("user_id", user_id).execute()
     return {"ok": True, "foodcost_totale": fc_totale}
 
 
@@ -352,7 +351,7 @@ def ws_elimina_ricetta(ricetta_id: str, authorization: Optional[str] = Header(No
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    sb.table("ricette").delete().eq("id", ricetta_id).eq("userid", user_id).execute()
+    sb.table("ricette").delete().eq("id", ricetta_id).eq("user_id", user_id).execute()
     return {"ok": True}
 
 
@@ -367,7 +366,7 @@ def ws_riordina_ricette(body: RiordinaBody, authorization: Optional[str] = Heade
     user_id = str(user["id"])
     sb = _get_supabase_client()
     for idx, rid in enumerate(body.ordine):
-        sb.table("ricette").update({"ordine_visualizzazione": idx + 1}).eq("id", rid).eq("userid", user_id).execute()
+        sb.table("ricette").update({"ordine_visualizzazione": idx + 1}).eq("id", rid).eq("user_id", user_id).execute()
     return {"ok": True}
 
 
@@ -377,7 +376,7 @@ def ws_ingredienti_manuali(authorization: Optional[str] = Header(None)):
     user_id = str(user["id"])
     sb = _get_supabase_client()
     ristorante_id = _get_ristorante_id_for_user(user_id, sb)
-    resp = sb.table("ingredienti_workspace").select("id,nome,prezzo_per_um,um").eq("userid", user_id).eq("ristorante_id", ristorante_id).order("nome").execute()
+    resp = sb.table("ingredienti_workspace").select("id,nome,prezzo_per_um,um").eq("user_id", user_id).eq("ristorante_id", ristorante_id).order("nome").execute()
     return {"ingredienti": resp.data or []}
 
 
@@ -391,7 +390,7 @@ def ws_crea_ingrediente_manuale(body: NuovoIngredienteManualeBody, authorization
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     try:
         resp = sb.table("ingredienti_workspace").insert({
-            "userid": user_id,
+            "user_id": user_id,
             "ristorante_id": ristorante_id,
             "nome": body.nome.strip(),
             "prezzo_per_um": body.prezzo_per_um,
@@ -412,7 +411,7 @@ def ws_aggiorna_ingrediente_manuale(ing_id: str, body: AggiornaIngredienteManual
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     if "um" in payload:
         payload["um"] = payload["um"].upper()
-    sb.table("ingredienti_workspace").update(payload).eq("id", ing_id).eq("userid", user_id).execute()
+    sb.table("ingredienti_workspace").update(payload).eq("id", ing_id).eq("user_id", user_id).execute()
     return {"ok": True}
 
 
@@ -421,7 +420,7 @@ def ws_elimina_ingrediente_manuale(ing_id: str, authorization: Optional[str] = H
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    sb.table("ingredienti_workspace").delete().eq("id", ing_id).eq("userid", user_id).execute()
+    sb.table("ingredienti_workspace").delete().eq("id", ing_id).eq("user_id", user_id).execute()
     return {"ok": True}
 
 

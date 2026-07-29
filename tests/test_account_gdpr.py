@@ -123,7 +123,7 @@ def test_esporta_include_le_sezioni_dati():
     sb = FakeSB({
         "users": [{"id": "u1", "email": "c@x.it"}],
         "fatture": [{"id": 1, "user_id": "u1"}],
-        "ricette": [{"id": 9, "userid": "u1"}],
+        "ricette": [{"id": 9, "user_id": "u1"}],
     })
     with _patch({"id": "u1", "email": "c@x.it"}, sb):
         out = account.account_esporta_dati(authorization="Bearer t")
