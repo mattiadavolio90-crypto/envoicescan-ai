@@ -1,16 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
-
-function workerHeaders(token: string): Record<string, string> {
-  const h: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-  return h;
-}
+import { workerFetch } from "@/lib/worker-config";
 
 // PATCH: modifica regola/percentuali/importo di un riparto → ricalcola le quote.
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -19,9 +10,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { id } = await ctx.params;
   const body = await req.json();
   try {
-    const res = await fetch(`${WORKER_URL}/api/riparto/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: workerHeaders(token),
+    const res = await workerFetch("PATCH", `/api/riparto/${encodeURIComponent(id)}`, token, {
       body: JSON.stringify(body),
     });
     const data = await res.json();
@@ -37,10 +26,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
   try {
-    const res = await fetch(`${WORKER_URL}/api/riparto/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      headers: workerHeaders(token),
-    });
+    const res = await workerFetch("DELETE", `/api/riparto/${encodeURIComponent(id)}`, token, { json: false });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch {

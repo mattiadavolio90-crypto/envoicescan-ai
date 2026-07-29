@@ -1,16 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
-
-function workerHeaders(token: string): Record<string, string> {
-  const h: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-  return h;
-}
+import { workerFetch } from "@/lib/worker-config";
 
 // POST: duplica una voce di costo di gruppo sul mese successivo (ricorrenti fissi).
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -18,9 +9,8 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
   try {
-    const res = await fetch(`${WORKER_URL}/api/riparto/${encodeURIComponent(id)}/duplica`, {
-      method: "POST",
-      headers: workerHeaders(token),
+    const res = await workerFetch("POST", `/api/riparto/${encodeURIComponent(id)}/duplica`, token, {
+      json: false,
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });

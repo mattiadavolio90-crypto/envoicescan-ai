@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, workerFetch } from "@/lib/worker-config";
 
 async function authHeaders() {
   const cookieStore = await cookies();
@@ -28,15 +28,12 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const headers = await authHeaders();
-  if (!headers) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  if (!token) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
   try {
-    const res = await fetch(`${WORKER_URL}/api/home/config`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    const res = await workerFetch("POST", "/api/home/config", token, { body: JSON.stringify(body) });
     if (!res.ok) return NextResponse.json({ error: "Errore worker" }, { status: res.status });
     return NextResponse.json(await res.json());
   } catch {

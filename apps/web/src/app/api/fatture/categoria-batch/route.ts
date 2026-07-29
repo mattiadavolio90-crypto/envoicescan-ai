@@ -1,16 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
-
-function workerHeaders(token: string): Record<string, string> {
-  const h: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-  return h;
-}
+import { workerFetch } from "@/lib/worker-config";
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
@@ -21,9 +12,7 @@ export async function POST(req: NextRequest) {
   if (!body) return NextResponse.json({ error: "Body mancante" }, { status: 400 });
 
   try {
-    const res = await fetch(`${WORKER_URL}/api/fatture/categoria-batch`, {
-      method: "POST",
-      headers: workerHeaders(token),
+    const res = await workerFetch("POST", "/api/fatture/categoria-batch", token, {
       body: JSON.stringify(body),
     });
     const data = await res.json();

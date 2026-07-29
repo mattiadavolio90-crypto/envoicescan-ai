@@ -1,16 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
-
-function workerHeaders(token: string): Record<string, string> {
-  const h: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-  return h;
-}
+import { workerFetch } from "@/lib/worker-config";
 
 // POST: ripartisce una fattura ancora in coda 'da_assegnare' sul gruppo, senza
 // prima assegnarla a un locale (atterra sulla sede tecnica "Costi comuni di gruppo").
@@ -19,11 +10,7 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   try {
-    const res = await fetch(`${WORKER_URL}/api/riparto/da-coda`, {
-      method: "POST",
-      headers: workerHeaders(token),
-      body: JSON.stringify(body),
-    });
+    const res = await workerFetch("POST", "/api/riparto/da-coda", token, { body: JSON.stringify(body) });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch {
