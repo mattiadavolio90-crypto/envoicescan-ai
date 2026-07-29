@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken, workerHeaders, workerUnreachable, unauthorized, WORKER_URL } from "./_worker";
+import { getToken, workerHeaders, workerUnreachable, unauthorized, WORKER_URL, workerFetch } from "./_worker";
 
 export async function GET() {
   const token = await getToken();
@@ -20,12 +20,7 @@ export async function POST(req: NextRequest) {
   if (!token) return unauthorized();
   const body = await req.json();
   try {
-    const res = await fetch(`${WORKER_URL}/api/tag`, {
-      method: "POST",
-      headers: workerHeaders(token, true),
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
+    const res = await workerFetch("POST", "/api/tag", token, { body: JSON.stringify(body) });
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {
     return workerUnreachable();

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken, workerHeaders, workerUnreachable, unauthorized, WORKER_URL } from "../../../_worker";
+import { getToken, workerUnreachable, unauthorized, workerFetch } from "../../../_worker";
 
 type Ctx = { params: Promise<{ sid: string }> };
 
@@ -9,11 +9,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   const { sid } = await ctx.params;
   const body = await req.json().catch(() => ({}));
   try {
-    const res = await fetch(`${WORKER_URL}/api/tag/suggestions/${sid}/accept`, {
-      method: "POST",
-      headers: workerHeaders(token, true),
+    const res = await workerFetch("POST", `/api/tag/suggestions/${sid}/accept`, token, {
       body: JSON.stringify(body),
-      cache: "no-store",
     });
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {
