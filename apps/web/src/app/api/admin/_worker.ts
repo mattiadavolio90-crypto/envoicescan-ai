@@ -7,6 +7,7 @@ export {
   unauthorized,
   forbidden,
   workerUnreachable,
+  workerFetch,
 } from "@/lib/worker-config";
 
 export const IMPERSONATE_COOKIE = "oneflux_impersonate";

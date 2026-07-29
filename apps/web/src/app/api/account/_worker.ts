@@ -5,4 +5,5 @@ export {
   workerHeaders,
   unauthorized,
   workerUnreachable,
+  workerFetch,
 } from "@/lib/worker-config";

@@ -4,4 +4,5 @@ export {
   getToken,
   workerHeaders,
   unauthorized,
+  workerFetch,
 } from "@/lib/worker-config";

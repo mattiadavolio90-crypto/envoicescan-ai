@@ -69,3 +69,24 @@ export async function workerGet<T>(path: string, context: string): Promise<T | n
     return null;
   }
 }
+
+/**
+ * Fetch autenticata verso il worker per i route handler (POST/PATCH/PUT/DELETE).
+ * A differenza di workerGet ritorna la Response grezza — il chiamante propaga
+ * status e body al client — ma centralizza header e AbortSignal.timeout().
+ */
+export async function workerFetch(
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  path: string,
+  token: string,
+  options?: { body?: BodyInit; json?: boolean; timeoutMs?: number }
+): Promise<Response> {
+  const { body, json = true, timeoutMs = WORKER_TIMEOUT_MS } = options ?? {};
+  return fetch(`${WORKER_URL}${path}`, {
+    method,
+    headers: workerHeaders(token, json),
+    body,
+    cache: "no-store",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
