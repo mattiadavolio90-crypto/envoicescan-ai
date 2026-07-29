@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { WORKER_URL, getToken, workerHeaders, unauthorized, workerUnreachable } from "../../../_worker";
+import { getToken, unauthorized, workerUnreachable, workerFetch } from "../../../_worker";
 
 export const runtime = "nodejs";
 
@@ -8,11 +8,8 @@ export async function POST(req: NextRequest) {
   if (!token) return unauthorized();
   try {
     const body = await req.json().catch(() => ({}));
-    const res = await fetch(`${WORKER_URL}/api/admin/sistema/agent-notturno/toggle`, {
-      method: "POST",
-      headers: workerHeaders(token, true),
+    const res = await workerFetch("POST", "/api/admin/sistema/agent-notturno/toggle", token, {
       body: JSON.stringify(body),
-      cache: "no-store",
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });

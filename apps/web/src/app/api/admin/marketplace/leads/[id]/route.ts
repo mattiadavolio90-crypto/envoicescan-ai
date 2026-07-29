@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { workerFetch } from "@/lib/worker-config";
 
 export async function PATCH(
   req: NextRequest,
@@ -16,16 +16,8 @@ export async function PATCH(
   const { stato } = body as { stato?: string };
   if (!stato) return NextResponse.json({ error: "stato mancante" }, { status: 400 });
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
   try {
-    const res = await fetch(`${WORKER_URL}/api/admin/marketplace/leads/${id}`, {
-      method: "PATCH",
-      headers,
+    const res = await workerFetch("PATCH", `/api/admin/marketplace/leads/${id}`, token, {
       body: JSON.stringify({ stato }),
     });
     if (!res.ok) return NextResponse.json({ error: "Errore worker" }, { status: res.status });
