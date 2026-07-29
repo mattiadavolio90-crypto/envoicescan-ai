@@ -70,9 +70,9 @@ Strato 1+2 è il **biglietto d'ingresso** ricorrente. Strato 3 è dove ONEFLUX d
 ### Pricing (3 tier)
 | Piano | Prezzo | Fatture | Margine atteso |
 |---|---|---|---|
-| **Base** | €39/mese | fino a 50 | 72% |
-| **Plus** | €49/mese | fino a 100 | 67% |
-| **Pro** | €69/mese | fino a 200 | 65% |
+| **Base** | €39/mese | fino a 50 | 98% |
+| **Plus** | €59/mese | fino a 100 | 97% |
+| **Pro** | €79/mese | fino a 200 | 96% |
 
 **Costo variabile principale:** Invoicetronic (€0,10-0,15 per fattura — più pacchetti grandi compri, meno costa per fattura).
 

@@ -174,7 +174,9 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 |---|---|
 | `WORKFLOW.md` | Come si pianifica/esegue (plan mode, `docs/piani/PIANO_<feature>.md`, modello per fase) |
 | `scripts/check_documentazione.py` | A fine feature (WORKFLOW.md §6): trova documenti chiusi da archiviare/eliminare, link rotti, indice fuori sync |
-| `IMPLEMENTAZIONI.md` | Roadmap feature future non ancora iniziate |
+| `IMPLEMENTAZIONI.md` | Roadmap feature future non ancora iniziate (push PWA, data entry via chat AI, benchmark KPI) |
+| `GRUPPO_ACQUISTO.md` | Concept "gruppo d'acquisto" — benchmark prezzi prodotto + bacheca offerte fornitori, componente di `IMPLEMENTAZIONI.md` |
+| `PIANO_WEB_MARKETING.md` | Roadmap SEO/marketing viva, 4 pilastri |
 | `docs/piani/PIANO_<feature>.md` | Solo se esiste — lavoro multi-sessione in corso ora (git-ignorato, effimero) |
 | `LOGICA_BRIEFING.md` | Per cambiare **cosa dice** il briefing Home (soglie, priorità, tono) |
 
