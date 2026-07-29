@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { workerFetch } from "@/lib/worker-config";
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
@@ -9,18 +9,9 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const h: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
 
   try {
-    const res = await fetch(`${WORKER_URL}/api/ricavi/batch`, {
-      method: "POST",
-      headers: h,
-      body: JSON.stringify(body),
-    });
+    const res = await workerFetch("POST", "/api/ricavi/batch", token, { body: JSON.stringify(body) });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch {

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, workerFetch } from "@/lib/worker-config";
 
 function workerHeaders(token: string, json = false): Record<string, string> {
   const h: Record<string, string> = { Authorization: `Bearer ${token}` };
@@ -41,11 +41,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   try {
-    const res = await fetch(`${WORKER_URL}/api/ricavi/modalita`, {
-      method: "POST",
-      headers: workerHeaders(token, true),
-      body: JSON.stringify(body),
-    });
+    const res = await workerFetch("POST", "/api/ricavi/modalita", token, { body: JSON.stringify(body) });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch {

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, workerFetch } from "@/lib/worker-config";
 
 function headers(token: string, json = false): Record<string, string> {
   const h: Record<string, string> = { Authorization: `Bearer ${token}` };
@@ -41,9 +41,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   try {
-    const res = await fetch(`${WORKER_URL}/api/ricavi/giornalieri`, {
-      method: "POST",
-      headers: headers(token, true),
+    const res = await workerFetch("POST", "/api/ricavi/giornalieri", token, {
       body: JSON.stringify(body),
     });
     const data = await res.json();
@@ -64,10 +62,7 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const qs = new URLSearchParams({ data });
-    const res = await fetch(`${WORKER_URL}/api/ricavi/giornalieri?${qs}`, {
-      method: "DELETE",
-      headers: headers(token),
-    });
+    const res = await workerFetch("DELETE", `/api/ricavi/giornalieri?${qs}`, token, { json: false });
     const respData = await res.json();
     return NextResponse.json(respData, { status: res.status });
   } catch {
