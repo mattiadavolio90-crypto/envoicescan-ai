@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { workerFetch } from "@/lib/worker-config";
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
@@ -12,17 +12,8 @@ export async function POST(req: NextRequest) {
   const { id } = body as { id?: string };
   if (!id) return NextResponse.json({ error: "id mancante" }, { status: 400 });
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
   try {
-    const res = await fetch(`${WORKER_URL}/api/notifiche/${id}/dismiss`, {
-      method: "POST",
-      headers,
-    });
+    const res = await workerFetch("POST", `/api/notifiche/${id}/dismiss`, token, { json: false });
     if (!res.ok) return NextResponse.json({ error: "Errore worker" }, { status: res.status });
     return NextResponse.json({ ok: true });
   } catch {

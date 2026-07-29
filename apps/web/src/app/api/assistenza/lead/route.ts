@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { workerFetch } from "@/lib/worker-config";
 
 export async function POST(req: NextRequest) {
   const cookieStore = await cookies();
@@ -18,16 +18,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Servizio mancante" }, { status: 400 });
   }
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
   try {
-    const res = await fetch(`${WORKER_URL}/api/assistenza/lead`, {
-      method: "POST",
-      headers,
+    const res = await workerFetch("POST", "/api/assistenza/lead", token, {
       body: JSON.stringify({
         servizio_key,
         servizio_label,
