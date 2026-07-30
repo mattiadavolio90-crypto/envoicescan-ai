@@ -933,11 +933,18 @@ def get_costo_personale_da_turni(
 
     costo_dipendenti = 0.0
     costo_personale_extra = 0.0
+    costo_assenze_a_carico = 0.0
     ore_totali = 0.0
     ore_extra_tot = 0.0
-    n_turni = len(turni)
+    n_turni = 0
     n_senza_costo = 0
+    n_giorni_assenza = 0
     for t in turni:
+        if t.get("tipo_giorno", "turno") != "turno":
+            n_giorni_assenza += 1
+            costo_assenze_a_carico += float(t.get("importo_a_carico") or 0)
+            continue
+        n_turni += 1
         ore = _ore_turno(t)                     # totale: orari + extra (giorn.) o ore_dichiarate (mensile)
         extra = float(t.get("ore_extra") or 0)
         extra = min(extra, ore)                  # difensivo: extra non può eccedere il totale
@@ -968,10 +975,12 @@ def get_costo_personale_da_turni(
         "mese": mese,
         "costo_dipendenti": round(costo_dipendenti, 2),
         "costo_personale_extra": round(costo_personale_extra, 2),
+        "costo_assenze_a_carico": round(costo_assenze_a_carico, 2),
         "ore_totali": round(ore_totali, 2),
         "ore_extra": round(ore_extra_tot, 2),
         "n_turni": n_turni,
         "n_senza_costo": n_senza_costo,
+        "n_giorni_assenza": n_giorni_assenza,
     }
 
 
