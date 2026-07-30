@@ -819,10 +819,207 @@ def ws_diario_elimina(evento_id: str, authorization: Optional[str] = Header(None
     return {"ok": True}
 
 
+# ─── Workspace: Dipendenti (anagrafica) ─────────────────────────────────────
+
+class NuovoDipendenteBody(BaseModel):
+    nome: str
+    costo_orario_default: Optional[float] = None
+
+
+class AggiornaDipendenteBody(BaseModel):
+    nome: Optional[str] = None
+    costo_orario_default: Optional[float] = None
+
+
+def _dipendente_attivo_omonimo(sb, ristorante_id: str, nome_norm: str, escludi_id: Optional[str] = None):
+    """Cerca un dipendente ATTIVO con lo stesso nome normalizzato (case/spazi
+    insensitive). Usato per la guardia 409 su crea/rinomina/riattiva."""
+    q = (
+        sb.table("dipendenti").select("id,nome")
+        .eq("ristorante_id", ristorante_id)
+        .eq("attivo", True)
+        .ilike("nome", nome_norm)
+    )
+    if escludi_id:
+        q = q.neq("id", escludi_id)
+    r = q.execute()
+    return (r.data or [None])[0]
+
+
+def _dipendente_disattivato_omonimo(sb, ristorante_id: str, nome_norm: str):
+    """Cerca un dipendente DISATTIVATO con lo stesso nome normalizzato.
+    Usato per suggerire la riattivazione invece di duplicare silenziosamente."""
+    r = (
+        sb.table("dipendenti").select("id,nome")
+        .eq("ristorante_id", ristorante_id)
+        .eq("attivo", False)
+        .ilike("nome", nome_norm)
+        .execute()
+    )
+    return (r.data or [None])[0]
+
+
+@router.get("/api/workspace/dipendenti", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_dipendenti_list(
+    attivo: Optional[bool] = Query(True, description="True = solo attivi (default), False = solo disattivati, None = tutti"),
+    authorization: Optional[str] = Header(None),
+):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    q = sb.table("dipendenti").select("*").eq("ristorante_id", ristorante_id)
+    if attivo is not None:
+        q = q.eq("attivo", attivo)
+    resp = q.order("nome").execute()
+    return {"dipendenti": resp.data or []}
+
+
+@router.post("/api/workspace/dipendenti", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_dipendenti_crea(body: NuovoDipendenteBody, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    nome_norm = body.nome.strip()
+    if not nome_norm:
+        raise HTTPException(status_code=400, detail="Il nome è obbligatorio")
+
+    if _dipendente_attivo_omonimo(sb, ristorante_id, nome_norm):
+        raise HTTPException(status_code=409, detail=f"{nome_norm} è già un dipendente attivo")
+    disattivato = _dipendente_disattivato_omonimo(sb, ristorante_id, nome_norm)
+    if disattivato:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{disattivato['nome']} esiste già ma è disattivato. Riattivalo invece di crearne un altro.",
+        )
+
+    payload: dict = {"ristorante_id": ristorante_id, "nome": nome_norm}
+    if body.costo_orario_default is not None:
+        payload["costo_orario_default"] = body.costo_orario_default
+    resp = sb.table("dipendenti").insert(payload).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@router.patch("/api/workspace/dipendenti/{dipendente_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_dipendenti_aggiorna(dipendente_id: str, body: AggiornaDipendenteBody, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    raw = body.model_dump(exclude_unset=True)
+    updates: dict = {}
+    if "nome" in raw and raw["nome"] is not None:
+        nome_norm = raw["nome"].strip()
+        if not nome_norm:
+            raise HTTPException(status_code=400, detail="Il nome è obbligatorio")
+        if _dipendente_attivo_omonimo(sb, ristorante_id, nome_norm, escludi_id=dipendente_id):
+            raise HTTPException(status_code=409, detail=f"{nome_norm} è già un altro dipendente attivo")
+        updates["nome"] = nome_norm
+    if "costo_orario_default" in raw:  # azzerabile
+        updates["costo_orario_default"] = raw["costo_orario_default"]
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    resp = (
+        sb.table("dipendenti").update(updates)
+        .eq("id", dipendente_id).eq("ristorante_id", ristorante_id)
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    return resp.data[0]
+
+
+@router.patch("/api/workspace/dipendenti/{dipendente_id}/disattiva", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_dipendenti_disattiva(dipendente_id: str, authorization: Optional[str] = Header(None)):
+    """Soft-delete: nessuna guardia bloccante, i turni storici restano intatti
+    (dipendente_id resta valido via FK RESTRICT)."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    resp = (
+        sb.table("dipendenti").update({"attivo": False})
+        .eq("id", dipendente_id).eq("ristorante_id", ristorante_id)
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    return resp.data[0]
+
+
+@router.patch("/api/workspace/dipendenti/{dipendente_id}/riattiva", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_dipendenti_riattiva(dipendente_id: str, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    corrente = (
+        sb.table("dipendenti").select("nome")
+        .eq("id", dipendente_id).eq("ristorante_id", ristorante_id)
+        .limit(1).execute()
+    )
+    if not corrente.data:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    nome_norm = corrente.data[0]["nome"].strip()
+    conflitto = _dipendente_attivo_omonimo(sb, ristorante_id, nome_norm, escludi_id=dipendente_id)
+    if conflitto:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Esiste già un altro dipendente attivo di nome {conflitto['nome']}",
+        )
+    resp = (
+        sb.table("dipendenti").update({"attivo": True})
+        .eq("id", dipendente_id).eq("ristorante_id", ristorante_id)
+        .execute()
+    )
+    return resp.data[0] if resp.data else {}
+
+
+@router.post("/api/workspace/dipendenti/{dipendente_id}/merge-in/{target_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_dipendenti_merge(dipendente_id: str, target_id: str, authorization: Optional[str] = Header(None)):
+    """Sposta tutti i turni da dipendente_id a target_id, poi disattiva
+    l'origine. Mai cancella turni. Utile per unire doppioni creati per errore
+    (es. stesso dipendente inserito due volte con grafie diverse)."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    if dipendente_id == target_id:
+        raise HTTPException(status_code=400, detail="Origine e destinazione coincidono")
+    target = (
+        sb.table("dipendenti").select("id")
+        .eq("id", target_id).eq("ristorante_id", ristorante_id)
+        .limit(1).execute()
+    )
+    if not target.data:
+        raise HTTPException(status_code=404, detail="Dipendente di destinazione non trovato")
+    sb.table("turni_personale").update({"dipendente_id": target_id}) \
+        .eq("ristorante_id", ristorante_id).eq("dipendente_id", dipendente_id).execute()
+    resp = (
+        sb.table("dipendenti").update({"attivo": False})
+        .eq("id", dipendente_id).eq("ristorante_id", ristorante_id)
+        .execute()
+    )
+    return resp.data[0] if resp.data else {}
+
+
 # ─── Workspace: Personale ───────────────────────────────────────────────────
 
 class NuovoTurnoBody(BaseModel):
-    nome: str
+    dipendente_id: str
     data_turno: str  # YYYY-MM-DD
     ora_inizio: str  # HH:MM
     ora_fine: str    # HH:MM
@@ -835,7 +1032,7 @@ class NuovoTurnoBody(BaseModel):
 
 
 class AggiornaTurnoBody(BaseModel):
-    nome: Optional[str] = None
+    dipendente_id: Optional[str] = None
     data_turno: Optional[str] = None
     ora_inizio: Optional[str] = None
     ora_fine: Optional[str] = None
@@ -852,10 +1049,27 @@ class CopiaSettimanaBody(BaseModel):
     a: str           # domenica settimana destinazione YYYY-MM-DD
 
 
+_TIPI_GIORNO = {"turno", "riposo", "ferie", "malattia"}
+_TIPI_GIORNO_CON_IMPORTO = {"ferie", "malattia"}
+
+
+class StatoGiornoBody(BaseModel):
+    tipo_giorno: str
+    importo_a_carico: Optional[float] = None
+
+
+class StatoGiornoIntervalloBody(BaseModel):
+    dipendente_id: str
+    data_da: str   # YYYY-MM-DD
+    data_a: str    # YYYY-MM-DD
+    tipo_giorno: str
+    importo_a_carico: Optional[float] = None
+
+
 class TurnoMensileBody(BaseModel):
     """Inserimento aggregato mensile da busta paga: i totali del mese per un
     dipendente, senza spezzare in turni giornalieri."""
-    nome: str
+    dipendente_id: str
     mese: str                              # YYYY-MM
     ore_totali: float                      # monte ore del mese
     lordo: float                           # importo lordo del mese (EUR)
@@ -900,14 +1114,31 @@ def ws_personale_list(
     resp = q.execute()
     turni = resp.data or []
 
+    # Anagrafica dipendenti del ristorante: usata per tradurre dipendente_id
+    # nel nome corrente (chiave esposta nei dizionari aggregati sotto — il
+    # frontend continua a ragionare per nome, l'id resta interno).
+    dipendenti_resp = sb.table("dipendenti").select("id,nome").eq("ristorante_id", ristorante_id).execute()
+    nome_per_id = {d["id"]: d["nome"] for d in (dipendenti_resp.data or [])}
+
+    def _nome(dip_id: str) -> str:
+        return nome_per_id.get(dip_id, dip_id)
+
     monte_ore: dict = {}
     ore_standard_per_persona: dict = {}
     ore_extra_per_persona: dict = {}
     costo_standard_per_persona: dict = {}
     costo_extra_per_persona: dict = {}
+    costo_assenze_per_persona: dict = {}
 
     for t in turni:
-        nome = t["nome"]
+        nome = _nome(t["dipendente_id"])
+
+        if t.get("tipo_giorno", "turno") != "turno":
+            imp = float(t.get("importo_a_carico") or 0)
+            if imp:
+                costo_assenze_per_persona[nome] = round(costo_assenze_per_persona.get(nome, 0) + imp, 2)
+            continue
+
         ore_tot = _ore_turno(t)
         monte_ore[nome] = round(monte_ore.get(nome, 0) + ore_tot, 2)
 
@@ -953,30 +1184,42 @@ def ws_personale_list(
     costo_extra_totale = round(sum(costo_extra_per_persona.values()), 2)
     costo_totale = round(costo_standard_totale + costo_extra_totale, 2)
 
-    # Nomi distinti + ultimi costi noti per persona (per prefill nel dialog)
+    # Dipendenti attivi + ultimi costi noti (per prefill nel dialog). Il prefill
+    # usa dipendenti.costo_orario_default se impostato, altrimenti l'ultimo
+    # costo_orario/costo_orario_extra usato in un turno per quel dipendente.
     q_storico = (
         sb.table("turni_personale")
-        .select("nome,costo_orario,costo_orario_extra,data_turno")
+        .select("dipendente_id,costo_orario,costo_orario_extra,data_turno")
         .eq("ristorante_id", ristorante_id)
         .order("data_turno", desc=True)
         .execute()
     )
-    nomi_set = set()
-    costi_noti: dict = {}
+    costi_noti_per_id: dict = {}
     for r in (q_storico.data or []):
-        nome = r.get("nome")
-        if not nome:
+        dip_id = r.get("dipendente_id")
+        if not dip_id or dip_id in costi_noti_per_id:
             continue
-        nomi_set.add(nome)
-        if nome not in costi_noti:
-            entry: dict = {}
-            if r.get("costo_orario") is not None:
-                entry["std"] = float(r["costo_orario"])
-            if r.get("costo_orario_extra") is not None:
-                entry["ext"] = float(r["costo_orario_extra"])
-            if entry:
-                costi_noti[nome] = entry
-    nomi_distinti = sorted(nomi_set)
+        entry: dict = {}
+        if r.get("costo_orario") is not None:
+            entry["std"] = float(r["costo_orario"])
+        if r.get("costo_orario_extra") is not None:
+            entry["ext"] = float(r["costo_orario_extra"])
+        if entry:
+            costi_noti_per_id[dip_id] = entry
+
+    dipendenti_attivi = (
+        sb.table("dipendenti").select("id,nome,costo_orario_default")
+        .eq("ristorante_id", ristorante_id).eq("attivo", True)
+        .order("nome").execute()
+    ).data or []
+    nomi_distinti = [d["nome"] for d in dipendenti_attivi]
+    costi_noti: dict = {}
+    for d in dipendenti_attivi:
+        entry = dict(costi_noti_per_id.get(d["id"], {}))
+        if "std" not in entry and d.get("costo_orario_default") is not None:
+            entry["std"] = float(d["costo_orario_default"])
+        if entry:
+            costi_noti[d["nome"]] = entry
 
     return {
         "turni": turni,
@@ -985,6 +1228,7 @@ def ws_personale_list(
         "ore_extra_per_persona": ore_extra_per_persona,
         "costo_standard_per_persona": costo_standard_per_persona,
         "costo_extra_per_persona": costo_extra_per_persona,
+        "costo_assenze_per_persona": costo_assenze_per_persona,
         # legacy — mantenuto per compatibilità con eventuali consumer
         "extra_per_persona": ore_extra_per_persona,
         "costo_per_persona": {
@@ -999,6 +1243,7 @@ def ws_personale_list(
         "costo_totale": costo_totale,
         "nomi": nomi_distinti,
         "costi_noti": costi_noti,
+        "dipendenti": dipendenti_attivi,
     }
 
 
@@ -1013,18 +1258,47 @@ def _mese_bounds(mese: str) -> tuple[str, str]:
     return f"{mese}-01", f"{mese}-{ultimo:02d}"
 
 
-def _esiste_riga_mese(sb, ristorante_id: str, nome: str, mese: str, mensile: bool) -> bool:
-    """True se per nome+mese esiste almeno una riga del tipo richiesto
+def _esiste_riga_mese(sb, ristorante_id: str, dipendente_id: str, mese: str, mensile: bool) -> bool:
+    """True se per dipendente+mese esiste almeno una riga del tipo richiesto
     (mensile=True -> riga mensile; mensile=False -> turni giornalieri)."""
     primo, ultimo = _mese_bounds(mese)
     r = (
         sb.table("turni_personale").select("id")
         .eq("ristorante_id", ristorante_id)
-        .eq("nome", nome)
+        .eq("dipendente_id", dipendente_id)
         .eq("mensile", mensile)
         .gte("data_turno", primo).lte("data_turno", ultimo)
         .limit(1)
         .execute()
+    )
+    return bool(r.data)
+
+
+def _esiste_turno_lavorato_mese(sb, ristorante_id: str, dipendente_id: str, mese: str) -> bool:
+    """True se nel mese esiste almeno un turno EFFETTIVAMENTE lavorato
+    (tipo_giorno='turno') per il dipendente. A differenza di _esiste_riga_mese,
+    ignora le righe di stato (riposo/ferie/malattia): marcare un'assenza per un
+    dipendente mensile non deve essere bloccato dall'esclusivita' giornaliero/
+    mensile, solo un turno lavorato lo e'."""
+    primo, ultimo = _mese_bounds(mese)
+    r = (
+        sb.table("turni_personale").select("id")
+        .eq("ristorante_id", ristorante_id)
+        .eq("dipendente_id", dipendente_id)
+        .eq("mensile", False)
+        .eq("tipo_giorno", "turno")
+        .gte("data_turno", primo).lte("data_turno", ultimo)
+        .limit(1)
+        .execute()
+    )
+    return bool(r.data)
+
+
+def _dipendente_esiste(sb, ristorante_id: str, dipendente_id: str) -> bool:
+    r = (
+        sb.table("dipendenti").select("id")
+        .eq("id", dipendente_id).eq("ristorante_id", ristorante_id)
+        .limit(1).execute()
     )
     return bool(r.data)
 
@@ -1041,17 +1315,18 @@ def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Heade
     ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
-    nome_norm = body.nome.strip()
+    if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
     mese = body.data_turno[:7]
-    if _esiste_riga_mese(sb, ristorante_id, nome_norm, mese, mensile=True):
+    if _esiste_riga_mese(sb, ristorante_id, body.dipendente_id, mese, mensile=True):
         raise HTTPException(
             status_code=409,
-            detail=f"{nome_norm} ha già un inserimento mensile per {mese}. Elimina la riga mensile per inserire turni giornalieri.",
+            detail=f"Questo dipendente ha già un inserimento mensile per {mese}. Elimina la riga mensile per inserire turni giornalieri.",
         )
     payload: dict = {
         "ristorante_id": ristorante_id,
         "user_id": user_id,
-        "nome": nome_norm,
+        "dipendente_id": body.dipendente_id,
         "data_turno": body.data_turno,
         "ora_inizio": body.ora_inizio,
         "ora_fine": body.ora_fine,
@@ -1121,7 +1396,7 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
         riga = {
             "ristorante_id": ristorante_id,
             "user_id": user_id,
-            "nome": t["nome"],
+            "dipendente_id": t["dipendente_id"],
             "data_turno": nuova_data,
             "ora_inizio": t["ora_inizio"],
             "ora_fine": t["ora_fine"],
@@ -1148,9 +1423,8 @@ def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[st
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    nome_norm = body.nome.strip()
-    if not nome_norm:
-        raise HTTPException(status_code=400, detail="Il nome è obbligatorio")
+    if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
     if body.ore_totali < 0 or body.lordo < 0:
         raise HTTPException(status_code=400, detail="Ore e lordo non possono essere negativi")
     if body.ore_totali <= 0 and body.lordo <= 0:
@@ -1163,21 +1437,21 @@ def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[st
         raise HTTPException(status_code=400, detail="L'importo extra non può superare il lordo")
 
     primo, _ = _mese_bounds(body.mese)
-    if _esiste_riga_mese(sb, ristorante_id, nome_norm, body.mese, mensile=False):
+    if _esiste_riga_mese(sb, ristorante_id, body.dipendente_id, body.mese, mensile=False):
         raise HTTPException(
             status_code=409,
-            detail=f"{nome_norm} ha già turni giornalieri per {body.mese}. Eliminali per usare l'inserimento mensile.",
+            detail=f"Questo dipendente ha già turni giornalieri per {body.mese}. Eliminali per usare l'inserimento mensile.",
         )
-    if _esiste_riga_mese(sb, ristorante_id, nome_norm, body.mese, mensile=True):
+    if _esiste_riga_mese(sb, ristorante_id, body.dipendente_id, body.mese, mensile=True):
         raise HTTPException(
             status_code=409,
-            detail=f"{nome_norm} ha già un inserimento mensile per {body.mese}.",
+            detail=f"Questo dipendente ha già un inserimento mensile per {body.mese}.",
         )
 
     payload: dict = {
         "ristorante_id": ristorante_id,
         "user_id": user_id,
-        "nome": nome_norm,
+        "dipendente_id": body.dipendente_id,
         "data_turno": primo,
         "ora_inizio": "00:00",
         "ora_fine": "00:00",
@@ -1267,6 +1541,119 @@ def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(No
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("turni_personale").delete().eq("id", turno_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
+
+
+def _valida_stato_giorno(tipo_giorno: str, importo_a_carico: Optional[float]) -> None:
+    if tipo_giorno not in _TIPI_GIORNO:
+        raise HTTPException(status_code=400, detail="tipo_giorno non valido (turno | riposo | ferie | malattia)")
+    if importo_a_carico is not None and tipo_giorno not in _TIPI_GIORNO_CON_IMPORTO:
+        raise HTTPException(status_code=400, detail="importo_a_carico consentito solo per ferie o malattia")
+    if importo_a_carico is not None and importo_a_carico < 0:
+        raise HTTPException(status_code=400, detail="importo_a_carico non può essere negativo")
+
+
+@router.patch("/api/workspace/personale/{turno_id}/stato-giorno", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_personale_stato_giorno(turno_id: str, body: StatoGiornoBody, authorization: Optional[str] = Header(None)):
+    """Cambia lo stato esplicito di una riga giornaliera (turno/riposo/ferie/malattia).
+
+    Il ritorno a 'turno' passa da qui: azzera importo_a_carico (non ammesso
+    per tipo_giorno='turno'), gli orari restano quelli già in riga (il PATCH
+    generico gestisce l'editing di ora_inizio/ora_fine)."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    _valida_stato_giorno(body.tipo_giorno, body.importo_a_carico)
+    updates: dict = {"tipo_giorno": body.tipo_giorno}
+    updates["importo_a_carico"] = (
+        round(float(body.importo_a_carico), 2) if body.importo_a_carico is not None else None
+    )
+    resp = (
+        sb.table("turni_personale").update(updates)
+        .eq("id", turno_id).eq("ristorante_id", ristorante_id).eq("mensile", False)
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Turno non trovato")
+    return resp.data[0]
+
+
+@router.post("/api/workspace/personale/stato-giorno-intervallo", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_personale_stato_giorno_intervallo(body: StatoGiornoIntervalloBody, authorization: Optional[str] = Header(None)):
+    """Applica uno stato-giorno (riposo/ferie/malattia/turno) a ogni giorno di
+    [data_da, data_a] per un dipendente. Crea la riga se manca, aggiorna se
+    esiste già come riga di stato; MAI sovrascrive silenziosamente un giorno
+    con un turno effettivamente lavorato (tipo_giorno='turno') — quel giorno
+    viene saltato ed elencato in n_saltati_turno_esistente."""
+    from datetime import datetime as _dt, timedelta as _td
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    _valida_stato_giorno(body.tipo_giorno, body.importo_a_carico)
+
+    try:
+        data_da = _dt.strptime(body.data_da, "%Y-%m-%d").date()
+        data_a = _dt.strptime(body.data_a, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date non valide")
+    if data_a < data_da:
+        raise HTTPException(status_code=400, detail="data_a precedente a data_da")
+    if (data_a - data_da).days > 366:
+        raise HTTPException(status_code=400, detail="Intervallo troppo ampio (max 366 giorni)")
+
+    esistenti = (
+        sb.table("turni_personale").select("id,data_turno,tipo_giorno")
+        .eq("ristorante_id", ristorante_id)
+        .eq("dipendente_id", body.dipendente_id)
+        .eq("mensile", False)
+        .gte("data_turno", body.data_da).lte("data_turno", body.data_a)
+        .execute()
+    ).data or []
+    per_giorno = {r["data_turno"]: r for r in esistenti}
+
+    importo = round(float(body.importo_a_carico), 2) if body.importo_a_carico is not None else None
+    n_creati = 0
+    n_aggiornati = 0
+    saltati: list = []
+    giorno = data_da
+    while giorno <= data_a:
+        data_iso = giorno.isoformat()
+        riga = per_giorno.get(data_iso)
+        if riga is None:
+            sb.table("turni_personale").insert({
+                "ristorante_id": ristorante_id,
+                "user_id": user_id,
+                "dipendente_id": body.dipendente_id,
+                "data_turno": data_iso,
+                "ora_inizio": "00:00",
+                "ora_fine": "00:00",
+                "tipo_giorno": body.tipo_giorno,
+                "importo_a_carico": importo,
+            }).execute()
+            n_creati += 1
+        elif riga.get("tipo_giorno", "turno") == "turno":
+            saltati.append(data_iso)
+        else:
+            sb.table("turni_personale").update({
+                "tipo_giorno": body.tipo_giorno,
+                "importo_a_carico": importo,
+            }).eq("id", riga["id"]).execute()
+            n_aggiornati += 1
+        giorno += _td(days=1)
+
+    return {
+        "n_creati": n_creati,
+        "n_aggiornati": n_aggiornati,
+        "n_saltati_turno_esistente": saltati,
+    }
 
 
 # ─── Workspace: Spese extra (F&B / Generali) ────────────────────────────────

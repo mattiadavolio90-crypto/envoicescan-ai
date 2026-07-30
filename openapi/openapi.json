@@ -9963,6 +9963,468 @@
         }
       }
     },
+    "/api/workspace/dipendenti": {
+      "get": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Dipendenti List",
+        "operationId": "ws_dipendenti_list_api_workspace_dipendenti_get",
+        "parameters": [
+          {
+            "name": "attivo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "True = solo attivi (default), False = solo disattivati, None = tutti",
+              "default": true,
+              "title": "Attivo"
+            },
+            "description": "True = solo attivi (default), False = solo disattivati, None = tutti"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Dipendenti Crea",
+        "operationId": "ws_dipendenti_crea_api_workspace_dipendenti_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuovoDipendenteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/dipendenti/{dipendente_id}": {
+      "patch": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Dipendenti Aggiorna",
+        "operationId": "ws_dipendenti_aggiorna_api_workspace_dipendenti__dipendente_id__patch",
+        "parameters": [
+          {
+            "name": "dipendente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dipendente Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggiornaDipendenteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/dipendenti/{dipendente_id}/disattiva": {
+      "patch": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Dipendenti Disattiva",
+        "description": "Soft-delete: nessuna guardia bloccante, i turni storici restano intatti\n(dipendente_id resta valido via FK RESTRICT).",
+        "operationId": "ws_dipendenti_disattiva_api_workspace_dipendenti__dipendente_id__disattiva_patch",
+        "parameters": [
+          {
+            "name": "dipendente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dipendente Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/dipendenti/{dipendente_id}/riattiva": {
+      "patch": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Dipendenti Riattiva",
+        "operationId": "ws_dipendenti_riattiva_api_workspace_dipendenti__dipendente_id__riattiva_patch",
+        "parameters": [
+          {
+            "name": "dipendente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dipendente Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/dipendenti/{dipendente_id}/merge-in/{target_id}": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Dipendenti Merge",
+        "description": "Sposta tutti i turni da dipendente_id a target_id, poi disattiva\nl'origine. Mai cancella turni. Utile per unire doppioni creati per errore\n(es. stesso dipendente inserito due volte con grafie diverse).",
+        "operationId": "ws_dipendenti_merge_api_workspace_dipendenti__dipendente_id__merge_in__target_id__post",
+        "parameters": [
+          {
+            "name": "dipendente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dipendente Id"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Target Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/personale": {
       "get": {
         "tags": [
@@ -10516,6 +10978,163 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/personale/{turno_id}/stato-giorno": {
+      "patch": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Personale Stato Giorno",
+        "description": "Cambia lo stato esplicito di una riga giornaliera (turno/riposo/ferie/malattia).\n\nIl ritorno a 'turno' passa da qui: azzera importo_a_carico (non ammesso\nper tipo_giorno='turno'), gli orari restano quelli già in riga (il PATCH\ngenerico gestisce l'editing di ora_inizio/ora_fine).",
+        "operationId": "ws_personale_stato_giorno_api_workspace_personale__turno_id__stato_giorno_patch",
+        "parameters": [
+          {
+            "name": "turno_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turno Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatoGiornoBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/personale/stato-giorno-intervallo": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Personale Stato Giorno Intervallo",
+        "description": "Applica uno stato-giorno (riposo/ferie/malattia/turno) a ogni giorno di\n[data_da, data_a] per un dipendente. Crea la riga se manca, aggiorna se\nesiste già come riga di stato; MAI sovrascrive silenziosamente un giorno\ncon un turno effettivamente lavorato (tipo_giorno='turno') — quel giorno\nviene saltato ed elencato in n_saltati_turno_esistente.",
+        "operationId": "ws_personale_stato_giorno_intervallo_api_workspace_personale_stato_giorno_intervallo_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatoGiornoIntervalloBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -11399,16 +12018,6 @@
             "schema": {
               "type": "string",
               "title": "Cliente Id"
-            }
-          },
-          {
-            "name": "elimina_memoria",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Elimina Memoria"
             }
           },
           {
@@ -12885,6 +13494,64 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/sistema/invoicetronic-eventi-sconosciuti": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Invoicetronic Eventi Sconosciuti",
+        "description": "Conta le righe fatture_queue con payload_meta.unrecognized_event nelle\nultime `giorni` giornate. Sola lettura, nessuna azione correttiva qui\n(per quella: /api/admin/fatture-queue/riprova, già esistente).",
+        "operationId": "admin_invoicetronic_eventi_sconosciuti_api_admin_sistema_invoicetronic_eventi_sconosciuti_get",
+        "parameters": [
+          {
+            "name": "giorni",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Giorni"
             }
           },
           {
@@ -16735,6 +17402,34 @@
         "type": "object",
         "title": "AggiornaClienteBody"
       },
+      "AggiornaDipendenteBody": {
+        "properties": {
+          "nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome"
+          },
+          "costo_orario_default": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Orario Default"
+          }
+        },
+        "type": "object",
+        "title": "AggiornaDipendenteBody"
+      },
       "AggiornaEventoDiarioBody": {
         "properties": {
           "data_evento": {
@@ -16909,7 +17604,7 @@
       },
       "AggiornaTurnoBody": {
         "properties": {
-          "nome": {
+          "dipendente_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -16918,7 +17613,7 @@
                 "type": "null"
               }
             ],
-            "title": "Nome"
+            "title": "Dipendente Id"
           },
           "data_turno": {
             "anyOf": [
@@ -21593,6 +22288,30 @@
         ],
         "title": "NuovoClienteBody"
       },
+      "NuovoDipendenteBody": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "costo_orario_default": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Orario Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome"
+        ],
+        "title": "NuovoDipendenteBody"
+      },
       "NuovoEventoDiarioBody": {
         "properties": {
           "data_evento": {
@@ -21674,9 +22393,9 @@
       },
       "NuovoTurnoBody": {
         "properties": {
-          "nome": {
+          "dipendente_id": {
             "type": "string",
-            "title": "Nome"
+            "title": "Dipendente Id"
           },
           "data_turno": {
             "type": "string",
@@ -21759,7 +22478,7 @@
         },
         "type": "object",
         "required": [
-          "nome",
+          "dipendente_id",
           "data_turno",
           "ora_inizio",
           "ora_fine"
@@ -23704,6 +24423,69 @@
         ],
         "title": "SprecoCategorieResponse"
       },
+      "StatoGiornoBody": {
+        "properties": {
+          "tipo_giorno": {
+            "type": "string",
+            "title": "Tipo Giorno"
+          },
+          "importo_a_carico": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo A Carico"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo_giorno"
+        ],
+        "title": "StatoGiornoBody"
+      },
+      "StatoGiornoIntervalloBody": {
+        "properties": {
+          "dipendente_id": {
+            "type": "string",
+            "title": "Dipendente Id"
+          },
+          "data_da": {
+            "type": "string",
+            "title": "Data Da"
+          },
+          "data_a": {
+            "type": "string",
+            "title": "Data A"
+          },
+          "tipo_giorno": {
+            "type": "string",
+            "title": "Tipo Giorno"
+          },
+          "importo_a_carico": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo A Carico"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dipendente_id",
+          "data_da",
+          "data_a",
+          "tipo_giorno"
+        ],
+        "title": "StatoGiornoIntervalloBody"
+      },
       "StoricoPrezzoPoint": {
         "properties": {
           "data": {
@@ -24116,9 +24898,9 @@
       },
       "TurnoMensileBody": {
         "properties": {
-          "nome": {
+          "dipendente_id": {
             "type": "string",
-            "title": "Nome"
+            "title": "Dipendente Id"
           },
           "mese": {
             "type": "string",
@@ -24168,7 +24950,7 @@
         },
         "type": "object",
         "required": [
-          "nome",
+          "dipendente_id",
           "mese",
           "ore_totali",
           "lordo"
