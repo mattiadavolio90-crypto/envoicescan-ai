@@ -27,6 +27,7 @@ ENV VARS:
     WORKER_MAX_BACKOFF_SECONDS        default 300   (cap backoff su errore)
     WORKER_PURGE_INTERVAL_SECONDS     default 21600 (purge cestino ogni 6h)
     WORKER_RETENTION_INTERVAL_SECONDS default 86400 (retention fatture >2 anni ogni 24h)
+    WORKER_QUEUE_PURGE_INTERVAL_SECONDS default 21600 (purge xml_content/raw_body_sample fatture_queue ogni 6h)
 
 EXIT CODES:
     0  — ciclo completato (anche se coda vuota)
@@ -90,6 +91,7 @@ WORKER_ERROR_BACKOFF_SECONDS = int(os.environ.get("WORKER_ERROR_BACKOFF_SECONDS"
 WORKER_MAX_BACKOFF_SECONDS = int(os.environ.get("WORKER_MAX_BACKOFF_SECONDS", "300"))
 WORKER_PURGE_INTERVAL_SECONDS = int(os.environ.get("WORKER_PURGE_INTERVAL_SECONDS", str(6 * 3600)))  # default 6h
 WORKER_RETENTION_INTERVAL_SECONDS = int(os.environ.get("WORKER_RETENTION_INTERVAL_SECONDS", str(24 * 3600)))  # default 24h
+WORKER_QUEUE_PURGE_INTERVAL_SECONDS = int(os.environ.get("WORKER_QUEUE_PURGE_INTERVAL_SECONDS", str(6 * 3600)))  # default 6h (xml_content + raw_body_sample su fatture_queue)
 
 # ─── Assicura PROJECT_ROOT in sys.path ────────────────────────────────────────
 if _ROOT not in sys.path:
@@ -154,7 +156,7 @@ def main() -> int:
         return 1
 
     try:
-        from worker.queue_processor import run_cycle
+        from worker.queue_processor import run_cycle, _purge_xml, _purge_raw_body_sample, XML_RETENTION_H, RAW_BODY_SAMPLE_RETENTION_D, get_supabase_client as _qp_get_supabase_client
     except Exception as exc:
         logger.exception("Impossibile importare queue_processor: %s", exc)
         return 1
@@ -170,18 +172,25 @@ def main() -> int:
     # Import ciclo email ricavi (parsing + upsert in-process, usa solo Supabase).
     # Killswitch: EMAIL_CYCLE_ENABLED=0 lo disattiva.
     try:
-        from worker.email_queue_processor import run_email_cycle
+        from worker.email_queue_processor import run_email_cycle, purge_ricavi_xls_storage
         _email_cycle_enabled = os.environ.get("EMAIL_CYCLE_ENABLED", "1").strip() not in ("0", "false", "False", "no")
         if not _email_cycle_enabled:
             logger.info("email-cycle disabilitato via EMAIL_CYCLE_ENABLED=0")
     except Exception as exc:
         logger.warning("email-cycle non disponibile: %s", exc)
         run_email_cycle = None
+        purge_ricavi_xls_storage = None
         _email_cycle_enabled = False
 
     consecutive_failures = 0
-    last_purge_time = 0.0
-    last_retention_time = 0.0
+    # Inizializzati nel passato (non 0.0) cosi' il primo ciclo utile esegue subito
+    # ogni purge invece di aspettare l'intervallo pieno da un boot recente: 0.0
+    # confrontato con time.monotonic() (clock da uptime container) rimandava il
+    # primo giro fino a 6h/24h di runtime ininterrotto (audit DevOps/Config, 30/7).
+    _boot = time.monotonic()
+    last_purge_time = _boot - WORKER_PURGE_INTERVAL_SECONDS
+    last_retention_time = _boot - WORKER_RETENTION_INTERVAL_SECONDS
+    last_queue_purge_time = _boot - WORKER_QUEUE_PURGE_INTERVAL_SECONDS
 
     while True:
         cycle_started_at = time.monotonic()
@@ -214,6 +223,22 @@ def main() -> int:
                     logger.warning("Errore purge cestino: %s", purge_exc)
                 last_purge_time = now
 
+            # Purge xml_content + raw_body_sample su fatture_queue (30/7/2026: prima
+            # giravano a ogni ciclo, anche a coda vuota ogni 15s — sono retention a
+            # 24h/90gg, non serve la reattività del claim). Stesso gate delle altre due.
+            if (now - last_queue_purge_time) >= WORKER_QUEUE_PURGE_INTERVAL_SECONDS:
+                try:
+                    _qsb = _qp_get_supabase_client()
+                    _purge_xml(_qsb, XML_RETENTION_H)
+                    _purge_raw_body_sample(_qsb, RAW_BODY_SAMPLE_RETENTION_D)
+                    _qsb.rpc("purge_ricavi_email_queue", {"p_retention_days": 90}).execute()
+                    _qsb.rpc("purge_fatture_queue_last_error", {"p_retention_days": 90}).execute()
+                    if purge_ricavi_xls_storage:
+                        purge_ricavi_xls_storage(_qsb, retention_days=90)
+                except Exception as queue_purge_exc:
+                    logger.warning("Errore purge fatture_queue/ricavi_email_queue: %s", queue_purge_exc)
+                last_queue_purge_time = now
+
             # Retention fatture > 2 anni (batch sicuro da 500 righe, ogni 24h)
             if purge_fatture_retention and (now - last_retention_time) >= WORKER_RETENTION_INTERVAL_SECONDS:
                 try:
@@ -226,6 +251,16 @@ def main() -> int:
                         )
                 except Exception as retention_exc:
                     logger.warning("Errore retention fatture: %s", retention_exc)
+
+                # upload_events > 12 mesi (30/7/2026, audit Database): stesso gate 24h.
+                try:
+                    _qsb2 = _qp_get_supabase_client()
+                    _ue_deleted = _qsb2.rpc("purge_upload_events_retention", {"p_retention_days": 365}).execute()
+                    if (_ue_deleted.data or 0) > 0:
+                        logger.info("🧹 Retention upload_events: %d righe eliminate", _ue_deleted.data)
+                except Exception as retention_exc:
+                    logger.warning("Errore retention upload_events: %s", retention_exc)
+
                 last_retention_time = now
 
             sleep_seconds = 1 if stats.batch_claimed > 0 else WORKER_POLL_INTERVAL_SECONDS

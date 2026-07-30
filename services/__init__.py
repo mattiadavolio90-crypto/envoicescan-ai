@@ -190,12 +190,9 @@ def _get_supabase_credentials() -> tuple[str, str]:
 
     # --- Tentativo 2: env vars (worker / GitHub Actions / test locali) ---
     url = os.environ.get("SUPABASE_URL", "")
-    # Il worker usa la service_role key per bypassare RLS;
-    # se non presente, cade sulla anon key per retrocompatibilità.
-    key = (
-        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-        or os.environ.get("SUPABASE_KEY", "")
-    )
+    # Solo service_role key: con custom auth (auth.uid()=NULL) la anon key
+    # fallisce silenziosamente su tutte le query dopo l'hardening RLS.
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
     if url and key:
         return url, key
 

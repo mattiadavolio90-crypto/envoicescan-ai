@@ -528,9 +528,6 @@ def _build_allowed_origins() -> List[str]:
         origins = [item.strip() for item in raw.split(",") if item.strip()]
     else:
         origins = [
-            "https://ohyeah.streamlit.app",
-            "https://ohyeah.app",
-            "https://envoicescan-ai-production.up.railway.app",
             "https://oneflux.it",
             "https://www.oneflux.it",
             "https://app.oneflux.it",
@@ -7962,6 +7959,8 @@ def _ore_turno(t: dict) -> float:
     questa definizione mantiene corretto sia il totale sia lo split ord/extra.
     Usato da Personale e Margini.
     """
+    if t.get("tipo_giorno", "turno") != "turno":
+        return 0.0
     if t.get("mensile"):
         try:
             return round(float(t.get("ore_dichiarate") or 0), 2)

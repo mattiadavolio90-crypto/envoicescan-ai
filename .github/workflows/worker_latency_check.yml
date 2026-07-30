@@ -31,7 +31,6 @@ permissions:
   contents: read
 
 env:
-  WORKER_URL: 'https://worker-production-a552.up.railway.app'
   LATENCY_THRESHOLD_MS: '3000'
 
 jobs:
@@ -40,6 +39,10 @@ jobs:
     steps:
       - name: Misura latenza /health del worker
         id: check
+        env:
+          # WORKER_HEALTH_URL e' un secret opzionale (stesso usato da
+          # keepalive_worker.yml): se assente si usa l'URL di produzione noto.
+          WORKER_URL: ${{ secrets.WORKER_HEALTH_URL || 'https://worker-production-a552.up.railway.app' }}
         run: |
           START_MS=$(date +%s%3N)
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \

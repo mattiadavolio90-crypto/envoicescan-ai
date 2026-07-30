@@ -43,6 +43,8 @@ services:
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       # OpenAI
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Chiave condivisa server-to-server frontend<->worker (fail-closed se assente)
+      - WORKER_SECRET_KEY=${WORKER_SECRET_KEY}
       # Rate limiting
       - WORKER_RATE_LIMIT=${WORKER_RATE_LIMIT:-60}
       - WORKER_RATE_WINDOW_SEC=${WORKER_RATE_WINDOW_SEC:-60}

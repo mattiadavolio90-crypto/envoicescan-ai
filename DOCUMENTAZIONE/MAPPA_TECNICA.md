@@ -196,6 +196,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | Documento | Quando aprirlo |
 |---|---|
 | `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert — primo posto dove guardare |
+| `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md` | Stato del ciclo di audit corrente sulle 10 dimensioni (Security, Bug, DB, ecc.) — cosa è fatto e cosa manca. A ciclo chiuso, si sposta in `docs/storico/` |
 | `docs/DEPLOY_RUNBOOK.md` | Per ricreare/verificare i servizi Railway da zero |
 | `docs/storico/` | Solo se il problema somiglia a uno già visto (diagnosi Invoicetronic, migration legacy) — indice in `docs/storico/README.md` |
 

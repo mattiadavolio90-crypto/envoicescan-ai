@@ -235,6 +235,9 @@ docker-compose -f docker/docker-compose.prod.yml up -d
 | `WORKER_BATCH_SIZE` | queue-worker | Record per ciclo (default: 10) |
 | `WORKER_XML_RETENTION_HOURS` | queue-worker | Ore prima del purge XML (default: 24) |
 | `WORKER_STALE_LOCK_MINUTES` | queue-worker | Timeout lock crash (default: 10) |
+| `WORKER_PURGE_INTERVAL_SECONDS` | queue-worker (`worker/run.py`) | Intervallo purge cestino fatture (default: 21600 = 6h) |
+| `WORKER_RETENTION_INTERVAL_SECONDS` | queue-worker (`worker/run.py`) | Intervallo retention fatture >2 anni (default: 86400 = 24h) |
+| `WORKER_QUEUE_PURGE_INTERVAL_SECONDS` | queue-worker (`worker/run.py`) | Intervallo purge `xml_content`/`raw_body_sample` su `fatture_queue` (default: 21600 = 6h) |
 | `ADMIN_EMAILS` | Worker (Railway) | Email admin (lowercase, virgola-separati) |
 
 ---

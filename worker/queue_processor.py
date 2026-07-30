@@ -152,10 +152,7 @@ _CLASSIFY_RETRY_BACKOFF = float(os.environ.get("WORKER_CLASSIFY_RETRY_BACKOFF", 
 def get_supabase_client():
     """Client Supabase per worker CLI, senza dipendenze da Streamlit UI."""
     url = os.environ.get("SUPABASE_URL", "")
-    key = (
-        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-        or os.environ.get("SUPABASE_KEY", "")
-    )
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
     if not url or not key:
         raise RuntimeError(
             "Credenziali Supabase non trovate. "
@@ -968,8 +965,11 @@ def run_cycle() -> CycleStats:
     supabase = get_supabase_client()
 
     # ── 1. Manutenzione ───────────────────────────────────────────────────────
-    _purge_xml(supabase, XML_RETENTION_H)
-    _purge_raw_body_sample(supabase, RAW_BODY_SAMPLE_RETENTION_D)
+    # _purge_xml e _purge_raw_body_sample NON girano più qui (30/7/2026, audit
+    # Database): sono retention a 24h/90gg, non hanno bisogno di un seq scan su
+    # fatture_queue a ogni ciclo (ogni 15s a coda vuota). Il chiamante (worker/run.py)
+    # le invoca sotto gate d'intervallo, stesso pattern di purge_cestino_scaduto.
+    # release_stale_locks resta qui: è il recovery, la sua reattività è il punto.
     _release_stale_locks(supabase, STALE_LOCK_MIN)
 
     # ── 2. Claim batch ────────────────────────────────────────────────────────

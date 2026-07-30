@@ -33,15 +33,16 @@ on:
 permissions:
   contents: read
 
-env:
-  WORKER_URL: 'https://worker-production-a552.up.railway.app'
-
 jobs:
   check-eventi-sconosciuti:
     runs-on: ubuntu-latest
     steps:
       - name: Interroga /api/admin/sistema/invoicetronic-eventi-sconosciuti
         id: check
+        env:
+          # WORKER_HEALTH_URL e' un secret opzionale (stesso usato da
+          # keepalive_worker.yml): se assente si usa l'URL di produzione noto.
+          WORKER_URL: ${{ secrets.WORKER_HEALTH_URL || 'https://worker-production-a552.up.railway.app' }}
         run: |
           RESP=$(curl -s -w "\n%{http_code}" \
             -H "X-Worker-Key: ${{ secrets.WORKER_SECRET_KEY }}" \
