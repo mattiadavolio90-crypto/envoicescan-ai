@@ -8,10 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { VistaMensileGrid } from "./personale-vista-mensile";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
-interface Turno {
+export interface Turno {
   id: string;
   dipendente_id: string;
   data_turno: string;
@@ -33,34 +34,34 @@ interface Turno {
   importo_a_carico?: number | null;
 }
 
-type TipoGiorno = "turno" | "riposo" | "ferie" | "malattia";
+export type TipoGiorno = "turno" | "riposo" | "ferie" | "malattia";
 
-const TIPO_GIORNO_LABEL: Record<TipoGiorno, string> = {
+export const TIPO_GIORNO_LABEL: Record<TipoGiorno, string> = {
   turno: "Turno",
   riposo: "Riposo",
   ferie: "Ferie",
   malattia: "Malattia",
 };
 
-const TIPO_GIORNO_BADGE: Record<Exclude<TipoGiorno, "turno">, string> = {
+export const TIPO_GIORNO_BADGE: Record<Exclude<TipoGiorno, "turno">, string> = {
   riposo: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
   ferie: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   malattia: "bg-red-500/10 text-red-600 dark:text-red-400",
 };
 
-interface Dipendente {
+export interface Dipendente {
   id: string;
   nome: string;
   costo_orario_default?: number | null;
   attivo?: boolean;
 }
 
-interface CostiNoti {
+export interface CostiNoti {
   std?: number;
   ext?: number;
 }
 
-interface PersonaleResponse {
+export interface PersonaleResponse {
   turni: Turno[];
   monte_ore: Record<string, number>;
   ore_standard_per_persona: Record<string, number>;
@@ -111,7 +112,7 @@ function addDays(d: Date, n: number): Date {
   return r;
 }
 
-function toISO(d: Date): string {
+export function toISO(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const g = String(d.getDate()).padStart(2, "0");
@@ -123,7 +124,7 @@ function fmtData(iso: string) {
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
 }
 
-function fmtOra(t: string | null | undefined) {
+export function fmtOra(t: string | null | undefined) {
   if (!t) return "";
   return t.slice(0, 5);
 }
@@ -136,7 +137,7 @@ function calcolaSlotOre(inizio: string, fine: string): number {
   return Math.round(minuti / 60 * 100) / 100;
 }
 
-function calcolaOreTotali(t: Turno): number {
+export function calcolaOreTotali(t: Turno): number {
   // Righe mensili: ore dichiarate da busta paga (gia' ord+extra).
   if (t.mensile) return Math.round((t.ore_dichiarate ?? 0) * 100) / 100;
   // Giornaliero: ore dagli orari (ordinario) + ore extra aggiuntive.
@@ -156,18 +157,18 @@ function calcolaCostoTurno(t: Turno): number {
   return std * t.costo_orario + (ext > 0 ? ext * coExt : 0);
 }
 
-function fmtOreDisplay(ore: number): string {
+export function fmtOreDisplay(ore: number): string {
   const h = Math.floor(ore);
   const m = Math.round((ore - h) * 60);
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
 
-function fmtEuro(v: number): string {
+export function fmtEuro(v: number): string {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
 }
 
-function orarioTurno(t: Turno): string {
+export function orarioTurno(t: Turno): string {
   let s = `${fmtOra(t.ora_inizio)}–${fmtOra(t.ora_fine)}`;
   if (t.ora_inizio2 && t.ora_fine2) s += ` · ${fmtOra(t.ora_inizio2)}–${fmtOra(t.ora_fine2)}`;
   return s;
@@ -179,6 +180,7 @@ interface TurnoDialogProps {
   open: boolean;
   turno: Turno | null;
   dataDefault: string;
+  dipendenteIdDefault?: string;
   giorniDisponibili: string[]; // ISO dates della vista corrente
   dipendenti: Dipendente[];
   costiNoti: Record<string, CostiNoti>;
@@ -288,7 +290,7 @@ function SelettoreDipendente({
   );
 }
 
-function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, dipendenti, costiNoti, onClose, onSaved, onDipendenteCreato }: TurnoDialogProps) {
+export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, giorniDisponibili, dipendenti, costiNoti, onClose, onSaved, onDipendenteCreato }: TurnoDialogProps) {
   const [dipendenteId, setDipendenteId] = useState("");
   const [data, setData] = useState(dataDefault);
   const [giorniSelezionati, setGiorniSelezionati] = useState<Set<string>>(new Set([dataDefault]));
@@ -307,7 +309,7 @@ function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, dipendenti, 
 
   useEffect(() => {
     if (open) {
-      setDipendenteId(turno?.dipendente_id ?? "");
+      setDipendenteId(turno?.dipendente_id ?? dipendenteIdDefault ?? "");
       setData(turno?.data_turno ?? dataDefault);
       setGiorniSelezionati(new Set([turno?.data_turno ?? dataDefault]));
       setOraInizio(turno ? fmtOra(turno.ora_inizio) : "09:00");
@@ -321,7 +323,7 @@ function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, dipendenti, 
       setCostoOrarioExtra(turno?.costo_orario_extra != null ? String(turno.costo_orario_extra).replace(".", ",") : "");
       setNote(turno?.note ?? "");
     }
-  }, [open, turno, dataDefault]);
+  }, [open, turno, dataDefault, dipendenteIdDefault]);
 
   // Prefill costi dall'ultimo turno noto del dipendente scelto (solo su nuovo
   // turno: in modifica i costi già salvati sulla riga non vanno sovrascritti).
@@ -636,7 +638,7 @@ interface StatoGiornoDialogProps {
 
 const TIPI_STATO: TipoGiorno[] = ["turno", "riposo", "ferie", "malattia"];
 
-function StatoGiornoDialog({ open, turno, dipendenti, dipendenteIdDefault, dataDefault, onClose, onSaved }: StatoGiornoDialogProps) {
+export function StatoGiornoDialog({ open, turno, dipendenti, dipendenteIdDefault, dataDefault, onClose, onSaved }: StatoGiornoDialogProps) {
   const isModifica = !!turno;
   const [modo, setModo] = useState<"giorno" | "intervallo">("giorno");
   const [dipendenteId, setDipendenteId] = useState("");
@@ -847,12 +849,12 @@ interface MensileDialogProps {
   onDipendenteCreato: () => void;
 }
 
-function fmtMese(mese: string): string {
+export function fmtMese(mese: string): string {
   const [ay, am] = mese.split("-").map(Number);
   return new Date(ay, am - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 }
 
-function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
+export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
   const [dipendenteId, setDipendenteId] = useState("");
   // Input separati: ordinarie + extra (il totale è la somma). Lo storage resta
   // ore_totali / ore_extra (di cui), così l'API e il DB non cambiano.
@@ -1022,11 +1024,17 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
 // settimana/mese separato (era ridondante con la modalità).
 type Modalita = "giornaliero" | "mensile";
 
+// Vista è ortogonale a Modalita e si applica solo dentro "giornaliero":
+// settimana = griglia attuale turno-per-turno navigabile, mese = griglia
+// dipendenti×giorni dell'intero mese (Fase 4a, sola desktop).
+export type Vista = "settimana" | "mese";
+
 // ─── Tab principale ───────────────────────────────────────────────────────────
 
 export function PersonaleTab() {
   const oggi = toISO(new Date());
   const [modalita, setModalita] = useState<Modalita>("giornaliero");
+  const [vista, setVista] = useState<Vista>("settimana");
   const [lunedi, setLunedi] = useState<Date>(() => lunediDi(oggi));
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
   const [risposta, setRisposta] = useState<PersonaleResponse | null>(null);
@@ -1034,6 +1042,7 @@ export function PersonaleTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTurno, setEditTurno] = useState<Turno | null>(null);
   const [dataDefault, setDataDefault] = useState(oggi);
+  const [dipendenteIdDefaultTurno, setDipendenteIdDefaultTurno] = useState<string | undefined>(undefined);
   const [copiando, setCopiando] = useState(false);
   const [expandedDip, setExpandedDip] = useState<string | null>(null);
   const [mensileDialogOpen, setMensileDialogOpen] = useState(false);
@@ -1043,10 +1052,13 @@ export function PersonaleTab() {
   const [editStatoGiorno, setEditStatoGiorno] = useState<Turno | null>(null);
 
   const isMensile = modalita === "mensile";
+  const isVistaMese = !isMensile && vista === "mese";
 
   const [da, fine] = (() => {
-    // Giornaliero = settimana navigabile; mensile = mese intero.
-    if (!isMensile) {
+    // Modalità mensile (inserimento aggregato) = sempre mese intero.
+    // Modalità giornaliero: vista settimana = 7 giorni navigabili,
+    // vista mese = mese intero (stesso range della modalità mensile).
+    if (!isMensile && vista === "settimana") {
       return [toISO(lunedi), toISO(addDays(lunedi, 6))];
     }
     const [ay, am] = meseBase.split("-").map(Number);
@@ -1071,9 +1083,10 @@ export function PersonaleTab() {
 
   useEffect(() => { load(da, fine, isMensile); }, [da, fine, isMensile, load]);
 
-  // Giornaliero naviga per settimana, mensile per mese.
+  // Vista settimana naviga di 7 giorni, tutte le altre combinazioni (mensile
+  // aggregato, o giornaliero in vista mese) navigano di mese intero.
   function navPrev() {
-    if (!isMensile) setLunedi(d => addDays(d, -7));
+    if (!isMensile && vista === "settimana") setLunedi(d => addDays(d, -7));
     else {
       const [ay, am] = meseBase.split("-").map(Number);
       const prev = new Date(ay, am - 2, 1);
@@ -1081,7 +1094,7 @@ export function PersonaleTab() {
     }
   }
   function navNext() {
-    if (!isMensile) setLunedi(d => addDays(d, 7));
+    if (!isMensile && vista === "settimana") setLunedi(d => addDays(d, 7));
     else {
       const [ay, am] = meseBase.split("-").map(Number);
       const next = new Date(ay, am, 1);
@@ -1224,6 +1237,12 @@ export function PersonaleTab() {
   const mediaGiornaliera = giorniConTurni > 0 ? totaleOre / giorniConTurni : 0;
 
   const giorniSettimana = Array.from({ length: 7 }, (_, i) => toISO(addDays(lunedi, i)));
+  const giorniMese = (() => {
+    const [ay, am] = meseBase.split("-").map(Number);
+    const n = new Date(ay, am, 0).getDate();
+    return Array.from({ length: n }, (_, i) => `${meseBase}-${String(i + 1).padStart(2, "0")}`);
+  })();
+  const giorniDialogoTurno = isVistaMese ? giorniMese : giorniSettimana;
 
   return (
     <div className="space-y-4">
@@ -1274,12 +1293,34 @@ export function PersonaleTab() {
             <ChevronLeft className="size-4" />
           </button>
           <span className="px-3 text-sm font-medium min-w-[160px] text-center capitalize">
-            {isMensile ? fmtMese(meseBase) : `${fmtData(da)} – ${fmtData(fine)}`}
+            {isMensile || isVistaMese ? fmtMese(meseBase) : `${fmtData(da)} – ${fmtData(fine)}`}
           </span>
           <button onClick={navNext} className="p-1.5 hover:bg-muted rounded-r-md">
             <ChevronRight className="size-4" />
           </button>
         </div>
+
+        {/* Settimana/Mese: solo dentro "Turni giornalieri", scelta forma della vista */}
+        {!isMensile && (
+          <div className="flex rounded-md border border-border overflow-hidden">
+            <button
+              onClick={() => setVista("settimana")}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                vista === "settimana" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+              }`}
+            >
+              Settimana
+            </button>
+            <button
+              onClick={() => setVista("mese")}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                vista === "mese" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+              }`}
+            >
+              Mese
+            </button>
+          </div>
+        )}
 
         {/* Destra: azioni */}
         <div className="ml-auto flex items-center gap-2">
@@ -1289,9 +1330,11 @@ export function PersonaleTab() {
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
-                <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
-              </Button>
+              {vista === "settimana" && (
+                <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
+                  <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
+                </Button>
+              )}
 
               <Button
                 variant="outline"
@@ -1306,7 +1349,7 @@ export function PersonaleTab() {
                 </Button>
               )}
 
-              <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDialogOpen(true); }}>
+              <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
                 <Plus className="size-4 mr-1.5" />Aggiungi turno
               </Button>
             </>
@@ -1315,9 +1358,11 @@ export function PersonaleTab() {
       </div>
 
       {/* ── KPI cards ── */}
-      {Object.keys(monteOre).length > 0 && (
+      {(Object.keys(monteOre).length > 0 || isVistaMese) && (
         <div className="space-y-3">
-          {/* 3 card principali */}
+          {/* 3 card principali: in vista mese senza turni si mostrano comunque a zero,
+              la griglia sotto resta l'elemento principale della vista. */}
+          {Object.keys(monteOre).length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Card 1: Ore ordinarie */}
             <Card className="ring-1 ring-green-500/50 bg-green-50/60 dark:bg-green-950/20">
@@ -1372,8 +1417,26 @@ export function PersonaleTab() {
               </CardContent>
             </Card>
           </div>
+          )}
 
-          {/* Riepilogo per dipendente — accordion */}
+          {/* Vista mese: griglia dipendenti×giorni. Vista settimana: accordion per dipendente. */}
+          {isVistaMese ? (
+            <VistaMensileGrid
+              meseBase={meseBase}
+              turni={turni}
+              dipendenti={dipendenti}
+              nomePerId={nomePerId}
+              oggi={oggi}
+              onNuovoTurno={(dipendenteId, data) => {
+                setEditTurno(null);
+                setDataDefault(data);
+                setDipendenteIdDefaultTurno(dipendenteId);
+                setDialogOpen(true);
+              }}
+              onModificaTurno={t => { setEditTurno(t); setDialogOpen(true); }}
+              onModificaStatoGiorno={t => { setEditStatoGiorno(t); setStatoGiornoDialogOpen(true); }}
+            />
+          ) : (
           <div className="space-y-1">
             {nomi.map(n => {
               const oreN = monteOre[n] ?? 0;
@@ -1474,13 +1537,14 @@ export function PersonaleTab() {
               );
             })}
           </div>
+          )}
         </div>
       )}
 
-      {/* Stati vuoti / caricamento. I turni si vedono espandendo il dipendente sopra. */}
+      {/* Stati vuoti / caricamento. I turni si vedono espandendo il dipendente sopra (vista settimana) o nella griglia (vista mese). */}
       {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
-      ) : turni.length === 0 ? (
+      ) : turni.length === 0 && !isVistaMese ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           {isMensile
             ? <>Nessun inserimento mensile per {fmtMese(meseBase)}. Usa &ldquo;Inserisci mese&rdquo; per aggiungere i totali da busta paga.</>
@@ -1492,7 +1556,8 @@ export function PersonaleTab() {
         open={dialogOpen}
         turno={editTurno}
         dataDefault={dataDefault}
-        giorniDisponibili={giorniSettimana}
+        dipendenteIdDefault={dipendenteIdDefaultTurno}
+        giorniDisponibili={giorniDialogoTurno}
         dipendenti={dipendenti}
         costiNoti={costiNoti}
         onClose={() => { setDialogOpen(false); setEditTurno(null); }}
