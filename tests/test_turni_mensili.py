@@ -702,8 +702,8 @@ class TestStatoGiornoIntervallo:
 
 class TestRegoleRicorrenti:
     """CRUD /api/workspace/regole-turni: template settimanale per dipendente
-    (Fase 3a). 'turno' richiede orari, 'riposo' li rifiuta. Nessuna generazione
-    di turni qui (scope Fase 3b)."""
+    (Fase 3a). 'turno' richiede orari, 'riposo' li rifiuta. Generazione turni
+    da regole (POST .../genera) in TestGeneraTurniDaRegole (Fase 3b)."""
 
     def _body_turno(self, **kw):
         base = dict(
@@ -864,3 +864,193 @@ class TestRegoleRicorrenti:
             res = workspace.ws_regole_turni_elimina(regola_id="r1", authorization="Bearer x")
         assert res == {"ok": True}
         del_q.delete.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/workspace/regole-turni/genera — Fase 3b
+# ---------------------------------------------------------------------------
+
+class TestGeneraTurniDaRegole:
+    """Genera righe turni_personale dalle regole ricorrenti attive nell'intervallo.
+    Le regole 'riposo' non producono righe; niente duplicati su
+    (dipendente_id, data_turno) già occupato."""
+
+    def _body(self, **kw):
+        base = dict(data_da="2026-08-03", data_a="2026-08-09", dipendente_id=None)  # lun-dom
+        base.update(kw)
+        return workspace.GeneraTurniDaRegoleBody(**base)
+
+    def test_genera_crea_turni_per_giorno_corrispondente(self):
+        # Regola: lunedì (0), dip-mario, 09:00-14:00. Intervallo lun 3/8 - dom 9/8
+        # contiene un solo lunedì -> un solo turno creato.
+        regole_q = _query_mock([{
+            "id": "reg1", "dipendente_id": "dip-mario", "giorno_settimana": 0,
+            "tipo_giorno": "turno", "ora_inizio": "09:00", "ora_fine": "14:00",
+            "ora_inizio2": None, "ora_fine2": None, "costo_orario": 10.0,
+        }])
+        esistenti_q = _query_mock([])
+        insert_q = _query_mock([])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return regole_q
+            if calls["n"] == 2:
+                return esistenti_q
+            return insert_q
+        ctx, client = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_regole_turni_genera(body=self._body(), authorization="Bearer x")
+        assert res == {"ok": True, "n_creati": 1, "n_saltati": 0}
+        inserted = insert_q.insert.call_args[0][0]
+        assert len(inserted) == 1
+        assert inserted[0]["dipendente_id"] == "dip-mario"
+        assert inserted[0]["data_turno"] == "2026-08-03"
+        assert inserted[0]["ora_inizio"] == "09:00"
+
+    def test_genera_salta_regole_riposo(self):
+        # Solo regole tipo_giorno='turno' vengono interrogate (query filtra
+        # lato server); qui simuliamo il caso "nessuna regola attiva di tipo turno".
+        ctx, client = _patch_workspace(lambda _n: _query_mock([]))
+        with ctx:
+            res = workspace.ws_regole_turni_genera(body=self._body(), authorization="Bearer x")
+        assert res["n_creati"] == 0
+        assert "messaggio" in res
+
+    def test_genera_salta_giorno_gia_occupato(self):
+        regole_q = _query_mock([{
+            "id": "reg1", "dipendente_id": "dip-mario", "giorno_settimana": 0,
+            "tipo_giorno": "turno", "ora_inizio": "09:00", "ora_fine": "14:00",
+            "ora_inizio2": None, "ora_fine2": None, "costo_orario": None,
+        }])
+        esistenti_q = _query_mock([{"dipendente_id": "dip-mario", "data_turno": "2026-08-03"}])
+        insert_q = _query_mock([])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return regole_q
+            if calls["n"] == 2:
+                return esistenti_q
+            return insert_q
+        ctx, client = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_regole_turni_genera(body=self._body(), authorization="Bearer x")
+        assert res == {"ok": True, "n_creati": 0, "n_saltati": 1}
+        insert_q.insert.assert_not_called()
+
+    def test_genera_non_salta_stesso_giorno_altro_dipendente(self):
+        # Turno esistente per dip-luigi lo stesso giorno non deve bloccare la
+        # generazione per dip-mario (chiave composita, non solo data_turno).
+        regole_q = _query_mock([{
+            "id": "reg1", "dipendente_id": "dip-mario", "giorno_settimana": 0,
+            "tipo_giorno": "turno", "ora_inizio": "09:00", "ora_fine": "14:00",
+            "ora_inizio2": None, "ora_fine2": None, "costo_orario": None,
+        }])
+        esistenti_q = _query_mock([{"dipendente_id": "dip-luigi", "data_turno": "2026-08-03"}])
+        insert_q = _query_mock([])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return regole_q
+            if calls["n"] == 2:
+                return esistenti_q
+            return insert_q
+        ctx, client = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_regole_turni_genera(body=self._body(), authorization="Bearer x")
+        assert res == {"ok": True, "n_creati": 1, "n_saltati": 0}
+
+    def test_dipendente_inesistente_404(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([]))
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_genera(
+                    body=self._body(dipendente_id="dip-fantasma"), authorization="Bearer x"
+                )
+        assert exc.value.status_code == 404
+
+    def test_data_a_precedente_data_da_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([]))
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_genera(
+                    body=self._body(data_da="2026-08-09", data_a="2026-08-03"), authorization="Bearer x"
+                )
+        assert exc.value.status_code == 400
+
+    def test_intervallo_troppo_ampio_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([]))
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_genera(
+                    body=self._body(data_da="2026-01-01", data_a="2026-12-31"), authorization="Bearer x"
+                )
+        assert exc.value.status_code == 400
+
+    def test_date_non_valide_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([]))
+        body = SimpleNamespace(data_da="non-una-data", data_a="2026-08-09", dipendente_id=None)
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_genera(body=body, authorization="Bearer x")
+        assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/workspace/personale/copia-settimana — fix chiave composita
+# ---------------------------------------------------------------------------
+
+class TestCopiaSettimanaChiaveComposita:
+    """Bug preesistente: 'giorni pieni' era chiavizzato solo su data_turno,
+    quindi un turno esistente di un dipendente bloccava la copia per TUTTI
+    gli altri dipendenti in quel giorno. Fix: chiave (dipendente_id, data_turno)."""
+
+    def _body(self, **kw):
+        base = dict(da="2026-08-10", a="2026-08-16")  # lun-dom, settimana successiva
+        base.update(kw)
+        return workspace.CopiaSettimanaBody(**base)
+
+    def test_non_salta_altro_dipendente_stesso_giorno(self):
+        # Sorgente (settimana 3-9/8): dip-mario lunedì 3/8.
+        sorgente_q = _query_mock([{
+            "dipendente_id": "dip-mario", "data_turno": "2026-08-03",
+            "ora_inizio": "09:00", "ora_fine": "14:00",
+        }])
+        # Destinazione: dip-luigi ha gia' un turno lunedì 10/8 (altro dipendente).
+        esistenti_q = _query_mock([{"dipendente_id": "dip-luigi", "data_turno": "2026-08-10"}])
+        insert_q = _query_mock([])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return sorgente_q
+            if calls["n"] == 2:
+                return esistenti_q
+            return insert_q
+        ctx, client = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_personale_copia_settimana(body=self._body(), authorization="Bearer x")
+        assert res == {"ok": True, "n_copiati": 1, "n_saltati": 0}
+
+    def test_salta_stesso_dipendente_stesso_giorno(self):
+        sorgente_q = _query_mock([{
+            "dipendente_id": "dip-mario", "data_turno": "2026-08-03",
+            "ora_inizio": "09:00", "ora_fine": "14:00",
+        }])
+        esistenti_q = _query_mock([{"dipendente_id": "dip-mario", "data_turno": "2026-08-10"}])
+        insert_q = _query_mock([])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return sorgente_q
+            if calls["n"] == 2:
+                return esistenti_q
+            return insert_q
+        ctx, client = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_personale_copia_settimana(body=self._body(), authorization="Bearer x")
+        assert res == {"ok": True, "n_copiati": 0, "n_saltati": 1}
+        insert_q.insert.assert_not_called()

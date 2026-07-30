@@ -11477,6 +11477,80 @@
         }
       }
     },
+    "/api/workspace/regole-turni/genera": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Regole Turni Genera",
+        "description": "Genera righe turni_personale nell'intervallo [data_da, data_a] applicando\nle regole ricorrenti attive per giorno_settimana. Le regole tipo_giorno='riposo'\nnon generano righe (un riposo e' assenza di turno, non un turno vuoto).\nSalta (dipendente_id, data_turno) che hanno gia' un turno — stessa chiave\ncomposita del fix copia-settimana, per non riprodurre lo stesso bug qui.",
+        "operationId": "ws_regole_turni_genera_api_workspace_regole_turni_genera_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneraTurniDaRegoleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/spese": {
       "get": {
         "tags": [
@@ -20410,6 +20484,35 @@
           "modalita"
         ],
         "title": "FornitoreRegolaRequest"
+      },
+      "GeneraTurniDaRegoleBody": {
+        "properties": {
+          "data_da": {
+            "type": "string",
+            "title": "Data Da"
+          },
+          "data_a": {
+            "type": "string",
+            "title": "Data A"
+          },
+          "dipendente_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dipendente Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_da",
+          "data_a"
+        ],
+        "title": "GeneraTurniDaRegoleBody"
       },
       "GruppoAssistantConfigResponse": {
         "properties": {

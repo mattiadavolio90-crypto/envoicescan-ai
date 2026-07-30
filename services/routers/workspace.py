@@ -1379,18 +1379,18 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
         return {"ok": True, "n_copiati": 0, "n_saltati": 0, "messaggio": "Nessun turno nella settimana precedente"}
 
     esistenti = (
-        sb.table("turni_personale").select("data_turno")
+        sb.table("turni_personale").select("dipendente_id, data_turno")
         .eq("ristorante_id", ristorante_id)
         .gte("data_turno", body.da).lte("data_turno", body.a)
         .execute()
     ).data or []
-    giorni_pieni = {r["data_turno"] for r in esistenti}
+    giorni_pieni = {(r["dipendente_id"], r["data_turno"]) for r in esistenti}
 
     nuovi = []
     n_saltati = 0
     for t in sorgente:
         nuova_data = (_dt.strptime(t["data_turno"], "%Y-%m-%d").date() + _td(days=7)).isoformat()
-        if nuova_data in giorni_pieni:
+        if (t["dipendente_id"], nuova_data) in giorni_pieni:
             n_saltati += 1
             continue
         riga = {
@@ -1657,8 +1657,7 @@ def ws_personale_stato_giorno_intervallo(body: StatoGiornoIntervalloBody, author
 
 
 # ─── Workspace: Regole turni ricorrenti ─────────────────────────────────────
-# Template settimanale per dipendente (Fase 3a). Puro CRUD: la generazione di
-# righe turni_personale da queste regole e' scope di Fase 3b, non qui.
+# Template settimanale per dipendente (Fase 3a: CRUD; Fase 3b: generazione).
 
 _TIPI_GIORNO_REGOLA = {"turno", "riposo"}
 
@@ -1816,6 +1815,96 @@ def ws_regole_turni_elimina(regola_id: str, authorization: Optional[str] = Heade
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("regole_turni_ricorrenti").delete().eq("id", regola_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
+
+
+class GeneraTurniDaRegoleBody(BaseModel):
+    data_da: str   # YYYY-MM-DD
+    data_a: str    # YYYY-MM-DD
+    dipendente_id: Optional[str] = None  # None = tutti i dipendenti con regole attive
+
+
+@router.post("/api/workspace/regole-turni/genera", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_regole_turni_genera(body: GeneraTurniDaRegoleBody, authorization: Optional[str] = Header(None)):
+    """Genera righe turni_personale nell'intervallo [data_da, data_a] applicando
+    le regole ricorrenti attive per giorno_settimana. Le regole tipo_giorno='riposo'
+    non generano righe (un riposo e' assenza di turno, non un turno vuoto).
+    Salta (dipendente_id, data_turno) che hanno gia' un turno — stessa chiave
+    composita del fix copia-settimana, per non riprodurre lo stesso bug qui."""
+    from datetime import datetime as _dt, timedelta as _td
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    try:
+        data_da = _dt.strptime(body.data_da, "%Y-%m-%d").date()
+        data_a = _dt.strptime(body.data_a, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date non valide")
+    if data_a < data_da:
+        raise HTTPException(status_code=400, detail="data_a deve essere successiva o uguale a data_da")
+    if (data_a - data_da).days > 92:
+        raise HTTPException(status_code=400, detail="Intervallo troppo ampio (max 92 giorni)")
+
+    if body.dipendente_id and not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+
+    q = (
+        sb.table("regole_turni_ricorrenti").select("*")
+        .eq("ristorante_id", ristorante_id)
+        .eq("attiva", True)
+        .eq("tipo_giorno", "turno")
+    )
+    if body.dipendente_id:
+        q = q.eq("dipendente_id", body.dipendente_id)
+    regole = q.execute().data or []
+    if not regole:
+        return {"ok": True, "n_creati": 0, "n_saltati": 0, "messaggio": "Nessuna regola attiva di tipo turno"}
+
+    regole_per_giorno: dict = {}
+    for r in regole:
+        regole_per_giorno.setdefault(r["giorno_settimana"], []).append(r)
+
+    esistenti = (
+        sb.table("turni_personale").select("dipendente_id, data_turno")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_turno", body.data_da).lte("data_turno", body.data_a)
+        .execute()
+    ).data or []
+    giorni_pieni = {(r["dipendente_id"], r["data_turno"]) for r in esistenti}
+
+    nuovi = []
+    n_saltati = 0
+    giorno = data_da
+    while giorno <= data_a:
+        for r in regole_per_giorno.get(giorno.weekday(), []):
+            data_turno = giorno.isoformat()
+            if (r["dipendente_id"], data_turno) in giorni_pieni:
+                n_saltati += 1
+                continue
+            riga = {
+                "ristorante_id": ristorante_id,
+                "user_id": user_id,
+                "dipendente_id": r["dipendente_id"],
+                "data_turno": data_turno,
+                "ora_inizio": r["ora_inizio"],
+                "ora_fine": r["ora_fine"],
+            }
+            if r.get("ora_inizio2"):
+                riga["ora_inizio2"] = r["ora_inizio2"]
+            if r.get("ora_fine2"):
+                riga["ora_fine2"] = r["ora_fine2"]
+            if r.get("costo_orario") is not None:
+                riga["costo_orario"] = r["costo_orario"]
+            nuovi.append(riga)
+            giorni_pieni.add((r["dipendente_id"], data_turno))
+        giorno += _td(days=1)
+
+    if nuovi:
+        sb.table("turni_personale").insert(nuovi).execute()
+    return {"ok": True, "n_creati": len(nuovi), "n_saltati": n_saltati}
 
 
 # ─── Workspace: Spese extra (F&B / Generali) ────────────────────────────────
