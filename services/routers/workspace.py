@@ -1,5 +1,5 @@
 """Router dominio WORKSPACE — foodcost (ricette/ingredienti), inventario, diario,
-personale (turni), spese extra.
+personale (turni, regole ricorrenti), spese extra.
 
 Estratto da fastapi_worker.py. Gli helper condivisi (_verify_worker_key,
 _resolve_user_from_token, _get_supabase_client, _get_ristorante_id_for_user,
@@ -1654,6 +1654,168 @@ def ws_personale_stato_giorno_intervallo(body: StatoGiornoIntervalloBody, author
         "n_aggiornati": n_aggiornati,
         "n_saltati_turno_esistente": saltati,
     }
+
+
+# ─── Workspace: Regole turni ricorrenti ─────────────────────────────────────
+# Template settimanale per dipendente (Fase 3a). Puro CRUD: la generazione di
+# righe turni_personale da queste regole e' scope di Fase 3b, non qui.
+
+_TIPI_GIORNO_REGOLA = {"turno", "riposo"}
+
+
+class NuovaRegolaTurnoBody(BaseModel):
+    dipendente_id: str
+    giorno_settimana: int   # 0=lunedì ... 6=domenica
+    tipo_giorno: str        # 'turno' | 'riposo'
+    ora_inizio: Optional[str] = None
+    ora_fine: Optional[str] = None
+    ora_inizio2: Optional[str] = None
+    ora_fine2: Optional[str] = None
+    costo_orario: Optional[float] = None
+
+
+class AggiornaRegolaTurnoBody(BaseModel):
+    giorno_settimana: Optional[int] = None
+    tipo_giorno: Optional[str] = None
+    ora_inizio: Optional[str] = None
+    ora_fine: Optional[str] = None
+    ora_inizio2: Optional[str] = None
+    ora_fine2: Optional[str] = None
+    costo_orario: Optional[float] = None
+    attiva: Optional[bool] = None
+
+
+def _valida_regola_turno(tipo_giorno: str, ora_inizio: Optional[str], ora_fine: Optional[str],
+                          ora_inizio2: Optional[str], ora_fine2: Optional[str]) -> None:
+    if tipo_giorno not in _TIPI_GIORNO_REGOLA:
+        raise HTTPException(status_code=400, detail="tipo_giorno non valido (turno | riposo)")
+    if tipo_giorno == "turno":
+        if not ora_inizio or not ora_fine:
+            raise HTTPException(status_code=400, detail="ora_inizio e ora_fine sono obbligatori per tipo_giorno='turno'")
+    else:
+        if ora_inizio or ora_fine or ora_inizio2 or ora_fine2:
+            raise HTTPException(status_code=400, detail="tipo_giorno='riposo' non ammette orari")
+
+
+@router.get("/api/workspace/regole-turni", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_regole_turni_list(
+    dipendente_id: Optional[str] = Query(None),
+    attiva: Optional[bool] = Query(None, description="True = solo attive, False = solo disattivate, None = tutte"),
+    authorization: Optional[str] = Header(None),
+):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    q = sb.table("regole_turni_ricorrenti").select("*").eq("ristorante_id", ristorante_id)
+    if dipendente_id:
+        q = q.eq("dipendente_id", dipendente_id)
+    if attiva is not None:
+        q = q.eq("attiva", attiva)
+    resp = q.order("giorno_settimana").execute()
+    return {"regole": resp.data or []}
+
+
+@router.post("/api/workspace/regole-turni", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_regole_turni_crea(body: NuovaRegolaTurnoBody, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    if not (0 <= body.giorno_settimana <= 6):
+        raise HTTPException(status_code=400, detail="giorno_settimana deve essere tra 0 (lunedì) e 6 (domenica)")
+    _valida_regola_turno(body.tipo_giorno, body.ora_inizio, body.ora_fine, body.ora_inizio2, body.ora_fine2)
+
+    payload: dict = {
+        "ristorante_id": ristorante_id,
+        "dipendente_id": body.dipendente_id,
+        "giorno_settimana": body.giorno_settimana,
+        "tipo_giorno": body.tipo_giorno,
+        "ora_inizio": body.ora_inizio,
+        "ora_fine": body.ora_fine,
+        "ora_inizio2": body.ora_inizio2,
+        "ora_fine2": body.ora_fine2,
+    }
+    if body.costo_orario is not None:
+        payload["costo_orario"] = round(float(body.costo_orario), 2)
+    resp = sb.table("regole_turni_ricorrenti").insert(payload).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@router.patch("/api/workspace/regole-turni/{regola_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_regole_turni_aggiorna(regola_id: str, body: AggiornaRegolaTurnoBody, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    esistente = (
+        sb.table("regole_turni_ricorrenti").select("*")
+        .eq("id", regola_id).eq("ristorante_id", ristorante_id)
+        .limit(1).execute()
+    )
+    if not esistente.data:
+        raise HTTPException(status_code=404, detail="Regola non trovata")
+    corrente = esistente.data[0]
+
+    raw = body.model_dump(exclude_unset=True)
+    updates: dict = {}
+
+    if "giorno_settimana" in raw and raw["giorno_settimana"] is not None:
+        if not (0 <= raw["giorno_settimana"] <= 6):
+            raise HTTPException(status_code=400, detail="giorno_settimana deve essere tra 0 (lunedì) e 6 (domenica)")
+        updates["giorno_settimana"] = raw["giorno_settimana"]
+    if "costo_orario" in raw:  # azzerabile
+        updates["costo_orario"] = round(float(raw["costo_orario"]), 2) if raw["costo_orario"] is not None else None
+    if "attiva" in raw and raw["attiva"] is not None:
+        updates["attiva"] = raw["attiva"]
+
+    # tipo_giorno e orari si validano insieme: merge su corrente + updates
+    # espliciti, cosi' un PATCH parziale non puo' lasciare la riga incoerente
+    # (es. cambiare solo ora_inizio senza toccare tipo_giorno='riposo').
+    tocca_orari_o_tipo = any(c in raw for c in ("tipo_giorno", "ora_inizio", "ora_fine", "ora_inizio2", "ora_fine2"))
+    if tocca_orari_o_tipo:
+        tipo_giorno = raw.get("tipo_giorno", corrente["tipo_giorno"])
+        ora_inizio = raw["ora_inizio"] if "ora_inizio" in raw else corrente["ora_inizio"]
+        ora_fine = raw["ora_fine"] if "ora_fine" in raw else corrente["ora_fine"]
+        ora_inizio2 = raw["ora_inizio2"] if "ora_inizio2" in raw else corrente["ora_inizio2"]
+        ora_fine2 = raw["ora_fine2"] if "ora_fine2" in raw else corrente["ora_fine2"]
+        if tipo_giorno == "riposo":
+            ora_inizio = ora_fine = ora_inizio2 = ora_fine2 = None
+        _valida_regola_turno(tipo_giorno, ora_inizio, ora_fine, ora_inizio2, ora_fine2)
+        updates["tipo_giorno"] = tipo_giorno
+        updates["ora_inizio"] = ora_inizio
+        updates["ora_fine"] = ora_fine
+        updates["ora_inizio2"] = ora_inizio2
+        updates["ora_fine2"] = ora_fine2
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    resp = (
+        sb.table("regole_turni_ricorrenti").update(updates)
+        .eq("id", regola_id).eq("ristorante_id", ristorante_id)
+        .execute()
+    )
+    return resp.data[0] if resp.data else {}
+
+
+@router.delete("/api/workspace/regole-turni/{regola_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_regole_turni_elimina(regola_id: str, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    sb.table("regole_turni_ricorrenti").delete().eq("id", regola_id).eq("ristorante_id", ristorante_id).execute()
+    return {"ok": True}
 
 
 # ─── Workspace: Spese extra (F&B / Generali) ────────────────────────────────

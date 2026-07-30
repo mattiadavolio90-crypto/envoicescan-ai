@@ -698,3 +698,169 @@ class TestStatoGiornoIntervallo:
                     body=self._body(data_da="2026-01-01", data_a="2028-01-01"), authorization="Bearer x"
                 )
         assert exc.value.status_code == 400
+
+
+class TestRegoleRicorrenti:
+    """CRUD /api/workspace/regole-turni: template settimanale per dipendente
+    (Fase 3a). 'turno' richiede orari, 'riposo' li rifiuta. Nessuna generazione
+    di turni qui (scope Fase 3b)."""
+
+    def _body_turno(self, **kw):
+        base = dict(
+            dipendente_id="dip-mario", giorno_settimana=0, tipo_giorno="turno",
+            ora_inizio="09:00", ora_fine="14:00",
+        )
+        base.update(kw)
+        return workspace.NuovaRegolaTurnoBody(**base)
+
+    def _body_riposo(self, **kw):
+        base = dict(dipendente_id="dip-mario", giorno_settimana=6, tipo_giorno="riposo")
+        base.update(kw)
+        return workspace.NuovaRegolaTurnoBody(**base)
+
+    # --- creazione valida --------------------------------------------------
+
+    def test_crea_regola_turno_ok(self):
+        dip_q = _query_mock([{"id": "dip-mario"}])
+        insert_q = _query_mock([{"id": "r1", "tipo_giorno": "turno", "giorno_settimana": 0}])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            return dip_q if calls["n"] == 1 else insert_q
+        ctx, client = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_regole_turni_crea(body=self._body_turno(), authorization="Bearer x")
+        assert res["tipo_giorno"] == "turno"
+
+    def test_crea_regola_riposo_ok(self):
+        dip_q = _query_mock([{"id": "dip-mario"}])
+        insert_q = _query_mock([{"id": "r2", "tipo_giorno": "riposo", "giorno_settimana": 6}])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            return dip_q if calls["n"] == 1 else insert_q
+        ctx, client = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_regole_turni_crea(body=self._body_riposo(), authorization="Bearer x")
+        assert res["tipo_giorno"] == "riposo"
+
+    def test_dipendente_inesistente_404(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([]))
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_crea(body=self._body_turno(), authorization="Bearer x")
+        assert exc.value.status_code == 404
+
+    # --- validazione orari mancanti/orari su riposo -------------------------
+
+    def test_turno_senza_ora_inizio_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([{"id": "dip-mario"}]))
+        body = SimpleNamespace(
+            dipendente_id="dip-mario", giorno_settimana=0, tipo_giorno="turno",
+            ora_inizio=None, ora_fine="14:00", ora_inizio2=None, ora_fine2=None, costo_orario=None,
+        )
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_crea(body=body, authorization="Bearer x")
+        assert exc.value.status_code == 400
+
+    def test_turno_senza_ora_fine_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([{"id": "dip-mario"}]))
+        body = SimpleNamespace(
+            dipendente_id="dip-mario", giorno_settimana=0, tipo_giorno="turno",
+            ora_inizio="09:00", ora_fine=None, ora_inizio2=None, ora_fine2=None, costo_orario=None,
+        )
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_crea(body=body, authorization="Bearer x")
+        assert exc.value.status_code == 400
+
+    def test_riposo_con_orari_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([{"id": "dip-mario"}]))
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_crea(
+                    body=self._body_riposo(ora_inizio="09:00"), authorization="Bearer x"
+                )
+        assert exc.value.status_code == 400
+
+    def test_tipo_giorno_non_valido_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([{"id": "dip-mario"}]))
+        body = SimpleNamespace(
+            dipendente_id="dip-mario", giorno_settimana=0, tipo_giorno="ferie",
+            ora_inizio=None, ora_fine=None, ora_inizio2=None, ora_fine2=None, costo_orario=None,
+        )
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_crea(body=body, authorization="Bearer x")
+        assert exc.value.status_code == 400
+
+    def test_giorno_settimana_fuori_range_400(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([{"id": "dip-mario"}]))
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_crea(
+                    body=self._body_turno(giorno_settimana=7), authorization="Bearer x"
+                )
+        assert exc.value.status_code == 400
+
+    # --- CRUD base -----------------------------------------------------------
+
+    def test_list_regole(self):
+        list_q = _query_mock([{"id": "r1", "giorno_settimana": 0}, {"id": "r2", "giorno_settimana": 6}])
+        ctx, client = _patch_workspace(lambda _n: list_q)
+        with ctx:
+            res = workspace.ws_regole_turni_list(dipendente_id=None, attiva=None, authorization="Bearer x")
+        assert len(res["regole"]) == 2
+
+    def test_aggiorna_costo_orario(self):
+        esistente_q = _query_mock([{
+            "id": "r1", "tipo_giorno": "turno", "ora_inizio": "09:00", "ora_fine": "14:00",
+            "ora_inizio2": None, "ora_fine2": None,
+        }])
+        update_q = _query_mock([{"id": "r1", "costo_orario": 12.5}])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            return esistente_q if calls["n"] == 1 else update_q
+        ctx, client = _patch_workspace(side_effect)
+        body = workspace.AggiornaRegolaTurnoBody(costo_orario=12.5)
+        with ctx:
+            res = workspace.ws_regole_turni_aggiorna(regola_id="r1", body=body, authorization="Bearer x")
+        assert res["costo_orario"] == 12.5
+
+    def test_aggiorna_regola_non_trovata_404(self):
+        ctx, client = _patch_workspace(lambda _n: _query_mock([]))
+        body = workspace.AggiornaRegolaTurnoBody(costo_orario=10.0)
+        with ctx:
+            with pytest.raises(worker.HTTPException) as exc:
+                workspace.ws_regole_turni_aggiorna(regola_id="mancante", body=body, authorization="Bearer x")
+        assert exc.value.status_code == 404
+
+    def test_aggiorna_a_riposo_azzera_orari(self):
+        esistente_q = _query_mock([{
+            "id": "r1", "tipo_giorno": "turno", "ora_inizio": "09:00", "ora_fine": "14:00",
+            "ora_inizio2": None, "ora_fine2": None,
+        }])
+        update_q = _query_mock([{"id": "r1", "tipo_giorno": "riposo", "ora_inizio": None, "ora_fine": None}])
+        calls = {"n": 0}
+        def side_effect(_n):
+            calls["n"] += 1
+            return esistente_q if calls["n"] == 1 else update_q
+        ctx, client = _patch_workspace(side_effect)
+        body = workspace.AggiornaRegolaTurnoBody(tipo_giorno="riposo")
+        with ctx:
+            res = workspace.ws_regole_turni_aggiorna(regola_id="r1", body=body, authorization="Bearer x")
+        assert res["tipo_giorno"] == "riposo"
+        update_q.update.assert_called_once_with({
+            "tipo_giorno": "riposo", "ora_inizio": None, "ora_fine": None,
+            "ora_inizio2": None, "ora_fine2": None,
+        })
+
+    def test_elimina_regola(self):
+        del_q = _query_mock([])
+        ctx, client = _patch_workspace(lambda _n: del_q)
+        with ctx:
+            res = workspace.ws_regole_turni_elimina(regola_id="r1", authorization="Bearer x")
+        assert res == {"ok": True}
+        del_q.delete.assert_called_once()
