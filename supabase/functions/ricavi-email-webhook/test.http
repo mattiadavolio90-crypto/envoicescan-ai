@@ -9,6 +9,12 @@
 #     --env-file ./supabase/functions/.env.local
 #
 # Poi imposta @token con il valore di BREVO_WEBHOOK_TOKEN dal tuo .env.local
+#
+# FORMA DEL PAYLOAD (corretta il 30/7/2026): la function legge
+# { items: [ { From: { Address }, Subject, Attachments: [ { Name, base64Content } ] } ] }
+# — PascalCase, dentro `items`. I payload piatti in minuscolo ("from"/"attachments")
+# che stavano qui prima venivano ignorati in silenzio: 200 OK e nessuna riga in
+# coda, quindi il test sembrava passare senza provare niente.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @localUrl  = http://localhost:54321/functions/v1/ricavi-email-webhook
@@ -45,10 +51,14 @@ POST {{baseUrl}}?token={{token}}
 Content-Type: application/json
 
 {
-  "from": "export@passbi.it",
-  "subject": "Newsletter mensile",
-  "attachments": [
-    { "name": "logo.png", "contentType": "image/png", "base64Content": "iVBORw0KGgo=" }
+  "items": [
+    {
+      "From": { "Address": "export@passbi.it", "Name": "Export Passbi" },
+      "Subject": "Newsletter mensile",
+      "Attachments": [
+        { "Name": "logo.png", "ContentType": "image/png", "base64Content": "iVBORw0KGgo=" }
+      ]
+    }
   ]
 }
 
@@ -60,13 +70,17 @@ POST {{baseUrl}}?token={{token}}
 Content-Type: application/json
 
 {
-  "from": "test-gestionale@esempio.com",
-  "subject": "Export ricavi settimana 23",
-  "attachments": [
+  "items": [
     {
-      "name": "ricavi_w23.xlsx",
-      "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "base64Content": "UEsDBBQABgAIAAAAIQA="
+      "From": { "Address": "test-gestionale@esempio.com" },
+      "Subject": "Export ricavi settimana 23",
+      "Attachments": [
+        {
+          "Name": "ricavi_w23.xlsx",
+          "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "base64Content": "UEsDBBQABgAIAAAAIQA="
+        }
+      ]
     }
   ]
 }

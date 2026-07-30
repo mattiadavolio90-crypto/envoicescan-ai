@@ -247,6 +247,7 @@ Mappa ragione sociale (dal gestionale) → `ristorante_id`. Usato nell'import XL
 - `mark_queue_item_done(p_queue_id, p_purge_xml)` — status + nullifica XML
 - `schedule_retry(p_queue_id, p_error_msg)` — backoff esponenziale
 - `purge_processed_xml_content(p_retention_hours)` — GDPR cleanup
+- `purge_raw_body_sample(p_retention_days)` — GDPR: rimuove `payload_meta.raw_body_sample` (default 90gg). Serve perché il purge sopra filtra `status='done'`, mentre quel campo sta su righe `failed`/`da_assegnare`
 - `release_stale_locks(p_timeout_minutes)` — recovery crash worker
 - `resolve_unknown_tenant(p_piva)` — rimette in pending i record con P.IVA non ancora registrata
 
@@ -539,6 +540,7 @@ Trigger su `prodotti_utente`, `prodotti_master`, `classificazioni_manuali`: ogni
 | `mark_queue_item_done(queue_id, purge_xml)` | Completamento elaborazione + purge XML |
 | `schedule_retry(queue_id, error_msg)` | Backoff esponenziale su errore |
 | `purge_processed_xml_content(retention_hours)` | GDPR: nullifica xml_content |
+| `purge_raw_body_sample(retention_days)` | GDPR: rimuove payload_meta.raw_body_sample (>90gg) |
 | `release_stale_locks(timeout_minutes)` | Recovery lock su worker crashati |
 | `resolve_unknown_tenant(piva)` | Rimette in pending i record P.IVA non trovata |
 | `fn_bump_cache_version()` | Trigger: incrementa cache_version |

@@ -562,6 +562,45 @@ export function extractEventObject(body: unknown): { ev: WebhookEvent; extraCoun
   return { ev: current as WebhookEvent, extraCount }
 }
 
+// Estrae TUTTI gli eventi del body, non solo il primo.
+// Fino al 30/7/2026 un POST con più eventi ne processava uno e logghiava gli
+// altri come "NON persi" — ma nessuno li recuperava: erano persi, solo con una
+// riga di log a testimoniarlo. Ora ognuno viene processato per intero.
+// Delega lo scavo dei wrapper a extractEventObject, così la logica di unwrap
+// (e i suoi test) resta una sola.
+export function extractAllEvents(body: unknown): WebhookEvent[] {
+  const raccolti: WebhookEvent[] = []
+
+  const aggiungi = (candidato: unknown): void => {
+    const { ev } = extractEventObject(candidato)
+    if (ev && Object.keys(ev).length > 0) raccolti.push(ev)
+  }
+
+  // Array al root: ogni elemento è un evento (o un wrapper da scavare).
+  if (Array.isArray(body)) {
+    for (const el of body) aggiungi(el)
+    return raccolti
+  }
+
+  // Wrapper che contiene un array di eventi: scava una volta per trovarlo, poi
+  // processa ogni elemento. Se non c'è nessun array, è un evento singolo.
+  if (typeof body === 'object' && body !== null) {
+    const obj = body as Record<string, unknown>
+    if (!hasEventFieldCI(obj)) {
+      for (const k of ['data', 'event', 'payload', 'events', 'items', 'result', 'body']) {
+        const inner = obj[k]
+        if (Array.isArray(inner)) {
+          for (const el of inner) aggiungi(el)
+          if (raccolti.length > 0) return raccolti
+        }
+      }
+    }
+  }
+
+  aggiungi(body)
+  return raccolti
+}
+
 export function normalizeWebhookEvent(ev: WebhookEvent): NormalizedWebhookEvent {
   // Lettura case-insensitive di ogni campo: il body nativo è PascalCase
   // (`Endpoint`, `ResourceId`, `Id`…), i payload di test snake/camelCase.
@@ -826,65 +865,6 @@ export async function fetchXmlForResource(
   return { xmlContent, xmlUrl }
 }
 
-// ─── Modalità reprocess (riparazione righe già in coda) ────────────────────────
-// Uso: POST firmato HMAC con body { "reprocess_queue_ids": [id, …] }.
-// Ri-scarica ogni riga dalla sua resource_id e RISCRIVE xml_content/xml_hash/
-// indirizzo con l'estrazione p7m corretta — SENZA toccarne lo status (una riga
-// 'da_assegnare' resta 'da_assegnare', solo con XML ora leggibile). Serve a
-// recuperare le fatture salvate con XML corrotto PRIMA del fix chunked-DER.
-// Non è un percorso Invoicetronic: è un canale di manutenzione protetto dallo
-// stesso secret del webhook (nessun nuovo secret, nessun endpoint pubblico in più).
-// deno-lint-ignore no-explicit-any
-async function handleReprocess(ids: unknown, db: any, apiKey: string): Promise<Response> {
-  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 50) {
-    return new Response(JSON.stringify({ error: 'reprocess_queue_ids: array 1..50 richiesto' }), {
-      status: 400, headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const results: Array<Record<string, unknown>> = []
-  for (const rawId of ids) {
-    const id = typeof rawId === 'number' ? rawId : parseInt(String(rawId), 10)
-    if (!Number.isFinite(id)) { results.push({ id: rawId, ok: false, error: 'id non valido' }); continue }
-
-    const { data: row, error: selErr } = await db
-      .from('fatture_queue')
-      .select('id, status, payload_meta')
-      .eq('id', id)
-      .maybeSingle()
-
-    if (selErr)  { results.push({ id, ok: false, error: `select: ${selErr.message}` }); continue }
-    if (!row)    { results.push({ id, ok: false, error: 'riga non trovata' }); continue }
-
-    const resourceId = (row.payload_meta ?? {}).resource_id
-    if (resourceId == null) { results.push({ id, ok: false, error: 'resource_id assente in payload_meta' }); continue }
-
-    try {
-      const { xmlContent, xmlUrl } = await fetchXmlForResource(resourceId, apiKey)
-      const xmlHash = await sha256Hex(xmlContent)
-      const indirizzo = extractIndirizzoDestinatario(xmlContent)
-      const meta = { ...(row.payload_meta ?? {}), reprocessed_at: new Date().toISOString() }
-      if (indirizzo) meta.indirizzo_destinatario = indirizzo
-
-      const { error: updErr } = await db
-        .from('fatture_queue')
-        .update({ xml_content: xmlContent, xml_url: xmlUrl, xml_hash: xmlHash, payload_meta: meta })
-        .eq('id', id)
-
-      if (updErr) { results.push({ id, ok: false, error: `update: ${updErr.message}` }); continue }
-      results.push({ id, ok: true, xml_len: xmlContent.length, status: row.status })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      results.push({ id, ok: false, error: msg })
-    }
-  }
-
-  console.info(`[wh] reprocess completato: ${results.filter(r => r.ok).length}/${results.length} ok`)
-  return new Response(JSON.stringify({ reprocessed: results }), {
-    status: 200, headers: { 'Content-Type': 'application/json' },
-  })
-}
-
 // ─── Handler principale ───────────────────────────────────────────────────────
 
 export const handler = async (req: Request): Promise<Response> => {
@@ -915,29 +895,14 @@ export const handler = async (req: Request): Promise<Response> => {
     return new Response('Bad Request: body non leggibile', { status: 400 })
   }
 
-  // ── 2a. Modalità reprocess (manutenzione, NON è un evento Invoicetronic) ────
-  // Canale di riparazione delle righe già in coda con xml_content corrotto (bug
-  // p7m chunked-DER pre-fix). NON usa l'HMAC del webhook (secret detenuto da
-  // Invoicetronic): si autentica con la service_role key via header X-Reprocess-Key,
-  // confrontata timing-safe. Riconosciuto PRIMA della verifica HMAC così può
-  // funzionare senza conoscere il segreto di firma dei webhook reali.
-  const reprocessKey = req.headers.get('X-Reprocess-Key')
-  if (reprocessKey) {
-    if (!timingSafeEqual(reprocessKey, serviceKey)) {
-      console.warn('[wh] reprocess: X-Reprocess-Key non valida')
-      return new Response('Unauthorized', { status: 401 })
-    }
-    let parsed: Record<string, unknown>
-    try {
-      parsed = JSON.parse(rawBody) as Record<string, unknown>
-    } catch {
-      return new Response('Bad Request: JSON non valido', { status: 400 })
-    }
-    const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
-    return await handleReprocess(parsed['reprocess_queue_ids'], db, apiKey)
-  }
-
   // ── 2. Verifica firma HMAC-SHA256 + anti-replay ────────────────────────────
+  // Nessun altro canale di autenticazione precede questo punto: l'unico modo di
+  // far agire questa function è una firma HMAC valida. Il vecchio canale
+  // "reprocess" (header X-Reprocess-Key confrontato con la service_role key)
+  // è stato rimosso il 30/7/2026 — era manutenzione una-tantum per il bug p7m
+  // chunked-DER, ma esponeva la service_role key come credenziale di rete e
+  // veniva valutato PRIMA dell'HMAC. Se serve di nuovo un reprocess, si fa da
+  // script su Railway, dove la service_role key risiede già legittimamente.
   const sigHeader = req.headers.get('Invoicetronic-Signature')
   if (!await verifyHmac(rawBody, sigHeader, webhookSecret)) {
     // 401 → Invoicetronic non ritenta per errori 4xx (config error lato loro)
@@ -947,21 +912,49 @@ export const handler = async (req: Request): Promise<Response> => {
 
   // ── 3. Deserializza JSON ───────────────────────────────────────────────────
   // Il body live può arrivare come oggetto Event piatto, come ARRAY di eventi, o
-  // annidato in un wrapper: extractEventObject scava fino all'Event reale (vedi
-  // bug 22/7). extraCount>0 = più eventi in un solo POST (raro): processiamo il
-  // primo e logghiamo, mai perso in silenzio.
+  // annidato in un wrapper: extractAllEvents scava e restituisce TUTTI gli eventi
+  // (vedi bug 22/7). Fino al 30/7/2026 processavamo solo il primo: gli altri
+  // erano di fatto persi, con una riga di log che diceva il contrario.
   let parsedBody: unknown
   try {
     parsedBody = JSON.parse(rawBody)
   } catch {
     return new Response('Bad Request: JSON non valido', { status: 400 })
   }
-  const { ev: parsedEvent, extraCount } = extractEventObject(parsedBody)
-  if (extraCount > 0) {
-    console.warn(`[wh] POST con ${extraCount + 1} eventi nel body: processo il primo, gli altri NON persi (Invoicetronic invia un evento per POST di norma — verificare se ricorre)`)
+
+  const eventi = extractAllEvents(parsedBody)
+  if (eventi.length === 0) eventi.push({})
+  if (eventi.length > 1) {
+    console.warn(`[wh] POST con ${eventi.length} eventi nel body: li processo TUTTI in sequenza`)
   }
 
-  const ev = normalizeWebhookEvent(parsedEvent)
+  // Ogni evento è indipendente: uno che fallisce non deve impedire agli altri di
+  // essere accodati. Se ALMENO uno chiede il retry (500), lo chiediamo a fine
+  // ciclo — l'idempotenza su event_id rende innocuo il ri-processing degli altri.
+  let serveRetry = false
+  for (const singolo of eventi) {
+    const esito = await processaEvento(
+      normalizeWebhookEvent(singolo), rawBody, req,
+      supabaseUrl, serviceKey, apiKey,
+    )
+    if (esito === 'retry') serveRetry = true
+  }
+
+  if (serveRetry) return new Response('Internal Server Error', { status: 500 })
+  return new Response('OK', { status: 200 })
+}
+
+// Elabora UN singolo evento webhook già normalizzato e con HMAC verificato.
+// Ritorna 'ok' se non serve altro, 'retry' se Invoicetronic deve ritentare
+// (errore DB: è l'unica occasione di non perdere la fattura).
+async function processaEvento(
+  ev: NormalizedWebhookEvent,
+  rawBody: string,
+  req: Request,
+  supabaseUrl: string,
+  serviceKey: string,
+  apiKey: string,
+): Promise<'ok' | 'retry'> {
 
   // ── 4. Filtra: processa solo "receive" con successo ────────────────────────
   // Altri eventi (send, status, ecc.) → ignora silenziosamente → 200.
@@ -971,7 +964,7 @@ export const handler = async (req: Request): Promise<Response> => {
   // Altri eventi legittimi (send/status/…), con firma valida ma NON di ricezione:
   // ignorabili senza traccia, non sono fatture in ingresso.
   if (looksLikeOther && ev.success === true) {
-    return new Response('OK', { status: 200 })
+    return 'ok'
   }
 
   // ── 4b. Rete di sicurezza: MAI perdere una fattura firmata in silenzio ─────
@@ -1038,14 +1031,14 @@ export const handler = async (req: Request): Promise<Response> => {
       // Non riusciamo nemmeno a registrarla → 500, così Invoicetronic ritenta e
       // non perdiamo l'unica occasione di catturarla.
       console.error(`[wh] Errore INSERT evento non riconosciuto: ${insErr.message}`)
-      return new Response('Internal Server Error', { status: 500 })
+      return 'retry'
     }
     // Registrata con successo: alert immediato (Strato 1), non bloccante.
     await notifyTelegramUnrecognizedEvent(reason, ev)
     // Senza resource_id non possiamo scaricare l'XML: resta 'failed' registrata
     // (visibile + raw_body_sample per il fix), chiudiamo 200 (l'abbiamo salvata).
     if (ev.resourceId == null) {
-      return new Response('OK', { status: 200 })
+      return 'ok'
     }
     // Abbiamo un resource_id valido (anche se l'endpoint/event non è stato
     // riconosciuto come "receive" per naming anomalo, o mancava solo l'event_id):
@@ -1315,47 +1308,64 @@ export const handler = async (req: Request): Promise<Response> => {
   }
 
   // ── 9. INSERT idempotente in fatture_queue ─────────────────────────────────
-  // Flusso normale: ignoreDuplicates=true → ON CONFLICT (event_id) DO NOTHING,
-  // così i re-invii dello stesso webhook non causano errori né sovrascritture.
-  // Eccezione (passedSafetyNet): la riga con questo event_id è stata scritta poco
-  // fa come 'failed' dalla rete di sicurezza e ora abbiamo l'XML: dobbiamo
-  // PROMUOVERLA (ON CONFLICT DO UPDATE), altrimenti il DO NOTHING la lascerebbe
-  // 'failed' e la fattura recuperata andrebbe persa. Merge, non doppione.
+  // Flusso normale: ON CONFLICT (event_id) DO NOTHING, così i re-invii dello
+  // stesso webhook non causano errori né sovrascritture.
+  const rowData = {
+    event_id:       eventId,
+    user_id:        userId,
+    ristorante_id:  ristoranteId,
+    piva_raw:       pivaRaw,
+    xml_content:    xmlContent,
+    xml_url:        xmlUrl,
+    xml_hash:       xmlHash,
+    payload_meta:   meta,
+    source:         'invoicetronic',
+    status,
+    correlation_id: correlationId,
+  }
+
   const { error: dbErr } = await db
     .from('fatture_queue')
-    .upsert(
-      {
-        event_id:       eventId,
-        user_id:        userId,
-        ristorante_id:  ristoranteId,
-        piva_raw:       pivaRaw,
-        xml_content:    xmlContent,
-        xml_url:        xmlUrl,
-        xml_hash:       xmlHash,
-        payload_meta:   meta,
-        source:         'invoicetronic',
-        status,
-        correlation_id: correlationId,
-      },
-      {
-        onConflict:       'event_id',
-        ignoreDuplicates: !passedSafetyNet,
-      },
-    )
+    .upsert(rowData, { onConflict: 'event_id', ignoreDuplicates: true })
+
+  // Eccezione (passedSafetyNet): la riga con questo event_id può essere stata
+  // scritta poco fa come 'failed' dalla rete di sicurezza e ora abbiamo l'XML:
+  // va PROMOSSA, altrimenti il DO NOTHING la lascerebbe 'failed' e la fattura
+  // recuperata andrebbe persa.
+  //
+  // L'UPDATE è ristretto a status='failed' di proposito. Un ON CONFLICT DO
+  // UPDATE incondizionato sovrascriverebbe anche gli stati TERMINALI ('done',
+  // 'scartata' — vedi chk_fatture_queue_status): una riconsegna tardiva dello
+  // stesso event_id riporterebbe una riga già lavorata a 'da_assegnare' con
+  // xml_content ripopolato, il worker la riprenderebbe e la fattura finirebbe
+  // duplicata nei costi del cliente. Su riga terminale il filtro non matcha,
+  // l'UPDATE tocca 0 righe e la riconsegna resta correttamente un no-op.
+  if (!dbErr && passedSafetyNet) {
+    const { error: updErr } = await db
+      .from('fatture_queue')
+      .update(rowData)
+      .eq('event_id', eventId)
+      .eq('status', 'failed')
+
+    if (updErr) {
+      console.error(`[wh] Errore UPDATE promozione safety-net event_id=${eventId}: ${updErr.message}`)
+      return 'retry'
+    }
+  }
 
   if (dbErr) {
     // Errore DB reale (non duplicato — gestito da ignoreDuplicates).
-    // Ritorno 500: Invoicetronic ritenterà e il record verrà salvato.
+    // Retry: Invoicetronic ritenterà e il record verrà salvato.
     console.error(`[wh] Errore INSERT fatture_queue event_id=${eventId}: ${dbErr.message}`)
-    return new Response('Internal Server Error', { status: 500 })
+    return 'retry'
   }
 
   console.info(`[wh] Accodato event_id=${eventId} status=${status} piva=${pivaRaw}`)
 
-  // ── 10. Risponde SEMPRE 200 dopo insert ────────────────────────────────────
-  // Status 2xx → Invoicetronic non ritenta.
+  // ── 10. Evento accodato ────────────────────────────────────────────────────
+  // L'handler risponde 200 se nessun evento del body ha chiesto il retry.
   // I retry interni sono gestiti dal worker tramite fatture_queue.status.
-  return new Response('OK', { status: 200 })
+  return 'ok'
 }
 
 // Avvia il server tranne quando importato da un test unitario.

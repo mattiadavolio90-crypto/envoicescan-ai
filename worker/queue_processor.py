@@ -5,15 +5,16 @@ Worker per elaborazione asincrona delle fatture ricevute via webhook.
 
 Flusso per ogni ciclo:
   1. purge_processed_xml_content()    → GDPR cleanup (XML > 24h)
-  2. release_stale_locks()            → libera worker bloccati > 10 min
-  3. claim_batch_for_processing()     → acquisisce atomicamente N record
-  4. Per ogni record:
+  2. purge_raw_body_sample()          → GDPR cleanup (body diagnostico > 90gg)
+  3. release_stale_locks()            → libera worker bloccati > 10 min
+  4. claim_batch_for_processing()     → acquisisce atomicamente N record
+  5. Per ogni record:
        a. Legge xml_content da fatture_queue
        b. Chiama estrai_dati_da_xml() — parser esistente, zero duplicazione
        c. Chiama salva_fattura_processata() — insert in public.fatture
        d. mark_queue_item_done()       → status=done, xml nullificato (GDPR)
        e. Se errore → schedule_retry() con backoff esponenziale
-  5. Ritorna stats del ciclo
+  6. Ritorna stats del ciclo
 
 Compatibilità:
   - Funziona sia da GitHub Actions che da terminale locale
@@ -382,6 +383,7 @@ def _auto_classify_saved_rows(
 
 BATCH_SIZE        = int(os.environ.get("WORKER_BATCH_SIZE", "10"))
 XML_RETENTION_H   = int(os.environ.get("WORKER_XML_RETENTION_HOURS", "24"))
+RAW_BODY_SAMPLE_RETENTION_D = int(os.environ.get("WORKER_RAW_BODY_SAMPLE_RETENTION_DAYS", "90"))
 STALE_LOCK_MIN    = int(os.environ.get("WORKER_STALE_LOCK_MINUTES", "10"))
 WORKER_ID_PREFIX  = os.environ.get("WORKER_ID_PREFIX", "gh-action")
 JOB_TIMEOUT       = int(os.environ.get("WORKER_JOB_TIMEOUT_SECONDS", "300"))
@@ -441,6 +443,27 @@ def _purge_xml(supabase, retention_hours: int) -> int:
         return count
     except Exception as exc:
         logger.warning("[maint] purge_processed_xml_content fallita: %s", exc)
+        return 0
+
+
+def _purge_raw_body_sample(supabase, retention_days: int = 90) -> int:
+    """Rimuove payload_meta.raw_body_sample oltre la retention (GDPR).
+
+    Sta su righe failed/da_assegnare, che purge_processed_xml_content non tocca
+    perché filtra status='done': senza questa chiamata il campo resterebbe per
+    sempre.
+    """
+    try:
+        res = supabase.rpc(
+            "purge_raw_body_sample",
+            {"p_retention_days": retention_days},
+        ).execute()
+        count = res.data or 0
+        if count:
+            logger.info("[maint] Purge GDPR: %d raw_body_sample rimossi", count)
+        return count
+    except Exception as exc:
+        logger.warning("[maint] purge_raw_body_sample fallita: %s", exc)
         return 0
 
 
@@ -946,6 +969,7 @@ def run_cycle() -> CycleStats:
 
     # ── 1. Manutenzione ───────────────────────────────────────────────────────
     _purge_xml(supabase, XML_RETENTION_H)
+    _purge_raw_body_sample(supabase, RAW_BODY_SAMPLE_RETENTION_D)
     _release_stale_locks(supabase, STALE_LOCK_MIN)
 
     # ── 2. Claim batch ────────────────────────────────────────────────────────

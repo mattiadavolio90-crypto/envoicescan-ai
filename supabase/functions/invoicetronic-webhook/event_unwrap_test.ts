@@ -15,7 +15,7 @@ import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.t
 
 Deno.env.set('WEBHOOK_TEST_MODE', '1')
 
-const { extractEventObject } = await import('./index.ts')
+const { extractEventObject, extractAllEvents, normalizeWebhookEvent } = await import('./index.ts')
 
 // L'oggetto Event canonico come da doc Invoicetronic (campi al root).
 const canonical = {
@@ -166,4 +166,63 @@ Deno.test('pascal: [Event PascalCase] in array → estrae il primo', () => {
 Deno.test('pascal: { data: Event PascalCase } wrapper → scava e riconosce', () => {
   const { ev } = extractEventObject({ data: pascalNative })
   assertEquals((ev as Record<string, unknown>).ResourceId, 88509)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// extractAllEvents — FIX 30/7/2026: processare TUTTI gli eventi, non solo il primo
+// ═══════════════════════════════════════════════════════════════════════════════
+// Prima il codice estraeva un evento e logghiava "gli altri NON persi": in realtà
+// nessuno li recuperava. Con più eventi in un POST, dal secondo in poi la fattura
+// spariva lasciando solo una riga di log.
+
+Deno.test('extractAllEvents: evento singolo al root → 1 evento', () => {
+  const eventi = extractAllEvents(canonical)
+  assertEquals(eventi.length, 1)
+  assertEquals(normalizeWebhookEvent(eventi[0]).resourceId, 87454)
+})
+
+Deno.test('extractAllEvents: array di 3 eventi → tutti e 3, in ordine', () => {
+  const eventi = extractAllEvents([
+    { ...canonical, resource_id: 111 },
+    { ...canonical, resource_id: 222 },
+    { ...canonical, resource_id: 333 },
+  ])
+  assertEquals(eventi.length, 3)
+  assertEquals(eventi.map(e => normalizeWebhookEvent(e).resourceId), [111, 222, 333])
+})
+
+Deno.test('extractAllEvents: wrapper con array di eventi → tutti estratti', () => {
+  const eventi = extractAllEvents({
+    data: [{ ...canonical, resource_id: 444 }, { ...canonical, resource_id: 555 }],
+  })
+  assertEquals(eventi.length, 2)
+  assertEquals(eventi.map(e => normalizeWebhookEvent(e).resourceId), [444, 555])
+})
+
+Deno.test('extractAllEvents: array PascalCase nativo → tutti estratti', () => {
+  const eventi = extractAllEvents([
+    { ...pascalNative, ResourceId: 900 },
+    { ...pascalNative, ResourceId: 901 },
+  ])
+  assertEquals(eventi.length, 2)
+  assertEquals(eventi.map(e => normalizeWebhookEvent(e).resourceId), [900, 901])
+})
+
+Deno.test('extractAllEvents: array di 1 elemento → 1 evento (nessun duplicato)', () => {
+  assertEquals(extractAllEvents([canonical]).length, 1)
+})
+
+Deno.test('extractAllEvents: body vuoto o non-oggetto → nessun evento', () => {
+  assertEquals(extractAllEvents([]).length, 0)
+  assertEquals(extractAllEvents(null).length, 0)
+  assertEquals(extractAllEvents('stringa').length, 0)
+})
+
+Deno.test('extractAllEvents: array con elementi wrappati → scava ciascuno', () => {
+  const eventi = extractAllEvents([
+    { data: { ...canonical, resource_id: 771 } },
+    { data: { ...canonical, resource_id: 772 } },
+  ])
+  assertEquals(eventi.length, 2)
+  assertEquals(eventi.map(e => normalizeWebhookEvent(e).resourceId), [771, 772])
 })
