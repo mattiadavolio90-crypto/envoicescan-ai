@@ -10615,6 +10615,81 @@
         }
       }
     },
+    "/api/workspace/personale/export-mensile": {
+      "get": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Personale Export Mensile",
+        "description": "Export Excel (.xlsx) dei turni del mese: foglio Turni (griglia\ndipendenti×giorni) + foglio Riepilogo (ore/costi per dipendente).\n\nRiusa la stessa aggregazione di ws_personale_list per garanzia di\ncoerenza numerica export↔UI — nessun ricalcolo parallelo.",
+        "operationId": "ws_personale_export_mensile_api_workspace_personale_export_mensile_get",
+        "parameters": [
+          {
+            "name": "mese",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Mese YYYY-MM",
+              "title": "Mese"
+            },
+            "description": "Mese YYYY-MM"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/personale/copia-settimana": {
       "post": {
         "tags": [

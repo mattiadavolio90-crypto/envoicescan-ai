@@ -27,7 +27,7 @@ import services.routers.workspace as workspace
 def _query_mock(execute_data=None):
     """Mock chain del client Supabase (select/eq/gte/lte/order/limit/insert/update/execute)."""
     q = MagicMock()
-    for m in ("select", "eq", "gte", "lte", "order", "limit", "insert", "update", "delete"):
+    for m in ("select", "eq", "gte", "lte", "order", "limit", "insert", "update", "delete", "single", "in_"):
         getattr(q, m).return_value = q
     q.execute.return_value = SimpleNamespace(data=execute_data or [])
     return q
@@ -1054,3 +1054,166 @@ class TestCopiaSettimanaChiaveComposita:
             res = workspace.ws_personale_copia_settimana(body=self._body(), authorization="Bearer x")
         assert res == {"ok": True, "n_copiati": 0, "n_saltati": 1}
         insert_q.insert.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Fase 5 — Export Excel mensile
+# ---------------------------------------------------------------------------
+
+class TestExportExcelPersonaleMensile:
+    """services.personale_export_service.export_excel_personale_mensile:
+    verifica che produca un .xlsx valido con i due fogli attesi e che i
+    totali del Riepilogo corrispondano ai dati aggregati passati in input."""
+
+    def test_produce_xlsx_valido_con_due_fogli(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from services.personale_export_service import export_excel_personale_mensile
+
+        turni = [
+            {"dipendente_id": "d1", "data_turno": "2026-07-01", "ora_inizio": "09:00", "ora_fine": "17:00", "tipo_giorno": "turno"},
+            {"dipendente_id": "d1", "data_turno": "2026-07-02", "tipo_giorno": "ferie", "importo_a_carico": 50.0},
+            {"dipendente_id": "d2", "data_turno": "2026-07-01", "ora_inizio": "10:00", "ora_fine": "18:00", "ore_extra": 2, "tipo_giorno": "turno"},
+        ]
+        dipendenti = [{"id": "d1", "nome": "Mario Rossi"}, {"id": "d2", "nome": "Anna Bianchi"}]
+
+        xlsx = export_excel_personale_mensile(
+            turni=turni, dipendenti=dipendenti, mese="2026-07", nome_ristorante="Test SRL",
+            ore_standard_per_persona={"Mario Rossi": 8.0, "Anna Bianchi": 8.0},
+            ore_extra_per_persona={"Anna Bianchi": 2.0},
+            costo_standard_per_persona={"Mario Rossi": 80.0, "Anna Bianchi": 80.0},
+            costo_extra_per_persona={"Anna Bianchi": 20.0},
+            costo_assenze_per_persona={"Mario Rossi": 50.0},
+        )
+        assert isinstance(xlsx, bytes) and len(xlsx) > 0
+
+        wb = load_workbook(BytesIO(xlsx))
+        assert wb.sheetnames == ["Turni", "Riepilogo"]
+
+        ws_turni = wb["Turni"]
+        assert ws_turni["A1"].value == "TURNI 2026-07 — Test SRL"
+        assert ws_turni["B2"].value == 1  # giorno 1 del mese in colonna B
+
+        ws_riep = wb["Riepilogo"]
+        righe = {r[0]: r for r in ws_riep.iter_rows(min_row=3, values_only=True) if r[0]}
+        # Mario: 8h std, 80€ std + 50€ assenze = 130€ totale (nessuna extra)
+        assert righe["Mario Rossi"][1] == 8.0
+        assert righe["Mario Rossi"][6] == 130.0
+        # Anna: 8h std + 2h extra, 80+20 = 100€ totale (nessuna assenza)
+        assert righe["Anna Bianchi"][2] == 2.0
+        assert righe["Anna Bianchi"][6] == 100.0
+        # Riga TOTALE: somma dei due dipendenti
+        assert righe["TOTALE"][6] == 230.0
+
+    def test_mese_senza_turni_non_solleva_eccezioni(self):
+        from services.personale_export_service import export_excel_personale_mensile
+
+        xlsx = export_excel_personale_mensile(
+            turni=[], dipendenti=[], mese="2026-07", nome_ristorante="Test SRL",
+            ore_standard_per_persona={}, ore_extra_per_persona={},
+            costo_standard_per_persona={}, costo_extra_per_persona={}, costo_assenze_per_persona={},
+        )
+        assert isinstance(xlsx, bytes) and len(xlsx) > 0
+
+
+class TestEndpointExportMensile:
+    """ws_personale_export_mensile: verifica che l'endpoint risponda con un
+    Response Excel valido, riusando ws_personale_list per l'aggregazione."""
+
+    def test_ritorna_xlsx_con_content_disposition(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        riga = {
+            "id": "t1", "dipendente_id": "dip-mario", "data_turno": "2026-07-01",
+            "ora_inizio": "09:00", "ora_fine": "17:00", "mensile": False,
+            "tipo_giorno": "turno", "costo_orario": 10.0, "costo_orario_extra": None,
+            "ore_extra": None,
+        }
+        turni_q = _query_mock([riga])
+        dipendenti_q = _query_mock([{"id": "dip-mario", "nome": "Mario"}])
+        storico_q = _query_mock([{"dipendente_id": "dip-mario", "costo_orario": 10.0, "costo_orario_extra": None, "data_turno": "2026-07-01"}])
+        attivi_q = _query_mock([{"id": "dip-mario", "nome": "Mario", "costo_orario_default": None}])
+        ristorante_q = _query_mock({"nome_ristorante": "Trattoria Test"})
+        calls = {"n": 0}
+        def side_effect(name):
+            calls["n"] += 1
+            if name == "ristoranti":
+                return ristorante_q
+            return {1: turni_q, 2: dipendenti_q, 3: storico_q}.get(calls["n"], attivi_q)
+        ctx, _ = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_personale_export_mensile(mese="2026-07", authorization="Bearer x")
+
+        assert res.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        assert res.headers["content-disposition"] == 'attachment; filename="personale_mensile_202607.xlsx"'
+        wb = load_workbook(BytesIO(res.body))
+        assert wb.sheetnames == ["Turni", "Riepilogo"]
+        assert "Trattoria Test" in wb["Turni"]["A1"].value
+
+    def test_mese_non_valido_400(self):
+        ctx, _ = _patch_workspace(lambda _n: _query_mock([]))
+        with ctx:
+            with pytest.raises(Exception) as exc_info:
+                workspace.ws_personale_export_mensile(mese="non-valido", authorization="Bearer x")
+        assert getattr(exc_info.value, "status_code", None) == 400
+
+    def test_formato_mese_permissivo_respinto_400(self):
+        # _mese_bounds da solo accetterebbe '2026-7' (mese senza zero) — la
+        # validazione stretta aggiunta per l'export lo respinge comunque,
+        # perché il valore finisce nel titolo del foglio e nel filename.
+        ctx, _ = _patch_workspace(lambda _n: _query_mock([]))
+        with ctx:
+            with pytest.raises(Exception) as exc_info:
+                workspace.ws_personale_export_mensile(mese="2026-7", authorization="Bearer x")
+        assert getattr(exc_info.value, "status_code", None) == 400
+
+    def test_ex_dipendente_incluso_nel_totale(self):
+        """Bug trovato in review: ws_personale_list filtra i dipendenti su
+        attivo=True, ma turni/dizionari aggregati includono anche chi e' stato
+        disattivato durante il mese esportato. Senza il fix quella persona (e
+        il suo costo) sparirebbe silenziosamente sia dalla griglia sia dal
+        TOTALE del Riepilogo."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        riga_attivo = {
+            "id": "t1", "dipendente_id": "dip-mario", "data_turno": "2026-07-01",
+            "ora_inizio": "09:00", "ora_fine": "17:00", "mensile": False,
+            "tipo_giorno": "turno", "costo_orario": 10.0, "costo_orario_extra": None,
+            "ore_extra": None,
+        }
+        riga_ex_dipendente = {
+            "id": "t2", "dipendente_id": "dip-luigi", "data_turno": "2026-07-05",
+            "ora_inizio": "09:00", "ora_fine": "17:00", "mensile": False,
+            "tipo_giorno": "turno", "costo_orario": 10.0, "costo_orario_extra": None,
+            "ore_extra": None,
+        }
+        turni_q = _query_mock([riga_attivo, riga_ex_dipendente])
+        dipendenti_q = _query_mock([{"id": "dip-mario", "nome": "Mario"}, {"id": "dip-luigi", "nome": "Luigi"}])
+        storico_q = _query_mock([
+            {"dipendente_id": "dip-mario", "costo_orario": 10.0, "costo_orario_extra": None, "data_turno": "2026-07-01"},
+            {"dipendente_id": "dip-luigi", "costo_orario": 10.0, "costo_orario_extra": None, "data_turno": "2026-07-05"},
+        ])
+        # Solo Mario e' attivo: Luigi e' stato disattivato dopo il turno del 5/7.
+        attivi_q = _query_mock([{"id": "dip-mario", "nome": "Mario", "costo_orario_default": None}])
+        # Query aggiuntiva del fix: recupero per id degli ex-dipendenti mancanti.
+        ex_dipendenti_q = _query_mock([{"id": "dip-luigi", "nome": "Luigi"}])
+        ristorante_q = _query_mock({"nome_ristorante": "Trattoria Test"})
+        calls = {"n": 0}
+        def side_effect(name):
+            if name == "ristoranti":
+                return ristorante_q
+            calls["n"] += 1
+            mapping = {1: turni_q, 2: dipendenti_q, 3: storico_q, 4: attivi_q}
+            return mapping.get(calls["n"], ex_dipendenti_q)
+        ctx, _ = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_personale_export_mensile(mese="2026-07", authorization="Bearer x")
+
+        wb = load_workbook(BytesIO(res.body))
+        ws_riep = wb["Riepilogo"]
+        righe = {r[0]: r for r in ws_riep.iter_rows(min_row=3, values_only=True) if r[0]}
+        assert "Luigi" in righe, "l'ex-dipendente deve comparire nel Riepilogo"
+        # 8h a 10€/h ciascuno: Mario 80€ + Luigi 80€ = 160€ nel TOTALE.
+        assert righe["TOTALE"][6] == 160.0

@@ -1044,6 +1044,7 @@ export function PersonaleTab() {
   const [dataDefault, setDataDefault] = useState(oggi);
   const [dipendenteIdDefaultTurno, setDipendenteIdDefaultTurno] = useState<string | undefined>(undefined);
   const [copiando, setCopiando] = useState(false);
+  const [esportandoExcel, setEsportandoExcel] = useState(false);
   const [expandedDip, setExpandedDip] = useState<string | null>(null);
   const [mensileDialogOpen, setMensileDialogOpen] = useState(false);
   const [editMensile, setEditMensile] = useState<Turno | null>(null);
@@ -1137,6 +1138,32 @@ export function PersonaleTab() {
       toast.error(e instanceof Error ? e.message : "Errore copia settimana");
     } finally {
       setCopiando(false);
+    }
+  }
+
+  async function esportaExcel() {
+    // Deriva il mese dal range effettivamente visualizzato (non da meseBase,
+    // che resta fermo al mese d'ingresso quando si naviga in vista settimana).
+    const meseExport = da.slice(0, 7);
+    setEsportandoExcel(true);
+    try {
+      const res = await fetch(`/api/workspace/personale/export-mensile?mese=${meseExport}`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? j.detail ?? "Errore export");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `personale_mensile_${meseExport.replace("-", "")}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Excel scaricato");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore export Excel");
+    } finally {
+      setEsportandoExcel(false);
     }
   }
 
@@ -1348,6 +1375,10 @@ export function PersonaleTab() {
                   <Download className="size-4 mr-1.5" />Esporta CSV
                 </Button>
               )}
+
+              <Button variant="outline" onClick={esportaExcel} disabled={esportandoExcel}>
+                <Download className="size-4 mr-1.5" />{esportandoExcel ? "Esporto…" : "Esporta Excel"}
+              </Button>
 
               <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
                 <Plus className="size-4 mr-1.5" />Aggiungi turno

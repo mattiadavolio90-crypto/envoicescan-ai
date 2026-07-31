@@ -1247,6 +1247,73 @@ def ws_personale_list(
     }
 
 
+@router.get("/api/workspace/personale/export-mensile", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_personale_export_mensile(
+    mese: str = Query(..., description="Mese YYYY-MM"),
+    authorization: Optional[str] = Header(None),
+):
+    """Export Excel (.xlsx) dei turni del mese: foglio Turni (griglia
+    dipendenti×giorni) + foglio Riepilogo (ore/costi per dipendente).
+
+    Riusa la stessa aggregazione di ws_personale_list per garanzia di
+    coerenza numerica export↔UI — nessun ricalcolo parallelo."""
+    import re
+    from fastapi.responses import Response
+    from services.personale_export_service import export_excel_personale_mensile
+
+    # Validazione stretta (piu' di _mese_bounds, che accetta anche '2026-7' o
+    # '99999-01'): qui il valore finisce nel titolo del foglio e nel filename
+    # scaricato, quindi un formato imperfetto produce un file malformato senza
+    # errore visibile invece di un 400 esplicito.
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", mese):
+        raise HTTPException(status_code=400, detail="Mese non valido (atteso YYYY-MM)")
+
+    primo, ultimo = _mese_bounds(mese)
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    dati = ws_personale_list(da=primo, a=ultimo, mensile=False, authorization=authorization)
+
+    # ws_personale_list filtra i dipendenti su attivo=True per il prefill del
+    # dialog: chi e' stato disattivato durante il mese esportato ha comunque
+    # turni/costi nei dizionari aggregati e va incluso, altrimenti sparisce
+    # sia dalla griglia sia dal totale del Riepilogo (silenziosamente).
+    dipendenti_export = list(dati["dipendenti"])
+    id_gia_inclusi = {d["id"] for d in dipendenti_export}
+    id_da_turni = {t["dipendente_id"] for t in dati["turni"] if t.get("dipendente_id")}
+    id_mancanti = id_da_turni - id_gia_inclusi
+    if id_mancanti:
+        extra = sb.table("dipendenti").select("id,nome").in_("id", list(id_mancanti)).execute()
+        dipendenti_export.extend(extra.data or [])
+
+    rist = sb.table("ristoranti").select("nome_ristorante").eq("id", ristorante_id).single().execute()
+    nome_ristorante = (rist.data or {}).get("nome_ristorante") or "Ristorante"
+
+    xlsx_bytes = export_excel_personale_mensile(
+        turni=dati["turni"],
+        dipendenti=dipendenti_export,
+        mese=mese,
+        nome_ristorante=nome_ristorante,
+        ore_standard_per_persona=dati["ore_standard_per_persona"],
+        ore_extra_per_persona=dati["ore_extra_per_persona"],
+        costo_standard_per_persona=dati["costo_standard_per_persona"],
+        costo_extra_per_persona=dati["costo_extra_per_persona"],
+        costo_assenze_per_persona=dati["costo_assenze_per_persona"],
+    )
+
+    filename = f"personale_mensile_{mese.replace('-', '')}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def _mese_bounds(mese: str) -> tuple[str, str]:
     """('YYYY-MM') -> (primo giorno, ultimo giorno) come ISO date."""
     import calendar
