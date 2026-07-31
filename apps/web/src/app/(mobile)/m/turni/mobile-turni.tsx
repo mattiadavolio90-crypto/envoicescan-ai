@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Banknote, Wallet, Users, CalendarOff } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, Banknote, Wallet, Users, CalendarOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -823,9 +823,15 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
 // ─── Componente principale ──────────────────────────────────────────────────────
 
 type Modalita = "giornaliero" | "mensile";
+// Vista si applica solo dentro Modalita "giornaliero": settimana (strip 7 giorni,
+// esistente) vs mese (accordion per dipendente, Fase 4b). Non confondere con
+// Modalita "mensile" (inserimento aggregato da busta paga): due assi ortogonali,
+// come sul desktop.
+type Vista = "settimana" | "mese";
 
 function TurniBody() {
   const [modalita, setModalita] = useState<Modalita>("giornaliero");
+  const [vista, setVista] = useState<Vista>("settimana");
   const [lunedi, setLunedi] = useState(() => lunediDi(new Date()));
   const [meseBase, setMeseBase] = useState(() => toISO(new Date()).slice(0, 7));
   const [data, setData] = useState<PersonaleResponse | null>(null);
@@ -839,14 +845,18 @@ function TurniBody() {
   const [daEliminareMensile, setDaEliminareMensile] = useState<Turno | null>(null);
   const [statoGiornoDialogOpen, setStatoGiornoDialogOpen] = useState(false);
   const [editStatoGiorno, setEditStatoGiorno] = useState<Turno | null>(null);
+  const [dipEspanso, setDipEspanso] = useState<string | null>(null);
 
   const isMensile = modalita === "mensile";
+  const isVistaMese = !isMensile && vista === "mese";
 
   const [da, a] = (() => {
-    if (!isMensile) return [toISO(lunedi), toISO(addDays(lunedi, 6))];
-    const [ay, am] = meseBase.split("-").map(Number);
-    const ultimo = new Date(ay, am, 0).getDate();
-    return [`${meseBase}-01`, `${meseBase}-${String(ultimo).padStart(2, "0")}`];
+    if (isMensile || isVistaMese) {
+      const [ay, am] = meseBase.split("-").map(Number);
+      const ultimo = new Date(ay, am, 0).getDate();
+      return [`${meseBase}-01`, `${meseBase}-${String(ultimo).padStart(2, "0")}`];
+    }
+    return [toISO(lunedi), toISO(addDays(lunedi, 6))];
   })();
 
   const load = useCallback(async (daISO: string, aISO: string, soloMensile: boolean) => {
@@ -866,22 +876,22 @@ function TurniBody() {
 
   // Pull-to-refresh: ricarica la vista corrente. Listener registrato UNA sola
   // volta; legge da/a/modalita correnti da un ref invece di riattaccarsi.
-  const vista = useRef({ da, a, isMensile });
-  vista.current = { da, a, isMensile };
+  const vistaRef = useRef({ da, a, isMensile });
+  vistaRef.current = { da, a, isMensile };
   useEffect(() => {
-    const h = () => load(vista.current.da, vista.current.a, vista.current.isMensile);
+    const h = () => load(vistaRef.current.da, vistaRef.current.a, vistaRef.current.isMensile);
     window.addEventListener("oneflux:refresh", h);
     return () => window.removeEventListener("oneflux:refresh", h);
   }, [load]);
 
   function navPrev() {
-    if (!isMensile) { setLunedi((d) => addDays(d, -7)); return; }
+    if (!isMensile && !isVistaMese) { setLunedi((d) => addDays(d, -7)); return; }
     const [ay, am] = meseBase.split("-").map(Number);
     const prev = new Date(ay, am - 2, 1);
     setMeseBase(`${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`);
   }
   function navNext() {
-    if (!isMensile) { setLunedi((d) => addDays(d, 7)); return; }
+    if (!isMensile && !isVistaMese) { setLunedi((d) => addDays(d, 7)); return; }
     const [ay, am] = meseBase.split("-").map(Number);
     const next = new Date(ay, am, 1);
     setMeseBase(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
@@ -943,6 +953,57 @@ function TurniBody() {
     [righeMensili],
   );
 
+  // Vista mese (giornaliero): accordion per dipendente con riepilogo + giorni del mese.
+  interface RiepilogoDipendente {
+    dipendenteId: string;
+    nome: string;
+    oreLavorate: number;
+    giorniLavorati: number;
+    giorniFerie: number;
+    giorniMalattia: number;
+    giorniRiposo: number;
+    costoTot: number;
+    turniOrdinati: Turno[];
+  }
+  const riepilogoMese = useMemo<RiepilogoDipendente[]>(() => {
+    if (!isVistaMese) return [];
+    const perDip = new Map<string, Turno[]>();
+    for (const t of turni) {
+      if (t.mensile) continue;
+      const arr = perDip.get(t.dipendente_id);
+      if (arr) arr.push(t);
+      else perDip.set(t.dipendente_id, [t]);
+    }
+    const righe: RiepilogoDipendente[] = [];
+    for (const [dipendenteId, elenco] of perDip) {
+      const turniOrdinati = [...elenco].sort((x, y) => x.data_turno.localeCompare(y.data_turno));
+      let oreLavorate = 0, giorniLavorati = 0, giorniFerie = 0, giorniMalattia = 0, giorniRiposo = 0, costoTot = 0;
+      for (const t of turniOrdinati) {
+        const tipo = t.tipo_giorno ?? "turno";
+        if (tipo === "turno") {
+          giorniLavorati++;
+          const ore = calcolaOreTotali(t);
+          oreLavorate += ore;
+          const std = t.costo_orario ?? 0;
+          const ext = t.costo_orario_extra ?? std;
+          const oreExt = t.ore_extra ?? 0;
+          costoTot += std * (ore - oreExt) + ext * oreExt;
+        } else if (tipo === "ferie") { giorniFerie++; costoTot += t.importo_a_carico ?? 0; }
+        else if (tipo === "malattia") { giorniMalattia++; costoTot += t.importo_a_carico ?? 0; }
+        else if (tipo === "riposo") { giorniRiposo++; }
+      }
+      righe.push({
+        dipendenteId,
+        nome: nomePerId[dipendenteId] ?? "",
+        oreLavorate: Math.round(oreLavorate * 100) / 100,
+        giorniLavorati, giorniFerie, giorniMalattia, giorniRiposo,
+        costoTot: Math.round(costoTot * 100) / 100,
+        turniOrdinati,
+      });
+    }
+    return righe.sort((x, y) => x.nome.localeCompare(y.nome));
+  }, [isVistaMese, turni, nomePerId]);
+
   const fmtSett = `${lunedi.getDate()} ${MESI[lunedi.getMonth()]} – ${addDays(lunedi, 6).getDate()} ${MESI[addDays(lunedi, 6).getMonth()]}`;
 
   return (
@@ -965,18 +1026,104 @@ function TurniBody() {
         ))}
       </div>
 
+      {/* Toggle vista: settimana vs mese, solo dentro Giornalieri */}
+      {!isMensile && (
+        <div className="flex gap-1 rounded-xl border bg-card p-1">
+          {([
+            { k: "settimana" as Vista, l: "Settimana" },
+            { k: "mese" as Vista, l: "Mese" },
+          ]).map((s) => (
+            <button
+              key={s.k}
+              onClick={() => setVista(s.k)}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors ${
+                vista === s.k ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted"
+              }`}
+            >
+              {s.l}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Selettore periodo */}
       <div className="flex items-center justify-between rounded-2xl border bg-card px-2 py-2">
         <button onClick={navPrev} className="rounded-full p-2 active:bg-muted">
           <ChevronLeft className="size-5" />
         </button>
-        <span className="text-sm font-semibold capitalize">{isMensile ? fmtMese(meseBase) : fmtSett}</span>
+        <span className="text-sm font-semibold capitalize">{isMensile || isVistaMese ? fmtMese(meseBase) : fmtSett}</span>
         <button onClick={navNext} className="rounded-full p-2 active:bg-muted">
           <ChevronRight className="size-5" />
         </button>
       </div>
 
-      {isMensile ? (
+      {isVistaMese ? (
+        // ── Vista mese (giornaliero, accordion per dipendente) ──────────────────
+        <div className="space-y-2.5">
+          {loading ? (
+            <div className="space-y-2.5">
+              {[0, 1].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-xl border bg-muted/40" />)}
+            </div>
+          ) : riepilogoMese.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Nessun turno per questo mese.</p>
+          ) : (
+            riepilogoMese.map((r) => {
+              const espanso = dipEspanso === r.dipendenteId;
+              return (
+                <div key={r.dipendenteId} className="overflow-hidden rounded-xl border bg-card">
+                  <button
+                    onClick={() => setDipEspanso(espanso ? null : r.dipendenteId)}
+                    className="flex w-full items-center gap-3 p-3.5 text-left active:bg-muted/40"
+                  >
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                      {r.nome.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{r.nome}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {fmtOre(r.oreLavorate)} · {r.giorniLavorati}g lavorati
+                        {r.giorniFerie > 0 && <span> · {r.giorniFerie}g ferie</span>}
+                        {r.giorniMalattia > 0 && <span> · {r.giorniMalattia}g malattia</span>}
+                        {r.costoTot > 0 && <span className="text-sky-700 dark:text-sky-400"> · {fmtEuro(r.costoTot)}</span>}
+                      </p>
+                    </div>
+                    <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${espanso ? "rotate-180" : ""}`} />
+                  </button>
+                  {espanso && (
+                    <div className="space-y-2 border-t border-border p-3">
+                      {r.turniOrdinati.map((t) => {
+                        const statoNonTurno = (t.tipo_giorno ?? "turno") !== "turno";
+                        const giorno = t.data_turno.split("-")[2];
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => {
+                              if (statoNonTurno) { setEditStatoGiorno(t); setStatoGiornoDialogOpen(true); }
+                              else { setEditTurno(t); setDialogOpen(true); }
+                            }}
+                            className="flex w-full items-center gap-2.5 rounded-lg py-1 text-left active:bg-muted/40"
+                          >
+                            <span className="w-6 shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{giorno}</span>
+                            {statoNonTurno ? (
+                              <span className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${TIPO_GIORNO_BADGE[t.tipo_giorno as Exclude<TipoGiorno, "turno">]}`}>
+                                {TIPO_GIORNO_LABEL[t.tipo_giorno as TipoGiorno]}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                {orarioTurno(t)} · {fmtOre(calcolaOreTotali(t))}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : isMensile ? (
         // ── Vista mensile ──────────────────────────────────────────────────────
         <>
           {costoMeseTot > 0 && (
