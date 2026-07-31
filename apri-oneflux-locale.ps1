@@ -20,21 +20,10 @@ function Test-Servizio($url) {
     } catch { return $false }
 }
 
-$workerSu   = Test-Servizio "http://127.0.0.1:8000/health"
-$frontendSu = Test-Servizio "http://localhost:3000"
-
-if ($workerSu -and $frontendSu) {
-    Start-Process $paginaDaAprire
-    exit 0
-}
-
-Write-Host ""
-Write-Host "  ONEFLUX - avvio ambiente locale" -ForegroundColor Cyan
-Write-Host "  ATTENZIONE: connesso al DB cloud REALE dei clienti." -ForegroundColor Yellow
-Write-Host ""
-
-# Preflight: senza queste il worker muore all'avvio (guard fail-closed) e il
-# frontend risponde "Servizio momentaneamente non disponibile" dopo il login.
+# Il preflight gira SEMPRE, anche a servizi gia' attivi: una config sbagliata
+# (porta o chiave) lascia i servizi su e apparentemente sani, ma l'app risponde
+# "Servizio temporaneamente non raggiungibile" al login. Uscire prima dei
+# controlli renderebbe invisibile proprio il caso che si vuole diagnosticare.
 $envRoot = Join-Path $root ".env"
 $envWeb  = Join-Path $root "apps\web\.env.local"
 
@@ -59,13 +48,36 @@ if ($keyWorker -and $keyWeb -and $keyWorker -ne $keyWeb) {
     $problemi += "le due WORKER_SECRET_KEY sono diverse -> il worker risponde 401 a ogni chiamata"
 }
 
+# Il worker viene avviato sulla 8000: se WORKER_URL punta altrove, Next.js chiama
+# una porta vuota e mostra "Servizio temporaneamente non raggiungibile" al login.
+$workerUrl = Get-EnvValue $envWeb "WORKER_URL"
+if ([string]::IsNullOrWhiteSpace($workerUrl)) {
+    $problemi += "WORKER_URL manca in apps\web\.env.local (atteso http://127.0.0.1:8000)"
+} elseif ($workerUrl -notmatch ":8000\b") {
+    $problemi += "WORKER_URL punta a '$workerUrl' ma il worker gira sulla 8000 -> 'Servizio temporaneamente non raggiungibile' al login"
+}
+
 if ($problemi.Count -gt 0) {
-    Write-Host "  Configurazione incompleta:" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  ONEFLUX - configurazione da sistemare" -ForegroundColor Red
     foreach ($p in $problemi) { Write-Host "    - $p" -ForegroundColor Red }
     Write-Host ""
     Read-Host "  Premi INVIO per chiudere"
     exit 1
 }
+
+$workerSu   = Test-Servizio "http://127.0.0.1:8000/health"
+$frontendSu = Test-Servizio "http://localhost:3000"
+
+if ($workerSu -and $frontendSu) {
+    Start-Process $paginaDaAprire
+    exit 0
+}
+
+Write-Host ""
+Write-Host "  ONEFLUX - avvio ambiente locale" -ForegroundColor Cyan
+Write-Host "  ATTENZIONE: connesso al DB cloud REALE dei clienti." -ForegroundColor Yellow
+Write-Host ""
 
 if (-not $workerSu) {
     Write-Host "  Avvio worker    -> http://127.0.0.1:8000" -ForegroundColor Green
