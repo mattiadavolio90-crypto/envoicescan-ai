@@ -9,6 +9,10 @@
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
+# localhost:3000 e' la landing pubblica, non l'app: si apre la pagina su cui si
+# sta lavorando. Cambiala quando cambia la feature in corso.
+$paginaDaAprire = "http://localhost:3000/agenda?layer=personale"
+
 function Test-Servizio($url) {
     try {
         $r = Invoke-WebRequest -Uri $url -TimeoutSec 3 -UseBasicParsing
@@ -20,7 +24,7 @@ $workerSu   = Test-Servizio "http://127.0.0.1:8000/health"
 $frontendSu = Test-Servizio "http://localhost:3000"
 
 if ($workerSu -and $frontendSu) {
-    Start-Process "http://localhost:3000"
+    Start-Process $paginaDaAprire
     exit 0
 }
 
@@ -102,8 +106,8 @@ foreach ($i in 1..60) {
 }
 
 if ($pronti) {
-    Write-Host "  Pronto." -ForegroundColor Green
-    Start-Process "http://localhost:3000"
+    Write-Host "  Pronto -> $paginaDaAprire" -ForegroundColor Green
+    Start-Process $paginaDaAprire
     Start-Sleep -Seconds 2
 } else {
     Write-Host ""
