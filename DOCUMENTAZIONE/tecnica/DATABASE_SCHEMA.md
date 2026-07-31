@@ -354,20 +354,54 @@ Indici: `(ristorante_id, created_at DESC)`, `(operation_type)`.
 
 Migrazione automatica da `note_diario` → `diario_eventi` nella migration SQL.
 
+### `dipendenti` — Anagrafica staff
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | UUID (PK) | |
+| ristorante_id | UUID (FK CASCADE) | |
+| nome | TEXT NOT NULL | Indice univoco parziale `(ristorante_id, lower(trim(nome))) WHERE attivo=TRUE` — un disattivato non blocca la creazione di un omonimo |
+| costo_orario_default | NUMERIC (nullable) | €/h di prefill nei dialog turno |
+| attivo | BOOLEAN DEFAULT TRUE | Soft-disattivazione (non soft-delete: niente `deleted_at`) — un dipendente disattivato resta referenziato dai turni storici |
+| created_at / updated_at | TIMESTAMPTZ | |
+
 ### `turni_personale` — Turni staff
 
 | Colonna | Tipo | Note |
 |---------|------|------|
-| id | BIGSERIAL (PK) | |
+| id | UUID (PK) | |
 | ristorante_id | UUID (FK CASCADE) | |
 | user_id | UUID | |
-| nome | TEXT NOT NULL | Nome dipendente (libero) |
+| dipendente_id | UUID (FK `dipendenti`, RESTRICT) | Dal 30/7/2026 sostituisce il vecchio campo `nome` libero |
 | data_turno | DATE | |
-| ora_inizio | TIME | |
-| ora_fine | TIME | |
-| ore_extra | NUMERIC(5,2) DEFAULT 0 | Di cui ore straordinario |
-| costo_orario | NUMERIC(6,2) (nullable) | €/h, opzionale |
+| ora_inizio / ora_fine | TIME | Turno giornaliero (ignorati se `mensile=TRUE`) |
+| ora_inizio2 / ora_fine2 | TIME (nullable) | Secondo slot per turno spezzato |
+| ore_extra | NUMERIC DEFAULT 0 | **Additive**, non un sottoinsieme delle ore ordinarie — ordinario = ore_totali - ore_extra |
+| costo_orario / costo_orario_extra | NUMERIC (nullable) | €/h; se `costo_orario_extra` è NULL si usa `costo_orario` anche per le ore extra |
+| tipo_giorno | TEXT DEFAULT 'turno' | `turno` \| `riposo` \| `ferie` \| `malattia`. Righe non-`turno` non hanno orari (sono uno stato-giorno esplicito, non un turno vuoto) |
+| importo_a_carico | NUMERIC (nullable) | Solo per `ferie`/`malattia`; sommato a parte in `costo_assenze_a_carico`, mai in `costo_dipendenti` (per non falsare il MOL) |
+| mensile | BOOLEAN DEFAULT FALSE | TRUE = riga aggregata da busta paga invece che turno giornaliero. Esclusività giornaliero/mensile per dipendente+mese verificata a livello applicativo |
+| ore_dichiarate / lordo_mensile / importo_extra | NUMERIC (nullable) | Solo se `mensile=TRUE`: ore totali (già ord+extra) e lordo del mese dalla busta paga reale, non ricalcolati da tariffa |
 | note | TEXT (nullable) | |
+| created_at | TIMESTAMPTZ | |
+
+Nessun soft-delete su `turni_personale` (DELETE è hard). `_ore_turno` (condivisa da Personale e Margini, in `services/fastapi_worker.py`) non gestisce turni notturni a cavallo di mezzanotte — bug pre-esistente noto, fuori scope.
+
+### `regole_turni_ricorrenti` — Template turni ricorrenti
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | UUID (PK) | |
+| ristorante_id | UUID (FK CASCADE) | |
+| dipendente_id | UUID (FK `dipendenti`, CASCADE) | Puro template: CASCADE qui, a differenza di `turni_personale.dipendente_id` (RESTRICT) |
+| giorno_settimana | SMALLINT | 0=lunedì … 6=domenica (convenzione `date.weekday()`) |
+| tipo_giorno | TEXT | Solo `turno` o `riposo` — le regole non generano `ferie`/`malattia` |
+| ora_inizio / ora_fine / ora_inizio2 / ora_fine2 | TEXT (nullable) | Richiesti se `tipo_giorno='turno'`, vietati se `riposo` |
+| costo_orario | NUMERIC (nullable) | |
+| attiva | BOOLEAN DEFAULT TRUE | |
+| created_at / updated_at | TIMESTAMPTZ | |
+
+`POST /api/workspace/regole-turni/genera` materializza le regole attive in righe `turni_personale` per un intervallo di date (max 92 giorni), saltando le coppie `(dipendente_id, data_turno)` già occupate. Le regole `riposo` non generano righe.
 
 ### `inventario_voci` — Giacenze
 
