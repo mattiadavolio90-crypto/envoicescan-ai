@@ -65,10 +65,15 @@ if (-not (Test-Path (Join-Path $root "apps\web\node_modules"))) {
 
 # ── Worker FastAPI. --reload perche' senza di esso resta in memoria il codice
 #    vecchio e sembra che le modifiche non abbiano effetto.
+#
+#    ENABLE_INLINE_QUEUE_PROCESSOR=0: il worker, se lasciato ai default, processa
+#    la coda fatture dei clienti veri ogni 30s sul DB cloud di produzione. In
+#    locale sarebbe in concorrenza con Railway sulle stesse fatture. L'app resta
+#    identica: cambia solo che il lavoro di produzione lo fa Railway, da solo.
 Write-Host "  Avvio worker    -> http://127.0.0.1:8000" -ForegroundColor Green
 Start-Process powershell -ArgumentList @(
     "-NoExit", "-Command",
-    "Set-Location '$root'; `$host.UI.RawUI.WindowTitle='ONEFLUX worker :8000'; python -m uvicorn services.fastapi_worker:app --host 127.0.0.1 --port 8000 --reload"
+    "Set-Location '$root'; `$host.UI.RawUI.WindowTitle='ONEFLUX worker :8000'; `$env:ENABLE_INLINE_QUEUE_PROCESSOR='0'; python -m uvicorn services.fastapi_worker:app --host 127.0.0.1 --port 8000 --reload"
 )
 
 # ── Il frontend chiama il worker gia' durante il primo render: se parte prima,
