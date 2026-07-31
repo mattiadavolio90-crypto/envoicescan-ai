@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CopyPlus, CalendarOff } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CopyPlus, CalendarOff, Maximize2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { VistaMensileGrid } from "./personale-vista-mensile";
+import { VistaMensileGrid, settimaneDelMese, giorniDelMese, type SettimanaMese } from "./personale-vista-mensile";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -97,19 +97,6 @@ const DIP_PALETTE = [
 function getDipColor(nomi: string[], nome: string) {
   const idx = nomi.indexOf(nome);
   return DIP_PALETTE[idx >= 0 ? idx % DIP_PALETTE.length : 0];
-}
-
-function lunediDi(iso: string): Date {
-  const d = new Date(iso + "T00:00:00");
-  const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
-  d.setDate(d.getDate() - dow);
-  return d;
-}
-
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
 }
 
 export function toISO(d: Date): string {
@@ -1019,24 +1006,18 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClos
 
 // ─── Selettore periodo ────────────────────────────────────────────────────────
 
-// Modalità è l'unico interruttore temporale: giornaliero = settimana navigabile
-// (turno per turno), mensile = totali aggregati del mese. Niente più toggle
-// settimana/mese separato (era ridondante con la modalità).
+// Modalità è l'unico interruttore della pagina: giornaliero = griglia
+// dipendenti×giorni del mese, mensile = totali aggregati da busta paga.
+// Il periodo è sempre il mese; la settimana è uno zoom, non una vista a parte.
 type Modalita = "giornaliero" | "mensile";
-
-// Vista è ortogonale a Modalita e si applica solo dentro "giornaliero":
-// settimana = griglia attuale turno-per-turno navigabile, mese = griglia
-// dipendenti×giorni dell'intero mese (Fase 4a, sola desktop).
-export type Vista = "settimana" | "mese";
 
 // ─── Tab principale ───────────────────────────────────────────────────────────
 
 export function PersonaleTab() {
   const oggi = toISO(new Date());
   const [modalita, setModalita] = useState<Modalita>("giornaliero");
-  const [vista, setVista] = useState<Vista>("settimana");
-  const [lunedi, setLunedi] = useState<Date>(() => lunediDi(oggi));
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
+  const [settimanaZoom, setSettimanaZoom] = useState<number | null>(null);
   const [risposta, setRisposta] = useState<PersonaleResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1053,19 +1034,17 @@ export function PersonaleTab() {
   const [editStatoGiorno, setEditStatoGiorno] = useState<Turno | null>(null);
 
   const isMensile = modalita === "mensile";
-  const isVistaMese = !isMensile && vista === "mese";
 
+  // Il range caricato è sempre il mese intero, in entrambe le modalità: lo zoom
+  // settimana filtra solo ciò che si rende, quindi non provoca una nuova fetch.
   const [da, fine] = (() => {
-    // Modalità mensile (inserimento aggregato) = sempre mese intero.
-    // Modalità giornaliero: vista settimana = 7 giorni navigabili,
-    // vista mese = mese intero (stesso range della modalità mensile).
-    if (!isMensile && vista === "settimana") {
-      return [toISO(lunedi), toISO(addDays(lunedi, 6))];
-    }
     const [ay, am] = meseBase.split("-").map(Number);
     const ultimoGiorno = new Date(ay, am, 0).getDate();
     return [`${meseBase}-01`, `${meseBase}-${String(ultimoGiorno).padStart(2, "0")}`];
   })();
+
+  const settimane = settimaneDelMese(meseBase);
+  const settimanaAttiva = settimanaZoom != null ? settimane[settimanaZoom] ?? null : null;
 
   const load = useCallback(async (d: string, f: string, soloMensile: boolean) => {
     setLoading(true);
@@ -1084,23 +1063,30 @@ export function PersonaleTab() {
 
   useEffect(() => { load(da, fine, isMensile); }, [da, fine, isMensile, load]);
 
-  // Vista settimana naviga di 7 giorni, tutte le altre combinazioni (mensile
-  // aggregato, o giornaliero in vista mese) navigano di mese intero.
-  function navPrev() {
-    if (!isMensile && vista === "settimana") setLunedi(d => addDays(d, -7));
-    else {
-      const [ay, am] = meseBase.split("-").map(Number);
-      const prev = new Date(ay, am - 2, 1);
-      setMeseBase(`${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`);
+  // Esc esce dallo zoom, ma solo se non c'è un dialog aperto: lì Esc deve
+  // chiudere il dialog e basta.
+  useEffect(() => {
+    if (settimanaZoom == null || dialogOpen || mensileDialogOpen || statoGiornoDialogOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSettimanaZoom(null);
     }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [settimanaZoom, dialogOpen, mensileDialogOpen, statoGiornoDialogOpen]);
+
+  // Cambiando mese lo zoom si azzera: l'indice di settimana non ha continuità
+  // fra mesi diversi (le settimane non si allineano e il mese nuovo può averne meno).
+  function navPrev() {
+    const [ay, am] = meseBase.split("-").map(Number);
+    const prev = new Date(ay, am - 2, 1);
+    setMeseBase(`${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`);
+    setSettimanaZoom(null);
   }
   function navNext() {
-    if (!isMensile && vista === "settimana") setLunedi(d => addDays(d, 7));
-    else {
-      const [ay, am] = meseBase.split("-").map(Number);
-      const next = new Date(ay, am, 1);
-      setMeseBase(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
-    }
+    const [ay, am] = meseBase.split("-").map(Number);
+    const next = new Date(ay, am, 1);
+    setMeseBase(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+    setSettimanaZoom(null);
   }
 
   async function elimina(t: Turno) {
@@ -1117,14 +1103,18 @@ export function PersonaleTab() {
     load(da, fine, isMensile);
   }
 
-  async function copiaSettimana() {
+  // Il worker copia [da, a] shiftato di -7 giorni: il range inviato deve essere
+  // la sola settimana zoomata, mai il mese (copierebbe 30 giorni sfalsati).
+  async function copiaSettimana(sett: SettimanaMese) {
     if (!confirm("Copiare i turni della settimana precedente su questa settimana? I giorni che hanno già turni verranno saltati.")) return;
+    const sDa = sett.giorni[0];
+    const sA = sett.giorni[sett.giorni.length - 1];
     setCopiando(true);
     try {
       const res = await fetch("/api/workspace/personale/copia-settimana", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ da, a: fine }),
+        body: JSON.stringify({ da: sDa, a: sA }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.detail ?? "Errore");
@@ -1142,12 +1132,10 @@ export function PersonaleTab() {
   }
 
   async function esportaExcel() {
-    // Deriva il mese dal range effettivamente visualizzato (non da meseBase,
-    // che resta fermo al mese d'ingresso quando si naviga in vista settimana).
-    const meseExport = da.slice(0, 7);
+    // L'export è sempre del mese intero, anche con una settimana in zoom.
     setEsportandoExcel(true);
     try {
-      const res = await fetch(`/api/workspace/personale/export-mensile?mese=${meseExport}`);
+      const res = await fetch(`/api/workspace/personale/export-mensile?mese=${meseBase}`);
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error ?? j.detail ?? "Errore export");
@@ -1156,7 +1144,7 @@ export function PersonaleTab() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `personale_mensile_${meseExport.replace("-", "")}.xlsx`;
+      a.download = `personale_mensile_${meseBase.replace("-", "")}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Excel scaricato");
@@ -1263,13 +1251,12 @@ export function PersonaleTab() {
   const giorniConTurni = new Set(turni.map(t => t.data_turno)).size;
   const mediaGiornaliera = giorniConTurni > 0 ? totaleOre / giorniConTurni : 0;
 
-  const giorniSettimana = Array.from({ length: 7 }, (_, i) => toISO(addDays(lunedi, i)));
-  const giorniMese = (() => {
-    const [ay, am] = meseBase.split("-").map(Number);
-    const n = new Date(ay, am, 0).getDate();
-    return Array.from({ length: n }, (_, i) => `${meseBase}-${String(i + 1).padStart(2, "0")}`);
-  })();
-  const giorniDialogoTurno = isVistaMese ? giorniMese : giorniSettimana;
+  // In zoom i chip-giorno del dialog sono i 7 della settimana; fuori zoom sono
+  // tutti quelli del mese, perché il click può arrivare da un giorno qualsiasi.
+  const giorniDialogoTurno = settimanaAttiva?.giorni ?? giorniDelMese(meseBase);
+  // Il giorno preselezionato deve essere fra i chip mostrati, altrimenti il
+  // dialog salva su un giorno che l'utente non vede selezionato.
+  const giornoDefaultDialogo = giorniDialogoTurno.includes(oggi) ? oggi : giorniDialogoTurno[0];
 
   return (
     <div className="space-y-4">
@@ -1319,34 +1306,18 @@ export function PersonaleTab() {
           <button onClick={navPrev} className="p-1.5 hover:bg-muted rounded-l-md">
             <ChevronLeft className="size-4" />
           </button>
-          <span className="px-3 text-sm font-medium min-w-[160px] text-center capitalize">
-            {isMensile || isVistaMese ? fmtMese(meseBase) : `${fmtData(da)} – ${fmtData(fine)}`}
+          <span className="px-3 text-sm font-medium min-w-[190px] text-center capitalize">
+            {settimanaAttiva ? `${settimanaAttiva.label} ${fmtMese(meseBase)}` : fmtMese(meseBase)}
           </span>
           <button onClick={navNext} className="p-1.5 hover:bg-muted rounded-r-md">
             <ChevronRight className="size-4" />
           </button>
         </div>
 
-        {/* Settimana/Mese: solo dentro "Turni giornalieri", scelta forma della vista */}
-        {!isMensile && (
-          <div className="flex rounded-md border border-border overflow-hidden">
-            <button
-              onClick={() => setVista("settimana")}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                vista === "settimana" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
-              }`}
-            >
-              Settimana
-            </button>
-            <button
-              onClick={() => setVista("mese")}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                vista === "mese" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
-              }`}
-            >
-              Mese
-            </button>
-          </div>
+        {settimanaAttiva && (
+          <Button variant="outline" size="sm" onClick={() => setSettimanaZoom(null)}>
+            <Maximize2 className="size-4 mr-1.5" />Tutto il mese
+          </Button>
         )}
 
         {/* Destra: azioni */}
@@ -1357,8 +1328,8 @@ export function PersonaleTab() {
             </Button>
           ) : (
             <>
-              {vista === "settimana" && (
-                <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
+              {settimanaAttiva && (
+                <Button variant="outline" onClick={() => copiaSettimana(settimanaAttiva)} disabled={copiando}>
                   <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
                 </Button>
               )}
@@ -1380,7 +1351,7 @@ export function PersonaleTab() {
                 <Download className="size-4 mr-1.5" />{esportandoExcel ? "Esporto…" : "Esporta Excel"}
               </Button>
 
-              <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
+              <Button onClick={() => { setEditTurno(null); setDataDefault(giornoDefaultDialogo); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
                 <Plus className="size-4 mr-1.5" />Aggiungi turno
               </Button>
             </>
@@ -1389,10 +1360,10 @@ export function PersonaleTab() {
       </div>
 
       {/* ── KPI cards ── */}
-      {(Object.keys(monteOre).length > 0 || isVistaMese) && (
+      {(Object.keys(monteOre).length > 0 || !isMensile) && (
         <div className="space-y-3">
-          {/* 3 card principali: in vista mese senza turni si mostrano comunque a zero,
-              la griglia sotto resta l'elemento principale della vista. */}
+          {/* 3 card principali: a mese vuoto restano nascoste, ma il wrapper resta
+              perché la griglia sotto è l'elemento principale della vista. */}
           {Object.keys(monteOre).length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Card 1: Ore ordinarie */}
@@ -1450,14 +1421,17 @@ export function PersonaleTab() {
           </div>
           )}
 
-          {/* Vista mese: griglia dipendenti×giorni. Vista settimana: accordion per dipendente. */}
-          {isVistaMese ? (
+          {/* Griglia dipendenti×giorni del mese. In modalità mensile non ha senso:
+              le righe mensili aggregate non hanno un giorno da piazzare in cella. */}
+          {!isMensile && (
             <VistaMensileGrid
               meseBase={meseBase}
               turni={turni}
               dipendenti={dipendenti}
               nomePerId={nomePerId}
               oggi={oggi}
+              settimanaZoom={settimanaZoom}
+              onZoomSettimana={setSettimanaZoom}
               onNuovoTurno={(dipendenteId, data) => {
                 setEditTurno(null);
                 setDataDefault(data);
@@ -1467,7 +1441,10 @@ export function PersonaleTab() {
               onModificaTurno={t => { setEditTurno(t); setDialogOpen(true); }}
               onModificaStatoGiorno={t => { setEditStatoGiorno(t); setStatoGiornoDialogOpen(true); }}
             />
-          ) : (
+          )}
+
+          {/* Accordion per dipendente: unico posto con note, costo turno, spezzato,
+              importo a carico ed eliminazione — resta sotto la griglia. */}
           <div className="space-y-1">
             {nomi.map(n => {
               const oreN = monteOre[n] ?? 0;
@@ -1568,18 +1545,16 @@ export function PersonaleTab() {
               );
             })}
           </div>
-          )}
         </div>
       )}
 
-      {/* Stati vuoti / caricamento. I turni si vedono espandendo il dipendente sopra (vista settimana) o nella griglia (vista mese). */}
+      {/* Stato vuoto solo in modalità mensile: in giornaliera la griglia con le
+          celle vuote cliccabili è già l'invito ad aggiungere. */}
       {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
-      ) : turni.length === 0 && !isVistaMese ? (
+      ) : turni.length === 0 && isMensile ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
-          {isMensile
-            ? <>Nessun inserimento mensile per {fmtMese(meseBase)}. Usa &ldquo;Inserisci mese&rdquo; per aggiungere i totali da busta paga.</>
-            : <>Nessun turno in questo periodo. Usa &ldquo;Aggiungi turno&rdquo; per iniziare.</>}
+          Nessun inserimento mensile per {fmtMese(meseBase)}. Usa &ldquo;Inserisci mese&rdquo; per aggiungere i totali da busta paga.
         </div>
       ) : null}
 

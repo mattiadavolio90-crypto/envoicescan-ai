@@ -78,15 +78,32 @@ Il criterio "modello giusto per il compito" è già in uso nei sub-agenti
 (`golive-certificatore` su Opus, `categorization-reviewer` su Sonnet). Si
 estende alle fasi di sviluppo ordinario:
 
+**Il default è Opus. Sonnet è l'eccezione**, non il regime normale
+dell'implementazione. Non esiste la regola "si pianifica con Opus e si esegue con
+Sonnet": va deciso fase per fase guardando cosa quella fase contiene davvero.
+
 | Tipo di fase | Modello | Perché |
 |---|---|---|
 | Pianificazione, design, decisioni architetturali | Opus | Ragionamento, trade-off, si sbaglia meno dove costa di più |
-| Debug non ovvio, audit, categorizzazione dubbia | Opus / Sonnet | Serve giudizio, non solo esecuzione |
-| Esecuzione meccanica di una fase già decisa | Sonnet | Più economico, il piano ha già fatto il ragionamento |
+| Debug non ovvio, audit, categorizzazione dubbia | Opus | Serve giudizio, non solo esecuzione |
+| UI nuova da zero, modifiche al worker, scelte di interazione | Opus | È progettazione anche se il piano la chiama "implementazione" |
+| Trascrizione: il piano dice file, riga e cosa sostituire | Sonnet | Più economico, il ragionamento è già stato fatto |
 | Ricerca/scan ampia read-only nel codice | sub-agente `Explore` | Non consuma il contesto della sessione principale |
 
-Indicazione, non legge. Se una fase "meccanica" nasconde una decisione, torna su
-Opus.
+Test secco: se la fase richiede **decisioni** (cosa togliere, dove collocare una
+funzione, come si comporta un'interazione) è Opus, anche se il piano è dettagliato.
+Se richiede **trascrizione** di decisioni già prese, Sonnet basta. Nel dubbio, Opus.
+
+> **Perché questa sezione è stata riscritta (31/7/2026).** La versione precedente
+> presentava "esecuzione meccanica → Sonnet" come binario, con la caveat in nota.
+> Applicata alla lettera su "Ristrutturazione Personale" (fasi 0-5) ha prodotto
+> fasi ciascuna corretta in sé e incoerenti fra loro: una fase ha reintrodotto un
+> toggle che un commento nel codice dichiarava già ridondante, un'altra ha
+> consegnato 5 endpoint funzionanti senza la UI per raggiungerli. Il risultato —
+> "tutte le funzioni ci sono ma la pagina è incasinata" — è costato una sessione
+> intera di audit e ripianificazione. Il code-reviewer di fine fase non intercetta
+> questa classe di problemi: verifica la correttezza *dentro* la fase, mai la
+> coerenza *fra* le fasi.
 
 ---
 
