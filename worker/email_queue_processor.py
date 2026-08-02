@@ -214,6 +214,51 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
     return stats
 
 
+def purge_ricavi_xls_storage(supabase, retention_days: int = 90) -> int:
+    """Rimuove dal bucket Storage 'ricavi-xls' i file di righe done/dead più
+    vecchie di retention_days (GDPR — audit Database 30/7/2026).
+
+    A differenza di fatture_queue.xml_content (colonna DB, purge via RPC SQL),
+    il file XLS vive in Supabase Storage e va rimosso da qui: contiene il
+    fatturato giornaliero completo del cliente, il dato commercialmente più
+    sensibile della coda ricavi, e prima di questo fix non veniva mai ripulito.
+    Rimozione differita (non al mark-done) per conservare una finestra
+    diagnostica su import recenti, stessa scelta di raw_body_sample.
+    """
+    try:
+        cutoff_iso = None
+        from datetime import datetime, timedelta, timezone
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+
+        resp = (
+            supabase.table("ricavi_email_queue")
+            .select("id, storage_path")
+            .in_("status", ["done", "dead"])
+            .lt("created_at", cutoff_iso)
+            .not_.is_("storage_path", "null")
+            .limit(500)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            return 0
+
+        paths = [r["storage_path"] for r in rows if r.get("storage_path")]
+        ids = [r["id"] for r in rows]
+        if not paths:
+            return 0
+
+        supabase.storage.from_(STORAGE_BUCKET).remove(paths)
+        # storage_path azzerato dopo la remove riuscita: segna "già ripulito",
+        # evita di ritentare la remove su un file che non esiste più.
+        supabase.table("ricavi_email_queue").update({"storage_path": None}).in_("id", ids).execute()
+        logger.info("[maint] Purge GDPR: %d file ricavi-xls rimossi da Storage", len(paths))
+        return len(paths)
+    except Exception as exc:
+        logger.warning("[maint] purge_ricavi_xls_storage fallita: %s", exc)
+        return 0
+
+
 # ─── Parser Passbi email-aware (multi-ristorante) ─────────────────────────────
 
 class _RicavoRow:

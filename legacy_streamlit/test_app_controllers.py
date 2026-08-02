@@ -6,7 +6,7 @@ Copertura iniziale: is_admin_or_impersonating
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
-from utils.app_controllers import (
+from legacy_streamlit.app_controllers import (
     is_admin_or_impersonating,
     mostra_pagina_login,
     load_and_setup_session,
@@ -70,7 +70,7 @@ class TestIsAdminOrImpersonating:
         """
         user_is_admin=True e impersonating=False -> True
         """
-        with patch("utils.app_controllers.st.session_state", new={
+        with patch("legacy_streamlit.app_controllers.st.session_state", new={
             "user_is_admin": True,
             "impersonating": False,
         }):
@@ -80,7 +80,7 @@ class TestIsAdminOrImpersonating:
         """
         user_is_admin=False e impersonating=True -> True
         """
-        with patch("utils.app_controllers.st.session_state", new={
+        with patch("legacy_streamlit.app_controllers.st.session_state", new={
             "user_is_admin": False,
             "impersonating": True,
         }):
@@ -90,7 +90,7 @@ class TestIsAdminOrImpersonating:
         """
         user_is_admin=True e impersonating=True -> True
         """
-        with patch("utils.app_controllers.st.session_state", new={
+        with patch("legacy_streamlit.app_controllers.st.session_state", new={
             "user_is_admin": True,
             "impersonating": True,
         }):
@@ -100,7 +100,7 @@ class TestIsAdminOrImpersonating:
         """
         user_is_admin=False e impersonating=False -> False
         """
-        with patch("utils.app_controllers.st.session_state", new={
+        with patch("legacy_streamlit.app_controllers.st.session_state", new={
             "user_is_admin": False,
             "impersonating": False,
         }):
@@ -110,14 +110,14 @@ class TestIsAdminOrImpersonating:
         """
         Session state senza chiavi -> False senza KeyError
         """
-        with patch("utils.app_controllers.st.session_state", new={}):
+        with patch("legacy_streamlit.app_controllers.st.session_state", new={}):
             assert is_admin_or_impersonating() is False
 
     def test_admin_none(self):
         """
         user_is_admin=None (falsy) e impersonating=False -> False
         """
-        with patch("utils.app_controllers.st.session_state", new={
+        with patch("legacy_streamlit.app_controllers.st.session_state", new={
             "user_is_admin": None,
             "impersonating": False,
         }):
@@ -142,22 +142,22 @@ class TestAppControllersDB:
 
         fake_cols = [_FakeContext(), _FakeContext(), _FakeContext()]
 
-        with patch("utils.app_controllers.st.session_state", new=session_state), \
-             patch("utils.app_controllers.st.columns", return_value=fake_cols), \
-             patch("utils.app_controllers.st.button", return_value=False), \
-             patch("utils.app_controllers.st.form", return_value=_FakeContext()), \
-             patch("utils.app_controllers.st.form_submit_button", return_value=True), \
-             patch("utils.app_controllers.st.text_input", side_effect=["user@test.com", "pwd123456"]), \
-             patch("utils.app_controllers.st.spinner", return_value=_FakeContext()), \
-             patch("utils.app_controllers.verifica_credenziali", return_value=({"id": "u1", "email": "user@test.com"}, None)), \
+        with patch("legacy_streamlit.app_controllers.st.session_state", new=session_state), \
+             patch("legacy_streamlit.app_controllers.st.columns", return_value=fake_cols), \
+             patch("legacy_streamlit.app_controllers.st.button", return_value=False), \
+             patch("legacy_streamlit.app_controllers.st.form", return_value=_FakeContext()), \
+             patch("legacy_streamlit.app_controllers.st.form_submit_button", return_value=True), \
+             patch("legacy_streamlit.app_controllers.st.text_input", side_effect=["user@test.com", "pwd123456"]), \
+             patch("legacy_streamlit.app_controllers.st.spinner", return_value=_FakeContext()), \
+             patch("legacy_streamlit.app_controllers.verifica_credenziali", return_value=({"id": "u1", "email": "user@test.com"}, None)), \
              patch("services.session_service.crea_sessione", return_value="tok-multi") as mock_crea, \
-             patch("utils.app_controllers.time.sleep", return_value=None), \
-             patch("utils.app_controllers.st.rerun", side_effect=RuntimeError("rerun")), \
-             patch("utils.app_controllers.st.markdown"), \
-             patch("utils.app_controllers.st.warning"), \
-             patch("utils.app_controllers.st.error"), \
-             patch("utils.app_controllers.st.success"), \
-             patch("utils.app_controllers.render_oh_yeah_header"):
+             patch("legacy_streamlit.app_controllers.time.sleep", return_value=None), \
+             patch("legacy_streamlit.app_controllers.st.rerun", side_effect=RuntimeError("rerun")), \
+             patch("legacy_streamlit.app_controllers.st.markdown"), \
+             patch("legacy_streamlit.app_controllers.st.warning"), \
+             patch("legacy_streamlit.app_controllers.st.error"), \
+             patch("legacy_streamlit.app_controllers.st.success"), \
+             patch("legacy_streamlit.app_controllers.render_oh_yeah_header"):
             try:
                 mostra_pagina_login(mock_supabase, mock_cookie_manager)
             except RuntimeError as e:
@@ -183,9 +183,9 @@ class TestAppControllersDB:
         })
         fake_query_params = _FakeQueryParams({"logout": "1"})
 
-        with patch("utils.app_controllers.st.session_state", new=session_state), \
-             patch("utils.app_controllers.st.query_params", new=fake_query_params), \
-             patch("utils.app_controllers.st.rerun", side_effect=RuntimeError("rerun")):
+        with patch("legacy_streamlit.app_controllers.st.session_state", new=session_state), \
+             patch("legacy_streamlit.app_controllers.st.query_params", new=fake_query_params), \
+             patch("legacy_streamlit.app_controllers.st.rerun", side_effect=RuntimeError("rerun")):
             try:
                 load_and_setup_session(mock_supabase, MagicMock(), cookie_manager=None)
             except RuntimeError as e:
@@ -228,15 +228,15 @@ class TestAppControllersDB:
                 return [_FakeContext() for _ in range(spec)]
             return [_FakeContext() for _ in range(len(spec))]
 
-        with patch("utils.app_controllers.st.session_state", new=session_state), \
-             patch("utils.app_controllers.st.columns", side_effect=_fake_columns), \
-               patch("utils.app_controllers.ADMIN_EMAILS", new=["md@oneflux.it", "cliente@demo.it"]), \
-               patch("utils.app_controllers.st.button", return_value=False), \
-             patch("utils.app_controllers.render_sidebar"), \
-             patch("utils.app_controllers.render_oh_yeah_header"), \
-             patch("utils.app_controllers.st.markdown"), \
-             patch("utils.app_controllers.st.warning"), \
-             patch("utils.app_controllers.st.success"):
+        with patch("legacy_streamlit.app_controllers.st.session_state", new=session_state), \
+             patch("legacy_streamlit.app_controllers.st.columns", side_effect=_fake_columns), \
+               patch("legacy_streamlit.app_controllers.ADMIN_EMAILS", new=["md@oneflux.it", "cliente@demo.it"]), \
+               patch("legacy_streamlit.app_controllers.st.button", return_value=False), \
+             patch("legacy_streamlit.app_controllers.render_sidebar"), \
+             patch("legacy_streamlit.app_controllers.render_oh_yeah_header"), \
+             patch("legacy_streamlit.app_controllers.st.markdown"), \
+             patch("legacy_streamlit.app_controllers.st.warning"), \
+             patch("legacy_streamlit.app_controllers.st.success"):
             user = render_sidebar_and_header(mock_supabase, MagicMock(), mock_cookie_manager)
 
         mock_supabase.table.assert_any_call("users")

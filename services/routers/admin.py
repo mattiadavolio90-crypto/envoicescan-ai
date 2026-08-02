@@ -2558,16 +2558,12 @@ def admin_elimina_cliente(
     if email_target in admin_emails:
         raise HTTPException(status_code=403, detail="Non puoi eliminare account admin")
 
-    # Sedi del cliente: servono per ripulire ricavi_email_queue PRIMA di ristoranti
-    # (il campo ristorante_id li referenzia SENZA on delete cascade — a differenza
-    # di ricavi_email_sender_map che ce l'ha — quindi righe pendenti in coda
-    # bloccherebbero la delete di ristoranti con una violazione FK, lasciando
-    # l'account a metà cancellato: ristoranti/users non rimossi ma tutto il resto
-    # si', uno stato inconsistente e un problema GDPR se il cliente ha chiesto
-    # la cancellazione).
-    sedi_resp = sb.table("ristoranti").select("id").eq("user_id", cliente_id).execute()
-    sedi_ids = [r["id"] for r in (sedi_resp.data or [])]
-
+    # NB (corretto 30/7/2026, audit Database): ricavi_email_queue.ristorante_id
+    # e user_id hanno ENTRAMBE FK ON DELETE CASCADE (verificato sul DB live,
+    # migration 20260605180000) — la delete di ristoranti/users la propaga da
+    # sola, nessuna pulizia manuale necessaria qui. Idem fatture_queue dal
+    # 30/7/2026: FK CASCADE su user_id/ristorante_id, propagata dalla delete
+    # di users in fondo a questa funzione.
     deleted: dict = {}
     for table, col in [
         ("fatture", "user_id"),
@@ -2582,8 +2578,6 @@ def admin_elimina_cliente(
         ("ingredienti_workspace", "user_id"),
     ]:
         try:
-            if table == "ristoranti" and sedi_ids:
-                sb.table("ricavi_email_queue").delete().in_("ristorante_id", sedi_ids).execute()
             r = sb.table(table).delete().eq(col, cliente_id).execute()
             deleted[table] = len(r.data or [])
         except Exception as exc:

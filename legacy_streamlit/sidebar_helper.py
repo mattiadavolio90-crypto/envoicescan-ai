@@ -38,7 +38,7 @@ def render_sidebar(user_data: dict):
     # ⚠️ SAFETY CHECK: Non renderizzare sidebar se utente non loggato
     if not st.session_state.get('logged_in', False):
         # Nasconde immediatamente la sidebar
-        from utils.ui_helpers import hide_sidebar_css
+        from legacy_streamlit.ui_helpers import hide_sidebar_css
         hide_sidebar_css()
         return
     

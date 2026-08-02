@@ -44,8 +44,8 @@ from config.constants import (
     SESSION_INACTIVITY_HOURS as _SESSION_INACTIVITY_HOURS,
     LAST_SEEN_WRITE_THROTTLE_SECONDS as _LAST_SEEN_WRITE_THROTTLE_SECONDS,
 )
-from utils.ui_helpers import hide_sidebar_css
-from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
+from legacy_streamlit.ui_helpers import hide_sidebar_css
+from legacy_streamlit.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ristorante_helper import add_ristorante_filter
 from utils.text_utils import format_fattura_label
 
@@ -1171,7 +1171,7 @@ def render_dashboard_ui(supabase, logger, user):
             - stats_db       : dict con num_uniche / num_righe / success
             - uploaded_files : lista file caricati da st.file_uploader (può essere [])
     """
-    from utils.ui_helpers import load_css
+    from legacy_streamlit.ui_helpers import load_css
 
     # API key OpenAI
     try:

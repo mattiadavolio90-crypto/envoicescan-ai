@@ -241,9 +241,11 @@ class SvuotaDatiBody(BaseModel):
 # (che propaga il cascade) le lascerebbe orfane. Verificato sullo schema live.
 # NB: `classificazioni_manuali` NON e' qui: nel DB ha righe globali con
 # user_id NULL e non va filtrata per user → la lasciamo intatta.
+# NB: `fatture_queue` NON e' piu' qui dal 30/7/2026 (audit Database): ha FK
+# ON DELETE CASCADE su user_id/ristorante_id, la delete di `users` la propaga
+# da sola.
 _SVUOTA_TABELLE_NO_CASCADE = [
     ("fatture_documenti", "user_id"),
-    ("fatture_queue", "user_id"),
     ("upload_events", "user_id"),
     ("upload_locks", "user_id"),
     ("prodotti_utente", "user_id"),
@@ -359,6 +361,19 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
         except Exception as exc:
             logger.warning("esporta-dati: %s: %s", tabella, exc)
             export[label] = []
+
+    # dipendenti non ha user_id (solo ristorante_id): ramo dedicato, stessa
+    # risoluzione ristorante usata dal resto dell'export.
+    try:
+        ristorante_id = _resolve_ristorante_id(user, sb)
+        if ristorante_id:
+            r = sb.table("dipendenti").select("*").eq("ristorante_id", ristorante_id).execute()
+            export["dipendenti"] = r.data or []
+        else:
+            export["dipendenti"] = []
+    except Exception as exc:
+        logger.warning("esporta-dati: dipendenti: %s", exc)
+        export["dipendenti"] = []
 
     return export
 
