@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { type Briefing, type BriefingAzione } from "@/lib/home";
+import { NON_IGNORABILI } from "@/lib/briefing-shared";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { cn } from "@/lib/utils";
@@ -20,19 +21,6 @@ import { cn } from "@/lib/utils";
 // Effetto typewriter abilitato (spegnibile in 1 riga): solo al primo load del
 // giorno, max ~600ms. Dietro flag perche' deve restare sobrio e veloce.
 const TYPEWRITER_ENABLED = true;
-
-// Topic "incombenza reale" calcolati live dal backend: la card sparisce da sola
-// quando inserisci il dato, e si rigenera ogni giorno finche' manca. "Ignora"
-// qui sarebbe ingannevole (ricomparirebbe al refresh): non lo mostriamo. Devono
-// esserci TUTTI i topic live ricalcolati ad ogni briefing (non solo i dati
-// mensili): anche fatture mancanti e righe da controllare tornano al refresh.
-const NON_IGNORABILI = new Set<string>([
-  "fatturato_mancante",
-  "costo_personale_mancante",
-  "incasso_mancante",
-  "fatture_mancanti",
-  "uncategorized_rows",
-]);
 
 function SeverityIcon({ severity }: { severity: BriefingAzione["severity"] }) {
   if (severity === "error") return <XCircle className="size-5 text-destructive shrink-0" />;

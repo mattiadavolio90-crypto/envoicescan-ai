@@ -11,24 +11,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { type Briefing, type BriefingAzione } from "@/lib/home";
+import { NON_IGNORABILI } from "@/lib/briefing-shared";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { cn } from "@/lib/utils";
 
 // Effetto typewriter sulla narrativa, come la Home desktop: solo al primo load
 // del giorno, durata ~costante.
 const TYPEWRITER_ENABLED = true;
-
-// Topic "incombenza reale" calcolati live: la card sparisce inserendo il dato e
-// si rigenera finche' manca. "Ignora" sarebbe ingannevole -> non lo mostriamo.
-// Deve combaciare con la lista del desktop (home-briefing.tsx): tutti i topic
-// live ricalcolati ad ogni briefing, incluse fatture mancanti e righe da rivedere.
-const NON_IGNORABILI = new Set<string>([
-  "fatturato_mancante",
-  "costo_personale_mancante",
-  "incasso_mancante",
-  "fatture_mancanti",
-  "uncategorized_rows",
-]);
 
 function SeverityIcon({ severity }: { severity: BriefingAzione["severity"] }) {
   if (severity === "error") return <XCircle className="size-5 shrink-0 text-destructive" />;

@@ -44,7 +44,6 @@ from .invoice_service import (
 
 from .db_service import (
     carica_e_prepara_dataframe,
-    ricalcola_prezzi_con_sconti,
     calcola_alert,
     carica_sconti_e_omaggi,
 )
@@ -71,7 +70,6 @@ __all__ = [
     'salva_fattura_processata',
     # DB functions
     'carica_e_prepara_dataframe',
-    'ricalcola_prezzi_con_sconti',
     'calcola_alert',
     'carica_sconti_e_omaggi',
     # Supabase singleton

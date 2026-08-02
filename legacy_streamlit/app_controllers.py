@@ -1,9 +1,9 @@
 ﻿"""
-utils/app_controllers.py
+legacy_streamlit/app_controllers.py
 
-Controller estratti da app.py per ridurre la monoliticità del file principale.
-Zero breaking changes: ogni funzione usa gli stessi st.session_state e produce
-gli stessi side-effect dell'equivalente blocco originale.
+Controller Streamlit legacy, storicamente estratti da app.py (rimosso dal
+repo il 17/7/2026 con la dismissione di Streamlit — vedi CLAUDE.md). Codice
+congelato: nessun chiamante vivo, mantenuto solo con il proprio test.
 
 Struttura:
   - is_admin_or_impersonating()           helper di sessione
@@ -13,9 +13,9 @@ Struttura:
   - render_dashboard_ui(supabase, logger, user)                  → (df_cache, stats_db, uploaded_files)
   - handle_upload_and_ai(supabase, logger, user_id, uploaded_files, df_cache)
 
-Come usarli in app.py (dopo l'inizializzazione di supabase/logger/_cookie_manager):
+Come venivano usati in app.py (storico, app.py non esiste più nel repo):
 
-    from utils.app_controllers import (
+    from legacy_streamlit.app_controllers import (
         is_admin_or_impersonating, mostra_pagina_login,
         load_and_setup_session, render_sidebar_and_header,
         render_dashboard_ui, handle_upload_and_ai,

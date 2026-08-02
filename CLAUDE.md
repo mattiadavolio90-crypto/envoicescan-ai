@@ -28,7 +28,7 @@ nella git history. Il container Railway serve il worker FastAPI.
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` (~7450 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker API | `services/fastapi_worker.py` (~8000 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico (vedi `migrations/_LEGGIMI_STATO.md`) |

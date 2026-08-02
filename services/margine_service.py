@@ -17,19 +17,9 @@ except ImportError:
 from datetime import datetime, timezone
 from config.logger_setup import get_logger
 from config.constants import CATEGORIE_FOOD, CATEGORIE_SPESE_GENERALI, KPI_SOGLIE
+from utils.streamlit_compat import make_cache as _make_cache
 
 logger = get_logger('margine_service')
-
-
-def _make_cache(**kwargs):
-    try:
-        import streamlit as _st
-        return _st.cache_data(**kwargs)
-    except Exception:
-        def _noop(fn):
-            fn.clear = lambda: None
-            return fn
-        return _noop
 
 
 def get_supabase_client():

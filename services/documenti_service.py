@@ -9,19 +9,9 @@ import pandas as pd
 
 from config.logger_setup import get_logger
 from services.db_service import filter_active
+from utils.streamlit_compat import make_cache as _make_cache
 
 logger = get_logger("documenti")
-
-
-def _make_cache(**kwargs):
-    try:
-        import streamlit as _st
-        return _st.cache_data(**kwargs)
-    except Exception:
-        def _noop(fn):
-            fn.clear = lambda: None
-            return fn
-        return _noop
 
 
 def _to_date_iso(value: Any) -> Optional[str]:

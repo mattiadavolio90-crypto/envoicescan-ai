@@ -80,6 +80,7 @@ create_admin*.py
 *IMPLEMENTAZIONE*.txt
 *DIAGNOSI*.md
 *AUDIT*.md
+!AUDIT_ONEFLUX_STATO*.md
 *CLEANUP*.md
 *REFACTORING*.md
 *RECAP*.txt

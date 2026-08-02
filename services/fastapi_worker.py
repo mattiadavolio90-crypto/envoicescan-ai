@@ -540,6 +540,7 @@ def _build_allowed_origins() -> List[str]:
     return list(dict.fromkeys(origins))
 
 from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centralizzato
+from config.constants import CATEGORIE_SPESE_GENERALI as _CATEGORIE_SPESE_GENERALI
 from utils.ttl_cache import TTLCache  # cache TTL thread-safe con single-flight
 
 
@@ -7607,10 +7608,7 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
     data_da = f"{anno}-{mese:02d}-01"
     data_a = f"{anno}-{mese:02d}-{last_day:02d}"
 
-    spese_gen_categorie = {
-        "SERVIZI E CONSULENZE", "UTENZE E LOCALI",
-        "MANUTENZIONE E ATTREZZATURE", "MATERIALE DI CONSUMO",
-    }
+    spese_gen_categorie = set(_CATEGORIE_SPESE_GENERALI)
 
     fb_tot = 0.0
     spese_tot = 0.0
@@ -7668,10 +7666,7 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
     last_day = monthrange(y1, m1)[1]
     data_a = f"{y1}-{m1:02d}-{last_day:02d}"
 
-    spese_gen_categorie = {
-        "SERVIZI E CONSULENZE", "UTENZE E LOCALI",
-        "MANUTENZIONE E ATTREZZATURE", "MATERIALE DI CONSUMO",
-    }
+    spese_gen_categorie = set(_CATEGORIE_SPESE_GENERALI)
 
     acc: dict = {(y, m): [0.0, 0.0] for (y, m) in mesi_target}
     page = 0

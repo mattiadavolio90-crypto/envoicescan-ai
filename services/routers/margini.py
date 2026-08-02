@@ -4,8 +4,10 @@ Estratto da fastapi_worker.py. Gli aggregatori condivisi del conto economico
 (costanti _CENTRI_*, _CATEGORIE_*, e gli helper _load_*/_calcola_costi_*/_aggrega_*)
 restano nel worker e sono importati qui: sono il cuore dati lato margini e
 restano co-locati con le costanti che usano. _calc_netto vive nel router ricavi
-(condiviso) ed e' importato da li'. _ore_turno e' condiviso con il workspace
-(Personale) e resta nel worker. Path/gate/response invariati.
+(condiviso) e viene risolto qui con un wrapper lazy (stesso principio di _fw(),
+import posticipato a runtime) per evitare un import diretto router->router a
+livello di modulo. _ore_turno e' condiviso con il workspace (Personale) e resta
+nel worker. Path/gate/response invariati.
 """
 from typing import Any, Dict, List, Optional
 
@@ -80,7 +82,12 @@ def _consts():
 
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
-from services.routers.ricavi import _calc_netto
+
+
+def _calc_netto(*args, **kwargs):
+    from services.routers.ricavi import _calc_netto as _real_calc_netto
+    return _real_calc_netto(*args, **kwargs)
+
 
 router = APIRouter()
 

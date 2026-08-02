@@ -3,6 +3,18 @@
 from functools import wraps
 
 
+def make_cache(**kwargs):
+    """Restituisce st.cache_data se Streamlit e' disponibile, altrimenti un noop con .clear()."""
+    try:
+        import streamlit as _st
+        return _st.cache_data(**kwargs)
+    except Exception:
+        def _noop(fn):
+            fn.clear = lambda: None
+            return fn
+        return _noop
+
+
 _PATCH_FLAG = "_ohh_width_compat_patched"
 _WIDTH_COMPAT_METHODS = (
     "button",

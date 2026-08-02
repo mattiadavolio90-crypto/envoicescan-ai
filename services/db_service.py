@@ -3,7 +3,6 @@ Servizio di gestione database - Query, analisi e preparazione dati
 
 Funzioni:
 - carica_e_prepara_dataframe: Caricamento fatture da Supabase con cache
-- ricalcola_prezzi_con_sconti: Fix retroattivo prezzi con sconti
 - calcola_alert: Calcolo alert aumenti prezzi prodotti
 - carica_sconti_e_omaggi: Estrazione sconti e omaggi periodo
 
@@ -23,6 +22,7 @@ except ImportError:
 # Import config
 from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
 from utils.validation import SPECIAL_ROW_SCONTO_OMAGGIO, classify_special_row, classify_special_row_vectorized
+from utils.streamlit_compat import make_cache as _make_cache
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -39,18 +39,6 @@ def filter_active(query):
 
 # Alias privato per uso interno a questo modulo
 _filter_active = filter_active
-
-
-def _make_cache(**kwargs):
-    """Returns st.cache_data decorator when Streamlit is available, else a noop with .clear()."""
-    try:
-        import streamlit as _st
-        return _st.cache_data(**kwargs)
-    except Exception:
-        def _noop(fn):
-            fn.clear = lambda: None
-            return fn
-        return _noop
 
 
 def _clamp_price_alert_threshold(value: float | int | None) -> float:
@@ -428,115 +416,6 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
         logger.info(f"✅ CELLE BIANCHE RISOLTE: {da_class_count} celle mostrano 'Da Classificare'")
     
     return df_result
-
-
-# DEPRECATED: prezzi calcolati direttamente in invoice_service.py
-# Mantenuta per compatibilità, non chiamare.
-def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
-    """
-    Ricalcola prezzi unitari per fatture già caricate (fix retroattivo sconti).
-    
-    Questa funzione serve per correggere i prezzi delle fatture caricate PRIMA
-    del fix che calcola il prezzo effettivo da PrezzoTotale ÷ Quantità.
-    
-    Args:
-        user_id: ID utente per filtro
-        supabase_client: Client Supabase (opzionale, usa st.secrets se None)
-    
-    Returns:
-        int: Numero di righe aggiornate
-    """
-    logger.warning("DEPRECATED: ricalcola_prezzi_con_sconti non dovrebbe essere chiamata. I prezzi vengono calcolati in invoice_service.py.")
-    # Inizializza client Supabase (singleton)
-    if supabase_client is None:
-        try:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-        except Exception as e:
-            logger.error(f"❌ Impossibile inizializzare Supabase: {e}")
-            return 0
-    
-    try:
-        # Leggi tutte le fatture dell'utente (con paginazione per >1000 righe)
-        from utils.ristorante_helper import get_current_ristorante_id
-        ristorante_id = get_current_ristorante_id()
-        
-        all_rows = []
-        page = 0
-        page_size = 1000
-        max_pages = 200
-        
-        while page < max_pages:
-            offset = page * page_size
-            query = filter_active(
-                supabase_client.table("fatture")
-                .select("id, descrizione, quantita, prezzo_unitario, totale_riga")
-                .eq("user_id", user_id)
-            )
-            if ristorante_id:
-                query = query.eq("ristorante_id", ristorante_id)
-            response = query.range(offset, offset + page_size - 1).execute()
-            
-            if not response.data:
-                break
-            
-            all_rows.extend(response.data)
-            
-            if len(response.data) < page_size:
-                break
-            page += 1
-        
-        if not all_rows:
-            return 0
-        
-        # Calcola tutti i prezzi da aggiornare PRIMA, poi batch update
-        updates_needed = []
-        
-        for row in all_rows:
-            totale = row.get('totale_riga', 0)
-            quantita = row.get('quantita', 0)
-            prezzo_attuale = row.get('prezzo_unitario', 0)
-            
-            if quantita > 0 and totale > 0:
-                # Ricalcola prezzo effettivo
-                prezzo_effettivo = round(totale / quantita, 4)
-                
-                # Solo se diverso (c'era uno sconto)
-                if abs(prezzo_effettivo - prezzo_attuale) > 0.01:
-                    updates_needed.append({
-                        'id': row['id'],
-                        'prezzo_effettivo': prezzo_effettivo,
-                        'descrizione': row.get('descrizione', ''),
-                        'prezzo_attuale': prezzo_attuale
-                    })
-        
-        if not updates_needed:
-            return 0
-        
-        # Batch update: raggruppa per prezzo_effettivo per fare meno query
-        prezzo_groups = defaultdict(list)
-        for u in updates_needed:
-            prezzo_groups[u['prezzo_effettivo']].append(u['id'])
-        
-        righe_aggiornate = 0
-        for prezzo_effettivo, ids in prezzo_groups.items():
-            # Aggiorna batch di IDs con stesso prezzo in una sola query
-            for batch_start in range(0, len(ids), 50):  # Batch da 50
-                batch_ids = ids[batch_start:batch_start + 50]
-                filter_active(
-                    supabase_client.table("fatture").update({
-                        'prezzo_unitario': prezzo_effettivo
-                    }).in_('id', batch_ids)
-                ).execute()
-                righe_aggiornate += len(batch_ids)
-        
-        logger.info(f"🔄 Batch update prezzi: {righe_aggiornate} righe aggiornate in {len(prezzo_groups)} gruppi")
-        
-        return righe_aggiornate
-    
-    except Exception as e:
-        logger.error(f"Errore ricalcolo prezzi: {e}")
-        return 0
 
 
 def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str = "") -> pd.DataFrame:
@@ -2341,7 +2220,6 @@ def rimuovi_associazione(associazione_id: int, user_id: str) -> bool:
 
 __all__ = [
     'carica_e_prepara_dataframe',
-    'ricalcola_prezzi_con_sconti',
     'calcola_alert',
     'calcola_spesa_mensile_aggregata',
     'get_price_alert_threshold',
