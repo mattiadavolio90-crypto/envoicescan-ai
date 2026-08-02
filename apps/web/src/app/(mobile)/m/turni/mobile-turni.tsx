@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, Banknote, Wallet, Users, CalendarOff } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, Banknote, Wallet, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -74,6 +74,8 @@ interface Turno {
 }
 
 type TipoGiorno = "turno" | "riposo" | "ferie" | "malattia";
+
+const TIPI_STATO: TipoGiorno[] = ["turno", "riposo", "ferie", "malattia"];
 
 const TIPO_GIORNO_LABEL: Record<TipoGiorno, string> = {
   turno: "Turno",
@@ -260,7 +262,7 @@ function SelettoreDipendente({
         value={valore}
         onChange={(e) => onChange(e.target.value)}
         autoFocus={autoFocus}
-        className="h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="h-11 w-full rounded-md border border-input bg-background text-foreground px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>option]:bg-background [&>option]:text-foreground"
       >
         <option value="">Seleziona…</option>
         {dipendenti.map((d) => (
@@ -284,6 +286,11 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
   const [costoOrarioExtra, setCostoOrarioExtra] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  // Stato-giorno nello stesso riquadro del turno, come sul desktop.
+  const [tipoGiorno, setTipoGiorno] = useState<TipoGiorno>("turno");
+  const [importoACarico, setImportoACarico] = useState("");
+
+  const isAssenza = tipoGiorno !== "turno";
 
   useEffect(() => {
     if (open) {
@@ -299,6 +306,8 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
       setCostoOrario(turno?.costo_orario != null ? String(turno.costo_orario).replace(".", ",") : "");
       setCostoOrarioExtra(turno?.costo_orario_extra != null ? String(turno.costo_orario_extra).replace(".", ",") : "");
       setNote(turno?.note ?? "");
+      setTipoGiorno((turno?.tipo_giorno as TipoGiorno) ?? "turno");
+      setImportoACarico(turno?.importo_a_carico ? String(turno.importo_a_carico).replace(".", ",") : "");
     }
   }, [open, turno, dataDefault]);
 
@@ -328,8 +337,57 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
     ? (stdNum * costoNum + (extraNum > 0 && !isNaN(costoEffExtra) ? extraNum * costoEffExtra : 0))
     : 0;
 
+  const importoNum = importoACarico ? parseFloat(importoACarico.replace(",", ".")) : NaN;
+
+  async function salvaAssenza() {
+    const importo = importoACarico ? importoNum : null;
+    if (turno) {
+      const res = await fetch(`/api/workspace/personale/${turno.id}/stato-giorno`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo_giorno: tipoGiorno, importo_a_carico: importo }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail ?? "Errore");
+      toast.success(`Giorno aggiornato su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`);
+      return;
+    }
+    const res = await fetch("/api/workspace/personale/stato-giorno-intervallo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dipendente_id: dipendenteId,
+        data_da: data,
+        data_a: data,
+        tipo_giorno: tipoGiorno,
+        importo_a_carico: importo,
+      }),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.detail ?? "Errore");
+    if (j.n_saltati_turno_esistente?.length) {
+      toast.warning("Quel giorno ha già un turno lavorato: modificalo dal turno stesso");
+    } else {
+      toast.success(`Giorno impostato su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`);
+    }
+  }
+
   async function salva() {
     if (!dipendenteId) { toast.error("Seleziona un dipendente"); return; }
+    if (isAssenza) {
+      if (importoACarico && (isNaN(importoNum) || importoNum < 0)) { toast.error("Importo non valido"); return; }
+      setSaving(true);
+      try {
+        await salvaAssenza();
+        onSaved();
+        onClose();
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "Errore salvataggio");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (!oraInizio || !oraFine) { toast.error("Orario obbligatorio"); return; }
     if (spezzato && (!oraInizio2 || !oraFine2)) { toast.error("Inserisci il secondo slot"); return; }
     if (oreExtra && (isNaN(extraNum) || extraNum < 0)) { toast.error("Ore extra non valide"); return; }
@@ -356,6 +414,16 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
+      // Assenza riportata a "Lavora": il PATCH del turno non tocca tipo_giorno,
+      // quindi la riga resterebbe ferie/malattia con orari nuovi.
+      if (turno && (turno.tipo_giorno ?? "turno") !== "turno") {
+        const resStato = await fetch(`/api/workspace/personale/${turno.id}/stato-giorno`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo_giorno: "turno", importo_a_carico: null }),
+        });
+        if (!resStato.ok) throw new Error((await resStato.json()).detail ?? "Errore");
+      }
       toast.success(turno ? "Turno aggiornato" : "Turno aggiunto");
       onSaved();
       onClose();
@@ -370,7 +438,11 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="flex max-h-[90dvh] max-w-[calc(100vw-2rem)] flex-col rounded-2xl">
         <DialogHeader className="shrink-0">
-          <DialogTitle>{turno ? "Modifica turno" : "Nuovo turno"}</DialogTitle>
+          <DialogTitle>
+            {isAssenza
+              ? `${turno ? "Modifica" : "Registra"} ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`
+              : turno ? "Modifica turno" : "Nuovo turno"}
+          </DialogTitle>
         </DialogHeader>
         <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
         <div className="mt-1 space-y-3">
@@ -387,37 +459,79 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
             <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
           </div>
 
+          {!isAssenza && (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {spezzato ? "Primo slot *" : "Orario *"}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="time" value={oraInizio} onChange={(e) => setOraInizio(e.target.value)} />
+                  <Input type="time" value={oraFine} onChange={(e) => setOraFine(e.target.value)} />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSpezzato((s) => !s)}
+                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                  spezzato ? "bg-primary/10 text-primary" : "text-muted-foreground active:bg-muted"
+                }`}
+              >
+                {spezzato ? "✓ Turno spezzato" : "+ Aggiungi secondo slot"}
+              </button>
+
+              {spezzato && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Secondo slot *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input type="time" value={oraInizio2} onChange={(e) => setOraInizio2(e.target.value)} />
+                    <Input type="time" value={oraFine2} onChange={(e) => setOraFine2(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Stato del giorno */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">
-              {spezzato ? "Primo slot *" : "Orario *"}
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Il dipendente quel giorno
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <Input type="time" value={oraInizio} onChange={(e) => setOraInizio(e.target.value)} />
-              <Input type="time" value={oraFine} onChange={(e) => setOraFine(e.target.value)} />
+            <div className="flex flex-wrap gap-1.5">
+              {TIPI_STATO.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTipoGiorno(t)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    tipoGiorno === t
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground active:bg-muted"
+                  }`}
+                >
+                  {t === "turno" ? "Lavora" : TIPO_GIORNO_LABEL[t]}
+                </button>
+              ))}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setSpezzato((s) => !s)}
-            className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-              spezzato ? "bg-primary/10 text-primary" : "text-muted-foreground active:bg-muted"
-            }`}
-          >
-            {spezzato ? "✓ Turno spezzato" : "+ Aggiungi secondo slot"}
-          </button>
-
-          {spezzato && (
+          {(tipoGiorno === "ferie" || tipoGiorno === "malattia") && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Secondo slot *</label>
-              <div className="grid grid-cols-2 gap-2">
-                <Input type="time" value={oraInizio2} onChange={(e) => setOraInizio2(e.target.value)} />
-                <Input type="time" value={oraFine2} onChange={(e) => setOraFine2(e.target.value)} />
-              </div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Importo a carico (€) <span className="font-normal opacity-60">opzionale</span>
+              </label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={importoACarico}
+                onChange={(e) => setImportoACarico(e.target.value.replace(/[^0-9,.]/g, ""))}
+                placeholder="es. 50"
+              />
             </div>
           )}
 
-          {oreTot > 0 && (
+          {!isAssenza && oreTot > 0 && (
             <p className="text-xs text-muted-foreground">
               Totale: <span className="font-medium text-foreground">{fmtOre(oreTot)}</span>
               {extraNum > 0 && stdNum > 0 && (
@@ -429,6 +543,7 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
             </p>
           )}
 
+          {!isAssenza && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">Ore extra (in più)</label>
@@ -451,8 +566,9 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
               />
             </div>
           </div>
+          )}
 
-          {extraNum > 0 && (
+          {!isAssenza && extraNum > 0 && (
             <div className="grid grid-cols-2 gap-2">
               <div />
               <div>
@@ -493,154 +609,6 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
 // ─── Dialog stato-giorno (riposo/ferie/malattia) ─────────────────────────────────
 // Versione mobile ridotta rispetto al desktop: solo giorno singolo, niente
 // intervallo multi-giorno (doppio binario deciso in pianificazione).
-
-interface StatoGiornoDialogProps {
-  open: boolean;
-  turno: Turno | null; // riga di stato in modifica, o null per nuovo
-  dipendenti: Dipendente[];
-  dipendenteIdDefault: string;
-  dataDefault: string;
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-const TIPI_STATO: TipoGiorno[] = ["turno", "riposo", "ferie", "malattia"];
-
-function StatoGiornoDialog({ open, turno, dipendenti, dipendenteIdDefault, dataDefault, onClose, onSaved }: StatoGiornoDialogProps) {
-  const isModifica = !!turno;
-  const [dipendenteId, setDipendenteId] = useState("");
-  const [data, setData] = useState(dataDefault);
-  const [tipoGiorno, setTipoGiorno] = useState<TipoGiorno>("riposo");
-  const [importoACarico, setImportoACarico] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setDipendenteId(turno?.dipendente_id ?? dipendenteIdDefault);
-      setData(turno?.data_turno ?? dataDefault);
-      setTipoGiorno((turno?.tipo_giorno as TipoGiorno) ?? "riposo");
-      setImportoACarico(turno?.importo_a_carico ? String(turno.importo_a_carico).replace(".", ",") : "");
-    }
-  }, [open, turno, dipendenteIdDefault, dataDefault]);
-
-  const consenteImporto = tipoGiorno === "ferie" || tipoGiorno === "malattia";
-  const importoNum = importoACarico ? parseFloat(importoACarico.replace(",", ".")) : NaN;
-
-  async function salva() {
-    if (!dipendenteId) { toast.error("Seleziona un dipendente"); return; }
-    if (importoACarico && (isNaN(importoNum) || importoNum < 0)) { toast.error("Importo non valido"); return; }
-    setSaving(true);
-    try {
-      const importo = consenteImporto && importoACarico ? importoNum : null;
-      if (isModifica) {
-        const res = await fetch(`/api/workspace/personale/${turno!.id}/stato-giorno`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo_giorno: tipoGiorno, importo_a_carico: importo }),
-        });
-        if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
-        toast.success(`Giorno aggiornato su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`);
-      } else {
-        const res = await fetch("/api/workspace/personale/stato-giorno-intervallo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            dipendente_id: dipendenteId,
-            data_da: data,
-            data_a: data,
-            tipo_giorno: tipoGiorno,
-            importo_a_carico: importo,
-          }),
-        });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.detail ?? "Errore");
-        if (j.n_saltati_turno_esistente?.length) {
-          toast.warning("Quel giorno ha già un turno lavorato: modifica il turno per cambiarlo");
-        } else {
-          toast.success(`Giorno impostato su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`);
-        }
-      }
-      onSaved();
-      onClose();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore salvataggio");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="flex max-h-[90dvh] max-w-[calc(100vw-2rem)] flex-col rounded-2xl">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>{isModifica ? "Modifica stato giorno" : "Imposta stato giorno"}</DialogTitle>
-        </DialogHeader>
-        <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
-          <div className="mt-1 space-y-3">
-            {!isModifica && (
-              <SelettoreDipendente
-                dipendenti={dipendenti}
-                valore={dipendenteId}
-                onChange={setDipendenteId}
-                onCreato={() => {}}
-                autoFocus
-              />
-            )}
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Data {isModifica ? "" : "*"}</label>
-              <Input type="date" value={data} onChange={(e) => setData(e.target.value)} disabled={isModifica} />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Stato *</label>
-              <div className="flex flex-wrap gap-1.5">
-                {TIPI_STATO.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTipoGiorno(t)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      tipoGiorno === t
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border text-muted-foreground active:bg-muted"
-                    }`}
-                  >
-                    {TIPO_GIORNO_LABEL[t]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {consenteImporto && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Importo a carico (€) <span className="font-normal opacity-60">opzionale</span>
-                </label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={importoACarico}
-                  onChange={(e) => setImportoACarico(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="es. 50"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-1 flex shrink-0 gap-2 border-t border-border pt-3">
-          <button onClick={onClose} disabled={saving} className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium active:scale-[0.98]">
-            Annulla
-          </button>
-          <button onClick={salva} disabled={saving} className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground active:scale-[0.98] disabled:opacity-50">
-            {saving ? "Salvo…" : "Salva"}
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // ─── Dialog mensile (inserimento da busta paga) ──────────────────────────────────
 
@@ -843,8 +811,6 @@ function TurniBody() {
   const [mensileDialogOpen, setMensileDialogOpen] = useState(false);
   const [editMensile, setEditMensile] = useState<Turno | null>(null);
   const [daEliminareMensile, setDaEliminareMensile] = useState<Turno | null>(null);
-  const [statoGiornoDialogOpen, setStatoGiornoDialogOpen] = useState(false);
-  const [editStatoGiorno, setEditStatoGiorno] = useState<Turno | null>(null);
   const [dipEspanso, setDipEspanso] = useState<string | null>(null);
 
   const isMensile = modalita === "mensile";
@@ -1098,8 +1064,7 @@ function TurniBody() {
                           <button
                             key={t.id}
                             onClick={() => {
-                              if (statoNonTurno) { setEditStatoGiorno(t); setStatoGiornoDialogOpen(true); }
-                              else { setEditTurno(t); setDialogOpen(true); }
+                              setEditTurno(t); setDialogOpen(true);
                             }}
                             className="flex w-full items-center gap-2.5 rounded-lg py-1 text-left active:bg-muted/40"
                           >
@@ -1232,8 +1197,7 @@ function TurniBody() {
                   <div className="flex shrink-0 items-center gap-1">
                     <button
                       onClick={() => {
-                        if (statoNonTurno) { setEditStatoGiorno(t); setStatoGiornoDialogOpen(true); }
-                        else { setEditTurno(t); setDialogOpen(true); }
+                        setEditTurno(t); setDialogOpen(true);
                       }}
                       className="rounded-md p-1.5 text-muted-foreground active:bg-muted"
                     >
@@ -1249,18 +1213,6 @@ function TurniBody() {
             )}
           </div>
         </>
-      )}
-
-      {/* FAB: stato-giorno (riposo/ferie/malattia) solo in vista giornaliera */}
-      {!isMensile && (
-        <button
-          onClick={() => { setEditStatoGiorno(null); setStatoGiornoDialogOpen(true); }}
-          className="fixed right-5 z-40 flex size-12 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-lg active:scale-95"
-          style={{ bottom: "calc(146px + env(safe-area-inset-bottom))" }}
-          aria-label="Riposo/ferie/malattia"
-        >
-          <CalendarOff className="size-5" />
-        </button>
       )}
 
       {/* FAB */}
@@ -1296,16 +1248,6 @@ function TurniBody() {
         onClose={() => { setMensileDialogOpen(false); setEditMensile(null); }}
         onSaved={() => load(da, a, isMensile)}
         onDipendenteCreato={() => load(da, a, isMensile)}
-      />
-
-      <StatoGiornoDialog
-        open={statoGiornoDialogOpen}
-        turno={editStatoGiorno}
-        dipendenti={dipendenti}
-        dipendenteIdDefault=""
-        dataDefault={giornoSel}
-        onClose={() => { setStatoGiornoDialogOpen(false); setEditStatoGiorno(null); }}
-        onSaved={() => load(da, a, isMensile)}
       />
 
       <ConfirmDialog

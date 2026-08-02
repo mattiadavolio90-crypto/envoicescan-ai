@@ -10196,6 +10196,77 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Dipendenti Elimina",
+        "description": "Cancellazione definitiva, consentita SOLO se il dipendente non ha nessun\nturno registrato (creato per errore, mai usato). Con turni a carico si\nrifiuta e si rimanda alla disattivazione: cancellare cambierebbe\nretroattivamente il costo del personale di mesi già chiusi.",
+        "operationId": "ws_dipendenti_elimina_api_workspace_dipendenti__dipendente_id__delete",
+        "parameters": [
+          {
+            "name": "dipendente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dipendente Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/workspace/dipendenti/{dipendente_id}/disattiva": {
@@ -10431,7 +10502,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale List",
-        "description": "Lista turni + nomi distinti + monte ore per persona nel periodo.\n\nIl filtro `mensile` tiene separate le due viste: giornaliero e mensile non\nvengono MAI mischiati (regola di dominio, vedi guardia in POST).",
+        "description": "Lista turni + nomi distinti + monte ore per persona nel periodo.\n\nIl filtro `mensile` seleziona le righe: True solo aggregati da busta paga,\nFalse solo turni giornalieri, None entrambi. La regola di dominio resta che\nlo STESSO dipendente nello STESSO mese non usi entrambi i metodi (le ore si\nconterebbero due volte) — vedi guardia in POST; dipendenti diversi possono\ninvece usare metodi diversi e convivere nella stessa risposta.",
         "operationId": "ws_personale_list_api_workspace_personale_get",
         "parameters": [
           {
@@ -25145,6 +25216,20 @@
               }
             ],
             "title": "Importo A Carico"
+          },
+          "giorni": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Giorni"
           }
         },
         "type": "object",

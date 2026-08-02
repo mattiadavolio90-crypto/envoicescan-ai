@@ -8,7 +8,7 @@ _ore_turno in particolare e' condiviso col router margini, quindi NON viene
 spostato. Logica copiata identica. Path/gate/response invariati.
 """
 import json
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
@@ -986,6 +986,45 @@ def ws_dipendenti_riattiva(dipendente_id: str, authorization: Optional[str] = He
     return resp.data[0] if resp.data else {}
 
 
+@router.delete("/api/workspace/dipendenti/{dipendente_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_dipendenti_elimina(dipendente_id: str, authorization: Optional[str] = Header(None)):
+    """Cancellazione definitiva, consentita SOLO se il dipendente non ha nessun
+    turno registrato (creato per errore, mai usato). Con turni a carico si
+    rifiuta e si rimanda alla disattivazione: cancellare cambierebbe
+    retroattivamente il costo del personale di mesi già chiusi."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    corrente = (
+        sb.table("dipendenti").select("id,nome")
+        .eq("id", dipendente_id).eq("ristorante_id", ristorante_id)
+        .limit(1).execute()
+    )
+    if not corrente.data:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+
+    turni = (
+        sb.table("turni_personale").select("id")
+        .eq("ristorante_id", ristorante_id).eq("dipendente_id", dipendente_id)
+        .limit(1).execute()
+    ).data or []
+    if turni:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{corrente.data[0]['nome']} ha turni registrati e non può essere eliminato: "
+                "disattivalo, così lo storico dei costi resta intatto."
+            ),
+        )
+
+    sb.table("dipendenti").delete().eq("id", dipendente_id).eq("ristorante_id", ristorante_id).execute()
+    return {"eliminato": True, "nome": corrente.data[0]["nome"]}
+
+
 @router.post("/api/workspace/dipendenti/{dipendente_id}/merge-in/{target_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_dipendenti_merge(dipendente_id: str, target_id: str, authorization: Optional[str] = Header(None)):
     """Sposta tutti i turni da dipendente_id a target_id, poi disattiva
@@ -1064,6 +1103,10 @@ class StatoGiornoIntervalloBody(BaseModel):
     data_a: str    # YYYY-MM-DD
     tipo_giorno: str
     importo_a_carico: Optional[float] = None
+    # Giorni espliciti da colpire dentro [data_da, data_a]. Serve alla selezione
+    # multipla del dialog, che può essere non contigua (es. solo i lunedì): senza
+    # questa lista il ciclo riempirebbe anche i giorni in mezzo, non scelti.
+    giorni: Optional[List[str]] = None
 
 
 class TurnoMensileBody(BaseModel):
@@ -1095,8 +1138,11 @@ def ws_personale_list(
 ):
     """Lista turni + nomi distinti + monte ore per persona nel periodo.
 
-    Il filtro `mensile` tiene separate le due viste: giornaliero e mensile non
-    vengono MAI mischiati (regola di dominio, vedi guardia in POST)."""
+    Il filtro `mensile` seleziona le righe: True solo aggregati da busta paga,
+    False solo turni giornalieri, None entrambi. La regola di dominio resta che
+    lo STESSO dipendente nello STESSO mese non usi entrambi i metodi (le ore si
+    conterebbero due volte) — vedi guardia in POST; dipendenti diversi possono
+    invece usare metodi diversi e convivere nella stessa risposta."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -1277,7 +1323,11 @@ def ws_personale_export_mensile(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    dati = ws_personale_list(da=primo, a=ultimo, mensile=False, authorization=authorization)
+    # mensile=None: servono ENTRAMBI i metodi. Il foglio Turni salta comunque le
+    # righe da busta paga (non hanno un giorno da mettere in cella), ma il foglio
+    # Riepilogo deve includerne ore e lordo, altrimenti chi è pagato a busta paga
+    # sparisce dall'export e il totale costi è più basso del vero — muto.
+    dati = ws_personale_list(da=primo, a=ultimo, mensile=None, authorization=authorization)
 
     # ws_personale_list filtra i dipendenti su attivo=True per il prefill del
     # dialog: chi e' stato disattivato durante il mese esportato ha comunque
@@ -1690,9 +1740,24 @@ def ws_personale_stato_giorno_intervallo(body: StatoGiornoIntervalloBody, author
     n_creati = 0
     n_aggiornati = 0
     saltati: list = []
-    giorno = data_da
-    while giorno <= data_a:
-        data_iso = giorno.isoformat()
+
+    # Senza `giorni` vale tutto l'intervallo (comportamento storico); con
+    # `giorni` si colpiscono solo quelli scelti, scartando i fuori-range.
+    if body.giorni is not None:
+        giorni_target = sorted({
+            g for g in body.giorni
+            if isinstance(g, str) and body.data_da <= g <= body.data_a
+        })
+        if not giorni_target:
+            raise HTTPException(status_code=400, detail="Nessun giorno valido nell'intervallo")
+    else:
+        giorni_target = []
+        giorno = data_da
+        while giorno <= data_a:
+            giorni_target.append(giorno.isoformat())
+            giorno += _td(days=1)
+
+    for data_iso in giorni_target:
         riga = per_giorno.get(data_iso)
         if riga is None:
             sb.table("turni_personale").insert({
@@ -1714,7 +1779,6 @@ def ws_personale_stato_giorno_intervallo(body: StatoGiornoIntervalloBody, author
                 "importo_a_carico": importo,
             }).eq("id", riga["id"]).execute()
             n_aggiornati += 1
-        giorno += _td(days=1)
 
     return {
         "n_creati": n_creati,

@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CopyPlus, CalendarOff, Maximize2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CalendarDays, Users, UserMinus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { VistaMensileGrid, settimaneDelMese, giorniDelMese, type SettimanaMese } from "./personale-vista-mensile";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +98,12 @@ function getDipColor(nomi: string[], nome: string) {
   return DIP_PALETTE[idx >= 0 ? idx % DIP_PALETTE.length : 0];
 }
 
+export function giorniDelMese(meseBase: string): string[] {
+  const [ay, am] = meseBase.split("-").map(Number);
+  const n = new Date(ay, am, 0).getDate();
+  return Array.from({ length: n }, (_, i) => `${meseBase}-${String(i + 1).padStart(2, "0")}`);
+}
+
 export function toISO(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -177,6 +182,8 @@ interface TurnoDialogProps {
 }
 
 const GIORNI_BREVI = ["Lu", "Ma", "Me", "Gi", "Ve", "Sa", "Do"];
+
+const TIPI_STATO: TipoGiorno[] = ["turno", "riposo", "ferie", "malattia"];
 
 function dowIndex(iso: string): number {
   const d = new Date(iso + "T00:00:00");
@@ -266,7 +273,7 @@ function SelettoreDipendente({
         value={valore}
         onChange={e => onChange(e.target.value)}
         autoFocus={autoFocus}
-        className="w-full h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="w-full h-9 rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&>option]:bg-background [&>option]:text-foreground"
       >
         <option value="">Seleziona…</option>
         {dipendenti.map(d => (
@@ -291,8 +298,13 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
   const [costoOrarioExtra, setCostoOrarioExtra] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  // Stato del giorno scelto qui dentro, non da un bottone separato in toolbar:
+  // "lavora" e "non lavora" sono la stessa decisione, presa nello stesso posto.
+  const [tipoGiorno, setTipoGiorno] = useState<TipoGiorno>("turno");
+  const [importoACarico, setImportoACarico] = useState("");
 
   const isNuovo = !turno;
+  const isAssenza = tipoGiorno !== "turno";
 
   useEffect(() => {
     if (open) {
@@ -309,6 +321,8 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
       setCostoOrario(turno?.costo_orario != null ? String(turno.costo_orario).replace(".", ",") : "");
       setCostoOrarioExtra(turno?.costo_orario_extra != null ? String(turno.costo_orario_extra).replace(".", ",") : "");
       setNote(turno?.note ?? "");
+      setTipoGiorno((turno?.tipo_giorno as TipoGiorno) ?? "turno");
+      setImportoACarico(turno?.importo_a_carico ? String(turno.importo_a_carico).replace(".", ",") : "");
     }
   }, [open, turno, dataDefault, dipendenteIdDefault]);
 
@@ -360,8 +374,63 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
     ? (stdNum * costoNum + (extraNum > 0 && !isNaN(costoEffExtra) ? extraNum * costoEffExtra : 0))
     : 0;
 
+  const importoNum = importoACarico ? parseFloat(importoACarico.replace(",", ".")) : NaN;
+
+  // Riposo/ferie/malattia: stesso dialog, altro endpoint. La multi-selezione
+  // dei giorni vale anche qui — 5 giorni di ferie si salvano in un colpo.
+  async function salvaAssenza() {
+    const giorni = isNuovo ? [...giorniSelezionati].sort() : [data];
+    const importo = importoACarico ? importoNum : null;
+    if (turno) {
+      const res = await fetch(`/api/workspace/personale/${turno.id}/stato-giorno`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo_giorno: tipoGiorno, importo_a_carico: importo }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail ?? "Errore");
+      toast.success(`Giorno aggiornato su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`);
+      return;
+    }
+    const res = await fetch("/api/workspace/personale/stato-giorno-intervallo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dipendente_id: dipendenteId,
+        data_da: giorni[0],
+        data_a: giorni[giorni.length - 1],
+        giorni,
+        tipo_giorno: tipoGiorno,
+        importo_a_carico: importo,
+      }),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.detail ?? "Errore");
+    const nSaltati = j.n_saltati_turno_esistente?.length ?? 0;
+    const nOk = (j.n_creati ?? 0) + (j.n_aggiornati ?? 0);
+    const etichetta = TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase();
+    toast.success(
+      (nOk === 1 ? `Giorno impostato su ${etichetta}` : `${nOk} giorni impostati su ${etichetta}`) +
+      (nSaltati ? ` · ${nSaltati} saltati (turno già lavorato)` : "")
+    );
+  }
+
   async function salva() {
     if (!dipendenteId) { toast.error("Seleziona un dipendente"); return; }
+    if (isAssenza) {
+      if (importoACarico && (isNaN(importoNum) || importoNum < 0)) { toast.error("Importo non valido"); return; }
+      setSaving(true);
+      try {
+        await salvaAssenza();
+        onSaved();
+        onClose();
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "Errore salvataggio");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (!oraInizio || !oraFine) { toast.error("Orario obbligatorio"); return; }
     if (spezzato && (!oraInizio2 || !oraFine2)) { toast.error("Inserisci orario del secondo slot"); return; }
     if (oreExtra && (isNaN(extraNum) || extraNum < 0)) { toast.error("Ore extra non valide"); return; }
@@ -388,6 +457,17 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
+        // Assenza riportata a "Lavora": il PATCH del turno non tocca
+        // tipo_giorno (non è fra i campi di AggiornaTurnoBody), quindi la riga
+        // resterebbe ferie/malattia con orari nuovi — fuori da ore e costi.
+        if ((turno.tipo_giorno ?? "turno") !== "turno") {
+          const resStato = await fetch(`/api/workspace/personale/${turno.id}/stato-giorno`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipo_giorno: "turno", importo_a_carico: null }),
+          });
+          if (!resStato.ok) throw new Error((await resStato.json()).detail ?? "Errore");
+        }
         toast.success("Turno aggiornato");
       } else {
         // Creazione: un POST per ogni giorno selezionato, in parallelo
@@ -433,7 +513,11 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="flex max-h-[90dvh] flex-col max-w-md">
         <DialogHeader className="shrink-0">
-          <DialogTitle>{turno ? "Modifica turno" : "Nuovo turno"}</DialogTitle>
+          <DialogTitle>
+            {isAssenza
+              ? `${turno ? "Modifica" : "Registra"} ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`
+              : turno ? "Modifica turno" : "Nuovo turno"}
+          </DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-3 mt-2">
@@ -495,43 +579,88 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
             </div>
           )}
 
-          {/* Slot 1 */}
+          {/* Orari e secondo slot: solo se il giorno è lavorato. Su un'assenza
+              non hanno senso e sparire è più chiaro che restare disabilitati. */}
+          {!isAssenza && (
+            <>
+              {/* Slot 1 */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  {spezzato ? "Primo slot *" : "Orario *"}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="time" value={oraInizio} onChange={e => setOraInizio(e.target.value)} />
+                  <Input type="time" value={oraFine} onChange={e => setOraFine(e.target.value)} />
+                </div>
+              </div>
+
+              {/* Toggle spezzato */}
+              <button
+                type="button"
+                onClick={() => setSpezzato(s => !s)}
+                className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
+                  spezzato
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                {spezzato ? "✓ Turno spezzato" : "+ Aggiungi secondo slot (spezzato)"}
+              </button>
+
+              {/* Slot 2 */}
+              {spezzato && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Secondo slot *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input type="time" value={oraInizio2} onChange={e => setOraInizio2(e.target.value)} />
+                    <Input type="time" value={oraFine2} onChange={e => setOraFine2(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Stato del giorno: lavorato o assenza, deciso qui e non altrove. */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              {spezzato ? "Primo slot *" : "Orario *"}
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              Il dipendente quel giorno
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <Input type="time" value={oraInizio} onChange={e => setOraInizio(e.target.value)} />
-              <Input type="time" value={oraFine} onChange={e => setOraFine(e.target.value)} />
+            <div className="flex flex-wrap gap-1.5">
+              {TIPI_STATO.map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTipoGiorno(t)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    tipoGiorno === t
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
+                  }`}
+                >
+                  {t === "turno" ? "Lavora" : TIPO_GIORNO_LABEL[t]}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Toggle spezzato */}
-          <button
-            type="button"
-            onClick={() => setSpezzato(s => !s)}
-            className={`text-xs font-medium px-2 py-1 rounded-md transition-colors ${
-              spezzato
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            {spezzato ? "✓ Turno spezzato" : "+ Aggiungi secondo slot (spezzato)"}
-          </button>
-
-          {/* Slot 2 */}
-          {spezzato && (
+          {/* Importo a carico: solo ferie/malattia, dove l'azienda paga senza ore. */}
+          {(tipoGiorno === "ferie" || tipoGiorno === "malattia") && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Secondo slot *</label>
-              <div className="grid grid-cols-2 gap-2">
-                <Input type="time" value={oraInizio2} onChange={e => setOraInizio2(e.target.value)} />
-                <Input type="time" value={oraFine2} onChange={e => setOraFine2(e.target.value)} />
-              </div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Importo a carico (€) <span className="font-normal opacity-60">opzionale</span>
+              </label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={importoACarico}
+                onChange={e => setImportoACarico(e.target.value.replace(/[^0-9,.]/g, ""))}
+                placeholder="es. 50"
+              />
             </div>
           )}
 
           {/* Durata calcolata */}
-          {oreTot > 0 && (
+          {!isAssenza && oreTot > 0 && (
             <p className="text-xs text-muted-foreground">
               Totale: {fmtOreDisplay(oreTot)}
               {extraNum > 0 && stdNum > 0 && (
@@ -551,6 +680,7 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
           )}
 
           {/* Extra + costo orario */}
+          {!isAssenza && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore extra (in più)</label>
@@ -573,7 +703,8 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
               />
             </div>
           </div>
-          {extraNum > 0 && (
+          )}
+          {!isAssenza && extraNum > 0 && (
             <div className="grid grid-cols-2 gap-2">
               <div />
               <div>
@@ -603,220 +734,12 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
         <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
           <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
           <Button onClick={salva} disabled={saving}>
-            {saving ? "Salvo…" : isNuovo && giorniSelezionati.size > 1 ? `Salva ${giorniSelezionati.size} turni` : "Salva"}
+            {saving
+              ? "Salvo…"
+              : isNuovo && giorniSelezionati.size > 1
+                ? `Salva ${giorniSelezionati.size} ${isAssenza ? "giorni" : "turni"}`
+                : "Salva"}
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Dialog stato-giorno (riposo/ferie/malattia) ──────────────────────────────
-
-interface StatoGiornoDialogProps {
-  open: boolean;
-  turno: Turno | null; // riga di stato in modifica, o null per nuovo
-  dipendenti: Dipendente[];
-  dipendenteIdDefault: string;
-  dataDefault: string;
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-const TIPI_STATO: TipoGiorno[] = ["turno", "riposo", "ferie", "malattia"];
-
-export function StatoGiornoDialog({ open, turno, dipendenti, dipendenteIdDefault, dataDefault, onClose, onSaved }: StatoGiornoDialogProps) {
-  const isModifica = !!turno;
-  const [modo, setModo] = useState<"giorno" | "intervallo">("giorno");
-  const [dipendenteId, setDipendenteId] = useState("");
-  const [data, setData] = useState(dataDefault);
-  const [dataA, setDataA] = useState(dataDefault);
-  const [tipoGiorno, setTipoGiorno] = useState<TipoGiorno>("riposo");
-  const [importoACarico, setImportoACarico] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setModo("giorno");
-      setDipendenteId(turno?.dipendente_id ?? dipendenteIdDefault);
-      setData(turno?.data_turno ?? dataDefault);
-      setDataA(turno?.data_turno ?? dataDefault);
-      setTipoGiorno((turno?.tipo_giorno as TipoGiorno) ?? "riposo");
-      setImportoACarico(turno?.importo_a_carico ? String(turno.importo_a_carico).replace(".", ",") : "");
-    }
-  }, [open, turno, dipendenteIdDefault, dataDefault]);
-
-  const consenteImporto = tipoGiorno === "ferie" || tipoGiorno === "malattia";
-  const importoNum = importoACarico ? parseFloat(importoACarico.replace(",", ".")) : NaN;
-
-  async function salva() {
-    if (!dipendenteId) { toast.error("Seleziona un dipendente"); return; }
-    if (modo === "intervallo" && dataA < data) { toast.error("Data fine precedente alla data inizio"); return; }
-    if (importoACarico && (isNaN(importoNum) || importoNum < 0)) { toast.error("Importo non valido"); return; }
-    setSaving(true);
-    try {
-      const importo = consenteImporto && importoACarico ? importoNum : null;
-      if (isModifica) {
-        // Riga esistente: PATCH diretto sull'id, niente creazione/skip.
-        const res = await fetch(`/api/workspace/personale/${turno!.id}/stato-giorno`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo_giorno: tipoGiorno, importo_a_carico: importo }),
-        });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.detail ?? "Errore");
-        toast.success(`Giorno aggiornato su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`);
-      } else if (modo === "giorno") {
-        // Un giorno singolo: serve l'id della riga esistente (creata come turno di default),
-        // quindi passa dall'intervallo di un solo giorno — stessa creazione/skip del backend.
-        const res = await fetch("/api/workspace/personale/stato-giorno-intervallo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            dipendente_id: dipendenteId,
-            data_da: data,
-            data_a: data,
-            tipo_giorno: tipoGiorno,
-            importo_a_carico: importo,
-          }),
-        });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.detail ?? "Errore");
-        if (j.n_saltati_turno_esistente?.length) {
-          toast.warning("Quel giorno ha già un turno lavorato: usa la modifica turno per cambiarlo");
-        } else {
-          toast.success(`Giorno impostato su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}`);
-        }
-      } else {
-        const res = await fetch("/api/workspace/personale/stato-giorno-intervallo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            dipendente_id: dipendenteId,
-            data_da: data,
-            data_a: dataA,
-            tipo_giorno: tipoGiorno,
-            importo_a_carico: importo,
-          }),
-        });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.detail ?? "Errore");
-        const nSaltati = j.n_saltati_turno_esistente?.length ?? 0;
-        toast.success(
-          `${j.n_creati + j.n_aggiornati} giorni impostati su ${TIPO_GIORNO_LABEL[tipoGiorno].toLowerCase()}` +
-          (nSaltati ? ` · ${nSaltati} saltati (turno già lavorato)` : "")
-        );
-      }
-      onSaved();
-      onClose();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore salvataggio");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="flex max-h-[90dvh] flex-col max-w-md">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>{isModifica ? "Modifica stato giorno" : "Imposta stato giorno"}</DialogTitle>
-        </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="space-y-3 mt-2">
-            {!isModifica && (
-              <SelettoreDipendente
-                dipendenti={dipendenti}
-                valore={dipendenteId}
-                onChange={setDipendenteId}
-                onCreato={() => {}}
-                autoFocus
-              />
-            )}
-
-            {isModifica ? (
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Data</label>
-                <Input type="date" value={data} disabled />
-              </div>
-            ) : (
-              <>
-                <div className="flex rounded-md border border-border overflow-hidden w-fit">
-                  <button
-                    type="button"
-                    onClick={() => setModo("giorno")}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${modo === "giorno" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-                  >
-                    Giorno singolo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModo("intervallo")}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${modo === "intervallo" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-                  >
-                    Intervallo di date
-                  </button>
-                </div>
-
-                {modo === "giorno" ? (
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Data *</label>
-                    <Input type="date" value={data} onChange={e => setData(e.target.value)} />
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Dal *</label>
-                      <Input type="date" value={data} onChange={e => setData(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Al *</label>
-                      <Input type="date" value={dataA} onChange={e => setDataA(e.target.value)} />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Stato *</label>
-              <div className="flex flex-wrap gap-1.5">
-                {TIPI_STATO.map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTipoGiorno(t)}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                      tipoGiorno === t
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-                    }`}
-                  >
-                    {TIPO_GIORNO_LABEL[t]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {consenteImporto && (
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Importo a carico (€) <span className="font-normal opacity-60">opzionale</span>
-                </label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={importoACarico}
-                  onChange={e => setImportoACarico(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="es. 50"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
-          <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
-          <Button onClick={salva} disabled={saving}>{saving ? "Salvo…" : "Salva"}</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -831,6 +754,10 @@ interface MensileDialogProps {
   mese: string;              // YYYY-MM
   dipendenti: Dipendente[];
   nomePerId: Record<string, string>;
+  // Chi ha già turni giornalieri (o già una riga mensile) in questo mese: il
+  // totale da busta paga sommerebbe due volte le stesse ore.
+  dipendentiConTurniGiornalieri?: Set<string>;
+  dipendentiConMensile?: Set<string>;
   onClose: () => void;
   onSaved: () => void;
   onDipendenteCreato: () => void;
@@ -841,7 +768,7 @@ export function fmtMese(mese: string): string {
   return new Date(ay, am - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 }
 
-export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
+export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipendentiConTurniGiornalieri, dipendentiConMensile, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
   const [dipendenteId, setDipendenteId] = useState("");
   // Input separati: ordinarie + extra (il totale è la somma). Lo storage resta
   // ore_totali / ore_extra (di cui), così l'API e il DB non cambiano.
@@ -879,8 +806,20 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClos
   const impExtN = numOr0(importoExtra);
   const lordoTot = Math.round((impOrdN + impExtN) * 100) / 100;
 
+  const nomeSelezionato = dipendenti.find(d => d.id === dipendenteId)?.nome ?? "Questo dipendente";
+  const haGiaTurni = isNuovo && !!dipendenteId && !!dipendentiConTurniGiornalieri?.has(dipendenteId);
+  const haGiaMensile = isNuovo && !!dipendenteId && !!dipendentiConMensile?.has(dipendenteId);
+
   async function salva() {
     if (isNuovo && !dipendenteId) { toast.error("Seleziona un dipendente"); return; }
+    if (haGiaTurni) {
+      toast.error(`${nomeSelezionato} ha già turni giornalieri in ${fmtMese(mese)}: le ore si conterebbero due volte.`);
+      return;
+    }
+    if (haGiaMensile) {
+      toast.error(`${nomeSelezionato} ha già un totale mensile per ${fmtMese(mese)}: modifica quello invece di aggiungerne un altro.`);
+      return;
+    }
     if (oreOrdN < 0 || oreExtN < 0) { toast.error("Le ore non possono essere negative"); return; }
     if (impOrdN < 0 || impExtN < 0) { toast.error("Gli importi non possono essere negativi"); return; }
     if (oreTot <= 0 && lordoTot <= 0) { toast.error("Inserisci almeno le ore o il lordo del mese"); return; }
@@ -941,6 +880,25 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClos
               />
             )}
 
+            {(haGiaTurni || haGiaMensile) && (
+              <div className="rounded-md border border-amber-500/50 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {haGiaTurni ? (
+                    <>
+                      <strong>{nomeSelezionato}</strong> ha già turni giornalieri in {fmtMese(mese)}.
+                      Aggiungere anche il totale da busta paga conterebbe le ore due volte:
+                      per questo mese usa un metodo solo.
+                    </>
+                  ) : (
+                    <>
+                      <strong>{nomeSelezionato}</strong> ha già un totale mensile per {fmtMese(mese)}.
+                      Modifica quello dall&apos;elenco invece di aggiungerne un altro.
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* Ore: ordinarie + extra → totale */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore del mese *</label>
@@ -997,63 +955,287 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClos
         </div>
         <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
           <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
-          <Button onClick={salva} disabled={saving}>{saving ? "Salvo…" : "Salva"}</Button>
+          <Button onClick={salva} disabled={saving || haGiaTurni || haGiaMensile}>{saving ? "Salvo…" : "Salva"}</Button>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ─── Selettore periodo ────────────────────────────────────────────────────────
+// ─── Dialog gestione anagrafica dipendenti ────────────────────────────────────
 
-// Modalità è l'unico interruttore della pagina: giornaliero = griglia
-// dipendenti×giorni del mese, mensile = totali aggregati da busta paga.
-// Il periodo è sempre il mese; la settimana è uno zoom, non una vista a parte.
-type Modalita = "giornaliero" | "mensile";
+interface GestioneDipendentiDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCambiato: () => void;
+}
+
+/** Rinomina, costo orario di default, disattiva/riattiva ed elimina.
+ *  L'eliminazione vera passa solo per chi non ha turni: il worker rifiuta
+ *  (409) chi ne ha, perché cancellarlo cambierebbe i costi di mesi chiusi. */
+export function GestioneDipendentiDialog({ open, onClose, onCambiato }: GestioneDipendentiDialogProps) {
+  const [attivi, setAttivi] = useState<Dipendente[]>([]);
+  const [disattivati, setDisattivati] = useState<Dipendente[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [mostraDisattivati, setMostraDisattivati] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editCosto, setEditCosto] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const carica = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [rA, rD] = await Promise.all([
+        fetch("/api/workspace/dipendenti?attivo=true").then(r => r.json()),
+        fetch("/api/workspace/dipendenti?attivo=false").then(r => r.json()),
+      ]);
+      setAttivi(rA?.dipendenti ?? []);
+      setDisattivati(rD?.dipendenti ?? []);
+    } catch {
+      toast.error("Errore caricamento dipendenti");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { if (open) { carica(); setEditId(null); setMostraDisattivati(false); } }, [open, carica]);
+
+  function apriModifica(d: Dipendente) {
+    setEditId(d.id);
+    setEditNome(d.nome);
+    setEditCosto(d.costo_orario_default != null ? String(d.costo_orario_default).replace(".", ",") : "");
+  }
+
+  async function salvaModifica() {
+    const nome = editNome.trim();
+    if (!nome) { toast.error("Il nome è obbligatorio"); return; }
+    const costoNum = editCosto ? parseFloat(editCosto.replace(",", ".")) : null;
+    if (editCosto && (costoNum == null || isNaN(costoNum) || costoNum < 0)) {
+      toast.error("Costo orario non valido"); return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/workspace/dipendenti/${editId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, costo_orario_default: costoNum }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail ?? j.error ?? "Errore");
+      toast.success("Dipendente aggiornato");
+      setEditId(null);
+      await carica();
+      onCambiato();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore salvataggio");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cambiaStato(d: Dipendente, azione: "disattiva" | "riattiva") {
+    if (azione === "disattiva" && !confirm(
+      `Disattivare ${d.nome}?\n\nSparirà dalle selezioni e dai nuovi inserimenti, ma i turni già registrati restano nei costi storici.`
+    )) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/workspace/dipendenti/${d.id}/${azione}`, { method: "PATCH" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail ?? j.error ?? "Errore");
+      toast.success(azione === "disattiva" ? `${d.nome} disattivato` : `${d.nome} riattivato`);
+      await carica();
+      onCambiato();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function elimina(d: Dipendente) {
+    if (!confirm(`Eliminare definitivamente ${d.nome}?\n\nPossibile solo se non ha nessun turno registrato.`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/workspace/dipendenti/${d.id}`, { method: "DELETE" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail ?? j.error ?? "Errore");
+      toast.success(`${d.nome} eliminato`);
+      await carica();
+      onCambiato();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore eliminazione");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="flex max-h-[90dvh] flex-col max-w-lg">
+        <DialogHeader className="shrink-0">
+          <DialogTitle>Gestisci dipendenti</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {loading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Caricamento…</p>
+          ) : attivi.length === 0 && disattivati.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Nessun dipendente. Creane uno da &ldquo;Aggiungi turno&rdquo;.
+            </p>
+          ) : (
+            <div className="space-y-1 mt-1">
+              {attivi.map(d => (
+                <div key={d.id} className="rounded-md border border-border">
+                  {editId === d.id ? (
+                    <div className="p-3 space-y-2">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Nome *</label>
+                        <Input value={editNome} onChange={e => setEditNome(e.target.value)} autoFocus />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                          Costo orario di default (€/h) <span className="font-normal opacity-60">opzionale</span>
+                        </label>
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          value={editCosto}
+                          onChange={e => setEditCosto(e.target.value.replace(/[^0-9,.]/g, ""))}
+                          placeholder="es. 12,50"
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Serve solo a precompilare i nuovi turni: i turni già salvati non cambiano.
+                        </p>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <Button variant="outline" size="sm" onClick={() => setEditId(null)} disabled={busy}>Annulla</Button>
+                        <Button size="sm" onClick={salvaModifica} disabled={busy}>{busy ? "Salvo…" : "Salva"}</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2 group">
+                      <span className="font-medium text-sm flex-1 truncate">{d.nome}</span>
+                      {d.costo_orario_default != null && (
+                        <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                          {fmtEuro(d.costo_orario_default)}/h
+                        </span>
+                      )}
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="icon" variant="ghost" className="size-7" title="Modifica" onClick={() => apriModifica(d)} disabled={busy}>
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="size-7" title="Disattiva" onClick={() => cambiaStato(d, "disattiva")} disabled={busy}>
+                          <UserMinus className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          title="Elimina (solo se non ha turni)"
+                          onClick={() => elimina(d)}
+                          disabled={busy}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {disattivati.length > 0 && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setMostraDisattivati(v => !v)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    {mostraDisattivati ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                    Disattivati ({disattivati.length})
+                  </button>
+                  {mostraDisattivati && (
+                    <div className="space-y-1 mt-1.5">
+                      {disattivati.map(d => (
+                        <div key={d.id} className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border">
+                          <span className="text-sm flex-1 truncate text-muted-foreground">{d.nome}</span>
+                          <Button size="sm" variant="outline" onClick={() => cambiaStato(d, "riattiva")} disabled={busy}>
+                            Riattiva
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-7 text-muted-foreground hover:text-destructive"
+                            title="Elimina (solo se non ha turni)"
+                            onClick={() => elimina(d)}
+                            disabled={busy}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="shrink-0 flex justify-between items-center gap-2 pt-3 border-t border-border mt-1">
+          <p className="text-[11px] text-muted-foreground">
+            Disattivare conserva lo storico. Eliminare si può solo senza turni.
+          </p>
+          <Button variant="outline" onClick={onClose}>Chiudi</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // ─── Tab principale ───────────────────────────────────────────────────────────
 
+// Niente modalità: turni giornalieri e totali da busta paga convivono nello
+// stesso elenco. Il metodo è una proprietà del singolo dipendente (chi ha turni
+// mostra i turni, chi ha la busta paga mostra la riga mensile), non un
+// interruttore di pagina — che mostrava i totali di una vista con la lista
+// dell'altra vuota. Il calendario vive in Agenda: qui si fa data entry.
+
 export function PersonaleTab() {
   const oggi = toISO(new Date());
-  const [modalita, setModalita] = useState<Modalita>("giornaliero");
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
-  const [settimanaZoom, setSettimanaZoom] = useState<number | null>(null);
   const [risposta, setRisposta] = useState<PersonaleResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTurno, setEditTurno] = useState<Turno | null>(null);
   const [dataDefault, setDataDefault] = useState(oggi);
   const [dipendenteIdDefaultTurno, setDipendenteIdDefaultTurno] = useState<string | undefined>(undefined);
-  const [copiando, setCopiando] = useState(false);
   const [esportandoExcel, setEsportandoExcel] = useState(false);
   const [expandedDip, setExpandedDip] = useState<string | null>(null);
   const [mensileDialogOpen, setMensileDialogOpen] = useState(false);
   const [editMensile, setEditMensile] = useState<Turno | null>(null);
-  const [statoGiornoDialogOpen, setStatoGiornoDialogOpen] = useState(false);
-  const [statoGiornoDipDefault, setStatoGiornoDipDefault] = useState("");
-  const [editStatoGiorno, setEditStatoGiorno] = useState<Turno | null>(null);
+  const [gestioneDipOpen, setGestioneDipOpen] = useState(false);
 
-  const isMensile = modalita === "mensile";
-
-  // Il range caricato è sempre il mese intero, in entrambe le modalità: lo zoom
-  // settimana filtra solo ciò che si rende, quindi non provoca una nuova fetch.
   const [da, fine] = (() => {
     const [ay, am] = meseBase.split("-").map(Number);
     const ultimoGiorno = new Date(ay, am, 0).getDate();
     return [`${meseBase}-01`, `${meseBase}-${String(ultimoGiorno).padStart(2, "0")}`];
   })();
 
-  const settimane = settimaneDelMese(meseBase);
-  const settimanaAttiva = settimanaZoom != null ? settimane[settimanaZoom] ?? null : null;
-
-  const load = useCallback(async (d: string, f: string, soloMensile: boolean) => {
+  // Una sola fetch per vista: le due chiamate (giornaliero + mensile) si fondono
+  // in un elenco unico. I totali del backend sono per-vista, quindi si ricalcola
+  // tutto lato client dai turni fusi — come già faceva prima.
+  const load = useCallback(async (d: string, f: string) => {
     setLoading(true);
     try {
-      // Le due viste non si mischiano mai: mensile=true mostra solo le righe
-      // mensili, false solo i turni giornalieri.
-      const res = await fetch(`/api/workspace/personale?da=${d}&a=${f}&mensile=${soloMensile}`);
-      const j: PersonaleResponse = await res.json();
-      setRisposta(j);
+      const [rG, rM] = await Promise.all([
+        fetch(`/api/workspace/personale?da=${d}&a=${f}&mensile=false`).then(r => r.json()),
+        fetch(`/api/workspace/personale?da=${d}&a=${f}&mensile=true`).then(r => r.json()),
+      ]);
+      const base: PersonaleResponse = rG ?? {};
+      setRisposta({
+        ...base,
+        turni: [...(rG?.turni ?? []), ...(rM?.turni ?? [])],
+      });
     } catch {
       toast.error("Errore caricamento turni");
     } finally {
@@ -1061,74 +1243,35 @@ export function PersonaleTab() {
     }
   }, []);
 
-  useEffect(() => { load(da, fine, isMensile); }, [da, fine, isMensile, load]);
+  useEffect(() => { load(da, fine); }, [da, fine, load]);
 
-  // Esc esce dallo zoom, ma solo se non c'è un dialog aperto: lì Esc deve
-  // chiudere il dialog e basta.
-  useEffect(() => {
-    if (settimanaZoom == null || dialogOpen || mensileDialogOpen || statoGiornoDialogOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setSettimanaZoom(null);
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [settimanaZoom, dialogOpen, mensileDialogOpen, statoGiornoDialogOpen]);
-
-  // Cambiando mese lo zoom si azzera: l'indice di settimana non ha continuità
-  // fra mesi diversi (le settimane non si allineano e il mese nuovo può averne meno).
   function navPrev() {
     const [ay, am] = meseBase.split("-").map(Number);
     const prev = new Date(ay, am - 2, 1);
     setMeseBase(`${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`);
-    setSettimanaZoom(null);
   }
   function navNext() {
     const [ay, am] = meseBase.split("-").map(Number);
     const next = new Date(ay, am, 1);
     setMeseBase(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
-    setSettimanaZoom(null);
   }
 
   async function elimina(t: Turno) {
-    if (!confirm(`Eliminare turno di ${nomePerId[t.dipendente_id] ?? "questo dipendente"} (${fmtData(t.data_turno)} ${orarioTurno(t)})?`)) return;
+    const chi = nomePerId[t.dipendente_id] ?? "questo dipendente";
+    const cosa = (t.tipo_giorno ?? "turno") !== "turno"
+      ? `${TIPO_GIORNO_LABEL[t.tipo_giorno as TipoGiorno].toLowerCase()} di ${chi} (${fmtData(t.data_turno)})`
+      : `turno di ${chi} (${fmtData(t.data_turno)} ${orarioTurno(t)})`;
+    if (!confirm(`Eliminare ${cosa}?`)) return;
     await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
-    toast.success("Turno eliminato");
-    load(da, fine, isMensile);
+    toast.success("Eliminato");
+    load(da, fine);
   }
 
   async function eliminaMensile(t: Turno) {
     if (!confirm(`Eliminare l'inserimento mensile di ${nomePerId[t.dipendente_id] ?? "questo dipendente"} (${fmtMese(meseBase)})?`)) return;
     await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
     toast.success("Mese eliminato");
-    load(da, fine, isMensile);
-  }
-
-  // Il worker copia [da, a] shiftato di -7 giorni: il range inviato deve essere
-  // la sola settimana zoomata, mai il mese (copierebbe 30 giorni sfalsati).
-  async function copiaSettimana(sett: SettimanaMese) {
-    if (!confirm("Copiare i turni della settimana precedente su questa settimana? I giorni che hanno già turni verranno saltati.")) return;
-    const sDa = sett.giorni[0];
-    const sA = sett.giorni[sett.giorni.length - 1];
-    setCopiando(true);
-    try {
-      const res = await fetch("/api/workspace/personale/copia-settimana", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ da: sDa, a: sA }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.detail ?? "Errore");
-      if (j.n_copiati === 0) {
-        toast.info(j.messaggio ?? "Nessun turno da copiare");
-      } else {
-        toast.success(`${j.n_copiati} turni copiati${j.n_saltati ? ` · ${j.n_saltati} saltati (giorni già pieni)` : ""}`);
-      }
-      load(da, fine, isMensile);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore copia settimana");
-    } finally {
-      setCopiando(false);
-    }
+    load(da, fine);
   }
 
   async function esportaExcel() {
@@ -1158,12 +1301,35 @@ export function PersonaleTab() {
   function esportaCSV() {
     if (!risposta || risposta.turni.length === 0) return;
     const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
-    const headers = ["Nome", "Data", "Inizio 1", "Fine 1", "Inizio 2", "Fine 2", "Ore totali", "Di cui extra", "Costo orario", "Costo turno", "Note"];
+    const headers = ["Nome", "Tipo", "Data", "Inizio 1", "Fine 1", "Inizio 2", "Fine 2", "Ore totali", "Di cui extra", "Costo orario", "Costo", "Note"];
     const rows = risposta.turni.map(t => {
+      const nome = nomePerId[t.dipendente_id] ?? "";
+      const tipo = (t.tipo_giorno ?? "turno") as TipoGiorno;
+      // Riga da busta paga: niente orari né tariffa oraria, il costo è il lordo.
+      if (t.mensile) {
+        const ore = calcolaOreTotali(t);
+        return [
+          nome, "Busta paga", fmtMese(t.data_turno.slice(0, 7)), "", "", "", "",
+          num(ore),
+          t.ore_extra ? num(t.ore_extra) : "",
+          "",
+          (t.lordo_mensile ?? 0) > 0 ? num(t.lordo_mensile!) : "",
+          t.note ?? "",
+        ];
+      }
+      // Assenza: nessuna ora lavorata, eventuale importo a carico come costo.
+      if (tipo !== "turno") {
+        return [
+          nome, TIPO_GIORNO_LABEL[tipo], fmtData(t.data_turno), "", "", "", "",
+          "", "", "",
+          (t.importo_a_carico ?? 0) > 0 ? num(t.importo_a_carico!) : "",
+          t.note ?? "",
+        ];
+      }
       const ore = calcolaOreTotali(t);
       const co = t.costo_orario ?? null;
       return [
-        nomePerId[t.dipendente_id] ?? "",
+        nome, "Turno",
         fmtData(t.data_turno),
         fmtOra(t.ora_inizio),
         fmtOra(t.ora_fine),
@@ -1172,13 +1338,14 @@ export function PersonaleTab() {
         num(ore),
         t.ore_extra ? num(t.ore_extra) : "",
         co != null ? num(co) : "",
-        co != null ? num(ore * co) : "",
+        co != null ? num(calcolaCostoTurno(t)) : "",
         t.note ?? "",
       ];
     });
-    const totaleOre = Object.values(risposta.monte_ore).reduce((s, o) => s + o, 0);
+    // Totale dai turni fusi, non da monte_ore (che è della sola fetch
+    // giornaliera): altrimenti la riga TOTALE non quadra con le sue righe.
     rows.push([]);
-    rows.push(["TOTALE", "", "", "", "", "", num(totaleOre), num(oreExtTotale), "", costoTotale > 0 ? num(costoTotale) : "", ""]);
+    rows.push(["TOTALE", "", "", "", "", "", "", num(totaleOre), num(oreExtTotale), "", costoTotale > 0 ? num(costoTotale) : "", ""]);
 
     const csv = [headers, ...rows]
       .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
@@ -1194,8 +1361,6 @@ export function PersonaleTab() {
   }
 
   const turni = risposta?.turni ?? [];
-  const monteOre = risposta?.monte_ore ?? {};
-  const nomi = risposta?.nomi ?? [];
   const costiNoti = risposta?.costi_noti ?? {};
   const dipendenti = risposta?.dipendenti ?? [];
 
@@ -1203,6 +1368,15 @@ export function PersonaleTab() {
   // anagrafica, così una rinomina si riflette ovunque senza toccare lo storico.
   const nomePerId: Record<string, string> = {};
   for (const d of dipendenti) nomePerId[d.id] = d.nome;
+
+  // `nomi` dal worker sono i soli dipendenti ATTIVI. Chi viene disattivato a
+  // metà mese ha però turni che entrano nei totali in alto: senza aggiungerlo
+  // qui sparirebbe dall'elenco e la somma delle righe non farebbe il totale.
+  const nomi = [...(risposta?.nomi ?? [])];
+  for (const t of turni) {
+    const n = nomePerId[t.dipendente_id] ?? t.dipendente_id;
+    if (!nomi.includes(n)) nomi.push(n);
+  }
 
   // Calcola sempre lato frontend dai turni — robusto anche con worker vecchio
   const { oreStdPerPersona, oreExtPerPersona, costoStdPerPersona, costoExtPerPersona, costoPerPersona } = (() => {
@@ -1248,42 +1422,32 @@ export function PersonaleTab() {
   const totaleOre = oreStdTotale + oreExtTotale;
 
   // Giorni distinti con almeno un turno
-  const giorniConTurni = new Set(turni.map(t => t.data_turno)).size;
+  // Solo giorni effettivamente lavorati: contare anche riposi e ferie
+  // diluirebbe la media oraria mostrata sulla card Totale.
+  const giorniConTurni = new Set(
+    turni.filter(t => !t.mensile && (t.tipo_giorno ?? "turno") === "turno").map(t => t.data_turno)
+  ).size;
   const mediaGiornaliera = giorniConTurni > 0 ? totaleOre / giorniConTurni : 0;
 
-  // In zoom i chip-giorno del dialog sono i 7 della settimana; fuori zoom sono
-  // tutti quelli del mese, perché il click può arrivare da un giorno qualsiasi.
-  const giorniDialogoTurno = settimanaAttiva?.giorni ?? giorniDelMese(meseBase);
-  // Il giorno preselezionato deve essere fra i chip mostrati, altrimenti il
-  // dialog salva su un giorno che l'utente non vede selezionato.
+  // I chip-giorno del dialog sono sempre quelli del mese in vista.
+  const giorniDialogoTurno = giorniDelMese(meseBase);
   const giornoDefaultDialogo = giorniDialogoTurno.includes(oggi) ? oggi : giorniDialogoTurno[0];
+
+  // Chi ha già turni giornalieri nel mese non può ricevere anche il totale da
+  // busta paga: sommerebbe due volte le stesse ore. La guardia sta anche lato
+  // worker; qui serve a non far nemmeno aprire la strada sbagliata.
+  const dipConTurniGiornalieri = new Set(
+    turni.filter(t => !t.mensile).map(t => t.dipendente_id)
+  );
+  const dipConMensile = new Set(
+    turni.filter(t => t.mensile).map(t => t.dipendente_id)
+  );
 
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Interruttore principale: turni giornalieri vs totali mensili.
-            È l'unico selettore temporale — etichette parlanti, niente ambiguità. */}
-        <div className="flex rounded-md border border-border overflow-hidden">
-          <button
-            onClick={() => { setModalita("giornaliero"); setExpandedDip(null); }}
-            className={`px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              !isMensile ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
-            }`}
-          >
-            Turni giornalieri
-          </button>
-          <button
-            onClick={() => { setModalita("mensile"); setExpandedDip(null); }}
-            className={`px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              isMensile ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
-            }`}
-          >
-            Totali mensili
-          </button>
-        </div>
-
-        {/* Info: spiegazione delle due modalità */}
+        {/* Info: spiegazione dei due modi di registrare */}
         <InfoPopover title="Come gestire il personale">
           <p className="text-muted-foreground">
             Due modi per registrare le ore e il costo dei dipendenti — scegli quello più comodo per te.
@@ -1291,80 +1455,59 @@ export function PersonaleTab() {
           </p>
           <div className="space-y-1.5 text-muted-foreground">
             <p className="font-medium text-foreground">📅 Turni giornalieri</p>
-            <p>Inserisci i turni giorno per giorno con gli orari. Comodo per pianificare la settimana. Puoi copiare la settimana precedente per non riscrivere tutto.</p>
+            <p>Inserisci i turni giorno per giorno con gli orari, anche più giorni in un colpo solo. Nello stesso riquadro segni se il dipendente quel giorno è a riposo, in ferie o in malattia.</p>
           </div>
           <div className="space-y-1.5 text-muted-foreground">
-            <p className="font-medium text-foreground">🗓️ Totali mensili</p>
+            <p className="font-medium text-foreground">🗓️ Totale mensile</p>
             <p>A fine mese leggi la busta paga e inserisci i totali del dipendente: ore e lordo. Veloce se non vuoi tracciare i singoli turni.</p>
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
-            <p>In entrambi i casi le <strong>ore extra</strong> si inseriscono a parte e si sommano alle ordinarie: il totale è la somma dei due.</p>
+            <p>I due modi convivono nella stessa pagina: ogni dipendente usa il suo. Per lo <strong>stesso</strong> dipendente nello <strong>stesso</strong> mese però va usato uno solo, altrimenti le ore si conterebbero due volte.</p>
+            <p className="mt-1.5">Per vedere i turni sul calendario, insieme ad appuntamenti e spese, vai su <strong>Agenda → Tutto</strong>.</p>
           </div>
         </InfoPopover>
 
         <div className="flex items-center gap-1 border border-border rounded-md">
-          <button onClick={navPrev} className="p-1.5 hover:bg-muted rounded-l-md">
+          <button onClick={navPrev} className="p-1.5 hover:bg-muted rounded-l-md" title="Mese precedente">
             <ChevronLeft className="size-4" />
           </button>
-          <span className="px-3 text-sm font-medium min-w-[190px] text-center capitalize">
-            {settimanaAttiva ? `${settimanaAttiva.label} ${fmtMese(meseBase)}` : fmtMese(meseBase)}
+          <span className="px-3 text-sm font-medium min-w-[150px] text-center capitalize">
+            {fmtMese(meseBase)}
           </span>
-          <button onClick={navNext} className="p-1.5 hover:bg-muted rounded-r-md">
+          <button onClick={navNext} className="p-1.5 hover:bg-muted rounded-r-md" title="Mese successivo">
             <ChevronRight className="size-4" />
           </button>
         </div>
 
-        {settimanaAttiva && (
-          <Button variant="outline" size="sm" onClick={() => setSettimanaZoom(null)}>
-            <Maximize2 className="size-4 mr-1.5" />Tutto il mese
-          </Button>
-        )}
-
         {/* Destra: azioni */}
         <div className="ml-auto flex items-center gap-2">
-          {isMensile ? (
-            <Button onClick={() => { setEditMensile(null); setMensileDialogOpen(true); }}>
-              <Plus className="size-4 mr-1.5" />Inserisci mese
+          <Button variant="outline" onClick={() => setGestioneDipOpen(true)}>
+            <Users className="size-4 mr-1.5" />Gestisci dipendenti
+          </Button>
+
+          {turni.length > 0 && (
+            <Button variant="outline" onClick={esportaCSV}>
+              <Download className="size-4 mr-1.5" />CSV
             </Button>
-          ) : (
-            <>
-              {settimanaAttiva && (
-                <Button variant="outline" onClick={() => copiaSettimana(settimanaAttiva)} disabled={copiando}>
-                  <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
-                </Button>
-              )}
-
-              <Button
-                variant="outline"
-                onClick={() => { setEditStatoGiorno(null); setStatoGiornoDipDefault(""); setStatoGiornoDialogOpen(true); }}
-              >
-                <CalendarOff className="size-4 mr-1.5" />Riposo/ferie/malattia
-              </Button>
-
-              {turni.length > 0 && (
-                <Button variant="outline" onClick={esportaCSV}>
-                  <Download className="size-4 mr-1.5" />Esporta CSV
-                </Button>
-              )}
-
-              <Button variant="outline" onClick={esportaExcel} disabled={esportandoExcel}>
-                <Download className="size-4 mr-1.5" />{esportandoExcel ? "Esporto…" : "Esporta Excel"}
-              </Button>
-
-              <Button onClick={() => { setEditTurno(null); setDataDefault(giornoDefaultDialogo); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
-                <Plus className="size-4 mr-1.5" />Aggiungi turno
-              </Button>
-            </>
           )}
+
+          <Button variant="outline" onClick={esportaExcel} disabled={esportandoExcel}>
+            <Download className="size-4 mr-1.5" />{esportandoExcel ? "Esporto…" : "Excel"}
+          </Button>
+
+          <Button variant="outline" onClick={() => { setEditMensile(null); setMensileDialogOpen(true); }}>
+            <CalendarDays className="size-4 mr-1.5" />Totale mensile
+          </Button>
+
+          <Button onClick={() => { setEditTurno(null); setDataDefault(giornoDefaultDialogo); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
+            <Plus className="size-4 mr-1.5" />Aggiungi turno
+          </Button>
         </div>
       </div>
 
       {/* ── KPI cards ── */}
-      {(Object.keys(monteOre).length > 0 || !isMensile) && (
+      {turni.length > 0 && (
         <div className="space-y-3">
-          {/* 3 card principali: a mese vuoto restano nascoste, ma il wrapper resta
-              perché la griglia sotto è l'elemento principale della vista. */}
-          {Object.keys(monteOre).length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Card 1: Ore ordinarie */}
             <Card className="ring-1 ring-green-500/50 bg-green-50/60 dark:bg-green-950/20">
@@ -1419,35 +1562,14 @@ export function PersonaleTab() {
               </CardContent>
             </Card>
           </div>
-          )}
 
-          {/* Griglia dipendenti×giorni del mese. In modalità mensile non ha senso:
-              le righe mensili aggregate non hanno un giorno da piazzare in cella. */}
-          {!isMensile && (
-            <VistaMensileGrid
-              meseBase={meseBase}
-              turni={turni}
-              dipendenti={dipendenti}
-              nomePerId={nomePerId}
-              oggi={oggi}
-              settimanaZoom={settimanaZoom}
-              onZoomSettimana={setSettimanaZoom}
-              onNuovoTurno={(dipendenteId, data) => {
-                setEditTurno(null);
-                setDataDefault(data);
-                setDipendenteIdDefaultTurno(dipendenteId);
-                setDialogOpen(true);
-              }}
-              onModificaTurno={t => { setEditTurno(t); setDialogOpen(true); }}
-              onModificaStatoGiorno={t => { setEditStatoGiorno(t); setStatoGiornoDialogOpen(true); }}
-            />
-          )}
-
-          {/* Accordion per dipendente: unico posto con note, costo turno, spezzato,
-              importo a carico ed eliminazione — resta sotto la griglia. */}
+          {/* Elenco per dipendente: turni giornalieri e righe da busta paga
+              nello stesso posto, ognuno col metodo che usa davvero. */}
           <div className="space-y-1">
             {nomi.map(n => {
-              const oreN = monteOre[n] ?? 0;
+              // Ricalcolato dai turni fusi, non da monte_ore: quello arriva
+              // dalla sola fetch giornaliera e darebbe 0h a chi è a busta paga.
+              const oreN = (oreStdPerPersona[n] ?? 0) + (oreExtPerPersona[n] ?? 0);
               const extN = oreExtPerPersona[n] ?? 0;
               const costoN = costoPerPersona[n] ?? 0;
               const turniN = turni
@@ -1455,23 +1577,74 @@ export function PersonaleTab() {
                 .sort((a, b) => a.data_turno.localeCompare(b.data_turno));
               const isOpen = expandedDip === n;
               const col = getDipColor(nomi, n);
+              const dipId = dipendenti.find(d => d.nome === n)?.id;
+              // Non è fra gli attivi ma ha turni nel mese: disattivato a mese
+              // iniziato. Va detto, o la sua riga sembra un dato incoerente.
+              const disattivato = !dipId;
+              const daBustaPaga = turniN.some(t => t.mensile);
+              const assenzeN = turniN.filter(t => (t.tipo_giorno ?? "turno") !== "turno").length;
               return (
                 <div key={n} className={`rounded-lg border ring-1 ${col.ring} overflow-hidden`}>
-                  <button
-                    onClick={() => setExpandedDip(isOpen ? null : n)}
-                    className={`w-full flex items-center justify-between px-4 py-3 hover:${col.bg} transition-colors`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold text-sm">{n}</span>
-                      <span className="text-sm tabular-nums text-muted-foreground">{fmtOreDisplay(oreN)}</span>
-                      {extN > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(extN)} str.</span>}
-                      {costoN > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 font-semibold tabular-nums">{fmtEuro(costoN)}</span>}
+                  <div className={`w-full flex items-center justify-between px-4 py-3 hover:${col.bg} transition-colors`}>
+                    <button
+                      onClick={() => setExpandedDip(isOpen ? null : n)}
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                    >
+                      <span className="font-semibold text-sm truncate">{n}</span>
+                      <span className="text-sm tabular-nums text-muted-foreground shrink-0">{fmtOreDisplay(oreN)}</span>
+                      {extN > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums shrink-0">+{fmtOreDisplay(extN)} str.</span>}
+                      {costoN > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 font-semibold tabular-nums shrink-0">{fmtEuro(costoN)}</span>}
+                      {assenzeN > 0 && (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {assenzeN} {assenzeN === 1 ? "assenza" : "assenze"}
+                        </span>
+                      )}
+                      {/* Il metodo è del dipendente: dirlo qui evita la domanda
+                          "perché questo non ha turni giornalieri?". */}
+                      {turniN.length > 0 && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                          daBustaPaga
+                            ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                            : "bg-muted text-muted-foreground"
+                        }`}>
+                          {daBustaPaga ? "busta paga" : "a turni"}
+                        </span>
+                      )}
+                      {disattivato && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                          disattivato
+                        </span>
+                      )}
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {dipId && !daBustaPaga && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setEditTurno(null);
+                            setDataDefault(giornoDefaultDialogo);
+                            setDipendenteIdDefaultTurno(dipId);
+                            setDialogOpen(true);
+                          }}
+                        >
+                          <Plus className="size-3.5 mr-1" />Turno
+                        </Button>
+                      )}
+                      <button onClick={() => setExpandedDip(isOpen ? null : n)} className="p-1">
+                        {isOpen ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
+                      </button>
                     </div>
-                    {isOpen ? <ChevronUp className="size-4 text-muted-foreground shrink-0" /> : <ChevronDown className="size-4 text-muted-foreground shrink-0" />}
-                  </button>
+                  </div>
 
                   {isOpen && (
                     <div className="border-t border-border px-4 py-3">
+                      {turniN.length === 0 && (
+                        <p className="text-xs text-muted-foreground py-2 text-center">
+                          Nessun turno per {fmtMese(meseBase)}.
+                        </p>
+                      )}
                       {/* Lista turni */}
                       <div className="divide-y divide-border rounded-md border border-border">
                         {turniN.map(t => {
@@ -1490,7 +1663,7 @@ export function PersonaleTab() {
                                     <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(t.importo_a_carico!)} a carico</span>
                                   )}
                                   <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditStatoGiorno(t); setStatoGiornoDialogOpen(true); }}>
+                                    <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
                                       <Pencil className="size-3" />
                                     </Button>
                                     <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
@@ -1548,13 +1721,17 @@ export function PersonaleTab() {
         </div>
       )}
 
-      {/* Stato vuoto solo in modalità mensile: in giornaliera la griglia con le
-          celle vuote cliccabili è già l'invito ad aggiungere. */}
       {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
-      ) : turni.length === 0 && isMensile ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">
-          Nessun inserimento mensile per {fmtMese(meseBase)}. Usa &ldquo;Inserisci mese&rdquo; per aggiungere i totali da busta paga.
+      ) : turni.length === 0 ? (
+        <div className="py-12 text-center space-y-1.5">
+          <p className="text-sm text-muted-foreground">
+            Niente registrato per {fmtMese(meseBase)}.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Usa <strong>Aggiungi turno</strong> per i turni giorno per giorno,
+            oppure <strong>Totale mensile</strong> per i totali da busta paga.
+          </p>
         </div>
       ) : null}
 
@@ -1567,8 +1744,8 @@ export function PersonaleTab() {
         dipendenti={dipendenti}
         costiNoti={costiNoti}
         onClose={() => { setDialogOpen(false); setEditTurno(null); }}
-        onSaved={() => load(da, fine, isMensile)}
-        onDipendenteCreato={() => load(da, fine, isMensile)}
+        onSaved={() => load(da, fine)}
+        onDipendenteCreato={() => load(da, fine)}
       />
 
       <MensileDialog
@@ -1577,19 +1754,17 @@ export function PersonaleTab() {
         mese={meseBase}
         dipendenti={dipendenti}
         nomePerId={nomePerId}
+        dipendentiConTurniGiornalieri={dipConTurniGiornalieri}
+        dipendentiConMensile={dipConMensile}
         onClose={() => { setMensileDialogOpen(false); setEditMensile(null); }}
-        onSaved={() => load(da, fine, isMensile)}
-        onDipendenteCreato={() => load(da, fine, isMensile)}
+        onSaved={() => load(da, fine)}
+        onDipendenteCreato={() => load(da, fine)}
       />
 
-      <StatoGiornoDialog
-        open={statoGiornoDialogOpen}
-        turno={editStatoGiorno}
-        dipendenti={dipendenti}
-        dipendenteIdDefault={statoGiornoDipDefault}
-        dataDefault={dataDefault}
-        onClose={() => { setStatoGiornoDialogOpen(false); setEditStatoGiorno(null); }}
-        onSaved={() => load(da, fine, isMensile)}
+      <GestioneDipendentiDialog
+        open={gestioneDipOpen}
+        onClose={() => setGestioneDipOpen(false)}
+        onCambiato={() => load(da, fine)}
       />
     </div>
   );

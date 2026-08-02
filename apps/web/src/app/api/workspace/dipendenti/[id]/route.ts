@@ -15,3 +15,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return workerUnreachable();
   }
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const token = await getToken();
+  if (!token) return unauthorized();
+  const { id } = await params;
+  try {
+    const res = await workerFetch("DELETE", `/api/workspace/dipendenti/${id}`, token, { json: false });
+    return NextResponse.json(await res.json(), { status: res.status });
+  } catch {
+    return workerUnreachable();
+  }
+}

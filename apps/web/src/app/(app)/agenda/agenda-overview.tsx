@@ -7,6 +7,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { EventoDialog } from "../workspace/diario-tab";
+import {
+  type Turno,
+  type TipoGiorno,
+  TIPO_GIORNO_LABEL,
+  TIPO_GIORNO_BADGE,
+  calcolaOreTotali,
+  fmtOreDisplay,
+  orarioTurno,
+} from "../workspace/personale-tab";
 
 type Vista = "mese" | "settimana" | "lista";
 
@@ -22,6 +31,10 @@ interface VoceAgenda {
   dettaglio?: string;      // riga secondaria
   ora?: string;            // HH:MM se rilevante
   importo?: number;        // per spese
+  // Solo per fonte "turno": stato del giorno e ore, così un giorno di ferie non
+  // si traveste da turno delle 00:00 e il pannello può totalizzare le ore.
+  tipoGiorno?: TipoGiorno;
+  ore?: number;
 }
 
 const FONTI: Record<Fonte, { label: string; dot: string; chip: string; icon: typeof CalendarDays; href: string }> = {
@@ -74,7 +87,7 @@ function addDays(d: Date, n: number): Date {
 
 interface EventoRaw { id: string; data_evento: string; titolo: string; ora_inizio?: string | null; ora_fine?: string | null; descrizione?: string | null; }
 interface SpesaRaw { id: string; data_spesa: string; tipo: "fb" | "generale"; importo: number; descrizione: string; }
-interface TurnoRaw { id: string; nome: string; data_turno: string; ora_inizio: string; ora_fine: string; }
+interface DipendenteRaw { id: string; nome: string; }
 
 // ─── Vista aggregata "Tutto" ───────────────────────────────────────────────────
 
@@ -126,12 +139,26 @@ export function AgendaOverview() {
         }
       }
       if (tuRes.status === "fulfilled") {
-        for (const t of (tuRes.value?.turni ?? []) as TurnoRaw[]) {
+        // Il nome arriva dall'anagrafica: dalla Fase 0 il turno porta
+        // dipendente_id, non più un nome libero sulla riga.
+        const nomePerId: Record<string, string> = {};
+        for (const d of (tuRes.value?.dipendenti ?? []) as DipendenteRaw[]) {
+          nomePerId[d.id] = d.nome;
+        }
+        for (const t of (tuRes.value?.turni ?? []) as Turno[]) {
+          if (t.mensile) continue; // le righe da busta paga non stanno su un giorno
+          const nome = nomePerId[t.dipendente_id] ?? "Dipendente";
+          const tipo = (t.tipo_giorno ?? "turno") as TipoGiorno;
+          const assente = tipo !== "turno";
           out.push({
             id: `tu-${t.id}`, fonte: "turno", data: t.data_turno,
-            titolo: t.nome,
-            dettaglio: `${fmtOra(t.ora_inizio)}–${fmtOra(t.ora_fine)}`,
-            ora: fmtOra(t.ora_inizio) || undefined,
+            titolo: nome,
+            dettaglio: assente ? TIPO_GIORNO_LABEL[tipo] : orarioTurno(t),
+            // Un'assenza non ha un orario: darle 00:00 la ordinerebbe in cima
+            // come se fosse il primo turno del giorno.
+            ora: assente ? undefined : fmtOra(t.ora_inizio) || undefined,
+            tipoGiorno: tipo,
+            ore: assente ? 0 : calcolaOreTotali(t),
           });
         }
       }
@@ -204,6 +231,18 @@ export function AgendaOverview() {
       (a.ora ?? "99:99").localeCompare(b.ora ?? "99:99")
     ),
     [perGiorno, giornoSel],
+  );
+
+  const vociGiornoAltre = useMemo(() => vociGiorno.filter(v => v.fonte !== "turno"), [vociGiorno]);
+  // Chi lavora prima (per orario), poi le assenze in fondo.
+  const vociGiornoPersonale = useMemo(
+    () => vociGiorno.filter(v => v.fonte === "turno").sort((a, b) => {
+      const aAss = (a.tipoGiorno ?? "turno") !== "turno";
+      const bAss = (b.tipoGiorno ?? "turno") !== "turno";
+      if (aAss !== bAss) return aAss ? 1 : -1;
+      return (a.ora ?? "99:99").localeCompare(b.ora ?? "99:99") || a.titolo.localeCompare(b.titolo);
+    }),
+    [vociGiorno],
   );
 
   const celle: (number | null)[] = [
@@ -353,8 +392,17 @@ export function AgendaOverview() {
             {vociGiorno.length === 0 ? (
               <div className="py-10 text-center text-sm text-muted-foreground">Niente in programma.</div>
             ) : (
-              <div className="space-y-1.5">
-                {vociGiorno.map(v => <VoceRow key={v.id} v={v} />)}
+              <div className="space-y-3">
+                {/* Appuntamenti e spese: una riga per voce, come sempre. */}
+                {vociGiornoAltre.length > 0 && (
+                  <div className="space-y-1.5">
+                    {vociGiornoAltre.map(v => <VoceRow key={v.id} v={v} />)}
+                  </div>
+                )}
+                {/* Personale: chi lavora e chi no, in chiaro, col totale ore. */}
+                {vociGiornoPersonale.length > 0 && (
+                  <PannelloPersonale voci={vociGiornoPersonale} />
+                )}
               </div>
             )}
           </div>
@@ -378,6 +426,11 @@ export function AgendaOverview() {
                     return (
                       <Link key={v.id} href={info.href} className={`block rounded px-1.5 py-1 text-[10px] ${info.chip} hover:opacity-80 transition-opacity`}>
                         <div className="font-semibold truncate">{v.ora ? `${v.ora} ` : ""}{v.titolo}</div>
+                        {/* Un'assenza va detta: senza, in settimana un giorno di
+                            ferie sembra un turno senza orario. */}
+                        {v.tipoGiorno && v.tipoGiorno !== "turno" && (
+                          <div className="opacity-80">{TIPO_GIORNO_LABEL[v.tipoGiorno]}</div>
+                        )}
                         {v.importo != null && <div className="tabular-nums">{fmtEuro(v.importo)}</div>}
                       </Link>
                     );
@@ -416,8 +469,63 @@ export function AgendaOverview() {
   );
 }
 
+/** Copertura del giorno: chi lavora con l'orario, chi è assente col badge.
+ *  Le ore si sommano solo su chi lavora davvero. */
+function PannelloPersonale({ voci }: { voci: VoceAgenda[] }) {
+  const oreTotali = voci.reduce((s, v) => s + (v.ore ?? 0), 0);
+  const nLavora = voci.filter(v => (v.tipoGiorno ?? "turno") === "turno").length;
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border">
+        <Users className="size-3.5 text-violet-500 shrink-0" />
+        <span className="text-xs font-semibold">Personale</span>
+        <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+          {nLavora > 0 ? `${nLavora} in servizio · ${fmtOreDisplay(oreTotali)}` : "nessuno in servizio"}
+        </span>
+      </div>
+      <div className="divide-y divide-border">
+        {voci.map(v => {
+          const tipo = (v.tipoGiorno ?? "turno") as TipoGiorno;
+          const assente = tipo !== "turno";
+          return (
+            <div key={v.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+              <span className={`font-medium truncate ${assente ? "text-muted-foreground" : ""}`}>
+                {v.titolo}
+              </span>
+              {assente ? (
+                <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ml-auto shrink-0 ${TIPO_GIORNO_BADGE[tipo as Exclude<TipoGiorno, "turno">]}`}>
+                  {TIPO_GIORNO_LABEL[tipo]}
+                </span>
+              ) : (
+                <>
+                  <span className="text-xs text-muted-foreground tabular-nums ml-auto shrink-0">
+                    {v.dettaglio}
+                  </span>
+                  {(v.ore ?? 0) > 0 && (
+                    <span className="text-xs font-medium tabular-nums shrink-0 w-12 text-right">
+                      {fmtOreDisplay(v.ore!)}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <Link
+        href={FONTI.turno.href}
+        className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 border-t border-border transition-colors"
+      >
+        <Plus className="size-3" />Aggiungi o modifica turni
+      </Link>
+    </div>
+  );
+}
+
 function VoceRow({ v }: { v: VoceAgenda }) {
   const info = FONTI[v.fonte];
+  const assente = !!v.tipoGiorno && v.tipoGiorno !== "turno";
   return (
     <Link
       href={info.href}
@@ -428,8 +536,13 @@ function VoceRow({ v }: { v: VoceAgenda }) {
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm truncate">{v.titolo}</span>
           {v.ora && <span className="text-xs text-muted-foreground shrink-0">{v.ora}</span>}
+          {assente && (
+            <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded shrink-0 ${TIPO_GIORNO_BADGE[v.tipoGiorno as Exclude<TipoGiorno, "turno">]}`}>
+              {TIPO_GIORNO_LABEL[v.tipoGiorno!]}
+            </span>
+          )}
         </div>
-        {v.dettaglio && <p className="text-xs text-muted-foreground truncate">{v.dettaglio}</p>}
+        {v.dettaglio && !assente && <p className="text-xs text-muted-foreground truncate">{v.dettaglio}</p>}
       </div>
       {v.importo != null && (
         <span className="text-sm font-semibold tabular-nums shrink-0">
