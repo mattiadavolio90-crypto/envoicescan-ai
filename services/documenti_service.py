@@ -10,6 +10,7 @@ import pandas as pd
 from config.logger_setup import get_logger
 from services.db_service import filter_active
 from utils.streamlit_compat import make_cache as _make_cache
+from utils.supabase_paging import fetch_all
 
 logger = get_logger("documenti")
 
@@ -78,9 +79,22 @@ def _calcola_scadenza_base(payload: Dict[str, Any]) -> Tuple[Optional[str], Opti
     return None, None
 
 
-@_make_cache(ttl=20, show_spinner=False)
 def _get_cache_version_internal(key: str) -> int:
-    """Versione cached di get_cache_version (TTL 20s per ridurre round-trip)."""
+    """Legge la versione cache da public.cache_version.
+
+    NON cachata, di proposito. Questa funzione non e' un dato: e' il MECCANISMO
+    di invalidazione. Il suo valore e' la chiave con cui `get_documenti_list`
+    interroga `_get_documenti_normalized_cached`, e i tre punti che segnano una
+    fattura pagata / salvano o cancellano la config fornitori fanno
+    read-modify-write (`version = get_cache_version(...) + 1`).
+
+    Cacharla, anche solo 20s, produce due danni: lo Scadenziario continua a
+    mostrare una fattura come non pagata (la chiave non cambia, quindi la cache
+    a valle non scade), e soprattutto due bump ravvicinati leggono lo stesso
+    valore e scrivono lo stesso `version + 1` — un'invalidazione persa per
+    sempre, non ritardata. Finche' il bump resta read-modify-write lato
+    applicazione, questa lettura deve vedere il DB.
+    """
     from services import get_supabase_client as _gcv_sb
     sb = _gcv_sb()
     resp = sb.table("cache_version").select("version").eq("key", key).limit(1).execute()
@@ -232,8 +246,9 @@ def _fetch_documenti_cached(user_id: str, ristorante_id: str, cache_version: int
         .eq("ristorante_id", ristorante_id)
     )
     query = filter_active(query).order("scadenza_effettiva", desc=False).order("created_at", desc=True)
-    resp = query.execute()
-    return resp.data or []
+    # Alimenta l'intero Scadenziario: un troncamento a 1000 qui fa sparire
+    # fatture dalla pagina. La sede piu' carica e' gia' a 888 documenti.
+    return fetch_all(query)
 
 
 def _applica_regole_fornitore(
@@ -678,17 +693,16 @@ def segna_fattura_pagata(
 
         # Fallback robusto: intercetta mismatch su maiuscole/spazi nel file_origine.
         if not updated_rows:
-            lookup = (
+            lookup = fetch_all(
                 filter_active(
                     sb.table("fatture_documenti")
                     .select("id,file_origine")
                     .eq("user_id", str(user_id))
                     .eq("ristorante_id", str(ristorante_id))
                 )
-                .execute()
             )
             matched_id = None
-            for row in (lookup.data or []):
+            for row in lookup:
                 _row_file = str(row.get("file_origine") or "").strip().lower()
                 if _row_file == _file_target_norm:
                     matched_id = row.get("id")
@@ -826,8 +840,10 @@ def get_documenti_scadenziario(
             .eq("user_id", user_id)
         )
         q2 = q2.in_("ristorante_id", ids) if is_multi else q2.eq("ristorante_id", ids[0])
-        q2 = q2.execute()
-        for row in (q2.data or []):
+        # In catena i documenti di tutti i punti vendita stanno sotto lo stesso
+        # user_id (oggi fino a 2.244): senza paginazione PostgREST ne ritornava
+        # 1000 e le fatture oltre la soglia perdevano scadenza e stato "pagata".
+        for row in fetch_all(q2):
             fo = str(row.get("file_origine") or "").strip()
             rid = str(row.get("ristorante_id") or "")
             if fo:

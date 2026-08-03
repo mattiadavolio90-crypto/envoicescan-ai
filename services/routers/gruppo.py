@@ -21,6 +21,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from config.logger_setup import get_logger
+# utils/ non importa services/: import diretto, nessun rischio di ciclo.
+from utils.supabase_paging import fetch_all
 
 logger = get_logger("router_gruppo")
 
@@ -437,16 +439,18 @@ def _fatture_arrivate_ieri_gruppo(sb, user_id: str, ids: List[str]) -> Dict[str,
 
     n_assegnate = 0
     try:
-        resp = (
+        # In catena la finestra di un giorno somma TUTTI i punti vendita: senza
+        # .range() PostgREST tronca a max_rows (1000) e il briefing sottostima in
+        # silenzio. Gia' successo: 7.218 righe ingerite in un solo giorno.
+        rows = fetch_all(
             sb.table("fatture")
             .select("file_origine")
             .in_("ristorante_id", ids)
             .is_("deleted_at", "null")
             .gte("created_at", inizio.isoformat())
             .lt("created_at", fine.isoformat())
-            .execute()
         )
-        files = {r.get("file_origine") for r in (resp.data or []) if r.get("file_origine")}
+        files = {r.get("file_origine") for r in rows if r.get("file_origine")}
         n_assegnate = len(files)
     except Exception as exc:
         logger.warning("briefing gruppo: lettura fatture assegnate fallita: %s", exc)

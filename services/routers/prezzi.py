@@ -8,6 +8,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+# utils/ non importa services/: import diretto, nessun rischio di ciclo.
+from utils.supabase_paging import fetch_all
+from utils.ttl_cache import TTLCache
+
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
 # WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
@@ -375,6 +379,23 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
     return alert_list
 
 
+# I 5 endpoint di questo router (variazioni, sconti, omaggi, note di credito,
+# storico) rifanno la STESSA scansione del periodo, e le tab del frontend sono
+# lazy: ogni tab aperta era un full-load da capo, ~4,3 s misurati sulla sede piu'
+# grande (2,45 MB in 10 round-trip; il tempo e' quasi tutto trasporto, non query).
+# Stesso TTL corto e stessa logica della cache righe di FATTURE
+# (_FATTURE_ROWS_TTL): abbatte le riletture dello stesso caricamento pagina senza
+# tenere dati stale dopo una modifica. Cache PER-PROCESSO: con
+# WORKER_WEB_CONCURRENCY>1 ogni worker ha la sua copia, accettabile per un'analisi
+# non critica al secondo.
+_PREZZI_ROWS_CACHE = TTLCache(ttl=15.0)
+
+
+def _invalidate_prezzi_rows_cache() -> None:
+    """Invalida la cache righe di Prezzi (chiamata insieme a quella di Fatture)."""
+    _PREZZI_ROWS_CACHE.invalidate()
+
+
 def _load_fatture_for_prezzi(
     sb, ristorante_id: str, data_da: str, data_a: str,
     extra_cols: str = "",
@@ -384,11 +405,9 @@ def _load_fatture_for_prezzi(
         "totale_riga,data_documento,file_origine,tipo_documento"
         + (f",{extra_cols}" if extra_cols else "")
     )
-    all_rows: list = []
-    page = 0
-    page_size = 1000
-    while True:
-        resp = (
+
+    def _fetch() -> list:
+        return fetch_all(
             sb.table("fatture")
             .select(cols)
             .eq("ristorante_id", ristorante_id)
@@ -396,23 +415,18 @@ def _load_fatture_for_prezzi(
             .gte("data_documento", data_da)
             .lte("data_documento", data_a)
             .order("data_documento", desc=False)
-            .range(page * page_size, (page + 1) * page_size - 1)
-            .execute()
         )
-        if not resp.data:
-            break
-        all_rows.extend(resp.data)
-        if len(resp.data) < page_size:
-            break
-        page += 1
-    return all_rows
+
+    return _PREZZI_ROWS_CACHE.get_or_set(
+        f"{ristorante_id}::{data_da}::{data_a}::{cols}", _fetch
+    )
 
 
 def _load_nc_file_origini(sb, ristorante_id: str, data_da: str, data_a: str) -> set:
     """Set di file_origine che sono vere note di credito (segno_compensazione=-1).
     Usato per distinguere sconti su fattura normale (→ Sconti tab) da NC reali.
     """
-    resp = (
+    rows = fetch_all(
         sb.table("fatture_documenti")
         .select("file_origine")
         .eq("ristorante_id", ristorante_id)
@@ -420,9 +434,8 @@ def _load_nc_file_origini(sb, ristorante_id: str, data_da: str, data_a: str) -> 
         .is_("deleted_at", "null")
         .gte("data_documento", data_da)
         .lte("data_documento", data_a)
-        .execute()
     )
-    return {r["file_origine"] for r in (resp.data or [])}
+    return {r["file_origine"] for r in rows}
 
 
 @router.get("/api/prezzi/soglia-alert", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])

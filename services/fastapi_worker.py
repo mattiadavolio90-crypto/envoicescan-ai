@@ -550,6 +550,7 @@ from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centr
 from config.constants import CATEGORIE_SPESE_GENERALI as _CATEGORIE_SPESE_GENERALI
 from config.constants import CATEGORIA_NON_CLASSIFICATA
 from utils.ttl_cache import TTLCache  # cache TTL thread-safe con single-flight
+from utils.supabase_paging import fetch_all  # paginazione oltre il cap PostgREST
 
 
 class _ContentSizeLimitMiddleware(BaseHTTPMiddleware):
@@ -4553,16 +4554,17 @@ def _fatture_arrivate_ieri_sdi(
     inizio_ieri = _dtf.combine(ieri_d, _tf.min, tzinfo=_tz)
     inizio_oggi = _dtf.combine(ieri_d + timedelta(days=1), _tf.min, tzinfo=_tz)
     try:
-        resp = (
+        # Una giornata di ingestione supera le 1000 righe piu' spesso di quanto
+        # sembri (max misurato: 3.775 su una sola sede): senza paginazione il
+        # briefing conterebbe meno fatture di quelle davvero arrivate.
+        righe = fetch_all(
             supabase_client.table("fatture")
             .select("file_origine,totale_riga,needs_review")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .gte("created_at", inizio_ieri.isoformat())
             .lt("created_at", inizio_oggi.isoformat())
-            .execute()
         )
-        righe = resp.data or []
     except Exception as exc:
         logger.warning("briefing fatture arrivate: lettura fatture fallita: %s", exc)
         return None
@@ -5710,15 +5712,15 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
         # Voce 4: % righe classificate sulle fatture recenti (created_at 30gg).
         righe_mese: List[Dict[str, Any]] = []
         try:
-            resp = (
+            # 30 giorni su una sede attiva arrivano a 6.299 righe: troncare qui
+            # falserebbe la % di righe classificate mostrata nello Stato di Salute.
+            righe_mese = fetch_all(
                 supabase_client.table("fatture")
                 .select("needs_review,categoria")
                 .eq("ristorante_id", ristorante_id)
                 .is_("deleted_at", "null")
                 .gte("created_at", inizio_dt.isoformat())
-                .execute()
             )
-            righe_mese = resp.data or []
         except Exception:
             righe_mese = []
         tot_righe = len(righe_mese)
@@ -7308,14 +7310,28 @@ _FATTURE_ROWS_TTL = 15.0  # secondi
 
 
 def _invalidate_fatture_rows_cache(ristorante_id: Optional[str] = None) -> None:
-    """Invalida la cache righe fatture (tutto, o solo un ristorante)."""
+    """Invalida la cache righe fatture (tutto, o solo un ristorante).
+
+    Invalida anche la cache righe del router PREZZI: legge le stesse righe della
+    stessa tabella, quindi ogni evento che rende stale l'una rende stale l'altra.
+    Tenerle separate significherebbe che dopo un upload FATTURE si aggiorna e
+    PREZZI no, con due pagine che mostrano numeri diversi sugli stessi dati.
+    """
     if ristorante_id is None:
         _FATTURE_ROWS_CACHE.clear()
         _RISTORANTE_QUOTE_META.clear()
-        return
-    for k in [k for k in _FATTURE_ROWS_CACHE if k.startswith(f"{ristorante_id}::")]:
-        _FATTURE_ROWS_CACHE.pop(k, None)
-    _RISTORANTE_QUOTE_META.pop(ristorante_id, None)
+    else:
+        for k in [k for k in _FATTURE_ROWS_CACHE if k.startswith(f"{ristorante_id}::")]:
+            _FATTURE_ROWS_CACHE.pop(k, None)
+        _RISTORANTE_QUOTE_META.pop(ristorante_id, None)
+
+    try:
+        from services.routers.prezzi import _invalidate_prezzi_rows_cache
+        _invalidate_prezzi_rows_cache()
+    except Exception as exc:  # pragma: no cover - il router potrebbe non essere caricato
+        # Loggato, non ingoiato: se un domani il modulo si rinomina, PREZZI
+        # resterebbe con dati stale e senza questo warning nessuno lo scoprirebbe.
+        logger.warning("invalidazione cache prezzi fallita: %s", exc)
 
 
 # Cache (ristorante_id -> (user_id, ha_quote_ripartite)) per decidere se un PV va
@@ -7598,14 +7614,13 @@ def _load_num_documento_map(sb, ristorante_id: str) -> dict:
     Nessun filtro date: file_origine è univoco per ristorante, il filtro date era ridondante
     e causava miss su documenti ai bordi del periodo.
     """
-    resp = (
+    rows = fetch_all(
         sb.table("fatture_documenti")
         .select("file_origine,numero_documento")
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
-        .execute()
     )
-    return {r["file_origine"]: (r.get("numero_documento") or "") for r in (resp.data or [])}
+    return {r["file_origine"]: (r.get("numero_documento") or "") for r in rows}
 
 
 def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -> tuple:

@@ -55,8 +55,18 @@ class _FakeQuery:
     def lt(self, *_a, **_k):
         return self
 
+    def range(self, start, end):
+        # PostgREST .range(): estremi INCLUSIVI. Affetta davvero, cosi' il test
+        # esercita la paginazione introdotta contro il cap di 1000 righe.
+        self._range = (start, end)
+        return self
+
     def execute(self):
-        return type("R", (), {"data": self._rows, "count": self._count})()
+        rows = self._rows
+        rng = getattr(self, "_range", None)
+        if rng is not None:
+            rows = rows[rng[0]:rng[1] + 1]
+        return type("R", (), {"data": rows, "count": self._count})()
 
 
 class _FakeSB:

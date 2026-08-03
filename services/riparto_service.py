@@ -27,6 +27,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import logging
 
+from utils.supabase_paging import fetch_all
+
 logger = logging.getLogger("fastapi_worker")
 
 # Campi di una riga fattura come li serve il funnel _fetch_fatture_rows (stessa
@@ -346,14 +348,16 @@ def righe_ripartite_proiettate(
     files = sorted({r["file_origine"] for r in riparti if r.get("file_origine")})
     righe_per_file: Dict[str, List[Dict[str, Any]]] = {}
     if files:
-        reali = (
+        # `files` puo' contenere molte fatture di struttura insieme: le righe
+        # sommate superano le 1000 e senza paginazione il riparto ne perderebbe
+        # una parte in silenzio, falsando le quote proiettate sui punti vendita.
+        reali = fetch_all(
             sb.table("fatture")
             .select(",".join(_CAMPI_RIGA))
             .eq("user_id", user_id)
             .in_("file_origine", files)
             .is_("deleted_at", "null")
-            .execute()
-        ).data or []
+        )
         for r in reali:
             righe_per_file.setdefault(r.get("file_origine", ""), []).append(r)
 

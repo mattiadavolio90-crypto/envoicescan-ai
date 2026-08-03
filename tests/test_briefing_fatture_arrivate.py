@@ -58,12 +58,23 @@ class _FakeQuery:
     def limit(self, *_a, **_k):
         return self
 
+    def range(self, start, end):
+        # PostgREST .range(): estremi INCLUSIVI. Il fake affetta davvero le righe
+        # invece di ignorare l'intervallo, cosi' il test esercita la paginazione
+        # (senza, un troncamento a 1000 righe passerebbe inosservato qui).
+        self._range = (start, end)
+        return self
+
     def single(self):
         # PostgREST .single(): una riga sola. Espone data=dict, non lista.
         return _FakeSingle(self._rows[0] if self._rows else {})
 
     def execute(self):
-        return type("R", (), {"data": self._rows})()
+        rows = self._rows
+        rng = getattr(self, "_range", None)
+        if rng is not None:
+            rows = rows[rng[0]:rng[1] + 1]
+        return type("R", (), {"data": rows})()
 
 
 class _FakeSingle:

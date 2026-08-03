@@ -408,6 +408,8 @@ class TestNcCreditoPerFornitore:
             def is_(self, *a, **k): return self
             def gte(self, *a, **k): return self
             def lte(self, *a, **k): return self
+            def order(self, *a, **k): return self
+            def range(self, *a, **k): return self
             def execute(self): return _FakeResp()
 
         class _FakeSb:
