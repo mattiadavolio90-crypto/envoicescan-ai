@@ -36,7 +36,11 @@ jobs:
         # conftest, quindi non servono credenziali reali in CI.
         env:
           WORKER_DEV_MODE: '1'
-        run: python -m pytest tests/ -q
+        # Senza argomenti pytest usa `testpaths` di pytest.ini (tests +
+        # legacy_streamlit). Prima qui c'era `tests/`, quindi i 9 test di
+        # legacy_streamlit/ giravano solo in locale e la CI copriva MENO dello
+        # sviluppatore: una rottura li' non avrebbe fermato una merge.
+        run: python -m pytest -q
 
   deno-test:
     # Test delle Edge Functions (Deno): auth HMAC + routing multi-sede del webhook

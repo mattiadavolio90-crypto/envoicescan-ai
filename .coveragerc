@@ -1,0 +1,57 @@
+# Configurazione coverage — baseline tracciata, non numero una tantum.
+#
+# Prima dell'audit Test del 3/8/2026 non esisteva alcuna misura: `coverage` era
+# installato ma mai usato, e la copertura veniva stimata dal NUMERO di test
+# (~10200), che non misura nulla — quel numero e' gonfiato dalla
+# parametrizzazione (106 file / ~21.800 righe).
+#
+# Misura di partenza CON QUESTA configurazione (branch coverage attivo):
+# 45% complessivo su 22.990 statement. Il 47% citato nella prima passata era
+# senza `branch = True` e con altri `omit`: i due numeri non sono confrontabili,
+# la baseline da qui in avanti e' 45%.
+# Punti piu' scoperti da cui ripartire:
+#   services/upload_handler.py   11%  (1109 statement, zero righe di test)
+#   worker/run.py                 0%  (mai importato dalla suite)
+#   services/foodcost_service.py 17%
+#   services/auth_service.py     36%
+#   services/margine_service.py  85%  (il piu' coperto fra i critici)
+#
+# Non e' un gate della CI: nessun workflow fallisce se la percentuale scende.
+# E' una misura da rilanciare a mano quando si vuole sapere dove si sta.
+#
+# Uso (senza argomenti: usa `testpaths` di pytest.ini, come fa la CI):
+#   python -m coverage run -m pytest -q
+#   python -m coverage report -m
+#   python -m coverage html      # dettaglio riga per riga in htmlcov/
+
+[run]
+branch = True
+source =
+    services
+    utils
+    config
+    worker
+omit =
+    # Non fanno parte del runtime (vedi CLAUDE.md, "Convenzioni di codice")
+    scripts/*
+    tools/*
+    tests/*
+    legacy_streamlit/*
+    */site-packages/*
+    */__pycache__/*
+    # Shim che sostituisce Streamlit dopo la rimozione del 17/7: guscio no-op,
+    # non logica di dominio.
+    services/_streamlit_shim.py
+
+[report]
+show_missing = True
+skip_empty = True
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    def __repr__
+
+[html]
+directory = htmlcov

@@ -13,6 +13,9 @@ dal DB la sede appena selezionata.
 """
 from unittest.mock import MagicMock, patch
 
+import pytest
+from fastapi import HTTPException
+
 import services.routers.account as account
 
 
@@ -60,11 +63,11 @@ def test_cambia_sede_sede_non_valida_non_tocca_cache():
     with patch.object(account, "_resolve_user_from_token", return_value=_USER), \
          patch.object(account, "_get_supabase_client", return_value=sb), \
          patch("services.auth_service._clear_sessione_cache") as m_clear:
-        try:
+        # `pytest.raises(HTTPException)` e non `except Exception`: con la cattura
+        # generica bastava un AttributeError del mock per far passare il test,
+        # cioe' il test restava verde anche se la guardia 404 fosse sparita.
+        with pytest.raises(HTTPException) as exc:
             account.account_cambia_sede(body, authorization=f"Bearer {_TOKEN}")
-            raised = False
-        except Exception:
-            raised = True
 
-    assert raised, "sede non valida deve sollevare HTTPException 404"
+    assert exc.value.status_code == 404
     m_clear.assert_not_called()
