@@ -14,7 +14,8 @@ Legenda stato: 🟢 fatta e chiusa · 🟡 fatta ma con residui aperti · ⚪ no
 |---|---|---|---|---|---|
 | 1 | Security | 🟢 | 29/7/2026 (notte) | 3 passate audit + 1 sessione di follow-up, tutto deployato (6025080+2acf303+96be8be+0b3d57e+e33535e+7cb296c+030a053+474df6e+cec67ff+e4ef48f, push e4ef48f). Findings audit: 1 CRITICAL, 2 HIGH, 4 MEDIUM, 7 LOW — tutti fixati. Follow-up: 1 test rotto fixato, 1 bug indipendente scoperto e fixato, 1 debito tecnico chiuso | Passata 1: auth/sessione/gate su 174 endpoint worker. Passata 2: 8 router di dominio riga-per-riga. Passata 3: `admin.py` (2959 righe) + 160 route Next `api/**/route.ts`. CRITICAL = scrittura cross-tenant in riparto.py (id sede dal body senza check ownership). HIGH #1 = cache sessione non invalidata su revoca (30s finestra). HIGH #2 = admin_elimina_cliente cancellava prodotti_master.user_id (colonna inesistente, GDPR delete falliva silenziosamente). **Follow-up stessa notte**: (a) fixato test pre-esistente `test_eventi_sconosciuti_filtra_solo_unrecognized_event` (data hardcoded scaduta, non era un residuo Security ma bloccava la suite verde); (b) **verificato che il residuo "~130 componenti .tsx da auditare per XSS" era una stima sbagliata** — nel repo c'è 1 solo uso di `dangerouslySetInnerHTML` (JSON-LD statico in structured-data.tsx, zero input utente, sicuro), chiuso senza scrivere codice; (c) chiuso il residuo "89 route Next senza timeout verso il worker" — aggiunto helper `workerFetch` in `worker-config.ts`, migrate 53 route reali (il numero 89 contava anche GET e file già a posto), e scoperto/fixato un bug indipendente non noto prima: tutte le 21 route dell'albero `workspace/` non avevano try/catch attorno al fetch (500 grezzo invece di 502 pulito su errore rete). Suite finale: pytest 10104 passed/0 failed, build Next pulita. Nessun residuo aperto su questa dimensione. Giri storici precedenti sugli stessi layer: 4/7 (Fable), 20/6 (anti-hacker), 19/6 |
 | 2 | Edge Functions | 🟢 | 30/7/2026 | 11 findings, tutti fixati e deployati (v39/v12) | CRITICAL: canale reprocess rimosso. 2 HIGH integrità coda → hanno aperto il caso per Database |
-| 3 | Bug | 🟡 | 3/8/2026 (passata 1 di 2: audit + remediation stessa sessione) | **Passata 1 chiusa** su upload → parsing (XML/P7M/PDF) → categorizzazione AI. Due giri read-only con `oneflux-audit` (Sonnet): 2 HIGH + 3 MEDIUM + 4 LOW + 1 INFO. Tutti rimediati (Opus), più 4 blocchi trovati da `code-reviewer` sul diff cumulativo. Suite 10172 passed/0 failed, OpenAPI drift OK (193 endpoint). **Resta aperta la passata 2** (margini/briefing/chat in `fastapi_worker.py`) | **Due giri, non uno**: il primo agente ha lasciato ~3900 righe di `ai_service.py` non lette e l'ha dichiarato solo a fine report; un secondo giro mirato ha trovato lì il finding più grave. **Tutti i findings riverificati a mano** leggendo il codice e cercando i chiamanti vivi, non presi per buoni dall'agente. **HIGH#1** — `salva_correzione_in_memoria_globale` (`ai_service.py`) aveva **zero chiamanti vivi**, quindi `_propaga_global_override_a_fatture_storiche` era irraggiungibile: le correzioni admin alla memoria globale **non si propagavano più alle fatture storiche**, valevano solo per le righe future. I due endpoint admin scrivevano `prodotti_master` in diretta (refactor lasciato a metà). Fix: `POST /conflitti/risolvi` azione "promuovi" ora passa da `salva_correzione_in_memoria_globale(is_admin=True)`; `PATCH /memoria/{prod_id}` fa una sola UPDATE ancorata a `prod_id` e poi chiama direttamente la propagazione — **non** passa dalla funzione, perché quella cerca il record per descrizione *normalizzata* e in `prodotti_master` convivono varianti non normalizzate (verificato sul DB live: 5 casi su 10 divergono; `id 4799` `'(I)100 COP EST. X DW 280CC'` normalizza esattamente su `id 17195` `'( )COP EST X DW 280CC'`, due record distinti già presenti — sarebbe finita su un record diverso o avrebbe creato un duplicato). **HIGH#2** — upsert a chunk di 500 senza transazione: su fallimento a metà le prime 500 righe restavano scritte ma l'evento loggato diceva `FAILED rows_saved=0`, cioè **il log sottostimava il danno**; `verifica_integrita_fattura` sta dentro lo stesso try e non veniva mai eseguita. Fix (scelta esplicita di Mattia, "cap + osservabilità", **niente rollback di compensazione**): `_MAX_RIGHE_PER_FATTURA = 2000` portata nel percorso vivo (esisteva solo nel ramo Streamlit morto, `upload_handler.py:1389`) + status `SAVED_PARTIAL` con conteggio reale e `partial_write: true` nei details (verificato sul DB live che il CHECK constraint ammette già quel valore). **MEDIUM#1** — al `JOB_TIMEOUT` (300s) il thread daemon resta vivo e un altro worker può riclamare lo stesso item: le righe non si duplicano (upsert idempotente) ma **le chiamate AI a pagamento sì**. Fix: `_claim_ancora_valido` (compare-and-swap su `locked_by`) prima di `salva_fattura_processata` e prima di `_auto_classify_saved_rows`, con status `skip` (che il ciclo già gestiva, era codice morto). **MEDIUM#2** — quota AI esaurita indistinguibile da errore di rete: entrambe finivano in `Da Classificare` senza dirlo al cliente. Fix: nuova `AIDailyLimitExceededError(RuntimeError)` (sottoclasse, così il mapping su 429 in `fastapi_worker` regge), `summary['ai_rate_limited']`, short-circuit sui chunk successivi, e `worker_client.py` ora traduce il 429 HTTP nell'eccezione invece di degradare a fallback locale mascherando la causa. **MEDIUM#3** — rimossa `svuota_memoria_globale`: dead code che cancellava `prodotti_master` di **tutti** i clienti senza conferma. **LOW#1** — `volte_visto` non cresceva mai (passato fisso a `1` negli upsert, che riscrivevano la colonna): campo omesso dal payload in 4 siti, il default DB copre l'insert e su conflitto il valore resta. Dati live coerenti con la diagnosi: 5011 record a 1, appena 172 sopra. **LOW#2** — rimossa `_extract_piva_from_xml` (dead code il cui fallback prendeva la P.IVA del **CedentePrestatore**, cioè il fornitore invece del destinatario, invertendo la semantica del routing multi-sede). **LOW#3** — `try/except` locale su `int(NumeroLinea)` nel ramo TD24 (l'eccezione faceva scartare l'intera riga, sballando la quadratura in silenzio). **LOW#4** — rimossa lettura morta in `_esiste_override_manuale_locale`. **INFO** — `ai_service.py:4507` usa `prezzo == 0` invece di `totale_riga == 0`, innocuo perché il guardrail a valle usa `totale_riga`: non toccato. **4 blocchi trovati da `code-reviewer`** sul diff cumulativo (di nuovo il passo che trova ciò che audit e remediation non vedono): (a) MEDIUM#2 inerte sul percorso HTTP di produzione — il 429 degradava a fallback locale; (b) LOW#1 incompleto, `upload_handler.py:762` (il sito **più caldo**, ogni upload) passava ancora `volte_visto: 1` — mancato perché il grep iniziale era limitato a `ai_service.py`; (c) PATCH admin con doppia scrittura che poteva riportare `verified=False` **dopo** che la propagazione di massa era già partita; (d) il mismatch id/descrizione normalizzata descritto sopra. Tutti chiusi. **Un secondo giro di `code-reviewer` sulle correzioni** ha poi trovato che il fix (a) aveva introdotto una regressione: il worker restituisce 429 per **due** motivi diversi — quota AI giornaliera e rate limiter per IP (30 req/60s, `_check_rate_limit`) — e trattarli uguali significava che un upload grosso (chunk da 30) faceva scattare il limite per IP, veniva letto come "quota esaurita" e **short-circuitava tutti i chunk rimanenti** con una diagnosi falsa, dove prima il fallback locale funzionava. Fix: il worker marca il 429 di quota con header `X-RateLimit-Scope: ai-daily-quota`, il client discrimina sull'header col testo come fallback per il rollout. **Nota sui test**: in questa suite `requests` è sostituito da un mock del conftest che non è un package e non espone eccezioni vere — un `import requests` dentro un mock di risposta dà `exceptions must derive from BaseException` e fa passare il test per il motivo sbagliato. Ogni test aggiunto è stato verificato fallire ripristinando il codice pre-fix. **Regole di dominio verificate integre in ogni percorso**: nessun fallback verso `SERVIZI E CONSULENZE`, guardrail NOTE E DICITURE ancorato a `totale_riga` in tutti e 4 i punti, soft delete rispettato nella propagazione, gerarchia admin > locale > globale intatta, auto-save solo in memoria locale (anti-contaminazione cross-tenant), nessun `__getattr__`. **Sani, non ricontrollare**: cascata P7M a 5 fallback, inversione segno TD04, guardia anti-doppione per identità naturale, mapping AI per `idx`, SSRF guard, `ContextVar`, `_build_master_canonical_map`, `multisede_routing.py`. **Gap dichiarati**: `ai_service.py:3579-3990` (trasformazioni pure di categoria, zero I/O verificato via grep — bassa priorità ma **non** dichiarato chiuso); `services/routers/riparto.py` e `fatture.py` nominati nel perimetro ma mai letti. **Deployato** (push `main` 3/8/2026 ore ~13:50, commit `54f345d`): CI verde su tutti e 3 i workflow rilevanti (Tests, OpenAPI Schema Drift Check, Requirements Consistency); Vercel non coinvolto (nessun file `apps/web/**` nel commit), worker Railway si ridistribuisce autonomamente dal push. La riga resta 🟡 finché non è fatta la passata 2 |
+| 3 | Bug | 🟢 | 3/8/2026 (2 passate, entrambe audit + remediation nella stessa giornata) | **PASSATA 2 CHIUSA** (margini/briefing/chat): 3 giri read-only paralleli su **~16.800 righe** — il perimetro dichiarato dalla consegna ne stimava 5000, ma `daily_briefing_service.py` (1332 righe, il cuore vero del briefing) e altri 4 servizi non erano nominati; scoperti cercando `_BRIEFING_CODE_VERSION`, che in `fastapi_worker.py` non esiste. 11 findings dagli agenti + **1 HIGH trovato da me durante la remediation**, che nessun agente aveva visto. **Dei 3 findings verificati sul DB live, in tutti e 3 gli agenti avevano sbagliato la gravità — sempre per eccesso**: (a) "doppio conteggio costi di catena, il cliente vede due MOL diversi" → il difetto nel codice è reale (`_calcola_costi_auto_per_mese/_periodo` non filtravano `ripartita_su_gruppo`, mentre la RPC SQL e `margine_service.py` sì: la migration del 14/7 dichiarava di aver coperto tutti i percorsi e ne aveva saltato uno), ma le 746 righe ripartite (€66.083) stanno **tutte sulla sede tecnica** `Costi comuni di gruppo` (`sede_tecnica=true`), che ha **0 mesi con quote** e non è selezionabile come sede attiva da nessun cliente → i due addendi non si incontrano mai, nessun MOL sbagliato; declassato a MEDIUM (mina che si arma appena una fattura ripartita finisce su un PV reale). (b) "agent notturno rotto, non è mai partito" → ho **eseguito** il codice: `asyncio.create_task(funzione_sync())` **esegue** il corpo inline (bloccando) e fallisce solo dopo sul valore di ritorno, quindi la diagnosi era rovesciata; poi il DB: `{"enabled": false}` dal 30/5, mai un `last_run_at` → è spento e non ha mai girato, HIGH latente. (c) "righe Da Classificare entrano nel foodcost delle ricette" → il filtro manca davvero (160 descrizioni su 7 sedi selezionabili come ingredienti), ma il foodcost si calcola solo dagli ingredienti *scelti* e nessuna delle 5 ricette esistenti ne usa → MEDIUM. **L'HIGH trovato da me**: `chat alert 5` usava `ilike("categoria", "%SPESE%")` — **nessuna** delle 4 categorie reali contiene la parola "SPESE", quindi matchava **0 righe su 5827**: l'alert "spese generali non registrate" scattava anche nei mesi con spese regolarmente caricate. Falso allarme al cliente, da sempre. Trovato leggendo il codice intorno all'alert 2, non segnalato da nessun agente. **Altri HIGH**: `chat alert 2` faceva `.select("fatturato")` su `margini_mensili`, colonna **mai esistita** (errore 42703 riprodotto sul DB live), query sempre fallita dentro un `except: pass` → l'alert "ricavi mancanti" non è mai scattato per nessun cliente; `upsert_ricavi_modalita` era l'unico endpoint che scrive ricavi senza invalidare KPI Home e briefing (dopo "Carica Ricavi" il cliente vedeva il MOL vecchio fino a 30'); `prodotti_master` — `aggiorna_streak_classificazione` (unico chiamante vivo: `queue_processor.py:375`) fa upsert con la descrizione **grezza**, creando doppioni: **44 gruppi sul DB live, 6 con categorie in conflitto** (`CUORI FIL MERL` sta sia in PESCE sia in MATERIALE DI CONSUMO — quando vince il secondo, **esce dal food cost**). Fix: cerca il record normalizzato prima di inserire. **Limite dichiarato: copre 5 casi su 7** — la normalizzazione non collassa `CUORI FIL.MERL`/`CUORI FIL MERL` (`FILETTOMERL` vs `FILETTO MERL`) né l'asterisco finale di `BRODO...TTL *`. **MEDIUM/LOW**: costanti spese generali triplicate nel worker → derivate dall'unica fonte (`config/constants.py`); flag `parziale` sul mese in corso e `incluso_da_classificare` nei tool della chat; bullet vuoti non finiscono più nel prompt AI come `- ` nudo (invitava il modello a inventare); `home_config_post` invalida il briefing anche sui topic spenti — **errore mio corretto in corsa**: avevo scritto `body.topics_disabled is not None`, ma quel campo ha default `[]` non `None`, quindi avrebbe rigenerato il briefing a ogni salvataggio, anche solo del nome; ora confronta lo stato precedente; 4 `except: pass` negli alert chat ora loggano (uno di questi ha nascosto per mesi la query rotta); rimossi 2 rami irraggiungibili in `_narrative_phrase_for`; rimossa `get_inbox_badge_count` (residuo Streamlit, zero chiamanti — ma **4 test la coprivano**, riscritti su `get_inbox_notifications`: il primo grep escludeva `tests/`). **`code-reviewer` sul diff cumulativo** ha trovato 2 problemi reali: il ramo gemello dello streak leggeva solo `id,verified,confidence` e scriveva sempre `streak=1`, impedendo l'auto-promozione a `confidence='alta'` per i prodotti in sola grafia normalizzata (corretto replicando la logica dell'altro ramo; nel farlo ho intercettato un `now_streak = 1` fuori posto che avrebbe falsato il log della promozione); e il mancato bump di `_BRIEFING_CODE_VERSION` (12→**13**), senza cui il fix dei bullet non raggiunge chi ha già lo snapshot di oggi. **Verificato sano**: nessun fallback verso `SERVIZI E CONSULENZE`, `NOTE E DICITURE` solo a `totale_riga==0` (66 righe live, tutte a €0), `Da Classificare` escluse da tutti gli aggregatori di margine, `deleted_at IS NULL` ovunque, nessun `__getattr__`, rate limiting chat fail-closed, `salva_margini_anno` protetto contro l'azzeramento delle quote, `_to_float_it` e lo scorporo IVA dell'import Passbi corretti. Suite **10195 passed / 0 failed**, drift OpenAPI OK (193 endpoint), ogni test nuovo verificato fallire col codice pre-fix. Commit `9d8742e` | **Passata 1** (upload → parsing → categorizzazione AI), stessa giornata, commit `54f345d`+`0234416`, CI verde |
+| 3b | Bug — dettaglio passata 1 | 🟢 | 3/8/2026 (passata 1 di 2: audit + remediation stessa sessione) | **Passata 1 chiusa** su upload → parsing (XML/P7M/PDF) → categorizzazione AI. Due giri read-only con `oneflux-audit` (Sonnet): 2 HIGH + 3 MEDIUM + 4 LOW + 1 INFO. Tutti rimediati (Opus), più 4 blocchi trovati da `code-reviewer` sul diff cumulativo. Suite 10172 passed/0 failed, OpenAPI drift OK (193 endpoint). **Resta aperta la passata 2** (margini/briefing/chat in `fastapi_worker.py`) | **Due giri, non uno**: il primo agente ha lasciato ~3900 righe di `ai_service.py` non lette e l'ha dichiarato solo a fine report; un secondo giro mirato ha trovato lì il finding più grave. **Tutti i findings riverificati a mano** leggendo il codice e cercando i chiamanti vivi, non presi per buoni dall'agente. **HIGH#1** — `salva_correzione_in_memoria_globale` (`ai_service.py`) aveva **zero chiamanti vivi**, quindi `_propaga_global_override_a_fatture_storiche` era irraggiungibile: le correzioni admin alla memoria globale **non si propagavano più alle fatture storiche**, valevano solo per le righe future. I due endpoint admin scrivevano `prodotti_master` in diretta (refactor lasciato a metà). Fix: `POST /conflitti/risolvi` azione "promuovi" ora passa da `salva_correzione_in_memoria_globale(is_admin=True)`; `PATCH /memoria/{prod_id}` fa una sola UPDATE ancorata a `prod_id` e poi chiama direttamente la propagazione — **non** passa dalla funzione, perché quella cerca il record per descrizione *normalizzata* e in `prodotti_master` convivono varianti non normalizzate (verificato sul DB live: 5 casi su 10 divergono; `id 4799` `'(I)100 COP EST. X DW 280CC'` normalizza esattamente su `id 17195` `'( )COP EST X DW 280CC'`, due record distinti già presenti — sarebbe finita su un record diverso o avrebbe creato un duplicato). **HIGH#2** — upsert a chunk di 500 senza transazione: su fallimento a metà le prime 500 righe restavano scritte ma l'evento loggato diceva `FAILED rows_saved=0`, cioè **il log sottostimava il danno**; `verifica_integrita_fattura` sta dentro lo stesso try e non veniva mai eseguita. Fix (scelta esplicita di Mattia, "cap + osservabilità", **niente rollback di compensazione**): `_MAX_RIGHE_PER_FATTURA = 2000` portata nel percorso vivo (esisteva solo nel ramo Streamlit morto, `upload_handler.py:1389`) + status `SAVED_PARTIAL` con conteggio reale e `partial_write: true` nei details (verificato sul DB live che il CHECK constraint ammette già quel valore). **MEDIUM#1** — al `JOB_TIMEOUT` (300s) il thread daemon resta vivo e un altro worker può riclamare lo stesso item: le righe non si duplicano (upsert idempotente) ma **le chiamate AI a pagamento sì**. Fix: `_claim_ancora_valido` (compare-and-swap su `locked_by`) prima di `salva_fattura_processata` e prima di `_auto_classify_saved_rows`, con status `skip` (che il ciclo già gestiva, era codice morto). **MEDIUM#2** — quota AI esaurita indistinguibile da errore di rete: entrambe finivano in `Da Classificare` senza dirlo al cliente. Fix: nuova `AIDailyLimitExceededError(RuntimeError)` (sottoclasse, così il mapping su 429 in `fastapi_worker` regge), `summary['ai_rate_limited']`, short-circuit sui chunk successivi, e `worker_client.py` ora traduce il 429 HTTP nell'eccezione invece di degradare a fallback locale mascherando la causa. **MEDIUM#3** — rimossa `svuota_memoria_globale`: dead code che cancellava `prodotti_master` di **tutti** i clienti senza conferma. **LOW#1** — `volte_visto` non cresceva mai (passato fisso a `1` negli upsert, che riscrivevano la colonna): campo omesso dal payload in 4 siti, il default DB copre l'insert e su conflitto il valore resta. Dati live coerenti con la diagnosi: 5011 record a 1, appena 172 sopra. **LOW#2** — rimossa `_extract_piva_from_xml` (dead code il cui fallback prendeva la P.IVA del **CedentePrestatore**, cioè il fornitore invece del destinatario, invertendo la semantica del routing multi-sede). **LOW#3** — `try/except` locale su `int(NumeroLinea)` nel ramo TD24 (l'eccezione faceva scartare l'intera riga, sballando la quadratura in silenzio). **LOW#4** — rimossa lettura morta in `_esiste_override_manuale_locale`. **INFO** — `ai_service.py:4507` usa `prezzo == 0` invece di `totale_riga == 0`, innocuo perché il guardrail a valle usa `totale_riga`: non toccato. **4 blocchi trovati da `code-reviewer`** sul diff cumulativo (di nuovo il passo che trova ciò che audit e remediation non vedono): (a) MEDIUM#2 inerte sul percorso HTTP di produzione — il 429 degradava a fallback locale; (b) LOW#1 incompleto, `upload_handler.py:762` (il sito **più caldo**, ogni upload) passava ancora `volte_visto: 1` — mancato perché il grep iniziale era limitato a `ai_service.py`; (c) PATCH admin con doppia scrittura che poteva riportare `verified=False` **dopo** che la propagazione di massa era già partita; (d) il mismatch id/descrizione normalizzata descritto sopra. Tutti chiusi. **Un secondo giro di `code-reviewer` sulle correzioni** ha poi trovato che il fix (a) aveva introdotto una regressione: il worker restituisce 429 per **due** motivi diversi — quota AI giornaliera e rate limiter per IP (30 req/60s, `_check_rate_limit`) — e trattarli uguali significava che un upload grosso (chunk da 30) faceva scattare il limite per IP, veniva letto come "quota esaurita" e **short-circuitava tutti i chunk rimanenti** con una diagnosi falsa, dove prima il fallback locale funzionava. Fix: il worker marca il 429 di quota con header `X-RateLimit-Scope: ai-daily-quota`, il client discrimina sull'header col testo come fallback per il rollout. **Nota sui test**: in questa suite `requests` è sostituito da un mock del conftest che non è un package e non espone eccezioni vere — un `import requests` dentro un mock di risposta dà `exceptions must derive from BaseException` e fa passare il test per il motivo sbagliato. Ogni test aggiunto è stato verificato fallire ripristinando il codice pre-fix. **Regole di dominio verificate integre in ogni percorso**: nessun fallback verso `SERVIZI E CONSULENZE`, guardrail NOTE E DICITURE ancorato a `totale_riga` in tutti e 4 i punti, soft delete rispettato nella propagazione, gerarchia admin > locale > globale intatta, auto-save solo in memoria locale (anti-contaminazione cross-tenant), nessun `__getattr__`. **Sani, non ricontrollare**: cascata P7M a 5 fallback, inversione segno TD04, guardia anti-doppione per identità naturale, mapping AI per `idx`, SSRF guard, `ContextVar`, `_build_master_canonical_map`, `multisede_routing.py`. **Gap dichiarati**: `ai_service.py:3579-3990` (trasformazioni pure di categoria, zero I/O verificato via grep — bassa priorità ma **non** dichiarato chiuso); `services/routers/riparto.py` e `fatture.py` nominati nel perimetro ma mai letti. **Deployato** (push `main` 3/8/2026 ore ~13:50, commit `54f345d`): CI verde su tutti e 3 i workflow rilevanti (Tests, OpenAPI Schema Drift Check, Requirements Consistency); Vercel non coinvolto (nessun file `apps/web/**` nel commit), worker Railway si ridistribuisce autonomamente dal push. La riga resta 🟡 finché non è fatta la passata 2 |
 | 4 | AI | 🟢 | 5/7/2026 (Fable) | 2 HIGH + 4 MED + 4 LOW deployati | Ciclo chiuso |
 | 5 | Performance | 🟡 | 19/6/2026 | RPC dashboard_stats_aggregata + skeleton | Prezzi/Fatture full-load ancora non convertiti (residuo noto). **Da riverificare con dati esatti dalla sessione originale** |
 | 6 | Qualità/UI | 🟢 | 19/6/2026 | Filtro mese uniformato, sky-* → primary | commit df01a9c |
@@ -34,10 +35,13 @@ la propria riga con l'esito verificato.
 - **Security** — corretta il 30/7/2026 dalla sessione che ha svolto il lavoro:
   3 passate + 1 follow-up, tutti i commit citati verificati esistenti nel
   repo, nessun residuo aperto. Riga ora attendibile.
-- **Bug** — riga riscritta il 3/8/2026 da una passata dedicata vera (la prima:
-  fino a qui era sempre stata accorpata a Security). Non è più una ricostruzione
-  a memoria, ma copre **solo il primo dei due perimetri**: resta da fare la
-  passata 2 su margini/briefing/chat.
+- **Bug** — riga riscritta il 3/8/2026 da due passate dedicate vere (le prime:
+  fino a qui era sempre stata accorpata a Security), entrambe nella stessa
+  giornata. Non è più una ricostruzione a memoria e ora copre **entrambi** i
+  perimetri: upload/parsing/AI (passata 1) e margini/briefing/chat (passata 2).
+  🟢 con residui dichiarati nella consegna qui sotto, non nascosti: la bonifica
+  dei 44 gruppi di doppioni in `prodotti_master` richiede una decisione
+  voce-per-voce e non è stata fatta.
 - **AI, Performance, Qualità/UI** — righe ancora quelle ricostruite a
   memoria del 30/7, **non ancora corrette dalle sessioni originali**. Restano
   da riverificare quando quelle chat vengono riaperte.
@@ -73,54 +77,74 @@ A fine di ogni passata (agente `oneflux-audit` o manuale):
 4. Se l'audit apre il caso per un'altra dimensione (come Edge Functions →
    Database il 30/7), annotalo nella colonna Note della dimensione aperta
 
-## Prossima sessione: dimensione Bug — passata 2
+## Prossima sessione: dimensione Test (⚪, mai fatta)
 
 > Sezione viva: la sessione che prende in carico questa consegna la riscrive con
 > la propria per la dimensione successiva, non la lascia stagnare qui.
 
-**Stato al 3/8/2026**: 7/10 dimensioni 🟢, 2 🟡 (Bug — passata 1 chiusa,
-passata 2 da fare; Performance — residuo noto, riga ancora ricostruita a
-memoria il 30/7), 1 ⚪ (Test).
+**Stato al 3/8/2026 sera**: **8/10 dimensioni 🟢**, 1 🟡 (Performance — residuo
+noto, riga ancora ricostruita a memoria il 30/7 e mai corretta dalla sessione
+originale), 1 ⚪ (Test).
 
-**Perché la passata 2 di Bug adesso**: la passata 1 (3/8) ha coperto upload →
-parsing → categorizzazione AI e ha chiuso 10 findings, ma il perimetro era
-volutamente metà: `fastapi_worker.py` è ~8000 righe e tentarlo tutto insieme
-produce un audit superficiale. La metà rimasta non è stata guardata da nessuno.
+**Perché Test adesso**: è l'unica dimensione **mai auditata**. Esiste una suite
+che gira sempre (10195 pytest + Deno) e che ha retto bene — ma nessuno ha mai
+guardato la qualità dei test in sé. Questa sessione ne ha avuto tre prove
+concrete: (a) tre test della passata 1 passavano **per il motivo sbagliato**
+(il mock di `requests` nel conftest); (b) `get_inbox_badge_count` risultava
+"zero chiamanti" ma **4 test la coprivano** — un grep che escludeva `tests/`
+l'aveva mancata; (c) l'unico modo per fidarsi dei test nuovi è stato
+rimettere il bug e vederli fallire. Una suite grande che non è mai stata
+verificata *come suite* è esattamente il posto dove si nascondono i test che
+non provano nulla.
 
-**Scope della passata 2**: margini / briefing / chat — concentrati per ~5000
-righe dentro `services/fastapi_worker.py`. Includere `services/margine_service.py`
-e i router collegati (`services/routers/margini.py`, `ricavi.py`).
+**Scope proposto**: `tests/` (~10195 test) + i test Deno delle Edge Functions.
+Cercare: test che passano per il motivo sbagliato (mock troppo larghi,
+`assert True` mascherati, eccezioni ingoiate dal test stesso); test che non
+falliscono mai (asserzioni su dati che il test stesso ha appena scritto);
+copertura dichiarata vs reale sui percorsi critici (margini, categorizzazione,
+riparto, auth); `tests/conftest.py` e i suoi mock globali (`streamlit`,
+`requests`) — quali comportamenti reali stanno nascondendo; test disabilitati
+o `skip` silenziosi (43 skipped: quali e perché).
 
-**Portarsi dietro dalla passata 1** (dichiarati aperti, non chiusi in silenzio):
+**Alternativa**: Performance (🟡) se preferisci chiudere un residuo noto invece
+di aprire un fronte nuovo. La riga 5 non è mai stata corretta dalla sessione che
+la lavorò il 19/6: va **riverificata contro il codice**, non creduta.
+
+**Portarsi dietro dalle passate Bug** (dichiarati aperti, non chiusi in silenzio):
+- **`prodotti_master`: il fix copre 5 doppioni su 7.** `aggiorna_streak_classificazione`
+  ora cerca il record normalizzato prima di inserire, ma `normalizza_descrizione`
+  non collassa tutte le grafie: `CUORI FIL.MERL` → `FILETTOMERL` vs
+  `CUORI FIL MERL` → `FILETTO MERL`, e l'asterisco di `BRODO...TTL *`
+  sopravvive. **Restano 44 gruppi di doppioni sul DB live, 6 in conflitto di
+  categoria**: la bonifica dati non è stata fatta (richiede una decisione voce
+  per voce di Mattia — la lista con la proposta è pronta, vedi memoria).
+  Attenzione: "tieni il più recente" **non** funziona, su `CUORI FIL MERL` il
+  recente è quello sbagliato.
 - `services/ai_service.py:3579-3990` — trasformazioni pure di categoria, zero
-  I/O verificato via grep. Bassa priorità, ma **non** è stato dichiarato chiuso.
-- `services/routers/riparto.py` e `services/routers/fatture.py` — erano nel
-  perimetro nominale della passata 1 ma non sono mai stati letti.
-- `services/routers/fatture.py:850` passa ancora `volte_visto: 1`: è un
-  `insert()` puro nel ramo "record non esiste", quindi innocuo, ma ridondante
-  col default DB. Diventerebbe dannoso se qualcuno lo convertisse in `upsert`
-  per chiudere la race del check-then-act — miglioramento plausibile in futuro.
-- **`prodotti_master` non ha l'invariante "descrizione sempre normalizzata"**,
-  ed è la causa radice di B4. A romperlo è `aggiorna_streak_classificazione`
-  (`ai_service.py:3130-3137`), che fa `upsert` con la descrizione grezza. Il
-  fix pulito è lì, o una bonifica una-tantum con merge dei `volte_visto` (c'è
-  un precedente: `migrations/035_clean_corrupted_descriptions.sql`). Finché
-  regge, nessun endpoint ancorato a un `id` deve passare da una funzione che
-  risolve per descrizione.
+  I/O verificato via grep. Bassa priorità, ma **non** dichiarato chiuso.
+- `services/routers/riparto.py` e `services/routers/fatture.py` — nominati nel
+  perimetro della passata 1, mai letti. Il giro B della passata 2 li ha indicati
+  di nuovo come collegati al riparto.
+- `services/routers/fatture.py:850` passa ancora `volte_visto: 1`: `insert()`
+  puro nel ramo "record non esiste", innocuo ma ridondante col default DB.
+  Diventerebbe dannoso se convertito in `upsert`.
 - Cleanup righe orfane su re-upload di fatture >2000 righe
   (`invoice_service.py:1938-1958`): la lista `numero_riga` è quella già
-  troncata, quindi le righe 2001+ di una versione precedente scritta senza cap
-  verrebbero hard-deleted. Caso raro, richiede una versione precedente
-  pre-cap.
+  troncata. Caso raro, richiede una versione precedente pre-cap.
+- `_CATEGORIE_SPESE_M` (`fastapi_worker.py`) è **dead code**: il reviewer ha
+  verificato che non ha consumatori. Lasciata per non allargare il diff.
+- **L'agent notturno è spento** (`enabled=false` dal 30/5, mai eseguito). Il
+  codice ora è corretto, ma la feature non è mai stata collaudata in produzione:
+  accenderla è un collaudo, non un'ovvietà. 669 righe `needs_review` da smaltire.
 
-**Escludere**: Database, Edge Functions, Security, DevOps/Config, Architettura
-(chiuse e deployate — riaprirle solo se l'audit ci inciampa per davvero).
+**Escludere**: Bug, Database, Edge Functions, Security, DevOps/Config,
+Architettura (chiuse e deployate — riaprirle solo se l'audit ci inciampa).
 
 **Modello**: Sonnet regge l'audit read-only. Per la remediation vale §3 di
 `WORKFLOW.md` (default Opus, Sonnet è l'eccezione) — e comunque solo dopo
 conferma esplicita di Mattia, mai in autonomia.
 
-**Lezioni operative (le 5 del 2/8 restano valide, più 3 dal 3/8):**
+**Lezioni operative (le 5 del 2/8 restano valide, più 5 dal 3/8 mattina e 4 dal 3/8 sera):**
 
 1. **`git log -- <file>` prima di credere a "deployato" scritto qui.** Il
    lavoro Database del 30/7 risultava "fixato e deployato" in questa stessa
@@ -169,6 +193,31 @@ conferma esplicita di Mattia, mai in autonomia.
     uguali ha introdotto una regressione che il primo giro di review non aveva
     visto. Quando mappi un codice di stato su una semantica, verifica chi
     altro lo emette sullo stesso endpoint.
+11. **Un finding "grave" nel codice non è un danno in produzione finché non
+    verifichi i dati.** Il 3/8 sera, **3 findings su 3 verificati sul DB live
+    avevano la gravità sbagliata, sempre per eccesso**: il doppio conteggio dei
+    costi di catena esiste nel codice ma le fatture ripartite stanno solo sulla
+    sede tecnica, che non riceve quote; l'agent notturno "mai partito" è in
+    realtà spento da maggio; le righe `Da Classificare` nel foodcost non sono
+    usate da nessuna ricetta. Una query sul DB prima di scrivere il fix cambia
+    priorità e comunicazione al cliente. **Non declassare mai senza la query**:
+    tutti e tre restano difetti reali da chiudere, solo non urgenti.
+12. **Riproduci il comportamento, non dedurlo.** L'agente aveva concluso che
+    `asyncio.create_task(funzione_sync())` non eseguisse mai la funzione.
+    Eseguendo 6 righe di Python si vede l'opposto: il corpo **viene eseguito**
+    (bloccando), l'errore arriva dopo sul valore di ritorno. La diagnosi
+    rovesciata avrebbe portato al fix sbagliato.
+13. **Il perimetro dichiarato in una consegna va misurato, non creduto.** La
+    consegna diceva "~5000 righe in `fastapi_worker.py`"; il perimetro reale
+    era **~16.800**, perché il briefing vero vive in `daily_briefing_service.py`
+    (1332 righe) che non era nominato. Scoperto cercando `_BRIEFING_CODE_VERSION`
+    nel file sbagliato. `wc -l` sui file del perimetro prima di lanciare gli
+    agenti costa 10 secondi ed evita un gap dichiarato a fine sessione.
+14. **`grep` per "zero chiamanti" deve includere `tests/`.** `get_inbox_badge_count`
+    sembrava morta e lo era nel runtime, ma **4 test la coprivano**: rimuoverla
+    senza guardare avrebbe rotto la suite. Due di quei test verificavano un
+    comportamento reale (isolamento fra sedi) e sono stati riscritti sulla
+    funzione viva, non cancellati.
 
 ## Chiusura del ciclo (quando tutte le righe sono 🟢 o 🟡 con nota esplicita)
 
