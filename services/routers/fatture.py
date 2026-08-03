@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from config.constants import TUTTE_LE_CATEGORIE
+# utils/ non importa services/: import diretto, nessun rischio di ciclo.
+from utils.supabase_paging import fetch_all
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -243,15 +245,15 @@ def get_mesi_disponibili(
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
-    res = (
+    # Costruisce l'elenco dei mesi selezionabili: se tronca, al cliente
+    # spariscono mesi dal filtro senza alcun errore visibile.
+    rows = fetch_all(
         supabase_client.table("fatture_documenti")
         .select("data_documento")
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
         .not_.is_("data_documento", "null")
-        .execute()
     )
-    rows = res.data or []
     counts: Dict[str, int] = {}
     for r in rows:
         d = r.get("data_documento")
@@ -754,15 +756,16 @@ def get_categorie_disponibili(
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
-    # Categorie usate dal ristorante
-    res = (
+    # Categorie usate dal ristorante.
+    # PostgREST tronca a max_rows (1000) le select senza .range(): senza questa
+    # paginazione il filtro perdeva le categorie presenti solo oltre la millesima
+    # riga — tra cui "Da Classificare", che deve restare visibile (CLAUDE.md §1).
+    rows = fetch_all(
         supabase_client.table("fatture")
         .select("categoria")
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
-        .execute()
     )
-    rows = res.data or []
     categorie_usate = sorted({
         r["categoria"] for r in rows
         if r.get("categoria") and r["categoria"] not in _categorie_note_worker()

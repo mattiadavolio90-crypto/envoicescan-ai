@@ -21,6 +21,7 @@ from config.constants import (
 from utils.piva_validator import normalizza_piva
 from utils.formatters import log_upload_event, get_nome_base_file, calcola_alert_data_consegna_td24
 from utils.ristorante_helper import add_ristorante_filter
+from utils.supabase_paging import fetch_all
 
 from services.ai_service import (
     invalida_cache_memoria,
@@ -520,8 +521,10 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
             .in_('file_origine', list({str(name).strip() for name in file_names if str(name).strip()}))
         )
         query = add_ristorante_filter(query, ristorante_id)
-        response = query.execute()
-        rows = response.data or []
+        # Un upload multiplo di fatture grandi supera facilmente le 1000 righe:
+        # troncare qui vorrebbe dire dichiarare "tutto classificato" ignorando
+        # le righe oltre la soglia.
+        rows = fetch_all(query)
 
         unresolved_rows = [
             row for row in rows
@@ -848,8 +851,9 @@ def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_name
             .in_('file_origine', list({str(name).strip() for name in file_names if str(name).strip()}))
         )
         query = add_ristorante_filter(query, ristorante_id)
-        response = query.execute()
-        rows = response.data or []
+        # rows_saved e' un CONTEGGIO di verifica: troncato a 1000 direbbe che si
+        # sono salvate meno righe di quelle realmente scritte.
+        rows = fetch_all(query)
 
         checks['rows_saved'] = len(rows)
         _uncategorized_descs: set[str] = set()

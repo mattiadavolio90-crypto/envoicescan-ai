@@ -50,7 +50,13 @@ logger = get_logger('daily_briefing')
 #  13 -> 03/08: i bullet vuoti (es. apertura "fatture arrivate" con n=0) non
 #               finiscono piu' nel prompt AI come "- " nudo, che invitava il
 #               modello a riempirli inventando (audit Bug passata 2)
-_BRIEFING_CODE_VERSION = 13
+#  14 -> 03/08: "fatture arrivate ieri" e la % righe classificate dello Stato di
+#               Salute erano CAPPATE a 1000 righe da PostgREST (misurati 3.775
+#               righe in un giorno su una sede, 6.299 in 30gg) -> i numeri
+#               mostrati al cliente erano sottostimati. Ora paginati: senza
+#               questo bump lo snapshot di oggi resterebbe quello sbagliato
+#               (audit Performance, remediation)
+_BRIEFING_CODE_VERSION = 14
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

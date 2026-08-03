@@ -40,10 +40,13 @@ MESI_NOMI = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
 def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: int) -> tuple:
     """
     Calcola costi F&B e Spese Generali aggregati per mese dalle fatture.
-    
-    Query diretta a Supabase con colonne snake_case.
-    I risultati sono cachati per 5 minuti (TTL 300s).
-    
+
+    Query diretta a Supabase con colonne snake_case, cachata 300s per-processo.
+    NON e' la strada usata dal worker in produzione: gli endpoint chiamano
+    `calcola_costi_automatici_per_anno_sql` (aggregazione via RPC). Questa resta
+    come fallback quando la RPC fallisce, ed e' invalidata da
+    `db_service.clear_fatture_cache()` dopo ogni upload.
+
     Args:
         user_id: UUID utente
         ristorante_id: UUID ristorante
@@ -155,8 +158,11 @@ def calcola_costi_automatici_per_anno_sql(user_id: str, ristorante_id: str, anno
 
     Stessa firma e stesso risultato (dict {mese: somma_float}), verificato
     numericamente identico al metodo pandas. Pensata per il worker FastAPI, dove
-    il decoratore @_make_cache (Streamlit) NON funziona e il full-load era il
-    collo di bottiglia di home_kpi su clienti con molte fatture.
+    il full-load con pandas era il collo di bottiglia di home_kpi sui clienti con
+    molte fatture: qui l'aggregazione la fa il database e torna una riga per mese.
+    (Storicamente questa variante nacque anche perche' @_make_cache non cachava
+    nulla senza Streamlit; oggi cacha davvero, ma l'aggregazione lato DB resta
+    comunque la strada giusta e questa funzione la strada usata in produzione.)
 
     Fallback: se la RPC fallisce per qualsiasi motivo, ricade sul metodo pandas
     storico — il calcolo dei margini non deve mai rompersi.

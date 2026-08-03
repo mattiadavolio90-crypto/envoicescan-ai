@@ -42,6 +42,7 @@ import logging
 logger = logging.getLogger("fastapi_worker")
 
 from utils.ttl_cache import TTLCache
+from utils.supabase_paging import fetch_all
 
 # Cache in-process per gli endpoint Admin pesanti (overview, badge...). Sono dati
 # di monitoraggio che l'admin guarda: un TTL breve e' accettabile e li toglie dal
@@ -2015,16 +2016,17 @@ def _compute_admin_badges():
             ]
             if not allowed_ids:
                 return 0
-            resp = (sb.table("fatture")
+            # Query CROSS-TENANT (tutti i clienti insieme): e' il caso piu'
+            # esposto al cap di 1000 righe di PostgREST.
+            rows = fetch_all(sb.table("fatture")
                     .select("descrizione")
                     .eq("needs_review", True)
                     .is_("deleted_at", "null")
-                    .in_("user_id", allowed_ids)
-                    .execute())
+                    .in_("user_id", allowed_ids))
             umane = _descrizioni_impronta_umana(sb, allowed_ids)
             descrizioni = {
                 (r.get("descrizione") or "").strip().upper()
-                for r in (resp.data or [])
+                for r in rows
                 if (r.get("descrizione") or "").strip()
             }
             return len(descrizioni - umane)

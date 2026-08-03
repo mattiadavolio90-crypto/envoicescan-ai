@@ -9,6 +9,9 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+# utils/ non importa services/: import diretto, nessun rischio di ciclo.
+from utils.supabase_paging import fetch_all
+
 logger = logging.getLogger("fastapi_worker")
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
@@ -126,14 +129,14 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     if ristorante_id:
         try:
             # Conta file_origine distinti nel mese corrente
-            fd_resp = (
+            fd_rows = fetch_all(
                 sb.table("fatture_documenti")
                 .select("file_origine")
                 .eq("ristorante_id", ristorante_id)
+                .is_("deleted_at", "null")
                 .gte("data_documento", mese_inizio[:10])
-                .execute()
             )
-            file_origini = {r["file_origine"] for r in (fd_resp.data or [])}
+            file_origini = {r["file_origine"] for r in fd_rows}
             fatture_mese = len(file_origini)
         except Exception:
             pass

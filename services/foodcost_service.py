@@ -9,6 +9,7 @@ import logging
 from typing import Optional
 
 from config.constants import CATEGORIE_SPESE_GENERALI, CATEGORIA_NON_CLASSIFICATA
+from utils.supabase_paging import fetch_all
 
 logger = logging.getLogger("foodcost_service")
 
@@ -178,39 +179,58 @@ def arricchisci_ricetta(r: dict) -> dict:
     }
 
 
+def _articoli_rows_da_rpc(supabase, user_id: str, ristorante_id: str, categorie_escluse: list[str]) -> list[dict]:
+    """Righe gia' deduplicate per descrizione dalla RPC articoli_da_fatture."""
+    return fetch_all(
+        supabase.rpc(
+            "articoli_da_fatture",
+            {
+                "p_user_id": user_id,
+                "p_ristorante_id": ristorante_id,
+                "p_categorie_escluse": categorie_escluse,
+            },
+        )
+    )
+
+
+def _articoli_rows_full_load(supabase, user_id: str, ristorante_id: str, categorie_escluse: list[str]) -> list[dict]:
+    """Fallback storico: scarica le righe e deduplica in Python."""
+    return fetch_all(
+        supabase.table("fatture")
+        .select("descrizione,prezzo_unitario,unita_misura,data_documento")
+        .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+        .not_.in_("categoria", categorie_escluse)
+        .order("data_documento", desc=True)
+    )
+
+
 def get_articoli_da_fatture(supabase, user_id: str, ristorante_id: str) -> list[dict]:
     """
     Carica articoli unici dalle fatture (descrizione, ultimo prezzo, UM).
     Filtra spese generali e cestino.
+
+    La deduplica per descrizione la fa il database (RPC `articoli_da_fatture`,
+    DISTINCT ON): prima si scaricavano tutte le righe della sede per tenerne una
+    per descrizione — 8.446 righe in 9 round-trip per 1.364 articoli utili, con
+    il costo che cresceva ogni mese mentre il risultato restava uguale.
+    Misurato sulla sede piu' grande: 1.772 ms -> 348 ms, stessi 1.364 articoli e
+    zero differenze sui prezzi.
+
+    NB: `categoria NOT IN (...)` esclude anche categoria IS NULL. E' accettabile:
+    il constraint fatture_categoria_not_empty_chk vieta categoria NULL/vuota sulle
+    righe attive. Quel constraint NON vieta pero' "Da Classificare" (stato
+    legittimo), escluso qui esplicitamente: una riga ancora in coda di revisione
+    non deve entrare nel foodcost di una ricetta (CLAUDE.md §1).
     """
-    all_rows = []
-    page_size = 1000
-    offset = 0
-    while True:
-        q = (
-            supabase.table("fatture")
-            .select("descrizione,prezzo_unitario,unita_misura,data_documento")
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .is_("deleted_at", "null")
-            # NB: `categoria NOT IN (...)` in SQL esclude anche categoria IS NULL.
-            # E' accettabile: il constraint fatture_categoria_not_empty_chk vieta
-            # categoria NULL/vuota sulle righe attive, quindi non esistono
-            # ingredienti validi con categoria NULL da recuperare. Quel constraint
-            # NON vieta pero' "Da Classificare" (e' uno stato legittimo), che va
-            # quindi escluso qui esplicitamente: una riga ancora in coda di
-            # revisione non deve entrare nel foodcost di una ricetta (CLAUDE.md §1).
-            .not_.in_("categoria", list(CATEGORIE_SPESE_GENERALI) + [CATEGORIA_NON_CLASSIFICATA])
-            .order("data_documento", desc=True)
-            .range(offset, offset + page_size - 1)
-        )
-        resp = q.execute()
-        if not resp.data:
-            break
-        all_rows.extend(resp.data)
-        if len(resp.data) < page_size:
-            break
-        offset += page_size
+    categorie_escluse = list(CATEGORIE_SPESE_GENERALI) + [CATEGORIA_NON_CLASSIFICATA]
+    try:
+        all_rows = _articoli_rows_da_rpc(supabase, user_id, ristorante_id, categorie_escluse)
+    except Exception as exc:
+        # Il foodcost non deve rompersi se la RPC manca o cambia firma.
+        logger.warning("articoli_da_fatture: RPC fallita, fallback full-load: %s", exc)
+        all_rows = _articoli_rows_full_load(supabase, user_id, ristorante_id, categorie_escluse)
 
     articoli_map: dict[str, dict] = {}
     for row in all_rows:
