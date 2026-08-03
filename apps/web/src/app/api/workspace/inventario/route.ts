@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { WORKER_URL, getToken, workerHeaders, unauthorized, workerFetch, workerUnreachable } from "../_worker";
+import { WORKER_URL, WORKER_TIMEOUT_MS, getToken, workerHeaders, unauthorized, workerFetch, workerUnreachable } from "../_worker";
 
 export async function GET(req: NextRequest) {
   const token = await getToken();
   if (!token) return unauthorized();
   const data = req.nextUrl.searchParams.get("data") ?? "";
   const url = `${WORKER_URL}/api/workspace/inventario${data ? `?data=${data}` : ""}`;
-  const res = await fetch(url, { headers: workerHeaders(token) });
+  const res = await fetch(url, { headers: workerHeaders(token), signal: AbortSignal.timeout(WORKER_TIMEOUT_MS) });
   return NextResponse.json(await res.json(), { status: res.status });
 }
 

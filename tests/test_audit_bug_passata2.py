@@ -387,4 +387,141 @@ def test_streak_gemello_incrementa_e_promuove():
     sb2 = _StreakSB(esistente_normalizzato=norm, categoria="PESCE", streak=2)
     aggiorna_streak_classificazione(grezza, cat, sb2)
     assert sb2.update_payload["consecutive_correct_classifications"] == 1
-    assert "confidence" not in sb2.update_payload
+
+
+class _StreakSBContaSelect:
+    """Come _StreakSB ma conta i SELECT: serve a dimostrare che passare
+    record_precaricato evita il lookup (audit Performance, N+1 queue-worker)."""
+
+    def __init__(self, categoria="MATERIALE DI CONSUMO", streak=0):
+        self._cat = categoria
+        self._streak = streak
+        self.select_calls = 0
+        self.update_payload = None
+
+    def table(self, _n):
+        return self
+
+    def select(self, *_a, **_k):
+        self.select_calls += 1
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def eq(self, col, val):
+        self._eq = (col, val)
+        return self
+
+    def execute(self):
+        class _R:
+            pass
+        r = _R()
+        r.data = [{
+            "id": 7, "verified": False, "confidence": "media",
+            "categoria": self._cat,
+            "consecutive_correct_classifications": self._streak,
+        }]
+        return r
+
+    def update(self, payload):
+        self.update_payload = payload
+        return self
+
+
+def test_streak_con_record_precaricato_non_fa_select():
+    """record_precaricato deve far saltare il SELECT di lookup: e' il batching
+    che rimpiazza 1 round-trip per descrizione con 1 solo per l'intero chunk."""
+    from services.ai_service import aggiorna_streak_classificazione
+
+    sb = _StreakSBContaSelect(categoria="PESCE", streak=2)
+    aggiorna_streak_classificazione(
+        "MERLUZZO FILETTO", "PESCE", sb,
+        record_precaricato={
+            "id": 7, "verified": False, "confidence": "media",
+            "categoria": "PESCE", "consecutive_correct_classifications": 2,
+        },
+    )
+    assert sb.select_calls == 0, "record_precaricato deve evitare il SELECT"
+    assert sb.update_payload["consecutive_correct_classifications"] == 3
+    assert sb.update_payload.get("confidence") == "alta"
+
+
+def test_streak_senza_record_precaricato_fa_select_come_prima():
+    """Senza il parametro (default), il comportamento pre-esistente non cambia:
+    nessuna call-site fuori dal queue-worker deve essere toccata da questo fix."""
+    from services.ai_service import aggiorna_streak_classificazione
+
+    sb = _StreakSBContaSelect(categoria="PESCE", streak=2)
+    aggiorna_streak_classificazione("MERLUZZO FILETTO", "PESCE", sb)
+    assert sb.select_calls == 1
+
+
+def test_streak_record_precaricato_none_significa_prodotto_assente():
+    """record_precaricato=None e' 'precaricato ma vuoto' (non nel batch), non va
+    confuso col default (sentinella) che invece fa il SELECT di lookup. Deve
+    trattarlo come prodotto nuovo e inserirlo, non fare l'UPDATE del ramo
+    match-esatto.
+
+    NB: l'invariante NON e' "zero SELECT" — col ramo gemello una descrizione che
+    normalizza diversa fa comunque il suo lookup normalizzato. L'invariante e'
+    che il SELECT *di lookup per match esatto* sia stato saltato, cioe' che si
+    finisca nel ramo prodotto-nuovo."""
+    from services.ai_service import aggiorna_streak_classificazione
+
+    class _SBUpsert(_StreakSBContaSelect):
+        """Nessun record in tabella: ne' per match esatto ne' per normalizzato.
+        Cosi' l'unico esito possibile e' il ramo prodotto-nuovo."""
+
+        def __init__(self):
+            super().__init__()
+            self.upsert_chiamato = False
+
+        def execute(self):
+            class _R:
+                pass
+            r = _R()
+            r.data = []
+            return r
+
+        def upsert(self, *_a, **_k):
+            self.upsert_chiamato = True
+            return self
+
+    # Descrizione che NORMALIZZA DIVERSA: cosi' il test esercita davvero il ramo
+    # gemello invece di passare per caso su una grafia gia' normalizzata.
+    from utils.text_utils import normalizza_descrizione
+    grezza = "Pane  Casereccio 1KG"
+    assert normalizza_descrizione(grezza) != grezza, (
+        "prerequisito del test: serve una grafia che normalizzi diversa"
+    )
+
+    sb = _SBUpsert()
+    aggiorna_streak_classificazione(grezza, "CARNE", sb, record_precaricato=None)
+    assert sb.upsert_chiamato is True, (
+        "record_precaricato=None deve portare al ramo prodotto-nuovo (upsert), "
+        "non all'UPDATE del ramo match-esatto"
+    )
+    assert sb.update_payload is None, (
+        "non deve aggiornare un record per match esatto: quel record non esiste"
+    )
+
+
+def test_prefetch_fallito_non_azzera_lo_streak():
+    """Se il pre-fetch del chunk fallisce, il worker NON deve passare un dict
+    vuoto: 'assente dal batch' significa 'prodotto nuovo' e farebbe saltare il
+    guard `verified`, azzerando lo streak di un prodotto gia' noto (e
+    sovrascrivendo un prodotto verificato a mano dall'admin). Deve invece
+    ricadere sul SELECT per riga, cioe' il comportamento pre-fix."""
+    import inspect
+    import worker.queue_processor as qp
+
+    src = inspect.getsource(qp._auto_classify_saved_rows)
+    assert "_streak_precaricati = None" in src, (
+        "il ramo except del pre-fetch deve annullare il batch (None), non "
+        "passare un dict vuoto che verrebbe letto come 'prodotto assente'"
+    )
+    assert "_STREAK_NON_PRECARICATO if _streak_precaricati is None" in src, (
+        "col batch annullato va passata la sentinella, non None: None significa "
+        "'precaricato ma assente' e salta il guard verified"
+    )

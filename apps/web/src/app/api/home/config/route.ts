@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY, workerFetch } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, WORKER_TIMEOUT_MS, workerFetch } from "@/lib/worker-config";
 
 async function authHeaders() {
   const cookieStore = await cookies();
@@ -19,7 +19,7 @@ export async function GET() {
   const headers = await authHeaders();
   if (!headers) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
   try {
-    const res = await fetch(`${WORKER_URL}/api/home/config`, { method: "GET", headers, cache: "no-store" });
+    const res = await fetch(`${WORKER_URL}/api/home/config`, { method: "GET", headers, cache: "no-store", signal: AbortSignal.timeout(WORKER_TIMEOUT_MS) });
     if (!res.ok) return NextResponse.json({ error: "Errore worker" }, { status: res.status });
     return NextResponse.json(await res.json());
   } catch {

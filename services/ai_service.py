@@ -3062,10 +3062,14 @@ def invalida_cache_memoria():
     logger.info("🔄 Cache memoria invalidata")
 
 
+_STREAK_NON_PRECARICATO = object()
+
+
 def aggiorna_streak_classificazione(
     descrizione: str,
     categoria_gpt: str,
     supabase_client,
+    record_precaricato=_STREAK_NON_PRECARICATO,
 ) -> None:
     """Dopo che il GPT classifica una descrizione, incrementa (o resetta) lo streak
     su prodotti_master. Quando lo streak raggiunge 3, il prodotto viene auto-promosso
@@ -3076,6 +3080,14 @@ def aggiorna_streak_classificazione(
     - Se la categoria è diversa → streak reset a 1 (nuova categoria)
     - Se il prodotto non esiste → inserimento con streak=1
     - A streak >= 3 → confidence impostata ad 'alta' + cache invalidata
+
+    record_precaricato: se il chiamante ha già letto la riga (id, categoria,
+    confidence, consecutive_correct_classifications, verified) per questa
+    descrizione esatta in una fetch collettiva, passarla qui evita il SELECT
+    di lookup (usato dal queue-worker per battere il chunk in un solo round-trip
+    invece di uno per descrizione). Passare esplicitamente `None` significa
+    "precaricato ma assente" (prodotto non trovato nel batch), da non confondere
+    col default "non precaricato, fai tu il SELECT".
     """
     if not categoria_gpt or categoria_gpt.strip() in ('', 'Da Classificare'):
         return
@@ -3083,18 +3095,22 @@ def aggiorna_streak_classificazione(
         return
 
     try:
-        # Leggi lo stato attuale del prodotto
-        res = supabase_client.table('prodotti_master') \
-            .select('id, categoria, confidence, consecutive_correct_classifications, verified') \
-            .eq('descrizione', descrizione) \
-            .limit(1) \
-            .execute()
+        # Leggi lo stato attuale del prodotto (o riusa quello precaricato dal chiamante)
+        if record_precaricato is not _STREAK_NON_PRECARICATO:
+            res_data = [record_precaricato] if record_precaricato else []
+        else:
+            res = supabase_client.table('prodotti_master') \
+                .select('id, categoria, confidence, consecutive_correct_classifications, verified') \
+                .eq('descrizione', descrizione) \
+                .limit(1) \
+                .execute()
+            res_data = res.data
 
         now_streak = 0
         new_confidence = None
 
-        if res.data:
-            row = res.data[0]
+        if res_data:
+            row = res_data[0]
             # Non toccare prodotti verificati manualmente dall'admin
             if row.get('verified'):
                 return

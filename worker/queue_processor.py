@@ -58,8 +58,10 @@ from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salv
 from services.worker_client import classifica_via_worker_con_confidenza
 
 try:
-    from services.ai_service import aggiorna_streak_classificazione
+    from services.ai_service import aggiorna_streak_classificazione, _STREAK_NON_PRECARICATO
 except Exception:  # pragma: no cover - fallback per worker CLI senza dipendenze UI
+    _STREAK_NON_PRECARICATO = object()
+
     def aggiorna_streak_classificazione(*_args, **_kwargs):
         return None
 
@@ -304,6 +306,23 @@ def _auto_classify_saved_rows(
         if not isinstance(confidenze, list) or len(confidenze) != len(chunk):
             confidenze = ['media'] * len(chunk)
 
+        # Pre-carica prodotti_master per l'intero chunk in 1 round-trip invece di
+        # 1 per descrizione. Se il pre-fetch fallisce resta None: in quel caso NON
+        # si puo' passare un dict vuoto, perche' "assente dal batch" significa
+        # "prodotto nuovo" e farebbe saltare il guard `verified` azzerando lo
+        # streak. None => si ricade sul SELECT per riga, come prima del fix.
+        try:
+            _streak_res = (
+                supabase.table("prodotti_master")
+                .select("id, descrizione, categoria, confidence, consecutive_correct_classifications, verified")
+                .in_("descrizione", chunk)
+                .execute()
+            )
+            _streak_precaricati = {r["descrizione"]: r for r in (_streak_res.data or [])}
+        except Exception as _e:
+            logger.warning("[auto_classify] pre-fetch prodotti_master fallito, streak per-riga: %s", _e)
+            _streak_precaricati = None
+
         for desc, cat, conf in zip(chunk, categorie, confidenze):
             categoria, fallback_forzato = enforce_no_unclassified_category(
                 cat,
@@ -372,7 +391,13 @@ def _auto_classify_saved_rows(
             n = len(resp.data or [])
             updated_rows += n
             if n > 0:
-                aggiorna_streak_classificazione(desc, categoria, supabase)
+                aggiorna_streak_classificazione(
+                    desc, categoria, supabase,
+                    record_precaricato=(
+                        _STREAK_NON_PRECARICATO if _streak_precaricati is None
+                        else _streak_precaricati.get(desc)
+                    ),
+                )
 
     return updated_rows
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken, workerHeaders, workerUnreachable, unauthorized, WORKER_URL, workerFetch } from "./_worker";
+import { getToken, workerHeaders, workerUnreachable, unauthorized, WORKER_URL, WORKER_TIMEOUT_MS, workerFetch } from "./_worker";
 
 export async function GET() {
   const token = await getToken();
@@ -8,6 +8,7 @@ export async function GET() {
     const res = await fetch(`${WORKER_URL}/api/tag`, {
       headers: workerHeaders(token),
       cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {

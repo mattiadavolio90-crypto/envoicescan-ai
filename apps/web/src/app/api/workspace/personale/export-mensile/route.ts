@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { WORKER_URL, getToken, workerHeaders, unauthorized, workerUnreachable } from "../../_worker";
+import { WORKER_URL, WORKER_TIMEOUT_MS, getToken, workerHeaders, unauthorized, workerUnreachable } from "../../_worker";
 
 export const runtime = "nodejs";
 
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     const res = await fetch(
       `${WORKER_URL}/api/workspace/personale/export-mensile?mese=${encodeURIComponent(mese)}`,
-      { headers: workerHeaders(token), cache: "no-store" },
+      { headers: workerHeaders(token), cache: "no-store", signal: AbortSignal.timeout(WORKER_TIMEOUT_MS) },
     );
     if (!res.ok) {
       const data = await res.json().catch(() => ({ error: "Errore export" }));

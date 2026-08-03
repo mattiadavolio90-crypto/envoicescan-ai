@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { WORKER_URL, getToken, workerHeaders, unauthorized, workerFetch, workerUnreachable } from "../../_worker";
+import { WORKER_URL, WORKER_TIMEOUT_MS, getToken, workerHeaders, unauthorized, workerFetch, workerUnreachable } from "../../_worker";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const token = await getToken();
@@ -8,6 +8,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const res = await fetch(`${WORKER_URL}/api/workspace/foodcost/ricette/${id}`, {
     headers: workerHeaders(token),
     cache: "no-store",
+    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
   });
   const data = await res.json();
   return NextResponse.json(data, { status: res.status });

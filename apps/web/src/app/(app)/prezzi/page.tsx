@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePagina } from "@/lib/page-guard";
@@ -7,11 +8,18 @@ import { contaTopicAttivo } from "@/lib/notifiche";
 import { TriggerHint } from "@/components/trigger-hint";
 import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
 import { TabsSwitcher } from "./tabs-switcher";
-import { VariazioniTab } from "./variazioni-tab";
 import { ScontiTab } from "./sconti-tab";
 import { NcTab } from "./nc-tab";
 import { ScoreTab } from "./score-tab";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+
+// dynamic(): VariazioniTab importa recharts (libreria pesante) solo per il tab
+// omonimo. Cosi' il chunk recharts non entra nel bundle iniziale di /prezzi
+// quando l'utente apre sconti/nc/score, che non lo usano.
+// Niente ssr:false: in un Server Component non e' consentito da Next.
+const VariazioniTab = dynamic(() => import("./variazioni-tab").then((m) => m.VariazioniTab), {
+  loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/40" />,
+});
 
 async function fetchSogliaAlert(): Promise<number> {
   const cookieStore = await cookies();

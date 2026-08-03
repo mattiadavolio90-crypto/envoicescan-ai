@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY, workerFetch } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, WORKER_TIMEOUT_MS, workerFetch } from "@/lib/worker-config";
 
 function workerHeaders(token: string): Record<string, string> {
   const h: Record<string, string> = {
@@ -24,6 +24,7 @@ export async function GET() {
     const res = await fetch(`${WORKER_URL}/api/prezzi/preferiti`, {
       headers: workerHeaders(t),
       cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {

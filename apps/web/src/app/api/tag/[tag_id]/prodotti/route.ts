@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken, workerHeaders, workerUnreachable, unauthorized, WORKER_URL, workerFetch } from "../../_worker";
+import { getToken, workerHeaders, workerUnreachable, unauthorized, WORKER_URL, WORKER_TIMEOUT_MS, workerFetch } from "../../_worker";
 
 type Ctx = { params: Promise<{ tag_id: string }> };
 
@@ -11,6 +11,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     const res = await fetch(`${WORKER_URL}/api/tag/${tag_id}/prodotti`, {
       headers: workerHeaders(token),
       cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {

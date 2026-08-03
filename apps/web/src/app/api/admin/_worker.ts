@@ -2,6 +2,7 @@
 // costanti specifiche dell'impersonazione admin.
 export {
   WORKER_URL,
+  WORKER_TIMEOUT_MS,
   getToken,
   workerHeaders,
   unauthorized,

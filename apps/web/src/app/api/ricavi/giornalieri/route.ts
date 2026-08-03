@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY, workerFetch } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, WORKER_TIMEOUT_MS, workerFetch } from "@/lib/worker-config";
 
 function headers(token: string, json = false): Record<string, string> {
   const h: Record<string, string> = { Authorization: `Bearer ${token}` };
@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(`${WORKER_URL}/api/ricavi/giornalieri?${qs}`, {
       headers: headers(token),
       cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
