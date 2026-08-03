@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - "services/fastapi_worker.py"
+      # Gli endpoint vivono nei router, non solo nel worker: senza questo path
+      # un commit che tocca solo services/routers/** non fa partire il check.
+      - "services/routers/**"
       - "openapi/openapi.json"
   pull_request:
     paths:
       - "services/fastapi_worker.py"
+      - "services/routers/**"
       - "openapi/openapi.json"
 
 permissions:

@@ -650,6 +650,42 @@ def _build_query_mock(execute_data=None):
     return query
 
 
+def _build_query_mock_filtrante(righe):
+    """
+    Come _build_query_mock, ma i filtri .neq()/.is_() vengono APPLICATI davvero
+    sui dati invece di essere ignorati.
+
+    Serve a testare la regola di dominio #1 (CLAUDE.md): il mock permissivo
+    restituisce le righe qualunque filtro il codice chiami, quindi un test che
+    lo usa passa identico anche se il .neq() sparisce dal codice di produzione.
+    Qui invece il dataset contiene righe che DEVONO essere escluse: se il codice
+    smette di filtrarle, finiscono nel totale e l'assert cade.
+    """
+    stato = {"righe": list(righe)}
+    query = MagicMock()
+
+    def _neq(colonna, valore):
+        stato["righe"] = [r for r in stato["righe"] if r.get(colonna) != valore]
+        return query
+
+    def _is_(colonna, valore):
+        # Solo la forma `.is_(col, 'null')`. La forma negata delle query cestino
+        # (`.not_.is_(col, 'null')`) NON e' simulata: senza questa guardia il
+        # mock darebbe verde anche su una logica invertita.
+        assert valore == "null", (
+            f"_build_query_mock_filtrante non simula .is_({colonna!r}, {valore!r})"
+        )
+        stato["righe"] = [r for r in stato["righe"] if r.get(colonna) is None]
+        return query
+
+    for passthrough in ("select", "eq", "gte", "lte", "lt", "or_", "range", "upsert"):
+        getattr(query, passthrough).return_value = query
+    query.neq.side_effect = _neq
+    query.is_.side_effect = _is_
+    query.execute.side_effect = lambda: SimpleNamespace(data=list(stato["righe"]))
+    return query
+
+
 def _reload_margine_module_without_cache_wrapper():
     """
     Nel test environment streamlit è mockato: forziamo cache_data a decorator identità
@@ -694,6 +730,52 @@ class TestMargineServiceDB:
             )
 
         assert costi_fb.get(1) == 150.0
+        assert costi_spese.get(1) == 80.0
+
+    def test_costi_automatici_escludono_da_classificare_e_ripartite(self):
+        """Regola di dominio #1 + anti-doppio-conteggio catena (CLAUDE.md).
+
+        Le righe 'Da Classificare' e quelle gia' ripartite sul gruppo NON devono
+        entrare nel costo automatico: le prime falserebbero il MOL con una
+        categoria che il cliente non ha ancora confermato, le seconde lo
+        conterebbero due volte (rientrano gia' via quote_riparto_*).
+
+        Il mock applica davvero i .neq(): se i filtri sparissero da
+        margine_service.py questo test fallirebbe (verificato rimuovendoli).
+        """
+        margine_module = _reload_margine_module_without_cache_wrapper()
+        food_cat = CATEGORIE_FOOD[0]
+        spese_cat = CATEGORIE_SPESE_GENERALI[0]
+
+        righe = [
+            {"data_documento": "2026-01-10", "totale_riga": 100.0,
+             "categoria": food_cat, "ripartita_su_gruppo": False, "deleted_at": None},
+            {"data_documento": "2026-01-15", "totale_riga": 80.0,
+             "categoria": spese_cat, "ripartita_su_gruppo": False, "deleted_at": None},
+            # Le tre righe seguenti devono restare fuori dal totale.
+            {"data_documento": "2026-01-18", "totale_riga": 999.0,
+             "categoria": "Da Classificare", "ripartita_su_gruppo": False, "deleted_at": None},
+            {"data_documento": "2026-01-20", "totale_riga": 555.0,
+             "categoria": food_cat, "ripartita_su_gruppo": True, "deleted_at": None},
+            {"data_documento": "2026-01-22", "totale_riga": 333.0,
+             "categoria": food_cat, "ripartita_su_gruppo": False,
+             "deleted_at": "2026-01-23T00:00:00Z"},
+        ]
+
+        mock_client = MagicMock()
+        mock_client.table.return_value = _build_query_mock_filtrante(righe)
+
+        with patch("services.margine_service.get_supabase_client", return_value=mock_client):
+            costi_fb, costi_spese = margine_module.calcola_costi_automatici_per_anno(
+                user_id="test-uuid",
+                ristorante_id="rist-test",
+                anno=2026,
+            )
+
+        assert costi_fb.get(1) == 100.0, (
+            "Nel food cost sono entrate righe che vanno escluse "
+            "(Da Classificare / ripartita_su_gruppo / soft-deleted)"
+        )
         assert costi_spese.get(1) == 80.0
 
     def test_calcola_costi_automatici_per_anno_sql(self):

@@ -1,6 +1,8 @@
 """Test per services/auth_service.py — Validazione password GDPR."""
 import pytest
-from unittest.mock import MagicMock
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from services.auth_service import valida_password_compliance
 from services.auth_service import riepilogo_fatture_auto_da_ultimo_login
@@ -283,3 +285,163 @@ class TestImpostaPasswordConsentGDPR:
 
         assert ok is True
         assert captured[0].get('privacy_accepted_at') is not None
+
+
+def _make_rate_limit_client(fail_count, oldest_attempted_at=None):
+    """Client Supabase mock per controlla_rate_limit.
+
+    La prima execute() serve il count dei tentativi falliti nella finestra,
+    la seconda (solo in lockout) il tentativo piu' vecchio.
+    """
+    client = MagicMock()
+    query = MagicMock()
+    for passthrough in ('select', 'eq', 'gte', 'order', 'limit', 'delete', 'lt'):
+        getattr(query, passthrough).return_value = query
+    risposte = [SimpleNamespace(count=fail_count, data=[])]
+    if oldest_attempted_at is not None:
+        risposte.append(
+            SimpleNamespace(count=None, data=[{'attempted_at': oldest_attempted_at}])
+        )
+    risposte.append(SimpleNamespace(count=None, data=[]))
+    query.execute.side_effect = risposte
+    client.table.return_value = query
+    return client
+
+
+class TestControllaRateLimit:
+    """Regola CLAUDE.md: 5 tentativi falliti -> blocco 15 minuti.
+
+    Prima di questi test la regola non era coperta da nessun test della suite:
+    era verificabile solo leggendo il sorgente.
+    """
+
+    def test_sotto_soglia_non_blocca(self):
+        from services.auth_service import controlla_rate_limit
+
+        bloccato, minuti = controlla_rate_limit(
+            'utente@test.it', _make_rate_limit_client(fail_count=4)
+        )
+
+        assert bloccato is False
+        assert minuti == 0
+
+    def test_alla_soglia_blocca(self):
+        """Il 5o tentativo fallito fa scattare il lockout (>=, non >)."""
+        from services.auth_service import controlla_rate_limit
+
+        appena_fallito = datetime.now(timezone.utc).isoformat()
+        bloccato, minuti = controlla_rate_limit(
+            'utente@test.it',
+            _make_rate_limit_client(fail_count=5, oldest_attempted_at=appena_fallito),
+        )
+
+        assert bloccato is True
+        # Tentativo piu' vecchio appena registrato -> lockout quasi pieno.
+        # 16 e non 15: il calcolo arrotonda per eccesso (int(sec/60) + 1) per
+        # non annunciare all'utente meno attesa di quella reale.
+        assert 15 <= minuti <= 16
+
+    def test_lockout_quasi_scaduto_riporta_pochi_minuti(self):
+        """I minuti rimanenti si calcolano dal tentativo piu' vecchio, non fissi a 15."""
+        from services.auth_service import controlla_rate_limit
+
+        quasi_scaduto = (
+            datetime.now(timezone.utc) - timedelta(minutes=13)
+        ).isoformat()
+        bloccato, minuti = controlla_rate_limit(
+            'utente@test.it',
+            _make_rate_limit_client(fail_count=5, oldest_attempted_at=quasi_scaduto),
+        )
+
+        assert bloccato is True
+        assert minuti <= 3
+
+    def test_email_normalizzata_lowercase(self):
+        """CLAUDE.md: i confronti email sono sempre .strip().lower()."""
+        from services.auth_service import controlla_rate_limit
+
+        client = _make_rate_limit_client(fail_count=0)
+        controlla_rate_limit('  Utente@TEST.it  ', client)
+
+        chiamate_email = [
+            c.args[1] for c in client.table.return_value.eq.call_args_list
+            if c.args and c.args[0] == 'email'
+        ]
+        assert chiamate_email, 'nessun filtro per email applicato'
+        assert all(e == 'utente@test.it' for e in chiamate_email)
+
+    def test_errore_db_non_apre_il_login(self):
+        """Fail-closed: se il DB non risponde si solleva, non si restituisce
+        'non bloccato' (che lascerebbe passare tentativi illimitati).
+
+        Serve `requests` REALE: _is_connectivity_error fa isinstance() sulle
+        eccezioni di requests, e col MagicMock globale del conftest isinstance
+        solleva TypeError ("arg 2 must be a type"). In produzione requests e'
+        installato davvero, quindi il percorso funziona: e' un limite
+        dell'ambiente di test, non un bug del codice.
+        """
+        import importlib
+        import sys
+
+        from services.auth_service import (
+            controlla_rate_limit,
+            AuthServiceUnavailableError,
+        )
+        import services.auth_service as auth_module
+
+        client = MagicMock()
+        client.table.side_effect = RuntimeError('db giu')
+
+        mock_requests = sys.modules.get('requests')
+        sys.modules.pop('requests', None)
+        try:
+            auth_module.requests = importlib.import_module('requests')
+            with pytest.raises(AuthServiceUnavailableError):
+                controlla_rate_limit('utente@test.it', client)
+        finally:
+            if mock_requests is not None:
+                sys.modules['requests'] = mock_requests
+                auth_module.requests = mock_requests
+
+
+class TestVerifyAndMigratePassword:
+    """Verifica Argon2 al login.
+
+    argon2 e' mockato in conftest.py: ph.verify() non solleva MAI di default,
+    quindi senza configurare esplicitamente il mock un test 'password sbagliata
+    rifiutata' passerebbe anche con la verifica rotta. Qui ph.verify e'
+    configurato caso per caso.
+    """
+
+    def test_password_corretta_accettata(self):
+        from services import auth_service
+
+        with patch.object(auth_service.ph, 'verify', return_value=True) as verify:
+            ok = auth_service.verify_and_migrate_password(
+                {'id': 'u1', 'password_hash': '$argon2id$v=19$fakehash'}, 'giusta'
+            )
+
+        assert ok is True
+        verify.assert_called_once()
+
+    def test_password_sbagliata_rifiutata(self):
+        """Argon2 segnala il mismatch sollevando: deve tradursi in False."""
+        from services import auth_service
+
+        with patch.object(
+            auth_service.ph, 'verify', side_effect=Exception('mismatch')
+        ):
+            ok = auth_service.verify_and_migrate_password(
+                {'id': 'u1', 'password_hash': '$argon2id$v=19$fakehash'}, 'sbagliata'
+            )
+
+        assert ok is False
+
+    def test_hash_vuoto_rifiutato(self):
+        """Nessun hash memorizzato non deve mai valere come login riuscito."""
+        from services import auth_service
+
+        assert auth_service.verify_and_migrate_password({'id': 'u1'}, 'qualsiasi') is False
+        assert auth_service.verify_and_migrate_password(
+            {'id': 'u1', 'password_hash': '   '}, 'qualsiasi'
+        ) is False
