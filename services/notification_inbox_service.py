@@ -264,43 +264,10 @@ def get_inbox_notifications(
         return []
 
 
-# Cache layer per badge count: @st.cache_data(ttl=30) evita query DB ridondanti
-# su ogni re-render della pagina. La cache è condivisa per processo (non per sessione)
-# ma è comunque user+ristorante-specifica tramite i parametri.
-try:
-    import streamlit as _st_badge
-
-    @_st_badge.cache_data(ttl=30, show_spinner=False)
-    def _get_inbox_badge_cached(user_id: str, ristorante_id: str) -> int:
-        """Badge count cached 30s — elimina la query DB ridondante sui re-render."""
-        from services import get_supabase_client as _get_sb
-        sb = _get_sb()
-        rows = get_inbox_notifications(user_id, ristorante_id, sb)
-        return len(rows)
-except Exception:
-    def _get_inbox_badge_cached(user_id: str, ristorante_id: str) -> int:  # type: ignore[misc]
-        from services import get_supabase_client as _get_sb
-        sb = _get_sb()
-        rows = get_inbox_notifications(user_id, ristorante_id, sb)
-        return len(rows)
-
-
-def get_inbox_badge_count(
-    user_id: str,
-    ristorante_id: str,
-    supabase_client=None,
-) -> int:
-    """Conta le notifiche attive e non scadute. Usato per il badge nel tab header."""
-    if not user_id or not ristorante_id:
-        return 0
-    try:
-        result = _get_inbox_badge_cached(str(user_id), str(ristorante_id))
-        if not isinstance(result, int):
-            raise TypeError("cache returned non-int")
-        return result
-    except Exception:
-        rows = get_inbox_notifications(user_id, ristorante_id, supabase_client)
-        return len(rows)
+# NB: qui vivevano get_inbox_badge_count/_get_inbox_badge_cached, con cache
+# @st.cache_data — residuo del frontend Streamlit. Zero chiamanti vivi (worker,
+# router e apps/web): il badge lato Next.js si calcola dalla lista notifiche.
+# Rimossi il 3/8/2026 durante l'audit Bug passata 2.
 
 
 # ============================================================

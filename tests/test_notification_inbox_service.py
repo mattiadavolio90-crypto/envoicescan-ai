@@ -34,7 +34,6 @@ from services.notification_inbox_service import (
     build_notification_record,
     dismiss_all_inbox_notifications,
     dismiss_inbox_notification,
-    get_inbox_badge_count,
     get_inbox_notifications,
     resolve_bucket,
     upsert_inbox_notifications,
@@ -479,6 +478,9 @@ class TestGetInboxNotifications:
 # ════════════════════════════════════════════════
 
 class TestGetInboxBadgeCount:
+    """Il badge non ha piu' una funzione dedicata (get_inbox_badge_count era un
+    residuo Streamlit senza chiamanti, rimossa il 3/8/2026): il conteggio e' la
+    lunghezza di get_inbox_notifications, che e' cio' che questi test verificano."""
 
     def test_badge_equals_active_notification_count(self):
         row1 = {
@@ -495,7 +497,7 @@ class TestGetInboxBadgeCount:
         with patch('services.notification_inbox_service.datetime') as mock_dt:
             mock_dt.now.return_value = NOW
             mock_dt.fromisoformat.side_effect = datetime.fromisoformat
-            count = get_inbox_badge_count(UID, RID, supabase_client=sb)
+            count = len(get_inbox_notifications(UID, RID, supabase_client=sb))
 
         assert count == 2
 
@@ -504,7 +506,7 @@ class TestGetInboxBadgeCount:
         with patch('services.notification_inbox_service.datetime') as mock_dt:
             mock_dt.now.return_value = NOW
             mock_dt.fromisoformat.side_effect = datetime.fromisoformat
-            count = get_inbox_badge_count(UID, RID, supabase_client=sb)
+            count = len(get_inbox_notifications(UID, RID, supabase_client=sb))
         assert count == 0
 
 
@@ -594,8 +596,8 @@ class TestIntegrationScenarios:
         with patch('services.notification_inbox_service.datetime') as mock_dt:
             mock_dt.now.return_value = NOW
             mock_dt.fromisoformat.side_effect = datetime.fromisoformat
-            count_a = get_inbox_badge_count(UID, 'rist-A', supabase_client=sb_a)
-            count_b = get_inbox_badge_count(UID, 'rist-B', supabase_client=sb_b)
+            count_a = len(get_inbox_notifications(UID, 'rist-A', supabase_client=sb_a))
+            count_b = len(get_inbox_notifications(UID, 'rist-B', supabase_client=sb_b))
 
         assert count_a == 1
         assert count_b == 0

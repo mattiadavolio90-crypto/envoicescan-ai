@@ -3127,16 +3127,59 @@ def aggiorna_streak_classificazione(
                 .execute()
 
         else:
-            # Prodotto non presente: upsert con streak=1 e confidence='media'
-            supabase_client.table('prodotti_master') \
-                .upsert({
-                    'descrizione': descrizione,
+            # Prodotto non presente con questa grafia esatta. Prima di inserirlo,
+            # cerca un record gia' esistente che normalizzi sulla stessa chiave:
+            # questa funzione riceve descrizioni GREZZE dalla coda, mentre altri
+            # percorsi scrivono la variante normalizzata. Senza questo controllo
+            # le due grafie convivono come record distinti e la memoria globale
+            # finisce per insegnare due categorie diverse per lo stesso prodotto.
+            _gemello = None
+            try:
+                from utils.text_utils import normalizza_descrizione
+                _norm = normalizza_descrizione(descrizione)
+                if _norm and _norm != descrizione:
+                    _res_n = supabase_client.table('prodotti_master') \
+                        .select('id, categoria, verified, confidence, consecutive_correct_classifications') \
+                        .eq('descrizione', _norm) \
+                        .limit(1) \
+                        .execute()
+                    if _res_n.data:
+                        _gemello = _res_n.data[0]
+            except Exception as _e:
+                logger.debug("streak: lookup normalizzato fallito per '%s': %s", descrizione[:60], _e)
+
+            if _gemello:
+                # Aggiorna il record normalizzato esistente invece di crearne un
+                # doppione, applicando la STESSA logica del ramo match-esatto:
+                # scrivere sempre streak=1 impedirebbe l'auto-promozione ad 'alta'
+                # per i prodotti che esistono solo in grafia normalizzata.
+                if _gemello.get('verified') or _gemello.get('confidence') in ('alta', 'altissima'):
+                    return
+                if (_gemello.get('categoria') or '') == categoria_gpt:
+                    now_streak = (_gemello.get('consecutive_correct_classifications') or 0) + 1
+                else:
+                    now_streak = 1
+                _upd_gem: dict = {
                     'categoria': categoria_gpt,
-                    'confidence': 'media',
-                    'consecutive_correct_classifications': 1,
-                }, on_conflict='descrizione') \
-                .execute()
-            now_streak = 1
+                    'consecutive_correct_classifications': now_streak,
+                }
+                if now_streak >= 3:
+                    _upd_gem['confidence'] = 'alta'
+                    new_confidence = 'alta'
+                supabase_client.table('prodotti_master') \
+                    .update(_upd_gem) \
+                    .eq('id', _gemello['id']) \
+                    .execute()
+            else:
+                supabase_client.table('prodotti_master') \
+                    .upsert({
+                        'descrizione': descrizione,
+                        'categoria': categoria_gpt,
+                        'confidence': 'media',
+                        'consecutive_correct_classifications': 1,
+                    }, on_conflict='descrizione') \
+                    .execute()
+                now_streak = 1
 
         if new_confidence == 'alta':
             logger.info(

@@ -47,7 +47,10 @@ logger = get_logger('daily_briefing')
 #  10 -> 21/07: SAKE distinto bere(DISTILLATI)/cucina(SCATOLAME); "PESCE <animale
 #               di terra>" non e' piu' PESCE; "FILTRO OLIO" officina -> MANUTENZIONE
 #               (cert. SUSHILAND Vimodrone/San Giuliano)
-_BRIEFING_CODE_VERSION = 12
+#  13 -> 03/08: i bullet vuoti (es. apertura "fatture arrivate" con n=0) non
+#               finiscono piu' nel prompt AI come "- " nudo, che invitava il
+#               modello a riempirli inventando (audit Bug passata 2)
+_BRIEFING_CODE_VERSION = 13
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -707,7 +710,6 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
             f"C'è {soggetto} con il prezzo in aumento da controllare: "
             "trovi il dettaglio qui sotto."
         )
-        return f"{title}."
 
     if topic == 'uncategorized_rows':
         count = payload.get('uncategorized_rows') or payload.get('count') or _parse_count_from_title(title)
@@ -724,9 +726,6 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
                 "trovi il dettaglio qui sotto."
             )
         return f"{title}."
-
-    if topic == 'coperti_anomalia':
-        return f"\U0001F465 {title}" if title else "\U0001F465 Coperti di ieri fuori media."
 
     return f"{title}."
 
@@ -1102,14 +1101,17 @@ def _build_snapshot(
     # (onboarding) l'apertura e' SOLO il benvenuto: rientro e buona notizia non
     # hanno senso senza dati. Altrimenti: prima il bentornato, poi la buona notizia
     # (decisione Mattia: "prima il bene, poi la rogna").
+    # NB: _bullet_for puo' tornare stringa vuota (tipo non riconosciuto, o
+    # fatture_arrivate con n=0). Un bullet vuoto nel prompt diventa un "- " nudo
+    # che invita l'AI a riempirlo inventando: filtriamo.
     if onboarding is not None:
-        aperture_bullets = [_bullet_for(onboarding)]
+        aperture_bullets = [b for b in [_bullet_for(onboarding)] if b]
         template_narrative = _compose_narrative(
             selected, sev_max, apertura_onboarding=onboarding,
         )
     else:
         aperture_bullets = [
-            _bullet_for(n) for n in (rientro, buona_notizia) if n is not None
+            b for b in (_bullet_for(n) for n in (rientro, buona_notizia) if n is not None) if b
         ]
         template_narrative = _compose_narrative(
             selected, sev_max, apertura_rientro=rientro, apertura_buona=buona_notizia,

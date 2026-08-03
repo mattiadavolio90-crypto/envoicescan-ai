@@ -8,7 +8,7 @@ import re
 import logging
 from typing import Optional
 
-from config.constants import CATEGORIE_SPESE_GENERALI
+from config.constants import CATEGORIE_SPESE_GENERALI, CATEGORIA_NON_CLASSIFICATA
 
 logger = logging.getLogger("foodcost_service")
 
@@ -194,10 +194,13 @@ def get_articoli_da_fatture(supabase, user_id: str, ristorante_id: str) -> list[
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             # NB: `categoria NOT IN (...)` in SQL esclude anche categoria IS NULL.
-            # E' accettabile: il constraint fatture_categoria_not_unclassified_chk
-            # vieta categoria NULL/vuota sulle righe attive, quindi non esistono
-            # ingredienti validi con categoria NULL da recuperare.
-            .not_.in_("categoria", CATEGORIE_SPESE_GENERALI)
+            # E' accettabile: il constraint fatture_categoria_not_empty_chk vieta
+            # categoria NULL/vuota sulle righe attive, quindi non esistono
+            # ingredienti validi con categoria NULL da recuperare. Quel constraint
+            # NON vieta pero' "Da Classificare" (e' uno stato legittimo), che va
+            # quindi escluso qui esplicitamente: una riga ancora in coda di
+            # revisione non deve entrare nel foodcost di una ricetta (CLAUDE.md §1).
+            .not_.in_("categoria", list(CATEGORIE_SPESE_GENERALI) + [CATEGORIA_NON_CLASSIFICATA])
             .order("data_documento", desc=True)
             .range(offset, offset + page_size - 1)
         )

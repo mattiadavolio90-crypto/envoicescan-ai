@@ -465,7 +465,14 @@ async def _agent_notturno_loop() -> None:
                 if now.hour == _agent_notturno_state["ora_utc"] and now.minute < 10:
                     if last_run_date != now.date():
                         last_run_date = now.date()
-                        asyncio.create_task(_run_agent_notturno(), name="agent-notturno-run")
+                        # _run_agent_notturno e' sincrona e fa I/O bloccante (Supabase,
+                        # OpenAI) su TUTTE le righe needs_review: va eseguita in un
+                        # thread, altrimenti tiene fermo l'event loop del worker per
+                        # minuti. Passarla direttamente a create_task la eseguirebbe
+                        # inline e poi solleverebbe TypeError sul valore di ritorno.
+                        asyncio.create_task(
+                            asyncio.to_thread(_run_agent_notturno), name="agent-notturno-run"
+                        )
         except Exception as exc:
             logger.warning("agent_notturno_loop: %s", exc)
         await asyncio.sleep(60)
@@ -541,6 +548,7 @@ def _build_allowed_origins() -> List[str]:
 
 from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centralizzato
 from config.constants import CATEGORIE_SPESE_GENERALI as _CATEGORIE_SPESE_GENERALI
+from config.constants import CATEGORIA_NON_CLASSIFICATA
 from utils.ttl_cache import TTLCache  # cache TTL thread-safe con single-flight
 
 
@@ -2922,14 +2930,14 @@ def _build_chat_system_prompt(
                     f" food cost e costi di quel mese non sono calcolabili."
                     f" Suggerisci di caricare le fatture in Analisi Fatture."
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat alert 1 (fatture mancanti) non calcolabile: %s", exc)
 
         # Alert 2: ricavi mancanti nel mese precedente
         try:
             q_ric = (
                 supabase_client.table("margini_mensili")
-                .select("fatturato")
+                .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
                 .eq("user_id", user_id_str)
                 .eq("anno", _mc_anno)
                 .eq("mese", _mc_mese)
@@ -2937,7 +2945,12 @@ def _build_chat_system_prompt(
             if ristorante_id:
                 q_ric = q_ric.eq("ristorante_id", ristorante_id)
             ric_data = q_ric.execute().data or []
-            fatturato_ok = any((r.get("fatturato") or 0) > 0 for r in ric_data)
+            fatturato_ok = any(
+                (float(r.get("fatturato_iva10") or 0)
+                 + float(r.get("fatturato_iva22") or 0)
+                 + float(r.get("altri_ricavi_noiva") or 0)) > 0
+                for r in ric_data
+            )
             if not fatturato_ok:
                 _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
                            "luglio","agosto","settembre","ottobre","novembre","dicembre"]
@@ -2946,8 +2959,8 @@ def _build_chat_system_prompt(
                     f" MOL e food cost % non sono calcolabili senza il fatturato."
                     f" Suggerisci di registrare i ricavi in Movimenti → Ricavi."
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat alert 2 (ricavi mancanti) non calcolabile: %s", exc)
 
         # Alert 3: costo personale mancante nel mese precedente (falsa il MOL)
         try:
@@ -2973,8 +2986,8 @@ def _build_chat_system_prompt(
                     f" il MOL risulta sovrastimato senza questa voce."
                     f" Suggerisci di inserirlo in Movimenti → Ricavi (sezione Personale)."
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat alert 3 (personale mancante) non calcolabile: %s", exc)
 
         # Alert 5: spese generali mancanti nel mese precedente (affitto/utenze sempre presenti)
         try:
@@ -2988,13 +3001,18 @@ def _build_chat_system_prompt(
             if ristorante_id:
                 q_spese = q_spese.eq("ristorante_id", ristorante_id)
             spese_data = q_spese.execute().data or []
-            # Controlla anche i costi automatici da fatture categoria SPESE
+            # Controlla anche i costi automatici da fatture di spese generali.
+            # NB: filtrare per nome esatto, non con ilike("%SPESE%"): nessuna delle
+            # categorie reali contiene la parola "SPESE" (sono SERVIZI E CONSULENZE,
+            # UTENZE E LOCALI, MANUTENZIONE E ATTREZZATURE, MATERIALE DI CONSUMO),
+            # quindi il vecchio filtro non matchava mai nulla e l'alert partiva
+            # anche per mesi con spese regolarmente registrate.
             q_spese_auto = (
                 supabase_client.table("fatture")
                 .select("id", count="exact")
                 .eq("user_id", user_id_str)
                 .is_("deleted_at", "null")
-                .ilike("categoria", "%SPESE%")
+                .in_("categoria", list(_CATEGORIE_SPESE_GENERALI))
                 .gte("data_documento", _mc_inizio)
                 .lte("data_documento", _mc_fine)
             )
@@ -3011,8 +3029,8 @@ def _build_chat_system_prompt(
                     f" il MOL risulta sovrastimato."
                     f" Suggerisci di inserirle in Movimenti → Ricavi (sezione Spese) o caricare le fatture relative."
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat alert 5 (spese mancanti) non calcolabile: %s", exc)
 
         # Alert 7: righe Da Classificare (abbassano food cost silenziosamente)
         try:
@@ -3033,8 +3051,8 @@ def _build_chat_system_prompt(
                     f" Se un valore sembra basso, potrebbe dipendere da questo."
                     f" Suggerisci di classificarle in Analisi Fatture → Da Classificare."
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("chat alert 7 (da classificare) non calcolabile: %s", exc)
 
     except Exception as exc:
         logger.warning("chat: alert fondamentali non disponibili: %s", exc)
@@ -3558,6 +3576,18 @@ def _chat_query_costi(
         "dettaglio": [{"voce": k, "spesa": round(v, 2)} for k, v in top],
     }
 
+    # A differenza degli aggregatori dei margini, qui le righe ancora da
+    # classificare SONO incluse (la chat risponde "quanto ho speso", non calcola
+    # il MOL). Se pesano, dichiaralo: altrimenti questo totale sembra in
+    # contraddizione con quello di Margini, che invece le esclude.
+    _da_class = sum(
+        float(r.get("totale_riga") or 0)
+        for r in righe
+        if (r.get("categoria") or "") == CATEGORIA_NON_CLASSIFICATA
+    )
+    if _da_class > 0:
+        risultato["incluso_da_classificare"] = round(_da_class, 2)
+
     # Troncamento: se abbiamo riempito il tetto, il totale e' PARZIALE (mancano le
     # righe piu' vecchie, ordiniamo per data desc). Lo dichiariamo cosi' l'AI non
     # spaccia un parziale per completo e suggerisce di restringere il periodo.
@@ -3831,6 +3861,9 @@ def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Op
                 "fatturato": k["fatturato"],
                 "food_cost_pct": k["food_cost_pct"],
                 "mol": k["mol"],
+                # Il mese in corso e' incompleto: senza questo flag l'AI lo
+                # confronta coi mesi chiusi come se fosse un calo reale.
+                "parziale": (mm == oggi.month and aa == oggi.year),
             })
         mm -= 1
         if mm == 0:
@@ -6998,6 +7031,17 @@ def home_config_post(
     ]
     nome = (body.nome_referente or "").strip() or None
 
+    # Stato precedente dei topic spenti: serve per capire se il briefing di oggi
+    # va invalidato. topics_disabled ha default [] (non None), quindi non si puo'
+    # usare "is not None" per capire se il cliente l'ha davvero toccato.
+    _topics_cambiati = False
+    try:
+        _prev = _get_assistant_preferences(ristorante_id, sb).get("topics_disabled") or []
+        _topics_cambiati = set(str(t) for t in _prev) != set(str(t) for t in disabled)
+    except Exception as exc:
+        logger.warning("home_config_post: confronto topics_disabled fallito: %s", exc)
+        _topics_cambiati = True  # nel dubbio invalida: meglio un rigenero in piu'
+
     from datetime import datetime as _dt2, timezone as _tz2
     record = {
         "ristorante_id": ristorante_id,
@@ -7029,11 +7073,15 @@ def home_config_post(
     _invalidate_assist_pref_cache(ristorante_id)
     _LIVE_SEGNALI_CACHE.pop(ristorante_id, None)
 
-    # Cambiare quali prodotti generano avvisi (preferiti vs Pareto) o i giorni di
-    # chiusura (tolleranza ricavi automatici) cambia il briefing di oggi ->
-    # invalidalo cosi' si rigenera con la nuova logica.
+    # Cambiare quali prodotti generano avvisi (preferiti vs Pareto), i giorni di
+    # chiusura (tolleranza ricavi automatici) o QUALI TOPIC sono spenti cambia il
+    # briefing di oggi -> invalidalo cosi' si rigenera con la nuova logica.
+    # topics_disabled entra nel fingerprint dello snapshot, ma snapshot_is_stale
+    # non lo rilegge: senza invalidazione esplicita il cliente continua a vedere
+    # per un TTL l'avviso del topic che ha appena spento.
     if (body.alert_prezzi_solo_preferiti is not None
-            or body.giorni_chiusura_settimanali is not None):
+            or body.giorni_chiusura_settimanali is not None
+            or _topics_cambiati):
         try:
             from services.daily_briefing_service import invalidate_today_briefing
             invalidate_today_briefing(str(user["id"]), ristorante_id, sb)
@@ -7095,13 +7143,11 @@ def home_config_post(
 # FATTURE — analisi, KPI, articoli aggregati, pivot, trend, batch update
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Categorie classificate come "Spese Generali" (NON Food & Beverage)
-CATEGORIE_SPESE_GENERALI_WORKER = {
-    "SERVIZI E CONSULENZE",
-    "UTENZE E LOCALI",
-    "MANUTENZIONE E ATTREZZATURE",
-    "MATERIALE DI CONSUMO",
-}
+# Categorie classificate come "Spese Generali" (NON Food & Beverage).
+# Derivata dalla costante condivisa in config/constants.py: elencarle di nuovo a
+# mano creerebbe una seconda fonte di verita' che diverge in silenzio (stesso
+# problema gia' corretto il 2/8 su _calcola_costi_auto_*).
+CATEGORIE_SPESE_GENERALI_WORKER = set(_CATEGORIE_SPESE_GENERALI)
 CATEGORIE_NOTE_WORKER = {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
 
 
@@ -7437,7 +7483,9 @@ _CENTRI_DI_PRODUZIONE: Dict[str, List[str]] = {
 }
 _CAT_TO_CENTRO: Dict[str, str] = {cat: c for c, cats in _CENTRI_DI_PRODUZIONE.items() for cat in cats}
 _CATEGORIE_FB_M: List[str] = list(_CAT_TO_CENTRO.keys())
-_CATEGORIE_SPESE_M: List[str] = ["SERVIZI E CONSULENZE","UTENZE E LOCALI","MANUTENZIONE E ATTREZZATURE","MATERIALE DI CONSUMO"]
+# Derivata dalla costante condivisa (vedi CATEGORIE_SPESE_GENERALI_WORKER):
+# sorted() per un ordine deterministico, la sorgente e' un set.
+_CATEGORIE_SPESE_M: List[str] = sorted(_CATEGORIE_SPESE_GENERALI)
 _CENTRI_CON_FATTURATO = ["FOOD","BEVERAGE","ALCOLICI","DOLCI"]
 
 
@@ -7581,6 +7629,11 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .neq("categoria", "Da Classificare")
+            # Le fatture ripartite sul gruppo arrivano gia' come quote_riparto_*
+            # sui singoli PV: contarle anche qui le sottrarrebbe due volte dal MOL.
+            # Stesso filtro della RPC costi_automatici_mensili e di
+            # margine_service.calcola_costi_automatici_per_anno.
+            .neq("ripartita_su_gruppo", True)
             .or_(
                 f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
                 f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"
@@ -7599,7 +7652,7 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
                 tot = 0.0
             if cat in spese_gen_categorie:
                 spese_tot += tot
-            elif cat and cat != "📝 NOTE E DICITURE":
+            elif cat and cat not in CATEGORIE_NOTE_WORKER:
                 fb_tot += tot
         if len(rows) < page_size:
             break
@@ -7638,6 +7691,9 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .neq("categoria", "Da Classificare")
+            # Vedi _calcola_costi_auto_per_mese: le fatture ripartite entrano gia'
+            # come quote_riparto_* sui PV, contarle qui e' doppio conteggio.
+            .neq("ripartita_su_gruppo", True)
             .or_(
                 f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
                 f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"
@@ -7665,7 +7721,7 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
                 tot = 0.0
             if cat in spese_gen_categorie:
                 bucket[1] += tot
-            elif cat and cat != "📝 NOTE E DICITURE":
+            elif cat and cat not in CATEGORIE_NOTE_WORKER:
                 bucket[0] += tot
         if len(rows) < page_size:
             break

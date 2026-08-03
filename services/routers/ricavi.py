@@ -1382,6 +1382,19 @@ def upsert_ricavi_modalita(
     if not resp.data:
         raise HTTPException(status_code=500, detail="Salvataggio modalità fallito")
 
+    # Il fatturato mensile alimenta i KPI di Home e l'apertura del briefing:
+    # senza invalidare, il cliente continua a vedere il MOL calcolato sui ricavi
+    # precedenti. Stesso pattern degli altri endpoint che scrivono ricavi/margini.
+    try:
+        _fw()._invalidate_home_kpi_cache(str(ristorante_id))
+    except Exception as exc:
+        logger.warning("upsert_ricavi_modalita: invalidate KPI Home fallita: %s", exc)
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
+    except Exception as exc:
+        logger.warning("upsert_ricavi_modalita: invalidate briefing fallita: %s", exc)
+
     r = resp.data[0]
     return RicaviModalitaResponse(
         anno=r["anno"], mese=r["mese"],

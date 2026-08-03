@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-import asyncio
+import threading
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -2409,7 +2409,13 @@ def admin_agent_notturno_esegui_ora(admin_user: dict = Depends(_verify_admin)):
     _agent_notturno_state = _agent_state()
     if _agent_notturno_state["running"]:
         raise HTTPException(status_code=409, detail="Agent già in esecuzione")
-    asyncio.create_task(_run_agent_notturno(), name="agent-notturno-manual")
+    # Questa route e' `def` sincrona: gira nel threadpool, senza event loop.
+    # asyncio.create_task qui solleva RuntimeError (no running event loop) DOPO
+    # aver gia' eseguito l'agente inline, restituendo 500 all'admin per un lavoro
+    # in realta' completato. Un thread daemon e' il pattern corretto nel contesto sync.
+    threading.Thread(
+        target=_run_agent_notturno, name="agent-notturno-manual", daemon=True
+    ).start()
     logger.info("agent_notturno esecuzione manuale avviata | admin=%s", admin_user.get("email"))
     return {"ok": True, "message": "Agent avviato in background — aggiorna lo stato tra qualche secondi"}
 
