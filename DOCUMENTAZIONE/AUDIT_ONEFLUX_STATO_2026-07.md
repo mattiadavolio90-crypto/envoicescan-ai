@@ -21,7 +21,7 @@ Legenda stato: 🟢 fatta e chiusa · 🟡 fatta ma con residui aperti · ⚪ no
 | 6 | Qualità/UI | 🟢 | 19/6/2026 | Filtro mese uniformato, sky-* → primary | commit df01a9c |
 | 7 | Database | 🟢 | 30/7/2026 (audit + remediation stessa giornata; codice committato e deployato il 2/8/2026) | Audit read-only (9 findings) seguito da sessione di remediation nella stessa giornata: 2 HIGH + 4 MEDIUM + 1 LOW fixati e deployati sul DB live; 2 LOW restano aperti (non bloccanti). Suite pytest completa verde dopo i fix | **Verificato sul DB live prima di agire**: 0 righe orfane su `fatture_queue.user_id`/`ristorante_id`; `ricavi_email_queue` ha GIA' FK `ON DELETE CASCADE` su entrambe le colonne (confermato `confdeltype='c'`) — il commento in admin.py era quindi obsoleto, non il codice; nessun indice su `created_at`/GIN su `payload_meta` (confermato seq scan). **Fix applicati** (migration `20260730230000`/`20260730231500`/`20260730232500`/`20260730233000`, tutte applicate live via MCP): HIGH#1 — aggiunte FK `fatture_queue_user_id_fkey`/`fatture_queue_ristorante_id_fkey` (nullable, `ON DELETE CASCADE`): la cancellazione GDPR ora propaga automaticamente, rimossa la voce ridondante da `_SVUOTA_TABELLE_NO_CASCADE` in `account.py`, corretto il commento obsoleto in `admin.py` (rimossa anche la delete manuale ridondante su `ricavi_email_queue`). HIGH#2 — `release_stale_locks` ora passa a `dead` (non più `failed` a ciclo infinito) se `attempt_count >= max_attempts`, e rimanda `next_retry_at` di 1 minuto sul ramo `failed`; `claim_batch_for_processing` ha in più il filtro `attempt_count < max_attempts` come difesa in profondità. MEDIUM#4 — nuova RPC `purge_ricavi_email_queue` (90gg, azzera subject/attachment/last_error) + nuova funzione Python `purge_ricavi_xls_storage` in `email_queue_processor.py` che ora rimuove davvero i file dal bucket `ricavi-xls` (prima non venivano MAI rimossi). MEDIUM#5 — nuove RPC `purge_fatture_queue_last_error` (90gg su righe dead/scartata) e `purge_upload_events_retention` (365gg, hard delete). MEDIUM#6 — `_purge_xml`/`_purge_raw_body_sample` non girano più a ogni ciclo (~ogni 15s): spostate in `worker/run.py` sotto nuovo gate `WORKER_QUEUE_PURGE_INTERVAL_SECONDS` (default 6h), stesso pattern di `purge_cestino_scaduto`. LOW — grant residui `anon`/`authenticated` su `upload_events` revocati (`upload_events.id` è uuid, nessuna sequence da revocare a differenza di quanto ipotizzato nell'audit). **Aperti (non fixati, priorità bassa)**: (a) `/api/fatture/da-assegnare` legge `xml_content` di tutta la coda senza `.limit()`; (b) `resolve_unknown_tenant` su P.IVA duplicate prende la sede più recente senza disambiguare/segnalare l'ambiguità. Regole di dominio verificate OK durante l'audit: nessun fallback nascosto verso `SERVIZI E CONSULENZE`, constraint `fatture_categoria_not_empty_chk` e `fatture_note_diciture_solo_importo_zero_chk` rispettati. **Nota 2/8/2026**: le migration SQL erano già applicate live via MCP il 30/7, ma il codice Python (`account.py`, `admin.py`, `worker/email_queue_processor.py`) e le 4 migration stesse non erano mai stati committati/pushati — scoperto e corretto durante la sessione Architettura (commit `b725662`), ora genuinamente deployato |
 | 8 | Architettura | 🟢 | 2/8/2026 (audit + remediation stessa sessione, 2 fasi, deployato) | Audit read-only (7 findings: 1 HIGH + 2 MEDIUM + 2 LOW + 2 INFO). Fase 1: remediation HIGH+MEDIUM (confermata esplicitamente da Mattia). Fase 2 (stessa sessione, su richiesta esplicita "chiudi prima i punti low e bassi rimasti in sospeso"): chiusi anche i 2 LOW + 2 INFO residui, poi revisionato tutto con `code-reviewer` che ha trovato e fatto fixare 2 residui indipendenti (vedi sotto). Suite pytest 10162 passed/0 failed dopo tutti i fix. **Nessun residuo aperto** | **Verificato che NON è tornato** `__getattr__` sugli helper dei router (già rotto 9 router in prod in passato): tutti i 13 router usano il wrapper esplicito `_fw()`. **Accoppiamento Next.js↔worker pulito**: 164/167 route.ts proxy dirette al worker, i 3 restanti sono legittimi (auth/me, auth/accetta-privacy via lib/auth.ts, tts stateless); `apps/web/package.json` non ha SDK OpenAI/Supabase/parsing XML-PDF, il frontend non ha nemmeno le dipendenze per fare logica pesante. **Worker-separato rispettato**: classificazione AI e parsing fatture restano solo nel worker/queue-worker. **Fix Fase 1**: HIGH — `services/fastapi_worker.py` (`_calcola_costi_auto_per_mese`/`_calcola_costi_auto_per_periodo`) usava un set hardcoded di categorie "Spese Generali" duplicato rispetto a `CATEGORIE_SPESE_GENERALI` in `config/constants.py` (già usata correttamente da `margine_service.py`/Margini) — rischio di disallineamento silenzioso Home vs Margini se la lista cambia in futuro; ora importa la costante condivisa. MEDIUM#1 — rimossa `ricalcola_prezzi_con_sconti` in `services/db_service.py` (già marcata DEPRECATED, zero chiamanti vivi verificati via grep, cadeva silenziosamente su `session_state` vuoto nel worker se richiamata) e il suo export da `services/__init__.py`. MEDIUM#2 — spostati `app_controllers.py`/`ui_helpers.py`/`sidebar_helper.py` (residui Streamlit orfani, ~2400 righe, zero chiamanti vivi oltre al proprio test) da `utils/` a nuova cartella `legacy_streamlit/` via `git mv`; aggiornati i 6 import interni fra i 3 file e le patch-string nel test; **scoperto e fixato un problema indipendente durante la verifica**: `tests/conftest.py` mocka `streamlit` solo per i test sotto `tests/` (pytest non eredita conftest da directory sorelle) — il test spostato lo aveva perso e falliva su `NoSessionContext` reale; aggiunto `legacy_streamlit/conftest.py` con lo stesso mock, ridotto al solo `streamlit` (unico modulo pesante richiesto); `pytest.ini` `testpaths` esteso a `tests legacy_streamlit` su scelta esplicita di Mattia (il test resta in CI, non solo storico). **Fix Fase 2 (residui LOW+INFO)**: LOW#1 — `NON_IGNORABILI` (duplicata carattere-per-carattere fra `mobile-briefing.tsx` e `home-briefing.tsx`) estratta in nuovo modulo condiviso `apps/web/src/lib/briefing-shared.ts`, entrambi i file ora importano da lì. LOW#2 — `services/routers/margini.py` importava direttamente `_calc_netto` da `ricavi.py` a livello di modulo (unico caso router→router diretto nel file); sostituito con un wrapper lazy locale (stesso principio di `_fw()`, import posticipato a runtime), nessun ciclo reale esistente (`ricavi.py` non importa mai `margini.py`). INFO#1 — CLAUDE.md corretto da "~7450" a "~8000" righe per `fastapi_worker.py` (reali: 8037, verificate con `wc -l`). INFO#2 — `_make_cache()` risultava triplicata, non duplicata: oltre a `db_service.py`/`documenti_service.py` (le 2 note dall'audit) esisteva una terza copia identica in `margine_service.py`, non vista prima; le tre erano byte-per-byte identiche. Unificata in nuova funzione pubblica `make_cache()` in `utils/streamlit_compat.py`, i 3 file sorgente ora importano con alias (`from utils.streamlit_compat import make_cache as _make_cache`) per non toccare le call-site esistenti. **Fix aggiuntivi trovati da `code-reviewer` sul diff cumulativo delle 2 fasi** (nessuno bloccante per l'uso in produzione, ma refusi reali): rimossa la voce `'ricalcola_prezzi_con_sconti'` residua nell'`__all__` di modulo di `services/db_service.py` (riga 2223 — distinta da quella già ripulita in `services/__init__.py` durante la Fase 1; nessun chiamante vivo con star-import verificato via grep, ma rendeva `from services.db_service import *` un `AttributeError` reale); corretto il docstring di `legacy_streamlit/app_controllers.py` che citava ancora il vecchio path `utils/app_controllers.py` e l'uso in `app.py` (rimosso dal repo il 17/7) invece del nuovo path/stato congelato; risolto uno staging Git incoerente sui 4 file spostati in `legacy_streamlit/` (erano `A`/`D` separati invece di rename riconosciuti, rischio di lasciare doppie copie su un commit futuro) con `git add` sui path sorgente per far riconoscere a Git i 4 rename. **Copertura dichiarata dall'agente audit**: services/, routers/, utils/, config/ auditati al 100%; apps/web route.ts verificate strutturalmente al 100% (167/167); lib/*.ts e componenti tsx auditati in profondità solo su un sottoinsieme mirato (~178 componenti desktop in `(app)/*` non letti riga per riga — gap dichiarato esplicitamente, da coprire in una passata dedicata se serve). Esclusi per istruzione esplicita: Database, Edge Functions, Security, DevOps/Config (già chiusi). **Deployato** (push `main`, 2/8/2026 pomeriggio, deroga esplicita all'orario): commit `6073bd6` (Architettura); nello stesso push anche `b725662`, lavoro Database del 30/7 che risultava dichiarato "deployato" ma non era mai stato committato (FK GDPR account.py/admin.py, purge_ricavi_xls_storage, 4 migration SQL) — scoperto verificando `git log` sui file prima del commit, corretto contestualmente. CI verde su tutti i workflow (Deploy Vercel, Tests, OpenAPI Drift, Requirements). Worker Railway si ridistribuisce autonomamente dal push, non verificabile da qui senza credenziali Railway — da controllare manualmente |
-| 9 | Test | ⚪ | — | — | Esiste solo la suite che gira sempre (pytest ~10104 + Deno) — mai un audit sulla qualità/coverage dei test in sé |
+| 9 | Test | 🟡 | 3/8/2026 (sera — audit read-only 3 giri + remediation Fase 1) | 3 HIGH chiusi e committati (`ae620b6`), MEDIUM/LOW **dichiarati aperti per scelta esplicita di Mattia** (solo Fase 1 in questa sessione). Suite `tests/`: **10195 → 10204 passed**, 43 skipped. Nessun file di produzione toccato | **Il finding centrale è una prova, non un'opinione**: ho rimosso entrambi i filtri della regola di dominio #1 da `margine_service.py:80-84` (`.neq('categoria','Da Classificare')` e `.neq('ripartita_su_gruppo', True)`) e ho rilanciato **tutta** la suite → **10195 passed, 0 failed**. La suite non difendeva il numero che il cliente guarda. Causa: `_build_query_mock` fa `query.neq.return_value = query` (i filtri non filtrano) e il dataset di test conteneva già solo righe pulite; la guardia `test_regole_dominio_guardia.py` controlla la *costante*, non la query. Fix: `_build_query_mock_filtrante` che applica davvero `.neq()`/`.is_()` + test dedicato, **verificato fallire** col codice pre-fix (food cost 1099 e 655 invece di 100; il reviewer ha aggiunto una terza mutazione non dichiarata, `.is_('deleted_at','null')` → 433, anch'essa rossa). **HIGH#2**: `controlla_rate_limit` (regola CLAUDE.md 5 tentativi → 15 min) e `verify_and_migrate_password` non erano coperti da **nessun** test — la regola era verificabile solo leggendo il sorgente. Aggiunti 8 test con `ph.verify` configurato esplicitamente: **necessario**, perché `argon2` è un `MagicMock()` nel conftest e `ph.verify('hash','password_sbagliata')` ritorna un Mock **truthy** (dimostrato), quindi un test scritto ingenuamente passerebbe con la verifica password rotta. Verificati fallire con soglia 5→50, con `ph.verify` che ingoia l'eccezione, e con `.lower()` rimosso dalla normalizzazione email. **HIGH#3**: `openapi-drift.yml` osservava solo `services/fastapi_worker.py`+`openapi/openapi.json`, ma i 193 endpoint vivono nei 12 router: i commit `b725662` e `ffdb50c` hanno toccato `services/routers/**` **senza far partire il check** (verificato su storia reale; il reviewer ha confermato via `gh run list` che per `ffdb50c` il workflow non è mai partito). Aggiunta una route sonda in un router → drift rilevato, **exit 1**: il gate funziona, era il trigger a non farlo scattare. Fix: `services/routers/**` nei `paths` di push e pull_request. **Misure oggettive prodotte** (prima non esistevano: nessun `.coveragerc`, `coverage` installato ma mai usato): **coverage reale 47%** — `upload_handler.py` **12%** (2227 righe, **0 righe di test**), `auth_service.py` 32%, `worker/run.py` 0%, `foodcost_service.py` 24%, `ai_service.py` 69%, `margine_service.py` 86%. **Correzione di scala**: i "~10195 test" non sono 10195 funzioni ma **106 file / 21.765 righe** gonfiati dalla parametrizzazione — il conteggio dei test non dice nulla sulla copertura. **I 43 skip sono benigni** e ora spiegati: 42 parametrizzati in `test_regole_dominio_guardia.py:276` (`non usa ADMIN_EMAILS`) + 1 documentato in `test_data_competenza_propagation.py:27`. **Due claim degli agenti smentite verificandole** (lezione 11): (a) "`__getattr__` usato in 11 router" → **falso**, sono 10 *commenti* che spiegano perché non va usato, tutti i router usano `_fw()`, la regola è rispettata; (b) "`verifica_credenziali` citato in 4 file di test" → i match sono in `legacy_streamlit/` + `.pyc`, e l'unico test lì **la sostituisce con una patch**. **Edge Functions Deno sane**: 108 test, 0 failed, girano davvero in CI (`tests.yml` job `deno-test`), HMAC copre 7 casi negativi su 9. **RESIDUI APERTI** (vedi consegna sotto) |
 | 10 | DevOps/Config | 🟢 | 30/7/2026 (audit + remediation + verifica dashboard, stessa giornata) | Audit read-only (12 findings) + remediation completa: 2 HIGH fixati, 4 MEDIUM chiusi (3 con fix, 1 come non-fare), 4 LOW chiusi (2 con fix, 2 verificati OK su dashboard), 2 INFO chiusi. Suite pytest 10130 passed/0 failed. **Nessun residuo aperto** | **Verifica dashboard (Mattia, screenshot)**: `SUPABASE_DB_URL` presente su GitHub Repository Secrets (aggiornato 3 settimane fa) — il backup non è più senza secret configurato, sospetto ~24gg chiuso; `ENABLE_INLINE_QUEUE_PROCESSOR` confermato `0` sul servizio `worker` su Railway (queue-worker separato attivo, nessun rischio doppio processing). **Sessione 1 (HIGH)**: HIGH#1 — rimosso il fallback silenzioso su `SUPABASE_KEY` (anon) nel ramo env var di `services/__init__.py:191-200` e in `worker/queue_processor.py:152-158`; ora entrambi richiedono `SUPABASE_SERVICE_ROLE_KEY` esplicita e falliscono con `RuntimeError` se assente (coerente col ramo `st.secrets` che già lo faceva). `worker/run.py:103-104` (rename compatibilità `.env` locale, non un fallback anon-key) lasciato invariato. HIGH#2 — i 3 marker `last_purge_time`/`last_retention_time`/`last_queue_purge_time` in `worker/run.py` ora si inizializzano a `time.monotonic() - INTERVALLO` invece che a `0.0`: primo purge al primo ciclo utile dopo boot, non più dopo 6h/24h di runtime ininterrotto. **Sessione 2 (chiusura residui, su richiesta esplicita "chiudiamo tutti i punti")**: MEDIUM(1) — secret deprecato `SUPABASE_KEY` in `.github/workflows/openapi-drift.yml:37` rinominato in `SUPABASE_SERVICE_ROLE_KEY` (verificato che il secret esiste già su GitHub, usato da `ricavi_queue_monitor.yml`/`queue-worker.yml`). MEDIUM(2) — `INVOICETRONIC_WEBHOOK_SECRET` **chiuso come non-fare**: verificato che è correttamente usato solo da `supabase/functions/invoicetronic-webhook/index.ts` (Deno), nessun fix necessario, comportamento voluto. MEDIUM(3) — `docker/docker-compose.prod.yml` aggiunta `WORKER_SECRET_KEY=${WORKER_SECRET_KEY}` mancante nel servizio worker. MEDIUM(4) — `ADMIN_EMAILS` duplicato lasciato invariato: fail-open per scelta esplicita già documentata, non un bug. LOW — `.env.example` rinominato `SUPABASE_KEY`→`SUPABASE_SERVICE_ROLE_KEY` con commento sul perché. LOW — URL worker Railway hardcoded: aggiunto secret opzionale `WORKER_HEALTH_URL` con fallback (stesso pattern già in `keepalive_worker.yml`) ai 3 workflow che non l'avevano (`worker_latency_check.yml`, `riparto_coerenza_check.yml`, `invoicetronic_eventi_sconosciuti_check.yml`); `apps/web/src/lib/auth.ts` aveva già l'override via `process.env.WORKER_URL`, nessuna modifica necessaria. INFO — le 3 env var 30/7 (`WORKER_PURGE_INTERVAL_SECONDS`, `WORKER_RETENTION_INTERVAL_SECONDS`, `WORKER_QUEUE_PURGE_INTERVAL_SECONDS`) aggiunte alla tabella in `DOCUMENTAZIONE/tecnica/TROUBLESHOOTING.md`. INFO — CORS: rimossi i 3 origin morti (`ohyeah.streamlit.app`, `ohyeah.app`, `envoicescan-ai-production.up.railway.app`) dal default hardcoded in `services/fastapi_worker.py:_build_allowed_origins`, restano i 4 domini vivi. **Chiusi dopo verifica dashboard**: LOW — `ENABLE_INLINE_QUEUE_PROCESSOR` verificato `0` su Railway (screenshot Variables servizio worker); LOW — `SUPABASE_DB_URL` verificato presente su GitHub Repository Secrets. | **Scope**: Railway (Dockerfile, config worker+queue-worker), Vercel (env `NEXT_PUBLIC_*` vs server-only), GitHub Actions (workflow+secrets), Supabase (secrets Edge Functions, CORS, cron), coerenza locale/staging/prod, rotation secrets. **Esclusi** (già coperti): schema DB→Database, logica Edge Function→Edge Functions, auth/sessioni→Security. **Verificato senza problemi**: nessun secret in git history, `.gitignore` corretto, nessun secret in `NEXT_PUBLIC_*` (solo `NEXT_PUBLIC_WHATSAPP_NUMERO`, pubblico per natura), `WORKER_SECRET_KEY` davvero fail-closed (righe 117-121,177 di fastapi_worker.py) e gate anche `/docs`/`/redoc`/`/openapi.json`, `bypass_guardia_piva` scoped correttamente per sede, `supabase/config.toml` intenzionale, security headers Next.js presenti, Dockerfile non-root senza secret in ENV/ARG. Suite pytest 10130 passed/0 failed verificata dopo entrambe le sessioni di fix |
 
 ## Nota metodologica
@@ -47,6 +47,13 @@ la propria riga con l'esito verificato.
 - **AI, Performance, Qualità/UI** — righe ancora quelle ricostruite a
   memoria del 30/7, **non ancora corrette dalle sessioni originali**. Restano
   da riverificare quando quelle chat vengono riaperte.
+- **Test** — riga scritta il 3/8/2026 sera dalla sessione che ha fatto il
+  lavoro (prima passata in assoluto su questa dimensione: era l'unica ⚪).
+  Chiusa 🟡 **per scelta esplicita di Mattia**, non per mancanza di tempo:
+  confermata la sola Fase 1 (i 3 HIGH), i MEDIUM/LOW sono elencati come
+  residui nella consegna qui sotto. I numeri della riga sono misurati, non
+  stimati: baseline `tests/` 10195 → 10204 dopo i 9 test nuovi, coverage 47%
+  da `coverage run`, ogni test verificato fallire col codice pre-fix.
 - **Database** — corretta il 2/8/2026 da una sessione diversa (Architettura),
   non dall'originale: la riga diceva "fixati e deployati" ma solo le migration
   SQL erano live, il codice Python non era mai stato committato. Da qui la
@@ -79,39 +86,68 @@ A fine di ogni passata (agente `oneflux-audit` o manuale):
 4. Se l'audit apre il caso per un'altra dimensione (come Edge Functions →
    Database il 30/7), annotalo nella colonna Note della dimensione aperta
 
-## Prossima sessione: dimensione Test (⚪, mai fatta)
+## Prossima sessione: dimensione Performance (🟡, ultima non chiusa)
 
 > Sezione viva: la sessione che prende in carico questa consegna la riscrive con
 > la propria per la dimensione successiva, non la lascia stagnare qui.
 
-**Stato al 3/8/2026 sera**: **8/10 dimensioni 🟢** (Bug ora senza residui
-bloccanti — bonifica dati chiusa), 1 🟡 (Performance — residuo noto, riga
-ancora ricostruita a memoria il 30/7 e mai corretta dalla sessione originale),
-1 ⚪ (Test).
+**Stato al 3/8/2026 notte**: **8/10 dimensioni 🟢**, **2 🟡** (Test — Fase 1
+chiusa, MEDIUM/LOW aperti per scelta; Performance — residuo noto del 19/6 mai
+riverificato). Nessuna dimensione resta ⚪.
 
-**Perché Test adesso**: è l'unica dimensione **mai auditata**. Esiste una suite
-che gira sempre (10195 pytest + Deno) e che ha retto bene — ma nessuno ha mai
-guardato la qualità dei test in sé. Questa sessione ne ha avuto tre prove
-concrete: (a) tre test della passata 1 passavano **per il motivo sbagliato**
-(il mock di `requests` nel conftest); (b) `get_inbox_badge_count` risultava
-"zero chiamanti" ma **4 test la coprivano** — un grep che escludeva `tests/`
-l'aveva mancata; (c) l'unico modo per fidarsi dei test nuovi è stato
-rimettere il bug e vederli fallire. Una suite grande che non è mai stata
-verificata *come suite* è esattamente il posto dove si nascondono i test che
-non provano nulla.
+**Perché Performance adesso**: è l'unica rimasta con un residuo mai riaperto, e
+la sua riga è **ancora quella ricostruita a memoria il 30/7** — mai corretta
+dalla sessione che la lavorò il 19/6. Vale la lezione 1: va **riverificata
+contro il codice**, non creduta. Residuo dichiarato: "Prezzi/Fatture full-load
+ancora non convertiti" (le altre pagine passarono a RPC + skeleton).
 
-**Scope proposto**: `tests/` (~10195 test) + i test Deno delle Edge Functions.
-Cercare: test che passano per il motivo sbagliato (mock troppo larghi,
-`assert True` mascherati, eccezioni ingoiate dal test stesso); test che non
-falliscono mai (asserzioni su dati che il test stesso ha appena scritto);
-copertura dichiarata vs reale sui percorsi critici (margini, categorizzazione,
-riparto, auth); `tests/conftest.py` e i suoi mock globali (`streamlit`,
-`requests`) — quali comportamenti reali stanno nascondendo; test disabilitati
-o `skip` silenziosi (43 skipped: quali e perché).
+**Portarsi dietro dalla dimensione Test — RESIDUI APERTI, non chiusi in silenzio**
+(la Fase 2 è stata esclusa da Mattia per questa sessione, non perché irrilevante):
 
-**Alternativa**: Performance (🟡) se preferisci chiudere un residuo noto invece
-di aprire un fronte nuovo. La riga 5 non è mai stata corretta dalla sessione che
-la lavorò il 19/6: va **riverificata contro il codice**, non creduta.
+- **`upload_handler.py`: 2227 righe, 12% coverage, ZERO righe di test.** È il
+  percorso di upload manuale, uno dei due ingressi delle fatture. È il buco di
+  copertura più grande del progetto e merita una sessione propria.
+- **`riparto.py`: 7 endpoint su 11 senza alcun test** (`riparto_da_fattura`,
+  `riparto_manuale`, `riparto_modifica`, `riparto_duplica`, `riparto_incoerenze`,
+  `gruppo_costi_comuni`, `costruisci_anteprima_righe`). Già segnalato come "mai
+  letto" da due audit precedenti: ora sappiamo che non è nemmeno testato.
+- **`except <modulo mockato>.Eccezione` → `TypeError`** in 4 punti:
+  `_chat_loop_openai` (`fastapi_worker.py:3368+`), il decoratore `@retry`
+  tenacity (`ai_service.py:4701`), `requests.exceptions.Timeout`
+  (`auth_service.py:1494`), `fitz.FileDataError` (`utils/formatters.py:102`).
+  **In produzione questi moduli sono installati e il codice funziona** — è un
+  limite dell'ambiente di test, che però rende quei rami non testabili finché
+  il mock globale resta. Ne ho incontrato uno scrivendo i test
+  (`_is_connectivity_error`, `auth_service.py:62`) e l'ho aggirato con un unmock
+  locale di `requests` (`sys.modules.pop` + ripristino nel `finally`), lo stesso
+  pattern già usato per `xmltodict` in `test_invoice_service.py`.
+- **Il conftest mocka moduli che sono tutti realmente installati** (`requests`,
+  `openai`, `supabase`, `argon2`, `xmltodict`): la sua premessa dichiarata
+  ("moduli non disponibili nell'ambiente test puro") **è falsa oggi**. Ripensare
+  quali mock servano ancora è il lavoro strutturale che sblocca i punti sopra.
+- **`_SESSIONE_CACHE`** (`auth_service.py:1106`) non è nella fixture
+  `_reset_worker_caches`: è una cache di sessione per-processo che può perdere
+  stato fra test. Oggi latente (2 soli file di test toccano quel path), ma è la
+  cache dietro l'HIGH Security del 29/7.
+- **Nessuna guardia sui 6 nomi di cache** citati nel conftest: `getattr(..., None)`
+  + `except: pass` fa sì che un rename futuro degradi l'isolamento **in
+  silenzio**, senza far fallire nulla.
+- **`legacy_streamlit/` non gira in CI**: `pytest.ini` ha
+  `testpaths = tests legacy_streamlit`, ma `tests.yml:39` lancia
+  `python -m pytest tests/`. 9 test esistono e nessuna CI li esegue — trovato dal
+  `code-reviewer`, non introdotto da questa fase.
+- **`verify_and_migrate_password`: coperto solo il ramo `$argon2`.** Il ramo
+  SHA256 legacy + migrazione automatica (`auth_service.py:666-685`) resta
+  scoperto, ed è quello che **riscrive `password_hash` sul DB**.
+- **Nessun `.coveragerc`**: il 47% misurato in questa sessione è un numero una
+  tantum, non una baseline tracciata. Serve config + soglia per renderlo un gate.
+- **Nessun test di regressione su `X-Reprocess-Key`** (il CRITICAL Edge Functions
+  del 30/7): il canale è stato rimosso, ma nulla impedisce di reintrodurlo.
+  L'idempotenza a livello DB è coperta solo da `test.ts`, script manuale
+  **escluso dalla CI per design**.
+- **Monitor CI che falliscono verdi**: `riparto_coerenza_check.yml` e
+  `invoicetronic_eventi_sconosciuti_check.yml` fanno `exit 0` anche su HTTP != 200
+  (annotazione rossa nei log, job verde). L'unico segnale è l'alert Telegram.
 
 **Portarsi dietro dalle passate Bug** (dichiarati aperti, non chiusi in silenzio):
 - **`prodotti_master`: il fix al codice copre 5 doppioni su 7 andando avanti.**
@@ -147,7 +183,7 @@ Architettura (chiuse e deployate — riaprirle solo se l'audit ci inciampa).
 `WORKFLOW.md` (default Opus, Sonnet è l'eccezione) — e comunque solo dopo
 conferma esplicita di Mattia, mai in autonomia.
 
-**Lezioni operative (le 5 del 2/8 restano valide, più 5 dal 3/8 mattina e 4 dal 3/8 sera):**
+**Lezioni operative (le 5 del 2/8 restano valide, più 5 dal 3/8 mattina, 4 dal 3/8 sera e 4 dalla dimensione Test):**
 
 1. **`git log -- <file>` prima di credere a "deployato" scritto qui.** Il
    lavoro Database del 30/7 risultava "fixato e deployato" in questa stessa
@@ -231,6 +267,34 @@ conferma esplicita di Mattia, mai in autonomia.
     l'operazione sbagliata), il controllo va fatto **prima** della query
     distruttiva, non dopo — rileggere ogni id/categoria della propria proposta
     contro l'esito subito dopo l'esecuzione, non a "sembra fatto".
+
+16. **Il modo per sapere se una suite difende una regola è romperla e rilanciarla.**
+    La lezione 9 dice di far fallire ogni test nuovo; questa è la sua versione
+    per i test *esistenti*. Rimuovendo i due `.neq()` da `margine_service.py`
+    la suite intera è rimasta verde: 10195 test che non difendevano il MOL.
+    Un mock che fa `query.neq.return_value = query` **accetta qualunque filtro
+    senza applicarlo**, quindi il test verifica solo il dataset che gli hai dato,
+    non la query che il codice esegue. Sospetta di ogni test DB il cui mock
+    restituisce righe già pulite.
+17. **Un mock che sostituisce una libreria di sicurezza rende vacuo il test che
+    la riguarda.** `argon2` è un `MagicMock()`: `ph.verify(hash, 'password_sbagliata')`
+    ritorna un Mock **truthy** e `VerifyMismatchError` non è nemmeno sollevabile.
+    Un test "password sbagliata rifiutata" scritto senza configurare `side_effect`
+    passa **sempre**, anche con la verifica rotta. Vale per `openai`, `tenacity`,
+    `requests`, `fitz`: se il ramo sotto test dipende da un'eccezione tipizzata
+    di un modulo mockato, il test non prova nulla — o peggio, fallisce con
+    `TypeError` e il codice sotto non viene mai eseguito.
+18. **Un gate CI può essere corretto e non partire mai.** `openapi-drift.yml`
+    funziona (sonda → drift rilevato, exit 1), ma i suoi `paths` non includevano
+    `services/routers/**`, dove vivono gli endpoint: 2 commit reali sono passati
+    senza controllo. Verificare sempre **il trigger**, non solo il contenuto del
+    workflow — e ricordare che una modifica a un trigger si collauda solo
+    pushandola: in locale è invisibile.
+19. **Il numero di test non è una misura di copertura.** "10195 test" sono 106
+    file / 21.765 righe gonfiati dalla parametrizzazione. Il progetto aveva
+    `coverage` installato e mai usato: 30 secondi per la prima misura reale
+    (**47%**, con `upload_handler.py` al 12% e **zero** righe di test su 2227).
+    Prima di giudicare una suite, misurala: `python -m coverage run -m pytest`.
 
 ## Chiusura del ciclo (quando tutte le righe sono 🟢 o 🟡 con nota esplicita)
 
