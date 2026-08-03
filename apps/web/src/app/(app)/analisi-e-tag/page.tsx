@@ -1,10 +1,17 @@
 import { cookies } from "next/headers";
+import dynamic from "next/dynamic";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { requirePagina } from "@/lib/page-guard";
 import { PageHeader } from "@/components/ui/page-header";
 import type { CustomTag, TagSuggestion } from "@/lib/tag";
-import { AnalisiETagClient } from "./analisi-e-tag-client";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+
+// dynamic(): il client importa recharts, usata solo per i grafici di questa
+// pagina, cosi' il chunk resta separato dal bundle condiviso.
+// Niente ssr:false: in un Server Component non e' consentito da Next.
+const AnalisiETagClient = dynamic(() => import("./analisi-e-tag-client").then((m) => m.AnalisiETagClient), {
+  loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/40" />,
+});
 
 async function fetchInitial<T>(path: string, token: string): Promise<T | null> {
   try {

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, WORKER_TIMEOUT_MS } from "@/lib/worker-config";
 
 // Proxy lato client per il widget Notifiche in Home: lista completa attiva.
 export async function GET() {
@@ -13,7 +13,7 @@ export async function GET() {
   if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
 
   try {
-    const res = await fetch(`${WORKER_URL}/api/notifiche`, { headers, cache: "no-store" });
+    const res = await fetch(`${WORKER_URL}/api/notifiche`, { headers, cache: "no-store", signal: AbortSignal.timeout(WORKER_TIMEOUT_MS) });
     if (!res.ok) return NextResponse.json({ error: "Errore worker" }, { status: res.status });
     return NextResponse.json(await res.json());
   } catch {

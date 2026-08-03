@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { WORKER_URL, WORKER_SECRET_KEY, WORKER_TIMEOUT_MS } from "@/lib/worker-config";
 
 export async function GET(req: NextRequest) {
   const cookieStore = await cookies();
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const res = await fetch(
       `${WORKER_URL}/api/margini/costo-spese-extra?anno=${anno}&mese=${mese}`,
-      { headers: h, cache: "no-store" },
+      { headers: h, cache: "no-store", signal: AbortSignal.timeout(WORKER_TIMEOUT_MS) },
     );
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {

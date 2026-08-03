@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePagina } from "@/lib/page-guard";
@@ -8,12 +9,23 @@ import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar, type KpiData } from "./kpi-bar";
-import { CalcoloTab } from "./calcolo-tab";
-import { CopertiTab } from "./coperti-tab";
-import { AnalisiTab } from "./analisi-tab";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+
+// dynamic(): i 3 tab importano recharts. Solo la tab attiva monta il suo
+// componente, ma senza dynamic() il bundle della pagina includeva comunque
+// tutti e 3 (e quindi recharts) a prescindere da quale fosse selezionata.
+// Niente ssr:false: in un Server Component non e' consentito da Next.
+const CalcoloTab = dynamic(() => import("./calcolo-tab").then((m) => m.CalcoloTab), {
+  loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/40" />,
+});
+const CopertiTab = dynamic(() => import("./coperti-tab").then((m) => m.CopertiTab), {
+  loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/40" />,
+});
+const AnalisiTab = dynamic(() => import("./analisi-tab").then((m) => m.AnalisiTab), {
+  loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted/40" />,
+});
 
 type SearchParams = {
   tab?: string;

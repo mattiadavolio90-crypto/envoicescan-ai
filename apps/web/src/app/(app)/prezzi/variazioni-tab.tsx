@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { RefreshCw, ChevronDown, Search, TriangleAlert, CheckCircle2, Calendar, Settings2, Star } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -18,6 +18,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import { AnteprimaFatturaDialog } from "./anteprima-fattura-dialog";
 
 const ANNO_CORRENTE = new Date().getFullYear();
+const PAGE_SIZE = 100;
 const MESI_LUNGHI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
 type ModoPeriodo = "anno" | "mese" | "custom";
@@ -297,7 +298,7 @@ function ListaAcquisti({
   );
 }
 
-function AlertCard({
+const AlertCard = memo(function AlertCard({
   r,
   expanded,
   preferito,
@@ -312,9 +313,9 @@ function AlertCard({
   preferito: boolean;
   storico: StoricoPrezzoResponse | null;
   storicoLoading: boolean;
-  onToggle: () => void;
-  onToggleStar: () => void;
-  onApriFattura: (p: StoricoPrezzoPoint) => void;
+  onToggle: (r: VariazionePrezzo) => void;
+  onToggleStar: (r: VariazionePrezzo) => void;
+  onApriFattura: (r: VariazionePrezzo, p: StoricoPrezzoPoint) => void;
 }) {
   const g = gravita(r);
   const style = GRAVITA_STYLE[g];
@@ -323,13 +324,13 @@ function AlertCard({
 
   return (
     <div className={`rounded-lg border border-l-4 ${style.ring} border-border bg-card overflow-hidden`}>
-      <button onClick={onToggle} className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors">
+      <button onClick={() => onToggle(r)} className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors">
         <div className="flex items-center gap-3 flex-wrap">
           <span
             role="button"
             tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); onToggleStar(); }}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onToggleStar(); } }}
+            onClick={(e) => { e.stopPropagation(); onToggleStar(r); }}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onToggleStar(r); } }}
             aria-label={preferito ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
             aria-pressed={preferito}
             className="shrink-0 -m-1 p-1 rounded hover:bg-muted transition-colors cursor-pointer"
@@ -391,7 +392,7 @@ function AlertCard({
                 <ListaAcquisti
                   punti={storico.punti}
                   media={storico.prezzo_medio || r.media}
-                  onApriFattura={onApriFattura}
+                  onApriFattura={(p) => onApriFattura(r, p)}
                 />
               )}
             </>
@@ -400,7 +401,7 @@ function AlertCard({
       )}
     </div>
   );
-}
+});
 
 type KpiTone = "sky" | "emerald" | "rose";
 
@@ -445,6 +446,11 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   );
   // Anteprima fattura aperta da una riga della lista acquisti.
   const [anteprima, setAnteprima] = useState<{ punto: StoricoPrezzoPoint; prodotto: string } | null>(null);
+  const [page, setPage] = useState(1);
+  const apriFattura = useCallback(
+    (r: VariazionePrezzo, p: StoricoPrezzoPoint) => setAnteprima({ punto: p, prodotto: r.prodotto }),
+    [],
+  );
 
   // Carica per range esplicito: cosi' lo stesso fetch serve anno, mese e custom.
   const loadRange = useCallback(async (range: { data_da: string; data_a: string }, sogliaArg: number) => {
@@ -482,6 +488,12 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     loadRange(isoDateRange(ANNO_CORRENTE, null), initialSoglia);
   }, [loadRange, initialSoglia]);
 
+  // Torna a pagina 1 quando cambia il set filtrato: restare su una pagina che
+  // non esiste più mostrerebbe una lista vuota anche con risultati disponibili.
+  useEffect(() => {
+    setPage(1);
+  }, [search, filtroCategoria, filtroFornitore, soloPreferiti, data]);
+
   // Applica un preset di periodo aggiornando stato + ricaricando.
   function applyAnno(y: number) {
     setAnno(y);
@@ -516,7 +528,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     loadRange(rangeAttivo(), val);
   }
 
-  async function toggleCard(r: VariazionePrezzo) {
+  const toggleCard = useCallback(async (r: VariazionePrezzo) => {
     const key = `${r.prodotto}|${r.fornitore}`;
     if (expandedKey === key) {
       setExpandedKey(null);
@@ -540,11 +552,11 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     } finally {
       setStoricoLoading(false);
     }
-  }
+  }, [expandedKey, currentRange]);
 
   // Stella ottimistica: aggiorna subito il Set locale, poi persiste. Su errore
   // fa rollback e mostra un toast — la stella non resta in uno stato falso.
-  async function toggleStar(r: VariazionePrezzo) {
+  const toggleStar = useCallback(async (r: VariazionePrezzo) => {
     const key = prefKey(r.prodotto, r.fornitore);
     const eraPreferito = preferiti.has(key);
     setPreferiti((prev) => {
@@ -575,16 +587,26 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       });
       toast.error("Non sono riuscito ad aggiornare i preferiti");
     }
-  }
+  }, [preferiti]);
 
-  const variazioni = data?.variazioni ?? [];
-  const sorted = [...variazioni].sort((a, b) => Math.abs(b.impatto_stimato) - Math.abs(a.impatto_stimato));
+  const variazioni = useMemo(() => data?.variazioni ?? [], [data]);
+
+  const sorted = useMemo(
+    () => [...variazioni].sort((a, b) => Math.abs(b.impatto_stimato) - Math.abs(a.impatto_stimato)),
+    [variazioni],
+  );
 
   // valori unici per i select categoria/fornitore
-  const categorieDisp = Array.from(new Set(sorted.map((r) => r.categoria).filter(Boolean))).sort();
-  const fornitoriDisp = Array.from(new Set(sorted.map((r) => r.fornitore).filter(Boolean))).sort();
+  const categorieDisp = useMemo(
+    () => Array.from(new Set(sorted.map((r) => r.categoria).filter(Boolean))).sort(),
+    [sorted],
+  );
+  const fornitoriDisp = useMemo(
+    () => Array.from(new Set(sorted.map((r) => r.fornitore).filter(Boolean))).sort(),
+    [sorted],
+  );
 
-  const filtered = sorted.filter((r) => {
+  const filtered = useMemo(() => sorted.filter((r) => {
     const matchSearch =
       !search ||
       r.prodotto.toLowerCase().includes(search.toLowerCase()) ||
@@ -593,23 +615,30 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     const matchForn = !filtroFornitore || r.fornitore === filtroFornitore;
     const matchPref = !soloPreferiti || preferiti.has(prefKey(r.prodotto, r.fornitore));
     return matchSearch && matchCat && matchForn && matchPref;
-  });
+  }), [sorted, search, filtroCategoria, filtroFornitore, soloPreferiti, preferiti]);
 
   const nPreferiti = preferiti.size;
 
   // KPI calcolati sul filtered
-  const nCritici = filtered.filter((r) => gravita(r) === "critico").length;
-  const impattoFiltrato = filtered.reduce((acc, r) => acc + r.impatto_stimato, 0);
-  const scostamentoFiltrato =
-    filtered.length > 0
-      ? filtered.reduce((acc, r) => acc + r.aumento_perc, 0) / filtered.length
-      : 0;
+  const nCritici = useMemo(() => filtered.filter((r) => gravita(r) === "critico").length, [filtered]);
+  const impattoFiltrato = useMemo(() => filtered.reduce((acc, r) => acc + r.impatto_stimato, 0), [filtered]);
+  const scostamentoFiltrato = useMemo(
+    () => (filtered.length > 0 ? filtered.reduce((acc, r) => acc + r.aumento_perc, 0) / filtered.length : 0),
+    [filtered],
+  );
 
   // KPI di sintesi mostrati in cima al tab (specifici di "Variazioni Prezzo")
-  const rincari = filtered.filter((r) => r.aumento_perc > 0);
-  const risparmi = filtered.filter((r) => r.aumento_perc < 0);
+  const rincari = useMemo(() => filtered.filter((r) => r.aumento_perc > 0), [filtered]);
+  const risparmi = useMemo(() => filtered.filter((r) => r.aumento_perc < 0), [filtered]);
   const rincaroMedio = rincari.length > 0 ? rincari.reduce((a, r) => a + r.aumento_perc, 0) / rincari.length : 0;
   const risparmioMedio = risparmi.length > 0 ? risparmi.reduce((a, r) => a + r.aumento_perc, 0) / risparmi.length : 0;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const visible = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
+  );
 
   const chipBase =
     "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5 disabled:opacity-60";
@@ -879,7 +908,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       {variazioni.length > 0 && (
         <>
           <div className="space-y-2">
-            {filtered.map((r) => {
+            {visible.map((r) => {
               const key = `${r.prodotto}|${r.fornitore}`;
               return (
                 <AlertCard
@@ -889,13 +918,36 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                   preferito={preferiti.has(prefKey(r.prodotto, r.fornitore))}
                   storico={expandedKey === key ? storico : null}
                   storicoLoading={expandedKey === key && storicoLoading}
-                  onToggle={() => toggleCard(r)}
-                  onToggleStar={() => toggleStar(r)}
-                  onApriFattura={(p) => setAnteprima({ punto: p, prodotto: r.prodotto })}
+                  onToggle={toggleCard}
+                  onToggleStar={toggleStar}
+                  onApriFattura={apriFattura}
                 />
               );
             })}
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Pagina {safePage} di {totalPages} · {filtered.length.toLocaleString("it-IT")} variazioni
+              </span>
+              <div className="flex gap-2">
+                <button
+                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  ← Precedente
+                </button>
+                <button
+                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Successiva →
+                </button>
+              </div>
+            </div>
+          )}
           {filtered.length === 0 && soloPreferiti && nPreferiti === 0 && (
             <div className="rounded-lg border border-dashed border-border py-10 text-center">
               <Star className="size-7 text-amber-400 mx-auto mb-2" />
