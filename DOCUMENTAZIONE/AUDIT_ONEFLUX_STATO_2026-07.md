@@ -37,6 +37,12 @@ la propria riga con l'esito verificato.
 - **Bug, AI, Performance, Qualità/UI** — righe ancora quelle ricostruite a
   memoria del 30/7, **non ancora corrette dalle sessioni originali**. Restano
   da riverificare quando quelle chat vengono riaperte.
+- **Database** — corretta il 2/8/2026 da una sessione diversa (Architettura),
+  non dall'originale: la riga diceva "fixati e deployati" ma solo le migration
+  SQL erano live, il codice Python non era mai stato committato. Da qui la
+  regola generale: **"deployato" scritto in questa tabella non è una prova, va
+  verificato con `git log -- <file>`** prima di darlo per acquisito. Vale
+  soprattutto per le righe ancora ricostruite a memoria qui sopra.
 
 Le passate del 4/7 e 5/7 sono di **Fable** (agente diverso, pre-esistente
 all'attuale `oneflux-audit`), incluse perché coprono la stessa dimensione
@@ -62,6 +68,60 @@ A fine di ogni passata (agente `oneflux-audit` o manuale):
 3. Salva/aggiorna la memoria corrispondente come sempre (progetto/feedback)
 4. Se l'audit apre il caso per un'altra dimensione (come Edge Functions →
    Database il 30/7), annotalo nella colonna Note della dimensione aperta
+
+## Prossima sessione: dimensione Bug
+
+> Sezione viva: la sessione che prende in carico Bug la riscrive con la propria
+> consegna per la dimensione successiva, non la lascia stagnare qui.
+
+**Stato al 2/8/2026**: 7/10 dimensioni 🟢 (Security, Edge Functions, AI,
+Qualità/UI, Database, DevOps/Config, Architettura — tutte verificate come
+genuinamente committate e deployate), 2 🟡 (Bug, Performance — mai fatte come
+passata dedicata, righe ancora ricostruite a memoria il 30/7), 1 ⚪ (Test).
+
+**Perché Bug adesso**: è l'unica 🟡 con una passata vera alle spalle (4/7, con
+Fable) ma mai come dimensione pura — fu sempre accorpata a Security, quindi
+"17 fix Security+Bug insieme" non dice quanti fossero Bug né cosa sia rimasto
+fuori. Performance è l'altra 🟡, ma ha un residuo noto e circoscritto
+(Prezzi/Fatture full-load non convertiti): è più piccola e può aspettare.
+
+**Scope suggerito, da spezzare in due passate** — `fastapi_worker.py` da solo è
+~8000 righe, tentarlo in un colpo produce un audit superficiale:
+1. Flusso upload → parsing fatture (XML/P7M/PDF) → categorizzazione AI:
+   `services/invoice_service.py`, `services/ai_service.py`, router upload
+2. Margini / briefing / chat — concentrati per ~5000 righe dentro
+   `services/fastapi_worker.py`
+
+**Escludere**: Database, Edge Functions, Security, DevOps/Config, Architettura
+(chiuse e deployate — riaprirle solo se l'audit Bug ci inciampa per davvero).
+
+**Modello**: Sonnet regge l'audit read-only. Per la remediation vale §3 di
+`WORKFLOW.md` (default Opus, Sonnet è l'eccezione) — e comunque solo dopo
+conferma esplicita di Matt, mai in autonomia.
+
+**Cinque cose imparate il 2/8 che valgono per la prossima passata:**
+
+1. **`git log -- <file>` prima di credere a "deployato" scritto qui.** Il
+   lavoro Database del 30/7 risultava "fixato e deployato" in questa stessa
+   tabella, ma solo le migration SQL erano davvero live (applicate via MCP):
+   il codice Python collegato era rimasto nel working tree per 3 giorni.
+   "Deployato" qui va letto come "le migration sono sul DB", mai esteso al
+   codice applicativo senza verifica.
+2. **`tests/conftest.py` non si eredita fra directory sorelle.** Se sposti
+   file testati fuori da `tests/`, serve un conftest.py locale — un PASSED
+   prima dello spostamento non dice nulla su dopo.
+3. **`legacy_streamlit/` esiste da oggi** per il codice Streamlit orfano, già
+   inclusa in `pytest.ini` `testpaths`. Se l'audit Bug trova altro codice
+   morto dello stesso tipo, isolarlo lì con lo stesso pattern (`git mv` +
+   conftest se serve il mock).
+4. **Questo file ora è tracciato da git.** Prima non lo era (escluso dal
+   pattern generico `*AUDIT*.md`, eccezione `!AUDIT_ONEFLUX_STATO*.md`
+   aggiunta il 2/8). Committalo insieme al lavoro che documenta.
+5. **Ordine che ha funzionato**: audit → remediation HIGH+MEDIUM (su conferma)
+   → chiusura residui LOW/INFO → `code-reviewer` sul diff cumulativo →
+   documento + memoria → deploy. Chiamare `code-reviewer` *dopo* aver chiuso i
+   LOW, non prima: sul diff completo ha trovato 2 bug che né l'audit né la
+   remediation avevano visto.
 
 ## Chiusura del ciclo (quando tutte le righe sono 🟢 o 🟡 con nota esplicita)
 
