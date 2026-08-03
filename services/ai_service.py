@@ -105,6 +105,25 @@ _FORNITORI_MONOCAT_SAFE: frozenset[str] = frozenset({
 })
 
 
+class AIDailyLimitExceededError(RuntimeError):
+    """Quota giornaliera di categorizzazioni AI esaurita per il ristorante.
+
+    Sottoclasse di RuntimeError per retrocompatibilità: chi cattura RuntimeError
+    (es. il mapping su 429 in fastapi_worker) continua a funzionare. Serve a
+    distinguere "quota finita" da un errore di rete, che per il cliente sono due
+    cose diverse anche se producono lo stesso risultato (righe Da Classificare).
+    """
+
+    def __init__(self, used: int, limit: int, ristorante_id: Optional[str] = None):
+        self.used = int(used or 0)
+        self.limit = int(limit or 0)
+        self.ristorante_id = ristorante_id
+        super().__init__(
+            f"Limite giornaliero categorizzazioni AI raggiunto ({self.limit} chiamate/giorno). "
+            f"Riprova domani."
+        )
+
+
 def _categoria_da_fornitore_monocat(fornitore: Optional[str]) -> Optional[str]:
     """Categoria della regola-fornitore SOLO se il fornitore è nella whitelist
     mono-categoria verificata. Ritorna None altrimenti (nessun recupero forzato).
@@ -3313,15 +3332,8 @@ def _esiste_override_manuale_locale(
     if not user_id or not descrizione or supabase_client is None:
         return False
 
-    # 1) prova prima dalla cache in-memory (zero query)
-    try:
-        cache = _memoria_cache
-        locale_dict = cache.get('prodotti_utente', {}).get(user_id, {})
-        # La cache non distingue keyword-auto da Manuale, quindi serve la query DB.
-        # Skip cache fast-path e vai diretto alla query mirata.
-    except Exception:
-        pass
-
+    # Niente fast-path da cache: `_memoria_cache` non distingue keyword-auto da
+    # Manuale, quindi serve comunque la query DB mirata qui sotto.
     desc_stripped = (descrizione or '').strip()
     try:
         desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc_stripped)
@@ -3418,7 +3430,9 @@ def flush_pending_local_saves(
                 'user_id': user_id,
                 'descrizione': desc,
                 'categoria': cat,
-                'volte_visto': 1,
+                # volte_visto omesso di proposito: il default DB è 1 sull'insert, e
+                # ometterlo qui evita che l'upsert lo riporti a 1 a ogni ri-passaggio
+                # (era il motivo per cui il contatore non cresceva mai).
                 'classificato_da': 'keyword-auto',
                 'created_at': now_iso,
                 'updated_at': now_iso,
@@ -4047,8 +4061,9 @@ def salva_correzione_in_memoria_locale(
         }
         
         # Colonne OPZIONALI - aggiungi e rimuovi se il DB le rifiuta
+        # volte_visto non è qui: passarlo azzererebbe il contatore a ogni correzione
+        # (l'upsert riscrive la colonna). Sull'insert ci pensa il default DB.
         optional_cols = {
-            'volte_visto': 1,
             'classificato_da': f'Manuale ({user_email})'
         }
         
@@ -4570,7 +4585,7 @@ def categorizza_con_memoria(
                         'user_id': user_id,
                         'descrizione': desc_local,
                         'categoria': categoria_keyword,
-                        'volte_visto': 1,
+                        # volte_visto omesso: vedi nota in flush_pending_local_saves
                         'classificato_da': 'keyword-auto',
                         'created_at': datetime.now(timezone.utc).isoformat(),
                         'updated_at': datetime.now(timezone.utc).isoformat()
@@ -4597,57 +4612,10 @@ def categorizza_con_memoria(
     return _ret(categoria_finale, is_fallback=fallback_forzato)
 
 
-# ============================================================
-# SVUOTA MEMORIA GLOBALE (DB + file legacy)
-# ============================================================
-
-def svuota_memoria_globale(supabase_client=None) -> bool:
-    """
-    Svuota la memoria globale AI:
-    - Cancella tutti i record in 'prodotti_master' su Supabase
-    - Invalida cache in-memory
-    - Cancella file legacy 'memoria_ai_correzioni.json' se presente
-    """
-    # Usa client iniettato o fallback
-    if supabase_client is None:
-        try:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-        except Exception as e:
-            logger.error(f"Impossibile creare client Supabase: {e}")
-            return False
-
-    try:
-        # Preleva tutti gli id per cancellazione batch
-        resp = supabase_client.table('prodotti_master').select('id').execute()
-        ids = [row['id'] for row in (resp.data or []) if 'id' in row]
-
-        deleted = 0
-        if ids:
-            # Cancella in batch (blocchi da 1000 per sicurezza)
-            batch_size = 1000
-            for i in range(0, len(ids), batch_size):
-                batch = ids[i:i+batch_size]
-                supabase_client.table('prodotti_master').delete().in_('id', batch).execute()
-                deleted += len(batch)
-        logger.info(f"🗑️ Memoria Globale DB svuotata: {deleted} record rimossi")
-
-        # Invalida cache
-        invalida_cache_memoria()
-
-        # Cancella file legacy
-        try:
-            if os.path.exists(MEMORIA_AI_FILE):
-                os.remove(MEMORIA_AI_FILE)
-                logger.info("🧹 File legacy memoria AI rimosso")
-        except Exception as fe:
-            logger.warning(f"Impossibile rimuovere file legacy: {fe}")
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Errore svuotamento memoria globale: {e}")
-        return False
+# NB: `svuota_memoria_globale` è stata rimossa (audit Bug 3/8/2026). Cancellava in
+# blocco `prodotti_master` — la memoria AI di TUTTI i clienti — senza conferma, e non
+# aveva alcun chiamante. Se serve come strumento di emergenza va rifatta dietro un
+# endpoint admin esplicito, non lasciata come funzione fantasma.
 
 
 # ============================================================
@@ -4908,9 +4876,10 @@ def classifica_con_ai(
                     f"🔒 Rate limit categorizzazioni superato per ristorante {ristorante_id}: "
                     f"{_calls_today}/{MAX_AI_CALLS_PER_DAY} chiamate oggi"
                 )
-                raise RuntimeError(
-                    f"Limite giornaliero categorizzazioni AI raggiunto ({MAX_AI_CALLS_PER_DAY} chiamate/giorno). "
-                    f"Riprova domani."
+                raise AIDailyLimitExceededError(
+                    used=_calls_today,
+                    limit=MAX_AI_CALLS_PER_DAY,
+                    ristorante_id=ristorante_id,
                 )
         except RuntimeError:
             raise

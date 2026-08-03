@@ -31,6 +31,7 @@ from services.ai_service import (
     applica_regole_categoria_forti,
     descrizione_e_dubbia,
     _applica_guardrail_note_con_importo,
+    AIDailyLimitExceededError,
 )
 
 
@@ -504,6 +505,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
         'remaining_descriptions': [],
         'remaining_reason_counts': {},
         'completed': False,
+        'ai_rate_limited': False,
     }
 
     if supabase_client is None or not user_id or not file_names:
@@ -626,6 +628,13 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
             iva = [desc_map[d]['iva'] for d in chunk]
             hint = [ottieni_hint_per_ai(d, user_id) for d in chunk]
 
+            if summary.get('ai_rate_limited'):
+                # Quota già esaurita su un chunk precedente: gli altri fallirebbero
+                # allo stesso modo, inutile ritentare.
+                remaining_reasons['quota_ai_esaurita'] += len(chunk)
+                remaining_descs.extend(chunk)
+                continue
+
             try:
                 categories, confidences = classifica_via_worker_con_confidenza(
                     chunk,
@@ -635,6 +644,14 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     user_id=user_id,
                     ristorante_id=ristorante_id,
                 )
+            except AIDailyLimitExceededError as quota_exc:
+                # Quota AI esaurita: il risultato per il cliente è lo stesso (righe
+                # Da Classificare), ma la causa è diversa da un errore di rete e va
+                # detta, altrimenti è diagnosticabile solo dai log del server.
+                logger.warning(f"[UPLOAD AI] Quota giornaliera esaurita: {quota_exc}")
+                summary['ai_rate_limited'] = True
+                categories = ['Da Classificare'] * len(chunk)
+                confidences = ['bassa'] * len(chunk)
             except Exception as ai_exc:
                 logger.warning(f"[UPLOAD AI] Fallback AI fallito: {ai_exc}")
                 categories = ['Da Classificare'] * len(chunk)
@@ -740,7 +757,8 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                             'user_id': user_id,
                             'descrizione': desc_for_memory,
                             'categoria': _categoria_per_memoria,
-                            'volte_visto': 1,
+                            # volte_visto omesso: l'upsert lo riporterebbe a 1 a ogni
+                            # ri-passaggio. Default DB = 1 sull'insert.
                             'classificato_da': 'AI (auto-upload)',
                             'updated_at': datetime.now(timezone.utc).isoformat(),
                             'created_at': datetime.now(timezone.utc).isoformat(),

@@ -779,8 +779,15 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
         # schema OpenAPI dell'endpoint, non sul 500 generico (i client trattano
         # il 5xx come errore transiente e fanno fallback locale, dove la quota
         # non viene ricontrollata).
-        logger.warning(f"⚠️ /api/classify rate limit: {rl_err}")
-        raise HTTPException(status_code=429, detail=str(rl_err))
+        # L'header distingue questo 429 da quello del rate limiter per IP (30 req/60s,
+        # _check_rate_limit): sono due cose diverse — la quota giornaliera non si
+        # risolve da sola, quella per IP si', e il client deve poter ritentare.
+        logger.warning(f"⚠️ /api/classify quota AI esaurita: {rl_err}")
+        raise HTTPException(
+            status_code=429,
+            detail=str(rl_err),
+            headers={"X-RateLimit-Scope": "ai-daily-quota"},
+        )
     except Exception as exc:
         logger.exception(f"❌ /api/classify errore: {exc}")
         raise HTTPException(status_code=500, detail="Errore durante la classificazione.")
@@ -954,58 +961,11 @@ def _normalize_piva(value: str) -> str:
     return "".join(ch for ch in raw if ch.isalnum())
 
 
-def _extract_piva_from_xml(xml_text: str) -> str:
-    """Estrae la P.IVA del destinatario: CessionarioCommittente, con fallback finale sul Cedente."""
-    import xmltodict
-
-    def _dig(obj: Any, path: List[str]) -> str:
-        cur = obj
-        for key in path:
-            if not isinstance(cur, dict):
-                return ""
-            cur = cur.get(key)
-        return str(cur or "").strip()
-
-    data = xmltodict.parse(xml_text)
-
-    fattura = data.get("FatturaElettronica") or data.get("p:FatturaElettronica") or {}
-    header = (
-        fattura.get("FatturaElettronicaHeader")
-        or fattura.get("p:FatturaElettronicaHeader")
-        or {}
-    )
-
-    for path in (
-        [
-            "CessionarioCommittente",
-            "DatiAnagrafici",
-            "IdFiscaleIVA",
-            "IdCodice",
-        ],
-        [
-            "p:CessionarioCommittente",
-            "p:DatiAnagrafici",
-            "p:IdFiscaleIVA",
-            "p:IdCodice",
-        ],
-        [
-            "CedentePrestatore",
-            "DatiAnagrafici",
-            "IdFiscaleIVA",
-            "IdCodice",
-        ],
-        [
-            "p:CedentePrestatore",
-            "p:DatiAnagrafici",
-            "p:IdFiscaleIVA",
-            "p:IdCodice",
-        ],
-    ):
-        piva = _dig(header, path)
-        if piva:
-            return _normalize_piva(piva)
-
-    return ""
+# NB: `_extract_piva_from_xml` è stata rimossa (audit Bug 3/8/2026). Era senza
+# chiamanti e, se il CessionarioCommittente mancava, ripiegava sulla P.IVA del
+# CedentePrestatore — cioè il fornitore invece del destinatario, invertendo la
+# semantica usata dal routing multi-sede. L'estrattore corretto è
+# `estrai_piva_cessionario_xml` in services/invoice_service.py, che non ha quel fallback.
 
 
 def _resolve_tenant_by_piva(supabase, piva_raw: str) -> tuple[Optional[str], Optional[str]]:

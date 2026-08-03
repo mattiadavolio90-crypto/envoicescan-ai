@@ -130,6 +130,10 @@ def classifica_via_worker_con_confidenza(
     Le confidenze sono 'alta', 'media' o 'bassa' (una per descrizione).
     Se il worker HTTP non supporta ancora la confidence, usa 'media' come default.
     """
+    # Import in cima alla funzione (non dentro il try): serve anche alla clausola
+    # except qui sotto, che altrimenti solleverebbe NameError.
+    from services.ai_service import AIDailyLimitExceededError
+
     base = _worker_base_url()
     if base:
         try:
@@ -146,6 +150,26 @@ def classifica_via_worker_con_confidenza(
                 headers={"X-Worker-Key": _WORKER_KEY} if _WORKER_KEY else {},
                 timeout=_CLASSIFY_TIMEOUT,
             )
+            # Il worker restituisce 429 per DUE motivi diversi:
+            #   - quota giornaliera AI esaurita  -> inutile ritentare, va detto al cliente
+            #   - rate limiter per IP (30/60s)   -> transitorio, il fallback locale va bene
+            # Solo il primo e' AIDailyLimitExceededError. Discriminiamo sull'header
+            # esplicito, col testo come fallback per worker non ancora aggiornati
+            # (durante un rollout worker e frontend non cambiano nello stesso istante).
+            if resp.status_code == 429:
+                _scope = (resp.headers or {}).get("X-RateLimit-Scope", "")
+                _detail = ""
+                try:
+                    _detail = str((resp.json() or {}).get("detail", ""))
+                except Exception:
+                    pass
+                if _scope == "ai-daily-quota" or "categorizzazioni AI" in _detail:
+                    from config.constants import MAX_AI_CALLS_PER_DAY
+                    raise AIDailyLimitExceededError(
+                        used=MAX_AI_CALLS_PER_DAY,
+                        limit=MAX_AI_CALLS_PER_DAY,
+                        ristorante_id=ristorante_id,
+                    )
             if 400 <= resp.status_code < 500:
                 resp.raise_for_status()
             resp.raise_for_status()
@@ -158,6 +182,8 @@ def classifica_via_worker_con_confidenza(
                 + (f" user_id={user_id}" if user_id else "")
             )
             return categorie, confidenze
+        except AIDailyLimitExceededError:
+            raise
         except Exception as exc:
             logger.warning(
                 f"⚠️ Worker classify non disponibile ({exc}), uso locale",

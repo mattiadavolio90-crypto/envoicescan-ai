@@ -34,7 +34,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 try:
     from supabase import create_client
@@ -506,15 +506,51 @@ def _schedule_retry(supabase, queue_id: int, error_msg: str) -> None:
     ).execute()
 
 
+def _claim_ancora_valido(supabase, queue_id: int, worker_id: Optional[str]) -> bool:
+    """
+    True se l'item è ancora lockato da questo worker.
+
+    Al timeout del job (JOB_TIMEOUT) il ciclo schedula il retry e prosegue, ma il
+    thread che stava elaborando è daemon e NON è cancellabile: continua a girare.
+    Nel frattempo un altro worker può riclamare lo stesso item (claim_batch_for_processing
+    sovrascrive locked_by). Senza questo controllo i due thread eseguono in parallelo
+    i side-effect pesanti — le righe non si duplicano grazie all'upsert idempotente,
+    ma le chiamate AI a pagamento sì.
+
+    In caso di errore di rete ritorna True: meglio procedere che bloccare
+    l'elaborazione per un controllo accessorio.
+    """
+    if not worker_id:
+        return True
+    try:
+        resp = (
+            supabase.table("fatture_queue")
+            .select("locked_by")
+            .eq("id", queue_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("[item=%d] verifica claim fallita (%s), procedo", queue_id, exc)
+        return True
+    rows = resp.data or []
+    if not rows:
+        return True
+    return rows[0].get("locked_by") == worker_id
+
+
 # ─── Elaborazione di un singolo item ─────────────────────────────────────────
 
-def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
+def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = None) -> ItemResult:
     """
     Elabora un record di fatture_queue:
       1. Ottieni XML (da xml_content o xml_url come fallback)
       2. Parsa con estrai_dati_da_xml() — riuso diretto del parser esistente
       3. Salva in public.fatture con salva_fattura_processata()
       4. Segna come done o schedula retry
+
+    worker_id: se valorizzato, prima dei side-effect pesanti si verifica che il
+    claim sull'item sia ancora nostro (vedi _claim_ancora_valido).
 
     Returns:
         ItemResult con esito dell'elaborazione
@@ -584,6 +620,15 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
         logger.warning("[item=%d] %s", queue_id, msg)
         return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=msg)
 
+    # Il parsing può aver superato JOB_TIMEOUT: se nel frattempo l'item è stato
+    # riclamato da un altro worker, fermarsi qui evita di duplicare il lavoro.
+    if not _claim_ancora_valido(supabase, queue_id, worker_id):
+        logger.warning("[item=%d] claim non più valido prima del salvataggio — abort", queue_id)
+        return ItemResult(
+            queue_id=queue_id, event_id=event_id, status="skip",
+            error="claim perso: item riclamato da un altro worker",
+        )
+
     try:
         result = salva_fattura_processata(
             nome_file=nome_file,
@@ -616,6 +661,20 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
         _mark_ripartita_se_sede_tecnica(supabase, ristorante_id, user_id, nome_file)
     except Exception as exc:
         logger.warning("[item=%d] marcatura ripartita_su_gruppo (sede tecnica) fallita: %s", queue_id, exc)
+
+    # Secondo controllo prima dell'auto-classificazione: è il passo costoso
+    # (chiamate AI a pagamento) e il salvataggio può averlo ritardato oltre il timeout.
+    if not _claim_ancora_valido(supabase, queue_id, worker_id):
+        logger.warning(
+            "[item=%d] claim non più valido prima dell'auto-classificazione — abort "
+            "(righe già salvate, le classificherà il worker che detiene il claim)",
+            queue_id,
+        )
+        return ItemResult(
+            queue_id=queue_id, event_id=event_id, status="skip",
+            righe=result.get("righe", 0),
+            error="claim perso: item riclamato da un altro worker",
+        )
 
     # Auto-classificazione post-salvataggio: stesso comportamento atteso del flusso manuale.
     try:
@@ -1003,9 +1062,10 @@ def run_cycle() -> CycleStats:
             _done=job_done,
             _res=job_result,
             _exc=job_exc,
+            _worker_id=worker_id,
         ) -> None:
             try:
-                _res[0] = _process_item(_supabase, _item)
+                _res[0] = _process_item(_supabase, _item, worker_id=_worker_id)
             except Exception as e:
                 _exc[0] = e
             finally:

@@ -1413,20 +1413,54 @@ def admin_qualita_memoria_update(
 ):
     from datetime import datetime, timezone
     from config.constants import TUTTE_LE_CATEGORIE
+    from services.ai_service import _propaga_global_override_a_fatture_storiche
+    from utils.text_utils import get_descrizione_normalizzata_e_originale
 
     sb = get_supabase_client()
+
+    prev_resp = sb.table("prodotti_master").select("descrizione,categoria").eq("id", prod_id).limit(1).execute()
+    if not prev_resp.data:
+        raise HTTPException(status_code=404, detail="Record memoria globale non trovato")
+    prev = prev_resp.data[0]
+
     update: dict = {"ultima_modifica": datetime.now(timezone.utc).isoformat()}
+    categoria_cambiata = False
     if body.categoria is not None:
         _categorie_valide = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE"}
         if body.categoria not in _categorie_valide:
             raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
         update["categoria"] = body.categoria
         update["verified"] = True
+        categoria_cambiata = body.categoria != prev.get("categoria")
     if body.verified is not None:
         update["verified"] = body.verified
+
+    # La scrittura resta ancorata a prod_id: passare per
+    # salva_correzione_in_memoria_globale qui sarebbe sbagliato, perché quella cerca
+    # il record per descrizione NORMALIZZATA e in prodotti_master convivono varianti
+    # non normalizzate (es. '(I)100 COP EST. X DW 280CC' e '( )COP EST X DW 280CC'):
+    # aggiornerebbe un altro record, o ne creerebbe un duplicato, lasciando intatto
+    # quello che l'admin ha davvero scelto.
     sb.table("prodotti_master").update(update).eq("id", prod_id).execute()
-    logger.info("admin_memoria_update: id=%s | admin=%s", prod_id, admin_user.get("email"))
-    return {"ok": True}
+
+    # Propagazione alle fatture storiche solo se la categoria è davvero cambiata.
+    # Va dopo l'update e con lo stato finale di verified già scritto, così non può
+    # restare una propagazione di massa fatta su una correzione poi marcata non verificata.
+    righe_propagate = 0
+    if categoria_cambiata:
+        try:
+            desc_normalized, _ = get_descrizione_normalizzata_e_originale(prev.get("descrizione") or "")
+            righe_propagate = _propaga_global_override_a_fatture_storiche(
+                desc_normalized, body.categoria, sb,
+            )
+        except Exception as prop_err:
+            logger.warning("admin_memoria_update: propagazione fallita per id=%s: %s", prod_id, prop_err)
+
+    logger.info(
+        "admin_memoria_update: id=%s | categoria_cambiata=%s | righe_propagate=%d | admin=%s",
+        prod_id, categoria_cambiata, righe_propagate, admin_user.get("email"),
+    )
+    return {"ok": True, "righe_propagate": righe_propagate}
 
 
 @router.delete("/api/admin/qualita-ai/memoria/{prod_id}", tags=["Admin"])
@@ -1513,6 +1547,7 @@ class RisolviConflittoBody(BaseModel):
 @router.post("/api/admin/qualita-ai/conflitti/risolvi", tags=["Admin"])
 def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user: dict = Depends(_verify_admin)):
     from datetime import datetime, timezone
+    from services.ai_service import salva_correzione_in_memoria_globale
     sb = get_supabase_client()
     now = datetime.now(timezone.utc).isoformat()
 
@@ -1522,13 +1557,19 @@ def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user: dict
     local = local_resp.data[0]
 
     if body.azione == "promuovi":
-        sb.table("prodotti_master").upsert({
-            "descrizione": local["descrizione"],
-            "categoria": local["categoria"],
-            "verified": True,
-            "classificato_da": f"admin:{admin_user.get('email', 'admin')}",
-            "ultima_modifica": now,
-        }, on_conflict="descrizione").execute()
+        glb_resp = (
+            sb.table("prodotti_master").select("categoria")
+            .eq("descrizione", local["descrizione"]).limit(1).execute()
+        )
+        vecchia = (glb_resp.data or [{}])[0].get("categoria") or ""
+        salva_correzione_in_memoria_globale(
+            descrizione=local["descrizione"],
+            vecchia_categoria=vecchia,
+            nuova_categoria=local["categoria"],
+            user_email=admin_user.get("email", "admin"),
+            supabase_client=sb,
+            is_admin=True,
+        )
     else:
         sb.table("prodotti_utente").update({
             "classificato_da": "eccezione locale accettata",

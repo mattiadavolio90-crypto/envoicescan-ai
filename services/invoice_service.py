@@ -65,6 +65,10 @@ from config.logger_setup import get_logger
 from config.constants import MAX_FILE_SIZE_P7M, VISION_DAILY_LIMIT, CATEGORIE_FOOD_BEVERAGE, FORNITORI_NEEDS_REVIEW_SEMPRE
 logger = get_logger('invoice')
 
+# Cap righe per singola fattura: previene payload enormi verso Supabase e limita
+# l'esposizione alla scrittura parziale (l'upsert va a chunk, senza transazione unica).
+_MAX_RIGHE_PER_FATTURA = 2000
+
 
 def _to_float_safe(value: Any, default: Optional[float] = None) -> Optional[float]:
     """Converte valori numerici XML/DB in float gestendo virgola decimale.
@@ -1207,7 +1211,14 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     # Usa NumeroLinea reale dall'XML (non idx enumerate) perché
                     # alcuni fornitori (es. PARTESA) numerano le righe come 10, 20, 30...
                     # e RiferimentoNumeroLinea nel DatiDDT fa riferimento a quei valori.
-                    _num_linea_xml = int(riga.get('NumeroLinea') or 0)
+                    # Stesso rischio di CodiceArticolo sopra: su XML malformato
+                    # NumeroLinea può non essere scalare/numerico. Degradare a 0 costa
+                    # al massimo la data di consegna della riga; lasciar risalire
+                    # l'eccezione farebbe scartare l'intera riga dal totale documento.
+                    try:
+                        _num_linea_xml = int(riga.get('NumeroLinea') or 0)
+                    except (TypeError, ValueError):
+                        _num_linea_xml = 0
                     _riga_data_consegna = _ddt_date_map.get(_num_linea_xml) or _ddt_date_map.get(idx)
                     # 2) Fallback: data globale DDT (senza RiferimentoNumeroLinea)
                     if not _riga_data_consegna and _ddt_global_date:
@@ -1801,12 +1812,29 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             _ui_msg("info", "💡 Contatta l'assistenza per completare la configurazione del tuo account.")
         return {"success": False, "error": "missing_ristorante_id", "righe": 0, "location": None}
     
+    # Cap righe per documento: l'upsert avviene a chunk di 500 senza transazione
+    # complessiva, quindi un fallimento a metà lascerebbe la fattura scritta a metà.
+    # Limitare il volume riduce la finestra in cui questo può succedere.
+    if len(dati_prodotti) > _MAX_RIGHE_PER_FATTURA:
+        logger.warning(
+            "⚠️ %s: %d righe eccedono il limite di %d — troncate.",
+            nome_file, len(dati_prodotti), _MAX_RIGHE_PER_FATTURA,
+        )
+        if not silent:
+            _ui_msg(
+                "warning",
+                f"⚠️ {nome_file}: {len(dati_prodotti)} righe superano il limite di "
+                f"{_MAX_RIGHE_PER_FATTURA}. Salvate le prime {_MAX_RIGHE_PER_FATTURA}.",
+            )
+        dati_prodotti = dati_prodotti[:_MAX_RIGHE_PER_FATTURA]
+
     num_righe = len(dati_prodotti)
-    
+    _righe_scritte = 0
+
     # Ottieni client singleton se non fornito
     if supabase_client is None:
         supabase_client = get_supabase_client()
-    
+
     # Salvataggio Supabase
     if supabase_client is not None:
         try:
@@ -1905,6 +1933,9 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 )
                 if _resp.data:
                     inserted_rows.extend(_resp.data)
+                # Traccia il progresso fuori dal try: se un chunk successivo fallisce,
+                # l'except deve poter loggare quante righe sono davvero già nel DB.
+                _righe_scritte += len(_chunk)
 
             # Re-upload con MENO righe della versione precedente (es. fattura corretta):
             # le righe ATTIVE di questo file con numero_riga non più presente vanno rimosse,
@@ -2092,16 +2123,27 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     user_email = st.session_state.user_data.get("email", "unknown")
                 except Exception:
                     user_email = "worker"
+                # Se alcuni chunk erano già passati, la fattura è scritta a metà:
+                # dirlo esplicitamente invece di loggare rows_saved=0, che sottostima
+                # il danno e fa credere che il DB sia rimasto pulito.
+                _parziale = _righe_scritte > 0
+                _details = {
+                    "source": event_source,
+                    "ristorante_id": ristorante_id,
+                    "exception_type": type(e).__name__,
+                }
+                if _parziale:
+                    _details["partial_write"] = True
                 log_upload_event(
                     user_id=user_id,
                     user_email=user_email,
                     file_name=nome_file,
-                    status="FAILED",
+                    status="SAVED_PARTIAL" if _parziale else "FAILED",
                     rows_parsed=num_righe,
-                    rows_saved=0,
+                    rows_saved=_righe_scritte,
                     error_stage="SUPABASE_INSERT",
                     error_message=str(e)[:500],
-                    details={"source": event_source, "ristorante_id": ristorante_id, "exception_type": type(e).__name__},
+                    details=_details,
                     supabase_client=supabase_client,
                     ristorante_id=ristorante_id,
                 )
