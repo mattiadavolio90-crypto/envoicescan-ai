@@ -10835,6 +10835,80 @@
         }
       }
     },
+    "/api/workspace/personale/copia-mese": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Personale Copia Mese",
+        "description": "Copia turni e assenze del mese precedente sul mese [body.mese], allineando\nper giorno della settimana (lunedì->lunedì...domenica->domenica) anziché per\nnumero del giorno. Se il mese sorgente ha più occorrenze di un giorno della\nsettimana di quello destinazione, l'eccesso mappa sull'ultima occorrenza\ndisponibile in destinazione (clamp). Salta i giorni già occupati in\ndestinazione (no duplicati), stesso meccanismo di copia-settimana.",
+        "operationId": "ws_personale_copia_mese_api_workspace_personale_copia_mese_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopiaMeseBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/personale/mensile": {
       "post": {
         "tags": [
@@ -20275,6 +20349,27 @@
           "label"
         ],
         "title": "CopertiMese"
+      },
+      "CopiaMeseBody": {
+        "properties": {
+          "mese": {
+            "type": "string",
+            "title": "Mese"
+          },
+          "dipendente_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dipendente Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mese",
+          "dipendente_ids"
+        ],
+        "title": "CopiaMeseBody"
       },
       "CopiaSettimanaBody": {
         "properties": {

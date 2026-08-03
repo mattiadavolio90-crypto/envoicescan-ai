@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CalendarDays, Users, UserMinus } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CalendarDays, Users, UserMinus, CalendarSync } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1192,6 +1192,86 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
   );
 }
 
+// ─── Copia mese precedente ─────────────────────────────────────────────────────
+
+interface CopiaMeseDialogProps {
+  open: boolean;
+  mese: string;
+  dipendenti: Dipendente[];
+  onClose: () => void;
+  onCopiato: () => void;
+}
+
+export function CopiaMeseDialog({ open, mese, dipendenti, onClose, onCopiato }: CopiaMeseDialogProps) {
+  const [selezionati, setSelezionati] = useState<Set<string>>(new Set());
+  const [copiando, setCopiando] = useState(false);
+
+  useEffect(() => { if (open) setSelezionati(new Set()); }, [open]);
+
+  function toggle(id: string) {
+    setSelezionati(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function copia() {
+    if (selezionati.size === 0) return;
+    setCopiando(true);
+    try {
+      const res = await fetch("/api/workspace/personale/copia-mese", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mese, dipendente_ids: [...selezionati] }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail ?? j.error ?? "Errore copia");
+      toast.success(`${j.n_copiati} turni copiati, ${j.n_saltati} saltati (già presenti)`);
+      onClose();
+      onCopiato();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore copia mese");
+    } finally {
+      setCopiando(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Copia mese precedente</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Copia turni e assenze del mese scorso su {fmtMese(mese)}, allineando per giorno della settimana. I giorni già occupati vengono saltati.
+        </p>
+        <div className="space-y-1.5 max-h-[40dvh] overflow-y-auto">
+          {dipendenti.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nessun dipendente disponibile.</p>
+          ) : dipendenti.map(d => (
+            <label key={d.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-muted cursor-pointer text-sm">
+              <input
+                type="checkbox"
+                checked={selezionati.has(d.id)}
+                onChange={() => toggle(d.id)}
+                className="size-4"
+              />
+              {d.nome}
+            </label>
+          ))}
+        </div>
+        <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
+          <Button variant="outline" onClick={onClose}>Annulla</Button>
+          <Button onClick={copia} disabled={selezionati.size === 0 || copiando}>
+            {copiando ? "Copio…" : "Copia"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Tab principale ───────────────────────────────────────────────────────────
 
 // Niente modalità: turni giornalieri e totali da busta paga convivono nello
@@ -1214,6 +1294,7 @@ export function PersonaleTab() {
   const [mensileDialogOpen, setMensileDialogOpen] = useState(false);
   const [editMensile, setEditMensile] = useState<Turno | null>(null);
   const [gestioneDipOpen, setGestioneDipOpen] = useState(false);
+  const [copiaMeseOpen, setCopiaMeseOpen] = useState(false);
 
   const [da, fine] = (() => {
     const [ay, am] = meseBase.split("-").map(Number);
@@ -1296,68 +1377,6 @@ export function PersonaleTab() {
     } finally {
       setEsportandoExcel(false);
     }
-  }
-
-  function esportaCSV() {
-    if (!risposta || risposta.turni.length === 0) return;
-    const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
-    const headers = ["Nome", "Tipo", "Data", "Inizio 1", "Fine 1", "Inizio 2", "Fine 2", "Ore totali", "Di cui extra", "Costo orario", "Costo", "Note"];
-    const rows = risposta.turni.map(t => {
-      const nome = nomePerId[t.dipendente_id] ?? "";
-      const tipo = (t.tipo_giorno ?? "turno") as TipoGiorno;
-      // Riga da busta paga: niente orari né tariffa oraria, il costo è il lordo.
-      if (t.mensile) {
-        const ore = calcolaOreTotali(t);
-        return [
-          nome, "Busta paga", fmtMese(t.data_turno.slice(0, 7)), "", "", "", "",
-          num(ore),
-          t.ore_extra ? num(t.ore_extra) : "",
-          "",
-          (t.lordo_mensile ?? 0) > 0 ? num(t.lordo_mensile!) : "",
-          t.note ?? "",
-        ];
-      }
-      // Assenza: nessuna ora lavorata, eventuale importo a carico come costo.
-      if (tipo !== "turno") {
-        return [
-          nome, TIPO_GIORNO_LABEL[tipo], fmtData(t.data_turno), "", "", "", "",
-          "", "", "",
-          (t.importo_a_carico ?? 0) > 0 ? num(t.importo_a_carico!) : "",
-          t.note ?? "",
-        ];
-      }
-      const ore = calcolaOreTotali(t);
-      const co = t.costo_orario ?? null;
-      return [
-        nome, "Turno",
-        fmtData(t.data_turno),
-        fmtOra(t.ora_inizio),
-        fmtOra(t.ora_fine),
-        fmtOra(t.ora_inizio2),
-        fmtOra(t.ora_fine2),
-        num(ore),
-        t.ore_extra ? num(t.ore_extra) : "",
-        co != null ? num(co) : "",
-        co != null ? num(calcolaCostoTurno(t)) : "",
-        t.note ?? "",
-      ];
-    });
-    // Totale dai turni fusi, non da monte_ore (che è della sola fetch
-    // giornaliera): altrimenti la riga TOTALE non quadra con le sue righe.
-    rows.push([]);
-    rows.push(["TOTALE", "", "", "", "", "", "", num(totaleOre), num(oreExtTotale), "", costoTotale > 0 ? num(costoTotale) : "", ""]);
-
-    const csv = [headers, ...rows]
-      .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
-      .join("\r\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `turni_${da}_${fine}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("CSV scaricato — aprilo con Excel");
   }
 
   const turni = risposta?.turni ?? [];
@@ -1485,11 +1504,9 @@ export function PersonaleTab() {
             <Users className="size-4 mr-1.5" />Gestisci dipendenti
           </Button>
 
-          {turni.length > 0 && (
-            <Button variant="outline" onClick={esportaCSV}>
-              <Download className="size-4 mr-1.5" />CSV
-            </Button>
-          )}
+          <Button variant="outline" onClick={() => setCopiaMeseOpen(true)}>
+            <CalendarSync className="size-4 mr-1.5" />Copia mese prec.
+          </Button>
 
           <Button variant="outline" onClick={esportaExcel} disabled={esportandoExcel}>
             <Download className="size-4 mr-1.5" />{esportandoExcel ? "Esporto…" : "Excel"}
@@ -1765,6 +1782,14 @@ export function PersonaleTab() {
         open={gestioneDipOpen}
         onClose={() => setGestioneDipOpen(false)}
         onCambiato={() => load(da, fine)}
+      />
+
+      <CopiaMeseDialog
+        open={copiaMeseOpen}
+        mese={meseBase}
+        dipendenti={dipendenti}
+        onClose={() => setCopiaMeseOpen(false)}
+        onCopiato={() => load(da, fine)}
       />
     </div>
   );

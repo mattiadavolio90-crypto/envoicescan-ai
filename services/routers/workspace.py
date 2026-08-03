@@ -1088,6 +1088,11 @@ class CopiaSettimanaBody(BaseModel):
     a: str           # domenica settimana destinazione YYYY-MM-DD
 
 
+class CopiaMeseBody(BaseModel):
+    mese: str                 # YYYY-MM, mese DESTINAZIONE
+    dipendente_ids: List[str]  # sottoinsieme selezionato in UI, non vuoto
+
+
 _TIPI_GIORNO = {"turno", "riposo", "ferie", "malattia"}
 _TIPI_GIORNO_CON_IMPORTO = {"ferie", "malattia"}
 
@@ -1521,6 +1526,112 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
         for campo in ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario", "costo_orario_extra", "note"):
             if t.get(campo) is not None:
                 riga[campo] = t[campo]
+        nuovi.append(riga)
+
+    if nuovi:
+        sb.table("turni_personale").insert(nuovi).execute()
+    return {"ok": True, "n_copiati": len(nuovi), "n_saltati": n_saltati}
+
+
+@router.post("/api/workspace/personale/copia-mese", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_personale_copia_mese(body: CopiaMeseBody, authorization: Optional[str] = Header(None)):
+    """Copia turni e assenze del mese precedente sul mese [body.mese], allineando
+    per giorno della settimana (lunedì->lunedì...domenica->domenica) anziché per
+    numero del giorno. Se il mese sorgente ha più occorrenze di un giorno della
+    settimana di quello destinazione, l'eccesso mappa sull'ultima occorrenza
+    disponibile in destinazione (clamp). Salta i giorni già occupati in
+    destinazione (no duplicati), stesso meccanismo di copia-settimana."""
+    from datetime import datetime as _dt, date as _date
+
+    if not body.dipendente_ids:
+        raise HTTPException(status_code=400, detail="Nessun dipendente selezionato")
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    dest_da, dest_a = _mese_bounds(body.mese)
+    anno, mo = (int(x) for x in body.mese.split("-"))
+    prev_anno, prev_mo = (anno - 1, 12) if mo == 1 else (anno, mo - 1)
+    mese_sorgente = f"{prev_anno:04d}-{prev_mo:02d}"
+    src_da, src_a = _mese_bounds(mese_sorgente)
+
+    sorgente = (
+        sb.table("turni_personale").select("*")
+        .eq("ristorante_id", ristorante_id)
+        .eq("mensile", False)
+        .in_("dipendente_id", body.dipendente_ids)
+        .gte("data_turno", src_da).lte("data_turno", src_a)
+        .execute()
+    ).data or []
+    if not sorgente:
+        return {"ok": True, "n_copiati": 0, "n_saltati": 0, "messaggio": "Nessun turno nel mese precedente"}
+
+    # Occorrenze del mese destinazione per giorno della settimana, in ordine crescente.
+    giorni_dest_per_weekday: dict[int, list[str]] = {i: [] for i in range(7)}
+    d = _dt.strptime(dest_da, "%Y-%m-%d").date()
+    fine_dest = _dt.strptime(dest_a, "%Y-%m-%d").date()
+    while d <= fine_dest:
+        giorni_dest_per_weekday[d.weekday()].append(d.isoformat())
+        d = _date.fromordinal(d.toordinal() + 1)
+
+    esistenti = (
+        sb.table("turni_personale").select("dipendente_id, data_turno")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_turno", dest_da).lte("data_turno", dest_a)
+        .execute()
+    ).data or []
+    giorni_pieni = {(r["dipendente_id"], r["data_turno"]) for r in esistenti}
+
+    # Indice di occorrenza per (dipendente, weekday), calcolato processando le
+    # righe sorgente in ordine di data crescente cosi' la i-esima occorrenza
+    # sorgente si allinea alla i-esima occorrenza destinazione.
+    sorgente_ordinata = sorted(sorgente, key=lambda t: t["data_turno"])
+    contatore: dict[tuple[str, int], int] = {}
+
+    nuovi = []
+    n_saltati = 0
+    for t in sorgente_ordinata:
+        data_src = _dt.strptime(t["data_turno"], "%Y-%m-%d").date()
+        weekday = data_src.weekday()
+        chiave = (t["dipendente_id"], weekday)
+        idx = contatore.get(chiave, 0)
+        contatore[chiave] = idx + 1
+
+        occorrenze_dest = giorni_dest_per_weekday[weekday]
+        if not occorrenze_dest:
+            n_saltati += 1
+            continue
+        idx_clampato = min(idx, len(occorrenze_dest) - 1)
+        nuova_data = occorrenze_dest[idx_clampato]
+
+        if (t["dipendente_id"], nuova_data) in giorni_pieni:
+            n_saltati += 1
+            continue
+        giorni_pieni.add((t["dipendente_id"], nuova_data))
+
+        riga = {
+            "ristorante_id": ristorante_id,
+            "user_id": user_id,
+            "dipendente_id": t["dipendente_id"],
+            "data_turno": nuova_data,
+        }
+        tipo_giorno = t.get("tipo_giorno") or "turno"
+        if tipo_giorno != "turno":
+            riga["tipo_giorno"] = tipo_giorno
+            if t.get("importo_a_carico") is not None:
+                riga["importo_a_carico"] = t["importo_a_carico"]
+            if t.get("note"):
+                riga["note"] = t["note"]
+        else:
+            riga["ora_inizio"] = t["ora_inizio"]
+            riga["ora_fine"] = t["ora_fine"]
+            for campo in ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario", "costo_orario_extra", "note"):
+                if t.get(campo) is not None:
+                    riga[campo] = t[campo]
         nuovi.append(riga)
 
     if nuovi:
