@@ -29,6 +29,20 @@ Su una feature piccola — la maggioranza — una sessione sola con plan mode co
 **meno** di due sessioni, perché ogni sessione nuova ri-legge `CLAUDE.md`, le
 memorie e ri-esplora il codice (cold start). Non spezzare per abitudine.
 
+**Come decidere, in pratica** (criterio per chi apre la sessione, non per chi
+esegue): appena il piano è scritto, guarda quante fasi ha.
+- **1-2 fasi piccole, finibili in un pomeriggio** → una sessione sola, plan
+  mode, si va dritti fino in fondo. Aprire una seconda sessione qui non fa
+  risparmiare token, ne fa spendere di più (ogni sessione nuova riparte da
+  zero).
+- **3+ fasi, o lavoro che dura più giorni** → il ciclo a più sessioni ha
+  senso: `docs/piani/PIANO_<feature>.md` (§2) come documento che porta lo
+  stato da una sessione all'altra, e a fine sessione il prompt di ripresa +
+  suggerimento del modello per la fase successiva (§3).
+
+Il ciclo a più sessioni **non è il default per ogni richiesta** — è lo
+strumento giusto solo quando la dimensione del lavoro lo giustifica davvero.
+
 ---
 
 ## 2. Il file di piano: solo per lavori lunghi, uno per feature
@@ -170,3 +184,52 @@ questo la regola è comportamentale (in questo file, sempre in contesto),
 rinforzata da uno script che rende il controllo meccanico e verificabile
 invece che "a sensazione". Puoi anche lanciarlo tu in qualunque momento per
 un controllo generale, indipendente da un lavoro specifico.
+
+---
+
+## 7. Come si conduce un ciclo di audit
+
+Il **metodo** vive qui (persiste anche quando un ciclo si chiude e il suo
+documento va in `docs/storico/`). Lo **stato di un ciclo specifico** (quali
+dimensioni sono verdi, con che esito, cosa resta aperto) vive nel documento
+del ciclo — oggi `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md`. Non
+duplicare: se una regola di processo finisce scritta solo dentro il documento
+di stato, sparisce col documento quando viene archiviato.
+
+**Profondità minima per dimensione**: una passata read-only (agente
+`oneflux-audit` o manuale) + una sessione di remediation. **Se la remediation
+scrive codice, `code-reviewer` sul diff cumulativo prima di considerare la
+dimensione chiusa** — non opzionale. Nel ciclo 2026-07, ogni volta che è
+girato ha trovato un difetto reale che i test verdi non vedevano (cache non
+invalidata, un'invalidazione che rompeva se stessa, uno streak azzerato da un
+fallback finto): non è stato un caso, il pattern si è ripetuto su ogni singola
+passata in cui è stato usato.
+
+**Riverifica i numeri con un metodo diverso da quello che li ha prodotti**
+prima di fidartene — sia il perimetro dichiarato ("~5000 righe" può essere
+1/3 del vero), sia il conteggio di un finding ("39 route" può mancarne 9), sia
+la gravità (un HIGH può essere un MEDIUM se il dato che lo aggraverebbe non è
+mai raggiungibile in produzione, e viceversa). Un numero preso per buono
+dall'agente che l'ha prodotto non è verificato, è solo scritto.
+
+**Una dimensione non è chiusa solo perché non ha errori nei findings
+elencati**: se il perimetro dichiarato non copre tutto il codice della
+dimensione (es. metà di un file grande mai letta), la dimensione resta 🟡 o
+va segnalato il gap esplicitamente — non arrotondare a 🟢 un perimetro
+parziale.
+
+**Il documento di stato si aggiorna una sessione alla volta**, mai in
+parallelo (due sessioni sullo stesso file si sovrascrivono senza avviso), e
+ogni sessione scrive **solo** la propria riga/dimensione con l'esito reale
+verificato in quella sessione — non ricostruire a memoria l'esito di una
+sessione altrui.
+
+**Buchi di copertura test scoperti durante un audit non si chiudono in coda
+alla stessa sessione**: si dichiarano nel documento come lavoro a sé (sono
+scrittura, non audit) e si pianificano come sessione propria.
+
+**Un ciclo si dichiara chiuso solo a copertura completa del perimetro**, non
+alla prima passata verde su ogni dimensione: se anche solo alcune dimensioni
+hanno avuto una sola passata senza `code-reviewer`, il ciclo resta aperto
+finché non ricevono lo stesso scrutinio delle altre. Vedi
+`AUDIT_ONEFLUX_STATO_2026-07.md` per l'obiettivo di copertura corrente.

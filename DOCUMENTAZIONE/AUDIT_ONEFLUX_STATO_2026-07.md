@@ -93,17 +93,98 @@ A fine di ogni passata (agente `oneflux-audit` o manuale):
 4. Se l'audit apre il caso per un'altra dimensione (come Edge Functions →
    Database il 30/7), annotalo nella colonna Note della dimensione aperta
 
-## Prossima sessione: `upload_handler.py` (ciclo 2026-07 chiuso, 10/10 🟢)
+## Obiettivo dichiarato: chiudere il ciclo con copertura 100% del perimetro
 
-> Sezione viva: la sessione che prende in carico questa consegna la riscrive con
-> la propria per la dimensione successiva, non la lascia stagnare qui.
+> Deciso il 4/8/2026 con Mattia: questo documento non si dichiara "ciclo chiuso"
+> finché non restano zero gap. Due traguardi distinti, da non confondere:
+>
+> 1. **100% di perimetro auditato** — ogni file/router del progetto letto almeno
+>    una volta, e ogni dimensione con la stessa profondità delle altre (più
+>    passate, `code-reviewer` sul diff). Traguardo secco, raggiungibile, va
+>    tenuto com'è.
+> 2. **Coverage dei test alzata sensibilmente sui punti critici** — non un
+>    100% letterale: nemmeno il file più difeso del progetto
+>    (`margine_service.py`) è oltre l'85-86%, e file di parsing pesante come
+>    `upload_handler.py` non raggiungeranno mai un 100% senza test fragili e
+>    contro-producenti. L'obiettivo reale è che ogni punto critico (regole di
+>    dominio, percorsi che scrivono sul DB, calcolo del MOL) abbia una rete
+>    verificata per mutazione — non un numero.
+>
+> Le prossime sessioni chiudono i gap **uno alla volta**, aggiornano la propria
+> riga/voce con l'esito reale, e depennano la voce qui sotto (mai cancellarla in
+> silenzio: si barra e si lascia la data di chiusura, come già fatto per
+> `upload_handler.py` sopra). Il documento resta questo — nessun file nuovo.
 
-**Stato al 4/8/2026**: **10/10 dimensioni 🟢**. Performance è stata chiusa in due
+## Prossima sessione (ciclo 2026-07 aperto: 10/10 chiuse, 3 da riverificare)
+
+> Sezione viva: la sessione che prende in carico una consegna la riscrive con
+> l'esito reale e la barra, non la lascia stagnare qui.
+
+**Stato al 4/8/2026**: **10/10 dimensioni 🟢**, ma **non tutte con lo stesso
+scrutinio** (vedi "Nota metodologica" sopra). Performance è stata chiusa in due
 passate di remediation: i **HIGH il 3/8 sera** (deployati, PR #2 → `3215c06`) e i
 **MEDIUM il 4/8** (dettaglio nella riga 5). **Nessun finding aperto** su nessuna
-dimensione: quello che resta sono **gap di lettura dichiarati** — perimetro mai
-auditato, non difetti noti — e **buchi di copertura test**, che sono lavoro di
-scrittura, non di audit.
+dimensione: quello che resta sono (a) **tre dimensioni chiuse con una sola
+passata e mai riverificate**, (b) **gap di lettura dichiarati** — perimetro mai
+auditato, non difetti noti — e (c) **buchi di copertura test**, che sono lavoro
+di scrittura, non di audit.
+
+### A. Seconda passata sulle 3 dimensioni rimaste indietro
+
+Non sono un sospetto — sono un fatto strutturale: il `code-reviewer` sul diff è
+stato integrato solo a partire da Architettura (2/8) e Bug/Performance/Test
+(3/8). Da allora ha trovato un difetto reale **6 passate su 6** (cache non
+invalidata in Security, streak azzerato in Bug — due volte, l'invalidazione che
+rompeva se stessa in Performance, 2 residui in Architettura). Queste tre non
+hanno mai avuto quella seconda rete, né una riverifica dei numeri dichiarati con
+un metodo diverso (lezione 31) come fatto altrove (Bug: perimetro 5000→17.000
+righe; Performance: "39 route"→47):
+
+1. **Edge Functions** (30/7, riga 2) — 11 findings CRITICAL+HIGH fixati in
+   un'unica sessione, mai un secondo giro né `code-reviewer`. È la dimensione da
+   cui sono nati 2 HIGH poi confluiti in Database: segno che il perimetro tocca
+   punti delicati (integrità coda).
+2. **AI** (5/7, riga 4, agente Fable) — 2 HIGH + 4 MED + 4 LOW dichiarati
+   deployati in una riga sola, nessun dettaglio su perimetro letto o findings
+   riverificati. Massimo impatto di dominio (categorizzazione, prompt, memoria
+   AI) fra le tre, mai più riaperta in due mesi.
+3. **Qualità/UI** (19/6, riga 6) — la più corta in assoluto ("filtro mese
+   uniformato, sky-* → primary"). Probabilmente il rischio sostanziale più
+   basso delle tre (CSS/coerenza visiva), ma comunque mai riverificata.
+
+Ordine consigliato: Edge Functions prima (rischio più alto), poi AI, poi
+Qualità/UI. Ognuna riscrive la propria riga con data/esito reale al posto di
+quella attuale, non aggiunge una riga parallela.
+
+### B. Perimetro mai letto (gap dichiarati, raccolti qui da 5 righe diverse)
+
+Codice che nessun audit ha mai attraversato — non "controllato e giudicato a
+basso rischio", proprio mai letto. Rischio ignoto per definizione, priorità alta
+quanto il punto A:
+
+- **Mobile `/m`** (3941 righe) — zero file letti da nessuna passata.
+- **`admin.py`** — letto ~15% (Security passata 3 + Bug).
+- **`services/ai_service.py:3392,3453`** (memoria AI) e **`:3579-3990`**
+  (trasformazioni pure di categoria) — ultimo sito plausibile della classe
+  troncamenti mai verificato; se troncata, più chiamate GPT a pagamento.
+- **`services/routers/gruppo.py`** — letto solo in parte, priorità alta perché
+  in catena il cap PostgREST si applica a `.in_()` multi-sede (scatta prima).
+- **`services/routers/riparto.py`**, **`services/routers/fatture.py`** —
+  nominati nel perimetro di due passate diverse (Bug, Database), mai letti in
+  nessuna delle due.
+- **`ricavi.py`**, **`email_queue_processor.py`** — mai nominati come letti in
+  nessuna riga della tabella.
+
+### C. Buchi di copertura test (scrittura, non audit — vedi §Test sotto)
+
+- **`upload_handler.py`**: resto del file dopo la chiusura del 4/8 — 909
+  statement ancora scoperti (parsing XML/P7M, dedup, orchestrazione AI a chunk).
+  Il buco di copertura più grande del progetto in termini assoluti.
+- **`worker/run.py`**: 0%, mai importato dalla suite.
+- **`riparto.py`**: 7 endpoint su 11 senza alcun test.
+- **`verify_and_migrate_password`**: il ramo SHA256 legacy + migrazione
+  automatica (`auth_service.py:666-685`, riscrive `password_hash` sul DB) resta
+  scoperto.
 
 **Cosa è già stato fatto (non rifarlo).** *Passata HIGH (3/8, in produzione):*
 paginazione dei 12 siti realmente esposti al cap PostgREST via
@@ -118,45 +199,34 @@ paginazione a 100 in `variazioni-tab.tsx`; `next/dynamic` sulle 3 `page.tsx` che
 caricano recharts. Suite **10.248 verde**, drift OpenAPI OK, `tsc` e `next build`
 puliti.
 
-**Consegna per la prossima sessione — in ordine di valore:**
+**`upload_handler.py` (punti della remediation Performance): CHIUSA il
+4/8/2026.** Ricontato con metodo diverso (coverage mirata sui 4 file di test che
+toccano il modulo, non fidandosi del numero scritto qui): 11% confermato (1108
+statement, 972 missed) — ma "ZERO righe di test" era la frase imprecisa,
+esisteva già `test_upload_handler_pure.py` (97 righe, 3 funzioni pure). La
+sostanza reggeva: i due punti toccati dalla remediation HIGH (`:517`, `:845`,
+`response = query.execute()` → `rows = fetch_all(query)`) erano davvero
+scoperti. Aggiunto `tests/test_upload_handler_pagination.py` (9 test, riuso del
+pattern `FakePostgrest` già esistente in
+`test_paginazione_e_cache_audit_performance.py`) su
+`_collect_post_upload_quality_checks` e `_run_post_upload_ai_categorization`,
+incluso il ramo multi-sede. **Verificato per mutazione**. Coverage del file
+11% → 16% (972 → 909 statement mancanti); il resto del file resta nel punto C
+qui sopra, non richiuso ora per scelta.
 
-1. ~~**`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.**~~
-   **CHIUSA il 4/8/2026.** Ricontato con metodo diverso (coverage mirata sui 4
-   file di test che toccano il modulo, non fidandosi del numero scritto qui):
-   11% confermato (1108 statement, 972 missed) — ma "ZERO righe di test" era
-   la frase imprecisa, esisteva già `test_upload_handler_pure.py` (97 righe,
-   3 funzioni pure). La sostanza reggeva: i due punti toccati dalla remediation
-   HIGH (`:517`, `:845`, `response = query.execute()` → `rows = fetch_all(query)`)
-   erano davvero scoperti. Aggiunto `tests/test_upload_handler_pagination.py`
-   (7 test, riuso del pattern `FakePostgrest` già esistente in
-   `test_paginazione_e_cache_audit_performance.py`) su
-   `_collect_post_upload_quality_checks` e `_run_post_upload_ai_categorization`:
-   verificano che con >1000 righe fake (troncamento PostgREST simulato) i
-   contatori (`rows_saved`, `zero_price_rows`, `needs_review_rows`,
-   `uncategorized_rows`, `rows_scanned`) vedano l'intero risultato, non solo la
-   prima pagina. **Verificato per mutazione**: ripristinato temporaneamente
-   `query.execute().data or []` al posto di `fetch_all(query)` su entrambi i
-   punti — i test relativi sono andati rossi (1000 invece di 1500), poi
-   ripristinato il fix reale (diff netto zero su `upload_handler.py`). Coverage
-   del file 11% → 16% (972 → 909 statement mancanti); resta un file grande
-   (2231 righe, parsing XML/P7M/PDF, dedup, orchestrazione AI a chunk) — non
-   portato al 100% per scelta, fuori scope di questa consegna che era
-   specificamente sui due punti della remediation Performance.
-2. **Cache per-processo vs `WORKER_WEB_CONCURRENCY=4`** — l'unico MEDIUM lasciato
-   aperto *per scelta*, non per dimenticanza: `clear_fatture_cache()` invalida
-   **il processo che ha servito la richiesta**, non gli altri 3. Il TTL corto
-   (15s) accorcia la finestra, non la elimina. Risolverlo davvero vuol dire
-   invalidazione condivisa (colonna `cache_version`, già usata da
-   `documenti_service`) o una cache esterna: **infrastruttura nuova**, quindi va
-   deciso a mente fredda, non infilato in coda a una passata. Non abbassare
-   ancora i TTL: è la scorciatoia che sembra un fix e non lo è.
-3. **Zone mai lette** (gap dichiarati, non buchi scoperti dopo): `ricavi.py`,
-   `ai_service.py:3392,3453` (memoria AI troncata → più chiamate GPT a
-   pagamento: è l'ultimo sito plausibile della classe troncamenti che non ho
-   verificato), `admin.py` letto ~15%, **mobile `/m` mai letto**.
+**Cache per-processo vs `WORKER_WEB_CONCURRENCY=4`** — l'unico MEDIUM
+Performance lasciato aperto *per scelta*, non per dimenticanza:
+`clear_fatture_cache()` invalida **il processo che ha servito la richiesta**,
+non gli altri 3. Il TTL corto (15s) accorcia la finestra, non la elimina.
+Risolverlo davvero vuol dire invalidazione condivisa (colonna `cache_version`,
+già usata da `documenti_service`) o una cache esterna: **infrastruttura
+nuova**, quindi va deciso a mente fredda, non infilato in coda a una passata.
+Non abbassare ancora i TTL: è la scorciatoia che sembra un fix e non lo è.
 
 **Modello**: audit con `oneflux-audit` (Sonnet), remediation con Opus — e
-comunque solo dopo conferma esplicita di Mattia.
+comunque solo dopo conferma esplicita di Mattia. Per la seconda passata del
+punto A: stesso schema, Sonnet per l'audit read-only, `code-reviewer` sempre a
+fine sessione se si scrive codice.
 
 **Come riprodurre le misure** (perché un numero senza metodo non vale, lezione 19):
 `EXPLAIN (ANALYZE, BUFFERS)` via MCP Supabase sulla sede `fd7ac484…` (9.612
@@ -166,25 +236,12 @@ cronometrando le pagine da 1000 in sequenza. Per un fix di paginazione, la prova
 che conta è il **prima/dopo sullo stesso dato reale** (qui: le categorie viste
 dal filtro su 4 sedi), non il fatto che il codice ora chiami `.range()`.
 
-**Portarsi dietro dalla dimensione Test.** La riga 9 è 🟢: HIGH e MEDIUM/LOW sono
-tutti chiusi (`ae620b6` + `f1d9e82`). Quello che resta qui sotto **non sono
-residui della dimensione**, sono **buchi di copertura** — lavoro di scrittura
-test che nessun audit può fare in coda a sé stesso, e che va pianificato come
-sessione propria:
+**Buchi di copertura test — dettaglio oltre le 4 voci del punto C.** Riga 9
+(Test) è 🟢: HIGH e MEDIUM/LOW sono tutti chiusi (`ae620b6` + `f1d9e82`). Quello
+che resta **non sono residui della dimensione**, è lavoro di scrittura test che
+nessun audit può fare in coda a sé stesso, e va pianificato come sessione
+propria:
 
-- ~~`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.~~
-  **CHIUSA il 4/8/2026** — vedi dettaglio in cima a questa sezione. Coverage
-  16%, i due punti della remediation Performance ora difesi da test verificati
-  per mutazione. Il file resta comunque il buco di copertura più grande del
-  progetto in termini assoluti (909 statement ancora scoperti).
-- **`worker/run.py`: 0%.** Il queue-worker non viene mai importato dalla suite.
-- **`riparto.py`: 7 endpoint su 11 senza alcun test** (`riparto_da_fattura`,
-  `riparto_manuale`, `riparto_modifica`, `riparto_duplica`, `riparto_incoerenze`,
-  `gruppo_costi_comuni`, `costruisci_anteprima_righe`). Già segnalato come "mai
-  letto" da due audit precedenti: ora sappiamo che non è nemmeno testato.
-- **`verify_and_migrate_password`: coperto solo il ramo `$argon2`.** Il ramo
-  SHA256 legacy + migrazione automatica (`auth_service.py:666-685`) resta
-  scoperto, ed è quello che **riscrive `password_hash` sul DB**.
 - **Ripensare il mock globale del conftest** è il lavoro strutturale che
   sbloccherebbe i rami `except`: `openai`, `requests`, `argon2`, `xmltodict`,
   `supabase`, `tenacity` sono **tutti installati**, quindi il conftest sta
@@ -233,8 +290,10 @@ sessione propria:
   codice ora è corretto, ma la feature non è mai stata collaudata in produzione:
   accenderla è un collaudo, non un'ovvietà. 669 righe `needs_review` da smaltire.
 
-**Escludere**: Bug, Database, Edge Functions, Security, DevOps/Config,
-Architettura (chiuse e deployate — riaprirle solo se l'audit ci inciampa).
+**Escludere**: Bug, Database, Security, DevOps/Config, Architettura (chiuse,
+deployate, già con seconda passata/`code-reviewer` — riaprirle solo se l'audit
+ci inciampa). **Non escludere** Edge Functions e AI: sono nel punto A, unica
+passata mai riverificata.
 
 **Modello**: Sonnet regge l'audit read-only. Per la remediation vale §3 di
 `WORKFLOW.md` (default Opus, Sonnet è l'eccezione) — e comunque solo dopo
