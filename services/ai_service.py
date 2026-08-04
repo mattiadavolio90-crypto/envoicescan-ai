@@ -4194,6 +4194,8 @@ def _propaga_global_override_a_fatture_storiche(
            (la chiave su `prodotti_utente` può essere raw o normalizzata → controlliamo entrambe).
         2. Recupera le righe `fatture` candidate filtrando con ILIKE sui token più lunghi
            della desc_normalized per ridurre il volume (e poi confermando lato Python).
+           Se `nuova_categoria` è NOTE E DICITURE, esclude le righe con importo != 0
+           (guardrail dominio #2, stesso criterio di routers/admin.py:967-976).
         3. UPDATE batch delle righe non protette da override locale.
 
     Returns: numero di righe `fatture` aggiornate.
@@ -4235,10 +4237,19 @@ def _propaga_global_override_a_fatture_storiche(
         candidate_ids: list = []
         page_size = 1000
         page = 0
+        # Guardrail dominio #2: NOTE E DICITURE solo su righe a importo 0 (stesso
+        # criterio di routers/admin.py:967-976). Qui la propagazione tocca righe di
+        # TUTTI i clienti in un colpo solo, quindi il filtro è obbligatorio.
+        solo_importo_zero = nuova_categoria == "📝 NOTE E DICITURE"
+
+        def _importo(row: dict) -> float:
+            t = float(row.get('totale_riga') or 0)
+            return t if t != 0 else float(row.get('prezzo_unitario') or 0)
+
         while page < 50:  # safety cap a 50_000 righe scansionate
             q = (
                 supabase_client.table('fatture')
-                .select('id,user_id,descrizione,categoria')
+                .select('id,user_id,descrizione,categoria,totale_riga,prezzo_unitario')
                 .is_('deleted_at', 'null')
                 .neq('categoria', nuova_categoria)
             )
@@ -4259,6 +4270,8 @@ def _propaga_global_override_a_fatture_storiche(
             for row in chunk:
                 if row.get('user_id') in users_with_override:
                     continue
+                if solo_importo_zero and _importo(row) != 0:
+                    continue
                 d_raw = (row.get('descrizione') or '').strip()
                 if not d_raw:
                     continue
@@ -4276,14 +4289,20 @@ def _propaga_global_override_a_fatture_storiche(
             return 0
 
         # 3. UPDATE batch
+        # NB: 'fatture' non ha una colonna 'classificato_da' (esiste solo su
+        # prodotti_master/prodotti_utente) — usiamo reviewed_by/reviewed_at/needs_review,
+        # come fa già routers/admin.py:967-984 per lo stesso genere di scrittura.
+        now_iso = datetime.now(timezone.utc).isoformat()
         updated_total = 0
         for i in range(0, len(candidate_ids), 500):
             ids_chunk = candidate_ids[i:i + 500]
             try:
                 supabase_client.table('fatture').update({
                     'categoria': nuova_categoria,
-                    'classificato_da': 'admin-global-propagation',
-                }).in_('id', ids_chunk).execute()
+                    'needs_review': False,
+                    'reviewed_at': now_iso,
+                    'reviewed_by': 'admin-global-propagation',
+                }).in_('id', ids_chunk).is_('deleted_at', 'null').execute()
                 updated_total += len(ids_chunk)
             except Exception as _upd_err:
                 logger.warning(f"propaga_global: UPDATE batch fallito ({_upd_err})")
