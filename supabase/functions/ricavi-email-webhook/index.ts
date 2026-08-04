@@ -289,7 +289,20 @@ export const handler = async (req: Request): Promise<Response> => {
     return new Response('Bad Request', { status: 400 })
   }
 
-  const items = (payload.items ?? []).slice(0, MAX_ITEMS)
+  const allItems = payload.items ?? []
+  const items = allItems.slice(0, MAX_ITEMS)
+  if (allItems.length > MAX_ITEMS) {
+    // Prima qui il troncamento era muto: le email oltre MAX_ITEMS sparivano
+    // senza log, senza riga in coda e senza alert (il producer riceve comunque
+    // 200, quindi non ritenta). Stesso schema già chiuso per gli allegati
+    // (fetch-failed/magic-bytes) — qui il cap era rimasto silenzioso.
+    console.warn(`[email-wh] Payload con ${allItems.length} email, troncato a ${MAX_ITEMS}`)
+    await notifyTelegram([
+      '⚠️ Ricavi email: batch troncato',
+      `Ricevute ${allItems.length} email in un'unica richiesta, elaborate solo le prime ${MAX_ITEMS}.`,
+      `${allItems.length - MAX_ITEMS} email scartate senza essere processate.`,
+    ].join('\n'))
+  }
   if (items.length === 0) return new Response('OK', { status: 200 })
 
   const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
@@ -400,6 +413,7 @@ export const handler = async (req: Request): Promise<Response> => {
       // con allegato omonimo nello stesso mese non si sovrascrivono.
       const path = buildPath(ristoranteId, filename, idempotencyKey)
       let savedPath: string | null = null
+      let uploadFailedMsg: string | null = null
       try {
         const { error: uploadErr } = await db.storage
           .from(STORAGE_BUCKET)
@@ -407,10 +421,28 @@ export const handler = async (req: Request): Promise<Response> => {
             contentType: att.ContentType ?? 'application/octet-stream',
             upsert: true,
           })
-        if (uploadErr) console.error(`[email-wh] Upload Storage: ${uploadErr.message}`)
+        if (uploadErr) { console.error(`[email-wh] Upload Storage: ${uploadErr.message}`); uploadFailedMsg = uploadErr.message }
         else savedPath = path
       } catch (e) {
-        console.error(`[email-wh] Eccezione upload:`, (e as Error).message)
+        uploadFailedMsg = (e as Error).message
+        console.error(`[email-wh] Eccezione upload:`, uploadFailedMsg)
+      }
+
+      // Upload fallito: come fetch-failed/magic-bytes sopra, non accodare una
+      // riga 'pending' senza file (il worker la claimerebbe senza nulla da
+      // leggere) — registriamo 'failed' e passiamo all'allegato successivo.
+      if (uploadFailedMsg) {
+        await registraFallimento(
+          db, senderEmail, subject, filename, ristoranteId, userId,
+          'storage-upload', uploadFailedMsg,
+        )
+        await notifyTelegram([
+          '⚠️ Ricavi email: upload Storage fallito',
+          `Da: ${senderEmail}`,
+          `File: ${filename}`,
+          'Registrato in ricavi_email_queue status=failed.',
+        ].join('\n'))
+        continue
       }
 
       // INSERT coda
