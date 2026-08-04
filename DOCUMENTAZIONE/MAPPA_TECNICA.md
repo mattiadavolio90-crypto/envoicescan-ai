@@ -31,7 +31,7 @@ Tutto il resto del prodotto è al servizio di questa catena.
 | Devi toccare… | Vai in… |
 |---|---|
 | Una pagina che il cliente vede | `apps/web/src/app/(app)/<pagina>/` |
-| Il mobile | `apps/web/src/app/m/` — è un **sottoinsieme separato**, non responsive |
+| Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive |
 | Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (158 route, solo proxy) |
 | Logica di business | `services/*.py` |
 | Un endpoint del worker | `services/routers/*.py` (12 router) |

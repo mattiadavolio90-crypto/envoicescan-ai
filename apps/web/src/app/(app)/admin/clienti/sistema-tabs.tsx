@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/select";
 import { RefreshCw, DollarSign, Shield, Clock, CheckCircle } from "lucide-react";
 
 const VISION_DAILY_LIMIT = 50;
@@ -40,14 +40,11 @@ export function CostiAiTab() {
   return (
     <div className="space-y-6">
       <div className="flex gap-2 items-center">
-        <Select value={days} onValueChange={setDays}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Ultimi 7gg</SelectItem>
-            <SelectItem value="30">Ultimi 30gg</SelectItem>
-            <SelectItem value="90">Ultimi 90gg</SelectItem>
-          </SelectContent>
-        </Select>
+        <NativeSelect className="w-36" value={days} onValueChange={setDays}>
+          <option value="7">Ultimi 7gg</option>
+          <option value="30">Ultimi 30gg</option>
+          <option value="90">Ultimi 90gg</option>
+        </NativeSelect>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
         </Button>
