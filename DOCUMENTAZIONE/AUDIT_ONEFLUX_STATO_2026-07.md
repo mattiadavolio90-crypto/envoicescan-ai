@@ -492,18 +492,39 @@ conferma esplicita di Mattia, mai in autonomia.
     decisione, non una riga di codice. Un residuo scritto come decisione con la sua
     ragione e' informazione; lo stesso residuo lasciato implicito diventa, tre
     sessioni dopo, "non lo sapevamo".
-36. **La suite intera puo' fallire dove i singoli file non falliscono, e non e'
-    detto che sia il tuo diff.** Il 4/8, lanciando `pytest tests/` per intero con
-    coverage, 84 test in 7 file (`test_prezzi_score_fornitori.py`,
-    `test_tag_analytics_service.py`, ecc. — nessuno tocca `upload_handler.py`)
-    sono andati rossi; rilanciati singolarmente, tutti verdi. E' inquinamento
-    da ordine/stato condiviso fra file, non una regressione introdotta qui:
-    verificato PRIMA di scrivere codice, per non inseguire un fantasma. Non
-    approfondito oltre (fuori scope), ma **non e' piu' vero che la suite e'
-    "10249 passed/0 failed" lanciata tutta insieme con coverage** — lanciata a
-    sottoinsiemi mirati si', per intero no. Da investigare in una sessione
-    dedicata se conta ancora come garanzia end-to-end prima del prossimo deploy
-    grosso.
+36. **`--cov` puntato su UN modulo fa fallire test sani in file che non c'entrano
+    niente — e non e' inquinamento da ordine.** Il 4/8, misurando la coverage di
+    `upload_handler.py`, sono comparsi rossi in **10 file** che non lo toccano
+    (`test_categoria_normalization`, `test_categorie_admin`, `test_custom_tags`,
+    `test_db_service`, `test_margine_service`, `test_prezzi_nota_credito_sconti`,
+    `test_prezzi_preferiti`, `test_prezzi_score_fornitori`,
+    `test_price_impact_pareto`, `test_tag_analytics_service`).
+
+    **La prima diagnosi che avevo scritto qui — "inquinamento da ordine/stato
+    condiviso" — era sbagliata**, e l'ha smontata `code-reviewer` con
+    l'esperimento che non avevo fatto: `test_categoria_normalization.py` lanciato
+    **da solo**, con nessun altro test in esecuzione, fallisce lo stesso
+    (`2 failed, 11 passed`) se c'e' `--cov=services.upload_handler`. Con un file
+    solo, l'interazione fra test e' esclusa **per costruzione**. Lo stesso file
+    senza `--cov`: `13 passed`.
+
+    Causa reale: `TypeError: int() argument must be... not '_NoValueType'` da
+    `numpy/_core/_methods.py` via `pandas.nansum` — interazione fra il tracer di
+    coverage e il percorso C di pandas/numpy. Compare **solo** con `--cov` su un
+    singolo modulo: con `--cov=services`, con `--cov` nudo e senza coverage la
+    suite e' **10265 passed / 0 failed** (verificato tre volte). **Il fenomeno
+    preesiste** a questa consegna: rimuovendo il file di test nuovo, stessi
+    2 failed.
+
+    Due conseguenze pratiche. **La CI resta una garanzia valida**: lancia
+    `python -m pytest -q` senza coverage (`.github/workflows/tests.yml:43`), ed e'
+    verde. E soprattutto: **chi in futuro misurera' la coverage di un modulo
+    singolo vedra' rossi che NON sono regressioni** — fra i file colpiti ci sono
+    `test_margine_service` e `test_categoria_normalization`, cioe' le guardie di
+    due regole di dominio critiche. Il rischio e' "aggiustare" codice sano
+    inseguendo un artefatto dello strumento di misura. Prima di credere a un
+    rosso comparso durante una misura di coverage: rilancia lo stesso file senza
+    `--cov`.
 
 ## Chiusura del ciclo (quando tutte le righe sono 🟢 o 🟡 con nota esplicita)
 

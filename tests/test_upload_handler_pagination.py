@@ -22,6 +22,7 @@ class FakePostgrest:
         self._rows = rows
         self._max_rows = max_rows
         self._range = None
+        self.eq_filters = {}
 
     def table(self, *_a, **_k):
         return self
@@ -29,7 +30,9 @@ class FakePostgrest:
     def select(self, *_a, **_k):
         return self
 
-    def eq(self, *_a, **_k):
+    def eq(self, campo=None, valore=None, *_a, **_k):
+        if campo is not None:
+            self.eq_filters[campo] = valore
         return self
 
     def is_(self, *_a, **_k):
@@ -87,6 +90,22 @@ class TestCollectPostUploadQualityChecksPaginazione:
         assert checks["needs_review_rows"] == 2
         assert checks["uncategorized_rows"] == 2
 
+    def test_paginazione_completa_anche_con_ristorante_id(self):
+        """Il ramo multi-sede: add_ristorante_filter aggiunge .eq('ristorante_id')
+        PRIMA di fetch_all. E' il ramo che gira in produzione per i clienti con
+        piu' sedi, e va paginato come l'altro."""
+        righe = [_quality_row() for _ in range(1500)]
+        client = FakePostgrest(righe)
+
+        checks = _collect_post_upload_quality_checks(
+            client, "u1", ["f.xml"], ristorante_id="r1"
+        )
+
+        # senza questa asserzione il test passerebbe anche se il filtro sede
+        # non fosse mai stato applicato
+        assert client.eq_filters.get("ristorante_id") == "r1"
+        assert checks["rows_saved"] == 1500
+
     def test_supabase_client_none_ritorna_default_senza_verificare(self):
         checks = _collect_post_upload_quality_checks(None, "u1", ["f.xml"])
         assert checks["verification_ok"] is False
@@ -127,6 +146,19 @@ class TestRunPostUploadAiCategorizationPaginazione:
 
         assert summary["rows_scanned"] == 1500
         assert summary["completed"] is True
+
+    @patch("services.upload_handler.carica_memoria_completa", return_value=None)
+    @patch("services.upload_handler.invalida_cache_memoria", return_value=None)
+    def test_paginazione_completa_anche_con_ristorante_id(self, _mock_inv, _mock_mem):
+        righe = [self._row_non_eligible() for _ in range(1500)]
+        client = FakePostgrest(righe)
+
+        summary = _run_post_upload_ai_categorization(
+            client, "u1", ["f.xml"], ristorante_id="r1"
+        )
+
+        assert client.eq_filters.get("ristorante_id") == "r1"
+        assert summary["rows_scanned"] == 1500
 
     def test_supabase_client_none_ritorna_summary_default(self):
         summary = _run_post_upload_ai_categorization(None, "u1", ["f.xml"])
