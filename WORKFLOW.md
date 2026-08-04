@@ -196,6 +196,13 @@ del ciclo — oggi `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md`. Non
 duplicare: se una regola di processo finisce scritta solo dentro il documento
 di stato, sparisce col documento quando viene archiviato.
 
+Il documento di stato è in **due file**, e vanno tenuti distinti: quello
+principale dice *cosa manca* e deve restare leggibile in un minuto; il
+`..._STORICO.md` a fianco raccoglie il dettaglio verificato di ogni passata e
+le lezioni operative. Il dettaglio di una passata va **sempre** nello storico:
+se torna nel file di stato, quello ridiventa illeggibile (è già successo — a
+fine ciclo 2026-07 una singola cella era arrivata a 16.000 caratteri).
+
 **Profondità minima per dimensione**: una passata read-only (agente
 `oneflux-audit` o manuale) + una sessione di remediation. **Se la remediation
 scrive codice, `code-reviewer` sul diff cumulativo prima di considerare la
