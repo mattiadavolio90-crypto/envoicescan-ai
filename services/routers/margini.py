@@ -843,6 +843,12 @@ class MesiPivot(BaseModel):
     costo_personale_extra: float
     costi_personale: float
     mol: float
+    # Quote dei costi di gruppo ripartiti su questa sede (modalità catena). Sono
+    # già dentro costi_fb_totali / costi_spese_totali: servono al frontend per
+    # mostrarle nelle righe di dettaglio, altrimenti i subtotali non quadrano
+    # con le voci elencate sopra.
+    quote_riparto_fb: float = 0.0
+    quote_riparto_spese: float = 0.0
 
 
 class MarginiAnalisiResponse(BaseModel):
@@ -1129,6 +1135,8 @@ def get_margini_analisi(
             costo_personale_extra=round(cpe, 2),
             costi_personale=round(pers, 2),
             mol=round(mol_v, 2),
+            quote_riparto_fb=round(q_fb, 2),
+            quote_riparto_spese=round(q_spese, 2),
         ))
 
     # Totali periodo
@@ -1147,6 +1155,8 @@ def get_margini_analisi(
     tot_cpe = sum(p.costo_personale_extra for p in mesi_pivot)
     tot_pers = sum(p.costi_personale for p in mesi_pivot)
     tot_mol = sum(p.mol for p in mesi_pivot)
+    tot_q_fb = sum(p.quote_riparto_fb for p in mesi_pivot)
+    tot_q_spese = sum(p.quote_riparto_spese for p in mesi_pivot)
 
     totali = MesiPivot(
         anno=0, mese=0, label="Totale periodo",
@@ -1158,6 +1168,7 @@ def get_margini_analisi(
         costi_spese_totali=round(tot_spese_totali, 2),
         costo_dipendenti=round(tot_cd, 2), costo_personale_extra=round(tot_cpe, 2),
         costi_personale=round(tot_pers, 2), mol=round(tot_mol, 2),
+        quote_riparto_fb=round(tot_q_fb, 2), quote_riparto_spese=round(tot_q_spese, 2),
     )
 
     # KPI medie sui mesi attivi (fatturato > 0)

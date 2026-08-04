@@ -22390,6 +22390,16 @@
           "mol": {
             "type": "number",
             "title": "Mol"
+          },
+          "quote_riparto_fb": {
+            "type": "number",
+            "title": "Quote Riparto Fb",
+            "default": 0.0
+          },
+          "quote_riparto_spese": {
+            "type": "number",
+            "title": "Quote Riparto Spese",
+            "default": 0.0
           }
         },
         "type": "object",
