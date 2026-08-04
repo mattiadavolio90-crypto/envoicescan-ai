@@ -931,13 +931,22 @@ export const handler = async (req: Request): Promise<Response> => {
   // Ogni evento è indipendente: uno che fallisce non deve impedire agli altri di
   // essere accodati. Se ALMENO uno chiede il retry (500), lo chiediamo a fine
   // ciclo — l'idempotenza su event_id rende innocuo il ri-processing degli altri.
+  // Il try/catch è necessario: processaEvento fa I/O (DB, fetch) che può
+  // lanciare un'eccezione imprevista, non solo tornare 'retry'. Senza catch qui,
+  // un throw sul 2° evento di un batch farebbe perdere gli eventi 3..N (mai
+  // eseguiti) invece di limitarsi a chiedere il retry dell'intero batch.
   let serveRetry = false
   for (const singolo of eventi) {
-    const esito = await processaEvento(
-      normalizeWebhookEvent(singolo), rawBody, req,
-      supabaseUrl, serviceKey, apiKey,
-    )
-    if (esito === 'retry') serveRetry = true
+    try {
+      const esito = await processaEvento(
+        normalizeWebhookEvent(singolo), rawBody, req,
+        supabaseUrl, serviceKey, apiKey,
+      )
+      if (esito === 'retry') serveRetry = true
+    } catch (err) {
+      console.error(`[wh] Eccezione non gestita in processaEvento: ${err instanceof Error ? err.message : String(err)}`)
+      serveRetry = true
+    }
   }
 
   if (serveRetry) return new Response('Internal Server Error', { status: 500 })
@@ -962,8 +971,12 @@ async function processaEvento(
   const looksLikeOther   = isOtherWebhook(ev)
 
   // Altri eventi legittimi (send/status/…), con firma valida ma NON di ricezione:
-  // ignorabili senza traccia, non sono fatture in ingresso.
-  if (looksLikeOther && ev.success === true) {
+  // ignorabili senza traccia, non sono fatture in ingresso — a prescindere da
+  // ev.success. Un send fallito (fattura ATTIVA respinta dallo SDI) non è una
+  // fattura passiva persa: prima del fix del 4/8 cadeva nella rete di sicurezza
+  // sotto e scaricava inutilmente XML da un resource_id che appartiene a
+  // tutt'altro flusso, generando alert Telegram falsi e righe 'failed' spurie.
+  if (looksLikeOther) {
     return 'ok'
   }
 
@@ -999,6 +1012,17 @@ async function processaEvento(
       ev.eventId != null ? String(ev.eventId)
       : ev.resourceId != null ? `res:${ev.resourceId}`
       : `sig:${(await sha256Hex(rawBody)).slice(0, 32)}`
+    // next_retry_at posticipato: se c'è un resource_id proseguiamo sotto con
+    // il download XML (fino a API_TIMEOUT_MS + XML_TIMEOUT_MS ≈ 25s). Senza
+    // questo, claim_batch_for_processing (che preleva anche status='failed'
+    // con next_retry_at DEFAULT now(), quindi claimabile subito) può reclamare
+    // questa riga PRIMA che l'UPDATE di promozione sotto la trovi ancora
+    // 'failed': l'UPDATE è ristretto a .eq('status','failed') di proposito
+    // (vedi commento più sotto), quindi su una riga già 'processing' tocca 0
+    // righe e la fattura scaricata va persa in silenzio. Il margine (120s) è
+    // ampio rispetto ai ~25s di worst-case fetch, senza ritardare il retry per
+    // gli eventi che restano davvero irrecuperabili (resource_id assente).
+    const SAFETY_NET_RETRY_DELAY_MS = 120_000
     const { error: insErr } = await db
       .from('fatture_queue')
       .upsert(
@@ -1007,6 +1031,7 @@ async function processaEvento(
           piva_raw:  'UNKNOWN',
           source:    'invoicetronic',
           status:    'failed',
+          next_retry_at: new Date(Date.now() + SAFETY_NET_RETRY_DELAY_MS).toISOString(),
           payload_meta: {
             unrecognized_event: reason,
             raw_endpoint: ev.endpoint,
@@ -1321,6 +1346,12 @@ async function processaEvento(
     payload_meta:   meta,
     source:         'invoicetronic',
     status,
+    // Reset esplicito: se questa riga era stata scritta dalla rete di sicurezza
+    // con next_retry_at posticipato (vedi SAFETY_NET_RETRY_DELAY_MS sopra), qui
+    // abbiamo finito di scaricare l'XML — niente più motivo di ritardare il
+    // claim del worker. Senza questo reset una fattura recuperata con successo
+    // resterebbe non-claimabile per il resto della finestra di 120s.
+    next_retry_at:  new Date().toISOString(),
     correlation_id: correlationId,
   }
 
