@@ -56,7 +56,13 @@ logger = get_logger('daily_briefing')
 #               mostrati al cliente erano sottostimati. Ora paginati: senza
 #               questo bump lo snapshot di oggi resterebbe quello sbagliato
 #               (audit Performance, remediation)
-_BRIEFING_CODE_VERSION = 14
+#  15 -> 04/08: il MOL del briefing (_kpi_periodo) ignorava le quote dei costi di
+#               gruppo ripartiti sulle sedi di catena -> costo sparito da entrambi
+#               i lati e MOL GONFIATO (misurati 44.147 EUR su OFFSIDE e 36.128 EUR
+#               su OVERTIME nel 2026). Il briefing poteva annunciare come "buona
+#               notizia" un miglioramento inesistente: senza bump lo snapshot di
+#               oggi resterebbe quello sbagliato
+_BRIEFING_CODE_VERSION = 15
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

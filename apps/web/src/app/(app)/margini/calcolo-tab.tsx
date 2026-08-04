@@ -936,7 +936,7 @@ function CascataPL({ t }: { t: MesePivot }) {
     { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", rgb: "14,165,233" },
     { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", rgb: "249,115,22" },
     { label: "= 1° Margine", value: t.primo_margine, kind: "result", rgb: t.primo_margine >= 0 ? "16,185,129" : "244,63,94" },
-    { label: "− Costi Gestione", value: t.costi_spese_totali, kind: "cost", rgb: "168,85,247" },
+    { label: "− Costi Gestione", value: t.costi_spese_totali + t.costi_personale, kind: "cost", rgb: "168,85,247" },
     { label: "= MOL", value: t.mol, kind: "result", rgb: t.mol >= 0 ? "16,185,129" : "244,63,94" },
   ];
   const refMax = Math.max(1, ...steps.map((s) => Math.abs(s.value)));
