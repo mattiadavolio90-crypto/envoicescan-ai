@@ -44,6 +44,10 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
 
 
+def _righe_quote_gruppo(*args, **kwargs):
+    return _fw()._righe_quote_gruppo(*args, **kwargs)
+
+
 def _chat_limite_pool_gruppo(*args, **kwargs):
     return _fw()._chat_limite_pool_gruppo(*args, **kwargs)
 
@@ -968,6 +972,23 @@ def gruppo_spesa_pivot(
         val = float(r.get("totale") or 0)
         agg[dim_val][rid] += val
         totali_pv[rid] += val
+
+    # Quota dei costi di gruppo a carico di ogni PV. Le fatture di struttura vivono
+    # sulla SEDE TECNICA, esclusa da `ids` (_resolve_gruppo filtra sede_tecnica=False):
+    # senza questa aggiunta i costi comuni non comparirebbero in nessuna colonna né nel
+    # grand_total. Le quote entrano DENTRO le colonne dei PV, come nel tab Calcolo, così
+    # l'app usa un criterio solo. Costo contenuto: ~15 categorie × N PV, non un full-load.
+    for rid in ids:
+        for riga in _righe_quote_gruppo(sb, rid, da, a):
+            if float(riga.get("totale_riga") or 0) <= 0:
+                continue
+            if dimensione == "fornitore":
+                dim_val = (riga.get("fornitore") or "").strip() or "N/D"
+            else:
+                dim_val = (riga.get("categoria") or "").strip() or "N/D"
+            val = float(riga.get("totale_riga") or 0)
+            agg[dim_val][rid] += val
+            totali_pv[rid] += val
 
     # Icone categoria dal catalogo (solo dimensione=categoria): 1 query, non per riga.
     emoji_map: Dict[str, str] = {}

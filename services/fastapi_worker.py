@@ -6721,8 +6721,20 @@ def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: in
     fatturato = iva10 + iva22 + altri  # lordo: l'headline mostrato sulla card
     # Netto scorporato IVA, identico alla pagina Margini: è la base del MOL.
     netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
-    fb = float(costi_fb.get(mese) or 0) + float(row.get("altri_costi_fb") or 0)
-    spese = float(costi_spese.get(mese) or 0) + float(row.get("altri_costi_spese") or 0)
+    # Quote costi di gruppo ripartiti su questa sede (catena): i costi automatici
+    # escludono le fatture ripartita_su_gruppo (vivono sulla sede tecnica), quindi
+    # senza sommare le quote il costo di gruppo sparirebbe da entrambi i lati e il
+    # MOL risulterebbe gonfiato. Stessa somma di _aggrega_mensili_margini.
+    fb = (
+        float(costi_fb.get(mese) or 0)
+        + float(row.get("altri_costi_fb") or 0)
+        + float(row.get("quote_riparto_fb") or 0)
+    )
+    spese = (
+        float(costi_spese.get(mese) or 0)
+        + float(row.get("altri_costi_spese") or 0)
+        + float(row.get("quote_riparto_spese") or 0)
+    )
     personale = (
         float(row.get("costo_dipendenti") or 0)
         + float(row.get("costo_personale_extra") or 0)
@@ -7532,6 +7544,32 @@ def _load_mensile_overrides(sb, ristorante_id: str, annos: List[int]) -> Dict[tu
     return out
 
 
+def _righe_quote_gruppo(sb, ristorante_id: str, data_da: str, data_a: str) -> List[Dict[str, Any]]:
+    """Righe proiettate della quota costi di gruppo a carico di questo PV (catena).
+
+    Le fatture di struttura vivono sulla sede tecnica: una query su `fatture` filtrata
+    per ristorante_id non le vede mai. Senza queste righe i costi per centro e il
+    1° Margine del tab Analisi risultano piu' bassi di quelli del tab Calcolo, che
+    somma le quote da margini_mensili. Sola lettura, id negativi (vedi riparto_service).
+    """
+    _uid, _ha_quote = _ristorante_quote_meta(sb, ristorante_id)
+    if not (_ha_quote and _uid):
+        return []
+    try:
+        from services.riparto_service import righe_ripartite_proiettate
+        righe = righe_ripartite_proiettate(sb, str(_uid), ristorante_id, data_da, data_a)
+    except Exception:
+        logger.exception("Proiezione quote gruppo fallita per %s", ristorante_id)
+        return []
+    # Le query sulle righe reali escludono sempre 'Da Classificare': le proiettate
+    # devono seguire la stessa regola, o una quota non classificata entrerebbe nei
+    # totali da una porta di servizio (regola di dominio 1, CLAUDE.md).
+    return [
+        r for r in righe
+        if (r.get("categoria") or "").strip() != CATEGORIA_NON_CLASSIFICATA
+    ]
+
+
 def _load_fatture_fb_for_period(
     sb, ristorante_id: str, data_da: str, data_a: str
 ) -> "Dict[str, float]":
@@ -7556,6 +7594,7 @@ def _load_fatture_fb_for_period(
         if len(batch) < page_size:
             break
         offset += page_size
+    all_rows.extend(_righe_quote_gruppo(sb, ristorante_id, data_da, data_a))
     if not all_rows:
         return {}
     df = pd.DataFrame(all_rows)
@@ -7589,6 +7628,7 @@ def _load_fatture_fb_per_categoria_e_mese(
         if len(batch) < page_size:
             break
         offset += page_size
+    all_rows.extend(_righe_quote_gruppo(sb, ristorante_id, data_da, data_a))
     if not all_rows:
         return {}
     df = pd.DataFrame(all_rows)
