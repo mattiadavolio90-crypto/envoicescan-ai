@@ -130,7 +130,11 @@ def test_propagazione_aggiorna_solo_le_righe_legittime(scenario):
 
     per_id = {r["id"]: r for r in scenario.store["fatture"]}
     assert per_id[1]["categoria"] == "LATTICINI E FORMAGGI"
-    assert per_id[1]["classificato_da"] == "admin-global-propagation"
+    # 'fatture' non ha colonna 'classificato_da' (esiste solo su prodotti_master/
+    # prodotti_utente): la propagazione traccia la scrittura su reviewed_by,
+    # stesso pattern di routers/admin.py:967-984 (audit AI 2ª passata, 04/08).
+    assert per_id[1]["reviewed_by"] == "admin-global-propagation"
+    assert per_id[1]["needs_review"] is False
 
 
 def test_propagazione_non_tocca_override_manuale_del_cliente(scenario):
