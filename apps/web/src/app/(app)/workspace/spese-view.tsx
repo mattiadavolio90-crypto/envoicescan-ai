@@ -7,10 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import {
+  CATEGORIE_SPESA_FB,
+  CATEGORIE_SPESA_GENERALI,
+  TIPO_SPESA_LABEL,
+  tipoDaCategoria,
+  type TipoSpesa,
+} from "@/lib/categorie-spesa";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
-
-type TipoSpesa = "fb" | "generale";
 
 interface Spesa {
   id: string;
@@ -19,6 +24,7 @@ interface Spesa {
   importo: number;
   descrizione: string;
   note?: string | null;
+  categoria?: string | null;
 }
 
 interface SpeseResponse {
@@ -74,7 +80,7 @@ interface SpesaDialogProps {
 
 function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialogProps) {
   const [data, setData] = useState(dataDefault);
-  const [tipo, setTipo] = useState<TipoSpesa>("generale");
+  const [categoria, setCategoria] = useState("");
   const [importo, setImporto] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [note, setNote] = useState("");
@@ -83,7 +89,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialog
   useEffect(() => {
     if (open) {
       setData(spesa?.data_spesa ?? dataDefault);
-      setTipo(spesa?.tipo ?? "generale");
+      setCategoria(spesa?.categoria ?? "");
       setImporto(spesa?.importo ? String(spesa.importo).replace(".", ",") : "");
       setDescrizione(spesa?.descrizione ?? "");
       setNote(spesa?.note ?? "");
@@ -91,8 +97,12 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialog
   }, [open, spesa, dataDefault]);
 
   const importoNum = importo ? parseFloat(importo.replace(",", ".")) : NaN;
+  // Il tipo non si sceglie piu': lo deriva la categoria (stessa regola del backend).
+  // Sulle voci storiche senza categoria si mostra il tipo gia' salvato.
+  const tipo: TipoSpesa = categoria ? tipoDaCategoria(categoria) : (spesa?.tipo ?? "generale");
 
   async function salva() {
+    if (!categoria) { toast.error("Scegli una categoria"); return; }
     if (!descrizione.trim()) { toast.error("La descrizione è obbligatoria"); return; }
     if (isNaN(importoNum) || importoNum < 0) { toast.error("Inserisci un importo valido"); return; }
     setSaving(true);
@@ -100,6 +110,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialog
       const payload = {
         data_spesa: data,
         tipo,
+        categoria,
         importo: importoNum,
         descrizione: descrizione.trim(),
         note: note.trim() || null,
@@ -129,32 +140,34 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialog
           <DialogTitle>{spesa ? "Modifica spesa" : "Nuova spesa"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 mt-2">
-          {/* Tipo */}
+          {/* Categoria — il tipo (binario contabile) ne deriva */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Tipo di spesa *</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["fb", "generale"] as TipoSpesa[]).map(t => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTipo(t)}
-                  className={`px-3 py-2 text-sm font-medium rounded-md border transition-colors ${
-                    tipo === t
-                      ? t === "fb"
-                        ? "border-orange-500 bg-orange-500/10 text-orange-700 dark:text-orange-300"
-                        : "border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-300"
-                      : "border-input text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {TIPO_LABEL[t]}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              {tipo === "fb"
-                ? "Costi di cibo & bevande non arrivati via fattura (es. spesa al mercato, contanti)."
-                : "Spese di gestione non da fattura (es. utenze pagate a mano, piccole manutenzioni)."}
-            </p>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Categoria *</label>
+            <select
+              value={categoria}
+              onChange={e => setCategoria(e.target.value)}
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">— Scegli una categoria —</option>
+              <optgroup label="Food &amp; Beverage">
+                {CATEGORIE_SPESA_FB.map(c => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+              <optgroup label="Spese generali">
+                {CATEGORIE_SPESA_GENERALI.map(c => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+            </select>
+            {categoria ? (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Rientra in:{" "}
+                <span className={`font-semibold ${tipo === "fb" ? "text-orange-600 dark:text-orange-400" : "text-purple-600 dark:text-purple-400"}`}>
+                  {TIPO_SPESA_LABEL[tipo]}
+                </span>
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Spese non arrivate via fattura (es. spesa al mercato in contanti, bolletta pagata a mano).
+              </p>
+            )}
           </div>
 
           {/* Data + importo */}
@@ -215,6 +228,7 @@ export function SpeseView() {
   const [editSpesa, setEditSpesa] = useState<Spesa | null>(null);
   const [dataDefault, setDataDefault] = useState(oggi);
   const [filtro, setFiltro] = useState<FiltroTipo>("tutte");
+  const [filtroCategoria, setFiltroCategoria] = useState<string>("tutte");
 
   const [da, fine] = (() => {
     const [ay, am] = meseBase.split("-").map(Number);
@@ -269,17 +283,18 @@ export function SpeseView() {
   function esportaCSV() {
     if (!risposta || risposta.voci.length === 0) return;
     const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
-    const headers = ["Data", "Tipo", "Descrizione", "Importo", "Note"];
+    const headers = ["Data", "Tipo", "Categoria", "Descrizione", "Importo", "Note"];
     const rows = voci.map(s => [
       fmtData(s.data_spesa),
       TIPO_LABEL[s.tipo],
+      s.categoria ?? "",
       s.descrizione,
       num(s.importo),
       s.note ?? "",
     ]);
     rows.push([]);
-    rows.push(["TOTALE F&B", "", "", num(risposta.totale_fb), ""]);
-    rows.push(["TOTALE GENERALI", "", "", num(risposta.totale_generale), ""]);
+    rows.push(["TOTALE F&B", "", "", "", num(risposta.totale_fb), ""]);
+    rows.push(["TOTALE GENERALI", "", "", "", num(risposta.totale_generale), ""]);
     const csv = [headers, ...rows]
       .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
       .join("\r\n");
@@ -294,7 +309,13 @@ export function SpeseView() {
   }
 
   const tutteVoci = risposta?.voci ?? [];
-  const voci = filtro === "tutte" ? tutteVoci : tutteVoci.filter(v => v.tipo === filtro);
+  // Categorie effettivamente presenti nel mese: un select con le 29 sempre tutte
+  // sarebbe pieno di voci che non filtrano nulla.
+  const categoriePresenti = [...new Set(tutteVoci.map(v => v.categoria).filter((c): c is string => !!c))]
+    .sort((a, b) => a.localeCompare(b, "it"));
+  const voci = tutteVoci
+    .filter(v => filtro === "tutte" || v.tipo === filtro)
+    .filter(v => filtroCategoria === "tutte" || v.categoria === filtroCategoria);
   const totFb = risposta?.totale_fb ?? 0;
   const totGenerale = risposta?.totale_generale ?? 0;
   const totale = risposta?.totale ?? 0;
@@ -331,6 +352,17 @@ export function SpeseView() {
             </button>
           ))}
         </div>
+
+        {categoriePresenti.length > 0 && (
+          <select
+            value={filtroCategoria}
+            onChange={e => setFiltroCategoria(e.target.value)}
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+          >
+            <option value="tutte">Tutte le categorie</option>
+            {categoriePresenti.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           {tutteVoci.length > 0 && (
@@ -373,15 +405,18 @@ export function SpeseView() {
         <div className="py-12 text-center text-sm text-muted-foreground">
           {tutteVoci.length === 0
             ? "Nessuna spesa extra in questo mese. Usa “Aggiungi spesa” per iniziare."
-            : "Nessuna spesa di questo tipo nel mese."}
+            : "Nessuna spesa corrisponde ai filtri attivi."}
         </div>
       ) : (
         <div className="space-y-1.5">
           {voci.map(s => (
             <div key={s.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ring-1 transition-colors group ${TIPO_RING[s.tipo]}`}>
               <span className="text-xs text-muted-foreground tabular-nums w-12 shrink-0">{fmtData(s.data_spesa)}</span>
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${TIPO_BADGE[s.tipo]}`}>
-                {s.tipo === "fb" ? "F&B" : "Gen."}
+              <span
+                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 max-w-[190px] truncate ${TIPO_BADGE[s.tipo]}`}
+                title={s.categoria ?? TIPO_LABEL[s.tipo]}
+              >
+                {s.categoria ?? (s.tipo === "fb" ? "F&B" : "Gen.")}
               </span>
               <span className="text-sm flex-1 min-w-0 truncate">
                 {s.descrizione}

@@ -28,6 +28,8 @@ type CalcoloSpese = {
   totale_generale: number;
   n_voci_fb: number;
   n_voci_generale: number;
+  dettaglio_fb?: Record<string, number>;
+  dettaglio_generale?: Record<string, number>;
 };
 
 function toStr(v: number) {
@@ -98,6 +100,11 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
 
   const nVoci = sintesi ? (tipo === "fb" ? sintesi.n_voci_fb : sintesi.n_voci_generale) : 0;
   const val = parseFloat(importo.replace(",", ".")) || 0;
+  // Scomposizione del totale recuperato: spiega di cosa e' fatto il numero prima
+  // che finisca in cella. Non cambia l'importo, solo lo racconta.
+  const dettaglio = Object.entries(
+    (tipo === "fb" ? sintesi?.dettaglio_fb : sintesi?.dettaglio_generale) ?? {},
+  ).sort((a, b) => b[1] - a[1]);
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
@@ -121,9 +128,21 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
           </Button>
 
           {sintesi && nVoci > 0 && (
-            <p className="text-xs text-muted-foreground -mt-1 text-center">
-              {nVoci} {nVoci === 1 ? "voce" : "voci"} di spesa nel mese
-            </p>
+            <div className="-mt-1 space-y-2">
+              <p className="text-xs text-muted-foreground text-center">
+                {nVoci} {nVoci === 1 ? "voce" : "voci"} di spesa nel mese
+              </p>
+              {dettaglio.length > 0 && (
+                <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1">
+                  {dettaglio.map(([cat, tot]) => (
+                    <div key={cat} className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="truncate text-muted-foreground">{cat}</span>
+                      <span className="shrink-0 font-medium tabular-nums">{formatEuro(tot)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="relative flex items-center">

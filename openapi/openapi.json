@@ -18305,6 +18305,17 @@
               }
             ],
             "title": "Note"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
           }
         },
         "type": "object",
@@ -23033,6 +23044,17 @@
               }
             ],
             "title": "Note"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
           }
         },
         "type": "object",
