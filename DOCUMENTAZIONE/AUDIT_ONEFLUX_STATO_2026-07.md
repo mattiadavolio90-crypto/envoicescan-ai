@@ -120,11 +120,28 @@ puliti.
 
 **Consegna per la prossima sessione — in ordine di valore:**
 
-1. **`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.**
-   È il candidato naturale ora: percorso di upload manuale, uno dei due ingressi
-   delle fatture, il buco di copertura più grande del progetto — e nella
-   remediation HIGH ci ho toccato due punti (`:517`, `:845`) senza avere una rete
-   sotto. Vale come sessione propria, non come coda di un audit.
+1. ~~**`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.**~~
+   **CHIUSA il 4/8/2026.** Ricontato con metodo diverso (coverage mirata sui 4
+   file di test che toccano il modulo, non fidandosi del numero scritto qui):
+   11% confermato (1108 statement, 972 missed) — ma "ZERO righe di test" era
+   la frase imprecisa, esisteva già `test_upload_handler_pure.py` (97 righe,
+   3 funzioni pure). La sostanza reggeva: i due punti toccati dalla remediation
+   HIGH (`:517`, `:845`, `response = query.execute()` → `rows = fetch_all(query)`)
+   erano davvero scoperti. Aggiunto `tests/test_upload_handler_pagination.py`
+   (7 test, riuso del pattern `FakePostgrest` già esistente in
+   `test_paginazione_e_cache_audit_performance.py`) su
+   `_collect_post_upload_quality_checks` e `_run_post_upload_ai_categorization`:
+   verificano che con >1000 righe fake (troncamento PostgREST simulato) i
+   contatori (`rows_saved`, `zero_price_rows`, `needs_review_rows`,
+   `uncategorized_rows`, `rows_scanned`) vedano l'intero risultato, non solo la
+   prima pagina. **Verificato per mutazione**: ripristinato temporaneamente
+   `query.execute().data or []` al posto di `fetch_all(query)` su entrambi i
+   punti — i test relativi sono andati rossi (1000 invece di 1500), poi
+   ripristinato il fix reale (diff netto zero su `upload_handler.py`). Coverage
+   del file 11% → 16% (972 → 909 statement mancanti); resta un file grande
+   (2231 righe, parsing XML/P7M/PDF, dedup, orchestrazione AI a chunk) — non
+   portato al 100% per scelta, fuori scope di questa consegna che era
+   specificamente sui due punti della remediation Performance.
 2. **Cache per-processo vs `WORKER_WEB_CONCURRENCY=4`** — l'unico MEDIUM lasciato
    aperto *per scelta*, non per dimenticanza: `clear_fatture_cache()` invalida
    **il processo che ha servito la richiesta**, non gli altri 3. Il TTL corto
@@ -155,9 +172,11 @@ residui della dimensione**, sono **buchi di copertura** — lavoro di scrittura
 test che nessun audit può fare in coda a sé stesso, e che va pianificato come
 sessione propria:
 
-- **`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.** È il
-  percorso di upload manuale, uno dei due ingressi delle fatture, e il buco di
-  copertura più grande del progetto. **È il candidato naturale dopo Performance.**
+- ~~`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.~~
+  **CHIUSA il 4/8/2026** — vedi dettaglio in cima a questa sezione. Coverage
+  16%, i due punti della remediation Performance ora difesi da test verificati
+  per mutazione. Il file resta comunque il buco di copertura più grande del
+  progetto in termini assoluti (909 statement ancora scoperti).
 - **`worker/run.py`: 0%.** Il queue-worker non viene mai importato dalla suite.
 - **`riparto.py`: 7 endpoint su 11 senza alcun test** (`riparto_da_fattura`,
   `riparto_manuale`, `riparto_modifica`, `riparto_duplica`, `riparto_incoerenze`,
@@ -473,6 +492,18 @@ conferma esplicita di Mattia, mai in autonomia.
     decisione, non una riga di codice. Un residuo scritto come decisione con la sua
     ragione e' informazione; lo stesso residuo lasciato implicito diventa, tre
     sessioni dopo, "non lo sapevamo".
+36. **La suite intera puo' fallire dove i singoli file non falliscono, e non e'
+    detto che sia il tuo diff.** Il 4/8, lanciando `pytest tests/` per intero con
+    coverage, 84 test in 7 file (`test_prezzi_score_fornitori.py`,
+    `test_tag_analytics_service.py`, ecc. — nessuno tocca `upload_handler.py`)
+    sono andati rossi; rilanciati singolarmente, tutti verdi. E' inquinamento
+    da ordine/stato condiviso fra file, non una regressione introdotta qui:
+    verificato PRIMA di scrivere codice, per non inseguire un fantasma. Non
+    approfondito oltre (fuori scope), ma **non e' piu' vero che la suite e'
+    "10249 passed/0 failed" lanciata tutta insieme con coverage** — lanciata a
+    sottoinsiemi mirati si', per intero no. Da investigare in una sessione
+    dedicata se conta ancora come garanzia end-to-end prima del prossimo deploy
+    grosso.
 
 ## Chiusura del ciclo (quando tutte le righe sono 🟢 o 🟡 con nota esplicita)
 
