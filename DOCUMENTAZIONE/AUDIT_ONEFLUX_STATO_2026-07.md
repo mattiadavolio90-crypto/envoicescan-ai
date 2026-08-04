@@ -120,11 +120,28 @@ puliti.
 
 **Consegna per la prossima sessione — in ordine di valore:**
 
-1. **`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.**
-   È il candidato naturale ora: percorso di upload manuale, uno dei due ingressi
-   delle fatture, il buco di copertura più grande del progetto — e nella
-   remediation HIGH ci ho toccato due punti (`:517`, `:845`) senza avere una rete
-   sotto. Vale come sessione propria, non come coda di un audit.
+1. ~~**`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.**~~
+   **CHIUSA il 4/8/2026.** Ricontato con metodo diverso (coverage mirata sui 4
+   file di test che toccano il modulo, non fidandosi del numero scritto qui):
+   11% confermato (1108 statement, 972 missed) — ma "ZERO righe di test" era
+   la frase imprecisa, esisteva già `test_upload_handler_pure.py` (97 righe,
+   3 funzioni pure). La sostanza reggeva: i due punti toccati dalla remediation
+   HIGH (`:517`, `:845`, `response = query.execute()` → `rows = fetch_all(query)`)
+   erano davvero scoperti. Aggiunto `tests/test_upload_handler_pagination.py`
+   (7 test, riuso del pattern `FakePostgrest` già esistente in
+   `test_paginazione_e_cache_audit_performance.py`) su
+   `_collect_post_upload_quality_checks` e `_run_post_upload_ai_categorization`:
+   verificano che con >1000 righe fake (troncamento PostgREST simulato) i
+   contatori (`rows_saved`, `zero_price_rows`, `needs_review_rows`,
+   `uncategorized_rows`, `rows_scanned`) vedano l'intero risultato, non solo la
+   prima pagina. **Verificato per mutazione**: ripristinato temporaneamente
+   `query.execute().data or []` al posto di `fetch_all(query)` su entrambi i
+   punti — i test relativi sono andati rossi (1000 invece di 1500), poi
+   ripristinato il fix reale (diff netto zero su `upload_handler.py`). Coverage
+   del file 11% → 16% (972 → 909 statement mancanti); resta un file grande
+   (2231 righe, parsing XML/P7M/PDF, dedup, orchestrazione AI a chunk) — non
+   portato al 100% per scelta, fuori scope di questa consegna che era
+   specificamente sui due punti della remediation Performance.
 2. **Cache per-processo vs `WORKER_WEB_CONCURRENCY=4`** — l'unico MEDIUM lasciato
    aperto *per scelta*, non per dimenticanza: `clear_fatture_cache()` invalida
    **il processo che ha servito la richiesta**, non gli altri 3. Il TTL corto
@@ -155,9 +172,11 @@ residui della dimensione**, sono **buchi di copertura** — lavoro di scrittura
 test che nessun audit può fare in coda a sé stesso, e che va pianificato come
 sessione propria:
 
-- **`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.** È il
-  percorso di upload manuale, uno dei due ingressi delle fatture, e il buco di
-  copertura più grande del progetto. **È il candidato naturale dopo Performance.**
+- ~~`upload_handler.py`: 1109 statement, 11% coverage, ZERO righe di test.~~
+  **CHIUSA il 4/8/2026** — vedi dettaglio in cima a questa sezione. Coverage
+  16%, i due punti della remediation Performance ora difesi da test verificati
+  per mutazione. Il file resta comunque il buco di copertura più grande del
+  progetto in termini assoluti (909 statement ancora scoperti).
 - **`worker/run.py`: 0%.** Il queue-worker non viene mai importato dalla suite.
 - **`riparto.py`: 7 endpoint su 11 senza alcun test** (`riparto_da_fattura`,
   `riparto_manuale`, `riparto_modifica`, `riparto_duplica`, `riparto_incoerenze`,
@@ -473,6 +492,39 @@ conferma esplicita di Mattia, mai in autonomia.
     decisione, non una riga di codice. Un residuo scritto come decisione con la sua
     ragione e' informazione; lo stesso residuo lasciato implicito diventa, tre
     sessioni dopo, "non lo sapevamo".
+36. **`--cov` puntato su UN modulo fa fallire test sani in file che non c'entrano
+    niente — e non e' inquinamento da ordine.** Il 4/8, misurando la coverage di
+    `upload_handler.py`, sono comparsi rossi in **10 file** che non lo toccano
+    (`test_categoria_normalization`, `test_categorie_admin`, `test_custom_tags`,
+    `test_db_service`, `test_margine_service`, `test_prezzi_nota_credito_sconti`,
+    `test_prezzi_preferiti`, `test_prezzi_score_fornitori`,
+    `test_price_impact_pareto`, `test_tag_analytics_service`).
+
+    **La prima diagnosi che avevo scritto qui — "inquinamento da ordine/stato
+    condiviso" — era sbagliata**, e l'ha smontata `code-reviewer` con
+    l'esperimento che non avevo fatto: `test_categoria_normalization.py` lanciato
+    **da solo**, con nessun altro test in esecuzione, fallisce lo stesso
+    (`2 failed, 11 passed`) se c'e' `--cov=services.upload_handler`. Con un file
+    solo, l'interazione fra test e' esclusa **per costruzione**. Lo stesso file
+    senza `--cov`: `13 passed`.
+
+    Causa reale: `TypeError: int() argument must be... not '_NoValueType'` da
+    `numpy/_core/_methods.py` via `pandas.nansum` — interazione fra il tracer di
+    coverage e il percorso C di pandas/numpy. Compare **solo** con `--cov` su un
+    singolo modulo: con `--cov=services`, con `--cov` nudo e senza coverage la
+    suite e' **10265 passed / 0 failed** (verificato tre volte). **Il fenomeno
+    preesiste** a questa consegna: rimuovendo il file di test nuovo, stessi
+    2 failed.
+
+    Due conseguenze pratiche. **La CI resta una garanzia valida**: lancia
+    `python -m pytest -q` senza coverage (`.github/workflows/tests.yml:43`), ed e'
+    verde. E soprattutto: **chi in futuro misurera' la coverage di un modulo
+    singolo vedra' rossi che NON sono regressioni** — fra i file colpiti ci sono
+    `test_margine_service` e `test_categoria_normalization`, cioe' le guardie di
+    due regole di dominio critiche. Il rischio e' "aggiustare" codice sano
+    inseguendo un artefatto dello strumento di misura. Prima di credere a un
+    rosso comparso durante una misura di coverage: rilancia lo stesso file senza
+    `--cov`.
 
 ## Chiusura del ciclo (quando tutte le righe sono 🟢 o 🟡 con nota esplicita)
 
