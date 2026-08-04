@@ -35,6 +35,8 @@ type MesePivot = {
   costo_personale_extra: number;
   costi_personale: number;
   mol: number;
+  quote_riparto_fb: number;
+  quote_riparto_spese: number;
 };
 
 type Commento = {
@@ -83,11 +85,11 @@ const ROWS: RowDef[] = [
   { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-sky-500 dark:text-sky-400", valueColor: "sky" },
-  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", valueColor: "white" },
+  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", derive: (m) => m.costi_fb_auto + (m.quote_riparto_fb ?? 0), valueColor: "white" },
   { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
   { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "orange" },
   { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
-  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", valueColor: "white" },
+  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", derive: (m) => m.costi_spese_auto + (m.quote_riparto_spese ?? 0), valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
   { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
   { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
@@ -593,7 +595,7 @@ function Cell({
 
   const tooltip =
     row.type === "input-readonly-tooltip" ? "Modifica da Carica ricavi"
-    : row.type === "input-readonly" ? "Calcolato dalle fatture caricate"
+    : row.type === "input-readonly" ? "Calcolato dalle fatture caricate (incluse le quote di costi di gruppo ripartite su questa sede)"
     : undefined;
   const showLock = row.type === "input-readonly-tooltip" || row.type === "input-readonly";
 
