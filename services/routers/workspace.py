@@ -13,6 +13,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 
+from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIE_SPESE_GENERALI
+
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
 # WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
@@ -2153,13 +2155,33 @@ def ws_regole_turni_genera(body: GeneraTurniDaRegoleBody, authorization: Optiona
 
 _TIPI_SPESA = {"fb", "generale"}
 
+# La categoria determina il tipo, mai il contrario: `tipo` e' il binario contabile
+# (fb -> altri_costi_fb, generale -> altri_costi_spese in margini_mensili, quindi MOL).
+# Derivarlo qui, in un punto solo, rende impossibile una riga con categoria e binario
+# incoerenti. Escluse di proposito "Da Classificare" (qui e' l'utente stesso a scrivere
+# la spesa: sa cos'e') e "📝 NOTE E DICITURE" (riservata alle righe fattura a importo 0).
+_CATEGORIE_SPESA_GENERALI = set(CATEGORIE_SPESE_GENERALI)
+_CATEGORIE_SPESA_VALIDE = set(CATEGORIE_FOOD_BEVERAGE) | _CATEGORIE_SPESA_GENERALI
+
+
+def _tipo_da_categoria(categoria: str) -> str:
+    return "generale" if categoria in _CATEGORIE_SPESA_GENERALI else "fb"
+
+
+def _valida_categoria_spesa(categoria: str) -> str:
+    cat = (categoria or "").strip()
+    if cat not in _CATEGORIE_SPESA_VALIDE:
+        raise HTTPException(status_code=400, detail="Categoria non valida per una spesa extra")
+    return cat
+
 
 class NuovaSpesaBody(BaseModel):
     data_spesa: str   # YYYY-MM-DD
-    tipo: str         # 'fb' | 'generale'
+    tipo: str         # 'fb' | 'generale' — ignorato se arriva anche categoria
     importo: float
     descrizione: str
     note: Optional[str] = None
+    categoria: Optional[str] = None
 
 
 class AggiornaSpesaBody(BaseModel):
@@ -2168,6 +2190,7 @@ class AggiornaSpesaBody(BaseModel):
     importo: Optional[float] = None
     descrizione: Optional[str] = None
     note: Optional[str] = None
+    categoria: Optional[str] = None
 
 
 @router.get("/api/workspace/spese", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
@@ -2192,11 +2215,18 @@ def ws_spese_list(
     voci = q.execute().data or []
     tot_fb = round(sum(float(v.get("importo") or 0) for v in voci if v.get("tipo") == "fb"), 2)
     tot_generale = round(sum(float(v.get("importo") or 0) for v in voci if v.get("tipo") == "generale"), 2)
+    per_categoria: dict = {}
+    for v in voci:
+        cat = v.get("categoria")
+        if not cat:
+            continue  # voci storiche senza categoria: non si inventa un raggruppamento
+        per_categoria[cat] = per_categoria.get(cat, 0.0) + float(v.get("importo") or 0)
     return {
         "voci": voci,
         "totale_fb": tot_fb,
         "totale_generale": tot_generale,
         "totale": round(tot_fb + tot_generale, 2),
+        "totali_per_categoria": {k: round(v, 2) for k, v in per_categoria.items() if v > 0},
     }
 
 
@@ -2223,6 +2253,12 @@ def ws_spese_crea(body: NuovaSpesaBody, authorization: Optional[str] = Header(No
         "importo": round(float(body.importo), 2),
         "descrizione": body.descrizione.strip(),
     }
+    # Quando c'e' la categoria e' lei la fonte di verita': il tipo mandato dal
+    # client viene ignorato, non c'e' modo di salvare una riga incoerente.
+    if body.categoria is not None:
+        categoria = _valida_categoria_spesa(body.categoria)
+        payload["categoria"] = categoria
+        payload["tipo"] = _tipo_da_categoria(categoria)
     if body.note is not None:
         payload["note"] = body.note
     resp = sb.table("spese_extra").insert(payload).execute()
@@ -2252,6 +2288,32 @@ def ws_spese_aggiorna(spesa_id: str, body: AggiornaSpesaBody, authorization: Opt
         updates["importo"] = round(float(raw["importo"]), 2)
     if "note" in raw:  # azzerabile
         updates["note"] = raw["note"]
+
+    # Il tipo si rideriva SEMPRE dalla categoria effettiva della riga, non solo
+    # quando la categoria cambia: altrimenti un PATCH del solo `tipo` su una voce
+    # gia' categorizzata (es. PESCE -> tipo 'generale') la lascerebbe sul binario
+    # sbagliato e sposterebbe il MOL in silenzio. Serve la categoria corrente,
+    # quindi si rilegge la riga. categoria=null la azzera e restituisce il
+    # controllo manuale del tipo (voci storiche).
+    if "categoria" in raw:
+        if raw["categoria"] is None:
+            updates["categoria"] = None
+            categoria_effettiva = None
+        else:
+            categoria_effettiva = _valida_categoria_spesa(raw["categoria"])
+            updates["categoria"] = categoria_effettiva
+    elif updates:
+        corrente = (
+            sb.table("spese_extra").select("categoria")
+            .eq("id", spesa_id).eq("ristorante_id", ristorante_id)
+            .limit(1).execute()
+        ).data or []
+        categoria_effettiva = (corrente[0].get("categoria") or None) if corrente else None
+    else:
+        categoria_effettiva = None
+    if categoria_effettiva:
+        updates["tipo"] = _tipo_da_categoria(categoria_effettiva)
+
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
     resp = sb.table("spese_extra").update(updates).eq("id", spesa_id).eq("ristorante_id", ristorante_id).execute()

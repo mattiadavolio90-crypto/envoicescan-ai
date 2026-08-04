@@ -7,10 +7,15 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
+import {
+  CATEGORIE_SPESA_FB,
+  CATEGORIE_SPESA_GENERALI,
+  TIPO_SPESA_LABEL,
+  tipoDaCategoria,
+  type TipoSpesa,
+} from "@/lib/categorie-spesa";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
-
-type TipoSpesa = "fb" | "generale";
 
 interface Spesa {
   id: string;
@@ -19,6 +24,7 @@ interface Spesa {
   importo: number;
   descrizione: string;
   note?: string | null;
+  categoria?: string | null;
 }
 
 interface SpeseResponse {
@@ -47,7 +53,6 @@ function fmtEuro(v: number) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
 }
 
-const TIPO_LABEL: Record<TipoSpesa, string> = { fb: "Costo F&B", generale: "Spesa Generale" };
 const TIPO_BADGE: Record<TipoSpesa, string> = {
   fb: "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200",
   generale: "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200",
@@ -65,7 +70,7 @@ interface DialogProps {
 
 function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps) {
   const [data, setData] = useState(dataDefault);
-  const [tipo, setTipo] = useState<TipoSpesa>("generale");
+  const [categoria, setCategoria] = useState("");
   const [importo, setImporto] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [note, setNote] = useState("");
@@ -74,15 +79,20 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps
   useEffect(() => {
     if (open) {
       setData(spesa?.data_spesa ?? dataDefault);
-      setTipo(spesa?.tipo ?? "generale");
+      setCategoria(spesa?.categoria ?? "");
       setImporto(spesa?.importo ? String(spesa.importo).replace(".", ",") : "");
       setDescrizione(spesa?.descrizione ?? "");
       setNote(spesa?.note ?? "");
     }
   }, [open, spesa, dataDefault]);
 
+  // Il tipo lo deriva la categoria (stessa regola del backend); sulle voci
+  // storiche senza categoria resta quello gia' salvato.
+  const tipo: TipoSpesa = categoria ? tipoDaCategoria(categoria) : (spesa?.tipo ?? "generale");
+
   async function salva() {
     const importoNum = importo ? parseFloat(importo.replace(",", ".")) : NaN;
+    if (!categoria) { toast.error("Scegli una categoria"); return; }
     if (!descrizione.trim()) { toast.error("La descrizione è obbligatoria"); return; }
     if (isNaN(importoNum) || importoNum < 0) { toast.error("Inserisci un importo valido"); return; }
     setSaving(true);
@@ -90,6 +100,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps
       const payload = {
         data_spesa: data,
         tipo,
+        categoria,
         importo: importoNum,
         descrizione: descrizione.trim(),
         note: note.trim() || null,
@@ -119,25 +130,28 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps
         </DialogHeader>
         <div className="mt-1 space-y-3">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Tipo di spesa *</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["fb", "generale"] as TipoSpesa[]).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTipo(t)}
-                  className={`rounded-lg border py-2.5 text-sm font-medium transition-colors ${
-                    tipo === t
-                      ? t === "fb"
-                        ? "border-orange-500 bg-orange-500/10 text-orange-700 dark:text-orange-300"
-                        : "border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-300"
-                      : "border-input text-muted-foreground"
-                  }`}
-                >
-                  {TIPO_LABEL[t]}
-                </button>
-              ))}
-            </div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Categoria *</label>
+            <select
+              value={categoria}
+              onChange={(e) => setCategoria(e.target.value)}
+              className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="">— Scegli una categoria —</option>
+              <optgroup label="Food &amp; Beverage">
+                {CATEGORIE_SPESA_FB.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+              <optgroup label="Spese generali">
+                {CATEGORIE_SPESA_GENERALI.map((c) => <option key={c} value={c}>{c}</option>)}
+              </optgroup>
+            </select>
+            {categoria && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Rientra in:{" "}
+                <span className={`font-semibold ${tipo === "fb" ? "text-orange-600 dark:text-orange-400" : "text-purple-600 dark:text-purple-400"}`}>
+                  {TIPO_SPESA_LABEL[tipo]}
+                </span>
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -291,8 +305,8 @@ export function MobileSpese() {
           voci.map((s) => (
             <div key={s.id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
               <span className="w-10 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtData(s.data_spesa)}</span>
-              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TIPO_BADGE[s.tipo]}`}>
-                {s.tipo === "fb" ? "F&B" : "Gen."}
+              <span className={`max-w-[120px] shrink-0 truncate rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TIPO_BADGE[s.tipo]}`}>
+                {s.categoria ?? (s.tipo === "fb" ? "F&B" : "Gen.")}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm">
                 {s.descrizione}

@@ -86,7 +86,7 @@ function addDays(d: Date, n: number): Date {
 // ─── Tipi grezzi degli endpoint riusati ────────────────────────────────────────
 
 interface EventoRaw { id: string; data_evento: string; titolo: string; ora_inizio?: string | null; ora_fine?: string | null; descrizione?: string | null; }
-interface SpesaRaw { id: string; data_spesa: string; tipo: "fb" | "generale"; importo: number; descrizione: string; }
+interface SpesaRaw { id: string; data_spesa: string; tipo: "fb" | "generale"; importo: number; descrizione: string; categoria?: string | null; }
 interface DipendenteRaw { id: string; nome: string; }
 
 // ─── Vista aggregata "Tutto" ───────────────────────────────────────────────────
@@ -133,7 +133,7 @@ export function AgendaOverview() {
           out.push({
             id: `sp-${s.id}`, fonte: "spesa", data: s.data_spesa,
             titolo: s.descrizione,
-            dettaglio: s.tipo === "fb" ? "Costo F&B" : "Spesa generale",
+            dettaglio: s.categoria ?? (s.tipo === "fb" ? "Costo F&B" : "Spesa generale"),
             importo: s.importo,
           });
         }

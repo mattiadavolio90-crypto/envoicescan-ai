@@ -997,6 +997,11 @@ def get_costo_personale_da_turni(
     }
 
 
+# Chiave per le voci senza categoria nel dettaglio (voci create prima
+# dell'introduzione della categoria): non e' una categoria canonica, e' l'assenza.
+_CATEGORIA_SPESA_ASSENTE = "Senza categoria"
+
+
 @router.get("/api/margini/costo-spese-extra", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
 def get_costo_spese_da_voci(
     anno: int = Query(..., ge=2000, le=2100),
@@ -1019,7 +1024,7 @@ def get_costo_spese_da_voci(
     data_a = f"{anno}-{mese:02d}-{last_day:02d}"
 
     voci = (
-        sb.table("spese_extra").select("tipo,importo")
+        sb.table("spese_extra").select("tipo,importo,categoria")
         .eq("ristorante_id", ristorante_id)
         .gte("data_spesa", data_da).lte("data_spesa", data_a)
         .execute()
@@ -1029,14 +1034,23 @@ def get_costo_spese_da_voci(
     totale_generale = 0.0
     n_fb = 0
     n_generale = 0
+    # Scomposizione per categoria: serve solo a mostrare di cosa e' fatto il numero
+    # nel dialog "Recupera dal tab Spese". I totali sopra restano la fonte della
+    # cella, invariati. Le voci storiche senza categoria confluiscono in SENZA_CATEGORIA
+    # cosi' la somma del dettaglio quadra sempre col totale.
+    dettaglio_fb: dict = {}
+    dettaglio_generale: dict = {}
     for v in voci:
         importo = float(v.get("importo") or 0)
+        cat = v.get("categoria") or _CATEGORIA_SPESA_ASSENTE
         if v.get("tipo") == "fb":
             totale_fb += importo
             n_fb += 1
+            dettaglio_fb[cat] = dettaglio_fb.get(cat, 0.0) + importo
         elif v.get("tipo") == "generale":
             totale_generale += importo
             n_generale += 1
+            dettaglio_generale[cat] = dettaglio_generale.get(cat, 0.0) + importo
 
     return {
         "anno": anno,
@@ -1045,6 +1059,8 @@ def get_costo_spese_da_voci(
         "totale_generale": round(totale_generale, 2),
         "n_voci_fb": n_fb,
         "n_voci_generale": n_generale,
+        "dettaglio_fb": {k: round(v, 2) for k, v in dettaglio_fb.items()},
+        "dettaglio_generale": {k: round(v, 2) for k, v in dettaglio_generale.items()},
     }
 
 
