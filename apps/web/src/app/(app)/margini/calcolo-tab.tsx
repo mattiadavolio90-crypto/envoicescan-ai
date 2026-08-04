@@ -91,7 +91,7 @@ const ROWS: RowDef[] = [
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
   { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
   { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
-  { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_fb_totali + m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
+  { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
   { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
 
