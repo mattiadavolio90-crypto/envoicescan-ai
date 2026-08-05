@@ -35,12 +35,16 @@ a basso rischio": è rischio ignoto per definizione.
 | File | Stato | Perché conta |
 |---|---|---|
 | `services/routers/gruppo.py` | letto in parte | In catena il cap PostgREST scatta **prima** sulle query `.in_()` multi-sede |
-| ~~`services/routers/riparto.py`~~ | 🟢 letto e fixato — 5/8 (CHIUSO) | 2 HIGH + 2 MEDIUM + gap residuo (RPC `sostituisci_quote_riparto`) fixati, LOW/INFO documentati (vedi STORICO §11); PR #14 CI verde, merge+deploy a sera/notte |
-| ~~`services/routers/fatture.py`~~ | 🟢 letto e fixato — 5/8 (CHIUSO) | Idem, condiviso col fix sopra (vedi STORICO §11) |
 | `services/routers/ricavi.py` | **mai letto** | Mai nominato come letto in nessuna riga della tabella |
 | `worker/email_queue_processor.py` | **mai letto** | Idem |
 | `services/ai_service.py:3392,3453` e `:3579-3990` | **mai letto** | Ultimo sito plausibile della classe troncamenti; se troncata → più chiamate GPT a pagamento |
 | `services/routers/admin.py` | letto ~15% | 3010 righe (ricontate il 4/8: il doc diceva 2959), coperte solo da Security passata 3 + Bug |
+
+~~`services/routers/riparto.py` + `fatture.py`~~ — **CHIUSI e DEPLOYATI il 5/8/2026**
+(PR #14, merge `5d69fe3`, worker Railway verificato su `/health` = commit deployato).
+2 HIGH + 2 MEDIUM + gap residuo (RPC transazionale `sostituisci_quote_riparto`
+per `riparto_modifica`) fixati; LOW/INFO documentati. Dettaglio completo in
+STORICO §11.
 
 ## §2 — Copertura test (lavoro di scrittura, non di audit)
 
