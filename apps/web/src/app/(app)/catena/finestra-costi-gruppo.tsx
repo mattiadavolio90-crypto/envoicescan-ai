@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -64,6 +65,7 @@ export function FinestraCostiGruppo({
   const [data, setData] = useState<CostiComuniRes | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [daEliminare, setDaEliminare] = useState<Costo | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const reqRef = useRef(0);
 
@@ -90,11 +92,6 @@ export function FinestraCostiGruppo({
 
   async function elimina(c: Costo) {
     if (busy) return;
-    const msg =
-      c.origine === "fattura"
-        ? "Rimuovere la ripartizione? Il costo tornerà intero sulla sede intestataria."
-        : "Eliminare questo costo di gruppo?";
-    if (!window.confirm(msg)) return;
     setBusy(c.id);
     try {
       const res = await fetch(`/api/riparto/${c.id}`, { method: "DELETE" });
@@ -209,7 +206,7 @@ export function FinestraCostiGruppo({
                     <button
                       type="button"
                       disabled={busy !== null}
-                      onClick={() => elimina(c)}
+                      onClick={() => setDaEliminare(c)}
                       className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
                     >
                       <Trash2 className="size-3.5" />
@@ -235,6 +232,15 @@ export function FinestraCostiGruppo({
             setAddOpen(false);
             carica();
           }}
+        />
+
+        <ConfirmDialog
+          open={daEliminare !== null}
+          titolo={daEliminare?.origine === "fattura" ? "Rimuovere la ripartizione?" : "Eliminare questo costo di gruppo?"}
+          messaggio={daEliminare?.origine === "fattura" ? "Il costo tornerà intero sulla sede intestataria." : undefined}
+          confermaLabel={daEliminare?.origine === "fattura" ? "Rimuovi" : "Elimina"}
+          onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+          onClose={() => setDaEliminare(null)}
         />
       </DialogContent>
     </Dialog>

@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
@@ -264,6 +265,7 @@ export function AgendaView() {
   const [giornoSel, setGiornoSel] = useState<string>(today);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editEvento, setEditEvento] = useState<EventoDiario | null>(null);
+  const [daEliminare, setDaEliminare] = useState<EventoDiario | null>(null);
 
   const loadEventi = useCallback(async (a: number, m: number) => {
     setLoading(true);
@@ -297,7 +299,6 @@ export function AgendaView() {
   }
 
   async function elimina(e: EventoDiario) {
-    if (!confirm(`Eliminare "${e.titolo}"?`)) return;
     try {
       const res = await fetch(`/api/workspace/diario/${e.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -395,7 +396,7 @@ export function AgendaView() {
                       size="icon"
                       variant="ghost"
                       className="size-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => elimina(e)}
+                      onClick={() => setDaEliminare(e)}
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
@@ -413,6 +414,13 @@ export function AgendaView() {
         dataDefault={giornoSel}
         onClose={() => { setDialogOpen(false); setEditEvento(null); }}
         onSaved={() => loadEventi(anno, mese)}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo={daEliminare ? `Eliminare "${daEliminare.titolo}"?` : ""}
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
       />
     </div>
   );

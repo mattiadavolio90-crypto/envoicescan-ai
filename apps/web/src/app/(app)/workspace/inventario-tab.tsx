@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import {
   fmtData,
@@ -40,6 +41,8 @@ export function InventarioTab() {
   const [copiaOpen, setCopiaOpen] = useState(false);
   const [copiaLoading, setCopiaLoading] = useState(false);
   const [storicoOpen, setStoricoOpen] = useState(false);
+  const [daEliminare, setDaEliminare] = useState<VoceInventario | null>(null);
+  const [confermaEliminaInventario, setConfermaEliminaInventario] = useState(false);
 
   async function load(data = dataInventario) {
     setLoading(true);
@@ -71,7 +74,6 @@ export function InventarioTab() {
   }
 
   async function elimina(v: VoceInventario) {
-    if (!confirm(`Eliminare "${v.nome}"?`)) return;
     try {
       const res = await fetch(`/api/workspace/inventario/${v.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -104,7 +106,6 @@ export function InventarioTab() {
   }
 
   async function eliminaInventario() {
-    if (!confirm(`Eliminare tutte le ${voci.length} voci dell'inventario del ${fmtData(dataInventario)}?`)) return;
     try {
       const res = await fetch(`/api/workspace/inventario?data=${dataInventario}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -213,7 +214,7 @@ export function InventarioTab() {
             <Button variant="outline" onClick={esportaCSV}>
               <Download className="size-4 mr-1.5" />Esporta CSV
             </Button>
-            <Button variant="outline" className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/40" onClick={eliminaInventario}>
+            <Button variant="outline" className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/40" onClick={() => setConfermaEliminaInventario(true)}>
               <Trash className="size-4 mr-1.5" />Elimina inventario
             </Button>
           </>
@@ -337,7 +338,7 @@ export function InventarioTab() {
                         size="icon"
                         variant="ghost"
                         className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => elimina(v)}
+                        onClick={() => setDaEliminare(v)}
                         title="Elimina"
                       >
                         <Trash2 className="size-3.5" />
@@ -376,6 +377,20 @@ export function InventarioTab() {
         snapshots={snapshots}
         onClose={() => setStoricoOpen(false)}
         onApri={onDataChange}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo={daEliminare ? `Eliminare "${daEliminare.nome}"?` : ""}
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
+      />
+
+      <ConfirmDialog
+        open={confermaEliminaInventario}
+        titolo={`Eliminare tutte le ${voci.length} voci dell'inventario del ${fmtData(dataInventario)}?`}
+        onConferma={eliminaInventario}
+        onClose={() => setConfermaEliminaInventario(false)}
       />
     </div>
   );

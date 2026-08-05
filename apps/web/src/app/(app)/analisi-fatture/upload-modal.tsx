@@ -23,6 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type FileStatus = "waiting" | "uploading" | "success" | "error" | "skipped" | "queued";
 
@@ -69,6 +70,7 @@ function humanSize(b: number): string {
 export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } = {}) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
+  const [confermaChiusuraConErrori, setConfermaChiusuraConErrori] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -222,6 +224,7 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
   const totRighe = files.reduce((sum, f) => sum + (f.righe ?? 0), 0);
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
@@ -406,13 +409,10 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                   // dei file in errore (nome, motivo) va perso. Se ce ne sono ancora,
                   // meglio far confermare esplicitamente piuttosto che farli sparire
                   // senza che l'utente li abbia notati.
-                  if (
-                    errored === 0 ||
-                    confirm(
-                      `${errored} ${errored === 1 ? "file non è stato caricato" : "file non sono stati caricati"}. Chiudendo perderai l'elenco di quali. Continuare?`,
-                    )
-                  ) {
+                  if (errored === 0) {
                     closeAndRefresh();
+                  } else {
+                    setConfermaChiusuraConErrori(true);
                   }
                 }}
               >
@@ -440,5 +440,15 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
         </div>
       </DialogContent>
     </Dialog>
+
+    <ConfirmDialog
+      open={confermaChiusuraConErrori}
+      titolo={`${errored} ${errored === 1 ? "file non è stato caricato" : "file non sono stati caricati"}.`}
+      messaggio="Chiudendo perderai l'elenco di quali. Continuare?"
+      confermaLabel="Chiudi comunque"
+      onConferma={closeAndRefresh}
+      onClose={() => setConfermaChiusuraConErrori(false)}
+    />
+    </>
   );
 }

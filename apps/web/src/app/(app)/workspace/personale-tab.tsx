@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
@@ -982,6 +983,8 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
   const [editNome, setEditNome] = useState("");
   const [editCosto, setEditCosto] = useState("");
   const [busy, setBusy] = useState(false);
+  const [daDisattivare, setDaDisattivare] = useState<Dipendente | null>(null);
+  const [daEliminare, setDaEliminare] = useState<Dipendente | null>(null);
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -1035,9 +1038,11 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
   }
 
   async function cambiaStato(d: Dipendente, azione: "disattiva" | "riattiva") {
-    if (azione === "disattiva" && !confirm(
-      `Disattivare ${d.nome}?\n\nSparirà dalle selezioni e dai nuovi inserimenti, ma i turni già registrati restano nei costi storici.`
-    )) return;
+    if (azione === "disattiva") { setDaDisattivare(d); return; }
+    await eseguiCambiaStato(d, azione);
+  }
+
+  async function eseguiCambiaStato(d: Dipendente, azione: "disattiva" | "riattiva") {
     setBusy(true);
     try {
       const res = await fetch(`/api/workspace/dipendenti/${d.id}/${azione}`, { method: "PATCH" });
@@ -1054,7 +1059,6 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
   }
 
   async function elimina(d: Dipendente) {
-    if (!confirm(`Eliminare definitivamente ${d.nome}?\n\nPossibile solo se non ha nessun turno registrato.`)) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/workspace/dipendenti/${d.id}`, { method: "DELETE" });
@@ -1133,7 +1137,7 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
                           variant="ghost"
                           className="size-7 text-muted-foreground hover:text-destructive"
                           title="Elimina (solo se non ha turni)"
-                          onClick={() => elimina(d)}
+                          onClick={() => setDaEliminare(d)}
                           disabled={busy}
                         >
                           <Trash2 className="size-3.5" />
@@ -1188,6 +1192,23 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
           <Button variant="outline" onClick={onClose}>Chiudi</Button>
         </div>
       </DialogContent>
+
+      <ConfirmDialog
+        open={daDisattivare !== null}
+        titolo={daDisattivare ? `Disattivare ${daDisattivare.nome}?` : ""}
+        messaggio="Sparirà dalle selezioni e dai nuovi inserimenti, ma i turni già registrati restano nei costi storici."
+        confermaLabel="Disattiva"
+        onConferma={() => { if (daDisattivare) eseguiCambiaStato(daDisattivare, "disattiva"); }}
+        onClose={() => setDaDisattivare(null)}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo={daEliminare ? `Eliminare definitivamente ${daEliminare.nome}?` : ""}
+        messaggio="Possibile solo se non ha nessun turno registrato."
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
+      />
     </Dialog>
   );
 }
@@ -1295,6 +1316,8 @@ export function PersonaleTab() {
   const [editMensile, setEditMensile] = useState<Turno | null>(null);
   const [gestioneDipOpen, setGestioneDipOpen] = useState(false);
   const [copiaMeseOpen, setCopiaMeseOpen] = useState(false);
+  const [turnoDaEliminare, setTurnoDaEliminare] = useState<Turno | null>(null);
+  const [mensileDaEliminare, setMensileDaEliminare] = useState<Turno | null>(null);
 
   const [da, fine] = (() => {
     const [ay, am] = meseBase.split("-").map(Number);
@@ -1337,19 +1360,20 @@ export function PersonaleTab() {
     setMeseBase(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
   }
 
-  async function elimina(t: Turno) {
+  function descriviTurno(t: Turno): string {
     const chi = nomePerId[t.dipendente_id] ?? "questo dipendente";
-    const cosa = (t.tipo_giorno ?? "turno") !== "turno"
+    return (t.tipo_giorno ?? "turno") !== "turno"
       ? `${TIPO_GIORNO_LABEL[t.tipo_giorno as TipoGiorno].toLowerCase()} di ${chi} (${fmtData(t.data_turno)})`
       : `turno di ${chi} (${fmtData(t.data_turno)} ${orarioTurno(t)})`;
-    if (!confirm(`Eliminare ${cosa}?`)) return;
+  }
+
+  async function elimina(t: Turno) {
     await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
     toast.success("Eliminato");
     load(da, fine);
   }
 
   async function eliminaMensile(t: Turno) {
-    if (!confirm(`Eliminare l'inserimento mensile di ${nomePerId[t.dipendente_id] ?? "questo dipendente"} (${fmtMese(meseBase)})?`)) return;
     await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
     toast.success("Mese eliminato");
     load(da, fine);
@@ -1683,7 +1707,7 @@ export function PersonaleTab() {
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
                                       <Pencil className="size-3" />
                                     </Button>
-                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
+                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => setTurnoDaEliminare(t)}>
                                       <Trash2 className="size-3" />
                                     </Button>
                                   </div>
@@ -1699,7 +1723,7 @@ export function PersonaleTab() {
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditMensile(t); setMensileDialogOpen(true); }}>
                                       <Pencil className="size-3" />
                                     </Button>
-                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => eliminaMensile(t)}>
+                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => setMensileDaEliminare(t)}>
                                       <Trash2 className="size-3" />
                                     </Button>
                                   </div>
@@ -1719,7 +1743,7 @@ export function PersonaleTab() {
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
                                       <Pencil className="size-3" />
                                     </Button>
-                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
+                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => setTurnoDaEliminare(t)}>
                                       <Trash2 className="size-3" />
                                     </Button>
                                   </div>
@@ -1790,6 +1814,20 @@ export function PersonaleTab() {
         dipendenti={dipendenti}
         onClose={() => setCopiaMeseOpen(false)}
         onCopiato={() => load(da, fine)}
+      />
+
+      <ConfirmDialog
+        open={turnoDaEliminare !== null}
+        titolo={turnoDaEliminare ? `Eliminare ${descriviTurno(turnoDaEliminare)}?` : ""}
+        onConferma={() => { if (turnoDaEliminare) elimina(turnoDaEliminare); }}
+        onClose={() => setTurnoDaEliminare(null)}
+      />
+
+      <ConfirmDialog
+        open={mensileDaEliminare !== null}
+        titolo={mensileDaEliminare ? `Eliminare l'inserimento mensile di ${nomePerId[mensileDaEliminare.dipendente_id] ?? "questo dipendente"} (${fmtMese(meseBase)})?` : ""}
+        onConferma={() => { if (mensileDaEliminare) eliminaMensile(mensileDaEliminare); }}
+        onClose={() => setMensileDaEliminare(null)}
       />
     </div>
   );

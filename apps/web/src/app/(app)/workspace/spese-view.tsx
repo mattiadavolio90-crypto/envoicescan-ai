@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import {
   CATEGORIE_SPESA_FB,
@@ -229,6 +230,7 @@ export function SpeseView() {
   const [dataDefault, setDataDefault] = useState(oggi);
   const [filtro, setFiltro] = useState<FiltroTipo>("tutte");
   const [filtroCategoria, setFiltroCategoria] = useState<string>("tutte");
+  const [daEliminare, setDaEliminare] = useState<Spesa | null>(null);
 
   const [da, fine] = (() => {
     const [ay, am] = meseBase.split("-").map(Number);
@@ -269,7 +271,6 @@ export function SpeseView() {
   }
 
   async function elimina(s: Spesa) {
-    if (!confirm(`Eliminare la spesa "${s.descrizione}" (${fmtData(s.data_spesa)} · ${fmtEuro(s.importo)})?`)) return;
     try {
       const res = await fetch(`/api/workspace/spese/${s.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -427,7 +428,7 @@ export function SpeseView() {
                 <Button size="icon" variant="ghost" className="size-7" onClick={() => { setEditSpesa(s); setDialogOpen(true); }}>
                   <Pencil className="size-3.5" />
                 </Button>
-                <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => elimina(s)}>
+                <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => setDaEliminare(s)}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </div>
@@ -442,6 +443,13 @@ export function SpeseView() {
         dataDefault={dataDefault}
         onClose={() => { setDialogOpen(false); setEditSpesa(null); }}
         onSaved={() => load(da, fine)}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo={daEliminare ? `Eliminare la spesa "${daEliminare.descrizione}" (${fmtData(daEliminare.data_spesa)} · ${fmtEuro(daEliminare.importo)})?` : ""}
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
       />
     </div>
   );

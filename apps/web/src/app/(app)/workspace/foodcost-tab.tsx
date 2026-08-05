@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, BookOpen, BarChart3, Copy, ChevronUp, ChevronDown
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import {
   FC_BADGE_CLASS, fmtEuro, fmtPct, coloreFC,
@@ -32,6 +33,7 @@ export function FoodcostTab() {
   const [manualiOpen, setManualiOpen] = useState(false);
 
   const [categorieAperte, setCategorieAperte] = useState(false);
+  const [daEliminare, setDaEliminare] = useState<Ricetta | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,7 +64,6 @@ export function FoodcostTab() {
   }
 
   async function elimina(r: Ricetta) {
-    if (!confirm(`Eliminare "${r.nome}"?`)) return;
     try {
       const res = await fetch(`/api/workspace/foodcost/ricette/${r.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -302,7 +303,7 @@ export function FoodcostTab() {
                   <Button size="icon" variant="ghost" className="size-8" onClick={() => apriModifica(r)} title="Modifica">
                     <Pencil className="size-4" />
                   </Button>
-                  <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" onClick={() => elimina(r)} title="Elimina">
+                  <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" onClick={() => setDaEliminare(r)} title="Elimina">
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -322,6 +323,13 @@ export function FoodcostTab() {
         open={manualiOpen}
         onClose={() => setManualiOpen(false)}
         onSaved={load}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo={daEliminare ? `Eliminare "${daEliminare.nome}"?` : ""}
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
       />
     </div>
   );

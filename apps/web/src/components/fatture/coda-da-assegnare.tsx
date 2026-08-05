@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RipartisciDialog, type RegolaPreset } from "@/components/fatture/ripartisci-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type FatturaDaAssegnare = {
   queue_id: number;
@@ -91,6 +92,8 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   // delle azioni singole e riporta gli esiti uno per uno (niente "fatto!" globale finto).
   const [selezione, setSelezione] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [daScartare, setDaScartare] = useState<FatturaDaAssegnare | null>(null);
+  const [bulkConfermaOpen, setBulkConfermaOpen] = useState(false);
 
   useEffect(() => {
     if (!anteprima) return;
@@ -225,15 +228,6 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   // che nei costi non ci deve stare.
   async function scarta(f: FatturaDaAssegnare) {
     if (inCorso(f.queue_id)) return;
-    const chi = f.fornitore_nome || (f.fornitore ? `P.IVA ${f.fornitore}` : "questa fattura");
-    if (
-      !confirm(
-        `Togliere dalla coda la fattura di ${chi}?\n\nNon verrà caricata in nessun locale e non comparirà nei costi. ` +
-          `Se in futuro ti serve, ricaricala dal file originale.`,
-      )
-    ) {
-      return;
-    }
     segnaBusy(f.queue_id, true);
     try {
       if (await scartaCore(f.queue_id)) {
@@ -309,16 +303,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
   async function bulkScarta() {
     const n = items.filter((i) => selezione.has(i.queue_id)).length;
     if (n === 0 || bulkBusy) return;
-    if (
-      !confirm(
-        `Togliere dalla coda ${n} ${n === 1 ? "fattura" : "fatture"}?\n\n` +
-          `Non verranno caricate in nessun locale e non compariranno nei costi. ` +
-          `Se in futuro ti servono, ricaricale dai file originali.`,
-      )
-    ) {
-      return;
-    }
-    await eseguiBulk(scartaCore, "tolte dalla coda");
+    setBulkConfermaOpen(true);
   }
 
   if (contesto !== "catena" || (loaded && sedi.length < 2)) return null;
@@ -551,7 +536,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                           l'eccezione, non l'azione attesa. */}
                       <button
                         disabled={inCorso(f.queue_id)}
-                        onClick={() => scarta(f)}
+                        onClick={() => setDaScartare(f)}
                         className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                       >
                         <Ban className="size-3.5" />
@@ -692,6 +677,24 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           setRipartisci(null);
           router.refresh();
         }}
+      />
+
+      <ConfirmDialog
+        open={daScartare !== null}
+        titolo={daScartare ? `Togliere dalla coda la fattura di ${daScartare.fornitore_nome || (daScartare.fornitore ? `P.IVA ${daScartare.fornitore}` : "questa fattura")}?` : ""}
+        messaggio="Non verrà caricata in nessun locale e non comparirà nei costi. Se in futuro ti serve, ricaricala dal file originale."
+        confermaLabel="Togli dalla coda"
+        onConferma={() => { if (daScartare) scarta(daScartare); }}
+        onClose={() => setDaScartare(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkConfermaOpen}
+        titolo={`Togliere dalla coda ${nSelezionate} ${nSelezionate === 1 ? "fattura" : "fatture"}?`}
+        messaggio="Non verranno caricate in nessun locale e non compariranno nei costi. Se in futuro ti servono, ricaricale dai file originali."
+        confermaLabel="Togli dalla coda"
+        onConferma={() => eseguiBulk(scartaCore, "tolte dalla coda")}
+        onClose={() => setBulkConfermaOpen(false)}
       />
     </>
   );

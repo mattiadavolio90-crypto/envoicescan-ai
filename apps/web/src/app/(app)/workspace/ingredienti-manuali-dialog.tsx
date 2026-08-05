@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 
 interface Props {
@@ -41,6 +42,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
   const [editNome, setEditNome] = useState("");
   const [editPrezzo, setEditPrezzo] = useState("");
   const [editUm, setEditUm] = useState("KG");
+  const [daEliminare, setDaEliminare] = useState<{ id: string; nome: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -104,8 +106,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
     }
   }
 
-  async function handleElimina(id: string, nome: string) {
-    if (!confirm(`Eliminare "${nome}"?`)) return;
+  async function handleElimina(id: string) {
     try {
       const res = await fetch(`/api/workspace/foodcost/ingredienti-manuali/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -201,7 +202,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
                     <Pencil className="size-3.5" />
                   </Button>
                   <Button size="icon" variant="ghost" className="size-7 text-destructive hover:text-destructive"
-                    onClick={() => handleElimina(ing.id, ing.nome)}>
+                    onClick={() => setDaEliminare({ id: ing.id, nome: ing.nome })}>
                     <Trash2 className="size-3.5" />
                   </Button>
                 </>
@@ -214,6 +215,13 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
           <Button variant="outline" onClick={onClose}>Chiudi</Button>
         </DialogFooter>
       </DialogContent>
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo={daEliminare ? `Eliminare "${daEliminare.nome}"?` : ""}
+        onConferma={() => { if (daEliminare) handleElimina(daEliminare.id); }}
+        onClose={() => setDaEliminare(null)}
+      />
     </Dialog>
   );
 }

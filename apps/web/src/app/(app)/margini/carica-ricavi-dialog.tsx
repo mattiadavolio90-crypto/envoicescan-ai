@@ -13,6 +13,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatEuro, MESI_NOMI_SHORT, scorporoNetto } from "./periodi";
 import type {
   RicaviGiornalieriResponse, RicavoGiornaliero,
@@ -111,6 +112,7 @@ function GrigliaView({
   const [meseSel, setMeseSel] = useState(mesi[mesi.length - 1]);
   const [righe, setRighe] = useState<GiornoEdit[]>([]);
   const [modalita, setModalita] = useState<ModalitaMese>("mensile");
+  const [confermaSwitchMensile, setConfermaSwitchMensile] = useState(false);
   const [loadingDati, setLoadingDati] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mensiIva10, setMensiIva10] = useState("");
@@ -180,8 +182,8 @@ function GrigliaView({
   async function handleSwitchModalita(nuova: ModalitaMese) {
     if (nuova === modalita) return;
     if (nuova === "mensile") {
-      const ok = confirm(`Passando a Mensile per ${meseSel?.label}, i dati giornalieri esistenti verranno disabilitati nei Margini (ma NON eliminati). Continuare?`);
-      if (!ok) return;
+      setConfermaSwitchMensile(true);
+      return;
     }
     setModalita(nuova);
   }
@@ -423,6 +425,15 @@ function GrigliaView({
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confermaSwitchMensile}
+        titolo={`Passando a Mensile per ${meseSel?.label}, i dati giornalieri esistenti verranno disabilitati nei Margini (ma NON eliminati).`}
+        messaggio="Continuare?"
+        confermaLabel="Continua"
+        onConferma={() => setModalita("mensile")}
+        onClose={() => setConfermaSwitchMensile(false)}
+      />
     </div>
   );
 }
@@ -469,7 +480,7 @@ function GiornoCell({
     parseFloat(dAltri.replace(",", ".")) || 0,
   );
 
-  function confirm() {
+  function confermaModifica() {
     onSave({ iva10: d10, iva22: d22, altri: dAltri, coperti: dCoperti });
     setOpen(false);
   }
@@ -522,7 +533,7 @@ function GiornoCell({
               <Input
                 type="number" step="0.01" min="0" value={val}
                 onChange={(e) => set(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") confermaModifica(); }}
                 placeholder="0,00"
                 className="text-right tabular-nums h-9"
                 autoFocus={label.startsWith("IVA 10")}
@@ -534,7 +545,7 @@ function GiornoCell({
             <Input
               type="number" step="1" min="0" value={dCoperti}
               onChange={(e) => setDCoperti(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
+              onKeyDown={(e) => { if (e.key === "Enter") confermaModifica(); }}
               placeholder="0"
               className="text-right tabular-nums h-9"
             />
@@ -551,7 +562,7 @@ function GiornoCell({
             ) : <span />}
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Annulla</Button>
-              <Button size="sm" onClick={confirm}>Conferma</Button>
+              <Button size="sm" onClick={confermaModifica}>Conferma</Button>
             </div>
           </div>
         </div>

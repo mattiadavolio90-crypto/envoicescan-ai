@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RefreshCw, FileText, TrendingUp, Map, RotateCw, Link2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, Mail } from "lucide-react";
 import { RagioneSocialeClient } from "../ragione-sociale/ragione-sociale-client";
 
@@ -128,6 +129,7 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, ricaviImport
   const [azione, setAzione] = useState<{ tipo: "sede" | "piva"; prob: Problema; userId: string } | null>(null);
   const [sedeScelta, setSedeScelta] = useState("");
   const [busy, setBusy] = useState<number | null>(null);
+  const [daRiprovare, setDaRiprovare] = useState<Problema | null>(null);
 
   // indice ricavi per ristorante_id
   const ricaviPerRist = useMemo(() => {
@@ -169,7 +171,6 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, ricaviImport
   }
 
   async function riprova(prob: Problema) {
-    if (!confirm(`Rimettere in coda la fattura ${prob.numero || prob.queue_id}? Verrà rielaborata al prossimo giro del worker.`)) return;
     setBusy(prob.queue_id);
     try {
       const res = await fetch("/api/admin/fatture-queue/riprova", {
@@ -429,7 +430,7 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, ricaviImport
                                   </Button>
                                 )}
                                 {(p.status === "failed" || p.status === "dead") && (
-                                  <Button size="sm" variant="outline" disabled={busy === p.queue_id} onClick={() => riprova(p)}>
+                                  <Button size="sm" variant="outline" disabled={busy === p.queue_id} onClick={() => setDaRiprovare(p)}>
                                     <RotateCw className="size-4 mr-1" /> Riprova
                                   </Button>
                                 )}
@@ -483,6 +484,15 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, ricaviImport
           <RagioneSocialeClient mappingsIniziali={mappingsIniziali} sedi={sediFlat} />
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={daRiprovare !== null}
+        titolo={daRiprovare ? `Rimettere in coda la fattura ${daRiprovare.numero || daRiprovare.queue_id}?` : ""}
+        messaggio="Verrà rielaborata al prossimo giro del worker."
+        confermaLabel="Rimetti in coda"
+        onConferma={() => { if (daRiprovare) riprova(daRiprovare); }}
+        onClose={() => setDaRiprovare(null)}
+      />
     </div>
   );
 }

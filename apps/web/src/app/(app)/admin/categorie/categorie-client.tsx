@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   RefreshCw, CheckCircle, Trash2, ArrowRightLeft, Search, Undo2, Activity,
   Lock, Sparkles, Moon, Play,
@@ -40,6 +41,10 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
   const [classGruppo, setClassGruppo] = useState<Record<string, unknown> | null>(null);
   const [classCategoria, setClassCategoria] = useState("📝 NOTE E DICITURE");
   const [classSaving, setClassSaving] = useState(false);
+  const [confermaRivediAI, setConfermaRivediAI] = useState(false);
+  const [confermaAccettaSicuri, setConfermaAccettaSicuri] = useState(false);
+  const [daAccettare, setDaAccettare] = useState<{ g: Record<string, unknown>; idx: number } | null>(null);
+  const [confermaClassifica, setConfermaClassifica] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,9 +75,6 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
   }
 
   async function handleRivediAI() {
-    const nomeCliente = filtroCliente !== "tutti" ? clienti.find((c) => c.id === filtroCliente)?.nome : null;
-    const scope = nomeCliente ? `del cliente "${nomeCliente}"` : "di tutti i clienti";
-    if (!confirm(`Chiedere all'AI un suggerimento per le righe dubbie ${scope}? Non modifica nulla: prepara solo i suggerimenti da approvare.`)) return;
     setAiRunning(true);
     try {
       const res = await fetch("/api/admin/qualita-ai/coda/suggerisci-ai", {
@@ -93,7 +95,6 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
 
   async function handleAccettaSicuri() {
     if (sicuri.length === 0) return;
-    if (!confirm(`Accettare ${sicuri.length} suggerimenti sicuri (regola/memoria)? Le categorie verranno salvate in memoria globale e varranno per TUTTI i clienti.`)) return;
     setBulkRunning(true);
     let ok = 0, ko = 0;
     for (const g of sicuri) {
@@ -108,7 +109,6 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
   async function handleAccetta(g: Record<string, unknown>, idx: number) {
     const suggerita = String(g.categoria_suggerita || "");
     if (!suggerita) return;
-    if (!confirm(`Salvare "${suggerita}" per "${g.descrizione}"? Varrà in memoria globale per tutti i clienti.`)) return;
     setAccepting(idx);
     try {
       const n = await classificaIds(g.ids, suggerita);
@@ -120,7 +120,6 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
 
   async function handleClassifica() {
     if (!classGruppo || !classCategoria) return;
-    if (!confirm(`Salvare "${classCategoria}" per "${classGruppo.descrizione}"? Varrà in memoria globale per tutti i clienti.`)) return;
     setClassSaving(true);
     try {
       const n = await classificaIds(classGruppo.ids, classCategoria);
@@ -171,12 +170,12 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
         </Button>
-        <Button size="sm" variant="outline" onClick={handleRivediAI} disabled={aiRunning}>
+        <Button size="sm" variant="outline" onClick={() => setConfermaRivediAI(true)} disabled={aiRunning}>
           <Sparkles className={`size-4 mr-1 ${aiRunning ? "animate-pulse" : ""}`} />
           {aiRunning ? "AI in corso…" : "Rivedi con AI"}
         </Button>
         {sicuri.length > 0 && (
-          <Button size="sm" onClick={handleAccettaSicuri} disabled={bulkRunning} className="ml-auto">
+          <Button size="sm" onClick={() => setConfermaAccettaSicuri(true)} disabled={bulkRunning} className="ml-auto">
             <CheckCircle className="size-4 mr-1" />
             {bulkRunning ? "Approvo…" : `Accetta tutti i sicuri (${sicuri.length})`}
           </Button>
@@ -231,7 +230,7 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
                       <div className="flex gap-1 justify-end">
                         {suggerita && (
                           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-emerald-700 hover:bg-emerald-50"
-                            disabled={accepting === i} onClick={() => handleAccetta(g, i)}>
+                            disabled={accepting === i} onClick={() => setDaAccettare({ g, idx: i })}>
                             {accepting === i ? "…" : "Accetta"}
                           </Button>
                         )}
@@ -270,12 +269,48 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setClassGruppo(null)} disabled={classSaving}>Annulla</Button>
-            <Button onClick={handleClassifica} disabled={classSaving}>
+            <Button onClick={() => setConfermaClassifica(true)} disabled={classSaving}>
               {classSaving ? "Salvataggio…" : "Applica e salva"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confermaRivediAI}
+        titolo={`Chiedere all'AI un suggerimento per le righe dubbie ${filtroCliente !== "tutti" ? `del cliente "${clienti.find((c) => c.id === filtroCliente)?.nome}"` : "di tutti i clienti"}?`}
+        messaggio="Non modifica nulla: prepara solo i suggerimenti da approvare."
+        confermaLabel="Chiedi all'AI"
+        onConferma={handleRivediAI}
+        onClose={() => setConfermaRivediAI(false)}
+      />
+
+      <ConfirmDialog
+        open={confermaAccettaSicuri}
+        titolo={`Accettare ${sicuri.length} suggerimenti sicuri (regola/memoria)?`}
+        messaggio="Le categorie verranno salvate in memoria globale e varranno per TUTTI i clienti."
+        confermaLabel="Accetta tutti"
+        onConferma={handleAccettaSicuri}
+        onClose={() => setConfermaAccettaSicuri(false)}
+      />
+
+      <ConfirmDialog
+        open={daAccettare !== null}
+        titolo={daAccettare ? `Salvare "${String(daAccettare.g.categoria_suggerita)}" per "${String(daAccettare.g.descrizione)}"?` : ""}
+        messaggio="Varrà in memoria globale per tutti i clienti."
+        confermaLabel="Salva"
+        onConferma={() => { if (daAccettare) handleAccetta(daAccettare.g, daAccettare.idx); }}
+        onClose={() => setDaAccettare(null)}
+      />
+
+      <ConfirmDialog
+        open={confermaClassifica}
+        titolo={classGruppo ? `Salvare "${classCategoria}" per "${String(classGruppo.descrizione)}"?` : ""}
+        messaggio="Varrà in memoria globale per tutti i clienti."
+        confermaLabel="Salva"
+        onConferma={handleClassifica}
+        onClose={() => setConfermaClassifica(false)}
+      />
     </div>
   );
 }
@@ -364,6 +399,7 @@ function MemoriaTab() {
   const [editRow, setEditRow] = useState<ProdRow | null>(null);
   const [editCat, setEditCat] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [daEliminare, setDaEliminare] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -397,7 +433,6 @@ function MemoriaTab() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Eliminare questa voce dalla memoria globale?")) return;
     try {
       await fetch(`/api/admin/qualita-ai/memoria/${id}`, { method: "DELETE" });
       toast.success("Voce eliminata");
@@ -446,7 +481,7 @@ function MemoriaTab() {
                 <td className="px-4 py-2">
                   <div className="flex gap-1">
                     <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setEditRow(r); setEditCat(r.categoria); }}>Modifica</Button>
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => handleDelete(r.id)}>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => setDaEliminare(r.id)}>
                       <Trash2 className="size-3" />
                     </Button>
                   </div>
@@ -476,6 +511,13 @@ function MemoriaTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo="Eliminare questa voce dalla memoria globale?"
+        onConferma={() => { if (daEliminare) handleDelete(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
+      />
     </div>
   );
 }
@@ -557,6 +599,7 @@ function StoricoTab() {
   const [loading, setLoading] = useState(false);
   const [soloAnnullabili, setSoloAnnullabili] = useState(false);
   const [undoing, setUndoing] = useState<number | null>(null);
+  const [daAnnullare, setDaAnnullare] = useState<LogRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -575,7 +618,6 @@ function StoricoTab() {
   useEffect(() => { load(); }, [load]);
 
   async function handleAnnulla(row: LogRow) {
-    if (!confirm(`Annullare "${AZIONE_LABEL[row.azione] || row.azione}" su "${row.descrizione || "—"}" (${row.righe_count} righe)?`)) return;
     setUndoing(row.id);
     try {
       const res = await fetch("/api/admin/qualita-ai/audit/annulla", {
@@ -645,7 +687,7 @@ function StoricoTab() {
                 <td className="px-3 py-2">
                   {!r.annullato_at && r.azione !== "annulla" && r.categoria_da && r.righe_count > 0 ? (
                     <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700"
-                      disabled={undoing === r.id} onClick={() => handleAnnulla(r)} title="Ripristina categoria precedente">
+                      disabled={undoing === r.id} onClick={() => setDaAnnullare(r)} title="Ripristina categoria precedente">
                       <Undo2 className="size-3 mr-1" />{undoing === r.id ? "…" : "Annulla"}
                     </Button>
                   ) : r.annullato_at ? (<span className="text-[10px] text-muted-foreground">Annullata</span>) : null}
@@ -659,6 +701,14 @@ function StoricoTab() {
         <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← Precedente</Button>
         <Button variant="outline" size="sm" disabled={rows.length < 50} onClick={() => setPage((p) => p + 1)}>Successiva →</Button>
       </div>
+
+      <ConfirmDialog
+        open={daAnnullare !== null}
+        titolo={daAnnullare ? `Annullare "${AZIONE_LABEL[daAnnullare.azione] || daAnnullare.azione}" su "${daAnnullare.descrizione || "—"}" (${daAnnullare.righe_count} righe)?` : ""}
+        confermaLabel="Annulla azione"
+        onConferma={() => { if (daAnnullare) handleAnnulla(daAnnullare); }}
+        onClose={() => setDaAnnullare(null)}
+      />
     </div>
   );
 }
@@ -674,6 +724,7 @@ function AgentNotturnoDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [toggling, setToggling] = useState(false);
   const [running, setRunning] = useState(false);
   const [oraUtc, setOraUtc] = useState("2");
+  const [confermaEsecuzione, setConfermaEsecuzione] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -705,7 +756,6 @@ function AgentNotturnoDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   }
 
   async function handleEseguiOra() {
-    if (!confirm("Eseguire subito l'agent notturno? Classifica le diciture/sconti sicuri e prepara i suggerimenti AI sulle righe dubbie.")) return;
     setRunning(true);
     try {
       const res = await fetch("/api/admin/sistema/agent-notturno/esegui-ora", { method: "POST" });
@@ -752,7 +802,7 @@ function AgentNotturnoDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               ) : (
                 <Button onClick={() => handleToggle(true)} disabled={toggling}><Moon className="size-4 mr-1" />{toggling ? "…" : "Abilita"}</Button>
               )}
-              <Button variant="outline" onClick={handleEseguiOra} disabled={running || status?.running}>
+              <Button variant="outline" onClick={() => setConfermaEsecuzione(true)} disabled={running || status?.running}>
                 <Play className="size-4 mr-1" />{running ? "Avvio…" : "Esegui ora"}
               </Button>
             </div>
@@ -768,6 +818,15 @@ function AgentNotturnoDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           )}
         </div>
       </DialogContent>
+
+      <ConfirmDialog
+        open={confermaEsecuzione}
+        titolo="Eseguire subito l'agent notturno?"
+        messaggio="Classifica le diciture/sconti sicuri e prepara i suggerimenti AI sulle righe dubbie."
+        confermaLabel="Esegui ora"
+        onConferma={handleEseguiOra}
+        onClose={() => setConfermaEsecuzione(false)}
+      />
     </Dialog>
   );
 }

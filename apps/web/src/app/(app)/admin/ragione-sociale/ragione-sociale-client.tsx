@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Plus, Trash2 } from "lucide-react";
 
 type Mapping = { id: string; ragione_sociale: string; ristorante_id: string; created_at: string };
@@ -19,6 +20,7 @@ export function RagioneSocialeClient({ mappingsIniziali, sedi }: Props) {
   const [ragione, setRagione] = useState("");
   const [sedeId, setSedeId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [daEliminare, setDaEliminare] = useState<string | null>(null);
 
   async function handleCrea() {
     if (!ragione.trim() || !sedeId) { toast.error(sedi.length === 0 ? "Nessun ristorante disponibile — worker non raggiungibile" : "Compila tutti i campi"); return; }
@@ -40,7 +42,6 @@ export function RagioneSocialeClient({ mappingsIniziali, sedi }: Props) {
   }
 
   async function handleElimina(id: string) {
-    if (!confirm("Eliminare questo mapping?")) return;
     try {
       await fetch(`/api/admin/ragione-sociale-map/${id}`, { method: "DELETE" });
       setMappings((prev) => prev.filter((m) => m.id !== id));
@@ -78,7 +79,7 @@ export function RagioneSocialeClient({ mappingsIniziali, sedi }: Props) {
                   <td className="px-4 py-3 font-medium">{m.ragione_sociale}</td>
                   <td className="px-4 py-3 text-muted-foreground">{sedeLabel(m.ristorante_id)}</td>
                   <td className="px-4 py-3 text-right">
-                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => handleElimina(m.id)}>
+                    <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setDaEliminare(m.id)}>
                       <Trash2 className="size-4" />
                     </Button>
                   </td>
@@ -118,6 +119,13 @@ export function RagioneSocialeClient({ mappingsIniziali, sedi }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo="Eliminare questo mapping?"
+        onConferma={() => { if (daEliminare) handleElimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
+      />
     </div>
   );
 }
