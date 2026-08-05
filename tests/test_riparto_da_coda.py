@@ -82,6 +82,19 @@ class _FakeSB:
 
     def rpc(self, name, params):
         self.rpc_calls.append((name, params))
+        if name == "crea_riparto_con_quote":
+            # Simula la RPC transazionale: registra padre+quote come farebbe il
+            # DB, per continuare a verificare cosa viene scritto senza più due
+            # insert() PostgREST separati (fix HIGH audit §1 5/8/2026).
+            self.inserts.setdefault("riparto_costi_catena", []).append({
+                "user_id": params["p_user_id"], "origine": params["p_origine"],
+                "file_origine": params["p_file_origine"], "fornitore": params["p_fornitore"],
+                "descrizione": params["p_descrizione"], "importo_totale": params["p_importo_totale"],
+                "tipo": params["p_tipo"], "anno": params["p_anno"], "mese": params["p_mese"],
+                "regola": params["p_regola"],
+            })
+            self.inserts.setdefault("riparto_costi_catena_quote", []).append(params["p_quote"])
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data="riparto-1"))
         return SimpleNamespace(execute=lambda: SimpleNamespace(data="sede-tecnica-1"))
 
 

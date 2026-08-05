@@ -136,6 +136,29 @@ def _post_scrittura_riparto(sb, user_id: str, anno: int, mese: int) -> None:
         pass
 
 
+def _crea_riparto_con_quote(
+    sb, user_id: str, origine: str, file_origine: Optional[str], fornitore: Optional[str],
+    descrizione: str, importo_totale: float, tipo: str, anno: int, mese: int,
+    regola: str, quote: List[Dict[str, Any]],
+) -> str:
+    """Crea il riparto padre + le sue quote in una sola transazione DB (RPC
+    crea_riparto_con_quote, migration 20260805143000): se l'insert delle quote
+    fallisse dopo quello del padre, senza transazione resterebbe un riparto
+    "orfano" invisibile al motore MOL ma con le righe già marcate ripartite —
+    il costo sparirebbe dal MOL in silenzio (stessa classe dell'incidente
+    FASTWEB del 22/7)."""
+    res = sb.rpc("crea_riparto_con_quote", {
+        "p_user_id": user_id, "p_origine": origine, "p_file_origine": file_origine,
+        "p_fornitore": fornitore, "p_descrizione": descrizione,
+        "p_importo_totale": importo_totale, "p_tipo": tipo, "p_anno": anno, "p_mese": mese,
+        "p_regola": regola, "p_quote": quote,
+    }).execute()
+    riparto_id = res.data
+    if not riparto_id:
+        raise HTTPException(status_code=500, detail="Creazione riparto fallita")
+    return riparto_id
+
+
 # ─── Modelli ─────────────────────────────────────────────────────────────────
 
 class RipartoDaFatturaBody(BaseModel):
@@ -230,23 +253,12 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 
-    # Crea il riparto + quote.
-    ins = (
-        sb.table("riparto_costi_catena")
-        .insert({
-            "user_id": user_id, "origine": "fattura", "file_origine": fo,
-            "fornitore": fornitore, "descrizione": body.descrizione.strip() or "Costo di gruppo",
-            "importo_totale": importo, "tipo": body.tipo, "anno": anno, "mese": mese,
-            "regola": body.regola,
-        })
-        .execute()
+    # Crea il riparto + quote (transazionale: vedi _crea_riparto_con_quote).
+    riparto_id = _crea_riparto_con_quote(
+        sb, user_id, "fattura", fo, fornitore,
+        body.descrizione.strip() or "Costo di gruppo",
+        importo, body.tipo, anno, mese, body.regola, quote,
     )
-    if not ins.data:
-        raise HTTPException(status_code=500, detail="Creazione riparto fallita")
-    riparto_id = ins.data[0]["id"]
-    sb.table("riparto_costi_catena_quote").insert(
-        [{"riparto_id": riparto_id, **q} for q in quote]
-    ).execute()
 
     # Esplodi le quote per categoria dalle righe reali della fattura (già in `fatture`):
     # ogni sede vede la sua porzione F&B e la sua porzione spese nel MOL. Se la fattura
@@ -341,23 +353,12 @@ def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Head
     if n_atterrate > 0 and verifica_documento_vivo(sb, user_id, fo) == 0:
         raise HTTPException(status_code=409, detail="Documento già cestinato: impossibile ripartire dalla coda")
 
-    # 1) Registra subito il riparto + quote (UX istantanea).
-    ins = (
-        sb.table("riparto_costi_catena")
-        .insert({
-            "user_id": user_id, "origine": "fattura", "file_origine": fo,
-            "fornitore": fornitore, "descrizione": body.descrizione.strip() or "Costo di gruppo",
-            "importo_totale": importo, "tipo": body.tipo, "anno": anno, "mese": mese,
-            "regola": body.regola,
-        })
-        .execute()
+    # 1) Registra subito il riparto + quote (UX istantanea, transazionale).
+    riparto_id = _crea_riparto_con_quote(
+        sb, user_id, "fattura", fo, fornitore,
+        body.descrizione.strip() or "Costo di gruppo",
+        importo, body.tipo, anno, mese, body.regola, quote,
     )
-    if not ins.data:
-        raise HTTPException(status_code=500, detail="Creazione riparto fallita")
-    riparto_id = ins.data[0]["id"]
-    sb.table("riparto_costi_catena_quote").insert(
-        [{"riparto_id": riparto_id, **qq} for qq in quote]
-    ).execute()
 
     # 2) Marcatura idempotente per file_origine: colpisce 0 righe finché la fattura non
     # è atterrata (innocuo); il worker la marca comunque all'atterraggio (sede tecnica).
@@ -403,22 +404,11 @@ def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Hea
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 
-    ins = (
-        sb.table("riparto_costi_catena")
-        .insert({
-            "user_id": user_id, "origine": "manuale", "file_origine": None,
-            "descrizione": body.descrizione.strip() or "Costo di gruppo",
-            "importo_totale": importo, "tipo": body.tipo, "anno": body.anno, "mese": body.mese,
-            "regola": body.regola,
-        })
-        .execute()
+    riparto_id = _crea_riparto_con_quote(
+        sb, user_id, "manuale", None, None,
+        body.descrizione.strip() or "Costo di gruppo",
+        importo, body.tipo, body.anno, body.mese, body.regola, quote,
     )
-    if not ins.data:
-        raise HTTPException(status_code=500, detail="Creazione riparto fallita")
-    riparto_id = ins.data[0]["id"]
-    sb.table("riparto_costi_catena_quote").insert(
-        [{"riparto_id": riparto_id, **q} for q in quote]
-    ).execute()
 
     _post_scrittura_riparto(sb, user_id, body.anno, body.mese)
     return {"ok": True, "riparto_id": riparto_id, "quote": quote}
@@ -456,11 +446,20 @@ def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: 
     sb.table("riparto_costi_catena").update({
         "tipo": tipo, "regola": regola, "importo_totale": importo,
     }).eq("id", riparto_id).eq("user_id", user_id).execute()
-    # Rimpiazza le quote (delete + insert).
+    # Rimpiazza le quote (delete + insert). Queste sono sempre monolitiche
+    # (categoria=None): se il riparto era per-categoria, va ri-esploso subito
+    # dopo, altrimenti la RPC mensile instrada tutto l'importo in un solo
+    # secchio F&B/spese invece che per categoria (regressione sul MOL).
     sb.table("riparto_costi_catena_quote").delete().eq("riparto_id", riparto_id).execute()
     sb.table("riparto_costi_catena_quote").insert(
         [{"riparto_id": riparto_id, **q} for q in quote]
     ).execute()
+    if rip["origine"] == "fattura" and rip.get("file_origine"):
+        try:
+            from services.riparto_service import esplodi_quote_per_categoria
+            esplodi_quote_per_categoria(sb, user_id, riparto_id, rip["file_origine"])
+        except Exception as exc:
+            logger.warning("esplosione quote per categoria fallita (resta legacy) riparto=%s: %s", riparto_id, exc)
 
     _post_scrittura_riparto(sb, user_id, int(rip["anno"]), int(rip["mese"]))
     return {"ok": True, "quote": quote}
@@ -469,7 +468,14 @@ def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: 
 @router.delete("/api/riparto/{riparto_id}", dependencies=[Depends(_verify_worker_key)])
 def riparto_elimina(riparto_id: str, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Elimina un riparto. Se da fattura → smarca le righe (il costo torna intero
-    sulla sede intestataria). Le quote spariscono via ON DELETE CASCADE."""
+    sulla sede intestataria). Le quote spariscono via ON DELETE CASCADE.
+
+    Unico endpoint di scrittura del router che NON chiama _require_catena — per
+    scelta, non dimenticanza (audit §1, 5/8/2026): se una catena scende sotto 2
+    sedi, gli altri endpoint di scrittura si bloccano con 400 e i riparti
+    esistenti diventano non modificabili/non duplicabili, ma devono restare
+    eliminabili (altrimenti l'utente non avrebbe più modo di ripulirli).
+    L'ownership resta comunque garantita dal doppio .eq("id").eq("user_id")."""
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
@@ -510,10 +516,14 @@ def riparto_duplica(riparto_id: str, authorization: Optional[str] = Header(None)
     if rip["origine"] == "fattura":
         raise HTTPException(status_code=400, detail="Un riparto da fattura non si duplica (la fattura del mese dopo è un altro documento)")
 
+    # `categoria` inclusa: senza, un riparto per-categoria duplicato ricadrebbe nel
+    # modello legacy monolitico (stessa classe del fix HIGH su riparto_modifica).
     quote = (
-        sb.table("riparto_costi_catena_quote").select("ristorante_id, quota_perc, quota_importo")
+        sb.table("riparto_costi_catena_quote").select("ristorante_id, quota_perc, quota_importo, categoria")
         .eq("riparto_id", riparto_id).execute()
     ).data or []
+    if not quote:
+        raise HTTPException(status_code=400, detail="Riparto senza quote: nulla da duplicare")
 
     # Mese successivo (con rollover anno).
     anno, mese = int(rip["anno"]), int(rip["mese"])
@@ -522,22 +532,11 @@ def riparto_duplica(riparto_id: str, authorization: Optional[str] = Header(None)
     else:
         anno_n, mese_n = anno, mese + 1
 
-    ins = (
-        sb.table("riparto_costi_catena")
-        .insert({
-            "user_id": user_id, "origine": "manuale", "file_origine": None,
-            "descrizione": rip["descrizione"], "importo_totale": rip["importo_totale"],
-            "tipo": rip["tipo"], "anno": anno_n, "mese": mese_n, "regola": rip["regola"],
-        })
-        .execute()
-    ).data
-    if not ins:
-        raise HTTPException(status_code=500, detail="Duplicazione fallita")
-    nuovo_id = ins[0]["id"]
-    if quote:
-        sb.table("riparto_costi_catena_quote").insert(
-            [{"riparto_id": nuovo_id, **q} for q in quote]
-        ).execute()
+    nuovo_id = _crea_riparto_con_quote(
+        sb, user_id, "manuale", None, None,
+        rip["descrizione"], float(rip["importo_totale"]), rip["tipo"], anno_n, mese_n, rip["regola"],
+        quote,
+    )
 
     _post_scrittura_riparto(sb, user_id, anno_n, mese_n)
     return {"ok": True, "riparto_id": nuovo_id, "anno": anno_n, "mese": mese_n}
@@ -714,6 +713,14 @@ def riparto_incoerenze() -> Dict[str, Any]:
     riparto_costi_catena, per account. Legge v_riparto_incoerenze (migration
     20260727230000). Due classi possibili, mai sommabili in un unico numero perché
     hanno impatto opposto sul MOL:
+
+    NOTA (audit §1, 5/8/2026): nonostante il prefisso /api/admin/*, questo è
+    l'unico endpoint del router gatato da _verify_worker_key (chiave macchina)
+    invece che da _verify_admin (identità admin) — voluto: il consumatore
+    dichiarato è il workflow GitHub Actions riparto_coerenza_check.yml (codice
+    macchina, non un admin che naviga /admin), e ritorna dati aggregati di TUTTI
+    gli account senza filtro per chiamante. Se in futuro si volesse esporlo alla
+    pagina /admin, va aggiunto _verify_admin — il gate attuale non basterebbe.
 
       - orfano: fattura viva marcata ripartita_su_gruppo ma senza riparto → costo
         sparito dal MOL (buco).
