@@ -1,12 +1,18 @@
 """Test dell'endpoint PATCH /api/riparto/{riparto_id} (services/routers/riparto.py).
 
 Guardia contro la regressione HIGH trovata nell'audit §1 2026-08-05: la PATCH
-ricalcola le quote (delete+insert) SEMPRE senza `categoria` (_quote_equa/
-_quote_percentuali non la producono). Se il riparto originale era esploso per
-categoria (origine="fattura"), va ri-esploso subito dopo, altrimenti la RPC
-mensile instrada l'intero importo in un solo secchio F&B/spese invece che per
+ricalcola le quote SEMPRE senza `categoria` (_quote_equa/_quote_percentuali non
+la producono). Se il riparto originale era esploso per categoria
+(origine="fattura"), va ri-esploso subito dopo, altrimenti la RPC mensile
+instrada l'intero importo in un solo secchio F&B/spese invece che per
 categoria — il MOL si sposta in silenzio. Copre anche il fallback (l'esplosione
 non deve mai far fallire la PATCH né saltare _post_scrittura_riparto).
+
+Guardia contro il gap residuo chiuso il 5/8/2026 (stessa passata di audit):
+update padre + rimpiazzo quote passano ora dalla RPC transazionale
+sostituisci_quote_riparto (migration 20260805220000) invece di due statement
+delete+insert separati, per non lasciare mai un riparto senza quote a metà
+("orfano" invisibile al motore MOL, stessa classe dell'incidente FASTWEB).
 """
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -57,9 +63,14 @@ class _FakeSB:
         self.inserts = {}
         self.updates = {}
         self.deletes = {}
+        self.rpc_calls = []
 
     def table(self, name):
         return _Query(self, name)
+
+    def rpc(self, name, params):
+        self.rpc_calls.append((name, params))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=params.get("p_riparto_id")))
 
 
 _SEDI = [
@@ -144,3 +155,25 @@ def test_modifica_riparto_non_trovato_404():
     with p, pytest.raises(HTTPException) as exc:
         riparto.riparto_modifica("riparto-x", _body(regola="equa"), authorization="Bearer x")
     assert exc.value.status_code == 404
+
+
+# ─── gap residuo: rimpiazzo quote via RPC transazionale, non delete+insert ────
+
+def test_modifica_chiama_rpc_transazionale_non_delete_insert_diretto():
+    sb, p, _ = _patch(dict(_RIPARTO_MANUALE))
+    with p, patch("services.riparto_service.esplodi_quote_per_categoria", MagicMock()):
+        riparto.riparto_modifica(
+            "riparto-2", _body(regola="percentuali", percentuali={"sede-a": 60.0, "sede-b": 40.0}),
+            authorization="Bearer x",
+        )
+    assert len(sb.rpc_calls) == 1
+    name, params = sb.rpc_calls[0]
+    assert name == "sostituisci_quote_riparto"
+    assert params["p_riparto_id"] == "riparto-2"
+    assert params["p_user_id"] == "user-1"
+    assert params["p_regola"] == "percentuali"
+    assert {q["ristorante_id"] for q in params["p_quote"]} == {"sede-a", "sede-b"}
+    # niente più delete/insert diretti sulla tabella quote: tutto passa dalla RPC
+    assert "riparto_costi_catena_quote" not in sb.deletes
+    assert "riparto_costi_catena_quote" not in sb.inserts
+    assert "riparto_costi_catena" not in sb.updates

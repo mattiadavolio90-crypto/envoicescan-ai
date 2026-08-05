@@ -443,17 +443,20 @@ def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: 
     else:
         quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
 
-    sb.table("riparto_costi_catena").update({
-        "tipo": tipo, "regola": regola, "importo_totale": importo,
-    }).eq("id", riparto_id).eq("user_id", user_id).execute()
-    # Rimpiazza le quote (delete + insert). Queste sono sempre monolitiche
-    # (categoria=None): se il riparto era per-categoria, va ri-esploso subito
+    # Aggiorna padre + rimpiazza le quote in una transazione (RPC
+    # sostituisci_quote_riparto, migration 20260805220000): se l'insert delle
+    # nuove quote fallisse dopo il delete delle vecchie, senza transazione il
+    # riparto resterebbe senza quote — "orfano" invisibile al motore MOL
+    # (stessa classe dell'incidente FASTWEB del 22/7), qui sul lato modifica
+    # invece che creazione. Le quote scritte sono sempre monolitiche
+    # (categoria=None): se il riparto era per-categoria va ri-esploso subito
     # dopo, altrimenti la RPC mensile instrada tutto l'importo in un solo
     # secchio F&B/spese invece che per categoria (regressione sul MOL).
-    sb.table("riparto_costi_catena_quote").delete().eq("riparto_id", riparto_id).execute()
-    sb.table("riparto_costi_catena_quote").insert(
-        [{"riparto_id": riparto_id, **q} for q in quote]
-    ).execute()
+    sb.rpc("sostituisci_quote_riparto", {
+        "p_riparto_id": riparto_id, "p_user_id": user_id,
+        "p_tipo": tipo, "p_regola": regola, "p_importo_totale": importo,
+        "p_quote": quote,
+    }).execute()
     if rip["origine"] == "fattura" and rip.get("file_origine"):
         try:
             from services.riparto_service import esplodi_quote_per_categoria

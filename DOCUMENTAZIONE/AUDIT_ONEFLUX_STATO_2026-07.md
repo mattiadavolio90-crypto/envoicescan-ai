@@ -35,8 +35,8 @@ a basso rischio": è rischio ignoto per definizione.
 | File | Stato | Perché conta |
 |---|---|---|
 | `services/routers/gruppo.py` | letto in parte | In catena il cap PostgREST scatta **prima** sulle query `.in_()` multi-sede |
-| ~~`services/routers/riparto.py`~~ | 🟢 letto e fixato — 5/8 | 2 HIGH + 2 MEDIUM fixati, LOW/INFO documentati (vedi STORICO §11); commit/PR ancora da fare |
-| ~~`services/routers/fatture.py`~~ | 🟢 letto e fixato — 5/8 | Idem, condiviso col fix sopra (vedi STORICO §11) |
+| ~~`services/routers/riparto.py`~~ | 🟢 letto e fixato — 5/8 (CHIUSO) | 2 HIGH + 2 MEDIUM + gap residuo (RPC `sostituisci_quote_riparto`) fixati, LOW/INFO documentati (vedi STORICO §11); PR #14 CI verde, merge+deploy a sera/notte |
+| ~~`services/routers/fatture.py`~~ | 🟢 letto e fixato — 5/8 (CHIUSO) | Idem, condiviso col fix sopra (vedi STORICO §11) |
 | `services/routers/ricavi.py` | **mai letto** | Mai nominato come letto in nessuna riga della tabella |
 | `worker/email_queue_processor.py` | **mai letto** | Idem |
 | `services/ai_service.py:3392,3453` e `:3579-3990` | **mai letto** | Ultimo sito plausibile della classe troncamenti; se troncata → più chiamate GPT a pagamento |
