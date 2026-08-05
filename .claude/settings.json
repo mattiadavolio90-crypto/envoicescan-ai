@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "defaultMode": "bypassPermissions",
+    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(*)",
       "Bash(rm:*)",
@@ -28,6 +28,17 @@
           {
             "type": "command",
             "command": "python scripts/claude_hook_promemoria.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/claude_hook_test_gate.py",
+            "timeout": 120
           }
         ]
       }
