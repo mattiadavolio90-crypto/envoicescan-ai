@@ -445,3 +445,80 @@ class TestVerifyAndMigratePassword:
         assert auth_service.verify_and_migrate_password(
             {'id': 'u1', 'password_hash': '   '}, 'qualsiasi'
         ) is False
+
+
+class TestBridgeSupabaseAuthNonAvvelenaIlSingleton:
+    """Il bridge Supabase Auth non deve mai chiamare sign_in_with_password sul
+    client service_role condiviso.
+
+    sign_in_with_password sostituisce il token del client con il JWT dell'utente.
+    Siccome get_supabase_client() e' un singleton cachato per processo, da quel
+    momento ogni query del worker gira come 'authenticated' invece che
+    'service_role': sintomo osservato "permission denied for table sessioni"
+    subito dopo un login riuscito (login rotto in locale, 5/8/2026).
+    """
+
+    def test_senza_anon_key_il_bridge_si_salta(self):
+        """Niente anon client -> None, senza toccare il client service_role."""
+        from services import auth_service
+
+        service_role_client = MagicMock()
+
+        with patch.object(auth_service, '_get_supabase_anon_client', return_value=None), \
+             patch.object(auth_service, '_supabase_auth_bridge_disabilitato', return_value=False):
+            esito = auth_service._tenta_login_supabase_auth(
+                'a@b.com', 'pw', service_role_client
+            )
+
+        assert esito is None
+        service_role_client.auth.sign_in_with_password.assert_not_called()
+
+    def test_con_anon_key_usa_solo_il_client_anon(self):
+        """Il sign_in avviene sull'anon client, mai su quello service_role."""
+        from services import auth_service
+
+        service_role_client = MagicMock()
+        anon_client = MagicMock()
+        anon_client.auth.sign_in_with_password.return_value = SimpleNamespace(
+            session=SimpleNamespace(access_token='at', refresh_token='rt')
+        )
+
+        with patch.object(auth_service, '_get_supabase_anon_client', return_value=anon_client), \
+             patch.object(auth_service, '_supabase_auth_bridge_disabilitato', return_value=False):
+            esito = auth_service._tenta_login_supabase_auth(
+                'a@b.com', 'pw', service_role_client
+            )
+
+        assert esito is not None
+        anon_client.auth.sign_in_with_password.assert_called_once()
+        service_role_client.auth.sign_in_with_password.assert_not_called()
+
+
+class TestGuardiaAuthHeaderServiceRole:
+    """get_supabase_client() risana l'Authorization header se qualcuno lo sostituisce."""
+
+    def test_header_avvelenato_viene_ripristinato(self):
+        import services
+
+        atteso = 'Bearer SERVICE_ROLE_KEY'
+        client = MagicMock()
+        client.options.headers = {'Authorization': 'Bearer JWT_UTENTE'}
+        client.postgrest.session.headers = {'Authorization': 'Bearer JWT_UTENTE'}
+
+        services._riallinea_auth_header(client, 'SERVICE_ROLE_KEY')
+
+        assert client.options.headers['Authorization'] == atteso
+        assert client.postgrest.session.headers['Authorization'] == atteso
+
+    def test_header_gia_corretto_resta_invariato(self):
+        import services
+
+        atteso = 'Bearer SERVICE_ROLE_KEY'
+        client = MagicMock()
+        client.options.headers = {'Authorization': atteso}
+        client.postgrest.session.headers = {'Authorization': atteso}
+
+        services._riallinea_auth_header(client, 'SERVICE_ROLE_KEY')
+
+        assert client.options.headers['Authorization'] == atteso
+        assert client.postgrest.session.headers['Authorization'] == atteso

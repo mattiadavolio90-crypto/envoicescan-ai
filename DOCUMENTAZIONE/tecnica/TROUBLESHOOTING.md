@@ -11,7 +11,14 @@ repo). Le regole di dominio **non** stanno qui: stanno in `CLAUDE.md`.
 
 ### L'app non si carica (pagina bianca / errore connessione)
 
-**Causa più probabile:** Supabase in pausa (free tier: pausa automatica dopo 7 giorni di inattività).
+**In locale, primo passo sempre:** `.\scripts\start-local.ps1 -Check`. Il sintomo più
+frequente in locale è la `WORKER_SECRET_KEY` disallineata tra `.env` (root) e
+`apps/web/.env.local` (il worker risponde 401 a ogni chiamata dopo il login) o
+`WORKER_URL` che punta al worker di produzione invece che a `127.0.0.1:8000`.
+`start-local.ps1` corregge la chiave in automatico e blocca con messaggio
+esplicito se `WORKER_URL` è sbagliata — non serve diagnosticare a mano.
+
+**In produzione, causa più probabile:** Supabase in pausa (free tier: pausa automatica dopo 7 giorni di inattività).
 
 **Soluzione:**
 1. Accedere a [supabase.com/dashboard](https://supabase.com/dashboard)
@@ -78,6 +85,63 @@ repo). Le regole di dominio **non** stanno qui: stanno in `CLAUDE.md`.
 - Token sessione dura 30 giorni
 - Auto-logout per inattività: 8 ore senza interazioni
 - **Soluzione**: svuotare cache browser / cancellare cookie, poi login di nuovo
+
+---
+
+### "Errore creazione sessione" subito dopo il login (500)
+
+Sintomo: credenziali giuste, il login arriva in fondo, poi 500 e
+`permission denied for table sessioni` nei log del worker.
+
+**Il segnale che discrimina** — guarda l'ordine delle chiamate nel log httpx:
+se tutto ciò che precede `POST /auth/v1/token` è `200` e tutto ciò che segue è
+`403`, il problema NON è nei permessi della tabella: è il client Supabase che
+ha cambiato identità a metà richiesta.
+
+**Causa (5/8/2026).** `sign_in_with_password()` sostituisce il token del client
+su cui viene chiamato con il JWT dell'utente. Se lo si chiama sul singleton
+`service_role` (cachato per processo da `get_supabase_client()`), da quel
+momento **ogni** query del worker gira come `authenticated`: niente bypass RLS,
+niente GRANT di `service_role`. `sessioni` non ha GRANT per `authenticated` →
+`permission denied`; `login_attempts` invece li ha ma ha RLS → errore diverso
+(`new row violates row-level security policy`) sullo stesso identico guasto.
+
+Innescato da `SUPABASE_ANON_KEY`/`SUPABASE_KEY` assente: senza,
+`_get_supabase_anon_client()` tornava `None` e il codice ripiegava in silenzio
+sul client `service_role`.
+
+**Fix in essere** (se il sintomo torna, verifica che siano ancora lì):
+- `services/auth_service.py::_tenta_login_supabase_auth` — il bridge usa SOLO il
+  client anon; se manca la chiave si salta e resta Argon2 (con WARNING nei log).
+- `services/__init__.py::_riallinea_auth_header` — rete di sicurezza: rimette la
+  `service_role` key negli header ad ogni `get_supabase_client()`. Va risanato
+  **sia** `options.headers` **sia** `postgrest.session.headers`: il primo è la
+  sorgente da cui PostgREST viene ricostruito.
+- `tests/test_auth_service.py` — classi `TestBridgeSupabaseAuthNonAvvelenaIlSingleton`
+  e `TestGuardiaAuthHeaderServiceRole`.
+
+**Due piste sbagliate già battute — non ripercorrerle:**
+
+1. **`FORCE ROW LEVEL SECURITY` su `sessioni`** (accusato da una sessione
+   precedente). È attivo e senza policy, ma è **irrilevante**: `service_role` ha
+   `rolbypassrls = true`, che ha priorità su FORCE. Verificato anche con INSERT
+   reale via curl → `201`. Non toccare il DB per questo.
+2. **Chiave sbagliata o disallineata** fra `.env` e `.streamlit/secrets.toml`.
+   Escluso: le stesse credenziali funzionano se usate *prima* del login. Il
+   discriminante è il **momento**, non la chiave.
+
+**Come catturare il traceback vero.** `config/logger_setup.py` non ha FileHandler:
+il traceback va solo su console, e con `--reload` WatchFiles riavvia il processo
+a metà test perdendo la redirezione. Avvia il worker **senza `--reload`**
+redirigendo su file:
+
+```powershell
+$env:ENABLE_INLINE_QUEUE_PROCESSOR = "0"
+Start-Process -FilePath ".\.venv\Scripts\python.exe" `
+  -ArgumentList "-m","uvicorn","services.fastapi_worker:app","--host","127.0.0.1","--port","8000" `
+  -RedirectStandardOutput "$env:TEMP\worker-stdout.log" `
+  -RedirectStandardError "$env:TEMP\worker-stderr.log" -WindowStyle Minimized
+```
 
 ---
 
@@ -157,20 +221,28 @@ pytest tests/ --cov=services --cov=utils --cov-report=html
 .\scripts\run-tests.ps1
 
 # ── AVVIO LOCALE ──────────────────────────────────────────────
-# FastAPI Worker (dev mode senza chiave; legge WORKER_PORT, default 8000)
-$env:WORKER_DEV_MODE = "1"
-python -m services.fastapi_worker
+# Avvio completo (worker + frontend, sync automatica WORKER_SECRET_KEY, apre browser)
+.\scripts\start-local.ps1
 
-# Next.js (frontend)
-cd apps/web
-npm run dev      # Turbopack
+# Solo verifica configurazione, senza avviare nulla
+.\scripts\start-local.ps1 -Check
+
+# Ferma tutto
+.\scripts\start-local.ps1 -Stop
+
+# Finestre PowerShell visibili invece di minimizzate (debug)
+.\scripts\start-local.ps1 -Visible
 
 # (Streamlit dismesso: `app.py`/`pages/` non più serviti)
 
-# Worker coda (richiede env vars)
+# Worker coda (richiede env vars, va avviato a mano se serve: nessuno script lo fa)
 $env:SUPABASE_URL = "..."
 $env:SUPABASE_SERVICE_ROLE_KEY = "..."
 python worker/run.py
+
+# Debug avanzato: worker isolato senza script (dev mode senza chiave)
+$env:WORKER_DEV_MODE = "1"
+python -m services.fastapi_worker
 
 # ── QUALITY CHECK ──────────────────────────────────────────────
 # Verifica drift schema OpenAPI (dopo modifiche a fastapi_worker.py)

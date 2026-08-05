@@ -210,6 +210,38 @@ def _cached_client():
     return create_client(url, key, options=options)
 
 
+@lru_cache(maxsize=1)
+def _cached_service_role_key() -> str:
+    return _get_supabase_credentials()[1]
+
+
+def _riallinea_auth_header(client, key: str) -> None:
+    """Rimette la service_role key nell'header del client se qualcuno l'ha sostituita.
+
+    sign_in_with_password / set_session su un client scrivono il JWT dell'utente
+    negli header di PostgREST. Su questo singleton (cachato per processo) l'effetto
+    e' permanente: tutte le query successive girerebbero come 'authenticated',
+    perdendo il bypass RLS e i GRANT di service_role. E' gia' successo nel bridge
+    di login (auth_service._tenta_login_supabase_auth) con sintomo "permission
+    denied for table sessioni" subito dopo un login riuscito.
+    """
+    atteso = f"Bearer {key}"
+    # options.headers va risanato per primo: supabase-py lo usa come sorgente per
+    # (ri)costruire il client PostgREST, quindi ripulire solo la sessione viva
+    # lascerebbe il JWT pronto a ricomparire alla prima ricreazione.
+    try:
+        if client.options.headers.get("Authorization") != atteso:
+            client.options.headers["Authorization"] = atteso
+    except Exception:
+        pass
+    try:
+        sessione = client.postgrest.session
+    except Exception:
+        return
+    if sessione.headers.get("Authorization") != atteso:
+        sessione.headers["Authorization"] = atteso
+
+
 def get_supabase_client():
     """
     Restituisce un client Supabase con service_role_key, cachato a livello di
@@ -220,4 +252,6 @@ def get_supabase_client():
     quindi tutto l'accesso DB passa da qui. L'isolamento per tenant e' applicativo
     (filtri user_id/ristorante_id nelle query), non via RLS.
     """
-    return _cached_client()
+    client = _cached_client()
+    _riallinea_auth_header(client, _cached_service_role_key())
+    return client

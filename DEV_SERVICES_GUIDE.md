@@ -3,6 +3,10 @@
 **Data setup**: 2 aprile 2026 | **Ultimo aggiornamento**: 9 maggio 2026  
 **Status**: ✅ GitHub CLI, Railway CLI, Supabase CLI - ALL CONNECTED
 
+> Questa guida copre GitHub/Railway/Supabase CLI. **Per avviare l'app in locale**
+> (worker FastAPI + frontend Next.js) vedi `DOCUMENTAZIONE/tecnica/TROUBLESHOOTING.md`
+> § Avvio locale, oppure lancia direttamente `.\scripts\start-local.ps1`.
+
 ---
 
 ## Quick Status Check

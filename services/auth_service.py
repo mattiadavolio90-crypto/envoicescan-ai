@@ -722,11 +722,22 @@ def _tenta_login_supabase_auth(email: str, password: str, supabase_client) -> Op
     """
     if _supabase_auth_bridge_disabilitato():
         return None
+    # Mai sul client service_role condiviso: sign_in_with_password sostituisce il
+    # token del client con il JWT dell'utente, e il singleton e' cachato a livello
+    # di processo (services.get_supabase_client). Da quel momento OGNI query del
+    # worker parte come 'authenticated' invece che 'service_role' -> "permission
+    # denied for table sessioni" subito dopo un login riuscito. Senza anon key
+    # configurata il bridge si salta e resta il path Argon2, che funziona.
+    anon_client = _get_supabase_anon_client()
+    if anon_client is None:
+        logger.warning(
+            "Bridge Supabase Auth saltato: SUPABASE_ANON_KEY/SUPABASE_KEY non "
+            "configurata. Login via Argon2 (funzionante); last_sign_in_at in "
+            "auth.users non viene aggiornato."
+        )
+        return None
     try:
-        # Usa client con anon_key: aggiorna last_sign_in_at in auth.users
-        anon_client = _get_supabase_anon_client()
-        auth_client = anon_client if anon_client is not None else supabase_client
-        session_resp = auth_client.auth.sign_in_with_password({
+        session_resp = anon_client.auth.sign_in_with_password({
             "email": email,
             "password": password,
         })
