@@ -103,7 +103,7 @@ python scripts/export_openapi.py --check-drift
 - **Briefing:** dopo una modifica alla logica, **bumpa `_BRIEFING_CODE_VERSION`**
   o il cliente continua a vedere il testo vecchio (cache giornaliera + TTL 30').
 - **Deploy solo fuori orario** (sera/notte/mattina presto): i clienti usano l'app
-  di giorno.
+  di giorno. Eccetto conferma esplicita di deploy.
 - **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
 - **Worker locale senza `--reload`** tiene in memoria il codice vecchio: riavvialo.
 - **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in
