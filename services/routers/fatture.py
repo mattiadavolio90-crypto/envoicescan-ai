@@ -802,9 +802,12 @@ def categoria_batch(
     # Stesso whitelist della PATCH singola riga (aggiorna_categoria_riga): il
     # constraint DB rifiuta solo "Da Clasificare", una categoria inventata/refuso
     # passerebbe e sporcherebbe margini e report su TUTTE le righe della descrizione.
+    # La variante senza emoji è normalizzata subito sotto.
     _categorie_ammesse = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
     if nuova_cat not in _categorie_ammesse:
         raise HTTPException(status_code=400, detail=f"Categoria '{nuova_cat}' non riconosciuta")
+    if nuova_cat == "NOTE E DICITURE":
+        nuova_cat = "📝 NOTE E DICITURE"
 
     descrizione = body.descrizione.strip()
     if not descrizione:
@@ -823,6 +826,33 @@ def categoria_batch(
     )
     if body.riga_ids:
         update_q = update_q.in_("id", body.riga_ids)
+    # Guardrail dominio #2: NOTE E DICITURE solo su importo zero (stesso pattern
+    # di admin.py:967-976) — senza questo check il batch scrive la variante con
+    # emoji anche su righe con importo diverso da zero, aggirando il constraint DB.
+    if nuova_cat == "📝 NOTE E DICITURE":
+        _sel_q = (
+            supabase_client.table("fatture")
+            .select("id,totale_riga,prezzo_unitario")
+            .eq("ristorante_id", ristorante_id)
+            .eq("descrizione", descrizione)
+            .is_("deleted_at", "null")
+        )
+        if body.riga_ids:
+            _sel_q = _sel_q.in_("id", body.riga_ids)
+        _candidate_rows = (_sel_q.execute()).data or []
+        def _imp(r):
+            t = float(r.get("totale_riga") or 0)
+            return t if t != 0 else float(r.get("prezzo_unitario") or 0)
+        _target_ids = [r["id"] for r in _candidate_rows if _imp(r) == 0]
+        if not _target_ids:
+            raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: tutte le righe hanno importo diverso da zero.")
+        update_q = (
+            supabase_client.table("fatture")
+            .update({"categoria": nuova_cat, "needs_review": False})
+            .eq("ristorante_id", ristorante_id)
+            .in_("id", _target_ids)
+            .is_("deleted_at", "null")
+        )
     res_update = update_q.execute()
     righe_aggiornate = len(res_update.data or [])
     if righe_aggiornate:
@@ -924,16 +954,18 @@ def aggiorna_categoria_riga(
         raise HTTPException(status_code=400, detail="Categoria non valida")
     # La categoria deve appartenere al set ufficiale: il constraint DB rifiuta solo
     # "Da Clasificare", ma una categoria inventata/refuso passerebbe e sporcherebbe
-    # margini e report. NOTE E DICITURE è ammessa solo a importo zero, ma qui non
-    # tocchiamo l'importo: la lasciamo passare e il guardrail upstream la corregge.
+    # margini e report. La variante senza emoji è normalizzata subito sotto, così
+    # il guardrail importo-zero (regola dominio #2) si applica a un solo valore.
     _categorie_ammesse = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
     if categoria not in _categorie_ammesse:
         raise HTTPException(status_code=400, detail=f"Categoria '{categoria}' non riconosciuta")
+    if categoria == "NOTE E DICITURE":
+        categoria = "📝 NOTE E DICITURE"
 
     supabase_client = _get_supabase_client()
     check = (
         supabase_client.table("fatture")
-        .select("id")
+        .select("id, totale_riga, prezzo_unitario")
         .eq("id", riga_id)
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
@@ -942,9 +974,21 @@ def aggiorna_categoria_riga(
     if not check.data:
         raise HTTPException(status_code=404, detail="Riga non trovata")
 
+    # Guardrail dominio #2: NOTE E DICITURE solo su importo zero (stesso pattern
+    # di admin.py:967-976) — qui non c'è propagazione multi-riga, ma senza questo
+    # check il constraint DB si aggira comunque scrivendo la variante con emoji
+    # su una riga con importo diverso da zero.
+    if categoria == "📝 NOTE E DICITURE":
+        row = check.data[0]
+        t = float(row.get("totale_riga") or 0)
+        importo = t if t != 0 else float(row.get("prezzo_unitario") or 0)
+        if importo != 0:
+            raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: la riga ha importo diverso da zero.")
+
     supabase_client.table("fatture").update(
         {"categoria": categoria, "needs_review": False}
     ).eq("id", riga_id).execute()
+    _invalidate_fatture_rows_cache(ristorante_id)
     return {"ok": True, "id": riga_id, "categoria": categoria}
 
 
