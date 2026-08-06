@@ -46,6 +46,14 @@ a basso rischio": è rischio ignoto per definizione.
 per `riparto_modifica`) fixati; LOW/INFO documentati. Dettaglio completo in
 STORICO §11.
 
+~~`services/routers/margini.py`~~ — **CHIUSO e DEPLOYATO il 6/8/2026** (commit
+`516df5e`, worker Railway verificato su `/health` = commit deployato). 0 HIGH
+(le difese esistenti reggevano), 2 MEDIUM fixati: Analisi Centri/Avanzata non
+escludeva le righe `ripartita_su_gruppo=True` sulla sede tecnica; le RPC
+`costi_automatici_mensili[_gruppo]` classificavano FOOD con whitelist chiusa
+invece del catch-all del fallback pandas (regressione silenziosa già avvenuta
+il 14/7). LOW/INFO documentati. Dettaglio completo in STORICO §12.
+
 ## §2 — Copertura test (lavoro di scrittura, non di audit)
 
 Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propria.

@@ -229,17 +229,51 @@ Primi due file del perimetro §1 aperti in questo ciclo, ora chiusi al 100% (HIG
 
 ### Prossimi candidati per §1
 
-In ordine di rischio (indicato dall'agente audit): `services/routers/margini.py` (tocca direttamente il MOL, stesso pattern dei 2 HIGH appena trovati), poi gli altri router mai auditati (`workspace.py`, `prezzi.py`, `gruppo.py`, `scadenziario.py`, `cestino.py`, `ricavi.py`, `tag.py`, `account.py`, `admin.py` restante ~85%).
+Router mai auditati o auditati solo in parte: `workspace.py`, `prezzi.py`,
+`gruppo.py` (letto solo in parte), `scadenziario.py`, `cestino.py`,
+`ricavi.py` (mai letto), `tag.py`, `account.py`, `admin.py` (restante ~85%),
+`worker/email_queue_processor.py` (mai letto), `services/ai_service.py`
+righe :3392,3453 e :3579-3990 (mai lette — ultimo sito plausibile della
+classe "troncamenti").
+
+---
+
+## 12. §1 perimetro mai letto — margini.py
+
+**Stato:** 🟢 **CHIUSO E DEPLOYATO** — commit `516df5e` su `main`, worker Railway verificato su `/health` (commit `516df5ed58e3` servito)
+**Ultima passata:** 6/8/2026 (audit mirato con `oneflux-audit` dimensione Bug + remediation + `code-reviewer`)
+
+### Esito
+
+Terzo file del perimetro §1 chiuso in questo ciclo, dopo `riparto.py`+`fatture.py` (STORICO §11). Audit mirato con `oneflux-audit` su `services/routers/margini.py` (1308 righe, 11 endpoint) e le sue dipendenze dirette per il calcolo del MOL (`fastapi_worker.py:7500-7898`, `margine_service.py`, `riparto_service.py`, la RPC SQL). **0 CRITICAL, 0 HIGH** — a differenza di riparto/fatture, le difese esistenti (whitelist app-layer su categoria, validazione AI, esclusione `Da Classificare`/`deleted_at` nel percorso principale) reggevano. 2 MEDIUM, 1 LOW, 1 INFO. Fixati entrambi i MEDIUM su istruzione esplicita, LOW/INFO documentati (non azionati: impatto pratico nullo verificato).
+
+### Dettaglio
+
+**MEDIUM #1 — Analisi Centri/Avanzata non escludeva le righe ripartite (`fastapi_worker.py:7573,7606`)**: `_load_fatture_fb_for_period`/`_load_fatture_fb_per_categoria_e_mese` (alimentano i tab "Analisi Centri"/"Analisi Avanzata" della pagina Margini) filtravano `deleted_at IS NULL` e `categoria != 'Da Classificare'`, ma non `ripartita_su_gruppo = True`, a differenza delle funzioni gemelle `_calcola_costi_auto_per_mese`/`_calcola_costi_auto_per_periodo` (usate dal tab "Calcolo") che lo escludono da sempre. Innocuo su un PV normale (le sue query non vedono mai righe di un altro `ristorante_id`); il rischio esiste solo se gli endpoint vengono invocati sulla SEDE TECNICA di una catena (un ristorante reale come un altro nel DB): lì le righe ripartite entrerebbero nel calcolo mentre il tab Calcolo le esclude — due tab della stessa pagina con margine diverso sulla stessa sede. Fix: aggiunto `.neq("ripartita_su_gruppo", True)` a entrambe le query, simmetrico al pattern già in uso nelle funzioni gemelle. Verificato sul DB live: la sede tecnica OFFSIDE (`f7bba05f-90a8-4f12-94ed-4d8a08a0bbae`) ha 669 righe ripartite per €47.924,94 — nessuno snapshot salvato in `margini_mensili` per quella sede, quindi nessun MOL storico persistito cambia; solo una lettura live pre-fix di quei due tab su quella sede avrebbe mostrato il numero gonfiato.
+
+**MEDIUM #2 — RPC SQL con whitelist chiusa su FOOD, fallback pandas con catch-all (`margine_service.py`, migration `20260714150000`)**: le RPC `costi_automatici_mensili`/`costi_automatici_mensili_gruppo` classificavano FOOD solo se `categoria = ANY(p_cat_food)` (whitelist esplicita, 25 voci). Il fallback pandas (`calcola_costi_automatici_per_anno`) e la pagina Margini via `_calcola_costi_auto_per_mese`/`_per_periodo` usano invece un catch-all: FOOD = tutto tranne Spese Generali e NOTE E DICITURE. Una categoria fuori da entrambe le whitelist (categoria legacy non normalizzata, drift futuro fra `config/constants.py` e le categorie realmente scritte) spariva silenziosamente dal MOL solo nel percorso RPC. **Scoperta di processo durante il fix**: la RPC era già stata resa catch-all il 18/6 (`20260618120000_rpc_costi_food_catchall.sql`), ma la migration del 14/7 che ha aggiunto l'anti-doppio-conteggio (`20260714150000_riparto_anti_doppio_conteggio.sql`, `CREATE OR REPLACE`) ha **silenziosamente ripristinato la whitelist chiusa** — nessun test se ne accorse, perché tutti i test esistenti (`test_margine_service.py`, `test_gruppo_costi_live.py`, `test_margini_endpoint_rpc.py`) mockano l'helper SQL o l'RPC stessa, nessuno chiama la RPC vera. Fix: nuova migration `20260805150000_costi_automatici_catchall_food.sql`, `CREATE OR REPLACE` su entrambe le RPC con la stessa regola catch-all (`categoria <> ALL(p_cat_spese) AND categoria <> '📝 NOTE E DICITURE'`), applicata al DB live e verificata via `SELECT prosrc FROM pg_proc`. `p_cat_food` resta nella firma per compatibilità con i chiamanti Python esistenti ma non è più usato nel filtro.
+
+**LOW (documentato, non azionato)**: `update_margini_cella` (PATCH cella singola) non ricalcola i campi derivati (`mol`, `primo_margine`, ecc.) come fa `save_margini`. Verificato: tutti gli endpoint di lettura (`get_margini_analisi`, `get_margini_kpi`, `_aggrega_mensili_margini`, `_kpi_periodo`) ricalcolano sempre a runtime — l'unico lettore del campo salvato (`carica_margini_anno`) passa comunque per `_kpi_periodo` che lo ricalcola. Nessun valore stantio visibile all'utente nei percorsi verificati; resta debito tecnico, non un bug attivo.
+
+**INFO (documentato, non azionato)**: `MarginiKpiResponse` dichiara `delta_*_pct`/`confronto_label` mai calcolati da `get_margini_kpi` — contratto API dichiarato e disatteso, non un bug (nessun valore errato, solo assente).
+
+**Punto residuo trovato dal `code-reviewer`, non toccato**: `margine_service.py:317` (`carica_costi_per_categoria`) ha ancora la stessa whitelist chiusa su `CATEGORIE_FOOD`, ma è codice morto — nessun chiamante in `services/fastapi_worker.py` o `services/routers/` (grep mirato, zero risultati). Non riattivarlo senza applicare lo stesso fix del MEDIUM #2.
+
+**Test aggiunti**: `tests/test_analisi_margini_quote_riparto.py` — riscritto il mock esistente (`_mock_sb_vuoto`, catena `MagicMock` cieca che non applicava i filtri, stesso difetto della lezione 16) con un `_FakeQuery` che applica davvero `.eq()`/`.neq()`/`.is_()` alle righe fornite, + 2 test nuovi che iniettano righe `ripartita_su_gruppo=True` e verificano l'esclusione. `tests/test_costi_automatici_rpc_catchall.py` (nuovo file): guardia che legge l'ultima migration applicata a ciascuna RPC e fallisce se `categoria = ANY(p_cat_food)` (whitelist) ricompare — pensata apposta per intercettare la stessa regressione del 14/7 se si ripetesse — più test di equivalenza logica catch-all-Python vs fallback pandas su ogni categoria di `config/constants.py`. Tutti verificati per mutazione: rotto a mano il fix (stash del file, migration alterata), confermato che i test cadono, ripristinato.
+
+**Bloccato una volta dal `code-reviewer`, poi sanato**: la prima chiusura proposta aveva `services/fastapi_worker.py` modificato non committato e la nuova migration (già applicata al DB live via MCP) untracked — stesso pattern della lezione 1 ("deployato" riferito solo alla migration, non al codice). Aggiunti i test di regressione mancanti, poi commit scoped (`516df5e`) e push diretto su `main` (nessuna PR — ciclo breve, singolo commit, CI verificata sull'head reale post-push).
+
+**Deploy — verificato, non dato per scontato**: 5 workflow CI (Tests, Deploy to Vercel, Requirements Consistency, OpenAPI Schema Drift, Uptime Check) verdi sull'head `516df5ed58e362b8e3be7e024133fe7c1fa7d85f`. `/health` del worker Railway interrogato dopo il push: `{"commit":"516df5ed58e3", ...}` — commit nuovo confermato servito, non assunto dal solo "push riuscito".
 
 ---
 
 # Lezioni operative del ciclo
 
-Le 36 lezioni raccolte durante il ciclo, nell'ordine in cui sono emerse.
+Le 37 lezioni raccolte durante il ciclo, nell'ordine in cui sono emerse.
 Sono la parte piu riutilizzabile di questo archivio: quasi tutte nascono da un
 errore commesso e corretto, non da teoria.
 
-**Lezioni operative (le 5 del 2/8 restano valide, più 5 dal 3/8 mattina, 5 dal 3/8 sera, 6 dal 4/8 (chiusura MEDIUM) e 7 dalla dimensione Test — 4 dalla Fase 1, 3 dalla Fase 2):**
+**Lezioni operative (le 5 del 2/8 restano valide, più 5 dal 3/8 mattina, 5 dal 3/8 sera, 6 dal 4/8 (chiusura MEDIUM), 7 dalla dimensione Test — 4 dalla Fase 1, 3 dalla Fase 2 — e 1 dal 6/8):**
 
 1. **`git log -- <file>` prima di credere a "deployato" scritto qui.** Il
    lavoro Database del 30/7 risultava "fixato e deployato" in questa stessa
@@ -524,3 +558,18 @@ errore commesso e corretto, non da teoria.
     inseguendo un artefatto dello strumento di misura. Prima di credere a un
     rosso comparso durante una misura di coverage: rilancia lo stesso file senza
     `--cov`.
+37. **Un `CREATE OR REPLACE` su una RPC puo' far regredire una migration
+    precedente in silenzio — e nessun test se ne accorge se tutti mockano la
+    RPC.** La whitelist chiusa su FOOD in `costi_automatici_mensili` era gia'
+    stata tolta il 18/6; la migration del 14/7 (che aggiungeva
+    l'anti-doppio-conteggio con un altro `CREATE OR REPLACE`) l'ha rimessa
+    senza che nessuno se ne accorgesse, perche' `test_margine_service.py`,
+    `test_gruppo_costi_live.py` e `test_margini_endpoint_rpc.py` mockano tutti
+    l'helper Python o l'RPC stessa — zero test chiamano la RPC vera. Corollario
+    operativo: quando una regola vive **solo** in SQL applicato al DB (non
+    ripetuta in Python), la guardia va scritta leggendo il testo dell'ultima
+    migration che definisce quella funzione, non assumendo che "l'ha gia'
+    sistemato una volta" basti. Corollario di processo (variante della
+    lezione 1): applicare una migration al DB live via MCP e lasciare il file
+    `.sql` untracked e' lo stesso rischio del codice Python non committato —
+    il `code-reviewer` l'ha bloccato prima della chiusura, non dopo.
