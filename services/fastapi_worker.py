@@ -7584,6 +7584,10 @@ def _load_fatture_fb_for_period(
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .neq("categoria", "Da Classificare")
+            # Le fatture ripartite sul gruppo arrivano gia' come quote_riparto_*
+            # sui singoli PV: contarle anche qui sulla sede tecnica sarebbe doppio
+            # conteggio. Stesso filtro di _calcola_costi_auto_per_mese/_per_periodo.
+            .neq("ripartita_su_gruppo", True)
             .gte("data_documento", data_da)
             .lte("data_documento", data_a)
             .range(offset, offset + page_size - 1)
@@ -7618,6 +7622,10 @@ def _load_fatture_fb_per_categoria_e_mese(
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .neq("categoria", "Da Classificare")
+            # Vedi _load_fatture_fb_for_period: escludere le righe ripartite
+            # sulla sede tecnica per evitare doppio conteggio col meccanismo
+            # quote_riparto_* gia' proiettato sui singoli PV.
+            .neq("ripartita_su_gruppo", True)
             .gte("data_documento", data_da)
             .lte("data_documento", data_a)
             .range(offset, offset + page_size - 1)
