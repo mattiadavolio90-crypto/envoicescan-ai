@@ -7328,6 +7328,13 @@ def _invalidate_fatture_rows_cache(ristorante_id: Optional[str] = None) -> None:
     stessa tabella, quindi ogni evento che rende stale l'una rende stale l'altra.
     Tenerle separate significherebbe che dopo un upload FATTURE si aggiorna e
     PREZZI no, con due pagine che mostrano numeri diversi sugli stessi dati.
+
+    Invalida anche lo snapshot Home del giorno (daily_briefing_state): la card
+    "N prodotti da controllare" e' calcolata LIVE ma lo snapshot che la contiene
+    resta cachato fino a 30 min (_BRIEFING_TTL_MINUTI). Senza questo, classificare
+    una riga non cambiava il numero mostrato in Home finche' non scadeva il TTL:
+    il cliente vedeva ancora "70 da controllare" con 17 reali rimaste, e nemmeno
+    il refresh aiutava (rileggeva la stessa cache stantia).
     """
     if ristorante_id is None:
         _FATTURE_ROWS_CACHE.clear()
@@ -7344,6 +7351,15 @@ def _invalidate_fatture_rows_cache(ristorante_id: Optional[str] = None) -> None:
         # Loggato, non ingoiato: se un domani il modulo si rinomina, PREZZI
         # resterebbe con dati stale e senza questo warning nessuno lo scoprirebbe.
         logger.warning("invalidazione cache prezzi fallita: %s", exc)
+
+    if ristorante_id is not None:
+        try:
+            from services.daily_briefing_service import _today_rome
+            get_supabase_client().table("daily_briefing_state").delete().eq(
+                "ristorante_id", ristorante_id
+            ).eq("generated_for_date", _today_rome().isoformat()).execute()
+        except Exception as exc:  # pragma: no cover - non deve bloccare l'update riga
+            logger.warning("invalidazione cache briefing fallita: %s", exc)
 
 
 # Cache (ristorante_id -> (user_id, ha_quote_ripartite)) per decidere se un PV va
