@@ -24,12 +24,23 @@ class _Result:
 
 
 class _RpcCall:
-    """`sb.rpc(...)` ritorna un oggetto con `.execute()` (come supabase-py)."""
+    """`sb.rpc(...)` ritorna un oggetto con `.execute()` (come supabase-py).
+    Supporta anche `.range(da, a)`: i chiamanti che paginano una RPC SETOF
+    (vedi get_documenti_scadenziario) la usano per superare il limite
+    max-rows di PostgREST."""
     def __init__(self, data):
         self._data = data
+        self._range = None
+
+    def range(self, start, end):
+        self._range = (start, end)
+        return self
 
     def execute(self):
-        return _Result(self._data)
+        if self._range is None or not isinstance(self._data, list):
+            return _Result(self._data)
+        start, end = self._range
+        return _Result(self._data[start : end + 1])
 
 
 class _Query:

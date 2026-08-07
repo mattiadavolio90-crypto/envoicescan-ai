@@ -121,12 +121,30 @@ class _Query:
         return _Response(rows)
 
 
+#: Come PostgREST (max-rows), anche le RPC che tornano SETOF vengono troncate.
+_POSTGREST_MAX_ROWS = 1000
+
+
 class _RpcCall:
+    """Simula il comportamento di PostgREST sulle RPC SETOF: senza .range() la
+    risposta e' troncata a max-rows, con .range(da, a) torna quella finestra.
+    Serve a far fallire i test se il chiamante smette di paginare (regressione
+    reale: SUSHILAND ha 2217 documenti, senza paginazione ne arrivavano 1000)."""
+
     def __init__(self, data):
         self._data = data
+        self._range = None
+
+    def range(self, start, end):
+        self._range = (start, end)
+        return self
 
     def execute(self):
-        return _Response(self._data)
+        if self._range is None:
+            return _Response(self._data[:_POSTGREST_MAX_ROWS])
+        start, end = self._range
+        finestra = self._data[start : end + 1]
+        return _Response(finestra[:_POSTGREST_MAX_ROWS])
 
 
 class _FakeSupabase:
@@ -172,7 +190,9 @@ class _FakeSupabase:
                     "totale_documento": first.get("totale_documento", 0.0),
                 }
             agg[key]["totale_documento"] = round(agg[key]["totale_documento"] + float(row.get("totale_riga") or 0), 2)
-        return list(agg.values())
+        # La RPC ordina per (file_origine, ristorante_id): ordine totale e
+        # deterministico, requisito perche' la paginazione non salti righe.
+        return [agg[k] for k in sorted(agg)]
 
 
 def _base_tables(fatture_rows, fatture_documenti_rows, ristoranti_rows=None):
@@ -448,3 +468,37 @@ def test_get_fatture_cestino_stesso_file_origine_su_piu_sedi_non_si_confonde():
     assert len(result) == 2
     totali = sorted(r["totale"] for r in result)
     assert totali == [10.0, 15.0]
+
+
+def test_scadenziario_pagina_oltre_1000_documenti(monkeypatch):
+    """Regressione: PostgREST tronca a 1000 righe anche le RPC SETOF. Con un
+    gruppo grande (SUSHILAND: 2217 documenti) la pagina "Gestione Fatture —
+    Gruppo" mostrava solo i primi 1000 in silenzio. get_documenti_scadenziario
+    deve paginare con .range() finche' la RPC non torna una pagina corta."""
+    monkeypatch.setattr(
+        "services.documenti_service._get_fornitori_pagamenti_config_cached",
+        lambda *a, **k: [],
+    )
+
+    n_documenti = 2217
+    fatture_rows = [
+        {
+            "user_id": "u1",
+            "ristorante_id": "rist-1",
+            # zero-pad: l'ordinamento per file_origine deve essere stabile
+            "file_origine": f"doc{i:05d}.xml",
+            "fornitore": "Fornitore SRL",
+            "tipo_documento": "TD01",
+            "totale_riga": 10.0,
+            "data_documento": "2026-01-10",
+            "created_at": "2026-01-10T10:00:00Z",
+        }
+        for i in range(n_documenti)
+    ]
+    sb = _FakeSupabase(_base_tables(fatture_rows, []))
+
+    result = get_documenti_scadenziario("u1", ristorante_id="rist-1", supabase_client=sb)
+
+    assert len(result) == n_documenti
+    # nessun documento perso e nessuno duplicato dalle finestre di paginazione
+    assert len({r["file_origine"] for r in result}) == n_documenti

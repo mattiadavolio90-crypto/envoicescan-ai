@@ -791,15 +791,34 @@ def get_documenti_scadenziario(
     # per gruppi grandi come SUSHILAND, ~25 round-trip su ~25.000 righe, causa di
     # timeout su "Gestione Fatture — Gruppo"). Vedi migration
     # 20260807101424_rpc_scadenziario_aggregato.sql.
-    rpc_rows = (
-        sb.rpc(
-            "scadenziario_fatture_aggregate",
-            {"p_user_id": user_id, "p_ristorante_ids": ids},
+    # PostgREST tronca a max-rows (1000) anche le RPC che tornano SETOF: senza
+    # paginazione un gruppo con più di 1000 documenti ne perderebbe una parte in
+    # silenzio (SUSHILAND: 2217). Si pagina finché una pagina torna corta.
+    _PAGE = 1000
+    _MAX_PAGINE = 200  # ~200k documenti: oltre e' un bug, non un gruppo grande
+    rpc_rows: List[Dict[str, Any]] = []
+    _offset = 0
+    for _ in range(_MAX_PAGINE):
+        _page = (
+            sb.rpc(
+                "scadenziario_fatture_aggregate",
+                {"p_user_id": user_id, "p_ristorante_ids": ids},
+            )
+            .range(_offset, _offset + _PAGE - 1)
+            .execute()
+            .data
+            or []
         )
-        .execute()
-        .data
-        or []
-    )
+        rpc_rows.extend(_page)
+        if len(_page) < _PAGE:
+            break
+        _offset += _PAGE
+    else:
+        logger.warning(
+            "scadenziario: raggiunto il tetto di %d pagine per user_id=%s — "
+            "risultato possibilmente troncato",
+            _MAX_PAGINE, user_id,
+        )
 
     if not rpc_rows:
         return []

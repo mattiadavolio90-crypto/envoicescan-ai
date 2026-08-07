@@ -51,8 +51,11 @@ BEGIN
         SELECT
             btrim(f.file_origine)                    AS file_origine,
             f.ristorante_id,
-            COALESCE(f.fornitore, 'Sconosciuto')      AS fornitore,
-            COALESCE(f.tipo_documento, 'TD01')        AS tipo_documento,
+            COALESCE(f.fornitore, 'Sconosciuto')::text      AS fornitore,
+            -- fatture.tipo_documento è varchar: senza cast esplicito il tipo
+            -- resta varchar e RETURNS TABLE (text) fallisce con 42804
+            -- ("structure of query does not match function result type").
+            COALESCE(f.tipo_documento, 'TD01')::text        AS tipo_documento,
             COALESCE(f.totale_riga, 0)                AS totale_riga,
             f.data_documento,
             f.created_at
@@ -85,7 +88,11 @@ BEGIN
     FROM base b
     JOIN prima_riga p
       ON p.file_origine = b.file_origine AND p.ristorante_id = b.ristorante_id
-    GROUP BY p.file_origine, p.ristorante_id, p.fornitore, p.tipo_documento, p.data_documento, p.created_at;
+    GROUP BY p.file_origine, p.ristorante_id, p.fornitore, p.tipo_documento, p.data_documento, p.created_at
+    -- ORDER BY stabile e totale: il chiamante pagina con .range() (PostgREST
+    -- tronca a 1000 righe), e senza un ordinamento deterministico le pagine
+    -- potrebbero sovrapporsi o saltare righe.
+    ORDER BY p.file_origine, p.ristorante_id;
 END;
 $function$;
 
