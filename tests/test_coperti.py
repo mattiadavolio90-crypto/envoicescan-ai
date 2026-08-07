@@ -181,24 +181,38 @@ def test_anomalia_coperti_riferimento_mese_label():
 
 # ── Parser email multi-ristorante (worker) ────────────────────────────────────
 def _sb_email(owned_ids, mapping):
-    """Mock supabase per il worker: ristoranti owned + ricavi_ragione_sociale_map."""
-    state = {"table": None}
+    """Mock supabase per il worker: ristoranti owned + ricavi_ragione_sociale_map.
+
+    La mappa è filtrata lato DB su `.in_("ristorante_id", owned_ids)`: il mock
+    applica lo stesso filtro, così il test resta onesto se qualcuno lo togliesse
+    (senza, PostgREST troncherebbe a 1000 righe la mappa di TUTTI gli utenti).
+    """
+    state = {"table": None, "in_": None}
 
     def _table(name):
         state["table"] = name
+        return q
+
+    def _in(campo, valori):
+        state["in_"] = (campo, list(valori))
         return q
 
     def _execute():
         if state["table"] == "ristoranti":
             return MagicMock(data=[{"id": i} for i in owned_ids])
         if state["table"] == "ricavi_ragione_sociale_map":
-            return MagicMock(data=mapping)
+            filtro = state["in_"]
+            righe = mapping
+            if filtro and filtro[0] == "ristorante_id":
+                righe = [r for r in mapping if r["ristorante_id"] in filtro[1]]
+            return MagicMock(data=righe)
         return MagicMock(data=[])
 
     q = MagicMock()
     q.table.side_effect = _table
     q.select.return_value = q
     q.eq.return_value = q
+    q.in_.side_effect = _in
     q.execute.side_effect = _execute
     return q
 
@@ -223,6 +237,33 @@ def test_parse_passbi_email_coperti_per_ristorante():
     sushi = next(r for r in per_rist["RID-SUSHI"] if r.data == "2026-06-10")
     assert land.coperti == 435
     assert sushi.coperti == 193  # 192.9999 → 193
+
+
+def test_parse_passbi_email_mappa_filtrata_lato_db():
+    """La mappa ragione sociale va letta GIÀ filtrata sulle sedi dell'utente.
+
+    Il filtro Python a valle scarta comunque le sedi altrui, quindi il rischio non
+    è l'ownership: è il TRONCAMENTO. Senza `.in_()` la query legge la mappa di
+    tutti gli utenti e oltre le 1000 righe PostgREST taglia in silenzio — i
+    mapping oltre soglia sparirebbero e quelle righe finirebbero sulla sede del
+    mittente. Qui si verifica che il filtro sia passato al DB, non applicato dopo.
+    """
+    from worker.email_queue_processor import _parse_passbi_email
+    df = _passbi_df([
+        ("10/06/2026 00:00:00", "LAND DEI SAPORI", "Scontrino", 10, 1000.0, 50),
+    ])
+    sb = _sb_email(
+        owned_ids=["RID-LAND"],
+        mapping=[{"ragione_sociale_norm": "land dei sapori", "ristorante_id": "RID-LAND"}],
+    )
+    _parse_passbi_email(df, "RID-LAND", "user-1", sb)
+
+    chiamate_in = [c for c in sb.in_.call_args_list if c.args and c.args[0] == "ristorante_id"]
+    assert chiamate_in, (
+        "ricavi_ragione_sociale_map letta senza .in_('ristorante_id', ...): "
+        "la query scarica la mappa di tutti gli utenti e PostgREST la tronca a 1000 righe."
+    )
+    assert set(chiamate_in[0].args[1]) == {"RID-LAND"}
 
 
 # ── Parser Passbi multi-sede (import manuale UI) ──────────────────────────────

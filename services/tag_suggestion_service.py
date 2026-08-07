@@ -9,6 +9,7 @@ Pipeline v2 — logica a radice:
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,12 @@ WINDOW_DAYS_DEFAULT = 90   # finestra ampia: molti clienti caricano le fatture i
 MIN_PRODUCTS_DEFAULT = 3   # new_tag: minimo prodotti distinti con stessa radice
 MIN_ROWS_DEFAULT = 5       # new_tag: minimo occorrenze totali
 MIN_OCCORRENZE_EXTEND = 1  # extend_tag: il tag esiste già, basta 1 acquisto per proporre l'aggiunta
+
+# new_tag: una radice comprata da un solo fornitore è quasi sempre una marca o un
+# formato (MOCCHI, ROENO, CREAMI, MONOPORZIONE), non un ingrediente. Gli ingredienti
+# veri arrivano da più fornitori (SALMONE 7, PATATE 9, OLIO 11). Criterio strutturale:
+# non serve mantenere una lista di marche, funziona anche sui fornitori futuri.
+MIN_FORNITORI_NEW_TAG = 2
 MAX_POOL_ROWS = 12000
 MAX_SUGGESTIONS_PER_TYPE = 20
 
@@ -36,6 +43,10 @@ _CATEGORIE_ESCLUSE = {
     "📝 NOTE E DICITURE",
     "NOTE E DICITURE",
 }
+
+# Prima sequenza di sole lettere di un token: taglia su punteggiatura e cifre.
+# "FIL." → "FIL", "PROSC.CRUDO" → "PROSC", "KG1" → "KG", "330ML" → "" (nessun match).
+_PRIMA_PAROLA = re.compile(r'[A-ZÀ-ÖØ-Þ]+', re.IGNORECASE)
 
 _STOPWORDS = {
     'DI', 'DA', 'DE', 'DEL', 'DELLA', 'DELLO', 'DEI', 'E', 'IN', 'CON',
@@ -71,13 +82,15 @@ def _get_product_token(descrizione_key: str) -> Optional[str]:
     Criteri: lunghezza ≥ 4, non in STOPWORDS, nessuna cifra. È la parola reale
     così come scritta (es. "SALMONE" o "SALMONI"): utile per dare al tag un nome
     leggibile, mentre il raggruppamento avviene sulla radice canonica.
+
+    La punteggiatura viene spezzata, non rimossa: "FIL. SALMONE" deve dare
+    "SALMONE" (FIL è troppo corto e si prosegue), mentre cancellarla soltanto
+    produrrebbe accorpamenti falsi come "PROSC.CRUDO" → "PROSCCRUDO".
     """
     for token in str(descrizione_key or '').split():
-        token = token.strip()
-        if (len(token) >= 4
-                and token not in _STOPWORDS
-                and not any(c.isdigit() for c in token)):
-            return token
+        for candidato in _PRIMA_PAROLA.findall(token.strip()):
+            if len(candidato) >= 4 and candidato not in _STOPWORDS:
+                return candidato
     return None
 
 
@@ -192,9 +205,12 @@ def _aggregate_pool(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         if data_doc and (not item['ultima_data'] or data_doc > item['ultima_data']):
             item['ultima_data'] = data_doc
 
+    # 'fornitori' resta nel pool: la soglia sui nuovi tag va misurata sull'insieme
+    # del gruppo, non sul singolo prodotto. Ogni singolo "SALMONE 5-6" ha un solo
+    # fornitore, ma la radice SALMON ne conta 7: guardando il prodotto isolato si
+    # scarterebbero gli ingredienti veri.
     for val in pool.values():
         val['fornitori_count'] = len(val['fornitori'])
-        val.pop('fornitori', None)
 
     return pool
 
@@ -245,12 +261,21 @@ def _build_new_tag_suggestions(
     min_products: int,
     min_rows: int,
     window_days: int,
+    roots_gia_coperte: Optional[set] = None,
+    min_fornitori: int = MIN_FORNITORI_NEW_TAG,
+    limite: Optional[int] = MAX_SUGGESTIONS_PER_TYPE,
 ) -> List[Dict[str, Any]]:
-    """Raggruppa prodotti non taggati per radice comune → suggerisci creazione tag."""
+    """Raggruppa prodotti non taggati per radice comune → suggerisci creazione tag.
+
+    Se la radice è già coperta da un tag esistente il suggerimento NON viene
+    prodotto: per quei prodotti esiste già un extend_tag, e proporre anche la
+    creazione di un tag omonimo disperderebbe lo stesso dato su due tag.
+    """
+    coperte = roots_gia_coperte or set()
     root_to_keys: Dict[str, List[str]] = defaultdict(list)
     for key in untagged_pool.keys():
         root = _get_product_root(key)
-        if root:
+        if root and root not in coperte:
             root_to_keys[root].append(key)
 
     suggestions: List[Dict[str, Any]] = []
@@ -261,6 +286,18 @@ def _build_new_tag_suggestions(
 
         matched_rows = sum(int(untagged_pool[k]['occorrenze']) for k in uniq_keys)
         if matched_rows < min_rows:
+            continue
+
+        fornitori_gruppo: set = set()
+        for k in uniq_keys:
+            fornitori_gruppo |= set(untagged_pool[k].get('fornitori') or ())
+        # Fallback su fornitori_count quando il pool non porta l'insieme (test,
+        # chiamanti storici): meglio il dato per-prodotto che nessun criterio.
+        if not fornitori_gruppo:
+            distinti = max(int(untagged_pool[k].get('fornitori_count') or 0) for k in uniq_keys)
+        else:
+            distinti = len(fornitori_gruppo)
+        if distinti < min_fornitori:
             continue
 
         items = [
@@ -293,7 +330,18 @@ def _build_new_tag_suggestions(
         )
 
     suggestions.sort(key=lambda x: (-x['matched_products_count'], -x['matched_rows_count']))
-    return suggestions[:MAX_SUGGESTIONS_PER_TYPE]
+    return suggestions[:limite] if limite else suggestions
+
+
+def _roots_dei_tag_esistenti(tag_assoc_keys: Dict[int, List[str]]) -> set:
+    """Radici già presidiate da almeno un tag esistente."""
+    roots: set = set()
+    for assoc_keys in tag_assoc_keys.values():
+        for key in assoc_keys:
+            root = _get_product_root(key)
+            if root:
+                roots.add(root)
+    return roots
 
 
 def _build_extend_tag_suggestions(
@@ -302,6 +350,7 @@ def _build_extend_tag_suggestions(
     untagged_pool: Dict[str, Dict[str, Any]],
     min_occurrenze: int,
     window_days: int,
+    limite: Optional[int] = MAX_SUGGESTIONS_PER_TYPE,
 ) -> List[Dict[str, Any]]:
     """Suggerisci aggiunta a tag esistente quando un nuovo prodotto ha la stessa radice.
 
@@ -367,7 +416,7 @@ def _build_extend_tag_suggestions(
         )
 
     suggestions.sort(key=lambda x: (-x['matched_products_count'], -x['matched_rows_count']))
-    return suggestions[:MAX_SUGGESTIONS_PER_TYPE]
+    return suggestions[:limite] if limite else suggestions
 
 
 def build_recent_product_pool(
@@ -390,9 +439,15 @@ def suggest_new_tags(
 ) -> List[Dict[str, Any]]:
     rows = _fetch_recent_rows(user_id, ristorante_id, window_days=WINDOW_DAYS_DEFAULT, supabase_client=supabase_client)
     pool = _aggregate_pool(rows)
-    _, _, all_tag_keys = _fetch_tags_and_assoc(user_id, ristorante_id, supabase_client=supabase_client)
+    _, tag_assoc, all_tag_keys = _fetch_tags_and_assoc(user_id, ristorante_id, supabase_client=supabase_client)
     untagged = {k: v for k, v in pool.items() if k not in all_tag_keys}
-    return _build_new_tag_suggestions(untagged, min_products=min_products, min_rows=min_rows, window_days=WINDOW_DAYS_DEFAULT)
+    return _build_new_tag_suggestions(
+        untagged,
+        min_products=min_products,
+        min_rows=min_rows,
+        window_days=WINDOW_DAYS_DEFAULT,
+        roots_gia_coperte=_roots_dei_tag_esistenti(tag_assoc),
+    )
 
 
 def suggest_extend_existing_tags(
@@ -504,6 +559,90 @@ def upsert_tag_suggestions(
     return inserted
 
 
+def dismiss_suggerimenti_obsoleti(
+    user_id: str,
+    ristorante_id: str,
+    cluster_keys_attive: set,
+    tag_ids_esistenti: set,
+    supabase_client=None,
+) -> int:
+    """Ritira i pending che la pipeline non produce più.
+
+    Serve perché ogni modifica al tokenizer o allo stemmer sposta le cluster_key
+    (ROENO→ROEN, MONOPORZIONE→MONOPORZION) e senza questa pulizia la versione
+    vecchia resterebbe pending per sempre, affiancata alla nuova. Mai DELETE:
+    'dismissed' è reversibile e conserva la traccia del motivo.
+    """
+    # Guardia: un set vuoto significa che la detection non ha prodotto nulla
+    # (finestra senza fatture, errore di rete). Senza questo return una singola
+    # run a vuoto azzererebbe tutti i suggerimenti del cliente.
+    if not cluster_keys_attive:
+        return 0
+
+    sb = supabase_client or get_supabase_client()
+    pending = (
+        sb.table('custom_tag_suggestions')
+        .select('id,cluster_key,suggestion_type,target_tag_id')
+        .eq('user_id', user_id)
+        .eq('ristorante_id', ristorante_id)
+        .eq('status', 'pending')
+        .execute().data or []
+    )
+
+    obsoleti: List[int] = []
+    for row in pending:
+        if row.get('id') is None:
+            continue
+        cluster_key = str(row.get('cluster_key') or '')
+        target_tag_id = row.get('target_tag_id')
+        tag_sparito = (
+            row.get('suggestion_type') == 'extend_tag'
+            and target_tag_id is not None
+            and int(target_tag_id) not in tag_ids_esistenti
+        )
+        if cluster_key not in cluster_keys_attive or tag_sparito:
+            obsoleti.append(int(row['id']))
+
+    if not obsoleti:
+        return 0
+
+    for start in range(0, len(obsoleti), 100):
+        (
+            sb.table('custom_tag_suggestions')
+            .update({
+                'status': 'dismissed',
+                'feedback_note': 'obsoleto: non più rilevato dal motore',
+            })
+            .in_('id', obsoleti[start:start + 100])
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .eq('status', 'pending')
+            .execute()
+        )
+    return len(obsoleti)
+
+
+def _nomi_tag_per_id(
+    tag_ids: List[int],
+    user_id: str,
+    ristorante_id: str,
+    supabase_client=None,
+) -> Dict[int, str]:
+    """Mappa tag_id → nome: il nome del tag non è salvato sul suggerimento."""
+    if not tag_ids:
+        return {}
+    sb = supabase_client or get_supabase_client()
+    rows = (
+        sb.table('custom_tags')
+        .select('id,nome')
+        .eq('user_id', user_id)
+        .eq('ristorante_id', ristorante_id)
+        .in_('id', sorted({int(t) for t in tag_ids}))
+        .execute().data or []
+    )
+    return {int(r['id']): str(r.get('nome') or '') for r in rows if r.get('id') is not None}
+
+
 def list_pending_tag_suggestions(
     user_id: str,
     ristorante_id: str,
@@ -556,6 +695,17 @@ def list_pending_tag_suggestions(
         sid = int(s['id'])
         s['items'] = by_suggestion.get(sid, [])
         result.append(s)
+
+    # Il nome del tag non è una colonna di custom_tag_suggestions: va risolto qui,
+    # o il frontend degli extend_tag mostra 'Aggiungi al tag "undefined"'.
+    target_ids = [
+        int(s['target_tag_id']) for s in result
+        if s.get('suggestion_type') == 'extend_tag' and s.get('target_tag_id') is not None
+    ]
+    nomi = _nomi_tag_per_id(target_ids, user_id, ristorante_id, supabase_client=sb)
+    for s in result:
+        if s.get('suggestion_type') == 'extend_tag':
+            s['tag_name'] = nomi.get(int(s.get('target_tag_id') or 0)) or 'tag esistente'
     return result
 
 
@@ -812,22 +962,44 @@ def run_tag_suggestion_pipeline(
         tags, tag_assoc_keys, all_tag_keys = _fetch_tags_and_assoc(user_id, ristorante_id, supabase_client=sb)
         untagged = {k: v for k, v in pool.items() if k not in all_tag_keys}
 
-        new_tag = _build_new_tag_suggestions(
+        # Senza limite: il taglio a MAX_SUGGESTIONS_PER_TYPE avviene dopo aver
+        # raccolto le cluster_key, altrimenti un suggerimento valido oltre la
+        # ventesima posizione verrebbe ritirato e ricreato a ogni giro.
+        new_tag_tutti = _build_new_tag_suggestions(
             untagged,
             min_products=int(min_products),
             min_rows=int(min_rows),
             window_days=WINDOW_DAYS_DEFAULT,
+            roots_gia_coperte=_roots_dei_tag_esistenti(tag_assoc_keys),
+            limite=None,
         )
-        extend_tag = _build_extend_tag_suggestions(
+        extend_tag_tutti = _build_extend_tag_suggestions(
             tags,
             tag_assoc_keys,
             untagged,
             min_occurrenze=int(min_occurrenze_extend),
             window_days=WINDOW_DAYS_DEFAULT,
+            limite=None,
         )
 
+        cluster_keys_attive = {
+            str(s.get('cluster_key') or '')
+            for s in new_tag_tutti + extend_tag_tutti
+            if s.get('cluster_key')
+        }
+
+        new_tag = new_tag_tutti[:MAX_SUGGESTIONS_PER_TYPE]
+        extend_tag = extend_tag_tutti[:MAX_SUGGESTIONS_PER_TYPE]
         suggestions = new_tag + extend_tag
         inserted = upsert_tag_suggestions(user_id, ristorante_id, suggestions, supabase_client=sb)
+
+        dismessi = dismiss_suggerimenti_obsoleti(
+            user_id,
+            ristorante_id,
+            cluster_keys_attive,
+            {int(t['id']) for t in tags if t.get('id') is not None},
+            supabase_client=sb,
+        )
 
         records = generate_tag_suggestion_notifications(user_id, ristorante_id, supabase_client=sb)
         notif_inserted = upsert_inbox_notifications(records, supabase_client=sb) if records else 0
@@ -838,6 +1010,7 @@ def run_tag_suggestion_pipeline(
             'new_tag_suggestions': len(new_tag),
             'extend_tag_suggestions': len(extend_tag),
             'inserted_suggestions': inserted,
+            'dismissed_obsoleti': dismessi,
             'notification_records': len(records),
             'notifications_inserted': notif_inserted,
         }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, X, RefreshCw, Download, ChevronDown, ChevronUp,
   Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2,
@@ -622,7 +622,7 @@ function SuggestionCard({
       toast.success(
         s.suggestion_type === "new_tag"
           ? `Tag "${tagName || s.suggested_tag_name}" creato`
-          : `Prodotti aggiunti al tag "${s.tag_name}"`
+          : `Prodotti aggiunti al tag "${s.tag_name ?? "esistente"}"`
       );
       onAccepted();
     } catch {
@@ -657,7 +657,7 @@ function SuggestionCard({
         <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="min-w-0">
             <p className="text-sm font-semibold">
-              {isNewTag ? `Crea tag "${s.suggested_tag_name}"` : `Aggiungi al tag "${s.tag_name}"`}
+              {isNewTag ? `Crea tag "${s.suggested_tag_name}"` : `Aggiungi al tag "${s.tag_name ?? "esistente"}"`}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {s.matched_products_count} prodott{s.matched_products_count === 1 ? "o" : "i"} ·{" "}
@@ -757,31 +757,75 @@ function SuggerimentiBanner({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const [mostraTutti, setMostraTutti] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const filtrati = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return suggestions;
+    return suggestions.filter(s => {
+      const nome = (s.suggestion_type === "new_tag" ? s.suggested_tag_name : s.tag_name) || "";
+      if (nome.toLowerCase().includes(q)) return true;
+      return (s.items || []).some(i => i.descrizione.toLowerCase().includes(q));
+    });
+  }, [suggestions, query]);
+
   if (suggestions.length === 0) return null;
+
+  // Con una ricerca attiva si mostra tutto cio' che combacia: nascondere i
+  // risultati dietro un "mostra altri" vanificherebbe la ricerca stessa.
+  const visibili = query.trim() || mostraTutti ? filtrati : filtrati.slice(0, 5);
+  const nascosti = filtrati.length - visibili.length;
 
   return (
     <div className="rounded-xl border border-amber-500/40 bg-amber-500/8 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
           <Lightbulb className="size-4 text-amber-500 shrink-0" />
           <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-            {suggestions.length} suggerimt{suggestions.length === 1 ? "o" : "i"} intelligent{suggestions.length === 1 ? "e" : "i"}
+            {suggestions.length} suggeriment{suggestions.length === 1 ? "o" : "i"} intelligent{suggestions.length === 1 ? "e" : "i"}
           </span>
         </div>
         <button
           onClick={onRefresh}
           disabled={refreshing}
-          className="p-1.5 rounded-md hover:bg-amber-500/15 transition-colors text-amber-600 dark:text-amber-400 disabled:opacity-50"
+          className="p-1.5 rounded-md hover:bg-amber-500/15 transition-colors text-amber-600 dark:text-amber-400 disabled:opacity-50 shrink-0"
           title="Aggiorna suggerimenti"
         >
           <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
         </button>
       </div>
-      <div className="space-y-2">
-        {suggestions.slice(0, 5).map(s => (
-          <SuggestionCard key={s.id} s={s} onAccepted={onRefresh} onDismissed={onRefresh} />
-        ))}
-      </div>
+
+      {suggestions.length > 5 && (
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Cerca fra i suggerimenti…"
+            className="w-full rounded-md border border-amber-500/30 bg-background/60 pl-8 pr-3 py-1.5 text-sm"
+          />
+        </div>
+      )}
+
+      {filtrati.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-2">Nessun suggerimento per «{query.trim()}».</p>
+      ) : (
+        <div className="space-y-2">
+          {visibili.map(s => (
+            <SuggestionCard key={s.id} s={s} onAccepted={onRefresh} onDismissed={onRefresh} />
+          ))}
+        </div>
+      )}
+
+      {!query.trim() && (nascosti > 0 || mostraTutti) && (
+        <button
+          onClick={() => setMostraTutti(v => !v)}
+          className="w-full py-2 text-sm font-medium rounded-lg border border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+        >
+          {mostraTutti ? "Mostra solo i primi 5" : `Mostra tutti (altri ${nascosti})`}
+        </button>
+      )}
     </div>
   );
 }
