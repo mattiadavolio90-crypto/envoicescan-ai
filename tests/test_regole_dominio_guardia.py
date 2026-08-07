@@ -289,3 +289,149 @@ def test_admin_emails_confrontate_lowercase(sorgente: Path) -> None:
         f"normalizzare. Usa .strip().lower() (CLAUDE.md §4).\n  - "
         + "\n  - ".join(sospetti)
     )
+
+
+# --------------------------------------------------------------------------
+# Regola 6 — chi legge i RICAVI da margini_mensili fonde l'override mensile
+# --------------------------------------------------------------------------
+
+# I clienti che inseriscono il TOTALE MENSILE hanno i ricavi in
+# `ricavi_modalita_mensile`, e `margini_mensili` resta a **0** (misurato il
+# 7/8/2026: OFFSIDE 6 mesi 2026 da 54.000-75.000 EUR, CASATI 14, TIME CAFE).
+# Chi legge il fatturato dal solo snapshot vede 0 EUR su un mese da 60.000 e
+# ne trae conclusioni: "non hai registrato i ricavi", food cost e MOL senza
+# senso. È un numero sbagliato mostrato con sicurezza, la classe di difetto
+# peggiore. L'invariante reggeva su 13 chiamanti per sola CONVENZIONE.
+#
+# ANCORAGGIO AI CAMPI, NON ALLA TABELLA. `margini_mensili` è letta ~32 volte,
+# ma la maggior parte delle letture NON deve applicare l'override, e non per
+# eccezione: per il campo che legge (`coperti`, split per centro di produzione
+# `fatturato_food/beverage/...`, `count="exact"`, `costo_*`). Ancorare la
+# regola alla tabella produrrebbe ~15 falsi positivi e il test verrebbe
+# disattivato entro una settimana. Si guardano solo i CAMPI DI RICAVO.
+_LEGGE_MARGINI_MENSILI = re.compile(r'table\(\s*["\']margini_mensili["\']\s*\)')
+_CAMPI_RICAVO = re.compile(
+    r'fatturato_iva10|fatturato_iva22|altri_ricavi_noiva|fatturato_netto'
+)
+
+# Quattro modi legittimi di rispettare la regola. I due wrapper esistono davvero
+# (`_merge_override_mensile` in fastapi_worker, `_overrides_mese_sede` in
+# gruppo.py) e senza di loro i loro chiamanti sarebbero falsi positivi.
+# `ricavi_modalita_mensile` copre chi interroga la fonte direttamente
+# (gruppo.py:1642): la guardia premia il RISULTATO giusto, non il nome della
+# funzione chiamata.
+_APPLICA_OVERRIDE = re.compile(
+    r'_load_mensile_overrides|_merge_override_mensile|_overrides_mese_sede'
+    r'|ricavi_modalita_mensile'
+)
+
+# Eccezioni per NOME DI FUNZIONE, mai per numero di riga: i numeri marciscono al
+# primo refactor, e un test che si rompe da solo viene disattivato.
+_ECCEZIONI_OVERRIDE = {
+    # Le celle EDITABILI dello snapshot annuale: devono mostrare ciò che è
+    # salvato in margini_mensili, perché è esattamente ciò che l'utente sta
+    # modificando (save_margini riscrive proprio queste colonne). Fondere
+    # l'override qui farebbe apparire un valore che il salvataggio
+    # sovrascriverebbe subito dopo.
+    "get_margini": "griglia editabile: mostra lo snapshot, non il derivato",
+    # Idem lato service: restituisce le righe grezze e DELEGA l'override ai
+    # chiamanti (tutti e 3 lo applicano oggi: fastapi_worker :3847, :4695, :6815).
+    # È il vettore di regressione più probabile della regola — un quarto
+    # chiamante distratto avrebbe fatturato 0 senza alcun segnale.
+    "carica_margini_anno": "ritorna righe grezze, l'override lo applica il chiamante",
+    # Analisi per centro di produzione: lo split food/beverage/alcolici/dolci
+    # esiste SOLO in margini_mensili — l'override mensile non lo contiene, quindi
+    # non è fondibile qui. Per una sede in modalità mensile la pagina resta a 0:
+    # limite noto della feature, non una dimenticanza di questa regola.
+    "get_analisi_centri": "lo split per centro non esiste nell'override mensile",
+    # Definizione dell'override stesso e suoi wrapper.
+    "_load_mensile_overrides": "è la funzione che implementa la regola",
+    "_merge_override_mensile": "wrapper della regola",
+    "_overrides_mese_sede": "wrapper della regola",
+    # Segnale "margine in calo" (gruppo.py): legge `mol_perc`, non i ricavi.
+    # L'override fornisce i ricavi, non un MOL ricalcolato: includere quei mesi
+    # mostrerebbe una PERCENTUALE FALSA, che è peggio di escluderli. Debito noto
+    # e documentato (AUDIT_ONEFLUX_STATO_2026-07.md §1), non una dimenticanza.
+    "_gruppo_segnali": "usa mol_perc, non i ricavi: l'override non dà un MOL",
+}
+
+
+def _funzione_attorno(testo: str, posizione: int) -> tuple[str, str]:
+    """Ritorna (nome_funzione, corpo) della funzione che contiene la posizione.
+
+    La finestra è l'INTERA funzione, non uno statement né N righe: il pattern
+    legittimo qui è "leggi lo snapshot, fondi l'override più avanti nella stessa
+    funzione". In gruppo.py la query sta a :742 e l'override a :764 — una
+    finestra a lunghezza fissa lo classificherebbe come violazione.
+    """
+    tutte = testo.split("\n")
+    numero_riga = len(testo[:posizione].split("\n")) - 1
+
+    inizio, nome = 0, "<modulo>"
+    for i in range(numero_riga, -1, -1):
+        match = re.match(r'^(\s*)(?:async\s+)?def\s+(\w+)', tutte[i])
+        if match:
+            inizio, nome = i, match.group(2)
+            indent_def = len(match.group(1))
+            break
+    else:
+        indent_def = 0
+
+    fine = len(tutte)
+    for i in range(numero_riga + 1, len(tutte)):
+        match = re.match(r'^(\s*)(?:async\s+)?def\s+\w+', tutte[i])
+        if match and len(match.group(1)) <= indent_def:
+            fine = i
+            break
+
+    return nome, "\n".join(tutte[inizio:fine])
+
+
+def _letture_ricavi_senza_override(testo: str) -> list[str]:
+    fuori_regola = []
+    for match in _LEGGE_MARGINI_MENSILI.finditer(testo):
+        nome, corpo = _funzione_attorno(testo, match.start())
+        if nome in _ECCEZIONI_OVERRIDE:
+            continue
+        istruzione = _istruzione_attorno(testo, match.start())
+        if ".select(" not in istruzione:
+            continue  # scrittura (upsert/update/insert), non una lettura
+        if not _CAMPI_RICAVO.search(istruzione):
+            continue  # legge coperti/costi/split centri: l'override non c'entra
+        if _APPLICA_OVERRIDE.search(corpo):
+            continue
+        fuori_regola.append(f"{nome}(): {' '.join(istruzione.split())[:110]}")
+    return fuori_regola
+
+
+@pytest.mark.parametrize(
+    "sorgente", SORGENTI_RUNTIME, ids=lambda p: str(p.relative_to(ROOT))
+)
+def test_letture_ricavi_da_margini_mensili_applicano_override(sorgente: Path) -> None:
+    """Leggere il fatturato dal solo `margini_mensili` mostra 0 EUR ai clienti in
+    modalità mensile — su mesi da 60.000 EUR reali.
+
+    Non è un crash: è l'app che afferma con sicurezza una cosa falsa sui soldi
+    del cliente (l'assistente gli diceva "non hai registrato i ricavi").
+    """
+    violazioni = _letture_ricavi_senza_override(_leggi(sorgente))
+    assert not violazioni, (
+        f"{sorgente.relative_to(ROOT)}: legge il fatturato da margini_mensili "
+        f"senza fondere l'override della modalità mensile. Per questi clienti "
+        f"margini_mensili è a 0 e il fatturato vero sta in "
+        f"ricavi_modalita_mensile. Usa _load_mensile_overrides (o i wrapper "
+        f"_merge_override_mensile / _overrides_mese_sede).\n  - "
+        + "\n  - ".join(violazioni)
+    )
+
+
+def test_load_mensile_overrides_filtra_la_modalita_mensile() -> None:
+    """Se l'override smettesse di filtrare `modalita='mensile'`, applicherebbe
+    valori anche ai clienti che inseriscono i ricavi giorno per giorno."""
+    sorgente = _leggi(ROOT / "services" / "fastapi_worker.py")
+    corpo = sorgente.split("def _load_mensile_overrides", 1)[1][:900]
+    assert 'table("ricavi_modalita_mensile")' in corpo
+    assert 'eq("modalita", "mensile")' in corpo, (
+        "_load_mensile_overrides non filtra più modalita='mensile': applicherebbe "
+        "l'override anche a chi registra i ricavi giornalieri."
+    )
