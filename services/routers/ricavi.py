@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from config.logger_setup import get_logger
+from utils.supabase_paging import fetch_all
 
 logger = get_logger("router_ricavi")
 
@@ -132,16 +133,14 @@ def get_ricavi_giornalieri(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    resp = (
+    rows = fetch_all(
         sb.table("ricavi_giornalieri")
         .select("id,data,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti,source")
         .eq("ristorante_id", ristorante_id)
         .gte("data", data_da)
         .lte("data", data_a)
         .order("data", desc=False)
-        .execute()
     )
-    rows = resp.data or []
 
     items = [
         RicavoGiornalieroItem(
@@ -200,6 +199,13 @@ def upsert_ricavo_giornaliero(
     if not resp.data:
         raise HTTPException(status_code=500, detail="Salvataggio fallito")
 
+    # Il trigger sync_margini_mensili_from_ricavi riscrive margini_mensili a ogni
+    # scrittura sui giornalieri: i KPI di Home leggono da lì, quindi vanno
+    # invalidati anche loro o la card resta indietro fino allo scadere del TTL.
+    try:
+        _fw()._invalidate_home_kpi_cache(str(ristorante_id))
+    except Exception as exc:
+        logger.warning("upsert_ricavo_giornaliero: invalidate KPI Home fallita: %s", exc)
     try:
         from services.daily_briefing_service import invalidate_today_briefing
         invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
@@ -234,6 +240,10 @@ def delete_ricavo_giornaliero(
       .eq("data", data).execute()
 
     try:
+        _fw()._invalidate_home_kpi_cache(str(ristorante_id))
+    except Exception as exc:
+        logger.warning("delete_ricavo_giornaliero: invalidate KPI Home fallita: %s", exc)
+    try:
         from services.daily_briefing_service import invalidate_today_briefing
         invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
     except Exception as exc:
@@ -259,17 +269,19 @@ def upsert_ricavi_batch(
     errors: List[str] = []
     source = body.source if body.source in ("manuale", "xls", "email") else "manuale"
 
-    # Pre-check esistenti per contare inserted vs updated
+    # Pre-check esistenti per contare inserted vs updated. Paginato: un import di
+    # oltre 1000 date verrebbe altrimenti troncato dal cap PostgREST e le righe
+    # oltre la millesima risulterebbero "inserite" pur essendo aggiornamenti.
     if body.items:
         dates = [it.data for it in body.items]
-        existing = (
+        existing_rows = fetch_all(
             sb.table("ricavi_giornalieri")
             .select("data")
             .eq("ristorante_id", ristorante_id)
             .in_("data", dates)
-            .execute()
+            .order("data", desc=False)
         )
-        existing_set = {str(r["data"]) for r in (existing.data or [])}
+        existing_set = {str(r["data"]) for r in existing_rows}
     else:
         existing_set = set()
 
@@ -320,6 +332,10 @@ def upsert_ricavi_batch(
     # positiva "ieri sono entrati €X" dipende da questi dati). Lo invalidiamo
     # cosi' al prossimo load si rigenera. Best-effort: non blocca l'upsert.
     if inserted or updated:
+        try:
+            _fw()._invalidate_home_kpi_cache(str(ristorante_id))
+        except Exception as exc:
+            logger.warning("upsert_ricavi_batch: invalidate KPI Home fallita: %s", exc)
         try:
             from services.daily_briefing_service import invalidate_today_briefing
             invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
@@ -703,14 +719,14 @@ def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_met
     existing_set: set = set()
     if dates:
         try:
-            existing = (
+            existing_rows = fetch_all(
                 sb.table("ricavi_giornalieri")
                 .select("data")
                 .eq("ristorante_id", ristorante_id)
                 .in_("data", dates)
-                .execute()
+                .order("data", desc=False)
             )
-            existing_set = {str(r["data"]) for r in (existing.data or [])}
+            existing_set = {str(r["data"]) for r in existing_rows}
         except Exception as exc:
             errors.append(f"pre-check {_sede_label}: {exc}")
 
@@ -752,6 +768,10 @@ def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_met
             errors.append(f"upsert {_sede_label}: {exc}")
 
     if inserted or updated:
+        try:
+            _fw()._invalidate_home_kpi_cache(str(ristorante_id))
+        except Exception as exc:
+            logger.warning("_upsert_ricavi_ristorante: invalidate KPI Home fallita: %s", exc)
         try:
             from services.daily_briefing_service import invalidate_today_briefing
             invalidate_today_briefing(str(user_id), str(ristorante_id), sb)
@@ -1033,20 +1053,31 @@ def get_coperti_analisi(
             tot_coperti_seen = True
 
     # ── Giornaliero: per widget dettaglio (giorno top/fiacco, media per dow) ──
-    gio_resp = (
+    # I mesi in modalità 'mensile' sono ESCLUSI: per quei mesi la verità è
+    # l'override (come nel blocco sopra), e i giornalieri eventualmente rimasti a
+    # DB sono dati orfani. Senza questo filtro la stessa response mostrerebbe due
+    # fonti diverse per lo stesso mese: totali dall'override, giorno top/media dow
+    # da righe che l'override ha già sostituito.
+    gio_rows = fetch_all(
         sb.table("ricavi_giornalieri")
         .select("data,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti")
         .eq("ristorante_id", ristorante_id)
         .gte("data", data_da)
         .lte("data", data_a)
         .order("data", desc=False)
-        .execute()
     )
     giorni_out: List[CopertiGiorno] = []
     dow_acc: List[List[int]] = [[] for _ in range(7)]  # lun..dom
-    for gr in (gio_resp.data or []):
+    for gr in gio_rows:
         cop = gr.get("coperti")
         if cop is None or int(cop) <= 0:
+            continue
+        ds = str(gr.get("data"))
+        try:
+            d_riga = _dt.strptime(ds, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if (d_riga.year, d_riga.month) in overrides:
             continue
         cop = int(cop)
         i10 = float(gr.get("fatturato_iva10") or 0)
@@ -1054,15 +1085,10 @@ def get_coperti_analisi(
         alt = float(gr.get("altri_ricavi_noiva") or 0)
         lordo = i10 + i22 + alt
         netto = round((i10 / 1.10) + (i22 / 1.22) + alt, 2)
-        ds = str(gr.get("data"))
         giorni_out.append(CopertiGiorno(
             data=ds, coperti=cop, ricavi_netto=netto, ricavi_lordo=round(lordo, 2),
         ))
-        try:
-            dow = _dt.strptime(ds, "%Y-%m-%d").date().weekday()  # 0=lun
-            dow_acc[dow].append(cop)
-        except ValueError:
-            pass
+        dow_acc[d_riga.weekday()].append(cop)  # 0=lun
 
     media_per_dow: List[Optional[float]] = [
         (round(sum(v) / len(v), 1) if v else None) for v in dow_acc
