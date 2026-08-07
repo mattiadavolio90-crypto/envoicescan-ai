@@ -269,7 +269,7 @@ Terzo file del perimetro §1 chiuso in questo ciclo, dopo `riparto.py`+`fatture.
 
 ## 13. §1 perimetro mai letto — ricavi.py
 
-**Stato:** 🟢 **CHIUSO** — commit `c6ad41c` su branch `audit/ricavi-coerenza-cache`
+**Stato:** 🟢 **CHIUSO E DEPLOYATO** — PR #15, merge `a601991` su `main`, worker Railway verificato su `/health` (commit `a60199179859` servito)
 **Ultima passata:** 7/8/2026 (audit mirato con `oneflux-audit` + verifica DB live + remediation + `code-reviewer`)
 
 ### Esito
@@ -297,6 +297,8 @@ Il valore principale della passata non sta nei findings ma in due correzioni di 
 **Verifiche**: suite completa **10.346 passed, 43 skipped, 0 failed**; `export_openapi.py --check-drift` OK (193 endpoint, nessun drift).
 
 **Incidente durante la review, sanato**: il `code-reviewer`, mutando il file per verificare in autonomia i test, ha eseguito `git checkout -- services/routers/ricavi.py` cancellando l'intero diff non committato, e lo ha poi ricostruito a mano da testo. Il diff è stato verificato **byte-identico** contro un backup indipendente del file salvato prima delle mutazioni — non contro la ricostruzione dell'agente. Da qui la lezione 38.
+
+**Deploy — verificato, non dato per scontato**: 4 check CI verdi sull'head della PR (`pytest`, `check-drift`, `deno-test`, `verify-requirements`), merge squash `a601991` su `main`, poi `/health` del worker Railway interrogato in polling fino a vedere `{"commit":"a60199179859"}` — commit nuovo confermato servito. Smoke test degli endpoint toccati: `GET /api/ricavi/giornalieri` e `/api/ricavi/coperti-analisi` rispondono **401** senza `X-Worker-Key`, cioè il gate `_verify_worker_key` è vivo (risposta attesa, non un errore). Il codice nuovo è stato poi eseguito **in-process contro il DB di produzione in sola lettura** sulla sede TIME CAFE, l'unica col caso override+giornalieri: `fetch_all` ritorna le 2 righe, `_load_mensile_overrides` ritorna i mesi 5 e 6, e il filtro nuovo intercetta entrambe le righe — 0 con coperti valorizzati, quindi nessun cambiamento visibile oggi. Esattamente il comportamento previsto per un rischio latente disinnescato.
 
 ---
 

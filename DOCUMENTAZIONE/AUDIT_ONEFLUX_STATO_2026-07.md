@@ -45,8 +45,9 @@ a basso rischio": è rischio ignoto per definizione.
 per `riparto_modifica`) fixati; LOW/INFO documentati. Dettaglio completo in
 STORICO §11.
 
-~~`services/routers/ricavi.py`~~ — **CHIUSO il 7/8/2026** (commit `c6ad41c`,
-branch `audit/ricavi-coerenza-cache`). 0 HIGH. Un solo difetto **attivo**: 4
+~~`services/routers/ricavi.py`~~ — **CHIUSO e DEPLOYATO il 7/8/2026** (PR #15,
+merge `a601991` su `main`, worker Railway verificato su `/health` = commit
+`a60199179859` servito). 0 HIGH. Un solo difetto **attivo**: 4
 percorsi di scrittura su 5 non invalidavano la cache KPI Home, e il cliente
 vedeva il MOL vecchio fino a 2 minuti dopo aver caricato i ricavi. 3 latenti
 fixati (coerenza fonti in `coperti-analisi`, paginazione, conteggio import).
