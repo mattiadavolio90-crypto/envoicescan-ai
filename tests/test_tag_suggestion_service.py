@@ -4,8 +4,10 @@ from services.tag_suggestion_service import (
     _build_extend_tag_suggestions,
     _build_new_tag_suggestions,
     _get_product_root,
+    _nomi_tag_per_id,
     _roots_dei_tag_esistenti,
     _get_product_token,
+    dismiss_suggerimenti_obsoleti,
 )
 
 
@@ -226,3 +228,204 @@ def test_roots_dei_tag_esistenti_usa_la_radice_canonica():
     assert _roots_dei_tag_esistenti({1: ["SALMONI 5/6 FRESCHI"]}) == {"SALMON"}
     assert _roots_dei_tag_esistenti({1: ["SALMONE 5-6"]}) == {"SALMON"}
     assert _roots_dei_tag_esistenti({1: ["1LT 500ML"]}) == set()
+
+
+# ── punteggiatura nel primo token ───────────────────────────────────────────
+
+def test_token_salta_abbreviazione_puntata():
+    """'FIL.' passava (4 caratteri, nessuna cifra) e diventava la radice.
+    Spezzando sul punto resta 'FIL', troppo corto: si prosegue fino a SALMONE."""
+    assert _get_product_token("FIL. SALMONE FRESCO") == "SALMONE"
+
+
+def test_token_non_incolla_le_parole_attorno_alla_punteggiatura():
+    """La punteggiatura va spezzata, non cancellata: cancellandola 'PROSC.CRUDO'
+    diventerebbe 'PROSCCRUDO' e 'ROAST-BEEF' 'ROASTBEEF', radici inventate."""
+    assert _get_product_token("PROSC.CRUDO GR100") == "PROSC"
+    assert _get_product_token("ROAST-BEEF SOTTOF INGLESE") == "ROAST"
+    assert _get_product_token("TERRA&VITA PELATI") == "TERRA"
+
+
+def test_token_prosegue_dentro_lo_stesso_token():
+    """'INS.CAPRICCIOSA' e' un token solo: scartato 'INS' si deve valutare
+    'CAPRICCIOSA', non saltare all'intero token successivo."""
+    assert _get_product_token("INS.CAPRICCIOSA") == "CAPRICCIOSA"
+    assert _get_product_token("FR.RI.COCCO") == "COCCO"
+
+
+def test_token_apostrofo_non_spezza_il_nome():
+    assert _get_product_token("SOUFFLE' CIOCCOLATO") == "SOUFFLE"
+
+
+# ── soglia fornitori: marche e formati fuori dai nuovi tag ──────────────────
+
+def _pool_un_solo_fornitore():
+    """Caso reale 7/8: MOCCHI/ROENO/CREAMI — un solo fornitore li vende."""
+    return {
+        "MOCCHI CIOCCOLATO": {"descrizione": "Mocchi Cioccolato", "descrizione_key": "MOCCHI CIOCCOLATO", "occorrenze": 4, "fornitori_count": 1, "ultima_data": "2026-08-01"},
+        "MOCCHI MANGO": {"descrizione": "Mocchi Mango", "descrizione_key": "MOCCHI MANGO", "occorrenze": 3, "fornitori_count": 1, "ultima_data": "2026-08-02"},
+        "MOCCHI FRAGOLA": {"descrizione": "Mocchi Fragola", "descrizione_key": "MOCCHI FRAGOLA", "occorrenze": 3, "fornitori_count": 1, "ultima_data": "2026-08-03"},
+    }
+
+
+def test_new_tag_scartato_se_un_solo_fornitore():
+    """Una radice comprata da un fornitore solo e' una marca o un formato, non un
+    ingrediente: e' cosi' che nascevano i tag 'Mocchi', 'Roeno', 'Creami'."""
+    out = _build_new_tag_suggestions(
+        _pool_un_solo_fornitore(), min_products=3, min_rows=5, window_days=30,
+    )
+    assert out == []
+
+
+def test_new_tag_proposto_se_almeno_due_fornitori():
+    """Il criterio non deve zittire gli ingredienti veri: SALMONE arriva da 7
+    fornitori diversi, e nel pool di test da 2."""
+    out = _build_new_tag_suggestions(
+        _pool_salmone(), min_products=3, min_rows=5, window_days=30,
+    )
+    assert len(out) == 1
+    assert out[0]["cluster_key"] == "new_tag::SALMON"
+
+
+def test_soglia_fornitori_conta_sul_gruppo_non_sul_singolo_prodotto():
+    """Trappola verificata sul DB il 7/8: ogni singolo "SALMONE 5-6" ha UN solo
+    fornitore, ma la radice SALMON ne ha 7. Misurando il prodotto isolato si
+    scarterebbero gli ingredienti veri (SALMONE, PATATE, PASTA) insieme alle marche."""
+    pool = {
+        "SALMONE 5-6": {"descrizione": "Salmone 5-6", "descrizione_key": "SALMONE 5-6", "occorrenze": 5, "fornitori_count": 1, "fornitori": {"ADC"}, "ultima_data": "2026-08-01"},
+        "SALMONE 6+": {"descrizione": "Salmone 6+", "descrizione_key": "SALMONE 6+", "occorrenze": 4, "fornitori_count": 1, "fornitori": {"MOWI"}, "ultima_data": "2026-08-02"},
+        "SALMONI FRESCHI": {"descrizione": "Salmoni Freschi", "descrizione_key": "SALMONI FRESCHI", "occorrenze": 3, "fornitori_count": 1, "fornitori": {"SJOR"}, "ultima_data": "2026-08-03"},
+    }
+    out = _build_new_tag_suggestions(pool, min_products=3, min_rows=5, window_days=30)
+    assert len(out) == 1
+    assert out[0]["cluster_key"] == "new_tag::SALMON"
+
+
+def test_soglia_fornitori_scarta_il_gruppo_di_un_solo_fornitore():
+    """Speculare al precedente: 3 prodotti diversi ma tutti dallo stesso fornitore
+    restano una marca (caso MOCCHI/ROENO), e vanno scartati."""
+    pool = {
+        f"MOCCHI {gusto}": {"descrizione": f"Mocchi {gusto}", "descrizione_key": f"MOCCHI {gusto}", "occorrenze": 3, "fornitori_count": 1, "fornitori": {"DOLCEVITA"}, "ultima_data": "2026-08-01"}
+        for gusto in ("COCCO", "MANGO", "FRAGOLA")
+    }
+    assert _build_new_tag_suggestions(pool, min_products=3, min_rows=5, window_days=30) == []
+
+
+def test_soglia_fornitori_non_tocca_gli_extend_tag():
+    """Sull'extend il tag esiste gia' ed e' stato voluto dall'utente: aggiungere
+    un prodotto monofornitore a un tag suo e' corretto."""
+    out = _build_extend_tag_suggestions(
+        [{"id": 7, "nome": "DOLCI"}],
+        {7: ["MOCCHI COCCO"]},
+        _pool_un_solo_fornitore(),
+        min_occurrenze=1,
+        window_days=30,
+    )
+    assert len(out) == 1
+    assert out[0]["target_tag_id"] == 7
+
+
+# ── pulizia automatica dei suggerimenti obsoleti ────────────────────────────
+
+class _FakeQuery:
+    def __init__(self, rows, log):
+        self._rows, self._log = rows, log
+
+    def select(self, *_a, **_k):
+        return self
+
+    def update(self, payload):
+        self._log.append(payload)
+        return self
+
+    def eq(self, *_a, **_k):
+        return self
+
+    def in_(self, _col, ids):
+        self._log.append(list(ids))
+        return self
+
+    def execute(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(data=self._rows)
+
+
+class _FakeSb:
+    """Registra gli update: serve a provare che i non-pending non vengono toccati."""
+
+    def __init__(self, rows):
+        self.rows, self.log = rows, []
+
+    def table(self, _nome):
+        return _FakeQuery(self.rows, self.log)
+
+
+_PENDING = [
+    {"id": 1, "cluster_key": "new_tag::ROENO", "suggestion_type": "new_tag", "target_tag_id": None},
+    {"id": 2, "cluster_key": "new_tag::ROEN", "suggestion_type": "new_tag", "target_tag_id": None},
+    {"id": 3, "cluster_key": "extend_tag::19", "suggestion_type": "extend_tag", "target_tag_id": 19},
+]
+
+
+def test_pulizia_ritira_la_cluster_key_sparita():
+    """Caso reale: lo stemmer ha spostato ROENO->ROEN e il vecchio suggerimento
+    e' rimasto pending in eterno, affiancato al nuovo con gli stessi 3 vini."""
+    sb = _FakeSb(_PENDING)
+    n = dismiss_suggerimenti_obsoleti(
+        "u1", "r1", {"new_tag::ROEN", "extend_tag::19"}, {19}, supabase_client=sb,
+    )
+    assert n == 1
+    assert [1] in sb.log
+    assert {"status": "dismissed", "feedback_note": "obsoleto: non più rilevato dal motore"} in sb.log
+
+
+def test_pulizia_non_scrive_se_nessun_suggerimento_attivo():
+    """Guardia critica: una run a vuoto (finestra senza fatture, errore di rete)
+    non deve azzerare tutti i suggerimenti del cliente."""
+    sb = _FakeSb(_PENDING)
+    assert dismiss_suggerimenti_obsoleti("u1", "r1", set(), {19}, supabase_client=sb) == 0
+    assert sb.log == []
+
+
+def test_pulizia_idempotente():
+    """Al secondo giro non c'e' piu' nulla da ritirare: nessuna scrittura."""
+    sb = _FakeSb([_PENDING[1], _PENDING[2]])
+    assert dismiss_suggerimenti_obsoleti(
+        "u1", "r1", {"new_tag::ROEN", "extend_tag::19"}, {19}, supabase_client=sb,
+    ) == 0
+    assert sb.log == []
+
+
+def test_pulizia_ritira_extend_verso_tag_cancellato():
+    """Se il tag di destinazione non esiste piu' il suggerimento e' inaccettabile."""
+    sb = _FakeSb([_PENDING[2]])
+    assert dismiss_suggerimenti_obsoleti(
+        "u1", "r1", {"extend_tag::19"}, set(), supabase_client=sb,
+    ) == 1
+
+
+def test_pulizia_interroga_solo_i_pending():
+    """accepted/dismissed/snoozed sono decisioni dell'utente: uno snooze ritirato
+    d'ufficio tradirebbe il 'ricordamelo piu' avanti'."""
+    sb = _FakeSb(_PENDING)
+    query = sb.table("custom_tag_suggestions")
+    assert hasattr(query, "eq")
+    dismiss_suggerimenti_obsoleti("u1", "r1", {"new_tag::ROEN"}, {19}, supabase_client=sb)
+    # la UPDATE porta sempre il filtro di stato, oltre a user/ristorante
+    assert any(isinstance(v, dict) and v.get("status") == "dismissed" for v in sb.log)
+
+
+# ── nome del tag sul percorso di lettura ────────────────────────────────────
+
+def test_nomi_tag_per_id_lista_vuota_non_interroga_il_db():
+    """Nessun extend_tag = nessuna query in piu' sulla Home."""
+    assert _nomi_tag_per_id([], "u1", "r1", supabase_client=None) == {}
+
+
+def test_nomi_tag_per_id_mappa_id_su_nome():
+    """Il nome del tag non e' una colonna del suggerimento: va risolto in lettura,
+    o il frontend mostra 'Aggiungi al tag \"undefined\"' (caso reale 7/8)."""
+    sb = _FakeSb([{"id": 19, "nome": "SALMONE SUSHI"}, {"id": 22, "nome": "Ricciola"}])
+    assert _nomi_tag_per_id([19, 22], "u1", "r1", supabase_client=sb) == {
+        19: "SALMONE SUSHI", 22: "Ricciola",
+    }

@@ -622,7 +622,7 @@ function SuggestionCard({
       toast.success(
         s.suggestion_type === "new_tag"
           ? `Tag "${tagName || s.suggested_tag_name}" creato`
-          : `Prodotti aggiunti al tag "${s.tag_name}"`
+          : `Prodotti aggiunti al tag "${s.tag_name ?? "esistente"}"`
       );
       onAccepted();
     } catch {
@@ -657,7 +657,7 @@ function SuggestionCard({
         <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="min-w-0">
             <p className="text-sm font-semibold">
-              {isNewTag ? `Crea tag "${s.suggested_tag_name}"` : `Aggiungi al tag "${s.tag_name}"`}
+              {isNewTag ? `Crea tag "${s.suggested_tag_name}"` : `Aggiungi al tag "${s.tag_name ?? "esistente"}"`}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {s.matched_products_count} prodott{s.matched_products_count === 1 ? "o" : "i"} ·{" "}
