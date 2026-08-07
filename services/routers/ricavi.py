@@ -200,6 +200,12 @@ def upsert_ricavo_giornaliero(
     if not resp.data:
         raise HTTPException(status_code=500, detail="Salvataggio fallito")
 
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
+    except Exception as exc:
+        logger.warning("upsert_ricavo_giornaliero: invalidate briefing fallita: %s", exc)
+
     r = resp.data[0]
     return RicavoGiornalieroItem(
         id=str(r.get("id")),
@@ -226,6 +232,13 @@ def delete_ricavo_giornaliero(
     sb.table("ricavi_giornalieri").delete()\
       .eq("ristorante_id", ristorante_id)\
       .eq("data", data).execute()
+
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
+    except Exception as exc:
+        logger.warning("delete_ricavo_giornaliero: invalidate briefing fallita: %s", exc)
+
     return {"deleted": True, "data": data}
 
 

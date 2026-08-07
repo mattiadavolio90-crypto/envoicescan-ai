@@ -14,6 +14,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIE_SPESE_GENERALI
+from config.logger_setup import get_logger
+
+_briefing_logger = get_logger("router_workspace")
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -805,6 +808,13 @@ def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, authoriza
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
     resp = sb.table("diario_eventi").update(updates).eq("id", evento_id).eq("ristorante_id", ristorante_id).execute()
+
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        invalidate_today_briefing(user_id, ristorante_id, sb)
+    except Exception as exc:
+        _briefing_logger.warning("ws_diario_aggiorna: invalidate briefing fallita: %s", exc)
+
     return resp.data[0] if resp.data else {}
 
 
@@ -818,6 +828,13 @@ def ws_diario_elimina(evento_id: str, authorization: Optional[str] = Header(None
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("diario_eventi").delete().eq("id", evento_id).eq("ristorante_id", ristorante_id).execute()
+
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        invalidate_today_briefing(user_id, ristorante_id, sb)
+    except Exception as exc:
+        _briefing_logger.warning("ws_diario_elimina: invalidate briefing fallita: %s", exc)
+
     return {"ok": True}
 
 

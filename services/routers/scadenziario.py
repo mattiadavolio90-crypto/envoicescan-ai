@@ -171,6 +171,12 @@ def segna_pagata_endpoint(body: PagataRequest, authorization: Optional[str] = He
         results.append({"file_origine": fo, **r})
 
     ok_count = sum(1 for r in results if r.get("success"))
+    if ok_count:
+        try:
+            from services.daily_briefing_service import invalidate_today_briefing
+            invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
+        except Exception as exc:
+            logger.warning("segna_pagata_endpoint: invalidate briefing fallita: %s", exc)
     return {"ok": ok_count == len(results), "aggiornate": ok_count, "dettaglio": results}
 
 
@@ -197,6 +203,12 @@ def set_scadenza_override_endpoint(
     if not result.get("ok"):
         status = 404 if "trovato" in str(result.get("error", "")).lower() else 400
         raise HTTPException(status_code=status, detail=result.get("error"))
+
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
+    except Exception as exc:
+        logger.warning("set_scadenza_override_endpoint: invalidate briefing fallita: %s", exc)
 
     return result
 
