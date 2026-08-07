@@ -654,9 +654,17 @@ Misurato sul DB: OFFSIDE 6 mesi con `margini_mensili` a 0, CASATI 14 maggio
 `:5028` e `:5742` l'override lo applicavano gia': l'incoerenza era **interna al
 modulo**. `_BRIEFING_CODE_VERSION` 15 -> 16.
 
-Il doc diceva «6 siti»: i chiamanti reali sono **13**, piu' due wrapper
-(`_merge_override_mensile`, `_overrides_mese_sede`) che il grep sul nome della
-funzione non attribuisce ai loro chiamanti.
+Il doc diceva «6 siti»: ricontato due volte con metodo diverso (grep diretto sul
+nome, poi sui tre helper separatamente) perche' la prima cifra scritta qui era
+a sua volta sbagliata. I chiamanti reali di `_load_mensile_overrides` sono
+**17** (incluse le chiamate dentro i tre wrapper stessi — anche quello di
+delega `margini.py:56` — non solo `_merge_override_mensile` e
+`_overrides_mese_sede`), piu' **3** a `_merge_override_mensile` e **2** a
+`_overrides_mese_sede` — **22 punti d'invocazione totali** su 4 file
+(`fastapi_worker.py`, `gruppo.py`, `margini.py`, `ricavi.py`). Lezione: un
+grep sul nome della funzione-wrapper
+manca i suoi chiamanti a valle, e va ripetuto per ciascun helper del gruppo,
+non solo per quello citato nel finding originale.
 
 **§1 `email_queue_processor.py` (538 righe, mai letto) e' risultato il meno
 urgente.** Il DB ha declassato tutto: unico mittente (LAND DEI SAPORI), 61

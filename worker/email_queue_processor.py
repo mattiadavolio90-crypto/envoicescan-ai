@@ -80,13 +80,18 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
     stats = EmailCycleStats()
     worker_id = f"email-worker-{os.getpid()}"
 
-    # Import lazy dei parser (evita di caricare fastapi_worker se la coda è vuota)
+    # Import lazy: evita di caricare questi moduli se il container si avvia
+    # senza mai eseguire un ciclo email (coda disabilitata). Con la coda
+    # attiva vengono caricati a ogni ciclo, coda vuota inclusa — sono cachati
+    # da sys.modules dopo il primo, quindi il costo ricorrente è nullo.
     try:
         import pandas as pd
         from services.routers.ricavi import (
             _detect_gestionale_version,
             _parse_generico,
         )
+        from services.fastapi_worker import _invalidate_home_kpi_cache
+        from services.daily_briefing_service import invalidate_today_briefing
     except Exception as exc:
         logger.error("email-cycle: import parser fallito: %s", exc)
         stats.errors.append(f"import parser: {exc}")
@@ -221,8 +226,6 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
         # processo restano stantii fino al TTL (stessa limitazione nota della cache
         # per-processo, AUDIT §3). L'invalidazione del briefing passa dal DB e vale
         # per tutti.
-        from services.fastapi_worker import _invalidate_home_kpi_cache
-        from services.daily_briefing_service import invalidate_today_briefing
         for rid in per_ristorante:
             try:
                 _invalidate_home_kpi_cache(str(rid))
