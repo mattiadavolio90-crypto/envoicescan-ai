@@ -215,14 +215,20 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
         # trigger sync_margini_mensili_from_ricavi riscrive margini_mensili, da cui
         # leggono i KPI di Home. Su OGNI sede scritta, non solo quella del mittente:
         # un file di catena alimenta più locali.
+        # Nota sui limiti: qui gira il queue-worker, un processo Railway DIVERSO da
+        # quello che serve la Home. _HOME_KPI_CACHE è in-memoria per-processo,
+        # quindi questa chiamata pulisce la propria copia e i KPI dell'altro
+        # processo restano stantii fino al TTL (stessa limitazione nota della cache
+        # per-processo, AUDIT §3). L'invalidazione del briefing passa dal DB e vale
+        # per tutti.
+        from services.fastapi_worker import _invalidate_home_kpi_cache
+        from services.daily_briefing_service import invalidate_today_briefing
         for rid in per_ristorante:
             try:
-                from services.fastapi_worker import _invalidate_home_kpi_cache
                 _invalidate_home_kpi_cache(str(rid))
             except Exception as exc:
                 logger.warning("email-cycle [%s]: invalidate KPI Home fallita: %s", record_id, exc)
             try:
-                from services.daily_briefing_service import invalidate_today_briefing
                 invalidate_today_briefing(str(user_id_val), str(rid), supabase)
             except Exception as exc:
                 logger.warning("email-cycle [%s]: invalidate briefing fallita: %s", record_id, exc)

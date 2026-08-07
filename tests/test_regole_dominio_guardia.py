@@ -348,39 +348,57 @@ _ECCEZIONI_OVERRIDE = {
     "_load_mensile_overrides": "è la funzione che implementa la regola",
     "_merge_override_mensile": "wrapper della regola",
     "_overrides_mese_sede": "wrapper della regola",
-    # Segnale "margine in calo" (gruppo.py): legge `mol_perc`, non i ricavi.
-    # L'override fornisce i ricavi, non un MOL ricalcolato: includere quei mesi
-    # mostrerebbe una PERCENTUALE FALSA, che è peggio di escluderli. Debito noto
-    # e documentato (AUDIT_ONEFLUX_STATO_2026-07.md §1), non una dimenticanza.
-    "_gruppo_segnali": "usa mol_perc, non i ricavi: l'override non dà un MOL",
+    # Segnale "margine in calo" (gruppo.py:1579, dentro _calcola_segnali): filtra
+    # su `fatturato_netto` ma il valore che usa è `mol_perc`. L'override fornisce i
+    # ricavi, non un MOL ricalcolato: includere quei mesi mostrerebbe una
+    # PERCENTUALE FALSA, che è peggio di escluderli. Debito noto, non una
+    # dimenticanza — le sedi in modalità mensile restano fuori da quel segnale.
+    "_calcola_segnali": "usa mol_perc, non i ricavi: l'override non dà un MOL",
 }
 
 
-def _funzione_attorno(testo: str, posizione: int) -> tuple[str, str]:
-    """Ritorna (nome_funzione, corpo) della funzione che contiene la posizione.
+# Le funzioni lunghe sono divise in blocchi logici da un commento-sezione
+# (`# ── Segnale 1: ... ──`). Il confine conta: `_calcola_segnali` in gruppo.py
+# legge i ricavi nel segnale 1 e interroga `ricavi_modalita_mensile` nel segnale
+# 3, sessanta righe più in basso e per un altro scopo. Guardando l'intera
+# funzione, quel match copriva una lettura che override non ne applica affatto:
+# un falso negativo reale, non ipotetico. La finestra si ferma al blocco.
+_SEZIONE = re.compile(r'^\s*#\s*[─-]{2,}')
 
-    La finestra è l'INTERA funzione, non uno statement né N righe: il pattern
-    legittimo qui è "leggi lo snapshot, fondi l'override più avanti nella stessa
-    funzione". In gruppo.py la query sta a :742 e l'override a :764 — una
-    finestra a lunghezza fissa lo classificherebbe come violazione.
+
+def _funzione_attorno(testo: str, posizione: int) -> tuple[str, str]:
+    """Ritorna (nome_funzione, blocco) attorno alla posizione data.
+
+    La finestra parte dal `def` (o dal commento-sezione più vicino sopra la
+    lettura, se c'è) e finisce al `def` successivo o alla sezione seguente. Non
+    è mai una finestra a righe fisse: il pattern legittimo è "leggi lo snapshot,
+    fondi l'override più avanti" — in gruppo.py la query sta a :742 e l'override
+    a :764, e una finestra corta lo classificherebbe come violazione.
     """
     tutte = testo.split("\n")
     numero_riga = len(testo[:posizione].split("\n")) - 1
 
-    inizio, nome = 0, "<modulo>"
+    inizio, nome, indent_def = 0, "<modulo>", 0
     for i in range(numero_riga, -1, -1):
         match = re.match(r'^(\s*)(?:async\s+)?def\s+(\w+)', tutte[i])
         if match:
             inizio, nome = i, match.group(2)
             indent_def = len(match.group(1))
             break
-    else:
-        indent_def = 0
+
+    # Se fra il `def` e la lettura c'è un commento-sezione, il blocco parte da lì.
+    for i in range(numero_riga, inizio, -1):
+        if _SEZIONE.match(tutte[i]):
+            inizio = i
+            break
 
     fine = len(tutte)
     for i in range(numero_riga + 1, len(tutte)):
         match = re.match(r'^(\s*)(?:async\s+)?def\s+\w+', tutte[i])
         if match and len(match.group(1)) <= indent_def:
+            fine = i
+            break
+        if _SEZIONE.match(tutte[i]) and i > inizio:
             fine = i
             break
 
