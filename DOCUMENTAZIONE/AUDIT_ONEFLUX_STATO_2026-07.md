@@ -34,17 +34,27 @@ a basso rischio": è rischio ignoto per definizione.
 
 | File | Stato | Perché conta |
 |---|---|---|
-| `services/routers/gruppo.py` | letto in parte | In catena il cap PostgREST scatta **prima** sulle query `.in_()` multi-sede |
-| `services/routers/ricavi.py` | **mai letto** | Mai nominato come letto in nessuna riga della tabella |
-| `worker/email_queue_processor.py` | **mai letto** | Idem |
+| `worker/email_queue_processor.py` | **mai letto** | 538 righe. Consuma i parser di `ricavi.py`: completa il flusso ricavi end-to-end |
 | `services/ai_service.py:3392,3453` e `:3579-3990` | **mai letto** | Ultimo sito plausibile della classe troncamenti; se troncata → più chiamate GPT a pagamento |
 | `services/routers/admin.py` | letto ~15% | 3010 righe (ricontate il 4/8: il doc diceva 2959), coperte solo da Security passata 3 + Bug |
+| `services/routers/gruppo.py` | letto in parte | 8 query `.in_()` multi-sede senza paginazione. ⚠️ **Premessa corretta il 7/8**: qui era scritto che il cap PostgREST «scatta **prima**» in catena. Misurato: scatta a **~33 sedi** (`ricavi_giornalieri`, mese corrente) e **~42** (`margini_mensili`, 2 anni), contro le **4** di SUSHILAND. È rischio **latente**, non difetto attivo — al contrario del caso Performance, dove il cap era già addosso ai clienti. Restava un N+1 per sede (`gruppo.py:1253-1269`) |
 
 ~~`services/routers/riparto.py` + `fatture.py`~~ — **CHIUSI e DEPLOYATI il 5/8/2026**
 (PR #14, merge `5d69fe3`, worker Railway verificato su `/health` = commit deployato).
 2 HIGH + 2 MEDIUM + gap residuo (RPC transazionale `sostituisci_quote_riparto`
 per `riparto_modifica`) fixati; LOW/INFO documentati. Dettaglio completo in
 STORICO §11.
+
+~~`services/routers/ricavi.py`~~ — **CHIUSO il 7/8/2026** (commit `c6ad41c`,
+branch `audit/ricavi-coerenza-cache`). 0 HIGH. Un solo difetto **attivo**: 4
+percorsi di scrittura su 5 non invalidavano la cache KPI Home, e il cliente
+vedeva il MOL vecchio fino a 2 minuti dopo aver caricato i ricavi. 3 latenti
+fixati (coerenza fonti in `coperti-analisi`, paginazione, conteggio import).
+Due correzioni di rotta valgono più dei findings: un HIGH dell'agente
+**declassato** dai dati (le righe incriminate avevano `coperti = NULL`, già
+scartate a valle), e la divergenza `margini_mensili` vs override su 15 mesi/17
+— che sembrava il difetto più grave del ciclo ed è **by-design**, difesa da 6
+siti di lettura. Dettaglio in STORICO §13, lezioni 38 e 39.
 
 ~~`services/routers/margini.py`~~ — **CHIUSO e DEPLOYATO il 6/8/2026** (commit
 `516df5e`, worker Railway verificato su `/health` = commit deployato). 0 HIGH
@@ -58,6 +68,15 @@ il 14/7). LOW/INFO documentati. Dettaglio completo in STORICO §12.
 
 Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propria.
 
+- **L'invariante dell'override mensile non ha una guardia** (trovata il 7/8).
+  *"Chi legge i ricavi da `margini_mensili` deve applicare
+  `_load_mensile_overrides`"* regge oggi su **6 siti** (`fastapi_worker.py`
+  :5054, :5772, :6520, :6694, :7832, :7892) **per sola convenzione**. Per i
+  clienti in modalità mensile `margini_mensili` è a 0: un settimo lettore che
+  dimentichi l'override mostrerebbe **0 € di ricavi** su mesi da 60.000 €, con
+  MOL e food cost % privi di senso. È la stessa configurazione che il 14/7 ha
+  lasciato tornare la whitelist FOOD in silenzio (lezione 37). Serve un test
+  che enumeri i lettori, non uno per sito.
 - **`services/upload_handler.py`** — 909 statement scoperti (parsing XML/P7M,
   dedup, orchestrazione AI a chunk). Il buco più grande del progetto in assoluto.
 - **`worker/run.py`** — 0%, mai importato dalla suite.

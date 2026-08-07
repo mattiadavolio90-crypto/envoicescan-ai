@@ -267,9 +267,42 @@ Terzo file del perimetro §1 chiuso in questo ciclo, dopo `riparto.py`+`fatture.
 
 ---
 
+## 13. §1 perimetro mai letto — ricavi.py
+
+**Stato:** 🟢 **CHIUSO** — commit `c6ad41c` su branch `audit/ricavi-coerenza-cache`
+**Ultima passata:** 7/8/2026 (audit mirato con `oneflux-audit` + verifica DB live + remediation + `code-reviewer`)
+
+### Esito
+
+Quarto file del perimetro §1, dopo `riparto.py`+`fatture.py` (§11) e `margini.py` (§12). `services/routers/ricavi.py` (1419 righe, 9 endpoint) è il **denominatore** del MOL: `margini.py` ne è il numeratore. **0 CRITICAL, 0 HIGH.** Un solo difetto attivo sui clienti (cache KPI Home), tre rischi latenti con soglia lontana. Fixati tutti e quattro su istruzione esplicita.
+
+Il valore principale della passata non sta nei findings ma in due correzioni di rotta: una severità dichiarata HIGH dall'agente e smontata dai dati, e una pista che sembrava il difetto più grave del ciclo e si è rivelata una feature.
+
+### Dettaglio
+
+**MEDIUM #1 — invalidazione cache KPI Home mancante su 4 percorsi di scrittura su 5 (`ricavi.py:205,239,335,771`)**: il trigger `sync_margini_mensili_from_ricavi` (migration `20260527213142`) riscrive `margini_mensili` a ogni INSERT/UPDATE/DELETE su `ricavi_giornalieri`; la card "I tuoi conti" della Home legge da lì attraverso `_HOME_KPI_CACHE` (TTL 120s, chiave `{ristorante}:{anno}:{mese}`). `upsert_ricavo_giornaliero`, `delete_ricavo_giornaliero`, `upsert_ricavi_batch` e `_upsert_ricavi_ristorante` (il percorso dell'import XLS) chiamavano solo `invalidate_today_briefing`. Effetto per il cliente: carica i ricavi, apre la Home, e il MOL resta quello di prima fino a due minuti — ricaricare la pagina non serve, la cache è per-ristorante e non per-sessione. L'unico endpoint corretto era `upsert_ricavi_modalita` (`ricavi.py:1427`), il cui commento diceva già "stesso pattern degli altri endpoint che scrivono ricavi/margini": **descriveva un'intenzione mai completata**, ed è esattamente lì che si annidava il finding. Fix: `_fw()._invalidate_home_kpi_cache(...)` best-effort in tutti e quattro i siti, dentro la guardia `if inserted or updated` dove esiste.
+
+**MEDIUM #2 — due fonti nella stessa response di `coperti-analisi` (`ricavi.py:1054-1081`)**: il blocco mensile (`:999-1033`) applica l'override `ricavi_modalita_mensile`; il blocco giornaliero, che alimenta giorno top/fiacco, media per giorno-settimana e `coperti_medi_giorno`, leggeva `ricavi_giornalieri` grezzi senza mai consultare `overrides` — malgrado il commento a `:964` dichiari "stesso percorso del fatturato (margini_mensili + override)". Per un mese in modalità mensile i totali venivano dall'override e i widget da righe che l'override aveva già sostituito. Fix: il blocco giornaliero esclude i mesi presenti in `overrides`; parsing della data spostato prima del filtro e secondo `strptime` ridondante rimosso (una data malformata ora scarta l'intera riga invece del solo calcolo del giorno-settimana — corretto nel merito: una riga non attribuibile a un mese non può nemmeno essere inclusa o esclusa correttamente).
+
+**MEDIUM #3 e LOW — paginazione assente (`ricavi.py:136,1060,276,723`)**: nessun `.range()` né `fetch_all` in tutto il file. Tre select su `ricavi_giornalieri` (GET giornalieri, blocco giornaliero di coperti-analisi) e i due pre-check dedup di batch/import: oltre 1000 righe PostgREST tronca in silenzio. Sui pre-check l'effetto era limitato al contatore "inserite/aggiornate" mostrato all'utente (l'upsert vero resta corretto, non dipende da `existing_set`). Fix: `fetch_all` da `utils/supabase_paging.py` su tutte e cinque.
+
+**Severità corretta dai dati, contro il report dell'agente**: `oneflux-audit` aveva classificato **HIGH e attivo** il MEDIUM #2, con la condizione "attivo se esistono mesi mensili con giornalieri residui". La condizione è verificata — 17 mesi in modalità mensile su 4 sedi, di cui 2 di TIME CAFE con giornalieri — ma quelle 2 righe hanno `coperti = NULL` e il filtro `coperti > 0` a `:1068` le scartava già. **Nessun campo della response era contaminato.** Latente, non attivo: si accende al primo import con i coperti valorizzati. Cap PostgREST idem: il cliente con più storico (SUSHILAND) ha 218 righe su 217 giorni, contro una soglia di 1000.
+
+**Pista smontata — la divergenza `margini_mensili` vs override è BY-DESIGN, non un bug**: la query di controllo mostra 15 mesi su 17 con `margini_mensili` a **0,00 €** contro override da 9.328 a 75.325 € (OFFSIDE tutto il primo semestre 2026, OVERTIME luglio, CASATI 14 maggio). Su una tabella che alimenta il MOL sembra il difetto più grave dell'intero ciclo. Non lo è: l'override esiste proprio per i clienti che inseriscono il totale del mese invece dei giornalieri, e **tutti e sei i siti di lettura lo applicano** (`fastapi_worker.py:5054,5772,6520,6694,7832,7892`), con commenti che citano CASATI 14 per nome. Chi lo "sistemasse" romperebbe la feature. Il rischio reale è un altro: l'invariante *"chi legge ricavi da `margini_mensili` applica l'override"* regge per convenzione, su 6 siti, **senza un test che la difenda** — la stessa configurazione che il 14/7 ha permesso alla whitelist FOOD di tornare in silenzio (lezione 37). Non toccata in questa passata; resta come voce §2 (copertura test).
+
+**Non toccato, segnalato**: `POST /api/ricavi/giornalieri` valida `max(0.0, ...)` sugli importi ma non la plausibilità della data né dell'importo per un singolo giorno. È così che è entrata la riga TIME CAFE del **31/05/2026 da 88.606,27 €** — l'intero fatturato del mese su un giorno solo (`source='manuale'`, importo che coincide con l'override mensile: 88.606,00). Oggi inerte perché senza coperti; se acquisisse un valore di coperti diventerebbe istantaneamente il "giorno record" del cliente.
+
+**Test aggiunti**: `tests/test_ricavi_coerenza_e_cache.py` (nuovo, 7 test). Fake builder che filtrano **davvero** (date, `range()` con estremi inclusivi come PostgREST) — non catene `MagicMock` cieche. Validati per mutazione: rotte a una a una tutte e quattro le regole nel codice, verificato che il test corrispondente diventasse rosso e **solo quello**, poi ripristinato. 4 mutazioni su 4 uccise. Il fixture è stato semplificato dopo il `code-reviewer`, che aveva segnalato come fragile un attributo appiccicato al modulo a runtime (`R._fw_real_overrides`): sostituito con una chiusura sulla funzione reale catturata prima del patch, e la mutazione decisiva rieseguita per confermare che il test resta sensibile.
+
+**Verifiche**: suite completa **10.346 passed, 43 skipped, 0 failed**; `export_openapi.py --check-drift` OK (193 endpoint, nessun drift).
+
+**Incidente durante la review, sanato**: il `code-reviewer`, mutando il file per verificare in autonomia i test, ha eseguito `git checkout -- services/routers/ricavi.py` cancellando l'intero diff non committato, e lo ha poi ricostruito a mano da testo. Il diff è stato verificato **byte-identico** contro un backup indipendente del file salvato prima delle mutazioni — non contro la ricostruzione dell'agente. Da qui la lezione 38.
+
+---
+
 # Lezioni operative del ciclo
 
-Le 37 lezioni raccolte durante il ciclo, nell'ordine in cui sono emerse.
+Le 39 lezioni raccolte durante il ciclo, nell'ordine in cui sono emerse.
 Sono la parte piu riutilizzabile di questo archivio: quasi tutte nascono da un
 errore commesso e corretto, non da teoria.
 
@@ -573,3 +606,28 @@ errore commesso e corretto, non da teoria.
     lezione 1): applicare una migration al DB live via MCP e lasciare il file
     `.sql` untracked e' lo stesso rischio del codice Python non committato —
     il `code-reviewer` l'ha bloccato prima della chiusura, non dopo.
+38. **Una severita' che dipende dai dati non e' una severita' finche' non hai
+    interrogato il DB — e il lavoro puo' finire dove non stavi guardando.**
+    Il 7/8 l'agente ha dichiarato HIGH attivo un finding con la condizione
+    giusta ("se esistono mesi mensili con giornalieri residui"): la condizione
+    era verificata, ma quelle righe avevano `coperti = NULL` e un filtro a valle
+    le scartava gia'. Latente, non attivo. Nella stessa passata la query di
+    controllo ha mostrato 15 mesi su 17 con `margini_mensili` a 0 contro override
+    da decine di migliaia di euro — sembrava il difetto piu' grave del ciclo,
+    era una **feature** (i clienti che inseriscono il totale mensile), difesa da
+    6 siti di lettura con commenti che citano il cliente per nome. Due errori
+    opposti nella stessa ora: severita' gonfiata su un difetto vero, e allarme su
+    codice sano. **Entrambi risolti dalla stessa mossa: interrogare il DB prima
+    di scrivere la severita', e leggere i commenti prima di chiamare bug una
+    scelta.** Corollario: quando i dati smontano una premessa del piano,
+    correggere anche il documento che l'aveva scritta — §1 attribuiva a
+    `gruppo.py` un cap PostgREST "che scatta prima", misurato a ~33-42 sedi
+    contro le 4 del cliente piu' grande.
+39. **Il backup che vale e' quello che hai fatto tu.** Durante la review del
+    7/8 il `code-reviewer`, mutando il file per verificare i test in autonomia,
+    ha eseguito `git checkout -- <file>` e cancellato l'intero diff non
+    committato, ricostruendolo poi a mano dal testo del diff letto a inizio
+    review. La verifica che ha chiuso il dubbio non e' stata la sua
+    ricostruzione ma un `diff` contro la copia del file salvata **prima** delle
+    mutazioni. Chi esegue mutazioni su codice non committato tenga una copia
+    fuori da git: `git checkout` non distingue la tua mutazione dal tuo lavoro.
