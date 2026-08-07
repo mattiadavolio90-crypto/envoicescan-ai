@@ -245,12 +245,19 @@ def _build_new_tag_suggestions(
     min_products: int,
     min_rows: int,
     window_days: int,
+    roots_gia_coperte: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
-    """Raggruppa prodotti non taggati per radice comune → suggerisci creazione tag."""
+    """Raggruppa prodotti non taggati per radice comune → suggerisci creazione tag.
+
+    Se la radice è già coperta da un tag esistente il suggerimento NON viene
+    prodotto: per quei prodotti esiste già un extend_tag, e proporre anche la
+    creazione di un tag omonimo disperderebbe lo stesso dato su due tag.
+    """
+    coperte = roots_gia_coperte or set()
     root_to_keys: Dict[str, List[str]] = defaultdict(list)
     for key in untagged_pool.keys():
         root = _get_product_root(key)
-        if root:
+        if root and root not in coperte:
             root_to_keys[root].append(key)
 
     suggestions: List[Dict[str, Any]] = []
@@ -294,6 +301,17 @@ def _build_new_tag_suggestions(
 
     suggestions.sort(key=lambda x: (-x['matched_products_count'], -x['matched_rows_count']))
     return suggestions[:MAX_SUGGESTIONS_PER_TYPE]
+
+
+def _roots_dei_tag_esistenti(tag_assoc_keys: Dict[int, List[str]]) -> set:
+    """Radici già presidiate da almeno un tag esistente."""
+    roots: set = set()
+    for assoc_keys in tag_assoc_keys.values():
+        for key in assoc_keys:
+            root = _get_product_root(key)
+            if root:
+                roots.add(root)
+    return roots
 
 
 def _build_extend_tag_suggestions(
@@ -390,9 +408,15 @@ def suggest_new_tags(
 ) -> List[Dict[str, Any]]:
     rows = _fetch_recent_rows(user_id, ristorante_id, window_days=WINDOW_DAYS_DEFAULT, supabase_client=supabase_client)
     pool = _aggregate_pool(rows)
-    _, _, all_tag_keys = _fetch_tags_and_assoc(user_id, ristorante_id, supabase_client=supabase_client)
+    _, tag_assoc, all_tag_keys = _fetch_tags_and_assoc(user_id, ristorante_id, supabase_client=supabase_client)
     untagged = {k: v for k, v in pool.items() if k not in all_tag_keys}
-    return _build_new_tag_suggestions(untagged, min_products=min_products, min_rows=min_rows, window_days=WINDOW_DAYS_DEFAULT)
+    return _build_new_tag_suggestions(
+        untagged,
+        min_products=min_products,
+        min_rows=min_rows,
+        window_days=WINDOW_DAYS_DEFAULT,
+        roots_gia_coperte=_roots_dei_tag_esistenti(tag_assoc),
+    )
 
 
 def suggest_extend_existing_tags(
@@ -817,6 +841,7 @@ def run_tag_suggestion_pipeline(
             min_products=int(min_products),
             min_rows=int(min_rows),
             window_days=WINDOW_DAYS_DEFAULT,
+            roots_gia_coperte=_roots_dei_tag_esistenti(tag_assoc_keys),
         )
         extend_tag = _build_extend_tag_suggestions(
             tags,

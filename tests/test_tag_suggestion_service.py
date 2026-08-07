@@ -4,6 +4,7 @@ from services.tag_suggestion_service import (
     _build_extend_tag_suggestions,
     _build_new_tag_suggestions,
     _get_product_root,
+    _roots_dei_tag_esistenti,
     _get_product_token,
 )
 
@@ -193,3 +194,35 @@ def test_extend_tag_token_con_cifre_non_matchano():
 
     out = _build_extend_tag_suggestions(tags, tag_assoc_keys, untagged_pool, min_occurrenze=2, window_days=30)
     assert len(out) == 0
+
+
+# ── niente doppio suggerimento sulla stessa radice ──────────────────────────
+
+def test_new_tag_non_proposto_se_radice_gia_in_un_tag():
+    """Caso reale 7/8: 'Crea tag Salmoni' e 'Aggiungi a SALMONE SUSHI' proponevano
+    gli STESSI 11 prodotti. Se un tag presidia gia' la radice, la creazione di un
+    tag omonimo va soppressa: resta il solo extend, senza disperdere il dato."""
+    roots = _roots_dei_tag_esistenti({19: ["SALMONE 5-6", "SALMONE 6+"]})
+    out = _build_new_tag_suggestions(
+        _pool_salmone(), min_products=3, min_rows=5, window_days=30,
+        roots_gia_coperte=roots,
+    )
+    assert out == []
+
+
+def test_new_tag_resta_se_la_radice_non_e_coperta():
+    """La soppressione e' mirata: un tag su un'altra radice non deve zittire il resto."""
+    roots = _roots_dei_tag_esistenti({20: ["TONNO PINNE GIALLE"]})
+    out = _build_new_tag_suggestions(
+        _pool_salmone(), min_products=3, min_rows=5, window_days=30,
+        roots_gia_coperte=roots,
+    )
+    assert len(out) == 1
+    assert out[0]["cluster_key"] == "new_tag::SALMON"
+
+
+def test_roots_dei_tag_esistenti_usa_la_radice_canonica():
+    """Il plurale del fornitore deve coprire il singolare del cliente e viceversa."""
+    assert _roots_dei_tag_esistenti({1: ["SALMONI 5/6 FRESCHI"]}) == {"SALMON"}
+    assert _roots_dei_tag_esistenti({1: ["SALMONE 5-6"]}) == {"SALMON"}
+    assert _roots_dei_tag_esistenti({1: ["1LT 500ML"]}) == set()
