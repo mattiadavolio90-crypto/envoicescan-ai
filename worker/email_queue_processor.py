@@ -211,6 +211,22 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
             logger.error("email-cycle [%s]: errore mark done: %s", record_id, exc)
             stats.errors.append(f"{filename}: mark-done fallito: {exc}")
 
+        # Stessa invalidazione dei 5 percorsi di scrittura del router ricavi: il
+        # trigger sync_margini_mensili_from_ricavi riscrive margini_mensili, da cui
+        # leggono i KPI di Home. Su OGNI sede scritta, non solo quella del mittente:
+        # un file di catena alimenta più locali.
+        for rid in per_ristorante:
+            try:
+                from services.fastapi_worker import _invalidate_home_kpi_cache
+                _invalidate_home_kpi_cache(str(rid))
+            except Exception as exc:
+                logger.warning("email-cycle [%s]: invalidate KPI Home fallita: %s", record_id, exc)
+            try:
+                from services.daily_briefing_service import invalidate_today_briefing
+                invalidate_today_briefing(str(user_id_val), str(rid), supabase)
+            except Exception as exc:
+                logger.warning("email-cycle [%s]: invalidate briefing fallita: %s", record_id, exc)
+
     return stats
 
 
@@ -340,7 +356,17 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
         return {}, [f"Utente {user_id} non ha ristoranti: import scartato"], parsed_rows
 
     try:
-        mp = supabase.table("ricavi_ragione_sociale_map").select("ragione_sociale_norm,ristorante_id").execute()
+        # Filtro sui ristoranti dell'utente lato DB: senza, questa legge la mappa
+        # di TUTTI gli utenti e oltre le 1000 righe PostgREST tronca in silenzio —
+        # i mapping oltre soglia sparirebbero e quelle righe finirebbero sulla sede
+        # del mittente (ricavi attribuiti al locale sbagliato, con un warning).
+        # Il filtro Python qui sotto resta: è la difesa sull'ownership.
+        mp = (
+            supabase.table("ricavi_ragione_sociale_map")
+            .select("ragione_sociale_norm,ristorante_id")
+            .in_("ristorante_id", list(owned_ids))
+            .execute()
+        )
         for r in (mp.data or []):
             rid = str(r["ristorante_id"])
             if rid in owned_ids:
