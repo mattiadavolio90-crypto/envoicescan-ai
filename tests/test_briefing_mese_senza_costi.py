@@ -22,11 +22,13 @@ RID = "rist-land"
 
 
 def _sb_multi(fatturato, fatture_count, user_id="u1", partita_iva=None,
-              sdi_attivo=False, sede_created_at=None, ultima_fattura_at=None):
+              sdi_attivo=False, sede_created_at=None, ultima_fattura_at=None,
+              modalita_rows=None):
     """Mock multi-tabella: ristoranti(.single), margini_mensili, fatture(count).
 
     ultima_fattura_at: created_at dell'ultima fattura (per il caso A pipeline).
     sede_created_at: created_at della sede (per distinguere onboarding).
+    modalita_rows: righe di ricavi_modalita_mensile (clienti in modalità mensile).
     """
     sb = MagicMock()
     state = {"table": None}
@@ -42,6 +44,8 @@ def _sb_multi(fatturato, fatture_count, user_id="u1", partita_iva=None,
                 "partita_iva": partita_iva, "user_id": user_id,
                 "sdi_attivo": sdi_attivo, "created_at": sede_created_at,
             })
+        if t == "ricavi_modalita_mensile":
+            return MagicMock(data=(modalita_rows or []), count=None)
         if t == "margini_mensili":
             rows = [{"fatturato_iva10": fatturato}] if fatturato else []
             return MagicMock(data=rows, count=None)
@@ -55,10 +59,21 @@ def _sb_multi(fatturato, fatture_count, user_id="u1", partita_iva=None,
 
     q = MagicMock()
     sb.table.side_effect = _table
-    for m in ("select", "eq", "is_", "gte", "limit", "single", "order"):
+    for m in ("select", "eq", "is_", "gte", "limit", "single", "order", "in_"):
         getattr(q, m).return_value = q
     q.execute.side_effect = _execute
     return sb
+
+
+def _mese_prec():
+    from datetime import date
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        oggi = datetime.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = date.today()
+    return (oggi.year - 1, 12) if oggi.month == 1 else (oggi.year, oggi.month - 1)
 
 
 # ── _kpi_periodo: flag costi_mancanti ──
@@ -122,6 +137,62 @@ def test_rpc_indisponibile_ricade_su_caso_a(monkeypatch):
     # valuta solo la pipeline: con fatture recenti -> None.
     monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: None)
     assert _briefing_fatture_mancanti(RID, _sb_multi(fatturato=516152, fatture_count=5)) is None
+
+
+# ── Caso B con ricavi in MODALITA' MENSILE (margini_mensili a 0) ──
+# OFFSIDE 7/8: 6 mesi 2026 con 54-75k EUR di override e margini_mensili a 0. Il
+# gate "fatturato > 0" leggeva solo margini_mensili, non scattava mai e la sede
+# in modalita' mensile non vedeva MAI questa card.
+
+def test_mese_senza_costi_scatta_anche_con_ricavi_solo_mensili(monkeypatch):
+    monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: 0.0)
+    anno, mese = _mese_prec()
+    modalita = [{
+        "anno": anno, "mese": mese, "modalita": "mensile",
+        "fatturato_iva10": 60270, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "coperti": None,
+    }]
+    out = _briefing_fatture_mancanti(
+        RID, _sb_multi(fatturato=0, fatture_count=5, modalita_rows=modalita),
+    )
+    assert out is not None
+    assert out["payload"]["tipo"] == "mese_senza_costi"
+
+
+def test_modalita_mensile_con_costi_nessun_avviso(monkeypatch):
+    """L'override apre il gate, ma i costi ci sono: nessun buco da segnalare."""
+    monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: 19543.0)
+    anno, mese = _mese_prec()
+    modalita = [{
+        "anno": anno, "mese": mese, "modalita": "mensile",
+        "fatturato_iva10": 60270, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "coperti": None,
+    }]
+    assert _briefing_fatture_mancanti(
+        RID, _sb_multi(fatturato=0, fatture_count=5, modalita_rows=modalita),
+    ) is None
+
+
+def test_override_di_altro_mese_non_apre_il_gate(monkeypatch):
+    """Un mese vuoto resta vuoto: l'override di un ALTRO mese non lo rende attivo."""
+    chiamate = {"n": 0}
+
+    def _spy(*a, **k):
+        chiamate["n"] += 1
+        return 0.0
+
+    monkeypatch.setattr(fw, "_costi_automatici_mese", _spy)
+    anno, mese = _mese_prec()
+    altro_mese = 12 if mese != 12 else 1
+    modalita = [{
+        "anno": anno, "mese": altro_mese, "modalita": "mensile",
+        "fatturato_iva10": 60270, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "coperti": None,
+    }]
+    assert _briefing_fatture_mancanti(
+        RID, _sb_multi(fatturato=0, fatture_count=5, modalita_rows=modalita),
+    ) is None
+    assert chiamate["n"] == 0
 
 
 # ── _briefing_fatture_mancanti: caso A onboarding (sede nuova, mai fatture) ──

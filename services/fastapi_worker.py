@@ -2952,6 +2952,19 @@ def _build_chat_system_prompt(
                  + float(r.get("altri_ricavi_noiva") or 0)) > 0
                 for r in ric_data
             )
+            # Modalità mensile: il fatturato sta in ricavi_modalita_mensile e
+            # margini_mensili resta a 0. Senza questo, l'assistente dice al cliente
+            # che non ha registrato ricavi che ha inserito. Solo con una sede
+            # selezionata: l'override è per-ristorante (come l'alert 1 sopra).
+            if not fatturato_ok and ristorante_id:
+                try:
+                    _ov = _load_mensile_overrides(supabase_client, ristorante_id, [_mc_anno]).get(
+                        (_mc_anno, _mc_mese)
+                    )
+                    if _ov and (_ov.get("iva10", 0) + _ov.get("iva22", 0) + _ov.get("altri", 0)) > 0:
+                        fatturato_ok = True
+                except Exception as exc:
+                    logger.warning("chat alert 2: lettura override mensile fallita: %s", exc)
             if not fatturato_ok:
                 _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
                            "luglio","agosto","settembre","ottobre","novembre","dicembre"]
@@ -5315,6 +5328,22 @@ def _briefing_fatture_mancanti(
     except Exception as exc:
         logger.warning("briefing fatture mancanti: lettura fatturato fallita: %s", exc)
         fatturato_mese = 0.0
+
+    # Modalità mensile: il fatturato sta in ricavi_modalita_mensile e vince sullo
+    # snapshot (stessa semantica di _merge_override_mensile). Senza, il gate qui
+    # sotto non scatta mai e la sede in modalità mensile non vede mai la card.
+    try:
+        _ov_mese = _load_mensile_overrides(supabase_client, ristorante_id, [mc_anno]).get(
+            (mc_anno, mc_mese)
+        )
+        if _ov_mese:
+            _ov_netto = (
+                _ov_mese.get("iva10", 0) + _ov_mese.get("iva22", 0) + _ov_mese.get("altri", 0)
+            )
+            if _ov_netto > 0:
+                fatturato_mese = _ov_netto
+    except Exception as exc:
+        logger.warning("briefing fatture mancanti: lettura override mensile fallita: %s", exc)
 
     if fatturato_mese > 0:
         costi_mese = _costi_automatici_mese(

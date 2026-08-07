@@ -62,7 +62,12 @@ logger = get_logger('daily_briefing')
 #               su OVERTIME nel 2026). Il briefing poteva annunciare come "buona
 #               notizia" un miglioramento inesistente: senza bump lo snapshot di
 #               oggi resterebbe quello sbagliato
-_BRIEFING_CODE_VERSION = 15
+#  16 -> 07/08: la card "mese chiuso con ricavi ma zero costi" leggeva il fatturato
+#               SOLO da margini_mensili, che per i clienti in modalita' mensile e'
+#               a 0 (misurati 6 mesi da 54-75k EUR su OFFSIDE): il gate
+#               "fatturato > 0" non scattava mai e la card non compariva. Ora
+#               fonde l'override, come gia' facevano Salute e dati mensili
+_BRIEFING_CODE_VERSION = 16
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
