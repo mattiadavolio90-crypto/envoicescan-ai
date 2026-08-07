@@ -757,7 +757,8 @@ def get_documenti_scadenziario(
     per ogni sede del gruppo, non per riga).
 
     Step:
-    1. Aggrega `fatture` per (file_origine, ristorante_id) (totale, fornitore, data)
+    1. Aggrega `fatture` per (file_origine, ristorante_id) via RPC SQL
+       (totale, fornitore, data) — vedi scadenziario_fatture_aggregate
     2. Arricchisce con fatture_documenti (scadenza, pagata, piva_fornitore)
     3. Applica regole fornitore per calcolo scadenza_effettiva
     """
@@ -785,47 +786,39 @@ def get_documenti_scadenziario(
             _nuovi_da_raw = None
         cutoff_per_sede[rid] = _nuovi_da_raw or cutoff_default
 
-    # ── Step 1: leggi tutte le righe fatture (filter_active, group per (file_origine, ristorante_id))
-    fatture_rows: List[Dict[str, Any]] = []
-    page_size = 1000
-    offset = 0
-    while True:
-        q = filter_active(
-            sb.table("fatture")
-            .select("file_origine,fornitore,tipo_documento,totale_riga,data_documento,created_at,ristorante_id")
-            .eq("user_id", user_id)
+    # ── Step 1+2: aggregazione lato DB per (file_origine, ristorante_id) via RPC
+    # (prima: full-load paginato di tutte le righe fatture + aggregazione Python —
+    # per gruppi grandi come SUSHILAND, ~25 round-trip su ~25.000 righe, causa di
+    # timeout su "Gestione Fatture — Gruppo"). Vedi migration
+    # 20260807101424_rpc_scadenziario_aggregato.sql.
+    rpc_rows = (
+        sb.rpc(
+            "scadenziario_fatture_aggregate",
+            {"p_user_id": user_id, "p_ristorante_ids": ids},
         )
-        q = q.in_("ristorante_id", ids) if is_multi else q.eq("ristorante_id", ids[0])
-        q = q.range(offset, offset + page_size - 1).execute()
-        if not q.data:
-            break
-        fatture_rows.extend(q.data)
-        if len(q.data) < page_size:
-            break
-        offset += page_size
+        .execute()
+        .data
+        or []
+    )
 
-    if not fatture_rows:
+    if not rpc_rows:
         return []
 
-    # ── Step 2: aggrega per (file_origine, ristorante_id)
     agg: Dict[tuple, Dict[str, Any]] = {}
-    for row in fatture_rows:
+    for row in rpc_rows:
         fo = str(row.get("file_origine") or "").strip()
         if not fo:
             continue
         rid = str(row.get("ristorante_id") or "")
-        key = (fo, rid)
-        if key not in agg:
-            agg[key] = {
-                "file_origine": fo,
-                "ristorante_id": rid,
-                "fornitore": row.get("fornitore") or "Sconosciuto",
-                "tipo_documento": row.get("tipo_documento") or "TD01",
-                "totale_documento": 0.0,
-                "data_documento": row.get("data_documento"),
-                "created_at": row.get("created_at"),
-            }
-        agg[key]["totale_documento"] += float(row.get("totale_riga") or 0)
+        agg[(fo, rid)] = {
+            "file_origine": fo,
+            "ristorante_id": rid,
+            "fornitore": row.get("fornitore") or "Sconosciuto",
+            "tipo_documento": row.get("tipo_documento") or "TD01",
+            "totale_documento": float(row.get("totale_documento") or 0),
+            "data_documento": row.get("data_documento"),
+            "created_at": row.get("created_at"),
+        }
 
     # ── Step 3: carica fatture_documenti per scadenza/pagata/piva
     docs_extra: Dict[tuple, Dict[str, Any]] = {}

@@ -31,16 +31,54 @@ def _sedi_offside():
     ]
 
 
+def _scadenziario_fatture_aggregate_handler(fatture_rows):
+    """Replica la RPC SQL scadenziario_fatture_aggregate sulle righe fake, per i
+    test che passano da get_documenti_scadenziario (vedi anche l'equivalente in
+    test_documenti_service_scadenziario.py::_FakeSupabase)."""
+
+    def _handler(params):
+        user_id = params["p_user_id"]
+        ristorante_ids = set(params["p_ristorante_ids"])
+        agg = {}
+        for row in fatture_rows:
+            if row.get("user_id") != user_id or row.get("ristorante_id") not in ristorante_ids:
+                continue
+            if row.get("deleted_at") or not str(row.get("file_origine") or "").strip():
+                continue
+            fo = str(row["file_origine"]).strip()
+            rid = row["ristorante_id"]
+            key = (fo, rid)
+            if key not in agg or (row.get("created_at") or "") < (agg[key].get("created_at") or ""):
+                prev_totale = agg.get(key, {}).get("totale_documento", 0.0)
+                agg[key] = {
+                    "file_origine": fo,
+                    "ristorante_id": rid,
+                    "fornitore": row.get("fornitore") or "Sconosciuto",
+                    "tipo_documento": row.get("tipo_documento") or "TD01",
+                    "data_documento": row.get("data_documento"),
+                    "created_at": row.get("created_at"),
+                    "totale_documento": prev_totale,
+                }
+            agg[key]["totale_documento"] = round(agg[key]["totale_documento"] + float(row.get("totale_riga") or 0), 2)
+        return list(agg.values())
+
+    return _handler
+
+
 def test_gruppo_scadenziario_include_sede_tecnica(monkeypatch):
-    sb = FakeClient({
-        "ristoranti": _sedi_offside(),
-        "fatture": [
-            {"user_id": "u1", "ristorante_id": "pv1", "file_origine": "a.xml", "fornitore": "F1", "tipo_documento": "TD01", "totale_riga": 10.0, "data_documento": "2026-01-10", "created_at": "2026-01-10T00:00:00Z", "deleted_at": None},
-            {"user_id": "u1", "ristorante_id": "tecnica", "file_origine": "b.xml", "fornitore": "F2", "tipo_documento": "TD01", "totale_riga": 20.0, "data_documento": "2026-01-11", "created_at": "2026-01-11T00:00:00Z", "deleted_at": None},
-        ],
-        "fatture_documenti": [],
-        "users": [{"id": "u1", "nome_gruppo": "OFFSIDE"}],
-    })
+    fatture_rows = [
+        {"user_id": "u1", "ristorante_id": "pv1", "file_origine": "a.xml", "fornitore": "F1", "tipo_documento": "TD01", "totale_riga": 10.0, "data_documento": "2026-01-10", "created_at": "2026-01-10T00:00:00Z", "deleted_at": None},
+        {"user_id": "u1", "ristorante_id": "tecnica", "file_origine": "b.xml", "fornitore": "F2", "tipo_documento": "TD01", "totale_riga": 20.0, "data_documento": "2026-01-11", "created_at": "2026-01-11T00:00:00Z", "deleted_at": None},
+    ]
+    sb = FakeClient(
+        {
+            "ristoranti": _sedi_offside(),
+            "fatture": fatture_rows,
+            "fatture_documenti": [],
+            "users": [{"id": "u1", "nome_gruppo": "OFFSIDE"}],
+        },
+        rpc_handlers={"scadenziario_fatture_aggregate": _scadenziario_fatture_aggregate_handler(fatture_rows)},
+    )
     _bind_gruppo(monkeypatch, sb, {"id": "u1"})
 
     res = gruppo.gruppo_scadenziario(authorization="Bearer x")

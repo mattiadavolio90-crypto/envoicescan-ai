@@ -121,12 +121,58 @@ class _Query:
         return _Response(rows)
 
 
+class _RpcCall:
+    def __init__(self, data):
+        self._data = data
+
+    def execute(self):
+        return _Response(self._data)
+
+
 class _FakeSupabase:
     def __init__(self, tables):
         self.tables = tables
 
     def table(self, name):
         return _Query(name, self.tables)
+
+    def rpc(self, name, params):
+        if name != "scadenziario_fatture_aggregate":
+            raise NotImplementedError(name)
+        return _RpcCall(self._scadenziario_fatture_aggregate(params))
+
+    def _scadenziario_fatture_aggregate(self, params):
+        """Replica in Python la RPC SQL scadenziario_fatture_aggregate per i test
+        (stesso comportamento: aggrega per (file_origine, ristorante_id), somma
+        totale_riga, prende fornitore/tipo_documento/date dalla riga con
+        created_at piu' basso del gruppo)."""
+        user_id = params["p_user_id"]
+        ristorante_ids = set(params["p_ristorante_ids"])
+        rows = [
+            r for r in self.tables.get("fatture", [])
+            if r.get("user_id") == user_id
+            and r.get("ristorante_id") in ristorante_ids
+            and not r.get("deleted_at")
+            and str(r.get("file_origine") or "").strip()
+        ]
+        agg = {}
+        for row in rows:
+            fo = str(row["file_origine"]).strip()
+            rid = row["ristorante_id"]
+            key = (fo, rid)
+            if key not in agg or (row.get("created_at") or "") < (agg[key].get("created_at") or ""):
+                first = agg.get(key, {})
+                agg[key] = {
+                    "file_origine": fo,
+                    "ristorante_id": rid,
+                    "fornitore": row.get("fornitore") or "Sconosciuto",
+                    "tipo_documento": row.get("tipo_documento") or "TD01",
+                    "data_documento": row.get("data_documento"),
+                    "created_at": row.get("created_at"),
+                    "totale_documento": first.get("totale_documento", 0.0),
+                }
+            agg[key]["totale_documento"] = round(agg[key]["totale_documento"] + float(row.get("totale_riga") or 0), 2)
+        return list(agg.values())
 
 
 def _base_tables(fatture_rows, fatture_documenti_rows, ristoranti_rows=None):
