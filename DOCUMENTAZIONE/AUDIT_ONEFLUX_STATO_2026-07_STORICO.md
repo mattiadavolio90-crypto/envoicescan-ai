@@ -633,3 +633,68 @@ errore commesso e corretto, non da teoria.
     ricostruzione ma un `diff` contro la copia del file salvata **prima** delle
     mutazioni. Chi esegue mutazioni su codice non committato tenga una copia
     fuori da git: `git checkout` non distingue la tua mutazione dal tuo lavoro.
+
+## 14. §2 invariante override mensile + §1 email_queue_processor — 7/8 (sera)
+
+**PR #16** (merge `de580ae`). Chiude una voce di §2 e una di §1 nella stessa
+sessione, con priorita' **invertita** rispetto a come il doc le aveva scritte.
+
+**§2 non era un rischio futuro: era gia' addosso ai clienti.** Il doc diceva
+«un settimo lettore distratto mostrerebbe 0 EUR». I lettori distratti erano
+gia' due, e attivi:
+
+| Sito | Danno |
+|---|---|
+| `fastapi_worker.py:2940` (chat alert) | L'assistente diceva a OFFSIDE *"Fatturato/ricavi non registrati"* su 6 mesi 2026 da 54.000-75.000 EUR che il cliente aveva inserito |
+| `fastapi_worker.py:5301` (briefing) | Il gate `if fatturato_mese > 0` non scattava mai: la card "mese senza costi" non e' mai comparsa a queste sedi |
+
+Misurato sul DB: OFFSIDE 6 mesi con `margini_mensili` a 0, CASATI 14 maggio
+(9.328 vs 0), TIME CAFE giugno (80.655 vs 3.500 — non zero, **sbagliato di
+25x**: una guardia basata su "e' 0" non sarebbe bastata). Nello stesso file
+`:5028` e `:5742` l'override lo applicavano gia': l'incoerenza era **interna al
+modulo**. `_BRIEFING_CODE_VERSION` 15 -> 16.
+
+Il doc diceva «6 siti»: i chiamanti reali sono **13**, piu' due wrapper
+(`_merge_override_mensile`, `_overrides_mese_sede`) che il grep sul nome della
+funzione non attribuisce ai loro chiamanti.
+
+**§1 `email_queue_processor.py` (538 righe, mai letto) e' risultato il meno
+urgente.** Il DB ha declassato tutto: unico mittente (LAND DEI SAPORI), 61
+record in coda **tutti `done` al primo tentativo**, import alle 03:03 di notte
+contro un TTL di 2 minuti, mapping a 5 righe contro un cap di 1000, zero record
+appesi. Fixati i due a basso rischio (invalidazione cache su ogni sede scritta;
+`.in_()` sul mapping). Il ramo retry **non e' mai stato esercitato in
+produzione**: la verifica di `now()` come stringa PostgREST richiedeva una
+scrittura sul DB live ed e' stata lasciata fuori.
+
+**Non fixati, con la ragione:** `gruppo.py:1579` usa `mol_perc`, non i ricavi —
+l'override non fornisce un MOL, includere quei mesi mostrerebbe una **percentuale
+falsa**, peggio che escluderli. `get_analisi_centri` legge lo split per centro di
+produzione, che nell'override **non esiste**.
+
+40. **Una guardia va ancorata al campo, non alla tabella — e il costo della
+    scelta sbagliata si misura, non si stima.** `margini_mensili` e' letta ~32
+    volte nel runtime, ma la maggioranza di quelle letture **non deve** applicare
+    l'override, e non per eccezione: per il campo che legge (`coperti`, split per
+    centro, `count`, `costo_*`). Ancorare la regola alla tabella e' stato
+    provato: **8 falsi positivi su 3 file**. Ancorarla ai campi di ricavo: zero.
+    Un test che grida su codice legittimo viene disattivato entro una settimana,
+    e allora non protegge piu' nulla. Corollario sulla **finestra**: ne' la riga
+    (l'override sta 22 righe dopo la query, in `gruppo.py`) ne' l'intera funzione
+    (`_calcola_segnali` legge i ricavi nel segnale 1 e interroga
+    `ricavi_modalita_mensile` nel segnale 3, per un altro scopo). La finestra
+    giusta e' il **blocco logico**.
+41. **Un test verde va rotto prima di crederci — due su due erano vacui.**
+    Il test sul filtro `.in_()` del mapping passava anche **senza** il fix: il
+    filtro Python a valle copriva il caso, quindi non distingueva le due
+    situazioni. Riscritto per verificare che il filtro sia passato **al DB**.
+    Peggio: nella guardia un'eccezione era registrata col nome `_gruppo_segnali`,
+    **funzione che non esiste** (la vera e' `_calcola_segnali`) — l'eccezione era
+    inerte e il sito passava per un **match accidentale** su una stringa 60 righe
+    piu' in basso, in un altro segnale. Il test era verde per il motivo sbagliato:
+    e' il falso negativo previsto in teoria nel piano, attivo sul codice di
+    produzione. Entrambi trovati dal `code-reviewer` e dalla mutazione, non dal
+    fatto che la suite fosse verde. Corollario: **una mutazione che lascia il
+    test verde va indagata prima come mutazione incompleta** — tre volte in
+    questa sessione il blocco mutato aveva una seconda chiamata all'override piu'
+    in basso, e la conclusione "la guardia e' debole" sarebbe stata sbagliata.
