@@ -89,9 +89,12 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   già due e attivi**. Il chat alert (`fastapi_worker.py:2940`) diceva a OFFSIDE
   *"Fatturato/ricavi non registrati"* su 6 mesi 2026 da 54.000-75.000 € che il
   cliente aveva inserito; il briefing (`:5301`) non mostrava mai la card "mese
-  senza costi" a queste sedi. Il conteggio «6 siti» era **sbagliato**: i
-  chiamanti sono **13**, più due wrapper che il grep sul nome non attribuisce.
-  Guardia scritta (Regola 6 in `tests/test_regole_dominio_guardia.py`), ancorata
+  senza costi" a queste sedi. Il conteggio «6 siti» era **sbagliato**, e la
+  correzione a «13» scritta la prima volta era sbagliata anche lei: ricontato
+  con grep indipendente + `code-reviewer`, i chiamanti reali sono **17** a
+  `_load_mensile_overrides` + 3 a `_merge_override_mensile` + 2 a
+  `_overrides_mese_sede` = **22 punti d'invocazione** su 4 file. Guardia
+  scritta (Regola 6 in `tests/test_regole_dominio_guardia.py`), ancorata
   ai **campi di ricavo** e non alla tabella — ancorarla alla tabella produce 8
   falsi positivi, misurati. Dettaglio e lezioni 40-41 in STORICO §14.
 - **`services/upload_handler.py`** — 909 statement scoperti (parsing XML/P7M,
