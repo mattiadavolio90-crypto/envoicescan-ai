@@ -512,11 +512,15 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:
     return 0, "info"
 
 
-def _salute_componenti_raw(sb, ids: List[str]) -> List[Dict[str, Any]]:
+def _salute_componenti_raw(
+    sb, ids: List[str], anno: Optional[int] = None, mese: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     """Righe grezze della RPC gruppo_salute_componenti (n_fatture, n_needs_review,
     netto, personale per PV). Fonte UNICA condivisa da _salute_indici_batch e
-    _completezza_dati_pv: cosi' l'overview chiama la RPC una sola volta. Mese
-    precedente + finestra 30gg, come /api/home/salute."""
+    _completezza_dati_pv: cosi' l'overview chiama la RPC una sola volta. Se
+    anno/mese non sono passati: mese precedente + finestra 30gg, come
+    /api/home/salute. Se mese e' passato esplicitamente (selettore periodo
+    nel dialog margini/spreco), la completezza viene valutata su quel mese."""
     from datetime import datetime as _dt, timedelta as _td
     if not ids:
         return []
@@ -526,7 +530,9 @@ def _salute_componenti_raw(sb, ids: List[str]) -> List[Dict[str, Any]]:
     except Exception:
         oggi = _dt.now().date()
     inizio_dt = _dt.combine(oggi - _td(days=29), _dt.min.time())
-    if oggi.month == 1:
+    if mese is not None:
+        mc_anno, mc_mese = (anno if anno is not None else oggi.year), mese
+    elif oggi.month == 1:
         mc_anno, mc_mese = oggi.year - 1, 12
     else:
         mc_anno, mc_mese = oggi.year, oggi.month - 1
@@ -1097,7 +1103,9 @@ def gruppo_margini_coperti(
     # personale): stesso criterio del briefing/overview. Senza, mostrerebbe 0% in
     # rosso (sembra in perdita) invece di "dati incompleti".
     try:
-        incompleti_set = set(_completezza_dati_pv(sb, ids).keys())
+        incompleti_set = set(
+            _completezza_dati_pv(sb, ids, anno=anno, mese=mese_sel).keys()
+        )
     except Exception:
         incompleti_set = set()
 
@@ -1222,7 +1230,9 @@ def gruppo_spreco_categorie(
     data_a = f"{ult_y}-{ult_m:02d}-{ult_giorno:02d}"
 
     try:
-        incompleti_set = set(_completezza_dati_pv(sb, ids).keys())
+        incompleti_set = set(
+            _completezza_dati_pv(sb, ids, anno=anno, mese=mese_sel).keys()
+        )
     except Exception:
         incompleti_set = set()
 
@@ -1483,18 +1493,21 @@ def _elenco_it(voci: List[str]) -> str:
 
 def _completezza_dati_pv(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
+    anno: Optional[int] = None, mese: Optional[int] = None,
 ) -> Dict[str, List[str]]:
     """Per ogni PV, la lista dei dati BASE mancanti (vuota = completo).
 
     Criterio deciso (presenza dati, non % salute): un PV è affidabile per i confronti
     di margine/MOL solo se ha fatturato + fatture costo (F&B) + costo personale del
     mese. Riusa la RPC gruppo_salute_componenti (netto/personale/n_fatture). `rows`
-    opzionale per riusare una RPC gia' fatta (overview). Best-effort."""
+    opzionale per riusare una RPC gia' fatta (overview). `anno`/`mese` opzionali per
+    valutare la completezza su un periodo scelto dall'utente invece dell'ultimo mese
+    chiuso (ignorati se `rows` e' gia' passato). Best-effort."""
     out: Dict[str, List[str]] = {}
     if not ids:
         return out
     if rows is None:
-        rows = _salute_componenti_raw(sb, ids)
+        rows = _salute_componenti_raw(sb, ids, anno=anno, mese=mese)
     by_id = {str(r.get("ristorante_id")): r for r in (rows or [])}
     for rid in ids:
         r = by_id.get(rid) or {}

@@ -68,6 +68,27 @@ class TestCompletezzaDatiPv:
         out = _completezza_dati_pv(sb, ["a"])
         assert out["a"] == ["il costo del personale"]
 
+    def test_mese_esplicito_passato_alla_rpc(self):
+        # Selettore periodo nel dialog (es. "Giugno 2026"): la completezza deve
+        # essere valutata sul mese scelto, non sempre sull'ultimo mese chiuso.
+        sb = _sb_con_componenti([
+            {"ristorante_id": "a", "netto": 1000, "n_fatture": 5, "personale": 800},
+        ])
+        _completezza_dati_pv(sb, ["a"], anno=2026, mese=6)
+        _, kwargs = sb.rpc.call_args
+        assert kwargs == {}
+        params = sb.rpc.call_args[0][1]
+        assert params["p_anno"] == 2026
+        assert params["p_mese"] == 6
+
+    def test_senza_mese_esplicito_usa_comportamento_storico(self):
+        sb = _sb_con_componenti([
+            {"ristorante_id": "a", "netto": 1000, "n_fatture": 5, "personale": 800},
+        ])
+        _completezza_dati_pv(sb, ["a"])
+        params = sb.rpc.call_args[0][1]
+        assert "p_anno" in params and "p_mese" in params
+
 
 class TestSegnaleDatiMancanti:
     def test_segnale_generato_e_primo(self):
