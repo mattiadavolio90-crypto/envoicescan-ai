@@ -159,7 +159,7 @@ const TOOLTIP_STYLE = {
 /* ── Componenti KPI ── */
 function KpiCard({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: string }) {
   return (
-    <div className={`rounded-lg border ${tone} bg-card px-4 pt-3 pb-2.5 flex flex-col gap-1 transition-colors`}>
+    <div className={`rounded-lg border ${tone} bg-card px-4 pt-3 pb-2.5 flex flex-col gap-1 min-w-0 transition-colors`}>
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-tight min-h-[28px] flex items-start">{label}</p>
       <p className="text-xl font-bold tracking-tight truncate">{value}</p>
       {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
@@ -654,7 +654,7 @@ function SuggestionCard({
         onClick={() => setExpanded(v => !v)}
         className="w-full text-left px-4 py-3 hover:bg-amber-500/5 transition-colors"
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="min-w-0">
             <p className="text-sm font-semibold">
               {isNewTag ? `Crea tag "${s.suggested_tag_name}"` : `Aggiungi al tag "${s.tag_name}"`}
@@ -1278,11 +1278,11 @@ export function AnalisiETagClient({
               <div className="rounded-lg border border-border divide-y divide-border">
                 {prodotti.map(p => (
                   <div key={p.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                    <span className="text-sm font-medium">{p.descrizione}</span>
+                    <span className="flex-1 truncate text-sm font-medium">{p.descrizione}</span>
                     <button
                       onClick={() => removeProdotto(p.id)}
                       disabled={removingId === p.id}
-                      className="p-1 rounded text-muted-foreground hover:text-rose-600 disabled:opacity-50 transition-colors"
+                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-rose-600 disabled:opacity-50 transition-colors"
                       title="Rimuovi"
                     >
                       {removingId === p.id ? <RefreshCw className="size-3.5 animate-spin" /> : <X className="size-3.5" />}

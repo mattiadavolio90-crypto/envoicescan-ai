@@ -81,7 +81,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isAdmin={user.is_admin}
         pagineAbilitate={user.pagine_abilitate}
       />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <header className="relative flex h-14 items-center gap-2 px-4 border-b border-border">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
@@ -98,7 +98,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 Home (widget) o dalla pagina /notifiche, non da un'icona in header. */}
           </div>
         </header>
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 min-w-0 p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
     </>
