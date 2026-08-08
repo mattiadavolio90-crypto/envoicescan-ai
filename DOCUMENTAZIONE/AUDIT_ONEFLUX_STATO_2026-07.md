@@ -396,13 +396,13 @@ per coverage e "mai in §1", ma gestisce ~29 righe di dati veri.
 | `services/fastapi_worker.py` | 3.388 | 37,4% | alta | ~~corpo unico~~ → **coperto per router per scelta**, vedi punto 4 sotto |
 | ~~`services/routers/workspace.py`~~ | 1.352 | 52,6% | **quasi nulla**: turni 0, regole 0, ingredienti 0, diario 2, inventario 6, dipendenti 1, spese_extra 15/3 sedi | **CHIUSO 8/8** |
 | ~~`services/db_service.py`~~ | 1.092 | 36,7% | alta: 35.622 fatture, 4 endpoint cestino vivi | **CHIUSO 8/8**, 2242/2242 righe lette |
-| `services/invoice_service.py` | 927 | 44,8% | alta | parsing fatture = ingresso dei dati |
-| `services/auth_service.py` | 736 | 39,4% | alta: 16 sessioni attive | sicurezza; toccato solo su `verify_and_migrate_password` |
-| `services/routers/fatture.py` | 662 | 35,8% | chiuso in §1 il 5/8 ma resta poco esercitato |
-| `services/documenti_service.py` | 424 | 34,8% | cap PostgREST già trovato qui |
-| `services/routers/scadenziario.py` | 274 | 25,7% | |
-| `services/routers/tag.py` | 209 | 23,3% | il meno coperto dell'app |
-| `services/tag_suggestion_service.py` | 365 | 40,8% | **zero citazioni** in tutto il ciclo |
+| `services/invoice_service.py` | 927 | 44,8% | **altissima**: ingresso di tutti i dati, 35.622 righe passate da qui | **prossimo** — parsing XML/P7M/PDF |
+| ~~`services/auth_service.py`~~ | 736 | 39,4% | alta: 16 sessioni attive, 7 utenti | **CHIUSO 8/8**, 1718/1718 righe lette |
+| `services/routers/fatture.py` | 662 | 35,8% | alta | chiuso in §1 il 5/8 ma resta poco esercitato |
+| `services/documenti_service.py` | 424 | 34,8% | media | cap PostgREST già trovato qui |
+| `services/routers/scadenziario.py` | 274 | 25,7% | media | |
+| `services/routers/tag.py` | 209 | 23,3% | bassa | il meno coperto dell'app |
+| `services/tag_suggestion_service.py` | 365 | 40,8% | bassa | **zero citazioni** in tutto il ciclo |
 
 **b) Frontend: 49.635 righe, 0 test.** La dimensione Qualità/UI (2ª passata,
 4/8) ha fatto inventario + audit mirato e ha trovato un MEDIUM reale, ma
