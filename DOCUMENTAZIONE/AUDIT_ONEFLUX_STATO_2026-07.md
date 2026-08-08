@@ -1,8 +1,16 @@
 # Stato audit ONEFLUX — ciclo 2026-07
 
 **Tutte e 10 le dimensioni sono 🟢, tutte con seconda passata e `code-reviewer`.**
-Quello che resta non sono findings aperti: è **perimetro mai letto** (§1) e
-**copertura test da scrivere** (§2). Sono due cose diverse e vanno tenute distinte.
+Quello che resta non sono findings aperti: è **perimetro mai letto** (§1),
+**copertura test da scrivere** (§2) e — misurato l'8/8/2026 — il **perimetro
+che nessuna dimensione ha mai rivendicato** (§3, nuova).
+
+> ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
+> dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non
+> rispetto al codice esistente. Misurato l'8/8: l'app è ~103.000 righe
+> (53.000 Python + 49.600 TypeScript), e §1 ne ha lette in profondità ~30.000.
+> Il conto onesto è in §3. Questo non invalida il lavoro fatto — invalida solo
+> la lettura "tabella verde = finito".
 
 > **Dov'è il dettaglio.** Questo file dice *cosa manca*, in un minuto.
 > Il dettaglio verificato di ogni passata — perimetro, findings, numeri
@@ -42,6 +50,13 @@ esatto (`day is out of range for month`), e quello sull'ordine SELECT/UPDATE
 cade anche se il risultato resta giusto per caso. Suite completa: 10.633
 passed, 0 failed; coverage **50.41% → 50.72%** (gate 45 tenuto; misurato con
 `coverage json`, non l'arrotondamento del report a schermo).
+
+**DEPLOYATO l'8/8/2026** — PR #18, merge `de54a1e`, CI verde su tutti e 4 i
+check (pytest, deno-test, check-drift, verify-requirements). Worker Railway
+verificato su `/health`: `commit = de54a1ed2a50`, cioè il merge stesso. Il fix
+febbraio riapre 3.178 righe di fatture di febbraio 2026 che quella finestra non
+poteva leggere. Deploy in orario di lavoro su ordine esplicito di Mattia
+(deroga alla regola sera/notte, registrata qui perché la regola resta).
 
 **Il `code-reviewer` ha bocciato la prima versione del fix, a ragione.** Avevo
 invalidato la cache per-ristorante partendo dal `ristorante_id` di **una sola**
@@ -345,6 +360,75 @@ Non dimenticanze: decisioni. Riaprirle solo con la ragione che le ha chiuse.
 
 ---
 
+## §3 — Perimetro che nessuna dimensione ha mai rivendicato
+
+**Aperta l'8/8/2026**, dopo la chiusura di §1. Nasce da una domanda semplice:
+"se tutte le dimensioni sono verdi e §1 è vuota, l'app è analizzata tutta?"
+La risposta misurata è **no**, e la differenza non era scritta da nessuna parte.
+
+Il metodo di questo ciclo — dimensioni prima, poi §1 sui file mai letti a fondo
+— ha funzionato, ma §1 è stata popolata **a giudizio**, non da un inventario
+esaustivo: ci sono finiti i file che le passate avevano segnalato, non tutti
+quelli mai letti. Da qui la dispersione.
+
+### Il conto misurato (8/8/2026)
+
+| Perimetro | Dimensione | Stato reale |
+|---|---|---|
+| Python runtime (`services/`, `utils/`, `config/`, `worker/`) | 53.041 righe | ~30.000 lette a fondo in §1 |
+| Frontend Next.js (`apps/web/src/`) | 49.635 righe, 395 file | mai letto riga per riga da nessuna dimensione |
+| Route API Next.js | 168 `route.ts` | **162 sono proxy sottili** al worker (~28 righe medie) — rischio basso, concentrato nel Python già auditato |
+| Edge Functions | 1.903 righe | ✅ **realmente completo** (13/13 file, 2 passate) |
+
+### Cosa manca davvero, in ordine di rischio
+
+**a) Moduli Python grossi mai auditati come oggetto proprio.** Sono comparsi
+nelle passate solo di rimbalzo (citati mentre si guardava altro). La copertura
+test è il proxy oggettivo di "quanto codice nessuno ha mai esercitato":
+
+| Modulo | Statement | Coverage | Note |
+|---|---|---|---|
+| `services/fastapi_worker.py` | 3.388 | 37,4% | il file più grosso dell'app; auditato **per router**, mai come corpo unico |
+| `services/routers/workspace.py` | 1.352 | 52,6% | 2.350 righe, **mai in §1** |
+| `services/db_service.py` | 1.092 | 36,7% | data-access di tutto; `get_fatture_cestino` già segnalato fragile |
+| `services/invoice_service.py` | 927 | 44,8% | parsing fatture = ingresso dei dati |
+| `services/auth_service.py` | 736 | 39,4% | sicurezza; toccato solo su `verify_and_migrate_password` |
+| `services/routers/fatture.py` | 662 | 35,8% | chiuso in §1 il 5/8 ma resta poco esercitato |
+| `services/documenti_service.py` | 424 | 34,8% | cap PostgREST già trovato qui |
+| `services/routers/scadenziario.py` | 274 | 25,7% | |
+| `services/routers/tag.py` | 209 | 23,3% | il meno coperto dell'app |
+| `services/tag_suggestion_service.py` | 365 | 40,8% | **zero citazioni** in tutto il ciclo |
+
+**b) Frontend: 49.635 righe, 0 test.** La dimensione Qualità/UI (2ª passata,
+4/8) ha fatto inventario + audit mirato e ha trovato un MEDIUM reale, ma
+**dichiara essa stessa** il gap: *"11 file grandi (~10.000 righe) letti solo per
+grep mirato, non riga per riga"*. Non esiste alcun test frontend (`0` file
+`.test.ts*`/`.spec.ts*`): la rete di sicurezza è solo `tsc --noEmit` +
+`next build`. Il rischio è mitigato dal fatto che la logica di dominio sta nel
+worker Python, ma "mitigato" non è "verificato".
+
+**c) La dimensione Test misura solo Python.** `.coveragerc` ha
+`source = services, utils, config, worker`: il gate CI al 45% non vede una riga
+di TypeScript. Un crollo di qualità nel frontend non fa fallire nulla.
+
+### Come si chiude §3
+
+Non serve rileggere tutto. Serve **decidere il perimetro e dichiararlo**, invece
+di lasciarlo implicito:
+
+1. Una passata `oneflux-audit` per ciascuno dei moduli in (a) sopra la soglia —
+   priorità a `workspace.py` (mai in §1), `db_service.py` e `auth_service.py`
+   (sicurezza + data-access).
+2. Per il frontend: **non** riga per riga. Definire il sotto-perimetro che
+   conta — le ~6 route API con logica propria e i componenti che scrivono sul
+   DB — e leggere quello.
+3. Estendere il gate coverage al TypeScript, o dichiarare per iscritto che il
+   frontend è coperto solo da `tsc` + build (una scelta legittima, ma va detta).
+
+Finché §3 è aperta, **il ciclo non è chiuso** — anche con la tabella tutta 🟢.
+
+---
+
 ## Come si lavora a questo documento
 
 1. **Una sessione per volta.** Due sessioni che scrivono in parallelo si
@@ -368,11 +452,17 @@ saltato in passato.
 
 ## Chiusura del ciclo
 
-Il ciclo si dichiara chiuso quando §1 e §2 sono vuote — non quando la tabella
-è tutta 🟢 (lo è già dal 4/8). **§1 è vuota dall'8/8/2026** e i 3 HIGH che
-conteneva sono **fixati e testati** nella stessa data. Resta **solo** il mock
-globale di `tests/conftest.py` in §2 — lavoro lungo dichiarato, esplicitamente
-non da aprire senza tempo dedicato.
+Il ciclo si dichiara chiuso quando **§1, §2 e §3** sono vuote — non quando la
+tabella è tutta 🟢 (lo è già dal 4/8). **§1 è vuota dall'8/8/2026** e i 3 HIGH
+che conteneva sono **fixati, testati e deployati** nella stessa data (PR #18,
+merge `de54a1e`, worker Railway verificato su `/health` = `de54a1ed2a50`).
+
+Restano aperte due cose:
+- **§2**: il mock globale di `tests/conftest.py` — lavoro lungo dichiarato,
+  esplicitamente non da aprire senza tempo dedicato.
+- **§3**: il perimetro mai rivendicato da nessuna dimensione, aperto l'8/8
+  proprio perché chiudere §1 ha reso visibile che "tabella verde" e "app
+  analizzata" non coincidevano. È la voce che oggi tiene aperto il ciclo.
 
 Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
 mockato globalmente, quindi il decoratore `@retry` su
