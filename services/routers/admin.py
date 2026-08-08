@@ -76,6 +76,10 @@ def _log_review_action(*args, **kwargs):
     return _fw()._log_review_action(*args, **kwargs)
 
 
+def _invalidate_fatture_rows_cache(*args, **kwargs):
+    return _fw()._invalidate_fatture_rows_cache(*args, **kwargs)
+
+
 def _agent_notturno_persist(*args, **kwargs):
     return _fw()._agent_notturno_persist(*args, **kwargs)
 
@@ -637,6 +641,11 @@ def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verif
     """
     from services.auth_service import crea_cliente_con_token
 
+    # Stesso motivo di admin_cambia_email: creare un cliente con un'email presente
+    # in ADMIN_EMAILS gli darebbe i privilegi admin al primo login.
+    if body.email.strip().lower() in _admin_emails_set():
+        raise HTTPException(status_code=403, detail="Non puoi assegnare un'email amministrativa a un cliente")
+
     successo, messaggio, token = crea_cliente_con_token(
         email=body.email,
         nome_ristorante=body.nome_ristorante,
@@ -975,6 +984,18 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         if not target_ids:
             raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: tutte le righe hanno importo diverso da zero.")
 
+    # Info per audit log e memoria: la lettura va PRIMA dell'update, altrimenti
+    # `categoria_da` e' la categoria nuova e "Annulla" riscrive la stessa categoria
+    # invece di ripristinare quella precedente.
+    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria,ristorante_id").in_("id", body.ids).limit(1).execute()
+    prima_desc = ""
+    prima_cat_da = ""
+    rid_riga = None
+    if row_resp.data:
+        prima_desc = row_resp.data[0].get("descrizione", "")
+        prima_cat_da = row_resp.data[0].get("categoria") or ""
+        rid_riga = row_resp.data[0].get("ristorante_id")
+
     update_payload = {
         "categoria": body.categoria,
         "needs_review": False,
@@ -982,14 +1003,9 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         "reviewed_by": f"admin:{admin_user.get('email', 'admin')}",
     }
     sb.table("fatture").update(update_payload).in_("id", target_ids).is_("deleted_at", "null").execute()
+    _invalidate_fatture_rows_cache(rid_riga)
 
-    # Recupera info per audit log e memoria
-    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria").in_("id", body.ids).limit(1).execute()
-    prima_desc = ""
-    prima_cat_da = ""
     if row_resp.data:
-        prima_desc = row_resp.data[0].get("descrizione", "")
-        prima_cat_da = row_resp.data[0].get("categoria") or ""
         if body.salva_memoria:
             prezzo = float(row_resp.data[0].get("prezzo_unitario") or 0)
             if prima_desc and not (body.categoria == "📝 NOTE E DICITURE" and prezzo > 0):
@@ -1319,6 +1335,12 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
             errori += 1
             logger.warning("auto-review sconto error '%s': %s", desc[:40], exc)
 
+    # Invalidazione globale (non per-ristorante): l'auto-review agisce su tutti gli
+    # account in una sola passata, quindi le righe toccate appartengono a piu' sedi.
+    # Senza questo il contatore "da controllare" in Home resta stale fino a 30 min.
+    if classificate:
+        _invalidate_fatture_rows_cache()
+
     logger.info("admin_auto_review: classificate=%d, salvate=%d, errori=%d | admin=%s", classificate, salvate, errori, admin_user.get("email"))
     return {"ok": True, "classificate": classificate, "salvate_memoria": salvate, "errori": errori}
 
@@ -1454,6 +1476,8 @@ def admin_qualita_memoria_update(
             righe_propagate = _propaga_global_override_a_fatture_storiche(
                 desc_normalized, body.categoria, sb,
             )
+            if righe_propagate:
+                _invalidate_fatture_rows_cache()
         except Exception as prop_err:
             logger.warning("admin_memoria_update: propagazione fallita per id=%s: %s", prod_id, prop_err)
 
@@ -1656,6 +1680,7 @@ def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depends(_v
             "reviewed_at": None,
             "reviewed_by": None,
         }).in_("id", ids).is_("deleted_at", "null").execute()
+        _invalidate_fatture_rows_cache()
 
     sb.table("ai_review_log").update({
         "annullato_at": now,
@@ -2573,6 +2598,10 @@ def admin_cambia_email(
     new_email = body.nuova_email.strip().lower()
     if new_email == old_email:
         raise HTTPException(status_code=400, detail="La nuova email deve essere diversa da quella attuale")
+    # Un'email in ADMIN_EMAILS conferisce i privilegi admin al solo login: assegnarla
+    # a un account cliente lo promuoverebbe ad admin senza passare da nessun controllo.
+    if new_email in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi assegnare un'email amministrativa a un cliente")
 
     dup = sb.table("users").select("id").eq("email", new_email).execute()
     if dup.data:

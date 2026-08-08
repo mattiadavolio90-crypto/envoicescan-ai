@@ -1226,8 +1226,8 @@ def gruppo_spreco_categorie(
         mesi_target = [(anno, m) for m in range(1, mese_corr + 1)]
     data_da = f"{mesi_target[0][0]}-{mesi_target[0][1]:02d}-01"
     ult_y, ult_m = mesi_target[-1]
-    ult_giorno = 31 if ult_m in (1, 3, 5, 7, 8, 10, 12) else (29 if ult_m == 2 else 30)
-    data_a = f"{ult_y}-{ult_m:02d}-{ult_giorno:02d}"
+    import calendar as _cal
+    data_a = f"{ult_y}-{ult_m:02d}-{_cal.monthrange(ult_y, ult_m)[1]:02d}"
 
     try:
         incompleti_set = set(

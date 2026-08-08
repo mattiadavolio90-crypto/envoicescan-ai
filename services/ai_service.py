@@ -4855,6 +4855,21 @@ def _chiama_gpt_classificazione(
     testo = (response.choices[0].message.content or "").strip()
     if not testo:
         raise ValueError("Risposta GPT vuota (content None/empty)")
+
+    # finish_reason='length': il JSON puo' essere sintatticamente valido ma
+    # INCOMPLETO (l'AI ha esaurito max_tokens a meta' lista). Gli idx mancanti
+    # finiscono in "Da Classificare" dal ciclo sotto — corretto, ma senza questo
+    # log la causa e' invisibile: sembra che l'AI non sappia classificare, mentre
+    # il batch e' semplicemente troppo grande per max_tokens.
+    _finish = getattr(response.choices[0], "finish_reason", None)
+    if _finish == "length":
+        logger.warning(
+            "⚠️ Risposta GPT TRONCATA (finish_reason=length): %d articoli inviati "
+            "con max_tokens=%d. Le righe non restituite resteranno 'Da Classificare': "
+            "ridurre il batch o alzare max_tokens.",
+            len(da_chiedere_gpt), max_tokens,
+        )
+
     dati = json.loads(testo)
     cat_by_idx, conf_by_idx = _mappa_categorie_ai_per_idx(dati)
 
