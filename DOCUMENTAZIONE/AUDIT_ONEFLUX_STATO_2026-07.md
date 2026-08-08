@@ -29,14 +29,113 @@ Legenda: 🟢 chiusa · 🟡 residui aperti · ⚪ mai fatta.
 
 ## §1 — Perimetro mai letto (priorità alta)
 
-Codice che **nessun audit ha mai attraversato**. Non è "controllato e giudicato
-a basso rischio": è rischio ignoto per definizione.
+**VUOTA dall'8/8/2026.** I 3 file rimasti sono stati letti al 100% (10.442
+righe totali: 5212+3010+2220) e chiusi nella stessa sessione. Riepilogo: 0
+CRITICAL, 3 HIGH (tutti confermati **attivi** sul DB live, non teorici — vedi
+sotto), 8 MEDIUM, 6 LOW/INFO.
 
-| File | Stato | Perché conta |
-|---|---|---|
-| `services/ai_service.py:3392,3453` e `:3579-3990` | **mai letto** | Ultimo sito plausibile della classe troncamenti; se troncata → più chiamate GPT a pagamento |
-| `services/routers/admin.py` | letto ~15% | 3010 righe (ricontate il 4/8: il doc diceva 2959), coperte solo da Security passata 3 + Bug |
-| `services/routers/gruppo.py` | letto in parte | 8 query `.in_()` multi-sede senza paginazione. ⚠️ **Premessa corretta il 7/8**: qui era scritto che il cap PostgREST «scatta **prima**» in catena. Misurato: scatta a **~33 sedi** (`ricavi_giornalieri`, mese corrente) e **~42** (`margini_mensili`, 2 anni), contro le **4** di SUSHILAND. È rischio **latente**, non difetto attivo — al contrario del caso Performance, dove il cap era già addosso ai clienti. Restava un N+1 per sede (`gruppo.py:1253-1269`) |
+**I 3 HIGH sono stati fixati l'8/8/2026, più il MEDIUM di privilege
+escalation.** Ogni fix è coperto da test nuovi (26 in 3 file) e ogni test è
+stato verificato **per mutazione**: rimosso il fix, il test cade; ripristinato,
+torna verde. Non è una formalità — il test sul febbraio riproduce l'errore
+esatto (`day is out of range for month`), e quello sull'ordine SELECT/UPDATE
+cade anche se il risultato resta giusto per caso. Suite completa: 10.633
+passed, 0 failed; coverage **50.41% → 50.72%** (gate 45 tenuto; misurato con
+`coverage json`, non l'arrotondamento del report a schermo).
+
+**Il `code-reviewer` ha bocciato la prima versione del fix, a ragione.** Avevo
+invalidato la cache per-ristorante partendo dal `ristorante_id` di **una sola**
+riga (`.limit(1)`), sull'assunto che un gruppo della coda appartenesse a una
+sede sola. Falso e non verificato: la coda raggruppa per *descrizione* su tutti
+i clienti, e sul DB live **47 gruppi su 264 sono cross-ristorante, fino a 5
+sedi** — il fix ne sistemava una e lasciava le altre 4 stantie, cioè riproduceva
+il difetto che diceva di chiudere. Ora si invalidano tutti i `ristorante_id`
+distinti. È lo stesso errore di metodo già in memoria: **una premessa sul
+perimetro va interrogata sul DB prima di scriverla nel codice**, non solo la
+severità di un finding.
+
+~~`services/ai_service.py:3392,3453` e `:3579-3990`~~ — **LETTO l'8/8/2026**,
+5212/5212 righe. Il riferimento `file:riga` ereditato dal ciclo precedente era
+**sbagliato**: quelle righe sono innocue (guardia argomenti, estrazione dict).
+Il vero difetto della classe "troncamenti" era altrove nello stesso file, mai
+letto neanche lì: `_chiama_gpt_classificazione` (4736-4902) non legge mai
+`finish_reason` — un JSON valido ma incompleto (risposta tagliata a
+`max_tokens` senza errore) non viene distinto da "il modello ha ignorato
+alcuni articoli", e i due richiedono correzioni opposte. **Confermato attivo
+sul DB**: `ai_usage_events`, 1 evento reale con `completion_tokens = 4096`
+(cap esatto) su `batch_size: 50`, 11/4/2026 — non è solo un margine stretto,
+è già successo. HIGH — **FIXATO l'8/8/2026**: `finish_reason == "length"` ora
+logga batch_size e max_tokens. Nota di rettifica rispetto alla lettura iniziale:
+il comportamento era già **sicuro** (gli idx mancanti finiscono in
+`Da Classificare`, nessuno slittamento di categoria — verificato eseguendo il
+codice pre-fix, che logga "2 non mappati, NESSUNO slittamento"). Il difetto era
+di **diagnosticabilità**, non di correttezza: la causa era invisibile e sembrava
+incapacità del modello, mentre il batch era solo troppo grande. La severità
+HIGH resta corretta sul rischio operativo — righe non classificate senza che
+nessuno sapesse perché — ma non c'erano dati sbagliati in produzione.
+Test: `tests/test_ai_service_troncamento.py` (4). Un secondo MEDIUM: il loop di retry (5028-5057) ritenta
+via GPT anche le righe che il modello ha rifiutato consapevolmente
+(prompt vieta esplicitamente `Da Classificare`), spesa evitabile perché solo
+il safety net deterministico a valle può davvero recuperarle. Terzo, MEDIUM:
+zero test sul troncamento (`finish_reason`, `content=None` mai mockati in
+tutta la suite). Regole di dominio #1 e #2 verificate rispettate su tutti i
+rami: nessun fallback nascosto verso una categoria inventata.
+
+~~`services/routers/admin.py`~~ — **LETTO l'8/8/2026**, 3010/3010 righe (49
+endpoint mappati meccanicamente, 48/49 con `_verify_admin`; il 49° è
+intenzionale e documentato, chiamato da GitHub Actions). Due HIGH:
+(1) `admin_qualita_classifica` legge la categoria "precedente" per l'audit
+log **dopo** aver già scritto quella nuova (`:987` rilegge righe appena
+aggiornate da `:984`) — l'endpoint "Annulla" della coda categorie non annulla
+nulla, riscrive la stessa categoria appena data. Bug **confermato leggendo il
+codice** (`:987` rileggeva le righe già aggiornate da `:984`).
+**Rettifica sull'evidenza**, segnalata dal `code-reviewer`: le "51 righe su 51
+con `categoria_da = categoria_a`" citate al primo giro **non sono la prova** di
+questo bug. Sono tutte `azione = 'auto_review'`, l'unica azione presente in
+`ai_review_log`, e lì l'uguaglianza è **deliberata** — il ramo sconti logga
+`(cat, cat)` di proposito (`admin.py:1331`). Di `azione = 'classifica'` non
+esiste nessuna riga: l'endpoint bacato non era ancora mai stato loggato. Il
+difetto era reale e va fixato lo stesso, ma la severità andava argomentata sul
+codice, non su quel numero. Terza volta in questo ciclo che un conteggio viene
+letto come conferma di ciò che si stava già cercando.
+(2) Nessuno dei 5 percorsi che scrivono `fatture.categoria`/`needs_review`
+in questo router invalida la cache briefing — stesso difetto, stesso
+meccanismo, del caso già chiuso il 7/8 su `ricavi.py`: l'admin bonifica la
+coda, il cliente in Home vede il numero vecchio fino a 30 minuti.
+**Entrambi FIXATI l'8/8/2026**: la lettura di `categoria_da` spostata prima
+dell'update (il test difende l'**ordine** delle operazioni, non solo il valore,
+così una futura rilettura post-update ricadrebbe); invalidazione aggiunta su
+tutti e 5 i percorsi — su **tutti** i `ristorante_id` distinti coinvolti dagli
+ids (vedi la rettifica in testa a §1: i gruppi sono cross-sede), e globale in
+`admin_auto_review`, che itera su tutti gli account. Verificato sul DB che
+`ristorante_id` è sempre valorizzato (537/537 righe con `needs_review = true`),
+ma il ramo senza rid resta e fa un clear globale: mai un no-op silenzioso.
+4 MEDIUM, incluso un
+vettore di privilege escalation **anch'esso fixato**: `admin_cambia_email` e
+`admin_crea_cliente` ora rifiutano (403) un'email presente in `ADMIN_EMAILS`
+per un account cliente — mancava in **due** punti, non solo in quello trovato
+per primo. 4 LOW/INFO. Test: `tests/test_admin_qualita_fix_audit.py` (8).
+Dettaglio in STORICO.
+
+~~`services/routers/gruppo.py`~~ — **LETTO l'8/8/2026**, 2220/2220 righe
+(era "letto in parte"). Un HIGH **attivo**, non latente: "Spreco per
+categoria" calcola l'ultimo giorno del mese **indovinando** invece di usare
+`calendar.monthrange` (come fa correttamente un'altra funzione nello stesso
+file, `:2122`) — per febbraio produce sempre `AAAA-02-29`, che non esiste
+negli anni non bisestili (2026 incluso, cioè ora). Postgres rifiuta la
+query, l'errore viene inghiottito in silenzio, il cliente vede "zero spreco"
+invece di un errore. **Riprodotto sul DB live** (sede SUSHILAND):
+`2026-02-29` → APIError 22008; `2026-02-28` → 24 righe reali.
+**FIXATO l'8/8/2026** con `calendar.monthrange`, allineandolo a `:2122` dello
+stesso file. Test: `tests/test_gruppo_spreco_categorie_febbraio.py` (12,
+parametrizzati su anni bisestili e non + tutti i 12 mesi) — sul codice pre-fix
+cadono con `ValueError: day is out of range for month`, cioè riproducono la
+causa esatta e non un sintomo. Rivalutazione del rischio latente §1 originale: le 8 query
+`.in_()` multi-sede **confermate** al margine già scritto (~33-84 sedi contro
+le 4 di SUSHILAND, MEDIUM/LOW), ma trovato un rischio latente **più vicino**
+non ancora documentato — `gruppo_spesa_pivot` con `dimensione="fornitore"`
+è una RPC SETOF col cap PostgREST 1000 righe non paginata: già a 273 righe
+su 4 sedi con l'anno solo parziale, soglia reale stimata ~10 sedi (MEDIUM).
 
 ~~`services/routers/riparto.py` + `fatture.py`~~ — **CHIUSI e DEPLOYATI il 5/8/2026**
 (PR #14, merge `5d69fe3`, worker Railway verificato su `/health` = commit deployato).
@@ -270,7 +369,34 @@ saltato in passato.
 ## Chiusura del ciclo
 
 Il ciclo si dichiara chiuso quando §1 e §2 sono vuote — non quando la tabella
-è tutta 🟢 (lo è già dal 4/8). Allora:
+è tutta 🟢 (lo è già dal 4/8). **§1 è vuota dall'8/8/2026** e i 3 HIGH che
+conteneva sono **fixati e testati** nella stessa data. Resta **solo** il mock
+globale di `tests/conftest.py` in §2 — lavoro lungo dichiarato, esplicitamente
+non da aprire senza tempo dedicato.
+
+Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
+mockato globalmente, quindi il decoratore `@retry` su
+`_chiama_gpt_classificazione` restituiva un MagicMock e la funzione vera non era
+chiamabile — qualunque assert avrebbe confrontato un mock, passando per il
+motivo sbagliato. Il primo workaround (fixture con `importlib.reload` del modulo
+e `retry` pass-through) è stato **scartato dopo la review**: ricaricare
+`ai_service` ricrea le classi di eccezione, mentre `upload_handler.py` cattura
+`AIDailyLimitExceededError` & co. all'import — sarebbe rimasto legato alle
+classi vecchie, con un `except` che non matcha più. La suite restava verde solo
+per l'ordine di collection, cioè per fortuna. Soluzione finale senza reload né
+stato globale toccato: la funzione non decorata si recupera dal mock stesso, che
+registra la chiamata al decoratore. È la conferma concreta che la voce §2 non è
+teorica: il mock rende vacui i test sui rami che usano librerie mockate, e ogni
+file di test che li tocca deve pagare questo dazio.
+
+MEDIUM/LOW consapevolmente **non** fixati (documentati, non dimenticati): retry
+GPT sulle righe rifiutate consapevolmente dal modello, N+1 e RPC SETOF di
+`gruppo.py` (soglia ~10 sedi contro le 4 di oggi), 3 endpoint admin
+full-load-then-filter, divergenza badge/pagina su `pulisci_caratteri_corrotti`,
+`admin_impersona` che non controlla il flag `attivo`. Nessuno è attivo sui dati
+correnti; vanno ripresi in un ciclo successivo, non in coda a questo.
+
+Quando entrambe le condizioni sono soddisfatte:
 
 1. Aggiungere in cima "**Ciclo chiuso il gg/mm/aaaa**"
 2. Spostare questo file **e il suo STORICO** in `docs/storico/`
