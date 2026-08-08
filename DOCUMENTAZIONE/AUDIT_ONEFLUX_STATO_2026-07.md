@@ -97,8 +97,49 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   scritta (Regola 6 in `tests/test_regole_dominio_guardia.py`), ancorata
   ai **campi di ricavo** e non alla tabella — ancorarla alla tabella produce 8
   falsi positivi, misurati. Dettaglio e lezioni 40-41 in STORICO §14.
-- **`services/upload_handler.py`** — 909 statement scoperti (parsing XML/P7M,
-  dedup, orchestrazione AI a chunk). Il buco più grande del progetto in assoluto.
+- **`services/upload_handler.py`** — **codice vivo COPERTO il 7-8/8/2026** (PR #17),
+  legacy escluso per scelta. Il «909 statement scoperti» scritto qui era **sbagliato**
+  (misurato: 981/1108), ma soprattutto il numero aggregato **nascondeva la cosa
+  che contava**: il file è due mondi. Split misurato dal report JSON di coverage:
+  **codice vivo** (righe 1-892: dedup, lock upload, gating AI — importato dal
+  worker di produzione, `fastapi_worker.py:2125`) = 465 statement, 339 scoperti;
+  **legacy** `handle_uploaded_files` (893-2231, raggiungibile SOLO da
+  `legacy_streamlit/app_controllers.py:1659`) = 643 statement, **642 scoperti**.
+  Cioè il **65% del "buco più grande del progetto" era codice che nessun cliente
+  esegue**. Coperto il vivo: 339 → **15 scoperti (97%)**, +70 test. I 15 residui
+  sono rami `except` di conversione numerica. Il legacy resta scoperto per scelta:
+  testarlo non difende nulla che i clienti tocchino, e sparisce da sé quando
+  `legacy_streamlit/` verrà rimosso. **La voce NON è barrata**: chiuderla del
+  tutto vorrebbe dire dichiarare coperto anche il legacy.
+  Il valore vero non è la percentuale ma *cosa* difende: il ramo di gating
+  (585-810) era a **copertura zero** pur avendo già dei test — quelli esistenti
+  usavano di proposito righe con `descrizione: ""`, che non entrano mai nel ramo
+  che chiama l'AI e scrive la categoria. Ora sono difese entrambe le regole di
+  dominio: #2 con **due** guardrail distinti (pre-AI riga 585, e quello dentro il
+  loop AI a riga 712) e #1 col principio 24/06. Il guardrail 712 si raggiunge per
+  **due** strade, perché `categoria_target = force_categoria or categoria_finale`:
+  la seconda è **la risposta dell'AI**, quindi ci arriva un prodotto qualunque se
+  il modello risponde `NOTE E DICITURE` — ed è lo scenario più probabile in
+  produzione. `FUSTI`/`CASSA 750/LITRO X12` (da `_PURE_DICITURE_EXACT`) coprono
+  solo l'altra strada, quella via `force_categoria`. **Prima passata avevo scritto
+  qui che erano "le uniche": era falso**, trovato dal `code-reviewer`. L'errore non
+  era la forza bruta ma il suo perimetro — avevo fissato `categoria` come input
+  e dimenticato il ramo `or` che rimette in gioco la categoria AI. Lezione: una
+  ricerca esaustiva è esaustiva *solo sul dominio che le dai*. Ora c'è un test
+  per ciascuna delle due strade.
+  **Mutazione verificata su 7 rami, non dedotta** — 7 su 7 intercettate:
+  guardrail NOTE (filtro `_row_importo == 0` rimosso) → 3 rossi; gating 24/06
+  (`elif True`) → 5 rossi, incluso quello che impedisce a una categoria scartata
+  di entrare in memoria e diventare "verità" al prossimo upload; guardrail 712
+  disattivato → 1 rosso; filtro cross-tenant di `_find_existing_saved_ok_events`
+  → 1 rosso; paginazione (`fetch_all` → `.execute()`) → 2 rossi; **`.eq('user_id')`
+  rimosso dalla SELECT → 1 rosso**; `filter_active()` rimosso → 1 rosso;
+  `.in_('file_origine')` rimosso → 1 rosso. Le ultime tre erano scoperte alla
+  prima passata: il fake Supabase *registrava* i filtri senza applicarli, quindi
+  una perdita di isolamento multi-tenant **in lettura** sarebbe passata verde.
+  Ora `_FakeQuery` filtra davvero (eq/in_/`deleted_at`) e le righe di prova
+  includono un secondo utente, un altro file e una riga soft-deleted — senza
+  quelle, il filtro non ha nulla da escludere e il test resta vacuo comunque.
 - **`worker/run.py`** — 0%, mai importato dalla suite.
 - **`services/routers/riparto.py`** — 7 endpoint su 11 senza alcun test.
 - **`verify_and_migrate_password`** (`services/auth_service.py`) — il ramo SHA256
