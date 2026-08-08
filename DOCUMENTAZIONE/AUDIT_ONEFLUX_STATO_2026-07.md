@@ -165,8 +165,8 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   configurazione ambientale marginale (fallback `dotenv` assente, encoding
   non-Windows, `SUPABASE_KEY` legacy) — basso valore, lasciate.
 - ~~**`services/routers/riparto.py`** — 7 endpoint su 11 senza alcun test~~ —
-  **CHIUSA l'8/8/2026** (commit `<pending>`, verificare `/health` prima di
-  fidarsi). Il conteggio era sbagliato (10
+  **CHIUSA l'8/8/2026** (commit `95d62a3`, worker Railway verificato su
+  `/health` = commit deployato). Il conteggio era sbagliato (10
   endpoint, non 11) e il file era già al 66%, non scoperto come suggerito.
   Misurato e coperto il punto di rischio reale: `riparto_da_fattura`
   (l'endpoint che ripartisce una fattura di struttura sul gruppo) era a 0%,
