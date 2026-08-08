@@ -821,3 +821,108 @@ ripristino: 45 passed, 1 skipped, nessuna regressione.
 Restano aperte 3 voci di §2 (`worker/run.py`, mock globale di
 `conftest.py`, `.coveragerc` non gate) e i due endpoint secondari di
 `riparto.py` gia' annotati in §15.
+
+## 17. §1 chiusa — 3 HIGH fixati (admin, gruppo, ai_service) — 8/8/2026
+
+PR **#18**, branch `fix/audit-s1-high-3`, commit `c976bf8` (fix) + `ce0f721`
+(correzioni post-review). **Non deployato**: il deploy va fuori orario.
+
+### Esito
+
+3 HIGH + 1 MEDIUM (privilege escalation) fixati, 26 test nuovi in 3 file.
+Suite 10.633 passed, coverage 50.41% → **50.72%** (misurato con `coverage
+json`: il report a schermo arrotonda a 51% ed e' quello che avevo scritto per
+primo nel doc, sbagliando).
+
+### Dettaglio dei fix
+
+**1. `admin_qualita_classifica` — "Annulla" non annullava.** La SELECT che
+legge `categoria_da` per l'audit log girava DOPO la UPDATE, quindi leggeva la
+categoria appena scritta: annullare riscriveva la stessa categoria. Lettura
+spostata prima dell'update. Il test difende l'**ordine** delle operazioni
+(`ops_fatture.index("select") < ops_fatture.index("update")`), non solo il
+valore risultante: una futura rilettura post-update lo farebbe cadere anche se
+il valore restasse giusto per caso.
+
+**2. Cache mai invalidata su 5 percorsi di scrittura.** Aggiunta
+l'invalidazione. Serve il wrapper esplicito `_invalidate_fatture_rows_cache`
+in `admin.py` (righe 79-81): **mai `__getattr__`**, ha gia' rotto 9 router.
+
+**3. `gruppo_spreco_categorie` — febbraio.** `31 if m in (...) else (29 if
+m == 2 else 30)` → sempre `AAAA-02-29`. Sostituito con `calendar.monthrange`,
+allineandolo a `:2122` dello stesso file, che gia' lo usava correttamente.
+
+**4. Privilege escalation.** `admin_cambia_email` e `admin_crea_cliente` non
+impedivano di assegnare a un cliente un'email in `ADMIN_EMAILS`. Mancava in
+**due** punti: fixato il primo, il secondo si trova solo cercando l'altro
+chiamante di `crea_cliente_con_token`.
+
+**5. `ai_service` — `finish_reason`.** Cambio di **diagnosticabilita', non di
+correttezza**. Verificato eseguendo il codice pre-fix: le righe non restituite
+finivano gia' in `Da Classificare` con log "2 non mappati, NESSUNO
+slittamento". Nessun dato sbagliato in produzione; mancava solo il modo di
+sapere *perche'*.
+
+### La review ha trovato un difetto reale nel fix
+
+Prima versione: invalidavo la cache col `ristorante_id` di **una sola** riga
+(`.limit(1)`), assumendo che un gruppo della coda fosse di una sede sola.
+Assunto mai verificato e **falso** — la coda raggruppa per descrizione su tutti
+i clienti (`admin_qualita_coda` mostra "N clienti" per gruppo). Misurato:
+
+```sql
+with g as (select descrizione, count(distinct ristorante_id) n_rid
+           from fatture where needs_review and deleted_at is null
+           group by descrizione)
+select count(*), count(*) filter (where n_rid > 1), max(n_rid) from g;
+-- 264 | 47 | 5
+```
+
+47 gruppi su 264 sono cross-ristorante, fino a 5 sedi: il fix ne invalidava
+una e lasciava le altre stantie, cioe' riproduceva il difetto che chiudeva.
+Ora si invalidano tutti i `ristorante_id` distinti; senza rid, clear globale
+(mai un no-op silenzioso). Lezione in
+`feedback_verifica_il_perimetro_prima_di_scrivere_il_fix`.
+
+### Il mock globale di conftest si e' fatto sentire
+
+`tenacity` e' mockato, quindi `@retry` su `_chiama_gpt_classificazione` e' un
+MagicMock e la funzione vera non e' chiamabile: ogni assert avrebbe confrontato
+un mock, **passando per il motivo sbagliato**. Primo workaround
+(`importlib.reload` con `retry` pass-through) **scartato dopo la review**:
+ricaricare il modulo ricrea le classi di eccezione, mentre `upload_handler.py`
+cattura `AIDailyLimitExceededError` & co. all'import — restava legato alle
+vecchie e un `except` non matcherebbe piu'. La suite era verde solo per
+l'ordine di collection, cioe' per fortuna. Soluzione finale senza reload: la
+funzione non decorata si recupera da `tenacity.retry.return_value.call_args_list`,
+dove il mock ha registrato la chiamata al decoratore.
+
+### Mutazione verificata su 4 fix
+
+Ogni test e' stato provato rimuovendo il fix (backup fuori da git nello
+scratchpad, non `git checkout` sul lavoro non committato):
+- lettura rimessa dopo l'update → 2 test rossi;
+- invalidazione tolta → 1 rosso;
+- invalidazione tornata singola → 2 rossi (i due cross-sede);
+- `calendar.monthrange` tolto → 3 rossi con `ValueError: day is out of range
+  for month`, cioe' la **causa** esatta, non un sintomo;
+- log `finish_reason` tolto → 1 rosso, e i log catturati confermano che il
+  comportamento sicuro restava.
+
+### Rettifica sull'evidenza del HIGH #1
+
+Le "51 righe su 51 con `categoria_da = categoria_a`" citate al primo giro
+**non provano** quel bug: sono tutte `azione = 'auto_review'`, dove
+l'uguaglianza e' deliberata (il ramo sconti logga `(cat, cat)`,
+`admin.py:1331`). Di `azione = 'classifica'` non esiste alcuna riga. Il difetto
+era reale — dimostrato leggendo il codice — ma la severita' andava argomentata
+li', non su quel numero. Terza volta nel ciclo che un conteggio viene letto
+come conferma di cio' che si stava gia' cercando.
+
+### Cosa resta
+
+Solo il mock globale di `tests/conftest.py` in §2. MEDIUM/LOW consapevolmente
+non fixati (retry GPT su righe rifiutate, N+1 e RPC SETOF di `gruppo.py` con
+soglia ~10 sedi contro le 4 di oggi, 3 endpoint admin full-load-then-filter,
+divergenza badge/pagina, `admin_impersona` che non controlla `attivo`): nessuno
+attivo sui dati correnti, da riprendere in un ciclo successivo.
