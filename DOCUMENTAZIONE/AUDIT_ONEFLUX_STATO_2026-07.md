@@ -362,7 +362,10 @@ Non dimenticanze: decisioni. Riaprirle solo con la ragione che le ha chiuse.
 
 ## §3 — Perimetro che nessuna dimensione ha mai rivendicato
 
-**Aperta l'8/8/2026**, dopo la chiusura di §1. Nasce da una domanda semplice:
+**Aperta l'8/8/2026**, dopo la chiusura di §1. **Prima sessione chiusa e
+DEPLOYATA la sera dell'8/8** (PR #19, merge `af4c651`, `/health` = `af4c65165497`):
+`workspace.py`, `db_service.py` e `auth_service.py` letti al 100%, punti 2-4 di
+"come si chiude §3" risolti. Resta il punto 1 su `invoice_service.py` + i minori. Nasce da una domanda semplice:
 "se tutte le dimensioni sono verdi e §1 è vuota, l'app è analizzata tutta?"
 La risposta misurata è **no**, e la differenza non era scritta da nessuna parte.
 

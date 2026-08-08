@@ -931,6 +931,11 @@ attivo sui dati correnti, da riprendere in un ciclo successivo.
 
 ## 18. §3 — workspace.py + db_service.py + auth_service.py — 8/8/2026
 
+**DEPLOYATO l'8/8/2026** — PR **#19**, merge `af4c651`, CI verde su tutti e 4 i
+check. Worker Railway verificato su `/health`: `commit = af4c65165497`, cioe' il
+merge stesso. Deploy in serata su ordine esplicito di Mattia. Il fix
+anti-enumerazione del reset password e' quindi attivo in produzione.
+
 Prima sessione di §3. 3 file letti al 100% (2350 + 2242 + 1718 = 6310 righe),
 4 fix, 21 test nuovi in 3 file + 2 guardie di perimetro. Suite 10.641 → **10.656
 passed**, coverage 50,72% → **51,36%** (gate 45 tenuto).
