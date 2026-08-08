@@ -1164,11 +1164,16 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
                     verify2 = verify2.eq("ristorante_id", ristorante_id)
                 v2 = verify2.execute()
                 if (v2.count or 0) > 0:
+                    # Parziale ma NON un no-op: qui il delete + il retry hanno
+                    # gia' cancellato righe, quindi la cache e' stantia su un DB
+                    # gia' modificato. Invalidare anche sull'insuccesso.
+                    clear_fatture_cache()
                     return {"success": False, "error": f"Eliminazione parziale: {v2.count} righe non eliminate", "righe_eliminate": num_righe - (v2.count or 0)}
             
             logger.info(f"❌ Fattura eliminata definitivamente: {file_origine} ({num_righe} righe) da user {user_id}")
             _pulisci_riparto_orfano(supabase_client, user_id, file_origine)
 
+        clear_fatture_cache()
         return {"success": True, "error": None, "righe_eliminate": num_righe}
         
     except Exception as e:
@@ -1665,6 +1670,7 @@ def ripristina_fattura(file_origine: str, user_id: str, ristorante_id: str = Non
         query_update.execute()
         
         logger.info(f"♻️ Fattura ripristinata dal cestino: {file_origine} ({num_righe} righe) user {user_id}")
+        clear_fatture_cache()
         return {"success": True, "error": None, "righe_ripristinate": num_righe}
     except Exception as e:
         logger.error(f"Errore ripristina_fattura {file_origine} user {user_id}: {e}")
@@ -1762,6 +1768,7 @@ def svuota_cestino(user_id: str, ristorante_id: str = None, supabase_client=None
                     logger.warning(f"⚠️ Impossibile resettare classificazioni_manuali: {e_cm}")
         
         logger.warning(f"🗑️ CESTINO SVUOTATO: {num_righe} righe eliminate definitivamente per user {user_id}")
+        clear_fatture_cache()
         return {"success": True, "error": None, "righe_eliminate": num_righe}
     except Exception as e:
         logger.error(f"Errore svuota_cestino user {user_id}: {e}")

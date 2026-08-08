@@ -26,6 +26,22 @@
 #   python -m coverage report -m
 #   python -m coverage html      # dettaglio riga per riga in htmlcov/
 
+# PERIMETRO: solo Python. E' una SCELTA firmata l'8/8/2026 (audit §3), non una
+# dimenticanza. Il frontend Next.js (apps/web/, 395 file / ~49.600 righe) non e'
+# misurato qui e non ha test: la rete di sicurezza e' `tsc --noEmit` + `next build`.
+# Le ragioni, misurate e non opinabili:
+#   - 162 route API su 168 sono proxy sottili al worker (~28 righe medie);
+#   - il frontend NON accede al DB e non contiene logica di dominio (zero
+#     `createClient`/`@supabase`, zero `.insert(`/`.update(`/`.delete()`);
+#   - quindi le regole di CLAUDE.md ("Da Classificare", NOTE E DICITURE,
+#     filter_active()) non sono nemmeno ESPRIMIBILI la': un gate TS non
+#     proteggerebbe l'invariante che ci interessa;
+#   - un gate che parte da ~0% su 395 file e' una soglia tenuta bassa per non
+#     rompere la CI: costo reale, protezione nominale.
+# Cio' che regge questa scelta e' una GUARDIA, non la fiducia: le Regole 7 di
+# tests/test_regole_dominio_guardia.py falliscono se compare una route con logica
+# propria fuori dalle 6 dichiarate, o se il frontend inizia a parlare col DB.
+# Se quelle guardie cadono, questa decisione va rifatta da zero.
 [run]
 branch = True
 source =

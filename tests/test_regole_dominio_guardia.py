@@ -453,3 +453,90 @@ def test_load_mensile_overrides_filtra_la_modalita_mensile() -> None:
         "_load_mensile_overrides non filtra più modalita='mensile': applicherebbe "
         "l'override anche a chi registra i ricavi giornalieri."
     )
+
+
+# --------------------------------------------------------------------------
+# Regola 7 — il perimetro di audit del frontend resta dichiarato
+# --------------------------------------------------------------------------
+
+# Misurato l'8/8/2026 (audit §3): il frontend Next.js e' 395 file / 49.635 righe
+# con ZERO test, e la scelta firmata e' di NON estendere il gate coverage al
+# TypeScript. Quella scelta regge su un fatto misurato, non su un'opinione: 162
+# route su 168 sono proxy sottili al worker, il frontend non accede al DB e non
+# contiene logica di dominio (nessun `createClient`/`@supabase`, nessun
+# `.insert(`/`.update(`/`.upsert(`/`.delete()` in tutto apps/web/src). Le regole
+# di dominio di CLAUDE.md non sono nemmeno ESPRIMIBILI la' dentro.
+#
+# Il rischio non e' l'oggi: e' che qualcuno aggiunga domani una route con logica
+# propria — accesso al DB, calcolo di importi, decisione di categoria — dove
+# nessun gate la vedrebbe. Questa guardia non misura la copertura: verifica che
+# l'elenco delle route NON-proxy resti quello dichiarato e auditato. Se cresce,
+# il test cade e la route nuova entra in audit invece di passare inosservata.
+
+APP_API = ROOT / "apps" / "web" / "src" / "app" / "api"
+
+# Le 6 route senza workerFetch/WORKER_URL, LETTE e auditate l'8/8/2026:
+# - tts: proxy a translate.google.com (unica con logica non-auth)
+# - auth/login, auth/logout: cookie di sessione + pulizia impersonazione
+# - auth/me, auth/accetta-privacy: sessione via lib/auth
+# - admin/impersona/status: stato banner, email derivata server-side
+ROUTE_NON_PROXY_DICHIARATE = {
+    "admin/impersona/status/route.ts",
+    "auth/accetta-privacy/route.ts",
+    "auth/login/route.ts",
+    "auth/logout/route.ts",
+    "auth/me/route.ts",
+    "tts/route.ts",
+}
+
+
+def _route_non_proxy() -> set[str]:
+    """Route API che non delegano al worker: contengono logica propria."""
+    trovate = set()
+    for p in APP_API.rglob("route.ts"):
+        testo = _leggi(p)
+        if "workerFetch" in testo or "WORKER_URL" in testo:
+            continue
+        trovate.add(p.relative_to(APP_API).as_posix())
+    return trovate
+
+
+@pytest.mark.skipif(not APP_API.is_dir(), reason="frontend Next.js non presente")
+def test_il_perimetro_delle_route_non_proxy_non_cresce_in_silenzio() -> None:
+    """Una route API che non delega al worker ha logica propria, e il gate
+    coverage Python non la vede: .coveragerc misura services/utils/config/worker.
+
+    Se questo test cade, NON aggiungere la route all'elenco per farlo tornare
+    verde: leggila prima. Se contiene logica di dominio o accesso al DB, va
+    spostata nel worker (dove i test e le guardie di dominio la vedono). Se e'
+    davvero solo sessione/presentazione, allora aggiungila con la data.
+    """
+    attuali = _route_non_proxy()
+    nuove = attuali - ROUTE_NON_PROXY_DICHIARATE
+    assert not nuove, (
+        "Route API con logica propria non dichiarate nel perimetro di audit "
+        "(il gate coverage Python non le copre):\n  - "
+        + "\n  - ".join(sorted(nuove))
+        + "\n\nLeggile: se toccano il DB o calcolano importi, la logica va nel "
+        "worker. Vedi DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md §3."
+    )
+
+
+@pytest.mark.skipif(not APP_API.is_dir(), reason="frontend Next.js non presente")
+def test_il_frontend_non_accede_direttamente_al_database() -> None:
+    """Il frontend non deve parlare col DB: e' la premessa che rende legittimo
+    non avere un gate coverage sul TypeScript. Se cade, quella scelta va rifatta.
+    """
+    src = ROOT / "apps" / "web" / "src"
+    sospetti = []
+    for p in src.rglob("*.ts*"):
+        if "node_modules" in p.parts:
+            continue
+        testo = _leggi(p)
+        if "@supabase/supabase-js" in testo or "createClient(" in testo:
+            sospetti.append(p.relative_to(src).as_posix())
+    assert not sospetti, (
+        "Il frontend accede direttamente a Supabase: la logica di dominio "
+        "(soft-delete, categorie, MOL) tornerebbe fuori dal perimetro auditato "
+        "e fuori dalle guardie di questo file.\n  - " + "\n  - ".join(sorted(sospetti))
+    )

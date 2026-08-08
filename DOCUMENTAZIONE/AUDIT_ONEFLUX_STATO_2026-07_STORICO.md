@@ -926,3 +926,231 @@ non fixati (retry GPT su righe rifiutate, N+1 e RPC SETOF di `gruppo.py` con
 soglia ~10 sedi contro le 4 di oggi, 3 endpoint admin full-load-then-filter,
 divergenza badge/pagina, `admin_impersona` che non controlla `attivo`): nessuno
 attivo sui dati correnti, da riprendere in un ciclo successivo.
+
+---
+
+## 18. §3 — workspace.py + db_service.py + auth_service.py — 8/8/2026
+
+Prima sessione di §3. 3 file letti al 100% (2350 + 2242 + 1718 = 6310 righe),
+4 fix, 21 test nuovi in 3 file + 2 guardie di perimetro. Suite 10.641 → **10.656
+passed**, coverage 50,72% → **51,36%** (gate 45 tenuto).
+
+### Il metodo ha corretto sé stesso tre volte, prima di scrivere codice
+
+Questa è la parte che vale più dei fix. Il piano di sessione era ordinato su una
+catena **sbagliata**, e ogni correzione è arrivata da una misura, non da un
+ripensamento:
+
+**1. Il finding prioritario non esisteva.** Il piano metteva al primo posto
+"`spese_extra` → MOL Home: i 3 endpoint `ws_spese_*` non invalidano
+`_invalidate_home_kpi_cache`", sulla fede del commento a `workspace.py:2176`
+(*"generale → altri_costi_spese in margini_mensili, quindi MOL"*). Verificato sul
+DB: `spese_extra` ha 15 righe su 3 sedi, e `margini_mensili.altri_costi_spese` è
+`0.00` quasi ovunque; dove non è zero (sede 86300227, maggio: 315,12 + 1296,37)
+**non coincide** con `spese_extra` (1306,17). Poi il codice: `spese_extra` ha **un
+solo lettore** fuori da workspace, `margini.py:1027`, ed è il dialog *"Recupera
+dal tab Spese"* — uno strumento **manuale** con cui l'utente copia il totale in
+`margini_mensili`. Il KPI Home legge `margini_mensili`
+(`fastapi_worker.py:6762-6764`), che cambia solo via `margini.py`, e quel percorso
+**già invalida** briefing e KPI (`margini.py:288,291`). Il commento descriveva
+dove finisce il numero *dopo* il recupero manuale, non una pipeline automatica.
+Il fix previsto non avrebbe corretto nulla. Lezione già in memoria, ripetuta:
+**un commento non è una prova di flusso** — il flusso si interroga.
+
+**2. La scadenza che ha riordinato il piano era un log.** La pianificazione aveva
+alzato `purge_cestino_scaduto` a rischio massimo con "finestra 8 giorni": 1613
+righe in cestino per l'utente `2f3f93a1`, più vecchia 17/7 → purge il **16/8**,
+e `affected_users` costruito da max 1000 righe mentre il delete cancella tutto.
+Confermato il conteggio, ma `affected_users` ha **un solo consumatore**: il
+`logger.warning` a `db_service.py:1815` (`len(affected_users)`). Nessun cleanup a
+valle, nessun dato perso — e `num_righe`, il numero che conta, viene da
+`count="exact"` ed è corretto. Il difetto è che il log dice "N utenti" con N
+sottostimato: **LOW di diagnosticabilità**, non HIGH, e la data del 16/8 non
+impone nulla.
+
+**3. Metà dei difetti dell'agente erano su codice morto.** L'audit di
+`db_service.py` (2242/2242 righe) ha prodotto 14 voci, di cui parecchie su
+`elimina_tutte_fatture` (conteggio parziale RPC, riparti orfani, cache).
+Verificato: `elimina_tutte_fatture` e `aggiorna_data_competenza_fattura` hanno
+**zero chiamanti** fuori da `db_service` e da `legacy_streamlit/` —
+irraggiungibili in produzione. E `_smarca_fatture_senza_riparto` è chiamata **solo
+dai test**. Coerente col DB: **riparti orfani = 0**, quindi il gap
+`_pulisci_riparto_orfano` sulle delete massive è teorico.
+
+### I 4 fix (tutti su percorsi verificati vivi)
+
+**1. Cache cestino mai invalidata — il finding reale di `db_service.py`.**
+`get_fatture_cestino` è cachata 60s (`:1536`) e `clear_fatture_cache` la invalida
+esplicitamente (`:1516-1517`), ma **nessuno la chiamava**: prima di questo fix
+aveva UN SOLO chiamante non-legacy in tutto il progetto
+(`upload_handler.py:2130`). Percorso confermato end-to-end: UI →
+`apps/web/src/app/api/cestino/*/route.ts` → 4 endpoint di `routers/cestino.py` →
+funzioni di `db_service`. Il cliente spostava una fattura nel cestino e la lista
+restava ferma fino al TTL. Invalidazione aggiunta in `ripristina_fattura`,
+`svuota_cestino`, `elimina_fattura_completa` (sull'uscita di successo comune, così
+copre soft e hard delete) e in `cestino.py:elimina_fattura_soft`, che scrive su
+`fatture` **senza passare da `db_service`** — è il percorso più usato e un fix nel
+solo data-access l'avrebbe mancato. Stesso meccanismo già chiuso su `ricavi.py`
+(7/8) e `admin.py` (8/8): **quarta occorrenza nel ciclo**.
+
+**2. `ws_diario_crea` non invalidava il briefing.** `ws_diario_aggiorna`
+(`:812-816`) e `ws_diario_elimina` (`:832-836`) lo facevano, il POST no.
+Non cosmetica: il briefing ha il topic `appuntamento_imminente`
+(`daily_briefing_service.py:146,380,511-520`) alimentato da
+`_briefing_appuntamenti` (`fastapi_worker.py:4943-4955`), che legge
+`diario_eventi` per la data **odierna**, e lo snapshot è servito cache-first da
+`daily_briefing_state`. Creare un appuntamento per oggi non lo faceva comparire.
+**Latente** (2 eventi, 1 sede, 0 di oggi): fixato perché è la classe di difetto
+già chiusa 3 volte, non perché urgesse.
+
+**3. Enumerazione email nel reset password — l'unico difetto di sicurezza
+attivo.** `invia_codice_reset` dichiara a `:1398-1400` *"Risposta sempre generica
+per non rivelare se l'email è registrata"* e definisce `_MSG_GENERICO` per
+questo, ma il ramo di successo ritornava `"Email inviata con successo"`: **testo
+diverso**. Il messaggio arriva al client tal quale (`fastapi_worker.py:7991` →
+`{"ok": True, "message": msg}`), quindi due richieste bastavano a distinguere le
+email registrate. Il rate limit per IP a `:7984` rallentava, non chiudeva. La
+funzione contraddiceva la propria intenzione dichiarata. Fixato usando
+`_MSG_GENERICO` su entrambi i rami; verificato con AST che sia in scope prima di
+ogni uso.
+
+**4. `ws_inventario_articoli` allineato agli helper di progetto.** Usava
+`.is_("deleted_at","null")` inline — unico posto nel file, quindi **sfuggiva alla
+guardia** di `test_regole_dominio_guardia.py` — e reimplementava a mano il loop di
+paginazione. Ora `filter_active()` + `fetch_all` (`utils/supabase_paging.py:55`),
+che aggiunge anche il cap `MAX_ROWS` con warning su troncamento, che il loop
+manuale non aveva.
+
+### Mutazione verificata su 4 fix, 11 rossi
+
+Backup nello scratchpad, **mai `git checkout`** su lavoro non committato:
+- invalidazione diario rimossa → **2 rossi** (uno comportamentale, uno di simmetria);
+- `filter_active`/`fetch_all` → loop pre-fix → **3 rossi**, incluso quello sul
+  **comportamento**: la riga soft-deleted rientra nei risultati;
+- 3 invalidazioni cache di `db_service` rimosse → **4 rossi**;
+- la sola invalidazione del router `cestino.py` rimossa → **1 rosso** (ogni sito è
+  difeso in modo indipendente);
+- messaggio reset tornato specifico → **3 rossi**, incluso quello che confronta i
+  due rami tra loro.
+
+Il fake Supabase di `test_workspace_invalidazioni.py` **applica** i filtri
+(eq/in_/deleted_at) invece di registrarli, e le righe di prova includono un
+secondo utente, un'altra sede e una riga soft-deleted: senza quelle il filtro non
+ha nulla da escludere e il test resta vacuo comunque. È la lezione del
+code-reviewer su `upload_handler` (PR #17), applicata a monte questa volta.
+
+### Le due guardie di perimetro (Regola 7)
+
+Il gate coverage **non** è stato esteso al TypeScript — decisione firmata, con la
+ragione scritta in `.coveragerc`. Ciò che regge la decisione non è la fiducia ma
+due test in `test_regole_dominio_guardia.py`:
+- le route API senza `workerFetch`/`WORKER_URL` devono restare **esattamente le 6**
+  dichiarate e lette (`tts`, `auth/login`, `auth/logout`, `auth/me`,
+  `auth/accetta-privacy`, `admin/impersona/status`). Verificata per mutazione:
+  aggiunta una finta route non-proxy → rossa;
+- il frontend non deve accedere a Supabase (`createClient`/`@supabase`). È la
+  premessa che rende legittimo non avere un gate TS: se cade, la decisione va
+  rifatta.
+
+Misurato per firmarla: su 395 file di `apps/web/src`, **zero** `createClient`/
+`@supabase` e **zero** `.insert(`/`.update(`/`.upsert(`/`.delete()`. Il
+sotto-perimetro "componenti che scrivono sul DB" previsto dal punto 2 di §3
+**non esiste**: chiuso per assenza di oggetto, non per rinuncia.
+
+### Declassati con la misura che li ha declassati
+
+Perché nessuno li riapra a giudizio:
+
+- **Cache sessione e check `attivo`** (`auth_service.py:1163-1164`): la cache TTL
+  30s ritorna senza rileggere `attivo`. Ma **0 utenti disattivati su 7**, e nessun
+  percorso vivo disattiva un utente: `attivo=False` è scritto solo alla creazione
+  (pre-set-password) e da `disattiva_trial_scaduta`, che ha **solo un chiamante
+  legacy Streamlit** (rimosso dalla produzione). Login (`:826`) e validazione
+  sessione (`:1243`) filtrano entrambi `.eq('attivo', True)`. LOW latente.
+- **`ADMIN_EMAILS` a due fonti** (`config/constants.py:1857-1865` e
+  `fastapi_worker.py:1139`): i valori **coincidono**, entrambe normalizzano
+  `.strip().lower()`, e `_DEFAULT_ADMIN_EMAILS` è già centralizzato con un
+  commento anti-drift. Nessun privilege gap: LOW di manutenzione.
+- **Euristica JWT vs legacy** (`:1176`): il pezzo load-bearing è `len(token)>50`;
+  i legacy sono `token_urlsafe(32)` = sempre 43 char, confermato sul DB (16
+  sessioni, tutte len=43). `"-" not in token` è ridondante. Non è un bug: è un
+  commento che descrive male una guardia che regge per altra ragione.
+- **`purge_cestino_scaduto`**: vedi sopra, LOW di log.
+- **Sospetti auth mal indirizzati**: `:677`, `:878`, `:895` erano stati indicati
+  come "cambio password senza invalidare la cache sessione". Non lo sono:
+  migrazione Argon2, check trial, `last_login`. Non riaprirli.
+
+### Non fixati, documentati
+
+- **Cache per-processo con `WORKER_WEB_CONCURRENCY=4`** (`railway.toml:12`): la
+  cache sessione e quella fatture sono dict di processo; l'invalidazione tocca chi
+  serve la richiesta, non gli altri 3. È già §3 "aperto per scelta" — risolverlo è
+  infrastruttura nuova, e **abbassare i TTL è la scorciatoia che sembra un fix**.
+- `registra_tentativo` è fail-open sull'INSERT (`:188-189`) mentre
+  `controlla_rate_limit` è fail-closed (`:142-150`): asimmetria da valutare, non
+  attiva (stesso DB, se cade cade il login comunque).
+- Troncamenti silenziosi in `riepilogo_fatture_auto_da_ultimo_login`
+  (`.limit(500)` a `:971`, `.in_()` senza `.range()` a `:1062`): l'utente vede
+  numeri **sottostimati** senza segnale. Nessun cliente vicino alla soglia oggi.
+- `imposta_password_da_token:622` non controlla `result.data`: ritorna successo
+  anche se l'UPDATE non scrive.
+- Timing side-channel sul login (nessun hashing dummy per utenti inesistenti).
+- `get_fatture_stats` (`:1448-1449`): le due query non sono atomiche, documentato
+  nel codice.
+
+### La review ha trovato un canale che il fix non chiudeva
+
+Il `code-reviewer` ha visto oltre il fix: mascherare il messaggio di successo
+chiudeva il primo oracolo, non il secondo. `_record_reset_request` (`:239-241`)
+fa `UPDATE users ... WHERE email = ?`, quindi e' un **no-op per le email non
+registrate**: `last_reset_requested_at` si valorizza solo per quelle vere e il
+cooldown scatta solo per loro. Alla **seconda** richiesta entro 5 minuti, email
+registrata -> *"Attendi N minuti"*, email inesistente -> messaggio generico.
+L'oracolo sopravviveva, spostato di una richiesta.
+
+Peggio: **i miei 4 test non potevano vederlo**, perche' `_invia()` mockava via
+`_check_reset_rate_limit`. Un mock messo per isolare il test aveva nascosto
+esattamente il ramo che conteneva il difetto — la stessa forma d'errore della
+lezione "Mock che rendono vacui i test", stavolta su un mock scritto da me
+poche ore prima.
+
+Fixato dove il messaggio esce, non nel rate limit: il cooldown **resta
+per-email** (protegge dall'abuso del canale email) ma risponde `_MSG_GENERICO`.
+Un guasto vero del servizio (l'`except` fail-closed a `:227`) resta invece
+distinguibile: la' l'utente deve sapere di riprovare. 3 test nuovi in una classe
+che NON mocka il rate limit, mutazione verificata rossa col messaggio esatto
+("Attendi 6 minuti").
+
+Chiusi anche gli altri due findings della review:
+- **`db_service.py:1167`** (MEDIUM): l'uscita *"Eliminazione parziale"* saltava
+  l'invalidazione pur avendo **gia' cancellato righe** — cache stantia su un DB
+  gia' modificato. Ora invalida anche sull'insuccesso.
+- **`_FakeQuery.not_`** (LOW): `.not_.is_()` avrebbe restituito l'**opposto** di
+  PostgREST (che con `.not_.is_(x,"null")` esclude i NULL) e lasciato il flag
+  armato per il filtro successivo. Ora solleva `NotImplementedError` invece di
+  dare verde a un test che asserisce il contrario del vero: le query cestino di
+  `db_service` (`:1646`, `:1662`, `:1694`, `:1709`) usano proprio quella forma.
+
+Verificato dalla review e utile sapere: la forward reference di
+`clear_fatture_cache` (definita a `:1503`, chiamata da `:1069`) e' lo stile del
+progetto — 61 casi su 11 moduli di `services/` — e l'import locale in
+`cestino.py` e' conforme, perche' il divieto di `__getattr__` riguarda i simboli
+condivisi con `fastapi_worker` (ciclo router<->worker), non `db_service`.
+`_BRIEFING_CODE_VERSION` **non** va bumpato: gate sul contenuto degli snapshot
+gia' scritti, e qui il contenuto non cambia.
+
+Resta noto e non chiuso: la guardia frontend cerca `@supabase/supabase-js` e
+`createClient(`, quindi non intercetterebbe un accesso via `postgrest-js` o un
+`fetch` diretto a `*.supabase.co`. Proxy ragionevole, non ermetico — va saputo,
+dato che `.coveragerc` appoggia su quella guardia la scelta di non estendere il
+gate al TypeScript.
+
+### Cosa resta di §3
+
+`invoice_service.py` (927 stmt, 44,8% — parsing = ingresso dei dati) e i minori
+(`documenti_service.py`, `scadenziario.py`, `tag.py`,
+`tag_suggestion_service.py`). `fastapi_worker.py` **esce** dalla lista "corpo
+unico": il perimetro giusto sono gli **helper non-router**, e la prova è che le
+due funzioni trovate in questa sessione (`_invalidate_home_kpi_cache`,
+`_briefing_appuntamenti`) sono emerse *partendo da un router*, non leggendo il
+file.

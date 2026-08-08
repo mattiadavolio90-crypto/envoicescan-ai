@@ -1363,8 +1363,10 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         
     Returns:
         Tuple[bool, str]: (success, message)
-        - Se successo: (True, "Email inviata")
-        - Se fallito: (False, "Errore generico")
+        - Email registrata o no, cooldown attivo o no: (True, _MSG_GENERICO) —
+          SEMPRE lo stesso testo, altrimenti la risposta rivela quali email
+          esistono (il messaggio arriva al client, fastapi_worker.py:7991)
+        - Solo per guasti veri (Brevo/DB): (False, messaggio d'errore)
         
     Note:
         - Codice valido 1 ora
@@ -1382,11 +1384,26 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         import streamlit as st
         from services import get_supabase_client
         
-        # Rate limiting: max 1 richiesta reset ogni 5 minuti per email (DB-backed)
+        # Unico testo per TUTTI gli esiti non-guasto: email registrata, non
+        # registrata o in cooldown. Definito qui perche' serve anche al ramo
+        # rate-limit sotto.
+        _MSG_GENERICO = "Se l'email è registrata riceverai un codice. Controlla la casella di posta."
+
+        # Rate limiting: max 1 richiesta reset ogni 5 minuti per email (DB-backed).
+        # Il cooldown resta per-email (protegge dall'abuso del canale email), ma il
+        # messaggio NON deve dirlo: `_record_reset_request` fa un UPDATE su `users`
+        # filtrato per email, quindi e' un no-op per le email non registrate e il
+        # cooldown scatta solo per quelle vere. Rispondere "Attendi N minuti" solo a
+        # loro rivelerebbe quali email esistono — lo stesso oracolo che
+        # _MSG_GENERICO esiste per chiudere, spostato di una richiesta.
+        # Un guasto del servizio (except a :227) resta invece distinguibile: la'
+        # l'utente deve sapere di riprovare.
         rate_limit_msg = _check_reset_rate_limit(email, supabase_client)
         if rate_limit_msg:
+            if rate_limit_msg.startswith("Attendi "):
+                return True, _MSG_GENERICO
             return False, rate_limit_msg
-        
+
         # Genera codice sicuro (12 bytes = 96 bit entropia)
         code = secrets.token_urlsafe(12)
         expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
@@ -1397,7 +1414,7 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         
         # Verifica esistenza utente PRIMA di salvare il codice (anti-email-relay abuse)
         # Risposta sempre generica per non rivelare se l'email è registrata
-        _MSG_GENERICO = "Se l'email è registrata riceverai un codice. Controlla la casella di posta."
+        # (_MSG_GENERICO definito sopra, prima del rate limit)
         try:
             check_utente = supabase_client.table('users') \
                 .select('id') \
@@ -1496,7 +1513,11 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         if response.status_code in (200, 201):
             _record_reset_request(email, supabase_client)
             logger.info("Email reset inviata con successo")
-            return True, "Email inviata con successo"
+            # STESSO testo del ramo "email non registrata" (:1410): il messaggio
+            # arriva al client cosi' com'e' (fastapi_worker.py:7991), quindi un
+            # testo diverso qui rivelerebbe quali email sono registrate — cioe'
+            # esattamente cio' che _MSG_GENERICO esiste per impedire.
+            return True, _MSG_GENERICO
         else:
             # Log solo status code, non il body completo (potrebbe contenere headers/token)
             logger.error(f"Brevo API error: {response.status_code} (body omesso per sicurezza)")
