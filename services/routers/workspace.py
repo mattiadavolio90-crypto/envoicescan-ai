@@ -484,27 +484,18 @@ def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
     sb = _get_supabase_client()
     ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     from config.constants import CATEGORIE_SPESE_GENERALI
-    all_rows: list[dict] = []
-    page_size = 1000
-    offset = 0
-    while True:
-        resp = (
+    from services.db_service import filter_active
+    from utils.supabase_paging import fetch_all
+    all_rows = fetch_all(
+        filter_active(
             sb.table("fatture")
             .select("descrizione,prezzo_unitario,unita_misura,categoria,data_documento")
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
-            .is_("deleted_at", "null")
-            .not_.in_("categoria", CATEGORIE_SPESE_GENERALI)
-            .order("data_documento", desc=True)
-            .range(offset, offset + page_size - 1)
-            .execute()
         )
-        if not resp.data:
-            break
-        all_rows.extend(resp.data)
-        if len(resp.data) < page_size:
-            break
-        offset += page_size
+        .not_.in_("categoria", CATEGORIE_SPESE_GENERALI)
+        .order("data_documento", desc=True)
+    )
     articoli_map: dict[str, dict] = {}
     for row in all_rows:
         desc = (row.get("descrizione") or "").strip()
@@ -787,6 +778,13 @@ def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[str] = H
     if body.ora_fine:
         payload["ora_fine"] = body.ora_fine
     resp = sb.table("diario_eventi").insert(payload).execute()
+
+    try:
+        from services.daily_briefing_service import invalidate_today_briefing
+        invalidate_today_briefing(user_id, ristorante_id, sb)
+    except Exception as exc:
+        _briefing_logger.warning("ws_diario_crea: invalidate briefing fallita: %s", exc)
+
     return resp.data[0] if resp.data else {}
 
 

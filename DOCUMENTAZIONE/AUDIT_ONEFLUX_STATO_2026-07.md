@@ -386,13 +386,18 @@ quelli mai letti. Da qui la dispersione.
 nelle passate solo di rimbalzo (citati mentre si guardava altro). La copertura
 test è il proxy oggettivo di "quanto codice nessuno ha mai esercitato":
 
-| Modulo | Statement | Coverage | Note |
-|---|---|---|---|
-| `services/fastapi_worker.py` | 3.388 | 37,4% | il file più grosso dell'app; auditato **per router**, mai come corpo unico |
-| `services/routers/workspace.py` | 1.352 | 52,6% | 2.350 righe, **mai in §1** |
-| `services/db_service.py` | 1.092 | 36,7% | data-access di tutto; `get_fatture_cestino` già segnalato fragile |
-| `services/invoice_service.py` | 927 | 44,8% | parsing fatture = ingresso dei dati |
-| `services/auth_service.py` | 736 | 39,4% | sicurezza; toccato solo su `verify_and_migrate_password` |
+La colonna **esposizione live** è stata aggiunta l'8/8/2026 e ha **invertito
+l'ordine di questa lista**: la coverage misura quanto codice nessuno ha
+esercitato, non quanto codice i clienti *usano*. `workspace.py` era priorità 1
+per coverage e "mai in §1", ma gestisce ~29 righe di dati veri.
+
+| Modulo | Statement | Coverage | Esposizione live (misurata 8/8) | Note |
+|---|---|---|---|---|
+| `services/fastapi_worker.py` | 3.388 | 37,4% | alta | ~~corpo unico~~ → **coperto per router per scelta**, vedi punto 4 sotto |
+| ~~`services/routers/workspace.py`~~ | 1.352 | 52,6% | **quasi nulla**: turni 0, regole 0, ingredienti 0, diario 2, inventario 6, dipendenti 1, spese_extra 15/3 sedi | **CHIUSO 8/8** |
+| ~~`services/db_service.py`~~ | 1.092 | 36,7% | alta: 35.622 fatture, 4 endpoint cestino vivi | **CHIUSO 8/8**, 2242/2242 righe lette |
+| `services/invoice_service.py` | 927 | 44,8% | alta | parsing fatture = ingresso dei dati |
+| `services/auth_service.py` | 736 | 39,4% | alta: 16 sessioni attive | sicurezza; toccato solo su `verify_and_migrate_password` |
 | `services/routers/fatture.py` | 662 | 35,8% | chiuso in §1 il 5/8 ma resta poco esercitato |
 | `services/documenti_service.py` | 424 | 34,8% | cap PostgREST già trovato qui |
 | `services/routers/scadenziario.py` | 274 | 25,7% | |
@@ -407,23 +412,46 @@ grep mirato, non riga per riga"*. Non esiste alcun test frontend (`0` file
 `next build`. Il rischio è mitigato dal fatto che la logica di dominio sta nel
 worker Python, ma "mitigato" non è "verificato".
 
-**c) La dimensione Test misura solo Python.** `.coveragerc` ha
-`source = services, utils, config, worker`: il gate CI al 45% non vede una riga
-di TypeScript. Un crollo di qualità nel frontend non fa fallire nulla.
+~~**c) La dimensione Test misura solo Python.**~~ — **DECISA l'8/8/2026**: il gate
+**non** viene esteso al TypeScript, e ora `.coveragerc` lo dice per iscritto con
+le sue ragioni. Non è pigrizia travestita: il frontend **non accede al DB** e non
+contiene logica di dominio (misurato: zero `createClient`/`@supabase`, zero
+`.insert(`/`.update(`/`.delete()` su 395 file), quindi le regole di CLAUDE.md non
+sono nemmeno *esprimibili* lì e un gate TS non proteggerebbe l'invariante che
+conta. Un gate che parte da ~0% è una soglia tenuta bassa per non rompere la CI:
+costo reale, protezione nominale. Al suo posto una **guardia** (Regola 7 in
+`tests/test_regole_dominio_guardia.py`, 2 test): cade se compare una route con
+logica propria fuori dalle 6 dichiarate, o se il frontend inizia a parlare col DB.
+Verificata per mutazione: aggiunta una finta route non-proxy → rossa.
 
 ### Come si chiude §3
 
 Non serve rileggere tutto. Serve **decidere il perimetro e dichiararlo**, invece
 di lasciarlo implicito:
 
-1. Una passata `oneflux-audit` per ciascuno dei moduli in (a) sopra la soglia —
-   priorità a `workspace.py` (mai in §1), `db_service.py` e `auth_service.py`
-   (sicurezza + data-access).
-2. Per il frontend: **non** riga per riga. Definire il sotto-perimetro che
-   conta — le ~6 route API con logica propria e i componenti che scrivono sul
-   DB — e leggere quello.
-3. Estendere il gate coverage al TypeScript, o dichiarare per iscritto che il
-   frontend è coperto solo da `tsc` + build (una scelta legittima, ma va detta).
+1. Una passata `oneflux-audit` per ciascuno dei moduli in (a) sopra la soglia.
+   ~~priorità a `workspace.py`, `db_service.py`, `auth_service.py`~~ — i primi
+   due **CHIUSI l'8/8**, `auth_service.py` in corso. **L'ordine è stato invertito
+   dalle misure**: `db_service.py` è passato davanti a `workspace.py` perché
+   l'esposizione live conta più della coverage (vedi la colonna nella tabella).
+   Restano: `invoice_service.py`, `auth_service.py`, poi i minori.
+2. ~~Per il frontend: le ~6 route API con logica propria e i componenti che
+   scrivono sul DB~~ — **CHIUSO l'8/8**: le 6 route sono state lette (sono tutte
+   auth/sessione + il proxy TTS), e il sotto-perimetro "componenti che scrivono
+   sul DB" **non esiste** — misurato, il frontend non ha alcun accesso al
+   database. Chiuso per assenza di oggetto, non per rinuncia.
+3. ~~Estendere il gate coverage al TypeScript, o dichiararlo~~ — **DECISO
+   l'8/8**, vedi (c) sopra.
+4. **`fastapi_worker.py` esce dalla lista "corpo unico"** (deciso l'8/8): 3.388
+   statement al 37,4% costano più di tre passate intere e producono ri-letture,
+   dato che i router sono già stati auditati singolarmente. Il rischio vero sta
+   negli **helper non-router** che nessuna passata "per router" ha rivendicato —
+   e le due trovate l'8/8 (`_invalidate_home_kpi_cache`, `_briefing_appuntamenti`)
+   sono emerse *partendo da un router*, non leggendo il file. Perimetro corretto
+   per la prossima passata: gli helper condivisi (cache Home KPI, helper
+   briefing, `_merge_override_mensile`, `_DEFAULT_ADMIN_EMAILS`), poche centinaia
+   di righe. Una passata monolitica inviterebbe inoltre a refactor larghi proprio
+   dove `__getattr__` ha già rotto 9 router in produzione.
 
 Finché §3 è aperta, **il ciclo non è chiuso** — anche con la tabella tutta 🟢.
 

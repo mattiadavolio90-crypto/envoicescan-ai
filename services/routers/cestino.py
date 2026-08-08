@@ -227,8 +227,13 @@ def elimina_fattura_soft(
         # Chiude il buco delete→riparto: se questo documento aveva generato un riparto
         # costi-catena e non resta piu' alcuna riga viva nell'account, rimuovilo e
         # ri-aggrega le quote mensili (altrimenti il costo resta fantasma nel MOL).
-        from services.db_service import _pulisci_riparto_orfano
+        from services.db_service import _pulisci_riparto_orfano, clear_fatture_cache
         _pulisci_riparto_orfano(sb, user_id, file_origine)
+
+        # Questo endpoint scrive su `fatture` senza passare da db_service, quindi
+        # l'invalidazione va ripetuta qui: senza, la lista fatture e il cestino
+        # restano fermi fino al TTL (60-120s) dopo lo spostamento nel cestino.
+        clear_fatture_cache()
 
         return {"success": True, "righe_eliminate": righe}
 
