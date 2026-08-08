@@ -72,7 +72,7 @@ logger = logging.getLogger("worker.run")
 # incassi dei clienti spariscono dall'app (incidente 9-11 giu 2026: killswitch
 # lasciato attivo per sbaglio dopo un deploy). Il workflow ricavi_queue_monitor
 # allarma via email se la coda resta bloccata, ma il killswitch va trattato
-# come stato di manutenzione TEMPORANEO, mai permanente. Il loro qui sotto
+# come stato di manutenzione TEMPORANEO, mai permanente. Il log qui sotto
 # ribadisce ogni ora da quanto tempo siamo in pausa per renderlo evidente.
 if os.environ.get("WORKER_ENABLED", "1").strip() in ("0", "false", "False", "no"):
     _paused_since = time.monotonic()

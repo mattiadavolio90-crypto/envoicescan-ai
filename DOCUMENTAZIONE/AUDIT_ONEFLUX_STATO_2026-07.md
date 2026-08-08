@@ -140,7 +140,30 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   Ora `_FakeQuery` filtra davvero (eq/in_/`deleted_at`) e le righe di prova
   includono un secondo utente, un altro file e una riga soft-deleted — senza
   quelle, il filtro non ha nulla da escludere e il test resta vacuo comunque.
-- **`worker/run.py`** — 0%, mai importato dalla suite.
+- ~~**`worker/run.py`** — 0%, mai importato dalla suite~~ — **CHIUSA l'8/8/2026**.
+  Misurato prima di scrivere: confermato 0% ("Module worker.run was never
+  imported"). Nessun refactoring: il `while True` di `main()` si esce facendo
+  sollevare una sentinella `BaseException` da `time.sleep` mockato dopo N
+  iterazioni — file entry point, nessun chiamante da servire con
+  un'interfaccia più testabile. 36 test nuovi (`tests/test_worker_run.py`),
+  coverage 0% → **93%**. Il corpo di `main()` non era "banale attorno a
+  funzioni già coperte" come ipotizzato: conteneva backoff esponenziale con
+  jitter su errore mai verificato, sleep adattivo (1s se `batch_claimed>0`
+  altrimenti poll interval), 3 gate temporali indipendenti
+  (`time.monotonic()`) per purge/retention mai testati — proprio la classe di
+  bug già avvenuta nell'audit DevOps/Config del 30/7 (init a 0.0 rimandava il
+  primo giro di ore) — e il killswitch `WORKER_ENABLED=0` legato
+  all'incidente reale 9-11/6 (coda ricavi bloccata). Prima trappola:
+  `_StopLoop` doveva ereditare da `BaseException`, non `Exception` — altrimenti
+  il blocco `except Exception` di `main()` la intercetta come un errore
+  qualunque e il loop continua invece di uscire verso il test (4 test rossi
+  finché non corretto). Seconda: `caplog` di default cattura da WARNING in su,
+  i log "righe eliminate" sono `logger.info` — serviva
+  `caplog.set_level(logging.INFO, logger="worker.run")` esplicito, e
+  `r.getMessage()` non `r.message` per leggere il testo interpolato. Le 9
+  righe residue scoperte (50-51, 55→58, 98, 104, 156, 167-170) sono
+  configurazione ambientale marginale (fallback `dotenv` assente, encoding
+  non-Windows, `SUPABASE_KEY` legacy) — basso valore, lasciate.
 - ~~**`services/routers/riparto.py`** — 7 endpoint su 11 senza alcun test~~ —
   **PARZIALMENTE CHIUSA l'8/8/2026**. Il conteggio era sbagliato (10
   endpoint, non 11) e il file era già al 66%, non scoperto come suggerito.
