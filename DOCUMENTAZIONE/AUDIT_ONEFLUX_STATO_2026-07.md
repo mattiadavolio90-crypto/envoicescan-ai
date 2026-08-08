@@ -150,8 +150,18 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   verificate rosse. Restano scoperti 2 endpoint secondari di sola lettura
   (`riparto_incoerenze`, `gruppo_costi_comuni`): priorità inferiore, la voce
   non è barrata del tutto. Dettaglio in STORICO §15.
-- **`verify_and_migrate_password`** (`services/auth_service.py`) — il ramo SHA256
-  legacy + migrazione automatica (riscrive `password_hash` sul DB) resta scoperto.
+- ~~**`verify_and_migrate_password`** (`services/auth_service.py`) — il ramo SHA256
+  legacy + migrazione automatica (riscrive `password_hash` sul DB) resta scoperto~~ —
+  **CHIUSA l'8/8/2026**. Il ramo Argon2 (657-663) era già coperto; scoperto
+  solo 665-685 (SHA256 legacy + migrazione). 9 test nuovi: match/non-match
+  SHA256, migrazione riuscita (hash e `id` scritti sull'utente giusto),
+  migrazione fallita ma password corretta → login comunque concesso
+  (by-design, l'utente non perde l'accesso), `get_supabase_client` non
+  ottenibile, password non stringa. 2 mutazioni verificate rosse (match
+  SHA256 disattivato, `id` scritto sbagliato nell'update). `argon2` è
+  mockato globalmente da `tests/conftest.py`: i test Argon2 verificano il
+  wiring (`ph.verify`/`ph.hash` chiamati con gli argomenti giusti), non un
+  vero round-trip di hashing. Dettaglio in STORICO §16.
 - **Il mock globale di `tests/conftest.py` va ripensato** — `openai`, `requests`,
   `argon2`, `xmltodict`, `supabase`, `tenacity` sono **tutti installati davvero**:
   il conftest sta oscurando librerie funzionanti e rende vacui i test sui rami

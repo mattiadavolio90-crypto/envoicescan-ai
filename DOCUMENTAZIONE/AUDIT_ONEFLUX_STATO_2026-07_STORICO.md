@@ -767,3 +767,57 @@ Restano aperte le altre 4 voci di §2 (`worker/run.py`, `verify_and_migrate_pass
 mock globale di `conftest.py`, `.coveragerc` non gate) e i due endpoint
 secondari di sola lettura di `riparto.py` (`riparto_incoerenze`,
 `gruppo_costi_comuni`) — non bloccanti per questa voce, priorita' inferiore.
+
+
+---
+
+## 16. §2 copertura test — `verify_and_migrate_password` — 8/8/2026
+
+Scelta fra le 4 voci rimaste con lo stesso metodo: misurare, non dedurre dal
+doc. Confrontati i due candidati "scrivibili in una sessione senza
+refactoring": `worker/run.py` e `verify_and_migrate_password`.
+`worker/run.py` e' confermato 0%, ma e' quasi interamente il corpo di
+`main()` — un `while True` con `time.sleep` attorno a `run_cycle()`/
+`run_email_cycle()` gia' coperti altrove; testarlo bene richiederebbe prima
+un refactoring per estrarre il corpo del ciclo, non solo test — rimandato.
+`verify_and_migrate_password` (`services/auth_service.py:637-685`) e' una
+funzione pura gia' isolata: misurato con precisione riga per riga (non ad
+occhio) che il ramo Argon2 (657-663) era gia' coperto da altri test del
+progetto, il ramo SHA256 legacy + migrazione (665-685) a zero — scelta
+questa.
+
+**Scritto** `tests/test_verify_and_migrate_password.py`, 9 test: hash assente/
+vuoto, Argon2 corretta/sbagliata (wiring, vedi sotto), SHA256 match+migrazione
+(hash e riga utente giusti), SHA256 non-match, migrazione fallita ma password
+corretta → login concesso comunque (by-design: l'utente non deve perdere
+l'accesso, resta con l'hash SHA256 fino al prossimo tentativo riuscito),
+`get_supabase_client` non ottenibile (stesso comportamento — l'eccezione e'
+catturata dal **try interno** 674-680, non da quello esterno 666-685: primo
+tentativo di test aveva l'aspettativa sbagliata, `False` invece di `True`,
+corretto dopo aver riletto il codice), password non stringa (rompe
+`password.encode()`, catturato dal try esterno → fallisce chiuso). Coverage
+del file: 30% → 32% (il file e' grande, 736 statement; il ramo target ne
+vale ~20).
+
+**`argon2` e' mockato globalmente da `tests/conftest.py`** (voce aperta di
+§2, non toccata qui): il primo tentativo di test Argon2 istanziava
+`argon2.PasswordHasher()` vero e falliva perche' il modulo e' un
+`MagicMock`. Corretto patchando `services.auth_service.ph` direttamente: i
+test Argon2 verificano che `ph.verify`/`ph.hash` siano chiamati con gli
+argomenti giusti e che il risultato sia propagato, non un vero round-trip di
+hashing — quello non e' testabile in questo ambiente finche' la voce mock
+globale resta aperta.
+
+**Mutazione verificata su 2 rami, non dedotta**: sostituito il confronto
+`_hmac.compare_digest(sha, stored)` con `if False` → 3 test diventano rossi
+(match, migrazione fallita+login concesso, get_supabase_client fallisce —
+tutti e tre dipendono dal match che non scatta piu'). Ripristinato, poi
+sostituito `.eq('id', user_record.get('id'))` con un id hardcoded sbagliato
+nella UPDATE di migrazione → 1 test rosso (scriverebbe l'hash sull'utente
+sbagliato). Codice sorgente ripristinato dopo ogni prova (`git diff`
+verificato pulito). Suite `auth`/`password` completa rilanciata dopo il
+ripristino: 45 passed, 1 skipped, nessuna regressione.
+
+Restano aperte 3 voci di §2 (`worker/run.py`, mock globale di
+`conftest.py`, `.coveragerc` non gate) e i due endpoint secondari di
+`riparto.py` gia' annotati in §15.
