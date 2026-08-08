@@ -35,12 +35,24 @@ CRITICAL, 3 HIGH (tutti confermati **attivi** sul DB live, non teorici — vedi
 sotto), 8 MEDIUM, 6 LOW/INFO.
 
 **I 3 HIGH sono stati fixati l'8/8/2026, più il MEDIUM di privilege
-escalation.** Ogni fix è coperto da test nuovi (24 in 3 file) e ogni test è
+escalation.** Ogni fix è coperto da test nuovi (26 in 3 file) e ogni test è
 stato verificato **per mutazione**: rimosso il fix, il test cade; ripristinato,
 torna verde. Non è una formalità — il test sul febbraio riproduce l'errore
 esatto (`day is out of range for month`), e quello sull'ordine SELECT/UPDATE
-cade anche se il risultato resta giusto per caso. Suite completa: 10.631
-passed, 0 failed; coverage 50% → **51%** (gate 45 tenuto).
+cade anche se il risultato resta giusto per caso. Suite completa: 10.633
+passed, 0 failed; coverage **50.41% → 50.72%** (gate 45 tenuto; misurato con
+`coverage json`, non l'arrotondamento del report a schermo).
+
+**Il `code-reviewer` ha bocciato la prima versione del fix, a ragione.** Avevo
+invalidato la cache per-ristorante partendo dal `ristorante_id` di **una sola**
+riga (`.limit(1)`), sull'assunto che un gruppo della coda appartenesse a una
+sede sola. Falso e non verificato: la coda raggruppa per *descrizione* su tutti
+i clienti, e sul DB live **47 gruppi su 264 sono cross-ristorante, fino a 5
+sedi** — il fix ne sistemava una e lasciava le altre 4 stantie, cioè riproduceva
+il difetto che diceva di chiudere. Ora si invalidano tutti i `ristorante_id`
+distinti. È lo stesso errore di metodo già in memoria: **una premessa sul
+perimetro va interrogata sul DB prima di scriverla nel codice**, non solo la
+severità di un finding.
 
 ~~`services/ai_service.py:3392,3453` e `:3579-3990`~~ — **LETTO l'8/8/2026**,
 5212/5212 righe. Il riferimento `file:riga` ereditato dal ciclo precedente era
@@ -75,11 +87,17 @@ intenzionale e documentato, chiamato da GitHub Actions). Due HIGH:
 (1) `admin_qualita_classifica` legge la categoria "precedente" per l'audit
 log **dopo** aver già scritto quella nuova (`:987` rilegge righe appena
 aggiornate da `:984`) — l'endpoint "Annulla" della coda categorie non annulla
-nulla, riscrive la stessa categoria appena data. **Confermato attivo sul DB**:
-`ai_review_log`, **51 righe su 51** con `categoria_da = categoria_a` (query
-`select count(*) filter (where categoria_da = categoria_a), count(*) from
-ai_review_log where azione = 'auto_review'` — nota: l'azione loggata si
-chiama `auto_review`, non `classifica` come ipotizzato al primo giro).
+nulla, riscrive la stessa categoria appena data. Bug **confermato leggendo il
+codice** (`:987` rileggeva le righe già aggiornate da `:984`).
+**Rettifica sull'evidenza**, segnalata dal `code-reviewer`: le "51 righe su 51
+con `categoria_da = categoria_a`" citate al primo giro **non sono la prova** di
+questo bug. Sono tutte `azione = 'auto_review'`, l'unica azione presente in
+`ai_review_log`, e lì l'uguaglianza è **deliberata** — il ramo sconti logga
+`(cat, cat)` di proposito (`admin.py:1331`). Di `azione = 'classifica'` non
+esiste nessuna riga: l'endpoint bacato non era ancora mai stato loggato. Il
+difetto era reale e va fixato lo stesso, ma la severità andava argomentata sul
+codice, non su quel numero. Terza volta in questo ciclo che un conteggio viene
+letto come conferma di ciò che si stava già cercando.
 (2) Nessuno dei 5 percorsi che scrivono `fatture.categoria`/`needs_review`
 in questo router invalida la cache briefing — stesso difetto, stesso
 meccanismo, del caso già chiuso il 7/8 su `ricavi.py`: l'admin bonifica la
@@ -87,11 +105,12 @@ coda, il cliente in Home vede il numero vecchio fino a 30 minuti.
 **Entrambi FIXATI l'8/8/2026**: la lettura di `categoria_da` spostata prima
 dell'update (il test difende l'**ordine** delle operazioni, non solo il valore,
 così una futura rilettura post-update ricadrebbe); invalidazione aggiunta su
-tutti e 5 i percorsi, per-ristorante dove la riga è di una sede sola e globale
-dove l'operazione è cross-cliente (`admin_auto_review` itera su tutti gli
-account: invalidare un solo `ristorante_id` avrebbe lasciato stale tutti gli
-altri). Verificato prima di scrivere il fix che `ristorante_id` è sempre
-valorizzato: 537/537 righe con `needs_review = true`. 4 MEDIUM, incluso un
+tutti e 5 i percorsi — su **tutti** i `ristorante_id` distinti coinvolti dagli
+ids (vedi la rettifica in testa a §1: i gruppi sono cross-sede), e globale in
+`admin_auto_review`, che itera su tutti gli account. Verificato sul DB che
+`ristorante_id` è sempre valorizzato (537/537 righe con `needs_review = true`),
+ma il ramo senza rid resta e fa un clear globale: mai un no-op silenzioso.
+4 MEDIUM, incluso un
 vettore di privilege escalation **anch'esso fixato**: `admin_cambia_email` e
 `admin_crea_cliente` ora rifiutano (403) un'email presente in `ADMIN_EMAILS`
 per un account cliente — mancava in **due** punti, non solo in quello trovato
@@ -359,11 +378,16 @@ Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
 mockato globalmente, quindi il decoratore `@retry` su
 `_chiama_gpt_classificazione` restituiva un MagicMock e la funzione vera non era
 chiamabile — qualunque assert avrebbe confrontato un mock, passando per il
-motivo sbagliato. Aggirato **localmente** (fixture che ricarica il modulo con
-`retry` pass-through e ripristina lo stato dopo, verificato che non contamina la
-suite: 10.631 passed), non toccando il conftest. È la conferma concreta che la
-voce §2 non è teorica: il mock rende vacui i test sui rami che usano librerie
-mockate, e ogni file di test che li tocca deve pagare questo dazio.
+motivo sbagliato. Il primo workaround (fixture con `importlib.reload` del modulo
+e `retry` pass-through) è stato **scartato dopo la review**: ricaricare
+`ai_service` ricrea le classi di eccezione, mentre `upload_handler.py` cattura
+`AIDailyLimitExceededError` & co. all'import — sarebbe rimasto legato alle
+classi vecchie, con un `except` che non matcha più. La suite restava verde solo
+per l'ordine di collection, cioè per fortuna. Soluzione finale senza reload né
+stato globale toccato: la funzione non decorata si recupera dal mock stesso, che
+registra la chiamata al decoratore. È la conferma concreta che la voce §2 non è
+teorica: il mock rende vacui i test sui rami che usano librerie mockate, e ogni
+file di test che li tocca deve pagare questo dazio.
 
 MEDIUM/LOW consapevolmente **non** fixati (documentati, non dimenticati): retry
 GPT sulle righe rifiutate consapevolmente dal modello, N+1 e RPC SETOF di

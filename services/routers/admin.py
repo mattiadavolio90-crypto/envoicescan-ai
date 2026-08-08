@@ -987,14 +987,20 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
     # Info per audit log e memoria: la lettura va PRIMA dell'update, altrimenti
     # `categoria_da` e' la categoria nuova e "Annulla" riscrive la stessa categoria
     # invece di ripristinare quella precedente.
-    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria,ristorante_id").in_("id", body.ids).limit(1).execute()
+    #
+    # Niente `.limit(1)`: la coda raggruppa per DESCRIZIONE su tutti i clienti
+    # (admin_qualita_coda mostra "N clienti" per gruppo), quindi `body.ids` e'
+    # regolarmente cross-ristorante — misurati 47 gruppi su 264, fino a 5 sedi.
+    # Servono tutti i ristorante_id distinti, o si invaliderebbe una sede sola
+    # lasciando le altre col contatore stantio.
+    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria,ristorante_id").in_("id", body.ids).execute()
     prima_desc = ""
     prima_cat_da = ""
-    rid_riga = None
+    rid_coinvolti = set()
     if row_resp.data:
         prima_desc = row_resp.data[0].get("descrizione", "")
         prima_cat_da = row_resp.data[0].get("categoria") or ""
-        rid_riga = row_resp.data[0].get("ristorante_id")
+        rid_coinvolti = {r.get("ristorante_id") for r in row_resp.data if r.get("ristorante_id")}
 
     update_payload = {
         "categoria": body.categoria,
@@ -1003,7 +1009,10 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         "reviewed_by": f"admin:{admin_user.get('email', 'admin')}",
     }
     sb.table("fatture").update(update_payload).in_("id", target_ids).is_("deleted_at", "null").execute()
-    _invalidate_fatture_rows_cache(rid_riga)
+    for _rid in rid_coinvolti:
+        _invalidate_fatture_rows_cache(_rid)
+    if not rid_coinvolti:
+        _invalidate_fatture_rows_cache()
 
     if row_resp.data:
         if body.salva_memoria:

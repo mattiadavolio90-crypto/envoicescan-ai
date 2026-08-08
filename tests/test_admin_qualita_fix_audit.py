@@ -121,17 +121,12 @@ class TestCategoriaDaPrimaDellUpdate:
         ops_fatture = [op for op, t in sb.ops if t == "fatture"]
         assert ops_fatture.index("select") < ops_fatture.index("update")
 
-    def test_invalidazione_cache_chiamata_col_ristorante(self):
-        rows = {
-            "fatture": [{
-                "id": 1, "descrizione": "X", "categoria": "Da Classificare",
-                "prezzo_unitario": 1.0, "totale_riga": 1.0, "ristorante_id": "rid-1",
-            }],
-            "prodotti_master": [], "ai_review_log": [],
-        }
-        sb = _FakeSB(rows)
+    def _classifica(self, fatture):
+        sb = _FakeSB({"fatture": fatture, "prodotti_master": [], "ai_review_log": []})
         inval = MagicMock()
-        body = SimpleNamespace(ids=[1], categoria="VERDURE", salva_memoria=False)
+        body = SimpleNamespace(
+            ids=[r["id"] for r in fatture], categoria="VERDURE", salva_memoria=False,
+        )
         with patch.multiple(
             admin,
             get_supabase_client=MagicMock(return_value=sb),
@@ -139,7 +134,37 @@ class TestCategoriaDaPrimaDellUpdate:
             _invalidate_fatture_rows_cache=inval,
         ):
             admin.admin_qualita_classifica(body, admin_user=_ADMIN)
+        return inval
+
+    def test_invalidazione_cache_chiamata_col_ristorante(self):
+        inval = self._classifica([{
+            "id": 1, "descrizione": "X", "categoria": "Da Classificare",
+            "prezzo_unitario": 1.0, "totale_riga": 1.0, "ristorante_id": "rid-1",
+        }])
         inval.assert_called_once_with("rid-1")
+
+    def test_invalidazione_copre_TUTTE_le_sedi_del_gruppo(self):
+        """La coda raggruppa per descrizione su tutti i clienti: un gruppo puo'
+        contenere righe di piu' sedi (misurati 47 gruppi su 264, fino a 5 sedi).
+        Invalidarne una sola lascia le altre col contatore stantio per 30 min."""
+        inval = self._classifica([
+            {"id": 1, "descrizione": "COSTI DI SPEDIZIONE", "categoria": "Da Classificare",
+             "prezzo_unitario": 1.0, "totale_riga": 1.0, "ristorante_id": "rid-1"},
+            {"id": 2, "descrizione": "COSTI DI SPEDIZIONE", "categoria": "Da Classificare",
+             "prezzo_unitario": 1.0, "totale_riga": 1.0, "ristorante_id": "rid-2"},
+            {"id": 3, "descrizione": "COSTI DI SPEDIZIONE", "categoria": "Da Classificare",
+             "prezzo_unitario": 1.0, "totale_riga": 1.0, "ristorante_id": "rid-3"},
+        ])
+        invalidati = {c.args[0] for c in inval.call_args_list}
+        assert invalidati == {"rid-1", "rid-2", "rid-3"}
+
+    def test_senza_ristorante_id_invalida_tutto(self):
+        """Nessun rid ricavabile → clear globale, mai un silenzioso no-op."""
+        inval = self._classifica([{
+            "id": 1, "descrizione": "X", "categoria": "Da Classificare",
+            "prezzo_unitario": 1.0, "totale_riga": 1.0, "ristorante_id": None,
+        }])
+        inval.assert_called_once_with()
 
 
 # ─── 2. invalidazione cache su annulla ───────────────────────────────────────

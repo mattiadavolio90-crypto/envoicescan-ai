@@ -12,42 +12,41 @@ Questi test verificano le DUE proprieta' che contano:
 - la sicurezza (nessuna categoria sbagliata assegnata) resta garantita;
 - il troncamento viene ora loggato con batch_size e max_tokens.
 """
-import importlib
 import json
 import logging
-import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+import services.ai_service as ai
+
 
 @pytest.fixture(scope="module")
-def ai():
-    """`services.ai_service` ricaricato con `tenacity.retry` pass-through.
+def chiama_gpt():
+    """La funzione `_chiama_gpt_classificazione` NON decorata.
 
-    Il conftest globale mocka l'intero modulo `tenacity`, quindi il decoratore
-    `@retry` su `_chiama_gpt_classificazione` diventa un MagicMock e la funzione
-    vera non e' piu' chiamabile: qualunque assert sul suo risultato confronterebbe
-    un MagicMock. Qui si sostituisce solo `retry` con l'identita' e si ricarica il
-    modulo, ripristinando poi lo stato precedente per non alterare gli altri test.
+    Il conftest globale mocka l'intero modulo `tenacity`, quindi `@retry` la
+    sostituisce con un MagicMock: chiamarla restituirebbe un mock e ogni assert
+    passerebbe per il motivo sbagliato. La funzione vera si recupera dal mock
+    stesso, che registra la chiamata al decoratore.
+
+    Deliberatamente NON si usa `importlib.reload`: ricaricare il modulo ricrea le
+    classi di eccezione, mentre `services/upload_handler.py` cattura
+    `AIDailyLimitExceededError` & co. all'import — resterebbe legato alle classi
+    vecchie e un `except` non matcherebbe piu'. Qui non si tocca lo stato globale.
     """
-    ten_orig = sys.modules.get("tenacity")
-    ten = MagicMock()
-    ten.retry = lambda *a, **k: (lambda f: f)
-    ten.stop_after_attempt = MagicMock()
-    ten.wait_exponential = MagicMock()
-    ten.retry_if_exception_type = MagicMock()
-    sys.modules["tenacity"] = ten
+    import tenacity
 
-    import services.ai_service as _ai
-    modulo = importlib.reload(_ai)
-    try:
-        yield modulo
-    finally:
-        if ten_orig is not None:
-            sys.modules["tenacity"] = ten_orig
-        importlib.reload(_ai)
+    chiamate = tenacity.retry.return_value.call_args_list
+    for c in chiamate:
+        f = c.args[0] if c.args else None
+        if getattr(f, "__name__", None) == "_chiama_gpt_classificazione":
+            return f
+    pytest.fail(
+        "impossibile recuperare _chiama_gpt_classificazione non decorata: "
+        "il mock di tenacity nel conftest e' cambiato"
+    )
 
 
 def _fake_client(payload: dict, finish_reason: str):
@@ -74,10 +73,10 @@ def _payload_parziale():
     ]}
 
 
-def test_troncamento_logga_batch_e_max_tokens(ai, caplog):
+def test_troncamento_logga_batch_e_max_tokens(chiama_gpt, caplog):
     client = _fake_client(_payload_parziale(), finish_reason="length")
     with caplog.at_level(logging.WARNING, logger=ai.logger.name):
-        ai._chiama_gpt_classificazione(_ARTICOLI, client, max_tokens=4096)
+        chiama_gpt(_ARTICOLI, client, max_tokens=4096)
 
     troncamento = [r for r in caplog.records if "TRONCATA" in r.getMessage()]
     assert len(troncamento) == 1, "il troncamento deve essere loggato una volta"
@@ -86,7 +85,7 @@ def test_troncamento_logga_batch_e_max_tokens(ai, caplog):
     assert "4" in msg and "4096" in msg, "servono batch_size e max_tokens nel log"
 
 
-def test_nessun_log_troncamento_quando_la_risposta_e_completa(ai, caplog):
+def test_nessun_log_troncamento_quando_la_risposta_e_completa(chiama_gpt, caplog):
     payload = {"risultati": [
         {"idx": 0, "categoria": "SCATOLAME E CONSERVE", "confidenza": "alta"},
         {"idx": 1, "categoria": "LATTICINI", "confidenza": "alta"},
@@ -95,18 +94,18 @@ def test_nessun_log_troncamento_quando_la_risposta_e_completa(ai, caplog):
     ]}
     client = _fake_client(payload, finish_reason="stop")
     with caplog.at_level(logging.WARNING, logger=ai.logger.name):
-        out = ai._chiama_gpt_classificazione(_ARTICOLI, client, max_tokens=4096)
+        out = chiama_gpt(_ARTICOLI, client, max_tokens=4096)
 
     assert not [r for r in caplog.records if "TRONCATA" in r.getMessage()]
     assert out == ["SCATOLAME E CONSERVE", "LATTICINI", "OLIO E CONDIMENTI", "BIRRE"]
 
 
-def test_righe_mancanti_restano_da_classificare_non_slittano(ai):
+def test_righe_mancanti_restano_da_classificare_non_slittano(chiama_gpt):
     """Regola di dominio #1: mai una categoria inventata al posto di quella vera.
     Le righe non restituite devono valere "Da Classificare", NON la categoria
     dell'articolo successivo."""
     client = _fake_client(_payload_parziale(), finish_reason="length")
-    out = ai._chiama_gpt_classificazione(_ARTICOLI, client, max_tokens=4096)
+    out = chiama_gpt(_ARTICOLI, client, max_tokens=4096)
 
     assert out[0] == "SCATOLAME E CONSERVE"
     assert out[1] == "LATTICINI"
@@ -114,7 +113,7 @@ def test_righe_mancanti_restano_da_classificare_non_slittano(ai):
     assert out[3] == "Da Classificare"
 
 
-def test_finish_reason_assente_non_solleva(ai):
+def test_finish_reason_assente_non_solleva(chiama_gpt):
     """Un client/SDK che non espone finish_reason non deve rompere la chiamata."""
     msg = SimpleNamespace(content=json.dumps(_payload_parziale()))
     choice = SimpleNamespace(message=msg)  # nessun finish_reason
@@ -122,5 +121,5 @@ def test_finish_reason_assente_non_solleva(ai):
     client = MagicMock()
     client.chat.completions.create.return_value = resp
 
-    out = ai._chiama_gpt_classificazione(_ARTICOLI, client, max_tokens=4096)
+    out = chiama_gpt(_ARTICOLI, client, max_tokens=4096)
     assert len(out) == len(_ARTICOLI)
