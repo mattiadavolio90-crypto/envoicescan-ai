@@ -97,8 +97,8 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   scritta (Regola 6 in `tests/test_regole_dominio_guardia.py`), ancorata
   ai **campi di ricavo** e non alla tabella — ancorarla alla tabella produce 8
   falsi positivi, misurati. Dettaglio e lezioni 40-41 in STORICO §14.
-- **`services/upload_handler.py`** — **codice vivo COPERTO il 7/8/2026**, legacy
-  escluso per scelta. Il «909 statement scoperti» scritto qui era **sbagliato**
+- **`services/upload_handler.py`** — **codice vivo COPERTO il 7-8/8/2026** (PR #17),
+  legacy escluso per scelta. Il «909 statement scoperti» scritto qui era **sbagliato**
   (misurato: 981/1108), ma soprattutto il numero aggregato **nascondeva la cosa
   che contava**: il file è due mondi. Split misurato dal report JSON di coverage:
   **codice vivo** (righe 1-892: dedup, lock upload, gating AI — importato dal
