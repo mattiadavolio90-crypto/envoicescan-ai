@@ -141,7 +141,15 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   includono un secondo utente, un altro file e una riga soft-deleted — senza
   quelle, il filtro non ha nulla da escludere e il test resta vacuo comunque.
 - **`worker/run.py`** — 0%, mai importato dalla suite.
-- **`services/routers/riparto.py`** — 7 endpoint su 11 senza alcun test.
+- ~~**`services/routers/riparto.py`** — 7 endpoint su 11 senza alcun test~~ —
+  **PARZIALMENTE CHIUSA l'8/8/2026**. Il conteggio era sbagliato (10
+  endpoint, non 11) e il file era già al 66%, non scoperto come suggerito.
+  Misurato e coperto il punto di rischio reale: `riparto_da_fattura`
+  (l'endpoint che ripartisce una fattura di struttura sul gruppo) era a 0%,
+  ora coperto — 13 test nuovi, coverage file 66% → 78%, 2 mutazioni
+  verificate rosse. Restano scoperti 2 endpoint secondari di sola lettura
+  (`riparto_incoerenze`, `gruppo_costi_comuni`): priorità inferiore, la voce
+  non è barrata del tutto. Dettaglio in STORICO §15.
 - **`verify_and_migrate_password`** (`services/auth_service.py`) — il ramo SHA256
   legacy + migrazione automatica (riscrive `password_hash` sul DB) resta scoperto.
 - **Il mock globale di `tests/conftest.py` va ripensato** — `openai`, `requests`,

@@ -706,3 +706,64 @@ produzione, che nell'override **non esiste**.
     test verde va indagata prima come mutazione incompleta** — tre volte in
     questa sessione il blocco mutato aveva una seconda chiamata all'override piu'
     in basso, e la conclusione "la guardia e' debole" sarebbe stata sbagliata.
+
+
+---
+
+## 15. §2 copertura test — `riparto_da_fattura` — 8/8/2026
+
+**Scelta fra le 5 voci aperte in §2**: non dal rischio "teorico" scritto nel
+doc ma dalla misura reale. Prima di pianificare, misurata la coverage vera di
+`services/routers/riparto.py` con gli 86 test esistenti che matchano
+`-k riparto`: **66%**, non "7 endpoint su 11 senza test" come scritto — il
+file ha **10** endpoint (contati con grep su `@router.`, non 11), e la
+maggioranza era gia' coperta. Ma il blocco 215-284 — l'intero corpo di
+**`riparto_da_fattura`**, l'endpoint che ripartisce una fattura di struttura
+sul gruppo (calcola importo dalle righe, decide le quote, marca
+`ripartita_su_gruppo`, esplode per categoria) — era **0%**, zero test.
+Confrontati anche gli altri due candidati per completezza: `worker/run.py`
+confermato 0%/mai importato ma e' quasi tutto orchestrazione (loop, sleep,
+killswitch, backoff) attorno a `run_cycle()`/`run_email_cycle()` gia' coperti
+altrove (`email_queue_processor.py` chiuso il 7/8); `verify_and_migrate_password`
+confermato scoperto ma e' un ramo legacy SHA256 a superficie ridotta.
+`riparto_da_fattura` restava il piu' alto rischio-cliente reale: endpoint di
+scrittura sul MOL multi-sede, stessa classe dell'incidente FASTWEB del 22/7
+gia' citato nei commenti di `_crea_riparto_con_quote`.
+
+**Scritto** `tests/test_riparto_da_fattura.py`, 13 test: happy path
+equa/percentuali, periodo di competenza (con e senza `data_competenza`), 5
+casi di errore (file_origine mancante, tipo non valido, fattura non trovata,
+gia' ripartita, gating 1 sola sede), regola fornitore opzionale (salvata e
+non), fallback quando l'esplosione per categoria fallisce (non deve
+propagare). Coverage del file: 66% → **78%**.
+
+**Mutazione verificata su 2 rami, non dedotta** (lezione 41 sopra): rimosso
+temporaneamente il guard "gia' ripartita" (righe 236-237, sostituito con
+`if False`) → `test_da_fattura_gia_ripartita_409_non_duplica` diventa rosso.
+Rimossa temporaneamente la marcatura `ripartita_su_gruppo=True` post-scrittura
+(righe 273-274, commentata) → 2 test diventano rossi (`..._crea_riparto_e_marca_righe`
+e `..._esplosione_categoria_fallisce_non_rompe_endpoint`). Codice sorgente
+ripristinato subito dopo ogni prova (`git diff` verificato pulito). Suite
+`riparto` completa rilanciata dopo il ripristino: 99 passed, 2 skipped,
+nessuna regressione.
+
+**`code-reviewer` (8/8, stessa sessione)**: verificate indipendentemente tutte
+le cifre sopra (10 endpoint, 66%→78%, 99 passed/2 skipped, i due endpoint
+residui) — tutte confermate. Rilanciate le 2 mutazioni dichiarate piu' altre
+3 non richieste (data_competenza ignorata, piva_cedente ignorata, except
+esplosione rimosso): **5 su 5 uccise**, nessun test vacuo. Trovato un limite
+del fake non descritto qui: `_Query` non registra ne' applica `.eq()`/`.is_()`
+su NESSUNA query (non solo la select `fatture` come scritto sopra) — misurato
+togliendo `.eq("user_id", ...)` dall'UPDATE di marcatura (riga 274) e
+`.is_("deleted_at", "null")` dalla SELECT (riga 231): la suite resta verde in
+entrambi i casi. Non e' un bug nel codice (diverso dal caso upload_handler,
+dove il fake mascherava una perdita reale) ma una classe di regressione che
+questa suite non difende: un domani un `.eq("user_id")` rimosso per errore
+dall'UPDATE scriverebbe `ripartita_su_gruppo=True` su fatture di un altro
+account con lo stesso `file_origine`, e nessun test lo intercetterebbe.
+Da chiudere solo se si decide di rendere `_Query` stateful sui filtri.
+
+Restano aperte le altre 4 voci di §2 (`worker/run.py`, `verify_and_migrate_password`,
+mock globale di `conftest.py`, `.coveragerc` non gate) e i due endpoint
+secondari di sola lettura di `riparto.py` (`riparto_incoerenze`,
+`gruppo_costi_comuni`) — non bloccanti per questa voce, priorita' inferiore.
