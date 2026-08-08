@@ -16,8 +16,10 @@
 #   services/auth_service.py     36%
 #   services/margine_service.py  85%  (il piu' coperto fra i critici)
 #
-# Non e' un gate della CI: nessun workflow fallisce se la percentuale scende.
-# E' una misura da rilanciare a mano quando si vuole sapere dove si sta.
+# Gate CI dall'8/8/2026 (.github/workflows/tests.yml, job pytest):
+# `coverage report --fail-under=45` fallisce il job se la percentuale scende
+# sotto la baseline. Misurato l'8/8/2026: 50% (23.275 statement) — soglia
+# tenuta a 45 come margine, non alzata al numero esatto misurato.
 #
 # Uso (senza argomenti: usa `testpaths` di pytest.ini, come fa la CI):
 #   python -m coverage run -m pytest -q

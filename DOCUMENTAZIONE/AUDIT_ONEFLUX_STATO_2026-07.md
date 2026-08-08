@@ -165,14 +165,17 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   configurazione ambientale marginale (fallback `dotenv` assente, encoding
   non-Windows, `SUPABASE_KEY` legacy) — basso valore, lasciate.
 - ~~**`services/routers/riparto.py`** — 7 endpoint su 11 senza alcun test~~ —
-  **PARZIALMENTE CHIUSA l'8/8/2026**. Il conteggio era sbagliato (10
+  **CHIUSA l'8/8/2026** (commit `<pending>`, verificare `/health` prima di
+  fidarsi). Il conteggio era sbagliato (10
   endpoint, non 11) e il file era già al 66%, non scoperto come suggerito.
   Misurato e coperto il punto di rischio reale: `riparto_da_fattura`
   (l'endpoint che ripartisce una fattura di struttura sul gruppo) era a 0%,
   ora coperto — 13 test nuovi, coverage file 66% → 78%, 2 mutazioni
-  verificate rosse. Restano scoperti 2 endpoint secondari di sola lettura
-  (`riparto_incoerenze`, `gruppo_costi_comuni`): priorità inferiore, la voce
-  non è barrata del tutto. Dettaglio in STORICO §15.
+  verificate rosse. Chiusi anche i 2 endpoint secondari di sola lettura
+  rimasti (`riparto_incoerenze`, `gruppo_costi_comuni`) nella stessa
+  giornata: 8 test nuovi (`tests/test_riparto_incoerenze_e_costi_comuni.py`),
+  coverage file 78% → 86%, mutazione sul bucket orfano/senza-documento
+  verificata rossa (3 test). Dettaglio in STORICO §15.
 - ~~**`verify_and_migrate_password`** (`services/auth_service.py`) — il ramo SHA256
   legacy + migrazione automatica (riscrive `password_hash` sul DB) resta scoperto~~ —
   **CHIUSA l'8/8/2026**. Il ramo Argon2 (657-663) era già coperto; scoperto
@@ -191,8 +194,13 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   `except`. Toglierlo significa rilanciare 10.000 test e sistemare le ricadute.
   `tests/test_eccezioni_moduli_mockati.py` documenta il problema: **quando
   qualcuno lo rimuoverà quel file diventerà rosso, ed è il segnale atteso.**
-- **`.coveragerc` non è un gate** — baseline 45% documentata e riproducibile, ma
-  nessun workflow fallisce se scende.
+- ~~**`.coveragerc` non è un gate**~~ — **CHIUSA l'8/8/2026**. `tests.yml`
+  ora gira `coverage run -m pytest -q` seguito da
+  `coverage report --fail-under=45`: il job pytest fallisce se la copertura
+  scende sotto la baseline. Misurato prima di accendere il gate (suite
+  completa, non un sottoinsieme): **50%** (23.275 statement, non i 22.990
+  di riferimento — cresciuti nel frattempo), soglia tenuta a 45 come
+  margine invece di alzarla al numero esatto misurato.
 
 ## §3 — Aperti per scelta, con la loro ragione
 

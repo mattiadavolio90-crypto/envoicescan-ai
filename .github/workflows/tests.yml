@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-lock.txt
 
-      - name: Run pytest
+      - name: Run pytest with coverage gate
         # WORKER_DEV_MODE=1: salta il guard fail-closed su WORKER_SECRET_KEY
         # (i test importano services.fastapi_worker, che senza la chiave si
         # rifiuterebbe di caricare). I moduli pesanti sono comunque mockati dal
@@ -40,7 +40,11 @@ jobs:
         # legacy_streamlit). Prima qui c'era `tests/`, quindi i 9 test di
         # legacy_streamlit/ giravano solo in locale e la CI copriva MENO dello
         # sviluppatore: una rottura li' non avrebbe fermato una merge.
-        run: python -m pytest -q
+        # --fail-under usa la baseline di .coveragerc (misurata 50% l'8/8/2026,
+        # soglia impostata a 45 per non far fallire il gate il giorno in cui si accende).
+        run: |
+          python -m coverage run -m pytest -q
+          python -m coverage report --fail-under=45
 
   deno-test:
     # Test delle Edge Functions (Deno): auth HMAC + routing multi-sede del webhook
