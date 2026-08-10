@@ -1,30 +1,30 @@
 name: DB Backup - ONEFLUX
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Backup indipendente del database Supabase, verificato assente il 6/7/2026:
-# il progetto è sul piano Free (niente PITR), e nel repo non esisteva alcun
-# meccanismo di dump/export — il README dichiarava "Point in Time Recovery,
-# continuo" ma è una descrizione dello stato desiderato (piano Pro), mai
-# messa in pratica. Con clienti reali attivi dall'1/7, un comando distruttivo
-# (bug, errore umano) su fatture/margini/ricavi sarebbe oggi irrecuperabile.
-#
+# Backup indipendente del database Supabase (progetto piano Free, niente PITR).
 # pg_dump in formato custom (-Fc, compresso, ripristinabile con pg_restore)
 # caricato come artifact GitHub — indipendente dal piano Supabase, protegge
 # anche da un eventuale problema lato Supabase stesso.
 #
-# GITHUB SECRET richiesto (da aggiungere, non ancora presente al 6/7/2026):
-#   SUPABASE_DB_URL   connection string in modalità "Session pooler" (porta
-#                     5432, host aws-*.pooler.supabase.com) — Project Settings
-#                     → Database → Connect → "Session pooler". OBBLIGATORIO
-#                     questa modalità e non la connessione diretta: quella è
-#                     IPv6-only sul piano Free e GitHub Actions (runner
-#                     ubuntu-latest) e' IPv4-only, la connessione fallirebbe.
-#                     Contiene la password del DB: mai loggarla né stamparla
-#                     in chiaro negli step.
+# Procedura di ripristino completa, testata end-to-end il 10/8/2026 (dati
+# confrontati 1:1 col DB live, restore riuscito in ~1 minuto su un Postgres
+# 17 pulito): vedi docs/BACKUP_DISASTER_RECOVERY.md.
 #
-# COSTO: 1 run/giorno, pochi secondi (DB piccolo, <50MB all'8/6). Artifact
-# storage GitHub free tier: 500MB totali, ampiamente sufficiente. Retention
-# 14 giorni: oltre quella finestra l'artifact scade automaticamente.
+# GITHUB SECRET richiesto: SUPABASE_DB_URL (configurato dal 7/7/2026)
+#   connection string in modalità "Session pooler" (porta 5432, host
+#   aws-*.pooler.supabase.com) — Project Settings → Database → Connect →
+#   "Session pooler". OBBLIGATORIO questa modalità e non la connessione
+#   diretta: quella è IPv6-only sul piano Free e GitHub Actions (runner
+#   ubuntu-latest) è IPv4-only, la connessione fallirebbe. Contiene la
+#   password del DB: mai loggarla né stamparla in chiaro negli step.
+#
+# COSTO: 1 run/giorno, pochi secondi (DB ~3.8MB al 10/8). Artifact storage
+# GitHub free tier: 500MB totali, ampiamente sufficiente. Retention 14
+# giorni: oltre quella finestra l'artifact scade automaticamente.
+#
+# Se questo workflow fallisce (run rosso in Actions), GitHub notifica via
+# email il proprietario del repo di default — nessun canale extra configurato
+# di proposito (scelta 10/8/2026, Telegram escluso per ora).
 # ═══════════════════════════════════════════════════════════════════════════════
 
 on:
@@ -73,6 +73,7 @@ jobs:
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          set -euo pipefail
           STAMP=$(date -u +%Y%m%d_%H%M%S)
           echo "STAMP=$STAMP" >> $GITHUB_ENV
           # -Fc: formato custom compresso, ripristinabile selettivamente con
@@ -83,6 +84,14 @@ jobs:
           # preinstallata sul runner (mismatch con il server 17.x di Supabase).
           /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" -Fc --no-owner --no-privileges -f "oneflux_backup_${STAMP}.dump"
           ls -lh "oneflux_backup_${STAMP}.dump"
+          # Guardia esplicita: un dump "riuscito" ma vuoto/troncato (es. connessione
+          # caduta a metà) uscirebbe comunque con exit 0 da pg_dump in alcuni casi.
+          # Soglia 100KB è ben sotto i ~3.8MB tipici, solo per beccare un file vuoto/rotto.
+          SIZE=$(stat -c%s "oneflux_backup_${STAMP}.dump")
+          if [ "$SIZE" -lt 100000 ]; then
+            echo "::error::Dump sospetto: solo ${SIZE} byte (atteso ~3-4MB). Backup NON affidabile."
+            exit 1
+          fi
 
       - name: Carica come artifact
         if: steps.check-secret.outputs.configured == 'true'
@@ -92,3 +101,12 @@ jobs:
           path: oneflux_backup_${{ env.STAMP }}.dump
           retention-days: 14
           compression-level: 0 # già compresso da pg_dump -Fc, evita doppio lavoro
+
+      - name: Fallisci esplicitamente se il secret manca
+        # Senza questo step, un backup mai configurato risulta "success" in GitHub
+        # Actions (nessuno step ha fallito, sono solo stati skippati) e nessuno se ne
+        # accorge. Con questo, l'assenza del secret rende il run rosso e visibile.
+        if: steps.check-secret.outputs.configured != 'true'
+        run: |
+          echo "::error::SUPABASE_DB_URL non configurato — backup MAI eseguito. Vedi commento in testa al file."
+          exit 1
