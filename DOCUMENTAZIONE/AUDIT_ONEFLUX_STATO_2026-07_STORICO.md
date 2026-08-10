@@ -1328,3 +1328,151 @@ ma ora il test di coerenza `_per_mese` vs `_per_periodo` lo rende **sicuro da
 fare**: chi lo affronterà avrà una rete che verifica che il totale non cambi.
 Annotato anche nel docstring del file di test, dove chi tocca quel codice lo
 legge.
+
+---
+
+## 20. §3 — `invoice_service.py` — 10/8/2026
+
+**127 test nuovi in 4 file, 9 test vacui rimossi, 1 fix latente.**
+`services/invoice_service.py` **45% → 75%** (477 → 205 statement scoperti),
+totale progetto 53% → 54% (gate 45). 2174/2174 righe lette.
+Suite: 10.757 → **10.875 passed**, 42 skipped, 0 failed.
+
+Perimetro: il file da cui è passata ogni riga del sistema — 31.298 righe XML +
+2.702 P7M sulle 34.000 attive.
+
+### Il difetto: un `except` che rendeva irraggiungibile quello del chiamante
+
+`estrai_dati_da_scontrino_vision` solleva `VisionDailyLimitExceededError` a
+`:1400` quando la quota giornaliera è esaurita — e la ri-solleva esplicitamente
+a `:1405`. Ma l'`except Exception` a fine funzione (`:1698`) la **catturava
+comunque**, restituendo `[]`. Il chiamante `upload_handler.py:1651` ha un
+`except VisionDailyLimitExceededError` dedicato, che logga `VISION_LIMIT_REACHED`
+e mostra "quota esaurita, riprova domani": **non poteva mai scattare**. Il
+cliente avrebbe letto "Nessuna riga estratta - DataFrame vuoto".
+
+Non dedotto dal codice ma **dimostrato eseguendolo**: la funzione pre-fix
+restituiva `[]` invece di propagare. Severità **latente**, misurata sul DB prima
+di scriverla: 0 eventi `VISION_LIMIT_REACHED` su 6.505 `upload_events`, 0 eventi
+`ai_usage_events` pdf/vision su 443. I 2 eventi con `error_stage='VISION'` sono
+P7M con firma non riconosciuta, non questo caso. Fix: un `except` dedicato con
+`raise` prima di quello generico (8 righe, commento incluso).
+
+### La misura che ha ribaltato le priorità: TD24
+
+Il buco di coverage più vistoso era Vision (338 righe consecutive), ma
+l'esposizione diceva un'altra cosa. **TD24 vale 11.773 righe attive su 34.000
+(35%)**, 669 documenti, con `data_consegna` valorizzata su **11.771 (99,98%)**.
+
+E i suoi test **replicavano l'algoritmo invece di importarlo**, dichiarandolo nel
+proprio docstring ("We replicate the extraction algorithm from
+invoice_service.estrai_dati_da_xml"): 21 test verdi che proteggevano **zero
+righe** di produzione, sul secondo percorso più caldo del sistema. È la forma
+peggiore di copertura, perché occupa il posto psicologico della protezione.
+Ora coperti contro la funzione vera (`tests/test_invoice_td24_ddt.py`), classe
+replica rimossa, `test_td24.py` da 21 a 12 test.
+
+La mutazione che lo dimostra (M1) va scritta con cura: `:1222` fa
+`_ddt_date_map.get(_num_linea_xml) or _ddt_date_map.get(idx)`, due lookup in
+`or`. Sostituire il primo resta verde ovunque i due coincidano — serve
+**rimuoverlo** e una fixture dove divergono, cioè lo schema PARTESA (righe
+numerate 10/20/30). La replica in `test_td24.py` non aveva nemmeno il secondo
+ramo.
+
+### Perimetro: due decisioni, ciascuna con la sua misura
+
+- **Vision coperto per scelta di Mattia**, contro la raccomandazione di
+  escluderlo. Il canale è inattivo: 0 righe da PDF su 34.000 (0 anche nel
+  cestino), 0 eventi AI pdf/vision su 443, e unico call site dentro
+  `handle_uploaded_files`, il blocco che §2 aveva già escluso come raggiungibile
+  solo da `legacy_streamlit/`. La copertura è quindi **prospettica, non
+  protettiva** — scritto nel docstring del file di test perché il salto di
+  coverage non venga scambiato per sicurezza aggiunta sui dati correnti.
+- **P7M metodi 2-5 esclusi**: fallback in cascata dietro `asn1crypto`, che è in
+  `requirements.txt` e vince su ogni P7M ben formato — le 2.702 righe in
+  produzione sono passate dal metodo 1. Sono **65 delle 205 righe ancora
+  scoperte**: senza di esse il file starebbe a ~82%. Il P7M dei test è
+  **sintetico** (`cms.ContentInfo` costruito con `asn1crypto`): nessuna
+  dipendenza da `openssl` e nessun file reale da `data/backfill_fatture/`, che
+  contiene dati dei clienti.
+
+### Mutazioni: 32 verificate, 28 rosse
+
+Tutte su copia di backup nello scratchpad, mai `git checkout`; ripristino
+verificato con `git diff --stat` dopo ogni giro.
+
+Le quattro verdi **non sono buchi**, sono rami inosservabili, e ognuna è
+documentata nel docstring del test invece di essere inseguita:
+- `>` → `>=` sul cap 2000: con 2000 righe esatte lo slice `[:2000]` non toglie
+  nulla, i due operatori danno lo stesso risultato.
+- Gate TD24 `:887` da solo: il gate è **doppio** (`:887` popola la mappa,
+  `:1209` la usa). Rompendone uno il comportamento non cambia; rompendoli
+  entrambi cadono 2 test.
+- `except json.JSONDecodeError` da solo: l'`except Exception` a valle produce lo
+  stesso `[]`. Anche qui serve romperli entrambi (allora cadono 4 test).
+
+#### Lezione 46 — i "vicini" vanno messi in OGNI tabella che la query interroga
+
+Il fake Supabase applica davvero i filtri (`eq`/`neq`/`in_`/`not_.in_`/
+`is_("deleted_at","null")`), e i vicini in `fatture` — altro utente, altra sede,
+riga cestinata — rendevano rosse le mutazioni sul cleanup. **Ma la stessa cura
+non era stata applicata a `fatture_documenti`**, l'altra tabella che la funzione
+interroga: lì ogni documento di prova era dello stesso utente, attivo e a
+identità completa. Risultato: cinque filtri della guardia anti-doppione
+(`eq(user_id)`, `filter_active`, `eq(piva_fornitore)`, `eq(numero_documento)`,
+`eq(data_documento)`) e l'early-return sull'identità incompleta **restavano
+verdi se rimossi** — trovato dal `code-reviewer`, non da me.
+
+Sul DB live quei filtri difendono casi reali: 334 documenti cestinati, **4
+identità naturali condivise fra utenti diversi** (senza `eq(user_id)` un cliente
+si vedrebbe rifiutare un caricamento per il documento di un altro), 402
+documenti su 3.094 (13%) a identità incompleta, 239 fornitori distinti che
+numerano le fatture in modo indipendente.
+
+Corollario sul come costruire il vicino: per l'early-return sull'identità
+incompleta non basta un documento "con dei campi vuoti" — deve essere il
+**gemello** di quello in ingresso, con vuoto **solo** il campo mancante,
+altrimenti gli altri `.eq()` non matchano e la mutazione resta verde comunque
+(misurato: la prima versione era così).
+
+#### Lezione 47 — una mutazione che non compila non prova niente (di nuovo)
+
+Le prime versioni di due mutazioni sul Vision inserivano classi di eccezione
+fittizie in testa al file: pytest falliva **in raccolta** con "34 errors", che a
+colpo d'occhio sembra un rosso fortissimo. Non lo è: è caduto il parser, non il
+test. Riscritte usando un'eccezione esistente mai sollevata in quel punto
+(`ZeroDivisionError`), una è risultata rossa davvero e l'altra verde — rivelando
+la difesa a due strati descritta sopra. È la lezione 44 ripetuta, e va riletta
+ogni volta: *è caduto il test, o è caduto il parser?*
+
+#### Un test verde per il motivo sbagliato
+
+`test_json_troncato` costruiva il payload "troncato" tagliando a 60 caratteri un
+JSON che ne conta 35: restava **JSON valido**, quindi non sollevava mai e il test
+passava senza esercitare nulla. Trovato proprio perché la mutazione sul suo
+`except` restava verde. Ora il payload è tagliato a metà lunghezza reale e il
+test asserisce prima che sia davvero rotto (`pytest.raises(JSONDecodeError)` sul
+payload di prova).
+
+### La review ha trovato quello che avevo mancato
+
+Oltre alla lezione 46, il `code-reviewer` ha intercettato due cose di processo:
+il lavoro era **su `main` e non sul branch** `audit-s3-invoice-service` (il
+`checkout -b` iniziale non aveva retto, e nel frattempo `main` era avanzato con
+`aa31584` di un lavoro parallelo), e in working tree c'erano file di
+quell'altro lavoro (`db_backup.yml`, `BACKUP_DISASTER_RECOVERY.md`) da tenere
+fuori dal commit. Entrambe sistemate prima di committare, con i sei file
+verificati byte a byte contro la copia di backup.
+
+**Un rilievo della review non è stato accolto**: i numeri della suite. Il
+reviewer misurava 10.748 → 10.860, io 10.757 → 10.869. Entrambe le mie misure
+vengono da esecuzioni complete registrate su file, prima e dopo; la differenza
+di 9 è il lavoro parallelo comparso nel frattempo nel working tree. Il **delta
+è identico** nelle due misure, ed è il numero che conta.
+
+### Cosa resta di §3
+
+I **minori** (`documenti_service.py` 34,8%, `scadenziario.py` 25,7%, `tag.py`
+23,3%, `tag_suggestion_service.py` 40,8% — quest'ultimo con zero citazioni in
+tutto il ciclo) e la **chat** di `fastapi_worker.py`, già indicata come
+candidata naturale dalla sessione del 10/8 mattina.

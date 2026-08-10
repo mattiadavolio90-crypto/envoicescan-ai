@@ -10,147 +10,37 @@ import pytest
 from utils.formatters import normalizza_data_consegna_td24
 
 
-# ── Parser: DatiDDT extraction ───────────────────────────────────────
-
-class TestDatiDDTExtraction:
-    """Test the DatiDDT → data_consegna mapping logic in isolation.
-
-    We replicate the extraction algorithm from invoice_service.estrai_dati_da_xml
-    as a pure function to test without mocking the entire XML pipeline.
-    """
-
-    @staticmethod
-    def _extract_ddt_map(dati_generali: dict):
-        """Replicate the DatiDDT extraction logic from estrai_dati_da_xml."""
-        import re
-        from datetime import datetime as dt
-
-        ddt_date_map = {}
-        ddt_global_date = None
-
-        dati_ddt_raw = dati_generali.get('DatiDDT')
-        if dati_ddt_raw is not None:
-            if isinstance(dati_ddt_raw, dict):
-                dati_ddt_raw = [dati_ddt_raw]
-            if isinstance(dati_ddt_raw, list):
-                for ddt_block in dati_ddt_raw:
-                    if not isinstance(ddt_block, dict):
-                        continue
-                    data_ddt = str(ddt_block.get('DataDDT') or '').strip()
-                    if not data_ddt:
-                        continue
-                    rif_linee = ddt_block.get('RiferimentoNumeroLinea')
-                    if rif_linee is None:
-                        ddt_global_date = data_ddt
-                    else:
-                        if not isinstance(rif_linee, list):
-                            rif_linee = [rif_linee]
-                        for num in rif_linee:
-                            try:
-                                ddt_date_map[int(num)] = data_ddt
-                            except (ValueError, TypeError):
-                                pass
-
-        return ddt_date_map, ddt_global_date
-
-    @staticmethod
-    def _regex_fallback(descrizione: str):
-        """Replicate the regex fallback from estrai_dati_da_xml."""
-        import re
-        from datetime import datetime as dt
-
-        match = re.search(r'\b(\d{2})/(\d{2})/(\d{4})\b', descrizione)
-        if match:
-            dd, mm, yyyy = match.groups()
-            try:
-                parsed = dt.strptime(f"{yyyy}-{mm}-{dd}", "%Y-%m-%d")
-                if 2020 <= parsed.year <= 2030:
-                    return parsed.strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-        return None
-
-    # Schema A: DatiDDT con RiferimentoNumeroLinea
-    def test_schema_a_mapped_lines(self):
-        dati = {
-            'DatiDDT': [
-                {
-                    'NumeroDDT': 'DDT001',
-                    'DataDDT': '2026-03-15',
-                    'RiferimentoNumeroLinea': ['1', '2', '3'],
-                },
-            ]
-        }
-        m, g = self._extract_ddt_map(dati)
-        assert m == {1: '2026-03-15', 2: '2026-03-15', 3: '2026-03-15'}
-        assert g is None
-
-    # Schema A: single dict (not list)
-    def test_schema_a_single_dict(self):
-        dati = {
-            'DatiDDT': {
-                'NumeroDDT': 'DDT001',
-                'DataDDT': '2026-04-01',
-                'RiferimentoNumeroLinea': '5',
-            }
-        }
-        m, g = self._extract_ddt_map(dati)
-        assert m == {5: '2026-04-01'}
-        assert g is None
-
-    # Schema C: DatiDDT senza RiferimentoNumeroLinea → global
-    def test_schema_c_global_date(self):
-        dati = {
-            'DatiDDT': {
-                'NumeroDDT': 'DDT999',
-                'DataDDT': '2026-02-28',
-            }
-        }
-        m, g = self._extract_ddt_map(dati)
-        assert m == {}
-        assert g == '2026-02-28'
-
-    # Schema D: no DatiDDT → regex fallback
-    def test_schema_d_regex_fallback(self):
-        assert self._regex_fallback("MERCE DDT 15/03/2026") == "2026-03-15"
-
-    def test_regex_no_match(self):
-        assert self._regex_fallback("Pollo fresco kg 2") is None
-
-    def test_regex_invalid_date(self):
-        assert self._regex_fallback("DDT 32/13/2026") is None
-
-    def test_regex_year_out_of_range(self):
-        assert self._regex_fallback("DDT 01/01/2019") is None
-
-    # Multiple DatiDDT blocks (multi-DDT per fattura)
-    def test_multiple_ddt_blocks(self):
-        dati = {
-            'DatiDDT': [
-                {
-                    'DataDDT': '2026-03-10',
-                    'RiferimentoNumeroLinea': ['1', '2'],
-                },
-                {
-                    'DataDDT': '2026-03-12',
-                    'RiferimentoNumeroLinea': ['3', '4'],
-                },
-            ]
-        }
-        m, g = self._extract_ddt_map(dati)
-        assert m == {1: '2026-03-10', 2: '2026-03-10', 3: '2026-03-12', 4: '2026-03-12'}
-        assert g is None
-
-    def test_empty_ddt(self):
-        m, g = self._extract_ddt_map({})
-        assert m == {}
-        assert g is None
+# ── Estrazione DatiDDT ───────────────────────────────────────────────
+#
+# La classe TestDatiDDTExtraction e' stata RIMOSSA il 10/8/2026 (audit §3).
+# Replicava l'algoritmo di estrazione di invoice_service.estrai_dati_da_xml
+# in una funzione locale e testava la copia: restava verde anche rompendo il
+# codice di produzione. Con TD24 a 11.773 righe attive (35% del totale) e
+# data_consegna valorizzata sul 99,98%, era copertura nominale su un percorso
+# molto caldo.
+#
+# Gli stessi schemi (A, C, D, PARTESA, DDT multipli, riferimenti non numerici)
+# sono ora coperti contro la funzione VERA in:
+#     tests/test_invoice_td24_ddt.py
+# con 4 mutazioni verificate rosse.
+#
+# Qui restano solo i test che esercitano funzioni realmente importate
+# (utils.formatters.normalizza_data_consegna_td24) e la logica di soglia.
 
 
 # ── Alert coverage calc (upload_handler logic) ───────────────────────
 
 class TestTd24CoverageCalc:
-    """Replicate the coverage logic from upload_handler.py to test soglie."""
+    """Soglie dell'alert copertura TD24.
+
+    ⚠️ Anche questa classe REPLICA la logica (quella di `upload_handler.py`)
+    invece di importarla: difende le soglie come scelta di prodotto, NON il
+    codice che le applica. Lasciata il 10/8/2026 perche' il suo originale vive
+    dentro `handle_uploaded_files`, il blocco legacy che l'audit §2 ha escluso
+    per misura (raggiungibile solo da `legacy_streamlit/`). Se quel codice
+    tornera' vivo, va coperto contro la funzione vera come fatto per DatiDDT in
+    `tests/test_invoice_td24_ddt.py`.
+    """
 
     @staticmethod
     def _compute_alert(items):
