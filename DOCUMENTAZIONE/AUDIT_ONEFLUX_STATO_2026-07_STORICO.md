@@ -1338,6 +1338,16 @@ legge.
 totale progetto 53% → 54% (gate 45). 2174/2174 righe lette.
 Suite: 10.757 → **10.875 passed**, 42 skipped, 0 failed.
 
+**DEPLOYATO il 10/8/2026** — PR #22, merge `517286e`. CI verde: `pytest`
+**10.875 passed** con `coverage report --fail-under=45` → **54%**, `deno-test`
+108 passed, `verify-requirements`. `check-drift` **non è partito, ed è
+corretto**: il suo trigger copre `services/fastapi_worker.py`,
+`services/routers/**` e `openapi/openapi.json` — questa PR tocca
+`services/invoice_service.py`, che non espone endpoint. Worker Railway
+verificato su `/health`: `commit = 517286e54461`, cioè il merge stesso (al
+primo controllo serviva ancora `53db4dfe59da`; confermato al quinto, ~2 minuti
+dopo il merge).
+
 Perimetro: il file da cui è passata ogni riga del sistema — 31.298 righe XML +
 2.702 P7M sulle 34.000 attive.
 

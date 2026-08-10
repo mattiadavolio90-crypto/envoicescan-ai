@@ -398,7 +398,13 @@ interpretare davvero la `.or_()` al fake (vedi lezione 45 in STORICO §19).
 **Terza sessione — 10/8/2026: `invoice_service.py`** (punto 1). Il file da cui
 sono passate tutte le 34.000 righe attive: 2174/2174 righe lette, **45% → 75%**,
 127 test nuovi in 4 file, 9 test vacui rimossi (suite 10.757 → **10.875**),
-32 mutazioni verificate di cui 28 rosse. **Un difetto trovato e fixato**,
+32 mutazioni verificate di cui 28 rosse. **DEPLOYATO il 10/8** — PR #22, merge
+`517286e`, CI verde (pytest 10.875 passed + coverage 54% sopra il gate 45,
+deno-test 108, verify-requirements; `check-drift` non parte perché il suo
+trigger copre `fastapi_worker.py`/`routers/**`/`openapi.json`, non
+`invoice_service.py` — nessun endpoint toccato, nessun drift possibile).
+Worker Railway verificato su `/health`: `commit = 517286e54461`, cioè il merge
+stesso. **Un difetto trovato e fixato**,
 latente: `VisionDailyLimitExceededError` veniva sollevata e poi **inghiottita
 dall'`except Exception` della stessa funzione**, che restituiva `[]` — quindi
 l'`except` dedicato del chiamante (`upload_handler.py:1651`, che logga
