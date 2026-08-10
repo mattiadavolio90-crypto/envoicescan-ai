@@ -365,7 +365,32 @@ Non dimenticanze: decisioni. Riaprirle solo con la ragione che le ha chiuse.
 **Aperta l'8/8/2026**, dopo la chiusura di §1. **Prima sessione chiusa e
 DEPLOYATA la sera dell'8/8** (PR #19, merge `af4c651`, `/health` = `af4c65165497`):
 `workspace.py`, `db_service.py` e `auth_service.py` letti al 100%, punti 2-4 di
-"come si chiude §3" risolti. Resta il punto 1 su `invoice_service.py` + i minori. Nasce da una domanda semplice:
+"come si chiude §3" risolti.
+
+**Seconda sessione — 10/8/2026: gli helper MOL e briefing di
+`fastapi_worker.py`** (punto 4). 99 test nuovi in 3 file, **file 37% → 46%**,
+totale 51% → 53% (gate 45). I 6 helper passano da ~285 statement scoperti a
+**7**; i residui sono `except` best-effort e una guardia irraggiungibile
+(`base <= 0` a `:4650`: il filtro `n > 0` a monte lascia solo valori positivi —
+scoperta di proposito, documentata nel test).
+**Nessun difetto attivo trovato: sono test, non fix.** Due sospetti sono stati
+smontati dal DB live invece che dal codice:
+- `.neq("ripartita_su_gruppo", True)` sembrava poter scartare le righe NULL
+  (in SQL `col <> true` è NULL → PostgREST esclude). **Falso**: la colonna è
+  `NOT NULL DEFAULT false`, 0 righe NULL su 34.000.
+- Spegnere `uncategorized_rows` lascia la notifica legacy stantia (la rimozione
+  sta *dentro* il gate `:6194`, al contrario del `price_alert` dove è
+  deliberatamente fuori). **Reale ma latente**: 0 righe di quel topic in
+  `notification_inbox`. Fissato con un test che descrive il comportamento
+  attuale, non "corretto" — se un domani si allineano, quel test cade apposta.
+
+La misura che ha spostato le priorità: **`data_competenza` è NULL su 33.771
+righe su 34.000 (99,3%)**, e su **229** cade in un mese diverso da
+`data_documento`. Il fallback `competenza → documento` non è un caso di bordo,
+è il percorso normale di quasi tutto il MOL — da lì la scelta di far
+interpretare davvero la `.or_()` al fake (vedi lezione 45 in STORICO §18).
+
+Resta il punto 1 su `invoice_service.py` + i minori. Nasce da una domanda semplice:
 "se tutte le dimensioni sono verdi e §1 è vuota, l'app è analizzata tutta?"
 La risposta misurata è **no**, e la differenza non era scritta da nessuna parte.
 
@@ -396,7 +421,7 @@ per coverage e "mai in §1", ma gestisce ~29 righe di dati veri.
 
 | Modulo | Statement | Coverage | Esposizione live (misurata 8/8) | Note |
 |---|---|---|---|---|
-| `services/fastapi_worker.py` | 3.388 | 37,4% | alta | ~~corpo unico~~ → **coperto per router per scelta**, vedi punto 4 sotto |
+| `services/fastapi_worker.py` | 3.388 | 37,4% → **46%** | alta | ~~corpo unico~~ → **coperto per router per scelta**, vedi punto 4 sotto. **MOL + briefing CHIUSI il 10/8** |
 | ~~`services/routers/workspace.py`~~ | 1.352 | 52,6% | **quasi nulla**: turni 0, regole 0, ingredienti 0, diario 2, inventario 6, dipendenti 1, spese_extra 15/3 sedi | **CHIUSO 8/8** |
 | ~~`services/db_service.py`~~ | 1.092 | 36,7% | alta: 35.622 fatture, 4 endpoint cestino vivi | **CHIUSO 8/8**, 2242/2242 righe lette |
 | `services/invoice_service.py` | 927 | 44,8% | **altissima**: ingresso di tutti i dati, 35.622 righe passate da qui | **prossimo** — parsing XML/P7M/PDF |
@@ -445,7 +470,17 @@ di lasciarlo implicito:
    database. Chiuso per assenza di oggetto, non per rinuncia.
 3. ~~Estendere il gate coverage al TypeScript, o dichiararlo~~ — **DECISO
    l'8/8**, vedi (c) sopra.
-4. **`fastapi_worker.py` esce dalla lista "corpo unico"** (deciso l'8/8): 3.388
+4. ~~**`fastapi_worker.py` esce dalla lista "corpo unico"**~~ — **PRIMA TRANCHE
+   CHIUSA il 10/8/2026**: MOL (`_calcola_costi_auto_per_mese`/`_per_periodo`,
+   `_aggrega_mensili_margini`/`_aggrega_totali_margini`) e briefing
+   (`_briefing_raccogli_notifiche`, `_scontrino_medio_significativo`) sono sotto
+   guardia, 20 mutazioni verificate rosse. Restano scoperti per scelta: la chat
+   (`_chat_query_costi`, `_chat_loop_openai`, `_build_chat_system_prompt`,
+   `_chat_trend_prezzo` — candidata naturale per la prossima sessione; **non** ha
+   il blocco `tenacity` che si temeva, in questo file non esiste nessun `@retry`)
+   e `_run_agent_notturno` (125 scoperte, il numero più alto della tabella, ma
+   `app_settings.agent_notturno.enabled=false` dal 30/5: coprirlo non difende
+   nessun cliente). Testo originale della decisione: 3.388
    statement al 37,4% costano più di tre passate intere e producono ri-letture,
    dato che i router sono già stati auditati singolarmente. Il rischio vero sta
    negli **helper non-router** che nessuna passata "per router" ha rivendicato —
