@@ -1695,6 +1695,14 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         # ============================================================
         return righe_prodotti
         
+    except VisionDailyLimitExceededError:
+        # Deve uscire dalla funzione: il chiamante (upload_handler.py:1651) ha un
+        # except dedicato che logga VISION_LIMIT_REACHED e mostra al cliente
+        # "quota esaurita, riprova domani". Senza questo ramo l'except generico
+        # sotto la assorbiva e restituiva [], e il chiamante mostrava
+        # "Nessuna riga estratta" — messaggio sbagliato, e il ramo di quota
+        # irraggiungibile per costruzione.
+        raise
     except Exception as e:
         logger.exception(f"Errore Vision: {getattr(file_caricato, 'name', 'sconosciuto')}")
         st.error(f"❌ Errore nell'elaborazione di {file_caricato.name}. Riprova.")

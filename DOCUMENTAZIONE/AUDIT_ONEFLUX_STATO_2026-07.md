@@ -395,7 +395,37 @@ righe su 34.000 (99,3%)**, e su **229** cade in un mese diverso da
 è il percorso normale di quasi tutto il MOL — da lì la scelta di far
 interpretare davvero la `.or_()` al fake (vedi lezione 45 in STORICO §19).
 
-Resta il punto 1 su `invoice_service.py` + i minori. Nasce da una domanda semplice:
+**Terza sessione — 10/8/2026: `invoice_service.py`** (punto 1). Il file da cui
+sono passate tutte le 34.000 righe attive: 2174/2174 righe lette, **45% → 75%**,
+127 test nuovi in 4 file, 9 test vacui rimossi (suite 10.757 → **10.875**),
+32 mutazioni verificate di cui 28 rosse. **Un difetto trovato e fixato**,
+latente: `VisionDailyLimitExceededError` veniva sollevata e poi **inghiottita
+dall'`except Exception` della stessa funzione**, che restituiva `[]` — quindi
+l'`except` dedicato del chiamante (`upload_handler.py:1651`, che logga
+`VISION_LIMIT_REACHED` e dice al cliente "quota esaurita, riprova domani") era
+**irraggiungibile per costruzione** e il cliente avrebbe letto "Nessuna riga
+estratta". Dimostrato eseguendo il codice pre-fix, non dedotto; severità latente
+misurata sul DB (0 eventi `VISION_LIMIT_REACHED` su 6.505 upload).
+
+Due decisioni di perimetro, entrambe con la misura che le regge:
+- **Vision coperto per scelta di Mattia** benché il canale sia inattivo (0 righe
+  PDF su 34.000, 0 eventi AI su 443, unico call site dentro il legacy già escluso
+  da §2). La copertura è **prospettica, non protettiva**: il salto di coverage che
+  produce non va letto come sicurezza aggiunta sui dati correnti.
+- **P7M metodi 2-5 esclusi**: sono fallback dietro `asn1crypto`, che vince su ogni
+  P7M ben formato — le 2.702 righe in produzione sono passate dal metodo 1. Sono
+  **65 delle 205 righe ancora scoperte**: senza di esse il file starebbe a ~82%.
+
+La misura che ha ribaltato le priorità: **TD24 vale 11.773 righe attive (35%)** con
+`data_consegna` valorizzata sul **99,98%**, e i suoi test **replicavano
+l'algoritmo invece di importarlo** (lo dichiarava il loro docstring): 21 test
+verdi che proteggevano zero righe di produzione, su uno dei percorsi più caldi.
+Ora coperti contro la funzione vera; la classe replica è stata rimossa.
+
+Restano i minori (`documenti_service.py`, `scadenziario.py`, `tag.py`,
+`tag_suggestion_service.py`) e la chat di `fastapi_worker.py`.
+
+Nasce da una domanda semplice:
 "se tutte le dimensioni sono verdi e §1 è vuota, l'app è analizzata tutta?"
 La risposta misurata è **no**, e la differenza non era scritta da nessuna parte.
 
@@ -429,7 +459,7 @@ per coverage e "mai in §1", ma gestisce ~29 righe di dati veri.
 | `services/fastapi_worker.py` | 3.388 | 37,4% → **46%** | alta | ~~corpo unico~~ → **coperto per router per scelta**, vedi punto 4 sotto. **MOL + briefing CHIUSI il 10/8** |
 | ~~`services/routers/workspace.py`~~ | 1.352 | 52,6% | **quasi nulla**: turni 0, regole 0, ingredienti 0, diario 2, inventario 6, dipendenti 1, spese_extra 15/3 sedi | **CHIUSO 8/8** |
 | ~~`services/db_service.py`~~ | 1.092 | 36,7% | alta: 35.622 fatture, 4 endpoint cestino vivi | **CHIUSO 8/8**, 2242/2242 righe lette |
-| `services/invoice_service.py` | 927 | 44,8% | **altissima**: ingresso di tutti i dati, 35.622 righe passate da qui | **prossimo** — parsing XML/P7M/PDF |
+| ~~`services/invoice_service.py`~~ | 927 | 44,8% → **75%** | **altissima**: ingresso di tutti i dati, 35.622 righe passate da qui | **CHIUSO 10/8**, 2174/2174 righe lette |
 | ~~`services/auth_service.py`~~ | 736 | 39,4% | alta: 16 sessioni attive, 7 utenti | **CHIUSO 8/8**, 1718/1718 righe lette |
 | `services/routers/fatture.py` | 662 | 35,8% | alta | chiuso in §1 il 5/8 ma resta poco esercitato |
 | `services/documenti_service.py` | 424 | 34,8% | media | cap PostgREST già trovato qui |
@@ -467,7 +497,10 @@ di lasciarlo implicito:
    due **CHIUSI l'8/8**, `auth_service.py` in corso. **L'ordine è stato invertito
    dalle misure**: `db_service.py` è passato davanti a `workspace.py` perché
    l'esposizione live conta più della coverage (vedi la colonna nella tabella).
-   Restano: `invoice_service.py`, `auth_service.py`, poi i minori.
+   ~~Restano: `invoice_service.py`~~ — **CHIUSO il 10/8** (45% → 75%, 1 fix
+   latente, 121 test). Restano i **minori** (`documenti_service.py` 34,8%,
+   `scadenziario.py` 25,7%, `tag.py` 23,3%, `tag_suggestion_service.py` 40,8%)
+   e la **chat** di `fastapi_worker.py`.
 2. ~~Per il frontend: le ~6 route API con logica propria e i componenti che
    scrivono sul DB~~ — **CHIUSO l'8/8**: le 6 route sono state lette (sono tutte
    auth/sessione + il proxy TTS), e il sotto-perimetro "componenti che scrivono
