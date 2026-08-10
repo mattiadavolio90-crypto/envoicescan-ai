@@ -90,12 +90,26 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
             _detect_gestionale_version,
             _parse_generico,
         )
-        from services.fastapi_worker import _invalidate_home_kpi_cache
         from services.daily_briefing_service import invalidate_today_briefing
     except Exception as exc:
         logger.error("email-cycle: import parser fallito: %s", exc)
         stats.errors.append(f"import parser: {exc}")
         return stats
+
+    # Import separato e best-effort: services.fastapi_worker fa fail-closed a
+    # livello di modulo se WORKER_SECRET_KEY non è impostata (guard per l'API
+    # HTTP). Il servizio queue-worker non espone HTTP e non ha quella chiave
+    # di proposito — un import qui sopra, nel blocco che blocca l'intero ciclo,
+    # avrebbe impedito per giorni ogni claim/parsing/upsert dei ricavi anche
+    # con la variabile assente per design (incidente 7-10/8/2026: 4 giorni di
+    # coda ricavi_email_queue mai processata). L'invalidazione cache che usa è
+    # comunque un no-op cross-processo (vedi commento più sotto) — se fallisce
+    # si salta solo quella, non il resto del ciclo.
+    try:
+        from services.fastapi_worker import _invalidate_home_kpi_cache
+    except Exception as exc:
+        logger.warning("email-cycle: _invalidate_home_kpi_cache non disponibile: %s", exc)
+        _invalidate_home_kpi_cache = None
 
     # ── 1. Claim batch (atomico: FOR UPDATE SKIP LOCKED via RPC) ────────────────
     # Prima era SELECT + UPDATE separati: due worker concorrenti potevano claimare
@@ -227,10 +241,11 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
         # per-processo, AUDIT §3). L'invalidazione del briefing passa dal DB e vale
         # per tutti.
         for rid in per_ristorante:
-            try:
-                _invalidate_home_kpi_cache(str(rid))
-            except Exception as exc:
-                logger.warning("email-cycle [%s]: invalidate KPI Home fallita: %s", record_id, exc)
+            if _invalidate_home_kpi_cache is not None:
+                try:
+                    _invalidate_home_kpi_cache(str(rid))
+                except Exception as exc:
+                    logger.warning("email-cycle [%s]: invalidate KPI Home fallita: %s", record_id, exc)
             try:
                 invalidate_today_briefing(str(user_id_val), str(rid), supabase)
             except Exception as exc:
