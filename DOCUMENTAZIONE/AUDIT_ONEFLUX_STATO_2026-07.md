@@ -368,7 +368,12 @@ DEPLOYATA la sera dell'8/8** (PR #19, merge `af4c651`, `/health` = `af4c65165497
 "come si chiude §3" risolti.
 
 **Seconda sessione — 10/8/2026: gli helper MOL e briefing di
-`fastapi_worker.py`** (punto 4). 98 test nuovi in 3 file, **file 37% → 46%**,
+`fastapi_worker.py`** (punto 4). **CHIUSA e DEPLOYATA il 10/8** — PR #20, merge
+`8c8693e`, CI verde (pytest 10.757 passed + coverage 53% sopra il gate 45,
+deno-test 108, verify-requirements; `check-drift` non parte perché la PR non
+tocca `services/`, quindi nessun drift possibile). Worker Railway verificato su
+`/health`: `commit = 8c8693e53d44`, cioè il merge stesso.
+98 test nuovi in 3 file, **file 37% → 46%**,
 totale 51% → 53% (gate 45). I 6 helper passano da ~285 statement scoperti a
 **7**; i residui sono `except` best-effort e una guardia irraggiungibile
 (`base <= 0` a `:4650`: il filtro `n > 0` a monte lascia solo valori positivi —

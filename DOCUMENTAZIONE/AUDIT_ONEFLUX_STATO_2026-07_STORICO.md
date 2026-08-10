@@ -1169,6 +1169,15 @@ file.
 (gate 45). Suite 10.650 → **10.748 verdi**. `services/` mai modificato: a fine
 sessione `git status` sul percorso è vuoto.
 
+**DEPLOYATO il 10/8/2026** — PR #20, merge `8c8693e`. CI verde: `pytest`
+**10.757 passed** in 2m18s con `coverage report --fail-under=45` → **53%**,
+`deno-test` 108 passed, `verify-requirements`. `check-drift` **non è partito, ed
+è corretto**: il suo trigger include `services/**` e questa PR non tocca il
+runtime, quindi non esiste drift possibile dell'OpenAPI. Worker Railway
+verificato su `/health`: `commit = 8c8693e53d44`, cioè il merge stesso (prima
+del redeploy serviva ancora `46393454b7d2` — la conferma è arrivata al secondo
+controllo, ~1 minuto dopo il merge).
+
 Perimetro: i 4 helper del MOL (`_calcola_costi_auto_per_mese` `:7719`,
 `_calcola_costi_auto_per_periodo` `:7772`, `_aggrega_mensili_margini` `:7841`,
 `_aggrega_totali_margini` `:7901`) e i 2 del briefing
@@ -1258,6 +1267,35 @@ in `valori` solo positivi, quindi la media non può mai essere ≤ 0. Il ramo è
 **irraggiungibile per costruzione** e resta scoperto di proposito — è difesa in
 profondità, non un buco. Documentato nel test invece di essere inseguito con
 dati inventati che il codice reale non produrrebbe mai.
+
+### La review ha intercettato un rosso intermittente prima della CI
+
+Il `code-reviewer` ha trovato un difetto che sarebbe finito in produzione del
+processo, non del prodotto: **tre test costruivano le date con `date.today()`**
+mentre il codice sotto test usa `_oggi_rome()` (`:6120`). Il runner GitHub è UTC
+senza `TZ`: fra le **22:00 e le 24:00 UTC** — cioè 00:00-02:00 italiane, che è
+*esattamente la finestra di deploy raccomandata da `CLAUDE.md`* — Roma è già al
+giorno dopo e i test cadono. Un rosso raro, che si sarebbe manifestato solo
+lavorando di notte, cioè quando si lavora.
+
+Ironia utile: il commento a `:6118-6119` spiega proprio perché il **codice** non
+usa `date.today()`. Il test aveva ereditato l'idioma sbagliato lo stesso.
+Fixato ancorando i test a `fw._oggi_rome()`, la stessa fonte del codice; il
+comportamento è stato **verificato simulando lo sfasamento** (monkeypatch di
+`_oggi_rome` a `today()+1`): prima 2 rossi, dopo 49 verdi. L'idioma
+`date.today()` resta in altri 6 file di test — debito pre-esistente, non
+regressione di questa sessione.
+
+Corrette anche due imprecisioni documentali segnalate dalla review: il conteggio
+dei test (98, non 99 — `--collect-only` è la fonte, non la memoria) e un rimando
+a "STORICO §18" che doveva essere §19.
+
+**Un rilievo della review non è stato accolto, con la misura a supporto**: le
+"34.000 righe" non erano un denominatore datato. 34.000 è il conteggio con
+`deleted_at IS NULL`, cioè le righe che entrano davvero nel MOL; i 35.622 citati
+in review sono il totale comprensivo di cestino. Rimisurato in sessione:
+34.000 attive, 33.771 con `data_competenza` NULL (99,33%), 229 con mese
+divergente — identico alla misura del mattino.
 
 ### Aspettativa numerica: la stima era prudente
 
