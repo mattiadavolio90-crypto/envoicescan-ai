@@ -1159,3 +1159,134 @@ unico": il perimetro giusto sono gli **helper non-router**, e la prova è che le
 due funzioni trovate in questa sessione (`_invalidate_home_kpi_cache`,
 `_briefing_appuntamenti`) sono emerse *partendo da un router*, non leggendo il
 file.
+
+---
+
+## 19. §3 — MOL + briefing di `fastapi_worker.py` — 10/8/2026
+
+**Sessione di sola scrittura test: nessun difetto attivo trovato, nessun fix.**
+98 test nuovi in 3 file, `fastapi_worker.py` **37% → 46%**, totale 51% → 53%
+(gate 45). Suite 10.650 → **10.748 verdi**. `services/` mai modificato: a fine
+sessione `git status` sul percorso è vuoto.
+
+Perimetro: i 4 helper del MOL (`_calcola_costi_auto_per_mese` `:7719`,
+`_calcola_costi_auto_per_periodo` `:7772`, `_aggrega_mensili_margini` `:7841`,
+`_aggrega_totali_margini` `:7901`) e i 2 del briefing
+(`_briefing_raccogli_notifiche` `:5966`, `_scontrino_medio_significativo`
+`:4599`). Da ~285 statement scoperti a **7**.
+
+### Il punto di partenza era peggiore del numero
+
+Non è che i 4 helper del MOL fossero *poco* testati: i due test che sembravano
+coprirli (`tests/test_audit_bug_passata2.py:105-126`) usano `inspect.getsource()`
+e verificano che una **stringa** compaia nel sorgente. Restano verdi se la query
+smette di filtrare. E `tests/test_kpi_periodo_quote_riparto.py:50-60` **riscrive
+a mano la formula del MOL** invece di chiamare l'helper — il commento lo dice
+esplicitamente ("stessa identica somma di `_aggrega_mensili_margini`"): se la
+formula vera cambia, quel test non se ne accorge.
+
+### Due sospetti smontati dal DB, non dal codice
+
+- **`.neq("ripartita_su_gruppo", True)` e le righe NULL.** In SQL `col <> true`
+  vale NULL quando `col` è NULL, e PostgREST scarta la riga: se la colonna fosse
+  nullable, il filtro starebbe **escludendo dal MOL tutte le fatture normali**.
+  Interrogato il DB prima di scrivere una riga di test: colonna
+  `NOT NULL DEFAULT false`, **0 righe NULL su 34.000**. Difetto inesistente.
+  Nota: la stessa forma è usata da `costi_automatici_mensili` e
+  `margine_service`, quindi sarebbero state coerentemente sbagliate — un
+  confronto incrociato fra i tre non avrebbe mai rivelato il problema. Solo lo
+  schema poteva.
+- **Spegnere `uncategorized_rows` lascia la notifica legacy stantia.** La
+  rimozione della legacy sta *dentro* il gate (`:6194`), al contrario del
+  `price_alert` dove è deliberatamente **fuori** (commento `:6039-6045`).
+  Asimmetria reale, ma **latente**: 0 righe di quel topic in
+  `notification_inbox`. Fissata con un test che descrive il comportamento
+  **attuale** e lo dichiara tale — se un domani si allineano i due, quel test
+  cade apposta.
+
+### La misura che ha spostato le priorità
+
+**`data_competenza` è NULL su 33.771 righe su 34.000 (99,3%)**, e su **229** cade
+in un mese diverso da `data_documento`. Il fallback `competenza → documento` non
+è quindi un ramo di bordo da coprire per completezza: è **il percorso normale di
+quasi tutto il MOL**, e un errore lì sposta una fattura di mese senza sollevare
+nulla — un mese gonfio e uno magro, entrambi plausibili.
+
+Da qui la scelta tecnica del file: il fake Supabase **interpreta davvero la
+`.or_()`** (parser della forma esatta prodotta dal worker, che *alza* se la forma
+cambia invece di lasciar passare tutto). Nessun fake in tutta la suite lo faceva:
+l'unico con un metodo `or_` (`test_worker_guardrail_note.py:51`) lo memorizza e
+lo ignora. Con un `or_` no-op questi test avrebbero verificato l'**aggregazione
+senza la selezione**: "marzo dà 100 €" sarebbe passato anche se il codice avesse
+chiesto aprile.
+
+### Mutazione: 20 verificate rosse, e due che hanno insegnato qualcosa
+
+Tutte eseguite su copia di backup nello scratchpad, mai `git checkout`;
+ripristino confrontato byte a byte con l'originale dopo ogni giro.
+
+Le più significative: `or_` con `data_competenza → data_documento` (cade il test
+del fallback **e** quello di coerenza); bucketing invertito in `_per_periodo`;
+`pm = netto - fb_tot - 1` **in uno solo dei due cloni** (cade il test di
+coerenza: è la rete che mancava); rimozione del legacy `price_alert` spostata
+dopo `_fut.result()`; `_briefing_aggiorna_last_seen` prima della lettura del
+rientro.
+
+#### Lezione 44 — una mutazione che non compila non prova niente
+
+La prima versione della mutazione sul `price_alert` produceva un
+`SyntaxError`: pytest falliva **in raccolta**, il runner segnava "ROSSO ok" e
+stavo per contarlo come prova che il test difendeva l'invariante. Riscritta in
+forma sintatticamente valida, il test è risultato **VERDE** — cioè vacuo. Solo
+alla terza forma (rimozione spostata *dopo* `_fut.result()`, che è lo scenario
+reale descritto dal commento del codice) sono caduti i 2 test giusti.
+Un rosso va sempre letto: *è caduto il test, o è caduto il parser?*
+
+#### Lezione 45 — un ramo può essere irraggiungibile dai dati del test
+
+Due rami sono rimasti verdi sotto mutazione perché **inosservabili**, non perché
+i test fossero deboli:
+- `if bucket is None: continue` (`:7822`): sostituirlo con `bucket = [0.0, 0.0]`
+  non cambia nulla, perché quella lista locale viene scartata comunque. Diventa
+  osservabile solo registrandola in `acc` (`setdefault`) — e allora il test cade.
+- `except (ValueError, IndexError)` (`:7820`): le date "rotte" che avevo scelto
+  (`xxxx-yy-zz`) venivano scartate **prima**, dal filtro di periodo. Serve una
+  data che passi il confronto lessicale ma non l'`int()`: `2026-0x-06`.
+
+Corollario, applicato a `base <= 0` (`:4650`): il filtro `n > 0` a monte lascia
+in `valori` solo positivi, quindi la media non può mai essere ≤ 0. Il ramo è
+**irraggiungibile per costruzione** e resta scoperto di proposito — è difesa in
+profondità, non un buco. Documentato nel test invece di essere inseguito con
+dati inventati che il codice reale non produrrebbe mai.
+
+### Aspettativa numerica: la stima era prudente
+
+Il piano prevedeva **~1–1,5 punti** di coverage; il risultato è **+9 sul file** e
++2 sul totale. La differenza non è un artefatto: i test del briefing attraversano
+anche i sotto-helper non stubbati (`_briefing_dati_mensili_mancanti`,
+`_briefing_onboarding`, `_briefing_righe_da_classificare`…), che erano scoperti.
+Resta vero il punto del piano: **il guadagno non è la percentuale**, è che il MOL
+non possa più sbagliare in silenzio.
+
+### Cosa resta di `fastapi_worker.py`
+
+La **chat** (`_chat_query_costi` 86 scoperte, `_chat_loop_openai` 57,
+`_build_chat_system_prompt` 46, `_chat_trend_prezzo` 46) è la candidata naturale
+per la prossima sessione. Verificato: **non** ha il blocco `tenacity` che si
+temeva — in questo file non esiste nessun `@retry`, il mock globale agisce sul
+client OpenAI e `_chat_loop_openai` è chiamabile diretta.
+`_run_agent_notturno` (125 scoperte, il numero più alto) resta fuori: è **spento**
+(`app_settings.agent_notturno.enabled=false` dal 30/5), coprirlo non difende
+nessun cliente.
+
+### Osservazione registrata, non corretta (D6)
+
+`_aggrega_mensili_margini` e `_aggrega_totali_margini` chiamano
+`_calcola_costi_auto_per_mese` **una volta per mese** (`:7869`, `:7927`): 12
+scansioni di `fatture` per un anno, mentre `_calcola_costi_auto_per_periodo`
+esiste apposta per farne una ed è già usato da `margini.py:1107` e
+`ricavi.py:1008`. È un refactor, fuori dal perimetro di una sessione di test —
+ma ora il test di coerenza `_per_mese` vs `_per_periodo` lo rende **sicuro da
+fare**: chi lo affronterà avrà una rete che verifica che il totale non cambi.
+Annotato anche nel docstring del file di test, dove chi tocca quel codice lo
+legge.
