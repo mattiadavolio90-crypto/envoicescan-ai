@@ -1165,7 +1165,7 @@ file.
 ## 19. §3 — MOL + briefing di `fastapi_worker.py` — 10/8/2026
 
 **Sessione di sola scrittura test: nessun difetto attivo trovato, nessun fix.**
-99 test nuovi in 3 file, `fastapi_worker.py` **37% → 46%**, totale 51% → 53%
+98 test nuovi in 3 file, `fastapi_worker.py` **37% → 46%**, totale 51% → 53%
 (gate 45). Suite 10.650 → **10.748 verdi**. `services/` mai modificato: a fine
 sessione `git status` sul percorso è vuoto.
 

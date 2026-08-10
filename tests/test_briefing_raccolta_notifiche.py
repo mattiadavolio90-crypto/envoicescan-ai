@@ -34,6 +34,20 @@ USER = "user-test"
 RID = "rid-test"
 ALTRO_RID = "rid-altro"
 
+
+def _oggi():
+    """La stessa "oggi" che usa il codice sotto test.
+
+    NON `date.today()`: il worker usa `_oggi_rome()` (fastapi_worker.py:6120)
+    proprio perche' su Railway `date.today()` e' UTC. Il runner CI e' UTC senza
+    TZ, quindi fra le 22:00 e le 24:00 UTC — cioe' 00:00-02:00 italiane, la
+    finestra di deploy raccomandata — Roma e' gia' al giorno dopo e un test
+    ancorato a `today()` fallirebbe a intermittenza proprio nell'orario in cui
+    si lavora. Ancorare il test alla stessa fonte del codice elimina il problema
+    invece di renderlo raro.
+    """
+    return fw._oggi_rome()
+
 # I sotto-helper che il briefing chiama e che NON sono l'oggetto di questi test:
 # ognuno ha gia' i suoi file di test dedicati. Default neutri, mai MagicMock.
 _STUB_NEUTRI = {
@@ -333,7 +347,7 @@ def test_upload_ricavi_solo_per_clienti_mappati(stub, prezzi):
 
 def test_upload_ricavi_assenti_segnalati_al_cliente_mappato(stub, prezzi):
     prezzi()
-    vecchio = (date.today() - timedelta(days=10)).isoformat()
+    vecchio = (_oggi() - timedelta(days=10)).isoformat()
     sb = _FakeSB(mappa_ricavi=[{"ristorante_id": RID}],
                  giornalieri=[{"ristorante_id": RID, "data": vecchio}])
     out = fw._briefing_raccogli_notifiche(USER, RID, sb)
@@ -344,7 +358,7 @@ def test_upload_ricavi_assenti_segnalati_al_cliente_mappato(stub, prezzi):
 
 def test_upload_ricavi_recenti_non_segnalati(stub, prezzi):
     prezzi()
-    ieri = (date.today() - timedelta(days=1)).isoformat()
+    ieri = (_oggi() - timedelta(days=1)).isoformat()
     sb = _FakeSB(mappa_ricavi=[{"ristorante_id": RID}],
                  giornalieri=[{"ristorante_id": RID, "data": ieri}])
     out = fw._briefing_raccogli_notifiche(USER, RID, sb)
@@ -355,7 +369,7 @@ def test_finestra_ricavi_tollera_i_giorni_di_chiusura(stub, prezzi):
     """Finestra = giorni di chiusura + 1: una sede chiusa 2 giorni a settimana non
     deve ricevere un falso allarme nel suo giorno di chiusura."""
     prezzi()
-    tre_giorni_fa = (date.today() - timedelta(days=3)).isoformat()
+    tre_giorni_fa = (_oggi() - timedelta(days=3)).isoformat()
     sb_kwargs = dict(mappa_ricavi=[{"ristorante_id": RID}],
                      giornalieri=[{"ristorante_id": RID, "data": tre_giorni_fa}])
 
