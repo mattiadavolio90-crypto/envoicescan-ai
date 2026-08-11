@@ -428,8 +428,48 @@ l'algoritmo invece di importarlo** (lo dichiarava il loro docstring): 21 test
 verdi che proteggevano zero righe di produzione, su uno dei percorsi più caldi.
 Ora coperti contro la funzione vera; la classe replica è stata rimossa.
 
-Restano i minori (`documenti_service.py`, `scadenziario.py`, `tag.py`,
+~~Restano i minori (`documenti_service.py`, `scadenziario.py`, `tag.py`,
+`tag_suggestion_service.py`) e la chat di `fastapi_worker.py`.~~ —
+**Scadenziario (`documenti_service.py` + `routers/scadenziario.py`) CHIUSO
+l'11/8/2026**, misurato per esposizione live prima di scegliere l'ordine (la
+coverage da sola aveva già ingannato 2 volte in questo ciclo): era il modulo
+minore con l'esposizione più alta (3.428 documenti, 284 pagamenti tracciati,
+3 clienti reali con regole fornitore). Un HIGH fixato — **auto-pagato RID
+irreversibile**: il ramo automatico forzava `pagata=True` su ogni fornitore a
+regola RID, ignorando la dichiarazione esplicita dell'utente ("segna come non
+pagata" tornava "Pagata" al primo reload). Confermato sul DB su 3 clienti
+reali (CASATI 14, LAND DEI SAPORI, TIME CAFE), 40 documenti mostrati "Pagata"
+contro il dato in DB — non un caso di bordo, è il comportamento normale della
+feature (9 regole su 11 configurate in tutto il DB sono RID). Fix: nuova
+colonna `pagata_manuale_at` che, se valorizzata dalla scrittura esplicita
+dell'utente, vince sull'automatismo. 3 MEDIUM fixati: `filter_active()`
+mancante sulla query che alimenta scadenza/pagata (1 punto su 6 nello stesso
+file, live solo sull'ambiente test — non un HIGH come inizialmente
+classificato, vedi lezione sotto); il flag `attiva` di una regola fornitore
+non veniva onorato nel path realmente usato in produzione; `delete` di una
+regola inesistente ritornava `ok:True` invece di segnalare l'errore. 2 LOW
+fixati (dead code allineato invece che lasciato divergente; timezone
+incoerente UTC/Roma). 19 test nuovi, 4 mutazioni verificate rosse→verde.
+`documenti_service.py` 34,8%→55%. Restano i minori (`tag.py`,
 `tag_suggestion_service.py`) e la chat di `fastapi_worker.py`.
+
+**Il `code-reviewer` ha bloccato la prima chiusura**: la migration per
+`pagata_manuale_at` era scritta ma **mai applicata al DB live**, mentre il
+codice già selezionava la colonna — deployato così avrebbe rotto l'intera
+pagina Scadenziario per tutti i clienti (PostgREST 400, inghiottito dal
+`try/except` che azzera scadenza/pagata). Migration applicata su
+vthikmfpywilukizputn **con conferma esplicita dell'utente** (ALTER TABLE
+additivo, nullable, nessun default: 3.428 righe, 0 riscritte), riverificata
+con la query reale del codice. Lezione sul metodo: mutazione diretta sul file
+di produzione (non su copia) era giustificata dalla dimensione del diff ma
+non dal criterio giusto — **serve un commit a cui tornare**, non un diff
+piccolo. Da riproporre come default finché il lavoro non è committato.
+
+**Lezione**: l'agente di audit aveva invertito le due severità HIGH — dato
+"confermato attivo" al bug che colpiva solo l'ambiente test di Mattia (0
+clienti) e "latente" a quello che colpiva 3 clienti reali su 40 documenti.
+Riverificato sul DB **prima** di accettare la classificazione (query diretta
+su `ristoranti`/`fornitori_pagamenti_config`), come da metodo del ciclo.
 
 Nasce da una domanda semplice:
 "se tutte le dimensioni sono verdi e §1 è vuota, l'app è analizzata tutta?"
@@ -468,9 +508,9 @@ per coverage e "mai in §1", ma gestisce ~29 righe di dati veri.
 | ~~`services/invoice_service.py`~~ | 927 | 44,8% → **75%** | **altissima**: ingresso di tutti i dati, 35.622 righe passate da qui | **CHIUSO 10/8**, 2174/2174 righe lette |
 | ~~`services/auth_service.py`~~ | 736 | 39,4% | alta: 16 sessioni attive, 7 utenti | **CHIUSO 8/8**, 1718/1718 righe lette |
 | `services/routers/fatture.py` | 662 | 35,8% | alta | chiuso in §1 il 5/8 ma resta poco esercitato |
-| `services/documenti_service.py` | 424 | 34,8% | media | cap PostgREST già trovato qui |
-| `services/routers/scadenziario.py` | 274 | 25,7% | media | |
-| `services/routers/tag.py` | 209 | 23,3% | bassa | il meno coperto dell'app |
+| ~~`services/documenti_service.py`~~ | 430 | 34,8% → **55%** | **alta, misurata sul DB 11/8**: 3.428 documenti, 1.905 con scadenza, 284 pagati | **CHIUSO 11/8**, 1582/1582 righe (doc+router) |
+| `services/routers/scadenziario.py` | 274 | 25,7% → 26% | alta | letto in §3 11/8, router thin senza test di endpoint propri |
+| `services/routers/tag.py` | 209 | 23,3% | media, misurata 11/8: 115 associazioni, 49 suggerimenti pending | prossima sessione |
 | `services/tag_suggestion_service.py` | 365 | 40,8% | bassa | **zero citazioni** in tutto il ciclo |
 
 **b) Frontend: 49.635 righe, 0 test.** La dimensione Qualità/UI (2ª passata,
@@ -504,9 +544,10 @@ di lasciarlo implicito:
    dalle misure**: `db_service.py` è passato davanti a `workspace.py` perché
    l'esposizione live conta più della coverage (vedi la colonna nella tabella).
    ~~Restano: `invoice_service.py`~~ — **CHIUSO il 10/8** (45% → 75%, 1 fix
-   latente, 121 test). Restano i **minori** (`documenti_service.py` 34,8%,
-   `scadenziario.py` 25,7%, `tag.py` 23,3%, `tag_suggestion_service.py` 40,8%)
-   e la **chat** di `fastapi_worker.py`.
+   latente, 121 test). ~~Restano i **minori**~~: **Scadenziario
+   (`documenti_service.py` + `routers/scadenziario.py`) CHIUSO l'11/8**
+   (34,8%→55%, 1 HIGH + 3 MEDIUM fixati, 19 test). Restano `tag.py` 23,3%,
+   `tag_suggestion_service.py` 40,8%, e la **chat** di `fastapi_worker.py`.
 2. ~~Per il frontend: le ~6 route API con logica propria e i componenti che
    scrivono sul DB~~ — **CHIUSO l'8/8**: le 6 route sono state lette (sono tutte
    auth/sessione + il proxy TTS), e il sotto-perimetro "componenti che scrivono
