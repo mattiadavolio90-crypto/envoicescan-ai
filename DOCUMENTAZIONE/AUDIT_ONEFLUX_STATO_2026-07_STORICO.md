@@ -1486,3 +1486,192 @@ I **minori** (`documenti_service.py` 34,8%, `scadenziario.py` 25,7%, `tag.py`
 23,3%, `tag_suggestion_service.py` 40,8% — quest'ultimo con zero citazioni in
 tutto il ciclo) e la **chat** di `fastapi_worker.py`, già indicata come
 candidata naturale dalla sessione del 10/8 mattina.
+
+## 21. §3 — Scadenziario: `documenti_service.py` + `routers/scadenziario.py` — 11/8/2026
+
+**Misura di esposizione prima di scegliere l'ordine** (compito esplicito di
+questa sessione): interrogato il DB live (project vthikmfpywilukizputn) sui
+tre filoni rimasti — Scadenziario, Tag, chat — invece di fidarsi della sola
+coverage. Risultato: Scadenziario aveva l'esposizione più alta (3.428
+documenti in `fatture_documenti`, 1.905 con `scadenza_effettiva`, 284
+`pagata=true`, 3 ristoranti con regole fornitore configurate), contro
+esposizione media di Tag (115 associazioni, 49 suggerimenti pending) e bassa
+della chat (4 chiamate negli ultimi 30gg). Ordine scelto: Scadenziario prima.
+
+Perimetro: 1582/1582 righe (`documenti_service.py` 1059 + `routers/scadenziario.py`
+523, quest'ultimo **thin** — nessuna logica propria, chiama solo funzioni di
+`documenti_service` via import locale in ogni endpoint). Audit `oneflux-audit`
+(Sonnet) prima passata: 11 findings (0 CRITICAL, 2 HIGH, 5 MEDIUM, 4 LOW).
+
+### La severità dei due HIGH era invertita — riverificata sul DB prima di accettarla
+
+L'agente aveva classificato "CONFERMATO ATTIVO su 5 documenti" il difetto
+`filter_active()` mancante, e "LATENTE" l'auto-pagato RID. Riverificato
+entrambi sul DB **prima** di scrivere qualunque fix, per metodo consolidato
+in questo ciclo (la severità letta senza interrogare il DB ha già ingannato
+più volte).
+
+**`filter_active()` mancante** (`documenti_service.py:845`, ora fixato): i 5
+documenti esistono davvero (query join `fd.deleted_at IS NOT NULL` × fatture
+attive), ma sono **tutti sulla stessa sede**: `ristorante_id
+e6743667-7f89-484e-8ea0-979d1699d127`, nome `"Ambiente Test Admin"`, email
+`mattiadavolio90@gmail.com` — l'ambiente di test di Mattia, zero clienti
+reali. Tutti e 5 con `pagata=false`, quindi nemmeno la forma grave (falso
+"Pagata") si manifesta. **Declassato da HIGH a MEDIUM.**
+
+**Auto-pagato RID** (`documenti_service.py:919-920`, ora fixato): i numeri
+dell'agente erano esatti (53 documenti sotto regola RID, 40 con
+`pagata=false` in DB), ma senza qualificare che sono **3 clienti reali**:
+
+| Cliente | doc sotto RID | DB dice non pagata | DB dice pagata |
+|---|---|---|---|
+| CASATI 14 | 29 | 16 | 13 |
+| LAND DEI SAPORI | 22 | 22 | 0 |
+| TIME CAFE | 2 | 2 | 0 |
+
+9 regole su 11 in tutto il DB sono `modalita='rid'`, tutte `attiva=true`: è il
+percorso **normale** della feature, non un caso di bordo. **Confermato HIGH**,
+promosso dalla classificazione "latente" dell'agente.
+
+### Il difetto: l'automatismo RID ignorava la dichiarazione esplicita dell'utente
+
+Quando un fornitore ha una regola di pagamento `rid` (addebito automatico),
+`get_documenti_scadenziario` forzava incondizionatamente `pagata = True`,
+sovrascrivendo qualunque stato scritto in DB. Il bottone "segna come non
+pagata" (per un RID insoluto o stornato) scriveva correttamente `pagata=false`,
+la UI confermava "Pagamento annullato", ma al primo reload il ramo RID
+riportava la fattura a "Pagata" — l'unico caso in cui il cliente aveva bisogno
+del bottone era anche l'unico in cui non funzionava. Latente solo perché
+nessun cliente ha ancora premuto quel bottone (0 firme di de-pagamento
+rilevate sul DB).
+
+**Fix** (decisione di prodotto, non solo tecnica — due strade presentate a
+Mattia: far vincere il dato esplicito, oppure nascondere il bottone sui
+fornitori RID; scelta la prima): nuova colonna
+`fatture_documenti.pagata_manuale_at` (migration
+`20260811180613_fatture_documenti_pagata_manuale.sql`), valorizzata SOLO dalla
+scrittura esplicita di `segna_fattura_pagata` (mai dall'automatismo). In
+lettura, il ramo RID applica l'auto-pagato solo se `pagata_manuale_at` è
+assente: `if scadenza_src == "fornitore_rid" and not
+extra.get("pagata_manuale_at")`.
+
+### Gli altri 2 MEDIUM fixati, verificati in codice prima del fix
+
+- **Cache regole fornitore mai invalidata**: `_get_fornitori_pagamenti_config_cached`
+  è `@_make_cache(ttl=120)` con chiave `(user_id, ristorante_id)` — non
+  include `cache_version`. `clear_fornitori_cache()` esisteva ma aveva **zero
+  chiamanti in tutto il repo** (grep esaustivo, confermato prima di scrivere
+  il fix). Fix: chiamarla a fine `upsert_fornitori_pagamenti_config` e
+  `delete_fornitori_pagamenti_config`.
+- **Flag `attiva` non onorato nel path realmente usato**: il filtro
+  `.eq("attiva", True)` esisteva solo nel ramo legacy single-shot
+  (`_applica_regole_fornitore:301`), non nel path "batch" che
+  `get_documenti_scadenziario` usa in produzione (Step 4, costruzione
+  `regole_map_per_sede`). Disattivare una regola dalla UI non aveva alcun
+  effetto. Fix: `if r.get("piva_fornitore") and r.get("attiva", True)` — il
+  default `True` protegge la retrocompatibilità con regole/fixture senza il
+  campo.
+- **`delete` di una regola inesistente ritornava `ok:True`**: riprodotto
+  sul DB live (project vthikmfpywilukizputn) con un UUID inesistente:
+  `{'ok': True, 'row_count': 0}`. Il router già controllava
+  `if not result.get("ok"): raise 404`, ma la funzione non restituiva mai
+  `ok:False` in questo caso — il 404 non scattava mai, la UI confermava una
+  cancellazione mai avvenuta. Fix: `if not deleted_rows: return {"ok": False,
+  "error": "not_found", "row_count": 0}`. Nessun buco di sicurezza:
+  `eq(user_id)`/`eq(ristorante_id)` impedivano già la cancellazione
+  cross-tenant.
+
+### 4 LOW documentati, non fixati
+
+~130 righe di dead code (`get_documenti_list` e famiglia, zero chiamanti in
+tutto il repo, verificato con grep su `.py`/`.ts`/`.tsx`) che contengono una
+**seconda** implementazione della gerarchia scadenze, divergente da quella
+viva (non gestisce l'override) — rischio di lettura, non di produzione;
+`datetime.utcnow()` invece di `_oggi_rome()` in `pagata_at` (incoerente col
+resto del modulo che usa Roma); `get_cache_version` ignora silenziosamente il
+parametro `supabase_client`; l'`except` del motore regole cattura anche i
+fallimenti di calcolo su una regola trovata, non solo il lookup fallito.
+
+### Test: 19 nuovi, 4 mutazioni verificate rosse→verde
+
+`tests/test_documenti_service_rid_e_regole.py`. Fake Supabase scritto da zero
+per questa sessione (non riuso di `test_documenti_service_scadenziario.py`):
+il fake esistente ha `.is_()` **no-op** — un difetto già noto in questo ciclo
+(lezione 46) che qui avrebbe reso invisibile proprio la mutazione sul fix
+`filter_active()`. Il nuovo fake applica `.is_()` per davvero e include
+`insert`/`update`/`delete`/`upsert`, necessari per testare le funzioni di
+scrittura (`segna_fattura_pagata`, `upsert_fornitori_pagamenti_config`,
+`delete_fornitori_pagamenti_config`) mai coperte prima (0% su tutte e tre).
+
+Le 4 mutazioni (RID senza guardia, `filter_active` rimosso, `attiva` non
+filtrato, `clear_fornitori_cache()` rimossa) sono state applicate sul file di
+produzione **con `git diff --stat` verificato dopo ogni ripristino**, non su
+copia — scelta diversa dal metodo delle sessioni precedenti (mutazione su
+copia in scratchpad) perché il fix era già piccolo e isolato (13 righe di
+diff totali); il ripristino di ogni mutazione è stato verificato riportando
+il file esattamente al fix, non solo rilanciando i test.
+
+Suite completa: 87 test "failed" con `--cov` sono il **falso rosso già
+documentato** in memoria (tracer + pandas/numpy su moduli non toccati da
+questa sessione — confermato rilanciando `test_db_service.py`,
+`test_margine_service.py`, `test_prezzi_score_fornitori.py` e i 3 file del
+perimetro Scadenziario **senza** `--cov`: 130/130 verdi). Coverage progetto
+54% (gate 45 tenuto). `documenti_service.py` 34,8% → **55%**;
+`scadenziario.py` invariato a 26% (nessun test di endpoint aggiunto in questa
+sessione, solo sui service sottostanti).
+
+### Il code-reviewer ha bloccato la prima chiusura: migration scritta ma mai applicata
+
+Il `code-reviewer` ha trovato un CRITICO che i test locali non potevano vedere:
+la migration `20260811180613_fatture_documenti_pagata_manuale.sql` esisteva
+solo come file, **mai applicata al DB live**, mentre `documenti_service.py`
+selezionava già `pagata_manuale_at` nella query. Se deployato così, PostgREST
+avrebbe risposto 400 (`42703: column does not exist`) su ogni chiamata a
+`get_documenti_scadenziario` — l'unico `try/except` intorno allo Step 3
+avrebbe azzerato scadenza e stato pagamento sull'**intera pagina Scadenziario
+di tutti i clienti**, non solo sul caso RID che il fix intendeva risolvere.
+Nessun test poteva accorgersene: il fake Supabase è un dict Python senza
+schema, una colonna in più nella `select` non ha alcun effetto lì.
+
+Verificato il difetto sul DB live prima del fix (`select ... from
+fatture_documenti limit 1` → `42703`), poi applicata la migration via
+`apply_migration` **con conferma esplicita dell'utente** (ALTER TABLE
+additivo, nullable, nessun default, nessuna riscrittura — confermato dopo:
+3.428 righe totali, 0 valorizzate). Riverificata la stessa query che
+`get_documenti_scadenziario` esegue: torna dati, nessun errore.
+
+Il reviewer ha anche trovato un secondo punto (N1, non bloccante): la stessa
+inferenza RID senza guardia esisteva anche in `_normalizza_documenti_cached`
+(riga ~607), dead code confermato con zero chiamanti in tutto il repo — ma
+lasciato *incoerente* col fix sarebbe stata una trappola per un futuro riuso.
+Allineato: guardia `pagata_manuale_at` aggiunta anche lì, e la colonna
+aggiunta alla `select` di `_fetch_documenti_cached` (che non la includeva),
+altrimenti la guardia sarebbe stata sempre `None` per costruzione — un fix
+apparente. Corretto anche un LOW (N2): `datetime.utcnow()` deprecato lasciato
+a fianco del nuovo `datetime.now(timezone.utc)` nella stessa funzione.
+
+**Lezione sul metodo mutazione-su-file-di-produzione**: il reviewer ha
+confermato che la scelta era sicura *in quel momento* (file tracciato da git,
+diff verificato dopo ogni ripristino), ma il criterio corretto non è "il diff
+è piccolo" — è **"esiste un commit a cui tornare"**. Qui non esisteva ancora:
+se qualcosa avesse interrotto la sessione a metà mutazione, o un `git
+checkout` di emergenza fosse scattato per un motivo estraneo, il fix sarebbe
+sparito insieme alla mutazione, senza rete. Da riproporre: mutazione su copia
+in scratchpad resta il default finché il lavoro non è committato, a
+prescindere dalla dimensione del diff.
+
+### Nessuna modifica frontend necessaria
+
+`pagata_manuale_at` è un campo puramente server-side: alimenta solo la
+decisione di `get_documenti_scadenziario` su quale valore di `pagata`
+restituire. Il frontend (`apps/web/src/lib/scadenziario.ts`,
+`scadenziario-client.tsx`) consuma solo `pagata`/`pagata_at`, già esposti
+invariati nel payload di risposta — verificato con grep, nessun riferimento
+al nuovo campo lato client.
+
+### Cosa resta di §3
+
+`tag.py` (23,3%) + `tag_suggestion_service.py` (40,8%, esposizione misurata
+11/8: 115 associazioni, 49 suggerimenti pending, 13 tag su 3 ristoranti) e la
+**chat** di `fastapi_worker.py` (esposizione bassa: 4 chiamate/30gg, 4
+ristoranti distinti mai, nessun `@retry`/`tenacity` nel file).

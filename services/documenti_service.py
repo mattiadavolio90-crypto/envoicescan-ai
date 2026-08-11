@@ -240,7 +240,7 @@ def _fetch_documenti_cached(user_id: str, ristorante_id: str, cache_version: int
             "id,file_origine,fornitore,piva_fornitore,tipo_documento,totale_documento,"
             "data_documento,numero_documento,"
             "scadenza_xml,giorni_termini_xml,scadenza_effettiva,scadenza_source,"
-            "pagata,pagata_at,created_at"
+            "pagata,pagata_at,pagata_manuale_at,created_at"
         )
         .eq("user_id", user_id)
         .eq("ristorante_id", ristorante_id)
@@ -489,7 +489,10 @@ def upsert_fornitori_pagamenti_config(
                 .execute()
             )
         
-        # Invalida cache versione
+        # Invalida cache versione (colonna DB, letta da endpoint che la
+        # espongono) e cache locale @_make_cache (quella che serve davvero a
+        # _get_fornitori_pagamenti_config_cached: la sua chiave e' (user_id,
+        # ristorante_id), non include cache_version).
         try:
             current_version = get_cache_version("fornitori_pagamenti_config", sb)
             sb.table("cache_version").upsert({
@@ -498,7 +501,8 @@ def upsert_fornitori_pagamenti_config(
             }, on_conflict="key").execute()
         except Exception:
             pass
-        
+        clear_fornitori_cache()
+
         return {"ok": True, "row_count": len(resp.data or [])}
     except Exception as e:
         logger.error(f"Errore upsert fornitori config: {e}")
@@ -530,7 +534,11 @@ def delete_fornitori_pagamenti_config(
             .execute()
         )
         
-        # Invalida cache
+        deleted_rows = resp.data or []
+        if not deleted_rows:
+            return {"ok": False, "error": "not_found", "row_count": 0}
+
+        # Invalida cache (vedi commento in upsert_fornitori_pagamenti_config)
         try:
             current_version = get_cache_version("fornitori_pagamenti_config", sb)
             sb.table("cache_version").upsert({
@@ -539,8 +547,9 @@ def delete_fornitori_pagamenti_config(
             }, on_conflict="key").execute()
         except Exception:
             pass
-        
-        return {"ok": True, "row_count": len(resp.data or [])}
+        clear_fornitori_cache()
+
+        return {"ok": True, "row_count": len(deleted_rows)}
     except Exception as e:
         logger.error(f"Errore delete fornitori config: {e}")
         return {"ok": False, "error": str(e)}
@@ -594,8 +603,10 @@ def _get_documenti_normalized_cached(
                 scadenza_eff = _to_date_iso(_stored)
                 source_eff = row.get("scadenza_source") or "stored"
         pagata = bool(row.get("pagata"))
-        # Auto-pagato: fatture di fornitori con regola RID risultano già pagate
-        if source_eff == "fornitore_rid" and not pagata:
+        # Auto-pagato: fatture di fornitori con regola RID risultano già pagate,
+        # salvo dichiarazione esplicita dell'utente (vedi get_documenti_scadenziario,
+        # stessa guardia pagata_manuale_at).
+        if source_eff == "fornitore_rid" and not pagata and not row.get("pagata_manuale_at"):
             pagata = True
         normalized.append({
             "id": row.get("id"),
@@ -669,15 +680,18 @@ def segna_fattura_pagata(
 
     sb = supabase_client or get_supabase_client()
     try:
-        from datetime import datetime
+        from datetime import datetime, timezone
         _file_target = str(file_origine).strip()
         _file_target_norm = _file_target.lower()
 
         payload: Dict[str, Any] = {"pagata": pagata}
         if pagata:
-            payload["pagata_at"] = datetime.utcnow().date().isoformat()
+            payload["pagata_at"] = datetime.now(timezone.utc).date().isoformat()
         else:
             payload["pagata_at"] = None
+        # Marca sempre la dichiarazione esplicita dell'utente, cosi' la lettura
+        # (get_documenti_scadenziario) puo' distinguerla dall'automatismo RID.
+        payload["pagata_manuale_at"] = datetime.now(timezone.utc).isoformat()
 
         resp = (
             filter_active(
@@ -842,12 +856,12 @@ def get_documenti_scadenziario(
     # ── Step 3: carica fatture_documenti per scadenza/pagata/piva
     docs_extra: Dict[tuple, Dict[str, Any]] = {}
     try:
-        q2 = (
+        q2 = filter_active(
             sb.table("fatture_documenti")
             .select(
                 "file_origine,ristorante_id,piva_fornitore,numero_documento,totale_documento,"
                 "scadenza_xml,giorni_termini_xml,scadenza_effettiva,scadenza_source,"
-                "scadenza_override,pagata,pagata_at"
+                "scadenza_override,pagata,pagata_at,pagata_manuale_at"
             )
             .eq("user_id", user_id)
         )
@@ -870,7 +884,7 @@ def get_documenti_scadenziario(
         regole_map_per_sede[rid] = {
             str(r.get("piva_fornitore", "")).strip(): r
             for r in regole_list
-            if r.get("piva_fornitore")
+            if r.get("piva_fornitore") and r.get("attiva", True)
         }
 
     # ── Step 5: merge + calcola scadenza_effettiva
@@ -916,7 +930,9 @@ def get_documenti_scadenziario(
             scadenza_eff = None
             scadenza_src = "none"
 
-        if scadenza_src == "fornitore_rid":
+        # L'automatismo RID assume "pagata" salvo dichiarazione esplicita
+        # dell'utente (pagata_manuale_at): quest'ultima vince sempre.
+        if scadenza_src == "fornitore_rid" and not extra.get("pagata_manuale_at"):
             pagata = True
 
         tipo_doc = base.get("tipo_documento") or "TD01"
