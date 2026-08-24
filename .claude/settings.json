@@ -20,7 +20,11 @@
       "Bash(curl -s -m 5 -o /dev/null -w \"HTTP_STATUS:%{http_code}\\\\n\" http://localhost:3000)",
       "Bash(npx tsc *)",
       "Bash(npx eslint *)",
-      "Bash(python -m pytest tests/test_switch_sede_ripartite.py -q)"
+      "Bash(python -m pytest tests/test_switch_sede_ripartite.py -q)",
+      "Bash(git rev-list *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ],
     "defaultMode": "acceptEdits"
   },
