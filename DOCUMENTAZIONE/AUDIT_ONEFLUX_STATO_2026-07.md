@@ -503,12 +503,24 @@ che una severità cade a una query. Ha però anche **chiuso in negativo 4 piste*
 con verifica (soft-delete conforme, cache non stantia, routing senza collisioni,
 duplicazione esclusa dall'unique index parziale): lavoro risparmiato in futuro.
 
-14 test nuovi in 3 file — **prima di oggi nessun test esercitava gli endpoint di
+12 test nuovi in 3 file — **prima di oggi nessun test esercitava gli endpoint di
 `routers/tag.py`** — più 3 aggiornati (codificavano il vecchio comportamento
-sulla nota di credito). **8 mutazioni verificate rosse su 8.** Suite 10.969
+sulla nota di credito). **10 mutazioni verificate rosse su 10.** Suite 10.971
 passed, coverage 55% (gate 45). `tag_analytics_service` **15%→69%**,
 `tag_suggestion_service` 41%→51%, `routers/tag.py` 23%→34%.
+`tsc --noEmit` pulito, OpenAPI senza drift (194 endpoint).
 Dettaglio in STORICO §22.
+
+> ⏳ **NON ancora deployato al 24/8 sera.** Branch `audit-s3b-tag` pushato su
+> origin (5 commit), ma **PR non aperta e CI mai osservata**: in questa sessione
+> `gh` non è installato e l'accesso all'API GitHub è bloccato. Il merge locale
+> era tecnicamente possibile ma è stato **deliberatamente non fatto**: mettere in
+> produzione codice la cui CI non è mai girata è esattamente l'errore registrato
+> nel caso Database del 30/7. Prossimo passo per chi riprende: aprire la PR,
+> attendere i 4 check, mergiare e verificare `/health` del worker Railway
+> (espone il commit deployato).
+> **Prompt pronto in `AUDIT_ONEFLUX_STATO_2026-07_PROSSIMA_SESSIONE.md`**, stessa
+> cartella: ha il deploy in sospeso come primo compito.
 
 Resta di §3b la **chat** di `fastapi_worker.py`.
 
