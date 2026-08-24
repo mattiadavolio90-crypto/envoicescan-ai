@@ -1849,7 +1849,8 @@ Le mutazioni sono state applicate su **copia in scratchpad** con ripristino
 verificato (`grep -c "if False:"` = 0 sui 3 file), come da lezione dell'11/8:
 il criterio non è "il diff è piccolo" ma "esiste un commit a cui tornare".
 
-Suite completa: **10.969 passed, 0 failed**. Coverage progetto 55% (gate 45).
+Dopo la review: **12 test nuovi**, **10 mutazioni verificate rosse su 10**.
+Suite completa: **10.971 passed, 0 failed**. Coverage progetto 55% (gate 45).
 `tag_analytics_service.py` **15% → 69%**, `tag_suggestion_service.py` 41% → 51%,
 `routers/tag.py` 23% → 34%.
 
@@ -1859,6 +1860,47 @@ Il working tree conteneva ~705 righe non committate su riparto/dropdown-categori
 **estranee all'audit** (lavoro di un'altra sessione). Su decisione di Mattia sono
 state lasciate intatte: lavoro su branch dedicato `audit-s3b-tag`, staging
 selettivo dei soli file del perimetro, `code-reviewer` istruito a ignorarle.
+
+### Il code-reviewer ha bloccato la chiusura: l'incoerenza era spostata, non chiusa
+
+Verdetto iniziale **NON CHIUSA**, su 3 rilievi tutti fondati.
+
+Il più importante: fixare `_compute_kpi` e poi `_compute_trend` aveva lasciato
+fuori **`_compute_fornitori`**, che continuava a sommare KG+PZ. Riprodotto: sullo
+stesso tag la risposta API riportava **50,00 (KPI), 50,00 (trend) e 6,36
+(fornitori)** — cioè il commit aveva *spostato* l'incoerenza invece di
+eliminarla, e prima erano almeno sbagliati insieme. Il reviewer ha anche
+costruito il caso che ne misura il danno: con `price_impact_service` che prende
+`p_new`/`p_old` dal **trend** e `qta` dai **KPI**, numeratore e denominatore
+venivano da due popolazioni diverse — un tag col prezzo al kg **invariato**
+(50 €/kg in entrambe le finestre) generava un alert di **+405%**.
+
+Causa di fondo: la regola dell'unità dominante era scritta in **tre posti**, e
+il terzo è stato dimenticato. Corretta estraendo `_unita_dominante()` come unico
+punto di verità per le tre funzioni — non è rifattorizzazione estetica, è ciò
+che impedisce alla stessa dimenticanza di ripetersi.
+
+Secondo rilievo: **`spesa_esclusa_mix` non quadrava con `spesa_totale`**. Era
+calcolata su `df_convertibili` (solo prezzo valido) mentre la spesa include note
+di credito e righe non convertibili: con 1000 PZ + 200 KG − 80 NC dava
+`spesa_totale=1120` ma `dominante+esclusa=1200`. Un campo che il cliente non
+può far tornare con nessun conto. Ora entrambe leggono le stesse righe.
+
+Terzo, e istruttivo: **i fix erano invisibili al cliente**. Il frontend scartava
+i campi nuovi — `analisi-e-tag-client.tsx` faceva `setSuggestions(d.suggestions ?? [])`
+senza leggere `refresh_ok`, e `lib/tag.ts` non dichiarava `unita_dominante`.
+Cioè il fix #6 era corretto lato worker e **il difetto restava identico dal
+punto di vista di chi guarda la pagina**: il refresh fallito continuava a
+sembrare "nessun suggerimento nuovo". Aggiunti il toast d'errore e la riga sotto
+i KPI che dichiara l'unità e la spesa esclusa. Lezione: *un fix su un endpoint
+non è consegnato finché il consumatore non lo usa* — vale per ogni campo nuovo
+aggiunto a una risposta API.
+
+Verificato sul punto OpenAPI: `--check-drift` → nessun drift (194 endpoint), i
+response body non sono tipizzati nello schema, quindi non serve rigenerarlo.
+
+I due rilievi B1/B3 del reviewer (fix trend non committato) erano già risolti dal
+commit `c4a73b1`, fatto mentre la review girava.
 
 ### Cosa resta di §3b
 
