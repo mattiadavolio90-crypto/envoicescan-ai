@@ -450,8 +450,67 @@ non veniva onorato nel path realmente usato in produzione; `delete` di una
 regola inesistente ritornava `ok:True` invece di segnalare l'errore. 2 LOW
 fixati (dead code allineato invece che lasciato divergente; timezone
 incoerente UTC/Roma). 19 test nuovi, 4 mutazioni verificate rosse→verde.
-`documenti_service.py` 34,8%→55%. Restano i minori (`tag.py`,
-`tag_suggestion_service.py`) e la chat di `fastapi_worker.py`.
+`documenti_service.py` 34,8%→55%.
+
+**Quinta sessione — 24/8/2026: la feature Tag.** ~~Restano i minori (`tag.py`,
+`tag_suggestion_service.py`)~~ — **CHIUSA il 24/8**. Il perimetro dichiarato
+(2 file) era **incompleto**: la feature ne ha un terzo mai citato da nessuna
+passata, `tag_analytics_service.py` (404 righe, **15%** di coverage, la più
+bassa delle tre), che alimenta gli endpoint `/analisi` e `/orfani`. Incluso su
+decisione di Mattia: auditare la feature come la vede il cliente.
+
+Anche la misura di esposizione dell'11/8 era imprecisa: **4 sedi, non 3**, tutte
+clienti reali attivi (LAND DEI SAPORI, TIME CAFE, SUSHILAND MARIANO, CASATI 14),
+e **307 `custom_tag_suggestion_items` mai contati**. Il fatto che ha deciso le
+severità: **un utente reale possiede 4 sedi e ha tag su 2** (85 associazioni +
+7) — ogni difetto di isolamento *cross-sede a parità di user_id* è raggiungibile,
+non teorico.
+
+**3 HIGH + 3 MEDIUM fixati.** Il più grave non era un difetto di sicurezza ma un
+numero sbagliato mostrato al cliente: `_compute_kpi` sommava **KG, LT e PZ** e ci
+divideva la spesa. Misurato: **8 tag su 13, su 3 clienti**. Caso SCAMONE WAGYU:
+**42,25 €** mostrati contro **43,51 €/pz** reali (252,97 pezzi sommati a 9,74 kg).
+Lo stesso numero alimenta gli alert prezzi della Home via `price_impact_service`.
+Fix: si usa la sola unità dominante per spesa, dichiarando in `spesa_esclusa_mix`
+quanto resta fuori. La guardia è stata poi **estesa al trend** in un secondo
+commit: correggere solo il KPI lasciava due prezzi diversi per lo stesso tag
+nella stessa risposta, e l'alert nasceva da quello sbagliato.
+
+Gli altri: `remove_tag_prodotto` era l'unico endpoint senza verifica di sede
+(`rimuovi_associazione` filtra solo `user_id`); `prezzo_medio_tag` era una media
+non ponderata di medie (sbilanciamento misurato **fino a 93:1**) che divergeva
+dal prezzo ponderato dei KPI nella stessa risposta; `target_tag_id` arrivava dal
+body senza validazione di sede — e il trigger DB riallinea `user_id`/`ristorante_id`
+al tag padre, quindi l'anomalia **non lascia traccia referenziale** (il controllo
+"0 associazioni orfane" non l'avrebbe mai vista); una collisione sull'unique
+index abortiva il **ciclo intero** della pipeline (saltando dismiss e notifiche);
+il DELETE-poi-INSERT degli item poteva lasciare un suggerimento **inaccettabile
+per sempre** (`no_items_selected`); `?refresh=true` rispondeva **200 con la lista
+vecchia** quando la pipeline falliva, indistinguibile da "nessun suggerimento nuovo".
+
+**Un difetto trovato da me, non dall'agente**: le righe a prezzo ≤ 0 erano
+scartate prima di *ogni* calcolo, quindi le note di credito non venivano scalate
+dalla spesa — **−1.652 € non scalati** su prodotti taggati. Ora sono marcate
+`PrezzoValido`: fuori dal prezzo, dentro la spesa.
+
+**La lezione di questa sessione riguarda le severità dell'agente, di nuovo.**
+L'agente non aveva accesso al DB e ha lasciato onestamente 3 numeri "da misurare,
+non stimo" — ma sono proprio quelli che decidevano le sue severità. Misurati:
+2 confermati (#4 e #5 ATTIVI) e **1 declassato**: il difetto sul trend che lui
+dava per attivo ("basta una riga con quantità mancante") non ha **alcun dato che
+lo attivi** — 0 righe su 2.016 hanno quantità nulla. Quarta volta in questo ciclo
+che una severità cade a una query. Ha però anche **chiuso in negativo 4 piste**
+con verifica (soft-delete conforme, cache non stantia, routing senza collisioni,
+duplicazione esclusa dall'unique index parziale): lavoro risparmiato in futuro.
+
+14 test nuovi in 3 file — **prima di oggi nessun test esercitava gli endpoint di
+`routers/tag.py`** — più 3 aggiornati (codificavano il vecchio comportamento
+sulla nota di credito). **8 mutazioni verificate rosse su 8.** Suite 10.969
+passed, coverage 55% (gate 45). `tag_analytics_service` **15%→69%**,
+`tag_suggestion_service` 41%→51%, `routers/tag.py` 23%→34%.
+Dettaglio in STORICO §22.
+
+Resta di §3b la **chat** di `fastapi_worker.py`.
 
 **Il `code-reviewer` ha bloccato la prima chiusura**: la migration per
 `pagata_manuale_at` era scritta ma **mai applicata al DB live**, mentre il
@@ -510,8 +569,9 @@ per coverage e "mai in §1", ma gestisce ~29 righe di dati veri.
 | `services/routers/fatture.py` | 662 | 35,8% | alta | chiuso in §1 il 5/8 ma resta poco esercitato |
 | ~~`services/documenti_service.py`~~ | 430 | 34,8% → **55%** | **alta, misurata sul DB 11/8**: 3.428 documenti, 1.905 con scadenza, 284 pagati | **CHIUSO 11/8**, 1582/1582 righe (doc+router) |
 | `services/routers/scadenziario.py` | 274 | 25,7% → 26% | alta | letto in §3b 11/8, router thin senza test di endpoint propri |
-| `services/routers/tag.py` | 209 | 23,3% | media, misurata 11/8: 115 associazioni, 49 suggerimenti pending | prossima sessione |
-| `services/tag_suggestion_service.py` | 365 | 40,8% | bassa | **zero citazioni** in tutto il ciclo |
+| ~~`services/routers/tag.py`~~ | 209 | 23,3% → **34%** | media, rimisurata 24/8: 115 associazioni, 49 pending, **4 sedi reali** (non 3) | **CHIUSO 24/8**, 351/351 righe |
+| ~~`services/tag_suggestion_service.py`~~ | 365 | 40,8% → **51%** | media | **CHIUSO 24/8**, 1019/1019 righe |
+| ~~`services/tag_analytics_service.py`~~ | 167 | **15% → 69%** | media: alimenta `/analisi`, `/orfani` e gli alert prezzi Home | **mai in nessuna lista prima del 24/8** — 3 dei 6 difetti stavano qui |
 
 **b) Frontend: 49.635 righe, 0 test.** La dimensione Qualità/UI (2ª passata,
 4/8) ha fatto inventario + audit mirato e ha trovato un MEDIUM reale, ma
@@ -546,8 +606,11 @@ di lasciarlo implicito:
    ~~Restano: `invoice_service.py`~~ — **CHIUSO il 10/8** (45% → 75%, 1 fix
    latente, 121 test). ~~Restano i **minori**~~: **Scadenziario
    (`documenti_service.py` + `routers/scadenziario.py`) CHIUSO l'11/8**
-   (34,8%→55%, 1 HIGH + 3 MEDIUM fixati, 19 test). Restano `tag.py` 23,3%,
-   `tag_suggestion_service.py` 40,8%, e la **chat** di `fastapi_worker.py`.
+   (34,8%→55%, 1 HIGH + 3 MEDIUM fixati, 19 test). ~~Restano `tag.py` 23,3%,
+   `tag_suggestion_service.py` 40,8%~~ — **feature Tag CHIUSA il 24/8**
+   (3 HIGH + 3 MEDIUM fixati, 14 test, 8 mutazioni; perimetro allargato al
+   terzo file mai citato `tag_analytics_service.py` 15%→69%). Resta la **chat**
+   di `fastapi_worker.py`.
 2. ~~Per il frontend: le ~6 route API con logica propria e i componenti che
    scrivono sul DB~~ — **CHIUSO l'8/8**: le 6 route sono state lette (sono tutte
    auth/sessione + il proxy TTS), e il sotto-perimetro "componenti che scrivono

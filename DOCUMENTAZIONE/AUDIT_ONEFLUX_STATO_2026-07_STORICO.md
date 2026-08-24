@@ -1675,3 +1675,202 @@ al nuovo campo lato client.
 11/8: 115 associazioni, 49 suggerimenti pending, 13 tag su 3 ristoranti) e la
 **chat** di `fastapi_worker.py` (esposizione bassa: 4 chiamate/30gg, 4
 ristoranti distinti mai, nessun `@retry`/`tenacity` nel file).
+
+## 22. §3b — Feature Tag: `routers/tag.py` + `tag_suggestion_service.py` + `tag_analytics_service.py` — 24/8/2026
+
+### Il perimetro dichiarato era incompleto
+
+§3b indicava 2 file. Mappando la feature prima di partire è emerso un **terzo**
+file mai citato da nessuna passata del ciclo: `tag_analytics_service.py` (404
+righe, **15%** di coverage — la più bassa delle tre), che alimenta gli endpoint
+`/api/tag/{id}/analisi` e `/orfani`. Incluso su decisione esplicita di Mattia.
+**È stata la scelta che ha pagato: 3 dei 6 difetti fixati stanno lì.**
+
+Fuori perimetro per scelta: le funzioni tag di `db_service.py` (lette come
+dipendenza) e `gruppo_tags`/`gruppo_tag_prodotti` (tag di catena, altro router).
+
+### Le misure dell'11/8 erano imprecise — rimisurate prima di partire
+
+| Dato | Scritto l'11/8 | Misurato il 24/8 |
+|---|---|---|
+| Sedi coinvolte | 3 ristoranti | **4**, tutte clienti reali attivi |
+| Associazioni | 115 | 115 (confermato) |
+| Suggerimenti | 49 pending | 55 totali: 49 pending, 4 dismissed, 2 accepted |
+| `custom_tag_suggestion_items` | mai contati | **307** |
+
+Le 4 sedi: LAND DEI SAPORI (8 tag/85 assoc/30 sugg), TIME CAFE (4/23/21),
+SUSHILAND MARIANO (1/7/0), CASATI 14 (0/0/4). Zero ambiente test.
+
+**Il fatto che ha deciso tutte le severità**: l'utente
+`51015cc8-078c-4e92-86b4-113e62e16d38` possiede **4 ristoranti** e ha tag su
+**2 sedi diverse** (85 associazioni su LAND DEI SAPORI, 7 su SUSHILAND MARIANO).
+Ogni difetto di isolamento *cross-sede a parità di `user_id`* è quindi
+raggiungibile su dati reali, non teorico. Feature viva: scritture fino al 6-7/8.
+
+### Il difetto peggiore non era di sicurezza: era un numero falso
+
+`_compute_kpi` sommava `QuantitaNorm` di **unità fisicamente incompatibili**
+(KG, LT, PZ) e ci divideva la spesa. Il codice se ne accorgeva — sceglieva
+l'etichetta generica "€/unità norm." nel ramo `else` — ma si limitava a
+**rinominare** il numero sbagliato invece di rifiutarlo.
+
+Misurato: **8 tag su 13**, su 3 clienti reali, mescolano KG e PZ.
+
+| Tag | Sede | Spesa | €/kg mostrato | Reale | Errore |
+|---|---|---|---|---|---|
+| SCAMONE WAGYU | LAND DEI SAPORI | 11.100 € | **42,25** | **43,51 €/pz** | unità inesistente |
+| mazzz | LAND DEI SAPORI | 56.076 € | 6,76 | 6,08 €/kg | +11% |
+| MAZZANCOLLE 41/50 | LAND DEI SAPORI | 39.816 € | 6,68 | 6,01 €/kg | +11% |
+| SALMONE FRESCO | SUSHILAND MARIANO | 102.013 € | 8,06 | 8,03 €/kg | +0,4% |
+
+Il caso WAGYU merita una nota: la prima lettura dei dati mi aveva fatto scrivere
+"prezzo vero 9,50 €/kg", ma quella è **una sola riga da 92 €**. La sostanza del
+tag sono 26 righe a pezzo per 11.007 €, cioè **43,51 €/pz**. Il valore mostrato
+non era "gonfiato del 345%": era la media di due grandezze diverse, che non
+significa nulla in nessuna delle due unità.
+
+**Fix**: con unità miste si tiene solo la **dominante per spesa** (non per
+quantità: 1000 pezzi da 5 centesimi non devono battere 10 kg da 90 €) e si
+dichiara in `spesa_esclusa_mix` quanto resta fuori dal calcolo del prezzo.
+
+### La guardia andava estesa al trend — trovato dopo il primo commit
+
+Il primo fix correggeva `_compute_kpi` ma **non** `_compute_trend`, che
+continuava a sommare KG e PZ nel `groupby` giornaliero. Risultato: KPI corretto
+e trend no, cioè **due prezzi diversi per lo stesso tag nella stessa risposta**.
+
+Non è estetica: `prezzo_medio_periodo` è il valore che `price_impact_service`
+confronta fra due semestri per decidere se allertare il cliente su un rincaro,
+e poi moltiplica per `quantita_norm_totale` per stimare l'impatto in €/mese.
+Con unità miste **l'alert nasceva da un prezzo senza dimensione fisica**.
+Corretto in un secondo commit (`c4a73b1`).
+
+Nota sul verso del cambiamento: il fix rende `price_impact_service` **più**
+coerente, non meno — prima moltiplicava un delta in €/unità-inventata per una
+quantità mista, ora entrambi si riferiscono alla stessa unità.
+
+### Gli altri 5 difetti fixati
+
+- **`remove_tag_prodotto`** (`routers/tag.py`): unico endpoint del router senza
+  `_assert_tag_ownership` né `ristorante_id`; `rimuovi_associazione` filtra solo
+  `user_id`. Gli `assoc_id` sono `BIGSERIAL` globali, quindi enumerabili.
+- **`prezzo_medio_tag`** era la media **non ponderata** delle medie per
+  fornitore: uno da 1 acquisto pesava quanto uno da 200 (**sbilanciamento
+  misurato fino a 93:1** sul tag SALMONE SUSHI). Il `delta_pct` mostrato al
+  cliente divergeva dal `prezzo_medio_ponderato` restituito **nella stessa
+  risposta API**. Rimosso anche il valore magico `max(spesa, 0.0001)`.
+- **`target_tag_id` dal body non validato per sede** in
+  `accept_suggestion_extend_tag`: permetteva di dirottare le associazioni di un
+  suggerimento della sede A dentro un tag della sede B. **Il trigger
+  `custom_tag_prodotti_prepare_row` riallinea `user_id`/`ristorante_id` al tag
+  padre**, quindi le righe risultano formalmente coerenti: il difetto non lascia
+  traccia referenziale e il controllo "0 associazioni orfane" non l'avrebbe mai
+  rilevato. Verificato sul DB che i 9 `target_tag_id` attuali sono tutti
+  coerenti → era **latente**, ma raggiungibile.
+- **Collisione che abortiva il ciclo intero** (`upsert_tag_suggestions`): la
+  violazione dell'unique index parziale solleva, l'eccezione risaliva fino al
+  `except Exception` di `run_tag_suggestion_pipeline` e **i suggerimenti
+  successivi non venivano scritti, né giravano `dismiss_suggerimenti_obsoleti`
+  e le notifiche**. Ora l'errore è isolato al singolo suggerimento.
+- **Finestra DELETE→INSERT sugli item**: il vecchio ordine cancellava tutti gli
+  item prima di reinserirli; una morte del processo nel mezzo lasciava un
+  suggerimento pending con **zero item**, che `accept` rifiuta con
+  `no_items_selected` — cioè **inaccettabile per sempre** finché una run
+  successiva non lo ricostruisce. Invertito in upsert-poi-pota.
+- **`?refresh=true` silenzioso**: il router ignorava il valore di ritorno della
+  pipeline (che degrada a `{'success': False}` senza sollevare) e rispondeva
+  **200 con la lista vecchia** — indistinguibile da "nessun suggerimento nuovo".
+  Ora espone `refresh_ok`. **Non** si propaga `error`: conteneva stringhe
+  Postgres.
+
+### Un difetto trovato leggendo il codice, non dall'agente
+
+`_prepare_tag_dataframe` scartava le righe a `PrezzoUnitario <= 0` **prima di
+ogni calcolo**. Corretto per il prezzo medio (una riga a 0 falserebbe la media),
+sbagliato per la spesa: le note di credito non venivano scalate. Misurato:
+**8 righe, −1.652,46 €** su prodotti taggati (LAND DEI SAPORI −1.041,15 €;
+SUSHILAND MARIANO −611,31 €). Ora sono marcate `PrezzoValido=False`: fuori dal
+prezzo, dentro la spesa.
+
+Confronto che ha retto la diagnosi: `db_service.py:488` applica lo stesso filtro
+ma lo chiama `acquisti_validi` e lo usa per le **variazioni di prezzo**, dove
+escludere è corretto. Lo stesso filtro su una grandezza diversa è un difetto.
+
+### Lezione: l'agente è stato onesto sui limiti, ma i limiti contavano
+
+L'agente di audit **non aveva accesso al DB** in sessione e lo ha dichiarato,
+lasciando 3 numeri "da misurare, non stimo" invece di inventarli — comportamento
+corretto. Ma erano esattamente i numeri che decidevano le sue severità:
+
+| Finding | Verdetto agente | Dopo la misura |
+|---|---|---|
+| #4 unità miste | HIGH "da misurare" | **HIGH ATTIVO** (8 tag/13, 3 clienti) |
+| #5 media di medie | MEDIUM "da misurare" | **ATTIVO, peggio**: 93:1 |
+| #6 trend denominatore parziale | MEDIUM **"ATTIVO"** | **LATENTE**: 0 righe su 2.016 |
+
+**Quarta volta in questo ciclo che una severità cade a una query.** Il #6 è
+istruttivo: l'agente lo dava per attivo su una condizione plausibile ("basta una
+riga con quantità mancante") che semplicemente **non si verifica** in questi
+dati. Il difetto nel codice è reale — numeratore completo, denominatore parziale
+— ma nessun dato lo attiva, quindi non è stato fixato in questa sessione.
+
+Ha però **chiuso in negativo 4 piste su 8**, con verifica esplicita: soft-delete
+conforme (regola #5 rispettata: `tag_analytics_service.py` non ha query dirette
+su `fatture`, passa da `carica_e_prepara_dataframe`); cache non stantia
+(`clear_tags_cache` non tocca i suggerimenti e `list_pending_tag_suggestions`
+non è cachata — le chiamate nei due accept sono semmai **ridondanti**); routing
+senza collisioni (verificato con `TestClient`: regge perché `tag_id: int` non
+matcha `"descrizioni"` — fragile, non rotto); duplicazione suggerimenti esclusa
+dall'unique index parziale `idx_cts_unique_pending_cluster`. **Le piste chiuse
+in negativo sono lavoro risparmiato al prossimo ciclo, non lavoro sprecato.**
+
+Verifica di dominio confermata: `_CATEGORIE_ESCLUSE` esclude NOTE E DICITURE in
+**entrambe** le grafie (con e senza emoji) — regola #2 — e **non** esclude
+`"Da Classificare"`, il che è **corretto** per la regola #1: una riga non
+classificata è comunque un prodotto reale acquistato, e proporne il
+raggruppamento è utile. Misurato: 21 righe in tutto, volume trascurabile.
+
+### Test: 14 nuovi, 8 mutazioni verificate rosse su 8
+
+`tests/test_tag_audit_fix.py` (7), `test_tag_audit_fix_sicurezza.py` (3),
+`test_tag_router_audit_fix.py` (5, il primo file che esercita gli **endpoint**
+di `routers/tag.py`: prima di oggi erano a copertura zero).
+
+Fake Supabase scritto da zero che **applica davvero i filtri `.eq()`**: con un
+fake che li registra soltanto, i test sull'isolamento cross-sede sarebbero
+passati anche **senza** il fix — errore già occorso in questo ciclo (lezione 46).
+
+3 test esistenti **aggiornati, non "sistemati"**: codificavano il vecchio
+comportamento (`spesa_totale == 35.0` con la nota di credito esclusa). Il rosso
+era il segnale atteso del fix. Uno di essi (`num_fatture`) è passato da 2 a 3
+perché una nota di credito **è** una fattura reale.
+
+Le mutazioni sono state applicate su **copia in scratchpad** con ripristino
+verificato (`grep -c "if False:"` = 0 sui 3 file), come da lezione dell'11/8:
+il criterio non è "il diff è piccolo" ma "esiste un commit a cui tornare".
+
+Suite completa: **10.969 passed, 0 failed**. Coverage progetto 55% (gate 45).
+`tag_analytics_service.py` **15% → 69%**, `tag_suggestion_service.py` 41% → 51%,
+`routers/tag.py` 23% → 34%.
+
+### Igiene di sessione
+
+Il working tree conteneva ~705 righe non committate su riparto/dropdown-categoria,
+**estranee all'audit** (lavoro di un'altra sessione). Su decisione di Mattia sono
+state lasciate intatte: lavoro su branch dedicato `audit-s3b-tag`, staging
+selettivo dei soli file del perimetro, `code-reviewer` istruito a ignorarle.
+
+### Cosa resta di §3b
+
+Solo la **chat** di `fastapi_worker.py` (`_chat_query_costi`, `_chat_loop_openai`,
+`_build_chat_system_prompt`, `_chat_trend_prezzo`). Esposizione bassa: 4 chiamate
+negli ultimi 30 giorni. Nessun `@retry`/tenacity nel file, quindi non eredita il
+problema del mock globale di `conftest.py`.
+
+**Non fixati, documentati**: il #6 (denominatore parziale nel trend — latente,
+0 dati che lo attivino); `MAX_POOL_ROWS=12000` senza `.order()` né warning di
+troncamento (sede peggiore 5.121 righe = 42% del cap); il `.limit(50)` applicato
+prima del filtro snooze in `list_pending_tag_suggestions` (il filtro è **morto**:
+`status='pending'` e `status='snoozed'` sono mutuamente esclusivi per constraint);
+gli item letti senza `.limit()` esplicito (~280 su un cap di 1000); il tag vuoto
+silenzioso quando `assoc_payload` è vuoto.
