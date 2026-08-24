@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(*)",
       "Bash(rm:*)",
@@ -17,8 +16,12 @@
       "WebSearch(*)",
       "TodoWrite(*)",
       "Agent(*)",
-      "mcp__claude_ai_Supabase__get_advisors"
-    ]
+      "mcp__claude_ai_Supabase__get_advisors",
+      "Bash(curl -s -m 5 -o /dev/null -w \"HTTP_STATUS:%{http_code}\\\\n\" http://localhost:3000)",
+      "Bash(npx tsc *)",
+      "Bash(npx eslint *)"
+    ],
+    "defaultMode": "acceptEdits"
   },
   "hooks": {
     "PostToolUse": [
