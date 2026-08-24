@@ -7396,6 +7396,14 @@ def _invalidate_fatture_rows_cache(ristorante_id: Optional[str] = None) -> None:
 # l'essere-o-no PV di catena cambiano di rado. Invalidata insieme alle righe.
 _RISTORANTE_QUOTE_META: Dict[str, tuple] = {}  # rid -> (expires_at, user_id, ha_quote)
 _RISTORANTE_QUOTE_TTL = 300.0  # secondi
+# TTL asimmetrico per il caso negativo. La cache e' per-processo (WORKER_WEB_CONCURRENCY=4)
+# e al cambio sede l'invalidazione tocca un solo processo: gli altri possono calcolare
+# ha_quote=False in una finestra in cui la sede attiva non e' ancora propagata, e
+# inchiodare quel False per 5 minuti. Un False stantio NASCONDE le righe ripartite (e con
+# esse il chip "Solo ripartite", derivato dal dataset) e nemmeno il refresh lo sblocca; un
+# True stantio al massimo le mostra un attimo di piu'. Cachiamo a lungo solo la risposta
+# che aggiunge dati, non quella che li toglie: ricalcolarla costa una SELECT limit(1).
+_RISTORANTE_QUOTE_TTL_NEG = 15.0  # secondi, allineato a _FATTURE_ROWS_TTL
 
 
 def _ristorante_quote_meta(supabase_client, ristorante_id: str) -> tuple:
@@ -7431,7 +7439,8 @@ def _ristorante_quote_meta(supabase_client, ristorante_id: str) -> tuple:
             ha_quote = bool(q.data)
         except Exception:
             ha_quote = False
-    _RISTORANTE_QUOTE_META[ristorante_id] = (_now + _RISTORANTE_QUOTE_TTL, user_id, ha_quote)
+    _ttl = _RISTORANTE_QUOTE_TTL if (ha_quote and user_id) else _RISTORANTE_QUOTE_TTL_NEG
+    _RISTORANTE_QUOTE_META[ristorante_id] = (_now + _ttl, user_id, ha_quote)
     return user_id, ha_quote
 
 

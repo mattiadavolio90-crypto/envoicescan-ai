@@ -190,7 +190,11 @@ export function ArticoliTab({
       // già filtrati e con totale_speso/quantita ricalcolati sulle sole righe nuove.
       // Nessun filtro client qui, altrimenti i totali resterebbero quelli storici.
       if (soloVerifica && !a.needs_review) return false;
-      if (soloRipartite && !a.ripartita_su_gruppo) return false;
+      // Gatato su hasRipartite: il chip che lo disattiva è nascosto quando non ci sono
+      // righe ripartite nel dataset, quindi un ?ripartite=1 rimasto nell'URL (cambio
+      // periodo, tipo prodotti, o sede) svuotava la lista senza lasciare alcun modo di
+      // uscirne se non modificando l'indirizzo a mano.
+      if (soloRipartite && hasRipartite && !a.ripartita_su_gruppo) return false;
       if (term) {
         const inDesc = a.descrizione.toLowerCase().includes(term);
         const inForn = a.fornitore_principale.toLowerCase().includes(term);
@@ -199,7 +203,7 @@ export function ArticoliTab({
       }
       return true;
     });
-  }, [articoli, search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, soloRipartite]);
+  }, [articoli, search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, soloRipartite, hasRipartite]);
 
   const sorted = useMemo(() => {
     if (!sort.key || !sort.dir) return filtered;

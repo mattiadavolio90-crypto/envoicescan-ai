@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 
 const PIANO_LABEL: Record<string, string> = {
   base: "Base",
@@ -554,16 +555,12 @@ function SediGruppoCard({ sedi }: { sedi: Sede[] }) {
     if (switching) return;
     setSwitching(true);
     try {
-      const res = await fetch("/api/account/cambia-sede", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ristorante_id: id }),
-      });
-      if (!res.ok) throw new Error();
+      const confermato = await cambiaSedeEAttendi(id);
       // Entrare in una sede = passare in modalità PV: la Home del PV imposta il
       // cookie di vista, così le sue Impostazioni mostrano i suoi dati (piano,
       // fatture), non più il gruppo.
       router.push("/dashboard");
+      if (!confermato) toast.message("Punto vendita in apertura, un attimo…");
     } catch {
       toast.error("Impossibile aprire il punto vendita");
       setSwitching(false);

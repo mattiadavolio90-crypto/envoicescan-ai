@@ -528,6 +528,13 @@ def account_cambia_sede(
             # Anche la micro-cache della sede attiva (TTL 5s): senza, lo switch
             # resterebbe stantio fino a 5s sugli endpoint successivi.
             _fw()._invalidate_sede_attiva_cache(token)
+        # E la cache righe/meta-quote della sede di DESTINAZIONE. Senza questo, una
+        # entry _RISTORANTE_QUOTE_META con ha_quote=False calcolata durante lo switch
+        # (sede non ancora propagata) restava valida 5 minuti: il PV di catena mostrava
+        # Analisi Fatture senza le righe ripartite e senza il chip "Solo ripartite",
+        # e nemmeno ricaricare la pagina sbloccava. Riusa l'invalidazione righe, che
+        # ripulisce gia' entrambe le cache per quel rid.
+        _fw()._invalidate_fatture_rows_cache(rid)
     except Exception as exc:
         logger.warning("cambia-sede: invalidazione cache sessione fallita: %s", exc)
 

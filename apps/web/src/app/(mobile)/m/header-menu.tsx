@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MoreVertical, LogOut, MapPin, Check, Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 
 function writeViewCookie(v: "chain" | "pv") {
   if (typeof document === "undefined") return;
@@ -66,18 +67,14 @@ export function HeaderMenu() {
     if (switching) return;
     setSwitching(true);
     try {
-      const res = await fetch("/api/account/cambia-sede", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ristorante_id: id }),
-      });
-      if (!res.ok) throw new Error();
       // Scegliere una sede = SCENDERE in quel PV: modalità PV.
       writeViewCookie("pv");
       setInChain(false);
       setSedi((prev) => prev.map((s) => ({ ...s, attiva: s.id === id })));
+      const confermato = await cambiaSedeEAttendi(id);
       router.refresh();
-      toast.success("Punto vendita aperto");
+      if (confermato) toast.success("Punto vendita aperto");
+      else toast.message("Punto vendita in apertura, un attimo…");
     } catch {
       toast.error("Impossibile cambiare sede");
     } finally {

@@ -24,6 +24,7 @@ import {
   type MolMensile,
 } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
+import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
@@ -464,13 +465,12 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
     if (switching) return;
     setSwitching(true);
     try {
-      const res = await fetch("/api/account/cambia-sede", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ristorante_id: ristoranteId }),
-      });
-      if (!res.ok) throw new Error();
+      // Attende che il cambio sia visibile ai processi worker prima di navigare:
+      // scendere subito faceva renderizzare il PV con la sede ancora vecchia, e per
+      // i PV di catena le righe ripartite non comparivano affatto.
+      const confermato = await cambiaSedeEAttendi(ristoranteId);
       router.push(page);
+      if (!confermato) toast.message("Punto vendita in apertura, un attimo…");
     } catch {
       toast.error("Impossibile aprire il punto vendita");
       setSwitching(false);

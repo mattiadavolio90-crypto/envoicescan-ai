@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Logo } from "@/components/brand/logo";
+import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -190,35 +191,10 @@ export function AppSidebar({
     if (switching) return;
     setSwitching(true);
     try {
-      const res = await fetch("/api/account/cambia-sede", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ristorante_id: ristoranteId }),
-      });
-      if (!res.ok) throw new Error();
-      // Sposta subito il ✓ sulla nuova sede senza aspettare il refetch: il selettore
+      // Sposta subito il ✓ sulla nuova sede senza aspettare la conferma: il selettore
       // dava un feedback ritardato e sembrava "tornare sempre alla prima sede".
       setSedi((prev) => prev.map((s) => ({ ...s, attiva: s.id === ristoranteId })));
-
-      // Il worker gira su più processi (WORKER_WEB_CONCURRENCY); l'invalidazione
-      // della cache sede lato server tocca solo il processo che ha servito questa
-      // POST. Un refresh immediato può atterrare su un altro processo e vedere
-      // ancora la sede vecchia (testata/dati non aggiornati, serviva un reload
-      // manuale). Verifichiamo con /api/account/sedi (no-store, sempre fresco dal
-      // DB) che il cambio sia visibile prima di annunciare successo e ricaricare
-      // il resto della pagina.
-      let confermato = false;
-      for (let tentativo = 0; tentativo < 5 && !confermato; tentativo++) {
-        await new Promise((r) => setTimeout(r, 300));
-        try {
-          const check = await fetch("/api/account/sedi", { cache: "no-store" });
-          const data = check.ok ? await check.json() : null;
-          const attiva = (data?.sedi as Sede[] | undefined)?.find((s) => s.attiva);
-          if (attiva?.id === ristoranteId) confermato = true;
-        } catch {
-          // riprova al prossimo giro
-        }
-      }
+      const confermato = await cambiaSedeEAttendi(ristoranteId);
 
       // Scegliere una sede dalla catena = SCENDERE in quel PV (vai alla sua Home);
       // cambiare sede mentre sei già in un PV = resta sulla pagina, dati nuovi.
