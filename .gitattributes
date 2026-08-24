@@ -1,5 +1,24 @@
+# Normalizza tutti i file di testo a LF. Il workspace e' montato via 9p da
+# Windows (C:\...): senza questa regola, un qualunque tool Windows che tocca
+# i file li riscrive in CRLF e git segna ogni riga come modificata (successo
+# gia' capitato: 534 file "modificati" ma diff nullo a whitespace ignorato).
+* text=auto eol=lf
+
 # Gli script di shell DEVONO restare LF: un CRLF rompe l'esecuzione nel container
 # Linux (`/bin/bash^M: bad interpreter`). Vale soprattutto per docker-entrypoint.sh,
 # che e' l'ENTRYPOINT dei servizi Railway.
 *.sh text eol=lf
 docker/docker-entrypoint.sh text eol=lf
+
+# Binari: mai toccare gli EOL.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.p7m binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
