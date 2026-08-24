@@ -3,13 +3,13 @@
 **Tutte e 10 le dimensioni sono 🟢, tutte con seconda passata e `code-reviewer`.**
 Quello che resta non sono findings aperti: è **perimetro mai letto** (§1),
 **copertura test da scrivere** (§2) e — misurato l'8/8/2026 — il **perimetro
-che nessuna dimensione ha mai rivendicato** (§3, nuova).
+che nessuna dimensione ha mai rivendicato** (§3b, nuova).
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
 > dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non
 > rispetto al codice esistente. Misurato l'8/8: l'app è ~103.000 righe
 > (53.000 Python + 49.600 TypeScript), e §1 ne ha lette in profondità ~30.000.
-> Il conto onesto è in §3. Questo non invalida il lavoro fatto — invalida solo
+> Il conto onesto è in §3b. Questo non invalida il lavoro fatto — invalida solo
 > la lettura "tabella verde = finito".
 
 > **Dov'è il dettaglio.** Questo file dice *cosa manca*, in un minuto.
@@ -318,7 +318,7 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   22.990 di riferimento — cresciuti nel frattempo), soglia tenuta a 45 come
   margine invece di alzarla al numero esatto misurato.
 
-## §3 — Aperti per scelta, con la loro ragione
+## §3a — Aperti per scelta, con la loro ragione
 
 Non dimenticanze: decisioni. Riaprirle solo con la ragione che le ha chiuse.
 
@@ -360,12 +360,12 @@ Non dimenticanze: decisioni. Riaprirle solo con la ragione che le ha chiuse.
 
 ---
 
-## §3 — Perimetro che nessuna dimensione ha mai rivendicato
+## §3b — Perimetro che nessuna dimensione ha mai rivendicato
 
 **Aperta l'8/8/2026**, dopo la chiusura di §1. **Prima sessione chiusa e
 DEPLOYATA la sera dell'8/8** (PR #19, merge `af4c651`, `/health` = `af4c65165497`):
 `workspace.py`, `db_service.py` e `auth_service.py` letti al 100%, punti 2-4 di
-"come si chiude §3" risolti.
+"come si chiude §3b" risolti.
 
 **Seconda sessione — 10/8/2026: gli helper MOL e briefing di
 `fastapi_worker.py`** (punto 4). **CHIUSA e DEPLOYATA il 10/8** — PR #20, merge
@@ -509,7 +509,7 @@ per coverage e "mai in §1", ma gestisce ~29 righe di dati veri.
 | ~~`services/auth_service.py`~~ | 736 | 39,4% | alta: 16 sessioni attive, 7 utenti | **CHIUSO 8/8**, 1718/1718 righe lette |
 | `services/routers/fatture.py` | 662 | 35,8% | alta | chiuso in §1 il 5/8 ma resta poco esercitato |
 | ~~`services/documenti_service.py`~~ | 430 | 34,8% → **55%** | **alta, misurata sul DB 11/8**: 3.428 documenti, 1.905 con scadenza, 284 pagati | **CHIUSO 11/8**, 1582/1582 righe (doc+router) |
-| `services/routers/scadenziario.py` | 274 | 25,7% → 26% | alta | letto in §3 11/8, router thin senza test di endpoint propri |
+| `services/routers/scadenziario.py` | 274 | 25,7% → 26% | alta | letto in §3b 11/8, router thin senza test di endpoint propri |
 | `services/routers/tag.py` | 209 | 23,3% | media, misurata 11/8: 115 associazioni, 49 suggerimenti pending | prossima sessione |
 | `services/tag_suggestion_service.py` | 365 | 40,8% | bassa | **zero citazioni** in tutto il ciclo |
 
@@ -533,7 +533,7 @@ costo reale, protezione nominale. Al suo posto una **guardia** (Regola 7 in
 logica propria fuori dalle 6 dichiarate, o se il frontend inizia a parlare col DB.
 Verificata per mutazione: aggiunta una finta route non-proxy → rossa.
 
-### Come si chiude §3
+### Come si chiude §3b
 
 Non serve rileggere tutto. Serve **decidere il perimetro e dichiararlo**, invece
 di lasciarlo implicito:
@@ -576,7 +576,7 @@ di lasciarlo implicito:
    di righe. Una passata monolitica inviterebbe inoltre a refactor larghi proprio
    dove `__getattr__` ha già rotto 9 router in produzione.
 
-Finché §3 è aperta, **il ciclo non è chiuso** — anche con la tabella tutta 🟢.
+Finché §3b è aperta, **il ciclo non è chiuso** — anche con la tabella tutta 🟢.
 
 ---
 
@@ -603,7 +603,7 @@ saltato in passato.
 
 ## Chiusura del ciclo
 
-Il ciclo si dichiara chiuso quando **§1, §2 e §3** sono vuote — non quando la
+Il ciclo si dichiara chiuso quando **§1, §2 e §3b** sono vuote — non quando la
 tabella è tutta 🟢 (lo è già dal 4/8). **§1 è vuota dall'8/8/2026** e i 3 HIGH
 che conteneva sono **fixati, testati e deployati** nella stessa data (PR #18,
 merge `de54a1e`, worker Railway verificato su `/health` = `de54a1ed2a50`).
@@ -611,7 +611,7 @@ merge `de54a1e`, worker Railway verificato su `/health` = `de54a1ed2a50`).
 Restano aperte due cose:
 - **§2**: il mock globale di `tests/conftest.py` — lavoro lungo dichiarato,
   esplicitamente non da aprire senza tempo dedicato.
-- **§3**: il perimetro mai rivendicato da nessuna dimensione, aperto l'8/8
+- **§3b**: il perimetro mai rivendicato da nessuna dimensione, aperto l'8/8
   proprio perché chiudere §1 ha reso visibile che "tabella verde" e "app
   analizzata" non coincidevano. È la voce che oggi tiene aperto il ciclo.
 

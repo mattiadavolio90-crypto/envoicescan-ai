@@ -929,14 +929,14 @@ attivo sui dati correnti, da riprendere in un ciclo successivo.
 
 ---
 
-## 18. §3 — workspace.py + db_service.py + auth_service.py — 8/8/2026
+## 18. §3b — workspace.py + db_service.py + auth_service.py — 8/8/2026
 
 **DEPLOYATO l'8/8/2026** — PR **#19**, merge `af4c651`, CI verde su tutti e 4 i
 check. Worker Railway verificato su `/health`: `commit = af4c65165497`, cioe' il
 merge stesso. Deploy in serata su ordine esplicito di Mattia. Il fix
 anti-enumerazione del reset password e' quindi attivo in produzione.
 
-Prima sessione di §3. 3 file letti al 100% (2350 + 2242 + 1718 = 6310 righe),
+Prima sessione di §3b. 3 file letti al 100% (2350 + 2242 + 1718 = 6310 righe),
 4 fix, 21 test nuovi in 3 file + 2 guardie di perimetro. Suite 10.641 → **10.656
 passed**, coverage 50,72% → **51,36%** (gate 45 tenuto).
 
@@ -1059,7 +1059,7 @@ due test in `test_regole_dominio_guardia.py`:
 
 Misurato per firmarla: su 395 file di `apps/web/src`, **zero** `createClient`/
 `@supabase` e **zero** `.insert(`/`.update(`/`.upsert(`/`.delete()`. Il
-sotto-perimetro "componenti che scrivono sul DB" previsto dal punto 2 di §3
+sotto-perimetro "componenti che scrivono sul DB" previsto dal punto 2 di §3b
 **non esiste**: chiuso per assenza di oggetto, non per rinuncia.
 
 ### Declassati con la misura che li ha declassati
@@ -1089,7 +1089,7 @@ Perché nessuno li riapra a giudizio:
 
 - **Cache per-processo con `WORKER_WEB_CONCURRENCY=4`** (`railway.toml:12`): la
   cache sessione e quella fatture sono dict di processo; l'invalidazione tocca chi
-  serve la richiesta, non gli altri 3. È già §3 "aperto per scelta" — risolverlo è
+  serve la richiesta, non gli altri 3. È già §3a "aperto per scelta" — risolverlo è
   infrastruttura nuova, e **abbassare i TTL è la scorciatoia che sembra un fix**.
 - `registra_tentativo` è fail-open sull'INSERT (`:188-189`) mentre
   `controlla_rate_limit` è fail-closed (`:142-150`): asimmetria da valutare, non
@@ -1150,7 +1150,7 @@ Resta noto e non chiuso: la guardia frontend cerca `@supabase/supabase-js` e
 dato che `.coveragerc` appoggia su quella guardia la scelta di non estendere il
 gate al TypeScript.
 
-### Cosa resta di §3
+### Cosa resta di §3b
 
 `invoice_service.py` (927 stmt, 44,8% — parsing = ingresso dei dati) e i minori
 (`documenti_service.py`, `scadenziario.py`, `tag.py`,
@@ -1162,7 +1162,7 @@ file.
 
 ---
 
-## 19. §3 — MOL + briefing di `fastapi_worker.py` — 10/8/2026
+## 19. §3b — MOL + briefing di `fastapi_worker.py` — 10/8/2026
 
 **Sessione di sola scrittura test: nessun difetto attivo trovato, nessun fix.**
 98 test nuovi in 3 file, `fastapi_worker.py` **37% → 46%**, totale 51% → 53%
@@ -1331,7 +1331,7 @@ legge.
 
 ---
 
-## 20. §3 — `invoice_service.py` — 10/8/2026
+## 20. §3b — `invoice_service.py` — 10/8/2026
 
 **127 test nuovi in 4 file, 9 test vacui rimossi, 1 fix latente.**
 `services/invoice_service.py` **45% → 75%** (477 → 205 statement scoperti),
@@ -1480,14 +1480,14 @@ vengono da esecuzioni complete registrate su file, prima e dopo; la differenza
 di 9 è il lavoro parallelo comparso nel frattempo nel working tree. Il **delta
 è identico** nelle due misure, ed è il numero che conta.
 
-### Cosa resta di §3
+### Cosa resta di §3b
 
 I **minori** (`documenti_service.py` 34,8%, `scadenziario.py` 25,7%, `tag.py`
 23,3%, `tag_suggestion_service.py` 40,8% — quest'ultimo con zero citazioni in
 tutto il ciclo) e la **chat** di `fastapi_worker.py`, già indicata come
 candidata naturale dalla sessione del 10/8 mattina.
 
-## 21. §3 — Scadenziario: `documenti_service.py` + `routers/scadenziario.py` — 11/8/2026
+## 21. §3b — Scadenziario: `documenti_service.py` + `routers/scadenziario.py` — 11/8/2026
 
 **Misura di esposizione prima di scegliere l'ordine** (compito esplicito di
 questa sessione): interrogato il DB live (project vthikmfpywilukizputn) sui
@@ -1669,7 +1669,7 @@ restituire. Il frontend (`apps/web/src/lib/scadenziario.ts`,
 invariati nel payload di risposta — verificato con grep, nessun riferimento
 al nuovo campo lato client.
 
-### Cosa resta di §3
+### Cosa resta di §3b
 
 `tag.py` (23,3%) + `tag_suggestion_service.py` (40,8%, esposizione misurata
 11/8: 115 associazioni, 49 suggerimenti pending, 13 tag su 3 ristoranti) e la
