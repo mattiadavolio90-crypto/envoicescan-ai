@@ -136,3 +136,34 @@ def test_incidenza_spesa_zero_non_esplode():
     res = _compute_fornitori(df)
     for f in res["fornitori"]:
         assert f["incidenza_spesa"] == 0.0
+
+
+# ─── Fix #4 esteso al trend: alimenta gli alert prezzi della Home ─────────────
+
+def test_trend_con_unita_miste_usa_solo_la_dominante():
+    """prezzo_medio_periodo guida price_impact_service (alert prezzi Home).
+
+    Senza questa guardia il KPI sarebbe corretto e il trend no: due prezzi
+    diversi per lo stesso tag nella stessa risposta, e l'alert calcolato su
+    quello sbagliato.
+    """
+    from services.tag_analytics_service import _compute_trend
+
+    df = _df([
+        # giorno 1: 10 KG a 9 EUR/kg -> 90
+        {"Data_DT": pd.Timestamp("2026-03-01"), "UnitaNorm": "KG", "QuantitaNorm": 10.0,
+         "Quantita": 10.0, "PrezzoUnitario": 9.0, "TotaleRigaNum": 90.0},
+        # giorno 2: 10 KG a 11 EUR/kg -> 110
+        {"Data_DT": pd.Timestamp("2026-03-02"), "UnitaNorm": "KG", "QuantitaNorm": 10.0,
+         "Quantita": 10.0, "PrezzoUnitario": 11.0, "TotaleRigaNum": 110.0},
+        # stesso giorno 2: 500 PZ da pochi centesimi, spesa marginale
+        {"Data_DT": pd.Timestamp("2026-03-02"), "UnitaNorm": "PZ", "QuantitaNorm": 500.0,
+         "Quantita": 500.0, "PrezzoUnitario": 0.02, "TotaleRigaNum": 10.0},
+    ])
+    trend = _compute_trend(df)
+
+    prezzi = sorted(p["prezzo"] for p in trend["punti"])
+    # I PZ non devono schiacciare il prezzo al kg del giorno 2:
+    # senza il fix sarebbe (110+10)/(10+500) = 0.235 invece di 11.0
+    assert prezzi == [9.0, 11.0]
+    assert trend["prezzo_medio_periodo"] == 10.0

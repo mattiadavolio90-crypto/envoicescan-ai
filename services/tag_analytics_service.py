@@ -202,6 +202,20 @@ def _compute_trend(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
     )
     qty_col = "QuantitaNorm" if usa_quantita_norm else "Quantita"
 
+    # Stessa regola dei KPI: con unita' miste si tiene solo la dominante per
+    # spesa. Senza questo, prezzo_medio_periodo resterebbe calcolato su una
+    # somma KG+PZ mentre il KPI e' gia' corretto — e quel valore guida gli
+    # alert prezzi della Home (price_impact_service).
+    if usa_quantita_norm and "UnitaNorm" in df_trend.columns:
+        unita_presenti = set(df_trend["UnitaNorm"].dropna().unique().tolist())
+        if len(unita_presenti) > 1:
+            dominante = (
+                df_trend.groupby("UnitaNorm")["TotaleRigaNum"].sum().idxmax()
+            )
+            df_trend = df_trend[df_trend["UnitaNorm"] == dominante].copy()
+            if df_trend.empty:
+                return {"punti": [], "prezzo_medio_periodo": 0.0}
+
     df_linea = df_trend.groupby("Data_DT", as_index=False).agg(
         TotaleSpesa=("TotaleRigaNum", "sum"),
         QuantitaTotale=(qty_col, "sum"),
