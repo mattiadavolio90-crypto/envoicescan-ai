@@ -21,6 +21,18 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 import logging
+
+from utils.validation import normalizza_categoria_richiesta, importo_riga_per_guardrail
+from utils.supabase_paging import fetch_all
+from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIA_NON_CLASSIFICATA as _CATEGORIA_NON_CLASSIFICATA
+
+# Chiave interna per le quote con categoria NULL (esplosione per-categoria mai
+# riuscita: la fattura d'origine non ha righe vive). NON è una categoria di dominio e
+# non deve finire in dettaglio_categorie né essere scritta a DB: serve solo a non
+# perdere l'importo nell'aggregato. Le parentesi la rendono non collidibile con una
+# categoria reale, che è sempre una stringa in maiuscolo senza punteggiatura.
+_SENZA_CATEGORIA = "(senza categoria)"
+from services.riparto_service import SENTINELLA_RIPARTO_MANUALE as _SENTINELLA_RIPARTO_MANUALE
 logger = logging.getLogger("fastapi_worker")
 
 
@@ -65,7 +77,7 @@ def _carica_sedi_attive(user_id: str, sb) -> List[Dict[str, Any]]:
     return resp.data or []
 
 
-def _quote_equa(importo: float, sedi_ids: List[str]) -> List[Dict[str, Any]]:
+def _quote_equa(importo: float, sedi_ids: List[str], categoria: Optional[str] = None) -> List[Dict[str, Any]]:
     """Divide importo in parti uguali fra le sedi. L'ultima assorbe l'arrotondamento
     così la somma delle quote pareggia SEMPRE l'importo totale (no centesimi persi)."""
     n = len(sedi_ids)
@@ -83,11 +95,14 @@ def _quote_equa(importo: float, sedi_ids: List[str]) -> List[Dict[str, Any]]:
             q = round(importo - acc, 2)      # l'ultima pareggia
             p = round(100.0 - perc * (n - 1), 3)
         acc += q
-        quote.append({"ristorante_id": rid, "quota_perc": p, "quota_importo": q})
+        quota: Dict[str, Any] = {"ristorante_id": rid, "quota_perc": p, "quota_importo": q}
+        if categoria:
+            quota["categoria"] = categoria
+        quote.append(quota)
     return quote
 
 
-def _quote_percentuali(importo: float, percentuali: Dict[str, float], sedi_ok: set) -> List[Dict[str, Any]]:
+def _quote_percentuali(importo: float, percentuali: Dict[str, float], sedi_ok: set, categoria: Optional[str] = None) -> List[Dict[str, Any]]:
     """Quote da percentuali esplicite {ristorante_id: %}. Somma % deve fare ~100.
     L'ultima quota pareggia l'importo (evita derive di arrotondamento).
     sedi_ok: id delle sedi attive del chiamante — ogni chiave fuori da questo
@@ -109,7 +124,10 @@ def _quote_percentuali(importo: float, percentuali: Dict[str, float], sedi_ok: s
         else:
             q = round(importo - acc, 2)
         acc += q
-        quote.append({"ristorante_id": rid, "quota_perc": round(p, 3), "quota_importo": q})
+        quota: Dict[str, Any] = {"ristorante_id": rid, "quota_perc": round(p, 3), "quota_importo": q}
+        if categoria:
+            quota["categoria"] = categoria
+        quote.append(quota)
     return quote
 
 
@@ -134,6 +152,53 @@ def _post_scrittura_riparto(sb, user_id: str, anno: int, mese: int) -> None:
         _invalidate_fatture_rows_cache()
     except Exception:
         pass
+
+
+def _correggi_categoria_costo_manuale(
+    sb, user_id: str, riparto_id: str, nuova_cat: str
+) -> Dict[str, Any]:
+    """Correzione categoria su un costo di gruppo MANUALE (senza fattura).
+
+    Non passa da esplodi_quote_per_categoria: quella deriva i pesi dalle righe reali
+    della fattura, che qui non esistono. Un costo manuale ha un solo importo e una
+    sola categoria, quindi si riscrive `categoria` su tutte le sue quote e si riallinea
+    `tipo` (F&B/spese), altrimenti header e quote divergono e il badge mente.
+    """
+    rip_resp = (
+        sb.table("riparto_costi_catena")
+        .select("id, anno, mese, origine")
+        .eq("user_id", user_id)
+        .eq("id", riparto_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not rip_resp:
+        raise HTTPException(status_code=404, detail="Nessun costo di gruppo per questo documento")
+    riparto = rip_resp[0]
+
+    # Regola di dominio #2: NOTE E DICITURE solo a importo zero. Un costo di gruppo è
+    # per definizione un importo positivo (vedi riparto_manuale).
+    if nuova_cat == "📝 NOTE E DICITURE":
+        raise HTTPException(
+            status_code=422,
+            detail="NOTE E DICITURE non applicabile: il costo di gruppo ha importo diverso da zero.",
+        )
+
+    tipo = "fb" if nuova_cat in CATEGORIE_FOOD_BEVERAGE else "generale"
+    sb.table("riparto_costi_catena_quote") \
+        .update({"categoria": nuova_cat}).eq("riparto_id", riparto_id).execute()
+    sb.table("riparto_costi_catena") \
+        .update({"tipo": tipo}).eq("id", riparto_id).eq("user_id", user_id).execute()
+
+    _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
+
+    sedi = _carica_sedi_attive(user_id, sb)
+    return {
+        "ok": True,
+        "righe_aggiornate": 0,
+        "categoria": nuova_cat,
+        "sedi_impattate": [s.get("nome_ristorante") for s in sedi if s.get("nome_ristorante")],
+    }
 
 
 def _crea_riparto_con_quote(
@@ -182,7 +247,7 @@ class RipartoDaCodaBody(BaseModel):
 class RipartoManualeBody(BaseModel):
     descrizione: str
     importo_totale: float
-    tipo: str = "generale"
+    categoria: str
     anno: int
     mese: int
     regola: str = "equa"
@@ -194,6 +259,12 @@ class RipartoModificaBody(BaseModel):
     regola: Optional[str] = None
     percentuali: Optional[Dict[str, float]] = None
     importo_totale: Optional[float] = None       # solo per voci manuali
+
+
+class RipartoRigaCategoriaBody(BaseModel):
+    file_origine: str
+    descrizione: str
+    nuova_categoria: str
 
 
 # ─── Gating 2+ sedi ──────────────────────────────────────────────────────────
@@ -386,13 +457,20 @@ def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Head
 
 @router.post("/api/riparto/manuale", dependencies=[Depends(_verify_worker_key)])
 def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
-    """Voce di costo di gruppo senza fattura (es. stipendi ufficio)."""
+    """Voce di costo di gruppo senza fattura (es. utenze sede centrale, canone gestionale)."""
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
     sedi = _require_catena(user_id, sb)
-    if body.tipo not in ("generale", "fb"):
-        raise HTTPException(status_code=400, detail="tipo non valido")
+    try:
+        categoria = normalizza_categoria_richiesta(body.categoria)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if categoria == "📝 NOTE E DICITURE":
+        # Regola di dominio #2: NOTE E DICITURE solo per importo zero — un costo di
+        # gruppo è per definizione un importo positivo, quindi qui non è ammessa.
+        raise HTTPException(status_code=422, detail="NOTE E DICITURE non è una categoria valida per un costo di gruppo")
+    tipo = "fb" if categoria in CATEGORIE_FOOD_BEVERAGE else "generale"
     if not 1 <= body.mese <= 12:
         raise HTTPException(status_code=400, detail="mese non valido")
     importo = round(float(body.importo_totale or 0), 2)
@@ -400,14 +478,14 @@ def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Hea
         raise HTTPException(status_code=400, detail="importo non valido")
 
     if body.regola == "percentuali":
-        quote = _quote_percentuali(importo, body.percentuali or {}, {str(s["id"]) for s in sedi})
+        quote = _quote_percentuali(importo, body.percentuali or {}, {str(s["id"]) for s in sedi}, categoria)
     else:
-        quote = _quote_equa(importo, [str(s["id"]) for s in sedi])
+        quote = _quote_equa(importo, [str(s["id"]) for s in sedi], categoria)
 
     riparto_id = _crea_riparto_con_quote(
         sb, user_id, "manuale", None, None,
         body.descrizione.strip() or "Costo di gruppo",
-        importo, body.tipo, body.anno, body.mese, body.regola, quote,
+        importo, tipo, body.anno, body.mese, body.regola, quote,
     )
 
     _post_scrittura_riparto(sb, user_id, body.anno, body.mese)
@@ -758,6 +836,108 @@ def riparto_incoerenze() -> Dict[str, Any]:
     }
 
 
+@router.patch("/api/riparto/riga-categoria", dependencies=[Depends(_verify_worker_key)])
+def riparto_riga_categoria(
+    body: RipartoRigaCategoriaBody, authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
+    """Corregge la categoria di una riga appartenente a un costo ripartito sul gruppo.
+
+    Perché serve un endpoint dedicato invece di /api/fatture/categoria-batch: le righe
+    di una fattura di struttura vivono sulla SEDE TECNICA ("Costi comuni di gruppo"),
+    non sul punto vendita. categoria-batch filtra per ristorante_id del PV → match su 0
+    righe, e il cliente vedeva un falso successo. La sede tecnica non è selezionabile
+    (account.py: non ci si può posizionare sulla sede-contenitore), quindi senza questa
+    rotta la categoria di una riga ripartita non era correggibile da nessuna UI.
+
+    Dopo la scrittura le quote vanno RI-ESPLOSE (forza=True): i pesi delle categorie
+    sono cambiati e le quote porterebbero ancora quella vecchia, instradando l'importo
+    nel secchio MOL sbagliato (F&B vs spese).
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    _require_catena(user_id, sb)
+
+    try:
+        nuova_cat = normalizza_categoria_richiesta(body.nuova_categoria)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    file_origine = (body.file_origine or "").strip()
+    descrizione = (body.descrizione or "").strip()
+    if not file_origine or not descrizione:
+        raise HTTPException(status_code=400, detail="file_origine e descrizione sono obbligatori")
+
+    # Un costo di gruppo MANUALE non ha file_origine (è NULL in tabella): le righe
+    # sintetiche proiettate ricevono il sentinella "riparto:<uuid>"
+    # (riparto_service._proietta_quote). Cercarlo per file_origine darebbe sempre 404,
+    # e non esistono righe reali in `fatture` da aggiornare: qui la categoria vive solo
+    # sulle quote, che riscriviamo direttamente.
+    if file_origine.startswith(_SENTINELLA_RIPARTO_MANUALE):
+        riparto_id = file_origine[len(_SENTINELLA_RIPARTO_MANUALE):]
+        return _correggi_categoria_costo_manuale(sb, user_id, riparto_id, nuova_cat)
+
+    rip_resp = (
+        sb.table("riparto_costi_catena")
+        .select("id, anno, mese")
+        .eq("user_id", user_id)
+        .eq("file_origine", file_origine)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not rip_resp:
+        raise HTTPException(status_code=404, detail="Nessun costo di gruppo per questo documento")
+    riparto = rip_resp[0]
+
+    righe = fetch_all(
+        sb.table("fatture")
+        .select("id, totale_riga, prezzo_unitario")
+        .eq("user_id", user_id)
+        .eq("file_origine", file_origine)
+        .eq("descrizione", descrizione)
+        .is_("deleted_at", "null")
+    )
+    if not righe:
+        raise HTTPException(status_code=404, detail="Riga non trovata nel documento di gruppo")
+
+    # Guardrail dominio #2: "📝 NOTE E DICITURE" solo su righe a importo zero.
+    target_ids = [r["id"] for r in righe]
+    if nuova_cat == "📝 NOTE E DICITURE":
+        target_ids = [r["id"] for r in righe if importo_riga_per_guardrail(r) == 0]
+        if not target_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="NOTE E DICITURE non applicabile: la riga ha importo diverso da zero.",
+            )
+
+    res = (
+        sb.table("fatture")
+        .update({"categoria": nuova_cat, "needs_review": False})
+        .in_("id", target_ids)
+        .execute()
+    )
+    righe_aggiornate = len(res.data or [])
+
+    # Le quote portano ancora la categoria vecchia: ricalcolarle sui pesi aggiornati.
+    try:
+        from services.riparto_service import esplodi_quote_per_categoria
+        esplodi_quote_per_categoria(sb, user_id, str(riparto["id"]), file_origine, forza=True)
+    except Exception as exc:
+        logger.warning(
+            "ri-esplosione post-correzione categoria fallita riparto=%s: %s", riparto["id"], exc
+        )
+
+    _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
+
+    sedi = _carica_sedi_attive(user_id, sb)
+    return {
+        "ok": True,
+        "categoria": nuova_cat,
+        "righe_aggiornate": righe_aggiornate,
+        "sedi_impattate": [s.get("nome_ristorante") for s in sedi],
+    }
+
+
 @router.get("/api/gruppo/costi-comuni", dependencies=[Depends(_verify_worker_key)])
 def gruppo_costi_comuni(anno: int, mese: int, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Lista dei costi di gruppo del mese con le quote per sede (finestra catena).
@@ -776,23 +956,97 @@ def gruppo_costi_comuni(anno: int, mese: int, authorization: Optional[str] = Hea
         .execute()
     ).data or []
     if not costi:
-        return {"anno": anno, "mese": mese, "costi": [], "totale": 0.0}
+        # Stessa forma della risposta piena: un consumatore non deve dedurre l'assenza
+        # dei campi dal fatto che il mese è vuoto.
+        return {
+            "anno": anno, "mese": mese, "costi": [], "totale": 0.0,
+            "da_classificare_importo": 0.0, "da_classificare_costi": 0,
+            "da_classificare_non_correggibili": 0,
+        }
 
     ids = [c["id"] for c in costi]
     quote = (
         sb.table("riparto_costi_catena_quote")
-        .select("riparto_id, ristorante_id, quota_perc, quota_importo")
+        .select("riparto_id, ristorante_id, quota_perc, quota_importo, categoria")
         .in_("riparto_id", ids)
         .execute()
     ).data or []
-    quote_by_rip: Dict[str, List[Dict[str, Any]]] = {}
+
+    # Dal 24/7 le quote sono per (sede × categoria): una fattura mista ne genera
+    # n_sedi × n_categorie. Elencarle piatte mostrava la stessa sede ripetuta 9 volte
+    # con la sua percentuale replicata (nove "50%" che sommano 450%). Qui si aggrega:
+    # l'IMPORTO si somma, la PERCENTUALE è quella della sede e si prende una volta sola.
+    # Il dettaglio per categoria resta disponibile a parte, per chi vuole aprirlo.
+    agg_sede: Dict[str, Dict[str, Dict[str, float]]] = {}
+    agg_cat: Dict[str, Dict[str, float]] = {}
     for q in quote:
-        quote_by_rip.setdefault(q["riparto_id"], []).append({
-            "ristorante_id": q["ristorante_id"],
-            "sede": nomi.get(str(q["ristorante_id"]), "—"),
-            "quota_perc": float(q["quota_perc"]),
-            "quota_importo": float(q["quota_importo"]),
-        })
+        rip_id = q["riparto_id"]
+        rid = str(q["ristorante_id"])
+        importo = float(q["quota_importo"] or 0)
+        sede = agg_sede.setdefault(rip_id, {}).setdefault(
+            rid, {"perc": 0.0, "importo": 0.0}
+        )
+        sede["perc"] = max(sede["perc"], float(q["quota_perc"] or 0))
+        sede["importo"] += importo
+        # Una quota senza categoria NON si scarta: il suo importo entra comunque nel
+        # MOL (con categoria NULL non si passa da _riparto_categoria_is_fb, vale il
+        # `tipo` dell'header), quindi scartarla qui la rendeva invisibile proprio al
+        # conteggio che deve segnalarla. Va sotto una chiave sentinella, tenuta fuori
+        # da dettaglio_categorie che elenca categorie reali.
+        cat = (q.get("categoria") or "").strip() or _SENZA_CATEGORIA
+        per_cat = agg_cat.setdefault(rip_id, {})
+        per_cat[cat] = per_cat.get(cat, 0.0) + importo
+
+    quote_by_rip: Dict[str, List[Dict[str, Any]]] = {}
+    for rip_id, sedi_agg in agg_sede.items():
+        quote_by_rip[rip_id] = [
+            {
+                "ristorante_id": rid,
+                "sede": nomi.get(rid, "—"),
+                "quota_perc": round(v["perc"], 3),
+                "quota_importo": round(v["importo"], 2),
+            }
+            for rid, v in sedi_agg.items()
+        ]
+
+    # La sentinella resta fuori: dettaglio_categorie è un elenco di categorie reali,
+    # e mostrarne una inventata la farebbe sembrare una classificazione avvenuta.
+    dettaglio_by_rip: Dict[str, List[Dict[str, Any]]] = {
+        rip_id: sorted(
+            (
+                {"categoria": c, "importo": round(i, 2)}
+                for c, i in per_cat.items()
+                if c != _SENZA_CATEGORIA
+            ),
+            key=lambda d: d["importo"],
+            reverse=True,
+        )
+        for rip_id, per_cat in agg_cat.items()
+    }
+
+    # Righe reali dei documenti di gruppo (vivono sulla sede tecnica): alimentano il
+    # dropdown di correzione categoria dentro la finestra Costi di gruppo.
+    file_origini = [c["file_origine"] for c in costi if c.get("file_origine")]
+    righe_by_file: Dict[str, List[Dict[str, Any]]] = {}
+    if file_origini:
+        # fetch_all e non .execute(): PostgREST tronca a 1000 righe in silenzio, e con
+        # più documenti di gruppo nel mese le righe oltre la millesima sparirebbero dal
+        # dropdown di correzione (stessa classe di bug già pagata su "Da Classificare").
+        righe = fetch_all(
+            sb.table("fatture")
+            .select("id, file_origine, descrizione, categoria, totale_riga, needs_review")
+            .eq("user_id", user_id)
+            .in_("file_origine", file_origini)
+            .is_("deleted_at", "null")
+        )
+        for r in righe:
+            righe_by_file.setdefault(r["file_origine"], []).append({
+                "id": r["id"],
+                "descrizione": r.get("descrizione"),
+                "categoria": r.get("categoria"),
+                "totale_riga": float(r.get("totale_riga") or 0),
+                "needs_review": bool(r.get("needs_review")),
+            })
 
     out = []
     tot = 0.0
@@ -803,5 +1057,51 @@ def gruppo_costi_comuni(anno: int, mese: int, authorization: Optional[str] = Hea
             "fornitore": c.get("fornitore"), "descrizione": c["descrizione"],
             "importo_totale": float(c["importo_totale"] or 0), "tipo": c["tipo"], "regola": c["regola"],
             "quote": quote_by_rip.get(c["id"], []),
+            "dettaglio_categorie": dettaglio_by_rip.get(c["id"], []),
+            "righe": righe_by_file.get(c.get("file_origine") or "", []),
         })
-    return {"anno": anno, "mese": mese, "costi": out, "totale": round(tot, 2)}
+
+    # Quote non classificate: a differenza delle righe fattura normali (escluse dal
+    # MOL), una quota "Da Classificare" ENTRA nel secchio spese — è l'unico posto in
+    # cui quel costo esiste, la riga d'origine è già esclusa come ripartita_su_gruppo.
+    # L'asimmetria è voluta (vedi 20260724220000_riparto_quote_per_categoria.sql), ma
+    # va resa visibile: finché non si classifica, il costo pesa sul secchio sbagliato.
+    #
+    # Si contano DUE stati, non uno: "Da Classificare" (l'AI non ha saputo decidere) e
+    # categoria NULL (l'esplosione per-categoria non è mai avvenuta, perché la fattura
+    # d'origine non ha righe vive). Per chi legge sono lo stesso problema — "questo
+    # costo non ha una categoria" — e distinguerli in UI significherebbe spiegare un
+    # dettaglio interno. Il secondo però è più insidioso: non passa nemmeno da
+    # _riparto_categoria_is_fb, finisce nel secchio del `tipo` dell'header senza che
+    # nulla lo dichiari.
+    _NON_CLASSIFICATE = (_CATEGORIA_NON_CLASSIFICATA, _SENZA_CATEGORIA)
+
+    def _quota_non_classificata(per_cat: Dict[str, float]) -> float:
+        return sum(per_cat.get(k, 0.0) for k in _NON_CLASSIFICATE)
+
+    da_classificare = round(
+        sum(_quota_non_classificata(per_cat) for per_cat in agg_cat.values()), 2
+    )
+    n_costi_da_classificare = sum(
+        1 for per_cat in agg_cat.values() if _quota_non_classificata(per_cat)
+    )
+
+    # Quanti fra questi NON sono sistemabili dal dropdown: le quote si correggono
+    # agendo sulle righe del documento, quindi un costo che non ne ha (o che non ha
+    # proprio un file d'origine) lascia l'utente senza alcuna azione possibile. Il
+    # frontend cambia il testo dell'avviso invece di dare un'istruzione ineseguibile.
+    n_costi_non_correggibili = sum(
+        1
+        for c in out
+        if _quota_non_classificata(agg_cat.get(c["id"], {})) and not c["righe"]
+    )
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "costi": out,
+        "totale": round(tot, 2),
+        "da_classificare_importo": da_classificare,
+        "da_classificare_costi": n_costi_da_classificare,
+        "da_classificare_non_correggibili": n_costi_non_correggibili,
+    }

@@ -540,3 +540,52 @@ def test_il_frontend_non_accede_direttamente_al_database() -> None:
         "(soft-delete, categorie, MOL) tornerebbe fuori dal perimetro auditato "
         "e fuori dalle guardie di questo file.\n  - " + "\n  - ".join(sorted(sospetti))
     )
+
+
+# --------------------------------------------------------------------------
+# Regola — SPESE_GENERALI_SET: una sola lista, non quattro
+# --------------------------------------------------------------------------
+
+# Le 4 categorie non-F&B decidono in quale secchio del MOL finisce un costo.
+# Erano copiate alla lettera in 4 file (articoli-tab, pivot-tab,
+# dropdown-categoria, lib/categorie-spesa): quattro liste che devono restare
+# identiche per sempre divergono prima o poi, e una categoria classata nel
+# gruppo sbagliato sposta soldi tra F&B e Spese senza sollevare un errore —
+# il tipo di guasto che si scopre da un MOL che non torna, mesi dopo.
+
+_CANONICA_TS = ROOT / "apps" / "web" / "src" / "lib" / "categorie-spesa.ts"
+
+
+@pytest.mark.skipif(not _CANONICA_TS.is_file(), reason="frontend Next.js non presente")
+def test_spese_generali_set_definita_una_volta_sola_nel_frontend() -> None:
+    src = ROOT / "apps" / "web" / "src"
+    definizioni = []
+    for p in src.rglob("*.ts*"):
+        if "node_modules" in p.parts:
+            continue
+        if re.search(r"SPESE_GENERALI_SET\s*=\s*new Set", _leggi(p)):
+            definizioni.append(p.relative_to(ROOT).as_posix())
+    assert definizioni == [_CANONICA_TS.relative_to(ROOT).as_posix()], (
+        "SPESE_GENERALI_SET va definita SOLO in lib/categorie-spesa.ts; gli altri "
+        "file la importano. Copie trovate:\n  - " + "\n  - ".join(sorted(definizioni))
+    )
+
+
+@pytest.mark.skipif(not _CANONICA_TS.is_file(), reason="frontend Next.js non presente")
+def test_spese_generali_frontend_allineata_a_constants_py() -> None:
+    """Il frontend raggruppa il menu e le viste, il backend calcola il MOL: se le
+    due liste divergono, l'utente vede una categoria sotto 'Spese Generali' che
+    il MOL conta come F&B (o viceversa)."""
+    from config.constants import CATEGORIE_SPESE_GENERALI
+
+    blocco = re.search(
+        r"SPESE_GENERALI_SET\s*=\s*new Set\(\[(.*?)\]\)", _leggi(_CANONICA_TS), re.S
+    )
+    assert blocco, "SPESE_GENERALI_SET non trovata in categorie-spesa.ts"
+    ts = {m.group(1) for m in re.finditer(r'"([^"]+)"', blocco.group(1))}
+    assert ts == set(CATEGORIE_SPESE_GENERALI), (
+        "Le spese generali del frontend non coincidono con "
+        f"config/constants.py::CATEGORIE_SPESE_GENERALI.\n"
+        f"  solo nel frontend: {sorted(ts - set(CATEGORIE_SPESE_GENERALI))}\n"
+        f"  solo nel backend:  {sorted(set(CATEGORIE_SPESE_GENERALI) - ts)}"
+    )

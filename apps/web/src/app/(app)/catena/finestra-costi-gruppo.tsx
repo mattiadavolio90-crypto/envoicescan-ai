@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, CopyPlus, FileText, PencilLine } from "lucide-react";
+import { Plus, Trash2, CopyPlus, FileText, PencilLine, ChevronDown, AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,8 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
+import { CATEGORIE_TUTTE } from "@/lib/admin";
 
 const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -33,6 +35,19 @@ type Quota = {
   quota_importo: number;
 };
 
+type DettaglioCategoria = {
+  categoria: string;
+  importo: number;
+};
+
+type RigaDocumento = {
+  id: number;
+  descrizione: string | null;
+  categoria: string | null;
+  totale_riga: number;
+  needs_review: boolean;
+};
+
 type Costo = {
   id: string;
   origine: "fattura" | "manuale";
@@ -42,7 +57,11 @@ type Costo = {
   importo_totale: number;
   tipo: "generale" | "fb";
   regola: "equa" | "percentuali";
+  // Una entry per SEDE (il backend aggrega le porzioni per-categoria).
   quote: Quota[];
+  dettaglio_categorie: DettaglioCategoria[];
+  // Righe reali del documento di struttura: qui si corregge la categoria.
+  righe: RigaDocumento[];
 };
 
 type CostiComuniRes = {
@@ -50,6 +69,18 @@ type CostiComuniRes = {
   mese: number;
   costi: Costo[];
   totale: number;
+  // Quanto, di questo totale, sta pesando sul secchio spese del MOL solo perche'
+  // non e' ancora classificato. A differenza delle righe fattura normali (escluse
+  // dal MOL) una quota "Da Classificare" viene contata: la riga d'origine e' gia'
+  // esclusa come ripartita_su_gruppo, quindi la quota e' l'unico posto in cui quel
+  // costo esiste. Vedi 20260724220000_riparto_quote_per_categoria.sql.
+  da_classificare_importo?: number;
+  da_classificare_costi?: number;
+  // Quanti di quei costi NON sono sistemabili da qui: le quote si correggono agendo
+  // sulle righe del documento, quindi un costo che non ne ha lascia l'utente senza
+  // azioni. In quel caso l'avviso cambia testo invece di dare un'istruzione che non
+  // puo' funzionare.
+  da_classificare_non_correggibili?: number;
 };
 
 export function FinestraCostiGruppo({
@@ -191,6 +222,8 @@ export function FinestraCostiGruppo({
                     </span>
                   </div>
 
+                  <DettagliCosto costo={c} onCorretto={carica} />
+
                   <div className="mt-2 flex gap-2">
                     {c.origine === "manuale" && (
                       <button
@@ -220,6 +253,40 @@ export function FinestraCostiGruppo({
                 <span className="tabular-nums">{euro(data.totale)}</span>
               </li>
             </ul>
+          )}
+
+          {(data?.da_classificare_importo ?? 0) > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <p>
+                <strong className="tabular-nums">{euro(data!.da_classificare_importo!)}</strong>{" "}
+                di quote non sono ancora classificate
+                {(data!.da_classificare_costi ?? 0) > 0 &&
+                  ` (${data!.da_classificare_costi} ${
+                    data!.da_classificare_costi === 1 ? "costo" : "costi"
+                  })`}
+                . Finché restano così pesano tra le <em>Spese Generali</em> del MOL,
+                anche se in parte sono Food &amp; Beverage. Assegna la categoria dalle
+                righe del documento qui sopra per collocarle nel secchio giusto.
+                {(data!.da_classificare_non_correggibili ?? 0) > 0 && (
+                  <>
+                    {" "}
+                    <strong>
+                      {data!.da_classificare_non_correggibili ===
+                      data!.da_classificare_costi
+                        ? "Nessuno di questi costi ha righe"
+                        : `${data!.da_classificare_non_correggibili} di questi costi ${
+                            data!.da_classificare_non_correggibili === 1
+                              ? "non ha righe"
+                              : "non hanno righe"
+                          }`}
+                    </strong>{" "}
+                    da cui correggerli: la fattura d&apos;origine non è più presente,
+                    quindi vanno rifatti eliminando e ricreando il costo di gruppo.
+                  </>
+                )}
+              </p>
+            </div>
           )}
         </div>
 
@@ -263,13 +330,13 @@ function AggiungiCostoDialog({
 }) {
   const [descrizione, setDescrizione] = useState("");
   const [importo, setImporto] = useState("");
-  const [tipo, setTipo] = useState<"generale" | "fb">("generale");
+  const [categoria, setCategoria] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function salva() {
     const imp = Number(importo.replace(",", "."));
-    if (!descrizione.trim() || !(imp > 0)) {
-      toast.error("Inserisci descrizione e importo");
+    if (!descrizione.trim() || !(imp > 0) || !categoria) {
+      toast.error("Inserisci descrizione, importo e categoria");
       return;
     }
     setSaving(true);
@@ -280,7 +347,7 @@ function AggiungiCostoDialog({
         body: JSON.stringify({
           descrizione: descrizione.trim(),
           importo_totale: imp,
-          tipo,
+          categoria,
           anno,
           mese,
           regola: "equa",
@@ -290,6 +357,7 @@ function AggiungiCostoDialog({
       toast.success("Costo di gruppo aggiunto (parti uguali)");
       setDescrizione("");
       setImporto("");
+      setCategoria("");
       onDone();
     } catch {
       toast.error("Impossibile aggiungere il costo");
@@ -310,7 +378,7 @@ function AggiungiCostoDialog({
             <input
               value={descrizione}
               onChange={(e) => setDescrizione(e.target.value)}
-              placeholder="Es. Stipendi ufficio"
+              placeholder="Es. Utenze sede centrale"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </div>
@@ -326,11 +394,15 @@ function AggiungiCostoDialog({
               />
             </div>
             <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium">Tipo</label>
-              <NativeSelect value={tipo} onValueChange={(v) => setTipo(v as "generale" | "fb")} className="h-[38px] text-sm">
-                <option value="generale">Spese generali</option>
-                <option value="fb">F&B</option>
-              </NativeSelect>
+              <label className="mb-1 block text-xs font-medium">Categoria</label>
+              <div className="flex h-[38px] items-center rounded-md border bg-background px-3">
+                <DropdownCategoria
+                  value={categoria}
+                  categorie={CATEGORIE_TUTTE}
+                  onSelect={setCategoria}
+                  daScegliere={!categoria}
+                />
+              </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -347,5 +419,113 @@ function AggiungiCostoDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+// Dettaglio di un costo di gruppo: le porzioni per categoria e le righe reali del
+// documento di struttura, entrambe chiuse di default (il default resta pulito).
+// Le righe sono l'unico posto dove una categoria sbagliata su un costo di gruppo si
+// può correggere insieme al tab Articoli: vivono sulla sede tecnica, che non è
+// selezionabile dallo switcher sedi.
+function DettagliCosto({
+  costo,
+  onCorretto,
+}: {
+  costo: Costo;
+  onCorretto: () => void;
+}) {
+  const [apriRighe, setApriRighe] = useState(false);
+  const [salvando, setSalvando] = useState<number | null>(null);
+
+  const daSistemare = costo.righe.filter(
+    (r) => r.needs_review || !r.categoria || r.categoria === "Da Classificare",
+  ).length;
+
+  async function correggi(riga: RigaDocumento, categoria: string) {
+    if (!costo.file_origine || !riga.descrizione) return;
+    setSalvando(riga.id);
+    try {
+      const res = await fetch("/api/riparto/riga-categoria", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_origine: costo.file_origine,
+          descrizione: riga.descrizione,
+          nuova_categoria: categoria,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const sedi: string[] = data.sedi_impattate ?? [];
+        toast.success(
+          sedi.length
+            ? `Categoria aggiornata · vale per ${sedi.join(" e ")}`
+            : "Categoria aggiornata",
+        );
+        onCorretto();
+      } else {
+        toast.error(data.detail ?? data.error ?? "Errore aggiornamento");
+      }
+    } catch {
+      toast.error("Errore di rete");
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  if (!costo.righe.length) return null;
+
+  return (
+    <div className="mt-2 space-y-1.5 text-xs">
+      {costo.righe.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setApriRighe((v) => !v)}
+            className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronDown
+              className={`size-3 transition-transform ${apriRighe ? "" : "-rotate-90"}`}
+            />
+            righe del documento ({costo.righe.length})
+            {daSistemare > 0 && (
+              <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[0.65rem] font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                {daSistemare} da sistemare
+              </span>
+            )}
+          </button>
+          {apriRighe && (
+            <ul className="mt-1 space-y-1 pl-4">
+              {costo.righe.map((r) => {
+                const daScegliere =
+                  r.needs_review || !r.categoria || r.categoria === "Da Classificare";
+                return (
+                  <li
+                    key={r.id}
+                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-dashed py-1 last:border-0"
+                  >
+                    <span className="min-w-0 flex-1 truncate" title={r.descrizione ?? ""}>
+                      {r.descrizione || <em className="text-muted-foreground">senza descrizione</em>}
+                    </span>
+                    <DropdownCategoria
+                      value={r.categoria ?? ""}
+                      categorie={CATEGORIE_TUTTE}
+                      onSelect={(c) => correggi(r, c)}
+                      saving={salvando === r.id}
+                      daScegliere={daScegliere}
+                      compact
+                    />
+                    <span className="tabular-nums text-muted-foreground">
+                      {euro(r.totale_riga)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

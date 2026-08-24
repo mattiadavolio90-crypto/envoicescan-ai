@@ -3,6 +3,12 @@ import { CATEGORIE_TUTTE } from "@/lib/admin";
 // Le 4 categorie NON Food & Beverage (config/constants.py CATEGORIE_SPESE_GENERALI).
 // "MATERIALE DI CONSUMO" e' qui pur non essendo ovvio: dal punto di vista logico
 // rientra nelle spese generali, anche se la stringa nel DB non cambia.
+//
+// FONTE UNICA lato frontend: articoli-tab, pivot-tab e dropdown-categoria ne
+// tenevano una copia letterale a testa. Quattro liste che dovevano restare
+// identiche per sempre significa che prima o poi divergono, e una categoria
+// finita nel gruppo sbagliato sposta soldi tra i secchi del MOL senza dare
+// errore. Chi serve queste 4 stringhe importa DA QUI.
 export const SPESE_GENERALI_SET = new Set([
   "SERVIZI E CONSULENZE",
   "UTENZE E LOCALI",

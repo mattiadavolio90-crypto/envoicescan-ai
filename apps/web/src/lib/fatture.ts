@@ -39,6 +39,11 @@ export type ArticoloAggregato = {
   needs_review: boolean;
   is_nuovo: boolean;
   ripartita_su_gruppo?: boolean;
+  // solo_gruppo: TUTTE le righe sono quote di gruppo (nessuna riga propria del PV),
+  // quindi la correzione di categoria va sul documento di struttura indicato da
+  // file_origine_gruppo. Un articolo misto resta invece correggibile via batch.
+  solo_gruppo?: boolean;
+  file_origine_gruppo?: string | null;
 };
 
 export type ArticoliResponse = {

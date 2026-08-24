@@ -126,31 +126,46 @@ class _QueryCostiComuni:
     def __init__(self, client, table):
         self._c = client
         self._t = table
+        self._slice = None
 
     def select(self, *a, **k): return self
     def eq(self, *a, **k): return self
     def in_(self, *a, **k): return self
+    def is_(self, *a, **k): return self
     def order(self, *a, **k): return self
+
+    def range(self, start, end):
+        # fetch_all pagina con .range(): affettare davvero, altrimenti restituire
+        # sempre la pagina piena farebbe ciclare il paginatore all'infinito.
+        self._slice = (start, end + 1)
+        return self
 
     def execute(self):
         if self._t == "riparto_costi_catena":
-            return SimpleNamespace(data=self._c.costi)
-        if self._t == "riparto_costi_catena_quote":
-            return SimpleNamespace(data=self._c.quote)
-        return SimpleNamespace(data=[])
+            data = self._c.costi
+        elif self._t == "riparto_costi_catena_quote":
+            data = self._c.quote
+        elif self._t == "fatture":
+            data = self._c.righe
+        else:
+            data = []
+        if self._slice is not None:
+            data = data[self._slice[0]:self._slice[1]]
+        return SimpleNamespace(data=data)
 
 
 class _FakeSBCostiComuni:
-    def __init__(self, costi, quote):
+    def __init__(self, costi, quote, righe=None):
         self.costi = costi
         self.quote = quote
+        self.righe = righe or []
 
     def table(self, name):
         return _QueryCostiComuni(self, name)
 
 
-def _patch_costi_comuni(costi, quote, sedi=_SEDI_2):
-    sb = _FakeSBCostiComuni(costi, quote)
+def _patch_costi_comuni(costi, quote, sedi=_SEDI_2, righe=None):
+    sb = _FakeSBCostiComuni(costi, quote, righe)
     p = patch.multiple(
         riparto,
         _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
@@ -171,7 +186,11 @@ def test_costi_comuni_nessun_costo_ritorna_vuoto_senza_interrogare_quote():
     sb, p = _patch_costi_comuni([], [])
     with p:
         out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
-    assert out == {"anno": 2026, "mese": 6, "costi": [], "totale": 0.0}
+    assert out == {
+        "anno": 2026, "mese": 6, "costi": [], "totale": 0.0,
+        "da_classificare_importo": 0.0, "da_classificare_costi": 0,
+        "da_classificare_non_correggibili": 0,
+    }
 
 
 def test_costi_comuni_happy_path_mappa_sede_e_totale():
@@ -211,3 +230,236 @@ def test_costi_comuni_costo_senza_quote_ritorna_lista_vuota():
 
     assert out["costi"][0]["quote"] == []
     assert out["totale"] == 100.0
+
+
+# ─── quote per-categoria: aggregazione per sede (fix 24/8) ──────────────────
+# Dal 24/7/2026 le quote sono per (sede × categoria). L'endpoint le elencava piatte:
+# una fattura mista mostrava la stessa sede ripetuta una volta per categoria, con la
+# sua percentuale replicata (nove "50%" che sommano 450%). Caso reale: MONOPOLI,
+# 380,50 € su 2 sedi × 9 categorie = 18 righe a schermo.
+
+_COSTO_MISTO = [
+    {"id": "c1", "origine": "fattura", "file_origine": "IT123_x.xml", "fornitore": "MONOPOLI",
+     "descrizione": "Costo comune MONOPOLI", "importo_totale": 380.50,
+     "tipo": "generale", "regola": "equa"},
+]
+
+_QUOTE_PER_CATEGORIA = [
+    {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 74.50, "categoria": "Da Classificare"},
+    {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 33.01, "categoria": "BIRRE"},
+    {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 82.74, "categoria": "CARNE"},
+    {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 74.50, "categoria": "Da Classificare"},
+    {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 33.01, "categoria": "BIRRE"},
+    {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 82.74, "categoria": "CARNE"},
+]
+
+
+def _costo_misto():
+    sb, p = _patch_costi_comuni(_COSTO_MISTO, _QUOTE_PER_CATEGORIA)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=7, authorization="Bearer x")
+    return out["costi"][0]
+
+
+def test_quote_per_categoria_aggregate_una_riga_per_sede():
+    c1 = _costo_misto()
+    assert len(c1["quote"]) == 2, "una entry per sede, non una per (sede × categoria)"
+    assert {q["sede"] for q in c1["quote"]} == {"Locale A", "Locale B"}
+
+
+def test_quote_per_categoria_percentuale_non_sommata():
+    """Il difetto visibile a schermo: 50% replicato su ogni porzione, mai sommato."""
+    for q in _costo_misto()["quote"]:
+        assert q["quota_perc"] == pytest.approx(50.0)
+
+
+def test_quote_per_categoria_importi_sommati_per_sede():
+    c1 = _costo_misto()
+    for q in c1["quote"]:
+        assert q["quota_importo"] == pytest.approx(190.25, abs=0.01)
+    tot = sum(q["quota_importo"] for q in c1["quote"])
+    assert tot == pytest.approx(380.50, abs=0.01)
+
+
+def test_dettaglio_categorie_esposto_e_ordinato_per_importo():
+    dett = _costo_misto()["dettaglio_categorie"]
+    assert [d["categoria"] for d in dett] == ["CARNE", "Da Classificare", "BIRRE"]
+    assert sum(d["importo"] for d in dett) == pytest.approx(380.50, abs=0.01)
+
+
+def test_righe_documento_esposte_per_la_correzione_categoria():
+    righe = [
+        {"file_origine": "IT123_x.xml", "id": 11, "descrizione": "1 ACCONTO",
+         "categoria": "Da Classificare", "totale_riga": 149.0, "needs_review": True},
+    ]
+    sb, p = _patch_costi_comuni(_COSTO_MISTO, _QUOTE_PER_CATEGORIA, righe=righe)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=7, authorization="Bearer x")
+    r = out["costi"][0]["righe"]
+    assert len(r) == 1 and r[0]["descrizione"] == "1 ACCONTO"
+    assert r[0]["categoria"] == "Da Classificare" and r[0]["needs_review"] is True
+
+
+def test_quote_legacy_senza_categoria_restano_una_per_sede():
+    """Nessuna regressione sui riparti pre-24/7 (categoria NULL)."""
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 190.25, "categoria": None},
+        {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 190.25, "categoria": None},
+    ]
+    sb, p = _patch_costi_comuni(_COSTO_MISTO, quote)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=7, authorization="Bearer x")
+    c1 = out["costi"][0]
+    assert len(c1["quote"]) == 2
+    assert c1["dettaglio_categorie"] == []
+
+
+# ─── quote "Da Classificare": visibili, non nascoste ────────────────────────
+#
+# Asimmetria deliberata (vedi 20260724220000_riparto_quote_per_categoria.sql): una
+# riga fattura "Da Classificare" è ESCLUSA dal MOL, una quota di riparto invece
+# entra nel secchio spese — la riga d'origine è già esclusa come
+# ripartita_su_gruppo, quindi la quota è l'unico posto in cui quel costo esiste.
+# Escluderla lo farebbe sparire e il MOL sembrerebbe migliore del reale.
+# Il prezzo di quella scelta è che il costo pesa sul secchio sbagliato finché
+# nessuno lo classifica: l'endpoint lo dichiara, così la UI può avvisare.
+
+
+def _costo(cid, importo, tipo="generale"):
+    return {"id": cid, "origine": "fattura", "file_origine": None, "fornitore": "F",
+            "descrizione": f"Costo {cid}", "importo_totale": importo,
+            "tipo": tipo, "regola": "equa"}
+
+
+def test_costi_comuni_espone_totale_quote_da_classificare():
+    costi = [_costo("c1", 1000.0), _costo("c2", 500.0)]
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 400.0, "categoria": "Da Classificare"},
+        {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0,
+         "quota_importo": 400.0, "categoria": "Da Classificare"},
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 100.0, "categoria": "CARNE"},
+        {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0,
+         "quota_importo": 100.0, "categoria": "CARNE"},
+        {"riparto_id": "c2", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 250.0, "categoria": "UTENZE E LOCALI"},
+        {"riparto_id": "c2", "ristorante_id": "sede-b", "quota_perc": 50.0,
+         "quota_importo": 250.0, "categoria": "UTENZE E LOCALI"},
+    ]
+    sb, p = _patch_costi_comuni(costi, quote)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
+
+    assert out["da_classificare_importo"] == 800.0, "somma delle sole quote non classificate"
+    assert out["da_classificare_costi"] == 1, "un solo costo ne contiene, non due"
+    assert out["totale"] == 1500.0, "il totale non cambia: nessuna quota viene esclusa"
+
+
+def test_costi_comuni_nessuna_quota_da_classificare_non_allarma():
+    """Zero falsi positivi: senza quote non classificate l'avviso non deve comparire."""
+    costi = [_costo("c1", 100.0)]
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 50.0, "categoria": "CARNE"},
+        {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0,
+         "quota_importo": 50.0, "categoria": "CARNE"},
+    ]
+    sb, p = _patch_costi_comuni(costi, quote)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
+    assert out["da_classificare_importo"] == 0
+    assert out["da_classificare_costi"] == 0
+
+
+def test_costi_comuni_quote_senza_categoria_sono_contate():
+    """Una quota con categoria NULL NON è innocua e va segnalata come le altre.
+
+    Verifica sul DB reale (24/8/2026): 4 quote NULL per 531,76 €, su due riparti
+    TOYOTA creati il 21/8 le cui righe fattura non esistono più. Con categoria NULL
+    la quota non passa da _riparto_categoria_is_fb: finisce nel secchio del `tipo`
+    dell'header senza che nulla lo dichiari. Il test precedente asseriva il contrario
+    ("non sono da classificare, non vanno segnalate") ed è stato riscritto: era la
+    stessa cecità che l'avviso doveva eliminare.
+    """
+    costi = [_costo("c1", 100.0)]
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 50.0, "categoria": None},
+        {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0,
+         "quota_importo": 50.0, "categoria": None},
+    ]
+    sb, p = _patch_costi_comuni(costi, quote)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
+    assert out["da_classificare_importo"] == 100.0
+    assert out["da_classificare_costi"] == 1
+    assert out["totale"] == 100.0, "il totale non cambia: nessuna quota viene esclusa"
+
+
+def test_costi_comuni_categoria_vuota_equiparata_a_null():
+    """Stringa vuota e NULL sono lo stesso stato: entrambe niente categoria."""
+    costi = [_costo("c1", 60.0)]
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 30.0, "categoria": ""},
+        {"riparto_id": "c1", "ristorante_id": "sede-b", "quota_perc": 50.0,
+         "quota_importo": 30.0, "categoria": "   "},
+    ]
+    sb, p = _patch_costi_comuni(costi, quote)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
+    assert out["da_classificare_importo"] == 60.0
+    assert out["da_classificare_costi"] == 1
+
+
+def test_costi_comuni_sentinella_fuori_da_dettaglio_categorie():
+    """dettaglio_categorie elenca categorie REALI: mostrare la chiave interna delle
+    quote senza categoria la farebbe sembrare una classificazione avvenuta."""
+    costi = [_costo("c1", 100.0)]
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 30.0, "categoria": None},
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 50.0,
+         "quota_importo": 20.0, "categoria": "CARNE"},
+    ]
+    sb, p = _patch_costi_comuni(costi, quote)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
+    cats = [d["categoria"] for d in out["costi"][0]["dettaglio_categorie"]]
+    assert cats == ["CARNE"], f"solo categorie reali, trovato {cats}"
+    assert riparto._SENZA_CATEGORIA not in cats
+
+
+def test_costi_comuni_segnala_costi_non_correggibili_dalla_ui():
+    """Senza righe il dropdown non ha nulla da offrire: dirgli "correggi dalle righe"
+    sarebbe un'istruzione ineseguibile, quindi il conteggio va esposto a parte."""
+    costi = [_costo("c1", 100.0)]
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 100.0,
+         "quota_importo": 100.0, "categoria": None},
+    ]
+    sb, p = _patch_costi_comuni(costi, quote)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
+    assert out["costi"][0]["righe"] == [], "il costo non ha righe da cui correggere"
+    assert out["da_classificare_non_correggibili"] == 1
+
+
+def test_costi_comuni_costo_con_righe_non_e_non_correggibile():
+    """Il contatore deve restare zero quando l'utente PUÒ agire, altrimenti l'avviso
+    manda a rifare un costo che bastava correggere dal dropdown."""
+    costi = [dict(_costo("c1", 100.0), file_origine="IT123_doc.xml")]
+    quote = [
+        {"riparto_id": "c1", "ristorante_id": "sede-a", "quota_perc": 100.0,
+         "quota_importo": 100.0, "categoria": "Da Classificare"},
+    ]
+    righe = [
+        {"id": 1, "file_origine": "IT123_doc.xml", "descrizione": "Voce",
+         "categoria": "Da Classificare", "totale_riga": 100.0, "needs_review": True},
+    ]
+    sb, p = _patch_costi_comuni(costi, quote, righe=righe)
+    with p:
+        out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
+    assert out["da_classificare_costi"] == 1
+    assert out["da_classificare_non_correggibili"] == 0

@@ -31,6 +31,12 @@ from utils.supabase_paging import fetch_all
 
 logger = logging.getLogger("fastapi_worker")
 
+# Le righe sintetiche di un costo di gruppo MANUALE non hanno un file_origine reale
+# (in tabella è NULL): usano questo prefisso + l'id del riparto. Chi riceve il valore
+# lato API (correzione categoria) lo riconosce e risale al riparto invece di cercarlo
+# per file_origine, che non troverebbe mai.
+SENTINELLA_RIPARTO_MANUALE = "riparto:"
+
 # Campi di una riga fattura come li serve il funnel _fetch_fatture_rows (stessa
 # selezione di _build_fatture_base_query). Le righe proiettate devono avere ESATTAMENTE
 # queste chiavi per comportarsi come una riga reale in ogni consumatore (aggregati,
@@ -119,7 +125,7 @@ def _spezza_importo_per_pesi(importo: float, pesi: Dict[str, float]) -> List[Dic
 
 
 def esplodi_quote_per_categoria(
-    sb, user_id: str, riparto_id: str, file_origine: str
+    sb, user_id: str, riparto_id: str, file_origine: str, forza: bool = False
 ) -> bool:
     """Sostituisce le quote monolitiche di un riparto con quote PER CATEGORIA.
 
@@ -131,6 +137,11 @@ def esplodi_quote_per_categoria(
 
     Ritorna True se ha esploso (fattura con righe categorizzate), False se ha lasciato
     le quote come sono (nessuna riga viva → resta il modello legacy per-tipo).
+
+    `forza=True` ri-esplode anche quote GIÀ per-categoria: serve dopo una correzione di
+    categoria su una riga di gruppo, dove i pesi sono cambiati e le quote scritte
+    portano ancora la categoria vecchia (quote e MOL divergerebbero dalle righe reali).
+    Con il default False resta l'early-return storico.
 
     NON ricalcola le quote mensili: il chiamante lo fa (il router via
     _post_scrittura_riparto; il worker esplicitamente). Così una sola RPC per scrittura.
@@ -152,17 +163,41 @@ def esplodi_quote_per_categoria(
     if not quote:
         return False
 
+    # Il padre serve alla RPC transazionale di riscrittura (che aggiorna anche tipo/
+    # regola/importo): li rileggiamo invariati, qui si toccano solo le quote.
+    padre = (
+        sb.table("riparto_costi_catena")
+        .select("tipo, regola, importo_totale")
+        .eq("id", riparto_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not padre:
+        logger.warning(
+            "esplodi_quote_per_categoria: riparto %s non trovato per user %s",
+            riparto_id, user_id,
+        )
+        return False
+    rip = padre[0]
+
     # Se le quote sono GIÀ per-categoria (categoria valorizzata) non ri-esplodo: sono
-    # già nel modello nuovo (evita di esplodere un'esplosione).
-    if any((q.get("categoria") or "").strip() for q in quote):
+    # già nel modello nuovo (evita di esplodere un'esplosione). Con forza=True invece
+    # ricalcolo: i pesi sono cambiati sotto (correzione di categoria) e le porzioni
+    # vecchie non rispecchiano più le righe.
+    if not forza and any((q.get("categoria") or "").strip() for q in quote):
         return True
 
-    # Aggrega per sede: una sola quota-sede monolitica attesa, ma sommo per sicurezza.
+    # Aggrega per sede: l'IMPORTO si somma (con forza=True gli input sono già porzioni
+    # per-categoria da ricomporre), la PERCENTUALE no — è la quota della sede, replicata
+    # identica su ogni porzione: sommarla darebbe 450% su 9 categorie e sfonderebbe il
+    # CHECK (quota_perc <= 100). Si prende il massimo, che sulle quote legacy monolitiche
+    # (una sola per sede) coincide col valore storico.
     per_sede: Dict[str, Dict[str, float]] = {}
     for q in quote:
         rid = str(q["ristorante_id"])
         s = per_sede.setdefault(rid, {"perc": 0.0, "importo": 0.0})
-        s["perc"] += float(q.get("quota_perc") or 0)
+        s["perc"] = max(s["perc"], float(q.get("quota_perc") or 0))
         s["importo"] += float(q.get("quota_importo") or 0)
 
     nuove: List[Dict[str, Any]] = []
@@ -180,13 +215,20 @@ def esplodi_quote_per_categoria(
     if not nuove:
         return False
 
-    # Rimpiazza le quote del riparto (delete + insert) in una transazione logica:
-    # se l'insert fallisse dopo il delete, il chiamante è in un contesto che ritenta
-    # (worker) o solleva (router) — ma per sicurezza inseriamo prima di cancellare NO:
-    # PostgREST non dà transazione multi-statement qui. Ordine: cancella le vecchie poi
-    # inserisci le nuove; l'operazione è ricostruibile dalle righe se interrotta.
-    sb.table("riparto_costi_catena_quote").delete().eq("riparto_id", riparto_id).execute()
-    sb.table("riparto_costi_catena_quote").insert(nuove).execute()
+    # Rimpiazza le quote via RPC transazionale: delete + insert come statement PostgREST
+    # separati lasciavano il riparto SENZA quote se il secondo falliva (orfano invisibile
+    # al motore MOL, stessa classe dell'incidente FASTWEB del 22/7).
+    # sostituisci_quote_riparto avvolge tutto in una transazione: o passa, o nulla cambia.
+    sb.rpc("sostituisci_quote_riparto", {
+        "p_riparto_id": riparto_id,
+        "p_user_id": user_id,
+        "p_tipo": rip["tipo"],
+        "p_regola": rip["regola"],
+        "p_importo_totale": float(rip["importo_totale"] or 0),
+        "p_quote": [
+            {k: v for k, v in n.items() if k != "riparto_id"} for n in nuove
+        ],
+    }).execute()
     logger.info(
         "esplodi_quote_per_categoria: riparto %s → %d quote per-categoria (%d sedi × %d cat)",
         riparto_id, len(nuove), len(per_sede), len(pesi),
@@ -384,7 +426,7 @@ def righe_ripartite_proiettate(
             if not nr.get("fornitore"):
                 nr["fornitore"] = rip.get("fornitore") or "Costi di gruppo"
             if not nr.get("file_origine"):
-                nr["file_origine"] = rip.get("file_origine") or f"riparto:{rid}"
+                nr["file_origine"] = rip.get("file_origine") or f"{SENTINELLA_RIPARTO_MANUALE}{rid}"
             if nr.get("numero_riga") is None:
                 nr["numero_riga"] = 0
             if not nr.get("data_documento"):

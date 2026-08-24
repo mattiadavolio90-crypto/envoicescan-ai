@@ -498,3 +498,40 @@ def is_prezzo_valido(prezzo: float, min_val: float = 0.001, max_val: float = 100
         return min_val <= p <= max_val
     except (ValueError, TypeError):
         return False
+
+
+def normalizza_categoria_richiesta(categoria: Optional[str]) -> str:
+    """Valida e normalizza una categoria scelta dall'utente, o solleva ValueError.
+
+    Unico punto di verità per le scritture di categoria provenienti dal client
+    (categoria-batch, PATCH singola riga, PATCH riga di gruppo). Il constraint DB
+    vieta solo NULL/vuoto: senza whitelist una categoria inventata o un refuso
+    passerebbe e sporcherebbe margini e report.
+
+    Regola di dominio #1: "Da Classificare" è uno stato che l'AI assegna quando non
+    riconosce la riga, NON una scelta che l'utente possa applicare a mano — va
+    rifiutata (insieme alla grafia errata "Da Clasificare").
+
+    Ritorna la categoria normalizzata (la variante senza emoji di NOTE E DICITURE
+    diventa quella con emoji, così il guardrail importo-zero si applica a un solo
+    valore). Il chiamante traduce ValueError nel proprio HTTP 400.
+    """
+    from config.constants import TUTTE_LE_CATEGORIE
+
+    cat = (categoria or "").strip()
+    if not cat or cat in ("Da Clasificare", "Da Classificare"):
+        raise ValueError("Categoria non valida")
+    if cat not in (set(TUTTE_LE_CATEGORIE) | _NOTE_EQUIVALENTS):
+        raise ValueError(f"Categoria '{cat}' non riconosciuta")
+    return "📝 NOTE E DICITURE" if cat == "NOTE E DICITURE" else cat
+
+
+def importo_riga_per_guardrail(riga: Dict) -> float:
+    """Importo di riferimento di una riga per il guardrail NOTE E DICITURE.
+
+    Regola di dominio #2: "📝 NOTE E DICITURE" è ammessa SOLO su righe a importo
+    zero. Si guarda totale_riga; se è 0 si ricade sul prezzo_unitario, così una riga
+    con totale nullo ma prezzo valorizzato non passa per dicitura.
+    """
+    t = float(riga.get("totale_riga") or 0)
+    return t if t != 0 else float(riga.get("prezzo_unitario") or 0)

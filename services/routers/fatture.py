@@ -111,6 +111,8 @@ class ArticoloAggregato(BaseModel):
     needs_review: bool
     is_nuovo: bool  # arrivato dopo l'ultimo accesso utente
     ripartita_su_gruppo: bool = False  # ha almeno una riga di quota di gruppo proiettata
+    solo_gruppo: bool = False          # TUTTE le righe sono quote di gruppo (nessuna riga propria)
+    file_origine_gruppo: Optional[str] = None  # documento di struttura da correggere
 
 
 class ArticoliResponse(BaseModel):
@@ -501,7 +503,19 @@ def get_articoli_aggregati(
 
         # ripartita_su_gruppo: l'articolo include almeno una riga di quota di gruppo
         # proiettata (id sintetico < 0). Serve al badge nel tab Articoli.
-        ripartita = any(it.get("ripartita_su_gruppo") for it in items)
+        righe_gruppo = [it for it in items if it.get("ripartita_su_gruppo")]
+        ripartita = bool(righe_gruppo)
+        # solo_gruppo distingue i due casi che prima collassavano: un articolo fatto di
+        # sole quote va corretto SOLO sul documento di struttura, uno misto ha bisogno
+        # di entrambe le scritture (righe proprie del PV + documento di struttura),
+        # altrimenti la porzione di gruppo resta sulla categoria vecchia e pesa nel
+        # secchio MOL sbagliato. file_origine_gruppo dice su quale documento agire ed è
+        # valorizzato ogni volta che esiste una porzione di gruppo, misto compreso.
+        solo_gruppo = ripartita and len(righe_gruppo) == len(items)
+        file_origine_gruppo = next(
+            (it.get("file_origine") for it in righe_gruppo if it.get("file_origine")),
+            None,
+        )
 
         # is_nuovo: created_at di almeno una riga >= cutoff (ultima sessione upload).
         # Con solo_nuovi=True le righe vecchie sono già state filtrate a monte, quindi
@@ -529,6 +543,8 @@ def get_articoli_aggregati(
             needs_review=nr,
             is_nuovo=is_nuovo,
             ripartita_su_gruppo=ripartita,
+            solo_gruppo=solo_gruppo,
+            file_origine_gruppo=file_origine_gruppo,
         ))
 
     # Ordina per totale_speso desc (i piu impattanti in alto)
@@ -858,7 +874,16 @@ def categoria_batch(
     if righe_aggiornate:
         _invalidate_fatture_rows_cache(ristorante_id)
 
-    # Salva memoria AI locale (prodotti_utente)
+    # Salva memoria AI locale (prodotti_utente) SOLO se qualcosa è stato davvero
+    # aggiornato: con 0 righe toccate (es. riga di gruppo, che vive sulla sede tecnica
+    # e non matcha il ristorante_id del PV) si insegnava all'AI una classificazione a
+    # fronte di una scrittura mai avvenuta, e il cliente vedeva un falso successo.
+    if not righe_aggiornate:
+        return {
+            "ok": True, "righe_aggiornate": 0, "descrizione": descrizione,
+            "nuova_categoria": nuova_cat,
+        }
+
     try:
         existing = (
             supabase_client.table("prodotti_utente")

@@ -8,6 +8,7 @@ import {
   type PivotResponse,
   type TrendResponse,
 } from "@/lib/fatture";
+import { SPESE_GENERALI_SET } from "@/lib/categorie-spesa";
 import { categoriaIcon, formatEuro, formatEuroCompact } from "./periodi";
 
 type Props = {
@@ -30,13 +31,6 @@ const VISTE = [
   { key: "tabella", label: "Tabella" },
   { key: "grafico", label: "Grafico" },
 ];
-
-const SPESE_GENERALI_SET = new Set([
-  "SERVIZI E CONSULENZE",
-  "UTENZE E LOCALI",
-  "MANUTENZIONE E ATTREZZATURE",
-  "MATERIALE DI CONSUMO",
-]);
 
 export function PivotTab({ pivot, dimensione, filtri }: Props) {
   const router = useRouter();

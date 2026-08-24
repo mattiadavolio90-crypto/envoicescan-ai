@@ -63,6 +63,29 @@ $$;
 COMMENT ON FUNCTION public._riparto_categoria_is_fb(text) IS
     'TRUE se la categoria è Food & Beverage (25 cat. di CATEGORIE_FOOD_BEVERAGE). '
     'Spese generali, "Da Classificare", NOTE E DICITURE e ignoti → FALSE (secchio spese). '
-    'Unica verità del mapping categoria→secchio MOL per il riparto per-categoria.';
+    'Unica verità del mapping categoria→secchio MOL per il riparto per-categoria. '
+    'NB: "Da Classificare" entra nel secchio spese, mentre le righe fattura normali '
+    'sono ESCLUSE dal MOL — asimmetria deliberata, vedi nota sotto.';
+
+-- ── NOTA: perché "Da Classificare" NON è escluso qui ────────────────────────
+-- Le righe fattura normali con categoria "Da Classificare" sono ESCLUSE dal MOL
+-- (margine_service: .neq('categoria','Da Classificare'); RPC costi_automatici_*:
+-- f.categoria <> 'Da Classificare'), per non falsare il margine con costi di cui
+-- non si conosce ancora la natura. Qui invece finiscono nel secchio spese.
+--
+-- L'asimmetria è DELIBERATA, non una svista. Una riga ripartita sul gruppo ha
+-- ripartita_su_gruppo=TRUE ed è già esclusa dalla sede intestataria per
+-- l'anti-doppio-conteggio: la quota è l'UNICO posto in cui quel costo esiste.
+-- Escluderla anche qui non lo sposterebbe altrove — lo farebbe sparire, e il MOL
+-- risulterebbe MIGLIORE del reale finché qualcuno non classifica la riga.
+-- Nel caso reale che ha motivato questa nota (verifica 24/8/2026) erano 23.609 €
+-- su 96 quote, di cui 10.636 € in un solo mese: il 75% delle spese ripartite di
+-- luglio 2026 su entrambe le sedi.
+--
+-- Fra due errori si è scelto il meno pericoloso: un costo nel secchio sbagliato
+-- (spese anziché F&B) è visibile e correggibile classificando la riga; un costo
+-- sparito non lo nota nessuno. La UI di catena segnala quante quote sono da
+-- classificare proprio per chiudere il cerchio.
+-- NON "allineare per coerenza" senza rileggere questo ragionamento.
 
 COMMIT;

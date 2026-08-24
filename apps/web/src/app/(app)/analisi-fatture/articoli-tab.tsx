@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { SPESE_GENERALI_SET } from "@/lib/categorie-spesa";
 import {
   AlertTriangle,
   ArrowDown,
@@ -19,16 +20,8 @@ import {
 // xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { categoriaIcon, formatData, formatEuro } from "./periodi";
+import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
+import { formatData, formatEuro } from "./periodi";
 
 type Props = {
   articoli: ArticoloAggregato[];
@@ -60,13 +53,6 @@ const TIPO_OPTIONS = [
   { key: "food_beverage", label: "Food & Beverage" },
   { key: "spese_generali", label: "Spese Generali" },
 ];
-
-const SPESE_GENERALI_SET = new Set([
-  "SERVIZI E CONSULENZE",
-  "UTENZE E LOCALI",
-  "MANUTENZIONE E ATTREZZATURE",
-  "MATERIALE DI CONSUMO",
-]);
 
 const PAGE_SIZE = 100;
 
@@ -498,25 +484,71 @@ const ArticoloRiga = memo(function ArticoloRiga({
     if (!confirmOnly && newCat === currentCat && !needsReview) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/fatture/categoria-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          descrizione: articolo.descrizione,
-          nuova_categoria: newCat,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
+      // Le righe di un costo ripartito vivono sulla SEDE TECNICA, non su questo punto
+      // vendita: categoria-batch (che filtra per ristorante_id del PV) non le
+      // troverebbe e dichiarerebbe un successo su 0 righe. Vanno corrette sul
+      // documento di struttura, che aggiorna la quota di tutte le sedi del gruppo.
+      // Un articolo MISTO (righe proprie + quota di gruppo) ha bisogno di ENTRAMBE le
+      // scritture: correggere solo il PV lascerebbe la quota sulla categoria vecchia,
+      // a pesare in silenzio nel secchio MOL sbagliato.
+      const conGruppo = Boolean(articolo.file_origine_gruppo);
+      const conRighePV = !articolo.solo_gruppo;
+
+      const resGruppo = conGruppo
+        ? await fetch("/api/riparto/riga-categoria", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              file_origine: articolo.file_origine_gruppo,
+              descrizione: articolo.descrizione,
+              nuova_categoria: newCat,
+            }),
+          })
+        : null;
+      const resPV = conRighePV
+        ? await fetch("/api/fatture/categoria-batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              descrizione: articolo.descrizione,
+              nuova_categoria: newCat,
+            }),
+          })
+        : null;
+
+      const dataGruppo = resGruppo ? await resGruppo.json() : null;
+      const dataPV = resPV ? await resPV.json() : null;
+      const falliti = [resGruppo, resPV].filter((r) => r && !r.ok);
+
+      if (!falliti.length) {
         setCurrentCat(newCat);
         setNeedsReview(false);
-        toast.success(
-          confirmOnly
-            ? `Categoria confermata · ${data.righe_aggiornate} righe`
-            : `Categoria aggiornata · ${data.righe_aggiornate} righe`,
-        );
+        const azione = confirmOnly ? "confermata" : "aggiornata";
+        if (conGruppo) {
+          // Il cliente deve sapere che la correzione vale per tutto il gruppo.
+          const sedi: string[] = dataGruppo?.sedi_impattate ?? [];
+          const doveGruppo = sedi.length
+            ? `vale per ${sedi.join(" e ")}`
+            : "sul costo di gruppo";
+          toast.success(
+            conRighePV
+              ? `Categoria ${azione} · ${dataPV?.righe_aggiornate ?? 0} righe + quota di gruppo (${doveGruppo})`
+              : `Categoria ${azione} · ${doveGruppo}`,
+          );
+        } else {
+          toast.success(`Categoria ${azione} · ${dataPV?.righe_aggiornate ?? 0} righe`);
+        }
       } else {
-        toast.error(data.error ?? "Errore aggiornamento");
+        // Su un articolo misto una delle due scritture può riuscire e l'altra no: va
+        // detto, altrimenti il cliente crede che sia allineato tutto.
+        const dettaglio =
+          dataGruppo?.detail ?? dataGruppo?.error ?? dataPV?.detail ?? dataPV?.error;
+        const parziale = conGruppo && conRighePV && falliti.length === 1;
+        toast.error(
+          parziale
+            ? `Aggiornamento parziale: ${dettaglio ?? "una delle due scritture è fallita"}. Riprova.`
+            : (dettaglio ?? "Errore aggiornamento"),
+        );
       }
     } catch {
       toast.error("Errore di rete");
@@ -526,28 +558,12 @@ const ArticoloRiga = memo(function ArticoloRiga({
   }
 
   const daScegliere = needsReview && (!currentCat || currentCat === "Da Classificare");
-  const icon = daScegliere ? "⚠️" : categoriaIcon(currentCat);
   const trendPct = articolo.prezzo_unit_trend_pct;
   // Articolo che include quote di gruppo proiettate: la categoria riflette il
-  // documento di gruppo (sede tecnica) e NON è modificabile da qui — cambiarla
-  // dovrebbe avvenire sulla fattura di struttura. Blocchiamo il dropdown.
+  // documento di struttura. È correggibile da qui, ma la scrittura passa dalla rotta
+  // di gruppo (saveCategoria/viaGruppo) e impatta la quota di tutte le sedi.
   const ripartita = Boolean(articolo.ripartita_su_gruppo);
 
-  const fbCats = useMemo(
-    () =>
-      categorie
-        .filter((c) => !SPESE_GENERALI_SET.has(c.toUpperCase()) && c !== "Da Classificare")
-        .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" })),
-    [categorie],
-  );
-  const sgCats = useMemo(
-    () =>
-      categorie
-        .filter((c) => SPESE_GENERALI_SET.has(c.toUpperCase()))
-        .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" })),
-    [categorie],
-  );
-  const hasDaClassificare = categorie.includes("Da Classificare");
 
   return (
     <>
@@ -572,7 +588,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
             {ripartita && (
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap"
-                title="Include la tua quota di un costo ripartito sul gruppo"
+                title="Include la tua quota di un costo ripartito sul gruppo — correggendo la categoria cambia la quota di tutte le sedi"
               >
                 <Split className="size-2.5" /> Ripartita
               </span>
@@ -610,79 +626,16 @@ const ArticoloRiga = memo(function ArticoloRiga({
           </div>
         </td>
         <td className="px-3 py-2">
-          {ripartita ? (
-            // Categoria di sola lettura: riflette il documento di gruppo, non si cambia da qui.
-            <span className="text-xs inline-flex items-center gap-1.5 text-muted-foreground" title="Categoria del costo di gruppo — modificabile solo sulla fattura di struttura">
-              <span className="text-base leading-none">{categoriaIcon(currentCat)}</span>
-              <span className="font-medium">{currentCat || <em>N/D</em>}</span>
-            </span>
-          ) : (
-          /* Dropdown in portale (base-ui Menu): si apre ancorato alla cella senza
-              scrollare la pagina, quindi la riga NON salta più fuori vista come
-              accadeva col <select> nativo + autoFocus. */
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              disabled={saving}
-              className={`text-xs inline-flex items-center gap-1.5 hover:underline text-left disabled:opacity-60 ${
-                daScegliere ? "text-rose-700 hover:text-rose-800" : "hover:text-primary"
-              }`}
-            >
-              <span className="text-base leading-none">{icon}</span>
-              <span className="font-medium">
-                {daScegliere ? "Scegli categoria" : currentCat || <em className="text-muted-foreground">N/D</em>}
-              </span>
-              {saving ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <ChevronDown className={`size-3 ${daScegliere ? "text-rose-500" : "text-muted-foreground"}`} />
-              )}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-80 min-w-52">
-              {fbCats.length > 0 && (
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>🥗 Food &amp; Beverage</DropdownMenuLabel>
-                  {fbCats.map((c) => (
-                    <DropdownMenuItem
-                      key={c}
-                      onClick={() => saveCategoria(c)}
-                      className={c === currentCat ? "font-semibold text-primary" : ""}
-                    >
-                      <span className="text-base leading-none">{categoriaIcon(c)}</span>
-                      {c}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              )}
-              {sgCats.length > 0 && (
-                <DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>📊 Spese Generali</DropdownMenuLabel>
-                  {sgCats.map((c) => (
-                    <DropdownMenuItem
-                      key={c}
-                      onClick={() => saveCategoria(c)}
-                      className={c === currentCat ? "font-semibold text-primary" : ""}
-                    >
-                      <span className="text-base leading-none">{categoriaIcon(c)}</span>
-                      {c}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              )}
-              {hasDaClassificare && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => saveCategoria("Da Classificare")}
-                  >
-                    Da Classificare
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          )}
+          {/* Anche le righe ripartite sono correggibili: saveCategoria instrada da sé
+              sul documento di struttura (vedi viaGruppo). Prima erano sola lettura e
+              rimandavano a una sede tecnica non raggiungibile dalla UI. */}
+          <DropdownCategoria
+            value={currentCat}
+            categorie={categorie}
+            onSelect={(c) => saveCategoria(c)}
+            saving={saving}
+            daScegliere={daScegliere}
+          />
         </td>
         <td className="px-3 py-2 text-xs">
           <span className="truncate inline-block max-w-32" title={articolo.fornitore_principale}>
