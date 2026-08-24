@@ -167,3 +167,53 @@ def test_trend_con_unita_miste_usa_solo_la_dominante():
     # senza il fix sarebbe (110+10)/(10+500) = 0.235 invece di 11.0
     assert prezzi == [9.0, 11.0]
     assert trend["prezzo_medio_periodo"] == 10.0
+
+
+# ─── Coerenza fra i tre numeri della stessa risposta API ─────────────────────
+
+def test_kpi_trend_e_fornitori_concordano_su_unita_miste():
+    """Il code-reviewer ha bloccato la prima chiusura proprio su questo: fixare
+    solo _compute_kpi spostava l'incoerenza invece di eliminarla, lasciando
+    KPI corretto e trend/fornitori sulla somma KG+PZ. Tre numeri diversi per lo
+    stesso tag nella stessa schermata.
+    """
+    from services.tag_analytics_service import _compute_fornitori, _compute_trend
+
+    df = _df([
+        {"Data_DT": pd.Timestamp("2026-03-01"), "UnitaNorm": "PZ", "QuantitaNorm": 100.0,
+         "Quantita": 100.0, "PrezzoUnitario": 2.0, "TotaleRigaNum": 200.0,
+         "Fornitore": "A", "FileOrigine": "f1"},
+        {"Data_DT": pd.Timestamp("2026-03-02"), "UnitaNorm": "KG", "QuantitaNorm": 10.0,
+         "Quantita": 10.0, "PrezzoUnitario": 50.0, "TotaleRigaNum": 500.0,
+         "Fornitore": "B", "FileOrigine": "f2"},
+    ])
+
+    kpi = _compute_kpi(df)["prezzo_medio_ponderato"]
+    trend = _compute_trend(df)["prezzo_medio_periodo"]
+    forn = _compute_fornitori(df)["aggregati"]["prezzo_medio_tag"]
+
+    assert kpi == trend == forn == 50.0
+    # senza la guardia sarebbe 700/(100+10) = 6.36 su un'unita' inesistente
+    assert forn > 40.0
+
+
+def test_spesa_esclusa_mix_quadra_con_la_spesa_totale():
+    """dominante + esclusa deve tornare a spesa_totale, altrimenti il cliente
+    legge un 'escluso dal prezzo medio' che non torna con nessun conto."""
+    df = _df([
+        {"UnitaNorm": "PZ", "QuantitaNorm": 1000.0, "TotaleRigaNum": 1000.0,
+         "Fornitore": "A", "FileOrigine": "f1", "PrezzoValido": True},
+        {"UnitaNorm": "KG", "QuantitaNorm": 20.0, "TotaleRigaNum": 200.0,
+         "Fornitore": "B", "FileOrigine": "f2", "PrezzoValido": True},
+        # nota di credito: non convertibile, ma e' spesa reale
+        {"UnitaNorm": None, "QuantitaNorm": None, "TotaleRigaNum": -80.0,
+         "Fornitore": "B", "FileOrigine": "f3", "PrezzoValido": False},
+    ])
+    kpi = _compute_kpi(df)
+
+    assert kpi["unita_dominante"] == "PZ"
+    assert kpi["spesa_totale"] == 1120.0
+    # 1000 (dominante) + 120 (esclusa: 200 KG - 80 NC) = 1120
+    assert kpi["spesa_esclusa_mix"] == 120.0
+    spesa_dominante = kpi["spesa_totale"] - kpi["spesa_esclusa_mix"]
+    assert spesa_dominante == 1000.0

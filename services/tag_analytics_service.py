@@ -124,6 +124,24 @@ def _solo_prezzo_valido(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["PrezzoValido"].fillna(True).astype(bool)]
 
 
+def _unita_dominante(df: pd.DataFrame) -> Optional[str]:
+    """Unita' normalizzata che pesa di piu' in SPESA, se ce n'e' piu' d'una.
+
+    Per spesa e non per quantita': 1000 pezzi da 5 centesimi non devono battere
+    10 kg da 90 EUR. Ritorna None quando l'unita' e' gia' omogenea (o assente),
+    cioe' quando non c'e' nulla da escludere.
+
+    Unico punto di verita' per KPI, trend e fornitori: prima la stessa regola
+    era scritta in tre posti e i tre numeri divergevano nella stessa risposta.
+    """
+    if "UnitaNorm" not in df.columns:
+        return None
+    unita = set(df["UnitaNorm"].dropna().unique().tolist())
+    if len(unita) <= 1:
+        return None
+    return str(df.groupby("UnitaNorm")["TotaleRigaNum"].sum().idxmax())
+
+
 def _compute_kpi(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
     # La spesa include TUTTE le righe (note di credito comprese); il prezzo no.
     spesa_totale = float(df_tag_periodo["TotaleRigaNum"].sum())
@@ -136,15 +154,19 @@ def _compute_kpi(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
     # somma senza dimensione fisica (misurato: fino a +345% sul prezzo al kg).
     unita_norm_set = set(df_convertibili["UnitaNorm"].dropna().unique().tolist())
     df_prezzo = df_convertibili
-    unita_dominante = None
     spesa_esclusa_mix = 0.0
-    if len(unita_norm_set) > 1:
-        spesa_per_unita = df_convertibili.groupby("UnitaNorm")["TotaleRigaNum"].sum()
-        unita_dominante = str(spesa_per_unita.idxmax())
+    unita_dominante = _unita_dominante(df_convertibili)
+    if unita_dominante is not None:
         df_prezzo = df_convertibili[df_convertibili["UnitaNorm"] == unita_dominante].copy()
+        # Calcolata su TUTTE le righe del periodo, non solo su df_convertibili:
+        # altrimenti dominante + esclusa non torna mai a spesa_totale, che
+        # include note di credito e righe non convertibili.
         spesa_esclusa_mix = float(
-            df_convertibili.loc[
-                df_convertibili["UnitaNorm"] != unita_dominante, "TotaleRigaNum"
+            df_tag_periodo.loc[
+                df_tag_periodo.get("UnitaNorm").ne(unita_dominante)
+                if "UnitaNorm" in df_tag_periodo.columns
+                else [],
+                "TotaleRigaNum",
             ].sum()
         )
 
@@ -206,12 +228,9 @@ def _compute_trend(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
     # spesa. Senza questo, prezzo_medio_periodo resterebbe calcolato su una
     # somma KG+PZ mentre il KPI e' gia' corretto — e quel valore guida gli
     # alert prezzi della Home (price_impact_service).
-    if usa_quantita_norm and "UnitaNorm" in df_trend.columns:
-        unita_presenti = set(df_trend["UnitaNorm"].dropna().unique().tolist())
-        if len(unita_presenti) > 1:
-            dominante = (
-                df_trend.groupby("UnitaNorm")["TotaleRigaNum"].sum().idxmax()
-            )
+    if usa_quantita_norm:
+        dominante = _unita_dominante(df_trend)
+        if dominante is not None:
             df_trend = df_trend[df_trend["UnitaNorm"] == dominante].copy()
             if df_trend.empty:
                 return {"punti": [], "prezzo_medio_periodo": 0.0}
@@ -268,6 +287,15 @@ def _compute_fornitori(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
         df_forn["QuantitaNorm"].notna().any()
         and float(df_forn["QuantitaNorm"].fillna(0).sum()) > 0
     )
+
+    # Stessa regola di KPI e trend: senza, il pannello fornitori mostrava un
+    # riferimento su KG+PZ sommati mentre il KPI accanto era gia' corretto.
+    if usa_quantita_norm:
+        dominante_forn = _unita_dominante(df_forn)
+        if dominante_forn is not None:
+            df_forn = df_forn[df_forn["UnitaNorm"] == dominante_forn].copy()
+            if df_forn.empty:
+                return {"fornitori": [], "aggregati": None}
 
     if usa_quantita_norm:
         df_fornitori = df_forn.groupby("Fornitore", as_index=False).agg(

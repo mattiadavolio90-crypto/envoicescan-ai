@@ -916,6 +916,11 @@ export function AnalisiETagClient({
       const res = await fetch("/api/tag/suggestions?refresh=true");
       const d = await res.json();
       setSuggestions(d.suggestions ?? []);
+      // refresh_ok === false: il motore non ha girato e la lista e' quella
+      // vecchia. Senza questo avviso il fallimento sembra "nessuna novita'".
+      if (d.refresh_ok === false) {
+        toast.error("Aggiornamento non riuscito: la lista mostrata non è aggiornata");
+      }
     } catch {
       toast.error("Errore aggiornamento suggerimenti");
     } finally {
@@ -1191,6 +1196,14 @@ export function AnalisiETagClient({
               <KpiCard label="Fornitori" value={String(kpi.num_fornitori)} tone="border-orange-500/40 hover:border-orange-500/70" />
               <KpiCard label="Fatture" value={String(kpi.num_fatture)} tone="border-pink-500/40 hover:border-pink-500/70" />
             </div>
+          )}
+          {!loadingAnalisi && analisi?.vuoto === false && kpi?.unita_dominante && (kpi.spesa_esclusa_mix ?? 0) !== 0 && (
+            <p className="text-xs text-muted-foreground">
+              Questo tag contiene unità di misura diverse: quantità e prezzo medio
+              si riferiscono alla sola parte in <strong>{kpi.unita_dominante}</strong>.
+              Restano fuori dal calcolo {fmtEuro(kpi.spesa_esclusa_mix ?? 0)} di spesa,
+              comunque inclusi nel totale.
+            </p>
           )}
           {!loadingAnalisi && analisi?.vuoto && (
             <div className="rounded-lg border border-border bg-card py-8 text-center">

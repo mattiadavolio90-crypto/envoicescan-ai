@@ -37,6 +37,11 @@ export type TagKpi = {
   num_fatture: number;
   quantita_label: string;
   prezzo_label: string;
+  // Valorizzati solo quando il tag mescola unita' incompatibili (KG/LT/PZ):
+  // il prezzo medio si riferisce alla sola unita' dominante, e spesa_esclusa_mix
+  // dice quanta spesa resta fuori da quel calcolo.
+  unita_dominante?: string | null;
+  spesa_esclusa_mix?: number;
 };
 
 export type TagTrendPunto = {
