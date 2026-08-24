@@ -50,10 +50,13 @@ def test_prepare_tag_dataframe_filters_by_assoc_and_positive_price():
     assoc_map = _build_associazioni_map(_associazioni())
     out = _prepare_tag_dataframe(df, assoc_map)
 
-    # Solo le 2 righe POMODORO PELATO con prezzo > 0 (esclusa Mozzarella e lo sconto)
-    assert len(out) == 2
+    # Le 3 righe POMODORO PELATO (esclusa solo Mozzarella, fuori tag): lo sconto
+    # NON viene piu' scartato, viene marcato PrezzoValido=False cosi' entra nella
+    # spesa (i resi vanno scalati) ma resta fuori dai calcoli di prezzo.
+    assert len(out) == 3
     assert set(out["Fornitore"]) == {"FORN A", "FORN B"}
-    assert (out["PrezzoUnitarioNum"] > 0).all()
+    assert out["PrezzoValido"].tolist() == [True, True, False]
+    assert (out.loc[out["PrezzoValido"], "PrezzoUnitarioNum"] > 0).all()
 
 
 def test_compute_kpi_kg_labels_and_weighted_price():
@@ -62,12 +65,16 @@ def test_compute_kpi_kg_labels_and_weighted_price():
     df_tag = _prepare_tag_dataframe(df, assoc_map)
     kpi = _compute_kpi(df_tag)
 
-    assert kpi["spesa_totale"] == 35.0  # 20 + 15
-    assert kpi["quantita_norm_totale"] == 15.0  # 10 + 5 KG
-    # prezzo medio ponderato = 35 / 15
+    assert kpi["spesa_totale"] == 34.0  # 20 + 15 - 1 (il reso viene scalato)
+    assert kpi["quantita_norm_totale"] == 15.0  # 10 + 5 KG, il reso non conta
+    # prezzo medio ponderato = 35 / 15: calcolato sulle sole righe a prezzo valido
     assert round(kpi["prezzo_medio_ponderato"], 4) == round(35.0 / 15.0, 4)
+    # unita' omogenea (solo KG): nessuna esclusione per mix
+    assert kpi["unita_dominante"] is None
+    assert kpi["spesa_esclusa_mix"] == 0.0
     assert kpi["num_fornitori"] == 2
-    assert kpi["num_fatture"] == 2
+    # 3 documenti: f1, f2 e la nota di credito f4 (che resta una fattura reale)
+    assert kpi["num_fatture"] == 3
     assert "KG" in kpi["quantita_label"]
 
 
@@ -117,7 +124,7 @@ def test_analizza_tag_end_to_end(monkeypatch):
     result = analizza_tag("u1", "r1", 1, date(2026, 1, 1), date(2026, 12, 31))
 
     assert result["vuoto"] is False
-    assert result["kpi"]["spesa_totale"] == 35.0
+    assert result["kpi"]["spesa_totale"] == 34.0  # include il reso da -1.00
     assert len(result["trend"]["punti"]) == 2
     assert len(result["fornitori"]["fornitori"]) == 2
 

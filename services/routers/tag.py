@@ -207,6 +207,24 @@ def add_tag_prodotti(
 def remove_tag_prodotto(assoc_id: int, authorization: Optional[str] = Header(None)):
     from services.db_service import rimuovi_associazione
     user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    # rimuovi_associazione filtra solo user_id: su un account multi-sede un id di
+    # un'altra sede sarebbe cancellabile. Qui si verifica la sede PRIMA, come
+    # fanno gli altri endpoint via _assert_tag_ownership.
+    owned = (
+        sb.table("custom_tag_prodotti")
+        .select("id")
+        .eq("id", int(assoc_id))
+        .eq("user_id", str(user["id"]))
+        .eq("ristorante_id", ristorante_id)
+        .limit(1)
+        .execute()
+    )
+    if not (owned.data or []):
+        raise HTTPException(status_code=404, detail="Associazione non trovata")
     rimuovi_associazione(int(assoc_id), str(user["id"]))
     return {"ok": True}
 
@@ -256,10 +274,21 @@ def list_tag_suggestions(
     ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    refresh_ok = None
     if refresh:
-        run_tag_suggestion_pipeline(user_id=str(user["id"]), ristorante_id=ristorante_id)
+        # La pipeline degrada a {'success': False} senza sollevare: ignorare il
+        # ritorno faceva rispondere 200 con la lista VECCHIA, indistinguibile da
+        # "nessun suggerimento nuovo". Il client deve poter dire che il motore
+        # non ha girato.
+        esito = run_tag_suggestion_pipeline(
+            user_id=str(user["id"]), ristorante_id=ristorante_id
+        ) or {}
+        refresh_ok = bool(esito.get("success"))
     suggestions = list_pending_tag_suggestions(user_id=str(user["id"]), ristorante_id=ristorante_id)
-    return {"suggestions": suggestions}
+    out = {"suggestions": suggestions}
+    if refresh:
+        out["refresh_ok"] = refresh_ok
+    return out
 
 
 @router.post(

@@ -95,8 +95,11 @@ def _prepare_tag_dataframe(
     df_tag["UnitaNorm"] = conversioni[1]
     df_tag["TotaleRigaNum"] = pd.to_numeric(df_tag["TotaleRiga"], errors="coerce").fillna(0.0)
     df_tag["PrezzoUnitarioNum"] = pd.to_numeric(df_tag["PrezzoUnitario"], errors="coerce")
-    # Escludi righe con prezzo non positivo (sconti, rettifiche negative)
-    df_tag = df_tag[df_tag["PrezzoUnitarioNum"] > 0].copy()
+    # Le righe a prezzo non positivo (note di credito, rettifiche) restano nel
+    # DataFrame ma marcate: vanno ESCLUSE dal prezzo medio, che falserebbero, e
+    # INCLUSE nella spesa, che senza di loro e' sovrastimata perche' i resi non
+    # vengono scalati (misurato: -1.652 EUR non scalati su prodotti taggati).
+    df_tag["PrezzoValido"] = df_tag["PrezzoUnitarioNum"] > 0
     return df_tag
 
 
@@ -110,35 +113,61 @@ def _filter_periodo(df_source: pd.DataFrame, data_inizio, data_fine) -> pd.DataF
     return df_source[mask].copy()
 
 
+def _solo_prezzo_valido(df: pd.DataFrame) -> pd.DataFrame:
+    """Righe utilizzabili per i calcoli di PREZZO (non per la spesa).
+
+    Il flag manca nei DataFrame costruiti a mano (test, chiamate diverse da
+    _prepare_tag_dataframe): in quel caso non si filtra nulla.
+    """
+    if "PrezzoValido" not in df.columns:
+        return df
+    return df[df["PrezzoValido"].fillna(True).astype(bool)]
+
+
 def _compute_kpi(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
-    df_convertibili = df_tag_periodo[df_tag_periodo["QuantitaNorm"].notna()].copy()
+    # La spesa include TUTTE le righe (note di credito comprese); il prezzo no.
     spesa_totale = float(df_tag_periodo["TotaleRigaNum"].sum())
+    df_valide = _solo_prezzo_valido(df_tag_periodo)
+    df_convertibili = df_valide[df_valide["QuantitaNorm"].notna()].copy()
+
+    # KG, LT e PZ non si sommano: "10 LT + 6 PZ = 16" e il prezzo medio che ne
+    # esce non esiste. Quando le unita' sono miste si tiene solo quella con piu'
+    # spesa e si dichiara quanta ne resta fuori, invece di dividere per una
+    # somma senza dimensione fisica (misurato: fino a +345% sul prezzo al kg).
+    unita_norm_set = set(df_convertibili["UnitaNorm"].dropna().unique().tolist())
+    df_prezzo = df_convertibili
+    unita_dominante = None
+    spesa_esclusa_mix = 0.0
+    if len(unita_norm_set) > 1:
+        spesa_per_unita = df_convertibili.groupby("UnitaNorm")["TotaleRigaNum"].sum()
+        unita_dominante = str(spesa_per_unita.idxmax())
+        df_prezzo = df_convertibili[df_convertibili["UnitaNorm"] == unita_dominante].copy()
+        spesa_esclusa_mix = float(
+            df_convertibili.loc[
+                df_convertibili["UnitaNorm"] != unita_dominante, "TotaleRigaNum"
+            ].sum()
+        )
+
     quantita_norm_totale = (
-        float(df_convertibili["QuantitaNorm"].sum()) if not df_convertibili.empty else 0.0
+        float(df_prezzo["QuantitaNorm"].sum()) if not df_prezzo.empty else 0.0
     )
     prezzo_medio_ponderato = (
-        float(df_convertibili["TotaleRigaNum"].sum()) / quantita_norm_totale
+        float(df_prezzo["TotaleRigaNum"].sum()) / quantita_norm_totale
         if quantita_norm_totale > 0
         else None
     )
     num_fornitori = int(df_tag_periodo["Fornitore"].nunique())
     num_fatture = int(df_tag_periodo["FileOrigine"].nunique())
-
-    unita_norm_set = set(df_convertibili["UnitaNorm"].dropna().unique().tolist())
-    if "KG" in unita_norm_set and "LT" not in unita_norm_set and "PZ" not in unita_norm_set:
-        quantita_label = "⚖️ Quantità Totale KG"
-        prezzo_label = "💶 Prezzo Medio €/KG"
-    elif "LT" in unita_norm_set and "KG" not in unita_norm_set and "PZ" not in unita_norm_set:
-        quantita_label = "🧴 Quantità Totale LT"
-        prezzo_label = "💶 Prezzo Medio €/LT"
-    elif unita_norm_set == {"PZ"} or (
-        "PZ" in unita_norm_set and "KG" not in unita_norm_set and "LT" not in unita_norm_set
-    ):
-        quantita_label = "📦 Quantità Totale (pz)"
-        prezzo_label = "💶 Prezzo Medio €/pz"
-    else:
-        quantita_label = "⚖️ Quantità Normalizzata"
-        prezzo_label = "💶 Prezzo Medio €/unità norm."
+    _ETICHETTE = {
+        "KG": ("⚖️ Quantità Totale KG", "💶 Prezzo Medio €/KG"),
+        "LT": ("🧴 Quantità Totale LT", "💶 Prezzo Medio €/LT"),
+        "PZ": ("📦 Quantità Totale (pz)", "💶 Prezzo Medio €/pz"),
+        "normalizzata": ("⚖️ Quantità Normalizzata", "💶 Prezzo Medio €/unità norm."),
+    }
+    unita_etichetta = unita_dominante or next(iter(unita_norm_set), None)
+    quantita_label, prezzo_label = _ETICHETTE.get(
+        str(unita_etichetta), _ETICHETTE["normalizzata"]
+    )
 
     return {
         "spesa_totale": round(spesa_totale, 2),
@@ -150,11 +179,13 @@ def _compute_kpi(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
         "num_fatture": num_fatture,
         "quantita_label": quantita_label,
         "prezzo_label": prezzo_label,
+        "unita_dominante": unita_dominante,
+        "spesa_esclusa_mix": round(spesa_esclusa_mix, 2),
     }
 
 
 def _compute_trend(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
-    df_trend = df_tag_periodo.copy()
+    df_trend = _solo_prezzo_valido(df_tag_periodo).copy()
     df_trend["Data_DT"] = pd.to_datetime(df_trend["Data_DT"], errors="coerce")
     df_trend["PrezzoUnitario"] = pd.to_numeric(df_trend["PrezzoUnitario"], errors="coerce")
     df_trend["TotaleRigaNum"] = pd.to_numeric(df_trend.get("TotaleRigaNum"), errors="coerce")
@@ -210,7 +241,7 @@ def _compute_trend(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
 
 
 def _compute_fornitori(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
-    df_forn = df_tag_periodo.copy()
+    df_forn = _solo_prezzo_valido(df_tag_periodo).copy()
     df_forn["Fornitore"] = (
         df_forn["Fornitore"].fillna("Fornitore sconosciuto").astype(str).str.strip()
     )
@@ -250,14 +281,25 @@ def _compute_fornitori(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
     if df_fornitori.empty:
         return {"fornitori": [], "aggregati": None}
 
-    spesa_tot = max(float(df_fornitori["SpesaTotale"].sum()), 0.0001)
-    df_fornitori["IncidenzaSpesa"] = df_fornitori["SpesaTotale"] / spesa_tot * 100
+    spesa_tot = float(df_fornitori["SpesaTotale"].sum())
+    if spesa_tot > 0:
+        df_fornitori["IncidenzaSpesa"] = df_fornitori["SpesaTotale"] / spesa_tot * 100
+    else:
+        df_fornitori["IncidenzaSpesa"] = 0.0
 
-    prezzo_medio_tag = (
-        float(df_fornitori["PrezzoMedio"].dropna().mean())
-        if not df_fornitori["PrezzoMedio"].dropna().empty
-        else None
-    )
+    # Riferimento PONDERATO (spesa/quantita complessive), non media delle medie:
+    # un fornitore da cui si compra una volta pesava quanto uno da cui si compra
+    # 200 volte, e il delta_pct mostrato divergeva dal prezzo medio dei KPI
+    # calcolato nella stessa risposta (misurato: sbilanciamento fino a 93:1).
+    qta_tot = float(df_fornitori["QuantitaTotale"].sum(skipna=True) or 0.0)
+    if qta_tot > 0 and spesa_tot > 0:
+        prezzo_medio_tag = spesa_tot / qta_tot
+    else:
+        prezzo_medio_tag = (
+            float(df_fornitori["PrezzoMedio"].dropna().mean())
+            if not df_fornitori["PrezzoMedio"].dropna().empty
+            else None
+        )
     if prezzo_medio_tag:
         df_fornitori["DeltaPct"] = ((df_fornitori["PrezzoMedio"] / prezzo_medio_tag) - 1) * 100
     else:

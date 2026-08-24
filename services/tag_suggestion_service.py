@@ -483,78 +483,106 @@ def upsert_tag_suggestions(
     inserted = 0
 
     for suggestion in suggestions:
+        # Una collisione sull'unique index parziale (run concorrenti: upload +
+        # refresh manuale) sollevava e abortiva il ciclo INTERO: i suggerimenti
+        # successivi non venivano scritti, ne' giravano dismiss e notifiche.
         s_type = str(suggestion.get('suggestion_type') or '').strip()
         cluster_key = str(suggestion.get('cluster_key') or '').strip()
-        if not s_type or not cluster_key:
-            continue
-
-        existing = (
-            sb.table('custom_tag_suggestions')
-            .select('id,status')
-            .eq('user_id', user_id)
-            .eq('ristorante_id', ristorante_id)
-            .eq('suggestion_type', s_type)
-            .eq('cluster_key', cluster_key)
-            .eq('status', 'pending')
-            .limit(1)
-            .execute().data or []
-        )
-
-        payload = {
-            'user_id': user_id,
-            'ristorante_id': ristorante_id,
-            'suggestion_type': s_type,
-            'status': 'pending',
-            'suggested_tag_name': suggestion.get('suggested_tag_name'),
-            'target_tag_id': suggestion.get('target_tag_id'),
-            'cluster_key': cluster_key,
-            'confidence_score': suggestion.get('confidence_score'),
-            'detection_window_days': int(suggestion.get('detection_window_days') or WINDOW_DAYS_DEFAULT),
-            'matched_products_count': int(suggestion.get('matched_products_count') or 0),
-            'matched_rows_count': int(suggestion.get('matched_rows_count') or 0),
-            'last_seen_at': now_iso,
-        }
-
-        if existing:
-            suggestion_id = int(existing[0]['id'])
-            (
-                sb.table('custom_tag_suggestions')
-                .update(payload)
-                .eq('id', suggestion_id)
-                .execute()
-            )
-        else:
-            payload['first_seen_at'] = now_iso
-            resp = sb.table('custom_tag_suggestions').insert(payload).execute().data or []
-            if not resp:
+        try:
+            if not s_type or not cluster_key:
                 continue
-            suggestion_id = int(resp[0]['id'])
-            inserted += 1
 
-        items = suggestion.get('items') or []
-        (
-            sb.table('custom_tag_suggestion_items')
-            .delete()
-            .eq('suggestion_id', suggestion_id)
-            .execute()
-        )
+            existing = (
+                sb.table('custom_tag_suggestions')
+                .select('id,status')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .eq('suggestion_type', s_type)
+                .eq('cluster_key', cluster_key)
+                .eq('status', 'pending')
+                .limit(1)
+                .execute().data or []
+            )
 
-        if items:
+            payload = {
+                'user_id': user_id,
+                'ristorante_id': ristorante_id,
+                'suggestion_type': s_type,
+                'status': 'pending',
+                'suggested_tag_name': suggestion.get('suggested_tag_name'),
+                'target_tag_id': suggestion.get('target_tag_id'),
+                'cluster_key': cluster_key,
+                'confidence_score': suggestion.get('confidence_score'),
+                'detection_window_days': int(suggestion.get('detection_window_days') or WINDOW_DAYS_DEFAULT),
+                'matched_products_count': int(suggestion.get('matched_products_count') or 0),
+                'matched_rows_count': int(suggestion.get('matched_rows_count') or 0),
+                'last_seen_at': now_iso,
+            }
+
+            if existing:
+                suggestion_id = int(existing[0]['id'])
+                (
+                    sb.table('custom_tag_suggestions')
+                    .update(payload)
+                    .eq('id', suggestion_id)
+                    .execute()
+                )
+            else:
+                payload['first_seen_at'] = now_iso
+                resp = sb.table('custom_tag_suggestions').insert(payload).execute().data or []
+                if not resp:
+                    continue
+                suggestion_id = int(resp[0]['id'])
+                inserted += 1
+
+            items = suggestion.get('items') or []
             item_payload = []
             for item in items:
+                desc_key = str(item.get('descrizione_key') or '').strip()
+                if not desc_key:
+                    continue
                 item_payload.append(
                     {
                         'suggestion_id': suggestion_id,
                         'descrizione': str(item.get('descrizione') or '').strip(),
-                        'descrizione_key': str(item.get('descrizione_key') or '').strip(),
+                        'descrizione_key': desc_key,
                         'occorrenze': int(item.get('occorrenze') or 1),
                         'fornitori_count': int(item.get('fornitori_count') or 0),
                         'last_seen_date': item.get('last_seen_date'),
                         'selected_by_default': bool(item.get('selected_by_default', True)),
                     }
                 )
+
+            # Upsert PRIMA, poi si potano i superati: con DELETE-poi-INSERT una morte
+            # del processo nella finestra intermedia lasciava il suggerimento pending
+            # con zero item, e accept lo rifiuta con 'no_items_selected' per sempre.
             if item_payload:
-                sb.table('custom_tag_suggestion_items').insert(item_payload).execute()
+                (
+                    sb.table('custom_tag_suggestion_items')
+                    .upsert(item_payload, on_conflict='suggestion_id,descrizione_key')
+                    .execute()
+                )
+                keys_correnti = [i['descrizione_key'] for i in item_payload]
+                (
+                    sb.table('custom_tag_suggestion_items')
+                    .delete()
+                    .eq('suggestion_id', suggestion_id)
+                    .not_.in_('descrizione_key', keys_correnti)
+                    .execute()
+                )
+            else:
+                (
+                    sb.table('custom_tag_suggestion_items')
+                    .delete()
+                    .eq('suggestion_id', suggestion_id)
+                    .execute()
+                )
+        except Exception as exc:
+            logger.warning(
+                'Suggerimento %s/%s non salvato (si prosegue col resto): %s',
+                s_type, cluster_key, exc,
+            )
+            continue
 
     return inserted
 
@@ -821,6 +849,22 @@ def accept_suggestion_extend_tag(
     target_tag_id = int(tag_id or suggestion.get('target_tag_id') or 0)
     if target_tag_id <= 0:
         return {'success': False, 'error': 'missing_target_tag_id'}
+
+    # tag_id arriva dal body: senza questa verifica un account multi-sede puo'
+    # dirottare le associazioni di un suggerimento sulla sede A dentro un tag
+    # della sede B. Il trigger DB riallinea user_id/ristorante_id al tag padre,
+    # quindi le righe risultano coerenti e l'anomalia non lascia traccia.
+    owner = (
+        sb.table('custom_tags')
+        .select('id')
+        .eq('id', target_tag_id)
+        .eq('user_id', user_id)
+        .eq('ristorante_id', ristorante_id)
+        .limit(1)
+        .execute().data or []
+    )
+    if not owner:
+        return {'success': False, 'error': 'target_tag_not_found'}
 
     items = [i for i in (suggestion.get('items') or []) if i.get('selected_by_default', True)]
     assoc_payload = [
