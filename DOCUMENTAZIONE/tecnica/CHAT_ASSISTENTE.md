@@ -123,7 +123,7 @@ Tutti definiti in `chat_ai` (lista `tools`) e dispatchati da `_esegui_tool`. Son
 | Strumento | Funzione | Per domande tipo | Note |
 |---|---|---|---|
 | `query_costi` | `_chat_query_costi` | "quanto ho speso in X", "spesa di marzo" | ricerca **tollerante** (singolare/plurale, categoria OR prodotto); fallback "mese corrente vuoto" (§6) |
-| `query_scadenze` | `_chat_query_scadenze` | "cosa devo pagare", "scadenze settimana" | stessa fonte della pagina Gestione Fatture |
+| `query_scadenze` | `_chat_query_scadenze` | "cosa devo pagare", "scadenze settimana" | stessa fonte della pagina Gestione Fatture; elenco troncato a 30 voci ma il totale le copre tutte (§5.2) |
 | `query_margini` | `_chat_query_margini` | "com'è andato il MOL", "andamento margini" | ultimi 6 mesi, stessa fonte di Home/Margini |
 | `confronto_prezzi` | `_chat_confronto_prezzi` | "chi mi fa X al prezzo migliore" | cuore di ONEFLUX; ultimi 180gg, miglior prezzo per fornitore |
 | `ultimi_acquisti` | `_chat_ultimi_acquisti` | "ultimo acquisto", "ultima fattura di X" | ordine data desc; NON per totali |
@@ -160,28 +160,73 @@ nemmeno in chat.**
   (stessa semantica di `_normalize_pagine`: None = tutto abilitato).
 - Lista presente → resta solo il tool il cui flag è nella lista.
 
-> Il gate è **lato chat** (quali tool offrire al modello). È il fratello del
-> **guard di route** lato Next (`requirePagina`, vedi `MIGRAZIONE_NEXTJS.md`):
-> uno impedisce di *aprire* la pagina, l'altro di *interrogarne i dati* via chat.
+> Il gate vale **su due fronti**: quali tool offrire al modello (`_TOOL_FLAG`
+> qui) **e** quali dati iniettare nel system prompt (§6). Fino al 25/8/2026 il
+> secondo mancava: un utente senza `margini` non poteva chiamare `query_margini`
+> ma trovava il MOL già scritto nel prompt — l'invariante dichiarata qui era
+> violata da `_build_chat_system_prompt`. È il fratello del **guard di route**
+> lato Next (`requirePagina`, vedi `MIGRAZIONE_NEXTJS.md`): uno impedisce di
+> *aprire* la pagina, l'altro di *interrogarne i dati* via chat.
+
+### 5.2 Troncamento onesto di `query_scadenze` (dal 25/8/2026)
+
+L'elenco restituito si ferma a `_CHAT_SCADENZE_LIMIT` (30) voci, ma
+`totale_da_pagare` copre **tutte** le scadenze aperte. Perché il modello non
+spacci l'elenco per esaustivo, il tool aggiunge `totale_parziale`, `voci_totali`
+e una `nota` esplicita quando tronca.
+
+Ordine di riempimento delle 30 voci, per priorità:
+
+1. aperte **con** scadenza, per data più vicina;
+2. aperte **senza** scadenza fino alla quota minima
+   `_CHAT_SCADENZE_QUOTA_SENZA_DATA` (10);
+3. aperte **senza** scadenza eccedenti la quota, se avanza spazio;
+4. pagate (visibili solo con `solo_da_pagare=False`), per ultime.
+
+**Invariante:** nessuna voce pagata compare finché resta una voce aperta non
+mostrata. La quota è un **minimo garantito**, non un tetto: i documenti senza
+`scadenza_effettiva` sono debito reale (su un cliente valevano il 91% del
+totale) e prima del fix sparivano sempre dietro il troncamento. Il campo
+`senza_scadenza_non_mostrate` conta quante ne restano davvero fuori.
 
 ---
 
 ## 6. Il system prompt (`_build_chat_system_prompt`)
 
-Costruito **fresco a ogni domanda** con i dati del ristorante. Tre parti:
+Costruito **fresco a ogni domanda** con i dati del ristorante. Cinque parti,
+**ognuna condizionata al permesso di pagina corrispondente** (dal 25/8/2026, §5.1
+— `pagine_abilitate = None`, cioè admin, vede tutto):
 
 1. **KPI Home** (`home_kpi`): fatturato, food cost %, costo personale, spese, MOL
-   dell'ultimo mese completo → **stessi numeri della schermata**.
+   dell'ultimo mese completo → **stessi numeri della schermata**. Richiede il
+   flag `margini`.
 2. **Top costi** (ultimi 90gg): top 5 categorie + top 5 fornitori per spesa → la
    chat risponde a "fornitore più caro" / "food cost a colpo d'occhio" **senza
-   chiamare uno strumento** (latenza più bassa).
+   chiamare uno strumento** (latenza più bassa). Richiede `analisi_fatture`.
 3. **Data e periodo:** oggi + range fatture nel sistema. **Cruciale:** senza, il
    modello usa il suo knowledge cutoff (2024) come anno e cerca sistematicamente
    nell'anno sbagliato → "non risulta nulla" anche quando il dato c'è.
+   Deliberatamente **non** gated: sono due date di confine, nessun importo, e
+   servono a chiunque abbia un tool temporale (anche solo `scadenziario`).
 4. **Appuntamenti di oggi** (10/6): se l'utente ha il flag `agenda` e ci sono
    eventi in `diario_eventi` per oggi, vengono iniettati nel prompt → la chat
    risponde a "cosa ho oggi" **senza chiamare lo strumento**. Niente flag agenda =
    sezione assente (e `query_appuntamenti` nemmeno offerto, §5.1).
+5. **Avvisi fondamentali:** alert su dati mancanti che falsano i calcoli (fatture
+   del mese assenti, ricavi/personale non inseriti, righe `Da Classificare`…).
+   Richiede `margini`. L'alert sulle righe non classificate filtra su
+   `categoria = CATEGORIA_NON_CLASSIFICATA`, **lo stesso criterio con cui
+   `margine_service` le esclude dal MOL** — non su `needs_review`, che comprende
+   anche righe già categorizzate marcate per revisione e che nei margini
+   rientrano (fix 25/8/2026).
+
+**Onestà sui guasti (25/8/2026):** se una sezione fallisce per un errore tecnico
+(Supabase lento, RPC assente), il prompt **lo dichiara** invece di cadere sul
+messaggio ottimistico "Nessun dato di costo o margine ancora registrato" — che è
+un'affermazione positiva sul cliente che il codice non può verificare, e che il
+modello riferirebbe con sicurezza a un cliente con storico reale. Se i KPI ci
+sono ma un alert è saltato, il prompt avvisa di non dare i conti per completi:
+altrimenti l'assenza di avvisi sembra "tutto a posto".
 
 **Regole-chiave nel prompt (rifinite 9/6/2026 — NON rimuovere senza motivo):**
 - **Mese corrente quasi sempre incompleto:** i ristoranti caricano le fatture a
