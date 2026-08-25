@@ -42,10 +42,14 @@ SEDI = {
     "SAN_GIULIANO": "5444e918-8616-464c-a109-5d8aba226805",
     "MARIANO": "0dca4d1f-0caa-419a-b869-25bd98f424e1",
     "VILLA_GUARDIA": "cc016821-e749-4323-9568-3781c69384d3",
+    # Sede tecnica "Costi comuni di gruppo" (catena OFFSIDE/OVERTIME): ci atterrano
+    # le fatture di struttura ripartite. E' la sede con l'incidenza piu' alta di
+    # righe non classificate (cert. 24/08).
+    "COSTI_GRUPPO": "f7bba05f-90a8-4f12-94ed-4d8a08a0bbae",
 }
 
 if len(sys.argv) < 2 or sys.argv[1] not in SEDI:
-    print("Uso: python scripts/ricategorizza_sede.py {SAN_GIULIANO|MARIANO|VILLA_GUARDIA} [--commit] [--ai]")
+    print("Uso: python scripts/ricategorizza_sede.py {SAN_GIULIANO|MARIANO|VILLA_GUARDIA|COSTI_GRUPPO} [--commit] [--ai]")
     sys.exit(1)
 
 sede = sys.argv[1]

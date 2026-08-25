@@ -19,6 +19,7 @@ from config.constants import (
     REGEX_SOSTITUZIONI,
     REGEX_PUNTEGGIATURA,
     REGEX_ARTICOLI,
+    REGEX_MESI_PERIODI,
     REGEX_PUNTEGGIATURA_FINALE
 )
 from config.logger_setup import get_logger
@@ -160,6 +161,11 @@ def normalizza_descrizione(descrizione: str) -> str:
     for regex_articolo in REGEX_ARTICOLI:
         desc = regex_articolo.sub(' ', desc)
     
+    # Step 5b: Rimuovi mesi/periodi — "CEDOLINI - APRILE" e "CEDOLINI - MAGGIO"
+    # devono collassare sulla STESSA chiave di memoria, altrimenti la correzione
+    # manuale di un mese non vale per gli altri undici.
+    desc = REGEX_MESI_PERIODI.sub(' ', desc)
+
     # Step 6: Normalizza spazi multipli
     desc = ' '.join(desc.split())
     

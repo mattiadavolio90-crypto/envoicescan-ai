@@ -209,6 +209,51 @@ ORDER BY r.nome_ristorante;
 Se una sede OFFSIDE ha 0 fatture mentre l'altra ne ha molte → routing multi-sede rotto
 o una sede non ancora configurata nel webhook (indirizzo non mappato).
 
+### Passo 6 — Qualità categorizzazione per sede (AI muta)
+
+CAUSA STORICA (cert. 24/08): il queue-worker non forzava il path locale, quindi con
+`WORKER_BASE_URL` settata su Railway faceva una POST verso se stesso, l'AI non veniva
+MAI interrogata e `classifica_con_ai` degradava in silenzio al solo dizionario. La sede
+tecnica "Costi comuni di gruppo" ha accumulato 795 righe con **zero** chiamate AI e 93
+"Da Classificare" per un mese senza che nulla lo segnalasse.
+
+Due controlli, da eseguire sempre insieme:
+
+**6a. Incidenza righe non classificate per sede.**
+```sql
+SELECT r.nome_ristorante, r.sede_tecnica,
+       count(*) AS righe,
+       count(*) FILTER (WHERE f.categoria = 'Da Classificare') AS da_classificare,
+       round(100.0 * count(*) FILTER (WHERE f.categoria = 'Da Classificare')
+             / nullif(count(*), 0), 1) AS pct
+FROM public.fatture f
+JOIN public.ristoranti r ON r.id = f.ristorante_id
+WHERE f.deleted_at IS NULL AND r.deleted_at IS NULL
+GROUP BY 1, 2
+HAVING count(*) >= 20
+ORDER BY pct DESC;
+```
+🔴 Anomalia se una sede supera il **5%** con almeno 20 righe non classificate.
+Riferimento sano: le sedi in salute stanno fra 0,0% e 1,1%.
+
+**6b. L'AI sta davvero girando su quella sede?** È il controllo che distingue
+"dizionario incompleto" (fisiologico) da "AI muta" (guasto).
+```sql
+SELECT r.nome_ristorante,
+       count(e.id) AS chiamate_ai,
+       max(e.created_at) AS ultima_chiamata
+FROM public.ristoranti r
+LEFT JOIN public.ai_usage_events e
+       ON e.ristorante_id = r.id AND e.operation_type = 'categorization'
+WHERE r.deleted_at IS NULL AND r.attivo
+GROUP BY 1
+ORDER BY chiamate_ai ASC;
+```
+🔴 Anomalia se una sede ha righe caricate ma **0 chiamate AI**, o se l'ultima chiamata
+è molto più vecchia dell'ultimo caricamento: significa che le righe stanno entrando
+senza passare dall'AI. Nei log del worker cercare `AI DEGRADATA` e
+`auto-classificazione DEGRADATA`, che ora segnalano esplicitamente il fenomeno.
+
 ═══════════════════════════════════════════════════════════════════════
 ## AZIONI CORRETTIVE (proponi, non eseguire)
 ═══════════════════════════════════════════════════════════════════════

@@ -55,7 +55,22 @@ if _PROJECT_ROOT not in sys.path:
 
 from services.db_service import filter_active
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
-from services.worker_client import classifica_via_worker_con_confidenza
+from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
+
+try:
+    from services.ai_service import set_ai_context
+except Exception:  # pragma: no cover - fallback per worker CLI senza dipendenze UI
+    def set_ai_context(*_args, **_kwargs):
+        return None
+
+try:
+    from services.ai_service import ai_degradata, reset_ai_degradata
+except Exception:  # pragma: no cover - fallback: senza il flag, nessun degrado noto
+    def ai_degradata() -> bool:
+        return False
+
+    def reset_ai_degradata() -> None:
+        return None
 
 try:
     from services.ai_service import aggiorna_streak_classificazione, _STREAK_NON_PRECARICATO
@@ -121,13 +136,21 @@ try:
             finale = (cat_rf or cat_dz or "").strip()
         except Exception:  # pragma: no cover - difensivo: in dubbio NON decidere
             return None
-        if not finale or finale.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+        # "SERVIZI E CONSULENZE" NON e' piu' escluso (24/08). L'esclusione nasceva
+        # da quando quella categoria era il fallback travestito dell'incertezza: il
+        # runtime rifiutava di confermarla anche quando era la risposta GIUSTA, cosi'
+        # ogni riga di consulenza/servizio poteva essere scritta solo con GPT 'alta',
+        # e un 'media' — normale su testi burocratici — finiva Da Classificare.
+        # Oggi il fallback travestito non esiste piu' (CATEGORIA_FALLBACK e' alias di
+        # "Da Classificare" e enforce_no_unclassified_category non la produce mai):
+        # se il dizionario dice SERVIZI E CONSULENZE e' un'affermazione positiva.
+        if not finale or finale.upper() == "DA CLASSIFICARE":
             return None
         return finale
 
     def _runtime_conferma_categoria(descrizione, categoria) -> bool:
         cat = str(categoria or "").strip()
-        if not cat or cat.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+        if not cat or cat.upper() == "DA CLASSIFICARE":
             return False
         finale = _categoria_deterministica_runtime(descrizione)
         if not finale:
@@ -185,7 +208,10 @@ def _auto_classify_saved_rows(
     la colonna categoria nel DB.
 
     Returns:
-        Numero di righe aggiornate con categoria diversa da "Da Classificare".
+        (righe_aggiornate, righe_con_ai_muta): il secondo valore conta le righe
+        classificate senza che l'AI abbia realmente risposto (fallback
+        deterministico). Se > 0 la classificazione e' degradata e va segnalata,
+        non trattata come successo.
     """
     unresolved = (
         filter_active(
@@ -202,7 +228,7 @@ def _auto_classify_saved_rows(
 
     rows = unresolved.data or []
     if not rows:
-        return 0
+        return 0, 0
 
     # Dedupe per descrizione mantenendo allineati fornitore/IVA, e raccogli gli id
     # di TUTTE le righe per ciascuna descrizione: l'update finale avviene per id
@@ -238,9 +264,10 @@ def _auto_classify_saved_rows(
 
     descrizioni = list(desc_map.keys())
     if not descrizioni:
-        return 0
+        return 0, 0
 
     updated_rows = 0
+    chunk_ai_muta = 0
     chunk_size = 50
     for i in range(0, len(descrizioni), chunk_size):
         chunk = descrizioni[i:i + chunk_size]
@@ -257,8 +284,10 @@ def _auto_classify_saved_rows(
         # protezione. Ora si ritenta il chunk fino a _MAX_CLASSIFY_RETRY volte.
         categorie = None
         confidenze = None
+        _ai_muta = False
         for _tentativo in range(_MAX_CLASSIFY_RETRY):
             try:
+                reset_ai_degradata()
                 categorie, confidenze = classifica_via_worker_con_confidenza(
                     chunk,
                     fornitori=fornitori,
@@ -267,8 +296,25 @@ def _auto_classify_saved_rows(
                     user_id=user_id,
                     ristorante_id=ristorante_id,
                 )
-                if isinstance(categorie, list) and len(categorie) == len(chunk):
-                    break  # risposta valida e allineata: esci dal retry
+                # Il solo controllo sulla lunghezza NON basta: classifica_con_ai
+                # restituisce una lista valida e allineata anche quando l'AI non ha
+                # risposto affatto (fallback deterministico nei suoi except). Era la
+                # ragione per cui questi retry erano inerti — si usciva al primo giro
+                # con un risultato che sembrava buono. Ora si ritenta davvero.
+                _ai_muta = ai_degradata()
+                if isinstance(categorie, list) and len(categorie) == len(chunk) and not _ai_muta:
+                    break  # risposta valida, allineata e realmente prodotta dall'AI
+                if _ai_muta:
+                    logger.warning(
+                        "[auto_classify] AI muta (fallback deterministico) chunk %d-%d, "
+                        "tentativo %d/%d",
+                        i, i + len(chunk), _tentativo + 1, _MAX_CLASSIFY_RETRY,
+                    )
+                    continue_retry = _tentativo < _MAX_CLASSIFY_RETRY - 1
+                    if not continue_retry:
+                        break
+                    time.sleep(_CLASSIFY_RETRY_BACKOFF * (2 ** _tentativo))
+                    continue
                 # Risposta ricevuta ma disallineata: ritenta (non è un successo).
                 logger.warning(
                     "[auto_classify] risposta AI disallineata chunk %d-%d "
@@ -302,6 +348,17 @@ def _auto_classify_saved_rows(
             )
             categorie = [None] * len(chunk)
             confidenze = ['bassa'] * len(chunk)
+            chunk_ai_muta += len(chunk)
+        elif _ai_muta:
+            # Risposta formalmente valida ma prodotta dal fallback deterministico:
+            # le righe che il dizionario non copre resteranno Da Classificare. Va
+            # contato e riportato, non silenziato.
+            logger.error(
+                "[auto_classify] AI muta dopo %d tentativi per chunk %d-%d: "
+                "%d righe classificate col solo fallback deterministico",
+                _MAX_CLASSIFY_RETRY, i, i + len(chunk), len(chunk),
+            )
+            chunk_ai_muta += len(chunk)
 
         if not isinstance(confidenze, list) or len(confidenze) != len(chunk):
             confidenze = ['media'] * len(chunk)
@@ -399,7 +456,7 @@ def _auto_classify_saved_rows(
                     ),
                 )
 
-    return updated_rows
+    return updated_rows, chunk_ai_muta
 
 # ─── Configurazione ───────────────────────────────────────────────────────────
 
@@ -702,14 +759,46 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
         )
 
     # Auto-classificazione post-salvataggio: stesso comportamento atteso del flusso manuale.
+    #
+    # CAUSA RADICE cert. "Costi comuni di gruppo" 24/08: su Railway WORKER_BASE_URL
+    # e' settata ANCHE nel processo queue-worker. Senza force_local_worker_path,
+    # classifica_via_worker_con_confidenza faceva una POST HTTP del worker verso se
+    # stesso (http://worker:8000/api/classify) che falliva per auth/timeout, e
+    # classifica_con_ai degradava in silenzio a dizionario+regole. Risultato: 795
+    # righe atterrate sulla sede tecnica con ZERO chiamate AI in ai_usage_events, e
+    # 93 rimaste "Da Classificare" senza che nessuno se ne accorgesse per un mese.
+    # L'endpoint HTTP di upload (fastapi_worker.py) aveva gia' questa protezione:
+    # qui mancava. force_local_worker_path usa un ContextVar (non os.environ, che e'
+    # globale al processo): due item concorrenti non si rubano lo stato a vicenda.
+    force_local_worker_path(True)
+    # set_ai_context: senza, _resolve_ristorante_id() ritorna None fuori da Streamlit
+    # e il tracking quota/costi non registra nulla — ai_usage_events resta vuoto e il
+    # problema diventa invisibile. E' cosi' che il caso sopra e' passato inosservato.
     try:
-        classified_rows = _auto_classify_saved_rows(
+        set_ai_context(ristorante_id=ristorante_id, user_id=user_id)
+    except Exception as _ctx_exc:  # pragma: no cover - difensivo: mai bloccare l'item
+        logger.warning("[item=%d] set_ai_context fallito: %s", queue_id, _ctx_exc)
+
+    try:
+        classified_rows, righe_ai_muta = _auto_classify_saved_rows(
             supabase=supabase,
             user_id=user_id,
             ristorante_id=ristorante_id,
             nome_file=nome_file,
         )
-        logger.info("[item=%d] auto-classificazione completata: %d righe", queue_id, classified_rows)
+        if righe_ai_muta:
+            # NON e' un successo: l'item si chiude comunque (le righe sono salvate e
+            # restano in coda di revisione), ma a livello error, cosi' il monitoraggio
+            # puo' accorgersene. Un log 'completata' qui era esattamente cio' che ha
+            # reso invisibile il caso della sede tecnica per un mese.
+            logger.error(
+                "[item=%d] auto-classificazione DEGRADATA: %d righe senza risposta AI "
+                "(classificate col solo dizionario, il resto resta Da Classificare) "
+                "— ristorante=%s file=%s",
+                queue_id, righe_ai_muta, ristorante_id, nome_file,
+            )
+        else:
+            logger.info("[item=%d] auto-classificazione completata: %d righe", queue_id, classified_rows)
     except Exception as exc:
         # Ritenta l'intero item: ora salva_fattura_processata e' idempotente (upsert
         # su uq_fatture_dedup_active), quindi un retry NON duplica le righe; al riavvio
