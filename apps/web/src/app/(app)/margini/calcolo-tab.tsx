@@ -1070,6 +1070,7 @@ function DettaglioGiornalieroDialog({
 }) {
   const [giorni, setGiorni] = useState<RicavoGiorno[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mensile, setMensile] = useState(false);
 
   const anno = mese?.anno ?? 0;
   const meseNum = mese?.mese ?? 0;
@@ -1079,14 +1080,30 @@ function DettaglioGiornalieroDialog({
     if (!meseNum) return;
     setLoading(true);
     setGiorni([]);
+    setMensile(false);
     const pad = (n: number) => String(n).padStart(2, "0");
     const lastDay = new Date(anno, meseNum, 0).getDate();
     const dataDa = `${anno}-${pad(meseNum)}-01`;
     const dataA = `${anno}-${pad(meseNum)}-${lastDay}`;
 
-    fetch(`/api/ricavi/giornalieri?data_da=${dataDa}&data_a=${dataA}`)
-      .then((r) => r.ok ? r.json() : null)
+    // Se il mese è in modalità "mensile" l'override ha la precedenza: le righe
+    // giornaliere eventualmente rimaste a DB sono orfane e un dettaglio per
+    // giorno non esiste. Mostrarle come se fossero il mese produce medie e
+    // "giorno migliore" inventati (stessa regola di ricavi.py:1055).
+    fetch(`/api/ricavi/modalita?anno=${anno}&mese=${meseNum}`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((m) => {
+        if (m?.modalita === "mensile") {
+          setMensile(true);
+          setGiorni([]);
+          setLoading(false);
+          return null;
+        }
+        return fetch(`/api/ricavi/giornalieri?data_da=${dataDa}&data_a=${dataA}`)
+          .then((r) => r.ok ? r.json() : null);
+      })
       .then((d) => {
+        if (d === null) return;
         const items: { data: string; fatturato_iva10: number; fatturato_iva22: number; altri_ricavi_noiva: number }[] = d?.items ?? [];
         const byDate = new Map(items.map((i) => [
           i.data,
@@ -1165,6 +1182,14 @@ function DettaglioGiornalieroDialog({
         <div className="px-6 py-5 space-y-5">
           {loading ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Caricamento…</p>
+          ) : mensile ? (
+            <div className="py-8 text-center space-y-1.5">
+              <p className="text-sm font-medium">{label} è caricato come totale mensile.</p>
+              <p className="text-xs text-muted-foreground">
+                Per questo mese non esiste un dettaglio giorno per giorno. Per vederlo,
+                inserisci i ricavi in modalità giornaliera da “Carica ricavi”.
+              </p>
+            </div>
           ) : compilati.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Nessun dato giornaliero per {label}.</p>
           ) : (

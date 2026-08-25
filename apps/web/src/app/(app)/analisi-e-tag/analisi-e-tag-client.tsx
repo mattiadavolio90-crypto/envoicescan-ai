@@ -612,9 +612,14 @@ function SuggestionCard({
     if (selected.size === 0) { toast.error("Seleziona almeno un prodotto"); return; }
     setActing(true);
     try {
+      // Senza descrizioni_key il backend ricadeva su selected_by_default (sempre
+      // true) e associava TUTTI i prodotti, comprese le righe deselezionate qui.
+      const descrizioni_key = s.items
+        .map((i) => i.descrizione_key)
+        .filter((k) => selected.has(k));
       const body = s.suggestion_type === "new_tag"
-        ? { suggestion_type: "new_tag", tag_name: tagName.trim() || s.suggested_tag_name }
-        : { suggestion_type: "extend_tag", tag_id: s.target_tag_id };
+        ? { suggestion_type: "new_tag", tag_name: tagName.trim() || s.suggested_tag_name, descrizioni_key }
+        : { suggestion_type: "extend_tag", tag_id: s.target_tag_id, descrizioni_key };
       const res = await fetch(`/api/tag/suggestions/${s.id}/accept`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });

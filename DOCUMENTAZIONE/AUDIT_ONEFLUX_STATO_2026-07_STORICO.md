@@ -2426,3 +2426,101 @@ cliente vede la colonna «Vs media» senza mai vedere la media di riferimento.
 **Audit read-only completo sul perimetro dichiarato. Nessun fix applicato**:
 la remediation attende conferma esplicita di Mattia, come prevede il metodo del
 ciclo. Nessun file del repo modificato in questa passata oltre a questi verbali.
+
+---
+
+## §26 — §3c, remediation prima tranche (4 HIGH) — 25/8/2026
+
+Autorizzata da Mattia ("ok procedi") dopo la chiusura della passata di audit
+§25. Perimetro: i 4 HIGH attivi con causa-radice accertata. Gli altri 3 HIGH e
+i 14 findings MEDIUM/LOW attivi **restano aperti**.
+
+### Cosa è stato corretto
+
+| # | Difetto | Fix | File |
+|---|---|---|---|
+| 1 | Ripartizione per centro impossibile in modalità mensile | `fetchNettoMese()` — preferisce l'override quando `modalita === "mensile"` | `margini/periodi.ts`, `margini/analisi-tab.tsx` |
+| 2 | Dettaglio giornaliero incoerente in modalità mensile | stato esplicito invece di medie su righe orfane | `margini/calcolo-tab.tsx` |
+| 3 | Falso successo nel cambio categoria | si legge `righe_aggiornate`, non solo lo status HTTP | `analisi-fatture/articoli-tab.tsx` |
+| 4 | Deselezione prodotti mai inviata al backend | nuovo campo `descrizioni_key` + `_filtra_items_selezionati()` | `routers/tag.py`, `tag_suggestion_service.py`, `analisi-e-tag-client.tsx` |
+
+### Fix 1 e 2 — stessa causa, due rimedi diversi
+
+Entrambi i dialog leggevano il netto da `/api/ricavi/giornalieri`, che è la
+**tabella grezza** e ignora `ricavi_modalita_mensile`. La regola di precedenza
+esisteva già, implementata **e commentata**, in un solo punto: `ricavi.py:1055-1060`.
+
+Il rimedio è diverso nei due casi, e la differenza è il punto:
+- **`analisi-tab`** ha bisogno di *un numero* → glielo si dà, autorevole.
+- **`calcolo-tab`** mostra *media giornaliera, giorno migliore/peggiore e bar
+  chart per giorno*: in modalità mensile quelle grandezze **non esistono**.
+  Sostituire il totale avrebbe prodotto un dettaglio inventato. Si dichiara lo
+  stato, coerentemente con la regola di dominio #1 (uno stato ignoto si dichiara,
+  non si traveste).
+
+**L'endpoint grezzo NON è stato toccato**: 2 dei suoi 4 consumer
+(`carica-ricavi-dialog.tsx`, `mobile-incassi.tsx`) lo usano correttamente perché
+sono le superfici di *editing* della tabella. Verificato nel diff: 0 righe.
+
+**Effetto misurato sul DB live** (17 mesi, 4 sedi, tutti in `modalita='mensile'`):
+
+| | prima | dopo |
+|---|---|---|
+| totale netto letto dai dialog | € 83.778,42 | € 813.690,08 |
+
+15 mesi passano da **€ 0** al valore vero (€ 8.480 – € 69.178). TIME CAFE giugno
+da € 3.227,27 a € 73.322,73. TIME CAFE maggio si sposta di **−€ 0,24**:
+differenza di arrotondamento fra somma dei giornalieri e totale mensile.
+
+> **Rettifica a §25.** Il verbale della passata di audit descriveva il HIGH #2
+> come un difetto di **distribuzione** ("il totale combacia, è la ripartizione
+> sui giorni a non avere senso"), misurato su TIME CAFE maggio. Con la misura
+> estesa a tutti e 17 i mesi la descrizione risulta **troppo indulgente**: in 15
+> mesi su 17 il dialog mostrava **zero**, e in TIME CAFE giugno **€ 70.095 in
+> meno** del vero. Non era solo distribuzione: era un importo sbagliato.
+
+### Fix 3 — il ramo che il backend aveva già scritto per non mentire
+
+`fatture.py:880-884` torna `200 + righe_aggiornate: 0` con il commento *"e il
+cliente vedeva un falso successo"*. Il client controllava `r.ok`, cioè lo
+**status HTTP** → toast verde, e al reload la riga tornava com'era.
+
+Il fix ha richiesto una distinzione che il primo tentativo aveva sbagliato: la
+rotta di **gruppo** (`riparto.py:260`) torna `righe_aggiornate: 0` **come
+successo legittimo**, perché scrive sul riparto e non su `fatture`. Un controllo
+ingenuo avrebbe rotto un percorso funzionante. Il check è quindi legato a
+`conRighePV`, e copre anche il caso **misto** (segnalato dal `code-reviewer`:
+con `!conGruppo` uno zero-write del PV nel misto sarebbe restato silenzioso —
+stessa classe del bug appena chiuso).
+
+### Fix 4 — un filtro inerte per costruzione
+
+`selected_by_default` è scritto `True` alla creazione e **mai aggiornato da
+nessun endpoint**: non poteva rappresentare una deselezione. Misurato: 307 item
+su 307 a `true`, la colonna non ha **mai** contenuto `false`.
+
+`descrizioni_key` distingue deliberatamente **`None`** (chiamata vecchia →
+comportamento precedente) da **`[]`** (nessun prodotto, non "tutti"). Aggiunta
+anche la guardia `no_items_selected` a `accept_suggestion_extend_tag`, che
+`create_tag` aveva e lei no (rilievo del `code-reviewer`).
+
+### Verifica
+
+- `pytest tests/`: **11041 passed, 42 skipped**
+- **8 test nuovi**, tutti verificati **per mutazione su copia in scratchpad**
+  (5 mutanti, 5 uccisi): `None→falsy`, niente `strip`, ignora
+  `selected_by_default`, ignora le chiavi del client, guardia rimossa
+- `npx tsc --noEmit` pulito · `npm run build` OK
+- `export_openapi.py --check-drift` OK (194 endpoint) dopo rigenerazione:
+  il churn di 164 righe in `openapi.json` è **riordino di chiavi**; l'unica
+  aggiunta semantica è `AcceptSuggestionRequest/properties/descrizioni_key`
+- `code-reviewer` sul diff cumulativo: nessun bug funzionale; ha riverificato in
+  autonomia tutte le asserzioni numeriche sul DB live e **rifatto da zero il
+  mutation testing**. I suoi 2 rilievi sostanziali (misto, guardia `extend_tag`)
+  sono stati recepiti.
+
+### Resta aperto
+
+3 HIGH (fusi orari dello Scadenziario, KPI "Pagate (mese)", "Blocca mesi
+precedenti" come switch morto), 14 findings MEDIUM/LOW attivi, e il perimetro
+non ancora letto elencato in §25.

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { InfoPopover } from "@/components/ui/info-popover";
-import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT } from "./periodi";
+import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT, fetchNettoMese } from "./periodi";
 
 /* ────────────────────────────────────────────────────────────────────────────
    TIPI
@@ -119,15 +119,10 @@ function RipartizioneDialog({
   useEffect(() => {
     if (!meseSel || !open) return;
     setLoading(true);
-    const mm = String(meseSel.mese).padStart(2, "0");
-    const lastDay = new Date(meseSel.anno, meseSel.mese, 0).getDate();
     Promise.all([
       fetch(`/api/margini/fatturato-centri?anno=${meseSel.anno}&mese=${meseSel.mese}`)
         .then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      fetch(`/api/ricavi/giornalieri?${new URLSearchParams({
-        data_da: `${meseSel.anno}-${mm}-01`,
-        data_a: `${meseSel.anno}-${mm}-${String(lastDay).padStart(2, "0")}`,
-      })}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetchNettoMese(meseSel.anno, meseSel.mese),
     ]).then(([split, ricavi]) => {
       setVals({
         food: split?.fatturato_food ?? 0,
@@ -135,7 +130,7 @@ function RipartizioneDialog({
         alcolici: split?.fatturato_alcolici ?? 0,
         dolci: split?.fatturato_dolci ?? 0,
       });
-      setNetto(ricavi?.totale_netto ?? 0);
+      setNetto(ricavi.netto);
       setLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

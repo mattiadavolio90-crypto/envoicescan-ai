@@ -523,8 +523,22 @@ const ArticoloRiga = memo(function ArticoloRiga({
       const dataGruppo = resGruppo ? await resGruppo.json() : null;
       const dataPV = resPV ? await resPV.json() : null;
       const falliti = [resGruppo, resPV].filter((r) => r && !r.ok);
+      // categoria-batch torna 200 con righe_aggiornate:0 quando non ha scritto
+      // nulla (fatture.py:880): lo status HTTP da solo dichiarerebbe un successo
+      // che non c'è, e al reload la riga tornerebbe com'era.
+      // NB: la rotta di gruppo torna legittimamente righe_aggiornate:0 (scrive sul
+      // riparto, non su `fatture`, riparto.py:260) — lì lo zero non è un errore.
+      const nessunaScrittura =
+        !falliti.length && conRighePV &&
+        (dataPV?.righe_aggiornate ?? 0) === 0;
 
-      if (!falliti.length) {
+      if (nessunaScrittura) {
+        toast.error(
+          conGruppo
+            ? "La quota di gruppo è aggiornata, ma nessuna riga della sede è stata modificata. Ricarica la pagina e riprova."
+            : "Nessuna riga aggiornata: la categoria non è stata salvata. Ricarica la pagina e riprova.",
+        );
+      } else if (!falliti.length) {
         setCurrentCat(newCat);
         setNeedsReview(false);
         const azione = confirmOnly ? "confermata" : "aggiornata";

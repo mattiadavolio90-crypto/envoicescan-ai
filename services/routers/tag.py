@@ -68,6 +68,10 @@ class AcceptSuggestionRequest(BaseModel):
     suggestion_type: Optional[str] = None  # "new_tag" | "extend_tag"
     tag_name: Optional[str] = None
     tag_id: Optional[int] = None
+    # Chiavi dei prodotti che il cliente ha lasciato spuntati nel dialog. Se assente
+    # (chiamate vecchie) si ricade su selected_by_default, che è sempre True: senza
+    # questo campo la deselezione lato UI non arrivava mai al backend.
+    descrizioni_key: Optional[list[str]] = None
 
 
 class SnoozeSuggestionRequest(BaseModel):
@@ -330,6 +334,7 @@ def accept_tag_suggestion(
             tag_name=body.tag_name,
             user_id=str(user["id"]),
             ristorante_id=ristorante_id,
+            descrizioni_key=body.descrizioni_key,
         )
     elif s_type == "extend_tag":
         result = accept_suggestion_extend_tag(
@@ -337,6 +342,7 @@ def accept_tag_suggestion(
             tag_id=body.tag_id,
             user_id=str(user["id"]),
             ristorante_id=ristorante_id,
+            descrizioni_key=body.descrizioni_key,
         )
     else:
         raise HTTPException(status_code=400, detail="suggestion_type non valido")

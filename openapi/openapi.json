@@ -17351,6 +17351,81 @@
         }
       }
     },
+    "/api/riparto/riga-categoria": {
+      "patch": {
+        "summary": "Riparto Riga Categoria",
+        "description": "Corregge la categoria di una riga appartenente a un costo ripartito sul gruppo.\n\nPerché serve un endpoint dedicato invece di /api/fatture/categoria-batch: le righe\ndi una fattura di struttura vivono sulla SEDE TECNICA (\"Costi comuni di gruppo\"),\nnon sul punto vendita. categoria-batch filtra per ristorante_id del PV → match su 0\nrighe, e il cliente vedeva un falso successo. La sede tecnica non è selezionabile\n(account.py: non ci si può posizionare sulla sede-contenitore), quindi senza questa\nrotta la categoria di una riga ripartita non era correggibile da nessuna UI.\n\nDopo la scrittura le quote vanno RI-ESPLOSE (forza=True): i pesi delle categorie\nsono cambiati e le quote porterebbero ancora quella vecchia, instradando l'importo\nnel secchio MOL sbagliato (F&B vs spese).",
+        "operationId": "riparto_riga_categoria_api_riparto_riga_categoria_patch",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RipartoRigaCategoriaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Riga Categoria Api Riparto Riga Categoria Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/riparto/{riparto_id}": {
       "patch": {
         "summary": "Riparto Modifica",
@@ -17778,81 +17853,6 @@
         }
       }
     },
-    "/api/riparto/riga-categoria": {
-      "patch": {
-        "summary": "Riparto Riga Categoria",
-        "description": "Corregge la categoria di una riga appartenente a un costo ripartito sul gruppo.\n\nPerché serve un endpoint dedicato invece di /api/fatture/categoria-batch: le righe\ndi una fattura di struttura vivono sulla SEDE TECNICA (\"Costi comuni di gruppo\"),\nnon sul punto vendita. categoria-batch filtra per ristorante_id del PV → match su 0\nrighe, e il cliente vedeva un falso successo. La sede tecnica non è selezionabile\n(account.py: non ci si può posizionare sulla sede-contenitore), quindi senza questa\nrotta la categoria di una riga ripartita non era correggibile da nessuna UI.\n\nDopo la scrittura le quote vanno RI-ESPLOSE (forza=True): i pesi delle categorie\nsono cambiati e le quote porterebbero ancora quella vecchia, instradando l'importo\nnel secchio MOL sbagliato (F&B vs spese).",
-        "operationId": "riparto_riga_categoria_api_riparto_riga_categoria_patch",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          },
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RipartoRigaCategoriaBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Riparto Riga Categoria Api Riparto Riga Categoria Patch"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/gruppo/costi-comuni": {
       "get": {
         "summary": "Gruppo Costi Comuni",
@@ -17973,6 +17973,20 @@
               }
             ],
             "title": "Tag Id"
+          },
+          "descrizioni_key": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descrizioni Key"
           }
         },
         "type": "object",
