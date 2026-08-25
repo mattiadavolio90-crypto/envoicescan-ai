@@ -45,14 +45,18 @@ def _categoria_affidabile(descrizione: str, categoria: str, confidence: str, for
     lasciare 'Da Classificare' che scrivere un'ipotesi.
     """
     cat = str(categoria or "").strip()
-    if not cat or cat.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+    # "SERVIZI E CONSULENZE" non e' piu' escluso a priori (24/08): era il residuo di
+    # quando quella categoria faceva da fallback travestito. Oggi, se il dizionario
+    # la afferma esplicitamente (CONSULENZA, CEDOLINI, ABBONAMENTO...), e' una
+    # risposta positiva e va scritta. Vedi gemello in worker/queue_processor.py.
+    if not cat or cat.upper() == "DA CLASSIFICARE":
         return False
     # Conferma deterministica (vale anche per GPT 'media')
     try:
         cat_dz = applica_correzioni_dizionario(descrizione, "Da Classificare")
         cat_rf, _m = applica_regole_categoria_forti(descrizione, cat_dz)
         finale = (cat_rf or cat_dz or "").strip()
-        if finale and finale.upper() not in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE") \
+        if finale and finale.upper() != "DA CLASSIFICARE" \
            and finale.upper() == cat.upper():
             return True
     except Exception:

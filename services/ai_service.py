@@ -147,6 +147,38 @@ _ai_ctx_ristorante_id: ContextVar[Optional[str]] = ContextVar('ai_ctx_ristorante
 _ai_ctx_user_id: ContextVar[Optional[str]] = ContextVar('ai_ctx_user_id', default=None)
 
 
+# === Segnalazione di degrado AI ===
+# classifica_con_ai NON solleva mai: in caso di errore restituisce il best-effort
+# deterministico (dizionario + regole forti), che ha la stessa forma e lunghezza di
+# una risposta riuscita. Per il chiamante le due cose erano indistinguibili — ed e'
+# il motivo per cui un'AI mai interrogata e' passata inosservata per un mese
+# (cert. "Costi comuni di gruppo" 24/08: 795 righe, 0 eventi in ai_usage_events,
+# retry inerti perche' la lunghezza della lista tornava comunque corretta).
+# Questo ContextVar rende il degrado leggibile: chi chiama puo' distinguere
+# "l'AI ha risposto" da "l'AI e' muta e questo e' solo il fallback".
+_ai_ctx_degradata: ContextVar[bool] = ContextVar('ai_ctx_degradata', default=False)
+
+
+def reset_ai_degradata() -> None:
+    """Azzera il flag di degrado prima di una chiamata di classificazione."""
+    _ai_ctx_degradata.set(False)
+
+
+def ai_degradata() -> bool:
+    """True se l'ultima classifica_con_ai nel contesto corrente NON ha
+    ottenuto risposta dall'AI ed e' ricaduta sul fallback deterministico."""
+    return _ai_ctx_degradata.get()
+
+
+def _segnala_ai_degradata(motivo: str) -> None:
+    _ai_ctx_degradata.set(True)
+    logger.error(
+        "AI DEGRADATA (%s): la classificazione ricade sul fallback deterministico "
+        "(dizionario + regole forti). Le righe non riconosciute resteranno "
+        "'Da Classificare'.", motivo,
+    )
+
+
 def set_ai_context(ristorante_id: Optional[str] = None, user_id: Optional[str] = None) -> None:
     """Imposta il contesto user/ristorante per chiamate AI in thread non-Streamlit.
 
@@ -3841,14 +3873,33 @@ def _cornetto_gelato_in_dessert(descrizione: str, categoria: str) -> str:
     return categoria
 
 
+# Prodotti PER il veicolo (additivi, detergenti) non sono carburante: sono materiale
+# di consumo/manutenzione. Senza questa regola "ADDITIVO PROTETTIVO BENZINA" (caso
+# reale a DB, gia' classificato MANUTENZIONE E ATTREZZATURE) sarebbe stato dirottato
+# su UTENZE E LOCALI dalla keyword BENZINA aggiunta il 24/08.
+_ADDITIVO_VEICOLO_RE = re.compile(
+    r"\b(ADDITIV\w*|DETERGENT\w*|PULIT\w*|LUBRIFICANT\w*|ANTIGELO|PROTETTIV\w*)\b"
+)
+
+
+def _additivo_non_carburante(descrizione: str, categoria: str) -> str:
+    if categoria != "UTENZE E LOCALI":
+        return categoria
+    if _ADDITIVO_VEICOLO_RE.search((descrizione or "").upper()):
+        return "MANUTENZIONE E ATTREZZATURE"
+    return categoria
+
+
 def _post_regole_dominio(descrizione: str, categoria: str) -> str:
     """Applica in sequenza le regole di dominio post-match (25/06):
     pasta ripiena per forma → PASTA E CEREALI, ortofrutta trasformata → SCATOLAME,
-    zucchero monodose → VARIE BAR, cornetto-gelato → GELATI E DESSERT."""
+    zucchero monodose → VARIE BAR, cornetto-gelato → GELATI E DESSERT,
+    additivo veicolo → MANUTENZIONE (non carburante, 24/08)."""
     categoria = _pasta_ripiena_per_forma(descrizione, categoria)
     categoria = _ortofrutta_trasformata_in_scatolame(descrizione, categoria)
     categoria = _zucchero_monodose_bar(descrizione, categoria)
     categoria = _cornetto_gelato_in_dessert(descrizione, categoria)
+    categoria = _additivo_non_carburante(descrizione, categoria)
     return categoria
 
 
@@ -4952,6 +5003,10 @@ def classifica_con_ai(
     if not lista_descrizioni:
         return []
 
+    # Il flag di degrado vale per QUESTA chiamata: azzeralo, altrimenti un errore
+    # precedente nello stesso contesto farebbe scartare una risposta AI valida.
+    reset_ai_degradata()
+
     # � Admin e impersonazione bypassano i limiti giornalieri AI per test operativi
     _is_unrestricted_admin = bool(st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False))
     if ristorante_id and not _is_unrestricted_admin:
@@ -4979,9 +5034,29 @@ def classifica_con_ai(
         except Exception as _rl_err:
             logger.warning(f"⚠️ Errore check rate limit AI: {_rl_err} — proseguo senza limite")
     
-    # Usa client iniettato o crea nuovo
+    # Usa client iniettato o crea nuovo.
+    # _get_openai_client solleva ValueError se la chiave manca: era FUORI dal try
+    # principale, quindi l'eccezione risaliva al chiamante senza passare da
+    # _segnala_ai_degradata. Nel queue-worker veniva poi inghiottita dal suo except,
+    # producendo lo stesso silenzio di prima. Qui la trattiamo come gli altri
+    # fallimenti AI: best-effort deterministico + degrado dichiarato.
     if openai_client is None:
-        openai_client = _get_openai_client()
+        try:
+            openai_client = _get_openai_client()
+        except Exception as _client_exc:
+            _segnala_ai_degradata(f"client OpenAI non disponibile: {_client_exc}")
+            output = []
+            for idx, desc in enumerate(lista_descrizioni):
+                iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
+                categoria, _reason = applica_regole_categoria_forti(desc, "Da Classificare")
+                if categoria == "Da Classificare":
+                    categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+                output.append(
+                    _applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value)
+                )
+            if return_confidenze:
+                return output, ["bassa"] * len(output)
+            return output
     
     # ⚠️ DEPRECATO: Legacy JSON memory ignorata per evitare conflitti con DB Supabase
     # La priorità è ora gestita da carica_memoria_completa() (classificazioni_manuali > locale > globale)
@@ -5157,6 +5232,7 @@ def classifica_con_ai(
 
     except json.JSONDecodeError as e:
         logger.error(f"Errore parsing JSON da OpenAI: {e}")
+        _segnala_ai_degradata(f"risposta OpenAI non parsabile: {e}")
         output = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
@@ -5173,6 +5249,10 @@ def classifica_con_ai(
         return output
     except Exception as e:
         logger.error(f"Errore classificazione AI: {e}")
+        # Include ValueError('API Key OpenAI mancante') da _get_openai_client e
+        # ogni errore di rete/HTTP: sono errori di configurazione o infrastruttura,
+        # non "la riga non e' classificabile". Chi chiama deve poterlo sapere.
+        _segnala_ai_degradata(f"{type(e).__name__}: {e}")
         output = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None

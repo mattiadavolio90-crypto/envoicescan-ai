@@ -702,15 +702,38 @@ class TestPrincipio2406Gating:
 
         assert ("CARNE E SALUMI", False) in _categorie_scritte(client)
 
-    def test_ai_ritorna_servizi_e_consulenze_non_e_affidabile(self):
-        """SERVIZI E CONSULENZE era il vecchio fallback travestito: non deve
-        mai essere scritto come esito di un'ipotesi AI."""
+    def test_servizi_e_consulenze_e_scrivibile_se_l_ai_e_certa(self):
+        """AGGIORNATO 24/08 (era: "non e' mai affidabile").
+
+        L'esclusione hard-coded nasceva da quando SERVIZI E CONSULENZE era il
+        fallback travestito dell'incertezza. Oggi quel fallback non esiste piu'
+        (CATEGORIA_FALLBACK e' alias di "Da Classificare" e
+        enforce_no_unclassified_category non la produce mai), mentre l'esclusione
+        continuava a colpire i servizi VERI: consulenza del lavoro, cedolini,
+        abbonamenti. Effetto misurato sulla sede "Costi comuni di gruppo": ogni
+        riga di consulenza poteva essere scritta solo con GPT 'alta', e un 'media'
+        — normale su testi burocratici — tornava Da Classificare.
+
+        Con confidence 'alta' su descrizione non dubbia la categoria si scrive,
+        esattamente come per ogni altra categoria."""
         rows = [_eligible_row(row_id=1)]
         with patch("services.upload_handler.descrizione_e_dubbia", return_value=False):
             _summary, client = _run_with_ai(rows, ["SERVIZI E CONSULENZE"], ["alta"])
 
-        scritte = _categorie_scritte(client)
-        assert scritte.get(("Da Classificare", True)) == [1]
+        assert ("SERVIZI E CONSULENZE", False) in _categorie_scritte(client)
+
+    def test_servizi_e_consulenze_resta_non_affidabile_se_l_ai_dubita(self):
+        """Il presidio vero non e' il nome della categoria, ma la certezza:
+        'media' non confermata dal runtime resta Da Classificare, come prima."""
+        rows = [_eligible_row(row_id=1)]
+        with patch("services.upload_handler.descrizione_e_dubbia", return_value=False), \
+             patch("services.upload_handler.applica_correzioni_dizionario",
+                   return_value="Da Classificare"), \
+             patch("services.upload_handler.applica_regole_categoria_forti",
+                   return_value=("Da Classificare", None)):
+            _summary, client = _run_with_ai(rows, ["SERVIZI E CONSULENZE"], ["media"])
+
+        assert _categorie_scritte(client).get(("Da Classificare", True)) == [1]
 
     def test_ai_ritorna_da_classificare_finisce_nei_remaining(self):
         rows = [_eligible_row(row_id=1)]

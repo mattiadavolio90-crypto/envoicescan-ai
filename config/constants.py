@@ -90,6 +90,20 @@ REGEX_SOSTITUZIONI = {
 
 REGEX_PUNTEGGIATURA = re.compile(r'[.,;:\-_/\\]+')
 
+# Mesi e periodi: rimossi dalla descrizione NORMALIZZATA usata come chiave di memoria
+# (prodotti_utente / prodotti_master). Senza questo, "CEDOLINI ELABORATI - APRILE" e
+# "... - DICEMBRE" sono due prodotti diversi e il cliente deve riclassificare la stessa
+# voce 12 volte l'anno (caso reale: 6 mesi corretti a mano, 3 rimasti Da Classificare).
+# Non tocca la descrizione ORIGINALE mostrata a schermo, ne' la categorizzazione: la
+# categoria dipende dal resto del testo ("FUSTI BIRRA MESE APRILE" resta BIRRE).
+REGEX_MESI_PERIODI = re.compile(
+    r'\b(GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|'
+    # MENSILIT\w* copre anche la forma TRONCATA "MENSILIT": le descrizioni XML SDI
+    # sono tagliate a 60 caratteri, quindi "13 MENSILITA'" arriva mozzata.
+    r'SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE|MENSILIT\w*|TRIMESTR\w*|SEMESTR\w*|MESE)\b',
+    re.IGNORECASE,
+)
+
 REGEX_ARTICOLI = [
     re.compile(r'\bIL\b', re.IGNORECASE),
     re.compile(r'\bLO\b', re.IGNORECASE),
@@ -1317,6 +1331,37 @@ DIZIONARIO_CORREZIONI = {
     "PENTOLE": "MANUTENZIONE E ATTREZZATURE",
     "PADELLE": "MANUTENZIONE E ATTREZZATURE",
     "UTENSILI": "MANUTENZIONE E ATTREZZATURE",
+
+    # ===== COSTI DI STRUTTURA (cert. "Costi comuni di gruppo" 24/08) =====
+    # Righe di sede tecnica / catena: consulenza del lavoro, veicoli, abbonamenti.
+    # Il dizionario era tarato sul F&B e non copriva NULLA di tutto questo: le righe
+    # finivano all'AI, e quando l'AI taceva restavano "Da Classificare".
+    # NB: parole INTERE, mai prefissi troncati — il boundary destro dei pattern
+    # (_build_compiled_patterns) impedisce a una chiave tronca di matchare la parola
+    # estesa (es. "RIADDEB" non matcha "RIADDEBITO").
+    "CEDOLINO": "SERVIZI E CONSULENZE",
+    "CEDOLINI": "SERVIZI E CONSULENZE",
+    "BUSTA PAGA": "SERVIZI E CONSULENZE",
+    "BUSTE PAGA": "SERVIZI E CONSULENZE",
+    "PAGHE E CONTRIBUTI": "SERVIZI E CONSULENZE",
+    "AMMINISTRAZIONE DEL PERSONALE": "SERVIZI E CONSULENZE",
+    "ELABORAZIONE DATI": "SERVIZI E CONSULENZE",
+    "MENSILITA": "SERVIZI E CONSULENZE",
+    "TREDICESIMA": "SERVIZI E CONSULENZE",
+    "QUATTORDICESIMA": "SERVIZI E CONSULENZE",
+    "MEMBERSHIP": "SERVIZI E CONSULENZE",
+    "RIADDEBITO": "SERVIZI E CONSULENZE",
+    "TASSA DI PROPRIETA": "SERVIZI E CONSULENZE",
+    "BOLLO AUTO": "SERVIZI E CONSULENZE",
+    # Carburante -> UTENZE E LOCALI (scelta esplicita 24/08). Leasing e pedaggi
+    # restano SERVIZI E CONSULENZE (regola forte _LEASING_NOLEGGIO_RE): i costi del
+    # veicolo risultano quindi su due categorie, ed e' voluto.
+    "CARBURANTE": "UTENZE E LOCALI",
+    "CARBURANTI": "UTENZE E LOCALI",
+    "BENZINA": "UTENZE E LOCALI",
+    "GASOLIO": "UTENZE E LOCALI",
+    "AUTOTRAZIONE": "UTENZE E LOCALI",
+    "RIFORNIMENTO": "UTENZE E LOCALI",
 
     
     # ===== GELATI E DESSERT (keywords aggiuntivi, base in sezione GELATI sopra) =====
