@@ -624,6 +624,29 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Ultima rete: senza questo, un'eccezione non gestita tornava con un corpo NON-JSON
+    (traceback o pagina del proxy). Il client faceva res.json(), quel SyntaxError finiva
+    nel catch di rete e l'utente leggeva "Worker unreachable" per un errore applicativo:
+    messaggio falso, causa invisibile. Qui il traceback finisce nei log CON la rotta, e
+    la risposta resta JSON cosi' il client puo' sempre leggerne il motivo.
+
+    `detail` non espone il traceback (finirebbe a video al cliente): porta il tipo
+    dell'eccezione, che basta a orientare, e il resto sta nei log.
+    """
+    logger.exception(
+        "eccezione non gestita su %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"Errore interno del worker ({type(exc).__name__})",
+            "path": request.url.path,
+        },
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MODELLI PYDANTIC
 # ═══════════════════════════════════════════════════════════════════════════
