@@ -25,7 +25,18 @@ _SEDI = [
     {"id": "sede-b", "nome_ristorante": "OVERTIME"},
 ]
 
-_RIPARTO_MANUALE = {"id": "rip-man-1", "anno": 2026, "mese": 8, "origine": "manuale"}
+_RIPARTO_MANUALE = {
+    "id": "rip-man-1", "anno": 2026, "mese": 8, "origine": "manuale",
+    "regola": "equa", "importo_totale": 200.0,
+}
+
+# Due categorie sulla STESSA sede: la configurazione che faceva collassare l'UPDATE
+# in blocco su un duplicato di uq_riparto_quota_sede_categoria.
+_QUOTE = [
+    {"ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 60.0, "categoria": "UTENZE E LOCALI"},
+    {"ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 40.0, "categoria": "SERVIZI E CONSULENZE"},
+    {"ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 100.0, "categoria": "UTENZE E LOCALI"},
+]
 
 
 class _Query:
@@ -61,18 +72,25 @@ class _Query:
                 match = [r for r in self._c.riparti if r["id"] == self._eq["id"]]
                 return SimpleNamespace(data=match)
             return SimpleNamespace(data=[])
+        if self._t == "riparto_costi_catena_quote":
+            return SimpleNamespace(data=self._c.quote)
         return SimpleNamespace(data=[])
 
 
 class _FakeSB:
-    def __init__(self, riparti):
+    def __init__(self, riparti, quote=None):
         self.riparti = riparti
+        # Forma reale dopo l'esplosione per-categoria: una sede puo' avere piu'
+        # quote, una per categoria. E' il caso che rompeva il vincolo UNIQUE.
+        self.quote = _QUOTE if quote is None else quote
         self.updates = []
+        self.rpc_calls = []
 
     def table(self, name):
         return _Query(self, name)
 
     def rpc(self, name, params):
+        self.rpc_calls.append((name, params))
         return SimpleNamespace(execute=lambda: SimpleNamespace(data=None))
 
 
@@ -101,6 +119,15 @@ def _update_su(sb, tabella):
     return [u for u in sb.updates if u[0] == tabella]
 
 
+def _tipo_scritto(sb):
+    """`tipo` passa dalla RPC quando ci sono quote, dall'UPDATE sul padre quando no."""
+    rpc = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"]
+    if rpc:
+        return rpc[0][1]["p_tipo"]
+    hdr = _update_su(sb, "riparto_costi_catena")
+    return hdr[0][1]["tipo"] if hdr else None
+
+
 def test_sentinella_riconosciuta_scrive_categoria_sulle_quote():
     """Il caso che prima dava 404: il sentinella va risolto per id."""
     sb, p = _patch()
@@ -109,18 +136,22 @@ def test_sentinella_riconosciuta_scrive_categoria_sulle_quote():
 
     assert out["ok"] is True
     assert out["categoria"] == "MANUTENZIONE E ATTREZZATURE"
-    quote_upd = _update_su(sb, "riparto_costi_catena_quote")
-    assert quote_upd, "le quote devono essere aggiornate"
-    assert quote_upd[0][1] == {"categoria": "MANUTENZIONE E ATTREZZATURE"}
-    assert quote_upd[0][2]["riparto_id"] == "rip-man-1"
+    # Le quote si riscrivono via RPC transazionale, non con un UPDATE in blocco:
+    # quello violava uq_riparto_quota_sede_categoria quando una sede aveva piu'
+    # categorie (APIError -> 500 opaco, 25/8/2026).
+    rpc = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"]
+    assert rpc, "le quote devono essere riscritte"
+    assert rpc[0][1]["p_riparto_id"] == "rip-man-1"
+    assert {q["categoria"] for q in rpc[0][1]["p_quote"]} == {"MANUTENZIONE E ATTREZZATURE"}
 
 
 def test_tipo_header_riallineato_a_spese_generali():
     sb, p = _patch()
     with p:
         riparto.riparto_riga_categoria(_body(cat="UTENZE E LOCALI"), authorization="Bearer x")
-    hdr = _update_su(sb, "riparto_costi_catena")
-    assert hdr and hdr[0][1] == {"tipo": "generale"}
+    # `tipo` viaggia nella RPC transazionale insieme alle quote: header e quote
+    # cambiano insieme o non cambiano affatto.
+    assert _tipo_scritto(sb) == "generale"
 
 
 def test_tipo_header_riallineato_a_fb():
@@ -128,8 +159,7 @@ def test_tipo_header_riallineato_a_fb():
     sb, p = _patch()
     with p:
         riparto.riparto_riga_categoria(_body(cat="BIRRE"), authorization="Bearer x")
-    hdr = _update_su(sb, "riparto_costi_catena")
-    assert hdr and hdr[0][1] == {"tipo": "fb"}
+    assert _tipo_scritto(sb) == "fb"
 
 
 def test_riparto_inesistente_404():
@@ -162,3 +192,24 @@ def test_sentinella_definita_una_volta_sola():
     """Il prefisso è condiviso fra chi lo produce (riparto_service) e chi lo consuma
     (router): se divergono, la correzione torna a dare 404 in silenzio."""
     assert riparto._SENTINELLA_RIPARTO_MANUALE is SENTINELLA_RIPARTO_MANUALE
+
+
+def test_quote_di_una_sede_su_piu_categorie_non_violano_il_vincolo():
+    """Regressione 25/8/2026. `sede-a` ha due quote (UTENZE + SERVIZI): l'UPDATE in
+    blocco le portava entrambe a `nuova_cat`, duplicando la terna di
+    uq_riparto_quota_sede_categoria (riparto_id, ristorante_id, categoria).
+    Postgres rifiutava, il worker non gestiva l'APIError e rispondeva 500 con corpo
+    non-JSON — che l'utente leggeva come "Worker unreachable"."""
+    sb, p = _patch()
+    with p:
+        out = riparto.riparto_riga_categoria(
+            _body(cat="MANUTENZIONE E ATTREZZATURE"), authorization="Bearer x"
+        )
+
+    assert out["ok"] is True
+    quote = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"][0][1]["p_quote"]
+    terne = [(q["ristorante_id"], q["categoria"]) for q in quote]
+    assert len(terne) == len(set(terne)), f"duplicati sulla terna: {terne}"
+    # sede-a: 60+40 consolidati in una sola quota; sede-b resta 100.
+    per_sede = {q["ristorante_id"]: q["quota_importo"] for q in quote}
+    assert per_sede == {"sede-a": 100.0, "sede-b": 100.0}

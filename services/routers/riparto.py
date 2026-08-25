@@ -182,7 +182,7 @@ def _correggi_categoria_costo_manuale(
     """
     rip_resp = (
         sb.table("riparto_costi_catena")
-        .select("id, anno, mese, origine")
+        .select("id, anno, mese, origine, regola, importo_totale")
         .eq("user_id", user_id)
         .eq("id", riparto_id)
         .limit(1)
@@ -201,10 +201,56 @@ def _correggi_categoria_costo_manuale(
         )
 
     tipo = "fb" if nuova_cat in CATEGORIE_FOOD_BEVERAGE else "generale"
-    sb.table("riparto_costi_catena_quote") \
-        .update({"categoria": nuova_cat}).eq("riparto_id", riparto_id).execute()
-    sb.table("riparto_costi_catena") \
-        .update({"tipo": tipo}).eq("id", riparto_id).eq("user_id", user_id).execute()
+
+    # Le quote vanno CONSOLIDATE per sede, non riscritte in blocco. Dall'esplosione
+    # per-categoria (24/7) una sede può avere N quote (una per categoria): un
+    # UPDATE che le porta tutte a `nuova_cat` le renderebbe duplicati sulla stessa
+    # terna e violerebbe uq_riparto_quota_sede_categoria (riparto_id, ristorante_id,
+    # categoria) — APIError non gestito, che il worker restituiva come 500 opaco.
+    # Qui le N righe della sede diventano UNA: importi sommati (il totale di sede
+    # non cambia) e quota_perc invariata, perché è la % della sede, non della
+    # categoria. Riscrittura via RPC transazionale: un DELETE+INSERT a mano
+    # lascerebbe il riparto senza quote se il secondo statement fallisse.
+    quote = (
+        sb.table("riparto_costi_catena_quote")
+        .select("ristorante_id, quota_perc, quota_importo")
+        .eq("riparto_id", riparto_id)
+        .execute()
+    ).data or []
+
+    consolidate: Dict[str, Dict[str, Any]] = {}
+    for q in quote:
+        rid = str(q["ristorante_id"])
+        voce = consolidate.setdefault(
+            rid,
+            {
+                "ristorante_id": rid,
+                "quota_perc": float(q.get("quota_perc") or 0),
+                "quota_importo": 0.0,
+                "categoria": nuova_cat,
+            },
+        )
+        voce["quota_importo"] += float(q.get("quota_importo") or 0)
+
+    if consolidate:
+        for voce in consolidate.values():
+            voce["quota_importo"] = round(voce["quota_importo"], 2)
+        sb.rpc(
+            "sostituisci_quote_riparto",
+            {
+                "p_riparto_id": riparto_id,
+                "p_user_id": user_id,
+                "p_tipo": tipo,
+                "p_regola": riparto.get("regola") or "equa",
+                "p_importo_totale": float(riparto.get("importo_totale") or 0),
+                "p_quote": list(consolidate.values()),
+            },
+        ).execute()
+    else:
+        # Nessuna quota (riparto degenere): resta solo il riallineamento del padre,
+        # altrimenti header e quote direbbero cose diverse.
+        sb.table("riparto_costi_catena") \
+            .update({"tipo": tipo}).eq("id", riparto_id).eq("user_id", user_id).execute()
 
     ricalcolo_ok = _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
 

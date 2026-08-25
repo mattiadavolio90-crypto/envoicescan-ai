@@ -256,7 +256,10 @@ def test_riga_sintetica_di_quota_corretta_sulle_quote_non_404():
         )
 
     assert out["ok"] is True
-    assert ("riparto_costi_catena_quote", {"categoria": "CARNE"}) in sb.updates
+    # La categoria finisce sulle QUOTE (non su `fatture`), riscritte in transazione:
+    # l'UPDATE in blocco di prima violava uq_riparto_quota_sede_categoria.
+    assert out["categoria"] == "CARNE"
+    assert not any(t == "fatture" for t, _ in sb.updates)
 
 
 def test_descrizione_inesistente_resta_404():
@@ -267,3 +270,139 @@ def test_descrizione_inesistente_resta_404():
             _body(descrizione="PRODOTTO CHE NON ESISTE"), authorization="Bearer x"
         )
     assert exc.value.status_code == 404
+
+
+# ─── Regressione: APIError sul vincolo UNIQUE delle quote (25/8/2026) ────────────
+# uq_riparto_quota_sede_categoria e' UNIQUE (riparto_id, ristorante_id, categoria).
+# Dall'esplosione per-categoria (24/7) una sede puo' avere N quote, una per categoria
+# (nei dati reali fino a 10). _correggi_categoria_costo_manuale le riscriveva TUTTE a
+# `nuova_cat` con un solo UPDATE: le N righe collassavano sulla stessa terna e il
+# vincolo saltava. L'APIError non era gestito e il worker rispondeva 500 con corpo
+# non-JSON — che lato Next diventava il fuorviante "Worker unreachable".
+
+
+class _QueryQuote(_Query):
+    """_Query + supporto alle quote e alla RPC di sostituzione."""
+
+    def execute(self):
+        if self._t == "riparto_costi_catena_quote":
+            data = self._c.quote
+            if self._slice is not None:
+                data = data[self._slice[0]:self._slice[1]]
+            return SimpleNamespace(data=data)
+        return super().execute()
+
+
+class _FakeSBQuote(_FakeSB):
+    def __init__(self, riparti, righe, quote):
+        super().__init__(riparti, righe)
+        self.quote = quote
+        self.rpc_calls = []
+
+    def table(self, name):
+        return _QueryQuote(self, name)
+
+    def rpc(self, name, params):
+        self.rpc_calls.append((name, params))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data="riparto-1"))
+
+
+_RIPARTO_MANUALE = {
+    "id": "riparto-1", "anno": 2026, "mese": 7,
+    "origine": "manuale", "regola": "equa", "importo_totale": 300.0,
+}
+
+# Due sedi x tre categorie: la forma reale dopo l'esplosione per-categoria.
+_QUOTE_MULTI = [
+    {"ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 30.0, "categoria": "CARNE"},
+    {"ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 70.0, "categoria": "PESCE"},
+    {"ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 50.0, "categoria": "SALUMI"},
+    {"ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 40.0, "categoria": "CARNE"},
+    {"ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 60.0, "categoria": "PESCE"},
+    {"ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 50.0, "categoria": "SALUMI"},
+]
+
+
+def _patch_quote(quote=None):
+    sb = _FakeSBQuote([_RIPARTO_MANUALE], [], _QUOTE_MULTI if quote is None else quote)
+    p = patch.multiple(
+        riparto,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=sb),
+        _carica_sedi_attive=MagicMock(return_value=_SEDI),
+        _invalidate_fatture_rows_cache=MagicMock(),
+    )
+    return sb, p
+
+
+def test_quote_multi_categoria_consolidate_una_per_sede():
+    """Il fix: N quote per sede diventano UNA, cosi' la terna del vincolo e' unica."""
+    sb, p = _patch_quote()
+    with p:
+        out = riparto.riparto_riga_categoria(
+            _body(file_origine="riparto:riparto-1", descrizione="Quota"),
+            authorization="Bearer x",
+        )
+
+    assert out["ok"] is True
+    rpc = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"]
+    assert rpc, "le quote vanno riscritte in transazione, non con un UPDATE in blocco"
+    quote_nuove = rpc[0][1]["p_quote"]
+
+    terne = [(q["ristorante_id"], q["categoria"]) for q in quote_nuove]
+    assert len(terne) == len(set(terne)), f"duplicati sulla terna del vincolo: {terne}"
+    assert len(quote_nuove) == 2, "una quota per sede"
+
+
+def test_consolidamento_conserva_importo_totale_per_sede():
+    """Il consolidamento somma: se perdesse importi, il MOL della sede cambierebbe
+    da solo per una semplice correzione di categoria."""
+    sb, p = _patch_quote()
+    with p:
+        riparto.riparto_riga_categoria(
+            _body(file_origine="riparto:riparto-1", descrizione="Quota"),
+            authorization="Bearer x",
+        )
+    quote_nuove = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"][0][1]["p_quote"]
+    per_sede = {q["ristorante_id"]: q["quota_importo"] for q in quote_nuove}
+
+    assert per_sede["sede-a"] == 150.0, "30+70+50"
+    assert per_sede["sede-b"] == 150.0, "40+60+50"
+    assert sum(per_sede.values()) == sum(q["quota_importo"] for q in _QUOTE_MULTI)
+
+
+def test_consolidamento_preserva_la_percentuale_di_sede():
+    """quota_perc e' la % della SEDE, non della categoria: sommarla darebbe 150%."""
+    sb, p = _patch_quote()
+    with p:
+        riparto.riparto_riga_categoria(
+            _body(file_origine="riparto:riparto-1", descrizione="Quota"),
+            authorization="Bearer x",
+        )
+    quote_nuove = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"][0][1]["p_quote"]
+    assert all(q["quota_perc"] == 50.0 for q in quote_nuove)
+
+
+def test_tutte_le_quote_portano_la_nuova_categoria():
+    sb, p = _patch_quote()
+    with p:
+        riparto.riparto_riga_categoria(
+            _body(cat="PESCE", file_origine="riparto:riparto-1", descrizione="Quota"),
+            authorization="Bearer x",
+        )
+    quote_nuove = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"][0][1]["p_quote"]
+    assert {q["categoria"] for q in quote_nuove} == {"PESCE"}
+
+
+def test_riparto_senza_quote_non_chiama_la_rpc():
+    """Caso degenere: niente quote da riscrivere, ma il padre va comunque riallineato
+    (la RPC rifiuta p_quote vuoto, quindi chiamarla sarebbe un errore garantito)."""
+    sb, p = _patch_quote(quote=[])
+    with p:
+        out = riparto.riparto_riga_categoria(
+            _body(file_origine="riparto:riparto-1", descrizione="Quota"),
+            authorization="Bearer x",
+        )
+    assert out["ok"] is True
+    assert not [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"]
+    assert any(t == "riparto_costi_catena" and "tipo" in payload for t, payload in sb.updates)
