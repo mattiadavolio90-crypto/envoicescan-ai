@@ -555,6 +555,122 @@ def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Hea
     return {"ok": True, "riparto_id": riparto_id, "quote": quote}
 
 
+# ATTENZIONE ALL'ORDINE: questa rotta LETTERALE deve stare prima di
+# PATCH /api/riparto/{riparto_id}. FastAPI risolve le rotte nell'ordine di
+# dichiarazione, non per specificita': con la parametrica davanti, ogni
+# PATCH /api/riparto/riga-categoria finiva in riparto_modifica con
+# riparto_id="riga-categoria", e Postgres rispondeva
+# `invalid input syntax for type uuid` (22P02). Non spostarla piu' in basso.
+@router.patch("/api/riparto/riga-categoria", dependencies=[Depends(_verify_worker_key)])
+def riparto_riga_categoria(
+    body: RipartoRigaCategoriaBody, authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
+    """Corregge la categoria di una riga appartenente a un costo ripartito sul gruppo.
+
+    Perché serve un endpoint dedicato invece di /api/fatture/categoria-batch: le righe
+    di una fattura di struttura vivono sulla SEDE TECNICA ("Costi comuni di gruppo"),
+    non sul punto vendita. categoria-batch filtra per ristorante_id del PV → match su 0
+    righe, e il cliente vedeva un falso successo. La sede tecnica non è selezionabile
+    (account.py: non ci si può posizionare sulla sede-contenitore), quindi senza questa
+    rotta la categoria di una riga ripartita non era correggibile da nessuna UI.
+
+    Dopo la scrittura le quote vanno RI-ESPLOSE (forza=True): i pesi delle categorie
+    sono cambiati e le quote porterebbero ancora quella vecchia, instradando l'importo
+    nel secchio MOL sbagliato (F&B vs spese).
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    _require_catena(user_id, sb)
+
+    try:
+        nuova_cat = normalizza_categoria_richiesta(body.nuova_categoria)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    file_origine = (body.file_origine or "").strip()
+    descrizione = (body.descrizione or "").strip()
+    if not file_origine or not descrizione:
+        raise HTTPException(status_code=400, detail="file_origine e descrizione sono obbligatori")
+
+    # Un costo di gruppo MANUALE non ha file_origine (è NULL in tabella): le righe
+    # sintetiche proiettate ricevono il sentinella "riparto:<uuid>"
+    # (riparto_service._proietta_quote). Cercarlo per file_origine darebbe sempre 404,
+    # e non esistono righe reali in `fatture` da aggiornare: qui la categoria vive solo
+    # sulle quote, che riscriviamo direttamente.
+    if file_origine.startswith(_SENTINELLA_RIPARTO_MANUALE):
+        riparto_id = file_origine[len(_SENTINELLA_RIPARTO_MANUALE):]
+        return _correggi_categoria_costo_manuale(sb, user_id, riparto_id, nuova_cat)
+
+    rip_resp = (
+        sb.table("riparto_costi_catena")
+        .select("id, anno, mese")
+        .eq("user_id", user_id)
+        .eq("file_origine", file_origine)
+        .limit(1)
+        .execute()
+    ).data or []
+    if not rip_resp:
+        raise HTTPException(status_code=404, detail="Nessun costo di gruppo per questo documento")
+    riparto = rip_resp[0]
+
+    righe = fetch_all(
+        sb.table("fatture")
+        .select("id, totale_riga, prezzo_unitario")
+        .eq("user_id", user_id)
+        .eq("file_origine", file_origine)
+        .eq("descrizione", descrizione)
+        .is_("deleted_at", "null")
+    )
+    if not righe:
+        # Riga SINTETICA di quota (_proietta_riparto: nessuna riga reale per quella
+        # categoria, storico purgato o quota legacy): la sua descrizione è generata,
+        # non esiste in `fatture`, quindi il lookup sopra non può trovarla. Non è un
+        # errore del cliente: la categoria di quelle righe vive solo sulle quote,
+        # esattamente come per un costo manuale — stessa scrittura, stessa funzione.
+        if descrizione.startswith(_DESCR_QUOTA_PREFIX) or descrizione == _DESCR_QUOTA_GENERICA:
+            return _correggi_categoria_costo_manuale(sb, user_id, str(riparto["id"]), nuova_cat)
+        raise HTTPException(status_code=404, detail="Riga non trovata nel documento di gruppo")
+
+    # Guardrail dominio #2: "📝 NOTE E DICITURE" solo su righe a importo zero.
+    target_ids = [r["id"] for r in righe]
+    if nuova_cat == "📝 NOTE E DICITURE":
+        target_ids = [r["id"] for r in righe if importo_riga_per_guardrail(r) == 0]
+        if not target_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="NOTE E DICITURE non applicabile: la riga ha importo diverso da zero.",
+            )
+
+    res = (
+        sb.table("fatture")
+        .update({"categoria": nuova_cat, "needs_review": False})
+        .in_("id", target_ids)
+        .execute()
+    )
+    righe_aggiornate = len(res.data or [])
+
+    # Le quote portano ancora la categoria vecchia: ricalcolarle sui pesi aggiornati.
+    try:
+        from services.riparto_service import esplodi_quote_per_categoria
+        esplodi_quote_per_categoria(sb, user_id, str(riparto["id"]), file_origine, forza=True)
+    except Exception as exc:
+        logger.warning(
+            "ri-esplosione post-correzione categoria fallita riparto=%s: %s", riparto["id"], exc
+        )
+
+    ricalcolo_ok = _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
+
+    sedi = _carica_sedi_attive(user_id, sb)
+    return {
+        "ok": True,
+        "categoria": nuova_cat,
+        "righe_aggiornate": righe_aggiornate,
+        "ricalcolo_quote_ok": ricalcolo_ok,
+        "sedi_impattate": [s.get("nome_ristorante") for s in sedi],
+    }
+
+
 @router.patch("/api/riparto/{riparto_id}", dependencies=[Depends(_verify_worker_key)])
 def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Modifica regola/percentuali/importo di un riparto → ricalcola le quote."""
@@ -898,115 +1014,6 @@ def riparto_incoerenze() -> Dict[str, Any]:
         "account": list(per_account.values()),
     }
 
-
-@router.patch("/api/riparto/riga-categoria", dependencies=[Depends(_verify_worker_key)])
-def riparto_riga_categoria(
-    body: RipartoRigaCategoriaBody, authorization: Optional[str] = Header(None)
-) -> Dict[str, Any]:
-    """Corregge la categoria di una riga appartenente a un costo ripartito sul gruppo.
-
-    Perché serve un endpoint dedicato invece di /api/fatture/categoria-batch: le righe
-    di una fattura di struttura vivono sulla SEDE TECNICA ("Costi comuni di gruppo"),
-    non sul punto vendita. categoria-batch filtra per ristorante_id del PV → match su 0
-    righe, e il cliente vedeva un falso successo. La sede tecnica non è selezionabile
-    (account.py: non ci si può posizionare sulla sede-contenitore), quindi senza questa
-    rotta la categoria di una riga ripartita non era correggibile da nessuna UI.
-
-    Dopo la scrittura le quote vanno RI-ESPLOSE (forza=True): i pesi delle categorie
-    sono cambiati e le quote porterebbero ancora quella vecchia, instradando l'importo
-    nel secchio MOL sbagliato (F&B vs spese).
-    """
-    user = _resolve_user_from_token(authorization)
-    sb = _get_supabase_client()
-    user_id = str(user["id"])
-    _require_catena(user_id, sb)
-
-    try:
-        nuova_cat = normalizza_categoria_richiesta(body.nuova_categoria)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    file_origine = (body.file_origine or "").strip()
-    descrizione = (body.descrizione or "").strip()
-    if not file_origine or not descrizione:
-        raise HTTPException(status_code=400, detail="file_origine e descrizione sono obbligatori")
-
-    # Un costo di gruppo MANUALE non ha file_origine (è NULL in tabella): le righe
-    # sintetiche proiettate ricevono il sentinella "riparto:<uuid>"
-    # (riparto_service._proietta_quote). Cercarlo per file_origine darebbe sempre 404,
-    # e non esistono righe reali in `fatture` da aggiornare: qui la categoria vive solo
-    # sulle quote, che riscriviamo direttamente.
-    if file_origine.startswith(_SENTINELLA_RIPARTO_MANUALE):
-        riparto_id = file_origine[len(_SENTINELLA_RIPARTO_MANUALE):]
-        return _correggi_categoria_costo_manuale(sb, user_id, riparto_id, nuova_cat)
-
-    rip_resp = (
-        sb.table("riparto_costi_catena")
-        .select("id, anno, mese")
-        .eq("user_id", user_id)
-        .eq("file_origine", file_origine)
-        .limit(1)
-        .execute()
-    ).data or []
-    if not rip_resp:
-        raise HTTPException(status_code=404, detail="Nessun costo di gruppo per questo documento")
-    riparto = rip_resp[0]
-
-    righe = fetch_all(
-        sb.table("fatture")
-        .select("id, totale_riga, prezzo_unitario")
-        .eq("user_id", user_id)
-        .eq("file_origine", file_origine)
-        .eq("descrizione", descrizione)
-        .is_("deleted_at", "null")
-    )
-    if not righe:
-        # Riga SINTETICA di quota (_proietta_riparto: nessuna riga reale per quella
-        # categoria, storico purgato o quota legacy): la sua descrizione è generata,
-        # non esiste in `fatture`, quindi il lookup sopra non può trovarla. Non è un
-        # errore del cliente: la categoria di quelle righe vive solo sulle quote,
-        # esattamente come per un costo manuale — stessa scrittura, stessa funzione.
-        if descrizione.startswith(_DESCR_QUOTA_PREFIX) or descrizione == _DESCR_QUOTA_GENERICA:
-            return _correggi_categoria_costo_manuale(sb, user_id, str(riparto["id"]), nuova_cat)
-        raise HTTPException(status_code=404, detail="Riga non trovata nel documento di gruppo")
-
-    # Guardrail dominio #2: "📝 NOTE E DICITURE" solo su righe a importo zero.
-    target_ids = [r["id"] for r in righe]
-    if nuova_cat == "📝 NOTE E DICITURE":
-        target_ids = [r["id"] for r in righe if importo_riga_per_guardrail(r) == 0]
-        if not target_ids:
-            raise HTTPException(
-                status_code=422,
-                detail="NOTE E DICITURE non applicabile: la riga ha importo diverso da zero.",
-            )
-
-    res = (
-        sb.table("fatture")
-        .update({"categoria": nuova_cat, "needs_review": False})
-        .in_("id", target_ids)
-        .execute()
-    )
-    righe_aggiornate = len(res.data or [])
-
-    # Le quote portano ancora la categoria vecchia: ricalcolarle sui pesi aggiornati.
-    try:
-        from services.riparto_service import esplodi_quote_per_categoria
-        esplodi_quote_per_categoria(sb, user_id, str(riparto["id"]), file_origine, forza=True)
-    except Exception as exc:
-        logger.warning(
-            "ri-esplosione post-correzione categoria fallita riparto=%s: %s", riparto["id"], exc
-        )
-
-    ricalcolo_ok = _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
-
-    sedi = _carica_sedi_attive(user_id, sb)
-    return {
-        "ok": True,
-        "categoria": nuova_cat,
-        "righe_aggiornate": righe_aggiornate,
-        "ricalcolo_quote_ok": ricalcolo_ok,
-        "sedi_impattate": [s.get("nome_ristorante") for s in sedi],
-    }
 
 
 @router.get("/api/gruppo/costi-comuni", dependencies=[Depends(_verify_worker_key)])
