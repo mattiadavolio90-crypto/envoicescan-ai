@@ -536,11 +536,35 @@ Dettaglio in STORICO §22.
 > fino a **conferma alle 10:25 CEST del 25/8**: `{"commit":"ebb842f975f8", ...}`
 > — deploy verificato, non presunto.
 
-~~Resta di §3b la **chat** di `fastapi_worker.py`.~~ — **chat CHIUSA il
-25/8/2026**, dettaglio in §23 dello STORICO. Con la chat chiusa **§3b è vuota**:
-del ciclo resta solo §2 (mock globale `conftest.py`, rimandato per decisione
-esplicita). Il branch `audit-s3b-chat` è pushato ma **non ancora mergiato né
-deployato** — la chiusura formale del ciclo non è quindi ancora dovuta.
+~~Resta di §3b la **chat** di `fastapi_worker.py`.~~ — **chat CHIUSA e DEPLOYATA
+il 25/8/2026**, dettaglio in §23 dello STORICO. Con la chat chiusa **§3b è
+vuota**: del ciclo resta solo §2 (mock globale `conftest.py`, rimandato per
+decisione esplicita).
+
+> ✅ **Deployato il 25/8/2026 pomeriggio** (`main` `de2d02a` → `d92de1d`).
+> **Deploy in orario cliente su ordine esplicito e ripetuto dell'utente**, che
+> ha confermato dopo che il conflitto con la finestra oraria di `CLAUDE.md`
+> (16:00 di martedì) gli era stato posto per iscritto. Registrato qui perché
+> sia una decisione consapevole a verbale, non un'eccezione silenziosa.
+>
+> **Questa volta la CI è girata davvero.** La lezione del deploy Tag di
+> stamattina (la CI parte solo su push a `main`/`progetto` o su
+> `pull_request`, mai su un branch qualsiasi) è stata applicata alla
+> rovescia: invece di surrogare i check in locale, il fast-forward su `main`
+> ha **fatto partire la CI reale**, e i 4 workflow sono verdi sul commit
+> servito — `Tests` ✅, `OpenAPI Schema Drift Check` ✅, `Requirements
+> Consistency` ✅, `Keep-alive Worker` ✅. È caduto così l'ultimo blocco del
+> `code-reviewer`, che era esattamente *"verde sulla mia macchina non è verde
+> in CI"*.
+>
+> Merge eseguito come **fast-forward puro** verificato prima
+> (`git merge-base --is-ancestor origin/main audit-s3b-chat`), quindi
+> nessun commit poteva andare perso. Deploy Railway automatico sul push
+> (come da `docs/DEPLOY_RUNBOOK.md`). `/health` serviva ancora `de2d02af3900`
+> subito dopo il push (build in corso); ripollato fino a conferma alle
+> **16:19 CEST**: `{"commit":"d92de1d448cf","status":"ok"}` — **deploy
+> verificato leggendo `/health`, non presunto dal push**. `POST /api/chat`
+> risponde 401 senza chiave, come deve.
 
 **Il `code-reviewer` ha bloccato la prima chiusura**: la migration per
 `pagata_manuale_at` era scritta ma **mai applicata al DB live**, mentre il
@@ -642,8 +666,9 @@ di lasciarlo implicito:
    terzo file mai citato `tag_analytics_service.py` 15%→69%). ~~Resta la **chat**
    di `fastapi_worker.py`~~ — **CHIUSA il 25/8** (1 HIGH + 4 MEDIUM fixati, 21
    test, 4 mutazioni; perimetro reale 25 simboli contro i 4 dichiarati, ramo
-   "catena" incluso). **Branch `audit-s3b-chat` pushato, NON ancora mergiato né
-   deployato** — vedi §23 dello STORICO.
+   "catena" incluso). **DEPLOYATA il 25/8 pomeriggio** (commit `d92de1d`,
+   confermato su `/health` alle 16:19 CEST, CI verde su `main`) — vedi §23
+   dello STORICO.
 2. ~~Per il frontend: le ~6 route API con logica propria e i componenti che
    scrivono sul DB~~ — **CHIUSO l'8/8**: le 6 route sono state lette (sono tutte
    auth/sessione + il proxy TTS), e il sotto-perimetro "componenti che scrivono
