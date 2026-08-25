@@ -37,6 +37,12 @@ logger = logging.getLogger("fastapi_worker")
 # per file_origine, che non troverebbe mai.
 SENTINELLA_RIPARTO_MANUALE = "riparto:"
 
+# Descrizioni delle righe SINTETICHE di quota (_proietta_riparto, ramo senza righe
+# reali): non esistono in `fatture`, quindi cercarle per descrizione darebbe 404.
+# Il router (correzione categoria) le riconosce da qui e scrive sulle quote.
+DESCR_QUOTA_SINTETICA_PREFIX = "Quota di gruppo — "
+DESCR_QUOTA_SINTETICA_GENERICA = "Quota costi di gruppo"
+
 # Campi di una riga fattura come li serve il funnel _fetch_fatture_rows (stessa
 # selezione di _build_fatture_base_query). Le righe proiettate devono avere ESATTAMENTE
 # queste chiavi per comportarsi come una riga reale in ogni consumatore (aggregati,
@@ -327,7 +333,7 @@ def _proietta_riparto(
             nr["id"] = nr.get("id") or id_gen()
             nr["ripartita_su_gruppo"] = True
             nr["descrizione"] = (
-                f"Quota di gruppo — {cat}" if cat else "Quota costi di gruppo"
+                f"{DESCR_QUOTA_SINTETICA_PREFIX}{cat}" if cat else DESCR_QUOTA_SINTETICA_GENERICA
             )
             nr["categoria"] = cat or None
             nr["quantita"] = 1

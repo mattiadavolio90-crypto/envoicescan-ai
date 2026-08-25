@@ -528,7 +528,11 @@ const ArticoloRiga = memo(function ArticoloRiga({
         setCurrentCat(newCat);
         setNeedsReview(false);
         const azione = confirmOnly ? "confermata" : "aggiornata";
-        if (conGruppo) {
+        // La categoria è scritta, ma il ricalcolo quote è fallito: dirlo, altrimenti
+        // il MOL resta disallineato in silenzio fino alla prossima scrittura.
+        if (conGruppo && dataGruppo?.ricalcolo_quote_ok === false) {
+          toast.warning(`Categoria ${azione}, ma il ricalcolo delle quote non è riuscito. Riprova più tardi.`);
+        } else if (conGruppo) {
           // Il cliente deve sapere che la correzione vale per tutto il gruppo.
           const sedi: string[] = dataGruppo?.sedi_impattate ?? [];
           const doveGruppo = sedi.length

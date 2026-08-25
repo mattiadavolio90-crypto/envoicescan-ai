@@ -33,6 +33,10 @@ from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIA_NON_CLASSIFICATA
 # categoria reale, che è sempre una stringa in maiuscolo senza punteggiatura.
 _SENZA_CATEGORIA = "(senza categoria)"
 from services.riparto_service import SENTINELLA_RIPARTO_MANUALE as _SENTINELLA_RIPARTO_MANUALE
+from services.riparto_service import (
+    DESCR_QUOTA_SINTETICA_GENERICA as _DESCR_QUOTA_GENERICA,
+    DESCR_QUOTA_SINTETICA_PREFIX as _DESCR_QUOTA_PREFIX,
+)
 logger = logging.getLogger("fastapi_worker")
 
 
@@ -131,15 +135,26 @@ def _quote_percentuali(importo: float, percentuali: Dict[str, float], sedi_ok: s
     return quote
 
 
-def _post_scrittura_riparto(sb, user_id: str, anno: int, mese: int) -> None:
+def _post_scrittura_riparto(sb, user_id: str, anno: int, mese: int) -> bool:
     """Dopo ogni scrittura riparto: ricalcola le quote mensili (motore SQL) e
     invalida briefing + cache righe delle sedi coinvolte. Best-effort: un errore
-    di invalidazione non deve far fallire l'operazione principale."""
+    qui non deve far fallire l'operazione principale.
+
+    Ritorna True se il ricalcolo quote è andato a buon fine, False altrimenti.
+
+    Perché non solleva più: viene chiamata DOPO che la scrittura è già a segno. Un
+    500 qui diceva al cliente "non è cambiato niente" mentre la categoria era già
+    salvata — e senza exception handler globale sul worker quel 500 tornava con un
+    corpo non-JSON, che lato Next diventava un fuorviante "Worker unreachable".
+    Il chiamante propaga l'esito nella risposta e l'UI avvisa che resta da
+    ricalcolare, invece di dichiarare fallito tutto.
+    """
+    ricalcolo_ok = True
     try:
         sb.rpc("riparto_quote_mensili", {"p_user_id": user_id, "p_anno": anno, "p_mese": mese}).execute()
     except Exception as exc:
+        ricalcolo_ok = False
         logger.error("riparto_quote_mensili fallita user=%s %d-%d: %s", user_id, anno, mese, exc)
-        raise HTTPException(status_code=500, detail="Ricalcolo quote fallito")
     # Il MOL delle sedi coinvolte è cambiato: invalida briefing di tutte le sedi
     # del cliente (semplice e sicuro; azione rara) + cache righe fatture.
     try:
@@ -152,6 +167,7 @@ def _post_scrittura_riparto(sb, user_id: str, anno: int, mese: int) -> None:
         _invalidate_fatture_rows_cache()
     except Exception:
         pass
+    return ricalcolo_ok
 
 
 def _correggi_categoria_costo_manuale(
@@ -190,13 +206,14 @@ def _correggi_categoria_costo_manuale(
     sb.table("riparto_costi_catena") \
         .update({"tipo": tipo}).eq("id", riparto_id).eq("user_id", user_id).execute()
 
-    _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
+    ricalcolo_ok = _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
 
     sedi = _carica_sedi_attive(user_id, sb)
     return {
         "ok": True,
         "righe_aggiornate": 0,
         "categoria": nuova_cat,
+        "ricalcolo_quote_ok": ricalcolo_ok,
         "sedi_impattate": [s.get("nome_ristorante") for s in sedi if s.get("nome_ristorante")],
     }
 
@@ -898,6 +915,13 @@ def riparto_riga_categoria(
         .is_("deleted_at", "null")
     )
     if not righe:
+        # Riga SINTETICA di quota (_proietta_riparto: nessuna riga reale per quella
+        # categoria, storico purgato o quota legacy): la sua descrizione è generata,
+        # non esiste in `fatture`, quindi il lookup sopra non può trovarla. Non è un
+        # errore del cliente: la categoria di quelle righe vive solo sulle quote,
+        # esattamente come per un costo manuale — stessa scrittura, stessa funzione.
+        if descrizione.startswith(_DESCR_QUOTA_PREFIX) or descrizione == _DESCR_QUOTA_GENERICA:
+            return _correggi_categoria_costo_manuale(sb, user_id, str(riparto["id"]), nuova_cat)
         raise HTTPException(status_code=404, detail="Riga non trovata nel documento di gruppo")
 
     # Guardrail dominio #2: "📝 NOTE E DICITURE" solo su righe a importo zero.
@@ -927,13 +951,14 @@ def riparto_riga_categoria(
             "ri-esplosione post-correzione categoria fallita riparto=%s: %s", riparto["id"], exc
         )
 
-    _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
+    ricalcolo_ok = _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
 
     sedi = _carica_sedi_attive(user_id, sb)
     return {
         "ok": True,
         "categoria": nuova_cat,
         "righe_aggiornate": righe_aggiornate,
+        "ricalcolo_quote_ok": ricalcolo_ok,
         "sedi_impattate": [s.get("nome_ristorante") for s in sedi],
     }
 

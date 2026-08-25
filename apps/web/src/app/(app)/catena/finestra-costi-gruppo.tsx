@@ -458,11 +458,17 @@ function DettagliCosto({
       const data = await res.json();
       if (res.ok) {
         const sedi: string[] = data.sedi_impattate ?? [];
-        toast.success(
-          sedi.length
-            ? `Categoria aggiornata · vale per ${sedi.join(" e ")}`
-            : "Categoria aggiornata",
-        );
+        // La categoria è scritta, ma il ricalcolo quote è fallito: dirlo, altrimenti
+        // il MOL resta disallineato in silenzio fino alla prossima scrittura.
+        if (data.ricalcolo_quote_ok === false) {
+          toast.warning("Categoria aggiornata, ma il ricalcolo delle quote non è riuscito. Riprova più tardi.");
+        } else {
+          toast.success(
+            sedi.length
+              ? `Categoria aggiornata · vale per ${sedi.join(" e ")}`
+              : "Categoria aggiornata",
+          );
+        }
         onCorretto();
       } else {
         toast.error(data.detail ?? data.error ?? "Errore aggiornamento");

@@ -196,3 +196,74 @@ def test_esplosione_fallita_non_fa_fallire_la_correzione():
     with p, patch("services.riparto_service.esplodi_quote_per_categoria", boom):
         out = riparto.riparto_riga_categoria(_body(), authorization="Bearer x")
     assert out["ok"] is True
+
+
+# ─── Regressione: "Worker unreachable" sulle righe ripartite (25/8/2026) ─────────
+# Il cliente non riusciva a cambiare categoria a NESSUNA riga ripartita: toast
+# "Worker unreachable" in 1-3 secondi (quindi non un timeout, che scatta a 12s).
+# Sotto c'erano due difetti distinti, entrambi coperti qui.
+
+
+def test_ricalcolo_quote_fallito_non_fa_fallire_la_scrittura():
+    """_post_scrittura_riparto girava DOPO l'UPDATE ma rilanciava HTTPException(500)
+    se la RPC falliva: la categoria era già salvata e il cliente leggeva un errore.
+    Peggio, il worker non ha exception handler globale → quel 500 tornava con corpo
+    non-JSON, che lato Next diventava il fuorviante "Worker unreachable"."""
+    sb, p, esplodi = _patch()
+    with patch.multiple(
+        riparto,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=sb),
+        _carica_sedi_attive=MagicMock(return_value=_SEDI),
+        _invalidate_fatture_rows_cache=MagicMock(),
+    ), patch("services.riparto_service.esplodi_quote_per_categoria", esplodi):
+        sb.rpc = MagicMock(side_effect=RuntimeError("RPC giù"))
+        out = riparto.riparto_riga_categoria(_body(), authorization="Bearer x")
+
+    assert out["ok"] is True, "la categoria è già scritta: non si dichiara fallito tutto"
+    assert out["ricalcolo_quote_ok"] is False, "ma il client deve poterlo dire all'utente"
+    assert ("fatture", {"categoria": "CARNE", "needs_review": False}) in sb.updates
+
+
+def test_ricalcolo_quote_ok_true_quando_la_rpc_riesce():
+    """Contro-prova del test precedente: con la RPC sana il flag è True, così un
+    False significa davvero "ricalcolo fallito" e non "flag sempre spento"."""
+    sb, p, esplodi = _patch()
+    with patch.multiple(
+        riparto,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=sb),
+        _carica_sedi_attive=MagicMock(return_value=_SEDI),
+        _invalidate_fatture_rows_cache=MagicMock(),
+    ), patch("services.riparto_service.esplodi_quote_per_categoria", esplodi):
+        out = riparto.riparto_riga_categoria(_body(), authorization="Bearer x")
+
+    assert out["ricalcolo_quote_ok"] is True
+
+
+def test_riga_sintetica_di_quota_corretta_sulle_quote_non_404():
+    """Le righe sintetiche (_proietta_riparto, ramo senza righe reali) hanno una
+    descrizione GENERATA che non esiste in `fatture`: il lookup per descrizione non
+    poteva trovarla e l'endpoint rispondeva 404 su una riga legittima. La loro
+    categoria vive solo sulle quote, come per un costo manuale."""
+    from services.riparto_service import DESCR_QUOTA_SINTETICA_PREFIX
+
+    sb, p, esplodi = _patch(righe=[])  # nessuna riga reale: è il caso sintetico
+    with p, patch("services.riparto_service.esplodi_quote_per_categoria", esplodi):
+        out = riparto.riparto_riga_categoria(
+            _body(descrizione=f"{DESCR_QUOTA_SINTETICA_PREFIX}UTENZE E LOCALI"),
+            authorization="Bearer x",
+        )
+
+    assert out["ok"] is True
+    assert ("riparto_costi_catena_quote", {"categoria": "CARNE"}) in sb.updates
+
+
+def test_descrizione_inesistente_resta_404():
+    """Il fallback sintetico non deve trasformare ogni 404 in un falso successo."""
+    sb, p, esplodi = _patch(righe=[])
+    with p, pytest.raises(HTTPException) as exc:
+        riparto.riparto_riga_categoria(
+            _body(descrizione="PRODOTTO CHE NON ESISTE"), authorization="Bearer x"
+        )
+    assert exc.value.status_code == 404
