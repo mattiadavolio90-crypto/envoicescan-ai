@@ -27,6 +27,11 @@ import { SPESE_GENERALI_SET } from "@/lib/categorie-spesa";
  * lista da /api/fatture/categorie la include perché serve a FILTRARE): è uno stato
  * che solo l'AI può assegnare (CLAUDE.md §1), e tutti i backend lo rifiutano con 400
  * via normalizza_categoria_richiesta. Offrirlo era un'azione che non poteva riuscire.
+ *
+ * "📝 NOTE E DICITURE" NON è selezionabile: è ammessa solo su righe con totale_riga
+ * == 0 (CLAUDE.md §2); su una riga con importo reale il worker la rifiuta con 422
+ * (guardrail in services/routers/riparto.py). Stesso motivo di "Da Classificare":
+ * offrirla era un'azione che quasi sempre non poteva riuscire.
  */
 export function DropdownCategoria({
   value,
@@ -46,7 +51,12 @@ export function DropdownCategoria({
   const fbCats = useMemo(
     () =>
       categorie
-        .filter((c) => !SPESE_GENERALI_SET.has(c.toUpperCase()) && c !== "Da Classificare")
+        .filter(
+          (c) =>
+            !SPESE_GENERALI_SET.has(c.toUpperCase()) &&
+            c !== "Da Classificare" &&
+            c !== "📝 NOTE E DICITURE",
+        )
         .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" })),
     [categorie],
   );

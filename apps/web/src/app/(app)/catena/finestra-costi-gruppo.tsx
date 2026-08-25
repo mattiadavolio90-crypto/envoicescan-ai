@@ -438,7 +438,7 @@ function DettagliCosto({
   const [apriRighe, setApriRighe] = useState(false);
   const [salvando, setSalvando] = useState<number | null>(null);
 
-  const daSistemare = costo.righe.filter(
+  const daVerificare = costo.righe.filter(
     (r) => r.needs_review || !r.categoria || r.categoria === "Da Classificare",
   ).length;
 
@@ -489,9 +489,9 @@ function DettagliCosto({
               className={`size-3 transition-transform ${apriRighe ? "" : "-rotate-90"}`}
             />
             righe del documento ({costo.righe.length})
-            {daSistemare > 0 && (
+            {daVerificare > 0 && (
               <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[0.65rem] font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
-                {daSistemare} da sistemare
+                {daVerificare} da verificare
               </span>
             )}
           </button>

@@ -561,7 +561,13 @@ const ArticoloRiga = memo(function ArticoloRiga({
     }
   }
 
-  const daScegliere = needsReview && (!currentCat || currentCat === "Da Classificare");
+  // OR, non AND: una riga va segnalata se l'AI ha bassa confidenza (needsReview) O se
+  // manca proprio una categoria valida, indipendentemente da needsReview — caso reale:
+  // le righe di quota di gruppo proiettate (riparto_service.py) hanno needs_review
+  // hardcoded a False anche quando la loro categoria e' vuota. Con l'AND restavano
+  // senza badge e senza "Scegli categoria" qui, pur essendo segnalate nel modale Costi
+  // di gruppo (stesso componente DropdownCategoria, stessa condizione lì già a OR).
+  const daScegliere = needsReview || !currentCat || currentCat === "Da Classificare";
   const trendPct = articolo.prezzo_unit_trend_pct;
   // Articolo che include quote di gruppo proiettate: la categoria riflette il
   // documento di struttura. È correggibile da qui, ma la scrittura passa dalla rotta
@@ -597,11 +603,11 @@ const ArticoloRiga = memo(function ArticoloRiga({
                 <Split className="size-2.5" /> Ripartita
               </span>
             )}
-            {/* needsReview = categoria incerta. Due casi:
+            {/* daScegliere = riga da correggere (AI incerta O categoria assente). Due casi:
                 - categoria proposta (≠ Da Classificare): badge Verifica + Conferma verde
                 - categoria mancante (Da Classificare/vuota): solo badge Verifica,
                   niente Conferma (non c'è nulla da confermare, va scelta nel dropdown). */}
-            {needsReview && (() => {
+            {daScegliere && (() => {
               const haProposta = Boolean(currentCat) && currentCat !== "Da Classificare";
               return (
                 <>
