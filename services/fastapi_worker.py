@@ -2845,11 +2845,21 @@ def _build_chat_system_prompt(
     referente = user.get("nome_referente") or ""
 
     kpi_testo = ""
+    _qualche_sezione_fallita = False
+    # Gate permessi pagina applicato anche ai DATI iniettati nel prompt, non solo
+    # ai tool: senza questo il gate tool (vedi chat_ai piu' in basso, _TOOL_FLAG)
+    # era un'invariante violata dalla stessa funzione che la dichiara — un utente
+    # senza 'margini' non puo' chiamare query_margini ma trovava gia' il MOL
+    # scritto qui. pagine=None (admin/nessun flag) => tutto visibile, come i tool.
+    pagine = _normalize_pagine(user.get("pagine_abilitate"))
+    _pagine_set = set(pagine) if pagine is not None else None
+    _pag_margini = _pagine_set is None or "margini" in _pagine_set
+    _pag_fatture = _pagine_set is None or "analisi_fatture" in _pagine_set
 
     # 1) KPI Home — stessa fonte, stessi numeri (margini_mensili + costi)
     try:
-        kpi = home_kpi(authorization)
-        if kpi.has_data:
+        kpi = home_kpi(authorization) if _pag_margini else None
+        if kpi is not None and kpi.has_data:
             fc = f"{kpi.food_cost_pct:.1f}%" if kpi.food_cost_pct is not None else "n/d"
             kpi_testo += (
                 f"\n\n## Conti del ristorante — {kpi.periodo_label} "
@@ -2864,6 +2874,7 @@ def _build_chat_system_prompt(
                 kpi_testo += f"  (confronto {kpi.confronto_label})\n"
     except Exception as exc:
         logger.warning("chat: KPI Home non disponibili: %s", exc)
+        _qualche_sezione_fallita = True
 
     # 2) Top categorie/fornitori (ultimi 90 gg) per le top-list "a colpo d'occhio"
     # (food cost / fornitore piu' caro). Aggregazione LATO DB via RPC: il vecchio
@@ -2875,7 +2886,7 @@ def _build_chat_system_prompt(
         user_id = str(user["id"])
         top_cat, top_forn = _chat_top_cat_forn(
             supabase_client, user_id, ristorante_id, giorni=90, top=5,
-        )
+        ) if _pag_fatture else ([], [])
         if top_cat:
             kpi_testo += "\n## Costi per categoria (ultimi 90 giorni)\n"
             for cat, v in top_cat:
@@ -2889,8 +2900,7 @@ def _build_chat_system_prompt(
 
     # 3) Agenda di oggi — solo se l'utente ha il flag 'agenda'. Inietta gli
     # appuntamenti odierni cosi' la chat risponde a "cosa ho oggi" senza tool-call.
-    pagine = _normalize_pagine(user.get("pagine_abilitate"))
-    if pagine is None or "agenda" in set(pagine):
+    if _pagine_set is None or "agenda" in _pagine_set:
         try:
             from datetime import date as _date_ag
             oggi_ag = _date_ag.today().isoformat()
@@ -2918,187 +2928,222 @@ def _build_chat_system_prompt(
     # (fatture fornitori, ricavi, classificazione). Agenda/coperti/scadenzario
     # sono opzionali e non vengono mai segnalati come problema.
     alert_testo = ""
-    try:
-        from datetime import timedelta as _tda
-        from calendar import monthrange as _monthrange
-        user_id_str = str(user["id"])
-        _oggi_a = _oggi_rome()  # Europe/Rome, non UTC: niente sfasamento notturno
-        if _oggi_a.month == 1:
-            _mc_anno, _mc_mese = _oggi_a.year - 1, 12
-        else:
-            _mc_anno, _mc_mese = _oggi_a.year, _oggi_a.month - 1
-        _mc_inizio = f"{_mc_anno}-{_mc_mese:02d}-01"
-        # Ultimo giorno REALE del mese precedente: mai "-31" hardcoded (giugno=30,
-        # febbraio=28/29 → "2026-06-31" è una data invalida e fa fallire la query).
-        _mc_ultimo_g = _monthrange(_mc_anno, _mc_mese)[1]
-        _mc_fine = f"{_mc_anno}-{_mc_mese:02d}-{_mc_ultimo_g:02d}"
-
-        # Alert 1: fatture fornitori mancanti nel mese precedente
+    if _pag_margini:
         try:
-            q_fat = (
-                supabase_client.table("fatture")
-                .select("id", count="exact")
-                .eq("user_id", user_id_str)
-                .is_("deleted_at", "null")
-                .gte("data_documento", _mc_inizio)
-                .lte("data_documento", _mc_fine)
-            )
-            if ristorante_id:
-                q_fat = q_fat.eq("ristorante_id", ristorante_id)
-            fat_count = (q_fat.execute().count) or 0
-            if fat_count == 0:
-                _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
-                           "luglio","agosto","settembre","ottobre","novembre","dicembre"]
-                alert_testo += (
-                    f"\n- ⚠️ Nessuna fattura fornitore caricata per {_mesi_n[_mc_mese]} {_mc_anno}:"
-                    f" food cost e costi di quel mese non sono calcolabili."
-                    f" Suggerisci di caricare le fatture in Analisi Fatture."
+            from datetime import timedelta as _tda
+            from calendar import monthrange as _monthrange
+            user_id_str = str(user["id"])
+            _oggi_a = _oggi_rome()  # Europe/Rome, non UTC: niente sfasamento notturno
+            if _oggi_a.month == 1:
+                _mc_anno, _mc_mese = _oggi_a.year - 1, 12
+            else:
+                _mc_anno, _mc_mese = _oggi_a.year, _oggi_a.month - 1
+            _mc_inizio = f"{_mc_anno}-{_mc_mese:02d}-01"
+            # Ultimo giorno REALE del mese precedente: mai "-31" hardcoded (giugno=30,
+            # febbraio=28/29 → "2026-06-31" è una data invalida e fa fallire la query).
+            _mc_ultimo_g = _monthrange(_mc_anno, _mc_mese)[1]
+            _mc_fine = f"{_mc_anno}-{_mc_mese:02d}-{_mc_ultimo_g:02d}"
+
+            # Alert 1: fatture fornitori mancanti nel mese precedente
+            try:
+                q_fat = (
+                    supabase_client.table("fatture")
+                    .select("id", count="exact")
+                    .eq("user_id", user_id_str)
+                    .is_("deleted_at", "null")
+                    .gte("data_documento", _mc_inizio)
+                    .lte("data_documento", _mc_fine)
                 )
-        except Exception as exc:
-            logger.warning("chat alert 1 (fatture mancanti) non calcolabile: %s", exc)
-
-        # Alert 2: ricavi mancanti nel mese precedente
-        try:
-            q_ric = (
-                supabase_client.table("margini_mensili")
-                .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
-                .eq("user_id", user_id_str)
-                .eq("anno", _mc_anno)
-                .eq("mese", _mc_mese)
-            )
-            if ristorante_id:
-                q_ric = q_ric.eq("ristorante_id", ristorante_id)
-            ric_data = q_ric.execute().data or []
-            fatturato_ok = any(
-                (float(r.get("fatturato_iva10") or 0)
-                 + float(r.get("fatturato_iva22") or 0)
-                 + float(r.get("altri_ricavi_noiva") or 0)) > 0
-                for r in ric_data
-            )
-            # Modalità mensile: il fatturato sta in ricavi_modalita_mensile e
-            # margini_mensili resta a 0. Senza questo, l'assistente dice al cliente
-            # che non ha registrato ricavi che ha inserito. Solo con una sede
-            # selezionata: l'override è per-ristorante (come l'alert 1 sopra).
-            if not fatturato_ok and ristorante_id:
-                try:
-                    _ov = _load_mensile_overrides(supabase_client, ristorante_id, [_mc_anno]).get(
-                        (_mc_anno, _mc_mese)
+                if ristorante_id:
+                    q_fat = q_fat.eq("ristorante_id", ristorante_id)
+                fat_count = (q_fat.execute().count) or 0
+                if fat_count == 0:
+                    _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                               "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                    alert_testo += (
+                        f"\n- ⚠️ Nessuna fattura fornitore caricata per {_mesi_n[_mc_mese]} {_mc_anno}:"
+                        f" food cost e costi di quel mese non sono calcolabili."
+                        f" Suggerisci di caricare le fatture in Analisi Fatture."
                     )
-                    if _ov and (_ov.get("iva10", 0) + _ov.get("iva22", 0) + _ov.get("altri", 0)) > 0:
-                        fatturato_ok = True
-                except Exception as exc:
-                    logger.warning("chat alert 2: lettura override mensile fallita: %s", exc)
-            if not fatturato_ok:
-                _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
-                           "luglio","agosto","settembre","ottobre","novembre","dicembre"]
-                alert_testo += (
-                    f"\n- ⚠️ Fatturato/ricavi non registrati per {_mesi_n[_mc_mese]} {_mc_anno}:"
-                    f" MOL e food cost % non sono calcolabili senza il fatturato."
-                    f" Suggerisci di registrare i ricavi in Movimenti → Ricavi."
-                )
-        except Exception as exc:
-            logger.warning("chat alert 2 (ricavi mancanti) non calcolabile: %s", exc)
+            except Exception as exc:
+                logger.warning("chat alert 1 (fatture mancanti) non calcolabile: %s", exc)
+                _qualche_sezione_fallita = True
 
-        # Alert 3: costo personale mancante nel mese precedente (falsa il MOL)
-        try:
-            q_per = (
-                supabase_client.table("margini_mensili")
-                .select("costo_dipendenti,costo_personale_extra")
-                .eq("user_id", user_id_str)
-                .eq("anno", _mc_anno)
-                .eq("mese", _mc_mese)
-            )
-            if ristorante_id:
-                q_per = q_per.eq("ristorante_id", ristorante_id)
-            per_data = q_per.execute().data or []
-            personale_ok = any(
-                (float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)) > 0
-                for r in per_data
-            )
-            if not personale_ok:
-                _mesi_n2 = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
-                            "luglio","agosto","settembre","ottobre","novembre","dicembre"]
-                alert_testo += (
-                    f"\n- ⚠️ Costo del personale non registrato per {_mesi_n2[_mc_mese]} {_mc_anno}:"
-                    f" il MOL risulta sovrastimato senza questa voce."
-                    f" Suggerisci di inserirlo in Movimenti → Ricavi (sezione Personale)."
+            # Alert 2: ricavi mancanti nel mese precedente
+            try:
+                q_ric = (
+                    supabase_client.table("margini_mensili")
+                    .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+                    .eq("user_id", user_id_str)
+                    .eq("anno", _mc_anno)
+                    .eq("mese", _mc_mese)
                 )
-        except Exception as exc:
-            logger.warning("chat alert 3 (personale mancante) non calcolabile: %s", exc)
-
-        # Alert 5: spese generali mancanti nel mese precedente (affitto/utenze sempre presenti)
-        try:
-            q_spese = (
-                supabase_client.table("margini_mensili")
-                .select("altri_costi_spese")
-                .eq("user_id", user_id_str)
-                .eq("anno", _mc_anno)
-                .eq("mese", _mc_mese)
-            )
-            if ristorante_id:
-                q_spese = q_spese.eq("ristorante_id", ristorante_id)
-            spese_data = q_spese.execute().data or []
-            # Controlla anche i costi automatici da fatture di spese generali.
-            # NB: filtrare per nome esatto, non con ilike("%SPESE%"): nessuna delle
-            # categorie reali contiene la parola "SPESE" (sono SERVIZI E CONSULENZE,
-            # UTENZE E LOCALI, MANUTENZIONE E ATTREZZATURE, MATERIALE DI CONSUMO),
-            # quindi il vecchio filtro non matchava mai nulla e l'alert partiva
-            # anche per mesi con spese regolarmente registrate.
-            q_spese_auto = (
-                supabase_client.table("fatture")
-                .select("id", count="exact")
-                .eq("user_id", user_id_str)
-                .is_("deleted_at", "null")
-                .in_("categoria", list(_CATEGORIE_SPESE_GENERALI))
-                .gte("data_documento", _mc_inizio)
-                .lte("data_documento", _mc_fine)
-            )
-            if ristorante_id:
-                q_spese_auto = q_spese_auto.eq("ristorante_id", ristorante_id)
-            spese_auto_count = (q_spese_auto.execute().count) or 0
-            spese_manuali_ok = any(float(r.get("altri_costi_spese") or 0) > 0 for r in spese_data)
-            if not spese_manuali_ok and spese_auto_count == 0:
-                _mesi_n3 = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
-                            "luglio","agosto","settembre","ottobre","novembre","dicembre"]
-                alert_testo += (
-                    f"\n- ⚠️ Spese generali non registrate per {_mesi_n3[_mc_mese]} {_mc_anno}:"
-                    f" affitto, utenze e altri costi fissi sono sempre presenti — se mancano"
-                    f" il MOL risulta sovrastimato."
-                    f" Suggerisci di inserirle in Movimenti → Ricavi (sezione Spese) o caricare le fatture relative."
+                if ristorante_id:
+                    q_ric = q_ric.eq("ristorante_id", ristorante_id)
+                ric_data = q_ric.execute().data or []
+                fatturato_ok = any(
+                    (float(r.get("fatturato_iva10") or 0)
+                     + float(r.get("fatturato_iva22") or 0)
+                     + float(r.get("altri_ricavi_noiva") or 0)) > 0
+                    for r in ric_data
                 )
-        except Exception as exc:
-            logger.warning("chat alert 5 (spese mancanti) non calcolabile: %s", exc)
+                # Modalità mensile: il fatturato sta in ricavi_modalita_mensile e
+                # margini_mensili resta a 0. Senza questo, l'assistente dice al cliente
+                # che non ha registrato ricavi che ha inserito. Solo con una sede
+                # selezionata: l'override è per-ristorante (come l'alert 1 sopra).
+                if not fatturato_ok and ristorante_id:
+                    try:
+                        _ov = _load_mensile_overrides(supabase_client, ristorante_id, [_mc_anno]).get(
+                            (_mc_anno, _mc_mese)
+                        )
+                        if _ov and (_ov.get("iva10", 0) + _ov.get("iva22", 0) + _ov.get("altri", 0)) > 0:
+                            fatturato_ok = True
+                    except Exception as exc:
+                        logger.warning("chat alert 2: lettura override mensile fallita: %s", exc)
+                if not fatturato_ok:
+                    _mesi_n = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                               "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                    alert_testo += (
+                        f"\n- ⚠️ Fatturato/ricavi non registrati per {_mesi_n[_mc_mese]} {_mc_anno}:"
+                        f" MOL e food cost % non sono calcolabili senza il fatturato."
+                        f" Suggerisci di registrare i ricavi in Movimenti → Ricavi."
+                    )
+            except Exception as exc:
+                logger.warning("chat alert 2 (ricavi mancanti) non calcolabile: %s", exc)
+                _qualche_sezione_fallita = True
 
-        # Alert 7: righe Da Classificare (abbassano food cost silenziosamente)
-        try:
-            q_nr = (
-                supabase_client.table("fatture")
-                .select("id", count="exact")
-                .eq("user_id", user_id_str)
-                .is_("deleted_at", "null")
-                .eq("needs_review", True)
-            )
-            if ristorante_id:
-                q_nr = q_nr.eq("ristorante_id", ristorante_id)
-            nr_count = (q_nr.execute().count) or 0
-            if nr_count > 0:
-                alert_testo += (
-                    f"\n- ⚠️ {nr_count} righe fattura 'Da Classificare':"
-                    f" non rientrano nei calcoli di food cost e margine."
-                    f" Se un valore sembra basso, potrebbe dipendere da questo."
-                    f" Suggerisci di classificarle in Analisi Fatture → Da Classificare."
+            # Alert 3: costo personale mancante nel mese precedente (falsa il MOL)
+            try:
+                q_per = (
+                    supabase_client.table("margini_mensili")
+                    .select("costo_dipendenti,costo_personale_extra")
+                    .eq("user_id", user_id_str)
+                    .eq("anno", _mc_anno)
+                    .eq("mese", _mc_mese)
                 )
-        except Exception as exc:
-            logger.warning("chat alert 7 (da classificare) non calcolabile: %s", exc)
+                if ristorante_id:
+                    q_per = q_per.eq("ristorante_id", ristorante_id)
+                per_data = q_per.execute().data or []
+                personale_ok = any(
+                    (float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)) > 0
+                    for r in per_data
+                )
+                if not personale_ok:
+                    _mesi_n2 = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                                "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                    alert_testo += (
+                        f"\n- ⚠️ Costo del personale non registrato per {_mesi_n2[_mc_mese]} {_mc_anno}:"
+                        f" il MOL risulta sovrastimato senza questa voce."
+                        f" Suggerisci di inserirlo in Movimenti → Ricavi (sezione Personale)."
+                    )
+            except Exception as exc:
+                logger.warning("chat alert 3 (personale mancante) non calcolabile: %s", exc)
+                _qualche_sezione_fallita = True
 
-    except Exception as exc:
-        logger.warning("chat: alert fondamentali non disponibili: %s", exc)
+            # Alert 5: spese generali mancanti nel mese precedente (affitto/utenze sempre presenti)
+            try:
+                q_spese = (
+                    supabase_client.table("margini_mensili")
+                    .select("altri_costi_spese")
+                    .eq("user_id", user_id_str)
+                    .eq("anno", _mc_anno)
+                    .eq("mese", _mc_mese)
+                )
+                if ristorante_id:
+                    q_spese = q_spese.eq("ristorante_id", ristorante_id)
+                spese_data = q_spese.execute().data or []
+                # Controlla anche i costi automatici da fatture di spese generali.
+                # NB: filtrare per nome esatto, non con ilike("%SPESE%"): nessuna delle
+                # categorie reali contiene la parola "SPESE" (sono SERVIZI E CONSULENZE,
+                # UTENZE E LOCALI, MANUTENZIONE E ATTREZZATURE, MATERIALE DI CONSUMO),
+                # quindi il vecchio filtro non matchava mai nulla e l'alert partiva
+                # anche per mesi con spese regolarmente registrate.
+                q_spese_auto = (
+                    supabase_client.table("fatture")
+                    .select("id", count="exact")
+                    .eq("user_id", user_id_str)
+                    .is_("deleted_at", "null")
+                    .in_("categoria", list(_CATEGORIE_SPESE_GENERALI))
+                    .gte("data_documento", _mc_inizio)
+                    .lte("data_documento", _mc_fine)
+                )
+                if ristorante_id:
+                    q_spese_auto = q_spese_auto.eq("ristorante_id", ristorante_id)
+                spese_auto_count = (q_spese_auto.execute().count) or 0
+                spese_manuali_ok = any(float(r.get("altri_costi_spese") or 0) > 0 for r in spese_data)
+                if not spese_manuali_ok and spese_auto_count == 0:
+                    _mesi_n3 = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
+                                "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                    alert_testo += (
+                        f"\n- ⚠️ Spese generali non registrate per {_mesi_n3[_mc_mese]} {_mc_anno}:"
+                        f" affitto, utenze e altri costi fissi sono sempre presenti — se mancano"
+                        f" il MOL risulta sovrastimato."
+                        f" Suggerisci di inserirle in Movimenti → Ricavi (sezione Spese) o caricare le fatture relative."
+                    )
+            except Exception as exc:
+                logger.warning("chat alert 5 (spese mancanti) non calcolabile: %s", exc)
+                _qualche_sezione_fallita = True
+
+            # Alert 7: righe Da Classificare (abbassano food cost silenziosamente).
+            # Il filtro deve essere sulla CATEGORIA, lo stesso criterio con cui
+            # margine_service esclude le righe dal MOL (.neq('categoria', 'Da
+            # Classificare')) — needs_review conta anche righe gia' categorizzate
+            # marcate per revisione (es. sconti), che nei margini rientrano eccome.
+            try:
+                q_nr = (
+                    supabase_client.table("fatture")
+                    .select("id", count="exact")
+                    .eq("user_id", user_id_str)
+                    .is_("deleted_at", "null")
+                    .eq("categoria", CATEGORIA_NON_CLASSIFICATA)
+                )
+                if ristorante_id:
+                    q_nr = q_nr.eq("ristorante_id", ristorante_id)
+                nr_count = (q_nr.execute().count) or 0
+                if nr_count > 0:
+                    alert_testo += (
+                        f"\n- ⚠️ {nr_count} righe fattura 'Da Classificare':"
+                        f" non rientrano nei calcoli di food cost e margine."
+                        f" Se un valore sembra basso, potrebbe dipendere da questo."
+                        f" Suggerisci di classificarle in Analisi Fatture → Da Classificare."
+                    )
+            except Exception as exc:
+                logger.warning("chat alert 7 (da classificare) non calcolabile: %s", exc)
+                _qualche_sezione_fallita = True
+
+        except Exception as exc:
+            logger.warning("chat: alert fondamentali non disponibili: %s", exc)
+            _qualche_sezione_fallita = True
 
     if alert_testo:
         kpi_testo += f"\n\n## Avvisi fondamentali (dati mancanti che impattano i calcoli){alert_testo}"
+    elif _qualche_sezione_fallita and kpi_testo:
+        # KPI presenti ma almeno un alert fallito: senza questa riga il modello
+        # crede che l'assenza di avvisi significhi "tutto a posto" e riporta un
+        # food cost/MOL come definitivo quando in realta' un controllo e' saltato.
+        kpi_testo += (
+            "\n\n## Avvisi fondamentali\n"
+            "- ⚠️ Alcuni controlli sui dati mancanti non sono stati eseguibili "
+            "(errore tecnico temporaneo): non dare per scontato che i conti sopra "
+            "siano completi."
+        )
 
     if not kpi_testo:
-        kpi_testo = "\n\n(Nessun dato di costo o margine ancora registrato.)"
+        if _qualche_sezione_fallita:
+            # Un errore tecnico (Supabase lento, RPC assente...) NON e' la stessa
+            # cosa di "il cliente non ha ancora dati": qui non sappiamo quale sia,
+            # e "nessun dato registrato" e' un'affermazione positiva sul cliente
+            # che potremmo star inventando. Vedi F2 §3b chat: senza questo, il
+            # modello dice con sicurezza "non hai registrato nulla" a un cliente
+            # con storico reale, solo perche' la query e' fallita.
+            kpi_testo = (
+                "\n\n(I dati di costo/margine non sono disponibili in questo momento "
+                "per un problema tecnico temporaneo — NON dedurre che il cliente non "
+                "abbia ancora registrato nulla. Dillo esplicitamente e invita a "
+                "riprovare tra poco.)"
+            )
+        else:
+            kpi_testo = "\n\n(Nessun dato di costo o margine ancora registrato.)"
 
     # Data di oggi + intervallo dati: SENZA questo il modello usa il suo knowledge
     # cutoff (2024) come anno di default e cerca sistematicamente nell'anno
@@ -3667,6 +3712,17 @@ def _chat_query_costi(
     return risultato
 
 
+_CHAT_SCADENZE_LIMIT = 30
+
+
+# Slot MINIMI garantiti alle voci senza scadenza nota, non un tetto: sotto questa
+# soglia non scendono mai (il bug originale le nasconde del tutto quando superano
+# il limite), sopra ci arrivano solo con lo spazio che avanza alle scadenze note
+# (la regressione del primo fix, che le faceva monopolizzare l'elenco quando erano
+# la maggioranza — fino al 91% del debito su un cliente reale).
+_CHAT_SCADENZE_QUOTA_SENZA_DATA = 10
+
+
 def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: bool = True) -> Dict[str, Any]:
     """Scadenze del ristorante (per il tool della chat). Riusa la stessa fonte
     della pagina Gestione Fatture."""
@@ -3690,9 +3746,55 @@ def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: 
             "scadenza": d.get("scadenza_effettiva"),
             "pagata": bool(d.get("pagata")),
         })
-    # Ordina per scadenza (le piu' vicine prima)
-    voci.sort(key=lambda x: x.get("scadenza") or "9999")
-    return {"scadenze": voci[:30], "totale_da_pagare": round(totale, 2)}
+
+    non_pagate = [v for v in voci if not v["pagata"]]
+    pagate = [v for v in voci if v["pagata"]]
+    con_data = sorted((v for v in non_pagate if v["scadenza"]), key=lambda x: x["scadenza"])
+    senza_data = [v for v in non_pagate if not v["scadenza"]]
+
+    # Ordine di riempimento, in questa priorita' esatta:
+    #   1) aperte CON scadenza, per data piu' vicina — cio' che serve a "cosa
+    #      devo pagare questa settimana";
+    #   2) aperte SENZA scadenza fino alla quota — garantisce che non spariscano
+    #      mai del tutto dietro il troncamento (il bug originale);
+    #   3) aperte SENZA scadenza oltre la quota, se avanza spazio;
+    #   4) pagate (solo con solo_da_pagare=False), per ultime.
+    # Invariante: nessuna voce pagata compare finche' esiste anche una sola voce
+    # aperta non ancora mostrata — sono debito chiuso, non "cosa devo pagare".
+    quota_senza_data = min(len(senza_data), _CHAT_SCADENZE_QUOTA_SENZA_DATA)
+    mostrate = (
+        con_data[: _CHAT_SCADENZE_LIMIT - quota_senza_data]
+        + senza_data[:quota_senza_data]
+    )
+    # Lo spazio che avanza va alle aperte rimaste (senza-data oltre la quota,
+    # poi con-data escluse dal taglio) e solo alla fine alle pagate: riempire
+    # in coda invece di pre-assegnare gli slot e' cio' che tiene l'invariante
+    # anche quando una delle due liste aperte e' vuota.
+    for coda in (senza_data[quota_senza_data:], con_data[_CHAT_SCADENZE_LIMIT - quota_senza_data :], pagate):
+        if len(mostrate) >= _CHAT_SCADENZE_LIMIT:
+            break
+        mostrate += coda[: _CHAT_SCADENZE_LIMIT - len(mostrate)]
+
+    risultato = {"scadenze": mostrate, "totale_da_pagare": round(totale, 2)}
+
+    # Come in _chat_query_costi: se il totale copre piu' voci di quelle mostrate,
+    # l'AI deve saperlo per non spacciare un elenco parziale come completo.
+    if len(voci) > len(mostrate):
+        risultato["totale_parziale"] = True
+        risultato["voci_totali"] = len(voci)
+        risultato["nota"] = (
+            f"Sono mostrate solo {len(mostrate)} voci su {len(voci)}: "
+            "il totale_da_pagare include TUTTE le voci non mostrate. "
+            "Non presentare l'elenco come esaustivo."
+        )
+    # Contate su quante ne sono davvero uscite, non sulla quota: il passo 3 puo'
+    # averne recuperate altre oltre la quota, e dichiarare qui un numero calcolato
+    # sulla quota mentirebbe al modello esattamente come il bug che questo fix chiude.
+    senza_data_mostrate = sum(1 for v in mostrate if not v["pagata"] and not v["scadenza"])
+    if len(senza_data) > senza_data_mostrate:
+        risultato["senza_scadenza_non_mostrate"] = len(senza_data) - senza_data_mostrate
+
+    return risultato
 
 
 def _chat_query_appuntamenti(
@@ -4022,6 +4124,25 @@ def chat_ai(
 
     # Contesto: catena (vista gruppo /catena) o sede (singolo PV, default).
     is_catena = body.contesto == "catena"
+
+    # Un account single-sede che invii contesto="catena" oggi arrivava fino a
+    # _build_chat_system_prompt_catena -> _resolve_gruppo, che solleva 400 "Account
+    # non multi-sede" — ma DOPO che la RPC di quota (piu' sotto) aveva gia'
+    # consumato la domanda. Verificato qui, PRIMA di spendere quota, con la stessa
+    # condizione di _resolve_gruppo (routers/gruppo.py:627): <2 sedi attive non
+    # tecniche = niente gruppo da mostrare.
+    if is_catena:
+        _n_sedi_gruppo = (
+            supabase_client.table("ristoranti")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("attivo", True)
+            .eq("sede_tecnica", False)
+            .execute()
+            .count
+        ) or 0
+        if _n_sedi_gruppo < 2:
+            raise HTTPException(status_code=400, detail="Account non multi-sede: nessun gruppo da mostrare.")
 
     # Quota AI: un SOLO pool per account. Multi-sede → limite = somma sedi e
     # conteggio condiviso per user_id (lo stesso pool è speso tra catena e tutti i
