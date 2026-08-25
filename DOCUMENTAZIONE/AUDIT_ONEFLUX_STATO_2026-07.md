@@ -536,7 +536,11 @@ Dettaglio in STORICO §22.
 > fino a **conferma alle 10:25 CEST del 25/8**: `{"commit":"ebb842f975f8", ...}`
 > — deploy verificato, non presunto.
 
-Resta di §3b la **chat** di `fastapi_worker.py`.
+~~Resta di §3b la **chat** di `fastapi_worker.py`.~~ — **chat CHIUSA il
+25/8/2026**, dettaglio in §23 dello STORICO. Con la chat chiusa **§3b è vuota**:
+del ciclo resta solo §2 (mock globale `conftest.py`, rimandato per decisione
+esplicita). Il branch `audit-s3b-chat` è pushato ma **non ancora mergiato né
+deployato** — la chiusura formale del ciclo non è quindi ancora dovuta.
 
 **Il `code-reviewer` ha bloccato la prima chiusura**: la migration per
 `pagata_manuale_at` era scritta ma **mai applicata al DB live**, mentre il
@@ -635,8 +639,11 @@ di lasciarlo implicito:
    (34,8%→55%, 1 HIGH + 3 MEDIUM fixati, 19 test). ~~Restano `tag.py` 23,3%,
    `tag_suggestion_service.py` 40,8%~~ — **feature Tag CHIUSA il 24/8, DEPLOYATA il 25/8** (commit `ebb842f`, confermato su `/health` alle 10:25 CEST)
    (3 HIGH + 3 MEDIUM fixati, 14 test, 8 mutazioni; perimetro allargato al
-   terzo file mai citato `tag_analytics_service.py` 15%→69%). Resta la **chat**
-   di `fastapi_worker.py`.
+   terzo file mai citato `tag_analytics_service.py` 15%→69%). ~~Resta la **chat**
+   di `fastapi_worker.py`~~ — **CHIUSA il 25/8** (1 HIGH + 4 MEDIUM fixati, 21
+   test, 4 mutazioni; perimetro reale 25 simboli contro i 4 dichiarati, ramo
+   "catena" incluso). **Branch `audit-s3b-chat` pushato, NON ancora mergiato né
+   deployato** — vedi §23 dello STORICO.
 2. ~~Per il frontend: le ~6 route API con logica propria e i componenti che
    scrivono sul DB~~ — **CHIUSO l'8/8**: le 6 route sono state lette (sono tutte
    auth/sessione + il proxy TTS), e il sotto-perimetro "componenti che scrivono
@@ -648,11 +655,14 @@ di lasciarlo implicito:
    CHIUSA il 10/8/2026**: MOL (`_calcola_costi_auto_per_mese`/`_per_periodo`,
    `_aggrega_mensili_margini`/`_aggrega_totali_margini`) e briefing
    (`_briefing_raccogli_notifiche`, `_scontrino_medio_significativo`) sono sotto
-   guardia, 20 mutazioni verificate rosse. Restano scoperti per scelta: la chat
+   guardia, 20 mutazioni verificate rosse. ~~Restano scoperti per scelta: la chat
    (`_chat_query_costi`, `_chat_loop_openai`, `_build_chat_system_prompt`,
-   `_chat_trend_prezzo` — candidata naturale per la prossima sessione; **non** ha
-   il blocco `tenacity` che si temeva, in questo file non esiste nessun `@retry`)
-   e `_run_agent_notturno` (125 scoperte, il numero più alto della tabella, ma
+   `_chat_trend_prezzo`)~~ — **chat CHIUSA il 25/8** (SECONDA TRANCHE): il
+   perimetro dichiarato di 4 funzioni era in realtà di 25 simboli / ~1737 righe,
+   **la quarta volta in questo ciclo che un perimetro dichiarato risulta
+   incompleto**. Confermato che il file non ha nessun `@retry`/`tenacity`, quindi
+   il mock globale di `conftest.py` (§2) non lo tocca. Resta scoperto
+   `_run_agent_notturno` (125 scoperte, il numero più alto della tabella, ma
    `app_settings.agent_notturno.enabled=false` dal 30/5: coprirlo non difende
    nessun cliente). Testo originale della decisione: 3.388
    statement al 37,4% costano più di tre passate intere e producono ri-letture,

@@ -1986,3 +1986,127 @@ dimostrata leggendo i trigger CI, non assunta dalla prima. E quando in sessione
 si notano cambi di branch non comandati da sé, è il segnale che qualcun altro
 sta scrivendo sullo stesso repository: fermarsi e chiedere prima di un merge,
 non dopo.
+
+---
+
+## §23 — Chat di `fastapi_worker.py` (25/8/2026)
+
+Ultima voce di §3b. Chiude il perimetro: con questa, §3b è vuota e del ciclo
+resta solo §2 (mock globale `conftest.py`, rimandato).
+
+### Perimetro: dichiarato 4 funzioni, reale 25 simboli
+
+La nota di stato citava `_chat_query_costi`, `_chat_loop_openai`,
+`_build_chat_system_prompt`, `_chat_trend_prezzo`. La ricognizione ha trovato
+**~1737 righe e 25 simboli** sotto l'unico endpoint `POST /api/chat`, incluso un
+intero ramo "catena" (`_build_chat_system_prompt_catena`, `_CHAT_TOOLS_GRUPPO`,
+`_chat_esegui_tool_gruppo`) **mai citato da nessuna passata precedente**. È la
+**quarta volta in questo ciclo** che un perimetro dichiarato risulta incompleto
+(Tag: 2 file dichiarati, 3 reali; Scadenziario: esposizione ricontata). Mattia ha
+scelto esplicitamente il perimetro esteso per non dover riaprire una sesta
+sessione. Confermato che il file non contiene nessun `@retry`/`tenacity`: il
+problema del mock globale (§2) non lo tocca.
+
+### Esposizione live rimisurata
+
+La nota diceva "4 chiamate/30gg all'11/8". Rimisurato sul DB: **1 chiamata in 30
+giorni**. Il ramo catena è vivo nel codice ma **mai usato da nessun cliente**.
+Esposizione bassa confermata — ma F1 colpisce il dato mostrato, non la frequenza.
+
+### Findings
+
+**F1 (HIGH) — `_chat_query_scadenze` nascondeva sistematicamente il debito senza
+scadenza.** Il tool dichiarava al modello `totale_da_pagare` calcolato su TUTTI i
+documenti non pagati, ma troncava l'elenco a 30 voci **senza dirlo**; in più
+l'ordinamento (`scadenza or "9999"`) spingeva in fondo le voci senza
+`scadenza_effettiva`, che sparivano quindi dietro il troncamento. Misurato sul DB
+live: **7 sedi su 9**, divergenza fino a **37.9x** tra totale dichiarato e somma
+delle voci mostrate (LAND DEI SAPORI); su OVERTIME le voci senza data valevano il
+**91% del debito** ed erano invisibili per costruzione. L'agente di audit aveva
+**sottostimato** questa severità: aveva visto il troncamento, non l'invisibilità
+per costruzione.
+
+**F2 (MEDIUM)** — fail-open di `_build_chat_system_prompt`: se una sezione
+falliva per guasto infrastrutturale, il fallback affermava "Nessun dato di costo
+o margine ancora registrato" — un'asserzione **positiva** sul cliente che il
+codice non aveva modo di verificare. Il modello l'avrebbe riferita con sicurezza
+a un cliente con storico reale.
+
+**F3 (MEDIUM)** — l'alert 7 filtrava su `needs_review`, che comprende anche righe
+già categorizzate marcate per revisione (es. sconti) e che nei margini rientrano
+eccome. Ora filtra su `categoria = CATEGORIA_NON_CLASSIFICATA`, **lo stesso
+criterio con cui `margine_service` esclude le righe dal MOL** (regola #1).
+
+**F4 (MEDIUM)** — il gate permessi-pagina (`_TOOL_FLAG`) impediva a chi non ha
+`margini` di chiamare `query_margini`, ma `_build_chat_system_prompt` iniettava
+MOL/food cost/spese/alert **sempre**: l'invariante dichiarata dal codice era
+violata dalla stessa funzione che la dichiara. Ha richiesto la reindentazione di
+~185 righe sotto `if _pag_margini:`.
+
+**F5 (MEDIUM)** — un account single-sede che inviava `contesto="catena"`
+consumava la quota giornaliera (la RPC `chat_usage_check_and_log` incrementa
+**prima** della chiamata OpenAI, design anti-race deliberato) e solo dopo
+riceveva il 400 "Account non multi-sede" da `_resolve_gruppo`.
+
+### Verifica
+
+- Suite completa: 11.015 passed, 42 skipped, 0 failed. Il `code-reviewer` ne ha
+  contati **11.024**: la CI usa i `testpaths` di `pytest.ini`, che includono
+  `legacy_streamlit/`. Il conteggio di sessione era sotto il perimetro CI.
+- Coverage 56% (gate 45). Nessun drift OpenAPI (194 endpoint).
+- **4 mutazioni verificate rossa→verde**, non dedotte: quota minima F1, ordine
+  delle pagate F1, recupero delle senza-data eccedenti F1, flag della sezione 2.
+
+### Il `code-reviewer` ha bloccato la chiusura (quarta volta nel ciclo)
+
+Prima passata: **B2** — il mio primo fix di F1 metteva le voci senza data in
+cima, il che le faceva **monopolizzare** l'elenco quando superavano le 30,
+nascondendo ogni scadenza imminente. Avevo spostato il bug, non risolto.
+**B3** — con `solo_da_pagare=False` le pagate senza data salivano insieme alle
+aperte.
+
+Seconda passata: verdetto 🔴 con un unico blocco **procedurale** — il branch non
+era mai stato pushato, quindi zero esecuzioni CI. Il reviewer ha riprodotto in
+locale entrambi i gate (test e drift OpenAPI, verdi) ma ha tenuto il blocco:
+"verde sulla mia macchina" non è "verde in CI". Ha inoltre verificato F1 **per
+forza bruta** su 0–44 con-data × 0–44 senza-data × 0–4 pagate (0 violazioni
+d'invariante, 0 duplicati, 0 overflow) e la reindentazione di F4 con diff
+whitespace-insensitive: 470 righe modificate → **132 non-whitespace**, tutte
+riconducibili ai cinque fix, nessuna riga di logica entrata o uscita dal blocco.
+- **N1** (`range_dati` senza gate `_pag_fatture`): valutato e **lasciato com'è**
+  — inietta due date di confine, nessun importo, e serve a chiunque abbia un tool
+  temporale (anche solo `scadenziario`). Motivazione scritta in §6 del doc.
+- **N2** (drift documentale): risolto, `CHAT_ASSISTENTE.md` §5.1/§5.2/§6.
+
+### Lezioni sul metodo
+
+**F1 ha richiesto tre iterazioni** (bug originale → B2 → bug di ordine di
+riempimento trovato da una mia stessa mutazione). La causa non è la difficoltà
+del problema: stavo costruendo l'ordinamento **per toppe successive**, aggiungendo
+un'eccezione ogni volta che una mutazione ne scopriva una. Un ordine di priorità
+su una lista troncata va scritto **partendo dalla specifica**, una volta sola. La
+riscrittura finale ha invertito l'approccio — prima l'invariante in italiano
+("nessuna pagata finché resta un'aperta non mostrata"), poi il codice — ed è
+passata al primo colpo su tutte e tre le mutazioni.
+
+**Un `git checkout -- <file>` ha cancellato tutti e cinque i fix non
+committati.** Il vero difetto non è stato il comando: è stato **accumulare cinque
+fix in staging senza un solo commit**, che ha trasformato un errore recuperabile
+in una ricostruzione da zero. La lezione della sessione Scadenziario ("serve un
+commit a cui tornare, non un diff piccolo") era già scritta in questo file e non
+è stata applicata. Da qui in avanti: **commit dopo ogni fix con mutazione
+verificata**, prima di iniziare il successivo. In questa sessione, dopo la
+ricostruzione, F1 è stato committato da solo appena chiuso.
+
+Sul modello: la sessione è partita in Sonnet ed è passata a Opus a metà. I due
+errori sopra (lapse su una regola operativa esplicita, fix costruito per toppe)
+sono comparsi entrambi nella prima metà, su un perimetro di 1737 righe con cinque
+fix in parallelo. Per un perimetro esteso conviene Opus dall'inizio.
+
+### Stato al termine della sessione
+
+Branch `audit-s3b-chat`, tre commit (`463ea3f` F1, `32a976d` F2–F5, `23c00ae`
+doc), **pushato su origin**. La PR **non** è stata aperta: `gh` non è installato
+nel container e il tentativo via tool è stato bloccato. **NON mergiato, NON
+deployato** — erano le 15:31 di martedì, pieno orario cliente. Il ciclo **non è
+chiuso**: manca merge + deploy + verifica su `/health`.
