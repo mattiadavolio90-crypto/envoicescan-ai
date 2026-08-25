@@ -2896,6 +2896,7 @@ def _build_chat_system_prompt(
             for forn, v in top_forn:
                 kpi_testo += f"- {forn}: €{v:,.2f}\n"
     except Exception as exc:
+        _qualche_sezione_fallita = True
         logger.warning("chat: dettaglio fatture non disponibile: %s", exc)
 
     # 3) Agenda di oggi — solo se l'utente ha il flag 'agenda'. Inietta gli

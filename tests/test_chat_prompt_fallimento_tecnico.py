@@ -112,6 +112,18 @@ def test_solo_kpi_home_fallito_altro_ok_dichiara_errore_tecnico(monkeypatch):
     assert FRASE_ERRORE_TECNICO in prompt
 
 
+def test_solo_top_categorie_fallito_altro_ok_dichiara_errore_tecnico(monkeypatch):
+    """B4 (code-reviewer): isola il flag sull'except della sezione 2
+    (_chat_top_cat_forn). Se solo quella salta e tutto il resto ha dati
+    regolari, il prompt deve comunque dire che un controllo non e' passato —
+    senza il flag qui, il fallback tornava al messaggio ottimistico."""
+    monkeypatch.setattr(fw, "home_kpi", lambda *a, **k: MagicMock(has_data=False))
+    monkeypatch.setattr(fw, "_chat_top_cat_forn", MagicMock(side_effect=RuntimeError("rpc giu'")))
+    prompt = _build_chat_system_prompt(USER, _sb_nessun_alert(), None, ristorante_id="rid-1")
+    assert FRASE_NESSUN_DATO not in prompt
+    assert FRASE_ERRORE_TECNICO in prompt
+
+
 def test_kpi_presenti_ma_alert_falliti_avvisa_di_non_fidarsi(monkeypatch):
     """Il caso piu' subdolo: KPI Home OK, ma il blocco alert (query fatture)
     solleva. Senza avviso, l'assenza di alert sembra 'tutto a posto'."""
