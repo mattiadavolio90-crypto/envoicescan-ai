@@ -2152,3 +2152,80 @@ Con la chat chiusa e deployata, **§3b è vuota**. Del ciclo 2026-07 resta solo
 precedente. La chiusura formale del ciclo (nota "Ciclo chiuso", spostamento in
 `docs/storico/`, apertura del file 2026-10) **non è stata eseguita**: va fatta
 solo su richiesta esplicita, non come conseguenza automatica di questa sessione.
+
+---
+
+## §24 — Apertura §3c: lettura sistematica del frontend (25/8/2026)
+
+Sessione separata dalla chiusura della chat, nella stessa giornata. Con §3b
+appena chiusa, Mattia ha posto la domanda che il documento pone a sé stesso
+dall'8/8: *"per lo scopo dell'audit — app funzionante, senza incoerenze
+soprattutto lato UI/UX dove il cliente le vede subito — è tutto chiuso?"*
+
+### Perché la risposta è no, anche con §1 e §3b vuote
+
+§3b ha chiuso il perimetro Python mai rivendicato da nessuna dimensione. Ma
+un perimetro equivalente esiste anche lato frontend, e non è mai stato aperto
+come voce propria — è rimasto solo dentro il verbale della dimensione 6
+(Qualità/UI, STORICO §6, 4/8/2026), che pure è segnata 🟢 nella tabella:
+
+> *"11 file grandi (~10.000 righe) letti solo per grep mirato, non riga per
+> riga"*
+
+Architettura (STORICO §8, 2/8/2026) conferma lo stesso buco da un altro
+angolo, nella sua stessa dichiarazione di copertura:
+
+> *"~178 componenti desktop in `(app)/*` non letti riga per riga — gap
+> dichiarato esplicitamente, da coprire in una passata dedicata se serve"*
+
+Cioè: **la tabella tutta verde nasconde lo stesso tipo di sovrastima già
+corretto una volta**, l'8/8, quando si scoprì che "10 dimensioni verdi" non
+voleva dire "app analizzata al 100%" — solo che stavolta la sovrastima è
+dentro una singola dimensione (Qualità/UI) invece che nell'insieme delle 10.
+
+### Perché non è un rischio teorico: 3 precedenti già trovati di rimbalzo
+
+Nessuna passata ha mai cercato *di proposito* divergenze frontend↔backend, e
+il ciclo ne ha comunque trovate tre, tutte per caso mentre si guardava altro:
+
+1. **Fix lato worker corretto, mai consumato dal frontend** — feature Tag
+   (§3b, 24/8/2026, vedi §22 sopra): l'endpoint restituiva i campi corretti
+   ma il client scartava quelli nuovi. Trovato solo perché qualcuno è andato
+   a controllare il consumatore dopo il fix, non da una ricerca dedicata.
+2. **Stessa regola corretta in un punto e non nell'altro della stessa
+   risposta API** — sempre Tag: `_compute_kpi` e il calcolo del trend
+   mostravano due prezzi diversi per lo stesso tag prima che la guardia
+   venisse estesa a entrambi.
+3. **`Select` morto in Admin** (dimensione 6, 4/8/2026): componente shadcn
+   con API sbagliata (`SelectContent`/`SelectItem` erano shim `return null`),
+   il filtro periodo dei costi AI non apriva nulla. Unico bug funzionale
+   trovato dalla 2ª passata Qualità/UI, e trovato per pattern-matching
+   mirato (`window.confirm`, loading states, colori), non da lettura
+   sistematica.
+
+Tre precedenti in un perimetro mai letto sistematicamente sono un segnale, non
+una coincidenza: è ragionevole aspettarsi che altri esistano negli ~178
+componenti e negli 11 file grandi mai attraversati riga per riga.
+
+### Perimetro dichiarato per §3c
+
+Gli 11 file grandi già nominati nel verbale della dimensione 6 come punto di
+partenza — tre sono citati per nome (`scadenziario-client.tsx`,
+`analisi-e-tag-client.tsx`, `calcolo-tab.tsx`), gli altri 8 restano da
+recuperare dal verbale originale della 2ª passata Qualità/UI (4/8/2026) prima
+di iniziare, per non ripartire da un inventario a memoria.
+
+**Obiettivo dichiarato, diverso da quello della dimensione 6**: non stile,
+accessibilità o pattern noti — divergenze frontend↔backend (campi ignorati,
+calcoli duplicati lato client che il backend ha già cambiato, stati derivati
+localmente invece che letti dalla risposta API) e incoerenze tra pagine che
+mostrano lo stesso dato in punti diversi dell'app.
+
+### Stato
+
+**Solo aperta, nessuna passata `oneflux-audit` ancora lanciata.** Registrata
+qui e nell'indice (§3c) perché il ciclo non si dichiari chiuso trascurandola,
+esattamente come accaduto una volta con §3b: se non è scritta come voce
+aperta, "tabella verde" torna a leggersi come "finito".
+
+Il ciclo 2026-07 si chiude solo quando **sia §2 sia §3c** sono vuote.

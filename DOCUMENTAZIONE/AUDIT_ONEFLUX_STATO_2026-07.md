@@ -1,9 +1,10 @@
 # Stato audit ONEFLUX — ciclo 2026-07
 
 **Tutte e 10 le dimensioni sono 🟢, tutte con seconda passata e `code-reviewer`.**
-Quello che resta non sono findings aperti: è **perimetro mai letto** (§1),
-**copertura test da scrivere** (§2) e — misurato l'8/8/2026 — il **perimetro
-che nessuna dimensione ha mai rivendicato** (§3b, nuova).
+Quello che resta non sono findings aperti: è **copertura test da scrivere**
+(§2) e — aperta il 25/8/2026, dopo la chiusura di §3b — la **lettura
+sistematica del frontend** (§3c), lo stesso tipo di gap che §3b aveva già
+chiuso lato Python. §1 e §3b sono vuote.
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
 > dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non
@@ -27,7 +28,7 @@ Legenda: 🟢 chiusa · 🟡 residui aperti · ⚪ mai fatta.
 | 3 | Bug | 🟢 | 3/8 (2 passate) | ~16.800 righe (non 5.000 come dichiarato); 2 HIGH + bonifica `prodotti_master` sul DB live |
 | 4 | AI | 🟢 | 4/8 (2ª) | HIGH guardrail NOTE + bug preesistente: l'UPDATE su `fatture` falliva **sempre**, in silenzio — PR #6 |
 | 5 | Performance | 🟢 | 3/8 + 4/8 | Il cap PostgREST 1000 righe era un difetto di **correttezza** già attivo sui clienti, non di performance |
-| 6 | Qualità/UI | 🟢 | 4/8 (2ª) | Rischio più basso confermato; 1 MEDIUM reale (select morto in Admin) fixato — PR #11 |
+| 6 | Qualità/UI | 🟢 | 4/8 (2ª) | Rischio più basso confermato; 1 MEDIUM reale (select morto in Admin) fixato — PR #11. **Gap dichiarato dalla passata stessa: 11 file grandi letti solo per grep mirato → §3c, aperta 25/8** |
 | 7 | Database | 🟢 | 30/7 (deploy 2/8) | Migration live ma codice Python mai committato per 3 giorni — da lì la lezione 1 |
 | 8 | Architettura | 🟢 | 2/8 | 2 fasi, deployato; `code-reviewer` introdotto qui per la prima volta |
 | 9 | Test | 🟢 | 3/8 | La suite **non difendeva il MOL**: rotta la regola, 10.195 test restavano verdi |
@@ -700,7 +701,66 @@ di lasciarlo implicito:
    di righe. Una passata monolitica inviterebbe inoltre a refactor larghi proprio
    dove `__getattr__` ha già rotto 9 router in produzione.
 
-Finché §3b è aperta, **il ciclo non è chiuso** — anche con la tabella tutta 🟢.
+**§3b è vuota dal 25/8/2026 pomeriggio.**
+
+---
+
+## §3c — Frontend: lettura sistematica dei client component grandi
+
+**Aperta il 25/8/2026**, alla chiusura di §3b, su richiesta esplicita di
+Mattia dopo una domanda diretta: *"per lo scopo dell'audit (app funzionante,
+senza incoerenze soprattutto UI/UX visibili al cliente) è tutto chiuso?"*.
+Risposta misurata: no. È lo stesso schema che l'8/8 aveva aperto §3b sul
+Python ("10 dimensioni verdi non vuol dire app coperta al 100%"), applicato
+ora al frontend — che la dimensione 6 (Qualità/UI) aveva già dichiarato
+verde pur ammettendo essa stessa il gap.
+
+**Il gap, con le parole della dimensione 6 (STORICO §6, 4/8/2026)**: *"11
+file grandi (~10.000 righe) letti solo per grep mirato, non riga per riga"*.
+Architettura (STORICO §8, 2/8) conferma lo stesso buco dal suo lato:
+*"~178 componenti desktop in `(app)/*` non letti riga per riga — gap
+dichiarato esplicitamente"*. 49.635 righe, 395 file, **zero test
+frontend** (`0` file `.test.ts*`/`.spec.ts*`): l'unica rete è
+`tsc --noEmit` + `next build`, che intercettano errori di tipo, non
+incoerenze di prodotto.
+
+**Perché non è un rischio teorico**: il ciclo ha già trovato, di rimbalzo,
+la stessa classe di difetto due volte senza mai averla cercata di proposito:
+1. **Un fix corretto lato worker che il frontend non consumava** — la
+   feature Tag (§3b, 24/8): l'endpoint era stato corretto ma il client
+   scartava i campi nuovi, scoperto solo perché qualcuno è andato a
+   controllare il consumatore, non perché una passata lo cercasse.
+2. **La stessa regola corretta solo in alcuni dei suoi punti di lettura** —
+   sempre Tag: un KPI e il suo trend divergevano nella stessa risposta API
+   perché il fix era stato applicato a un calcolo e non all'altro.
+3. **Un `Select` morto** (dimensione 6, 4/8): componente shadcn con API
+   sbagliata, il filtro periodo dei costi AI in Admin non apriva nulla — unico
+   bug funzionale trovato dalla passata mirata, e trovato per caso pattern-
+   matching su `Select`, non leggendo il file.
+
+Se questo pattern è comparso 2-3 volte nei moduli già toccati, è ragionevole
+aspettarsi altre occorrenze nei componenti mai letti — ed è esattamente la
+classe di bug più visibile al cliente: non un dato sbagliato nel DB, ma un
+numero che diverge fra due schermate, o un controllo che non fa quello che
+promette a video.
+
+**Perimetro proposto**: gli 11 file grandi già nominati nel verbale della
+dimensione 6 (STORICO §6) come punto di partenza — `scadenziario-client.tsx`,
+`analisi-e-tag-client.tsx`, `calcolo-tab.tsx` più gli altri 8 da recuperare
+dal verbale originale — letti riga per riga con un obiettivo dichiarato:
+cercare divergenze frontend↔backend (campi ignorati, calcoli duplicati
+localmente che il backend ha già cambiato, stati derivati lato client invece
+che letti dalla risposta API) e incoerenze fra pagine che mostrano lo stesso
+dato in punti diversi. Non un audit di stile — quello la dimensione 6 l'ha
+già fatto.
+
+**Non ancora iniziata.** Nessuna passata `oneflux-audit` lanciata su questo
+perimetro. Da eseguire con lo stesso metodo di §3b: audit read-only prima,
+remediation solo dopo conferma esplicita, `code-reviewer` sul diff cumulativo,
+test nuovi verificati per mutazione dove applicabile.
+
+Finché §2 o §3c sono aperte, **il ciclo non è chiuso** — anche con la tabella
+tutta 🟢 e §1/§3b vuote.
 
 ---
 
@@ -727,17 +787,20 @@ saltato in passato.
 
 ## Chiusura del ciclo
 
-Il ciclo si dichiara chiuso quando **§1, §2 e §3b** sono vuote — non quando la
-tabella è tutta 🟢 (lo è già dal 4/8). **§1 è vuota dall'8/8/2026** e i 3 HIGH
-che conteneva sono **fixati, testati e deployati** nella stessa data (PR #18,
-merge `de54a1e`, worker Railway verificato su `/health` = `de54a1ed2a50`).
+Il ciclo si dichiara chiuso quando **§1, §2, §3b e §3c** sono vuote — non
+quando la tabella è tutta 🟢 (lo è già dal 4/8). **§1 è vuota dall'8/8/2026**
+e i 3 HIGH che conteneva sono **fixati, testati e deployati** nella stessa
+data (PR #18, merge `de54a1e`, worker Railway verificato su `/health` =
+`de54a1ed2a50`). **§3b è vuota dal 25/8/2026 pomeriggio** (chat di
+`fastapi_worker.py`, ultima voce, deployata commit `d92de1d`).
 
 Restano aperte due cose:
 - **§2**: il mock globale di `tests/conftest.py` — lavoro lungo dichiarato,
   esplicitamente non da aprire senza tempo dedicato.
-- **§3b**: il perimetro mai rivendicato da nessuna dimensione, aperto l'8/8
-  proprio perché chiudere §1 ha reso visibile che "tabella verde" e "app
-  analizzata" non coincidevano. È la voce che oggi tiene aperto il ciclo.
+- **§3c**: la lettura sistematica del frontend, aperta il 25/8 alla chiusura
+  di §3b — stesso schema ("tabella verde ≠ app coperta") applicato al
+  frontend invece che al Python. È la voce che oggi tiene aperto il ciclo
+  insieme a §2.
 
 Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
 mockato globalmente, quindi il decoratore `@retry` su
