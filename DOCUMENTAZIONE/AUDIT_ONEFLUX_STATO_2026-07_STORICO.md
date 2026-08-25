@@ -2229,3 +2229,200 @@ esattamente come accaduto una volta con §3b: se non è scritta come voce
 aperta, "tabella verde" torna a leggersi come "finito".
 
 Il ciclo 2026-07 si chiude solo quando **sia §2 sia §3c** sono vuote.
+
+---
+
+## §25 — §3c prima passata: gli 11 file grandi del frontend (25/8/2026)
+
+Sessione successiva all'apertura di §3c (§24, stessa giornata). Obiettivo
+dichiarato dal ciclo: **completare §3c prima di aprire nuove dimensioni**.
+
+### Il perimetro: ricostruito per misura, perché non esisteva
+
+§24 diceva di recuperare dal verbale della dimensione 6 «gli altri 8» file
+grandi. **Quell'elenco non esiste**: STORICO §6 (4/8) ne nomina tre
+(`scadenziario-client.tsx`, `analisi-e-tag-client.tsx`, `calcolo-tab.tsx`) e
+chiude con «ecc.». Cercarlo sarebbe stato un vicolo cieco, e indovinarlo
+avrebbe ripetuto l'errore che §3c denuncia.
+
+Ricostruito per misura (`wc -l` su tutti i `.tsx` di `apps/web/src`): gli 11
+file più grandi fanno **13.153 righe** e contengono tutti e tre i file citati —
+coerente con il «~10.000 righe» del verbale originale. Criterio scelto da
+Mattia fra tre alternative, e **scritto qui insieme al perimetro** perché la
+prossima passata non debba a sua volta indovinare.
+
+| File | Righe |
+|---|---|
+| `(app)/scadenziario/scadenziario-client.tsx` | 2233 |
+| `(app)/workspace/personale-tab.tsx` | 1834 |
+| `(app)/analisi-e-tag/analisi-e-tag-client.tsx` | 1392 |
+| `(mobile)/m/turni/mobile-turni.tsx` | 1270 |
+| `(app)/margini/calcolo-tab.tsx` | 1248 |
+| `(app)/prezzi/variazioni-tab.tsx` | 973 |
+| `(app)/admin/categorie/categorie-client.tsx` | 881 |
+| `(app)/admin/clienti/[id]/cliente-dettaglio-client.tsx` | 858 |
+| `(app)/margini/analisi-tab.tsx` | 846 |
+| `(app)/margini/coperti-tab.tsx` | 809 |
+| `(app)/analisi-fatture/articoli-tab.tsx` | 809 |
+
+**11 file su 11 letti riga per riga**, in 4 passate `oneflux-audit` per dominio
+(Margini · Scadenziario+Articoli · Tag+Prezzi · Workspace+Admin+mobile).
+
+### Il meccanismo, misurato prima di cercare i difetti
+
+- **Nessun codegen da `openapi.json`**: `grep -ril openapi apps/web` → **0**.
+  La CI protegge Python↔schema (`openapi-drift.yml`); **nulla** protegge
+  schema↔TypeScript. Tutti i tipi TS sono handwritten.
+- **111 `await res.json()` nei `.tsx` di `src/app`, solo 16 annotati** (116 su
+  tutto `src`): ~95 risposte entrano
+  negli state React come `any`. Un campo aggiunto lato Pydantic attraversa il
+  proxy grezzo e sparisce senza errore di build; uno rimosso diventa `undefined`
+  a runtime.
+- I 169 `route.ts` sono **tubi trasparenti** (verificato: solo 2 contengono
+  `map/reduce/Math.`): non sono il punto di divergenza.
+
+### Esito: 39 findings, 21 attivi su clienti reali
+
+| Gruppo | Findings | Attivi | HIGH attivi |
+|---|---|---|---|
+| 1 Margini | 12 | 5 | 2 |
+| 2 Scadenziario + Articoli | 11 | 7 | 3 |
+| 3 Tag + Prezzi | 6 | 5 | 1 |
+| 4 Workspace + Admin + mobile | 10 | 4 | 1 |
+| **Totale** | **39** | **21** | **7** |
+
+Piste **chiuse in negativo: 35** — verificate senza difetto, non da rifare.
+
+### I 7 HIGH attivi, con la misura che li regge
+
+1. **Ripartizione per centro impossibile in modalità mensile** —
+   `analisi-tab.tsx:138` legge il netto da `/api/ricavi/giornalieri` (tabella
+   grezza, ignora l'override) e il Salva è disabilitato con `netto <= 0`.
+   Misurato: `ricavi_modalita_mensile` contiene **solo** righe `mensile` (17
+   mesi, 4 sedi); **OVERTIME ha 6 mesi da 28k–65k € con zero righe
+   giornaliere**. Il worker quel fatturato lo conosce (`margini.py:635`).
+2. **Dettaglio giornaliero incoerente**, stessa fonte sbagliata
+   (`calcolo-tab.tsx:1087`). **Rettifica all'agente**: non sono «numeri
+   vecchi» — per TIME CAFE il totale combacia (80.551,15 € su entrambi i lati).
+   Il difetto è la *distribuzione*: un giorno (2026-05-31) porta 80.551 € e gli
+   altri 30 sono a zero, quindi media/giorno e giorno migliore/peggiore sono
+   privi di senso.
+3. **Tre definizioni di «oggi»** sullo stesso dato: `documenti_service.py`
+   (4 punti) usa `date.today()` = UTC su Railway, `scadenziario.py:404` usa
+   `_oggi_rome()`, il client usa `new Date()` = fuso del browser. Il progetto ha
+   `_oggi_rome()` **proprio** perché «`date.today()` nella finestra
+   mezzanotte-02:00 restituisce il giorno precedente».
+4. **KPI «Pagate (mese)» esclude i pagamenti del 1°** —
+   `lib/scadenziario.ts:99` usa `new Date()` grezzo contro una mezzanotte
+   locale, mentre la riga 110 usa `parseLocalDate`, introdotto proprio per
+   questo. Incoerenza **interna alla stessa funzione**, 11 righe di distanza.
+5. **Il falso successo che il backend aveva già rimosso è vivo nel client** —
+   `fatture.py:880` torna `200 + {"ok":true,"righe_aggiornate":0}` con il
+   commento «e il cliente vedeva un falso successo»;
+   `articoli-tab.tsx:525` controlla `!r.ok` (**status HTTP**, non il campo `ok`
+   del JSON) → toast verde, badge «Verifica» che sparisce, e al reload la riga
+   torna com'era.
+6. **La deselezione dei prodotti in un suggerimento tag non arriva mai al
+   backend** — il client blocca su `selected.size === 0` ma invia solo
+   `tag_name`/`tag_id`; `AcceptSuggestionRequest` non ha campi per gli item, e
+   il filtro `selected_by_default` è **inerte per costruzione** (scritto `True`
+   alla creazione, mai aggiornato da nessun endpoint). Misurato: **307 item su
+   307 a `true`, zero `false`** — la colonna non ha mai contenuto `false`.
+   Esposizione: **45 suggerimenti pending su 49 hanno più di un item** (max 16).
+7. **«Blocca mesi precedenti» è uno switch morto, e un cliente reale ce l'ha
+   acceso** — misurato: `davide.pizzata.78@gmail.com` ha
+   `blocco_mesi_precedenti = true`. L'unico enforcement sta in
+   `upload_handler.py:1482,1514`, che legge `st.session_state` (dict vuoto dallo
+   shim) dentro `handle_uploaded_files` — funzione **raggiungibile solo da
+   `legacy_streamlit/app_controllers.py:1701`**, a sua volta irraggiungibile
+   (nessun import da fuori `legacy_streamlit/`, frontend Streamlit rimosso il
+   17/7): è il legacy che §2 documenta come escluso dalla copertura.
+
+### Le severità riverificate: 3 spostate su 6 misurate
+
+Il metodo del ciclo (riverificare sempre le severità dell'agente) ha spostato
+**tre** classificazioni su sei misurate — la sesta, settima e ottava volta nel
+ciclo che una severità cade a una query:
+
+- **Declassato**: costo assenze del personale, dato ATTIVO dall'agente →
+  `turni_personale` è **vuota** (0 righe). Latente.
+- **Declassato**: `trigger_servizi_off`, dato ATTIVO → **0 clienti su 4** hanno
+  quella chiave. Latente (il meccanismo è però confermato: il flag è filtrato da
+  `_normalize_pagine` e non arriva mai al client).
+- **Promosso**: divergenza sede-singola↔catena sui tag, dato LATENTE
+  sull'ipotesi «nessun tag di gruppo» → esiste `gruppo_tags` id=3 «SALMONE» con
+  5 prodotti. Misurata la divergenza reale: **402.182,19 € vs 402.418,42 €**,
+  cioè **236,23 €** di note di credito non scalate sul percorso catena. Da
+  spezzare in due: (a) note di credito **attivo**, (b) unità miste **latente**
+  (i 5 prodotti sono tutti KG).
+- **Confermati attivi** i tre lasciati «DA MISURARE»: 22 descrizioni a cavallo
+  F&B/spese-generali; scarto fra i due contatori «prodotti diversi» fino a 32
+  su 9 sedi su 10; **268–1.828 descrizioni distinte per cliente** contro uno
+  `slice(0, 80)` senza alcun segnale (LAND DEI SAPORI vede il 4% del catalogo).
+
+### Due premesse mie, corrette dai fatti
+
+- «`calcolo-tab.tsx` e `lib/margini.ts` sono due verità concorrenti sui
+  margini» — **falso nel meccanismo**: `MesePivot` combacia al 100% col worker
+  (20/20 campi, tutti letti). Il drift sta in `lib/margini.ts`, che ha **zero
+  consumer** ed è dead code.
+- «Le soglie TS e Python divergono su MOL e 1° Margine» — direzionalmente
+  giusto, esempi sbagliati. Misurato su 0–100 a passi di 0,5: `Spese Generali`
+  è **coerente** (l'agente lo dava divergente) e `MOL` diverge su **tutta la
+  banda 5–20%**, non sui due punti citati.
+
+### Il pattern di fondo: drift di *autorità*, non di *tipi*
+
+Su 4 dei 7 HIGH la causa è la stessa: **il client ri-deriva localmente uno stato
+che il worker gli ha già mandato** (`fatturato_split_attivo`, `has_fatturato`,
+`colore`, lo stato «pagata»), oppure interroga l'endpoint grezzo invece di
+quello che applica le regole di dominio.
+
+La prova più netta sta in `ricavi.py:1055-1060`, dove la regola «l'override
+mensile ha precedenza sui giornalieri» **è implementata e commentata**, e il
+commento descrive esattamente il bug che si verifica altrove: *«senza questo
+filtro la stessa response mostrerebbe due fonti diverse per lo stesso mese»*.
+La regola è stata capita e corretta in **un** punto, e non propagata agli altri
+due consumer. Verificato che l'endpoint grezzo va lasciato tale: dei suoi 4
+consumer, 2 lo usano correttamente (inserimento ricavi e mobile, che devono
+vedere le righe vere) — il fix va sui 2 dialog di analisi.
+
+### I fix del 24/8 (Tag): consumati, tranne uno
+
+Verifica mirata richiesta dal ciclo, dato che 2 dei 3 precedenti che hanno
+aperto §3c venivano da lì. **`spesa_esclusa_mix` è consumato correttamente**
+(client `:1200-1207`, guardia giusta), il client **non** ricalcola il trend,
+**non** ha una media non ponderata propria e **non** rifiltra i prezzi ≤ 0:
+il precedente #1 non si ripete. Anche `refresh_ok` — il «punto caldo» che avevo
+segnalato in planning — si è rivelato **corretto**: emesso solo con
+`refresh=true` e testato con `=== false`, non falsy.
+L'unico non consumato è **`prezzo_medio_tag`**, proprio il campo corretto il
+24/8: arriva al client dentro `fornitori.aggregati` e viene scartato, così il
+cliente vede la colonna «Vs media» senza mai vedere la media di riferimento.
+
+### Copertura dichiarata (cosa NON è stato guardato)
+
+- Del folder `margini/`: `carica-ricavi-dialog.tsx` (572, letto ~120) — è dove
+  si **scrive** la modalità mensile, cioè la causa-radice dei due HIGH: candidato
+  naturale alla prossima passata. **Letti come contesto ma non come perimetro**
+  (798 righe): `costo-personale-dialog.tsx` (181), `costo-spese-dialog.tsx`
+  (177), `kpi-bar.tsx` (168), `page.tsx` (157), `periodi.ts` (115) — hanno
+  prodotto findings (soglie duplicate, `EditableField`, `delta_*_pct` morti) ma
+  non sono stati attraversati riga per riga; `kpi-bar.tsx` in particolare ha 6
+  occorrenze di `map/reduce/Math.` e merita una lettura propria.
+  `filtri-periodo.tsx`, `tabs-switcher.tsx`, `loading.tsx`: nessuna logica di
+  dominio.
+- `analisi-fatture/pivot-tab.tsx` — `PivotResponse` ha 8 campi handwritten mai
+  confrontati col worker.
+- `prezzi/score-tab.tsx` (521), `catena/*`, gli altri tab di `workspace/` e
+  `admin/`, `m/diario/*`.
+- **`/api/scadenziario/calendario` è un endpoint mai chiamato dal frontend**:
+  `CalendarView` riaggrega tutto lato client (le due formule coincidono). Dead
+  code lato client, non una divergenza visibile: da valutare in una passata
+  qualità.
+
+### Stato
+
+**Audit read-only completo sul perimetro dichiarato. Nessun fix applicato**:
+la remediation attende conferma esplicita di Mattia, come prevede il metodo del
+ciclo. Nessun file del repo modificato in questa passata oltre a questi verbali.

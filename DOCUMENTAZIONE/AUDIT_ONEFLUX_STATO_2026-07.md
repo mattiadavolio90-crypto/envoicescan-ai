@@ -1,10 +1,16 @@
 # Stato audit ONEFLUX — ciclo 2026-07
 
 **Tutte e 10 le dimensioni sono 🟢, tutte con seconda passata e `code-reviewer`.**
-Quello che resta non sono findings aperti: è **copertura test da scrivere**
-(§2) e — aperta il 25/8/2026, dopo la chiusura di §3b — la **lettura
-sistematica del frontend** (§3c), lo stesso tipo di gap che §3b aveva già
-chiuso lato Python. §1 e §3b sono vuote.
+§1 e §3b sono vuote. Restano **§2** (copertura test da scrivere: il mock globale
+di `conftest.py`) e **§3c** — la lettura sistematica del frontend, aperta il
+25/8/2026 dopo la chiusura di §3b, stesso gap che §3b aveva già chiuso lato
+Python.
+
+> ⚠️ **§3c non è più "solo copertura": la prima passata (25/8) ha trovato 39
+> findings, 21 attivi su clienti reali e 7 HIGH attivi**, tutti in attesa di
+> remediation. Il frontend non è un layer a basso rischio perché la logica di
+> dominio sta nel worker: i difetti nascono nel *consumo* di quella logica.
+> Dettaglio in STORICO §25.
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
 > dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non
@@ -754,10 +760,45 @@ che letti dalla risposta API) e incoerenze fra pagine che mostrano lo stesso
 dato in punti diversi. Non un audit di stile — quello la dimensione 6 l'ha
 già fatto.
 
-**Non ancora iniziata.** Nessuna passata `oneflux-audit` lanciata su questo
-perimetro. Da eseguire con lo stesso metodo di §3b: audit read-only prima,
-remediation solo dopo conferma esplicita, `code-reviewer` sul diff cumulativo,
-test nuovi verificati per mutazione dove applicabile.
+~~**Non ancora iniziata.**~~ — **PRIMA PASSATA (audit) CHIUSA il 25/8/2026**:
+gli **11 file grandi letti riga per riga, 13.153 righe**, in 4 passate
+`oneflux-audit` per dominio. **Nessun fix applicato**: la remediation attende
+conferma esplicita di Mattia.
+
+**Il perimetro degli 11 file non esisteva**: STORICO §6 ne nomina 3 e chiude con
+«ecc.». Ricostruito **per misura** (`wc -l` su tutti i `.tsx`), non a memoria —
+il criterio è scritto nel verbale insieme alla lista, così la prossima passata
+non deve indovinare.
+
+**39 findings, 21 attivi su clienti reali, 7 HIGH attivi; 35 piste chiuse in
+negativo.** I due fatti strutturali che li spiegano, entrambi misurati:
+`grep -ril openapi apps/web` → **0** (la CI protegge Python↔schema, nulla
+protegge schema↔TypeScript), e **111 `await res.json()` nei `.tsx` di cui solo
+16 annotati** (116 su tutto `src`).
+
+Il pattern di fondo non è drift di *tipi* ma **di autorità**: su 4 dei 7 HIGH il
+client ri-deriva localmente uno stato che il worker gli ha già mandato, o
+interroga l'endpoint grezzo invece di quello che applica le regole di dominio.
+La prova sta in `ricavi.py:1055-1060`, dove la regola è implementata **e
+commentata** con la descrizione esatta del bug che si verifica altrove — capita
+e corretta in un punto solo, mai propagata.
+
+**3 severità dell'agente spostate su 6 misurate** (6ª, 7ª e 8ª volta nel ciclo
+che una severità cade a una query): 2 declassate — costo assenze
+(`turni_personale` **vuota**) e `trigger_servizi_off` (**0 clienti**) — e 1
+**promossa**: la divergenza sede-singola↔catena sui tag, data per latente
+sull'ipotesi «nessun tag di gruppo», mentre esiste «SALMONE» con 5 prodotti e
+una divergenza misurata di **236,23 €** di note di credito non scalate.
+
+**I fix Tag del 24/8 sono consumati** (`spesa_esclusa_mix`, trend, `PrezzoValido`
+verificati uno per uno; anche `refresh_ok` si è rivelato corretto) **tranne
+`prezzo_medio_tag`**, proprio il campo corretto quel giorno: arriva al client
+dentro `fornitori.aggregati` e viene scartato.
+
+**Resta aperta**: remediation dei 21 attivi + il perimetro non ancora letto
+(`carica-ricavi-dialog.tsx`, dove si **scrive** la modalità mensile ed è la
+causa-radice di 2 HIGH; `pivot-tab.tsx`; `score-tab.tsx`; `catena/*`; gli altri
+tab di `workspace/` e `admin/`). Dettaglio in **STORICO §25**.
 
 Finché §2 o §3c sono aperte, **il ciclo non è chiuso** — anche con la tabella
 tutta 🟢 e §1/§3b vuote.
@@ -799,8 +840,10 @@ Restano aperte due cose:
   esplicitamente non da aprire senza tempo dedicato.
 - **§3c**: la lettura sistematica del frontend, aperta il 25/8 alla chiusura
   di §3b — stesso schema ("tabella verde ≠ app coperta") applicato al
-  frontend invece che al Python. È la voce che oggi tiene aperto il ciclo
-  insieme a §2.
+  frontend invece che al Python. **Prima passata di audit chiusa il 25/8**
+  (11 file, 13.153 righe, 39 findings di cui 21 attivi e 7 HIGH): restano la
+  **remediation** e il perimetro non ancora letto. È la voce che oggi tiene
+  aperto il ciclo insieme a §2.
 
 Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
 mockato globalmente, quindi il decoratore `@retry` su
