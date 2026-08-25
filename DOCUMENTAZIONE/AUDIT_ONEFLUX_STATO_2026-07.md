@@ -511,16 +511,30 @@ passed, coverage 55% (gate 45). `tag_analytics_service` **15%→69%**,
 `tsc --noEmit` pulito, OpenAPI senza drift (194 endpoint).
 Dettaglio in STORICO §22.
 
-> ⏳ **NON ancora deployato al 24/8 sera.** Branch `audit-s3b-tag` pushato su
-> origin (5 commit), ma **PR non aperta e CI mai osservata**: in questa sessione
-> `gh` non è installato e l'accesso all'API GitHub è bloccato. Il merge locale
-> era tecnicamente possibile ma è stato **deliberatamente non fatto**: mettere in
-> produzione codice la cui CI non è mai girata è esattamente l'errore registrato
-> nel caso Database del 30/7. Prossimo passo per chi riprende: aprire la PR,
-> attendere i 4 check, mergiare e verificare `/health` del worker Railway
-> (espone il commit deployato).
-> **Prompt pronto in `AUDIT_ONEFLUX_STATO_2026-07_PROSSIMA_SESSIONE.md`**, stessa
-> cartella: ha il deploy in sospeso come primo compito.
+> ✅ **Deployato il 25/8/2026 mattina presto.** La CI di GitHub Actions parte
+> solo su push a `main`/`progetto` o su `pull_request` — mai su push a un
+> branch qualsiasi: il branch `audit-s3b-tag` non ha mai potuto avere una CI
+> "in corso da osservare", andava aperta una PR per farla partire, cosa
+> impossibile in sessione (`gh` non installato, API GitHub bloccata). I 4
+> check sono stati **rieseguiti in locale** come sostituto verificabile:
+> pytest 10.971 passed/0 failed, `check-drift` OpenAPI 194 endpoint senza
+> drift, `verify-requirements` passato, `deno-test` non toccato (branch
+> tocca 0 file sotto `supabase/`) — più `tsc --noEmit` pulito.
+>
+> Durante la sessione l'utente ha committato in concorrenza sullo stesso
+> branch (`a8931b6`, fix "da verificare" Articoli/Costi di gruppo) e poi
+> l'ha portato su `main` per conto suo: il branch audit è stato **rifondato
+> su `origin/main` aggiornato** (`git rebase`, non force-push distruttivo —
+> git ha riconosciuto `a8931b6` come patch-equivalente al commit già su
+> main e l'ha scartato da solo), poi la verifica è stata **rifatta da capo**
+> sul branch riallineato prima del merge.
+>
+> Merge `--ff-only` (nessun conflitto possibile, fast-forward puro) con
+> conferma esplicita dell'utente: `main` `8fd014e` → `ebb842f`, pushato su
+> origin. `/health` del worker Railway confermava ancora il commit
+> precedente subito dopo il push (build in corso); ripollato con Monitor
+> fino a **conferma alle 10:25 CEST del 25/8**: `{"commit":"ebb842f975f8", ...}`
+> — deploy verificato, non presunto.
 
 Resta di §3b la **chat** di `fastapi_worker.py`.
 
@@ -619,7 +633,7 @@ di lasciarlo implicito:
    latente, 121 test). ~~Restano i **minori**~~: **Scadenziario
    (`documenti_service.py` + `routers/scadenziario.py`) CHIUSO l'11/8**
    (34,8%→55%, 1 HIGH + 3 MEDIUM fixati, 19 test). ~~Restano `tag.py` 23,3%,
-   `tag_suggestion_service.py` 40,8%~~ — **feature Tag CHIUSA il 24/8**
+   `tag_suggestion_service.py` 40,8%~~ — **feature Tag CHIUSA il 24/8, DEPLOYATA il 25/8** (commit `ebb842f`, confermato su `/health` alle 10:25 CEST)
    (3 HIGH + 3 MEDIUM fixati, 14 test, 8 mutazioni; perimetro allargato al
    terzo file mai citato `tag_analytics_service.py` 15%→69%). Resta la **chat**
    di `fastapi_worker.py`.

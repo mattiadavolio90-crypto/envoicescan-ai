@@ -1916,3 +1916,73 @@ prima del filtro snooze in `list_pending_tag_suggestions` (il filtro è **morto*
 `status='pending'` e `status='snoozed'` sono mutuamente esclusivi per constraint);
 gli item letti senza `.limit()` esplicito (~280 su un cap di 1000); il tag vuoto
 silenzioso quando `assoc_payload` è vuoto.
+
+## Deploy del 25/8/2026 mattina — il "non posso" della sessione precedente era male impostato
+
+Alla fine della sessione del 24/8 il branch `audit-s3b-tag` era pushato su
+origin ma dichiarato bloccato: "`gh` non installato, API GitHub bloccata,
+niente PR, niente CI osservabile". Vero nei fatti ma **la conclusione
+sbagliata**: si è scambiato "non posso aprire una PR" per "non posso
+verificare nulla".
+
+Rileggendo i workflow: [tests.yml](../../.github/workflows/tests.yml),
+[openapi-drift.yml](../../.github/workflows/openapi-drift.yml) e
+[requirements-consistency.yml](../../.github/workflows/requirements-consistency.yml)
+scattano tutti solo su push a `main`/`progetto` o su `pull_request` — **mai**
+su push a un branch qualsiasi. Quindi non esisteva alcuna "CI in corso" da
+osservare per `audit-s3b-tag`: pushare il branch non fa partire nulla, serve
+aprire la PR. La sessione precedente aveva descritto una CI "bloccata"
+che in realtà non era mai stata innescata.
+
+**Sostituto verificabile**: i 4 check sono stati rieseguiti in locale uno a
+uno — `pytest tests/` (10.971 passed, 0 failed), `export_openapi.py
+--check-drift` (194 endpoint, nessun drift), `verify_requirements_consistency.py`
+(passato), `deno test` sulle Edge Function saltato perché il branch **non
+tocca nessun file sotto `supabase/`** (verificato con `git diff --name-only`:
+0 righe) quindi non può differire dal risultato già verde su `main`. Aggiunto
+`tsc --noEmit` (non nella CI ma pertinente, il branch tocca `.tsx`/`.ts`):
+pulito.
+
+**Complicazione reale, non anticipata**: durante la verifica l'utente ha
+continuato a lavorare sullo stesso repo. Il reflog ha mostrato un commit
+`a8931b6` ("fix(fatture): allinea logica 'da verificare' tra Articoli e Costi
+di gruppo") comparire **sopra i 6 commit dell'audit su `audit-s3b-tag`**, poi
+il checkout tornare su `main` e lo stesso fix ricomparire lì come `8fd014e`
+(cherry-pick fatto dall'utente). Due volte in pochi minuti l'HEAD è cambiato
+ramo senza che fosse il flusso atteso, causando un errore di verifica: un test
+di mutazione lanciato con un heredoc Python ha troncato
+`tag_analytics_service.py` mentre il file sotto l'editor era in realtà quello
+di `main` (404 righe, senza i fix) e non quello del branch atteso — ripristinato
+subito da `git checkout --` più confronto byte-a-byte con un backup fatto
+prima, **nessuna perdita**, ma lezione di metodo: *un mutation test tocca solo
+copie in scratchpad, mai il file nel branch di lavoro, proprio per il caso in
+cui il branch sotto i piedi non è quello che si crede*.
+
+Prima di mergiare, sessione fermata esplicitamente per far confermare
+all'utente di aver finito di lavorare. Confermato ("ho finito puoi concludere
+tutto"), poi:
+
+1. `git rebase origin/main` su `audit-s3b-tag` — git ha riconosciuto `a8931b6`
+   come patch-equivalente a `8fd014e` (già su main) e l'ha **scartato da solo**
+   (`warning: skipped previously applied commit`), riapplicando solo i 6
+   commit dell'audit sopra `main` aggiornato. Nessun force-push, nessuna
+   riscrittura distruttiva: il branch locale non era ancora stato pubblicato
+   con la nuova base.
+2. Verifica **rifatta da capo** sul branch riallineato (non riusata quella di
+   prima, che era su una base ormai superata): 10.971 passed di nuovo, drift
+   OpenAPI nessuno, requirements ok.
+3. `git merge --ff-only audit-s3b-tag` su `main` — fast-forward puro,
+   nessun conflitto possibile per costruzione. **Confermato esplicitamente
+   dall'utente** prima dell'esecuzione (il comando era bloccato dal
+   classificatore auto-mode in quanto azione a impatto largo).
+4. `git push origin main`: `8fd014e..ebb842f`.
+5. `/health` del worker Railway interrogato subito dopo il push: ancora
+   `8fd014e` (build Railway non istantaneo), poi ripollato fino a confermare
+   `ebb842f` — confermato alle **10:25 CEST del 25/8**: `{"commit":"ebb842f975f8", ...}`.
+
+**Lezione di metodo per il prossimo ciclo**: "non posso aprire una PR" e "non
+posso verificare niente" sono due affermazioni diverse — la seconda va
+dimostrata leggendo i trigger CI, non assunta dalla prima. E quando in sessione
+si notano cambi di branch non comandati da sé, è il segnale che qualcun altro
+sta scrivendo sullo stesso repository: fermarsi e chiedere prima di un merge,
+non dopo.
