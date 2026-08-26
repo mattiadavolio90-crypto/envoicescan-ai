@@ -6,17 +6,15 @@ minuto) e `..._STORICO.md §30`/`§31` (dettaglio delle ultime due sessioni,
 
 ## Priorità, in ordine
 
-### 0. ~~Conferma deploy~~ — CHIUSO in §30 (26/8/2026)
-`/health` del worker Railway verificato: `commit f177952a0210`, successivo a
-`188d11f` e già `origin/main`. Non fatto il giro manuale su Analisi
-Fatture/Margini in produzione (nessun browser nell'ambiente) — farlo se serve
-conferma visuale, ma non blocca il resto.
-
-**Aggiornamento §31**: i fix di §30 (punti 0 e 2) sono stati anche pushati,
-messi in PR (#26) e mergiati in `main` (commit `4024308`) su eccezione di
-orario **esplicitamente confermata** da Mattia (merge alle 15:11 UTC, pieno
-orario clienti). Deploy verificato: `/health` → `commit 4024308edf3b`. Vedi
-STORICO §31.
+### 0. ~~Conferma deploy~~ — CHIUSO in §30/§31 (26/8/2026)
+`/health` del worker Railway verificato: prima `commit f177952a0210` (§30,
+merge PR #25), poi i fix di §30 stessi sono stati pushati, aperti in PR #26
+e mergiati in `main` (commit `4024308`) su eccezione di orario
+**esplicitamente confermata** da Mattia (merge alle 15:11 UTC, pieno orario
+clienti). Deploy ri-verificato: `/health` → `commit 4024308edf3b`. Vedi
+STORICO §31. Non fatto il giro manuale su Analisi Fatture/Margini in
+produzione (nessun browser nell'ambiente) — farlo se serve conferma visuale,
+ma non blocca il resto.
 
 ### 1. Il MEDIUM residuo (richiede tua conferma esplicita, poi Opus)
 Divergenza sede-singola↔catena sulle note di credito: **236,23 €**
@@ -26,11 +24,16 @@ in modo coerente — cambia totali di catena già mostrati ai clienti, quindi
 non partire senza che Mattia l'abbia vista e confermata esplicitamente.
 Dettaglio: STORICO §25 e §28.
 
-### 2. ~~`stash@{0}`~~ — CHIUSO in §30 (26/8/2026)
+### 2. ~~`stash@{0}`~~ — CHIUSO in §30/§31 (26/8/2026)
 Confrontato col diff corrente di `.claude/settings.json`: unico contenuto non
 già presente era il permesso `Bash(python -m pytest
-tests/test_documentazione_onesta.py -q)`, incorporato con Edit mirato. Stash
-droppato dopo conferma esplicita.
+tests/test_documentazione_onesta.py -q)`, incorporato con Edit mirato in §30.
+In §31 risolto anche un secondo stash residuo (4 permessi bash autogenerati
+dalle chiamate di sessione — curl `/health`, pytest, `git commit -m`),
+incorporati e committati (`8976509`). Entrambi gli stash droppati dopo
+conferma esplicita. `git stash list` ora contiene solo stash pre-esistenti
+non correlati a questo ciclo (`audit-s3c-passata1`, `TUE-mod-scadenziario-tmp`,
+ecc.) — non toccarli senza motivo specifico.
 
 ### 3. Perimetro §3c non ancora letto
 Audit read-only con `oneflux-audit`, poi remediation solo dopo conferma:
