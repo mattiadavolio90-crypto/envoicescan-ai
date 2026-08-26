@@ -51,7 +51,11 @@
       "mcp__claude_ai_Supabase__list_edge_functions",
       "Bash(python -m pytest tests/test_documentazione_onesta.py -q)",
       "Bash(git fsck *)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(curl -s -m 25 -w \"\\\\nHTTP_CODE=%{http_code}\\\\n\" https://worker-production-a552.up.railway.app/health)",
+      "Bash(timeout 900 python -m pytest tests/test_documentazione_onesta.py -q)",
+      "Bash(git commit -m ' *)",
+      "Bash(curl -s -m 15 -w \"\\\\nHTTP_CODE=%{http_code}\\\\n\" https://worker-production-a552.up.railway.app/health)"
     ],
     "defaultMode": "acceptEdits"
   },
