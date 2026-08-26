@@ -97,6 +97,10 @@ create_admin*.py
 # La cartella e il suo README restano tracciati, i singoli piani no.
 docs/piani/*.md
 !docs/piani/README.md
+
+# Marker di stato per l'hook Stop claude_hook_reviewer_gate.py: effimero, per-sessione.
+.claude/.reviewer_gate_ok
+.claude/.reviewer_gate_segnalato
 *QUICK_START*.txt
 START_HERE.txt
 TEST_FIX*.md
