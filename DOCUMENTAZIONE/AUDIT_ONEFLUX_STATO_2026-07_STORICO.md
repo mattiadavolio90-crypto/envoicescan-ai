@@ -2681,3 +2681,147 @@ Aperti da questa tranche, segnalati dal `code-reviewer` e **non chiusi**:
   nel batch: query evitabili su caricamenti da centinaia di file.
 
 Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.
+
+---
+
+## §28 — §3c, remediation MEDIUM/LOW (14 su 15) — 26/8/2026
+
+Chiude tutti i findings MEDIUM/LOW attivi di §3c tranne uno, che richiede una
+migration e quindi conferma esplicita.
+
+### Il conteggio era sbagliato: 15, non 14
+
+§25/§26/§27 dicevano «14 findings MEDIUM/LOW attivi». Ricontando dai report per
+gruppo (conservati in scratchpad e riletti riga per riga) sono **15**: 3 nel
+gruppo 1, 5 nel gruppo 3, 7 nei gruppi 2+4. Il 14 era un errore di somma
+propagato per tre sezioni. Non cambia nulla nel merito — è però l'ennesima
+conferma che i numeri di questo verbale vanno ricontati, non ricopiati.
+
+### Cosa è stato corretto
+
+**Margini (3)**
+- Il gate del «Dettaglio giornaliero» filtrava per *nome* del centro invece di
+  leggere `has_fatturato`, che il worker già manda (`margini.py:653`, dove la
+  condizione è anche `split_attivo` e `fatt_c > 0`). Con lo split spento il
+  bottone restava abilitato e apriva un dialog con tutte le colonne a «—»:
+  **5 sedi su 8**. Le righe 492-546 dello stesso file `has_fatturato` lo
+  leggevano già — era solo il cancello a ri-derivarlo.
+- Il gauge «Costi Gestione» cercava se stesso mentre `/api/margini/analisi` manda
+  «Spese Generali». **Verificato eseguendo il match**: 5 commenti generati, 3
+  renderizzati, buttati «Spese Generali» e «Costo del Lavoro». Il gauge mostrava
+  «—» in modo permanente. Nota: esistono *due* produttori di `commenti`
+  (`margine_service.py:1023` dice «Costi Gestione», `margini.py:1211` dice
+  «Spese Generali») e il tab consuma il secondo.
+- I colori dei gauge venivano da una seconda tabella di soglie locale, con **3
+  bande** contro le **4** del Python: sul MOL divergevano su tutta la banda
+  5-20% (a MOL 15% gauge verde e commento giallo). Ora seguono l'emoji di
+  `_valuta_soglia_margine`; palette invariata.
+
+**Analisi fatture (3)**
+- `/righe-articolo` non accettava `tipo_prodotti` mentre `/articoli-aggregati`
+  sì: col chip F&B attivo il totale del padre era su un sottoinsieme e le righe
+  figlie erano tutte.
+- I due contatori «prodotti diversi» adiacenti divergevano su **9 sedi su 10**.
+  **Rettifica della diagnosi di §25**: il case *non c'entra* — misurato, zero
+  descrizioni in produzione differiscono per sole maiuscole. Lo scarto è
+  interamente righe a importo 0 (note, diciture, omaggi). Il worker manda ora
+  `total_con_acquisti`, e **non è ricavabile lato client**: un articolo i cui
+  storni si annullano ha `totale_speso` 0 ma righe di acquisto vere (fino a
+  **14 per sede**, LAND DEI SAPORI). L'approssimazione client sarebbe stata una
+  divergenza più piccola al posto di una più grande.
+- `/api/fatture/kpi` ignorava `solo_da_verificare` e `solo_ripartite`: la KpiBar
+  restava sul periodo intero sopra una tabella ristretta. La guardia
+  `hasRipartite` è replicata lato server, o un `?ripartite=1` rimasto nell'URL
+  avrebbe azzerato i KPI sopra una tabella piena — lo stesso difetto invertito.
+
+**Scadenziario (1)** — lo spostamento di sede non toglieva la fattura dalla
+lista (l'eliminazione invece sì): restava a video sotto la sede vecchia e un
+secondo click dava un errore che contraddiceva il toast verde appena letto.
+
+**Tag e Prezzi (4)**
+- I selettori prodotti tagliavano a 80 **senza dirlo**: i clienti reali hanno
+  268-1828 descrizioni (LAND DEI SAPORI ne vedeva il 4%). Il tetto resta — è una
+  protezione del rendering, non un filtro di dominio — ma ora è dichiarato.
+- `prezzo_medio_tag` (il campo corretto il 24/8) arrivava in
+  `fornitori.aggregati` e veniva scartato: la colonna «Vs media» mostrava
+  scostamenti da un numero mai visibile.
+- «Impatto stimato/mese» è calcolato sul filtrato ma aveva un sub statico.
+- La sparkline ri-splittava la stringa di *presentazione* `"€x → €y"`, perdendo i
+  decimali oltre il 2° su un dominio che tiene i prezzi a 4. Il worker manda
+  `storico_valori`; `parseStorico` resta come fallback.
+
+**Admin (3)**
+- `handleSalvaEdit` e `handleDelete` non leggevano `res.ok` (un 404 dava toast
+  verde e riga rimossa dallo stato), in un file che lo controlla ovunque
+  altrove. Ora mostrano anche `righe_propagate`, che distingue una modifica di
+  memoria globale da 400 righe da una da 0.
+- Il guardrail NOTE E DICITURE scrive solo sulle righe a importo 0 (dominio #2)
+  ma il client rimuoveva l'intero gruppo: «4 righe classificate», gruppo sparito,
+  le altre 8 di nuovo lì al refresh.
+- Il dettaglio cliente non restituiva `n_fatture`/`n_sedi`/`piano_inizio_at`,
+  **dichiarati obbligatori** in `lib/admin.ts`, e non filtrava `sede_tecnica`
+  come fanno `lista_clienti` e `lista_sedi`.
+
+### Le due rettifiche del code-reviewer
+
+- **Quarta asserzione numerica caduta nel ciclo.** «22 descrizioni a cavallo
+  F&B/spese-generali» raggruppa per sola descrizione su *tutte le sedi insieme*.
+  `/righe-articolo` è sempre scopato a un `ristorante_id`: per
+  `(sede, descrizione)` sono **8**. Il fix resta necessario, la magnitudine era
+  gonfiata ~3x. (La prima query di controllo che avevo scritto inventava dieci
+  categorie di spese generali e dava 11: `CATEGORIE_SPESE_GENERALI_WORKER` ne ha
+  **4**.)
+- **Regressione cosmetica introdotta da me**, non presente prima: il fallback di
+  `coloreDaCommento` era ambra, ma il worker popola `commenti` solo se c'è
+  almeno un mese con fatturato > 0 (`margini.py:1207`) mentre il gauge si
+  renderizza anche con soli costi. **OFFSIDE SPORTS PUB** ha 0 mesi con
+  fatturato e ~14.600 € di costi F&B: avrebbe visto quattro gauge ambra, cioè un
+  giudizio su percentuali tutte a 0 — lo stesso tipo di valutazione inventata
+  che questa tranche stava togliendo. Fallback ora neutro.
+
+### Piste chiuse in negativo dal reviewer (valgono quanto i fix)
+
+- **La finestra di deploy asincrono è sicura in entrambe le direzioni.** Era la
+  preoccupazione principale: col worker vecchio `total_con_acquisti` è *assente
+  dal JSON* (il default Pydantic vale alla costruzione lato server, non in
+  deserializzazione), quindi la guardia `!== undefined` regge e il chip non
+  compare. `storico_valori` usa `??`, non `||`.
+- La guardia `solo_ripartite` server replica il *client*, non l'endpoint
+  aggregati — corretto, perché `page.tsx` non passa `solo_ripartite` a
+  `fetchArticoliAggregati` e la tabella filtra client-side.
+- `n_fatture` dal dettaglio coincide con la lista su tutti e 7 i clienti; la RPC
+  accetta l'array da 1 elemento e per i clienti a zero fatture non restituisce
+  righe (`n_fatture` resta 0, come nella lista).
+- Il filtro `sede_tecnica` cambia il numero per **1 cliente su 7**: OFFSIDE passa
+  da 3 sedi a 2 nel dettaglio, allineandosi alla lista che già mostrava 2.
+  Nessuna riga ha `sede_tecnica IS NULL`.
+
+### Verifica
+
+- `pytest tests/`: **11.092 passed, 43 skipped** (+17 nuovi in
+  `tests/test_s3c_medium_low.py`)
+- **10 mutanti, 10 uccisi**, file di lavoro ripristinati identici (`md5sum -c`).
+  Uno era **sopravvissuto**: il test su `storico_valori` asseriva su un modello
+  costruito a mano invece che sul calcolo reale — riscritto su
+  `_calcola_variazioni_prezzi_sync`, ora muore. Il `code-reviewer` ha rifatto da
+  zero il mutation testing con 6 mutanti propri: 6 su 6 uccisi.
+- `npx tsc --noEmit` pulito · `npm run build` exit 0
+- `export_openapi.py --check-drift` OK — **49 righe, tutte in aggiunta**, 194
+  endpoint invariati: nessun consumer esistente può rompersi
+- `tests/test_documentazione_onesta.py`: 51 passed
+
+### Resta aperto
+
+- **L'unico MEDIUM non chiuso**: la divergenza sede-singola↔catena sulle note di
+  credito. Le RPC `gruppo_tag_*` filtrano `prezzo_unitario > 0` in **6 punti**,
+  escludendo 3 righe di storno: **402.182,19 € vs 402.418,42 €**, cioè
+  **236,23 €** — riverificato oggi, il numero regge. Richiede una **migration**,
+  quindi conferma esplicita, e va valutato che cambia i totali di catena già
+  mostrati.
+- Il perimetro §3c non ancora letto (`carica-ricavi-dialog.tsx`, `pivot-tab.tsx`,
+  `score-tab.tsx`, `catena/*`, gli altri tab di `workspace/` e `admin/`,
+  `m/diario/*`).
+- I quattro punti aperti da §27 (canale SDI, `pagata_at` locale vs UTC, flush
+  PROP-1, `get_trial_info` per file).
+
+Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.

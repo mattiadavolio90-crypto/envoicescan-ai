@@ -10,8 +10,10 @@ Python.
 > findings, 21 attivi su clienti reali e 7 HIGH attivi.** Il frontend non è un
 > layer a basso rischio perché la logica di dominio sta nel worker: i difetti
 > nascono nel *consumo* di quella logica. **Tutti e 7 gli HIGH sono corretti**:
-> 4 il 25/8 (STORICO §26), gli ultimi 3 il 26/8 (STORICO §27). Restano 14
-> findings MEDIUM/LOW attivi. Dettaglio dell'audit in STORICO §25.
+> 4 il 25/8 (STORICO §26), gli ultimi 3 il 26/8 (STORICO §27). **E 14 dei 15
+> MEDIUM/LOW** il 26/8 (STORICO §28 — erano 15, non 14: errore di somma).
+> Resta **1 solo MEDIUM**, che richiede una migration sulle RPC di catena.
+> Dettaglio dell'audit in STORICO §25.
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
 > dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non
@@ -815,10 +817,24 @@ trial erano entrambe morte con Streamlit, e un cliente reale
 uccisi; scrivendoli sono emersi 2 difetti ereditati nei messaggi all'utente
 (mese sbagliato per indice, anno sbagliato a gennaio).
 
-**Resta aperta**: 14 findings MEDIUM/LOW attivi + il perimetro
-non ancora letto (`carica-ricavi-dialog.tsx`, dove si **scrive** la modalità
-mensile; `pivot-tab.tsx`; `score-tab.tsx`; `catena/*`; gli altri tab di
-`workspace/` e `admin/`). Dettaglio in **STORICO §25**.
+**TERZA TRANCHE chiusa il 26/8 — i MEDIUM/LOW** (STORICO §28). Il conteggio
+era sbagliato: i findings attivi erano **15**, non 14 (errore di somma
+propagato per tre sezioni). **14 su 15 corretti.** Le due incoerenze più
+visibili al cliente erano un contatore che si contraddiceva con quello sopra
+di sé su 9 sedi su 10, e i selettori prodotti che tagliavano a 80 senza dirlo
+(LAND DEI SAPORI vedeva il 4% del catalogo). **Quarta rettifica numerica del
+ciclo**: le «22 descrizioni a cavallo F&B/spese-generali» sono **8** per
+(sede, descrizione), che è lo scope reale dell'endpoint. E una **rettifica
+della diagnosi di §25**: lo scarto fra i due contatori non dipendeva dal case
+(zero descrizioni differiscono per sole maiuscole) ma dalle righe a importo 0.
+17 test nuovi, 10 mutanti uccisi + 6 del reviewer.
+
+**Resta aperta**: **1 solo MEDIUM**, la divergenza sede-singola↔catena sulle
+note di credito (236,23 € misurati, riverificati il 26/8) — richiede una
+**migration** su 6 RPC `gruppo_tag_*` e quindi conferma esplicita. Più il
+perimetro non ancora letto (`carica-ricavi-dialog.tsx`, dove si **scrive** la
+modalità mensile; `pivot-tab.tsx`; `score-tab.tsx`; `catena/*`; gli altri tab
+di `workspace/` e `admin/`). Dettaglio in **STORICO §25** e **§28**.
 
 Finché §2 o §3c sono aperte, **il ciclo non è chiuso** — anche con la tabella
 tutta 🟢 e §1/§3b vuote.
@@ -863,7 +879,8 @@ Restano aperte due cose:
   frontend invece che al Python. **Prima passata di audit chiusa il 25/8**
   (11 file, 13.153 righe, 39 findings di cui 21 attivi e 7 HIGH) e
   **remediation completata sugli HIGH**: 4 il 25/8 (STORICO §26), gli ultimi
-  3 il 26/8 (STORICO §27). Restano 14 findings MEDIUM/LOW attivi e il perimetro
+  3 il 26/8 (STORICO §27) e 14 MEDIUM/LOW su 15 il 26/8 (STORICO §28).
+  Resta 1 MEDIUM (migration sulle RPC di catena) e il perimetro
   non ancora letto. È la voce che oggi tiene aperto il ciclo insieme a §2.
 
 Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
