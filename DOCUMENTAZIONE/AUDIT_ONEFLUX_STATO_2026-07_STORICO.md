@@ -2600,6 +2600,22 @@ al primo trial.
 **Fix**: nuovo `services/upload_policy.py` — la regola in un posto solo, senza
 `st.session_state`, applicata dal worker dopo il parse e prima del salvataggio.
 
+**Perimetro del fix, dichiarato**: copre l'**upload manuale**
+(`POST /api/upload/invoice`), non il canale SDI (`worker/queue_processor.py:715`)
+né il ramo multi-sede ambiguo, che rientra dalla coda e quindi passa dallo stesso
+percorso SDI. È deliberato: la UI admin descrive il flag come *"Impedisce
+**caricamento** fatture dell'anno scorso"*, e l'enforcement storico stava solo
+nell'handler di upload — una fattura che il SDI recapita per legge non è un
+caricamento che il cliente sceglie di fare. Ma è una scelta di prodotto, non una
+conseguenza tecnica, ed è la ragione per cui va scritta qui invece di restare
+implicita.
+
+Oggi nessun cliente è esposto alla differenza: `davide.pizzata.78` — l'unico col
+flag acceso — ha **0 record in `fatture_queue`**, cioè nessun traffico SDI. Se un
+domani il flag venisse acceso a `offsidesp` (417 in coda, ultima il 22/8) o a
+`ghyl.888` (121), il blocco coprirebbe una minoranza del suo volume: **a quel
+punto la scelta va rifatta**, non ereditata da qui.
+
 Due difetti scoperti **scrivendo i test**, entrambi ereditati dal codice storico
 e mai visti perché quel percorso non girava:
 
@@ -2610,6 +2626,18 @@ e mai visti perché quel percorso non girava:
    stanno in **anni diversi** (*"Dicembre 2026 o Gennaio 2027"*), e un anno solo
    ne datava uno in modo falso.
 
+E un terzo, il più costoso, trovato dal `code-reviewer` guardando avanti invece
+che indietro: `blocco_anno_precedente` ha **default `True`** e *nessun* cliente ha
+la chiave configurata, quindi vale per tutti. Con il confronto secco
+`data.year < oggi.year` ereditato dal codice storico, **dal 1° gennaio 2027
+nessuno avrebbe più potuto caricare le fatture di dicembre 2026** — che è il caso
+normale, non un caso limite: le fatture di dicembre arrivano a gennaio. Non si era
+mai visto perché quel codice non girava; portandolo su un percorso vivo sarebbe
+diventato un blocco totale a data fissa. Corretto ammettendo sempre il **mese
+precedente**: a febbraio la deroga si chiude da sola, senza date cablate. Su
+quel mese decide semmai `blocco_mesi_precedenti`, che è la regola più stretta e
+più esplicita.
+
 Nota di merito al metodo: `trial_active` **non è** fra i campi che
 `verifica_sessione_da_cookie` mette in `user`. Leggerlo da lì avrebbe dato sempre
 `None` — un secondo interruttore spento al posto del primo. Si passa da
@@ -2618,11 +2646,13 @@ Nota di merito al metodo: `trial_active` **non è** fra i campi che
 ### Verifica
 
 - `pytest tests/`: **11067 passed, 43 skipped**
-- **22 test nuovi** (`tests/test_upload_policy.py`), verificati **per mutazione su
-  copia in scratchpad**: **7 mutanti, 7 uccisi** — admin non bypassa, default
+- **30 test nuovi** (`tests/test_upload_policy.py`), verificati **per mutazione su
+  copia in scratchpad**: **10 mutanti, 10 uccisi** — admin non bypassa, default
   anno invertito, default mesi invertito, trial ignorato, mese precedente
-  off-by-one, indice `MESI_ITA` storico, data illeggibile che blocca. File di
-  lavoro ripristinato identico (`md5sum -c` OK).
+  off-by-one, indice `MESI_ITA` storico, data illeggibile che blocca, guardia
+  `isinstance` degradata a `or {}` (il mutante sopravvissuto segnalato dal
+  reviewer), deroga di dicembre rimossa, deroga sempre attiva. File di lavoro
+  ripristinato identico (`md5sum -c` OK).
 - Fix frontend verificato **eseguendo il codice compilato** in 5 fusi: pre-fix
   New York €200 / post-fix €1200, Roma invariato in entrambi.
 - `npx tsc --noEmit` pulito · `npm run build` exit 0
@@ -2633,4 +2663,21 @@ Nota di merito al metodo: `trial_active` **non è** fra i campi che
 ### Resta aperto
 
 14 findings MEDIUM/LOW attivi e il perimetro non ancora letto elencato in §25.
+
+Aperti da questa tranche, segnalati dal `code-reviewer` e **non chiusi**:
+
+- **Policy date sul canale SDI** — vedi il perimetro dichiarato sopra: scelta di
+  prodotto da confermare, non un dimenticanza.
+- **`pagata_at`: frontend locale, backend UTC.** `todayLocalIso()` scrive in ora
+  locale, `documenti_service.py:689` persiste `datetime.now(timezone.utc).date()`.
+  Nella finestra 00:00–02:00 italiana del 1° del mese l'ottimistico e il valore
+  ricaricato possono cadere in mesi diversi. Finestra stretta, ma è la stessa
+  classe del difetto appena chiuso, di segno inverso.
+- **Flush PROP-1 prima del blocco.** `estrai_dati_da_xml` fa un upsert su
+  `prodotti_utente` (`invoice_service.py:1271`): una fattura poi rifiutata dalla
+  policy lascia comunque le associazioni descrizione→categoria nella memoria del
+  cliente. Non tocca `fatture` né i margini.
+- **`get_trial_info` per ogni file** di un batch, benché `is_trial` sia invariante
+  nel batch: query evitabili su caricamenti da centinaia di file.
+
 Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.

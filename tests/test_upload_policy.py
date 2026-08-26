@@ -69,6 +69,27 @@ class TestBloccoAnnoPrecedente:
             "2025-12-31", {"blocco_anno_precedente": False}, oggi=OGGI
         ) is None
 
+    def test_gennaio_dicembre_precedente_passa(self):
+        """Il caso normale di inizio anno: le fatture di dicembre arrivano a
+        gennaio. Con `data.year < oggi.year` secco (l'indice storico) sarebbero
+        state rifiutate a TUTTI i clienti, perche' nessuno configura la chiave e
+        il default e' True."""
+        gennaio = date(2027, 1, 10)
+        assert valuta_policy_data("2026-12-28", {}, oggi=gennaio) is None
+
+    def test_gennaio_novembre_resta_bloccato(self):
+        """Il mese precedente e' ammesso, non tutto l'anno prima: novembre da
+        gennaio resta fuori."""
+        gennaio = date(2027, 1, 10)
+        assert valuta_policy_data("2026-11-28", {}, oggi=gennaio) == BLOCCO_ANNO
+
+    def test_febbraio_dicembre_torna_bloccato(self):
+        """A febbraio dicembre non e' piu' il mese precedente: la deroga si
+        chiude da sola, senza date speciali cablate."""
+        assert valuta_policy_data(
+            "2026-12-28", {}, oggi=date(2027, 2, 10)
+        ) == BLOCCO_ANNO
+
     def test_anno_ha_precedenza_sul_mese(self):
         """Con entrambi i flag attivi una fattura dell'anno scorso deve dire
         'anno precedente': e' il messaggio che spiega davvero il rifiuto."""
@@ -117,6 +138,15 @@ class TestDateNonDecidibili:
 
     def test_pagine_abilitate_none_non_esplode(self):
         assert valuta_policy_data("2026-08-15", None, oggi=OGGI) is None
+
+    @pytest.mark.parametrize("cfg", [[], "", "blocco_mesi_precedenti", 0, True])
+    def test_pagine_abilitate_non_dict_ricade_sui_default(self, cfg):
+        """La guardia e' `isinstance(..., dict)`, non `or {}`: un valore non-dict
+        (lista, stringa) supererebbe `or {}` e poi esploderebbe su `.get`, oppure
+        — per una stringa — si comporterebbe come un contenitore sbagliato.
+        Il default che deve valere e' quello del dict vuoto."""
+        assert valuta_policy_data("2026-08-15", cfg, oggi=OGGI) is None
+        assert valuta_policy_data("2025-08-15", cfg, oggi=OGGI) == BLOCCO_ANNO
 
 
 class TestMessaggi:

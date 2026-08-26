@@ -75,10 +75,17 @@ def valuta_policy_data(
     oggi = oggi or date.today()
     cfg = pagine_abilitate if isinstance(pagine_abilitate, dict) else {}
 
-    # Default True come nel percorso storico: il blocco anno precedente e' la
-    # protezione di base, si disattiva esplicitamente.
+    # Default True come nel percorso storico. Il confronto NON e' `data.year <
+    # oggi.year` secco: a gennaio bloccherebbe le fatture di dicembre, che e' il
+    # caso normale (arrivano quasi tutte nelle prime settimane dell'anno dopo).
+    # Nel percorso storico non si vedeva perche' quel codice non girava; qui gira,
+    # e il 1/1/2027 avrebbe rifiutato dicembre 2026 a TUTTI i clienti — nessuno ha
+    # la chiave configurata, quindi tutti prendono il default.
+    # Il mese precedente resta sempre ammesso; a decidere su di esso e' semmai
+    # blocco_mesi_precedenti, che e' la regola piu' stretta e piu' esplicita.
     if cfg.get(BLOCCO_ANNO_KEY, True) and data.year < oggi.year:
-        return BLOCCO_ANNO
+        if (data.year, data.month) != _mese_precedente(oggi):
+            return BLOCCO_ANNO
 
     consenti_mese_prec = is_trial or bool(cfg.get(BLOCCO_MESI_KEY, False))
     if consenti_mese_prec:
@@ -103,8 +110,13 @@ MESSAGGI = {
 
 
 def messaggio_blocco(kind: str, data_documento: Any, oggi: Optional[date] = None) -> str:
-    """Testo mostrato al cliente, con gli stessi prefissi del percorso storico
-    (`ANNO PRECEDENTE` / `MESE NON CONSENTITO`): il frontend li riconosce gia'."""
+    """Testo mostrato al cliente, per intero e cosi' com'e'.
+
+    Il frontend NON lo interpreta: `upload-modal.tsx` stampa `entry.error` grezzo.
+    I prefissi `ANNO PRECEDENTE` / `MESE NON CONSENTITO` restano per continuita'
+    con il percorso storico ed erano letti da `upload_handler._get_policy_block_kind`,
+    che oggi e' codice morto — non sono un contratto con la UI.
+    """
     from config.constants import MESI_ITA
 
     oggi = oggi or date.today()
