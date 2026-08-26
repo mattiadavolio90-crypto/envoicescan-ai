@@ -21,8 +21,12 @@ Python.
 > ricategorizzazione (`scripts/ricategorizza_sede.py`) che anteponendo il
 > fornitore alla descrizione avrebbe potuto sovrascrivere righe già corrette a
 > mano dai clienti (19 divergenze su 3.376 coppie reali). **Corretto e coperto
-> da 12 test nuovi.** Deploy automatico (Vercel+Railway al push) non ancora
-> confermato da questa sessione — manca `/health` del worker.
+> da 12 test nuovi.**
+>
+> **Deploy confermato in STORICO §30 (26/8, sessione successiva)**: `/health`
+> del worker Railway a `commit f177952a0210`, coerente con `main`. Nella
+> stessa sessione risolto anche `stash@{0}` (permesso mancante incorporato in
+> `.claude/settings.json`, stash droppato).
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
 > dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non

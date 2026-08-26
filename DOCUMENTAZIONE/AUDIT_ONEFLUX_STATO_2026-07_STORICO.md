@@ -2980,3 +2980,65 @@ dashboard, giro rapido su Analisi Fatture/Margini in produzione.
   Analisi Fatture/Margini in produzione.
 
 Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.
+
+## §30 — Conferma deploy + risoluzione stash su settings.json — 26/8/2026
+
+Sessione breve, solo le due voci "piccole" indicate in cima al prompt della
+sessione precedente; punti 1/3/4/5 non toccati per scelta esplicita.
+
+### Punto 0 — deploy confermato
+
+`curl https://worker-production-a552.up.railway.app/health` → HTTP 200,
+`{"status":"ok","commit":"f177952a0210",...}`. `f177952` è il merge commit di
+PR #25 (`docs-audit-s3c-chiusura`), successivo a `188d11f` (PR #24) e già
+`origin/main`. Deploy verificato coerente, nessuna azione necessaria. Non
+eseguito il giro manuale su Analisi Fatture/Margini in produzione (nessun
+browser disponibile in questo ambiente) — resta da fare se serve conferma
+visuale, ma l'health check e la corrispondenza del commit sono sufficienti
+a chiudere il punto 0.
+
+### Punto 2 — `stash@{0}` risolto
+
+`stash@{0}` ("On audit-s3c-passata1: settings.json locale, non mio")
+conteneva un diff su `.claude/settings.json` che, rispetto al punto di
+partenza dello stash, toglieva il permesso `Bash(git commit -m ' *)` e
+aggiungeva `Bash(railway whoami *)` e
+`Bash(python -m pytest tests/test_documentazione_onesta.py -q)`.
+
+Confrontato con il working tree del branch corrente (che aveva già un diff
+più ampio, non toccato in questa sessione, con `railway whoami`, `railway
+status`, i permessi MCP Vercel, `npm install`, ecc.): l'unico contenuto
+dello stash **non già presente** era il permesso per
+`test_documentazione_onesta.py`. Aggiunto con Edit mirato (non
+`stash pop`/`apply`, per evitare di introdurre il permesso `git commit -m`
+già rimosso a monte). Verificato `git diff .claude/settings.json` dopo
+l'edit: il permesso è presente, nessun'altra differenza introdotta.
+Droppato `stash@{0}` dopo conferma esplicita dell'utente.
+
+**Nota del `code-reviewer` finale, verificata**: nel frattempo la sessione
+parallela di Mattia ha committato (`cafc3e3`, "fix(hook): path assoluti
+`$CLAUDE_PROJECT_DIR` + docs(storico): diagnosi incidente devcontainer") un
+diff su `.claude/settings.json` che includeva **anche** il permesso
+`Bash(python -m pytest tests/test_documentazione_onesta.py -q)` aggiunto qui.
+Il mio edit locale era quindi già ridondante al momento del commit — nessuna
+azione ulteriore, ma chi cerca quel permesso in futuro lo troverà in
+`cafc3e3`, non in un commit dedicato a §30. L'indice dello stash è scalato
+dopo il drop: l'attuale `stash@{0}` (diverso da quello chiuso qui) è
+`WIP on audit-s3c-passata1: 49f90ee`, contiene `scripts/ricategorizza_sede.py`
++ `services/ai_service.py` — presumibilmente ridondante col fix WINDTRE/
+contaminazione fornitore già mergiato in `main` con §29, ma non verificato né
+toccato in questa sessione.
+
+### Resta aperto (invariato da §29)
+
+- MEDIUM note di credito sede-singola↔catena (236,23 €) — richiede conferma
+  esplicita per la migration sulle 6 RPC `gruppo_tag_*`.
+- Perimetro §3c non ancora letto (`carica-ricavi-dialog.tsx`, `pivot-tab.tsx`,
+  `score-tab.tsx`, `catena/*`, altri tab di `workspace/`/`admin/`,
+  `m/diario/*`).
+- Quattro punti aperti da §27 (canale SDI, `pagata_at` locale vs UTC, flush
+  PROP-1, `get_trial_info` per file).
+- §2 (mock globale di `conftest.py`) resta intatta, lavoro lungo dichiarato
+  apposta.
+
+Il ciclo **non è chiuso**: restano §2 e §3c.

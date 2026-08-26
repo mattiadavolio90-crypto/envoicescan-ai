@@ -14,6 +14,7 @@ archiviato qui.
 | `CHECKLIST_069_072.md` | Checklist di applicazione delle migration legacy 069–072 (cartella `migrations/` storica) | Traccia di cosa è stato applicato sullo schema legacy |
 | `INVOICETRONIC_DIAGNOSI_2026-07-02.md` | Diagnosi blocco ricezione fatture OFFSIDE (2/7/2026): precedenza del Codice Destinatario sul cassetto fiscale, conflitto con provider terzi (Sistemi in Rete) | Pattern che si ripresenterà su altri clienti multi-provider: la regola SDI su cosa vince tra cassetto fiscale e XML fornitore non è ovvia e costa tempo riscoprirla |
 | `DIAGNOSI_OFFSIDE_INVOICETRONIC_2026-07-14.md` | Diagnosi blocco ricezione fatture OFFSIDE (14/7/2026): aziende create solo in sandbox invece che live, secrets Supabase disallineati, bug P7M (byte nulli) | 3 cause tecniche riusabili: sandbox-vs-live su Invoicetronic è un errore facile da ripetere su un nuovo cliente; il bug P7M è strutturale (qualunque fornitore che firma P7M può ritriggerarlo se il fix regredisce) |
+| `DEVCONTAINER_PERMESSI_DIAGNOSI_2026-08-26.md` | Volume `.claude/` root-owned → login loop infinito, hook/CLI (Railway) da rilinkare a cascata | Pattern che si ripresenterà a ogni ricreazione del volume Docker (update VSCode, rebuild falliti, nuovo devcontainer): senza il fix in `postStartCommand`, il login smette silenziosamente di persistere |
 
 > Il duplicato esatto `CHECKLIST_070_071.md` è stato rimosso (era identico a `CHECKLIST_069_072.md`).
 > `PIANO_RIPARTIZIONE_COSTI_CATENA.md` e `PIANO_OPERATIVO_RIPARTIZIONE_COSTI_CATENA.md` (piani di

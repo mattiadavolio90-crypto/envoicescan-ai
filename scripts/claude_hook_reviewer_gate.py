@@ -7,8 +7,10 @@ comando /code-reviewer) ma finora scattava solo se qualcuno se ne ricordava a
 fine lavoro. Questo hook lo rende sistematico per due criteri (soglia
 ibrida, decisa in sessione):
 
-1. Dimensione del diff rispetto all'ultimo commit (file non-test toccati o
-   righe nette cambiate sopra soglia).
+1. Dimensione del diff rispetto all'ultimo commit (file non-test/non-md
+   toccati o righe nette cambiate sopra soglia — i .md sono esclusi da
+   ENTRAMBI i conteggi, non solo dal numero di file: un verbale d'audit
+   lungo centinaia di righe non deve far scattare il gate da solo).
 2. OPPURE il diff tocca un path "sensibile" — riusa la STESSA lista di
    claude_hook_promemoria.py (nessuna duplicazione): un cambio piccolo su
    ai_service.py o auth_service.py e' complesso quanto un refactor grande
@@ -72,12 +74,13 @@ def _diff_stat() -> tuple[list[str], int]:
         if len(parti) != 3:
             continue
         aggiunte, rimosse, percorso = parti
+        if "test" in percorso.lower() or percorso.endswith(".md"):
+            continue
         try:
             righe_nette += int(aggiunte) + int(rimosse)
         except ValueError:
             continue  # file binario
-        if "test" not in percorso.lower() and not percorso.endswith(".md"):
-            file_non_test.append(percorso)
+        file_non_test.append(percorso)
 
     return file_non_test, righe_nette
 
