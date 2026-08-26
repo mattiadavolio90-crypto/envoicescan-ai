@@ -27,7 +27,31 @@
       "Bash(git push *)",
       "Bash(echo \"EXIT=$?\")",
       "Read(//home/vscode/.claude/**)",
-      "Bash(python -)"
+      "Bash(python -)",
+      "Bash(python3 scripts/claude_hook_db_guard.py)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 scripts/claude_hook_reviewer_gate.py)",
+      "Bash(rm -f .claude/.reviewer_gate_segnalato)",
+      "Bash(rm -f .claude/.reviewer_gate_ok)",
+      "Bash(python scripts/claude_hook_reviewer_gate.py)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(railway whoami *)",
+      "Bash(npm install *)",
+      "mcp__claude_ai_Vercel__list_projects",
+      "mcp__claude_ai_Vercel__get_project",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "mcp__claude_ai_Vercel__get_deployment",
+      "mcp__claude_ai_Vercel__get_deployment_build_logs",
+      "mcp__claude_ai_Vercel__get_runtime_logs",
+      "mcp__claude_ai_Vercel__get_runtime_errors",
+      "mcp__claude_ai_Vercel__get_web_analytics",
+      "mcp__claude_ai_Vercel__search_vercel_documentation",
+      "Bash(railway status *)",
+      "mcp__claude_ai_Supabase__list_edge_functions",
+      "Bash(python -m pytest tests/test_documentazione_onesta.py -q)",
+      "Bash(git fsck *)",
+      "Bash(git status *)"
     ],
     "defaultMode": "acceptEdits"
   },
@@ -38,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/claude_hook_db_guard.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claude_hook_db_guard.py\""
           }
         ]
       }
@@ -49,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/claude_hook_promemoria.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claude_hook_promemoria.py\""
           }
         ]
       }
@@ -59,7 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/claude_hook_precompact_snapshot.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claude_hook_precompact_snapshot.py\""
           }
         ]
       }
@@ -69,12 +93,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python scripts/claude_hook_test_gate.py",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claude_hook_test_gate.py\"",
             "timeout": 120
           },
           {
             "type": "command",
-            "command": "python scripts/claude_hook_reviewer_gate.py",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claude_hook_reviewer_gate.py\"",
             "timeout": 30
           }
         ]

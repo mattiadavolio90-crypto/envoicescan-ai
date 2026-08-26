@@ -231,6 +231,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `docs/storico/MIGRAZIONE_APP.md` | Come fu fatto lo switch Streamlit → Next.js |
 | `docs/storico/CHECKLIST_069_072.md` | Migration legacy applicate (cartella `migrations/` congelata) |
 | `docs/storico/WEBHOOK_PARSER_BODY_2026-07-22.md`, `WEBHOOK_SCARTO_SILENZIOSO_2026-07-21.md` | Pattern di debug sui webhook Edge Function |
+| `docs/storico/DEVCONTAINER_PERMESSI_DIAGNOSI_2026-08-26.md` | Volume `.claude/` root-owned, login loop, CLI da rilinkare a cascata |
 
 ### Stato/decisioni tra sessioni (non file — memoria persistente)
 Lavori chiusi, decisioni prese, contesto cliente: **non stanno più in file
