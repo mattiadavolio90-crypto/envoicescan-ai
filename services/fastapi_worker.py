@@ -2083,6 +2083,49 @@ async def upload_invoice(
     # richieste concorrenti di tenant diversi nello stesso processo worker.
     righe = estrai_dati_da_xml(file_like, user_id=user_id)
 
+    # Policy sulle date: i flag blocco_anno_precedente / blocco_mesi_precedenti
+    # erano applicati SOLO in upload_handler (percorso Streamlit, non piu'
+    # raggiungibile), quindi qui non filtravano nulla. Il controllo sta dopo il
+    # parse perche' e' il primo punto in cui la data del documento e' nota, e
+    # prima del salvataggio perche' una fattura bloccata non deve entrare nel DB.
+    if righe:
+        from services.upload_policy import valuta_policy_data, messaggio_blocco
+        from services.auth_service import get_trial_info
+
+        # trial_active NON e' fra i campi che verifica_sessione_da_cookie mette in
+        # `user`: leggerlo da li' darebbe sempre None (falsy) e i trial ricadrebbero
+        # in silenzio sulla policy dei clienti pieni. Si passa dal helper dedicato.
+        try:
+            _is_trial = bool(get_trial_info(user_id, supabase_client).get("is_trial"))
+        except Exception as _trial_err:
+            logger.warning("upload: lettura trial fallita, tratto come non-trial: %s", _trial_err)
+            _is_trial = False
+
+        _blocco = valuta_policy_data(
+            righe[0].get("Data_Documento") or righe[0].get("data_documento"),
+            user.get("pagine_abilitate"),
+            is_admin=_is_admin_email(user.get("email")),
+            is_trial=_is_trial,
+        )
+        if _blocco:
+            logger.warning(
+                "upload BLOCCATO da policy date: user=%s file=%s tipo=%s",
+                user_id, filename, _blocco,
+            )
+            return UploadInvoiceResponse(
+                success=False,
+                filename=filename,
+                righe_salvate=0,
+                error=messaggio_blocco(
+                    _blocco,
+                    righe[0].get("Data_Documento") or righe[0].get("data_documento"),
+                ),
+                routing_status=routing_status,
+                sede_assegnata=sede_assegnata,
+                cross_sede=cross_sede,
+                elapsed_ms=int((_time.monotonic() - t0) * 1000),
+            )
+
     if not righe:
         return UploadInvoiceResponse(
             success=False,

@@ -2524,3 +2524,113 @@ anche la guardia `no_items_selected` a `accept_suggestion_extend_tag`, che
 3 HIGH (fusi orari dello Scadenziario, KPI "Pagate (mese)", "Blocca mesi
 precedenti" come switch morto), 14 findings MEDIUM/LOW attivi, e il perimetro
 non ancora letto elencato in §25.
+
+---
+
+## §27 — §3c, remediation seconda tranche (3 HIGH) — 26/8/2026
+
+Autorizzata da Mattia ("procedi con tutti i punti in sequenza"). Chiude i 3 HIGH
+rimasti aperti da §26. I 14 findings MEDIUM/LOW **restano aperti**.
+
+Due dei tre findings sono stati **rettificati in corso di verifica**: come in
+§26, la misura più larga ha cambiato la diagnosi, non solo la severità.
+
+### HIGH #5 — KPI "Pagate (mese)": rettifica della diagnosi
+
+§25 lo aveva descritto come "esclude i pagamenti del 1° del mese" in Italia.
+**Falso in quel verso.** Misurato eseguendo il codice (`node`, TZ variabile):
+l'Italia è a EST di Greenwich, quindi `new Date("2026-08-01")` = mezzanotte UTC
+= 02:00 a Roma, cioè *dopo* la mezzanotte locale → il 1° **rientra**. In
+Europe/Rome, in ogni mese e in entrambe le stagioni, non c'è divergenza.
+
+Il difetto è reale ma si manifesta **solo nei fusi a ovest di Greenwich**:
+
+| TZ browser | pagate_mese (atteso €1200) | |
+|---|---|---|
+| Europe/Rome, Asia/Tokyo, UTC | €1200 | corretto per caso |
+| America/New_York, America/Sao_Paulo | **€200** | 1° del mese perso |
+
+Sul DB live: 389 pagamenti registrati, **4 cadono il 1° del mese** — il dato per
+sbagliare esiste, l'innesco è il fuso di chi guarda.
+
+**Fix** (`lib/scadenziario.ts`): `parseLocalDate` al posto di `new Date()` grezzo.
+Il worker manda `pagata_at` come data nuda `YYYY-MM-DD` (`_to_date_iso`,
+`documenti_service.py:625`), e `parseLocalDate` esisteva già 11 righe più sotto
+per esattamente questa ragione — con il commento che lo spiega.
+
+### HIGH #6 — Le tre definizioni di "oggi": due sono corrette
+
+Riverificando, il pattern client `new Date()` + `setHours(0,0,0,0)` (7 occorrenze
+in `scadenziario-client.tsx`) è **corretto**: mezzanotte locale confrontata con
+altri `parseLocalDate`, coerente. Il backend usa `date.today()` sul server. Non
+sono "tre verità in conflitto" come scritto in §25.
+
+Il difetto vero è più stretto e più concreto — la **scrittura ottimistica**:
+
+```
+pagata_at = new Date().toISOString()   // istante UTC
+```
+
+contro un'API che restituisce una data nuda. A New York alle 20:00 del 31,
+`toISOString()` dà **il 1° del mese dopo**: la riga appena segnata pagata saltava
+di mese nella UI fino al reload successivo.
+
+**Fix**: nuovo `todayLocalIso()` in `lib/scadenziario.ts`, usato nei 2 punti di
+scrittura ottimistica (riga singola + bulk). Il client scrive ora la stessa forma
+che l'API restituisce.
+
+### HIGH #7 — "Blocca mesi precedenti": switch morto, e non era solo lui
+
+Confermato e **più esteso del previsto**. Le due policy sulle date
+(`blocco_anno_precedente`, `blocco_mesi_precedenti`) esistevano solo dentro
+`upload_handler.handle_uploaded_files` — il percorso **Streamlit**, che nessuno
+chiama più. Il canale vivo è `POST /api/upload/invoice` sul worker, dove i
+controlli non erano mai stati portati.
+
+Verificato per esclusione: `grep` di `ANNO PRECEDENTE` / `MESE NON CONSENTITO` /
+`blocco_mesi` su `services/` e `worker/` non trova nulla fuori da `upload_handler`.
+
+Sul DB live: **`davide.pizzata.78@gmail.com` ha `blocco_mesi_precedenti: true`** —
+un cliente reale con un vincolo che credeva attivo e che non ha mai bloccato nulla.
+
+Trovato di conseguenza: anche `_is_trial_invoice_date_allowed` è morta allo stesso
+modo. Nessun utente ha `trial_active` oggi → **latente**, ma sarebbe tornata viva
+al primo trial.
+
+**Fix**: nuovo `services/upload_policy.py` — la regola in un posto solo, senza
+`st.session_state`, applicata dal worker dopo il parse e prima del salvataggio.
+
+Due difetti scoperti **scrivendo i test**, entrambi ereditati dal codice storico
+e mai visti perché quel percorso non girava:
+
+1. `MESI_ITA` è un **dict 1-indexed**, non una lista: l'indice storico
+   `MESI_ITA[month - 1]` nominava il mese sbagliato. Con oggi = 26/8 il messaggio
+   diceva *"Giugno o Luglio"* mentre i mesi ammessi erano **Luglio e Agosto**.
+2. L'anno era stampato una volta sola in fondo: a gennaio i due mesi ammessi
+   stanno in **anni diversi** (*"Dicembre 2026 o Gennaio 2027"*), e un anno solo
+   ne datava uno in modo falso.
+
+Nota di merito al metodo: `trial_active` **non è** fra i campi che
+`verifica_sessione_da_cookie` mette in `user`. Leggerlo da lì avrebbe dato sempre
+`None` — un secondo interruttore spento al posto del primo. Si passa da
+`get_trial_info()`.
+
+### Verifica
+
+- `pytest tests/`: **11067 passed, 43 skipped**
+- **22 test nuovi** (`tests/test_upload_policy.py`), verificati **per mutazione su
+  copia in scratchpad**: **7 mutanti, 7 uccisi** — admin non bypassa, default
+  anno invertito, default mesi invertito, trial ignorato, mese precedente
+  off-by-one, indice `MESI_ITA` storico, data illeggibile che blocca. File di
+  lavoro ripristinato identico (`md5sum -c` OK).
+- Fix frontend verificato **eseguendo il codice compilato** in 5 fusi: pre-fix
+  New York €200 / post-fix €1200, Roma invariato in entrambi.
+- `npx tsc --noEmit` pulito · `npm run build` exit 0
+- `export_openapi.py --check-drift` OK (194 endpoint), **nessuna modifica** a
+  `openapi.json`: la remediation non tocca la superficie API.
+- `tests/test_documentazione_onesta.py`: 51 passed
+
+### Resta aperto
+
+14 findings MEDIUM/LOW attivi e il perimetro non ancora letto elencato in §25.
+Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.

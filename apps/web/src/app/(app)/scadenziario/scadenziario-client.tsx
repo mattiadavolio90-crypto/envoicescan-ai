@@ -19,7 +19,7 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
-  computeKpi, bucketizeDocumenti, formatEuro, formatDate, parseLocalDate, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -1598,7 +1598,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       });
       if (!res.ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(pagata ? "Fattura segnata come pagata" : "Pagamento annullato");
-      const pagata_at = pagata ? new Date().toISOString() : null;
+      const pagata_at = pagata ? todayLocalIso() : null;
       setDocumenti(prev => prev.map(d =>
         d.file_origine === doc.file_origine ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
       ));
@@ -1640,7 +1640,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       if (!ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(`${aggiornate} fattur${aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`);
-      const pagata_at = new Date().toISOString();
+      const pagata_at = todayLocalIso();
       const paidSet = selectedFileOrigini;
       setDocumenti(prev => prev.map(d =>
         paidSet.has(d.file_origine) ? { ...d, pagata: true, pagata_at, data_pagamento: pagata_at } : d

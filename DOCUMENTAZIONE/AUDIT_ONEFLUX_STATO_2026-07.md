@@ -9,8 +9,8 @@ Python.
 > ⚠️ **§3c non è più "solo copertura": la prima passata (25/8) ha trovato 39
 > findings, 21 attivi su clienti reali e 7 HIGH attivi.** Il frontend non è un
 > layer a basso rischio perché la logica di dominio sta nel worker: i difetti
-> nascono nel *consumo* di quella logica. **Remediation prima tranche chiusa lo
-> stesso giorno: 4 HIGH su 7 corretti** (STORICO §26); restano 3 HIGH e 14
+> nascono nel *consumo* di quella logica. **Tutti e 7 gli HIGH sono corretti**:
+> 4 il 25/8 (STORICO §26), gli ultimi 3 il 26/8 (STORICO §27). Restano 14
 > findings MEDIUM/LOW attivi. Dettaglio dell'audit in STORICO §25.
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
@@ -805,8 +805,17 @@ da € 83.778 a € 813.690** di netto letto correttamente dai dialog. 8 test nu
 verificati per mutazione; `tsc`/`build`/drift OpenAPI puliti. Dettaglio in
 **STORICO §26**, che rettifica anche una descrizione troppo indulgente di §25.
 
-**Resta aperta**: 3 HIGH (fusi orari Scadenziario, KPI «Pagate (mese)», «Blocca
-mesi precedenti» switch morto) + 14 findings MEDIUM/LOW attivi + il perimetro
+**Seconda tranche chiusa il 26/8 — gli ultimi 3 HIGH** (STORICO §27). Due
+findings su tre sono stati **rettificati verificandoli**: il KPI «Pagate (mese)»
+non sbagliava in Italia ma solo nei fusi a ovest di Greenwich, e le «tre
+definizioni di oggi» erano in realtà due corrette più una scrittura ottimistica
+sbagliata. Il terzo si è allargato: `blocco_mesi_precedenti` **e** la policy
+trial erano entrambe morte con Streamlit, e un cliente reale
+(`davide.pizzata.78@gmail.com`) aveva il flag acceso. 22 test nuovi, 7 mutanti
+uccisi; scrivendoli sono emersi 2 difetti ereditati nei messaggi all'utente
+(mese sbagliato per indice, anno sbagliato a gennaio).
+
+**Resta aperta**: 14 findings MEDIUM/LOW attivi + il perimetro
 non ancora letto (`carica-ricavi-dialog.tsx`, dove si **scrive** la modalità
 mensile; `pivot-tab.tsx`; `score-tab.tsx`; `catena/*`; gli altri tab di
 `workspace/` e `admin/`). Dettaglio in **STORICO §25**.
@@ -852,10 +861,10 @@ Restano aperte due cose:
 - **§3c**: la lettura sistematica del frontend, aperta il 25/8 alla chiusura
   di §3b — stesso schema ("tabella verde ≠ app coperta") applicato al
   frontend invece che al Python. **Prima passata di audit chiusa il 25/8**
-  (11 file, 13.153 righe, 39 findings di cui 21 attivi e 7 HIGH) e **prima
-  tranche di remediation chiusa il 25/8** (4 HIGH su 7, STORICO §26): restano
-  3 HIGH, 14 findings MEDIUM/LOW attivi e il perimetro non ancora letto. È la
-  voce che oggi tiene aperto il ciclo insieme a §2.
+  (11 file, 13.153 righe, 39 findings di cui 21 attivi e 7 HIGH) e
+  **remediation completata sugli HIGH**: 4 il 25/8 (STORICO §26), gli ultimi
+  3 il 26/8 (STORICO §27). Restano 14 findings MEDIUM/LOW attivi e il perimetro
+  non ancora letto. È la voce che oggi tiene aperto il ciclo insieme a §2.
 
 Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
 mockato globalmente, quindi il decoratore `@retry` su
