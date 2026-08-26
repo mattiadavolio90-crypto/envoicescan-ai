@@ -601,9 +601,11 @@ def get_righe_articolo(
     # Passa dal funnel _fetch_fatture_rows così l'espansione di un articolo mostra
     # anche le eventuali righe di gruppo proiettate (PV di catena), coerente con
     # l'aggregato. Filtro sulla descrizione esatta come faceva la query diretta.
-    # tipo_prodotti va propagato come in /articoli-aggregati: 22 descrizioni reali
-    # hanno righe sia F&B sia spese-generali, e senza il filtro il totale del padre
-    # (aggregato, filtrato) non era la somma delle righe figlie mostrate (tutte).
+    # tipo_prodotti va propagato come in /articoli-aggregati: senza il filtro il
+    # totale della riga padre (aggregato, filtrato) non era la somma delle righe
+    # figlie mostrate (tutte). Misurate 8 descrizioni a cavallo F&B/spese-generali
+    # per (sede, descrizione) — che e' lo scope reale di questo endpoint. Il "22"
+    # di §25 raggruppava per sola descrizione su tutte le sedi insieme.
     rows = [
         r for r in _fetch_fatture_rows(
             supabase_client, ristorante_id, data_da, data_a, tipo_prodotti

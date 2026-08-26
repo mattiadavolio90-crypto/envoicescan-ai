@@ -850,6 +850,7 @@ function MobileEditInput({
 const GAUGE_GREEN = "#10b981";
 const GAUGE_AMBER = "#f59e0b";
 const GAUGE_ROSE = "#f43f5e";
+const GAUGE_NEUTRAL = "#94a3b8";
 
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v));
@@ -995,7 +996,13 @@ const GAUGE_PER_EMOJI: Record<string, string> = {
 
 function coloreDaCommento(commenti: Commento[], kpiNome: string): string {
   const c = commenti.find((x) => normalizzaKpi(x.kpi_nome) === normalizzaKpi(kpiNome));
-  return (c && GAUGE_PER_EMOJI[c.emoji]) ?? GAUGE_AMBER;
+  // Senza commento il colore e' NEUTRO, non ambra: il worker popola `commenti`
+  // solo se c'e' almeno un mese con fatturato > 0 (margini.py:1207), mentre il
+  // gauge si renderizza anche con soli costi (hasData include costi_fb_totali).
+  // Stato reale: OFFSIDE ha 0 mesi con fatturato e ~14.600 € di costi F&B, e le
+  // percentuali sono tutte 0 — un giudizio ambra su dati assenti sarebbe una
+  // valutazione inventata, come lo era il verde/rosso delle soglie locali.
+  return (c && GAUGE_PER_EMOJI[c.emoji]) ?? GAUGE_NEUTRAL;
 }
 
 /** I nomi KPI viaggiano come stringhe display su entrambi i lati (nessuna chiave
