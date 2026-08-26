@@ -98,6 +98,11 @@ class VariazionePrezzo(BaseModel):
     categoria: str
     fornitore: str
     storico: str
+    # I valori grezzi della sparkline. `storico` e' una stringa di PRESENTAZIONE
+    # ("€1,20 → €1,35"): il client la ri-splittava per disegnare il grafico, quindi
+    # su prezzi a 4 decimali (come li tiene il resto del dominio) la sparkline
+    # lavorava su valori troncati a 2.
+    storico_valori: List[float] = []
     media: float
     penultimo: float
     ultimo: float
@@ -322,7 +327,8 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
         except Exception:
             pass
 
-        storico = " → ".join(f"€{p:.2f}" for p in acquisti.tail(5)['prezzo_unitario'])
+        storico_valori = [float(p) for p in acquisti.tail(5)['prezzo_unitario']]
+        storico = " → ".join(f"€{p:.2f}" for p in storico_valori)
         media = float(acquisti['prezzo_unitario'].mean())
 
         prezzi_rec = pd.to_numeric(acquisti['prezzo_unitario'].tail(4), errors='coerce').dropna().tolist()
@@ -363,6 +369,7 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
             'categoria': str(ultimo.get('categoria', ''))[:25],
             'fornitore': forn_piena[:30],
             'storico': storico,
+            'storico_valori': storico_valori,
             'media': round(media, 4),
             'penultimo': round(prezzo_pen, 4),
             'ultimo': round(prezzo_ult, 4),

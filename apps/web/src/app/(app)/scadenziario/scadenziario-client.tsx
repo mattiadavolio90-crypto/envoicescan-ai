@@ -19,7 +19,7 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
-  computeKpi, bucketizeDocumenti, formatEuro, formatDate, parseLocalDate, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -595,13 +595,14 @@ type PeekDialogProps = {
   onPaga: (doc: Documento, pagata: boolean) => void;
   onSetScadenza: (doc: Documento, data: string | null) => Promise<void>;
   onElimina: (doc: Documento) => Promise<void>;
+  onSpostata: (doc: Documento) => void;
   // Modalità catena: "Sposta sede"/"Ripartisci sul gruppo" restano nascosti
   // (agiscono sulla sede ATTIVA del PV loggato, non su quella del documento —
   // fuori scope Fase 3, si riprende in una fase dedicata se serve).
   modalitaCatena?: boolean;
 };
 
-function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, modalitaCatena = false }: PeekDialogProps) {
+function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onSpostata, modalitaCatena = false }: PeekDialogProps) {
   const [editingScadenza, setEditingScadenza] = useState(false);
   const [scadenzaInput, setScadenzaInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -652,6 +653,10 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, modalitaCa
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.detail || data?.error);
       toast.success("Fattura spostata nell'altra sede");
+      // La fattura ora appartiene a un'altra sede: va tolta da questa lista, come
+      // fa handleElimina. Senza, restava a video sotto la sede vecchia e un secondo
+      // click rispondeva con un errore che contraddiceva il toast verde appena letto.
+      onSpostata(doc);
       onClose();
     } catch {
       toast.error("Non sono riuscito a spostare la fattura. Riprova.");
@@ -1598,7 +1603,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       });
       if (!res.ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(pagata ? "Fattura segnata come pagata" : "Pagamento annullato");
-      const pagata_at = pagata ? new Date().toISOString() : null;
+      const pagata_at = pagata ? todayLocalIso() : null;
       setDocumenti(prev => prev.map(d =>
         d.file_origine === doc.file_origine ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
       ));
@@ -1640,7 +1645,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       if (!ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(`${aggiornate} fattur${aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`);
-      const pagata_at = new Date().toISOString();
+      const pagata_at = todayLocalIso();
       const paidSet = selectedFileOrigini;
       setDocumenti(prev => prev.map(d =>
         paidSet.has(d.file_origine) ? { ...d, pagata: true, pagata_at, data_pagamento: pagata_at } : d
@@ -1691,6 +1696,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     setPeekDoc(null);
     // Ricarica il cestino se era già aperto
     if (cestinoOpen) loadCestino();
+  }
+
+  function handleSpostata(doc: Documento) {
+    setDocumenti(prev => prev.filter(d => d.file_origine !== doc.file_origine));
+    setPeekDoc(null);
   }
 
   async function loadCestino() {
@@ -2224,6 +2234,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         onPaga={(doc, pagata) => handlePaga(doc, pagata)}
         onSetScadenza={handleSetScadenza}
         onElimina={handleElimina}
+        onSpostata={handleSpostata}
         modalitaCatena={modalitaCatena}
       />
 

@@ -3,6 +3,8 @@ export type VariazionePrezzo = {
   categoria: string;
   fornitore: string;
   storico: string;
+  /** Valori grezzi della sparkline. `storico` e' solo presentazione (2 decimali). */
+  storico_valori?: number[];
   media: number;
   penultimo: number;
   ultimo: number;

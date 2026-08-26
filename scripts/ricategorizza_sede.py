@@ -32,6 +32,7 @@ from services.ai_service import (
     applica_correzioni_dizionario,
     applica_regole_categoria_forti,
     _applica_tutti_guardrail,
+    _is_fornitore_utenze_sempre,
     descrizione_e_dubbia,
     set_global_memory_enabled,
 )
@@ -62,8 +63,26 @@ USE_AI = "--ai" in sys.argv
 set_global_memory_enabled(False)
 
 
-def pipeline_deterministica(desc, cat_attuale):
-    """Regole forti + dizionario, con guardrail note. Ritorna categoria nuova."""
+def pipeline_deterministica(desc, cat_attuale, fornitore=None):
+    """Regole forti + dizionario, con guardrail note. Ritorna categoria nuova.
+
+    Il fornitore NON va concatenato alla descrizione: entrerebbe nel dizionario e
+    in TUTTE le regole forti, non solo in quella telecom. Misurato su 3.376 coppie
+    reali: 51 divergenze rispetto al percorso di produzione — "LINEA MARE SRL" fa
+    scattare _SERVIZI_CANONI_RE su "LINEA" e manda i gamberi in SERVIZI, "COMO
+    ACQUA S.R.L" fa scattare _ACQUA_CONFEZIONATA_RE e manda una bolletta idrica
+    fra le bevande; all'opposto "RISTORANTE MONOPOLI SRL" davanti a "QUATTRO
+    FORMAGGI" rompe il match del dizionario e degrada a Da Classificare.
+
+    Il fornitore si usa come fa la produzione (ai_service.py:4564, LIVELLO 0):
+    hard override utility/telecom PRIMA di tutto, descrizione lasciata pulita per
+    dizionario e regole. Cosi' lo script riproduce l'ingest automatico invece di
+    divergerne.
+    """
+    if fornitore:
+        is_utility, _ = _is_fornitore_utenze_sempre(fornitore)
+        if is_utility:
+            return "UTENZE E LOCALI"
     cat = applica_correzioni_dizionario(desc, "Da Classificare")
     cat, _ = applica_regole_categoria_forti(desc, cat)
     return cat
@@ -99,7 +118,7 @@ for r in rows:
     cat_old = str(r.get("categoria") or "")
     if not desc.strip():
         continue
-    cat_new = pipeline_deterministica(desc, cat_old)
+    cat_new = pipeline_deterministica(desc, cat_old, r.get("fornitore"))
     # guardrail note con importo
     try:
         iva = float(r.get("iva_percentuale") or 0)

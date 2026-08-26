@@ -122,11 +122,22 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
     if (!classGruppo || !classCategoria) return;
     setClassSaving(true);
     try {
-      const n = await classificaIds(classGruppo.ids, classCategoria);
-      toast.success(`${n} righe classificate`);
+      const ids = classGruppo.ids;
+      const n = await classificaIds(ids, classCategoria);
       const desc = classGruppo.descrizione;
       setClassGruppo(null);
-      setGruppi((prev) => prev.filter((g) => g.descrizione !== desc));
+      // Con "📝 NOTE E DICITURE" (che e' il default del dialog) il backend scrive
+      // SOLO sulle righe a importo 0 — regola di dominio #2, admin.py:978-985.
+      // Rimuovere comunque tutto il gruppo mostrava "4 righe classificate", faceva
+      // sparire un gruppo da 12 e le altre 8 riapparivano al refresh successivo.
+      const totali = Array.isArray(ids) ? ids.length : n;
+      if (n >= totali) {
+        toast.success(`${n} righe classificate`);
+        setGruppi((prev) => prev.filter((g) => g.descrizione !== desc));
+      } else {
+        toast.success(`${n} di ${totali} righe classificate — le altre restano in coda`);
+        load();
+      }
     } catch (e) { toast.error(e instanceof Error ? e.message : "Errore"); }
     finally { setClassSaving(false); }
   }
@@ -416,29 +427,46 @@ function MemoriaTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  // res.ok va controllato: un 404/422 e' una fetch RIUSCITA, e senza il controllo
+  // un errore del server dava toast verde e riga tolta dallo stato. Il resto del
+  // file lo fa gia' ovunque (:72-73, :85-86, :626-627): erano queste due fuori
+  // dalla convenzione del file stesso.
   async function handleSalvaEdit() {
     if (!editRow || !editCat) return;
     setEditSaving(true);
     try {
-      await fetch(`/api/admin/qualita-ai/memoria/${editRow.id}`, {
+      const res = await fetch(`/api/admin/qualita-ai/memoria/${editRow.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categoria: editCat }),
       });
-      toast.success("Categoria aggiornata");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.detail || "Errore");
+      // righe_propagate: una modifica di memoria globale puo' riscrivere centinaia
+      // di righe o nessuna. Dirlo distingue i due esiti, che davano lo stesso toast.
+      const propagate = typeof data?.righe_propagate === "number" ? data.righe_propagate : null;
+      toast.success(
+        propagate === null
+          ? "Categoria aggiornata"
+          : propagate > 0
+            ? `Categoria aggiornata — ${propagate} righe aggiornate`
+            : "Categoria aggiornata — nessuna riga da aggiornare",
+      );
       setEditRow(null);
       load();
-    } catch { toast.error("Errore"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Errore"); }
     finally { setEditSaving(false); }
   }
 
   async function handleDelete(id: string) {
     try {
-      await fetch(`/api/admin/qualita-ai/memoria/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/qualita-ai/memoria/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.detail || "Errore");
       toast.success("Voce eliminata");
       setRows((prev) => prev.filter((r) => r.id !== id));
       setTotal((t) => t - 1);
-    } catch { toast.error("Errore"); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Errore"); }
   }
 
   return (

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { InfoPopover } from "@/components/ui/info-popover";
-import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT } from "./periodi";
+import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT, fetchNettoMese } from "./periodi";
 
 /* ────────────────────────────────────────────────────────────────────────────
    TIPI
@@ -119,15 +119,10 @@ function RipartizioneDialog({
   useEffect(() => {
     if (!meseSel || !open) return;
     setLoading(true);
-    const mm = String(meseSel.mese).padStart(2, "0");
-    const lastDay = new Date(meseSel.anno, meseSel.mese, 0).getDate();
     Promise.all([
       fetch(`/api/margini/fatturato-centri?anno=${meseSel.anno}&mese=${meseSel.mese}`)
         .then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      fetch(`/api/ricavi/giornalieri?${new URLSearchParams({
-        data_da: `${meseSel.anno}-${mm}-01`,
-        data_a: `${meseSel.anno}-${mm}-${String(lastDay).padStart(2, "0")}`,
-      })}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetchNettoMese(meseSel.anno, meseSel.mese),
     ]).then(([split, ricavi]) => {
       setVals({
         food: split?.fatturato_food ?? 0,
@@ -135,7 +130,7 @@ function RipartizioneDialog({
         alcolici: split?.fatturato_alcolici ?? 0,
         dolci: split?.fatturato_dolci ?? 0,
       });
-      setNetto(ricavi?.totale_netto ?? 0);
+      setNetto(ricavi.netto);
       setLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -355,8 +350,12 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
   const meseRef = parseInt(dataA.slice(5, 7), 10);
   const meseLabelRef = `${MESI_NOMI_SHORT[meseRef - 1]} ${annoRef}`;
 
-  // Solo i centri che possono avere fatturato proprio (no SHOP)
-  const centriFatturato = centriConCosto.filter((c) => (CENTRI_FATT as readonly string[]).includes(c.centro));
+  // has_fatturato lo decide il worker (margini.py:653): centro fra quelli che
+  // possono averlo, split attivo E fatturato del centro > 0. Rifiltrare per solo
+  // nome centro ignorava le ultime due condizioni: con lo split spento il bottone
+  // restava abilitato e apriva un dialog con tutte le colonne a "—" (le righe
+  // 492-546 qui sotto has_fatturato lo leggono gia').
+  const centriFatturato = centriConCosto.filter((c) => c.has_fatturato);
   const centroDettaglio = centriFatturato.find((c) => c.centro === dettaglioCentroSel) ?? centriFatturato[0] ?? null;
 
   function openDettaglio() {
@@ -386,7 +385,13 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
           <button
             onClick={openDettaglio}
             disabled={centriFatturato.length === 0}
-            title={centriFatturato.length === 0 ? "Configura prima la ripartizione per centro" : undefined}
+            title={
+              centriFatturato.length === 0
+                ? data.fatturato_split_attivo
+                  ? "Nessun centro con fatturato proprio nel periodo selezionato"
+                  : "Configura prima la ripartizione per centro"
+                : undefined
+            }
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-input hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <BarChart3 className="size-3" />

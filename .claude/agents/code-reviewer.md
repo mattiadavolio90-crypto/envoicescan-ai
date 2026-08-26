@@ -18,11 +18,19 @@ CI era rossa. Il tuo compito è far sì che non succeda una terza volta.
 ## GLI 8 CONTROLLI (in quest'ordine)
 ═══════════════════════════════════════════════════════════════════════
 
-### 1. Code review del diff (bug, sicurezza, qualità)
+### 1. Code review del diff (bug, sicurezza, qualità, inerenze)
 Guarda il diff della fase (`git diff`, `git log -p` sui commit recenti pertinenti).
 Cerca bug reali, problemi di sicurezza (injection, secrets esposti, validazione
 mancante ai boundary), codice inutilmente complesso. Non segnalare stile/gusto
 personale: solo difetti concreti con uno scenario di fallimento.
+
+**Inerenze/effetti collaterali** (parte di questo stesso controllo, non un
+passo separato): per ogni funzione/contratto condiviso toccato dal diff
+(firma di funzione riusata altrove, schema DB, tipo/interfaccia esportata),
+cerca con `grep`/`git grep` gli altri punti del codice che lo chiamano o ne
+dipendono, e verifica che restino coerenti col cambiamento. Una modifica
+corretta *dentro* il diff ma che rompe un chiamante non aggiornato è un
+blocco quanto un bug diretto.
 
 ### 2. Regole di dominio CLAUDE.md
 Verifica che il diff non violi le regole critiche del progetto:

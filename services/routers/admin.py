@@ -394,7 +394,7 @@ def admin_dettaglio_cliente(cliente_id: str):
     admin_emails = _admin_emails_set()
 
     resp = sb.table("users").select(
-        "id,email,nome_ristorante,nome_gruppo,ragione_sociale,partita_iva,attivo,piano,created_at,"
+        "id,email,nome_ristorante,nome_gruppo,ragione_sociale,partita_iva,attivo,piano,piano_inizio_at,created_at,"
         "last_seen_at,trial_active,trial_activated_at,pagine_abilitate,price_alert_threshold"
     ).eq("id", cliente_id).limit(1).execute()
 
@@ -404,10 +404,12 @@ def admin_dettaglio_cliente(cliente_id: str):
     if u.get("email", "").lower() in admin_emails:
         raise HTTPException(status_code=403, detail="Non puoi gestire account admin")
 
+    # sede_tecnica esclusa come in lista_clienti e lista_sedi: senza il filtro
+    # questo era il terzo punto in cui lo stesso cliente aveva due conteggi di sedi.
     sedi_resp = sb.table("ristoranti").select(
         "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,"
         "sdi_attivo,sdi_attivo_dal"
-    ).eq("user_id", cliente_id).execute()
+    ).eq("user_id", cliente_id).eq("sede_tecnica", False).execute()
     sedi = sedi_resp.data or []
 
     piano = (u.get("piano") or "base").lower()
@@ -423,6 +425,17 @@ def admin_dettaglio_cliente(cliente_id: str):
             trial_info = {"active": True, "expires_at": expires_at.isoformat(), "days_remaining": days_rem}
         except Exception:
             trial_info = {"active": True}
+
+    # Stessa RPC della lista clienti, cosi' il numero nel dettaglio e quello nella
+    # lista non possono divergere. Fallback a 0 come fa la lista se l'RPC fallisce.
+    n_fatture = 0
+    try:
+        _cnt = sb.rpc("admin_conteggio_fatture", {"p_user_ids": [cliente_id]}).execute()
+        for _r in (_cnt.data or []):
+            if _r.get("user_id") == cliente_id:
+                n_fatture = _r.get("n") or 0
+    except Exception:
+        logger.warning("admin_conteggio_fatture RPC fallita nel dettaglio, n_fatture a 0", exc_info=True)
 
     ristorante_id = _get_ristorante_id_for_user(cliente_id, sb)
     chat_ai_enabled = True
@@ -451,6 +464,13 @@ def admin_dettaglio_cliente(cliente_id: str):
         "pagine_abilitate": u.get("pagine_abilitate") or {},
         "chat_ai_enabled": chat_ai_enabled,
         "sedi": sedi,
+        # n_fatture/n_sedi/piano_inizio_at sono dichiarati obbligatori in
+        # lib/admin.ts ma non venivano restituiti: "Fatture totali" mostrava "—"
+        # nel dettaglio mentre la LISTA mostrava il numero vero, e n_sedi undefined
+        # diventava NaN dopo crea/elimina sede (undefined +/- 1).
+        "n_fatture": n_fatture,
+        "n_sedi": len(sedi),
+        "piano_inizio_at": u.get("piano_inizio_at"),
     }
 
 

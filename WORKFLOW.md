@@ -45,6 +45,19 @@ strumento giusto solo quando la dimensione del lavoro lo giustifica davvero.
 
 ---
 
+## 1bis. Fine planning: riepilogo non tecnico + modello per fase
+
+**Sempre**, ad ogni chiusura del plan mode (`ExitPlanMode`), prima o insieme
+alla richiesta di approvazione: un riepilogo breve, in linguaggio non
+tecnico, di cosa verrà fatto — comprensibile senza aver letto il piano
+completo. Se il lavoro ha più fasi, dividilo per fase; per ciascuna fase
+indica il **modello consigliato** (Opus/Sonnet) secondo il criterio di §3.
+
+Non è un documento a parte: è l'ultima cosa che accompagna l'uscita dal plan
+mode, ogni volta — non solo su richiesta.
+
+---
+
 ## 2. Il file di piano: solo per lavori lunghi, uno per feature
 
 Quando (e solo quando) un lavoro supera la singola sessione, si scrive:
@@ -224,6 +237,36 @@ elencati**: se il perimetro dichiarato non copre tutto il codice della
 dimensione (es. metà di un file grande mai letta), la dimensione resta 🟡 o
 va segnalato il gap esplicitamente — non arrotondare a 🟢 un perimetro
 parziale.
+
+---
+
+## 8. Fine implementazione: riepilogo scostamenti dal piano
+
+Al termine dell'esecuzione (tutte le fasi di un piano completate, o una fase
+singola chiusa), confronto esplicito contro quanto approvato in planning:
+
+- se sono state necessarie deviazioni (fase saltata, approccio cambiato in
+  corsa, scope ridotto o ampliato) → elencarle col motivo, non lasciarle
+  implicite nel diff.
+- se nessuna deviazione → dichiararlo esplicitamente ("eseguito come
+  pianificato, nessuno scostamento"), non dare per scontato che sia ovvio.
+
+Questo è distinto dal verdetto di `code-reviewer` (§7, quello guarda
+correttezza/chiusura reale): qui si confronta *cosa è stato fatto* con *cosa
+era stato deciso*, non la qualità del codice in sé.
+
+---
+
+## 9. Problema segnalato da un cliente: prima cerca, poi analizzi
+
+Prima di avviare un'analisi da zero su un problema riportato da un cliente,
+cerca se è già stato riscontrato: `memory/project_*.md` (fonte di verità
+sullo stato tra sessioni, §2) e `DOCUMENTAZIONE/` (inclusi
+`docs/storico/*.md` per pattern di debug già chiusi). Un problema già
+diagnosticato in passato — anche su un cliente diverso — spesso ha la stessa
+causa radice (vedi `docs/storico/README.md` per esempi già capitati su
+Invoicetronic/SDI). Solo se la ricerca non trova nulla di pertinente, parti
+da un'analisi nuova.
 
 **Il documento di stato si aggiorna una sessione alla volta**, mai in
 parallelo (due sessioni sullo stesso file si sovrascrivono senza avviso), e

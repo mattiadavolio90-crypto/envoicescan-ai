@@ -850,6 +850,7 @@ function MobileEditInput({
 const GAUGE_GREEN = "#10b981";
 const GAUGE_AMBER = "#f59e0b";
 const GAUGE_ROSE = "#f43f5e";
+const GAUGE_NEUTRAL = "#94a3b8";
 
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v));
@@ -867,14 +868,19 @@ function AnalisiVisiva({
   const t = totaliVista;
   const hasData = t.fatturato_netto > 0 || t.costi_fb_totali > 0;
 
+  // Il colore segue il giudizio del worker (l'emoji di _valuta_soglia_margine),
+  // non una seconda tabella di soglie qui. Le due divergevano: il Python ha 4
+  // bande (verde/giallo/arancio/rosso), il TS ne aveva 3, e sul MOL i due
+  // giudizi si contraddicevano su tutta la banda 5-20% — il gauge poteva essere
+  // ambra con il commento accanto rosso. La palette resta quella del gauge.
   const fc = data.food_cost_perc;
-  const fcColor = fc <= 28 ? GAUGE_GREEN : fc <= 33 ? GAUGE_AMBER : GAUGE_ROSE;
+  const fcColor = coloreDaCommento(data.commenti, "Food Cost");
   const pm = data.primo_margine_perc;
-  const pmColor = pm >= 67 ? GAUGE_GREEN : pm >= 60 ? GAUGE_AMBER : GAUGE_ROSE;
+  const pmColor = coloreDaCommento(data.commenti, "1° Margine");
   const sg = data.spese_gen_perc;
-  const sgColor = sg <= 15 ? GAUGE_GREEN : sg <= 22 ? GAUGE_AMBER : GAUGE_ROSE;
+  const sgColor = coloreDaCommento(data.commenti, "Spese Generali");
   const mol = data.mol_perc;
-  const molColor = mol >= 10 ? GAUGE_GREEN : mol >= 5 ? GAUGE_AMBER : GAUGE_ROSE;
+  const molColor = coloreDaCommento(data.commenti, "MOL");
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-5">
@@ -902,13 +908,16 @@ function AnalisiVisiva({
           {/* Gauge con diagnosi integrata */}
           <div className="flex flex-col gap-0 divide-y divide-border">
             {[
-              { label: "Food Cost",      valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
-              { label: "1° Margine",     valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
-              { label: "Costi Gestione", valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
-              { label: "MOL",            valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "#22c55e", valueColor: molColor },
+              { label: "Food Cost",      kpiNome: "Food Cost",       valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
+              { label: "1° Margine",     kpiNome: "1° Margine",      valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
+              { label: "Costi Gestione", kpiNome: "Spese Generali",  valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
+              { label: "MOL",            kpiNome: "MOL",             valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "#22c55e", valueColor: molColor },
             ].map((g) => {
+              // Il match e' sul nome che manda /api/margini/analisi (margini.py:1209-1213),
+              // non sull'etichetta a video: il gauge "Costi Gestione" cercava se stesso
+              // mentre il worker manda "Spese Generali", e restava senza emoji ne commento.
               const commento = data.commenti.find(
-                (c) => c.kpi_nome.toLowerCase().replace(/[°\s]/g, "") === g.label.toLowerCase().replace(/[°\s]/g, "")
+                (c) => normalizzaKpi(c.kpi_nome) === normalizzaKpi(g.kpiNome)
               );
               return (
                 <div key={g.label} className="flex items-center gap-6 py-5">
@@ -973,6 +982,33 @@ function CascataPL({ t }: { t: MesePivot }) {
       })}
     </div>
   );
+}
+
+/** Traduce l'emoji di giudizio del worker nella palette dei gauge. L'arancio
+ *  del Python non ha un corrispettivo qui e ricade su ambra: e' comunque il
+ *  giudizio del worker, non una soglia locale che gli contraddice. */
+const GAUGE_PER_EMOJI: Record<string, string> = {
+  "🟢": GAUGE_GREEN,
+  "🟡": GAUGE_AMBER,
+  "🟠": GAUGE_AMBER,
+  "🔴": GAUGE_ROSE,
+};
+
+function coloreDaCommento(commenti: Commento[], kpiNome: string): string {
+  const c = commenti.find((x) => normalizzaKpi(x.kpi_nome) === normalizzaKpi(kpiNome));
+  // Senza commento il colore e' NEUTRO, non ambra: il worker popola `commenti`
+  // solo se c'e' almeno un mese con fatturato > 0 (margini.py:1207), mentre il
+  // gauge si renderizza anche con soli costi (hasData include costi_fb_totali).
+  // Stato reale: OFFSIDE ha 0 mesi con fatturato e ~14.600 € di costi F&B, e le
+  // percentuali sono tutte 0 — un giudizio ambra su dati assenti sarebbe una
+  // valutazione inventata, come lo era il verde/rosso delle soglie locali.
+  return (c && GAUGE_PER_EMOJI[c.emoji]) ?? GAUGE_NEUTRAL;
+}
+
+/** I nomi KPI viaggiano come stringhe display su entrambi i lati (nessuna chiave
+ *  stabile nella response): il confronto ignora spazi, gradi e maiuscole. */
+function normalizzaKpi(nome: string): string {
+  return nome.toLowerCase().replace(/[°\s]/g, "");
 }
 
 function Gauge({
@@ -1070,6 +1106,7 @@ function DettaglioGiornalieroDialog({
 }) {
   const [giorni, setGiorni] = useState<RicavoGiorno[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mensile, setMensile] = useState(false);
 
   const anno = mese?.anno ?? 0;
   const meseNum = mese?.mese ?? 0;
@@ -1079,14 +1116,30 @@ function DettaglioGiornalieroDialog({
     if (!meseNum) return;
     setLoading(true);
     setGiorni([]);
+    setMensile(false);
     const pad = (n: number) => String(n).padStart(2, "0");
     const lastDay = new Date(anno, meseNum, 0).getDate();
     const dataDa = `${anno}-${pad(meseNum)}-01`;
     const dataA = `${anno}-${pad(meseNum)}-${lastDay}`;
 
-    fetch(`/api/ricavi/giornalieri?data_da=${dataDa}&data_a=${dataA}`)
-      .then((r) => r.ok ? r.json() : null)
+    // Se il mese è in modalità "mensile" l'override ha la precedenza: le righe
+    // giornaliere eventualmente rimaste a DB sono orfane e un dettaglio per
+    // giorno non esiste. Mostrarle come se fossero il mese produce medie e
+    // "giorno migliore" inventati (stessa regola di ricavi.py:1055).
+    fetch(`/api/ricavi/modalita?anno=${anno}&mese=${meseNum}`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((m) => {
+        if (m?.modalita === "mensile") {
+          setMensile(true);
+          setGiorni([]);
+          setLoading(false);
+          return null;
+        }
+        return fetch(`/api/ricavi/giornalieri?data_da=${dataDa}&data_a=${dataA}`)
+          .then((r) => r.ok ? r.json() : null);
+      })
       .then((d) => {
+        if (d === null) return;
         const items: { data: string; fatturato_iva10: number; fatturato_iva22: number; altri_ricavi_noiva: number }[] = d?.items ?? [];
         const byDate = new Map(items.map((i) => [
           i.data,
@@ -1165,6 +1218,14 @@ function DettaglioGiornalieroDialog({
         <div className="px-6 py-5 space-y-5">
           {loading ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Caricamento…</p>
+          ) : mensile ? (
+            <div className="py-8 text-center space-y-1.5">
+              <p className="text-sm font-medium">{label} è caricato come totale mensile.</p>
+              <p className="text-xs text-muted-foreground">
+                Per questo mese non esiste un dettaglio giorno per giorno. Per vederlo,
+                inserisci i ricavi in modalità giornaliera da “Carica ricavi”.
+              </p>
+            </div>
           ) : compilati.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Nessun dato giornaliero per {label}.</p>
           ) : (

@@ -25,6 +25,7 @@ import { formatData, formatEuro } from "./periodi";
 
 type Props = {
   articoli: ArticoloAggregato[];
+  totalConAcquisti?: number;
   categorie: string[];
   soloNuovi: boolean;
   soloVerifica: boolean;
@@ -101,6 +102,7 @@ function SortableHeader({
 
 export function ArticoliTab({
   articoli,
+  totalConAcquisti,
   categorie,
   soloNuovi,
   soloVerifica,
@@ -362,9 +364,20 @@ export function ArticoliTab({
       {/* Counter + totale filtrato */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/50">
         <span className="text-xs text-muted-foreground">
+          {/* Questo conteggio include le righe a importo 0 (note, diciture, omaggi),
+              che la tabella deve elencare perche' vanno comunque categorizzate; il
+              KPI "Prodotti diversi" qui sopra le esclude, contando ACQUISTI. Il
+              secondo numero arriva dal worker (total_con_acquisti) e non si ricava
+              da totale_speso: un articolo i cui storni si annullano ha totale 0 ma
+              righe di acquisto vere. Senza, i due numeri si contraddicevano muti. */}
           {sorted.length === articoli.length
             ? `${sorted.length} prodotti`
             : `${sorted.length} di ${articoli.length} prodotti`}
+          {totalConAcquisti !== undefined && totalConAcquisti !== articoli.length && (
+            <span className="text-muted-foreground/70">
+              {" "}· {totalConAcquisti} con acquisti
+            </span>
+          )}
         </span>
         {sorted.length > 0 && (
           <span className="text-xs inline-flex items-center gap-1.5 text-sky-500">
@@ -426,6 +439,7 @@ export function ArticoliTab({
                     categorie={categorie}
                     dataDa={filtri.data_da}
                     dataA={filtri.data_a}
+                    tipoProdotti={filtri.tipo_prodotti}
                   />
                 ))}
               </tbody>
@@ -469,6 +483,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
   categorie,
   dataDa,
   dataA,
+  tipoProdotti,
 }: {
   articolo: ArticoloAggregato;
   expanded: boolean;
@@ -476,6 +491,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
   categorie: string[];
   dataDa?: string;
   dataA?: string;
+  tipoProdotti?: string;
 }) {
   const [currentCat, setCurrentCat] = useState(articolo.categoria ?? "");
   const [needsReview, setNeedsReview] = useState(Boolean(articolo.needs_review));
@@ -523,8 +539,22 @@ const ArticoloRiga = memo(function ArticoloRiga({
       const dataGruppo = resGruppo ? await resGruppo.json() : null;
       const dataPV = resPV ? await resPV.json() : null;
       const falliti = [resGruppo, resPV].filter((r) => r && !r.ok);
+      // categoria-batch torna 200 con righe_aggiornate:0 quando non ha scritto
+      // nulla (fatture.py:880): lo status HTTP da solo dichiarerebbe un successo
+      // che non c'è, e al reload la riga tornerebbe com'era.
+      // NB: la rotta di gruppo torna legittimamente righe_aggiornate:0 (scrive sul
+      // riparto, non su `fatture`, riparto.py:260) — lì lo zero non è un errore.
+      const nessunaScrittura =
+        !falliti.length && conRighePV &&
+        (dataPV?.righe_aggiornate ?? 0) === 0;
 
-      if (!falliti.length) {
+      if (nessunaScrittura) {
+        toast.error(
+          conGruppo
+            ? "La quota di gruppo è aggiornata, ma nessuna riga della sede è stata modificata. Ricarica la pagina e riprova."
+            : "Nessuna riga aggiornata: la categoria non è stata salvata. Ricarica la pagina e riprova.",
+        );
+      } else if (!falliti.length) {
         setCurrentCat(newCat);
         setNeedsReview(false);
         const azione = confirmOnly ? "confermata" : "aggiornata";
@@ -701,7 +731,12 @@ const ArticoloRiga = memo(function ArticoloRiga({
         <tr className="bg-muted/20 border-b">
           <td></td>
           <td colSpan={9} className="px-3 py-2">
-            <RigheArticolo descrizione={articolo.descrizione} dataDa={dataDa} dataA={dataA} />
+            <RigheArticolo
+              descrizione={articolo.descrizione}
+              dataDa={dataDa}
+              dataA={dataA}
+              tipoProdotti={tipoProdotti}
+            />
           </td>
         </tr>
       )}
@@ -713,10 +748,12 @@ function RigheArticolo({
   descrizione,
   dataDa,
   dataA,
+  tipoProdotti,
 }: {
   descrizione: string;
   dataDa?: string;
   dataA?: string;
+  tipoProdotti?: string;
 }) {
   const [righe, setRighe] = useState<RigaFattura[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -726,6 +763,10 @@ function RigheArticolo({
     const params = new URLSearchParams({ descrizione });
     if (dataDa) params.set("data_da", dataDa);
     if (dataA) params.set("data_a", dataA);
+    // Stesso filtro dell'aggregato: senza, per le descrizioni a cavallo fra F&B e
+    // spese generali il totale della riga padre e la somma delle righe figlie
+    // qui sotto non coincidevano.
+    if (tipoProdotti && tipoProdotti !== "tutti") params.set("tipo_prodotti", tipoProdotti);
     fetch(`/api/fatture/righe-articolo?${params}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
@@ -737,7 +778,7 @@ function RigheArticolo({
     return () => {
       cancelled = true;
     };
-  }, [descrizione, dataDa, dataA]);
+  }, [descrizione, dataDa, dataA, tipoProdotti]);
 
   if (loading) {
     return (

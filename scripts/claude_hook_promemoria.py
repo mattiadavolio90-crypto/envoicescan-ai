@@ -24,6 +24,8 @@ from pathlib import Path
 
 # (regex sul percorso, promemoria). Il primo match vince per file.
 # Ogni voce nasce da un errore realmente accaduto — non da "buone pratiche".
+# Riusata anche da claude_hook_reviewer_gate.py per riconoscere i path
+# "sensibili" (stessa lista, nessuna duplicazione): PATH_SENSIBILI sotto.
 REGOLE: list[tuple[re.Pattern, str]] = [
     (
         re.compile(r"daily_briefing_service\.py$|price_impact_service\.py$"),
@@ -82,6 +84,16 @@ REGOLE: list[tuple[re.Pattern, str]] = [
         "  -> Le migration nuove vanno SOLO in supabase/migrations/ con nome\n"
         "     timestamp AAAAMMGGHHMMSS_nome.sql (formato Supabase CLI).",
     ),
+]
+
+# Sottoinsieme di REGOLE usato per decidere se un diff tocca codice
+# "delicato" (sicurezza, dominio, contratti condivisi) indipendentemente
+# dalla dimensione del cambio. Esclude la regola sulle pagine desktop
+# (apps/web/.../(app)/): e' un problema di allineamento mobile, non di
+# rischio da code-review.
+_PATTERN_ESCLUSI_DA_SENSIBILI = {r"apps[/\\]web[/\\]src[/\\]app[/\\]\(app\)[/\\]"}
+PATH_SENSIBILI: list[re.Pattern] = [
+    regola for regola, _ in REGOLE if regola.pattern not in _PATTERN_ESCLUSI_DA_SENSIBILI
 ]
 
 

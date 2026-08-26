@@ -78,6 +78,19 @@ export function parseLocalDate(iso: string | null): Date | null {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
+/**
+ * Data odierna nel formato che il worker usa per pagata_at: "YYYY-MM-DD" in ora
+ * LOCALE. `new Date().toISOString()` darebbe l'istante UTC — a ovest di Greenwich
+ * la sera del 31 diventa gia' il 1° del mese dopo, e la riga aggiornata in modo
+ * ottimistico saltava di mese finche' non si ricaricava.
+ */
+export function todayLocalIso(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -96,7 +109,12 @@ export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
     const totale = doc.totale_documento || 0;
 
     if (doc.pagata) {
-      const pagata_at = doc.pagata_at ? new Date(doc.pagata_at) : null;
+      // parseLocalDate, non new Date(): il worker manda pagata_at come data nuda
+      // "YYYY-MM-DD" (_to_date_iso in documenti_service.py), che new Date()
+      // leggerebbe a mezzanotte UTC. In un fuso a ovest di Greenwich quella
+      // mezzanotte cade il giorno prima in locale e un pagamento del 1° del mese
+      // finiva fuori dal KPI "Pagate (mese)".
+      const pagata_at = parseLocalDate(doc.pagata_at);
       if (pagata_at && pagata_at >= primoMese) {
         pagate_mese_count++;
         pagate_mese_totale += totale;

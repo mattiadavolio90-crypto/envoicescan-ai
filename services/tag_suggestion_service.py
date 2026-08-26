@@ -767,12 +767,31 @@ def _get_suggestion_with_items(
     return suggestion
 
 
+def _filtra_items_selezionati(
+    items: List[Dict[str, Any]] | None,
+    descrizioni_key: List[str] | None,
+) -> List[Dict[str, Any]]:
+    """Item che il cliente ha davvero lasciato spuntati.
+
+    `selected_by_default` e' scritto True alla creazione del suggerimento e non
+    viene mai aggiornato: da solo non puo' rappresentare una deselezione fatta
+    nel dialog. Quando il client manda le chiavi selezionate quelle sono la
+    verita'; senza (chiamate vecchie) si ricade sul comportamento precedente.
+    """
+    tutti = list(items or [])
+    if descrizioni_key is None:
+        return [i for i in tutti if i.get('selected_by_default', True)]
+    voluti = {str(k).strip() for k in descrizioni_key if str(k).strip()}
+    return [i for i in tutti if str(i.get('descrizione_key') or '').strip() in voluti]
+
+
 def accept_suggestion_create_tag(
     suggestion_id: int,
     tag_name: str | None,
     user_id: str,
     ristorante_id: str,
     supabase_client=None,
+    descrizioni_key: List[str] | None = None,
 ) -> Dict[str, Any]:
     sb = supabase_client or get_supabase_client()
     suggestion = _get_suggestion_with_items(suggestion_id, user_id, ristorante_id, supabase_client=sb)
@@ -782,7 +801,7 @@ def accept_suggestion_create_tag(
     if suggestion.get('suggestion_type') != 'new_tag':
         return {'success': False, 'error': 'invalid_suggestion_type'}
 
-    items = [i for i in (suggestion.get('items') or []) if i.get('selected_by_default', True)]
+    items = _filtra_items_selezionati(suggestion.get('items'), descrizioni_key)
     if not items:
         return {'success': False, 'error': 'no_items_selected'}
 
@@ -837,6 +856,7 @@ def accept_suggestion_extend_tag(
     user_id: str,
     ristorante_id: str,
     supabase_client=None,
+    descrizioni_key: List[str] | None = None,
 ) -> Dict[str, Any]:
     sb = supabase_client or get_supabase_client()
     suggestion = _get_suggestion_with_items(suggestion_id, user_id, ristorante_id, supabase_client=sb)
@@ -866,7 +886,11 @@ def accept_suggestion_extend_tag(
     if not owner:
         return {'success': False, 'error': 'target_tag_not_found'}
 
-    items = [i for i in (suggestion.get('items') or []) if i.get('selected_by_default', True)]
+    items = _filtra_items_selezionati(suggestion.get('items'), descrizioni_key)
+    # Senza questa guardia il suggerimento verrebbe marcato 'accepted' con zero
+    # associazioni e sparirebbe dalla lista: stesso controllo di create_tag.
+    if not items:
+        return {'success': False, 'error': 'no_items_selected'}
     assoc_payload = [
         {
             'descrizione': str(i.get('descrizione') or '').strip(),

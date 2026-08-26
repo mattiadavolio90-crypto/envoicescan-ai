@@ -113,3 +113,34 @@ export function meseLabel(year: number, month1Based: number, short = false): str
   const arr = short ? MESI_NOMI_SHORT : MESI_NOMI_LUNGHI;
   return `${arr[month1Based - 1]} ${year}`;
 }
+
+// Netto autorevole di un mese. La tabella `ricavi_giornalieri` è grezza: quando
+// il mese è in modalità "mensile" l'override in `ricavi_modalita_mensile` ha la
+// precedenza e le righe giornaliere eventualmente rimaste sono dati orfani.
+// Stessa regola già applicata lato worker in ricavi.py (get_coperti_analisi).
+export type NettoMese = { netto: number; mensile: boolean };
+
+export async function fetchNettoMese(anno: number, mese: number): Promise<NettoMese> {
+  const mm = String(mese).padStart(2, "0");
+  const lastDay = new Date(anno, mese, 0).getDate();
+  const [modalita, giornalieri] = await Promise.all([
+    fetch(`/api/ricavi/modalita?anno=${anno}&mese=${mese}`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    fetch(`/api/ricavi/giornalieri?${new URLSearchParams({
+      data_da: `${anno}-${mm}-01`,
+      data_a: `${anno}-${mm}-${String(lastDay).padStart(2, "0")}`,
+    })}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+  ]);
+
+  if (modalita?.modalita === "mensile") {
+    return {
+      netto: scorporoNetto(
+        modalita.fatturato_iva10 ?? 0,
+        modalita.fatturato_iva22 ?? 0,
+        modalita.altri_ricavi_noiva ?? 0,
+      ),
+      mensile: true,
+    };
+  }
+  return { netto: giornalieri?.totale_netto ?? 0, mensile: false };
+}

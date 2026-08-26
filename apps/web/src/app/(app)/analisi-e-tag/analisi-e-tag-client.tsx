@@ -18,6 +18,11 @@ import type {
   TagProdotto, DescrizioneDistinta,
 } from "@/lib/tag";
 
+/** Tetto di righe renderizzate nei selettori prodotti. Non e' un filtro di
+ *  dominio: serve solo a non montare 1800 nodi in un dialog. Quando taglia,
+ *  la UI lo dice esplicitamente. */
+const MAX_DESC_VISIBILI = 80;
+
 const ANNO_CORRENTE = new Date().getFullYear();
 const MESI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
 const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
@@ -314,9 +319,13 @@ function TagDialog({
     }
   }
 
-  const filteredDesc = descrizioni
-    .filter(d => !search || d.descrizione.toLowerCase().includes(search.toLowerCase()))
-    .slice(0, 80);
+  // Il tetto a 80 protegge il rendering (i clienti reali hanno 268-1828 descrizioni),
+  // ma va DICHIARATO: senza, chi scorre crede di vedere tutto il catalogo e non ha
+  // modo di accorgersi che ne vede il 4%. La ricerca lavora prima dello slice, quindi
+  // il prodotto cercato per nome si trova comunque.
+  const matchingDesc = descrizioni
+    .filter(d => !search || d.descrizione.toLowerCase().includes(search.toLowerCase()));
+  const filteredDesc = matchingDesc.slice(0, MAX_DESC_VISIBILI);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -427,6 +436,11 @@ function TagDialog({
                 )}
               </div>
             </div>
+            {matchingDesc.length > filteredDesc.length && (
+              <p className="text-xs text-muted-foreground">
+                Mostrati {filteredDesc.length} di {matchingDesc.length} prodotti — usa la ricerca per trovare gli altri.
+              </p>
+            )}
             <div className="flex items-center justify-between gap-3 pt-1">
               <p className="text-sm text-muted-foreground">
                 {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Nessuno selezionato"}
@@ -477,10 +491,10 @@ function AggiungiProdottiDialog({
       .finally(() => setLoading(false));
   }, [open]);
 
-  const filtered = descrizioni
+  const matching = descrizioni
     .filter(d => !prodottiEsistenti.includes(d.descrizione_key))
-    .filter(d => !search || d.descrizione.toLowerCase().includes(search.toLowerCase()))
-    .slice(0, 80);
+    .filter(d => !search || d.descrizione.toLowerCase().includes(search.toLowerCase()));
+  const filtered = matching.slice(0, MAX_DESC_VISIBILI);
 
   async function salva() {
     if (selected.size === 0) return;
@@ -556,6 +570,11 @@ function AggiungiProdottiDialog({
             </div>
           )}
         </div>
+        {matching.length > filtered.length && (
+          <p className="px-5 pb-2 text-xs text-muted-foreground shrink-0">
+            Mostrati {filtered.length} di {matching.length} prodotti — usa la ricerca per trovare gli altri.
+          </p>
+        )}
         <div className="px-5 py-3 border-t border-border shrink-0 flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Seleziona prodotti"}
@@ -612,9 +631,14 @@ function SuggestionCard({
     if (selected.size === 0) { toast.error("Seleziona almeno un prodotto"); return; }
     setActing(true);
     try {
+      // Senza descrizioni_key il backend ricadeva su selected_by_default (sempre
+      // true) e associava TUTTI i prodotti, comprese le righe deselezionate qui.
+      const descrizioni_key = s.items
+        .map((i) => i.descrizione_key)
+        .filter((k) => selected.has(k));
       const body = s.suggestion_type === "new_tag"
-        ? { suggestion_type: "new_tag", tag_name: tagName.trim() || s.suggested_tag_name }
-        : { suggestion_type: "extend_tag", tag_id: s.target_tag_id };
+        ? { suggestion_type: "new_tag", tag_name: tagName.trim() || s.suggested_tag_name, descrizioni_key }
+        : { suggestion_type: "extend_tag", tag_id: s.target_tag_id, descrizioni_key };
       const res = await fetch(`/api/tag/suggestions/${s.id}/accept`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
@@ -1263,7 +1287,21 @@ export function AnalisiETagClient({
                           <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Spesa</th>
                           <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Acquisti</th>
                           <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Prezzo medio</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Vs media</th>
+                          {/* La media di riferimento e' prezzo_medio_tag, che il worker
+                              manda in fornitori.aggregati (tag_analytics_service.py:386) e
+                              che il client scartava: la colonna mostrava scostamenti da un
+                              numero mai visibile. E' anche il campo corretto il 24/8 da
+                              media semplice a ponderata. */}
+                          <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
+                            Vs media
+                            {fornitori.aggregati?.prezzo_medio_tag != null && (
+                              <span className="block font-normal text-[10px] text-muted-foreground/70">
+                                {/* Solo il valore: quantita_label e' un'intestazione di
+                                    colonna ("⚖️ Quantità Totale KG"), non un'unita'. */}
+                                {fmtEuro(fornitori.aggregati.prezzo_medio_tag)}
+                              </span>
+                            )}
+                          </th>
                           <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">% sul tag</th>
                         </tr>
                       </thead>

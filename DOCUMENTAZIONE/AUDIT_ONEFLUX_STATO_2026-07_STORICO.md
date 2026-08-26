@@ -2229,3 +2229,599 @@ esattamente come accaduto una volta con §3b: se non è scritta come voce
 aperta, "tabella verde" torna a leggersi come "finito".
 
 Il ciclo 2026-07 si chiude solo quando **sia §2 sia §3c** sono vuote.
+
+---
+
+## §25 — §3c prima passata: gli 11 file grandi del frontend (25/8/2026)
+
+Sessione successiva all'apertura di §3c (§24, stessa giornata). Obiettivo
+dichiarato dal ciclo: **completare §3c prima di aprire nuove dimensioni**.
+
+### Il perimetro: ricostruito per misura, perché non esisteva
+
+§24 diceva di recuperare dal verbale della dimensione 6 «gli altri 8» file
+grandi. **Quell'elenco non esiste**: STORICO §6 (4/8) ne nomina tre
+(`scadenziario-client.tsx`, `analisi-e-tag-client.tsx`, `calcolo-tab.tsx`) e
+chiude con «ecc.». Cercarlo sarebbe stato un vicolo cieco, e indovinarlo
+avrebbe ripetuto l'errore che §3c denuncia.
+
+Ricostruito per misura (`wc -l` su tutti i `.tsx` di `apps/web/src`): gli 11
+file più grandi fanno **13.153 righe** e contengono tutti e tre i file citati —
+coerente con il «~10.000 righe» del verbale originale. Criterio scelto da
+Mattia fra tre alternative, e **scritto qui insieme al perimetro** perché la
+prossima passata non debba a sua volta indovinare.
+
+| File | Righe |
+|---|---|
+| `(app)/scadenziario/scadenziario-client.tsx` | 2233 |
+| `(app)/workspace/personale-tab.tsx` | 1834 |
+| `(app)/analisi-e-tag/analisi-e-tag-client.tsx` | 1392 |
+| `(mobile)/m/turni/mobile-turni.tsx` | 1270 |
+| `(app)/margini/calcolo-tab.tsx` | 1248 |
+| `(app)/prezzi/variazioni-tab.tsx` | 973 |
+| `(app)/admin/categorie/categorie-client.tsx` | 881 |
+| `(app)/admin/clienti/[id]/cliente-dettaglio-client.tsx` | 858 |
+| `(app)/margini/analisi-tab.tsx` | 846 |
+| `(app)/margini/coperti-tab.tsx` | 809 |
+| `(app)/analisi-fatture/articoli-tab.tsx` | 809 |
+
+**11 file su 11 letti riga per riga**, in 4 passate `oneflux-audit` per dominio
+(Margini · Scadenziario+Articoli · Tag+Prezzi · Workspace+Admin+mobile).
+
+### Il meccanismo, misurato prima di cercare i difetti
+
+- **Nessun codegen da `openapi.json`**: `grep -ril openapi apps/web` → **0**.
+  La CI protegge Python↔schema (`openapi-drift.yml`); **nulla** protegge
+  schema↔TypeScript. Tutti i tipi TS sono handwritten.
+- **111 `await res.json()` nei `.tsx` di `src/app`, solo 16 annotati** (116 su
+  tutto `src`): ~95 risposte entrano
+  negli state React come `any`. Un campo aggiunto lato Pydantic attraversa il
+  proxy grezzo e sparisce senza errore di build; uno rimosso diventa `undefined`
+  a runtime.
+- I 169 `route.ts` sono **tubi trasparenti** (verificato: solo 2 contengono
+  `map/reduce/Math.`): non sono il punto di divergenza.
+
+### Esito: 39 findings, 21 attivi su clienti reali
+
+| Gruppo | Findings | Attivi | HIGH attivi |
+|---|---|---|---|
+| 1 Margini | 12 | 5 | 2 |
+| 2 Scadenziario + Articoli | 11 | 7 | 3 |
+| 3 Tag + Prezzi | 6 | 5 | 1 |
+| 4 Workspace + Admin + mobile | 10 | 4 | 1 |
+| **Totale** | **39** | **21** | **7** |
+
+Piste **chiuse in negativo: 35** — verificate senza difetto, non da rifare.
+
+### I 7 HIGH attivi, con la misura che li regge
+
+1. **Ripartizione per centro impossibile in modalità mensile** —
+   `analisi-tab.tsx:138` legge il netto da `/api/ricavi/giornalieri` (tabella
+   grezza, ignora l'override) e il Salva è disabilitato con `netto <= 0`.
+   Misurato: `ricavi_modalita_mensile` contiene **solo** righe `mensile` (17
+   mesi, 4 sedi); **OVERTIME ha 6 mesi da 28k–65k € con zero righe
+   giornaliere**. Il worker quel fatturato lo conosce (`margini.py:635`).
+2. **Dettaglio giornaliero incoerente**, stessa fonte sbagliata
+   (`calcolo-tab.tsx:1087`). **Rettifica all'agente**: non sono «numeri
+   vecchi» — per TIME CAFE il totale combacia (80.551,15 € su entrambi i lati).
+   Il difetto è la *distribuzione*: un giorno (2026-05-31) porta 80.551 € e gli
+   altri 30 sono a zero, quindi media/giorno e giorno migliore/peggiore sono
+   privi di senso.
+3. **Tre definizioni di «oggi»** sullo stesso dato: `documenti_service.py`
+   (4 punti) usa `date.today()` = UTC su Railway, `scadenziario.py:404` usa
+   `_oggi_rome()`, il client usa `new Date()` = fuso del browser. Il progetto ha
+   `_oggi_rome()` **proprio** perché «`date.today()` nella finestra
+   mezzanotte-02:00 restituisce il giorno precedente».
+4. **KPI «Pagate (mese)» esclude i pagamenti del 1°** —
+   `lib/scadenziario.ts:99` usa `new Date()` grezzo contro una mezzanotte
+   locale, mentre la riga 110 usa `parseLocalDate`, introdotto proprio per
+   questo. Incoerenza **interna alla stessa funzione**, 11 righe di distanza.
+5. **Il falso successo che il backend aveva già rimosso è vivo nel client** —
+   `fatture.py:880` torna `200 + {"ok":true,"righe_aggiornate":0}` con il
+   commento «e il cliente vedeva un falso successo»;
+   `articoli-tab.tsx:525` controlla `!r.ok` (**status HTTP**, non il campo `ok`
+   del JSON) → toast verde, badge «Verifica» che sparisce, e al reload la riga
+   torna com'era.
+6. **La deselezione dei prodotti in un suggerimento tag non arriva mai al
+   backend** — il client blocca su `selected.size === 0` ma invia solo
+   `tag_name`/`tag_id`; `AcceptSuggestionRequest` non ha campi per gli item, e
+   il filtro `selected_by_default` è **inerte per costruzione** (scritto `True`
+   alla creazione, mai aggiornato da nessun endpoint). Misurato: **307 item su
+   307 a `true`, zero `false`** — la colonna non ha mai contenuto `false`.
+   Esposizione: **45 suggerimenti pending su 49 hanno più di un item** (max 16).
+7. **«Blocca mesi precedenti» è uno switch morto, e un cliente reale ce l'ha
+   acceso** — misurato: `davide.pizzata.78@gmail.com` ha
+   `blocco_mesi_precedenti = true`. L'unico enforcement sta in
+   `upload_handler.py:1482,1514`, che legge `st.session_state` (dict vuoto dallo
+   shim) dentro `handle_uploaded_files` — funzione **raggiungibile solo da
+   `legacy_streamlit/app_controllers.py:1701`**, a sua volta irraggiungibile
+   (nessun import da fuori `legacy_streamlit/`, frontend Streamlit rimosso il
+   17/7): è il legacy che §2 documenta come escluso dalla copertura.
+
+### Le severità riverificate: 3 spostate su 6 misurate
+
+Il metodo del ciclo (riverificare sempre le severità dell'agente) ha spostato
+**tre** classificazioni su sei misurate — la sesta, settima e ottava volta nel
+ciclo che una severità cade a una query:
+
+- **Declassato**: costo assenze del personale, dato ATTIVO dall'agente →
+  `turni_personale` è **vuota** (0 righe). Latente.
+- **Declassato**: `trigger_servizi_off`, dato ATTIVO → **0 clienti su 4** hanno
+  quella chiave. Latente (il meccanismo è però confermato: il flag è filtrato da
+  `_normalize_pagine` e non arriva mai al client).
+- **Promosso**: divergenza sede-singola↔catena sui tag, dato LATENTE
+  sull'ipotesi «nessun tag di gruppo» → esiste `gruppo_tags` id=3 «SALMONE» con
+  5 prodotti. Misurata la divergenza reale: **402.182,19 € vs 402.418,42 €**,
+  cioè **236,23 €** di note di credito non scalate sul percorso catena. Da
+  spezzare in due: (a) note di credito **attivo**, (b) unità miste **latente**
+  (i 5 prodotti sono tutti KG).
+- **Confermati attivi** i tre lasciati «DA MISURARE»: 22 descrizioni a cavallo
+  F&B/spese-generali; scarto fra i due contatori «prodotti diversi» fino a 32
+  su 9 sedi su 10; **268–1.828 descrizioni distinte per cliente** contro uno
+  `slice(0, 80)` senza alcun segnale (LAND DEI SAPORI vede il 4% del catalogo).
+
+### Due premesse mie, corrette dai fatti
+
+- «`calcolo-tab.tsx` e `lib/margini.ts` sono due verità concorrenti sui
+  margini» — **falso nel meccanismo**: `MesePivot` combacia al 100% col worker
+  (20/20 campi, tutti letti). Il drift sta in `lib/margini.ts`, che ha **zero
+  consumer** ed è dead code.
+- «Le soglie TS e Python divergono su MOL e 1° Margine» — direzionalmente
+  giusto, esempi sbagliati. Misurato su 0–100 a passi di 0,5: `Spese Generali`
+  è **coerente** (l'agente lo dava divergente) e `MOL` diverge su **tutta la
+  banda 5–20%**, non sui due punti citati.
+
+### Il pattern di fondo: drift di *autorità*, non di *tipi*
+
+Su 4 dei 7 HIGH la causa è la stessa: **il client ri-deriva localmente uno stato
+che il worker gli ha già mandato** (`fatturato_split_attivo`, `has_fatturato`,
+`colore`, lo stato «pagata»), oppure interroga l'endpoint grezzo invece di
+quello che applica le regole di dominio.
+
+La prova più netta sta in `ricavi.py:1055-1060`, dove la regola «l'override
+mensile ha precedenza sui giornalieri» **è implementata e commentata**, e il
+commento descrive esattamente il bug che si verifica altrove: *«senza questo
+filtro la stessa response mostrerebbe due fonti diverse per lo stesso mese»*.
+La regola è stata capita e corretta in **un** punto, e non propagata agli altri
+due consumer. Verificato che l'endpoint grezzo va lasciato tale: dei suoi 4
+consumer, 2 lo usano correttamente (inserimento ricavi e mobile, che devono
+vedere le righe vere) — il fix va sui 2 dialog di analisi.
+
+### I fix del 24/8 (Tag): consumati, tranne uno
+
+Verifica mirata richiesta dal ciclo, dato che 2 dei 3 precedenti che hanno
+aperto §3c venivano da lì. **`spesa_esclusa_mix` è consumato correttamente**
+(client `:1200-1207`, guardia giusta), il client **non** ricalcola il trend,
+**non** ha una media non ponderata propria e **non** rifiltra i prezzi ≤ 0:
+il precedente #1 non si ripete. Anche `refresh_ok` — il «punto caldo» che avevo
+segnalato in planning — si è rivelato **corretto**: emesso solo con
+`refresh=true` e testato con `=== false`, non falsy.
+L'unico non consumato è **`prezzo_medio_tag`**, proprio il campo corretto il
+24/8: arriva al client dentro `fornitori.aggregati` e viene scartato, così il
+cliente vede la colonna «Vs media» senza mai vedere la media di riferimento.
+
+### Copertura dichiarata (cosa NON è stato guardato)
+
+- Del folder `margini/`: `carica-ricavi-dialog.tsx` (572, letto ~120) — è dove
+  si **scrive** la modalità mensile, cioè la causa-radice dei due HIGH: candidato
+  naturale alla prossima passata. **Letti come contesto ma non come perimetro**
+  (798 righe): `costo-personale-dialog.tsx` (181), `costo-spese-dialog.tsx`
+  (177), `kpi-bar.tsx` (168), `page.tsx` (157), `periodi.ts` (115) — hanno
+  prodotto findings (soglie duplicate, `EditableField`, `delta_*_pct` morti) ma
+  non sono stati attraversati riga per riga; `kpi-bar.tsx` in particolare ha 6
+  occorrenze di `map/reduce/Math.` e merita una lettura propria.
+  `filtri-periodo.tsx`, `tabs-switcher.tsx`, `loading.tsx`: nessuna logica di
+  dominio.
+- `analisi-fatture/pivot-tab.tsx` — `PivotResponse` ha 8 campi handwritten mai
+  confrontati col worker.
+- `prezzi/score-tab.tsx` (521), `catena/*`, gli altri tab di `workspace/` e
+  `admin/`, `m/diario/*`.
+- **`/api/scadenziario/calendario` è un endpoint mai chiamato dal frontend**:
+  `CalendarView` riaggrega tutto lato client (le due formule coincidono). Dead
+  code lato client, non una divergenza visibile: da valutare in una passata
+  qualità.
+
+### Stato
+
+**Audit read-only completo sul perimetro dichiarato. Nessun fix applicato**:
+la remediation attende conferma esplicita di Mattia, come prevede il metodo del
+ciclo. Nessun file del repo modificato in questa passata oltre a questi verbali.
+
+---
+
+## §26 — §3c, remediation prima tranche (4 HIGH) — 25/8/2026
+
+Autorizzata da Mattia ("ok procedi") dopo la chiusura della passata di audit
+§25. Perimetro: i 4 HIGH attivi con causa-radice accertata. Gli altri 3 HIGH e
+i 14 findings MEDIUM/LOW attivi **restano aperti**.
+
+### Cosa è stato corretto
+
+| # | Difetto | Fix | File |
+|---|---|---|---|
+| 1 | Ripartizione per centro impossibile in modalità mensile | `fetchNettoMese()` — preferisce l'override quando `modalita === "mensile"` | `margini/periodi.ts`, `margini/analisi-tab.tsx` |
+| 2 | Dettaglio giornaliero incoerente in modalità mensile | stato esplicito invece di medie su righe orfane | `margini/calcolo-tab.tsx` |
+| 3 | Falso successo nel cambio categoria | si legge `righe_aggiornate`, non solo lo status HTTP | `analisi-fatture/articoli-tab.tsx` |
+| 4 | Deselezione prodotti mai inviata al backend | nuovo campo `descrizioni_key` + `_filtra_items_selezionati()` | `routers/tag.py`, `tag_suggestion_service.py`, `analisi-e-tag-client.tsx` |
+
+### Fix 1 e 2 — stessa causa, due rimedi diversi
+
+Entrambi i dialog leggevano il netto da `/api/ricavi/giornalieri`, che è la
+**tabella grezza** e ignora `ricavi_modalita_mensile`. La regola di precedenza
+esisteva già, implementata **e commentata**, in un solo punto: `ricavi.py:1055-1060`.
+
+Il rimedio è diverso nei due casi, e la differenza è il punto:
+- **`analisi-tab`** ha bisogno di *un numero* → glielo si dà, autorevole.
+- **`calcolo-tab`** mostra *media giornaliera, giorno migliore/peggiore e bar
+  chart per giorno*: in modalità mensile quelle grandezze **non esistono**.
+  Sostituire il totale avrebbe prodotto un dettaglio inventato. Si dichiara lo
+  stato, coerentemente con la regola di dominio #1 (uno stato ignoto si dichiara,
+  non si traveste).
+
+**L'endpoint grezzo NON è stato toccato**: 2 dei suoi 4 consumer
+(`carica-ricavi-dialog.tsx`, `mobile-incassi.tsx`) lo usano correttamente perché
+sono le superfici di *editing* della tabella. Verificato nel diff: 0 righe.
+
+**Effetto misurato sul DB live** (17 mesi, 4 sedi, tutti in `modalita='mensile'`):
+
+| | prima | dopo |
+|---|---|---|
+| totale netto letto dai dialog | € 83.778,42 | € 813.690,08 |
+
+15 mesi passano da **€ 0** al valore vero (€ 8.480 – € 69.178). TIME CAFE giugno
+da € 3.227,27 a € 73.322,73. TIME CAFE maggio si sposta di **−€ 0,24**:
+differenza di arrotondamento fra somma dei giornalieri e totale mensile.
+
+> **Rettifica a §25.** Il verbale della passata di audit descriveva il HIGH #2
+> come un difetto di **distribuzione** ("il totale combacia, è la ripartizione
+> sui giorni a non avere senso"), misurato su TIME CAFE maggio. Con la misura
+> estesa a tutti e 17 i mesi la descrizione risulta **troppo indulgente**: in 15
+> mesi su 17 il dialog mostrava **zero**, e in TIME CAFE giugno **€ 70.095 in
+> meno** del vero. Non era solo distribuzione: era un importo sbagliato.
+
+### Fix 3 — il ramo che il backend aveva già scritto per non mentire
+
+`fatture.py:880-884` torna `200 + righe_aggiornate: 0` con il commento *"e il
+cliente vedeva un falso successo"*. Il client controllava `r.ok`, cioè lo
+**status HTTP** → toast verde, e al reload la riga tornava com'era.
+
+Il fix ha richiesto una distinzione che il primo tentativo aveva sbagliato: la
+rotta di **gruppo** (`riparto.py:260`) torna `righe_aggiornate: 0` **come
+successo legittimo**, perché scrive sul riparto e non su `fatture`. Un controllo
+ingenuo avrebbe rotto un percorso funzionante. Il check è quindi legato a
+`conRighePV`, e copre anche il caso **misto** (segnalato dal `code-reviewer`:
+con `!conGruppo` uno zero-write del PV nel misto sarebbe restato silenzioso —
+stessa classe del bug appena chiuso).
+
+### Fix 4 — un filtro inerte per costruzione
+
+`selected_by_default` è scritto `True` alla creazione e **mai aggiornato da
+nessun endpoint**: non poteva rappresentare una deselezione. Misurato: 307 item
+su 307 a `true`, la colonna non ha **mai** contenuto `false`.
+
+`descrizioni_key` distingue deliberatamente **`None`** (chiamata vecchia →
+comportamento precedente) da **`[]`** (nessun prodotto, non "tutti"). Aggiunta
+anche la guardia `no_items_selected` a `accept_suggestion_extend_tag`, che
+`create_tag` aveva e lei no (rilievo del `code-reviewer`).
+
+### Verifica
+
+- `pytest tests/`: **11041 passed, 42 skipped**
+- **8 test nuovi**, tutti verificati **per mutazione su copia in scratchpad**
+  (5 mutanti, 5 uccisi): `None→falsy`, niente `strip`, ignora
+  `selected_by_default`, ignora le chiavi del client, guardia rimossa
+- `npx tsc --noEmit` pulito · `npm run build` OK
+- `export_openapi.py --check-drift` OK (194 endpoint) dopo rigenerazione:
+  il churn di 164 righe in `openapi.json` è **riordino di chiavi**; l'unica
+  aggiunta semantica è `AcceptSuggestionRequest/properties/descrizioni_key`
+- `code-reviewer` sul diff cumulativo: nessun bug funzionale; ha riverificato in
+  autonomia tutte le asserzioni numeriche sul DB live e **rifatto da zero il
+  mutation testing**. I suoi 2 rilievi sostanziali (misto, guardia `extend_tag`)
+  sono stati recepiti.
+
+### Resta aperto
+
+3 HIGH (fusi orari dello Scadenziario, KPI "Pagate (mese)", "Blocca mesi
+precedenti" come switch morto), 14 findings MEDIUM/LOW attivi, e il perimetro
+non ancora letto elencato in §25.
+
+---
+
+## §27 — §3c, remediation seconda tranche (3 HIGH) — 26/8/2026
+
+Autorizzata da Mattia ("procedi con tutti i punti in sequenza"). Chiude i 3 HIGH
+rimasti aperti da §26. I 14 findings MEDIUM/LOW **restano aperti**.
+
+Due dei tre findings sono stati **rettificati in corso di verifica**: come in
+§26, la misura più larga ha cambiato la diagnosi, non solo la severità.
+
+### HIGH #5 — KPI "Pagate (mese)": rettifica della diagnosi
+
+§25 lo aveva descritto come "esclude i pagamenti del 1° del mese" in Italia.
+**Falso in quel verso.** Misurato eseguendo il codice (`node`, TZ variabile):
+l'Italia è a EST di Greenwich, quindi `new Date("2026-08-01")` = mezzanotte UTC
+= 02:00 a Roma, cioè *dopo* la mezzanotte locale → il 1° **rientra**. In
+Europe/Rome, in ogni mese e in entrambe le stagioni, non c'è divergenza.
+
+Il difetto è reale ma si manifesta **solo nei fusi a ovest di Greenwich**:
+
+| TZ browser | pagate_mese (atteso €1200) | |
+|---|---|---|
+| Europe/Rome, Asia/Tokyo, UTC | €1200 | corretto per caso |
+| America/New_York, America/Sao_Paulo | **€200** | 1° del mese perso |
+
+Sul DB live: 389 pagamenti registrati, **4 cadono il 1° del mese** — il dato per
+sbagliare esiste, l'innesco è il fuso di chi guarda.
+
+**Fix** (`lib/scadenziario.ts`): `parseLocalDate` al posto di `new Date()` grezzo.
+Il worker manda `pagata_at` come data nuda `YYYY-MM-DD` (`_to_date_iso`,
+`documenti_service.py:625`), e `parseLocalDate` esisteva già 11 righe più sotto
+per esattamente questa ragione — con il commento che lo spiega.
+
+### HIGH #6 — Le tre definizioni di "oggi": due sono corrette
+
+Riverificando, il pattern client `new Date()` + `setHours(0,0,0,0)` (7 occorrenze
+in `scadenziario-client.tsx`) è **corretto**: mezzanotte locale confrontata con
+altri `parseLocalDate`, coerente. Il backend usa `date.today()` sul server. Non
+sono "tre verità in conflitto" come scritto in §25.
+
+Il difetto vero è più stretto e più concreto — la **scrittura ottimistica**:
+
+```
+pagata_at = new Date().toISOString()   // istante UTC
+```
+
+contro un'API che restituisce una data nuda. A New York alle 20:00 del 31,
+`toISOString()` dà **il 1° del mese dopo**: la riga appena segnata pagata saltava
+di mese nella UI fino al reload successivo.
+
+**Fix**: nuovo `todayLocalIso()` in `lib/scadenziario.ts`, usato nei 2 punti di
+scrittura ottimistica (riga singola + bulk). Il client scrive ora la stessa forma
+che l'API restituisce.
+
+### HIGH #7 — "Blocca mesi precedenti": switch morto, e non era solo lui
+
+Confermato e **più esteso del previsto**. Le due policy sulle date
+(`blocco_anno_precedente`, `blocco_mesi_precedenti`) esistevano solo dentro
+`upload_handler.handle_uploaded_files` — il percorso **Streamlit**, che nessuno
+chiama più. Il canale vivo è `POST /api/upload/invoice` sul worker, dove i
+controlli non erano mai stati portati.
+
+Verificato per esclusione: `grep` di `ANNO PRECEDENTE` / `MESE NON CONSENTITO` /
+`blocco_mesi` su `services/` e `worker/` non trova nulla fuori da `upload_handler`.
+
+Sul DB live: **`davide.pizzata.78@gmail.com` ha `blocco_mesi_precedenti: true`** —
+un cliente reale con un vincolo che credeva attivo e che non ha mai bloccato nulla.
+
+Trovato di conseguenza: anche `_is_trial_invoice_date_allowed` è morta allo stesso
+modo. Nessun utente ha `trial_active` oggi → **latente**, ma sarebbe tornata viva
+al primo trial.
+
+**Fix**: nuovo `services/upload_policy.py` — la regola in un posto solo, senza
+`st.session_state`, applicata dal worker dopo il parse e prima del salvataggio.
+
+**Perimetro del fix, dichiarato**: copre l'**upload manuale**
+(`POST /api/upload/invoice`), non il canale SDI (`worker/queue_processor.py:715`)
+né il ramo multi-sede ambiguo, che rientra dalla coda e quindi passa dallo stesso
+percorso SDI. È deliberato: la UI admin descrive il flag come *"Impedisce
+**caricamento** fatture dell'anno scorso"*, e l'enforcement storico stava solo
+nell'handler di upload — una fattura che il SDI recapita per legge non è un
+caricamento che il cliente sceglie di fare. Ma è una scelta di prodotto, non una
+conseguenza tecnica, ed è la ragione per cui va scritta qui invece di restare
+implicita.
+
+Oggi nessun cliente è esposto alla differenza: `davide.pizzata.78` — l'unico col
+flag acceso — ha **0 record in `fatture_queue`**, cioè nessun traffico SDI. Se un
+domani il flag venisse acceso a `offsidesp` (417 in coda, ultima il 22/8) o a
+`ghyl.888` (121), il blocco coprirebbe una minoranza del suo volume: **a quel
+punto la scelta va rifatta**, non ereditata da qui.
+
+Due difetti scoperti **scrivendo i test**, entrambi ereditati dal codice storico
+e mai visti perché quel percorso non girava:
+
+1. `MESI_ITA` è un **dict 1-indexed**, non una lista: l'indice storico
+   `MESI_ITA[month - 1]` nominava il mese sbagliato. Con oggi = 26/8 il messaggio
+   diceva *"Giugno o Luglio"* mentre i mesi ammessi erano **Luglio e Agosto**.
+2. L'anno era stampato una volta sola in fondo: a gennaio i due mesi ammessi
+   stanno in **anni diversi** (*"Dicembre 2026 o Gennaio 2027"*), e un anno solo
+   ne datava uno in modo falso.
+
+E un terzo, il più costoso, trovato dal `code-reviewer` guardando avanti invece
+che indietro: `blocco_anno_precedente` ha **default `True`** e *nessun* cliente ha
+la chiave configurata, quindi vale per tutti. Con il confronto secco
+`data.year < oggi.year` ereditato dal codice storico, **dal 1° gennaio 2027
+nessuno avrebbe più potuto caricare le fatture di dicembre 2026** — che è il caso
+normale, non un caso limite: le fatture di dicembre arrivano a gennaio. Non si era
+mai visto perché quel codice non girava; portandolo su un percorso vivo sarebbe
+diventato un blocco totale a data fissa. Corretto ammettendo sempre il **mese
+precedente**: a febbraio la deroga si chiude da sola, senza date cablate. Su
+quel mese decide semmai `blocco_mesi_precedenti`, che è la regola più stretta e
+più esplicita.
+
+Nota di merito al metodo: `trial_active` **non è** fra i campi che
+`verifica_sessione_da_cookie` mette in `user`. Leggerlo da lì avrebbe dato sempre
+`None` — un secondo interruttore spento al posto del primo. Si passa da
+`get_trial_info()`.
+
+### Verifica
+
+- `pytest tests/`: **11067 passed, 43 skipped**
+- **30 test nuovi** (`tests/test_upload_policy.py`), verificati **per mutazione su
+  copia in scratchpad**: **10 mutanti, 10 uccisi** — admin non bypassa, default
+  anno invertito, default mesi invertito, trial ignorato, mese precedente
+  off-by-one, indice `MESI_ITA` storico, data illeggibile che blocca, guardia
+  `isinstance` degradata a `or {}` (il mutante sopravvissuto segnalato dal
+  reviewer), deroga di dicembre rimossa, deroga sempre attiva. File di lavoro
+  ripristinato identico (`md5sum -c` OK).
+- Fix frontend verificato **eseguendo il codice compilato** in 5 fusi: pre-fix
+  New York €200 / post-fix €1200, Roma invariato in entrambi.
+- `npx tsc --noEmit` pulito · `npm run build` exit 0
+- `export_openapi.py --check-drift` OK (194 endpoint), **nessuna modifica** a
+  `openapi.json`: la remediation non tocca la superficie API.
+- `tests/test_documentazione_onesta.py`: 51 passed
+
+### Resta aperto
+
+14 findings MEDIUM/LOW attivi e il perimetro non ancora letto elencato in §25.
+
+Aperti da questa tranche, segnalati dal `code-reviewer` e **non chiusi**:
+
+- **Policy date sul canale SDI** — vedi il perimetro dichiarato sopra: scelta di
+  prodotto da confermare, non un dimenticanza.
+- **`pagata_at`: frontend locale, backend UTC.** `todayLocalIso()` scrive in ora
+  locale, `documenti_service.py:689` persiste `datetime.now(timezone.utc).date()`.
+  Nella finestra 00:00–02:00 italiana del 1° del mese l'ottimistico e il valore
+  ricaricato possono cadere in mesi diversi. Finestra stretta, ma è la stessa
+  classe del difetto appena chiuso, di segno inverso.
+- **Flush PROP-1 prima del blocco.** `estrai_dati_da_xml` fa un upsert su
+  `prodotti_utente` (`invoice_service.py:1271`): una fattura poi rifiutata dalla
+  policy lascia comunque le associazioni descrizione→categoria nella memoria del
+  cliente. Non tocca `fatture` né i margini.
+- **`get_trial_info` per ogni file** di un batch, benché `is_trial` sia invariante
+  nel batch: query evitabili su caricamenti da centinaia di file.
+
+Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.
+
+---
+
+## §28 — §3c, remediation MEDIUM/LOW (14 su 15) — 26/8/2026
+
+Chiude tutti i findings MEDIUM/LOW attivi di §3c tranne uno, che richiede una
+migration e quindi conferma esplicita.
+
+### Il conteggio era sbagliato: 15, non 14
+
+§25/§26/§27 dicevano «14 findings MEDIUM/LOW attivi». Ricontando dai report per
+gruppo (conservati in scratchpad e riletti riga per riga) sono **15**: 3 nel
+gruppo 1, 5 nel gruppo 3, 7 nei gruppi 2+4. Il 14 era un errore di somma
+propagato per tre sezioni. Non cambia nulla nel merito — è però l'ennesima
+conferma che i numeri di questo verbale vanno ricontati, non ricopiati.
+
+### Cosa è stato corretto
+
+**Margini (3)**
+- Il gate del «Dettaglio giornaliero» filtrava per *nome* del centro invece di
+  leggere `has_fatturato`, che il worker già manda (`margini.py:653`, dove la
+  condizione è anche `split_attivo` e `fatt_c > 0`). Con lo split spento il
+  bottone restava abilitato e apriva un dialog con tutte le colonne a «—»:
+  **5 sedi su 8**. Le righe 492-546 dello stesso file `has_fatturato` lo
+  leggevano già — era solo il cancello a ri-derivarlo.
+- Il gauge «Costi Gestione» cercava se stesso mentre `/api/margini/analisi` manda
+  «Spese Generali». **Verificato eseguendo il match**: 5 commenti generati, 3
+  renderizzati, buttati «Spese Generali» e «Costo del Lavoro». Il gauge mostrava
+  «—» in modo permanente. Nota: esistono *due* produttori di `commenti`
+  (`margine_service.py:1023` dice «Costi Gestione», `margini.py:1211` dice
+  «Spese Generali») e il tab consuma il secondo.
+- I colori dei gauge venivano da una seconda tabella di soglie locale, con **3
+  bande** contro le **4** del Python: sul MOL divergevano su tutta la banda
+  5-20% (a MOL 15% gauge verde e commento giallo). Ora seguono l'emoji di
+  `_valuta_soglia_margine`; palette invariata.
+
+**Analisi fatture (3)**
+- `/righe-articolo` non accettava `tipo_prodotti` mentre `/articoli-aggregati`
+  sì: col chip F&B attivo il totale del padre era su un sottoinsieme e le righe
+  figlie erano tutte.
+- I due contatori «prodotti diversi» adiacenti divergevano su **9 sedi su 10**.
+  **Rettifica della diagnosi di §25**: il case *non c'entra* — misurato, zero
+  descrizioni in produzione differiscono per sole maiuscole. Lo scarto è
+  interamente righe a importo 0 (note, diciture, omaggi). Il worker manda ora
+  `total_con_acquisti`, e **non è ricavabile lato client**: un articolo i cui
+  storni si annullano ha `totale_speso` 0 ma righe di acquisto vere (fino a
+  **14 per sede**, LAND DEI SAPORI). L'approssimazione client sarebbe stata una
+  divergenza più piccola al posto di una più grande.
+- `/api/fatture/kpi` ignorava `solo_da_verificare` e `solo_ripartite`: la KpiBar
+  restava sul periodo intero sopra una tabella ristretta. La guardia
+  `hasRipartite` è replicata lato server, o un `?ripartite=1` rimasto nell'URL
+  avrebbe azzerato i KPI sopra una tabella piena — lo stesso difetto invertito.
+
+**Scadenziario (1)** — lo spostamento di sede non toglieva la fattura dalla
+lista (l'eliminazione invece sì): restava a video sotto la sede vecchia e un
+secondo click dava un errore che contraddiceva il toast verde appena letto.
+
+**Tag e Prezzi (4)**
+- I selettori prodotti tagliavano a 80 **senza dirlo**: i clienti reali hanno
+  268-1828 descrizioni (LAND DEI SAPORI ne vedeva il 4%). Il tetto resta — è una
+  protezione del rendering, non un filtro di dominio — ma ora è dichiarato.
+- `prezzo_medio_tag` (il campo corretto il 24/8) arrivava in
+  `fornitori.aggregati` e veniva scartato: la colonna «Vs media» mostrava
+  scostamenti da un numero mai visibile.
+- «Impatto stimato/mese» è calcolato sul filtrato ma aveva un sub statico.
+- La sparkline ri-splittava la stringa di *presentazione* `"€x → €y"`, perdendo i
+  decimali oltre il 2° su un dominio che tiene i prezzi a 4. Il worker manda
+  `storico_valori`; `parseStorico` resta come fallback.
+
+**Admin (3)**
+- `handleSalvaEdit` e `handleDelete` non leggevano `res.ok` (un 404 dava toast
+  verde e riga rimossa dallo stato), in un file che lo controlla ovunque
+  altrove. Ora mostrano anche `righe_propagate`, che distingue una modifica di
+  memoria globale da 400 righe da una da 0.
+- Il guardrail NOTE E DICITURE scrive solo sulle righe a importo 0 (dominio #2)
+  ma il client rimuoveva l'intero gruppo: «4 righe classificate», gruppo sparito,
+  le altre 8 di nuovo lì al refresh.
+- Il dettaglio cliente non restituiva `n_fatture`/`n_sedi`/`piano_inizio_at`,
+  **dichiarati obbligatori** in `lib/admin.ts`, e non filtrava `sede_tecnica`
+  come fanno `lista_clienti` e `lista_sedi`.
+
+### Le due rettifiche del code-reviewer
+
+- **Quarta asserzione numerica caduta nel ciclo.** «22 descrizioni a cavallo
+  F&B/spese-generali» raggruppa per sola descrizione su *tutte le sedi insieme*.
+  `/righe-articolo` è sempre scopato a un `ristorante_id`: per
+  `(sede, descrizione)` sono **8**. Il fix resta necessario, la magnitudine era
+  gonfiata ~3x. (La prima query di controllo che avevo scritto inventava dieci
+  categorie di spese generali e dava 11: `CATEGORIE_SPESE_GENERALI_WORKER` ne ha
+  **4**.)
+- **Regressione cosmetica introdotta da me**, non presente prima: il fallback di
+  `coloreDaCommento` era ambra, ma il worker popola `commenti` solo se c'è
+  almeno un mese con fatturato > 0 (`margini.py:1207`) mentre il gauge si
+  renderizza anche con soli costi. **OFFSIDE SPORTS PUB** ha 0 mesi con
+  fatturato e ~14.600 € di costi F&B: avrebbe visto quattro gauge ambra, cioè un
+  giudizio su percentuali tutte a 0 — lo stesso tipo di valutazione inventata
+  che questa tranche stava togliendo. Fallback ora neutro.
+
+### Piste chiuse in negativo dal reviewer (valgono quanto i fix)
+
+- **La finestra di deploy asincrono è sicura in entrambe le direzioni.** Era la
+  preoccupazione principale: col worker vecchio `total_con_acquisti` è *assente
+  dal JSON* (il default Pydantic vale alla costruzione lato server, non in
+  deserializzazione), quindi la guardia `!== undefined` regge e il chip non
+  compare. `storico_valori` usa `??`, non `||`.
+- La guardia `solo_ripartite` server replica il *client*, non l'endpoint
+  aggregati — corretto, perché `page.tsx` non passa `solo_ripartite` a
+  `fetchArticoliAggregati` e la tabella filtra client-side.
+- `n_fatture` dal dettaglio coincide con la lista su tutti e 7 i clienti; la RPC
+  accetta l'array da 1 elemento e per i clienti a zero fatture non restituisce
+  righe (`n_fatture` resta 0, come nella lista).
+- Il filtro `sede_tecnica` cambia il numero per **1 cliente su 7**: OFFSIDE passa
+  da 3 sedi a 2 nel dettaglio, allineandosi alla lista che già mostrava 2.
+  Nessuna riga ha `sede_tecnica IS NULL`.
+
+### Verifica
+
+- `pytest tests/`: **11.092 passed, 43 skipped** (+17 nuovi in
+  `tests/test_s3c_medium_low.py`)
+- **10 mutanti, 10 uccisi**, file di lavoro ripristinati identici (`md5sum -c`).
+  Uno era **sopravvissuto**: il test su `storico_valori` asseriva su un modello
+  costruito a mano invece che sul calcolo reale — riscritto su
+  `_calcola_variazioni_prezzi_sync`, ora muore. Il `code-reviewer` ha rifatto da
+  zero il mutation testing con 6 mutanti propri: 6 su 6 uccisi.
+- `npx tsc --noEmit` pulito · `npm run build` exit 0
+- `export_openapi.py --check-drift` OK — **49 righe, tutte in aggiunta**, 194
+  endpoint invariati: nessun consumer esistente può rompersi
+- `tests/test_documentazione_onesta.py`: 51 passed
+
+### Resta aperto
+
+- **L'unico MEDIUM non chiuso**: la divergenza sede-singola↔catena sulle note di
+  credito. Le RPC `gruppo_tag_*` filtrano `prezzo_unitario > 0` in **6 punti**,
+  escludendo 3 righe di storno: **402.182,19 € vs 402.418,42 €**, cioè
+  **236,23 €** — riverificato oggi, il numero regge. Richiede una **migration**,
+  quindi conferma esplicita, e va valutato che cambia i totali di catena già
+  mostrati.
+- Il perimetro §3c non ancora letto (`carica-ricavi-dialog.tsx`, `pivot-tab.tsx`,
+  `score-tab.tsx`, `catena/*`, gli altri tab di `workspace/` e `admin/`,
+  `m/diario/*`).
+- I quattro punti aperti da §27 (canale SDI, `pagata_at` locale vs UTC, flush
+  PROP-1, `get_trial_info` per file).
+
+Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.

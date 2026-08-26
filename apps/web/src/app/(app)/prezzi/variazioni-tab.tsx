@@ -89,6 +89,8 @@ const GRAVITA_STYLE: Record<Gravita, { dot: string; ring: string; label: string 
   medio: { dot: "bg-amber-400", ring: "border-l-amber-400", label: "Medio" },
 };
 
+/** Fallback: ricava i punti dalla stringa di presentazione "€1,20 → €1,35".
+ *  Perde i decimali oltre il secondo — usare `storico_valori` quando c'e'. */
 function parseStorico(s: string): number[] {
   if (!s) return [];
   return s
@@ -320,7 +322,9 @@ const AlertCard = memo(function AlertCard({
   const g = gravita(r);
   const style = GRAVITA_STYLE[g];
   const rialzo = r.aumento_perc > 0;
-  const spark = parseStorico(r.storico);
+  // storico_valori arriva grezzo dal worker; parseStorico resta come fallback per
+  // le response servite dalla cache prima del deploy che ha aggiunto il campo.
+  const spark = r.storico_valori ?? parseStorico(r.storico);
 
   return (
     <div className={`rounded-lg border border-l-4 ${style.ring} border-border bg-card overflow-hidden`}>
@@ -806,7 +810,14 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           <KpiCard
             label="Impatto stimato/mese"
             value={impattoFiltrato !== 0 ? fmtEuro(impattoFiltrato, true) : "—"}
-            sub="effetto sui costi mensili"
+            /* Come gli altri KPI del tab, e' calcolato sul filtrato: senza dirlo,
+               un impatto ristretto a un fornitore si leggeva come totale. Stessa
+               convenzione di sconti-tab/nc-tab ("filtrati da N"). */
+            sub={
+              filtered.length !== variazioni.length
+                ? `su ${filtered.length} di ${variazioni.length} variazioni`
+                : "effetto sui costi mensili"
+            }
             tone={impattoFiltrato < 0 ? "emerald" : "rose"}
           />
         </div>

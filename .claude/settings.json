@@ -26,11 +26,23 @@
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(echo \"EXIT=$?\")",
-      "Read(//home/vscode/.claude/**)"
+      "Read(//home/vscode/.claude/**)",
+      "Bash(python -)"
     ],
     "defaultMode": "acceptEdits"
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/claude_hook_db_guard.py"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -42,6 +54,16 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/claude_hook_precompact_snapshot.py"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -49,6 +71,11 @@
             "type": "command",
             "command": "python scripts/claude_hook_test_gate.py",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "python scripts/claude_hook_reviewer_gate.py",
+            "timeout": 30
           }
         ]
       }

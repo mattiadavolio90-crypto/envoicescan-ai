@@ -1,0 +1,162 @@
+"""
+Hook Stop per Claude Code: forza code-reviewer sulle implementazioni
+"complesse" prima di chiudere la sessione.
+
+Il problema che risolve: code-reviewer esiste (.claude/agents/code-reviewer.md,
+comando /code-reviewer) ma finora scattava solo se qualcuno se ne ricordava a
+fine lavoro. Questo hook lo rende sistematico per due criteri (soglia
+ibrida, decisa in sessione):
+
+1. Dimensione del diff rispetto all'ultimo commit (file non-test toccati o
+   righe nette cambiate sopra soglia).
+2. OPPURE il diff tocca un path "sensibile" — riusa la STESSA lista di
+   claude_hook_promemoria.py (nessuna duplicazione): un cambio piccolo su
+   ai_service.py o auth_service.py e' complesso quanto un refactor grande
+   (vedi WORKFLOW.md §3, nota sulla "Ristrutturazione Personale").
+
+Il controllo "inerenze/effetti collaterali" NON e' un hook separato: e'
+dentro al perimetro di code-reviewer stesso (vedi .claude/agents/code-reviewer.md).
+
+Rilevamento "code-reviewer gia' girato in questa sessione": tramite un marker
+file temporaneo (.claude/.reviewer_gate_ok) che l'agente/comando code-reviewer
+deve scrivere a fine corsa. Se il marker non c'e' e la soglia e' superata,
+blocca lo Stop UNA SOLA VOLTA con un messaggio esplicito; se lo Stop si
+ripresenta con lo stesso HEAD e senza nuove modifiche non forza un loop
+infinito (vedi _gia_segnalato_per_questo_head).
+
+Configurato in .claude/settings.json come hook Stop (in aggiunta, non al
+posto di, claude_hook_test_gate.py).
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+MARKER_OK = REPO_ROOT / ".claude" / ".reviewer_gate_ok"
+MARKER_SEGNALATO = REPO_ROOT / ".claude" / ".reviewer_gate_segnalato"
+
+SOGLIA_FILE_NON_TEST = 3
+SOGLIA_RIGHE_NETTE = 150
+
+
+def _carica_path_sensibili() -> list:
+    spec = importlib.util.spec_from_file_location(
+        "claude_hook_promemoria", REPO_ROOT / "scripts" / "claude_hook_promemoria.py"
+    )
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo.PATH_SENSIBILI
+
+
+def _diff_stat() -> tuple[list[str], int]:
+    """File non-test toccati e righe nette cambiate rispetto a HEAD."""
+    try:
+        risultato = subprocess.run(
+            ["git", "diff", "--numstat", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return [], 0
+
+    file_non_test: list[str] = []
+    righe_nette = 0
+    for riga in risultato.stdout.splitlines():
+        parti = riga.split("\t")
+        if len(parti) != 3:
+            continue
+        aggiunte, rimosse, percorso = parti
+        try:
+            righe_nette += int(aggiunte) + int(rimosse)
+        except ValueError:
+            continue  # file binario
+        if "test" not in percorso.lower() and not percorso.endswith(".md"):
+            file_non_test.append(percorso)
+
+    return file_non_test, righe_nette
+
+
+def _tocca_path_sensibile(file_toccati: list[str], path_sensibili: list) -> str | None:
+    for percorso in file_toccati:
+        for pattern in path_sensibili:
+            if pattern.search(percorso):
+                return percorso
+    return None
+
+
+def _head_corrente() -> str:
+    try:
+        risultato = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return risultato.stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return ""
+
+
+def main() -> int:
+    try:
+        json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    if MARKER_OK.exists():
+        MARKER_OK.unlink(missing_ok=True)
+        MARKER_SEGNALATO.unlink(missing_ok=True)
+        return 0
+
+    file_toccati, righe_nette = _diff_stat()
+    if not file_toccati:
+        return 0
+
+    path_sensibili = _carica_path_sensibili()
+    match_sensibile = _tocca_path_sensibile(file_toccati, path_sensibili)
+
+    complessa = (
+        len(file_toccati) > SOGLIA_FILE_NON_TEST
+        or righe_nette > SOGLIA_RIGHE_NETTE
+        or match_sensibile is not None
+    )
+    if not complessa:
+        return 0
+
+    head = _head_corrente()
+    if MARKER_SEGNALATO.exists() and MARKER_SEGNALATO.read_text(encoding="utf-8").strip() == head:
+        return 0  # già segnalato per questo stato: non ripetere il blocco all'infinito
+
+    MARKER_SEGNALATO.parent.mkdir(parents=True, exist_ok=True)
+    MARKER_SEGNALATO.write_text(head, encoding="utf-8")
+
+    motivo = (
+        f"path sensibile toccato ({match_sensibile})"
+        if match_sensibile
+        else f"{len(file_toccati)} file / {righe_nette} righe nette"
+    )
+    print(
+        json.dumps(
+            {
+                "decision": "block",
+                "reason": (
+                    f"[ONEFLUX] Implementazione complessa rilevata ({motivo}).\n"
+                    "Lancia /code-reviewer prima di chiudere: verifica anche le inerenze "
+                    "(chi altro chiama le funzioni/contratti toccati) come da "
+                    ".claude/agents/code-reviewer.md."
+                ),
+            }
+        )
+    )
+    sys.exit(2)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

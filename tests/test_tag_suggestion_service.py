@@ -2,6 +2,7 @@
 
 from services.tag_suggestion_service import (
     _build_extend_tag_suggestions,
+    _filtra_items_selezionati,
     _build_new_tag_suggestions,
     _get_product_root,
     _nomi_tag_per_id,
@@ -429,3 +430,80 @@ def test_nomi_tag_per_id_mappa_id_su_nome():
     assert _nomi_tag_per_id([19, 22], "u1", "r1", supabase_client=sb) == {
         19: "SALMONE SUSHI", 22: "Ricciola",
     }
+
+
+# ── _filtra_items_selezionati ───────────────────────────────────────────────
+# Regressione §3c: la deselezione dei prodotti nel dialog non arrivava al
+# backend (AcceptSuggestionRequest non aveva il campo) e il filtro su
+# selected_by_default era inerte — misurato sul DB: 307 item su 307 a true.
+
+_ITEMS = [
+    {"descrizione": "SALMONE 5/6", "descrizione_key": "salmone56", "selected_by_default": True},
+    {"descrizione": "SALMONE 6/7", "descrizione_key": "salmone67", "selected_by_default": True},
+    {"descrizione": "SALMONE AFF.", "descrizione_key": "salmoneaff", "selected_by_default": True},
+]
+
+
+def test_filtra_items_usa_le_chiavi_del_client():
+    out = _filtra_items_selezionati(_ITEMS, ["salmone56", "salmoneaff"])
+    assert [i["descrizione_key"] for i in out] == ["salmone56", "salmoneaff"]
+
+
+def test_filtra_items_deselezione_totale_non_associa_nulla():
+    # Il client blocca a monte, ma il backend non deve fidarsi: lista vuota
+    # significa "nessun prodotto", non "tutti".
+    assert _filtra_items_selezionati(_ITEMS, []) == []
+
+
+def test_filtra_items_senza_chiavi_ricade_su_selected_by_default():
+    # Chiamate vecchie (nessun descrizioni_key): comportamento precedente intatto.
+    assert len(_filtra_items_selezionati(_ITEMS, None)) == 3
+
+
+def test_filtra_items_senza_chiavi_rispetta_selected_by_default_false():
+    items = [dict(_ITEMS[0]), {**_ITEMS[1], "selected_by_default": False}]
+    out = _filtra_items_selezionati(items, None)
+    assert [i["descrizione_key"] for i in out] == ["salmone56"]
+
+
+def test_filtra_items_ignora_chiavi_inesistenti():
+    assert _filtra_items_selezionati(_ITEMS, ["non_esiste"]) == []
+
+
+def test_filtra_items_normalizza_spazi_e_scarta_chiavi_vuote():
+    out = _filtra_items_selezionati(_ITEMS, ["  salmone67  ", "", "   "])
+    assert [i["descrizione_key"] for i in out] == ["salmone67"]
+
+
+def test_filtra_items_lista_item_vuota():
+    assert _filtra_items_selezionati(None, ["salmone56"]) == []
+
+
+def test_extend_tag_senza_item_selezionati_non_accetta():
+    # Guardia simmetrica a quella di create_tag: con zero prodotti selezionati il
+    # suggerimento non va marcato 'accepted' (sparirebbe dalla lista senza aver
+    # associato nulla).
+    import services.tag_suggestion_service as tss
+
+    sugg = {
+        "id": 1, "suggestion_type": "extend_tag", "target_tag_id": 7,
+        "items": list(_ITEMS),
+    }
+    orig = tss._get_suggestion_with_items
+    tss._get_suggestion_with_items = lambda *a, **k: sugg
+
+    class _FakeSB:
+        def table(self, _n): return self
+        def select(self, *a, **k): return self
+        def eq(self, *a, **k): return self
+        def limit(self, *a, **k): return self
+        def execute(self): return type("R", (), {"data": [{"id": 7}]})()
+
+    try:
+        res = tss.accept_suggestion_extend_tag(
+            suggestion_id=1, tag_id=7, user_id="u", ristorante_id="r",
+            supabase_client=_FakeSB(), descrizioni_key=[],
+        )
+    finally:
+        tss._get_suggestion_with_items = orig
+    assert res == {"success": False, "error": "no_items_selected"}, res
