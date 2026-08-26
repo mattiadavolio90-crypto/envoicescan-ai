@@ -3042,3 +3042,48 @@ toccato in questa sessione.
   apposta.
 
 Il ciclo **non è chiuso**: restano §2 e §3c.
+
+## §31 — Push, PR #26 e deploy in produzione dei punti 0/2 — 26/8/2026
+
+I fix documentati in §30 (conferma deploy + risoluzione `stash@{0}`) fino a
+qui esistevano solo come commit locali sul branch `docs-audit-s3c-chiusura`
+(`028ac91`), non ancora in `main` né deployati — il branch locale era avanti
+di 3 commit (`3aa95ff`, `cafc3e3`, `028ac91`) rispetto a `origin/main`
+(`f177952`, il merge di PR #25 verificato in §30). L'utente ha chiesto
+esplicitamente di completare push, PR e merge.
+
+**Sequenza eseguita:**
+
+1. `git push -u origin docs-audit-s3c-chiusura` — branch pubblicato.
+2. `gh pr create` — PR #26 aperta
+   (`docs-audit-s3c-chiusura` → `main`), con changelog dei 3 commit e test
+   plan.
+3. Verificato che `.claude/settings.json` modificato nel working tree
+   (allowlist autogenerata dalle mie stesse chiamate `curl`/`git status` di
+   sessione) non facesse parte dello scope da pushare — lasciato non
+   staged, come da prassi già seguita in §30.
+4. **Orario**: il merge è stato richiesto alle 15:07 UTC circa, in pieno
+   orario clienti — la regola del prompt vieta il deploy in questa fascia
+   salvo conferma esplicita e specifica. Ho segnalato l'orario all'utente
+   prima di procedere; l'utente ha confermato esplicitamente l'eccezione
+   ("ti dò il permesso di farlo ora il deploy esegui").
+5. `gh pr merge 26 --merge --delete-branch=false` → mergiato in `main`,
+   merge commit `4024308edf3bbb39b3f10e462a6dbf1e1e0d6120`, alle 15:11:48
+   UTC.
+6. Poll su `/health` del worker Railway (fino a 10 tentativi, 20s di
+   intervallo): al primo tentativo già `{"status":"ok",
+   "commit":"4024308edf3b",...}` — deploy automatico completato e
+   verificato, commit combacia esattamente col merge commit appena creato.
+
+**Nota per la prossima sessione**: `gh` risulta autenticato e funzionante in
+questo ambiente (push, `pr create`, `pr merge` hanno tutti funzionato senza
+intervento umano) — la vecchia nota del prompt ("niente `gh` autenticato in
+questo ambiente") era superata e va corretta (fatto in
+`PROMPT_PROSSIMA_SESSIONE.md`).
+
+Punti 0 e 2 del ciclo audit sono ora chiusi **e in produzione**, non solo
+committati localmente. Restano invariati e fuori scope: punto 1 (MEDIUM,
+richiede conferma esplicita separata per la migration), punto 3 (§3c, audit
+non banale), punto 4 (quattro voci §27), punto 5 (§2, mock `conftest.py`).
+
+Il ciclo **non è chiuso**: restano §2 e §3c.

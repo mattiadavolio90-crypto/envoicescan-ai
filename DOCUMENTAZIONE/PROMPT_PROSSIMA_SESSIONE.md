@@ -1,8 +1,8 @@
 # Prompt per la prossima sessione — chiusura ciclo audit 2026-07
 
 Contesto: leggi `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md` (indice, 1
-minuto) e `..._STORICO.md §30` (dettaglio dell'ultima sessione, 26/8/2026) prima
-di iniziare. Il ciclo NON è chiuso: restano §2 e §3c.
+minuto) e `..._STORICO.md §30`/`§31` (dettaglio delle ultime due sessioni,
+26/8/2026) prima di iniziare. Il ciclo NON è chiuso: restano §2 e §3c.
 
 ## Priorità, in ordine
 
@@ -11,6 +11,12 @@ di iniziare. Il ciclo NON è chiuso: restano §2 e §3c.
 `188d11f` e già `origin/main`. Non fatto il giro manuale su Analisi
 Fatture/Margini in produzione (nessun browser nell'ambiente) — farlo se serve
 conferma visuale, ma non blocca il resto.
+
+**Aggiornamento §31**: i fix di §30 (punti 0 e 2) sono stati anche pushati,
+messi in PR (#26) e mergiati in `main` (commit `4024308`) su eccezione di
+orario **esplicitamente confermata** da Mattia (merge alle 15:11 UTC, pieno
+orario clienti). Deploy verificato: `/health` → `commit 4024308edf3b`. Vedi
+STORICO §31.
 
 ### 1. Il MEDIUM residuo (richiede tua conferma esplicita, poi Opus)
 Divergenza sede-singola↔catena sulle note di credito: **236,23 €**
@@ -60,10 +66,11 @@ sessione specifica.
   scratchpad**, mai sul file del branch di lavoro.
 - Migration solo con conferma esplicita, applicata **prima** del deploy.
 - CI parte solo su `pull_request` o push a `main`/`progetto` — un branch
-  pushato da solo non attiva nulla. Serve aprire la PR (richiede intervento
-  umano: niente `gh` autenticato in questo ambiente).
+  pushato da solo non attiva nulla. Serve aprire la PR (`gh` è autenticato in
+  questo ambiente e ha funzionato in §31: push + `gh pr create` + `gh pr
+  merge` sono utilizzabili direttamente).
 - Deploy solo fuori orario clienti (sera/notte/mattina presto), salvo
   conferma esplicita e specifica di Mattia per un'eccezione — non basta un
   "sì" generico dato prima di sapere l'orario.
 - Aggiorna indice e STORICO a fine sessione, in una sezione nuova numerata in
-  sequenza (prossima: §31).
+  sequenza (prossima: §32).

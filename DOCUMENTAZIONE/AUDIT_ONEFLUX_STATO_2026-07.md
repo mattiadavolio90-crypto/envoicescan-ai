@@ -27,6 +27,11 @@ Python.
 > del worker Railway a `commit f177952a0210`, coerente con `main`. Nella
 > stessa sessione risolto anche `stash@{0}` (permesso mancante incorporato in
 > `.claude/settings.json`, stash droppato).
+>
+> **§31 (26/8, stesso giorno): i fix di §30 pushati, PR #26 aperta e mergiata
+> in `main` (commit `4024308`) su eccezione esplicita di orario confermata da
+> Mattia.** Deploy verificato: `/health` → `commit 4024308edf3b`. Punti 0 e 2
+> ora chiusi **in produzione**, non solo committati localmente.
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
 > dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non
