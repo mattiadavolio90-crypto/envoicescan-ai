@@ -2825,3 +2825,158 @@ secondo click dava un errore che contraddiceva il toast verde appena letto.
   PROP-1, `get_trial_info` per file).
 
 Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.
+
+---
+
+## §29 — §3c, fix WINDTRE + bug di contaminazione fornitore scoperto dal reviewer; merge in main — 26/8/2026
+
+Sessione di chiusura: risolto il test rosso che bloccava lo Stop hook, il
+`code-reviewer` finale ha trovato un bug reale non coperto da nessun test
+esistente, e la PR è stata mergiata in `main` (deploy automatico Vercel +
+Railway al push).
+
+### Il test rosso non era di questa sessione
+
+`tests/test_regole_categoria_golden.py` dava 4 falliti per una modifica fatta
+da una sessione parallela di Mattia su `services/ai_service.py`: `WINDTRE`
+aggiunto a `_FORNITORI_TELECOM_UTENZE_RE`. La modifica era corretta — `WIND`
+c'era già dal 29/04/2026 (correzioni cliente TIME CAFE), ma il `\b` finale
+della regex non matchava mai «WINDTRE» (nessun confine di parola fra WIND e
+TRE): le bollette finivano su SERVIZI E CONSULENZE invece che UTENZE E LOCALI,
+buco aperto da 4 mesi. Golden rigenerato: **4 righe su 8378, una sola
+descrizione** («COSTO WINDTRE PIU' SICURI MOBILE»), nessun altro fornitore
+toccato (misurato sull'intero campione). Sul DB live le 12 righe WINDTRE
+esistenti (15,65 €, «Costi comuni di gruppo») erano già state corrette a mano:
+il fix evita la prossima correzione manuale, non sposta dati storici.
+
+Verificato per mutazione: **M1** (rimuove `WINDTRE` dall'alternanza) → 4 test
+rossi, killed. **M2** (inverte l'ordine `WIND|WINDTRE`) → **sopravvissuto**,
+nessun effetto. Avevo scritto nel commit che l'ordine contava («WINDTRE deve
+venire prima di WIND») — **falso**: `re` backtracka quando `\b` fallisce sulla
+prima alternativa che matcha, quindi l'ordine è indifferente. Corretto nella
+docstring del golden dopo averlo *eseguito*, non dedotto — quinta rettifica
+numerica/fattuale del ciclo.
+
+### Il bug trovato dal `code-reviewer`: la contaminazione fornitore
+
+Girato sul diff cumulativo del branch (8 commit) con focus esplicito
+sull'unico commit non ancora rivisto (`2e7342b`, il fix WINDTRE) e sulle
+inerenze di `applica_regole_categoria_forti`. Verdetto 🔴, blocco B1:
+
+`scripts/ricategorizza_sede.py` era stato modificato (dalla sessione
+parallela, commento «Qui, e solo qui») per anteporre il nome fornitore alla
+descrizione prima di applicare dizionario e regole forti, per far vedere il
+carrier telecom alle regole. Effetto collaterale: il fornitore entra in
+**tutte** le regole forti e nel dizionario, non solo in quella telecom.
+Simulazione del reviewer su 3.376 coppie (fornitore, descrizione) reali delle
+4 sedi: divergenze dal percorso di produzione per tre meccanismi distinti —
+
+- **`LINEA MARE SRL`** → `_SERVIZI_CANONI_RE` matcha `LINEA`: gamberi, scampi
+  e ricciola da PESCE a SERVIZI E CONSULENZE (24 occorrenze nel suo campione).
+- **`COMO ACQUA S.R.L`** → `_ACQUA_CONFEZIONATA_RE` matcha `ACQUA`: bollette
+  idriche (`ARROTONDAMENTO ATTUALE`, `ONERI PEREQUAZIONE`) da UTENZE a ACQUA,
+  cioè dentro il food cost.
+- **`RISTORANTE MONOPOLI SRL`** davanti a `QUATTRO FORMAGGI` / `TARTARE DI
+  MANZO` / `FUNGHI` rompe il match del dizionario: degradano a Da Classificare.
+
+La guardia dello script (riga 122, `cat_new != "Da Classificare"`) escludeva
+solo il non-classificato, non i falsi positivi: con `--commit` su una sede
+avrebbe **sovrascritto righe oggi corrette**, alcune a mano dal cliente.
+
+**Riverifica indipendente** (non dell'agente, mia, sullo stesso campione SQL
+ripreso dal DB live, 3.376 coppie): **19 divergenze** prima del fix, non 51 —
+la differenza è che la mia simulazione confronta contro la produzione reale
+*incluso* l'hard override LIVELLO 0 (`ai_service.py:4564`), che assorbe da
+solo i casi COMO ACQUA; quella del reviewer confrontava contro dizionario+regole
+sulla sola descrizione. Il verso del difetto e il fix non cambiano; il numero
+corretto per il verbale è **19**. Sesta rettifica numerica del ciclo, stavolta
+fra due misure entrambe fatte con cura ma su basi di confronto diverse — non
+un errore di uno dei due, un disallineamento di metodo da dichiarare.
+
+**Fix**: il fornitore ora si usa come fa la produzione — hard override
+`_is_fornitore_utenze_sempre` **prima** di tutto, descrizione lasciata pulita
+per dizionario e regole forti — invece di essere concatenato. Simulazione a
+valle sulle stesse 3.376 coppie: **0 divergenze**.
+
+Lo script vive in `scripts/` e non è importabile (esegue I/O a import time),
+quindi il contratto è fissato in un test nuovo che lo replica:
+`tests/test_ricategorizza_sede_pipeline.py`, **12 test**, che coprono i tre
+meccanismi di regressione più la conferma che l'override telecom resta
+attivo. Verificati per mutazione su copia in scratchpad: **M1** (reintroduce
+la concatenazione) → 10 rossi; **M2** (rimuove solo l'override) → 4 rossi.
+File di lavoro ripristinato byte-identico (`md5sum -c`).
+
+Rilievo minore del reviewer chiuso nello stesso commit: newline finale perso
+in `tests/fixtures/golden_regole_categoria.json` durante la rigenerazione —
+ripristinato.
+
+### I 7 componenti workflow della sessione parallela (verifica dal vivo)
+
+Nello stesso arco di tempo la sessione parallela di Mattia ha aggiunto hook
+Claude Code (non runtime ONEFLUX: `scripts/claude_hook_db_guard.py`,
+`claude_hook_precompact_snapshot.py`, `claude_hook_reviewer_gate.py`, skill
+`diagnosi-incidente`/`chiusura-feature`, comando `/salva-stato`), commit
+`5c03119`, entrato nello stesso branch/PR. Non erano ancora stati osservati
+girare dal vivo (dichiarato nel commit stesso). Verificati prima del merge,
+in parte da Mattia in parallelo e in parte qui:
+
+- **Hook Stop `reviewer_gate`**: osservato scattare *davvero* su questa sessione
+  (bloccante, motivo «6 file / 614 righe nette» sul commit WINDTRE). Ri-testato
+  a mano con 5 casi: diff piccolo → passa; path sensibile (`ai_service.py`)
+  senza commit → blocca; stesso HEAD ripetuto → non riblocca (anti-loop);
+  marker `.reviewer_gate_ok` → sblocca e si autoconsuma; dopo lo sblocco, se il
+  diff persiste, torna a bloccare (non resta aperto in permanenza). 5/5.
+- **Comando `/salva-stato`**: invocato per davvero a fine sessione. Applica
+  correttamente la propria clausola di buon senso — sessione singola, lavoro
+  quasi tutto chiuso — e **non forza un file** `PIANO_*.md`, dicendolo
+  esplicitamente invece di crearne uno inutile.
+- Gli altri 5 (db-guard, PreCompact, `/code-reviewer`, le due skill) verificati
+  da Mattia nella sessione parallela: nessun bug trovato in nessuno dei 7.
+
+### Merge e stato del deploy
+
+PR #24 aperta manualmente da Mattia (l'ambiente di questa sessione non ha
+`gh` autenticato né credenziali GitHub proprie — verificato, non aggirato).
+Check CI tutti verdi: OpenAPI Schema Drift, Requirements Consistency, Tests/
+deno-test, Tests/pytest. **Tentativi di merge/push diretto su `main` da questa
+sessione sono stati bloccati dal classificatore dell'ambiente** (comando
+`git merge` verso branch protetto) — non uno strumento mancante come per `gh`,
+un rifiuto esplicito che non si sblocca ripetendo il consenso in chat. Mattia
+ha premuto «Merge pull request» da GitHub: merge commit `188d11f`, tutti i 10
+commit del branch dentro `main`, **0 rimasti fuori**.
+
+Deploy: Vercel e Railway ridispiegano automaticamente al push su `main`
+(`docs/DEPLOY_RUNBOOK.md`). Non verificato `/health` del worker da questa
+sessione — nessun URL pubblico del worker disponibile qui, `railway`/`vercel`
+CLI non installate. **Da confermare da Mattia**: build verde su entrambe le
+dashboard, giro rapido su Analisi Fatture/Margini in produzione.
+
+### Verifica
+
+- `pytest tests/`: **11.104 passed, 43 skipped** (+12 in
+  `tests/test_ricategorizza_sede_pipeline.py` rispetto a §28)
+- Mutation testing: 2 mutanti sul fix WINDTRE (1 killed, 1 sopravvissuto →
+  correzione docstring) + 2 mutanti sul fix contaminazione fornitore (2
+  killed), tutti su copia in scratchpad, file di lavoro ripristinati
+  byte-identici
+- Verifica SQL indipendente sul DB live: 12 righe WINDTRE già corrette a
+  mano (15,65 €); 3.376 coppie fornitore/descrizione reali per la simulazione
+  del bug di contaminazione
+
+### Resta aperto (invariato da §28, salvo deploy da confermare)
+
+- L'unico MEDIUM non chiuso: note di credito sede-singola↔catena, 236,23 €,
+  richiede migration su 6 RPC `gruppo_tag_*`, conferma esplicita necessaria.
+- Il perimetro §3c non ancora letto (`carica-ricavi-dialog.tsx`,
+  `pivot-tab.tsx`, `score-tab.tsx`, `catena/*`, altri tab di `workspace/` e
+  `admin/`, `m/diario/*`).
+- I quattro punti aperti da §27 (canale SDI, `pagata_at` locale vs UTC, flush
+  PROP-1, `get_trial_info` per file).
+- **Nuovo**: `stash@{0}` sul branch `audit-s3c-passata1` contiene modifiche
+  della sessione parallela di Mattia (probabile sovrapposizione con
+  `5c03119`, già in `main`) — da verificare e recuperare o scartare
+  esplicitamente, non toccato da questa sessione.
+- Conferma deploy: `/health` worker Railway, build Vercel, giro manuale su
+  Analisi Fatture/Margini in produzione.
+
+Il ciclo **non è chiuso**: §2 (mock globale di `conftest.py`) resta intatta.

@@ -14,6 +14,15 @@ Python.
 > MEDIUM/LOW** il 26/8 (STORICO §28 — erano 15, non 14: errore di somma).
 > Resta **1 solo MEDIUM**, che richiede una migration sulle RPC di catena.
 > Dettaglio dell'audit in STORICO §25.
+>
+> **26/8, sessione di chiusura (STORICO §29): mergiato in `main` (PR #24,
+> commit `188d11f`), CI verde su tutti i check.** Nel farlo, il `code-reviewer`
+> ha trovato un bug reale non coperto da nessun test — uno script di
+> ricategorizzazione (`scripts/ricategorizza_sede.py`) che anteponendo il
+> fornitore alla descrizione avrebbe potuto sovrascrivere righe già corrette a
+> mano dai clienti (19 divergenze su 3.376 coppie reali). **Corretto e coperto
+> da 12 test nuovi.** Deploy automatico (Vercel+Railway al push) non ancora
+> confermato da questa sessione — manca `/health` del worker.
 
 > ⚠️ **"10 dimensioni verdi" non vuol dire "app analizzata al 100%".** Una
 > dimensione è verde rispetto al perimetro *che quella passata si è scelta*, non
@@ -829,6 +838,15 @@ della diagnosi di §25**: lo scarto fra i due contatori non dipendeva dal case
 (zero descrizioni differiscono per sole maiuscole) ma dalle righe a importo 0.
 17 test nuovi, 10 mutanti uccisi + 6 del reviewer.
 
+**Sessione di chiusura il 26/8** (STORICO §29): fix WINDTRE (buco di 4 mesi
+nella regex telecom, `\b` non matchava «WINDTRE») e, trovato dal
+`code-reviewer` sul diff finale, un bug reale in `scripts/ricategorizza_sede.py`
+— anteporre il fornitore alla descrizione contaminava dizionario e regole
+forti (19 divergenze su 3.376 coppie reali; a rischio righe già corrette a
+mano dai clienti). Corretto, 12 test nuovi, verificato per mutazione.
+**Mergiato in `main`**: PR #24, commit `188d11f`, CI verde su tutti i check.
+Deploy automatico non ancora confermato (manca `/health` del worker).
+
 **Resta aperta**: **1 solo MEDIUM**, la divergenza sede-singola↔catena sulle
 note di credito (236,23 € misurati, riverificati il 26/8) — richiede una
 **migration** su 6 RPC `gruppo_tag_*` e quindi conferma esplicita. Più il
@@ -880,8 +898,11 @@ Restano aperte due cose:
   (11 file, 13.153 righe, 39 findings di cui 21 attivi e 7 HIGH) e
   **remediation completata sugli HIGH**: 4 il 25/8 (STORICO §26), gli ultimi
   3 il 26/8 (STORICO §27) e 14 MEDIUM/LOW su 15 il 26/8 (STORICO §28).
-  Resta 1 MEDIUM (migration sulle RPC di catena) e il perimetro
-  non ancora letto. È la voce che oggi tiene aperto il ciclo insieme a §2.
+  **Sessione di chiusura 26/8** (STORICO §29): fix WINDTRE + bug di
+  contaminazione fornitore trovato dal `code-reviewer`, mergiato in `main`
+  (PR #24, `188d11f`). Resta 1 MEDIUM (migration sulle RPC di catena), il
+  perimetro non ancora letto, e la conferma del deploy (`/health` worker).
+  È la voce che oggi tiene aperto il ciclo insieme a §2.
 
 Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
 mockato globalmente, quindi il decoratore `@retry` su
