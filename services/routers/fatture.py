@@ -118,6 +118,15 @@ class ArticoloAggregato(BaseModel):
 class ArticoliResponse(BaseModel):
     articoli: List[ArticoloAggregato]
     total: int
+    # Quanti degli articoli elencati sono ACQUISTI secondo la stessa definizione del
+    # KPI "Prodotti diversi" (almeno una riga con importo != 0, fatture.py:310-313).
+    # `total` include le righe a importo 0 (note, diciture, omaggi), che la tabella
+    # deve elencare perche' vanno categorizzate: senza questo campo il client non
+    # poteva riconciliare i due numeri e li mostrava divergenti senza spiegazione.
+    # Non si ricava lato client dall'aggregato: un articolo con storni che si
+    # annullano ha totale_speso 0 ma righe di acquisto vere (misurato: fino a 14
+    # articoli per sede).
+    total_con_acquisti: int = 0
 
 
 class KpiResponse(BaseModel):
@@ -282,6 +291,8 @@ def get_fatture_kpi(
     data_a: Optional[str] = None,
     tipo_prodotti: Optional[str] = None,
     solo_nuovi: bool = False,
+    solo_da_verificare: bool = False,
+    solo_ripartite: bool = False,
     authorization: Optional[str] = Header(None),
 ) -> KpiResponse:
     user = _resolve_user_from_token(authorization)
@@ -319,6 +330,19 @@ def get_fatture_kpi(
     rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
     if cutoff_nuovo is not None:
         rows = [r for r in rows if (r.get("created_at") or "") >= cutoff_nuovo]
+    # Stessi due filtri di /articoli-aggregati: la KpiBar sta sopra la tabella
+    # Articoli e senza di essi restava sul periodo intero mentre la tabella si
+    # restringeva ("Spesa totale 120.000" sopra righe che ne sommano 3.200).
+    # Il periodo di confronto NON viene filtrato, coerentemente con solo_nuovi:
+    # il delta resta "quanto pesa questa selezione sul periodo precedente intero".
+    if solo_da_verificare:
+        rows = [r for r in rows if r.get("needs_review")]
+    # Come il client (articoli-tab.tsx:199): il filtro si applica solo se nel
+    # dataset esistono davvero righe ripartite. Il chip che lo spegne e' nascosto
+    # quando non ce ne sono, e un ?ripartite=1 rimasto nell'URL avrebbe azzerato i
+    # KPI sopra una tabella piena — lo stesso difetto, di segno opposto.
+    if solo_ripartite and any(r.get("ripartita_su_gruppo") for r in rows):
+        rows = [r for r in rows if r.get("ripartita_su_gruppo")]
     tot, nr, np, med = _calc(rows)
 
     from datetime import date as _date, timedelta as _timedelta
@@ -549,7 +573,13 @@ def get_articoli_aggregati(
 
     # Ordina per totale_speso desc (i piu impattanti in alto)
     articoli.sort(key=lambda a: -a.totale_speso)
-    return ArticoliResponse(articoli=articoli, total=len(articoli))
+    con_acquisti = sum(
+        1 for desc, items in groups.items()
+        if any(it.get("totale_riga") and float(it["totale_riga"]) != 0 for it in items)
+    )
+    return ArticoliResponse(
+        articoli=articoli, total=len(articoli), total_con_acquisti=con_acquisti
+    )
 
 
 # ─── Endpoint: righe singole (per espansione articolo) ─────────────────────
@@ -559,6 +589,7 @@ def get_righe_articolo(
     descrizione: str,
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
+    tipo_prodotti: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ) -> List[RigaFattura]:
     user = _resolve_user_from_token(authorization)
@@ -570,8 +601,13 @@ def get_righe_articolo(
     # Passa dal funnel _fetch_fatture_rows così l'espansione di un articolo mostra
     # anche le eventuali righe di gruppo proiettate (PV di catena), coerente con
     # l'aggregato. Filtro sulla descrizione esatta come faceva la query diretta.
+    # tipo_prodotti va propagato come in /articoli-aggregati: 22 descrizioni reali
+    # hanno righe sia F&B sia spese-generali, e senza il filtro il totale del padre
+    # (aggregato, filtrato) non era la somma delle righe figlie mostrate (tutte).
     rows = [
-        r for r in _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a)
+        r for r in _fetch_fatture_rows(
+            supabase_client, ristorante_id, data_da, data_a, tipo_prodotti
+        )
         if (r.get("descrizione") or "") == descrizione
     ]
     rows.sort(key=lambda r: (r.get("data_documento") or ""), reverse=True)

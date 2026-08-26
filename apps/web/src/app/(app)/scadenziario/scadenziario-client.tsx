@@ -595,13 +595,14 @@ type PeekDialogProps = {
   onPaga: (doc: Documento, pagata: boolean) => void;
   onSetScadenza: (doc: Documento, data: string | null) => Promise<void>;
   onElimina: (doc: Documento) => Promise<void>;
+  onSpostata: (doc: Documento) => void;
   // Modalità catena: "Sposta sede"/"Ripartisci sul gruppo" restano nascosti
   // (agiscono sulla sede ATTIVA del PV loggato, non su quella del documento —
   // fuori scope Fase 3, si riprende in una fase dedicata se serve).
   modalitaCatena?: boolean;
 };
 
-function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, modalitaCatena = false }: PeekDialogProps) {
+function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onSpostata, modalitaCatena = false }: PeekDialogProps) {
   const [editingScadenza, setEditingScadenza] = useState(false);
   const [scadenzaInput, setScadenzaInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -652,6 +653,10 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, modalitaCa
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.detail || data?.error);
       toast.success("Fattura spostata nell'altra sede");
+      // La fattura ora appartiene a un'altra sede: va tolta da questa lista, come
+      // fa handleElimina. Senza, restava a video sotto la sede vecchia e un secondo
+      // click rispondeva con un errore che contraddiceva il toast verde appena letto.
+      onSpostata(doc);
       onClose();
     } catch {
       toast.error("Non sono riuscito a spostare la fattura. Riprova.");
@@ -1693,6 +1698,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     if (cestinoOpen) loadCestino();
   }
 
+  function handleSpostata(doc: Documento) {
+    setDocumenti(prev => prev.filter(d => d.file_origine !== doc.file_origine));
+    setPeekDoc(null);
+  }
+
   async function loadCestino() {
     setCestinoLoading(true);
     try {
@@ -2224,6 +2234,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         onPaga={(doc, pagata) => handlePaga(doc, pagata)}
         onSetScadenza={handleSetScadenza}
         onElimina={handleElimina}
+        onSpostata={handleSpostata}
         modalitaCatena={modalitaCatena}
       />
 

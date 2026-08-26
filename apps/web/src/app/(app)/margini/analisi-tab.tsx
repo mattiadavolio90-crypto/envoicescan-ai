@@ -350,8 +350,12 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
   const meseRef = parseInt(dataA.slice(5, 7), 10);
   const meseLabelRef = `${MESI_NOMI_SHORT[meseRef - 1]} ${annoRef}`;
 
-  // Solo i centri che possono avere fatturato proprio (no SHOP)
-  const centriFatturato = centriConCosto.filter((c) => (CENTRI_FATT as readonly string[]).includes(c.centro));
+  // has_fatturato lo decide il worker (margini.py:653): centro fra quelli che
+  // possono averlo, split attivo E fatturato del centro > 0. Rifiltrare per solo
+  // nome centro ignorava le ultime due condizioni: con lo split spento il bottone
+  // restava abilitato e apriva un dialog con tutte le colonne a "—" (le righe
+  // 492-546 qui sotto has_fatturato lo leggono gia').
+  const centriFatturato = centriConCosto.filter((c) => c.has_fatturato);
   const centroDettaglio = centriFatturato.find((c) => c.centro === dettaglioCentroSel) ?? centriFatturato[0] ?? null;
 
   function openDettaglio() {
@@ -381,7 +385,13 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
           <button
             onClick={openDettaglio}
             disabled={centriFatturato.length === 0}
-            title={centriFatturato.length === 0 ? "Configura prima la ripartizione per centro" : undefined}
+            title={
+              centriFatturato.length === 0
+                ? data.fatturato_split_attivo
+                  ? "Nessun centro con fatturato proprio nel periodo selezionato"
+                  : "Configura prima la ripartizione per centro"
+                : undefined
+            }
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-input hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <BarChart3 className="size-3" />

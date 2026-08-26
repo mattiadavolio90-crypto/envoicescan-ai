@@ -49,6 +49,9 @@ export type ArticoloAggregato = {
 export type ArticoliResponse = {
   articoli: ArticoloAggregato[];
   total: number;
+  /** Articoli che sono acquisti veri (>=1 riga con importo != 0), stessa
+   *  definizione del KPI "Prodotti diversi". `total` include note e diciture. */
+  total_con_acquisti?: number;
 };
 
 export type KpiResponse = {
@@ -147,12 +150,18 @@ export async function fetchKpi(
   data_a?: string,
   tipo_prodotti?: TipoProdotti,
   solo_nuovi?: boolean,
+  solo_da_verificare?: boolean,
+  solo_ripartite?: boolean,
 ): Promise<KpiResponse | null> {
   return workerGet<KpiResponse>("/api/fatture/kpi", {
     data_da,
     data_a,
     tipo_prodotti,
     solo_nuovi: solo_nuovi ? true : undefined,
+    // Senza questi due la KpiBar restava sul periodo intero mentre la tabella
+    // Articoli sotto si restringeva: due numeri incoerenti nella stessa schermata.
+    solo_da_verificare: solo_da_verificare ? true : undefined,
+    solo_ripartite: solo_ripartite ? true : undefined,
   });
 }
 

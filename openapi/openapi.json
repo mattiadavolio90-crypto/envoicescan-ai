@@ -5792,6 +5792,26 @@
             }
           },
           {
+            "name": "solo_da_verificare",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Solo Da Verificare"
+            }
+          },
+          {
+            "name": "solo_ripartite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Solo Ripartite"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "required": false,
@@ -6080,6 +6100,22 @@
                 }
               ],
               "title": "Data A"
+            }
+          },
+          {
+            "name": "tipo_prodotti",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo Prodotti"
             }
           },
           {
@@ -18928,6 +18964,11 @@
           "total": {
             "type": "integer",
             "title": "Total"
+          },
+          "total_con_acquisti": {
+            "type": "integer",
+            "title": "Total Con Acquisti",
+            "default": 0
           }
         },
         "type": "object",
@@ -26236,6 +26277,14 @@
           "storico": {
             "type": "string",
             "title": "Storico"
+          },
+          "storico_valori": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Storico Valori",
+            "default": []
           },
           "media": {
             "type": "number",
