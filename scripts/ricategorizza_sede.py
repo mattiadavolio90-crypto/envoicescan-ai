@@ -32,6 +32,7 @@ from services.ai_service import (
     applica_correzioni_dizionario,
     applica_regole_categoria_forti,
     _applica_tutti_guardrail,
+    _is_fornitore_utenze_sempre,
     descrizione_e_dubbia,
     set_global_memory_enabled,
 )
@@ -65,14 +66,25 @@ set_global_memory_enabled(False)
 def pipeline_deterministica(desc, cat_attuale, fornitore=None):
     """Regole forti + dizionario, con guardrail note. Ritorna categoria nuova.
 
-    Le regole forti (es. fornitore_telecom_utenze) leggono solo `descrizione`,
-    che spesso non contiene il nome del fornitore (es. "TRAFFICO DATI NAZIONALE"
-    senza "WIND TRE"). Qui, e solo qui, si antepone il fornitore alla descrizione
-    per farlo vedere alle regole senza toccare la firma condivisa in ai_service.py.
+    Il fornitore NON va concatenato alla descrizione: entrerebbe nel dizionario e
+    in TUTTE le regole forti, non solo in quella telecom. Misurato su 3.376 coppie
+    reali: 51 divergenze rispetto al percorso di produzione — "LINEA MARE SRL" fa
+    scattare _SERVIZI_CANONI_RE su "LINEA" e manda i gamberi in SERVIZI, "COMO
+    ACQUA S.R.L" fa scattare _ACQUA_CONFEZIONATA_RE e manda una bolletta idrica
+    fra le bevande; all'opposto "RISTORANTE MONOPOLI SRL" davanti a "QUATTRO
+    FORMAGGI" rompe il match del dizionario e degrada a Da Classificare.
+
+    Il fornitore si usa come fa la produzione (ai_service.py:4564, LIVELLO 0):
+    hard override utility/telecom PRIMA di tutto, descrizione lasciata pulita per
+    dizionario e regole. Cosi' lo script riproduce l'ingest automatico invece di
+    divergerne.
     """
-    desc_con_fornitore = f"{fornitore or ''} {desc}".strip()
-    cat = applica_correzioni_dizionario(desc_con_fornitore, "Da Classificare")
-    cat, _ = applica_regole_categoria_forti(desc_con_fornitore, cat)
+    if fornitore:
+        is_utility, _ = _is_fornitore_utenze_sempre(fornitore)
+        if is_utility:
+            return "UTENZE E LOCALI"
+    cat = applica_correzioni_dizionario(desc, "Da Classificare")
+    cat, _ = applica_regole_categoria_forti(desc, cat)
     return cat
 
 
