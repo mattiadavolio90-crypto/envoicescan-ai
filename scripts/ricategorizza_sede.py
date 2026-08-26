@@ -62,10 +62,17 @@ USE_AI = "--ai" in sys.argv
 set_global_memory_enabled(False)
 
 
-def pipeline_deterministica(desc, cat_attuale):
-    """Regole forti + dizionario, con guardrail note. Ritorna categoria nuova."""
-    cat = applica_correzioni_dizionario(desc, "Da Classificare")
-    cat, _ = applica_regole_categoria_forti(desc, cat)
+def pipeline_deterministica(desc, cat_attuale, fornitore=None):
+    """Regole forti + dizionario, con guardrail note. Ritorna categoria nuova.
+
+    Le regole forti (es. fornitore_telecom_utenze) leggono solo `descrizione`,
+    che spesso non contiene il nome del fornitore (es. "TRAFFICO DATI NAZIONALE"
+    senza "WIND TRE"). Qui, e solo qui, si antepone il fornitore alla descrizione
+    per farlo vedere alle regole senza toccare la firma condivisa in ai_service.py.
+    """
+    desc_con_fornitore = f"{fornitore or ''} {desc}".strip()
+    cat = applica_correzioni_dizionario(desc_con_fornitore, "Da Classificare")
+    cat, _ = applica_regole_categoria_forti(desc_con_fornitore, cat)
     return cat
 
 
@@ -99,7 +106,7 @@ for r in rows:
     cat_old = str(r.get("categoria") or "")
     if not desc.strip():
         continue
-    cat_new = pipeline_deterministica(desc, cat_old)
+    cat_new = pipeline_deterministica(desc, cat_old, r.get("fornitore"))
     # guardrail note con importo
     try:
         iva = float(r.get("iva_percentuale") or 0)

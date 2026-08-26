@@ -43,6 +43,18 @@ tutte da Da Classificare a categoria corretta. Stesso commit: "PESCE <animale di
 terra>" (es. "PESCE BOVINO S/V" = manzo) tolto da PESCE via _ECCEZIONI_REGOLE, e
 "FILTRO OLIO" (ricambio officina) → MANUTENZIONE (non più rubato da keyword OLIO) —
 questi due non erano nel campione golden, verificati a parte.
+
+Aggiornato 26/08: WINDTRE aggiunto a _FORNITORI_TELECOM_UTENZE_RE. Non e' una regola
+nuova: WIND c'era dall'29/04, ma il \\b finale impediva il match su "WINDTRE" (nessun
+confine di parola fra WIND e TRE), quindi il fornitore cadeva su _SERVIZI_CANONI_RE e
+finiva in SERVIZI E CONSULENZE. L'ordine nell'alternanza e' indifferente (verificato per
+mutazione: con WIND prima di WINDTRE il golden resta verde, perche' re backtracka
+quando \\b fallisce) — a chiudere il buco e' la presenza dell'alternativa, non la
+sua posizione. Effetto: 4 righe golden, 1 sola descrizione
+("COSTO WINDTRE PIU' SICURI MOBILE"), tutte SERVIZI E CONSULENZE -> UTENZE E LOCALI.
+Nessun altro fornitore toccato (misurato sull'intero campione: 4/8378). Sul DB live le
+12 righe WINDTRE esistenti (15,65 EUR, "Costi comuni di gruppo") erano gia' state
+corrette a mano: la regola evita la prossima correzione manuale, non muove dati storici.
 """
 import json
 import os
