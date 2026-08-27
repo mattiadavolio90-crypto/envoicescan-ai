@@ -2212,7 +2212,17 @@ async def upload_invoice(
         _is_trial = False
         if not _mesi_gia_attivo:
             try:
-                _is_trial = bool(get_trial_info(user_id, supabase_client).get("is_trial"))
+                # `is_trial` e' invariante nel batch ma l'upload e' per-file: senza
+                # cache un caricamento da 200 fatture fa 200 SELECT identiche su
+                # `users`. TTL corto: la finestra in cui un trial appena scaduto
+                # verrebbe ancora letto come attivo e' di secondi, e l'esito
+                # peggiore e' un upload consentito che sarebbe stato bloccato.
+                _is_trial = bool(
+                    _TRIAL_INFO_CACHE.get_or_set(
+                        str(user_id),
+                        lambda: get_trial_info(user_id, supabase_client),
+                    ).get("is_trial")
+                )
             except Exception as _trial_err:
                 logger.warning("upload: lettura trial fallita, tratto come non-trial: %s", _trial_err)
                 _is_trial = False
@@ -5969,6 +5979,9 @@ def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[st
 # dati (toggle/nome) cambiano di rado. Per coerenza immediata cross-processo
 # servirebbe una cache condivisa (Redis), sproporzionata all'attuale scala.
 _ASSIST_PREF_CACHE = TTLCache(ttl=30.0)  # single-flight: vedi utils/ttl_cache.py
+# `get_trial_info` per-utente durante un upload multi-file: vedi il call site in
+# upload_invoice. TTL 30s = durata tipica di un batch, non della sessione.
+_TRIAL_INFO_CACHE = TTLCache(ttl=30.0)
 
 
 def _invalidate_assist_pref_cache(ristorante_id: Optional[str] = None) -> None:

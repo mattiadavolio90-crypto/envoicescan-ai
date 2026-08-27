@@ -78,6 +78,9 @@ type GiornoEdit = {
   coperti: string;
   source: "manuale" | "xls" | "email";
   dirty: boolean;
+  // Presente a DB al caricamento: distingue "svuotato" (da cancellare) da
+  // "mai compilato" (da ignorare).
+  eraSalvato: boolean;
 };
 
 type ModalitaMese = "giornaliero" | "mensile";
@@ -112,6 +115,12 @@ function GrigliaView({
   const [meseSel, setMeseSel] = useState(mesi[mesi.length - 1]);
   const [righe, setRighe] = useState<GiornoEdit[]>([]);
   const [modalita, setModalita] = useState<ModalitaMese>("mensile");
+  // Modalita' realmente persistita a DB per il mese selezionato: serve a sapere se
+  // salvando in "giornaliero" bisogna anche spegnere un override gia' esistente.
+  const [eraMensile, setEraMensile] = useState(false);
+  // Campi mensili riempiti da margini_mensili (altra fonte) invece che da un
+  // override esistente: va detto, o l'utente "conferma" un dato mai inserito.
+  const [precompilatoDaMargini, setPrecompilatoDaMargini] = useState(false);
   const [confermaSwitchMensile, setConfermaSwitchMensile] = useState(false);
   const [loadingDati, setLoadingDati] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -148,9 +157,15 @@ function GrigliaView({
           coperti: ex && ex.coperti != null ? String(ex.coperti) : "",
           source: ex?.source ?? "manuale",
           dirty: false,
+          eraSalvato: !!ex,
         };
       }));
       const mod: ModalitaMese = modalitaData?.modalita ?? "giornaliero";
+      setEraMensile(mod === "mensile");
+      if (mod === "mensile") setPrecompilatoDaMargini(false);
+      // La UI deve riflettere la modalita' realmente salvata per QUESTO mese:
+      // restare sull'ultima scelta farebbe apparire "Mensile" un mese giornaliero.
+      setModalita(mod);
       if (mod === "mensile" && modalitaData) {
         setMensiIva10(String(modalitaData.fatturato_iva10 || ""));
         setMensiIva22(String(modalitaData.fatturato_iva22 || ""));
@@ -164,12 +179,15 @@ function GrigliaView({
         let precCoperti = items.reduce((s, it) => s + (it.coperti || 0), 0);
         // Nessun giornaliero: ricadi sui totali già in margini_mensili (ricavi
         // caricati come totale mensile fuori dal dialog).
+        let daMargini = false;
         if (precIva10 === 0 && precIva22 === 0 && precAltri === 0) {
           precIva10 = modalitaData?.margini_iva10 || 0;
           precIva22 = modalitaData?.margini_iva22 || 0;
           precAltri = modalitaData?.margini_altri || 0;
           precCoperti = modalitaData?.margini_coperti || 0;
+          daMargini = precIva10 > 0 || precIva22 > 0 || precAltri > 0;
         }
+        setPrecompilatoDaMargini(daMargini);
         setMensiIva10(precIva10 > 0 ? String(precIva10) : "");
         setMensiIva22(precIva22 > 0 ? String(precIva22) : "");
         setMensiAltri(precAltri > 0 ? String(precAltri) : "");
@@ -207,15 +225,73 @@ function GrigliaView({
     try {
       if (modalita === "giornaliero") {
         const dirty = righe.filter((r) => r.dirty);
+        // Tornare a "giornaliero" deve spegnere l'override mensile: finche' la riga
+        // in ricavi_modalita_mensile resta 'mensile', il worker ignora i giornalieri
+        // (_load_mensile_overrides filtra .eq("modalita","mensile")) e il cliente
+        // continua a vedere il totale mensile ovunque. Va fatto anche senza righe
+        // dirty: lo switch e' di per se' la modifica da salvare.
+        // Solo su un salvataggio esplicito: `silentIfClean` e' il gesto
+        // "aggiorna e chiudi", con cui l'utente non sta chiedendo di cambiare
+        // modalita'. Spegnere li' l'override cambierebbe i margini per chi ha
+        // solo aperto il calendario per guardarlo.
+        if (eraMensile && !opts?.silentIfClean) {
+          const resMod = await fetch("/api/ricavi/modalita", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              anno: meseSel.anno, mese: meseSel.mese, modalita: "giornaliero",
+              // Gli importi vanno rimandati invariati: l'upsert riscrive tutta la
+              // riga, e azzerarli distruggerebbe il totale mensile storico invece
+              // di limitarsi a disattivarlo.
+              fatturato_iva10: parseFloat(mensiIva10.replace(",", ".")) || 0,
+              fatturato_iva22: parseFloat(mensiIva22.replace(",", ".")) || 0,
+              altri_ricavi_noiva: parseFloat(mensiAltri.replace(",", ".")) || 0,
+              coperti: mensiCoperti.trim() !== ""
+                ? Math.max(0, Math.round(parseFloat(mensiCoperti.replace(",", ".")) || 0))
+                : null,
+            }),
+          });
+          if (!resMod.ok) throw new Error();
+          setEraMensile(false);
+        }
         if (dirty.length === 0) {
-          if (!opts?.silentIfClean) toast.info("Nessuna modifica da salvare");
+          if (eraMensile && !opts?.silentIfClean) {
+            toast.success(`${meseSel.label} torna ai ricavi giornalieri`);
+            onSaved();
+          } else if (!opts?.silentIfClean) {
+            toast.info("Nessuna modifica da salvare");
+          }
+          setSaving(false);
+          return;
+        }
+        // Un giorno gia' a DB e poi svuotato non puo' passare dal batch: l'upsert
+        // scarta le righe con totale <= 0 (ricavi.py `skipped`), quindi il valore
+        // vecchio resterebbe e il toast direbbe comunque "salvato". Va cancellato.
+        const daCancellare = dirty.filter(
+          (r) => r.eraSalvato && !r.iva10 && !r.iva22 && !r.altri,
+        );
+        for (const r of daCancellare) {
+          const resDel = await fetch(
+            `/api/ricavi/giornalieri?${new URLSearchParams({ data: r.data })}`,
+            { method: "DELETE" },
+          );
+          if (!resDel.ok) throw new Error();
+        }
+        const daSalvare = dirty.filter((r) => !daCancellare.includes(r));
+        if (daSalvare.length === 0) {
+          toast.success(
+            daCancellare.length === 1
+              ? "1 giorno svuotato"
+              : `${daCancellare.length} giorni svuotati`,
+          );
+          onSaved();
           setSaving(false);
           return;
         }
         const res = await fetch("/api/ricavi/batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: dirty.map((r) => ({
+          body: JSON.stringify({ items: daSalvare.map((r) => ({
             data: r.data,
             fatturato_iva10: parseFloat(r.iva10.replace(",", ".")) || 0,
             fatturato_iva22: parseFloat(r.iva22.replace(",", ".")) || 0,
@@ -225,13 +301,19 @@ function GrigliaView({
         });
         if (!res.ok) throw new Error();
         const result: RicaviBatchUpsertResponse = await res.json();
-        toast.success(`Salvati ${result.inserted + result.updated} giorni`);
+        const salvati = result.inserted + result.updated;
+        toast.success(
+          daCancellare.length > 0
+            ? `Salvati ${salvati} giorni, ${daCancellare.length} svuotati`
+            : `Salvati ${salvati} giorni`,
+        );
       } else {
         const res = await fetch("/api/ricavi/modalita", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             anno: meseSel.anno, mese: meseSel.mese, modalita: "mensile",
+            // ramo raggiungibile solo con modalita === "mensile" (vedi if sopra)
             fatturato_iva10: parseFloat(mensiIva10.replace(",", ".")) || 0,
             fatturato_iva22: parseFloat(mensiIva22.replace(",", ".")) || 0,
             altri_ricavi_noiva: parseFloat(mensiAltri.replace(",", ".")) || 0,
@@ -309,6 +391,13 @@ function GrigliaView({
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
             ⚠️ Inserendo i dati in modalità mensile, avranno precedenza rispetto ai dati inseriti giornalieri. Usare la modalità mensile solo se non si caricano i ricavi giornalieri.
           </div>
+          {precompilatoDaMargini && (
+            <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-xs text-sky-700 dark:text-sky-400">
+              ℹ️ Questi importi sono <strong>proposti</strong> dai totali già presenti in Margini
+              per {meseSel.label}: non sono ancora un totale mensile salvato. Controllali prima
+              di confermare.
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { label: "IVA 10% (lordo)", val: mensiIva10, set: setMensiIva10 },
@@ -340,6 +429,12 @@ function GrigliaView({
       ) : (
         /* Calendario mensile */
         <div className="space-y-3">
+          {eraMensile && (
+            <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-xs text-sky-700 dark:text-sky-400">
+              ℹ️ Questo mese è attualmente caricato come <strong>totale mensile</strong>. Salvando in
+              modalità giornaliera i ricavi torneranno a essere calcolati dai singoli giorni.
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-muted-foreground">
               Clicca un giorno per inserire i ricavi (lordi). Lo scorporo IVA è automatico.
@@ -418,7 +513,7 @@ function GrigliaView({
           <Button
             size="sm"
             onClick={() => handleSave()}
-            disabled={saving || (modalita === "giornaliero" && dirtyCount === 0)}
+            disabled={saving || (modalita === "giornaliero" && dirtyCount === 0 && !eraMensile)}
             className="min-w-28"
           >
             {saving ? "Salvataggio…" : `Salva ${meseSel.label}`}

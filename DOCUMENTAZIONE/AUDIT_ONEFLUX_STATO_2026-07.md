@@ -1,10 +1,9 @@
 # Stato audit ONEFLUX — ciclo 2026-07
 
 **Tutte e 10 le dimensioni sono 🟢, tutte con seconda passata e `code-reviewer`.**
-§1 e §3b sono vuote. Restano **§2** (copertura test da scrivere: il mock globale
-di `conftest.py`) e **§3c** — la lettura sistematica del frontend, aperta il
-25/8/2026 dopo la chiusura di §3b, stesso gap che §3b aveva già chiuso lato
-Python.
+§1, §3b e — dal 27/8/2026 — **§3c sono vuote**. Resta **§2** e basta: il mock
+globale di `conftest.py`, rimandato per decisione esplicita a una sessione
+dedicata. È l'unica voce che tiene aperto il ciclo.
 
 > ⚠️ **§3c non è più "solo copertura": la prima passata (25/8) ha trovato 39
 > findings, 21 attivi su clienti reali e 7 HIGH attivi.** Il frontend non è un
@@ -12,8 +11,11 @@ Python.
 > nascono nel *consumo* di quella logica. **Tutti e 7 gli HIGH sono corretti**:
 > 4 il 25/8 (STORICO §26), gli ultimi 3 il 26/8 (STORICO §27). **E 14 dei 15
 > MEDIUM/LOW** il 26/8 (STORICO §28 — erano 15, non 14: errore di somma).
-> Resta **1 solo MEDIUM**, che richiede una migration sulle RPC di catena.
-> Dettaglio dell'audit in STORICO §25.
+> ~~Resta **1 solo MEDIUM**, che richiede una migration sulle RPC di catena.~~
+> — **CHIUSO il 27/8/2026** (STORICO §32): migration scritta sulle 4 RPC
+> `gruppo_tag_*` live. I numeri del verbale erano invecchiati — 236,23 € su 3
+> righe diventati **285,50 € su 7** alla riverifica. Dettaglio dell'audit in
+> STORICO §25.
 >
 > **26/8, sessione di chiusura (STORICO §29): mergiato in `main` (PR #24,
 > commit `188d11f`), CI verde su tutti i check.** Nel farlo, il `code-reviewer`
@@ -856,15 +858,35 @@ mano dai clienti). Corretto, 12 test nuovi, verificato per mutazione.
 **Mergiato in `main`**: PR #24, commit `188d11f`, CI verde su tutti i check.
 Deploy automatico non ancora confermato (manca `/health` del worker).
 
-**Resta aperta**: **1 solo MEDIUM**, la divergenza sede-singola↔catena sulle
-note di credito (236,23 € misurati, riverificati il 26/8) — richiede una
-**migration** su 6 RPC `gruppo_tag_*` e quindi conferma esplicita. Più il
-perimetro non ancora letto (`carica-ricavi-dialog.tsx`, dove si **scrive** la
-modalità mensile; `pivot-tab.tsx`; `score-tab.tsx`; `catena/*`; gli altri tab
-di `workspace/` e `admin/`). Dettaglio in **STORICO §25** e **§28**.
+~~**Resta aperta**: **1 solo MEDIUM**, la divergenza sede-singola↔catena sulle
+note di credito... Più il perimetro non ancora letto~~ — **§3c CHIUSA il
+27/8/2026** (STORICO §32). Il perimetro mancante è stato letto riga per riga e
+il MEDIUM è stato risolto.
 
-Finché §2 o §3c sono aperte, **il ciclo non è chiuso** — anche con la tabella
-tutta 🟢 e §1/§3b vuote.
+**2 HIGH nuovi, entrambi attivi su clienti reali**, entrambi la stessa
+causa-radice di §26 (la regola dell'override mensile applicata solo in alcuni
+dei suoi punti):
+- **L'override si accendeva ma non si spegneva mai.** Nessun POST inviava mai
+  `modalita: "giornaliero"`. Prova che ha chiuso il caso: **17 righe in
+  `ricavi_modalita_mensile`, tutte 'mensile', ZERO 'giornaliero'** — quel
+  percorso non era mai stato eseguito perché non esisteva. TIME CAFE giugno
+  2026: **70.095,45 €** di dato inserito a mano e ignorato in silenzio.
+- **Il fix di §26 non era arrivato al mobile.** `mobile-incassi.tsx` non
+  conteneva alcuna occorrenza di `modalita`/`override`, e `fetchNettoMese()` era
+  usata solo da `analisi-tab.tsx`. Su **16 mesi su 17** il mobile mostrava
+  **0,00 €**: **729.911,64 €** di divergenza su 4 sedi.
+
+Più 4 MEDIUM e 2 LOW fixati, e **5 piste chiuse in negativo** (fra cui la
+"doppia verità" di `pivot-tab.tsx`, che si è rivelata **non essere un difetto**:
+le due percentuali misurano grandezze diverse).
+
+Il MEDIUM delle note di credito: i numeri del verbale erano **invecchiati**,
+236,23 € su 3 righe → **285,50 € su 7** alla riverifica. Migration scritta e
+testata; **da applicare con conferma esplicita prima del deploy** — a oggi
+`20260827230000_gruppo_tag_note_credito.sql` NON è applicata e le RPC live
+contengono ancora il filtro.
+
+Con §3c vuota, **il ciclo resta aperto solo su §2**.
 
 ---
 
@@ -898,20 +920,19 @@ data (PR #18, merge `de54a1e`, worker Railway verificato su `/health` =
 `de54a1ed2a50`). **§3b è vuota dal 25/8/2026 pomeriggio** (chat di
 `fastapi_worker.py`, ultima voce, deployata commit `d92de1d`).
 
-Restano aperte due cose:
+~~Restano aperte due cose:~~ — **§3c CHIUSA il 27/8/2026** (STORICO §32).
+Resta **solo §2**:
 - **§2**: il mock globale di `tests/conftest.py` — lavoro lungo dichiarato,
   esplicitamente non da aprire senza tempo dedicato.
-- **§3c**: la lettura sistematica del frontend, aperta il 25/8 alla chiusura
-  di §3b — stesso schema ("tabella verde ≠ app coperta") applicato al
-  frontend invece che al Python. **Prima passata di audit chiusa il 25/8**
-  (11 file, 13.153 righe, 39 findings di cui 21 attivi e 7 HIGH) e
-  **remediation completata sugli HIGH**: 4 il 25/8 (STORICO §26), gli ultimi
-  3 il 26/8 (STORICO §27) e 14 MEDIUM/LOW su 15 il 26/8 (STORICO §28).
-  **Sessione di chiusura 26/8** (STORICO §29): fix WINDTRE + bug di
-  contaminazione fornitore trovato dal `code-reviewer`, mergiato in `main`
-  (PR #24, `188d11f`). Resta 1 MEDIUM (migration sulle RPC di catena), il
-  perimetro non ancora letto, e la conferma del deploy (`/health` worker).
-  È la voce che oggi tiene aperto il ciclo insieme a §2.
+- ~~**§3c**: la lettura sistematica del frontend~~ — **CHIUSA il 27/8/2026**
+  (STORICO §32). Prima passata 25/8 (11 file, 13.153 righe, 39 findings, 7 HIGH),
+  remediation in tre tranche (§26, §27, §28), chiusura §29. Il 27/8 il
+  **perimetro mai letto** (`carica-ricavi-dialog.tsx`, `mobile-incassi.tsx`,
+  `pivot-tab.tsx`, `score-tab.tsx`, `catena/*`) ha prodotto **altri 2 HIGH
+  attivi**, stessa causa-radice di §26, e il MEDIUM delle note di credito è
+  stato risolto con migration. **Non era una formalità**: quel perimetro
+  nascondeva 70.095,45 € di dato cliente ignorato e 729.911,64 € di divergenza
+  desktop↔mobile.
 
 Quel mock si è fatto sentire proprio scrivendo questi test: `tenacity` è
 mockato globalmente, quindi il decoratore `@retry` su

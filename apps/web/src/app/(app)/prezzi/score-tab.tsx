@@ -31,7 +31,11 @@ import type {
   MetricaStato,
 } from "@/lib/prezzi";
 
-const ANNO_CORRENTE = new Date().getFullYear();
+// Calcolato a ogni chiamata, non una volta al load del bundle: una sessione
+// aperta a cavallo di Capodanno resterebbe altrimenti sull'anno vecchio.
+function annoCorrente(): number {
+  return new Date().getFullYear();
+}
 const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 
 type PeriodoPreset = "anno_corrente" | "mese_specifico" | "personalizzato";
@@ -287,7 +291,7 @@ function FornitoreRow({ f, onOpen }: { f: ScoreFornitore; onOpen: () => void }) 
 }
 
 export function ScoreTab() {
-  const [anno, setAnno] = useState(ANNO_CORRENTE);
+  const [anno, setAnno] = useState(annoCorrente);
   const [mese, setMese] = useState<number | null>(null);
   const [preset, setPreset] = useState<PeriodoPreset>("anno_corrente");
   const [dataDaCustom, setDataDaCustom] = useState("");
@@ -330,8 +334,8 @@ export function ScoreTab() {
     setMese(null);
     setShowMese(false);
     setShowCustom(false);
-    const r = isoDateRange(ANNO_CORRENTE, null);
-    setAnno(ANNO_CORRENTE);
+    const r = isoDateRange(annoCorrente(), null);
+    setAnno(annoCorrente());
     load(r.data_da, r.data_a);
   }
   function applyMese(yearMonth: string) {
@@ -406,7 +410,7 @@ export function ScoreTab() {
               className="h-7 text-xs rounded-md border border-input bg-background px-2"
             >
               <option value="" disabled>Seleziona un mese</option>
-              {Array.from({ length: 4 }, (_, i) => ANNO_CORRENTE - i).flatMap((y) =>
+              {Array.from({ length: 4 }, (_, i) => annoCorrente() - i).flatMap((y) =>
                 MESI_FULL.map((label, mi) => {
                   const val = `${y}-${String(mi + 1).padStart(2, "0")}`;
                   return <option key={val} value={val}>{label} {y}</option>;

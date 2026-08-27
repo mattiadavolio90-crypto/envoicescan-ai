@@ -199,6 +199,11 @@ def upsert_ricavo_giornaliero(
     if not resp.data:
         raise HTTPException(status_code=500, detail="Salvataggio fallito")
 
+    # Inserire un giorno su un mese in modalita' 'mensile' non avrebbe effetto sui
+    # margini finche' l'override resta acceso: il giorno appena scritto e' la nuova
+    # fonte, quindi l'override va disattivato.
+    _spegni_override_mensile(sb, str(ristorante_id), [str(body.data)])
+
     # Il trigger sync_margini_mensili_from_ricavi riscrive margini_mensili a ogni
     # scrittura sui giornalieri: i KPI di Home leggono da lì, quindi vanno
     # invalidati anche loro o la card resta indietro fino allo scadere del TTL.
@@ -222,6 +227,42 @@ def upsert_ricavo_giornaliero(
         coperti=(int(r["coperti"]) if r.get("coperti") is not None else None),
         source=str(r.get("source") or "manuale"),
     )
+
+
+def _spegni_override_mensile(sb, ristorante_id: str, date_iso: List[str]) -> int:
+    """Riporta a 'giornaliero' i mesi che ricevono ricavi giornalieri.
+
+    Finche' la riga in `ricavi_modalita_mensile` resta 'mensile', il worker ignora
+    i giornalieri (`_load_mensile_overrides` filtra .eq("modalita","mensile")): il
+    cliente carica i giorni e continua a vedere il vecchio totale mensile ovunque.
+    Non cancella la riga — l'override resta come storico, solo disattivato.
+    """
+    mesi = set()
+    for d in date_iso:
+        try:
+            mesi.add((int(str(d)[0:4]), int(str(d)[5:7])))
+        except (ValueError, TypeError):
+            continue
+    if not mesi:
+        return 0
+    spenti = 0
+    for anno, mese in mesi:
+        try:
+            resp = (
+                sb.table("ricavi_modalita_mensile")
+                .update({"modalita": "giornaliero"})
+                .eq("ristorante_id", ristorante_id)
+                .eq("anno", anno)
+                .eq("mese", mese)
+                .eq("modalita", "mensile")
+                .execute()
+            )
+            spenti += len(resp.data or [])
+        except Exception as exc:
+            logger.warning(
+                "_spegni_override_mensile: %s-%s fallito: %s", anno, mese, exc
+            )
+    return spenti
 
 
 @router.delete("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
@@ -332,6 +373,11 @@ def upsert_ricavi_batch(
     # positiva "ieri sono entrati €X" dipende da questi dati). Lo invalidiamo
     # cosi' al prossimo load si rigenera. Best-effort: non blocca l'upsert.
     if inserted or updated:
+        # Coerente con gli altri percorsi di scrittura dei giornalieri: i giorni
+        # appena salvati sono la nuova fonte del mese, l'override va spento.
+        _spegni_override_mensile(
+            sb, str(ristorante_id), [str(r["data"]) for r in rows_to_upsert]
+        )
         try:
             _fw()._invalidate_home_kpi_cache(str(ristorante_id))
         except Exception as exc:
@@ -768,6 +814,11 @@ def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_met
             errors.append(f"upsert {_sede_label}: {exc}")
 
     if inserted or updated:
+        # Le date sono quelle EFFETTIVAMENTE scritte, non quelle parsate: un mese
+        # le cui righe sono state tutte scartate non deve perdere l'override.
+        _spegni_override_mensile(
+            sb, str(ristorante_id), [str(r["data"]) for r in rows_to_upsert]
+        )
         try:
             _fw()._invalidate_home_kpi_cache(str(ristorante_id))
         except Exception as exc:
@@ -1401,6 +1452,8 @@ def upsert_ricavi_modalita(
         raise HTTPException(status_code=400, detail="modalita deve essere 'giornaliero' o 'mensile'")
     if not 1 <= body.mese <= 12:
         raise HTTPException(status_code=400, detail="mese deve essere tra 1 e 12")
+    if not 2000 <= body.anno <= 2100:
+        raise HTTPException(status_code=400, detail="anno deve essere tra 2000 e 2100")
 
     payload = {
         "ristorante_id": ristorante_id,

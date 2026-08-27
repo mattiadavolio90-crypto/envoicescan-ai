@@ -1,79 +1,73 @@
-# Prompt per la prossima sessione — chiusura ciclo audit 2026-07
+# Prompt per la prossima sessione — resta solo §2
 
 Contesto: leggi `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md` (indice, 1
-minuto) e `..._STORICO.md §30`/`§31` (dettaglio delle ultime due sessioni,
-26/8/2026) prima di iniziare. Il ciclo NON è chiuso: restano §2 e §3c.
+minuto) e `..._STORICO.md §32` (l'ultima sessione, 27/8/2026) prima di
+iniziare.
 
-## Priorità, in ordine
+**Il ciclo audit 2026-07 è aperto su UNA SOLA voce: §2.** Tutto il resto —
+§1, §3b, §3c, i 4 punti §27, il MEDIUM delle note di credito — è chiuso.
 
-### 0. ~~Conferma deploy~~ — CHIUSO in §30/§31 (26/8/2026)
-`/health` del worker Railway verificato: prima `commit f177952a0210` (§30,
-merge PR #25), poi i fix di §30 stessi sono stati pushati, aperti in PR #26
-e mergiati in `main` (commit `4024308`) su eccezione di orario
-**esplicitamente confermata** da Mattia (merge alle 15:11 UTC, pieno orario
-clienti). Deploy ri-verificato: `/health` → `commit 4024308edf3b`. Vedi
-STORICO §31. Non fatto il giro manuale su Analisi Fatture/Margini in
-produzione (nessun browser nell'ambiente) — farlo se serve conferma visuale,
-ma non blocca il resto.
+## L'unica voce aperta
 
-### 1. Il MEDIUM residuo (richiede tua conferma esplicita, poi Opus)
-Divergenza sede-singola↔catena sulle note di credito: **236,23 €**
-(402.182,19 vs 402.418,42), 3 righe con `prezzo_unitario <= 0` escluse da
-6 RPC `gruppo_tag_*`. Serve una **migration** che filtri `prezzo_unitario > 0`
-in modo coerente — cambia totali di catena già mostrati ai clienti, quindi
-non partire senza che Mattia l'abbia vista e confermata esplicitamente.
-Dettaglio: STORICO §25 e §28.
+### §2 — Il mock globale di `tests/conftest.py`
 
-### 2. ~~`stash@{0}`~~ — CHIUSO in §30/§31 (26/8/2026)
-Confrontato col diff corrente di `.claude/settings.json`: unico contenuto non
-già presente era il permesso `Bash(python -m pytest
-tests/test_documentazione_onesta.py -q)`, incorporato con Edit mirato in §30.
-In §31 risolto anche un secondo stash residuo (4 permessi bash autogenerati
-dalle chiamate di sessione — curl `/health`, pytest, `git commit -m`),
-incorporati e committati (`8976509`). Entrambi gli stash droppati dopo
-conferma esplicita. `git stash list` ora contiene solo stash pre-esistenti
-non correlati a questo ciclo (`audit-s3c-passata1`, `TUE-mod-scadenziario-tmp`,
-ecc.) — non toccarli senza motivo specifico.
+**Non aprirla senza tempo dedicato e senza che Mattia l'abbia deciso per quella
+sessione specifica.** È una decisione già presa due volte: è lavoro lungo, non
+un residuo da smaltire in coda a qualcos'altro.
 
-### 3. Perimetro §3c non ancora letto
-Audit read-only con `oneflux-audit`, poi remediation solo dopo conferma:
-- `carica-ricavi-dialog.tsx` — dove si SCRIVE la modalità mensile (il
-  perimetro già chiuso ha corretto solo la lettura)
-- `pivot-tab.tsx`, `score-tab.tsx`
-- `catena/*`
-- altri tab di `workspace/` e `admin/`
-- `m/diario/*`
+Il problema: `openai`, `requests`, `argon2`, `xmltodict`, `supabase`, `tenacity`
+sono **tutti installati davvero** nel venv, ma `tests/conftest.py` li sostituisce
+con `MagicMock()`. Conseguenza: i test sui rami `except` sono **vacui** — un
+attributo di un MagicMock non eredita da `BaseException`, quindi
+`except openai.RateLimitError` solleva `TypeError` invece di catturare.
 
-### 4. Quattro punti aperti da §27
-Canale SDI (decisione di policy), `pagata_at` locale vs UTC (residuo),
-flush PROP-1 prima del blocco, `get_trial_info` per file. Dettaglio STORICO
-§27.
+Cosa aspettarsi rimuovendolo:
+- rilanciare ~11.200 test e sistemare le ricadute;
+- `tests/test_eccezioni_moduli_mockati.py` diventa **rosso**: è il segnale
+  atteso, quel file documenta il problema e va cancellato col workaround;
+- attenzione a `importlib.reload`: ricaricare `ai_service` ricrea le classi di
+  eccezione, mentre `upload_handler.py` le cattura all'import — un `except` che
+  non matcha più. Il tentativo del 25/8 è stato scartato per questo (STORICO
+  §23), la soluzione finale recupera la funzione non decorata dal mock stesso.
 
-### 5. §2 — resta intatta
-Il mock globale di `tests/conftest.py`. Lavoro lungo, dichiarato apposta:
-non aprirlo senza tempo dedicato e senza che Mattia l'abbia deciso per quella
-sessione specifica.
-
-## Metodo (non derogabile, vale per tutte le voci sopra)
+## Metodo (non derogabile)
 
 - Audit **read-only** prima di qualunque fix; remediation solo dopo conferma
   esplicita di Mattia.
 - Ogni severità dell'agente **si riverifica** sul DB live (Supabase MCP) o
-  eseguendo il codice — non fidarsi del report a occhio. In questo ciclo è
-  già capitato più volte che un numero riportato fosse gonfiato o sbagliato.
+  eseguendo il codice. In questo ciclo è successo **cinque volte** che un numero
+  ereditato non reggesse alla riverifica — l'ultima il 27/8: 236,23 € su 3 righe
+  erano diventati 285,50 € su 7, perché il verbale era vecchio, non sbagliato.
 - `code-reviewer` sul diff cumulativo **a fine sessione, sempre** — anche sui
-  fix che sembrano piccoli. È dove è saltato in passato, ed è quello che il
-  26/8 ha trovato il bug più serio della sessione (contaminazione fornitore
-  in `ricategorizza_sede.py`), su un fix che sembrava innocuo.
+  fix che sembrano piccoli.
 - Ogni fix nuovo richiede test verificati **per mutazione, su copia in
-  scratchpad**, mai sul file del branch di lavoro.
+  scratchpad**, mai sul file del branch di lavoro. E attenzione a *cosa* misura
+  il test: il 27/8 un mutante è sopravvissuto perché il test contava le righe
+  aggiornate invece delle query emesse — verde per il motivo sbagliato.
 - Migration solo con conferma esplicita, applicata **prima** del deploy.
-- CI parte solo su `pull_request` o push a `main`/`progetto` — un branch
-  pushato da solo non attiva nulla. Serve aprire la PR (`gh` è autenticato in
-  questo ambiente e ha funzionato in §31: push + `gh pr create` + `gh pr
-  merge` sono utilizzabili direttamente).
-- Deploy solo fuori orario clienti (sera/notte/mattina presto), salvo
-  conferma esplicita e specifica di Mattia per un'eccezione — non basta un
-  "sì" generico dato prima di sapere l'orario.
+- CI parte solo su `pull_request` o push a `main`/`progetto` — un branch pushato
+  da solo non attiva nulla. `gh` è autenticato in questo ambiente: push,
+  `gh pr create` e `gh pr merge` sono utilizzabili direttamente.
+- Deploy solo fuori orario clienti (sera/notte/mattina presto), salvo conferma
+  esplicita e specifica di Mattia per un'eccezione — non basta un "sì" generico
+  dato prima di sapere l'orario.
 - Aggiorna indice e STORICO a fine sessione, in una sezione nuova numerata in
-  sequenza (prossima: §32).
+  sequenza (prossima: §33).
+
+## Quando §2 sarà chiusa
+
+Il ciclo si dichiara chiuso: aggiungere "**Ciclo chiuso il gg/mm/aaaa**" in cima
+all'indice, spostare indice e STORICO in `docs/storico/`, e creare
+`AUDIT_ONEFLUX_STATO_<AAAA-MM>.md` per il ciclo nuovo (non riusare questo file).
+
+## Annotazioni utili lasciate dal 27/8
+
+- `worker/email_queue_processor.py` scrive i ricavi giornalieri **fuori dal
+  router**, quindi non spegne l'override mensile come fanno i 3 percorsi del
+  router. Misurato: 0 righe `email`/`xls` sulle sedi con override, quindi oggi
+  non è esposto. Se un cliente iniziasse a caricare i ricavi via email, va
+  agganciato anche lì (`services/routers/ricavi.py::_spegni_override_mensile`).
+- Il canale SDI **non** applica la policy date, ed è una decisione a verbale
+  (STORICO §27 e §32) difesa da `tests/test_upload_policy_canale_sdi.py`.
+- Il flush PROP-1 prima del blocco policy è **documenta-e-chiudi**, non
+  dimenticato: nessun dato sbagliato, refactor sproporzionato al rischio.

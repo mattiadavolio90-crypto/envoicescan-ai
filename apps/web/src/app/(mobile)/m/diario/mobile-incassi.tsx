@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
+import { scorporoNetto, type NettoMese } from "@/app/(app)/margini/periodi";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 // Forma allineata a /api/ricavi/giornalieri (GET → items[], POST upsert per data).
@@ -30,11 +31,6 @@ interface IncassiResponse {
   giorni_con_dati: number;
 }
 
-
-// Stessa formula di periodi.ts (desktop) e _calc_netto (worker): scorporo IVA.
-function scorporoNetto(iva10: number, iva22: number, altri: number): number {
-  return iva10 / 1.1 + iva22 / 1.22 + altri;
-}
 
 function meseISO(anno: number, mese: number) {
   return `${anno}-${String(mese + 1).padStart(2, "0")}`;
@@ -137,11 +133,11 @@ function IncassoDialog({ open, incasso, dataDefault, onClose, onSaved }: DialogP
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-[calc(100vw-2rem)] flex-col rounded-2xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{incasso ? "Modifica incasso" : "Nuovo incasso"}</DialogTitle>
         </DialogHeader>
-        <div className="mt-1 space-y-3">
+        <div className="-mx-1 mt-1 min-h-0 flex-1 space-y-3 overflow-y-auto px-1">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Giorno *</label>
             <Input type="date" value={data} onChange={(e) => setData(e.target.value)} disabled={!!incasso} />
@@ -167,22 +163,22 @@ function IncassoDialog({ open, incasso, dataDefault, onClose, onSaved }: DialogP
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             Inserisci gli importi <strong>lordi</strong> (come sul registratore di cassa). Lo scorporo IVA è automatico.
           </p>
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium active:scale-[0.98]"
-            >
-              Annulla
-            </button>
-            <button
-              onClick={salva}
-              disabled={saving}
-              className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground active:scale-[0.98] disabled:opacity-50"
-            >
-              {saving ? "Salvo…" : "Salva"}
-            </button>
-          </div>
+        </div>
+        <div className="flex shrink-0 gap-2 border-t border-border pt-3">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium active:scale-[0.98]"
+          >
+            Annulla
+          </button>
+          <button
+            onClick={salva}
+            disabled={saving}
+            className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground active:scale-[0.98] disabled:opacity-50"
+          >
+            {saving ? "Salvo…" : "Salva"}
+          </button>
         </div>
       </DialogContent>
     </Dialog>
@@ -197,6 +193,10 @@ export function MobileIncassi() {
   const [anno, setAnno] = useState(now.getFullYear());
   const [mese, setMese] = useState(now.getMonth());
   const [risposta, setRisposta] = useState<IncassiResponse | null>(null);
+  // Il netto del mese non e' la somma dei giornalieri: se il mese e' in modalita'
+  // "mensile" l'override in ricavi_modalita_mensile vince e le righe giornaliere
+  // sono dati orfani. Stessa regola del desktop (fetchNettoMese) e del worker.
+  const [nettoAutorevole, setNettoAutorevole] = useState<NettoMese | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editIncasso, setEditIncasso] = useState<Incasso | null>(null);
@@ -206,10 +206,30 @@ export function MobileIncassi() {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ data_da: primoGiornoISO(a, m), data_a: ultimoGiornoISO(a, m) });
-      const res = await fetch(`/api/ricavi/giornalieri?${qs}`);
+      const [res, modalita] = await Promise.all([
+        fetch(`/api/ricavi/giornalieri?${qs}`),
+        // Solo la modalita': il netto dei giornalieri ce l'abbiamo gia' dalla
+        // chiamata qui accanto. `fetchNettoMese` (desktop) rifarebbe la stessa
+        // GET — stessa regola, un round-trip in meno.
+        fetch(`/api/ricavi/modalita?anno=${a}&mese=${m + 1}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
       if (!res.ok) throw new Error();
       const d: IncassiResponse = await res.json();
       setRisposta(d);
+      setNettoAutorevole(
+        modalita?.modalita === "mensile"
+          ? {
+              netto: scorporoNetto(
+                modalita.fatturato_iva10 ?? 0,
+                modalita.fatturato_iva22 ?? 0,
+                modalita.altri_ricavi_noiva ?? 0,
+              ),
+              mensile: true,
+            }
+          : { netto: d.totale_netto ?? 0, mensile: false },
+      );
     } catch {
       toast.error("Errore caricamento incassi");
     } finally {
@@ -250,7 +270,8 @@ export function MobileIncassi() {
     () => (risposta?.items ?? []).slice().sort((a, b) => b.data.localeCompare(a.data)),
     [risposta],
   );
-  const nettoMese = risposta?.totale_netto ?? 0;
+  const nettoMese = nettoAutorevole?.netto ?? risposta?.totale_netto ?? 0;
+  const meseMensile = nettoAutorevole?.mensile ?? false;
   const giorni = risposta?.giorni_con_dati ?? 0;
 
   const dataDefault = useMemo(() => {
@@ -275,7 +296,9 @@ export function MobileIncassi() {
         <p className="text-xs font-medium text-primary">Incasso netto del mese</p>
         <p className="text-2xl font-bold tabular-nums text-primary">{fmtEuro(nettoMese)}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {giorni} {giorni === 1 ? "giorno inserito" : "giorni inseriti"}
+          {meseMensile
+            ? "Totale mensile inserito da desktop"
+            : `${giorni} ${giorni === 1 ? "giorno inserito" : "giorni inseriti"}`}
         </p>
       </div>
 
@@ -289,8 +312,14 @@ export function MobileIncassi() {
           </div>
         ) : voci.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessun incasso inserito in questo mese.</p>
-        ) : (
-          voci.map((i) => {
+        ) : (<>
+          {meseMensile && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+              Questo mese usa il <strong>totale mensile</strong>: gli incassi qui sotto non
+              vengono conteggiati nei margini finché il mese resta in modalità mensile.
+            </div>
+          )}
+          {voci.map((i) => {
             const netto = scorporoNetto(i.fatturato_iva10, i.fatturato_iva22, i.altri_ricavi_noiva);
             return (
               <div key={i.data} className="flex items-center gap-3 rounded-xl border bg-card p-3">
@@ -314,8 +343,8 @@ export function MobileIncassi() {
                 </div>
               </div>
             );
-          })
-        )}
+          })}
+        </>)}
       </div>
 
       {/* FAB aggiungi */}

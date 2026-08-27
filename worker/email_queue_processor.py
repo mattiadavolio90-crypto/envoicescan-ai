@@ -555,6 +555,20 @@ def _upsert_ricavi(supabase, ristorante_id, user_id, parsed_items, filename, ver
         .upsert(rows, on_conflict="ristorante_id,data")
         .execute()
     )
+
+    # Quarto percorso di scrittura dei giornalieri (gli altri 3 sono nel router):
+    # senza questo, un cliente che riceve i ricavi via email su un mese in
+    # modalita' 'mensile' continuerebbe a vedere il vecchio totale mensile, con i
+    # giorni appena importati ignorati dai margini. `rows` e' l'insieme
+    # effettivamente scritto, non quello parsato.
+    try:
+        from services.routers.ricavi import _spegni_override_mensile
+        _spegni_override_mensile(
+            supabase, str(ristorante_id), [str(r["data"]) for r in rows]
+        )
+    except Exception as exc:
+        logger.warning("_upsert_ricavi: spegnimento override mensile fallito: %s", exc)
+
     return len(resp.data or rows)
 
 
