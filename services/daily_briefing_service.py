@@ -67,7 +67,12 @@ logger = get_logger('daily_briefing')
 #               a 0 (misurati 6 mesi da 54-75k EUR su OFFSIDE): il gate
 #               "fatturato > 0" non scattava mai e la card non compariva. Ora
 #               fonde l'override, come gia' facevano Salute e dati mensili
-_BRIEFING_CODE_VERSION = 16
+#  17 -> 27/08: i costi di gruppo ripartiti sono cambiati su tutta la serie storica
+#               OFFSIDE (note di credito che ora si nettano invece di sommarsi, e
+#               2 fatture di agosto recuperate dopo il fix del parsing P7M). Senza
+#               bump il cliente continuerebbe a vedere il MOL calcolato sui costi
+#               vecchi, fino alla scadenza della cache
+_BRIEFING_CODE_VERSION = 17
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
