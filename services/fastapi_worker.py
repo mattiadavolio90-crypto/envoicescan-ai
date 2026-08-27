@@ -1775,6 +1775,17 @@ def _ai_va_in_background(n_righe: int) -> bool:
     return n_righe > _UPLOAD_AI_SYNC_MAX_ROWS
 
 
+def _budget_ai_upload_sincrono(elapsed_ms: float) -> float:
+    """Secondi di budget per la classificazione AL netto di quanto gia' speso in
+    parsing/salvataggio, con floor a 3s. Il floor e' essenziale: un budget 0
+    verrebbe letto da set_ai_deadline come 'nessun limite' (semantica dei
+    percorsi background) proprio quando il limite serve — Next.js abortisce
+    comunque a 30s. Estratta per testare il VALORE, non solo la presenza della
+    chiamata nell'endpoint."""
+    from services.ai_service import AI_BUDGET_DEFAULT_SECONDS
+    return min(AI_BUDGET_DEFAULT_SECONDS, max(3.0, 27.0 - (elapsed_ms / 1000.0)))
+
+
 def _upload_ai_categorizzazione_async(
     user_id: str, ristorante_id: Optional[str], filename: str,
 ) -> None:
@@ -2321,12 +2332,8 @@ async def upload_invoice(
     # comporre la risposta. Scaduto, subentra il fallback deterministico.
     _ai_deadline_impostata = False
     try:
-        from services.ai_service import set_ai_deadline, AI_BUDGET_DEFAULT_SECONDS
-        _budget = min(
-            AI_BUDGET_DEFAULT_SECONDS,
-            max(0.0, 27.0 - (elapsed_ms / 1000.0)),
-        )
-        set_ai_deadline(_budget)
+        from services.ai_service import set_ai_deadline
+        set_ai_deadline(_budget_ai_upload_sincrono(elapsed_ms))
         _ai_deadline_impostata = True
     except Exception:
         pass

@@ -71,6 +71,38 @@ def test_fattura_vuota_non_va_in_background():
     assert fw._ai_va_in_background(0) is False
 
 
+# ─── budget AI del ramo sincrono: il VALORE, non solo la presenza ────────────
+
+def test_budget_upload_sincrono_scala_col_tempo_gia_speso():
+    """Meno tempo resta dei 27s, meno budget: ma sempre > 0."""
+    from services.ai_service import AI_BUDGET_DEFAULT_SECONDS
+    # Nulla speso: budget pieno (capped al default)
+    assert fw._budget_ai_upload_sincrono(0) == min(AI_BUDGET_DEFAULT_SECONDS, 27.0)
+    # 10s spesi: 17s residui, sotto il default -> 17
+    assert fw._budget_ai_upload_sincrono(10_000) == pytest.approx(17.0)
+
+
+def test_budget_upload_sincrono_ha_un_floor_positivo():
+    """Il bug che questo test blocca: con >=27s gia' spesi il calcolo grezzo
+    darebbe 0, che set_ai_deadline interpreta come 'nessun limite' — l'opposto
+    di quel che serve nel ramo sincrono. Il floor deve tenere il budget > 0."""
+    assert fw._budget_ai_upload_sincrono(27_000) >= 3.0
+    assert fw._budget_ai_upload_sincrono(60_000) >= 3.0
+    assert fw._budget_ai_upload_sincrono(10 ** 9) >= 3.0
+
+
+def test_budget_upload_sincrono_impone_davvero_una_deadline():
+    """End-to-end sul contratto con set_ai_deadline: anche nel caso peggiore
+    (tempo esaurito) la deadline risulta ATTIVA, non None."""
+    from services import ai_service
+    try:
+        ai_service.set_ai_deadline(fw._budget_ai_upload_sincrono(120_000))
+        assert ai_service.ai_budget_rimanente() is not None
+        assert ai_service.ai_budget_rimanente() > 0
+    finally:
+        ai_service.clear_ai_deadline()
+
+
 def test_endpoint_decide_sulla_soglia():
     src = inspect.getsource(fw.upload_invoice)
     assert "_ai_va_in_background(" in src, "la soglia non e' usata dall'endpoint"
