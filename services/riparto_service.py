@@ -170,8 +170,15 @@ def esplodi_quote_per_categoria(
     """
     pesi_netto = _pesi_e_netto_categoria_fattura(sb, user_id, file_origine)
     if pesi_netto is None:
+        # Due cause diverse dietro lo stesso None, e all'operatore servono distinte:
+        # nessuna riga viva (storico purgato → resta legacy, normale) oppure netto
+        # imponibile ~0, cioè una nota di credito che azzera esattamente il costo →
+        # il riparto non ha più ragione di esistere. Non si auto-elimina qui: questa
+        # funzione gira in hot-path dal worker e "la fattura resta sacra". Lo segnala
+        # v_riparto_incoerenze (riparto_segno_incoerente) e lo chiude la manutenzione.
         logger.info(
-            "esplodi_quote_per_categoria: riparto %s file %s senza righe vive → resta legacy",
+            "esplodi_quote_per_categoria: riparto %s file %s senza righe categorizzate "
+            "o con netto ~0 (nota di credito che azzera il costo?) → resta legacy",
             riparto_id, file_origine,
         )
         return False
@@ -184,6 +191,14 @@ def esplodi_quote_per_categoria(
         .execute()
     ).data or []
     if not quote:
+        # Header senza quote: non ricostruibile qui (non si conoscono le sedi della
+        # catena, che sono un dato del router). v_riparto_incoerenze lo espone come
+        # riparto_senza_quote — caso AUTOSTRADE luglio, 96,80 € mai distribuiti.
+        logger.warning(
+            "esplodi_quote_per_categoria: riparto %s senza alcuna quota → "
+            "costo non distribuito a nessuna sede, serve ricostruzione",
+            riparto_id,
+        )
         return False
 
     # Il padre serve alla RPC transazionale di riscrittura (che aggiorna anche tipo/
@@ -211,11 +226,15 @@ def esplodi_quote_per_categoria(
     # registra già il netto → netto_reale == importo_totale e non cambia niente.
     # Solo per origine 'fattura': un costo di gruppo MANUALE non ha righe da cui
     # ricavare un netto e il suo importo è quello inserito dall'utente.
+    # Una nota di credito (TD04) ha righe negative → netto_reale negativo: il riparto
+    # deve portare importi negativi, che riparto_quote_mensili sottrae dal mese come
+    # nel mono-sede (SUM pura, niente abs()). I CHECK (>= 0) che lo impedivano sono
+    # stati rimossi in 20260827214500_riparto_consenti_note_credito.sql.
     importo_riparto = float(rip["importo_totale"] or 0)
-    fattore_netto = 1.0
-    if rip.get("origine") == "fattura" and abs(importo_riparto - netto_reale) > 0.01:
-        if importo_riparto > 0.01:
-            fattore_netto = netto_reale / importo_riparto
+    riallinea_al_netto = (
+        rip.get("origine") == "fattura" and abs(importo_riparto - netto_reale) > 0.01
+    )
+    if riallinea_al_netto:
         logger.info(
             "esplodi_quote_per_categoria: riparto %s importo %.2f → netto reale %.2f "
             "(scarto lordo/netto rientrato)",
@@ -243,11 +262,25 @@ def esplodi_quote_per_categoria(
         s["importo"] += float(q.get("quota_importo") or 0)
 
     # Le quote esistenti sono in scala all'importo vecchio (lordo per i riparti da
-    # coda): riportale alla stessa scala del netto. `fattore_netto` è 1.0 quando non
-    # c'è scarto, così i riparti già corretti / da-fattura non si muovono.
-    if fattore_netto != 1.0:
-        for s in per_sede.values():
-            s["importo"] = round(s["importo"] * fattore_netto, 2)
+    # coda): vanno riportate alla scala del netto. NON si riscala per
+    # `netto/importo_vecchio`: quella divisione salta quando il vecchio importo è
+    # ~0 e, con un vecchio importo positivo e un netto negativo (nota di credito
+    # ripartita col lordo provvisorio), lascerebbe le quote col segno sbagliato e
+    # scollegate dall'header. Si ricostruiscono invece dal netto usando la
+    # percentuale di sede — che è il dato autorevole, invariante di scala e di segno.
+    # L'ultima sede assorbe l'arrotondamento, stessa convenzione di _quote_equa: così
+    # la somma delle quote pareggia SEMPRE l'header, anche se le percentuali in tabella
+    # non sommassero esattamente a 100 (in quel caso lo scarto finisce sull'ultima sede,
+    # che è preferibile a lasciare header e quote scollegati).
+    if riallinea_al_netto:
+        sedi = sorted(per_sede.items(), key=lambda kv: kv[0])
+        acc = 0.0
+        for i, (_rid, s) in enumerate(sedi):
+            if i < len(sedi) - 1:
+                s["importo"] = round(importo_riparto * s["perc"] / 100.0, 2)
+            else:
+                s["importo"] = round(importo_riparto - acc, 2)
+            acc += s["importo"]
 
     nuove: List[Dict[str, Any]] = []
     for rid, s in per_sede.items():

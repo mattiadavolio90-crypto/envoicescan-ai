@@ -370,6 +370,11 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
     if any(bool(r.get("ripartita_su_gruppo")) for r in righe):
         raise HTTPException(status_code=409, detail="Fattura già ripartita sul gruppo")
 
+    # Somma con segno: per una nota di credito (TD04) il parser ha già invertito le
+    # righe, quindi `importo` è NEGATIVO ed è giusto che lo resti — la NC va ripartita
+    # come rimborso, non come costo, e si netta nel mese come nel mono-sede. Nessun
+    # guard `<= 0` qui, e dal 27/8/2026 nemmeno il CHECK DB che lo rifiutava
+    # (20260827214500_riparto_consenti_note_credito.sql).
     importo = round(sum(float(r.get("totale_riga") or 0) for r in righe), 2)
     # Periodo di competenza: data_competenza se presente, altrimenti data_documento.
     _data = None
@@ -461,6 +466,11 @@ def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Head
         importo = round(float(meta.get("importo_totale") or 0), 2)
     except (TypeError, ValueError):
         importo = 0.0
+    # Il guard resta `<= 0` e NON va cambiato per le note di credito: qui
+    # `ImportoTotaleDocumento` è positivo anche per una TD04 (il segno lo mette il
+    # parser sulle righe, che non sono ancora atterrate). Un importo <= 0 a questo
+    # punto significa davvero "metadato mancante", non "nota di credito". Il segno
+    # corretto arriva dopo, da esplodi_quote_per_categoria.
     if importo <= 0:
         raise HTTPException(status_code=400, detail="Importo fattura non disponibile nei metadati: impossibile ripartire dalla coda")
     _data = str(meta.get("data_fattura") or "").strip()
@@ -991,6 +1001,11 @@ def riparto_incoerenze() -> Dict[str, Any]:
         sparito dal MOL (buco).
       - riparto_senza_documento: riparto senza più righe vive dietro → costo fantasma
         ancora contato dal MOL (materializzato in margini_mensili).
+      - riparto_senza_quote: header senza alcuna quota → il costo non arriva a nessuna
+        sede (né MOL né Analisi Fatture). Caso AUTOSTRADE luglio 2026.
+      - riparto_segno_incoerente: header di segno opposto al netto reale delle righe →
+        nota di credito (TD04) ripartita come costo: il gruppo la paga invece di
+        riceverla. Le ultime due aggiunte da 20260827214500.
 
     Usato dal workflow GitHub Actions riparto_coerenza_check.yml (alert Telegram
     quando il totale è > 0) e disponibile per ispezione manuale. Non corregge nulla:
@@ -998,10 +1013,22 @@ def riparto_incoerenze() -> Dict[str, Any]:
     sb = _get_supabase_client()
     righe = sb.table("v_riparto_incoerenze").select("*").execute().data or []
 
+    # Una chiave per tipo_incoerenza. Mai un `else` catch-all: un tipo nuovo aggiunto
+    # alla view finirebbe silenziosamente nel secchio sbagliato e l'alert direbbe una
+    # cosa per un'altra.
+    _SECCHI = {
+        "orfano": "orfani",
+        "riparto_senza_documento": "riparti_senza_documento",
+        "riparto_senza_quote": "riparti_senza_quote",
+        "riparto_segno_incoerente": "riparti_segno_incoerente",
+    }
+
     per_account: Dict[str, Dict[str, Any]] = {}
     for r in righe:
         uid = str(r["user_id"])
-        acc = per_account.setdefault(uid, {"user_id": uid, "orfani": [], "riparti_senza_documento": []})
+        acc = per_account.setdefault(
+            uid, {"user_id": uid, **{k: [] for k in _SECCHI.values()}, "altro": []}
+        )
         voce = {
             "file_origine": r.get("file_origine"),
             "riparto_id": r.get("riparto_id"),
@@ -1009,10 +1036,12 @@ def riparto_incoerenze() -> Dict[str, Any]:
             "importo": float(r["importo"]) if r.get("importo") is not None else None,
             "data_documento": r.get("data_documento"),
         }
-        if r["tipo_incoerenza"] == "orfano":
-            acc["orfani"].append(voce)
+        tipo = r.get("tipo_incoerenza")
+        secchio = _SECCHI.get(tipo)
+        if secchio:
+            acc[secchio].append(voce)
         else:
-            acc["riparti_senza_documento"].append(voce)
+            acc["altro"].append({**voce, "tipo_incoerenza": tipo})
 
     return {
         "totale": len(righe),

@@ -101,6 +101,49 @@ def test_incoerenze_multi_account_non_mischiati():
         assert len(acc["riparti_senza_documento"]) == 0
 
 
+def test_incoerenze_nuovi_tipi_nel_secchio_giusto():
+    """riparto_senza_quote e riparto_segno_incoerente (view 20260827214500) hanno un
+    secchio proprio. Regressione: con l'`else` catch-all di prima finivano entrambi in
+    riparti_senza_documento e l'alert diceva una cosa per un'altra."""
+    righe = [
+        {"user_id": "user-1", "tipo_incoerenza": "riparto_senza_quote",
+         "file_origine": "IT0526289001426211_FCNYM.xml", "riparto_id": "a8143a95",
+         "fornitore": "07516911000", "importo": 118.10, "data_documento": "2026-07-01"},
+        {"user_id": "user-1", "tipo_incoerenza": "riparto_segno_incoerente",
+         "file_origine": "IT02355260981_eCsBh.xml", "riparto_id": "395b6758",
+         "fornitore": "15162191009", "importo": -307.30, "data_documento": "2026-02-01"},
+    ]
+    sb, p = _patch_incoerenze(righe)
+    with p:
+        out = riparto.riparto_incoerenze()
+
+    acc = out["account"][0]
+    assert out["totale"] == 2
+    assert len(acc["riparti_senza_quote"]) == 1
+    assert acc["riparti_senza_quote"][0]["riparto_id"] == "a8143a95"
+    assert len(acc["riparti_segno_incoerente"]) == 1
+    assert acc["riparti_segno_incoerente"][0]["importo"] == -307.30
+    # I secchi storici restano vuoti: nessuna contaminazione.
+    assert acc["orfani"] == []
+    assert acc["riparti_senza_documento"] == []
+
+
+def test_incoerenze_tipo_sconosciuto_non_inquina_i_secchi():
+    """Un tipo non previsto finisce in 'altro' con la sua etichetta, non in un secchio
+    esistente: meglio visibile e non classificato che silenziosamente sbagliato."""
+    righe = [
+        {"user_id": "user-1", "tipo_incoerenza": "tipo_futuro_ignoto", "file_origine": "x.xml",
+         "riparto_id": None, "fornitore": "F", "importo": 1.0, "data_documento": "2026-01-01"},
+    ]
+    sb, p = _patch_incoerenze(righe)
+    with p:
+        out = riparto.riparto_incoerenze()
+    acc = out["account"][0]
+    assert acc["riparti_senza_documento"] == []
+    assert len(acc["altro"]) == 1
+    assert acc["altro"][0]["tipo_incoerenza"] == "tipo_futuro_ignoto"
+
+
 def test_incoerenze_importo_none_non_solleva():
     righe = [
         {"user_id": "user-1", "tipo_incoerenza": "orfano", "file_origine": "a.xml",
