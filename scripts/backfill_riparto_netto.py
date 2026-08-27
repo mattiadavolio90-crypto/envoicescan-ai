@@ -100,6 +100,7 @@ def main() -> int:
 
     tot_corretti = 0
     tot_delta = 0.0
+    tot_saltati = 0
 
     for uid in user_ids:
         riparti = (
@@ -121,6 +122,21 @@ def main() -> int:
             lordo = round(float(rip["importo_totale"] or 0), 2)
             delta = round(lordo - netto, 2)
             if abs(delta) <= SOGLIA:
+                continue
+
+            if netto <= 0:
+                # Netto reale <= 0: la fattura-origine è (o contiene solo) una nota
+                # di credito che azzera/inverte l'imponibile. Un riparto costi di
+                # gruppo negativo non è rappresentabile (constraint DB
+                # riparto_costi_catena_importo_totale_check) e la distribuzione non
+                # è pensata per importi negativi. Lo si lascia com'è e lo si segnala:
+                # è una pulizia dati a parte (la NC non andrebbe ripartita).
+                tot_saltati += 1
+                print(
+                    f"  [{rip['anno']}-{rip['mese']:02d}] {rip.get('fornitore') or '?':<14} "
+                    f"{(rip.get('descrizione') or '')[:38]:<38} "
+                    f"SALTATO — netto {netto:>10.2f} <= 0 (nota di credito, pulizia a parte)"
+                )
                 continue
 
             print(
@@ -147,6 +163,8 @@ def main() -> int:
         f"\n{modo}: {tot_corretti} riparti da correggere, "
         f"sovra-distribuzione totale {tot_delta:+.2f} €"
     )
+    if tot_saltati:
+        print(f"{tot_saltati} riparti SALTATI (netto <= 0, note di credito): pulizia dati a parte.")
     if not args.apply and tot_corretti:
         print("Rilancia con --apply per scrivere. Ricordati: fuori orario cliente.")
     return 0
