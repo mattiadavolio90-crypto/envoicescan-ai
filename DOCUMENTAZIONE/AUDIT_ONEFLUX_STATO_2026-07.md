@@ -336,7 +336,13 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
 - **Il mock globale di `tests/conftest.py` va ripensato** — `openai`, `requests`,
   `argon2`, `xmltodict`, `supabase`, `tenacity` sono **tutti installati davvero**:
   il conftest sta oscurando librerie funzionanti e rende vacui i test sui rami
-  `except`. Toglierlo significa rilanciare 10.000 test e sistemare le ricadute.
+  `except`. **Misurato il 27/8** (un modulo per volta sulla suite intera, poi
+  tutti insieme): togliendoli tutti tranne `streamlit` — l'unico davvero non
+  installato — restano **10 test da sistemare**, non l'intera suite. Quattro
+  (`xmltodict`, `requests`, `postgrest`, `fitz`) escono a **costo zero**;
+  `supabase` va tolto **insieme** a `requests`+`postgrest` (da solo dà 122
+  errori perché il `supabase` vero importa `requests.auth` da un MagicMock).
+  Tabella completa e ordine di lavoro in `PROMPT_PROSSIMA_SESSIONE.md`.
   `tests/test_eccezioni_moduli_mockati.py` documenta il problema: **quando
   qualcuno lo rimuoverà quel file diventerà rosso, ed è il segnale atteso.**
 - ~~**`.coveragerc` non è un gate**~~ — **CHIUSA l'8/8/2026** (commit
