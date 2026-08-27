@@ -81,6 +81,22 @@ def _pesi_categoria_fattura(sb, user_id: str, file_origine: str) -> Optional[Dic
     pesi ma non fanno fallire nulla. Se il totale imponibile è 0 (fattura interamente a
     importo nullo, caso raro) → None: non c'è nulla da ripartire per categoria.
     """
+    res = _pesi_e_netto_categoria_fattura(sb, user_id, file_origine)
+    return res[0] if res is not None else None
+
+
+def _pesi_e_netto_categoria_fattura(
+    sb, user_id: str, file_origine: str
+) -> Optional[Tuple[Dict[str, float], float]]:
+    """Come `_pesi_categoria_fattura` ma ritorna anche il NETTO imponibile reale
+    (somma `totale_riga` delle righe vive con categoria).
+
+    Serve a `esplodi_quote_per_categoria` per riportare `importo_totale` del riparto
+    al netto quando è stato registrato lordo (flusso `/api/riparto/da-coda`, che al
+    momento della ripartizione usa `ImportoTotaleDocumento` IVA inclusa perché le righe
+    non erano ancora atterrate). `/api/riparto/da-fattura` registra già il netto e qui
+    netto==importo_totale, nessun cambiamento.
+    """
     righe = (
         sb.table("fatture")
         .select("categoria, totale_riga")
@@ -108,7 +124,7 @@ def _pesi_categoria_fattura(sb, user_id: str, file_origine: str) -> Optional[Dic
     # no, quella categoria semplicemente non riceve quota (peso 0), corretto.
     if abs(tot) < 0.01 or not acc:
         return None
-    return {cat: (imp / tot) for cat, imp in acc.items()}
+    return ({cat: (imp / tot) for cat, imp in acc.items()}, round(tot, 2))
 
 
 def _spezza_importo_per_pesi(importo: float, pesi: Dict[str, float]) -> List[Dict[str, Any]]:
@@ -152,13 +168,14 @@ def esplodi_quote_per_categoria(
     NON ricalcola le quote mensili: il chiamante lo fa (il router via
     _post_scrittura_riparto; il worker esplicitamente). Così una sola RPC per scrittura.
     """
-    pesi = _pesi_categoria_fattura(sb, user_id, file_origine)
-    if pesi is None:
+    pesi_netto = _pesi_e_netto_categoria_fattura(sb, user_id, file_origine)
+    if pesi_netto is None:
         logger.info(
             "esplodi_quote_per_categoria: riparto %s file %s senza righe vive → resta legacy",
             riparto_id, file_origine,
         )
         return False
+    pesi, netto_reale = pesi_netto
 
     quote = (
         sb.table("riparto_costi_catena_quote")
@@ -173,7 +190,7 @@ def esplodi_quote_per_categoria(
     # regola/importo): li rileggiamo invariati, qui si toccano solo le quote.
     padre = (
         sb.table("riparto_costi_catena")
-        .select("tipo, regola, importo_totale")
+        .select("origine, tipo, regola, importo_totale")
         .eq("id", riparto_id)
         .eq("user_id", user_id)
         .limit(1)
@@ -186,6 +203,25 @@ def esplodi_quote_per_categoria(
         )
         return False
     rip = padre[0]
+
+    # Riporta l'importo al NETTO reale quando il riparto è stato registrato lordo.
+    # `/api/riparto/da-coda` crea il riparto PRIMA dell'atterraggio delle righe usando
+    # `ImportoTotaleDocumento` (IVA inclusa) dai metadati di coda; qui, atterrate le
+    # righe, il netto imponibile vero è `sum(totale_riga)`. `/api/riparto/da-fattura`
+    # registra già il netto → netto_reale == importo_totale e non cambia niente.
+    # Solo per origine 'fattura': un costo di gruppo MANUALE non ha righe da cui
+    # ricavare un netto e il suo importo è quello inserito dall'utente.
+    importo_riparto = float(rip["importo_totale"] or 0)
+    fattore_netto = 1.0
+    if rip.get("origine") == "fattura" and abs(importo_riparto - netto_reale) > 0.01:
+        if importo_riparto > 0.01:
+            fattore_netto = netto_reale / importo_riparto
+        logger.info(
+            "esplodi_quote_per_categoria: riparto %s importo %.2f → netto reale %.2f "
+            "(scarto lordo/netto rientrato)",
+            riparto_id, importo_riparto, netto_reale,
+        )
+        importo_riparto = netto_reale
 
     # Se le quote sono GIÀ per-categoria (categoria valorizzata) non ri-esplodo: sono
     # già nel modello nuovo (evita di esplodere un'esplosione). Con forza=True invece
@@ -205,6 +241,13 @@ def esplodi_quote_per_categoria(
         s = per_sede.setdefault(rid, {"perc": 0.0, "importo": 0.0})
         s["perc"] = max(s["perc"], float(q.get("quota_perc") or 0))
         s["importo"] += float(q.get("quota_importo") or 0)
+
+    # Le quote esistenti sono in scala all'importo vecchio (lordo per i riparti da
+    # coda): riportale alla stessa scala del netto. `fattore_netto` è 1.0 quando non
+    # c'è scarto, così i riparti già corretti / da-fattura non si muovono.
+    if fattore_netto != 1.0:
+        for s in per_sede.values():
+            s["importo"] = round(s["importo"] * fattore_netto, 2)
 
     nuove: List[Dict[str, Any]] = []
     for rid, s in per_sede.items():
@@ -230,7 +273,7 @@ def esplodi_quote_per_categoria(
         "p_user_id": user_id,
         "p_tipo": rip["tipo"],
         "p_regola": rip["regola"],
-        "p_importo_totale": float(rip["importo_totale"] or 0),
+        "p_importo_totale": round(importo_riparto, 2),
         "p_quote": [
             {k: v for k, v in n.items() if k != "riparto_id"} for n in nuove
         ],

@@ -183,3 +183,77 @@ def test_senza_righe_vive_resta_legacy():
     sb = _FakeSB([], _QUOTE_LEGACY, _PADRE)
     assert esplodi_quote_per_categoria(sb, "user-1", "riparto-1", "f.xml", forza=True) is False
     assert sb.rpc_calls == []
+
+
+# ─── Riparto registrato LORDO (flusso da-coda): rientro al netto ──────────────
+# /api/riparto/da-coda registra importo_totale = ImportoTotaleDocumento (IVA inclusa)
+# perché le righe non sono ancora atterrate. All'atterraggio esplodi_quote_per_categoria
+# deve riportare importo_totale e quote al netto reale (sum(totale_riga)).
+
+# C.E.D.A.G. reale: netto 3425.00, lordo 4178.50 (IVA 22%), 50/50 su 2 sedi.
+_RIGHE_NETTE = [
+    {"categoria": "SERVIZI E CONSULENZE", "totale_riga": 2000.00},
+    {"categoria": "Da Classificare", "totale_riga": 1425.00},
+]
+_PADRE_LORDO_FATTURA = {
+    "origine": "fattura", "tipo": "generale", "regola": "equa", "importo_totale": 4178.50,
+}
+# Quote monolitiche in scala al LORDO: 4178.50 / 2 = 2089.25 per sede.
+_QUOTE_LORDE = [
+    {"id": "q1", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 2089.25, "categoria": None},
+    {"id": "q2", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 2089.25, "categoria": None},
+]
+
+
+def test_da_coda_lordo_rientra_al_netto():
+    sb = _FakeSB(_RIGHE_NETTE, _QUOTE_LORDE, _PADRE_LORDO_FATTURA)
+    assert esplodi_quote_per_categoria(sb, "user-1", "riparto-1", "f.xml") is True
+    nome, params = sb.rpc_calls[-1]
+    assert params["p_importo_totale"] == pytest.approx(3425.00, abs=0.01)
+    quote = params["p_quote"]
+    assert sum(q["quota_importo"] for q in quote) == pytest.approx(3425.00, abs=0.01)
+    # 50/50: ogni sede pareggia la metà del netto.
+    per_sede = {}
+    for q in quote:
+        per_sede.setdefault(q["ristorante_id"], 0.0)
+        per_sede[q["ristorante_id"]] += q["quota_importo"]
+    for tot in per_sede.values():
+        assert tot == pytest.approx(1712.50, abs=0.02)
+
+
+def test_da_fattura_netto_non_si_muove():
+    """origine='fattura' ma importo già netto (da-fattura): nessuna rettifica."""
+    padre_netto = {**_PADRE_LORDO_FATTURA, "importo_totale": 3425.00}
+    quote_nette = [
+        {"id": "q1", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 1712.50, "categoria": None},
+        {"id": "q2", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 1712.50, "categoria": None},
+    ]
+    sb = _FakeSB(_RIGHE_NETTE, quote_nette, padre_netto)
+    esplodi_quote_per_categoria(sb, "user-1", "riparto-1", "f.xml")
+    _, params = sb.rpc_calls[-1]
+    assert params["p_importo_totale"] == pytest.approx(3425.00, abs=0.01)
+
+
+def test_costo_manuale_lordo_non_viene_toccato():
+    """origine='manuale': l'importo è quello inserito dall'utente, niente netto da righe."""
+    padre_manuale = {"origine": "manuale", "tipo": "generale", "regola": "equa", "importo_totale": 4178.50}
+    sb = _FakeSB(_RIGHE_NETTE, _QUOTE_LORDE, padre_manuale)
+    esplodi_quote_per_categoria(sb, "user-1", "riparto-1", "f.xml")
+    _, params = sb.rpc_calls[-1]
+    assert params["p_importo_totale"] == pytest.approx(4178.50, abs=0.01)
+
+
+def test_da_coda_lordo_idempotente():
+    """Rieseguire sul riparto già rientrato al netto non lo muove più."""
+    padre_gia_netto = {**_PADRE_LORDO_FATTURA, "importo_totale": 3425.00}
+    quote_gia_nette = [
+        {"id": "q1", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 1000.00, "categoria": "SERVIZI E CONSULENZE"},
+        {"id": "q2", "ristorante_id": "sede-a", "quota_perc": 50.0, "quota_importo": 712.50, "categoria": "Da Classificare"},
+        {"id": "q3", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 1000.00, "categoria": "SERVIZI E CONSULENZE"},
+        {"id": "q4", "ristorante_id": "sede-b", "quota_perc": 50.0, "quota_importo": 712.50, "categoria": "Da Classificare"},
+    ]
+    sb = _FakeSB(_RIGHE_NETTE, quote_gia_nette, padre_gia_netto)
+    esplodi_quote_per_categoria(sb, "user-1", "riparto-1", "f.xml", forza=True)
+    _, params = sb.rpc_calls[-1]
+    assert params["p_importo_totale"] == pytest.approx(3425.00, abs=0.01)
+    assert sum(q["quota_importo"] for q in params["p_quote"]) == pytest.approx(3425.00, abs=0.01)

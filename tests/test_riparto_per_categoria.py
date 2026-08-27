@@ -13,6 +13,7 @@ import pytest
 from services.riparto_service import (
     _spezza_importo_per_pesi,
     _pesi_categoria_fattura,
+    _pesi_e_netto_categoria_fattura,
     _proietta_riparto,
     _mesi_nella_finestra,
 )
@@ -119,6 +120,22 @@ def test_pesi_righe_senza_categoria_ignorate():
     pesi = _pesi_categoria_fattura(_FakeSB(rows), "u", "f.xml")
     assert set(pesi.keys()) == {"CARNE"}
     assert pesi["CARNE"] == pytest.approx(1.0, abs=1e-9)
+
+
+# ─── _pesi_e_netto_categoria_fattura: il netto imponibile reale ──────────────
+
+def test_pesi_e_netto_ritorna_somma_totale_riga():
+    rows = [
+        {"categoria": "SERVIZI E CONSULENZE", "totale_riga": 2000.0},
+        {"categoria": "Da Classificare", "totale_riga": 1425.0},
+    ]
+    pesi, netto = _pesi_e_netto_categoria_fattura(_FakeSB(rows), "u", "f.xml")
+    assert netto == pytest.approx(3425.0, abs=0.01)
+    assert sum(pesi.values()) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_pesi_e_netto_none_senza_righe():
+    assert _pesi_e_netto_categoria_fattura(_FakeSB([]), "u", "f.xml") is None
 
 
 # ─── _proietta_riparto (Lettura B: quote → righe sul PV) ─────────────────────

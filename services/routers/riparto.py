@@ -453,6 +453,11 @@ def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Head
     if not fo:
         raise HTTPException(status_code=400, detail="Metadati fattura incompleti (nome_file assente): impossibile ripartire dalla coda")
     try:
+        # `importo_totale` dei metadati di coda è `ImportoTotaleDocumento` (IVA inclusa):
+        # qui le righe non sono ancora atterrate, quindi il netto imponibile non è noto.
+        # È un valore PROVVISORIO: all'atterraggio sulla sede tecnica il worker chiama
+        # `esplodi_quote_per_categoria`, che riporta `importo_totale` e le quote al netto
+        # reale (`sum(totale_riga)`). `/api/riparto/da-fattura` invece usa già il netto.
         importo = round(float(meta.get("importo_totale") or 0), 2)
     except (TypeError, ValueError):
         importo = 0.0
