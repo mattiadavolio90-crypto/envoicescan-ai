@@ -36,7 +36,6 @@ type FileEntry = {
   fornitore?: string;
   data_documento?: string;
   needs_review?: number;
-  ai_pending?: boolean;
   error?: string;
   skip_motivo?: string;
   sede_assegnata?: string;
@@ -185,7 +184,6 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                     fornitore: data.fornitore,
                     data_documento: data.data_documento,
                     needs_review: data.needs_review_count,
-                    ai_pending: data.ai_pending ?? false,
                     sede_assegnata: data.sede_assegnata,
                     cross_sede: data.cross_sede ?? false,
                     queue_created: data.queue_created ?? undefined,
@@ -298,21 +296,11 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                           {entry.cross_sede && " (altra sede)"}
                         </span>
                       )}
-                      {/* Con ai_pending il conteggio needs_review è ancora
-                          provvisorio (solo regole+dizionario): mostrarlo come
-                          definitivo direbbe al cliente un numero che cambia da
-                          solo pochi secondi dopo. */}
-                      {entry.ai_pending ? (
-                        <span className="text-sky-600 ml-1">
-                          · categorizzazione in corso, aggiorna fra poco
+                      {(entry.needs_review ?? 0) > 0 && (
+                        <span className="text-amber-500 ml-1">
+                          <AlertTriangle className="size-3 inline mr-0.5" />
+                          {entry.needs_review} {entry.needs_review === 1 ? "riga ha" : "righe hanno"} categoria da verificare
                         </span>
-                      ) : (
-                        (entry.needs_review ?? 0) > 0 && (
-                          <span className="text-amber-500 ml-1">
-                            <AlertTriangle className="size-3 inline mr-0.5" />
-                            {entry.needs_review} {entry.needs_review === 1 ? "riga ha" : "righe hanno"} categoria da verificare
-                          </span>
-                        )
                       )}
                     </p>
                   )}
