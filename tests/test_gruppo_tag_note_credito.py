@@ -55,12 +55,18 @@ def test_migration_esiste():
 
 @pytest.mark.parametrize("rpc", RPC_DI_SPESA)
 def test_rpc_di_spesa_non_filtra_sul_prezzo(rpc):
-    """Il filtro sul prezzo in una RPC di spesa e' il difetto stesso."""
+    """Il difetto era il filtro nella WHERE, che toglie le note di credito dalla
+    somma. Un `FILTER (WHERE ...)` su una singola colonna aggregata e' un'altra
+    cosa: non tocca `spesa`, serve a costruire il numeratore del prezzo medio.
+    """
     corpo = _corpo_funzione(rpc)
-    assert "prezzo_unitario" not in corpo, (
-        f"{rpc} aggrega spesa: filtrare su prezzo_unitario non scala le note "
-        f"di credito e sovrastima il totale di catena"
+    # Il filtro incriminato viveva nella clausola WHERE, dopo `deleted_at`.
+    assert "AND f.prezzo_unitario > 0" not in corpo, (
+        f"{rpc} aggrega spesa: filtrare su prezzo_unitario nella WHERE non scala "
+        f"le note di credito e sovrastima il totale di catena"
     )
+    # `spesa` deve restare la somma di TUTTE le righe.
+    assert "sum(f.totale_riga) AS spesa" in corpo
 
 
 @pytest.mark.parametrize("rpc", RPC_DI_SPESA)
@@ -96,3 +102,66 @@ def test_gruppo_prezzi_categoria_non_e_toccata():
         "la migration non deve ridefinire gruppo_prezzi_categoria: li' il "
         "filtro sul prezzo e' corretto"
     )
+
+
+# ─── Il prezzo medio di catena deve restare coerente ──────────────────────────
+# Trovato dalla review delle inerenze (27/8): togliere il filtro dalla spesa
+# senza toccare la quantita' (giustamente protetta da `CASE WHEN quantita > 0`)
+# rendeva il prezzo medio un ibrido — numeratore NETTO dei resi, denominatore
+# LORDO — cioe' sottostimato. Distorsione misurata 0,10% su LAND DEI SAPORI:
+# sotto l'arrotondamento, ma ASIMMETRICA fra sedi, e la UI di catena colora
+# min/max per dire quale sede compra meglio.
+
+def test_analisi_espone_spesa_prezzo_valido():
+    """La colonna separata e' il numeratore omogeneo alla quantita'."""
+    corpo = _corpo_funzione("gruppo_tag_analisi")
+    assert "spesa_prezzo_valido" in corpo
+    assert "FILTER (WHERE f.prezzo_unitario > 0)" in corpo
+
+
+def test_analisi_dichiara_la_colonna_nel_returns_table():
+    """Senza il RETURNS TABLE aggiornato PostgREST non restituirebbe la colonna."""
+    sql = MIGRATION.read_text(encoding="utf-8")
+    import re
+    m = re.search(
+        r"CREATE OR REPLACE FUNCTION public\.gruppo_tag_analisi.*?RETURNS TABLE\((.*?)\)",
+        sql, re.S,
+    )
+    assert m and "spesa_prezzo_valido numeric" in m.group(1)
+
+
+def test_analisi_ha_il_drop_perche_cambia_la_firma():
+    """`CREATE OR REPLACE` non puo' cambiare il tipo di ritorno (errore 42P13).
+
+    Senza il DROP la migration fallirebbe in applicazione, non a runtime: e' il
+    genere di errore che si scopre solo provando ad applicarla.
+    """
+    sql = MIGRATION.read_text(encoding="utf-8")
+    assert "DROP FUNCTION IF EXISTS public.gruppo_tag_analisi(uuid[], text[], date, date);" in sql
+    assert sql.index("DROP FUNCTION IF EXISTS public.gruppo_tag_analisi") < sql.index(
+        "CREATE OR REPLACE FUNCTION public.gruppo_tag_analisi"
+    ), "il DROP deve precedere il CREATE"
+
+
+def test_il_router_divide_la_spesa_giusta():
+    """Il consumatore deve usare `spesa_prezzo_valido`, non `spesa`, al numeratore."""
+    import inspect
+    from services.routers import gruppo as G
+
+    src = inspect.getsource(G.gruppo_tag_analisi)
+    assert "spesa_pv / qta" in src, (
+        "il prezzo medio deve dividere la spesa a prezzo valido per la quantita': "
+        "usare `spesa` (netta dei resi) su una quantita' lorda lo sottostima"
+    )
+    assert "round(spesa / qta, 2)" not in src
+
+
+def test_il_router_regge_la_rpc_pre_migration():
+    """Fallback: se il codice arriva prima della migration, la colonna non c'e'
+    ancora e il prezzo medio deve restare quello di prima, non sparire."""
+    import inspect
+    from services.routers import gruppo as G
+
+    src = inspect.getsource(G.gruppo_tag_analisi)
+    assert 'r.get("spesa_prezzo_valido") is not None' in src
+    assert "else spesa" in src

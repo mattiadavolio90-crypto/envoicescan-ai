@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
-import { fetchNettoMese, scorporoNetto, type NettoMese } from "@/app/(app)/margini/periodi";
+import { scorporoNetto, type NettoMese } from "@/app/(app)/margini/periodi";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 // Forma allineata a /api/ricavi/giornalieri (GET → items[], POST upsert per data).
@@ -133,11 +133,11 @@ function IncassoDialog({ open, incasso, dataDefault, onClose, onSaved }: DialogP
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-[calc(100vw-2rem)] flex-col rounded-2xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{incasso ? "Modifica incasso" : "Nuovo incasso"}</DialogTitle>
         </DialogHeader>
-        <div className="mt-1 space-y-3">
+        <div className="-mx-1 mt-1 min-h-0 flex-1 space-y-3 overflow-y-auto px-1">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Giorno *</label>
             <Input type="date" value={data} onChange={(e) => setData(e.target.value)} disabled={!!incasso} />
@@ -163,22 +163,22 @@ function IncassoDialog({ open, incasso, dataDefault, onClose, onSaved }: DialogP
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             Inserisci gli importi <strong>lordi</strong> (come sul registratore di cassa). Lo scorporo IVA è automatico.
           </p>
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium active:scale-[0.98]"
-            >
-              Annulla
-            </button>
-            <button
-              onClick={salva}
-              disabled={saving}
-              className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground active:scale-[0.98] disabled:opacity-50"
-            >
-              {saving ? "Salvo…" : "Salva"}
-            </button>
-          </div>
+        </div>
+        <div className="flex shrink-0 gap-2 border-t border-border pt-3">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium active:scale-[0.98]"
+          >
+            Annulla
+          </button>
+          <button
+            onClick={salva}
+            disabled={saving}
+            className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground active:scale-[0.98] disabled:opacity-50"
+          >
+            {saving ? "Salvo…" : "Salva"}
+          </button>
         </div>
       </DialogContent>
     </Dialog>
@@ -206,14 +206,30 @@ export function MobileIncassi() {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ data_da: primoGiornoISO(a, m), data_a: ultimoGiornoISO(a, m) });
-      const [res, netto] = await Promise.all([
+      const [res, modalita] = await Promise.all([
         fetch(`/api/ricavi/giornalieri?${qs}`),
-        fetchNettoMese(a, m + 1).catch(() => null),
+        // Solo la modalita': il netto dei giornalieri ce l'abbiamo gia' dalla
+        // chiamata qui accanto. `fetchNettoMese` (desktop) rifarebbe la stessa
+        // GET — stessa regola, un round-trip in meno.
+        fetch(`/api/ricavi/modalita?anno=${a}&mese=${m + 1}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
       ]);
       if (!res.ok) throw new Error();
       const d: IncassiResponse = await res.json();
       setRisposta(d);
-      setNettoAutorevole(netto);
+      setNettoAutorevole(
+        modalita?.modalita === "mensile"
+          ? {
+              netto: scorporoNetto(
+                modalita.fatturato_iva10 ?? 0,
+                modalita.fatturato_iva22 ?? 0,
+                modalita.altri_ricavi_noiva ?? 0,
+              ),
+              mensile: true,
+            }
+          : { netto: d.totale_netto ?? 0, mensile: false },
+      );
     } catch {
       toast.error("Errore caricamento incassi");
     } finally {

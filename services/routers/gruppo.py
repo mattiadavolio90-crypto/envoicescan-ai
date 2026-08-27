@@ -2141,6 +2141,15 @@ def gruppo_tag_analisi(
             r = by_rid.get(rid)
             spesa = float(r.get("spesa") or 0) if r else 0.0
             qta = float(r.get("quantita") or 0) if r else 0.0
+            # Numeratore del prezzo medio: la spesa delle sole righe a prezzo
+            # positivo, omogenea con `quantita` (anch'essa al lordo dei resi).
+            # `spesa` e' netta delle note di credito e serve a mostrare il costo
+            # reale, non a dividere. Fallback su `spesa` per compatibilita' con la
+            # RPC pre-migration, che non espone ancora la colonna.
+            spesa_pv = float(
+                r.get("spesa_prezzo_valido") if r and r.get("spesa_prezzo_valido") is not None
+                else spesa
+            )
             per_pv.append(TagAnalisiPV(
                 ristorante_id=rid,
                 nome=rid_to_nome[rid],
@@ -2149,7 +2158,7 @@ def gruppo_tag_analisi(
                 n_righe=int(r.get("n_righe") or 0) if r else 0,
                 n_fornitori=int(r.get("n_fornitori") or 0) if r else 0,
                 incidenza_pct=round(spesa / tot * 100, 1) if tot > 0 else 0.0,
-                prezzo_medio=round(spesa / qta, 2) if qta > 0 else None,
+                prezzo_medio=round(spesa_pv / qta, 2) if qta > 0 else None,
             ))
         per_pv.sort(key=lambda x: -x.spesa)
 

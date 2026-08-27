@@ -25,20 +25,41 @@
 -- diventano uguali a quelli già mostrati sulla sede singola. Non è una perdita
 -- di dati: è la rimozione di una sovrastima.
 --
+-- IL PREZZO MEDIO RESTA COERENTE: `gruppo_tag_analisi` espone una colonna nuova
+-- `spesa_prezzo_valido` (spesa delle sole righe a prezzo > 0). Il prezzo medio di
+-- catena si calcola da quella diviso `quantita` — due termini omogenei — mentre
+-- `spesa` resta la grandezza netta da mostrare al cliente. Senza questa colonna
+-- il fix avrebbe allineato la spesa e disallineato il prezzo (numeratore netto,
+-- denominatore lordo): distorsione misurata 0,10% su LAND DEI SAPORI, sotto
+-- l'arrotondamento, ma ASIMMETRICA fra sedi — e la UI di catena colora min/max
+-- per dire quale sede compra meglio.
+--
 -- COSA NON CAMBIA: `gruppo_prezzi_categoria` (20260617220000) mantiene il suo
 -- `prezzo_unitario > 0` — lì la grandezza È un prezzo medio ponderato e le note
 -- di credito vanno davvero escluse. `gruppo_tag_analisi.quantita` era già
 -- protetta a parte da `CASE WHEN f.quantita > 0`, quindi un reso non sottrae
 -- chili: scala la spesa, non il volume acquistato.
 
+-- DROP necessario: `CREATE OR REPLACE` non puo' cambiare il tipo di ritorno, e
+-- qui RETURNS TABLE guadagna la colonna `spesa_prezzo_valido` (errore 42P13).
+-- La finestra fra DROP e CREATE e' dentro la transazione della migration.
+DROP FUNCTION IF EXISTS public.gruppo_tag_analisi(uuid[], text[], date, date);
+
 CREATE OR REPLACE FUNCTION public.gruppo_tag_analisi(
     p_ristorante_ids uuid[], p_descrizione_keys text[], p_data_da date, p_data_a date)
-RETURNS TABLE(ristorante_id uuid, spesa numeric, quantita numeric, n_righe bigint, n_fornitori bigint)
+RETURNS TABLE(ristorante_id uuid, spesa numeric, spesa_prezzo_valido numeric, quantita numeric, n_righe bigint, n_fornitori bigint)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
 AS $function$
     SELECT
         f.ristorante_id,
         sum(f.totale_riga) AS spesa,
+        -- Spesa delle sole righe a prezzo positivo: e' il numeratore da usare per
+        -- il prezzo medio, che ha per denominatore una quantita' anch'essa al
+        -- lordo dei resi. Dividere la spesa NETTA per la quantita' LORDA darebbe
+        -- un prezzo sottostimato. La sede-singola fa gia' questa separazione
+        -- (tag_analytics_service.py: `spesa_totale` da tutte le righe, prezzo da
+        -- `_solo_prezzo_valido`); qui la si replica.
+        sum(f.totale_riga) FILTER (WHERE f.prezzo_unitario > 0) AS spesa_prezzo_valido,
         sum(CASE WHEN f.quantita > 0 THEN f.quantita ELSE 0 END) AS quantita,
         count(*)::bigint AS n_righe,
         count(DISTINCT f.fornitore)::bigint AS n_fornitori
