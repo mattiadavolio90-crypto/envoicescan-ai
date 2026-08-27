@@ -26125,6 +26125,11 @@
               }
             ],
             "title": "Queue Created"
+          },
+          "ai_pending": {
+            "type": "boolean",
+            "title": "Ai Pending",
+            "default": false
           }
         },
         "type": "object",

@@ -1689,6 +1689,11 @@ class UploadInvoiceResponse(BaseModel):
     # gruppo. queue_created=False se il file era gia' in coda (re-upload idempotente).
     queue_id: Optional[int] = None
     queue_created: Optional[bool] = None
+    # True = la categorizzazione AI e' stata rimandata a dopo la risposta HTTP
+    # (fattura sopra _UPLOAD_AI_SYNC_MAX_ROWS). In quel caso needs_review_count
+    # riflette solo regole+dizionario e sara' rivisto quando l'AI finisce: il
+    # frontend deve dirlo, non spacciarlo per conteggio definitivo.
+    ai_pending: bool = False
 
 
 def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
@@ -1755,6 +1760,80 @@ def upload_start_session(authorization: Optional[str] = Header(None)):
     return {"ok": True, "nuovi_da": now_iso}
 
 
+# Sopra questa soglia di righe la categorizzazione AI non viene piu' attesa dalla
+# risposta HTTP: Next.js abortisce l'upload a 30s
+# (apps/web/src/app/api/upload/invoice/route.ts) e una fattura grande non ci sta.
+# Prima il risultato era il peggiore possibile: il cliente vedeva "Errore di rete"
+# su una fattura in realta' salvata, e l'AI continuava a girare per nessuno.
+_UPLOAD_AI_SYNC_MAX_ROWS = int(os.environ.get("UPLOAD_AI_SYNC_MAX_ROWS", "100"))
+
+
+def _ai_va_in_background(n_righe: int) -> bool:
+    """True se la categorizzazione AI di questa fattura va rimandata a dopo la
+    risposta HTTP. Estratta dall'endpoint per essere verificabile senza montare
+    l'intero percorso di parsing/salvataggio."""
+    return n_righe > _UPLOAD_AI_SYNC_MAX_ROWS
+
+
+def _upload_ai_categorizzazione_async(
+    user_id: str, ristorante_id: Optional[str], filename: str,
+) -> None:
+    """Categorizzazione AI post-upload fuori dal ciclo di risposta (fatture grandi).
+
+    ATTENZIONE — i ContextVar NON sopravvivono al passaggio in BackgroundTasks:
+    il task gira DOPO il `finally` dell'endpoint, che li ha gia' azzerati (verificato
+    empiricamente: senza le due `set_` qui sotto il task legge `None`). Vanno quindi
+    re-impostati QUI dentro, non ereditati. Ogni task ha il proprio contesto nel
+    thread anyio in cui gira, quindi upload concorrenti di tenant diversi restano
+    isolati (verificato con 6 tenant in parallelo).
+
+    Senza `force_local_worker_path(True)`: su Railway WORKER_BASE_URL e' settata
+    anche in questo processo, quindi classifica_via_worker farebbe una POST HTTP del
+    worker verso se stesso -> fallback "Da Classificare" silenzioso (cert. 24/08).
+    Senza `set_ai_context`: ai_usage_events resta vuoto e il costo non e' tracciato.
+
+    Nessuna deadline: qui nessuno aspetta la risposta, quindi l'AI puo' prendersi
+    il tempo che serve (e' il punto di spostarla in background).
+    """
+    from services import get_supabase_client
+    from services.worker_client import force_local_worker_path
+
+    force_local_worker_path(True)
+    try:
+        try:
+            from services.ai_service import set_ai_context, clear_ai_deadline
+            set_ai_context(ristorante_id=ristorante_id, user_id=user_id)
+            clear_ai_deadline()
+        except Exception:
+            pass
+
+        from services.upload_handler import _run_post_upload_ai_categorization
+
+        supabase_client = get_supabase_client()
+        logger.info(
+            "upload AI async START: file=%s ristorante=%s", filename, ristorante_id,
+        )
+        summary = _run_post_upload_ai_categorization(
+            supabase_client, user_id, [filename], ristorante_id,
+        )
+        _invalidate_fatture_rows_cache(ristorante_id)
+        if summary:
+            logger.info(
+                "upload AI async DONE: file=%s scanned=%s eligible=%s risolte=%s rimaste=%s",
+                filename,
+                summary.get("rows_scanned"),
+                summary.get("eligible_descriptions"),
+                summary.get("resolved_rows"),
+                len(summary.get("remaining_descriptions") or []),
+            )
+    except Exception as exc:
+        # Best-effort: qui non c'e' una request da rompere. Le righe restano
+        # 'Da Classificare' e visibili nel filtro, non si perde nulla.
+        logger.exception("upload AI async FALLITA per file=%s: %s", filename, exc)
+    finally:
+        force_local_worker_path(False)
+
+
 @app.post(
     "/api/upload/invoice",
     response_model=UploadInvoiceResponse,
@@ -1763,6 +1842,7 @@ def upload_start_session(authorization: Optional[str] = Header(None)):
 )
 async def upload_invoice(
     request: Request,
+    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(None),
     file: UploadFile = File(...),
 ) -> UploadInvoiceResponse:
@@ -2184,6 +2264,37 @@ async def upload_invoice(
     # path locale (classifica_con_ai in-process), senza richiamare il worker via
     # HTTP. Best-effort: un errore AI non deve far fallire il salvataggio.
     ai_auto_summary = None
+    # Fatture grandi: l'AI non entra nei 30s di Next.js. Invece di far scadere la
+    # richiesta (il cliente vedeva "Errore di rete" su una fattura salvata), si
+    # risponde subito e la categorizzazione prosegue in BackgroundTasks.
+    ai_pending = _ai_va_in_background(len(righe))
+    if ai_pending:
+        background_tasks.add_task(
+            _upload_ai_categorizzazione_async, user_id, ristorante_id, filename,
+        )
+        logger.info(
+            "upload AI rimandata in background: file=%s righe=%d (soglia %d)",
+            filename, len(righe), _UPLOAD_AI_SYNC_MAX_ROWS,
+        )
+        _invalidate_fatture_rows_cache(ristorante_id)
+        needs_review_count = sum(1 for r in righe if r.get("needs_review"))
+        fornitore = righe[0].get("Fornitore") if righe else None
+        data_doc = righe[0].get("Data_Documento") if righe else None
+        return UploadInvoiceResponse(
+            success=True,
+            filename=filename,
+            righe_salvate=result.get("righe", len(righe)),
+            righe_preesistenti=result.get("righe_preesistenti", 0),
+            needs_review_count=needs_review_count,
+            fornitore=str(fornitore) if fornitore else None,
+            data_documento=str(data_doc) if data_doc else None,
+            elapsed_ms=elapsed_ms,
+            routing_status=routing_status,
+            sede_assegnata=sede_assegnata,
+            cross_sede=cross_sede,
+            ai_pending=True,
+        )
+
     # Forza il path AI IN-PROCESS: se WORKER_BASE_URL fosse settata anche nel
     # processo worker (Railway), classifica_via_worker tenterebbe una HTTP POST del
     # worker verso se stesso (auth/timeout -> fallback Da Classificare silenzioso).
@@ -2201,6 +2312,22 @@ async def upload_invoice(
     try:
         from services.ai_service import set_ai_context
         set_ai_context(ristorante_id=ristorante_id, user_id=user_id)
+    except Exception:
+        pass
+    # Deadline condivisa dai 3 livelli di retry: Next.js abortisce questa richiesta
+    # a 30s (apps/web/src/app/api/upload/invoice/route.ts), oltre i quali i retry
+    # bruciano quota OpenAI per un client che non ascolta piu'. Il budget parte da
+    # quello che resta dei 30s dopo parsing e salvataggio, con un margine per
+    # comporre la risposta. Scaduto, subentra il fallback deterministico.
+    _ai_deadline_impostata = False
+    try:
+        from services.ai_service import set_ai_deadline, AI_BUDGET_DEFAULT_SECONDS
+        _budget = min(
+            AI_BUDGET_DEFAULT_SECONDS,
+            max(0.0, 27.0 - (elapsed_ms / 1000.0)),
+        )
+        set_ai_deadline(_budget)
+        _ai_deadline_impostata = True
     except Exception:
         pass
     try:
@@ -2229,6 +2356,12 @@ async def upload_invoice(
         logger.exception("upload AI post-categorizzazione FALLITA: %s", ai_post_err)
     finally:
         force_local_worker_path(False)
+        if _ai_deadline_impostata:
+            try:
+                from services.ai_service import clear_ai_deadline
+                clear_ai_deadline()
+            except Exception:
+                pass
 
     # Nuove righe salvate -> invalida la cache di lettura per questo ristorante,
     # altrimenti i KPI/articoli resterebbero stale fino allo scadere del TTL.
