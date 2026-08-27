@@ -667,6 +667,11 @@ function DettaglioCentroDialog({
   const [mensile, setMensile] = useState(false);
 
   useEffect(() => {
+    // setLoading(true) in testa come nel gemello (calcolo-tab.tsx:1116): il dialog
+    // resta MONTATO al cambio centro (onCentroChange muove una prop, non la key),
+    // quindi senza questo `loading` e' gia' false e durante il refetch comparirebbe
+    // il ramo "Nessun dato giornaliero" — un falso negativo che lampeggia.
+    setLoading(true);
     setGiorni([]);
     setMensile(false);
     const pad = (n: number) => String(n).padStart(2, "0");
