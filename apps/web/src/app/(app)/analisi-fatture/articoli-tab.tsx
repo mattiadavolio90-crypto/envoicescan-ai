@@ -661,7 +661,9 @@ const ArticoloRiga = memo(function ArticoloRiga({
                       ) : (
                         <Check className="size-2.5" />
                       )}
-                      Conferma
+                      {/* La colonna categoria mostra sempre "Scegli categoria": senza il
+                          nome qui il pulsante sembrerebbe confermare il nulla. */}
+                      Conferma «{currentCat}»
                     </button>
                   )}
                 </>
