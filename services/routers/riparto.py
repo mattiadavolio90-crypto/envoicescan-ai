@@ -1050,6 +1050,140 @@ def riparto_incoerenze() -> Dict[str, Any]:
 
 
 
+@router.post("/api/admin/riparto/auto-pulisci", dependencies=[Depends(_verify_worker_key)])
+def riparto_auto_pulisci(apply: bool = False, user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Manutenzione: ripara le incoerenze di riparto che hanno una correzione certa.
+
+    Stesso gate macchina di /api/admin/riparto/incoerenze (vedi la nota lì sopra:
+    è un consumatore automatico, non un admin che naviga). Dry-run per default:
+    senza `?apply=true` calcola e riporta cosa farebbe, senza scrivere.
+
+    Ripara due classi, quelle in cui la correzione è deducibile dai dati:
+
+      - riparto_segno_incoerente → ri-esplode le quote dal netto reale. Una nota
+        di credito ripartita col lordo positivo provvisorio torna negativa e si
+        netta nel mese come in un conto mono-sede. NON si elimina nulla: la NC e
+        la fattura di costo che storna sono entrambe documenti veri.
+      - riparto_senza_quote → ricrea le quote in parti uguali sulle sedi
+        operative, poi le spezza per categoria.
+
+    Le altre due classi NON si toccano, e non è una dimenticanza:
+
+      - orfano (fattura marcata ripartita ma senza riparto) e
+        riparto_senza_documento (riparto senza più righe dietro) sono le due
+        facce di un documento che manca. Smarcare o eliminare cancellerebbe
+        l'unica traccia rimasta di una fattura da recuperare — è esattamente il
+        caso delle 2 TOYOTA di agosto 2026, dove il riparto orfano è ciò che ha
+        permesso di accorgersi della perdita. Vanno risolte recuperando il
+        documento, non nascondendo il sintomo.
+
+    Idempotente: ciò che è già coerente non compare nella view e non viene
+    toccato. Al termine ricalcola le quote mensili dei (account, mese) toccati —
+    è quello che aggiorna margini_mensili e quindi il MOL.
+    """
+    from services.riparto_service import (
+        _pesi_e_netto_categoria_fattura,
+        esplodi_quote_per_categoria,
+    )
+
+    sb = _get_supabase_client()
+
+    q = sb.table("v_riparto_incoerenze").select("*")
+    if user_id:
+        q = q.eq("user_id", str(user_id))
+    incoerenze = q.execute().data or []
+
+    _RIPARABILI = ("riparto_segno_incoerente", "riparto_senza_quote")
+    riparati: List[Dict[str, Any]] = []
+    saltati: List[Dict[str, Any]] = []
+    non_toccati: List[Dict[str, Any]] = []
+    mesi: set = set()
+
+    for r in incoerenze:
+        tipo = r.get("tipo_incoerenza")
+        if tipo not in _RIPARABILI:
+            non_toccati.append({
+                "tipo_incoerenza": tipo,
+                "riparto_id": r.get("riparto_id"),
+                "file_origine": r.get("file_origine"),
+                "motivo": "richiede il recupero del documento, non una riparazione automatica",
+            })
+            continue
+
+        uid = str(r["user_id"])
+        rid = str(r["riparto_id"])
+        padre = (
+            sb.table("riparto_costi_catena")
+            .select("id, anno, mese, fornitore, importo_totale, file_origine, origine")
+            .eq("id", rid).limit(1).execute()
+        ).data
+        if not padre:
+            continue
+        p = padre[0]
+        fo = p.get("file_origine")
+
+        voce = {
+            "tipo_incoerenza": tipo,
+            "riparto_id": rid,
+            "user_id": uid,
+            "file_origine": fo,
+            "fornitore": p.get("fornitore"),
+            "anno": p.get("anno"),
+            "mese": p.get("mese"),
+            "importo_attuale": float(p["importo_totale"] or 0),
+        }
+
+        if not fo:
+            saltati.append({**voce, "motivo": "nessun file_origine (costo manuale)"})
+            continue
+
+        netto_res = _pesi_e_netto_categoria_fattura(sb, uid, fo)
+        if netto_res is None:
+            saltati.append({
+                **voce,
+                "motivo": "netto ~0 o nessuna riga categorizzata: da valutare a mano",
+            })
+            continue
+        voce["netto_reale"] = round(netto_res[1], 2)
+
+        if tipo == "riparto_senza_quote":
+            sedi = [str(s["id"]) for s in _carica_sedi_attive(uid, sb)]
+            if len(sedi) < 2:
+                saltati.append({**voce, "motivo": "meno di 2 sedi operative: non è una catena"})
+                continue
+            voce["azione"] = f"ricreo {len(sedi)} quote sul netto reale"
+            if apply:
+                sb.rpc("sostituisci_quote_riparto", {
+                    "p_riparto_id": rid,
+                    "p_user_id": uid,
+                    "p_tipo": "generale",
+                    "p_regola": "equa",
+                    "p_importo_totale": round(netto_res[1], 2),
+                    "p_quote": _quote_equa(netto_res[1], sedi),
+                }).execute()
+        else:
+            voce["azione"] = "ri-esplodo header e quote dal netto reale (segno corretto)"
+
+        if apply:
+            esplodi_quote_per_categoria(sb, uid, rid, fo, forza=True)
+            mesi.add((uid, int(p["anno"]), int(p["mese"])))
+        riparati.append(voce)
+
+    if apply:
+        for uid, anno, mese in sorted(mesi):
+            sb.rpc("riparto_quote_mensili", {
+                "p_user_id": uid, "p_anno": anno, "p_mese": mese,
+            }).execute()
+
+    return {
+        "applicato": apply,
+        "riparati": riparati,
+        "saltati": saltati,
+        "non_toccati": non_toccati,
+        "mesi_ricalcolati": len(mesi),
+    }
+
+
 @router.get("/api/gruppo/costi-comuni", dependencies=[Depends(_verify_worker_key)])
 def gruppo_costi_comuni(anno: int, mese: int, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Lista dei costi di gruppo del mese con le quote per sede (finestra catena).

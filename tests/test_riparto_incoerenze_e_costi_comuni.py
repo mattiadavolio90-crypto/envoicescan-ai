@@ -506,3 +506,184 @@ def test_costi_comuni_costo_con_righe_non_e_non_correggibile():
         out = riparto.gruppo_costi_comuni(anno=2026, mese=6, authorization="Bearer x")
     assert out["da_classificare_costi"] == 1
     assert out["da_classificare_non_correggibili"] == 0
+
+
+# ─── riparto_auto_pulisci ──────────────────────────────────────────────────
+# La manutenzione automatica scrive e cancella: qui si verifica soprattutto
+# COSA NON tocca. Vedi la docstring dell'endpoint per il perché.
+
+class _QueryPulisci:
+    def __init__(self, client, table):
+        self._c, self._t, self._filtri = client, table, {}
+
+    def select(self, *a, **k): return self
+
+    def eq(self, col, val):
+        self._filtri[col] = val
+        return self
+
+    def limit(self, *a, **k): return self
+
+    def execute(self):
+        if self._t == "v_riparto_incoerenze":
+            righe = self._c.righe
+            uid = self._filtri.get("user_id")
+            if uid:
+                righe = [r for r in righe if str(r.get("user_id")) == str(uid)]
+            return SimpleNamespace(data=righe)
+        if self._t == "riparto_costi_catena":
+            rid = self._filtri.get("id")
+            return SimpleNamespace(data=[p for p in self._c.padri if p["id"] == rid])
+        if self._t == "ristoranti":
+            return SimpleNamespace(data=self._c.sedi)
+        return SimpleNamespace(data=[])
+
+
+class _FakeSBPulisci:
+    def __init__(self, righe, padri, sedi=None):
+        self.righe, self.padri = righe, padri
+        self.sedi = sedi if sedi is not None else [
+            {"id": "sede-A"}, {"id": "sede-B"},
+        ]
+        self.rpc_calls = []
+
+    def table(self, name):
+        return _QueryPulisci(self, name)
+
+    def rpc(self, nome, params):
+        self.rpc_calls.append((nome, params))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=None))
+
+
+UID = "2f3f93a1-c1f4-4804-858e-a161e6f36f3f"
+
+
+def _riga(tipo, rid, fo="F.xml"):
+    return {"user_id": UID, "tipo_incoerenza": tipo, "riparto_id": rid,
+            "file_origine": fo, "fornitore": "TOYOTA", "importo": 374.91,
+            "data_documento": "2026-02-01"}
+
+
+def _padre(rid, importo=374.91, fo="F.xml"):
+    return {"id": rid, "anno": 2026, "mese": 2, "fornitore": "TOYOTA",
+            "importo_totale": importo, "file_origine": fo, "origine": "fattura"}
+
+
+def _patch_pulisci(sb, netto=-307.30):
+    """Patcha il client e le due funzioni di riparto_service usate dall'endpoint."""
+    import services.riparto_service as rs
+    return (
+        patch.object(riparto, "_get_supabase_client", MagicMock(return_value=sb)),
+        patch.object(rs, "_pesi_e_netto_categoria_fattura",
+                     MagicMock(return_value=({"CARBURANTI": 1.0}, netto))),
+        patch.object(rs, "esplodi_quote_per_categoria", MagicMock(return_value=True)),
+    )
+
+
+def test_auto_pulisci_dry_run_non_scrive():
+    sb = _FakeSBPulisci([_riga("riparto_segno_incoerente", "r1")], [_padre("r1")])
+    p1, p2, p3 = _patch_pulisci(sb)
+    with p1, p2, p3:
+        out = riparto.riparto_auto_pulisci(apply=False)
+
+    assert out["applicato"] is False
+    assert len(out["riparati"]) == 1
+    assert out["riparati"][0]["netto_reale"] == -307.30
+    assert sb.rpc_calls == [], "il dry-run non deve scrivere nulla"
+
+
+def test_auto_pulisci_segno_incoerente_ricalcola_il_mese():
+    sb = _FakeSBPulisci([_riga("riparto_segno_incoerente", "r1")], [_padre("r1")])
+    p1, p2, p3 = _patch_pulisci(sb)
+    with p1, p2, p3:
+        out = riparto.riparto_auto_pulisci(apply=True)
+
+    assert out["mesi_ricalcolati"] == 1
+    assert ("riparto_quote_mensili", {"p_user_id": UID, "p_anno": 2026, "p_mese": 2}) in sb.rpc_calls
+
+
+def test_auto_pulisci_senza_quote_le_ricrea():
+    sb = _FakeSBPulisci([_riga("riparto_senza_quote", "r2")], [_padre("r2", 118.10)])
+    p1, p2, p3 = _patch_pulisci(sb, netto=96.80)
+    with p1, p2, p3:
+        out = riparto.riparto_auto_pulisci(apply=True)
+
+    sostituisci = [c for c in sb.rpc_calls if c[0] == "sostituisci_quote_riparto"]
+    assert len(sostituisci) == 1
+    assert sostituisci[0][1]["p_importo_totale"] == 96.80
+    assert len(sostituisci[0][1]["p_quote"]) == 2, "una quota per sede operativa"
+    assert out["riparati"][0]["tipo_incoerenza"] == "riparto_senza_quote"
+
+
+def test_auto_pulisci_non_elimina_riparti_senza_documento():
+    """I 2 TOYOTA di agosto: il riparto orfano è l'unica traccia della fattura persa.
+
+    Eliminarlo farebbe sparire il sintomo insieme alla prova. Deve finire in
+    `non_toccati`, senza alcuna scrittura.
+    """
+    sb = _FakeSBPulisci(
+        [_riga("riparto_senza_documento", "r3"), _riga("orfano", None)],
+        [_padre("r3")],
+    )
+    p1, p2, p3 = _patch_pulisci(sb)
+    with p1, p2, p3:
+        out = riparto.riparto_auto_pulisci(apply=True)
+
+    assert out["riparati"] == []
+    assert len(out["non_toccati"]) == 2
+    assert {v["tipo_incoerenza"] for v in out["non_toccati"]} == {
+        "riparto_senza_documento", "orfano"}
+    assert sb.rpc_calls == [], "nessuna scrittura per le classi non riparabili"
+
+
+def test_auto_pulisci_salta_netto_zero():
+    """Una NC che azzera esattamente il costo: non c'è più nulla da distribuire."""
+    import services.riparto_service as rs
+    sb = _FakeSBPulisci([_riga("riparto_segno_incoerente", "r1")], [_padre("r1")])
+    with patch.object(riparto, "_get_supabase_client", MagicMock(return_value=sb)), \
+         patch.object(rs, "_pesi_e_netto_categoria_fattura", MagicMock(return_value=None)), \
+         patch.object(rs, "esplodi_quote_per_categoria", MagicMock()) as esplodi:
+        out = riparto.riparto_auto_pulisci(apply=True)
+
+    assert out["riparati"] == []
+    assert len(out["saltati"]) == 1
+    assert "da valutare a mano" in out["saltati"][0]["motivo"]
+    assert not esplodi.called
+
+
+def test_auto_pulisci_salta_costo_manuale_senza_file():
+    sb = _FakeSBPulisci(
+        [_riga("riparto_segno_incoerente", "r1", fo=None)],
+        [_padre("r1", fo=None)],
+    )
+    p1, p2, p3 = _patch_pulisci(sb)
+    with p1, p2, p3:
+        out = riparto.riparto_auto_pulisci(apply=True)
+
+    assert len(out["saltati"]) == 1
+    assert "costo manuale" in out["saltati"][0]["motivo"]
+
+
+def test_auto_pulisci_filtra_per_account():
+    righe = [
+        _riga("riparto_segno_incoerente", "r1"),
+        {**_riga("riparto_segno_incoerente", "r9"), "user_id": "altro-account"},
+    ]
+    sb = _FakeSBPulisci(righe, [_padre("r1"), _padre("r9")])
+    p1, p2, p3 = _patch_pulisci(sb)
+    with p1, p2, p3:
+        out = riparto.riparto_auto_pulisci(apply=False, user_id=UID)
+
+    assert len(out["riparati"]) == 1
+    assert out["riparati"][0]["riparto_id"] == "r1"
+
+
+def test_auto_pulisci_niente_da_fare_e_idempotente():
+    sb = _FakeSBPulisci([], [])
+    p1, p2, p3 = _patch_pulisci(sb)
+    with p1, p2, p3:
+        out = riparto.riparto_auto_pulisci(apply=True)
+
+    assert out == {"applicato": True, "riparati": [], "saltati": [],
+                   "non_toccati": [], "mesi_ricalcolati": 0}
+    assert sb.rpc_calls == []

@@ -17889,6 +17889,81 @@
         }
       }
     },
+    "/api/admin/riparto/auto-pulisci": {
+      "post": {
+        "summary": "Riparto Auto Pulisci",
+        "description": "Manutenzione: ripara le incoerenze di riparto che hanno una correzione certa.\n\nStesso gate macchina di /api/admin/riparto/incoerenze (vedi la nota lì sopra:\nè un consumatore automatico, non un admin che naviga). Dry-run per default:\nsenza `?apply=true` calcola e riporta cosa farebbe, senza scrivere.\n\nRipara due classi, quelle in cui la correzione è deducibile dai dati:\n\n  - riparto_segno_incoerente → ri-esplode le quote dal netto reale. Una nota\n    di credito ripartita col lordo positivo provvisorio torna negativa e si\n    netta nel mese come in un conto mono-sede. NON si elimina nulla: la NC e\n    la fattura di costo che storna sono entrambe documenti veri.\n  - riparto_senza_quote → ricrea le quote in parti uguali sulle sedi\n    operative, poi le spezza per categoria.\n\nLe altre due classi NON si toccano, e non è una dimenticanza:\n\n  - orfano (fattura marcata ripartita ma senza riparto) e\n    riparto_senza_documento (riparto senza più righe dietro) sono le due\n    facce di un documento che manca. Smarcare o eliminare cancellerebbe\n    l'unica traccia rimasta di una fattura da recuperare — è esattamente il\n    caso delle 2 TOYOTA di agosto 2026, dove il riparto orfano è ciò che ha\n    permesso di accorgersi della perdita. Vanno risolte recuperando il\n    documento, non nascondendo il sintomo.\n\nIdempotente: ciò che è già coerente non compare nella view e non viene\ntoccato. Al termine ricalcola le quote mensili dei (account, mese) toccati —\nè quello che aggiorna margini_mensili e quindi il MOL.",
+        "operationId": "riparto_auto_pulisci_api_admin_riparto_auto_pulisci_post",
+        "parameters": [
+          {
+            "name": "apply",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Apply"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Riparto Auto Pulisci Api Admin Riparto Auto Pulisci Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/costi-comuni": {
       "get": {
         "summary": "Gruppo Costi Comuni",
