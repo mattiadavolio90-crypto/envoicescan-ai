@@ -25,6 +25,7 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git push *)",
+      "Bash(gh *)",
       "Bash(echo \"EXIT=$?\")",
       "Read(//home/vscode/.claude/**)",
       "Bash(python -)",
