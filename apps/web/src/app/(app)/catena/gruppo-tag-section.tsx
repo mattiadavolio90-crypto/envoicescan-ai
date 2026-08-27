@@ -120,14 +120,14 @@ export function TagCatenaDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] w-[min(96vw,46rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-          <DialogHeader className="border-b px-5 py-4">
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,46rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+          <DialogHeader className="shrink-0 border-b px-5 py-4">
             <DialogTitle className="flex items-center gap-2 text-base">
               <Building2 className="size-5 text-primary" />
               Tag di catena
             </DialogTitle>
           </DialogHeader>
-          <div className="max-h-[calc(90vh-5rem)] overflow-auto p-5">
+          <div className="min-h-0 flex-1 overflow-auto p-5">
             <p className="text-sm text-muted-foreground">
               Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
               per sede. Sono separati dai tag del singolo locale.
@@ -184,7 +184,7 @@ export function TagCatenaDialog({
                     ) : (
                       <TagIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
-                    <span className="flex-1 truncate text-sm font-medium">{t.nome}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.nome}</span>
                     <span className="text-xs text-muted-foreground">
                       {t.n_prodotti ?? 0} {t.n_prodotti === 1 ? "prodotto" : "prodotti"}
                     </span>
@@ -368,11 +368,11 @@ function ProdottiDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] w-[min(96vw,52rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="border-b px-5 py-4">
+      <DialogContent className="flex max-h-[90vh] w-[min(96vw,52rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle>Prodotti di «{tag.nome}»</DialogTitle>
         </DialogHeader>
-        <div className="grid max-h-[calc(90vh-5rem)] grid-cols-1 gap-4 overflow-auto p-5 sm:grid-cols-2">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 sm:grid-cols-2">
           {/* Associati */}
           <div>
             <h3 className="mb-2 text-sm font-semibold">Nel tag ({assoc.length})</h3>
@@ -385,7 +385,7 @@ function ProdottiDialog({
                     key={a.id}
                     className="flex items-center gap-2 rounded-lg border bg-background/40 px-3 py-2 text-sm"
                   >
-                    <span className="flex-1 truncate">{a.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate">{a.descrizione}</span>
                     <button
                       type="button"
                       onClick={() => rimuovi(a.id)}
@@ -446,7 +446,7 @@ function ProdottiDialog({
                         >
                           {sel && <Check className="size-3 text-primary-foreground" />}
                         </span>
-                        <span className="flex-1 truncate">{d.descrizione}</span>
+                        <span className="min-w-0 flex-1 truncate">{d.descrizione}</span>
                         <span className="text-xs text-muted-foreground">{euro(d.spesa)}</span>
                       </button>
                     </li>
@@ -457,15 +457,20 @@ function ProdottiDialog({
           </div>
         </div>
         {/* Footer: un solo Salva per tutta la selezione */}
-        <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-popover px-5 py-3">
           <span className="text-sm text-muted-foreground">
             {selected.size > 0
               ? `${selected.size} ${selected.size === 1 ? "selezionato" : "selezionati"}`
               : "Seleziona i prodotti da aggiungere"}
           </span>
-          <Button onClick={salvaSelezionati} disabled={salvando || selected.size === 0}>
-            {salvando ? "Salvataggio…" : <><Plus className="size-4" /> Aggiungi</>}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} disabled={salvando}>
+              Chiudi
+            </Button>
+            <Button onClick={salvaSelezionati} disabled={salvando || selected.size === 0}>
+              {salvando ? "Salvataggio…" : <><Plus className="size-4" /> Aggiungi</>}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -537,8 +542,8 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="border-b px-5 py-4">
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+        <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span className="flex items-center gap-2">
               {(data?.emoji || tag.emoji) && <span>{data?.emoji || tag.emoji}</span>}
@@ -562,7 +567,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
             </span>
           </DialogTitle>
         </DialogHeader>
-        <div className="max-h-[calc(90vh-5rem)] space-y-5 overflow-auto p-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
           {loading && !data ? (
             <p className="py-12 text-center text-sm text-muted-foreground">Caricamento…</p>
           ) : vuoto ? (

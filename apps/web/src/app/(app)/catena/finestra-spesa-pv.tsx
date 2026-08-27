@@ -114,8 +114,8 @@ export function FinestraSpesaPV({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="border-b px-5 py-4">
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+        <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span>Spesa per punto vendita</span>
             <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
@@ -152,7 +152,7 @@ export function FinestraSpesaPV({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="max-h-[calc(90vh-5rem)] overflow-auto px-5 pb-5">
+        <div className="min-h-0 flex-1 overflow-auto px-5 pb-5">
           {loading && !data ? (
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
           ) : !data || data.rows.length === 0 ? (

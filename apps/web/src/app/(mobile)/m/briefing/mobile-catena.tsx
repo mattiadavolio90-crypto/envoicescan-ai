@@ -190,7 +190,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
                 className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left active:bg-accent disabled:opacity-50"
               >
                 <span className={cn("size-2.5 shrink-0 rounded-full", DOT[pv.colore])} />
-                <span className="flex-1 truncate text-sm">{pv.nome}</span>
+                <span className="min-w-0 flex-1 truncate text-sm">{pv.nome}</span>
                 <span className={cn("text-sm font-semibold tabular-nums", TXT[pv.colore])}>{pv.indice}</span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
               </button>
@@ -254,7 +254,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
                 className="flex w-full items-center gap-2.5 px-4 py-3 text-left active:bg-accent disabled:opacity-50"
               >
                 <span className={cn("size-2.5 shrink-0 rounded-full", DOT[(pv.colore as string) ?? "grigio"])} />
-                <span className="flex-1 truncate text-sm font-medium">{pv.nome}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{pv.nome}</span>
                 {pv.dati_incompleti ? (
                   <span className="text-xs text-muted-foreground">dati incompleti</span>
                 ) : (

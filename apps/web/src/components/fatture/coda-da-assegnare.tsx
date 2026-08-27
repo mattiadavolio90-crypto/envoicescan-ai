@@ -364,8 +364,8 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           if (!v) setSelezione(new Set());
         }}
       >
-        <DialogContent className="max-h-[90vh] w-[min(96vw,48rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-          <DialogHeader className="border-b px-5 py-4">
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,48rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+          <DialogHeader className="shrink-0 border-b px-5 py-4">
             <DialogTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
               <span className="flex items-center gap-2">
                 <Split className="size-4 text-amber-500" />
@@ -382,7 +382,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
             </DialogTitle>
           </DialogHeader>
 
-          <div className="max-h-[calc(90vh-5rem)] overflow-auto px-5 pb-5 pt-3">
+          <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3">
             <p className="mb-3 text-sm font-medium text-amber-600 dark:text-amber-400">
               Scegli la sede se è di un locale, oppure “Dividi tra i locali” se è un costo comune.
             </p>
