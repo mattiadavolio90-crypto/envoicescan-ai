@@ -159,6 +159,60 @@ _ai_ctx_user_id: ContextVar[Optional[str]] = ContextVar('ai_ctx_user_id', defaul
 _ai_ctx_degradata: ContextVar[bool] = ContextVar('ai_ctx_degradata', default=False)
 
 
+# === Deadline condivisa fra i livelli di retry ===
+# I 3 livelli di retry della categorizzazione (tenacity in _chiama_gpt_classificazione,
+# retry applicativo in classifica_con_ai, retry chunk in worker/queue_processor) sono
+# indipendenti e contano solo i TENTATIVI, non il tempo: nel caso peggiore si
+# moltiplicano (3 x 3 x 3 con backoff) e superano di gran lunga qualunque timeout a
+# monte. Il chiamante piu' stretto e' l'upload da browser, che Next.js abortisce a 30s
+# (apps/web/src/app/api/upload/invoice/route.ts): oltre quella soglia i retry lavorano
+# per un client che non ascolta piu', bruciando quota OpenAI a vuoto.
+# La deadline e' un istante assoluto su time.monotonic() propagato via ContextVar
+# (stesso meccanismo di set_ai_context: FastAPI lo propaga al threadpool delle route
+# sync, quindi due upload concorrenti hanno ciascuno la propria). Scaduta la deadline
+# NON si solleva mai: si smette di ritentare e si lascia agire il fallback
+# deterministico gia' esistente (dizionario + regole forti, poi "Da Classificare").
+_ai_ctx_deadline: ContextVar[Optional[float]] = ContextVar('ai_ctx_deadline', default=None)
+
+# Budget di default quando il chiamante non ne impone uno esplicito. 25s sta sotto
+# i 30s dell'abort Next.js lasciando margine per parsing/salvataggio/risposta.
+AI_BUDGET_DEFAULT_SECONDS = float(os.environ.get("AI_CLASSIFY_BUDGET_SECONDS", "25"))
+
+
+def set_ai_deadline(budget_seconds: Optional[float]) -> Optional[float]:
+    """Fissa la deadline di classificazione per il contesto corrente.
+
+    budget_seconds None o <= 0 rimuove la deadline (nessun limite di tempo: e' il
+    caso dei percorsi in background, dove nessuno aspetta la risposta).
+    Ritorna la deadline assoluta impostata (o None).
+    """
+    if budget_seconds is None or budget_seconds <= 0:
+        _ai_ctx_deadline.set(None)
+        return None
+    deadline = time.monotonic() + float(budget_seconds)
+    _ai_ctx_deadline.set(deadline)
+    return deadline
+
+
+def clear_ai_deadline() -> None:
+    """Rimuove la deadline dal contesto corrente."""
+    _ai_ctx_deadline.set(None)
+
+
+def ai_budget_rimanente() -> Optional[float]:
+    """Secondi che restano prima della deadline, o None se nessuna deadline attiva."""
+    deadline = _ai_ctx_deadline.get()
+    if deadline is None:
+        return None
+    return deadline - time.monotonic()
+
+
+def ai_deadline_scaduta() -> bool:
+    """True se una deadline e' attiva ed e' gia' passata."""
+    rimanente = ai_budget_rimanente()
+    return rimanente is not None and rimanente <= 0
+
+
 def reset_ai_degradata() -> None:
     """Azzera il flag di degrado prima di una chiamata di classificazione."""
     _ai_ctx_degradata.set(False)
@@ -4784,9 +4838,35 @@ def _mappa_categorie_ai_per_idx(dati: Dict[str, Any]) -> Tuple[Dict[int, str], D
     return cat_by_idx, conf_by_idx
 
 
+def _stop_su_tentativi_o_deadline(retry_state) -> bool:
+    """Stop tenacity: 3 tentativi OPPURE deadline di contesto scaduta.
+
+    Senza la seconda condizione il backoff esponenziale (fino a 30s di attesa) poteva
+    da solo sforare il timeout del chiamante, ritentando per un client gia' andato via.
+    """
+    if stop_after_attempt(3)(retry_state):
+        return True
+    if ai_deadline_scaduta():
+        logger.warning(
+            "⏱️ Budget AI esaurito dopo %d tentativi: interrompo i retry GPT "
+            "(subentra il fallback deterministico)", retry_state.attempt_number,
+        )
+        return True
+    return False
+
+
+def _wait_entro_deadline(retry_state) -> float:
+    """Backoff esponenziale, troncato a quanto resta del budget (mai negativo)."""
+    attesa = wait_exponential(multiplier=1, min=2, max=30)(retry_state)
+    rimanente = ai_budget_rimanente()
+    if rimanente is None:
+        return attesa
+    return max(0.0, min(attesa, rimanente))
+
+
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=_stop_su_tentativi_o_deadline,
+    wait=_wait_entro_deadline,
     retry=retry_if_exception_type(RETRIABLE_ERRORS_PARSING)
 )
 def _chiama_gpt_classificazione(
@@ -5121,13 +5201,31 @@ def classifica_con_ai(
             
             if not da_ritentare:
                 break  # Tutto classificato!
-            
+
+            # Budget esaurito: i retry costano quota e tempo per un chiamante che
+            # ha gia' rinunciato. Si esce e si lascia lavorare il safety net
+            # deterministico piu' sotto (regole forti + dizionario), che non
+            # inventa categorie: cio' che non riconosce resta "Da Classificare".
+            if ai_deadline_scaduta():
+                logger.warning(
+                    "⏱️ Budget AI esaurito: salto i retry %d/%d su %d descrizioni "
+                    "(subentra il safety net deterministico)",
+                    retry_num, MAX_RETRY, len(da_ritentare),
+                )
+                break
+
             logger.info(f"🔄 RETRY {retry_num}/{MAX_RETRY}: {len(da_ritentare)} descrizioni ancora Da Classificare, ritentando...")
             
             try:
                 # Usa batch più piccoli nei retry per migliorare precisione
                 retry_chunk_size = min(20, len(da_ritentare))
                 for i in range(0, len(da_ritentare), retry_chunk_size):
+                    if ai_deadline_scaduta():
+                        logger.warning(
+                            "⏱️ Budget AI esaurito a meta' del retry %d: interrompo "
+                            "i chunk residui", retry_num,
+                        )
+                        break
                     chunk_retry = da_ritentare[i:i+retry_chunk_size]
                     cats_retry, confs_retry = _chiama_gpt_classificazione(
                         chunk_retry, openai_client, max_tokens=4096,

@@ -73,6 +73,15 @@ except Exception:  # pragma: no cover - fallback: senza il flag, nessun degrado 
         return None
 
 try:
+    from services.ai_service import ai_deadline_scaduta, ai_budget_rimanente
+except Exception:  # pragma: no cover - fallback: senza deadline, nessun budget attivo
+    def ai_deadline_scaduta() -> bool:
+        return False
+
+    def ai_budget_rimanente():
+        return None
+
+try:
     from services.ai_service import aggiorna_streak_classificazione, _STREAK_NON_PRECARICATO
 except Exception:  # pragma: no cover - fallback per worker CLI senza dipendenze UI
     _STREAK_NON_PRECARICATO = object()
@@ -172,6 +181,20 @@ logger = logging.getLogger(__name__)
 # classificate. Backoff esponenziale: _CLASSIFY_RETRY_BACKOFF, poi ×2, ×4...
 _MAX_CLASSIFY_RETRY = int(os.environ.get("WORKER_CLASSIFY_MAX_RETRY", "3"))
 _CLASSIFY_RETRY_BACKOFF = float(os.environ.get("WORKER_CLASSIFY_RETRY_BACKOFF", "2.0"))
+
+
+def _sleep_backoff_entro_budget(tentativo: int) -> None:
+    """Attende il backoff del tentativo, troncato a quanto resta del budget AI.
+
+    Senza il troncamento la sola attesa (2s, 4s, 8s...) poteva sforare il timeout
+    del chiamante prima ancora di ritentare.
+    """
+    attesa = _CLASSIFY_RETRY_BACKOFF * (2 ** tentativo)
+    rimanente = ai_budget_rimanente()
+    if rimanente is not None:
+        attesa = min(attesa, max(0.0, rimanente))
+    if attesa > 0:
+        time.sleep(attesa)
 
 
 def get_supabase_client():
@@ -286,6 +309,16 @@ def _auto_classify_saved_rows(
         confidenze = None
         _ai_muta = False
         for _tentativo in range(_MAX_CLASSIFY_RETRY):
+            # Budget condiviso esaurito (impostato dal chiamante che aspetta una
+            # risposta): smettere di ritentare. Nel worker in background la deadline
+            # normalmente non e' impostata e questo guard e' inerte.
+            if _tentativo > 0 and ai_deadline_scaduta():
+                logger.warning(
+                    "[auto_classify] budget AI esaurito, interrompo i retry del "
+                    "chunk %d-%d al tentativo %d/%d",
+                    i, i + len(chunk), _tentativo + 1, _MAX_CLASSIFY_RETRY,
+                )
+                break
             try:
                 reset_ai_degradata()
                 categorie, confidenze = classifica_via_worker_con_confidenza(
@@ -313,7 +346,7 @@ def _auto_classify_saved_rows(
                     continue_retry = _tentativo < _MAX_CLASSIFY_RETRY - 1
                     if not continue_retry:
                         break
-                    time.sleep(_CLASSIFY_RETRY_BACKOFF * (2 ** _tentativo))
+                    _sleep_backoff_entro_budget(_tentativo)
                     continue
                 # Risposta ricevuta ma disallineata: ritenta (non è un successo).
                 logger.warning(
@@ -334,7 +367,7 @@ def _auto_classify_saved_rows(
                 confidenze = None
             # Non è l'ultimo tentativo: attendi con backoff crescente prima di ritentare.
             if _tentativo < _MAX_CLASSIFY_RETRY - 1:
-                time.sleep(_CLASSIFY_RETRY_BACKOFF * (2 ** _tentativo))
+                _sleep_backoff_entro_budget(_tentativo)
 
         # Esauriti i retry senza risposta valida: solo ORA si ripiega su
         # 'Da Classificare' (categoria neutra). enforce_no_unclassified_category
