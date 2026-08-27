@@ -439,30 +439,43 @@ export function extractXmlFromP7m(bytes: Uint8Array): string | null {
 
 // ─── Utility: byte grezzi → XML FatturaPA (gestisce XML puro e P7M firmato) ────
 // Rilevamento sul CONTENUTO (prologo "<?xml" + assenza di byte nulli), non sul
-// nome file: così copre anche P7M annunciati con `encoding: Xml`. Se non è XML
-// pulito, tenta l'estrazione dalla busta P7M; se anche quella fallisce, torna
-// alla decodifica diretta (il chiamante applica i suoi guardrail).
+// nome file: così copre anche P7M annunciati con `encoding: Xml`.
+//
+// Quando lo sbustamento P7M fallisce si cade sulla decodifica diretta della busta
+// binaria: è una stringa che NON è una FatturaPA. Prima veniva scritta in
+// xml_content senza distinguerla da un XML vero, e il worker la archiviava come
+// "fattura senza righe" purgandone l'XML — è così che 2 fatture TOYOTA di agosto
+// 2026 sono sparite lasciando un riparto orfano. Ora l'esito è esplicito in
+// `ok`: il chiamante marca il record e il worker sa di dover riscaricare via
+// resource_id invece di fidarsi del contenuto.
 
-export function bytesToXml(bytes: Uint8Array): string {
+export function decodeBytesToXml(bytes: Uint8Array): { xml: string; ok: boolean } {
   const looksLikeCleanXml =
     bytes.length >= 5 &&
     bytes[0] === 0x3c && bytes[1] === 0x3f &&   // "<?"
     !bytes.includes(0x00)
 
-  if (looksLikeCleanXml) return new TextDecoder('utf-8').decode(bytes)
+  if (looksLikeCleanXml) return { xml: new TextDecoder('utf-8').decode(bytes), ok: true }
 
-  return extractXmlFromP7m(bytes) ?? new TextDecoder('utf-8').decode(bytes)
+  const estratto = extractXmlFromP7m(bytes)
+  if (estratto !== null) return { xml: estratto, ok: true }
+
+  return { xml: new TextDecoder('utf-8').decode(bytes), ok: false }
+}
+
+export function bytesToXml(bytes: Uint8Array): string {
+  return decodeBytesToXml(bytes).xml
 }
 
 // ─── Utility: decodifica payload fattura (XML semplice o P7M firmato) ──────────
-// Wrapper su bytesToXml che prima porta il payload a byte grezzi in base
+// Wrapper su decodeBytesToXml che prima porta il payload a byte grezzi in base
 // all'encoding dichiarato dall'API (Base64 vs testo).
 
-function decodePayloadToXml(rawPayload: string, encoding: string): string {
+function decodePayloadToXml(rawPayload: string, encoding: string): { xml: string; ok: boolean } {
   const bytes = encoding === 'Base64'
     ? base64ToBytes(rawPayload)
     : new TextEncoder().encode(rawPayload)
-  return bytesToXml(bytes)
+  return decodeBytesToXml(bytes)
 }
 
 // ─── Lettura case-insensitive di un campo dall'oggetto Event ──────────────────
@@ -843,12 +856,17 @@ export async function fetchXmlForResource(
   const data = await apiResp.json() as ReceiveApiRecord
   let xmlContent: string | null = null
   let xmlUrl: string | null = null
+  let sbustamentoOk = true
 
   if (typeof data.payload === 'string' && data.payload.length > 0) {
     const encoding = typeof data.encoding === 'string' ? data.encoding : 'Xml'
-    xmlContent = decodePayloadToXml(data.payload.trim(), encoding)
+    const dec = decodePayloadToXml(data.payload.trim(), encoding)
+    xmlContent = dec.xml
+    sbustamentoOk = dec.ok
   } else if (typeof data.xml_file === 'string' && data.xml_file.length > 0) {
-    xmlContent = decodePayloadToXml(data.xml_file, 'Base64')
+    const dec = decodePayloadToXml(data.xml_file, 'Base64')
+    xmlContent = dec.xml
+    sbustamentoOk = dec.ok
     if (typeof data.xml_url === 'string') xmlUrl = data.xml_url
   } else if (typeof data.xml_url === 'string' && data.xml_url.length > 0) {
     xmlUrl = data.xml_url
@@ -856,10 +874,18 @@ export async function fetchXmlForResource(
     if (!xmlResp.ok) throw new Error(`Download XML fallito: HTTP ${xmlResp.status}`)
     const rawBytes = new Uint8Array(await xmlResp.arrayBuffer())
     if (rawBytes.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
-    xmlContent = bytesToXml(rawBytes)
+    const dec = decodeBytesToXml(rawBytes)
+    xmlContent = dec.xml
+    sbustamentoOk = dec.ok
   }
 
   if (!xmlContent) throw new Error('API ok ma payload/xml_file/xml_url assenti')
+  // Questo è il path di RECUPERO (reprocess): restituire la busta binaria grezza
+  // significherebbe rimettere in circolo la spazzatura che si sta cercando di
+  // sostituire. Meglio fallire esplicitamente.
+  if (!sbustamentoOk) {
+    throw new Error(`Sbustamento P7M fallito per resource ${resourceId}: payload non è una FatturaPA`)
+  }
   if (xmlContent.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
   if (xmlContent.includes('\x00')) xmlContent = xmlContent.replace(/\x00/g, '')
   return { xmlContent, xmlUrl }
@@ -1098,6 +1124,7 @@ async function processaEvento(
   let xmlContent:   string | null = null
   let xmlUrl:       string | null = null
   let xmlHash:      string | null = null
+  let sbustamentoOk               = true          // false = xml_content è busta P7M grezza
   let pivaRaw                     = 'UNKNOWN'     // sentinel: P.IVA non estratta
   let indirizzoRaw: string | null = null         // indirizzo destinatario (routing multi-sede)
   let status                      = 'failed'      // default pessimistic
@@ -1151,14 +1178,16 @@ async function processaEvento(
         const normalizedPayload = data.payload.trim()
         const encoding = typeof data.encoding === 'string' ? data.encoding : 'Xml'
         const decoded = decodePayloadToXml(normalizedPayload, encoding)
-        if (decoded.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
-        xmlContent = decoded
+        if (decoded.xml.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
+        xmlContent = decoded.xml
+        sbustamentoOk = decoded.ok
 
       } else if (typeof data.xml_file === 'string' && data.xml_file.length > 0) {
         // Caso A: XML in base64 direttamente nel response JSON (anche P7M firmato)
         const decoded = decodePayloadToXml(data.xml_file, 'Base64')
-        if (decoded.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
-        xmlContent = decoded
+        if (decoded.xml.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
+        xmlContent = decoded.xml
+        sbustamentoOk = decoded.ok
         // Mantieni xml_url se presente (utile per recupero futuro post-purge GDPR)
         if (typeof data.xml_url === 'string') xmlUrl = data.xml_url
 
@@ -1170,11 +1199,22 @@ async function processaEvento(
         // Leggiamo i byte grezzi: il file remoto può essere XML puro o P7M firmato.
         const rawBytes = new Uint8Array(await xmlResp.arrayBuffer())
         if (rawBytes.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
-        xmlContent = bytesToXml(rawBytes)
+        const decoded = decodeBytesToXml(rawBytes)
+        xmlContent = decoded.xml
+        sbustamentoOk = decoded.ok
 
       } else {
         // API risponde OK ma senza XML (caso anomalo, loggare per debug)
         meta.api_warning = 'API ok ma payload/xml_file/xml_url assenti nel response'
+      }
+
+      // Sbustamento P7M fallito: xml_content è la busta binaria, non una
+      // FatturaPA. Si conserva (è l'unico dato grezzo che abbiamo) ma lo si
+      // MARCA, così il worker riscarica via resource_id invece di parsarlo e
+      // archiviarlo come "fattura senza righe" — vedi decodeBytesToXml.
+      if (xmlContent && !sbustamentoOk) {
+        meta.p7m_extract_failed = true
+        console.warn(`[wh] sbustamento P7M fallito per resource_id=${resourceId}: xml_content marcato`)
       }
 
       // ── 7. Estrazione dati dall'XML ────────────────────────────────────────

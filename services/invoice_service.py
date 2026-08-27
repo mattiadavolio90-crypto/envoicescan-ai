@@ -737,8 +737,13 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                        con path Streamlit). Passare esplicitamente dal worker FastAPI.
         
     Returns:
-        List[Dict]: Lista di righe prodotto estratte
-        
+        List[Dict]: righe prodotto estratte. Lista vuota SOLO per un XML valido
+                    che davvero non ha righe (nessun DettaglioLinee).
+        None:       il documento non è stato letto (parsing fallito, oppure ogni
+                    riga è esplosa in eccezione). Il chiamante NON deve trattarlo
+                    come "fattura senza righe": il worker lo ripianifica in retry
+                    e conserva l'XML in coda (`worker/queue_processor.py`).
+
     Note:
         - Carica cache memoria globale all'inizio (1 volta per tutte le righe)
         - Categorizza automaticamente con sistema ibrido (memoria + keyword)
@@ -963,6 +968,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             )
 
         righe_prodotti = []
+        # Righe perse per eccezione: se le perdiamo TUTTE il documento non è
+        # stato letto, e ritornare [] lo farebbe archiviare come "fattura senza
+        # righe" (vedi docstring).
+        _righe_perse = 0
         # PROP-1: buffer per batch upsert auto-keyword in memoria locale.
         # Riempito da categorizza_con_memoria, flushato a fine loop con UNA sola
         # SELECT bulk + UNA sola UPSERT batch (vs N+1 query per riga).
@@ -1263,9 +1272,17 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     'giorni_termini_xml': giorni_termini_xml,
                 })
             except Exception as e:
+                _righe_perse += 1
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
                 continue
-        
+
+        if _righe_perse and not righe_prodotti:
+            logger.error(
+                f"❌ {file_caricato.name}: tutte le {_righe_perse} righe sono esplose in "
+                "eccezione — documento non letto, non è una fattura senza righe"
+            )
+            return None
+
         logger.info(f"✅ {file_caricato.name}: {len(righe_prodotti)} righe estratte")
 
         # PROP-1: flush batch dei salvataggi auto-keyword in memoria locale.
@@ -1287,7 +1304,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             st.warning(f"⚠️ File {getattr(file_caricato, 'name', '?')}: impossibile leggere")
         except Exception:
             pass
-        return []
+        # None, non []: un parsing fallito non è una fattura senza righe. Con []
+        # il worker chiudeva l'item `done` e purgava l'XML dalla coda — è così
+        # che 2 fatture TOYOTA con P7M mal sbustato sono sparite lasciando un
+        # riparto orfano (agosto 2026, +531,76 € di costo fantasma su OFFSIDE).
+        return None
 
 
 def estrai_piva_cessionario_xml(fattura: dict) -> str:

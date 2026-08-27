@@ -502,3 +502,40 @@ class TestGuardrailNoteConImporto:
         assert len(righe) == 1
         assert righe[0]['Categoria'] == '📝 NOTE E DICITURE', \
             "Una dicitura a importo zero deve poter restare in NOTE E DICITURE"
+
+
+class TestDocumentoNonLetto:
+    """`None` vs `[]`: la differenza fra "non l'ho letto" e "non ha righe".
+
+    Regressione del bug che ha perso 2 fatture TOYOTA (agosto 2026): l'except
+    finale ritornava `[]`, indistinguibile da una fattura valida senza
+    DettaglioLinee. Il worker chiudeva l'item `done` e purgava l'XML dalla coda.
+    Vedi tests/test_worker_p7m_non_perde_fatture.py per l'anello successivo.
+    """
+
+    def test_xml_corrotto_ritorna_none(self):
+        busta = b'0\x82%\x06\t*\x86H\xde\xad\xbe\xef1\x0f'
+        assert _run_estrai_xml(busta) is None, \
+            "un documento illeggibile non è una fattura senza righe"
+
+    def test_xml_troncato_ritorna_none(self):
+        troncato = b'<?xml version="1.0"?><p:FatturaElettronica><rotto>'
+        assert _run_estrai_xml(troncato) is None
+
+    def test_xml_valido_senza_righe_ritorna_lista_vuota(self):
+        """Guardia anti-regressione: il caso legittimo resta `[]`, non `None`."""
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">'
+            '<FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici>'
+            '<IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>12345678901</IdCodice></IdFiscaleIVA>'
+            '<Anagrafica><Denominazione>FORNITORE SPA</Denominazione></Anagrafica>'
+            '</DatiAnagrafici></CedentePrestatore></FatturaElettronicaHeader>'
+            '<FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento>'
+            '<TipoDocumento>TD01</TipoDocumento><Data>2026-08-01</Data><Numero>1</Numero>'
+            '</DatiGeneraliDocumento></DatiGenerali>'
+            '<DatiBeniServizi></DatiBeniServizi>'
+            '</FatturaElettronicaBody></p:FatturaElettronica>'
+        ).encode('utf-8')
+        righe = _run_estrai_xml(xml)
+        assert righe == [], f"fattura valida senza righe deve dare [], trovato {righe!r}"

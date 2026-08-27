@@ -53,6 +53,8 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from defusedxml import ElementTree as _DefusedET
+
 from services.db_service import filter_active
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
 from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
@@ -704,6 +706,43 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
                       f"(attempt={attempt})",
             )
 
+    # ── XML sospetto: tentare di recuperarne uno sano PRIMA di parsare ────────
+    # La Edge Function, quando lo sbustamento P7M fallisce, ha storicamente
+    # salvato la busta binaria grezza come xml_content (marcandola in
+    # payload_meta.payload_sanitized). Il parser poi esplodeva e l'item veniva
+    # archiviato come "fattura senza righe". Qui, prima di arrenderci, si
+    # ritenta lo sbustamento in-process e poi il download via API.
+    _sbustamento_fallito = bool(payload_meta.get("p7m_extract_failed"))
+    if _sbustamento_fallito or not _xml_pare_fattura(xml_content):
+        _raw = xml_content.encode("utf-8", errors="surrogateescape") if isinstance(xml_content, str) else xml_content
+        _recuperato = None
+        # Con p7m_extract_failed la Edge Function ci dice che xml_content NON è
+        # il documento: rifare lo sbustamento sugli stessi byte restituirebbe la
+        # stessa spazzatura, quindi si va diretti all'API. Senza il flag (record
+        # storici) si tenta prima in-process, che è gratis.
+        if not _sbustamento_fallito:
+            try:
+                _recuperato = _bytes_to_xml_str(_raw)
+            except Exception as exc:
+                logger.warning("[item=%d] sbustamento P7M in-process fallito: %s", queue_id, exc)
+        if not _xml_pare_fattura(_recuperato):
+            _resource_id = payload_meta.get("resource_id")
+            _recuperato = _fetch_xml_via_api(_resource_id) if _resource_id is not None else None
+        if _xml_pare_fattura(_recuperato):
+            logger.info(
+                "[item=%d] xml_content non era una FatturaPA valida (sanitized=%s, "
+                "p7m_extract_failed=%s): recuperato XML sano",
+                queue_id, payload_meta.get("payload_sanitized"),
+                payload_meta.get("p7m_extract_failed"),
+            )
+            xml_content = _recuperato
+        else:
+            logger.warning(
+                "[item=%d] xml_content non è una FatturaPA valida e non recuperabile "
+                "(sanitized=%s, resource_id=%s) — si tenta comunque il parsing",
+                queue_id, payload_meta.get("payload_sanitized"), payload_meta.get("resource_id"),
+            )
+
     # ── Costruisci un file-like per il parser ─────────────────────────────────
     # estrai_dati_da_xml() accetta UploadedFile (Streamlit) oppure BytesIO
     nome_file = payload_meta.get("nome_file") or f"webhook_{event_id}.xml"
@@ -725,7 +764,19 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
         return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=msg)
 
     if not dati_prodotti:
-        # Lista vuota: XML valido ma nessuna riga estratta (es. fattura senza DettaglioLinee)
+        # Lista vuota. Chiudere `done` PURGA l'XML dalla coda: lo si fa solo se
+        # il documento è davvero una FatturaPA valida senza DettaglioLinee.
+        # Se l'XML non è ben formato siamo nel caso "busta P7M non sbustata":
+        # retry, XML conservato, così il documento resta recuperabile.
+        if not _xml_pare_fattura(xml_content):
+            msg = (
+                "0 righe estratte da un xml_content che non è una FatturaPA valida "
+                f"(sanitized={payload_meta.get('payload_sanitized')}, "
+                f"resource_id={payload_meta.get('resource_id')}): documento non letto, "
+                "XML conservato per il recupero"
+            )
+            logger.error("[item=%d] %s", queue_id, msg)
+            return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=msg)
         logger.warning("[item=%d] estrai_dati_da_xml ha restituito 0 righe - segno come done", queue_id)
         return ItemResult(queue_id=queue_id, event_id=event_id, status="done", righe=0)
 
@@ -1043,6 +1094,27 @@ def _fetch_xml_from_url(url: str) -> str | None:
 _INVOICETRONIC_API_BASE = os.environ.get(
     "INVOICETRONIC_API_BASE", "https://api.invoicetronic.com/v1"
 )
+
+
+def _xml_pare_fattura(xml: str | bytes | None) -> bool:
+    """True se la stringa contiene una FatturaPA ben formata.
+
+    Serve a distinguere due casi che finiscono entrambi in "0 righe estratte":
+    una fattura davvero senza DettaglioLinee (documento valido → done) e una
+    busta P7M non sbustata salvata come xml_content (spazzatura → retry, XML
+    da conservare). Senza questa distinzione il worker chiudeva `done` e
+    purgava l'XML anche nel secondo caso, perdendo la fattura senza traccia.
+    """
+    if not xml:
+        return False
+    testo = xml.decode("utf-8", errors="replace") if isinstance(xml, bytes) else xml
+    if "<FatturaElettronica" not in testo:
+        return False
+    try:
+        _DefusedET.fromstring(testo)
+        return True
+    except Exception:
+        return False
 
 
 def _bytes_to_xml_str(raw: bytes) -> str | None:

@@ -911,6 +911,15 @@ async def parse_invoice(
         # diversi potevano leggersi a vicenda lo user_id patchato).
         righe = estrai_dati_da_xml(file_like, user_id=user_id)
 
+        if righe is None:
+            # Parsing fallito (documento illeggibile), non "fattura senza righe":
+            # 422 esplicito invece di 200 con fatture=[] — il chiamante deve
+            # sapere che il documento NON è stato letto.
+            raise HTTPException(
+                status_code=422,
+                detail="XML non leggibile: parsing fallito, nessun dato estratto.",
+            )
+
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
             f"✅ /api/parse: {filename} → {len(righe)} righe in {elapsed_ms}ms"
@@ -2238,7 +2247,11 @@ async def upload_invoice(
             success=False,
             filename=filename,
             righe_salvate=0,
-            error="Nessuna riga estratta dal file.",
+            error=(
+                "File non leggibile: parsing fallito."
+                if righe is None
+                else "Nessuna riga estratta dal file."
+            ),
             elapsed_ms=int((_time.monotonic() - t0) * 1000),
         )
 
