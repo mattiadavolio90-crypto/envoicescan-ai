@@ -3087,3 +3087,137 @@ richiede conferma esplicita separata per la migration), punto 3 (§3c, audit
 non banale), punto 4 (quattro voci §27), punto 5 (§2, mock `conftest.py`).
 
 Il ciclo **non è chiuso**: restano §2 e §3c.
+
+---
+
+## §32 — §3c perimetro non letto + i 4 punti §27 — 27/8/2026
+
+Sessione su richiesta esplicita: *"dobbiamo affrontarli tutti in ordine, decidi
+tu l'ordine"*, poi *"finisci tutto e poi facciamo migration e deploy"*. Ordine
+scelto: audit read-only del perimetro §3c → MEDIUM note di credito → 4 punti §27
+→ §2 (rimandata a sessione dedicata, per decisione dell'utente).
+
+### A) §3c — il perimetro mai letto: audit e remediation
+
+Letti riga per riga `carica-ricavi-dialog.tsx` (572), `mobile-incassi.tsx` (349),
+`pivot-tab.tsx` (745), `score-tab.tsx` (521), `catena/*`, le route `api/ricavi/*`.
+
+**2 HIGH, entrambi confermati ATTIVI sul DB live**, ed entrambi la stessa
+causa-radice di §26: la regola *"l'override mensile vince sui giornalieri"*
+applicata solo in alcuni dei suoi punti.
+
+**HIGH-1 — l'override si accendeva ma non si spegneva mai.** Il toggle
+"Giornaliero" cambiava solo stato React; l'unico POST che inviava `modalita` la
+mandava hardcoded a `"mensile"`. Verificato su tutto `apps/web/src`: la stringa
+`"giornaliero"` non compariva mai in un body di richiesta.
+**La prova che ha chiuso il caso**: `SELECT modalita, COUNT(*) FROM
+ricavi_modalita_mensile GROUP BY 1` → **17 righe, tutte 'mensile', ZERO
+'giornaliero'**. Il percorso di spegnimento non era mai stato eseguito in
+produzione perché non esisteva. Caso attivo su cliente reale (TIME CAFE, giugno
+2026): il cliente aveva inserito un giorno da **3.227,27 €** netti, scartato in
+silenzio a favore dell'override da **73.322,73 €** — **70.095,45 €** di dato
+inserito a mano e ignorato.
+Fix su entrambi i lati, perché il difetto era su entrambi: il dialog ora invia la
+modalità reale, e il worker spegne l'override su **tutti e 3** i percorsi di
+scrittura dei giornalieri (POST singolo, batch, import XLS) via
+`_spegni_override_mensile`. Correggere solo il client avrebbe lasciato scoperti
+mobile e XLS.
+
+**HIGH-2 — il fix di §26 non era stato propagato al mobile.**
+`mobile-incassi.tsx` non conteneva **alcuna** occorrenza di
+`modalita`/`mensile`/`override`: mostrava `totale_netto` grezzo. `fetchNettoMese()`
+— la funzione scritta in §26 proprio per questo — risultava usata **solo** da
+`analisi-tab.tsx`. Misurato: su **16 mesi su 17** il mobile mostrava **0,00 €**
+dove desktop e catena mostrano il fatturato reale. **729.911,64 €** di divergenza
+su 4 sedi e 3 utenti; il totale gestito da override (**813.690,07 €**) coincide
+esattamente con quello registrato in §26 — stessa popolazione, superficie mobile
+mai allineata. Ora riusa `fetchNettoMese()` invece di duplicare la regola.
+
+**4 MEDIUM + 2 LOW** fixati: "Svuota" su un giorno già salvato non cancellava
+nulla (il batch fa `skipped` sulle righe a zero) e il toast diceva comunque
+"salvato"; `POST /api/ricavi/modalita` non validava `anno`; i campi mensili
+precompilati da `margini_mensili` non dicevano di venire da un'altra fonte
+(l'utente "confermava" un dato mai inserito); import XLS e POST singolo non
+spegnevano l'override; formula IVA deduplicata sul mobile; `ANNO_CORRENTE` non
+più congelato al load del bundle.
+
+**5 piste chiuse in negativo**, con la verifica che le chiude:
+- La "doppia verità" sulle percentuali di `pivot-tab.tsx` **non è un difetto**:
+  la % per-cella è "questa cella sul totale del suo periodo", quella di riga è
+  "questa riga sul grand total". Due grandezze diverse, entrambe corrette.
+- Tab `workspace/` e `admin/`: falsi positivi (turni/buste paga, billing
+  Invoicetronic) — `grep` su `ricavi_modalita` → 0 occorrenze.
+- `catena/*`: delega corretta, nessun consumo diretto di `ricavi/giornalieri`.
+- TIME CAFE maggio sembrava una seconda divergenza: è un duplicato benigno
+  (un giorno porta l'intero totale del mese), scarto 0,25 € di arrotondamento.
+
+**Non incluso di proposito**: `worker/email_queue_processor.py` scrive i
+giornalieri fuori dal router e non spegne l'override. Misurato: **0 righe
+`email`/`xls` sulle sedi con override** (tutte `manuale`), quindi oggi non è
+esposto. Annotato qui per non riscoprirlo.
+
+### B) L'ultimo MEDIUM — note di credito sui tag di catena
+
+**I numeri del verbale erano invecchiati, e ricontarli era il punto.** §25/§28
+riportavano 236,23 € su 3 righe; misurato oggi: **285,50 € su 7 righe** — sono
+arrivate altre note di credito di ADC S.R.L. nel frattempo. Il verbale non era
+sbagliato allora: era vecchio. È la quinta volta nel ciclo che un numero
+ereditato non regge alla riverifica.
+
+Le 4 RPC `gruppo_tag_*` live (non 6: i "6 punti" dei verbali sono occorrenze del
+filtro, e una è la v1 superseded) filtravano `AND f.prezzo_unitario > 0`. È lo
+stesso filtro sulla grandezza sbagliata già corretto il 24/8 sul percorso
+sede-singola: corretto sui calcoli di **prezzo**, sbagliato su una somma di
+**spesa**.
+
+Impatto misurato, per sede:
+| Sede | Prima | Dopo | Δ |
+|---|---|---|---|
+| LAND DEI SAPORI SRL | 245.764,83 | 245.518,38 | −246,45 |
+| SUSHILAND VILLA GUARDIA | 103.860,66 | 103.821,61 | −39,05 |
+| **Catena** | **443.493,55** | **443.208,05** | **−285,50** |
+
+Post-fix catena e sede-singola coincidono esattamente. `gruppo_prezzi_categoria`
+**non** è toccata (lì la grandezza è un prezzo medio e il filtro è corretto) e
+`gruppo_tag_analisi.quantita` resta protetta da `CASE WHEN f.quantita > 0`: un
+reso scala la spesa, non i chili.
+
+### C) I 4 punti §27
+
+1. **`pagata_at` in ora italiana** — difetto di segno inverso a HIGH #6 di §27:
+   frontend `todayLocalIso()` (locale) vs backend `now(timezone.utc).date()`.
+   Fra mezzanotte e le 02:00 del 1° del mese i due cadono in mesi diversi.
+   `pagata_manuale_at` resta UTC, ed è corretto: è un istante di audit, non una
+   data di calendario — c'è un test che difende la distinzione.
+2. **`get_trial_info` per file** — 200 fatture = 200 SELECT identiche. Ora
+   `_TRIAL_INFO_CACHE` (TTL 30s). `test_conftest_cache_guardia.py` ha fatto
+   esattamente il suo lavoro: la cache nuova è stata intercettata subito e
+   registrata in `CACHE_WORKER`.
+3. **Canale SDI** — DECISIONE confermata, non fix. Esposizione rimisurata e
+   invariata: l'unico utente col flag acceso ha 0 record in coda, quello con 426
+   ce l'ha spento. Aggiunta una guardia che fissa il comportamento.
+4. **Flush PROP-1** — documenta-e-chiudi. Nessun dato sbagliato in
+   fatture/margini/MOL; il refactor di `estrai_dati_da_xml` (tutte le 34.000
+   righe attive, entrambi i canali) è sproporzionato al rischio.
+
+### Numeri della sessione
+
+55 test nuovi in 5 file. **14 mutanti verificati uccisi su 14.** Suite
+**11.239 passed**, 0 failed. `tsc --noEmit` e `next build` puliti, OpenAPI senza
+drift (195 endpoint).
+
+**Un mutante è sopravvissuto al primo giro**, e vale più del conteggio finale: il
+test sul dedup dei mesi contava le *righe aggiornate* invece delle *query
+emesse*. Senza dedup la seconda query non matchava più nulla (la riga era già
+`giornaliero`), quindi il conteggio restava 1 e il test passava lo stesso.
+Corretto contando le `table()` aperte. È la stessa lezione del fake che
+registrava i filtri senza applicarli (§2): **un test può misurare la cosa
+sbagliata e sembrare verde per il motivo sbagliato** — la mutazione è l'unico
+modo per accorgersene.
+
+### Lasciato aperto
+
+- **Migration `20260827230000_gruppo_tag_note_credito.sql` NON applicata**: da
+  applicare con conferma esplicita **prima** del deploy, come da metodo.
+- **§2** (mock globale `conftest.py`): rimandata a sessione dedicata per
+  decisione esplicita dell'utente. È l'unica voce che tiene aperto il ciclo.
