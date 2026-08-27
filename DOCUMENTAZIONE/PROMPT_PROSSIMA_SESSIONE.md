@@ -60,6 +60,13 @@ Il ciclo si dichiara chiuso: aggiungere "**Ciclo chiuso il gg/mm/aaaa**" in cima
 all'indice, spostare indice e STORICO in `docs/storico/`, e creare
 `AUDIT_ONEFLUX_STATO_<AAAA-MM>.md` per il ciclo nuovo (non riusare questo file).
 
+## Stato deploy al 27/8/2026 sera
+
+Tutto quanto sopra è **in produzione**: PR #29 mergiata (`main` = `d79a8a9`),
+migration `20260827230000_gruppo_tag_note_credito.sql` applicata prima del
+deploy, `/health` del worker verificato → `commit d79a8a9dce2d`. Non resta
+nulla di sospeso da questa sessione.
+
 ## Annotazioni utili lasciate dal 27/8
 
 - `worker/email_queue_processor.py` scrive i ricavi giornalieri **fuori dal

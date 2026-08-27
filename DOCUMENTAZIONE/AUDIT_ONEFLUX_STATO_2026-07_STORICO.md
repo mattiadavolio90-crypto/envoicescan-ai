@@ -3215,9 +3215,50 @@ registrava i filtri senza applicarli (§2): **un test può misurare la cosa
 sbagliata e sembrare verde per il motivo sbagliato** — la mutazione è l'unico
 modo per accorgersene.
 
+### Secondo giro di `code-reviewer` — le inerenze
+
+L'hook di progetto ha chiesto una passata specifica su *chi altro chiama i
+contratti toccati*. Ha chiuso 7 piste in negativo e ne ha aperta **una reale**,
+che il primo giro non aveva visto: togliendo il filtro dalla spesa senza toccare
+la quantità (giustamente protetta), `prezzo_medio = spesa / quantita` in
+`gruppo.py:2152` sarebbe diventato **numeratore netto su denominatore lordo**.
+Avrei allineato la spesa fra sede e catena *e disallineato il prezzo*.
+
+Distorsione 0,10% / 0,038% — sotto l'arrotondamento, ma **asimmetrica fra sedi**,
+e la UI di catena colora min/max per dire quale sede compra meglio. Corretto con
+`spesa_prezzo_valido`, replicando la separazione che la sede-singola fa già.
+Servito anche un `DROP` esplicito: `CREATE OR REPLACE` non può cambiare
+`RETURNS TABLE` (42P13) — **sarebbe fallita in applicazione, non a runtime**.
+
+Verifica post-migration: sui dati reali i due prezzi coincidono a 2 decimali
+(7,95 vs 7,95). La colonna previene il caso asimmetrico, **non ne corregge uno
+visibile oggi** — vale detto, per non attribuirle un merito che non ha.
+
+### Migration e deploy — 27/8/2026 sera
+
+**Migration applicata** su `vthikmfpywilukizputn` con conferma esplicita, prima
+del deploy. Verificata contro la baseline catturata prima: LAND DEI SAPORI
+−246,45, SUSHILAND VILLA GUARDIA −39,05, le altre 2 sedi invariate. Catena e
+sede-singola ora coincidono esattamente: **443.208,05 €**.
+
+**Mergiata PR #29** (`--merge`, fast-forward verificato con
+`git merge-base --is-ancestor`: nessun commit a rischio), CI verde su tutti e 4
+i check. `main` → `d79a8a9`.
+
+**Deploy verificato leggendo `/health`**, non presunto dal push: al primo poll
+il worker serviva ancora `f005ca3d2e95`, 20 secondi dopo
+`{"status":"ok","commit":"d79a8a9dce2d"}` — il merge commit stesso.
+
+**Nota sull'orario, a verbale perché è un errore mio.** Avevo detto all'utente
+"sono le 23:15" deducendolo invece di leggerlo; poi mi sono corretto in "19:01"
+leggendo `date` nel container. Erano sbagliate entrambe in modo diverso: il
+clock del container è sfasato, l'ora reale del deploy era **22:10 CEST** — cioè
+dentro la finestra consentita, come la prima stima. Lezione: `date` dentro il
+container non è l'ora dell'utente, e una stima "a sensazione" non va spacciata
+per un dato. Quando l'orario decide se si può deployare, va letto da una fonte
+di cui ci si fida.
+
 ### Lasciato aperto
 
-- **Migration `20260827230000_gruppo_tag_note_credito.sql` NON applicata**: da
-  applicare con conferma esplicita **prima** del deploy, come da metodo.
 - **§2** (mock globale `conftest.py`): rimandata a sessione dedicata per
   decisione esplicita dell'utente. È l'unica voce che tiene aperto il ciclo.
