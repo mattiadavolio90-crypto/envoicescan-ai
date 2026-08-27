@@ -18,18 +18,17 @@ logger = get_logger("documenti")
 def _oggi_rome() -> date:
     """Data di oggi nel fuso Europe/Rome.
 
-    Stessa semantica di `_oggi_rome` in services/fastapi_worker.py, ridefinita
-    qui per non importare il worker (dipendenza pesante) da un service.
+    Stessa semantica E stessa implementazione di `_oggi_rome` in
+    services/fastapi_worker.py, ridefinita qui per non importare il worker
+    (dipendenza pesante) da un service. Le due devono restare allineate: un
+    fallback presente solo qui farebbe scrivere date diverse ai due moduli per
+    lo stesso istante.
     Su Railway il processo gira in UTC: nella finestra notturna la data UTC e'
     ancora quella di ieri.
     """
     from datetime import datetime as _dt
-    try:
-        from zoneinfo import ZoneInfo
-        return _dt.now(tz=ZoneInfo("Europe/Rome")).date()
-    except Exception:
-        from datetime import timezone as _tz
-        return _dt.now(_tz.utc).date()
+    from zoneinfo import ZoneInfo
+    return _dt.now(tz=ZoneInfo("Europe/Rome")).date()
 
 
 def _to_date_iso(value: Any) -> Optional[str]:

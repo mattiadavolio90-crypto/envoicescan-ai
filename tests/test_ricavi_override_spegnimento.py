@@ -167,17 +167,6 @@ def test_errore_supabase_non_propaga():
 # `mese` era validato (1-12), `anno` no: un valore assurdo creava una riga
 # irraggiungibile dall'interfaccia (i selettori mostrano solo anni plausibili).
 
-@pytest.mark.parametrize("anno_valido", [2000, 2026, 2100])
-def test_anno_plausibile_accettato(anno_valido):
-    assert 2000 <= anno_valido <= 2100
-
-
-@pytest.mark.parametrize("anno_assurdo", [0, 1899, 20260, -2026, 99999])
-def test_anno_assurdo_fuori_range(anno_assurdo):
-    """Documenta il contratto che l'endpoint ora impone (ricavi.py:1404-1405)."""
-    assert not (2000 <= anno_assurdo <= 2100)
-
-
 def test_endpoint_modalita_valida_anno():
     """Il controllo su `anno` esiste davvero nel sorgente dell'endpoint.
 
@@ -195,15 +184,43 @@ def test_endpoint_modalita_valida_anno():
 # nessun percorso lo invocava. Senza questa guardia, rimuovere la chiamata da
 # uno dei tre lascerebbe il difetto vivo su quel canale con i test tutti verdi.
 
-@pytest.mark.parametrize("endpoint,canale", [
+@pytest.mark.parametrize("funzione,canale", [
     ("upsert_ricavo_giornaliero", "POST singolo giorno (mobile)"),
     ("upsert_ricavi_batch", "batch (dialog desktop)"),
-    ("import_ricavi_xls", "import XLS"),
+    # L'import XLS delega a questa: lo spegnimento sta qui perche' qui vive
+    # `rows_to_upsert`, cioe' le date DAVVERO scritte. Metterlo nel chiamante
+    # significherebbe usare la lista parsata e spegnere l'override di un mese
+    # le cui righe sono state tutte scartate.
+    ("_upsert_ricavi_ristorante", "import XLS (per sede)"),
 ])
-def test_percorso_scrittura_spegne_override(endpoint, canale):
+def test_percorso_scrittura_spegne_override(funzione, canale):
     import inspect
-    src = inspect.getsource(getattr(R, endpoint))
+    src = inspect.getsource(getattr(R, funzione))
     assert "_spegni_override_mensile" in src, (
         f"{canale}: scrive i giornalieri senza spegnere l'override mensile — "
         f"i giorni salvati verrebbero ignorati dai margini"
     )
+
+
+def test_quarto_percorso_email_spegne_override():
+    """Il canale email scrive fuori dal router: e' il 4° percorso, facile da
+    dimenticare (lo era, fino alla review del 27/8)."""
+    from pathlib import Path
+
+    eq = Path(__file__).resolve().parents[1] / "worker" / "email_queue_processor.py"
+    testo = eq.read_text(encoding="utf-8")
+    assert "_spegni_override_mensile" in testo, (
+        "email_queue_processor scrive ricavi_giornalieri senza spegnere "
+        "l'override: un cliente che riceve i ricavi via email su un mese "
+        "'mensile' vedrebbe i giorni importati ignorati dai margini"
+    )
+
+
+def test_spegnimento_usa_le_date_scritte_non_quelle_parsate():
+    """Guardia sull'errore trovato dalla review: usare `items` invece di
+    `rows_to_upsert` spegne l'override di mesi in cui non si e' scritto nulla."""
+    import inspect
+
+    src = inspect.getsource(R._upsert_ricavi_ristorante)
+    assert 'for r in rows_to_upsert' in src
+    assert 'for it in items]' not in src

@@ -230,7 +230,11 @@ function GrigliaView({
         // (_load_mensile_overrides filtra .eq("modalita","mensile")) e il cliente
         // continua a vedere il totale mensile ovunque. Va fatto anche senza righe
         // dirty: lo switch e' di per se' la modifica da salvare.
-        if (eraMensile) {
+        // Solo su un salvataggio esplicito: `silentIfClean` e' il gesto
+        // "aggiorna e chiudi", con cui l'utente non sta chiedendo di cambiare
+        // modalita'. Spegnere li' l'override cambierebbe i margini per chi ha
+        // solo aperto il calendario per guardarlo.
+        if (eraMensile && !opts?.silentIfClean) {
           const resMod = await fetch("/api/ricavi/modalita", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -251,7 +255,7 @@ function GrigliaView({
           setEraMensile(false);
         }
         if (dirty.length === 0) {
-          if (eraMensile) {
+          if (eraMensile && !opts?.silentIfClean) {
             toast.success(`${meseSel.label} torna ai ricavi giornalieri`);
             onSaved();
           } else if (!opts?.silentIfClean) {

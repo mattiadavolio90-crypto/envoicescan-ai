@@ -881,8 +881,10 @@ Più 4 MEDIUM e 2 LOW fixati, e **5 piste chiuse in negativo** (fra cui la
 le due percentuali misurano grandezze diverse).
 
 Il MEDIUM delle note di credito: i numeri del verbale erano **invecchiati**,
-236,23 € su 3 righe → **285,50 € su 7** alla riverifica. Migration scritta,
-testata e **applicata prima del deploy**.
+236,23 € su 3 righe → **285,50 € su 7** alla riverifica. Migration scritta e
+testata; **da applicare con conferma esplicita prima del deploy** — a oggi
+`20260827230000_gruppo_tag_note_credito.sql` NON è applicata e le RPC live
+contengono ancora il filtro.
 
 Con §3c vuota, **il ciclo resta aperto solo su §2**.
 

@@ -469,12 +469,6 @@ async def import_ricavi_xls(
         inserted += ins
         updated += upd
         upsert_errors.extend(errs)
-        # Un import su un mese in modalita' 'mensile' verrebbe ignorato dai margini:
-        # i giorni appena importati sono la nuova fonte, l'override va spento.
-        if ins or upd:
-            await asyncio.to_thread(
-                _spegni_override_mensile, sb, rid, [it.data for it in items]
-            )
         dettaglio_sedi.append(RicaviImportSedeDettaglio(
             ristorante_id=rid,
             nome=nomi_sedi.get(rid),
@@ -820,6 +814,11 @@ def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_met
             errors.append(f"upsert {_sede_label}: {exc}")
 
     if inserted or updated:
+        # Le date sono quelle EFFETTIVAMENTE scritte, non quelle parsate: un mese
+        # le cui righe sono state tutte scartate non deve perdere l'override.
+        _spegni_override_mensile(
+            sb, str(ristorante_id), [str(r["data"]) for r in rows_to_upsert]
+        )
         try:
             _fw()._invalidate_home_kpi_cache(str(ristorante_id))
         except Exception as exc:
