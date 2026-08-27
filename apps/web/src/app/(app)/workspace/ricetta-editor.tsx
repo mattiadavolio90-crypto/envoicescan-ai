@@ -226,11 +226,12 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="w-full sm:max-w-4xl gap-5 max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex w-full flex-col gap-0 sm:max-w-4xl max-h-[90vh]">
+        <DialogHeader className="shrink-0 pb-4">
           <DialogTitle>{isNew ? "Nuova ricetta" : `Modifica — ${ricetta?.nome}`}</DialogTitle>
         </DialogHeader>
 
+        <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1">
         {/* Riga 1: Nome ricetta — full width */}
         <div className="space-y-1.5">
           <Label className="text-sm font-medium">Nome ricetta *</Label>
@@ -437,7 +438,9 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
           )}
         </div>
 
-        <DialogFooter className="gap-2">
+        </div>
+
+        <DialogFooter className="mt-4 shrink-0 gap-2">
           <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
           <Button onClick={handleSalva} disabled={saving}>
             {saving ? "Salvataggio…" : isNew ? "Crea ricetta" : "Salva modifiche"}

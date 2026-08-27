@@ -1183,7 +1183,7 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
                               onChange={() => toggleFornitore(f.fornitore)}
                               className="size-3.5 accent-primary flex-shrink-0"
                             />
-                            <span className="text-xs truncate flex-1">{f.fornitore}</span>
+                            <span className="min-w-0 text-xs truncate flex-1">{f.fornitore}</span>
                             {!f.piva_fornitore && (
                               <span className="text-[10px] text-muted-foreground italic flex-shrink-0">senza P.IVA</span>
                             )}

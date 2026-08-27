@@ -193,7 +193,7 @@ export function RipartisciDialog({
             <div className="space-y-1.5 rounded-md border p-2.5">
               {sedi.map((s) => (
                 <div key={s.id} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 truncate">{s.nome}</span>
+                  <span className="min-w-0 flex-1 truncate">{s.nome}</span>
                   <input
                     value={perc[s.id] ?? ""}
                     onChange={(e) => setPerc((p) => ({ ...p, [s.id]: e.target.value }))}

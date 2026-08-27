@@ -329,8 +329,8 @@ function TagDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border shrink-0">
           <DialogTitle>
             {tag ? "Modifica tag" : step === 1 ? "Nuovo tag" : `Aggiungi prodotti a "${savedTag?.nome}"`}
           </DialogTitle>
@@ -341,7 +341,7 @@ function TagDialog({
 
         {/* ── Step 1: nome + emoji ── */}
         {step === 1 && (
-          <div className="space-y-4 pt-2">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
             <div className="space-y-1">
               <label className="text-sm font-medium">Nome</label>
               <input
@@ -377,22 +377,24 @@ function TagDialog({
                 </div>
               )}
             </div>
-            <div className="flex gap-2 justify-end pt-1">
-              <button onClick={() => onOpenChange(false)}
-                className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
-                Annulla
-              </button>
-              <button onClick={saveTag} disabled={saving || !nome.trim()}
-                className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                {saving ? "Salvataggio…" : tag ? "Salva" : "Avanti →"}
-              </button>
-            </div>
+          </div>
+        )}
+        {step === 1 && (
+          <div className="flex gap-2 justify-end px-5 py-3 border-t border-border shrink-0 bg-popover">
+            <button onClick={() => onOpenChange(false)}
+              className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
+              Annulla
+            </button>
+            <button onClick={saveTag} disabled={saving || !nome.trim()}
+              className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+              {saving ? "Salvataggio…" : tag ? "Salva" : "Avanti →"}
+            </button>
           </div>
         )}
 
         {/* ── Step 2: selezione prodotti ── */}
         {step === 2 && (
-          <div className="space-y-3 pt-2">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
             <div className="relative">
               <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -404,7 +406,7 @@ function TagDialog({
               />
             </div>
             <div className="rounded-lg border border-border overflow-hidden">
-              <div className="max-h-64 overflow-y-auto">
+              <div>
                 {loadingDesc ? (
                   <div className="space-y-2 p-3">
                     {[1,2,3,4].map(i => <div key={i} className="h-9 rounded-md bg-muted animate-pulse" />)}
@@ -427,7 +429,7 @@ function TagDialog({
                           <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
                             {sel && <Check className="size-3 text-primary-foreground" />}
                           </span>
-                          <span className="flex-1 truncate font-medium">{d.descrizione}</span>
+                          <span className="min-w-0 flex-1 truncate font-medium">{d.descrizione}</span>
                           <span className="text-xs text-muted-foreground shrink-0">{d.occorrenze} occ.</span>
                         </button>
                       );
@@ -436,25 +438,27 @@ function TagDialog({
                 )}
               </div>
             </div>
-            {matchingDesc.length > filteredDesc.length && (
-              <p className="text-xs text-muted-foreground">
-                Mostrati {filteredDesc.length} di {matchingDesc.length} prodotti — usa la ricerca per trovare gli altri.
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-3 pt-1">
-              <p className="text-sm text-muted-foreground">
-                {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Nessuno selezionato"}
-              </p>
-              <div className="flex gap-2">
-                <button onClick={() => onOpenChange(false)}
-                  className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
-                  Salta
-                </button>
-                <button onClick={saveProdotti} disabled={savingProdotti || selected.size === 0}
-                  className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                  {savingProdotti ? "Salvataggio…" : "Aggiungi e chiudi"}
-                </button>
-              </div>
+          </div>
+        )}
+        {step === 2 && matchingDesc.length > filteredDesc.length && (
+          <p className="px-5 pb-2 text-xs text-muted-foreground shrink-0">
+            Mostrati {filteredDesc.length} di {matchingDesc.length} prodotti — usa la ricerca per trovare gli altri.
+          </p>
+        )}
+        {step === 2 && (
+          <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border shrink-0 bg-popover">
+            <p className="text-sm text-muted-foreground">
+              {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Nessuno selezionato"}
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => onOpenChange(false)}
+                className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
+                Salta
+              </button>
+              <button onClick={saveProdotti} disabled={savingProdotti || selected.size === 0}
+                className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                {savingProdotti ? "Salvataggio…" : "Aggiungi e chiudi"}
+              </button>
             </div>
           </div>
         )}
@@ -562,7 +566,7 @@ function AggiungiProdottiDialog({
                     <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
                       {sel && <Check className="size-3 text-primary-foreground" />}
                     </span>
-                    <span className="flex-1 truncate font-medium">{d.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{d.descrizione}</span>
                     <span className="text-xs text-muted-foreground shrink-0">{d.occorrenze} occ.</span>
                   </button>
                 );
@@ -742,7 +746,7 @@ function SuggestionCard({
                     <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
                       {sel && <Check className="size-2.5 text-primary-foreground" />}
                     </span>
-                    <span className="flex-1 truncate font-medium">{item.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{item.descrizione}</span>
                     <span className="text-xs text-muted-foreground shrink-0">{item.occorrenze} occ.</span>
                   </button>
                 );
@@ -1373,7 +1377,7 @@ export function AnalisiETagClient({
               <div className="rounded-lg border border-border divide-y divide-border">
                 {prodotti.map(p => (
                   <div key={p.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                    <span className="flex-1 truncate text-sm font-medium">{p.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.descrizione}</span>
                     <button
                       onClick={() => removeProdotto(p.id)}
                       disabled={removingId === p.id}

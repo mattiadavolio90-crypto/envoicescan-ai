@@ -117,11 +117,11 @@ function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: DialogPro
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] max-w-[calc(100vw-2rem)] flex-col rounded-2xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{evento ? "Modifica evento" : "Nuovo evento"}</DialogTitle>
         </DialogHeader>
-        <div className="mt-1 space-y-3">
+        <div className="-mx-1 mt-1 min-h-0 flex-1 space-y-3 overflow-y-auto px-1">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Titolo *</label>
             <Input value={titolo} onChange={(e) => setTitolo(e.target.value)} placeholder="es. Chiusura, Manutenzione frigo…" autoFocus />
@@ -163,22 +163,22 @@ function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: DialogPro
               ))}
             </div>
           </div>
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium active:scale-[0.98]"
-            >
-              Annulla
-            </button>
-            <button
-              onClick={salva}
-              disabled={saving}
-              className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground active:scale-[0.98] disabled:opacity-50"
-            >
-              {saving ? "Salvo…" : "Salva"}
-            </button>
-          </div>
+        </div>
+        <div className="flex shrink-0 gap-2 border-t border-border pt-3">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium active:scale-[0.98]"
+          >
+            Annulla
+          </button>
+          <button
+            onClick={salva}
+            disabled={saving}
+            className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground active:scale-[0.98] disabled:opacity-50"
+          >
+            {saving ? "Salvo…" : "Salva"}
+          </button>
         </div>
       </DialogContent>
     </Dialog>

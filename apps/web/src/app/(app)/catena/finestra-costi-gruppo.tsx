@@ -153,8 +153,8 @@ export function FinestraCostiGruppo({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-[min(96vw,56rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="border-b px-5 py-4">
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,56rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+        <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span>Costi di gruppo</span>
             <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
@@ -177,7 +177,7 @@ export function FinestraCostiGruppo({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="max-h-[calc(90vh-5rem)] overflow-auto px-5 pb-5 pt-3">
+        <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3">
           <p className="mb-3 text-xs text-muted-foreground">
             Costi di struttura intestati alla sede legale, divisi fra i punti vendita. La quota di
             ogni sede entra nel suo MOL; nell&apos;analisi fatture il documento resta intero.
