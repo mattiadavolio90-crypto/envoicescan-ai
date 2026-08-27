@@ -37,11 +37,11 @@ def test_soglia_esiste_ed_e_sensata():
 
 
 def test_response_espone_ai_pending():
+    """Il campo resta nel contratto anche se il modale non lo usa piu': segnala
+    a qualsiasi consumatore (test, integrazioni, un domani il modale stesso) che
+    la categorizzazione di quella fattura non e' ancora definitiva."""
     campi = fw.UploadInvoiceResponse.model_fields
-    assert "ai_pending" in campi, (
-        "senza ai_pending il frontend non puo' distinguere un conteggio "
-        "needs_review definitivo da uno provvisorio"
-    )
+    assert "ai_pending" in campi
 
 
 def test_ai_pending_default_false():
@@ -248,7 +248,15 @@ def test_nessuna_deadline_nel_task_async():
     assert "clear_ai_deadline()" in src
 
 
-# ─── frontend: il conteggio provvisorio non va spacciato per definitivo ──────
+# ─── frontend ───────────────────────────────────────────────────────────────
+# SCELTA (27/8, dopo test in produzione): il modale NON introduce un messaggio
+# per ai_pending. Il flusso naturale e' "Chiudi e aggiorna" -> window.location
+# .reload(), e su una fattura grande l'AI finisce in 10-20s, prima che il
+# cliente abbia letto il modale e cliccato. Una frase "categorizzazione in
+# corso, aggiorna fra poco" e' rumore che confonde tutti per proteggere un
+# caso raro (fattura enorme + reload entro 5s). Il campo ai_pending resta nella
+# response del worker per eventuali consumatori futuri, ma il modale mostra il
+# conteggio needs_review come sempre.
 
 def _upload_modal_src():
     from pathlib import Path
@@ -256,16 +264,16 @@ def _upload_modal_src():
     return p.read_text(encoding="utf-8")
 
 
-def test_modale_legge_ai_pending():
+def test_modale_non_ha_messaggio_ai_pending():
+    """Regressione della scelta di cui sopra: se un giorno si rimette una frase
+    per ai_pending, questo test lo intercetta e obbliga a rileggere il perche'."""
     src = _upload_modal_src()
-    assert "ai_pending" in src, "il modale ignora ai_pending"
+    assert "categorizzazione in corso" not in src
+    assert "entry.ai_pending" not in src
 
 
-def test_modale_non_mostra_needs_review_provvisorio():
-    """Con ai_pending il numero cambia da solo pochi secondi dopo: mostrarlo come
-    definitivo e' peggio che non mostrarlo."""
+def test_modale_mostra_sempre_needs_review():
     src = _upload_modal_src()
-    assert "entry.ai_pending ?" in src, (
-        "needs_review mostrato senza distinguere il caso provvisorio"
+    assert "categoria da verificare" in src, (
+        "il conteggio needs_review non e' piu' mostrato nel modale"
     )
-    assert "categorizzazione in corso" in src
