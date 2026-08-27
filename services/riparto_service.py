@@ -340,7 +340,7 @@ def _proietta_riparto(
             nr["unita_misura"] = None
             nr["prezzo_unitario"] = quota_importo
             nr["totale_riga"] = quota_importo
-            nr["needs_review"] = False
+            nr["needs_review"] = not cat
             out.append(nr)
 
     return out

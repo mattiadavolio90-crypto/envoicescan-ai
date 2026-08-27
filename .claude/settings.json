@@ -55,7 +55,11 @@
       "Bash(curl -s -m 25 -w \"\\\\nHTTP_CODE=%{http_code}\\\\n\" https://worker-production-a552.up.railway.app/health)",
       "Bash(timeout 900 python -m pytest tests/test_documentazione_onesta.py -q)",
       "Bash(git commit -m ' *)",
-      "Bash(curl -s -m 15 -w \"\\\\nHTTP_CODE=%{http_code}\\\\n\" https://worker-production-a552.up.railway.app/health)"
+      "Bash(curl -s -m 15 -w \"\\\\nHTTP_CODE=%{http_code}\\\\n\" https://worker-production-a552.up.railway.app/health)",
+      "Bash(python -m pytest tests/test_riparto_per_categoria.py -q)",
+      "Bash(python -m pytest tests/test_riparto_per_categoria.py::test_proietta_quota_senza_categoria_marcata_needs_review -q)",
+      "Bash(npx next *)",
+      "Bash(timeout 120 npx next lint --file \"src/app/\\(app\\)/analisi-fatture/articoli-tab.tsx\")"
     ],
     "defaultMode": "acceptEdits"
   },

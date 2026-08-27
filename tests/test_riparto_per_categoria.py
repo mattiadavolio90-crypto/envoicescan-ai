@@ -205,6 +205,8 @@ def test_proietta_fallback_sintetico_senza_righe_vive():
     assert r["categoria"] == "MANUTENZIONE E ATTREZZATURE"
     assert r["ripartita_su_gruppo"] is True
     assert "Quota di gruppo" in r["descrizione"]
+    # categoria valorizzata → non serve verifica manuale
+    assert r["needs_review"] is False
 
 
 def test_proietta_quota_categoria_senza_righe_reali_corrispondenti():
@@ -216,6 +218,19 @@ def test_proietta_quota_categoria_senza_righe_reali_corrispondenti():
     assert len(out) == 1
     assert out[0]["categoria"] == "CARNE"
     assert out[0]["totale_riga"] == 15.00
+    assert out[0]["needs_review"] is False
+
+
+def test_proietta_quota_senza_categoria_marcata_needs_review():
+    # quota legacy con categoria NULL/vuota: la riga sintetica generica NON può
+    # presentarsi al cliente come "confermata" — deve restare da verificare.
+    quote = [{"categoria": None, "quota_importo": 80.00}]
+    out = _proietta_riparto([], quote, 40.0, _id_gen())
+    assert len(out) == 1
+    r = out[0]
+    assert r["categoria"] is None
+    assert r["totale_riga"] == 80.00
+    assert r["needs_review"] is True
 
 
 # ─── _mesi_nella_finestra ────────────────────────────────────────────────────

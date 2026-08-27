@@ -191,7 +191,7 @@ export function ArticoliTab({
       // soloNuovi è applicato server-side (page.tsx → worker): gli articoli arrivano
       // già filtrati e con totale_speso/quantita ricalcolati sulle sole righe nuove.
       // Nessun filtro client qui, altrimenti i totali resterebbero quelli storici.
-      if (soloVerifica && !a.needs_review) return false;
+      if (soloVerifica && !(a.needs_review || !a.categoria || a.categoria === "Da Classificare")) return false;
       // Gatato su hasRipartite: il chip che lo disattiva è nascosto quando non ci sono
       // righe ripartite nel dataset, quindi un ?ripartite=1 rimasto nell'URL (cambio
       // periodo, tipo prodotti, o sede) svuotava la lista senza lasciare alcun modo di
