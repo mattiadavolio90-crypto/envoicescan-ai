@@ -15,6 +15,23 @@ from utils.supabase_paging import fetch_all
 logger = get_logger("documenti")
 
 
+def _oggi_rome() -> date:
+    """Data di oggi nel fuso Europe/Rome.
+
+    Stessa semantica di `_oggi_rome` in services/fastapi_worker.py, ridefinita
+    qui per non importare il worker (dipendenza pesante) da un service.
+    Su Railway il processo gira in UTC: nella finestra notturna la data UTC e'
+    ancora quella di ieri.
+    """
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        return _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        from datetime import timezone as _tz
+        return _dt.now(_tz.utc).date()
+
+
 def _to_date_iso(value: Any) -> Optional[str]:
     """Converte una data in formato YYYY-MM-DD, altrimenti None."""
     if value in (None, "", "N/A", "None"):
@@ -686,7 +703,12 @@ def segna_fattura_pagata(
 
         payload: Dict[str, Any] = {"pagata": pagata}
         if pagata:
-            payload["pagata_at"] = datetime.now(timezone.utc).date().isoformat()
+            # Data in ora italiana, non UTC: il frontend scrive l'aggiornamento
+            # ottimistico con todayLocalIso() (lib/scadenziario.ts) e il KPI
+            # "Pagate (mese)" raggruppa per mese. Fra mezzanotte e le 02:00 del
+            # 1° del mese UTC e' ancora nel mese precedente: il valore mostrato
+            # e quello ricaricato cadrebbero in due mesi diversi.
+            payload["pagata_at"] = _oggi_rome().isoformat()
         else:
             payload["pagata_at"] = None
         # Marca sempre la dichiarazione esplicita dell'utente, cosi' la lettura

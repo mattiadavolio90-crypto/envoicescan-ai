@@ -51,6 +51,9 @@ CACHE_WORKER = (
     "_HOME_KPI_CACHE",
     "_DASHBOARD_STATS_CACHE",
     "_FATTURE_ROWS_CACHE",
+    # Trial per-utente durante l'upload multi-file: porta dati (is_trial), quindi
+    # va svuotata o un test che simula un trial lo farebbe leggere al successivo.
+    "_TRIAL_INFO_CACHE",
 )
 CACHE_AUTH = ("_SESSIONE_CACHE",)
 CACHE_ADMIN = ("_ADMIN_CACHE",)
