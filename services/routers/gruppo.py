@@ -572,10 +572,15 @@ def _applica_override_netto(
     """
     if not rows:
         return rows
+    # Una lettura per sede, non una per riga: _overrides_mese_sede non e'
+    # memoizzata e questa funzione gira su 4 chiamanti diversi.
+    visti: Dict[str, Optional[Dict[str, float]]] = {}
     for r in rows:
         rid = str(r.get("ristorante_id"))
         try:
-            ov = _overrides_mese_sede(sb, rid, anno).get(int(mese))
+            if rid not in visti:
+                visti[rid] = _overrides_mese_sede(sb, rid, anno).get(int(mese))
+            ov = visti[rid]
         except Exception:
             continue
         if not ov:

@@ -171,3 +171,68 @@ class TestCompletezzaConOverride:
             rows = _applica_override_netto(_sb_vuoto(), rows, 2026, 7)
         out = _completezza_dati_pv(_sb_vuoto(), ["a"], rows=rows)
         assert out == {"a": ["il fatturato"]}
+
+
+class TestSaluteIndiciSecondoConsumatore:
+    """L'override non tocca solo la completezza: alza anche l'INDICE di salute.
+
+    `_salute_indici_batch` condivide `_salute_componenti_raw` e assegna 25 punti
+    su 100 alla voce `netto > 0`. Una sede in modalità mensile li perdeva tutti
+    pur avendo fatturato. È corretto che ora li prenda — ma è un secondo
+    consumatore del fix, e senza questo test nessuno lo copre: chi domani vede
+    l'indice salire di 25 punti non trova la ragione da nessuna parte.
+    """
+
+    def _sb_con_rpc(self, rows):
+        sb = MagicMock()
+        rpc_res = MagicMock()
+        rpc_res.execute.return_value = MagicMock(data=rows)
+        sb.rpc.return_value = rpc_res
+        tbl = MagicMock()
+        for m in ("select", "in_", "eq", "gte", "lte"):
+            getattr(tbl, m).return_value = tbl
+        tbl.execute.return_value = MagicMock(data=[], count=0)
+        sb.table.return_value = tbl
+        return sb
+
+    def test_l_indice_sale_di_25_punti_con_l_override(self):
+        from services.routers.gruppo import _salute_indici_batch
+
+        rpc_rows = [{
+            "ristorante_id": "a", "netto": 0, "n_fatture": 10,
+            "n_needs_review": 0, "personale": 8000,
+        }]
+
+        with patch("services.routers.gruppo._overrides_mese_sede", return_value={}):
+            rows_senza = _salute_componenti_raw(self._sb_con_rpc(rpc_rows), ["a"], anno=2026, mese=7)
+            senza = _salute_indici_batch(_sb_vuoto(), ["a"], rows=rows_senza)
+
+        with patch(
+            "services.routers.gruppo._overrides_mese_sede",
+            return_value={7: {"iva10": 53897.0, "iva22": 0.0, "altri": 0.0}},
+        ):
+            rows_con = _salute_componenti_raw(self._sb_con_rpc(rpc_rows), ["a"], anno=2026, mese=7)
+            con = _salute_indici_batch(_sb_vuoto(), ["a"], rows=rows_con)
+
+        assert senza["a"] == 75
+        assert con["a"] == 100
+
+
+class TestUnaLetturaPerSede:
+    """Gli override si leggono una volta per sede, non una per riga.
+
+    _overrides_mese_sede non è memoizzata e _applica_override_netto gira su 4
+    chiamanti: senza la cache locale è una query per riga.
+    """
+
+    def test_due_righe_stessa_sede_una_sola_lettura(self):
+        rows = [
+            {"ristorante_id": "a", "netto": 0, "n_fatture": 5, "personale": 800},
+            {"ristorante_id": "a", "netto": 0, "n_fatture": 5, "personale": 800},
+            {"ristorante_id": "b", "netto": 0, "n_fatture": 5, "personale": 800},
+        ]
+        with patch("services.routers.gruppo._overrides_mese_sede") as m:
+            m.return_value = {}
+            _applica_override_netto(_sb_vuoto(), rows, 2026, 7)
+        letture = [c.args[1] for c in m.call_args_list]
+        assert letture == ["a", "b"]

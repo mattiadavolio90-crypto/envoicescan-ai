@@ -159,7 +159,12 @@ export function FinestraMarginiCoperti({
     const gruppoRow = toRow(data.gruppo);
     if (data.n_incompleti > 0) {
       const mp = COLS.find((c) => c.key === "margine_perc");
-      if (mp) gruppoRow[mp.label] = `${gruppoRow[mp.label]} (parziale)`;
+      // Solo se c'e' davvero un numero da qualificare: su una cella gia'
+      // "dati incompleti" o "—" il suffisso non aggiungerebbe nulla e si
+      // leggerebbe male ("— (parziale)"). La nota in coda resta comunque.
+      if (mp && typeof gruppoRow[mp.label] === "number") {
+        gruppoRow[mp.label] = `${gruppoRow[mp.label]} (parziale)`;
+      }
     }
     const rows = [...righeSorted.map(toRow), gruppoRow];
     const ws = XLSX.utils.json_to_sheet(rows, { header });
