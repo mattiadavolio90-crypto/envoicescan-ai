@@ -561,9 +561,14 @@ def _applica_override_netto(
     tests/test_gruppo_aggrega_sedi.py, "Bug 1: override vince sullo snapshot"):
     il percorso della COMPLETEZZA era rimasto indietro.
 
-    Il confronto a valle e' di sola presenza (> 0), quindi si somma il LORDO
-    senza scorporare l'IVA: basta a dire "il fatturato c'e'". Best-effort come
-    il resto della catena: se la lettura fallisce si tengono i valori della RPC.
+    Si somma il LORDO senza scorporare l'IVA per due motivi: il confronto a
+    valle e' di sola presenza (> 0), e soprattutto la RPC chiama gia' `netto`
+    una somma che netta non e' (iva10 + iva22 + altri, nessuna divisione per
+    1.10/1.22 — lo scorporo vero vive solo in _aggrega_sedi_mensili). Scorporare
+    qui disallineerebbe l'override dalla colonna che sta sovrascrivendo.
+
+    Best-effort come il resto della catena: se la lettura fallisce si tengono i
+    valori della RPC.
     """
     if not rows:
         return rows

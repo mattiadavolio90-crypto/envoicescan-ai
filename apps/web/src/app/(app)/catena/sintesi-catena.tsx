@@ -292,7 +292,7 @@ function ContiGruppoCard({
             {kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
           </div>
           <span className="mt-1 text-xs text-muted-foreground/70">
-            {kpi.pv_da_completare} {kpi.pv_da_completare === 1 ? "PV" : "PV"} con dati incompleti: MOL non ancora calcolabile
+            {kpi.pv_da_completare} PV con dati incompleti: MOL non ancora calcolabile
           </span>
         </button>
       )}
