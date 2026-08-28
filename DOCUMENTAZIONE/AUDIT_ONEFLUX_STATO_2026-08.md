@@ -29,11 +29,23 @@ Voci ereditate dal ciclo 2026-07, da valutare quando si apre questo:
   e §32), difesa da `tests/test_upload_policy_canale_sdi.py`. Non è una svista.
 - **Il flush PROP-1** prima del blocco policy: documenta-e-chiudi, refactor
   sproporzionato al rischio.
-- **`tests/worker_test.py` non gira mai** (segnalato dal `code-reviewer` il
-  28/8): `pytest.ini` ha `python_files = test_*.py` e il nome usa il *suffisso*
-  `_test.py`, quindi non viene raccolto né in locale né in CI. Fallisce se
-  eseguito a mano, anche prima di §2. Da rinominare o cancellare: oggi sembra
-  coprire `/health` e non copre nulla.
+- ~~**`tests/worker_test.py` non gira mai**~~ — **CHIUSA il 28/08/2026**,
+  sostituita da `tests/test_worker_endpoints.py` (5 test, 3 mutanti uccisi).
+  Due precisazioni rispetto a come era annotata:
+  1. Il file *era* raccoglibile nominandolo esplicitamente (`pytest
+     tests/worker_test.py` → 3 test). Non veniva raccolto **in CI** perché
+     `testpaths` scandisce le *directory* applicando il glob `test_*.py`, e il
+     suffisso `_test.py` non matcha. La distinzione conta: "rinominare" non era
+     una fix neutra.
+  2. Non erano unit test ma uno **script di smoke manuale** — `requests` verso
+     `localhost:8000`, `print()`, blocco `__main__`. Rinominarlo li avrebbe
+     resi **rossi fissi in CI**, dove nessun worker ascolta (oggi falliscono
+     sulla guardia di rete del conftest: il segnale corretto).
+  Il rimpiazzo guida gli stessi 3 endpoint in-process con `TestClient` (come
+  `test_worker_metrics.py`): niente socket, niente GPT. E copre una proprietà
+  che lo script **non verificava affatto** — il 401 senza `X-Worker-Key`:
+  girando in locale con la chiave in ambiente, quel ramo non lo vedeva mai.
+  `/api/classify` e `/api/parse` non avevano **nessun** altro test nella suite.
 - **`ph = argon2.PasswordHasher()`** (`services/auth_service.py:36`) usa i
   **default della libreria**, non parametri espliciti. Oggi coincidono con
   quanto dichiara CLAUDE.md (`memory_cost=65536, time_cost=3`, verificato), ma
