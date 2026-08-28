@@ -1,9 +1,19 @@
 # Stato audit ONEFLUX — ciclo 2026-07
 
+# ✅ Ciclo chiuso il 28/08/2026
+
 **Tutte e 10 le dimensioni sono 🟢, tutte con seconda passata e `code-reviewer`.**
-§1, §3b e — dal 27/8/2026 — **§3c sono vuote**. Resta **§2** e basta: il mock
-globale di `conftest.py`, rimandato per decisione esplicita a una sessione
-dedicata. È l'unica voce che tiene aperto il ciclo.
+§1, §3b, §3c e — dal 28/8/2026 — **§2 sono vuote**. Non resta nulla di aperto.
+
+> **§2 chiusa il 28/8/2026 (STORICO §33).** Il conftest mockava 9 moduli con la
+> premessa "non disponibili nell'ambiente test puro": falsa per 8 su 9. Ora
+> mocka solo `streamlit`, l'unico davvero non installato. Suite
+> `11242 → 11239 passed, 0 failed` (−4 il file che documentava il difetto, +1
+> guardia anti-regressione). Nel farlo è emerso — e contenuto con una guardia
+> di rete nel conftest — che senza il mock di `supabase` alcune funzioni
+> memoizzate di `db_service` emettono query HTTP vere, e che
+> `load_dotenv(override=True)` del worker le punterebbe **al DB di produzione**
+> in locale.
 
 > ⚠️ **§3c non è più "solo copertura": la prima passata (25/8) ha trovato 39
 > findings, 21 attivi su clienti reali e 7 HIGH attivi.** Il frontend non è un
@@ -332,8 +342,13 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   SHA256 disattivato, `id` scritto sbagliato nell'update). `argon2` è
   mockato globalmente da `tests/conftest.py`: i test Argon2 verificano il
   wiring (`ph.verify`/`ph.hash` chiamati con gli argomenti giusti), non un
-  vero round-trip di hashing. Dettaglio in STORICO §16.
-- **Il mock globale di `tests/conftest.py` va ripensato** — `openai`, `requests`,
+  vero round-trip di hashing. Dettaglio in STORICO §16. — **Dal 28/8/2026
+  (§33) usano hash Argon2 reali**: il round-trip è ora verificato davvero.
+- ~~**Il mock globale di `tests/conftest.py` va ripensato**~~ — **CHIUSA il
+  28/8/2026** (STORICO §33): il conftest mocka ora **solo `streamlit`**, suite
+  `11239 passed, 0 failed`, e `test_conftest_mocka_solo_streamlit` impedisce che
+  la lista si riallunghi. `tests/test_eccezioni_moduli_mockati.py` è stato
+  cancellato come previsto. Analisi originale, che resta valida: `openai`, `requests`,
   `argon2`, `xmltodict`, `supabase`, `tenacity` sono **tutti installati davvero**:
   il conftest sta oscurando librerie funzionanti e rende vacui i test sui rami
   `except`. **Misurato il 27/8** (un modulo per volta sulla suite intera, poi
@@ -342,9 +357,13 @@ Nessun audit può farlo in coda a sé stesso: va pianificato come sessione propr
   (`xmltodict`, `requests`, `postgrest`, `fitz`) escono a **costo zero**;
   `supabase` va tolto **insieme** a `requests`+`postgrest` (da solo dà 122
   errori perché il `supabase` vero importa `requests.auth` da un MagicMock).
-  Tabella completa e ordine di lavoro in `PROMPT_PROSSIMA_SESSIONE.md`.
-  `tests/test_eccezioni_moduli_mockati.py` documenta il problema: **quando
-  qualcuno lo rimuoverà quel file diventerà rosso, ed è il segnale atteso.**
+  Tabella completa e ordine di lavoro erano in `PROMPT_PROSSIMA_SESSIONE.md`.
+  `tests/test_eccezioni_moduli_mockati.py` documentava il problema: **quel file
+  è diventato rosso come previsto, ed è stato cancellato col workaround.**
+  Nell'esecuzione l'ordine è cambiato: una guardia di rete va **prima** del
+  de-mock di supabase — senza il mock, alcune funzioni memoizzate di
+  `db_service` emettono query HTTP vere che in locale
+  `load_dotenv(override=True)` punterebbe al DB di produzione.
 - ~~**`.coveragerc` non è un gate**~~ — **CHIUSA l'8/8/2026** (commit
   `9a2e046`, primo run reale osservato: CI 31253977525, job `pytest` verde
   in 2m15s col nuovo step). `tests.yml` ora gira `coverage run -m pytest -q`
@@ -574,8 +593,8 @@ Dettaglio in STORICO §22.
 
 ~~Resta di §3b la **chat** di `fastapi_worker.py`.~~ — **chat CHIUSA e DEPLOYATA
 il 25/8/2026**, dettaglio in §23 dello STORICO. Con la chat chiusa **§3b è
-vuota**: del ciclo resta solo §2 (mock globale `conftest.py`, rimandato per
-decisione esplicita).
+vuota**: del ciclo restava solo §2 (mock globale `conftest.py`), ~~rimandato per
+decisione esplicita~~ — **chiusa il 28/8/2026, STORICO §33**.
 
 > ✅ **Deployato il 25/8/2026 pomeriggio** (`main` `de2d02a` → `d92de1d`).
 > **Deploy in orario cliente su ordine esplicito e ripetuto dell'utente**, che
@@ -892,7 +911,7 @@ Il MEDIUM delle note di credito: i numeri del verbale erano **invecchiati**,
 del deploy. Verificato sul DB dopo l'applicazione: catena e sede-singola
 coincidono a **443.208,05 €** (erano 443.493,55 vs 443.208,05).
 
-Con §3c vuota, **il ciclo resta aperto solo su §2**.
+~~Con §3c vuota, **il ciclo resta aperto solo su §2**.~~ — **§2 chiusa il 28/8/2026 (STORICO §33): ciclo CHIUSO.**
 
 ---
 

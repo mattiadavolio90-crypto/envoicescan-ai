@@ -25,8 +25,8 @@ cui è passato il difetto F&B/Spese Generali.
 
 ## Leggi prima (in quest'ordine)
 
-1. `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md` — §3c e "Chiusura del ciclo".
-2. `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md` §25 (i 7 HIGH, il
+1. `docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md` — §3c e "Chiusura del ciclo".
+2. `docs/storico/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md` §25 (i 7 HIGH, il
    "drift di autorità"), §26-§28 (cosa è già stato corretto).
 3. CLAUDE.md — regole di dominio #1 (Da Classificare fuori dai margini), #2
    (NOTE E DICITURE solo se totale_riga==0), #5 (soft delete).

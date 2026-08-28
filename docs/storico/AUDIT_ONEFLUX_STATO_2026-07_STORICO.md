@@ -3262,3 +3262,104 @@ di cui ci si fida.
 
 - **§2** (mock globale `conftest.py`): rimandata a sessione dedicata per
   decisione esplicita dell'utente. È l'unica voce che tiene aperto il ciclo.
+
+---
+
+## §33 — §2: il mock globale di `conftest.py` — 28/8/2026
+
+L'ultima voce aperta del ciclo. Il mandato: ridurre `_MODULI_DA_MOCKARE` al solo
+`streamlit`.
+
+### Il difetto
+
+`tests/conftest.py` sostituiva con `MagicMock()` nove moduli, con la premessa
+scritta *"moduli che richiedono l'app runtime […] non disponibili nell'ambiente
+test puro"*. **Falsa per 8 su 9**: solo `streamlit` non è installato.
+
+Il costo non era la lentezza, era la correttezza. Un attributo di MagicMock non
+eredita da `BaseException`, quindi `except openai.RateLimitError` sollevava
+`TypeError` invece di catturare: i test che "coprivano" quei rami verificavano un
+TypeError. Stessa cosa per `@retry` di tenacity, che **non decorava affatto**, e
+per `argon2.PasswordHasher`, il cui `verify` non sollevava mai.
+
+### Le misure, rifatte e non ereditate
+
+La tabella del 27/8 **regge**: baseline `11242 passed`; con i moduli veri
+`6 failed + 4 errors`, gli stessi 10 test nominali. Il venv non era cambiato.
+
+Tre imprecisioni del verbale precedente, corrette:
+- `db_service.py:916` **non** è "un `re` che riceve un MagicMock": è il
+  `logger.error` di un `except`. Nessun `re` è mai stato mockato.
+- Il test "da diagnosticare" (`test_gruppo_scadenziario_include_sede_tecnica`)
+  aveva causa precisa: `st.secrets` sotto MagicMock restituisce MagicMock, e
+  `create_client` vero valida l'URL con `re.match` → `TypeError`.
+- Gli unmock artigianali erano **8**, non 3.
+
+### La scoperta: i test uscirebbero in rete, sul DB di produzione
+
+**Non era nel mandato, ed è il motivo per cui l'ordine dei passi è cambiato.**
+
+Senza il mock di `supabase`, `create_client` è reale. Alcune funzioni
+**memoizzate** di `db_service` non ricevono il client dal chiamante: se lo
+procurano con `get_supabase_client()`, ignorando il fake iniettato dal test.
+Catena verificata: `carica_sconti_e_omaggi:755` → `_fetch_numero_documento_map_cached`
+(`db_service.py:265`) → httpx → **richiesta HTTP vera**.
+
+E `services/fastapi_worker.py:72` esegue `load_dotenv(ROOT/".env", override=True)`
+a import-time, con **53 file di test** che importano il worker. Misurato:
+
+```
+URL prima dell'import worker : https://test.supabas…   (finto)
+URL dopo  l'import worker    : https://vthikmfpywil…   (PRODUZIONE)
+```
+
+Le credenziali finte **non proteggono**: `override=True` le sovrascrive. In
+locale (dove il `.env` esiste) quelle query arriverebbero al DB dei clienti. In
+CI il rischio non c'è: `.env` e `.streamlit/secrets.toml` sono gitignored.
+
+Da qui la **guardia di rete** nel conftest, installata *prima* di togliere il
+mock. `socket.socket.connect` da solo non basta — httpcore risolve il DNS prima
+e fallisce a monte — quindi si blocca anche `socket.getaddrinfo`. Provata sulla
+suite: nessun fallimento aggiuntivo, e non è mai scattata in un test legittimo.
+
+### Le ricadute sistemate
+
+| Test | Fix |
+|---|---|
+| `test_ai_service_troncamento.py` ×4 | la fixture frugava in `tenacity.retry.return_value.call_args_list`; ora usa `__wrapped__` |
+| idem, durata | `track_ai_usage` scrive i costi su DB e ritentava 3× con backoff: **3s per test**. Neutralizzato (fuori perimetro): 3.09s → 0.01s |
+| `test_auth_service.py` ×2 | `patch.object(ph,'verify')` è **impossibile** con argon2 vero (`PasswordHasher` ha `__slots__`, attributi read-only). Ora hash reali con `ph.hash()`. Parametri m=65536/t=3 **non toccati** |
+| `test_db_service.py` ×2 | neutralizzata `_fetch_numero_documento_map_cached` (memoizzata, fuori perimetro: i test non asseriscono nulla su `numero_documento`) |
+| `test_gruppo_scadenziario` ×1 | risolto dalle sole credenziali-stringa, prima ancora del de-mock |
+
+Rimossi **8 unmock artigianali** diventati no-op (~120 righe), e cancellato
+`tests/test_eccezioni_moduli_mockati.py`: i suoi 4 test esistevano solo per
+documentare il difetto, e il loro docstring diceva di cancellarli *"insieme al
+workaround"*.
+
+### Perché stavolta la premessa non potrà marcire di nuovo
+
+`test_conftest_mocka_solo_streamlit` (in `test_conftest_cache_guardia.py`) fa due
+cose: vieta che la lista si riallunghi, e **verifica che `streamlit` sia davvero
+assente dal disco**. La premessa diventa falsificabile invece che assunta — che
+è esattamente ciò che mancava, visto che era falsa da mesi in silenzio.
+Verificata per mutazione: reintrodurre `openai` nella lista la fa fallire.
+
+I 2 test argon2 sono stati verificati per mutazione su copia in scratchpad:
+`return True`→`False` e `except: return False`→`True`, **entrambi uccisi**. Il
+test vecchio (`verify.assert_called_once()`) sopravviveva al primo: misurava che
+un mock fosse stato chiamato, non l'esito della verifica.
+
+### Esito
+
+`11242 → **11239 passed**, 43 skipped, 0 failed` (−4 file cancellato, +1
+guardia). Ordine invertito sui 9 file toccati: 209 passed — l'accoppiamento
+d'ordine dei pop-senza-ripristino è sparito. Nessun drift OpenAPI. **Nessuna
+modifica a codice di produzione**: il diff è tutto in `tests/`.
+
+### Debito annotato, non risolto qui
+
+Le **9 funzioni** `@_make_cache` di `db_service` che si procurano il client da
+sole ignorano quello passato dal chiamante. Una sola si manifesta oggi; le altre
+sono latenti. Finora era il mock a mascherarle, ora è la guardia di rete a
+contenerle. Va affrontato a parte — annotato qui per non riscoprirlo da zero.

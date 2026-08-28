@@ -1,0 +1,47 @@
+# Stato audit ONEFLUX — ciclo 2026-08
+
+**Ciclo nuovo, non ancora aperto.** Il ciclo precedente (2026-07) è **chiuso il
+28/08/2026**: indice e storico completi in `docs/storico/`
+(`AUDIT_ONEFLUX_STATO_2026-07.md` e `..._STORICO.md`).
+
+> Il ciclo 2026-07 ha chiuso tutte e 10 le dimensioni con seconda passata e
+> `code-reviewer`, più §3b/§3c (perimetro non letto) e §2 (mock globale del
+> conftest). Le 36+ lezioni operative accumulate stanno nello STORICO: vale la
+> pena rileggerle prima di riaprire una dimensione, perché diverse riguardano
+> *come* si audita, non *cosa*.
+
+## Da dove ripartire
+
+Una dimensione è verde rispetto al perimetro **che quella passata si è scelta**,
+non rispetto al codice esistente. È la lezione più cara del ciclo scorso: §3b e
+§3c sono nate proprio dal conto onesto di quanto era stato letto davvero.
+
+Voci ereditate dal ciclo 2026-07, da valutare quando si apre questo:
+
+- **Le 9 funzioni `@_make_cache` di `db_service`** che si procurano il client
+  Supabase da sole, ignorando quello passato dal chiamante (STORICO §33). Oggi
+  contenute dalla guardia di rete del conftest; una sola si manifesta nei test,
+  le altre sono latenti.
+- **`worker/email_queue_processor.py`** scrive i ricavi giornalieri fuori dal
+  router: agganciato a `_spegni_override_mensile`, ma nuovi percorsi di
+  scrittura vanno agganciati anche loro (`services/routers/ricavi.py`).
+- **Il canale SDI non applica la policy date**: decisione a verbale (STORICO §27
+  e §32), difesa da `tests/test_upload_policy_canale_sdi.py`. Non è una svista.
+- **Il flush PROP-1** prima del blocco policy: documenta-e-chiudi, refactor
+  sproporzionato al rischio.
+
+## Metodo (invariato, e non derogabile)
+
+- Audit **read-only** prima di qualunque fix; remediation solo dopo conferma
+  esplicita di Mattia.
+- Ogni severità **si riverifica** sul DB live o eseguendo il codice. Nel ciclo
+  scorso è successo **cinque volte** che un numero ereditato non reggesse alla
+  riverifica — non perché il verbale fosse sbagliato, ma perché era vecchio.
+- Ogni fix nuovo richiede test verificati **per mutazione, su copia in
+  scratchpad**, mai sul file del branch. E attenzione a *cosa* misura il test:
+  un mutante è sopravvissuto perché il test contava le righe aggiornate invece
+  delle query emesse.
+- `code-reviewer` sul diff cumulativo **a fine sessione, sempre**.
+- Migration solo con conferma esplicita, applicata **prima** del deploy.
+- Deploy solo fuori orario clienti, salvo conferma esplicita e specifica.
+- CI parte su `pull_request` o push a `main`/`progetto`.
