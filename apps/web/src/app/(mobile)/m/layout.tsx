@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { getCurrentUser } from "@/lib/auth";
+import Link from "next/link";
+import { WifiOff } from "lucide-react";
+import { getCurrentSession } from "@/lib/auth";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { fetchConfig } from "@/lib/home";
 import { Logo } from "@/components/brand/logo";
@@ -15,12 +17,41 @@ import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   // Le tre chiamate al worker partono insieme (prima auth era awaitata da sola,
   // poi le altre due: due round-trip in serie a ogni navigazione tra tab).
-  const [user, notifiche, config] = await Promise.all([
-    getCurrentUser(),
+  const [session, notifiche, config] = await Promise.all([
+    getCurrentSession(),
     fetchNotifiche(),
     fetchConfig(),
   ]);
-  if (!user) redirect("/login");
+
+  // Token scaduto / assente -> al login.
+  if (session.status === "invalid") redirect("/login");
+
+  // Worker non raggiungibile (cold-start Railway, rete): NON sloggare l'utente.
+  // (app)/layout.tsx lo fa da tempo, ma (mobile) e' un route-group FRATELLO: non
+  // eredita quel layout, e qui getCurrentUser() collassava "sessione scaduta" e
+  // "worker giu'" nello stesso null -> un cold-start buttava fuori dalla PWA chi
+  // aveva una sessione validissima.
+  if (session.status === "unavailable") {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
+        <WifiOff className="size-10 text-muted-foreground/50" />
+        <div>
+          <p className="text-base font-medium">Servizio momentaneamente non raggiungibile</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Il server sta riavviando. Riprova tra qualche secondo.
+          </p>
+        </div>
+        <Link
+          href="/m"
+          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          Riprova
+        </Link>
+      </div>
+    );
+  }
+
+  const user = session.user;
 
   // In modalità catena (multi-sede, cookie != pv) l'header parla del gruppo, non
   // della sede attiva.

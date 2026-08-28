@@ -183,7 +183,7 @@ def account_cambia_password(
     # Carica hash attuale
     row = (
         sb.table("users")
-        .select("id, password_hash, email")
+        .select("id, password_hash, email, nome_ristorante")
         .eq("id", user_id)
         .single()
         .execute()
@@ -191,12 +191,26 @@ def account_cambia_password(
     if not row.data:
         raise HTTPException(status_code=404, detail="Utente non trovato")
 
-    from services.auth_service import verify_and_migrate_password, ph
+    from services.auth_service import (
+        verify_and_migrate_password,
+        valida_password_compliance,
+        ph,
+    )
     if not verify_and_migrate_password(row.data, body.password_attuale):
         raise HTTPException(status_code=400, detail="La password attuale non è corretta")
 
-    if len(body.nuova_password) < 8:
-        raise HTTPException(status_code=400, detail="La nuova password deve essere di almeno 8 caratteri")
+    # Stessa policy GDPR degli altri due percorsi che scrivono una password
+    # (reset da token in auth_service, imposta-password admin): prima qui bastava
+    # len >= 8, quindi dall'area Account si poteva impostare una password che il
+    # reset via email avrebbe rifiutato. Tre porte sulla stessa stanza, una sola
+    # senza serratura.
+    errori = valida_password_compliance(
+        body.nuova_password,
+        row.data.get("email") or "",
+        row.data.get("nome_ristorante") or "",
+    )
+    if errori:
+        raise HTTPException(status_code=400, detail=" ".join(errori))
 
     new_hash = ph.hash(body.nuova_password)
     sb.table("users").update({

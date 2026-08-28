@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Logo, Wordmark } from "@/components/brand/logo";
+import { erroreLocalePassword, PASSWORD_HINT } from "@/lib/password-policy";
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -35,8 +36,9 @@ function ResetPasswordForm() {
       setError("Le password non coincidono");
       return;
     }
-    if (password.length < 8) {
-      setError("La password deve essere di almeno 8 caratteri");
+    const problema = erroreLocalePassword(password);
+    if (problema) {
+      setError(problema);
       return;
     }
     if (isOnboarding && !privacyAccepted) {
@@ -124,10 +126,10 @@ function ResetPasswordForm() {
                 type="password"
                 autoComplete="new-password"
                 required
-                minLength={8}
+                minLength={10}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Almeno 8 caratteri"
+                placeholder={PASSWORD_HINT}
                 disabled={loading}
                 autoFocus={!!searchParams.get("token")}
               />

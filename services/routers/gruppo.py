@@ -543,9 +543,56 @@ def _salute_componenti_raw(
             "p_anno": mc_anno,
             "p_mese": mc_mese,
         }).execute()
-        return res.data or []
+        rows = res.data or []
     except Exception:
         return []
+    return _applica_override_netto(sb, rows, mc_anno, mc_mese)
+
+
+def _applica_override_netto(
+    sb, rows: List[Dict[str, Any]], anno: int, mese: int
+) -> List[Dict[str, Any]]:
+    """Sostituisce il `netto` della RPC con l'override del mese, dove c'e'.
+
+    La RPC gruppo_salute_componenti legge solo margini_mensili: una sede in
+    modalita' mensile ha li' fatturato a 0 e i ricavi veri in
+    ricavi_modalita_mensile, quindi risulterebbe "senza fatturato" pur avendone.
+    E' lo stesso difetto gia' corretto in _aggrega_sedi_mensili (vedi
+    tests/test_gruppo_aggrega_sedi.py, "Bug 1: override vince sullo snapshot"):
+    il percorso della COMPLETEZZA era rimasto indietro.
+
+    Si somma il LORDO senza scorporare l'IVA per due motivi: il confronto a
+    valle e' di sola presenza (> 0), e soprattutto la RPC chiama gia' `netto`
+    una somma che netta non e' (iva10 + iva22 + altri, nessuna divisione per
+    1.10/1.22 — lo scorporo vero vive solo in _aggrega_sedi_mensili). Scorporare
+    qui disallineerebbe l'override dalla colonna che sta sovrascrivendo.
+
+    Best-effort come il resto della catena: se la lettura fallisce si tengono i
+    valori della RPC.
+    """
+    if not rows:
+        return rows
+    # Una lettura per sede, non una per riga: _overrides_mese_sede non e'
+    # memoizzata e questa funzione gira su 4 chiamanti diversi.
+    visti: Dict[str, Optional[Dict[str, float]]] = {}
+    for r in rows:
+        rid = str(r.get("ristorante_id"))
+        try:
+            if rid not in visti:
+                visti[rid] = _overrides_mese_sede(sb, rid, anno).get(int(mese))
+            ov = visti[rid]
+        except Exception:
+            continue
+        if not ov:
+            continue
+        lordo = (
+            float(ov.get("iva10") or 0)
+            + float(ov.get("iva22") or 0)
+            + float(ov.get("altri") or 0)
+        )
+        if lordo > 0:
+            r["netto"] = lordo
+    return rows
 
 
 def _salute_indici_batch(

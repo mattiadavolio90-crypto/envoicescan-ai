@@ -4,6 +4,7 @@ import { requirePagina } from "@/lib/page-guard";
 import { fetchGruppoOverview } from "@/lib/gruppo";
 import { PageHeader } from "@/components/ui/page-header";
 import { ScadenziarioClient } from "../../scadenziario/scadenziario-client";
+import { BlockRetry } from "../../dashboard/block-retry";
 import type { Documento, SedeCatena } from "@/lib/scadenziario";
 import { workerGet } from "@/lib/worker";
 
@@ -28,9 +29,19 @@ function FattureSkeleton() {
 
 async function FattureBlock() {
   const overview = await fetchGruppoOverview();
+  // Worker giù/lento (null) → BlockRetry ripinga e fa refresh da solo appena
+  // risponde. Mandare a /dashboard anche in questo caso sbatteva fuori dalla
+  // pagina chi ha davvero un gruppo, per un guasto temporaneo.
+  if (overview === null) {
+    return (
+      <BlockRetry endpoint="/api/account/sedi">
+        <FattureSkeleton />
+      </BlockRetry>
+    );
+  }
   // Account mono-sede: niente vista di gruppo da mostrare, torna alla Home del PV
-  // (stesso comportamento di /catena — vedi catena/page.tsx:44-46).
-  if (overview === null || overview.num_pv < 2) {
+  // (stesso comportamento di /catena — vedi catena/page.tsx).
+  if (overview.num_pv < 2) {
     redirect("/dashboard");
   }
 

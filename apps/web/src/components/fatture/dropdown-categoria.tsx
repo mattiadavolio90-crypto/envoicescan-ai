@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { categoriaIcon } from "@/app/(app)/analisi-fatture/periodi";
-import { SPESE_GENERALI_SET } from "@/lib/categorie-spesa";
+import { SPESE_GENERALI_SET, CATEGORIA_NON_CLASSIFICATA } from "@/lib/categorie-spesa";
 
 
 /**
@@ -54,7 +54,7 @@ export function DropdownCategoria({
         .filter(
           (c) =>
             !SPESE_GENERALI_SET.has(c.toUpperCase()) &&
-            c !== "Da Classificare" &&
+            c !== CATEGORIA_NON_CLASSIFICATA &&
             c !== "📝 NOTE E DICITURE",
         )
         .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" })),

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
+import { erroreLocalePassword, PASSWORD_HINT } from "@/lib/password-policy";
 
 const PIANO_LABEL: Record<string, string> = {
   base: "Base",
@@ -107,8 +108,9 @@ function CambioPasswordForm() {
       setError("Le nuove password non coincidono");
       return;
     }
-    if (nuova.length < 8) {
-      setError("La nuova password deve essere di almeno 8 caratteri");
+    const problema = erroreLocalePassword(nuova);
+    if (problema) {
+      setError(problema);
       return;
     }
     setLoading(true);
@@ -160,10 +162,10 @@ function CambioPasswordForm() {
               type="password"
               autoComplete="new-password"
               required
-              minLength={8}
+              minLength={10}
               value={nuova}
               onChange={(e) => setNuova(e.target.value)}
-              placeholder="Almeno 8 caratteri"
+              placeholder={PASSWORD_HINT}
               disabled={loading}
             />
           </div>

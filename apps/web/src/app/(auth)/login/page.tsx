@@ -24,9 +24,44 @@ function defaultNext(): string {
   return "/dashboard";
 }
 
+// Il parametro `next` arriva dalla query string: chiunque puo' fabbricare un
+// link /login?next=//evil.com. Finendo tal quale in window.location.href
+// diventerebbe un redirect fuori dominio DOPO un login riuscito — la forma
+// piu' credibile di phishing, perche' l'utente ha appena inserito le
+// credenziali sul dominio vero. Il produttore legittimo
+// (apps/web/src/proxy.ts:93) scrive sempre e solo un pathname.
+//
+// Due trappole, entrambe gia' costate un giro di review — la regola che ne esce
+// e' una sola: **giudicare e usare la STESSA stringa**, senza parsing in mezzo.
+//
+// 1. Non ispezionare il testo grezzo. La WHATWG URL Standard rimuove TAB, LF e
+//    CR da qualunque posizione PRIMA di parsare, quindi un controllo su
+//    startsWith("//") guarda una stringa diversa da quella che il browser
+//    risolvera': "/<TAB>/evil.com" (?next=%2F%09%2Fevil.com) supera il
+//    controllo sul prefisso e atterra su https://evil.com.
+// 2. Non ri-serializzare dopo aver validato. Controllare url.origin e poi
+//    ritornare `pathname+search+hash` reintroduce un secondo parsing, e i due
+//    non concordano: "/..//evil.com" ha origin interno (il check passa) ma
+//    pathname "//evil.com", che ri-parsato e' protocol-relative. Passa in
+//    chiaro, senza encoding, e "/..//app.oneflux.it.evil.com" mostra pure un
+//    dominio che sembra il nostro.
+//
+// Ritorniamo quindi url.href: assoluto, gia' normalizzato e gia' validato, cioe'
+// esattamente la stringa su cui abbiamo espresso il giudizio.
+function nextSicuro(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 function LoginForm() {
   const searchParams = useSearchParams();
-  const next = searchParams.get("next");
+  const next = nextSicuro(searchParams.get("next"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
