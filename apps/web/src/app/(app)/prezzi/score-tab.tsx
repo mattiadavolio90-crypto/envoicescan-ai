@@ -154,7 +154,7 @@ function DettaglioDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* 1. Sintesi relazione */}
           <section className="rounded-lg border border-border bg-card p-5 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">

@@ -530,7 +530,7 @@ function AggiungiProdottiDialog({
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-border shrink-0">
           <DialogTitle>Aggiungi prodotti al tag</DialogTitle>
         </DialogHeader>
-        <div className="px-5 py-3 border-b border-border shrink-0">
+        <div className="min-w-0 px-5 py-3 border-b border-border shrink-0">
           <div className="relative">
             <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -579,7 +579,7 @@ function AggiungiProdottiDialog({
             Mostrati {filtered.length} di {matching.length} prodotti — usa la ricerca per trovare gli altri.
           </p>
         )}
-        <div className="px-5 py-3 border-t border-border shrink-0 flex items-center justify-between gap-3">
+        <div className="min-w-0 px-5 py-3 border-t border-border shrink-0 flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Seleziona prodotti"}
           </p>

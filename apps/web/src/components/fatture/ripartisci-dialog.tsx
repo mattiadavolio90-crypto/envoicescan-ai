@@ -159,7 +159,7 @@ export function RipartisciDialog({
         <DialogHeader>
           <DialogTitle>Ripartisci sul gruppo</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           <p className="text-xs text-muted-foreground">
             Costo di struttura comune (es. commercialista, auto): la quota di ogni sede entra nel suo
             MOL. Ogni riga della fattura è categorizzata da sola (cibo sotto F&amp;B, spese sotto

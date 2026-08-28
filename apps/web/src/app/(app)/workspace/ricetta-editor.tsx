@@ -233,7 +233,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
 
         <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1">
         {/* Riga 1: Nome ricetta — full width */}
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-1.5">
           <Label className="text-sm font-medium">Nome ricetta *</Label>
           <Input
             placeholder="es. Pizza Margherita, Besciamella, Ragù bolognese…"
@@ -244,7 +244,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         </div>
 
         {/* Riga 2: Categoria + Prezzo vendita — stessa altezza label */}
-        <div className="grid grid-cols-2 gap-5">
+        <div className="min-w-0 grid grid-cols-2 gap-5">
           <div className="space-y-1.5">
             <Label className="text-sm font-medium whitespace-nowrap">Categoria</Label>
             <select
@@ -276,7 +276,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         )}
 
         {/* Selettore ingrediente */}
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-1.5">
           <Label className="text-sm font-medium">Aggiungi ingrediente</Label>
           <div className="relative" ref={dropdownRef}>
             <div className="relative">

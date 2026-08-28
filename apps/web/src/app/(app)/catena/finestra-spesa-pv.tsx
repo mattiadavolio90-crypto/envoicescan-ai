@@ -122,7 +122,7 @@ export function FinestraSpesaPV({
               <NativeSelect
                 value={periodo}
                 onValueChange={setPeriodo}
-                className="h-8 w-40 text-xs"
+                className="h-8 w-48 text-xs"
               >
                 <option value="anno">Anno in corso ({annoCorrente})</option>
                 {MESI.slice(0, meseCorrente).map((m, i) => (
@@ -161,9 +161,9 @@ export function FinestraSpesaPV({
             </div>
           ) : (
             <table className="w-full border-separate border-spacing-0 text-sm">
-              <thead className="sticky top-0 z-10 bg-popover">
+              <thead className="sticky top-0 z-30 bg-popover">
                 <tr>
-                  <th className="sticky left-0 z-20 bg-popover px-3 py-2 text-left font-semibold">
+                  <th className="sticky left-0 z-40 bg-popover px-3 py-2 text-left font-semibold">
                     {data.dimensione === "fornitore" ? "Fornitore" : "Categoria"}
                   </th>
                   {data.pv.map((p) => (

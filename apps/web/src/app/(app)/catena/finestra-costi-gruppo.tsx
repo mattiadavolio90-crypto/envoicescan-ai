@@ -265,7 +265,8 @@ export function FinestraCostiGruppo({
                   ` (${data!.da_classificare_costi} ${
                     data!.da_classificare_costi === 1 ? "costo" : "costi"
                   })`}
-                . Finché restano così pesano tra le <em>Spese Generali</em> del MOL,
+                . Finché restano così pesano tra le <em>Spese Generali</em>{" "}
+                del MOL,
                 anche se in parte sono Food &amp; Beverage. Assegna la categoria dalle
                 righe del documento qui sopra per collocarle nel secchio giusto.
                 {(data!.da_classificare_non_correggibili ?? 0) > 0 && (

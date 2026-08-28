@@ -187,7 +187,7 @@ export function FinestraMarginiCoperti({
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span>Margini e coperti per punto vendita</span>
             <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-              <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-40 text-xs">
+              <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-48 text-xs">
                 <option value="anno">Anno in corso ({annoCorrente})</option>
                 {MESI.slice(0, meseCorrente).map((m, i) => (
                   <option key={i + 1} value={String(i + 1)}>{m} {annoCorrente}</option>
@@ -224,9 +224,9 @@ export function FinestraMarginiCoperti({
           ) : (
             <>
               <table className="w-full border-separate border-spacing-0 text-sm">
-                <thead className="sticky top-0 z-10 bg-popover">
+                <thead className="sticky top-0 z-30 bg-popover">
                   <tr>
-                    <th className="sticky left-0 z-20 bg-popover px-3 py-2 text-left font-semibold">
+                    <th className="sticky left-0 z-40 bg-popover px-3 py-2 text-left font-semibold">
                       Punto vendita
                     </th>
                     {COLS.map((c) => (
@@ -388,9 +388,9 @@ function FinestraSprecoCategorie({
           ) : (
             <>
               <table className="w-full border-separate border-spacing-0 text-sm">
-                <thead className="sticky top-0 z-10 bg-popover">
+                <thead className="sticky top-0 z-30 bg-popover">
                   <tr>
-                    <th className="sticky left-0 z-20 bg-popover px-3 py-2 text-left font-semibold">
+                    <th className="sticky left-0 z-40 bg-popover px-3 py-2 text-left font-semibold">
                       Categoria
                     </th>
                     {data.pv.map((p) => (
