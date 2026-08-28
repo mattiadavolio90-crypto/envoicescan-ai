@@ -231,7 +231,7 @@ export function CopertiTab({ dataDa, dataA }: Props) {
                     </th>
                   );
                 })}
-                <th className="sticky right-0 z-20 bg-sky-500/8 text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-600 dark:text-sky-400">
+                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-600 dark:text-sky-400">
                   {isMedia ? "Media" : "Totale"}
                 </th>
               </tr>
@@ -436,7 +436,7 @@ function MeseRow({
           </td>
         );
       })}
-      <td className={`sticky right-0 z-10 bg-sky-500/8 text-right px-3 py-2 tabular-nums font-bold border-l-2 border-r border-sky-500/50 ${color ?? "text-sky-600 dark:text-sky-400"}`}>
+      <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-r border-sky-500/50 ${color ?? "text-sky-600 dark:text-sky-400"}`}>
         {total}
       </td>
     </tr>
@@ -635,7 +635,7 @@ function CopertiCategorieDialog({
                   {data.mesi_label.map((l) => (
                     <th key={l} className="text-right px-3 py-2.5 font-semibold border-r border-border whitespace-nowrap">{l}</th>
                   ))}
-                  <th className="sticky right-0 z-10 bg-emerald-500/8 text-right px-3 py-2.5 font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
+                  <th className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
                     Media
                   </th>
                 </tr>
@@ -651,7 +651,7 @@ function CopertiCategorieDialog({
                         {fmtEuro2(m.valore)}
                       </td>
                     ))}
-                    <td className="sticky right-0 z-10 bg-emerald-500/8 text-right px-3 py-2 tabular-nums font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
+                    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
                       {fmtEuro2(r.media)}
                     </td>
                   </tr>

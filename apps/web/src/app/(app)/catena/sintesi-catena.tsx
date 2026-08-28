@@ -206,7 +206,7 @@ function VoceConto({
       className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
     >
       <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", colore === "emerald" ? "bg-emerald-400" : "bg-amber-400")} />
-      <span className="flex-1 text-sm text-muted-foreground">
+      <span className="min-w-0 flex-1 text-sm text-muted-foreground">
         {segno && <span className="mr-1 text-muted-foreground/50">{segno}</span>}
         {label}
       </span>
@@ -372,9 +372,9 @@ function SaluteGruppoCard({
         <h2 className="text-sm font-semibold">Salute e margini per sede</h2>
         <span className="text-xs text-muted-foreground/70">media {salutePv.length} {salutePv.length === 1 ? "sede" : "sedi"}</span>
       </div>
-      <div className="flex flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">
+      <div className="flex min-w-0 flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">
         <AnelloSalute indice={indice} colore={colore} />
-        <div className="flex-1 space-y-3">
+        <div className="min-w-0 flex-1 space-y-3">
           <span className={cn("inline-block rounded-full px-3 py-1 text-xs font-medium", tint.badge)}>{tint.label}</span>
           <ul className="space-y-1.5">
             {salutePv.map((pv) => {

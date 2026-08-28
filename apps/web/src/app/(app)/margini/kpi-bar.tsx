@@ -147,12 +147,12 @@ function KpiCard({ card: c, animate }: { card: CardDef; animate: boolean }) {
   const shown = useCountUp(c.numeric, animate);
   return (
     <div
-      className={`rounded-xl border ${t.border} ${t.hover} bg-card px-4 pt-3 pb-2 transition-colors flex flex-col gap-1`}
+      className={`@container rounded-xl border ${t.border} ${t.hover} bg-card px-4 pt-3 pb-2 transition-colors flex flex-col gap-1`}
     >
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-none">
         {c.label}
       </p>
-      <p className={`text-2xl font-bold tracking-tight leading-tight tabular-nums ${t.value} truncate`}>
+      <p className={`text-[clamp(1rem,4cqw,1.5rem)] font-bold tracking-tight leading-tight tabular-nums whitespace-nowrap ${t.value}`}>
         {formatEuro(shown)}
       </p>
       {c.sub && (

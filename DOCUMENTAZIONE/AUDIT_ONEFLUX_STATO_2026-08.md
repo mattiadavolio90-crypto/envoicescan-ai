@@ -18,10 +18,48 @@ non rispetto al codice esistente. È la lezione più cara del ciclo scorso: §3b
 
 Voci ereditate dal ciclo 2026-07, da valutare quando si apre questo:
 
-- **Le 9 funzioni `@_make_cache` di `db_service`** che si procurano il client
-  Supabase da sole, ignorando quello passato dal chiamante (STORICO §33). Oggi
-  contenute dalla guardia di rete del conftest; una sola si manifesta nei test,
-  le altre sono latenti.
+- ~~**Le 9 funzioni `@_make_cache` di `db_service`** che ignorano il client
+  passato dal chiamante~~ — **VOCE RITIRATA il 28/08/2026: il difetto non
+  esiste.** Verificate tutte, una per una. Era sbagliata su tre punti:
+  1. **Sono 8, non 9.**
+  2. **Non ignorano nessun client.** Solo 2 delle 8 accettano un parametro
+     client, e l'unica reale (`get_fatture_cestino`) lo gestisce correttamente:
+     `if supabase_client is None:` → fallback **solo** se non gli è stato
+     passato niente. `_carica_fatture_da_supabase` era un falso positivo: la
+     parola "client" compare nel docstring, non nella firma.
+  3. **Il comportamento è deliberato e già documentato.** Il docstring di
+     `_key_part` (`utils/streamlit_compat.py`) spiega che i client si
+     identificano per TIPO e non per valore, altrimenti il repr con
+     l'indirizzo di memoria cambierebbe la chiave a ogni istanza e la cache
+     non colpirebbe mai. E il client è comunque un **singleton di processo**
+     (`services/__init__.py:245`): non esistono due client fra cui sbagliare.
+
+  **Il leak fra tenant — la cosa che avrebbe reso grave la voce — non si
+  verifica:** tutte e 8 hanno `user_id` nella chiave di cache, e tutte quelle
+  per-sede hanno anche `ristorante_id`. L'unica senza
+  (`get_custom_tag_prodotti`) filtra su `tag_id` + `user_id`, entrambi in
+  chiave.
+
+  **Da dove veniva l'allarme.** Da un fatto vero ma diverso: in §2, togliendo
+  il mock di supabase, `_fetch_numero_documento_map_cached` faceva una
+  richiesta HTTP **vera** nei test (in locale con le credenziali di
+  produzione, via `load_dotenv(override=True)`). Quello era un problema *dei
+  test*, contenuto dalla guardia di rete. Da lì è stato generalizzato a "9
+  funzioni ignorano il client", che non è ciò che fanno. **Lezione: una
+  generalizzazione scritta a caldo va riverificata prima di diventare una voce
+  di audit** — è la stessa regola del "ogni severità si riverifica", applicata
+  a una voce nata dentro il ciclo invece che ereditata.
+
+  **Cosa resta di vero, e cosa NON si è fatto.** Quelle funzioni sono difficili
+  da testare senza rete: è una proprietà del design a singleton, non un difetto
+  di correttezza. Il refactor (aggiungere `supabase_client=None` alle 7 che non
+  ce l'hanno) è stato **valutato e scartato**: toccherebbe 7 funzioni di accesso
+  dati in produzione per chiudere zero difetti, a ridosso del go-live. La regola
+  adottata: aggiungere il parametro **quando serve davvero**, cioè quando si
+  scrive un test per una di quelle funzioni e la guardia di rete si mette di
+  traverso — una riga, su una funzione sola, giustificata dal test. È come è
+  nato `get_fatture_cestino`. Se invece l'obiettivo diventa la copertura a test
+  di quelle 8, va aperta come voce sua.
 - **`worker/email_queue_processor.py`** scrive i ricavi giornalieri fuori dal
   router: agganciato a `_spegni_override_mensile`, ma nuovi percorsi di
   scrittura vanno agganciati anche loro (`services/routers/ricavi.py`).
