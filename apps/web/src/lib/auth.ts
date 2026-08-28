@@ -119,10 +119,16 @@ export async function fetchSessionUser(token: string): Promise<SessionUser | nul
 
 export async function logoutSession(token: string): Promise<void> {
   try {
+    // Timeout come ogni altra chiamata worker: era l'unica scoperta. Il client
+    // fa `await fetch("/api/auth/logout")` e solo DOPO naviga al login, quindi
+    // un worker appeso lasciava l'utente dentro l'app a tempo indeterminato.
+    // Il cookie lo cancella comunque la route: la revoca lato server e'
+    // best-effort, l'uscita dell'utente no.
     await fetch(`${WORKER_URL}/api/auth/logout`, {
       method: "POST",
       headers: workerHeaders({ Authorization: `Bearer ${token}` }),
       cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
   } catch (err) {
     console.error("[auth.logout] worker fetch error:", err);
