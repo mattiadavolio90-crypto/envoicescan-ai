@@ -129,3 +129,113 @@ Due rilievi **restano aperti**, entrambi annotati per F7:
   apertura del ciclo era rimasto su un branch abbandonato. I findings sono
   sopravvissuti perché derivano da codice e DB, non dal documento — ma il
   documento va messo su `main` **prima** di eseguire la fase, non dopo.
+
+---
+
+## F2 — Frontend impostazioni / account / auth — chiusa 28/08/2026
+
+**Perimetro misurato**: 1.319 righe di pagine (804 `impostazioni/` + 515
+`(auth)/`) **più 623** di route API e lib auth che il perimetro dichiarato non
+elencava — `apps/web/src/lib/auth.ts` (167), `worker-config.ts` (92), le 15
+route `api/auth/*` e `api/account/*` (361), `proxy.ts` (105). **Totale 1.942**.
+Le pagine da sole non bastavano: due dei quattro difetti stanno in quei 623.
+
+**Metodo**: lettura in ordine di rischio partendo da `lib/auth.ts` come chiave,
+ogni ipotesi chiusa con una misura eseguita — validatore Python fatto girare
+davvero, risoluzione URL provata in Node, esposizione contata sul DB live.
+
+### Esito delle ipotesi del piano
+
+| Ipotesi | Esito |
+|---|---|
+| H-PWD — validazioni client divergenti dal worker | **confermata, in forma doppia**: client 8 / server 10+categorie sul reset (attrito), e server 8 sul cambio password (buco) |
+| H-SESS — stato "loggato" dopo la scadenza | **smontata sul desktop, confermata su `/m`**: `(app)/layout.tsx` distingue gli esiti, `(mobile)` no |
+| H-ADMIN — confronti email case-sensitive nel client | **smontata**: `is_admin` arriva sempre dal worker, nessun confronto email nel client (l'unico `.toLowerCase()` è un filtro di ricerca) |
+
+### Il difetto più grave, che nessuna ipotesi prevedeva
+
+**Open redirect sul login.** `?next=` veniva letto da `useSearchParams` e messo
+tal quale in `window.location.href`. Il produttore legittimo (`proxy.ts:93`)
+scrive sempre un pathname, ma **nessuno validava il consumatore**: un link
+fabbricato portava fuori dominio **dopo un login riuscito**, cioè nel momento in
+cui l'utente ha appena dimostrato di fidarsi del sito.
+
+Provato risolvendo 14 forme contro l'URL di produzione: `//evil.com`,
+`https://evil.com`, `javascript:alert(1)`, `/\evil.com`, `///evil.com`,
+`//\evil.com` uscivano tutte dal dominio. Catena verificata intera: `/login` è
+in `PUBLIC_PATHS`, il proxy lo lascia passare con la query intatta, il matcher
+non lo esclude.
+
+È emerso **leggendo il consumatore invece di fidarsi del produttore** — la
+stessa asimmetria che in F1 aveva prodotto il difetto HIGH.
+
+### La divergenza sulle password
+
+Tre percorsi scrivono una password; **due applicavano la policy GDPR e uno no**:
+
+| Percorso | Prima | Ora |
+|---|---|---|
+| Reset da token (`auth_service.py:613`) | policy completa | invariato |
+| Imposta-password admin (`admin.py:2582`) | policy completa | invariato |
+| **Cambio da area Account** (`account.py:198`) | **`len < 8`** | policy completa |
+
+Misurato eseguendo il validatore vero: di 4 password che il client dichiarava
+valide, **3 venivano rifiutate** dal server sul reset. E `reset-confirm`
+restituisce solo `errori[0]`, quindi l'utente li scopriva **uno alla volta**.
+
+`apps/web/src/lib/password-policy.ts` è ora la fonte unica lato client.
+Replica solo lunghezza e categorie — blacklist, sequenze e carattere ripetuto
+restano al server per scelta esplicita: liste lunghe che divergerebbero in
+silenzio. **Verificata contro l'implementazione Python su 400 password
+generate casualmente: zero divergenze.**
+
+### Findings e destino
+
+| # | Sev. | Oggetto | Esito |
+|---|---|---|---|
+| F2-REDIRECT | 🔴 HIGH | open redirect su `/login?next=` (anche `javascript:`) | fixato |
+| F2-PWD | 🟠 MED | cambio password fuori dalla policy GDPR + client che promette requisiti falsi | fixato |
+| F2-MOBILE | 🟠 MED | cold-start del worker slogga dalla PWA (7 pagine, 82 sessioni/30gg) | fixato |
+| F2-LOGOUT | 🟡 LOW | `logoutSession` unica chiamata worker senza timeout: worker appeso = utente non esce | fixato |
+| F2-NOTEST | ⚪ | zero infrastruttura di test frontend (confermato anche in F1) | **aperto — a Mattia** |
+
+`F2-NOTEST` non è un fix d'audit: introdurre un runner è una decisione di
+progetto. Nel frattempo gli invarianti client sono difesi da test **Python**
+che girano in CI (`test_password_policy_client_allineata.py`), sul precedente
+di `test_upload_ai_background.py:263`.
+
+### Verificati e scartati
+
+- **`runtime = "nodejs"` mancante** su `reset-request`/`reset-confirm`: sembra
+  una svista, non lo è. **118 route su 169** non lo dichiarano, il default Next
+  è già `nodejs` e non c'è override in `next.config`. Convenzione irregolare,
+  non difetto. *Severità caduta alla verifica — la nona del progetto.*
+- **Conferma "ELIMINA" hardcoded nel client** (`account-client.tsx`): il client
+  manda la costante invece di ciò che l'utente digita, ma il **server** valida
+  `strip().upper() != "ELIMINA"` e ha il guard sugli admin. Ridondanza, non buco.
+- **`getCurrentUser()` in `impostazioni/page.tsx`**: collassa gli esiti, ma
+  `(app)/layout.tsx` gira prima e li distingue, e `cache()` di React fa
+  riusare l'esito nella stessa request. Corretto. **Su `/m` invece era un
+  difetto vero**, perché lì quel layout non c'è: la differenza sta nella
+  struttura dei route-group, non nel codice della pagina.
+- **`forgot-password`**: normalizza lowercase e non enumera gli utenti.
+- **Asimmetria `svuota-dati` case-sensitive vs `elimina` case-insensitive**:
+  entrambe validate lato server, nessuna conseguenza.
+
+### Lezioni di metodo
+
+- **Il perimetro dichiarato conteneva le pagine, non il percorso.** «~1.900
+  righe» era numericamente quasi giusto (1.942) ma per composizione sbagliata:
+  mancavano le route API e `proxy.ts`, dove stanno 2 dei 4 difetti — incluso
+  l'HIGH, che si capisce solo leggendo **produttore e consumatore insieme**.
+  In F1 il perimetro era incompleto di un file; qui di un *layer*.
+- **La mutazione ha di nuovo cambiato un test.** Il mutante "passa email e nome
+  ristorante vuoti" sopravviveva: due regole GDPR sarebbero morte in silenzio e
+  la suite non se ne sarebbe accorta. Il test che prometteva di coprirlo
+  misurava l'*esito* invece dell'*argomento*. Terzo ciclo di fila in cui la
+  mutazione trova un test che sembrava buono.
+- **I route-group fratelli non ereditano le difese.** `(app)` e `(mobile)` sono
+  gemelli sotto un root layout che non fa auth: ogni protezione aggiunta a uno
+  va **aggiunta a mano** all'altro. È la versione strutturale della trappola già
+  a verbale in CLAUDE.md («`/m` è un frontend separato, non responsive»), e vale
+  per l'auth, non solo per la grafica.

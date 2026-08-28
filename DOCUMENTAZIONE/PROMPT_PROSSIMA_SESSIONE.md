@@ -3,9 +3,20 @@
 > **Ciclo audit 2026-08 APERTO il 28/8/2026.** Il ciclo 2026-07 è chiuso
 > (indice e storico in `docs/storico/`).
 >
-> **F1 chiusa il 28/8** (verbale nello STORICO): 1 HIGH attivo sui dati veri +
-> 5 findings minori, tutti fixati tranne `F-DRIFT` che resta a Mattia. La
-> prossima fase ⚪ APERTA è **F2 — Frontend impostazioni / account / auth**.
+> **F1 e F2 chiuse il 28/8** (verbali nello STORICO). F1: 1 HIGH attivo sui
+> dati veri + 5 findings minori, tutti fixati tranne `F-DRIFT`. F2: 1 HIGH
+> (open redirect sul login), 2 MEDIUM, 1 LOW — tutti fixati; resta aperto
+> `F2-NOTEST` (zero test frontend). La prossima fase ⚪ APERTA è
+> **F3 — Frontend `components/` condivisi**.
+>
+> **Due cose che F2 ha insegnato e che F3 eredita:**
+> 1. **Il perimetro dichiarato elenca le pagine, non il percorso.** In F2 due
+>    difetti su quattro — incluso l'HIGH — stavano nelle route API e in
+>    `proxy.ts`, che il perimetro non nominava. Prima di leggere, misura anche
+>    *chi chiama* e *chi è chiamato dai* file elencati.
+> 2. **Leggi il consumatore, non fidarti del produttore.** L'open redirect
+>    esisteva perché `proxy.ts` scriveva sempre un valore sicuro e nessuno
+>    validava chi lo leggeva. È la stessa asimmetria del HIGH di F1.
 
 ## Mandato
 

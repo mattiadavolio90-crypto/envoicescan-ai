@@ -195,7 +195,7 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 | Fase | Oggetto | Righe | Esposizione | Stato |
 |---|---|---|---|---|
 | **F1** | Frontend **catena/** — i 10 file mai letti | 3.012 | 🔴 €67.591,75 | 🟢 **CHIUSA** 28/8 |
-| **F2** | Frontend **impostazioni + account + auth** | ~1.900 | 🟠 361 sessioni, 7 utenti | ⚪ APERTA |
+| **F2** | Frontend **impostazioni + account + auth** | 1.942 | 🟠 362 sessioni, 7 utenti | 🟢 **CHIUSA** 28/8 |
 | **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | ~7.274 | 🟠 attraversa tutto | ⚪ APERTA |
 | **F4** | Frontend **analisi-fatture/upload-modal + dashboard/** | ~1.900 | 🟠 6.917 upload | ⚪ APERTA |
 | **F5** | Python — i **4 moduli mai auditati come oggetto proprio** | 1.899 | 🟡 da misurare in fase | ⚪ APERTA |
@@ -405,29 +405,32 @@ grep -rn "fetch(" "apps/web/src/app/(app)/catena/" | grep -o "/api/[a-z0-9/_-]*"
 
 ---
 
-## ⚪ F2 — Frontend impostazioni / account / auth
+## 🟢 F2 — Frontend impostazioni / account / auth — CHIUSA 28/08/2026
 
-**Perimetro** (path completi):
-- `apps/web/src/app/(app)/impostazioni/account-client.tsx` — **740 righe**, il
-  file non letto più grande dopo catena
-- `apps/web/src/app/(auth)/**` — 515 righe, 4 file
-- più i file `impostazioni/` minori da inventariare in fase
+**Verbale completo** in `AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`.
 
-**Esposizione**: 361 sessioni, 7 utenti, 12 ristoranti.
+**Esito**: 4 findings fixati (1 HIGH, 2 MEDIUM, 1 LOW), 1 aperto a Mattia.
 
-**Perché conta**: tocca **cambio password** e sessioni. `services/routers/account.py`
-è uno dei due call site di produzione dell'hasher Argon2 (l'altro è il login) —
-verificato il 28/8 chiudendo la voce Argon2. Un difetto qui è di sicurezza, non
-di presentazione.
+- 🔴 **Open redirect su `/login?next=`** — il parametro finiva tal quale in
+  `window.location.href`: `//evil.com` e `javascript:` portavano fuori dominio
+  **dopo un login riuscito**. Nessuna ipotesi del piano lo prevedeva; è emerso
+  leggendo il consumatore invece di fidarsi del produttore (`proxy.ts:93`).
+- 🟠 **Cambio password fuori dalla policy GDPR** — dei tre percorsi che scrivono
+  una password, solo questo si fermava a `len < 8`. Il client, intanto,
+  prometteva "almeno 8 caratteri" mentre il server ne chiede 10 più le
+  categorie. Ora fonte unica in `apps/web/src/lib/password-policy.ts`.
+- 🟠 **Cold-start del worker slogga dalla PWA** — `(mobile)` è un route-group
+  fratello di `(app)`: non eredita la distinzione "token scaduto" vs "worker
+  giù". 7 pagine, 82 sessioni negli ultimi 30 giorni.
+- 🟡 **`logoutSession` senza timeout** — unica chiamata worker priva di
+  `AbortSignal` in tutto `lib/`: worker appeso = utente che non esce.
 
-**Ipotesi da verificare:**
-- Il cambio password lato client fa validazioni proprie che divergono da quelle
-  del worker (lunghezza minima, caratteri) → utente bloccato o password debole
-  accettata dal client e rifiutata dal server.
-- Gestione della scadenza sessione (30 giorni, `secrets.token_urlsafe(32)`):
-  il client mostra uno stato "loggato" dopo la scadenza?
-- `ADMIN_EMAILS` è normalizzato lowercase lato Python (regola CLAUDE.md #4):
-  il client fa confronti email case-sensitive da qualche parte?
+**Perimetro corretto rispetto al dichiarato**: non ~1.900 righe di pagine ma
+**1.942** comprese route API, `lib/auth.ts`, `worker-config.ts` e `proxy.ts`.
+Due difetti su quattro stanno lì, incluso l'HIGH.
+
+**Aperto**: `F2-NOTEST` — zero infrastruttura di test frontend (già rilevato in
+F1). Gli invarianti client sono per ora difesi da test Python che girano in CI.
 
 ---
 
