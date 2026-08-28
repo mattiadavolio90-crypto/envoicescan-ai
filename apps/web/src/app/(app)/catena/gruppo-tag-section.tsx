@@ -298,18 +298,20 @@ function ProdottiDialog({
     return () => { alive = false; clearTimeout(t); };
   }, [filtro]);
 
-  const candidati = useMemo(() => {
+  // `nascosti` = quanti il taglio a 60 lascia fuori. Senza, la lista sembra
+  // completa e "Seleziona tutti" (che agisce solo sui visibili) mente.
+  const { candidati, nascosti } = useMemo(() => {
     const f = filtro.trim();
-    if (f.length >= 2) {
-      return (risultati ?? [])
-        .filter((d) => !giaAssociate.has(d.descrizione_key))
-        .slice(0, 60);
-    }
-    const fu = f.toUpperCase();
-    return disponibili
-      .filter((d) => !giaAssociate.has(d.descrizione_key))
-      .filter((d) => (fu ? d.descrizione.toUpperCase().includes(fu) : true))
-      .slice(0, 60);
+    const pool =
+      f.length >= 2
+        ? (risultati ?? []).filter((d) => !giaAssociate.has(d.descrizione_key))
+        : (() => {
+            const fu = f.toUpperCase();
+            return disponibili
+              .filter((d) => !giaAssociate.has(d.descrizione_key))
+              .filter((d) => (fu ? d.descrizione.toUpperCase().includes(fu) : true));
+          })();
+    return { candidati: pool.slice(0, 60), nascosti: Math.max(0, pool.length - 60) };
   }, [disponibili, risultati, giaAssociate, filtro]);
 
   function toggle(d: GruppoTagDescrizione) {
@@ -414,7 +416,11 @@ function ProdottiDialog({
                   onClick={toggleTutti}
                   className="text-xs font-medium text-primary hover:underline"
                 >
-                  {tuttiSelezionati ? "Deseleziona tutti" : "Seleziona tutti"}
+                  {tuttiSelezionati
+                    ? "Deseleziona tutti"
+                    : nascosti > 0
+                      ? `Seleziona questi ${candidati.length}`
+                      : "Seleziona tutti"}
                 </button>
               )}
             </div>
@@ -463,6 +469,12 @@ function ProdottiDialog({
                     </li>
                   );
                 })}
+                {nascosti > 0 && (
+                  <li className="px-3 py-2 text-xs text-muted-foreground">
+                    Altri {nascosti} prodotti non mostrati: scrivi almeno 2 lettere per
+                    cercarli fra tutti i punti vendita.
+                  </li>
+                )}
               </ul>
             )}
             </div>
