@@ -268,7 +268,7 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
             <DialogTitle>Scegli categoria</DialogTitle>
             <DialogDescription className="truncate">{String(classGruppo?.descrizione || "")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="min-w-0 space-y-3 py-2">
             <p className="text-sm text-muted-foreground">{String(classGruppo?.count || 0)} occorrenze · {String(classGruppo?.cliente || "")}</p>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Categoria</label>
@@ -527,7 +527,7 @@ function MemoriaTab() {
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Modifica categoria</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="min-w-0 space-y-3 py-2">
             <p className="text-sm truncate text-muted-foreground">{editRow?.descrizione}</p>
             <NativeSelect value={editCat} onValueChange={setEditCat} placeholder="Seleziona categoria…">
               {CATEGORIE_TUTTE.map((cat) => <option key={cat} value={cat}>{cat}</option>)}

@@ -116,7 +116,7 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 mt-1">
+        <div className="min-w-0 space-y-4 mt-1">
           <Button
             variant="outline"
             className="w-full justify-center"

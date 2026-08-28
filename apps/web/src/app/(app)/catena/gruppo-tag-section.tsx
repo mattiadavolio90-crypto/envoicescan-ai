@@ -550,7 +550,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
               «{tag.nome}» per punto vendita
             </span>
             <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-              <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-40 text-xs">
+              <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-48 text-xs">
                 <option value="anno">Anno in corso ({annoCorrente})</option>
                 {MESI_LABEL.slice(0, meseCorrente).map((m, i) => (
                   <option key={i + 1} value={String(i + 1)}>{m} {annoCorrente}</option>
