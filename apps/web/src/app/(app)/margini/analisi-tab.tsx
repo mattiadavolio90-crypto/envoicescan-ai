@@ -664,15 +664,39 @@ function DettaglioCentroDialog({
 }) {
   const [giorni, setGiorni] = useState<GiornoFatturatoCentro[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mensile, setMensile] = useState(false);
 
   useEffect(() => {
+    // setLoading(true) in testa come nel gemello (calcolo-tab.tsx:1116): il dialog
+    // resta MONTATO al cambio centro (onCentroChange muove una prop, non la key),
+    // quindi senza questo `loading` e' gia' false e durante il refetch comparirebbe
+    // il ramo "Nessun dato giornaliero" — un falso negativo che lampeggia.
+    setLoading(true);
+    setGiorni([]);
+    setMensile(false);
     const pad = (n: number) => String(n).padStart(2, "0");
     const lastDay = new Date(anno, mese, 0).getDate();
 
-    // Carica i dati giornalieri per tutti i centri dal mese
-    fetch(`/api/margini/fatturato-centri-giorni?anno=${anno}&mese=${mese}`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((d: { data: string; food: number; beverage: number; alcolici: number; dolci: number; shop: number }[]) => {
+    // Se il mese è in modalità "mensile" l'override ha la precedenza: le righe
+    // giornaliere eventualmente rimaste a DB sono orfane e un dettaglio per
+    // giorno non esiste. Mostrarle come se fossero il mese produce medie e
+    // "giorno migliore" inventati (stessa regola di ricavi.py:1055 e dello
+    // stesso gate in calcolo-tab.tsx).
+    fetch(`/api/ricavi/modalita?anno=${anno}&mese=${mese}`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((m) => {
+        if (m?.modalita === "mensile") {
+          setMensile(true);
+          setGiorni([]);
+          setLoading(false);
+          return null;
+        }
+        // Carica i dati giornalieri per tutti i centri dal mese
+        return fetch(`/api/margini/fatturato-centri-giorni?anno=${anno}&mese=${mese}`)
+          .then((r) => r.ok ? r.json() : []);
+      })
+      .then((d: { data: string; food: number; beverage: number; alcolici: number; dolci: number; shop: number }[] | null) => {
+        if (d === null) return;
         const centroKey = centro.toLowerCase() as "food" | "beverage" | "alcolici" | "dolci" | "shop";
         const byDate = new Map(d.map((row) => [row.data, row[centroKey] ?? 0]));
         const result: GiornoFatturatoCentro[] = [];
@@ -681,9 +705,9 @@ function DettaglioCentroDialog({
           result.push({ data: key, fatturato: byDate.get(key) ?? 0 });
         }
         setGiorni(result);
+        setLoading(false);
       })
-      .catch(() => setGiorni([]))
-      .finally(() => setLoading(false));
+      .catch(() => { setGiorni([]); setLoading(false); });
   }, [anno, mese, centro]);
 
   const compilati = giorni.filter((g) => g.fatturato > 0);
@@ -734,6 +758,14 @@ function DettaglioCentroDialog({
         <div className="px-6 py-5 space-y-5">
           {loading ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Caricamento…</p>
+          ) : mensile ? (
+            <div className="py-8 text-center space-y-1.5">
+              <p className="text-sm font-medium">{meseLabel} è caricato come totale mensile.</p>
+              <p className="text-xs text-muted-foreground">
+                Per questo mese non esiste un dettaglio giorno per giorno. Per vederlo,
+                inserisci i ricavi in modalità giornaliera da “Carica ricavi”.
+              </p>
+            </div>
           ) : compilati.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">
               Nessun dato giornaliero per {meseLabel}.<br />

@@ -14,6 +14,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from config.logger_setup import get_logger
+
+logger = get_logger("router_margini")
+
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
 # WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
@@ -365,6 +369,32 @@ class FatturatoCentriGiornoItem(BaseModel):
     shop: float = 0.0
 
 
+def _mese_in_modalita_mensile(sb, ristorante_id: str, anno: int, mese: int) -> bool:
+    """True se il mese ha un override `ricavi_modalita_mensile` attivo.
+
+    Fail-open: se la lettura fallisce si prosegue coi giornalieri, cioè il
+    comportamento storico — un errore di rete non deve svuotare la pagina.
+    """
+    try:
+        resp = (
+            sb.table("ricavi_modalita_mensile")
+            .select("modalita")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", anno)
+            .eq("mese", mese)
+            .eq("modalita", "mensile")
+            .limit(1)
+            .execute()
+        )
+        return bool(resp.data)
+    except Exception as exc:
+        logger.warning(
+            "_mese_in_modalita_mensile: lettura fallita (%s %s-%s): %s",
+            ristorante_id, anno, mese, exc,
+        )
+        return False
+
+
 @router.get("/api/margini/fatturato-centri-giorni", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
 def get_fatturato_centri_giorni(
     anno: int,
@@ -388,6 +418,16 @@ def get_fatturato_centri_giorni(
     last_day = monthrange(anno, mese)[1]
     data_da = f"{anno}-{mese_str}-01"
     data_a = f"{anno}-{mese_str}-{last_day:02d}"
+
+    # Mese in modalità "mensile": l'override ha la precedenza e le righe
+    # giornaliere rimaste a DB sono orfane (ricavi.py:1055). Un dettaglio per
+    # giorno non esiste, e `netto_mese` calcolato su quelle righe sarebbe un
+    # denominatore falso per le frazioni di ogni centro. Il gate sta QUI, non
+    # solo nel client: l'endpoint è il punto in cui la regola vale per tutti i
+    # consumatori presenti e futuri — questa classe di difetto ("regola
+    # applicata solo in alcuni dei suoi punti") si è già ripetuta 3 volte.
+    if _mese_in_modalita_mensile(sb, ristorante_id, anno, mese):
+        return []
 
     # Ricavi giornalieri → netto per giorno
     ric_resp = (
