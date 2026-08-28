@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -83,6 +84,7 @@ export function FinestraMarginiCoperti({
 }) {
   const [data, setData] = useState<MarginiCoperti | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [periodo, setPeriodo] = useState<string>("anno");
   const [sortKey, setSortKey] = useState<keyof MarginiCopertiPV>("margine_perc");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -92,10 +94,10 @@ export function FinestraMarginiCoperti({
   const annoCorrente = new Date().getFullYear();
   const meseCorrente = new Date().getMonth() + 1;
 
-  useEffect(() => {
-    if (!open) return;
+  const carica = useCallback(() => {
     const my = ++reqRef.current;
     setLoading(true);
+    setLoadError(false);
     const qs = periodo !== "anno" ? `?mese=${periodo}` : "";
     fetch(`/api/gruppo/margini-coperti${qs}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -103,12 +105,20 @@ export function FinestraMarginiCoperti({
         if (my === reqRef.current) setData(j);
       })
       .catch(() => {
-        if (my === reqRef.current) toast.error("Errore nel caricamento di margini e coperti");
+        if (my === reqRef.current) {
+          setLoadError(true);
+          toast.error("Errore nel caricamento di margini e coperti");
+        }
       })
       .finally(() => {
         if (my === reqRef.current) setLoading(false);
       });
-  }, [open, periodo]);
+  }, [periodo]);
+
+  useEffect(() => {
+    if (!open) return;
+    carica();
+  }, [open, carica]);
 
   function toggleSort(k: keyof MarginiCopertiPV) {
     if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -219,6 +229,16 @@ export function FinestraMarginiCoperti({
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-5">
           {loading && !data ? (
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+          ) : loadError && !data ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <AlertTriangle className="size-7 text-rose-500" />
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile caricare i dati.
+              </p>
+              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+                Riprova
+              </Button>
+            </div>
           ) : !data ? (
             <div className="py-16 text-center text-sm text-muted-foreground">Nessun dato disponibile.</div>
           ) : (
@@ -344,18 +364,31 @@ function FinestraSprecoCategorie({
 }) {
   const [data, setData] = useState<SprecoCategorie | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const reqRef = useRef(0);
 
-  useEffect(() => {
-    let alive = true;
+  // Su errore NON si azzera `data`: un refetch fallito (cambio mese) deve lasciare
+  // a schermo i dati precedenti, non sostituirli con "nessun dato".
+  const carica = useCallback(() => {
+    const my = ++reqRef.current;
     setLoading(true);
+    setLoadError(false);
     const qs = mese ? `?mese=${mese}` : "";
     fetch(`/api/gruppo/spreco-categorie${qs}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => { if (alive) setData(j); })
-      .catch(() => { if (alive) { setData(null); toast.error("Errore nel caricamento dello spreco per categoria"); } })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+      .then((j) => { if (my === reqRef.current) setData(j); })
+      .catch(() => {
+        if (my === reqRef.current) {
+          setLoadError(true);
+          toast.error("Errore nel caricamento dello spreco per categoria");
+        }
+      })
+      .finally(() => { if (my === reqRef.current) setLoading(false); });
   }, [mese]);
+
+  useEffect(() => {
+    carica();
+  }, [carica]);
 
   // Best/worst per RIGA (categoria) tra i PV con dato: la cella più bassa è la
   // migliore (meno materia prima per coperto = meno spreco), la più alta peggiore.
@@ -381,6 +414,16 @@ function FinestraSprecoCategorie({
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-5">
           {loading && !data ? (
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+          ) : loadError && !data ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <AlertTriangle className="size-7 text-rose-500" />
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile caricare i dati.
+              </p>
+              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+                Riprova
+              </Button>
+            </div>
           ) : !data || data.righe.length === 0 ? (
             <div className="py-16 text-center text-sm text-muted-foreground">
               Nessun dato: servono coperti e fatture F&amp;B classificate nel periodo.

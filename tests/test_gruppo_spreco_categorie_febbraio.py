@@ -34,11 +34,20 @@ class _Q:
 
 
 class _FakeSB:
-    def __init__(self, rows):
+    def __init__(self, rows, catturate=None):
         self.rows = rows
+        self._catturate = catturate if catturate is not None else {}
 
     def table(self, name):
         return _Q(self, name)
+
+    def rpc(self, name, params):
+        # L'aggregazione per categoria passa dalla RPC gruppo_spreco_fb_categorie:
+        # e' qui che arrivano le date da verificare.
+        if name == "gruppo_spreco_fb_categorie":
+            self._catturate["data_da"] = params.get("p_data_da")
+            self._catturate["data_a"] = params.get("p_data_a")
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=[]))
 
 
 _IDS = ["rid-1"]
@@ -49,16 +58,13 @@ def _chiama(anno, mese):
     """Chiama l'endpoint catturando le date passate all'aggregatore fatture."""
     catturate = {}
 
-    def _fake_load(sb, rid, data_da, data_a):
-        catturate["data_da"] = data_da
-        catturate["data_a"] = data_a
-        return {}
-
     fw = SimpleNamespace(
-        _load_fatture_fb_per_categoria_e_mese=_fake_load,
+        _load_fatture_fb_per_categoria_e_mese=lambda *a, **k: {},
         _load_mensile_overrides=lambda *a, **k: {},
+        _righe_quote_gruppo=lambda *a, **k: [],
+        _CATEGORIE_FB_M=[],
     )
-    sb = _FakeSB({"margini_mensili": []})
+    sb = _FakeSB({"margini_mensili": [], "ricavi_modalita_mensile": []}, catturate)
 
     with patch.multiple(
         gruppo,

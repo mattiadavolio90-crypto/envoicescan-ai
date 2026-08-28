@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, TrendingDown, Tag, CalendarX, ArrowRight, CheckCircle2, ClipboardList } from "lucide-react";
 import { type Segnale, type SegnaliGruppo } from "@/lib/gruppo";
 
@@ -23,22 +23,31 @@ export function CardSegnali({
 }) {
   const [data, setData] = useState<SegnaliGruppo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const reqRef = useRef(0);
+
+  // Un errore qui NON può diventare "tutto sotto controllo": questa card esiste per
+  // avvisare, e tacere su un errore darebbe una rassicurazione falsa.
+  const carica = useCallback(() => {
+    const my = ++reqRef.current;
+    setLoading(true);
+    setLoadError(false);
+    fetch("/api/gruppo/segnali", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => {
+        if (my === reqRef.current) setData(j);
+      })
+      .catch(() => {
+        if (my === reqRef.current) setLoadError(true);
+      })
+      .finally(() => {
+        if (my === reqRef.current) setLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
-    let alive = true;
-    fetch("/api/gruppo/segnali", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (alive) setData(j);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    carica();
+  }, [carica]);
 
   const segnali = data?.segnali ?? [];
 
@@ -51,6 +60,18 @@ export function CardSegnali({
 
       {loading ? (
         <p className="mt-3 text-sm text-muted-foreground">Controllo i punti vendita…</p>
+      ) : loadError && !data ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <AlertTriangle className="size-4 text-rose-500" />
+          Non è stato possibile controllare i punti vendita.
+          <button
+            type="button"
+            onClick={carica}
+            className="text-xs font-medium text-primary transition-colors hover:underline"
+          >
+            Riprova
+          </button>
+        </div>
       ) : segnali.length === 0 ? (
         <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
           <CheckCircle2 className="size-4 text-emerald-500" />

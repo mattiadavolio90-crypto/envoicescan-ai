@@ -1,34 +1,57 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth";
-import { WORKER_URL, WORKER_SECRET_KEY, WORKER_TIMEOUT_MS } from "@/lib/worker-config";
-
-function workerHeaders(token: string): Record<string, string> {
-  const h: Record<string, string> = { Authorization: `Bearer ${token}` };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-  return h;
-}
+import {
+  getToken,
+  unauthorized,
+  workerHeaders,
+  WORKER_URL,
+  WORKER_TIMEOUT_MS,
+} from "@/lib/worker-config";
 
 // Finestra "Spreco per categoria" (confronto PV): fetch client-side (click sul
 // pulsante Categorie). Inoltra ?mese= per restare allineata al selettore periodo.
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const token = await getToken();
+  if (!token) return unauthorized();
 
   const mese = req.nextUrl.searchParams.get("mese");
   const qs = mese ? `?mese=${encodeURIComponent(mese)}` : "";
 
+  let res: Response;
   try {
-    const res = await fetch(`${WORKER_URL}/api/gruppo/spreco-categorie${qs}`, {
+    res = await fetch(`${WORKER_URL}/api/gruppo/spreco-categorie${qs}`, {
       method: "GET",
       headers: workerHeaders(token),
       cache: "no-store",
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+  } catch (err) {
+    // Solo un fallimento di TRASPORTO arriva qui. Il catch nudo di prima diceva
+    // sempre "Worker unreachable" con 502: un worker lento (timeout) e uno
+    // irraggiungibile davano lo stesso messaggio, e nei log non restava nulla per
+    // distinguerli — vedi 16323a4 per lo stesso fix su riparto/riga-categoria.
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.error("[gruppo/spreco-categorie] worker non ha risposto:", err);
+    return NextResponse.json(
+      { error: isTimeout ? "Worker timeout" : "Worker unreachable", motivo: isTimeout ? "timeout" : "rete" },
+      { status: isTimeout ? 504 : 502 },
+    );
+  }
+
+  // Una risposta non-JSON (traceback, pagina d'errore del proxy Railway) faceva
+  // esplodere res.json() dentro il try: un errore applicativo del worker usciva
+  // travestito da "Worker unreachable", senza il suo status reale nei log.
+  const raw = await res.text();
+  try {
+    return NextResponse.json(JSON.parse(raw), { status: res.status });
   } catch {
-    return NextResponse.json({ error: "Worker unreachable" }, { status: 502 });
+    console.error(
+      "[gruppo/spreco-categorie] risposta worker non-JSON",
+      res.status,
+      raw.slice(0, 500),
+    );
+    return NextResponse.json(
+      { error: `Worker: risposta non valida (HTTP ${res.status})`, motivo: "risposta-non-json" },
+      { status: res.status >= 400 ? res.status : 502 },
+    );
   }
 }

@@ -188,3 +188,102 @@ file**. Nell'ultima passata tre difetti erano stati segnalati come regressioni
 dei fix appena deployati: la storia del repo ha mostrato che erano tutti
 preesistenti, in file mai toccati da quella sessione. Erano semplicemente bug
 che nessuno aveva mai guardato.
+
+---
+
+## 6. Errore di rete travestito da stato vuoto — passata del 28/08/2026
+
+Non è un difetto di layout, ma è emerso dall'audit grafico ed è la stessa
+famiglia: **la UI dice una cosa falsa e l'utente ci crede**.
+
+### Il difetto
+
+Il dialog "Spreco per categoria" (Catena → Margini e coperti → Categorie)
+mostrava insieme il toast d'errore e il messaggio *"Nessun dato: servono coperti
+e fatture F&B classificate nel periodo"* — cioè dava la colpa ai dati del
+cliente per un errore del server, mandandolo a cercare coperti che non gli
+servono.
+
+La causa è strutturale, non locale: **tre stati logici (loading / errore /
+vuoto) compressi in due stati React** (`loading`, `data | null`). Con
+`data === null` usato insieme come valore iniziale, esito d'errore e caso "zero
+righe", il render non può distinguerli e sceglie sempre il messaggio di dominio.
+
+### La grep da rifare
+
+```
+.catch(() => setX(null))     → errore diventa "nessun dato"
+.catch(() => setX([]))       → errore diventa lista vuota (e KPI a zero)
+.catch(() => {})             → errore invisibile
+r.ok ? r.json() : null       → i 5xx entrano nel ramo di successo, il catch non scatta
+```
+
+L'ultima è la più insidiosa: `: null` invece di `Promise.reject()` fa arrivare
+un HTTP 500 nel `.then` come `data = null`, **bypassando il `.catch`**. Un
+`.catch` scritto bene non serve a niente se il `.then` a monte inghiotte l'errore.
+
+### I casi peggiori trovati (tutti corretti)
+
+- `card-segnali.tsx` + gemello `m/briefing/mobile-catena.tsx`: su errore la card
+  diceva *"Tutto sotto controllo, nessuna segnalazione"* — rassicurazione falsa
+  proprio sulla card che esiste per avvisare
+- `margini/analisi-tab.tsx`, `margini/calcolo-tab.tsx`: `giorni = []` alimenta
+  `media`, `giorno migliore/peggiore` → un errore di rete produceva **KPI a
+  zero** indistinguibili da un mese senza ricavi caricati
+- `gruppo-tag-section.tsx`: una ricerca fallita diceva *"Nessun prodotto
+  trovato"*, cioè "il prodotto non esiste"
+
+### Il pattern corretto (già nel repo, non inventarne un altro)
+
+Riferimenti: `catena/config-assistente-catena.tsx` (stessa cartella) e
+`prezzi/score-tab.tsx` (stile del blocco d'errore).
+
+1. Stato `loadError` **separato** da `data`
+2. Fetch estratta in `carica()` riusabile dal bottone "Riprova"
+3. **Non azzerare `data` nel catch** — un refetch fallito non deve cancellare
+   dati validi già a schermo
+4. `Promise.reject()`, mai `: null`
+5. Tre rami di render: caricamento → errore + Riprova → vuoto
+
+---
+
+## 7. I 503 sulle prefetch RSC — verificato, non riproducibile
+
+Segnalati come 503 "ripetuti e sistematici" sulle prefetch RSC di `/catena` e
+`/catena/fatture` (richieste con `?_rsc=`). **Verificato il 28/08/2026: non
+esistono lato server.** Nessun intervento fatto, e la ragione è questa.
+
+Cosa dicono i log Vercel (progetto `oneflux-web`, 7 giorni, tutti i deployment):
+
+- **Zero 503**, su qualunque rotta. Il breakdown status del deployment corrente
+  è 200/304/307/401; quello con più errori è 200/304/307/502/401/500
+- `/catena` e `/catena/fatture` rispondono **200 o 307**
+- I soli 5× 502 in 7 giorni erano su `/analisi-fatture`, concentrati in ~1 minuto
+  il 27/08 (14:52–14:53), con causa esplicita nei log:
+  `[auth.me] worker fetch error: TimeoutError` → poi `502`. Un episodio di worker
+  lento, non un bug di rotta
+
+Cosa dice il codice:
+
+- Nel codice applicativo esiste **un solo** 503: `apps/web/src/lib/auth.ts:74`,
+  dentro `loginWithCredentials` — raggiungibile **solo dal flusso di login**
+- **Non esiste `middleware.ts`** in `apps/web` (verificato): nessun percorso può
+  emettere 503 su una richiesta di pagina o prefetch
+- `verifySession` su timeout **non emette status**: ritorna
+  `{ status: "unavailable" }` dopo 2 tentativi (fino a 2 × 12s), e
+  `(app)/layout.tsx` renderizza "Servizio momentaneamente non raggiungibile"
+  **con HTTP 200**
+
+**Spiegazione più probabile di ciò che si è visto nel DevTools:** 503 del browser
+durante un **redeploy**, quando il deployment precedente non è più servito.
+Non lasciano traccia nei runtime log del nuovo deployment.
+
+**Se si ripresentano:** catturare timestamp preciso + header `x-vercel-id` dalla
+response, e rileggere i log su quella finestra. Senza quei due dati non sono
+ricostruibili a posteriori.
+
+> **Perché un 502 non catturato al momento è perso:** `services/worker_metrics.py`
+> tiene la latenza **in-memory per processo** e si azzera a ogni redeploy. Non
+> esiste storico p95 da consultare dopo. È anche il motivo per cui il 502 di
+> `spreco-categorie` non è mai comparso nei log: quando è stato osservato,
+> nessuno stava guardando.
