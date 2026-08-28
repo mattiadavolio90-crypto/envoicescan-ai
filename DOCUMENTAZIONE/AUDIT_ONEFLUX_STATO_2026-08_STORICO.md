@@ -55,10 +55,11 @@ singolo consumatore e lasciare il quinto percorso scoperto per la prossima volta
 | F-60 | 🟡 LOW/MED | troncamento silenzioso a 60 candidati | fixato |
 | F-REDIRECT | 🟡 LOW | worker giù → redirect invece di BlockRetry | fixato |
 | F-DACLASS | 🟡 LOW | `"Da Classificare"` hardcoded 7× su 4 file | fixato |
-| F-DRIFT | ⚪ | 19 costi su 156: somma quote ≠ totale (max 1 cent, tot 19 cent) | **aperto — a Mattia** |
+| F-DRIFT | ⚪→🟢 | 19 costi su 156: somma quote ≠ totale (max 1 cent, tot 19 cent) | **chiuso 28/8** (guardia SQL + sanatoria) |
 
-`F-DRIFT` resta aperto per scelta: tocca numeri mostrati al cliente e sta lato
-Python nel riparto, quindi fuori dalla deroga concessa in planning.
+`F-DRIFT` **chiuso il 28/8** con la migration `20260828210000` — e la causa
+ipotizzata in planning era **sbagliata su tutti e tre i punti**. Vedi la sezione
+dedicata in fondo a questo verbale.
 
 ### Verificati e scartati
 
@@ -344,3 +345,98 @@ di `test_upload_ai_background.py:263`.
 - **Un mock generoso è un test che mente.** `FakeSB` restituiva colonne mai
   richieste: metà del fix era scoperta e la suite diceva verde. I mock vanno
   resi *severi quanto la cosa vera*, non comodi.
+
+---
+
+## F-DRIFT — chiuso 28/08/2026 (residuo di F1)
+
+**Due ipotesi sbagliate prima di quella giusta.** Vale la pena registrarle
+entrambe, perché la seconda l'ho scritta io convinto di aver misurato.
+
+| # | Ipotesi | Come è caduta |
+|---|---|---|
+| 1ª (dal planning) | i `round()` per-categoria di `riparto.py:1231-1253` | quello è codice di **lettura**: aggrega per la risposta API, non scrive nulla |
+| 2ª (mia) | «dato storico, da un percorso che non esiste più» | **falsa**, e l'ha smontata il `code-reviewer` con due query |
+| 3ª (vera) | `esplodi_quote_per_categoria(forza=True)` ricompone le quote-sede e fa riemergere i mezzi centesimi | riprodotta **eseguendo** la funzione vera |
+
+### Perché la mia ipotesi era sbagliata
+
+Avevo scritto due affermazioni come misurate. Erano entrambe false:
+
+- **«I 19 sono *esattamente* i costi con centesimi dispari».** Avevo verificato
+  che i 19 fossero tutti dispari, **mai il converso**: i costi con la stessa
+  identica firma (2 sedi al 50%, centesimi dispari) sono **51**, e 32 pareggiano.
+  La correlazione su cui poggiava tutta l'inferenza causale non esisteva.
+- **«Dato storico».** Gli `updated_at` dei 19 stanno tutti fra le **10:38:37 e le
+  10:40:27 del 27/8**: un singolo batch del giorno prima, da codice vivo nel repo
+  (`scripts/pulizia_riparti_note_credito.py` → `esplodi_quote_per_categoria`).
+
+Avevo guardato `min` e `max` delle date su **tutti** i costi invece che sui 19, e
+la sovrapposizione dei due intervalli mi era sembrata una prova di dispersione.
+
+### La causa vera
+
+`esplodi_quote_per_categoria(forza=True)` **ricompone** la quota di ogni sede
+sommandone le porzioni per-categoria, per poi rispezzarla. Quella somma fa
+**riemergere i mezzi centesimi** che l'esplosione precedente aveva diviso:
+
+```
+header 2,95 → due sedi al 50% → 1,475 ciascuna → arrotondate: 1,48 + 1,48 = 2,96
+```
+
+Il ramo che pareggia le quote-sede **esisteva già**, ma girava solo sotto
+`riallinea_al_netto`, cioè quando header e righe divergono. Su questi costi
+coincidevano — quindi non pareggiava nessuno. I 32 sani hanno quote
+**asimmetriche** in ingresso (`0,81 / 0,82`), i 19 le hanno **simmetriche**
+(`1,48 / 1,48`): è la firma del difetto.
+
+### Il fix: codice, non guardia
+
+Ramo `else` in `services/riparto_service.py`, stessa convenzione "l'ultima sede
+assorbe" di tutti gli altri percorsi. Verificato sugli **11 importi reali**:
+prima nessuno pareggiava, ora tutti.
+
+28 test (`tests/test_riparto_drift_ricomposizione.py`) che **eseguono la funzione
+vera** con un fake client, non la mockano. 4 mutanti su 4 uccisi — il quarto
+(pareggia la prima sede invece dell'ultima) sopravviveva perché *equivalente sul
+pareggio*: ora c'è un test sulla convenzione, che conta perché due percorsi che
+scelgono sedi diverse renderebbero rumore il confronto fra due esecuzioni.
+
+### La migration: sanare e rendere visibile, senza bloccare
+
+Due cose che il codice non può fare: **sanare i 19 già scritti**, e aggiungere la
+classe **`quote_non_pareggiano`** a `v_riparto_incoerenze`. Verificata sul DB
+live: intercetta esattamente i 19, tutti con scarto di 1 centesimo.
+
+**La prima stesura aveva un `RAISE EXCEPTION` nelle due RPC, ed era sbagliata.**
+`sostituisci_quote_riparto` sta nell'hot-path del worker
+(`worker/queue_processor.py:976`), e la migration `20260827214500` del giorno
+prima aveva deciso il contrario per il caso gemello: «non deve far fallire il
+worker in hot-path: va segnalato dalla view, non bloccato dal DB». Due migration
+consecutive non possono esprimere politiche opposte sullo stesso dato.
+
+Corretti anche due difetti che il reviewer ha trovato nella sanatoria:
+- il commento citava un `CHECK (quota_importo >= 0)` **rimosso il giorno prima**
+  per consentire le note di credito;
+- il filtro `>= 0` faceva il danno opposto: su un header **negativo** (ne
+  esistono 6 live) avrebbe **scartato in silenzio** la correzione. Ora l'ordine è
+  per `abs(quota_importo)`, che è giusto per entrambi i segni.
+
+Soglia della classe a **0,005** e non 0,01: gli scarti reali valgono *esattamente*
+un centesimo, quindi una soglia a 0,01 li avrebbe lasciati passare tutti.
+
+### Lezioni
+
+- **Una correlazione va verificata in entrambe le direzioni.** «Tutti i difettosi
+  hanno X» non dice niente finché non si guarda quanti *non* difettosi hanno X.
+  Erano 32 su 51, cioè il 63%: la mia "firma" era rumore.
+- **Un'aggregazione va calcolata sul gruppo di cui si parla.** `min/max` degli
+  `updated_at` su tutti i costi invece che sui 19 mi ha fatto vedere dispersione
+  dove c'era un batch di due minuti — e ha trasformato "codice vivo" in "storia".
+- **La misura sbagliata è più pericolosa dell'ipotesi sbagliata.** L'ipotesi dal
+  planning era dichiaratamente un'ipotesi; la mia arrivava con numeri e query
+  allegate, e sarebbe finita nel repo come spiegazione autorevole in un commento
+  di migration. Il `code-reviewer` l'ha smontata in due query.
+- **Il modo di fallire va scelto guardando chi chiama.** Una guardia corretta nel
+  merito, messa nell'hot-path del worker, sarebbe stata una regressione: avrebbe
+  bloccato l'elaborazione di una fattura per un centesimo.

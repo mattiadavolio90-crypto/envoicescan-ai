@@ -281,6 +281,24 @@ def esplodi_quote_per_categoria(
             else:
                 s["importo"] = round(importo_riparto - acc, 2)
             acc += s["importo"]
+    else:
+        # Anche senza riallineamento le quote-sede vanno PAREGGIATE sull'header.
+        # Ricomporle sommando le porzioni per-categoria (forza=True) fa riemergere
+        # i mezzi centesimi che l'esplosione precedente aveva diviso: due sedi al
+        # 50% di 2,95 tornano 1,475 ciascuna, che arrotondato fa 1,48 + 1,48 = 2,96.
+        # Il centesimo non resta qui: riparto_quote_mensili somma le quote dentro
+        # margini_mensili, quindi entra nel MOL che il cliente legge.
+        # Sono i 19 costi su 156 trovati dall'audit 2026-08 (F-DRIFT), tutti scritti
+        # dal batch di ri-esplosione del 27/8: il ramo sopra non li ha toccati perche'
+        # header e righe gia' coincidevano (scarto <= 0.01), quindi nessuno pareggiava.
+        # Stessa convenzione dell'altro ramo e di _quote_equa: l'ultima sede assorbe.
+        sedi = sorted(per_sede.items(), key=lambda kv: kv[0])
+        somma = round(sum(s["importo"] for _rid, s in sedi), 2)
+        if sedi and abs(somma - round(importo_riparto, 2)) > 1e-9:
+            ultima = sedi[-1][1]
+            ultima["importo"] = round(
+                ultima["importo"] + (round(importo_riparto, 2) - somma), 2
+            )
 
     nuove: List[Dict[str, Any]] = []
     for rid, s in per_sede.items():

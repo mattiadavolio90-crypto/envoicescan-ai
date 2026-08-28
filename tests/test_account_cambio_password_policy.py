@@ -168,3 +168,80 @@ def test_password_col_nome_ristorante_rifiutata_davvero():
     assert ei.value.status_code == 400
     assert "ristorante" in str(ei.value.detail).lower()
     assert sb.updates == []
+
+
+# ── Il gate sulla password attuale ───────────────────────────────────────────
+#
+# I test sopra mockano verify_and_migrate_password a True di proposito: isolano
+# la policy sulla password NUOVA. Il rovescio e' che nessuno di loro misura il
+# gate: disattivandolo restavano tutti verdi, cioe' si sarebbe potuta cambiare
+# la password senza conoscere quella vecchia — chiunque avesse un token di
+# sessione (browser lasciato aperto, token rubato) sarebbe diventato padrone
+# dell'account. Questi test esercitano il gate invece di aggirarlo.
+
+
+def _chiama_con_verifica(password_attuale, nuova_password, sb, esito_verifica):
+    """Come _chiama, ma la verifica della password attuale risponde davvero:
+    `esito_verifica` e' cio' che verify_and_migrate_password ritornerebbe."""
+    spia = MagicMock(return_value=esito_verifica)
+    with patch.multiple(
+        account,
+        _resolve_user_from_token=MagicMock(return_value={"id": "u1"}),
+        _get_supabase_client=MagicMock(return_value=sb),
+    ), patch("services.auth_service.verify_and_migrate_password", spia), \
+         patch("services.auth_service.ph") as ph, \
+         patch("services.session_service.revoca_tutte_sessioni"):
+        ph.hash.return_value = "$argon2id$nuovo"
+        try:
+            return spia, account.account_cambia_password(
+                account.CambioPasswordBody(
+                    password_attuale=password_attuale,
+                    nuova_password=nuova_password,
+                ),
+                authorization="Bearer t",
+            )
+        except account.HTTPException as exc:
+            return spia, exc
+
+
+def test_password_attuale_sbagliata_blocca_il_cambio():
+    """Il caso che conta: nuova password perfettamente conforme, ma la vecchia
+    non e' quella giusta. Deve fallire, e soprattutto NON scrivere nulla."""
+    sb = FakeSB(UTENTE)
+    _, esito = _chiama_con_verifica("non-e-la-mia", "Ab1!defghij", sb, esito_verifica=False)
+
+    assert isinstance(esito, account.HTTPException), (
+        "con la password attuale sbagliata la route ha lasciato passare il cambio"
+    )
+    assert esito.status_code == 400
+    assert "attuale" in str(esito.detail).lower()
+    assert sb.updates == [], "password cambiata senza conoscere quella vecchia"
+
+
+def test_password_attuale_verificata_contro_la_riga_utente():
+    """Non basta che la verifica venga chiamata: deve ricevere la riga del DB
+    (con l'hash) e la password digitata. Passandole altro, il confronto
+    avverrebbe contro il nulla e tornerebbe sempre vero."""
+    sb = FakeSB(UTENTE)
+    spia, _ = _chiama_con_verifica("la-mia-vecchia", "Ab1!defghij", sb, esito_verifica=True)
+
+    assert spia.call_count == 1, "la password attuale non viene verificata affatto"
+    riga, digitata = spia.call_args.args
+    assert riga.get("password_hash") == UTENTE["password_hash"], (
+        "la verifica non riceve l'hash dell'utente"
+    )
+    assert digitata == "la-mia-vecchia", "la verifica non riceve la password digitata"
+
+
+def test_il_gate_precede_la_policy():
+    """Ordine, non solo presenza: con password attuale sbagliata E nuova debole
+    l'utente deve sentirsi dire che sbaglia la vecchia. Il contrario rivelerebbe
+    a un attaccante i requisiti da soddisfare prima ancora di autenticarsi."""
+    sb = FakeSB(UTENTE)
+    _, esito = _chiama_con_verifica("non-e-la-mia", "corta", sb, esito_verifica=False)
+
+    assert isinstance(esito, account.HTTPException)
+    assert "attuale" in str(esito.detail).lower(), (
+        f"la policy ha parlato prima del gate: {esito.detail!r}"
+    )
+    assert sb.updates == []
