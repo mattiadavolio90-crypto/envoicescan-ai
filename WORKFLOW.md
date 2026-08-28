@@ -205,7 +205,8 @@ un controllo generale, indipendente da un lavoro specifico.
 Il **metodo** vive qui (persiste anche quando un ciclo si chiude e il suo
 documento va in `docs/storico/`). Lo **stato di un ciclo specifico** (quali
 dimensioni sono verdi, con che esito, cosa resta aperto) vive nel documento
-del ciclo — oggi `docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md`. Non
+del ciclo — oggi `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08.md` (il 2026-07 è
+chiuso, in `docs/storico/`). Non
 duplicare: se una regola di processo finisce scritta solo dentro il documento
 di stato, sparisce col documento quando viene archiviato.
 
@@ -282,4 +283,5 @@ scrittura, non audit) e si pianificano come sessione propria.
 alla prima passata verde su ogni dimensione: se anche solo alcune dimensioni
 hanno avuto una sola passata senza `code-reviewer`, il ciclo resta aperto
 finché non ricevono lo stesso scrutinio delle altre. Vedi
-`AUDIT_ONEFLUX_STATO_2026-07.md` per l'obiettivo di copertura corrente.
+`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08.md` per l'obiettivo di copertura
+corrente.
