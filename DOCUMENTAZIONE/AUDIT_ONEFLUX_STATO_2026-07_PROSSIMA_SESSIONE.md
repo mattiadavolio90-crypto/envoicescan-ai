@@ -7,9 +7,9 @@
 ---
 
 Continua il ciclo di audit ONEFLUX 2026-07. Leggi prima
-`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md` (indice, ~1 minuto) — in
+`docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md` (indice, ~1 minuto) — in
 particolare §3c e "Chiusura del ciclo" in fondo. Apri
-`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md` solo per il dettaglio
+`docs/storico/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md` solo per il dettaglio
 della sezione che riapri.
 
 ## Stato del ciclo

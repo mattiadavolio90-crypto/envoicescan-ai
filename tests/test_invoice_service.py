@@ -328,15 +328,7 @@ def _run_estrai_xml(xml_bytes, user_id='user_test'):
     Nota: carica_memoria_completa e categorizza_con_memoria vengono importati
     dentro la funzione estrai_dati_da_xml (import locale), quindi bisogna
     patchare il namespace sorgente services.ai_service.
-    xmltodict è mockato dal conftest, quindi lo sostituiamo con quello reale.
     """
-    import sys
-    import importlib
-
-    # Rimuovi il mock di xmltodict e carica il modulo reale
-    sys.modules.pop('xmltodict', None)
-    real_xmltodict = importlib.import_module('xmltodict')
-
     from services.invoice_service import estrai_dati_da_xml
 
     file_mock = io.BytesIO(xml_bytes)
@@ -353,7 +345,6 @@ def _run_estrai_xml(xml_bytes, user_id='user_test'):
     mock_st.session_state.get = _session_state_get
 
     with patch('services.invoice_service.st', mock_st), \
-         patch('services.invoice_service.xmltodict', real_xmltodict), \
          patch('services.ai_service.carica_memoria_completa', return_value=None), \
          patch('services.ai_service.categorizza_con_memoria',
                return_value=('🧀 LATTICINI E FORMAGGI', False)):
@@ -456,10 +447,6 @@ class TestGuardrailNoteConImporto:
 
     def _run_con_categoria_note(self, xml_bytes, user_id='user_test'):
         """Come _run_estrai_xml ma forza categorizza_con_memoria a restituire NOTE."""
-        import sys
-        import importlib
-        sys.modules.pop('xmltodict', None)
-        real_xmltodict = importlib.import_module('xmltodict')
         from services.invoice_service import estrai_dati_da_xml
 
         file_mock = io.BytesIO(xml_bytes)
@@ -474,8 +461,7 @@ class TestGuardrailNoteConImporto:
         mock_st.session_state.get = _session_state_get
 
         with patch('services.invoice_service.st', mock_st), \
-             patch('services.invoice_service.xmltodict', real_xmltodict), \
-             patch('services.ai_service.carica_memoria_completa', return_value=None), \
+                 patch('services.ai_service.carica_memoria_completa', return_value=None), \
              patch('services.ai_service.categorizza_con_memoria',
                    return_value=('📝 NOTE E DICITURE', False)):
             return estrai_dati_da_xml(file_mock)

@@ -518,7 +518,7 @@ def test_il_perimetro_delle_route_non_proxy_non_cresce_in_silenzio() -> None:
         "(il gate coverage Python non le copre):\n  - "
         + "\n  - ".join(sorted(nuove))
         + "\n\nLeggile: se toccano il DB o calcolano importi, la logica va nel "
-        "worker. Vedi DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md §3."
+        "worker. Vedi docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md §3."
     )
 
 

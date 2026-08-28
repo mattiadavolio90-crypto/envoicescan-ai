@@ -5,17 +5,8 @@ output sono hardcodati IDENTICI al TS, cosi' un drift fra le tre implementazioni
 (Python / TypeScript / SQL) rompe il test. Include lo scenario reale OFFSIDE
 (2 sedi, stessa P.IVA) con gli indirizzo_match presi dal DB.
 """
-import sys
-import importlib
-from unittest.mock import MagicMock
 
-# conftest.py mocka xmltodict globalmente (modulo "pesante"). Qui ci serve quello
-# VERO per parsare gli XML di esempio: lo ripristiniamo dal pacchetto installato.
-if isinstance(sys.modules.get("xmltodict"), MagicMock):
-    del sys.modules["xmltodict"]
 import xmltodict  # noqa: E402
-if isinstance(xmltodict, MagicMock):  # difensivo: se non installato, ricarica
-    xmltodict = importlib.import_module("xmltodict")
 
 from services.multisede_routing import (  # noqa: E402
     normalizza_indirizzo,

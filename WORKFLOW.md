@@ -205,7 +205,7 @@ un controllo generale, indipendente da un lavoro specifico.
 Il **metodo** vive qui (persiste anche quando un ciclo si chiude e il suo
 documento va in `docs/storico/`). Lo **stato di un ciclo specifico** (quali
 dimensioni sono verdi, con che esito, cosa resta aperto) vive nel documento
-del ciclo — oggi `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-07.md`. Non
+del ciclo — oggi `docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md`. Non
 duplicare: se una regola di processo finisce scritta solo dentro il documento
 di stato, sparisce col documento quando viene archiviato.
 

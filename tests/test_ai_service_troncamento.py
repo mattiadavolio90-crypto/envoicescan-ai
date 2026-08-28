@@ -26,27 +26,24 @@ import services.ai_service as ai
 def chiama_gpt():
     """La funzione `_chiama_gpt_classificazione` NON decorata.
 
-    Il conftest globale mocka l'intero modulo `tenacity`, quindi `@retry` la
-    sostituisce con un MagicMock: chiamarla restituirebbe un mock e ogni assert
-    passerebbe per il motivo sbagliato. La funzione vera si recupera dal mock
-    stesso, che registra la chiamata al decoratore.
+    `@retry` di tenacity applica `functools.wraps`, quindi espone l'originale
+    come `__wrapped__`: la si prende da li'. Serve la versione non decorata
+    perche' altrimenti un input che solleva un'eccezione retriabile verrebbe
+    ritentato 3 volte con backoff, e questi test misurano la diagnostica di
+    troncamento, non il retry.
 
     Deliberatamente NON si usa `importlib.reload`: ricaricare il modulo ricrea le
     classi di eccezione, mentre `services/upload_handler.py` cattura
     `AIDailyLimitExceededError` & co. all'import — resterebbe legato alle classi
     vecchie e un `except` non matcherebbe piu'. Qui non si tocca lo stato globale.
     """
-    import tenacity
-
-    chiamate = tenacity.retry.return_value.call_args_list
-    for c in chiamate:
-        f = c.args[0] if c.args else None
-        if getattr(f, "__name__", None) == "_chiama_gpt_classificazione":
-            return f
-    pytest.fail(
-        "impossibile recuperare _chiama_gpt_classificazione non decorata: "
-        "il mock di tenacity nel conftest e' cambiato"
-    )
+    f = getattr(ai._chiama_gpt_classificazione, "__wrapped__", None)
+    if f is None:
+        pytest.fail(
+            "_chiama_gpt_classificazione non espone __wrapped__: "
+            "il decoratore @retry e' cambiato"
+        )
+    return f
 
 
 def _fake_client(payload: dict, finish_reason: str):
@@ -60,6 +57,18 @@ def _fake_client(payload: dict, finish_reason: str):
     client = MagicMock()
     client.chat.completions.create.return_value = resp
     return client
+
+
+@pytest.fixture(autouse=True)
+def _niente_tracking_costi(monkeypatch):
+    """`_chiama_gpt_classificazione` traccia i costi AI su DB a fine chiamata.
+    Fuori dal perimetro di questi test, e senza il mock di supabase quel percorso
+    ritenta la scrittura 3 volte con backoff (1s+2s, ai_cost_service.py:175-184):
+    3 secondi di attesa per test, per un effetto che qui non si asserisce.
+    """
+    import services.ai_cost_service as cost
+
+    monkeypatch.setattr(cost, "track_ai_usage", lambda *a, **k: None)
 
 
 _ARTICOLI = ["POMODORI PELATI", "MOZZARELLA FIORDILATTE", "OLIO EVO", "BIRRA MEDIA"]

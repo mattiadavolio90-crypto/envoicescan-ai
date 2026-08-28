@@ -314,7 +314,14 @@ def _supabase_df_fixture(categoria):
 
 class TestCaricaScontiEOmaggi:
 
-    def test_omaggi_recuperano_ultimo_prezzo_disponibile(self):
+    def test_omaggi_recuperano_ultimo_prezzo_disponibile(self, monkeypatch):
+        # `_fetch_numero_documento_map_cached` e' memoizzata e NON riceve il
+        # client dal chiamante: se lo procura con get_supabase_client(),
+        # ignorando il fake qui sotto ed emettendo una query HTTP vera. Questo
+        # test non asserisce nulla su numero_documento, quindi la si neutralizza.
+        monkeypatch.setattr(
+            _db_mod, "_fetch_numero_documento_map_cached", lambda *a, **k: {}
+        )
         class _Response:
             def __init__(self, data):
                 self.data = data
@@ -400,7 +407,11 @@ class TestCaricaScontiEOmaggi:
         assert float(result['omaggi'].iloc[0]['valore_stimato']) == 15.0
         assert float(result['totale_omaggi']) == 15.0
 
-    def test_esclude_diciture_zero_e_storni_dal_tab_omaggi(self):
+    def test_esclude_diciture_zero_e_storni_dal_tab_omaggi(self, monkeypatch):
+        # Vedi il test precedente: la mappa numero-documento e' fuori perimetro.
+        monkeypatch.setattr(
+            _db_mod, "_fetch_numero_documento_map_cached", lambda *a, **k: {}
+        )
         class _Response:
             def __init__(self, data):
                 self.data = data

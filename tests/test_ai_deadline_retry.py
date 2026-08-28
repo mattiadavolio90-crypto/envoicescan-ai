@@ -13,37 +13,13 @@ e tre i livelli. Regola di dominio: a deadline scaduta NON si solleva mai — su
 il fallback deterministico esistente (regole forti + dizionario, residuo
 "Da Classificare"), nessuna categoria inventata.
 """
-import importlib
 import inspect
-import sys
 import time
 
 import pytest
 
 from services import ai_service
 from worker import queue_processor as qp
-
-
-def _con_tenacity_reale():
-    """tenacity e' MagicMock nel conftest: per esercitare davvero stop/wait serve
-    la libreria vera (installata nel venv). Stesso pattern di
-    test_eccezioni_moduli_mockati.py, con ripristino garantito dal chiamante.
-    """
-    mock_precedente = sys.modules.get("tenacity")
-    sys.modules.pop("tenacity", None)
-    try:
-        return importlib.import_module("tenacity"), mock_precedente
-    except Exception:
-        if mock_precedente is not None:
-            sys.modules["tenacity"] = mock_precedente
-        raise
-
-
-def _ripristina_tenacity(mock_precedente):
-    if mock_precedente is not None:
-        sys.modules["tenacity"] = mock_precedente
-    else:
-        sys.modules.pop("tenacity", None)
 
 
 @pytest.fixture(autouse=True)
@@ -105,15 +81,12 @@ def _esegui_chunk_sempre_fallito(contatore):
     """Simula un chunk che fallisce sempre, con lo STESSO stop/wait usato in
     produzione da _chiama_gpt_classificazione. Ritorna la durata totale.
 
-    `stop_after_attempt`/`wait_exponential` dentro ai_service sono i MagicMock del
-    conftest: vanno sostituiti con quelli veri, altrimenti si misurerebbe il mock.
+    Usa lo stop/wait veri di ai_service: dal 28/8/2026 tenacity non e' piu'
+    mockato nel conftest, quindi non serve sostituire nulla.
     """
-    tenacity, mock_prec = _con_tenacity_reale()
-    orig_stop = ai_service.stop_after_attempt
-    orig_wait = ai_service.wait_exponential
-    ai_service.stop_after_attempt = tenacity.stop_after_attempt
-    ai_service.wait_exponential = tenacity.wait_exponential
-    try:
+    import tenacity
+
+    if True:
         @tenacity.retry(
             stop=ai_service._stop_su_tentativi_o_deadline,
             wait=ai_service._wait_entro_deadline,
@@ -127,10 +100,6 @@ def _esegui_chunk_sempre_fallito(contatore):
         with pytest.raises(Exception):
             _f()
         return time.monotonic() - t0
-    finally:
-        ai_service.stop_after_attempt = orig_stop
-        ai_service.wait_exponential = orig_wait
-        _ripristina_tenacity(mock_prec)
 
 
 def test_tenacity_senza_deadline_fa_tutti_i_tentativi():
@@ -164,23 +133,18 @@ def test_wait_mai_negativo(monkeypatch):
     """Con budget residuo negativo il wait deve valere 0, non un tempo negativo
     (tenacity rifiuta le attese negative con ValueError).
 
-    `wait_exponential` in ai_service e' il MagicMock del conftest: qui lo si
-    sostituisce con quello vero per misurare il troncamento, non il mock.
+    `wait_exponential` in ai_service e' quello vero di tenacity: dal 28/8/2026
+    il conftest non lo mocka piu', quindi si misura la libreria, non un mock.
     """
-    tenacity, mock_prec = _con_tenacity_reale()
-    try:
-        monkeypatch.setattr(ai_service, "wait_exponential", tenacity.wait_exponential)
-        ai_service._ai_ctx_deadline.set(time.monotonic() - 100)
+    ai_service._ai_ctx_deadline.set(time.monotonic() - 100)
 
-        class _S:
-            attempt_number = 2
-            outcome = None
-            idle_for = 0
-            next_action = None
+    class _S:
+        attempt_number = 2
+        outcome = None
+        idle_for = 0
+        next_action = None
 
-        assert ai_service._wait_entro_deadline(_S()) == 0.0
-    finally:
-        _ripristina_tenacity(mock_prec)
+    assert ai_service._wait_entro_deadline(_S()) == 0.0
 
 
 # ─── livello 2: retry applicativo in classifica_con_ai ───────────────────────
