@@ -1,33 +1,42 @@
 -- Le quote di un costo di gruppo devono sommare all'importo del costo.
 --
 -- Audit 2026-08, finding F-DRIFT. Misurato sul DB live: 19 costi su 156 avevano
--- somma quote != importo_totale (scarto max 1 centesimo, 19 centesimi in tutto
--- su 67.591,75 €). Quel centesimo non resta nella tabella: riparto_quote_mensili
+-- somma quote != importo_totale (scarto max 1 centesimo, 19 centesimi in tutto su
+-- 67.591,75 EUR). Quel centesimo non resta nella tabella: riparto_quote_mensili
 -- somma le quote dentro margini_mensili, quindi entra nel MOL mostrato al cliente.
 --
--- La causa NON era quella ipotizzata in fase di planning (i round() per-categoria
--- nel percorso di lettura). Misurando: i 19 sono ESATTAMENTE i costi con centesimi
--- dispari, cioè quelli dove importo/2 cade su mezzo centesimo, e tutti e 19 sono
--- costi RI-SCRITTI dopo la creazione (zero drift fra quelli mai modificati). Gli
--- helper Python attuali (_quote_equa, _quote_percentuali, _spezza_importo_per_pesi)
--- pareggiano già tutti: riprodotti su tutti gli 11 casi reali, danno la somma
--- esatta. Il drift è dato storico, scritto da un percorso di ri-scrittura che non
--- esiste più nel repo.
+-- CAUSA, riprodotta eseguendo (non dedotta):
+-- `esplodi_quote_per_categoria(forza=True)` ricompone la quota di ogni sede
+-- sommandone le porzioni per-categoria, e quella somma fa RIEMERGERE i mezzi
+-- centesimi che l'esplosione precedente aveva diviso. Due sedi al 50% di 2,95
+-- tornano 1,475 ciascuna -> arrotondate 1,48 + 1,48 = 2,96.
+-- Il ramo che pareggia le quote-sede girava SOLO sotto `riallinea_al_netto`, cioe'
+-- quando header e righe divergono: su questi costi coincidevano gia', quindi non
+-- pareggiava nessuno. Tutti e 19 portano l'updated_at del batch di ri-esplosione
+-- del 27/8 fra le 10:38 e le 10:40 -- non e' storia remota, e' codice vivo.
 --
--- Per questo la difesa va messa QUI e non in Python: il vincolo sopravvive al
--- percorso che l'ha violato, e vale per qualunque scrittore futuro — worker, RPC,
--- correzione manuale. Un invariante difeso solo dal chiamante è un invariante che
--- il prossimo chiamante non conosce.
+-- L'ipotesi a verbale in fase di planning (i round() per-categoria di
+-- riparto.py:1231-1253) era sbagliata: quello e' codice di LETTURA, non scrive.
 --
--- Tolleranza 1 centesimo: le quote sono NUMERIC(12,2) e l'ultima assorbe
--- l'arrotondamento, quindi in condizioni normali lo scarto è zero. La tolleranza
--- serve a non trasformare in errore bloccante un residuo di rappresentazione,
--- lasciando comunque fuori ogni sbilanciamento reale.
+-- COSA FA QUESTA MIGRATION, e cosa NON fa:
+--  1. sana i 19 gia' scritti (il codice non puo' riparare il passato);
+--  2. aggiunge la classe `quote_non_pareggiano` a v_riparto_incoerenze.
+--
+-- NON aggiunge un CHECK ne' un RAISE EXCEPTION nelle RPC, ed e' una scelta:
+-- `sostituisci_quote_riparto` sta nell'hot-path del worker
+-- (worker/queue_processor.py:976). La migration 20260827214500 di ieri ha deciso
+-- esattamente questo per il caso gemello ("non deve far fallire il worker in
+-- hot-path: va segnalato dalla view, non bloccato dal DB"), e due migration
+-- consecutive non possono esprimere politiche opposte sullo stesso dato. Il
+-- fix vero sta nel codice (services/riparto_service.py, ramo `else`); qui si
+-- rende l'eventuale residuo VISIBILE invece che silenzioso.
 
--- ── 1. Sanatoria dei 19 storici ──────────────────────────────────────────────
--- Lo scarto va sulla quota PIÙ GRANDE della sede con più peso: è la convenzione
--- già usata dal codice ("l'ultima pareggia") e sposta il centesimo dove incide
--- meno in percentuale. Su una sola riga per costo, mai spalmato.
+BEGIN;
+
+-- ── 1. Sanatoria dei 19 storici ─────────────────────────────────────────────
+-- Lo scarto va sulla quota di modulo maggiore, UNA sola riga per costo: e' la
+-- convenzione gia' usata dal codice ("l'ultima assorbe") e il centesimo finisce
+-- dove incide meno in percentuale.
 WITH sbilanciati AS (
     SELECT c.id AS riparto_id,
            c.importo_totale,
@@ -43,161 +52,153 @@ da_correggere AS (
            q.quota_importo + (s.importo_totale - s.somma_quote) AS nuovo_importo
     FROM sbilanciati s
     JOIN public.riparto_costi_catena_quote q ON q.riparto_id = s.riparto_id
-    ORDER BY s.riparto_id, q.quota_importo DESC, q.id
+    -- Per VALORE ASSOLUTO: su un header negativo (nota di credito) la quota
+    -- "piu' grande" in senso algebrico e' la meno negativa. Lo scarto deve andare
+    -- dove incide meno in percentuale, cioe' sulla quota di modulo maggiore.
+    ORDER BY s.riparto_id, abs(q.quota_importo) DESC, q.id
 )
 UPDATE public.riparto_costi_catena_quote q
 SET quota_importo = d.nuovo_importo
 FROM da_correggere d
-WHERE q.id = d.quota_id
-  -- Il CHECK sulla tabella vieta quota_importo < 0: non correggiamo un costo
-  -- dove la sanatoria porterebbe la quota sotto zero (non ne esistono oggi, ma
-  -- la migration non deve poter fallire su dati futuri).
-  AND d.nuovo_importo >= 0;
+WHERE q.id = d.quota_id;
+-- Nessun filtro sul segno: il CHECK (quota_importo >= 0) e' stato RIMOSSO il 27/8
+-- da 20260827214500_riparto_consenti_note_credito.sql, proprio perche' una nota di
+-- credito porta quote negative. Un filtro `>= 0` non proteggerebbe da niente e
+-- farebbe danno all'opposto: su un header negativo (ne esistono 6 live) scarterebbe
+-- in silenzio la correzione, lasciando il costo sbilanciato senza segnalarlo.
 
--- ── 2. La guardia, sulle due RPC che scrivono quote ──────────────────────────
+-- ── 2. La quinta classe di incoerenza ───────────────────────────────────────
+CREATE OR REPLACE VIEW public.v_riparto_incoerenze AS
+-- Classe 1: fatture vive marcate ripartite senza un riparto dietro.
+SELECT
+    f.user_id,
+    'orfano'::text AS tipo_incoerenza,
+    f.file_origine,
+    NULL::uuid AS riparto_id,
+    f.fornitore,
+    round(sum(f.totale_riga)::numeric, 2) AS importo,
+    min(f.data_documento) AS data_documento
+FROM public.fatture f
+WHERE f.ripartita_su_gruppo = true
+  AND f.deleted_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM public.riparto_costi_catena r
+      WHERE r.user_id = f.user_id AND r.file_origine = f.file_origine
+  )
+GROUP BY f.user_id, f.file_origine, f.fornitore
 
-CREATE OR REPLACE FUNCTION public.crea_riparto_con_quote(
-    p_user_id        UUID,
-    p_origine        TEXT,
-    p_file_origine   TEXT,
-    p_fornitore      TEXT,
-    p_descrizione    TEXT,
-    p_importo_totale NUMERIC,
-    p_tipo           TEXT,
-    p_anno           INTEGER,
-    p_mese           INTEGER,
-    p_regola         TEXT,
-    p_quote          JSONB
-)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-    v_riparto_id UUID;
-    v_somma      NUMERIC;
-BEGIN
-    IF p_user_id IS NULL THEN
-        RAISE EXCEPTION 'p_user_id non può essere NULL';
-    END IF;
-    IF p_quote IS NULL OR jsonb_array_length(p_quote) = 0 THEN
-        RAISE EXCEPTION 'p_quote non può essere vuoto';
-    END IF;
+UNION ALL
 
-    SELECT round(COALESCE(SUM((q->>'quota_importo')::NUMERIC), 0), 2)
-    INTO v_somma
-    FROM jsonb_array_elements(p_quote) AS q;
+-- Classe 2: riparti la cui fattura non ha più alcuna riga viva.
+SELECT
+    r.user_id,
+    'riparto_senza_documento'::text AS tipo_incoerenza,
+    r.file_origine,
+    r.id AS riparto_id,
+    r.fornitore,
+    r.importo_totale AS importo,
+    make_date(r.anno, r.mese, 1) AS data_documento
+FROM public.riparto_costi_catena r
+WHERE r.file_origine IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM public.fatture f
+      WHERE f.user_id = r.user_id
+        AND f.file_origine = r.file_origine
+        AND f.deleted_at IS NULL
+  )
 
-    IF abs(v_somma - round(p_importo_totale, 2)) > 0.01 THEN
-        RAISE EXCEPTION
-            'Le quote non pareggiano il costo: somma % vs importo % (scarto %)',
-            v_somma, round(p_importo_totale, 2), v_somma - round(p_importo_totale, 2);
-    END IF;
+UNION ALL
 
-    INSERT INTO public.riparto_costi_catena (
-        user_id, origine, file_origine, fornitore, descrizione,
-        importo_totale, tipo, anno, mese, regola
-    )
-    VALUES (
-        p_user_id, p_origine, p_file_origine, p_fornitore, p_descrizione,
-        p_importo_totale, p_tipo, p_anno, p_mese, p_regola
-    )
-    RETURNING id INTO v_riparto_id;
+-- Classe 3 (nuova): header senza alcuna riga quota. Il costo resta nel totale del
+-- gruppo ma non arriva a nessuna sede — né in margini_mensili né in Analisi Fatture.
+-- esplodi_quote_per_categoria non lo ripara da solo: esce a `if not quote`.
+-- Caso live: AUTOSTRADE luglio (riparto a8143a95), 96,80 € netti mai distribuiti.
+SELECT
+    r.user_id,
+    'riparto_senza_quote'::text AS tipo_incoerenza,
+    r.file_origine,
+    r.id AS riparto_id,
+    r.fornitore,
+    r.importo_totale AS importo,
+    make_date(r.anno, r.mese, 1) AS data_documento
+FROM public.riparto_costi_catena r
+WHERE NOT EXISTS (
+      SELECT 1 FROM public.riparto_costi_catena_quote q WHERE q.riparto_id = r.id
+  )
 
-    INSERT INTO public.riparto_costi_catena_quote (
-        riparto_id, ristorante_id, quota_perc, quota_importo, categoria
-    )
+UNION ALL
+
+-- Classe 4 (nuova): header con segno opposto al netto reale delle righe, oppure
+-- netto reale ~0 con header non nullo. È la firma di una nota di credito ripartita
+-- come costo positivo: il gruppo paga due volte invece di ricevere il rimborso.
+-- Con i CHECK rimossi sopra, esplodi_quote_per_categoria riscrive il segno giusto
+-- all'atterraggio delle righe; questa classe intercetta lo storico e ogni caso che
+-- l'atterraggio non ha ricalcolato.
+SELECT
+    x.user_id,
+    'riparto_segno_incoerente'::text AS tipo_incoerenza,
+    x.file_origine,
+    x.riparto_id,
+    x.fornitore,
+    x.netto_reale AS importo,
+    make_date(x.anno, x.mese, 1) AS data_documento
+FROM (
     SELECT
-        v_riparto_id,
-        (q->>'ristorante_id')::UUID,
-        (q->>'quota_perc')::NUMERIC,
-        (q->>'quota_importo')::NUMERIC,
-        NULLIF(q->>'categoria', '')
-    FROM jsonb_array_elements(p_quote) AS q;
+        r.user_id, r.id AS riparto_id, r.file_origine, r.fornitore, r.anno, r.mese,
+        r.importo_totale,
+        round(sum(f.totale_riga)::numeric, 2) AS netto_reale
+    FROM public.riparto_costi_catena r
+    JOIN public.fatture f
+      ON f.user_id = r.user_id
+     AND f.file_origine = r.file_origine
+     AND f.deleted_at IS NULL
+    WHERE r.origine = 'fattura'
+    GROUP BY r.user_id, r.id, r.file_origine, r.fornitore, r.anno, r.mese, r.importo_totale
+) x
+WHERE sign(x.netto_reale) <> sign(x.importo_totale)
+   OR (abs(x.netto_reale) < 0.01 AND abs(x.importo_totale) >= 0.01)
 
-    -- Se l'insert delle quote fallisce (vincolo, tipo, ecc.) l'eccezione propaga e
-    -- l'intera transazione (padre incluso) viene annullata da Postgres: nessun
-    -- riparto orfano può esistere, per costruzione.
-    RETURN v_riparto_id;
-END;
-$$;
+UNION ALL
 
-CREATE OR REPLACE FUNCTION public.sostituisci_quote_riparto(
-    p_riparto_id     UUID,
-    p_user_id        UUID,
-    p_tipo           TEXT,
-    p_regola         TEXT,
-    p_importo_totale NUMERIC,
-    p_quote          JSONB
-)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-    v_updated_id UUID;
-    v_somma      NUMERIC;
-BEGIN
-    IF p_user_id IS NULL OR p_riparto_id IS NULL THEN
-        RAISE EXCEPTION 'p_riparto_id e p_user_id non possono essere NULL';
-    END IF;
-    IF p_quote IS NULL OR jsonb_array_length(p_quote) = 0 THEN
-        RAISE EXCEPTION 'p_quote non può essere vuoto';
-    END IF;
-
-    -- Qui il controllo pesa più che nella crea: tutti e 19 gli sbilanciamenti
-    -- storici erano su costi RI-SCRITTI, non su costi appena creati.
-    SELECT round(COALESCE(SUM((q->>'quota_importo')::NUMERIC), 0), 2)
-    INTO v_somma
-    FROM jsonb_array_elements(p_quote) AS q;
-
-    IF abs(v_somma - round(p_importo_totale, 2)) > 0.01 THEN
-        RAISE EXCEPTION
-            'Le quote non pareggiano il costo: somma % vs importo % (scarto %)',
-            v_somma, round(p_importo_totale, 2), v_somma - round(p_importo_totale, 2);
-    END IF;
-
-    UPDATE public.riparto_costi_catena
-    SET tipo = p_tipo, regola = p_regola, importo_totale = p_importo_totale
-    WHERE id = p_riparto_id AND user_id = p_user_id
-    RETURNING id INTO v_updated_id;
-
-    IF v_updated_id IS NULL THEN
-        RAISE EXCEPTION 'Riparto % non trovato per user %', p_riparto_id, p_user_id;
-    END IF;
-
-    DELETE FROM public.riparto_costi_catena_quote WHERE riparto_id = v_updated_id;
-
-    INSERT INTO public.riparto_costi_catena_quote (
-        riparto_id, ristorante_id, quota_perc, quota_importo, categoria
-    )
+-- Classe 5 (nuova, audit 2026-08 F-DRIFT): somma delle quote diversa dall'header.
+-- Lo scarto entra nel MOL via riparto_quote_mensili, che somma le quote dentro
+-- margini_mensili: non resta un dettaglio della tabella riparto.
+-- Soglia 0,005: le quote sono NUMERIC(12,2), quindi qualunque scarto reale e' di
+-- almeno un centesimo e viene intercettato; sotto c'e' solo rumore di
+-- rappresentazione. Una soglia a 0,01 avrebbe lasciato passare tutti e 19 i casi
+-- veri, che valgono esattamente un centesimo.
+SELECT
+    y.user_id,
+    'quote_non_pareggiano'::text AS tipo_incoerenza,
+    y.file_origine,
+    y.riparto_id,
+    y.fornitore,
+    y.scarto AS importo,
+    make_date(y.anno, y.mese, 1) AS data_documento
+FROM (
     SELECT
-        v_updated_id,
-        (q->>'ristorante_id')::UUID,
-        (q->>'quota_perc')::NUMERIC,
-        (q->>'quota_importo')::NUMERIC,
-        NULLIF(q->>'categoria', '')
-    FROM jsonb_array_elements(p_quote) AS q;
+        r.user_id, r.id AS riparto_id, r.file_origine, r.fornitore, r.anno, r.mese,
+        round(SUM(q.quota_importo), 2) - r.importo_totale AS scarto
+    FROM public.riparto_costi_catena r
+    JOIN public.riparto_costi_catena_quote q ON q.riparto_id = r.id
+    GROUP BY r.user_id, r.id, r.file_origine, r.fornitore, r.anno, r.mese, r.importo_totale
+) y
+WHERE abs(y.scarto) >= 0.005;
 
-    -- Se insert/delete fallisce, l'eccezione propaga e Postgres annulla anche
-    -- l'UPDATE del padre: il riparto non può mai restare senza quote a metà.
-    RETURN v_updated_id;
-END;
-$$;
+COMMENT ON VIEW public.v_riparto_incoerenze IS
+    'Sola lettura. Cinque classi di incoerenza sulle fatture di gruppo: '
+    'orfano (fattura marcata ripartita senza riparto -> costo sparito dal MOL); '
+    'riparto_senza_documento (riparto senza righe vive -> costo fantasma); '
+    'riparto_senza_quote (header senza quote -> costo che non arriva a nessuna sede); '
+    'riparto_segno_incoerente (header di segno opposto al netto reale -> nota di '
+    'credito contata come costo); '
+    'quote_non_pareggiano (somma quote != header -> lo scarto entra nel MOL via '
+    'riparto_quote_mensili). Base per GET /api/admin/riparto/incoerenze e per il '
+    'workflow di alert giornaliero. Non modifica mai dati: la correzione resta un '
+    'passo applicativo esplicito.';
 
-COMMENT ON FUNCTION public.crea_riparto_con_quote(
-    UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, TEXT, INTEGER, INTEGER, TEXT, JSONB
-) IS
-    'Crea un riparto_costi_catena e le sue quote in un''unica transazione. '
-    'Rifiuta quote che non pareggiano l''importo del costo (tolleranza 1 cent): '
-    'lo scarto finirebbe nel MOL via riparto_quote_mensili.';
+-- SECURITY INVOKER esplicito: senza, CREATE VIEW eredita SECURITY DEFINER dal ruolo
+-- di chi la crea, che bypasserebbe RLS. Stessa ragione di 20260827214500.
+ALTER VIEW public.v_riparto_incoerenze SET (security_invoker = true);
 
-COMMENT ON FUNCTION public.sostituisci_quote_riparto(
-    UUID, UUID, TEXT, TEXT, NUMERIC, JSONB
-) IS
-    'Aggiorna un riparto_costi_catena e rimpiazza le sue quote in un''unica '
-    'transazione. Rifiuta quote che non pareggiano l''importo del costo '
-    '(tolleranza 1 cent): è il percorso da cui provenivano tutti e 19 gli '
-    'sbilanciamenti storici sanati dalla migration 20260828210000.';
+COMMIT;
