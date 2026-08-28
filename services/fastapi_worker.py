@@ -3641,7 +3641,7 @@ def _chat_esegui_tool_gruppo(nome: str, args: Dict[str, Any], authorization: Opt
         if nome == "gruppo_overview":
             return g.gruppo_overview(authorization).model_dump()
         if nome == "gruppo_margini_coperti":
-            return g.gruppo_margini_coperti(authorization).model_dump()
+            return g.gruppo_margini_coperti(authorization=authorization).model_dump()
         if nome == "gruppo_spesa":
             dim = args.get("dimensione") if args.get("dimensione") in ("categoria", "fornitore") else "categoria"
             return g.gruppo_spesa_pivot(dimensione=dim, authorization=authorization).model_dump()
