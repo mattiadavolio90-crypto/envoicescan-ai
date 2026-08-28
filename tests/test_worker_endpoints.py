@@ -35,8 +35,26 @@ def worker():
 
 
 @pytest.fixture
-def client(worker):
-    """Client senza credenziali: `_verify_worker_key` e' attivo."""
+def client(worker, monkeypatch):
+    """Client senza credenziali, con `_verify_worker_key` forzato ATTIVO.
+
+    `WORKER_SECRET_KEY` e `WORKER_DEV_MODE` sono costanti lette a import-time
+    (fastapi_worker.py:112,116), quindi vanno impostate sul modulo, non
+    sull'ambiente. E vanno impostate per forza: senza, il test misura
+    l'ambiente invece del codice.
+
+    - In locale `.env` popola WORKER_SECRET_KEY (chiave di PRODUZIONE) -> auth
+      attiva -> 401, il test passa.
+    - In CI non c'e' `.env` e `tests.yml` esporta WORKER_DEV_MODE=1 -> il ramo
+      `if WORKER_DEV_MODE and not WORKER_SECRET_KEY: return` salta l'auth ->
+      l'endpoint esegue davvero e risponde 500/200.
+
+    E' esattamente il difetto che §2 ha tolto dal conftest, in versione piccola:
+    un test verde per merito dell'ambiente. Qui la chiave e' finta e locale al
+    test, quindi il 401 e' una proprieta' del codice in entrambi i contesti.
+    """
+    monkeypatch.setattr(worker, "WORKER_SECRET_KEY", "chiave-finta-di-test")
+    monkeypatch.setattr(worker, "WORKER_DEV_MODE", False)
     return TestClient(worker.app, raise_server_exceptions=False)
 
 
