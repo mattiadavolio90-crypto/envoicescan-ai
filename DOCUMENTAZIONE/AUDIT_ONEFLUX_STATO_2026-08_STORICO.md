@@ -172,6 +172,32 @@ informazione (`" ".join(errori)` invece del solo primo); `fetchNotifiche` e
 `fetchConfig` non lanciano mai e il `redirect()` non è dentro un try/catch; il
 cookie di logout viene cancellato incondizionatamente anche a worker morto.
 
+**Terzo giro: 🟢 B1 chiuso.** Il reviewer ha cercato il bypass su **1636
+candidati** (schemi × prefissi × separatori, 14 caratteri di controllo iniettati
+in ogni posizione, dot-segment fino a profondità 6, doppia codifica `%252f`,
+userinfo, IPv6, homoglyph IDN) valutando **dove atterra il browser** e non cosa
+ritorna la funzione: **zero fughe**. La ragione strutturale: `url.href` è
+assoluto e serializzato dal parser stesso, quindi `new URL()` è idempotente su
+di esso — mentre `pathname+search+hash` era una forma *relativa*, e una forma
+relativa viene ri-risolta. Il livello non è stato spostato: è stato eliminato.
+
+Verificata anche la fragilità dell'estrazione regex dal `.tsx`: funzione
+rinominata, firma cambiata, riformattazione prettier e graffa a colonna 0
+producono tutte un **AssertionError esplicito**, mai uno skip silenzioso.
+
+Un rilievo non bloccante accolto: i 55 test che girano `node` erano protetti da
+uno `skipif`, e `tests.yml` non dichiarava node — bastava un cambio d'immagine
+del runner perché diventassero **skip verdi**. Ora c'è `actions/setup-node`, e
+lo skip diventa un `fail` quando `CI=true`: in locale saltare è giusto, in CI un
+ambiente senza node è un guasto, non un test da saltare.
+
+**Residuo aperto, segnalato dal reviewer e non risolvibile in sessione**: la
+route `account_cambia_password` non ha alcun test che copra
+`verify_and_migrate_password` — disattivandola i 10 test restano verdi, cioè si
+cambierebbe password senza conoscere la vecchia. È **preesistente a F2** (i test
+la mockano a `True` per isolare la policy) e nessun altro file la copre.
+Annotato per F7.
+
 ### Lezioni di metodo
 
 - **Contare `.map(` e `reduce(` non misura il rischio.** I "78 siti di calcolo
@@ -257,6 +283,7 @@ generate casualmente: zero divergenze.**
 | F2-MOBILE | 🟠 MED | cold-start del worker slogga dalla PWA (7 pagine, 82 sessioni/30gg) | fixato |
 | F2-LOGOUT | 🟡 LOW | `logoutSession` unica chiamata worker senza timeout: worker appeso = utente non esce | fixato |
 | F2-NOTEST | ⚪ | zero infrastruttura di test frontend (confermato anche in F1) | **aperto — a Mattia** |
+| F2-VERIFY | ⚪ | `cambia-password` senza test su `verify_and_migrate_password` (preesistente) | **aperto — a F7** |
 
 `F2-NOTEST` non è un fix d'audit: introdurre un runner è una decisione di
 progetto. Nel frattempo gli invarianti client sono difesi da test **Python**
