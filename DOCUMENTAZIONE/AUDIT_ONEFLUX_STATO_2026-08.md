@@ -200,7 +200,7 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 | **F4** | Frontend **analisi-fatture/upload-modal + dashboard/** | ~1.900 | 🟠 6.917 upload | ⚪ APERTA |
 | **F5** | Python — i **4 moduli mai auditati come oggetto proprio** | 1.899 | 🟡 da misurare in fase | ⚪ APERTA |
 | **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | ~3.900 | ⚪ bassa/nulla | ⚪ APERTA |
-| **F7** | Chiusura ciclo: voci ereditate + `code-reviewer` finale | — | — | ⚪ APERTA |
+| **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | — | ⚪ APERTA |
 
 **F1 è la prima per una ragione misurata, non per intuizione** — vedi sotto.
 

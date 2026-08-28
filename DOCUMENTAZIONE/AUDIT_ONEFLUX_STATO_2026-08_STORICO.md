@@ -83,6 +83,36 @@ Tre imprecisioni corrette misurandole, non deducendole:
    grep perché usa `workerGet` e non `fetch`. Ha prodotto un finding.
 3. **`/api/account/sedi`** è un `BlockRetry` di ping, non una fonte dati.
 
+### Esito del `code-reviewer` (gate di chiusura)
+
+**Verdetto: chiusa correttamente, nessun bug bloccante.** Il reviewer ha
+verificato eseguendo, non leggendo: ha girato la libreria XLSX vera (`origin: -1`
+produce davvero una riga in coda, e con `n_incompleti === 0` l'export è
+bit-identico a prima) e ha riletto la definizione della RPC sul DB live,
+confermando che `netto` è `sum(iva10 + iva22 + altri)` senza scorporo — quindi
+sommare il lordo nell'override è la scelta giusta.
+
+Tre rilievi non bloccanti, **tutti sistemati prima di chiudere**:
+
+1. **N+1**: `_overrides_mese_sede` chiamata dentro il loop e non memoizzata →
+   cache locale, una lettura per sede.
+2. **Il secondo consumatore non era coperto**: `_salute_indici_batch` condivide
+   la stessa RPC e dà 25 punti su 100 alla voce `netto > 0`. Il fix alza quindi
+   anche l'*indice di salute*, non solo la completezza — corretto, ma non
+   documentato e senza test. Ora c'è un test che misura i 25 punti.
+3. **XLSX**: `"(parziale)"` finiva anche su celle senza numero
+   (`"— (parziale)"`) → si appende solo a un valore numerico.
+
+Due rilievi **restano aperti**, entrambi annotati per F7:
+
+- **`nascosti` sottostima quando la RPC satura.** Il conteggio è esatto sul pool
+  locale, ma nel ramo ricerca il pool arriva da una RPC che tronca a 500: il
+  numero mostrato non è un limite superiore garantito. Il messaggio resta
+  comunque un'uscita valida.
+- **`toggleTutti` legge `tuttiSelezionati` dalla closure** dentro
+  `setSelected(prev => …)`. Pre-esistente e innocuo in pratica, ma è il pattern
+  che porta a stato stantio.
+
 ### Lezioni di metodo
 
 - **Contare `.map(` e `reduce(` non misura il rischio.** I "78 siti di calcolo
