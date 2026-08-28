@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
 import { CATEGORIE_TUTTE } from "@/lib/admin";
+import { daScegliereCategoria } from "@/lib/categorie-spesa";
 
 const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -454,8 +455,8 @@ function DettagliCosto({
   const [apriRighe, setApriRighe] = useState(false);
   const [salvando, setSalvando] = useState<number | null>(null);
 
-  const daVerificare = costo.righe.filter(
-    (r) => r.needs_review || !r.categoria || r.categoria === "Da Classificare",
+  const daVerificare = costo.righe.filter((r) =>
+    daScegliereCategoria(r.needs_review, r.categoria),
   ).length;
 
   async function correggi(riga: RigaDocumento, categoria: string) {
@@ -520,8 +521,7 @@ function DettagliCosto({
           {apriRighe && (
             <ul className="mt-1 space-y-1 pl-4">
               {costo.righe.map((r) => {
-                const daScegliere =
-                  r.needs_review || !r.categoria || r.categoria === "Da Classificare";
+                const daScegliere = daScegliereCategoria(r.needs_review, r.categoria);
                 return (
                   <li
                     key={r.id}

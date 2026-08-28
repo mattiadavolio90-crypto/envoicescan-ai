@@ -3,7 +3,11 @@
 import { memo, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { SPESE_GENERALI_SET } from "@/lib/categorie-spesa";
+import {
+  SPESE_GENERALI_SET,
+  CATEGORIA_NON_CLASSIFICATA,
+  daScegliereCategoria,
+} from "@/lib/categorie-spesa";
 import {
   AlertTriangle,
   ArrowDown,
@@ -191,7 +195,7 @@ export function ArticoliTab({
       // soloNuovi è applicato server-side (page.tsx → worker): gli articoli arrivano
       // già filtrati e con totale_speso/quantita ricalcolati sulle sole righe nuove.
       // Nessun filtro client qui, altrimenti i totali resterebbero quelli storici.
-      if (soloVerifica && !(a.needs_review || !a.categoria || a.categoria === "Da Classificare")) return false;
+      if (soloVerifica && !daScegliereCategoria(a.needs_review, a.categoria)) return false;
       // Gatato su hasRipartite: il chip che lo disattiva è nascosto quando non ci sono
       // righe ripartite nel dataset, quindi un ?ripartite=1 rimasto nell'URL (cambio
       // periodo, tipo prodotti, o sede) svuotava la lista senza lasciare alcun modo di
@@ -601,7 +605,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
   // hardcoded a False anche quando la loro categoria e' vuota. Con l'AND restavano
   // senza badge e senza "Scegli categoria" qui, pur essendo segnalate nel modale Costi
   // di gruppo (stesso componente DropdownCategoria, stessa condizione lì già a OR).
-  const daScegliere = needsReview || !currentCat || currentCat === "Da Classificare";
+  const daScegliere = daScegliereCategoria(needsReview, currentCat);
   const trendPct = articolo.prezzo_unit_trend_pct;
   // Articolo che include quote di gruppo proiettate: la categoria riflette il
   // documento di struttura. È correggibile da qui, ma la scrittura passa dalla rotta
@@ -642,7 +646,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
                 - categoria mancante (Da Classificare/vuota): solo badge Verifica,
                   niente Conferma (non c'è nulla da confermare, va scelta nel dropdown). */}
             {daScegliere && (() => {
-              const haProposta = Boolean(currentCat) && currentCat !== "Da Classificare";
+              const haProposta = Boolean(currentCat) && currentCat !== CATEGORIA_NON_CLASSIFICATA;
               return (
                 <>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">

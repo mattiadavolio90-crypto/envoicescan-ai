@@ -16,13 +16,29 @@ export const SPESE_GENERALI_SET = new Set([
   "MATERIALE DI CONSUMO",
 ]);
 
+// Lo stato esplicito di "l'AI non ha saputo classificarla" (config/constants.py
+// CATEGORIA_NON_CLASSIFICATA). Stessa ragione di SPESE_GENERALI_SET: era ripetuta
+// come literal in 4 file, e la variante errata "Da Clasificare" (una sola "s")
+// non darebbe nessun errore — filtrerebbe semplicemente zero righe per sempre.
+export const CATEGORIA_NON_CLASSIFICATA = "Da Classificare";
+
+// Una riga è "da scegliere" se il backend la marca needs_review, o se la categoria
+// manca del tutto, o se è lo stato esplicito. Le tre condizioni erano ricopiate a
+// mano in analisi-fatture e in catena: qui restano una cosa sola.
+export function daScegliereCategoria(
+  needsReview: boolean | null | undefined,
+  categoria: string | null | undefined,
+): boolean {
+  return Boolean(needsReview) || !categoria || categoria === CATEGORIA_NON_CLASSIFICATA;
+}
+
 export type TipoSpesa = "fb" | "generale";
 
 // Le categorie selezionabili su una spesa extra: le 29 canoniche, senza
 // "📝 NOTE E DICITURE" (riservata alle righe fattura a importo zero) e senza
 // "Da Classificare" (qui e' l'utente stesso a scrivere la spesa: sa cos'e').
 const SELEZIONABILI = CATEGORIE_TUTTE.filter(
-  (c) => c !== "📝 NOTE E DICITURE" && c !== "Da Classificare",
+  (c) => c !== "📝 NOTE E DICITURE" && c !== CATEGORIA_NON_CLASSIFICATA,
 );
 
 export const CATEGORIE_SPESA_FB = SELEZIONABILI.filter((c) => !SPESE_GENERALI_SET.has(c));
