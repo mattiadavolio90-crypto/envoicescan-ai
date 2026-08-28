@@ -118,18 +118,25 @@ export function meseLabel(year: number, month1Based: number, short = false): str
 // il mese è in modalità "mensile" l'override in `ricavi_modalita_mensile` ha la
 // precedenza e le righe giornaliere eventualmente rimaste sono dati orfani.
 // Stessa regola già applicata lato worker in ricavi.py (get_coperti_analisi).
-export type NettoMese = { netto: number; mensile: boolean };
+// `netto: null` = non lo so (la lettura e' fallita), NON zero. La distinzione
+// conta perche' il chiamante usa questo valore come base delle percentuali che
+// l'utente salva a DB: un errore degradato a 0 faceva valere 0 EUR ogni
+// percentuale digitata.
+export type NettoMese = { netto: number | null; mensile: boolean };
 
 export async function fetchNettoMese(anno: number, mese: number): Promise<NettoMese> {
   const mm = String(mese).padStart(2, "0");
   const lastDay = new Date(anno, mese, 0).getDate();
   const [modalita, giornalieri] = await Promise.all([
+    // Qui `null` e' un valore di dominio legittimo ("nessun override mensile,
+    // usa il ramo giornaliero"): resta com'e'.
     fetch(`/api/ricavi/modalita?anno=${anno}&mese=${mese}`)
       .then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    // Qui invece `null` era l'errore travestito da mese senza incassi.
     fetch(`/api/ricavi/giornalieri?${new URLSearchParams({
       data_da: `${anno}-${mm}-01`,
       data_a: `${anno}-${mm}-${String(lastDay).padStart(2, "0")}`,
-    })}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    })}`).then((r) => (r.ok ? r.json() : Promise.reject())).catch(() => undefined),
   ]);
 
   if (modalita?.modalita === "mensile") {
@@ -142,5 +149,8 @@ export async function fetchNettoMese(anno: number, mese: number): Promise<NettoM
       mensile: true,
     };
   }
+  // undefined = la chiamata e' fallita; un oggetto senza `totale_netto` e' invece
+  // una risposta valida per un mese senza ricavi caricati (zero vero).
+  if (giornalieri === undefined) return { netto: null, mensile: false };
   return { netto: giornalieri?.totale_netto ?? 0, mensile: false };
 }

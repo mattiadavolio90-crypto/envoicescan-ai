@@ -110,14 +110,14 @@ function RipartizioneDialog({
   const [meseSel, setMeseSel] = useState(() => mesi[mesi.length - 1]);
   const [mode, setMode] = useState<"euro" | "perc">("perc");
   const [vals, setVals] = useState<SplitEuro>({ food: 0, beverage: 0, alcolici: 0, dolci: 0 });
-  const [netto, setNetto] = useState(0);
+  const [netto, setNetto] = useState<number | null>(0);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const meseKey = meseSel ? `${meseSel.anno}-${String(meseSel.mese).padStart(2, "0")}` : "";
 
-  useEffect(() => {
-    if (!meseSel || !open) return;
+  const carica = useCallback(() => {
+    if (!meseSel) return;
     setLoading(true);
     Promise.all([
       fetch(`/api/margini/fatturato-centri?anno=${meseSel.anno}&mese=${meseSel.mese}`)
@@ -134,14 +134,25 @@ function RipartizioneDialog({
       setLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meseKey, open]);
+  }, [meseKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    carica();
+  }, [open, carica]);
 
   const totale = vals.food + vals.beverage + vals.alcolici + vals.dolci;
-  const valid = netto > 0 && Math.abs(totale - netto) < 1;
+  const valid = netto != null && netto > 0 && Math.abs(totale - netto) < 1;
 
   function setField(k: keyof SplitEuro, raw: string) {
     let v = parseFloat(raw.replace(",", ".")) || 0;
-    if (mode === "perc") v = (v / 100) * netto;
+    // Con netto sconosciuto la percentuale non e' convertibile in euro: senza
+    // questa guardia un errore di rete faceva valere 0 EUR ogni percentuale, e
+    // quei valori finivano salvati a DB.
+    if (mode === "perc") {
+      if (netto == null) return;
+      v = (v / 100) * netto;
+    }
     setVals((prev) => ({ ...prev, [k]: v }));
   }
 
@@ -218,6 +229,14 @@ function RipartizioneDialog({
 
           {loading ? (
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+          ) : netto == null ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <p className="text-sm font-medium">Non è stato possibile leggere i ricavi del mese</p>
+              <p className="text-xs text-muted-foreground">
+                Senza il fatturato netto la ripartizione non è calcolabile.
+              </p>
+              <Button size="sm" variant="outline" onClick={carica}>Riprova</Button>
+            </div>
           ) : netto <= 0 ? (
             <div className="py-12 text-center space-y-1">
               <p className="text-sm font-medium">Nessun ricavo per {meseSel?.label}</p>
@@ -282,7 +301,7 @@ function RipartizioneDialog({
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={saving || netto <= 0}
+            disabled={saving || netto == null || netto <= 0}
             className="min-w-28"
           >
             {saving ? "Salvataggio…" : `Salva ${meseSel?.label ?? ""}`}
