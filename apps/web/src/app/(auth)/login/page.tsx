@@ -31,21 +31,29 @@ function defaultNext(): string {
 // credenziali sul dominio vero. Il produttore legittimo
 // (apps/web/src/proxy.ts:93) scrive sempre e solo un pathname.
 //
-// NON ispezioniamo il prefisso della stringa: la WHATWG URL Standard rimuove
-// TAB, LF e CR da qualunque posizione PRIMA di parsare, quindi un controllo su
-// startsWith("//") guarda una stringa diversa da quella che il browser
-// risolvera' davvero — "/<TAB>/evil.com" (cioe' ?next=%2F%09%2Fevil.com) supera
-// il controllo sul prefisso e atterra su https://evil.com. Facciamo risolvere
-// l'URL come lo risolvera' il browser e giudichiamo l'ORIGINE del risultato:
-// cosi' la normalizzazione avviene prima del giudizio, non dopo.
+// Due trappole, entrambe gia' costate un giro di review — la regola che ne esce
+// e' una sola: **giudicare e usare la STESSA stringa**, senza parsing in mezzo.
+//
+// 1. Non ispezionare il testo grezzo. La WHATWG URL Standard rimuove TAB, LF e
+//    CR da qualunque posizione PRIMA di parsare, quindi un controllo su
+//    startsWith("//") guarda una stringa diversa da quella che il browser
+//    risolvera': "/<TAB>/evil.com" (?next=%2F%09%2Fevil.com) supera il
+//    controllo sul prefisso e atterra su https://evil.com.
+// 2. Non ri-serializzare dopo aver validato. Controllare url.origin e poi
+//    ritornare `pathname+search+hash` reintroduce un secondo parsing, e i due
+//    non concordano: "/..//evil.com" ha origin interno (il check passa) ma
+//    pathname "//evil.com", che ri-parsato e' protocol-relative. Passa in
+//    chiaro, senza encoding, e "/..//app.oneflux.it.evil.com" mostra pure un
+//    dominio che sembra il nostro.
+//
+// Ritorniamo quindi url.href: assoluto, gia' normalizzato e gia' validato, cioe'
+// esattamente la stringa su cui abbiamo espresso il giudizio.
 function nextSicuro(raw: string | null): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw, window.location.origin);
     if (url.origin !== window.location.origin) return null;
-    // Ritorniamo la forma normalizzata, non `raw`: e' quella che il browser
-    // userebbe comunque, e non contiene piu' i caratteri rimossi in parsing.
-    return `${url.pathname}${url.search}${url.hash}`;
+    return url.href;
   } catch {
     return null;
   }

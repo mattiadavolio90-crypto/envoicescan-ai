@@ -115,20 +115,35 @@ Due rilievi **restano aperti**, entrambi annotati per F7:
 
 ### Esito del `code-reviewer` (gate di chiusura)
 
-**Primo verdetto: 🔴 NON CHIUSA.** Il reviewer ha trovato che il fix dell'HIGH
+**Due giri di review, due verdetti 🔴 NON CHIUSA** prima della chiusura vera.
+**Primo giro:** Il reviewer ha trovato che il fix dell'HIGH
 **non chiudeva il difetto che dichiarava chiuso**, e due dei test nuovi non
 coprivano ciò che promettevano. Tutti e tre corretti prima di chiudere davvero.
 
-1. **L'open redirect era ancora sfruttabile.** Il mio filtro ispezionava il
-   *prefisso* della stringa, ma la WHATWG URL Standard **rimuove TAB, LF e CR da
-   qualunque posizione prima di parsare**: `?next=%2F%09%2Fevil.com` diventa
-   `"/<TAB>/evil.com"`, non inizia con `//`, supera il controllo — e il browser
-   lo risolve su `https://evil.com`. Le mie 14 forme erano tutte varianti
-   sintattiche dello stesso prefisso: **avevo testato a fondo l'ipotesi
-   sbagliata.** Riscritto in forma strutturale: si risolve l'URL come farà il
-   browser e si giudica `url.origin`, così la normalizzazione avviene **prima**
-   del giudizio invece che dopo. Riverificato su **26 attacchi** (i 4 bypass
-   compresi) e 7 path legittimi.
+1. **L'open redirect ha richiesto TRE stesure.** Le prime due sembravano
+   entrambe complete, ed entrambe erano bypassabili:
+
+   | Versione | Idea | Come cadeva |
+   |---|---|---|
+   | 1ª | filtro su `startsWith("//")` | la WHATWG rimuove TAB/LF/CR **prima** di parsare: `?next=%2F%09%2Fevil.com` arriva come `"/<TAB>/evil.com"`, non inizia con `//`, passa — e atterra su `https://evil.com` |
+   | 2ª | `url.origin` + ritorno `pathname+search+hash` | il check passa, ma la ri-serializzazione reintroduce un **secondo parsing**: `/..//evil.com` ha origine interna e pathname `//evil.com`, protocol-relative. **In chiaro, senza encoding** |
+   | 3ª | `url.origin` + ritorno `url.href` | giudizio e uso sulla **stessa** stringa: nessun parsing in mezzo |
+
+   La 2ª è la più istruttiva: avevo corretto l'ipotesi giusta (non ispezionare
+   il testo grezzo) e il difetto si era spostato **un livello più a valle** —
+   prima il giudizio guardava una stringa diversa da quella eseguita, poi
+   *restituiva* una stringa diversa da quella giudicata. `/..//app.oneflux.it.evil.com`
+   mostrava perfino un dominio che sembra il nostro.
+
+   Entrambe le volte avevo "verificato su decine di forme": erano tante ma
+   **della stessa classe**. Ora c'è `tests/test_login_next_open_redirect.py` —
+   44 test che eseguono la funzione estratta dal `.tsx` di produzione su ogni
+   classe di bypass (protocol-relative, schemi non-http, backslash, caratteri
+   rimossi in parsing, dot-segment, userinfo, suffisso di dominio, fragment,
+   downgrade di schema) e sui 9 path legittimi. Verificati per mutazione: **le
+   due versioni precedenti del fix vengono uccise** (4 e 12 test rossi), e così
+   `url.host` al posto di `url.origin`, che lascerebbe passare un downgrade a
+   `http://`.
 2. **Il mock regalava una colonna che la query non chiedeva.** `FakeSB.select()`
    ignorava gli argomenti e restituiva sempre la riga intera: togliere
    `nome_ristorante` dalla select — **metà del fix** — non faceva fallire nulla,
@@ -138,6 +153,12 @@ coprivano ciò che promettevano. Tutti e tre corretti prima di chiudere davvero.
    costanti, non il comportamento: mutilare la regex dei simboli o disattivare
    il controllo di lunghezza lo lasciava verde. Ora **esegue** la funzione vera
    in node e confronta il verdetto con quello di Python su 400 password.
+
+**Secondo giro:** B2 e B3 confermati chiusi, ma l'open redirect era *ancora*
+aperto — vedi il punto 1 sopra. Il reviewer ha anche fatto notare che il
+verbale, a quel punto, dichiarava chiuso un difetto che non lo era: un `.md`
+che mente, e `test_documentazione_onesta.py` non può accorgersene perché i
+simboli citati esistono tutti. Corretto insieme al codice.
 
 Non bloccante ma corretto lo stesso: **`password.length` conta unità UTF-16**,
 `len()` di Python conta codepoint — `"Ab1!" + 3 emoji` misura 10 in JS e 7 in
@@ -231,7 +252,7 @@ generate casualmente: zero divergenze.**
 
 | # | Sev. | Oggetto | Esito |
 |---|---|---|---|
-| F2-REDIRECT | 🔴 HIGH | open redirect su `/login?next=` (anche `javascript:`) | fixato |
+| F2-REDIRECT | 🔴 HIGH | open redirect su `/login?next=` (anche `javascript:`) | fixato alla **3ª** stesura, 44 test di regressione |
 | F2-PWD | 🟠 MED | cambio password fuori dalla policy GDPR + client che promette requisiti falsi | fixato |
 | F2-MOBILE | 🟠 MED | cold-start del worker slogga dalla PWA (7 pagine, 82 sessioni/30gg) | fixato |
 | F2-LOGOUT | 🟡 LOW | `logoutSession` unica chiamata worker senza timeout: worker appeso = utente non esce | fixato |
@@ -277,13 +298,22 @@ di `test_upload_ai_background.py:263`.
   va **aggiunta a mano** all'altro. È la versione strutturale della trappola già
   a verbale in CLAUDE.md («`/m` è un frontend separato, non responsive»), e vale
   per l'auth, non solo per la grafica.
-- **Aver testato molto non vuol dire aver testato la cosa giusta.** Le 14 forme
-  provate sull'open redirect erano tutte varianti del *prefisso*, e il bypass
-  non stava nel prefisso: stava nel fatto che il browser **normalizza la
-  stringa prima di risolverla**. Un filtro che ispeziona il testo grezzo giudica
-  qualcosa di diverso da ciò che verrà eseguito. La forma robusta è far fare la
-  normalizzazione all'API vera (`new URL`) e giudicare *dopo*. Vale oltre gli
-  URL: ogni volta che si valida una stringa che qualcun altro re-interpreterà.
+- **Aver testato molto non vuol dire aver testato la cosa giusta.** Le forme
+  provate sull'open redirect erano decine, ma tutte della stessa classe: prima
+  varianti del *prefisso*, poi degli *schemi*. Nessuna conteneva un dot-segment,
+  cioè l'unica classe che sopravviveva. Il numero di casi non misura la
+  copertura; **misura la copertura l'elenco delle classi**, ed è per questo che
+  il file di test le nomina una per una invece di elencare stringhe.
+- **Quando validi una stringa che qualcun altro re-interpreterà, giudica e usa
+  la stessa stringa.** Le prime due stesure sbagliavano su questo, nei due modi
+  possibili: giudicare il testo grezzo mentre il browser normalizza (1ª), e
+  ri-serializzare dopo aver giudicato (2ª). Ogni parsing in mezzo è un punto in
+  cui le due stringhe divergono. Vale oltre gli URL: path, SQL, shell.
+- **Un fix di sicurezza senza test di regressione si riscrive all'infinito.**
+  `nextSicuro` è stata riscritta due volte prima che qualcuno chiedesse dove
+  fossero i test — e non ce n'erano. I 44 test ora falliscono su entrambe le
+  versioni bypassabili: se una terza idea "elegante" tornasse a una di quelle
+  forme, la suite lo direbbe subito.
 - **Un mock generoso è un test che mente.** `FakeSB` restituiva colonne mai
   richieste: metà del fix era scoperta e la suite diceva verde. I mock vanno
   resi *severi quanto la cosa vera*, non comodi.
