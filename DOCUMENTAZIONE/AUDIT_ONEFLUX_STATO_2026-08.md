@@ -46,11 +46,33 @@ Voci ereditate dal ciclo 2026-07, da valutare quando si apre questo:
   che lo script **non verificava affatto** — il 401 senza `X-Worker-Key`:
   girando in locale con la chiave in ambiente, quel ramo non lo vedeva mai.
   `/api/classify` e `/api/parse` non avevano **nessun** altro test nella suite.
-- **`ph = argon2.PasswordHasher()`** (`services/auth_service.py:36`) usa i
-  **default della libreria**, non parametri espliciti. Oggi coincidono con
-  quanto dichiara CLAUDE.md (`memory_cost=65536, time_cost=3`, verificato), ma
-  un aggiornamento di `argon2-cffi` potrebbe cambiarli in silenzio. Valutare se
-  renderli espliciti.
+- ~~**`ph = argon2.PasswordHasher()`** usa i default della libreria~~ —
+  **CHIUSA il 28/08/2026**. Parametri ora espliciti (`m=65536, t=3, p=4`),
+  asseriti da `tests/test_auth_argon2_parametri.py` (8 test, 4 mutanti uccisi).
+  Precisazioni rispetto a come era annotata:
+  - **Nessuna migrazione, nessun rischio per gli hash esistenti**: i parametri
+    sono incorporati nell'hash (`$argon2id$v=19$m=65536,t=3,p=4$...`) e
+    `verify()` li legge da lì, non dall'hasher. Verificato che un hash con
+    `m=8192,t=2` resta valido. Costo di hashing invariato (~87 ms).
+  - **Il rischio "cambio silenzioso" era più contenuto**: `requirements.txt` ha
+    `argon2-cffi>=23.1.0` (senza tetto), ma è `requirements-lock.txt` a essere
+    installato e pinna `==25.1.0`. Un cambio di default arriverebbe solo con un
+    aggiornamento deliberato del lock.
+  - **`p=4` non era dichiarato in CLAUDE.md**: concorre al costo come gli altri
+    due ed era rimasto implicito. Ora è nel doc, e un test lo verifica in
+    entrambe le direzioni (codice→doc e doc→codice).
+  - Il mutante che conta è "torna a `PasswordHasher()`": i *valori* restano
+    identici (i default coincidono), quindi solo
+    `test_parametri_espliciti_non_ereditati_dai_default` lo uccide. È la
+    differenza fra misurare la libreria e misurare il codice.
+
+- **Migrazione Argon2→Argon2 assente** (emersa chiudendo la voce sopra, NON
+  affrontata): `check_needs_rehash()` non è chiamato in nessun punto del repo.
+  Oggi è innocuo — i parametri non sono mai cambiati — ma se un giorno si
+  alzano, gli hash vecchi restano vecchi per sempre: `verify()` continua ad
+  accettarli e nessuno li ri-hasha. Esiste già il precedente della migrazione
+  SHA256→Argon2 in `verify_and_migrate_password()`, che è il posto naturale
+  dove agganciarla. Tocca il percorso di login: va valutata a parte.
 
 ## Metodo (invariato, e non derogabile)
 

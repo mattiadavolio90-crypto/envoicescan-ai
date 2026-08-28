@@ -124,7 +124,9 @@ python scripts/export_openapi.py --check-drift
 
 ## Sicurezza
 
-- Password: Argon2 (m=65536, t=3) — non cambiare parametri
+- Password: Argon2id (m=65536, t=3, p=4) — non cambiare parametri. Sono espliciti
+  in `services/auth_service.py` e asseriti da `tests/test_auth_argon2_parametri.py`:
+  se li cambi lì senza aggiornare questa riga, i test falliscono (e viceversa)
 - Sessioni: token `secrets.token_urlsafe(32)`, scadenza 30 giorni
 - Rate limiting login: 5 tentativi → blocco 15 min
 - File upload: validazione magic bytes (PDF, XML, P7M)
