@@ -431,6 +431,19 @@ Due difetti su quattro stanno lì, incluso l'HIGH.
 
 **Aperto**: `F2-NOTEST` — zero infrastruttura di test frontend (già rilevato in
 F1). Gli invarianti client sono per ora difesi da test Python che girano in CI.
+Deciso il 28/8 di **lasciarlo aperto**: introdurre un runner è una scelta di
+progetto (CI, dipendenze, manutenzione), non un fix d'audit, e non si prende a
+un mese dal go-live.
+
+**Chiusi dopo F2, prima di aprire F3** (28/8):
+- `F2-VERIFY` — la route `cambia-password` non aveva test su
+  `verify_and_migrate_password`: disattivandolo **81 test restavano verdi**,
+  cioè si sarebbe potuta cambiare la password senza conoscere quella vecchia.
+  3 test nuovi, 4 mutanti uccisi su 4.
+- `F-DRIFT` (residuo di F1) — guardia SQL nelle due RPC che scrivono quote +
+  sanatoria dei 19 storici. **L'ipotesi sulla causa era sbagliata**: non i
+  `round()` per-categoria, ma dato storico da un percorso di ri-scrittura che
+  non esiste più. Verbale dettagliato nello STORICO.
 
 ---
 

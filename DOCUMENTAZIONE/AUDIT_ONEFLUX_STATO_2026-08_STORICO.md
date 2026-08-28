@@ -55,10 +55,11 @@ singolo consumatore e lasciare il quinto percorso scoperto per la prossima volta
 | F-60 | 🟡 LOW/MED | troncamento silenzioso a 60 candidati | fixato |
 | F-REDIRECT | 🟡 LOW | worker giù → redirect invece di BlockRetry | fixato |
 | F-DACLASS | 🟡 LOW | `"Da Classificare"` hardcoded 7× su 4 file | fixato |
-| F-DRIFT | ⚪ | 19 costi su 156: somma quote ≠ totale (max 1 cent, tot 19 cent) | **aperto — a Mattia** |
+| F-DRIFT | ⚪→🟢 | 19 costi su 156: somma quote ≠ totale (max 1 cent, tot 19 cent) | **chiuso 28/8** (guardia SQL + sanatoria) |
 
-`F-DRIFT` resta aperto per scelta: tocca numeri mostrati al cliente e sta lato
-Python nel riparto, quindi fuori dalla deroga concessa in planning.
+`F-DRIFT` **chiuso il 28/8** con la migration `20260828210000` — e la causa
+ipotizzata in planning era **sbagliata su tutti e tre i punti**. Vedi la sezione
+dedicata in fondo a questo verbale.
 
 ### Verificati e scartati
 
@@ -344,3 +345,69 @@ di `test_upload_ai_background.py:263`.
 - **Un mock generoso è un test che mente.** `FakeSB` restituiva colonne mai
   richieste: metà del fix era scoperta e la suite diceva verde. I mock vanno
   resi *severi quanto la cosa vera*, non comodi.
+
+---
+
+## F-DRIFT — chiuso 28/08/2026 (residuo di F1)
+
+**L'ipotesi a verbale era sbagliata su tutti e tre i punti.** Diceva: origine
+nei `round(..., 2)` per-categoria di `services/routers/riparto.py:1231-1253`,
+difetto vivo, fix lato Python. Misurando, nessuna delle tre cose regge.
+
+### Cosa dice la misura
+
+| Domanda | Risposta misurata |
+|---|---|
+| Quanti e quanto? | **19 costi su 156**, 19 centesimi in tutto su €67.591,75, max 1 cent |
+| Dove sono concentrati? | **17 su 19** hanno *una sola categoria* e 2 sedi — il caso più semplice, non quello misto |
+| Cosa distingue i 19 dagli altri 137? | Sono **esattamente** i costi con **centesimi dispari**: `importo/2` cade su mezzo centesimo |
+| Quando sono stati scritti? | **Tutti e 19 su costi ri-scritti** dopo la creazione. Zero drift fra quelli mai modificati (7 dei quali avevano centesimi dispari e pareggiano) |
+| Il codice attuale li riprodurrebbe? | **No.** `_quote_equa` eseguita sugli 11 casi reali dà la somma esatta in tutti (2,95 → 1,48+1,47, mentre nel DB c'è 1,48+1,48) |
+
+Il `riparto.py:1231-1253` indicato dall'ipotesi è **codice di lettura**: aggrega
+per la risposta API, non scrive nulla. Tutti i percorsi di scrittura vivi
+(`_quote_equa`, `_quote_percentuali`, `_spezza_importo_per_pesi`, il ramo
+`riallinea_al_netto`) pareggiano già, ognuno col proprio "l'ultima assorbe".
+
+**Quindi il drift è dato storico**, scritto da un percorso di ri-scrittura che
+nel repo non esiste più. Il che cambia la natura del fix: non c'era codice da
+correggere: c'erano **dati da sanare** e un **invariante da difendere**.
+
+### Perché la guardia sta in SQL e non in Python
+
+L'invariante era già dichiarato "non negoziabile" nel docstring di
+`tests/test_riparto_quote.py`, ed era già difeso: negli **helper**. Ma i 19
+sbilanciamenti sono stati scritti da un percorso che quegli helper non li
+usava, e nessun test se n'è accorto per un mese. **Un invariante difeso dal
+chiamante è un invariante che il prossimo chiamante non conosce.**
+
+La guardia è quindi nelle due RPC `crea_riparto_con_quote` e
+`sostituisci_quote_riparto`, che sono il passaggio obbligato di ogni scrittura
+di quote: vale anche per percorsi futuri, per il worker, per una correzione
+manuale. Tolleranza **1 centesimo** — a 0,1 tutti e 19 i drift reali sarebbero
+passati.
+
+Il peso pratico: `riparto_quote_mensili` **somma le quote dentro
+`margini_mensili`**, quindi lo scarto non resta nella sua tabella — entra nel
+MOL che il cliente legge.
+
+### Sanatoria
+
+Lo scarto va sulla **quota più grande** di ogni costo (una sola riga, via
+`DISTINCT ON`): stessa convenzione del codice, e il centesimo finisce dove pesa
+meno in percentuale. Provata in sola lettura prima di scriverla: **19 righe
+toccate, ±1 cent, nessuna che andrebbe sotto zero.**
+
+11 test (`tests/test_riparto_guardia_quote_pareggiano.py`), 5 mutanti uccisi su
+5: guardia rimossa dalla `sostituisci` (il percorso da cui venivano tutti e 19),
+tolleranza allargata a 0,1, sanatoria senza `DISTINCT ON`, guardia spostata dopo
+l'`INSERT`, protezione dal `CHECK >= 0` rimossa.
+
+### Lezione
+
+**Un'ipotesi scritta in fase di planning va misurata come qualsiasi altra.**
+Questa era nel documento del ciclo dal 28/8 mattina, formulata con un numero di
+riga preciso — e la precisione del riferimento la faceva sembrare verificata.
+Non lo era: indicava codice di lettura per un difetto di scrittura. È la stessa
+regola già a verbale per le severità ereditate («ogni severità si riverifica»),
+applicata alle **cause** invece che alla gravità.
