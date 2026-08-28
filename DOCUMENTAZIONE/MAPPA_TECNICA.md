@@ -191,6 +191,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `DOCUMENTAZIONE/tecnica/SICUREZZA_GDPR.md` | Misure di sicurezza tecniche (non il dossier legale — quello è `docs/COMPLIANCE_GDPR.md`) |
 | `DOCUMENTAZIONE/tecnica/PAGINA_SERVIZI_MARKETING.md` | La pagina pubblica "servizi" |
 | `DOCUMENTAZIONE/tecnica/TROUBLESHOOTING.md` | Quando qualcosa non parte in locale |
+| `DOCUMENTAZIONE/tecnica/UI_LAYOUT_DIALOG.md` | Storico delle passate grafiche: trappole CSS ricorrenti, grep da rifare, cosa è già stato auditato |
 
 ### Qualcosa non va (incidente in produzione)
 | Documento | Quando aprirlo |
