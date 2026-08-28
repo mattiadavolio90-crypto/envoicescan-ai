@@ -29,6 +29,16 @@ Voci ereditate dal ciclo 2026-07, da valutare quando si apre questo:
   e §32), difesa da `tests/test_upload_policy_canale_sdi.py`. Non è una svista.
 - **Il flush PROP-1** prima del blocco policy: documenta-e-chiudi, refactor
   sproporzionato al rischio.
+- **`tests/worker_test.py` non gira mai** (segnalato dal `code-reviewer` il
+  28/8): `pytest.ini` ha `python_files = test_*.py` e il nome usa il *suffisso*
+  `_test.py`, quindi non viene raccolto né in locale né in CI. Fallisce se
+  eseguito a mano, anche prima di §2. Da rinominare o cancellare: oggi sembra
+  coprire `/health` e non copre nulla.
+- **`ph = argon2.PasswordHasher()`** (`services/auth_service.py:36`) usa i
+  **default della libreria**, non parametri espliciti. Oggi coincidono con
+  quanto dichiara CLAUDE.md (`memory_cost=65536, time_cost=3`, verificato), ma
+  un aggiornamento di `argon2-cffi` potrebbe cambiarli in silenzio. Valutare se
+  renderli espliciti.
 
 ## Metodo (invariato, e non derogabile)
 

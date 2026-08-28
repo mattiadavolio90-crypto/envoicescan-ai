@@ -30,8 +30,8 @@ spostava la whitelist FOOD delle RPC in `margini.py` (fix del 6/8).
 
 I fake builder qui sotto FILTRANO DAVVERO (date e `range()`): se qualcuno
 rimuove il filtro nel codice, il test diventa rosso. Un fake che ignora i filtri
-renderebbe questi test vacui — il difetto documentato in
-`tests/test_eccezioni_moduli_mockati.py`.
+renderebbe questi test vacui — la stessa classe di difetto per cui il conftest
+ha smesso di mockare i moduli installati (STORICO §33, 28/8/2026).
 """
 import os
 from datetime import date
