@@ -372,10 +372,11 @@ function ProdottiDialog({
         <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle>Prodotti di «{tag.nome}»</DialogTitle>
         </DialogHeader>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 sm:grid-cols-2">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-5 sm:grid-cols-2">
           {/* Associati */}
-          <div>
-            <h3 className="mb-2 text-sm font-semibold">Nel tag ({assoc.length})</h3>
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <h3 className="mb-2 shrink-0 text-sm font-semibold">Nel tag ({assoc.length})</h3>
+            <div className="min-h-0 flex-1 overflow-y-auto">
             {assoc.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nessun prodotto ancora.</p>
             ) : (
@@ -397,10 +398,11 @@ function ProdottiDialog({
                 ))}
               </ul>
             )}
+            </div>
           </div>
           {/* Disponibili */}
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">Aggiungi prodotti</h3>
               {candidati.length > 0 && (
                 <button
@@ -416,8 +418,9 @@ function ProdottiDialog({
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
               placeholder="Cerca una descrizione…"
-              className="mb-2"
+              className="mb-2 shrink-0"
             />
+            <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (
               <p className="text-sm text-muted-foreground">Caricamento…</p>
             ) : cercando && candidati.length === 0 ? (
@@ -454,6 +457,7 @@ function ProdottiDialog({
                 })}
               </ul>
             )}
+            </div>
           </div>
         </div>
         {/* Footer: un solo Salva per tutta la selezione */}
