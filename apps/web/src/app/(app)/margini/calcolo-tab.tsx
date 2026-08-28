@@ -1107,6 +1107,7 @@ function DettaglioGiornalieroDialog({
   const [giorni, setGiorni] = useState<RicavoGiorno[]>([]);
   const [loading, setLoading] = useState(true);
   const [mensile, setMensile] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const anno = mese?.anno ?? 0;
   const meseNum = mese?.mese ?? 0;
@@ -1117,6 +1118,7 @@ function DettaglioGiornalieroDialog({
     setLoading(true);
     setGiorni([]);
     setMensile(false);
+    setLoadError(false);
     const pad = (n: number) => String(n).padStart(2, "0");
     const lastDay = new Date(anno, meseNum, 0).getDate();
     const dataDa = `${anno}-${pad(meseNum)}-01`;
@@ -1136,7 +1138,7 @@ function DettaglioGiornalieroDialog({
           return null;
         }
         return fetch(`/api/ricavi/giornalieri?data_da=${dataDa}&data_a=${dataA}`)
-          .then((r) => r.ok ? r.json() : null);
+          .then((r) => (r.ok ? r.json() : Promise.reject()));
       })
       .then((d) => {
         if (d === null) return;
@@ -1164,7 +1166,9 @@ function DettaglioGiornalieroDialog({
         }
         setGiorni(result);
       })
-      .catch(() => setGiorni([]))
+      // Lista vuota su errore darebbe KPI a zero (media, giorno migliore/peggiore)
+      // indistinguibili da un mese senza ricavi caricati.
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, [anno, meseNum]);
 
@@ -1218,6 +1222,10 @@ function DettaglioGiornalieroDialog({
         <div className="px-6 py-5 space-y-5">
           {loading ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Caricamento…</p>
+          ) : loadError ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              Non è stato possibile caricare il dettaglio giornaliero.
+            </p>
           ) : mensile ? (
             <div className="py-8 text-center space-y-1.5">
               <p className="text-sm font-medium">{label} è caricato come totale mensile.</p>

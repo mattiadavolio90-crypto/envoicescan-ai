@@ -95,6 +95,7 @@ export function FinestraCostiGruppo({
   const [mese, setMese] = useState<number>(meseCorrente);
   const [data, setData] = useState<CostiComuniRes | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [daEliminare, setDaEliminare] = useState<Costo | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -103,13 +104,17 @@ export function FinestraCostiGruppo({
   const carica = useCallback(() => {
     const my = ++reqRef.current;
     setLoading(true);
+    setLoadError(false);
     fetch(`/api/gruppo/costi-comuni?anno=${annoCorrente}&mese=${mese}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j) => {
         if (my === reqRef.current) setData(j);
       })
       .catch(() => {
-        if (my === reqRef.current) toast.error("Errore nel caricamento dei costi di gruppo");
+        if (my === reqRef.current) {
+          setLoadError(true);
+          toast.error("Errore nel caricamento dei costi di gruppo");
+        }
       })
       .finally(() => {
         if (my === reqRef.current) setLoading(false);
@@ -185,6 +190,16 @@ export function FinestraCostiGruppo({
 
           {loading && !data ? (
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+          ) : loadError && !data ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <AlertTriangle className="size-7 text-rose-500" />
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile caricare i dati.
+              </p>
+              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+                Riprova
+              </Button>
+            </div>
           ) : !data || data.costi.length === 0 ? (
             <div className="py-16 text-center text-sm text-muted-foreground">
               Nessun costo di gruppo in {MESI[mese - 1]}. Ripartisci una fattura dal suo dettaglio, o

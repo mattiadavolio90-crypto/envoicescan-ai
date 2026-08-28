@@ -665,6 +665,7 @@ function DettaglioCentroDialog({
   const [giorni, setGiorni] = useState<GiornoFatturatoCentro[]>([]);
   const [loading, setLoading] = useState(true);
   const [mensile, setMensile] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     // setLoading(true) in testa come nel gemello (calcolo-tab.tsx:1116): il dialog
@@ -674,6 +675,7 @@ function DettaglioCentroDialog({
     setLoading(true);
     setGiorni([]);
     setMensile(false);
+    setLoadError(false);
     const pad = (n: number) => String(n).padStart(2, "0");
     const lastDay = new Date(anno, mese, 0).getDate();
 
@@ -693,7 +695,7 @@ function DettaglioCentroDialog({
         }
         // Carica i dati giornalieri per tutti i centri dal mese
         return fetch(`/api/margini/fatturato-centri-giorni?anno=${anno}&mese=${mese}`)
-          .then((r) => r.ok ? r.json() : []);
+          .then((r) => (r.ok ? r.json() : Promise.reject()));
       })
       .then((d: { data: string; food: number; beverage: number; alcolici: number; dolci: number; shop: number }[] | null) => {
         if (d === null) return;
@@ -707,7 +709,9 @@ function DettaglioCentroDialog({
         setGiorni(result);
         setLoading(false);
       })
-      .catch(() => { setGiorni([]); setLoading(false); });
+      // Lista vuota su errore darebbe KPI a zero (media, giorno migliore/peggiore)
+      // indistinguibili da un mese senza ricavi caricati.
+      .catch(() => { setLoadError(true); setLoading(false); });
   }, [anno, mese, centro]);
 
   const compilati = giorni.filter((g) => g.fatturato > 0);
@@ -758,6 +762,10 @@ function DettaglioCentroDialog({
         <div className="px-6 py-5 space-y-5">
           {loading ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Caricamento…</p>
+          ) : loadError ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              Non è stato possibile caricare il dettaglio giornaliero.
+            </p>
           ) : mensile ? (
             <div className="py-8 text-center space-y-1.5">
               <p className="text-sm font-medium">{meseLabel} è caricato come totale mensile.</p>

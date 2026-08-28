@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { formatEuro, formatEuroCompact } from "./periodi";
 import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
+import { Button } from "@/components/ui/button";
 import { InfoPopover } from "@/components/ui/info-popover";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -574,17 +575,23 @@ function CopertiCategorieDialog({
 }) {
   const [data, setData] = useState<CopertiCategorieResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const reqRef = useRef(0);
+
+  const carica = useCallback(() => {
+    const my = ++reqRef.current;
+    setLoading(true);
+    setLoadError(false);
+    fetch(`/api/ricavi/coperti-categorie?${new URLSearchParams({ data_da: dataDa, data_a: dataA })}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => { if (my === reqRef.current) setData(d); })
+      .catch(() => { if (my === reqRef.current) setLoadError(true); })
+      .finally(() => { if (my === reqRef.current) setLoading(false); });
+  }, [dataDa, dataA]);
 
   useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    fetch(`/api/ricavi/coperti-categorie?${new URLSearchParams({ data_da: dataDa, data_a: dataA })}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive) setData(d); })
-      .catch(() => { if (alive) setData(null); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [dataDa, dataA]);
+    carica();
+  }, [carica]);
 
   const fmtEuro2 = (v: number | null) =>
     v == null ? "—" : `${v.toFixed(2).replace(".", ",")} €`;
@@ -621,6 +628,15 @@ function CopertiCategorieDialog({
         <div className="flex-1 overflow-auto px-6 py-5">
           {loading ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Caricamento…</p>
+          ) : loadError && !data ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile caricare i dati.
+              </p>
+              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+                Riprova
+              </Button>
+            </div>
           ) : !data || data.righe.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">
               Nessun dato: servono coperti e fatture F&amp;B classificate nel periodo.

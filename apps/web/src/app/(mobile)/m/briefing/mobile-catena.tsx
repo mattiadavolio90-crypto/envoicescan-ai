@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -52,21 +52,27 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
   const [segnali, setSegnali] = useState<Segnale[] | null>(null);
+  const [segnaliError, setSegnaliError] = useState(false);
+  const segnaliReqRef = useRef(0);
 
-  useEffect(() => {
-    let alive = true;
+  // Come sul desktop (card-segnali): un errore non deve diventare lista vuota, che
+  // qui si legge "tutto sotto controllo" — rassicurazione falsa proprio sugli avvisi.
+  const caricaSegnali = useCallback(() => {
+    const my = ++segnaliReqRef.current;
+    setSegnaliError(false);
     fetch("/api/gruppo/segnali", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j: SegnaliGruppo | null) => {
-        if (alive) setSegnali(j?.segnali ?? []);
+        if (my === segnaliReqRef.current) setSegnali(j?.segnali ?? []);
       })
       .catch(() => {
-        if (alive) setSegnali([]);
+        if (my === segnaliReqRef.current) setSegnaliError(true);
       });
-    return () => {
-      alive = false;
-    };
   }, []);
+
+  useEffect(() => {
+    caricaSegnali();
+  }, [caricaSegnali]);
 
   async function drill(id: string) {
     if (switching) return;
@@ -205,7 +211,19 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           <AlertTriangle className="size-4" />
           Da vedere nella catena
         </div>
-        {segnali === null ? (
+        {segnaliError && segnali === null ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <AlertTriangle className="size-4 text-rose-500" />
+            Non è stato possibile controllare i punti vendita.
+            <button
+              type="button"
+              onClick={caricaSegnali}
+              className="text-xs font-medium text-primary transition-colors hover:underline"
+            >
+              Riprova
+            </button>
+          </div>
+        ) : segnali === null ? (
           <p className="mt-3 text-sm text-muted-foreground">Controllo i punti vendita…</p>
         ) : segnali.length === 0 ? (
           <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">

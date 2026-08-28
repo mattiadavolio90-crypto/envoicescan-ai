@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Download, Truck } from "lucide-react";
+import { AlertTriangle, Download, Truck } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -47,15 +48,16 @@ export function FinestraSpesaPV({
   const [periodo, setPeriodo] = useState<string>("anno");
   const [data, setData] = useState<SpesaPivot | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const reqRef = useRef(0);
 
   const annoCorrente = new Date().getFullYear();
   const meseCorrente = new Date().getMonth() + 1; // 1-12
 
-  useEffect(() => {
-    if (!open) return;
+  const carica = useCallback(() => {
     const my = ++reqRef.current;
     setLoading(true);
+    setLoadError(false);
     const qs = new URLSearchParams({ dimensione });
     if (periodo !== "anno") {
       const m = Number(periodo);
@@ -69,12 +71,20 @@ export function FinestraSpesaPV({
         if (my === reqRef.current) setData(j);
       })
       .catch(() => {
-        if (my === reqRef.current) toast.error("Errore nel caricamento della spesa per PV");
+        if (my === reqRef.current) {
+          setLoadError(true);
+          toast.error("Errore nel caricamento della spesa per PV");
+        }
       })
       .finally(() => {
         if (my === reqRef.current) setLoading(false);
       });
-  }, [open, dimensione, periodo, annoCorrente]);
+  }, [dimensione, periodo, annoCorrente]);
+
+  useEffect(() => {
+    if (!open) return;
+    carica();
+  }, [open, carica]);
 
   const maxCell = data
     ? Math.max(0, ...data.rows.flatMap((r) => data.pv.map((p) => r.per_pv[p.id] ?? 0)))
@@ -155,6 +165,16 @@ export function FinestraSpesaPV({
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-5">
           {loading && !data ? (
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+          ) : loadError && !data ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <AlertTriangle className="size-7 text-rose-500" />
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile caricare i dati.
+              </p>
+              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+                Riprova
+              </Button>
+            </div>
           ) : !data || data.rows.length === 0 ? (
             <div className="py-16 text-center text-sm text-muted-foreground">
               Nessuna spesa nel periodo.

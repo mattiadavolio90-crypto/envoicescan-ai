@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -239,6 +239,7 @@ function ProdottiDialog({
   const [disponibili, setDisponibili] = useState<GruppoTagDescrizione[]>([]);
   const [risultati, setRisultati] = useState<GruppoTagDescrizione[] | null>(null);
   const [cercando, setCercando] = useState(false);
+  const [ricercaError, setRicercaError] = useState(false);
   const [filtro, setFiltro] = useState("");
   const [loading, setLoading] = useState(true);
   // Selezione multipla (key → descrizione): si conferma con un solo "Aggiungi".
@@ -284,11 +285,14 @@ function ProdottiDialog({
     }
     let alive = true;
     setCercando(true);
+    setRicercaError(false);
     const t = setTimeout(() => {
       fetch(`/api/gruppo/tag/descrizioni?q=${encodeURIComponent(f)}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((j) => { if (alive) setRisultati(j.descrizioni ?? []); })
-        .catch(() => { if (alive) setRisultati([]); })
+        // Lista vuota su errore direbbe "nessun prodotto trovato": è una ricerca
+        // fallita, non un prodotto che non esiste.
+        .catch(() => { if (alive) setRicercaError(true); })
         .finally(() => { if (alive) setCercando(false); });
     }, 250);
     return () => { alive = false; clearTimeout(t); };
@@ -425,6 +429,10 @@ function ProdottiDialog({
               <p className="text-sm text-muted-foreground">Caricamento…</p>
             ) : cercando && candidati.length === 0 ? (
               <p className="text-sm text-muted-foreground">Cerco fra tutti i punti vendita…</p>
+            ) : ricercaError && candidati.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile cercare i prodotti. Riprova a scrivere per ripetere la ricerca.
+              </p>
             ) : candidati.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {filtro.trim().length >= 2 ? "Nessun prodotto trovato." : "Nessun prodotto da aggiungere."}
@@ -495,22 +503,30 @@ function KpiCard({ label, value }: { label: string; value: string }) {
 function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }) {
   const [data, setData] = useState<GruppoTagAnalisi | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [periodo, setPeriodo] = useState<string>("anno");
+  const reqRef = useRef(0);
 
   const annoCorrente = new Date().getFullYear();
   const meseCorrente = new Date().getMonth() + 1;
 
-  useEffect(() => {
-    let alive = true;
+  // `r.ok ? r.json() : null` faceva arrivare i 5xx nel ramo di successo come
+  // data=null, bypassando il catch: l'errore diventava "nessuna spesa nel periodo".
+  const carica = useCallback(() => {
+    const my = ++reqRef.current;
     setLoading(true);
+    setLoadError(false);
     const qs = periodo !== "anno" ? `?mese=${periodo}` : "";
     fetch(`/api/gruppo/tag/${tag.id}/analisi${qs}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (alive) setData(j); })
-      .catch(() => {})
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => { if (my === reqRef.current) setData(j); })
+      .catch(() => { if (my === reqRef.current) setLoadError(true); })
+      .finally(() => { if (my === reqRef.current) setLoading(false); });
   }, [tag.id, periodo]);
+
+  useEffect(() => {
+    carica();
+  }, [carica]);
 
   const maxPv = data ? Math.max(0, ...data.per_pv.map((p) => p.spesa)) : 0;
   const maxForn = data ? Math.max(0, ...data.fornitori.map((f) => f.spesa)) : 0;
@@ -574,6 +590,15 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
         <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
           {loading && !data ? (
             <p className="py-12 text-center text-sm text-muted-foreground">Caricamento…</p>
+          ) : loadError && !data ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile caricare i dati.
+              </p>
+              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+                Riprova
+              </Button>
+            </div>
           ) : vuoto ? (
             <p className="py-12 text-center text-sm text-muted-foreground">
               Nessuna spesa nel periodo per questo tag.
