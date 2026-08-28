@@ -22,6 +22,7 @@ Entrambi erano stati verificati "su decine di forme": le forme erano tante ma
 della stessa classe. Qui le classi sono nominate una per una.
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -32,9 +33,29 @@ import pytest
 LOGIN_TSX = Path(__file__).resolve().parents[1] / "apps/web/src/app/(auth)/login/page.tsx"
 ORIGIN = "https://app.oneflux.it"
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("node") is None, reason="serve node per eseguire nextSicuro()"
-)
+def _node_o_fallisci():
+    """Skip in locale se manca node, ma **fallimento in CI**.
+
+    Il rischio non è teorico: `tests.yml` non ha uno step `setup-node` e si
+    appoggia a ciò che l'immagine `ubuntu-latest` porta con sé. Il giorno in cui
+    quell'immagine cambia, uno `skipif` trasformerebbe questi test di sicurezza
+    in **skip verdi** — nessuno li guarda, e la regressione passa. In CI un
+    ambiente senza node è un guasto da riparare, non un test da saltare.
+    """
+    if shutil.which("node"):
+        return None
+    if os.getenv("CI"):
+        return pytest.fail(
+            "node non disponibile in CI: questi test non possono essere saltati "
+            "in silenzio. Aggiungi actions/setup-node a .github/workflows/tests.yml",
+            pytrace=False,
+        )
+    pytest.skip("serve node per eseguire il codice client")
+
+
+@pytest.fixture(autouse=True)
+def _serve_node():
+    _node_o_fallisci()
 
 
 def _estrai_next_sicuro() -> str:

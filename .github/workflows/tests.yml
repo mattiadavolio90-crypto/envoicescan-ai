@@ -24,6 +24,16 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
+      # Alcuni test eseguono il codice client vero (nextSicuro del login, la
+      # policy password) con `node -e`, invece di riscriverlo in Python dove
+      # diverge in silenzio. Finora funzionavano perche' ubuntu-latest porta
+      # node con se': dichiararlo evita che 55 test di sicurezza dipendano da
+      # cosa c'e' nell'immagine.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Install dependencies (lock)
         run: |
           python -m pip install --upgrade pip

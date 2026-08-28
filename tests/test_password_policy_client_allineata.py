@@ -17,6 +17,7 @@ server arriva comunque a video. Qui si confrontano i due criteri che il client
 dichiara di replicare: lunghezza minima e categorie.
 """
 import json
+import os
 import random
 import re
 import shutil
@@ -30,9 +31,29 @@ from services.auth_service import valida_password_compliance
 
 POLICY_TS = Path(__file__).resolve().parents[1] / "apps/web/src/lib/password-policy.ts"
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("node") is None, reason="serve node per eseguire la policy client"
-)
+def _node_o_fallisci():
+    """Skip in locale se manca node, ma **fallimento in CI**.
+
+    Il rischio non è teorico: `tests.yml` non ha uno step `setup-node` e si
+    appoggia a ciò che l'immagine `ubuntu-latest` porta con sé. Il giorno in cui
+    quell'immagine cambia, uno `skipif` trasformerebbe questi test di sicurezza
+    in **skip verdi** — nessuno li guarda, e la regressione passa. In CI un
+    ambiente senza node è un guasto da riparare, non un test da saltare.
+    """
+    if shutil.which("node"):
+        return None
+    if os.getenv("CI"):
+        return pytest.fail(
+            "node non disponibile in CI: questi test non possono essere saltati "
+            "in silenzio. Aggiungi actions/setup-node a .github/workflows/tests.yml",
+            pytrace=False,
+        )
+    pytest.skip("serve node per eseguire il codice client")
+
+
+@pytest.fixture(autouse=True)
+def _serve_node():
+    _node_o_fallisci()
 
 
 def _valuta_col_client(passwords):
