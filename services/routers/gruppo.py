@@ -543,9 +543,46 @@ def _salute_componenti_raw(
             "p_anno": mc_anno,
             "p_mese": mc_mese,
         }).execute()
-        return res.data or []
+        rows = res.data or []
     except Exception:
         return []
+    return _applica_override_netto(sb, rows, mc_anno, mc_mese)
+
+
+def _applica_override_netto(
+    sb, rows: List[Dict[str, Any]], anno: int, mese: int
+) -> List[Dict[str, Any]]:
+    """Sostituisce il `netto` della RPC con l'override del mese, dove c'e'.
+
+    La RPC gruppo_salute_componenti legge solo margini_mensili: una sede in
+    modalita' mensile ha li' fatturato a 0 e i ricavi veri in
+    ricavi_modalita_mensile, quindi risulterebbe "senza fatturato" pur avendone.
+    E' lo stesso difetto gia' corretto in _aggrega_sedi_mensili (vedi
+    tests/test_gruppo_aggrega_sedi.py, "Bug 1: override vince sullo snapshot"):
+    il percorso della COMPLETEZZA era rimasto indietro.
+
+    Il confronto a valle e' di sola presenza (> 0), quindi si somma il LORDO
+    senza scorporare l'IVA: basta a dire "il fatturato c'e'". Best-effort come
+    il resto della catena: se la lettura fallisce si tengono i valori della RPC.
+    """
+    if not rows:
+        return rows
+    for r in rows:
+        rid = str(r.get("ristorante_id"))
+        try:
+            ov = _overrides_mese_sede(sb, rid, anno).get(int(mese))
+        except Exception:
+            continue
+        if not ov:
+            continue
+        lordo = (
+            float(ov.get("iva10") or 0)
+            + float(ov.get("iva22") or 0)
+            + float(ov.get("altri") or 0)
+        )
+        if lordo > 0:
+            r["netto"] = lordo
+    return rows
 
 
 def _salute_indici_batch(
