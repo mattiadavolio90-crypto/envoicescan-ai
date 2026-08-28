@@ -3363,3 +3363,24 @@ Le **9 funzioni** `@_make_cache` di `db_service` che si procurano il client da
 sole ignorano quello passato dal chiamante. Una sola si manifesta oggi; le altre
 sono latenti. Finora era il mock a mascherarle, ora è la guardia di rete a
 contenerle. Va affrontato a parte — annotato qui per non riscoprirlo da zero.
+
+> **RETTIFICA 28/08/2026 — questa annotazione era sbagliata, il difetto non
+> esiste.** Verificate tutte una per una: sono **8**, non 9, e **nessuna ignora
+> un client passato**. Solo 2 accettano un parametro client, e l'unica reale
+> (`get_fatture_cestino`) fa `if supabase_client is None:` → usa il fallback
+> **solo** se non gli è stato passato nulla. `_carica_fatture_da_supabase` era un
+> falso positivo: "client" compariva nel docstring, non nella firma. Il
+> comportamento è per di più **deliberato e già documentato** nel docstring di
+> `_key_part` (`utils/streamlit_compat.py`) — i client si identificano per TIPO
+> perché il loro repr contiene l'indirizzo di memoria e la cache non colpirebbe
+> mai — e il client è un **singleton di processo**
+> (`services/__init__.py:245`): non esistono due client fra cui sbagliare.
+> Nessun rischio di leak fra tenant: tutte e 8 hanno `user_id` in chiave, e
+> quelle per-sede anche `ristorante_id`.
+>
+> **Come è nata la svista:** da un fatto vero — in §2
+> `_fetch_numero_documento_map_cached` usciva in rete nei test — generalizzato a
+> caldo a "9 funzioni ignorano il client" senza riverificare. È la regola "ogni
+> severità si riverifica" applicata male: vale anche per le voci **nate dentro
+> il ciclo**, non solo per quelle ereditate. Dettagli e decisione di non
+> refactorare in `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08.md`.
