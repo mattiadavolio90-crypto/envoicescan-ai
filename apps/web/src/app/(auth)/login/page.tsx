@@ -24,9 +24,23 @@ function defaultNext(): string {
   return "/dashboard";
 }
 
+// Il parametro `next` arriva dalla query string: chiunque puo' fabbricare un
+// link /login?next=//evil.com. Finendo tal quale in window.location.href
+// diventerebbe un redirect fuori dominio DOPO un login riuscito — la forma
+// piu' credibile di phishing, perche' l'utente ha appena inserito le
+// credenziali sul dominio vero. Accettiamo solo path interni: il produttore
+// legittimo (proxy.ts:93) scrive sempre e solo un pathname.
+function nextSicuro(raw: string | null): string | null {
+  if (!raw) return null;
+  // "//evil.com" e "/\evil.com" sono path-relative per la barra iniziale ma
+  // il browser li risolve come host: serve la seconda barra/backslash fuori.
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  return raw;
+}
+
 function LoginForm() {
   const searchParams = useSearchParams();
-  const next = searchParams.get("next");
+  const next = nextSicuro(searchParams.get("next"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
