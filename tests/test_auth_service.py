@@ -374,66 +374,51 @@ class TestControllaRateLimit:
         """Fail-closed: se il DB non risponde si solleva, non si restituisce
         'non bloccato' (che lascerebbe passare tentativi illimitati).
 
-        Serve `requests` REALE: _is_connectivity_error fa isinstance() sulle
-        eccezioni di requests, e col MagicMock globale del conftest isinstance
-        solleva TypeError ("arg 2 must be a type"). In produzione requests e'
-        installato davvero, quindi il percorso funziona: e' un limite
-        dell'ambiente di test, non un bug del codice.
+        `_is_connectivity_error` fa isinstance() sulle eccezioni di requests:
+        dal 28/8/2026 il conftest non mocka piu' requests, quindi sono classi
+        vere e il percorso e' quello di produzione.
         """
-        import importlib
-        import sys
-
         from services.auth_service import (
             controlla_rate_limit,
             AuthServiceUnavailableError,
         )
-        import services.auth_service as auth_module
 
         client = MagicMock()
         client.table.side_effect = RuntimeError('db giu')
 
-        mock_requests = sys.modules.get('requests')
-        sys.modules.pop('requests', None)
-        try:
-            auth_module.requests = importlib.import_module('requests')
-            with pytest.raises(AuthServiceUnavailableError):
-                controlla_rate_limit('utente@test.it', client)
-        finally:
-            if mock_requests is not None:
-                sys.modules['requests'] = mock_requests
-                auth_module.requests = mock_requests
+        with pytest.raises(AuthServiceUnavailableError):
+            controlla_rate_limit('utente@test.it', client)
 
 
 class TestVerifyAndMigratePassword:
-    """Verifica Argon2 al login.
+    """Verifica Argon2 al login, con hash REALI.
 
-    argon2 e' mockato in conftest.py: ph.verify() non solleva MAI di default,
-    quindi senza configurare esplicitamente il mock un test 'password sbagliata
-    rifiutata' passerebbe anche con la verifica rotta. Qui ph.verify e'
-    configurato caso per caso.
+    Non si patcha `ph.verify`: si genera l'hash con `ph.hash()` e si verifica
+    l'esito booleano. Cosi' il test misura la verifica vera (m=65536, t=3,
+    parametri intoccabili — CLAUDE.md §Sicurezza) invece di limitarsi a
+    constatare che un mock e' stato chiamato. Costo ~60ms per hash.
+    `patch.object(ph, 'verify')` non sarebbe comunque possibile: PasswordHasher
+    ha __slots__ e i suoi attributi sono read-only.
     """
 
     def test_password_corretta_accettata(self):
         from services import auth_service
 
-        with patch.object(auth_service.ph, 'verify', return_value=True) as verify:
-            ok = auth_service.verify_and_migrate_password(
-                {'id': 'u1', 'password_hash': '$argon2id$v=19$fakehash'}, 'giusta'
-            )
+        hash_reale = auth_service.ph.hash('giusta')
+        ok = auth_service.verify_and_migrate_password(
+            {'id': 'u1', 'password_hash': hash_reale}, 'giusta'
+        )
 
         assert ok is True
-        verify.assert_called_once()
 
     def test_password_sbagliata_rifiutata(self):
         """Argon2 segnala il mismatch sollevando: deve tradursi in False."""
         from services import auth_service
 
-        with patch.object(
-            auth_service.ph, 'verify', side_effect=Exception('mismatch')
-        ):
-            ok = auth_service.verify_and_migrate_password(
-                {'id': 'u1', 'password_hash': '$argon2id$v=19$fakehash'}, 'sbagliata'
-            )
+        hash_reale = auth_service.ph.hash('giusta')
+        ok = auth_service.verify_and_migrate_password(
+            {'id': 'u1', 'password_hash': hash_reale}, 'sbagliata'
+        )
 
         assert ok is False
 

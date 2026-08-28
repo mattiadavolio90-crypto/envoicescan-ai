@@ -90,3 +90,41 @@ def test_cache_escluse_esistono_davvero():
         tutte |= _cache_dichiarate(_p)
     morte = CACHE_ESCLUSE - tutte
     assert not morte, f"CACHE_ESCLUSE cita cache che non esistono piu': {sorted(morte)}"
+
+
+def test_conftest_mocka_solo_streamlit():
+    """Il conftest deve mockare SOLO streamlit.
+
+    Fino al 28/8/2026 mockava anche supabase, postgrest, openai, tenacity,
+    argon2, xmltodict, requests e fitz, sotto la premessa "moduli non
+    disponibili nell'ambiente test puro". La premessa era falsa — sono tutti
+    installati — e il costo non era la lentezza ma la correttezza: un attributo
+    di MagicMock non eredita da BaseException, quindi
+    `except openai.RateLimitError` sollevava TypeError invece di catturare, e
+    ogni test su quei rami verificava un TypeError. Idem per `@retry` di
+    tenacity, che non decorava affatto.
+
+    Questa guardia impedisce che la lista si riallunghi, e — secondo assert —
+    rende la premessa FALSIFICABILE invece di lasciarla assunta.
+    """
+    import sys
+
+    from tests.conftest import _MODULI_DA_MOCKARE
+
+    non_streamlit = [m for m in _MODULI_DA_MOCKARE if not m.startswith("streamlit")]
+    assert not non_streamlit, (
+        f"moduli mockati inutilmente: {non_streamlit}. Sono installati nel venv: "
+        "mockarli rende vacui i rami `except` che usano le loro eccezioni."
+    )
+
+    # find_spec("streamlit") NON si puo' usare: il conftest ha gia' messo un
+    # MagicMock in sys.modules e find_spec solleva "__spec__ is not set".
+    # La domanda e' se il pacchetto esista su disco, quindi si guarda li'.
+    installato = any(
+        (Path(d) / "streamlit").is_dir() or (Path(d) / "streamlit.py").is_file()
+        for d in sys.path
+        if d
+    )
+    assert not installato, (
+        "streamlit risulta installato: il mock del conftest non serve piu'"
+    )

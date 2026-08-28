@@ -1,30 +1,48 @@
+"""conftest.py — Mock del solo Streamlit (l'unico modulo non installato).
+
+Eseguito PRIMA di qualsiasi import dei test.
+
+Cosa si mocka, e perche'
+========================
+`streamlit` NON e' nei requirements: la UI e' Next.js, e i moduli di business
+logic che fanno ancora `import streamlit as st` girano in produzione con
+`services/_streamlit_shim.py`. Qui si usa un MagicMock invece dello shim perche'
+molti test sostituiscono `sys.modules['streamlit']` con un proprio fake e ne
+configurano `session_state` a piacere: la superficie aperta del MagicMock
+assorbe qualunque attributo, quella chiusa dello shim no.
+
+Cosa NON si mocka, e perche' conta
+==================================
+Fino al 28/8/2026 questa lista conteneva anche supabase, postgrest, requests,
+openai, tenacity, argon2, xmltodict e fitz, sotto la premessa "moduli non
+disponibili nell'ambiente test puro". La premessa era FALSA: sono tutti
+installati. Il costo non era la lentezza, era la correttezza dei test:
+
+    except openai.RateLimitError:  ->  TypeError: catching classes that do not
+                                       inherit from BaseException
+
+Un attributo di MagicMock non eredita da BaseException, quindi ogni ramo
+`except` su quelle eccezioni sollevava TypeError invece di catturare: i test che
+li "coprivano" verificavano un TypeError. Stessa cosa per `@retry` di tenacity,
+che non decorava affatto, e per `argon2.PasswordHasher`, il cui `verify` non
+sollevava mai.
+
+`tests/test_conftest_cache_guardia.py::test_conftest_mocka_solo_streamlit`
+impedisce che la lista si riallunghi, e verifica che la premessa sia ancora vera
+invece di darla per scontata.
 """
-conftest.py — Mock moduli pesanti non disponibili nell'ambiente test puro.
-Questo file viene eseguito PRIMA di qualsiasi import dei test.
-"""
+import os
+import socket
 import sys
 import importlib
 from unittest.mock import MagicMock
 
-# Lista moduli che richiedono l'app runtime (Streamlit, PyMuPDF, Supabase, ecc.)
-# Li mockiamo per permettere l'import delle funzioni pure
+# Solo streamlit: vedi il docstring in cima. Ogni aggiunta qui va giustificata
+# con "il modulo non e' installato", non con "e' pesante".
 _MODULI_DA_MOCKARE = [
     "streamlit",
     "streamlit.cache_resource",
     "streamlit.cache_data",
-    "fitz",          # PyMuPDF
-    "supabase",
-    "supabase.lib",
-    "supabase.lib.client_options",
-    "supabase._sync",
-    "supabase._sync.client",
-    "postgrest",
-    "openai",
-    "tenacity",
-    "argon2",
-    "argon2.exceptions",
-    "xmltodict",
-    "requests",
 ]
 
 # NOTA: pandas NON è nella lista di mock — è installato nel venv ed è necessario
@@ -33,6 +51,45 @@ _MODULI_DA_MOCKARE = [
 for mod in _MODULI_DA_MOCKARE:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
+
+
+# --- Nessun test puo' uscire in rete ----------------------------------------
+# Senza il mock di supabase, create_client e' REALE e alcune funzioni memoizzate
+# (_fetch_numero_documento_map_cached, db_service.py:265) non ricevono il client
+# dal chiamante: se lo procurano con get_supabase_client(), ignorando il fake
+# iniettato dal test. E services/fastapi_worker.py:72 fa load_dotenv(override=True),
+# che rimette le credenziali di PRODUZIONE in os.environ (53 file di test
+# importano il worker): senza questa guardia, in locale quelle query
+# arriverebbero al DB dei clienti.
+# getaddrinfo va bloccato oltre a connect: httpcore risolve il DNS prima di
+# connettersi, quindi con il solo connect la guardia non scatterebbe.
+class ReteVietataNeiTest(RuntimeError):
+    """Un test ha provato a contattare la rete: iniettare un fake client."""
+
+
+def _rete_vietata(*args, **kwargs):
+    raise ReteVietataNeiTest(f"connessione di rete vietata nei test: {args[:1]}")
+
+
+socket.getaddrinfo = _rete_vietata
+socket.socket.connect = _rete_vietata
+socket.socket.connect_ex = _rete_vietata
+
+# --- st.secrets deve essere un dict di STRINGHE ------------------------------
+# services._get_supabase_credentials() prova st.secrets PRIMA delle env var, e un
+# MagicMock e' truthy: restituirebbe due MagicMock senza mai leggere l'ambiente.
+# Con supabase reale, create_client valida l'URL con re.match(r"^(https?)://.+")
+# (supabase/_sync/client.py:62) -> "expected string or bytes-like object, got
+# 'MagicMock'". Credenziali finte ma sintatticamente valide; la guardia di rete
+# qui sopra garantisce che non vengano mai usate per davvero.
+sys.modules["streamlit"].secrets = {
+    "supabase": {
+        "url": "https://test.supabase.co",
+        "service_role_key": "test-service-role-key",
+    },
+}
+os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
 
 
 import pytest

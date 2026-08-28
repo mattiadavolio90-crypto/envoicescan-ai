@@ -29,8 +29,6 @@ mutazione del primo termine resterebbe verde ovunque tranne che sullo schema
 PARTESA (righe 10/20/30), che e' esattamente la fixture che lo distingue.
 """
 import io
-import importlib
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,9 +45,6 @@ def _run_estrai_xml(xml_bytes, user_id='user_test', categoria='🧀 LATTICINI E 
     dentro estrai_dati_da_xml: vanno patchati sul modulo sorgente
     (`services.ai_service`), non su `services.invoice_service`.
     """
-    sys.modules.pop('xmltodict', None)
-    real_xmltodict = importlib.import_module('xmltodict')
-
     from services.invoice_service import estrai_dati_da_xml
 
     file_mock = io.BytesIO(xml_bytes)
@@ -64,7 +59,6 @@ def _run_estrai_xml(xml_bytes, user_id='user_test', categoria='🧀 LATTICINI E 
     mock_st.session_state.get = _session_state_get
 
     with patch('services.invoice_service.st', mock_st), \
-         patch('services.invoice_service.xmltodict', real_xmltodict), \
          patch('services.ai_service.carica_memoria_completa', return_value=None), \
          patch('services.ai_service.categorizza_con_memoria',
                return_value=(categoria, False)):

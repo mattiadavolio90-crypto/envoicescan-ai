@@ -14,20 +14,9 @@ un `cms.ContentInfo` con l'XML dentro l'OCTET STRING incapsulato. Niente
 dipendenza da `openssl` (renderebbe il test ambiente-dipendente) e soprattutto
 nessun file reale di `data/backfill_fatture/`, che contiene dati dei clienti.
 """
-import importlib
 import io
-import sys
 
 import pytest
-
-
-@pytest.fixture(autouse=True)
-def _xmltodict_reale():
-    """`xmltodict` e' mockato globalmente dal conftest: senza il modulo vero il
-    parse restituisce un MagicMock e ogni assert diventa vacuo."""
-    sys.modules.pop('xmltodict', None)
-    importlib.import_module('xmltodict')
-    yield
 
 
 # ─── decodifica_xml_sicuro ────────────────────────────────────────────────────
