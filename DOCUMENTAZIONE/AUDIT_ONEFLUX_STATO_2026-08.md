@@ -1,7 +1,7 @@
 # Stato audit ONEFLUX — ciclo 2026-08
 
-**Ciclo nuovo, non ancora aperto.** Il ciclo precedente (2026-07) è **chiuso il
-28/08/2026**: indice e storico completi in `docs/storico/`
+**Ciclo APERTO il 28/08/2026.** Il ciclo precedente (2026-07) è **chiuso** la
+stessa data: indice e storico completi in `docs/storico/`
 (`AUDIT_ONEFLUX_STATO_2026-07.md` e `..._STORICO.md`).
 
 > Il ciclo 2026-07 ha chiuso tutte e 10 le dimensioni con seconda passata e
@@ -10,11 +10,85 @@
 > pena rileggerle prima di riaprire una dimensione, perché diverse riguardano
 > *come* si audita, non *cosa*.
 
-## Da dove ripartire
+---
 
-Una dimensione è verde rispetto al perimetro **che quella passata si è scelta**,
-non rispetto al codice esistente. È la lezione più cara del ciclo scorso: §3b e
-§3c sono nate proprio dal conto onesto di quanto era stato letto davvero.
+# ⚑ COME SI USA QUESTO FILE (leggere per primo)
+
+Questo ciclo è organizzato in **fasi numerate, una per sessione**. Ogni fase è
+**autosufficiente**: contiene perimetro misurato, ipotesi da verificare, criterio
+di chiusura e comandi. Una sessione nuova non ha bisogno di leggere le altre fasi.
+
+**Protocollo di ogni sessione:**
+
+1. Apri questo file e vai alla **prima fase con stato ⚪ APERTA**.
+2. Esegui **solo quella fase**. Non anticipare le successive.
+3. A fine sessione: aggiorna **qui** lo stato della fase (⚪→🟢 o 🟡),
+   e scrivi il verbale dettagliato in `AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`
+   (crearlo alla prima fase chiusa; il nome matcha l'eccezione `.gitignore`
+   `!AUDIT_ONEFLUX_STATO*.md`, quindi è tracciato da git).
+4. **Committa il doc insieme al codice** che documenta.
+
+**Regole non derogabili** (ereditate, costate care — vedi §Metodo in fondo):
+- Audit **read-only** prima di ogni fix; remediation solo dopo conferma di Mattia.
+- **Ogni severità si riverifica sul DB live.** Nel ciclo 2026-07 è caduta **8
+  volte** una severità ereditata o proposta da un agente. Non è pignoleria: è
+  ciò che evita di fixare codice morto e lasciare aperto quello vivo.
+- Ogni fix nuovo → test verificato **per mutazione, su copia in scratchpad**.
+- `code-reviewer` sul diff cumulativo **a fine sessione, sempre**.
+- Un perimetro dichiarato va **misurato**, non ricordato: nel ciclo scorso è
+  risultato incompleto **4 volte** (chat 4 simboli→25; feature Tag 2 file→3;
+  gli "11 file grandi" mai elencati; §3c "perimetro non letto" da 2 HIGH).
+
+---
+
+# 📊 IL CONTO ONESTO — misurato il 28/08/2026
+
+Rimisurato oggi con `wc -l`, **non ereditato** dall'8/8 (i numeri erano
+invecchiati: il codice è cresciuto di ~2.900 righe).
+
+| Perimetro | Righe oggi | Lette a fondo | **Mai lette** | % scoperta |
+|---|---|---|---|---|
+| Python runtime (`services/`,`utils/`,`config/`,`worker/`) | 55.228 | ~40.000 | **~15.000** | 27% |
+| Frontend TS/TSX (`apps/web/src/`) | 50.433 | 17.314 (25 file) | **~33.100** | **66%** |
+| Edge Functions (`supabase/functions/`) | 3.554 | 3.554 | 0 | ✅ 0% |
+| **TOTALE** | **109.215** | ~60.900 | **~48.300** | **44%** |
+
+> ⚠️ **Il 17.314 del frontend è un conteggio conservativo e va letto come tale.**
+> È stato ricostruito grep-ando i nomi dei `.tsx` citati nello STORICO 2026-07.
+> Sei nomi sono **ambigui** (`page.tsx` esiste in 36 copie, `loading.tsx` in 9,
+> `layout.tsx` in 7, `tabs-switcher.tsx` 4, `filtri-periodo.tsx` 2,
+> `kpi-bar.tsx` 2): impossibile sapere *quale* istanza sia stata letta, quindi
+> sono **tutte contate come non lette**. Il conteggio ottimistico darebbe 21.637.
+> La differenza (4.323 righe) è il prezzo di non aver mai scritto i path completi
+> nel verbale — **da qui la regola, in questo ciclo, di elencare i file per path
+> assoluto e non per basename.**
+
+**La lettura che conta non è il 44%.** Il ciclo scorso ha dimostrato **due volte**
+che coverage ed esposizione live divergono: `workspace.py` era priorità 1 per
+coverage e gestisce ~29 righe di dati veri; `invoice_service.py` sembrava minore
+ed è il passaggio obbligato di 34.000 righe. **L'ordine delle fasi qui sotto è
+deciso dall'esposizione misurata sul DB, non dalle righe.**
+
+## Esposizione live misurata sul DB (28/08/2026, progetto `vthikmfpywilukizputn`)
+
+| Area | Tabelle | Volume reale | Verdetto |
+|---|---|---|---|
+| **Catena / riparto** | `riparto_costi_catena` 156, `_quote` 438 | **€67.591,75** su 156 costi, 2 utenti, ultimo inserimento **21/8/2026** | 🔴 **VIVA e calda** |
+| Upload / fatture | `upload_events` 6.917 | flusso principale | 🟠 già auditato a fondo |
+| Impostazioni/account | `sessioni` 361 | 7 utenti, 12 sedi | 🟠 media |
+| Dashboard/chat | `chat_usage_log` 71, `assistant_preferences` 3 | media-bassa | 🟡 |
+| Agenda/notifiche | `notification_inbox` 65 | bassa | 🟡 |
+| Prezzi | `prezzi_preferiti` 9 | bassa | 🟡 |
+| **Workspace** | ricette 5, inventario 6, diario 2, dipendenti 1, **turni 0, ingredienti 0, note 0** | **quasi nulla** | ⚪ **bassa** |
+| Assistenza | `marketplace_leads` 0 | nessuno | ⚪ nulla |
+| Catena tag | `gruppo_tags` 2, `gruppo_tag_prodotti` 13 | bassa ma già fixata in §3c | 🟡 |
+
+> **Questa misura ha già cambiato il piano una volta, il 28/8.** La prima
+> proposta era partire da `personale-tab.tsx` (1.834 righe, secondo file più
+> grande). Sbagliata per due motivi entrambi verificati: (a) quel file **è già
+> stato letto** in §3c; (b) il suo backend `workspace.py` ha esposizione
+> **quasi nulla** — turni 0, ingredienti 0. Sarebbe stata la fase più costosa
+> a difendere il minor numero di dati. È la stessa trappola dell'8/8.
 
 Voci ereditate dal ciclo 2026-07, da valutare quando si apre questo:
 
@@ -111,6 +185,354 @@ Voci ereditate dal ciclo 2026-07, da valutare quando si apre questo:
   accettarli e nessuno li ri-hasha. Esiste già il precedente della migrazione
   SHA256→Argon2 in `verify_and_migrate_password()`, che è il posto naturale
   dove agganciarla. Tocca il percorso di login: va valutata a parte.
+
+---
+
+# 🗺️ ROADMAP — le fasi, in ordine
+
+Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
+
+| Fase | Oggetto | Righe | Esposizione | Stato |
+|---|---|---|---|---|
+| **F1** | Frontend **catena/** — i 10 file mai letti | 3.012 | 🔴 €67.591,75 | 🟢 **CHIUSA** 28/8 |
+| **F2** | Frontend **impostazioni + account + auth** | ~1.900 | 🟠 361 sessioni, 7 utenti | ⚪ APERTA |
+| **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | ~7.274 | 🟠 attraversa tutto | ⚪ APERTA |
+| **F4** | Frontend **analisi-fatture/upload-modal + dashboard/** | ~1.900 | 🟠 6.917 upload | ⚪ APERTA |
+| **F5** | Python — i **4 moduli mai auditati come oggetto proprio** | 1.899 | 🟡 da misurare in fase | ⚪ APERTA |
+| **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | ~3.900 | ⚪ bassa/nulla | ⚪ APERTA |
+| **F7** | Chiusura ciclo: voci ereditate + `code-reviewer` finale | — | — | ⚪ APERTA |
+
+**F1 è la prima per una ragione misurata, non per intuizione** — vedi sotto.
+
+---
+
+## 🟢 F1 — Frontend `catena/`: i 10 file mai letti — CHIUSA 28/08/2026
+
+**Perché prima di tutto.** È l'unico punto dove coincidono le tre condizioni che
+nel ciclo scorso hanno prodotto i difetti più costosi:
+
+1. **Backend auditato a fondo, frontend mai letto.** `riparto.py` compare **17
+   volte** nello STORICO 2026-07 (chiuso in §1 il 5/8, PR #14, 2 HIGH + 2 MEDIUM
+   fixati). I suoi consumatori in `catena/` non sono mai stati aperti. È
+   *esattamente* l'asimmetria che ha generato i 7 HIGH di §3c.
+2. **Dati veri e caldi**: €67.591,75 su 156 costi e 438 quote, un utente reale
+   (`2f3f93a1-…`, **3 sedi, 88 fornitori**), scritture da gennaio ad **agosto
+   2026**, ultimo inserimento **21/8/2026** — sette giorni fa. Un secondo utente
+   (`51015cc8-…`, **4 sedi, 164 fornitori**) ha 1 costo / 8 quote: è il gruppo
+   più grande del DB ma **quasi non usa il riparto**, e la differenza fra i due
+   è essa stessa un'informazione da capire in fase (feature non scoperta? non
+   utile? o un difetto che l'ha resa inutilizzabile?).
+3. **78 siti di calcolo locale** misurati con grep (`reduce(`, `.map(`,
+   moltiplicazioni/divisioni in `const`) sui 7 file. Il pattern-radice di §3c era
+   *"il client ri-deriva localmente uno stato che il worker gli ha già mandato"*:
+   qui ci sono 78 occasioni per farlo, su ripartizioni di costo fra sedi.
+
+**Perimetro — path completi, misurati il 28/8** (niente basename, vedi la regola):
+
+| File | Righe | Siti di calcolo locale |
+|---|---|---|
+| `apps/web/src/app/(app)/catena/gruppo-tag-section.tsx` | 681 | 23 |
+| `apps/web/src/app/(app)/catena/sintesi-catena.tsx` | 559 | 9 |
+| `apps/web/src/app/(app)/catena/finestra-costi-gruppo.tsx` | 538 | 8 |
+| `apps/web/src/app/(app)/catena/finestra-margini-coperti.tsx` | 456 | 15 |
+| `apps/web/src/app/(app)/catena/finestra-spesa-pv.tsx` | 259 | 13 |
+| `apps/web/src/app/(app)/catena/config-assistente-catena.tsx` | 202 | 7 |
+| `apps/web/src/app/(app)/catena/card-segnali.tsx` | 89 | 1 |
+| `apps/web/src/app/(app)/catena/page.tsx` | 76 | 0 |
+| `apps/web/src/app/(app)/catena/loading.tsx` | 28 | 2 |
+| `apps/web/src/app/(app)/catena/fatture/page.tsx` | 67 | 0 |
+| **Totale** | **2.955** | **78** |
+
+> **Il perimetro era di 10 file, non 9**: `catena/fatture/page.tsx` mancava
+> dall'elenco. Non compariva nel grep degli endpoint perché chiama
+> `/api/gruppo/scadenziario` via `workerGet`, non via `fetch`. Alla lettura ha
+> prodotto un finding (F-REDIRECT). Rimisurato a fine fase il totale è **3.012**
+> righe: i fix a `spreco-categorie` di altra sessione hanno toccato il perimetro
+> mentre la fase era in corso.
+
+> `mobile-catena.tsx` e `finestra-*` citate in §3c: **`mobile-catena.tsx` è già
+> letto** (§32). Le `finestra-*` NO — non compaiono nello STORICO. Verificato.
+
+**Cosa cercare (ipotesi da confermare o smontare, non conclusioni):**
+
+- **H1 — Ri-derivazione locale delle quote.** Il worker calcola le quote di
+  riparto (`riparto_costi_catena_quote`, 438 righe). Se un `.tsx` le ricalcola
+  da `importo_totale × percentuale` invece di leggerle, i due numeri divergono
+  appena il backend cambia regola. **Verificare**: confrontare il valore mostrato
+  con `SELECT` diretto sulle quote, per lo stesso mese e la stessa sede.
+- **H2 — L'override mensile, di nuovo.** È la causa-radice che in §3c è
+  ricomparsa **tre volte** (§26 dialog, §32 spegnimento + mobile). `catena/`
+  mostra margini e coperti aggregati: se `finestra-margini-coperti.tsx` non
+  onora `ricavi_modalita_mensile`, è lo stesso difetto da 70.095 €.
+  **Verificare** con `SELECT * FROM ricavi_modalita_mensile` sulle sedi del
+  gruppo dell'utente `2f3f93a1-…`.
+- **H3 — Campi nuovi scartati.** §3c ha trovato `prezzo_medio_tag` corretto lato
+  worker e **ignorato dal client**. `gruppo-tag-section.tsx` (681 righe, 23
+  calcoli) consuma gli stessi endpoint tag: verificare che consumi
+  `spesa_esclusa_mix` e `PrezzoValido`, i campi introdotti il 24/8.
+- **H4 — Isolamento sede↔gruppo.** §3c ha già trovato una divergenza
+  sede-singola↔catena sulle note di credito (285,50 € su 7 righe), chiusa con
+  migration il 27/8. Verificare che i totali di `sintesi-catena.tsx` coincidano
+  con la somma delle sedi.
+- **H5 — Cap PostgREST 1000.** Rischio noto e già materializzato due volte nel
+  ciclo scorso. 438 quote oggi, ma è una tabella che cresce per mese × sede.
+
+**La superficie API della pagina, misurata** (15 endpoint, 20 `fetch`):
+
+```
+/api/account/sedi              /api/gruppo/spesa-pivot
+/api/gruppo/assistant-config   /api/gruppo/spreco-categorie
+/api/gruppo/costi-comuni       /api/gruppo/tag  + /tag/descrizioni + /tag/prodotti/
+/api/gruppo/margini-coperti    /api/riparto/  + /riparto/manuale + /riparto/riga-categoria
+/api/gruppo/scadenziario       /api/gruppo/segnali
+```
+
+> **Due agganci diretti a difetti già noti, da controllare per primi:**
+> - `/api/gruppo/spesa-pivot` → è la RPC SETOF con il **cap PostgREST 1000 non
+>   paginato** annotata in §1. **Rimisurato il 28/8: NON è ancora a rischio.**
+>   Le 12 sedi del DB non stanno su un utente solo — il massimo per utente è
+>   **4 sedi / 164 fornitori / ~302 righe di pivot stimate**, contro un cap di
+>   1000. Resta latente, non attivo. *(Prima stesura di questa riga diceva
+>   "oggi le sedi sono 12, la soglia potrebbe essere superata": sbagliato,
+>   il pivot è per utente. Corretto con la query prima di scriverlo come
+>   direttiva — è la nona volta nel progetto che un numero letto di fretta
+>   avrebbe orientato male una fase.)*
+> - `/api/gruppo/spreco-categorie` → è l'endpoint del **bug `2026-02-29`**
+>   (HIGH fixato l'8/8 con `calendar.monthrange`). Verificare che il client
+>   consumi il risultato corretto e non ricalcoli il periodo per conto suo.
+>
+> `/api/gruppo/tag*` (9 fetch in `gruppo-tag-section.tsx`) è la superficie dei
+> fix del 24/8 — è lì che va verificata H3.
+
+**Criterio di chiusura di F1:** i 10 file letti **riga per riga** (non grep), ogni
+ipotesi H1-H5 confermata **con una query sul DB** o chiusa in negativo con la
+misura che la esclude, findings elencati con severità **già riverificata**.
+Nessun fix senza conferma esplicita di Mattia.
+
+### Esito (28/08/2026)
+
+**H1 — Ri-derivazione locale delle quote: SMONTATA.** Il client **legge**
+`quota_importo` dal server (`finestra-costi-gruppo.tsx:216`), affiancato a
+`quota_perc` come campo indipendente: **nessuna moltiplicazione
+`importo × percentuale` esiste nei 10 file**. La premessa dei "78 siti di calcolo
+locale" si è rivelata fuorviante — la gran parte è geometria SVG e scaling
+heatmap, non ri-derivazione di business; le ricalcolazioni vere sono 3, tutte
+legittime. *Contare le occorrenze di `.map(` non misura il rischio che si voleva
+misurare: è una lezione sul metodo, non su questa fase.*
+
+**H2 — L'override mensile: CONFERMATA, in una forma diversa da quella cercata.**
+Non è il client a sbagliare: è il **criterio di completezza** lato server. La RPC
+`gruppo_salute_componenti` aggrega solo `margini_mensili`, dove una sede in
+modalità mensile ha `fatturato_netto = 0`. → **HIGH, attivo sui dati veri**
+(dettaglio sotto).
+
+**H3 — Campi nuovi scartati: SMONTATA.** `spesa_esclusa_mix` e `PrezzoValido` non
+esistono nel perimetro né in `lib/gruppo.ts`: vivono in `tag_analytics_service.py`
+e nel modulo tag **di sede**, non in catena. `prezzo_medio_tag` non esiste — il
+campo è `prezzo_medio`, letto dal server su due livelli e mai ricalcolato.
+
+**H4 — Isolamento sede↔gruppo: nessuna divergenza.**
+
+**H5 — Cap PostgREST 1000: non attivo**, ma il limite vero è un altro: la RPC
+gira con `p_limit 500` e **restituisce esattamente 500 righe** (satura), mentre
+il client tronca a 60 senza dirlo. → finding F-60.
+
+### Findings
+
+| # | Severità | Oggetto | Esito |
+|---|---|---|---|
+| **H2-BIS** | 🔴 **HIGH** | La completezza dati ignora `ricavi_modalita_mensile` | **FIXATO** |
+| **F-EXPORT** | 🟠 MEDIUM | L'export XLSX perde l'avvertenza "parziale" | **FIXATO** |
+| **F-60** | 🟡 LOW/MED | Troncamento silenzioso a 60 candidati | **FIXATO** |
+| **F-REDIRECT** | 🟡 LOW | Worker giù → redirect invece di BlockRetry | **FIXATO** |
+| **F-DACLASS** | 🟡 LOW | `"Da Classificare"` hardcoded 7× su 4 file | **FIXATO** |
+| **F-DRIFT** | ⚪ | 19 costi su 156: somma quote ≠ totale, max 1 cent | **aperto, a Mattia** |
+| **F-CHAT** | 🟠 MEDIUM | Tool chat catena rotto (token passato come `mese`) | **FIXATO** (fuori perimetro, trovato in review) |
+
+**H2-BIS in dettaglio.** `gruppo_salute_componenti` legge solo `margini_mensili`.
+Misure sul DB live (28/8):
+
+- OFFSIDE SPORTS PUB: `netto_rpc = 0` su **7 mesi su 7**, con **€437.898,49** di
+  ricavi reali negli override.
+- Sul mese 7 (la vista "Anno" di default) la RPC dava `netto = 0` per **entrambi**
+  i PV, mentre `_aggrega_sedi_mensili` calcolava **~€651.336**.
+- Effetto a schermo: le due sedi collassate in "dati incompleti", `livello_dati`
+  degradato a `"food"` → **MOL del gruppo nascosto**, sparkline/personale/spese
+  soppressi, più un messaggio che nominava la causa sbagliata ("senza costo
+  personale": il personale c'era).
+- Verificato anche nei segnali persistiti: lo snapshot del 28/8 conteneva due
+  volte *"Mancano il fatturato"* su sedi con ricavi.
+
+**Prova che è il pattern §3c, non un caso isolato**:
+`tests/test_gruppo_aggrega_sedi.py:75-91` documenta lo **stesso** difetto già
+corretto in `_aggrega_sedi_mensili` ("Bug 1: override vince sullo snapshot"). La
+correzione non era mai stata propagata al percorso della completezza — quarta
+ricomparsa della stessa causa-radice.
+
+**Fix**: `_applica_override_netto` chiamato dentro `_salute_componenti_raw`, dove
+il periodo è già risolto, così guariscono insieme tutti e 4 i chiamanti (overview,
+margini-coperti, spreco-categorie, segnali) invece di rattoppare il solo
+`_completezza_dati_pv`. 14 test nuovi, **6 mutanti su 6 uccisi**.
+
+### Verificati e scartati (non sono findings)
+
+- Confronto float `===` a `gruppo-tag-section.tsx:650-651`: **sicuro**, stessi valori
+  dello stesso array, nessun ricalcolo intermedio.
+- `cellTone` con `coperti = 0`: la guardia `v !== ex.worst` neutralizza il caso.
+- Sede tecnica "Costi comuni di gruppo": correttamente esclusa da `_resolve_gruppo`
+  (`.eq("sede_tecnica", False)`).
+
+### Nota di processo
+
+F1 è stata eseguita quando questo documento **non era su `main`**: il commit che
+apre il ciclo (`4af9994`) era rimasto su un branch abbandonato mentre `main`
+avanzava per altra via. I findings restano validi — derivano dal codice su `main`
+e dal DB live, e sono stati riverificati sul `main` corrente — ma il verbale è
+stato riscritto dopo aver recuperato la roadmap. È il motivo per cui il perimetro
+qui è misurato due volte (2.955 all'apertura, 3.012 alla chiusura).
+
+**Comandi utili:**
+```bash
+# i file, in ordine di rischio
+wc -l "apps/web/src/app/(app)/catena/"*.tsx | sort -rn
+
+# nessun test protegge questo perimetro (atteso: 0)
+find apps/web -name '*.test.*' -o -name '*.spec.*' | grep -v node_modules | wc -l
+
+# gli endpoint worker che alimentano la pagina
+grep -rn "fetch(" "apps/web/src/app/(app)/catena/" | grep -o "/api/[a-z0-9/_-]*" | sort -u
+```
+
+---
+
+## ⚪ F2 — Frontend impostazioni / account / auth
+
+**Perimetro** (path completi):
+- `apps/web/src/app/(app)/impostazioni/account-client.tsx` — **740 righe**, il
+  file non letto più grande dopo catena
+- `apps/web/src/app/(auth)/**` — 515 righe, 4 file
+- più i file `impostazioni/` minori da inventariare in fase
+
+**Esposizione**: 361 sessioni, 7 utenti, 12 ristoranti.
+
+**Perché conta**: tocca **cambio password** e sessioni. `services/routers/account.py`
+è uno dei due call site di produzione dell'hasher Argon2 (l'altro è il login) —
+verificato il 28/8 chiudendo la voce Argon2. Un difetto qui è di sicurezza, non
+di presentazione.
+
+**Ipotesi da verificare:**
+- Il cambio password lato client fa validazioni proprie che divergono da quelle
+  del worker (lunghezza minima, caratteri) → utente bloccato o password debole
+  accettata dal client e rifiutata dal server.
+- Gestione della scadenza sessione (30 giorni, `secrets.token_urlsafe(32)`):
+  il client mostra uno stato "loggato" dopo la scadenza?
+- `ADMIN_EMAILS` è normalizzato lowercase lato Python (regola CLAUDE.md #4):
+  il client fa confronti email case-sensitive da qualche parte?
+
+---
+
+## ⚪ F3 — Frontend `components/` condivisi
+
+**Perimetro**: `apps/web/src/components/` — **7.274 righe in 53 file**, di cui
+non letti fra gli altri:
+- `apps/web/src/components/fatture/coda-da-assegnare.tsx` — **701 righe**
+- `apps/web/src/components/ui/sidebar.tsx` — 723
+- `apps/web/src/components/landing/landing-page.tsx` — 588
+- `apps/web/src/components/nav/app-sidebar.tsx` — 447
+- `apps/web/src/components/demo/screens/demo-margini.tsx` — 374
+
+**Perché conta**: un difetto in un componente condiviso si moltiplica su ogni
+pagina che lo usa. `coda-da-assegnare.tsx` tocca la **coda di assegnazione
+fatture**, cioè la regola di dominio #1 (`Da Classificare`): va verificato che
+non reintroduca un fallback travestito lato client.
+
+**Nota di perimetro**: `components/ui/` è in larga parte shadcn generato. Da
+**dichiarare escluso con la misura** (quanti file sono vendored e non modificati)
+invece che letto riga per riga — ma la dimensione 6 ha già trovato lì un `Select`
+morto, quindi l'esclusione va argomentata, non assunta.
+
+---
+
+## ⚪ F4 — Frontend upload + dashboard
+
+**Perimetro**:
+- `apps/web/src/app/(app)/analisi-fatture/upload-modal.tsx` — 454
+- `apps/web/src/app/(app)/dashboard/chat-widget.tsx` — 338
+- `apps/web/src/app/(app)/dashboard/kpi-block.tsx` — 317
+- `apps/web/src/app/(app)/dashboard/config-assistente.tsx` — 233
+- `apps/web/src/app/(app)/dashboard/notifiche-widget.tsx` — 222
+
+**Esposizione**: 6.917 `upload_events` — il flusso più caldo dell'app.
+
+**Ipotesi**: la validazione magic-bytes (PDF/XML/P7M) è server-side; il client
+fa un filtro proprio per estensione che diverge? Un file rifiutato dal server
+dopo essere stato accettato dal client è un difetto di esperienza, non di
+sicurezza — ma un file accettato dal client e **silenziosamente perso** no.
+
+---
+
+## ⚪ F5 — Python: i moduli mai auditati come oggetto proprio
+
+Verificato il 28/8: questi file **non compaiono nemmeno una volta** nello STORICO
+2026-07 (`grep` sul basename, 3.386 righe di verbale).
+
+| File | Righe | Test dedicati | Nota |
+|---|---|---|---|
+| `utils/formatters.py` | 691 | 1 | mai auditato |
+| `utils/validation.py` | 537 | 2 | mai auditato |
+| `utils/text_utils.py` | 413 | 1 | **ha una voce aperta in §3a**: `normalizza_descrizione` copre 5 pattern su 7 |
+| `services/notification_inbox_service.py` | 352 | 1 | 65 righe in `notification_inbox` |
+| `services/anomaly_radar_service.py` | 326 | 1 | mai auditato |
+| `config/prompt_ai_potenziato.py` | 305 | — | prompt AI: tocca la regola di dominio #1 |
+| `services/ai_cost_service.py` | 282 | 1 | mai auditato |
+| `utils/piva_validator.py` | 224 | 1 | P.IVA = chiave del canale SDI |
+| `services/personale_export_service.py` | 221 | **0** | **unico con ZERO test dedicati** |
+| `services/session_service.py` | 219 | 1 | 361 sessioni live |
+
+**Ordine consigliato dentro la fase**: `piva_validator.py` e
+`prompt_ai_potenziato.py` per primi — il primo perché una P.IVA sbagliata rompe
+l'aggancio SDI (già causa di incidenti reali: vedi
+`docs/storico/DIAGNOSI_OFFSIDE_INVOICETRONIC_2026-07-14.md`), il secondo perché
+il prompt è dove la regola #1 può essere violata senza che un test se ne accorga.
+
+**Prima di leggere, misurare l'esposizione** di ciascuno — è la regola che ha
+già invertito l'ordine due volte.
+
+---
+
+## ⚪ F6 — Frontend workspace / agenda / assistenza
+
+**Esposizione misurata: bassa o nulla.** turni_personale **0**,
+ingredienti_workspace **0**, ingredienti_utente **0**, note_diario **0**,
+marketplace_leads **0**, ricette 5, inventario_voci 6, diario_eventi 2,
+dipendenti 1, spese_extra 16.
+
+**Perimetro** (~3.900 righe): `workspace/spese-view.tsx` 456,
+`workspace/ricetta-editor.tsx` 452, `workspace/diario-tab.tsx` 427,
+`workspace/inventario-tab.tsx` 397, `workspace/inventario-aggiungi-dialog.tsx` 363,
+`workspace/foodcost-tab.tsx` 336, `agenda/agenda-overview.tsx` 554,
+`assistenza/marketplace.tsx` 276, più i minori.
+
+**Questa fase è deliberatamente ULTIMA.** Il ciclo scorso ha già dimostrato su
+`workspace.py` che coprire codice che nessun cliente esercita produce coverage,
+non sicurezza. **Se le tabelle sono ancora vuote quando si arriva qui, l'opzione
+corretta è dichiararla chiusa per assenza di esposizione** — come si è fatto per
+il Vision (0 righe PDF) e per il legacy di `upload_handler.py` — non leggerla
+per completezza. Rimisurare prima di decidere.
+
+---
+
+## ⚪ F7 — Chiusura del ciclo
+
+1. Riprendere le **voci ereditate** elencate sopra (SDI/policy date, flush
+   PROP-1, `email_queue_processor`) e le **due aperte il 28/8**: migrazione
+   Argon2→Argon2 e copertura a test delle 8 `@_make_cache`.
+2. `code-reviewer` sul diff cumulativo del ciclo.
+3. Aggiungere "**Ciclo chiuso il gg/mm/aaaa**" in cima a questo file.
+4. Spostare questo file **e il suo STORICO** in `docs/storico/`.
+5. Creare `AUDIT_ONEFLUX_STATO_<nuova data>.md` — **non riusare questo file**.
+
+---
 
 ## Metodo (invariato, e non derogabile)
 
