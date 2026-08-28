@@ -32,8 +32,24 @@ from collections import defaultdict
 from config.logger_setup import get_logger
 logger = get_logger('auth')
 
-# Hasher globale Argon2
-ph = argon2.PasswordHasher()
+# Hasher globale Argon2 — parametri ESPLICITI, non i default della libreria.
+# Sono gli stessi valori che argon2-cffi 25.1.0 usa di default (verificato), quindi
+# gli hash prodotti prima e dopo questa riga sono identici: nessuna migrazione.
+# Espliciti perche' `requirements.txt` dichiara `argon2-cffi>=23.1.0` senza tetto:
+# se un aggiornamento cambiasse i default, il costo di hashing cambierebbe in
+# silenzio. `tests/test_auth_argon2_parametri.py` li asserisce, cosi' la riga
+# "Argon2 (m=65536, t=3)" di CLAUDE.md e' falsificabile invece che descrittiva.
+#
+# NOTA: gli hash gia' in DB restano validi comunque — i parametri sono incorporati
+# nell'hash (`$argon2id$v=19$m=65536,t=3,p=4$...`) e `verify()` li legge da li',
+# non da questo oggetto. Alzarli in futuro NON ri-hasha gli hash vecchi: servirebbe
+# `check_needs_rehash()`, che oggi non e' chiamato da nessuna parte (voce aperta
+# nel ciclo audit 2026-08).
+ph = argon2.PasswordHasher(
+    memory_cost=65536,   # 64 MiB
+    time_cost=3,
+    parallelism=4,
+)
 
 
 def _supabase_auth_bridge_disabilitato() -> bool:
