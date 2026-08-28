@@ -1250,26 +1250,68 @@ def gruppo_spreco_categorie(
         if r.get("coperti") is None:
             continue
         cop_map[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = int(r["coperti"])
-    for rid in ids:
-        try:
-            ov = fw._load_mensile_overrides(sb, rid, [anno])
-        except Exception:
-            ov = {}
-        for (y, m), o in ov.items():
-            if o.get("coperti") is not None:
-                cop_map[(rid, y, m)] = o["coperti"]
+    # Override mensili di TUTTI i PV in una lettura sola (era 1 query per PV).
+    try:
+        ov_resp = (
+            sb.table("ricavi_modalita_mensile")
+            .select("ristorante_id,anno,mese,coperti")
+            .in_("ristorante_id", ids)
+            .eq("anno", anno)
+            .eq("modalita", "mensile")
+            .execute()
+        )
+        for r in (ov_resp.data or []):
+            if r.get("coperti") is None:
+                continue
+            cop_map[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = int(r["coperti"])
+    except Exception as exc:
+        logger.warning("spreco-categorie: override coperti non letti: %s", exc)
 
-    # Costo F&B per (anno, mese, categoria) per ogni PV. Riuso l'aggregatore del
-    # worker, una chiamata per PV (i PV sono pochi: niente N+1 di rilievo).
+    # Costo F&B per (anno, mese, categoria) per ogni PV. L'aggregazione la fa il DB
+    # in UNA chiamata per tutti i PV (RPC gruppo_spreco_fb_categorie): prima era un
+    # full-load paginato a 1000 righe per ogni PV — su un gruppo reale ~18 round-trip
+    # HTTP in serie, che con molte fatture arrivavano a sfiorare il timeout del
+    # proxy Next (12s) e a restituire un 502 al cliente.
     # acc[(categoria, rid)] = {"costo": Σ costo (mesi con costo), "cop": Σ coperti}
     acc: Dict[tuple, Dict[str, float]] = {}
     categorie_viste: set = set()
+    cat_map_per_pv: Dict[str, Dict[tuple, float]] = {rid: {} for rid in ids}
+    try:
+        rpc_rows = sb.rpc(
+            "gruppo_spreco_fb_categorie",
+            {"p_ristorante_ids": ids, "p_data_da": data_da, "p_data_a": data_a},
+        ).execute().data or []
+        for r in rpc_rows:
+            rid_r = str(r.get("ristorante_id") or "")
+            if rid_r not in cat_map_per_pv:
+                continue
+            cat_map_per_pv[rid_r][
+                (int(r["anno"]), int(r["mese"]), str(r["categoria"]))
+            ] = float(r.get("totale") or 0.0)
+    except Exception as exc:
+        logger.warning("spreco-categorie: aggregazione fatture fallita: %s", exc)
+
     for rid in ids:
+        cat_map = dict(cat_map_per_pv.get(rid) or {})
+        # Le quote di gruppo NON sono nella RPC: le fatture di struttura vivono
+        # sulla sede tecnica e una query per ristorante_id non le vede mai.
+        # Ometterle abbasserebbe i costi del PV (regola di dominio 1).
         try:
-            cat_map = fw._load_fatture_fb_per_categoria_e_mese(sb, rid, data_da, data_a)
+            for r in fw._righe_quote_gruppo(sb, rid, data_da, data_a):
+                cat = (r.get("categoria") or "").strip()
+                if cat not in fw._CATEGORIE_FB_M:
+                    continue
+                val = float(r.get("totale_riga") or 0.0)
+                if val <= 0:
+                    continue
+                dt = str(r.get("data_documento") or "")[:10]
+                if len(dt) < 7:
+                    continue
+                key = (int(dt[:4]), int(dt[5:7]), cat)
+                cat_map[key] = cat_map.get(key, 0.0) + val
         except Exception as exc:
-            logger.warning("spreco-categorie: aggregazione fatture fallita (%s): %s", rid, exc)
-            cat_map = {}
+            logger.warning("spreco-categorie: quote di gruppo non proiettate (%s): %s", rid, exc)
+
         for (y, m, cat) in list(cat_map.keys()):
             if cat in _SPRECO_CAT_ESCLUSE:
                 continue
