@@ -3,6 +3,12 @@
 > **Ciclo audit 2026-08 APERTO il 28/8/2026.** Il ciclo 2026-07 è chiuso
 > (indice e storico in `docs/storico/`).
 >
+> **F1, F2 e i loro residui: tutto chiuso, mergiato e DEPLOYATO il 28/8.**
+> `F-DRIFT` e `F2-VERIFY` chiusi con PR #44 (merge `df19cce`, worker verificato).
+> Resta aperto solo `F2-NOTEST` — **per decisione di Mattia**, non per dimenticanza:
+> introdurre un runner di test frontend è una scelta di progetto, non un fix
+> d'audit. La prossima fase ⚪ APERTA è **F3 — `components/` condivisi**.
+>
 > **F1 e F2 chiuse, mergiate e DEPLOYATE il 28/8** (PR #43, merge `d04592f`,
 > ~22:10 CEST). Worker Railway verificato in produzione su `d04592f31081`; CI
 > verde su 4 check, suite 11.342. Verbali nello STORICO. F1: 1 HIGH attivo sui

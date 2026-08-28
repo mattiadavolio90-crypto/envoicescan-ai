@@ -440,10 +440,12 @@ un mese dal go-live.
   `verify_and_migrate_password`: disattivandolo **81 test restavano verdi**,
   cioè si sarebbe potuta cambiare la password senza conoscere quella vecchia.
   3 test nuovi, 4 mutanti uccisi su 4.
-- `F-DRIFT` (residuo di F1) — guardia SQL nelle due RPC che scrivono quote +
-  sanatoria dei 19 storici. **L'ipotesi sulla causa era sbagliata**: non i
-  `round()` per-categoria, ma dato storico da un percorso di ri-scrittura che
-  non esiste più. Verbale dettagliato nello STORICO.
+- `F-DRIFT` (residuo di F1) — fix nel codice (`riparto_service.py`) + sanatoria
+  dei 19 storici + classe `quote_non_pareggiano` in `v_riparto_incoerenze`.
+  **Due ipotesi sulla causa sono cadute prima di quella giusta**, e la seconda
+  era mia e sembrava misurata. Causa vera: la ricomposizione delle quote per
+  sede fa riemergere i mezzi centesimi. Applicata al DB live: 19 → 0 sbilanciati,
+  9 periodi su 9 quadrano. Verbale dettagliato nello STORICO.
 
 ---
 
