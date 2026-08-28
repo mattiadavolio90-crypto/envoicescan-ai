@@ -124,7 +124,7 @@ export function DemoSidebar({ screen }: { screen: DemoScreen }) {
                   MA
                 </AvatarFallback>
               </Avatar>
-              <div className="flex flex-col gap-0.5 leading-none flex-1 text-left">
+              <div className="flex min-w-0 flex-col gap-0.5 leading-none flex-1 text-left">
                 <span className="text-sm font-medium truncate">{DEMO_RISTORANTE}</span>
                 <span className="text-xs text-muted-foreground truncate">demo@oneflux.it</span>
               </div>
