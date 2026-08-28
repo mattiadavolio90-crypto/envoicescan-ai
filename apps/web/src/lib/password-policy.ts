@@ -30,7 +30,11 @@ function categoriePresenti(password: string): number {
 // controlli che sappiamo replicare fedelmente. null NON significa "accettata":
 // il server ha l'ultima parola e può ancora rifiutarla.
 export function erroreLocalePassword(password: string): string | null {
-  if (password.length < PASSWORD_MIN_LEN) {
+  // [...password] conta i CODEPOINT come len() di Python: password.length conta
+  // unita' UTF-16, quindi un emoji varrebbe 2 e il client direbbe "ok" su una
+  // password che il server rifiuta per lunghezza ("Ab1!" + 3 emoji: 10 in JS,
+  // 7 in Python). Errore nella direzione scomoda: promettere e poi rifiutare.
+  if ([...password].length < PASSWORD_MIN_LEN) {
     return `La password deve essere di almeno ${PASSWORD_MIN_LEN} caratteri`;
   }
   if (categoriePresenti(password) < PASSWORD_MIN_CATEGORIE) {

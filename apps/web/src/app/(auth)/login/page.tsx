@@ -28,14 +28,27 @@ function defaultNext(): string {
 // link /login?next=//evil.com. Finendo tal quale in window.location.href
 // diventerebbe un redirect fuori dominio DOPO un login riuscito — la forma
 // piu' credibile di phishing, perche' l'utente ha appena inserito le
-// credenziali sul dominio vero. Accettiamo solo path interni: il produttore
-// legittimo (proxy.ts:93) scrive sempre e solo un pathname.
+// credenziali sul dominio vero. Il produttore legittimo
+// (apps/web/src/proxy.ts:93) scrive sempre e solo un pathname.
+//
+// NON ispezioniamo il prefisso della stringa: la WHATWG URL Standard rimuove
+// TAB, LF e CR da qualunque posizione PRIMA di parsare, quindi un controllo su
+// startsWith("//") guarda una stringa diversa da quella che il browser
+// risolvera' davvero — "/<TAB>/evil.com" (cioe' ?next=%2F%09%2Fevil.com) supera
+// il controllo sul prefisso e atterra su https://evil.com. Facciamo risolvere
+// l'URL come lo risolvera' il browser e giudichiamo l'ORIGINE del risultato:
+// cosi' la normalizzazione avviene prima del giudizio, non dopo.
 function nextSicuro(raw: string | null): string | null {
   if (!raw) return null;
-  // "//evil.com" e "/\evil.com" sono path-relative per la barra iniziale ma
-  // il browser li risolve come host: serve la seconda barra/backslash fuori.
-  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
-  return raw;
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    // Ritorniamo la forma normalizzata, non `raw`: e' quella che il browser
+    // userebbe comunque, e non contiene piu' i caratteri rimossi in parsing.
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 function LoginForm() {

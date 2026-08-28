@@ -414,7 +414,7 @@ grep -rn "fetch(" "apps/web/src/app/(app)/catena/" | grep -o "/api/[a-z0-9/_-]*"
 - 🔴 **Open redirect su `/login?next=`** — il parametro finiva tal quale in
   `window.location.href`: `//evil.com` e `javascript:` portavano fuori dominio
   **dopo un login riuscito**. Nessuna ipotesi del piano lo prevedeva; è emerso
-  leggendo il consumatore invece di fidarsi del produttore (`proxy.ts:93`).
+  leggendo il consumatore invece di fidarsi del produttore (`apps/web/src/proxy.ts:93`).
 - 🟠 **Cambio password fuori dalla policy GDPR** — dei tre percorsi che scrivono
   una password, solo questo si fermava a `len < 8`. Il client, intanto,
   prometteva "almeno 8 caratteri" mentre il server ne chiede 10 più le

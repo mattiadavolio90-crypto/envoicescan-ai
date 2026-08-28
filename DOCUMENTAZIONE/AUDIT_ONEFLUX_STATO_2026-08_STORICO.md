@@ -113,6 +113,44 @@ Due rilievi **restano aperti**, entrambi annotati per F7:
   `setSelected(prev => …)`. Pre-esistente e innocuo in pratica, ma è il pattern
   che porta a stato stantio.
 
+### Esito del `code-reviewer` (gate di chiusura)
+
+**Primo verdetto: 🔴 NON CHIUSA.** Il reviewer ha trovato che il fix dell'HIGH
+**non chiudeva il difetto che dichiarava chiuso**, e due dei test nuovi non
+coprivano ciò che promettevano. Tutti e tre corretti prima di chiudere davvero.
+
+1. **L'open redirect era ancora sfruttabile.** Il mio filtro ispezionava il
+   *prefisso* della stringa, ma la WHATWG URL Standard **rimuove TAB, LF e CR da
+   qualunque posizione prima di parsare**: `?next=%2F%09%2Fevil.com` diventa
+   `"/<TAB>/evil.com"`, non inizia con `//`, supera il controllo — e il browser
+   lo risolve su `https://evil.com`. Le mie 14 forme erano tutte varianti
+   sintattiche dello stesso prefisso: **avevo testato a fondo l'ipotesi
+   sbagliata.** Riscritto in forma strutturale: si risolve l'URL come farà il
+   browser e si giudica `url.origin`, così la normalizzazione avviene **prima**
+   del giudizio invece che dopo. Riverificato su **26 attacchi** (i 4 bypass
+   compresi) e 7 path legittimi.
+2. **Il mock regalava una colonna che la query non chiedeva.** `FakeSB.select()`
+   ignorava gli argomenti e restituiva sempre la riga intera: togliere
+   `nome_ristorante` dalla select — **metà del fix** — non faceva fallire nulla,
+   mentre in produzione la regola GDPR sul nome del ristorante sarebbe morta in
+   silenzio. Ora `select()` proietta davvero.
+3. **Il test sulla policy client leggeva il `.ts` come testo.** Difendeva due
+   costanti, non il comportamento: mutilare la regex dei simboli o disattivare
+   il controllo di lunghezza lo lasciava verde. Ora **esegue** la funzione vera
+   in node e confronta il verdetto con quello di Python su 400 password.
+
+Non bloccante ma corretto lo stesso: **`password.length` conta unità UTF-16**,
+`len()` di Python conta codepoint — `"Ab1!" + 3 emoji` misura 10 in JS e 7 in
+Python, quindi il client diceva "ok" e il server rifiutava. Ora `[...password]`,
+con un test che lo difende.
+
+Confermati corretti dal reviewer, verificati eseguendo: nessun lock-out per gli
+utenti esistenti (la policy si applica solo alla password *nuova*, e non è
+chiamata in nessun percorso di login); il messaggio d'errore anzi *guadagna*
+informazione (`" ".join(errori)` invece del solo primo); `fetchNotifiche` e
+`fetchConfig` non lanciano mai e il `redirect()` non è dentro un try/catch; il
+cookie di logout viene cancellato incondizionatamente anche a worker morto.
+
 ### Lezioni di metodo
 
 - **Contare `.map(` e `reduce(` non misura il rischio.** I "78 siti di calcolo
@@ -155,7 +193,7 @@ davvero, risoluzione URL provata in Node, esposizione contata sul DB live.
 ### Il difetto più grave, che nessuna ipotesi prevedeva
 
 **Open redirect sul login.** `?next=` veniva letto da `useSearchParams` e messo
-tal quale in `window.location.href`. Il produttore legittimo (`proxy.ts:93`)
+tal quale in `window.location.href`. Il produttore legittimo (`apps/web/src/proxy.ts:93`)
 scrive sempre un pathname, ma **nessuno validava il consumatore**: un link
 fabbricato portava fuori dominio **dopo un login riuscito**, cioè nel momento in
 cui l'utente ha appena dimostrato di fidarsi del sito.
@@ -239,3 +277,13 @@ di `test_upload_ai_background.py:263`.
   va **aggiunta a mano** all'altro. È la versione strutturale della trappola già
   a verbale in CLAUDE.md («`/m` è un frontend separato, non responsive»), e vale
   per l'auth, non solo per la grafica.
+- **Aver testato molto non vuol dire aver testato la cosa giusta.** Le 14 forme
+  provate sull'open redirect erano tutte varianti del *prefisso*, e il bypass
+  non stava nel prefisso: stava nel fatto che il browser **normalizza la
+  stringa prima di risolverla**. Un filtro che ispeziona il testo grezzo giudica
+  qualcosa di diverso da ciò che verrà eseguito. La forma robusta è far fare la
+  normalizzazione all'API vera (`new URL`) e giudicare *dopo*. Vale oltre gli
+  URL: ogni volta che si valida una stringa che qualcun altro re-interpreterà.
+- **Un mock generoso è un test che mente.** `FakeSB` restituiva colonne mai
+  richieste: metà del fix era scoperta e la suite diceva verde. I mock vanno
+  resi *severi quanto la cosa vera*, non comodi.

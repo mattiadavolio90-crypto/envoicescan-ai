@@ -23,16 +23,25 @@ class _Row:
 
 class FakeSB:
     """Mock supabase: select().eq().single().execute() per la lettura utente,
-    update().eq().execute() per la scrittura (registrata, per asserirla)."""
+    update().eq().execute() per la scrittura (registrata, per asserirla).
+
+    `select()` PROIETTA davvero le colonne richieste. Un mock che restituisce
+    sempre la riga intera regala al codice colonne che la query reale non ha
+    chiesto: cosi' togliere `nome_ristorante` dalla select non farebbe fallire
+    nessun test, mentre in produzione la regola GDPR "non usare il nome del
+    ristorante" smetterebbe di scattare in silenzio.
+    """
 
     def __init__(self, utente):
         self.utente = utente
         self.updates = []
+        self.colonne = None
 
     def table(self, _name):
         return self
 
-    def select(self, *_a, **_k):
+    def select(self, colonne="*", *_a, **_k):
+        self.colonne = [c.strip() for c in colonne.split(",")] if colonne != "*" else None
         return self
 
     def update(self, payload):
@@ -46,7 +55,9 @@ class FakeSB:
         return self
 
     def execute(self):
-        return _Row(self.utente)
+        if self.colonne is None:
+            return _Row(dict(self.utente))
+        return _Row({k: v for k, v in self.utente.items() if k in self.colonne})
 
 
 UTENTE = {
