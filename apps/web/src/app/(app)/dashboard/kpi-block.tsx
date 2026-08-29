@@ -124,6 +124,11 @@ function MolAndamento({
   punti: { mese: number; mol: number }[];
   anno: number | null;
 }) {
+  // Guardia DENTRO il componente, come nel gemello MolSparkline: con un solo
+  // punto x() divide per (n-1) = 0 e la linea esce NaN, con zero punti
+  // punti[n-1] e' undefined. Al call-site non basta -- e' cosi' che le due
+  // copie hanno gia' divergito.
+  if (punti.length < 2) return null;
   const W = 240;
   const H = 40;
   const PAD = 4;
@@ -308,8 +313,9 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
       </div>
 
       {/* Andamento MOL nell'anno: fascia a sé in fondo, con periodo e % YTD.
-          Appare solo con >=2 mesi di dati (sotto, una linea non avrebbe senso). */}
-      {kpi.mol_mensile.length >= 2 && (
+          La soglia dei 2 mesi (sotto, una linea non avrebbe senso) sta dentro
+          MolAndamento, non qui. */}
+      {kpi.mol_mensile.length > 0 && (
         <MolAndamento punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} />
       )}
     </div>
