@@ -46,9 +46,12 @@ type RigaAnteprima = {
 };
 
 function euro(n: number): string {
-  // Niente maximumFractionDigits: 0 — il totale va con i centesimi come le righe
-  // per-fattura qui sotto, altrimenti la somma a schermo non torna con gli
-  // addendi (743,60 arrotondato a 744).
+  // Niente maximumFractionDigits: 0: il totale deve avere i centesimi come gli
+  // addendi che somma, altrimenti a schermo non torna (743,60 -> 744). Le cifre
+  // coincidono con le righe per-fattura, non il formato: li' il simbolo precede
+  // (`€ 743,60`), qui segue (`743,60 €`).
+  //
+  // Il commento va tenuto allineato al codice: e' un totale mostrato al cliente.
   return new Intl.NumberFormat("it-IT", {
     style: "currency",
     currency: "EUR",

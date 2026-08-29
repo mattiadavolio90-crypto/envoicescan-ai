@@ -557,12 +557,23 @@ d'iniziativa.
 `minimumFractionDigits: 2`; l'implementazione **rimuove** invece
 `maximumFractionDigits: 0` senza aggiungere nulla, perché `Intl` con
 `style: "currency"` su EUR ha già i 2 decimali di default — stesso risultato,
-un'opzione in meno. Verificato: `743,60 €` contro il `744 €` di prima, e ora
-coincide col formato delle righe per-fattura (`€ 743,60`). Emerso in verifica un
-dettaglio che **non** ho toccato: `1000` rende `1000,00 €` senza separatore di
-migliaia — ma è così anche nella riga per-fattura, quindi il fix **allinea** i due
-formati invece di introdurre una terza variante. Cambiarlo sarebbe stato un
-ritocco estetico non richiesto su un numero a schermo.
+un'opzione in meno. Verificato: `743,60 €` contro il `744 €` di prima.
+
+**Correzione dopo la review** (avevo scritto due cose sbagliate, trovate dal
+`code-reviewer` e non da me):
+
+1. Avevo scritto che le cifre "coincidono col formato delle righe per-fattura".
+   Coincidono le **cifre**, non il **formato**: `euro()` mette il simbolo *dopo*
+   (`743,60 €`), le righe per-fattura e `fmtEuro4()` lo mettono *prima*
+   (`€ 743,60`). Restano quindi **2 varianti** di formato valuta nel file, non 1:
+   il fix scende da 3 a 2, non azzera l'incoerenza. La posizione del simbolo è
+   preesistente e fuori dal perimetro di questa decisione.
+2. Avevo scritto che «`1000` rende `1000,00 €` senza separatore di migliaia» come
+   se fosse una peculiarità del fix. **Falso**: è il comportamento standard di
+   `it-IT`, che a 4 cifre non mette il separatore, e vale identico nelle righe
+   per-fattura. Misurato: `10000` → `10.000,00 €` e `€ 10.000,00`; `448775.33` →
+   `448.775,33 €` e `€ 448.775,33`. Il separatore c'è in entrambi da 10.000 in su.
+   Non c'era nessun "dettaglio non toccato": non c'era proprio un difetto.
 
 **3. 🔵 `ripartisci-dialog`: la somma percentuali diverge dal server sui valori
 negativi — DA DECIDERE**
@@ -824,6 +835,15 @@ Il mutante muore in entrambi i casi. **Correzione al verbale F4**: avevo scritto
 che `MolAndamento` "da solo crasherebbe a 0 punti", fermandomi al caso che
 crasha. Il caso a **1 punto** è peggiore — non crasha, rende `NaN` dentro il
 path SVG, cioè fallisce in modo silenzioso.
+
+**Precisazione emersa in review**: il fix **sposta** la soglia dei 2 punti, non la
+elimina. Oggi vive in **tre** posti — `services/fastapi_worker.py:7318`
+(`if len(mol_mensile) < 2: mol_mensile = []`), il commento del tipo in
+`lib/home.ts:86`, e ora il componente. È difesa in profondità, non duplicazione
+da sanare: il worker garantisce già che la lista sia vuota o ≥2, quindi sui dati
+reali il caso a 1 punto **non può arrivare** e la guardia interna protegge da un
+riuso futuro, non da uno stato attuale. Per la stessa ragione il passaggio del
+call-site da `>= 2` a `> 0` è indistinguibile sui dati veri.
 
 ### Verifica
 
