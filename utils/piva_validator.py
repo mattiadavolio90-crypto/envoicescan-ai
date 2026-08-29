@@ -54,13 +54,14 @@ def valida_formato_piva(piva: str) -> Tuple[bool, str]:
     # Normalizza: rimuovi spazi, trattini, punti
     piva_pulita = normalizza_piva(piva)
     
-    # 1. Verifica lunghezza esatta 11 cifre
-    if len(piva_pulita) != 11:
-        return False, f"❌ La P.IVA deve contenere esattamente 11 cifre (trovate: {len(piva_pulita)})"
-    
-    # 2. Verifica solo numeri
+    # 1. Verifica solo numeri (prima della lunghezza: su una P.IVA estera
+    # "trovate: 13" sarebbe fuorviante, il problema e' il prefisso nazionale)
     if not piva_pulita.isdigit():
         return False, "❌ La P.IVA può contenere solo numeri"
+    
+    # 2. Verifica lunghezza esatta 11 cifre
+    if len(piva_pulita) != 11:
+        return False, f"❌ La P.IVA deve contenere esattamente 11 cifre (trovate: {len(piva_pulita)})"
     
     # 3. Verifica checksum
     if not _verifica_checksum_piva(piva_pulita):
@@ -109,20 +110,27 @@ def _verifica_checksum_piva(piva: str) -> bool:
 
 def normalizza_piva(piva: str) -> str:
     """
-    Normalizza P.IVA rimuovendo caratteri non numerici.
+    Normalizza P.IVA rimuovendo separatori e prefisso nazionale IT.
     
     Rimuove:
     - Spazi
     - Trattini
-    - Punti
-    - Qualsiasi carattere non numerico
+    - Punti e slash
+    - Il prefisso `IT` (solo quello)
     
     Args:
         piva: Stringa P.IVA con possibili formattazioni
     
     Returns:
-        str: P.IVA con sole cifre numeriche
+        str: P.IVA senza separatori (eventuali lettere restano)
     
+    Rimuove separatori e il solo prefisso nazionale `IT`. Le altre lettere
+    NON vengono rimosse: cancellarle faceva passare una P.IVA estera per
+    italiana (`DE12345678903` -> `12345678903`, checksum valido, accettata),
+    e rendeva irraggiungibile il controllo "solo numeri" di
+    `valida_formato_piva`. Chi normalizza per confrontare due P.IVA continua
+    a ottenere la stessa stringa; chi valida ora vede la lettera e la rifiuta.
+
     Esempi:
         >>> normalizza_piva("123 456 789 01")
         '12345678901'
@@ -132,6 +140,9 @@ def normalizza_piva(piva: str) -> str:
         
         >>> normalizza_piva("123-456-789-01")
         '12345678901'
+        
+        >>> normalizza_piva("DE12345678903")
+        'DE12345678903'
     """
     if not piva:
         return ""
@@ -141,49 +152,9 @@ def normalizza_piva(piva: str) -> str:
     if piva_upper.startswith('IT'):
         piva_upper = piva_upper[2:]
     
-    # Rimuovi tutti i caratteri non numerici
-    return re.sub(r'[^0-9]', '', piva_upper)
-
-
-def verifica_piva_duplicata(piva: str, supabase_client, exclude_user_id: str = None) -> Tuple[bool, str]:
-    """
-    Verifica se P.IVA è già registrata da altro utente.
-    
-    Args:
-        piva: P.IVA da verificare (già normalizzata)
-        supabase_client: Client Supabase per query
-        exclude_user_id: ID utente da escludere (per modifica profilo)
-    
-    Returns:
-        Tuple[bool, str]:
-            - (True, "") se P.IVA disponibile
-            - (False, "email@esistente.it") se già registrata
-    """
-    try:
-        piva_norm = normalizza_piva(piva)
-        
-        if not piva_norm:
-            return True, ""  # P.IVA vuota permessa (NULL)
-        
-        query = supabase_client.table('users')\
-            .select('email')\
-            .eq('partita_iva', piva_norm)
-        
-        # Escludi utente corrente se sta modificando il proprio profilo
-        if exclude_user_id:
-            query = query.neq('id', exclude_user_id)
-        
-        result = query.execute()
-        
-        if result.data and len(result.data) > 0:
-            email_esistente = result.data[0].get('email', 'altro utente')
-            return False, email_esistente
-        
-        return True, ""
-        
-    except Exception as e:
-        logger.error(f"Errore verifica P.IVA duplicata: {e}")
-        return True, ""  # In caso di errore DB, non bloccare
+    # Rimuovi i soli separatori di formattazione (spazi, punti, trattini,
+    # slash): tutto il resto resta, cosi' la validazione a valle puo' vederlo.
+    return re.sub(r'[\s.\-/]', '', piva_upper)
 
 
 # ============================================================
