@@ -171,19 +171,37 @@ def test_i_kpi_non_dipendono_dal_fuso():
     E' il test che sarebbe stato rosso prima del fix di `parseLocalDate`: un
     pagamento del primo del mese, letto come mezzanotte UTC, cadeva il giorno
     prima in un fuso a ovest e usciva da "Pagate (mese)".
-    """
-    oggi_rm, docs = _campione("Europe/Rome")
-    oggi_la = _oggi_in("America/Los_Angeles")
-    if oggi_rm != oggi_la:
-        # Le due macchine virtuali sono a cavallo della mezzanotte: ricostruisco
-        # sul fuso piu' indietro invece di skippare (uno skip qui riaprirebbe la
-        # porta allo skip verde).
-        _, docs = _campione("America/Los_Angeles")
 
-    assert _kpi(docs, "Europe/Rome") == _kpi(docs, "America/Los_Angeles"), (
-        "i KPI cambiano col fuso: una data nuda 'YYYY-MM-DD' e' stata letta con "
-        "new Date() invece che con parseLocalDate()"
+    **Confronta solo i KPI delle PAGATE.** Prima stesura sbagliata (CI rossa,
+    trovata dal code-reviewer): confrontava tutti i KPI di un campione unico
+    valutato in due fusi. Ma fra le 22:00 e le 00:00 UTC Roma e Los Angeles
+    sono in due giorni diversi, quindi un documento "scade oggi" e' gia'
+    scaduto per l'uno e non per l'altro — **per costruzione**, senza che il
+    codice abbia niente che non va. Il test era rosso ~2 ore su 24.
+
+    I bucket di scadenza dipendono legittimamente dal "today" locale; a non
+    dover dipendere dal fuso e' la lettura di `pagata_at`, che e' una data
+    nuda "YYYY-MM-DD" e vale lo stesso giorno ovunque. Quindi il campione usa
+    solo pagate, con date fisse e lontane dai confini di "oggi".
+    """
+    # Date fisse: qui non serve la relativita' a oggi (nessun confronto con
+    # today), e serve invece che i due fusi vedano esattamente lo stesso input.
+    oggi_utc = _oggi_in("UTC")
+    primo = oggi_utc.replace(day=1)
+    mese_scorso = (primo - datetime.timedelta(days=1)).replace(day=1)
+    pagate = [
+        _doc(id="primo", totale_documento=320, pagata=True,
+             pagata_at=primo.isoformat(), scadenza_effettiva="2020-01-01"),
+        _doc(id="vecchia", totale_documento=640, pagata=True,
+             pagata_at=mese_scorso.isoformat(), scadenza_effettiva="2020-01-01"),
+    ]
+
+    rm, la = _kpi(pagate, "Europe/Rome"), _kpi(pagate, "America/Los_Angeles")
+    assert rm["pagate_mese_count"] == la["pagate_mese_count"], (
+        "i KPI delle pagate cambiano col fuso: una data nuda 'YYYY-MM-DD' e' "
+        "stata letta con new Date() invece che con parseLocalDate()"
     )
+    assert rm["pagate_mese_totale"] == la["pagate_mese_totale"]
 
 
 @pytest.mark.parametrize("tz", FUSI)
