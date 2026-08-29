@@ -1,6 +1,13 @@
 # Punto 9 — F2-NOTEST: nessun test runner frontend
 
-> **Stato: decisione aperta, di proposito.** Non è una svista d'audit: introdurre
+> **DECISA il 29/08/2026: opzione A**, con la tecnica di esecuzione aggiornata
+> (import del modulo vero via `--experimental-strip-types` + `registerHooks`,
+> non piu' estrazione con regex). Implementati i primi test veri su
+> `categorie-spesa.ts` e `scadenziario.ts`: 52 test, tutti provati per
+> mutazione. Dettaglio nel verbale dello STORICO. Il testo sotto e' quello che
+> ha preparato la decisione, conservato con le correzioni segnate.
+>
+> **Stato originale: decisione aperta, di proposito.** Non è una svista d'audit: introdurre
 > un runner è una scelta di progetto, e Mattia l'ha esplicitamente separata dagli
 > altri 8 punti del ciclo 2026-08. Questo file prepara quella decisione; non la
 > prende.
@@ -68,9 +75,13 @@ Test in `tests/*.py` che eseguono funzioni TS pure via `node -e`.
   verde da giorni, un solo comando (`pytest`) per tutto il progetto.
 - **Contro**: funziona solo su **logica pura**. Niente componenti, niente hook,
   niente rendering. Spogliare i tipi a mano è fragile su file complessi.
-- **Superficie coperta**: `apps/web/src/lib/` — **3.339 righe**, dove sta la
-  logica che calcola numeri (`margini.ts`, `foodcost.ts`, `format.ts`,
-  `categorie-spesa.ts`).
+- **Superficie coperta**: `apps/web/src/lib/` — 3.339 righe su 30 file, ma la
+  logica pura e' molto meno. **Correzione del 29/8**: `margini.ts` era citato
+  qui come «dove sta il calcolo dei numeri» ed e' falso — contiene solo tipi e
+  wrapper `fetch`, il calcolo e' server-side. Gran parte di `lib/` e' cosi'.
+  I moduli con logica vera sono `scadenziario.ts` (`computeKpi`,
+  `bucketizeDocumenti`), `categorie-spesa.ts`, `inventario.ts`,
+  `trigger-servizi.ts`, `format.ts`, `foodcost.ts` (`coloreFC`).
 
 ### B — Vitest (runner vero, solo unit)
 - **Pro**: esegue TS nativamente, niente spogliatura, copre anche hook e
