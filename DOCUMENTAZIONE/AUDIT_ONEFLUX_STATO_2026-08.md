@@ -196,8 +196,8 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 |---|---|---|---|---|
 | **F1** | Frontend **catena/** — i 10 file mai letti | 3.012 | 🔴 €67.591,75 | 🟢 **CHIUSA** 28/8 |
 | **F2** | Frontend **impostazioni + account + auth** | 1.942 | 🟠 362 sessioni, 7 utenti | 🟢 **CHIUSA** 28/8 |
-| **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | ~7.274 | 🟠 attraversa tutto | ⚪ APERTA |
-| **F4** | Frontend **analisi-fatture/upload-modal + dashboard/** | ~1.900 | 🟠 6.917 upload | ⚪ APERTA |
+| **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | 7.277 | 🟠 attraversa tutto | 🟢 CHIUSA 29/08 |
+| **F4** | Frontend **analisi-fatture/ + dashboard/** | 4.409 | 🟠 6.917 upload | 🟢 CHIUSA 29/08 |
 | **F5** | Python — i **4 moduli mai auditati come oggetto proprio** | 1.899 | 🟡 da misurare in fase | ⚪ APERTA |
 | **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | ~3.900 | ⚪ bassa/nulla | ⚪ APERTA |
 | **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | — | ⚪ APERTA |
@@ -449,9 +449,9 @@ un mese dal go-live.
 
 ---
 
-## ⚪ F3 — Frontend `components/` condivisi
+## 🟢 F3 — Frontend `components/` condivisi — CHIUSA 29/08/2026
 
-**Perimetro**: `apps/web/src/components/` — **7.274 righe in 53 file**, di cui
+**Perimetro**: `apps/web/src/components/` — **7.277 righe in 53 file**, di cui
 non letti fra gli altri:
 - `apps/web/src/components/fatture/coda-da-assegnare.tsx` — **701 righe**
 - `apps/web/src/components/ui/sidebar.tsx` — 723
@@ -464,28 +464,42 @@ pagina che lo usa. `coda-da-assegnare.tsx` tocca la **coda di assegnazione
 fatture**, cioè la regola di dominio #1 (`Da Classificare`): va verificato che
 non reintroduca un fallback travestito lato client.
 
-**Nota di perimetro**: `components/ui/` è in larga parte shadcn generato. Da
-**dichiarare escluso con la misura** (quanti file sono vendored e non modificati)
-invece che letto riga per riga — ma la dimensione 6 ha già trovato lì un `Select`
-morto, quindi l'esclusione va argomentata, non assunta.
+**Nota di perimetro — SMENTITA dalla misura (29/8)**: si dava `components/ui/`
+per «in larga parte shadcn generato». Non lo è: `grep -c radix-ui` sui 23 file
+→ **0** (il progetto usa `@base-ui/react`), e `git log` mostra **14 commit tutti
+di Mattia**. Sono codice di progetto riscritto a mano. Esclusi comunque dalla
+lettura riga per riga, ma per il motivo giusto: **non fanno I/O e non toccano
+dati cliente**. `demo/` + `landing/` (2.675 righe) esclusi con la stessa misura:
+**zero `fetch`**.
+
+**Esito**: 1 finding 🟡 fixato (`MobileRedirect` non scattava su `/margini`:
+`startsWith("/m")` matcha per prefisso), 2 findings di presentazione/UX lasciati
+come decisione. Verbale completo in `AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`.
 
 ---
 
-## ⚪ F4 — Frontend upload + dashboard
+## 🟢 F4 — Frontend upload + dashboard — CHIUSA 29/08/2026
 
-**Perimetro**:
-- `apps/web/src/app/(app)/analisi-fatture/upload-modal.tsx` — 454
-- `apps/web/src/app/(app)/dashboard/chat-widget.tsx` — 338
-- `apps/web/src/app/(app)/dashboard/kpi-block.tsx` — 317
-- `apps/web/src/app/(app)/dashboard/config-assistente.tsx` — 233
-- `apps/web/src/app/(app)/dashboard/notifiche-widget.tsx` — 222
+**Perimetro — CORRETTO alla misura (29/8)**: la roadmap elencava 5 file per
+1.564 righe (e ~1.900 in tabella). Il perimetro reale è di **4.409 righe in 18
+file**. Mancavano i **due file più grandi dell'area**, entrambi in
+`analisi-fatture/`: `articoli-tab.tsx` (**856**) e `pivot-tab.tsx` (**744**).
+Il primo è dove il cliente riclassifica le righe — regola di dominio #1 — ed è
+stato toccato il 28/8: auditare i soli 5 file dichiarati l'avrebbe saltato.
 
-**Esposizione**: 6.917 `upload_events` — il flusso più caldo dell'app.
+**Esposizione**: 6.917 `upload_events`, **426 negli ultimi 30 giorni** (ultimo
+28/8) — percorso vivo.
 
-**Ipotesi**: la validazione magic-bytes (PDF/XML/P7M) è server-side; il client
-fa un filtro proprio per estensione che diverge? Un file rifiutato dal server
-dopo essere stato accettato dal client è un difetto di esperienza, non di
-sicurezza — ma un file accettato dal client e **silenziosamente perso** no.
+**Esito**: **nessun fix**, tutte le ipotesi chiuse in negativo. La validazione
+magic-bytes **è** presente sul percorso vivo (`fastapi_worker.py:1892`), il
+client è più stretto del server, e nessun file può finire in uno stato
+invisibile. Restano 2 findings, entrambi **decisione aperta**: 🟡 il calcolo YTD
+duplicato fra `kpi-block.tsx` e `sintesi-catena.tsx`, le cui due copie **sono già
+divergenti** (la guardia `punti.length < 2` è interna in una e al call site
+nell'altra — `MolAndamento` da solo crasherebbe a 0 punti); 🔵 il commento su
+`ai_pending` nel worker prescrive un comportamento che il commit `dfdebc2` ha
+deliberatamente abbandonato. Verbale completo in
+`AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`.
 
 ---
 
