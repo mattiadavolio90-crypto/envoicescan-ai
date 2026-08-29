@@ -284,7 +284,7 @@ generate casualmente: zero divergenze.**
 | F2-MOBILE | 🟠 MED | cold-start del worker slogga dalla PWA (7 pagine, 82 sessioni/30gg) | fixato |
 | F2-LOGOUT | 🟡 LOW | `logoutSession` unica chiamata worker senza timeout: worker appeso = utente non esce | fixato |
 | F2-NOTEST | ⚪ | zero infrastruttura di test frontend (confermato anche in F1) | **aperto — a Mattia** |
-| F2-VERIFY | ⚪ | `cambia-password` senza test su `verify_and_migrate_password` (preesistente) | **aperto — a F7** |
+| F2-VERIFY | 🟢 | `cambia-password` senza test su `verify_and_migrate_password` (preesistente) | **chiuso 28/8** — il gate sulla password attuale non era coperto (disattivandolo restavano 81 test verdi) |
 
 `F2-NOTEST` non è un fix d'audit: introdurre un runner è una decisione di
 progetto. Nel frattempo gli invarianti client sono difesi da test **Python**
@@ -1408,26 +1408,54 @@ corretti sotto deroga (frontend `(app)/`, poche righe, `tsc --noEmit` EXIT 0).
 #### 1. `nascosti` sottostimava — e la misura è peggiore dell'annotazione
 
 Il rilievo diceva «il numero mostrato non è un limite superiore garantito».
-**Quantificato ora, eseguendo la RPC sul DB live:**
+**Quantificato ora, eseguendo la RPC sul perimetro che il codice usa davvero** —
+cioè le sedi di **un** account, come le risolve `_resolve_gruppo`
+(`routers/gruppo.py:653`, filtra `user_id` **e** `sede_tecnica = false`):
 
-```sql
-SELECT count(*) FROM gruppo_tag_descrizioni(<sedi attive>, NULL, 500);    -->   500
-SELECT count(*) FROM gruppo_tag_descrizioni(<sedi attive>, NULL, 100000); --> 6.862
-```
+| account | PV | RPC (`p_limit: 500`) | descrizioni reali |
+|---|---|---|---|
+| `51015cc8-…` (il gruppo reale) | 4 | **500** | **4.518** |
+| `2f3f93a1-…` | 2 | 541 | 541 — **non satura** |
 
-La RPC **satura davvero**: `routers/gruppo.py:2077` passa `p_limit: 500`, e le
-descrizioni reali sono **6.862**. Il client tronca a 60 e mostrava
-«Altri **440** prodotti non mostrati», mentre i nascosti reali sono **6.802** —
-**sottostimati di 15 volte**. Vale in entrambi i rami: anche con testo di
-ricerca (`q='A'`) la RPC ritorna 500 contro 6.166 reali.
+La RPC **satura davvero** per il gruppo reale: 500 ricevute su **4.518**
+esistenti. Il client tronca a 60 e mostrava «Altri **N** prodotti non mostrati»
+con N calcolato sul troncone.
+
+> **Correzione (review finale).** Avevo scritto **6.862** descrizioni. Quella
+> cifra si ottiene passando alla RPC **tutte le sedi attive di tutti gli
+> account insieme** — un insieme che `_resolve_gruppo` non produce **mai**,
+> perché filtra per `user_id`. Mescolava i dati di due clienti diversi e
+> gonfiava il numero del ~52%. Stesso errore di F6: misura fatta su un
+> perimetro che il codice non usa. Il difetto resta reale (4.518 ≫ 500), ma la
+> cifra giusta è **4.518**. Per il secondo account il messaggio era già
+> corretto: 541 descrizioni, la RPC non satura.
 
 Non è un numero che sposta soldi, ma è un numero **mostrato al cliente e falso**.
 
-**Fix applicato (client):** il memo espone anche `poolSaturo` (`pool.length >= 500`).
-Quando il pool è saturo il messaggio diventa «Altri prodotti non mostrati», senza
-cifra; quando non lo è, la cifra resta ed è esatta. Il pulsante
-`Seleziona questi ${candidati.length}` **non è stato toccato**: conta i visibili,
-ed era già corretto.
+**Fix applicato (client):** il memo espone `poolSaturo`, misurato sulla
+**risposta della RPC** (`risposta.length >= 500`), non sul pool filtrato. Quando
+è saturo il messaggio diventa «Altri prodotti non mostrati», senza cifra.
+
+> **Il primo tentativo era sbagliato, e l'ha trovato la review.** Avevo scritto
+> `poolSaturo: pool.length >= 500`, misurandolo **dopo** i filtri client
+> (`giaAssociate` e il testo digitato). Con 67 associazioni il pool scendeva a
+> 433: la guardia non scattava e la cifra falsa riappariva. **Non scattava su
+> nessuno dei 3 tag reali**, e bastava digitare una lettera per disattivarla.
+> Verificato per mutazione su copia in scratchpad, sui 4 casi reali:
+>
+> | caso | versione vecchia | versione nuova |
+> |---|---|---|
+> | tag 3 (5 assoc) | mostra «altri 435» | guardia ON |
+> | tag 4 (67 assoc) | mostra «altri 373» | guardia ON |
+> | tag 5 (6 assoc) | mostra «altri 434» | guardia ON |
+> | tag 3 + 1 lettera | mostra «altri 0» | guardia ON |
+>
+> La saturazione è una proprietà di **ciò che il server ha mandato**, non di ciò
+> che resta dopo i filtri. L'operatore `>= 500` era giusto; era sbagliato il
+> punto in cui misuravo.
+
+Il pulsante `Seleziona questi ${candidati.length}` **non è stato toccato**:
+conta i visibili, ed era già corretto.
 
 **Il fix vero resta fuori deroga** e non è stato fatto: alzare `p_limit` o far
 tornare alla RPC un conteggio totale separato dalla pagina. Tocca Python e la
@@ -1443,7 +1471,7 @@ invalida. Effetto possibile: il pulsante esegue l'azione **opposta** a quella ch
 la sua etichetta mostra.
 
 **Fix:** il predicato si ricalcola da `prev` dentro l'updater. `tuttiSelezionati`
-resta per l'etichetta (`:425`), dove leggere il valore del render è corretto.
+resta per l'etichetta (`:436`), dove leggere il valore del render è corretto.
 
 Era annotato «pre-esistente e innocuo in pratica» — resta vero, ma è il pattern
 che genera stato stantio, ed è una riga.

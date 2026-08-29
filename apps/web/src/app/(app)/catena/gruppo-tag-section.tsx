@@ -301,27 +301,32 @@ function ProdottiDialog({
   // `nascosti` = quanti il taglio a 60 lascia fuori. Senza, la lista sembra
   // completa e "Seleziona tutti" (che agisce solo sui visibili) mente.
   //
-  // `poolSaturo`: il pool arriva da una RPC che tronca a 500 (routers/gruppo.py,
+  // `poolSaturo`: la RPC che alimenta la lista tronca a 500 (routers/gruppo.py,
   // `p_limit: 500`), quindi quando ne torna esattamente 500 `nascosti` NON e' il
-  // numero reale — e' solo quanto resta del troncone. Misurato sui dati veri:
-  // 6.862 descrizioni esistenti, 500 ricevute, "440 altri" mostrati contro 6.802
-  // reali. Il conteggio si mostra solo quando e' esatto; se il pool e' saturo si
-  // dice che ce ne sono altri senza dare una cifra falsa.
+  // numero reale — e' solo quanto resta del troncone. Misurato sull'account di
+  // catena reale (4 PV): 4.518 descrizioni esistenti, 500 ricevute.
+  //
+  // Si misura sulla RISPOSTA della RPC, prima dei filtri client: `pool` e' gia'
+  // passato per `giaAssociate` (e per il testo digitato), quindi con 67
+  // associazioni scendeva a 433 e la guardia non scattava piu' — bastava una
+  // lettera digitata per far riapparire la cifra falsa. La saturazione e' una
+  // proprieta' di cio' che il server ha mandato, non di cio' che resta dopo.
   const { candidati, nascosti, poolSaturo } = useMemo(() => {
     const f = filtro.trim();
-    const pool =
-      f.length >= 2
-        ? (risultati ?? []).filter((d) => !giaAssociate.has(d.descrizione_key))
-        : (() => {
-            const fu = f.toUpperCase();
-            return disponibili
-              .filter((d) => !giaAssociate.has(d.descrizione_key))
-              .filter((d) => (fu ? d.descrizione.toUpperCase().includes(fu) : true));
-          })();
+    const inRicerca = f.length >= 2;
+    const risposta = inRicerca ? (risultati ?? []) : disponibili;
+    const pool = inRicerca
+      ? risposta.filter((d) => !giaAssociate.has(d.descrizione_key))
+      : (() => {
+          const fu = f.toUpperCase();
+          return risposta
+            .filter((d) => !giaAssociate.has(d.descrizione_key))
+            .filter((d) => (fu ? d.descrizione.toUpperCase().includes(fu) : true));
+        })();
     return {
       candidati: pool.slice(0, 60),
       nascosti: Math.max(0, pool.length - 60),
-      poolSaturo: pool.length >= 500,
+      poolSaturo: risposta.length >= 500,
     };
   }, [disponibili, risultati, giaAssociate, filtro]);
 

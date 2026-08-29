@@ -366,7 +366,7 @@ il client tronca a 60 senza dirlo. → finding F-60.
 | **F-60** | 🟡 LOW/MED | Troncamento silenzioso a 60 candidati | **FIXATO** |
 | **F-REDIRECT** | 🟡 LOW | Worker giù → redirect invece di BlockRetry | **FIXATO** |
 | **F-DACLASS** | 🟡 LOW | `"Da Classificare"` hardcoded 7× su 4 file | **FIXATO** |
-| **F-DRIFT** | ⚪ | 19 costi su 156: somma quote ≠ totale, max 1 cent | **aperto, a Mattia** |
+| **F-DRIFT** | 🟢 | 19 costi su 156: somma quote ≠ totale, max 1 cent | **chiuso 28/8** (guardia SQL + sanatoria, PR #44 `df19cce`) — 0 costi sbilanciati sul DB live |
 | **F-CHAT** | 🟠 MEDIUM | Tool chat catena rotto (token passato come `mese`) | **FIXATO** (fuori perimetro, trovato in review) |
 
 **H2-BIS in dettaglio.** `gruppo_salute_componenti` legge solo `margini_mensili`.
@@ -664,10 +664,13 @@ nel verbale con il dettaglio per file, `personale-tab.tsx` in testa.
    **residui precedenti** al fix del 27/8 (`c9c9dd9`) — zero casi dopo — e non
    mostrano numeri sbagliati al cliente.
 2. ✅ **I 2 rilievi lasciati aperti dalla review di F1**, entrambi ancora
-   presenti nel codice, entrambi corretti: `nascosti` mostrava «altri 440»
-   contro **6.802** reali (RPC satura a 500 su 6.862 descrizioni) — ora la cifra
-   sparisce quando il pool è saturo; `toggleTutti` leggeva lo stato dalla
-   closure — ora si ricalcola da `prev`.
+   presenti nel codice, entrambi corretti: `nascosti` mostrava una cifra
+   calcolata sul troncone (la RPC satura a 500 su **4.518** descrizioni
+   dell'account di catena reale) — ora sparisce quando la risposta della RPC è
+   satura; `toggleTutti` leggeva lo stato dalla closure — ora si ricalcola da
+   `prev`. Entrambi i fix sono stati **rifatti dopo la review finale**: il primo
+   misurava la saturazione dopo i filtri client e non scattava su nessuno dei 3
+   tag reali; la cifra 6.862 sommava sedi di account diversi.
 3. ✅ `code-reviewer` sul diff cumulativo.
 4. ✅ "Ciclo chiuso il 29/08/2026" in cima a questo file.
 5. ⏭️ Spostamento in `docs/storico/` e apertura del ciclo nuovo: **da fare
