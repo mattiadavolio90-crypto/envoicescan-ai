@@ -95,6 +95,17 @@ la classe di difetto che questo lavoro esiste per prevenire:
   il file nomina le 4 generali e **nessuna** F&B — e verificata contro tutte e
   tre le forme.
 
+**E una CI rossa**: `test_i_kpi_non_dipendono_dal_fuso` confrontava tutti i KPI
+di un campione unico valutato in due fusi. Ma fra le 22:00 e le 00:00 UTC Roma e
+Los Angeles sono in **due giorni diversi**, quindi un documento «scade oggi» è
+già scaduto per l'uno e non per l'altro — per costruzione, senza che il codice
+abbia niente che non va. Il test era rosso ~2 ore su 24, e la «mitigazione» che
+avevo scritto (ricostruire sul fuso più indietro) spostava il buco invece di
+chiuderlo, perché il campione veniva poi valutato in entrambi. Riscritto: si
+confrontano solo i KPI delle **pagate**, dove `pagata_at` è una data nuda che
+vale lo stesso giorno ovunque. I bucket di scadenza dipendono legittimamente dal
+"today" locale e non vanno confrontati fra fusi.
+
 Mutanti provati in totale: **9**, tutti uccisi. Due erano stati "provati" con un
 pattern che non matchava il sorgente: non applicavano nessuna mutazione, e il
 loro "sopravvissuto" non voleva dire niente. Ri-eseguiti sul codice vero.
