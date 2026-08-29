@@ -493,12 +493,19 @@ stato toccato il 28/8: auditare i soli 5 file dichiarati l'avrebbe saltato.
 **Esito**: **nessun fix**, tutte le ipotesi chiuse in negativo. La validazione
 magic-bytes **è** presente sul percorso vivo (`fastapi_worker.py:1892`), il
 client è più stretto del server, e nessun file può finire in uno stato
-invisibile. Restano 2 findings, entrambi **decisione aperta**: 🟡 il calcolo YTD
-duplicato fra `kpi-block.tsx` e `sintesi-catena.tsx`, le cui due copie **sono già
-divergenti** (la guardia `punti.length < 2` è interna in una e al call site
-nell'altra — `MolAndamento` da solo crasherebbe a 0 punti); 🔵 il commento su
-`ai_pending` nel worker prescrive un comportamento che il commit `dfdebc2` ha
-deliberatamente abbandonato. Verbale completo in
+invisibile. Restano 2 findings. Il 🟡 è
+stato **chiuso il 29/8** (vedi sotto); resta aperto solo il 🔵.
+
+- 🟡 **CHIUSO 29/8** — calcolo YTD duplicato fra `kpi-block.tsx` e
+  `sintesi-catena.tsx`, le cui due copie **erano già divergenti** (guardia
+  `punti.length < 2` interna in una, al call site nell'altra). La guardia è
+  stata spostata **dentro** `MolAndamento`, come nel gemello. Provato per
+  mutazione: senza guardia, 1 punto produce `d="MNaN,36.0"` (linea disegnata
+  **sbagliata**, non assente) e 0 punti sollevano `TypeError`. Correzione al
+  verbale F4: avevo scritto solo "crasherebbe a 0 punti" — il caso a 1 punto,
+  che non crasha ma rende NaN, è il più insidioso dei due.
+- 🔵 **aperto** — il commento su `ai_pending` nel worker prescrive un
+  comportamento che il commit `dfdebc2` ha deliberatamente abbandonato. Verbale completo in
 `AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`.
 
 ---

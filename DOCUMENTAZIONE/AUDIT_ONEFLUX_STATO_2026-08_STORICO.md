@@ -534,7 +534,7 @@ punto che se ne discostava.
 Rientra nella deroga (poche righe, componente condiviso, comportamento ovvio,
 `tsc --noEmit` verde, nessun effetto sui numeri).
 
-**2. 🟡 Il totale della coda è arrotondato all'euro — DA DECIDERE**
+**2. 🟡 Il totale della coda è arrotondato all'euro — ✅ APPROVATO E CORRETTO 29/8**
 
 `coda-da-assegnare.tsx:48`, `euro()` usa `maximumFractionDigits: 0`. È usata sui
 **due totali** della coda (righe 351 e 379), mentre gli importi delle singole
@@ -550,8 +550,30 @@ lo stesso utente conta 428 righe per 448.775,33 €.
 
 Non è un errore di calcolo — `totale` è sommato sui valori pieni, e l'importo
 scritto a DB non passa da qui. È solo presentazione. Ma è un **numero mostrato al
-cliente**, quindi per la deroga torna a te invece di essere corretto d'iniziativa.
-Fix banale (`minimumFractionDigits: 2`), decisione tua.
+cliente**, quindi per la deroga era tornato a Mattia invece di essere corretto
+d'iniziativa.
+
+**Esito: approvato da Mattia il 29/8 e corretto.** Il verbale proponeva
+`minimumFractionDigits: 2`; l'implementazione **rimuove** invece
+`maximumFractionDigits: 0` senza aggiungere nulla, perché `Intl` con
+`style: "currency"` su EUR ha già i 2 decimali di default — stesso risultato,
+un'opzione in meno. Verificato: `743,60 €` contro il `744 €` di prima.
+
+**Correzione dopo la review** (avevo scritto due cose sbagliate, trovate dal
+`code-reviewer` e non da me):
+
+1. Avevo scritto che le cifre "coincidono col formato delle righe per-fattura".
+   Coincidono le **cifre**, non il **formato**: `euro()` mette il simbolo *dopo*
+   (`743,60 €`), le righe per-fattura e `fmtEuro4()` lo mettono *prima*
+   (`€ 743,60`). Restano quindi **2 varianti** di formato valuta nel file, non 1:
+   il fix scende da 3 a 2, non azzera l'incoerenza. La posizione del simbolo è
+   preesistente e fuori dal perimetro di questa decisione.
+2. Avevo scritto che «`1000` rende `1000,00 €` senza separatore di migliaia» come
+   se fosse una peculiarità del fix. **Falso**: è il comportamento standard di
+   `it-IT`, che a 4 cifre non mette il separatore, e vale identico nelle righe
+   per-fattura. Misurato: `10000` → `10.000,00 €` e `€ 10.000,00`; `448775.33` →
+   `448.775,33 €` e `€ 448.775,33`. Il separatore c'è in entrambi da 10.000 in su.
+   Non c'era nessun "dettaglio non toccato": non c'era proprio un difetto.
 
 **3. 🔵 `ripartisci-dialog`: la somma percentuali diverge dal server sui valori
 negativi — DA DECIDERE**
@@ -771,3 +793,72 @@ Nessuno bloccante. Un finding 🔵 di manutenzione (sparkline duplicata) resta
 verifiche più delicate di questa fase (doppia scrittura parziale, stati terminali
 dell'upload, OR di `daScegliereCategoria`) sono coperte **solo dalla lettura**,
 perché non esiste un runner di test frontend.
+
+---
+
+## Chiusura decisioni 🟡 di F3 e F4 — 29/08/2026
+
+Mattia ha approvato entrambe le decisioni 🟡 rimaste aperte dopo il merge di
+F3+F4 (`429865d`). Accorpate in **una sola PR**: sono entrambe frontend, quindi
+stessa pipeline `deploy-vercel.yml` e **un solo deploy**. I due 🔵 restano
+aperti di proposito (vedi sotto).
+
+**Diff: 2 file, +11/−3.**
+
+### Fix 1 — centesimi sul totale della coda
+
+`apps/web/src/components/fatture/coda-da-assegnare.tsx` — rimosso
+`maximumFractionDigits: 0` da `euro()`. Dettagli e verifica nel finding 2 di F3
+sopra, aggiornato con l'esito.
+
+### Fix 2 — guardia spostata dentro `MolAndamento`
+
+`apps/web/src/app/(app)/dashboard/kpi-block.tsx` — `if (punti.length < 2) return null`
+come prima riga del corpo, nella stessa posizione del gemello `MolSparkline`
+(`sintesi-catena.tsx:140`). La guardia al call-site è stata **rimossa**, non
+lasciata in doppio: tenerle entrambe avrebbe ricreato la ridondanza che ha
+permesso alle due copie di divergere. Il call-site passa da `>= 2` a `> 0`
+(`mol_mensile` è `MolMensile[]` non opzionale — `lib/home.ts:87` — quindi
+`.length` è sicuro), e il commento sopra, che descriveva la soglia dei 2 mesi
+lì dov'era, è stato riscritto: lasciarlo sarebbe stato lo stesso difetto del
+finding 🔵 su `ai_pending`.
+
+**Provato per mutazione** (copia in scratchpad, mai sul file del branch),
+disattivando la guardia:
+
+| punti | con guardia | senza guardia |
+|---|---|---|
+| 1 | non renderizza | `d="MNaN,36.0"` — linea **disegnata sbagliata** |
+| 0 | non renderizza | `TypeError: Cannot read properties of undefined` |
+
+Il mutante muore in entrambi i casi. **Correzione al verbale F4**: avevo scritto
+che `MolAndamento` "da solo crasherebbe a 0 punti", fermandomi al caso che
+crasha. Il caso a **1 punto** è peggiore — non crasha, rende `NaN` dentro il
+path SVG, cioè fallisce in modo silenzioso.
+
+**Precisazione emersa in review**: il fix **sposta** la soglia dei 2 punti, non la
+elimina. Oggi vive in **tre** posti — `services/fastapi_worker.py:7318`
+(`if len(mol_mensile) < 2: mol_mensile = []`), il commento del tipo in
+`lib/home.ts:86`, e ora il componente. È difesa in profondità, non duplicazione
+da sanare: il worker garantisce già che la lista sia vuota o ≥2, quindi sui dati
+reali il caso a 1 punto **non può arrivare** e la guardia interna protegge da un
+riuso futuro, non da uno stato attuale. Per la stessa ragione il passaggio del
+call-site da `>= 2` a `> 0` è indistinguibile sui dati veri.
+
+### Verifica
+
+- `npx tsc --noEmit` → **EXIT 0**
+- `tests/test_documentazione_onesta.py` → **51 passed**
+- Mutazione sulla guardia: 2 mutanti su 2 uccisi
+- Nessun test frontend esiste su questo perimetro (F2-NOTEST resta ⚪ per
+  decisione di Mattia): la prova per mutazione su copia è l'unica rete
+  disponibile, ed è per questo che è stata fatta.
+
+### Cosa resta aperto, di proposito
+
+- 🔵 **`ripartisci-dialog`, percentuali negative** — client e server divergono,
+  ma **fallisce in sicurezza**: il server risponde 400 e nessun numero sbagliato
+  raggiunge il cliente. Non vale un deploy per sé.
+- 🔵 **commento `ai_pending` nel worker** — è Python → **Railway**, pipeline
+  diversa da questi due fix. Accorparlo qui non avrebbe senso: se lo prende F5,
+  che tocca lo stesso worker.
