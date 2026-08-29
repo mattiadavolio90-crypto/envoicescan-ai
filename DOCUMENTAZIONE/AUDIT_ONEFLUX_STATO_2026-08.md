@@ -199,7 +199,7 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 | **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | 7.277 | 🟠 attraversa tutto | 🟢 CHIUSA 29/08 |
 | **F4** | Frontend **analisi-fatture/ + dashboard/** | 4.409 | 🟠 6.917 upload | 🟢 CHIUSA 29/08 |
 | **F5** | Python — i **10 moduli mai auditati come oggetto proprio** | 3.570 | 🔴 radar anomalie spento da giugno | 🟢 **CHIUSA** 29/08 |
-| **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | ~3.900 | ⚪ bassa/nulla | ⚪ APERTA |
+| **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | 6.001 | 🟡 `spese_extra` viva (€4.493, ieri) — il resto fermo | 🟢 **CHIUSA** 29/08 |
 | **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | — | ⚪ APERTA |
 
 **F1 è la prima per una ragione misurata, non per intuizione** — vedi sotto.
@@ -576,7 +576,7 @@ contro l'algoritmo ufficiale su 200.000 casi con zero divergenze.
 
 ---
 
-## ⚪ F6 — Frontend workspace / agenda / assistenza
+## 🟢 F6 — Frontend workspace / agenda / assistenza — CHIUSA 29/08
 
 **Esposizione misurata: bassa o nulla.** turni_personale **0**,
 ingredienti_workspace **0**, ingredienti_utente **0**, note_diario **0**,
@@ -595,6 +595,27 @@ non sicurezza. **Se le tabelle sono ancora vuote quando si arriva qui, l'opzione
 corretta è dichiararla chiusa per assenza di esposizione** — come si è fatto per
 il Vision (0 righe PDF) e per il legacy di `upload_handler.py` — non leggerla
 per completezza. Rimisurare prima di decidere.
+
+### Esito (29/08/2026)
+
+**Rimisurato, e la decisione è cambiata.** Il perimetro non è ~3.900 righe ma
+**6.001** (manca dall'elenco `personale-tab.tsx`, 1.834 righe, il file più
+grande). Soprattutto: **`spese_extra` non è vuota** — 16 voci, **€4.493**, un
+cliente reale, ultima **ieri**, e `margini.py:1067` la legge per i totali che il
+cliente vede. Chiuderla per assenza di esposizione sarebbe stato sbagliato.
+
+Letto il **17%** che tocca dati vivi (`spese-view.tsx` + `agenda-overview.tsx`,
+1.010 righe). **Non letto l'83%** che governa tabelle vuote o ferme — dichiarato
+nel verbale con il dettaglio per file, `personale-tab.tsx` in testa.
+
+- 🔧 **Un fix sotto deroga**: `TIPO_SPESA_LABEL` esisteva in **tre grafie**, due
+  delle quali nello stesso file. Il cliente vedeva `Spese Generali` a schermo e
+  `Spesa Generale` nel CSV dello stesso dato. Unificato sulla costante
+  condivisa; nessun numero cambia. `tsc --noEmit` EXIT 0.
+- ✅ **Ipotesi chiusa in negativo**: il `tipo` mandato dal client **non** è
+  manipolabile — POST e PATCH lo riderivano sempre dalla categoria lato server,
+  e il PATCH rilegge la riga quando la categoria non arriva.
+- **Nessun finding aperto.**
 
 ---
 

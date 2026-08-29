@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { EventoDialog } from "../workspace/diario-tab";
+import { TIPO_SPESA_LABEL } from "@/lib/categorie-spesa";
 import {
   type Turno,
   type TipoGiorno,
@@ -133,7 +134,7 @@ export function AgendaOverview() {
           out.push({
             id: `sp-${s.id}`, fonte: "spesa", data: s.data_spesa,
             titolo: s.descrizione,
-            dettaglio: s.categoria ?? (s.tipo === "fb" ? "Costo F&B" : "Spesa generale"),
+            dettaglio: s.categoria ?? TIPO_SPESA_LABEL[s.tipo],
             importo: s.importo,
           });
         }

@@ -1087,3 +1087,126 @@ naturale per una ripresa.
 
 **Verifica**: `tests/test_documentazione_onesta.py` verde. Nessuna modifica al
 codice, quindi nessun typecheck/mutazione da eseguire.
+
+---
+
+## F6 — Frontend workspace / agenda / assistenza (29/8/2026)
+
+**Esito: 🟢 CHIUSA.** Un fix applicato sotto deroga, nessun finding aperto.
+
+### La premessa di roadmap era sbagliata — quarta volta nel ciclo
+
+| | roadmap | misurato 29/8 |
+|---|---|---|
+| Righe | ~3.900 | **6.001** |
+| File più grande | `agenda-overview.tsx` 554 | **`personale-tab.tsx` 1.834** |
+
+`wc -l` su `app/(app)/workspace` (5.017) + `agenda` (692) + `assistenza` (292).
+Lo scarto di 2.100 righe è quasi tutto un file solo: **`personale-tab.tsx`
+(1.834 righe, il 31% del perimetro) non compare nell'elenco della roadmap.**
+
+### Esposizione live rimisurata (progetto `vthikmfpywilukizputn`)
+
+La roadmap chiedeva esplicitamente di «rimisurare prima di decidere». Fatto —
+e le cifre dichiarate reggono tutte, ma **ne mancava una che cambia la decisione**:
+
+| tabella | righe | ultimo evento |
+|---|---|---|
+| **`spese_extra`** | **16** | **2026-08-28 (ieri)** |
+| `inventario_voci` | 6 | 2026-06-10 |
+| `ricette` | 5 | 2026-05-20 |
+| `diario_eventi` | 2 | 2026-06-10 |
+| `dipendenti` | 1 | 2026-08-02 |
+| `turni_personale` | 0 | — |
+| `regole_turni_ricorrenti` | 0 | — |
+| `ingredienti_workspace` | 0 | — |
+| `ingredienti_utente` | 0 | — |
+| `note_diario` | 0 | — |
+| `marketplace_leads` | 0 | — |
+
+**`spese_extra` non è esposizione nulla**: 16 voci, **€4.493,17**, un cliente
+reale, in crescita fino a ieri (giu 2 voci/€1.406,17 · lug 13/€2.987,00 ·
+ago 1/€100,00). E soprattutto **entra nei numeri che il cliente vede**:
+`services/routers/margini.py:1067` la legge per comporre i totali del mese.
+
+Ne segue la ripartizione del perimetro per esposizione reale:
+
+| | righe | % |
+|---|---|---|
+| Tocca dati vivi (`spese-view` + `agenda-overview`) | 1.010 | **17%** |
+| Su tabelle vuote o ferme | 4.991 | 83% |
+
+**Quindi la fase non andava chiusa per assenza di esposizione**, come la roadmap
+autorizzava a fare: il 17% che tocca soldi veri andava letto. È stato letto.
+Il restante 83% no, ed è dichiarato sotto.
+
+### 🔧 Fix applicato sotto deroga — tre grafie della stessa etichetta
+
+`TIPO_SPESA_LABEL` esiste in `lib/categorie-spesa.ts` come fonte unica, ma
+**`spese-view.tsx` importava quella condivisa e ne teneva anche una copia
+locale divergente**, usandole entrambe nello stesso file:
+
+| dove | etichetta mostrata |
+|---|---|
+| dialog "Rientra in:" (`:164`, costante condivisa) | `Costi F&B` / **`Spese Generali`** |
+| export CSV (`:290`, copia locale) | `Costo F&B` / **`Spesa Generale`** |
+| tooltip riga (`:418`, copia locale) | idem |
+| `agenda-overview.tsx:136` (terza copia, hardcoded) | `Costo F&B` / **`Spesa generale`** |
+
+Il cliente vedeva `Spese Generali` a schermo e `Spesa Generale` nel CSV **dello
+stesso dato**. È esattamente l'antipattern che il commento in cima a
+`categorie-spesa.ts` descrive («quattro liste che dovevano restare identiche per
+sempre significa che prima o poi divergono») — applicato alle costanti, non alle
+etichette, e infatti le etichette erano già divergite.
+
+Unificato sulla costante condivisa; la forma **plurale** è quella usata dal resto
+dell'app (`margini/calcolo-tab.tsx:90`, `analisi-fatture/articoli-tab.tsx:59`).
+
+Rientra nella deroga: `apps/web/src/app/(app)/`, poche righe, comportamento
+ovvio, **nessun numero cambia** — sono stringhe di etichetta.
+`npx tsc --noEmit` **EXIT 0** prima e dopo.
+
+### ✅ Ipotesi chiusa in negativo: il tipo spesa non è manipolabile dal client
+
+`spese-view.tsx:98` deriva `tipo` dalla categoria e lo manda nel payload. Se il
+server si fidasse, una richiesta costruita a mano sposterebbe una voce dal
+binario F&B a quello Generali — cioè **soldi tra i secchi del MOL**, in silenzio.
+
+Verificato: **non si fidа.**
+- `POST` (`workspace.py:2272-2276`): quando arriva la categoria, `tipo` viene
+  **sovrascritto** con `_tipo_da_categoria(categoria)`; il valore del client è
+  ignorato.
+- `PATCH` (`workspace.py:2313-2329`): il tipo si rideriva **sempre**, e quando
+  la richiesta non porta la categoria il server **rilegge la riga** per
+  ottenerla. Copre anche il caso di un PATCH del solo `tipo` su una voce già
+  categorizzata, che altrimenti la lascerebbe sul binario sbagliato.
+
+Il commento nel codice descrive già questo scenario. L'ipotesi cade.
+
+### ⚪ Non letto, e perché
+
+**4.991 righe su 6.001 (83%) non sono state lette riga per riga.** Non è una
+svista: governano tabelle **vuote o ferme da mesi**, e il ciclo scorso ha già
+dimostrato su `workspace.py` che coprire codice che nessun cliente esercita
+produce coverage, non sicurezza.
+
+- `personale-tab.tsx` (1.834) — `turni_personale` **0 righe**,
+  `regole_turni_ricorrenti` **0**, `dipendenti` 1. Il file più grande del
+  perimetro governa funzionalità che nessuno usa.
+- `ricetta-editor.tsx` (452) + `foodcost-tab.tsx` (336) — `ricette` 5, ferme
+  a maggio; `ingredienti_workspace` e `ingredienti_utente` **0**.
+- `diario-tab.tsx` (427) — `diario_eventi` 2, `note_diario` **0**.
+- `inventario-*.tsx` (1.158 su 4 file) — `inventario_voci` 6, ferme a giugno.
+- `marketplace.tsx` (276) — `marketplace_leads` **0**.
+
+**Se una di queste aree venisse attivata per un cliente, il suo file torna
+auditabile e questa fase non copre il rischio.** In particolare
+`personale-tab.tsx`: 1.834 righe mai lette, e `tests/test_turni_mensili.py`
+copre il servizio di export, non la UI.
+
+### Verifica
+
+- `npx tsc --noEmit` → **EXIT 0** (unica rete su questo codice: zero test
+  frontend, per la decisione esplicita su F2-NOTEST).
+- `tests/test_documentazione_onesta.py` → verde.
+- Ogni cifra di questo verbale rimisurata al momento di scriverla.

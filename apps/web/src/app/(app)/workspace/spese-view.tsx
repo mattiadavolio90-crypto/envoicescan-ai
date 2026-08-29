@@ -53,11 +53,6 @@ function fmtEuro(v: number): string {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
 }
 
-const TIPO_LABEL: Record<TipoSpesa, string> = {
-  fb: "Costo F&B",
-  generale: "Spesa Generale",
-};
-
 const TIPO_BADGE: Record<TipoSpesa, string> = {
   fb: "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200",
   generale: "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200",
@@ -287,7 +282,7 @@ export function SpeseView() {
     const headers = ["Data", "Tipo", "Categoria", "Descrizione", "Importo", "Note"];
     const rows = voci.map(s => [
       fmtData(s.data_spesa),
-      TIPO_LABEL[s.tipo],
+      TIPO_SPESA_LABEL[s.tipo],
       s.categoria ?? "",
       s.descrizione,
       num(s.importo),
@@ -415,7 +410,7 @@ export function SpeseView() {
               <span className="text-xs text-muted-foreground tabular-nums w-12 shrink-0">{fmtData(s.data_spesa)}</span>
               <span
                 className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 max-w-[190px] truncate ${TIPO_BADGE[s.tipo]}`}
-                title={s.categoria ?? TIPO_LABEL[s.tipo]}
+                title={s.categoria ?? TIPO_SPESA_LABEL[s.tipo]}
               >
                 {s.categoria ?? (s.tipo === "fb" ? "F&B" : "Gen.")}
               </span>

@@ -50,6 +50,13 @@ export function tipoDaCategoria(categoria: string): TipoSpesa {
   return SPESE_GENERALI_SET.has(categoria) ? "generale" : "fb";
 }
 
+// FONTE UNICA anche per l'etichetta del tipo, per la stessa ragione delle
+// costanti sopra: esistevano tre grafie dello stesso concetto, e due erano nel
+// medesimo file. spese-view mostrava "Spese Generali" nel dialog (da qui) ma
+// scriveva "Spesa Generale" nell'export CSV e nel tooltip (copia locale), e
+// agenda-overview aveva una terza variante hardcoded ("Spesa generale").
+// Il plurale e' la forma usata dal resto dell'app (margini, analisi-fatture).
+// Nessun numero cambia: sono etichette.
 export const TIPO_SPESA_LABEL: Record<TipoSpesa, string> = {
   fb: "Costi F&B",
   generale: "Spese Generali",
