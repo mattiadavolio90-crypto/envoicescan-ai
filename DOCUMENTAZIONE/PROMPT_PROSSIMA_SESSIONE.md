@@ -1,93 +1,96 @@
-# Prompt prossima sessione
+# Prompt per la prossima sessione — chiusura degli 8 punti aperti
 
-> **Ciclo audit 2026-08 APERTO il 28/8/2026.** Il ciclo 2026-07 è chiuso
-> (indice e storico in `docs/storico/`).
->
-> **F1, F2 e i loro residui: tutto chiuso, mergiato e DEPLOYATO il 28/8.**
-> `F-DRIFT` e `F2-VERIFY` chiusi con PR #44 (merge `df19cce`, worker verificato).
-> Resta aperto solo `F2-NOTEST` — **per decisione di Mattia**, non per dimenticanza:
-> introdurre un runner di test frontend è una scelta di progetto, non un fix
-> d'audit. La prossima fase ⚪ APERTA è **F3 — `components/` condivisi**.
->
-> **F1 e F2 chiuse, mergiate e DEPLOYATE il 28/8** (PR #43, merge `d04592f`,
-> ~22:10 CEST). Worker Railway verificato in produzione su `d04592f31081`; CI
-> verde su 4 check, suite 11.342. Verbali nello STORICO. F1: 1 HIGH attivo sui
-> dati veri + 5 findings minori, tutti fixati tranne `F-DRIFT`. F2: 1 HIGH
-> (open redirect sul login), 2 MEDIUM, 1 LOW — tutti fixati; resta aperto
-> `F2-NOTEST` (zero test frontend). La prossima fase ⚪ APERTA è
-> **F3 — Frontend `components/` condivisi**.
->
-> **Due cose che F2 ha insegnato e che F3 eredita:**
-> 1. **Il perimetro dichiarato elenca le pagine, non il percorso.** In F2 due
->    difetti su quattro — incluso l'HIGH — stavano nelle route API e in
->    `proxy.ts`, che il perimetro non nominava. Prima di leggere, misura anche
->    *chi chiama* e *chi è chiamato dai* file elencati.
-> 2. **Leggi il consumatore, non fidarti del produttore.** L'open redirect
->    esisteva perché `proxy.ts` scriveva sempre un valore sicuro e nessuno
->    validava chi lo leggeva. È la stessa asimmetria del HIGH di F1.
+> Copia il blocco qui sotto come primo messaggio della nuova sessione.
 
-## Mandato
+---
 
-Apri **`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08.md`** ed esegui **la prima
-fase con stato ⚪ APERTA**. Solo quella. Non anticipare le successive.
+Devi chiudere gli **8 punti aperti** lasciati dal ciclo audit 2026-08, che è
+**chiuso** (7 fasi su 7). Il piano completo è già scritto e approvato:
+`/home/vscode/.claude/plans/leggi-prompt-prossima-sessione-md-drifting-eclipse.md`
+— **leggilo per primo**, contiene il perché di ogni punto e i riferimenti
+`file:riga` misurati.
 
-Il file contiene, per ogni fase: perimetro con **path completi già misurati**,
-ipotesi numerate da confermare o smontare, criterio di chiusura, comandi.
-Non serve leggere le altre fasi né lo storico del ciclo precedente per iniziare.
+L'elenco degli 8 punti sta in cima a `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08.md`.
+Il 9° (F2-NOTEST, introdurre un test runner frontend) è **fuori perimetro per mia
+decisione esplicita**: sessione separata, non ri-segnalarlo come svista.
 
-## A fine sessione (obbligatorio)
+## Cosa è già fatto (non rifarlo)
 
-1. Aggiorna lo **stato della fase** nella roadmap di
-   `AUDIT_ONEFLUX_STATO_2026-08.md` (⚪→🟢 chiusa, o 🟡 con residui espliciti).
-2. Scrivi il verbale dettagliato in
-   **`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`**
-   (creato con F1 — il nome matcha l'eccezione `.gitignore`
-   `!AUDIT_ONEFLUX_STATO*.md`, quindi è tracciato da git).
-3. `code-reviewer` sul diff cumulativo — **sempre**, anche sui fix piccoli.
-4. Committa il doc **insieme** al codice che documenta.
+- **PR #48 mergiata e deployata** — `7d2b581`. Deploy Vercel success, sito
+  verificato (307), entrambi i fix presenti nel commit deployato.
+- **`CLAUDE.md` rimisurato** — branch `docs/claude-md-cifre-rimisurate`, **PR #49
+  aperta, CI verde, non mergiata**. Mergiala (non riaprirne una): dichiarava
+  ancora «go-live 1 luglio» a due mesi dalla data, «~9500 test» invece di
+  **11.424**, «2 clienti in test + 1 operativo» invece di **7 account attivi /
+  11 PV**. Quest'ultimo cambia la valutazione del rischio: 4 clienti su 7 hanno
+  migliaia di righe fattura e accesso nell'ultima settimana.
 
-## Le tre regole che sono costate di più
+## Il punto 1 non è quello che dice la roadmap — leggi prima di agire
 
-- **Ogni severità si riverifica sul DB live.** Nel ciclo 2026-07 è caduta
-  **8 volte** una severità ereditata o proposta da un agente. Si fixa ciò che
-  è attivo, non ciò che sembra grave.
-- **Un perimetro dichiarato va misurato, non ricordato.** È risultato incompleto
-  **4 volte** (chat 4 simboli→25, feature Tag 2 file→3, gli "11 file grandi" mai
-  elencati, il "perimetro non letto" di §3c che nascondeva 2 HIGH da 70k e 730k).
-- **Audit read-only prima di ogni fix**; remediation solo dopo conferma esplicita
-  di Mattia. Ogni fix nuovo → test verificato **per mutazione, su copia in
-  scratchpad**, mai sul file del branch.
+La roadmap dice «il radar anomalie non gira da giugno, ricollegarlo». **Misurato
+in planning: la diagnosi era incompleta.**
 
-## Stato di partenza (misurato il 28/8/2026)
+`services/anomaly_radar_service.py:42` filtra `.eq('upload_id', upload_id)` su
+`fatture_documenti`, ma **quella colonna non esiste** — verificato su
+`information_schema` del DB live (27 colonne, nessuna è `upload_id`), zero
+occorrenze in `migrations/` e `supabase/`, e `upsert_documento` non l'ha mai
+scritta. Quindi la query non poteva restituire nulla **nemmeno quando Streamlit
+era vivo**: il radar non è spento da giugno, è **nato rotto**.
 
-- **~48.300 righe su 109.215 mai lette riga per riga (44%)** — il grosso è
-  frontend (66% scoperto); le Edge Functions sono l'unico perimetro davvero
-  completo.
-- **Zero test frontend** (`0` file `.test.ts*`/`.spec.ts*`): l'unica rete è
-  `tsc --noEmit` + `next build`.
-- Suite Python: **11.239 passed**, gate coverage 45 in CI.
+I suoi 6 test passano perché mockano tutti il client: non hanno mai toccato la
+colonna reale.
 
-## Voci aperte che NON sono fasi
+E il perimetro è più largo del radar: è morto **l'intero blocco di notifiche
+`source_type='upload'`** (`services/upload_handler.py:2055-2090` — `td24_noddt`,
+`td24_partial`, `quality_check_failed`). Il frontend le aspetta ancora
+(`apps/web/src/app/(app)/notifiche/notifiche-shared.ts:14`).
 
-Due, entrambe deliberatamente rimandate il 28/8 con la loro ragione (dettaglio
-nel file del ciclo): la **migrazione Argon2→Argon2** (`check_needs_rehash()` mai
-chiamato) va fatta **quando** si alzano i parametri, non prima; la **copertura a
-test delle 8 `@_make_cache`** va aperta **quando** serve un test su una di esse.
-Si riprendono in **F7**, non prima.
+**La mia decisione resta ricollegarlo**, ma va prima riparato: serve un
+correlatore al posto di `upload_id` (`file_origine` è l'unica chiave persistita)
+e i test vanno riscritti. Il piano ha le tre decisioni di design e il punto di
+aggancio candidato (`services/invoice_service.py:1790`, unico collo di bottiglia
+dei due canali vivi).
 
-## Verificato il 28/8 — l'auto-deploy in orario cliente è reale
+## Ordine
 
-Era annotato qui come "da verificare a mano su Railway". **Verificato: sì**, e il
-problema è più generale del singolo push Argon2.
+**Per superficie di deploy**, così ogni deploy è verificabile da solo:
 
-`/health` di Railway risponde `commit: 4c1d402cc6f4`, cioè l'HEAD di `main`,
-mergiato alle **16:49 CEST**. Il commit Argon2 era entrato col merge delle
-**12:36**. Fra le 12:44 e le 16:49 del 28/8 sono stati mergiati **5 PR**
-(#37→#42): ognuno è un auto-deploy in fascia di servizio.
+1. **Merge della PR di `CLAUDE.md`** (solo doc).
+2. **Gruppo Railway** — punti 1, 2, 3, 4, 5, **più 6 e 8** che sono formalmente
+   Python (una RPC e un commento nel worker). Attenzione: l'auto-deploy Railway è
+   configurato sul dashboard e **non ha filtro di path** — ogni merge su `main`
+   lo redeploya, anche un diff di soli documenti.
+3. **Gruppo Vercel** — il solo punto 7 (`ripartisci-dialog`, percentuali
+   negative; fallisce già in sicurezza con 400 dal server).
 
-**Il punto strutturale**: CLAUDE.md dice "deploy solo fuori orario", ma con
-auto-deploy su `main` **il momento del deploy è il momento del merge**. Finché
-resta così, "mergio ora e deployo stasera" non è un'opzione disponibile — la
-protezione va messa sul merge o disattivando l'auto-deploy Railway, non sulla
-buona volontà di chi mergia. **Decisione aperta per Mattia**, non un'azione
-già presa.
+Su ogni punto: **chiedimi la decisione** dove il piano ne prevede una (es. punto
+3, allineare il prompt AI o documentare la divergenza; punto 4, obbligare la
+categoria via API o accettare il disallineamento). Non scegliere al posto mio su
+cose che cambiano il comportamento verso il cliente.
+
+## Metodo, non derogabile
+
+- **Ogni cifra si ri-misura al momento di scriverla.** Mai ereditata da roadmap,
+  piano, o da una misura fatta prima nella stessa sessione. Nel ciclo appena
+  chiuso il `code-reviewer` ha trovato un errore in **ogni** fase, quasi sempre
+  di questo tipo.
+- **Una condizione su una soglia va provata per mutazione sui valori reali**, su
+  copia in scratchpad, mai sul file del branch. Un fix che passa `tsc` può non
+  fare nulla: è successo il 29/8.
+- **Leggere un `if` non dice quale suo lato è caldo.** Misura quale ramo
+  percorrono i dati veri prima di dichiarare una cosa protetta.
+- **`code-reviewer` a fine di ogni gruppo, sempre**, anche se il diff è di soli
+  documenti.
+- **Verifica sempre che lo sha della PR sia quello che intendevi pubblicare**
+  (`gh pr view <n> --json headRefOid` contro `git log -1`): il 29/8 sono finito
+  in detached HEAD e la CI ha certificato verde una versione senza i fix.
+- Migration solo con mia conferma esplicita, applicata **prima** del deploy.
+- Deploy fuori orario cliente, salvo mio via esplicito.
+
+## Chiusura
+
+Verbale di ogni punto in `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`,
+elenco in cima alla roadmap aggiornato man mano. Quando resta solo F2-NOTEST:
+spostare i due doc in `docs/storico/` e aprire
+`AUDIT_ONEFLUX_STATO_<nuova data>.md` — rinviato di proposito, perché archiviare
+prima avrebbe reso invisibili queste 8 decisioni.
