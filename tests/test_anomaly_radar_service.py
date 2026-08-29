@@ -17,6 +17,15 @@ from services.anomaly_radar_service import (
 )
 
 # Schema reale di fatture_documenti (information_schema, 29/8/2026).
+# E' uno SNAPSHOT: se la tabella guadagna una colonna e il codice inizia a
+# usarla, questo fake la rifiuta come inesistente e il test fallisce a torto.
+# Per rigenerarlo:
+#   select string_agg(quote_literal(column_name), ', ' order by ordinal_position)
+#   from information_schema.columns
+#   where table_name='fatture_documenti' and table_schema='public';
+# Il costo di tenerlo aggiornato e' il prezzo di avere un mock che dice la
+# verita': con quello vecchio, che accettava qualunque colonna, il radar ha
+# interrogato per mesi una colonna che non esisteva senza che nulla protestasse.
 _COLONNE_FATTURE_DOCUMENTI = {
     'id', 'user_id', 'ristorante_id', 'file_origine', 'fornitore',
     'piva_fornitore', 'numero_documento', 'data_documento', 'data_competenza',
@@ -340,3 +349,34 @@ def test_accetta_anche_una_stringa_singola():
     sb = _SeqSupabase([[], [], []])
     check_on_upload('u1', 'r1', 'a.xml', supabase_client=sb)
     assert ('in_', 'file_origine') in sb.filtri
+
+
+def test_step3_non_scansiona_tutti_i_documenti_della_sede():
+    """`piva_duplicata_fornitore` deve restringersi alle P.IVA in esame.
+
+    L'aggancio e' per-fattura dentro un handler HTTP sincrono: senza questo
+    filtro un upload di N fatture farebbe N letture dell'intera tabella,
+    ricalcolando N volte lo stesso risultato.
+    """
+    sb = _SeqSupabase([
+        [_doc(piva_fornitore='IT123')],
+        [],
+        [{'piva_fornitore': 'IT123', 'fornitore': 'Acme Srl'},
+         {'piva_fornitore': 'IT123', 'fornitore': 'Acme SRL Nuova'}],
+    ])
+    records = check_on_upload('u1', 'r1', ['a.xml'], supabase_client=sb)
+    # il controllo continua a funzionare...
+    assert 'piva_duplicata_fornitore' in {r['topic_key'] for r in records}
+    # ...ma filtrando su piva_fornitore, non leggendo tutto
+    assert ('in_', 'piva_fornitore') in sb.filtri
+
+
+def test_step3_saltato_se_i_documenti_non_hanno_piva():
+    """Senza P.IVA non c'e' nulla da correlare: niente query inutile."""
+    sb = _SeqSupabase([
+        [_doc(piva_fornitore='')],
+        [],
+        [],
+    ])
+    check_on_upload('u1', 'r1', ['a.xml'], supabase_client=sb)
+    assert ('in_', 'piva_fornitore') not in sb.filtri

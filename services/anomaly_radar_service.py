@@ -26,6 +26,10 @@ from services.notification_inbox_service import (
 
 logger = get_logger('anomaly_radar')
 
+
+class _SaltaStep3(Exception):
+    """Nessuna P.IVA nei documenti in esame: niente da controllare."""
+
 CATEGORIE_CRITICHE = ['CARNE', 'PESCE', 'LATTICINI', 'SALUMI', 'PRODOTTI DA FORNO']
 
 
@@ -156,12 +160,20 @@ def check_on_upload(
                 break
 
     # Step 3: piva_duplicata_fornitore
+    # Ristretto alle sole P.IVA dei documenti in esame. L'aggancio e' per-fattura
+    # dentro un handler HTTP sincrono: leggere tutti i documenti della sede a
+    # ogni salvataggio significherebbe N scansioni per un upload di N fatture,
+    # ricalcolando ogni volta lo stesso risultato. Il controllo resta identico
+    # per le P.IVA che stiamo effettivamente toccando.
     try:
+        if not piva_set:
+            raise _SaltaStep3()
         tutti = (
             sb.table('fatture_documenti')
             .select('piva_fornitore,fornitore')
             .eq('user_id', user_id)
             .eq('ristorante_id', ristorante_id)
+            .in_('piva_fornitore', list(piva_set))
             .is_('deleted_at', 'null')
             .limit(10000)
             .execute().data or []
@@ -192,6 +204,8 @@ def check_on_upload(
                     payload={'piva': piva, 'nomi': nomi_sorted},
                     action_page='/prezzi',
                 ))
+    except _SaltaStep3:
+        pass
     except Exception as exc:
         logger.warning(f'Radar piva_dup fallito: {exc}')
 
