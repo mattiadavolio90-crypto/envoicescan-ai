@@ -284,7 +284,7 @@ generate casualmente: zero divergenze.**
 | F2-MOBILE | 🟠 MED | cold-start del worker slogga dalla PWA (7 pagine, 82 sessioni/30gg) | fixato |
 | F2-LOGOUT | 🟡 LOW | `logoutSession` unica chiamata worker senza timeout: worker appeso = utente non esce | fixato |
 | F2-NOTEST | ⚪ | zero infrastruttura di test frontend (confermato anche in F1) | **aperto — a Mattia** |
-| F2-VERIFY | ⚪ | `cambia-password` senza test su `verify_and_migrate_password` (preesistente) | **aperto — a F7** |
+| F2-VERIFY | 🟢 | `cambia-password` senza test su `verify_and_migrate_password` (preesistente) | **chiuso 28/8** — il gate sulla password attuale non era coperto (disattivandolo restavano 81 test verdi) |
 
 `F2-NOTEST` non è un fix d'audit: introdurre un runner è una decisione di
 progetto. Nel frattempo gli invarianti client sono difesi da test **Python**
@@ -1087,3 +1087,391 @@ naturale per una ripresa.
 
 **Verifica**: `tests/test_documentazione_onesta.py` verde. Nessuna modifica al
 codice, quindi nessun typecheck/mutazione da eseguire.
+
+---
+
+## F6 — Frontend workspace / agenda / assistenza (29/8/2026)
+
+**Esito: 🟢 CHIUSA.** Un fix applicato sotto deroga, nessun finding aperto.
+
+### La premessa di roadmap era sbagliata — quarta volta nel ciclo
+
+| | roadmap | misurato 29/8 |
+|---|---|---|
+| Righe | ~3.900 | **6.001** |
+| File più grande | `agenda-overview.tsx` 554 | **`personale-tab.tsx` 1.834** |
+
+`wc -l` su `app/(app)/workspace` (5.017) + `agenda` (692) + `assistenza` (292).
+Lo scarto di 2.100 righe è quasi tutto un file solo: **`personale-tab.tsx`
+(1.834 righe, il 31% del perimetro) non compare nell'elenco della roadmap.**
+
+### Esposizione live rimisurata (progetto `vthikmfpywilukizputn`)
+
+La roadmap chiedeva esplicitamente di «rimisurare prima di decidere». Fatto —
+e le cifre dichiarate reggono tutte, ma **ne mancava una che cambia la decisione**:
+
+| tabella | righe | ultimo evento |
+|---|---|---|
+| **`spese_extra`** | **16** | **2026-08-28 (ieri)** |
+| `inventario_voci` | 6 | 2026-06-10 |
+| `ricette` | 5 | 2026-05-20 |
+| `diario_eventi` | 2 | 2026-06-10 |
+| `dipendenti` | 1 | 2026-08-02 |
+| `turni_personale` | 0 | — |
+| `regole_turni_ricorrenti` | 0 | — |
+| `ingredienti_workspace` | 0 | — |
+| `ingredienti_utente` | 0 | — |
+| `note_diario` | 0 | — |
+| `marketplace_leads` | 0 | — |
+
+**`spese_extra` non è esposizione nulla**: 16 voci, **€4.493,17**, un cliente
+reale, ultima riga inserita **ieri**. E soprattutto **entra nei numeri che il
+cliente vede**: `services/routers/margini.py:1067` la legge per comporre i
+totali del mese.
+
+Ripartizione per **`data_spesa`** (la colonna che conta: è quella su cui filtra
+`margini.py:1068`):
+
+| mese | voci | totale |
+|---|---|---|
+| 2026-01 | 2 | €590,00 |
+| 2026-02 | 2 | €529,00 |
+| 2026-03 | 2 | €461,00 |
+| 2026-04 | 2 | €388,00 |
+| 2026-05 | 3 | €1.661,17 |
+| 2026-06 | 4 | €764,00 |
+| **2026-07** | **0** | **—** |
+| 2026-08 | 1 | €100,00 |
+
+> **Correzione (review di chiusura).** Avevo scritto «in crescita fino a ieri
+> (giu 2/€1.406,17 · lug 13/€2.987,00 · ago 1/€100,00)». **Sbagliato in tutti i
+> valori tranne agosto**, e per una ragione precisa: avevo raggruppato per
+> `created_at` (quando la riga è stata *inserita*) presentandolo come
+> ripartizione della *spesa*, che va per `data_spesa`. Sono due colonne diverse,
+> e il verbale mostrava la seconda etichettando la prima. La serie reale copre
+> **gennaio→agosto**, **luglio è vuoto**, e non è in crescita: **cala**
+> (590 → 529 → 461 → 388) con un picco a maggio.
+
+Ne segue la ripartizione del perimetro per esposizione reale:
+
+| | righe | % |
+|---|---|---|
+| Tocca dati vivi (`spese-view` + `agenda-overview`) | 1.010 | **17%** |
+| Su tabelle vuote o ferme | 4.991 | 83% |
+
+**Quindi la fase non andava chiusa per assenza di esposizione**, come la roadmap
+autorizzava a fare: il 17% che tocca soldi veri andava letto. È stato letto.
+Il restante 83% no, ed è dichiarato sotto.
+
+### 🔧 Fix applicato sotto deroga — tre grafie della stessa etichetta
+
+`TIPO_SPESA_LABEL` esiste in `lib/categorie-spesa.ts` come fonte unica, ma
+**`spese-view.tsx` importava quella condivisa e ne teneva anche una copia
+locale divergente**, usandole entrambe nello stesso file:
+
+| dove | etichetta mostrata |
+|---|---|
+| dialog "Rientra in:" (`:164`, costante condivisa) | `Costi F&B` / **`Spese Generali`** |
+| export CSV (`:290`, copia locale) | `Costo F&B` / **`Spesa Generale`** |
+| tooltip riga (`:418`, copia locale) | idem |
+| `agenda-overview.tsx:136` (terza copia, hardcoded) | `Costo F&B` / **`Spesa generale`** |
+
+Il cliente vedeva `Spese Generali` a schermo e `Spesa Generale` nel CSV **dello
+stesso dato**. È esattamente l'antipattern che il commento in cima a
+`categorie-spesa.ts` descrive («quattro liste che dovevano restare identiche per
+sempre significa che prima o poi divergono») — applicato alle costanti, non alle
+etichette, e infatti le etichette erano già divergite.
+
+Unificato sulla costante condivisa; la forma **plurale** è quella usata dal resto
+dell'app (`margini/calcolo-tab.tsx:90`, `analisi-fatture/articoli-tab.tsx:59`).
+Verificato che non sia una preferenza imposta: le righe di totale dello stesso
+CSV dicono già `TOTALE F&B` / `TOTALE GENERALI`, quindi il singolare stonava con
+le proprie somme.
+
+**Precisazione (review di chiusura)**: le grafie *unificate* sono tre, ma esiste
+una **quarta forma** non toccata — `catena/finestra-costi-gruppo.tsx:222`
+(`"F&B" : "spese generali"`). È lasciata **di proposito**: è un badge compatto
+inline, come il `"F&B"/"Gen."` di `spese-view.tsx:414`, cioè un'abbreviazione,
+non una copia divergente dell'etichetta per esteso. La distinzione è ora scritta
+nel commento di `categorie-spesa.ts`, così chi legge non la scambia per una
+svista.
+
+Rientra nella deroga: `apps/web/src/app/(app)/`, poche righe, comportamento
+ovvio, **nessun numero cambia** — sono stringhe di etichetta.
+`npx tsc --noEmit` **EXIT 0** prima e dopo.
+
+### 🟡 Il tipo spesa è protetto solo sulle voci categorizzate — oggi 1 su 16
+
+**Questa voce era scritta come «ipotesi chiusa in negativo». Era chiusa a metà,
+e l'ha trovato il `code-reviewer`.** La correzione sta qui sotto, in chiaro,
+perché è l'errore più serio di questa fase.
+
+`spese-view.tsx:98` deriva `tipo` dalla categoria e lo manda nel payload. Se il
+server si fidasse, una richiesta costruita a mano sposterebbe una voce dal
+binario F&B a quello Generali — cioè **soldi tra i secchi del MOL**, in silenzio.
+
+**Quello che avevo scritto**: «POST e PATCH riderivano *sempre* il tipo dalla
+categoria lato server». **È falso.** La riderivazione è **condizionata alla
+presenza della categoria**:
+
+- `POST` (`workspace.py:2272-2276`): `payload["tipo"] = body.tipo` è già stato
+  scritto a `:2269`; la sovrascrittura avviene **solo** dentro
+  `if body.categoria is not None`. Senza categoria, il `tipo` del client arriva
+  intatto al DB, validato solo contro `{"fb","generale"}` — cioè non validato
+  affatto dal punto di vista contabile.
+- `PATCH` (`workspace.py:2313-2329`): stessa struttura. Se `categoria_effettiva`
+  è `None`, la riga `if categoria_effettiva: updates["tipo"] = ...` non scatta.
+
+**E non è un caso residuale: è il caso normale.** Misurato sul DB live:
+
+| tipo | categoria | voci | totale |
+|---|---|---|---|
+| `fb` | **NULL** | 13 | €3.936,17 |
+| `generale` | **NULL** | 2 | €457,00 |
+| `fb` | `SALUMI` | 1 | €100,00 |
+
+**15 righe su 16 — €4.393,17 su €4.493,17, il 97,8% del denaro — hanno
+`categoria IS NULL`**, quindi passano tutte per il ramo scoperto.
+
+Il percorso è raggiungibile end-to-end: `apps/web/src/app/api/workspace/spese/route.ts:25`
+inoltra il body **verbatim** (`JSON.stringify(body)`), senza validazione nel BFF.
+
+Due sotto-ipotesi invece **cadono davvero**, e restano chiuse in negativo:
+- **Categoria inventata → `fb`**: impossibile. `_valida_categoria_spesa`
+  (`workspace.py:2186-2190`) è una whitelist su `_CATEGORIE_SPESA_VALIDE` e alza
+  400; il ternario di `_tipo_da_categoria` riceve solo stringhe già validate.
+- **`SPESE_GENERALI_SET` (frontend) ↔ `_tipo_da_categoria` (backend)**: in
+  parità esatta, verificato. Non è il difetto delle etichette ripetuto sui numeri.
+
+**Perché ho sbagliato**: ho letto il codice correttamente — i due commenti nel
+router descrivono bene lo scenario che difendono — ma **non ho misurato quale
+ramo prendono i dati veri**. Il ramo protetto è quello che il codice racconta;
+quello che i dati percorrono è l'altro.
+
+**Severità e decisione.** Non è un difetto introdotto da F6, ed è un
+comportamento **deliberato**: `tests/test_spese_extra.py:291` e `:324` lo
+asseriscono come voluto («retrocompatibilità voci storiche», «controllo manuale
+del tipo»), e `test_categoria_null_azzera_e_libera_il_tipo` (`:330`) mostra che
+`{categoria: null, tipo: "generale"}` in **una sola** richiesta libera il tipo.
+Un utente autenticato che manipola i **propri** dati non è un attaccante: può
+già cambiare il tipo dall'interfaccia.
+
+Resta però che **la protezione descritta nel codice copre l'1 riga su 16 che ha
+la categoria, non le 15 che non ce l'hanno**, e che l'interfaccia oggi rende la
+categoria obbligatoria (`spese-view.tsx:101`) mentre l'API no.
+**Decisione per Mattia** (non applicata: tocca Python e le rotte API, fuori
+deroga): rendere la categoria obbligatoria anche lato API per le nuove voci,
+lasciando il ramo libero solo alle voci storiche già in tabella — oppure
+accettare esplicitamente il disallineamento e documentarlo come tale.
+
+### ⚪ Non letto, e perché
+
+**4.991 righe su 6.001 (83%) non sono state lette riga per riga.** Non è una
+svista: governano tabelle **vuote o ferme da mesi**, e il ciclo scorso ha già
+dimostrato su `workspace.py` che coprire codice che nessun cliente esercita
+produce coverage, non sicurezza.
+
+- `personale-tab.tsx` (1.834) — `turni_personale` **0 righe**,
+  `regole_turni_ricorrenti` **0**, `dipendenti` 1. Il file più grande del
+  perimetro governa funzionalità che nessuno usa.
+- `ricetta-editor.tsx` (452) + `foodcost-tab.tsx` (336) — `ricette` 5, ferme
+  a maggio; `ingredienti_workspace` e `ingredienti_utente` **0**.
+- `diario-tab.tsx` (427) — `diario_eventi` 2, `note_diario` **0**.
+- `inventario-*.tsx` (1.158 su 4 file) — `inventario_voci` 6, ferme a giugno.
+- `marketplace.tsx` (276) — `marketplace_leads` **0**.
+
+**Se una di queste aree venisse attivata per un cliente, il suo file torna
+auditabile e questa fase non copre il rischio.** In particolare
+`personale-tab.tsx`: 1.834 righe mai lette, e `tests/test_turni_mensili.py`
+copre il servizio di export, non la UI.
+
+### Verifica
+
+- `npx tsc --noEmit` → **EXIT 0** (unica rete su questo codice: zero test
+  frontend, per la decisione esplicita su F2-NOTEST).
+- `tests/test_documentazione_onesta.py` → verde.
+- Ogni cifra di questo verbale rimisurata al momento di scriverla.
+
+---
+
+## F7 — Chiusura del ciclo (29/8/2026)
+
+**Le voci ereditate sono state riverificate, non ricopiate.** Il metodo del ciclo
+lo impone («ogni severità si riverifica sul DB live o eseguendo il codice»), e ha
+prodotto un risultato: **una voce latente è diventata concreta**, due si chiudono
+in negativo con la misura.
+
+### 🟡 Argon2: la voce non è più ipotetica — c'è un utente con `p=1`
+
+`services/auth_service.py:46` annota che `check_needs_rehash()` «oggi non è
+chiamato da nessuna parte». La voce era archiviata come **latente**: serve solo
+*se* i parametri cambiano. **Non è più così.** Misurato sul DB live:
+
+| algoritmo | parametri | utenti |
+|---|---|---|
+| `argon2id` | `m=65536,t=3,p=4` | 6 |
+| `argon2id` | **`m=65536,t=3,p=1`** | **1** |
+
+Un utente ha un hash con **`p=1` invece di `p=4`** — parametri diversi da quelli
+dichiarati in `CLAUDE.md` e asseriti da `tests/test_auth_argon2_parametri.py`.
+Non è un utente dormiente: **ruolo `cliente`, attivo, ultimo accesso il 28/8**
+(ieri).
+
+**Cosa NON è**: un difetto di sicurezza in atto, e nemmeno un login rotto. I
+parametri sono incorporati nell'hash (`$argon2id$v=19$m=...,t=...,p=...$`) e
+`verify()` li legge da lì, non dall'oggetto `ph`. Quell'utente entra
+regolarmente — infatti è entrato ieri.
+
+**Cosa è**: quell'hash **non verrà mai portato ai parametri correnti**.
+`verify_and_migrate_password` (`:653`) migra `SHA256 → Argon2`, ma su un hash
+già Argon2 esegue `ph.verify(stored, password)` e ritorna: nessuna chiamata a
+`check_needs_rehash()`, nessun ri-hash. Il divario è permanente finché non si
+aggiunge quel controllo — e cresce a ogni futuro innalzamento dei parametri.
+
+**Decisione per Mattia** (fuori deroga: Python, `auth_service`): aggiungere
+`ph.check_needs_rehash(stored)` nel ramo Argon2 con ri-hash e update, oppure
+accettare il divario e correggere il commento a `:46`, che oggi presenta la cosa
+come puramente teorica mentre un caso reale esiste.
+
+### ✅ Percorsi di scrittura ricavi — tutti agganciati (chiusa in negativo)
+
+La voce ereditata avverte: «nuovi percorsi di scrittura vanno agganciati anche
+loro a `_spegni_override_mensile`». Censiti **tutti** i percorsi che scrivono
+`ricavi_giornalieri`:
+
+| percorso | aggancio |
+|---|---|
+| `routers/ricavi.py:195` (upsert singolo) | ✅ `:205` |
+| `routers/ricavi.py:319` → `_upsert_ricavi_ristorante` | ✅ `:819` |
+| `worker/email_queue_processor.py:565` (upsert batch) | ✅ `:566` |
+| `routers/ricavi.py:279` (**delete**) | ⚪ assente — **ed è corretto** |
+
+Il `delete` non chiama lo spegnimento, e **non deve**: la funzione riporta a
+`giornaliero` i mesi che *ricevono* giornalieri; cancellarne uno non è una
+ragione per disattivare l'override. Nessun percorso di scrittura scoperto.
+
+### ✅ Due override ancora `mensile` con giornalieri presenti — residuo storico, non falla
+
+Query di controllo incrociato: **2 mesi** hanno override `mensile` attivo *e*
+giorni caricati (TIME CAFE, `86300227-…`, maggio e giugno 2026). Sembrava il
+difetto vivo. **Non lo è**, e la cronologia lo dimostra:
+
+- **09/06** — caricato il giorno 09/06 (€3.500); l'override di giugno non
+  esisteva ancora.
+- **12/06** — attivati gli override di maggio e giugno.
+- **18/06** — caricato il 31/05 (€88.606), con l'override già attivo.
+- **27/08** — `_spegni_override_mensile` **nasce** (commit `c9c9dd9`).
+
+I dati sono di **giugno**, il fix è di **agosto**: sono residui *precedenti* al
+fix, non casi sfuggiti. Controprova diretta:
+
+```sql
+-- righe con override attivo e giornalieri toccati DOPO il fix
+SELECT count(*) FROM ricavi_modalita_mensile m
+JOIN ricavi_giornalieri r ON ... WHERE m.modalita='mensile'
+  AND r.updated_at > '2026-08-27';  -->  0
+```
+
+**Zero.** Il fix del 27/8 tiene.
+
+E i due residui **non mostrano numeri sbagliati al cliente**:
+
+| mese | mostrato (override) | somma giornalieri ignorata |
+|---|---|---|
+| 2026-05 | €88.606 | €88.606,27 — **lo stesso numero** |
+| 2026-06 | €80.655 | €3.500 — un giorno solo, parziale |
+
+A maggio la riga del 31/05 è la trascrizione del totale mensile: nessuna
+discrepanza. A giugno l'override è il dato completo e il singolo giorno è
+parziale: **ignorarlo è il comportamento corretto**. Nessuna azione necessaria.
+
+### ⚪ Voci ereditate confermate come già chiuse o non-difetti
+
+- **Canale SDI senza policy date** — decisione a verbale (STORICO §27, §32),
+  difesa da `tests/test_upload_policy_canale_sdi.py`: **3 test, verdi**.
+  Non è una svista, resta com'è.
+- **Flush PROP-1 prima del blocco policy** — «documenta-e-chiudi, refactor
+  sproporzionato al rischio». Riconfermato: il flush vive in
+  `invoice_service.py:1288` e `ai_service.py:3516`, e il commento a
+  `fastapi_worker.py:2192` lo documenta già nel punto in cui conta.
+- **Le 8 `@_make_cache`** — voce **ritirata il 28/8**, il difetto non esiste
+  (verificate una per una). Se si volesse la copertura a test, va aperta come
+  voce propria: non è un residuo di questa.
+- **`tests/worker_test.py` non gira mai** — chiusa il 28/8, sostituita da
+  `tests/test_worker_endpoints.py`.
+
+### I 2 rilievi lasciati aperti dalla review di F1 — entrambi chiusi
+
+Erano annotati «per F7». Ripresi, **verificati ancora presenti nel codice** e
+corretti sotto deroga (frontend `(app)/`, poche righe, `tsc --noEmit` EXIT 0).
+
+#### 1. `nascosti` sottostimava — e la misura è peggiore dell'annotazione
+
+Il rilievo diceva «il numero mostrato non è un limite superiore garantito».
+**Quantificato ora, eseguendo la RPC sul perimetro che il codice usa davvero** —
+cioè le sedi di **un** account, come le risolve `_resolve_gruppo`
+(`routers/gruppo.py:653`, filtra `user_id` **e** `sede_tecnica = false`):
+
+| account | PV | RPC (`p_limit: 500`) | descrizioni reali |
+|---|---|---|---|
+| `51015cc8-…` (il gruppo reale) | 4 | **500** | **4.518** |
+| `2f3f93a1-…` | 2 | 541 | 541 — **non satura** |
+
+La RPC **satura davvero** per il gruppo reale: 500 ricevute su **4.518**
+esistenti. Il client tronca a 60 e mostrava «Altri **N** prodotti non mostrati»
+con N calcolato sul troncone.
+
+> **Correzione (review finale).** Avevo scritto **6.862** descrizioni. Quella
+> cifra si ottiene passando alla RPC **tutte le sedi attive di tutti gli
+> account insieme** — un insieme che `_resolve_gruppo` non produce **mai**,
+> perché filtra per `user_id`. Mescolava i dati di due clienti diversi e
+> gonfiava il numero del ~52%. Stesso errore di F6: misura fatta su un
+> perimetro che il codice non usa. Il difetto resta reale (4.518 ≫ 500), ma la
+> cifra giusta è **4.518**. Per il secondo account il messaggio era già
+> corretto: 541 descrizioni, la RPC non satura.
+
+Non è un numero che sposta soldi, ma è un numero **mostrato al cliente e falso**.
+
+**Fix applicato (client):** il memo espone `poolSaturo`, misurato sulla
+**risposta della RPC** (`risposta.length >= 500`), non sul pool filtrato. Quando
+è saturo il messaggio diventa «Altri prodotti non mostrati», senza cifra.
+
+> **Il primo tentativo era sbagliato, e l'ha trovato la review.** Avevo scritto
+> `poolSaturo: pool.length >= 500`, misurandolo **dopo** i filtri client
+> (`giaAssociate` e il testo digitato). Con 67 associazioni il pool scendeva a
+> 433: la guardia non scattava e la cifra falsa riappariva. **Non scattava su
+> nessuno dei 3 tag reali**, e bastava digitare una lettera per disattivarla.
+> Verificato per mutazione su copia in scratchpad, sui 4 casi reali:
+>
+> | caso | versione vecchia | versione nuova |
+> |---|---|---|
+> | tag 3 (5 assoc) | mostra «altri 435» | guardia ON |
+> | tag 4 (67 assoc) | mostra «altri 373» | guardia ON |
+> | tag 5 (6 assoc) | mostra «altri 434» | guardia ON |
+> | tag 3 + 1 lettera | mostra «altri 0» | guardia ON |
+>
+> La saturazione è una proprietà di **ciò che il server ha mandato**, non di ciò
+> che resta dopo i filtri. L'operatore `>= 500` era giusto; era sbagliato il
+> punto in cui misuravo.
+
+Il pulsante `Seleziona questi ${candidati.length}` **non è stato toccato**:
+conta i visibili, ed era già corretto.
+
+**Il fix vero resta fuori deroga** e non è stato fatto: alzare `p_limit` o far
+tornare alla RPC un conteggio totale separato dalla pagina. Tocca Python e la
+rotta API. **Decisione per Mattia.** Quello applicato qui toglie la cifra falsa,
+non il limite.
+
+#### 2. `toggleTutti` leggeva `tuttiSelezionati` dalla closure
+
+Confermato ancora presente (`gruppo-tag-section.tsx:329`). `tuttiSelezionati` è
+calcolato nel render, e veniva letto **dentro** `setSelected(prev => …)`: è il
+valore del render in cui il click è partito, che un `toggle()` nello stesso batch
+invalida. Effetto possibile: il pulsante esegue l'azione **opposta** a quella che
+la sua etichetta mostra.
+
+**Fix:** il predicato si ricalcola da `prev` dentro l'updater. `tuttiSelezionati`
+resta per l'etichetta (`:436`), dove leggere il valore del render è corretto.
+
+Era annotato «pre-esistente e innocuo in pratica» — resta vero, ma è il pattern
+che genera stato stantio, ed è una riga.

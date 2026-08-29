@@ -1,8 +1,28 @@
 # Stato audit ONEFLUX — ciclo 2026-08
 
-**Ciclo APERTO il 28/08/2026.** Il ciclo precedente (2026-07) è **chiuso** la
-stessa data: indice e storico completi in `docs/storico/`
+**Ciclo CHIUSO il 29/08/2026** (aperto il 28/08). Tutte e 7 le fasi chiuse, ogni
+fase con `code-reviewer` di gate. Il ciclo precedente (2026-07) è chiuso il
+28/08: indice e storico completi in `docs/storico/`
 (`AUDIT_ONEFLUX_STATO_2026-07.md` e `..._STORICO.md`).
+
+> **Decisioni lasciate aperte di proposito** (nessuna è una svista — tutte fuori
+> dalla deroga sui fix banali perché toccano Python, le rotte API o scelte di
+> prodotto):
+> 1. 🔴 **Il radar anomalie non gira da giugno** (F5) — ricollegarlo a FastAPI o
+>    dichiararlo dismesso e rimuoverlo con i suoi 6 test.
+> 2. 🟡 **`normalizza_piva` accetta P.IVA estere come italiane** (F5).
+> 3. 🟡 **Il prompt AI contraddice la regola di dominio #1** (F5).
+> 4. 🟡 **Il `tipo` spesa è protetto solo sulle voci categorizzate** (F6) —
+>    15 righe su 16 passano dal ramo scoperto.
+> 5. 🟡 **Argon2: un utente ha `p=1`** (F7) — `check_needs_rehash()` non è mai
+>    chiamato.
+> 6. 🔵 **`p_limit: 500` della RPC tag di catena** (F7) — il client non mostra
+>    più una cifra falsa, ma il limite resta.
+> 7. 🔵 **`ripartisci-dialog`, percentuali negative** (F3) — fallisce in
+>    sicurezza (400 dal server).
+> 8. 🔵 **Il commento `ai_pending`** (F4) — documentazione che mente nel codice.
+> 9. ⚪ **F2-NOTEST** — nessun test runner frontend: **decisione esplicita di
+>    Mattia**, è una scelta di progetto, non una svista.
 
 > Il ciclo 2026-07 ha chiuso tutte e 10 le dimensioni con seconda passata e
 > `code-reviewer`, più §3b/§3c (perimetro non letto) e §2 (mock globale del
@@ -199,8 +219,8 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 | **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | 7.277 | 🟠 attraversa tutto | 🟢 CHIUSA 29/08 |
 | **F4** | Frontend **analisi-fatture/ + dashboard/** | 4.409 | 🟠 6.917 upload | 🟢 CHIUSA 29/08 |
 | **F5** | Python — i **10 moduli mai auditati come oggetto proprio** | 3.570 | 🔴 radar anomalie spento da giugno | 🟢 **CHIUSA** 29/08 |
-| **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | ~3.900 | ⚪ bassa/nulla | ⚪ APERTA |
-| **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | — | ⚪ APERTA |
+| **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | 6.001 | 🟡 `spese_extra` viva (€4.493) — il resto fermo | 🟢 **CHIUSA** 29/08 · 1 🟡 aperto |
+| **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | 🟡 1 utente con Argon2 `p=1` | 🟢 **CHIUSA** 29/08 |
 
 **F1 è la prima per una ragione misurata, non per intuizione** — vedi sotto.
 
@@ -346,7 +366,7 @@ il client tronca a 60 senza dirlo. → finding F-60.
 | **F-60** | 🟡 LOW/MED | Troncamento silenzioso a 60 candidati | **FIXATO** |
 | **F-REDIRECT** | 🟡 LOW | Worker giù → redirect invece di BlockRetry | **FIXATO** |
 | **F-DACLASS** | 🟡 LOW | `"Da Classificare"` hardcoded 7× su 4 file | **FIXATO** |
-| **F-DRIFT** | ⚪ | 19 costi su 156: somma quote ≠ totale, max 1 cent | **aperto, a Mattia** |
+| **F-DRIFT** | 🟢 | 19 costi su 156: somma quote ≠ totale, max 1 cent | **chiuso 28/8** (guardia SQL + sanatoria, PR #44 `df19cce`) — 0 costi sbilanciati sul DB live |
 | **F-CHAT** | 🟠 MEDIUM | Tool chat catena rotto (token passato come `mese`) | **FIXATO** (fuori perimetro, trovato in review) |
 
 **H2-BIS in dettaglio.** `gruppo_salute_componenti` legge solo `margini_mensili`.
@@ -576,7 +596,7 @@ contro l'algoritmo ufficiale su 200.000 casi con zero divergenze.
 
 ---
 
-## ⚪ F6 — Frontend workspace / agenda / assistenza
+## 🟢 F6 — Frontend workspace / agenda / assistenza — CHIUSA 29/08
 
 **Esposizione misurata: bassa o nulla.** turni_personale **0**,
 ingredienti_workspace **0**, ingredienti_utente **0**, note_diario **0**,
@@ -596,17 +616,66 @@ corretta è dichiararla chiusa per assenza di esposizione** — come si è fatto
 il Vision (0 righe PDF) e per il legacy di `upload_handler.py` — non leggerla
 per completezza. Rimisurare prima di decidere.
 
+### Esito (29/08/2026)
+
+**Rimisurato, e la decisione è cambiata.** Il perimetro non è ~3.900 righe ma
+**6.001** (manca dall'elenco `personale-tab.tsx`, 1.834 righe, il file più
+grande). Soprattutto: **`spese_extra` non è vuota** — 16 voci, **€4.493**, un
+cliente reale, ultima **ieri**, e `margini.py:1067` la legge per i totali che il
+cliente vede. Chiuderla per assenza di esposizione sarebbe stato sbagliato.
+
+Letto il **17%** che tocca dati vivi (`spese-view.tsx` + `agenda-overview.tsx`,
+1.010 righe). **Non letto l'83%** che governa tabelle vuote o ferme — dichiarato
+nel verbale con il dettaglio per file, `personale-tab.tsx` in testa.
+
+- 🔧 **Un fix sotto deroga**: `TIPO_SPESA_LABEL` esisteva in **tre grafie**, due
+  delle quali nello stesso file. Il cliente vedeva `Spese Generali` a schermo e
+  `Spesa Generale` nel CSV dello stesso dato. Unificato sulla costante
+  condivisa; nessun numero cambia. `tsc --noEmit` EXIT 0.
+- 🟡 **Un finding aperto, da decidere**: il `tipo` spesa è riderivato lato server
+  **solo quando la richiesta porta la categoria**. Oggi **15 righe su 16**
+  (€4.393 su €4.493, il **97,8%** del denaro) hanno `categoria IS NULL` e
+  passano per il ramo scoperto. È comportamento deliberato e asserito dai test
+  (retrocompatibilità voci storiche), e l'utente manipola i propri dati — ma la
+  UI rende la categoria obbligatoria mentre l'API no. Fuori deroga (Python +
+  rotte API): decisione di Mattia.
+  **Nota di metodo**: avevo archiviato questa come «ipotesi chiusa in negativo».
+  Era chiusa a metà — avevo letto il codice ma non misurato quale ramo prendono
+  i dati veri. L'ha trovato il `code-reviewer`.
+- ✅ **Chiuse in negativo davvero**: una categoria inventata non può finire su
+  `fb` (`_valida_categoria_spesa` è una whitelist che alza 400), e
+  `SPESE_GENERALI_SET` (frontend) ↔ `_tipo_da_categoria` (backend) sono in
+  parità esatta.
+
 ---
 
-## ⚪ F7 — Chiusura del ciclo
+## 🟢 F7 — Chiusura del ciclo — CHIUSA 29/08
 
-1. Riprendere le **voci ereditate** elencate sopra (SDI/policy date, flush
-   PROP-1, `email_queue_processor`) e le **due aperte il 28/8**: migrazione
-   Argon2→Argon2 e copertura a test delle 8 `@_make_cache`.
-2. `code-reviewer` sul diff cumulativo del ciclo.
-3. Aggiungere "**Ciclo chiuso il gg/mm/aaaa**" in cima a questo file.
-4. Spostare questo file **e il suo STORICO** in `docs/storico/`.
-5. Creare `AUDIT_ONEFLUX_STATO_<nuova data>.md` — **non riusare questo file**.
+1. ✅ **Voci ereditate riverificate, non ricopiate.** Una era latente ed è
+   diventata concreta: **un utente ha un hash Argon2 con `p=1` invece di `p=4`**
+   (cliente attivo, ultimo accesso il 28/8). Entra regolarmente — i parametri
+   stanno dentro l'hash — ma non verrà **mai** portato ai parametri correnti,
+   perché `verify_and_migrate_password` migra solo `SHA256 → Argon2` e non
+   chiama `check_needs_rehash()`. Il commento a `auth_service.py:46` presenta la
+   cosa come teorica: non lo è più.
+   Chiuse **in negativo** con la misura: tutti i percorsi di scrittura ricavi
+   sono agganciati a `_spegni_override_mensile` (il `delete` non lo chiama, ed è
+   corretto); i 2 override ancora `mensile` con giornalieri presenti sono
+   **residui precedenti** al fix del 27/8 (`c9c9dd9`) — zero casi dopo — e non
+   mostrano numeri sbagliati al cliente.
+2. ✅ **I 2 rilievi lasciati aperti dalla review di F1**, entrambi ancora
+   presenti nel codice, entrambi corretti: `nascosti` mostrava una cifra
+   calcolata sul troncone (la RPC satura a 500 su **4.518** descrizioni
+   dell'account di catena reale) — ora sparisce quando la risposta della RPC è
+   satura; `toggleTutti` leggeva lo stato dalla closure — ora si ricalcola da
+   `prev`. Entrambi i fix sono stati **rifatti dopo la review finale**: il primo
+   misurava la saturazione dopo i filtri client e non scattava su nessuno dei 3
+   tag reali; la cifra 6.862 sommava sedi di account diversi.
+3. ✅ `code-reviewer` sul diff cumulativo.
+4. ✅ "Ciclo chiuso il 29/08/2026" in cima a questo file.
+5. ⏭️ Spostamento in `docs/storico/` e apertura del ciclo nuovo: **da fare
+   all'apertura del prossimo ciclo**, non ora — spostarli adesso significherebbe
+   archiviare 9 decisioni ancora da prendere (elenco in cima).
 
 ---
 
