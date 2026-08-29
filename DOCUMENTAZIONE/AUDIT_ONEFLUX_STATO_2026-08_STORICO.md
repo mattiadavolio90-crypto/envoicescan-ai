@@ -440,3 +440,165 @@ un centesimo, quindi una soglia a 0,01 li avrebbe lasciati passare tutti.
 - **Il modo di fallire va scelto guardando chi chiama.** Una guardia corretta nel
   merito, messa nell'hot-path del worker, sarebbe stata una regressione: avrebbe
   bloccato l'elaborazione di una fattura per un centesimo.
+
+---
+
+## F3 — Frontend `components/` condivisi — chiusa 29/08/2026
+
+**Perimetro misurato**: **7.277 righe in 53 file** (`wc -l`). La roadmap
+dichiarava 7.274: la cifra giusta è 7.277 — vedi la nota sulle misure in fondo.
+Suddiviso per rischio invece che per dimensione:
+
+| Gruppo | Righe | Tocca dati cliente? | Esito |
+|---|---|---|---|
+| `fatture/` (3 file) | 1.055 | **sì — scrive** (assegna, scarta, ripartisce) | letto riga per riga |
+| `nav/`, `brand/`, `legal/`, `admin/`, root (11 file) | 1.133 | sì (lettura/sessione) | letto riga per riga |
+| `ui/` (23 file) | 2.414 | no (presentazione) | letto per campionamento mirato |
+| `demo/` + `landing/` (16 file) | 2.675 | **no — zero `fetch`** | escluso con misura |
+
+### Correzione al doc: `components/ui/` NON è shadcn vendored
+
+La roadmap chiedeva di «dichiarare escluso con la misura (quanti file sono
+vendored e non modificati)». La misura **smentisce la premessa**, quindi
+l'esclusione per quel motivo non era disponibile:
+
+- `grep -c radix-ui` su tutti i 23 file di `ui/` → **0**. Non è shadcn stock:
+  il progetto usa `@base-ui/react` (`package.json`), su cui i componenti sono
+  stati **riscritti a mano**.
+- `git log --format='%an' -- components/ui/` → **14 commit, tutti di Mattia
+  D'Avolio**, l'ultimo il 5/8/2026 (`d3bd811`, sostituzione di `confirm()`
+  nativo con `ConfirmDialog`).
+
+Sono quindi codice di progetto a tutti gli effetti. Restano comunque a rischio
+basso — sono presentazionali e non fanno I/O — ma il motivo dell'esclusione è
+**"non toccano dati né scritture"**, non "sono generati". La differenza conta:
+la prima è verificabile, la seconda era falsa.
+
+### `demo/` + `landing/` — esclusi con misura
+
+`grep -rn "fetch(" demo/ landing/` (2.675 righe) → **zero occorrenze** (l'unico match è un
+commento in `demo-chat.tsx` che dice esplicitamente «NIENTE fetch a /api/chat»).
+Rendono contenuto hardcoded: nessun dato cliente, nessuna scrittura. Verificata
+anche l'assenza di cifre spacciate per reali: l'unico `%` in `landing-page.tsx`
+è un valore di opacità dentro un commento.
+
+### Ipotesi verificate
+
+**H-dominio — la coda reintroduce un fallback travestito lato client? NO.**
+`dropdown-categoria.tsx` esclude esplicitamente sia `CATEGORIA_NON_CLASSIFICATA`
+sia `"📝 NOTE E DICITURE"` dalle voci selezionabili (righe 54-59), con il motivo
+documentato: sono stati che solo l'AI può assegnare, e i backend li rifiutano con
+400/422. La costante TS `"Da Classificare"` (`lib/categorie-spesa.ts:23`) è
+**identica** a quella Python (`config/constants.py:1929`). La variante errata
+`"Da Clasificare"` compare solo come rifiuto difensivo lato server. Regole di
+dominio #1 e #2 rispettate.
+
+**H-percentuali — la tolleranza client sulle quote diverge dal server? NO,
+è speculare.** `ripartisci-dialog.tsx:120` usa `Math.abs(sommaPerc - 100) > 0.5`;
+`riparto.py:120` usa `abs(tot_perc - 100.0) > 0.5`. Stessa soglia, e l'ultima
+quota assorbe il resto (`_quote_percentuali`), quindi la somma pareggia sempre
+l'importo — coerente col fix F-DRIFT. Il default "parti uguali" con 3 sedi
+produce 33.3×3 = 99.9: dentro tolleranza su entrambi i lati, e il residuo lo
+assorbe l'ultima quota. Nessuna deriva.
+
+**H-selezione — la selezione multipla può disallinearsi da `items`? NO.**
+`selezione` viene potata a ogni rimozione riuscita (righe 198 e 254) e azzerata
+alla chiusura della finestra (riga 364); tutti i consumatori la intersecano
+comunque con `items`. Il confronto `prev.size === items.length` in `toggleTutte`
+è quindi consistente.
+
+### Findings
+
+**1. 🟡 `MobileRedirect` non scatta su `/margini` — FIXATO**
+
+`pathname.startsWith("/m")` matcha per **prefisso**, non per segmento: oltre alle
+rotte mobile matcha anche `/margini`, che esiste in `(app)/`. Un utente su
+telefono che arriva su `/margini` (bookmark, link, cronologia) **resta sul layout
+desktop**, che per CLAUDE.md non è responsive.
+
+Che sia involontario è documentato dalla storia. Il componente è stato introdotto
+da `e6ed97f` (2/6/2026, *"PWA installabile con 5 sezioni"*); lo stesso giorno
+`6ca6728` (*"Impostazioni dentro la PWA + rimossa «Vista completa»"*) ne ha
+**tolto** la whitelist `MOBILE_ALLOWED` e il flag force-desktop, cioè ha stretto
+il confinamento dei mobile dentro `/m` invece di allentarlo. `/margini` è più
+vecchio del componente, quindi il difetto è latente fin dall'introduzione. Non
+esiste `/m/margini`: la destinazione corretta è la home mobile.
+
+Verificato che diverge **esattamente una rotta** su 14 e che nessuna delle **7**
+rotte mobile (`/m` più `briefing`, `chat`, `diario`, `impostazioni`, `notifiche`,
+`turni`) regredisce. Il fix allinea il
+componente alla convenzione già usata altrove nel repo: `app-sidebar.tsx:166`
+scrive `pathname === "/catena" || pathname.startsWith("/catena/")`. Era l'unico
+punto che se ne discostava.
+
+Rientra nella deroga (poche righe, componente condiviso, comportamento ovvio,
+`tsc --noEmit` verde, nessun effetto sui numeri).
+
+**2. 🟡 Il totale della coda è arrotondato all'euro — DA DECIDERE**
+
+`coda-da-assegnare.tsx:48`, `euro()` usa `maximumFractionDigits: 0`. È usata sui
+**due totali** della coda (righe 351 e 379), mentre gli importi delle singole
+fatture nella stessa finestra sono formattati **con i centesimi** (riga 476).
+Sullo schermo convivono quindi righe tipo `€ 127,45` e un totale `€ 744`.
+
+Misurato sul DB live (29/8), sullo stesso filtro che usa l'endpoint —
+`fatture_queue` con `status = 'da_assegnare'` (`services/routers/fatture.py:1113`),
+importo da `payload_meta->>'importo_totale'`: l'utente `2f3f93a1-…` ha **10
+fatture in coda**, totale reale **743,60 €**, mostrato come **744 €**; **8 su 10**
+hanno centesimi. Il filtro `status` è essenziale per riprodurre la misura: senza,
+lo stesso utente conta 428 righe per 448.775,33 €.
+
+Non è un errore di calcolo — `totale` è sommato sui valori pieni, e l'importo
+scritto a DB non passa da qui. È solo presentazione. Ma è un **numero mostrato al
+cliente**, quindi per la deroga torna a te invece di essere corretto d'iniziativa.
+Fix banale (`minimumFractionDigits: 2`), decisione tua.
+
+**3. 🔵 `ripartisci-dialog`: la somma percentuali diverge dal server sui valori
+negativi — DA DECIDERE**
+
+Il client somma **tutte** le percentuali (riga 113); il server scarta prima
+quelle `<= 0` (`riparto.py:114`) e somma solo le positive. Con `120 / -20` il
+client mostra «Totale: 100.0%», abilita il pulsante, e il server risponde **400**
+(`somma attuale: 120.0`).
+
+Fallisce in sicurezza — nessun dato sbagliato viene scritto, e serve digitare una
+percentuale negativa per arrivarci — quindi è un difetto di UX, non di integrità.
+Segnalato senza fix: cambierebbe una validazione su un percorso che scrive quote.
+
+### Verifica
+
+- `npx tsc --noEmit` → **EXIT 0**.
+- Suite Python completa: **11.381 passed / 43 skipped / 0 failed** (168s).
+- I 45 test F-DRIFT (`test_riparto_drift_ricomposizione.py` +
+  `test_riparto_incoerenza_quote_non_pareggiano.py`) verificati ancora verdi.
+- Il fix non ha test: `F2-NOTEST` resta aperto per decisione di Mattia (nessun
+  runner di test frontend nel progetto). È stato verificato eseguendo la logica
+  di matching su tutte e 14 le rotte `(app)` più le 7 mobile.
+
+### Nota sulle misure — quattro numeri sbagliati in prima stesura
+
+Il `code-reviewer` ha trovato **quattro cifre errate** in questo stesso verbale,
+tutte corrette sopra:
+
+- `ui/` dichiarato 2.689 righe, reale **2.414**; `demo/`+`landing/` dichiarato
+  2.400, reale **2.675** — erano **invertiti**;
+- totale dichiarato 7.274, reale **7.277**: avevo ripreso la cifra dalla roadmap
+  invece di usare il mio stesso `wc -l`;
+- «le 4 rotte mobile», in realtà **7**;
+- provenienza del commit attribuita a `6ca6728` invece che a `e6ed97f`.
+
+Nessuna cambia una conclusione, e il fix e i tre findings reggono tutti alla
+riverifica indipendente. Ma è la **terza volta in questo ciclo** (dopo le due
+correlazioni verificate in una sola direzione in F-DRIFT) che una misura entra
+nel verbale senza ricontrollo. Il pattern è sempre lo stesso: **la cifra ripresa
+da un documento invece che ri-misurata**, o misurata una volta sola e trascritta.
+In un verbale il cui valore sta nell'essere verificabile, i numeri vanno
+ri-misurati al momento di scriverli, non ricordati.
+
+Aggiunta per lo stesso motivo: la misura sul DB live ora cita il filtro
+`status = 'da_assegnare'`, senza il quale non è riproducibile da chi legge.
+
+### Residui
+
+Nessuno bloccante. Due findings (2 e 3) restano **decisioni aperte per Mattia**,
+entrambi di sola presentazione/UX, nessuno dei due falsa un numero salvato.
