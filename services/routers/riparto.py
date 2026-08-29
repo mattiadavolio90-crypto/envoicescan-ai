@@ -111,6 +111,18 @@ def _quote_percentuali(importo: float, percentuali: Dict[str, float], sedi_ok: s
     L'ultima quota pareggia l'importo (evita derive di arrotondamento).
     sedi_ok: id delle sedi attive del chiamante — ogni chiave fuori da questo
     insieme viene rifiutata (altrimenti si scrive nel MOL di un altro account)."""
+    # Le percentuali negative vanno RIFIUTATE, non scartate. Scartandole (il
+    # vecchio `if ... > 0`) la sede spariva dal riparto senza un errore:
+    # {A:50, B:50, C:-30} passava il controllo sulla somma — i positivi fanno
+    # gia' 100 — e il costo veniva ripartito su due sedi invece di tre, con il
+    # cliente convinto di averlo diviso per tre. Provato per mutazione il
+    # 29/8/2026; {A:-50, B:-50} restituiva addirittura una lista vuota.
+    negative = sorted(rid for rid, p in percentuali.items() if float(p or 0) < 0)
+    if negative:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Le percentuali non possono essere negative ({len(negative)} sede/i)",
+        )
     items = [(rid, float(p or 0)) for rid, p in percentuali.items() if float(p or 0) > 0]
     ignote = {rid for rid, _ in items} - sedi_ok
     if ignote:

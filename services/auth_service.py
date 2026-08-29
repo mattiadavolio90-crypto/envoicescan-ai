@@ -42,9 +42,11 @@ logger = get_logger('auth')
 #
 # NOTA: gli hash gia' in DB restano validi comunque — i parametri sono incorporati
 # nell'hash (`$argon2id$v=19$m=65536,t=3,p=4$...`) e `verify()` li legge da li',
-# non da questo oggetto. Alzarli in futuro NON ri-hasha gli hash vecchi: servirebbe
-# `check_needs_rehash()`, che oggi non e' chiamato da nessuna parte (voce aperta
-# nel ciclo audit 2026-08).
+# non da questo oggetto. Alzarli in futuro non ri-hasha gli hash gia' scritti,
+# ma `verify_and_migrate_password` chiama `check_needs_rehash()` a ogni login
+# riuscito: chi entra viene riportato ai parametri correnti senza accorgersene.
+# Chi non entra piu' resta com'e' — l'hash vecchio non e' comunque utilizzabile
+# senza la password giusta.
 ph = argon2.PasswordHasher(
     memory_cost=65536,   # 64 MiB
     time_cost=3,
@@ -673,10 +675,35 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
     if stored.startswith('$argon2'):
         try:
             ph.verify(stored, password)
-            return True
         except Exception:
             logger.exception('Verifica Argon2 fallita')
             return False
+
+        # Password corretta: se l'hash e' stato prodotto con parametri piu'
+        # deboli di quelli correnti, ri-hasha adesso che la password e' in
+        # chiaro. Senza questo un hash vecchio resta debole per sempre: i
+        # parametri stanno dentro l'hash, quindi verify() continua ad
+        # accettarlo e nulla lo aggiorna mai. Best-effort come la migrazione
+        # SHA256 qui sotto: un errore non deve impedire il login.
+        try:
+            if ph.check_needs_rehash(stored):
+                from services import get_supabase_client
+
+                new_hash = ph.hash(password)
+                supabase = get_supabase_client()
+                supabase.table('users').update(
+                    {'password_hash': new_hash}
+                ).eq('id', user_record.get('id')).execute()
+                logger.info(
+                    f"Hash Argon2 aggiornato ai parametri correnti per "
+                    f"user_id={user_record.get('id')}"
+                )
+        except Exception as rehash_err:
+            logger.warning(
+                f"Re-hash Argon2 fallito per user {user_record.get('id')} "
+                f"- hash precedente mantenuto: {rehash_err}"
+            )
+        return True
 
     # Fallback SHA256 con migrazione automatica
     try:

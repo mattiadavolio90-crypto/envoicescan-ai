@@ -2089,25 +2089,12 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                     if _inbox_records:
                         upsert_inbox_notifications(_inbox_records, supabase_client=supabase)
 
-                    # Radar anomalie - esecuzione non critica post-upload
-                    try:
-                        from services.anomaly_radar_service import check_on_upload
-
-                        radar_records = check_on_upload(
-                            user_id=_inbox_uid,
-                            ristorante_id=_inbox_rid,
-                            upload_id=str(_ctx.get('upload_id') or ''),
-                            supabase_client=supabase,
-                        )
-                        if radar_records:
-                            upsert_inbox_notifications(
-                                radar_records,
-                                supabase_client=supabase,
-                            )
-                    except Exception as radar_err:
-                        logger.warning(
-                            f'Radar anomalie upload fallito (non critico): {radar_err}'
-                        )
+                    # Il radar anomalie NON si chiama piu' da qui. Ora gira in
+                    # `invoice_service.salva_fattura_processata`, che e' l'unico
+                    # punto attraversato da entrambi i canali vivi; questo blocco
+                    # stava in un percorso raggiungibile solo da legacy_streamlit
+                    # e passava `upload_id`, un correlatore che non e' mai
+                    # esistito come colonna.
 
                     # Suggerimenti Tag - esecuzione non critica post-upload
                     try:

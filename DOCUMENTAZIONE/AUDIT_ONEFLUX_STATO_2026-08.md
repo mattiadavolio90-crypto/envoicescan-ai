@@ -5,24 +5,35 @@ fase con `code-reviewer` di gate. Il ciclo precedente (2026-07) è chiuso il
 28/08: indice e storico completi in `docs/storico/`
 (`AUDIT_ONEFLUX_STATO_2026-07.md` e `..._STORICO.md`).
 
-> **Decisioni lasciate aperte di proposito** (nessuna è una svista — tutte fuori
-> dalla deroga sui fix banali perché toccano Python, le rotte API o scelte di
-> prodotto):
-> 1. 🔴 **Il radar anomalie non gira da giugno** (F5) — ricollegarlo a FastAPI o
->    dichiararlo dismesso e rimuoverlo con i suoi 6 test.
-> 2. 🟡 **`normalizza_piva` accetta P.IVA estere come italiane** (F5).
-> 3. 🟡 **Il prompt AI contraddice la regola di dominio #1** (F5).
-> 4. 🟡 **Il `tipo` spesa è protetto solo sulle voci categorizzate** (F6) —
->    15 righe su 16 passano dal ramo scoperto.
-> 5. 🟡 **Argon2: un utente ha `p=1`** (F7) — `check_needs_rehash()` non è mai
->    chiamato.
-> 6. 🔵 **`p_limit: 500` della RPC tag di catena** (F7) — il client non mostra
->    più una cifra falsa, ma il limite resta.
-> 7. 🔵 **`ripartisci-dialog`, percentuali negative** (F3) — fallisce in
->    sicurezza (400 dal server).
-> 8. 🔵 **Il commento `ai_pending`** (F4) — documentazione che mente nel codice.
+> **Le 8 decisioni aperte sono state CHIUSE il 29/08/2026.** Verbale completo,
+> con le query che dimostrano ogni misura, in
+> `AUDIT_ONEFLUX_STATO_2026-08_STORICO.md` § «Chiusura degli 8 punti aperti».
+> Resta aperto il solo punto 9.
+> 1. 🟢 **Radar anomalie** (F5) — **CHIUSO: ritarato e ricollegato.** La
+>    diagnosi «non gira da giugno» era incompleta: era *nato* rotto (filtrava
+>    `upload_id`, colonna mai esistita) **e** il suo unico chiamante viveva in
+>    `legacy_streamlit`. In più la sua regola duplicati avrebbe prodotto **897
+>    notifiche `error` tutte false** sui dati reali: ritarata su
+>    `numero_documento` (→ 0 falsi) prima di riattivarla.
+> 2. 🟢 **`normalizza_piva`** (F5) — **CHIUSO.** `DE12345678903` passava per
+>    italiana valida; ora rimuove i soli separatori e il prefisso IT.
+> 3. 🟢 **Prompt AI** (F5) — **CHIUSO: allineato** alla regola di dominio #1
+>    (si contraddiceva anche da solo). Il file aveva zero test: ora ne ha 6.
+> 4. 🟢 **`tipo` spesa** (F6) — **CHIUSO senza modifiche: era già risolto.** Il
+>    PATCH rideriva già sempre il tipo ed è coperto da test; resta scoperto solo
+>    il POST senza categoria, che nessun client attuale produce.
+> 5. 🟢 **Argon2 `p=1`** (F7) — **CHIUSO: `check_needs_rehash` implementato** nel
+>    ramo Argon2. L'utente interessato verrà aggiornato al prossimo login.
+> 6. 🟢 **`p_limit: 500`** (F7) — **CHIUSO senza modifiche: accettato.** Il
+>    troncamento è già mitigato lato UI e tiene le voci più costose. Misura
+>    corretta: superano il limite **4 account su 6**, non 1.
+> 7. 🟢 **`ripartisci-dialog`, percentuali negative** (F3) — **CHIUSO.** Non
+>    «falliva in sicurezza»: `{A:50,B:50,C:-30}` veniva **accettato** e una sede
+>    spariva dal riparto in silenzio. Era correttezza, non UX.
+> 8. 🟢 **Commento `ai_pending`** (F4) — **CHIUSO:** riscritto, prescriveva un
+>    comportamento rimosso di proposito da `dfdebc2`.
 > 9. ⚪ **F2-NOTEST** — nessun test runner frontend: **decisione esplicita di
->    Mattia**, è una scelta di progetto, non una svista.
+>    Mattia**, è una scelta di progetto, non una svista. **Unico punto aperto.**
 
 > Il ciclo 2026-07 ha chiuso tutte e 10 le dimensioni con seconda passata e
 > `code-reviewer`, più §3b/§3c (perimetro non letto) e §2 (mock globale del

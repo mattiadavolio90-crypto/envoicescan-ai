@@ -1,4 +1,4 @@
-"""
+﻿"""
 services/fastapi_worker.py — FastAPI Worker per ONEFLUX (Fase 3)
 ═══════════════════════════════════════════════════════════════════════════
 Separa la logica AI/parsing pesante dal frontend Streamlit.
@@ -1700,8 +1700,12 @@ class UploadInvoiceResponse(BaseModel):
     queue_created: Optional[bool] = None
     # True = la categorizzazione AI e' stata rimandata a dopo la risposta HTTP
     # (fattura sopra _UPLOAD_AI_SYNC_MAX_ROWS). In quel caso needs_review_count
-    # riflette solo regole+dizionario e sara' rivisto quando l'AI finisce: il
-    # frontend deve dirlo, non spacciarlo per conteggio definitivo.
+    # riflette solo regole+dizionario e sara' rivisto quando l'AI finisce.
+    # Il frontend NON lo mostra, per scelta: dfdebc2 ha rimosso il messaggio dal
+    # modale perche' non diceva al cliente cosa ricaricare ne' quanto aspettare,
+    # e su una fattura grande l'AI finisce prima che il modale venga chiuso.
+    # `tests/test_upload_ai_background.py` blinda quella rimozione. Il campo
+    # resta nella response per consumatori futuri.
     ai_pending: bool = False
 
 

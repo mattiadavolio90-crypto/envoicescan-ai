@@ -1475,3 +1475,324 @@ resta per l'etichetta (`:436`), dove leggere il valore del render è corretto.
 
 Era annotato «pre-esistente e innocuo in pratica» — resta vero, ma è il pattern
 che genera stato stantio, ed è una riga.
+
+---
+
+# 📌 Chiusura degli 8 punti aperti — 29/08/2026
+
+Sessione dedicata alle 9 decisioni lasciate aperte dal ciclo. Il 9°
+(F2-NOTEST, test runner frontend) resta **fuori perimetro per decisione
+esplicita di Mattia**: è una scelta di progetto, non una svista, e va in una
+sessione a sé.
+
+Deploy separati per superficie, così che ognuno sia verificabile da solo:
+**Gruppo 1 (Railway)** punti 1, 2, 3, 5, 8 + parte server del 7;
+**Gruppo 2 (Vercel)** parte client del 7.
+
+> **Quattro misure hanno corretto il piano di partenza.** Sono elencate dentro
+> ogni punto, perché in tre casi su quattro hanno cambiato *cosa* andava fatto,
+> non solo come raccontarlo. È la conferma della regola del ciclo: una cifra
+> ripresa da un documento non è una cifra misurata.
+
+## Punto 1 🔴 — Radar anomalie — **CHIUSO** (ritarato e ricollegato)
+
+La roadmap diceva «non gira da giugno, ricollegarlo». **Sbagliato su due
+livelli.**
+
+**Causa A — la query non poteva funzionare.** `anomaly_radar_service.py:42`
+filtrava `.eq('upload_id', ...)` su `fatture_documenti`, colonna che non è mai
+esistita:
+
+```sql
+select column_name from information_schema.columns
+where table_name = 'fatture_documenti' and table_schema='public';
+-- 27 colonne, nessuna e' upload_id. La chiave reale e'
+-- (user_id, ristorante_id, file_origine).
+```
+
+**Causa B — il chiamante era morto**, e questa la diagnosi originale non la
+vedeva. L'unico call site era `upload_handler.py:2094`, dentro
+`handle_uploaded_files`, raggiungibile solo da
+`legacy_streamlit/app_controllers.py:1701`; nessun modulo vivo importa
+`legacy_streamlit` (`grep` su `.py/.toml/.txt/Dockerfile`). Riparare la query da
+sola non avrebbe riacceso nulla.
+
+**Causa C — l'errore era silenziato** dal `try/except` di
+`upload_handler.py:2103-2107`, senza dettaglio.
+
+**Perché nessuno se n'era accorto:** i 6 test usavano un fake che restituisce
+`self` da ogni builder ignorando gli argomenti. Non potevano, *per costruzione*,
+accorgersi di una colonna inesistente.
+
+**Misura che ha cambiato la decisione.** Prima di riattivarlo ho simulato la
+regola `fattura_duplicata` (stessa P.IVA, ±30 giorni, importo entro 2%) sui
+3.839 documenti reali:
+
+| | coppie | documenti | sedi | con stesso `numero_documento` |
+|---|---|---|---|---|
+| Regola originale | 1.446 | **897** | 9 | **0** |
+| Regola ritarata | **0** | **0** | 0 | — |
+
+Cioè: riattivarlo com'era significava **897 notifiche `severity='error'`
+("verifica prima di procedere al pagamento") tutte false**, su 9 sedi, contro le
+**65 notifiche totali** presenti in tutto `notification_inbox`. Erano forniture
+ricorrenti: nessuna delle 1.446 coppie condivideva il numero documento, che è
+esattamente il campo che distingue un duplicato da una consegna settimanale.
+
+Le altre regole sono invece risultate ben tarate e restano invariate:
+`piva_duplicata_fornitore` 5 P.IVA su 477 (1%, 3 sedi),
+`fattura_anomala_importo` 9 documenti (7 sedi).
+
+**Fatto:** correlatore su `file_origine` (`in_`, firma `file_origini:
+List[str]`); `fattura_duplicata` confronta anche `numero_documento`; aggancio a
+`salva_fattura_processata` (`invoice_service.py`), unico collo di bottiglia dei
+due canali vivi, best-effort ma con `logger.warning(..., exc_info=True)`. Il
+fake dei test ora valida i nomi di colonna contro lo schema reale — sul codice
+di prima solleva `Colonna 'upload_id' inesistente`. 10 test nuovi, tutti provati
+per mutazione.
+
+**Effetto collaterale positivo:** i `file_ids` passavano `upload_id`, un
+timestamp `%Y%m%d%H%M%S%f` rigenerato a ogni giro, quindi il bucket di dedupe
+(hash MD5 dei file_ids) era sempre diverso e **la dedupe era di fatto
+disattivata**. Ora è stabile per documento.
+
+**Voce aperta separata, misurata e non chiusa qui** (non è una svista): l'intero
+blocco notifiche `source_type='upload'` (7 topic — `upload_failed`,
+`uncategorized_rows`, `price_alert`, `credit_note`, `td24_noddt`,
+`td24_partial`, `quality_check_failed`, `upload_handler.py:1958-2130`) è morto
+con lo stesso meccanismo. Ultima notifica emessa: **1/6/2026**. Il frontend le
+aspetta ancora (`notifiche-shared.ts:14`). Anche `check_weekly`
+(`anomaly_radar_service.py:219-290`) ha zero chiamanti.
+
+## Punto 2 🟡 — `normalizza_piva` — **CHIUSO**
+
+Provato per mutazione, non dedotto:
+
+```
+DE12345678903 -> normalizza_piva -> '12345678903' -> valida_formato_piva == (True, '')
+```
+
+Una P.IVA tedesca accettata come italiana valida, checksum compreso. Il
+`re.sub(r'[^0-9]', ...)` cancellava **ogni** lettera, non solo il prefisso `IT`
+(il controllo su `IT` a riga 141 era cosmetico), il che rendeva irraggiungibile
+il ramo "solo numeri" e falso il docstring che lo prometteva.
+
+Nessun danno oggi — 12 P.IVA su `ristoranti`, tutte 11 cifre italiane, 0 anomale
+— ma è la chiave su cui il canale SDI smista le fatture in arrivo.
+
+**Fatto:** `normalizza_piva` rimuove i soli separatori `[\s.\-/]` e il prefisso
+IT; in `valida_formato_piva` il check "solo numeri" precede quello sulla
+lunghezza (su una estera «trovate: 13» indicava il sintomo sbagliato); rimossa
+`verifica_piva_duplicata` (0 chiamanti, 0 test, con un fail-open che in caso di
+errore DB lasciava passare tutto). 6 test nuovi, falliscono tutti sul codice di
+prima.
+
+L'Edge Function `invoicetronic-webhook:673` replica la logica ma **non aveva il
+difetto**: riduce a cifre solo se il risultato è esattamente 11. Nessun cambio
+di logica lì, solo il commento — **quindi nessun deploy di Edge Function**.
+
+## Punto 3 🟡 — Prompt AI — **CHIUSO** (allineato)
+
+`prompt_ai_potenziato.py:183` diceva: «DEVI classificare OGNI articolo. "Da
+Classificare" NON è MAI una risposta valida. Se non sei sicuro, scegli la
+categoria PIÙ PROBABILE» — la negazione esatta della regola di dominio #1.
+
+Il prompt **si contraddiceva da solo**: le righe 194 e 198 istruiscono l'AI su
+cosa *non* mettere in "Da Classificare", presupponendo che possa usarla.
+
+Rete a valle rimisurata: 172 righe `Da Classificare`, 74 NOTE **tutte a importo
+zero**, 0 con la grafia errata `'Da Clasificare'`. Regge — ma la regola viveva
+in due posti che si contraddicevano e quello **senza test** era il prompt (zero
+test sull'intero file, un solo consumatore: `ai_service.py:4890`).
+
+**Fatto:** riscritte la "regola assoluta" e la regola 6 sulle incertezze. Il
+divieto sulle NOTE (riga 187) è corretto e **non** è stato toccato. 6 test nuovi
+di coerenza col dominio; rimettendo la vecchia riga ne falliscono 2.
+
+## Punto 4 🟡 — `tipo` spesa — **CHIUSO senza modifiche** (già risolto)
+
+La roadmap lo dava come falla aperta. **Misurato: il PATCH rideriva già sempre**
+il tipo dalla categoria (`workspace.py:2307-2330`), ed è coperto da
+`tests/test_spese_extra.py::test_tipo_a_mano_perde_contro_la_categoria_salvata`
+— il test che copre esattamente lo scenario ipotizzato.
+
+Residuo reale: solo il **POST** (`:2273`) lascia sopravvivere il `tipo` del
+client quando la richiesta non porta la categoria. Ma la UI la rende
+obbligatoria su entrambi i frontend (`spese-view.tsx:101`,
+`mobile-spese.tsx:95`), quindi nessun client attuale produce quel caso; il ramo
+resta per retrocompatibilità con le voci storiche.
+
+```sql
+select count(*) tot, count(*) filter (where categoria is null) cat_null,
+       round(sum(importo)::numeric,2) tot_eur,
+       round(sum(importo) filter (where categoria is null)::numeric,2) eur_null
+from spese_extra;
+-- 16 | 15 | 4493.17 | 4393.17   → 97,77% dell'importo, tutte storiche
+```
+
+## Punto 5 🟡 — Argon2 `check_needs_rehash` — **CHIUSO** (implementato)
+
+```sql
+select substring(password_hash from '\$argon2[a-z]+\$v=[0-9]+\$[^$]+') parametri,
+       count(*) n, max(last_login) ultimo_accesso
+from users where password_hash is not null group by 1;
+-- m=65536,t=3,p=4 | 6 | 2026-08-28
+-- m=65536,t=3,p=1 | 1 | 2026-08-28   ← utente vivo, entra regolarmente
+```
+
+Quell'hash non sarebbe **mai** stato aggiornato: i parametri sono incorporati
+nell'hash, `verify()` li legge da lì e continua ad accettarlo;
+`check_needs_rehash` compariva in un solo punto di tutto il repo — il commento a
+`auth_service.py:46` — e non era mai invocato.
+
+**Fatto:** aggiunto nel ramo Argon2 di `verify_and_migrate_password`, con lo
+stesso schema best-effort già usato dal ramo SHA256 (che migrava correttamente:
+era l'unico ramo scoperto). L'utente con `p=1` verrà aggiornato al prossimo
+login, senza reset forzati. Parametri **non** toccati: `CLAUDE.md` e
+`test_auth_argon2_parametri.py` si asseriscono a vicenda e restano verdi. 5 test
+nuovi sulla migrazione, che prima non esisteva né era coperta.
+
+## Punto 6 🔵 — `p_limit: 500` — **CHIUSO senza modifiche** (accettato)
+
+Due correzioni alla premessa.
+
+**(a) Il troncamento non è silenzioso.** `gruppo-tag-section.tsx:494-501`
+sopprime il conteggio quando il pool è saturo (mostrarlo sarebbe una cifra
+falsa) e indirizza alla ricerca, che filtra **lato DB su tutte** le descrizioni;
+`Seleziona tutti` degrada a `Seleziona questi N`. Le voci oltre le 500 restano
+raggiungibili.
+
+**(b) Gli account che superano il limite sono 4 su 6, non 1.** Il piano
+riportava «4.518 sull'account catena, il secondo 541 non satura». Rimisurato con
+i filtri esatti della RPC:
+
+```sql
+with g as (
+  select user_id, count(distinct upper(regexp_replace(btrim(descrizione),'\s+',' ','g'))) d
+  from fatture where deleted_at is null and categoria <> 'Da Classificare'
+    and descrizione is not null and btrim(descrizione) <> '' group by user_id)
+select d from g order by d desc;
+-- 4518, 1012, 757, 669, 39, 38   → quattro account sopra 500
+```
+
+Il «541» non esiste più. La RPC `gruppo_tag_descrizioni` ordina
+`spesa DESC NULLS LAST LIMIT p_limit`: le 500 mostrate sono **le più costose**,
+cioè quelle che contano per il foodcost.
+
+**Decisione di Mattia: accettare.** Alzare il limite significherebbe migration
+su una RPC `SECURITY DEFINER` e 4.518 righe al browser per un beneficio che la
+ricerca già copre.
+
+## Punto 7 🔵 — `ripartisci-dialog`, percentuali negative — **CHIUSO**
+
+La roadmap lo classificava «fallisce in sicurezza (400 dal server), fix di UX».
+**Provato per mutazione su copia in scratchpad: falso.**
+`riparto.py:114` filtrava `if float(p or 0) > 0`, cioè **scartava** le negative
+prima del controllo sulla somma, che quindi non le vedeva mai:
+
+| input | esito PRIMA |
+|---|---|
+| `{A:50, B:50, C:-30}` | **ACCETTATO** → scriveva solo A e B |
+| `{A:-50, B:-50}` | **ACCETTATO** → lista vuota, nessun errore |
+| `{A:-20, B:120}` | 400, ma con messaggio fuorviante («attuale: 120») |
+
+Il primo caso è quello che costa: i positivi fanno già 100, il costo veniva
+ripartito su due sedi invece di tre, e **il MOL della terza non riceveva nulla**
+mentre il cliente vedeva un riparto su tre sedi. È correttezza, non UX.
+
+**Fatto (server, Gruppo 1):** una percentuale negativa è ora un 400 esplicito,
+valutato prima del controllo sulla somma. Lo zero resta ammesso (la sede non
+partecipa). 6 test nuovi; i 254 test esistenti sul riparto restano verdi.
+
+**Fatto (client, Gruppo 2):** provata per mutazione anche la validazione del
+dialog — e la prova ha mostrato che **il client bloccava già** due dei tre casi,
+ma per la ragione sbagliata («la somma fa 70» invece di «Torino ha una
+percentuale negativa»). Il fix client è quindi di leggibilità dell'errore; la
+correttezza la garantisce il server. Verificato che restino accettati formato
+con virgola decimale, zero e campi vuoti.
+
+## Punto 8 🔵 — Commento `ai_pending` — **CHIUSO**
+
+`fastapi_worker.py:1704` prescriveva «il frontend deve dirlo, non spacciarlo per
+conteggio definitivo». Ma `dfdebc2` (27/8) ha rimosso quel messaggio dal modale
+*di proposito*, `tests/test_upload_ai_background.py:267` ne blinda l'assenza, e
+`grep ai_pending apps/web` non trova **nulla**. Documentazione che mente nel
+codice: chi la leggeva concludeva che il frontend avesse una regressione.
+Riscritto per dire cosa succede davvero e perché.
+
+## Metodo — cosa ha prodotto risultati in questa sessione
+
+- **Ri-misurare invece di ereditare** ha corretto il piano **quattro volte**, e
+  in tre casi ha cambiato il lavoro: il radar aveva due cause di morte non una;
+  la sua regola avrebbe sparato 897 falsi; il punto 7 era correttezza e non UX;
+  il punto 4 era già risolto e il 6 riguarda 4 account non 1.
+- **Provare per mutazione** ha smentito due volte la lettura del codice: sul
+  punto 7 («fallisce in sicurezza» — no) e sul client (dove ha mostrato che il
+  blocco c'era già, ma con il messaggio sbagliato). Ogni fix è stato verificato
+  rimuovendolo e controllando che i test tornassero rossi.
+- **Guardare cosa misura un test**: i 6 test del radar erano verdi da sempre su
+  una colonna inesistente. Il fake nuovo fallisce sul codice vecchio: è la
+  differenza fra una rete e un tappeto.
+
+## Gate `code-reviewer` — Gruppo Railway (29/08/2026)
+
+Verdetto iniziale: **🔴 NON CHIUSA**, 3 blocchi. Due erano difetti reali
+introdotti in questa sessione, e vale la pena registrarli come tali.
+
+**B1 — call site lasciato con la firma vecchia.** Avevo cambiato la firma di
+`check_on_upload` (`upload_id` → `file_origini`) senza aggiornare
+`upload_handler.py:2094`, che continuava a passare `upload_id=`:
+`TypeError: missing a required argument`. Non si esegue in produzione (quel
+percorso vive solo in `legacy_streamlit`), ma **l'`except Exception` che lo
+avvolge l'avrebbe inghiottito in silenzio** — lo stesso identico meccanismo che
+ha tenuto invisibile per mesi il bug originale. Il blocco morto è stato
+**rimosso**, non aggiornato: tenerne una copia rotta contraddiceva il fix.
+
+**B3 — Step 3 diventato costoso nel percorso caldo.** `piva_duplicata_fornitore`
+leggeva *tutti* i documenti della sede (`limit 10000`) senza filtro sui nuovi.
+Finché il radar girava una volta per batch era accettabile; con l'aggancio
+per-fattura dentro un handler HTTP sincrono diventava N scansioni per N fatture,
+ricalcolando ogni volta lo stesso risultato. Ora è ristretto alle sole P.IVA in
+esame e usa `idx_fat_doc_user_rist_piva` come le altre due query.
+
+Costo del radar dopo la correzione, misurato con `explain (analyze, buffers)`:
+3 query per fattura, **tutte su indice**, ~10 ms complessivi. Volume reale
+ultimi 14 giorni: 1-19 fatture/giorno, con un picco di **371 il 27/8**; nel caso
+peggiore ~3,7 s distribuiti su un'operazione già dominata da parsing e AI.
+
+**B2 — branch non pushato, CI mai eseguita.** Corretto: è il gate che questo
+progetto ha già mancato due volte. Il verde locale (Python 3.11, dipendenze
+dev) non è lo stesso segnale della CI (Python 3.12, `requirements-lock.txt`,
+`--fail-under=45`). Si chiude solo con la PR aperta e verde.
+
+### La lezione che vale oltre questa fase
+
+I miei test di aggancio leggevano il sorgente con `assert 'stringa' in src`:
+**non potevano vedere B1**, perché un mismatch di firma non cambia il testo che
+cercavano. Li ho sostituiti con test comportamentali che estraggono via **AST**
+ogni chiamata a `check_on_upload` in `services/worker/utils/config` e le passano
+a `signature.bind`.
+
+Il primo tentativo di sostituzione era un `grep` riga-per-riga. **Provato per
+mutazione: non catturava il difetto**, perché nel call site reale il kwarg
+sbagliato stava su una riga diversa da `check_on_upload(`. Solo la versione AST
+lo trova, e riporta `file:riga`.
+
+È la stessa lezione del fake che validava le colonne, arrivata due volte nella
+stessa sessione da direzioni diverse: **un test va verificato per mutazione
+anche quando è il test scritto per correggere un test che non misurava.**
+
+### Rilievo non bloccante, misurato e archiviato
+
+Il reviewer ha osservato che il confronto esatto su `numero_documento` scarta i
+duplicati veri con numero assente o formattato diversamente (`FT/2026/123` vs
+`123`). Corretto in teoria; misurato sui dati reali:
+
+```sql
+-- coppie candidate con numero assente, o uguale a meno del formato
+-- senza_numero: 0 | stesso_num_formato_diverso: 0
+```
+
+Zero casi. Una normalizzazione aggiungerebbe complessità senza recuperare nulla
+di misurabile oggi. Archiviato con la misura, da riaprire se cambia il mix di
+fornitori.

@@ -670,10 +670,12 @@ export function isOtherWebhook(ev: NormalizedWebhookEvent): boolean {
 //   2° tentativo: <CodiceFiscale> → CF persona fisica
 
 // Normalizza una P.IVA italiana per il match col DB (dove e' salvata come 11 cifre
-// pure). Allineata a utils/piva_validator.normalizza_piva: rimuove prefisso IT e
-// caratteri non numerici, MA solo se il risultato e' esattamente 11 cifre. Per
-// P.IVA estere o codici diversi ritorna il valore originale invariato (no-op sui
-// dati attuali, gia' 11 cifre pure).
+// pure): rimuove prefisso IT e separatori, MA solo se il risultato e' esattamente
+// 11 cifre. Per P.IVA estere o codici diversi ritorna il valore originale
+// invariato (no-op sui dati attuali, gia' 11 cifre pure).
+// Questa guardia sulle 11 cifre e' il motivo per cui qui NON si e' mai presentato
+// il difetto corretto il 29/8/2026 in utils/piva_validator.normalizza_piva, dove
+// il re.sub cancellava ogni lettera e faceva passare DE12345678903 per italiana.
 function normalizePivaForMatch(raw: string): string {
   const stripped = raw.replace(/^IT/i, '').replace(/[^0-9A-Za-z]/g, '')
   const digitsOnly = stripped.replace(/[^0-9]/g, '')

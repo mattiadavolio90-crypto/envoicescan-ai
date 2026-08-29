@@ -2038,7 +2038,35 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     doc_err,
                 )
 
-            
+            # Step 2b: radar anomalie sul documento appena scritto (best-effort).
+            # Unico aggancio vivo: ci passano entrambi i canali (upload manuale e
+            # SDI). Il correlatore e' `file_origine`, che qui e' `nome_file`.
+            # L'errore si logga con il dettaglio: il vecchio call site lo
+            # inghiottiva, ed e' il motivo per cui una query su una colonna
+            # inesistente e' rimasta invisibile per mesi.
+            if user_id and ristorante_id:
+                try:
+                    from services.anomaly_radar_service import check_on_upload
+                    from services.notification_inbox_service import upsert_inbox_notifications
+
+                    radar_records = check_on_upload(
+                        user_id=user_id,
+                        ristorante_id=ristorante_id,
+                        file_origini=[nome_file],
+                        supabase_client=supabase_client,
+                    )
+                    if radar_records:
+                        upsert_inbox_notifications(
+                            radar_records, supabase_client=supabase_client
+                        )
+                except Exception as radar_err:
+                    logger.warning(
+                        "Radar anomalie fallito (non bloccante) per %s: %s",
+                        nome_file,
+                        radar_err,
+                        exc_info=True,
+                    )
+
             # Verifica integrità
             verifica = verifica_integrita_fattura(
                 nome_file,

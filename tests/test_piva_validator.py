@@ -95,3 +95,49 @@ class TestVerificaChecksumPiva:
         ok, _ = valida_formato_piva("12345678903")
         checksum_ok = _verifica_checksum_piva("12345678903")
         assert ok == checksum_ok
+
+
+class TestPivaEstereNonPassanoPerItaliane:
+    """Il `re.sub` cancellava OGNI lettera, non solo il prefisso IT.
+
+    Conseguenza misurata il 29/8/2026: `DE12345678903` diventava
+    `12345678903`, superava il checksum ed era accettata come P.IVA italiana
+    valida. Il controllo "solo numeri" di `valida_formato_piva` era di fatto
+    irraggiungibile, e il suo docstring prometteva un messaggio che nessun
+    input poteva produrre.
+
+    La P.IVA e' la chiave del canale SDI: e' su quella che si smistano le
+    fatture in arrivo verso il ristorante giusto.
+    """
+
+    def test_piva_tedesca_non_e_una_piva_italiana_valida(self):
+        valida, msg = valida_formato_piva("DE12345678903")
+        assert valida is False
+        assert "solo numeri" in msg
+
+    @pytest.mark.parametrize("piva_estera", [
+        "DE12345678903", "FR12345678903", "ES12345678903", "PT12345678903",
+    ])
+    def test_prefissi_esteri_rifiutati(self, piva_estera):
+        assert valida_formato_piva(piva_estera)[0] is False
+
+    def test_lettera_in_mezzo_rifiutata_col_messaggio_giusto(self):
+        """Il caso del docstring, che prima era irraggiungibile."""
+        valida, msg = valida_formato_piva("1234567890A")
+        assert valida is False
+        assert "solo numeri" in msg
+
+    def test_il_prefisso_it_resta_gestito(self):
+        assert normalizza_piva("IT12345678903") == "12345678903"
+        assert normalizza_piva("it12345678903") == "12345678903"
+        assert valida_formato_piva("IT12345678903")[0] is True
+
+    def test_i_separatori_restano_rimossi(self):
+        """Chi normalizza per confrontare due P.IVA non deve vedere differenze."""
+        assert normalizza_piva("123 456 789 03") == "12345678903"
+        assert normalizza_piva("123-456-789-03") == "12345678903"
+        assert normalizza_piva("  12345678903  ") == "12345678903"
+
+    def test_confronto_fra_p_iva_formattate_diversamente_resta_vero(self):
+        """E' il pattern di upload_handler: normalizza entrambi i lati e confronta."""
+        assert normalizza_piva("IT 123-456-789 03") == normalizza_piva("12345678903")

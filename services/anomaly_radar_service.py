@@ -1,7 +1,15 @@
 """Radar Anomalie - rilevamento deterministico.
 
 Base dati: fatture_documenti (1 riga = 1 documento).
-Chiamato da upload_handler.py (check_on_upload) e da app.py (check_weekly).
+
+`check_on_upload` e' chiamato da `invoice_service.salva_fattura_processata`,
+l'unico collo di bottiglia condiviso dai due canali vivi (upload manuale e SDI).
+Il correlatore e' `file_origine`: e' l'unica identita' di documento persistita
+(chiave `(user_id, ristorante_id, file_origine)`). Il vecchio parametro
+`upload_id` filtrava una colonna che non e' mai esistita su fatture_documenti,
+quindi la query non poteva tornare nulla nemmeno quando Streamlit era vivo.
+
+`check_weekly` non ha oggi chiamanti (voce aperta separata).
 """
 
 from collections import defaultdict
@@ -18,17 +26,29 @@ from services.notification_inbox_service import (
 
 logger = get_logger('anomaly_radar')
 
+
+class _SaltaStep3(Exception):
+    """Nessuna P.IVA nei documenti in esame: niente da controllare."""
+
 CATEGORIE_CRITICHE = ['CARNE', 'PESCE', 'LATTICINI', 'SALUMI', 'PRODOTTI DA FORNO']
 
 
 def check_on_upload(
     user_id: str,
     ristorante_id: str,
-    upload_id: str,
+    file_origini: List[str],
     supabase_client=None,
 ) -> List[Dict[str, Any]]:
-    """Controlla anomalie post-upload su fatture_documenti."""
-    if not user_id or not ristorante_id or not upload_id:
+    """Controlla anomalie sui documenti appena salvati.
+
+    file_origini: i `file_origine` dei documenti da esaminare (uno solo quando
+    l'aggancio e' per-fattura). E' anche il bucket di dedupe delle notifiche,
+    quindi resta stabile per documento invece di cambiare a ogni esecuzione.
+    """
+    if isinstance(file_origini, str):
+        file_origini = [file_origini]
+    file_origini = [str(f).strip() for f in (file_origini or []) if str(f or '').strip()]
+    if not user_id or not ristorante_id or not file_origini:
         return []
 
     records: List[Dict[str, Any]] = []
@@ -36,10 +56,10 @@ def check_on_upload(
 
     nuovi_docs = (
         sb.table('fatture_documenti')
-        .select('id,piva_fornitore,fornitore,totale_documento,data_documento,file_origine')
+        .select('id,piva_fornitore,fornitore,totale_documento,data_documento,file_origine,numero_documento')
         .eq('user_id', user_id)
         .eq('ristorante_id', ristorante_id)
-        .eq('upload_id', upload_id)
+        .in_('file_origine', file_origini)
         .is_('deleted_at', 'null')
         .execute().data or []
     )
@@ -56,7 +76,7 @@ def check_on_upload(
     if piva_set:
         storico_bulk = (
             sb.table('fatture_documenti')
-            .select('id,piva_fornitore,totale_documento,file_origine,data_documento')
+            .select('id,piva_fornitore,totale_documento,file_origine,data_documento,numero_documento')
             .eq('user_id', user_id)
             .eq('ristorante_id', ristorante_id)
             .in_('piva_fornitore', list(piva_set))
@@ -80,8 +100,13 @@ def check_on_upload(
         data_str = str(doc.get('data_documento') or '').strip()
         file_orig = str(doc.get('file_origine') or '').strip()
         fornitore = str(doc.get('fornitore') or '?').strip()
+        numero_doc = str(doc.get('numero_documento') or '').strip()
 
         if not piva or importo <= 0 or not data_str:
+            continue
+        # Senza numero documento non si distingue un duplicato da una fornitura
+        # ricorrente: meglio tacere che allarmare a vuoto.
+        if not numero_doc:
             continue
 
         try:
@@ -102,6 +127,13 @@ def check_on_upload(
             importo_cand = float(cand.get('totale_documento') or 0)
             if importo_cand <= 0:
                 continue
+            # Il numero documento e' cio' che separa il duplicato vero dalla
+            # consegna ricorrente. Misurato il 29/8/2026 sui 3.839 documenti
+            # reali: senza questo confronto la regola produce 1.446 coppie su
+            # 897 documenti in 9 sedi, e nessuna ha lo stesso numero: sarebbero
+            # 897 allarmi 'error' tutti falsi.
+            if str(cand.get('numero_documento') or '').strip() != numero_doc:
+                continue
             diff_pct = abs(importo - importo_cand) / importo * 100
             if diff_pct <= 2.0:
                 records.append(build_notification_record(
@@ -113,21 +145,35 @@ def check_on_upload(
                     title=f'Possibile duplicato: {html.escape(fornitore)} - €{importo:.2f}',
                     body=(
                         f"Trovata un'altra fattura da {html.escape(fornitore)} (P.IVA {piva}) "
-                        f"per €{importo:.2f} entro 30 giorni. Verifica prima di procedere al pagamento."
+                        f"con lo stesso numero {html.escape(numero_doc)} per €{importo:.2f} "
+                        f"entro 30 giorni. Verifica prima di procedere al pagamento."
                     ),
-                    payload={'piva': piva, 'importo': importo, 'file_origine': file_orig},
+                    payload={
+                        'piva': piva,
+                        'importo': importo,
+                        'file_origine': file_orig,
+                        'numero_documento': numero_doc,
+                    },
                     action_page='/analisi-e-tag',
-                    file_ids=[upload_id],
+                    file_ids=[file_orig],
                 ))
                 break
 
     # Step 3: piva_duplicata_fornitore
+    # Ristretto alle sole P.IVA dei documenti in esame. L'aggancio e' per-fattura
+    # dentro un handler HTTP sincrono: leggere tutti i documenti della sede a
+    # ogni salvataggio significherebbe N scansioni per un upload di N fatture,
+    # ricalcolando ogni volta lo stesso risultato. Il controllo resta identico
+    # per le P.IVA che stiamo effettivamente toccando.
     try:
+        if not piva_set:
+            raise _SaltaStep3()
         tutti = (
             sb.table('fatture_documenti')
             .select('piva_fornitore,fornitore')
             .eq('user_id', user_id)
             .eq('ristorante_id', ristorante_id)
+            .in_('piva_fornitore', list(piva_set))
             .is_('deleted_at', 'null')
             .limit(10000)
             .execute().data or []
@@ -158,6 +204,8 @@ def check_on_upload(
                     payload={'piva': piva, 'nomi': nomi_sorted},
                     action_page='/prezzi',
                 ))
+    except _SaltaStep3:
+        pass
     except Exception as exc:
         logger.warning(f'Radar piva_dup fallito: {exc}')
 
@@ -205,10 +253,10 @@ def check_on_upload(
                         'piva': piva,
                         'importo': importo,
                         'media': media,
-                        'upload_id': upload_id,
+                        'file_origine': file_orig,
                     },
                     action_page='/prezzi',
-                    file_ids=[upload_id],
+                    file_ids=[file_orig],
                 ))
         except Exception as exc:
             logger.warning(f'Radar anomalia_importo fallito {piva}: {exc}')
