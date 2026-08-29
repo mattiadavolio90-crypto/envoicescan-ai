@@ -17,6 +17,12 @@ chiuso e archiviato in `docs/storico/` insieme al suo storico
 
 ## 🟢 Punto ereditato — CHIUSO il 29/08/2026
 
+> **Mergiato e deployato la notte del 29→30/8/2026** (00:27 e 00:29 ora cliente,
+> dentro la finestra consentita). PR #55 (test, nessun deploy) e PR #56
+> (estrazione F7, deploy Vercel `success` alle 00:30). Merge commit `62d7593` e
+> `0ed4fff`. Produzione verificata dopo il deploy: `/catena` redirige
+> correttamente a `/login?next=/catena`, login 200.
+
 **F2-NOTEST — nessun test runner frontend.** Deciso e implementato: **opzione A**
 (test in `tests/*.py` che eseguono il TypeScript vero con node), non un runner
 dedicato. Materiale preparatorio: `DOCUMENTAZIONE/PUNTO_9_TEST_FRONTEND.md`,
@@ -136,7 +142,7 @@ client col router perché la divergenza non resti invisibile. 12 test, e **reint
 Il refactor è provato equivalente, non solo `tsc`-pulito: vecchia e nuova
 implementazione confrontate su **504 combinazioni** di pool/associate/filtro
 (0 divergenze). Tenuto in una PR separata perché tocca `apps/web/**` e quindi
-**fa partire il deploy Vercel**: va mergiata fuori orario cliente.
+fa partire il deploy Vercel.
 
 Resta scoperto, e dichiarato nel docstring del test: che il *componente* passi
 `risposta` e non il pool filtrato. Il componente non è testato (nessun
