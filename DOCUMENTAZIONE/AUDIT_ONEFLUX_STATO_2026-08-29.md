@@ -127,8 +127,10 @@ Copriamo **logica pura in moduli senza React**.
 **`poolSaturo` (F7): coperto, in una PR separata.** Viveva dentro un `useMemo`
 anonimo in `gruppo-tag-section.tsx`, dove nessuna tecnica lo raggiungeva.
 Estratto in `apps/web/src/lib/tag-candidati.ts` (`calcolaCandidati`), con
-`RPC_LIMITE_DESCRIZIONI` come fonte unica del 500 che sta in
-`routers/gruppo.py`. 12 test, e **reintrodurre il difetto originale
+`RPC_LIMITE_DESCRIZIONI` allineata al `p_limit` di `routers/gruppo.py` — non è
+la «fonte unica»: il 500 vive in **tre** posti indipendenti (il router, il
+DEFAULT della funzione SQL, la costante client), e un test confronta il valore
+client col router perché la divergenza non resti invisibile. 12 test, e **reintrodurre il difetto originale
 (`pool.length` invece di `risposta.length`) li fa fallire**.
 
 Il refactor è provato equivalente, non solo `tsc`-pulito: vecchia e nuova
