@@ -22,7 +22,9 @@ fase con `code-reviewer` di gate. Il ciclo precedente (2026-07) è chiuso il
 >    sicurezza (400 dal server).
 > 8. 🔵 **Il commento `ai_pending`** (F4) — documentazione che mente nel codice.
 > 9. ⚪ **F2-NOTEST** — nessun test runner frontend: **decisione esplicita di
->    Mattia**, è una scelta di progetto, non una svista.
+>    Mattia**, è una scelta di progetto, non una svista. Preparata in
+>    `PUNTO_9_TEST_FRONTEND.md` (misura, tre opzioni, costo); il prompt della
+>    sessione dedicata è in `PROMPT_PUNTO_9.md`. Da aprire **dopo** gli altri 8.
 
 > Il ciclo 2026-07 ha chiuso tutte e 10 le dimensioni con seconda passata e
 > `code-reviewer`, più §3b/§3c (perimetro non letto) e §2 (mock globale del
