@@ -111,10 +111,24 @@ export function RipartisciDialog({
   }, [open, descrizioneDefault, sedi, fornitore, regolaPreset]);
 
   const sommaPerc = Object.values(perc).reduce((a, v) => a + (Number(v.replace(",", ".")) || 0), 0);
+  // Una percentuale negativa non e' un errore di somma: il server la rifiuta con
+  // 400, e prima la scartava in silenzio facendo sparire la sede dal riparto.
+  // Va segnalata per quello che e', non nascosta dietro "la somma non fa 100".
+  const sediNegative = Object.entries(perc)
+    .filter(([, v]) => (Number(v.replace(",", ".")) || 0) < 0)
+    .map(([id]) => sedi.find((s) => s.id === id)?.nome ?? id);
 
   async function salva() {
     if (!descrizione.trim()) {
       toast.error("Inserisci una descrizione");
+      return;
+    }
+    if (regola === "percentuali" && sediNegative.length > 0) {
+      toast.error(
+        sediNegative.length === 1
+          ? `La percentuale di ${sediNegative[0]} non puo' essere negativa`
+          : `Percentuali negative su ${sediNegative.length} sedi: ${sediNegative.join(", ")}`,
+      );
       return;
     }
     if (regola === "percentuali" && Math.abs(sommaPerc - 100) > 0.5) {
@@ -203,8 +217,10 @@ export function RipartisciDialog({
                   <span className="text-muted-foreground">%</span>
                 </div>
               ))}
-              <div className={`text-right text-xs ${Math.abs(sommaPerc - 100) > 0.5 ? "text-destructive" : "text-muted-foreground"}`}>
-                Totale: {sommaPerc.toFixed(1)}%
+              <div className={`text-right text-xs ${sediNegative.length > 0 || Math.abs(sommaPerc - 100) > 0.5 ? "text-destructive" : "text-muted-foreground"}`}>
+                {sediNegative.length > 0
+                  ? "Le percentuali non possono essere negative"
+                  : `Totale: ${sommaPerc.toFixed(1)}%`}
               </div>
             </div>
           )}
