@@ -98,3 +98,49 @@ def test_percentuali_tutte_sedi_estranee_rifiutate():
     with pytest.raises(HTTPException) as exc:
         _quote_percentuali(1000.0, {"SEDE-ALTRUI": 100.0}, {"A", "B"})
     assert exc.value.status_code == 400
+
+
+# ─── Percentuali negative ─────────────────────────────────────────────────────
+# Il filtro `if float(p) > 0` SCARTAVA le negative invece di rifiutarle, quindi
+# il controllo sulla somma non le vedeva mai. Provato per mutazione il
+# 29/8/2026 sui casi qui sotto: i primi due venivano ACCETTATI.
+
+class TestPercentualiNegative:
+
+    def test_negativa_non_fa_sparire_una_sede_dal_riparto(self):
+        """{A:50, B:50, C:-30}: i positivi fanno 100, quindi il controllo sulla
+        somma passava e il costo finiva su due sedi invece di tre. Il cliente
+        vedeva un riparto su tre sedi e il MOL della terza non riceveva nulla."""
+        with pytest.raises(HTTPException) as exc:
+            _quote_percentuali(1000.0, {"A": 50, "B": 50, "C": -30}, {"A", "B", "C"})
+        assert exc.value.status_code == 400
+        assert "negative" in exc.value.detail.lower()
+
+    def test_tutte_negative_non_restituiscono_lista_vuota(self):
+        """Prima: nessun errore e nessuna quota — il costo spariva in silenzio."""
+        with pytest.raises(HTTPException) as exc:
+            _quote_percentuali(1000.0, {"A": -50, "B": -50}, {"A", "B"})
+        assert exc.value.status_code == 400
+
+    def test_negativa_compensata_da_un_eccesso(self):
+        """{A:-20, B:120}: somma 100 lato client, ma il riparto reale sarebbe 120."""
+        with pytest.raises(HTTPException) as exc:
+            _quote_percentuali(1000.0, {"A": -20, "B": 120}, {"A", "B"})
+        assert exc.value.status_code == 400
+        assert "negative" in exc.value.detail.lower()
+
+    def test_il_messaggio_dice_quante_sedi(self):
+        with pytest.raises(HTTPException) as exc:
+            _quote_percentuali(1000.0, {"A": -10, "B": -10, "C": 120}, {"A", "B", "C"})
+        assert "2" in exc.value.detail
+
+    def test_le_percentuali_valide_restano_accettate(self):
+        q = _quote_percentuali(1000.0, {"A": 50, "B": 30, "C": 20}, {"A", "B", "C"})
+        assert sum(x["quota_importo"] for x in q) == 1000.0
+        assert len(q) == 3
+
+    def test_lo_zero_resta_ammesso_e_non_crea_quota(self):
+        """Zero non e' negativo: la sede semplicemente non partecipa."""
+        q = _quote_percentuali(1000.0, {"A": 100, "B": 0}, {"A", "B"})
+        assert [x["ristorante_id"] for x in q] == ["A"]
+        assert sum(x["quota_importo"] for x in q) == 1000.0
