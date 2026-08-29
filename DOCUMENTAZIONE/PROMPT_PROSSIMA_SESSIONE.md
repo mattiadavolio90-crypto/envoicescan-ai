@@ -1,95 +1,77 @@
-# Prompt per la prossima sessione — chiusura degli 8 punti aperti
+# Prompt per la prossima sessione
 
 > Copia il blocco qui sotto come primo messaggio della nuova sessione.
 
 ---
 
-Devi chiudere gli **8 punti aperti** lasciati dal ciclo audit 2026-08, che è
-**chiuso** (7 fasi su 7). Il piano completo è già scritto e approvato:
-`/home/vscode/.claude/plans/leggi-prompt-prossima-sessione-md-drifting-eclipse.md`
-— **leggilo per primo**, contiene il perché di ogni punto e i riferimenti
-`file:riga` misurati.
+Il ciclo audit 2026-08 è **chiuso e archiviato** (`docs/storico/`), incluse le
+**8 decisioni aperte, tutte risolte il 29/8/2026** e deployate su `fb5785fd`
+(PR #52 Railway + #53 Vercel, CI verde, worker `/health` ok).
 
-L'elenco degli 8 punti sta in cima a `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08.md`.
-Il 9° (F2-NOTEST, introdurre un test runner frontend) è **fuori perimetro per mia
-decisione esplicita**: sessione separata, non ri-segnalarlo come svista.
+Il ciclo corrente è `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md`: non ha
+ancora nessuna dimensione aperta. **Resta un solo punto ereditato: F2-NOTEST.**
 
-## Cosa è già fatto (non rifarlo)
+## Cosa c'è da fare: il punto 9 — test runner frontend
 
-- **PR #48 mergiata e deployata** — `7d2b581`. Deploy Vercel success, sito
-  verificato (307), entrambi i fix presenti nel commit deployato.
-- **`CLAUDE.md` rimisurato e mergiato** — PR #49, merge `c481aab` su `main` il
-  29/8/2026. Non c'e' nulla da mergiare o riaprire: dichiarava
-  ancora «go-live 1 luglio» a due mesi dalla data, «~9500 test» invece di
-  **11.424**, «2 clienti in test + 1 operativo» invece di **7 account attivi /
-  11 PV**. Quest'ultimo cambia la valutazione del rischio: 4 clienti su 7 hanno
-  migliaia di righe fattura e accesso nell'ultima settimana.
+`apps/web/` non ha alcun test che **esegua** codice. L'unica rete è
+`npx tsc --noEmit`, che controlla i tipi e non esegue niente.
 
-## Il punto 1 non è quello che dice la roadmap — leggi prima di agire
+È una **decisione presa consapevolmente**, non una svista: va affrontata come
+scelta di progetto. Il materiale preparatorio è già scritto:
+`DOCUMENTAZIONE/PUNTO_9_TEST_FRONTEND.md` e `DOCUMENTAZIONE/PROMPT_PUNTO_9.md`
+(oggi sul branch `docs/punto-9-test-frontend`, da rebasare su `main`).
 
-La roadmap dice «il radar anomalie non gira da giugno, ricollegarlo». **Misurato
-in planning: la diagnosi era incompleta.**
+**Perché continua a costare, misurato:**
 
-`services/anomaly_radar_service.py:42` filtra `.eq('upload_id', upload_id)` su
-`fatture_documenti`, ma **quella colonna non esiste** — verificato su
-`information_schema` del DB live (27 colonne, nessuna è `upload_id`), zero
-occorrenze in `migrations/` e `supabase/`, e `upsert_documento` non l'ha mai
-scritta. Quindi la query non poteva restituire nulla **nemmeno quando Streamlit
-era vivo**: il radar non è spento da giugno, è **nato rotto**.
+- il 29/8 una guardia su una soglia è passata da `tsc`, sembrava giusta a
+  leggerla e **non scattava su nessuno dei 3 casi reali**, perché misurava dopo
+  i filtri client invece che prima;
+- nella stessa sessione un test scritto *apposta* per catturare un difetto di
+  firma — un `grep` riga per riga — **non lo catturava**, perché il kwarg
+  sbagliato stava su un'altra riga. Solo l'analisi AST l'ha visto.
 
-I suoi 6 test passano perché mockano tutti il client: non hanno mai toccato la
-colonna reale.
+Entrambi i casi sono stati trovati provando per mutazione, non leggendo.
 
-E il perimetro è più largo del radar: è morto **l'intero blocco di notifiche
-`source_type='upload'`** (`services/upload_handler.py:2055-2090` — `td24_noddt`,
-`td24_partial`, `quality_check_failed`). Il frontend le aspetta ancora
-(`apps/web/src/app/(app)/notifiche/notifiche-shared.ts:14`).
+## Cosa NON rifare
 
-**La mia decisione resta ricollegarlo**, ma va prima riparato: serve un
-correlatore al posto di `upload_id` (`file_origine` è l'unica chiave persistita)
-e i test vanno riscritti. Il piano ha le tre decisioni di design e il punto di
-aggancio candidato (`services/invoice_service.py:1790`, unico collo di bottiglia
-dei due canali vivi).
+- Le 8 decisioni del ciclo 2026-08: chiuse, deployate, verbalizzate in
+  `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md` con le query che
+  dimostrano ogni misura.
+- Il radar anomalie: ritarato e ricollegato. **Baseline da controllare**: al
+  29/8 sera `notification_inbox` aveva 0 record `source_type='radar'` su 65
+  totali. Dopo i primi upload reali dovrebbero comparirne — **pochi e veri**. Se
+  ne compaiono molti, la ritaratura su `numero_documento` va rivista (prima del
+  fix ne avrebbe prodotti 897, tutti falsi).
 
-## Ordine
+## Voci aperte misurate, non ancora affrontate
 
-**Per superficie di deploy**, così ogni deploy è verificabile da solo:
+Non sono sviste: sono state misurate e lasciate fuori perimetro di proposito.
 
-1. **Gruppo Railway** — punti 1, 2, 3, 4, 5, **più 6 e 8** che sono formalmente
-   Python (una RPC e un commento nel worker). Attenzione: l'auto-deploy Railway è
-   configurato sul dashboard e **non ha filtro di path** — ogni merge su `main`
-   lo redeploya, anche un diff di soli documenti.
-2. **Gruppo Vercel** — il solo punto 7 (`ripartisci-dialog`, percentuali
-   negative; fallisce già in sicurezza con 400 dal server).
-
-Su ogni punto: **chiedimi la decisione** dove il piano ne prevede una (es. punto
-3, allineare il prompt AI o documentare la divergenza; punto 4, obbligare la
-categoria via API o accettare il disallineamento). Non scegliere al posto mio su
-cose che cambiano il comportamento verso il cliente.
+1. **Il blocco notifiche `source_type='upload'` è morto** — 7 topic
+   (`upload_failed`, `uncategorized_rows`, `price_alert`, `credit_note`,
+   `td24_noddt`, `td24_partial`, `quality_check_failed`) in
+   `upload_handler.py:1958-2130`, raggiungibili solo da `legacy_streamlit`.
+   Ultima notifica emessa: **1/6/2026**. Il frontend le aspetta ancora
+   (`notifiche-shared.ts:14`). Stesso meccanismo del radar, perimetro più largo:
+   vanno rimappati anche gli `action_page` legacy, che oggi non producono CTA.
+2. **`check_weekly`** (`anomaly_radar_service.py`) ha **zero chiamanti** e cerca
+   un `price_alert` che nel percorso vivo non viene più prodotto.
+3. **`normalizza_descrizione`** (5 pattern su 7) — residuo del ciclo 2026-07.
 
 ## Metodo, non derogabile
 
-- **Ogni cifra si ri-misura al momento di scriverla.** Mai ereditata da roadmap,
-  piano, o da una misura fatta prima nella stessa sessione. Nel ciclo appena
-  chiuso il `code-reviewer` ha trovato un errore in **ogni** fase, quasi sempre
-  di questo tipo.
-- **Una condizione su una soglia va provata per mutazione sui valori reali**, su
-  copia in scratchpad, mai sul file del branch. Un fix che passa `tsc` può non
-  fare nulla: è successo il 29/8.
-- **Leggere un `if` non dice quale suo lato è caldo.** Misura quale ramo
-  percorrono i dati veri prima di dichiarare una cosa protetta.
-- **`code-reviewer` a fine di ogni gruppo, sempre**, anche se il diff è di soli
-  documenti.
-- **Verifica sempre che lo sha della PR sia quello che intendevi pubblicare**
-  (`gh pr view <n> --json headRefOid` contro `git log -1`): il 29/8 sono finito
-  in detached HEAD e la CI ha certificato verde una versione senza i fix.
-- Migration solo con mia conferma esplicita, applicata **prima** del deploy.
-- Deploy fuori orario cliente, salvo mio via esplicito.
-
-## Chiusura
-
-Verbale di ogni punto in `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`,
-elenco in cima alla roadmap aggiornato man mano. Quando resta solo F2-NOTEST:
-spostare i due doc in `docs/storico/` e aprire
-`AUDIT_ONEFLUX_STATO_<nuova data>.md` — rinviato di proposito, perché archiviare
-prima avrebbe reso invisibili queste 8 decisioni.
+- **Ogni cifra si ri-misura al momento di scriverla**, mai ereditata da un
+  documento. Nella sessione del 29/8 questo ha corretto la roadmap **quattro
+  volte**, e in tre casi ha cambiato il lavoro, non solo il racconto.
+- **Ogni fix si prova per mutazione**, su copia in scratchpad: si rimuove il fix
+  e si controlla che i test tornino rossi. Vale **anche per un test scritto per
+  correggere un test che non misurava** — è successo il 29/8.
+- **Un mock che non guarda cosa gli viene chiesto non è una rete.**
+- `code-reviewer` a fine di ogni gruppo, sempre.
+- **Verificare che lo sha della PR sia quello inteso**
+  (`gh pr view <n> --json headRefOid` contro `git log -1`) e che la CI sia verde
+  **su GitHub**: gira su Python 3.12 con `requirements-lock.txt` e un gate
+  `coverage --fail-under=45`, non è lo stesso segnale del verde locale.
+- Migration solo con conferma esplicita, applicata **prima** del deploy.
+- **Deploy fuori orario cliente**, salvo via esplicito: l'auto-deploy Railway
+  parte a ogni merge su `main`, anche per un diff di soli documenti.
