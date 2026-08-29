@@ -1291,3 +1291,159 @@ copre il servizio di export, non la UI.
   frontend, per la decisione esplicita su F2-NOTEST).
 - `tests/test_documentazione_onesta.py` → verde.
 - Ogni cifra di questo verbale rimisurata al momento di scriverla.
+
+---
+
+## F7 — Chiusura del ciclo (29/8/2026)
+
+**Le voci ereditate sono state riverificate, non ricopiate.** Il metodo del ciclo
+lo impone («ogni severità si riverifica sul DB live o eseguendo il codice»), e ha
+prodotto un risultato: **una voce latente è diventata concreta**, due si chiudono
+in negativo con la misura.
+
+### 🟡 Argon2: la voce non è più ipotetica — c'è un utente con `p=1`
+
+`services/auth_service.py:46` annota che `check_needs_rehash()` «oggi non è
+chiamato da nessuna parte». La voce era archiviata come **latente**: serve solo
+*se* i parametri cambiano. **Non è più così.** Misurato sul DB live:
+
+| algoritmo | parametri | utenti |
+|---|---|---|
+| `argon2id` | `m=65536,t=3,p=4` | 6 |
+| `argon2id` | **`m=65536,t=3,p=1`** | **1** |
+
+Un utente ha un hash con **`p=1` invece di `p=4`** — parametri diversi da quelli
+dichiarati in `CLAUDE.md` e asseriti da `tests/test_auth_argon2_parametri.py`.
+Non è un utente dormiente: **ruolo `cliente`, attivo, ultimo accesso il 28/8**
+(ieri).
+
+**Cosa NON è**: un difetto di sicurezza in atto, e nemmeno un login rotto. I
+parametri sono incorporati nell'hash (`$argon2id$v=19$m=...,t=...,p=...$`) e
+`verify()` li legge da lì, non dall'oggetto `ph`. Quell'utente entra
+regolarmente — infatti è entrato ieri.
+
+**Cosa è**: quell'hash **non verrà mai portato ai parametri correnti**.
+`verify_and_migrate_password` (`:653`) migra `SHA256 → Argon2`, ma su un hash
+già Argon2 esegue `ph.verify(stored, password)` e ritorna: nessuna chiamata a
+`check_needs_rehash()`, nessun ri-hash. Il divario è permanente finché non si
+aggiunge quel controllo — e cresce a ogni futuro innalzamento dei parametri.
+
+**Decisione per Mattia** (fuori deroga: Python, `auth_service`): aggiungere
+`ph.check_needs_rehash(stored)` nel ramo Argon2 con ri-hash e update, oppure
+accettare il divario e correggere il commento a `:46`, che oggi presenta la cosa
+come puramente teorica mentre un caso reale esiste.
+
+### ✅ Percorsi di scrittura ricavi — tutti agganciati (chiusa in negativo)
+
+La voce ereditata avverte: «nuovi percorsi di scrittura vanno agganciati anche
+loro a `_spegni_override_mensile`». Censiti **tutti** i percorsi che scrivono
+`ricavi_giornalieri`:
+
+| percorso | aggancio |
+|---|---|
+| `routers/ricavi.py:195` (upsert singolo) | ✅ `:205` |
+| `routers/ricavi.py:319` → `_upsert_ricavi_ristorante` | ✅ `:819` |
+| `worker/email_queue_processor.py:565` (upsert batch) | ✅ `:566` |
+| `routers/ricavi.py:279` (**delete**) | ⚪ assente — **ed è corretto** |
+
+Il `delete` non chiama lo spegnimento, e **non deve**: la funzione riporta a
+`giornaliero` i mesi che *ricevono* giornalieri; cancellarne uno non è una
+ragione per disattivare l'override. Nessun percorso di scrittura scoperto.
+
+### ✅ Due override ancora `mensile` con giornalieri presenti — residuo storico, non falla
+
+Query di controllo incrociato: **2 mesi** hanno override `mensile` attivo *e*
+giorni caricati (TIME CAFE, `86300227-…`, maggio e giugno 2026). Sembrava il
+difetto vivo. **Non lo è**, e la cronologia lo dimostra:
+
+- **09/06** — caricato il giorno 09/06 (€3.500); l'override di giugno non
+  esisteva ancora.
+- **12/06** — attivati gli override di maggio e giugno.
+- **18/06** — caricato il 31/05 (€88.606), con l'override già attivo.
+- **27/08** — `_spegni_override_mensile` **nasce** (commit `c9c9dd9`).
+
+I dati sono di **giugno**, il fix è di **agosto**: sono residui *precedenti* al
+fix, non casi sfuggiti. Controprova diretta:
+
+```sql
+-- righe con override attivo e giornalieri toccati DOPO il fix
+SELECT count(*) FROM ricavi_modalita_mensile m
+JOIN ricavi_giornalieri r ON ... WHERE m.modalita='mensile'
+  AND r.updated_at > '2026-08-27';  -->  0
+```
+
+**Zero.** Il fix del 27/8 tiene.
+
+E i due residui **non mostrano numeri sbagliati al cliente**:
+
+| mese | mostrato (override) | somma giornalieri ignorata |
+|---|---|---|
+| 2026-05 | €88.606 | €88.606,27 — **lo stesso numero** |
+| 2026-06 | €80.655 | €3.500 — un giorno solo, parziale |
+
+A maggio la riga del 31/05 è la trascrizione del totale mensile: nessuna
+discrepanza. A giugno l'override è il dato completo e il singolo giorno è
+parziale: **ignorarlo è il comportamento corretto**. Nessuna azione necessaria.
+
+### ⚪ Voci ereditate confermate come già chiuse o non-difetti
+
+- **Canale SDI senza policy date** — decisione a verbale (STORICO §27, §32),
+  difesa da `tests/test_upload_policy_canale_sdi.py`: **3 test, verdi**.
+  Non è una svista, resta com'è.
+- **Flush PROP-1 prima del blocco policy** — «documenta-e-chiudi, refactor
+  sproporzionato al rischio». Riconfermato: il flush vive in
+  `invoice_service.py:1288` e `ai_service.py:3516`, e il commento a
+  `fastapi_worker.py:2192` lo documenta già nel punto in cui conta.
+- **Le 8 `@_make_cache`** — voce **ritirata il 28/8**, il difetto non esiste
+  (verificate una per una). Se si volesse la copertura a test, va aperta come
+  voce propria: non è un residuo di questa.
+- **`tests/worker_test.py` non gira mai** — chiusa il 28/8, sostituita da
+  `tests/test_worker_endpoints.py`.
+
+### I 2 rilievi lasciati aperti dalla review di F1 — entrambi chiusi
+
+Erano annotati «per F7». Ripresi, **verificati ancora presenti nel codice** e
+corretti sotto deroga (frontend `(app)/`, poche righe, `tsc --noEmit` EXIT 0).
+
+#### 1. `nascosti` sottostimava — e la misura è peggiore dell'annotazione
+
+Il rilievo diceva «il numero mostrato non è un limite superiore garantito».
+**Quantificato ora, eseguendo la RPC sul DB live:**
+
+```sql
+SELECT count(*) FROM gruppo_tag_descrizioni(<sedi attive>, NULL, 500);    -->   500
+SELECT count(*) FROM gruppo_tag_descrizioni(<sedi attive>, NULL, 100000); --> 6.862
+```
+
+La RPC **satura davvero**: `routers/gruppo.py:2077` passa `p_limit: 500`, e le
+descrizioni reali sono **6.862**. Il client tronca a 60 e mostrava
+«Altri **440** prodotti non mostrati», mentre i nascosti reali sono **6.802** —
+**sottostimati di 15 volte**. Vale in entrambi i rami: anche con testo di
+ricerca (`q='A'`) la RPC ritorna 500 contro 6.166 reali.
+
+Non è un numero che sposta soldi, ma è un numero **mostrato al cliente e falso**.
+
+**Fix applicato (client):** il memo espone anche `poolSaturo` (`pool.length >= 500`).
+Quando il pool è saturo il messaggio diventa «Altri prodotti non mostrati», senza
+cifra; quando non lo è, la cifra resta ed è esatta. Il pulsante
+`Seleziona questi ${candidati.length}` **non è stato toccato**: conta i visibili,
+ed era già corretto.
+
+**Il fix vero resta fuori deroga** e non è stato fatto: alzare `p_limit` o far
+tornare alla RPC un conteggio totale separato dalla pagina. Tocca Python e la
+rotta API. **Decisione per Mattia.** Quello applicato qui toglie la cifra falsa,
+non il limite.
+
+#### 2. `toggleTutti` leggeva `tuttiSelezionati` dalla closure
+
+Confermato ancora presente (`gruppo-tag-section.tsx:329`). `tuttiSelezionati` è
+calcolato nel render, e veniva letto **dentro** `setSelected(prev => …)`: è il
+valore del render in cui il click è partito, che un `toggle()` nello stesso batch
+invalida. Effetto possibile: il pulsante esegue l'azione **opposta** a quella che
+la sua etichetta mostra.
+
+**Fix:** il predicato si ricalcola da `prev` dentro l'updater. `tuttiSelezionati`
+resta per l'etichetta (`:425`), dove leggere il valore del render è corretto.
+
+Era annotato «pre-esistente e innocuo in pratica» — resta vero, ma è il pattern
+che genera stato stantio, ed è una riga.

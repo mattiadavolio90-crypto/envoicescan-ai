@@ -300,7 +300,14 @@ function ProdottiDialog({
 
   // `nascosti` = quanti il taglio a 60 lascia fuori. Senza, la lista sembra
   // completa e "Seleziona tutti" (che agisce solo sui visibili) mente.
-  const { candidati, nascosti } = useMemo(() => {
+  //
+  // `poolSaturo`: il pool arriva da una RPC che tronca a 500 (routers/gruppo.py,
+  // `p_limit: 500`), quindi quando ne torna esattamente 500 `nascosti` NON e' il
+  // numero reale — e' solo quanto resta del troncone. Misurato sui dati veri:
+  // 6.862 descrizioni esistenti, 500 ricevute, "440 altri" mostrati contro 6.802
+  // reali. Il conteggio si mostra solo quando e' esatto; se il pool e' saturo si
+  // dice che ce ne sono altri senza dare una cifra falsa.
+  const { candidati, nascosti, poolSaturo } = useMemo(() => {
     const f = filtro.trim();
     const pool =
       f.length >= 2
@@ -311,7 +318,11 @@ function ProdottiDialog({
               .filter((d) => !giaAssociate.has(d.descrizione_key))
               .filter((d) => (fu ? d.descrizione.toUpperCase().includes(fu) : true));
           })();
-    return { candidati: pool.slice(0, 60), nascosti: Math.max(0, pool.length - 60) };
+    return {
+      candidati: pool.slice(0, 60),
+      nascosti: Math.max(0, pool.length - 60),
+      poolSaturo: pool.length >= 500,
+    };
   }, [disponibili, risultati, giaAssociate, filtro]);
 
   function toggle(d: GruppoTagDescrizione) {
@@ -328,8 +339,14 @@ function ProdottiDialog({
 
   function toggleTutti() {
     setSelected((prev) => {
+      // Il "sono gia' tutti selezionati?" si ricalcola da `prev`, non si legge
+      // dalla closure: `tuttiSelezionati` e' il valore del render in cui il
+      // click e' partito, e dentro l'updater puo' essere gia' stantio (un
+      // toggle() nello stesso batch lo invalida). Con lo stato vecchio il
+      // pulsante fa l'azione opposta a quella che mostra.
+      const tutti = candidati.length > 0 && candidati.every((d) => prev.has(d.descrizione_key));
       const m = new Map(prev);
-      if (tuttiSelezionati) {
+      if (tutti) {
         candidati.forEach((d) => m.delete(d.descrizione_key));
       } else {
         candidati.forEach((d) => m.set(d.descrizione_key, d.descrizione));
@@ -471,8 +488,10 @@ function ProdottiDialog({
                 })}
                 {nascosti > 0 && (
                   <li className="px-3 py-2 text-xs text-muted-foreground">
-                    Altri {nascosti} prodotti non mostrati: scrivi almeno 2 lettere per
-                    cercarli fra tutti i punti vendita.
+                    {poolSaturo
+                      ? "Altri prodotti non mostrati"
+                      : `Altri ${nascosti} prodotti non mostrati`}
+                    : scrivi almeno 2 lettere per cercarli fra tutti i punti vendita.
                   </li>
                 )}
               </ul>

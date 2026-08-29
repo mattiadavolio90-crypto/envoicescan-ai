@@ -1,8 +1,28 @@
 # Stato audit ONEFLUX — ciclo 2026-08
 
-**Ciclo APERTO il 28/08/2026.** Il ciclo precedente (2026-07) è **chiuso** la
-stessa data: indice e storico completi in `docs/storico/`
+**Ciclo CHIUSO il 29/08/2026** (aperto il 28/08). Tutte e 7 le fasi chiuse, ogni
+fase con `code-reviewer` di gate. Il ciclo precedente (2026-07) è chiuso il
+28/08: indice e storico completi in `docs/storico/`
 (`AUDIT_ONEFLUX_STATO_2026-07.md` e `..._STORICO.md`).
+
+> **Decisioni lasciate aperte di proposito** (nessuna è una svista — tutte fuori
+> dalla deroga sui fix banali perché toccano Python, le rotte API o scelte di
+> prodotto):
+> 1. 🔴 **Il radar anomalie non gira da giugno** (F5) — ricollegarlo a FastAPI o
+>    dichiararlo dismesso e rimuoverlo con i suoi 6 test.
+> 2. 🟡 **`normalizza_piva` accetta P.IVA estere come italiane** (F5).
+> 3. 🟡 **Il prompt AI contraddice la regola di dominio #1** (F5).
+> 4. 🟡 **Il `tipo` spesa è protetto solo sulle voci categorizzate** (F6) —
+>    15 righe su 16 passano dal ramo scoperto.
+> 5. 🟡 **Argon2: un utente ha `p=1`** (F7) — `check_needs_rehash()` non è mai
+>    chiamato.
+> 6. 🔵 **`p_limit: 500` della RPC tag di catena** (F7) — il client non mostra
+>    più una cifra falsa, ma il limite resta.
+> 7. 🔵 **`ripartisci-dialog`, percentuali negative** (F3) — fallisce in
+>    sicurezza (400 dal server).
+> 8. 🔵 **Il commento `ai_pending`** (F4) — documentazione che mente nel codice.
+> 9. ⚪ **F2-NOTEST** — nessun test runner frontend: **decisione esplicita di
+>    Mattia**, è una scelta di progetto, non una svista.
 
 > Il ciclo 2026-07 ha chiuso tutte e 10 le dimensioni con seconda passata e
 > `code-reviewer`, più §3b/§3c (perimetro non letto) e §2 (mock globale del
@@ -200,7 +220,7 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 | **F4** | Frontend **analisi-fatture/ + dashboard/** | 4.409 | 🟠 6.917 upload | 🟢 CHIUSA 29/08 |
 | **F5** | Python — i **10 moduli mai auditati come oggetto proprio** | 3.570 | 🔴 radar anomalie spento da giugno | 🟢 **CHIUSA** 29/08 |
 | **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | 6.001 | 🟡 `spese_extra` viva (€4.493) — il resto fermo | 🟢 **CHIUSA** 29/08 · 1 🟡 aperto |
-| **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | — | ⚪ APERTA |
+| **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | 🟡 1 utente con Argon2 `p=1` | 🟢 **CHIUSA** 29/08 |
 
 **F1 è la prima per una ragione misurata, non per intuizione** — vedi sotto.
 
@@ -629,15 +649,30 @@ nel verbale con il dettaglio per file, `personale-tab.tsx` in testa.
 
 ---
 
-## ⚪ F7 — Chiusura del ciclo
+## 🟢 F7 — Chiusura del ciclo — CHIUSA 29/08
 
-1. Riprendere le **voci ereditate** elencate sopra (SDI/policy date, flush
-   PROP-1, `email_queue_processor`) e le **due aperte il 28/8**: migrazione
-   Argon2→Argon2 e copertura a test delle 8 `@_make_cache`.
-2. `code-reviewer` sul diff cumulativo del ciclo.
-3. Aggiungere "**Ciclo chiuso il gg/mm/aaaa**" in cima a questo file.
-4. Spostare questo file **e il suo STORICO** in `docs/storico/`.
-5. Creare `AUDIT_ONEFLUX_STATO_<nuova data>.md` — **non riusare questo file**.
+1. ✅ **Voci ereditate riverificate, non ricopiate.** Una era latente ed è
+   diventata concreta: **un utente ha un hash Argon2 con `p=1` invece di `p=4`**
+   (cliente attivo, ultimo accesso il 28/8). Entra regolarmente — i parametri
+   stanno dentro l'hash — ma non verrà **mai** portato ai parametri correnti,
+   perché `verify_and_migrate_password` migra solo `SHA256 → Argon2` e non
+   chiama `check_needs_rehash()`. Il commento a `auth_service.py:46` presenta la
+   cosa come teorica: non lo è più.
+   Chiuse **in negativo** con la misura: tutti i percorsi di scrittura ricavi
+   sono agganciati a `_spegni_override_mensile` (il `delete` non lo chiama, ed è
+   corretto); i 2 override ancora `mensile` con giornalieri presenti sono
+   **residui precedenti** al fix del 27/8 (`c9c9dd9`) — zero casi dopo — e non
+   mostrano numeri sbagliati al cliente.
+2. ✅ **I 2 rilievi lasciati aperti dalla review di F1**, entrambi ancora
+   presenti nel codice, entrambi corretti: `nascosti` mostrava «altri 440»
+   contro **6.802** reali (RPC satura a 500 su 6.862 descrizioni) — ora la cifra
+   sparisce quando il pool è saturo; `toggleTutti` leggeva lo stato dalla
+   closure — ora si ricalcola da `prev`.
+3. ✅ `code-reviewer` sul diff cumulativo.
+4. ✅ "Ciclo chiuso il 29/08/2026" in cima a questo file.
+5. ⏭️ Spostamento in `docs/storico/` e apertura del ciclo nuovo: **da fare
+   all'apertura del prossimo ciclo**, non ora — spostarli adesso significherebbe
+   archiviare 9 decisioni ancora da prendere (elenco in cima).
 
 ---
 
