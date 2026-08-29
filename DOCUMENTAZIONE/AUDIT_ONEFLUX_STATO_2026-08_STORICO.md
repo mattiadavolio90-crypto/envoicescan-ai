@@ -602,3 +602,172 @@ Aggiunta per lo stesso motivo: la misura sul DB live ora cita il filtro
 
 Nessuno bloccante. Due findings (2 e 3) restano **decisioni aperte per Mattia**,
 entrambi di sola presentazione/UX, nessuno dei due falsa un numero salvato.
+
+---
+
+## F4 — Frontend upload + dashboard — chiusa 29/08/2026
+
+### Correzione al perimetro: la roadmap ne dichiarava un terzo
+
+La roadmap elencava **5 file per 1.564 righe**. Il perimetro reale di
+`(app)/analisi-fatture/` + `(app)/dashboard/` è di **4.409 righe in 18 file**
+(`find … | xargs wc -l`, 29/8). Mancavano all'appello i **due file più grandi
+dell'area**:
+
+- `analisi-fatture/articoli-tab.tsx` — **856 righe**
+- `analisi-fatture/pivot-tab.tsx` — **744 righe**
+
+Non è un dettaglio contabile: `articoli-tab.tsx` è **il punto in cui il cliente
+riclassifica le righe di fattura**, cioè la regola di dominio #1, ed è stato
+toccato il 28/8 (`cbd38b0`, il refactor di "Da Classificare" a fonte unica).
+Auditare F4 sui soli 5 file dichiarati avrebbe saltato proprio il file caldo.
+
+È il secondo ciclo di fila in cui il perimetro scritto in roadmap non regge alla
+misura (in F3 era la premessa su `ui/`): **il perimetro va misurato all'apertura
+della fase**, non ereditato.
+
+| Gruppo | Righe | File | Esito |
+|---|---|---|---|
+| `analisi-fatture/` | 2.666 | 9 | letto: `articoli-tab`, `pivot-tab`, `upload-modal` riga per riga |
+| `dashboard/` | 1.743 | 9 | letto: `kpi-block`, `chat-widget`, `notifiche-widget` |
+
+**Esposizione confermata**: 6.917 `upload_events` totali, **426 negli ultimi 30
+giorni**, ultimo il 28/8 — percorso vivo, non storico.
+
+### H1 (l'ipotesi della roadmap) — chiusa in NEGATIVO, nella sua forma forte
+
+L'ipotesi era: il client filtra per estensione, il server valida i magic bytes;
+se divergono, un file può essere **accettato dal client e silenzianmente perso**.
+
+Verificato che non accade, su tre livelli:
+
+1. **Il client è più STRETTO del server**, non più largo. Il modale accetta
+   `[".xml", ".p7m"]` (`upload-modal.tsx:46`); il worker accetta gli stessi due e
+   rifiuta il resto con **422 esplicito** (`fastapi_worker.py:1878`). La
+   direzione pericolosa (client più permissivo) non esiste. Un PDF è respinto
+   subito a schermo, con messaggio.
+2. **La validazione magic-bytes È stata portata sul percorso vivo.** Non è
+   rimasta solo in `upload_handler.py` (Streamlit, morto): `fastapi_worker.py:1892-1905`
+   la riesegue su XML e P7M, con lo stesso strip del BOM e le stesse firme DER/PEM.
+   Verifica non oziosa: `services/upload_policy.py` documenta che le policy sulle
+   **date** erano invece rimaste indietro proprio così, e un cliente aveva
+   `blocco_mesi_precedenti: true` credendolo attivo.
+3. **Nessun file può finire in uno stato invisibile.** Ogni ramo della risposta
+   risolve in uno stato terminale mostrato (`queued`/`skipped`/`success`/`error`,
+   `upload-modal.tsx:160-180`), inclusi i casi ambigui multi-sede e il doppione
+   già in coda.
+
+**Limiti di dimensione: nessuna finestra silenziosa**, ma la motivazione va detta
+con precisione (rilievo del `code-reviewer`). I 50 MB per file sono allineati su
+tre punti (client `MAX_SIZE_MB`, worker, `MAX_UPLOAD_BYTES`). I **200 MB per
+batch** della route Next.js invece **non sono un limite allineato: su questo
+percorso sono irraggiungibili**, perché il modale fa **una fetch per file**
+(`upload-modal.tsx:127-135`, loop `for`) e il `FormData` che la route somma
+contiene sempre un solo file da ≤50 MB. La conclusione (nessun file perso) regge,
+ma per questa ragione, non perché i tre livelli "concordino".
+
+Nota minore: `MAX_FILE_SIZE_P7M = 50_000_000` (decimali) contro
+`MAX_UPLOAD_BYTES = 52.428.800` (binari) lascia ~2,4 MB in cui il worker accetta
+il body e l'estrazione P7M rifiuta — sempre con **422 visibile**, mai in
+silenzio, e lo scarto è già commentato in `config/constants.py`.
+
+### Altre ipotesi verificate
+
+**Regola di dominio #1 in `articoli-tab.tsx`: rispettata.** Usa
+`CATEGORIA_NON_CLASSIFICATA` dalla fonte unica, nessun literal, nessun fallback
+travestito. Il criterio `daScegliereCategoria` è un **OR** (bassa confidenza AI
+**oppure** categoria mancante) e il commento spiega il caso reale che lo impone:
+le quote di gruppo proiettate hanno `needs_review` hardcoded a `False` anche con
+categoria vuota — con l'AND restavano invisibili.
+
+**Doppia scrittura PV + gruppo: gestita, inclusi i parziali.** Un articolo misto
+richiede due scritture (`/api/riparto/riga-categoria` e
+`/api/fatture/categoria-batch`); il codice le distingue, riporta il **fallimento
+parziale** invece di dichiarare successo, e non scambia per successo un
+`righe_aggiornate: 0` (che su `categoria-batch` significa "non ho scritto nulla",
+mentre sulla rotta di gruppo è legittimo). Segnala anche
+`ricalcolo_quote_ok === false`, che altrimenti lascerebbe il MOL disallineato in
+silenzio.
+
+**Export XLS ≠ schermo? NO.** `exportXls` legge dalla stessa prop `pivot` che
+alimenta la tabella, e i filtri passano da URL param che la rifanno: export e
+video non possono divergere per costruzione.
+
+**Ricalcoli client in `pivot-tab.tsx`**: `totale`, `media`, `incidenza_pct` e
+`grand_total` arrivano tutti dal server; il client arrotonda solo per la vista.
+L'unico calcolo locale è la **% per periodo** (righe 78 e 390), che il server
+davvero non espone (assente da `PivotResponse` in `lib/fatture.ts`). Legittimo.
+
+**Timeout mancanti sui widget: NON è un rischio di blocco.** Né `chat-widget` né
+`notifiche-widget` mettono `AbortSignal.timeout` sulle loro `fetch` — stessa
+forma del finding F2 su `logoutSession` — ma qui le rotte server a valle ce
+l'hanno entrambe (`chat/route.ts:30` con `CHAT_TIMEOUT_MS`, `notifiche/route.ts:16`
+con `WORKER_TIMEOUT_MS`): un worker bloccato torna comunque un errore. Chiuso in
+negativo.
+
+### Findings
+
+**1. 🟡 Sparkline YTD duplicata — e le due copie SONO GIÀ DIVERGENTI**
+
+*(Correzione: in prima stesura avevo scritto che i due blocchi erano "identici" e
+che quindi il rischio era solo di manutenzione. È falso, e l'ha smontato il
+`code-reviewer`. La differenza sta esattamente nella riga che protegge da un
+crash.)*
+
+Il calcolo YTD è duplicato fra `dashboard/kpi-block.tsx` (`MolAndamento`) e
+`catena/sintesi-catena.tsx` (`MolSparkline`): stesso path SVG, stesso
+`ytdPct` con la guardia `primo > 0`, stesse label. Ma **la guardia sul numero di
+punti sta in due posti diversi**:
+
+| | guardia interna | guardia al call site |
+|---|---|---|
+| `MolSparkline` (catena) | **sì** — `if (punti.length < 2) return null` (:140) | no (:318) |
+| `MolAndamento` (dashboard) | **no** | sì — `kpi.mol_mensile.length >= 2` (:312) |
+
+`MolAndamento` con meno di 2 punti non è difeso da sé: con 1 punto `n - 1 === 0`
+rende `x(i)` un `NaN` (path `MNaN,NaN`), con 0 punti `punti[n - 1].mol` solleva
+**TypeError e rompe il render della Home**.
+
+**Oggi non esplode**, perché entrambi i call site sono guardati: il cliente non
+vede nulla di sbagliato. Ma la classificazione 🔵 "solo manutenzione" era troppo
+generosa: le due copie si sono **già mosse in modo diverso**, ed è la forma
+peggiore del copia-incolla — chi guardasse `MolSparkline` (che si difende da
+sola) e ne deducesse che la guardia esterna su `MolAndamento` è ridondante,
+introdurrebbe il crash rimuovendola.
+
+Non fixato: tocca due pagine che mostrano numeri, fuori dalla deroga. La via
+minima è spostare la guardia **dentro** `MolAndamento`, rendendolo sicuro come il
+gemello, senza cambiare nulla di ciò che si vede.
+
+**2. 🔵 `ai_pending`: il contratto del worker dice una cosa, il prodotto ne ha
+decisa un'altra**
+
+`UploadInvoiceResponse.ai_pending` (`fastapi_worker.py:1705`) è popolato per le
+fatture sopra la soglia di righe, e il commento prescrive: *"needs_review_count
+riflette solo regole+dizionario e sarà rivisto quando l'AI finisce: **il frontend
+deve dirlo**, non spacciarlo per conteggio definitivo"*. Nel frontend
+`ai_pending` **non è letto da nessuna parte** (`grep -rn ai_pending apps/web/src/`
+→ zero).
+
+Non è però una dimenticanza: il commit `dfdebc2` (27/8) si intitola *"rimuove il
+messaggio ai_pending dal modale — confondeva più che aiutare"*. È una **decisione
+di prodotto già presa**. Resta che il commento nel worker prescrive un
+comportamento che il prodotto ha deliberatamente abbandonato: è il commento a
+essere disallineato, non il frontend. Da aggiornare quando si tocca quel punto,
+così non induce in errore chi lo legge.
+
+### Verifica
+
+- `npx tsc --noEmit` → **EXIT 0**.
+- Nessuna modifica al codice in questa fase: F4 si chiude **senza fix**, tutte le
+  ipotesi verificate chiudono in negativo.
+- Misure DB rieseguite al momento della scrittura (`upload_events`: 6.917 / 426
+  su 30gg / ultimo 28/8), non riprese da roadmap.
+
+### Residui
+
+Nessuno bloccante. Un finding 🔵 di manutenzione (sparkline duplicata) resta
+**decisione aperta**. Confermato che `F2-NOTEST` continua a pesare qui: le tre
+verifiche più delicate di questa fase (doppia scrittura parziale, stati terminali
+dell'upload, OR di `daScegliereCategoria`) sono coperte **solo dalla lettura**,
+perché non esiste un runner di test frontend.
