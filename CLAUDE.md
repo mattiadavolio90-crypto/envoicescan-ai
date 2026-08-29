@@ -5,8 +5,16 @@ Piattaforma SaaS (prodotto v5.5) per la gestione automatizzata dei costi di rist
 Analizza fatture elettroniche XML/P7M/PDF, categorizza prodotti con AI (GPT-4.1-mini),
 genera report su margini, prezzi fornitori, foodcost.
 
-**Owner:** Mattia D'Avolio — sviluppatore singolo. 2 clienti in test + 1 operativo.
-**Go-live clienti:** 1 luglio 2026.
+**Owner:** Mattia D'Avolio — sviluppatore singolo.
+**In produzione dal 1 luglio 2026.** 7 account cliente attivi / 11 punti vendita
+(misurato il 29/8/2026): 4 con migliaia di righe fattura e accesso nell'ultima
+settimana, gli altri con pochi dati. Non è più una fase di test.
+
+> Le cifre di questo file vanno **ri-misurate**, non ereditate. Il 29/8/2026 la
+> riga sopra diceva ancora «2 clienti in test + 1 operativo» e «go-live: 1
+> luglio» a due mesi dalla data: un file che entra in ogni sessione propaga i
+> suoi errori ovunque. Ogni numero qui sotto ha accanto il comando che lo
+> produce.
 
 ---
 
@@ -24,15 +32,15 @@ nella git history. Il container Railway serve il worker FastAPI.
 
 | Layer | Percorso | Note |
 |---|---|---|
-| Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — ~17 pagine app + auth/legal/mobile, ~150 route API |
+| Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — 22 pagine app + auth/legal/mobile, 169 route API |
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` (~8000 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker API | `services/fastapi_worker.py` (8.547 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
-| Migrations | `supabase/migrations/*.sql` (canonico) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | ~9500 test pytest (molti parametrizzati) + test Deno per le Edge Functions |
+| Migrations | `supabase/migrations/*.sql` (canonico, 134 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
+| Test | `tests/*.py` | 11.424 test pytest (molti parametrizzati) + test Deno per le Edge Functions. **Zero test frontend** — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
@@ -110,6 +118,16 @@ python scripts/export_openapi.py --check-drift
   produzione (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
 - **`/m` è un frontend separato**, non responsive: se estendi il desktop, va
   allineato a mano.
+- **Zero test frontend**: l'unica rete su `apps/web/` è `npx tsc --noEmit`, che
+  controlla i tipi e **non esegue niente**. Un fix può passare `tsc`, sembrare
+  giusto a leggerlo e non fare nulla sui dati veri — è successo il 29/8 con una
+  guardia che misurava una soglia dopo i filtri client invece che prima, e non
+  scattava su nessuno dei 3 casi reali. **Una condizione su una soglia va provata
+  per mutazione sui valori veri**, su copia in scratchpad, mai sul file del branch.
+- **Un test che mocka il client non prova che la query funzioni.** I 6 test di
+  `anomaly_radar_service.py` passano da sempre su una query che filtra
+  `fatture_documenti.upload_id` — **una colonna che non esiste**. Il mock
+  rispondeva comunque, e il difetto è rimasto invisibile per mesi.
 
 ---
 
