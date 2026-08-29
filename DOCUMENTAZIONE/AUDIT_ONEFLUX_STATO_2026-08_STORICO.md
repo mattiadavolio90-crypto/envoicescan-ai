@@ -1733,3 +1733,66 @@ Riscritto per dire cosa succede davvero e perché.
 - **Guardare cosa misura un test**: i 6 test del radar erano verdi da sempre su
   una colonna inesistente. Il fake nuovo fallisce sul codice vecchio: è la
   differenza fra una rete e un tappeto.
+
+## Gate `code-reviewer` — Gruppo Railway (29/08/2026)
+
+Verdetto iniziale: **🔴 NON CHIUSA**, 3 blocchi. Due erano difetti reali
+introdotti in questa sessione, e vale la pena registrarli come tali.
+
+**B1 — call site lasciato con la firma vecchia.** Avevo cambiato la firma di
+`check_on_upload` (`upload_id` → `file_origini`) senza aggiornare
+`upload_handler.py:2094`, che continuava a passare `upload_id=`:
+`TypeError: missing a required argument`. Non si esegue in produzione (quel
+percorso vive solo in `legacy_streamlit`), ma **l'`except Exception` che lo
+avvolge l'avrebbe inghiottito in silenzio** — lo stesso identico meccanismo che
+ha tenuto invisibile per mesi il bug originale. Il blocco morto è stato
+**rimosso**, non aggiornato: tenerne una copia rotta contraddiceva il fix.
+
+**B3 — Step 3 diventato costoso nel percorso caldo.** `piva_duplicata_fornitore`
+leggeva *tutti* i documenti della sede (`limit 10000`) senza filtro sui nuovi.
+Finché il radar girava una volta per batch era accettabile; con l'aggancio
+per-fattura dentro un handler HTTP sincrono diventava N scansioni per N fatture,
+ricalcolando ogni volta lo stesso risultato. Ora è ristretto alle sole P.IVA in
+esame e usa `idx_fat_doc_user_rist_piva` come le altre due query.
+
+Costo del radar dopo la correzione, misurato con `explain (analyze, buffers)`:
+3 query per fattura, **tutte su indice**, ~10 ms complessivi. Volume reale
+ultimi 14 giorni: 1-19 fatture/giorno, con un picco di **371 il 27/8**; nel caso
+peggiore ~3,7 s distribuiti su un'operazione già dominata da parsing e AI.
+
+**B2 — branch non pushato, CI mai eseguita.** Corretto: è il gate che questo
+progetto ha già mancato due volte. Il verde locale (Python 3.11, dipendenze
+dev) non è lo stesso segnale della CI (Python 3.12, `requirements-lock.txt`,
+`--fail-under=45`). Si chiude solo con la PR aperta e verde.
+
+### La lezione che vale oltre questa fase
+
+I miei test di aggancio leggevano il sorgente con `assert 'stringa' in src`:
+**non potevano vedere B1**, perché un mismatch di firma non cambia il testo che
+cercavano. Li ho sostituiti con test comportamentali che estraggono via **AST**
+ogni chiamata a `check_on_upload` in `services/worker/utils/config` e le passano
+a `signature.bind`.
+
+Il primo tentativo di sostituzione era un `grep` riga-per-riga. **Provato per
+mutazione: non catturava il difetto**, perché nel call site reale il kwarg
+sbagliato stava su una riga diversa da `check_on_upload(`. Solo la versione AST
+lo trova, e riporta `file:riga`.
+
+È la stessa lezione del fake che validava le colonne, arrivata due volte nella
+stessa sessione da direzioni diverse: **un test va verificato per mutazione
+anche quando è il test scritto per correggere un test che non misurava.**
+
+### Rilievo non bloccante, misurato e archiviato
+
+Il reviewer ha osservato che il confronto esatto su `numero_documento` scarta i
+duplicati veri con numero assente o formattato diversamente (`FT/2026/123` vs
+`123`). Corretto in teoria; misurato sui dati reali:
+
+```sql
+-- coppie candidate con numero assente, o uguale a meno del formato
+-- senza_numero: 0 | stesso_num_formato_diverso: 0
+```
+
+Zero casi. Una normalizzazione aggiungerebbe complessità senza recuperare nulla
+di misurabile oggi. Archiviato con la misura, da riaprire se cambia il mix di
+fornitori.
