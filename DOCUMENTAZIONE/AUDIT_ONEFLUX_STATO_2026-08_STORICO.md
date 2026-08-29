@@ -862,3 +862,228 @@ call-site da `>= 2` a `> 0` è indistinguibile sui dati veri.
 - 🔵 **commento `ai_pending` nel worker** — è Python → **Railway**, pipeline
   diversa da questi due fix. Accorparlo qui non avrebbe senso: se lo prende F5,
   che tocca lo stesso worker.
+
+---
+
+## 🟢 F5 — Python: i moduli mai auditati come oggetto proprio — CHIUSA 29/08/2026
+
+**Audit read-only. Nessun fix applicato**: la deroga sui fix banali esclude
+esplicitamente «qualsiasi modifica lato Python», e tutti e tre i findings sotto
+sono Python. Tornano a Mattia come decisione.
+
+### Correzioni al perimetro dichiarato in roadmap
+
+La roadmap va misurata come tutto il resto — terza volta in questo ciclo che non
+regge:
+
+| Voce roadmap | Dichiarato | Misurato (29/8, `wc -l`) |
+|---|---|---|
+| Righe totali | 1.899 | **3.570** |
+| Numero moduli | «i 4 moduli» | **10** (la tabella sotto ne elencava già 10) |
+| Test su `prompt_ai_potenziato.py` | «—» | **0** — e contiene una regola di dominio |
+
+### Esposizione live misurata (29/8, progetto `vthikmfpywilukizputn`)
+
+- `sessioni`: 362 totali, 347 revocate, **5 vive negli ultimi 30 giorni**
+- `notification_inbox`: 65 totali, **39 non archiviate** (`dismissed_at IS NULL`),
+  12 negli ultimi 30 giorni. *Non* «non lette»: la tabella non ha una colonna
+  di lettura (`read_at` non esiste), quindi la lettura non è tracciata.
+- `fatture` attive: 39.133
+- `users` con P.IVA: **3, tutte italiane a 11 cifre**
+
+Nota di schema: **non esiste** una tabella `utenti` in `public` — è `users`.
+`sessioni` non ha colonna `scadenza`: la scadenza a 30 giorni è calcolata dal
+codice su `created_at`.
+
+---
+
+### 🔴 1. Il radar anomalie non gira più da giugno — DA DECIDERE
+
+`services/anomaly_radar_service.py` (326 righe) ha **un solo chiamante**:
+`services/upload_handler.py:2094`, dentro `handle_uploaded_files`. Quella
+funzione è raggiungibile **solo** da `legacy_streamlit/app_controllers.py:1701`.
+Nel percorso vivo non esiste: `grep check_on_upload|anomaly_radar` su
+`services/fastapi_worker.py`, `services/routers/` e `worker/` → **zero match**.
+
+**Non è una deduzione: il DB lo conferma con una precisione netta.** Le notifiche
+`notification_inbox` per `source_type`:
+
+Tabella **completa**, senza selezione — `GROUP BY source_type, topic_key` su
+`notification_inbox`, nessun filtro:
+
+| source_type | topic_key | n | ultimo |
+|---|---|---|---|
+| upload | `price_alert` | 3 | **2026-06-01** |
+| upload | `quality_check_failed` | 2 | **2026-06-01** |
+| upload | `credit_note` | 2 | **2026-06-01** |
+| operativa | `incasso_mancante` | 31 | 2026-08-28 |
+| operativa | `tag_suggestion_new_tag` | 11 | 2026-08-27 |
+| operativa | `tag_suggestion_extend_tag` | 2 | 2026-08-27 |
+| operativa | `costo_personale_mancante` | 3 | 2026-06-05 |
+| operativa | `fatturato_mancante` | 3 | 2026-06-05 |
+| operativa | `scadenza_imminente` | 2 | 2026-06-01 |
+| operativa | `scadenza_superata` | 5 | 2026-06-01 |
+| operativa | `fornitore_unico_categoria` | 1 | 2026-05-24 |
+
+**Tutte e tre** le notifiche da upload si fermano al **1/6/2026**. Lo switch DNS
+a Next.js è dell'8/6: si spengono una settimana prima, quando il traffico smette
+di passare per Streamlit.
+
+**Qualificazione onesta della prova.** La lettura «upload ferme, operativa vive»
+è troppo comoda: **4 topic `operativa` su 8** si fermano anch'essi a giugno
+(`scadenza_imminente`, `scadenza_superata` al 1/6; `costo_personale_mancante`,
+`fatturato_mancante` al 5/6). Quindi il confronto per `source_type` **da solo**
+non dimostra nulla — giugno è un discrimine che tocca anche altro, e servirebbe
+una seconda indagine per capire perché.
+Ciò che regge il finding è **l'altra** prova, indipendente dalle date: il
+call-graph. `check_on_upload` ha un solo chiamante, dentro una funzione
+raggiungibile solo dal percorso Streamlit rimosso dal repo il 17/7. Il codice
+**non può** girare, quale che sia la spiegazione delle altre notifiche ferme.
+Le date sono conferma, non prova.
+
+> Da riprendere in F7 o in un ciclo successivo: perché 4 notifiche `operativa`
+> si fermano a giugno. Non è stato indagato in F5 — fuori perimetro, ma è un
+> filo che questa misura ha scoperto e che non va perso.
+
+E gli upload **non** si sono fermati — misurato su `upload_events`:
+
+| mese | upload |
+|---|---|
+| 2026-02 | 6 |
+| 2026-03 | 163 |
+| 2026-04 | 1.828 |
+| 2026-05 | 932 |
+| 2026-06 | 2.110 |
+| 2026-07 | 1.458 |
+| 2026-08 | 420 |
+
+**3.988 upload da giugno in poi** (2.110 + 1.458 + 420), **zero notifiche da
+upload**. Non si è fermato il
+traffico: si è fermato il codice che lo osserva. Il cliente ha smesso di ricevere
+price alert, segnalazioni di qualità e note di credito senza che nulla lo
+segnalasse.
+
+Il modulo ha un file di test dedicato (`tests/test_anomaly_radar_service.py`,
+**6 test**) che passa — testa un modulo che non gira. Il conto è di test, non
+di file: avevo scritto «1 test» intendendo «1 file».
+
+**Decisione**: ricollegare `check_on_upload` al percorso FastAPI, oppure
+dichiarare il radar dismesso e rimuoverlo. Oggi è la terza via: codice vivo nei
+test, morto in produzione. **Non l'ho toccato** — è Python, fuori dalla deroga.
+
+---
+
+### 🟡 2. `normalizza_piva` trasforma una P.IVA estera in italiana — DA DECIDERE
+
+`utils/piva_validator.py:110` (`normalizza_piva`). Il codice rimuove il prefisso
+`IT`, poi alla riga **145** applica
+`re.sub(r'[^0-9]', '', piva_upper)` — che **elimina qualunque lettera**, non solo il
+prefisso già gestito. Misurato:
+
+| input | normalizzata | `valida_formato_piva` |
+|---|---|---|
+| `IT12345678903` | `12345678903` | True (corretto) |
+| `DE12345678903` | `12345678903` | **True** |
+| `ATU12345678903` | `12345678903` | **True** |
+| `<script>12345678903</script>` | `12345678903` | **True** |
+
+Una P.IVA tedesca, austriaca o spagnola viene silenziosamente convertita in
+italiana e accettata. Percorsi **vivi**: `services/auth_service.py:454`
+(registrazione) e `services/routers/admin.py:2809` e `:2867` (creazione/modifica
+sede). Il call-site in `upload_handler.py:1452` usa `st.session_state`: è il
+percorso Streamlit morto, non conta.
+
+**Perché 🟡 e non 🔴**: le 3 P.IVA in produzione sono tutte italiane a 11 cifre,
+quindi il difetto **non sta danneggiando nessuno oggi**. Ma la P.IVA è la chiave
+d'aggancio del canale SDI, e un aggancio sbagliato è già costato un incidente
+reale (`docs/storico/DIAGNOSI_OFFSIDE_INVOICETRONIC_2026-07-14.md`).
+
+### ✅ Il checksum P.IVA è corretto — ipotesi chiusa in negativo
+
+Sospettavo che `_verifica_checksum_piva` fosse un Luhn approssimato: il docstring
+lo descrive come «totale % 10 == 0» invece che come check digit. **È
+algebricamente equivalente.** Confrontato con l'algoritmo ufficiale
+(DM 23/12/1976) su **200.000 P.IVA casuali**: **zero divergenze**, né falsi
+positivi né falsi negativi. Passa anche le P.IVA reali note (`00743110157`).
+L'implementazione regge; solo il docstring è meno standard.
+
+### ⚪ `verifica_piva_duplicata` è codice morto
+
+`utils/piva_validator.py:148`: zero chiamanti fuori dal modulo, zero nei test.
+Interroga `users` (tabella che esiste), quindi non è rotta — semplicemente non è
+usata. In caso di errore DB ritorna `(True, "")`, cioè «disponibile»: sceglie di
+non bloccare. Scelta difendibile, ma nessuno la esercita.
+
+---
+
+### 🟡 3. Il prompt AI contraddice la regola di dominio #1 — DA DECIDERE
+
+`config/prompt_ai_potenziato.py:183`:
+
+> `🚨 REGOLA ASSOLUTA: DEVI classificare OGNI articolo. "Da Classificare" NON è MAI una risposta valida.`
+> `Se non sei sicuro, scegli la categoria PIÙ PROBABILE basandoti sulla descrizione.`
+
+È la negazione esatta della regola #1 di `CLAUDE.md` («una riga si classifica
+SOLO se dizionario/regole o l'AI la riconoscono con sicurezza… NIENTE fallback
+travestito»). Il prompt è **vivo e unico**: `services/ai_service.py:4946`, nessun
+prompt alternativo nel repo. Il modulo ha **0 test**.
+
+**Ma la rete a valle regge, ed è la parte che conta.** `ai_service.py:4990-5010`
+mette in `"Da Classificare"` le righe che l'AI non restituisce, con commenti che
+lo dichiarano esplicitamente. E i dati confermano:
+
+Misura del 29/8 su `fatture` (le righe fattura), filtro esatto
+`WHERE deleted_at IS NULL AND categoria IN (...)` — senza il filtro soft-delete
+i conteggi cambiano e la misura non è riproducibile:
+
+| categoria | righe | `needs_review` | con `totale_riga ≠ 0` |
+|---|---|---|---|
+| `Da Classificare` | 172 | 170 | 165 |
+| `📝 NOTE E DICITURE` | 74 | 13 | **0** |
+| `Da Clasificare` (grafia errata) | **0** | — | — |
+
+- La regola #1 **tiene**: 172 righe restano in coda invece di essere travestite.
+- La regola #2 **tiene**: tutte e 74 le NOTE hanno `totale_riga = 0`, zero
+  violazioni del guardrail.
+- Nessuna riga con la grafia errata `'Da Clasificare'`.
+
+Il divieto sulle NOTE nel prompt (riga 187) è **corretto**: le 74 righe arrivano
+dal parser (`invoice_service.py:1655`, `_applica_guardrail_note_con_importo`),
+non dall'AI.
+
+**Quindi**: il prompt spinge l'AI a inventare una categoria pur di non lasciare
+la riga in coda, ma il codice a valle non gli dà seguito. Il difetto è che la
+regola vive in due posti che si contraddicono, e quello senza test è il prompt.
+Oggi non produce danno misurabile — domani basta che qualcuno si fidi del prompt.
+
+**Decisione**: allineare la riga 183 alla regola #1, o lasciarla e documentare
+che il prompt è deliberatamente più aggressivo del codice.
+
+---
+
+### Cosa NON ho auditato in questa fase
+
+Per onestà del perimetro: dei 10 moduli ho letto a fondo `piva_validator.py`,
+`prompt_ai_potenziato.py`, `anomaly_radar_service.py` (via call-graph) e i punti
+di aggancio di `notification_inbox_service.py` e `personale_export_service.py`.
+**Non** ho letto riga per riga `formatters.py` (691), `validation.py` (537),
+`text_utils.py` (413), `ai_cost_service.py` (282) e `session_service.py` (219).
+
+L'ordine è stato deciso dall'esposizione misurata, non dalla dimensione: P.IVA
+(canale SDI) e prompt (regola di dominio) per primi, come la roadmap
+consigliava. `personale_export_service.py` è l'unico modulo del gruppo con un
+solo call-site vivo (`services/routers/workspace.py:1330`): resta il candidato
+naturale per una ripresa.
+
+> **Correzione (review di chiusura).** Avevo scritto che
+> `personale_export_service.py` ha «0 test dedicati», ereditando lo `0` dalla
+> tabella di roadmap invece di misurarlo. **È falso**: `tests/test_turni_mensili.py:1063`
+> contiene `class TestExportExcelPersonaleMensile`, che esercita direttamente
+> `export_excel_personale_mensile` (fogli, celle, totali 130/100/230), più
+> `TestEndpointExportMensile` sull'endpoint — 8 match per `personale_export` in
+> `tests/`. Non esiste un file `test_personale_export_service.py`, ed è da lì che
+> nasce l'errore: **l'assenza di un file omonimo non è assenza di test**. La
+> raccomandazione resta (un solo call-site), ma non per mancanza di copertura.
+
+**Verifica**: `tests/test_documentazione_onesta.py` verde. Nessuna modifica al
+codice, quindi nessun typecheck/mutazione da eseguire.

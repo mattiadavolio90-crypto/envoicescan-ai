@@ -198,7 +198,7 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 | **F2** | Frontend **impostazioni + account + auth** | 1.942 | 🟠 362 sessioni, 7 utenti | 🟢 **CHIUSA** 28/8 |
 | **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | 7.277 | 🟠 attraversa tutto | 🟢 CHIUSA 29/08 |
 | **F4** | Frontend **analisi-fatture/ + dashboard/** | 4.409 | 🟠 6.917 upload | 🟢 CHIUSA 29/08 |
-| **F5** | Python — i **4 moduli mai auditati come oggetto proprio** | 1.899 | 🟡 da misurare in fase | ⚪ APERTA |
+| **F5** | Python — i **10 moduli mai auditati come oggetto proprio** | 3.570 | 🔴 radar anomalie spento da giugno | 🟢 **CHIUSA** 29/08 |
 | **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | ~3.900 | ⚪ bassa/nulla | ⚪ APERTA |
 | **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | — | ⚪ APERTA |
 
@@ -510,7 +510,7 @@ stato **chiuso il 29/8** (vedi sotto); resta aperto solo il 🔵.
 
 ---
 
-## ⚪ F5 — Python: i moduli mai auditati come oggetto proprio
+## 🟢 F5 — Python: i moduli mai auditati come oggetto proprio — CHIUSA 29/08/2026
 
 Verificato il 28/8: questi file **non compaiono nemmeno una volta** nello STORICO
 2026-07 (`grep` sul basename, 3.386 righe di verbale).
@@ -536,6 +536,43 @@ il prompt è dove la regola #1 può essere violata senza che un test se ne accor
 
 **Prima di leggere, misurare l'esposizione** di ciascuno — è la regola che ha
 già invertito l'ordine due volte.
+
+---
+
+### Esito (29/08/2026)
+
+**Le cifre di questa tabella erano sbagliate**: non 1.899 righe ma **3.570**, non
+«4 moduli» ma **10**, e `prompt_ai_potenziato.py` ha **0 test**, non «—». Terza
+volta nel ciclo che una premessa di roadmap non regge alla misura.
+
+**3 findings, nessun fix** (sono tutti Python → fuori dalla deroga):
+
+- 🔴 **Il radar anomalie non gira più da giugno.** `anomaly_radar_service.py` ha
+  un solo chiamante, dentro la funzione Streamlit `handle_uploaded_files`, morta
+  con la rimozione di Streamlit — quindi **non può girare**, ed è questa la prova.
+  Le date la confermano ma non la reggono da sole: le notifiche
+  `source_type='upload'` (`price_alert`, `quality_check_failed`, `credit_note`)
+  si fermano **tutte** al 1/6/2026, però anche 4 topic `operativa` su 8 si
+  fermano a giugno, quindi il confronto per `source_type` non è di per sé
+  dimostrativo (dettaglio nel verbale). Nel frattempo sono stati fatti **3.988
+  upload**. Il modulo ha un file di test che passa, su codice che non gira.
+- 🟡 **`normalizza_piva` accetta P.IVA estere come italiane**: il `re.sub` toglie
+  ogni lettera, non solo il prefisso `IT`, quindi `DE12345678903` → `12345678903`
+  → valida. Percorsi vivi: registrazione e creazione sede da admin. Non danneggia
+  nessuno oggi (le 3 P.IVA in produzione sono italiane), ma la P.IVA è la chiave
+  del canale SDI.
+- 🟡 **Il prompt AI contraddice la regola di dominio #1** (riga 183: «"Da
+  Classificare" NON è MAI una risposta valida»). La rete a valle regge — 172
+  righe in `Da Classificare`, 170 con `needs_review`, e tutte le 74 NOTE con
+  `totale_riga = 0` — ma la regola vive in due posti che si contraddicono, e
+  quello senza test è il prompt.
+
+**Ipotesi chiusa in negativo**: il checksum P.IVA è **corretto**, verificato
+contro l'algoritmo ufficiale su 200.000 casi con zero divergenze.
+
+**Non letti riga per riga**: `formatters.py`, `validation.py`, `text_utils.py`,
+`ai_cost_service.py`, `session_service.py`. Verbale completo in
+`AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`.
 
 ---
 
