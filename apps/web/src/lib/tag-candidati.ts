@@ -6,8 +6,10 @@
 // che resta dopo i filtri") viveva solo in un commento, ed e' esattamente la
 // regola che il difetto F7 aveva violato.
 
-// La RPC che alimenta la lista tronca a questo numero (routers/gruppo.py,
-// `p_limit`). Se cambia li', cambia qui: e' l'unico punto da toccare.
+// La RPC che alimenta la lista tronca a questo numero. Deve restare allineata a
+// `p_limit` in routers/gruppo.py (che lo passa esplicitamente) e al DEFAULT
+// della funzione SQL in supabase/migrations/*_gruppo_tag_descrizioni_search.sql:
+// il 500 vive in tre posti indipendenti, questo non e' l'unico da toccare.
 export const RPC_LIMITE_DESCRIZIONI = 500;
 
 // Quante se ne mostrano in lista prima di troncare.

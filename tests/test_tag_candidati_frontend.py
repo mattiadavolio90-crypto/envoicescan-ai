@@ -19,6 +19,9 @@ Mitigazione a costo zero gia' applicata: il parametro si chiama `risposta`, e'
 il primo, e nel componente non esiste una variabile filtrata prima della
 chiamata. Un buco dichiarato e' gestibile, uno taciuto no.
 """
+import re
+from pathlib import Path
+
 import pytest
 
 from tests.helpers_ts import esegui_ts
@@ -121,5 +124,32 @@ def test_in_ricerca_non_rifiltra_il_testo_del_server():
 
 
 def test_il_filtro_locale_ignora_maiuscole_e_spazi():
-    assert _calcola(5, filtro="  prodotto  ")["candidati"] == 5
-    assert _calcola(5, filtro="pRoDoTtO")["candidati"] == 5
+    """Il prefisso e' mixed-case di proposito.
+
+    Prima stesura inerte, trovata dal code-reviewer: con il default
+    `prefisso="PRODOTTO"` (gia' maiuscolo) bastava il `toUpperCase()` sul
+    filtro, e togliere quello sulla **descrizione** non faceva fallire niente.
+    Le descrizioni delle fatture vere sono mixed-case: e' quel ramo che conta.
+    """
+    assert _calcola(5, filtro="  prodotto  ", prefisso="Prodotto")["candidati"] == 5
+    assert _calcola(5, filtro="pRoDoTtO", prefisso="Prodotto")["candidati"] == 5
+    assert _calcola(5, filtro="PANE", prefisso="pane fresco")["candidati"] == 5
+
+
+def test_il_limite_client_e_allineato_alla_rpc():
+    """Il 500 vive in tre posti indipendenti: qui si controlla che non divergano.
+
+    Segnalato dal code-reviewer: leggendo `RPC_LIMITE_DESCRIZIONI` dal modulo,
+    i test seguono la costante ovunque vada — quindi cambiarla non fa fallire
+    niente, e una divergenza col backend resterebbe invisibile. Questo e'
+    l'unico test che guarda il valore, non la relazione.
+    """
+    router = (Path(__file__).resolve().parents[1] / "services/routers/gruppo.py").read_text(
+        encoding="utf-8"
+    )
+    trovati = {int(n) for n in re.findall(r'"p_limit":\s*(\d+)', router)}
+    assert trovati, "p_limit non piu' passato esplicitamente da routers/gruppo.py"
+    assert trovati == {LIMITE}, (
+        f"il client tronca a {LIMITE} ma la RPC usa {trovati}: la dialog di "
+        "catena tornerebbe a dichiarare un numero di nascosti falso (difetto F7)"
+    )

@@ -279,7 +279,7 @@ function ProdottiDialog({
   // 2 caratteri si mostra/filtra la lista iniziale (top per spesa).
   useEffect(() => {
     const f = filtro.trim();
-    if (f.length < 2) {
+    if (f.length < MIN_LETTERE_RICERCA) {
       setRisultati(null);
       setCercando(false);
       return;
@@ -442,7 +442,7 @@ function ProdottiDialog({
               </p>
             ) : candidati.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {filtro.trim().length >= 2 ? "Nessun prodotto trovato." : "Nessun prodotto da aggiungere."}
+                {filtro.trim().length >= MIN_LETTERE_RICERCA ? "Nessun prodotto trovato." : "Nessun prodotto da aggiungere."}
               </p>
             ) : (
               <ul className="space-y-1">
