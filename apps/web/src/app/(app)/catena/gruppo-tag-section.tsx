@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { calcolaCandidati, MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
@@ -278,7 +279,7 @@ function ProdottiDialog({
   // 2 caratteri si mostra/filtra la lista iniziale (top per spesa).
   useEffect(() => {
     const f = filtro.trim();
-    if (f.length < 2) {
+    if (f.length < MIN_LETTERE_RICERCA) {
       setRisultati(null);
       setCercando(false);
       return;
@@ -298,36 +299,14 @@ function ProdottiDialog({
     return () => { alive = false; clearTimeout(t); };
   }, [filtro]);
 
-  // `nascosti` = quanti il taglio a 60 lascia fuori. Senza, la lista sembra
-  // completa e "Seleziona tutti" (che agisce solo sui visibili) mente.
-  //
-  // `poolSaturo`: la RPC che alimenta la lista tronca a 500 (routers/gruppo.py,
-  // `p_limit: 500`), quindi quando ne torna esattamente 500 `nascosti` NON e' il
-  // numero reale — e' solo quanto resta del troncone. Misurato sull'account di
-  // catena reale (4 PV): 4.518 descrizioni esistenti, 500 ricevute.
-  //
-  // Si misura sulla RISPOSTA della RPC, prima dei filtri client: `pool` e' gia'
-  // passato per `giaAssociate` (e per il testo digitato), quindi con 67
-  // associazioni scendeva a 433 e la guardia non scattava piu' — bastava una
-  // lettera digitata per far riapparire la cifra falsa. La saturazione e' una
-  // proprieta' di cio' che il server ha mandato, non di cio' che resta dopo.
+  // Logica in lib/tag-candidati.ts: qui era un useMemo anonimo che nessun test
+  // poteva raggiungere, ed e' dove F7 aveva misurato la soglia dopo i filtri.
+  // `risposta` e' cio' che il server ha mandato, NON filtrato: e' il contratto
+  // di calcolaCandidati, e va passata cosi'.
   const { candidati, nascosti, poolSaturo } = useMemo(() => {
-    const f = filtro.trim();
-    const inRicerca = f.length >= 2;
+    const inRicerca = filtro.trim().length >= MIN_LETTERE_RICERCA;
     const risposta = inRicerca ? (risultati ?? []) : disponibili;
-    const pool = inRicerca
-      ? risposta.filter((d) => !giaAssociate.has(d.descrizione_key))
-      : (() => {
-          const fu = f.toUpperCase();
-          return risposta
-            .filter((d) => !giaAssociate.has(d.descrizione_key))
-            .filter((d) => (fu ? d.descrizione.toUpperCase().includes(fu) : true));
-        })();
-    return {
-      candidati: pool.slice(0, 60),
-      nascosti: Math.max(0, pool.length - 60),
-      poolSaturo: risposta.length >= 500,
-    };
+    return calcolaCandidati(risposta, giaAssociate, filtro, inRicerca);
   }, [disponibili, risultati, giaAssociate, filtro]);
 
   function toggle(d: GruppoTagDescrizione) {
@@ -463,7 +442,7 @@ function ProdottiDialog({
               </p>
             ) : candidati.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {filtro.trim().length >= 2 ? "Nessun prodotto trovato." : "Nessun prodotto da aggiungere."}
+                {filtro.trim().length >= MIN_LETTERE_RICERCA ? "Nessun prodotto trovato." : "Nessun prodotto da aggiungere."}
               </p>
             ) : (
               <ul className="space-y-1">

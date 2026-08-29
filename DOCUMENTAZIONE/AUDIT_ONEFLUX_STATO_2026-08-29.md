@@ -124,11 +124,25 @@ Rendering React, hook, stato, effetti, `useMemo`, routing, CSS, accessibilità,
 integrazione API reale, e tutto ciò che sta fuori da `lib/` (~47.500 righe).
 Copriamo **logica pura in moduli senza React**.
 
-**`poolSaturo` (F7) resta scoperto.** Vive dentro un `useMemo` anonimo in
-`gruppo-tag-section.tsx`: nessuna tecnica lo raggiunge lì com'è, va prima
-estratto in `lib/`. Quell'estrazione tocca `apps/web/**` e quindi **fa partire un
-deploy**, perciò è tenuta fuori da questo lavoro e resta da fare in una PR
-separata, da mergiare fuori orario cliente. Un buco dichiarato è gestibile.
+**`poolSaturo` (F7): coperto, in una PR separata.** Viveva dentro un `useMemo`
+anonimo in `gruppo-tag-section.tsx`, dove nessuna tecnica lo raggiungeva.
+Estratto in `apps/web/src/lib/tag-candidati.ts` (`calcolaCandidati`), con
+`RPC_LIMITE_DESCRIZIONI` allineata al `p_limit` di `routers/gruppo.py` — non è
+la «fonte unica»: il 500 vive in **tre** posti indipendenti (il router, il
+DEFAULT della funzione SQL, la costante client), e un test confronta il valore
+client col router perché la divergenza non resti invisibile. 12 test, e **reintrodurre il difetto originale
+(`pool.length` invece di `risposta.length`) li fa fallire**.
+
+Il refactor è provato equivalente, non solo `tsc`-pulito: vecchia e nuova
+implementazione confrontate su **504 combinazioni** di pool/associate/filtro
+(0 divergenze). Tenuto in una PR separata perché tocca `apps/web/**` e quindi
+**fa partire il deploy Vercel**: va mergiata fuori orario cliente.
+
+Resta scoperto, e dichiarato nel docstring del test: che il *componente* passi
+`risposta` e non il pool filtrato. Il componente non è testato (nessun
+rendering). Mitigazione a costo zero: il parametro si chiama `risposta`, è il
+primo, e nel componente non esiste più una variabile filtrata prima della
+chiamata.
 
 ### Correzione al documento preparatorio
 
