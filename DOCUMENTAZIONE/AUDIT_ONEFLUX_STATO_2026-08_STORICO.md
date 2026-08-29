@@ -1125,9 +1125,32 @@ e le cifre dichiarate reggono tutte, ma **ne mancava una che cambia la decisione
 | `marketplace_leads` | 0 | — |
 
 **`spese_extra` non è esposizione nulla**: 16 voci, **€4.493,17**, un cliente
-reale, in crescita fino a ieri (giu 2 voci/€1.406,17 · lug 13/€2.987,00 ·
-ago 1/€100,00). E soprattutto **entra nei numeri che il cliente vede**:
-`services/routers/margini.py:1067` la legge per comporre i totali del mese.
+reale, ultima riga inserita **ieri**. E soprattutto **entra nei numeri che il
+cliente vede**: `services/routers/margini.py:1067` la legge per comporre i
+totali del mese.
+
+Ripartizione per **`data_spesa`** (la colonna che conta: è quella su cui filtra
+`margini.py:1068`):
+
+| mese | voci | totale |
+|---|---|---|
+| 2026-01 | 2 | €590,00 |
+| 2026-02 | 2 | €529,00 |
+| 2026-03 | 2 | €461,00 |
+| 2026-04 | 2 | €388,00 |
+| 2026-05 | 3 | €1.661,17 |
+| 2026-06 | 4 | €764,00 |
+| **2026-07** | **0** | **—** |
+| 2026-08 | 1 | €100,00 |
+
+> **Correzione (review di chiusura).** Avevo scritto «in crescita fino a ieri
+> (giu 2/€1.406,17 · lug 13/€2.987,00 · ago 1/€100,00)». **Sbagliato in tutti i
+> valori tranne agosto**, e per una ragione precisa: avevo raggruppato per
+> `created_at` (quando la riga è stata *inserita*) presentandolo come
+> ripartizione della *spesa*, che va per `data_spesa`. Sono due colonne diverse,
+> e il verbale mostrava la seconda etichettando la prima. La serie reale copre
+> **gennaio→agosto**, **luglio è vuoto**, e non è in crescita: **cala**
+> (590 → 529 → 461 → 388) con un picco a maggio.
 
 Ne segue la ripartizione del perimetro per esposizione reale:
 
@@ -1161,27 +1184,85 @@ etichette, e infatti le etichette erano già divergite.
 
 Unificato sulla costante condivisa; la forma **plurale** è quella usata dal resto
 dell'app (`margini/calcolo-tab.tsx:90`, `analisi-fatture/articoli-tab.tsx:59`).
+Verificato che non sia una preferenza imposta: le righe di totale dello stesso
+CSV dicono già `TOTALE F&B` / `TOTALE GENERALI`, quindi il singolare stonava con
+le proprie somme.
+
+**Precisazione (review di chiusura)**: le grafie *unificate* sono tre, ma esiste
+una **quarta forma** non toccata — `catena/finestra-costi-gruppo.tsx:222`
+(`"F&B" : "spese generali"`). È lasciata **di proposito**: è un badge compatto
+inline, come il `"F&B"/"Gen."` di `spese-view.tsx:414`, cioè un'abbreviazione,
+non una copia divergente dell'etichetta per esteso. La distinzione è ora scritta
+nel commento di `categorie-spesa.ts`, così chi legge non la scambia per una
+svista.
 
 Rientra nella deroga: `apps/web/src/app/(app)/`, poche righe, comportamento
 ovvio, **nessun numero cambia** — sono stringhe di etichetta.
 `npx tsc --noEmit` **EXIT 0** prima e dopo.
 
-### ✅ Ipotesi chiusa in negativo: il tipo spesa non è manipolabile dal client
+### 🟡 Il tipo spesa è protetto solo sulle voci categorizzate — oggi 1 su 16
+
+**Questa voce era scritta come «ipotesi chiusa in negativo». Era chiusa a metà,
+e l'ha trovato il `code-reviewer`.** La correzione sta qui sotto, in chiaro,
+perché è l'errore più serio di questa fase.
 
 `spese-view.tsx:98` deriva `tipo` dalla categoria e lo manda nel payload. Se il
 server si fidasse, una richiesta costruita a mano sposterebbe una voce dal
 binario F&B a quello Generali — cioè **soldi tra i secchi del MOL**, in silenzio.
 
-Verificato: **non si fidа.**
-- `POST` (`workspace.py:2272-2276`): quando arriva la categoria, `tipo` viene
-  **sovrascritto** con `_tipo_da_categoria(categoria)`; il valore del client è
-  ignorato.
-- `PATCH` (`workspace.py:2313-2329`): il tipo si rideriva **sempre**, e quando
-  la richiesta non porta la categoria il server **rilegge la riga** per
-  ottenerla. Copre anche il caso di un PATCH del solo `tipo` su una voce già
-  categorizzata, che altrimenti la lascerebbe sul binario sbagliato.
+**Quello che avevo scritto**: «POST e PATCH riderivano *sempre* il tipo dalla
+categoria lato server». **È falso.** La riderivazione è **condizionata alla
+presenza della categoria**:
 
-Il commento nel codice descrive già questo scenario. L'ipotesi cade.
+- `POST` (`workspace.py:2272-2276`): `payload["tipo"] = body.tipo` è già stato
+  scritto a `:2269`; la sovrascrittura avviene **solo** dentro
+  `if body.categoria is not None`. Senza categoria, il `tipo` del client arriva
+  intatto al DB, validato solo contro `{"fb","generale"}` — cioè non validato
+  affatto dal punto di vista contabile.
+- `PATCH` (`workspace.py:2313-2329`): stessa struttura. Se `categoria_effettiva`
+  è `None`, la riga `if categoria_effettiva: updates["tipo"] = ...` non scatta.
+
+**E non è un caso residuale: è il caso normale.** Misurato sul DB live:
+
+| tipo | categoria | voci | totale |
+|---|---|---|---|
+| `fb` | **NULL** | 13 | €3.936,17 |
+| `generale` | **NULL** | 2 | €457,00 |
+| `fb` | `SALUMI` | 1 | €100,00 |
+
+**15 righe su 16 — €4.393,17 su €4.493,17, il 97,8% del denaro — hanno
+`categoria IS NULL`**, quindi passano tutte per il ramo scoperto.
+
+Il percorso è raggiungibile end-to-end: `apps/web/src/app/api/workspace/spese/route.ts:25`
+inoltra il body **verbatim** (`JSON.stringify(body)`), senza validazione nel BFF.
+
+Due sotto-ipotesi invece **cadono davvero**, e restano chiuse in negativo:
+- **Categoria inventata → `fb`**: impossibile. `_valida_categoria_spesa`
+  (`workspace.py:2186-2190`) è una whitelist su `_CATEGORIE_SPESA_VALIDE` e alza
+  400; il ternario di `_tipo_da_categoria` riceve solo stringhe già validate.
+- **`SPESE_GENERALI_SET` (frontend) ↔ `_tipo_da_categoria` (backend)**: in
+  parità esatta, verificato. Non è il difetto delle etichette ripetuto sui numeri.
+
+**Perché ho sbagliato**: ho letto il codice correttamente — i due commenti nel
+router descrivono bene lo scenario che difendono — ma **non ho misurato quale
+ramo prendono i dati veri**. Il ramo protetto è quello che il codice racconta;
+quello che i dati percorrono è l'altro.
+
+**Severità e decisione.** Non è un difetto introdotto da F6, ed è un
+comportamento **deliberato**: `tests/test_spese_extra.py:291` e `:324` lo
+asseriscono come voluto («retrocompatibilità voci storiche», «controllo manuale
+del tipo»), e `test_categoria_null_azzera_e_libera_il_tipo` (`:330`) mostra che
+`{categoria: null, tipo: "generale"}` in **una sola** richiesta libera il tipo.
+Un utente autenticato che manipola i **propri** dati non è un attaccante: può
+già cambiare il tipo dall'interfaccia.
+
+Resta però che **la protezione descritta nel codice copre l'1 riga su 16 che ha
+la categoria, non le 15 che non ce l'hanno**, e che l'interfaccia oggi rende la
+categoria obbligatoria (`spese-view.tsx:101`) mentre l'API no.
+**Decisione per Mattia** (non applicata: tocca Python e le rotte API, fuori
+deroga): rendere la categoria obbligatoria anche lato API per le nuove voci,
+lasciando il ramo libero solo alle voci storiche già in tabella — oppure
+accettare esplicitamente il disallineamento e documentarlo come tale.
 
 ### ⚪ Non letto, e perché
 

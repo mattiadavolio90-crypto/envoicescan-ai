@@ -199,7 +199,7 @@ Legenda: ⚪ APERTA · 🔵 IN CORSO · 🟢 CHIUSA · 🟡 chiusa con residui
 | **F3** | Frontend **components/ condivisi** (`coda-da-assegnare`, `app-sidebar`, `sidebar`, ui/) | 7.277 | 🟠 attraversa tutto | 🟢 CHIUSA 29/08 |
 | **F4** | Frontend **analisi-fatture/ + dashboard/** | 4.409 | 🟠 6.917 upload | 🟢 CHIUSA 29/08 |
 | **F5** | Python — i **10 moduli mai auditati come oggetto proprio** | 3.570 | 🔴 radar anomalie spento da giugno | 🟢 **CHIUSA** 29/08 |
-| **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | 6.001 | 🟡 `spese_extra` viva (€4.493, ieri) — il resto fermo | 🟢 **CHIUSA** 29/08 |
+| **F6** | Frontend **workspace/** + **agenda/** + **assistenza/** | 6.001 | 🟡 `spese_extra` viva (€4.493) — il resto fermo | 🟢 **CHIUSA** 29/08 · 1 🟡 aperto |
 | **F7** | Chiusura ciclo: voci ereditate + 2 rilievi review F1 + `code-reviewer` finale | — | — | ⚪ APERTA |
 
 **F1 è la prima per una ragione misurata, non per intuizione** — vedi sotto.
@@ -612,10 +612,20 @@ nel verbale con il dettaglio per file, `personale-tab.tsx` in testa.
   delle quali nello stesso file. Il cliente vedeva `Spese Generali` a schermo e
   `Spesa Generale` nel CSV dello stesso dato. Unificato sulla costante
   condivisa; nessun numero cambia. `tsc --noEmit` EXIT 0.
-- ✅ **Ipotesi chiusa in negativo**: il `tipo` mandato dal client **non** è
-  manipolabile — POST e PATCH lo riderivano sempre dalla categoria lato server,
-  e il PATCH rilegge la riga quando la categoria non arriva.
-- **Nessun finding aperto.**
+- 🟡 **Un finding aperto, da decidere**: il `tipo` spesa è riderivato lato server
+  **solo quando la richiesta porta la categoria**. Oggi **15 righe su 16**
+  (€4.393 su €4.493, il **97,8%** del denaro) hanno `categoria IS NULL` e
+  passano per il ramo scoperto. È comportamento deliberato e asserito dai test
+  (retrocompatibilità voci storiche), e l'utente manipola i propri dati — ma la
+  UI rende la categoria obbligatoria mentre l'API no. Fuori deroga (Python +
+  rotte API): decisione di Mattia.
+  **Nota di metodo**: avevo archiviato questa come «ipotesi chiusa in negativo».
+  Era chiusa a metà — avevo letto il codice ma non misurato quale ramo prendono
+  i dati veri. L'ha trovato il `code-reviewer`.
+- ✅ **Chiuse in negativo davvero**: una categoria inventata non può finire su
+  `fb` (`_valida_categoria_spesa` è una whitelist che alza 400), e
+  `SPESE_GENERALI_SET` (frontend) ↔ `_tipo_da_categoria` (backend) sono in
+  parità esatta.
 
 ---
 
