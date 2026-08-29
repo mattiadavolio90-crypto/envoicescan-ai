@@ -549,10 +549,13 @@ volta nel ciclo che una premessa di roadmap non regge alla misura.
 
 - 🔴 **Il radar anomalie non gira più da giugno.** `anomaly_radar_service.py` ha
   un solo chiamante, dentro la funzione Streamlit `handle_uploaded_files`, morta
-  con la rimozione di Streamlit. Le notifiche `source_type='upload'`
-  (`price_alert`, `quality_check_failed`, `credit_note`) si fermano **tutte** al
-  1/6/2026 mentre le `operativa` arrivano a ieri — e nel frattempo sono stati
-  fatti **3.988 upload**. Il modulo ha 1 test che passa, su codice che non gira.
+  con la rimozione di Streamlit — quindi **non può girare**, ed è questa la prova.
+  Le date la confermano ma non la reggono da sole: le notifiche
+  `source_type='upload'` (`price_alert`, `quality_check_failed`, `credit_note`)
+  si fermano **tutte** al 1/6/2026, però anche 4 topic `operativa` su 8 si
+  fermano a giugno, quindi il confronto per `source_type` non è di per sé
+  dimostrativo (dettaglio nel verbale). Nel frattempo sono stati fatti **3.988
+  upload**. Il modulo ha un file di test che passa, su codice che non gira.
 - 🟡 **`normalizza_piva` accetta P.IVA estere come italiane**: il `re.sub` toglie
   ogni lettera, non solo il prefisso `IT`, quindi `DE12345678903` → `12345678903`
   → valida. Percorsi vivi: registrazione e creazione sede da admin. Non danneggia

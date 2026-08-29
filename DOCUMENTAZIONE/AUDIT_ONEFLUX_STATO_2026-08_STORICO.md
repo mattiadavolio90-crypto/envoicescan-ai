@@ -885,7 +885,9 @@ regge:
 ### Esposizione live misurata (29/8, progetto `vthikmfpywilukizputn`)
 
 - `sessioni`: 362 totali, 347 revocate, **5 vive negli ultimi 30 giorni**
-- `notification_inbox`: 65 totali, 39 non lette, 12 negli ultimi 30 giorni
+- `notification_inbox`: 65 totali, **39 non archiviate** (`dismissed_at IS NULL`),
+  12 negli ultimi 30 giorni. *Non* «non lette»: la tabella non ha una colonna
+  di lettura (`read_at` non esiste), quindi la lettura non è tracciata.
 - `fatture` attive: 39.133
 - `users` con P.IVA: **3, tutte italiane a 11 cifre**
 
@@ -947,6 +949,8 @@ E gli upload **non** si sono fermati — misurato su `upload_events`:
 
 | mese | upload |
 |---|---|
+| 2026-02 | 6 |
+| 2026-03 | 163 |
 | 2026-04 | 1.828 |
 | 2026-05 | 932 |
 | 2026-06 | 2.110 |
@@ -959,7 +963,9 @@ traffico: si è fermato il codice che lo osserva. Il cliente ha smesso di riceve
 price alert, segnalazioni di qualità e note di credito senza che nulla lo
 segnalasse.
 
-Il modulo ha 1 test dedicato, che passa — testa un modulo che non gira.
+Il modulo ha un file di test dedicato (`tests/test_anomaly_radar_service.py`,
+**6 test**) che passa — testa un modulo che non gira. Il conto è di test, non
+di file: avevo scritto «1 test» intendendo «1 file».
 
 **Decisione**: ricollegare `check_on_upload` al percorso FastAPI, oppure
 dichiarare il radar dismesso e rimuoverlo. Oggi è la terza via: codice vivo nei
@@ -1065,10 +1071,19 @@ di aggancio di `notification_inbox_service.py` e `personale_export_service.py`.
 
 L'ordine è stato deciso dall'esposizione misurata, non dalla dimensione: P.IVA
 (canale SDI) e prompt (regola di dominio) per primi, come la roadmap
-consigliava. `personale_export_service.py` ha **0 test dedicati** ed è
-l'unico modulo del gruppo con un solo call-site vivo
-(`services/routers/workspace.py:1330`): resta il candidato naturale per una
-ripresa.
+consigliava. `personale_export_service.py` è l'unico modulo del gruppo con un
+solo call-site vivo (`services/routers/workspace.py:1330`): resta il candidato
+naturale per una ripresa.
+
+> **Correzione (review di chiusura).** Avevo scritto che
+> `personale_export_service.py` ha «0 test dedicati», ereditando lo `0` dalla
+> tabella di roadmap invece di misurarlo. **È falso**: `tests/test_turni_mensili.py:1063`
+> contiene `class TestExportExcelPersonaleMensile`, che esercita direttamente
+> `export_excel_personale_mensile` (fogli, celle, totali 130/100/230), più
+> `TestEndpointExportMensile` sull'endpoint — 8 match per `personale_export` in
+> `tests/`. Non esiste un file `test_personale_export_service.py`, ed è da lì che
+> nasce l'errore: **l'assenza di un file omonimo non è assenza di test**. La
+> raccomandazione resta (un solo call-site), ma non per mancanza di copertura.
 
 **Verifica**: `tests/test_documentazione_onesta.py` verde. Nessuna modifica al
 codice, quindi nessun typecheck/mutazione da eseguire.
