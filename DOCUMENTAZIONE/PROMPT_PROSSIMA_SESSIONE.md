@@ -18,8 +18,8 @@ decisione esplicita**: sessione separata, non ri-segnalarlo come svista.
 
 - **PR #48 mergiata e deployata** — `7d2b581`. Deploy Vercel success, sito
   verificato (307), entrambi i fix presenti nel commit deployato.
-- **`CLAUDE.md` rimisurato** — branch `docs/claude-md-cifre-rimisurate`, commit
-  `2d895b3`, **pushato ma senza PR aperta**. Apri la PR e mergiala: dichiarava
+- **`CLAUDE.md` rimisurato** — branch `docs/claude-md-cifre-rimisurate`, **PR #49
+  aperta, CI verde, non mergiata**. Mergiala (non riaprirne una): dichiarava
   ancora «go-live 1 luglio» a due mesi dalla data, «~9500 test» invece di
   **11.424**, «2 clienti in test + 1 operativo» invece di **7 account attivi /
   11 PV**. Quest'ultimo cambia la valutazione del rischio: 4 clienti su 7 hanno
