@@ -16,7 +16,10 @@ export function MobileRedirect() {
   useEffect(() => {
     if (!isMobile) return;
     if (pathname.startsWith("/admin")) return;
-    if (pathname.startsWith("/m")) return;
+    // Confronto sul SEGMENTO, non sul prefisso: `startsWith("/m")` matchava anche
+    // `/margini`, che restava sul layout desktop (non responsive) invece di
+    // rimbalzare su /m.
+    if (pathname === "/m" || pathname.startsWith("/m/")) return;
     router.replace("/m");
   }, [isMobile, pathname, router]);
 
