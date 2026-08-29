@@ -173,15 +173,21 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
     - BRIOCHE, KRAPFEN, BOMBOLONI, ARAGOSTINE e altri dolci con crema restano PASTICCERIA
     - BEVANDA DI MANDORLA / SOIA / RISO / AVENA / COCCO e LATTE DI MANDORLA o simili vegetali pronti da bere → BEVANDE; conta il prodotto finale, non l'ingrediente base
 
-6. **INCERTEZZE**: Se veramente incerto, scegli categoria più frequente per ristoranti
+6. **INCERTEZZE**: Classifica quando riconosci il prodotto, anche solo per famiglia.
+   Se la descrizione non ti permette di riconoscerlo, rispondi "Da Classificare":
+   e' una risposta legittima e attesa, non un fallimento.
    - MIX ASSORTITI → categoria principale più probabile
+   - Sigle/codici illeggibili, descrizioni troncate o generiche → "Da Classificare"
 
 ═══════════════════════════════════════════════════════════════════
 ⚠️ ERRORI COMUNI DA EVITARE
 ═══════════════════════════════════════════════════════════════════
 
-🚨 REGOLA ASSOLUTA: DEVI classificare OGNI articolo. "Da Classificare" NON è MAI una risposta valida.
-   Se non sei sicuro, scegli la categoria PIÙ PROBABILE basandoti sulla descrizione.
+🚨 REGOLA ASSOLUTA: non inventare MAI una categoria per un articolo che non riconosci.
+   Se la descrizione ti fa riconoscere il prodotto, classificalo con sicurezza.
+   Se NON lo riconosci, rispondi "Da Classificare": viene rivisto a mano.
+   Una categoria sbagliata sporca i margini in silenzio; un "Da Classificare"
+   resta visibile in coda finche' qualcuno lo sistema.
 
 ❌ NON usare MAI "FOOD" - categoria non esiste!
 ❌ NON usare MAI "NOTE E DICITURE" - categoria riservata solo admin!
