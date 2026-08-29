@@ -18,8 +18,8 @@ decisione esplicita**: sessione separata, non ri-segnalarlo come svista.
 
 - **PR #48 mergiata e deployata** — `7d2b581`. Deploy Vercel success, sito
   verificato (307), entrambi i fix presenti nel commit deployato.
-- **`CLAUDE.md` rimisurato** — branch `docs/claude-md-cifre-rimisurate`, **PR #49
-  aperta, CI verde, non mergiata**. Mergiala (non riaprirne una): dichiarava
+- **`CLAUDE.md` rimisurato e mergiato** — PR #49, merge `c481aab` su `main` il
+  29/8/2026. Non c'e' nulla da mergiare o riaprire: dichiarava
   ancora «go-live 1 luglio» a due mesi dalla data, «~9500 test» invece di
   **11.424**, «2 clienti in test + 1 operativo» invece di **7 account attivi /
   11 PV**. Quest'ultimo cambia la valutazione del rischio: 4 clienti su 7 hanno
@@ -55,12 +55,11 @@ dei due canali vivi).
 
 **Per superficie di deploy**, così ogni deploy è verificabile da solo:
 
-1. **Merge della PR di `CLAUDE.md`** (solo doc).
-2. **Gruppo Railway** — punti 1, 2, 3, 4, 5, **più 6 e 8** che sono formalmente
+1. **Gruppo Railway** — punti 1, 2, 3, 4, 5, **più 6 e 8** che sono formalmente
    Python (una RPC e un commento nel worker). Attenzione: l'auto-deploy Railway è
    configurato sul dashboard e **non ha filtro di path** — ogni merge su `main`
    lo redeploya, anche un diff di soli documenti.
-3. **Gruppo Vercel** — il solo punto 7 (`ripartisci-dialog`, percentuali
+2. **Gruppo Vercel** — il solo punto 7 (`ripartisci-dialog`, percentuali
    negative; fallisce già in sicurezza con 400 dal server).
 
 Su ogni punto: **chiedimi la decisione** dove il piano ne prevede una (es. punto
