@@ -58,6 +58,24 @@ def _carica_path_sensibili() -> list:
     return modulo.PATH_SENSIBILI
 
 
+def _e_file_di_test(percorso: str) -> bool:
+    """Un test vero, non un file di produzione che ha "test" nel nome.
+
+    Il filtro precedente (`"test" in percorso.lower()`) scartava
+    scripts/ab_test_modello_categorizzazione.py, le Edge Function *_test.ts e
+    persino claude_hook_test_gate.py — 177 righe di logica esclusa dal conteggio
+    che decide se serve una review.
+    """
+    normalizzato = percorso.replace("\\", "/")
+    nome = normalizzato.rsplit("/", 1)[-1]
+    return (
+        normalizzato.startswith("tests/")
+        or "/tests/" in normalizzato
+        or nome.startswith("test_")
+        or nome.endswith(("_test.py", "_test.ts"))
+    )
+
+
 def _base_confronto() -> str:
     """Punto di paragone del diff: il branch base, non l'ultimo commit.
 
@@ -80,21 +98,34 @@ def _base_confronto() -> str:
                 return esito.stdout.strip()
         except (subprocess.SubprocessError, OSError):
             continue
-    return "HEAD"
+    return ""  # nessuna base: il chiamante deve accorgersene, non misurare zero
 
 
-def _diff_stat() -> tuple[list[str], int]:
-    """File non-test toccati e righe nette cambiate rispetto al branch base."""
+def _diff_stat() -> tuple[list[str], int] | None:
+    """File non-test toccati e righe nette rispetto al branch base.
+
+    Ritorna None quando la misura NON e' stata possibile (base irrisolvibile o
+    git in errore). None e ([], 0) non sono la stessa cosa: il primo significa
+    "non lo so", il secondo "misurato, niente da rivedere". Confonderli spegne
+    il gate in silenzio — che e' esattamente il difetto che questo gate esiste
+    per impedire altrove.
+    """
+    base = _base_confronto()
+    if not base:
+        return None
     try:
         risultato = subprocess.run(
-            ["git", "diff", "--numstat", _base_confronto()],
+            ["git", "diff", "--numstat", base],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             timeout=15,
         )
     except (subprocess.SubprocessError, OSError):
-        return [], 0
+        return None
+
+    if risultato.returncode != 0:
+        return None
 
     file_non_test: list[str] = []
     righe_nette = 0
@@ -103,7 +134,7 @@ def _diff_stat() -> tuple[list[str], int]:
         if len(parti) != 3:
             continue
         aggiunte, rimosse, percorso = parti
-        if "test" in percorso.lower() or percorso.endswith(".md"):
+        if _e_file_di_test(percorso) or percorso.endswith(".md"):
             continue
         try:
             righe_nette += int(aggiunte) + int(rimosse)
@@ -147,7 +178,24 @@ def main() -> int:
         MARKER_SEGNALATO.unlink(missing_ok=True)
         return 0
 
-    file_toccati, righe_nette = _diff_stat()
+    misura = _diff_stat()
+    if misura is None:
+        print(
+            json.dumps(
+                {
+                    "decision": "block",
+                    "reason": (
+                        "[ONEFLUX] Il gate non e' riuscito a misurare il diff "
+                        f"(base di confronto '{BRANCH_BASE}' irrisolvibile o git in errore).\n"
+                        "Non posso dire se serve una review: verifica lo stato del repo, "
+                        "oppure lancia /code-reviewer se il lavoro e' sostanziale."
+                    ),
+                }
+            )
+        )
+        sys.exit(2)
+
+    file_toccati, righe_nette = misura
     if not file_toccati:
         return 0
 

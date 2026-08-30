@@ -32,6 +32,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MARKER_PRE_MERGE = REPO_ROOT / ".claude" / ".pre_merge"
 
+# La suite completa misura ~120-260s secondo la macchina, contro un timeout hook
+# di 600s dichiarato in .claude/settings.json. Il margine e' voluto: se pytest si
+# impianta, si vuole un messaggio, non un hook ucciso a meta' senza spiegazione.
+TIMEOUT_PYTEST = 540
+
 # Estensioni che non possono rompere la suite Python da sole.
 ESTENSIONI_INERTI = {".md", ".txt", ".rst", ".json", ".yml", ".yaml", ".toml", ".lock"}
 # Frontend: ha la sua rete (tsc), non la suite pytest.
@@ -104,13 +109,35 @@ def _test_collegati(percorsi: list[str]) -> list[str]:
     return sorted(selezionati)
 
 
+# File che cambiano il comportamento dell'INTERA suite: nessuna selezione mirata
+# li rappresenta, quindi impongono il livello 3.
+FILE_GLOBALI = {"conftest.py", "requirements.txt", "requirements-dev.txt",
+                "pytest.ini", "setup.cfg", "pyproject.toml", "tox.ini", "Dockerfile"}
+
+
 def _serve_suite_completa(percorsi: list[str]) -> bool:
     if MARKER_PRE_MERGE.exists():
         return True
     if _branch_corrente() == "main":
         return True
-    # conftest.py cambia il comportamento di tutta la suite: non e' mirabile.
-    return any(Path(p).name == "conftest.py" for p in percorsi)
+    if any(Path(p).name in FILE_GLOBALI for p in percorsi):
+        return True
+    # Un file che non so mappare su alcun test non deve uscire in silenzio:
+    # e' il caso delle migration .sql, che prima passavano senza eseguire nulla
+    # (non "solo documenti", ma nemmeno mappabili). Nel dubbio si certifica.
+    return any(_non_mappabile(p) for p in percorsi)
+
+
+def _non_mappabile(percorso: str) -> bool:
+    """Vero se il file non e' ne' inerte ne' riconducibile a test mirati."""
+    suffisso = Path(percorso).suffix.lower()
+    if suffisso in ESTENSIONI_INERTI:
+        return False
+    if suffisso == ".py":
+        return False  # i .py passano da _test_collegati
+    if percorso.startswith(PREFISSI_NON_PYTEST):
+        return False  # frontend/Deno: hanno la loro rete (tsc), non pytest
+    return True
 
 
 def _esegui_pytest(argomenti: list[str]) -> subprocess.CompletedProcess:
@@ -124,6 +151,7 @@ def _esegui_pytest(argomenti: list[str]) -> subprocess.CompletedProcess:
         env=env,
         capture_output=True,
         text=True,
+        timeout=TIMEOUT_PYTEST,
     )
 
 
@@ -157,7 +185,22 @@ def main() -> int:
         return 0
 
     if _serve_suite_completa(percorsi):
-        esito = _esegui_pytest(["tests/"])
+        try:
+            esito = _esegui_pytest(["tests/"])
+        except subprocess.TimeoutExpired:
+            print(
+                json.dumps(
+                    {
+                        "decision": "block",
+                        "reason": (
+                            f"[ONEFLUX] La suite completa ha superato {TIMEOUT_PYTEST}s "
+                            "senza terminare. Non e' un verde: lanciala a mano "
+                            "(python -m pytest tests/ -q) prima di spedire."
+                        ),
+                    }
+                )
+            )
+            sys.exit(2)
         if esito.returncode != 0:
             _blocca(esito, "suite completa")
         MARKER_PRE_MERGE.unlink(missing_ok=True)
@@ -170,7 +213,10 @@ def main() -> int:
     if not mirati:
         return 0
 
-    esito = _esegui_pytest(mirati)
+    try:
+        esito = _esegui_pytest(mirati)
+    except subprocess.TimeoutExpired:
+        return 0  # i mirati sono una rete, non la certificazione: non bloccare qui
     if esito.returncode != 0:
         _blocca(esito, f"{len(mirati)} file di test collegati ai file toccati")
     return 0

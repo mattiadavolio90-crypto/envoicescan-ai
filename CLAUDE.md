@@ -110,12 +110,14 @@ python scripts/export_openapi.py --check-drift
 
 - **Briefing:** dopo una modifica alla logica, **bumpa `_BRIEFING_CODE_VERSION`**
   o il cliente continua a vedere il testo vecchio (cache giornaliera + TTL 30').
-- **Il deploy È il merge su `main`.** Vercel e Railway ridispiegano da soli a
-  ogni merge (Railway senza nemmeno un filtro di path: ridispiega anche per
-  commit di soli `.md`). Non esiste un "mergio ora, deployo stasera": la
-  finestra oraria (sera/notte/mattina presto, i clienti usano l'app di giorno)
-  è quindi un vincolo **sul merge**, non su un passo separato. Eccetto conferma
-  esplicita di Mattia. Vedi `WORKFLOW.md` §0.
+- **Il deploy È il merge su `main`**, e le due pipeline non si comportano
+  allo stesso modo: **Vercel** parte solo se il commit tocca `apps/web/**`
+  (`deploy-vercel.yml`, `paths:`); **Railway** non ha filtro di path — un merge
+  di soli `.md` gli fa comunque ridispiegare il worker (config sul dashboard,
+  non nel repo: `railway.toml` documenta i servizi, non il trigger). Non esiste
+  un "mergio ora, deployo stasera": la finestra oraria (sera/notte/mattina
+  presto, i clienti usano l'app di giorno) è quindi un vincolo **sul merge**.
+  Eccetto conferma esplicita di Mattia. Vedi `WORKFLOW.md` §0.
 - **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
 - **Worker locale senza `--reload`** tiene in memoria il codice vecchio: riavvialo.
 - **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in

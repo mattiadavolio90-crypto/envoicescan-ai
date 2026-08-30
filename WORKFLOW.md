@@ -18,11 +18,12 @@ oraria. Non un branch per modifica, non una PR per fix.
 
 **Perché**: nessuna regola ha mai imposto branch-e-PR per ogni intervento —
 `grep -i "branch\|PR\|merge"` su questo file e su `CLAUDE.md` non trovava
-nulla di normativo. Era una consuetudine auto-alimentata, e costava caro:
-19 branch remoti (15 dei quali già dentro `main`, cioè detriti puri), ~35
-locali risalenti fino a maggio, e — dato che merge = deploy — **una richiesta
-di autorizzazione a Mattia per ogni singolo intervento** (5 merge il 28/8 tra
-le 12:44 e le 16:49, in piena fascia di servizio).
+nulla di normativo. Era una consuetudine auto-alimentata, e costava caro: al 30/8/2026 il repo
+aveva accumulato **19 branch remoti** (15 dei quali già dentro `main`, cioè
+detriti puri) e **~35 locali** risalenti fino a maggio — tutti potati quel
+giorno, oggi restano `main` e `lavoro`. E, dato che merge = deploy, **una
+richiesta di autorizzazione a Mattia per ogni singolo intervento** (5 merge il
+28/8 tra le 12:44 e le 16:49, in piena fascia di servizio).
 
 ### Come si lavora
 
@@ -217,8 +218,12 @@ giravano a pieno regime a *ogni* chiusura di sessione, anche per un solo `.md`):
 
 | Hook | Quando agisce | Costo misurato |
 |---|---|---|
-| `claude_hook_test_gate.py` | solo `.md` → **niente**; lavoro in corso → **solo i test collegati ai file toccati**; `.pre_merge` o `main` o `conftest.py` → **suite completa** | 22 s invece di 143 s (misurato il 30/8 su una modifica a `auth_service.py`: 13 file di test, 153 test) |
+| `claude_hook_test_gate.py` | solo `.md` → **niente**; lavoro in corso → **solo i test collegati ai file toccati**; `.pre_merge`, `main`, un file globale (`conftest.py`, `requirements.txt`, `pytest.ini`…) o un file non mappabile (es. una migration `.sql`) → **suite completa** | ~20 s invece di ~140-260 s (30/8, modifica a `auth_service.py`: 13 file di test, 153 test). I tempi assoluti dipendono dalla macchina; l'ordine di grandezza no |
 | `claude_hook_reviewer_gate.py` | > **8** file non-test **o** > **400** righe nette **o** path sensibile — misurati sul **merge-base con `main`**, cioè su tutto il lavoro accumulato | scatta una volta per ciclo, non una per sessione |
+
+Se il gate **non riesce a misurare** (base di confronto irrisolvibile, git in
+errore) blocca dicendolo, invece di lasciar passare in silenzio: "non lo so" e
+"niente da rivedere" non sono la stessa cosa.
 
 Le soglie precedenti (3 file / 150 righe, misurate sull'ultimo commit)
 scattavano su quasi ogni sessione: un gate che scatta sempre viene saltato per
