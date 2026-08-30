@@ -178,7 +178,7 @@ misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
 
 | Area | Righe | Esposizione live | Priorità |
 |---|---|---|---|
-| ~~**169 route API** (`app/api/`)~~ | 4.776 | tutto il traffico dell'app | ✅ 30/8 |
+| ~~**169 route API** (`apps/web/src/app/api/`)~~ | 4.776 | tutto il traffico dell'app | ✅ 30/8 |
 | `scadenziario/` | 2.337 (1 file da 2.244) | **2.001 doc non pagati**, 1.853 scaduti, 148 futuri, 32 pagate/30gg | 🔴 |
 | `prezzi/` | 2.361 (5 tab) | **39.133 righe fattura** a monte | 🟠 |
 | `admin/` | 3.685 | solo staff, non clienti | 🟡 |

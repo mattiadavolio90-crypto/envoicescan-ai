@@ -26,8 +26,11 @@ Il gate admin esiste in DUE forme (documentate in services/routers/admin.py:7-8)
 `admin_user: dict = Depends(_verify_admin)` come parametro di funzione. Una
 prima stesura di questo controllo guardava solo `route.dependencies` e
 dichiarava 44 endpoint "senza identita'", di cui 34 falsi positivi tutti admin.
-`_dipendenze()` sotto guarda entrambe le forme: se la si semplifica a una sola,
-il test torna a mentire.
+`_dipendenze()` sotto guarda entrambe le forme (piu' Annotated[], oggi non
+usata nel repo): se la si semplifica a una sola, il test torna a mentire.
+Resta fuori la sub-dependency annidata — un Depends(wrapper) che dipende a sua
+volta dal gate non viene riconosciuto. E' fail-safe (falso positivo), ma va
+saputo.
 """
 
 import inspect
@@ -103,6 +106,15 @@ def _dipendenze(route):
     for par in inspect.signature(route.endpoint).parameters.values():
         if isinstance(par.default, fastapi_params.Depends) and par.default.dependency is not None:
             nomi.append(getattr(par.default.dependency, "__name__", str(par.default.dependency)))
+        # Terza forma, oggi assente dal repo (0 occorrenze al 30/8/2026) ma
+        # legale in FastAPI: Annotated[dict, Depends(_verify_admin)]. Qui il
+        # Depends sta in __metadata__, non nel default — senza questo ramo un
+        # endpoint gatato cosi' risulterebbe scoperto. E' un falso positivo
+        # (rompe la CI, non apre l'app), ma un test che sbaglia insegna a
+        # ignorarlo.
+        for meta in getattr(par.annotation, "__metadata__", ()):
+            if isinstance(meta, fastapi_params.Depends) and meta.dependency is not None:
+                nomi.append(getattr(meta.dependency, "__name__", str(meta.dependency)))
     return nomi
 
 
@@ -207,6 +219,7 @@ def test_authorization_resta_un_segnale_affidabile():
     qui che in produzione.
     """
     sospetti = []
+    illeggibili = []
     for route in _rotte():
         if "_verify_admin" in _dipendenze(route):
             continue
@@ -215,6 +228,11 @@ def test_authorization_resta_un_segnale_affidabile():
         try:
             sorgente = inspect.getsource(route.endpoint)
         except (OSError, TypeError):
+            # Un endpoint di cui non si legge il sorgente NON va assolto in
+            # silenzio: in una rete di sicurezza l'except che manda avanti e'
+            # lo stesso meccanismo che ha gia' reso invisibile un difetto in
+            # questo repo. Se non posso verificarlo, lo segnalo.
+            illeggibili.append(f"{route.path}  ({route.endpoint.__name__})")
             continue
         if "_resolve_user_from_token" in sorgente or "_resolve_gruppo" in sorgente:
             continue
@@ -229,6 +247,13 @@ def test_authorization_resta_un_segnale_affidabile():
         "file falso. Usa _resolve_user_from_token(authorization), oppure — se "
         "l'endpoint valida il bearer inline come i 3 di /api/auth/* — "
         "aggiungilo ad AUTENTICATI_INLINE spiegando perche'."
+    )
+
+    assert not illeggibili, (
+        "Endpoint di cui non si e' potuto leggere il sorgente, quindi NON "
+        "verificati:\n  " + "\n  ".join(sorted(illeggibili))
+        + "\n\nQuesto controllo non sa dire se risolvono l'identita'. "
+        "Verificali a mano prima di silenziare questa riga."
     )
 
 

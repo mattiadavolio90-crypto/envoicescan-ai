@@ -42,6 +42,10 @@ Misurato per introspezione di `app.routes` (non per grep):
 totali=238  admin=49  authorization=179  SENZA IDENTITA'=10
 ```
 
+(`admin=49` sono le route con `Depends(_verify_admin)`: 48 sotto `/api/admin/`
+piu' `/api/account/svuota-dati`, che sta fuori da quel prefisso. I path sotto
+`/api/admin/` sono **51**: i 3 di scarto sono i machine-gate in allowlist.)
+
 228 endpoint su 238 risolvono l'identità del chiamante — ma **imperativamente
 nel corpo dell'handler**, e tutti e **12** i router sono `APIRouter()` nudo,
 nessuno con `dependencies=[...]`:
@@ -81,7 +85,7 @@ grep sono in realtà **10**. `/api/auth/me`, `/logout` e `/accetta-privacy`
 duplicazione, non un buco. Un test ad hoc verifica che restino **solo** questi
 tre — se la lista cresce, il segnale `authorization` si sta sfaldando.
 
-### Prova per mutazione — 6 mutanti, 6 uccisi
+### Prova per mutazione — 8 mutanti, 8 esiti attesi
 
 Su copia in scratchpad, mai sul file del branch. Ogni mutante verificato che si
 applicasse davvero prima di leggerne l'esito (lezione del punto 9: due mutanti
@@ -95,9 +99,43 @@ applicasse davvero prima di leggerne l'esito (lezione del punto 9: due mutanti
 | 4 | allowlist svuotata | rosso su 10 | ✅ esattamente i 10, nessuno di più |
 | 5 | endpoint che **dichiara** `authorization` e non lo usa | rosso | ✅ ucciso |
 | 6 | voce fantasma nell'allowlist | rosso | ✅ ucciso |
+| 7 | sorgente illeggibile (`getsource` fallisce) | rosso | ✅ segnala invece di assolvere |
+| 8 | gate via `Annotated[dict, Depends(...)]` | **verde** | ✅ riconosciuto; disattivando il ramo → rosso |
 
 Il 5 è il più importante: è il modo esatto in cui il segnale di questa rete
 potrebbe essere aggirato, ed è coperto.
+
+I mutanti 7 e 8 provano i due fix aggiunti dopo il `code-reviewer` (sotto). Il
+mutante 8 ha richiesto **tre stesure**: le prime due non caricavano nemmeno
+l'app (import mancante, poi endpoint collocato *prima* della definizione di
+`_verify_admin`) e il loro esito non misurava niente — la trappola che questo
+ciclo documenta da due sessioni. Vale solo la terza, con l'endpoint verificato
+montato in `app.routes`.
+
+### Cosa ha trovato il `code-reviewer` (e che è stato corretto)
+
+Il gate ha bloccato la chiusura per una ragione netta: **i file erano `git add`-ati
+ma mai commitati** — non «committati e non pushati», come credevo. Per git non
+esistevano. Corretto prima di procedere.
+
+Tre findings sul test, tutti accolti e provati per mutazione:
+
+- **`except (OSError, TypeError): continue` assolveva in silenzio** un endpoint
+  di cui non si legge il sorgente. In una rete di sicurezza è lo stesso
+  meccanismo dell'`except` silenziatore già pagato in questo repo: ora raccoglie
+  gli illeggibili e **fallisce** nominandoli (mutante 7).
+- **`Annotated[dict, Depends(_verify_admin)]` non era riconosciuta.** Forma oggi
+  assente dal repo (0 occorrenze) e *fail-safe* — avrebbe rotto la CI, non aperto
+  l'app — ma un test che sbaglia insegna a ignorarlo. Aggiunta, con controprova
+  (mutante 8).
+- **Il docstring prometteva più di quanto copre**: la sub-dependency annidata
+  (`Depends(wrapper)` che dipende a sua volta dal gate) resta fuori. Ora è
+  scritto nel file invece che taciuto.
+
+Restano noti e non corretti, perché fail-safe o già documentati: il match
+testuale su `_resolve_user_from_token` è soddisfatto anche da una menzione in
+codice morto, e `/api/admin/riparto/auto-pulisci` resta il punto più esposto
+della superficie (allowlistato con la sua ragione).
 
 ### Findings registrati — nessuno richiede intervento urgente
 
@@ -132,6 +170,7 @@ potrebbe essere aggirato, ed è coperto.
 ### Verifica
 
 - `python -m pytest tests/test_route_api_auth_dichiarativa.py` → **9 passed**
+  (rieseguito dopo i fix del reviewer)
 - `python -m pytest tests/` → **11.511 passed, 43 skipped**, nessuna regressione
 - Baseline radar ricontrollata a inizio sessione: `notification_inbox` 65 record
   — `operativa` 58 (ultima 28/8), `upload` 7 (ultima **1/6/2026**, blocco morto
