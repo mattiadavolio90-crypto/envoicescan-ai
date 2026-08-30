@@ -7,10 +7,13 @@ comando /code-reviewer) ma finora scattava solo se qualcuno se ne ricordava a
 fine lavoro. Questo hook lo rende sistematico per due criteri (soglia
 ibrida, decisa in sessione):
 
-1. Dimensione del diff rispetto all'ultimo commit (file non-test/non-md
+1. Dimensione del diff CUMULATIVO rispetto a main (file non-test/non-md
    toccati o righe nette cambiate sopra soglia — i .md sono esclusi da
    ENTRAMBI i conteggi, non solo dal numero di file: un verbale d'audit
    lungo centinaia di righe non deve far scattare il gate da solo).
+   Soglie alzate il 30/8/2026 (3 file/150 righe -> 8 file/400 righe): le
+   precedenti scattavano su quasi ogni sessione, e un gate che scatta sempre
+   viene ignorato invece che letto.
 2. OPPURE il diff tocca un path "sensibile" — riusa la STESSA lista di
    claude_hook_promemoria.py (nessuna duplicazione): un cambio piccolo su
    ai_service.py o auth_service.py e' complesso quanto un refactor grande
@@ -41,8 +44,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MARKER_OK = REPO_ROOT / ".claude" / ".reviewer_gate_ok"
 MARKER_SEGNALATO = REPO_ROOT / ".claude" / ".reviewer_gate_segnalato"
 
-SOGLIA_FILE_NON_TEST = 3
-SOGLIA_RIGHE_NETTE = 150
+SOGLIA_FILE_NON_TEST = 8
+SOGLIA_RIGHE_NETTE = 400
+BRANCH_BASE = "main"
 
 
 def _carica_path_sensibili() -> list:
@@ -54,11 +58,36 @@ def _carica_path_sensibili() -> list:
     return modulo.PATH_SENSIBILI
 
 
+def _base_confronto() -> str:
+    """Punto di paragone del diff: il branch base, non l'ultimo commit.
+
+    Cambiato il 30/8/2026 col passaggio al ciclo ad accumulo. Misurando su HEAD
+    il gate ripartiva da zero a ogni commit, quindi scattava una volta per
+    sessione su lavoro gia' rivisto. Misurando sul merge-base con main misura
+    l'INTERO lavoro non ancora spedito: scatta una volta sola, su tutto insieme,
+    che e' il momento in cui la review serve davvero.
+    """
+    for riferimento in (f"origin/{BRANCH_BASE}", BRANCH_BASE):
+        try:
+            esito = subprocess.run(
+                ["git", "merge-base", "HEAD", riferimento],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if esito.returncode == 0 and esito.stdout.strip():
+                return esito.stdout.strip()
+        except (subprocess.SubprocessError, OSError):
+            continue
+    return "HEAD"
+
+
 def _diff_stat() -> tuple[list[str], int]:
-    """File non-test toccati e righe nette cambiate rispetto a HEAD."""
+    """File non-test toccati e righe nette cambiate rispetto al branch base."""
     try:
         risultato = subprocess.run(
-            ["git", "diff", "--numstat", "HEAD"],
+            ["git", "diff", "--numstat", _base_confronto()],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
