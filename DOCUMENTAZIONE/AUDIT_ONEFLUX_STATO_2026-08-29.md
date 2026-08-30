@@ -1,6 +1,7 @@
 # Stato audit ONEFLUX — ciclo aperto il 29/08/2026
 
-**Nessuna dimensione ancora aperta.** Questo file sostituisce il ciclo 2026-08,
+**Dimensione «route API»: CHIUSA il 30/08/2026** (verbale in
+`AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md`). Questo file sostituisce il ciclo 2026-08,
 chiuso e archiviato in `docs/storico/` insieme al suo storico
 (`AUDIT_ONEFLUX_STATO_2026-08.md` e `..._STORICO.md`).
 
@@ -177,7 +178,7 @@ misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
 
 | Area | Righe | Esposizione live | Priorità |
 |---|---|---|---|
-| **169 route API** (`app/api/`) | 4.776 | tutto il traffico dell'app | 🔴 |
+| ~~**169 route API** (`apps/web/src/app/api/`)~~ | 4.776 | tutto il traffico dell'app | ✅ 30/8 |
 | `scadenziario/` | 2.337 (1 file da 2.244) | **2.001 doc non pagati**, 1.853 scaduti, 148 futuri, 32 pagate/30gg | 🔴 |
 | `prezzi/` | 2.361 (5 tab) | **39.133 righe fattura** a monte | 🟠 |
 | `admin/` | 3.685 | solo staff, non clienti | 🟡 |
@@ -188,6 +189,16 @@ misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
 > dichiarato non le conteneva: erano «le pagine, non il percorso». 169 route
 > non sono mai state auditate come layer proprio. `admin` ne ha 41, `workspace`
 > 30, `scadenziario` 9.
+
+> **ESITO 30/8/2026 — le tre ipotesi erano false.** L'audit ha misurato: 0 body
+> grezzi su 114 POST (tutto Pydantic), 0 route che leggono `ristorante_id` dal
+> client, 48/50 select su `fatture` che filtrano il soft-delete, nessun IDOR
+> raggiungibile da non-admin. Il layer Next è un proxy trasparente (0/169 route
+> toccano il DB): l'autorizzazione vive tutta nel worker. Il rischio vero era
+> **strutturale** — 228/238 endpoint risolvono l'identità nel corpo
+> dell'handler, con 12 `APIRouter()` nudi: default aperto. Chiuso con
+> `tests/test_route_api_auth_dichiarativa.py` (9 test, 6 mutanti uccisi).
+> **Resta aperto**: alzare `dependencies=[...]` a livello di router.
 
 > **Perché lo scadenziario subito dopo.** È l'area con più dati vivi non ancora
 > letta: 2.001 documenti non pagati, di cui 1.853 già scaduti. È anche l'unica
