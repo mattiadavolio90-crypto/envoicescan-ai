@@ -10,6 +10,55 @@ Questo documento **non è un vincolo di dominio** (quelli stanno in `CLAUDE.md`)
 
 ---
 
+## 0. Si accumula, si spedisce una volta sola
+
+**Regola di base, decisa il 30/8/2026.** Il lavoro si accumula su **un solo
+branch** (`lavoro`), e si spedisce in **un unico merge** dentro la finestra
+oraria. Non un branch per modifica, non una PR per fix.
+
+**Perché**: nessuna regola ha mai imposto branch-e-PR per ogni intervento —
+`grep -i "branch\|PR\|merge"` su questo file e su `CLAUDE.md` non trovava
+nulla di normativo. Era una consuetudine auto-alimentata, e costava caro: al 30/8/2026 il repo
+aveva accumulato **19 branch remoti** (15 dei quali già dentro `main`, cioè
+detriti puri) e **~35 locali** risalenti fino a maggio — tutti potati quel
+giorno, oggi restano `main` e `lavoro`. E, dato che merge = deploy, **una
+richiesta di autorizzazione a Mattia per ogni singolo intervento** (5 merge il
+28/8 tra le 12:44 e le 16:49, in piena fascia di servizio).
+
+### Come si lavora
+
+1. **Durante il lavoro**: commit atomici su `lavoro` (uno per intervento
+   concluso, così resta reversibile da solo). Nessuna PR, nessun merge.
+   Per un intervento isolato va bene anche commit in locale su `main` **senza
+   push** — il push è ciò che spedisce.
+2. **Un branch dedicato si apre SOLO se** quel lavoro **potrebbe non essere
+   spedito** insieme al resto (refactor lungo, esperimento, lavoro davvero
+   parallelo). Altrimenti si resta su `lavoro`.
+3. **Prima di spedire**, nella finestra oraria: `touch .claude/.pre_merge`
+   (fa girare la suite completa allo Stop), `/code-reviewer` sul lavoro
+   cumulativo, poi **una PR, un merge, un deploy**.
+
+### Cosa NON è cambiato
+
+Il gate resta, cambia solo *quando* scatta. La suite completa e il
+`code-reviewer` girano **prima di spedire** — che è il momento in cui contano.
+Il `code-reviewer` continua inoltre a scattare **sempre** sui path sensibili
+(auth, AI, margini, worker), a prescindere dalla dimensione: è lì che ha
+trovato i difetti che i test verdi non vedevano.
+
+### Igiene dei branch
+
+Dopo ogni merge, il branch va cancellato (locale e remoto). Controllo
+periodico:
+
+```bash
+git fetch --prune origin
+git branch -r --merged origin/main | grep -v main   # detriti: vanno via
+git branch -r --no-merged origin/main               # lavoro vero: da decidere
+```
+
+---
+
 ## 1. Pianificare ed eseguire sono due momenti, non due sessioni obbligatorie
 
 Lo strumento nativo per separarli è il **plan mode di Claude Code**
@@ -136,11 +185,15 @@ Se richiede **trascrizione** di decisioni già prese, Sonnet basta. Nel dubbio, 
 
 ## 4. Fine fase ≠ deploy
 
-**Il completamento di una fase non autorizza mai un deploy.** Il deploy resta
-gated a una finestra oraria (sera/notte/mattina presto) dichiarata
-esplicitamente da Matt *in sessione*. Vedi `feedback_deploy_solo_fuori_orario`
-in memoria e `CLAUDE.md`. Una checklist tutta `[x]` significa "pronto e
-committato", non "spingi in produzione".
+**Il completamento di una fase non autorizza mai un merge.** E poiché
+**merge = deploy** (§0, `CLAUDE.md`), il vincolo di finestra oraria si applica
+lì: sera/notte/mattina presto, dichiarata esplicitamente da Mattia *in
+sessione*. Vedi `feedback_deploy_solo_fuori_orario` in memoria.
+
+Una checklist tutta `[x]` significa "pronto e committato **su `lavoro`**", non
+"spingi in produzione". Col ciclo ad accumulo la domanda va posta **una volta
+per ciclo**, non a ogni fase: le fasi si chiudono in silenzio, si spedisce
+insieme.
 
 Commit **atomico a fine fase**: una fase conclusa = un commit che compila e
 passa i test, così il piano e la git history raccontano la stessa storia e una
@@ -159,6 +212,24 @@ Questo documento risolve l'oblio delle *decisioni concordate* e il costo/token
 delle sessioni lunghe. Sono leve complementari: l'hook parla nel momento
 dell'azione, il piano/memoria conservano l'intento tra sessioni. Nessuno dei due
 va rimosso in favore dell'altro.
+
+**I due hook `Stop`, come sono tarati oggi** (rivisti il 30/8/2026 — prima
+giravano a pieno regime a *ogni* chiusura di sessione, anche per un solo `.md`):
+
+| Hook | Quando agisce | Costo misurato |
+|---|---|---|
+| `claude_hook_test_gate.py` | solo `.md` → **niente**; lavoro in corso → **solo i test collegati ai file toccati**; `.pre_merge`, `main`, un file globale (`conftest.py`, `requirements.txt`, `pytest.ini`…) o un file non mappabile (es. una migration `.sql`) → **suite completa** | ~20 s invece di ~140-260 s (30/8, modifica a `auth_service.py`: 13 file di test, 153 test). I tempi assoluti dipendono dalla macchina; l'ordine di grandezza no |
+| `claude_hook_reviewer_gate.py` | > **8** file non-test **o** > **400** righe nette **o** path sensibile — misurati sul **merge-base con `main`**, cioè su tutto il lavoro accumulato | scatta una volta per ciclo, non una per sessione |
+
+Se il gate **non riesce a misurare** (base di confronto irrisolvibile, git in
+errore) blocca dicendolo, invece di lasciar passare in silenzio: "non lo so" e
+"niente da rivedere" non sono la stessa cosa.
+
+Le soglie precedenti (3 file / 150 righe, misurate sull'ultimo commit)
+scattavano su quasi ogni sessione: un gate che scatta sempre viene saltato per
+riflesso invece che letto. I **path sensibili restano senza soglia** — un fix
+di tre righe su `auth_service.py` o `ai_service.py` merita la review quanto un
+refactor da 400.
 
 ---
 
