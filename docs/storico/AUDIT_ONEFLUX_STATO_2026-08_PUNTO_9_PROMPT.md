@@ -1,5 +1,10 @@
 # Prompt per la sessione del punto 9 (F2-NOTEST)
 
+> ⚠️ **ARCHIVIATO — il punto 9 e' stato chiuso il 29/8/2026** (opzione A: test
+> in `tests/*.py` che eseguono il TypeScript vero con node). Questo prompt e'
+> storia: non eseguirlo. L'esito sta in
+> `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md`.
+
 > **Apri questa sessione solo quando gli 8 punti sono chiusi.** Copia il blocco
 > qui sotto come primo messaggio.
 
@@ -8,7 +13,7 @@
 Devi affrontare il **punto 9** del ciclo audit 2026-08: **F2-NOTEST — non esiste
 alcun test runner frontend**. È l'ultimo punto rimasto; gli altri 8 sono chiusi.
 
-Leggi per primo `DOCUMENTAZIONE/PUNTO_9_TEST_FRONTEND.md`: contiene la misura,
+Leggi per primo `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md`: contiene la misura,
 le tre opzioni con il costo vero, la raccomandazione e il criterio di
 accettazione. **Rimisura le sue cifre** prima di usarle — sono del 29/8/2026, e
 in questo progetto una cifra ereditata da un documento è stata sbagliata quattro

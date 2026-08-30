@@ -25,8 +25,8 @@ chiuso e archiviato in `docs/storico/` insieme al suo storico
 
 **F2-NOTEST — nessun test runner frontend.** Deciso e implementato: **opzione A**
 (test in `tests/*.py` che eseguono il TypeScript vero con node), non un runner
-dedicato. Materiale preparatorio: `DOCUMENTAZIONE/PUNTO_9_TEST_FRONTEND.md`,
-`DOCUMENTAZIONE/PROMPT_PUNTO_9.md`.
+dedicato. Materiale preparatorio, archiviato col ciclo:
+`docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` e `..._PUNTO_9_PROMPT.md`.
 
 ### Perché A e non Vitest
 
@@ -152,13 +152,70 @@ chiamata.
 
 ### Correzione al documento preparatorio
 
-`PUNTO_9_TEST_FRONTEND.md` citava `margini.ts` come «dove sta il calcolo dei
+Il dossier citava `margini.ts` come «dove sta il calcolo dei
 numeri del cliente»: **falso**, contiene solo tipi e wrapper `fetch`, il calcolo
 è server-side. Gran parte di `lib/` è così — la superficie di logica pura reale è
 ben minore delle 3.339 righe. Corretto nel documento.
 
 Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 50.891 righe, 3.339 in `lib/`, zero runner, 55 test node preesistenti.
+
+---
+
+## 📊 Il perimetro ancora scoperto — misurato il 30/08/2026
+
+Superficie oggi (`wc -l`, rimisurata, non ereditata):
+
+| Perimetro | Righe |
+|---|---|
+| Python runtime (`services/`,`utils/`,`config/`,`worker/`) | 55.432 |
+| Frontend `apps/web/src/` | 50.947 |
+| Edge Functions | 3.556 (✅ coperte) |
+
+**Le aree che nessuna fase del ciclo 2026-08 ha aperto**, con l'esposizione live
+misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
+
+| Area | Righe | Esposizione live | Priorità |
+|---|---|---|---|
+| **169 route API** (`app/api/`) | 4.776 | tutto il traffico dell'app | 🔴 |
+| `scadenziario/` | 2.337 (1 file da 2.244) | **2.001 doc non pagati**, 1.853 scaduti, 148 futuri, 32 pagate/30gg | 🔴 |
+| `prezzi/` | 2.361 (5 tab) | **39.133 righe fattura** a monte | 🟠 |
+| `admin/` | 3.685 | solo staff, non clienti | 🟡 |
+| `assistenza/` | 292 | `marketplace_leads` 0 righe | ⚪ |
+
+> **Perché le route API per prime.** F2 del ciclo scorso ha trovato lì 2 dei 4
+> difetti della fase, incluso l'unico HIGH (open redirect), e il perimetro
+> dichiarato non le conteneva: erano «le pagine, non il percorso». 169 route
+> non sono mai state auditate come layer proprio. `admin` ne ha 41, `workspace`
+> 30, `scadenziario` 9.
+
+> **Perché lo scadenziario subito dopo.** È l'area con più dati vivi non ancora
+> letta: 2.001 documenti non pagati, di cui 1.853 già scaduti. È anche l'unica
+> con **2.244 righe in un solo file**, e ha già avuto un difetto di fuso su
+> `pagata_at` (il ciclo 2026-08 l'ha corretto lato scrittura; la UI che lo legge
+> non è mai stata auditata). I test del punto 9 coprono `computeKpi` e
+> `bucketizeDocumenti` — cioè la *logica pura*, non il resto del file.
+
+## Voci aperte ereditate — misurate, non ancora affrontate
+
+Verificate ancora vere il 30/8/2026:
+
+1. **Il blocco notifiche `source_type='upload'` è morto.** 7 topic in
+   `upload_handler.py` raggiungibili solo da `legacy_streamlit` (commento a
+   `:2095`). **Ultima notifica emessa: 1/6/2026** — misurato su
+   `notification_inbox`, che ha 7 record `source_type='upload'` e nessuno dopo
+   quella data. Il frontend le aspetta ancora (`notifiche-shared.ts:14`).
+2. **`check_weekly`** (`anomaly_radar_service.py:267`) — **zero chiamanti**,
+   confermato: l'unica altra occorrenza nel repo è il commento a `:12` che lo
+   dichiara. Nessun test lo esercita.
+3. **`normalizza_descrizione`** (`utils/text_utils.py:115`) — 5 pattern su 7,
+   residuo del ciclo 2026-07.
+
+**Baseline radar da sorvegliare**: `notification_inbox` ha **0 record
+`source_type='radar'`** su 65 totali (30/8). Il radar è stato ricollegato il
+29/8: dopo i primi upload reali dovrebbero comparirne **pochi e veri**. Se ne
+compaiono molti, la ritaratura su `numero_documento` va rivista — prima del fix
+ne avrebbe prodotti 897, tutti falsi.
 
 ---
 
