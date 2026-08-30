@@ -199,8 +199,8 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert — primo posto dove guardare |
 | `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md` | Stato del ciclo di audit **corrente** sulle 10 dimensioni (Security, Bug, DB, ecc.) — **cosa manca**, in un minuto. A ciclo chiuso si sposta in `docs/storico/` |
 | `DOCUMENTAZIONE/PROMPT_PROSSIMA_SESSIONE.md` | Il prompt da incollare all'inizio della prossima sessione: cosa fare, cosa NON rifare, e le voci aperte misurate |
-| `DOCUMENTAZIONE/PUNTO_9_TEST_FRONTEND.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non ha test che eseguono codice, cosa e' gia' costato, opzioni |
-| `DOCUMENTAZIONE/PROMPT_PUNTO_9.md` | Prompt pronto per la sessione dedicata al punto 9 |
+| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non aveva test che eseguono codice, cosa e' costato, le opzioni. **Chiuso il 29/8/2026** (opzione A) |
+| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9_PROMPT.md` | Il prompt di quella sessione, archiviato |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08.md` | Indice del ciclo 2026-08, **chiuso il 29/8/2026**: 7 fasi + le 8 decisioni aperte, tutte risolte |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md` | Dettaglio verificato del ciclo 2026-08 e della sessione che ne ha chiuso gli 8 punti (radar, P.IVA, prompt AI, Argon2, riparto), con le query che dimostrano ogni misura |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md` | Indice del ciclo 2026-07, **chiuso il 28/8/2026**: tutte le dimensioni verdi, nessuna voce aperta |

@@ -25,8 +25,8 @@ chiuso e archiviato in `docs/storico/` insieme al suo storico
 
 **F2-NOTEST — nessun test runner frontend.** Deciso e implementato: **opzione A**
 (test in `tests/*.py` che eseguono il TypeScript vero con node), non un runner
-dedicato. Materiale preparatorio: `DOCUMENTAZIONE/PUNTO_9_TEST_FRONTEND.md`,
-`DOCUMENTAZIONE/PROMPT_PUNTO_9.md`.
+dedicato. Materiale preparatorio, archiviato col ciclo:
+`docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` e `..._PUNTO_9_PROMPT.md`.
 
 ### Perché A e non Vitest
 
@@ -152,7 +152,7 @@ chiamata.
 
 ### Correzione al documento preparatorio
 
-`PUNTO_9_TEST_FRONTEND.md` citava `margini.ts` come «dove sta il calcolo dei
+Il dossier citava `margini.ts` come «dove sta il calcolo dei
 numeri del cliente»: **falso**, contiene solo tipi e wrapper `fetch`, il calcolo
 è server-side. Gran parte di `lib/` è così — la superficie di logica pura reale è
 ben minore delle 3.339 righe. Corretto nel documento.
