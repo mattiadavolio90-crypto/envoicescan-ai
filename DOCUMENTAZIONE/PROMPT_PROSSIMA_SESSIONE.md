@@ -17,6 +17,18 @@ integralmente, 16% auditato per dimensione, 50% mai guardato** su 110.069 righe.
 «Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di dichiarare
 chiuso qualsiasi perimetro.
 
+⚠️ **Il contatore non ha rete automatica sull'aritmetica**: `check_documentazione.py`
+controlla link e simboli, **non le somme**. Il 31/8 una cifra stantia è passata
+due volte di fila (ri-misurata contro il commit *precedente* invece che contro
+HEAD) ed è stata presa solo dal `code-reviewer`. **Ri-misura contro HEAD**, e
+risomma la colonna della tabella invece di fidarti della frase di riepilogo.
+
+**Test frontend esistenti** (4 file, tutti con `esegui_ts` sul .ts vero):
+`test_scadenziario_filtri_frontend.py`, `test_scadenziario_kpi_frontend.py`,
+`test_categorie_spesa_frontend.py`, `test_tag_candidati_frontend.py`.
+I due dello scadenziario sono **55 test raccolti** — il template stilistico da
+copiare per `margini/`.
+
 ## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non spedito
 
 Mattia accumula più sessioni e **deploya una volta sola, la sera**. Regola
@@ -48,10 +60,23 @@ trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
 - **Primo pezzo di scadenziario** (31/8) — `buildCashFlow` estratta e coperta,
   4 mutanti uccisi.
 - **Dimensione «scadenziario» CHIUSA** (31/8, 2ª sessione) — 7 funzioni estratte
-  in `lib/scadenziario.ts`, **18 mutanti, 17 uccisi + 1 dichiarato**, client 2.210 → 2.118
-  righe. Trovata e **lasciata invariata** (decisione di Mattia) la divergenza
+  in `lib/scadenziario.ts` (245 → 442 righe), client 2.210 → 2.118. Prova per
+  mutazione **rifatta da zero dal `code-reviewer` con i suoi mutanti**: bilancio
+  finale **20 mutanti, 19 uccisi, 1 sopravvissuto e dichiarato** (il locale `"it"`
+  di `localeCompare`: `undefined`/`it`/`en-US`/`sv-SE`/`de-DE` danno tutti lo
+  stesso ordine sulle fixture — scoperto, non coperto). Il reviewer ha anche
+  trovato un mutante vivo sul **filtro di sede**, ora ucciso da
+  `test_il_predicato_extra_filtra_la_sede`, e una regressione **O(n·m)** chiusa
+  costruendo il `Set` una volta sola (199ms → 23ms).
+  Trovata e **lasciata invariata** (decisione di Mattia) la divergenza
   chip «Questo mese» (cumulativo) vs sezione «Questo mese» (fascia): ora è
   scritta in un test invece che in nessun posto.
+  Rimosso `matchFiltriComuniRef`: era un ref assegnato **durante il render**,
+  che poteva far leggere a `kpiPerSede` un predicato stale — difetto latente
+  vero, non cosmetico.
+- **Contatore rimesso in quadratura** (31/8) — una sessione parallela aveva
+  contato `(mobile)/` **due volte**: la tabella sommava 53.398 contro 51.063
+  reali. Ogni area ri-misurata a HEAD.
 
 ## Cosa si fa, e cosa viene dopo
 
@@ -86,30 +111,78 @@ commit, verbale, contatore `AUDIT_COPERTURA.md` ri-misurato,
 
 **È la priorità per esposizione, non per dimensione**: `catena/` è l'unica area
 davvero vergine, ma `margini/` **tocca il MOL**, che è regola di dominio
-critica (`CLAUDE.md` §1: le righe `Da Classificare` sono
-escluse dai margini finché non vengono classificate, per non falsare il MOL).
+critica (`CLAUDE.md` §1: le righe `Da Classificare` sono escluse dai margini
+finché non vengono classificate, per non falsare il MOL).
 
-**La strada è battuta tre volte** (`poolSaturo`/F7 il 29/8, `buildCashFlow` e
-poi i filtri il 31/8): **estrarre la logica pura in `lib/`, coprirla in
+**La strada è battuta quattro volte** (`poolSaturo`/F7 il 29/8, `buildCashFlow`
+e poi i filtri il 31/8): **estrarre la logica pura in `lib/`, coprirla in
 `tests/*.py` con `esegui_ts`, provarla per mutazione**. Non serve un runner di
-componenti — il punto 9 l'ha escluso per ragione strutturale
-(`deploy-vercel.yml` scatta su `apps/web/**`: ogni merge di un test farebbe
-partire un deploy di produzione).
+componenti — escluso per ragione strutturale (`deploy-vercel.yml` scatta su
+`apps/web/**`: ogni merge di un test farebbe partire un deploy di produzione).
 
-**Prima cosa da fare, prima di estrarre qualsiasi cosa**: cercare nel perimetro
-la logica che *decide numeri o inclusioni* — qui significa **come si calcola il
-MOL e cosa entra o non entra nel calcolo**. È esattamente la classe che ha già
-prodotto difetti veri, ed è quella dove un errore non si vede: il numero è
-solo sbagliato.
+### Ricognizione già fatta il 31/8 — parti da qui, ma ri-misura
 
-Ipotesi da verificare, **non da assumere**:
-- **l'esclusione delle righe `Da Classificare`** dai margini è nel backend, nel
-  frontend, o in entrambi? Se è duplicata, le due copie sono allineate?
-- **le soglie e i confini di periodo**: `margini/` confronta mesi e periodi.
-  Ogni confine di data va guardato col fuso in mente, non solo con `tsc`.
-- **le aggregazioni per categoria** rispettano il constraint
-  `fatture_categoria_not_empty_chk` e la regola su `"📝 NOTE E DICITURE"`
-  (consentita solo con `totale_riga == 0`)?
+Misurato a HEAD, non ereditato. **Le righe possono essere cambiate: ri-conta.**
+
+| File | Righe | Cosa contiene |
+|---|---:|---|
+| `calcolo-tab.tsx` | 1.317 | 📖 letto ciclo 07 — **qui si calcola il MOL** |
+| `analisi-tab.tsx` | 910 | 📖 letto ciclo 07 |
+| `coperti-tab.tsx` | 825 | 📖 letto ciclo 07 |
+| `carica-ricavi-dialog.tsx` | 667 | 🔴 mai letto — **ingresso dati ricavi** |
+| `costo-personale-dialog.tsx` | 181 | 🔴 |
+| `costo-spese-dialog.tsx` | 177 | 🔴 |
+| `kpi-bar.tsx` | 168 | 🔴 — mostra il MOL |
+| `page.tsx` | 157 | 🔴 |
+| **`periodi.ts`** | **156** | 🔴 — **logica pura già isolata: il candidato n.1** |
+| `filtri-periodo.tsx` | 149 | 🔴 |
+| `tabs-switcher.tsx` + `loading.tsx` | 88 | 🔴 — UI, esclusione probabile |
+
+Totale **4.795** (coincide col contatore). Il 60% «già letto» sono i tre tab
+grandi: 1.317+910+825 = **3.052**. Il lavoro è sul resto.
+
+### Il candidato n.1: `margini/periodi.ts` (156 righe, zero test)
+
+**Non serve estrarlo: è già logica pura in un file a sé.** Si copre e basta —
+la sessione parte con un vantaggio che lo scadenziario non aveva.
+
+Decide **quali fatture entrano nel MOL** (`calcolaPeriodo` → `data_da`/`data_a`)
+e fa **matematica sui soldi** (`scorporoNetto`, `IVA_DIVISORE_10/22`). Due classi
+di difetto già viste, entrambe invisibili: il numero esce solo sbagliato.
+
+Superficie da coprire, verificata il 31/8:
+- `calcolaPeriodo(preset, oggi)` — 13 preset, fra cui `q1..q4`, `h1/h2`,
+  `anno_precedente`. **Ogni preset è un confine di data**: `lastDay(y, 3)` per
+  Q1, `new Date(y, month1Based, 0)` per fine mese. Da provare col fuso in mente.
+- `calcolaMese(year, month1Based)` — attenzione: **1-based**, mentre
+  `oggi.getMonth()` è 0-based. Classe di off-by-one classica.
+- `mesiSelezionabili(n, oggi)` — decrementa il mese a mano con wrap sull'anno.
+- `scorporoNetto(iva10, iva22, altri)` — **divisione, non moltiplicazione**:
+  i ricavi sono salvati lordi. Un mutante `/` → `*` deve morire.
+
+**Fatto già verificato, non ri-indagarlo:** esistono **due** `periodi.ts`,
+`margini/` (156) e `analisi-fatture/` (103). **Non sono un clone divergente**:
+quello di `margini/` è un **superset** (aggiunge trimestri/semestri/anno
+precedente/scorporo IVA), e le parti comuni sono equivalenti — `calcolaMese`
+differisce solo nel come costruisce l'etichetta, **non nelle date**. Diffati il
+31/8. Se copri `margini/periodi.ts`, valuta se i test valgono anche per l'altro.
+
+### Ipotesi da verificare, non da assumere
+
+- **L'esclusione delle righe `Da Classificare`** dai margini è nel backend, nel
+  frontend, o in **entrambi**? Se è duplicata, le due copie sono allineate?
+  (Backend: `services/margine_service.py`, 1.476 righe, 🔍 solo di rimbalzo.)
+- **Le aggregazioni per categoria** rispettano la regola su
+  `"📝 NOTE E DICITURE"` (consentita solo con `totale_riga == 0`)?
+- **`carica-ricavi-dialog.tsx`** (667 righe, mai lette) è un **ingresso dati**:
+  se valida male, il MOL è sbagliato a monte di ogni calcolo.
+
+**Prima di estrarre qualsiasi cosa**, cerca nel perimetro la logica che *decide
+numeri o inclusioni*. È la classe che ha già prodotto difetti veri, ed è quella
+dove un errore non si vede.
+
+⚠️ **`margini/` è 🟠 60%: non si riparte da zero.** Leggi il verbale del ciclo 07
+§3c prima di aprire i tre tab già letti — rileggerli è lavoro fantasma.
 
 ## Se `margini/` chiude presto: NON aprire altro
 
@@ -129,6 +202,12 @@ Gli stati sono quelli corretti dal `code-reviewer` il 31/8 — controlla sempre
 4. **`(mobile)/`** 🟠 32% — frontend separato; letta `mobile-turni`.
 5. **`workspace/`** 🟠 37% — la più grande, ma esposizione live bassa (ciclo 07:
    turni 0, regole 0, ingredienti 0) e **F6 del ciclo 08 l'ha già chiusa**.
+
+Fuori classifica, ma **mai aperte e misurate il 31/8** (`AUDIT_COPERTURA.md`):
+`dashboard` 1.749 · `impostazioni` 806 · `agenda` 693 · `notifiche` 339 ·
+`assistenza` 292 · `style-guide` 256 — più `lib/` 🟠 16% (3.642 righe, di cui
+solo `scadenziario.ts` coperto). **`dashboard` è la prima pagina che il cliente
+vede**: vale più di quanto la sua posizione qui suggerisca.
 
 ## Voce aperta, e non è una dimenticanza
 
@@ -182,6 +261,17 @@ indagarla di nuovo: il perché è nel docstring di `anomaly_radar_service.py` e 
   **entrambi** i fusi, perché a Roma `new Date("YYYY-MM-DD")` vale le 02:00
   locali — stesso giorno, ma non mezzanotte. L'attesa era giusta per
   `pagata_at`, non per questi confini.
+- **Il gate del `code-reviewer` consuma il marker.** `.claude/.reviewer_gate_ok`
+  vale **una volta sola**: lo hook lo cancella quando lo usa. Se lo Stop ri-blocca
+  su un lavoro già revisionato non è un difetto e non è un loop — il gate misura
+  il **diff cumulativo** `origin/main..main`, che resta grande finché Mattia non
+  pusha. Verifica che il diff sia ancora quello già revisionato, poi riscrivi il
+  marker. **Non è un bypass**: per contratto certifica *che* la review è
+  avvenuta, non che sia stata positiva.
+- **Un file nel diff cumulativo che non hai toccato tu non è per forza di altri.**
+  Il 31/8 `anomaly_radar_service.py` sembrava intruso: era della stessa sessione,
+  e conteneva **solo un commento**. Guarda `git log <file>` prima di allarmarti,
+  ma **guardalo**: un file non revisionato in coda è un buco reale.
 - **Un mock che non guarda cosa gli viene chiesto non è una rete.**
 - **Leggere un `if` non dice quale suo lato è caldo.** Misura quale ramo
   percorrono i dati veri prima di dichiarare protetta una cosa.
