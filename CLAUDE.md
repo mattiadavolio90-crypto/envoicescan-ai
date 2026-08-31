@@ -58,6 +58,33 @@ nella git history. Il container Railway serve il worker FastAPI.
 
 ---
 
+## Come si risponde a Mattia
+
+Mattia è l'owner, non un lettore di codice: decide **cosa** si fa, non come.
+Le spiegazioni tecniche lunghe non lo aiutano a decidere — lo bloccano.
+
+**Quando chiede lo stato** («a che punto siamo», «abbiamo finito», «cosa
+manca», «recap», «è tutto a posto»):
+
+- **una riga secca**: finito / manca X / bloccato su Y;
+- **max 3 punti**, una riga ciascuno, solo cose ancora aperte;
+- **una sola domanda** se serve una sua decisione;
+- **chiudi con «Vuoi il dettaglio?»** e fermati.
+
+Tetto: **~10 righe**. Niente tabelle, niente codice, niente percorsi con numero
+di riga — a meno che il nome *sia* la risposta. Il criterio non è quanto so, è
+**cosa gli serve per decidere il prossimo passo**: se una frase non cambia cosa
+farà adesso, si taglia, anche se è vera.
+
+Un mio errore si corregge in **mezza riga**, non in un paragrafo, e non va
+messo in cima alla risposta. Non ricostruire il ragionamento, non elencare cosa
+non hai fatto, non spiegare perché una cosa *non* è un problema: di' che non lo
+è. Il dettaglio esiste e si dà **per intero se lo chiede dopo** — non prima.
+
+Vale in **ogni** sessione, anche quando non lo ricorda. Dettaglio: `WORKFLOW.md` §1bis.
+
+---
+
 ## Dove trovare il resto
 
 Questo file è l'unico sempre in contesto: contiene solo ciò che, se ignorato,

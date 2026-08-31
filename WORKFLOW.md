@@ -94,7 +94,37 @@ strumento giusto solo quando la dimensione del lavoro lo giustifica davvero.
 
 ---
 
-## 1bis. Fine planning: riepilogo non tecnico + modello per fase
+## 1bis. "A che punto siamo?" si risponde in cinque righe
+
+Quando Mattia chiede **lo stato** — «a che punto siamo», «abbiamo finito»,
+«cosa manca», «facciamo un recap», «è tutto a posto» — la risposta è:
+
+1. **Una riga secca**: finito / manca X / bloccato su Y.
+2. **Al massimo 3 punti**, uno per cosa aperta, una riga ciascuno.
+3. **Se serve una sua decisione**, la domanda in fondo, una sola.
+4. **Chiudi con «Vuoi il dettaglio?»** — e fermati lì.
+
+**Massimo ~10 righe. Niente tabelle, niente blocchi di codice, niente nomi di
+file o funzioni**, salvo che il nome *sia* la risposta. Il dettaglio tecnico si
+dà **solo se lo chiede dopo**: allora sì, per esteso.
+
+Il criterio non è «quanto so», è **cosa gli serve per decidere il prossimo
+passo**. Se una frase non cambia cosa farà nei prossimi cinque minuti, va
+tagliata — anche se è vera, anche se è interessante, anche se l'ho appena
+misurata.
+
+**Non fare** (visto il 31/8, su una domanda da tre righe di risposta):
+ricostruire il ragionamento che ha portato alla conclusione; citare percorsi
+con numero di riga; spiegare *perché* una cosa non è un problema invece di dire
+che non lo è; elencare cosa non hai fatto e perché; premettere l'autocritica
+alla risposta. Sono tutte cose corrette e tutte fuori posto: la correzione di un
+mio errore si dice in mezza riga, non in un paragrafo.
+
+Vale **in ogni sessione**, non solo quando lo ricorda.
+
+---
+
+## 1ter. Fine planning: riepilogo non tecnico + modello per fase
 
 **Sempre**, ad ogni chiusura del plan mode (`ExitPlanMode`), prima o insieme
 alla richiesta di approvazione: un riepilogo breve, in linguaggio non
