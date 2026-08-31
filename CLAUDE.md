@@ -58,10 +58,9 @@ nella git history. Il container Railway serve il worker FastAPI.
 ## Dove si lavora: su `main` locale, e basta
 
 **Tutte le sessioni della giornata committano su `main` locale. Niente branch,
-niente PR.** La sera, quando Mattia lo dice: **un push, un deploy**. Una
-sessione nuova parte da `main`, mai dal branch di un'altra; se un branch esiste
-già e il lavoro va spedito, riportalo su `main` in locale e chiudilo **senza**
-mergiarlo.
+niente PR.** La sera, quando Mattia lo dice: **un push, un deploy**. Una sessione
+nuova parte da `main`, mai dal branch di un'altra; se un branch esiste già e il
+lavoro va spedito, riportalo su `main` in locale e chiudilo **senza** mergiarlo.
 
 **Un branch si apre per UNA sola ragione**: quel lavoro **potrebbe non essere
 spedito** (esperimento, refactor incerto). **Non** per la dimensione — un lavoro
@@ -75,8 +74,8 @@ sul cumulativo prima del push. Vedi `WORKFLOW.md` §0.
 
 ## Come si risponde a Mattia
 
-Mattia è l'owner, non un lettore di codice: decide **cosa** si fa, non come.
-Le spiegazioni tecniche lunghe non lo aiutano a decidere — lo bloccano.
+Mattia è l'owner, non un lettore di codice: decide **cosa** si fa, non come — le
+spiegazioni tecniche lunghe non lo aiutano a decidere, lo bloccano.
 
 **Quando chiede lo stato** («a che punto siamo», «abbiamo finito», «cosa manca»,
 «recap»): **una riga di verdetto**, **max 3 punti** aperti (una riga ciascuno),
@@ -84,12 +83,15 @@ Le spiegazioni tecniche lunghe non lo aiutano a decidere — lo bloccano.
 Tetto ~10 righe, niente tabelle/codice/percorsi con numero di riga.
 
 Il criterio non è quanto so, è **cosa gli serve per decidere il prossimo passo**:
-se una frase non cambia cosa farà adesso, si taglia anche se è vera. Un mio
-errore si corregge in **mezza riga**, non in cima e non in un paragrafo: niente
-ricostruzione del ragionamento, niente elenco di cosa non ho fatto. Il dettaglio
-si dà per intero **se lo chiede dopo**.
+se una frase non cambia cosa farà adesso, si taglia anche se è vera. Un mio errore
+si corregge in **mezza riga**, non in cima e non in un paragrafo. Il dettaglio si
+dà per intero **se lo chiede dopo**. Vale in **ogni** sessione, anche quando non
+lo ricorda — `WORKFLOW.md` §1bis.
 
-Vale in **ogni** sessione, anche quando non lo ricorda. Dettaglio: `WORKFLOW.md` §1bis.
+**A fine planning** (`ExitPlanMode`), sempre e senza che lo chieda: riepilogo non
+tecnico **+ tabella fase / modello / sforzo**. `ultrathink` (parola nel messaggio,
+non un menu) su apertura, audit e fix a una regola di dominio; normale
+sull'esecuzione. Dettaglio: `WORKFLOW.md` §1ter e §3.
 
 **Una cosa alla volta, chiusa davvero.** Non si apre una dimensione nuova finché
 la precedente non è provata per mutazione, **committata**, con verbale, contatore
@@ -114,26 +116,21 @@ rompe qualcosa. Tutto il resto sta altrove e si apre alla bisogna:
 | Roadmap feature | `IMPLEMENTAZIONI.md` |
 | Tutto il resto (marketing, GDPR, business plan, storico incidenti) | Indice completo in `DOCUMENTAZIONE/MAPPA_TECNICA.md` §6 |
 
-> La documentazione viva è protetta da `tests/test_documentazione_onesta.py`:
-> se un doc cita un simbolo o un percorso che non esiste più, il test fallisce.
-> Non è burocrazia — è l'unico modo perché un .md non menta per mesi in silenzio.
+> La documentazione viva è protetta da `tests/test_documentazione_onesta.py`: se
+> un doc cita un simbolo o un percorso che non esiste più, il test fallisce — è
+> l'unico modo perché un .md non menta per mesi in silenzio.
 
-**Migrazione Next.js: COMPLETATA** (switch DNS 8/6/2026). Tutte le sezioni sono
-su Next.js, mobile incluso (`/m`). Streamlit è congelato: non estenderlo.
+**Migrazione Next.js: COMPLETATA** (switch DNS 8/6/2026), mobile incluso (`/m`).
+Streamlit è congelato: non estenderlo.
 
 ---
 
 ## Comandi utili
 
 ```powershell
-# Test suite Python
-python -m pytest tests/
-
-# Avvia il frontend Next.js (produzione) in locale
-cd apps/web; npm install; npm run dev          # :3000
-
-# Avvia il worker FastAPI in locale
-python -m services.fastapi_worker              # API su :8000
+python -m pytest tests/                         # suite Python
+cd apps/web; npm install; npm run dev          # frontend Next.js :3000
+python -m services.fastapi_worker              # worker FastAPI :8000
 
 # Schema OpenAPI: esporta (dopo modifiche a fastapi_worker.py) / verifica drift
 python scripts/export_openapi.py

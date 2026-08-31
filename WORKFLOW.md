@@ -159,13 +159,29 @@ Vale **in ogni sessione**, non solo quando lo ricorda.
 ## 1ter. Fine planning: riepilogo non tecnico + modello per fase
 
 **Sempre**, ad ogni chiusura del plan mode (`ExitPlanMode`), prima o insieme
-alla richiesta di approvazione: un riepilogo breve, in linguaggio non
-tecnico, di cosa verrà fatto — comprensibile senza aver letto il piano
-completo. Se il lavoro ha più fasi, dividilo per fase; per ciascuna fase
-indica il **modello consigliato** (Opus/Sonnet) secondo il criterio di §3.
+alla richiesta di approvazione: un riepilogo breve, in linguaggio **non
+tecnico**, di cosa verrà fatto — comprensibile senza aver letto il piano.
+
+**E sempre, subito sotto, questa tabella** — una riga per fase, anche quando la
+fase è una sola:
+
+| Fase | Cosa fa | Modello | Sforzo |
+|---|---|---|---|
+| 1 | *(una riga, in italiano corrente)* | Opus | `ultrathink` |
+| 2 | … | Sonnet | normale |
+
+Modello e sforzo si scelgono coi **due test secchi di §3**, fase per fase — non
+si copia la riga precedente. Se una fase è `ultrathink`, scrivi accanto **in
+mezza riga perché** (es. «tocca il MOL», «apre una dimensione nuova»): serve a
+Mattia per decidere se è d'accordo, ed è l'unico modo per accorgersi se sto
+mettendo `ultrathink` ovunque per abitudine.
+
+Con più fasi, indica anche **quali stanno nella stessa sessione** e quali no
+(§1): cambiare modello a metà sessione non si può, quindi due fasi con modelli
+diversi sono due sessioni.
 
 Non è un documento a parte: è l'ultima cosa che accompagna l'uscita dal plan
-mode, ogni volta — non solo su richiesta.
+mode, **ogni volta** — non solo su richiesta.
 
 ---
 
@@ -220,17 +236,33 @@ estende alle fasi di sviluppo ordinario:
 dell'implementazione. Non esiste la regola "si pianifica con Opus e si esegue con
 Sonnet": va deciso fase per fase guardando cosa quella fase contiene davvero.
 
-| Tipo di fase | Modello | Perché |
-|---|---|---|
-| Pianificazione, design, decisioni architetturali | Opus | Ragionamento, trade-off, si sbaglia meno dove costa di più |
-| Debug non ovvio, audit, categorizzazione dubbia | Opus | Serve giudizio, non solo esecuzione |
-| UI nuova da zero, modifiche al worker, scelte di interazione | Opus | È progettazione anche se il piano la chiama "implementazione" |
-| Trascrizione: il piano dice file, riga e cosa sostituire | Sonnet | Più economico, il ragionamento è già stato fatto |
-| Ricerca/scan ampia read-only nel codice | sub-agente `Explore` | Non consuma il contesto della sessione principale |
+| Tipo di fase | Modello | Sforzo | Perché |
+|---|---|---|---|
+| Pianificazione, design, decisioni architetturali | Opus | **`ultrathink`** | Ragionamento, trade-off, si sbaglia meno dove costa di più |
+| Audit di una dimensione, debug non ovvio | Opus | **`ultrathink`** | Serve giudizio; è la fase dove i difetti veri si nascondono |
+| Fix su regola di dominio (MOL, categorizzazione, auth) | Opus | **`ultrathink`** | Un errore qui tocca i dati veri di 7 clienti |
+| UI nuova da zero, modifiche al worker, scelte di interazione | Opus | normale | È progettazione anche se il piano la chiama "implementazione" |
+| Implementazione di un piano già deciso, con qualche scelta locale | Opus | normale | Le micro-decisioni restano, il disegno no |
+| Trascrizione: il piano dice file, riga e cosa sostituire | Sonnet | normale | Più economico, il ragionamento è già stato fatto |
+| Ricerca/scan ampia read-only nel codice | sub-agente `Explore` | — | Non consuma il contesto della sessione principale |
 
-Test secco: se la fase richiede **decisioni** (cosa togliere, dove collocare una
-funzione, come si comporta un'interazione) è Opus, anche se il piano è dettagliato.
-Se richiede **trascrizione** di decisioni già prese, Sonnet basta. Nel dubbio, Opus.
+**Come si attiva lo sforzo esteso**: si scrive la parola **`ultrathink`** nel
+messaggio che apre la fase (non è un'impostazione da menu). Es.: *«ultrathink —
+apri la dimensione margini/ secondo il prompt»*. Senza quella parola la fase gira
+a sforzo normale, anche su Opus.
+
+**Due test secchi, in quest'ordine.**
+1. *Quale modello*: la fase richiede **decisioni** (cosa togliere, dove collocare
+   una funzione, come si comporta un'interazione)? → Opus, anche se il piano è
+   dettagliato. Richiede **trascrizione** di decisioni già prese? → Sonnet. Nel
+   dubbio, Opus.
+2. *Quanto sforzo*: se sbagliare quella fase **si vede sui dati dei clienti** o
+   **costa una sessione di ripianificazione** → `ultrathink`. Se sbagliare
+   significa un test rosso che te lo dice subito → normale.
+
+`ultrathink` costa tempo e token: metterlo ovunque è come non metterlo da nessuna
+parte, perché smetti di guardare la colonna. Sta sulle fasi di apertura e di
+giudizio, non su quelle di esecuzione.
 
 > **Perché questa sezione è stata riscritta (31/7/2026).** La versione precedente
 > presentava "esecuzione meccanica → Sonnet" come binario, con la caveat in nota.
