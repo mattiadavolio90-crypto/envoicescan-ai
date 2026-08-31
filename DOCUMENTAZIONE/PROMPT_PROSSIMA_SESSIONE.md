@@ -8,6 +8,28 @@ Il ciclo audit corrente è `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md`;
 i verbali delle sessioni chiuse stanno in `..._STORICO.md`. Il ciclo 2026-08 è
 **chiuso e archiviato** in `docs/storico/`: non riaprirlo.
 
+## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non mergiato
+
+Mattia ha deciso di **accumulare più sessioni e deployare una volta sola**, la
+sera. Quindi all'inizio della sessione:
+
+```bash
+gh pr list --state open    # cosa c'e' gia' in coda
+git log origin/main --oneline -1
+```
+
+**Parti sempre da `origin/main`, mai dal branch della sessione precedente.**
+Se impili i branch uno sull'altro ottieni una catena di PR dipendenti, dove un
+problema sulla prima blocca tutte le altre e il merge serale diventa un
+rebase. Branch nuovo da `main`, PR a sé.
+
+**Corollario:** se il tuo lavoro tocca file che una PR in coda ha già
+modificato, controlla il suo diff prima di partire (`gh pr diff <n>`) — non per
+evitarlo, ma per sapere che al merge ci sarà un conflitto e prepararlo.
+
+**Non mergiare senza via esplicito di Mattia**, anche a CI verde: il deploy è
+una decisione sua e ha una finestra oraria (sera/notte/mattina presto).
+
 **Chiuso finora in questo ciclo:**
 - **Dimensione «route API»** (30/8) — le 3 ipotesi di partenza erano tutte false;
   il rischio vero era strutturale ed è chiuso da
