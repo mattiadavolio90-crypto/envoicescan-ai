@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT, fetchNettoMese } from "./periodi";
+import { buildMesiList } from "@/lib/margini-aggregati";
 
 /* ────────────────────────────────────────────────────────────────────────────
    TIPI
@@ -82,20 +83,6 @@ type Props = { dataDa: string; dataA: string };
 /* ────────────────────────────────────────────────────────────────────────────
    RIPARTIZIONE DIALOG (mensile: % o € di fatturato per centro)
    ──────────────────────────────────────────────────────────────────────────── */
-
-function buildMesiList(dataDa: string, dataA: string) {
-  const mesi: { anno: number; mese: number; label: string }[] = [];
-  const y0 = parseInt(dataDa.slice(0, 4), 10), m0 = parseInt(dataDa.slice(5, 7), 10);
-  const y1 = parseInt(dataA.slice(0, 4), 10), m1 = parseInt(dataA.slice(5, 7), 10);
-  for (let y = y0; y <= y1; y++) {
-    const mFrom = y === y0 ? m0 : 1;
-    const mTo = y === y1 ? m1 : 12;
-    for (let m = mFrom; m <= mTo; m++) {
-      mesi.push({ anno: y, mese: m, label: `${MESI_NOMI_SHORT[m - 1]} ${y}` });
-    }
-  }
-  return mesi;
-}
 
 function RipartizioneDialog({
   open, onOpenChange, dataDa, dataA, onSaved,

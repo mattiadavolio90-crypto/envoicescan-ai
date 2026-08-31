@@ -11,33 +11,14 @@ import { formatEuro, formatEuroCompact, scorporoNetto, IVA_DIVISORE_10, IVA_DIVI
 import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
+import {
+  DERIVE, pctIncidenza, pivotMedia, rowVal,
+  type MesePivot, type RowLike,
+} from "@/lib/margini-aggregati";
 import { InfoPopover } from "@/components/ui/info-popover";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-
-type MesePivot = {
-  anno: number;
-  mese: number;
-  label: string;
-  fatturato_iva10: number;
-  fatturato_iva22: number;
-  altri_ricavi_noiva: number;
-  fatturato_netto: number;
-  costi_fb_auto: number;
-  altri_costi_fb: number;
-  costi_fb_totali: number;
-  primo_margine: number;
-  costi_spese_auto: number;
-  altri_costi_spese: number;
-  costi_spese_totali: number;
-  costo_dipendenti: number;
-  costo_personale_extra: number;
-  costi_personale: number;
-  mol: number;
-  quote_riparto_fb: number;
-  quote_riparto_spese: number;
-};
 
 type Commento = {
   kpi_nome: string;
@@ -67,15 +48,13 @@ type Section = "ricavi" | "fb" | "spese" | "personale" | "margine";
 
 type ValueColor = "white" | "sign" | "purple" | "sky" | "orange" | "pink";
 
-type RowDef = {
-  key: string;
+type RowDef = RowLike & {
   label: string;
   type: "input-readonly" | "input-readonly-tooltip" | "input-editable" | "computed";
   field?: EditableField;
   section: Section;
   isMetric?: boolean;
   isMolMargin?: boolean;
-  derive?: (m: MesePivot) => number;   // righe virtuali calcolate
   labelColor?: string;                 // classe tailwind per la prima colonna
   valueColor: ValueColor;              // colore dei valori nelle celle
 };
@@ -85,40 +64,20 @@ const ROWS: RowDef[] = [
   { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-sky-500 dark:text-sky-400", valueColor: "sky" },
-  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", derive: (m) => m.costi_fb_auto + (m.quote_riparto_fb ?? 0), valueColor: "white" },
+  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", derive: DERIVE.costi_fb_auto, valueColor: "white" },
   { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
   { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "orange" },
   { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
-  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", derive: (m) => m.costi_spese_auto + (m.quote_riparto_spese ?? 0), valueColor: "white" },
+  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", derive: DERIVE.costi_spese_auto, valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
   { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
   { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
-  { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
+  { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: DERIVE.totale_costi, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
   { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
 
 // Separatori tra blocchi: bordo top più marcato prima di questi indici
 const SEP_BEFORE = new Set([4, 8, 12]);
-
-function rowVal(row: RowDef, m: MesePivot): number {
-  if (row.derive) return row.derive(m);
-  return (m[row.key as keyof MesePivot] as number) ?? 0;
-}
-
-// Divide tutti i campi numerici della pivot per il numero di mesi attivi.
-// Divisore unico di periodo: ogni riga scende dello stesso fattore, quindi
-// la colonna resta coerente (media MOL = media Ricavi − media Costi) e le
-// percentuali di incidenza (riga/fatturato) restano invariate.
-function pivotMedia(p: MesePivot, nMesi: number): MesePivot {
-  const n = Math.max(1, nMesi);
-  const out = { ...p };
-  for (const k of Object.keys(out) as (keyof MesePivot)[]) {
-    if (typeof out[k] === "number") {
-      (out[k] as number) = (out[k] as number) / n;
-    }
-  }
-  return out;
-}
 
 // Colore dei valori (e della % incidenza) in base al value-color mode.
 function valueColorCls(vc: ValueColor, raw: number): string {
@@ -134,11 +93,6 @@ function valueColorCls(vc: ValueColor, raw: number): string {
   if (vc === "orange") return "text-orange-600 dark:text-orange-400";
   if (vc === "pink") return "text-pink-600 dark:text-pink-400";
   return ""; // white = foreground
-}
-
-function pctIncidenza(raw: number, netto: number): string | null {
-  if (!netto || netto === 0 || raw === 0) return null;
-  return `${((raw / netto) * 100).toFixed(0)}%`;
 }
 
 const ANNO_MESE_CORRENTE = (() => {

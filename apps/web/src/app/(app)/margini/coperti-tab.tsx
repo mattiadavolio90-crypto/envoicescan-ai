@@ -20,6 +20,10 @@ import {
 import type {
   CopertiAnalisiResponse, CopertiMese, CopertiGiorno, CopertiCategorieResponse,
 } from "@/lib/ricavi";
+import {
+  aggregaCoperti, aggregaRicavi,
+  mesiVisibili as filtraMesiVisibili, numMesiAttivi as contaMesiAttivi,
+} from "@/lib/margini-aggregati";
 
 const DOW_LABELS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const ANNO_MESE_CORRENTE = (() => {
@@ -64,15 +68,9 @@ export function CopertiTab({ dataDa, dataA }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const mesiVisibili = useMemo(
-    () => (data?.mesi ?? []).filter((m) => (m.coperti ?? 0) > 0 || m.ricavi_netto > 0),
-    [data],
-  );
+  const mesiVisibili = useMemo(() => filtraMesiVisibili(data?.mesi ?? []), [data]);
 
-  const numMesiAttivi = useMemo(
-    () => mesiVisibili.filter((m) => (m.coperti ?? 0) > 0).length,
-    [mesiVisibili],
-  );
+  const numMesiAttivi = useMemo(() => contaMesiAttivi(mesiVisibili), [mesiVisibili]);
 
   if (loading && !data) {
     return (
@@ -398,18 +396,6 @@ function EfficienzaSection({
       </div>
     </div>
   );
-}
-
-/* ─── Helpers di aggregazione colonna Totale/Media ────────────────────────── */
-function aggregaCoperti(mesi: CopertiMese[], isMedia: boolean, nMesi: number): number | null {
-  const conDati = mesi.filter((m) => m.coperti != null);
-  if (conDati.length === 0) return null;
-  const tot = conDati.reduce((s, m) => s + (m.coperti ?? 0), 0);
-  return isMedia ? tot / Math.max(1, nMesi) : tot;
-}
-function aggregaRicavi(mesi: CopertiMese[], isMedia: boolean, nMesi: number): number {
-  const tot = mesi.reduce((s, m) => s + m.ricavi_netto, 0);
-  return isMedia ? tot / Math.max(1, nMesi) : tot;
 }
 
 /* ─── Riga tabella mensile ────────────────────────────────────────────────── */

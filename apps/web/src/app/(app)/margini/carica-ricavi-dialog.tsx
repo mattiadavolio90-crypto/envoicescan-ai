@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { formatEuro, MESI_NOMI_SHORT, scorporoNetto } from "./periodi";
+import { formatEuro, scorporoNetto } from "./periodi";
+import { buildMesiList } from "@/lib/margini-aggregati";
 import type {
   RicaviGiornalieriResponse, RicavoGiornaliero,
   RicaviBatchUpsertResponse,
@@ -84,20 +85,6 @@ type GiornoEdit = {
 };
 
 type ModalitaMese = "giornaliero" | "mensile";
-
-function buildMesiList(dataDa: string, dataA: string) {
-  const mesi: { anno: number; mese: number; label: string }[] = [];
-  const y0 = parseInt(dataDa.slice(0, 4), 10), m0 = parseInt(dataDa.slice(5, 7), 10);
-  const y1 = parseInt(dataA.slice(0, 4), 10), m1 = parseInt(dataA.slice(5, 7), 10);
-  for (let y = y0; y <= y1; y++) {
-    const mFrom = y === y0 ? m0 : 1;
-    const mTo = y === y1 ? m1 : 12;
-    for (let m = mFrom; m <= mTo; m++) {
-      mesi.push({ anno: y, mese: m, label: `${MESI_NOMI_SHORT[m - 1]} ${y}` });
-    }
-  }
-  return mesi;
-}
 
 function daysInMonth(anno: number, mese: number): string[] {
   const count = new Date(anno, mese, 0).getDate();
