@@ -54,8 +54,8 @@ trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
 
 ## Cosa si fa, e cosa viene dopo
 
-**Si apre `margini/`** (4.795 righe, **tocca il MOL**). Lo scadenziario è
-chiuso davvero: mutazione, commit, verbale, contatore ri-misurato,
+**Si apre `margini/`** (4.795 righe, **🟠 60% già letta**: il lavoro è sul 40%
+restante, non da zero — **tocca il MOL**). Lo scadenziario è chiuso davvero: mutazione, commit, verbale, contatore ri-misurato,
 `check_documentazione.py` pulito.
 
 ⚠️ **Prima di aprire `margini/`, leggi il verbale che l'ha già letta in parte.**
@@ -83,9 +83,9 @@ commit, verbale, contatore `AUDIT_COPERTURA.md` ri-misurato,
 
 ## Cosa fare: aprire `margini/`
 
-**È la priorità 🔴 per esposizione, non per dimensione**: `workspace/` è più
-grande (5.012) ma ha esposizione live bassa; `margini/` **tocca il MOL**, che è
-regola di dominio critica (`CLAUDE.md` §1: le righe `Da Classificare` sono
+**È la priorità per esposizione, non per dimensione**: `catena/` è l'unica area
+davvero vergine, ma `margini/` **tocca il MOL**, che è regola di dominio
+critica (`CLAUDE.md` §1: le righe `Da Classificare` sono
 escluse dai margini finché non vengono classificate, per non falsare il MOL).
 
 **La strada è battuta tre volte** (`poolSaturo`/F7 il 29/8, `buildCashFlow` e
