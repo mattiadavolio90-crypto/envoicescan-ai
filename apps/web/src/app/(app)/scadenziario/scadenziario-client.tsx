@@ -19,7 +19,7 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
-  computeKpi, bucketizeDocumenti, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, buildCashFlow, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -498,42 +498,8 @@ function CalendarView({ documenti }: CalendarViewProps) {
   );
 }
 
-// ── Cash-flow bar (esposizione futura aggregata) ──────────────────────────────
-
-type CashFascia = { label: string; totale: number; count: number; tone: string };
-
-function buildCashFlow(documenti: Documento[]): CashFascia[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = (n: number) => { const x = new Date(today); x.setDate(x.getDate() + n); return x; };
-  const in7 = d(7), in30 = d(30), in60 = d(60), in90 = d(90);
-
-  const fasce: CashFascia[] = [
-    { label: "Scadute", totale: 0, count: 0, tone: "bg-rose-500" },
-    { label: "Entro 7gg", totale: 0, count: 0, tone: "bg-orange-500" },
-    { label: "8–30gg", totale: 0, count: 0, tone: "bg-amber-500" },
-    { label: "31–60gg", totale: 0, count: 0, tone: "bg-sky-500" },
-    { label: "61–90gg", totale: 0, count: 0, tone: "bg-indigo-500" },
-    { label: "Oltre 90gg", totale: 0, count: 0, tone: "bg-slate-400" },
-  ];
-
-  for (const doc of documenti) {
-    if (doc.pagata || doc.is_nota_credito) continue;
-    const s = parseLocalDate(doc.scadenza_effettiva);
-    if (!s) continue; // le senza scadenza hanno già il loro alert dedicato
-    const t = doc.totale_documento || 0;
-    let i: number;
-    if (s < today) i = 0;
-    else if (s <= in7) i = 1;
-    else if (s <= in30) i = 2;
-    else if (s <= in60) i = 3;
-    else if (s <= in90) i = 4;
-    else i = 5;
-    fasce[i].totale += t;
-    fasce[i].count += 1;
-  }
-  return fasce;
-}
+// ── Cash-flow bar ── (buildCashFlow e CashFascia vivono in @/lib/scadenziario,
+// estratti per poter essere testati: vedi tests/test_scadenziario_kpi_frontend.py)
 
 function CashFlowBar({ documenti }: { documenti: Documento[] }) {
   const fasce = useMemo(() => buildCashFlow(documenti), [documenti]);

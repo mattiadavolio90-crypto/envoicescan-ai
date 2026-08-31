@@ -330,3 +330,124 @@ def test_concordano_anche_su_dataset_casuale(tz):
     assert b["scadute"] == k["scadute_count"]
     assert b["settimana"] == k["settimana_count"]
     assert b["pagate"] >= k["pagate_mese_count"]
+
+
+# ============================================================
+# buildCashFlow — estratta dal componente il 31/08/2026
+# ============================================================
+#
+# Viveva dentro `scadenziario-client.tsx`, irraggiungibile da qualunque test
+# (stessa situazione, e stessa soluzione, di `poolSaturo`/F7). E' la funzione
+# che decide quanto denaro l'utente vede in ciascuna fascia di esposizione
+# futura: sbagliarne un confine sposta euro veri fra due colonne.
+#
+# I confini NON sono simmetrici e questo e' il punto: `scadute` e' stretto
+# (`s < today`), tutte le altre sono inclusive (`s <= inN`). Un documento che
+# scade OGGI sta in "Entro 7gg". Le fixture stanno sui confini esatti, perche'
+# fixture "ragionevoli" lasciano sopravvivere i mutanti di confine (misurato sul
+# punto 9: 4 mutanti, 1 solo morto).
+
+FASCE = ["Scadute", "Entro 7gg", "8–30gg", "31–60gg", "61–90gg", "Oltre 90gg"]
+
+
+def _cashflow(documenti, tz):
+    return esegui_ts(
+        MODULO,
+        "emit(m.buildCashFlow(input));",
+        argomento=documenti,
+        tz=tz,
+        richiede=["buildCashFlow", "parseLocalDate"],
+    )
+
+
+def _campione_cashflow(tz):
+    """Un documento per ogni confine, piu' i casi che devono essere ignorati."""
+    oggi = _oggi_in(tz)
+
+    def g(n):
+        return (oggi + datetime.timedelta(days=n)).isoformat()
+
+    docs = [
+        _doc(id="ieri", scadenza_effettiva=g(-1), totale_documento=100),
+        _doc(id="oggi", scadenza_effettiva=g(0), totale_documento=200),
+        _doc(id="g7", scadenza_effettiva=g(7), totale_documento=300),
+        _doc(id="g8", scadenza_effettiva=g(8), totale_documento=400),
+        _doc(id="g30", scadenza_effettiva=g(30), totale_documento=500),
+        _doc(id="g31", scadenza_effettiva=g(31), totale_documento=600),
+        _doc(id="g60", scadenza_effettiva=g(60), totale_documento=700),
+        _doc(id="g61", scadenza_effettiva=g(61), totale_documento=800),
+        _doc(id="g90", scadenza_effettiva=g(90), totale_documento=900),
+        _doc(id="g91", scadenza_effettiva=g(91), totale_documento=1000),
+        # da ignorare
+        _doc(id="pagata", scadenza_effettiva=g(3), totale_documento=5000, pagata=True),
+        _doc(id="nc", scadenza_effettiva=g(3), totale_documento=7000, is_nota_credito=True),
+        _doc(id="senza", scadenza_effettiva=None, totale_documento=9000),
+    ]
+    return docs
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_cashflow_assegna_ogni_confine_alla_fascia_giusta(tz):
+    fasce = _cashflow(_campione_cashflow(tz), tz)
+
+    assert [f["label"] for f in fasce] == FASCE, (
+        "L'ordine delle fasce e' contrattuale: il componente le disegna in "
+        "quest'ordine da sinistra a destra."
+    )
+
+    per_label = {f["label"]: f for f in fasce}
+    atteso = {
+        "Scadute": (100, 1),          # ieri
+        "Entro 7gg": (200 + 300, 2),  # oggi (confine stretto) + g7 (inclusivo)
+        "8–30gg": (400 + 500, 2),     # g8 + g30
+        "31–60gg": (600 + 700, 2),    # g31 + g60
+        "61–90gg": (800 + 900, 2),    # g61 + g90
+        "Oltre 90gg": (1000, 1),      # g91
+    }
+    for label, (totale, count) in atteso.items():
+        assert (per_label[label]["totale"], per_label[label]["count"]) == (totale, count), (
+            f"fascia {label!r} sbagliata: sposta denaro reale fra due colonne"
+        )
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_cashflow_esclude_pagate_note_credito_e_senza_scadenza(tz):
+    """Gli importi esclusi sono enormi apposta: se rientrano, si vede."""
+    fasce = _cashflow(_campione_cashflow(tz), tz)
+    totale = sum(f["totale"] for f in fasce)
+    count = sum(f["count"] for f in fasce)
+
+    assert totale == 5500, (
+        "5000 (pagata), 7000 (nota di credito) e 9000 (senza scadenza) non "
+        f"devono entrare nell'esposizione futura. Totale visto: {totale}"
+    )
+    assert count == 10
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_cashflow_concorda_con_i_kpi_sulle_scadute(tz):
+    """Terza implementazione degli stessi confini: deve concordare con le altre due.
+
+    `computeKpi`, `bucketizeDocumenti` e ora `buildCashFlow` ricalcolano
+    ciascuna il proprio `today`. E' la coppia (ora terna) che si separa al primo
+    refactor di una sola delle tre.
+    """
+    docs = _campione_cashflow(tz)
+    fasce = _cashflow(docs, tz)
+    k = _kpi(docs, tz)
+    scadute = next(f for f in fasce if f["label"] == "Scadute")
+    assert scadute["count"] == k["scadute_count"]
+    assert scadute["totale"] == k["scadute_totale"]
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_cashflow_totale_uguale_al_da_pagare_meno_senza_scadenza(tz):
+    """Il denaro non si crea e non si distrugge passando da una vista all'altra."""
+    docs = _campione_cashflow(tz)
+    fasce = _cashflow(docs, tz)
+    k = _kpi(docs, tz)
+    somma_fasce = sum(f["totale"] for f in fasce)
+    assert somma_fasce == k["da_pagare_totale"] - 9000, (
+        "La barra cash-flow e i KPI devono raccontare lo stesso debito, a meno "
+        "dei documenti senza scadenza (che la barra non puo' collocare)."
+    )

@@ -149,3 +149,104 @@ def test_ogni_call_site_del_repo_rispetta_la_firma():
         'Call site incompatibili con la firma di check_on_upload:\n'
         + '\n'.join(problemi)
     )
+
+
+
+# ============================================================
+# check_weekly: catena morta a due anelli (misurato 31/08/2026)
+# ============================================================
+#
+# `check_weekly` non ha chiamanti. La roadmap lo dava come "residuo da
+# rimuovere", ma la misura dice altro: agganciarlo non produrrebbe NULLA, perche'
+# legge un topic che nessun percorso vivo emette piu'.
+#
+# Questi test fissano i due anelli. Se un domani qualcuno rende `price_alert`
+# emettibile dal percorso vivo, il secondo test fallisce: e' il segnale che
+# `check_weekly` e' tornato agganciabile e la decisione va ripresa. Senza questo
+# il fatto resterebbe scritto solo in un docstring, e un docstring non si accorge
+# di essere diventato falso.
+#
+# Perimetro: i 4 package del runtime Python (gli stessi di CLAUDE.md).
+# `legacy_streamlit/` e' escluso per definizione: e' il percorso morto.
+
+_RUNTIME = ('services', 'utils', 'config', 'worker')
+
+
+def _righe_runtime():
+    """(path_relativo, n_riga, testo) per ogni .py del runtime vivo.
+
+    Salta commenti, docstring e stringhe: una MENZIONE di `price_alert` dentro
+    un docstring che spiega perche' il topic e' morto non e' un emettitore.
+    Prima stesura di questo test: falliva sul docstring di
+    `anomaly_radar_service` — cioe' sul testo che documenta il difetto. Un
+    match testuale nudo misura il proprio pattern, non il codice.
+    """
+    import io as _io
+    import pathlib
+    import tokenize
+
+    radice = pathlib.Path(__file__).resolve().parent.parent
+    for pkg in _RUNTIME:
+        for py in sorted((radice / pkg).rglob('*.py')):
+            rel = str(py.relative_to(radice))
+            testo = py.read_text(encoding='utf-8', errors='ignore')
+            righe = testo.splitlines()
+            # righe occupate da commenti o da stringhe multi-riga (docstring)
+            escluse = set()
+            try:
+                for tok in tokenize.generate_tokens(_io.StringIO(testo).readline):
+                    if tok.type == tokenize.COMMENT:
+                        escluse.add(tok.start[0])
+                    elif tok.type == tokenize.STRING and tok.end[0] > tok.start[0]:
+                        escluse.update(range(tok.start[0], tok.end[0] + 1))
+            except (tokenize.TokenError, IndentationError, SyntaxError):
+                pass
+            for n, riga in enumerate(righe, 1):
+                if n not in escluse:
+                    yield rel, n, riga
+
+
+def test_check_weekly_non_ha_ancora_chiamanti():
+    """Se qualcuno lo aggancia, deve accorgersi del test sotto."""
+    chiamanti = [
+        f'{rel}:{n}'
+        for rel, n, riga in _righe_runtime()
+        if 'check_weekly(' in riga and not riga.lstrip().startswith(('#', 'def '))
+    ]
+    assert chiamanti == [], (
+        'check_weekly ora ha chiamanti: ' + ', '.join(chiamanti) + '.\n'
+        "Non e' un errore di per se', ma va verificato che a monte esista un "
+        "emettitore vivo di topic_key='price_alert': senza quello legge 0 righe "
+        'e torna [] per sempre. Vedi il docstring di anomaly_radar_service.'
+    )
+
+
+def test_price_alert_non_ha_emettitori_vivi():
+    """L'anello che manca davvero.
+
+    `check_weekly` legge `topic_key='price_alert'`. L'unico emettitore sta in
+    `upload_handler.handle_uploaded_files`, cioe' il percorso legacy_streamlit
+    gia' dichiarato morto dagli altri test di questo file.
+
+    Quando questo test fallisce, la notizia e' buona: qualcuno ha aggiunto un
+    emettitore vivo e `check_weekly` torna ad avere senso.
+    """
+    emettitori = [
+        (rel, n)
+        for rel, n, riga in _righe_runtime()
+        if "topic_key='price_alert'" in riga or 'topic_key="price_alert"' in riga
+    ]
+
+    vivi = [f'{rel}:{n}' for rel, n in emettitori if rel != 'services/upload_handler.py']
+    assert vivi == [], (
+        'Esiste un emettitore di price_alert fuori da upload_handler: '
+        + ', '.join(vivi) + '.\n'
+        "Se e' raggiungibile dal percorso vivo, `check_weekly` puo' tornare a "
+        'produrre notifiche: va deciso se agganciarlo (vedi il docstring di '
+        'anomaly_radar_service).'
+    )
+
+    assert emettitori, (
+        "Nessun emettitore di price_alert nel runtime: se e' stato rimosso, va "
+        "rimosso anche `check_weekly`, perche' non puo' piu' leggere nulla."
+    )

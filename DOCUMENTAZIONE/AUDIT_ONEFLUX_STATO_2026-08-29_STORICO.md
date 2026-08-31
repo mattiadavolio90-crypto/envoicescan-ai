@@ -175,3 +175,109 @@ della superficie (allowlistato con la sua ragione).
 - Baseline radar ricontrollata a inizio sessione: `notification_inbox` 65 record
   — `operativa` 58 (ultima 28/8), `upload` 7 (ultima **1/6/2026**, blocco morto
   confermato), **`radar` 0**. Nessuna ritaratura da rivedere.
+
+---
+
+## Voci ereditate + primo pezzo di scadenziario — 31/08/2026
+
+**Esito: 2 voci di roadmap su 3 erano false, e la terza aveva la domanda
+sbagliata.** Il lavoro utile è finito altrove rispetto a dove era scritto.
+
+### Le tre «voci aperte ereditate» ri-misurate
+
+Erano marcate «verificate ancora vere il 30/8/2026». Non lo erano. All'inizio
+della sessione le ho riprese per buone e **hanno prodotto lavoro fantasma**
+finché la misura non le ha smontate: è il modo esatto in cui un documento sempre
+in contesto propaga i propri errori — la lezione che questo ciclo documenta da
+tre sessioni, pagata una quarta volta.
+
+| Voce | Esito 31/8 |
+|---|---|
+| `normalizza_descrizione` «5 pattern su 7» | **FALSO.** Applica tutti e 7 gli step; le 6 costanti `REGEX_*` esistono, sono importate (`:17-22`) e popolate (30 + 19 + 10 pattern + 3 regex). Voce chiusa, nessun intervento. |
+| blocco notifiche `source_type='upload'` «morto» | **FUORVIANTE.** Non è morto: è **irraggiungibile per costruzione** e già coperto da 5 test che lo dichiarano escluso per misura. La data «1/6/2026» non è un guasto: è la dismissione di Streamlit. |
+| `check_weekly` «zero chiamanti» | **VERO, ma la domanda era mal posta** — vedi sotto. |
+
+### `check_weekly`: non «da agganciare o rimuovere», ma catena morta a due anelli
+
+La roadmap chiedeva una decisione di prodotto: agganciarlo o rimuoverlo.
+**Nessuna delle due**, perché agganciarlo non produrrebbe niente.
+
+Misurato sul DB live (progetto `vthikmfpywilukizputn`): `check_weekly` legge
+`topic_key='price_alert'`, di cui esistono **3 righe in tutto, tutte
+`source_type='upload'`, l'ultima 1/6/2026**. L'unico emettitore è
+`upload_handler.py:2019`, dentro il percorso `legacy_streamlit` già morto.
+Schedularlo leggerebbe 0 righe e tornerebbe `[]` per sempre.
+
+Tenuto e non rimosso: la logica (`fornitore_critico_consecutivo`, 3+ mesi
+consecutivi di rincari) è scritta e testata via `_check_consecutive_months`.
+**Manca il produttore a monte, non questo codice.**
+
+Il fatto è stato spostato **dal documento al codice**, dove non può marcire in
+silenzio: docstring di `anomaly_radar_service.py` + 2 test nuovi in
+`test_radar_aggancio_percorso_vivo.py`.
+
+| # | Mutante | Atteso | Esito |
+|---|---|---|---|
+| 1 | `check_weekly` agganciato a `invoice_service` | rosso | ✅ ucciso |
+| 2 | nasce un emettitore vivo di `price_alert` | rosso | ✅ ucciso |
+| 3 | **controprova**: menzione in un *commento* | **verde** | ✅ nessun falso positivo |
+
+Il 3 non è decorativo: la **prima stesura del test falliva sul docstring che
+avevo appena scritto** — cioè sul testo che documenta il difetto. Un match
+testuale nudo misura il proprio pattern, non il codice. Ora lo scan salta
+commenti e stringhe via `tokenize`.
+
+### Scadenziario: la dimensione era più piccola di come era scritta
+
+Ri-misurata la copertura prima di aprirla: **69 test verdi** su 5 file
+(backend, RPC, regole, chat, catena, KPI frontend). La roadmap diceva che i test
+del punto 9 coprivano «`computeKpi` e `bucketizeDocumenti`»: sono **4 funzioni
+su 4** — tutte le funzioni logiche esportate da `lib/scadenziario.ts` — e su 2
+fusi. **Il difetto storico di fuso su `pagata_at` era già coperto anche in
+lettura**, che era la preoccupazione principale con cui la dimensione era stata
+messa 🔴.
+
+Scoperto restava **solo** `scadenziario-client.tsx` (2.244 righe): rendering,
+stato, hook. Cioè ciò che il punto 9 dichiara fuori perimetro per costruzione.
+
+**Fatto il primo pezzo**, sulla strada già battuta con `poolSaturo`/F7:
+`buildCashFlow` viveva dentro il componente, irraggiungibile da qualunque test.
+È la funzione che decide **quanto denaro l'utente vede in ciascuna fascia di
+esposizione futura** — sbagliarne un confine sposta euro veri fra due colonne.
+
+Estratta in `apps/web/src/lib/scadenziario.ts`. Il refactor è provato
+equivalente, non solo `tsc`-pulito: corpo della funzione **identico riga per
+riga** all'originale (`diff` sul sorgente pre/post). 8 test nuovi, su fixture
+**ai confini esatti** perché i confini non sono simmetrici — `scadute` è stretto
+(`s < today`), le altre fasce inclusive (`s <= inN`): un documento che scade
+oggi sta in «Entro 7gg».
+
+| # | Mutante | Atteso | Esito |
+|---|---|---|---|
+| 1 | `s < today` → `s <= today` (confine scadute) | rosso | ✅ ucciso (4 test) |
+| 2 | finestra 7gg → 6gg | rosso | ✅ ucciso |
+| 3 | note di credito rientrano nel debito | rosso | ✅ ucciso (6 test) |
+| 4 | `new Date()` invece di `parseLocalDate` | rosso | ✅ ucciso (3 test) |
+
+Il 4 è il difetto storico di fuso: ora è coperto anche sulla barra cash-flow.
+Un test asserisce che **le tre implementazioni degli stessi confini**
+(`computeKpi`, `bucketizeDocumenti`, `buildCashFlow`) concordino: ciascuna
+ricalcola il proprio `today`, ed è la terna che si separa al primo refactor di
+una sola delle tre.
+
+### Verifica
+
+- `python -m pytest tests/` → **11.521 passed, 43 skipped** (era 11.511: +10)
+- `npx tsc --noEmit` → pulito
+- `tests/test_documentazione_onesta.py` → 51 passed
+- 7 mutanti in totale, 7 esiti attesi, ognuno verificato montato prima di
+  leggerne l'esito
+
+### Non fatto, e dichiarato
+
+- **`scadenziario-client.tsx` resta 2.210 righe di UI non testata** (`wc -l`, 31/8; era 2.244, `lib/scadenziario.ts` 200 → 245). Estratto
+  solo `buildCashFlow`. Il resto (rendering, stato, hook, filtri client) richiede
+  o altre estrazioni o un runner di componenti — che il punto 9 ha escluso per
+  ragione strutturale (`deploy-vercel.yml`).
+- **`dependencies=[...]` a livello di `APIRouter`** — invariata dalla sessione
+  del 30/8: tocca 238 endpoint, cambia comportamento su tutto il traffico.

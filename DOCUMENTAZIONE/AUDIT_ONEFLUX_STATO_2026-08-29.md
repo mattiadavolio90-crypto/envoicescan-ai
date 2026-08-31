@@ -179,7 +179,7 @@ misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
 | Area | Righe | Esposizione live | Priorità |
 |---|---|---|---|
 | ~~**169 route API** (`apps/web/src/app/api/`)~~ | 4.776 | tutto il traffico dell'app | ✅ 30/8 |
-| `scadenziario/` | 2.337 (1 file da 2.244) | **2.001 doc non pagati**, 1.853 scaduti, 148 futuri, 32 pagate/30gg | 🔴 |
+| `scadenziario/` | 2.337 (1 file da 2.244) | **2.001 doc non pagati**, 1.853 scaduti, 148 futuri, 32 pagate/30gg | 🟠 backend+logica già coperti (69 test, 31/8): scoperto **solo il client** |
 | `prezzi/` | 2.361 (5 tab) | **39.133 righe fattura** a monte | 🟠 |
 | `admin/` | 3.685 | solo staff, non clienti | 🟡 |
 | `assistenza/` | 292 | `marketplace_leads` 0 righe | ⚪ |
@@ -204,23 +204,122 @@ misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
 > letta: 2.001 documenti non pagati, di cui 1.853 già scaduti. È anche l'unica
 > con **2.244 righe in un solo file**, e ha già avuto un difetto di fuso su
 > `pagata_at` (il ciclo 2026-08 l'ha corretto lato scrittura; la UI che lo legge
-> non è mai stata auditata). I test del punto 9 coprono `computeKpi` e
-> `bucketizeDocumenti` — cioè la *logica pura*, non il resto del file.
+> non è mai stata auditata).
+>
+> **Copertura già esistente, misurata il 31/08/2026 — non è terra vergine.**
+> `python -m pytest` sui 5 file scadenziario → **69 passed in 12s**:
+>
+> | File | Test | Cosa copre |
+> |---|---|---|
+> | `test_documenti_service_rid_e_regole.py` | 19 | Step 3 di `get_documenti_scadenziario`, regole `attiva`, `pagata_manuale_at` |
+> | `test_chat_query_scadenze.py` | 12 | query scadenze via chat |
+> | `test_documenti_service_scadenziario.py` | 10 | RPC `scadenziario_fatture_aggregate`, multi-sede |
+> | `test_scadenziario_kpi_frontend.py` | 19 (9 def × fusi) | `computeKpi`, `bucketizeDocumenti`, `parseLocalDate`, `todayLocalIso` |
+> | `test_gruppo_scadenziario_fatture.py` | 9 | scadenziario di gruppo/catena |
+>
+> Il **backend è coperto**, e il **difetto di fuso è coperto in lettura**: le 4
+> funzioni esercitate dal test frontend sono tutte e sole le funzioni logiche
+> esportate da `lib/scadenziario.ts` (le altre export sono tipi, `MODALITA_LABELS`,
+> un re-export di `formatEuro` e `formatDate`). La roadmap diceva «i test del
+> punto 9 coprono `computeKpi` e `bucketizeDocumenti`»: **sono 4 funzioni su 4**,
+> non 2, e su 2 fusi.
+>
+> **Quel che resta scoperto è solo `scadenziario-client.tsx` (2.244 righe):**
+> rendering, stato, hook, effetti, filtri client. Cioè esattamente ciò che il
+> punto 9 dichiara fuori perimetro per costruzione («Rendering React, hook,
+> stato, effetti, `useMemo`»), e che nessuna delle tecniche adottate raggiunge
+> senza estrarre la logica in `lib/` — la strada già battuta con `poolSaturo`/F7.
+>
+> **Conseguenza sulla priorità:** la dimensione è più piccola di come è scritta
+> in tabella. Non è «2.337 righe mai lette», è **un solo componente di UI**, con
+> il resto già in rete. Il lavoro utile è *estrarre e coprire*, non *auditare da
+> zero*.
+>
+> **Primo pezzo fatto il 31/08/2026.** `buildCashFlow` — la funzione che decide
+> quanto denaro l'utente vede in ciascuna fascia di esposizione futura — viveva
+> dentro il componente, irraggiungibile da qualunque test. Estratta in
+> `lib/scadenziario.ts` (corpo **identico riga per riga**, verificato con `diff`),
+> coperta da 8 test su fixture ai confini esatti, **4 mutanti uccisi** — compreso
+> `new Date()` al posto di `parseLocalDate`, cioè il difetto storico di fuso, ora
+> coperto anche sulla barra cash-flow. Un test tiene allineate le **tre**
+> implementazioni degli stessi confini (`computeKpi`, `bucketizeDocumenti`,
+> `buildCashFlow`), che ricalcolano ciascuna il proprio `today`.
+>
+> `scadenziario-client.tsx`: 2.244 → **2.210 righe** ancora non testate
+> (rendering, stato, hook, filtri client). Verbale nello storico.
+>
+> ```bash
+> python -m pytest tests/test_scadenziario_kpi_frontend.py \
+>   tests/test_documenti_service_scadenziario.py \
+>   tests/test_documenti_service_rid_e_regole.py \
+>   tests/test_chat_query_scadenze.py \
+>   tests/test_gruppo_scadenziario_fatture.py -q
+> ```
 
-## Voci aperte ereditate — misurate, non ancora affrontate
+## Voci aperte ereditate — ri-misurate il 31/08/2026: 2 su 3 erano false
 
-Verificate ancora vere il 30/8/2026:
+> **Lezione, non contabilità.** Queste tre voci erano marcate «verificate ancora
+> vere il 30/8/2026». Ri-misurate il 31/8 **una per una col comando accanto**,
+> due non reggono. Erano già state riprese per buone all'inizio della sessione
+> del 31/8 e hanno prodotto lavoro fantasma finché la misura non le ha smontate:
+> è esattamente il modo in cui un documento sempre in contesto propaga i propri
+> errori. Restano scritte qui, smentite e non cancellate, perché la smentita
+> vale più della voce.
 
-1. **Il blocco notifiche `source_type='upload'` è morto.** 7 topic in
-   `upload_handler.py` raggiungibili solo da `legacy_streamlit` (commento a
-   `:2095`). **Ultima notifica emessa: 1/6/2026** — misurato su
-   `notification_inbox`, che ha 7 record `source_type='upload'` e nessuno dopo
-   quella data. Il frontend le aspetta ancora (`notifiche-shared.ts:14`).
-2. **`check_weekly`** (`anomaly_radar_service.py:267`) — **zero chiamanti**,
-   confermato: l'unica altra occorrenza nel repo è il commento a `:12` che lo
-   dichiara. Nessun test lo esercita.
-3. **`normalizza_descrizione`** (`utils/text_utils.py:115`) — 5 pattern su 7,
-   residuo del ciclo 2026-07.
+1. ~~**Il blocco notifiche `source_type='upload'` è morto.**~~ **FUORVIANTE.**
+   Non è codice morto: è **irraggiungibile per costruzione**, ed è già
+   documentato nel repo. Le 7 `build_notification_record`
+   (`upload_handler.py:1987-2080`) vivono dentro `handle_uploaded_files`
+   (`:897`), il cui **unico** chiamante è `legacy_streamlit/app_controllers.py:1701`
+   — modulo che importa `streamlit` vero, **non installato** (vedi CLAUDE.md e
+   `services/_streamlit_shim.py`). Il blocco legge
+   `st.session_state.get('ristorante_id')`: sullo shim è un dict vuoto, quindi
+   `_inbox_rid` resta `""` e la guardia `if _inbox_uid and _inbox_rid` non passa
+   mai. **La data «1/6/2026» non è un guasto da indagare: è la dismissione di
+   Streamlit.** Cinque test lo dichiarano già escluso per misura
+   (`test_radar_aggancio_percorso_vivo.py`, `test_invoice_vision.py`,
+   `test_td24.py`, `test_upload_handler_pagination.py`, `upload_policy.py:4`).
+   Nessuna azione: lo stato è già scritto dove serve, cioè nel codice.
+
+   ```bash
+   grep -rn "handle_uploaded_files" --include=*.py . | grep -v tests/
+   ```
+
+2. ~~**`check_weekly`** — zero chiamanti, da agganciare o rimuovere~~
+   **CHIUSA il 31/08/2026: la domanda era mal posta.** Zero chiamanti confermato,
+   ma agganciarlo **non produrrebbe nulla**: è una **catena morta a due anelli**.
+   `check_weekly` legge `notification_inbox` con `topic_key='price_alert'`, e
+   l'unico emettitore di quel topic è `upload_handler.py:2019` — dentro
+   `handle_uploaded_files`, cioè il percorso `legacy_streamlit` già dichiarato
+   morto. Sul DB live: **3 righe `price_alert`, tutte `source_type='upload'`,
+   l'ultima 1/6/2026** (la dismissione di Streamlit).
+
+   Quindi schedularlo domani leggerebbe 0 righe e tornerebbe `[]` per sempre.
+   **Né agganciato né rimosso**: la logica (`fornitore_critico_consecutivo`) è
+   scritta e testata, manca il *produttore* a monte. Il radar vivo
+   (`check_on_upload`) oggi emette altri tre topic.
+
+   Non è più una voce di roadmap perché **il fatto è ora nel codice e in una
+   rete**: docstring di `anomaly_radar_service.py` + 2 test in
+   `test_radar_aggancio_percorso_vivo.py` che falliscono se qualcuno aggancia
+   `check_weekly` **o** se nasce un emettitore vivo di `price_alert` — nel
+   secondo caso la notizia è buona, e la decisione va ripresa.
+
+   ```sql
+   SELECT topic_key, source_type, count(*), max(created_at)::date
+   FROM notification_inbox GROUP BY 1,2 ORDER BY 3 DESC;
+   ```
+
+3. ~~**`normalizza_descrizione`** — 5 pattern su 7~~ **FALSO.** La funzione
+   (`utils/text_utils.py:115`) applica **tutti e 7** gli step, e tutte e sei le
+   costanti `REGEX_*` che usa esistono, sono importate (`:17-22`) e sono
+   popolate: `REGEX_UNITA_MISURA` 30 pattern, `REGEX_SOSTITUZIONI` 19,
+   `REGEX_ARTICOLI` 10, più tre regex singole. Nessun residuo del ciclo 2026-07.
+   **Voce chiusa.**
+
+   ```bash
+   python3 -c "import utils.text_utils as t; print(len(t.REGEX_UNITA_MISURA), len(t.REGEX_SOSTITUZIONI), len(t.REGEX_ARTICOLI))"
+   ```
 
 **Baseline radar da sorvegliare**: `notification_inbox` ha **0 record
 `source_type='radar'`** su 65 totali (30/8). Il radar è stato ricollegato il

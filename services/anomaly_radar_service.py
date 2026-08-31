@@ -9,7 +9,25 @@ Il correlatore e' `file_origine`: e' l'unica identita' di documento persistita
 `upload_id` filtrava una colonna che non e' mai esistita su fatture_documenti,
 quindi la query non poteva tornare nulla nemmeno quando Streamlit era vivo.
 
-`check_weekly` non ha oggi chiamanti (voce aperta separata).
+`check_weekly` non ha chiamanti, e agganciarlo NON produrrebbe nulla: e' una
+catena morta a due anelli, misurata il 31/08/2026.
+
+Legge `notification_inbox` con `topic_key='price_alert'`, ma l'unico emettitore
+di quel topic e' `upload_handler.py:2019`, dentro `handle_uploaded_files` —
+raggiungibile solo da `legacy_streamlit/app_controllers.py`, che importa lo
+Streamlit vero (non installato: vedi `services/_streamlit_shim.py`). Sul DB
+live: 3 righe `price_alert`, tutte `source_type='upload'`, l'ultima **1/6/2026**,
+cioe' la dismissione di Streamlit.
+
+Quindi anche schedulandolo domani leggerebbe 0 righe e tornerebbe `[]` per
+sempre. Perche' torni a essere una feature servirebbe prima un emettitore vivo
+di `price_alert` sul percorso `check_on_upload` (l'unico agganciato a
+`invoice_service.salva_fattura_processata`), che oggi emette altri tre topic:
+`fattura_duplicata`, `piva_duplicata_fornitore`, `fattura_anomala_importo`.
+
+Tenuto e non rimosso: la logica (`fornitore_critico_consecutivo`, 3+ mesi
+consecutivi di rincari) e' scritta e testata via `_check_consecutive_months`.
+E' il consumatore a monte che manca, non questo codice.
 """
 
 from collections import defaultdict

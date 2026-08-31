@@ -186,6 +186,51 @@ export function bucketizeDocumenti(documenti: Documento[]) {
   return { scadute, settimana, mese, oltre, senzaScadenza, pagate, noteCredito };
 }
 
+// ── Cash-flow: esposizione futura aggregata ──────────────────────────────────
+//
+// Estratta da `scadenziario-client.tsx` il 31/08/2026. Viveva dentro il
+// componente, dove nessuna tecnica di test la raggiungeva (stessa ragione, e
+// stessa strada, di `poolSaturo`/F7 in `lib/tag-candidati.ts`).
+//
+// Confini: `scadute` e' STRETTO (`s < today`), le altre fasce sono INCLUSIVE
+// (`s <= inN`). Un documento che scade oggi e' "Entro 7gg", non "Scadute".
+// Esclude pagate e note di credito: una NC non e' un debito.
+
+export type CashFascia = { label: string; totale: number; count: number; tone: string };
+
+export function buildCashFlow(documenti: Documento[]): CashFascia[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = (n: number) => { const x = new Date(today); x.setDate(x.getDate() + n); return x; };
+  const in7 = d(7), in30 = d(30), in60 = d(60), in90 = d(90);
+
+  const fasce: CashFascia[] = [
+    { label: "Scadute", totale: 0, count: 0, tone: "bg-rose-500" },
+    { label: "Entro 7gg", totale: 0, count: 0, tone: "bg-orange-500" },
+    { label: "8–30gg", totale: 0, count: 0, tone: "bg-amber-500" },
+    { label: "31–60gg", totale: 0, count: 0, tone: "bg-sky-500" },
+    { label: "61–90gg", totale: 0, count: 0, tone: "bg-indigo-500" },
+    { label: "Oltre 90gg", totale: 0, count: 0, tone: "bg-slate-400" },
+  ];
+
+  for (const doc of documenti) {
+    if (doc.pagata || doc.is_nota_credito) continue;
+    const s = parseLocalDate(doc.scadenza_effettiva);
+    if (!s) continue; // le senza scadenza hanno già il loro alert dedicato
+    const t = doc.totale_documento || 0;
+    let i: number;
+    if (s < today) i = 0;
+    else if (s <= in7) i = 1;
+    else if (s <= in30) i = 2;
+    else if (s <= in60) i = 3;
+    else if (s <= in90) i = 4;
+    else i = 5;
+    fasce[i].totale += t;
+    fasce[i].count += 1;
+  }
+  return fasce;
+}
+
 // formatEuro centralizzato in lib/format.ts (era equivalente). formatDate resta
 // qui: usa un formato diverso ("15 gen 2026") specifico dello scadenziario.
 export { formatEuro } from "@/lib/format";
