@@ -13,10 +13,12 @@ git status --short                      # dev'essere pulito
 git log --oneline origin/main..main     # quanti commit sono in coda?
 ```
 
-**Se la coda non è vuota, dillo a Mattia subito**, con il numero. Il 31/8 sera
-erano **25**. Il push manda **tutti** quelli accumulati, non solo quelli di oggi
-— e **il push È il deploy**. Non pushare mai di iniziativa: la finestra è la
-sera/notte, e la decide Mattia.
+**Se la coda non è vuota, dillo a Mattia subito**, con il numero — **quello che
+leggi tu adesso**, non quello scritto qui. A fine giornata del 31/8 erano **27**,
+ma se nel frattempo è avvenuto un push sono zero: è una cifra che invecchia in
+poche ore, riportala dal comando. Il push manda **tutti** i commit accumulati,
+non solo quelli di oggi — e **il push È il deploy**. Non pushare mai di
+iniziativa: la finestra è la sera/notte, e la decide Mattia.
 
 Si lavora su **`main` locale**. Niente branch, niente PR (`WORKFLOW.md` §0).
 
