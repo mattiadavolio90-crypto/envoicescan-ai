@@ -5,7 +5,7 @@
 > **quanto mancava**. Da qui l'idea che «luglio + agosto coprano tutta l'app».
 > Questo file è l'unico posto dove le somme devono tornare.
 
-**Misurato il 31/08/2026.** Le cifre si **ri-misurano** a ogni aggiornamento,
+**Misurato il 31/08/2026** (ri-misurato a fine sessione scadenziario). Le cifre si **ri-misurano** a ogni aggiornamento,
 mai ereditate da qui:
 
 ```bash
@@ -35,9 +35,9 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | Perimetro | Righe |
 |---|---:|
 | Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 55.450 |
-| Frontend (`apps/web/src/`) | 50.958 |
+| Frontend (`apps/web/src/`) | 51.055 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **109.964** |
+| **TOTALE APP** | **110.061** |
 
 ---
 
@@ -69,28 +69,38 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 
 ## Frontend — 50.958 righe
 
-| Area | Righe | Stato | Note |
-|---|---:|---|---|
-| `app/api/` — 169 route | 4.849 | 📖 coperto | ciclo 08, 30/8: proxy trasparente, 0/169 toccano il DB |
-| `(app)/scadenziario/` | 2.303 | 🟠 parziale | backend+`lib/` coperti (77 test); **client 2.210 righe 🔴** |
-| `lib/` | 3.445 | 🟠 parziale | solo `scadenziario.ts` |
-| **`(app)/workspace/`** | **5.012** | 🔴 | **l'area più grande dell'app** |
-| **`(app)/margini/`** | **4.795** | 🔴 | **regola di dominio MOL** |
-| **`(app)/admin/`** | **3.685** | 🔴 | solo staff |
-| **`(app)/catena/`** | **3.127** | 🔴 | multi-sede |
-| **`(app)/analisi-fatture/`** | **2.666** | 🔴 | filtro "Da Classificare" |
-| **`(app)/prezzi/`** | **2.361** | 🔴 | 39.133 righe fattura a monte |
-| **`(app)/` — altre 7 aree** | **~5.700** | 🔴 | dashboard, analisi-e-tag, impostazioni, agenda, notifiche, assistenza, style-guide |
-| **`components/`** | **7.298** | 🔴 | condivisa da tutte le pagine |
-| **`(mobile)/`** | **3.984** | 🔴 | frontend separato, non responsive |
-| `(auth)+(legal)+(demo)` | 1.353 | 🔴 | — |
+> **Corretto il 31/8 dopo il `code-reviewer`.** La prima stesura dava 🔴 «mai
+> guardata» a sette aree che i cicli 07 e 08 avevano già letto. La tabella §3c
+> del ciclo 07 elenca **11 file su 11 letti riga per riga** in 4 passate
+> (Margini · Scadenziario+Articoli · Tag+Prezzi · Workspace+Admin+mobile); il
+> ciclo 08 ha chiuso **F3** (`components/`) e **F6** (`workspace/`). Le righe
+> «lette» qui sotto sono quelle dichiarate in quei verbali.
+>
+> Misura sul tree **committato** (`git archive HEAD`): 50.958. Un `find` sul
+> working tree può dare di più se una sessione parallela ha modifiche aperte.
 
-**📖 coperto: ~4.900 (10%) · 🔴 mai: ~43.800 (86%)**
+| Area | Lette | Totali | Stato | Riferimento |
+|---|---:|---:|---|---|
+| `app/api/` — 169 route | 4.849 | 4.849 | 📖 | ciclo 08, 30/8 — proxy trasparente, 0/169 toccano il DB |
+| `(app)/scadenziario/` | 2.233 | 2.303 | 📖 96% | ciclo 07 §3c; `lib/scadenziario.ts` coperta da 77 test |
+| `(app)/analisi-e-tag/` | 1.392 | 1.518 | 📖 91% | ciclo 07 §3c |
+| `(app)/margini/` | 2.903 | 4.795 | 🟠 60% | ciclo 07 §3c: calcolo-tab, analisi-tab, coperti-tab |
+| `(app)/admin/` | 1.739 | 3.685 | 🟠 47% | ciclo 07 §3c: categorie + cliente-dettaglio |
+| `(app)/prezzi/` | 973 | 2.361 | 🟠 41% | ciclo 07 §3c: variazioni-tab |
+| `(app)/workspace/` | 1.834 | 5.012 | 🟠 37% | ciclo 07 §3c (personale-tab) + **F6 ciclo 08 CHIUSA**: il resto escluso con misura di esposizione live |
+| `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
+| `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
+| `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
+| `lib/` | ~400 | 3.445 | 🟠 12% | solo `scadenziario.ts` |
+| `(app)/catena/` | 0 | 3.127 | 🔴 | **l'unica area grande che nessuna passata ha mai toccato** — multi-sede |
+| `(app)/` — altre 4 aree | 0 | ~2.600 | 🔴 | dashboard, impostazioni, agenda, notifiche |
+| `(auth)+(legal)+(demo)` | 0 | 1.353 | 🔴 | — |
 
-Il ciclo 07 lo dichiara: *«Frontend Next.js, 49.635 righe, 395 file — mai letto
-riga per riga da nessuna dimensione»*. Resta vero.
+**📖 letto: ~8.500 (17%) · 🟠 parziale: ~15.700 (31%) · 🔴 mai: ~7.100 (14%)**
 
----
+Le righe non lette dentro un'area 🟠 non sono terra vergine: una passata ha
+delimitato il perimetro e **motivato l'esclusione** (di solito: esposizione live
+bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 ## Edge Functions — 3.556 righe
 
@@ -103,23 +113,32 @@ riga per riga da nessuna dimensione»*. Resta vero.
 
 | | Righe | % |
 |---|---:|---:|
-| 📖 Letto integralmente | ~21.400 | **19%** |
+| 📖 Letto integralmente | ~23.600 | **21%** |
 | 🔍 Auditato per dimensione | ~17.650 | 16% |
-| 🔴 Mai guardato | ~70.900 | **65%** |
+| 🔴 Mai guardato | ~68.800 | **63%** |
 
-Il 19% letto è però il più esposto: ingresso dati, auth, DB, Edge Functions,
-169 route.
+Quel che è letto è però il perimetro più esposto: ingresso dati, auth, DB,
+Edge Functions, 169 route.
 
 ---
 
-## Le tre cose che questo conto ha fatto emergere
+## Cosa questo conto ha fatto emergere
 
-1. **`workspace/` (5.012) e `margini/` (4.795) sono le due aree frontend più
-   grandi e non compaiono in nessuna tabella.** La tabella «perimetro scoperto»
-   del ciclo 08 elenca 4 aree su 14, e non queste. `margini/` tocca il MOL.
+> Nota di metodo: la prima stesura di questa sezione conteneva **due
+> affermazioni false su tre** — diceva che `workspace/` e `margini/` non
+> comparivano in nessuna tabella, mentre i verbali dei cicli 07 e 08 le
+> avevano già lette in parte. Le ho scritte senza aprire i verbali, che è
+> esattamente l'errore che il contatore esiste per impedire. Restano queste,
+> verificate:
+
+1. **`(app)/catena/` (3.127 righe) è l'unica area frontend grande che nessuna
+   passata ha mai toccato.** Gestisce il multi-sede.
 2. **`worker/` (2.353) gira non presidiato** e non è in nessuna lista.
 3. **`config/` (2.334) contiene i prompt AI** — la regola di dominio n.1 — e non
-   è mai stata guardata.
+   è mai stato guardato.
+4. **Le aree 🟠 non vanno rilette da zero**: il perimetro escluso è stato
+   *misurato e motivato* (di solito esposizione live bassa). Riaprirlo senza
+   leggere il verbale è lavoro fantasma.
 
 ---
 

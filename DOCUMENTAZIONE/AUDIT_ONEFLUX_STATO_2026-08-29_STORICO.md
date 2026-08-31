@@ -310,3 +310,104 @@ una sola delle tre.
   ragione strutturale (`deploy-vercel.yml`).
 - **`dependencies=[...]` a livello di `APIRouter`** — invariata dalla sessione
   del 30/8: tocca 238 endpoint, cambia comportamento su tutto il traffico.
+
+---
+
+## Sessione 31/08/2026 (2ª) — chiusura dimensione «scadenziario»
+
+**Verdetto: chiusa.** La logica che decide **quali fatture il cliente vede** e
+**quali numeri legge** è uscita dal componente ed è coperta. Nel client resta
+rendering, stato e hook — cioè ciò che non muove né euro né inclusioni.
+
+### Cosa è stato fatto
+
+7 funzioni estratte da `scadenziario-client.tsx` a `lib/scadenziario.ts`
+(2.210 → **2.119** righe il client, 245 → **433** il lib):
+
+| Funzione | Perché non poteva restare nel componente |
+|---|---|
+| `matchDocumento` | **il cuore**: decide l'inclusione di ogni riga |
+| `filtraDocumenti` | wrapper, confini calcolati una volta sola |
+| `aggregaPerSede` | riimplementava «è un debito» (3ª copia) |
+| `statoDocumento` | 4ª derivazione dello stato, dentro `exportCsv` |
+| `elencaFornitori` | decide le voci del filtro fornitore |
+| `ordinaDocumenti` | decide l'ordine del CSV scaricato |
+| `fornitoreKey` | dipendenza delle precedenti |
+
+**`matchFiltriComuniRef` eliminato.** Era un ref assegnato *dentro* un `useMemo`
+(side-effect in fase di render) per condividere una closure con `kpiPerSede`:
+i due memo erano quindi legati da un ordine di valutazione implicito, e
+`kpiPerSede` poteva leggere un predicato stale. Con la funzione pura il
+problema non esiste più — non è stato "pulito per estetica".
+
+### La divergenza trovata, e lasciata com'è
+
+Il chip filtro **«Questo mese»** mostra `oggi..+30gg` (**cumulativo**, include
+la settimana); la sezione in agenda **«Questo mese»** mostra `+8gg..+30gg` (la
+esclude, perché la settimana ha già la sua sezione). **Stesse parole, due
+insiemi diversi, nessun test su nessuno dei due.**
+
+Non è un bug — sono due domande diverse — ma era una trappola: chi le allinea
+«per coerenza» cambia ciò che il cliente vede. **Deciso da Mattia il 31/8: si
+lascia il comportamento invariato e si scrive il perché in un test**
+(`test_chip_mese_e_cumulativo_non_e_il_bucket_mese`), che asserisce entrambi i
+lati e la relazione di sovrainsieme stretto fra loro.
+
+### Prova per mutazione — 15 mutanti, 15 uccisi
+
+Ognuno applicato su copia, **verificato montato** (`git diff` non vuoto) prima
+di leggerne l'esito, e ripristinato prima del successivo.
+
+| # | Mutante | Ucciso da |
+|---|---|---|
+| M1 | `s < today` → `<=` | `test_scadute_esclude_chi_scade_oggi` |
+| M2-M3 | confini settimana `>=`/`<=` allentati | `test_settimana_include_oggi_e_il_settimo_giorno` |
+| M4 | chip «mese» allineato al bucket | **`test_chip_mese_...`** |
+| M5 | confine del bucket «mese» spostato | `test_chip_mese_...` + `test_bucket_e_kpi_concordano` |
+| M6 | il periodo non esclude più le pagate | 4 test |
+| M7 | lista fornitori vuota che filtra tutto | `test_filtro_fornitori_vuoto_non_filtra_nulla` |
+| M8 | nome fornitore raro invece del frequente | `test_elenca_fornitori_deduplica_per_piva` |
+| M9 | `soloNuove` invertito | `test_filtro_solo_nuove` |
+| M10 | in `statoDocumento`, NC dopo pagata | `test_stato_documento_concorda_con_i_bucket` |
+| M11-M12 | ramo personalizzato → `true`; estremo alto esclusivo | `test_personalizzato_e_le_senza_scadenza` |
+| M13 | `?? Infinity` → `?? 0` | `test_ordina_mette_le_senza_scadenza_in_fondo` |
+| M14 | NC contate fra i debiti per-sede | `test_aggrega_per_sede_conta_solo_i_debiti` |
+| M15 | `parseLocalDate` → `new Date()` | 6 test, **entrambi i fusi** |
+
+**Due cose misurate che smentiscono un'attesa, e vanno dette:**
+
+1. **M13 al primo tentativo non è stato applicato**: `?? Infinity` compare
+   **due volte** e la sostituzione è stata rifiutata invece di produrre un
+   «sopravvissuto» che non misurava nulla. Ripetuto con contesto univoco
+   (entrambe le righe insieme) → ucciso.
+2. **M15 muore in *entrambi* i fusi**, non solo a Los Angeles come previsto.
+   Indagato invece di darlo per buono: a Roma `new Date("2026-08-31")` vale
+   **02:00 locali**, stesso giorno ma *non* mezzanotte, e basta a spostare un
+   confronto inclusivo contro un estremo scelto dall'utente. La previsione
+   «muore solo a ovest» vale per la lettura di `pagata_at` in `computeKpi`
+   (altro file), non per questi confini. Il test è più forte del previsto, non
+   più debole.
+
+### Verifica
+
+- `python -m pytest tests/` → **11.545 passed, 43 skipped** (era 11.521: +24)
+- I 5 file storici dello scadenziario → **77** (la roadmap diceva 69: cifra
+  già invecchiata prima di questa sessione); **101** col nuovo file dei filtri
+- `npx tsc --noEmit` → pulito **prima e dopo** (misurato prima del refactor:
+  già a zero, quindi ogni errore sarebbe stato mio)
+- `check_documentazione.py` → pulito
+- Nessun altro file dell'app usava i simboli spostati (verificato con grep)
+
+### Non fatto, e dichiarato
+
+- **`daysToCestino`** (soglia 30gg del cestino) e **`DocumentoRow.isOverdue`**
+  (bordo rosso) **non sono stati estratti**: sono label e decorazione, non
+  decidono inclusioni né importi. `isOverdue` è però stato **riscritto come
+  `statoDocumento(doc) === "Scaduta"`** per non lasciare in giro una quarta
+  definizione di «scaduto» a deriva libera. Sono esclusioni motivate, non
+  dimenticanze.
+- **Il rendering resta non testato** (2.119 righe): serve un runner di
+  componenti, che il punto 9 ha escluso per ragione strutturale
+  (`deploy-vercel.yml` scatta su `apps/web/**`).
+- **`dependencies=[...]` a livello di `APIRouter`** — invariata: tocca 238
+  endpoint, va aperta come dimensione a sé con la sua finestra di deploy.

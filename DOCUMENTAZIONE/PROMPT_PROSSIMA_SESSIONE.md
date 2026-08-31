@@ -12,9 +12,8 @@ i verbali delle sessioni chiuse stanno in `..._STORICO.md`. Il ciclo 2026-08 è
 
 **Il contatore della copertura è `DOCUMENTAZIONE/AUDIT_COPERTURA.md`**
 (creato il 31/8/2026): è l'unico posto dove le somme tornano, e va aggiornato a
-fine sessione insieme alla roadmap. Misurato il 31/8: **19% letto
-integralmente, 16% auditato per dimensione, 65% mai guardato** su 109.964
-righe. «Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di
+fine sessione insieme alla roadmap. Ri-misurato il 31/8 a fine 2ª sessione: **21% letto integralmente, 16%
+auditato per dimensione, 63% mai guardato** su 110.061 righe. «Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di
 dichiarare chiuso qualsiasi perimetro.
 
 ## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non spedito
@@ -47,85 +46,85 @@ trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
   documento al codice.
 - **Primo pezzo di scadenziario** (31/8) — `buildCashFlow` estratta e coperta,
   4 mutanti uccisi.
+- **Dimensione «scadenziario» CHIUSA** (31/8, 2ª sessione) — 7 funzioni estratte
+  in `lib/scadenziario.ts`, **15 mutanti su 15 uccisi**, client 2.210 → 2.119
+  righe. Trovata e **lasciata invariata** (decisione di Mattia) la divergenza
+  chip «Questo mese» (cumulativo) vs sezione «Questo mese» (fascia): ora è
+  scritta in un test invece che in nessun posto.
 
 ## Cosa si fa, e cosa viene dopo
 
-**Si finisce lo scadenziario** (blocco «opzione A» qui sotto). Poi si apre
-`margini/`, non prima.
+**Si apre `margini/`** (4.795 righe, **tocca il MOL**). Lo scadenziario è
+chiuso davvero: mutazione, commit, verbale, contatore ri-misurato,
+`check_documentazione.py` pulito.
 
-Il contatore (`AUDIT_COPERTURA.md`, 31/8) ha misurato che la tabella «perimetro
-scoperto» della roadmap elenca **4 aree frontend su 14**, e non le due più
-grandi — la coda vera è questa:
+⚠️ **Prima di aprire `margini/`, leggi il verbale che l'ha già letta in parte.**
+La coda sotto è stata corretta il 31/8 dopo il `code-reviewer`: la prima
+stesura dava «mai guardata» ad aree che i cicli 07 e 08 avevano già coperto.
+**Aprire un'area 🟠 non significa partire da zero**: il perimetro escluso è
+stato misurato e motivato, e rileggerlo è lavoro fantasma.
 
-| Area | Righe | Stato |
-|---|---:|---|
-| `(app)/workspace/` | 5.012 | 🔴 mai guardata — **la più grande dell'app** |
-| `(app)/margini/` | 4.795 | 🔴 mai guardata — **tocca il MOL** |
-| `components/` | 7.298 | 🔴 mai guardata — condivisa da tutte le pagine |
-| `(app)/scadenziario/` client | 2.210 | 🟠 il lavoro qui sotto |
+| Area | Righe | Stato | Dove sta scritto cosa è già letto |
+|---|---:|---|---|
+| `(app)/margini/` | 4.795 | 🟠 60% letto | ciclo 07 §3c: calcolo-tab (1.248), analisi-tab (846), coperti-tab (809) |
+| `(app)/catena/` | 3.127 | 🔴 **mai toccata** | nessun verbale — è l'unica area grande davvero vergine |
+| `components/` | 7.298 | 🟠 30% letto | **F3 ciclo 08 CHIUSA** (`AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`) |
+| `(app)/workspace/` | 5.012 | 🟠 37% letto | ciclo 07 §3c + **F6 ciclo 08 CHIUSA** |
+| `(app)/prezzi/` | 2.361 | 🟠 41% letto | ciclo 07 §3c: variazioni-tab (973) |
 
-**Deciso da Mattia il 31/8: si finisce lo scadenziario.** Regola sua, ora in
+**Deciso il 31/8: `margini/` è la prossima dimensione.** Regola di Mattia, in
 `WORKFLOW.md` §5bis: *una cosa alla volta, chiusa davvero prima della
-successiva — niente strascichi*. Lo scadenziario è l'unica cosa aperta, quindi
-si chiude quello. `margini/` (4.795, tocca il MOL) è la dimensione **dopo**, e
-si apre solo a scadenziario chiuso.
+successiva — niente strascichi*. Lo scadenziario è chiuso, quindi si apre
+`margini/` e **nient'altro** finché non è chiuso a sua volta.
 
 **Chiuso davvero** = tutti e 5 i punti di §5bis, non tre su cinque: mutazione,
 commit, verbale, contatore `AUDIT_COPERTURA.md` ri-misurato,
 `check_documentazione.py` pulito.
 
-## Cosa fare: continuare lo scadenziario
+## Cosa fare: aprire `margini/`
 
-**È la priorità 🟠 della tabella «perimetro ancora scoperto», ed è più piccola
-di come sembra.** Leggi il blocco «Perché lo scadenziario subito dopo» nella
-roadmap prima di iniziare: contiene la copertura già esistente misurata.
+**È la priorità 🔴 per esposizione, non per dimensione**: `workspace/` è più
+grande (5.012) ma ha esposizione live bassa; `margini/` **tocca il MOL**, che è
+regola di dominio critica (`CLAUDE.md` §1: le righe `Da Classificare` sono
+escluse dai margini finché non vengono classificate, per non falsare il MOL).
 
-In sintesi, **già coperto** (69 + 8 test verdi, misurati il 31/8): tutto il
-backend (`get_documenti_scadenziario`, RPC aggregata, regole, catena, chat) e
-**tutte** le funzioni logiche di `lib/scadenziario.ts` — `computeKpi`,
-`bucketizeDocumenti`, `parseLocalDate`, `todayLocalIso`, `buildCashFlow` — su 2
-fusi. **Il difetto storico di fuso su `pagata_at` è coperto anche in lettura.**
+**La strada è battuta tre volte** (`poolSaturo`/F7 il 29/8, `buildCashFlow` e
+poi i filtri il 31/8): **estrarre la logica pura in `lib/`, coprirla in
+`tests/*.py` con `esegui_ts`, provarla per mutazione**. Non serve un runner di
+componenti — il punto 9 l'ha escluso per ragione strutturale
+(`deploy-vercel.yml` scatta su `apps/web/**`: ogni merge di un test farebbe
+partire un deploy di produzione).
 
-**Scoperto**: `scadenziario-client.tsx`, **2.210 righe** di rendering, stato,
-hook, filtri client.
+**Prima cosa da fare, prima di estrarre qualsiasi cosa**: cercare nel perimetro
+la logica che *decide numeri o inclusioni* — qui significa **come si calcola il
+MOL e cosa entra o non entra nel calcolo**. È esattamente la classe che ha già
+prodotto difetti veri, ed è quella dove un errore non si vede: il numero è
+solo sbagliato.
 
-La strada già battuta due volte (`poolSaturo`/F7 il 29/8, `buildCashFlow` il
-31/8) è: **estrarre la logica pura in `lib/`, coprirla, provarla per mutazione**.
-Non serve un runner di componenti — il punto 9 l'ha escluso per ragione
-strutturale (`deploy-vercel.yml` scatta su `apps/web/**`: ogni merge di un test
-farebbe partire un deploy di produzione).
+Ipotesi da verificare, **non da assumere**:
+- **l'esclusione delle righe `Da Classificare`** dai margini è nel backend, nel
+  frontend, o in entrambi? Se è duplicata, le due copie sono allineate?
+- **le soglie e i confini di periodo**: `margini/` confronta mesi e periodi.
+  Ogni confine di data va guardato col fuso in mente, non solo con `tsc`.
+- **le aggregazioni per categoria** rispettano il constraint
+  `fatture_categoria_not_empty_chk` e la regola su `"📝 NOTE E DICITURE"`
+  (consentita solo con `totale_riga == 0`)?
 
-**Prima cosa da fare, prima di estrarre qualsiasi cosa**: cercare nel componente
-la logica che *decide numeri o inclusioni* — filtri che scelgono quali documenti
-il cliente vede, aggregazioni, confini di data. Quella è la classe di codice che
-ha già prodotto difetti veri. Il rendering puro non vale l'estrazione.
+## Se `margini/` chiude presto: NON aprire altro
 
-Ipotesi da verificare, non da assumere:
-- **i filtri client**: un documento che l'utente si aspetta di vedere può
-  sparire da una vista? (È già successo: una guardia che misurava una soglia
-  *dopo* i filtri client invece che prima — vedi «Trappole» in CLAUDE.md.)
-- **le tre implementazioni degli stessi confini** (`computeKpi`,
-  `bucketizeDocumenti`, `buildCashFlow`) sono tenute allineate da un test: se ne
-  nasce una quarta dentro il componente, va estratta o agganciata a quel test.
-- **`todayLocalIso` scrive `pagata_at` in produzione**: ogni nuovo punto che
-  scrive date va guardato col fuso in mente, non solo con `tsc`.
-
-## Se lo scadenziario chiude presto: NON aprire altro
-
-Regola di Mattia (§5bis): una cosa alla volta. Se lo scadenziario chiude e
-avanza tempo, **si chiude bene** — verbale, contatore ri-misurato,
+Regola di Mattia (§5bis): una cosa alla volta. Se `margini/` chiude e avanza
+tempo, **si chiude bene** — verbale, contatore ri-misurato,
 `check_documentazione.py` pulito, `code-reviewer` — e la sessione finisce lì,
-lasciando il prompt pronto per la successiva. Aprire `margini/` «già che ci
+lasciando il prompt pronto per la successiva. Aprire l'area dopo «già che ci
 siamo» è esattamente lo strascico che questa regola vieta.
 
 La coda per le sessioni successive, **per esposizione, non per dimensione**:
-1. **`margini/`** 🔴 4.795 righe — tocca il MOL, regola di dominio critica.
-2. **`components/`** 🔴 7.298 righe — condivisa da tutte le pagine: un difetto
+1. **`components/`** 🔴 7.298 righe — condivisa da tutte le pagine: un difetto
    qui si moltiplica su tutte le aree.
-3. **`workspace/`** 🔴 5.012 righe — la più grande, ma esposizione live bassa
+2. **`workspace/`** 🔴 5.012 righe — la più grande, ma esposizione live bassa
    (misurata dal ciclo 07: turni 0, regole 0, ingredienti 0).
-4. **`prezzi/`** 🔴 2.361 righe — 39.133 righe fattura a monte.
-5. **`(mobile)/`** 🔴 3.984 righe — frontend separato, mai guardato.
+3. **`prezzi/`** 🔴 2.361 righe — 39.133 righe fattura a monte.
+4. **`(mobile)/`** 🔴 3.984 righe — frontend separato, mai guardato.
 
 ## Voce aperta, e non è una dimenticanza
 
@@ -170,6 +169,15 @@ indagarla di nuovo: il perché è nel docstring di `anomaly_radar_service.py` e 
   discrimina. Il 31/8 la prima stesura di un test falliva sul docstring che
   documentava il difetto — un match testuale nudo misura il proprio pattern, non
   il codice.
+- **Un mutante che non matcha va rifiutato, non interpretato**: il 31/8
+  `?? Infinity` compariva **due volte** e la sostituzione singola sarebbe
+  «sopravvissuta» senza misurare niente. Lo script di mutazione deve
+  **asserire che le sostituzioni siano esattamente 1** e fermarsi altrimenti.
+- **Una previsione sul mutante va verificata come il resto.** Il 31/8 era
+  atteso che `new Date()` morisse *solo* a ovest di Greenwich: muore in
+  **entrambi** i fusi, perché a Roma `new Date("YYYY-MM-DD")` vale le 02:00
+  locali — stesso giorno, ma non mezzanotte. L'attesa era giusta per
+  `pagata_at`, non per questi confini.
 - **Un mock che non guarda cosa gli viene chiesto non è una rete.**
 - **Leggere un `if` non dice quale suo lato è caldo.** Misura quale ramo
   percorrono i dati veri prima di dichiarare protetta una cosa.

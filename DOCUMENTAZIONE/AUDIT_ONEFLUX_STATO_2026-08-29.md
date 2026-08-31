@@ -187,7 +187,7 @@ misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
 | Area | Righe | Esposizione live | Priorità |
 |---|---|---|---|
 | ~~**169 route API** (`apps/web/src/app/api/`)~~ | 4.776 | tutto il traffico dell'app | ✅ 30/8 |
-| `scadenziario/` | 2.337 (1 file da 2.244) | **2.001 doc non pagati**, 1.853 scaduti, 148 futuri, 32 pagate/30gg | 🟠 backend+logica già coperti (69 test, 31/8): scoperto **solo il client** |
+| `scadenziario/` | 2.212 (client 2.119) | **2.001 doc non pagati**, 1.853 scaduti, 148 futuri, 32 pagate/30gg | ✅ **chiusa 31/8 (2ª sessione)**: filtri/ordinamento/stato estratti in `lib/` e provati per mutazione (15/15). Resta scoperto il solo rendering |
 | `prezzi/` | 2.361 (5 tab) | **39.133 righe fattura** a monte | 🟠 |
 | `admin/` | 3.685 | solo staff, non clienti | 🟡 |
 | `assistenza/` | 292 | `marketplace_leads` 0 righe | ⚪ |

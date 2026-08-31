@@ -19,7 +19,10 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
+  type Periodo, type Ordine, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  fornitoreKey, ordinaDocumenti, elencaFornitori, statoDocumento,
+  filtraDocumenti, aggregaPerSede,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -145,9 +148,7 @@ type DocumentoRowProps = {
 
 function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecnicaId }: DocumentoRowProps) {
   const scad = parseLocalDate(doc.scadenza_effettiva);
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  const isOverdue = !doc.pagata && scad !== null && scad < todayMidnight;
+  const isOverdue = statoDocumento(doc) === "Scaduta";
 
   return (
     <div
@@ -1195,8 +1196,6 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
 
 // ── Fornitore Multi-Select ────────────────────────────────────────────────────
 
-type FornitoreEntry = { key: string; label: string };
-
 type FornitoreMultiSelectProps = {
   fornitori: FornitoreEntry[];
   selected: Set<string>;
@@ -1295,39 +1294,13 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-// Chiave di raggruppamento fornitore: P.IVA se nota, altrimenti nome (fatture
-// senza fatture_documenti collegata, es. pre-esistenti al join).
-function fornitoreKey(d: Documento): string {
-  return d.piva_fornitore || d.fornitore;
-}
-
-type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 type View = "agenda" | "calendario";
-type Ordine = "scadenza" | "importo" | "fornitore";
 
 const ORDINE_LABELS: Record<Ordine, string> = {
   scadenza: "Scadenza (prima le vicine)",
   importo: "Importo (prima i più alti)",
   fornitore: "Fornitore (A→Z)",
 };
-
-// Ordina i documenti di un bucket secondo il criterio scelto. Le fatture senza
-// scadenza finiscono in fondo quando si ordina per scadenza.
-function ordinaDocumenti(docs: Documento[], ordine: Ordine): Documento[] {
-  const arr = [...docs];
-  if (ordine === "importo") {
-    arr.sort((a, b) => (b.totale_documento || 0) - (a.totale_documento || 0));
-  } else if (ordine === "fornitore") {
-    arr.sort((a, b) => (a.fornitore || "").localeCompare(b.fornitore || "", "it"));
-  } else {
-    arr.sort((a, b) => {
-      const da = parseLocalDate(a.scadenza_effettiva)?.getTime() ?? Infinity;
-      const db = parseLocalDate(b.scadenza_effettiva)?.getTime() ?? Infinity;
-      return da - db;
-    });
-  }
-  return arr;
-}
 
 type CestinoItem = {
   file_origine: string;
@@ -1361,7 +1334,6 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
   const sedeTecnicaId = sedi.find(s => s.is_sede_tecnica)?.id;
   const [filtroSede, setFiltroSede] = useState<string>("tutte"); // "tutte" | ristorante_id | "gruppo"
-  const matchFiltriComuniRef = useRef<(d: Documento) => boolean>(() => true);
   const [view, setView] = useState<View>("agenda");
   const [selectedFileOrigini, setSelectedFileOrigini] = useState<Set<string>>(new Set());
   const [peekDoc, setPeekDoc] = useState<Documento | null>(null);
@@ -1404,89 +1376,35 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // Lista fornitori unici raggruppati per P.IVA (fallback nome se assente): la
   // stessa P.IVA con ragione sociale scritta diversa non deve apparire come
   // voci multiple nel filtro. Mostra il nome più frequente per quella chiave.
-  const fornitoriUnici = useMemo(() => {
-    const counts = new Map<string, Map<string, number>>();
-    for (const d of documenti) {
-      const key = fornitoreKey(d);
-      if (!key) continue;
-      const nomi = counts.get(key) ?? new Map<string, number>();
-      nomi.set(d.fornitore, (nomi.get(d.fornitore) ?? 0) + 1);
-      counts.set(key, nomi);
-    }
-    const entries: FornitoreEntry[] = [...counts.entries()].map(([key, nomi]) => {
-      const label = [...nomi.entries()].sort((a, b) => b[1] - a[1])[0][0];
-      return { key, label };
-    });
-    return entries.sort((a, b) => a.label.localeCompare(b.label, "it"));
-  }, [documenti]);
+  const fornitoriUnici = useMemo(() => elencaFornitori(documenti), [documenti]);
 
   // ── Documenti filtrati
-  const documentiFiltrati = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
-    const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
+  // I filtri stanno in `lib/scadenziario.ts`, coperti da
+  // tests/test_scadenziario_filtri_frontend.py: qui dentro nessun test li
+  // raggiungeva, e decidono quali fatture il cliente vede.
+  const filtriComuni = useMemo(() => ({
+    periodo: filtroPeriodo,
+    fornitori: [...filtroFornitori],
+    soloNuove: filtroSoloNuove,
+    dataDa: filtroDateDa,
+    dataA: filtroDateA,
+  }), [filtroPeriodo, filtroFornitori, filtroSoloNuove, filtroDateDa, filtroDateA]);
 
-    // Filtri comuni (periodo/fornitori/nuove), esclusa la sede: riusati anche
-    // dal KPI per-sede, che deve riflettere gli altri filtri attivi ma non
-    // quello di sede stesso (altrimenti sarebbe sempre un'unica barra).
-    function matchFiltriComuni(d: Documento): boolean {
-      if (filtroFornitori.size > 0 && !filtroFornitori.has(fornitoreKey(d))) return false;
-      if (filtroSoloNuove && !d.is_nuovo) return false;
-
-      // Filtro periodo (solo su non pagate con scadenza, tranne "tutti").
-      // parseLocalDate interpreta "YYYY-MM-DD" a mezzanotte LOCALE: con new Date()
-      // grezzo era mezzanotte UTC e in Italia il confronto con today (locale)
-      // sbagliava di un giorno sulle scadenze esattamente a mezzanotte.
-      if (filtroPeriodo !== "tutti") {
-        if (d.pagata) return false;
-        const s = parseLocalDate(d.scadenza_effettiva);
-        if (filtroPeriodo === "scadute") {
-          if (!s) return false;
-          return s < today;
-        }
-        if (filtroPeriodo === "settimana") {
-          if (!s) return false;
-          return s >= today && s <= in7;
-        }
-        if (filtroPeriodo === "mese") {
-          if (!s) return false;
-          return s >= today && s <= in30;
-        }
-        if (filtroPeriodo === "personalizzato") {
-          if (!s) return filtroDateDa === "" && filtroDateA === "";
-          const da = parseLocalDate(filtroDateDa);
-          const a = parseLocalDate(filtroDateA);
-          if (da && s < da) return false;
-          if (a && s > a) return false;
-        }
-      }
-
-      return true;
-    }
-    matchFiltriComuniRef.current = matchFiltriComuni;
-
-    return documenti.filter(d => matchFiltroSede(d) && matchFiltriComuni(d));
-  }, [documenti, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA, filtroSoloNuove, filtroSede, sedeTecnicaId]);
+  const documentiFiltrati = useMemo(
+    () => filtraDocumenti(documenti, filtriComuni, matchFiltroSede),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [documenti, filtriComuni, filtroSede, sedeTecnicaId],
+  );
 
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
 
   // KPI per sede (striscia cliccabile, solo modalità catena): stessi filtri
   // comuni di documentiFiltrati ma SENZA il filtro sede, aggregati per
-  // ristorante_id. Usa il ref per evitare di duplicare la logica filtri.
+  // ristorante_id.
   const kpiPerSede = useMemo(() => {
     if (!modalitaCatena || sedi.length === 0) return [];
-    const match = matchFiltriComuniRef.current;
-    const perSede = new Map<string, { count: number; totale: number }>();
-    for (const d of documenti) {
-      if (!d.ristorante_id || !match(d)) continue;
-      if (d.is_nota_credito || d.pagata) continue;
-      const acc = perSede.get(d.ristorante_id) ?? { count: 0, totale: 0 };
-      acc.count += 1;
-      acc.totale += d.totale_documento || 0;
-      perSede.set(d.ristorante_id, acc);
-    }
+    const perSede = aggregaPerSede(documenti, filtriComuni);
     return sedi.map(s => ({
       id: s.id,
       nome: s.nome_ristorante,
@@ -1494,7 +1412,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       count: perSede.get(s.id)?.count ?? 0,
       totale: perSede.get(s.id)?.totale ?? 0,
     }));
-  }, [documenti, modalitaCatena, sedi, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA, filtroSoloNuove]);
+  }, [documenti, modalitaCatena, sedi, filtriComuni]);
   const buckets = useMemo(() => {
     const b = bucketizeDocumenti(documentiFiltrati);
     return {
@@ -1511,11 +1429,12 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // Il calendario ha già la propria navigazione mensile: applica solo il filtro
   // fornitore (i chip periodo sono specifici dell'agenda).
   const documentiCalendario = useMemo(() =>
-    documenti.filter(d =>
-      matchFiltroSede(d) &&
-      (filtroFornitori.size === 0 || filtroFornitori.has(fornitoreKey(d))) &&
-      (!filtroSoloNuove || d.is_nuovo)
+    filtraDocumenti(
+      documenti,
+      { periodo: "tutti", fornitori: [...filtroFornitori], soloNuove: filtroSoloNuove },
+      matchFiltroSede,
     ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [documenti, filtroFornitori, filtroSoloNuove, filtroSede, sedeTecnicaId]
   );
 
@@ -1734,26 +1653,16 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   function exportCsv() {
     const righe = ordinaDocumenti(documentiFiltrati, ordine);
     if (righe.length === 0) { toast.error("Nessuna fattura da esportare"); return; }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const headers = ["Fornitore", "N. documento", "Data fattura", "Scadenza", "Importo", "Stato"];
     const num = (n: number | null | undefined) =>
       (n ?? 0).toFixed(2).replace(".", ",");
-    const stato = (d: Documento) => {
-      if (d.is_nota_credito) return "Nota di credito";
-      if (d.pagata) return "Pagata";
-      const s = parseLocalDate(d.scadenza_effettiva);
-      if (s && s < today) return "Scaduta";
-      if (!s) return "Senza scadenza";
-      return "Da pagare";
-    };
     const body = righe.map(d => [
       d.fornitore || "",
       d.numero_documento || "",
       d.data_documento ? formatDate(d.data_documento) : "",
       d.scadenza_effettiva ? formatDate(d.scadenza_effettiva) : "",
       num(d.totale_documento),
-      stato(d),
+      statoDocumento(d),
     ]);
     const csv = [headers, ...body]
       .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
