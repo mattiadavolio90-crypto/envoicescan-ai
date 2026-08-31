@@ -322,7 +322,8 @@ rendering, stato e hook — cioè ciò che non muove né euro né inclusioni.
 ### Cosa è stato fatto
 
 7 funzioni estratte da `scadenziario-client.tsx` a `lib/scadenziario.ts`
-(2.210 → **2.119** righe il client, 245 → **433** il lib):
+(2.210 → **2.118** righe il client, 245 → **442** il lib; misurati a HEAD
+a chiusura, non al commit intermedio):
 
 | Funzione | Perché non poteva restare nel componente |
 |---|---|
@@ -418,8 +419,17 @@ ne ha trovati **3 che i miei 15 non coprivano**. Tutti e tre reali:
   coperto a parole. È lo stesso errore che il metodo vieta: un test che misura
   il proprio pattern, non il codice.
 
-**Bilancio mutazione aggiornato: 18 mutanti, 17 uccisi, 1 sopravvissuto e
-dichiarato.**
+**Bilancio mutazione aggiornato: 20 mutanti, 19 uccisi, 1 sopravvissuto e
+dichiarato** (il locale `"it"`).
+
+La 2ª passata del reviewer ha trovato un ultimo buco **comportamentale**: la
+guardia `chiavi.size > 0` introdotta con l'ottimizzazione del Set non era
+raggiunta da nessun test. Oggi è irraggiungibile (entrambi i chiamanti passano
+un Set coerente), ma il 4° parametro di `matchDocumento` è **pubblico di
+firma**: il primo che lo chiamasse da fuori con un Set vuoto avrebbe visto la
+lista svuotarsi. Coperto da `test_chiavi_precalcolate_coerenti_con_la_lista`,
+che pinna anche l'equivalenza fra Set coerente e lista (l'ottimizzazione non
+cambia cosa si vede). Mutanti M18/M19 uccisi.
 
 Corretti inoltre, sempre su segnalazione del reviewer:
 
@@ -453,7 +463,7 @@ introdurlo.
   `statoDocumento(doc) === "Scaduta"`** per non lasciare in giro una quarta
   definizione di «scaduto» a deriva libera. Sono esclusioni motivate, non
   dimenticanze.
-- **Il rendering resta non testato** (2.119 righe): serve un runner di
+- **Il rendering resta non testato** (2.118 righe): serve un runner di
   componenti, che il punto 9 ha escluso per ragione strutturale
   (`deploy-vercel.yml` scatta su `apps/web/**`).
 - **`dependencies=[...]` a livello di `APIRouter`** — invariata: tocca 238

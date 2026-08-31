@@ -310,6 +310,51 @@ def test_elenca_fornitori_deduplica_per_piva():
 
 
 @pytest.mark.parametrize("tz", FUSI)
+def test_chiavi_precalcolate_coerenti_con_la_lista(tz):
+    """Il 4° parametro di `matchDocumento` non deve poter contraddire i filtri.
+
+    `filtraDocumenti`/`aggregaPerSede` passano un Set derivato da
+    `filtri.fornitori` per non pagare un `includes` per riga (misurato: 199ms →
+    23ms su 5.000 doc × 300 fornitori). Il parametro e' pubblico di firma, pero':
+    un chiamante che passasse un Set derivato da un'altra fonte cambierebbe cosa
+    il cliente vede, in silenzio.
+
+    Qui si pinna che, **a Set coerente**, l'esito e' identico a quello senza Set,
+    e che un Set **vuoto** non e' "nessun fornitore ammesso" ma "nessun filtro" —
+    il ramo `chiavi.size > 0`, che nessun altro test raggiunge.
+    """
+    _, docs = _campione(tz)
+    docs = [dict(d, piva_fornitore="P1" if d["id"] in ("oggi", "g7") else "P2")
+            for d in docs]
+
+    esiti = esegui_ts(
+        MODULO,
+        """
+        const f = { periodo: "tutti", fornitori: input.fornitori };
+        const ids = (chiavi) => input.docs
+          .filter(d => m.matchDocumento(d, f, undefined, chiavi)).map(d => d.id);
+        emit({
+          senza: ids(undefined),
+          coerente: ids(new Set(input.fornitori)),
+          vuoto: ids(new Set()),
+        });
+        """,
+        argomento={"docs": docs, "fornitori": ["P1"]},
+        tz=tz,
+        richiede=_RICHIEDE,
+    )
+
+    assert esiti["coerente"] == esiti["senza"] == ["oggi", "g7"], (
+        "un Set coerente con filtri.fornitori deve dare esattamente lo stesso "
+        "esito della lista: l'ottimizzazione non puo' cambiare cosa si vede"
+    )
+    assert esiti["vuoto"] == [d["id"] for d in docs], (
+        "Set vuoto = nessun filtro, non 'nessun fornitore ammesso': senza la "
+        "guardia `chiavi.size > 0` il cliente troverebbe la lista vuota"
+    )
+
+
+@pytest.mark.parametrize("tz", FUSI)
 def test_filtro_solo_nuove(tz):
     _, docs = _campione(tz)
     assert _filtra(docs, {"periodo": "tutti", "soloNuove": True}, tz) == ["oggi"], (
