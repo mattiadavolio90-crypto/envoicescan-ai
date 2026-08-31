@@ -165,6 +165,14 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 
 ## 📊 Il perimetro ancora scoperto — misurato il 30/08/2026
 
+> ⚠️ **Questa tabella è parziale, e il 31/8 si è misurato quanto.** Elenca
+> **4 aree frontend su 14** e **zero backend Python**: 15.049 righe su 109.964.
+> Il conto completo sta in **`AUDIT_COPERTURA.md`** — 19% letto integralmente,
+> 16% auditato per dimensione, **65% mai guardato**. Le due aree frontend più
+> grandi (`workspace/` 5.012, `margini/` 4.795, quest'ultima tocca il MOL) non
+> compaiono qui sotto. Usa il contatore per decidere le priorità, non questa
+> tabella.
+
 Superficie oggi (`wc -l`, rimisurata, non ereditata):
 
 | Perimetro | Righe |

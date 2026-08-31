@@ -8,6 +8,13 @@ Il ciclo audit corrente è `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md`;
 i verbali delle sessioni chiuse stanno in `..._STORICO.md`. Il ciclo 2026-08 è
 **chiuso e archiviato** in `docs/storico/`: non riaprirlo.
 
+**Il contatore della copertura è `DOCUMENTAZIONE/AUDIT_COPERTURA.md`**
+(creato il 31/8/2026): è l'unico posto dove le somme tornano, e va aggiornato a
+fine sessione insieme alla roadmap. Misurato il 31/8: **19% letto
+integralmente, 16% auditato per dimensione, 65% mai guardato** su 109.964
+righe. «Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di
+dichiarare chiuso qualsiasi perimetro.
+
 ## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non spedito
 
 Mattia accumula più sessioni e **deploya una volta sola, la sera**. Regola
@@ -39,7 +46,29 @@ trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
 - **Primo pezzo di scadenziario** (31/8) — `buildCashFlow` estratta e coperta,
   4 mutanti uccisi.
 
-## Cosa fare: continuare lo scadenziario
+## ⚠️ La priorità è cambiata il 31/8 — leggi prima di partire
+
+Il blocco «continuare lo scadenziario» qui sotto **non è più la prima cosa**.
+Il contatore (`AUDIT_COPERTURA.md`, 31/8) ha misurato che la tabella «perimetro
+scoperto» della roadmap elenca **4 aree frontend su 14**, e non le due più
+grandi:
+
+| Area | Righe | Stato |
+|---|---:|---|
+| `(app)/workspace/` | 5.012 | 🔴 mai guardata — **la più grande dell'app** |
+| `(app)/margini/` | 4.795 | 🔴 mai guardata — **tocca il MOL** |
+| `components/` | 7.298 | 🔴 mai guardata — condivisa da tutte le pagine |
+| `(app)/scadenziario/` client | 2.210 | 🟠 il lavoro qui sotto |
+
+**Da decidere con Mattia a inizio sessione**, non di iniziativa: finire lo
+scadenziario (piccolo, strada già battuta, chiude un'area) oppure aprire
+`margini/` o `workspace/` (grandi, mai guardate, la prima tocca una regola di
+dominio). Non c'è una risposta ovvia: lo scadenziario è quasi chiuso, ma le
+altre due sono più esposte.
+
+Il blocco che segue resta valido **se si sceglie lo scadenziario**.
+
+## Cosa fare (opzione A): continuare lo scadenziario
 
 **È la priorità 🟠 della tabella «perimetro ancora scoperto», ed è più piccola
 di come sembra.** Leggi il blocco «Perché lo scadenziario subito dopo» nella
@@ -77,10 +106,15 @@ Ipotesi da verificare, non da assumere:
 
 ## Se lo scadenziario chiude presto
 
-In ordine dalla tabella del perimetro scoperto:
-1. **`prezzi/`** 🟠 — 2.361 righe su 5 tab, **39.133 righe fattura** a monte.
-2. **`admin/`** 🟡 — 3.685 righe, solo staff.
-3. **`assistenza/`** ⚪ — 292 righe, `marketplace_leads` a 0.
+Ordine rivisto il 31/8 col contatore in mano — **per esposizione, non per
+dimensione**:
+1. **`margini/`** 🔴 4.795 righe — tocca il MOL, regola di dominio critica.
+2. **`components/`** 🔴 7.298 righe — condivisa da tutte le pagine: un difetto
+   qui si moltiplica su tutte le aree.
+3. **`workspace/`** 🔴 5.012 righe — la più grande, ma esposizione live bassa
+   (misurata dal ciclo 07: turni 0, regole 0, ingredienti 0).
+4. **`prezzi/`** 🔴 2.361 righe — 39.133 righe fattura a monte.
+5. **`(mobile)/`** 🔴 3.984 righe — frontend separato, mai guardato.
 
 ## Voce aperta, e non è una dimenticanza
 
@@ -143,7 +177,15 @@ indagarla di nuovo: il perché è nel docstring di `anomaly_radar_service.py` e 
 
 ## Chiusura
 
-Verbale in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md` (in coda, con la data),
-e aggiorna lo stato nella roadmap. **Committa il doc insieme al codice che
+Tre file, sempre tutti e tre:
+1. **Verbale** in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md` (in coda, con la data).
+2. **Stato** nella roadmap `AUDIT_ONEFLUX_STATO_2026-08-29.md`.
+3. **Contatore** `AUDIT_COPERTURA.md` — sposta la riga (🔴 → 🔍 → 📖),
+   **ri-misura le righe** coi comandi in cima al file, ricontrolla le somme.
+   Senza questo passo il contatore invecchia e torna il problema che è nato per
+   risolvere.
+
+Poi **riscrivi questo prompt** per la sessione successiva: cosa è stato chiuso,
+cosa resta, quale opzione è la prossima. **Committa il doc insieme al codice che
 documenta** — il 30/8 il `code-reviewer` ha bloccato una chiusura perché i file
 erano `git add`-ati ma mai commitati.
