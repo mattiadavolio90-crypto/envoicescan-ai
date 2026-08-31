@@ -8,27 +8,25 @@ Il ciclo audit corrente è `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md`;
 i verbali delle sessioni chiuse stanno in `..._STORICO.md`. Il ciclo 2026-08 è
 **chiuso e archiviato** in `docs/storico/`: non riaprirlo.
 
-## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non mergiato
+## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non spedito
 
-Mattia ha deciso di **accumulare più sessioni e deployare una volta sola**, la
-sera. Quindi all'inizio della sessione:
+Mattia accumula più sessioni e **deploya una volta sola, la sera**. Regola
+aggiornata il 31/8/2026 (`CLAUDE.md` §«Dove si lavora», `WORKFLOW.md` §0):
+**si lavora su `main` locale, niente branch, niente PR.** All'inizio della
+sessione:
 
 ```bash
-gh pr list --state open    # cosa c'e' gia' in coda
-git log origin/main --oneline -1
+git branch --show-current           # deve essere main
+git log --oneline origin/main..main # cosa e' gia' in coda, non spedito
 ```
 
-**Parti sempre da `origin/main`, mai dal branch della sessione precedente.**
-Se impili i branch uno sull'altro ottieni una catena di PR dipendenti, dove un
-problema sulla prima blocca tutte le altre e il merge serale diventa un
-rebase. Branch nuovo da `main`, PR a sé.
+Se quel secondo comando non è vuoto, **dillo a Mattia subito**: c'è lavoro
+fatto e non ancora spedito, e va saputo prima di aggiungerne altro. Se ti
+trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
 
-**Corollario:** se il tuo lavoro tocca file che una PR in coda ha già
-modificato, controlla il suo diff prima di partire (`gh pr diff <n>`) — non per
-evitarlo, ma per sapere che al merge ci sarà un conflitto e prepararlo.
-
-**Non mergiare senza via esplicito di Mattia**, anche a CI verde: il deploy è
-una decisione sua e ha una finestra oraria (sera/notte/mattina presto).
+**Non spedire senza via esplicito di Mattia**, anche a test verdi: `git push`
+(e a maggior ragione `gh pr merge`) È il deploy, e ha una finestra oraria
+(sera/notte/mattina presto).
 
 **Chiuso finora in questo ciclo:**
 - **Dimensione «route API»** (30/8) — le 3 ipotesi di partenza erano tutte false;

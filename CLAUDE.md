@@ -8,7 +8,7 @@ genera report su margini, prezzi fornitori, foodcost.
 **Owner:** Mattia D'Avolio — sviluppatore singolo.
 **In produzione dal 1 luglio 2026.** 7 account cliente attivi / 11 punti vendita
 (misurato il 29/8/2026): 4 con migliaia di righe fattura e accesso nell'ultima
-settimana, gli altri con pochi dati. Non è più una fase di test.
+settimana, gli altri con pochi dati.
 
 > Le cifre di questo file vanno **ri-misurate**, non ereditate. Il 29/8/2026 la
 > riga sopra diceva ancora «2 clienti in test + 1 operativo» e «go-live: 1
@@ -58,28 +58,39 @@ nella git history. Il container Railway serve il worker FastAPI.
 
 ---
 
+## Dove si lavora: su `main` locale, e basta
+
+**Tutte le sessioni della giornata committano su `main` locale. Niente branch,
+niente PR.** La sera, quando Mattia lo dice: **un push, un deploy**. Una
+sessione nuova parte da `main`, mai dal branch di un'altra; se un branch esiste
+già e il lavoro va spedito, riportalo su `main` in locale e chiudilo **senza**
+mergiarlo.
+
+**Un branch si apre per UNA sola ragione**: quel lavoro **potrebbe non essere
+spedito** (esperimento, refactor incerto). **Non** per la dimensione — un lavoro
+da tre giorni su 40 file che va spedito comunque sta su `main` come un fix da due
+righe. Con un branch per sessione le PR si impilano e la sera diventano N merge
+in ordine obbligato: l'opposto del deploy unico. Il controllo non si perde:
+finché non si pusha il lavoro non esiste per nessuno, e il `code-reviewer` gira
+sul cumulativo prima del push. Vedi `WORKFLOW.md` §0.
+
+---
+
 ## Come si risponde a Mattia
 
 Mattia è l'owner, non un lettore di codice: decide **cosa** si fa, non come.
 Le spiegazioni tecniche lunghe non lo aiutano a decidere — lo bloccano.
 
-**Quando chiede lo stato** («a che punto siamo», «abbiamo finito», «cosa
-manca», «recap», «è tutto a posto»):
+**Quando chiede lo stato** («a che punto siamo», «abbiamo finito», «cosa manca»,
+«recap»): **una riga di verdetto**, **max 3 punti** aperti (una riga ciascuno),
+**una sola domanda** se serve una sua decisione, e **«Vuoi il dettaglio?»**.
+Tetto ~10 righe, niente tabelle/codice/percorsi con numero di riga.
 
-- **una riga secca**: finito / manca X / bloccato su Y;
-- **max 3 punti**, una riga ciascuno, solo cose ancora aperte;
-- **una sola domanda** se serve una sua decisione;
-- **chiudi con «Vuoi il dettaglio?»** e fermati.
-
-Tetto: **~10 righe**. Niente tabelle, niente codice, niente percorsi con numero
-di riga — a meno che il nome *sia* la risposta. Il criterio non è quanto so, è
-**cosa gli serve per decidere il prossimo passo**: se una frase non cambia cosa
-farà adesso, si taglia, anche se è vera.
-
-Un mio errore si corregge in **mezza riga**, non in un paragrafo, e non va
-messo in cima alla risposta. Non ricostruire il ragionamento, non elencare cosa
-non hai fatto, non spiegare perché una cosa *non* è un problema: di' che non lo
-è. Il dettaglio esiste e si dà **per intero se lo chiede dopo** — non prima.
+Il criterio non è quanto so, è **cosa gli serve per decidere il prossimo passo**:
+se una frase non cambia cosa farà adesso, si taglia anche se è vera. Un mio
+errore si corregge in **mezza riga**, non in cima e non in un paragrafo: niente
+ricostruzione del ragionamento, niente elenco di cosa non ho fatto. Il dettaglio
+si dà per intero **se lo chiede dopo**.
 
 Vale in **ogni** sessione, anche quando non lo ricorda. Dettaglio: `WORKFLOW.md` §1bis.
 
@@ -122,10 +133,8 @@ cd apps/web; npm install; npm run dev          # :3000
 # Avvia il worker FastAPI in locale
 python -m services.fastapi_worker              # API su :8000
 
-# Esporta schema OpenAPI (dopo modifiche a fastapi_worker.py)
+# Schema OpenAPI: esporta (dopo modifiche a fastapi_worker.py) / verifica drift
 python scripts/export_openapi.py
-
-# Verifica drift schema
 python scripts/export_openapi.py --check-drift
 ```
 
@@ -144,15 +153,12 @@ python scripts/export_openapi.py --check-drift
   `paths:`); **Railway** non ha filtro di path — anche soli `.md` gli fanno
   ridispiegare il worker (config sul dashboard, non nel repo: `railway.toml`
   documenta i servizi, non il trigger). Non esiste un "spedisco ora, deployo
-  stasera": la finestra oraria (sera/notte/mattina presto, i clienti usano
-  l'app di giorno) è quindi un vincolo **sul push**.
-  Eccetto conferma esplicita di Mattia. Vedi `WORKFLOW.md` §0.
-- **Mai `git push` / `gh pr create` / `gh pr merge` di iniziativa.** Il lavoro
-  si accumula in locale attraverso più sessioni e parte tutto insieme quando
-  Mattia lo dice: N sessioni ≠ N deploy. Il push manda **tutti** i commit
-  accumulati, non solo quelli di oggi — guarda cosa parte prima di spedire:
-  `git log --oneline origin/main..main`. Se a inizio sessione non è vuoto,
-  dillo subito.
+  stasera": la finestra oraria (sera/notte/mattina presto) è un vincolo **sul
+  push**, salvo conferma esplicita di Mattia. Vedi `WORKFLOW.md` §0.
+- **Mai `git push` / `gh pr create` / `gh pr merge` di iniziativa.** N sessioni
+  ≠ N deploy: il push manda **tutti** i commit accumulati, non solo quelli di
+  oggi. Guarda cosa parte (`git log --oneline origin/main..main`) e se a inizio
+  sessione non è vuoto, dillo subito.
 - **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
 - **Worker locale senza `--reload`** tiene in memoria il codice vecchio: riavvialo.
 - **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in

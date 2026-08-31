@@ -12,31 +12,38 @@ Questo documento **non è un vincolo di dominio** (quelli stanno in `CLAUDE.md`)
 
 ## 0. Si accumula, si spedisce una volta sola
 
-**Regola di base, decisa il 30/8/2026.** Il lavoro si accumula su **un solo
-branch** (`lavoro`), e si spedisce in **un unico merge** dentro la finestra
-oraria. Non un branch per modifica, non una PR per fix.
+**Regola di base, decisa il 30/8/2026, semplificata il 31/8/2026.** Tutte le
+sessioni della giornata committano su **`main` locale**. Niente branch, niente
+PR. La sera, quando Mattia lo dice: **un push, un deploy**.
 
-**Perché**: nessuna regola ha mai imposto branch-e-PR per ogni intervento —
-`grep -i "branch\|PR\|merge"` su questo file e su `CLAUDE.md` non trovava
-nulla di normativo. Era una consuetudine auto-alimentata, e costava caro: al 30/8/2026 il repo
-aveva accumulato **19 branch remoti** (15 dei quali già dentro `main`, cioè
-detriti puri) e **~35 locali** risalenti fino a maggio — tutti potati quel
-giorno, oggi restano `main` e `lavoro`. E, dato che merge = deploy, **una
-richiesta di autorizzazione a Mattia per ogni singolo intervento** (5 merge il
-28/8 tra le 12:44 e le 16:49, in piena fascia di servizio).
+**Perché la versione col branch `lavoro` non bastava**: Mattia apre più sessioni
+in parallelo nella stessa giornata, e ogni sessione che non sapeva del branch
+condiviso ne apriva uno suo. Il 31/8 il lavoro era già in **due posti** (2 commit
+su `main` locale, 3 su un branch con PR aperta): la sera sarebbero stati due
+merge distinti in un ordine obbligato. Con tutto su `main` non c'è niente da
+coordinare — le sessioni si accodano da sole.
+
+Nota storica: nessuna regola aveva mai imposto branch-e-PR per ogni intervento
+(`grep -i "branch\|PR\|merge"` su questo file e su `CLAUDE.md` non trovava
+nulla di normativo). Era una consuetudine auto-alimentata, e costava caro: al
+30/8/2026 il repo aveva **19 branch remoti** (15 già dentro `main`, detriti
+puri) e **~35 locali** risalenti fino a maggio, tutti potati quel giorno. E, dato
+che spedire = deploy, **una richiesta di autorizzazione per ogni intervento**
+(5 merge il 28/8 tra le 12:44 e le 16:49, in piena fascia di servizio).
 
 ### Come si lavora
 
-1. **Durante il lavoro**: commit atomici su `lavoro` (uno per intervento
-   concluso, così resta reversibile da solo). Nessuna PR, nessun merge.
-   Per un intervento isolato va bene anche commit in locale su `main` **senza
-   push** — il push è ciò che spedisce.
-2. **Un branch dedicato si apre SOLO se** quel lavoro **potrebbe non essere
-   spedito** insieme al resto (refactor lungo, esperimento, lavoro davvero
-   parallelo). Altrimenti si resta su `lavoro`.
-3. **Prima di spedire**, nella finestra oraria: `touch .claude/.pre_merge`
-   (fa girare la suite completa allo Stop), `/code-reviewer` sul lavoro
-   cumulativo, poi **una PR, un merge, un deploy**.
+1. **Durante il giorno**: commit atomici su `main` locale (uno per intervento
+   concluso, così resta reversibile da solo). **Nessun push.** Nessuna PR.
+   Una sessione nuova parte da `main`, mai dal branch di un'altra sessione.
+2. **Un branch si apre SOLO se** quel lavoro **potrebbe non essere spedito**
+   (esperimento, refactor incerto, roba che forse si butta). **Non** in base
+   alla dimensione: un lavoro grosso che va spedito comunque sta su `main`.
+   Se un branch esiste già e il lavoro va spedito, riportalo su `main` in
+   locale e chiudi il branch **senza** mergiarlo.
+3. **Prima di spedire**, nella finestra serale: `touch .claude/.pre_merge`
+   (fa girare la suite completa allo Stop), `/code-reviewer` sul cumulativo
+   `origin/main..main`, poi **un push, un deploy**.
 
 ### Il lavoro attraversa le sessioni: 4 sessioni ≠ 4 deploy
 
@@ -72,8 +79,9 @@ trovato i difetti che i test verdi non vedevano.
 
 ### Igiene dei branch
 
-Dopo ogni merge, il branch va cancellato (locale e remoto). Controllo
-periodico:
+Con la regola sopra i branch non dovrebbero nascere. Se ne resta uno (eccezione
+"potrebbe non essere spedito", o residuo di una sessione precedente), va chiuso
+appena il suo lavoro è su `main` o è stato buttato. Controllo periodico:
 
 ```bash
 git fetch --prune origin
