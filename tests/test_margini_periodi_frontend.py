@@ -10,8 +10,15 @@ Due classi di difetto, entrambe invisibili: il numero esce solo sbagliato.
    lui.
 
 **Perche' non e' codice di una pagina sola.** `margini/periodi.ts` e' importata
-anche da `(mobile)/m/diario/mobile-incassi.tsx:10` (`scorporoNetto`, `NettoMese`):
-un difetto qui esce su due frontend, e `/m` non e' responsive ma separato.
+anche da `(mobile)/m/diario/mobile-incassi.tsx:10`, e `/m` non e' responsive ma
+un frontend separato: un difetto qui esce su due schermi.
+Attenzione al perimetro pero': il mobile importa **`scorporoNetto` e il tipo
+`NettoMese`, non `fetchNettoMese`**. Il gate "mensile vince" li' e' **riscritto a
+mano** (`mobile-incassi.tsx:221-231`) e **non ha** la distinzione null/0: su
+errore lascia `nettoAutorevole` a null e la riga 273 lo degrada a 0 con
+`?? risposta?.totale_netto ?? 0`. Quindi questi test coprono il mobile **solo per
+lo scorporo**; il suo gate resta scoperto (segnalato dal code-reviewer il 31/8,
+candidato per una fase successiva).
 
 **Perche' i fusi.** I confini si costruiscono con `new Date(y, m, d)`, che e'
 **locale**. Un mutante che passa a UTC muore solo a ovest di Greenwich. I preset

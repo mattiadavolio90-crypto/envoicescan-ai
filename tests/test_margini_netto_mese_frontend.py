@@ -9,10 +9,10 @@ rimaste sono dati orfani. Il gate che decide e' UNA riga
 31/08/2026 (join `ricavi_modalita_mensile` x `ricavi_giornalieri` sullo stesso
 mese-sede, netto calcolato con lo stesso scorporo del codice):
 
-    giugno 2026:  override 73.322 EUR  vs  giornalieri 3.227 EUR
+    giugno 2026:  override 73.322,73 EUR  vs  giornalieri 3.227,27 EUR
     maggio 2026:  override 80.550 EUR  vs  giornalieri 80.551 EUR
 
-Su giugno il ramo sbagliato mostra **70.095 EUR** di differenza. Non solleva
+Su giugno il ramo sbagliato mostra **70.095,46 EUR** di differenza. Non solleva
 nessun errore: mostra solo un numero. E' la classe di difetto piu' costosa del
 progetto, la stessa di F7 e F1.
 
@@ -50,8 +50,11 @@ const urls = [];
 globalThis.fetch = async (url) => {
   urls.push(String(url));
   const r = String(url).includes("/api/ricavi/modalita") ? input.mod : input.giorn;
-  if (!r.ok) return { ok: false };
-  return { ok: true, json: async () => r.body };
+  // `json` viene servita ANCHE quando ok=false: una 500 di FastAPI ha un body
+  // JSON valido ({"detail": ...}). Uno stub che su ok=false non espone `json`
+  // e' irrealistico, e lasciava vivo il mutante che toglie il controllo su
+  // `r.ok` (trovato dal code-reviewer: sopravviveva a 12 test su 12).
+  return { ok: !!r.ok, status: r.ok ? 200 : 500, json: async () => r.body };
 };
 emit({ res: await m.fetchNettoMese(input.anno, input.mese), urls });
 """
@@ -105,7 +108,7 @@ def test_override_mensile_vince_sui_giornalieri():
     assert r["res"] == {"netto": _NETTO_ATTESO, "mensile": True}, (
         "l'override mensile non ha la precedenza: la pagina mostrerebbe i "
         "giornalieri, che sotto un override sono dati orfani. Su giugno 2026 "
-        "questo vale 3.227 EUR invece di 73.322 EUR"
+        "questo vale 3.227 EUR invece di 73.323 EUR"
     )
 
 
@@ -146,7 +149,6 @@ def test_lettura_fallita_e_zero_vero_restano_distinti():
         "un mese davvero senza ricavi torna null invece di 0: il chiamante "
         "non riesce piu' a distinguere 'non lo so' da 'zero'"
     )
-    assert fallita["res"]["netto"] is not zero_vero["res"]["netto"]
 
 
 def test_override_con_campi_mancanti_non_produce_nan():
@@ -206,4 +208,60 @@ def test_override_fallito_non_blocca_il_ramo_giornaliero():
     r = _netto(mod={"ok": False}, giorn={"ok": True, "body": {"totale_netto": 64}})
     assert r["res"] == {"netto": 64, "mensile": False}, (
         "un override non leggibile impedisce di leggere i giornalieri"
+    )
+
+
+def test_un_errore_http_con_body_json_resta_un_errore():
+    """Il caso che i primi 12 test non vedevano (trovato dal code-reviewer).
+
+    Una 500 di FastAPI **ha un body JSON valido** (`{"detail": "..."}`): `r.ok`
+    e' false ma `r.json()` risolve benissimo. Se il codice si fidasse della sola
+    `json()` senza guardare `r.ok`, quel `{"detail": ...}` verrebbe letto come
+    una risposta valida, `?? 0` lo ridurrebbe a **zero**, e l'errore tornerebbe
+    a travestirsi da mese senza incassi — il difetto gia' corretto una volta.
+
+    Misurato: col mutante `.then((r) => r.json())` (senza il controllo su `r.ok`)
+    questo scenario da' `netto: 0` invece di `netto: null`, e i 12 test
+    precedenti restavano tutti verdi.
+    """
+    r = _netto(giorn={"ok": False, "body": {"detail": "errore interno"}})
+    assert r["res"] == {"netto": None, "mensile": False}, (
+        "una risposta HTTP di errore con body JSON viene letta come valida: "
+        "il body d'errore finisce in ?? 0 e l'errore diventa 'zero incassi'"
+    )
+
+
+def test_override_in_errore_con_body_json_non_attiva_il_gate():
+    """Stessa trappola sul ramo `modalita`.
+
+    Qui il `?? null` e' legittimo ("nessun override"), ma se una 500 col body
+    `{"detail": ...}` venisse presa per una risposta valida, `modalita.modalita`
+    sarebbe `undefined` — il gate resterebbe spento per il motivo sbagliato, e
+    un vero override in errore verrebbe silenziosamente ignorato.
+    """
+    r = _netto(mod={"ok": False, "body": {"detail": "errore interno"}},
+               giorn={"ok": True, "body": {"totale_netto": 128}})
+    assert r["res"] == {"netto": 128, "mensile": False}
+
+
+def test_un_override_arrivato_da_una_risposta_di_errore_non_viene_creduto():
+    """Il caso peggiore del ramo `modalita`, e il piu' sottile.
+
+    Se la risposta e' un errore HTTP il cui **body somiglia a un override**
+    (`{"modalita": "mensile", ...}` — un proxy che rimanda l'ultimo payload, una
+    cache che serve un corpo stantio con status 5xx), il codice non deve
+    crederci: `r.ok` e' false, quindi quel body non esiste.
+
+    Misurato col mutante che toglie il controllo su `r.ok`: il gate si **accende**
+    e la pagina mostra 100 EUR (`mensile: True`) invece dei 128 EUR giornalieri
+    veri. E' il gate da 70.095 EUR attivato da una risposta d'errore.
+    """
+    finto_override = {"modalita": "mensile", "fatturato_iva10": 110,
+                      "fatturato_iva22": 0, "altri_ricavi_noiva": 0}
+    r = _netto(mod={"ok": False, "body": finto_override},
+               giorn={"ok": True, "body": {"totale_netto": 128}})
+
+    assert r["res"] == {"netto": 128, "mensile": False}, (
+        "il body di una risposta HTTP di errore viene letto come un override "
+        "valido: il gate mensile si accende su dati che il server ha rifiutato"
     )
