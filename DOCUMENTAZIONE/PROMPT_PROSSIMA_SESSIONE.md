@@ -177,26 +177,41 @@ indagarla di nuovo: il perché è nel docstring di `anomaly_radar_service.py` e 
   leggerlo e non fare nulla sui dati veri.
 - Audit **read-only** prima di ogni fix; remediation solo dopo mia conferma.
 - `code-reviewer` sul diff cumulativo a fine sessione, **sempre**.
-- **Verifica che lo sha della PR sia quello inteso**
-  (`gh pr view <n> --json headRefOid` contro `git log -1`) e la CI verde **su
-  GitHub**, non solo in locale: gira su Python 3.12 con `requirements-lock.txt`
-  e un gate `coverage --fail-under=45`.
+- Dopo il push (serale, deciso da Mattia): **CI verde su GitHub**, non solo in
+  locale — gira su Python 3.12 con `requirements-lock.txt` e un gate
+  `coverage --fail-under=45`.
 - Migration solo con mia conferma esplicita, applicata **prima** del deploy.
-- **Deploy fuori orario cliente**, salvo mio via esplicito: l'auto-deploy Railway
-  parte a ogni merge su `main`, anche per un diff di soli documenti. Un merge
-  che tocca `apps/web/**` fa partire **anche** Vercel.
+- **Deploy fuori orario cliente**, salvo mio via esplicito: è il **push** su
+  `origin/main` a deployare. Railway riparte anche per un diff di soli
+  documenti; se il push tocca `apps/web/**` parte **anche** Vercel.
 
-## Chiusura
+## Chiusura — la lista completa, in ordine
 
-Tre file, sempre tutti e tre:
-1. **Verbale** in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md` (in coda, con la data).
-2. **Stato** nella roadmap `AUDIT_ONEFLUX_STATO_2026-08-29.md`.
-3. **Contatore** `AUDIT_COPERTURA.md` — sposta la riga (🔴 → 🔍 → 📖),
-   **ri-misura le righe** coi comandi in cima al file, ricontrolla le somme.
-   Senza questo passo il contatore invecchia e torna il problema che è nato per
-   risolvere.
+Mattia non deve ricordartela: è qui. Fai **tutti** i punti, non i primi tre
+(`WORKFLOW.md` §5bis).
 
-Poi **riscrivi questo prompt** per la sessione successiva: cosa è stato chiuso,
-cosa resta, quale opzione è la prossima. **Committa il doc insieme al codice che
-documenta** — il 30/8 il `code-reviewer` ha bloccato una chiusura perché i file
-erano `git add`-ati ma mai commitati.
+1. **Prova per mutazione** ogni fix: rimuovi il fix su copia in scratchpad e
+   controlla che i test tornino rossi. Verifica che il mutante si applichi
+   davvero prima di leggerne l'esito.
+2. **`/code-reviewer`** sul diff cumulativo (`origin/main..main`). **Sempre**,
+   anche se sembra piccolo.
+3. **Verbale** in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md`, in coda, con la data.
+4. **Stato** aggiornato nella roadmap `AUDIT_ONEFLUX_STATO_2026-08-29.md`.
+5. **Contatore** `AUDIT_COPERTURA.md`: sposta la riga (🔴 → 🔍 → 📖),
+   **ri-misura** le righe coi comandi in cima al file, ricontrolla che le somme
+   tornino. Saltare questo passo fa invecchiare il contatore e riporta il
+   problema che è nato per risolvere.
+6. **`python scripts/check_documentazione.py`** deve uscire pulito. Se segnala
+   un piano orfano o l'indice fuori sync, sistemalo ora — non «poi».
+7. **Committa tutto**, doc insieme al codice che documenta. `git add` non basta:
+   il 30/8 il `code-reviewer` ha bloccato una chiusura perché i file erano
+   staged e mai commitati. Controlla `git status --short` pulito.
+8. **Riscrivi questo file** per la sessione successiva: cosa è stato chiuso, cosa
+   resta, qual è la prossima dimensione. È l'unica cosa che passa alla sessione
+   dopo — se non lo aggiorni, quella riparte da informazioni vecchie.
+9. **Di' a Mattia quanti commit sono in attesa** (`git log --oneline
+   origin/main..main`). **Non pushare**: il push è il deploy e lo decide lui,
+   la sera.
+
+Se la dimensione **non** è chiusa a fine sessione, i punti 1-2 saltano ma
+**3-9 no**: il verbale dice a che punto sei, e il prompt dice da dove ripartire.
