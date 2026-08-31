@@ -398,8 +398,55 @@ di leggerne l'esito, e ripristinato prima del successivo.
 - `check_documentazione.py` → pulito
 - Nessun altro file dell'app usava i simboli spostati (verificato con grep)
 
+### Correzioni dopo il `code-reviewer` (stessa sessione)
+
+Il reviewer ha rifatto la prova per mutazione **da zero, con i suoi mutanti** e
+ne ha trovati **3 che i miei 15 non coprivano**. Tutti e tre reali:
+
+- **`extra` di `filtraDocumenti` non era esercitato da nessun test**: è il
+  **filtro di sede**. Il mutante che lo ignora sopravviveva — in modalità catena
+  un cliente avrebbe visto le fatture di tutte le sedi. Aggiunto
+  `test_il_predicato_extra_filtra_la_sede`; il mutante ora muore.
+- **`if (!key) continue` in `elencaFornitori`** non era coperto (nessuna fixture
+  con fornitore vuoto): produceva una voce fantasma nel menu filtro. Coperto,
+  mutante ucciso.
+- **Il test sul locale non provava ciò che dichiarava.** La docstring diceva di
+  catturare la rimozione di `"it"` da `localeCompare`. **Falso, misurato**:
+  l'ordine accent-insensitive è il default UCA di Unicode — `undefined`, `it`,
+  `en-US`, `sv-SE`, `de-DE` danno tutti `[Àlfa, Mario, Zeta]`. Il mutante
+  **sopravvive** ed è ora dichiarato tale nella docstring, invece di essere
+  coperto a parole. È lo stesso errore che il metodo vieta: un test che misura
+  il proprio pattern, non il codice.
+
+**Bilancio mutazione aggiornato: 18 mutanti, 17 uccisi, 1 sopravvissuto e
+dichiarato.**
+
+Corretti inoltre, sempre su segnalazione del reviewer:
+
+- **Regressione O(n·m) reale**, non teorica: `filtroFornitori` era un `Set`
+  (`.has` O(1)) ed era diventato un array (`.includes` O(m)) su liste che al
+  worker arrivano **senza paginazione** (2.001 documenti non pagati su un
+  cliente vero). Benchmark del reviewer: **199 ms** per 200 iterazioni a
+  5.000×300. Il contratto pubblico resta l'array (i test lo serializzano), ma
+  `filtraDocumenti`/`aggregaPerSede` costruiscono il `Set` **una volta** e lo
+  passano a `matchDocumento`. Ri-misurato: **23 ms**.
+- **Variabile morta** `scad` in `DocumentoRow`, rimasta dopo il passaggio a
+  `statoDocumento` (`tsc` non la segnala: `noUnusedLocals` non è attivo).
+- **`AUDIT_COPERTURA.md`**: due occorrenze di `50.958` non ri-misurate (di cui
+  una nella nota che *insegna come misurare*), e il riepilogo frontend che
+  sommava `17+31+14 = 62%` — le tre voci misuravano grandezze diverse e il 38%
+  restante non stava da nessuna parte. Riscritto su un denominatore solo.
+
+Il reviewer ha anche **verificato indipendentemente** che l'inversione dei rami
+in `statoDocumento` è equivalente (il mutante che ripristina l'ordine del client
+sopravvive: `parseLocalDate` ritorna `null`, mai `Invalid Date`), e che la
+rimozione di `matchFiltriComuniRef` **corregge** un difetto invece di
+introdurlo.
+
 ### Non fatto, e dichiarato
 
+- **Il mutante sul locale `"it"` sopravvive** (vedi sopra): l'ordinamento
+  accent-insensitive non è una specificità italiana. Dichiarato, non coperto.
 - **`daysToCestino`** (soglia 30gg del cestino) e **`DocumentoRow.isOverdue`**
   (bordo rosso) **non sono stati estratti**: sono label e decorazione, non
   decidono inclusioni né importi. `isOverdue` è però stato **riscritto come

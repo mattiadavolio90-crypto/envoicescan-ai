@@ -298,6 +298,16 @@ def test_elenca_fornitori_deduplica_per_piva():
         "a parita' di conteggio vince l'inserito per primo (Map + sort stabile)"
     )
 
+    # Chiave vuota (ne' P.IVA ne' nome): niente voce fantasma nel menu.
+    senza_chiave = [
+        _doc(id="1", piva_fornitore=None, fornitore=""),
+        _doc(id="2", piva_fornitore="P1", fornitore="Vero"),
+    ]
+    assert [v["key"] for v in _fornitori(senza_chiave)] == ["P1"], (
+        "un documento senza fornitore ne' P.IVA non deve produrre una voce "
+        "vuota nel filtro"
+    )
+
 
 @pytest.mark.parametrize("tz", FUSI)
 def test_filtro_solo_nuove(tz):
@@ -409,12 +419,17 @@ def test_ordina_mette_le_senza_scadenza_in_fondo():
     )
 
 
-def test_ordina_per_fornitore_usa_il_locale_italiano():
+def test_ordina_per_fornitore_mette_le_accentate_al_posto_giusto():
     """Le accentate non finiscono in coda all'alfabeto.
 
-    Serve un caso NON-ASCII: su nomi ASCII `localeCompare(x)` e
-    `localeCompare(x, "it")` danno lo stesso ordine, quindi la rimozione del
-    locale sopravviverebbe a un test su "Alfa"/"Zeta" senza che nessuno lo sappia.
+    **Cosa NON prova questo test, misurato.** Non discrimina la rimozione
+    dell'argomento `"it"`: l'ordinamento accent-insensitive di "Àlfa" e' il
+    default UCA di Unicode, non una specificita' italiana — `undefined`, `it`,
+    `en-US`, `sv-SE` e `de-DE` danno tutti `[Àlfa, Mario, Zeta]`. Il mutante che
+    toglie il locale **sopravvive**, ed e' dichiarato nel verbale del 31/8.
+
+    Quello che prova e' che l'ordinamento non sia per code-unit (`<`/`>` nudi o
+    un `sort()` di default), dove "Àlfa" (U+00C0) finirebbe dopo "Zeta".
     """
     docs = [
         _doc(id="z", fornitore="Zeta"),
@@ -424,6 +439,33 @@ def test_ordina_per_fornitore_usa_il_locale_italiano():
     assert _ordina(docs, "fornitore") == ["a", "m", "z"], (
         "'Àlfa' va ordinata come 'Alfa': con un confronto per code-unit "
         "finirebbe dopo 'Zeta'"
+    )
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_il_predicato_extra_filtra_la_sede(tz):
+    """`extra` e' il filtro di sede, e in catena decide cosa il cliente vede.
+
+    Senza questo test il parametro non era esercitato da nessuna chiamata: il
+    mutante che ignora `extra` (`d => matchDocumento(...)`) sopravviveva, e con
+    lui un filtro sede che non filtra — in modalita' catena il cliente vedrebbe
+    le fatture di tutte le sedi.
+    """
+    _, base = _campione(tz)
+    docs = [dict(d, ristorante_id="S1" if d["id"] in ("ieri", "oggi") else "S2")
+            for d in base]
+
+    solo_s1 = esegui_ts(
+        MODULO,
+        "emit(m.filtraDocumenti(input.docs, input.filtri,"
+        " d => d.ristorante_id === 'S1').map(d => d.id));",
+        argomento={"docs": docs, "filtri": {"periodo": "tutti"}},
+        tz=tz,
+        richiede=_RICHIEDE,
+    )
+    assert solo_s1 == ["ieri", "oggi"], (
+        "il predicato extra deve restringere alla sede scelta: se torna tutto, "
+        "il filtro sede e' ignorato"
     )
 
 

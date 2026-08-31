@@ -67,7 +67,7 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 
 ---
 
-## Frontend — 50.958 righe
+## Frontend — 51.055 righe
 
 > **Corretto il 31/8 dopo il `code-reviewer`.** La prima stesura dava 🔴 «mai
 > guardata» a sette aree che i cicli 07 e 08 avevano già letto. La tabella §3c
@@ -76,8 +76,9 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 > ciclo 08 ha chiuso **F3** (`components/`) e **F6** (`workspace/`). Le righe
 > «lette» qui sotto sono quelle dichiarate in quei verbali.
 >
-> Misura sul tree **committato** (`git archive HEAD`): 50.958. Un `find` sul
-> working tree può dare di più se una sessione parallela ha modifiche aperte.
+> Misura sul tree **committato** (`git archive HEAD`): 51.055 (ri-misurata il
+> 31/8 a fine sessione scadenziario, +97: `lib/` +188, client −91). Un `find`
+> sul working tree può dare di più se una sessione parallela ha modifiche aperte.
 
 | Area | Lette | Totali | Stato | Riferimento |
 |---|---:|---:|---|---|
@@ -96,7 +97,15 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `(app)/` — altre 4 aree | 0 | ~2.600 | 🔴 | dashboard, impostazioni, agenda, notifiche |
 | `(auth)+(legal)+(demo)` | 0 | 1.353 | 🔴 | — |
 
-**📖 letto: ~8.500 (17%) · 🟠 parziale: ~15.700 (31%) · 🔴 mai: ~7.100 (14%)**
+**Righe effettivamente lette: ~20.900 (41%) · non lette: ~30.200 (59%)** — di
+cui ~21.100 dentro aree 🟠 (perimetro già delimitato e motivato) e ~7.100 in
+aree 🔴 mai aperte. Per area: 📖 complete ~8.600 · 🟠 parziali 33.434 totali di
+cui ~12.300 lette · 🔴 mai 7.080.
+
+> La stesura precedente sommava `17% + 31% + 14% = 62%`: le tre voci misuravano
+> grandezze diverse (righe lette, totali d'area, righe mai viste) e il 38%
+> restante non stava da nessuna parte. Le percentuali qui sopra sono tutte sullo
+> stesso denominatore — 51.055 righe di frontend — e chiudono a 100%.
 
 Le righe non lette dentro un'area 🟠 non sono terra vergine: una passata ha
 delimitato il perimetro e **motivato l'esclusione** (di solito: esposizione live

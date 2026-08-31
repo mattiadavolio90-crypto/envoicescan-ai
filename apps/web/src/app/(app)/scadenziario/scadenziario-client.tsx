@@ -147,7 +147,6 @@ type DocumentoRowProps = {
 };
 
 function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecnicaId }: DocumentoRowProps) {
-  const scad = parseLocalDate(doc.scadenza_effettiva);
   const isOverdue = statoDocumento(doc) === "Scaduta";
 
   return (

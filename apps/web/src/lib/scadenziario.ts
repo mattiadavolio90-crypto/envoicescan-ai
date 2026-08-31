@@ -347,10 +347,15 @@ export function matchDocumento(
   d: Documento,
   filtri: FiltriScadenziario,
   confini: ConfiniPeriodo = confiniPeriodo(),
+  // Set precalcolato da chi itera: `includes` per riga e' O(fornitori) su
+  // liste che possono superare i 2.000 documenti (nessuna paginazione lato
+  // worker). Il contratto pubblico resta l'array, che i test serializzano.
+  chiaviFornitori?: ReadonlySet<string> | null,
 ): boolean {
   const { periodo, fornitori, soloNuove, dataDa = "", dataA = "" } = filtri;
 
-  if (fornitori && fornitori.length > 0 && !fornitori.includes(fornitoreKey(d))) return false;
+  const chiavi = chiaviFornitori ?? (fornitori && fornitori.length > 0 ? new Set(fornitori) : null);
+  if (chiavi && chiavi.size > 0 && !chiavi.has(fornitoreKey(d))) return false;
   if (soloNuove && !d.is_nuovo) return false;
 
   // Filtro periodo (solo su non pagate con scadenza, tranne "tutti").
@@ -393,8 +398,10 @@ export function filtraDocumenti(
   extra?: (d: Documento) => boolean,
   confini: ConfiniPeriodo = confiniPeriodo(),
 ): Documento[] {
+  const chiavi = filtri.fornitori && filtri.fornitori.length > 0
+    ? new Set(filtri.fornitori) : null;
   return documenti.filter(
-    d => (!extra || extra(d)) && matchDocumento(d, filtri, confini),
+    d => (!extra || extra(d)) && matchDocumento(d, filtri, confini, chiavi),
   );
 }
 
@@ -408,8 +415,10 @@ export function aggregaPerSede(
   confini: ConfiniPeriodo = confiniPeriodo(),
 ): Map<string, TotaleSede> {
   const perSede = new Map<string, TotaleSede>();
+  const chiavi = filtri.fornitori && filtri.fornitori.length > 0
+    ? new Set(filtri.fornitori) : null;
   for (const d of documenti) {
-    if (!d.ristorante_id || !matchDocumento(d, filtri, confini)) continue;
+    if (!d.ristorante_id || !matchDocumento(d, filtri, confini, chiavi)) continue;
     if (d.is_nota_credito || d.pagata) continue;
     const acc = perSede.get(d.ristorante_id) ?? { count: 0, totale: 0 };
     acc.count += 1;
