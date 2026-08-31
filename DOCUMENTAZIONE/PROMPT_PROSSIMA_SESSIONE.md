@@ -1,6 +1,8 @@
 # Prompt per la prossima sessione
 
-> Copia il blocco qui sotto come primo messaggio della nuova sessione.
+> **Mattia**: nella nuova sessione basta che scrivi
+> `Leggi DOCUMENTAZIONE/PROMPT_PROSSIMA_SESSIONE.md e segui quello che dice.`
+> Non serve incollare nulla: tutto quello che serve è qui sotto.
 
 ---
 
