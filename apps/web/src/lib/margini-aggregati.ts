@@ -73,11 +73,11 @@ export type MesePivot = {
 // e `costi_spese_auto` sommano le quote di riparto: se una `derive` sparisce, la
 // quota ripartita non viene piu' mostrata e il costo appare piu' basso del vero
 // (e' l'errore gia' visto lato worker nel ciclo 07).
-export const DERIVE: Record<string, (m: MesePivot) => number> = {
-  costi_fb_auto: (m) => m.costi_fb_auto + (m.quote_riparto_fb ?? 0),
-  costi_spese_auto: (m) => m.costi_spese_auto + (m.quote_riparto_spese ?? 0),
-  totale_costi: (m) => m.costi_spese_totali + m.costi_personale,
-};
+export const DERIVE: Readonly<Record<string, (m: MesePivot) => number>> = Object.freeze({
+  costi_fb_auto: (m: MesePivot) => m.costi_fb_auto + (m.quote_riparto_fb ?? 0),
+  costi_spese_auto: (m: MesePivot) => m.costi_spese_auto + (m.quote_riparto_spese ?? 0),
+  totale_costi: (m: MesePivot) => m.costi_spese_totali + m.costi_personale,
+});
 
 export type RowLike = { key: string; derive?: (m: MesePivot) => number };
 

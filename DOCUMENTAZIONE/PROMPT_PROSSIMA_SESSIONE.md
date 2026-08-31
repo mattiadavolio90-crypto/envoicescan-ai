@@ -89,9 +89,14 @@ vedono a occhio — un totale plausibile resta plausibile anche quando è sbagli
 ### L'harness di mutazione
 
 Sta in `/tmp/claude-*/scratchpad/muta.py` (si perde a fine sessione, riscrivilo).
-Prima di fidartene, **fai un controllo di sanità**: un mutante palese
-(`return 999999`) deve morire. Se sopravvive, il redirect non funziona e tutte le
-misure successive valgono zero.
+
+**Validalo sui DUE lati prima di fidartene**: un mutante palese (`return 999999`)
+deve **morire**, e una controprova (un commento cambiato) deve **sopravvivere**.
+La sola prova di sanità non basta — può «morire» per il motivo sbagliato. Il 31/8
+il `code-reviewer` ha misurato 40/40 uccisi con un harness rotto: passava
+`--timeout=300` senza `pytest-timeout`, pytest usciva con **rc=4** (usage error)
+e lui leggeva `rc != 0` come «ucciso». **Distingui `rc=1` (test rosso) da `rc≥2`
+(errore d'uso)**, con un assert esplicito.
 
 ### La tecnica dello stub `fetch` (riusabile)
 
@@ -180,6 +185,13 @@ propria, non infilate in una sessione altrui (§5bis vieta gli strascichi).
   emoji in `margine_service.py`. Sui dati veri: **0 righe attive** (172 con
   grafia esatta, 0 con spazi, 0 col refuso). Il fix richiede una **migration su
   7 account**: dimensione a sé, con la sua finestra di deploy.
+- **`lib/` importa da `app/`** — inversione di dipendenza, 2 occorrenze:
+  `lib/margini-aggregati.ts` prende `MESI_NOMI_SHORT` da
+  `app/(app)/margini/periodi`, e `lib/demo-data.ts` fa già lo stesso con
+  `analisi-fatture/periodi`. Da girare **quando toccherai `periodi.ts` per
+  altro**, spostando in `lib/` le costanti pure (`MESI_NOMI_*`,
+  `IVA_DIVISORE_*`) e lasciando in `app/` solo ciò che sa di route. Non ora:
+  `periodi.ts` è importato anche da `page.tsx` (Server Component).
 - **`dependencies=[...]` a livello di `APIRouter`**: tocca 238 endpoint.
 - **Il rendering frontend resta non testato ovunque.** Servirebbe un runner di
   componenti, escluso per ragione strutturale (vedi §2.3). Ogni area «chiusa»

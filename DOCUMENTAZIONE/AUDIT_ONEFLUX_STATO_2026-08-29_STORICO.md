@@ -649,3 +649,53 @@ zero di scarto.
   componenti, escluso per ragione strutturale (`deploy-vercel.yml` scatta su
   `apps/web/**`, un runner lì farebbe partire un deploy di produzione a ogni
   merge di un test).
+
+### La review: 40 mutanti indipendenti, e un difetto nell'harness del reviewer
+
+Il `code-reviewer` ha rifatto la mutazione con **40 mutanti propri**: 39 uccisi,
+1 equivalente. Ha inoltre verificato l'estrazione **meccanicamente** (`diff` fra
+`git show 04ad48f:<file>` e il modulo nuovo): identiche byte per byte, unica
+differenza la firma `rowVal(row: RowDef)` → `RowLike`, che è un allargamento di
+tipo senza effetto a runtime.
+
+**Il mutante più significativo è il suo R22**: ha mutato `aggregaRicavi` in modo
+da *correggere* l'asimmetria, e 4 test sono diventati rossi. La fotografia è
+quindi vincolante, non decorativa.
+
+Il suo unico sopravvissuto (`?? 0` → `?? 1` in `aggregaCoperti`) è **equivalente
+per davvero**, e l'ho verificato invece di crederci: il `filter(m.coperti != null)`
+a monte cattura sia `null` sia `undefined`, quindi il `??` non scatta mai. È il
+caso opposto a quello delle `DERIVE`, dove il filtro non c'è e infatti lì il
+mutante muore.
+
+> Nota metodologica che vale più del risultato: **il reviewer ha trovato un bug
+> nel proprio harness**, non nel codice. Passava `--timeout=300` senza
+> `pytest-timeout` installato, pytest usciva con **rc=4** (usage error), e lui
+> leggeva `rc != 0` come «mutante ucciso». *Tutti* i mutanti risultavano morti,
+> controprove incluse — ed è stata la contraddizione (una controprova su un
+> commento che «uccide») a rivelarlo.
+>
+> **Un harness di mutazione va validato sui due lati**: un mutante palese deve
+> morire *e* una controprova deve sopravvivere. La sola prova di sanità non
+> basta, perché può «morire» per il motivo sbagliato. E `rc=1` (test rosso) va
+> distinto da `rc≥2` (errore d'uso).
+
+Due segnalazioni non bloccanti sono state chiuse subito: `DERIVE` era un
+`Record` esportato **mutabile** (ora `Object.freeze` + `Readonly`), e il regex
+del test IVA era sensibile alla spaziatura — `/1.10` senza spazio gli sfuggiva,
+e il test sarebbe diventato rosso per una riformattazione invece che per un
+cambio di sostanza (ora `/\s*1\.`).
+
+Resta aperta, in coda: **`lib/` importa da `app/`** (`margini-aggregati` prende
+`MESI_NOMI_SHORT` da `app/(app)/margini/periodi`). È un'inversione di
+dipendenza, seconda occorrenza del pattern (`lib/demo-data.ts` fa già lo
+stesso). Non girata ora: toccherebbe `periodi.ts`, che è importato anche da
+`page.tsx` (Server Component) ed è appena stato coperto da 109 test — cambio a
+basso valore fuori dal perimetro deciso. Da fare quando si tocca `periodi.ts`
+per altro, spostando in `lib/` le costanti pure (`MESI_NOMI_*`, `IVA_DIVISORE_*`).
+
+**Non verificato da nessuno:** le cifre DB del verbale (0 sedi su 8 nel caso
+misto, 66 righe `source='manuale'` con `coperti` NULL) le ho misurate io in
+ricognizione; la query read-only del reviewer è stata bloccata dal permission
+system, quindi non ha potuto confermarle. Dichiarate come misurate una volta
+sola.

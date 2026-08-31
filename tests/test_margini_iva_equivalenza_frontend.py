@@ -74,7 +74,10 @@ def test_il_dialog_hardcoda_ancora_le_aliquote():
     e' una copia nuova, e va saputo.
     """
     testo = _DIALOG.read_text(encoding="utf-8")
-    letterali = re.findall(r"/ 1\.(?:10|22)\b", testo)
+    # `\s*` e non uno spazio letterale: `/1.10` senza spazio e' lo stesso
+    # letterale, e un test che non lo conta diventerebbe rosso per una
+    # riformattazione invece che per un cambio di sostanza.
+    letterali = re.findall(r"/\s*1\.(?:10|22)\b", testo)
     assert len(letterali) == 4, (
         f"attesi 4 letterali IVA hardcoded in carica-ricavi-dialog.tsx, "
         f"trovati {len(letterali)}. Se sono diminuiti qualcuno sta migrando a "
