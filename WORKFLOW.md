@@ -295,6 +295,37 @@ refactor da 400.
 
 ---
 
+## 5bis. Una cosa alla volta, chiusa davvero prima della successiva
+
+**Regola di Mattia, 31/8/2026.** Una dimensione/fase si apre solo quando la
+precedente è **completamente chiusa**. Niente strascichi, niente appunti in
+giro, niente «lo finiamo dopo».
+
+**Chiusa davvero** significa tutte e cinque, non tre su cinque:
+
+1. Il codice fa quello che deve, provato **per mutazione** (§7), non solo
+   «i test passano».
+2. Il lavoro è **committato** — non `git add`-ato e basta. Il 30/8 il
+   `code-reviewer` ha bloccato una chiusura proprio per questo.
+3. **Verbale** scritto nello STORICO del ciclo, con la data.
+4. **Contatore** `DOCUMENTAZIONE/AUDIT_COPERTURA.md` aggiornato: la riga si
+   sposta (🔴 → 🔍 → 📖) e le righe si **ri-misurano**, non si copiano.
+5. **`python scripts/check_documentazione.py` pulito**, e il piano eliminato o
+   archiviato secondo §6.
+
+**Perché serve scriverlo.** Il 31/8 c'erano due piani in `docs/piani/`: uno con
+tutte e 7 le fasi spuntate e il codice già in produzione da giorni, l'altro che
+ripeteva regole superate («un solo branch di lavoro», «merge = deploy») e le
+avrebbe rimesse in circolo alla prima sessione che lo apriva. Nessuno dei due
+faceva danno di per sé: il danno è che una sessione nuova non sa **quali** dei
+documenti che trova sono ancora veri.
+
+**Un lavoro che non sta in una sessione** non è un'eccezione a questa regola: si
+divide in fasi, e **ogni fase** rispetta i 5 punti sopra. Quello che passa alla
+sessione dopo è il prompt di consegna, non un pezzo di lavoro a metà.
+
+---
+
 ## 6. Manutenzione della documentazione: automatica, non su richiesta
 
 **Regola vincolante, non un consiglio**: quando una fase/feature/piano si

@@ -198,6 +198,8 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 |---|---|
 | `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert — primo posto dove guardare |
 | `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md` | Stato del ciclo di audit **corrente** sulle 10 dimensioni (Security, Bug, DB, ecc.) — **cosa manca**, in un minuto. A ciclo chiuso si sposta in `docs/storico/` |
+| `DOCUMENTAZIONE/AUDIT_COPERTURA.md` | **Il contatore**: quante righe dell'app sono state lette, quante solo sfiorate da una dimensione, quante mai guardate. L'unico posto dove le somme tornano — si aggiorna a ogni chiusura di sessione, ri-misurando |
+| `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md` | I verbali delle sessioni chiuse del ciclo corrente, in coda con la data |
 | `DOCUMENTAZIONE/PROMPT_PROSSIMA_SESSIONE.md` | Il prompt da incollare all'inizio della prossima sessione: cosa fare, cosa NON rifare, e le voci aperte misurate |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non aveva test che eseguono codice, cosa e' costato, le opzioni. **Chiuso il 29/8/2026** (opzione A) |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9_PROMPT.md` | Il prompt di quella sessione, archiviato |

@@ -46,12 +46,14 @@ trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
 - **Primo pezzo di scadenziario** (31/8) — `buildCashFlow` estratta e coperta,
   4 mutanti uccisi.
 
-## ⚠️ La priorità è cambiata il 31/8 — leggi prima di partire
+## Cosa si fa, e cosa viene dopo
 
-Il blocco «continuare lo scadenziario» qui sotto **non è più la prima cosa**.
+**Si finisce lo scadenziario** (blocco «opzione A» qui sotto). Poi si apre
+`margini/`, non prima.
+
 Il contatore (`AUDIT_COPERTURA.md`, 31/8) ha misurato che la tabella «perimetro
 scoperto» della roadmap elenca **4 aree frontend su 14**, e non le due più
-grandi:
+grandi — la coda vera è questa:
 
 | Area | Righe | Stato |
 |---|---:|---|
@@ -60,15 +62,17 @@ grandi:
 | `components/` | 7.298 | 🔴 mai guardata — condivisa da tutte le pagine |
 | `(app)/scadenziario/` client | 2.210 | 🟠 il lavoro qui sotto |
 
-**Da decidere con Mattia a inizio sessione**, non di iniziativa: finire lo
-scadenziario (piccolo, strada già battuta, chiude un'area) oppure aprire
-`margini/` o `workspace/` (grandi, mai guardate, la prima tocca una regola di
-dominio). Non c'è una risposta ovvia: lo scadenziario è quasi chiuso, ma le
-altre due sono più esposte.
+**Deciso da Mattia il 31/8: si finisce lo scadenziario.** Regola sua, ora in
+`WORKFLOW.md` §5bis: *una cosa alla volta, chiusa davvero prima della
+successiva — niente strascichi*. Lo scadenziario è l'unica cosa aperta, quindi
+si chiude quello. `margini/` (4.795, tocca il MOL) è la dimensione **dopo**, e
+si apre solo a scadenziario chiuso.
 
-Il blocco che segue resta valido **se si sceglie lo scadenziario**.
+**Chiuso davvero** = tutti e 5 i punti di §5bis, non tre su cinque: mutazione,
+commit, verbale, contatore `AUDIT_COPERTURA.md` ri-misurato,
+`check_documentazione.py` pulito.
 
-## Cosa fare (opzione A): continuare lo scadenziario
+## Cosa fare: continuare lo scadenziario
 
 **È la priorità 🟠 della tabella «perimetro ancora scoperto», ed è più piccola
 di come sembra.** Leggi il blocco «Perché lo scadenziario subito dopo» nella
@@ -104,10 +108,15 @@ Ipotesi da verificare, non da assumere:
 - **`todayLocalIso` scrive `pagata_at` in produzione**: ogni nuovo punto che
   scrive date va guardato col fuso in mente, non solo con `tsc`.
 
-## Se lo scadenziario chiude presto
+## Se lo scadenziario chiude presto: NON aprire altro
 
-Ordine rivisto il 31/8 col contatore in mano — **per esposizione, non per
-dimensione**:
+Regola di Mattia (§5bis): una cosa alla volta. Se lo scadenziario chiude e
+avanza tempo, **si chiude bene** — verbale, contatore ri-misurato,
+`check_documentazione.py` pulito, `code-reviewer` — e la sessione finisce lì,
+lasciando il prompt pronto per la successiva. Aprire `margini/` «già che ci
+siamo» è esattamente lo strascico che questa regola vieta.
+
+La coda per le sessioni successive, **per esposizione, non per dimensione**:
 1. **`margini/`** 🔴 4.795 righe — tocca il MOL, regola di dominio critica.
 2. **`components/`** 🔴 7.298 righe — condivisa da tutte le pagine: un difetto
    qui si moltiplica su tutte le aree.

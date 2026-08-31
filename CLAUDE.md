@@ -10,11 +10,9 @@ genera report su margini, prezzi fornitori, foodcost.
 (misurato il 29/8/2026): 4 con migliaia di righe fattura e accesso nell'ultima
 settimana, gli altri con pochi dati.
 
-> Le cifre di questo file vanno **ri-misurate**, non ereditate. Il 29/8/2026 la
-> riga sopra diceva ancora «2 clienti in test + 1 operativo» e «go-live: 1
-> luglio» a due mesi dalla data: un file che entra in ogni sessione propaga i
-> suoi errori ovunque. Ogni numero qui sotto ha accanto il comando che lo
-> produce.
+> Le cifre di questo file vanno **ri-misurate**, non ereditate: il 29/8/2026 la
+> riga sopra diceva ancora «2 clienti in test» e «go-live: 1 luglio» a due mesi
+> dalla data. Un file che entra in ogni sessione propaga i suoi errori ovunque.
 
 ---
 
@@ -27,8 +25,7 @@ nella git history. Il container Railway serve il worker FastAPI.
 
 > I moduli di `services/` fanno ancora `import streamlit as st`, ma il pacchetto
 > **non è installato**: `services/_streamlit_shim.py` lo sostituisce con un guscio
-> vuoto (`session_state` = dict, `secrets` da env, rendering no-op). Non
-> reintrodurre la dipendenza; gli `st.` residui sono no-op, non codice vivo.
+> vuoto. Non reintrodurre la dipendenza; gli `st.` residui sono no-op.
 
 | Layer | Percorso | Note |
 |---|---|---|
@@ -94,6 +91,11 @@ si dà per intero **se lo chiede dopo**.
 
 Vale in **ogni** sessione, anche quando non lo ricorda. Dettaglio: `WORKFLOW.md` §1bis.
 
+**Una cosa alla volta, chiusa davvero.** Non si apre una dimensione nuova finché
+la precedente non è provata per mutazione, **committata**, con verbale, contatore
+`AUDIT_COPERTURA.md` aggiornato e `check_documentazione.py` pulito — niente piani
+a metà in `docs/piani/`. Dettaglio: `WORKFLOW.md` §5bis.
+
 ---
 
 ## Dove trovare il resto
@@ -146,9 +148,8 @@ python scripts/export_openapi.py --check-drift
 
 - **Briefing:** dopo una modifica alla logica, **bumpa `_BRIEFING_CODE_VERSION`**
   o il cliente continua a vedere il testo vecchio (cache giornaliera + TTL 30').
-- **Il deploy È l'arrivo del codice su `origin/main`** — via push diretto o via
-  merge di una PR, è lo stesso. **Un commit locale non deploya niente**: è il
-  `push` a spedire. Le due pipeline non si comportano allo stesso modo:
+- **Il deploy È l'arrivo del codice su `origin/main`**: **un commit locale non
+  deploya niente**, è il `push` a spedire. Le due pipeline differiscono:
   **Vercel** parte solo se il commit tocca `apps/web/**` (`deploy-vercel.yml`,
   `paths:`); **Railway** non ha filtro di path — anche soli `.md` gli fanno
   ridispiegare il worker (config sul dashboard, non nel repo: `railway.toml`
