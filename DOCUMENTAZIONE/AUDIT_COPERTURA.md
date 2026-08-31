@@ -35,9 +35,9 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | Perimetro | Righe |
 |---|---:|
 | Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 55.450 |
-| Frontend (`apps/web/src/`) | 51.063 |
+| Frontend (`apps/web/src/`) | 51.413 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **110.069** |
+| **TOTALE APP** | **110.419** |
 
 ---
 
@@ -76,10 +76,19 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 > ciclo 08 ha chiuso **F3** (`components/`) e **F6** (`workspace/`). Le righe
 > «lette» qui sotto sono quelle dichiarate in quei verbali.
 >
-> Misura sul tree **committato** (`git archive HEAD`): 51.063 (ri-misurata il
-> 31/8 a chiusura sessione scadenziario, +105 sul pre-refactor: `lib/` +197,
-> client −92). Un `find` sul working tree può dare di più se una sessione
-> parallela ha modifiche aperte.
+> Misura sul tree **committato** (`git archive HEAD`): **51.413**, ri-misurata il
+> 31/8 a chiusura sessione margini (+40: `lib/` +126 per il modulo estratto,
+> `(app)/margini/` −86). Un `find` sul working tree può dare di più se una
+> sessione parallela ha modifiche aperte.
+>
+> ⚠️ **Il totale precedente (51.063) era sbagliato di 350 righe, e non per il
+> refactor.** Ri-sommando la colonna a HEAD sono emerse due cose: la voce
+> `hooks/`+`proxy.ts`+file diretti valeva **622**, non 312 (i file diretti in
+> `app/` sono 495, di cui 296 di solo `globals.css`, non 185); e `app/fonts/`
+> contiene **due `.woff` binari** che `wc -l` conta come 481 "righe" pur non
+> essendo codice — ora esclusi esplicitamente dal totale. La cifra girava da
+> almeno due cicli. `git archive HEAD apps/web/src | tar -xO | wc -l` dà 51.894:
+> è 51.413 **più i 481 dei font**.
 >
 > ⚠️ **Ri-misura contro HEAD, non contro il commit precedente al tuo.** Il 31/8
 > è successo due volte di fila: la cifra veniva aggiornata al valore giusto per
@@ -92,34 +101,43 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `app/api/` — 169 route | 4.849 | 4.849 | 📖 | ciclo 08, 30/8 — proxy trasparente, 0/169 toccano il DB |
 | `(app)/scadenziario/` | 2.211 | 2.211 | 📖 **100%** | ciclo 07 §3c + **chiusa 31/8 (2ª sess.)**: filtri/ordinamento/stato estratti in `lib/`, 15/15 mutanti. Resta il solo rendering |
 | `(app)/analisi-e-tag/` | 1.392 | 1.518 | 📖 91% | ciclo 07 §3c |
-| `(app)/margini/` | 2.903 | 4.795 | 🟠 60% | ciclo 07 §3c: calcolo-tab, analisi-tab, coperti-tab |
+| `(app)/margini/` | 4.709 | 4.709 | 📖 **100%** | ciclo 07 §3c + **chiusa 31/8 (3ª sess.)**: `fetchNettoMese`, `periodi.ts`, aggregati e pivot estratti in `lib/`, 183 test, 65/65 mutanti. Resta il solo rendering |
 | `(app)/admin/` | 1.739 | 3.685 | 🟠 47% | ciclo 07 §3c: categorie + cliente-dettaglio |
 | `(app)/prezzi/` | 973 | 2.361 | 🟠 41% | ciclo 07 §3c: variazioni-tab |
 | `(app)/workspace/` | 1.834 | 5.012 | 🟠 37% | ciclo 07 §3c (personale-tab) + **F6 ciclo 08 CHIUSA**: il resto escluso con misura di esposizione live |
 | `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | ~599 | 3.642 | 🟠 16% | solo `scadenziario.ts` (442 righe, +197 il 31/8) |
+| `lib/` | ~725 | 3.768 | 🟠 19% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126, nuovo il 31/8) |
 | `(app)/catena/` | 0 | 3.127 | 🔴 | **l'unica area grande che nessuna passata ha mai toccato** — multi-sede |
 | `(app)/` — altre 7 aree + file diretti | 0 | 4.250 | 🔴 | misurate il 31/8: dashboard 1.749 · impostazioni 806 · agenda 693 · notifiche 339 · assistenza 292 · style-guide 256 · file diretti 115 |
-| `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 312 | 🔴 | misurati il 31/8: 22 + 105 + 185 |
+| `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 622 | 🔴 | **ri-misurati il 31/8: 22 + 105 + 495** — i file diretti erano contati 185, sono 495 (`globals.css` da solo ne fa 296) |
 | `(auth)`+`(legal)`+`(demo)` — dettaglio | — | 1.353 | 🔴 | 552 + 575 + 226 |
 
-**Righe lette: 20.767 · non lette: 30.296 · totale 51.063** — la tabella copre
+**Righe lette: 22.699 · non lette: 28.714 · totale 51.413** — la tabella copre
 tutto `apps/web/src`: la somma della colonna «Totale area» uguaglia
-`git archive HEAD` (51.063). Ri-verificato a ogni aggiornamento, **sommando le
-righe della tabella**, non fidandosi della frase precedente.
+`git archive HEAD` **meno i 481 dei due font binari** (51.894 − 481 = 51.413).
+Ri-verificato a ogni aggiornamento, **sommando le righe della tabella**, non
+fidandosi della frase precedente — è così che è saltato fuori che 51.063 era
+sbagliato di 350.
 
 | | Lette | Totale area | Non lette |
 |---|---:|---:|---:|
-| 📖 aree complete | 8.452 | 8.578 | 126 |
-| 🟠 aree parziali | 12.315 | 33.443 | 21.128 |
-| 🔴 mai aperte | 0 | 9.042 | 9.042 |
-| **totale** | **20.767** | **51.063** | **30.296** |
+| 📖 aree complete | 13.161 | 13.287 | 126 |
+| 🟠 aree parziali | 9.538 | 28.774 | 19.236 |
+| 🔴 mai aperte | 0 | 9.352 | 9.352 |
+| **totale** | **22.699** | **51.413** | **28.714** |
 
 Le 126 righe non lette dentro le aree 📖 sono la differenza fra «area chiusa» e
-«ogni riga letta»: `app/api/` è 4.849/4.849, `scadenziario/` 2.212/2.212, ma
-`analisi-e-tag/` è 1.392/1.518. Un'area 📖 non è per forza al 100%.
+«ogni riga letta»: `app/api/` è 4.849/4.849, `scadenziario/` 2.211/2.211,
+`margini/` 4.709/4.709, ma `analisi-e-tag/` è 1.392/1.518. Un'area 📖 non è per
+forza al 100%.
+
+> «Area chiusa» significa **la logica pura è coperta e provata per mutazione**,
+> non «ogni riga ha un test». In `margini/` le 4.709 righe sono state lette
+> tutte, ma i test ne raggiungono ~400: il resto è JSX, hook, stato e recharts,
+> che `esegui_ts` non sa montare — è un limite dell'infrastruttura, dichiarato,
+> non una svista.
 
 > La stesura precedente sommava `17% + 31% + 14% = 62%`: le tre voci misuravano
 > grandezze diverse (righe lette, totali d'area, righe mai viste) e il 38%
@@ -143,10 +161,10 @@ Somma delle tre sezioni sopra, non una stima a parte:
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | ~37.200 | **34%** | 12.900 backend + 20.767 frontend + 3.556 Edge |
-| 🔍 Auditato per dimensione | ~17.650 | 16% | solo backend |
-| 🔴 Mai guardato | ~55.200 | **50%** | 24.900 backend + 30.296 frontend |
-| **Totale** | **110.069** | 100% | 55.450 + 51.063 + 3.556 |
+| 📖 Letto integralmente | 39.155 | **35%** | 12.900 backend + 22.699 frontend + 3.556 Edge |
+| 🔍 Auditato per dimensione | 17.650 | 16% | solo backend |
+| 🔴 Mai guardato | 53.614 | **49%** | 24.900 backend + 28.714 frontend |
+| **Totale** | **110.419** | 100% | 55.450 + 51.413 + 3.556 |
 
 Quel che è letto è però il perimetro più esposto: ingresso dati, auth, DB,
 Edge Functions, 169 route.

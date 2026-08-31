@@ -491,3 +491,161 @@ sommando la tabella, non fidandosi della frase che dichiarava la copertura.
   (`deploy-vercel.yml` scatta su `apps/web/**`).
 - **`dependencies=[...]` a livello di `APIRouter`** — invariata: tocca 238
   endpoint, va aperta come dimensione a sé con la sua finestra di deploy.
+
+---
+
+## 31/8/2026 — dimensione `(app)/margini/` chiusa (3ª sessione della giornata)
+
+**Perché questa area e non un'altra:** priorità per **esposizione, non per
+dimensione**. `margini/` produce il MOL, che è una regola di dominio critica, e
+i numeri che il cliente usa per decidere i prezzi.
+
+### Il perimetro, misurato — e cosa NON copre
+
+`(app)/margini/` sono **4.709 righe**. I test ne raggiungono **~400**: la logica
+pura. Le altre ~4.300 sono JSX, hook React, stato, recharts — `esegui_ts` non sa
+montare React, quindi sono irraggiungibili **per costruzione**, non per pigrizia.
+Va scritto qui perché il contatore dice «margini 📖 100%» e quel 100% significa
+*«ogni riga è stata letta e la logica pura è provata per mutazione»*, non *«ogni
+riga ha un test»*.
+
+### Le ipotesi del prompt di sessione, ridimensionate dai dati veri
+
+Il prompt indicava tre piste. Misurate sul DB di produzione, due si sono
+sgonfiate:
+
+- **L'esclusione «Da Classificare» non è nel frontend**: 0 occorrenze in
+  `(app)/margini/` e in `app/api/`. È backend — 9 copie (8 letterali, 1 sola con
+  la costante e `.strip()`, `fastapi_worker.py:8004`) più 2 RPC SQL.
+- **Sui dati veri la divergenza è teorica**: 172 righe `Da Classificare` con la
+  grafia esatta, **0** con spazi, **0** col refuso `Da Clasificare`, **0** con
+  `NOTE E DICITURE` senza emoji. Le 74 righe `📝 NOTE E DICITURE` hanno **tutte
+  `totale_riga = 0`**: il guardrail regge.
+- **Il MOL non si calcola nel frontend**: arriva dal worker
+  (`services/routers/margini.py:254-255`, `:1174`). In `margini/` c'è solo
+  ri-derivazione per la colonna Media.
+
+### L'esposizione vera, che il prompt non aveva visto
+
+`fetchNettoMese` (`periodi.ts:127-156`) — il gate «l'override mensile vince sui
+giornalieri». Misurato su produzione:
+
+| mese | netto override (usato) | netto giornaliero (scartato) |
+|---|---:|---:|
+| giugno 2026 | **73.322,73 €** | 3.227,27 € |
+| maggio 2026 | 80.550 € | 80.551 € |
+
+**70.095,46 € su un solo mese** dipendevano da quel ramo, che non aveva un test.
+
+### Cosa è stato fatto
+
+**6 fasi, 183 test nuovi su 4 file, 65 mutanti — 65 uccisi, 0 sopravvissuti**,
+più 9 controprove (mutanti equivalenti) tutte correttamente sopravvissute.
+
+| Fase | Oggetto | File di test | Mutanti |
+|---|---|---|---|
+| A | `fetchNettoMese` | `..._netto_mese_frontend.py` (15 test) | 8/8 |
+| B | `periodi.ts` sincrono (periodi, scorporo, label) | `..._periodi_frontend.py` (109 test) | 15/15 |
+| C | aggregati coperti + i 2 filtri del componente | `..._aggregati_frontend.py` | 9/9 |
+| D | `pivotMedia`, `pctIncidenza`, `rowVal`, le 3 `derive` | idem (53 test in tutto per C+D+E) | 17/17 |
+| E | `buildMesiList` | idem | 10/10 |
+| F | equivalenza IVA | `..._iva_equivalenza_frontend.py` (6 test) | 6/6 |
+
+I test di C, D ed E stanno in un file solo (`test_margini_aggregati_frontend.py`,
+53 test) perché coprono un solo modulo: `lib/margini-aggregati.ts`.
+
+**~275 righe di logica pura estratte** dai 4 componenti `.tsx` in
+`lib/margini-aggregati.ts` (nuovo, 126 righe), **byte per byte, senza
+correzioni**. Il diff dei componenti contiene **solo import e rimozioni**:
+verificato riga per riga, nessuna logica cambiata. `buildMesiList` era duplicata
+identica (`diff` vuoto) in `analisi-tab.tsx` e `carica-ricavi-dialog.tsx`: ora è
+una sola.
+
+### La tecnica dello stub `fetch`, riusabile
+
+`helpers_ts.py` stubba `globalThis.fetch` a `throw` nel prologo (ban di rete). Per
+testare `fetchNettoMese` lo si **riassegna dentro l'espressione node**, dopo il
+prologo — nessuna modifica a `helpers_ts.py`, nessun effetto sugli altri test
+(ogni `esegui_ts` è un processo node separato). Documentata nel docstring di
+`tests/test_margini_netto_mese_frontend.py`.
+
+**Il dettaglio che è costato un mutante**: lo stub deve servire `json` **anche
+quando `ok` è false**. Una 500 di FastAPI ha un body JSON valido
+(`{"detail": ...}`); uno stub che su `ok:false` non espone `json` è irrealistico,
+e lasciava vivo il mutante che rimuove il controllo su `r.ok` — sopravviveva a
+12 test su 12. Trovato dal `code-reviewer`, non dai miei mutanti.
+
+### Due comportamenti fotografati, non corretti (decisione di Mattia)
+
+**1. L'asimmetria della Media Ricavi netti** (`coperti-tab.tsx`, ora nel modulo).
+`mesiVisibili` tiene i mesi con `coperti>0 OR ricavi>0`; `numMesiAttivi` conta
+solo quelli con `coperti>0`. `aggregaRicavi` somma i **primi** ma divide per i
+**secondi**: un mese con ricavi e senza coperti gonfia il numeratore senza
+toccare il denominatore, e la media esce sovrastimata. La label dice «Media sui N
+mesi con coperti» anche sulla riga Ricavi.
+
+Misurato: **0 sedi su 8** oggi nel caso misto. Ma **si arma da solo** — le 66
+righe `source='manuale'` hanno tutte `coperti` NULL. Il test lo fotografa con un
+assert che dice esplicitamente cosa fare se diventa rosso.
+
+**2. I 4 letterali IVA** in `carica-ricavi-dialog.tsx:451,452,477,478` (`/1.10`,
+`/1.22`) invece di `scorporoNetto` — nonostante il commento del codice dichiari
+che lo scorporo è «tenuto in un solo punto per evitare divergenze». Delta
+economico oggi **zero**: i valori coincidono. Il test è una rete più larga del
+fix — intercetta la divergenza **futura**, cioè il giorno in cui qualcuno cambia
+un'aliquota in un posto solo e l'utente vede due totali diversi.
+
+### Il mutante che ha corretto una mia fixture sbagliata
+
+Il `?? 0` sulle quote di riparto: il mio test passava `quote_riparto_fb: None`, e
+il mutante che toglie il coalesce **sopravviveva**. Non era un test debole nel
+senso ovvio — in JavaScript `32 + null === 32`, quindi su `null` il mutante è
+**equivalente**. Il caso che il `?? 0` protegge davvero è il campo **assente**:
+`32 + undefined` fa `NaN`, e da lì ogni totale della colonna diventa «NaN €».
+Un worker che omette la chiave invece di mandarla `null` è lo scenario
+realistico. Il test ora prova entrambi, e il mutante muore.
+
+> Lezione: **un mutante sopravvissuto va capito, non zittito.** Qui la risposta
+> non era «aggiungi un assert», era «la fixture misurava il caso sbagliato».
+
+### Il contatore: la cifra girava sbagliata da almeno due cicli
+
+Ri-sommando la colonna a HEAD — come il contatore stesso impone — il totale non
+tornava: **51.894** da `git archive`, contro i 51.063 dichiarati. Solo 40 righe
+erano mie. Le altre 791 erano due errori vecchi:
+
+- la voce `hooks/`+`proxy.ts`+file diretti valeva **622**, non 312: i file
+  diretti in `app/` sono **495**, non 185 (`globals.css` da solo ne fa 296);
+- `app/fonts/` contiene **due `.woff` binari** che `wc -l` conta come **481
+  "righe"** pur non essendo codice.
+
+Totale corretto: **51.413** (= 51.894 − 481 dei font), e la colonna ora somma
+esattamente. A cascata: TOTALE APP **110.419**, letto **39.155 (35%)**, mai
+guardato **53.614 (49%)** — le tre righe ricalcolate, con la somma verificata a
+zero di scarto.
+
+> È la **quarta** volta in tre giorni che questo file mente. Le prime tre erano
+> righe mancanti, righe contate due volte, una frase smentita dalla somma.
+> Questa era una voce ferma da due cicli più due file binari contati come
+> sorgente. Il pattern non è la distrazione: è che **nessun test controlla
+> l'aritmetica di un `.md`** — `check_documentazione.py` verifica i simboli, non
+> le somme.
+
+### Non fatto, e dichiarato — va in coda con la sua misura
+
+- **Il mobile riscrive a mano il gate mensile.**
+  `(mobile)/m/diario/mobile-incassi.tsx:215-235` importa da `periodi.ts` solo
+  `scorporoNetto` e il tipo `NettoMese`, poi **riscrive** la scelta
+  override-vs-giornalieri **senza la distinzione null/0**
+  (`nettoAutorevole?.netto ?? risposta?.totale_netto ?? 0`). È esattamente il
+  difetto che `fetchNettoMese` protegge, in un file che non lo chiama. Non
+  toccato: è `(mobile)/`, area separata, fuori da questa dimensione.
+- **Le 9 copie backend del filtro `Da Classificare`** + le NOTE senza emoji in
+  `margine_service.py` e nelle 2 RPC: **0 righe attive** sui dati veri, e il fix
+  richiede una migration su 7 account. Fuori dimensione (§5bis vieta gli
+  strascichi).
+- **I 4 letterali IVA**: remediation separata, da proporre.
+- **Il rendering resta non testato** (~4.300 righe): serve un runner di
+  componenti, escluso per ragione strutturale (`deploy-vercel.yml` scatta su
+  `apps/web/**`, un runner lì farebbe partire un deploy di produzione a ogni
+  merge di un test).

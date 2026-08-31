@@ -1,319 +1,202 @@
-# Prompt per la prossima sessione
+# Prompt prossima sessione — `(app)/catena/`
 
-> **Mattia**: nella nuova sessione basta che scrivi
-> `Leggi DOCUMENTAZIONE/PROMPT_PROSSIMA_SESSIONE.md e segui quello che dice.`
-> Non serve incollare nulla: tutto quello che serve è qui sotto.
+> Scritto il 31/8/2026 a chiusura della dimensione `margini/`.
+> **Le cifre qui dentro sono misurate a quel HEAD. Ri-misurale, non ereditarle.**
+> È la regola che questo progetto ha già violato quattro volte in tre giorni.
 
 ---
 
-Il ciclo audit corrente è `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md`;
-i verbali delle sessioni chiuse stanno in `..._STORICO.md`. Il ciclo 2026-08 è
-**chiuso e archiviato** in `docs/storico/`: non riaprirlo.
-
-**Il contatore della copertura è `DOCUMENTAZIONE/AUDIT_COPERTURA.md`**
-(creato il 31/8/2026): è l'unico posto dove le somme tornano, e va aggiornato a
-fine sessione insieme alla roadmap. Ri-misurato il 31/8: **34% letto
-integralmente, 16% auditato per dimensione, 50% mai guardato** su 110.069 righe.
-«Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di dichiarare
-chiuso qualsiasi perimetro.
-
-⚠️ **Il contatore non ha rete automatica sull'aritmetica**: `check_documentazione.py`
-controlla link e simboli, **non le somme**. Il 31/8 una cifra stantia è passata
-due volte di fila (ri-misurata contro il commit *precedente* invece che contro
-HEAD) ed è stata presa solo dal `code-reviewer`. **Ri-misura contro HEAD**, e
-risomma la colonna della tabella invece di fidarti della frase di riepilogo.
-
-**Test frontend esistenti** (4 file, tutti con `esegui_ts` sul .ts vero):
-`test_scadenziario_filtri_frontend.py`, `test_scadenziario_kpi_frontend.py`,
-`test_categorie_spesa_frontend.py`, `test_tag_candidati_frontend.py`.
-I due dello scadenziario sono **55 test raccolti** — il template stilistico da
-copiare per `margini/`.
-
-## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non spedito
-
-Mattia accumula più sessioni e **deploya una volta sola, la sera**. Regola
-aggiornata il 31/8/2026 (`CLAUDE.md` §«Dove si lavora», `WORKFLOW.md` §0):
-**si lavora su `main` locale, niente branch, niente PR.** All'inizio della
-sessione:
+## 0. Prima di qualunque cosa — controlli di sessione
 
 ```bash
-git branch --show-current           # deve essere main
-git log --oneline origin/main..main # cosa e' gia' in coda, non spedito
+git status --short                      # dev'essere pulito
+git log --oneline origin/main..main     # quanti commit sono in coda?
 ```
 
-Se quel secondo comando non è vuoto, **dillo a Mattia subito**: c'è lavoro
-fatto e non ancora spedito, e va saputo prima di aggiungerne altro. Se ti
-trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
+**Se la coda non è vuota, dillo a Mattia subito**, con il numero. Il 31/8 sera
+erano **25**. Il push manda **tutti** quelli accumulati, non solo quelli di oggi
+— e **il push È il deploy**. Non pushare mai di iniziativa: la finestra è la
+sera/notte, e la decide Mattia.
 
-**Non spedire senza via esplicito di Mattia**, anche a test verdi: `git push`
-(e a maggior ragione `gh pr merge`) È il deploy, e ha una finestra oraria
-(sera/notte/mattina presto).
+Si lavora su **`main` locale**. Niente branch, niente PR (`WORKFLOW.md` §0).
 
-**Chiuso finora in questo ciclo:**
-- **Dimensione «route API»** (30/8) — le 3 ipotesi di partenza erano tutte false;
-  il rischio vero era strutturale ed è chiuso da
-  `tests/test_route_api_auth_dichiarativa.py` (9 test, 238 endpoint enumerati
-  dall'app vera, allowlist di 10 deroghe motivate).
-- **Le 3 «voci aperte ereditate»** (31/8) — **2 su 3 erano false**, la terza
-  aveva la domanda sbagliata. Tutte e tre chiuse, il fatto spostato dal
-  documento al codice.
-- **Primo pezzo di scadenziario** (31/8) — `buildCashFlow` estratta e coperta,
-  4 mutanti uccisi.
-- **Dimensione «scadenziario» CHIUSA** (31/8, 2ª sessione) — 7 funzioni estratte
-  in `lib/scadenziario.ts` (245 → 442 righe), client 2.210 → 2.118. Prova per
-  mutazione **rifatta da zero dal `code-reviewer` con i suoi mutanti**: bilancio
-  finale **20 mutanti, 19 uccisi, 1 sopravvissuto e dichiarato** (il locale `"it"`
-  di `localeCompare`: `undefined`/`it`/`en-US`/`sv-SE`/`de-DE` danno tutti lo
-  stesso ordine sulle fixture — scoperto, non coperto). Il reviewer ha anche
-  trovato un mutante vivo sul **filtro di sede**, ora ucciso da
-  `test_il_predicato_extra_filtra_la_sede`, e una regressione **O(n·m)** chiusa
-  costruendo il `Set` una volta sola (199ms → 23ms).
-  Trovata e **lasciata invariata** (decisione di Mattia) la divergenza
-  chip «Questo mese» (cumulativo) vs sezione «Questo mese» (fascia): ora è
-  scritta in un test invece che in nessun posto.
-  Rimosso `matchFiltriComuniRef`: era un ref assegnato **durante il render**,
-  che poteva far leggere a `kpiPerSede` un predicato stale — difetto latente
-  vero, non cosmetico.
-- **Contatore rimesso in quadratura** (31/8) — una sessione parallela aveva
-  contato `(mobile)/` **due volte**: la tabella sommava 53.398 contro 51.063
-  reali. Ogni area ri-misurata a HEAD.
+---
 
-## Cosa si fa, e cosa viene dopo
+## 1. La dimensione: `(app)/catena/` — 3.127 righe
 
-**Si apre `margini/`** (4.795 righe, **🟠 60% già letta**: il lavoro è sul 40%
-restante, non da zero — **tocca il MOL**). Lo scadenziario è chiuso davvero: mutazione, commit, verbale, contatore ri-misurato,
-`check_documentazione.py` pulito.
+**È l'unica area frontend grande che nessuna passata ha mai aperto.** Non «poco
+coperta»: **zero**. Multi-sede — è la vista del gruppo, quella che aggrega più
+punti vendita in un numero solo.
 
-⚠️ **Prima di aprire `margini/`, leggi il verbale che l'ha già letta in parte.**
-La coda sotto è stata corretta il 31/8 dopo il `code-reviewer`: la prima
-stesura dava «mai guardata» ad aree che i cicli 07 e 08 avevano già coperto.
-**Aprire un'area 🟠 non significa partire da zero**: il perimetro escluso è
-stato misurato e motivato, e rileggerlo è lavoro fantasma.
+Misurato il 31/8 (`find ... -exec wc -l`):
 
-| Area | Righe | Stato | Dove sta scritto cosa è già letto |
-|---|---:|---|---|
-| `(app)/margini/` | 4.795 | 🟠 60% letto | ciclo 07 §3c: calcolo-tab (1.248), analisi-tab (846), coperti-tab (809) |
-| `(app)/catena/` | 3.127 | 🔴 **mai toccata** | nessun verbale — è l'unica area grande davvero vergine |
-| `components/` | 7.298 | 🟠 30% letto | **F3 ciclo 08 CHIUSA** (`AUDIT_ONEFLUX_STATO_2026-08_STORICO.md`) |
-| `(app)/workspace/` | 5.012 | 🟠 37% letto | ciclo 07 §3c + **F6 ciclo 08 CHIUSA** |
-| `(app)/prezzi/` | 2.361 | 🟠 41% letto | ciclo 07 §3c: variazioni-tab (973) |
+| File | Righe |
+|---|---:|
+| `gruppo-tag-section.tsx` | 721 |
+| `sintesi-catena.tsx` | 559 |
+| `finestra-costi-gruppo.tsx` | 553 |
+| `finestra-margini-coperti.tsx` | 522 |
+| `finestra-spesa-pv.tsx` | 279 |
+| `config-assistente-catena.tsx` | 202 |
+| `card-segnali.tsx` | 110 |
+| `fatture/page.tsx` · `page.tsx` · `loading.tsx` | 77 · 76 · 28 |
 
-**Deciso il 31/8: `margini/` è la prossima dimensione.** Regola di Mattia, in
-`WORKFLOW.md` §5bis: *una cosa alla volta, chiusa davvero prima della
-successiva — niente strascichi*. Lo scadenziario è chiuso, quindi si apre
-`margini/` e **nient'altro** finché non è chiuso a sua volta.
+### Perché è esposta
 
-**Chiuso davvero** = tutti e 5 i punti di §5bis, non tre su cinque: mutazione,
-commit, verbale, contatore `AUDIT_COPERTURA.md` ri-misurato,
-`check_documentazione.py` pulito.
+Aggrega **più sedi**. Un errore qui non sbaglia il numero di un cliente: sbaglia
+il **confronto fra i suoi locali**, che è la ragione per cui un cliente
+multi-sede paga il prodotto. E gli errori di aggregazione sono quelli che non si
+vedono a occhio — un totale plausibile resta plausibile anche quando è sbagliato.
 
-## Cosa fare: aprire `margini/`
+### Cosa ho già verificato per te (31/8)
 
-**È la priorità per esposizione, non per dimensione**: `catena/` è l'unica area
-davvero vergine, ma `margini/` **tocca il MOL**, che è regola di dominio
-critica (`CLAUDE.md` §1: le righe `Da Classificare` sono escluse dai margini
-finché non vengono classificate, per non falsare il MOL).
+- **`lib/gruppo.ts` (230 righe) NON è il posto dove estrarre.** È un client del
+  worker: `fetchGruppoOverview`/`fetchGruppoChatConfig` sono `cache()` + `fetch`.
+  Stesso caso di `lib/margini.ts`. `helpers_ts.py` vieta i moduli con
+  side-effect all'import — serve un modulo nuovo, come è stato
+  `lib/margini-aggregati.ts`.
+- Import da `catena/`: `@/lib/gruppo` (5), `@/lib/utils` (4), `@/lib/worker`,
+  `@/lib/tag-candidati`, `@/lib/scadenziario`.
 
-**La strada è battuta quattro volte** (`poolSaturo`/F7 il 29/8, `buildCashFlow`
-e poi i filtri il 31/8): **estrarre la logica pura in `lib/`, coprirla in
-`tests/*.py` con `esegui_ts`, provarla per mutazione**. Non serve un runner di
-componenti — escluso per ragione strutturale (`deploy-vercel.yml` scatta su
-`apps/web/**`: ogni merge di un test farebbe partire un deploy di produzione).
+---
 
-### Ricognizione già fatta il 31/8 — parti da qui, ma ri-misura
+## 2. Il metodo, battuto 5 volte — non inventarne uno nuovo
 
-Misurato a HEAD, non ereditato. **Le righe possono essere cambiate: ri-conta.**
+1. **Ricognizione**: leggi, misura, e **verifica le ipotesi del prompt sul DB
+   di produzione prima di crederci**. Nella sessione `margini/` due piste su tre
+   indicate dal prompt precedente si sono sgonfiate alla prima query, e
+   l'esposizione vera (70.095 €) era altrove.
+2. **Estrai la logica pura** in un modulo `lib/` nuovo, **byte per byte, senza
+   correzioni**. Poi verifica che il diff dei componenti contenga **solo import
+   e rimozioni**: `git diff -U0 | grep '^+'`. Se compare logica, il taglia-incolla
+   non era fedele — e un test verde su un'estrazione infedele certifica il codice
+   sbagliato. È il rischio numero uno di questa fase, più del test stesso.
+3. **Test con `esegui_ts`** (`tests/helpers_ts.py`), non un runner frontend.
+   Niente runner in `apps/web/`: `deploy-vercel.yml` scatta su `apps/web/**`, un
+   runner lì farebbe partire un **deploy di produzione a ogni merge di un test**.
+4. **Prova per mutazione, sempre.** Copia di `apps/web/src` in scratchpad,
+   `helpers_ts.WEB_SRC` ridiretto alla copia via `-p conftest_mut` (plugin, non
+   un conftest raccolto) — **mai sul file del repo**. Lo script deve asserire
+   **esattamente 1 sostituzione** e fermarsi altrimenti: un mutante che non
+   matcha «sopravvive» senza aver misurato niente.
+5. **Controprove obbligatorie**: almeno un mutante *equivalente* che deve
+   **sopravvivere**. Se muore tutto, il test non discrimina, è rigido.
+6. **Un mutante sopravvissuto va capito, non zittito.** Il 31/8 il `?? 0`
+   sopravviveva perché in JS `32 + null === 32`: il mutante era davvero
+   equivalente **su quella fixture**, e il caso reale (`undefined` → `NaN`) non
+   era coperto. La risposta non era un assert in più, era la fixture sbagliata.
 
-| File | Righe | Cosa contiene |
-|---|---:|---|
-| `calcolo-tab.tsx` | 1.317 | 📖 letto ciclo 07 — **qui si calcola il MOL** |
-| `analisi-tab.tsx` | 910 | 📖 letto ciclo 07 |
-| `coperti-tab.tsx` | 825 | 📖 letto ciclo 07 |
-| `carica-ricavi-dialog.tsx` | 667 | 🔴 mai letto — **ingresso dati ricavi** |
-| `costo-personale-dialog.tsx` | 181 | 🔴 |
-| `costo-spese-dialog.tsx` | 177 | 🔴 |
-| `kpi-bar.tsx` | 168 | 🔴 — mostra il MOL |
-| `page.tsx` | 157 | 🔴 |
-| **`periodi.ts`** | **156** | 🔴 — **logica pura già isolata: il candidato n.1** |
-| `filtri-periodo.tsx` | 149 | 🔴 |
-| `tabs-switcher.tsx` + `loading.tsx` | 88 | 🔴 — UI, esclusione probabile |
+### L'harness di mutazione
 
-Totale **4.795** (coincide col contatore). Il 60% «già letto» sono i tre tab
-grandi: 1.317+910+825 = **3.052**. Il lavoro è sul resto.
+Sta in `/tmp/claude-*/scratchpad/muta.py` (si perde a fine sessione, riscrivilo).
+Prima di fidartene, **fai un controllo di sanità**: un mutante palese
+(`return 999999`) deve morire. Se sopravvive, il redirect non funziona e tutte le
+misure successive valgono zero.
 
-### Il candidato n.1: `margini/periodi.ts` (156 righe, zero test)
+### La tecnica dello stub `fetch` (riusabile)
 
-**Non serve estrarlo: è già logica pura in un file a sé.** Si copre e basta —
-la sessione parte con un vantaggio che lo scadenziario non aveva.
+`helpers_ts.py` stubba `globalThis.fetch` a `throw`. Per testare una funzione che
+fa rete, **riassegnalo dentro l'espressione node**, dopo il prologo — nessuna
+modifica a `helpers_ts.py`, nessun effetto sugli altri test (ogni `esegui_ts` è
+un processo node separato). Esempio completo in
+`tests/test_margini_netto_mese_frontend.py`.
 
-Decide **quali fatture entrano nel MOL** (`calcolaPeriodo` → `data_da`/`data_a`)
-e fa **matematica sui soldi** (`scorporoNetto`, `IVA_DIVISORE_10/22`). Due classi
-di difetto già viste, entrambe invisibili: il numero esce solo sbagliato.
+**Lo stub deve servire `json` anche quando `ok` è `false`**: una 500 di FastAPI
+ha un body JSON valido (`{"detail": ...}`). Uno stub che su `ok:false` non
+espone `json` è irrealistico e lascia vivere il mutante che toglie il controllo
+su `r.ok` — è successo, 12 test su 12 non lo vedevano.
 
-Superficie da coprire, verificata il 31/8:
-- `calcolaPeriodo(preset, oggi)` — 13 preset, fra cui `q1..q4`, `h1/h2`,
-  `anno_precedente`. **Ogni preset è un confine di data**: `lastDay(y, 3)` per
-  Q1, `new Date(y, month1Based, 0)` per fine mese. Da provare col fuso in mente.
-- `calcolaMese(year, month1Based)` — attenzione: **1-based**, mentre
-  `oggi.getMonth()` è 0-based. Classe di off-by-one classica.
-- `mesiSelezionabili(n, oggi)` — decrementa il mese a mano con wrap sull'anno.
-- `scorporoNetto(iva10, iva22, altri)` — **divisione, non moltiplicazione**:
-  i ricavi sono salvati lordi. Un mutante `/` → `*` deve morire.
+---
 
-**Fatto già verificato, non ri-indagarlo:** esistono **due** `periodi.ts`,
-`margini/` (156) e `analisi-fatture/` (103). **Non sono un clone divergente**:
-quello di `margini/` è un **superset** (aggiunge trimestri/semestri/anno
-precedente/scorporo IVA), e le parti comuni sono equivalenti — `calcolaMese`
-differisce solo nel come costruisce l'etichetta, **non nelle date**. Diffati il
-31/8. Se copri `margini/periodi.ts`, valuta se i test valgono anche per l'altro.
+## 3. Come si risponde a Mattia
 
-### Ipotesi da verificare, non da assumere
+Owner, non lettore di codice: decide **cosa**, non come.
 
-- **L'esclusione delle righe `Da Classificare`** dai margini è nel backend, nel
-  frontend, o in **entrambi**? Se è duplicata, le due copie sono allineate?
-  (Backend: `services/margine_service.py`, 1.476 righe, 🔍 solo di rimbalzo.)
-- **Le aggregazioni per categoria** rispettano la regola su
-  `"📝 NOTE E DICITURE"` (consentita solo con `totale_riga == 0`)?
-- **`carica-ricavi-dialog.tsx`** (667 righe, mai lette) è un **ingresso dati**:
-  se valida male, il MOL è sbagliato a monte di ogni calcolo.
+**Domande di stato** («a che punto siamo», «cosa manca»): **una riga di
+verdetto**, **max 3 punti**, **una domanda** se serve una decisione, e **«Vuoi
+il dettaglio?»**. Tetto ~10 righe. Niente tabelle, niente percorsi con numero di
+riga. Un mio errore si corregge in **mezza riga**.
 
-**Prima di estrarre qualsiasi cosa**, cerca nel perimetro la logica che *decide
-numeri o inclusioni*. È la classe che ha già prodotto difetti veri, ed è quella
-dove un errore non si vede.
+**A fine planning** (`ExitPlanMode`), sempre e **nel messaggio in chat**, non
+solo nel file del piano: riepilogo non tecnico **+ tabella fase / modello /
+sforzo / `ultrathink`**. Il 31/8 l'ho scritta solo nel file e Mattia me l'ha
+contestata: «molto male». `ultrathink` su apertura, audit e fix a una regola di
+dominio; normale sull'esecuzione (`WORKFLOW.md` §1ter e §3).
 
-⚠️ **`margini/` è 🟠 60%: non si riparte da zero.** Leggi il verbale del ciclo 07
-§3c prima di aprire i tre tab già letti — rileggerli è lavoro fantasma.
+---
 
-## Se `margini/` chiude presto: NON aprire altro
+## 4. Chiusura — tutti i punti, non tre (`WORKFLOW.md` §5bis)
 
-Regola di Mattia (§5bis): una cosa alla volta. Se `margini/` chiude e avanza
-tempo, **si chiude bene** — verbale, contatore ri-misurato,
-`check_documentazione.py` pulito, `code-reviewer` — e la sessione finisce lì,
-lasciando il prompt pronto per la successiva. Aprire l'area dopo «già che ci
-siamo» è esattamente lo strascico che questa regola vieta.
+1. Prova per mutazione, con **bilancio dichiarato**: N mutanti, M uccisi, K
+   sopravvissuti **elencati col motivo**. I sopravvissuti si dichiarano.
+2. `python -m pytest tests/` verde + `cd apps/web && npx tsc --noEmit`.
+   **`tsc` controlla i tipi e non esegue niente**: non è una rete sul
+   comportamento.
+3. **`/code-reviewer`** sul diff cumulativo, chiedendogli di **rifare la
+   mutazione con i suoi mutanti**. Negli ultimi 4 giri ha trovato ogni volta
+   qualcosa. Il gate `.claude/.reviewer_gate_ok` **si consuma**.
+   Nota: il reviewer sbaglia anche — il 31/8 ha dichiarato rotto un harness che
+   funzionava. **Verifica prima di accettare**, e digli quando ha torto.
+4. **Verbale** in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md`: perimetro
+   misurato **e cosa non copre e perché**, ipotesi smentite, esposizione in euro,
+   tecniche riusabili, e la coda di quel che resta **con la sua misura**.
+5. **Roadmap** `AUDIT_ONEFLUX_STATO_2026-08-29.md` aggiornata.
+6. **`AUDIT_COPERTURA.md` ri-misurato contro HEAD**, **risommando la colonna**.
+   Le estrazioni spostano righe fra l'area e `lib/`: cambiano **due** voci.
+   ⚠️ `git archive HEAD apps/web/src | tar -xO | wc -l` include **481 righe di
+   due font `.woff` binari** in `app/fonts/`: il totale del contatore è quella
+   cifra **meno 481**. Il 31/8 questo, più una voce ferma da due cicli, faceva
+   sbagliare il totale di 350 righe.
+7. `python scripts/check_documentazione.py` pulito. **Verifica i simboli, non
+   l'aritmetica**: le somme dei `.md` non hanno nessuna rete automatica.
+8. Commit su `main` locale, `git status --short` pulito (doc **insieme** al
+   codice).
+9. Riscrivere questo file per la dimensione successiva.
+10. **Dire a Mattia quanti commit sono in coda. Non pushare.**
 
-La coda per le sessioni successive, **per esposizione, non per dimensione**.
-Gli stati sono quelli corretti dal `code-reviewer` il 31/8 — controlla sempre
-`AUDIT_COPERTURA.md` prima di aprirne una:
-1. **`catena/`** 🔴 3.127 righe — **mai toccata da nessuna passata**, multi-sede.
-2. **`components/`** 🟠 30% — condivisa da tutte le pagine: un difetto qui si
-   moltiplica. F3 del ciclo 08 ne ha lette 2.188 e motivato le esclusioni.
-3. **`prezzi/`** 🟠 41% — 39.133 righe fattura a monte; letta `variazioni-tab`.
-4. **`(mobile)/`** 🟠 32% — frontend separato; letta `mobile-turni`.
-5. **`workspace/`** 🟠 37% — la più grande, ma esposizione live bassa (ciclo 07:
-   turni 0, regole 0, ingredienti 0) e **F6 del ciclo 08 l'ha già chiusa**.
+---
 
-Fuori classifica, ma **mai aperte e misurate il 31/8** (`AUDIT_COPERTURA.md`):
-`dashboard` 1.749 · `impostazioni` 806 · `agenda` 693 · `notifiche` 339 ·
-`assistenza` 292 · `style-guide` 256 — più `lib/` 🟠 16% (3.642 righe, di cui
-solo `scadenziario.ts` coperto). **`dashboard` è la prima pagina che il cliente
-vede**: vale più di quanto la sua posizione qui suggerisca.
+## 5. La coda — cose trovate e NON fatte, con la loro misura
 
-## Voce aperta, e non è una dimenticanza
+Non sono dimenticanze: sono esclusioni motivate. Vanno riprese come dimensione
+propria, non infilate in una sessione altrui (§5bis vieta gli strascichi).
 
-**Alzare `dependencies=[...]` a livello di `APIRouter`.** È la correzione
-strutturale piena sull'auth: sposterebbe il default da aperto a chiuso **nel
-codice**, non solo nel test. Non fatta di iniziativa perché tocca **238
-endpoint** e cambia comportamento su tutto il traffico di 7 account veri, e
-perché `_resolve_user_from_token` *restituisce* l'utente agli handler: come
-dipendenza di router il suo valore non arriva all'endpoint, quindi va disegnata,
-non aggiunta meccanicamente. **Va aperta come dimensione a sé, con la sua
-finestra di deploy — non come appendice di un'altra sessione.**
+- **Il mobile riscrive a mano il gate mensile.**
+  `(mobile)/m/diario/mobile-incassi.tsx:215-235` importa da `margini/periodi.ts`
+  solo `scorporoNetto` e il tipo, poi **riscrive** la scelta
+  override-vs-giornalieri **senza la distinzione null/0**
+  (`nettoAutorevole?.netto ?? risposta?.totale_netto ?? 0`). È esattamente il
+  difetto che `fetchNettoMese` protegge, in un file che non la chiama. Un errore
+  di lettura diventa «mese a zero». **Candidato forte** se si apre `(mobile)/`.
+- **L'asimmetria della Media Ricavi netti** (`lib/margini-aggregati.ts`):
+  fotografata da un test, **non corretta** (decisione di Mattia). 0 sedi su 8 nel
+  caso misto oggi, ma le 66 righe `source='manuale'` hanno tutte `coperti` NULL:
+  si arma da sola.
+- **I 4 letterali IVA** in `carica-ricavi-dialog.tsx:451,452,477,478` (`/1.10`,
+  `/1.22`) invece di `scorporoNetto`. Delta oggi **zero**; il test intercetta la
+  divergenza futura.
+- **Le 9 copie backend del filtro `Da Classificare`** (8 letterali, 1 sola con la
+  costante e `.strip()`, `fastapi_worker.py:8004`) + 2 RPC SQL, e le NOTE senza
+  emoji in `margine_service.py`. Sui dati veri: **0 righe attive** (172 con
+  grafia esatta, 0 con spazi, 0 col refuso). Il fix richiede una **migration su
+  7 account**: dimensione a sé, con la sua finestra di deploy.
+- **`dependencies=[...]` a livello di `APIRouter`**: tocca 238 endpoint.
+- **Il rendering frontend resta non testato ovunque.** Servirebbe un runner di
+  componenti, escluso per ragione strutturale (vedi §2.3). Ogni area «chiusa»
+  significa *logica pura coperta*, non *ogni riga testata* — ed è così che va
+  detto a Mattia.
 
-## Baseline radar — controllala a inizio sessione, è una riga di SQL
+---
 
-```sql
-SELECT topic_key, source_type, count(*), max(created_at)::date
-FROM notification_inbox GROUP BY 1,2 ORDER BY 3 DESC;
-```
+## 6. Trappole che sono già costate ore
 
-Al 31/8: **0 record `source_type='radar'`**. Il radar è stato ricollegato il
-29/8 — dopo i primi upload reali dovrebbero comparirne **pochi e veri**. Se sono
-molti, la ritaratura su `numero_documento` va rivista: prima del fix ne avrebbe
-prodotti 897, tutti falsi.
-
-Nota misurata il 31/8: `price_alert` ha 3 righe, tutte `source_type='upload'`,
-l'ultima **1/6/2026** — è la dismissione di Streamlit, non un guasto. Non
-indagarla di nuovo: il perché è nel docstring di `anomaly_radar_service.py` e in
-2 test di `test_radar_aggancio_percorso_vivo.py`.
-
-## Metodo, non derogabile
-
-- **Ogni cifra si ri-misura al momento di scriverla**, mai ereditata da un
-  documento — **nemmeno da questo, nemmeno dalla roadmap**. Il 31/8 le «voci
-  aperte ereditate» erano marcate «verificate ancora vere» e **2 su 3 erano
-  false**: riprenderle per buone ha prodotto lavoro fantasma finché la misura
-  non le ha smontate. È la quarta sessione di fila in cui succede.
-- **Ogni fix si prova per mutazione**, su copia in scratchpad: si rimuove il fix
-  e si controlla che i test tornino rossi. **Verifica sempre che il mutante si
-  applichi davvero** prima di leggerne l'esito: un mutante che non matcha il
-  sorgente «sopravvive» senza misurare niente.
-- **Serve anche la controprova**: un test che diventa rosso su tutto non
-  discrimina. Il 31/8 la prima stesura di un test falliva sul docstring che
-  documentava il difetto — un match testuale nudo misura il proprio pattern, non
-  il codice.
-- **Un mutante che non matcha va rifiutato, non interpretato**: il 31/8
-  `?? Infinity` compariva **due volte** e la sostituzione singola sarebbe
-  «sopravvissuta» senza misurare niente. Lo script di mutazione deve
-  **asserire che le sostituzioni siano esattamente 1** e fermarsi altrimenti.
-- **Una previsione sul mutante va verificata come il resto.** Il 31/8 era
-  atteso che `new Date()` morisse *solo* a ovest di Greenwich: muore in
-  **entrambi** i fusi, perché a Roma `new Date("YYYY-MM-DD")` vale le 02:00
-  locali — stesso giorno, ma non mezzanotte. L'attesa era giusta per
-  `pagata_at`, non per questi confini.
-- **Il gate del `code-reviewer` consuma il marker.** `.claude/.reviewer_gate_ok`
-  vale **una volta sola**: lo hook lo cancella quando lo usa. Se lo Stop ri-blocca
-  su un lavoro già revisionato non è un difetto e non è un loop — il gate misura
-  il **diff cumulativo** `origin/main..main`, che resta grande finché Mattia non
-  pusha. Verifica che il diff sia ancora quello già revisionato, poi riscrivi il
-  marker. **Non è un bypass**: per contratto certifica *che* la review è
-  avvenuta, non che sia stata positiva.
-- **Un file nel diff cumulativo che non hai toccato tu non è per forza di altri.**
-  Il 31/8 `anomaly_radar_service.py` sembrava intruso: era della stessa sessione,
-  e conteneva **solo un commento**. Guarda `git log <file>` prima di allarmarti,
-  ma **guardalo**: un file non revisionato in coda è un buco reale.
-- **Un mock che non guarda cosa gli viene chiesto non è una rete.**
-- **Leggere un `if` non dice quale suo lato è caldo.** Misura quale ramo
-  percorrono i dati veri prima di dichiarare protetta una cosa.
-- **`tsc` non esegue niente**: un fix può passare `tsc`, sembrare giusto a
-  leggerlo e non fare nulla sui dati veri.
-- Audit **read-only** prima di ogni fix; remediation solo dopo mia conferma.
-- `code-reviewer` sul diff cumulativo a fine sessione, **sempre**.
-- Dopo il push (serale, deciso da Mattia): **CI verde su GitHub**, non solo in
-  locale — gira su Python 3.12 con `requirements-lock.txt` e un gate
-  `coverage --fail-under=45`.
-- Migration solo con mia conferma esplicita, applicata **prima** del deploy.
-- **Deploy fuori orario cliente**, salvo mio via esplicito: è il **push** su
-  `origin/main` a deployare. Railway riparte anche per un diff di soli
-  documenti; se il push tocca `apps/web/**` parte **anche** Vercel.
-
-## Chiusura — la lista completa, in ordine
-
-Mattia non deve ricordartela: è qui. Fai **tutti** i punti, non i primi tre
-(`WORKFLOW.md` §5bis).
-
-1. **Prova per mutazione** ogni fix: rimuovi il fix su copia in scratchpad e
-   controlla che i test tornino rossi. Verifica che il mutante si applichi
-   davvero prima di leggerne l'esito.
-2. **`/code-reviewer`** sul diff cumulativo (`origin/main..main`). **Sempre**,
-   anche se sembra piccolo.
-3. **Verbale** in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md`, in coda, con la data.
-4. **Stato** aggiornato nella roadmap `AUDIT_ONEFLUX_STATO_2026-08-29.md`.
-5. **Contatore** `AUDIT_COPERTURA.md`: sposta la riga (🔴 → 🔍 → 📖),
-   **ri-misura** le righe coi comandi in cima al file, ricontrolla che le somme
-   tornino. Saltare questo passo fa invecchiare il contatore e riporta il
-   problema che è nato per risolvere.
-6. **`python scripts/check_documentazione.py`** deve uscire pulito. Se segnala
-   un piano orfano o l'indice fuori sync, sistemalo ora — non «poi».
-7. **Committa tutto**, doc insieme al codice che documenta. `git add` non basta:
-   il 30/8 il `code-reviewer` ha bloccato una chiusura perché i file erano
-   staged e mai commitati. Controlla `git status --short` pulito.
-8. **Riscrivi questo file** per la sessione successiva: cosa è stato chiuso, cosa
-   resta, qual è la prossima dimensione. È l'unica cosa che passa alla sessione
-   dopo — se non lo aggiorni, quella riparte da informazioni vecchie.
-9. **Di' a Mattia quanti commit sono in attesa** (`git log --oneline
-   origin/main..main`). **Non pushare**: il push è il deploy e lo decide lui,
-   la sera.
-
-Se la dimensione **non** è chiusa a fine sessione, i punti 1-2 saltano ma
-**3-9 no**: il verbale dice a che punto sei, e il prompt dice da dove ripartire.
+- **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
+- **Vercel deploya solo se il commit tocca `apps/web/**`; Railway non ha filtro
+  di path** — anche soli `.md` gli fanno ridispiegare il worker.
+- **Zero test frontend**: `npx tsc --noEmit` è l'unica rete, e non esegue niente.
+  Una condizione su una soglia va **provata per mutazione sui valori veri**.
+- **Un test che mocka il client non prova che la query funzioni.** 6 test del
+  radar anomalie sono verdi da mesi su una colonna che non esiste.
+- **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in
+  produzione.
+- **Worker locale senza `--reload`** tiene in memoria il codice vecchio.

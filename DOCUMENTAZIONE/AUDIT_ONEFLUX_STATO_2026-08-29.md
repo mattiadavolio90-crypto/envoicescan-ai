@@ -166,12 +166,16 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 ## 📊 Il perimetro ancora scoperto — misurato il 30/08/2026
 
 > ⚠️ **Questa tabella è parziale, e il 31/8 si è misurato quanto.** Elenca
-> **4 aree frontend su 14** e **zero backend Python**: 15.049 righe su 109.964.
-> Il conto completo sta in **`AUDIT_COPERTURA.md`** — 19% letto integralmente,
-> 16% auditato per dimensione, **65% mai guardato**. Le due aree frontend più
-> grandi (`workspace/` 5.012, `margini/` 4.795, quest'ultima tocca il MOL) non
-> compaiono qui sotto. Usa il contatore per decidere le priorità, non questa
-> tabella.
+> **4 aree frontend su 14** e **zero backend Python**: 15.049 righe su 110.419.
+> Il conto completo sta in **`AUDIT_COPERTURA.md`** — 35% letto integralmente,
+> 16% auditato per dimensione, **49% mai guardato**. Usa il contatore per
+> decidere le priorità, non questa tabella.
+>
+> **Aggiornato il 31/8 (3ª sessione):** `margini/` (4.709 righe, il MOL) è
+> **chiusa** — 183 test, 65/65 mutanti. `scadenziario/` era stata chiusa la
+> sessione prima. L'area grande ancora vergine è **`(app)/catena/` (3.127
+> righe)**: nessuna passata l'ha mai aperta. `workspace/` (5.012) resta 🟠 37%,
+> ma il resto è stato escluso con misura di esposizione live nel ciclo 08.
 
 Superficie oggi (`wc -l`, rimisurata, non ereditata):
 
