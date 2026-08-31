@@ -247,15 +247,15 @@ Se richiede **trascrizione** di decisioni già prese, Sonnet basta. Nel dubbio, 
 
 ## 4. Fine fase ≠ deploy
 
-**Il completamento di una fase non autorizza mai un merge.** E poiché
-**merge = deploy** (§0, `CLAUDE.md`), il vincolo di finestra oraria si applica
-lì: sera/notte/mattina presto, dichiarata esplicitamente da Mattia *in
+**Il completamento di una fase non autorizza mai un push.** E poiché
+**è il push a deployare** (§0, `CLAUDE.md`), il vincolo di finestra oraria si
+applica lì: sera/notte/mattina presto, dichiarata esplicitamente da Mattia *in
 sessione*. Vedi `feedback_deploy_solo_fuori_orario` in memoria.
 
-Una checklist tutta `[x]` significa "pronto e committato **su `lavoro`**", non
-"spingi in produzione". Col ciclo ad accumulo la domanda va posta **una volta
-per ciclo**, non a ogni fase: le fasi si chiudono in silenzio, si spedisce
-insieme.
+Una checklist tutta `[x]` significa "pronto e committato **su `main` locale**",
+non "spingi in produzione". Col ciclo ad accumulo la domanda va posta **una
+volta per ciclo**, non a ogni fase: le fasi si chiudono in silenzio, si
+spedisce insieme.
 
 Commit **atomico a fine fase**: una fase conclusa = un commit che compila e
 passa i test, così il piano e la git history raccontano la stessa storia e una
