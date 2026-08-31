@@ -118,13 +118,16 @@ tempo, **si chiude bene** — verbale, contatore ri-misurato,
 lasciando il prompt pronto per la successiva. Aprire l'area dopo «già che ci
 siamo» è esattamente lo strascico che questa regola vieta.
 
-La coda per le sessioni successive, **per esposizione, non per dimensione**:
-1. **`components/`** 🔴 7.298 righe — condivisa da tutte le pagine: un difetto
-   qui si moltiplica su tutte le aree.
-2. **`workspace/`** 🔴 5.012 righe — la più grande, ma esposizione live bassa
-   (misurata dal ciclo 07: turni 0, regole 0, ingredienti 0).
-3. **`prezzi/`** 🔴 2.361 righe — 39.133 righe fattura a monte.
-4. **`(mobile)/`** 🔴 3.984 righe — frontend separato, mai guardato.
+La coda per le sessioni successive, **per esposizione, non per dimensione**.
+Gli stati sono quelli corretti dal `code-reviewer` il 31/8 — controlla sempre
+`AUDIT_COPERTURA.md` prima di aprirne una:
+1. **`catena/`** 🔴 3.127 righe — **mai toccata da nessuna passata**, multi-sede.
+2. **`components/`** 🟠 30% — condivisa da tutte le pagine: un difetto qui si
+   moltiplica. F3 del ciclo 08 ne ha lette 2.188 e motivato le esclusioni.
+3. **`prezzi/`** 🟠 41% — 39.133 righe fattura a monte; letta `variazioni-tab`.
+4. **`(mobile)/`** 🟠 32% — frontend separato; letta `mobile-turni`.
+5. **`workspace/`** 🟠 37% — la più grande, ma esposizione live bassa (ciclo 07:
+   turni 0, regole 0, ingredienti 0) e **F6 del ciclo 08 l'ha già chiusa**.
 
 ## Voce aperta, e non è una dimenticanza
 

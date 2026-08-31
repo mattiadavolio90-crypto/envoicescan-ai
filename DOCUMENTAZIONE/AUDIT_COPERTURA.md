@@ -82,7 +82,7 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | Area | Lette | Totali | Stato | Riferimento |
 |---|---:|---:|---|---|
 | `app/api/` — 169 route | 4.849 | 4.849 | 📖 | ciclo 08, 30/8 — proxy trasparente, 0/169 toccano il DB |
-| `(app)/scadenziario/` | 2.233 | 2.303 | 📖 96% | ciclo 07 §3c; `lib/scadenziario.ts` coperta da 77 test |
+| `(app)/scadenziario/` | 2.212 | 2.212 | 📖 **100%** | ciclo 07 §3c + **chiusa 31/8 (2ª sess.)**: filtri/ordinamento/stato estratti in `lib/`, 15/15 mutanti. Resta il solo rendering |
 | `(app)/analisi-e-tag/` | 1.392 | 1.518 | 📖 91% | ciclo 07 §3c |
 | `(app)/margini/` | 2.903 | 4.795 | 🟠 60% | ciclo 07 §3c: calcolo-tab, analisi-tab, coperti-tab |
 | `(app)/admin/` | 1.739 | 3.685 | 🟠 47% | ciclo 07 §3c: categorie + cliente-dettaglio |
@@ -91,7 +91,7 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | ~400 | 3.445 | 🟠 12% | solo `scadenziario.ts` |
+| `lib/` | ~590 | 3.633 | 🟠 16% | solo `scadenziario.ts` (433 righe, +188 il 31/8) |
 | `(app)/catena/` | 0 | 3.127 | 🔴 | **l'unica area grande che nessuna passata ha mai toccato** — multi-sede |
 | `(app)/` — altre 4 aree | 0 | ~2.600 | 🔴 | dashboard, impostazioni, agenda, notifiche |
 | `(auth)+(legal)+(demo)` | 0 | 1.353 | 🔴 | — |
