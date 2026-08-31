@@ -219,13 +219,38 @@ silenzio: docstring di `anomaly_radar_service.py` + 2 test nuovi in
 | # | Mutante | Atteso | Esito |
 |---|---|---|---|
 | 1 | `check_weekly` agganciato a `invoice_service` | rosso | ✅ ucciso |
-| 2 | nasce un emettitore vivo di `price_alert` | rosso | ✅ ucciso |
-| 3 | **controprova**: menzione in un *commento* | **verde** | ✅ nessun falso positivo |
+| 2 | sorgente `price_alert` in forma **kwarg** | rosso | ✅ ucciso |
+| 3 | sorgente `price_alert` in forma **dict** | rosso | ✅ ucciso |
+| 4 | **controprova**: menzione in un *commento* | **verde** | ✅ nessun falso positivo |
+| 5 | **controprova**: menzione in una *stringa a riga singola* | **verde** | ✅ nessun falso positivo |
 
-Il 3 non è decorativo: la **prima stesura del test falliva sul docstring che
-avevo appena scritto** — cioè sul testo che documenta il difetto. Un match
-testuale nudo misura il proprio pattern, non il codice. Ora lo scan salta
-commenti e stringhe via `tokenize`.
+**Il test è stato riscritto due volte, e la seconda per un difetto trovato dal
+`code-reviewer`.** Vale la pena la cronaca, perché è la stessa classe di errore
+che il ciclo insegue da tre sessioni:
+
+- **Prima stesura** (match testuale riga per riga): falso positivo **sul
+  docstring che avevo appena scritto** — cioè sul testo che documenta il
+  difetto.
+- **Seconda stesura** (match testuale + `tokenize` per saltare commenti e
+  stringhe multi-riga): verde, e sembrava finita. Il `code-reviewer` l'ha provata
+  per mutazione e ha trovato il **falso negativo**: cercava solo il kwarg
+  `topic_key='price_alert'`, quindi **non vedeva `fastapi_worker.py:6443`**, dove
+  il topic è una chiave di dict (`"topic_key": "price_alert"`). Montando la forma
+  dict, il test restava verde. Un assert che passa col difetto presente — la
+  classe esatta del `1280 not in (k[c],)` del 29/8.
+- **Terza stesura**: **AST**, la tecnica già usata dieci righe più su nello
+  stesso file (`test_ogni_call_site_del_repo_rispetta_la_firma`). L'albero vede
+  entrambe le forme di scrittura e ignora per costruzione commenti e stringhe,
+  senza bisogno di `tokenize`.
+
+Il sorgente `fastapi_worker.py:6443` emerso dalla revisione **non cambia la
+conclusione**: costruisce un dict in memoria con `source_type='live'` per il
+briefing e non chiama mai `upsert_inbox_notifications`, quindi non persiste su
+`notification_inbox` e `check_weekly` continuerebbe a leggere 0 righe. Ma è ora
+**sorvegliato**: è nella lista dei sorgenti noti del test, e uno nuovo lo fa
+fallire. Il test è stato rinominato di conseguenza —
+`test_price_alert_non_ha_scrittori_vivi_su_notification_inbox` — perché
+«emettitore» confondeva chi *costruisce* un record con chi lo *persiste*.
 
 ### Scadenziario: la dimensione era più piccola di come era scritta
 
@@ -270,8 +295,12 @@ una sola delle tre.
 - `python -m pytest tests/` → **11.521 passed, 43 skipped** (era 11.511: +10)
 - `npx tsc --noEmit` → pulito
 - `tests/test_documentazione_onesta.py` → 51 passed
-- 7 mutanti in totale, 7 esiti attesi, ognuno verificato montato prima di
-  leggerne l'esito
+- **9 mutanti in totale, 9 esiti attesi**, ognuno verificato montato prima di
+  leggerne l'esito (5 sulla catena morta, 4 sul cash-flow)
+- `code-reviewer` eseguito sul diff cumulativo: ha trovato **un falso negativo
+  nel test radar** (forma dict non vista) e **due affermazioni più larghe del
+  codice** nei .md. Entrambi corretti e ri-provati per mutazione prima della
+  chiusura.
 
 ### Non fatto, e dichiarato
 

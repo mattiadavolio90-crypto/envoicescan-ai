@@ -301,9 +301,12 @@ misurata sul DB (progetto `vthikmfpywilukizputn`, 30/8/2026):
 
    Non è più una voce di roadmap perché **il fatto è ora nel codice e in una
    rete**: docstring di `anomaly_radar_service.py` + 2 test in
-   `test_radar_aggancio_percorso_vivo.py` che falliscono se qualcuno aggancia
-   `check_weekly` **o** se nasce un emettitore vivo di `price_alert` — nel
-   secondo caso la notizia è buona, e la decisione va ripresa.
+   `test_radar_aggancio_percorso_vivo.py` (via **AST**, non match testuale) che
+   falliscono se qualcuno aggancia `check_weekly` **o** se nasce un sorgente
+   nuovo di `price_alert` — nel secondo caso la notizia è buona, e la decisione
+   va ripresa. I due sorgenti noti (`upload_handler.py`, percorso legacy; e
+   `fastapi_worker.py:6443`, dict in memoria che non persiste) sono in allowlist
+   con la loro ragione.
 
    ```sql
    SELECT topic_key, source_type, count(*), max(created_at)::date
