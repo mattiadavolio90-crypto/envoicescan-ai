@@ -21,7 +21,7 @@ import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
-  fornitoreKey, ordinaDocumenti, elencaFornitori, statoDocumento,
+  ordinaDocumenti, elencaFornitori, statoDocumento,
   filtraDocumenti, aggregaPerSede,
 } from "@/lib/scadenziario";
 
