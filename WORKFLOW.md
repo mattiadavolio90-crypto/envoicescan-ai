@@ -38,6 +38,30 @@ richiesta di autorizzazione a Mattia per ogni singolo intervento** (5 merge il
    (fa girare la suite completa allo Stop), `/code-reviewer` sul lavoro
    cumulativo, poi **una PR, un merge, un deploy**.
 
+### Il lavoro attraversa le sessioni: 4 sessioni ≠ 4 deploy
+
+**Il deploy non è legato alla sessione, è legato al push.** Un commit locale
+non spedisce niente e non lo vede nessuno; è `git push` su `main` a far partire
+Railway (e Vercel, se il commit tocca `apps/web/**`).
+
+Quindi il lavoro di più sessioni si accumula da solo: 4 sessioni → 4+ commit su
+`main` locale → **un push, un deploy**. Non c'è niente da fare per "tenerlo
+insieme": succede se non si pusha.
+
+**Divieto operativo**: mai `git push`, `gh pr create` o `gh pr merge` di
+iniziativa. Si spedisce **solo** quando Mattia lo dice, e prima si guarda cosa
+si sta spedendo — il push manda **tutti** i commit accumulati, non solo quelli
+dell'ultima sessione:
+
+```bash
+git log --oneline origin/main..main    # cosa partirebbe adesso
+git diff --stat origin/main..main      # quanto, e su quali file
+```
+
+A inizio sessione, se quel primo comando non è vuoto, **dirlo subito**: c'è
+lavoro fatto e non ancora spedito, e Mattia deve saperlo prima di aggiungerne
+altro.
+
 ### Cosa NON è cambiato
 
 Il gate resta, cambia solo *quando* scatta. La suite completa e il
