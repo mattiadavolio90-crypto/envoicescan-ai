@@ -34,14 +34,14 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 55.451 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 55.450 |
 | Frontend (`apps/web/src/`) | 51.063 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **110.070** |
+| **TOTALE APP** | **110.069** |
 
 ---
 
-## Backend Python — 55.451 righe
+## Backend Python — 55.450 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -90,7 +90,7 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | Area | Lette | Totali | Stato | Riferimento |
 |---|---:|---:|---|---|
 | `app/api/` — 169 route | 4.849 | 4.849 | 📖 | ciclo 08, 30/8 — proxy trasparente, 0/169 toccano il DB |
-| `(app)/scadenziario/` | 2.212 | 2.212 | 📖 **100%** | ciclo 07 §3c + **chiusa 31/8 (2ª sess.)**: filtri/ordinamento/stato estratti in `lib/`, 15/15 mutanti. Resta il solo rendering |
+| `(app)/scadenziario/` | 2.211 | 2.211 | 📖 **100%** | ciclo 07 §3c + **chiusa 31/8 (2ª sess.)**: filtri/ordinamento/stato estratti in `lib/`, 15/15 mutanti. Resta il solo rendering |
 | `(app)/analisi-e-tag/` | 1.392 | 1.518 | 📖 91% | ciclo 07 §3c |
 | `(app)/margini/` | 2.903 | 4.795 | 🟠 60% | ciclo 07 §3c: calcolo-tab, analisi-tab, coperti-tab |
 | `(app)/admin/` | 1.739 | 3.685 | 🟠 47% | ciclo 07 §3c: categorie + cliente-dettaglio |
@@ -101,22 +101,21 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
 | `lib/` | ~599 | 3.642 | 🟠 16% | solo `scadenziario.ts` (442 righe, +197 il 31/8) |
 | `(app)/catena/` | 0 | 3.127 | 🔴 | **l'unica area grande che nessuna passata ha mai toccato** — multi-sede |
-| `(app)/` — altre 4 aree | 0 | ~2.600 | 🔴 | dashboard, impostazioni, agenda, notifiche |
-| `(auth)+(legal)+(demo)` | 0 | 1.353 | 🔴 | — |
-
-| `(mobile)/` | 0 | 3.984 | 🔴 | frontend separato, non responsive |
+| `(app)/` — altre 7 aree + file diretti | 0 | 4.250 | 🔴 | misurate il 31/8: dashboard 1.749 · impostazioni 806 · agenda 693 · notifiche 339 · assistenza 292 · style-guide 256 · file diretti 115 |
 | `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 312 | 🔴 | misurati il 31/8: 22 + 105 + 185 |
+| `(auth)`+`(legal)`+`(demo)` — dettaglio | — | 1.353 | 🔴 | 552 + 575 + 226 |
 
-**Righe lette: 20.759 · non lette: 30.304 · totale 51.063** — la tabella copre
-ora tutto `apps/web/src`, verificato: la somma della colonna «Totale area»
-uguaglia `find apps/web/src -name "*.ts*" | xargs wc -l`.
+**Righe lette: 20.767 · non lette: 30.296 · totale 51.063** — la tabella copre
+tutto `apps/web/src`: la somma della colonna «Totale area» uguaglia
+`git archive HEAD` (51.063). Ri-verificato a ogni aggiornamento, **sommando le
+righe della tabella**, non fidandosi della frase precedente.
 
 | | Lette | Totale area | Non lette |
 |---|---:|---:|---:|
-| 📖 aree complete | 8.453 | 8.579 | 126 |
-| 🟠 aree parziali | 12.306 | 33.443 | 21.137 |
-| 🔴 mai aperte | 0 | 9.041 | 9.041 |
-| **totale** | **20.759** | **51.063** | **30.304** |
+| 📖 aree complete | 8.452 | 8.578 | 126 |
+| 🟠 aree parziali | 12.315 | 33.443 | 21.128 |
+| 🔴 mai aperte | 0 | 9.042 | 9.042 |
+| **totale** | **20.767** | **51.063** | **30.296** |
 
 Le 126 righe non lette dentro le aree 📖 sono la differenza fra «area chiusa» e
 «ogni riga letta»: `app/api/` è 4.849/4.849, `scadenziario/` 2.212/2.212, ma
@@ -144,10 +143,10 @@ Somma delle tre sezioni sopra, non una stima a parte:
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | ~37.200 | **34%** | 12.900 backend + 20.759 frontend + 3.556 Edge |
+| 📖 Letto integralmente | ~37.200 | **34%** | 12.900 backend + 20.767 frontend + 3.556 Edge |
 | 🔍 Auditato per dimensione | ~17.650 | 16% | solo backend |
-| 🔴 Mai guardato | ~55.200 | **50%** | 24.900 backend + 30.304 frontend |
-| **Totale** | **110.070** | 100% | 55.451 + 51.063 + 3.556 |
+| 🔴 Mai guardato | ~55.200 | **50%** | 24.900 backend + 30.296 frontend |
+| **Totale** | **110.069** | 100% | 55.450 + 51.063 + 3.556 |
 
 Quel che è letto è però il perimetro più esposto: ingresso dati, auth, DB,
 Edge Functions, 169 route.

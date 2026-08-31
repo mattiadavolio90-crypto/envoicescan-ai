@@ -13,7 +13,7 @@ i verbali delle sessioni chiuse stanno in `..._STORICO.md`. Il ciclo 2026-08 è
 **Il contatore della copertura è `DOCUMENTAZIONE/AUDIT_COPERTURA.md`**
 (creato il 31/8/2026): è l'unico posto dove le somme tornano, e va aggiornato a
 fine sessione insieme alla roadmap. Ri-misurato il 31/8: **34% letto
-integralmente, 16% auditato per dimensione, 50% mai guardato** su 110.070 righe.
+integralmente, 16% auditato per dimensione, 50% mai guardato** su 110.069 righe.
 «Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di dichiarare
 chiuso qualsiasi perimetro.
 

@@ -453,6 +453,29 @@ sopravvive: `parseLocalDate` ritorna `null`, mai `Invalid Date`), e che la
 rimozione di `matchFiltriComuniRef` **corregge** un difetto invece di
 introdurlo.
 
+### Il contatore: tre correzioni in cascata, tutte misurate
+
+La sessione parallela ha chiuso il buco delle «1.970 righe non attribuite» che
+avevo trovato, ma **aggiungendo una riga `(mobile)/` già presente**: l'area
+finiva contata due volte (una 🟠 32%, una 🔴 con 0 lette) e la tabella sommava
+**53.398** su 51.063 reali. Il buco era diventato un eccesso.
+
+Rimosso il duplicato e ri-misurate le aree una per una: la riga «altre 4 aree
+~2.600» ne elencava 4 su 7 e valeva in realtà **4.250** (dashboard 1.749 ·
+impostazioni 806 · agenda 693 · notifiche 339 · assistenza 292 · style-guide
+256 · file diretti 115). Corretti anche `scadenziario` (2.211, non 2.212) e il
+backend (**55.450**, non 55.451).
+
+**Ora la colonna «Totale area» somma esattamente 51.063**, cioè `git archive
+HEAD` — ogni riga del frontend sta in una riga della tabella. Verificato
+sommando la tabella, non fidandosi della frase che dichiarava la copertura.
+
+> Lezione, già scritta in cima al contatore: **una cifra si ri-misura contro
+> HEAD**, e una tabella che dichiara «copre tutto» va **sommata** prima di
+> crederle. In una sola giornata lo stesso file ha sbagliato in tre modi
+> diversi: righe mancanti, righe contate due volte, e una frase che affermava
+> una copertura che la somma smentiva.
+
 ### Non fatto, e dichiarato
 
 - **Il mutante sul locale `"it"` sopravvive** (vedi sopra): l'ordinamento
