@@ -12,9 +12,10 @@ i verbali delle sessioni chiuse stanno in `..._STORICO.md`. Il ciclo 2026-08 è
 
 **Il contatore della copertura è `DOCUMENTAZIONE/AUDIT_COPERTURA.md`**
 (creato il 31/8/2026): è l'unico posto dove le somme tornano, e va aggiornato a
-fine sessione insieme alla roadmap. Ri-misurato il 31/8 a fine 2ª sessione: **21% letto integralmente, 16%
-auditato per dimensione, 63% mai guardato** su 110.061 righe. «Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di
-dichiarare chiuso qualsiasi perimetro.
+fine sessione insieme alla roadmap. Ri-misurato il 31/8: **34% letto
+integralmente, 16% auditato per dimensione, 50% mai guardato** su 110.070 righe.
+«Luglio + agosto coprono tutta l'app» **è falso** — leggilo prima di dichiarare
+chiuso qualsiasi perimetro.
 
 ## ⚠️ Prima di scrivere una riga: c'è lavoro in coda, non spedito
 
@@ -47,7 +48,7 @@ trovi su un branch, torna su `main` — non impilare una sessione sull'altra.
 - **Primo pezzo di scadenziario** (31/8) — `buildCashFlow` estratta e coperta,
   4 mutanti uccisi.
 - **Dimensione «scadenziario» CHIUSA** (31/8, 2ª sessione) — 7 funzioni estratte
-  in `lib/scadenziario.ts`, **15 mutanti su 15 uccisi**, client 2.210 → 2.119
+  in `lib/scadenziario.ts`, **18 mutanti, 17 uccisi + 1 dichiarato**, client 2.210 → 2.118
   righe. Trovata e **lasciata invariata** (decisione di Mattia) la divergenza
   chip «Questo mese» (cumulativo) vs sezione «Questo mese» (fascia): ora è
   scritta in un test invece che in nessun posto.

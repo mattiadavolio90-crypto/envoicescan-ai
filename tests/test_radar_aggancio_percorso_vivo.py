@@ -121,7 +121,7 @@ def test_ogni_call_site_del_repo_rispetta_la_firma():
     from pathlib import Path as _Path
 
     firma = inspect.signature(check_on_upload)
-    radice = _Path('/workspaces/ONEFLUX')
+    radice = _Path(__file__).resolve().parent.parent
     problemi = []
 
     for cartella in ('services', 'worker', 'utils', 'config'):

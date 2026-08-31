@@ -34,14 +34,14 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 55.450 |
-| Frontend (`apps/web/src/`) | 51.055 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 55.451 |
+| Frontend (`apps/web/src/`) | 51.063 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **110.061** |
+| **TOTALE APP** | **110.070** |
 
 ---
 
-## Backend Python — 55.450 righe
+## Backend Python — 55.451 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -67,7 +67,7 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 
 ---
 
-## Frontend — 51.055 righe
+## Frontend — 51.063 righe
 
 > **Corretto il 31/8 dopo il `code-reviewer`.** La prima stesura dava 🔴 «mai
 > guardata» a sette aree che i cicli 07 e 08 avevano già letto. La tabella §3c
@@ -76,9 +76,16 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 > ciclo 08 ha chiuso **F3** (`components/`) e **F6** (`workspace/`). Le righe
 > «lette» qui sotto sono quelle dichiarate in quei verbali.
 >
-> Misura sul tree **committato** (`git archive HEAD`): 51.055 (ri-misurata il
-> 31/8 a fine sessione scadenziario, +97: `lib/` +188, client −91). Un `find`
-> sul working tree può dare di più se una sessione parallela ha modifiche aperte.
+> Misura sul tree **committato** (`git archive HEAD`): 51.063 (ri-misurata il
+> 31/8 a chiusura sessione scadenziario, +105 sul pre-refactor: `lib/` +197,
+> client −92). Un `find` sul working tree può dare di più se una sessione
+> parallela ha modifiche aperte.
+>
+> ⚠️ **Ri-misura contro HEAD, non contro il commit precedente al tuo.** Il 31/8
+> è successo due volte di fila: la cifra veniva aggiornata al valore giusto per
+> il commit *prima* dell'ultimo, e restava stantia di 8 righe. Il `code-reviewer`
+> l'ha intercettata entrambe le volte — `check_documentazione.py` non controlla
+> l'aritmetica, quindi qui la rete automatica non c'è.
 
 | Area | Lette | Totali | Stato | Riferimento |
 |---|---:|---:|---|---|
@@ -92,20 +99,33 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | ~590 | 3.633 | 🟠 16% | solo `scadenziario.ts` (433 righe, +188 il 31/8) |
+| `lib/` | ~599 | 3.642 | 🟠 16% | solo `scadenziario.ts` (442 righe, +197 il 31/8) |
 | `(app)/catena/` | 0 | 3.127 | 🔴 | **l'unica area grande che nessuna passata ha mai toccato** — multi-sede |
 | `(app)/` — altre 4 aree | 0 | ~2.600 | 🔴 | dashboard, impostazioni, agenda, notifiche |
 | `(auth)+(legal)+(demo)` | 0 | 1.353 | 🔴 | — |
 
-**Righe effettivamente lette: ~20.900 (41%) · non lette: ~30.200 (59%)** — di
-cui ~21.100 dentro aree 🟠 (perimetro già delimitato e motivato) e ~7.100 in
-aree 🔴 mai aperte. Per area: 📖 complete ~8.600 · 🟠 parziali 33.434 totali di
-cui ~12.300 lette · 🔴 mai 7.080.
+| `(mobile)/` | 0 | 3.984 | 🔴 | frontend separato, non responsive |
+| `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 312 | 🔴 | misurati il 31/8: 22 + 105 + 185 |
+
+**Righe lette: 20.759 · non lette: 30.304 · totale 51.063** — la tabella copre
+ora tutto `apps/web/src`, verificato: la somma della colonna «Totale area»
+uguaglia `find apps/web/src -name "*.ts*" | xargs wc -l`.
+
+| | Lette | Totale area | Non lette |
+|---|---:|---:|---:|
+| 📖 aree complete | 8.453 | 8.579 | 126 |
+| 🟠 aree parziali | 12.306 | 33.443 | 21.137 |
+| 🔴 mai aperte | 0 | 9.041 | 9.041 |
+| **totale** | **20.759** | **51.063** | **30.304** |
+
+Le 126 righe non lette dentro le aree 📖 sono la differenza fra «area chiusa» e
+«ogni riga letta»: `app/api/` è 4.849/4.849, `scadenziario/` 2.212/2.212, ma
+`analisi-e-tag/` è 1.392/1.518. Un'area 📖 non è per forza al 100%.
 
 > La stesura precedente sommava `17% + 31% + 14% = 62%`: le tre voci misuravano
 > grandezze diverse (righe lette, totali d'area, righe mai viste) e il 38%
 > restante non stava da nessuna parte. Le percentuali qui sopra sono tutte sullo
-> stesso denominatore — 51.055 righe di frontend — e chiudono a 100%.
+> stesso denominatore — 51.063 righe di frontend — e chiudono a 100%.
 
 Le righe non lette dentro un'area 🟠 non sono terra vergine: una passata ha
 delimitato il perimetro e **motivato l'esclusione** (di solito: esposizione live
@@ -120,14 +140,24 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 ## Il conto onesto
 
-| | Righe | % |
-|---|---:|---:|
-| 📖 Letto integralmente | ~23.600 | **21%** |
-| 🔍 Auditato per dimensione | ~17.650 | 16% |
-| 🔴 Mai guardato | ~68.800 | **63%** |
+Somma delle tre sezioni sopra, non una stima a parte:
+
+| | Righe | % | da dove viene |
+|---|---:|---:|---|
+| 📖 Letto integralmente | ~37.200 | **34%** | 12.900 backend + 20.759 frontend + 3.556 Edge |
+| 🔍 Auditato per dimensione | ~17.650 | 16% | solo backend |
+| 🔴 Mai guardato | ~55.200 | **50%** | 24.900 backend + 30.304 frontend |
+| **Totale** | **110.070** | 100% | 55.451 + 51.063 + 3.556 |
 
 Quel che è letto è però il perimetro più esposto: ingresso dati, auth, DB,
 Edge Functions, 169 route.
+
+> **Queste tre righe si ricalcolano, non si ritoccano.** Il 31/8 la correzione
+> di 7 aree frontend è stata riportata qui a mano (`19%` → `21%`) invece di
+> rifare la somma: il risultato dichiarava 23.600 righe lette mentre le sezioni
+> ne contavano 37.215, e il file che esiste per far tornare i conti era l'unico
+> posto dove non tornavano. Trovato dal `code-reviewer`, non da un test — qui la
+> rete automatica non c'è.
 
 ---
 
