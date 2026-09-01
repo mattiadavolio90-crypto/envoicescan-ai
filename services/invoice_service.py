@@ -1417,6 +1417,7 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
             carica_memoria_completa,
             enforce_no_unclassified_category,
             _applica_guardrail_note_con_importo,
+            ultima_provenienza,
         )
         from openai import OpenAI
         
@@ -1654,6 +1655,9 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
 
             # Categorizzazione (usa stesso sistema moderno del path XML)
             categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id) if current_user_id else "Da Classificare"
+            # Fase 3 — va letta SUBITO: e' un ContextVar, la prossima riga del ciclo
+            # lo sovrascrive (e non sopravvive a un confine di processo).
+            _pdf_fonte, _pdf_fiducia = ultima_provenienza()
             categoria_iniziale, fallback_forzato = enforce_no_unclassified_category(
                 categoria_iniziale,
                 descrizione,
@@ -1710,15 +1714,21 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Totale_Riga': round(totale_riga, 2),
                 'Fornitore': fornitore,
                 'Categoria': categoria_iniziale,
-                # Fase 2 — provenienza NON registrata su questo percorso (PDF/Vision):
-                # `ottieni_categoria_prodotto` ha otto uscite e non usa il canale
-                # laterale, avvolgerla ora aggiungerebbe rischio senza beneficio.
-                # Impatto attuale nullo: a DB tutte le 39.233 righe vengono da XML/P7M,
-                # nessuna da PDF. Ma la Fase 1 ha appena reso questo percorso capace di
-                # classificare (prima si fermava alle memorie), quindi il giorno in cui
-                # un cliente carica PDF le sue righe arrivano senza provenienza — cioe'
-                # NULL, cioe' `legacy`, cioe' trattate come certe senza esserlo.
-                # Da chiudere prima che il percorso PDF entri davvero in uso.
+                # Fase 3 — provenienza registrata anche qui (debito aperto dalla Fase 2,
+                # chiuso prima che un cliente carichi il primo PDF). Come sul percorso
+                # XML, la coerenza si impone sulla categoria FINALE: se la riga resta in
+                # coda la fonte e' 'nessuna' e la fiducia NULL, altrimenti una riga in
+                # coda dichiarerebbe che una memoria l'aveva decisa.
+                'categoria_fonte': (
+                    'nessuna'
+                    if str(categoria_iniziale).strip() == 'Da Classificare'
+                    else _pdf_fonte
+                ),
+                'categoria_fiducia': (
+                    None
+                    if str(categoria_iniziale).strip() == 'Da Classificare'
+                    else _pdf_fiducia
+                ),
                 'Data_Documento': data_documento,
                 'Tipo_Documento': tipo_documento,
                 'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', ''),

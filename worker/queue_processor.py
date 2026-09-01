@@ -146,14 +146,14 @@ except Exception as _exc:  # pragma: no cover - fallback difensivo
         return cat
 
 try:
-    from services.ai_service import _fiducia_per_fonte as _fiducia_per_fonte_safe
+    from services.ai_service import valuta_fiducia as _valuta_fiducia_safe
 except Exception as _exc:  # pragma: no cover - fallback difensivo
     # Meno grave degli altri: si perde solo la TRACCIABILITA' (la colonna resta
     # NULL = legacy = certa), non la categorizzazione. Ma va detto, o la Fase 4
     # escluderebbe dai margini una fetta di righe scelta a caso.
-    _segnala_import_degradato("_fiducia_per_fonte (tracciabilita' Fase 2)", _exc)
+    _segnala_import_degradato("valuta_fiducia (gate Fase 3)", _exc)
 
-    def _fiducia_per_fonte_safe(_fonte, _categoria):
+    def _valuta_fiducia_safe(_fonte, _categoria, _descrizione=None, _fornitore=None):
         return None
 
 
@@ -511,7 +511,7 @@ def _auto_classify_saved_rows(
             if str(categoria).strip() == "Da Classificare":
                 needs_review = True
                 fonte = "nessuna"
-            fiducia = _fiducia_per_fonte_safe(fonte, categoria)
+            fiducia = _valuta_fiducia_safe(fonte, categoria, desc, _forn)
             target_ids = desc_to_ids.get(desc, [])
             if not target_ids:
                 continue

@@ -260,7 +260,7 @@ def _run_agent_notturno() -> dict:
         from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE, SPECIAL_ROW_DICITURA, SPECIAL_ROW_SCONTO_OMAGGIO
         from utils.text_utils import pulisci_caratteri_corrotti
         from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
-        from services.ai_service import decisione_deterministica
+        from services.ai_service import decisione_deterministica, valuta_fiducia
 
         sb = get_supabase_client()
         admin_emails = _admin_emails_set()
@@ -374,6 +374,7 @@ def _run_agent_notturno() -> dict:
                     cat_forte, _motivo, _conf = decisione_deterministica(desc)
                     if not cat_forte or cat_forte == "Da Classificare":
                         continue
+                    _fonte_agent = "L7_regola_forte" if _motivo else "L7_dizionario"
                     ids = df_normali[df_normali["descrizione"] == desc]["id"].tolist()
                     cat_da = str(df_normali[df_normali["descrizione"] == desc]["categoria"].iloc[0] or "")
                     # Fase 2 — la fonte QUI e' nota (l'ha appena decisa
@@ -385,10 +386,14 @@ def _run_agent_notturno() -> dict:
                         "needs_review": False,
                         "reviewed_at": now_iso,
                         "reviewed_by": "agent-notturno",
-                        "categoria_fonte": (
-                            "L7_regola_forte" if _motivo else "L7_dizionario"
+                        "categoria_fonte": _fonte_agent,
+                        # Fase 3 — la fiducia passa dal gate, non e' ricalcolata a
+                        # mano: era l'unico punto che la hardcodava, e sono proprio
+                        # le righe rimaste in coda, cioe' le piu' esposte a una
+                        # descrizione illeggibile.
+                        "categoria_fiducia": valuta_fiducia(
+                            _fonte_agent, cat_forte, desc
                         ),
-                        "categoria_fiducia": "certa" if _motivo else "probabile",
                     }).in_("id", ids).is_("deleted_at", "null").execute()
                     sb.table("prodotti_master").upsert({
                         "descrizione": desc, "categoria": cat_forte,

@@ -3725,6 +3725,24 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
     """
     global _memoria_cache
 
+    # Fase 3 — provenienza anche su questo percorso (PDF/Vision). Prima era l'unico
+    # che classificava senza dire chi aveva deciso: le sue righe arrivavano a DB con
+    # le colonne NULL, cioe' `legacy`, cioe' trattate come CERTE senza esserlo.
+    # Impatto ancora nullo (zero righe da PDF a DB), ma la Fase 1 ha reso questo
+    # percorso capace di classificare, e questa e' la fase che definisce cosa
+    # significa "certa": chiuderlo altrove sarebbe chiuderlo dopo il danno.
+    #
+    # Il reset a (None, None) e' la parte che conta: senza, un'uscita non tracciata
+    # (o l'except) lascerebbe in circolo la provenienza di una riga PRECEDENTE, e il
+    # canale laterale mentirebbe invece di tacere.
+    def _ret_ocp(categoria: str, fonte: str) -> str:
+        _PROVENIENZA_CORRENTE.set(
+            (fonte, valuta_fiducia(fonte, categoria, descrizione))
+        )
+        return categoria
+
+    _PROVENIENZA_CORRENTE.set((None, None))
+
     try:
         # Carica cache se non già caricata per questo utente
         if not _memoria_cache['loaded'] or user_id not in _memoria_cache.get('_loaded_user_ids', set()):
@@ -3743,15 +3761,15 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
             record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
                 logger.info(f"📋 Memoria Admin (cache/ottieni): '{descrizione[:40]}' → DICITURA")
-                return "📝 NOTE E DICITURE"
+                return _ret_ocp("📝 NOTE E DICITURE", "L1_admin")
             else:
                 logger.info(f"📋 Memoria Admin (cache/ottieni): '{descrizione[:40]}' → {record['categoria']}")
-                return record['categoria']
+                return _ret_ocp(record['categoria'], "L1_admin")
 
         # 0.5️⃣ Override forti non negoziabili: non devono essere battuti da cache auto errata.
         categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
         if motivo_forzato in _NON_NEGOZIABILI_CACHE_OVERRIDE:
-            return categoria_forzata
+            return _ret_ocp(categoria_forzata, "L1_5_non_negoziabile")
         
         # 1️⃣ Check memoria LOCALE utente (da cache, 0 query!)
         if user_id in cache['prodotti_utente']:
@@ -3759,14 +3777,14 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
             if desc_stripped in locale_dict:
                 categoria = locale_dict[desc_stripped]
                 _traccia_memoria_categorizzata(descrizione)
-                return categoria
+                return _ret_ocp(categoria, "L2_locale")
 
             desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc_stripped)
             locale_dict_norm = cache.get('prodotti_utente_norm', {}).get(user_id, {})
             if desc_normalized in locale_dict_norm:
                 categoria = locale_dict_norm[desc_normalized]
                 _traccia_memoria_categorizzata(descrizione)
-                return categoria
+                return _ret_ocp(categoria, "L2_locale")
         
         # 2️⃣ Check memoria GLOBALE (da cache, 0 query!) se abilitata
         if not _disable_global_memory:
@@ -3774,14 +3792,14 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
             if descrizione in cache['prodotti_master']:
                 categoria = cache['prodotti_master'][descrizione]
                 _traccia_memoria_categorizzata(descrizione)
-                return categoria
+                return _ret_ocp(categoria, "L3_globale")
 
             # Prova anche con descrizione normalizzata (per matching consistente)
             desc_normalized, _ = get_descrizione_normalizzata_e_originale(descrizione)
             if desc_normalized != descrizione and desc_normalized in cache['prodotti_master']:
                 categoria = cache['prodotti_master'][desc_normalized]
                 _traccia_memoria_categorizzata(descrizione)
-                return categoria
+                return _ret_ocp(categoria, "L3_globale")
 
             # Fuzzy calibrato: chiave canonica (simile ma non identica), solo se non ambiguo
             canon_key = _build_master_canonical_key(descrizione)
@@ -3790,7 +3808,7 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
                 if categoria:
                     _traccia_memoria_categorizzata(descrizione)
                     logger.info(f"🧠 Match canonico prodotti_master: '{descrizione[:40]}' -> {categoria}")
-                    return categoria
+                    return _ret_ocp(categoria, "L3_globale")
         
         # 3️⃣ Runtime deterministico (dizionario + regole forti).
         # Prima qui c'era `return "Da Classificare"` secco: questa funzione — usata
@@ -3806,14 +3824,19 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
         cat_det, _motivo_det, _conf_det = decisione_deterministica(desc_stripped)
         if cat_det != "Da Classificare":
             logger.info(f"📖 Runtime (ottieni_categoria): '{descrizione[:40]}' → {cat_det}")
-            return cat_det
+            return _ret_ocp(
+                cat_det, "L7_regola_forte" if _motivo_det else "L7_dizionario"
+            )
 
         # Questa funzione deve poter restituire "Da Classificare" (la forzatura
         # anti-placeholder e' gestita nella pipeline di salvataggio/categorizzazione).
-        return "Da Classificare"
-        
+        return _ret_ocp("Da Classificare", "nessuna")
+
     except Exception as e:
         logger.warning(f"Errore ottieni_categoria (cache) per '{descrizione[:40]}...': {e}")
+        # Provenienza azzerata, non "nessuna": qui non sappiamo a che punto si e'
+        # rotto, e dichiarare una fonte sarebbe inventarla.
+        _PROVENIENZA_CORRENTE.set((None, None))
         return "Da Classificare"
 
 
@@ -4734,21 +4757,67 @@ _FONTI_PROBABILI = frozenset({
 })
 
 
-def _fiducia_per_fonte(fonte: Optional[str], categoria: str) -> Optional[str]:
-    """Traduce la fonte in `certa` / `probabile` / `da_verificare`.
+def valuta_fiducia(
+    fonte: Optional[str],
+    categoria: str,
+    descrizione: Optional[str] = None,
+    fornitore: Optional[str] = None,
+) -> Optional[str]:
+    """Il gate: decide `certa` / `probabile` / `da_verificare` per OGNI fonte.
 
-    Fase 2 la REGISTRA soltanto. E' la Fase 3 a farne un gate, e la Fase 4 a
-    escludere le `da_verificare` dai margini: separare le due cose e' voluto, cosi'
-    si puo' misurare la distribuzione reale prima di cambiare un solo numero
-    mostrato al cliente.
+    Fino alla Fase 2 questa era una tabella statica fonte->fiducia che non guardava
+    mai la riga; il controllo di affidabilita' esisteva solo per l'AI, cioe' sul
+    3,6% delle righe. Qui diventa un giudizio applicato a tutte le fonti — e' il
+    punto in cui la filosofia del progetto ("meglio meno righe categorizzate ma
+    corrette") smette di valere solo a parole.
+
+    Il criterio e' CONSERVATIVO, e non e' quello che il piano prevedeva. Il piano
+    voleva declassare tutto cio' che il nucleo deterministico non conferma.
+    Simulato su 33.147 righe reali / 4,1 M EUR (1/9/2026), quel gate boccia l'8,6%
+    delle righe (364.000 EUR) — ma ispezionando i casi sbaglia il deterministico,
+    non la categoria:
+      - il SILENZIO del dizionario non e' dubbio: "TARIFFA DI VENDITA PUN F1" ->
+        UTENZE, "DIVANI E ANGOLI" -> MANUTENZIONE sono decisi dalla memoria e sono
+        corretti; il dizionario semplicemente non li copre;
+      - il DISSENSO non predice l'errore: su "KG5 KETCHUP" il deterministico dice
+        MANUTENZIONE (regola `fornitura_durevole`) e SALSE E CREME e' giusta; su
+        "DOPPIO CONCENTRATO DI POMODORO" dice VERDURE e SCATOLAME e' giusta.
+    E' lo stesso rovesciamento gia' misurato sul guardrail IVA e sulla memoria
+    globale: la terza volta che "il deterministico e' il metro" viene smentito.
+
+    Il criterio che regge la misura declassa 280 righe / 38.193 EUR (0,93%), e sono
+    descrizioni che nessun umano puo' categorizzare senza aprire la fattura:
+    "1 ACCONTO", "COMMISSION", "SALDO", "RICARICHE", "ALIMENTARI".
+
+    `descrizione` assente -> nessun declassamento: senza il testo non si puo'
+    dubitare di nulla, e inventare un dubbio e' peggio che non averlo.
     """
     if not fonte or not categoria or categoria == "Da Classificare":
         return None
+    # Un umano (correzione cliente/admin) o una regola certificata ha deciso: il
+    # gate NON lo mette in discussione. Declassare una riga appena corretta dal
+    # cliente sarebbe l'esatto contrario di cio' che la tracciabilita' garantisce.
     if fonte in _FONTI_CERTE:
         return "certa"
     if fonte in _FONTI_PROBABILI:
+        # `descrizione_e_dubbia` e' auto-consistente: al suo interno interroga gia'
+        # regole forti e dizionario, quindi una riga che una fonte certa conferma
+        # non risulta mai dubbia. Non va duplicato quel controllo qui — misurato
+        # sul reale: zero righe "dubbie ma confermate".
+        if descrizione and descrizione_e_dubbia(descrizione, fornitore, categoria):
+            return "da_verificare"
         return "probabile"
     return "da_verificare"
+
+
+def _fiducia_per_fonte(fonte: Optional[str], categoria: str) -> Optional[str]:
+    """Alias storico di `valuta_fiducia` senza il contesto della riga.
+
+    Chi non ha la descrizione sotto mano ottiene il comportamento pre-Fase 3
+    (nessun declassamento). Preferire sempre `valuta_fiducia`: e' la mancanza di
+    contesto, non una scelta, a far passare una riga come `probabile`.
+    """
+    return valuta_fiducia(fonte, categoria)
 
 
 def ultima_provenienza() -> Tuple[Optional[str], Optional[str]]:
@@ -4826,8 +4895,14 @@ def categorizza_con_memoria(
         _fonte_reale = fonte
         if _fonte_reale and str(categoria).strip() == "Da Classificare":
             _fonte_reale = "nessuna"
+        # Fase 3: il gate riceve anche la riga. `descrizione` e `fornitore` sono
+        # gli argomenti di `categorizza_con_memoria`, gia' in scope in questa
+        # closure: nessun parametro da far viaggiare.
         _PROVENIENZA_CORRENTE.set(
-            (_fonte_reale, _fiducia_per_fonte(_fonte_reale, categoria))
+            (
+                _fonte_reale,
+                valuta_fiducia(_fonte_reale, categoria, descrizione, fornitore),
+            )
             if _fonte_reale else (None, None)
         )
         return (categoria, is_fallback) if return_fallback_flag else categoria

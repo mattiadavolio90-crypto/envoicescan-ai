@@ -197,7 +197,7 @@ class TestScrittureAutomaticheRegistranoLaFonte:
         """Se l'import della tracciabilita' fallisce, la colonna resta NULL (=legacy,
         =certa) e il degrado viene LOGGATO: non si scrive una fiducia inventata."""
         src = Path("worker/queue_processor.py").read_text(encoding="utf-8")
-        assert "_fiducia_per_fonte (tracciabilita' Fase 2)" in src
+        assert "valuta_fiducia (gate Fase 3)" in src
 
 
 class TestCoerenzaFonteCategoria:

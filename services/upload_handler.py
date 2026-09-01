@@ -30,7 +30,7 @@ from services.ai_service import (
     ottieni_hint_per_ai,
     applica_correzioni_dizionario,
     decisione_deterministica,
-    _fiducia_per_fonte,
+    valuta_fiducia,
     descrizione_e_dubbia,
     _applica_guardrail_note_con_importo,
     AIDailyLimitExceededError,
@@ -790,7 +790,9 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     if str(categoria_target).strip() == 'Da Classificare':
                         needs_review_target = True
                         fonte_target = 'nessuna'
-                    fiducia_target = _fiducia_per_fonte(fonte_target, categoria_target)
+                    fiducia_target = valuta_fiducia(
+                        fonte_target, categoria_target, desc, meta.get('fornitore')
+                    )
                     chunk_update_groups.setdefault(
                         (categoria_target, needs_review_target, fonte_target, fiducia_target), []
                     ).append(row_id)
