@@ -174,6 +174,23 @@ def test_ordina_null_multipli_restano_dalla_parte_giusta():
     assert [r["nome"] for r in out] == ["alto", "medio", "senza1", "senza2"]
 
 
+def test_ordina_null_perde_anche_contro_un_margine_negativo():
+    """Il null deve restare sotto un margine NEGATIVO, non scavalcarlo.
+
+    Trovato dal code-reviewer (1/9). La coalescenza deve mandare il null sotto
+    qualunque numero reale: con `?? 0` invece di `-Infinity` il null si
+    posizionerebbe fra un margine positivo e uno negativo, cioe' un PV senza dato
+    verrebbe mostrato come "meno peggio" di un PV che sta perdendo soldi. Un
+    margine negativo in catena/ non e' teorico: Offside ha MOL negativo su tutti
+    e 8 i mesi 2026.
+
+    Le altre fixture non lo vedevano: con soli valori positivi 0 e -Infinity sono
+    indistinguibili, perche' entrambi perdono contro tutto.
+    """
+    righe = [_pv("pos", margine=10), _pv("senza", margine=None), _pv("neg", margine=-5)]
+    assert [r["nome"] for r in _chiama("ordinaRighe", [righe, "margine_perc", "desc"])] == ["pos", "neg", "senza"]
+
+
 def test_ordina_fotografa_null_in_TESTA_in_asc():
     """ANOMALIA FOTOGRAFATA: in `asc` i null passano in testa.
 
@@ -527,6 +544,22 @@ def test_sparkline_path_e_punto_finale_coerenti():
     out = _chiama("calcolaSparkline", [_punti(0.0, 100.0)])
     ultimo_punto = out["d"].split(" ")[-1].removeprefix("L")
     assert ultimo_punto == f"{out['cx']:.1f},{out['cy']:.1f}"
+
+
+def test_sparkline_geometria_assoluta():
+    """Le coordinate del path in ASSOLUTO, non solo coerenti fra loro.
+
+    Trovato dal code-reviewer (1/9): `test_sparkline_path_e_punto_finale_coerenti`
+    verifica che `cx`/`cy` combacino con la fine di `d`, ma un `d` sbagliato in
+    modo coerente passerebbe comunque — PAD ignorato, asse y capovolto o `M`
+    iniziale perso restavano invisibili. Qui i numeri sono attesi uno per uno.
+
+    Geometria: W=240, H=40, PAD=4. x va da 4 a 236; y e' INVERTITO (SVG cresce
+    verso il basso), quindi il MOL massimo sta a y=4 e il minimo a y=36.
+    """
+    out = _chiama("calcolaSparkline", [_punti(0.0, 100.0, 50.0)])
+    assert out["d"] == "M4.0,36.0 L120.0,4.0 L236.0,20.0"
+    assert (out["cx"], out["cy"]) == (236.0, 20.0)
 
 
 def test_sparkline_fotografa_rosso_su_mol_negativo_in_RISALITA():

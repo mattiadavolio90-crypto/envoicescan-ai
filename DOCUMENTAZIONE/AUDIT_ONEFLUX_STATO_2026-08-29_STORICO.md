@@ -760,8 +760,9 @@ La sede tecnica "Costi comuni di gruppo" è esclusa correttamente lato backend
   diff dei 3 componenti contiene **solo import e chiamate**, zero logica
   (−120 righe, +37).
 - **`tests/test_catena_confronti_frontend.py`** (81 test).
-- **Mutazione: 51 mutanti, 48 uccisi, 3 sopravvissuti — tutti e 3 controprove
-  attese.** Nessun mutante di difetto reale è sopravvissuto.
+- **Mutazione: 55 mutanti, 52 uccisi, 3 sopravvissuti — tutti e 3 controprove
+  attese.** Nessun mutante di difetto reale è sopravvissuto. (Il primo giro era
+  51/48: i 4 in più vengono dal `code-reviewer`, vedi sotto.)
 
 ### La trappola dell'`import type`, che ha rotto l'harness al primo colpo
 
@@ -824,3 +825,29 @@ Ognuno ha un test che lo asserisce **sbagliato**, col perché nel corpo:
 - **Il rendering resta non testato**, qui come ovunque: serve un runner di
   componenti, escluso per ragione strutturale (un runner in `apps/web/` farebbe
   partire un deploy Vercel a ogni merge di un test).
+
+### La review: due lacune vere, e un rilievo che non reggeva
+
+Il `code-reviewer` ha costruito 45 mutanti indipendenti e ne ha trovati **4 che
+il mio catalogo non copriva**. Due lacune reali, chiuse con 2 test (83 in totale):
+
+- **`ordinaRighe` con margini negativi.** Un `?? 0` asimmetrico al posto di
+  `-Infinity` fa sì che un PV **senza dato** scavalchi un PV con margine
+  **negativo**: a schermo il locale che non ha caricato i costi appare «meno
+  peggio» di quello che sta perdendo soldi. Le mie fixture non lo vedevano
+  perché usavano solo valori positivi, dove `0` e `-Infinity` sono
+  indistinguibili — perdono entrambi contro tutto. Un margine negativo qui non è
+  teorico: Offside ha MOL negativo su tutti e 8 i mesi 2026.
+- **Geometria assoluta della sparkline.** Il mio test verificava che `cx`/`cy`
+  combaciassero con la fine di `d`, cioè la *coerenza interna*: un `d` sbagliato
+  in modo coerente passava. Sopravvivevano PAD ignorato, **asse y capovolto**
+  (grafico ribaltato) e `M` iniziale perso (path SVG invalido). Ora le coordinate
+  sono asserite una per una.
+
+**Un rilievo non reggeva, ed è stato verificato prima di accettarlo.** La prova
+d'osservabilità allegata a `R04` (`[neg:-5, senza:null]` darebbe ordini diversi)
+è **falsa**: su quella fixture mutante e originale danno lo stesso risultato in
+entrambe le direzioni, misurato. Il difetto è reale ma si vede solo con un null
+**fra** un positivo e un negativo. La conclusione del reviewer era giusta, la sua
+dimostrazione no — ed è la ragione per cui un rilievo si riproduce prima di
+scriverlo a verbale.
