@@ -33,6 +33,8 @@ from services.ai_service import (
     descrizione_e_dubbia,
     _applica_guardrail_note_con_importo,
     AIDailyLimitExceededError,
+    ai_degradata,
+    reset_ai_degradata,
 )
 
 
@@ -646,6 +648,9 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                 continue
 
             try:
+                # Azzerato PRIMA della chiamata: il flag e' per-chiamata e va letto
+                # subito dopo, altrimenti si eredita l'esito del chunk precedente.
+                reset_ai_degradata()
                 categories, confidences = classifica_via_worker_con_confidenza(
                     chunk,
                     fornitori=fornitori,
@@ -654,6 +659,21 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     user_id=user_id,
                     ristorante_id=ristorante_id,
                 )
+                # L'AI puo' essere muta SENZA sollevare: classifica_con_ai ricade sul
+                # fallback deterministico e restituisce una lista valida e allineata.
+                # Senza questo controllo le righe non riconosciute finivano ancora in
+                # 'dati_insufficienti' ("descrizione povera") mentre la causa era
+                # tecnica — la stessa diagnosi fuorviante che questa fase elimina,
+                # su un percorso diverso. Grazie al campo `degradata` di
+                # ClassifyResponse ora e' visibile anche oltre il confine HTTP.
+                if ai_degradata():
+                    logger.error(
+                        "[UPLOAD AI] AI muta su chunk di %d descrizioni: risposta "
+                        "prodotta dal fallback deterministico, non dall'AI",
+                        len(chunk),
+                    )
+                    summary['ai_non_raggiungibile'] = True
+                    _desc_errore_ai.update(chunk)
             except AIDailyLimitExceededError as quota_exc:
                 # Quota AI esaurita: il risultato per il cliente è lo stesso (righe
                 # Da Classificare), ma la causa è diversa da un errore di rete e va

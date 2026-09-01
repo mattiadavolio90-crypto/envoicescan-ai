@@ -159,3 +159,24 @@ class TestCausaVeraMostrataAlCliente:
         assert "remaining_reasons['ai_non_raggiungibile'] += 1" in src
         # e la causa generica resta per il caso vero (descrizione davvero povera)
         assert "remaining_reasons['dati_insufficienti'] += 1" in src
+
+    def test_ai_muta_senza_eccezione_e_comunque_rilevata(self):
+        """Il caso che sfuggiva al primo fix (trovato in review).
+
+        `classifica_con_ai` NON solleva quando l'AI e' irraggiungibile: ricade sul
+        fallback deterministico e restituisce una lista valida. Coprire solo il ramo
+        `except` lasciava quelle righe in 'dati_insufficienti' — la stessa diagnosi
+        fuorviante, su un percorso diverso. Serve leggere `ai_degradata()` DOPO la
+        chiamata, non solo intercettare l'eccezione.
+        """
+        import inspect
+
+        from services.upload_handler import _run_post_upload_ai_categorization
+
+        src = inspect.getsource(_run_post_upload_ai_categorization)
+        # azzerato prima (il flag e' per-chiamata: senza reset si eredita il chunk
+        # precedente e si marcherebbero righe sane come degradate)
+        assert "reset_ai_degradata()" in src
+        # e riletto dopo, nel ramo di successo
+        assert "if ai_degradata():" in src
+        assert "_desc_errore_ai.update(chunk)" in src

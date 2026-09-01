@@ -991,8 +991,12 @@ _VINO_RISO_RE = re.compile(
 # finale conta piu' del brand (regola 4 del prompt AI). 38 righe a DB.
 # NB: NON tocca "ACQUA TONICA" (e' BEVANDE per altra via) ne' l'acqua vera.
 _BEVANDA_NON_ACQUA_RE = re.compile(
-    r"\b(THE|TE|TEA|ESTATHE|SUCCO|SUCCHI|SUCCOSO|GASSOSA|GAZZOSA|ARANCIATA|"
-    r"CHINOTTO|SPUMA|CEDRATA|LEMONSODA|ORANSODA|COLA)\b"
+    r"\b(THE|TE|TEA|ESTATHE|SUCCO|SUCCHI|SUCCOS[OAIE]|GASSOSA|GAZZOSA|ARANCIATA|"
+    r"CHINOTTO|SPUMA|CEDRATA|LEMONSODA|ORANSODA|COLA)\b",
+    # IGNORECASE per coerenza con tutte le altre regex della zona: oggi l'unico
+    # call site passa gia' desc.upper(), ma una regex case-sensitive riusata su
+    # testo grezzo fallirebbe in SILENZIO — la classe di bug piu' costosa qui.
+    re.IGNORECASE,
 )
 _LMA_VASC_RE = re.compile(r"\bLMA\b.*\bVASC\b|\bVASC\b.*\bLMA\b")
 _COPPA_GELATO_GUSTO_RE = re.compile(r"\bCOPPA\b.*\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b|\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b.*\bCOPPA\b")
