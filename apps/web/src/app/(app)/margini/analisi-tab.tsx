@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT, fetchNettoMese } from "./periodi";
 import { buildMesiList } from "@/lib/margini-aggregati";
-import { parseDecimaleItOZero, parseNumeroItOZero } from "@/lib/format";
+import { parseDecimaleItOZero } from "@/lib/format";
 
 /* ────────────────────────────────────────────────────────────────────────────
    TIPI
@@ -133,12 +133,12 @@ function RipartizioneDialog({
   const valid = netto != null && netto > 0 && Math.abs(totale - netto) < 1;
 
   function setField(k: keyof SplitEuro, raw: string) {
-    // La variante di parsing dipende dalla MODALITA', non dal campo: lo stesso
-    // input e' un importo in euro o una percentuale a seconda di `mode`.
-    // Con la variante "importi" un "33.333" in percentuale diventerebbe 33333
-    // (regola delle migliaia) e, moltiplicato per il netto, darebbe un food
-    // cost mille volte piu' grande — salvato senza nessun errore.
-    let v = mode === "perc" ? parseDecimaleItOZero(raw) : parseNumeroItOZero(raw);
+    // `parseDecimaleIt` in ENTRAMBE le modalita', non solo in percentuale:
+    // l'input e' `type="number"`, quindi il browser garantisce la forma
+    // "decimale col punto" e la regola delle migliaia non va mai applicata.
+    // Applicarla in modalita' % faceva diventare "33.333" -> 33333, che
+    // moltiplicato per il netto dava un food cost mille volte piu' grande.
+    let v = parseDecimaleItOZero(raw);
     // Con netto sconosciuto la percentuale non e' convertibile in euro: senza
     // questa guardia un errore di rete faceva valere 0 EUR ogni percentuale, e
     // quei valori finivano salvati a DB.

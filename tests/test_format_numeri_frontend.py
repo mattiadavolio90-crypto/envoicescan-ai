@@ -228,3 +228,110 @@ def test_segni_non_ascii_vengono_normalizzati(testo, atteso):
     incollata veniva rifiutata con un messaggio che parla di campi mancanti.
     """
     assert _parse(testo) == atteso
+
+
+# ─── Le varianti *OZero: 4 funzioni usate ovunque, scoperte fino all'1/9 ────
+#
+# Il code-reviewer ha misurato che si poteva far ritornare NaN a
+# `parseNumeroItOZero`, invertirne i rami o farla delegare alla funzione
+# sbagliata, e la suite restava verde. Sono le funzioni dei 27 campi dei ricavi.
+
+OZERO = ["parseNumeroItOZero", "parseDecimaleItOZero", "parseNumeroIt", "parseDecimaleIt"]
+
+
+def _ozero(espressione, argomento=None):
+    return esegui_ts(MODULO, espressione, argomento=argomento, richiede=OZERO)
+
+
+@pytest.mark.parametrize(
+    "testo,atteso",
+    [("1.234,56", 1234.56), ("2000", 2000), ("0", 0), ("-500", -500)],
+)
+def test_numero_o_zero_passa_i_valori_validi(testo, atteso):
+    assert _ozero("emit(m.parseNumeroItOZero(input));", testo) == atteso
+
+
+@pytest.mark.parametrize("testo", ["", "   ", "abc", "0x10", "Infinity", "1,2,3"])
+def test_numero_o_zero_da_zero_su_input_non_valido(testo):
+    """Il contratto: `0`, mai NaN. I chiamanti fanno `sum + parse(x)` senza
+    controllare — un NaN che sfugge propaga e azzera un totale intero."""
+    r = _ozero("emit({ v: m.parseNumeroItOZero(input), nan: Number.isNaN(m.parseNumeroItOZero(input)) });", testo)
+    assert r == {"v": 0, "nan": False}
+
+
+@pytest.mark.parametrize(
+    "testo,atteso",
+    [("33.333", 33.333), ("8,5", 8.5), ("0", 0), ("-2,5", -2.5)],
+)
+def test_decimale_o_zero_passa_i_valori_validi(testo, atteso):
+    assert _ozero("emit(m.parseDecimaleItOZero(input));", testo) == atteso
+
+
+@pytest.mark.parametrize("testo", ["", "abc", "1e3", "-Infinity"])
+def test_decimale_o_zero_da_zero_su_input_non_valido(testo):
+    r = _ozero("emit({ v: m.parseDecimaleItOZero(input), nan: Number.isNaN(m.parseDecimaleItOZero(input)) });", testo)
+    assert r == {"v": 0, "nan": False}
+
+
+def test_le_varianti_ozero_non_si_scambiano_fra_loro():
+    """Uccide il mutante «`parseNumeroItOZero` delega a `parseDecimaleIt`».
+
+    Su `"1.234"` le due varianti DEVONO divergere: 1234 per un importo, 1.234
+    per un decimale. Se una delega all'altra il valore cambia di mille volte,
+    e nessun altro test se ne accorgerebbe.
+    """
+    r = _ozero(
+        """emit({
+          importo: m.parseNumeroItOZero("1.234"),
+          decimale: m.parseDecimaleItOZero("1.234"),
+        });"""
+    )
+    assert r == {"importo": 1234, "decimale": 1.234}
+
+
+def test_le_varianti_ozero_ereditano_le_guardie_della_base():
+    """Le `*OZero` non devono avere una loro pulizia dell'input: delegano.
+    Se qualcuno togliesse `FORMA_NUMERICA` solo dalla base, questo lo vede."""
+    r = _ozero(
+        """emit({
+          hexN: m.parseNumeroItOZero("0x10"),
+          hexD: m.parseDecimaleItOZero("0x10"),
+          spaziN: m.parseNumeroItOZero(" 1.234,56 "),
+          trattinoN: m.parseNumeroItOZero("−1.234,56"),
+          trattinoD: m.parseDecimaleItOZero("−8,5"),
+        });"""
+    )
+    assert r == {"hexN": 0, "hexD": 0, "spaziN": 1234.56,
+                 "trattinoN": -1234.56, "trattinoD": -8.5}
+
+
+# ─── parseDecimaleIt: le guardie che il reviewer ha trovato scoperte ────────
+
+@pytest.mark.parametrize("testo", ["0x1F", "1e5", "Infinity", "abc", "", "1.2.3"])
+def test_decimale_respinge_quello_che_respinge_l_importo(testo):
+    """`parseDecimaleIt` ha la stessa guardia `FORMA_NUMERICA` di
+    `parseNumeroIt`: era testata molto meno, e si potevano togliere il
+    null-check, la pulizia degli spazi o la normalizzazione dei trattini
+    senza far fallire nulla."""
+    assert _e_nan_decimale(testo) is True
+
+
+def _e_nan_decimale(testo):
+    return esegui_ts(
+        MODULO, "emit(Number.isNaN(m.parseDecimaleIt(input)));",
+        argomento=testo, richiede=DECIMALE,
+    )
+
+
+def test_decimale_gestisce_null_e_spazi_come_l_importo():
+    r = esegui_ts(
+        MODULO,
+        """emit({
+          nullo: Number.isNaN(m.parseDecimaleIt(null)),
+          undef: Number.isNaN(m.parseDecimaleIt(undefined)),
+          nbsp: m.parseDecimaleIt(" 8,5 "),
+          euro: m.parseDecimaleIt("€ 12,50"),
+        });""",
+        richiede=DECIMALE,
+    )
+    assert r == {"nullo": True, "undef": True, "nbsp": 8.5, "euro": 12.5}

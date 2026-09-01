@@ -19,7 +19,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { parseNumeroItOZero } from "@/lib/format";
+import { parseDecimaleItOZero } from "@/lib/format";
 
 type Commento = {
   kpi_nome: string;
@@ -589,7 +589,7 @@ function EditableCell({
   }, [value]);
 
   async function commit() {
-    const newVal = parseNumeroItOZero(local);
+    const newVal = parseDecimaleItOZero(local);
     if (Math.abs(newVal - value) < 0.001) return;
     setSaving(true);
     try {
@@ -601,7 +601,7 @@ function EditableCell({
     }
   }
 
-  const liveVal = parseNumeroItOZero(local);
+  const liveVal = parseDecimaleItOZero(local);
   const pct = pctIncidenza(liveVal, netto);
 
   const currentCls = isCurrent
@@ -767,7 +767,7 @@ function MobileEditInput({
   }, [value]);
 
   async function commit() {
-    const newVal = parseNumeroItOZero(local);
+    const newVal = parseDecimaleItOZero(local);
     if (Math.abs(newVal - value) < 0.001) return;
     await onSave(newVal);
     setSaved(true);

@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatEuro, scorporoNetto } from "./periodi";
 import { buildMesiList } from "@/lib/margini-aggregati";
-import { parseNumeroItOZero } from "@/lib/format";
+import { parseDecimaleItOZero } from "@/lib/format";
 import type {
   RicaviGiornalieriResponse, RicavoGiornaliero,
   RicaviBatchUpsertResponse,
@@ -196,15 +196,15 @@ function GrigliaView({
 
   const nettoGriglia = useMemo(() =>
     righe.reduce((sum, r) => sum + scorporoNetto(
-      parseNumeroItOZero(r.iva10),
-      parseNumeroItOZero(r.iva22),
-      parseNumeroItOZero(r.altri),
+      parseDecimaleItOZero(r.iva10),
+      parseDecimaleItOZero(r.iva22),
+      parseDecimaleItOZero(r.altri),
     ), 0), [righe]);
 
   const nettoMensile = useMemo(() => scorporoNetto(
-    parseNumeroItOZero(mensiIva10),
-    parseNumeroItOZero(mensiIva22),
-    parseNumeroItOZero(mensiAltri),
+    parseDecimaleItOZero(mensiIva10),
+    parseDecimaleItOZero(mensiIva22),
+    parseDecimaleItOZero(mensiAltri),
   ), [mensiIva10, mensiIva22, mensiAltri]);
 
   async function handleSave(opts?: { silentIfClean?: boolean }) {
@@ -231,11 +231,11 @@ function GrigliaView({
               // Gli importi vanno rimandati invariati: l'upsert riscrive tutta la
               // riga, e azzerarli distruggerebbe il totale mensile storico invece
               // di limitarsi a disattivarlo.
-              fatturato_iva10: parseNumeroItOZero(mensiIva10),
-              fatturato_iva22: parseNumeroItOZero(mensiIva22),
-              altri_ricavi_noiva: parseNumeroItOZero(mensiAltri),
+              fatturato_iva10: parseDecimaleItOZero(mensiIva10),
+              fatturato_iva22: parseDecimaleItOZero(mensiIva22),
+              altri_ricavi_noiva: parseDecimaleItOZero(mensiAltri),
               coperti: mensiCoperti.trim() !== ""
-                ? Math.max(0, Math.round(parseNumeroItOZero(mensiCoperti)))
+                ? Math.max(0, Math.round(parseDecimaleItOZero(mensiCoperti)))
                 : null,
             }),
           });
@@ -281,10 +281,10 @@ function GrigliaView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ items: daSalvare.map((r) => ({
             data: r.data,
-            fatturato_iva10: parseNumeroItOZero(r.iva10),
-            fatturato_iva22: parseNumeroItOZero(r.iva22),
-            altri_ricavi_noiva: parseNumeroItOZero(r.altri),
-            coperti: r.coperti.trim() !== "" ? Math.max(0, Math.round(parseNumeroItOZero(r.coperti))) : null,
+            fatturato_iva10: parseDecimaleItOZero(r.iva10),
+            fatturato_iva22: parseDecimaleItOZero(r.iva22),
+            altri_ricavi_noiva: parseDecimaleItOZero(r.altri),
+            coperti: r.coperti.trim() !== "" ? Math.max(0, Math.round(parseDecimaleItOZero(r.coperti))) : null,
           })) }),
         });
         if (!res.ok) throw new Error();
@@ -302,10 +302,10 @@ function GrigliaView({
           body: JSON.stringify({
             anno: meseSel.anno, mese: meseSel.mese, modalita: "mensile",
             // ramo raggiungibile solo con modalita === "mensile" (vedi if sopra)
-            fatturato_iva10: parseNumeroItOZero(mensiIva10),
-            fatturato_iva22: parseNumeroItOZero(mensiIva22),
-            altri_ricavi_noiva: parseNumeroItOZero(mensiAltri),
-            coperti: mensiCoperti.trim() !== "" ? Math.max(0, Math.round(parseNumeroItOZero(mensiCoperti))) : null,
+            fatturato_iva10: parseDecimaleItOZero(mensiIva10),
+            fatturato_iva22: parseDecimaleItOZero(mensiIva22),
+            altri_ricavi_noiva: parseDecimaleItOZero(mensiAltri),
+            coperti: mensiCoperti.trim() !== "" ? Math.max(0, Math.round(parseDecimaleItOZero(mensiCoperti))) : null,
           }),
         });
         if (!res.ok) throw new Error();
@@ -449,9 +449,9 @@ function GrigliaView({
               const date = new Date(r.data + "T00:00:00");
               const giorno = parseInt(r.data.slice(8), 10);
               const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-              const i10 = (parseNumeroItOZero(r.iva10)) / 1.10;
-              const i22 = (parseNumeroItOZero(r.iva22)) / 1.22;
-              const alt = parseNumeroItOZero(r.altri);
+              const i10 = (parseDecimaleItOZero(r.iva10)) / 1.10;
+              const i22 = (parseDecimaleItOZero(r.iva22)) / 1.22;
+              const alt = parseDecimaleItOZero(r.altri);
               const netto = i10 + i22 + alt;
               const hasData = !!(r.iva10 || r.iva22 || r.altri);
               return (
@@ -475,9 +475,9 @@ function GrigliaView({
 
           {/* Riepilogo totali */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-            <TotaleBox label="IVA 10% (netto)" value={righe.reduce((s, r) => s + (parseNumeroItOZero(r.iva10)) / 1.10, 0)} />
-            <TotaleBox label="IVA 22% (netto)" value={righe.reduce((s, r) => s + (parseNumeroItOZero(r.iva22)) / 1.22, 0)} />
-            <TotaleBox label="Altri (no IVA)" value={righe.reduce((s, r) => s + (parseNumeroItOZero(r.altri)), 0)} />
+            <TotaleBox label="IVA 10% (netto)" value={righe.reduce((s, r) => s + (parseDecimaleItOZero(r.iva10)) / 1.10, 0)} />
+            <TotaleBox label="IVA 22% (netto)" value={righe.reduce((s, r) => s + (parseDecimaleItOZero(r.iva22)) / 1.22, 0)} />
+            <TotaleBox label="Altri (no IVA)" value={righe.reduce((s, r) => s + (parseDecimaleItOZero(r.altri)), 0)} />
             <TotaleBox label="Netto totale" value={nettoGriglia} primary />
           </div>
         </div>
@@ -558,9 +558,9 @@ function GiornoCell({
   }, [open, iva10, iva22, altri, coperti]);
 
   const previewNetto = scorporoNetto(
-    parseNumeroItOZero(d10),
-    parseNumeroItOZero(d22),
-    parseNumeroItOZero(dAltri),
+    parseDecimaleItOZero(d10),
+    parseDecimaleItOZero(d22),
+    parseDecimaleItOZero(dAltri),
   );
 
   function confermaModifica() {

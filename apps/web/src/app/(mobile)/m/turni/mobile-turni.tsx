@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
-import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt } from "@/lib/format";
+import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
 
 // ─── Wrapper Movimenti: Incassi / Spese / Turni ─────────────────────────────────
 // Questa e' la sezione "Movimenti" della bottom nav (ex "Turni"): raccoglie i
@@ -636,7 +636,14 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
   const [saving, setSaving] = useState(false);
 
   const isNuovo = !turno;
-  const numOr0 = (s: string) => parseDecimaleItOZero(s);
+  // DUE helper, non uno: `numOr0` serviva sia le ore sia il lordo mensile, che
+  // sono grandezze diverse in campi `type="text"` (testo libero, quindi
+  // l'italiano puo' scriverci il separatore di migliaia).
+  //   ore   "148"    -> 148      un monte ore non ha migliaia
+  //   lordo "1.700"  -> 1700     uno stipendio si', ed e' la forma naturale
+  // Con un helper solo, "1.700" di lordo diventava 1,7 EUR.
+  const oreOr0 = (s: string) => parseDecimaleItOZero(s);
+  const euroOr0 = (s: string) => parseNumeroItOZero(s);
   const toInput = (v: number) => String(v).replace(".", ",");
 
   useEffect(() => {
@@ -654,11 +661,11 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
     }
   }, [open, turno]);
 
-  const oreOrdN = numOr0(oreOrd);
-  const oreExtN = numOr0(oreExtra);
+  const oreOrdN = oreOr0(oreOrd);
+  const oreExtN = oreOr0(oreExtra);
   const oreTot = Math.round((oreOrdN + oreExtN) * 100) / 100;
-  const impOrdN = numOr0(importoOrd);
-  const impExtN = numOr0(importoExtra);
+  const impOrdN = euroOr0(importoOrd);
+  const impExtN = euroOr0(importoExtra);
   const lordoTot = Math.round((impOrdN + impExtN) * 100) / 100;
 
   async function salva() {
