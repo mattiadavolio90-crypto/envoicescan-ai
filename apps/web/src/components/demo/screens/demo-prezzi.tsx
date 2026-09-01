@@ -6,6 +6,7 @@ import type { VariazionePrezzo } from "@/lib/prezzi";
 import { demoPrezziKpi, demoVariazioni } from "@/lib/demo-data";
 import { DemoAnchor } from "../demo-anchor";
 import { parseDecimaleIt } from "@/lib/format";
+import { puntiSparkline } from "@/lib/sparkline-punti";
 
 // Osservatorio (Prezzi) del Demo Tour: replica STATICA del tab Variazioni.
 // I KPI di sintesi + la lista di AlertCard (dal vero variazioni-tab.tsx), senza
@@ -47,27 +48,25 @@ function parseStorico(s: string): number[] {
 }
 
 function Sparkline({ values, rialzo }: { values: number[]; rialzo: boolean }) {
-  if (values.length < 2) return <div className="h-8 w-24" />;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
   const w = 96;
   const h = 32;
-  const step = w / (values.length - 1);
-  const points = values
-    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`)
-    .join(" ");
+  const points = puntiSparkline(values, { w, h });
+  if (!points) return <div className="h-8 w-24" />;
   const stroke = rialzo ? "rgb(244 63 94)" : "rgb(16 185 129)";
+  const coppie = points.split(" ").map((p) => p.split(","));
   return (
     <svg width={w} height={h} className="overflow-visible shrink-0">
       <polyline points={points} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-      {values.map((v, i) => (
+      {/* I pallini stanno sui punti della linea: si leggono da `points` invece
+          di ricalcolare la stessa formula, che e' il modo in cui due disegni
+          della stessa curva finiscono per divergere. */}
+      {coppie.map(([cx, cy], i) => (
         <circle
           key={i}
-          cx={(i * step).toFixed(1)}
-          cy={(h - ((v - min) / range) * h).toFixed(1)}
-          r={i === values.length - 1 ? 2.5 : 1.5}
-          fill={i === values.length - 1 ? stroke : "rgb(148 163 184)"}
+          cx={cx}
+          cy={cy}
+          r={i === coppie.length - 1 ? 2.5 : 1.5}
+          fill={i === coppie.length - 1 ? stroke : "rgb(148 163 184)"}
         />
       ))}
     </svg>

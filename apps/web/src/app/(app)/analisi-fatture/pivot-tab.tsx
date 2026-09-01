@@ -10,6 +10,7 @@ import {
 } from "@/lib/fatture";
 import { SPESE_GENERALI_SET } from "@/lib/categorie-spesa";
 import { categoriaIcon, formatEuro, formatEuroCompact } from "./periodi";
+import { puntiSparkline } from "@/lib/sparkline-punti";
 
 type Props = {
   pivot: PivotResponse;
@@ -198,18 +199,12 @@ function maxRowValue(periodi: Record<string, number>): number {
 }
 
 function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) {
-    return <span className="text-muted-foreground text-[10px]">—</span>;
-  }
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const range = max - min || 1;
   const w = 64;
   const h = 18;
-  const step = w / (values.length - 1);
-  const points = values
-    .map((v, i) => `${i * step},${h - ((v - min) / range) * h}`)
-    .join(" ");
+  const points = puntiSparkline(values, { w, h, ancoraZero: true, decimali: null });
+  if (!points) {
+    return <span className="text-muted-foreground text-[10px]">—</span>;
+  }
   return (
     <svg width={w} height={h} className="text-primary inline-block">
       <polyline

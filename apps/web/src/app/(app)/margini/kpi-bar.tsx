@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatEuro } from "./periodi";
+import { puntiSparkline } from "@/lib/sparkline-punti";
 
 export type KpiData = {
   fatturato_lordo: number;
@@ -32,19 +33,10 @@ export type KpiData = {
 };
 
 function Sparkline({ values: rawValues, color }: { values: number[]; color: string }) {
-  // Scarta NaN/Infinity: un solo valore non finito propagava NaN in min/max e
-  // rompeva i points dell'SVG (polyline "NaN,NaN").
-  const values = (rawValues ?? []).filter((v) => Number.isFinite(v));
-  if (values.length < 2) return null;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const range = max - min || 1;
   const w = 100;
   const h = 24;
-  const step = w / (values.length - 1);
-  const points = values
-    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * (h - 2) - 1).toFixed(1)}`)
-    .join(" ");
+  const points = puntiSparkline(rawValues, { w, h, ancoraZero: true, padY: 1 });
+  if (!points) return null;
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block w-full">
       <polyline
