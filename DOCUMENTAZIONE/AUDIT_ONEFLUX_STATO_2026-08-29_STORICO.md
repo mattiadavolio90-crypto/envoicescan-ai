@@ -1030,3 +1030,173 @@ un'altra sessione (`4bce085`, consumi admin) che porta una migration mai
 confrontata col DB live. Il reviewer non ha potuto verificarla (l'MCP Supabase
 gli nega il permesso). Non è di questa passata, ma è schema che nessuno ha
 ancora controllato.
+
+---
+
+## 1/9/2026 — 3ª passata su `(app)/catena/`: gli export Excel, e un buco nell'harness
+
+**Perché una terza passata su un'area dichiarata «chiusa al 90%».** Perché non
+lo era. La 2ª passata aveva estratto la logica dei 3 file di *interazione*
+(`gruppo-tag-section`, `finestra-costi-gruppo`, `config-assistente-catena`) e
+aveva contato come «coperti» anche `finestra-margini-coperti.tsx` e
+`finestra-spesa-pv.tsx` perché **importavano già** da `catena-confronti.ts`.
+Il criterio era «il file importa da `lib/`», non «la logica del file è in
+`lib/`»: dentro `exportXls()` — una funzione `async` dentro un componente React,
+dopo un `await import("xlsx")` — restavano ~55 righe che nessun test poteva
+raggiungere. Un file può essere coperto per metà e il criterio non se ne accorge.
+
+**Perimetro misurato** (non ereditato): `catena/` è **2.937** righe su 9 file.
+Dopo questa passata, **2.723 in 6 file** hanno la logica in `lib/` (**92,7%**).
+Le **214 righe scoperte** sono, per file e con la ragione:
+
+| File | Righe | Perché resta scoperto |
+|---|---|---|
+| `card-segnali.tsx` | 110 | fetch + JSX. L'unica non-JSX è `ICONA`, che mappa a componenti `lucide-react`: non entra in `lib/` senza cambiare forma |
+| `page.tsx` | 76 | Server Component `async`. Contiene **due decisioni vere** (`num_pv < 2 → redirect`, `limite_giorno <= 0 → null`) ma sono dopo un `await fetch`: `helpers_ts` non le raggiunge |
+| `loading.tsx` | 28 | skeleton, zero logica |
+
+Le due decisioni di `page.tsx` sono l'unico residuo che **vale un test** e non
+ce l'ha. Detto qui perché un `92,7%` senza questa riga si legge come «finito».
+
+### Cosa è stato estratto
+
+`apps/web/src/lib/catena-export.ts` (**194 righe**, 12 funzioni + 3 costanti):
+la costruzione dei due file Excel. `xlsx` NON entra nel modulo — le funzioni
+restituiscono righe e nomi file, il `.tsx` li passa a `json_to_sheet`. Il
+confine è voluto: il test misura cosa il cliente legge nelle celle senza montare
+la libreria.
+
+**58 test** in `tests/test_catena_export_frontend.py`.
+
+### Il buco nell'harness — il rilievo più importante della passata
+
+Tre test sono falliti con `rc=9` e **stderr vuoto**, un messaggio che sembra un
+difetto del modulo sotto test. Non lo era: `esegui_ts` passa l'argomento come
+`json.dumps(argomento)` in coda a `node -e <script>`, e `json.dumps(-2.675)`
+produce `-2.675`, che **node legge come flag** (`node: bad option: -2.675`).
+
+`helpers_ts.py` era quindi **cieco a ogni argomento negativo scalare**, da
+sempre. Nessuno se n'era accorto perché tutti i test esistenti passano oggetti o
+liste, che iniziano con `{` o `[`. Un test che avesse provato un importo
+negativo — esattamente la fixture che le passate precedenti hanno imposto come
+regola — sarebbe fallito in un modo che si legge come «il modulo è rotto».
+
+Corretto alla fonte con `"--"` prima dell'argomento. **Verificato che i 546 test
+frontend esistenti restano verdi.** È infrastruttura condivisa da 12 file di
+test: il fix vale per tutti quelli futuri.
+
+La lezione: *un harness che non ha mai ricevuto un certo input non è provato su
+quell'input, anche se ha 546 test verdi.* Le passate precedenti avevano scritto
+la regola «fixture con negativi obbligatorie» ma l'avevano applicata solo dentro
+oggetti, dove il bug non si vede.
+
+### Fedeltà dell'estrazione: oracolo, non solo gate
+
+Il gate `git diff -U0 | grep '^+'` è passato su entrambi i `.tsx` (solo import e
+chiamate). Ma il gate dimostra che la logica è **uscita**, non che sia
+**arrivata intatta** — ed è il rischio dichiarato nel piano.
+
+Prova indipendente: l'espressione originale presa da `git show HEAD:<file>`,
+ricostruita come modulo `.mjs` in scratchpad, valutata contro il modulo nuovo
+sugli stessi input.
+
+- **Margini**: 734 esiti (120 righe PV × 5 conteggi di incompleti × colonne,
+  più note e nomi file su 9 etichette). **0 divergenze.**
+- **Pivot**: 200 casi generati, ~2.593 celle. **0 divergenze.**
+
+### Anomalie fotografate (non corrette)
+
+| Dove | Cosa | Perché non ora |
+|---|---|---|
+| `arrotonda2` | L'arrotondamento sui mezzi centesimi **non è una regola sola**: `1.005 → 1` ma `0.005 → 0.01`; `2.675 → 2.68` ma `-2.675 → -2.67` | È lo stesso calcolo di `righeExportPv` in `catena-tag.ts` e di altri punti dell'app. Correggerlo **qui** darebbe due arrotondamenti diversi per lo stesso importo in due file scaricati lo stesso giorno: peggio dell'errore |
+| `rigaTotalePivot` | La `%` della riga TOTALE è la costante `"100%"`, non la somma delle incidenze | Se il backend tronca o esclude righe, le colonne sommano a 99,8% mentre il totale dichiara 100%. Scelta di leggibilità, ma **il numero non è misurato** |
+| `rigaExportPivot` | Un PV chiamato «Categoria» sovrascrive la prima colonna | Le chiavi dell'oggetto sono i nomi visualizzati, non gli id. Improbabile, non impossibile: il file uscirebbe muto |
+
+**La causa dell'anomalia di arrotondamento era stata scritta male da me.** Il
+primo commento diceva «`Math.round` arrotonda `.5` verso +∞, quindi `-40.005`
+dà `-40`». Misurato: dà `-40.01`. La regola di `Math.round` è vera ma non è la
+causa — è la rappresentazione binaria (`1.005*100` vale `100.49999…`, quindi non
+c'è nessun `.5` da arrotondare). Corretto **sulla misura**, non sulla
+supposizione: un commento sbagliato su un'anomalia fotografata è peggio di
+nessun commento, perché la sessione che farà il fix lo leggerà come specifica.
+
+Stessa dinamica sul test `test_riga_totale_grand_total_negativo`: avevo asserito
+`-5000.56`, il valore vero è `-5000.55`. Aspettativa mia sbagliata, non il
+codice — trasformato in un caso di fotografia esplicito.
+
+### Note tecniche riusabili
+
+- **Import a 3 livelli nell'harness funziona**: `catena-export → catena-tag →
+  catena-confronti`. Provato con una sonda prima di scrivere i test, non dopo.
+- **`import type` inutilizzato non lo segnala `tsc --noEmit`**: `MarginiCoperti`
+  era importato e mai usato, e i tipi passavano. Trovato a mano.
+- **`slugPeriodo` ha ora 3 chiamanti** in 3 file. Vive in `catena-tag.ts` per
+  ragioni storiche. Non spostato (sarebbe refactor fuori scopo), ma dichiarato
+  nel sorgente: una quarta copia della regex sarebbe il modo tipico di farle
+  divergere.
+
+### `page.tsx` chiuso — e perché non stava in `gruppo.ts`
+
+Il verbale sopra dichiarava `page.tsx` «l'unico residuo che vale un test». È
+stato fatto nella stessa sessione invece di rimandarlo: due predicati puri in
+`catena-confronti.ts`, 12 test.
+
+```ts
+deveRedirigereAPuntoVendita(overview)  // num_pv < 2 → Home del PV
+chatCatenaAttiva(config)               // pool AI > 0 → chat visibile
+```
+
+La prima decide se un account **vede** la modalità catena, la seconda se vede la
+chat AI. Non sono dettagli di rendering.
+
+**Perché non in `gruppo.ts`**, che sarebbe la casa naturale: quel modulo importa
+`./worker` con un **path relativo**, e `helpers_ts` riscrive solo l'alias `@/`.
+Verificato con una sonda (`ERR_MODULE_NOT_FOUND: Cannot find module
+.../lib/worker`), non supposto. `gruppo.ts` **non è eseguibile sotto test**: è
+un limite dell'harness da conoscere prima di progettare dove mettere una
+funzione.
+
+**`chatCatenaAttiva` è un type predicate** (`config is T`), non un `boolean`.
+La condizione inline `!config || !config.enabled || …` restringeva il tipo di
+`config`; sostituirla con una funzione che torna `boolean` ha prodotto due
+`TS18047: 'config' is possibly null` sul `.tsx`. Il type predicate mantiene la
+semantica **e** l'informazione di tipo, così il Server Component resta davvero
+senza logica propria invece di guadagnare un `!` o un cast.
+
+Copertura finale dell'area: **2.800/2.938 = 95%**. Le 138 righe residue
+(`card-segnali.tsx` 110, `loading.tsx` 28) non contengono logica: fetch, JSX,
+skeleton.
+
+### Bilancio di mutazione
+
+**Harness validato sui due lati** all'inizio del giro, non dato per buono dalla
+sessione precedente: mutante palese (`return 999999`) **ucciso**, commento
+cambiato **sopravvissuto**.
+
+`catena-export.ts`: **33 mutanti, 30 uccisi al primo giro**, poi 31 dopo la
+fixture nuova. I 4 casi, indagati uno per uno:
+
+| Mutante | Esito | Perché |
+|---|---|---|
+| `v == null` → `v === null` | **fixture povera** → chiuso, **riverificato ucciso** | Una colonna assente dal dato dà `undefined`: col mutante **la chiave sparisce dall'oggetto** e le celle slittano rispetto all'header. Nessuna fixture aveva una colonna mancante |
+| `=== 1` → `<= 1` in `notaIncompleti` | **equivalenza vera** | Per enumerazione: divergono **solo** su `0.5`, perché la guardia `<= 0` a monte esclude il resto sotto 1. Un conteggio di sedi frazionario non esiste |
+| `?? 0` → `?? null` | **equivalenza vera** | `Math.round(null * 100) / 100` vale `0`: output identico |
+| `?? 0` → `\|\| 0` | **equivalenza vera** — *diagnosi corretta a posteriori* | L'avevo classificato «fixture povera» e avevo scritto un test per ucciderlo. **La riverifica lo ha trovato ancora vivo.** Misurato dopo: post-`arrotonda2` divergono solo su `-0` (indistinguibile in JSON) e `NaN` (backend rotto). Il test è rimasto perché fissa un comportamento vero, ma la sua docstring ora dice che **non** uccide il mutante |
+
+`catena-confronti.ts` (predicati nuovi): **8 mutanti, 8 uccisi** (validazione
+harness inclusa).
+
+**La distinzione che conta**: «sopravvissuto» non è un verdetto, è una domanda —
+e la risposta va **misurata, non prevista**. Su E26 avevo previsto «fixture
+povera» e scritto la fixture; solo la riverifica ha mostrato che era
+un'equivalenza. **Un mutante che scrivi di aver ucciso senza rilanciare l'harness
+non è ucciso**: è una supposizione con l'aspetto di un dato.
+
+### Un errore di metodo da non ripetere
+
+Ho lanciato un secondo giro di mutazione mentre il primo era ancora in corso: i
+due scrivevano sulla **stessa cartella** `websrc_mut` e si sono scontrati a metà
+catalogo (`shutil.Error: [Errno 17] File exists`), perdendo E30–E33. L'harness è
+stato reso non-fatale (`dirs_exist_ok`, `rmtree(ignore_errors=True)`), ma la
+regola resta: **un giro di mutazione alla volta**. Il rilancio ha completato i 4
+mutanti mancanti — tutti uccisi.

@@ -513,13 +513,16 @@ def test_colonna_assente_dal_dato_esce_come_trattino():
     assert "Fantasma" in r
 
 
-def test_spesa_zero_esplicita_non_diventa_fallback():
-    """Uccide il mutante `?? 0` → `|| 0` in `rigaExportPivot`.
+def test_spesa_zero_esplicita_e_assente_danno_entrambe_zero():
+    """Una sede con spesa **esplicita** a zero e una **assente** escono uguali.
 
-    Sui numeri i due coincidono (`0 || 0` è `0`), ma la differenza si vede se il
-    fallback cambia: `??` scatta solo su null/undefined, `||` anche su `0`.
-    Il test inchioda la semantica scelta — una sede con spesa **esplicita** a
-    zero e una **assente** devono dare entrambe `0`, per ragioni diverse.
+    NON uccide il mutante `?? 0` → `|| 0`, e verificato che non può: dopo
+    `arrotonda2` i due divergono solo su `-0` (indistinguibile in JSON) e su
+    `NaN` (che vorrebbe dire backend rotto). **Equivalenza vera** — la prima
+    diagnosi la dava per fixture povera, la misura dice altro.
+
+    Il test resta perché fissa il comportamento atteso di entrambi i casi, che
+    è la cosa che il file Excel deve mostrare.
     """
     r = _esegui(
         'emit(m.rigaExportPivot(input.r, input.pv, "Categoria"));',

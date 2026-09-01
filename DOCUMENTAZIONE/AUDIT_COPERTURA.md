@@ -77,12 +77,15 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 > «lette» qui sotto sono quelle dichiarate in quei verbali.
 >
 > Misura sul tree **committato** (`git archive HEAD`, **meno le 481 righe dei due
-> font `.woff` binari** che il tar include): **52.205**, ri-misurata l'1/9 a
-> chiusura della 2ª sessione catena. La 1ª passata aveva portato 51.614 (+201:
-> `lib/` +284, `(app)/catena/` −83); la 2ª aggiunge **+591** (`lib/` +411 per
-> `catena-tag.ts` e `catena-costi-gruppo.ts`, `(app)/catena/` −7). Un `find` sul
-> working tree può dare di più se una sessione parallela ha modifiche aperte —
-> l'1/9 ne aveva.
+> font `.woff` binari** che il tar include): **52.226** a HEAD, ri-misurata l'1/9
+> alla 3ª sessione catena. La 1ª passata aveva portato 51.614 (+201: `lib/` +284,
+> `(app)/catena/` −83); la 2ª +591; la 3ª porterà **+171** (`catena-export.ts`
+> +194, i due `.tsx` −23) → **52.397** dopo il commit.
+>
+> ⚠️ Il 52.205 scritto qui a mezzogiorno dell'1/9 era già vecchio due ore dopo:
+> **una sessione parallela ha committato nel frattempo**. La cifra a HEAD si
+> ri-misura quando la si scrive, sempre — non si eredita dalla riga sopra. Un
+> `find` sul working tree dà di più ancora se una sessione ha modifiche aperte.
 >
 > ⚠️ **+284 e −83 non si compensano: un'estrazione NON è a somma zero.** Il
 > modulo estratto aggiunge firme, tipi e i commenti che spiegano ogni anomalia
@@ -118,8 +121,8 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | ~1.412 | 4.463 | 🟠 32% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (284) + `catena-tag.ts` (229) + `catena-costi-gruppo.ts` (182), gli ultimi due nuovi l'1/9 (2ª passata) |
-| `(app)/catena/` | 2.746 | 3.037 | 🟢 90% | **CHIUSA l'1/9 in due passate**: tutti e 6 i file di logica estratti in `lib/catena-confronti.ts`, `catena-tag.ts`, `catena-costi-gruppo.ts`. 194 test, 103 mutanti (51 + 52) con 96 uccisi e 7 equivalenze dichiarate. Restano scoperte 291 righe: `card-segnali.tsx` 110 (fetch + JSX, mappa a componenti lucide: non estraibile senza cambiare forma) + pages 181 (zero logica). **Copre la logica pura, non il rendering** |
+| `lib/` | 1.586 | 4.657 | 🟠 34% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (284) + `catena-tag.ts` (229) + `catena-costi-gruppo.ts` (182) + `catena-export.ts` (194), gli ultimi tre nuovi l'1/9 (2ª e 3ª passata) |
+| `(app)/catena/` | 2.800 | 2.938 | 🟢 95% | **CHIUSA l'1/9 in tre passate**: 7 file su 9 con logica in `lib/` (`catena-confronti.ts`, `catena-tag.ts`, `catena-costi-gruppo.ts`, `catena-export.ts`). 280 test. Scoperte **138 righe**, entrambe senza logica: `card-segnali.tsx` 110 (fetch + JSX, `ICONA` mappa a componenti lucide) + `loading.tsx` 28 (skeleton). `page.tsx` è stato chiuso estraendo le sue due decisioni (`num_pv < 2 → redirect`, pool chat `> 0`) come predicati puri. **Copre la logica pura, non il rendering** |
 | `(app)/` — altre 7 aree + file diretti | 0 | 4.250 | 🔴 | misurate il 31/8: dashboard 1.749 · impostazioni 806 · agenda 693 · notifiche 339 · assistenza 292 · style-guide 256 · file diretti 115 |
 | `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 622 | 🔴 | **ri-misurati il 31/8: 22 + 105 + 495** — i file diretti erano contati 185, sono 495 (`globals.css` da solo ne fa 296) |
 | `(auth)`+`(legal)`+`(demo)` — dettaglio | — | 1.353 | 🔴 | 552 + 575 + 226 |
@@ -197,8 +200,9 @@ Edge Functions, 169 route.
 > esattamente l'errore che il contatore esiste per impedire. Restano queste,
 > verificate:
 
-1. **`(app)/catena/` (3.127 righe) è l'unica area frontend grande che nessuna
-   passata ha mai toccato.** Gestisce il multi-sede.
+1. ~~`(app)/catena/` è l'unica area frontend grande mai toccata~~ — **chiusa
+   l'1/9 in tre passate**, 2.800/2.938 (95%). Le 138 righe residue non hanno
+   logica: fetch, JSX e skeleton.
 2. **`worker/` (2.353) gira non presidiato** e non è in nessuna lista.
 3. **`config/` (2.334) contiene i prompt AI** — la regola di dominio n.1 — e non
    è mai stato guardato.

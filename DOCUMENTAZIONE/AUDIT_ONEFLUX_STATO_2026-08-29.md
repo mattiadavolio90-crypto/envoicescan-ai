@@ -171,21 +171,33 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 > 16% auditato per dimensione, **49% mai guardato**. Usa il contatore per
 > decidere le priorità, non questa tabella.
 >
-> **Aggiornato l'1/9 (2 passate nella stessa giornata):** `(app)/catena/` è
-> **chiusa** — 2.746 righe su 3.037 (**90%**). Tutti e 6 i file di logica sono
-> estratti in `lib/catena-confronti.ts`, `lib/catena-tag.ts` e
-> `lib/catena-costi-gruppo.ts`: **194 test, 103 mutanti con 96 uccisi** e 7
-> equivalenze dichiarate col loro perché.
+> **Aggiornato l'1/9 (3 passate nella stessa giornata):** `(app)/catena/` è
+> **chiusa** — 2.800 righe su 2.938 (**95%**), misurate a fine giornata. La
+> logica sta in `lib/catena-confronti.ts`, `catena-tag.ts`,
+> `catena-costi-gruppo.ts` e `catena-export.ts`: **280 test** (contati con
+> `--collect-only`, non a mente: la prima stesura diceva 267).
 >
-> **Restano scoperte 291 righe, per decisione**: `card-segnali.tsx` (110, fetch +
-> JSX con una mappa a componenti `lucide-react` che non entra in `lib/` senza
-> cambiare forma) e le 3 pages (181, zero logica). E la copertura è sulla
-> **logica pura, non sul rendering**: `esegui_ts` non monta React.
+> ⚠️ **La 2ª passata l'aveva dichiarata chiusa al 90%, e non lo era.** Contava
+> come coperti `finestra-margini-coperti.tsx` e `finestra-spesa-pv.tsx` perché
+> *importavano* da `lib/`, mentre ~55 righe di export Excel vivevano ancora
+> dentro `exportXls()`, irraggiungibili. **Il criterio «il file importa da lib/»
+> non è «la logica del file è in lib/»**: un file può essere coperto a metà e la
+> tabella non se ne accorge. La 3ª passata li ha estratti in `catena-export.ts`.
 >
-> Due esiti della 2ª passata che valgono oltre l'area: `replaceAll` **non** è il
-> fix del bug sull'importo italiano (a rompere è il punto delle migliaia, non la
-> virgola — la ricetta verificata è nel verbale), e la guardia sulle liste vuote
-> di `config-assistente-catena` resta aperta come fix a sé.
+> **Restano scoperte 138 righe**, nessuna con logica: `card-segnali.tsx` (110,
+> fetch + JSX) e `loading.tsx` (28, skeleton). `page.tsx` è stato chiuso nella
+> stessa sessione estraendo le sue due decisioni — chi **vede** la modalità
+> catena (`num_pv < 2 → redirect`) e chi vede la chat AI — come predicati puri
+> in `catena-confronti.ts`. La copertura è sulla **logica pura, non sul
+> rendering**: `esegui_ts` non monta React.
+>
+> Tre esiti che valgono oltre l'area: `replaceAll` **non** è il fix del bug
+> sull'importo italiano (a rompere è il punto delle migliaia, non la virgola —
+> ricetta verificata nel verbale); la guardia sulle liste vuote di
+> `config-assistente-catena` resta aperta come fix a sé; e la 3ª passata ha
+> trovato che **`helpers_ts.py` era cieco a ogni argomento negativo scalare**
+> (node leggeva `-2.675` come flag → `rc=9`, stderr vuoto). Corretto alla fonte:
+> vale per tutti i 12 file di test frontend, non solo per catena.
 >
 > `margini/` (4.709, il MOL) e `scadenziario/` erano state chiuse il 31/8.
 > `workspace/` (5.012) resta 🟠 37%, col resto escluso con misura nel ciclo 08.
