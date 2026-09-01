@@ -710,3 +710,77 @@ def test_messaggio_torna_all_imperativo_se_ieri_non_e_arrivato_nulla(ieri):
     quindi l'istruzione va ripetuta qui."""
     out = _chiama("messaggioFattureDaCollocare", [{"n_fatture_da_collocare": 2, "n_fatture_arrivate_ieri": ieri}])
     assert "assegnale" in out
+
+
+# ─── Accesso alla modalità catena (estratti da page.tsx l'1/9) ──────────────
+
+ACCESSO = ["deveRedirigereAPuntoVendita", "chatCatenaAttiva"]
+
+
+def _accesso(espressione, argomento=None):
+    return esegui_ts(MODULO, espressione, argomento=argomento, richiede=ACCESSO)
+
+
+def test_redirige_account_mono_sede():
+    assert _accesso("emit(m.deveRedirigereAPuntoVendita({ num_pv: 1 }));") is True
+
+
+def test_non_redirige_con_due_sedi():
+    assert _accesso("emit(m.deveRedirigereAPuntoVendita({ num_pv: 2 }));") is False
+
+
+def test_redirige_anche_con_zero_sedi():
+    """La soglia e' `< 2`, non `=== 1`: uno zero (account appena creato, o
+    worker che risponde male) deve redirigere come un uno. La pagina a valle
+    divide per `num_pv`."""
+    assert _accesso("emit(m.deveRedirigereAPuntoVendita({ num_pv: 0 }));") is True
+
+
+def test_redirige_con_num_pv_negativo():
+    assert _accesso("emit(m.deveRedirigereAPuntoVendita({ num_pv: -1 }));") is True
+
+
+def test_non_redirige_con_molte_sedi():
+    assert _accesso("emit(m.deveRedirigereAPuntoVendita({ num_pv: 11 }));") is False
+
+
+def test_chat_attiva_con_pool_disponibile():
+    assert _accesso(
+        "emit(m.chatCatenaAttiva({ enabled: true, limite_giorno: 30 }));"
+    ) is True
+
+
+def test_chat_spenta_se_config_null():
+    """Worker giu': la chat non si mostra, non si mostra vuota."""
+    assert _accesso("emit(m.chatCatenaAttiva(null));") is False
+
+
+def test_chat_spenta_se_config_undefined():
+    assert _accesso("emit(m.chatCatenaAttiva(undefined));") is False
+
+
+def test_chat_spenta_se_disabilitata():
+    assert _accesso(
+        "emit(m.chatCatenaAttiva({ enabled: false, limite_giorno: 30 }));"
+    ) is False
+
+
+def test_chat_spenta_col_pool_esaurito():
+    """Un piano attivo con pool a zero ha `enabled: true` e `limite_giorno: 0`:
+    i due controlli non sono ridondanti."""
+    assert _accesso(
+        "emit(m.chatCatenaAttiva({ enabled: true, limite_giorno: 0 }));"
+    ) is False
+
+
+def test_chat_spenta_col_limite_negativo():
+    assert _accesso(
+        "emit(m.chatCatenaAttiva({ enabled: true, limite_giorno: -5 }));"
+    ) is False
+
+
+def test_chat_attiva_col_limite_uno():
+    """`> 0`, non `>= 1` per caso: una sola domanda al giorno e' un pool valido."""
+    assert _accesso(
+        "emit(m.chatCatenaAttiva({ enabled: true, limite_giorno: 1 }));"
+    ) is True

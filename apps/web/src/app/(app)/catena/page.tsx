@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
+import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { SintesiCatena } from "./sintesi-catena";
 import { ChatWidget } from "../dashboard/chat-widget";
 import { BlockRetry } from "../dashboard/block-retry";
@@ -41,7 +42,7 @@ async function SintesiBlock() {
       </BlockRetry>
     );
   }
-  if (overview.num_pv < 2) {
+  if (deveRedirigereAPuntoVendita(overview)) {
     redirect("/dashboard");
   }
   return <SintesiCatena overview={overview} />;
@@ -52,7 +53,7 @@ async function SintesiBlock() {
 // per non ritardare la Sintesi.
 async function ChatBlockCatena() {
   const config = await fetchGruppoChatConfig();
-  if (!config || !config.enabled || config.limite_giorno <= 0) return null;
+  if (!chatCatenaAttiva(config)) return null;
   return (
     <ChatWidget
       contesto="catena"

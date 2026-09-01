@@ -492,3 +492,55 @@ def test_costanti_esposte_coerenti_con_le_celle():
         "emit({ inc: m.CELLA_DATI_INCOMPLETI, vuota: m.CELLA_VUOTA, max: m.MAX_NOME_FOGLIO });"
     )
     assert v == {"inc": "dati incompleti", "vuota": "—", "max": 31}
+
+
+# ─── Lacune chiuse dopo la mutazione (1/9) ──────────────────────────────────
+
+def test_colonna_assente_dal_dato_esce_come_trattino():
+    """Uccide il mutante `v == null` → `v === null`.
+
+    Se il backend smette di mandare una colonna, `r[c.key]` è `undefined`:
+    `== null` lo cattura e scrive `—`, `=== null` no. Col mutante la **chiave
+    sparisce dall'oggetto** e la cella non esiste proprio nel file Excel —
+    le colonne successive slittano rispetto all'header.
+    """
+    r = _esegui(
+        "emit(m.rigaExportMargini(input.r, input.c));",
+        {"r": _pv(), "c": [{"key": "margine_perc", "label": "Margine %"},
+                           {"key": "inesistente", "label": "Fantasma"}]},
+    )
+    assert r == {"Punto vendita": "Centro", "Margine %": 12.5, "Fantasma": "—"}
+    assert "Fantasma" in r
+
+
+def test_spesa_zero_esplicita_non_diventa_fallback():
+    """Uccide il mutante `?? 0` → `|| 0` in `rigaExportPivot`.
+
+    Sui numeri i due coincidono (`0 || 0` è `0`), ma la differenza si vede se il
+    fallback cambia: `??` scatta solo su null/undefined, `||` anche su `0`.
+    Il test inchioda la semantica scelta — una sede con spesa **esplicita** a
+    zero e una **assente** devono dare entrambe `0`, per ragioni diverse.
+    """
+    r = _esegui(
+        'emit(m.rigaExportPivot(input.r, input.pv, "Categoria"));',
+        {"r": {"dim_val": "D", "per_pv": {"a": 0}, "totale": 0, "incidenza_pct": 0},
+         "pv": [{"id": "a", "nome": "Esplicita"}, {"id": "b", "nome": "Assente"}]},
+    )
+    assert r["Esplicita"] == 0
+    assert r["Assente"] == 0
+
+
+def test_nota_incompleti_su_due_sedi_usa_il_plurale():
+    """Il confine singolare/plurale, fissato su entrambi i lati.
+
+    NON uccide il mutante `=== 1` → `<= 1`, e non può: verificato che i due
+    divergono **solo** su `0.5`, perché la guardia `<= 0` a monte esclude tutto
+    il resto sotto 1. Un conteggio di sedi frazionario non esiste, quindi è
+    un'**equivalenza vera** — dichiarata nel verbale, non zittita con una
+    fixture impossibile."""
+    assert _esegui("emit(m.notaIncompleti(2));") == (
+        "Margine di gruppo parziale: 2 sedi non hanno ancora i costi caricati."
+    )
+    assert _esegui("emit(m.notaIncompleti(1));") == (
+        "Margine di gruppo parziale: 1 sede non ha ancora i costi caricati."
+    )

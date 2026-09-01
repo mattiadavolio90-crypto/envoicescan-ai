@@ -282,3 +282,37 @@ export function messaggioFattureDaCollocare(briefing: {
       ? "C'è 1 fattura di gruppo da collocare qui sotto: assegnala a una sede o dividila fra i locali."
       : `Ci sono ${briefing.n_fatture_da_collocare} fatture di gruppo da collocare qui sotto: assegnale a una sede o dividile fra i locali.`;
 }
+
+// ─── Accesso alla modalità catena ──────────────────────────────────────────
+//
+// Le due decisioni di `(app)/catena/page.tsx`. Stanno qui e non in `gruppo.ts`
+// perche' quel modulo importa `./worker` con un path relativo, e l'harness dei
+// test (`tests/helpers_ts.py`) riscrive solo l'alias `@/`: `gruppo.ts` non e'
+// eseguibile sotto test. Il Server Component chiama questi predicati e resta
+// senza logica propria.
+
+/**
+ * Un account mono-sede non ha un gruppo da mostrare: si torna alla Home del PV.
+ *
+ * ATTENZIONE alla soglia: `< 2`, non `<= 1` per caso — `num_pv` arriva dal
+ * worker e un `0` (account appena creato, o worker che risponde male) deve
+ * redirigere come un `1`. Un `=== 1` lascerebbe passare lo zero su una pagina
+ * che poi divide per `num_pv`.
+ */
+export function deveRedirigereAPuntoVendita(overview: { num_pv: number }): boolean {
+  return overview.num_pv < 2;
+}
+
+/**
+ * La chat di catena compare solo col pool AI > 0 (almeno una sede a pagamento).
+ *
+ * `config` puo' essere `null` (worker giu'): in quel caso la chat non si mostra,
+ * non si mostra "vuota". I tre controlli sono in AND e nessuno e' ridondante:
+ * `enabled` e' l'interruttore, `limite_giorno` la capienza — un piano attivo con
+ * pool esaurito ha `enabled: true` e `limite_giorno: 0`.
+ */
+export function chatCatenaAttiva<T extends { enabled: boolean; limite_giorno: number }>(
+  config: T | null | undefined,
+): config is T {
+  return Boolean(config && config.enabled && config.limite_giorno > 0);
+}
