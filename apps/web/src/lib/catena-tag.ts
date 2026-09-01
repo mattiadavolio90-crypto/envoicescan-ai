@@ -193,6 +193,11 @@ export function nomeFileExport(nome: string, periodoLabel: string | null | undef
 /**
  * Righe del foglio "Per punto vendita". Le chiavi sono le intestazioni di
  * colonna che il cliente vede in Excel: rinominarne una e' un cambio visibile.
+ *
+ * ANOMALIA FOTOGRAFATA: `Math.round` arrotonda i .5 verso +infinito, non lontano
+ * da zero. Su una nota di credito l'export puo' quindi differire di un centesimo
+ * da quanto darebbe la stessa cifra col segno opposto (-40.015 -> -40.01, mentre
+ * 40.015 -> 40.02). Un importo che arrotonda a zero da sotto resta `-0`.
  */
 export function righeExportPv(perPv: readonly TagAnalisiPV[]): Record<string, string | number>[] {
   return perPv.map((p) => ({
