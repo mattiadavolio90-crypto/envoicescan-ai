@@ -134,10 +134,8 @@ python -m services.fastapi_worker              # worker FastAPI :8000
 
 # Schema OpenAPI: esporta (dopo modifiche a fastapi_worker.py) / verifica drift
 python scripts/export_openapi.py
-python scripts/export_openapi.py --check-drift
+python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_GUIDE.md
 ```
-
-> Guida completa servizi locali: `DEV_SERVICES_GUIDE.md`.
 
 ---
 
@@ -153,19 +151,20 @@ python scripts/export_openapi.py --check-drift
   documenta i servizi, non il trigger). Non esiste un "spedisco ora, deployo
   stasera": la finestra oraria (sera/notte/mattina presto) è un vincolo **sul
   push**, salvo conferma esplicita di Mattia. Vedi `WORKFLOW.md` §0.
-- **Mai `git push` / `gh pr create` / `gh pr merge` di iniziativa.** N sessioni
-  ≠ N deploy: il push manda **tutti** i commit accumulati, non solo quelli di
-  oggi (`git log --oneline origin/main..main`).
+- **Mai `git push` / `gh pr create` / `gh pr merge` di iniziativa.** N sessioni ≠
+  N deploy: il push manda **tutti** i commit accumulati (`git log --oneline
+  origin/main..main`).
 - **Più sessioni in parallelo sono la norma.** Commit e file non tuoi sono lo
-  stato atteso, non un allarme: si contano e si riportano a fine sessione
-  («in coda: 7 commit, 3 miei»). Mai committare lavoro non tuo — `git add -A`
-  è il modo tipico di farlo per sbaglio. Vedi `WORKFLOW.md` §0.
+  stato atteso, non un allarme: si contano e si riportano a fine sessione («in
+  coda: 7 commit, 3 miei»). Mai committare lavoro non tuo (`git add -A` è il modo
+  tipico di farlo per sbaglio). Se segnali un rischio che nasce da lavoro altrui
+  di' sempre **di chi è** e **chi deve agire**, o Mattia lo legge come una tua
+  dimenticanza e ti fa chiudere roba non tua. Vedi `WORKFLOW.md` §0.
 - **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
 - **Worker locale senza `--reload`** tiene in memoria il codice vecchio: riavvialo.
-- **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in
-  produzione (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
-- **`/m` è un frontend separato**, non responsive: se estendi il desktop, va
-  allineato a mano.
+- **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in produzione
+  (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
+- **`/m` è un frontend separato**, non responsive: va allineato a mano.
 - **Zero test frontend**: l'unica rete su `apps/web/` è `npx tsc --noEmit`, che
   controlla i tipi e **non esegue niente**. Un fix può passare `tsc`, sembrare
   giusto a leggerlo e non fare nulla sui dati veri — è successo il 29/8 con una

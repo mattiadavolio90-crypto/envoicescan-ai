@@ -100,6 +100,32 @@ test di `test_flusso_dati_admin.py`, verdi su checkout pulito. Prima di
 concludere che l'hai rotto tu, verifica che il rosso esista anche senza le
 modifiche altrui.
 
+### Come si segnala un rischio che nasce da lavoro altrui
+
+Alcune cose vanno dette anche se non sono tue: una **migration non tracciata**
+(schema che non esiste in nessun file), un file che sta per partire a metà, un
+conflitto imminente. Ma **come** lo dici cambia cosa Mattia fa dopo.
+
+Sbagliato — l'1/9 è successo davvero: *«c'è ancora una migration non committata:
+se parte il codice e non lo schema, si rompe»*. Mattia ha letto una
+dimenticanza della sessione che parlava, e stava per farle committare lavoro di
+un'altra. La frase era vera e ha comunque prodotto la mossa sbagliata.
+
+Una segnalazione su lavoro altrui deve avere **tre pezzi**, sempre:
+
+1. **Di chi è** — «non è mio, è della sessione che sta facendo X».
+2. **Cosa rischia** — in una riga, concreta.
+3. **Chi deve agire** — quasi sempre: la sessione che l'ha scritto, quando
+   chiude. Se serve Mattia, dillo esplicitamente.
+
+> Non è mio: una sessione sta lavorando al tab Admin e ha una migration ancora
+> non committata. Se stasera parte il codice senza lo schema, quel tab si rompe.
+> La chiude quella sessione — se non la chiude, dimmelo e la committo io.
+
+**Non offrirti di committarlo tu di default.** Il lavoro lo chiude chi l'ha
+scritto: solo quella sessione sa se è finito, e solo lei può scrivere un
+messaggio di commit che non sia un'ipotesi.
+
 ### Cosa NON è cambiato
 
 Il gate resta, cambia solo *quando* scatta. La suite completa e il
