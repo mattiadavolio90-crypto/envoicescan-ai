@@ -17,7 +17,10 @@ git log --oneline origin/main..main     # quanti commit sono in coda?
 ```
 
 **Se la coda non è vuota, dillo a Mattia subito**, con il numero — **quello che
-leggi tu adesso**, non quello scritto qui. A fine giornata dell'1/9 erano **8**.
+leggi tu adesso**, non quello scritto qui. A fine giornata dell'1/9 erano **11**,
+e sono cresciuti **durante** la sessione perché un'altra lavorava in parallelo:
+il numero si legge adesso, non si eredita da qui.
+
 Il push manda **tutti** i commit accumulati — e **il push È il deploy**. Non
 pushare mai di iniziativa: la finestra è la sera/notte, e la decide Mattia.
 
