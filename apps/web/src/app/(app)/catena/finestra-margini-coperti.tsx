@@ -14,6 +14,13 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import { type MarginiCoperti, type MarginiCopertiPV, type SprecoCategorie } from "@/lib/gruppo";
 import {
+  headerMargini,
+  nomeFileMargini,
+  notaIncompleti,
+  rigaExportGruppo,
+  rigaExportMargini,
+} from "@/lib/catena-export";
+import {
   type Col as ColConfronto,
   HEAT,
   calcolaExtremes,
@@ -126,44 +133,20 @@ export function FinestraMarginiCoperti({
   async function exportXls() {
     if (!data) return;
     const XLSX = await import("xlsx");
-    const header = ["Punto vendita", ...COLS.map((c) => c.label)];
-    const toRow = (r: MarginiCopertiPV): Record<string, string | number> => {
-      const row: Record<string, string | number> = { "Punto vendita": r.nome };
-      COLS.forEach((c) => {
-        const v = r[c.key] as number | null;
-        row[c.label] = r.dati_incompleti ? "dati incompleti" : v == null ? "—" : v;
-      });
-      return row;
-    };
+    const header = headerMargini(COLS);
+    const toRow = (r: MarginiCopertiPV) => rigaExportMargini(r, COLS);
     // La riga gruppo esce con la stessa qualificazione che ha a schermo: senza,
     // il file scaricato afferma un margine che l'UI dichiara parziale.
-    const gruppoRow = toRow(data.gruppo);
-    if (data.n_incompleti > 0) {
-      const mp = COLS.find((c) => c.key === "margine_perc");
-      // Solo se c'e' davvero un numero da qualificare: su una cella gia'
-      // "dati incompleti" o "—" il suffisso non aggiungerebbe nulla e si
-      // leggerebbe male ("— (parziale)"). La nota in coda resta comunque.
-      if (mp && typeof gruppoRow[mp.label] === "number") {
-        gruppoRow[mp.label] = `${gruppoRow[mp.label]} (parziale)`;
-      }
-    }
+    const gruppoRow = rigaExportGruppo(data.gruppo, COLS, data.n_incompleti);
     const rows = [...righeSorted.map(toRow), gruppoRow];
     const ws = XLSX.utils.json_to_sheet(rows, { header });
-    if (data.n_incompleti > 0) {
-      XLSX.utils.sheet_add_aoa(
-        ws,
-        [[
-          `Margine di gruppo parziale: ${data.n_incompleti} ${
-            data.n_incompleti === 1 ? "sede non ha" : "sedi non hanno"
-          } ancora i costi caricati.`,
-        ]],
-        { origin: -1 },
-      );
+    const nota = notaIncompleti(data.n_incompleti);
+    if (nota) {
+      XLSX.utils.sheet_add_aoa(ws, [[nota]], { origin: -1 });
     }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Margini e coperti");
-    const slug = (data.periodo_label || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    XLSX.writeFile(wb, `margini_coperti_${slug || new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, nomeFileMargini(data.periodo_label, new Date().toISOString().slice(0, 10)));
   }
 
   // Per ogni colonna, individua best/worst tra i PV con dati (esclude incompleti

@@ -14,6 +14,14 @@ import { NativeSelect } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { type SpesaPivot } from "@/lib/gruppo";
 import { calcolaMaxCell, cellStyle, incidenzaPct, intervalloMese, pvPiuCaro } from "@/lib/catena-confronti";
+import {
+  etichettaDimensione,
+  headerPivot,
+  nomeFilePivot,
+  nomeFoglioPivot,
+  rigaExportPivot,
+  rigaTotalePivot,
+} from "@/lib/catena-export";
 
 const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -83,32 +91,18 @@ export function FinestraSpesaPV({
   async function exportXls() {
     if (!data) return;
     const XLSX = await import("xlsx");
-    const dimLabel = data.dimensione === "fornitore" ? "Fornitore" : "Categoria";
-    const header = [dimLabel, ...data.pv.map((p) => p.nome), "Totale", "%"];
-    const rows = data.rows.map((r) => {
-      const row: Record<string, string | number> = { [dimLabel]: r.dim_val };
-      data.pv.forEach((p) => {
-        row[p.nome] = Math.round((r.per_pv[p.id] ?? 0) * 100) / 100;
-      });
-      row["Totale"] = Math.round(r.totale * 100) / 100;
-      row["%"] = `${r.incidenza_pct.toFixed(1)}%`;
-      return row;
-    });
-    const totaleRow: Record<string, string | number> = { [dimLabel]: "TOTALE" };
-    data.pv.forEach((p) => {
-      totaleRow[p.nome] = Math.round((data.totali_pv[p.id] ?? 0) * 100) / 100;
-    });
-    totaleRow["Totale"] = Math.round(data.grand_total * 100) / 100;
-    totaleRow["%"] = "100%";
+    const dimLabel = etichettaDimensione(data.dimensione);
+    const header = headerPivot(dimLabel, data.pv);
+    const rows = data.rows.map((r) => rigaExportPivot(r, data.pv, dimLabel));
+    const totaleRow = rigaTotalePivot(data.totali_pv, data.grand_total, data.pv, dimLabel);
     const ws = XLSX.utils.json_to_sheet([...rows, totaleRow], { header });
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, dimLabel.slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, ws, nomeFoglioPivot(dimLabel));
     // Nome file coerente col periodo selezionato (es. spesa_per_pv_categoria_giugno-2026.xlsx).
-    const periodoSlug = (data.periodo_label || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    XLSX.writeFile(wb, `spesa_per_pv_${data.dimensione}_${periodoSlug || new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(
+      wb,
+      nomeFilePivot(data.dimensione, data.periodo_label, new Date().toISOString().slice(0, 10)),
+    );
   }
 
   return (

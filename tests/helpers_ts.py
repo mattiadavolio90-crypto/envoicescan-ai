@@ -124,6 +124,11 @@ def esegui_ts(
             "--input-type=module",
             "-e",
             script,
+            # `--` e' obbligatorio, non cosmetico: senza, un argomento che
+            # inizia con `-` (un numero negativo: `-2.675`) viene letto da node
+            # come flag e il processo esce con rc=9 e stderr vuoto — un
+            # fallimento che sembra un errore del modulo sotto test.
+            "--",
             json.dumps(argomento),
         ],
         capture_output=True,
