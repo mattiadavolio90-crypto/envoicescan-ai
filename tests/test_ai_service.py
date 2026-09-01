@@ -665,20 +665,30 @@ class TestPrioritaMemoria:
 
     def test_utente_diverso_non_vede_cache_altrui(self):
         """Un user_id non caricato non deve vedere i prodotti_utente di un altro."""
+        # AGGIORNATO 1/9 (Fase 1): la descrizione di prova era "SALMONE FRESCO", che
+        # il dizionario pubblico sa classificare da solo. Finche' il percorso PDF
+        # saltava dizionario e regole, "Da Classificare" faceva da proxy
+        # dell'isolamento; ora che quel buco e' chiuso (D12) il proxy non regge piu'.
+        # L'isolamento si prova su una categoria PERSONALIZZATA — cioe' una scelta
+        # che solo la memoria di user_A puo' conoscere — non sull'assenza di risposta.
         self._inject_cache(
-            prodotti_utente={'SALMONE FRESCO': '🐟 PESCE'},
+            prodotti_utente={'SALMONE FRESCO': 'SCELTA PRIVATA DI USER_A'},
             prodotti_master={},
             user_id='user_A',
         )
-        # user_B non è in _loaded_user_ids, ma il cache globale è già loaded=True.
-        # Per user_B prodotti_utente non ha chiave 'user_B' → deve tornare Da Classificare.
-        # Aggiungiamo user_B alla lista caricati ma senza dati utente.
         ai_mod._memoria_cache['_loaded_user_ids'].add('user_B')
         with patch('services.ai_service.st'):
             result = ai_mod.ottieni_categoria_prodotto('SALMONE FRESCO', 'user_B')
-        # prodotti_master è vuoto, prodotti_utente non ha 'user_B' → Da Classificare
-        assert result == 'Da Classificare', \
+        assert result != 'SCELTA PRIVATA DI USER_A', \
             "user_B non deve vedere i prodotti_utente di user_A"
+
+        # Controprova: user_A, che quella memoria ce l'ha, la vede eccome. Senza
+        # questa meta' il test passerebbe anche se la memoria locale fosse rotta
+        # per tutti.
+        with patch('services.ai_service.st'):
+            assert ai_mod.ottieni_categoria_prodotto(
+                'SALMONE FRESCO', 'user_A'
+            ) == 'SCELTA PRIVATA DI USER_A' 
 
 
 class TestRegoleProdottiBancoShop:

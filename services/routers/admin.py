@@ -797,19 +797,17 @@ def _suggerimento_deterministico(desc: str, cat_attuale: str):
     dizionario, il caso è ambiguo (alimento dentro un confezionato) e NON si
     auto-suggerisce: lo decide l'admin con "Scegli".
     """
-    from services.ai_service import (
-        applica_regole_categoria_forti,
-        applica_correzioni_dizionario,
-        _KEYWORDS_CONTENITORI,
-    )
+    from services.ai_service import decisione_deterministica, _KEYWORDS_CONTENITORI
+
     desc = str(desc or "")
     if not desc:
         return None, None
     cat_attuale = str(cat_attuale or "")
-    cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
-    cat_runtime, motivo_forte = applica_regole_categoria_forti(desc, cat_dict)
-    consolidata = (cat_runtime or cat_dict or "").strip()
-    if not consolidata or consolidata in ("Da Classificare", "SERVIZI E CONSULENZE", cat_attuale):
+    consolidata, motivo_forte, _conf = decisione_deterministica(desc)
+    # "SERVIZI E CONSULENZE" non e' piu' escluso (allineato al 24/08): era il residuo
+    # di quando quella categoria faceva da fallback travestito dell'incertezza. Oggi,
+    # se il dizionario o una regola la affermano, e' una risposta positiva.
+    if not consolidata or consolidata in ("Da Classificare", cat_attuale):
         return None, None
     if not motivo_forte:
         desc_tokens = {t for t in re.findall(r"[A-ZÀ-Ý]+", desc.upper()) if len(t) >= 3}
@@ -1081,7 +1079,7 @@ def prepara_suggerimenti_ai(sb, allowed_ids: list, only_ids: Optional[list] = No
     from datetime import datetime, timezone, timedelta
     from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE
     from utils.text_utils import pulisci_caratteri_corrotti
-    from services.ai_service import applica_regole_categoria_forti, applica_correzioni_dizionario, classifica_con_ai
+    from services.ai_service import decisione_deterministica, classifica_con_ai
 
     if not allowed_ids:
         return {"suggerite": 0, "saltate": 0, "errori": 0}
@@ -1137,12 +1135,11 @@ def prepara_suggerimenti_ai(sb, allowed_ids: list, only_ids: Optional[list] = No
         if not desc:
             continue
         cat_att = str(r.get("categoria") or "")
-        cat_forte, _m = applica_regole_categoria_forti(desc, "Da Classificare")
-        if cat_forte and cat_forte not in ("Da Classificare", cat_att):
-            saltate += 1
-            continue
-        cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
-        if cat_dict and cat_dict not in ("Da Classificare", cat_att):
+        # Stesso nucleo degli altri percorsi: prima qui le due fonti erano valutate
+        # in OR e nell'ordine inverso, quindi una riga poteva essere "gia' risolta"
+        # da un dizionario che la pipeline vera avrebbe poi scavalcato.
+        cat_det, _m, _c = decisione_deterministica(desc)
+        if cat_det and cat_det not in ("Da Classificare", cat_att):
             saltate += 1
             continue
         da_chiedere.append(desc)
@@ -1393,7 +1390,7 @@ def admin_qualita_memoria(
 
     if stato == "sospette":
         # Carica tutto e filtra lato Python (servono i suggerimenti AI)
-        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        from services.ai_service import decisione_deterministica
         all_rows: list = []
         pg_offset = 0
         while True:
@@ -1412,8 +1409,7 @@ def admin_qualita_memoria(
                 continue
             desc = row.get("descrizione") or ""
             cat_attuale = (row.get("categoria") or "Da Classificare").strip()
-            cat_keyword = applica_correzioni_dizionario(desc, "Da Classificare")
-            cat_suggerita, motivo = applica_regole_categoria_forti(desc, cat_keyword)
+            cat_suggerita, motivo, _conf = decisione_deterministica(desc)
             if not cat_suggerita or cat_suggerita == "Da Classificare" or cat_suggerita == cat_attuale:
                 continue
             sospette.append({**row, "categoria_suggerita": cat_suggerita, "motivo": motivo or ""})

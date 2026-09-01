@@ -680,12 +680,13 @@ class TestPrincipio2406Gating:
         assert summary["resolved_rows"] == 1
 
     def test_confidence_alta_ma_descrizione_dubbia_resta_da_classificare(self):
-        rows = [_eligible_row(row_id=1)]
-        with patch("services.upload_handler.descrizione_e_dubbia", return_value=True), \
-             patch("services.upload_handler.applica_correzioni_dizionario",
-                   return_value="Da Classificare"), \
-             patch("services.upload_handler.applica_regole_categoria_forti",
-                   return_value=("Da Classificare", None)):
+        # Descrizione che il runtime deterministico davvero NON riconosce, invece
+        # di mockarlo: un mock della pipeline non prova che la pipeline funzioni
+        # (trappola nota di CLAUDE.md), e mockava proprio la parte unificata dalla
+        # Fase 1. Deve anche SUPERARE _should_skip_post_upload_ai_for_row, o non
+        # arriverebbe mai all'AI e il test passerebbe senza provare nulla.
+        rows = [_eligible_row(row_id=1, descrizione="ARTICOLO PROMOZIONALE ESTIVO NUOVO")]
+        with patch("services.upload_handler.descrizione_e_dubbia", return_value=True):
             _summary, client = _run_with_ai(rows, ["CARNE E SALUMI"], ["alta"])
 
         assert _categorie_scritte(client).get(("Da Classificare", True)) == [1]
@@ -693,14 +694,12 @@ class TestPrincipio2406Gating:
     def test_conferma_deterministica_basta_anche_con_confidence_media(self):
         """Se dizionario/regole forti confermano, la categoria e' affidabile
         anche senza 'alta': e' il runtime a garantirla, non il modello."""
-        rows = [_eligible_row(row_id=1)]
-        with patch("services.upload_handler.applica_correzioni_dizionario",
-                   return_value="CARNE E SALUMI"), \
-             patch("services.upload_handler.applica_regole_categoria_forti",
-                   return_value=("CARNE E SALUMI", None)):
-            _summary, client = _run_with_ai(rows, ["CARNE E SALUMI"], ["media"])
+        # "PASTA PENNE RIGATE 500G" e' riconosciuta davvero dal runtime come
+        # PASTA E CEREALI: l'AI concorda con confidence 'media' e la riga si scrive.
+        rows = [_eligible_row(row_id=1, descrizione="PASTA PENNE RIGATE 500G")]
+        _summary, client = _run_with_ai(rows, ["PASTA E CEREALI"], ["media"])
 
-        assert ("CARNE E SALUMI", False) in _categorie_scritte(client)
+        assert ("PASTA E CEREALI", False) in _categorie_scritte(client)
 
     def test_servizi_e_consulenze_e_scrivibile_se_l_ai_e_certa(self):
         """AGGIORNATO 24/08 (era: "non e' mai affidabile").
@@ -725,12 +724,8 @@ class TestPrincipio2406Gating:
     def test_servizi_e_consulenze_resta_non_affidabile_se_l_ai_dubita(self):
         """Il presidio vero non e' il nome della categoria, ma la certezza:
         'media' non confermata dal runtime resta Da Classificare, come prima."""
-        rows = [_eligible_row(row_id=1)]
-        with patch("services.upload_handler.descrizione_e_dubbia", return_value=False), \
-             patch("services.upload_handler.applica_correzioni_dizionario",
-                   return_value="Da Classificare"), \
-             patch("services.upload_handler.applica_regole_categoria_forti",
-                   return_value=("Da Classificare", None)):
+        rows = [_eligible_row(row_id=1, descrizione="COMPENSO PROFESSIONALE PERIODO")]
+        with patch("services.upload_handler.descrizione_e_dubbia", return_value=False):
             _summary, client = _run_with_ai(rows, ["SERVIZI E CONSULENZE"], ["media"])
 
         assert _categorie_scritte(client).get(("Da Classificare", True)) == [1]

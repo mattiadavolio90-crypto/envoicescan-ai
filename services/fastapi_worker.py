@@ -260,7 +260,7 @@ def _run_agent_notturno() -> dict:
         from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE, SPECIAL_ROW_DICITURA, SPECIAL_ROW_SCONTO_OMAGGIO
         from utils.text_utils import pulisci_caratteri_corrotti
         from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
-        from services.ai_service import applica_regole_categoria_forti, applica_correzioni_dizionario
+        from services.ai_service import decisione_deterministica
 
         sb = get_supabase_client()
         admin_emails = _admin_emails_set()
@@ -367,7 +367,9 @@ def _run_agent_notturno() -> dict:
             desc_unici = df_normali["descrizione"].dropna().unique().tolist()
             for desc in desc_unici:
                 try:
-                    cat_forte, _ = applica_regole_categoria_forti(desc, "Da Classificare")
+                    # Nucleo condiviso: prima qui parlavano le sole regole forti, e
+                    # una riga che il dizionario sapeva classificare restava in coda.
+                    cat_forte, _motivo, _conf = decisione_deterministica(desc)
                     if not cat_forte or cat_forte == "Da Classificare":
                         continue
                     ids = df_normali[df_normali["descrizione"] == desc]["id"].tolist()

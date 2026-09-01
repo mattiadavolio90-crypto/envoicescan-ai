@@ -1283,11 +1283,54 @@ _MATERIALE_NON_EDIBILE_RE = re.compile(
 
 # MATERIALE DI CONSUMO: pulizia/imballo/DPI che cadevano in food o Da Classificare.
 # VASCHETTA/CARTA PER RAVIOLI/CARTA PESCE sono imballo, non cibo: devono battere SUSHI/PASTA/PESCE.
+# "VASCHETTA" e' l'unico termine di _CONSUMO_EXTRA_RE che nomina tanto il
+# contenitore quanto il modo in cui un alimento e' venduto. A DB (1/9/2026) le
+# righe con "VASCHETTA" sono 73 food (LATTICINI, GELATI, SPEZIE, SALSE) contro 37
+# imballo: la regola, presa alla lettera, perde piu' di quanto salva — e lo stesso
+# prodotto ("MOZZARELLA FIOR DI LATTE ... VASCHETTA KG 1") vive a DB in LATTICINI
+# (35 righe) e in MATERIALE DI CONSUMO (5), a seconda del percorso che l'ha scritto.
+# Discriminante osservata: l'imballo NOMINA il materiale o il contenuto da
+# confezionare (PLAST, ALLUMINIO, SUSHI, MICROONDE, PZ/CT), l'alimento no.
+# NB: niente \b a destra — nelle descrizioni reali il materiale e' incollato al
+# formato ("VASCHETTA ALLUMINIO14X100PZ"), e un word-boundary li' non matcha.
+_VASCHETTA_IMBALLO_RE = re.compile(
+    r"(?<![A-Z])(PLAST|ALU|ALLUMINIO|SUSHI|MICROONDE|COPERCH|LIDS?)|"
+    r"\d+\s*PZ|PZ\s*\d+|CC\d+|(?<![A-Z])H\d+",
+    re.IGNORECASE,
+)
+
+_VASCHETTA_SOLA_RE = re.compile(r"\bVASCHETT[AE]\b", re.IGNORECASE)
+
 _CONSUMO_EXTRA_RE = re.compile(
     r"\b(SCARPE\s*ANTINFORTUN\w*|DIXAN|SCOVOLO|SCOTTONELLE|SPAZZOL[AE]|FERMAPORTA|"
     r"PIL[AE]\b|VASCHETT[AE]|CARTA\s*PER\s*RAVIOLI|CARTA\s*PESCE|SACCHETT\w*\s*SPAZZATURA|"
     r"GUANT[OI]\b|DETERSIV\w*|DETERGENT\w*|SGRASSAT\w*|CANDEGGIN[AE]|SAPONE|TOVAGLIOL\w*)\b"
 )
+
+def _e_consumo_extra(desc_u: str) -> bool:
+    """_CONSUMO_EXTRA_RE, ma senza il falso positivo di "VASCHETTA".
+
+    Un unico punto di verita' per i tre siti che consultano la regola: due la usano
+    in negazione (dimsum, pesce) e uno in affermazione. Se la disambiguazione vivesse
+    solo nel terzo, "MOZZARELLA ... VASCHETTA" smetterebbe di essere imballo qui e
+    resterebbe imballo la'.
+    """
+    trovati = _CONSUMO_EXTRA_RE.findall(desc_u)
+    if not trovati:
+        return False
+    # findall, non search: search restituisce il PRIMO match, e in "VASCHETTA E
+    # TOVAGLIOLI" quello e' "VASCHETTA" — la guardia scatterebbe pur essendoci un
+    # termine non ambiguo. Serve sapere se VASCHETTA e' l'UNICA ragione del match.
+    def _solo_vaschetta(t) -> bool:
+        termine = t if isinstance(t, str) else next((x for x in t if x), "")
+        return bool(_VASCHETTA_SOLA_RE.fullmatch(termine.strip()))
+
+    if all(_solo_vaschetta(t) for t in trovati):
+        # Nessun altro termine: decide il contesto. Senza un materiale o un formato
+        # di confezionamento, l'oggetto venduto e' il cibo, non il contenitore.
+        return bool(_VASCHETTA_IMBALLO_RE.search(desc_u))
+    return True
+
 
 # MANUTENZIONE E ATTREZZATURE: materiale edile/ferramenta/utensili (mai food).
 # "GRATTUGIO" (utensile) != "GRATTUGIATO" (formaggio) → confine esatto.
@@ -1927,7 +1970,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
 
     # Ravioli / Shaomai / Gyoza / Haukau → secco (famiglia dimsum/ripieni).
     # Eccezione: "CARTA PER RAVIOLI" / "VASCHETTA ..." sono imballo, non cibo.
-    if _DIMSUM_SECCO_RE.search(desc_u) and not _CONSUMO_EXTRA_RE.search(desc_u):
+    if _DIMSUM_SECCO_RE.search(desc_u) and not _e_consumo_extra(desc_u):
         mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "dimsum_secco"
@@ -2734,7 +2777,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
     # sono pesce alimentare.
     if (
         _PESCE_RE.search(desc_u)
-        and not _CONSUMO_EXTRA_RE.search(desc_u)
+        and not _e_consumo_extra(desc_u)
         and not _PESCE_ANIMALE_TERRA_RE.search(desc_u)
     ):
         mapped = "PESCE"
@@ -2787,7 +2830,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
     # === Lacune merceologiche SUSHILAND 26/06 ===
     # Non-food PRIMA del food: imballo/pulizia/edile non devono cadere in categorie
     # alimentari per via di una parola ambigua (es. VASCHETTA SUSHI, CARTA PER RAVIOLI).
-    if _CONSUMO_EXTRA_RE.search(desc_u):
+    if _e_consumo_extra(desc_u):
         mapped = "MATERIALE DI CONSUMO"
         if cat != mapped:
             return mapped, "consumo_extra"
@@ -3656,11 +3699,19 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
     Ottiene categoria prodotto con priorità IBRIDA usando CACHE IN-MEMORY.
     ELIMINA N+1 QUERY: usa cache invece di query ripetute.
     
-    PRIORITÀ (allineata con categorizza_con_memoria):
+    PRIORITÀ:
     1. Memoria ADMIN (classificazioni_manuali) - PRIORITÀ ASSOLUTA
+    1.5 Regole non negoziabili (_NON_NEGOZIABILI_CACHE_OVERRIDE)
     2. Memoria LOCALE utente (prodotti_utente) - personalizzazioni cliente
     3. Memoria GLOBALE (prodotti_master) - condivisa tra tutti i clienti
-    4. "Da Classificare" (se non trovato in nessuna memoria)
+    4. Runtime deterministico: dizionario keyword + regole forti
+    5. "Da Classificare"
+
+    NB: NON e' `categorizza_con_memoria`. Restano fuori i livelli che qui non hanno
+    i dati per esprimersi: L0 fornitore utility, L4 dicitura (serve il prezzo),
+    L5 regola fornitore, L6 unita' di misura — questa funzione riceve solo
+    descrizione e user_id. Chi ha fornitore/prezzo/UM deve chiamare
+    `categorizza_con_memoria`, non questa.
     
     Args:
         descrizione: descrizione prodotto
@@ -3738,8 +3789,24 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
                     logger.info(f"🧠 Match canonico prodotti_master: '{descrizione[:40]}' -> {categoria}")
                     return categoria
         
-        # 3️⃣ Fallback memoria: questa funzione deve poter restituire "Da Classificare"
-        # (la forzatura anti-placeholder è gestita nella pipeline di salvataggio/categorizzazione).
+        # 3️⃣ Runtime deterministico (dizionario + regole forti).
+        # Prima qui c'era `return "Da Classificare"` secco: questa funzione — usata
+        # dal percorso PDF/Vision (invoice_service.py) — consultava le sole memorie
+        # e buttava via dizionario e regole. Il docstring dichiarava "allineata con
+        # categorizza_con_memoria" allineando 3 livelli su 8: lo stesso "SALMONE"
+        # da XML diventava PESCE, da PDF restava in coda.
+        #
+        # Misura (1/9/2026): il nucleo sa classificare 5.471 delle 6.959 descrizioni
+        # distinte a DB, il 78,6%. Impatto ATTUALE nullo — nessuna riga a DB proviene
+        # da PDF (39.143 su 39.143 sono XML/P7M) — ma il primo cliente che carica un
+        # PDF ne prenderebbe l'intero colpo.
+        cat_det, _motivo_det, _conf_det = decisione_deterministica(desc_stripped)
+        if cat_det != "Da Classificare":
+            logger.info(f"📖 Runtime (ottieni_categoria): '{descrizione[:40]}' → {cat_det}")
+            return cat_det
+
+        # Questa funzione deve poter restituire "Da Classificare" (la forzatura
+        # anti-placeholder e' gestita nella pipeline di salvataggio/categorizzazione).
         return "Da Classificare"
         
     except Exception as e:
@@ -4186,6 +4253,46 @@ def _applica_guardrail_note_con_importo(
         return CATEGORIA_NON_CLASSIFICATA
 
     return "📝 NOTE E DICITURE"
+
+
+def decisione_deterministica(descrizione: str) -> Tuple[str, Optional[str], Optional[str]]:
+    """Il nucleo deterministico: dizionario + regole forti, in UN solo ordine.
+
+    Ritorna `(categoria, motivo, confidenza)`. `categoria` e' "Da Classificare"
+    quando nessuna delle due fonti riconosce la riga.
+
+    ORDINE: dizionario PRIMA, regole forti DOPO — le regole hanno l'ultima parola.
+    Non e' una preferenza estetica, e' misurato. Il repo conteneva due ordini:
+    `categorizza_con_memoria` (L7) faceva dizionario->regole, il safety net di
+    `classifica_con_ai` faceva regole->dizionario in `elif`, e un commento affermava
+    che fossero equivalenti.
+
+    Su tutte le 6.959 descrizioni distinte a DB (1/9/2026) i due ordini divergono su
+    TRE righe, e l'ordine qui adottato vince su tutte e tre:
+
+        CATISFACTION POLLO-GR 60    ordine attuale: Da Classificare [pet_food_non_alimento]
+                                    ordine scartato: CARNE
+        CATISFACTION MANZO-GR 60    idem
+        CATISFACTION SALMONE-GR 60  idem -> PESCE
+
+    E' cibo per gatti. Con le regole per prime il dizionario non arriva mai a parlare,
+    quindi la regola `pet_food_non_alimento` — che esiste apposta — non viene mai
+    consultata e il pet food entra nel food cost del ristorante. A DB quelle tre righe
+    stanno in "Da Classificare": e' questo ordine ad averle prodotte.
+
+    La CONFIDENZA distingue ancora le due fonti, perche' il gate a valle la usa:
+    una regola forte e' un'affermazione certificata ("alta"), il dizionario e' un
+    match di keyword ("media").
+    """
+    cat_dz = applica_correzioni_dizionario(descrizione, "Da Classificare")
+    cat, motivo = applica_regole_categoria_forti(descrizione, cat_dz)
+    cat = (cat or "").strip() or "Da Classificare"
+    if cat == "Da Classificare":
+        return "Da Classificare", None, None
+    # Una regola forte che si e' espressa (motivo valorizzato) o che ha confermato
+    # il dizionario vale "alta"; il solo dizionario vale "media".
+    confidenza = "alta" if motivo else ("media" if cat_dz != "Da Classificare" else "alta")
+    return cat, motivo, confidenza
 
 
 def _applica_tutti_guardrail(
@@ -5059,16 +5166,12 @@ def _chiama_gpt_classificazione(
             continue
 
         # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
-        # Fix B1: recupero a 2 stadi (regole forti → dizionario) invece del solo
-        # dizionario. Le regole forti sono più precise, quindi una categoria GPT
-        # vietata (es. NOTE E DICITURE) viene rimappata a una categoria reale più
-        # spesso, evitando di degradare a "Da Classificare" e innescare retry inutili.
+        # Fix B1: una categoria GPT vietata (es. NOTE E DICITURE) viene rimappata dal
+        # nucleo deterministico a una categoria reale invece di degradare a
+        # "Da Classificare" e innescare retry inutili.
         if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
-            logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → recupero regole forti/dizionario")
-            cat_recuperata, _motivo_rec = applica_regole_categoria_forti(desc, "Da Classificare")
-            if cat_recuperata == "Da Classificare":
-                cat_recuperata = applica_correzioni_dizionario(desc, "Da Classificare")
-            cat = cat_recuperata
+            logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → recupero runtime deterministico")
+            cat, _motivo_rec, _conf_rec = decisione_deterministica(desc)
         risultati.append(cat)
 
         conf = conf_by_idx.get(idx) or "media"
@@ -5168,9 +5271,7 @@ def classifica_con_ai(
             output = []
             for idx, desc in enumerate(lista_descrizioni):
                 iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-                categoria, _reason = applica_regole_categoria_forti(desc, "Da Classificare")
-                if categoria == "Da Classificare":
-                    categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+                categoria, _motivo, _conf = decisione_deterministica(desc)
                 output.append(
                     _applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value)
                 )
@@ -5288,21 +5389,18 @@ def classifica_con_ai(
         _fallback_count = 0
         for desc in da_chiedere_gpt:
             if risultati.get(desc) == "Da Classificare":
-                # Try strong rules first (higher precision)
-                cat_strong, reason = applica_regole_categoria_forti(desc, "Da Classificare")
-                if cat_strong != "Da Classificare":
-                    risultati[desc] = cat_strong
-                    confidenze_risultati[desc] = "alta"  # regola forte → confidence alta
+                # Nucleo deterministico condiviso con categorizza_con_memoria (L7):
+                # dizionario -> regole forti, un ordine solo. Prima qui l'ordine era
+                # invertito e il pet food finiva in CARNE (vedi decisione_deterministica).
+                cat_det, motivo_det, conf_det = decisione_deterministica(desc)
+                if cat_det != "Da Classificare":
+                    risultati[desc] = cat_det
+                    confidenze_risultati[desc] = conf_det
                     _fallback_count += 1
-                    logger.info(f"🧭 REGOLA FORTE FALLBACK: '{desc[:40]}' → {cat_strong} [{reason}]")
-                    continue
-                # Then try dictionary corrections
-                cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
-                if cat_dict != "Da Classificare":
-                    risultati[desc] = cat_dict
-                    confidenze_risultati[desc] = "media"  # dizionario → confidence media
-                    _fallback_count += 1
-                    logger.info(f"📖 DIZIONARIO FALLBACK: '{desc[:40]}' → {cat_dict}")
+                    logger.info(
+                        f"🧭 RUNTIME FALLBACK: '{desc[:40]}' → {cat_det} "
+                        f"[{motivo_det or 'dizionario'}] conf={conf_det}"
+                    )
                     continue
                 # Then try supplier rule — ONLY for verified mono-category suppliers
                 # (whitelist). La regola-fornitore vive in categorizza_con_memoria
@@ -5374,13 +5472,10 @@ def classifica_con_ai(
         output = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-            # Stesso safety net del percorso normale (regole forti PRIMA del
-            # dizionario, coerenza con righe 4650-4664): un batch intero degradato
-            # da un errore di rete/parsing non deve perdere il livello di
-            # precisione piu' alto disponibile offline.
-            categoria, _reason = applica_regole_categoria_forti(desc, "Da Classificare")
-            if categoria == "Da Classificare":
-                categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+            # Stesso nucleo del percorso normale: un batch degradato da un errore
+            # di rete/parsing non deve perdere il livello di precisione piu' alto
+            # disponibile offline, ne' decidere con un ordine diverso dagli altri.
+            categoria, _motivo, _conf = decisione_deterministica(desc)
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
         if return_confidenze:
             return output, ["bassa"] * len(output)
@@ -5394,9 +5489,7 @@ def classifica_con_ai(
         output = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-            categoria, _reason = applica_regole_categoria_forti(desc, "Da Classificare")
-            if categoria == "Da Classificare":
-                categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+            categoria, _motivo, _conf = decisione_deterministica(desc)
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
         if return_confidenze:
             return output, ["bassa"] * len(output)

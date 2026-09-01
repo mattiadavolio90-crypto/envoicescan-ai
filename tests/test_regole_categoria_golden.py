@@ -69,6 +69,17 @@ BEVANDE per un'altra via, cambia solo il `motivo` (regola_forte:BEVANDE ->
 brand_acqua_ma_bevanda) perche' la nuova regola le intercetta prima. Verificato a
 tappeto sull'intero campione: 12 divergenze, 0 con categoria diversa. L'acqua vera
 (ACQ S.BENEDETTO NAT, ACQUA PANNA, ACQUA FRIZZANTE) resta ACQUA.
+
+Aggiornato 1/9 (Fase 1, audit categorizzazione): "VASCHETTA" non e' piu' prova di
+imballo da sola. A DB le righe con quel termine sono 73 di cibo contro 37 di imballo,
+e lo STESSO prodotto ("MOZZARELLA FIOR DI LATTE ... VASCHETTA KG 1") viveva in
+LATTICINI (35 righe) e in MATERIALE DI CONSUMO (5) a seconda del percorso che l'aveva
+scritto. Ora decide il contesto: materiale o formato di confezionamento nominato
+(PLAST, ALLUMINIO, SUSHI, LIDS, 400PZ) = imballo, altrimenti = cibo.
+Effetto: 15 casi cambiati su 8378 — 3 descrizioni x 5 categorie di input, tutte
+MATERIALE DI CONSUMO -> LATTICINI, nessuna finita in coda. Sull'intero catalogo reale
+(6.959 descrizioni distinte) la modifica tocca esattamente quelle 4 righe e nient'altro.
+Vedi tests/test_vaschetta_contenitore_o_cibo.py per i 24 casi reali e le controprove.
 """
 import json
 import os

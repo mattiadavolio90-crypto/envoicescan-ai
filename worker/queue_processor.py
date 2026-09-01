@@ -151,10 +151,7 @@ except Exception as _exc:  # pragma: no cover - fallback difensivo
 # la riga in coda. Fallback difensivo: senza le funzioni, nessuna conferma (comportamento
 # prudente = la riga resta in coda come prima).
 try:
-    from services.ai_service import (
-        applica_correzioni_dizionario as _applica_correzioni_dizionario,
-        applica_regole_categoria_forti as _applica_regole_categoria_forti,
-    )
+    from services.ai_service import decisione_deterministica as _decisione_deterministica
 
     def _categoria_deterministica_runtime(descrizione):
         """Categoria CERTA del runtime (dizionario keyword + regole forti), calcolata
@@ -167,9 +164,7 @@ try:
         runtime è certo (es. "BLACK BURGER"→CARNE mentre GPT diceva PRODOTTI DA FORNO).
         """
         try:
-            cat_dz = _applica_correzioni_dizionario(descrizione, "Da Classificare")
-            cat_rf, _motivo = _applica_regole_categoria_forti(descrizione, cat_dz)
-            finale = (cat_rf or cat_dz or "").strip()
+            finale, _motivo, _conf = _decisione_deterministica(descrizione)
         except Exception:  # pragma: no cover - difensivo: in dubbio NON decidere
             return None
         # "SERVIZI E CONSULENZE" NON e' piu' escluso (24/08). L'esclusione nasceva
@@ -197,7 +192,7 @@ except Exception as _exc:  # pragma: no cover - fallback difensivo
     # REGOLE FORTI insieme. Nessuna proposta AI puo' piu' essere confermata dal
     # runtime, quindi solo le GPT 'alta' vengono scritte e tutto il resto finisce
     # in coda. Il sistema "funziona" ma classifica molto peggio, in silenzio.
-    _segnala_import_degradato("dizionario+regole forti (runtime deterministico)", _exc)
+    _segnala_import_degradato("decisione_deterministica (dizionario+regole forti)", _exc)
 
     def _categoria_deterministica_runtime(_descrizione):
         return None

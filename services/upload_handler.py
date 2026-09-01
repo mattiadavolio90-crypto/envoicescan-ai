@@ -29,7 +29,7 @@ from services.ai_service import (
     carica_memoria_completa,
     ottieni_hint_per_ai,
     applica_correzioni_dizionario,
-    applica_regole_categoria_forti,
+    decisione_deterministica,
     descrizione_e_dubbia,
     _applica_guardrail_note_con_importo,
     AIDailyLimitExceededError,
@@ -53,13 +53,12 @@ def _categoria_affidabile(descrizione: str, categoria: str, confidence: str, for
     # risposta positiva e va scritta. Vedi gemello in worker/queue_processor.py.
     if not cat or cat.upper() == "DA CLASSIFICARE":
         return False
-    # Conferma deterministica (vale anche per GPT 'media')
+    # Conferma deterministica (vale anche per GPT 'media'). Passa dal nucleo
+    # condiviso: prima questo blocco era una delle sei ricomposizioni indipendenti
+    # di dizionario+regole, e nulla garantiva che decidesse come il worker.
     try:
-        cat_dz = applica_correzioni_dizionario(descrizione, "Da Classificare")
-        cat_rf, _m = applica_regole_categoria_forti(descrizione, cat_dz)
-        finale = (cat_rf or cat_dz or "").strip()
-        if finale and finale.upper() != "DA CLASSIFICARE" \
-           and finale.upper() == cat.upper():
+        finale, _motivo, _conf = decisione_deterministica(descrizione)
+        if finale.upper() != "DA CLASSIFICARE" and finale.upper() == cat.upper():
             return True
     except Exception:
         pass
