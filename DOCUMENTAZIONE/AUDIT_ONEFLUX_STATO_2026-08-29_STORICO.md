@@ -1397,3 +1397,37 @@ I test che fotografavano le anomalie sono stati **riscritti, non cancellati**:
 `test_la_vecchia_forma_sarebbe_una_regressione` — che tiene fermo che la vecchia
 forma sbagliava. Serve perché `replace(",", ".")` era il pattern più diffuso
 dell'app: chi lo incontrasse altrove potrebbe "uniformare" all'indietro.
+
+### Inerenze del fix sui numeri, e perché il frontend era l'unica difesa
+
+**In avanti**: `format.ts` è stato modificato in modo **puramente additivo** —
+nessuna riga rimossa, verificato col diff. I 20 file che già lo importavano non
+possono essersi rotti.
+
+**All'indietro**: 17 file hanno cambiato comportamento, e in **11 punti** il
+valore parsato finisce direttamente in un `POST`/`PUT`. Sono i posti dove un
+errore di classificazione non è un fastidio ma un dato sbagliato permanente.
+
+**Il backend non fa da rete.** `RicavoGiornalieroItem` dichiara
+`fatturato_iva10: float = 0.0` senza `ge`/`le`, e i router leggono
+`float(r.get("fatturato_iva10") or 0)`. Un fatturato di **1,23 €** al posto di
+1.234,56 € sarebbe stato accettato senza un'obiezione, sommato nel MOL e
+mostrato al cliente come suo.
+
+È il motivo per cui questo bug era grave e non cosmetico: **l'unica difesa era
+il parser del frontend**, e sbagliava.
+
+### Un terzo bug, trovato mentre si verificava il secondo
+
+`−1.234,56` con il **meno unicode** (U+2212) dava NaN. È il carattere che Word,
+Excel e i PDF usano al posto del trattino: chi **incolla** un importo negativo —
+la forma tipica di una nota di credito — si vedeva rifiutare il valore con il
+solito messaggio sui campi mancanti.
+
+Trovato provando gli importi negativi *con separatore di migliaia*, che è la
+combinazione realistica. Normalizzati anche en dash e em dash, che i correttori
+automatici inseriscono da soli.
+
+**La lezione**: i due bug erano stati classificati leggendo il codice. Il terzo
+si è visto solo generando input nella forma in cui arrivano davvero — copiati,
+non digitati.
