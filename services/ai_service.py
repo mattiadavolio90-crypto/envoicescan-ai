@@ -984,6 +984,16 @@ _VINO_RISO_RE = re.compile(
     r"\bVINO\s+(?:DI\s+)?RISO\b|\bSHAOXING\b|\bLAOJIU\b",
     re.IGNORECASE,
 )
+# Audit 1/9: unico pattern di errore SISTEMICO trovato nella misura cieca (2 su 13
+# righe ACQUA campionate = 15% di quella categoria). I brand di acqua minerale
+# (S.Benedetto, Lurisia, Sant'Anna...) vendono anche te' freddo, gassose e succhi:
+# quelle righe finivano in ACQUA per il brand, non per il prodotto. Il prodotto
+# finale conta piu' del brand (regola 4 del prompt AI). 38 righe a DB.
+# NB: NON tocca "ACQUA TONICA" (e' BEVANDE per altra via) ne' l'acqua vera.
+_BEVANDA_NON_ACQUA_RE = re.compile(
+    r"\b(THE|TE|TEA|ESTATHE|SUCCO|SUCCHI|SUCCOSO|GASSOSA|GAZZOSA|ARANCIATA|"
+    r"CHINOTTO|SPUMA|CEDRATA|LEMONSODA|ORANSODA|COLA)\b"
+)
 _LMA_VASC_RE = re.compile(r"\bLMA\b.*\bVASC\b|\bVASC\b.*\bLMA\b")
 _COPPA_GELATO_GUSTO_RE = re.compile(r"\bCOPPA\b.*\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b|\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b.*\bCOPPA\b")
 _VINO_BRAND_ACQUA_RE = re.compile(
@@ -1720,6 +1730,18 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         _PESCE_RE.search(desc_u)
         or re.search(r"\b(PESCAT[OAIE]|PESCA\b|FAO\s*\d|ATL\.|ATLANTIC|MEDITERR|ALLEVAT\w*)\b", desc_u)
     )
+    # Audit 1/9: i brand di acqua minerale vendono anche te'/gassose/succhi. Senza
+    # questa esclusione "THE S.BENEDETTO", "LURISIA GASSOSA" e "SUCCOSO ACE
+    # S.BENEDETTO" finivano in ACQUA per il brand (38 righe a DB). Conta il
+    # prodotto, non chi lo imbottiglia.
+    if (_ACQUA_CONFEZIONATA_RE.search(desc_u)
+            and _BEVANDA_NON_ACQUA_RE.search(desc_u)
+            and not _UTENZE_IDRICHE_RE.search(desc_u)):
+        mapped = "BEVANDE"
+        if cat != mapped:
+            return mapped, "brand_acqua_ma_bevanda"
+        return cat, None
+
     if (_ACQUA_CONFEZIONATA_RE.search(desc_u)
             and not _UTENZE_IDRICHE_RE.search(desc_u)
             and not _BEVANDE_ANALCOLICHE_RE.search(desc_u)

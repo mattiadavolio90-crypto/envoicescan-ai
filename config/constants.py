@@ -583,6 +583,10 @@ DIZIONARIO_CORREZIONI = {
     "PANE": "PRODOTTI DA FORNO",
     "FOCACCIA": "PRODOTTI DA FORNO",
     "GRISSINI": "PRODOTTI DA FORNO",
+    # Audit 1/9: solo la forma estesa. "CROSTINI" secco non basta: a DB convive
+    # con "CROSTINI DORATI SAN CARLO" (SHOP, snack da aperitivo), che e' un'altra
+    # cosa. Qui parliamo dei crostini di pane per zuppe.
+    "CROSTINI PER ZUPPE": "PRODOTTI DA FORNO",
 
     "PIZZETTA": "PRODOTTI DA FORNO",
     "CIABATTA": "PRODOTTI DA FORNO",
@@ -655,6 +659,14 @@ DIZIONARIO_CORREZIONI = {
     "CEREALI": "PASTA E CEREALI",
     "BISCOTTI": "PASTICCERIA",
     "FETTE BISCOTTATE": "PASTA E CEREALI",
+    # Audit 1/9: gallette (di mais/riso) mancavano. Sono cereali soffiati, non
+    # pasticceria.
+    "GALLETTA": "PASTA E CEREALI",
+    "GALLETTE": "PASTA E CEREALI",
+    # "MAIS VAPORE" e' mais cotto in confezione = conserva. NB: "MAIS" secco
+    # sarebbe SBAGLIATO — a DB vive legittimamente in 4 categorie (52 righe
+    # SCATOLAME in scatola, 5 PASTA E CEREALI come amido, 3 VERDURE fresco).
+    "MAIS VAPORE": "SCATOLAME E CONSERVE",
     
     # ===== OLIO E CONDIMENTI =====
     "OLIO": "OLIO E CONDIMENTI",
@@ -677,6 +689,15 @@ DIZIONARIO_CORREZIONI = {
     "ZAFFERANO": "SPEZIE E AROMI",
     "CANNELLA": "SPEZIE E AROMI",
     "NOCE MOSCATA": "SPEZIE E AROMI",
+    # Audit 1/9: il coriandolo mancava del tutto. "CORIANDORO" e' un refuso reale
+    # visto a DB (il fallback doppie-collassate non lo recupera: non ha doppie).
+    # NB: il dizionario SOVRASCRIVE anche una categoria gia' assegnata. Qui e'
+    # voluto: a DB lo stesso prodotto dello stesso fornitore (SHIDU "CORIANDOLO
+    # PZ") stava in SPEZIE E AROMI su 2 righe e in VERDURE su 1 — un'incoerenza,
+    # non una scelta. La keyword uniforma a SPEZIE, coerente con la regola di
+    # dominio del prompt ("aromi -> SPEZIE E AROMI anche se freschi, in mazzi").
+    "CORIANDOLO": "SPEZIE E AROMI",
+    "CORIANDORO": "SPEZIE E AROMI",
     
     # ===== SALSE E CREME =====
     "CREMA PISTACCHIO": "SALSE E CREME",
@@ -834,6 +855,13 @@ DIZIONARIO_CORREZIONI = {
     "ESTATHE": "BEVANDE",
     "SPREMUTA": "BEVANDE",
     "BIBITA": "BEVANDE",
+    # Audit 1/9: "BIBITE" (plurale secco, usato come voce di riepilogo da alcuni
+    # fornitori) restava Da Classificare — il singolare non lo copre, il match e'
+    # per parola intera. Stesso motivo per "BEVANDA AL TE'": non e' un te' in
+    # foglie (CAFFE E THE) ma una bibita pronta, come da regola 5 del prompt AI.
+    "BIBITE": "BEVANDE",
+    "BEVANDA AL THE": "BEVANDE",
+    "BEVANDA AL TE": "BEVANDE",
     "CHINOTTO": "BEVANDE",
     "GASSOSA": "BEVANDE",
     "TONIC WATER": "BEVANDE",
@@ -1087,6 +1115,14 @@ DIZIONARIO_CORREZIONI = {
     "STRACCIO": "MATERIALE DI CONSUMO",
     "SCOPA": "MATERIALE DI CONSUMO",
     "MOCIO": "MATERIALE DI CONSUMO",
+    # Audit 1/9: righe reali rimaste Da Classificare, tutte verificate a DB come
+    # non collidenti. NB: NON usare "SPAZZOL" secco — cattura "COZZA ITALIA
+    # SPAZZOLATA" (10 righe a DB, PESCE) e "SPAZZOLONE LAVAPAVIMENTI"
+    # (MANUTENZIONE, e' attrezzatura durevole, non consumabile).
+    "SPAZZOLAPULIZIA": "MATERIALE DI CONSUMO",
+    "SPAZZOLA PULIZIA": "MATERIALE DI CONSUMO",
+    "PULIORECCHIE": "MATERIALE DI CONSUMO",
+    "COTTON FIOC": "MATERIALE DI CONSUMO",
     "SPAZZOLONE": "MATERIALE DI CONSUMO",
     "TOVAGLIA": "MATERIALE DI CONSUMO",
     "TOVAGLIE": "MATERIALE DI CONSUMO",

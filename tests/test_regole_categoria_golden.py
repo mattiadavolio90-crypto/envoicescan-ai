@@ -55,6 +55,20 @@ sua posizione. Effetto: 4 righe golden, 1 sola descrizione
 Nessun altro fornitore toccato (misurato sull'intero campione: 4/8378). Sul DB live le
 12 righe WINDTRE esistenti (15,65 EUR, "Costi comuni di gruppo") erano gia' state
 corrette a mano: la regola evita la prossima correzione manuale, non muove dati storici.
+
+Aggiornato 1/9 (audit categorizzazione, Fase 7): nuova regola forte
+`brand_acqua_ma_bevanda`. I brand di acqua minerale (S.Benedetto, Lurisia, San
+Pellegrino, Sant'Anna) vendono anche te' freddo, gassose, aranciate e succhi: quelle
+righe finivano in ACQUA per il BRAND invece che per il prodotto (38 righe a DB; nella
+misura cieca su 815 righe era 2/13 = 15% della categoria ACQUA, l'unico pattern di
+errore sistemico trovato). L'esclusione `_BEVANDE_ANALCOLICHE_RE` gia' presente non
+li intercettava: verificato che THE/GASSOSA/SUCCOSO S.Benedetto passavano tutti.
+Effetto sul golden: 12 righe, 3 descrizioni distinte (LURISIA CHINOTTO, LURISIA
+ARANCIATA AMARA, SAN PELLEGRINO CHINOTTO). **Nessuna categoria cambiata**: erano gia'
+BEVANDE per un'altra via, cambia solo il `motivo` (regola_forte:BEVANDE ->
+brand_acqua_ma_bevanda) perche' la nuova regola le intercetta prima. Verificato a
+tappeto sull'intero campione: 12 divergenze, 0 con categoria diversa. L'acqua vera
+(ACQ S.BENEDETTO NAT, ACQUA PANNA, ACQUA FRIZZANTE) resta ACQUA.
 """
 import json
 import os
