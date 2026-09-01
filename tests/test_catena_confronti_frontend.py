@@ -562,30 +562,46 @@ def test_sparkline_geometria_assoluta():
     assert (out["cx"], out["cy"]) == (236.0, 20.0)
 
 
-def test_sparkline_fotografa_rosso_su_mol_negativo_in_RISALITA():
-    """ANOMALIA FOTOGRAFATA — la piu' notevole dell'area.
+def test_sparkline_mol_negativo_in_risalita_e_VERDE():
+    """Era l'anomalia fotografata piu' notevole dell'area. Corretta l'1/9/2026.
 
-    Con `primo <= 0` la variazione non e' calcolabile (`ytdPct = null`), ma `su`
-    diventa false e la linea esce ROSSA "in calo" mentre il MOL sta MIGLIORANDO.
-    Il badge % e' nascosto, quindi a schermo resta solo il colore — che mente.
+    Con `primo <= 0` la percentuale non e' calcolabile e resta `null` — giusto,
+    e il badge % sparisce. Ma la DIREZIONE si sa lo stesso: `su = ultimo >= primo`.
+    Prima `su` derivava da `ytdPct` e collassava su false, quindi la linea usciva
+    ROSSA mentre il MOL RISALIVA, e col badge nascosto restava solo il colore.
 
-    Oggi nessun cliente la vede: `services/routers/gruppo.py:873` tiene solo i
-    mesi con `netto > 0`, e con `tot_lordo <= 0` il livello e' "nessuno", che in
-    `sintesi-catena.tsx:318` non renderizza affatto la sparkline. Il difetto e'
-    reale ma non raggiungibile: si arma se quel filtro cambia. I valori qui sotto
-    sono quelli veri di Offside (gennaio -> agosto 2026).
+    La fotografia precedente lo dava per irraggiungibile ("nessun cliente la
+    vede") sulla base del filtro `netto > 0` di routers/gruppo.py. Premessa
+    FALSA per due motivi: quel filtro guarda i RICAVI, non il MOL, e la Home
+    passa da un endpoint diverso (`has_data`, fastapi_worker.py:7353, che il
+    segno del MOL non lo guarda affatto).
+
+    Misurato sul DB live l'1/9/2026: OFFSIDE SPORTS PUB va da -21.305,32 a
+    -684,23 nel 2026 (+20.621 di risalita) e vedeva rosso. I valori qui sotto
+    sono i suoi, nella serie di catena (gennaio -> agosto 2026).
     """
     out = _chiama("calcolaSparkline", [_punti(-74031.50, -19221.87)])
+    assert out["ytdPct"] is None        # la % non e' calcolabile: resta nascosta
+    assert out["su"] is True            # ma la direzione si sa: sta risalendo
+    assert "emerald" in out["stroke"]
+
+
+def test_sparkline_negativo_che_PEGGIORA_resta_rosso():
+    """Il contrario del precedente: il fix non colora tutto di verde."""
+    out = _chiama("calcolaSparkline", [_punti(-5000.0, -50000.0)])
     assert out["ytdPct"] is None
     assert out["su"] is False
-    assert "rose" in out["stroke"]   # sta risalendo, ma la linea e' rossa
+    assert "rose" in out["stroke"]
 
 
-def test_sparkline_fotografa_null_anche_partendo_da_zero():
-    """Stessa causa: `primo > 0` esclude anche lo zero esatto."""
+def test_sparkline_partendo_da_zero_la_percentuale_resta_nulla():
+    """`primo > 0` esclude lo zero esatto: la % non si calcola (era CASATI 14).
+
+    Ma il colore ora segue la direzione, non la percentuale.
+    """
     out = _chiama("calcolaSparkline", [_punti(0.0, 5000.0)])
     assert out["ytdPct"] is None
-    assert out["su"] is False
+    assert out["su"] is True
 
 
 # ─── tintConti ─────────────────────────────────────────────────────────────

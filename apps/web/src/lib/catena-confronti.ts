@@ -217,15 +217,21 @@ export type Sparkline = {
 
 const MESI_ABBR = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
 
-// Path SVG + variazione da inizio a fine anno della serie MOL del gruppo.
+// Path SVG + variazione da inizio a fine anno della serie MOL.
 //
-// ANOMALIA FOTOGRAFATA (la piu' notevole dell'area): con `primo <= 0` la
-// variazione e' null — e `su` diventa false, quindi la linea e' ROSSA "in calo"
-// anche quando il MOL sta risalendo (es. da -74.031 a -19.221). Oggi nessun
-// cliente la vede: services/routers/gruppo.py:873 tiene solo i mesi con
-// `netto > 0`, e con `tot_lordo <= 0` il livello e' "nessuno", che in
-// sintesi-catena.tsx:318 non renderizza affatto la sparkline. Il difetto e'
-// reale ma non raggiungibile: si arma se quel filtro cambia.
+// La percentuale e la DIREZIONE sono due domande diverse, e vanno risposte
+// separatamente. Con `primo <= 0` la percentuale non e' calcolabile (divisione
+// per ~zero, o segno ribaltato) e resta `null`: giusto, e il badge % sparisce.
+// Ma la direzione si sa lo stesso — basta confrontare ultimo e primo.
+//
+// Fino all'1/9 `su` derivava da `ytdPct`, quindi collassava su false quando la
+// percentuale era null: la linea usciva ROSSA "in calo" mentre il MOL stava
+// RISALENDO, e col badge nascosto a schermo restava solo il colore, che mentiva.
+// Non era teorico: misurato sul DB live, OFFSIDE SPORTS PUB va da -21.305,32 a
+// -684,23 nel 2026 (+20.621) e vedeva rosso; CASATI 14 (primo = 0) stesso ramo.
+// Il commento precedente lo dava per irraggiungibile grazie al filtro
+// `netto > 0` di routers/gruppo.py — ma quel filtro guarda i RICAVI, non il MOL,
+// e la Home passa da un altro endpoint ancora (`has_data`, fastapi_worker.py).
 //
 // `range = max - min || 1` protegge la divisione quando tutti i MOL sono uguali.
 export function calcolaSparkline(punti: PuntoMol[], W = 240, H = 40, PAD = 4): Sparkline {
@@ -241,7 +247,7 @@ export function calcolaSparkline(punti: PuntoMol[], W = 240, H = 40, PAD = 4): S
   const primo = punti[0].mol;
   const ultimo = punti[n - 1].mol;
   const ytdPct = primo > 0 ? ((ultimo - primo) / primo) * 100 : null;
-  const su = ytdPct != null && ytdPct >= 0;
+  const su = ultimo >= primo;
   const stroke = su ? "text-emerald-500" : "text-rose-500";
   const meseDa = MESI_ABBR[(punti[0].mese - 1) % 12] ?? "";
   const meseA = MESI_ABBR[(punti[n - 1].mese - 1) % 12] ?? "";
