@@ -1,7 +1,7 @@
 # Prompt prossima sessione — `(app)/dashboard/`, e cosa insegna catena
 
 > Scritto l'1/9/2026 dopo la **terza** passata su `catena/`, che ha chiuso
-> l'area a 2.800/2.938 righe (**95%**), 280 test.
+> l'area a 2.800/2.938 righe (**95%**), 282 test.
 >
 > **Le cifre qui dentro sono misurate a quel HEAD. Ri-misurale, non ereditarle.**
 > È la regola che questo progetto ha violato **sei** volte in tre giorni. La
