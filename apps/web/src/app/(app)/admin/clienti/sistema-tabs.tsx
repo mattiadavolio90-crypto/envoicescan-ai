@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
-import { RefreshCw, DollarSign, Shield, Clock, CheckCircle } from "lucide-react";
+import { RefreshCw, DollarSign, Shield, Clock, CheckCircle, FileText, Upload, Radio, AlertTriangle } from "lucide-react";
+import { PIANO_COLOR, PIANO_LABEL } from "@/lib/admin";
 
 const VISION_DAILY_LIMIT = 50;
 
@@ -254,6 +255,180 @@ export function SaluteWorkerTab() {
 
       <p className="text-xs text-muted-foreground">
         Dati per-processo, azzerati a ogni riavvio del worker. p50 = tempo tipico, p95 = i casi peggiori (quelli che generano la schermata &quot;servizio non raggiungibile&quot;). Verde = sano, ambra = attenzione, rosso = oltre soglia.
+      </p>
+    </div>
+  );
+}
+
+// ─── TAB CONSUMI & PIANI ──────────────────────────────────────────────────────
+// Conteggio fatture per mese di CARICAMENTO (quando sono entrate in ONEFLUX),
+// diviso per canale, con il confronto rispetto alla soglia del piano della sede.
+// Non coincide con il contatore che il cliente vede in Impostazioni, che conta
+// per data documento: l'etichetta "Caricate" lo rende esplicito.
+
+type ConsumoRiga = {
+  ristorante_id: string;
+  sede: string;
+  email: string;
+  mese: string;
+  manuali: number;
+  sdi: number;
+  totale: number;
+  piano: string;
+  limite: number;
+  sopra_soglia: boolean;
+  ai_richieste: number;
+  ai_token: number;
+  ai_costo: number;
+};
+
+function fmtMeseLungo(mese: string): string {
+  const [y, m] = mese.split("-");
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+}
+
+export function ConsumiTab() {
+  const [mesi, setMesi] = useState("12");
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [soloSopra, setSoloSopra] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/sistema/consumi?mesi=${mesi}`);
+      if (!res.ok) { toast.error("Errore caricamento consumi"); return; }
+      setData(await res.json());
+    } catch { toast.error("Errore di connessione"); }
+    finally { setLoading(false); }
+  }, [mesi]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const righe: ConsumoRiga[] = (data?.righe as ConsumoRiga[]) || [];
+  const meseCorrente = String(data?.mese_corrente ?? "");
+  const mesiAvviso: string[] = (data?.mesi_avviso as string[]) ?? [];
+  const errors: string[] = (data?._errors as string[]) ?? [];
+
+  const nSopraSoglia = Number(data?.n_sopra_soglia ?? 0);
+  const righeCorrente = righe.filter((r) => r.mese === meseCorrente);
+  const fattureCorrente = righeCorrente.reduce((s, r) => s + r.totale, 0);
+  const sdiCorrente = righeCorrente.reduce((s, r) => s + r.sdi, 0);
+  const aiCorrente = righeCorrente.reduce((s, r) => s + r.ai_richieste, 0);
+
+  const visibili = soloSopra ? righe.filter((r) => r.sopra_soglia) : righe;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-2 items-center flex-wrap">
+        <NativeSelect className="w-40" value={mesi} onValueChange={setMesi}>
+          <option value="3">Ultimi 3 mesi</option>
+          <option value="6">Ultimi 6 mesi</option>
+          <option value="12">Ultimi 12 mesi</option>
+          <option value="24">Ultimi 24 mesi</option>
+        </NativeSelect>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
+        </Button>
+        <Button variant={soloSopra ? "default" : "outline"} size="sm" onClick={() => setSoloSopra((v) => !v)}>
+          <AlertTriangle className="size-4 mr-1" /> Solo sopra soglia
+        </Button>
+      </div>
+
+      {errors.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 space-y-1">
+          <p className="font-medium">Alcuni dati non sono stati calcolati:</p>
+          <ul className="list-disc list-inside">
+            {errors.map((e, i) => <li key={i} className="truncate" title={e}>{e}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* KPI del mese in corso */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Caricate questo mese", value: fattureCorrente.toLocaleString("it-IT"), icon: FileText, color: "text-orange-500" },
+          { label: "Di cui da SDI", value: sdiCorrente.toLocaleString("it-IT"), icon: Radio, color: "text-sky-500" },
+          { label: "Richieste AI", value: aiCorrente.toLocaleString("it-IT"), icon: Shield, color: "text-violet-500" },
+          { label: "Sedi sopra soglia", value: String(nSopraSoglia), icon: AlertTriangle, color: nSopraSoglia > 0 ? "text-red-500" : "text-emerald-500" },
+        ].map((k) => (
+          <Card key={k.label} className={k.label === "Sedi sopra soglia" && nSopraSoglia > 0 ? "ring-1 ring-red-500/60" : undefined}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">{k.label}</CardTitle>
+              <k.icon className={`size-4 ${k.color}`} />
+            </CardHeader>
+            <CardContent><div className="text-xl font-bold tabular-nums">{k.value}</div></CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {mesiAvviso.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Il contatore &quot;sedi sopra soglia&quot; guarda {mesiAvviso.map(fmtMeseLungo).join(" e ")}: include il mese
+          appena chiuso, altrimenti uno sforamento del 31 sparirebbe il giorno dopo.
+        </p>
+      )}
+
+      {/* Tabella sede x mese */}
+      {visibili.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          {soloSopra ? "Nessuna sede sopra la soglia del piano." : "Nessun dato nel periodo selezionato."}
+        </p>
+      ) : (
+        <div className="rounded-lg border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead><tr className="border-b bg-muted/50 text-left">
+              <th className="px-4 py-2 font-medium">Mese</th>
+              <th className="px-4 py-2 font-medium">Sede</th>
+              <th className="px-4 py-2 font-medium">Piano</th>
+              <th className="px-4 py-2 font-medium" title="Caricate a mano dal cliente">
+                <Upload className="size-3 inline mr-1" />Manuali
+              </th>
+              <th className="px-4 py-2 font-medium" title="Arrivate automaticamente dallo SDI">
+                <Radio className="size-3 inline mr-1" />SDI
+              </th>
+              <th className="px-4 py-2 font-medium">Caricate / Limite</th>
+              <th className="px-4 py-2 font-medium hidden md:table-cell">Richieste AI</th>
+              <th className="px-4 py-2 font-medium hidden lg:table-cell">Costo AI</th>
+            </tr></thead>
+            <tbody className="divide-y">
+              {visibili.map((r) => (
+                <tr key={`${r.ristorante_id}-${r.mese}`} className={r.sopra_soglia ? "bg-red-500/5 hover:bg-red-500/10" : "hover:bg-muted/30"}>
+                  <td className="px-4 py-2 whitespace-nowrap text-muted-foreground">{r.mese}</td>
+                  <td className="px-4 py-2">
+                    <p className="font-medium truncate max-w-[190px]">{r.sede || "—"}</p>
+                    <p className="text-xs text-muted-foreground truncate max-w-[190px]">{r.email}</p>
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PIANO_COLOR[r.piano] ?? ""}`}>
+                      {PIANO_LABEL[r.piano] ?? r.piano.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 tabular-nums">{r.manuali.toLocaleString("it-IT")}</td>
+                  <td className="px-4 py-2 tabular-nums">{r.sdi > 0 ? r.sdi.toLocaleString("it-IT") : "—"}</td>
+                  <td className="px-4 py-2 tabular-nums font-medium">
+                    <span className={r.sopra_soglia ? "text-red-600" : undefined}>
+                      {r.totale.toLocaleString("it-IT")} / {r.limite.toLocaleString("it-IT")}
+                    </span>
+                    {r.sopra_soglia && (
+                      <span className="ml-2 rounded-full bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-xs font-medium text-red-600">
+                        +{(r.totale - r.limite).toLocaleString("it-IT")}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 tabular-nums hidden md:table-cell text-muted-foreground">{r.ai_richieste.toLocaleString("it-IT")}</td>
+                  <td className="px-4 py-2 tabular-nums hidden lg:table-cell text-muted-foreground">${r.ai_costo.toFixed(4)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        Il conteggio è sul mese in cui la fattura è stata <strong>caricata</strong> in ONEFLUX, non sulla data
+        del documento: misura il consumo del servizio. È diverso dal contatore che il cliente vede nelle sue
+        Impostazioni. Le sedi tecniche di gruppo sono escluse. La soglia segnala, non blocca nulla.
       </p>
     </div>
   );

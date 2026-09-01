@@ -9,8 +9,9 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-# utils/ non importa services/: import diretto, nessun rischio di ciclo.
+# utils/ e config/ non importano services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
+from config.constants import PIANO_LIMITI_FATTURE_MESE, PIANO_LIMITE_FATTURE_DEFAULT
 
 logger = logging.getLogger("fastapi_worker")
 
@@ -73,13 +74,6 @@ def _verify_admin(
 
 router = APIRouter()
 
-_PIANO_LIMITI: Dict[str, int] = {
-    "free": 50,
-    "base": 50,
-    "plus": 100,
-    "pro": 200,
-}
-
 
 @router.get("/api/account/me", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
 def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
@@ -120,7 +114,7 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
 
     # Piano effettivo: sede.piano, altrimenti users.piano, altrimenti 'base'.
     piano_raw = (sede.get("piano") or row.get("piano") or "base").lower().strip()
-    limite_fatture = _PIANO_LIMITI.get(piano_raw, 50)
+    limite_fatture = PIANO_LIMITI_FATTURE_MESE.get(piano_raw, PIANO_LIMITE_FATTURE_DEFAULT)
 
     # Contatore fatture del mese corrente (documenti unici, non righe)
     now = datetime.now(timezone.utc)

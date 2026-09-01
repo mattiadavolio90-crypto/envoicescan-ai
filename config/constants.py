@@ -1932,6 +1932,15 @@ CATEGORIA_NON_CLASSIFICATA = "Da Classificare"
 # "fallback" ora ricadono sullo stato non-classificato, non più su SERVIZI.
 CATEGORIA_FALLBACK = CATEGORIA_NON_CLASSIFICATA
 
+# Fatture/mese incluse in ciascun piano. Fonte unica: era duplicata in tre punti
+# (account.py e due volte dentro admin.py), con il rischio che una modifica
+# commerciale ne aggiornasse solo una e i contatori divergessero.
+# Nota: 'free' e 'base' condividono lo stesso limite — sul monte fatture i due
+# piani non sono distinguibili, differiscono altrove (es. CHAT_LIMITI_PIANO).
+# È una soglia di SEGNALAZIONE, non di blocco: nessun upload viene rifiutato.
+PIANO_LIMITI_FATTURE_MESE = {"free": 50, "base": 50, "plus": 100, "pro": 200}
+PIANO_LIMITE_FATTURE_DEFAULT = 50
+
 # Limiti upload e batch
 MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB (decimali) — usato dai validatori storici
 # Limite body in BYTE realmente applicato dal worker FastAPI (50 MiB binari).

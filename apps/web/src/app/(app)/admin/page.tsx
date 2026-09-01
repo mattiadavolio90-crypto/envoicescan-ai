@@ -39,10 +39,10 @@ async function fetchRicaviProblemi(token: string): Promise<number> {
   }
 }
 
-type Badges = { flusso_dati: number; categorie: number; richieste: number };
+type Badges = { flusso_dati: number; categorie: number; richieste: number; consumi: number };
 
 async function fetchBadges(token: string): Promise<Badges> {
-  const vuoto: Badges = { flusso_dati: 0, categorie: 0, richieste: 0 };
+  const vuoto: Badges = { flusso_dati: 0, categorie: 0, richieste: 0, consumi: 0 };
   try {
     const h: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
@@ -53,6 +53,7 @@ async function fetchBadges(token: string): Promise<Badges> {
       flusso_dati: Number(data?.flusso_dati ?? 0),
       categorie: Number(data?.categorie ?? 0),
       richieste: Number(data?.richieste ?? 0),
+      consumi: Number(data?.consumi ?? 0),
     };
   } catch (err) {
     console.error("[admin/badges] fetch error:", err);
@@ -64,7 +65,7 @@ const NAV_CARDS = [
   {
     href: "/admin/clienti",
     title: "Clienti",
-    desc: "Lista, crea, impersona · costi AI, retention",
+    desc: "Lista, crea, impersona · consumi e piani, costi AI",
     icon: Users,
     border: "border-sky-500",
     bg: "hover:bg-sky-500/8",
@@ -112,6 +113,10 @@ export default async function AdminPage() {
   ]);
   // Il badge Flusso dati somma le fatture bloccate (coda) e i ricavi in silenzio/problema.
   const badgePerCard: Record<string, number> = {
+    // Consumi: sedi che nel mese in corso o in quello appena chiuso hanno
+    // superato il monte fatture del loro piano. Vivono nel tab "Consumi & Piani"
+    // dentro Clienti, quindi il badge sta sulla card Clienti.
+    "/admin/clienti": badges.consumi,
     "/admin/flusso-dati": badges.flusso_dati + ricaviProblemi,
     "/admin/categorie": badges.categorie,
     "/admin/richieste": badges.richieste,
@@ -184,6 +189,11 @@ export default async function AdminPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {NAV_CARDS.map((item) => {
           const alert = badgePerCard[item.href] ?? 0;
+          // Su Clienti il badge conta sedi oltre il monte fatture del piano:
+          // "da controllare" non direbbe di cosa si tratta.
+          const alertLabel = item.href === "/admin/clienti"
+            ? `${alert} ${alert === 1 ? "sede" : "sedi"} sopra soglia`
+            : `${alert} da controllare`;
           return (
             <Card key={item.href} className={`border ${alert ? "border-red-500 ring-1 ring-red-500/40" : item.border} ${item.bg} transition-colors`}>
               <Link href={item.href} className="block p-6">
@@ -195,7 +205,7 @@ export default async function AdminPage() {
                         <p className="font-semibold">{item.title}</p>
                         {alert > 0 && (
                           <span className="rounded-full bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-xs font-medium text-red-600">
-                            {alert} da controllare
+                            {alertLabel}
                           </span>
                         )}
                       </div>

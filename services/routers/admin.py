@@ -43,6 +43,7 @@ logger = logging.getLogger("fastapi_worker")
 
 from utils.ttl_cache import TTLCache
 from utils.supabase_paging import fetch_all
+from config.constants import PIANO_LIMITI_FATTURE_MESE, PIANO_LIMITE_FATTURE_DEFAULT
 
 # Cache in-process per gli endpoint Admin pesanti (overview, badge...). Sono dati
 # di monitoraggio che l'admin guarda: un TTL breve e' accettabile e li toglie dal
@@ -342,13 +343,11 @@ def admin_lista_clienti():
     except Exception:
         pass
 
-    _PIANO_LIMITI_LOCAL = {"free": 50, "base": 50, "plus": 100, "pro": 200}
-
     result = []
     for u in clienti_raw:
         uid = u["id"]
         piano = (u.get("piano") or "base").lower()
-        limite = _PIANO_LIMITI_LOCAL.get(piano, 50)
+        limite = PIANO_LIMITI_FATTURE_MESE.get(piano, PIANO_LIMITE_FATTURE_DEFAULT)
         sedi = sedi_map.get(uid, [])
         n_fatture = n_fatture_map.get(uid, 0)
 
@@ -413,8 +412,7 @@ def admin_dettaglio_cliente(cliente_id: str):
     sedi = sedi_resp.data or []
 
     piano = (u.get("piano") or "base").lower()
-    _PIANO_LIMITI_LOCAL = {"free": 50, "base": 50, "plus": 100, "pro": 200}
-    limite = _PIANO_LIMITI_LOCAL.get(piano, 50)
+    limite = PIANO_LIMITI_FATTURE_MESE.get(piano, PIANO_LIMITE_FATTURE_DEFAULT)
 
     trial_info = None
     if u.get("trial_active") and u.get("trial_activated_at"):
@@ -1777,6 +1775,107 @@ def admin_sistema_costi_ai(days: int = 30):
     }
 
 
+# ── Sistema — Consumi & Piani (conteggio mensile vs soglia del piano) ────────
+
+def _sedi_ammesse(sb) -> List[Dict[str, Any]]:
+    """Sedi da mostrare nei consumi: punti vendita reali di clienti non-admin.
+
+    Esclude le sedi tecniche (`sede_tecnica=True`, come la lista clienti): sono
+    contenitori di gruppo tipo "Costi comuni di gruppo", non punti vendita, e
+    verrebbero confrontate con una soglia che non gli appartiene.
+    """
+    admin_emails = _admin_emails_set()
+    users = sb.table("users").select("id,email,piano").execute().data or []
+    per_user = {
+        str(u["id"]): u for u in users
+        if (u.get("email") or "").lower() not in admin_emails
+    }
+    if not per_user:
+        return []
+
+    sedi: List[Dict[str, Any]] = []
+    ids = list(per_user.keys())
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        resp = (sb.table("ristoranti")
+                .select("id,user_id,nome_ristorante,piano")
+                .eq("sede_tecnica", False)
+                .in_("user_id", chunk)
+                .execute())
+        for r in (resp.data or []):
+            account = per_user.get(str(r.get("user_id")), {})
+            sedi.append({
+                "id": r["id"],
+                "nome_ristorante": r.get("nome_ristorante"),
+                "piano": r.get("piano"),
+                "account_piano": account.get("piano"),
+                "email": account.get("email"),
+            })
+    return sedi
+
+
+def _compute_admin_consumi(mesi: int = 12) -> Dict[str, Any]:
+    """Righe sede x mese con conteggio fatture, consumo AI e stato soglia.
+
+    Difensivo come admin_overview: ogni sezione isolata, mai 500. Se una RPC
+    fallisce la pagina mostra il resto e l'errore finisce in `_errors`.
+    """
+    from services.consumi_service import costruisci_righe, conta_sopra_soglia, mesi_badge
+
+    sb = get_supabase_client()
+    errors: List[str] = []
+
+    oggi = datetime.now(timezone.utc).date()
+    primo_mese = (oggi.replace(day=1) - timedelta(days=31 * max(mesi - 1, 0))).replace(day=1)
+    mese_corrente = oggi.strftime("%Y-%m")
+
+    sedi: List[Dict[str, Any]] = []
+    try:
+        sedi = _sedi_ammesse(sb)
+    except Exception as e:
+        logger.exception("admin_consumi: anagrafica sedi fallita")
+        errors.append(f"sedi: {type(e).__name__}: {e}")
+
+    consumi: List[Dict[str, Any]] = []
+    try:
+        consumi = sb.rpc("admin_consumi_mensili", {"p_dal": primo_mese.isoformat()}).execute().data or []
+    except Exception as e:
+        logger.exception("admin_consumi: RPC consumi fallita")
+        errors.append(f"consumi: {type(e).__name__}: {e}")
+
+    ai: List[Dict[str, Any]] = []
+    try:
+        ai = sb.rpc("admin_ai_mensile", {"p_dal": primo_mese.isoformat()}).execute().data or []
+    except Exception as e:
+        logger.exception("admin_consumi: RPC AI fallita")
+        errors.append(f"ai: {type(e).__name__}: {e}")
+
+    righe = costruisci_righe(consumi, ai, sedi)
+    mesi_avviso = mesi_badge(mese_corrente)
+    return {
+        "mese_corrente": mese_corrente,
+        "mesi_avviso": mesi_avviso,
+        "righe": righe,
+        "n_sopra_soglia": conta_sopra_soglia(righe, mesi_avviso),
+        "_errors": errors,
+    }
+
+
+@router.get("/api/admin/sistema/consumi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+def admin_sistema_consumi(mesi: int = 12):
+    """Fatture caricate e richieste AI per sede/mese, con stato rispetto al piano.
+
+    Il conteggio e' sul mese di CARICAMENTO (fatture_documenti.created_at): misura
+    il consumo del servizio. Non coincide con il contatore che il cliente vede in
+    Impostazioni, che usa data_documento — a luglio 2026 sono entrati 1.097
+    documenti di cui solo 55 erano fatture di quel mese.
+
+    Cache 45s come gli altri KPI admin.
+    """
+    mesi = max(1, min(int(mesi or 12), 24))
+    return _ADMIN_CACHE.get_or_set(f"consumi:{mesi}", lambda: _compute_admin_consumi(mesi))
+
+
 # ── Sistema/Salute — Integrità DB ─────────────────────────────────────────────
 
 # ── Sistema/Salute — Retention ───────────────────────────────────────────────
@@ -2094,7 +2193,21 @@ def _compute_admin_badges():
                        .eq("stato", "nuovo")
                        .limit(1))
 
-    return {"flusso_dati": flusso, "categorie": categorie, "richieste": richieste}
+    # consumi: sedi sopra la soglia del piano NEL MESE CORRENTE. Riusa la stessa
+    # funzione che alimenta la pagina (non un conteggio parallelo), cosi' il badge
+    # e le righe rosse della tabella non possono divergere.
+    def _consumi_sopra_soglia() -> int:
+        try:
+            dati = _compute_admin_consumi(2)
+            return int(dati.get("n_sopra_soglia") or 0)
+        except Exception as exc:
+            logger.error("admin badges: conteggio consumi fallito: %s", exc)
+            return 0
+
+    consumi = _consumi_sopra_soglia()
+
+    return {"flusso_dati": flusso, "categorie": categorie, "richieste": richieste,
+            "consumi": consumi}
 
 
 def _classifica_salute_invoicetronic(n_unknown: int, n_dead: int, n_failed: int,

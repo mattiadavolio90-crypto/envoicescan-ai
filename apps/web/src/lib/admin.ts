@@ -66,7 +66,7 @@ export const PIANO_OPTIONS: { value: string; label: string }[] = [
   { value: "free", label: "FREE" },
   { value: "base", label: "BASE (50 fatture/mese)" },
   { value: "plus", label: "PLUS (100 fatture/mese)" },
-  { value: "pro", label: "PRO (100+ fatture/mese)" },
+  { value: "pro", label: "PRO (200 fatture/mese)" },
 ];
 
 // Categorie valide (allineate a config/constants.py TUTTE_LE_CATEGORIE + speciale diciture).

@@ -13782,6 +13782,80 @@
         }
       }
     },
+    "/api/admin/sistema/consumi": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Sistema Consumi",
+        "description": "Fatture caricate e richieste AI per sede/mese, con stato rispetto al piano.\n\nIl conteggio e' sul mese di CARICAMENTO (fatture_documenti.created_at): misura\nil consumo del servizio. Non coincide con il contatore che il cliente vede in\nImpostazioni, che usa data_documento — a luglio 2026 sono entrati 1.097\ndocumenti di cui solo 55 erano fatture di quel mese.\n\nCache 45s come gli altri KPI admin.",
+        "operationId": "admin_sistema_consumi_api_admin_sistema_consumi_get",
+        "parameters": [
+          {
+            "name": "mesi",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 12,
+              "title": "Mesi"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/sistema/retention": {
       "get": {
         "tags": [

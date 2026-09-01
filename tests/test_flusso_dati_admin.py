@@ -336,7 +336,8 @@ def test_badges_conta_solo_problematici(monkeypatch):
 
     res = admin.admin_badges()
     # categorie = {GELATO X, TORTA Y} = 2 (COUPON Z escluso perché scelta umana)
-    assert res == {"flusso_dati": 2, "categorie": 2, "richieste": 1}
+    # consumi = 0: il FakeClient non ha sedi/consumi, nessuna sede sopra soglia
+    assert res == {"flusso_dati": 2, "categorie": 2, "richieste": 1, "consumi": 0}
 
 
 def test_badges_tutto_pulito_a_zero(monkeypatch):
@@ -347,7 +348,7 @@ def test_badges_tutto_pulito_a_zero(monkeypatch):
         "prodotti_utente": [], "prodotti_master": [],
     })
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
-    assert admin.admin_badges() == {"flusso_dati": 0, "categorie": 0, "richieste": 0}
+    assert admin.admin_badges() == {"flusso_dati": 0, "categorie": 0, "richieste": 0, "consumi": 0}
 
 
 # ─── A6: eventi-sconosciuti (Voce 7, Strato 2 — ronda giornaliera) ────────────

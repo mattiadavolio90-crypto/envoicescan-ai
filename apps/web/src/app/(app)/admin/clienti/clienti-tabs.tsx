@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { ClientiClient } from "./clienti-client";
-import { CostiAiTab, RetentionTab, SaluteWorkerTab } from "./sistema-tabs";
+import { ConsumiTab, CostiAiTab, RetentionTab, SaluteWorkerTab } from "./sistema-tabs";
 import type { Cliente } from "@/lib/admin";
 
-const TABS = ["clienti", "costi", "retention", "worker"] as const;
-const TAB_LABELS: Record<string, string> = { clienti: "Clienti", costi: "Costi AI", retention: "Retention", worker: "Salute worker" };
+const TABS = ["clienti", "consumi", "costi", "retention", "worker"] as const;
+const TAB_LABELS: Record<string, string> = { clienti: "Clienti", consumi: "Consumi & Piani", costi: "Costi AI", retention: "Retention", worker: "Salute worker" };
 
 export function ClientiTabs({ clientiIniziali }: { clientiIniziali: Cliente[] }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("clienti");
@@ -21,6 +21,7 @@ export function ClientiTabs({ clientiIniziali }: { clientiIniziali: Cliente[] })
         ))}
       </div>
       {tab === "clienti" && <ClientiClient clientiIniziali={clientiIniziali} />}
+      {tab === "consumi" && <ConsumiTab />}
       {tab === "costi" && <CostiAiTab />}
       {tab === "retention" && <RetentionTab />}
       {tab === "worker" && <SaluteWorkerTab />}
