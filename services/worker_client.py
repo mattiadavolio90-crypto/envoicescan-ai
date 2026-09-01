@@ -177,9 +177,18 @@ def classifica_via_worker_con_confidenza(
             categorie = payload["categorie"]
             # Retrocompatibilità: worker più vecchi non includono "confidenze"
             confidenze = payload.get("confidenze") or ["media"] * len(categorie)
+            # Il degrado AI e' successo NELL'ALTRO processo: il suo ContextVar non
+            # arriva qui. Lo ri-segnaliamo nel processo locale, cosi' `ai_degradata()`
+            # dice la verita' anche al chiamante HTTP e i suoi retry ripartono davvero
+            # (queue_processor._auto_classify_saved_rows). Worker vecchi non inviano
+            # il campo -> False -> comportamento invariato.
+            if payload.get("degradata"):
+                from services.ai_service import _segnala_ai_degradata
+                _segnala_ai_degradata("worker HTTP ha risposto col fallback deterministico")
             logger.info(
                 f"✅ Worker classify (con confidenza): {len(categorie)} prodotti"
                 + (f" user_id={user_id}" if user_id else "")
+                + (" ⚠️ AI DEGRADATA lato worker" if payload.get("degradata") else "")
             )
             return categorie, confidenze
         except AIDailyLimitExceededError:

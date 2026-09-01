@@ -3760,7 +3760,15 @@ def _build_compiled_patterns() -> Tuple[list, list]:
 try:
     _PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = _build_compiled_patterns()
 except Exception as e:
-    logger.error(f"Errore buildcompiledpatterns: {e}")
+    # Liste vuote = il dizionario keyword NON matcha piu' nulla: applica_correzioni_dizionario
+    # restituisce la categoria in ingresso invariata, senza errori. Il modulo si importa,
+    # l'app sembra sana e L7 e' spento. Il messaggio deve dire la CONSEGUENZA, non solo la causa.
+    logger.error(
+        "DIZIONARIO KEYWORD DISATTIVATO: compilazione pattern fallita (%s: %s). "
+        "Le %d keyword di DIZIONARIO_CORREZIONI non verranno piu' applicate: le righe "
+        "dipenderanno solo da memoria/regole forti/AI. Va risolto, non e' degrado accettabile.",
+        e.__class__.__name__, e, len(DIZIONARIO_CORREZIONI),
+    )
     _PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = [], []
 
 
@@ -3820,7 +3828,13 @@ def _build_patterns_collassati() -> Tuple[list, list]:
 try:
     _PATTERNS_ALIMENTI_COLLASSATI, _PATTERNS_CONTENITORI_COLLASSATI = _build_patterns_collassati()
 except Exception as e:
-    logger.error(f"Errore build_patterns_collassati: {e}")
+    # Meno grave del precedente (e' il solo recupero refusi, stadio 2), ma va detto:
+    # senza questi pattern "MOZZARELA" e simili non vengono piu' riconosciuti.
+    logger.error(
+        "RECUPERO REFUSI DISATTIVATO: compilazione pattern collassati fallita (%s: %s). "
+        "Le descrizioni con doppie errate (es. MOZZARELA) non saranno piu' recuperate.",
+        e.__class__.__name__, e,
+    )
     _PATTERNS_ALIMENTI_COLLASSATI, _PATTERNS_CONTENITORI_COLLASSATI = [], []
 
 # Regex controllo caratteri (compilata a livello modulo, non ad ogni chiamata)

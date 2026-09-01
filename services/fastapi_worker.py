@@ -674,6 +674,15 @@ class ClassifyResponse(BaseModel):
     confidenze: Optional[List[str]] = None
     count: int
     elapsed_ms: int
+    # `classifica_con_ai` NON solleva mai: quando l'AI e' irraggiungibile ritorna
+    # comunque una lista valida e allineata, prodotta dal fallback deterministico.
+    # Il chiamante non puo' distinguere i due casi guardando le categorie, e
+    # `ai_degradata()` e' un ContextVar: vive nel processo che ha classificato,
+    # non in quello che ha fatto la POST. Senza questo campo il retry del worker
+    # (queue_processor._auto_classify_saved_rows) usciva sempre al primo giro
+    # credendo che l'AI avesse risposto. Default False: un worker vecchio che non
+    # lo invia viene letto come "non degradato", cioe' il comportamento di prima.
+    degradata: bool = False
 
 
 class ParseResponse(BaseModel):
@@ -791,16 +800,23 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
             return_confidenze=True,
         )
 
+        # Letto QUI: siamo nel processo che ha eseguito classifica_con_ai, l'unico
+        # dove il ContextVar e' valorizzato. Il chiamante HTTP lo riceve nel body.
+        from services.ai_service import ai_degradata
+        _degradata = ai_degradata()
+
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
             f"✅ /api/classify: {len(body.descrizioni)} descrizioni → {elapsed_ms}ms"
             + (f" user_id={body.user_id}" if body.user_id else "")
+            + (" ⚠️ AI DEGRADATA (fallback deterministico)" if _degradata else "")
         )
         return ClassifyResponse(
             categorie=categorie,
             confidenze=confidenze,
             count=len(categorie),
             elapsed_ms=elapsed_ms,
+            degradata=_degradata,
         )
 
     except HTTPException:

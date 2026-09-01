@@ -20136,6 +20136,11 @@
           "elapsed_ms": {
             "type": "integer",
             "title": "Elapsed Ms"
+          },
+          "degradata": {
+            "type": "boolean",
+            "title": "Degradata",
+            "default": false
           }
         },
         "type": "object",

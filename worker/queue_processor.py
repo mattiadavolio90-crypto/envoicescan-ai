@@ -83,9 +83,28 @@ except Exception:  # pragma: no cover - fallback: senza deadline, nessun budget 
     def ai_budget_rimanente():
         return None
 
+# I fallback d'import qui sotto tengono in piedi il worker se `services.ai_service`
+# non e' importabile, ma DEGRADANO la categorizzazione (niente dizionario, niente
+# regole forti, niente rilevamento descrizioni dubbie). Prima erano `except` muti:
+# il worker girava azzoppato e l'unico sintomo era un aumento di 'Da Classificare',
+# indistinguibile da un catalogo difficile. Ora ogni degrado si dichiara a ERROR.
+_IMPORT_DEGRADATI: list[str] = []
+
+
+def _segnala_import_degradato(nome: str, exc: BaseException) -> None:
+    _IMPORT_DEGRADATI.append(nome)
+    logging.getLogger(__name__).error(
+        "IMPORT DEGRADATO: '%s' non importabile da services.ai_service (%s: %s). "
+        "Il worker prosegue con un sostituto ridotto: la qualita' della "
+        "categorizzazione e' compromessa finche' l'import non torna a funzionare.",
+        nome, exc.__class__.__name__, exc,
+    )
+
+
 try:
     from services.ai_service import aggiorna_streak_classificazione, _STREAK_NON_PRECARICATO
-except Exception:  # pragma: no cover - fallback per worker CLI senza dipendenze UI
+except Exception as _exc:  # pragma: no cover - fallback per worker CLI senza dipendenze UI
+    _segnala_import_degradato("aggiorna_streak_classificazione", _exc)
     _STREAK_NON_PRECARICATO = object()
 
     def aggiorna_streak_classificazione(*_args, **_kwargs):
@@ -93,7 +112,9 @@ except Exception:  # pragma: no cover - fallback per worker CLI senza dipendenze
 
 try:
     from services.ai_service import enforce_no_unclassified_category
-except Exception:  # pragma: no cover - fallback difensivo
+except Exception as _exc:  # pragma: no cover - fallback difensivo
+    _segnala_import_degradato("enforce_no_unclassified_category", _exc)
+
     def enforce_no_unclassified_category(categoria, _descrizione, source="worker_queue"):
         cat = str(categoria or "").strip()
         if cat and cat.upper() != "DA CLASSIFICARE":
@@ -102,13 +123,17 @@ except Exception:  # pragma: no cover - fallback difensivo
 
 try:
     from services.ai_service import descrizione_e_dubbia
-except Exception:  # pragma: no cover - fallback difensivo
+except Exception as _exc:  # pragma: no cover - fallback difensivo
+    _segnala_import_degradato("descrizione_e_dubbia", _exc)
+
     def descrizione_e_dubbia(_descrizione, _fornitore=None, _categoria=None):
         return False
 
 try:
     from services.ai_service import _applica_guardrail_note_con_importo
-except Exception:  # pragma: no cover - fallback difensivo
+except Exception as _exc:  # pragma: no cover - fallback difensivo
+    _segnala_import_degradato("_applica_guardrail_note_con_importo", _exc)
+
     def _applica_guardrail_note_con_importo(_descrizione, categoria, prezzo):
         cat = str(categoria or "")
         if cat not in {"📝 NOTE E DICITURE", "NOTE E DICITURE"}:
@@ -167,7 +192,13 @@ try:
         if not finale:
             return False
         return finale.upper() == cat.upper()
-except Exception:  # pragma: no cover - fallback difensivo
+except Exception as _exc:  # pragma: no cover - fallback difensivo
+    # Il piu' grave dei cinque: senza queste due il worker perde DIZIONARIO e
+    # REGOLE FORTI insieme. Nessuna proposta AI puo' piu' essere confermata dal
+    # runtime, quindi solo le GPT 'alta' vengono scritte e tutto il resto finisce
+    # in coda. Il sistema "funziona" ma classifica molto peggio, in silenzio.
+    _segnala_import_degradato("dizionario+regole forti (runtime deterministico)", _exc)
+
     def _categoria_deterministica_runtime(_descrizione):
         return None
 

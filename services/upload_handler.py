@@ -575,6 +575,9 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
 
         remaining_reasons = Counter()
         remaining_descs: list[str] = []
+        # Descrizioni rimaste non classificate per un guasto AI (non per descrizione
+        # povera): servono a separare le due cause nel riepilogo mostrato al cliente.
+        _desc_errore_ai: set[str] = set()
 
         for desc, meta in desc_map.items():
             if not meta['eligible']:
@@ -660,7 +663,18 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                 categories = ['Da Classificare'] * len(chunk)
                 confidences = ['bassa'] * len(chunk)
             except Exception as ai_exc:
-                logger.warning(f"[UPLOAD AI] Fallback AI fallito: {ai_exc}")
+                # La causa qui e' TECNICA (AI irraggiungibile), non "descrizione povera".
+                # Prima queste righe finivano in 'dati_insufficienti' e il cliente leggeva
+                # «dati insufficienti» mentre il vero motivo era che l'AI non rispondeva:
+                # una diagnosi attivamente fuorviante. Le marchiamo per attribuirle alla
+                # causa giusta qui sotto.
+                logger.error(
+                    "[UPLOAD AI] AI non raggiungibile su chunk di %d descrizioni (%s: %s) — "
+                    "le righe restano Da Classificare per causa tecnica, non per descrizione povera",
+                    len(chunk), ai_exc.__class__.__name__, ai_exc,
+                )
+                summary['ai_non_raggiungibile'] = True
+                _desc_errore_ai.update(chunk)
                 categories = ['Da Classificare'] * len(chunk)
                 confidences = ['bassa'] * len(chunk)
 
@@ -669,7 +683,10 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                 meta = desc_map[desc]
 
                 if categoria_finale == 'Da Classificare':
-                    remaining_reasons['dati_insufficienti'] += 1
+                    if desc in _desc_errore_ai:
+                        remaining_reasons['ai_non_raggiungibile'] += 1
+                    else:
+                        remaining_reasons['dati_insufficienti'] += 1
                     remaining_descs.append(desc)
                     continue
 
