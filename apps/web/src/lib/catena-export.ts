@@ -81,7 +81,12 @@ export function rigaExportGruppo(
  * il chiamante salta `sheet_add_aoa`.
  */
 export function notaIncompleti(nIncompleti: number): string | null {
-  if (nIncompleti <= 0) return null;
+  // `!(n > 0)` e NON `n <= 0`: sono diversi per NaN, e l'originale nel .tsx era
+  // `if (data.n_incompleti > 0) {…}`. Con `<= 0` un NaN produrrebbe la nota
+  // "NaN sedi non hanno…" invece di nessuna nota. Oggi irraggiungibile
+  // (`n_incompleti` nasce da len()/sum() nel worker), ma un'estrazione che
+  // cambia semantica su un input di bordo resta un'estrazione infedele.
+  if (!(nIncompleti > 0)) return null;
   return `Margine di gruppo parziale: ${nIncompleti} ${
     nIncompleti === 1 ? "sede non ha" : "sedi non hanno"
   } ancora i costi caricati.`;
@@ -119,8 +124,15 @@ export function headerPivot(dimLabel: string, pv: readonly { nome: string }[]): 
  * commerciale italiana e **non e' nemmeno una regola sola**. Misurato:
  * `1.005 -> 1` ma `0.005 -> 0.01`; `2.675 -> 2.68` ma `-2.675 -> -2.67`.
  * La causa non e' `Math.round` (che su `.5` esatto va verso +infinito) ma la
- * rappresentazione binaria: `1.005*100` vale `100.49999...`, quindi non c'e'
- * nessun `.5` da arrotondare. Il risultato dipende dal valore, non dal segno.
+ * rappresentazione binaria. Due passaggi, non uno:
+ *   1. il **valore** decide se il prodotto cade su un `.5` esatto —
+ *      `2.675*100` da' `267.5` esatto, ma `1.005*100` da' `100.49999...`,
+ *      dove non c'e' nessun `.5` da arrotondare e `Math.round` non entra in
+ *      gioco affatto;
+ *   2. **se** il `.5` esatto c'e', allora il **segno** decide il verso, perche'
+ *      `Math.round` va verso +infinito: `267.5 -> 268` ma `-267.5 -> -267`.
+ * Per questo `2.675 -> 2.68` e `-2.675 -> -2.67`, mentre `1.005` e `-1.005`
+ * danno entrambi `1`.
  *
  * Si fotografa e non si corregge: e' lo stesso identico calcolo di
  * `righeExportPv` in `@/lib/catena-tag` e di ~altri punti dell'app. Un fix qui

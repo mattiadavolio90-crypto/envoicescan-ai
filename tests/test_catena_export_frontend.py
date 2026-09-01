@@ -614,3 +614,21 @@ def test_ogni_riga_pivot_ha_tutte_le_colonne_dell_header():
     for riga in [*r["rows"], r["totale"]]:
         assert set(riga.keys()) == set(r["header"])
     assert r["rows"][0]["Nord"] == 0
+
+
+def test_nota_incompleti_su_nan_non_produce_nota():
+    """`!(n > 0)` e NON `n <= 0`: divergono su NaN.
+
+    L'originale nel `.tsx` era `if (data.n_incompleti > 0) {…}`. Riorganizzando
+    la guardia in `if (n <= 0) return null` avevo introdotto una divergenza:
+    `NaN <= 0` è `false`, quindi la nota usciva come «NaN sedi non hanno ancora
+    i costi caricati». Trovata dal code-reviewer con un oracolo che generava
+    NaN — il mio non lo faceva.
+
+    Irraggiungibile oggi (`n_incompleti` nasce da `len()`/`sum()` nel worker),
+    ma un'estrazione che cambia semantica su un input di bordo è comunque
+    infedele: il test la tiene ferma se qualcuno "semplifica" la guardia.
+    """
+    assert _esegui("emit(m.notaIncompleti(NaN));") is None
+    assert _esegui("emit(m.notaIncompleti(0));") is None
+    assert _esegui("emit(m.notaIncompleti(1));") is not None
