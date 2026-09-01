@@ -1,144 +1,120 @@
-# Prompt prossima sessione — il resto di `(app)/catena/`
+# Prompt prossima sessione — `(app)/dashboard/`, 1.749 righe
 
-> Scritto l'1/9/2026 a chiusura della prima passata su `catena/`.
+> Scritto l'1/9/2026 dopo la **seconda** passata su `catena/`, che ha portato
+> l'area al 90%.
 > **Le cifre qui dentro sono misurate a quel HEAD. Ri-misurale, non ereditarle.**
-> È la regola che questo progetto ha già violato quattro volte in tre giorni.
+> È la regola che questo progetto ha violato **cinque** volte in tre giorni —
+> l'ultima l'1/9, quando ho scritto «191 test» e «225 righe» senza ricontare a
+> fine lavoro: erano 194 e 229, e le ha trovate il reviewer.
 
 ---
 
 ## 0. Prima di qualunque cosa — controlli di sessione
 
 ```bash
-git status --short                      # file aperti: possono essere di altre sessioni
+git status --short                      # dev'essere pulito
 git log --oneline origin/main..main     # quanti commit sono in coda?
 ```
 
-**La coda non vuota è normale, non un allarme**: Mattia tiene aperte più
-sessioni insieme e spedisce tutto la sera in una volta. Leggi il numero adesso
-(non fidarti di quello scritto qui) e **riportalo a fine sessione**, distinguendo
-il tuo lavoro da quello che c'era già — «in coda: 7 commit, 3 miei». Niente ⚠️,
-niente domanda in apertura.
-
+**Se la coda non è vuota, dillo a Mattia subito**, con il numero — **quello che
+leggi tu adesso**, non quello scritto qui. A fine giornata dell'1/9 erano **8**.
 Il push manda **tutti** i commit accumulati — e **il push È il deploy**. Non
 pushare mai di iniziativa: la finestra è la sera/notte, e la decide Mattia.
 
 Si lavora su **`main` locale**. Niente branch, niente PR (`WORKFLOW.md` §0).
 
-**Il working tree può contenere lavoro di un'altra sessione**, ed è il caso
-normale. Regola: non è tuo, **non committarlo** (attenzione a `git add -A`), e
-non toccare quei file senza dirlo. Lo citi a fine sessione insieme alla coda.
-
-Esempio reale dell'1/9, utile perché mostra l'effetto collaterale: nel tree
-c'erano `services/consumi_service.py`, la migration
-`20260901120000_rpc_admin_consumi_mensili.sql` e modifiche a `routers/admin.py`,
-`config/constants.py`, `routers/account.py`. Facevano fallire 2 test
-(`test_flusso_dati_admin.py::test_badges_*`) **nel tree ma non su checkout
-pulito**: prima di concludere che hai rotto tu qualcosa, verifica senza le
-modifiche altrui.
-
-Un caso però va segnalato davvero: una **migration non tracciata** è schema che
-non esiste in nessun file — quella dilla, non è routine.
+⚠️ **Nel tree c'è lavoro di un'altra sessione** (consumi admin: `4bce085` più
+modifiche non committate). Porta una **migration mai confrontata col DB live**
+(`20260901120000_rpc_admin_consumi_mensili.sql`). Non è tuo, non committarlo, ma
+**dillo a Mattia**: è schema che nessuno ha ancora verificato esistere davvero.
 
 ---
 
-## 1. La dimensione: il resto di `catena/` — 1.767 righe
+## 1. La dimensione: `(app)/dashboard/` — 1.749 righe
 
-La prima passata (1/9) ha chiuso 3 file su 6. **Non è più un'area vergine**, ma
-è la sola dove resta un blocco grosso e omogeneo.
+`catena/` è **chiusa** (90%: restano solo `card-segnali.tsx` e le pages, entrambe
+senza logica pura). `dashboard/` è ora l'area 🔴 più grande, e ha un aggancio già
+pronto: **`MolAndamento` in `dashboard/kpi-block.tsx` è il gemello di
+`MolSparkline`** — stessa logica, già estratta e testata in
+`lib/catena-confronti.ts` come `calcolaSparkline`, ma la copia di dashboard è
+**intatta**. È il punto di partenza naturale.
 
-Misurato l'1/9 (`wc -l`):
+Misura tutto tu: `find "apps/web/src/app/(app)/dashboard" -type f | xargs wc -l`.
 
-| File | Righe | Note |
-|---|---:|---|
-| `gruppo-tag-section.tsx` | 721 | **il candidato naturale** |
-| `finestra-costi-gruppo.tsx` | 553 | |
-| `config-assistente-catena.tsx` | 202 | |
-| `card-segnali.tsx` | 110 | quasi tutto stato + fetch |
-| `page.tsx` · `fatture/page.tsx` · `loading.tsx` | 76 · 77 · 28 | zero logica pura |
-
-### Cosa ho già verificato per te (1/9)
-
-- **`gruppo-tag-section.tsx` delega già** a `lib/tag-candidati.ts`
-  (`calcolaCandidati`, `MIN_LETTERE_RICERCA`): il precedente di estrazione esiste
-  dentro il file stesso, è il modello da seguire.
-- Logica pura già mappata lì dentro: `maxPv`/`maxForn`/`maxTrend`, la soglia
-  «servono ≥2 prezzi per confrontare» (`:551`), `percentualeBarra` replicata 3
-  volte con regole diverse (`:644`, `:690`, `:707` — solo l'ultima ha il floor a
-  4%), `vuoto` con `every(p => p.spesa === 0)` (uguaglianza float su denaro),
-  e il confronto colore a `:653` che usa `===` su float **senza** la guardia
-  `best !== worst` che invece esiste in `cellTone`.
-- **`finestra-costi-gruppo.tsx` ha un bug vero**: `parseImportoIt` (`:354`) fa
-  `replace(",", ".")` **non globale** → `"1.234,56"` diventa `NaN`.
-- **`config-assistente-catena.tsx:82-83`**: con `segnali=[]` (load fallito) il
-  payload è `[]`, che il backend legge come «niente escluso» → **riattiva tutto
-  in silenzio**. Oggi è protetto da una guardia di UI (`disabled` a `:194`), cioè
-  una guardia di *interfaccia* su una regola di *dati*.
+Alternative, se Mattia preferisce: `(app)/impostazioni/` (806),
+`(app)/agenda/` (693), o la **coda** qui sotto al §5.
 
 ---
 
-## 2. Il metodo, battuto 6 volte — non inventarne uno nuovo
+## 2. Il metodo, battuto 8 volte — non inventarne uno nuovo
 
-1. **Ricognizione**: leggi, misura, e **verifica le ipotesi del prompt sul DB
-   di produzione prima di crederci**. L'1/9 **due su tre erano sbagliate**: la
-   sparkline rossa non era raggiungibile (il worker spegne il grafico prima) e
-   di letterali IVA nell'area non ce n'era **nemmeno uno**.
+1. **Ricognizione**: leggi, misura, e **verifica le ipotesi del prompt prima di
+   crederci**. L'1/9 (2ª passata) **tre su cinque erano sbagliate**, e una
+   avrebbe fatto sbagliare il fix: vedi §2bis.
 2. **Estrai la logica pura** in un modulo `lib/` nuovo, **byte per byte, senza
-   correzioni**. Poi verifica che il diff dei componenti contenga **solo import
-   e chiamate**: `git diff -U0 | grep '^+'`. Se compare logica, il taglia-incolla
-   non era fedele — e un test verde su un'estrazione infedele certifica il codice
-   sbagliato. È il rischio numero uno, più del test stesso.
-3. **`import type { X }`, non `import { type X }`.** La seconda forma lascia in
-   piedi la import statement, node carica `lib/gruppo.ts` → `./worker` (import
-   relativo che il resolve hook non riscrive) e l'harness muore con
-   `ERR_MODULE_NOT_FOUND`. Costata 10 minuti l'1/9, la ritroverai identica.
-4. **Test con `esegui_ts`** (`tests/helpers_ts.py`), non un runner frontend.
-   Niente runner in `apps/web/`: `deploy-vercel.yml` scatta su `apps/web/**`, un
-   runner lì farebbe partire un **deploy di produzione a ogni merge di un test**.
+   correzioni**. Poi `git diff -U0 | grep '^+'` sul componente: deve contenere
+   **solo import e chiamate**.
+   ⚠️ **Quel gate dimostra che la logica è USCITA dal `.tsx`, non che sia
+   ARRIVATA INTATTA in `lib/`.** Se durante la copia scrivi un `Math.round` che
+   prima non c'era, `tsc` passa, i test (scritti dopo, sul codice già estratto)
+   passano, e il gate pure. Per le funzioni dove "migliorare" è tentante —
+   regex, formule che finiscono in uno `style` — il controllo vero è un
+   **oracolo**: valuta l'espressione originale presa da `git show HEAD:<file>`
+   contro il modulo nuovo su ~200 input avversi. L'1/9 ne ho fatti 236 su due
+   regex di slug: zero divergenze, ~20 minuti.
+3. **`import type { X }`, non `import { type X }`.** La seconda lascia in piedi
+   la import statement e l'harness muore con `ERR_MODULE_NOT_FOUND`.
+4. **Test con `esegui_ts`** (`tests/helpers_ts.py`), mai un runner in
+   `apps/web/`: `deploy-vercel.yml` scatta su `apps/web/**` e ogni test farebbe
+   partire un **deploy di produzione**.
 5. **Prova per mutazione, sempre.** Copia di `apps/web/src` in scratchpad,
-   `helpers_ts.WEB_SRC` ridiretto alla copia via `-p conftest_mut` (plugin, non
-   un conftest raccolto) — **mai sul file del repo**. Lo script deve asserire
-   **esattamente 1 sostituzione** e fermarsi altrimenti.
+   `helpers_ts.WEB_SRC` ridiretta via `-p conftest_mut` (plugin, non un conftest
+   raccolto) — **mai sul file del repo**.
 6. **Controprove obbligatorie**: almeno un mutante *equivalente* che deve
-   **sopravvivere**. Se muore tutto, il test non discrimina, è rigido.
-7. **Un mutante sopravvissuto va capito, non zittito.** L'1/9 ne sono usciti due
-   opposti: uno (`-Infinity` → `+Infinity`) era **fixture povera** — con un solo
-   null il segno non è osservabile, serve il secondo; l'altro (`v == null` in
-   `cellTone`) era **equivalenza vera**, documentata nel sorgente invece di
-   forzare un test che la zittisse. Distinguere i due casi è il lavoro.
+   **sopravvivere**. Se muore tutto, il test è rigido, non forte.
+7. **Un mutante sopravvissuto va capito, non zittito.** Fixture povera ed
+   equivalenza vera sono due esiti diversi: la prima si chiude con un dato, la
+   seconda si documenta nel sorgente.
 
 ### L'harness di mutazione
 
 Sta in `/tmp/claude-*/scratchpad/muta.py` (si perde a fine sessione, riscrivilo).
+**Validalo sui TRE lati prima di fidartene** — l'1/9 ha funzionato:
+- un mutante palese (`return "999999%"`) deve **morire**;
+- una controprova innocua (un commento cambiato) deve **sopravvivere**;
+- un pattern **inesistente** deve **fermare il giro**, non produrre un falso
+  sopravvissuto. Una regex che matcha 0 volte lascia il file identico
+  all'originale: il test resta verde e sembra un'equivalenza.
 
-**Validalo sui DUE lati prima di fidartene**: un mutante palese (`return 999999`)
-deve **morire**, e una controprova (un commento cambiato) deve **sopravvivere**.
-Il 31/8 il `code-reviewer` ha misurato 40/40 uccisi con un harness rotto: passava
-`--timeout=300` senza `pytest-timeout`, pytest usciva con **rc=4** (usage error)
-e lui leggeva `rc != 0` come «ucciso». **Distingui `rc=1` (test rosso) da `rc≥2`
-(errore d'uso)**, con un assert esplicito. `pytest-timeout` **non è installato**:
-verificato l'1/9, il flag fa ancora uscire pytest con rc=4.
+`pytest-timeout` **non è installato** (riverificato l'1/9): `--timeout` fa uscire
+pytest con **rc=4**. Tratta `rc=1` come ucciso e **`rc>=2` come errore d'uso**
+che interrompe il giro. Il 31/8 un harness ha misurato 40/40 così.
 
-### Due lacune che il reviewer ha trovato, e che rifarai se non stai attento
+### 2bis. Le tre lezioni della 2ª passata
 
-- **Fixture con soli valori positivi.** `0` e `-Infinity` sono indistinguibili
-  se tutto è positivo: entrambi perdono contro tutto. Se la funzione ordina o
-  confronta, **metti un valore negativo nella fixture** — in `catena/` i margini
-  negativi esistono (Offside, 8 mesi su 8).
-- **Coerenza interna scambiata per correttezza.** Asserire che due output
-  combacino fra loro non prova che siano giusti: un path SVG sbagliato in modo
-  coerente passa. Su una geometria, **asserisci le coordinate in assoluto**.
+- **Non generalizzare una conclusione locale a tutto il file.** Avevo dichiarato
+  equivalente un `??` (in una funzione dove il tipo escludeva lo `0`) e non ho
+  riverificato l'**altro** `??` dello stesso file, dove `number | null` rende lo
+  `0` raggiungibile. Il reviewer l'ha trovato con un mutante che sopravviveva a
+  110 test.
+- **Il fix "ovvio" può non essere il fix.** Il bug dell'importo italiano
+  (`"1.234,56"` → NaN) sembra causato dal `replace` non globale. **Non lo è**:
+  `replaceAll` lascia il difetto identico, perché a rompere è il **punto** delle
+  migliaia. La ricetta vera —
+  `Number(t.replace(/\./g, "").replace(",", "."))` — è verificata e sta nel
+  commento di `parseImportoManuale`. Il mutante `replace→replaceAll` è
+  un'equivalenza, non una lacuna.
+- **Le fixture di soli valori positivi nascondono metà del comportamento.** In
+  `catena/` la `spesa` è netta delle note di credito e può essere negativa
+  davvero: tre anomalie (barra a `-30%`, pavimento che alza i negativi a 4%,
+  `Math.max(0, …)` che restituisce un valore fuori lista) sono invisibili senza.
 
 ### La tecnica dello stub `fetch` (riusabile)
 
-`helpers_ts.py` stubba `globalThis.fetch` a `throw`. Per testare una funzione che
-fa rete, **riassegnalo dentro l'espressione node**, dopo il prologo — nessuna
-modifica a `helpers_ts.py`, nessun effetto sugli altri test. Esempio completo in
-`tests/test_margini_netto_mese_frontend.py`.
-
-**Lo stub deve servire `json` anche quando `ok` è `false`**: una 500 di FastAPI
-ha un body JSON valido (`{"detail": ...}`). Uno stub che su `ok:false` non
-espone `json` è irrealistico e lascia vivere il mutante che toglie il controllo
-su `r.ok` — è successo, 12 test su 12 non lo vedevano.
+`helpers_ts.py` stubba `globalThis.fetch` a `throw`, ma il prologo è concatenato
+**prima** dell'espressione: riassegnalo dentro l'espressione node. Esempio
+completo in `tests/test_margini_netto_mese_frontend.py`. **Lo stub deve servire
+`json` anche quando `ok` è `false`** — una 500 di FastAPI ha un body JSON valido.
 
 ---
 
@@ -147,100 +123,100 @@ su `r.ok` — è successo, 12 test su 12 non lo vedevano.
 Owner, non lettore di codice: decide **cosa**, non come.
 
 **Domande di stato** («a che punto siamo», «cosa manca»): **una riga di
-verdetto**, **max 3 punti**, **una domanda** se serve una decisione, e **«Vuoi
-il dettaglio?»**. Tetto ~10 righe. Niente tabelle, niente percorsi con numero di
+verdetto**, **max 3 punti**, **una domanda** se serve una decisione, e **«Vuoi il
+dettaglio?»**. Tetto ~10 righe. Niente tabelle, niente percorsi con numero di
 riga. Un mio errore si corregge in **mezza riga**.
 
-**A fine planning** (`ExitPlanMode`), sempre e **nel messaggio in chat**, non
-solo nel file del piano: riepilogo non tecnico **+ tabella fase / modello /
-sforzo / `ultrathink`**. Il 31/8 l'ho scritta solo nel file e Mattia me l'ha
-contestata: «molto male». Il modello **lo sceglie lui**: l'1/9 ha chiesto Opus su
-tutte le fasi, non il misto che avevo proposto — proponi, non decidere.
+**A fine planning** (`ExitPlanMode`), sempre e **nel messaggio in chat**, non solo
+nel file del piano: riepilogo non tecnico **+ tabella fase / modello / sforzo /
+`ultrathink`**. Il modello **lo sceglie lui**: l'1/9 ha chiesto Opus su tutte le
+fasi in entrambe le sessioni — proponi, non decidere.
 
 ---
 
 ## 4. Chiusura — tutti i punti, non tre (`WORKFLOW.md` §5bis)
 
-1. Prova per mutazione, con **bilancio dichiarato**: N mutanti, M uccisi, K
-   sopravvissuti **elencati col motivo**. I sopravvissuti si dichiarano.
+1. Mutazione con **bilancio dichiarato**: N mutanti, M uccisi, K sopravvissuti
+   **elencati col motivo**.
 2. `python -m pytest tests/` verde + `cd apps/web && npx tsc --noEmit`.
-   **`tsc` controlla i tipi e non esegue niente**: non è una rete sul
-   comportamento.
+   **`tsc` controlla i tipi e non esegue niente.**
 3. **`/code-reviewer`** sul diff cumulativo, chiedendogli di **rifare la
-   mutazione con i suoi mutanti**. Negli ultimi 5 giri ha trovato ogni volta
-   qualcosa. Il gate `.claude/.reviewer_gate_ok` **si consuma**.
-   Nota: **il reviewer sbaglia anche.** L'1/9 la conclusione su `R04` era giusta
-   ma la prova allegata era **falsa** (sulla sua fixture mutante e originale
-   danno lo stesso risultato). **Riproduci il rilievo prima di accettarlo**, e
-   digli quando ha torto.
-4. **Verbale** in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md`: perimetro
-   misurato **e cosa non copre e perché**, ipotesi smentite, esposizione in euro,
-   tecniche riusabili, e la coda di quel che resta **con la sua misura**.
+   mutazione con i suoi mutanti**. Negli ultimi 6 giri ha trovato ogni volta
+   qualcosa — l'1/9 (2ª passata) una fixture mancante che nessuno dei miei 51
+   mutanti copriva. Il gate `.claude/.reviewer_gate_ok` **si consuma**.
+   Nota: **il reviewer sbaglia anche.** **Riproduci il rilievo prima di
+   accettarlo**, e digli quando ha torto.
+4. **Verbale** in `AUDIT_ONEFLUX_STATO_2026-08-29_STORICO.md`: perimetro misurato
+   **e cosa non copre e perché**, ipotesi smentite, tecniche riusabili, coda con
+   la sua misura.
 5. **Roadmap** `AUDIT_ONEFLUX_STATO_2026-08-29.md` aggiornata.
 6. **`AUDIT_COPERTURA.md` ri-misurato contro HEAD**, **risommando la colonna**.
-   ⚠️ **Un'estrazione NON è a somma zero**: l'1/9 `lib/` ha fatto +284 e
-   `catena/` −83, delta **+201** — il modulo aggiunge firme, tipi e i commenti
-   che spiegano le anomalie. Chi si aspetta il pareggio crede di aver sbagliato
-   la misura: è il contrario. Confronta sempre con
-   `find apps/web/src -type f ! -name '*.woff' | xargs wc -l`.
-   ⚠️ `git archive HEAD apps/web/src | tar -xO | wc -l` include **481 righe di
-   due font `.woff` binari**: il totale è quella cifra **meno 481**.
+   ⚠️ **Un'estrazione NON è a somma zero**: l'1/9 la 1ª passata ha fatto +201 e la
+   2ª **+591** — i moduli aggiungono firme, tipi e i commenti che spiegano le
+   anomalie. Chi si aspetta il pareggio crede di aver sbagliato la misura.
+   ⚠️ `git archive HEAD apps/web/src | tar -xO | wc -l` include **481 righe di due
+   font `.woff` binari**: il totale è quella cifra **meno 481**. All'1/9:
+   **52.205**.
+   ⚠️ **Ri-conta i test e le righe a fine lavoro**, non a metà: è l'errore già
+   fatto cinque volte.
 7. `python scripts/check_documentazione.py` pulito. **Verifica i simboli, non
    l'aritmetica**: le somme dei `.md` non hanno nessuna rete automatica.
-8. Commit su `main` locale, doc **insieme** al codice. In `git status --short`
-   non deve restare **nulla di tuo**: i file di altre sessioni restano, ed è
-   corretto che restino.
+8. Commit su `main` locale, `git status --short` pulito (doc **insieme** al
+   codice).
 9. Riscrivere questo file per la dimensione successiva.
-10. **Una riga sulla coda, senza allarme**: numero totale e quanti sono tuoi —
-    «in coda: 7 commit (3 miei, 4 di altre sessioni), pronti per stasera».
-    **Non pushare.**
+10. **Dire a Mattia quanti commit sono in coda. Non pushare.**
 
 ---
 
 ## 5. La coda — cose trovate e NON fatte, con la loro misura
 
-Non sono dimenticanze: sono esclusioni motivate. Vanno riprese come dimensione
-propria, non infilate in una sessione altrui (§5bis vieta gli strascichi).
+Esclusioni motivate, non dimenticanze. Vanno riprese come dimensione propria
+(§5bis vieta gli strascichi).
 
-- **Le 8 anomalie fotografate in `catena/`** (elenco completo nel verbale 1/9).
-  Le due che pesano di più: `tintConti` con `livello_dati ?? "completo"` — sul
-  campo assente sceglie l'ipotesi **più ottimista** e certifica in verde un MOL
-  che nessuno ha verificato; e la sparkline rossa su MOL in risalita, oggi
-  **disinnescata** da `gruppo.py:873` (filtra i mesi a `netto > 0`) ma che si
-  arma se quel filtro cambia. **Sono un fix, cioè una dimensione a sé**: hanno
-  bisogno della loro finestra di deploy, non di essere infilate in un audit.
-- **7 copie locali di `euro`/`pct`/`num` e 3 di `MESI`** in `catena/`, mentre
-  `lib/format.ts` è «FONTE UNICA» e `lib/mesi.ts` **cita catena** fra i file da
-  centralizzare. Non deduplicate: sostituirle **è un cambio di comportamento** se
-  l'output diverge, e diverge davvero — esistono **due `euro2` omonime con
-  output diverso** (`finestra-margini-coperti.tsx:376` usa `toFixed`, niente
-  separatore migliaia; `gruppo-tag-section.tsx:29` usa `Intl`). Serve prima un
-  test di equivalenza byte per byte.
-- **Il mobile riscrive a mano il gate mensile.**
-  `(mobile)/m/diario/mobile-incassi.tsx:215-235` importa da `margini/periodi.ts`
-  solo `scorporoNetto` e il tipo, poi **riscrive** la scelta
-  override-vs-giornalieri **senza la distinzione null/0**. Un errore di lettura
-  diventa «mese a zero». **Candidato forte** se si apre `(mobile)/`.
-- **`MolAndamento` in `dashboard/kpi-block.tsx`** è il gemello di
-  `MolSparkline`, **intatto**: ha la stessa logica, oggi non estratta né testata.
-  Da unificare con `calcolaSparkline` quando si aprirà `dashboard/` (1.749
-  righe, mai toccata).
+**I fix, che hanno bisogno della loro finestra di deploy:**
+
+- **`parseImportoManuale` in ~25 punti dell'app** — `"1.234,56"` → NaN.
+  **La ricetta è verificata** (§2bis): non è `replaceAll`. Oggi il danno è
+  contenuto da una guardia: l'utente vede un messaggio d'errore sbagliato, il NaN
+  non arriva al backend.
+- **La guardia sulle liste vuote di `config-assistente-catena`** — con un load
+  fallito il POST manda `[]`, che il backend legge come «niente escluso» e
+  riattiva tutto in silenzio. Difesa solo da un `disabled` di UI. Il fix cambia
+  comportamento su uno stato oggi abilitato.
+- **Le 8 anomalie della 1ª passata catena** (elenco nel verbale 1/9), fra cui
+  `tintConti` con `livello_dati ?? "completo"`, che sul campo assente sceglie
+  l'ipotesi **più ottimista** e certifica in verde un MOL non verificato.
+- **Le 8 anomalie della 2ª passata** (verbale 1/9, 2ª sezione), fra cui
+  `classePrezzo` che con prezzi uniformi colora **tutti** i PV di rosso.
+- **Le 9 copie backend del filtro `Da Classificare`** + 2 RPC SQL. Sui dati veri:
+  **0 righe attive**. Richiede una migration su 7 account.
+
+**Le deduplicazioni, che sono cambi di comportamento:**
+
+- **7 copie di `euro`/`pct`/`num` e 10 di `MESI`** — `lib/format.ts` è «FONTE
+  UNICA» e `lib/mesi.ts` **cita catena**, ma nessuno dei file di catena le
+  importa. Sostituirle **cambia l'output**: `num` diverge sui decimali (1 vs 3),
+  `pct` sulla guardia null, e `lib/format.ts` usa `toFixed` dove le copie locali
+  usano `toLocaleString("it-IT")` (separatori diversi). Serve prima un test di
+  equivalenza byte per byte.
+- **`ICONA` in `card-segnali.tsx`**, identica a
+  `(mobile)/m/briefing/mobile-catena.tsx:7-12`. Mappa a componenti `lucide-react`:
+  per estrarla va cambiata forma.
+- **`lib/` importa da `app/`** — inversione di dipendenza, 2 occorrenze. Da
+  girare **quando toccherai `periodi.ts` per altro**.
+
+**Il resto:**
+
+- **`MolAndamento` in `dashboard/kpi-block.tsx`** — gemello di `MolSparkline`,
+  intatto. **È l'aggancio della prossima passata** (§1).
+- **Il mobile riscrive a mano il gate mensile**
+  (`(mobile)/m/diario/mobile-incassi.tsx:215-235`), senza la distinzione
+  null/0: un errore di lettura diventa «mese a zero».
 - **L'asimmetria della Media Ricavi netti** (`lib/margini-aggregati.ts`):
-  fotografata da un test, **non corretta** (decisione di Mattia). 0 sedi su 8 nel
-  caso misto oggi, ma le 66 righe `source='manuale'` hanno tutte `coperti` NULL:
-  si arma da sola.
-- **I 4 letterali IVA** in `carica-ricavi-dialog.tsx:451,452,477,478` (`/1.10`,
-  `/1.22`) invece di `scorporoNetto`. Delta oggi **zero**.
-- **Le 9 copie backend del filtro `Da Classificare`** (8 letterali, 1 sola con la
-  costante e `.strip()`, `fastapi_worker.py:8004`) + 2 RPC SQL. Sui dati veri:
-  **0 righe attive**. Il fix richiede una **migration su 7 account**: dimensione
-  a sé, con la sua finestra di deploy.
-- **`lib/` importa da `app/`** — inversione di dipendenza, 2 occorrenze
-  (`margini-aggregati.ts` e `demo-data.ts`). Da girare **quando toccherai
-  `periodi.ts` per altro**. Non ora: è importato anche da un Server Component.
+  fotografata, non corretta (decisione di Mattia). 0 sedi su 8 oggi, ma le 66
+  righe `source='manuale'` hanno tutte `coperti` NULL: si arma da sola.
 - **`dependencies=[...]` a livello di `APIRouter`**: tocca 238 endpoint.
-- **Il rendering frontend resta non testato ovunque.** Serve un runner di
-  componenti, escluso per ragione strutturale (vedi §2.4). Ogni area «chiusa»
+- **Il rendering frontend resta non testato ovunque.** Ogni area «chiusa»
   significa *logica pura coperta*, non *ogni riga testata* — ed è così che va
   detto a Mattia.
 
@@ -249,8 +225,8 @@ propria, non infilate in una sessione altrui (§5bis vieta gli strascichi).
 ## 6. Trappole che sono già costate ore
 
 - **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
-- **Vercel deploya solo se il commit tocca `apps/web/**`; Railway non ha filtro
-  di path** — anche soli `.md` gli fanno ridispiegare il worker.
+- **Vercel deploya solo se il commit tocca `apps/web/**`; Railway non ha filtro di
+  path** — anche soli `.md` gli fanno ridispiegare il worker.
 - **Zero test frontend**: `npx tsc --noEmit` è l'unica rete, e non esegue niente.
 - **Un test che mocka il client non prova che la query funzioni.** 6 test del
   radar anomalie sono verdi da mesi su una colonna che non esiste.

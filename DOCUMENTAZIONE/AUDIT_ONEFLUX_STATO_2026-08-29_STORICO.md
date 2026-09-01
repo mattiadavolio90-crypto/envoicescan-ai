@@ -864,7 +864,7 @@ passati sotto test.
 
 Coperti `gruppo-tag-section.tsx` (721→717), `finestra-costi-gruppo.tsx`
 (553→549), `config-assistente-catena.tsx` (202→203). Estratte 22 funzioni in due
-moduli nuovi: `lib/catena-tag.ts` (225) e `lib/catena-costi-gruppo.ts` (178).
+moduli nuovi: `lib/catena-tag.ts` (229) e `lib/catena-costi-gruppo.ts` (182).
 
 **Non copre**, e va detto invece di lasciarlo intendere:
 
@@ -920,7 +920,7 @@ Zero divergenze.
 
 ### Il bilancio di mutazione
 
-**51 mutanti, 47 uccisi, 4 sopravvissuti** — tutti e quattro esaminati, nessuno
+**52 mutanti, 48 uccisi, 4 sopravvissuti** — tutti e quattro esaminati, nessuno
 zittito con un test costruito apposta.
 
 L'harness è stato validato sui **tre** lati prima di usarlo: un mutante palese
@@ -997,3 +997,36 @@ la misura: è il contrario.
   funzione estratta in questa passata formatta, di proposito, perché unificarle
   cambia output a schermo (`num` diverge davvero sui decimali).
 - **Le 8 anomalie della prima passata**, ancora aperte.
+
+### La review: una lacuna vera, trovata dove avevo generalizzato una conclusione
+
+Il `code-reviewer` ha rifatto la mutazione con **59 mutanti suoi**, indipendenti,
+uccidendone 54. Quattro dei cinque sopravvissuti sono le equivalenze già
+dichiarate qui sopra, ri-provate in autonomia: tengono tutte.
+
+Il quinto era mio, e non era nel mio catalogo. In `righeExportPv`,
+`p.prezzo_medio ?? "—"` → `|| "—"` sopravviveva a tutti e 110 i test: le fixture
+usavano solo `9.87` e `null`, mai **`0`**, che è l'unico valore su cui i due
+operatori divergono. Ed è raggiungibile con dati veri —
+`routers/gruppo.py:2250` calcola `round(spesa_pv / qta, 2)` quando la quantità è
+positiva, e su un articolo in omaggio il risultato è `0.0`. Con `||` il cliente
+avrebbe letto `—` («prezzo non disponibile») al posto di `0` («gratis»).
+
+**La lezione non è la fixture mancante, è come è nata.** Poche ore prima avevo
+scritto, nel commento di `estremiPrezzo`, che il `??` lì è equivalente a `||`
+perché «`0`, `""` e `false` il tipo del parametro li esclude». Vero in quel
+punto, dove il parametro è una lista. Poi non ho riverificato l'**altro** `??`
+del file, dove il tipo è `number | null` e lo zero esiste eccome: ho trattato una
+conclusione locale come una proprietà del modulo. Rilievo riprodotto prima di
+accettarlo (sorgente `0`, mutante `"—"`), fixture aggiunta, mutante ora ucciso.
+
+Il reviewer ha inoltre corretto due cifre della doc che avevo scritto senza
+ri-misurare a fine lavoro: **194 test** per l'area, non 191, e i due moduli sono
+**229/182 righe**, non 225/178. Ri-misurate e corrette — è la quinta volta in
+tre giorni che una cifra viene ereditata invece che misurata.
+
+**Fuori perimetro ma da dire**: nel range dei commit rivisti ce n'è uno di
+un'altra sessione (`4bce085`, consumi admin) che porta una migration mai
+confrontata col DB live. Il reviewer non ha potuto verificarla (l'MCP Supabase
+gli nega il permesso). Non è di questa passata, ma è schema che nessuno ha
+ancora controllato.

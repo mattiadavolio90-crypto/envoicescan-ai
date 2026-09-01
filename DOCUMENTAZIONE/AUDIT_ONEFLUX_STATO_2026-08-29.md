@@ -174,7 +174,7 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 > **Aggiornato l'1/9 (2 passate nella stessa giornata):** `(app)/catena/` è
 > **chiusa** — 2.746 righe su 3.037 (**90%**). Tutti e 6 i file di logica sono
 > estratti in `lib/catena-confronti.ts`, `lib/catena-tag.ts` e
-> `lib/catena-costi-gruppo.ts`: **191 test, 102 mutanti con 95 uccisi** e 7
+> `lib/catena-costi-gruppo.ts`: **194 test, 103 mutanti con 96 uccisi** e 7
 > equivalenze dichiarate col loro perché.
 >
 > **Restano scoperte 291 righe, per decisione**: `card-segnali.tsx` (110, fetch +

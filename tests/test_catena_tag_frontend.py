@@ -333,6 +333,26 @@ def test_righe_export_pv_chiavi_esatte():
     }
 
 
+def test_righe_export_pv_prezzo_zero_resta_zero():
+    """`?? "—"` e non `|| "—"`: un prezzo di 0 e' un dato, non un dato mancante.
+
+    Raggiungibile con dati veri: `routers/gruppo.py:2250` calcola
+    `round(spesa_pv / qta, 2)` quando la quantita' e' positiva, e su un articolo
+    in omaggio (o una riga netta di nota di credito) il risultato e' 0.0. Con
+    `||` il cliente leggerebbe "—" ("prezzo non disponibile") al posto di 0
+    ("gratis"), che sono due informazioni diverse.
+
+    Lacuna trovata dal code-reviewer: avevo dichiarato equivalente il `??` di
+    `estremiPrezzo` — vero li', dove il parametro e' una lista — e non avevo
+    controllato questo, dove il tipo e' `number | null` e lo 0 esiste davvero.
+    """
+    riga = _ts("emit(m.righeExportPv(input))", [{
+        "ristorante_id": "r1", "nome": "Centro", "spesa": 0, "quantita": 5,
+        "n_righe": 1, "n_fornitori": 1, "incidenza_pct": 0, "prezzo_medio": 0,
+    }])[0]
+    assert riga["Prezzo medio"] == 0
+
+
 def test_righe_export_pv_prezzo_assente_e_trattino():
     riga = _ts("emit(m.righeExportPv(input))", [{
         "ristorante_id": "r1", "nome": "Centro", "spesa": 10, "quantita": 0,
