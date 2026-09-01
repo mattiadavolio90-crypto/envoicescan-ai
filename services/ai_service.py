@@ -3732,9 +3732,12 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
     # percorso capace di classificare, e questa e' la fase che definisce cosa
     # significa "certa": chiuderlo altrove sarebbe chiuderlo dopo il danno.
     #
-    # Il reset a (None, None) e' la parte che conta: senza, un'uscita non tracciata
-    # (o l'except) lascerebbe in circolo la provenienza di una riga PRECEDENTE, e il
-    # canale laterale mentirebbe invece di tacere.
+    # La difesa vera e' che OGNI uscita passa da `_ret_ocp` o da un reset esplicito
+    # (compreso l'except): se una sola uscita non lo facesse, lascerebbe in circolo
+    # la provenienza della riga PRECEDENTE e il canale laterale mentirebbe invece di
+    # tacere. Il reset qui sotto e' la rete: oggi ridondante — un mutante che lo
+    # rimuove sopravvive, ed e' giusto cosi' — ma e' cio' che tiene se un domani
+    # qualcuno aggiunge un `return` nudo.
     def _ret_ocp(categoria: str, fonte: str) -> str:
         _PROVENIENZA_CORRENTE.set(
             (fonte, valuta_fiducia(fonte, categoria, descrizione))
@@ -4785,9 +4788,11 @@ def valuta_fiducia(
     E' lo stesso rovesciamento gia' misurato sul guardrail IVA e sulla memoria
     globale: la terza volta che "il deterministico e' il metro" viene smentito.
 
-    Il criterio che regge la misura declassa 280 righe / 38.193 EUR (0,93%), e sono
-    descrizioni che nessun umano puo' categorizzare senza aprire la fattura:
-    "1 ACCONTO", "COMMISSION", "SALDO", "RICARICHE", "ALIMENTARI".
+    Il criterio che regge la misura declassa 429 righe / 38.323 EUR — l'1,10% delle
+    righe e lo 0,94% dell'importo, sulla popolazione INTERA (39.043 righe / 6.974
+    combinazioni, impronta verificata contro il DB). Sono descrizioni che nessun
+    umano puo' categorizzare senza aprire la fattura: "1 ACCONTO" (14.000 EUR),
+    "COMMISSION" (13.715 EUR), "SALDO", "TARGA", "RICARICHE", "ALIMENTARI".
 
     `descrizione` assente -> nessun declassamento: senza il testo non si puo'
     dubitare di nulla, e inventare un dubbio e' peggio che non averlo.

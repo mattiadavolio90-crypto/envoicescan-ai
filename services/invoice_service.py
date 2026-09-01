@@ -1654,10 +1654,22 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 prezzo_unitario = -prezzo_unitario
 
             # Categorizzazione (usa stesso sistema moderno del path XML)
-            categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id) if current_user_id else "Da Classificare"
-            # Fase 3 — va letta SUBITO: e' un ContextVar, la prossima riga del ciclo
-            # lo sovrascrive (e non sopravvive a un confine di processo).
-            _pdf_fonte, _pdf_fiducia = ultima_provenienza()
+            # Fase 3 — la provenienza va letta SUBITO (ContextVar: la prossima riga
+            # del ciclo lo sovrascrive), e SOLO nel ramo che ha davvero categorizzato.
+            # Senza `user_id` non si chiama `ottieni_categoria_prodotto`, quindi il
+            # reset del ContextVar non gira e `ultima_provenienza()` restituirebbe la
+            # provenienza di una riga PRECEDENTE. Non e' un caso limite: nel worker
+            # `st.session_state` e' un dict vuoto (`services/_streamlit_shim.py`),
+            # quindi `current_user_id` e' sempre None ed e' il ramo NORMALE. Il guard
+            # a valle non basta: `special_row['force_categoria']` puo' trasformare
+            # "Da Classificare" in NOTE E DICITURE dopo questa riga, e la riga
+            # finirebbe a DB dichiarando una fonte che nessuno ha deciso.
+            if current_user_id:
+                categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id)
+                _pdf_fonte, _pdf_fiducia = ultima_provenienza()
+            else:
+                categoria_iniziale = "Da Classificare"
+                _pdf_fonte, _pdf_fiducia = None, None
             categoria_iniziale, fallback_forzato = enforce_no_unclassified_category(
                 categoria_iniziale,
                 descrizione,
