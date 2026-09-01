@@ -3739,8 +3739,12 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
     # rimuove sopravvive, ed e' giusto cosi' — ma e' cio' che tiene se un domani
     # qualcuno aggiunge un `return` nudo.
     def _ret_ocp(categoria: str, fonte: str) -> str:
+        # `fornitore=None` perche' questa funzione non lo riceve: e' la firma, non una
+        # dimenticanza. Oggi non cambia nulla — `descrizione_e_dubbia` ignora del tutto
+        # quel parametro dal 26/06 — ma se un giorno tornasse a pesare, questo percorso
+        # deciderebbe diversamente da `_ret`, che il fornitore ce l'ha.
         _PROVENIENZA_CORRENTE.set(
-            (fonte, valuta_fiducia(fonte, categoria, descrizione))
+            (fonte, valuta_fiducia(fonte, categoria, descrizione, None))
         )
         return categoria
 

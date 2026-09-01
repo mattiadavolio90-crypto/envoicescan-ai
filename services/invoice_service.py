@@ -1668,8 +1668,14 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id)
                 _pdf_fonte, _pdf_fiducia = ultima_provenienza()
             else:
+                # 'nessuna', non NULL: per contratto NULL significa "legacy, si tratta
+                # come certa" (comment della colonna), e qui non c'e' nulla di legacy —
+                # semplicemente nessuno ha classificato. `force_categoria` puo' poi
+                # promuovere la riga a NOTE E DICITURE, quindi il guard su
+                # "Da Classificare" a valle non la intercetta: senza questo, la stessa
+                # riga risulterebbe "certa" da PDF e "L4_dicitura/certa" da XML.
                 categoria_iniziale = "Da Classificare"
-                _pdf_fonte, _pdf_fiducia = None, None
+                _pdf_fonte, _pdf_fiducia = "nessuna", None
             categoria_iniziale, fallback_forzato = enforce_no_unclassified_category(
                 categoria_iniziale,
                 descrizione,

@@ -186,7 +186,10 @@ def test_percorso_pdf_senza_utente_non_eredita_la_provenienza():
     aggirando il guard su "Da Classificare".
     """
     sorgente = (RADICE / "services" / "invoice_service.py").read_text(encoding="utf-8")
-    assert "_pdf_fonte, _pdf_fiducia = None, None" in sorgente
+    # 'nessuna' e non None: NULL per contratto vuol dire "legacy = certa", e una riga
+    # mai classificata non e' legacy. `force_categoria` puo' promuoverla a NOTE E
+    # DICITURE dopo il guard, quindi il valore scritto qui e' quello che finisce a DB.
+    assert '_pdf_fonte, _pdf_fiducia = "nessuna", None' in sorgente
 
 
 # ── I chiamanti passano davvero il contesto ────────────────────────────────
