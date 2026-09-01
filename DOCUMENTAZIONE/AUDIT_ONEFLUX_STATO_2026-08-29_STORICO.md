@@ -1259,3 +1259,30 @@ Due test aggiunti (margini e pivot) che asseriscono
 insieme. Il primo usa `COLS` nella **forma reale del `.tsx`**, con `altoMeglio` e
 `tooltip` che `ColonnaExport` non dichiara: i test precedenti usavano una `COLS`
 ridotta, quindi quella differenza non era coperta.
+
+### Verifica di inerenza (chi altro chiama ciò che ho toccato)
+
+Fatta in entrambe le direzioni, perché una sola non basta:
+
+**In avanti** — ogni simbolo pubblico nuovo ha esattamente il chiamante previsto
+(1 ciascuno), tranne `arrotonda2`, usata solo dentro `catena-export.ts` ed
+esportata per il test: è un dettaglio implementativo, non un'API.
+
+**All'indietro** — dei nomi spariti dai `.tsx` restano solo `slug` e
+`periodoSlug` a zero occorrenze: erano variabili locali, sostituite da
+`slugPeriodo` importata. Tutti gli altri (`toRow`, `header`, `rows`,
+`gruppoRow`, `totaleRow`, `dimLabel`, `nota`) esistono ancora, riassegnati dalle
+chiamate al modulo.
+
+**Contratto pubblico invariato**: i tre `.tsx` toccati avevano 1 `export`
+ciascuno prima e ne hanno 1 dopo. Nessuna funzione spostata era esportata,
+quindi nessun chiamante esterno può essersi rotto — `sintesi-catena.tsx` importa
+solo i due componenti, come prima.
+
+**Nota sul gate di sessione**: l'hook segnalava `services/routers/account.py`
+come «path sensibile toccato». Quel file **non è di questa sessione** — è di
+`4bce085` (consumi admin, sessione parallela) e non compare in nessuno degli 11
+commit di oggi, verificato con `git diff --name-only`. L'hook guarda lo stato
+del repo, non l'autore del commit: con più sessioni in parallelo può segnalare
+lavoro altrui, e la risposta giusta è verificare **di chi è**, non correre a
+rivedere codice che non si è scritto.
