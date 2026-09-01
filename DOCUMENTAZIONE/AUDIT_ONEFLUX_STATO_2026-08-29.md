@@ -174,7 +174,7 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 > **Aggiornato l'1/9 (3 passate nella stessa giornata):** `(app)/catena/` è
 > **chiusa** — 2.800 righe su 2.938 (**95%**), misurate a fine giornata. La
 > logica sta in `lib/catena-confronti.ts`, `catena-tag.ts`,
-> `catena-costi-gruppo.ts` e `catena-export.ts`: **282 test** (contati con
+> `catena-costi-gruppo.ts` e `catena-export.ts`: **283 test** (contati con
 > `--collect-only`, non a mente: le stesure precedenti dicevano 267 e 280).
 >
 > ⚠️ **La 2ª passata l'aveva dichiarata chiusa al 90%, e non lo era.** Contava
