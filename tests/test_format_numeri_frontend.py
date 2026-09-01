@@ -206,3 +206,25 @@ def test_decimale_o_zero_sul_vuoto():
         richiede=DECIMALE,
     )
     assert r == {"vuoto": 0, "valido": 8.5}
+
+
+@pytest.mark.parametrize(
+    "testo,atteso",
+    [
+        ("-1.234,56", -1234.56),      # meno ASCII
+        ("−1.234,56", -1234.56),  # meno unicode U+2212
+        ("–1.234,56", -1234.56),  # en dash
+        ("—1.234,56", -1234.56),  # em dash
+        ("- 1.234,56", -1234.56),      # meno staccato
+        ("+1.234,56", 1234.56),
+        ("-1.000", -1000),
+    ],
+)
+def test_segni_non_ascii_vengono_normalizzati(testo, atteso):
+    """Il meno unicode (U+2212) e i trattini lunghi arrivano copiando da Word,
+    Excel o un PDF — cioè proprio da dove si incolla un importo.
+
+    Senza la normalizzazione `−1.234,56` dava NaN: una nota di credito
+    incollata veniva rifiutata con un messaggio che parla di campi mancanti.
+    """
+    assert _parse(testo) == atteso

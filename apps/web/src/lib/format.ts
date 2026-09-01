@@ -39,6 +39,10 @@ export function formatData(iso: string | null): string {
  * Cosa puo' essere un numero digitato da un utente: cifre, punti, virgole, un
  * segno iniziale. Niente altro.
  *
+ * Il segno accettato e' il trattino ASCII: i parser normalizzano prima il meno
+ * unicode (U+2212) e i trattini lunghi, che arrivano copiando da Word, Excel o
+ * un PDF — cioe' proprio da dove si incolla un importo.
+ *
  * Serve perche' `Number()` accetta notazioni che nessuno scrive in un campo
  * importo e che darebbero un valore silenziosamente sbagliato:
  *   `Number("0x10")` = 16, `Number("1e3")` = 1000, `Number("Infinity")` = Inf.
@@ -76,6 +80,7 @@ export function parseNumeroIt(testo: string | null | undefined): number {
   const pulito = testo
     .replace(/[\s\u00a0\u202f\u2007]/g, "")
     .replace(/€/g, "")
+    .replace(/[\u2212\u2013\u2014]/g, "-")
     .trim();
   if (!FORMA_NUMERICA.test(pulito)) return NaN;
 
@@ -122,6 +127,7 @@ export function parseDecimaleIt(testo: string | null | undefined): number {
     .replace(/[\s   ]/g, "")
     .replace(/€/g, "")
     .replace(/%/g, "")
+    .replace(/[\u2212\u2013\u2014]/g, "-")
     .trim();
   if (!FORMA_NUMERICA.test(pulito)) return NaN;
   return Number(pulito.replace(",", "."));
