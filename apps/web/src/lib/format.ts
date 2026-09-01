@@ -124,7 +124,7 @@ export function parseNumeroItOZero(testo: string | null | undefined): number {
 export function parseDecimaleIt(testo: string | null | undefined): number {
   if (testo == null) return NaN;
   const pulito = testo
-    .replace(/[\s   ]/g, "")
+    .replace(/[\s\u00a0\u202f\u2007]/g, "")
     .replace(/€/g, "")
     .replace(/%/g, "")
     .replace(/[\u2212\u2013\u2014]/g, "-")
