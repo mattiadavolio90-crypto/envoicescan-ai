@@ -1200,3 +1200,28 @@ catalogo (`shutil.Error: [Errno 17] File exists`), perdendo E30–E33. L'harness
 stato reso non-fatale (`dirs_exist_ok`, `rmtree(ignore_errors=True)`), ma la
 regola resta: **un giro di mutazione alla volta**. Il rilancio ha completato i 4
 mutanti mancanti — tutti uccisi.
+
+### Il reviewer ha mutato il file vero del repo
+
+Durante la review, `git status` ha mostrato `apps/web/src/lib/catena-export.ts`
+modificato senza che io lo avessi toccato: `cols.find` → `cols.findLast`, e poco
+dopo `"margine_perc"` → `"margine_eur" as keyof …`. Erano **mutanti del
+`code-reviewer` montati sul sorgente vero**, non su una copia.
+
+Rischi concreti, entrambi materializzati:
+- ho quasi committato un mutante (il primo l'ho intercettato con `git diff`
+  prima del commit — HEAD è rimasto integro, verificato riga per riga);
+- la suite che stavo eseguendo in parallelo stava misurando **un albero mutato**:
+  il risultato è stato scartato e rilanciato su albero pulito. Un «tutto verde»
+  raccolto in quella finestra sarebbe stato un dato falso con l'aspetto di una
+  prova.
+
+Il reviewer è stato avvisato con le istruzioni dell'harness (copia in scratchpad
++ `-p conftest_mut`) e ha ripristinato da solo. **Non ho ripristinato a metà del
+suo giro**: avrebbe falsato il suo esito facendo sopravvivere mutanti che invece
+sarebbero morti.
+
+**Regola che vale per chiunque, agente o umano**: durante una review o una
+mutazione, `git diff` sul working tree va guardato **prima di ogni commit** — e
+un giro di test lanciato mentre qualcun altro muta l'albero non misura il codice
+che credi.
