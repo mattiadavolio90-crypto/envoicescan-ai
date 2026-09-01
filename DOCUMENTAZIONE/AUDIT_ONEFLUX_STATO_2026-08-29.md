@@ -199,6 +199,27 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 > (node leggeva `-2.675` come flag → `rc=9`, stderr vuoto). Corretto alla fonte:
 > vale per tutti i 12 file di test frontend, non solo per catena.
 >
+> **1/9 pomeriggio — i bug fotografati sono stati CORRETTI**, su richiesta
+> esplicita dell'owner. Non è più «in attesa di una finestra»:
+>
+> - **L'importo italiano**: era in **60 punti**, non ~25 come diceva il verbale.
+>   E nella pagina dei ricavi usava `parseFloat`, che è **peggio** di `Number`:
+>   su `"1.234,56"` non dà NaN ma `1.234`, quindi nessun errore e un fatturato
+>   entrava nel MOL come 1,23 €. Fonte unica in `lib/format.ts`, **due varianti**
+>   perché il punto non significa la stessa cosa ovunque (`parseNumeroIt` per gli
+>   importi, `parseDecimaleIt` per ore/percentuali/costi orari): tutti i 58 punti
+>   classificati uno per uno.
+> - **L'arrotondamento** (`arrotonda2`): il mezzo centesimo ora sale sempre ed è
+>   simmetrico. Prima `1.005 → 1` e `-2.675 → -2.67`, due regole diverse.
+> - **Un terzo bug trovato durante le verifiche**: `−1.234,56` col meno unicode
+>   (U+2212, quello che arriva incollando da Word/Excel/PDF) dava NaN. Una nota
+>   di credito incollata veniva rifiutata.
+>
+> ⚠️ **Il backend non fa da rete**: `RicavoGiornalieroItem` dichiara
+> `fatturato_iva10: float` senza `ge`/`le`, e i router leggono `float(x or 0)`.
+> Il parser del frontend era l'unica difesa. Vale la pena valutare una
+> validazione server-side come dimensione a sé.
+>
 > `margini/` (4.709, il MOL) e `scadenziario/` erano state chiuse il 31/8.
 > `workspace/` (5.012) resta 🟠 37%, col resto escluso con misura nel ciclo 08.
 > **Non esiste più un'area frontend grande mai toccata**; le 🔴 rimaste sono

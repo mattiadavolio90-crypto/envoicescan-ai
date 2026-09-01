@@ -119,9 +119,16 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `(app)/prezzi/` | 973 | 2.361 | 🟠 41% | ciclo 07 §3c: variazioni-tab |
 | `(app)/workspace/` | 1.834 | 5.012 | 🟠 37% | ciclo 07 §3c (personale-tab) + **F6 ciclo 08 CHIUSA**: il resto escluso con misura di esposizione live |
 | `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
+
+> **Nota trasversale (1/9):** in `margini/`, `workspace/`, `prezzi/`, `dashboard/`
+> e `(mobile)/` il **parsing degli importi digitati** è ora coperto anche dove la
+> pagina non lo è: le 58 chiamate passano tutte da `lib/format.ts`, che ha 60
+> test. Le percentuali di riga non cambiano — il fix ha sostituito chiamate, non
+> estratto logica — ma il punto in cui un importo poteva essere letto mille volte
+> più piccolo non è più scoperto in nessuna di queste aree.
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | 1.586 | 4.657 | 🟠 34% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (318) + `catena-tag.ts` (229) + `catena-costi-gruppo.ts` (182) + `catena-export.ts` (194), gli ultimi tre nuovi l'1/9 (2ª e 3ª passata) |
+| `lib/` | 1.700 | 4.805 | 🟠 35% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (318) + `catena-tag.ts` (229) + `catena-costi-gruppo.ts` (173) + `catena-export.ts` (211) + `tag-candidati.ts` (61) + **`format.ts` (140)**. `format.ts` è entrato l'1/9 col fix sugli importi italiani: 60 test, è la **fonte unica** del parsing numerico per tutta l'app (58 chiamanti) |
 | `(app)/catena/` | 2.800 | 2.938 | 🟢 95% | **CHIUSA l'1/9 in tre passate**: 7 file su 9 con logica in `lib/` (`catena-confronti.ts`, `catena-tag.ts`, `catena-costi-gruppo.ts`, `catena-export.ts`). **283 test** = confronti 95 + tag 61 + costi 50 + export 64 + `tag-candidati` 13 (quest'ultimo è di catena: estratto da `gruppo-tag-section.tsx` nella 1ª passata). **Non** include i 18 di `test_helpers_ts_harness.py`, che testano l'harness, non `catena/`. Bilancio mutazione **per passata** nel verbale (la 3ª: 41 mutanti, 38 uccisi, 3 equivalenze) — non sommato qui, perché i cataloghi delle prime due sono cresciuti in review e un totale aggregato sarebbe un numero che nessuno ha misurato. Scoperte **138 righe**, entrambe senza logica: `card-segnali.tsx` 110 (fetch + JSX, `ICONA` mappa a componenti lucide) + `loading.tsx` 28 (skeleton). `page.tsx` è stato chiuso estraendo le sue due decisioni (`num_pv < 2 → redirect`, pool chat `> 0`) come predicati puri. **Copre la logica pura, non il rendering** |
 | `(app)/` — altre 7 aree + file diretti | 0 | 4.250 | 🔴 | misurate il 31/8: dashboard 1.749 · impostazioni 806 · agenda 693 · notifiche 339 · assistenza 292 · style-guide 256 · file diretti 115 |
 | `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 622 | 🔴 | **ri-misurati il 31/8: 22 + 105 + 495** — i file diretti erano contati 185, sono 495 (`globals.css` da solo ne fa 296) |

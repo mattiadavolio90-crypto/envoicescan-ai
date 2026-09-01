@@ -1,12 +1,22 @@
 # Prompt prossima sessione — `(app)/dashboard/`, e cosa insegna catena
 
-> Scritto l'1/9/2026 dopo la **terza** passata su `catena/`, che ha chiuso
-> l'area a 2.800/2.938 righe (**95%**), 283 test.
+> Scritto l'1/9/2026, a fine di una giornata con **due lavori distinti**:
+>
+> 1. la **terza** passata su `catena/`, che ha chiuso l'area a 2.800/2.938
+>    righe (**95%**), 283 test;
+> 2. i **fix** ai due bug che l'audit aveva solo fotografato — l'importo
+>    italiano e l'arrotondamento — chiesti esplicitamente da Mattia. Sono usciti
+>    dal perimetro di catena: toccano 17 file e i ricavi. Vedi §1bis.
 >
 > **Le cifre qui dentro sono misurate a quel HEAD. Ri-misurale, non ereditarle.**
 > È la regola che questo progetto ha violato **sei** volte in tre giorni. La
 > sesta è la più istruttiva e sta al §2: la 2ª passata ha scritto «catena chiusa
 > al 90%» su un criterio che non misurava quello che credeva.
+>
+> E un avvertimento dal fix di oggi: **il verbale sottostimava il bug**. Diceva
+> «~25 punti», erano **60**; diceva che il danno era «contenuto dalla guardia»,
+> ma nei ricavi la forma era `parseFloat` e la guardia **non scattava**. Quando
+> riapri un'anomalia fotografata, **ri-misurala** prima di stimarne il costo.
 
 ---
 
@@ -62,6 +72,34 @@ fotografate, e in attesa di una decisione:
 | `%` della riga TOTALE è la costante `"100%"` | `rigaTotalePivot` | Se il backend tronca righe, le colonne sommano a 99,8% mentre il totale dichiara 100%. Il numero **non è misurato** — correggerlo significa deciderne uno vero |
 | Un PV chiamato «Categoria» sovrascrive la prima colonna | `rigaExportPivot` | Le chiavi dell'oggetto sono i nomi visualizzati. Improbabile, non impossibile |
 | Liste vuote → «niente escluso» → riattiva tutto | `config-assistente-catena` | Il fix cambia comportamento su uno stato oggi abilitato |
+
+---
+
+## 1bis. `lib/format.ts` è la fonte unica dei numeri digitati — non aggirarla
+
+L'1/9 il pattern `Number(t.replace(",", "."))` è stato eliminato da **tutte le
+60 occorrenze** dell'app. Se scrivi un campo che legge un numero dall'utente,
+usa una di queste quattro — non riscrivere il parsing a mano:
+
+| Funzione | Per | `"1.234"` diventa |
+|---|---|---|
+| `parseNumeroIt` | **importi**: ricavi, costi, spese, incassi, coperti | `1234` |
+| `parseDecimaleIt` | **ore, percentuali, costi orari, soglie** | `1.234` |
+| `parseNumeroItOZero` / `parseDecimaleItOZero` | come sopra, ma vuoto = `0` | — |
+
+**La scelta della variante è la parte rischiosa**, non l'uso. Sbagliarla dà un
+valore **mille volte** diverso, salvato **senza nessun errore**. Il criterio:
+il campo può legittimamente superare il migliaio? Allora è un importo. Un
+costo orario (`"es. 12,50"`) e una percentuale di ripartizione no.
+
+Il modo per decidere non è l'intuizione: **guarda il `placeholder` e dove
+finisce il valore**. È così che ho classificato i 58 punti.
+
+⚠️ **Il backend non fa da rete.** `RicavoGiornalieroItem` dichiara
+`fatturato_iva10: float` senza `ge`/`le`, e i router leggono `float(x or 0)`.
+Un numero sbagliato dal frontend viene accettato, sommato nel MOL e mostrato al
+cliente. Una validazione server-side sugli importi è una dimensione che **non
+esiste ancora** e varrebbe la pena aprire.
 
 ---
 
