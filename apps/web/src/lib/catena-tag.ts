@@ -37,6 +37,11 @@ export type EstremiPrezzo = { minPrezzo: number | null; maxPrezzo: number | null
  * Sotto `MIN_VALORI_CONFRONTO` prezzi entrambi `null`: con un solo PV il
  * confronto non esiste e l'evidenza sarebbe rumore. I `null` si scartano PRIMA
  * di contare, quindi 3 PV di cui 2 senza prezzo non superano la soglia.
+ *
+ * Il `??` qui e' equivalente a `||` e nessun test li distingue: divergono solo su
+ * `0`, `""` e `false`, che il tipo del parametro esclude (e su cui `.map`
+ * fallirebbe comunque). Provato per mutazione: equivalenza vera, non fixture
+ * mancante. Resta `??` perche' dice cosa ci si aspetta davvero — assente o nulla.
  */
 export function estremiPrezzo(
   perPv: readonly Pick<TagAnalisiPV, "prezzo_medio">[] | null | undefined,

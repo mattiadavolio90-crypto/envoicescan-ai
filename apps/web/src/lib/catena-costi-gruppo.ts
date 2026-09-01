@@ -15,11 +15,17 @@
 /**
  * Importo digitato a mano nel dialog "Aggiungi costo".
  *
- * ANOMALIA FOTOGRAFATA: il `replace` NON e' globale, quindi sostituisce solo la
- * PRIMA virgola e non tocca i punti. "1.234,56" diventa "1..234.56" -> NaN.
- * L'utente che scrive il separatore delle migliaia si vede rifiutare un importo
- * valido con il messaggio "Inserisci descrizione, importo e categoria", che non
- * dice cosa sia andato storto davvero.
+ * ANOMALIA FOTOGRAFATA: i punti delle migliaia non vengono tolti, quindi
+ * "1.234,56" arriva a `Number` come "1.234.56" -> NaN. L'utente che scrive il
+ * separatore delle migliaia si vede rifiutare un importo valido con il messaggio
+ * "Inserisci descrizione, importo e categoria", che non dice cosa sia andato
+ * storto davvero.
+ *
+ * ATTENZIONE a chi fara' il fix: il `replace` non globale NON e' la causa, e
+ * cambiarlo in `replaceAll` non ripara niente — provato per mutazione, i due
+ * sono indistinguibili su ogni input realistico perche' a rompere tutto e' il
+ * punto, non la seconda virgola. Il fix e' togliere prima i separatori di
+ * migliaia: `Number(t.replace(/\./g, "").replace(",", "."))`.
  *
  * Non si corregge qui: lo stesso pattern esiste in ~25 punti dell'app
  * (carica-ricavi-dialog, margini/calcolo-tab, config-assistente...). Sistemarlo
@@ -62,6 +68,11 @@ export function mostraAvvisoDaClassificare(importo: number | null | undefined): 
 /**
  * Frammento " (3 costi)" accanto all'importo, vuoto se il conteggio manca o e'
  * zero. Il markup resta nel .tsx: qui si decide solo il testo.
+ *
+ * `n === 1` e `n <= 1` sono qui indistinguibili e nessun test li separa:
+ * divergono solo per `0 < n < 1`, e `n` e' un conteggio di righe. Equivalenza
+ * vera, provata per mutazione — per ucciderla servirebbe una fixture con un
+ * conteggio frazionario, cioe' un dato che il backend non puo' produrre.
  */
 export function frammentoConteggioCosti(n: number | null | undefined): string {
   if ((n ?? 0) <= 0) return "";
@@ -75,6 +86,11 @@ export function frammentoConteggioCosti(n: number | null | undefined): string {
  * Il confronto `nonCorreggibili === costi` distingue "nessuno di questi costi ha
  * righe" da "N di questi non ce le hanno": e' raggiungibile solo dopo la guardia
  * `> 0`, quindi due `undefined` non possono farlo scattare a vuoto.
+ *
+ * `===` e `>=` sono qui indistinguibili: i non correggibili sono un
+ * sottoinsieme dei costi, quindi non possono superarli. Equivalenza vera provata
+ * per mutazione — ucciderla richiederebbe una fixture con piu' non-correggibili
+ * che costi, cioe' dati incoerenti che proverebbero solo se stessi.
  */
 export function frammentoNonCorreggibili(
   nonCorreggibili: number | null | undefined,

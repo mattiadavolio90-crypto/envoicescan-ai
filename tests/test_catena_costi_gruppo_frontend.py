@@ -43,18 +43,35 @@ def test_parse_importo_casi_che_funzionano(testo, atteso):
     assert _ts("emit(m.parseImportoManuale(input))", testo) == atteso
 
 
-def test_fotografa_separatore_migliaia_produce_nan():
-    """ANOMALIA: `replace` non globale -> "1.234,56" diventa "1..234.56" -> NaN.
+@pytest.mark.parametrize("testo", ["1.234,56", "1.234.567,89", "1,2,3"])
+def test_fotografa_separatore_migliaia_produce_nan(testo):
+    """ANOMALIA: i punti delle migliaia non vengono tolti -> Number(...) e' NaN.
 
     L'utente si vede rifiutare un importo valido con un messaggio che parla di
     campi mancanti. Non corretto qui: stesso pattern in ~25 punti dell'app.
     """
-    assert _ts("emit(Number.isNaN(m.parseImportoManuale(input)))", "1.234,56") is True
+    assert _ts("emit(Number.isNaN(m.parseImportoManuale(input)))", testo) is True
 
 
-def test_fotografa_solo_la_prima_virgola_sostituita():
-    """Due virgole: la seconda resta e manda tutto a NaN."""
-    assert _ts("emit(Number.isNaN(m.parseImportoManuale(input)))", "1,2,3") is True
+def test_replaceall_non_sarebbe_il_fix():
+    """Il `replace` non globale NON e' la causa del bug, ed e' una trappola.
+
+    Sembra il colpevole ovvio ("manca la /g"), ma `replaceAll` lascia il difetto
+    identico: a rompere la conversione e' il PUNTO delle migliaia, non la seconda
+    virgola. Il mutante replace->replaceAll infatti sopravvive, ed e' equivalenza
+    vera, non una lacuna dei test.
+
+    Questo test tiene il chiodo dove serve: il fix e' togliere i separatori di
+    migliaia prima di convertire la virgola.
+    """
+    r = _ts("""const t = input;
+        emit({
+          oggi: Number(t.replace(",", ".")),
+          replaceAll: Number(t.replaceAll(",", ".")),
+          fixVero: Number(t.replace(/\\./g, "").replace(",", ".")),
+        });""", "1.234,56")
+    assert r["oggi"] is None and r["replaceAll"] is None  # entrambi NaN -> null in JSON
+    assert r["fixVero"] == 1234.56
 
 
 def test_parse_importo_stringa_vuota_e_zero():

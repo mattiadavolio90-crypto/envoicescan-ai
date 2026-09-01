@@ -102,6 +102,22 @@ def test_classe_prezzo_null_e_muto():
     assert _ts("emit(m.classePrezzo(null, null, null))") == ""
 
 
+@pytest.mark.parametrize("prezzo", [12.5, 0, -3])
+def test_classe_prezzo_muta_quando_gli_estremi_non_esistono(prezzo):
+    """Sotto la soglia dei 2 valori gli estremi sono `null` e NIENTE si colora.
+
+    Non e' un caso di scuola: e' il tag con un solo PV, il piu' comune. E qui
+    l'uguaglianza stretta non e' intercambiabile con un confronto relazionale —
+    in JS `null` si coerce a 0 con `>=` e `<=` ma non con `===`, quindi
+    `prezzo >= null` sarebbe vero per ogni prezzo positivo e colorerebbe di rosso
+    tutti i PV di un tag che oggi non ne colora nessuno.
+
+    Trovato da due mutanti sopravvissuti (`=== min` -> `<= min`, `=== max` ->
+    `>= max`): non erano equivalenze, era questa fixture che mancava.
+    """
+    assert _ts(f"emit(m.classePrezzo({prezzo}, null, null))") == ""
+
+
 def test_fotografa_prezzi_uniformi_prendono_entrambe_le_classi():
     """ANOMALIA: con min === max ogni PV e' insieme il piu' caro e il piu' economico.
 

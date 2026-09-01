@@ -171,12 +171,21 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 > 16% auditato per dimensione, **49% mai guardato**. Usa il contatore per
 > decidere le priorità, non questa tabella.
 >
-> **Aggiornato l'1/9:** `(app)/catena/` è stata **aperta** — non è più l'area
-> vergine. Coperti 3 file su 6 (1.360 righe: margini-coperti, sintesi,
-> spesa-pv), estratti in `lib/catena-confronti.ts`, 81 test, 51 mutanti con 48
-> difetti reali tutti uccisi e 3 sole controprove sopravvissute. **Restano 1.767
-> righe dell'area** (tag-section 721, costi-gruppo 553, config 202, segnali 110,
-> pages 181): è il candidato naturale della prossima passata.
+> **Aggiornato l'1/9 (2 passate nella stessa giornata):** `(app)/catena/` è
+> **chiusa** — 2.746 righe su 3.037 (**90%**). Tutti e 6 i file di logica sono
+> estratti in `lib/catena-confronti.ts`, `lib/catena-tag.ts` e
+> `lib/catena-costi-gruppo.ts`: **191 test, 102 mutanti con 95 uccisi** e 7
+> equivalenze dichiarate col loro perché.
+>
+> **Restano scoperte 291 righe, per decisione**: `card-segnali.tsx` (110, fetch +
+> JSX con una mappa a componenti `lucide-react` che non entra in `lib/` senza
+> cambiare forma) e le 3 pages (181, zero logica). E la copertura è sulla
+> **logica pura, non sul rendering**: `esegui_ts` non monta React.
+>
+> Due esiti della 2ª passata che valgono oltre l'area: `replaceAll` **non** è il
+> fix del bug sull'importo italiano (a rompere è il punto delle migliaia, non la
+> virgola — la ricetta verificata è nel verbale), e la guardia sulle liste vuote
+> di `config-assistente-catena` resta aperta come fix a sé.
 >
 > `margini/` (4.709, il MOL) e `scadenziario/` erano state chiuse il 31/8.
 > `workspace/` (5.012) resta 🟠 37%, col resto escluso con misura nel ciclo 08.

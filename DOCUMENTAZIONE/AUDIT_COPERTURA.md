@@ -76,10 +76,13 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 > ciclo 08 ha chiuso **F3** (`components/`) e **F6** (`workspace/`). Le righe
 > «lette» qui sotto sono quelle dichiarate in quei verbali.
 >
-> Misura sul tree **committato** (`git archive HEAD`): **51.614**, ri-misurata
-> l'1/9 a chiusura sessione catena (+201: `lib/` +284 per `catena-confronti.ts`,
-> `(app)/catena/` −83). Un `find` sul working tree può dare di più se una
-> sessione parallela ha modifiche aperte.
+> Misura sul tree **committato** (`git archive HEAD`, **meno le 481 righe dei due
+> font `.woff` binari** che il tar include): **52.205**, ri-misurata l'1/9 a
+> chiusura della 2ª sessione catena. La 1ª passata aveva portato 51.614 (+201:
+> `lib/` +284, `(app)/catena/` −83); la 2ª aggiunge **+591** (`lib/` +411 per
+> `catena-tag.ts` e `catena-costi-gruppo.ts`, `(app)/catena/` −7). Un `find` sul
+> working tree può dare di più se una sessione parallela ha modifiche aperte —
+> l'1/9 ne aveva.
 >
 > ⚠️ **+284 e −83 non si compensano: un'estrazione NON è a somma zero.** Il
 > modulo estratto aggiunge firme, tipi e i commenti che spiegano ogni anomalia
@@ -115,8 +118,8 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | ~1.009 | 4.052 | 🟠 25% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (284, nuovo l'1/9) |
-| `(app)/catena/` | 1.360 | 3.044 | 🟠 45% | **aperta l'1/9**: 3 file su 6 (margini-coperti, sintesi, spesa-pv) estratti in `lib/catena-confronti.ts`, 81 test, 48/48 mutanti di difetto uccisi. Restano 1.767 righe: tag-section 721, costi-gruppo 553, config 202, segnali 110, pages 181 |
+| `lib/` | ~1.412 | 4.463 | 🟠 32% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (284) + `catena-tag.ts` (225) + `catena-costi-gruppo.ts` (178), gli ultimi due nuovi l'1/9 (2ª passata) |
+| `(app)/catena/` | 2.746 | 3.037 | 🟢 90% | **CHIUSA l'1/9 in due passate**: tutti e 6 i file di logica estratti in `lib/catena-confronti.ts`, `catena-tag.ts`, `catena-costi-gruppo.ts`. 191 test, 102 mutanti (51 + 51) con 95 uccisi e 7 equivalenze dichiarate. Restano scoperte 291 righe: `card-segnali.tsx` 110 (fetch + JSX, mappa a componenti lucide: non estraibile senza cambiare forma) + pages 181 (zero logica). **Copre la logica pura, non il rendering** |
 | `(app)/` — altre 7 aree + file diretti | 0 | 4.250 | 🔴 | misurate il 31/8: dashboard 1.749 · impostazioni 806 · agenda 693 · notifiche 339 · assistenza 292 · style-guide 256 · file diretti 115 |
 | `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 622 | 🔴 | **ri-misurati il 31/8: 22 + 105 + 495** — i file diretti erano contati 185, sono 495 (`globals.css` da solo ne fa 296) |
 | `(auth)`+`(legal)`+`(demo)` — dettaglio | — | 1.353 | 🔴 | 552 + 575 + 226 |

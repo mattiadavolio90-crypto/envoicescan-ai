@@ -851,3 +851,149 @@ entrambe le direzioni, misurato. Il difetto è reale ma si vede solo con un null
 **fra** un positivo e un negativo. La conclusione del reviewer era giusta, la sua
 dimostrazione no — ed è la ragione per cui un rilievo si riproduce prima di
 scriverlo a verbale.
+
+---
+
+## 1/9/2026 (2ª passata) — `(app)/catena/` chiusa: gli altri 3 file
+
+Seconda passata nella stessa giornata, sulla metà dell'area che la prima aveva
+dichiarato in coda. Con questa, tutti e 6 i file di logica di `catena/` sono
+passati sotto test.
+
+### Il perimetro, misurato — e cosa NON copre
+
+Coperti `gruppo-tag-section.tsx` (721→717), `finestra-costi-gruppo.tsx`
+(553→549), `config-assistente-catena.tsx` (202→203). Estratte 22 funzioni in due
+moduli nuovi: `lib/catena-tag.ts` (225) e `lib/catena-costi-gruppo.ts` (178).
+
+**Non copre**, e va detto invece di lasciarlo intendere:
+
+- **`card-segnali.tsx` (110 righe): zero copertura, per decisione.** È fetch +
+  JSX; l'unica cosa estraibile è la mappa `ICONA`, che punta a componenti
+  `lucide-react` e non entra in `lib/` senza cambiare forma. Resta il duplicato
+  byte-per-byte con `(mobile)/m/briefing/mobile-catena.tsx:7-12`.
+- **Le 3 `page.tsx`/`loading.tsx` (181 righe)**: zero logica pura.
+- **Il rendering, ovunque.** `esegui_ts` non monta React: un componente può
+  chiamare male una funzione corretta e nessun test se ne accorge. «Area chiusa»
+  significa *logica pura coperta*, non *ogni riga testata*.
+
+Copertura `catena/`: **2.746 su 3.037 righe (~90%)**.
+
+### Le ipotesi del piano, verificate prima di crederci
+
+Su cinque verificate, **tre erano sbagliate** — e due lo erano in modo che
+avrebbe fatto sbagliare il lavoro:
+
+1. **`percentualeBarra` non esiste.** Il prompt la dava come funzione duplicata 3
+   volte; sono 3 espressioni inline, e la terza ha una formula diversa.
+2. **`replaceAll` NON è il fix del bug dell'importo.** Il piano lo dava per
+   scontato («deve uccidere»). Il mutante è invece **sopravvissuto**, e la
+   verifica ha mostrato perché: a rompere `"1.234,56"` è il **punto** delle
+   migliaia, non la seconda virgola — `replace` e `replaceAll` sono
+   indistinguibili su ogni input realistico. Il fix vero è
+   `Number(t.replace(/\./g, "").replace(",", "."))`. Se la sessione del fix
+   avesse ereditato l'ipotesi, avrebbe "corretto" il bug lasciandolo intatto.
+3. **L'anomalia `spesa === 0` su float è teorica, non reale.** `routers/gruppo.py:2242`
+   manda `round(spesa, 2)`: un residuo di 0.00000001 non può arrivare al client.
+   Resta una proprietà del backend, non della funzione — annotata come tale.
+
+Verificate e confermate: l'import incrociato fra due moduli `lib/` sotto test
+funziona (provato con un modulo sonda **prima** di scriverci sopra 60 test), e
+`MESI` è condivisa fra la `<select>` e `MESI[mese-1]`, quindi estrarre `nomeMese`
+avrebbe **duplicato** una lista di 12 stringhe già ridefinita 10 volte nel repo.
+Non estratta.
+
+### Il rischio di questa passata, e come è stato controllato
+
+Diverso da quello della prima: qui quasi tutte le funzioni producono stringhe che
+finiscono in uno `style` o in un `className`. Un "miglioramento" scritto mentre
+si copia (un `Math.round` che prima non c'era) supera `tsc`, supera i test —
+scritti *dopo*, sul codice già estratto — e supera anche il gate del diff, perché
+nel `.tsx` resta solo una chiamata.
+
+**Il gate `git diff | grep '^+'` dimostra che la logica è uscita dal `.tsx`, non
+che sia arrivata intatta in `lib/`.** Per le due regex di slug, dove riscrivere
+"meglio" è più tentante, il controllo vero è stato un oracolo: l'espressione
+originale presa da `git show HEAD:` valutata contro il modulo nuovo su **236
+input avversi** (unicode, emoji, doppi spazi, punteggiatura in testa e coda).
+Zero divergenze.
+
+### Il bilancio di mutazione
+
+**51 mutanti, 47 uccisi, 4 sopravvissuti** — tutti e quattro esaminati, nessuno
+zittito con un test costruito apposta.
+
+L'harness è stato validato sui **tre** lati prima di usarlo: un mutante palese
+(`return "999999%"`) muore, una controprova innocua (un commento cambiato)
+sopravvive, e un pattern inesistente **ferma** il giro invece di produrre un
+falso sopravvissuto. `pytest-timeout` resta non installato: `rc>=2` è trattato
+come errore d'uso, mai come mutante ucciso.
+
+I sopravvissuti, con il motivo:
+
+- **`perPv ?? []` → `perPv || []`** — equivalenza vera: divergono solo su `0`,
+  `""`, `false`, che il tipo esclude e su cui `.map` fallirebbe comunque.
+- **`replace` → `replaceAll`** — equivalenza vera, ed è il rilievo più utile del
+  giro (vedi sopra). Documentata nel sorgente perché la prossima sessione non
+  ripeta l'errore del piano.
+- **`n === 1` → `n <= 1`** nel conteggio costi — divergono solo per `0 < n < 1`,
+  e `n` è un conteggio di righe.
+- **`nonCorreggibili === costi` → `>=`** — i non correggibili sono un
+  sottoinsieme dei costi, non possono superarli.
+
+Gli ultimi due si ucciderebbero solo con fixture che il backend non può produrre:
+un test così misurerebbe se stesso, non il codice. Sono annotati nel sorgente,
+come fu fatto per M18 di `cellTone`.
+
+**Due mutanti che sembravano equivalenti e non lo erano.** `=== minPrezzo` →
+`<= minPrezzo` e `=== maxPrezzo` → `>= maxPrezzo` erano previsti dal piano come
+controprove destinate a sopravvivere. Sono sopravvissuti davvero — ma per una
+**fixture mancante**, non per equivalenza: in JS `null` si coerce a `0` con `>=`
+e `<=` ma non con `===`, quindi su un tag sotto la soglia di confronto (gli
+estremi sono `null`) il mutante colorerebbe di rosso **tutti** i PV. Mancava il
+caso «prezzo reale con estremi nulli», cioè il tag con un solo punto vendita: il
+più comune. Aggiunto, i due mutanti ora muoiono.
+
+### Anomalie fotografate, non corrette
+
+Nessuna corretta: decisione confermata da Mattia a inizio sessione. Le nuove:
+
+| Dove | Cosa |
+|---|---|
+| `classePrezzo` | con prezzi uniformi (min === max) ogni PV prende **entrambe** le classi: è insieme il più caro e il più economico, e a schermo vince il rosso. `cellTone` risolve lo stesso caso con la guardia `best !== worst`, 15 righe più in là |
+| `larghezzaBarra` | su spesa negativa (netta delle note di credito) produce `"-30%"`: la barra sparisce senza distinguersi da una spesa nulla |
+| `altezzaBarraTrend` | il pavimento `Math.max(4, …)` si applica anche ai negativi: un mese chiuso in perdita si disegna come una barra positiva bassa |
+| `nomeFileExport` | lo slug del nome non ha il trim di coda che ha quello del periodo: `"tag_pesce-_gennaio-2026.xlsx"` |
+| `righeExportPv` | `Math.round` arrotonda i `.5` verso +∞, non lontano da zero: l'export di una nota di credito può differire di un centesimo da quanto darebbe la stessa cifra col segno opposto. **Trovata scrivendo i test, non prevista dal piano** |
+| `parseImportoManuale` | `"1.234,56"` → NaN. Contenuto da `importoValido`: è un errore di **messaggio**, non di dato — il NaN non arriva al backend |
+| `esitoCorrezioneCategoria` | `join(" e ")` su 3+ sedi produce «vale per A e B e C» |
+| `segnaliDisattivati` / `pvEsclusi` | **la più seria**: lista vuota nel POST significa «niente escluso» per il backend, ma è anche lo stato iniziale dopo un load fallito. Difesa solo dal `disabled` del pulsante — una guardia di interfaccia su una regola di dati |
+
+Su quest'ultima è stata presa una decisione esplicita: **non** si è scritta una
+`configCaricata()` da chiamare nel `disabled`. Sarebbe stato codice nuovo in una
+passata che ha per regola di non correggere, e avrebbe cambiato il comportamento
+su uno stato oggi abilitato (un backend che risponde `200 {}`). Al suo posto,
+`test_fotografa_liste_vuote_producono_liste_vuote` tiene il buco visibile.
+
+**Nota metodologica sullo stesso punto**: su lista vuota nessuna mutazione di
+quelle due funzioni è osservabile — qualunque filtro su `[]` dà `[]`. È un
+**mutante impossibile**, non un mutante sopravvissuto, e nel bilancio non va
+contato fra i secondi.
+
+### Il contatore
+
+`lib/` +411, `(app)/catena/` −7: delta **+404**. Un'estrazione non è a somma zero
+e stavolta lo è ancora meno del solito, perché i due moduli portano i commenti
+che spiegano le otto anomalie. Chi si aspetta il pareggio crede di aver sbagliato
+la misura: è il contrario.
+
+### Non fatto, e dichiarato — va in coda con la sua misura
+
+- **`card-segnali.tsx` (110)** e il suo duplicato `ICONA` con `mobile-catena.tsx`.
+- **Il fix di `parseImportoManuale`**, con la ricetta ora verificata, su **~25
+  punti** dell'app. Dimensione a sé, con la sua finestra di deploy.
+- **La guardia sulle liste vuote** di `config-assistente-catena`.
+- **Le 7 copie di `euro`/`pct`/`num` e le 10 di `MESI`** — invariate: nessuna
+  funzione estratta in questa passata formatta, di proposito, perché unificarle
+  cambia output a schermo (`num` diverge davvero sui decimali).
+- **Le 8 anomalie della prima passata**, ancora aperte.
