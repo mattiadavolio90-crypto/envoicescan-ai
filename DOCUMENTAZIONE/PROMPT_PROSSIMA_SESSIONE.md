@@ -50,9 +50,18 @@ non "sistemarla".** `git add -A` è il modo tipico di rubarla per sbaglio — us
 **vede** la modalità catena (`num_pv < 2`) e chi vede la chat AI (pool `> 0`) —
 come predicati puri in `catena-confronti.ts`.
 
-**Se torni su quest'area, il lavoro è un fix, non un audit.** Le anomalie
-fotografate (arrotondamento, `%` costante, importo italiano) aspettano una
-finestra di deploy, non un'altra passata di copertura.
+**Se torni su quest'area, il lavoro è un fix, non un audit.**
+
+Due delle anomalie fotografate sono state **corrette l'1/9 su richiesta
+dell'owner** — l'importo italiano (`parseNumeroIt`/`parseDecimaleIt` in
+`lib/format.ts`, 58 punti dell'app) e l'arrotondamento (`arrotonda2`). Restano
+fotografate, e in attesa di una decisione:
+
+| Anomalia | Dove | Perché non corretta |
+|---|---|---|
+| `%` della riga TOTALE è la costante `"100%"` | `rigaTotalePivot` | Se il backend tronca righe, le colonne sommano a 99,8% mentre il totale dichiara 100%. Il numero **non è misurato** — correggerlo significa deciderne uno vero |
+| Un PV chiamato «Categoria» sovrascrive la prima colonna | `rigaExportPivot` | Le chiavi dell'oggetto sono i nomi visualizzati. Improbabile, non impossibile |
+| Liste vuote → «niente escluso» → riattiva tutto | `config-assistente-catena` | Il fix cambia comportamento su uno stato oggi abilitato |
 
 ---
 
