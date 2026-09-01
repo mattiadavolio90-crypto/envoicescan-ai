@@ -7,38 +7,29 @@
 // importo scritto storto, o dei punti vendita riattivati che l'utente aveva
 // escluso. Chi apre questo file deve saperlo dalla prima riga.
 //
-// Copiate byte per byte dai .tsx, SENZA correzioni: il test fotografa, non
-// sistema. Le anomalie sono annotate una per una col loro perche'.
+// Copiate byte per byte dai .tsx. L'unica correzione applicata (1/9/2026, su
+// decisione esplicita dell'owner) e' `parseImportoManuale`, che ora usa
+// `parseNumeroIt` di `@/lib/format`: vedi il commento sulla funzione.
+// Le altre anomalie restano annotate una per una col loro perche'.
+
+import { parseNumeroIt } from "@/lib/format";
 
 /* ─── finestra-costi-gruppo.tsx: il costo manuale che si scrive ──────────── */
 
 /**
  * Importo digitato a mano nel dialog "Aggiungi costo".
  *
- * ANOMALIA FOTOGRAFATA: i punti delle migliaia non vengono tolti, quindi
- * "1.234,56" arriva a `Number` come "1.234.56" -> NaN. L'utente che scrive il
- * separatore delle migliaia si vede rifiutare un importo valido con il messaggio
- * "Inserisci descrizione, importo e categoria", che non dice cosa sia andato
- * storto davvero.
+ * CORRETTO l'1/9/2026 (prima era fotografato come anomalia): delega a
+ * `parseNumeroIt`, la fonte unica. La vecchia forma
+ * `Number(testo.replace(",", "."))` sbagliava su due input frequenti:
+ *   - `"1.234,56"` -> NaN (il punto delle migliaia restava)
+ *   - `"1.234"` -> `1.234` invece di `1234`, mille volte meno
  *
- * ATTENZIONE a chi fara' il fix: il `replace` non globale NON e' la causa, e
- * cambiarlo in `replaceAll` non ripara niente — provato per mutazione, i due
- * sono indistinguibili su ogni input realistico perche' a rompere tutto e' il
- * punto, non la seconda virgola. Il fix e' togliere prima i separatori di
- * migliaia: `Number(t.replace(/\./g, "").replace(",", "."))`.
- *
- * Non si corregge qui: lo stesso pattern esiste in ~25 punti dell'app
- * (carica-ricavi-dialog, margini/calcolo-tab, config-assistente...). Sistemarlo
- * in un punto solo creerebbe due comportamenti diversi per lo stesso input a
- * seconda della schermata. E' una dimensione a se', con la sua finestra di
- * deploy.
- *
- * Il danno e' comunque contenuto da `importoValido`: il NaN viene respinto e non
- * arriva al backend. E' un errore di messaggio, non di dato — ed e' il motivo
- * per cui la severita' non e' alta.
+ * Il secondo era il pericoloso: non dava errore, dava un numero **plausibile e
+ * sbagliato**, e `importoValido` lo lasciava passare al backend.
  */
 export function parseImportoManuale(testo: string): number {
-  return Number(testo.replace(",", "."));
+  return parseNumeroIt(testo);
 }
 
 /**

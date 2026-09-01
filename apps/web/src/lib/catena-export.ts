@@ -118,30 +118,35 @@ export function headerPivot(dimLabel: string, pv: readonly { nome: string }[]): 
 }
 
 /**
- * Arrotondamento a 2 decimali usato in ogni cella di importo della pivot.
+ * Arrotondamento a 2 decimali, regola commerciale italiana.
  *
- * ANOMALIA FOTOGRAFATA: l'esito sui mezzi centesimi non e' la regola
- * commerciale italiana e **non e' nemmeno una regola sola**. Misurato:
- * `1.005 -> 1` ma `0.005 -> 0.01`; `2.675 -> 2.68` ma `-2.675 -> -2.67`.
- * La causa non e' `Math.round` (che su `.5` esatto va verso +infinito) ma la
- * rappresentazione binaria. Due passaggi, non uno:
- *   1. il **valore** decide se il prodotto cade su un `.5` esatto —
- *      `2.675*100` da' `267.5` esatto, ma `1.005*100` da' `100.49999...`,
- *      dove non c'e' nessun `.5` da arrotondare e `Math.round` non entra in
- *      gioco affatto;
- *   2. **se** il `.5` esatto c'e', allora il **segno** decide il verso, perche'
- *      `Math.round` va verso +infinito: `267.5 -> 268` ma `-267.5 -> -267`.
- * Per questo `2.675 -> 2.68` e `-2.675 -> -2.67`, mentre `1.005` e `-1.005`
- * danno entrambi `1`.
+ * CORRETTO l'1/9/2026 (prima era fotografato come anomalia). La forma vecchia
+ * `Math.round(n * 100) / 100` sbagliava per la rappresentazione binaria del
+ * prodotto, in modo **non simmetrico rispetto al segno**:
+ *   `1.005 -> 1` (invece di 1.01), perche' `1.005*100` vale `100.49999...`
+ *   `-2.675 -> -2.67` (invece di -2.68), perche' su `-267.5` esatto
+ *   `Math.round` va verso +infinito
  *
- * Si fotografa e non si corregge: e' lo stesso identico calcolo di
- * `righeExportPv` in `@/lib/catena-tag` e di ~altri punti dell'app. Un fix qui
- * creerebbe due arrotondamenti diversi per lo stesso importo in due file
- * scaricati lo stesso giorno — peggio dell'errore. Il fix vero (se si fara')
- * e' centralizzato e ha bisogno della sua finestra.
+ * Il fix usa la notazione esponenziale (`Number(a + "e+2")`) per spostare il
+ * punto decimale senza moltiplicazione, quindi senza errore binario, e
+ * arrotonda sempre il valore assoluto riapplicando il segno alla fine: cosi'
+ * `2.675` e `-2.675` danno `2.68` e `-2.68`, non due regole diverse.
+ *
+ * `Number.isFinite` protegge NaN e Infinity, che con la concatenazione di
+ * stringhe darebbero `NaN` da `"Infinitye+2"`.
+ *
+ * Nota: l'ultimo passaggio potrebbe essere `centesimi / 100` — verificato
+ * equivalente su 57.000 centesimi interi, 0 divergenze. Dopo `Math.round` il
+ * valore e' intero, e dividere un intero per 100 non introduce l'errore che
+ * nasce invece moltiplicando un decimale. Si tiene la forma esponenziale per
+ * simmetria con la riga sopra, non perche' l'altra sbagli.
  */
 export function arrotonda2(n: number): number {
-  return Math.round(n * 100) / 100;
+  if (!Number.isFinite(n)) return n;
+  const segno = n < 0 ? -1 : 1;
+  const assoluto = Math.abs(n);
+  const centesimi = Math.round(Number(`${assoluto}e+2`));
+  return segno * Number(`${centesimi}e-2`);
 }
 
 /**

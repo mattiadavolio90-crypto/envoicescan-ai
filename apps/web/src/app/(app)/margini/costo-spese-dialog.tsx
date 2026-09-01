@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatEuro } from "./periodi";
+import { parseNumeroItOZero } from "@/lib/format";
 
 export type TipoSpesaCella = "fb" | "generale";
 
@@ -78,7 +79,7 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
   }
 
   async function salva() {
-    const val = parseFloat(importo.replace(",", ".")) || 0;
+    const val = parseNumeroItOZero(importo);
     if (val < 0) { toast.error("Il valore non può essere negativo"); return; }
     setSalvando(true);
     try {
@@ -99,7 +100,7 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
   }
 
   const nVoci = sintesi ? (tipo === "fb" ? sintesi.n_voci_fb : sintesi.n_voci_generale) : 0;
-  const val = parseFloat(importo.replace(",", ".")) || 0;
+  const val = parseNumeroItOZero(importo);
   // Scomposizione del totale recuperato: spiega di cosa e' fatto il numero prima
   // che finisca in cella. Non cambia l'importo, solo lo racconta.
   const dettaglio = Object.entries(

@@ -16,6 +16,7 @@ import type { VariazioniResponse, VariazionePrezzo, StoricoPrezzoResponse, Stori
 import { Input } from "@/components/ui/input";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { AnteprimaFatturaDialog } from "./anteprima-fattura-dialog";
+import { parseDecimaleIt } from "@/lib/format";
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const PAGE_SIZE = 100;
@@ -95,10 +96,7 @@ function parseStorico(s: string): number[] {
   if (!s) return [];
   return s
     .split("→")
-    .map((p) => {
-      const cleaned = p.replace(/[€\s]/g, "").replace(",", ".");
-      return parseFloat(cleaned);
-    })
+    .map((p) => parseDecimaleIt(p))
     .filter((n) => !isNaN(n));
 }
 
@@ -527,7 +525,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   // in questa pagina, senza salvare nulla. La soglia che fa scattare gli AVVISI si
   // imposta nel configuratore assistente (Home) ed e' quella di partenza qui.
   function applicaFiltroSoglia() {
-    const val = parseFloat(sogliaInput.replace(",", ".")) || 5;
+    const val = parseDecimaleIt(sogliaInput) || 5;
     setSoglia(val);
     loadRange(rangeAttivo(), val);
   }

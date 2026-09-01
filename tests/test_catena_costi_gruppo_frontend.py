@@ -43,40 +43,81 @@ def test_parse_importo_casi_che_funzionano(testo, atteso):
     assert _ts("emit(m.parseImportoManuale(input))", testo) == atteso
 
 
-@pytest.mark.parametrize("testo", ["1.234,56", "1.234.567,89", "1,2,3"])
-def test_fotografa_separatore_migliaia_produce_nan(testo):
-    """ANOMALIA: i punti delle migliaia non vengono tolti -> Number(...) e' NaN.
+@pytest.mark.parametrize("testo,atteso", [
+    ("1.234,56", 1234.56),
+    ("1.234.567,89", 1234567.89),
+    ("1.234", 1234),          # il caso pericoloso: prima dava 1.234
+    ("12.345", 12345),
+    ("€ 1.234,56", 1234.56),
+    ("1 234,56", 1234.56),    # spazio come separatore, da copia-incolla
+    ("1.23", 1.23),           # 2 cifre dopo il punto = decimale, non migliaia
+])
+def test_separatore_migliaia_ora_funziona(testo, atteso):
+    """CORRETTO l'1/9/2026 — prima era `test_fotografa_*`.
 
-    L'utente si vede rifiutare un importo valido con un messaggio che parla di
-    campi mancanti. Non corretto qui: stesso pattern in ~25 punti dell'app.
+    `"1.234"` e' il caso che rendeva il bug pericoloso: non dava errore, dava
+    `1.234` (mille volte meno) e `importoValido` lo lasciava passare al backend.
+    Un costo di 1.234 € veniva salvato come 1,23 €.
+
+    La regola di disambiguazione e' l'ultimo gruppo: 3 cifre = migliaia,
+    altrimenti decimale. E' la stessa che usa Excel in locale italiano.
     """
+    assert _ts("emit(m.parseImportoManuale(input))", testo) == atteso
+
+
+@pytest.mark.parametrize("testo", ["1,2,3", "abc", "--5", "1.2.3"])
+def test_input_malformato_resta_nan(testo):
+    """Il fix non deve rendere "generoso" il parser: un input senza senso resta
+    NaN, e `importoValido` lo respinge."""
     assert _ts("emit(Number.isNaN(m.parseImportoManuale(input)))", testo) is True
 
 
-def test_replaceall_non_sarebbe_il_fix():
-    """Il `replace` non globale NON e' la causa del bug, ed e' una trappola.
+def test_la_vecchia_forma_sarebbe_una_regressione():
+    """Guardia contro il ritorno indietro.
 
-    Sembra il colpevole ovvio ("manca la /g"), ma `replaceAll` lascia il difetto
-    identico: a rompere la conversione e' il PUNTO delle migliaia, non la seconda
-    virgola. Il mutante replace->replaceAll infatti sopravvive, ed e' equivalenza
-    vera, non una lacuna dei test.
+    Prima dell'1/9 la funzione era `Number(t.replace(",", "."))`. Questo test
+    tiene fermo che quella forma — e la sua variante "ovvia" `replaceAll`, che
+    NON era il fix — sbagliano su input reali, mentre la funzione attuale no.
 
-    Questo test tiene il chiodo dove serve: il fix e' togliere i separatori di
-    migliaia prima di convertire la virgola.
+    Serve perche' `replace(",", ".")` e' il pattern piu' diffuso dell'app (60
+    occorrenze il 1/9): chi lo vede altrove potrebbe "uniformare" questa
+    riportandola indietro.
     """
     r = _ts("""const t = input;
         emit({
-          oggi: Number(t.replace(",", ".")),
+          vecchia: Number(t.replace(",", ".")),
           replaceAll: Number(t.replaceAll(",", ".")),
-          fixVero: Number(t.replace(/\\./g, "").replace(",", ".")),
+          attuale: m.parseImportoManuale(t),
         });""", "1.234,56")
-    assert r["oggi"] is None and r["replaceAll"] is None  # entrambi NaN -> null in JSON
-    assert r["fixVero"] == 1234.56
+    assert r["vecchia"] is None      # NaN -> null in JSON
+    assert r["replaceAll"] is None   # non era il fix: stesso NaN
+    assert r["attuale"] == 1234.56
 
 
-def test_parse_importo_stringa_vuota_e_zero():
-    """`Number("")` e' 0, non NaN: e' `importoValido` a respingerlo."""
-    assert _ts("emit(m.parseImportoManuale(''))") == 0
+def test_il_caso_che_arrivava_al_backend():
+    """`"1.234"` era il difetto grave: la vecchia forma dava `1.234`, che
+    **passa** `importoValido` e finiva salvato. Un costo di 1.234 € diventava
+    1,23 €, senza nessun errore a schermo."""
+    r = _ts("""const t = input;
+        emit({
+          vecchia: Number(t.replace(",", ".")),
+          vecchiaPassava: Number(t.replace(",", ".")) > 0,
+          attuale: m.parseImportoManuale(t),
+        });""", "1.234")
+    assert r["vecchia"] == 1.234
+    assert r["vecchiaPassava"] is True
+    assert r["attuale"] == 1234
+
+
+def test_parse_importo_stringa_vuota_e_nan():
+    """La stringa vuota da' NaN (prima dava `0`, perche' `Number("")` e' 0).
+
+    Per l'utente non cambia nulla: `importoValido` respinge sia `0` sia `NaN`
+    con `imp > 0`. Cambia in meglio il significato — un campo vuoto non e' un
+    importo di zero euro, e' l'assenza di un importo.
+    """
+    assert _ts("emit(Number.isNaN(m.parseImportoManuale('')))") is True
+    assert _ts("emit(m.importoValido(m.parseImportoManuale('')))") is False
 
 
 # ─── importoValido: la guardia che cattura NaN ──────────────────────────────

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { scorporoNetto, type NettoMese } from "@/app/(app)/margini/periodi";
+import { parseNumeroItOZero } from "@/lib/format";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 // Forma allineata a /api/ricavi/giornalieri (GET → items[], POST upsert per data).
@@ -53,7 +54,7 @@ function fmtEuro(v: number) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
 }
 function parseImporto(s: string): number {
-  return s ? parseFloat(s.replace(",", ".")) || 0 : 0;
+  return s ? parseNumeroItOZero(s) : 0;
 }
 
 const SOURCE_BADGE: Record<string, string> = {

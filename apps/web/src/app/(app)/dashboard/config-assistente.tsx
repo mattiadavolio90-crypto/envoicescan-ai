@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { type AssistantConfig, type ConfigTopic } from "@/lib/home";
 import { cn } from "@/lib/utils";
+import { parseDecimaleIt } from "@/lib/format";
 
 // defaultOpen / dialogClassName: usati SOLO dalla demo (tour guidato) per aprire
 // e posizionare il pannello da fuori. Nell'app restano ai default (comportamento
@@ -63,7 +64,7 @@ export function ConfigAssistente({
     setSaving(true);
     const topics_disabled = topics.filter((t) => !t.enabled && !t.bloccato).map((t) => t.key);
     // Clamp [0,50] come il backend; valore non numerico -> default 5.
-    const sogliaNum = Math.min(50, Math.max(0, parseFloat(soglia.replace(",", ".")) || 5));
+    const sogliaNum = Math.min(50, Math.max(0, parseDecimaleIt(soglia) || 5));
     try {
       const res = await fetch("/api/home/config", {
         method: "POST",

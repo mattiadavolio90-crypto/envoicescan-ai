@@ -9,6 +9,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
+import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt } from "@/lib/format";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -366,16 +367,16 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
   const stdNum = ore1 + ore2;
-  const extraNum = oreExtra ? parseFloat(oreExtra.replace(",", ".")) : 0;
+  const extraNum = parseDecimaleItOZero(oreExtra);
   const oreTot = Math.round((stdNum + extraNum) * 100) / 100;
-  const costoNum = costoOrario ? parseFloat(costoOrario.replace(",", ".")) : NaN;
-  const costoNumExtra = costoOrarioExtra ? parseFloat(costoOrarioExtra.replace(",", ".")) : NaN;
+  const costoNum = parseDecimaleIt(costoOrario);
+  const costoNumExtra = parseDecimaleIt(costoOrarioExtra);
   const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;
   const costoTurno = (!isNaN(costoNum) && oreTot > 0)
     ? (stdNum * costoNum + (extraNum > 0 && !isNaN(costoEffExtra) ? extraNum * costoEffExtra : 0))
     : 0;
 
-  const importoNum = importoACarico ? parseFloat(importoACarico.replace(",", ".")) : NaN;
+  const importoNum = parseNumeroIt(importoACarico);
 
   // Riposo/ferie/malattia: stesso dialog, altro endpoint. La multi-selezione
   // dei giorni vale anche qui — 5 giorni di ferie si salvano in un colpo.
@@ -781,7 +782,7 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipend
   const [saving, setSaving] = useState(false);
 
   const isNuovo = !turno;
-  const numOr0 = (s: string) => (s ? parseFloat(s.replace(",", ".")) : 0);
+  const numOr0 = (s: string) => parseDecimaleItOZero(s);
   const toInput = (v: number) => String(v).replace(".", ",");
 
   useEffect(() => {
@@ -1013,7 +1014,7 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
   async function salvaModifica() {
     const nome = editNome.trim();
     if (!nome) { toast.error("Il nome è obbligatorio"); return; }
-    const costoNum = editCosto ? parseFloat(editCosto.replace(",", ".")) : null;
+    const costoNum = editCosto ? parseDecimaleIt(editCosto) : null;
     if (editCosto && (costoNum == null || isNaN(costoNum) || costoNum < 0)) {
       toast.error("Costo orario non valido"); return;
     }

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT, fetchNettoMese } from "./periodi";
 import { buildMesiList } from "@/lib/margini-aggregati";
+import { parseNumeroItOZero } from "@/lib/format";
 
 /* ────────────────────────────────────────────────────────────────────────────
    TIPI
@@ -132,7 +133,7 @@ function RipartizioneDialog({
   const valid = netto != null && netto > 0 && Math.abs(totale - netto) < 1;
 
   function setField(k: keyof SplitEuro, raw: string) {
-    let v = parseFloat(raw.replace(",", ".")) || 0;
+    let v = parseNumeroItOZero(raw);
     // Con netto sconosciuto la percentuale non e' convertibile in euro: senza
     // questa guardia un errore di rete faceva valere 0 EUR ogni percentuale, e
     // quei valori finivano salvati a DB.

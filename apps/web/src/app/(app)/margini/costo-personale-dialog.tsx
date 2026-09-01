@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatEuro } from "./periodi";
+import { parseNumeroItOZero } from "@/lib/format";
 
 type Props = {
   open: boolean;
@@ -88,8 +89,8 @@ export function CostoPersonaleDialog({
   }
 
   async function salva() {
-    const vLordo = parseFloat(lordo.replace(",", ".")) || 0;
-    const vExtra = parseFloat(extra.replace(",", ".")) || 0;
+    const vLordo = parseNumeroItOZero(lordo);
+    const vExtra = parseNumeroItOZero(extra);
     if (vLordo < 0 || vExtra < 0) { toast.error("I valori non possono essere negativi"); return; }
     setSalvando(true);
     try {
@@ -105,8 +106,8 @@ export function CostoPersonaleDialog({
     }
   }
 
-  const vLordo = parseFloat(lordo.replace(",", ".")) || 0;
-  const vExtra = parseFloat(extra.replace(",", ".")) || 0;
+  const vLordo = parseNumeroItOZero(lordo);
+  const vExtra = parseNumeroItOZero(extra);
   const totale = vLordo + vExtra;
 
   return (

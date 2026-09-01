@@ -14,6 +14,7 @@ import {
   tipoDaCategoria,
   type TipoSpesa,
 } from "@/lib/categorie-spesa";
+import { parseNumeroIt } from "@/lib/format";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps
   const tipo: TipoSpesa = categoria ? tipoDaCategoria(categoria) : (spesa?.tipo ?? "generale");
 
   async function salva() {
-    const importoNum = importo ? parseFloat(importo.replace(",", ".")) : NaN;
+    const importoNum = parseNumeroIt(importo);
     if (!categoria) { toast.error("Scegli una categoria"); return; }
     if (!descrizione.trim()) { toast.error("La descrizione è obbligatoria"); return; }
     if (isNaN(importoNum) || importoNum < 0) { toast.error("Inserisci un importo valido"); return; }

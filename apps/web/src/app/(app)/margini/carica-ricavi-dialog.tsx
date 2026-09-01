@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatEuro, scorporoNetto } from "./periodi";
 import { buildMesiList } from "@/lib/margini-aggregati";
+import { parseNumeroItOZero } from "@/lib/format";
 import type {
   RicaviGiornalieriResponse, RicavoGiornaliero,
   RicaviBatchUpsertResponse,
@@ -195,15 +196,15 @@ function GrigliaView({
 
   const nettoGriglia = useMemo(() =>
     righe.reduce((sum, r) => sum + scorporoNetto(
-      parseFloat(r.iva10.replace(",", ".")) || 0,
-      parseFloat(r.iva22.replace(",", ".")) || 0,
-      parseFloat(r.altri.replace(",", ".")) || 0,
+      parseNumeroItOZero(r.iva10),
+      parseNumeroItOZero(r.iva22),
+      parseNumeroItOZero(r.altri),
     ), 0), [righe]);
 
   const nettoMensile = useMemo(() => scorporoNetto(
-    parseFloat(mensiIva10.replace(",", ".")) || 0,
-    parseFloat(mensiIva22.replace(",", ".")) || 0,
-    parseFloat(mensiAltri.replace(",", ".")) || 0,
+    parseNumeroItOZero(mensiIva10),
+    parseNumeroItOZero(mensiIva22),
+    parseNumeroItOZero(mensiAltri),
   ), [mensiIva10, mensiIva22, mensiAltri]);
 
   async function handleSave(opts?: { silentIfClean?: boolean }) {
@@ -230,11 +231,11 @@ function GrigliaView({
               // Gli importi vanno rimandati invariati: l'upsert riscrive tutta la
               // riga, e azzerarli distruggerebbe il totale mensile storico invece
               // di limitarsi a disattivarlo.
-              fatturato_iva10: parseFloat(mensiIva10.replace(",", ".")) || 0,
-              fatturato_iva22: parseFloat(mensiIva22.replace(",", ".")) || 0,
-              altri_ricavi_noiva: parseFloat(mensiAltri.replace(",", ".")) || 0,
+              fatturato_iva10: parseNumeroItOZero(mensiIva10),
+              fatturato_iva22: parseNumeroItOZero(mensiIva22),
+              altri_ricavi_noiva: parseNumeroItOZero(mensiAltri),
               coperti: mensiCoperti.trim() !== ""
-                ? Math.max(0, Math.round(parseFloat(mensiCoperti.replace(",", ".")) || 0))
+                ? Math.max(0, Math.round(parseNumeroItOZero(mensiCoperti)))
                 : null,
             }),
           });
@@ -280,10 +281,10 @@ function GrigliaView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ items: daSalvare.map((r) => ({
             data: r.data,
-            fatturato_iva10: parseFloat(r.iva10.replace(",", ".")) || 0,
-            fatturato_iva22: parseFloat(r.iva22.replace(",", ".")) || 0,
-            altri_ricavi_noiva: parseFloat(r.altri.replace(",", ".")) || 0,
-            coperti: r.coperti.trim() !== "" ? Math.max(0, Math.round(parseFloat(r.coperti.replace(",", ".")) || 0)) : null,
+            fatturato_iva10: parseNumeroItOZero(r.iva10),
+            fatturato_iva22: parseNumeroItOZero(r.iva22),
+            altri_ricavi_noiva: parseNumeroItOZero(r.altri),
+            coperti: r.coperti.trim() !== "" ? Math.max(0, Math.round(parseNumeroItOZero(r.coperti))) : null,
           })) }),
         });
         if (!res.ok) throw new Error();
@@ -301,10 +302,10 @@ function GrigliaView({
           body: JSON.stringify({
             anno: meseSel.anno, mese: meseSel.mese, modalita: "mensile",
             // ramo raggiungibile solo con modalita === "mensile" (vedi if sopra)
-            fatturato_iva10: parseFloat(mensiIva10.replace(",", ".")) || 0,
-            fatturato_iva22: parseFloat(mensiIva22.replace(",", ".")) || 0,
-            altri_ricavi_noiva: parseFloat(mensiAltri.replace(",", ".")) || 0,
-            coperti: mensiCoperti.trim() !== "" ? Math.max(0, Math.round(parseFloat(mensiCoperti.replace(",", ".")) || 0)) : null,
+            fatturato_iva10: parseNumeroItOZero(mensiIva10),
+            fatturato_iva22: parseNumeroItOZero(mensiIva22),
+            altri_ricavi_noiva: parseNumeroItOZero(mensiAltri),
+            coperti: mensiCoperti.trim() !== "" ? Math.max(0, Math.round(parseNumeroItOZero(mensiCoperti))) : null,
           }),
         });
         if (!res.ok) throw new Error();
@@ -448,9 +449,9 @@ function GrigliaView({
               const date = new Date(r.data + "T00:00:00");
               const giorno = parseInt(r.data.slice(8), 10);
               const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-              const i10 = (parseFloat(r.iva10.replace(",", ".")) || 0) / 1.10;
-              const i22 = (parseFloat(r.iva22.replace(",", ".")) || 0) / 1.22;
-              const alt = parseFloat(r.altri.replace(",", ".")) || 0;
+              const i10 = (parseNumeroItOZero(r.iva10)) / 1.10;
+              const i22 = (parseNumeroItOZero(r.iva22)) / 1.22;
+              const alt = parseNumeroItOZero(r.altri);
               const netto = i10 + i22 + alt;
               const hasData = !!(r.iva10 || r.iva22 || r.altri);
               return (
@@ -474,9 +475,9 @@ function GrigliaView({
 
           {/* Riepilogo totali */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-            <TotaleBox label="IVA 10% (netto)" value={righe.reduce((s, r) => s + (parseFloat(r.iva10.replace(",", ".")) || 0) / 1.10, 0)} />
-            <TotaleBox label="IVA 22% (netto)" value={righe.reduce((s, r) => s + (parseFloat(r.iva22.replace(",", ".")) || 0) / 1.22, 0)} />
-            <TotaleBox label="Altri (no IVA)" value={righe.reduce((s, r) => s + (parseFloat(r.altri.replace(",", ".")) || 0), 0)} />
+            <TotaleBox label="IVA 10% (netto)" value={righe.reduce((s, r) => s + (parseNumeroItOZero(r.iva10)) / 1.10, 0)} />
+            <TotaleBox label="IVA 22% (netto)" value={righe.reduce((s, r) => s + (parseNumeroItOZero(r.iva22)) / 1.22, 0)} />
+            <TotaleBox label="Altri (no IVA)" value={righe.reduce((s, r) => s + (parseNumeroItOZero(r.altri)), 0)} />
             <TotaleBox label="Netto totale" value={nettoGriglia} primary />
           </div>
         </div>
@@ -557,9 +558,9 @@ function GiornoCell({
   }, [open, iva10, iva22, altri, coperti]);
 
   const previewNetto = scorporoNetto(
-    parseFloat(d10.replace(",", ".")) || 0,
-    parseFloat(d22.replace(",", ".")) || 0,
-    parseFloat(dAltri.replace(",", ".")) || 0,
+    parseNumeroItOZero(d10),
+    parseNumeroItOZero(d22),
+    parseNumeroItOZero(dAltri),
   );
 
   function confermaModifica() {

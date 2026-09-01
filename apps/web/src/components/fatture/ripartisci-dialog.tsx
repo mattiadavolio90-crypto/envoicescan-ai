@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { parseDecimaleItOZero } from "@/lib/format";
 
 type Sede = { id: string; nome: string };
 
@@ -110,12 +111,12 @@ export function RipartisciDialog({
     };
   }, [open, descrizioneDefault, sedi, fornitore, regolaPreset]);
 
-  const sommaPerc = Object.values(perc).reduce((a, v) => a + (Number(v.replace(",", ".")) || 0), 0);
+  const sommaPerc = Object.values(perc).reduce((a, v) => a + (parseDecimaleItOZero(v)), 0);
   // Una percentuale negativa non e' un errore di somma: il server la rifiuta con
   // 400, e prima la scartava in silenzio facendo sparire la sede dal riparto.
   // Va segnalata per quello che e', non nascosta dietro "la somma non fa 100".
   const sediNegative = Object.entries(perc)
-    .filter(([, v]) => (Number(v.replace(",", ".")) || 0) < 0)
+    .filter(([, v]) => (parseDecimaleItOZero(v)) < 0)
     .map(([id]) => sedi.find((s) => s.id === id)?.nome ?? id);
 
   async function salva() {
@@ -147,7 +148,7 @@ export function RipartisciDialog({
       };
       if (regola === "percentuali") {
         body.percentuali = Object.fromEntries(
-          Object.entries(perc).map(([id, v]) => [id, Number(v.replace(",", ".")) || 0]),
+          Object.entries(perc).map(([id, v]) => [id, parseDecimaleItOZero(v)]),
         );
       }
       const res = await fetch(daCoda ? "/api/riparto/da-coda" : "/api/riparto/da-fattura", {

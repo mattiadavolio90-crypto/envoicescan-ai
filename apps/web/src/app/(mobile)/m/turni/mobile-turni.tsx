@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
+import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt } from "@/lib/format";
 
 // ─── Wrapper Movimenti: Incassi / Spese / Turni ─────────────────────────────────
 // Questa e' la sezione "Movimenti" della bottom nav (ex "Turni"): raccoglie i
@@ -328,16 +329,16 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
   const stdNum = ore1 + ore2;
-  const extraNum = oreExtra ? parseFloat(oreExtra.replace(",", ".")) : 0;
+  const extraNum = parseDecimaleItOZero(oreExtra);
   const oreTot = Math.round((stdNum + extraNum) * 100) / 100;
-  const costoNum = costoOrario ? parseFloat(costoOrario.replace(",", ".")) : NaN;
-  const costoNumExtra = costoOrarioExtra ? parseFloat(costoOrarioExtra.replace(",", ".")) : NaN;
+  const costoNum = parseDecimaleIt(costoOrario);
+  const costoNumExtra = parseDecimaleIt(costoOrarioExtra);
   const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;
   const costoTurno = (!isNaN(costoNum) && oreTot > 0)
     ? (stdNum * costoNum + (extraNum > 0 && !isNaN(costoEffExtra) ? extraNum * costoEffExtra : 0))
     : 0;
 
-  const importoNum = importoACarico ? parseFloat(importoACarico.replace(",", ".")) : NaN;
+  const importoNum = parseNumeroIt(importoACarico);
 
   async function salvaAssenza() {
     const importo = importoACarico ? importoNum : null;
@@ -635,7 +636,7 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
   const [saving, setSaving] = useState(false);
 
   const isNuovo = !turno;
-  const numOr0 = (s: string) => (s ? parseFloat(s.replace(",", ".")) : 0);
+  const numOr0 = (s: string) => parseDecimaleItOZero(s);
   const toInput = (v: number) => String(v).replace(".", ",");
 
   useEffect(() => {

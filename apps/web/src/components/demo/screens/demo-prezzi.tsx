@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import type { VariazionePrezzo } from "@/lib/prezzi";
 import { demoPrezziKpi, demoVariazioni } from "@/lib/demo-data";
 import { DemoAnchor } from "../demo-anchor";
+import { parseDecimaleIt } from "@/lib/format";
 
 // Osservatorio (Prezzi) del Demo Tour: replica STATICA del tab Variazioni.
 // I KPI di sintesi + la lista di AlertCard (dal vero variazioni-tab.tsx), senza
@@ -41,7 +42,7 @@ const GRAVITA_STYLE: Record<Gravita, { dot: string; ring: string }> = {
 function parseStorico(s: string): number[] {
   return s
     .split("→")
-    .map((p) => parseFloat(p.replace(/[€\s]/g, "").replace(",", ".")))
+    .map((p) => parseDecimaleIt(p))
     .filter((n) => !isNaN(n));
 }
 

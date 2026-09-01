@@ -341,25 +341,52 @@ def test_arrotonda2_negativo_conserva_il_segno():
 @pytest.mark.parametrize(
     "valore,atteso",
     [
-        (1.005, 1),        # 1.005*100 == 100.49999... in binario
-        (0.005, 0.01),     # 0.005*100 == 0.5 esatto -> verso +inf
+        (1.005, 1.01),
+        (-1.005, -1.01),
+        (0.005, 0.01),
+        (-0.005, -0.01),
         (2.675, 2.68),
-        (-2.675, -2.67),   # stesso valore, segno opposto, regola opposta
+        (-2.675, -2.68),
         (40.005, 40.01),
         (-40.005, -40.01),
         (0.125, 0.13),
-        (-0.125, -0.12),
+        (-0.125, -0.13),
     ],
 )
-def test_fotografa_arrotondamento_mezzo_centesimo(valore, atteso):
-    """ANOMALIA FOTOGRAFATA: l'arrotondamento sui mezzi centesimi non segue la
-    regola commerciale italiana e non e' nemmeno simmetrico rispetto al segno.
-    Non e' `Math.round` a decidere ma la rappresentazione binaria del prodotto.
+def test_arrotondamento_mezzo_centesimo_sale_ed_e_simmetrico(valore, atteso):
+    """CORRETTO l'1/9/2026 — prima era `test_fotografa_*`.
 
-    Questi valori sono il contratto attuale: se un fix centralizzato arrivera',
-    questo test fallira' e va aggiornato DELIBERATAMENTE, non per caso.
+    Il mezzo centesimo sale sempre (regola commerciale italiana) e il segno non
+    cambia la regola: `2.675` e `-2.675` danno `2.68` e `-2.68`.
+
+    Prima della correzione: `1.005 -> 1` (per la rappresentazione binaria,
+    `1.005*100` vale `100.49999...`) e `-2.675 -> -2.67` (perche' su `-267.5`
+    esatto `Math.round` va verso +infinito). Due regole diverse a seconda del
+    valore e del segno.
     """
     assert _esegui("emit(m.arrotonda2(input));", valore) == atteso
+
+
+def test_arrotondamento_non_finito_passa_invariato():
+    """La guardia `Number.isFinite`: senza, `` `${Infinity}e+2` `` diventa la
+    stringa `"Infinitye+2"` e `Number()` la rende `NaN` — un Infinity in
+    ingresso uscirebbe come NaN.
+
+    I valori si costruiscono in JS, non si passano come argomento: `NaN` e
+    `Infinity` **non sono JSON validi** e `json.dumps` li serializza in una
+    forma che `JSON.parse` rifiuta. Limite del trasporto dell'harness, non
+    del codice sotto test.
+    """
+    r = _esegui(
+        """
+        emit({
+          nan: String(m.arrotonda2(NaN)),
+          inf: String(m.arrotonda2(Infinity)),
+          negInf: String(m.arrotonda2(-Infinity)),
+        });
+        """
+    )
+    assert r == {"nan": "NaN", "inf": "Infinity", "negInf": "-Infinity"}
 
 
 # ─── Righe pivot ────────────────────────────────────────────────────────────
@@ -472,16 +499,15 @@ def test_fotografa_totale_percentuale_costante():
 
 
 def test_riga_totale_grand_total_negativo():
-    """ANOMALIA FOTOGRAFATA (arrotondamento): `-5000.555` esce `-5000.55`, non
-    `-5000.56`. Il mezzo centesimo negativo va verso lo zero, non lontano da
-    esso — stesso difetto misurato in `test_fotografa_arrotondamento_*`, qui
-    su un totale di gruppo, dove si vede in un file che il cliente scarica."""
+    """`-5000.555` esce `-5000.56`: il mezzo centesimo negativo si allontana da
+    zero come fa quello positivo. Prima della correzione dell'1/9 usciva
+    `-5000.55`, in un file che il cliente scarica."""
     r = _esegui(
         'emit(m.rigaTotalePivot(input.t, -5000.555, input.pv, "Categoria"));',
         {"t": {"a": -5000.555}, "pv": [{"id": "a", "nome": "Centro"}]},
     )
-    assert r["Centro"] == -5000.55
-    assert r["Totale"] == -5000.55
+    assert r["Centro"] == -5000.56
+    assert r["Totale"] == -5000.56
 
 
 # ─── Costanti ───────────────────────────────────────────────────────────────

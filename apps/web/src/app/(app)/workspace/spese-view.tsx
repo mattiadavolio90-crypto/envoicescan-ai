@@ -15,6 +15,7 @@ import {
   tipoDaCategoria,
   type TipoSpesa,
 } from "@/lib/categorie-spesa";
+import { parseNumeroIt } from "@/lib/format";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialog
     }
   }, [open, spesa, dataDefault]);
 
-  const importoNum = importo ? parseFloat(importo.replace(",", ".")) : NaN;
+  const importoNum = parseNumeroIt(importo);
   // Il tipo non si sceglie piu': lo deriva la categoria (stessa regola del backend).
   // Sulle voci storiche senza categoria si mostra il tipo gia' salvato.
   const tipo: TipoSpesa = categoria ? tipoDaCategoria(categoria) : (spesa?.tipo ?? "generale");
