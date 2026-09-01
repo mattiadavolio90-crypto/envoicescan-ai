@@ -1330,3 +1330,70 @@ dal segno»): misurato, sono **due passaggi** — il valore decide se il prodott
 cade su un `.5` esatto (`2.675*100` = `267.5` esatto, `1.005*100` =
 `100.49999…`), e *se* c'è, il segno decide il verso. Per questo `2.675 → 2.68`
 ma `-2.675 → -2.67`, mentre `1.005` e `-1.005` danno entrambi `1`.
+
+---
+
+## 1/9/2026 — I due bug fotografati, corretti su richiesta dell'owner
+
+Mattia ha chiesto di chiuderli invece di rimandarli. Entrambi erano stati
+classificati durante l'audit; **entrambi erano peggio della classificazione**.
+
+### Il bug dell'importo italiano: 60 punti, non ~25
+
+Il verbale della 2ª passata diceva «~25 punti dell'app». Misurato:
+**60 occorrenze** in 16 file. E la forma non era una sola:
+
+| Forma | Su `"1.234,56"` | Effetto |
+|---|---|---|
+| `Number(t.replace(",", "."))` | `NaN` | respinto, l'utente vede un errore |
+| `parseFloat(t.replace(",", "."))` | **`1.234`** | **nessun errore**: entra nel dato |
+
+**`parseFloat` è peggio di `Number`**, ed è la forma usata in
+`carica-ricavi-dialog.tsx` — 27 occorrenze, i **ricavi**, il numeratore del MOL.
+Un fatturato di 1.234,56 € veniva salvato come 1,23 €. Silenziosamente.
+
+Il caso più insidioso resta `"1.234"` senza decimali: `1.234` supera la guardia
+`importo > 0` e viene scritto. Un costo di 1.234 € diventa 1,23 €.
+
+**Il fix non è una funzione, sono due.** Il punto non significa la stessa cosa
+in tutti i campi:
+
+- `parseNumeroIt` — **importi**: `"1.234"` = milleduecentotrentaquattro. Regola
+  dell'ultimo gruppo di 3 cifre, la stessa di Excel in locale italiano.
+- `parseDecimaleIt` — **ore, percentuali, costi orari**: `"33.333"` = 33,333.
+  Applicare qui la regola delle migliaia darebbe un valore **mille volte più
+  grande**: una percentuale di ripartizione a 33333.
+
+Tutti i 58 punti classificati uno per uno. I placeholder del costo orario
+(`"es. 12,50"`, `"es. 15,00"`) confermano che lì le migliaia non esistono: è la
+prova che il campo, non l'intuizione, decide quale variante usare.
+
+**Guardia aggiunta oltre il richiesto**: `Number()` accetta `"0x10"` (=16),
+`"1e3"` (=1000) e `"Infinity"`. Nessuno li digita in un campo importo, ma
+passavano — e un `"Infinity"` supera `importo > 0` e finisce in un POST.
+`FORMA_NUMERICA` (`/^[+-]?[\d.,]+$/`) li respinge.
+
+### L'arrotondamento
+
+Ora il mezzo centesimo **sale sempre** ed è **simmetrico**: `2.675 → 2.68` e
+`-2.675 → -2.68`. Prima erano due regole diverse a seconda del valore e del
+segno (`1.005 → 1` per la rappresentazione binaria, `-2.675 → -2.67` perché su
+`-267.5` esatto `Math.round` va verso +∞).
+
+Il fix usa la notazione esponenziale (`Number(\`${x}e+2\`)`) per spostare il
+punto senza moltiplicare, e arrotonda il valore assoluto riapplicando il segno.
+
+### Prova
+
+**47 test nuovi** su `format.ts`. **Mutazione 15/16**: l'unico sopravvissuto
+(`centesimi/100` al posto di `` `${centesimi}e-2` ``) è **equivalenza vera** —
+verificato su 57.000 centesimi interi, 0 divergenze: dopo `Math.round` il valore
+è già intero, e dividere un intero per 100 non introduce l'errore che nasce
+moltiplicando un decimale. Documentato nel sorgente invece che zittito.
+
+I test che fotografavano le anomalie sono stati **riscritti, non cancellati**:
+`test_fotografa_separatore_migliaia_produce_nan` è diventato
+`test_separatore_migliaia_ora_funziona`, e ne è nato uno nuovo —
+`test_la_vecchia_forma_sarebbe_una_regressione` — che tiene fermo che la vecchia
+forma sbagliava. Serve perché `replace(",", ".")` era il pattern più diffuso
+dell'app: chi lo incontrasse altrove potrebbe "uniformare" all'indietro.
