@@ -18,8 +18,10 @@ git log --oneline origin/main..main     # quanti commit sono in coda?
 ```
 
 **Se la coda non è vuota, dillo a Mattia subito**, col numero **che leggi tu
-adesso**. A fine giornata dell'1/9 erano **13**, cresciuti durante la sessione
-perché un'altra lavorava in parallelo. Il numero si legge, non si eredita.
+adesso**. A fine giornata dell'1/9 erano **16** — e nel corso di quella
+sola sessione sono passati da 12 a 16, perché altre sessioni committavano in
+parallelo. Il numero si legge adesso, non si eredita da questa riga: qui è già
+vecchio nel momento in cui lo leggi.
 
 Il push manda **tutti** i commit accumulati — e **il push È il deploy**. Non
 pushare mai di iniziativa: la finestra è sera/notte e la decide Mattia.
