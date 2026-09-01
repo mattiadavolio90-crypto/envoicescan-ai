@@ -9,6 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  datiCostoValidi,
+  esitoCorrezioneCategoria,
+  frammentoConteggioCosti,
+  frammentoNonCorreggibili,
+  mostraAvvisoDaClassificare,
+  parseImportoManuale,
+} from "@/lib/catena-costi-gruppo";
 import { NativeSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -271,32 +279,28 @@ export function FinestraCostiGruppo({
             </ul>
           )}
 
-          {(data?.da_classificare_importo ?? 0) > 0 && (
+          {mostraAvvisoDaClassificare(data?.da_classificare_importo) && (
             <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <p>
                 <strong className="tabular-nums">{euro(data!.da_classificare_importo!)}</strong>{" "}
                 di quote non sono ancora classificate
-                {(data!.da_classificare_costi ?? 0) > 0 &&
-                  ` (${data!.da_classificare_costi} ${
-                    data!.da_classificare_costi === 1 ? "costo" : "costi"
-                  })`}
+                {frammentoConteggioCosti(data!.da_classificare_costi)}
                 . Finché restano così pesano tra le <em>Spese Generali</em>{" "}
                 del MOL,
                 anche se in parte sono Food &amp; Beverage. Assegna la categoria dalle
                 righe del documento qui sopra per collocarle nel secchio giusto.
-                {(data!.da_classificare_non_correggibili ?? 0) > 0 && (
+                {frammentoNonCorreggibili(
+                  data!.da_classificare_non_correggibili,
+                  data!.da_classificare_costi,
+                ) && (
                   <>
                     {" "}
                     <strong>
-                      {data!.da_classificare_non_correggibili ===
-                      data!.da_classificare_costi
-                        ? "Nessuno di questi costi ha righe"
-                        : `${data!.da_classificare_non_correggibili} di questi costi ${
-                            data!.da_classificare_non_correggibili === 1
-                              ? "non ha righe"
-                              : "non hanno righe"
-                          }`}
+                      {frammentoNonCorreggibili(
+                        data!.da_classificare_non_correggibili,
+                        data!.da_classificare_costi,
+                      )}
                     </strong>{" "}
                     da cui correggerli: la fattura d&apos;origine non è più presente,
                     quindi vanno rifatti eliminando e ricreando il costo di gruppo.
@@ -351,8 +355,8 @@ function AggiungiCostoDialog({
   const [saving, setSaving] = useState(false);
 
   async function salva() {
-    const imp = Number(importo.replace(",", "."));
-    if (!descrizione.trim() || !(imp > 0) || !categoria) {
+    const imp = parseImportoManuale(importo);
+    if (!datiCostoValidi(descrizione, imp, categoria)) {
       toast.error("Inserisci descrizione, importo e categoria");
       return;
     }
@@ -474,18 +478,10 @@ function DettagliCosto({
       });
       const data = await res.json();
       if (res.ok) {
-        const sedi: string[] = data.sedi_impattate ?? [];
         // La categoria è scritta, ma il ricalcolo quote è fallito: dirlo, altrimenti
         // il MOL resta disallineato in silenzio fino alla prossima scrittura.
-        if (data.ricalcolo_quote_ok === false) {
-          toast.warning("Categoria aggiornata, ma il ricalcolo delle quote non è riuscito. Riprova più tardi.");
-        } else {
-          toast.success(
-            sedi.length
-              ? `Categoria aggiornata · vale per ${sedi.join(" e ")}`
-              : "Categoria aggiornata",
-          );
-        }
+        const esito = esitoCorrezioneCategoria(data);
+        toast[esito.tipo](esito.messaggio);
         onCorretto();
       } else {
         toast.error(data.detail ?? data.error ?? "Errore aggiornamento");

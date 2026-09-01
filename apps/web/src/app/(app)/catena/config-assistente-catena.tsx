@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { applicaToggle, pvEsclusi, segnaliDisattivati } from "@/lib/catena-costi-gruppo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -64,10 +65,10 @@ export function ConfigAssistenteCatena() {
   }, [open]);
 
   function toggleSegnale(key: string, v: boolean) {
-    setSegnali((prev) => prev.map((s) => (s.key === key ? { ...s, enabled: v } : s)));
+    setSegnali((prev) => applicaToggle(prev, (s) => s.key === key, { enabled: v }));
   }
   function togglePv(id: string, v: boolean) {
-    setPv((prev) => prev.map((p) => (p.ristorante_id === id ? { ...p, incluso: v } : p)));
+    setPv((prev) => applicaToggle(prev, (p) => p.ristorante_id === id, { incluso: v }));
   }
 
   async function salva() {
@@ -79,8 +80,8 @@ export function ConfigAssistenteCatena() {
         body: JSON.stringify({
           nome_gruppo: nome.trim() || null,
           chat_enabled: chatEnabled,
-          segnali_disattivati: segnali.filter((s) => !s.enabled).map((s) => s.key),
-          pv_esclusi: pv.filter((p) => !p.incluso).map((p) => p.ristorante_id),
+          segnali_disattivati: segnaliDisattivati(segnali),
+          pv_esclusi: pvEsclusi(pv),
         }),
       });
       if (!res.ok) throw new Error();
