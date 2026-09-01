@@ -88,9 +88,20 @@ usa una di queste quattro — non riscrivere il parsing a mano:
 | `parseNumeroItOZero` / `parseDecimaleItOZero` | come sopra, ma vuoto = `0` | — |
 
 **La scelta della variante è la parte rischiosa**, non l'uso. Sbagliarla dà un
-valore **mille volte** diverso, salvato **senza nessun errore**. Il criterio:
-il campo può legittimamente superare il migliaio? Allora è un importo. Un
-costo orario (`"es. 12,50"`) e una percentuale di ripartizione no.
+valore **mille volte** diverso, salvato **senza nessun errore**.
+
+Il criterio è **il tipo di input, non il tipo di grandezza**:
+
+| Input | Perché | Variante |
+|---|---|---|
+| `type="number"` | Per spec HTML `e.target.value` è sempre un *valid floating-point number*: punto decimale, mai virgola, **mai migliaia**. La virgola la normalizza il browser | `parseDecimaleIt*` |
+| `type="text"` | testo libero: l'italiano ci scrive `1.700` | `parseNumeroIt*` |
+
+⚠️ Il 1/9 avevo usato il criterio sbagliato — «che grandezza è?» invece di «che
+input è?» — e ho **introdotto una regressione** sui ricavi: i 27 campi sono
+`type="number"`, e la regola delle migliaia applicata lì moltiplicava ×1000 un
+valore **ricaricato dal DB** (`numeric(12,4)` → `String()` → `"12345.678"` →
+12345678). Bastava aprire «Carica ricavi» e premere Salva senza toccare nulla.
 
 Il modo per decidere non è l'intuizione: **guarda il `placeholder` e dove
 finisce il valore**. È così che ho classificato i 58 punti — e non è bastato.
