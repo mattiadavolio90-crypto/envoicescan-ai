@@ -132,6 +132,13 @@ prendere l'espressione originale da `git show HEAD:<file>`, ricostruirla come
 `.mjs` in scratchpad e confrontarla col modulo nuovo su input avversari. L'1/9:
 734 esiti sui margini e ~2.593 celle sulla pivot, 0 divergenze.
 
+⚠️ **Un oracolo è forte quanto il parametro più trascurato.** Il mio generava
+valori avversari sugli *importi* (`-0`, `NaN`, `1e9`) ma sul *conteggio* passava
+solo interi plausibili — e lì si nascondeva una divergenza vera
+(`!(n > 0)` ≠ `n <= 0` per NaN), trovata dal reviewer. Se pensi «questo
+parametro è un intero, cosa vuoi che succeda», è **esattamente** quello da
+generare avversario.
+
 **Mutazione**: harness in scratchpad, **validato sui due lati ogni volta**
 (un mutante palese deve morire, un commento cambiato deve sopravvivere).
 `rc=1` = ucciso, `rc>=2` = errore d'uso che ferma il giro. `pytest-timeout` **non
@@ -145,6 +152,13 @@ una suite in parallelo che misurava un albero mutato (risultato scartato).
 **Guarda `git diff` prima di ogni commit** durante una review, e non lanciare la
 suite mentre il reviewer lavora. Non ripristinare a metà del suo giro — falsi il
 suo esito: avvisalo, aspetta che finisca, poi `git checkout --`.
+
+**Ogni cifra nei .md deve dire cosa conta.** L'1/9 il reviewer ha bloccato su
+«282 test non corrisponde a nessuna misura» contandone 269: aveva omesso un file
+dell'area. Il 282 era giusto, ma **due lettori indipendenti hanno ottenuto due
+numeri** perché la cifra non elencava gli addendi. Un numero giusto che nessuno
+può ricostruire è fragile quanto uno sbagliato: scrivi `95+61+50+63+13`, non
+`282`.
 
 **Chiusura §5bis**: bilancio mutanti coi sopravvissuti *elencati col motivo*,
 suite verde, `npx tsc --noEmit`, `/code-reviewer` sul cumulativo (riproduci ogni
