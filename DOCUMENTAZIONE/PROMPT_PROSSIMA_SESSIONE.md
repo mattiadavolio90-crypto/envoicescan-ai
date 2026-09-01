@@ -1,290 +1,154 @@
-# Prompt prossima sessione — `(app)/dashboard/`, e cosa insegna catena
+# Prompt prossima sessione — cosa resta di `(app)/dashboard/`, e due lezioni
 
-> Scritto l'1/9/2026, a fine di una giornata con **due lavori distinti**:
->
-> 1. la **terza** passata su `catena/`, che ha chiuso l'area a 2.800/2.938
->    righe (**95%**), 283 test;
-> 2. i **fix** ai due bug che l'audit aveva solo fotografato — l'importo
->    italiano e l'arrotondamento — chiesti esplicitamente da Mattia. Sono usciti
->    dal perimetro di catena: toccano 17 file e i ricavi. Vedi §1bis.
+> Scritto l'1/9/2026 a fine serata. La sessione ha fatto la 1ª passata su
+> `dashboard/` (92 test dove non ce n'era nessuno) e **due fix che il cliente
+> vede**, decisi da Mattia in fase di piano.
 >
 > **Le cifre qui dentro sono misurate a quel HEAD. Ri-misurale, non ereditarle.**
-> È la regola che questo progetto ha violato **sei** volte in tre giorni. La
-> sesta è la più istruttiva e sta al §2: la 2ª passata ha scritto «catena chiusa
-> al 90%» su un criterio che non misurava quello che credeva.
->
-> E due avvertimenti dal fix di oggi.
->
-> **Il verbale sottostimava il bug.** Diceva «~25 punti», erano **60**; diceva
-> che il danno era «contenuto dalla guardia», ma nei ricavi la forma era
-> `parseFloat` e la guardia **non scattava**. Quando riapri un'anomalia
-> fotografata, **ri-misurala** prima di stimarne il costo.
->
-> **Il fix ha introdotto una regressione peggiore del bug**, trovata solo dal
-> `code-reviewer`. Avevo classificato i campi con il criterio sbagliato e sui
-> ricavi la regola delle migliaia moltiplicava ×1000 un valore *ricaricato dal
-> DB*: bastava aprire «Carica ricavi» e premere Salva senza toccare nulla. Il
-> criterio giusto è al §1bis. **Una sostituzione automatica su decine di punti
-> applica una regola sintattica; quella che distingue i casi è semantica** — e
-> la rilettura a mano ne trova una parte, non tutte: io ne ho trovato 1, il
-> reviewer altri 3, e il più grave veniva da un percorso che nessuno dei due
-> aveva pensato a guardare (il round-trip col database, non l'input dell'utente).
+> È la regola che questo progetto ha violato **sei** volte in tre giorni — e la
+> settima l'ho evitata per un soffio stasera: avevo scritto `lib/` = 5.195 righe
+> e notifiche = 219 stimando invece di contare. Sono 5.186 e 242. Il documento
+> chiede la somma quadrata: `wc -l`, non l'aritmetica a mente.
 
 ---
 
 ## 0. Prima di qualunque cosa — controlli di sessione
 
 ```bash
-git status --short                      # dev'essere pulito
+git status --short
 git log --oneline origin/main..main     # quanti commit sono in coda?
 ```
 
-**Se la coda non è vuota, dillo a Mattia subito**, col numero **che leggi tu
-adesso**. A fine giornata dell'1/9 erano **16** — e nel corso di quella
-sola sessione sono passati da 12 a 16, perché altre sessioni committavano in
-parallelo. Il numero si legge adesso, non si eredita da questa riga: qui è già
-vecchio nel momento in cui lo leggi.
+**Se la coda non è vuota, dillo a Mattia subito**, col numero che leggi tu
+adesso. A fine 1/9 erano **5**, di cui **4 miei** (l'altro è della sessione
+categorizzazione). Il push manda tutti i commit accumulati — e **il push È il
+deploy**. La finestra è sera/notte e la decide Mattia.
 
-Il push manda **tutti** i commit accumulati — e **il push È il deploy**. Non
-pushare mai di iniziativa: la finestra è sera/notte e la decide Mattia.
+### ⚠️ Due fix in coda cambiano quello che il cliente vede
 
-Si lavora su **`main` locale**. Niente branch, niente PR (`WORKFLOW.md` §0).
+Non sono refactor: se Mattia pusha, **cambiano schermate**.
 
-### ⚠️ La suite era ROSSA a fine 1/9 — 16 test, nessuno di catena/numeri
+1. **`f3490e4`** — la linea del margine di **OFFSIDE SPORTS PUB** passa da
+   rossa a verde. Era rossa mentre il MOL risaliva da −21.305,32 a −684,23.
+2. **`d9e2003`** — le mini-linee di margini/prezzi/analisi-fatture/demo non
+   spariscono più su un valore non finito.
 
-```
-tests/test_riparto_riga_categoria.py          (2)
-tests/test_nucleo_decisione_deterministica.py (1)
-tests/test_home_briefing_cache_first.py       (1)
-tests/test_route_api_auth_dichiarativa.py     (1)
-… e altri della stessa area
-```
+Vanno **guardate a schermo** dopo il deploy (`npm run dev`, dashboard di
+OFFSIDE). ⚠️ Il locale punta al **DB cloud reale**: si guarda, non si tocca.
 
-**Non sono della sessione catena/numeri**, verificato in tre modi: i 400 test
-di quella sessione passano tutti; questi passano **se eseguiti isolati**; e non
-importano nulla di quel lavoro (i match su `catena` e `format` sono il nome di
-una tabella e la stringa `isoformat`).
+### La suite è VERDE — e la storia dei 7 rossi vale la pena leggerla
 
-Dipendono da `services/ai_service.py` e `services/routers/riparto.py`, che a
-fine giornata erano **modificati e non committati** dalla sessione
-categorizzazione, insieme a `invoice_service.py`, `routers/fatture.py` e alla
-migration `20260901170000_fatture_provenienza_categoria.sql`.
+`12.447 passed, 44 skipped`, misurati a fine serata sia nel repo che in copia
+pulita. Ma a metà sessione erano **7 rossi** (`test_gate_fiducia`,
+`test_radar_aggancio_percorso_vivo`, `test_nucleo_decisione_deterministica`).
 
-**Prima di dare la colpa a qualcosa, rilancia la suite**: se quella sessione ha
-committato o annullato le sue modifiche, potrebbe essere già verde. Se è ancora
-rossa, **non è tuo da sistemare** — è loro, e va detto a Mattia dicendo di chi
-è (`WORKFLOW.md` §0).
+Non erano miei, e la prova non è stata "passano isolati" — quella è debole, il
+prompt precedente avvertiva proprio di non fermarsi lì. È stata: **worktree su
+un commit precedente + suite intera**. Lì erano verdi; sul mio HEAD in copia
+pulita anche. Venivano dai file **non committati** della sessione
+categorizzazione, che nel frattempo ha committato.
 
-⚠️ **Nel tree c'è lavoro di un'altra sessione** (consumi admin: `4bce085` più
-`services/consumi_service.py`, `routers/admin.py`, `tests/test_consumi_service.py`
-non committati). Porta una **migration mai confrontata col DB live**
-(`20260901120000_rpc_admin_consumi_mensili.sql`). **Non è tua: non committarla,
-non "sistemarla".** `git add -A` è il modo tipico di rubarla per sbaglio — usa
-`git add` sui file tuoi, uno per uno. Se la segnali a Mattia, di' **di chi è**.
+> **Un rosso si attribuisce con un worktree, non con un'intuizione.** Costa 2
+> minuti: `git worktree add /tmp/vr <commit>`, copiaci `.env`, lancia la suite.
 
 ---
 
-## 1. `catena/` è chiusa — non riaprirla
+## 1. Cosa è stato fatto, e cosa NON riaprire
 
-**138 righe residue su 2.938**, e nessuna ha logica:
+`MolAndamento` in `kpi-block.tsx` era la **copia integrale** di
+`calcolaSparkline`: eliminata, non ri-estratta. Stessa sorte per `euro()`
+(→ `lib/format.ts`), `MESI_ABBR`, `offsetAnello` in `salute-card.tsx`.
 
-| File | Righe | Cosa c'è |
+Cinque moduli in `lib/`, **92 test** = home-kpi 18 + home-config 13 +
+home-chat 22 + notifiche-shared 20 + sparkline-punti 19.
+Mutazione: **39 mutanti, 38 uccisi**, 1 equivalente.
+
+**Se torni sulla dashboard, il lavoro è il rendering, non la logica.**
+
+---
+
+## 2. La prossima dimensione: cosa resta scoperto
+
+L'harness esegue **solo moduli senza React**: rendering, hook, stato ed effetti
+restano fuori per costruzione. Nella dashboard restano dentro i `.tsx`:
+
+| Dove | Cosa | Perché non è uscito |
 |---|---|---|
-| `card-segnali.tsx` | 110 | fetch + JSX. `ICONA` mappa a componenti `lucide-react`: non entra in `lib/` senza cambiare forma |
-| `loading.tsx` | 28 | skeleton |
+| `chat-widget.tsx` | rotazione messaggi d'attesa, scroll, `Set` dei dismissed | stato React |
+| `home-briefing.tsx` | `useTypewriter` | effetto + timer |
+| `block-retry.tsx` | backoff `[1500…15000]` | è una macchina a stati con `useRef` |
+| `home-auto-refresh.tsx` | throttle su `visibilitychange` | idem |
 
-`page.tsx` è stato chiuso il 1/9 estraendo le sue due decisioni vere — chi
-**vede** la modalità catena (`num_pv < 2`) e chi vede la chat AI (pool `> 0`) —
-come predicati puri in `catena-confronti.ts`.
-
-**Se torni su quest'area, il lavoro è un fix, non un audit.**
-
-Due delle anomalie fotografate sono state **corrette l'1/9 su richiesta
-dell'owner** — l'importo italiano (`parseNumeroIt`/`parseDecimaleIt` in
-`lib/format.ts`, 58 punti dell'app) e l'arrotondamento (`arrotonda2`). Restano
-fotografate, e in attesa di una decisione:
-
-| Anomalia | Dove | Perché non corretta |
-|---|---|---|
-| `%` della riga TOTALE è la costante `"100%"` | `rigaTotalePivot` | Se il backend tronca righe, le colonne sommano a 99,8% mentre il totale dichiara 100%. Il numero **non è misurato** — correggerlo significa deciderne uno vero |
-| Un PV chiamato «Categoria» sovrascrive la prima colonna | `rigaExportPivot` | Le chiavi dell'oggetto sono i nomi visualizzati. Improbabile, non impossibile |
-| Liste vuote → «niente escluso» → riattiva tutto | `config-assistente-catena` | Il fix cambia comportamento su uno stato oggi abilitato |
+Le due aree grandi ancora a **zero logica estratta**: `impostazioni/` (806) e
+`agenda/` (693). `MolAndamento` era l'aggancio pronto della dashboard; lì
+l'aggancio va **cercato con un grep, non a memoria** — e poi vanno **aperti i
+file**, perché «il file importa da `lib/`» non è «la logica del file è in
+`lib/`» (§2 del prompt precedente, la lezione che è costata una passata intera).
 
 ---
 
-## 1bis. `lib/format.ts` è la fonte unica dei numeri digitati — non aggirarla
+## 3. Due trappole dell'harness scoperte stasera — costano ore se non le sai
 
-L'1/9 il pattern `Number(t.replace(",", "."))` è stato eliminato da **tutte le
-60 occorrenze** dell'app. Se scrivi un campo che legge un numero dall'utente,
-usa una di queste quattro — non riscrivere il parsing a mano:
+**1. Un import di SOLO TIPO basta a rendere un modulo non eseguibile.**
+`home-kpi.ts` importava `type HomeKpi` da `lib/home.ts`, che importa `./worker`
+con path relativo: l'harness riscrive solo l'alias `@/`, e node muore con
+`ERR_MODULE_NOT_FOUND` — un errore che sembra "il modulo è rotto" e invece è la
+catena di import. **Un modulo di logica pura non deve importare da un modulo
+che fa fetch**, nemmeno un tipo. Se serve una forma, la si dichiara strutturale.
 
-| Funzione | Per | `"1.234"` diventa |
-|---|---|---|
-| `parseNumeroIt` | **importi**: ricavi, costi, spese, incassi, coperti | `1234` |
-| `parseDecimaleIt` | **ore, percentuali, costi orari, soglie** | `1.234` |
-| `parseNumeroItOZero` / `parseDecimaleItOZero` | come sopra, ma vuoto = `0` | — |
+Corollario: spostare un file in `lib/` **non basta** a renderlo testabile.
+`notifiche-shared.ts` importava il tipo da `lib/notifiche.ts` → `./worker-config`.
+La dipendenza è stata **invertita** (il tipo vive nel modulo puro, quello con le
+fetch lo ri-esporta) e nessun call-site è cambiato.
 
-**La scelta della variante è la parte rischiosa**, non l'uso. Sbagliarla dà un
-valore **mille volte** diverso, salvato **senza nessun errore**.
-
-Il criterio è **il tipo di input, non il tipo di grandezza**:
-
-| Input | Perché | Variante |
-|---|---|---|
-| `type="number"` | Per spec HTML `e.target.value` è sempre un *valid floating-point number*: punto decimale, mai virgola, **mai migliaia**. La virgola la normalizza il browser | `parseDecimaleIt*` |
-| `type="text"` | testo libero: l'italiano ci scrive `1.700` | `parseNumeroIt*` |
-
-⚠️ Il 1/9 avevo usato il criterio sbagliato — «che grandezza è?» invece di «che
-input è?» — e ho **introdotto una regressione** sui ricavi: i 27 campi sono
-`type="number"`, e la regola delle migliaia applicata lì moltiplicava ×1000 un
-valore **ricaricato dal DB** (`numeric(12,4)` → `String()` → `"12345.678"` →
-12345678). Bastava aprire «Carica ricavi» e premere Salva senza toccare nulla.
-
-Il modo per decidere non è l'intuizione: **guarda il `placeholder` e dove
-finisce il valore**. È così che ho classificato i 58 punti — e non è bastato.
-
-⚠️ **Un campo può cambiare natura a runtime.** In `margini/analisi-tab.tsx` lo
-split del food cost si compila **in euro o in percentuale**, con un interruttore
-a schermo: la variabile si chiama `raw` e il campo sembra un importo qualsiasi.
-Avevo applicato la regola degli importi a entrambe le modalità, e in percentuale
-`33.333` di 50.000 € dava **16.666.500 €** invece di 16.666 €.
-
-Trovato **ricontrollando a mano tutte le 58 chiamate**, non dai test: nessun
-test copriva quel campo, e `tsc` non ha niente da dire. Il fix fa dipendere la
-variante da `mode`. Verificato che è l'unico punto dell'app con questa forma,
-ma se ne aggiungi uno: **la variante segue lo stato, non il campo**.
-
-⚠️ **Il backend non fa da rete.** `RicavoGiornalieroItem` dichiara
-`fatturato_iva10: float` senza `ge`/`le`, e i router leggono `float(x or 0)`.
-Un numero sbagliato dal frontend viene accettato, sommato nel MOL e mostrato al
-cliente. Una validazione server-side sugli importi è una dimensione che **non
-esiste ancora** e varrebbe la pena aprire.
-
-**Due cose che nessuno ha potuto verificare l'1/9** — l'MCP Supabase nega i
-permessi e non c'è accesso a GitHub Actions:
-
-1. Il tipo **reale** di `ricavi_modalita_mensile.fatturato_iva10` sul DB live.
-   Dai file di migration è `numeric(12,4)`, ed è su quello che si regge l'analisi
-   della regressione ×1000. CLAUDE.md dice che la verità è il DB live, non i
-   file: **confermalo prima di fidarti di quel numero**.
-2. Se la CI è verde su questi commit. Sono tutti locali e non pushati, quindi
-   Actions non li ha mai visti.
+**2. NaN e Infinity non attraversano il confine Python→node.**
+`json.dumps(float("nan"))` scrive `NaN`, che **non è JSON valido**: `JSON.parse`
+dentro l'harness muore con `SyntaxError` prima di eseguire il modulo. I valori
+non finiti vanno **costruiti in JavaScript** — vedi `_punti_js` in
+`tests/test_sparkline_punti_frontend.py`.
 
 ---
 
-## 2. La lezione della 3ª passata — leggila prima di dichiarare chiuso qualcosa
-
-La 2ª passata ha scritto «`catena/` chiusa, 90%». Non lo era. Contava come
-coperti `finestra-margini-coperti.tsx` e `finestra-spesa-pv.tsx` **perché
-importavano da `lib/`** — mentre dentro `exportXls()` restavano ~55 righe di
-costruzione del file Excel che nessun test poteva raggiungere.
-
-> **«Il file importa da `lib/`» non è «la logica del file è in `lib/`».**
-> Un file può essere coperto a metà e il criterio non se ne accorge.
-
-Quando dichiari un'area chiusa, il controllo non è *quali file importano*: è
-**aprire i file e cercare cosa non è uscito**. Un `grep 'Math\.\|\.map(\|\.filter(\|replace('`
-sui `.tsx` dell'area costa 30 secondi e avrebbe trovato questo.
-
----
-
-## 3. Il buco nell'harness — riguarda ogni test futuro
-
-`helpers_ts.py` era **cieco a ogni argomento negativo scalare**. `esegui_ts`
-passa `json.dumps(argomento)` in coda a `node -e <script>`, e `json.dumps(-2.675)`
-dà `-2.675`: node lo legge come **flag** e muore con `rc=9` e **stderr vuoto** —
-un fallimento che si legge come «il modulo sotto test è rotto».
-
-Corretto l'1/9 aggiungendo `"--"` prima dell'argomento. **546 test frontend
-verificati verdi dopo il fix.**
-
-Nessuno se n'era accorto in 12 file di test perché passavano tutti oggetti o
-liste (che iniziano con `{` o `[`). Le passate precedenti avevano scritto la
-regola «fixture con valori negativi obbligatorie» — ma l'avevano applicata solo
-*dentro* gli oggetti, dove il bug non si manifesta.
-
-> **Un harness che non ha mai ricevuto un certo input non è provato su
-> quell'input, anche se ha 546 test verdi.**
-
-Se un test fallisce con `rc=9` e stderr vuoto, **non è il modulo**: è l'harness
-che rifiuta l'argomento. Guarda cosa passi prima di riscrivere il codice.
-
-Da oggi l'harness ha i **suoi** test (`tests/test_helpers_ts_harness.py`, 18):
-round-trip dei tipi in uso, i negativi che prima uccidevano node, e le stringhe
-che *sembrano* flag (`"--help"`, `"-v"`) che devono restare dati. Provati per
-mutazione: togliendo il `"--"` falliscono esattamente 3 test. Se li vedi rossi,
-il bug è in `subprocess.run` dentro `esegui_ts`, non nel modulo che stai
-testando.
-
----
-
-## 4. La prossima dimensione: `(app)/dashboard/` — 1.749 righe
-
-L'aggancio pronto: **`MolAndamento`** in `dashboard/kpi-block.tsx`, il gemello
-mai estratto di `calcolaSparkline` (che invece è già in `catena-confronti.ts`,
-testato). Due implementazioni della stessa curva, una coperta e una no: se
-divergono, nessuno lo sa.
-
-Prima di pianificare, verifica **con un grep, non a memoria**:
-- quali file di `dashboard/` importano già da `lib/` — e poi **apri quelli**, per
-  non ripetere l'errore del §2;
-- se `MolAndamento` è davvero l'unica logica non estratta.
-
----
-
-## 5. Regole di lavoro che non cambiano
-
-**Si fotografano i bug, non si correggono** (`// ANOMALIA FOTOGRAFATA` +
-`test_fotografa_*`). Un fix ha bisogno della sua finestra di deploy. Ma la
-fotografia dev'essere **misurata**: l'1/9 il primo commento su `arrotonda2`
-dava una causa sbagliata («`Math.round` verso +∞») presa per ragionamento invece
-che per misura — quella vera è la rappresentazione binaria (`1.005*100` vale
-`100.49999…`). **Un commento sbagliato su un'anomalia fotografata è peggio di
-nessun commento**, perché chi farà il fix lo leggerà come specifica.
+## 4. Regole di lavoro che non cambiano
 
 **Il gate del diff non basta.** `git diff | grep '^+'` prova che la logica è
-*uscita* dal `.tsx`, non che sia *arrivata intatta*. La prova vera è l'oracolo:
-prendere l'espressione originale da `git show HEAD:<file>`, ricostruirla come
-`.mjs` in scratchpad e confrontarla col modulo nuovo su input avversari. L'1/9:
-734 esiti sui margini e ~2.593 celle sulla pivot, 0 divergenze.
+*uscita* dal `.tsx`, non che sia *arrivata intatta*. La prova è l'oracolo:
+l'originale da `git show HEAD:<file>`, ricostruito come `.mjs` in scratchpad,
+confrontato col modulo nuovo su input avversari. Stasera: 21 casi sulla
+sparkline MOL e 60 confronti sulle 4 polyline, 0 divergenze. Fra gli input
+avversari ci sono i **valori veri presi dal DB**, non solo numeri inventati.
 
-⚠️ **Un oracolo è forte quanto il parametro più trascurato.** Il mio generava
-valori avversari sugli *importi* (`-0`, `NaN`, `1e9`) ma sul *conteggio* passava
-solo interi plausibili — e lì si nascondeva una divergenza vera
-(`!(n > 0)` ≠ `n <= 0` per NaN), trovata dal reviewer. Se pensi «questo
-parametro è un intero, cosa vuoi che succeda», è **esattamente** quello da
-generare avversario.
+**Un oracolo va validato sui due lati**, sempre: un mutante palese deve morire,
+un commento cambiato deve sopravvivere. Stasera la validazione ha **fatto il suo
+lavoro**: il primo mutante che avevo scelto (`delta > 0` → `>= 0`) è
+sopravvissuto perché era *equivalente*, non perché i test fossero deboli. Se
+non l'avessi validato avrei concluso il contrario.
 
-**Mutazione**: harness in scratchpad, **validato sui due lati ogni volta**
-(un mutante palese deve morire, un commento cambiato deve sopravvivere).
-`rc=1` = ucciso, `rc>=2` = errore d'uso che ferma il giro. `pytest-timeout` **non
-è installato** — `--timeout` fa uscire pytest con `rc=4`, che un harness ingenuo
-legge come successo.
+**Un mutante sopravvissuto si spiega, non si archivia.** Due dei tre di stasera
+erano lacune vere nei test (regex greedy del grassetto; `Math.max(...vals, 1)`
+su serie sotto l'unità) e sono state chiuse. Solo uno era equivalente.
 
-⚠️ **Il `code-reviewer` può mutare il file VERO del repo.** L'1/9 ha montato due
-mutanti su `catena-export.ts` nel working tree (`find` → `findLast`,
-`"margine_perc"` → `"margine_eur"`). Conseguenze: un mutante quasi committato, e
-una suite in parallelo che misurava un albero mutato (risultato scartato).
-**Guarda `git diff` prima di ogni commit** durante una review, e non lanciare la
-suite mentre il reviewer lavora. Non ripristinare a metà del suo giro — falsi il
-suo esito: avvisalo, aspetta che finisca, poi `git checkout --`.
+**`tsc` prende alcuni errori e non altri.** Stasera ne ha preso uno vero
+(`toggleTopic` non generico scartava campi) e **mancato** un altro:
+`alertPrezziAttivo` diventata funzione usata in un `&&`, quindi sempre truthy —
+trovato rileggendo il file, non dai tipi.
 
-**Ogni cifra nei .md deve dire cosa conta.** L'1/9 il reviewer ha bloccato su
-«282 test non corrisponde a nessuna misura» contandone 269: aveva omesso un file
-dell'area. Il 282 era giusto, ma **due lettori indipendenti hanno ottenuto due
-numeri** perché la cifra non elencava gli addendi. Un numero giusto che nessuno
-può ricostruire è fragile quanto uno sbagliato: scrivi `95+61+50+63+13`, non
-`282`.
+⚠️ **Un'altra sessione può cancellare il tuo commit.** Stasera la sessione
+categorizzazione ha fatto `reset --hard HEAD~1` per correggere il proprio
+commit e ha portato via `f5fe072`, che nel frattempo ci stava sopra. Il lavoro
+era salvo solo nel working tree. **Controlla `git log` dopo ogni pausa lunga**;
+se un commit sparisce sta nel reflog (`git reflog show main`) e si recupera con
+`git cherry-pick`.
 
 **Chiusura §5bis**: bilancio mutanti coi sopravvissuti *elencati col motivo*,
-suite verde, `npx tsc --noEmit`, `/code-reviewer` sul cumulativo (riproduci ogni
-rilievo prima di accettarlo), verbale, `AUDIT_COPERTURA.md` **ri-misurato**,
-`check_documentazione.py`, commit doc+codice insieme, prompt nuovo, **dire la
-coda a Mattia senza pushare**.
+suite verde, `npx tsc --noEmit`, `next build`, `/code-reviewer` sul cumulativo
+(riproduci ogni rilievo prima di accettarlo), verbale, `AUDIT_COPERTURA.md`
+**ri-misurato**, `check_documentazione.py`, prompt nuovo, **dire la coda a
+Mattia senza pushare**.
 
 ---
 
-## 6. Come si parla a Mattia
+## 5. Come si parla a Mattia
 
 Non legge codice: decide **cosa** si fa. Alle domande di stato — **una riga di
 verdetto, max 3 punti, una domanda, «Vuoi il dettaglio?»**. Tetto ~10 righe,
