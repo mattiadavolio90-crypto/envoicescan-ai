@@ -1225,3 +1225,37 @@ sarebbero morti.
 mutazione, `git diff` sul working tree va guardato **prima di ogni commit** — e
 un giro di test lanciato mentre qualcun altro muta l'albero non misura il codice
 che credi.
+
+### L'harness dei test ora ha i suoi test
+
+Dodici file di test dipendono da `esegui_ts` e **nessuno verificava l'harness**.
+È così che il difetto sui negativi è sopravvissuto invisibile.
+
+`tests/test_helpers_ts_harness.py`, 18 test: round-trip dei tipi già in uso
+(nessuna regressione), i negativi scalari che prima uccidevano il processo, le
+stringhe che *sembrano* flag (`"--help"`, `"-v"`, `"--"`) che devono restare
+dati, e le due difese esistenti (`richiede`, modulo inesistente).
+
+**Provato per mutazione, non solo scritto.** Rimuovendo il `"--"` da
+`helpers_ts.py` falliscono **esattamente 3 test** — i negativi scalari — mentre
+`[-1, -2]` continua a passare, perché una lista inizia con `[`. È precisamente
+il motivo per cui il difetto era invisibile: la forma dell'input, non il suo
+valore.
+
+Nella docstring c'è l'indicazione che serve a chi lo vedrà fallire: *se questo
+test fallisce, il bug non è nel modulo sotto test, è in `subprocess.run` dentro
+`esegui_ts`*. Senza quella riga, un rc=9 con stderr vuoto manda a cercare nel
+posto sbagliato — come è successo oggi.
+
+### Un invariante che 61 test non coprivano
+
+I test verificavano le righe dell'export una per una, mai il **rapporto fra
+righe e header**. Ma `json_to_sheet(rows, { header })` mappa per chiave: se una
+riga non ha una chiave dell'header quella cella esce vuota, o il valore finisce
+sotto l'intestazione sbagliata.
+
+Due test aggiunti (margini e pivot) che asseriscono
+`set(riga.keys()) == set(header)` su riga PV, PV incompleto e riga gruppo
+insieme. Il primo usa `COLS` nella **forma reale del `.tsx`**, con `altoMeglio` e
+`tooltip` che `ColonnaExport` non dichiara: i test precedenti usavano una `COLS`
+ridotta, quindi quella differenza non era coperta.
