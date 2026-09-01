@@ -1,15 +1,9 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { type HomeKpi } from "@/lib/home";
+import { calcolaSparkline, type PuntoMol } from "@/lib/catena-confronti";
+import { formatEuro } from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-function euro(n: number): string {
-  return new Intl.NumberFormat("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 function Trend({
   delta,
@@ -106,54 +100,26 @@ function RigaVoce({
   return <div className={base}>{contenuto}</div>;
 }
 
-// Mesi abbreviati IT per le etichette della fascia andamento ("gen → mag").
-const MESI_ABBR = [
-  "gen", "feb", "mar", "apr", "mag", "giu",
-  "lug", "ago", "set", "ott", "nov", "dic",
-];
-
 // Fascia "Andamento MOL nell'anno": una sezione a sé in fondo alla card, con la
 // sua etichetta (anno + range mesi), la mini-linea piu' larga e una % di
 // variazione YTD (dal primo all'ultimo mese con dati). Prima la sparkline era
 // schiacciata sotto al numero grande, senza scala ne' periodo: un graffio
 // illeggibile. Qui ha spazio e contesto -> si capisce cosa racconta.
+//
+// La geometria e la % NON si calcolano qui: le fa calcolaSparkline in lib/,
+// dove sono coperte da test. Fino all'1/9 questo file ne teneva una copia
+// integrale — stessa formula scritta due volte, con la soglia dei 2 punti gia'
+// divergente fra le due. Qui resta solo il disegno.
 function MolAndamento({
   punti,
   anno,
 }: {
-  punti: { mese: number; mol: number }[];
+  punti: PuntoMol[];
   anno: number | null;
 }) {
-  // Guardia DENTRO il componente, come nel gemello MolSparkline: con un solo
-  // punto x() divide per (n-1) = 0 e la linea esce NaN, con zero punti
-  // punti[n-1] e' undefined. Al call-site non basta -- e' cosi' che le due
-  // copie hanno gia' divergito.
-  if (punti.length < 2) return null;
-  const W = 240;
-  const H = 40;
-  const PAD = 4;
-  const vals = punti.map((p) => p.mol);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const range = max - min || 1; // evita /0 se tutti uguali
-  const n = punti.length;
-  const x = (i: number) => PAD + (i * (W - 2 * PAD)) / (n - 1);
-  const y = (v: number) => H - PAD - ((v - min) / range) * (H - 2 * PAD);
-  const d = punti.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.mol).toFixed(1)}`).join(" ");
-  const lastX = x(n - 1);
-  const lastY = y(punti[n - 1].mol);
-
-  // Variazione YTD: dal primo mese con dati all'ultimo. Se il primo e' <= 0 una
-  // % sarebbe priva di senso (divisione per ~zero o segno ribaltato): in quel
-  // caso non mostro la percentuale, solo la linea.
-  const primo = punti[0].mol;
-  const ultimo = punti[n - 1].mol;
-  const ytdPct = primo > 0 ? ((ultimo - primo) / primo) * 100 : null;
-  const ytdSu = ytdPct != null && ytdPct >= 0;
-  const stroke = ytdSu ? "text-emerald-500" : "text-rose-500";
-
-  const meseDa = MESI_ABBR[(punti[0].mese - 1) % 12] ?? "";
-  const meseA = MESI_ABBR[(punti[n - 1].mese - 1) % 12] ?? "";
+  const spark = calcolaSparkline(punti);
+  if (!spark) return null;
+  const { d, ytdPct, su, stroke, meseDa, meseA, cx, cy } = spark;
 
   return (
     <div className="mt-4 border-t pt-3">
@@ -165,10 +131,10 @@ function MolAndamento({
           <span
             className={cn(
               "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
-              ytdSu ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
+              su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
             )}
           >
-            {ytdSu ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+            {su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
             {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
             <span className="ml-1 font-normal text-muted-foreground/60">
               {meseDa} → {meseA}
@@ -177,14 +143,14 @@ function MolAndamento({
         )}
       </div>
       <svg
-        viewBox={`0 0 ${W} ${H}`}
+        viewBox="0 0 240 40"
         className="h-10 w-full overflow-visible"
         preserveAspectRatio="none"
         role="img"
         aria-label="Andamento del margine nei mesi dell'anno"
       >
         <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
-        <circle cx={lastX} cy={lastY} r="3" className={cn("fill-current", stroke)} />
+        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", stroke)} />
       </svg>
     </div>
   );
@@ -235,7 +201,7 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
             molPos ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
           )}
         >
-          {euro(kpi.mol)}
+          {formatEuro(kpi.mol)}
         </div>
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground/60">
           {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
@@ -266,7 +232,7 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         <RigaVoce
           colore="emerald"
           label="Fatturato"
-          value={euro(kpi.fatturato)}
+          value={formatEuro(kpi.fatturato)}
           delta={kpi.fatturato_delta_pct}
           suffix="%"
           buonoSeSu
@@ -291,7 +257,7 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         <RigaVoce
           colore="amber"
           label="Costo personale"
-          value={euro(kpi.costo_personale)}
+          value={formatEuro(kpi.costo_personale)}
           delta={kpi.personale_delta_pct}
           suffix="%"
           buonoSeSu={false}
@@ -302,7 +268,7 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         <RigaVoce
           colore="amber"
           label="Spese generali"
-          value={euro(kpi.spese_generali)}
+          value={formatEuro(kpi.spese_generali)}
           delta={kpi.spese_delta_pct}
           suffix="%"
           buonoSeSu={false}
@@ -313,11 +279,10 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
       </div>
 
       {/* Andamento MOL nell'anno: fascia a sé in fondo, con periodo e % YTD.
-          La soglia dei 2 mesi (sotto, una linea non avrebbe senso) sta dentro
-          MolAndamento, non qui. */}
-      {kpi.mol_mensile.length > 0 && (
-        <MolAndamento punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} />
-      )}
+          Nessuna soglia qui: la decide calcolaSparkline (che con < 2 punti
+          torna null). Prima questo call-site diceva `> 0` mentre la guardia
+          vera era `< 2` — due numeri per la stessa regola, in due file. */}
+      <MolAndamento punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} />
     </div>
   );
 }

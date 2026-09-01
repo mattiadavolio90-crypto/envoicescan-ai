@@ -7,7 +7,7 @@ import { type Notifica } from "@/lib/notifiche";
 import { buttonVariants } from "@/components/ui/button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ctaDi, pulisci, raggruppa } from "./notifiche-shared";
+import { ctaDi, pulisci, raggruppa } from "@/lib/notifiche-shared";
 
 function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
   if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;

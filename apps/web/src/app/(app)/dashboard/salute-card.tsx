@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Check, ArrowRight } from "lucide-react";
 import { type Salute } from "@/lib/home";
+import { offsetAnello } from "@/lib/catena-confronti";
 import { cn } from "@/lib/utils";
 
 // Palette per i 3 stati dell'indice. Verde >=80, Giallo 50-79, Rosso <50
@@ -38,7 +39,7 @@ const COLORI = {
 function Anello({ indice, colore }: { indice: number; colore: Salute["colore"] }) {
   const r = 52;
   const c = 2 * Math.PI * r;
-  const offset = c - (Math.max(0, Math.min(100, indice)) / 100) * c;
+  const offset = offsetAnello(indice, r);
   const tint = COLORI[colore];
   return (
     <div className="relative size-32 shrink-0">
