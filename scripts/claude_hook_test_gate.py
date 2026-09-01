@@ -162,11 +162,24 @@ def _blocca(esito: subprocess.CompletedProcess, ambito: str) -> None:
         if "PydanticDeprecatedSince" not in riga and "@model_validator" not in riga
     ]
     coda = "\n".join(righe[-40:])
+    # Il working tree e' condiviso fra le sessioni aperte in parallelo (WORKFLOW.md
+    # §0): un rosso puo' venire da modifiche non committate di un'altra sessione.
+    # E' gia' successo l'1/9/2026 con test_flusso_dati_admin.py::test_badges_*,
+    # rossi nel tree e verdi su checkout pulito. Il gate non prova a indovinare di
+    # chi sia il rosso -- lo dice, e lascia verificare.
+    nota = (
+        "Se `git status --short` mostra file non tuoi, il rosso puo' venire da li': "
+        "verifica che esista anche senza le modifiche altrui prima di concludere "
+        "che l'hai rotto tu."
+    )
     print(
         json.dumps(
             {
                 "decision": "block",
-                "reason": f"Test non verdi ({ambito}, exit {esito.returncode}). Ultime righe:\n{coda}",
+                "reason": (
+                    f"Test non verdi ({ambito}, exit {esito.returncode}). {nota}\n"
+                    f"Ultime righe:\n{coda}"
+                ),
             }
         )
     )

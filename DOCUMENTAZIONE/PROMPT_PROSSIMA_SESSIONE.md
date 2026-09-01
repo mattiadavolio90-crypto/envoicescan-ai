@@ -9,25 +9,35 @@
 ## 0. Prima di qualunque cosa — controlli di sessione
 
 ```bash
-git status --short                      # dev'essere pulito
+git status --short                      # file aperti: possono essere di altre sessioni
 git log --oneline origin/main..main     # quanti commit sono in coda?
 ```
 
-**Se la coda non è vuota, dillo a Mattia subito**, con il numero — **quello che
-leggi tu adesso**, non quello scritto qui. A fine giornata dell'1/9 erano **2**.
-Il push manda **tutti** i commit accumulati, non solo quelli di oggi — e **il
-push È il deploy**. Non pushare mai di iniziativa: la finestra è la sera/notte,
-e la decide Mattia.
+**La coda non vuota è normale, non un allarme**: Mattia tiene aperte più
+sessioni insieme e spedisce tutto la sera in una volta. Leggi il numero adesso
+(non fidarti di quello scritto qui) e **riportalo a fine sessione**, distinguendo
+il tuo lavoro da quello che c'era già — «in coda: 7 commit, 3 miei». Niente ⚠️,
+niente domanda in apertura.
+
+Il push manda **tutti** i commit accumulati — e **il push È il deploy**. Non
+pushare mai di iniziativa: la finestra è la sera/notte, e la decide Mattia.
 
 Si lavora su **`main` locale**. Niente branch, niente PR (`WORKFLOW.md` §0).
 
-⚠️ **All'1/9 il working tree aveva lavoro di un'altra sessione non committato**
-(`services/consumi_service.py`, la migration `20260901120000_rpc_admin_consumi_mensili.sql`,
-modifiche a `routers/admin.py`, `config/constants.py`, `routers/account.py`).
-Facevano fallire 2 test (`test_flusso_dati_admin.py::test_badges_*`) nel tree,
-**non** su checkout pulito. Se lo trovi ancora lì: non è tuo, non committarlo,
-ma **dillo a Mattia** — una migration non tracciata è schema che non esiste in
-nessun file.
+**Il working tree può contenere lavoro di un'altra sessione**, ed è il caso
+normale. Regola: non è tuo, **non committarlo** (attenzione a `git add -A`), e
+non toccare quei file senza dirlo. Lo citi a fine sessione insieme alla coda.
+
+Esempio reale dell'1/9, utile perché mostra l'effetto collaterale: nel tree
+c'erano `services/consumi_service.py`, la migration
+`20260901120000_rpc_admin_consumi_mensili.sql` e modifiche a `routers/admin.py`,
+`config/constants.py`, `routers/account.py`. Facevano fallire 2 test
+(`test_flusso_dati_admin.py::test_badges_*`) **nel tree ma non su checkout
+pulito**: prima di concludere che hai rotto tu qualcosa, verifica senza le
+modifiche altrui.
+
+Un caso però va segnalato davvero: una **migration non tracciata** è schema che
+non esiste in nessun file — quella dilla, non è routine.
 
 ---
 
@@ -177,10 +187,13 @@ tutte le fasi, non il misto che avevo proposto — proponi, non decidere.
    due font `.woff` binari**: il totale è quella cifra **meno 481**.
 7. `python scripts/check_documentazione.py` pulito. **Verifica i simboli, non
    l'aritmetica**: le somme dei `.md` non hanno nessuna rete automatica.
-8. Commit su `main` locale, `git status --short` pulito (doc **insieme** al
-   codice).
+8. Commit su `main` locale, doc **insieme** al codice. In `git status --short`
+   non deve restare **nulla di tuo**: i file di altre sessioni restano, ed è
+   corretto che restino.
 9. Riscrivere questo file per la dimensione successiva.
-10. **Dire a Mattia quanti commit sono in coda. Non pushare.**
+10. **Una riga sulla coda, senza allarme**: numero totale e quanti sono tuoi —
+    «in coda: 7 commit (3 miei, 4 di altre sessioni), pronti per stasera».
+    **Non pushare.**
 
 ---
 

@@ -65,9 +65,40 @@ git log --oneline origin/main..main    # cosa partirebbe adesso
 git diff --stat origin/main..main      # quanto, e su quali file
 ```
 
-A inizio sessione, se quel primo comando non è vuoto, **dirlo subito**: c'è
-lavoro fatto e non ancora spedito, e Mattia deve saperlo prima di aggiungerne
-altro.
+Il numero che leggi lì **si riporta a fine sessione**, non all'apertura come
+allarme: è la coda che deve esserci.
+
+### Il parallelo è il regime normale, non un'eccezione
+
+**Mattia tiene aperte più sessioni insieme**, su aree diverse, e spedisce tutto
+in una volta la sera. Quindi trovare **commit non tuoi** in `origin/main..main`
+e **file non tuoi** in `git status --short` è **lo stato atteso**: non è un
+problema da segnalare, è il metodo che funziona.
+
+**Come si riporta.** A fine sessione, una riga di contesto che distingue il tuo
+lavoro da quello che c'era già:
+
+> In coda: 7 commit (3 miei, 4 di altre sessioni), pronti per stasera.
+
+Niente ⚠️, niente domanda. Se la sessione apre chiedendo a Mattia cosa fare dei
+commit altrui, sta chiedendo conferma della normalità — ed è successo così spesso
+da diventare la ragione di questa sezione (1/9/2026).
+
+**Cosa resta vietato**, e non è cambiato:
+
+1. **Committare lavoro non tuo.** Il modo tipico di violarlo per sbaglio è
+   `git add -A` / `git add .`: aggiungono anche i file di un'altra sessione, che
+   finiscono in un commit con un messaggio che non li descrive. Elenca i file che
+   hai toccato tu, sempre.
+2. **Toccare senza dirlo un file già modificato** in `git status`: due sessioni
+   sullo stesso file si sovrascrivono senza avviso (§9).
+3. **`git push` di iniziativa.** Vale come prima: il push È il deploy.
+
+**Se un rosso non è tuo.** Il working tree è condiviso: i test possono fallire
+per lavoro non committato di un'altra sessione — è già successo l'1/9 con due
+test di `test_flusso_dati_admin.py`, verdi su checkout pulito. Prima di
+concludere che l'hai rotto tu, verifica che il rosso esista anche senza le
+modifiche altrui.
 
 ### Cosa NON è cambiato
 

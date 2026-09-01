@@ -155,8 +155,11 @@ python scripts/export_openapi.py --check-drift
   push**, salvo conferma esplicita di Mattia. Vedi `WORKFLOW.md` §0.
 - **Mai `git push` / `gh pr create` / `gh pr merge` di iniziativa.** N sessioni
   ≠ N deploy: il push manda **tutti** i commit accumulati, non solo quelli di
-  oggi. Guarda cosa parte (`git log --oneline origin/main..main`) e se a inizio
-  sessione non è vuoto, dillo subito.
+  oggi (`git log --oneline origin/main..main`).
+- **Più sessioni in parallelo sono la norma.** Commit e file non tuoi sono lo
+  stato atteso, non un allarme: si contano e si riportano a fine sessione
+  («in coda: 7 commit, 3 miei»). Mai committare lavoro non tuo — `git add -A`
+  è il modo tipico di farlo per sbaglio. Vedi `WORKFLOW.md` §0.
 - **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
 - **Worker locale senza `--reload`** tiene in memoria il codice vecchio: riavvialo.
 - **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in
