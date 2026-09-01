@@ -1286,3 +1286,47 @@ commit di oggi, verificato con `git diff --name-only`. L'hook guarda lo stato
 del repo, non l'autore del commit: con più sessioni in parallelo può segnalare
 lavoro altrui, e la risposta giusta è verificare **di chi è**, non correre a
 rivedere codice che non si è scritto.
+
+### La review: 62 mutanti indipendenti, e una divergenza che il mio oracolo non vedeva
+
+Il `code-reviewer` ha rifatto la mutazione con **62 mutanti propri, 57 uccisi**
+(`catena-export` 46/51, i due predicati 11/11). **Nessun suo mutante sopravvive
+fuori dal mio catalogo**, e ha confermato tutte e tre le equivalenze che avevo
+dichiarato — inclusa la correzione su E26, che avevo sbagliato e poi corretto da
+solo. Ha anche fatto un oracolo indipendente: 1698 confronti sui margini, 884
+sulla pivot.
+
+**Il rilievo che conta — `notaIncompleti(NaN)`:**
+
+```
+notaIncompleti(NaN):  originale → nessuna nota
+                      mio       → "…: NaN sedi non hanno…"
+```
+
+Riorganizzando la guardia da `if (n > 0) {…}` a `if (n <= 0) return null` avevo
+cambiato semantica: **`!(n > 0)` non è `n <= 0` per NaN**. Riprodotto e
+corretto ripristinando la forma originale, con un test che la tiene ferma.
+
+**Perché il mio oracolo non l'ha vista.** Generava valori avversari sugli
+*importi* (`-0`, `NaN`, `1e9`, `0.1+0.2`) ma sul *conteggio* passava solo
+`[0, 1, 2, 5, -1]` — interi plausibili. Il suo generava NaN anche lì. La
+lezione: **un oracolo è forte quanto il parametro più trascurato**. Avevo
+trattato `n_incompleti` come «un intero, cosa vuoi che succeda» — che è
+esattamente il ragionamento che rende un input non testato.
+
+**Dove il reviewer ha sbagliato**, riprodotto prima di rispondere: ha bloccato
+su «282 test non corrisponde a nessuna misura», contando 269. Mancavano i **13
+di `tag-candidati`**, che è di catena — estratto da `gruppo-tag-section.tsx`
+nella 1ª passata. Il 282 è misurato con `--collect-only` e riproducibile.
+
+Ma il rilievo era **utile lo stesso**: la cifra non diceva *cosa* contava, e per
+questo due lettori indipendenti hanno ottenuto due numeri. Ora gli addendi sono
+espliciti in `AUDIT_COPERTURA.md` (95+61+50+63+13), con detto perché i 18
+dell'harness restano fuori. **Un numero giusto che nessuno può ricostruire è
+fragile quanto uno sbagliato.**
+
+Corretta anche una frase del commento su `arrotonda2` («dipende dal valore, non
+dal segno»): misurato, sono **due passaggi** — il valore decide se il prodotto
+cade su un `.5` esatto (`2.675*100` = `267.5` esatto, `1.005*100` =
+`100.49999…`), e *se* c'è, il segno decide il verso. Per questo `2.675 → 2.68`
+ma `-2.675 → -2.67`, mentre `1.005` e `-1.005` danno entrambi `1`.
