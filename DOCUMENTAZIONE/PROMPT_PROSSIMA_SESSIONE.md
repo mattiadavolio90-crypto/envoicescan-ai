@@ -13,10 +13,22 @@
 > sesta è la più istruttiva e sta al §2: la 2ª passata ha scritto «catena chiusa
 > al 90%» su un criterio che non misurava quello che credeva.
 >
-> E un avvertimento dal fix di oggi: **il verbale sottostimava il bug**. Diceva
-> «~25 punti», erano **60**; diceva che il danno era «contenuto dalla guardia»,
-> ma nei ricavi la forma era `parseFloat` e la guardia **non scattava**. Quando
-> riapri un'anomalia fotografata, **ri-misurala** prima di stimarne il costo.
+> E due avvertimenti dal fix di oggi.
+>
+> **Il verbale sottostimava il bug.** Diceva «~25 punti», erano **60**; diceva
+> che il danno era «contenuto dalla guardia», ma nei ricavi la forma era
+> `parseFloat` e la guardia **non scattava**. Quando riapri un'anomalia
+> fotografata, **ri-misurala** prima di stimarne il costo.
+>
+> **Il fix ha introdotto una regressione peggiore del bug**, trovata solo dal
+> `code-reviewer`. Avevo classificato i campi con il criterio sbagliato e sui
+> ricavi la regola delle migliaia moltiplicava ×1000 un valore *ricaricato dal
+> DB*: bastava aprire «Carica ricavi» e premere Salva senza toccare nulla. Il
+> criterio giusto è al §1bis. **Una sostituzione automatica su decine di punti
+> applica una regola sintattica; quella che distingue i casi è semantica** — e
+> la rilettura a mano ne trova una parte, non tutte: io ne ho trovato 1, il
+> reviewer altri 3, e il più grave veniva da un percorso che nessuno dei due
+> aveva pensato a guardare (il round-trip col database, non l'input dell'utente).
 
 ---
 
@@ -37,6 +49,31 @@ Il push manda **tutti** i commit accumulati — e **il push È il deploy**. Non
 pushare mai di iniziativa: la finestra è sera/notte e la decide Mattia.
 
 Si lavora su **`main` locale**. Niente branch, niente PR (`WORKFLOW.md` §0).
+
+### ⚠️ La suite era ROSSA a fine 1/9 — 16 test, nessuno di catena/numeri
+
+```
+tests/test_riparto_riga_categoria.py          (2)
+tests/test_nucleo_decisione_deterministica.py (1)
+tests/test_home_briefing_cache_first.py       (1)
+tests/test_route_api_auth_dichiarativa.py     (1)
+… e altri della stessa area
+```
+
+**Non sono della sessione catena/numeri**, verificato in tre modi: i 400 test
+di quella sessione passano tutti; questi passano **se eseguiti isolati**; e non
+importano nulla di quel lavoro (i match su `catena` e `format` sono il nome di
+una tabella e la stringa `isoformat`).
+
+Dipendono da `services/ai_service.py` e `services/routers/riparto.py`, che a
+fine giornata erano **modificati e non committati** dalla sessione
+categorizzazione, insieme a `invoice_service.py`, `routers/fatture.py` e alla
+migration `20260901170000_fatture_provenienza_categoria.sql`.
+
+**Prima di dare la colpa a qualcosa, rilancia la suite**: se quella sessione ha
+committato o annullato le sue modifiche, potrebbe essere già verde. Se è ancora
+rossa, **non è tuo da sistemare** — è loro, e va detto a Mattia dicendo di chi
+è (`WORKFLOW.md` §0).
 
 ⚠️ **Nel tree c'è lavoro di un'altra sessione** (consumi admin: `4bce085` più
 `services/consumi_service.py`, `routers/admin.py`, `tests/test_consumi_service.py`
