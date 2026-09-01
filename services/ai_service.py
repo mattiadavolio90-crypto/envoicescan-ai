@@ -1315,17 +1315,20 @@ def _e_consumo_extra(desc_u: str) -> bool:
     solo nel terzo, "MOZZARELLA ... VASCHETTA" smetterebbe di essere imballo qui e
     resterebbe imballo la'.
     """
-    trovati = _CONSUMO_EXTRA_RE.findall(desc_u)
-    if not trovati:
-        return False
-    # findall, non search: search restituisce il PRIMO match, e in "VASCHETTA E
+    # finditer e non search: search restituisce il PRIMO match, e in "VASCHETTA E
     # TOVAGLIOLI" quello e' "VASCHETTA" — la guardia scatterebbe pur essendoci un
     # termine non ambiguo. Serve sapere se VASCHETTA e' l'UNICA ragione del match.
-    def _solo_vaschetta(t) -> bool:
-        termine = t if isinstance(t, str) else next((x for x in t if x), "")
-        return bool(_VASCHETTA_SOLA_RE.fullmatch(termine.strip()))
+    #
+    # E non findall: findall cambia forma col numero di gruppi della regex (stringhe
+    # con un gruppo, tuple con due o piu'). Oggi _CONSUMO_EXTRA_RE ne ha uno solo,
+    # ma legare questa logica a quel dettaglio significa romperla in silenzio il
+    # giorno in cui qualcuno aggiunge una parentesi alla regex. `.group()` di un
+    # match e' sempre il testo matchato, comunque sia fatta la regex.
+    trovati = [m.group().strip() for m in _CONSUMO_EXTRA_RE.finditer(desc_u)]
+    if not trovati:
+        return False
 
-    if all(_solo_vaschetta(t) for t in trovati):
+    if all(_VASCHETTA_SOLA_RE.fullmatch(t) for t in trovati):
         # Nessun altro termine: decide il contesto. Senza un materiale o un formato
         # di confezionamento, l'oggetto venduto e' il cibo, non il contenitore.
         return bool(_VASCHETTA_IMBALLO_RE.search(desc_u))
@@ -4554,6 +4557,11 @@ def _propaga_global_override_a_fatture_storiche(
                     'needs_review': False,
                     'reviewed_at': now_iso,
                     'reviewed_by': 'admin-global-propagation',
+                    # Fase 2 — propagazione di una decisione admin: l'origine resta
+                    # umana anche sulle righe raggiunte per propagazione, non solo
+                    # su quella che l'admin ha guardato.
+                    'categoria_fonte': 'correzione_admin',
+                    'categoria_fiducia': 'certa',
                 }).in_('id', ids_chunk).is_('deleted_at', 'null').execute()
                 updated_total += len(ids_chunk)
             except Exception as _upd_err:
@@ -4709,6 +4717,13 @@ _PROVENIENZA_CORRENTE: ContextVar[Tuple[Optional[str], Optional[str]]] = Context
 # Fonti deterministiche di cui ci si puo' fidare: memoria admin (un umano ha deciso),
 # regole non negoziabili e regole forti certificate, hard override fornitore utility.
 _FONTI_CERTE = frozenset({
+    # `correzione_cliente` e `correzione_admin`: un umano ha guardato quella riga,
+    # e' la fonte piu' attendibile che esista. Devono stare QUI e non solo
+    # hardcodate nei router: il giorno in cui un percorso di correzione derivasse
+    # la fiducia da questa funzione invece di scriverla a mano, la Fase 4
+    # escluderebbe dai margini le righe appena corrette dal cliente — l'esatto
+    # contrario di cio' che la tracciabilita' serve a garantire.
+    "correzione_cliente", "correzione_admin",
     "L0_fornitore", "L1_admin", "L1_5_non_negoziabile", "L2_locale",
     "L4_dicitura", "L7_regola_forte", "AI_confermata",
 })
@@ -4801,8 +4816,19 @@ def categorizza_con_memoria(
         # chiamanti che si aspettano `str` o `(str, bool)`, e allargarla li
         # romperebbe tutti. Chi vuole la provenienza la legge subito dopo con
         # `ultima_provenienza()`, nello stesso thread.
+        # La fonte va decisa sulla categoria FINALE, non su quella che il livello
+        # aveva proposto. Gli 11 return di L0-L6 passano da
+        # `_applica_guardrail_note_con_importo`, che puo' riportare la riga a
+        # "Da Classificare" DOPO che la fonte e' stata scelta: senza questo
+        # controllo la riga finisce in coda dichiarando che L4 l'ha decisa.
+        # Misurato sul catalogo reale (1/9): 68 combinazioni descrizione/importo,
+        # 52 con fonte "L4_dicitura" e 16 "L1_5_non_negoziabile".
+        _fonte_reale = fonte
+        if _fonte_reale and str(categoria).strip() == "Da Classificare":
+            _fonte_reale = "nessuna"
         _PROVENIENZA_CORRENTE.set(
-            (fonte, _fiducia_per_fonte(fonte, categoria)) if fonte else (None, None)
+            (_fonte_reale, _fiducia_per_fonte(_fonte_reale, categoria))
+            if _fonte_reale else (None, None)
         )
         return (categoria, is_fallback) if return_fallback_flag else categoria
 

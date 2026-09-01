@@ -198,3 +198,188 @@ class TestScrittureAutomaticheRegistranoLaFonte:
         =certa) e il degrado viene LOGGATO: non si scrive una fiducia inventata."""
         src = Path("worker/queue_processor.py").read_text(encoding="utf-8")
         assert "_fiducia_per_fonte (tracciabilita' Fase 2)" in src
+
+
+class TestCoerenzaFonteCategoria:
+    """Findings B2 della review (1/9): la fonte veniva decisa PRIMA che la categoria
+    fosse definitiva.
+
+    Gli 11 return di L0-L6 fanno `_ret(_applica_guardrail_note_con_importo(...),
+    fonte="...")`: il guardrail puo' riportare la riga a "Da Classificare" dopo che
+    la fonte e' gia' stata scelta. Misurato sul catalogo reale prima del fix: 68
+    combinazioni descrizione/importo in cui una riga finiva in coda dichiarando che
+    L4_dicitura (52) o L1_5_non_negoziabile (16) l'aveva decisa.
+
+    Una riga in coda non ha, per definizione, un livello che l'ha decisa.
+    """
+
+    @pytest.mark.parametrize("descrizione", [
+        "ARROTONDAMENTO DOCUMENTO",
+        "AVOCADO TRASPORTO AEREO",
+        "DDT N. 449 DEL 11/06/2026",
+        "PREMIO POSTICIPATO FINE PERIODO RIFERIMENTO: 4000305",
+    ])
+    def test_riga_riportata_in_coda_dal_guardrail_non_ha_fonte(
+        self, _memoria_vuota, descrizione
+    ):
+        """prezzo=0 fa riconoscere la dicitura (L4), ma totale_riga != 0 viola la
+        regola di dominio #2 e il guardrail la rimanda in coda. E' la combinazione
+        esatta che produceva le 52 righe con fonte "L4_dicitura" a fronte di una
+        categoria "Da Classificare". Niente skip: se un giorno questa combinazione
+        smettesse di finire in coda, il test deve FALLIRE e farlo notare, non
+        passare in silenzio."""
+        cat = categorizza_con_memoria(
+            descrizione=descrizione, prezzo=0.0, quantita=1, user_id="u1",
+            supabase_client=None, fornitore="X SPA", iva_percentuale=22,
+            totale_riga=10.0,
+        )
+        assert str(cat).strip() == "Da Classificare", (
+            "il guardrail NOTE non ha rimandato in coda una dicitura con importo: "
+            "e' la regola di dominio #2, non un dettaglio di questo test"
+        )
+        fonte, fiducia = ultima_provenienza()
+        assert fonte == "nessuna", f"riga in coda ma fonte='{fonte}'"
+        assert fiducia is None
+
+    def test_invariante_su_tutti_i_livelli(self, _memoria_vuota):
+        """L'invariante non vale per una descrizione fortunata ma per costruzione:
+        qualunque riga finisca in coda dichiara 'nessuna'."""
+        from services import ai_service
+
+        for desc in ("ARROTONDAMENTO DOCUMENTO", "ZZQX 4471 RIF. CONTRATTO",
+                     "SALMONE AFFUMICATO 200G", "CANONE TELEFONIA MOBILE"):
+            for prezzo, totale in ((0.0, 0.0), (10.0, 0.0), (0.0, 10.0), (10.0, 10.0)):
+                cat = categorizza_con_memoria(
+                    descrizione=desc, prezzo=prezzo, quantita=1, user_id="u1",
+                    supabase_client=None, fornitore="X SPA", iva_percentuale=22,
+                    totale_riga=totale,
+                )
+                fonte, fiducia = ai_service.ultima_provenienza()
+                if str(cat).strip() == "Da Classificare":
+                    assert fonte == "nessuna", f"'{desc}' ({prezzo}/{totale}): {fonte}"
+                    assert fiducia is None
+                else:
+                    assert fonte not in (None, "nessuna"), f"'{desc}': categoria senza fonte"
+
+    def test_invoice_service_riallinea_prima_di_scrivere(self):
+        """Fra la lettura della provenienza e la scrittura della riga la categoria
+        passa ancora da enforce_no_unclassified_category, special_row e guardrail
+        NOTE: la coerenza va garantita sulla categoria DAVVERO scritta."""
+        src = Path("services/invoice_service.py").read_text(encoding="utf-8")
+        assert "'categoria_fonte': (" in src
+        assert "if str(categoria_finale).strip() == 'Da Classificare'" in src
+
+
+class TestCorrezioneUmanaEFonteCerta:
+    """Finding B3: `correzione_cliente` non era in `_FONTI_CERTE`, quindi
+    `_fiducia_per_fonte` la classificava `da_verificare`. Non esplodeva solo perche'
+    i router hardcodavano "certa" accanto alla fonte — ma `upload_handler` gia' deriva
+    la fiducia da questa funzione. Il giorno in cui un percorso di correzione facesse
+    lo stesso, la Fase 4 escluderebbe dai margini le righe appena corrette a mano."""
+
+    @pytest.mark.parametrize("fonte", ["correzione_cliente", "correzione_admin"])
+    def test_una_decisione_umana_e_certa(self, fonte):
+        assert _fiducia_per_fonte(fonte, "CARNE") == "certa"
+
+
+class TestNessunaScritturaSenzaProvenienza:
+    """Finding B1: il commit dichiarava «tutti i percorsi», ma tre scrivevano la
+    categoria senza registrarla — incluso l'agent notturno, che la fonte ce l'aveva
+    in mano (`decisione_deterministica` due righe sopra) e la buttava via."""
+
+    def test_ogni_update_di_categoria_porta_la_provenienza(self):
+        import re
+
+        scoperti = []
+        for f in list(Path("services").rglob("*.py")) + list(Path("worker").rglob("*.py")):
+            src = f.read_text(encoding="utf-8")
+            for m in re.finditer(
+                r'table\([\'"]fatture[\'"]\)\s*\.\s*(update|upsert)\(\s*\{(.{0,900}?)\}\s*\)',
+                src, re.S,
+            ):
+                body = m.group(2)
+                if ('"categoria"' in body or "'categoria'" in body) \
+                        and "categoria_fonte" not in body:
+                    scoperti.append(f"{f}:{src[:m.start()].count(chr(10)) + 1}")
+        assert not scoperti, (
+            f"scrivono la categoria senza provenienza: {scoperti}. "
+            "La Fase 4 escluderebbe dai margini una fetta di righe scelta a caso."
+        )
+
+    def test_l_annullamento_azzera_la_provenienza(self):
+        """Annullare significa tornare a PRIMA di quella decisione: lasciare la
+        fonte descriverebbe una decisione che non esiste piu'. NULL = 'non lo
+        sappiamo', che e' la verita' (l'originaria non era stata conservata)."""
+        src = Path("services/routers/admin.py").read_text(encoding="utf-8")
+        assert '"categoria_fonte": None' in src
+        assert '"categoria_fiducia": None' in src
+
+    def test_l_agent_notturno_non_butta_via_la_fonte_che_ha(self):
+        src = Path("services/fastapi_worker.py").read_text(encoding="utf-8")
+        assert '"L7_regola_forte" if _motivo else "L7_dizionario"' in src
+
+
+class TestIlCommentDelDbNonMente:
+    """Il comment di `fatture.categoria_fonte` elencava `L3_globale_non_verificata`
+    (mai emesso dal codice) e ometteva `correzione_cliente`/`correzione_admin` (i
+    valori che i cinque percorsi di correzione manuale scrivono davvero).
+
+    Un comment di colonna e' documentazione che vive nel DB: mente a chiunque ispezioni
+    lo schema per capire cosa contiene quel campo, ed e' proprio il tipo di
+    documentazione che nessun test copre. Questo la copre.
+    """
+
+    _FIX = Path("supabase/migrations/20260901183000_fix_comment_categoria_fonte.sql")
+
+    def _comment_vigente(self) -> str:
+        """Il testo del comment EFFETTIVAMENTE in vigore: l'ultima migration in
+        ordine cronologico che lo definisce, e di quella solo la stringa SQL — non
+        il file intero, o si leggerebbero anche i commenti `--` che spiegano quali
+        valori sono stati RIMOSSI, contandoli come ancora documentati."""
+        import re
+
+        vigente = ""
+        for f in sorted(Path("supabase/migrations").glob("*.sql")):
+            src = f.read_text(encoding="utf-8")
+            eseguibile = "\n".join(
+                r for r in src.split("\n") if not r.strip().startswith("--")
+            )
+            # `.*?;` si fermerebbe al primo punto e virgola, che nel comment sta
+            # DENTRO la stringa: si legge fino a `';` (chiusura della stringa SQL).
+            m = re.search(
+                r"comment\s+on\s+column\s+public\.fatture\.categoria_fonte\s+is\s+(.*?'\s*;)",
+                eseguibile, re.S | re.I,
+            )
+            if m:
+                vigente = m.group(1)
+        assert vigente, "nessuna migration definisce il comment di categoria_fonte"
+        return vigente
+
+    def test_il_fix_esiste(self):
+        assert self._FIX.exists()
+
+    def test_ogni_fonte_emessa_dal_codice_e_documentata(self):
+        from services.ai_service import _FONTI_CERTE, _FONTI_PROBABILI
+
+        comment = self._comment_vigente()
+        mancanti = [
+            f for f in sorted(_FONTI_CERTE | _FONTI_PROBABILI | {"nessuna"})
+            if f not in comment
+        ]
+        assert not mancanti, f"fonti emesse dal codice ma non documentate a DB: {mancanti}"
+
+    def test_nessun_valore_fantasma_nel_comment(self):
+        """Il verso opposto, che e' quello che era sfuggito: un valore documentato
+        che il codice non emette piu' e' altrettanto fuorviante."""
+        import re
+
+        from services.ai_service import _FONTI_CERTE, _FONTI_PROBABILI
+
+        reali = _FONTI_CERTE | _FONTI_PROBABILI | {"nessuna"}
+        comment = self._comment_vigente()
+        # I token con questa forma nel comment sono nomi di fonte, non prosa.
+        citati = set(re.findall(r"\b(?:L\d[A-Za-z0-9_]*|AI_[a-z]+|correzione_[a-z]+)\b", comment))
+        fantasmi = sorted(citati - reali)
+        assert not fantasmi, (
+            f"il comment documenta valori che il codice non emette: {fantasmi}"
+        )

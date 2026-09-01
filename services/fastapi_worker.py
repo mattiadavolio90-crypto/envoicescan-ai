@@ -326,6 +326,8 @@ def _run_agent_notturno() -> dict:
                     "needs_review": False,
                     "reviewed_at": now_iso,
                     "reviewed_by": "agent-notturno",
+                    "categoria_fonte": "L4_dicitura",
+                    "categoria_fiducia": "certa",
                 }).in_("id", ids).is_("deleted_at", "null").execute()
                 sb.table("prodotti_master").upsert({
                     "descrizione": desc, "categoria": "📝 NOTE E DICITURE",
@@ -374,11 +376,19 @@ def _run_agent_notturno() -> dict:
                         continue
                     ids = df_normali[df_normali["descrizione"] == desc]["id"].tolist()
                     cat_da = str(df_normali[df_normali["descrizione"] == desc]["categoria"].iloc[0] or "")
+                    # Fase 2 — la fonte QUI e' nota (l'ha appena decisa
+                    # `decisione_deterministica` due righe sopra): buttarla via
+                    # sarebbe il caso peggiore, una riga scritta da una decisione
+                    # tracciabile che risulta senza provenienza.
                     sb.table("fatture").update({
                         "categoria": cat_forte,
                         "needs_review": False,
                         "reviewed_at": now_iso,
                         "reviewed_by": "agent-notturno",
+                        "categoria_fonte": (
+                            "L7_regola_forte" if _motivo else "L7_dizionario"
+                        ),
+                        "categoria_fiducia": "certa" if _motivo else "probabile",
                     }).in_("id", ids).is_("deleted_at", "null").execute()
                     sb.table("prodotti_master").upsert({
                         "descrizione": desc, "categoria": cat_forte,

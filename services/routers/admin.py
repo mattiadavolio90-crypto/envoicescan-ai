@@ -1023,6 +1023,12 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         "needs_review": False,
         "reviewed_at": now,
         "reviewed_by": f"admin:{admin_user.get('email', 'admin')}",
+        # Fase 2 — un admin che revisiona e' un umano che guarda la riga: stessa
+        # attendibilita' della correzione del cliente. Senza questo la riga
+        # conserverebbe la provenienza automatica che l'aveva sbagliata, ed e'
+        # esattamente il difetto che i percorsi cliente sono stati corretti per evitare.
+        "categoria_fonte": "correzione_admin",
+        "categoria_fiducia": "certa",
     }
     sb.table("fatture").update(update_payload).in_("id", target_ids).is_("deleted_at", "null").execute()
     for _rid in rid_coinvolti:
@@ -1316,6 +1322,8 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
                 "needs_review": False,
                 "reviewed_at": now,
                 "reviewed_by": "auto-review",
+                "categoria_fonte": "L4_dicitura",
+                "categoria_fiducia": "certa",
             }).in_("id", ids).is_("deleted_at", "null").execute()
             sb.table("prodotti_master").upsert({
                 "descrizione": desc,
@@ -1697,11 +1705,17 @@ def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depends(_v
 
     ids = [int(i) for i in (entry.get("ids_fatture") or [])]
     if ids:
+        # Fase 2 — annullare significa tornare a PRIMA di quella decisione: la
+        # provenienza va azzerata insieme a reviewed_at/reviewed_by, o descriverebbe
+        # una decisione che non esiste piu'. NULL = legacy, cioe' "non lo sappiamo":
+        # e' la verita', perche' la fonte originaria non e' stata conservata.
         sb.table("fatture").update({
             "categoria": categoria_da,
             "needs_review": True,
             "reviewed_at": None,
             "reviewed_by": None,
+            "categoria_fonte": None,
+            "categoria_fiducia": None,
         }).in_("id", ids).is_("deleted_at", "null").execute()
         _invalidate_fatture_rows_cache()
 

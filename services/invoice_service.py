@@ -1145,10 +1145,16 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     return_fallback_flag=True,
                     totale_riga=totale_riga,
                 )
-                # Fase 2 — letta QUI, subito dopo la chiamata e nello stesso contesto:
-                # e' un ContextVar, non sopravvive a un confine di processo ne' a un
-                # BackgroundTask. Un rinvio anche di poco la troverebbe gia' azzerata
-                # o, peggio, valorizzata dalla riga successiva.
+                # Fase 2 — letta QUI perche' e' un ContextVar: va letta prima che il
+                # ciclo passi alla riga successiva, o si legge la provenienza di
+                # quella. Non "prima possibile" per timore che scada — non scade da
+                # sola; e' il confine di iterazione a sovrascriverla.
+                #
+                # Attenzione al punto opposto, che e' quello vero: sotto, la categoria
+                # cambia ancora (enforce_no_unclassified_category, special_row
+                # force_categoria, guardrail NOTE). Se una di quelle la riporta a
+                # "Da Classificare", la fonte letta qui direbbe il falso. La coerenza
+                # e' garantita a valle, subito prima di scrivere la riga.
                 _cat_fonte, _cat_fiducia = ultima_provenienza()
 
                 categoria_finale, _enforce_fallback = enforce_no_unclassified_category(
@@ -1262,8 +1268,21 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     'Totale_Riga': round(totale_riga, 2),
                     'Fornitore': fornitore,
                     'Categoria': categoria_finale,
-                    'categoria_fonte': _cat_fonte,
-                    'categoria_fiducia': _cat_fiducia,
+                    # Coerenza fonte<->categoria sulla categoria DAVVERO scritta:
+                    # fra la lettura della provenienza e questo punto la categoria e'
+                    # passata da enforce_no_unclassified_category, da special_row e dal
+                    # guardrail NOTE. Una riga che finisce in coda non ha una fonte che
+                    # l'ha decisa, per definizione.
+                    'categoria_fonte': (
+                        'nessuna'
+                        if str(categoria_finale).strip() == 'Da Classificare'
+                        else _cat_fonte
+                    ),
+                    'categoria_fiducia': (
+                        None
+                        if str(categoria_finale).strip() == 'Da Classificare'
+                        else _cat_fiducia
+                    ),
                     'Data_Documento': data_documento,
                     'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', ''),
                     'Prezzo_Standard': prezzo_std,
@@ -1691,6 +1710,15 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Totale_Riga': round(totale_riga, 2),
                 'Fornitore': fornitore,
                 'Categoria': categoria_iniziale,
+                # Fase 2 — provenienza NON registrata su questo percorso (PDF/Vision):
+                # `ottieni_categoria_prodotto` ha otto uscite e non usa il canale
+                # laterale, avvolgerla ora aggiungerebbe rischio senza beneficio.
+                # Impatto attuale nullo: a DB tutte le 39.233 righe vengono da XML/P7M,
+                # nessuna da PDF. Ma la Fase 1 ha appena reso questo percorso capace di
+                # classificare (prima si fermava alle memorie), quindi il giorno in cui
+                # un cliente carica PDF le sue righe arrivano senza provenienza — cioe'
+                # NULL, cioe' `legacy`, cioe' trattate come certe senza esserlo.
+                # Da chiudere prima che il percorso PDF entri davvero in uso.
                 'Data_Documento': data_documento,
                 'Tipo_Documento': tipo_documento,
                 'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', ''),
