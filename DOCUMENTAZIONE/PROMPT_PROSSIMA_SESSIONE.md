@@ -93,7 +93,18 @@ il campo può legittimamente superare il migliaio? Allora è un importo. Un
 costo orario (`"es. 12,50"`) e una percentuale di ripartizione no.
 
 Il modo per decidere non è l'intuizione: **guarda il `placeholder` e dove
-finisce il valore**. È così che ho classificato i 58 punti.
+finisce il valore**. È così che ho classificato i 58 punti — e non è bastato.
+
+⚠️ **Un campo può cambiare natura a runtime.** In `margini/analisi-tab.tsx` lo
+split del food cost si compila **in euro o in percentuale**, con un interruttore
+a schermo: la variabile si chiama `raw` e il campo sembra un importo qualsiasi.
+Avevo applicato la regola degli importi a entrambe le modalità, e in percentuale
+`33.333` di 50.000 € dava **16.666.500 €** invece di 16.666 €.
+
+Trovato **ricontrollando a mano tutte le 58 chiamate**, non dai test: nessun
+test copriva quel campo, e `tsc` non ha niente da dire. Il fix fa dipendere la
+variante da `mode`. Verificato che è l'unico punto dell'app con questa forma,
+ma se ne aggiungi uno: **la variante segue lo stato, non il campo**.
 
 ⚠️ **Il backend non fa da rete.** `RicavoGiornalieroItem` dichiara
 `fatturato_iva10: float` senza `ge`/`le`, e i router leggono `float(x or 0)`.

@@ -1431,3 +1431,33 @@ automatici inseriscono da soli.
 **La lezione**: i due bug erano stati classificati leggendo il codice. Il terzo
 si è visto solo generando input nella forma in cui arrivano davvero — copiati,
 non digitati.
+
+### Un campo che cambia natura a runtime — il difetto introdotto dal fix stesso
+
+Ricontrollando a mano le 58 chiamate del fix (non per un test: **nessun test
+copriva quel campo**), ho trovato che in `margini/analisi-tab.tsx` lo split del
+food cost si compila **in euro o in percentuale**, con un interruttore a
+schermo. Avevo applicato la variante «importi» a entrambe le modalità:
+
+```
+mode === "perc",  netto 50.000 €
+  "33.333"  →  33333  →  (33333/100)*50000  =  16.666.500 €
+  atteso                                        16.666 €
+```
+
+Mille volte tanto, scritto nel food cost **senza nessun errore visibile**.
+
+**Perché non si era visto**: la variabile si chiama `raw`, il campo sembra un
+importo come gli altri, `tsc` non ha niente da dire e la suite non lo tocca. Il
+criterio che avevo dichiarato — «guarda il placeholder e dove finisce il
+valore» — funziona solo se il campo ha **una** natura. Qui ne ha due, e la
+sceglie l'utente premendo un bottone.
+
+Fix: la variante dipende da `mode`. Verificato con un grep che è l'unico punto
+dell'app con questa forma (le altre occorrenze di `mode === "perc"` sono
+rendering).
+
+**La lezione vera è sul metodo, non sul campo**: un fix applicato a 58 punti
+con una sostituzione automatica va **riletto punto per punto**, perché la regola
+che li accomuna è sintattica mentre quella che li distingue è semantica. La
+sostituzione ha fatto la prima; solo la rilettura trova la seconda.
