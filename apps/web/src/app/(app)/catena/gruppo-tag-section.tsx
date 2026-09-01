@@ -5,6 +5,19 @@ import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Down
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { calcolaCandidati, MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
+import {
+  altezzaBarraTrend,
+  analisiVuota,
+  classePrezzo,
+  estremiPrezzo,
+  larghezzaBarra,
+  massimoSpesa,
+  nomeFileExport,
+  righeExportFornitori,
+  righeExportPv,
+  soloUnPvConSpesa,
+  tuttiSelezionati as calcolaTuttiSelezionati,
+} from "@/lib/catena-tag";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
@@ -318,8 +331,7 @@ function ProdottiDialog({
     });
   }
 
-  const tuttiSelezionati =
-    candidati.length > 0 && candidati.every((d) => selected.has(d.descrizione_key));
+  const tuttiSelezionati = calcolaTuttiSelezionati(candidati, selected);
 
   function toggleTutti() {
     setSelected((prev) => {
@@ -328,7 +340,7 @@ function ProdottiDialog({
       // click e' partito, e dentro l'updater puo' essere gia' stantio (un
       // toggle() nello stesso batch lo invalida). Con lo stato vecchio il
       // pulsante fa l'azione opposta a quella che mostra.
-      const tutti = candidati.length > 0 && candidati.every((d) => prev.has(d.descrizione_key));
+      const tutti = calcolaTuttiSelezionati(candidati, prev);
       const m = new Map(prev);
       if (tutti) {
         candidati.forEach((d) => m.delete(d.descrizione_key));
@@ -543,37 +555,22 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
     carica();
   }, [carica]);
 
-  const maxPv = data ? Math.max(0, ...data.per_pv.map((p) => p.spesa)) : 0;
-  const maxForn = data ? Math.max(0, ...data.fornitori.map((f) => f.spesa)) : 0;
-  const maxTrend = data ? Math.max(0, ...data.trend.map((t) => t.spesa)) : 0;
+  const maxPv = data ? massimoSpesa(data.per_pv) : 0;
+  const maxForn = data ? massimoSpesa(data.fornitori) : 0;
+  const maxTrend = data ? massimoSpesa(data.trend) : 0;
   // Prezzo medio: evidenzia chi paga meno (verde) e di più (rosso), se ≥2 PV con dato.
-  const prezzi = (data?.per_pv ?? []).map((p) => p.prezzo_medio).filter((v): v is number => v != null);
-  const minPrezzo = prezzi.length >= 2 ? Math.min(...prezzi) : null;
-  const maxPrezzo = prezzi.length >= 2 ? Math.max(...prezzi) : null;
+  const { minPrezzo, maxPrezzo } = estremiPrezzo(data?.per_pv);
 
   async function exportXls() {
     if (!data) return;
     const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
-    const pv = data.per_pv.map((p) => ({
-      "Punto vendita": p.nome,
-      Spesa: Math.round(p.spesa * 100) / 100,
-      "Incidenza %": `${p.incidenza_pct}%`,
-      "Prezzo medio": p.prezzo_medio ?? "—",
-      Quantità: p.quantita,
-      Righe: p.n_righe,
-      Fornitori: p.n_fornitori,
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pv), "Per punto vendita");
-    const forn = data.fornitori.map((f) => ({
-      Fornitore: f.nome, Spesa: Math.round(f.spesa * 100) / 100, "Incidenza %": `${f.incidenza_pct}%`, Righe: f.n_righe,
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(forn), "Fornitori");
-    const slug = (data.periodo_label || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    XLSX.writeFile(wb, `tag_${data.nome.toLowerCase().replace(/[^a-z0-9]+/g, "-")}_${slug}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(righeExportPv(data.per_pv)), "Per punto vendita");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(righeExportFornitori(data.fornitori)), "Fornitori");
+    XLSX.writeFile(wb, nomeFileExport(data.nome, data.periodo_label));
   }
 
-  const vuoto = !data || data.per_pv.every((p) => p.spesa === 0);
+  const vuoto = analisiVuota(data);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -641,7 +638,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                       </div>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
                         <div className="h-full rounded-full bg-primary"
-                          style={{ width: maxPv > 0 ? `${(p.spesa / maxPv) * 100}%` : "0%" }} />
+                          style={{ width: larghezzaBarra(p.spesa, maxPv) }} />
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span>{pct(p.incidenza_pct)} del gruppo</span>
@@ -650,8 +647,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                           prezzo medio{" "}
                           <span className={cn(
                             "font-medium tabular-nums",
-                            p.prezzo_medio != null && p.prezzo_medio === minPrezzo && "text-emerald-600 dark:text-emerald-500",
-                            p.prezzo_medio != null && p.prezzo_medio === maxPrezzo && "text-rose-600 dark:text-rose-500",
+                            classePrezzo(p.prezzo_medio, minPrezzo, maxPrezzo),
                           )}>{euro2(p.prezzo_medio)}</span>
                         </span>
                         <span>·</span>
@@ -663,7 +659,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                 {/* Hint: se un solo PV ha spesa, le descrizioni del tag sono di
                     quella sede → il confronto prezzi tra PV si abilita aggiungendo
                     le varianti delle altre. */}
-                {data!.per_pv.filter((p) => p.spesa > 0).length === 1 && data!.per_pv.length > 1 && (
+                {soloUnPvConSpesa(data!.per_pv) && (
                   <p className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-400">
                     Solo un punto vendita ha spesa: aggiungi al tag anche le descrizioni «{tag.nome}» delle
                     altre sedi (da «Prodotti») per confrontare i prezzi tra i punti vendita.
@@ -687,7 +683,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                         </div>
                         <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
                           <div className="h-full rounded-full bg-primary/70"
-                            style={{ width: maxForn > 0 ? `${(f.spesa / maxForn) * 100}%` : "0%" }} />
+                            style={{ width: larghezzaBarra(f.spesa, maxForn) }} />
                         </div>
                       </li>
                     ))}
@@ -704,7 +700,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                       <div key={`${t.anno}-${t.mese}`} className="flex flex-1 flex-col items-center gap-1">
                         <div className="flex h-24 w-full items-end">
                           <div className="w-full rounded-t bg-primary/70" title={euro(t.spesa)}
-                            style={{ height: maxTrend > 0 ? `${Math.max(4, (t.spesa / maxTrend) * 100)}%` : "0%" }} />
+                            style={{ height: altezzaBarraTrend(t.spesa, maxTrend) }} />
                         </div>
                         <span className="text-[10px] text-muted-foreground">{MESI_LABEL[t.mese - 1].slice(0, 3)}</span>
                       </div>
