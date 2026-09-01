@@ -131,6 +131,14 @@ prendere l'espressione originale da `git show HEAD:<file>`, ricostruirla come
 è installato** — `--timeout` fa uscire pytest con `rc=4`, che un harness ingenuo
 legge come successo.
 
+⚠️ **Il `code-reviewer` può mutare il file VERO del repo.** L'1/9 ha montato due
+mutanti su `catena-export.ts` nel working tree (`find` → `findLast`,
+`"margine_perc"` → `"margine_eur"`). Conseguenze: un mutante quasi committato, e
+una suite in parallelo che misurava un albero mutato (risultato scartato).
+**Guarda `git diff` prima di ogni commit** durante una review, e non lanciare la
+suite mentre il reviewer lavora. Non ripristinare a metà del suo giro — falsi il
+suo esito: avvisalo, aspetta che finisca, poi `git checkout --`.
+
 **Chiusura §5bis**: bilancio mutanti coi sopravvissuti *elencati col motivo*,
 suite verde, `npx tsc --noEmit`, `/code-reviewer` sul cumulativo (riproduci ogni
 rilievo prima di accettarlo), verbale, `AUDIT_COPERTURA.md` **ri-misurato**,
