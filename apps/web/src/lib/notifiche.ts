@@ -1,25 +1,10 @@
 import { cache } from "react";
 import { WORKER_URL, WORKER_TIMEOUT_MS, getToken, workerHeaders } from "./worker-config";
 
-export type Notifica = {
-  id: string;
-  topic_key: string | null;
-  source_type: string | null;
-  severity: "info" | "warning" | "error" | "success";
-  title: string;
-  body: string | null;
-  action_page: string | null;
-  // Dati strutturati del topic (es. count righe/prezzi). Gia' restituito dal
-  // worker; opzionale lato tipo perche' non tutte le callsite lo usano.
-  payload?: Record<string, unknown> | null;
-  // False per i segnali LIVE (fatturato/fatture/righe mancanti...): non si
-  // archiviano (si chiudono da soli quando inserisci il dato). Il frontend
-  // nasconde la X. Default true per compatibilita' coi vecchi payload.
-  dismissible?: boolean;
-  dismissed_at: string | null;
-  expires_at: string | null;
-  created_at: string | null;
-};
+// Il tipo e' definito in notifiche-shared.ts (modulo puro, senza worker-config)
+// e ri-esportato qui perche' e' da "@/lib/notifiche" che lo importano le pagine.
+import { type Notifica } from "./notifiche-shared";
+export { type Notifica };
 
 export type NotificheResponse = {
   notifiche: Notifica[];

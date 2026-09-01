@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
+import { chatVisibile, statoBlocchi } from "@/lib/home-kpi";
 import { HomeBriefing } from "./home-briefing";
 import { NotificheWidget } from "./notifiche-widget";
 import { ChatWidget } from "./chat-widget";
@@ -83,10 +84,10 @@ async function KpiSaluteBlock() {
   //     autonullifica su has_data=false (component-level) MA vuotoReale
   //     richiedeva anche !salute per scattare, quindi non mostrava mai il
   //     messaggio quando salute era presente. Ora i due stati sono indipendenti.
-  const workerGiu = !salute && !kpi;
-  const kpiVuoto = kpi?.has_data === false;
+  const stato = statoBlocchi(kpi, salute);
+  const kpiVuoto = stato === "vuoto";
 
-  if (workerGiu) {
+  if (stato === "worker-giu") {
     return (
       <BlockRetry endpoint="/api/home/kpi">
         <div className="grid gap-4 lg:grid-cols-2">
@@ -120,8 +121,7 @@ async function KpiSaluteBlock() {
 // nel suo Suspense per non ritardare il resto.
 async function ChatBlock() {
   const config = await fetchConfig();
-  const enabled = (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
-  if (!enabled) return null;
+  if (!chatVisibile(config)) return null;
   return (
     <ChatWidget
       limiteGiorno={config?.chat_limite_giorno ?? 0}

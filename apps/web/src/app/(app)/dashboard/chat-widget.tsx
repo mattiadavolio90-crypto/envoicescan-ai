@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Send, Loader2, SquarePen } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  codaDaInviare,
+  contatoreAggiornato,
+  domandeRimanenti,
+  messaggioRisposta,
+  parseStorico,
+  type Msg,
+} from "@/lib/home-chat";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/logo";
 
-type Msg = { role: "user" | "assistant"; content: string };
-
-// Il backend accetta al massimo 20 messaggi (ChatRequest.max_length). Inviamo
-// solo la coda piu' recente: senza questo, dopo ~20 scambi ogni invio falliva
-// con 422 e l'utente vedeva un errore generico, senza piu' poter chattare.
-// La UI conserva comunque l'intera conversazione a schermo.
-const MAX_STORICO_INVIATO = 16;
 
 // Domande suggerite: guidano chi non sa cosa chiedere verso le cose utili.
 const SUGGERIMENTI = [
@@ -37,16 +38,10 @@ const STORAGE_KEY = "oneflux:chat-messages";
 
 function caricaStorico(): Msg[] {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    // Validazione difensiva: tieni solo voci ben formate.
-    return parsed.filter(
-      (m): m is Msg =>
-        m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
-    );
+    return parseStorico(sessionStorage.getItem(STORAGE_KEY));
   } catch {
+    // sessionStorage stesso puo' lanciare (Safari privato, storage disabilitato):
+    // il parse e' in lib/, l'accesso al browser resta qui.
     return [];
   }
 }
@@ -81,7 +76,7 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
   // evita un mismatch di hydration tra server (vuoto) e client.
   const idratato = useRef(false);
 
-  const rimanenti = Math.max(0, limiteGiorno - domandeOggi);
+  const rimanenti = domandeRimanenti(limiteGiorno, domandeOggi);
   const esaurite = rimanenti <= 0;
 
   // Carica la conversazione salvata al primo mount.
@@ -140,7 +135,7 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nuovi.slice(-MAX_STORICO_INVIATO), contesto }),
+        body: JSON.stringify({ messages: codaDaInviare(nuovi), contesto }),
       });
       const data = (await res.json()) as {
         reply?: string;
@@ -150,24 +145,8 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
       };
       // Sincronizza il contatore con la verita' del backend: la risposta porta
       // quante domande sono state consumate oggi (e il limite del piano).
-      if (typeof data.domande_oggi === "number") {
-        setDomandeOggi(data.domande_oggi);
-      } else if (res.status === 429) {
-        // Limite raggiunto: allinea il contatore a "esaurite".
-        setDomandeOggi(limiteGiorno);
-      }
-      let reply: string;
-      if (data.reply) {
-        reply = data.reply;
-      } else if (res.status === 429) {
-        reply = data.error || "Hai raggiunto il limite di domande per oggi. Riprova domani.";
-      } else if (res.status === 403) {
-        reply = data.error || "La chat non è disponibile nel tuo piano attuale.";
-      } else if (res.status === 504) {
-        reply = "L'assistente ha impiegato troppo tempo. Riprova.";
-      } else {
-        reply = data.error || "Si è verificato un errore. Riprova.";
-      }
+      setDomandeOggi((attuale) => contatoreAggiornato(res.status, data, limiteGiorno, attuale));
+      const reply = messaggioRisposta(res.status, data);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
       setMessages((prev) => [

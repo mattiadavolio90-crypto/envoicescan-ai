@@ -1,4 +1,27 @@
-import { type Notifica } from "@/lib/notifiche";
+// Il tipo vive QUI, non in notifiche.ts, e la direzione della dipendenza e'
+// deliberata: notifiche.ts importa ./worker-config (path relativo) e l'harness
+// pytest->node non lo risolve, quindi qualunque import da li' — anche di solo
+// tipo — renderebbe questo modulo non eseguibile dai test. Le funzioni pure
+// non devono dipendere da chi fa le fetch.
+export type Notifica = {
+  id: string;
+  topic_key: string | null;
+  source_type: string | null;
+  severity: "info" | "warning" | "error" | "success";
+  title: string;
+  body: string | null;
+  action_page: string | null;
+  // Dati strutturati del topic (es. count righe/prezzi). Gia' restituito dal
+  // worker; opzionale lato tipo perche' non tutte le callsite lo usano.
+  payload?: Record<string, unknown> | null;
+  // False per i segnali LIVE (fatturato/fatture/righe mancanti...): non si
+  // archiviano (si chiudono da soli quando inserisci il dato). Il frontend
+  // nasconde la X. Default true per compatibilita' coi vecchi payload.
+  dismissible?: boolean;
+  dismissed_at: string | null;
+  expires_at: string | null;
+  created_at: string | null;
+};
 
 // --- Priorita' visiva per severity -----------------------------------------
 // Ordine: error (rosso) > warning (giallo) > info (blu) > success (verde).

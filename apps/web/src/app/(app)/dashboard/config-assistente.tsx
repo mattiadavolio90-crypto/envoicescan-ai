@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { type AssistantConfig, type ConfigTopic } from "@/lib/home";
 import { cn } from "@/lib/utils";
-import { parseDecimaleIt } from "@/lib/format";
+import { alertPrezziAttivo, costruisciPayloadConfig, toggleTopic } from "@/lib/home-config";
 
 // defaultOpen / dialogClassName: usati SOLO dalla demo (tour guidato) per aprire
 // e posizionare il pannello da fuori. Nell'app restano ai default (comportamento
@@ -52,30 +52,21 @@ export function ConfigAssistente({
 
   // L'avviso "Alert prezzi" governa la soglia: se è spento, il campo soglia non
   // serve (non scatterebbe comunque). Lo nascondiamo per non confondere.
-  const alertPrezziAttivo = topics.find((t) => t.key === "price_alert")?.enabled ?? true;
+  const alertAttivo = alertPrezziAttivo(topics);
 
   function toggle(key: string, enabled: boolean) {
-    setTopics((prev) =>
-      prev.map((t) => (t.key === key && !t.bloccato ? { ...t, enabled } : t)),
-    );
+    setTopics((prev) => toggleTopic(prev, key, enabled));
   }
 
   async function salva() {
     setSaving(true);
-    const topics_disabled = topics.filter((t) => !t.enabled && !t.bloccato).map((t) => t.key);
-    // Clamp [0,50] come il backend; valore non numerico -> default 5.
-    const sogliaNum = Math.min(50, Math.max(0, parseDecimaleIt(soglia) || 5));
     try {
       const res = await fetch("/api/home/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nome_referente: nome.trim() || null,
-          topics_disabled,
-          chat_ai_enabled: chatEnabled,
-          price_alert_threshold: sogliaNum,
-          giorni_chiusura_settimanali: giorniChiusura,
-        }),
+        body: JSON.stringify(
+          costruisciPayloadConfig({ topics, soglia, nome, chatEnabled, giorniChiusura }),
+        ),
       });
       if (!res.ok) throw new Error();
       setOpen(false);
@@ -165,7 +156,7 @@ export function ConfigAssistente({
                   )}
                   {/* Soglia alert prezzi: appare sotto "Alert prezzi" quando è attivo.
                       È l'unico punto dove si imposta la sensibilità dell'avviso. */}
-                  {t.key === "price_alert" && alertPrezziAttivo && (
+                  {t.key === "price_alert" && alertAttivo && (
                     <div className="mt-2 space-y-2">
                       <div className="flex items-center gap-2">
                         <label className="text-xs text-muted-foreground">Mi interessa da un rincaro del</label>

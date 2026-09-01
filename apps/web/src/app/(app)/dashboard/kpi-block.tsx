@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { type HomeKpi } from "@/lib/home";
 import { calcolaSparkline, type PuntoMol } from "@/lib/catena-confronti";
 import { formatEuro } from "@/lib/format";
+import { tintaTrend } from "@/lib/home-kpi";
 import { cn } from "@/lib/utils";
 
 function Trend({
@@ -27,22 +28,20 @@ function Trend({
   // su/giu) ma in tono neutro.
   neutro?: boolean;
 }) {
-  if (sopprimi || delta == null) return <span className="text-xs text-muted-foreground/40">—</span>;
-  const su = delta > 0;
-  const piatto = delta === 0;
-  const positivo = neutro ? null : piatto ? null : su === buonoSeSu;
-  const Icon = piatto ? Minus : su ? ArrowUp : ArrowDown;
+  const { mostra, tinta, direzione } = tintaTrend({ delta, buonoSeSu, sopprimi, neutro });
+  if (!mostra) return <span className="text-xs text-muted-foreground/40">—</span>;
+  const Icon = direzione === "piatto" ? Minus : direzione === "su" ? ArrowUp : ArrowDown;
   return (
     <span
       className={cn(
         "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
-        positivo === null && "text-muted-foreground",
-        positivo === true && "text-emerald-600 dark:text-emerald-500",
-        positivo === false && "text-rose-600 dark:text-rose-500",
+        tinta === null && "text-muted-foreground",
+        tinta === true && "text-emerald-600 dark:text-emerald-500",
+        tinta === false && "text-rose-600 dark:text-rose-500",
       )}
     >
       <Icon className="size-3" />
-      {Math.abs(delta).toLocaleString("it-IT")}
+      {Math.abs(delta!).toLocaleString("it-IT")}
       {suffix}
     </span>
   );
