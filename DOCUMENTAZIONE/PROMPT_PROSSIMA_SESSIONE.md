@@ -93,6 +93,13 @@ regola «fixture con valori negativi obbligatorie» — ma l'avevano applicata s
 Se un test fallisce con `rc=9` e stderr vuoto, **non è il modulo**: è l'harness
 che rifiuta l'argomento. Guarda cosa passi prima di riscrivere il codice.
 
+Da oggi l'harness ha i **suoi** test (`tests/test_helpers_ts_harness.py`, 18):
+round-trip dei tipi in uso, i negativi che prima uccidevano node, e le stringhe
+che *sembrano* flag (`"--help"`, `"-v"`) che devono restare dati. Provati per
+mutazione: togliendo il `"--"` falliscono esattamente 3 test. Se li vedi rossi,
+il bug è in `subprocess.run` dentro `esegui_ts`, non nel modulo che stai
+testando.
+
 ---
 
 ## 4. La prossima dimensione: `(app)/dashboard/` — 1.749 righe
