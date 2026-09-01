@@ -1461,3 +1461,69 @@ rendering).
 con una sostituzione automatica va **riletto punto per punto**, perché la regola
 che li accomuna è sintattica mentre quella che li distingue è semantica. La
 sostituzione ha fatto la prima; solo la rilettura trova la seconda.
+
+### La review del fix: una regressione mia, e il criterio sbagliato
+
+Il `code-reviewer` ha bloccato con **3 rilievi, tutti fondati**. Il primo è una
+**regressione che avevo introdotto io**, sullo stesso campo che il fix voleva
+proteggere.
+
+**Il criterio che avevo usato era sbagliato.** Avevo classificato i campi
+chiedendomi *«che grandezza è?»* (un importo può superare il migliaio, una
+percentuale no). La domanda giusta è *«che input è?»*:
+
+| Input | Cosa garantisce | Variante |
+|---|---|---|
+| `type="number"` | Per spec HTML `e.target.value` è sempre un *valid floating-point number*: **punto decimale, mai virgola, mai migliaia**. La virgola la normalizza il browser | `parseDecimaleIt` |
+| `type="text"` | testo libero: l'italiano ci scrive `1.700` | `parseNumeroIt` |
+
+**La regressione (B1).** I 27 campi di `carica-ricavi-dialog.tsx` sono
+`type="number"`. Ma il difetto vero non è l'utente che digita — è **il valore
+ricaricato dal DB**:
+
+`ricavi_modalita_mensile.fatturato_iva10` è `numeric(12,4)` e il write path non
+arrotonda (`routers/ricavi.py:1463`), e c'è chi la alimenta a 4 decimali
+(`ricavi.py:737`, import Passbi). Un valore a 3 decimali → `String()` →
+`"12345.678"` → la regola delle migliaia → **12345678**.
+
+```
+apri "Carica ricavi" su un mese in modalità mensile
+→ Salva senza toccare nulla
+→ il fatturato viene ri-salvato ×1000, e passa `float(x)` senza errori
+```
+
+Prima del mio fix non succedeva: `parseFloat("12345.678")` dava `12345.678`.
+**Ho rotto il campo che volevo proteggere.**
+
+**B2** — stessa causa in `calcolo-tab.tsx` (le celle del MOL) e in
+`analisi-tab.tsx`, dove avevo corretto solo la modalità `%`: anche quella euro è
+`type="number"`, quindi il ramo condizionale sparisce e resta una sola variante.
+
+**B3** — `numOr0` in `personale-tab.tsx`/`mobile-turni.tsx` serviva **quattro**
+campi, non due: ore *e* lordo mensile, che sono grandezze diverse in campi
+`type="text"`. Un `"1.700"` di stipendio valeva **1,7 €**, e finiva in
+`lordo_mensile` → letto dal MOL. Questo **non era una regressione**: era il bug
+originale, che il mio fix non aveva corretto perché l'helper condiviso rendeva
+la regola inapplicabile.
+
+**Lacune di test misurate dal reviewer**: le quattro varianti `*OZero` — quelle
+usate in tutti i 27 campi dei ricavi — **non erano coperte da nessun test**. Si
+poteva farle ritornare NaN, invertirne i rami o farle delegare alla funzione
+sbagliata con la suite verde. 27 test aggiunti; i mutanti ora muoiono.
+
+**Contestata una mia dichiarazione**: `centesimi/100` ≡ `` `${centesimi}e-2` ``
+non è «equivalenza vera» ma «equivalente **nel dominio degli importi**». Per
+`|n| >= 1e19` il template diventa notazione esponenziale e `Number("1e+21e-2")`
+è `NaN`. Irraggiungibile con euro veri, ma la formulazione era troppo forte.
+
+**Punto E, il timore che aveva motivato il rinvio del fix**: verificato che
+**non si concretizza**. `arrotonda2` e `righeExportPv` ricevono entrambi valori
+già arrotondati a 2 decimali dal backend (`gruppo.py:1066-1079` e `:2269`), e su
+500.000 valori a 2 decimali le due forme danno 0 divergenze. I due arrotondamenti
+divergerebbero solo su input a 3 decimali, che non arrivano a nessuno dei due.
+
+**La lezione di metodo**: una sostituzione automatica su 58 punti applica una
+regola **sintattica**; quella che distingue i casi è **semantica**. Rileggendo a
+mano ho trovato 1 difetto (il dual-mode), il reviewer ne ha trovati altri 3 —
+e il più grave veniva da un percorso che nessuno dei due aveva pensato a
+guardare: non l'input dell'utente, ma il round-trip col database.
