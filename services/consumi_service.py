@@ -9,6 +9,7 @@ in questo progetto una guardia su soglia gia' e' passata inosservata perche'
 testata solo attraverso un mock che rispondeva comunque. Tenendo la decisione in
 funzioni pure la si prova sui valori veri, senza simulare il DB.
 """
+from datetime import date
 from typing import Any, Dict, Iterable, List, Optional
 
 from config.constants import PIANO_LIMITI_FATTURE_MESE, PIANO_LIMITE_FATTURE_DEFAULT
@@ -110,6 +111,20 @@ def conta_sopra_soglia(righe: Iterable[Dict[str, Any]], mesi: Iterable[str]) -> 
         for r in righe
         if r.get("mese") in voluti and r.get("sopra_soglia")
     })
+
+
+def primo_mese_finestra(oggi: date, mesi: int) -> date:
+    """Primo giorno del mese piu' vecchio da includere in una finestra di N mesi.
+
+    Aritmetica sui mesi, non sui giorni: sottrarre `31 * (mesi - 1)` giorni eccede
+    sempre, perche' i mesi da 31 giorni non sono tutti (con mesi=12 si scaricavano
+    13 mesi, con mesi=2 se ne scaricavano 3 in 5 mesi su 12). L'eccesso non
+    sballava i numeri — il badge filtra per mese esatto e la tabella mostrava solo
+    righe in piu' — ma rendeva `mesi` un contratto che il codice non rispettava.
+    """
+    mesi = max(int(mesi), 1)
+    indice = oggi.year * 12 + (oggi.month - 1) - (mesi - 1)
+    return date(indice // 12, indice % 12 + 1, 1)
 
 
 def mesi_badge(mese_corrente: str) -> List[str]:

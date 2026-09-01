@@ -8,6 +8,8 @@ Volutamente niente mock del client: in questo progetto sei test sono passati per
 mesi su una query che filtrava una colonna inesistente, perche' il mock rispondeva
 comunque. Qui la decisione e' isolata in funzioni pure e si prova sui valori.
 """
+from datetime import date
+
 import pytest
 
 from services.consumi_service import (
@@ -16,6 +18,7 @@ from services.consumi_service import (
     limite_piano,
     mesi_badge,
     piano_effettivo,
+    primo_mese_finestra,
     sopra_soglia,
 )
 
@@ -159,6 +162,36 @@ class TestCostruisciRighe:
 
         assert r["piano"] == "base"
         assert r["sopra_soglia"] is False
+
+
+class TestPrimoMeseFinestra:
+    def test_una_finestra_di_un_mese_parte_dal_mese_corrente(self):
+        assert primo_mese_finestra(date(2026, 9, 1), 1) == date(2026, 9, 1)
+
+    def test_dodici_mesi_coprono_esattamente_dodici_mesi(self):
+        # Il difetto originale (31 giorni fissi) ne restituiva 13: da ottobre 2025.
+        assert primo_mese_finestra(date(2026, 9, 15), 12) == date(2025, 10, 1)
+
+    def test_due_mesi_e_il_percorso_del_badge(self):
+        assert primo_mese_finestra(date(2026, 9, 1), 2) == date(2026, 8, 1)
+
+    def test_attraversa_il_capodanno(self):
+        assert primo_mese_finestra(date(2026, 2, 10), 3) == date(2025, 12, 1)
+
+    def test_torna_sempre_il_primo_del_mese(self):
+        assert primo_mese_finestra(date(2026, 7, 31), 4).day == 1
+
+    @pytest.mark.parametrize("mese", range(1, 13))
+    def test_nessun_mese_dell_anno_sfora_la_finestra(self, mese):
+        # Il difetto a 31 giorni si vedeva solo in certi mesi (marzo, maggio,
+        # luglio, ottobre, dicembre con mesi=2): vanno provati tutti e 12.
+        inizio = primo_mese_finestra(date(2026, mese, 1), 12)
+        distanza = (2026 * 12 + mese - 1) - (inizio.year * 12 + inizio.month - 1)
+        assert distanza == 11
+
+    def test_mesi_zero_o_negativo_non_esplode(self):
+        assert primo_mese_finestra(date(2026, 9, 1), 0) == date(2026, 9, 1)
+        assert primo_mese_finestra(date(2026, 9, 1), -5) == date(2026, 9, 1)
 
 
 class TestMesiBadge:

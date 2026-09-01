@@ -1820,13 +1820,14 @@ def _compute_admin_consumi(mesi: int = 12) -> Dict[str, Any]:
     Difensivo come admin_overview: ogni sezione isolata, mai 500. Se una RPC
     fallisce la pagina mostra il resto e l'errore finisce in `_errors`.
     """
-    from services.consumi_service import costruisci_righe, conta_sopra_soglia, mesi_badge
+    from services.consumi_service import (costruisci_righe, conta_sopra_soglia,
+                                          mesi_badge, primo_mese_finestra)
 
     sb = get_supabase_client()
     errors: List[str] = []
 
     oggi = datetime.now(timezone.utc).date()
-    primo_mese = (oggi.replace(day=1) - timedelta(days=31 * max(mesi - 1, 0))).replace(day=1)
+    primo_mese = primo_mese_finestra(oggi, mesi)
     mese_corrente = oggi.strftime("%Y-%m")
 
     sedi: List[Dict[str, Any]] = []
