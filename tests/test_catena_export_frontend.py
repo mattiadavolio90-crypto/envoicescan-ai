@@ -547,3 +547,70 @@ def test_nota_incompleti_su_due_sedi_usa_il_plurale():
     assert _esegui("emit(m.notaIncompleti(1));") == (
         "Margine di gruppo parziale: 1 sede non ha ancora i costi caricati."
     )
+
+
+# ─── Coerenza header/righe: il difetto che sposta le colonne in Excel ───────
+
+COLS_COME_NEL_TSX = [
+    {"key": "margine_perc", "label": "Margine %", "altoMeglio": True, "tooltip": "MOL sul fatturato netto"},
+    {"key": "fatturato", "label": "Fatturato", "altoMeglio": True, "tooltip": "al netto IVA"},
+    {"key": "coperti", "label": "Coperti", "altoMeglio": True, "tooltip": "n coperti"},
+    {"key": "scontrino_medio", "label": "Scontrino medio", "altoMeglio": True, "tooltip": "x"},
+    {"key": "mp_per_coperto", "label": "€ materia prima / coperto", "altoMeglio": False, "tooltip": "y"},
+]
+
+
+def test_ogni_riga_ha_tutte_le_colonne_dell_header():
+    """`json_to_sheet(rows, { header })` mappa per chiave: se una riga non ha
+    una chiave dell'header, quella cella esce **vuota** e chi legge il file vede
+    un buco — o peggio, legge il valore sotto l'intestazione sbagliata.
+
+    Il test usa `COLS` nella forma **reale del `.tsx`**, con `altoMeglio` e
+    `tooltip` che `ColonnaExport` non dichiara: il modulo deve ignorarli, non
+    inciamparci. Copre insieme riga PV normale, PV incompleto e riga gruppo.
+    """
+    dati = {
+        "cols": COLS_COME_NEL_TSX,
+        "righe": [
+            _pv(nome="Centro", margine_perc=14.2),
+            _pv(nome="Nord", dati_incompleti=True, margine_perc=None, mp_per_coperto=None),
+        ],
+        "gruppo": _pv(nome="TOTALE GRUPPO", margine_perc=11.7),
+    }
+    r = _esegui(
+        """
+        const header = m.headerMargini(input.cols);
+        const rows = input.righe.map((x) => m.rigaExportMargini(x, input.cols));
+        const gruppo = m.rigaExportGruppo(input.gruppo, input.cols, 1);
+        emit({ header, rows, gruppo });
+        """,
+        dati,
+    )
+    for riga in [*r["rows"], r["gruppo"]]:
+        assert set(riga.keys()) == set(r["header"]), (
+            f"riga {riga.get('Punto vendita')}: chiavi diverse dall'header — "
+            "in Excel le celle slitterebbero"
+        )
+    assert r["gruppo"]["Margine %"] == "11.7 (parziale)"
+    assert r["rows"][1]["Fatturato"] == "dati incompleti"
+
+
+def test_ogni_riga_pivot_ha_tutte_le_colonne_dell_header():
+    """Stesso invariante sulla pivot, dove le colonne sono i **nomi dei PV**:
+    una sede senza quella categoria deve comunque avere la sua cella."""
+    pv = [{"id": "a", "nome": "Centro"}, {"id": "b", "nome": "Nord"}]
+    r = _esegui(
+        """
+        const dimLabel = m.etichettaDimensione("categoria");
+        const header = m.headerPivot(dimLabel, input.pv);
+        const rows = input.righe.map((x) => m.rigaExportPivot(x, input.pv, dimLabel));
+        const totale = m.rigaTotalePivot(input.totali, 999, input.pv, dimLabel);
+        emit({ header, rows, totale });
+        """,
+        {"pv": pv,
+         "righe": [{"dim_val": "CARNE", "per_pv": {"a": 100.0}, "totale": 100.0, "incidenza_pct": 10.0}],
+         "totali": {"a": 100.0}},
+    )
+    for riga in [*r["rows"], r["totale"]]:
+        assert set(riga.keys()) == set(r["header"])
+    assert r["rows"][0]["Nord"] == 0
