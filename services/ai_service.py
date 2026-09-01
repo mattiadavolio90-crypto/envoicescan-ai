@@ -4694,6 +4694,58 @@ def salva_correzione_in_memoria_globale(
         return False
 
 
+# ── Fase 2: provenienza della decisione ────────────────────────────────────
+# Canale laterale per far uscire "chi ha deciso" da `categorizza_con_memoria` senza
+# allargarne la firma di ritorno (consumata da chiamanti che attendono str o tupla).
+# ContextVar e non variabile globale: il worker processa piu' fatture in parallelo.
+#
+# ⚠️ Un ContextVar NON sopravvive al confine di processo ne' a un BackgroundTask:
+# va letto SUBITO dopo la chiamata, nello stesso contesto. Chi classifica via HTTP
+# (worker_client) non lo vede — li' la provenienza va nel body della risposta.
+_PROVENIENZA_CORRENTE: ContextVar[Tuple[Optional[str], Optional[str]]] = ContextVar(
+    "oneflux_provenienza_categoria", default=(None, None)
+)
+
+# Fonti deterministiche di cui ci si puo' fidare: memoria admin (un umano ha deciso),
+# regole non negoziabili e regole forti certificate, hard override fornitore utility.
+_FONTI_CERTE = frozenset({
+    "L0_fornitore", "L1_admin", "L1_5_non_negoziabile", "L2_locale",
+    "L4_dicitura", "L7_regola_forte", "AI_confermata",
+})
+# Fonti che affermano qualcosa di plausibile ma non certificato da un umano ne' da
+# una regola di dominio: match di keyword, regola-fornitore, unita' di misura.
+_FONTI_PROBABILI = frozenset({
+    "L3_globale", "L5_fornitore", "L6_um", "L7_dizionario", "AI_alta",
+})
+
+
+def _fiducia_per_fonte(fonte: Optional[str], categoria: str) -> Optional[str]:
+    """Traduce la fonte in `certa` / `probabile` / `da_verificare`.
+
+    Fase 2 la REGISTRA soltanto. E' la Fase 3 a farne un gate, e la Fase 4 a
+    escludere le `da_verificare` dai margini: separare le due cose e' voluto, cosi'
+    si puo' misurare la distribuzione reale prima di cambiare un solo numero
+    mostrato al cliente.
+    """
+    if not fonte or not categoria or categoria == "Da Classificare":
+        return None
+    if fonte in _FONTI_CERTE:
+        return "certa"
+    if fonte in _FONTI_PROBABILI:
+        return "probabile"
+    return "da_verificare"
+
+
+def ultima_provenienza() -> Tuple[Optional[str], Optional[str]]:
+    """`(fonte, fiducia)` dell'ultima categorizzazione fatta in QUESTO contesto.
+
+    Da leggere subito dopo `categorizza_con_memoria`. `(None, None)` significa che
+    la provenienza non e' nota (riga legacy o percorso che non la registra): si
+    tratta come `certa`, mai come dubbia — vincolo S3 del piano.
+    """
+    return _PROVENIENZA_CORRENTE.get()
+
+
 def categorizza_con_memoria(
     descrizione: str,
     prezzo: float,
@@ -4741,8 +4793,17 @@ def categorizza_con_memoria(
     """
     global _memoria_cache
 
-    def _ret(categoria: str, is_fallback: bool = False):
+    def _ret(categoria: str, is_fallback: bool = False, fonte: Optional[str] = None):
         # I match veri (memoria/regole/fornitore/UM/dizionario) NON sono fallback.
+        #
+        # Fase 2 — la provenienza esce da un CANALE LATERALE (`ultima_provenienza`),
+        # non dalla tupla di ritorno: la firma di questa funzione e' consumata da
+        # chiamanti che si aspettano `str` o `(str, bool)`, e allargarla li
+        # romperebbe tutti. Chi vuole la provenienza la legge subito dopo con
+        # `ultima_provenienza()`, nello stesso thread.
+        _PROVENIENZA_CORRENTE.set(
+            (fonte, _fiducia_per_fonte(fonte, categoria)) if fonte else (None, None)
+        )
         return (categoria, is_fallback) if return_fallback_flag else categoria
 
     # Il guardrail NOTE E DICITURE (dominio: consentita SOLO a totale_riga == 0,
@@ -4770,7 +4831,7 @@ def categorizza_con_memoria(
                 f"⚡ FORNITORE UTENZE HARD OVERRIDE: '{descrizione[:60]}' -> UTENZE E LOCALI "
                 f"(fornitore: {fornitore}, match: {matched_key})"
             )
-            return _ret(_applica_guardrail_note_con_importo(descrizione, "UTENZE E LOCALI", _importo_guardrail))
+            return _ret(_applica_guardrail_note_con_importo(descrizione, "UTENZE E LOCALI", _importo_guardrail), fonte="L0_fornitore")
 
     # PROP-5: snapshot normalizzazione una sola volta (riusato in L2 + L3 + canon)
     desc_stripped = descrizione.strip()
@@ -4794,15 +4855,15 @@ def categorizza_con_memoria(
             record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → DICITURA (validata admin)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", _importo_guardrail))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", _importo_guardrail), fonte="L1_admin")
             else:
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → {record['categoria']} (validata admin)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, record['categoria'], _importo_guardrail))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, record['categoria'], _importo_guardrail), fonte="L1_admin")
 
         # LIVELLO 1.5: Override forti non negoziabili prima della memoria automatica.
         categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
         if motivo_forzato in _NON_NEGOZIABILI_CACHE_OVERRIDE:
-            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria_forzata, _importo_guardrail))
+            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria_forzata, _importo_guardrail), fonte="L1_5_non_negoziabile")
     
     except Exception as e:
         logger.warning(f"Errore check memoria admin (cache): {e}")
@@ -4814,13 +4875,13 @@ def categorizza_con_memoria(
             if desc_stripped in locale_dict:
                 categoria = locale_dict[desc_stripped]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail), fonte="L2_locale")
 
             locale_dict_norm = cache.get('prodotti_utente_norm', {}).get(user_id, {})
             if desc_normalized in locale_dict_norm:
                 categoria = locale_dict_norm[desc_normalized]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail), fonte="L2_locale")
 
     except Exception as e:
         logger.warning(f"Errore check memoria locale utente (cache): {e}")
@@ -4831,7 +4892,7 @@ def categorizza_con_memoria(
             if desc_normalized in cache['prodotti_master']:
                 categoria = cache['prodotti_master'][desc_normalized]
                 logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail), fonte="L3_globale")
 
             # PROP-2: fallback canonico (chiave robusta a varianti formato/quantita)
             master_canon = cache.get('prodotti_master_canon') or {}
@@ -4843,14 +4904,14 @@ def categorizza_con_memoria(
                         f"🟢 MEMORIA GLOBALE CANON (cache): '{descrizione}' → {categoria} "
                         f"(canon: '{canon_key}')"
                     )
-                    return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
+                    return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail), fonte="L3_globale")
 
     except Exception as e:
         logger.warning(f"Errore check memoria globale (cache): {e}")
 
     # LIVELLO 4: Check dicitura (se prezzo = 0)
     if prezzo == 0 and is_dicitura_sicura(descrizione, prezzo, quantita):
-        return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", _importo_guardrail))
+        return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", _importo_guardrail), fonte="L4_dicitura")
 
     # LIVELLO 5: Regola FORNITORE specifico (priorità ALTA)
     if fornitore:
@@ -4860,7 +4921,7 @@ def categorizza_con_memoria(
             if fornitore_key_upper in fornitore_upper or fornitore_upper in fornitore_key_upper:
                 logger.info(f"🏭 FORNITORE: '{descrizione}' → {categoria} (fornitore: {fornitore})")
                 # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
-                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail), fonte="L5_fornitore")
 
     # LIVELLO 6: Regola UNITÀ MISURA (priorità ALTA)
     if unita_misura:
@@ -4869,7 +4930,7 @@ def categorizza_con_memoria(
             categoria = UNITA_MISURA_CATEGORIA[unita_upper]
             logger.info(f"📏 UNITÀ MISURA: '{descrizione}' → {categoria} (U.M.: {unita_misura})")
             # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
-            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail))
+            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, _importo_guardrail), fonte="L6_um")
     
     # LIVELLO 7: Dizionario keyword (fallback)
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
@@ -4939,7 +5000,13 @@ def categorizza_con_memoria(
     # is_fallback=True solo quando la categoria deriva ESCLUSIVAMENTE dal fallback
     # forzato (nessun match in memoria/regole/fornitore/UM/dizionario). In quel caso
     # il chiamante deve passarla all'AI invece di trattarla come classificata.
-    return _ret(categoria_finale, is_fallback=fallback_forzato)
+    if fallback_forzato or categoria_finale == "Da Classificare":
+        _fonte_finale = "nessuna"
+    elif motivo_override:
+        _fonte_finale = "L7_regola_forte"
+    else:
+        _fonte_finale = "L7_dizionario"
+    return _ret(categoria_finale, is_fallback=fallback_forzato, fonte=_fonte_finale)
 
 
 # NB: `svuota_memoria_globale` è stata rimossa (audit Bug 3/8/2026). Cancellava in

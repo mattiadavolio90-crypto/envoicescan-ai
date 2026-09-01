@@ -671,7 +671,15 @@ def riparto_riga_categoria(
 
     res = (
         sb.table("fatture")
-        .update({"categoria": nuova_cat, "needs_review": False})
+        .update({
+            "categoria": nuova_cat,
+            "needs_review": False,
+            # Fase 2 — terzo dei tre percorsi di correzione (gli altri due sono in
+            # routers/fatture.py): tutti e tre devono registrare che a decidere e'
+            # stato un umano, o la provenienza dice il falso su una riga verificata.
+            "categoria_fonte": "correzione_cliente",
+            "categoria_fiducia": "certa",
+        })
         .in_("id", target_ids)
         .execute()
     )

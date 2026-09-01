@@ -145,6 +145,18 @@ except Exception as _exc:  # pragma: no cover - fallback difensivo
             return cat
         return cat
 
+try:
+    from services.ai_service import _fiducia_per_fonte as _fiducia_per_fonte_safe
+except Exception as _exc:  # pragma: no cover - fallback difensivo
+    # Meno grave degli altri: si perde solo la TRACCIABILITA' (la colonna resta
+    # NULL = legacy = certa), non la categorizzazione. Ma va detto, o la Fase 4
+    # escluderebbe dai margini una fetta di righe scelta a caso.
+    _segnala_import_degradato("_fiducia_per_fonte (tracciabilita' Fase 2)", _exc)
+
+    def _fiducia_per_fonte_safe(_fonte, _categoria):
+        return None
+
+
 # Conferma deterministica: dizionario keyword + regole forti del runtime. Se entrambe
 # (eseguite SENZA apporto GPT) producono la stessa categoria scelta da GPT, abbiamo due
 # fonti indipendenti che concordano: una confidence GPT "media" non basta più a mandare
@@ -483,16 +495,23 @@ def _auto_classify_saved_rows(
             )
             affidabile = _confermata_runtime or _alta_affidabile
 
+            # Fase 2 — la fonte deriva dallo STESSO ramo che decide se scrivere:
+            # `_confermata_runtime` significa due fonti indipendenti concordi, che e'
+            # il caso piu' solido; `_alta_affidabile` e' la sola parola dell'AI.
             if affidabile:
                 needs_review = False
+                fonte = "AI_confermata" if _confermata_runtime else "AI_alta"
             else:
                 # Categoria non affidabile: non la scriviamo, resta Da Classificare.
                 categoria = "Da Classificare"
                 needs_review = True
+                fonte = "nessuna"
 
             # Invariante di sicurezza: qualunque riga 'Da Classificare' va in coda.
             if str(categoria).strip() == "Da Classificare":
                 needs_review = True
+                fonte = "nessuna"
+            fiducia = _fiducia_per_fonte_safe(fonte, categoria)
             target_ids = desc_to_ids.get(desc, [])
             if not target_ids:
                 continue
@@ -502,6 +521,8 @@ def _auto_classify_saved_rows(
                 .update({
                     "categoria": categoria,
                     "needs_review": needs_review,
+                    "categoria_fonte": fonte,
+                    "categoria_fiducia": fiducia,
                 })
                 .in_("id", target_ids)
                 .execute()

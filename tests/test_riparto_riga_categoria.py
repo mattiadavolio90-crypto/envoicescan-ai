@@ -105,7 +105,13 @@ def test_corregge_la_riga_reale_e_riesplode_le_quote():
         out = riparto.riparto_riga_categoria(_body(), authorization="Bearer x")
 
     assert out["ok"] is True and out["categoria"] == "CARNE"
-    assert ("fatture", {"categoria": "CARNE", "needs_review": False}) in sb.updates
+    # Fase 2: l'update porta anche la provenienza — una correzione manuale e' la
+    # fonte piu' attendibile che esista, e senza registrarla la riga conserverebbe
+    # quella automatica che l'aveva sbagliata.
+    assert ("fatture", {
+        "categoria": "CARNE", "needs_review": False,
+        "categoria_fonte": "correzione_cliente", "categoria_fiducia": "certa",
+    }) in sb.updates
     # forza=True: senza, le quote resterebbero sulla categoria vecchia.
     assert esplodi.call_args.kwargs.get("forza") is True
 
@@ -222,7 +228,13 @@ def test_ricalcolo_quote_fallito_non_fa_fallire_la_scrittura():
 
     assert out["ok"] is True, "la categoria è già scritta: non si dichiara fallito tutto"
     assert out["ricalcolo_quote_ok"] is False, "ma il client deve poterlo dire all'utente"
-    assert ("fatture", {"categoria": "CARNE", "needs_review": False}) in sb.updates
+    # Fase 2: l'update porta anche la provenienza — una correzione manuale e' la
+    # fonte piu' attendibile che esista, e senza registrarla la riga conserverebbe
+    # quella automatica che l'aveva sbagliata.
+    assert ("fatture", {
+        "categoria": "CARNE", "needs_review": False,
+        "categoria_fonte": "correzione_cliente", "categoria_fiducia": "certa",
+    }) in sb.updates
 
 
 def test_ricalcolo_quote_ok_true_quando_la_rpc_riesce():

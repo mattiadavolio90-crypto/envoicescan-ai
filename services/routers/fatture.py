@@ -873,7 +873,15 @@ def categoria_batch(
     # ma ignorato: l'update toccava sempre TUTTE le righe con quella descrizione).
     update_q = (
         supabase_client.table("fatture")
-        .update({"categoria": nuova_cat, "needs_review": False})
+        .update({
+            "categoria": nuova_cat,
+            "needs_review": False,
+            # Fase 2 — vedi il ramo NOTE piu' sotto: una correzione manuale e' la
+            # fonte piu' attendibile che esista. Vale su ENTRAMBI i rami, o una
+            # riga corretta a mano terrebbe la provenienza automatica sbagliata.
+            "categoria_fonte": "correzione_cliente",
+            "categoria_fiducia": "certa",
+        })
         .eq("ristorante_id", ristorante_id)
         .eq("descrizione", descrizione)
         .is_("deleted_at", "null")
@@ -902,7 +910,17 @@ def categoria_batch(
             raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: tutte le righe hanno importo diverso da zero.")
         update_q = (
             supabase_client.table("fatture")
-            .update({"categoria": nuova_cat, "needs_review": False})
+            .update({
+                "categoria": nuova_cat,
+                "needs_review": False,
+                # Fase 2 — una correzione del cliente e' la fonte piu' attendibile che
+                # esista: un umano ha guardato quella riga. Senza questo, una riga
+                # corretta a mano conserverebbe per sempre la provenienza automatica
+                # che l'aveva sbagliata, e la Fase 4 potrebbe escluderla dai margini
+                # proprio dopo che il cliente l'ha sistemata.
+                "categoria_fonte": "correzione_cliente",
+                "categoria_fiducia": "certa",
+            })
             .eq("ristorante_id", ristorante_id)
             .in_("id", _target_ids)
             .is_("deleted_at", "null")
@@ -1048,9 +1066,14 @@ def aggiorna_categoria_riga(
         if importo != 0:
             raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: la riga ha importo diverso da zero.")
 
-    supabase_client.table("fatture").update(
-        {"categoria": categoria, "needs_review": False}
-    ).eq("id", riga_id).execute()
+    supabase_client.table("fatture").update({
+        "categoria": categoria,
+        "needs_review": False,
+        # Fase 2 — quarto e ultimo percorso di correzione manuale. Tutti registrano
+        # la stessa fonte: e' quello che rende la provenienza affidabile a valle.
+        "categoria_fonte": "correzione_cliente",
+        "categoria_fiducia": "certa",
+    }).eq("id", riga_id).execute()
     _invalidate_fatture_rows_cache(ristorante_id)
     return {"ok": True, "id": riga_id, "categoria": categoria}
 

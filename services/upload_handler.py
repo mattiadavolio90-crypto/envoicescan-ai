@@ -30,6 +30,7 @@ from services.ai_service import (
     ottieni_hint_per_ai,
     applica_correzioni_dizionario,
     decisione_deterministica,
+    _fiducia_per_fonte,
     descrizione_e_dubbia,
     _applica_guardrail_note_con_importo,
     AIDailyLimitExceededError,
@@ -615,6 +616,8 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         q_note = supabase_client.table('fatture').update({
                             'categoria': '📝 NOTE E DICITURE',
                             'needs_review': False,
+                            'categoria_fonte': 'L4_dicitura',
+                            'categoria_fiducia': 'certa',
                         }).eq('user_id', user_id).is_("deleted_at", "null").in_('id', note_ids)
                         q_note = add_ristorante_filter(q_note, ristorante_id)
                         q_note.execute()
@@ -634,7 +637,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
         for start in range(0, len(descs_for_ai), chunk_size):
             chunk = descs_for_ai[start:start + chunk_size]
             ai_memory_upserts = []
-            chunk_update_groups: dict[tuple[str, bool], list[int]] = {}
+            chunk_update_groups: dict[tuple[str, bool, str, object], list[int]] = {}
             fornitori = [desc_map[d]['fornitore'] for d in chunk]
             iva = [desc_map[d]['iva'] for d in chunk]
             hint = [ottieni_hint_per_ai(d, user_id) for d in chunk]
@@ -758,22 +761,39 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     # conferma, o GPT 'alta' non dubbia). Altrimenti non indovino: lascio
                     # 'Da Classificare'. Le righe NOTE forzate dal guardrail seguono la
                     # loro via (needs_review_target_force).
+                    # Fase 2 — la fonte segue lo stesso ramo che decide se scrivere:
+                    # sono la stessa decisione vista da due lati. Tenerle separate
+                    # sarebbe il modo tipico di farle divergere.
+                    fonte_target = 'AI_alta'
                     if categoria_target not in ('Da Classificare',) and not needs_review_target_force:
                         if special_row['force_categoria']:
                             # categoria forzata da regola speciale (dicitura/sconto): affidabile
                             needs_review_target = bool(special_row['should_review'])
+                            fonte_target = 'L4_dicitura'
                         elif _categoria_affidabile(desc, categoria_target, confidence, meta.get('fornitore')):
                             needs_review_target = bool(special_row['should_review'])
+                            # Il runtime deterministico conferma la proposta AI: due
+                            # fonti indipendenti concordano, e' il caso piu' solido.
+                            fonte_target = (
+                                'AI_confermata'
+                                if decisione_deterministica(desc)[0] == categoria_target
+                                else 'AI_alta'
+                            )
                         else:
                             categoria_target = 'Da Classificare'
                             needs_review_target = True
+                            fonte_target = 'nessuna'
                     else:
                         needs_review_target = bool(special_row['should_review']) or needs_review_target_force
 
                     # Invariante: ogni riga 'Da Classificare' va in coda.
                     if str(categoria_target).strip() == 'Da Classificare':
                         needs_review_target = True
-                    chunk_update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
+                        fonte_target = 'nessuna'
+                    fiducia_target = _fiducia_per_fonte(fonte_target, categoria_target)
+                    chunk_update_groups.setdefault(
+                        (categoria_target, needs_review_target, fonte_target, fiducia_target), []
+                    ).append(row_id)
                     # Salviamo in memoria SOLO le categorie che hanno superato il gating
                     # (PRINCIPIO 24/06): una categoria scartata (needs_review_target=True,
                     # 'Da Classificare') non deve diventare "verità" per la prossima
@@ -809,10 +829,12 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
 
                 summary['resolved_descriptions'] += 1
 
-            for (categoria_target, needs_review_target), row_ids in chunk_update_groups.items():
+            for (categoria_target, needs_review_target, fonte_target, fiducia_target), row_ids in chunk_update_groups.items():
                 q = supabase_client.table('fatture').update({
                     'categoria': categoria_target,
                     'needs_review': needs_review_target,
+                    'categoria_fonte': fonte_target,
+                    'categoria_fiducia': fiducia_target,
                 }).eq('user_id', user_id).in_('id', row_ids)
                 q = add_ristorante_filter(q, ristorante_id)
                 q.execute()

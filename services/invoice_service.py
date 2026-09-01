@@ -758,6 +758,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             descrizione_e_dubbia,
             enforce_no_unclassified_category,
             flush_pending_local_saves,
+            ultima_provenienza,
         )
 
         # Risolvi user_id: parametro esplicito ha priorità su session_state
@@ -1144,6 +1145,12 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     return_fallback_flag=True,
                     totale_riga=totale_riga,
                 )
+                # Fase 2 — letta QUI, subito dopo la chiamata e nello stesso contesto:
+                # e' un ContextVar, non sopravvive a un confine di processo ne' a un
+                # BackgroundTask. Un rinvio anche di poco la troverebbe gia' azzerata
+                # o, peggio, valorizzata dalla riga successiva.
+                _cat_fonte, _cat_fiducia = ultima_provenienza()
+
                 categoria_finale, _enforce_fallback = enforce_no_unclassified_category(
                     categoria_finale,
                     descrizione,
@@ -1255,6 +1262,8 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     'Totale_Riga': round(totale_riga, 2),
                     'Fornitore': fornitore,
                     'Categoria': categoria_finale,
+                    'categoria_fonte': _cat_fonte,
+                    'categoria_fiducia': _cat_fiducia,
                     'Data_Documento': data_documento,
                     'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', ''),
                     'Prezzo_Standard': prezzo_std,
@@ -1926,6 +1935,11 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "iva_percentuale": prod.get("IVAPercentuale", prod.get("IVA_Percentuale", 0)),
                     "totale_riga": prod.get("TotaleRiga", prod.get("Totale_Riga", 0)),
                     "categoria": categoria_raw,
+                    # Fase 2 — provenienza della decisione. Assente (None) per i
+                    # percorsi che non la registrano ancora: NULL significa `legacy`
+                    # e si tratta come `certa`, mai come dubbia (vincolo S3).
+                    "categoria_fonte": prod.get("categoria_fonte"),
+                    "categoria_fiducia": prod.get("categoria_fiducia"),
                     "codice_articolo": prod.get("CodiceArticolo", prod.get("Codice_Articolo", "")),
                     "prezzo_standard": float(prezzo_std) if prezzo_std and pd.notna(prezzo_std) else None,
                     "needs_review": bool(prod.get("needs_review", False) or fallback_forzato),
