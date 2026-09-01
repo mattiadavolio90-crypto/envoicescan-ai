@@ -103,6 +103,9 @@ docs/piani/*.md
 .claude/.reviewer_gate_ok
 .claude/.pre_merge
 .claude/.reviewer_gate_segnalato
+
+# Registro sessioni Claude Code attive (claude_hook_registra_sessione.py): effimero.
+.claude/.sessioni_attive.json
 *QUICK_START*.txt
 START_HERE.txt
 TEST_FIX*.md

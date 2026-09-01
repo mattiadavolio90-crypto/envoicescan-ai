@@ -84,14 +84,27 @@ REGOLE: list[tuple[re.Pattern, str]] = [
         "  -> Le migration nuove vanno SOLO in supabase/migrations/ con nome\n"
         "     timestamp AAAAMMGGHHMMSS_nome.sql (formato Supabase CLI).",
     ),
+    (
+        re.compile(r"^docs[/\\]piani[/\\]PIANO_.*\.md$"),
+        "Piano di sessione modificato.\n"
+        "  -> Se un'altra sessione Claude Code sta lavorando in parallelo, verifica\n"
+        "    che non stia toccando lo STESSO piano ora (WORKFLOW.md §9: si aggiorna\n"
+        "    una sessione alla volta, due sessioni sullo stesso file si sovrascrivono\n"
+        "    senza avviso).",
+    ),
 ]
 
 # Sottoinsieme di REGOLE usato per decidere se un diff tocca codice
 # "delicato" (sicurezza, dominio, contratti condivisi) indipendentemente
 # dalla dimensione del cambio. Esclude la regola sulle pagine desktop
 # (apps/web/.../(app)/): e' un problema di allineamento mobile, non di
-# rischio da code-review.
-_PATTERN_ESCLUSI_DA_SENSIBILI = {r"apps[/\\]web[/\\]src[/\\]app[/\\]\(app\)[/\\]"}
+# rischio da code-review. Esclude anche i piani di sessione (docs/piani/
+# PIANO_*.md): sono git-ignorati, non compaiono mai in un diff committato,
+# e comunque non sono codice delicato.
+_PATTERN_ESCLUSI_DA_SENSIBILI = {
+    r"apps[/\\]web[/\\]src[/\\]app[/\\]\(app\)[/\\]",
+    r"^docs[/\\]piani[/\\]PIANO_.*\.md$",
+}
 PATH_SENSIBILI: list[re.Pattern] = [
     regola for regola, _ in REGOLE if regola.pattern not in _PATTERN_ESCLUSI_DA_SENSIBILI
 ]

@@ -538,3 +538,32 @@ hanno avuto una sola passata senza `code-reviewer`, il ciclo resta aperto
 finché non ricevono lo stesso scrutinio delle altre. Vedi
 `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md` per l'obiettivo di copertura
 corrente.
+
+## 10. Sessioni parallele sulla stessa directory: branch short-lived
+
+Più sessioni Claude Code lavorano spesso in contemporanea su
+`/workspaces/ONEFLUX` — niente worktree per sessione, si resta su una sola
+directory per scelta. Questo significa che `HEAD` è condiviso: una sessione
+che cambia branch lo cambia sotto tutte le altre. Due hook mitigano il
+rischio tecnico (`claude_hook_registra_sessione.py` su SessionStart,
+`claude_hook_branch_guard.py` su PreToolUse — vedi i docstring per il
+dettaglio), ma la disciplina sul ciclo di vita dei branch resta la difesa
+principale:
+
+- **Naming**: prefisso per intento, coerente con quanto già in uso —
+  `fix/`, `feat/`, `docs/`, `audit-*`.
+- **Durata massima consigliata: 3 giorni.** Un branch più vecchio, o più di
+  20 commit avanti a `main`, riceve un avviso automatico a inizio sessione
+  (non un blocco: un audit lungo legittimo resta un'eccezione dichiarata,
+  non silenziosa).
+- **Merge tempestivo**: appena la CI è verde, mergia — non lasciare un
+  branch pronto "in sospeso" oltre la sessione che lo ha aperto senza un
+  motivo esplicito.
+- **Pulizia**: `/pulisci-branch` elenca i branch locali categorizzati
+  (mergiati/attivi in un'altra sessione/da verificare) senza eliminare nulla
+  da solo — usalo quando i branch iniziano ad accumularsi.
+
+Vale anche per `docs/piani/PIANO_*.md`: **si aggiorna una sessione alla
+volta** (stessa regola di §9, generalizzata a qualunque piano, non solo al
+documento di audit) — `claude_hook_promemoria.py` lo ricorda quando un piano
+viene toccato.
