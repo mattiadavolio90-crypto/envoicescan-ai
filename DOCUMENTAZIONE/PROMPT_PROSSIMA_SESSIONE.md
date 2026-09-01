@@ -123,6 +123,16 @@ Un numero sbagliato dal frontend viene accettato, sommato nel MOL e mostrato al
 cliente. Una validazione server-side sugli importi è una dimensione che **non
 esiste ancora** e varrebbe la pena aprire.
 
+**Due cose che nessuno ha potuto verificare l'1/9** — l'MCP Supabase nega i
+permessi e non c'è accesso a GitHub Actions:
+
+1. Il tipo **reale** di `ricavi_modalita_mensile.fatturato_iva10` sul DB live.
+   Dai file di migration è `numeric(12,4)`, ed è su quello che si regge l'analisi
+   della regressione ×1000. CLAUDE.md dice che la verità è il DB live, non i
+   file: **confermalo prima di fidarti di quel numero**.
+2. Se la CI è verde su questi commit. Sono tutti locali e non pushati, quindi
+   Actions non li ha mai visti.
+
 ---
 
 ## 2. La lezione della 3ª passata — leggila prima di dichiarare chiuso qualcosa
