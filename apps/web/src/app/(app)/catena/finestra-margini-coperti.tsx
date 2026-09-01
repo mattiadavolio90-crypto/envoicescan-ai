@@ -13,6 +13,17 @@ import {
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
 import { type MarginiCoperti, type MarginiCopertiPV, type SprecoCategorie } from "@/lib/gruppo";
+import {
+  type Col as ColConfronto,
+  HEAT,
+  calcolaExtremes,
+  calcolaHeatMax,
+  cellTone as cellToneOf,
+  heatStyle,
+  margineDot,
+  ordinaRighe,
+  rigaExtremes,
+} from "@/lib/catena-confronti";
 
 const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -36,30 +47,10 @@ function num(n: number | null): string {
   return n.toLocaleString("it-IT");
 }
 
-// Heatmap a token di tema (come "Spesa per PV"): intensità sfondo dalla frazione
-// sul massimo di colonna. Dà "forma" alla tabella senza colori hardcoded.
-function heatStyle(v: number | null, max: number): React.CSSProperties {
-  if (v == null || max <= 0 || v <= 0) return {};
-  const a = 0.05 + (v / max) * 0.30;
-  return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
-}
-// Pallino salute dal margine % — stesse soglie del ranking (≥15 verde, ≥8 giallo).
-function margineDot(perc: number | null, incompleti: boolean): string {
-  if (incompleti || perc == null) return "bg-muted-foreground/30";
-  if (perc >= 15) return "bg-emerald-500";
-  if (perc >= 8) return "bg-amber-500";
-  return "bg-rose-500";
-}
-// Colonne "di grandezza" su cui applicare la heatmap.
-const HEAT: ReadonlySet<string> = new Set(["fatturato", "coperti"]);
-
 // Metriche con la LORO direzione: per €MP/coperto il BASSO è meglio (regola
 // catena: NON è sempre "numero alto = verde").
-type Col = {
-  key: keyof MarginiCopertiPV;
-  label: string;
+type Col = ColConfronto & {
   fmt: (v: number | null) => string;
-  altoMeglio: boolean;
   tooltip?: string;
 };
 const COLS: Col[] = [
@@ -126,20 +117,10 @@ export function FinestraMarginiCoperti({
   }
 
   // Ordina i PV per la colonna scelta; gli incompleti restano sempre in fondo.
-  const righeSorted = [...(data?.righe ?? [])].sort((a, b) => {
-    if (a.dati_incompleti !== b.dati_incompleti) return a.dati_incompleti ? 1 : -1;
-    const va = a[sortKey] as number | null;
-    const vb = b[sortKey] as number | null;
-    const na = va == null ? -Infinity : va;
-    const nb = vb == null ? -Infinity : vb;
-    return sortDir === "desc" ? nb - na : na - nb;
-  });
+  const righeSorted = ordinaRighe(data?.righe ?? [], sortKey, sortDir);
 
   // Massimo per colonna (solo PV con dati) per la heatmap di fatturato/coperti.
-  const heatMax: Record<string, number> = {};
-  for (const k of HEAT) {
-    heatMax[k] = Math.max(0, ...(data?.righe ?? []).map((r) => (r[k as keyof MarginiCopertiPV] as number) ?? 0));
-  }
+  const heatMax = calcolaHeatMax(data?.righe ?? []);
 
   // Export Excel (xlsx lazy: libreria pesante, solo al click).
   async function exportXls() {
@@ -187,30 +168,10 @@ export function FinestraMarginiCoperti({
 
   // Per ogni colonna, individua best/worst tra i PV con dati (esclude incompleti
   // e valori null). Se c'è un solo PV con dato, niente evidenza (non c'è confronto).
-  const completi = (data?.righe ?? []).filter((r) => !r.dati_incompleti);
-  const extremes: Record<string, { best: number | null; worst: number | null }> = {};
-  for (const col of COLS) {
-    const vals = completi
-      .map((r) => r[col.key] as number | null)
-      .filter((v): v is number => v != null);
-    if (vals.length < 2) {
-      extremes[col.key] = { best: null, worst: null };
-      continue;
-    }
-    const hi = Math.max(...vals);
-    const lo = Math.min(...vals);
-    extremes[col.key] = col.altoMeglio ? { best: hi, worst: lo } : { best: lo, worst: hi };
-  }
+  const extremes = calcolaExtremes(data?.righe ?? [], COLS);
 
   function cellTone(col: Col, r: MarginiCopertiPV): string {
-    if (r.dati_incompleti) return "";
-    const v = r[col.key] as number | null;
-    if (v == null) return "";
-    const ex = extremes[col.key];
-    if (ex.best == null) return "";
-    if (v === ex.best && v !== ex.worst) return "text-emerald-600 dark:text-emerald-500 font-semibold";
-    if (v === ex.worst && v !== ex.best) return "text-rose-600 dark:text-rose-500 font-semibold";
-    return "";
+    return cellToneOf(col, r, extremes);
   }
 
   return (
@@ -412,14 +373,6 @@ function FinestraSprecoCategorie({
   useEffect(() => {
     carica();
   }, [carica]);
-
-  // Best/worst per RIGA (categoria) tra i PV con dato: la cella più bassa è la
-  // migliore (meno materia prima per coperto = meno spreco), la più alta peggiore.
-  function rigaExtremes(r: SprecoCategorie["righe"][number]): { best: number | null; worst: number | null } {
-    const vals = r.per_pv.map((c) => c.valore).filter((v): v is number => v != null);
-    if (vals.length < 2) return { best: null, worst: null };
-    return { best: Math.min(...vals), worst: Math.max(...vals) };
-  }
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>

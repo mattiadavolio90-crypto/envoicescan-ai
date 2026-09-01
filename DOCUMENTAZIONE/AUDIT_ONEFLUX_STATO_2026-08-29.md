@@ -171,18 +171,25 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 > 16% auditato per dimensione, **49% mai guardato**. Usa il contatore per
 > decidere le priorità, non questa tabella.
 >
-> **Aggiornato il 31/8 (3ª sessione):** `margini/` (4.709 righe, il MOL) è
-> **chiusa** — 183 test, 65/65 mutanti. `scadenziario/` era stata chiusa la
-> sessione prima. L'area grande ancora vergine è **`(app)/catena/` (3.127
-> righe)**: nessuna passata l'ha mai aperta. `workspace/` (5.012) resta 🟠 37%,
-> ma il resto è stato escluso con misura di esposizione live nel ciclo 08.
+> **Aggiornato l'1/9:** `(app)/catena/` è stata **aperta** — non è più l'area
+> vergine. Coperti 3 file su 6 (1.360 righe: margini-coperti, sintesi,
+> spesa-pv), estratti in `lib/catena-confronti.ts`, 81 test, 51 mutanti con 48
+> difetti reali tutti uccisi e 3 sole controprove sopravvissute. **Restano 1.767
+> righe dell'area** (tag-section 721, costi-gruppo 553, config 202, segnali 110,
+> pages 181): è il candidato naturale della prossima passata.
+>
+> `margini/` (4.709, il MOL) e `scadenziario/` erano state chiuse il 31/8.
+> `workspace/` (5.012) resta 🟠 37%, col resto escluso con misura nel ciclo 08.
+> **Non esiste più un'area frontend grande mai toccata**; le 🔴 rimaste sono
+> `(app)/` altre 7 aree (4.250), `(auth)/(legal)/(demo)` (1.353) e
+> `hooks/`+`proxy.ts` (622).
 
 Superficie oggi (`wc -l`, rimisurata, non ereditata):
 
 | Perimetro | Righe |
 |---|---|
 | Python runtime (`services/`,`utils/`,`config/`,`worker/`) | 55.432 |
-| Frontend `apps/web/src/` | 50.947 |
+| Frontend `apps/web/src/` | 51.614 |
 | Edge Functions | 3.556 (✅ coperte) |
 
 **Le aree che nessuna fase del ciclo 2026-08 ha aperto**, con l'esposizione live

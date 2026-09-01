@@ -699,3 +699,128 @@ misto, 66 righe `source='manuale'` con `coperti` NULL) le ho misurate io in
 ricognizione; la query read-only del reviewer è stata bloccata dal permission
 system, quindi non ha potuto confermarle. Dichiarate come misurate una volta
 sola.
+
+---
+
+## 1/9/2026 — dimensione `(app)/catena/` aperta e chiusa (3 file su 6)
+
+Prima passata in assoluto sull'area: fino a ieri `(app)/catena/` era **l'unica
+area frontend grande che nessuna passata avesse mai toccato** — non poco coperta,
+zero.
+
+### Il perimetro, misurato — e cosa NON copre
+
+Coperti 3 file su 6 (1.360 righe delle 3.127), scelti perché contengono tutta
+l'aggregazione multi-sede: `finestra-margini-coperti.tsx` (522),
+`sintesi-catena.tsx` (559), `finestra-spesa-pv.tsx` (279).
+
+**Non copre**: `gruppo-tag-section.tsx` (721), `finestra-costi-gruppo.tsx` (553),
+`config-assistente-catena.tsx` (202), `card-segnali.tsx` (110), le 3 `page.tsx`
+(181) — **1.767 righe**, in coda qui sotto con la loro misura. La scelta di
+fermarsi a metà area è di Mattia: meglio 3 file chiusi davvero (§5bis) che 6
+aperti a metà.
+
+E **copre la logica pura, non il rendering**: `esegui_ts` non monta React. Un
+componente può usare male una funzione corretta e i test non se ne accorgono.
+
+### Le ipotesi del prompt, verificate sul DB prima di crederci
+
+Il prompt imponeva di non ereditare le sue stesse ipotesi. Su tre, **due erano
+sbagliate**:
+
+- ❌ **La sparkline rossa su MOL negativo NON è armata.** Sembrava esposta su
+  Offside, che ha MOL negativo in tutti e 8 i mesi 2026 (da −74.031 a −19.221:
+  sta risalendo, e la linea sarebbe rossa). Ma `services/routers/gruppo.py:873`
+  tiene solo i mesi con `netto_per_mese > 0`, e con `tot_lordo <= 0` il livello è
+  `"nessuno"`, che a `sintesi-catena.tsx:318` non renderizza affatto la
+  sparkline. Difetto reale nel codice, **non raggiungibile da nessun cliente**.
+- ❌ **Zero letterali IVA nell'area** (0 occorrenze di `1.10`/`1.22`): lo
+  scorporo è interamente nel worker. L'IVA compare solo come testo.
+- ✅ La logica di confronto era tutta inline nei `.tsx`, e `lib/gruppo.ts` è un
+  client del worker (`cache()` + `fetch`), non il posto dove estrarre.
+
+### L'esposizione vera, misurata sul DB
+
+**Solo 2 account su 7** superano `num_pv >= 2` e vedono la pagina — ma sono i due
+più grandi del parco:
+
+| Account | Sedi | Righe fattura | Costi aggregati |
+|---|---:|---:|---:|
+| Sushiland | 4 | 29.911 | 3.450.581 € |
+| Offside / Overtime | 2 + 1 tecnica | 3.969 | 401.172 € |
+| **Totale** | | **33.880** | **3.851.753 €** |
+
+La sede tecnica "Costi comuni di gruppo" è esclusa correttamente lato backend
+(`gruppo.py:669`): non è una fonte di doppio conteggio.
+
+### Cosa è stato fatto
+
+- **`apps/web/src/lib/catena-confronti.ts`** (284 righe): 15 funzioni + 3
+  costanti soglia, estratte **byte per byte**. Gate di fedeltà superato — il
+  diff dei 3 componenti contiene **solo import e chiamate**, zero logica
+  (−120 righe, +37).
+- **`tests/test_catena_confronti_frontend.py`** (81 test).
+- **Mutazione: 51 mutanti, 48 uccisi, 3 sopravvissuti — tutti e 3 controprove
+  attese.** Nessun mutante di difetto reale è sopravvissuto.
+
+### La trappola dell'`import type`, che ha rotto l'harness al primo colpo
+
+`import { type X } from "@/lib/gruppo"` **non basta**: la forma lascia in piedi
+la import statement, node carica `lib/gruppo.ts` → `./worker` (import relativo
+che il resolve hook non riscrive) e l'harness muore con `ERR_MODULE_NOT_FOUND`.
+Serve `import type { X } from ...`, che sparisce del tutto allo strip dei tipi.
+Vale per **ogni** futura estrazione che tocchi un tipo definito in un modulo con
+side-effect.
+
+### I due mutanti che hanno insegnato qualcosa
+
+- **M11** (`-Infinity` → `+Infinity` in `ordinaRighe`) sopravviveva a una
+  fixture con **un solo** null: la costante non veniva mai confrontata con se
+  stessa, quindi il segno non cambiava nulla. Serve un secondo null, dove
+  `-Inf - (-Inf) = NaN` e `sort` lascia la coppia com'è. **Era la fixture a
+  essere povera, non l'assert a mancare** — stessa lezione del `?? 0` del 31/8.
+- **CTRL-3** (`if (v == null) return ""` in `cellTone`) è **genuinamente
+  equivalente**: `calcolaExtremes` filtra già i null, quindi best/worst sono
+  sempre numeri e `null === <numero>` è già false. Nessuna fixture può ucciderlo.
+  Documentato nel sorgente invece di forzare un test che lo zittisse.
+
+### Otto comportamenti fotografati, non corretti (decisione di Mattia)
+
+Ognuno ha un test che lo asserisce **sbagliato**, col perché nel corpo:
+
+1. **`ordinaRighe`**: i null vanno in coda in `desc` ma **in testa** in `asc`
+   (una sola coalescenza per due direzioni).
+2. **`calcolaSparkline`**: con `primo <= 0` la linea è **rossa "in calo"** anche
+   su un MOL che risale. Non raggiungibile oggi (vedi sopra), si arma se il
+   filtro `netto > 0` del worker cambia.
+3. **`tintConti`**: `livello_dati ?? "completo"` sceglie sull'assenza del campo
+   l'ipotesi **più ottimista** — un worker che lo omettesse certificherebbe in
+   verde un MOL non verificato. Il tipo lo dichiara non-nullable: TypeScript non
+   vedrebbe mai il caso.
+4. **`incidenzaPct`**: con `grand_total = 0` restituisce `0` → a schermo "0,0%"
+   dove il dato non esiste ("—" sarebbe onesto).
+5. **`pvPiuCaro`**: a parità di importo vince il **primo** nell'ordine di `pv` —
+   tie-break implicito che dipende da come il worker ordina le sedi.
+6. **`calcolaHeatMax`**: `?? 0` appiattisce null su 0.
+7. **Due heatmap divergenti**: `heatStyle` (0.05/0.30) e `cellStyle`
+   (0.06/0.34). Unificarle cambierebbe i colori a schermo: restano due funzioni
+   e il test **dichiara** la divergenza.
+8. **`euro2` omonime con output diverso**: `finestra-margini-coperti.tsx:376`
+   usa `toFixed` (niente separatore migliaia), `gruppo-tag-section.tsx:29` usa
+   `Intl`. Fuori perimetro, non toccate.
+
+### Non fatto, e dichiarato — va in coda con la sua misura
+
+- **I 3 file di `catena/` non aperti: 1.767 righe.** `gruppo-tag-section.tsx`
+  (721) è il più grande e contiene già una delega a `lib/tag-candidati.ts`:
+  è il candidato naturale della prossima passata sull'area.
+- **7 copie locali di `euro`/`pct`/`num` e 3 di `MESI`** nell'area, mentre
+  `lib/format.ts` è "FONTE UNICA" e `lib/mesi.ts` **cita catena** fra i file da
+  centralizzare. Non deduplicate: sostituirle è un cambio di comportamento se
+  l'output diverge (le due `euro2` lo dimostrano), e serve prima un test di
+  equivalenza byte per byte.
+- **`parseImportoIt`** (`finestra-costi-gruppo.tsx:354`): `replace(",", ".")`
+  **non globale** → `"1.234,56"` diventa `NaN`. Bug vero, fuori perimetro.
+- **Il rendering resta non testato**, qui come ovunque: serve un runner di
+  componenti, escluso per ragione strutturale (un runner in `apps/web/` farebbe
+  partire un deploy Vercel a ogni merge di un test).

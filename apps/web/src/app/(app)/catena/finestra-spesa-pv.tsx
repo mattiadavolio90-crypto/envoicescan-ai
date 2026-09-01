@@ -13,6 +13,7 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { type SpesaPivot } from "@/lib/gruppo";
+import { calcolaMaxCell, cellStyle, incidenzaPct, intervalloMese, pvPiuCaro } from "@/lib/catena-confronti";
 
 const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -25,15 +26,6 @@ function euro(n: number): string {
     currency: "EUR",
     maximumFractionDigits: 0,
   }).format(n);
-}
-
-// Heatmap a token di tema (dark/light-safe): intensità sfondo dalla frazione
-// della cella sul massimo della pivot. Usa la primary con alpha → contrasto su
-// entrambi i temi, niente colori hardcoded.
-function cellStyle(v: number, max: number): React.CSSProperties {
-  if (max <= 0 || v <= 0) return {};
-  const a = 0.06 + (v / max) * 0.34;
-  return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
 }
 
 export function FinestraSpesaPV({
@@ -60,10 +52,9 @@ export function FinestraSpesaPV({
     setLoadError(false);
     const qs = new URLSearchParams({ dimensione });
     if (periodo !== "anno") {
-      const m = Number(periodo);
-      const ultimo = new Date(annoCorrente, m, 0).getDate(); // ultimo giorno del mese
-      qs.set("data_da", `${annoCorrente}-${String(m).padStart(2, "0")}-01`);
-      qs.set("data_a", `${annoCorrente}-${String(m).padStart(2, "0")}-${String(ultimo).padStart(2, "0")}`);
+      const { data_da, data_a } = intervalloMese(annoCorrente, Number(periodo));
+      qs.set("data_da", data_da);
+      qs.set("data_a", data_a);
     }
     fetch(`/api/gruppo/spesa-pivot?${qs.toString()}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -86,9 +77,7 @@ export function FinestraSpesaPV({
     carica();
   }, [open, carica]);
 
-  const maxCell = data
-    ? Math.max(0, ...data.rows.flatMap((r) => data.pv.map((p) => r.per_pv[p.id] ?? 0)))
-    : 0;
+  const maxCell = data ? calcolaMaxCell(data.rows, data.pv) : 0;
 
   // Export Excel della pivot (xlsx lazy: libreria pesante, solo al click).
   async function exportXls() {
@@ -196,13 +185,7 @@ export function FinestraSpesaPV({
               </thead>
               <tbody>
                 {data.rows.map((row) => {
-                  // PV più caro della riga: lo evidenziamo solo se almeno 2 PV hanno
-                  // speso (altrimenti "il più caro" è ovvio e diventa rumore).
-                  const conSpesa = data.pv.filter((p) => (row.per_pv[p.id] ?? 0) > 0);
-                  const maxPvId =
-                    conSpesa.length >= 2
-                      ? conSpesa.reduce((a, b) => ((row.per_pv[b.id] ?? 0) > (row.per_pv[a.id] ?? 0) ? b : a)).id
-                      : null;
+                  const maxPvId = pvPiuCaro(row, data.pv);
                   return (
                   <tr key={row.dim_val} className="border-t">
                     <td className="sticky left-0 z-10 max-w-[14rem] bg-popover px-3 py-2 font-medium">
@@ -254,7 +237,7 @@ export function FinestraSpesaPV({
                   <td className="sticky left-0 z-10 bg-popover px-3 py-2">Totale</td>
                   {data.pv.map((p) => {
                     const tot = data.totali_pv[p.id] ?? 0;
-                    const inc = data.grand_total > 0 ? (tot / data.grand_total) * 100 : 0;
+                    const inc = incidenzaPct(tot, data.grand_total);
                     return (
                       <td key={p.id} className="px-3 py-2 text-right tabular-nums">
                         <span className="block">{euro(tot)}</span>

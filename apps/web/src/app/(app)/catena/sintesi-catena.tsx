@@ -24,6 +24,12 @@ import {
   type MolMensile,
 } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
+import {
+  calcolaSparkline,
+  messaggioFattureDaCollocare,
+  offsetAnello,
+  tintConti,
+} from "@/lib/catena-confronti";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
@@ -114,19 +120,10 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
       <p className="mt-4 max-w-none text-base leading-relaxed text-foreground/90 sm:text-lg">
         {briefing.narrativa}
       </p>
-      {(briefing.n_fatture_da_collocare ?? 0) > 0 && (
+      {messaggioFattureDaCollocare(briefing) && (
         <p className="mt-3 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-500">
           <ClipboardList className="size-4 shrink-0" />
-          {/* Se la narrativa ha già accennato alla novità di ieri (apertura
-              "sono arrivate N fatture"), qui basta il numero totale senza
-              ripetere l'imperativo "assegnale/dividile" — già dato sopra. */}
-          {briefing.n_fatture_arrivate_ieri
-            ? briefing.n_fatture_da_collocare === 1
-              ? "In tutto c'è 1 fattura di gruppo da collocare qui sotto."
-              : `In tutto ci sono ${briefing.n_fatture_da_collocare} fatture di gruppo da collocare qui sotto.`
-            : briefing.n_fatture_da_collocare === 1
-              ? "C'è 1 fattura di gruppo da collocare qui sotto: assegnala a una sede o dividila fra i locali."
-              : `Ci sono ${briefing.n_fatture_da_collocare} fatture di gruppo da collocare qui sotto: assegnale a una sede o dividile fra i locali.`}
+          {messaggioFattureDaCollocare(briefing)}
         </p>
       )}
     </div>
@@ -134,28 +131,13 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
 }
 
 // ─── Sparkline andamento MOL del gruppo (come MolAndamento della Home) ──────
-const MESI_ABBR = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
 
 function MolSparkline({ punti, anno }: { punti: MolMensile[]; anno: number }) {
-  if (punti.length < 2) return null;
   const W = 240;
   const H = 40;
-  const PAD = 4;
-  const vals = punti.map((p) => p.mol);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const range = max - min || 1;
-  const n = punti.length;
-  const x = (i: number) => PAD + (i * (W - 2 * PAD)) / (n - 1);
-  const y = (v: number) => H - PAD - ((v - min) / range) * (H - 2 * PAD);
-  const d = punti.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.mol).toFixed(1)}`).join(" ");
-  const primo = punti[0].mol;
-  const ultimo = punti[n - 1].mol;
-  const ytdPct = primo > 0 ? ((ultimo - primo) / primo) * 100 : null;
-  const su = ytdPct != null && ytdPct >= 0;
-  const stroke = su ? "text-emerald-500" : "text-rose-500";
-  const meseDa = MESI_ABBR[(punti[0].mese - 1) % 12] ?? "";
-  const meseA = MESI_ABBR[(punti[n - 1].mese - 1) % 12] ?? "";
+  const spark = calcolaSparkline(punti, W, H, 4);
+  if (!spark) return null;
+  const { d, ytdPct, su, stroke, meseDa, meseA, cx, cy } = spark;
 
   return (
     <div className="mt-4 border-t pt-3">
@@ -178,7 +160,7 @@ function MolSparkline({ punti, anno }: { punti: MolMensile[]; anno: number }) {
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="h-10 w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="Andamento del margine del gruppo">
         <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
-        <circle cx={x(n - 1)} cy={y(ultimo)} r="3" className={cn("fill-current", stroke)} />
+        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", stroke)} />
       </svg>
     </div>
   );
@@ -227,9 +209,8 @@ function ContiGruppoCard({
 }) {
   const { kpi } = overview;
   const livello = kpi.livello_dati ?? "completo";
-  const molPos = kpi.mol >= 0;
   // A cascata: con dati incompleti il MOL e' falso -> card neutra (no verde/rosso).
-  const tint = livello === "completo" ? (molPos ? TINT.verde : TINT.rosso) : TINT.giallo;
+  const tint = TINT[tintConti(kpi)];
 
   // Livello "nessuno": niente numeri, si indirizza a completare i PV.
   if (livello === "nessuno") {
@@ -324,7 +305,7 @@ function ContiGruppoCard({
 function AnelloSalute({ indice, colore }: { indice: number; colore: ColoreTint }) {
   const r = 52;
   const c = 2 * Math.PI * r;
-  const offset = c - (Math.max(0, Math.min(100, indice)) / 100) * c;
+  const offset = offsetAnello(indice, r);
   const tint = TINT[colore];
   return (
     <div className="relative size-32 shrink-0">

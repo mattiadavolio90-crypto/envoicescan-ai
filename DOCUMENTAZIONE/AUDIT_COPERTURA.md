@@ -76,10 +76,17 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 > ciclo 08 ha chiuso **F3** (`components/`) e **F6** (`workspace/`). Le righe
 > «lette» qui sotto sono quelle dichiarate in quei verbali.
 >
-> Misura sul tree **committato** (`git archive HEAD`): **51.413**, ri-misurata il
-> 31/8 a chiusura sessione margini (+40: `lib/` +126 per il modulo estratto,
-> `(app)/margini/` −86). Un `find` sul working tree può dare di più se una
+> Misura sul tree **committato** (`git archive HEAD`): **51.614**, ri-misurata
+> l'1/9 a chiusura sessione catena (+201: `lib/` +284 per `catena-confronti.ts`,
+> `(app)/catena/` −83). Un `find` sul working tree può dare di più se una
 > sessione parallela ha modifiche aperte.
+>
+> ⚠️ **+284 e −83 non si compensano: un'estrazione NON è a somma zero.** Il
+> modulo estratto aggiunge firme, tipi e i commenti che spiegano ogni anomalia
+> fotografata — righe che nel `.tsx` non esistevano. Chi ri-somma aspettandosi il
+> pareggio trova un delta e crede di aver sbagliato la misura: è il contrario,
+> il delta è il lavoro. Ri-somma sempre la colonna e confrontala con
+> `find apps/web/src -type f ! -name '*.woff' | xargs wc -l`.
 >
 > ⚠️ **Il totale precedente (51.063) era sbagliato di 350 righe, e non per il
 > refactor.** Ri-sommando la colonna a HEAD sono emerse due cose: la voce
@@ -108,13 +115,13 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `(mobile)/` | 1.270 | 3.984 | 🟠 32% | ciclo 07 §3c: mobile-turni |
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | ~725 | 3.768 | 🟠 19% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126, nuovo il 31/8) |
-| `(app)/catena/` | 0 | 3.127 | 🔴 | **l'unica area grande che nessuna passata ha mai toccato** — multi-sede |
+| `lib/` | ~1.009 | 4.052 | 🟠 25% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (284, nuovo l'1/9) |
+| `(app)/catena/` | 1.360 | 3.044 | 🟠 45% | **aperta l'1/9**: 3 file su 6 (margini-coperti, sintesi, spesa-pv) estratti in `lib/catena-confronti.ts`, 81 test, 48/48 mutanti di difetto uccisi. Restano 1.767 righe: tag-section 721, costi-gruppo 553, config 202, segnali 110, pages 181 |
 | `(app)/` — altre 7 aree + file diretti | 0 | 4.250 | 🔴 | misurate il 31/8: dashboard 1.749 · impostazioni 806 · agenda 693 · notifiche 339 · assistenza 292 · style-guide 256 · file diretti 115 |
 | `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 622 | 🔴 | **ri-misurati il 31/8: 22 + 105 + 495** — i file diretti erano contati 185, sono 495 (`globals.css` da solo ne fa 296) |
 | `(auth)`+`(legal)`+`(demo)` — dettaglio | — | 1.353 | 🔴 | 552 + 575 + 226 |
 
-**Righe lette: 22.699 · non lette: 28.714 · totale 51.413** — la tabella copre
+**Righe lette: 24.343 · non lette: 27.271 · totale 51.614** — la tabella copre
 tutto `apps/web/src`: la somma della colonna «Totale area» uguaglia
 `git archive HEAD` **meno i 481 dei due font binari** (51.894 − 481 = 51.413).
 Ri-verificato a ogni aggiornamento, **sommando le righe della tabella**, non
@@ -124,9 +131,9 @@ sbagliato di 350.
 | | Lette | Totale area | Non lette |
 |---|---:|---:|---:|
 | 📖 aree complete | 13.161 | 13.287 | 126 |
-| 🟠 aree parziali | 9.538 | 28.774 | 19.236 |
-| 🔴 mai aperte | 0 | 9.352 | 9.352 |
-| **totale** | **22.699** | **51.413** | **28.714** |
+| 🟠 aree parziali | 11.182 | 32.002 | 20.820 |
+| 🔴 mai aperte | 0 | 6.325 | 6.325 |
+| **totale** | **24.343** | **51.614** | **27.271** |
 
 Le 126 righe non lette dentro le aree 📖 sono la differenza fra «area chiusa» e
 «ogni riga letta»: `app/api/` è 4.849/4.849, `scadenziario/` 2.211/2.211,
