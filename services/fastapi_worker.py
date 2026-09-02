@@ -6120,6 +6120,26 @@ def _costi_automatici_mese(
         return None
 
 
+def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str:
+    """Il testo della voce "Righe classificate" della card Salute.
+
+    Difetto corretto il 2/9/2026: il ramo "Nessuna riga da classificare" veniva
+    scelto guardando le righe della FINESTRA recente (30 giorni) invece di quelle
+    da controllare. Una sede che non caricava da oltre un mese leggeva "Nessuna
+    riga da classificare" pur avendone: misurate a DB 4 sedi su 11, la peggiore
+    con 187 righe (ultimo caricamento 21 luglio). Il pallino era pero' corretto
+    (`ok` guarda `da_controllare`), quindi mentiva solo la frase.
+
+    `righe_totali` sono TUTTE le righe attive della sede, non quelle recenti:
+    "nessuna riga da classificare" e' vero solo per chi non ha proprio righe.
+    """
+    if da_controllare:
+        return f"{da_controllare} righe da controllare"
+    if righe_totali:
+        return "Tutte le righe sono classificate"
+    return "Nessuna riga da classificare"
+
+
 def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
     """True se l'indice di Salute della gestione e' 'rosso' (< 50).
 
@@ -6988,6 +7008,26 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
         da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
     classificate_ok = da_controllare == 0
 
+    # Righe attive TOTALI della sede: distingue "non ha nulla da classificare"
+    # da "non ha caricato di recente". Serve solo al testo della voce, non
+    # all'indice. Su errore si assume che righe ne esistano (il caso comune):
+    # meglio "tutte classificate" che il ramo "nessuna riga", che sarebbe falso
+    # per chiunque abbia righe.
+    righe_totali_sede = 1
+    try:
+        _tot = (
+            sb.table("fatture")
+            .select("id", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .limit(1)
+            .execute()
+        )
+        if _tot.count is not None:
+            righe_totali_sede = _tot.count
+    except Exception as exc:
+        logger.warning("home_salute: conteggio righe totali fallito: %s", exc)
+
     # ── Indice: voci ATTIVE a peso uguale. Le voci binarie valgono 0/100;
     #    le righe usano la loro %. Senza fatture, le righe valgono 0. Le voci
     #    spente nel configuratore non pesano (e non compaiono nella card). ──
@@ -7037,9 +7077,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             key="classificate",
             label="Righe classificate",
             ok=classificate_ok,
-            dettaglio="Tutte le righe sono classificate" if classificate_ok
-                      else (f"{da_controllare} righe da controllare" if tot_righe
-                            else "Nessuna riga da classificare"),
+            dettaglio=_dettaglio_righe_classificate(da_controllare, righe_totali_sede),
             # Deep-link al tab Articoli gia' filtrato sulle righe da controllare,
             # quando ce ne sono; pagina liscia altrimenti.
             cta_page=("/analisi-fatture?tab=articoli&verifica=1"
