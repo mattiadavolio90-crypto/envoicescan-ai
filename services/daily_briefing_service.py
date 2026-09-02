@@ -89,7 +89,14 @@ logger = get_logger('daily_briefing')
 #               Giuliano e 156 vs 100 su Villa Guardia, due numeri per la stessa
 #               cosa sulla stessa schermata. Lo snapshot in cache non ha il campo
 #               nuovo: senza bump le card resterebbero senza dismissible.
-_BRIEFING_CODE_VERSION = 19
+#  20 -> 02/09: la formula della Salute e' UNA sola (calcola_indice_salute). Prima
+#               _salute_indice_rosso divideva sempre per 4 ignorando i toggle,
+#               mentre la card escludeva le voci spente dal denominatore: stessi
+#               dati, card gialla e gate rosso (48 vs 63 sul caso misurato). I gate
+#               che ne dipendono — buona notizia e amo Assistenza del rientro —
+#               cambiano esito per chi ha spento un avviso, quindi lo snapshot
+#               salvato con la vecchia regola va rigenerato.
+_BRIEFING_CODE_VERSION = 20
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -131,6 +138,54 @@ TOPIC_LIVE_NON_IGNORABILI = frozenset({
     'fatturato_mancante', 'costo_personale_mancante', 'incasso_mancante',
     'uncategorized_rows', 'fatture_mancanti', 'coperti_anomalia',
 })
+
+
+# ============================================================
+# SALUTE — formula unica (indice 0-100 e colore)
+# ============================================================
+
+# Soglie colore dell'indice di Salute. Erano hardcoded in due punti del worker
+# (home_salute e _salute_indice_rosso) piu' un commento nel frontend.
+SALUTE_SOGLIA_VERDE = 80
+SALUTE_SOGLIA_GIALLO = 50
+
+# Le 4 voci della Salute, a peso uguale. La chiave e' quella del configuratore.
+SALUTE_VOCI = ('fatture', 'fatturato', 'personale', 'classificate')
+
+
+def calcola_indice_salute(punteggi: Dict[str, float], voci_spente=None) -> int:
+    """Indice 0-100 della Salute: media delle sole voci ATTIVE.
+
+    FONTE UNICA (02/09/2026). Prima la formula esisteva due volte: in home_salute,
+    che escludeva le voci spente dal denominatore, e in _salute_indice_rosso, che
+    divideva SEMPRE per 4. Chi spegneva una voce poteva vedere la card VERDE e
+    intanto far scattare i gate che usano _salute_indice_rosso (soppressione della
+    buona notizia, amo Assistenza del rientro) perche' li' risultava ROSSO.
+    Il commento della funzione duplicata diceva "se la formula cambia, allineare
+    anche qui": non era mai stato fatto.
+
+    Una voce spenta esce dal calcolo, non vale zero. Se sono spente tutte l'indice
+    non e' misurabile: 100 (verde), non c'e' nulla da completare per scelta utente.
+    """
+    spente = set(voci_spente or ())
+    attive = [k for k in SALUTE_VOCI if k not in spente]
+    if not attive:
+        return 100
+    return round(sum(float(punteggi.get(k) or 0) for k in attive) / len(attive))
+
+
+def colore_salute(indice: int) -> str:
+    """verde >= 80, giallo >= 50, rosso sotto. Soglie in un posto solo."""
+    if indice >= SALUTE_SOGLIA_VERDE:
+        return "verde"
+    if indice >= SALUTE_SOGLIA_GIALLO:
+        return "giallo"
+    return "rosso"
+
+
+def salute_e_rossa(indice: int) -> bool:
+    """Gate usato dal briefing (buona notizia, rientro): stessa soglia della card."""
+    return colore_salute(indice) == "rosso"
 
 # Sopra quanti prodotti arretrati la narrativa ne fa cenno. Gemella di
 # DA_CONTROLLARE_ARRETRATO_SOGLIA nel worker (che decide se emettere il record):
@@ -353,7 +408,14 @@ def _severity_max(notifications: List[Dict[str, Any]]) -> str:
 def notifications_fingerprint(notifications: List[Dict[str, Any]]) -> str:
     """Restituisce fingerprint stabile del set notifiche attive.
 
-    Usata per capire se il briefing e' gia' allineato allo stato corrente.
+    ATTENZIONE (verificato 02/09/2026): oggi questo valore viene solo SCRITTO nello
+    snapshot ('notif_fingerprint'), e NESSUNO lo rilegge — snapshot_is_stale guarda
+    solo code_version e TTL. Non e' quindi un meccanismo di invalidazione: serve da
+    traccia diagnostica (dire, guardando due snapshot, se il set notifiche era lo
+    stesso). L'invalidazione vera avviene agli EVENTI, via
+    invalidate_today_briefing (14 call site: upload, ricavi, margini, scadenze,
+    preferenze). Se un domani lo si vuole usare come gate, va confrontato qui e
+    servono le notifiche fresche — cioe' proprio il calcolo che la cache evita.
     """
     if not notifications:
         return ''
@@ -1355,8 +1417,10 @@ def _build_snapshot(
     else:
         narrative = template_narrative
 
-    # Il fingerprint include i topic spenti: cambiando le preferenze il briefing
-    # cached si invalida anche se le notifiche sono identiche.
+    # Il fingerprint include i topic spenti, ma NON invalida da solo nulla (vedi
+    # notifications_fingerprint): e' una traccia diagnostica. A invalidare lo
+    # snapshot quando cambiano le preferenze e' il POST /api/home/config, che
+    # chiama invalidate_today_briefing esplicitamente.
     fingerprint = notifications_fingerprint(notifications)
     if topics_disabled:
         fingerprint += "|" + ",".join(sorted(str(t) for t in topics_disabled))

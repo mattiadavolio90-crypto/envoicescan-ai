@@ -6223,6 +6223,17 @@ def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str
     return "Nessun prodotto da classificare"
 
 
+# Mappa voce-Salute -> topic del configuratore. A livello di modulo perche' la
+# usano SIA home_salute SIA _salute_indice_rosso: spegnere un avviso deve togliere
+# la voce dal denominatore in entrambi, o card e gate divergono.
+_VOCE_TOPIC_SALUTE = {
+    "fatture": "fatture_mancanti",
+    "fatturato": "fatturato_mancante",
+    "personale": "costo_personale_mancante",
+    "classificate": "uncategorized_rows",
+}
+
+
 def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
     """True se l'indice di Salute della gestione e' 'rosso' (< 50).
 
@@ -6316,14 +6327,36 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
             except Exception:
                 pass
 
-        score_fatture = 100 if fatture_ok else 0
-        score_fatturato = 100 if fatturato_ok else 0
-        score_personale = 100 if personale_ok else 0
-        score_classificate = pct_classificate if tot_righe else 0
-        indice = round(
-            (score_fatture + score_fatturato + score_personale + score_classificate) / 4
+        # Stessa formula E stessi toggle di /api/home/salute: prima qui si divideva
+        # SEMPRE per 4, quindi chi spegneva una voce vedeva la card verde e intanto
+        # questo gate lo dava rosso (buona notizia soppressa, amo Assistenza offerto
+        # a torto). Le voci spente escono dal denominatore, non valgono zero.
+        from services.daily_briefing_service import (
+            calcola_indice_salute, espandi_topic_spenti, salute_e_rossa,
         )
-        return indice < 50
+
+        voci_spente: set = set()
+        try:
+            _, _topics_disabled = _briefing_nome_referente(
+                None, ristorante_id, supabase_client
+            )
+            _spenti = set(espandi_topic_spenti(_topics_disabled or []))
+            voci_spente = {
+                k for k, t in _VOCE_TOPIC_SALUTE.items() if t in _spenti
+            }
+        except Exception as exc:
+            logger.warning("salute rossa: lettura topic spenti fallita: %s", exc)
+
+        indice = calcola_indice_salute(
+            {
+                "fatture": 100 if fatture_ok else 0,
+                "fatturato": 100 if fatturato_ok else 0,
+                "personale": 100 if personale_ok else 0,
+                "classificate": pct_classificate if tot_righe else 0,
+            },
+            voci_spente,
+        )
+        return salute_e_rossa(indice)
     except Exception as exc:
         logger.warning("briefing rientro: calcolo salute fallito: %s", exc)
         return False
@@ -6969,18 +7002,12 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     # sull'indice (decisione: tutta la Home e' soggetta ai toggle). Mappa
     # voce-Salute -> topic del configuratore. Best-effort: se la lettura fallisce,
     # nessuna voce viene esclusa (fail-open, mostra tutto).
-    _VOCE_TOPIC = {
-        "fatture": "fatture_mancanti",
-        "fatturato": "fatturato_mancante",
-        "personale": "costo_personale_mancante",
-        "classificate": "uncategorized_rows",
-    }
     voci_spente: set = set()
     try:
         from services.daily_briefing_service import espandi_topic_spenti
         _, _td_salute = _briefing_nome_referente(None, ristorante_id, sb)
         spenti = set(espandi_topic_spenti(_td_salute or []))
-        voci_spente = {k for k, t in _VOCE_TOPIC.items() if t in spenti}
+        voci_spente = {k for k, t in _VOCE_TOPIC_SALUTE.items() if t in spenti}
     except Exception as exc:
         logger.warning("home_salute: lettura topic spenti fallita: %s", exc)
 
@@ -7136,17 +7163,14 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
         "personale": 100 if personale_ok else 0,
         "classificate": pct_classificate if tot_righe else 0,
     }
-    _attive = [k for k in _score if k not in voci_spente]
-    # Se l'utente ha spento TUTTE le voci, l'indice non e' misurabile: 100 (verde),
-    # niente da completare per sua scelta.
-    indice = round(sum(_score[k] for k in _attive) / len(_attive)) if _attive else 100
+    # Formula UNICA (daily_briefing_service): la stessa che usa _salute_indice_rosso
+    # per i gate del briefing. Prima erano due implementazioni e divergevano sui
+    # toggle -> card verde e gate rosso insieme.
+    from services.daily_briefing_service import calcola_indice_salute, colore_salute
 
-    if indice >= 80:
-        colore = "verde"
-    elif indice >= 50:
-        colore = "giallo"
-    else:
-        colore = "rosso"
+    indice = calcola_indice_salute(_score, voci_spente)
+    colore = colore_salute(indice)
+
 
     _voci_tutte = {
         "fatture": SaluteVoce(
