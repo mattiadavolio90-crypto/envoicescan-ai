@@ -1707,15 +1707,40 @@ primo commit contando anche righe scadute e invisibili.
 Il valore duraturo è l'altro: la sorgente non produce più il valore rotto, e il caso è
 coperto da un test che uccide il ritorno dell'errore.
 
-### Limite accettato, non aggirato
+### Il body, riscritto tre volte
 
-Anche il **body** è stato riscritto due volte. Diceva «sezione Agenda → Incassi»
-(sparita da mesi); l'ho corretto in «Margini → Calcolo» — e il reviewer ha preso pure
-quello: `"calcolo"` è la **chiave di rotta**, l'etichetta a schermo è «Marginalità». Di
-nuovo un testo scritto guardando il codice invece dello schermo. Ora dice «Margini →
-Marginalità con “Carica ricavi”», come lo chiama il resto del prodotto.
+Diceva «sezione Agenda → Incassi» (sparita da mesi); l'ho corretto in «Margini →
+Calcolo» — e il reviewer ha preso pure quello: `"calcolo"` è la **chiave di rotta**,
+l'etichetta a schermo è «Marginalità». Di nuovo un testo scritto guardando il codice
+invece dello schermo.
 
-`incasso_mancante` nasce **sul mobile**, dove `hideCta` nasconde le CTA che portano a
-viste desktop: lì il pulsante resta nascosto. È scritto nel codice accanto a `hideCta`,
-perché la prossima sessione non lo scopra da capo — un deep-link mobile va **aggiunto**,
-non ottenuto aggirando `hideCta`.
+La terza riscrittura è arrivata col mobile, ed è la più istruttiva: il body è **uno solo
+per due superfici** che ora portano in due posti diversi (Marginalità su desktop,
+Movimenti sul telefono). Qualunque schermata citasse, sarebbe stata sbagliata metà delle
+volte. È diventato «Usa il pulsante qui sotto», dopo aver verificato che il briefing non
+lo mostra mai *senza* pulsante (scarta queste righe e le ricalcola live).
+
+> Tre stesure per una stringa di una riga. Il testo che il cliente legge non è la parte
+> facile del lavoro: nessun test lo copre, `tsc` non lo guarda, e ogni volta l'errore era
+> lo stesso — descrivere il prodotto guardando il codice invece dello schermo.
+
+### Il limite accettato è durato un'ora: l'owner ha chiesto di chiuderlo
+
+Avevo consegnato la CTA solo su desktop, documentando il limite nel codice. Mattia ha
+chiesto di farla funzionare anche dal telefono — **«ma deve andare nella sezione
+corretta»**, cioè esattamente il punto dove avevo già sbagliato una volta.
+
+Questa volta la destinazione è stata **cercata, non dedotta**: `/m/turni` è la sezione
+«Movimenti» (ex Turni) e il suo tab di default è già «Incassi» (`mobile-turni.tsx`),
+quindi l'utente atterra dove deve scrivere il dato senza un tocco in più. `/m/diario`
+sarebbe stata la scelta "ovvia" leggendo il nome — e sarebbe stata sbagliata, perché gli
+incassi ne sono usciti.
+
+`hideCta` non spegne più tutte le CTA: `ctaMobile` rende quelle che nella PWA **esistono
+davvero**. La mappa è corta di proposito — 6 sezioni mobile contro le molte rotte
+desktop usate come `action_page`; `/prezzi`, `/analisi-fatture`, `/scadenziario` restano
+senza pulsante, che è il motivo per cui `hideCta` esiste: un link che butta l'utente
+fuori dall'app è peggio di nessun link.
+
+Mutazione della sola parte mobile: 5 mutanti, 5 uccisi. Il primo M23 **non matchava il
+sorgente** ed è stato rifatto — un mutante non applicato non prova niente.

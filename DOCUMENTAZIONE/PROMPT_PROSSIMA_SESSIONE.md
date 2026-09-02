@@ -1,9 +1,10 @@
 # Prompt prossima sessione — dopo `notifiche/`, e un errore che la review ha preso
 
 > Scritto il 2/9/2026 sera. La sessione ha fatto la 1ª passata su
-> `(app)/notifiche/` (14 test nuovi, 20 → 34) e corretto **un difetto che il
+> `(app)/notifiche/` (19 test nuovi, 20 → 39) e corretto **un difetto che il
 > cliente vedeva davvero**: la notifica «Manca l'incasso di ieri» arrivava senza
-> il pulsante per andare a inserirlo.
+> il pulsante per andare a inserirlo — su desktop **e** su telefono, dove la PWA
+> spegneva tutte le CTA.
 >
 > **Le cifre qui dentro sono misurate a quel HEAD. Ri-misurale, non ereditarle.**
 > È la regola che questo progetto ha violato **otto** volte in cinque giorni —
@@ -39,7 +40,8 @@ righe scadute). La correzione no: ho mappato `Agenda → /agenda`
 **deducendo la destinazione dal nome del campo**, senza guardare dove sta oggi la
 funzione. Gli incassi sono stati spostati fuori dall'Agenda: si inseriscono da
 Margini → **Marginalità** (desktop, col pulsante «Carica ricavi») e da
-«Movimenti» (mobile). `(app)/agenda/` non
+**«Movimenti»** (mobile, `/m/turni`). Il body della notifica non cita più nessuna
+delle due: è **uno per entrambe le superfici**, che ora portano in posti diversi. `(app)/agenda/` non
 contiene nemmeno la stringa `incass`.
 
 Avrei prodotto un pulsante che **non fa fare la cosa chiesta**, e per di più una
@@ -75,11 +77,12 @@ letterali del codice»; sono nove (sette in `upload_handler.py:2051-2145`).
 
 ## 2. Debito lasciato aperto, con motivo
 
-**La CTA su mobile resta nascosta.** `incasso_mancante` nasce *sul* mobile
-(`m/incasso-reminder.tsx`) ma punta a `/margini`, che è desktop: `hideCta` la
-nasconde. È **scritto nel codice** accanto a `hideCta`. Il lavoro vero è un
-deep-link mobile verso «Movimenti» (`m/turni`), che è una scelta di prodotto:
-**chiedila a Mattia**, non deciderla. Non aggirare `hideCta`.
+**La CTA su mobile è stata chiusa** nella stessa sessione, su richiesta di
+Mattia: `ctaMobile` mappa `/margini → /m/turni` («Movimenti», tab di default
+«Incassi»). `hideCta` **non** è stato aggirato — rende solo le CTA che nella PWA
+esistono. Se aggiungi una destinazione a `NEXT_TO_MOBILE`, **verifica prima che
+la sezione mobile esista e che ci si atterri sul tab giusto**: `/m/diario` era la
+scelta ovvia dal nome ed era sbagliata.
 
 **I 7 `action_page` di `upload_handler.py:2051-2145`** sono nomi di pagina sul
 percorso Streamlit (che gli audit danno per morto, ma **verificalo** se ci lavori:
