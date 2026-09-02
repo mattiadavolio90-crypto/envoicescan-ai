@@ -23,6 +23,16 @@ export type Notifica = {
   created_at: string | null;
 };
 
+// Lookup che NON attraversa Object.prototype: `MAPPA["toString"]` su un object
+// literal restituisce una funzione, e una guardia `x ? ... : ...` la accetta.
+// Si usa `Object.prototype.hasOwnProperty.call` e non `Object.hasOwn` perche'
+// quest'ultimo e' ES2022 mentre `tsconfig.json` ha `target: ES2017`: essendo un
+// metodo di libreria e non sintassi, `tsc` non lo downlevella e non lo segnala
+// (`lib` include esnext), quindi finirebbe nel bundle cosi' com'e'.
+function has(mappa: object, chiave: string): boolean {
+  return Object.prototype.hasOwnProperty.call(mappa, chiave);
+}
+
 // --- Priorita' visiva per severity -----------------------------------------
 // Ordine: error (rosso) > warning (giallo) > info (blu) > success (verde).
 // Usato sia per ordinare che per i colori del bordo/badge.
@@ -54,11 +64,11 @@ const GRUPPO_ORDINE = ["scadenza", "upload", "radar", "operativa", "agenda", "al
 
 export function gruppoDi(n: Notifica): Gruppo {
   const st = (n.source_type ?? "").toLowerCase();
-  // Object.hasOwn e non `?? `: un lookup nudo su un object literal eredita da
-  // Object.prototype, quindi source_type "toString" o "constructor"
-  // restituirebbe una funzione invece del fallback. Non raggiungibile oggi (i
-  // writer usano literal hardcoded), ma il costo di chiuderlo e' una riga.
-  return Object.hasOwn(SOURCE_GROUP, st) ? SOURCE_GROUP[st] : GRUPPO_ALTRO;
+  // `has()` e non un lookup nudo: `MAPPA[k]` eredita da Object.prototype,
+  // quindi source_type "toString" o "constructor" restituirebbe una funzione
+  // invece del fallback. Non raggiungibile oggi (i writer usano literal
+  // hardcoded), ma il costo di chiuderlo e' una riga.
+  return has(SOURCE_GROUP, st) ? SOURCE_GROUP[st] : GRUPPO_ALTRO;
 }
 
 export type GruppoNotifiche = {
@@ -129,9 +139,9 @@ export function ctaDi(n: Notifica): { href: string; label: string } | null {
   if (raw.startsWith("/")) return { href: raw, label: "Vai" };
   // Vedi la nota in gruppoDi: lookup che non attraversa Object.prototype.
   const low = raw.toLowerCase();
-  const mapped = Object.hasOwn(LEGACY_TO_NEXT, raw)
+  const mapped = has(LEGACY_TO_NEXT, raw)
     ? LEGACY_TO_NEXT[raw]
-    : Object.hasOwn(LEGACY_TO_NEXT, low)
+    : has(LEGACY_TO_NEXT, low)
       ? LEGACY_TO_NEXT[low]
       : undefined;
   return mapped ? { href: mapped, label: "Vai" } : null;
@@ -231,6 +241,6 @@ export function ctaMobile(n: Notifica): { href: string; label: string } | null {
   if (!cta) return null;
   // Vedi la nota in gruppoDi.
   const topic = n.topic_key ?? "";
-  const mobile = Object.hasOwn(TOPIC_TO_MOBILE, topic) ? TOPIC_TO_MOBILE[topic] : undefined;
+  const mobile = has(TOPIC_TO_MOBILE, topic) ? TOPIC_TO_MOBILE[topic] : undefined;
   return mobile ? { href: mobile, label: cta.label } : null;
 }
