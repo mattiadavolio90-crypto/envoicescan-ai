@@ -103,7 +103,8 @@ dicono chi ha classificato la riga e con quanta affidabilità; le scrive il gate
 > già chiusi cambierebbe** mesi dopo che il cliente l'ha letto. Nessun backfill.
 
 Le righe `da_verificare` **non sono ancora escluse** da margini e foodcost: è la Fase 4,
-dietro flag disattivato. Oggi la fiducia si registra e basta.
+non ancora fatta — **il flag non esiste ancora nel codice**. Oggi la fiducia si registra
+e basta.
 **Dedup:** `UNIQUE(file_origine, numero_riga, user_id, ristorante_id)`
 
 ---
