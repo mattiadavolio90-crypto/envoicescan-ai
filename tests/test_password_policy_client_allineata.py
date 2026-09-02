@@ -16,18 +16,17 @@ esplicita: sono liste lunghe, il client non le replica e il messaggio del
 server arriva comunque a video. Qui si confrontano i due criteri che il client
 dichiara di replicare: lunghezza minima e categorie.
 """
-import json
 import os
 import random
 import re
 import shutil
 import string
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from services.auth_service import valida_password_compliance
+from tests.helpers_ts import esegui_ts
 
 POLICY_TS = Path(__file__).resolve().parents[1] / "apps/web/src/lib/password-policy.ts"
 
@@ -59,24 +58,18 @@ def _serve_node():
 def _valuta_col_client(passwords):
     """Esegue erroreLocalePassword() del vero .ts su una lista di password.
 
-    Le annotazioni di tipo vengono rimosse (il modulo e' TS solo nella firma:
-    nessun enum, nessun decoratore), il resto del file gira tale e quale —
-    regex incluse, che sono la parte che conta.
+    Passa dall'harness condiviso invece di spogliare i tipi con delle
+    `.replace()` letterali sulle firme: quella tecnica non falliva quando una
+    firma cambiava, la replace semplicemente non matchava e node moriva con un
+    SyntaxError che sembrava un difetto del modulo. `richiede` invece dice
+    esplicitamente quale esportazione deve esistere.
     """
-    sorgente = POLICY_TS.read_text(encoding="utf-8")
-    js = sorgente.replace("export const ", "const ").replace("export function ", "function ")
-    js = js.replace("(password: string): number", "(password)")
-    js = js.replace("(password: string): string | null", "(password)")
-    script = js + """
-const input = JSON.parse(process.argv[1]);
-console.log(JSON.stringify(input.map((p) => erroreLocalePassword(p))));
-"""
-    out = subprocess.run(
-        ["node", "-e", script, json.dumps(passwords)],
-        capture_output=True, text=True, timeout=60,
+    return esegui_ts(
+        "lib/password-policy",
+        "emit(input.map((p) => m.erroreLocalePassword(p)));",
+        argomento=passwords,
+        richiede=["erroreLocalePassword"],
     )
-    assert out.returncode == 0, f"il modulo client non gira: {out.stderr}"
-    return json.loads(out.stdout)
 
 
 def _costante(nome: str) -> int:
