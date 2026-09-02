@@ -1744,3 +1744,39 @@ fuori dall'app è peggio di nessun link.
 
 Mutazione della sola parte mobile: 5 mutanti, 5 uccisi. Il primo M23 **non matchava il
 sorgente** ed è stato rifatto — un mutante non applicato non prova niente.
+
+### La seconda review: la mappa era per path, e il path non basta
+
+Avevo mappato `/margini → /m/turni`. Il `code-reviewer` ha contato chi passa da lì: **sei
+topic**, non uno. Due sarebbero finiti su un pulsante che non fa fare la cosa chiesta —
+`fatturato_mancante` è il totale **mensile**, che su mobile è read-only («Totale mensile
+inserito da desktop»), e `coperti_anomalia` punta a un tab `coperti` che sul mobile **non
+esiste** (zero occorrenze in `(mobile)/m/`).
+
+Era la stessa classe dell'errore `/agenda`, e il mio commento nel codice la mascherava:
+diceva «contiene solo le destinazioni che sul mobile esistono davvero» — vero per il
+path, falso per i topic che ci transitano. **Il commento prometteva più di quanto il
+codice mantenesse.**
+
+Ora si mappa il **topic**: `TOPIC_TO_MOBILE` ha una sola voce, `incasso_mancante`. I
+mutanti che rimettono il criterio per path (M24) o aggiungono `fatturato_mancante` (M28)
+vengono uccisi da un test.
+
+### Il body persistito non arriva a schermo — e nemmeno il mio `action_page`
+
+Verificato leggendo `get_notifiche` (`fastapi_worker.py:2748`): le righe persistite dei
+topic in `_LIVE_TOPICS_DATI_MANCANTI` — `incasso_mancante` incluso — vengono **rimosse** e
+sostituite dalla versione live, che ha `body: ""` e già `action_page: "/margini"`.
+
+Quindi la riscrittura del body era corretta ma **senza effetto osservabile**, e il fix
+alla sorgente conta per coerenza, non per ciò che il cliente vede oggi. Ciò che il
+cliente vede è la CTA: provata sulla riga live vera, `ctaDi → /margini` e
+`ctaMobile → /m/turni`. È annotato nel codice, così nessuno spende tempo a «sistemare»
+un testo invisibile.
+
+### L'aritmetica: il reviewer aveva ragione, io no
+
+Avevo scritto totale **52.960**; la misura giusta è **52.962**. Il mio conteggio sommava
+i file uno per uno e **perdeva 2 righe** su quelli senza newline finale. Riallineata anche
+la *colonna* della riga `lib/`, ferma da tre giri a `2.192 | 5.290` mentre la prosa nella
+stessa cella diceva altro: chi legge la tabella per colonna prendeva il numero vecchio.

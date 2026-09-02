@@ -516,6 +516,10 @@ def genera_notifica_incasso_mancante(authorization: Optional[str] = Header(None)
         source_type="operativa",
         severity="warning",
         title="Manca l'incasso di ieri",
+        # NB: questo body (e questo action_page) non arrivano a schermo: `get_notifiche`
+        # rimuove le righe persistite dei topic in `_LIVE_TOPICS_DATI_MANCANTI` e le
+        # sostituisce con la versione live (`fastapi_worker.py`), che ha body vuoto.
+        # Restano corretti per non mentire se un giorno la riga tornasse visibile.
         body="Usa il pulsante qui sotto per inserirlo e tenere i margini aggiornati.",
         action_page="/margini",
     )

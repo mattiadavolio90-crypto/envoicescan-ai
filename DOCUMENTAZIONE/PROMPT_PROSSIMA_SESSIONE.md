@@ -1,7 +1,7 @@
 # Prompt prossima sessione — dopo `notifiche/`, e un errore che la review ha preso
 
 > Scritto il 2/9/2026 sera. La sessione ha fatto la 1ª passata su
-> `(app)/notifiche/` (19 test nuovi, 20 → 39) e corretto **un difetto che il
+> `(app)/notifiche/` (20 test nuovi, 20 → 40) e corretto **un difetto che il
 > cliente vedeva davvero**: la notifica «Manca l'incasso di ieri» arrivava senza
 > il pulsante per andare a inserirlo — su desktop **e** su telefono, dove la PWA
 > spegneva tutte le CTA.
@@ -78,11 +78,21 @@ letterali del codice»; sono nove (sette in `upload_handler.py:2051-2145`).
 ## 2. Debito lasciato aperto, con motivo
 
 **La CTA su mobile è stata chiusa** nella stessa sessione, su richiesta di
-Mattia: `ctaMobile` mappa `/margini → /m/turni` («Movimenti», tab di default
-«Incassi»). `hideCta` **non** è stato aggirato — rende solo le CTA che nella PWA
-esistono. Se aggiungi una destinazione a `NEXT_TO_MOBILE`, **verifica prima che
-la sezione mobile esista e che ci si atterri sul tab giusto**: `/m/diario` era la
-scelta ovvia dal nome ed era sbagliata.
+Mattia: `ctaMobile` porta `incasso_mancante` a `/m/turni` («Movimenti», tab di
+default «Incassi»). `hideCta` **non** è stato aggirato — rende solo le CTA che
+nella PWA esistono.
+
+> **Si mappa il TOPIC, non il path** (`TOPIC_TO_MOBILE`), ed è una correzione
+> della seconda review: su `/margini` desktop confluiscono **sei** topic, e per
+> due la destinazione mobile sarebbe sbagliata (`fatturato_mancante` è il totale
+> mensile, read-only su mobile; `coperti_anomalia` punta a un tab che sul mobile
+> non esiste). Se aggiungi una voce, **verifica che la sezione mobile esista, che
+> ci si atterri sul tab giusto e che il dato lì sia scrivibile**.
+
+**Il body persistito di `incasso_mancante` non arriva a schermo**, e nemmeno il
+suo `action_page`: `get_notifiche` rimuove le righe dei topic in
+`_LIVE_TOPICS_DATI_MANCANTI` e usa la versione live. È annotato nel codice — non
+spendere tempo a «sistemare» quel testo credendolo visibile.
 
 **I 7 `action_page` di `upload_handler.py:2051-2145`** sono nomi di pagina sul
 percorso Streamlit (che gli audit danno per morto, ma **verificalo** se ci lavori:

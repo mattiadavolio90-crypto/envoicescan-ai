@@ -290,10 +290,11 @@ def test_visibili_puo_svuotare_tutto():
 # l'avviso arrivava sul telefono senza modo di agire. Ora la CTA compare quando
 # — e solo quando — la destinazione esiste anche nella PWA.
 
-def _cta_mobile(page):
+def _cta_mobile(page, topic="incasso_mancante"):
+    n = _n("x", page=page)
+    n["topic_key"] = topic
     return esegui_ts(
-        MODULO, "emit(m.ctaMobile(input));",
-        argomento=_n("x", page=page), richiede=["ctaMobile"],
+        MODULO, "emit(m.ctaMobile(input));", argomento=n, richiede=["ctaMobile"],
     )
 
 
@@ -310,22 +311,41 @@ def test_incasso_dal_valore_storico_a_DB_arriva_comunque():
     assert _cta_mobile("Agenda")["href"] == "/m/turni"
 
 
+def test_si_mappa_il_topic_non_il_path():
+    """LA CORREZIONE dopo la seconda review. Su `/margini` desktop confluiscono
+    almeno 6 topic: mappare il PATH li avrebbe mandati tutti su /m/turni, e per
+    due sarebbe stato un pulsante che non fa fare la cosa chiesta —
+
+    - `fatturato_mancante` e' il totale MENSILE, read-only su mobile
+      ("Totale mensile inserito da desktop", `mobile-incassi.tsx`);
+    - `coperti_anomalia` punta al tab `coperti`, che sul mobile non esiste
+      (zero occorrenze di "coperti" in `(mobile)/m/`).
+
+    Stessa classe dell'errore `/agenda`: destinazione dedotta invece che
+    cercata. Qui i due casi restano senza pulsante, com'e' giusto."""
+    assert _cta_mobile("/margini", topic="fatturato_mancante") is None
+    assert _cta_mobile("/margini?tab=coperti", topic="coperti_anomalia") is None
+    assert _cta_mobile("/margini", topic="costo_personale_mancante") is None
+    assert _cta_mobile("/margini", topic="upload_ricavi_failed") is None
+    assert _cta_mobile("/margini", topic="buona_notizia") is None
+
+
 def test_destinazioni_senza_equivalente_mobile_non_hanno_pulsante():
     """La PWA ha 6 sezioni, il desktop molte di piu'. Per prezzi, fatture e
     scadenzario non esiste una pagina mobile: meglio nessun pulsante di uno che
     butta l'utente fuori dall'app (e' il motivo per cui `hideCta` esiste)."""
-    assert _cta_mobile("/prezzi") is None
-    assert _cta_mobile("/analisi-fatture") is None
-    assert _cta_mobile("/scadenziario") is None
-    assert _cta_mobile("/agenda") is None
+    assert _cta_mobile("/prezzi", topic="price_alert") is None
+    assert _cta_mobile("/analisi-fatture", topic="fatture_mancanti") is None
+    assert _cta_mobile("/scadenziario", topic="scadenza_imminente") is None
 
 
-def test_deep_link_desktop_perde_la_querystring():
-    """`/margini?tab=coperti` e' un deep-link a un tab che sul mobile non
-    esiste: si mappa sul path, non sulla stringa intera, altrimenti non
-    matcherebbe affatto e la CTA sparirebbe."""
-    assert _cta_mobile("/margini?tab=coperti")["href"] == "/m/turni"
-
-
-def test_senza_action_page_niente_cta_mobile():
+def test_topic_giusto_ma_senza_cta_desktop_resta_muto():
+    """Passa da `ctaDi`: se la CTA desktop non esiste, non deve esistere
+    nemmeno quella mobile (niente pulsante inventato dal nulla)."""
     assert _cta_mobile(None) is None
+    assert _cta_mobile("Vai ai Documenti") is None
+
+
+def test_senza_topic_niente_cta_mobile():
+    """`topic_key` e' nullable nel tipo: non deve far esplodere il lookup."""
+    assert _cta_mobile("/margini", topic=None) is None

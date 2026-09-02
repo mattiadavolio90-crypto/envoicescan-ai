@@ -184,27 +184,33 @@ export function filtraPerSeverity(notifiche: Notifica[], filtro: Filtro): Notifi
 // `incasso_mancante` NASCE sul mobile (`m/incasso-reminder.tsx`) e la sua
 // notifica arrivava li' senza modo di agire.
 //
-// Questa mappa e' deliberatamente CORTA: contiene solo le destinazioni che sul
-// mobile esistono DAVVERO. La PWA ha 6 sezioni (briefing, chat, diario,
-// impostazioni, notifiche, turni) contro le molte rotte desktop usate come
-// action_page (/prezzi, /analisi-fatture, /scadenziario, ...): per quelle non
-// c'e' equivalente, e restano senza pulsante come prima.
+// Si mappa per TOPIC, non per path, ed e' una correzione voluta: su /margini
+// desktop confluiscono almeno 6 topic (incasso_mancante, fatturato_mancante,
+// costo_personale_mancante, coperti_anomalia, upload_ricavi_failed,
+// buona_notizia) che sul mobile NON finiscono nello stesso posto. Mappare il
+// path li avrebbe mandati tutti su /m/turni, e per due sarebbe stato sbagliato:
+//   - `fatturato_mancante` e' il totale MENSILE, che su mobile e' read-only
+//     ("Totale mensile inserito da desktop", `mobile-incassi.tsx`);
+//   - `coperti_anomalia` punta a un tab `coperti` che sul mobile non esiste
+//     (zero occorrenze di "coperti" in `(mobile)/m/`).
+// Sarebbe stato di nuovo un pulsante che non fa fare la cosa chiesta.
 //
-// /m/turni e' la sezione "Movimenti" (ex Turni), il cui tab di default e'
-// proprio "Incassi" (`mobile-turni.tsx`) — dove gli incassi si inseriscono da
-// quando sono stati spostati fuori dall'Agenda.
-const NEXT_TO_MOBILE: Record<string, string> = {
-  "/margini": "/m/turni",
+// La PWA ha 6 sezioni contro le molte rotte desktop: tutto cio' che non e'
+// elencato qui resta senza pulsante, come prima. Aggiungere una voce significa
+// verificare che la sezione mobile esista E che ci si atterri sul tab giusto.
+const TOPIC_TO_MOBILE: Record<string, string> = {
+  // "Movimenti" (ex Turni), tab di default "Incassi" (`mobile-turni.tsx`):
+  // e' dove l'incasso si inserisce da quando e' uscito dall'Agenda.
+  incasso_mancante: "/m/turni",
 };
 
-// CTA da mostrare sul mobile: `null` quando la destinazione non ha un
-// equivalente nella PWA (comportamento invariato per tutti gli altri topic).
+// CTA da mostrare sul mobile: `null` quando il topic non ha una destinazione
+// mobile dove l'azione sia davvero eseguibile.
 export function ctaMobile(n: Notifica): { href: string; label: string } | null {
+  // Passa comunque da ctaDi: se la CTA desktop non esiste (action_page vuoto o
+  // non mappabile) non deve esistere nemmeno quella mobile.
   const cta = ctaDi(n);
   if (!cta) return null;
-  // Solo il path, senza querystring: i deep-link desktop (?tab=...) non hanno
-  // significato sulle sezioni mobile.
-  const path = cta.href.split("?")[0];
-  const mobile = NEXT_TO_MOBILE[path];
+  const mobile = TOPIC_TO_MOBILE[n.topic_key ?? ""];
   return mobile ? { href: mobile, label: cta.label } : null;
 }
