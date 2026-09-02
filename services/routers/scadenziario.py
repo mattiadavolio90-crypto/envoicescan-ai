@@ -516,7 +516,7 @@ def genera_notifica_incasso_mancante(authorization: Optional[str] = Header(None)
         source_type="operativa",
         severity="warning",
         title="Manca l'incasso di ieri",
-        body="Inseriscilo da Margini → Marginalità con “Carica ricavi”, per tenere i margini aggiornati.",
+        body="Usa il pulsante qui sotto per inserirlo e tenere i margini aggiornati.",
         action_page="/margini",
     )
     inserted = upsert_inbox_notifications([record], sb)

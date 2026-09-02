@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   ctaDi,
+  ctaMobile,
   pulisci,
   raggruppa,
   visibili,
@@ -41,14 +42,15 @@ const FILTRI: { key: Filtro; label: string }[] = [
 
 type Props = {
   notifiche: Notifica[];
-  // hideCta: su mobile (PWA) nascondiamo i bottoni "vai a..." che porterebbero
-  // fuori dall'app verso la vista desktop. Default false: desktop invariato.
+  // hideCta: su mobile (PWA) non mostriamo i bottoni "vai a..." che
+  // porterebbero fuori dall'app verso la vista desktop. Default false: desktop
+  // invariato.
   //
-  // Conseguenza nota (2/9/2026): `incasso_mancante` nasce SUL mobile
-  // (`m/incasso-reminder.tsx`) ma la sua CTA punta a /margini, che e' desktop —
-  // quindi li' il pulsante resta nascosto, per scelta. Su mobile l'incasso si
-  // inserisce da "Movimenti" (`m/turni`): un deep-link mobile andrebbe aggiunto
-  // qui, non aggirando hideCta.
+  // Non spegne piu' TUTTE le CTA: quando la destinazione ha un equivalente
+  // nella PWA (`ctaMobile`) il pulsante compare e resta dentro l'app. Serviva
+  // per `incasso_mancante`, che nasce SUL mobile (`m/incasso-reminder.tsx`) e
+  // arrivava li' senza modo di agire. Le destinazioni senza equivalente mobile
+  // restano senza pulsante, come prima.
   hideCta?: boolean;
 };
 
@@ -141,7 +143,7 @@ export function NotificheList({ notifiche, hideCta = false }: Props) {
             </h2>
             <div className="space-y-2.5">
               {g.notifiche.map((n) => {
-                const cta = ctaDi(n);
+                const cta = hideCta ? ctaMobile(n) : ctaDi(n);
                 return (
                   <div
                     key={n.id}
@@ -159,7 +161,7 @@ export function NotificheList({ notifiche, hideCta = false }: Props) {
                         </p>
                       )}
                       <div className="mt-2 flex items-center gap-3">
-                        {!hideCta && cta && (
+                        {cta && (
                           <Link
                             href={cta.href}
                             className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs")}

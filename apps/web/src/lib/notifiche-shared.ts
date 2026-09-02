@@ -176,3 +176,35 @@ export function filtraPerSeverity(notifiche: Notifica[], filtro: Filtro): Notifi
   }
   return notifiche.filter((n) => n.severity === filtro);
 }
+
+// --- CTA sul mobile ---------------------------------------------------------
+// La PWA spegne le CTA che porterebbero a viste desktop (`hideCta` qui,
+// `hideLinks` nella card Salute): un link a /margini su un telefono e' peggio
+// di nessun link. Ma "nessuna CTA" ha lasciato scoperto il caso piu' vivo:
+// `incasso_mancante` NASCE sul mobile (`m/incasso-reminder.tsx`) e la sua
+// notifica arrivava li' senza modo di agire.
+//
+// Questa mappa e' deliberatamente CORTA: contiene solo le destinazioni che sul
+// mobile esistono DAVVERO. La PWA ha 6 sezioni (briefing, chat, diario,
+// impostazioni, notifiche, turni) contro le molte rotte desktop usate come
+// action_page (/prezzi, /analisi-fatture, /scadenziario, ...): per quelle non
+// c'e' equivalente, e restano senza pulsante come prima.
+//
+// /m/turni e' la sezione "Movimenti" (ex Turni), il cui tab di default e'
+// proprio "Incassi" (`mobile-turni.tsx`) — dove gli incassi si inseriscono da
+// quando sono stati spostati fuori dall'Agenda.
+const NEXT_TO_MOBILE: Record<string, string> = {
+  "/margini": "/m/turni",
+};
+
+// CTA da mostrare sul mobile: `null` quando la destinazione non ha un
+// equivalente nella PWA (comportamento invariato per tutti gli altri topic).
+export function ctaMobile(n: Notifica): { href: string; label: string } | null {
+  const cta = ctaDi(n);
+  if (!cta) return null;
+  // Solo il path, senza querystring: i deep-link desktop (?tab=...) non hanno
+  // significato sulle sezioni mobile.
+  const path = cta.href.split("?")[0];
+  const mobile = NEXT_TO_MOBILE[path];
+  return mobile ? { href: mobile, label: cta.label } : null;
+}

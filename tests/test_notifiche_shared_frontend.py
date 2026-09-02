@@ -282,3 +282,50 @@ def test_visibili_senza_archiviati_non_tocca_niente():
 def test_visibili_puo_svuotare_tutto():
     """Il componente mostra lo stato "Tutto archiviato" quando resta zero."""
     assert _visibili([_n("a")], ["a"]) == []
+
+
+# ─── CTA sul mobile: la PWA non ha le stesse pagine del desktop ──────────────
+# `hideCta` spegneva TUTTE le CTA sul mobile, perche' portavano a viste
+# desktop. Ma `incasso_mancante` NASCE sul mobile (`m/incasso-reminder.tsx`):
+# l'avviso arrivava sul telefono senza modo di agire. Ora la CTA compare quando
+# — e solo quando — la destinazione esiste anche nella PWA.
+
+def _cta_mobile(page):
+    return esegui_ts(
+        MODULO, "emit(m.ctaMobile(input));",
+        argomento=_n("x", page=page), richiede=["ctaMobile"],
+    )
+
+
+def test_incasso_porta_ai_movimenti_del_mobile():
+    """LA CTA che mancava sul telefono. /m/turni e' la sezione "Movimenti"
+    (ex Turni) e il suo tab di default e' proprio "Incassi"
+    (`mobile-turni.tsx`): l'utente atterra dove deve inserire il dato."""
+    assert _cta_mobile("/margini")["href"] == "/m/turni"
+
+
+def test_incasso_dal_valore_storico_a_DB_arriva_comunque():
+    """Le righe gia' scritte hanno action_page='Agenda': devono passare per la
+    mappa legacy PRIMA di quella mobile, o sul telefono resterebbero mute."""
+    assert _cta_mobile("Agenda")["href"] == "/m/turni"
+
+
+def test_destinazioni_senza_equivalente_mobile_non_hanno_pulsante():
+    """La PWA ha 6 sezioni, il desktop molte di piu'. Per prezzi, fatture e
+    scadenzario non esiste una pagina mobile: meglio nessun pulsante di uno che
+    butta l'utente fuori dall'app (e' il motivo per cui `hideCta` esiste)."""
+    assert _cta_mobile("/prezzi") is None
+    assert _cta_mobile("/analisi-fatture") is None
+    assert _cta_mobile("/scadenziario") is None
+    assert _cta_mobile("/agenda") is None
+
+
+def test_deep_link_desktop_perde_la_querystring():
+    """`/margini?tab=coperti` e' un deep-link a un tab che sul mobile non
+    esiste: si mappa sul path, non sulla stringa intera, altrimenti non
+    matcherebbe affatto e la CTA sparirebbe."""
+    assert _cta_mobile("/margini?tab=coperti")["href"] == "/m/turni"
+
+
+def test_senza_action_page_niente_cta_mobile():
+    assert _cta_mobile(None) is None
