@@ -165,22 +165,17 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
 - **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in produzione
   (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
 - **`/m` è un frontend separato**, non responsive: va allineato a mano.
-- **Il frontend ha una rete, ma copre solo la logica pura.** Non esiste un runner
-  npm (`deploy-vercel.yml` scatta su `apps/web/**`: un runner lì farebbe partire un
-  deploy a ogni test). La rete sono **22 file `tests/test_*_frontend.py`** che
-  eseguono il TypeScript vero con node via `tests/helpers_ts.py` — coprono i moduli
-  di `lib/`, **non** rendering, hook, stato ed effetti, che restano scoperti.
-  Se tocchi logica in un `.tsx`, per testarla va prima estratta in `lib/`.
-- **`tsc --noEmit` non esegue niente**: controlla i tipi. Un fix può passare `tsc`,
-  sembrare giusto a leggerlo e non fare nulla sui dati veri — è successo il 29/8
-  (una soglia misurata dopo i filtri client invece che prima: non scattava su
-  nessuno dei 3 casi reali) e il 2/9 (un pulsante che puntava alla pagina
-  sbagliata: per `tsc` è codice valido). **Una condizione su una soglia va provata
-  per mutazione sui valori veri**, su copia in scratchpad, mai sul file del branch.
-- **Un test verde non prova che il codice funzioni.** Un **mock generoso** (i test
-  del radar passavano su `fatture_documenti.upload_id`, colonna mai esistita) o un
-  test che assicura sul **testo del sorgente** restano verdi sul bug. Un presidio si
-  prova per mutazione, o non è un presidio.
+- **Il frontend ha una rete, ma copre solo la logica pura.** Niente runner npm
+  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test). Sono
+  **22 file `tests/test_*_frontend.py`** che eseguono il TypeScript vero con node
+  (`tests/helpers_ts.py`): coprono `lib/`, **non** rendering, hook, stato ed
+  effetti. Per testare logica in un `.tsx`, va prima estratta in `lib/`.
+- **Né `tsc` né un test verde provano che il codice funzioni.** `tsc --noEmit`
+  controlla i tipi e non esegue niente (29/8: soglia misurata dopo i filtri client,
+  non scattava su nessuno dei 3 casi reali; 2/9: pulsante verso la pagina sbagliata).
+  Restano verdi sul bug anche un **mock generoso** (i test del radar passavano su
+  `fatture_documenti.upload_id`, colonna mai esistita) e un test che assicura sul
+  **testo del sorgente**. **Un presidio si prova per mutazione**, o non è un presidio.
 
 ---
 
