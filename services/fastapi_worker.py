@@ -2494,6 +2494,12 @@ class BriefingAzione(BaseModel):
     testo: str
     cta_label: str
     cta_page: str
+    # False = "Ignora" non va offerto: il segnale e' ricalcolato LIVE a ogni
+    # briefing e tornerebbe al refresh, quindi il bottone mentirebbe. Deciso qui
+    # (stessa regola di get_notifiche, :2781) e non lato client: prima il frontend
+    # teneva una lista propria (NON_IGNORABILI) che era gia' divergente — le
+    # mancava coperti_anomalia, e quella card mostrava un "Ignora" che non ignorava.
+    dismissible: bool = True
 
 
 class BriefingResponse(BaseModel):
@@ -5900,10 +5906,12 @@ def _briefing_fatture_mancanti(
 # autorevole, senza query pesanti. Sono le STESSE voci delle card Salute/briefing.
 # La campanella (get_notifiche) li fonde con i record persistiti per essere la
 # somma reale (card + notifiche minori), non un sottoinsieme divergente.
-_LIVE_TOPICS_DATI_MANCANTI = frozenset({
-    "fatturato_mancante", "costo_personale_mancante", "incasso_mancante",
-    "uncategorized_rows", "fatture_mancanti", "coperti_anomalia",
-})
+# Alias della lista canonica, che vive in daily_briefing_service: cosi' briefing,
+# campanella e frontend (via il campo dismissible dell'azione) leggono la STESSA
+# fonte. Prima ne esistevano due copie a mano, gia' divergenti.
+from services.daily_briefing_service import (  # noqa: E402
+    TOPIC_LIVE_NON_IGNORABILI as _LIVE_TOPICS_DATI_MANCANTI,
+)
 
 # Cache in-process dei segnali live per sede: get_notifiche gira nel layout di
 # OGNI pagina (badge campanella). Senza cache, ~7 query leggere ad ogni
@@ -7056,23 +7064,35 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
         recenti_da_rev = sum(1 for r in righe_mese if r.get("needs_review"))
         pct_classificate = round((tot_righe - recenti_da_rev) / tot_righe * 100)
 
-    # Conteggio MOSTRATO al cliente = TUTTE le righe needs_review non cancellate
-    # (decisione Mattia 19/06): deve combaciare con cio' che si trova aprendo
-    # Analisi Fatture e con il briefing. La % sopra resta sulla finestra recente,
-    # ma il numero della voce e' il totale reale.
+    # Conteggio MOSTRATO al cliente = PRODOTTI DISTINTI needs_review non cancellati.
+    # Deve combaciare con cio' che si trova aprendo Analisi Fatture (che AGGREGA per
+    # descrizione) e con il briefing, che conta i prodotti distinti dal 28/06.
+    #
+    # Fino al 02/09/2026 qui si contavano le RIGHE, e le due superfici della stessa
+    # Home mostravano numeri diversi per la stessa cosa: misurati 187 righe vs 112
+    # prodotti su SUSHILAND San Giuliano, 156 vs 100 su Villa Guardia, 80 vs 37 sui
+    # costi di gruppo. Il commento diceva gia' "deve combaciare col briefing", ma
+    # l'unita' di misura era un'altra.
     da_controllare = 0
     try:
-        _rev = (
+        _rev_righe = fetch_all(
             sb.table("fatture")
-            .select("id", count="exact")
+            .select("descrizione")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .eq("needs_review", True)
-            .execute()
         )
-        da_controllare = _rev.count if _rev.count is not None else len(_rev.data or [])
+        da_controllare = len({
+            (r.get("descrizione") or "").strip()
+            for r in (_rev_righe or [])
+            if (r.get("descrizione") or "").strip()
+        })
     except Exception as exc:
-        logger.warning("home_salute: conteggio righe da controllare fallito: %s", exc)
+        logger.warning("home_salute: conteggio prodotti da controllare fallito: %s", exc)
+        # Ripiego sulle RIGHE recenti: righe_mese non porta 'descrizione' (seleziona
+        # needs_review,categoria), quindi contare i prodotti distinti qui darebbe
+        # SEMPRE 0 = "tutto classificato", un falso verde proprio quando la query
+        # autorevole e' fallita. Meglio un numero sovrastimato che un verde falso.
         da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
     classificate_ok = da_controllare == 0
 

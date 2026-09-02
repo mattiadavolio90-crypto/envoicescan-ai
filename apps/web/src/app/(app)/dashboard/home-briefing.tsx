@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { type Briefing, type BriefingAzione } from "@/lib/home";
-import { NON_IGNORABILI } from "@/lib/briefing-shared";
+import { puoIgnorare } from "@/lib/briefing-shared";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { cn } from "@/lib/utils";
@@ -176,7 +176,7 @@ export function HomeBriefing({ briefing }: Props) {
               <SeverityIcon severity={a.severity} />
               <p className="flex-1 text-sm leading-snug">{a.testo}</p>
               <div className="flex shrink-0 items-center gap-2">
-                {!NON_IGNORABILI.has(a.topic_key) && (
+                {puoIgnorare(a) && (
                   <Button
                     variant="ghost"
                     size="sm"

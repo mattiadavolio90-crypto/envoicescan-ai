@@ -81,7 +81,15 @@ logger = get_logger('daily_briefing')
 #               non tutto lo storico, l'arretrato passa in narrativa (misurati 112
 #               arretrati / 0 novita' su San Giuliano, 100/46 su Villa Guardia).
 #               Senza bump il cliente vedrebbe il testo vecchio fino al TTL.
-_BRIEFING_CODE_VERSION = 18
+#  19 -> 02/09: (a) l'azione porta 'dismissible': il backend decide se "Ignora" ha
+#               senso, invece della lista duplicata (e gia' divergente) nel
+#               frontend — coperti_anomalia mostrava un Ignora che non ignorava;
+#               (b) la voce "classificate" della Salute conta i PRODOTTI DISTINTI
+#               come il briefing, non le righe: misurati 187 vs 112 su San
+#               Giuliano e 156 vs 100 su Villa Guardia, due numeri per la stessa
+#               cosa sulla stessa schermata. Lo snapshot in cache non ha il campo
+#               nuovo: senza bump le card resterebbero senza dismissible.
+_BRIEFING_CODE_VERSION = 19
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -112,6 +120,17 @@ _TOPIC_DATO_MANCANTE_LABEL = {
 # Topic che il cliente NON puo' spegnere dal configuratore: sono guasti tecnici
 # (perdita dati) e vanno sempre mostrati. Decisione Mattia (Step 6).
 _TOPIC_NON_DISATTIVABILI = frozenset({'upload_failed', 'upload_ricavi_failed'})
+
+# Topic ricalcolati LIVE a ogni briefing: la card sparisce da sola quando il dato
+# entra, e torna al refresh finche' manca. Per questi "Ignora" sarebbe una bugia,
+# quindi l'azione parte con dismissible=False. FONTE UNICA: il worker la importa da
+# qui (_LIVE_TOPICS_DATI_MANCANTI) e il frontend la riceve nel payload, invece di
+# tenerne una copia propria — la copia in briefing-shared.ts era gia' divergente
+# (le mancava coperti_anomalia, che infatti mostrava un "Ignora" che non ignorava).
+TOPIC_LIVE_NON_IGNORABILI = frozenset({
+    'fatturato_mancante', 'costo_personale_mancante', 'incasso_mancante',
+    'uncategorized_rows', 'fatture_mancanti', 'coperti_anomalia',
+})
 
 # Sopra quanti prodotti arretrati la narrativa ne fa cenno. Gemella di
 # DA_CONTROLLARE_ARRETRATO_SOGLIA nel worker (che decide se emettere il record):
@@ -610,6 +629,9 @@ def _action_for(notif: Dict[str, Any]) -> Dict[str, Any]:
         'testo':     _bullet_for(notif),
         'cta_label': cta_label,
         'cta_page':  cta_page,
+        # Il backend DECIDE se "Ignora" ha senso, il frontend obbedisce: un segnale
+        # live torna al refresh, quindi offrirlo sarebbe ingannevole.
+        'dismissible': topic not in TOPIC_LIVE_NON_IGNORABILI,
     }
 
 

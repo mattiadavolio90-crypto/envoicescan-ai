@@ -8,6 +8,10 @@ export type BriefingAzione = {
   testo: string;
   cta_label: string;
   cta_page: string;
+  // Deciso dal backend: false = il segnale e' live e tornerebbe al refresh,
+  // quindi "Ignora" mentirebbe. Opzionale perche' uno snapshot in cache generato
+  // prima del 02/09/2026 non ce l'ha -> si ricade su ignorabilePerTopic().
+  dismissible?: boolean;
 };
 
 export type Briefing = {
