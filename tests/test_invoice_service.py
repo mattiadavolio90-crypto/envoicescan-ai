@@ -99,6 +99,11 @@ def _xml_td04_minimal():
         <PrezzoTotale>20.00</PrezzoTotale>
         <AliquotaIVA>10.00</AliquotaIVA>
       </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <ImponibileImporto>20.00</ImponibileImporto>
+        <Imposta>2.00</Imposta>
+      </DatiRiepilogo>
     </DatiBeniServizi>
   </FatturaElettronicaBody>
 </p:FatturaElettronica>"""
@@ -106,8 +111,11 @@ def _xml_td04_minimal():
 
 def _xml_td04_segni_misti():
     """TD04 a SEGNI MISTI (caso reale LODI): un riaddebito positivo e uno storno
-    negativo, netto = imponibile di testata. NON va invertito riga-per-riga
-    (lo farebbe diventare -4247 invece di +102)."""
+    negativo, netto righe +102.20 = imponibile di testata.
+
+    E' una nota di credito che AUMENTA i costi: va invertita in blocco, cosi'
+    il netto diventa -102.20. L'inversione in blocco preserva i rapporti interni
+    (non produce -4247, che sarebbe la somma dei moduli)."""
     return b"""<?xml version="1.0" encoding="UTF-8"?>
 <p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
   <FatturaElettronicaHeader>
@@ -149,6 +157,118 @@ def _xml_td04_segni_misti():
         <PrezzoTotale>-2072.47</PrezzoTotale>
         <AliquotaIVA>10.00</AliquotaIVA>
       </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <ImponibileImporto>102.20</ImponibileImporto>
+        <Imposta>10.22</Imposta>
+      </DatiRiepilogo>
+    </DatiBeniServizi>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>"""
+
+
+def _xml_td04_premio_con_bollo():
+    """TD04 caso reale PARTESA: un premio positivo e una rivalsa bollo negativa
+    marginale (0,25% del documento). Netto righe +789.49 = imponibile di testata.
+
+    E' il caso che il criterio storico sbagliava: la riga da -2,00 bastava a
+    disattivare l'inversione sull'intero documento."""
+    return b"""<?xml version="1.0" encoding="UTF-8"?>
+<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+  <FatturaElettronicaHeader>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <Anagrafica><Denominazione>PARTESA TEST SRL</Denominazione></Anagrafica>
+      </DatiAnagrafici>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA>
+      </DatiAnagrafici>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD04</TipoDocumento>
+        <Data>2026-04-10</Data>
+        <Numero>NC/PREMIO/1</Numero>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>PREMIO POSTICIPATO FINE PERIODO</Descrizione>
+        <Quantita>1.00</Quantita>
+        <PrezzoUnitario>791.49</PrezzoUnitario>
+        <PrezzoTotale>791.49</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>2</NumeroLinea>
+        <Descrizione>RIVALSA BOLLO N.C</Descrizione>
+        <Quantita>1.00</Quantita>
+        <PrezzoUnitario>-2.00</PrezzoUnitario>
+        <PrezzoTotale>-2.00</PrezzoTotale>
+        <AliquotaIVA>0.00</AliquotaIVA>
+      </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <ImponibileImporto>789.49</ImponibileImporto>
+        <Imposta>173.69</Imposta>
+      </DatiRiepilogo>
+    </DatiBeniServizi>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>"""
+
+
+def _xml_td04_tutta_negativa():
+    """TD04 gia' corretta: solo righe negative, netto -150.00 concorde con la
+    testata. E' la forma delle 130 note sane in produzione — non va toccata."""
+    return b"""<?xml version="1.0" encoding="UTF-8"?>
+<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+  <FatturaElettronicaHeader>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <Anagrafica><Denominazione>FORNITORE TEST SRL</Denominazione></Anagrafica>
+      </DatiAnagrafici>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA>
+      </DatiAnagrafici>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD04</TipoDocumento>
+        <Data>2026-03-11</Data>
+        <Numero>NC/RESO/1</Numero>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>RESO MERCE NON CONFORME</Descrizione>
+        <Quantita>10.00</Quantita>
+        <PrezzoUnitario>-10.00</PrezzoUnitario>
+        <PrezzoTotale>-100.00</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>2</NumeroLinea>
+        <Descrizione>RESO IMBALLI</Descrizione>
+        <Quantita>5.00</Quantita>
+        <PrezzoUnitario>-10.00</PrezzoUnitario>
+        <PrezzoTotale>-50.00</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+      </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <ImponibileImporto>150.00</ImponibileImporto>
+        <Imposta>15.00</Imposta>
+      </DatiRiepilogo>
     </DatiBeniServizi>
   </FatturaElettronicaBody>
 </p:FatturaElettronica>"""
@@ -384,22 +504,101 @@ class TestTD04NotaDiCredito:
         assert righe[0]['Totale_Riga'] < 0, \
             "Un valore già negativo in TD04 deve rimanere negativo (non doppia negazione)"
 
-    def test_td04_segni_misti_rispetta_documento(self):
-        """REGRESSIONE LODI: una TD04 con righe a segni misti (riaddebito + /
-        storno -) NON va invertita riga-per-riga. I segni del documento sono già
-        corretti: la riga + resta +, la riga - resta -. Netto = +102.20 (= imponibile),
-        non -4247.14."""
+    def test_td04_segni_misti_netto_positivo_viene_invertito(self):
+        """REGRESSIONE LODI. Il criterio storico lasciava intatta questa nota
+        perché conteneva una riga già negativa, e il netto restava +102.20: una
+        nota di credito che AUMENTA i costi. Va invertita in blocco.
+
+        L'inversione in blocco preserva i rapporti interni: netto -102.20, NON
+        -4247.14 (che sarebbe la somma dei moduli, l'errore che il criterio
+        storico voleva evitare)."""
         righe = _run_estrai_xml(_xml_td04_segni_misti())
         assert len(righe) == 2, f"Attese 2 righe, trovate {len(righe)}"
         per_tot = sorted(r['Totale_Riga'] for r in righe)
-        # la riga di storno resta negativa, il riaddebito resta positivo
-        assert per_tot[0] == pytest.approx(-2072.47, abs=0.01), \
-            f"Storno deve restare -2072.47, trovato {per_tot[0]}"
-        assert per_tot[1] == pytest.approx(2174.67, abs=0.01), \
-            f"Riaddebito deve restare +2174.67 (NON invertito), trovato {per_tot[1]}"
+        assert per_tot[0] == pytest.approx(-2174.67, abs=0.01), \
+            f"Il riaddebito invertito deve valere -2174.67, trovato {per_tot[0]}"
+        assert per_tot[1] == pytest.approx(2072.47, abs=0.01), \
+            f"Lo storno invertito deve valere +2072.47, trovato {per_tot[1]}"
+        netto = sum(r['Totale_Riga'] for r in righe)
+        assert netto == pytest.approx(-102.20, abs=0.02), \
+            f"Netto deve essere -102.20 (riduce i costi), trovato {netto}"
+        assert netto != pytest.approx(-4247.14, abs=1.0), \
+            "L'inversione non deve sommare i moduli (-4247): romperebbe il documento"
+
+    def test_td04_premio_con_bollo_marginale_viene_invertito(self):
+        """REGRESSIONE PARTESA: premio +791.49 e rivalsa bollo -2.00.
+
+        È il caso che il criterio storico sbagliava: due euro di bollo già
+        negativi disattivavano la correzione su ottocento euro di premio, e la
+        nota veniva contata come costo. Netto atteso -789.49."""
+        righe = _run_estrai_xml(_xml_td04_premio_con_bollo())
+        assert len(righe) == 2, f"Attese 2 righe, trovate {len(righe)}"
+        netto = sum(r['Totale_Riga'] for r in righe)
+        assert netto == pytest.approx(-789.49, abs=0.02), \
+            f"Netto deve essere -789.49 (rimborso), trovato {netto}"
+        per_tot = sorted(r['Totale_Riga'] for r in righe)
+        assert per_tot[0] == pytest.approx(-791.49, abs=0.01), \
+            f"Il premio invertito deve valere -791.49, trovato {per_tot[0]}"
+        assert per_tot[1] == pytest.approx(2.00, abs=0.01), \
+            f"Il bollo invertito deve valere +2.00, trovato {per_tot[1]}"
+
+    def test_td04_gia_negativa_non_viene_reinvertita(self):
+        """Una TD04 già corretta (solo righe negative, netto negativo) non va
+        toccata: è la forma delle 130 note sane in produzione."""
+        righe = _run_estrai_xml(_xml_td04_tutta_negativa())
+        assert len(righe) == 2, f"Attese 2 righe, trovate {len(righe)}"
+        netto = sum(r['Totale_Riga'] for r in righe)
+        assert netto == pytest.approx(-150.00, abs=0.02), \
+            f"Netto deve restare -150.00, trovato {netto}"
+        assert all(r['Totale_Riga'] < 0 for r in righe), \
+            "Nessuna riga deve tornare positiva"
+
+    def test_td04_senza_imponibile_usa_criterio_storico(self):
+        """Fallback: senza DatiRiepilogo non c'è ancora di testata, quindi vale
+        il criterio storico (nessuna riga negativa → inverto in blocco). In
+        produzione non capita (140 TD04 su 140 hanno l'imponibile), ma il codice
+        non deve dipendere dalla sua presenza."""
+        xml_senza_riepilogo = _xml_td04_minimal().replace(
+            b"""      <DatiRiepilogo>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <ImponibileImporto>20.00</ImponibileImporto>
+        <Imposta>2.00</Imposta>
+      </DatiRiepilogo>
+""",
+            b""
+        )
+        assert b'DatiRiepilogo' not in xml_senza_riepilogo, "La fixture deve restare senza riepilogo"
+        righe = _run_estrai_xml(xml_senza_riepilogo)
+        assert len(righe) >= 1
+        assert sum(r['Totale_Riga'] for r in righe) < 0, \
+            "Senza imponibile, una TD04 tutta positiva va comunque invertita"
+
+    def test_td04_segni_misti_senza_imponibile_resta_al_criterio_storico(self):
+        """Il caso che separa davvero i due rami della guardia.
+
+        Segni misti a netto positivo (LODI) ma SENZA DatiRiepilogo: senza ancora
+        di testata non possiamo affermare che il netto vada ribaltato, quindi
+        vale il criterio storico e il documento resta intatto (+102.20).
+        Con l'imponibile presente lo stesso documento viene invece invertito
+        (test_td04_segni_misti_netto_positivo_viene_invertito).
+
+        Senza questo test la guardia `if totale_imponibile:` e' sostituibile con
+        `if True:` senza che nulla fallisca."""
+        xml_senza_riepilogo = _xml_td04_segni_misti().replace(
+            b"""      <DatiRiepilogo>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <ImponibileImporto>102.20</ImponibileImporto>
+        <Imposta>10.22</Imposta>
+      </DatiRiepilogo>
+""",
+            b""
+        )
+        assert b'DatiRiepilogo' not in xml_senza_riepilogo
+        righe = _run_estrai_xml(xml_senza_riepilogo)
+        assert len(righe) == 2, f"Attese 2 righe, trovate {len(righe)}"
         netto = sum(r['Totale_Riga'] for r in righe)
         assert netto == pytest.approx(102.20, abs=0.02), \
-            f"Netto deve quadrare con l'imponibile (+102.20), trovato {netto}"
+            f"Senza imponibile vale il criterio storico: netto resta +102.20, trovato {netto}"
 
     def test_td04_tutto_positivo_inverte_in_blocco(self):
         """Contro-prova: una TD04 con TUTTE le righe positive (convenzione

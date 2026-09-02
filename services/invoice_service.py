@@ -941,32 +941,53 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         # NETTO delle righe deve essere negativo (concorde con l'imponibile di
         # testata, che per una NC è il valore stornato).
         #
-        # Caso A — il gestionale emette TUTTE LE RIGHE POSITIVE: è la convenzione
-        #   "importi sempre positivi"; invertiamo in blocco ogni riga così il
-        #   netto diventa negativo (riduce i costi).
-        # Caso B — il documento contiene GIÀ righe negative (resi/storni, anche
-        #   insieme a riaddebiti positivi): i segni li ha messi il gestionale e
-        #   sono corretti rispetto alla testata — NON tocchiamo nulla. È il caso
-        #   LODI (riga +2174.67 riaddebito, riga -2072.47 storno, netto +102.20
-        #   = imponibile): invertire riga-per-riga rompeva il documento
-        #   (-4247 invece di +102).
+        # Discriminante = il SEGNO DEL NETTO delle righe, non la presenza di una
+        # riga negativa. Se il netto è positivo il documento aumenta i costi:
+        # per una NC è sempre sbagliato, quindi si inverte in blocco.
         #
-        # Discriminante = "esiste almeno una riga già negativa", NON il segno del
-        # netto: una NC a segni misti può avere netto positivo (LODI) e va comunque
-        # lasciata intatta.
+        # Il criterio precedente era "esiste almeno una riga già negativa → non
+        # toccare". Nasceva dal caso LODI (+2174.67 riaddebito / -2072.47 storno)
+        # per evitare di produrre -4247, ed è stato sostituito perché su 140 TD04
+        # di produzione lasciava passare 10 documenti col netto positivo (9.261,35
+        # € contati come costo invece che come rimborso): bastava una riga
+        # marginale già negativa — es. RIVALSA BOLLO N.C da -2,00 € accanto a un
+        # premio da +791,49 € — per disattivare la correzione sull'intero
+        # documento. Anche LODI rientrava fra i 10: internamente coerente
+        # (netto +102.20 = imponibile), ma pur sempre una NC che sommava costi.
+        #
+        # L'inversione in blocco preserva i rapporti interni fra le righe, quindi
+        # su LODI produce -102.20 (netto ribaltato), non -4247.
+        #
+        # `totale_imponibile` (riga 821, sommatoria di ImponibileImporto) è per
+        # convenzione POSITIVO su tutte e 140 le TD04 in produzione e serve solo
+        # a confermare che la testata è leggibile: se manca o è 0 non c'è ancora
+        # e si ricade sul criterio storico, così nessun caso oggi corretto regredisce.
         nc_inverti_in_blocco = False
         if is_nota_credito:
-            _ha_riga_negativa = any(
-                (_to_float_safe(_r.get('PrezzoTotale'), 0.0) or 0.0) < 0
+            _netto_righe = sum(
+                (_to_float_safe(_r.get('PrezzoTotale'), 0.0) or 0.0)
                 for _r in linee if isinstance(_r, dict)
             )
-            nc_inverti_in_blocco = not _ha_riga_negativa
-            logger.info(
-                "📋 NOTA DI CREDITO: "
-                + ("nessuna riga negativa → inverto in blocco (gestionale tutto positivo)"
-                   if nc_inverti_in_blocco
-                   else "presenti righe negative → rispetto i segni del documento (segni misti)")
-            )
+            if totale_imponibile:
+                nc_inverti_in_blocco = _netto_righe > 0
+                _motivo = (
+                    "netto righe positivo → inverto in blocco (una NC deve ridurre i costi)"
+                    if nc_inverti_in_blocco
+                    else "netto righe già negativo → rispetto i segni del documento"
+                )
+            else:
+                _ha_riga_negativa = any(
+                    (_to_float_safe(_r.get('PrezzoTotale'), 0.0) or 0.0) < 0
+                    for _r in linee if isinstance(_r, dict)
+                )
+                nc_inverti_in_blocco = not _ha_riga_negativa
+                _motivo = (
+                    "imponibile di testata assente → criterio storico: "
+                    + ("nessuna riga negativa, inverto in blocco"
+                       if nc_inverti_in_blocco
+                       else "presenti righe negative, rispetto i segni")
+                )
+            logger.info(f"📋 NOTA DI CREDITO: {_motivo}")
 
         righe_prodotti = []
         # Righe perse per eccezione: se le perdiamo TUTTE il documento non è
@@ -1596,10 +1617,21 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         if current_user_id:
             carica_memoria_completa(current_user_id)
 
-        # NOTA DI CREDITO (path Vision/PDF): stessa strategia ancorata del path XML.
-        # Inverto in blocco solo se NESSUNA riga è già negativa (convenzione
-        # gestionale "tutto positivo"); se ci sono righe negative il documento ha
-        # già segni interni corretti e li rispetto.
+        # NOTA DI CREDITO (path Vision/PDF): inverto in blocco solo se NESSUNA riga
+        # è già negativa; se ci sono righe negative rispetto i segni del documento.
+        #
+        # LIMITE NOTO — questo NON è più il criterio del path XML. Là il
+        # discriminante è il segno del netto, ancorato all'imponibile di testata;
+        # qui quell'ancora non esiste, perché il prompt Vision non estrae alcun
+        # totale di testata (solo fornitore, data, tipo e righe). Il criterio
+        # storico è quindi rimasto, con il difetto noto: una riga marginale già
+        # negativa (es. una rivalsa bollo) disattiva la correzione sull'intero
+        # documento.
+        #
+        # Consapevole: al 2/9/2026 le 140 TD04 in produzione vengono TUTTE da
+        # XML/P7M, zero da PDF, quindi il difetto non ha casi reali. Per allineare
+        # i due path servirebbe aggiungere il totale di testata al prompt Vision,
+        # che è condiviso con tutte le fatture normali.
         nc_inverti_in_blocco = False
         if is_nota_credito:
             def _tot_grezzo(_r):
