@@ -167,6 +167,34 @@ def _head_corrente() -> str:
         return ""
 
 
+# --- Stato della documentazione (aggiunto il 2/9/2026) -----------------------
+# I gate difendevano tutti il CODICE (test, DB, branch, review); nessuno guardava
+# lo stato dei DOCUMENTI. Una sessione che chiudeva una dimensione senza
+# aggiornare la roadmap non superava nessuna soglia e passava pulita: e' successo
+# 6 volte di fila, e il file che deve dire "cosa manca" e' rimasto indietro di
+# tre giorni. Questo e' un AVVISO, non un blocco: il giudizio "ho chiuso una
+# dimensione" non e' deducibile da un diff, quindi si segnala e si lascia
+# decidere. Un blocco su un'euristica verrebbe aggirato per riflesso.
+
+_DOC_STATO = ("DOCUMENTAZIONE/AUDIT_COPERTURA.md", "DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_")
+_PREFISSI_CODICE = ("services/", "apps/web/src/", "worker/", "utils/", "config/")
+SOGLIA_FILE_CODICE_SENZA_STATO = 4
+
+
+def _stato_non_aggiornato(file_toccati: list[str]) -> str | None:
+    """Molto codice toccato e nessun documento di stato: probabile chiusura muta."""
+    di_codice = [
+        f
+        for f in file_toccati
+        if f.startswith(_PREFISSI_CODICE) and "/test" not in f
+    ]
+    if len(di_codice) <= SOGLIA_FILE_CODICE_SENZA_STATO:
+        return None
+    if any(f.startswith(_DOC_STATO) for f in file_toccati):
+        return None
+    return f"{len(di_codice)} file di codice, nessun aggiornamento a stato/contatore"
+
+
 def main() -> int:
     try:
         json.load(sys.stdin)
@@ -217,6 +245,8 @@ def main() -> int:
     MARKER_SEGNALATO.parent.mkdir(parents=True, exist_ok=True)
     MARKER_SEGNALATO.write_text(head, encoding="utf-8")
 
+    avviso_stato = _stato_non_aggiornato(file_toccati)
+
     motivo = (
         f"path sensibile toccato ({match_sensibile})"
         if match_sensibile
@@ -231,6 +261,14 @@ def main() -> int:
                     "Lancia /code-reviewer prima di chiudere: verifica anche le inerenze "
                     "(chi altro chiama le funzioni/contratti toccati) come da "
                     ".claude/agents/code-reviewer.md."
+                    + (
+                        f"\n\n[stato documentazione] {avviso_stato}.\n"
+                        "Se hai chiuso una dimensione o una fase, /chiusura-feature "
+                        "esegue i 5 punti di WORKFLOW.md §5bis (verbale, residui, "
+                        "contatore ri-misurato). Se invece e' lavoro in corso, ignora."
+                        if avviso_stato
+                        else ""
+                    )
                 ),
             }
         )
