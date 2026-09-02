@@ -680,3 +680,38 @@ def test_una_nota_di_credito_non_puo_avere_netto_positivo() -> None:
             "Un netto positivo viene sommato ai costi da costi_automatici_mensili, "
             "che fa SUM(totale_riga) senza guardare tipo_documento."
         )
+
+
+# --------------------------------------------------------------------------
+# Regola — Analisi Fatture: card e grafici contano le stesse righe
+# --------------------------------------------------------------------------
+# Il KPI "Spesa totale" somma il NETTO (le note di credito riducono la spesa),
+# mentre Andamento e Ripartizione filtravano `totale_riga > 0` e le scartavano:
+# il totale della card e la somma delle barre non coincidevano. Il commit
+# 8a49cb8 aveva portato al netto il solo KPI, dimenticando i due grafici.
+#
+# Le righe a 0 restano escluse ovunque (note/diciture/omaggi, non acquisti):
+# la discriminante corretta e' `!= 0`, non `> 0`.
+
+_ROUTER_FATTURE = ROOT / "services" / "routers" / "fatture.py"
+
+
+@pytest.mark.skipif(not _ROUTER_FATTURE.is_file(), reason="router fatture non presente")
+def test_i_grafici_fatture_non_scartano_le_note_di_credito() -> None:
+    """Nessun filtro `totale_riga > 0` in services/routers/fatture.py.
+
+    Un `> 0` qui dentro rimette fuori dai grafici gli storni delle note di
+    credito, e la pagina torna a mostrare due totali diversi per gli stessi dati.
+    """
+    src = _leggi(_ROUTER_FATTURE)
+    colpevoli = [
+        f"{n}: {riga.strip()}"
+        for n, riga in enumerate(src.splitlines(), start=1)
+        if re.search(r'float\(\s*r\[?"totale_riga"\]?[^)]*\)\s*>\s*0', riga)
+    ]
+    assert not colpevoli, (
+        "Filtro `totale_riga > 0` in routers/fatture.py: scarta le note di "
+        "credito dai grafici e li fa divergere dal KPI 'Spesa totale', che "
+        "somma il netto. Usa `!= 0` (esclude le righe a zero, tiene gli "
+        "storni).\n  " + "\n  ".join(colpevoli)
+    )

@@ -642,7 +642,12 @@ def get_fatture_pivot(
 
     supabase_client = _get_supabase_client()
     rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
-    rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) > 0]
+    # Le note di credito (righe negative) sono storni reali e DEVONO ridurre la
+    # spesa del periodo/categoria, esattamente come il KPI "Spesa totale"
+    # (_calc, sopra). Filtrarle qui faceva divergere la card dai grafici: il
+    # totale sottraeva gli storni, le barre no. Restano escluse le righe a 0
+    # (note/diciture/omaggi, non acquisti).
+    rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) != 0]
 
     # Determina granularita dai mesi presenti
     mesi_presenti = {(r.get("data_documento") or "")[:7] for r in rows if r.get("data_documento")}
@@ -724,7 +729,9 @@ def get_fatture_trend(
 
     supabase_client = _get_supabase_client()
     rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
-    rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) > 0]
+    # Come sopra (Andamento): gli storni delle note di credito riducono la
+    # spesa anche nella Ripartizione, o le fette non sommano al totale della card.
+    rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) != 0]
 
     mesi_presenti = {(r.get("data_documento") or "")[:7] for r in rows if r.get("data_documento")}
     mesi_presenti.discard("")
