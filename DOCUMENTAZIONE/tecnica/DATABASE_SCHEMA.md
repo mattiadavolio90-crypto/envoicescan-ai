@@ -75,6 +75,8 @@ Soft-delete: query su `fatture` e `prodotti` filtrare sempre `deleted_at IS NULL
 | iva_percentuale | NUMERIC | % IVA |
 | totale_riga | NUMERIC | Importo totale riga |
 | categoria | TEXT | Categoria assegnata |
+| categoria_fonte | TEXT | **Chi** ha deciso la categoria (`L2_locale`, `L7_dizionario`, `correzione_cliente`…). NULL = riga legacy |
+| categoria_fiducia | TEXT | Quanto è affidabile: `certa` / `probabile` / `da_verificare`. NULL = legacy |
 | codice_articolo | TEXT | Codice EAN/fornitore |
 | prezzo_standard | NUMERIC | Prezzo standardizzato per confronto |
 | needs_review | BOOLEAN | Flag revisione admin (routing confidenza) |
@@ -89,6 +91,19 @@ Soft-delete: query su `fatture` e `prodotti` filtrare sempre `deleted_at IS NULL
 | created_at | TIMESTAMPTZ | Inserimento |
 
 **Constraint:** `fatture_categoria_not_empty_chk` — `categoria IS NOT NULL AND btrim(categoria) <> ''` (vieta solo NULL/vuoto; `'Da Classificare'` è uno stato legittimo). Più `fatture_note_diciture_solo_importo_zero_chk` — `'📝 NOTE E DICITURE'` ammessa solo con `totale_riga = 0`.
+Più `fatture_categoria_fiducia_chk` — `categoria_fiducia IS NULL OR categoria_fiducia IN ('certa','probabile','da_verificare')`. Nessun constraint su `categoria_fonte`: è testo libero.
+
+**Provenienza della categoria (Fasi 2 e 3, in produzione dall'1/9/2026).** Le due colonne
+dicono chi ha classificato la riga e con quanta affidabilità; le scrive il gate
+`valuta_fiducia()` (`services/ai_service.py`) su **ogni** riga nuova.
+
+> **`NULL` significa "legacy", e si tratta come `certa`.** Non è un dato mancante da
+> riempire: le righe caricate prima dell'1/9/2026 non hanno provenienza, e se venissero
+> lette come "non affidabili" l'intero storico diventerebbe dubbio — **il MOL dei mesi
+> già chiusi cambierebbe** mesi dopo che il cliente l'ha letto. Nessun backfill.
+
+Le righe `da_verificare` **non sono ancora escluse** da margini e foodcost: è la Fase 4,
+dietro flag disattivato. Oggi la fiducia si registra e basta.
 **Dedup:** `UNIQUE(file_origine, numero_riga, user_id, ristorante_id)`
 
 ---

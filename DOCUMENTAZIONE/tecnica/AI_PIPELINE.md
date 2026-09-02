@@ -1,6 +1,12 @@
 # ONEFLUX — Pipeline AI: Classificazione, Parsing e Briefing
 
-Versione: 6.0 | Aggiornamento: 5 Giugno 2026
+Versione: 7.0 | Aggiornamento: 2 Settembre 2026
+
+> La v7.0 allinea il documento alla ristrutturazione della categorizzazione (Fasi 0, 7,
+> 1, 2, 3, deployate l'1/9/2026): motore di decisione unico, fonti canoniche al posto
+> dei "5 livelli", gate di affidabilità su tutte le fonti, e `"Da Classificare"` come
+> stato legittimo. Fino al 2/9 questo file descriveva ancora il fallback a
+> `"SERVIZI E CONSULENZE"`, **eliminato da giugno**.
 
 Questo documento descrive nel dettaglio la logica di classificazione AI delle fatture,
 il parsing dei diversi formati file, il sistema di memoria e il briefing AI giornaliero.
@@ -9,36 +15,41 @@ il parsing dei diversi formati file, il sistema di memoria e il briefing AI gior
 
 ## 1. Architettura della Classificazione
 
-### 5 livelli di priorità
+### Le fonti canoniche (non 5 livelli: 14 fonti, in ordine di priorità)
+
+Un solo motore decide: **`decisione_deterministica()`** (`services/ai_service.py`),
+unificato dalla Fase 1 — prima la stessa scelta viveva in nove punti diversi che
+potevano divergere. Ogni riga esce con una **fonte** che dice CHI ha deciso, scritta
+su `fatture.categoria_fonte`.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                PRIORITÀ CLASSIFICAZIONE                      │
-│                                                             │
-│  1. MEMORIA ADMIN (classificazioni_manuali)                 │
-│     Priorità: MASSIMA                                       │
-│     Scope: Globale per tutti i clienti                      │
-│     Trigger: Admin modifica da pannello Qualità AI          │
-│                                                             │
-│  2. MEMORIA LOCALE (prodotti_utente)                        │
-│     Priorità: ALTA                                          │
-│     Scope: Solo per il cliente specifico                    │
-│     Trigger: Cliente modifica categoria manualmente         │
-│                                                             │
-│  3. MEMORIA GLOBALE (prodotti_master)                       │
-│     Priorità: MEDIA                                         │
-│     Scope: Tutti i clienti                                  │
-│     Trigger: AI e dizionario salvano risultati              │
-│                                                             │
-│  4. DIZIONARIO KEYWORD (config/constants.py)                │
-│     600+ regole deterministiche: "SALMONE" → PESCE         │
-│     Priorità alimenti > contenitori                         │
-│                                                             │
-│  5. AI GPT-4.1-mini (ultima risorsa)                        │
-│     Batch da 50 articoli, prompt con 31 categorie           │
-│     Retry con exponential backoff (tenacity)                │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  FONTE                      COSA È                    FIDUCIA    │
+│                                                                  │
+│  correzione_cliente     un umano ha corretto           certa     │
+│  correzione_admin       un admin ha corretto           certa     │
+│  L0_fornitore           fornitore-utility (bollette)   certa     │
+│  L1_admin               memoria admin globale          certa     │
+│  L1_5_non_negoziabile   regola di dominio              certa     │
+│  L2_locale              memoria del cliente            certa     │
+│  L4_dicitura            dicitura a importo 0           certa     │
+│  L7_regola_forte        regola keyword forte           certa     │
+│  AI_confermata          AI confermata da altra fonte   certa     │
+│  ─────────────────────────────────────────────────────────────   │
+│  L3_globale             memoria globale (master)     probabile   │
+│  L5_fornitore           regola per fornitore         probabile   │
+│  L6_um                  unità di misura              probabile   │
+│  L7_dizionario          dizionario keyword           probabile   │
+│  AI_alta                AI ad alta confidenza        probabile   │
+│  ─────────────────────────────────────────────────────────────   │
+│  (nessuna fonte)        nessuno ha riconosciuto   Da Classificare│
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+Le due partizioni sono `_FONTI_CERTE` e `_FONTI_PROBABILI` in
+`services/ai_service.py`. **Una fonte sconosciuta vale `da_verificare`**: aggiungere
+una fonte senza inserirla in una delle due liste la rende dubbia, non certa — è
+voluto.
 
 ### Flusso completo durante upload
 
@@ -67,7 +78,7 @@ invoice_service.py — parsing (XML/P7M/PDF/Vision)
 
 ### Routing confidenza (sull'ingest)
 
-Il routing avviene in `upload_handler.py` e `worker/queue_processor.py` via `classifica_via_worker_con_confidenza()`:
+Il routing avviene in `upload_handler.py` e `worker/queue_processor.py` via `classifica_via_worker_con_confidenza()` (`services/worker_client.py`):
 
 | Confidenza | `needs_review` | Comportamento |
 |-----------|---------------|---------------|
@@ -75,6 +86,47 @@ Il routing avviene in `upload_handler.py` e `worker/queue_processor.py` via `cla
 | `alta` | `False` | Bypassa coda admin. Es: hit memoria locale/globale forte, keyword forte |
 | `media` | `True` | Pre-classificato MA in coda admin per review. Es: dizionario fallback, GPT con bassa certezza |
 | `bassa` | `True` | Fallback canonico + coda admin |
+
+### Il gate di affidabilità — `valuta_fiducia()` (Fase 3, 1/9/2026)
+
+Il routing qui sopra riguarda `needs_review`, cioè la **coda di revisione**. È cosa
+diversa dalla **fiducia registrata** su ogni riga, che dal 1/9/2026 vale per *tutte*
+le fonti e non più solo per l'AI (che è il 3,6% delle righe: memoria e dizionario,
+il 96%, prima scrivevano senza passare da alcun controllo).
+
+`valuta_fiducia(fonte, categoria, descrizione, fornitore)` in `services/ai_service.py`
+scrive `fatture.categoria_fiducia`. Le regole, **nell'ordine in cui il codice le valuta**:
+
+| # | Condizione | Esito |
+|---|---|---|
+| 1 | categoria vuota o `"Da Classificare"` | `NULL` |
+| 2 | fonte assente | `NULL` — **legacy, si tratta come certa** |
+| 3 | fonte in `_FONTI_CERTE` | `certa` — un umano o una regola certificata ha deciso |
+| 4 | fonte in `_FONTI_PROBABILI` **e** descrizione dubbia | `da_verificare` |
+| 5 | fonte in `_FONTI_PROBABILI` | `probabile` |
+| 6 | fonte sconosciuta | `da_verificare` |
+
+La riga 4 è l'unica logica nuova dell'intera fase, e usa `descrizione_e_dubbia()` —
+lo stesso metro che l'AI adotta da giugno, già auto-consistente (interroga regole
+forti e dizionario, quindi una riga confermata da una fonte certa non risulta mai
+dubbia).
+
+**Il criterio è conservativo, ed è una scelta misurata, non prudenza generica.** Il
+piano prevedeva di declassare tutto ciò che il nucleo deterministico non conferma:
+simulato su 33.147 righe reali, quel gate bocciava l'**8,6% delle righe / 364.000 €**
+— e ispezionando i casi sbagliava il deterministico, non la categoria (`KG5 KETCHUP`
+→ dice MANUTENZIONE, ma SALSE E CREME è giusta). Il criterio adottato declassa
+**429 righe / 38.323 €** (1,10% / 0,94%): descrizioni che nessun umano può
+categorizzare senza aprire la fattura — `1 ACCONTO`, `COMMISSION`, `SALDO`,
+`RICARICHE`.
+
+> **`NULL` = legacy = certa** è un vincolo, non un dettaglio: le righe storiche non
+> hanno provenienza, e se il gate le leggesse come "non affidabili" l'intero storico
+> diventerebbe dubbio e **il MOL dei mesi già chiusi cambierebbe** mesi dopo che il
+> cliente l'ha letto. Nessun backfill retroattivo.
+
+L'esclusione dai margini delle righe `da_verificare` è la **Fase 4**, non ancora
+fatta: oggi la fiducia si registra e basta, nessun numero visto dal cliente cambia.
 
 **Guardrail BUG1:** nessuna dicitura con prezzo > 0 entra in memoria globale.
 
@@ -145,7 +197,7 @@ _memoria_cache = {
 ### Speciali (2)
 
 | 30 | 📝 NOTE E DICITURE | SOLO per righe con `totale_riga == 0` |
-| 31 | Da Clasificare | **VIETATA** dal constraint DB — fallback: "SERVIZI E CONSULENZE" |
+| 31 | Da Classificare | **Stato legittimo**, non un errore: nessuno ha riconosciuto la riga |
 
 ### Centri di Produzione (aggregazione macro)
 
@@ -216,7 +268,31 @@ Il prompt fornisce a GPT-4.1-mini:
 
 Le descrizioni con `totale_riga == 0` vengono classificate (come "📝 NOTE E DICITURE") ma **NON salvate** in memoria globale (`prodotti_master`). Questo previene che diciture, bolle di consegna e righe informative inquinino la memoria condivisa tra tutti i clienti.
 
-Regola critica: `"📝 NOTE E DICITURE"` è consentita SOLO su righe con prezzo = 0. Su qualsiasi importo > 0 va usata una categoria reale.
+Regola critica: `"📝 NOTE E DICITURE"` è consentita SOLO su righe con prezzo = 0. Su
+qualsiasi importo > 0 il guardrail `_applica_guardrail_note_con_importo` riporta la riga
+a **`"Da Classificare"`** — non a una categoria inventata: resta visibile in coda e non
+entra nei margini con un'etichetta che nessuno ha scelto.
+
+### `"Da Classificare"` è uno stato, non un fallback
+
+La categorizzazione è **onesta**: una riga si classifica solo se dizionario, regole o AI
+la riconoscono con sicurezza. Se nessuno ci riesce resta `"Da Classificare"`, con
+`needs_review=True`, visibile al cliente dal filtro "Da classificare" in Analisi Fatture
+→ tab Articoli.
+
+**Non esiste più alcun fallback travestito in `"SERVIZI E CONSULENZE"`** (vecchio
+comportamento, eliminato): assegnava una categoria plausibile a righe che nessuno aveva
+capito, e quelle righe entravano nei margini come se fossero state riconosciute.
+
+Il constraint DB è **`fatture_categoria_not_empty_chk`**: vieta NULL e stringa vuota,
+**consente** `"Da Classificare"`. La costante è `CATEGORIA_NON_CLASSIFICATA` in
+`config/constants.py` (`CATEGORIA_FALLBACK` ne è alias storico).
+
+> Attenzione alla grafia: la variante `'Da Clasificare'` (una sola "s") è **errata** e
+> non corrisponde a nulla nel codice. Questo documento l'ha riportata fino al 2/9/2026.
+
+Le righe `Da Classificare` sono **escluse dai margini** finché non vengono classificate,
+per non falsare il MOL.
 
 ---
 

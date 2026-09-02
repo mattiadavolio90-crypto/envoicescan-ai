@@ -85,9 +85,16 @@ def check_piani_orfani() -> list[str]:
     piani_dir = ROOT / "docs" / "piani"
     if not piani_dir.exists():
         return []
+    # TUTTI i .md, non solo PIANO_*: il 2/9/2026 un PROMPT_PROSSIMA_SESSIONE.md
+    # stantio e' rimasto qui invisibile a questo check (diceva "Fase 3 da fare"
+    # di una fase deployata, e "51 commit in coda" quando erano 7) finche' una
+    # sessione non ha ereditato da lui una cifra falsa. Il nome del file non e'
+    # una garanzia: conta la cartella. README.md e' la documentazione della
+    # cartella stessa, non un piano.
     return [
         p.relative_to(ROOT).as_posix()
-        for p in piani_dir.glob("PIANO_*.md")
+        for p in sorted(piani_dir.glob("*.md"))
+        if p.name != "README.md"
     ]
 
 

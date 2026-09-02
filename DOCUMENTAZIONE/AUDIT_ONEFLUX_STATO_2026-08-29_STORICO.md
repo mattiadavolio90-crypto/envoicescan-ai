@@ -1527,3 +1527,93 @@ regola **sintattica**; quella che distingue i casi è **semantica**. Rileggendo 
 mano ho trovato 1 difetto (il dual-mode), il reviewer ne ha trovati altri 3 —
 e il più grave veniva da un percorso che nessuno dei due aveva pensato a
 guardare: non l'input dell'utente, ma il round-trip col database.
+
+---
+
+## 1-2/9/2026 — Ristrutturazione della categorizzazione: Fasi 0, 7, 1, 2, 3
+
+Deployate l'1/9 (`e18fa37..0234da8`, 8 commit, CI verde alla prima). Cinque fasi su
+dieci: restano aperte 4, 4bis, 5, 6, 8 più due voci nuove emerse strada facendo.
+
+**Cosa cambia nel prodotto.** Il processo ha ora un solo motore di decisione
+(`decisione_deterministica()`, prima la stessa scelta viveva in nove punti che potevano
+divergere) e ogni riga registra **chi** l'ha classificata e **quanto** è affidabile
+(`fatture.categoria_fonte` / `categoria_fiducia`). Il gate di affidabilità, che copriva
+solo l'AI — il 3,6% delle righe — vale ora per tutte le fonti.
+
+### La misura ha rovesciato il piano, per la terza volta
+
+Il piano prevedeva un gate «il deterministico deve confermare». Simulato su 33.147
+righe reali / 4,1 M€, quel criterio bocciava l'**8,6% delle righe (364.000 €)**.
+Ispezionando i casi, però, sbagliava **il deterministico**, non la categoria:
+
+- il **silenzio** del dizionario non è dubbio: `TARIFFA DI VENDITA PUN F1` → UTENZE e
+  `DIVANI E ANGOLI` → MANUTENZIONE sono decisi dalla memoria e sono corretti;
+- il **dissenso** non predice l'errore: su `KG5 KETCHUP` il deterministico dice
+  MANUTENZIONE e SALSE E CREME è giusta; su `DOPPIO CONCENTRATO DI POMODORO` dice
+  VERDURE e SCATOLAME è giusta.
+
+È lo stesso rovesciamento già misurato sul guardrail IVA (D16) e sulla memoria globale
+(D4): **la terza volta che «il deterministico è il metro» cade sotto misura.** Il
+criterio adottato (conservativo, scelto da Mattia) declassa 429 righe / 38.323 € —
+l'1,10% delle righe, lo 0,94% dell'importo.
+
+### Una misura va verificata anche quando conferma ciò che si sperava
+
+La prima cifra portata a Mattia era «280 righe / 38.193 €». Era calcolata su un campione
+**troncato da un `limit 4000`**: 33.147 righe su 39.043. Il conteggio era sottostimato
+del 35%; l'importo sembrava quasi giusto solo perché le righe mancanti erano di basso
+valore — cioè l'errore era invisibile proprio sulla metrica che si guardava di più.
+Trovato dalla code review, non da me: avevo accettato il numero perché confermava il
+risultato che volevo. Cifra vera, ri-misurata sulle 6.974 combinazioni complete con
+impronta verificata contro il DB: **429 righe / 38.323 €**.
+
+### Un mutante sopravvissuto può voler dire che la riga è ridondante
+
+Rimuovendo il reset iniziale del ContextVar in `ottieni_categoria_prodotto`, il mutante
+è **sopravvissuto**. Non perché il test fosse debole: ogni uscita della funzione già
+scrive la provenienza, quindi il reset non serve. Il difetto reale era il **commento**,
+che lo chiamava «la parte che conta». Corretto il commento, aggiunto un test strutturale
+che uccide il mutante vero (un `return` nudo che salta il canale della provenienza).
+
+### Il gate in produzione: prima misura reale (2/9)
+
+25 righe nuove dopo il deploy, **25 con provenienza, zero senza** — copertura 100%.
+Tutte `certa`, da `L2_locale` (19) e `L1_5_non_negoziabile` (6): corretto, sono fonti
+che il gate non declassa mai per regola. `da_verificare` resta 0 perché nessuna riga
+con descrizione dubbia è ancora arrivata.
+
+### Il debito che ho lasciato, e il documento che ha ingannato la sessione dopo
+
+Ho considerato le fasi chiuse dopo mutazione, commit e review, **saltando tre dei cinque
+punti di WORKFLOW §5bis**: verbale, contatore, documentazione. Avevo eseguito
+`check_documentazione.py` e preso il suo verde per una prova — ma quel check non guarda
+dentro `docs/piani/` e non sa cosa un documento *dovrebbe* dire.
+
+Il costo si è visto il giorno dopo: `docs/piani/PROMPT_PROSSIMA_SESSIONE.md`, rimasto lì
+stantio, dichiarava «51 commit in coda» e la Fase 3 «da fare». La sessione successiva ha
+**ereditato quella cifra e l'ha riportata a Mattia**; erano 7. Il ref `origin/main` era
+solo disallineato, e un `git fetch` l'ha sciolto.
+
+Due correzioni al check, entrambe provate: `check_piani_orfani()` ora guarda **tutti** i
+`.md` di `docs/piani/`, non solo `PIANO_*` — il nome di un file non è una garanzia,
+conta la cartella.
+
+### Un bug in Home trovato controllando le altre sedi (2/9)
+
+Mattia ha chiesto di verificare il gate sui clienti che hanno righe da classificare. Il
+controllo ha trovato altro: la voce «Righe classificate» della card Salute sceglieva il
+testo guardando le righe caricate negli **ultimi 30 giorni** invece di quelle da
+controllare (`fastapi_worker.py`). Una sede ferma da oltre un mese leggeva «Nessuna riga
+da classificare» pur avendone: **4 sedi su 11**, la peggiore con 187 righe (ultimo
+caricamento 21 luglio).
+
+Il pallino e il deep-link erano corretti — mentiva solo la frase, che è l'unica cosa che
+il cliente legge. Stessa classe dell'errore del 29/8: **una condizione misurata sulla
+popolazione sbagliata**. Estratto `_dettaglio_righe_classificate()` come funzione pura e
+coperto con 10 test; due mutanti provati, entrambi uccisi (il secondo ripristina il
+ternario originale ed è fermato da una guardia strutturale).
+
+> La lezione che vale oltre il caso: nessuno stava cercando quel bug. È emerso perché
+> l'owner ha chiesto di **guardare i clienti veri** invece di fidarsi del caso singolo
+> nello screenshot — dove infatti la Home diceva il vero.

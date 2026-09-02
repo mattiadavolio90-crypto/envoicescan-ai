@@ -52,12 +52,12 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 | `tag_suggestion_service.py` | 1.087 | 📖 letto (1019/1019) | ciclo 07, 24/8 |
 | `tag_analytics_service.py` | 488 | 📖 letto | ciclo 07, 24/8 |
 | `routers/` — workspace, tag, margini, ricavi, scadenziario | ~4.000 | 📖 letti | ciclo 07 |
-| `ai_service.py` | 5.405 | 🔍 dimensione AI, 2 passate | HIGH#1 trovato al 2º giro |
-| `upload_handler.py` | 2.222 | 🔍 di rimbalzo (22 citazioni) | mai come oggetto proprio |
+| `ai_service.py` | **5.715** | 📖 nucleo decisione + gate | ri-misurato 2/9. Fasi 1/2/3: `decisione_deterministica()` (motore unico), `valuta_fiducia()` (gate), `ottieni_categoria_prodotto` (9 uscite). **101 test**: gate 37 + provenienza 39 + nucleo 25 |
+| `upload_handler.py` | **2.282** | 🔍 di rimbalzo + chiamante del gate | ri-misurato 2/9. Passa descrizione e fornitore a `valuta_fiducia` |
 | `margine_service.py` | 1.476 | 🔍 di rimbalzo (15 citazioni) | **regola di dominio MOL** |
-| `fastapi_worker.py` | 8.551 | 🔍 per router, non come oggetto | ciclo 07 |
+| `fastapi_worker.py` | **8.622** | 🔍 per router + voce Salute coperta | ri-misurato 2/9. `_dettaglio_righe_classificate()` estratta e coperta con **10 test** dopo il bug del 2/9 (4 sedi su 11 leggevano "nessuna riga da classificare" avendone) |
 | **`routers/` (restanti ~15)** | **~12.400** | 🔴 | — |
-| **`worker/`** | **2.353** | 🔴 | queue-worker, gira non presidiato |
+| **`worker/`** | **2.353** | 🔴 (ma `queue_processor.py` tocca il gate) | queue-worker, gira non presidiato. L'import difensivo di `valuta_fiducia` degrada senza mentire |
 | **`utils/`** | **2.574** | 🔴 | — |
 | **`config/`** | **2.334** | 🔴 | contiene i prompt AI |
 | **`daily_briefing_service.py`** | **1.356** | 🔴 (3 citazioni) | — |
@@ -128,21 +128,32 @@ La distinzione che i cicli fanno nei fatti ma nessuna tabella rendeva visibile:
 > più piccolo non è più scoperto in nessuna di queste aree.
 | `(app)/analisi-fatture/` | 809 | 2.666 | 🟠 30% | ciclo 07 §3c: articoli-tab |
 | `components/` | 2.188 | 7.298 | 🟠 30% | **F3 ciclo 08 CHIUSA**: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
-| `lib/` | 2.090 | 5.186 | 🟠 40% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (318) + `catena-tag.ts` (229) + `catena-costi-gruppo.ts` (173) + `catena-export.ts` (211) + `tag-candidati.ts` (61) + `format.ts` (140) + **i 5 dell'1/9 sera: `home-kpi.ts` (86) + `home-config.ts` (64) + `home-chat.ts` (62) + `sparkline-punti.ts` (58) + `notifiche-shared.ts` (120)**. Le lette salgono di 390 = 86+64+62+58+120. Il totale area passa da 4.805 a **5.186 misurate** (`wc -l` su `lib/`, 1/9 sera): +381, non +390, perché `notifiche-shared.ts` non è nuovo codice — è **spostato** da `app/(app)/notifiche/`, e nello spostamento ha perso l'import del tipo e guadagnato il tipo stesso. `format.ts` resta la fonte unica del parsing numerico (58 chiamanti) |
+| `lib/` | 2.192 | 5.290 | 🟠 40% | `scadenziario.ts` (442) + `margini-aggregati.ts` (126) + `catena-confronti.ts` (318) + `catena-tag.ts` (229) + `catena-costi-gruppo.ts` (173) + `catena-export.ts` (211) + `tag-candidati.ts` (61) + `format.ts` (140) + **i 5 dell'1/9 sera: `home-kpi.ts` (86) + `home-config.ts` (64) + `home-chat.ts` (62) + `sparkline-punti.ts` (58) + `notifiche-shared.ts` (120)**. Le lette salgono di 390 = 86+64+62+58+120. Il totale area passa da 4.805 a **5.186 misurate** (`wc -l` su `lib/`, 1/9 sera): +381, non +390, perché `notifiche-shared.ts` non è nuovo codice — è **spostato** da `app/(app)/notifiche/`, e nello spostamento ha perso l'import del tipo e guadagnato il tipo stesso. **Il 2/9 si aggiungono `piani.ts` (40) + `impostazioni-account.ts` (62) = 102 righe lette**: lette 2.192, totale area **5.290 misurate** (`wc -l`, 2/9). `format.ts` resta la fonte unica del parsing numerico (58 chiamanti) |
 | `(app)/catena/` | 2.800 | 2.938 | 🟢 95% | **CHIUSA l'1/9 in tre passate**: 7 file su 9 con logica in `lib/` (`catena-confronti.ts`, `catena-tag.ts`, `catena-costi-gruppo.ts`, `catena-export.ts`). **283 test** = confronti 95 + tag 61 + costi 50 + export 64 + `tag-candidati` 13 (quest'ultimo è di catena: estratto da `gruppo-tag-section.tsx` nella 1ª passata). **Non** include i 18 di `test_helpers_ts_harness.py`, che testano l'harness, non `catena/`. Bilancio mutazione **per passata** nel verbale (la 3ª: 41 mutanti, 38 uccisi, 3 equivalenze) — non sommato qui, perché i cataloghi delle prime due sono cresciuti in review e un totale aggregato sarebbe un numero che nessuno ha misurato. Scoperte **138 righe**, entrambe senza logica: `card-segnali.tsx` 110 (fetch + JSX, `ICONA` mappa a componenti lucide) + `loading.tsx` 28 (skeleton). `page.tsx` è stato chiuso estraendo le sue due decisioni (`num_pv < 2 → redirect`, pool chat `> 0`) come predicati puri. **Copre la logica pura, non il rendering** |
 | `(app)/dashboard/` — logica in `lib/` | — | 1.685 | 🟠 | **1ª passata, 1/9 sera.** L'area resta contata sopra fra le «altre 7» (nessuna riga di `.tsx` è stata *letta* per audit): qui si registra che la sua **logica** è uscita nei moduli `home-*.ts`. **92 test** = home-kpi 18 + home-config 13 + home-chat 22 + notifiche-shared 20 + sparkline-punti 19. Mutazione: **39 mutanti, 38 uccisi**, 1 equivalente (`Array.isArray` in `parseStorico`: senza, `.filter` non esiste sui non-array e il `catch` copre comunque). Due sopravvissuti erano lacune vere nei test, chiuse: regex greedy del grassetto e `Math.max(...vals, 1)` su serie sotto l'unità. Scoperti: rendering, hook, stato — l'harness esegue solo moduli senza React |
+| `(app)/impostazioni/` — logica in `lib/` | — | 808 | 🟠 | **1ª passata, 2/9.** Come per la dashboard, l'area resta contata sotto fra le «altre» (nessun `.tsx` letto per audit): qui si registra che la sua **logica** è uscita in `piani.ts` + `impostazioni-account.ts`. **22 test** = piani 8 + impostazioni-account 14. Mutazione: **12 mutanti, 12 uccisi**, nessun sopravvissuto. Oracolo contro l'originale di HEAD su 225 combinazioni (NaN/Infinity inclusi), 0 divergenze, validato sui due lati. Trovato e corretto un difetto reale ma latente: il frontend non conosceva il piano `free` che backend e menu admin producono. Scoperti: rendering, hook, i form con `fetch` (`CambioPasswordForm`, `ZonaPericolosa`, `PrivacyGdprCard`, `AspettoCard`, `SediGruppoCard`) |
 | `(app)/` — altre 7 aree + file diretti | 0 | 4.089 | 🔴 | ri-misurate l'1/9 sera: dashboard **1.685** · impostazioni 806 · agenda 693 · notifiche **242** · assistenza 292 · style-guide 256 · file diretti 115. Dashboard scende da 1.749 (matematica e doppioni tolti); notifiche da 339 a 242 (`notifiche-shared.ts` spostato in `lib/`) |
 | `hooks/` + `proxy.ts` + file diretti in `app/` | 0 | 622 | 🔴 | **ri-misurati il 31/8: 22 + 105 + 495** — i file diretti erano contati 185, sono 495 (`globals.css` da solo ne fa 296) |
 | `(auth)`+`(legal)`+`(demo)` — dettaglio | — | 1.353 | 🔴 | 552 + 575 + 226 |
 
-**Righe lette: 24.733 · non lette: 28.047 · totale 52.780** — la tabella copre
+**Righe lette: 24.835 · non lette: 28.047 · totale 52.882** — la tabella copre
 tutto `apps/web/src`: il totale è `git archive HEAD` **meno i font binari**,
 ri-misurato l'1/9 sera (era 51.614 al mattino; +1.166 di lavoro delle sessioni
-della giornata, non solo di questa). Le lette salgono di 390: i 5 moduli
-`lib/` estratti la sera.
+della giornata, non solo di questa). Le lette salgono di 390 l'1/9 (i 5 moduli
+`lib/` della sera) e di **102 il 2/9** (`piani.ts` 40 + `impostazioni-account.ts` 62).
 Ri-verificato a ogni aggiornamento, **sommando le righe della tabella**, non
 fidandosi della frase precedente — è così che è saltato fuori che 51.063 era
 sbagliato di 350.
+
+> ⚠️ **Queste tre cifre non tornano con la somma della tabella, e non da oggi.**
+> Sommando le righe (2/9, script sulla tabella) vengono **lette 26.966 · area
+> 51.232 · non lette 24.266**; a HEAD `0234da8`, cioè PRIMA del lavoro del 2/9,
+> venivano 26.864 / 51.128 / 24.264 contro un testo che già diceva 24.733 /
+> 52.780. Il disallineamento è quindi **preesistente**, non introdotto dal 2/9:
+> il delta del 2/9 (+102 lette, +102 area) è l'unica parte verificata. Le tre
+> cifre qui sopra sono il valore dichiarato più il delta, **non** una somma
+> ricalcolata: vanno riconciliate da chi conosce l'origine dello scarto —
+> è esattamente il caso che il riquadro qui sotto dice di non ritoccare a mano.
 
 | | Lette | Totale area | Non lette |
 |---|---:|---:|---:|
