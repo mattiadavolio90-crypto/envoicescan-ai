@@ -54,7 +54,11 @@ const GRUPPO_ORDINE = ["scadenza", "upload", "radar", "operativa", "agenda", "al
 
 export function gruppoDi(n: Notifica): Gruppo {
   const st = (n.source_type ?? "").toLowerCase();
-  return SOURCE_GROUP[st] ?? GRUPPO_ALTRO;
+  // Object.hasOwn e non `?? `: un lookup nudo su un object literal eredita da
+  // Object.prototype, quindi source_type "toString" o "constructor"
+  // restituirebbe una funzione invece del fallback. Non raggiungibile oggi (i
+  // writer usano literal hardcoded), ma il costo di chiuderlo e' una riga.
+  return Object.hasOwn(SOURCE_GROUP, st) ? SOURCE_GROUP[st] : GRUPPO_ALTRO;
 }
 
 export type GruppoNotifiche = {
@@ -123,7 +127,13 @@ export function ctaDi(n: Notifica): { href: string; label: string } | null {
   if (!raw) return null;
   // Gia' rotta Next.
   if (raw.startsWith("/")) return { href: raw, label: "Vai" };
-  const mapped = LEGACY_TO_NEXT[raw] ?? LEGACY_TO_NEXT[raw.toLowerCase()];
+  // Vedi la nota in gruppoDi: lookup che non attraversa Object.prototype.
+  const low = raw.toLowerCase();
+  const mapped = Object.hasOwn(LEGACY_TO_NEXT, raw)
+    ? LEGACY_TO_NEXT[raw]
+    : Object.hasOwn(LEGACY_TO_NEXT, low)
+      ? LEGACY_TO_NEXT[low]
+      : undefined;
   return mapped ? { href: mapped, label: "Vai" } : null;
 }
 
@@ -200,8 +210,16 @@ export function filtraPerSeverity(notifiche: Notifica[], filtro: Filtro): Notifi
 // verificare che la sezione mobile esista E che ci si atterri sul tab giusto.
 const TOPIC_TO_MOBILE: Record<string, string> = {
   // "Movimenti" (ex Turni), tab di default "Incassi" (`mobile-turni.tsx`):
-  // e' dove l'incasso si inserisce da quando e' uscito dall'Agenda.
+  // e' dove l'incasso si inserisce da quando e' uscito dall'Agenda. Chiude il
+  // cerchio: il segnale legge `ricavi_giornalieri` e quel tab ci scrive
+  // (POST /api/ricavi/giornalieri).
   incasso_mancante: "/m/turni",
+  // NON aggiungere `costo_personale_mancante` qui: sembra una dimenticanza
+  // perche' /m/turni ha un tab "Turni" con inserimento mensile, ma quel dialog
+  // scrive su `turni_personale` (POST /api/workspace/personale/mensile) mentre
+  // il segnale legge `costo_dipendenti` dai margini mensili — e nessuna rotta
+  // mobile scrive li'. Il pulsante porterebbe a una schermata che NON spegne
+  // l'avviso: la stessa trappola di /agenda per gli incassi.
 };
 
 // CTA da mostrare sul mobile: `null` quando il topic non ha una destinazione
@@ -211,6 +229,8 @@ export function ctaMobile(n: Notifica): { href: string; label: string } | null {
   // non mappabile) non deve esistere nemmeno quella mobile.
   const cta = ctaDi(n);
   if (!cta) return null;
-  const mobile = TOPIC_TO_MOBILE[n.topic_key ?? ""];
+  // Vedi la nota in gruppoDi.
+  const topic = n.topic_key ?? "";
+  const mobile = Object.hasOwn(TOPIC_TO_MOBILE, topic) ? TOPIC_TO_MOBILE[topic] : undefined;
   return mobile ? { href: mobile, label: cta.label } : null;
 }

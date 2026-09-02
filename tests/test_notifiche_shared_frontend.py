@@ -349,3 +349,33 @@ def test_topic_giusto_ma_senza_cta_desktop_resta_muto():
 def test_senza_topic_niente_cta_mobile():
     """`topic_key` e' nullable nel tipo: non deve far esplodere il lookup."""
     assert _cta_mobile("/margini", topic=None) is None
+
+
+# ─── i lookup non attraversano Object.prototype ─────────────────────────────
+# Un `MAPPA[chiave]` nudo su un object literal eredita da Object.prototype:
+# "toString" restituisce una FUNZIONE, "__proto__" un oggetto, e la guardia
+# `mappa ? ...` li considera validi. Finirebbero in <Link href={...}>.
+# Non raggiungibile oggi (topic_key/source_type sono literal hardcoded lato
+# worker), congelato perche' resti cosi' se un domani arrivassero da fuori.
+
+CHIAVI_EREDITATE = ["toString", "constructor", "__proto__", "valueOf", "hasOwnProperty"]
+
+
+def test_cta_mobile_ignora_le_chiavi_ereditate():
+    for k in CHIAVI_EREDITATE:
+        assert _cta_mobile("/margini", topic=k) is None, k
+
+
+def test_cta_desktop_ignora_le_chiavi_ereditate():
+    for k in CHIAVI_EREDITATE:
+        assert _chiama("ctaDi", [_n("x", page=k)]) is None, k
+
+
+def test_raggruppa_manda_le_chiavi_ereditate_in_altro():
+    """`gruppoDi` non e' esportata: si osserva dall'esterno via `raggruppa`."""
+    for k in CHIAVI_EREDITATE:
+        gruppi = esegui_ts(
+            MODULO, "emit(m.raggruppa(input).map(g => g.key));",
+            argomento=[_n("a", source=k)], richiede=["raggruppa"],
+        )
+        assert gruppi == ["altro"], k
