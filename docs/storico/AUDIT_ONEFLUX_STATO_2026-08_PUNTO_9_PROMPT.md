@@ -3,7 +3,7 @@
 > ⚠️ **ARCHIVIATO — il punto 9 e' stato chiuso il 29/8/2026** (opzione A: test
 > in `tests/*.py` che eseguono il TypeScript vero con node). Questo prompt e'
 > storia: non eseguirlo. L'esito sta in
-> `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md`.
+> `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09.md`.
 
 > **Apri questa sessione solo quando gli 8 punti sono chiusi.** Copia il blocco
 > qui sotto come primo messaggio.
@@ -70,6 +70,6 @@ Poi, se decidiamo di procedere: i primi test veri su `apps/web/src/lib/`
 > (`fb5785fd`), e il ciclo 2026-08 è già stato archiviato in `docs/storico/`.
 > Questo è l'**unico punto ancora aperto**.
 
-Verbale in `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-08-29.md` (il ciclo
+Verbale in `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09.md` (il ciclo
 corrente); gli storici dei cicli chiusi stanno in `docs/storico/` e non vanno
 più modificati.
