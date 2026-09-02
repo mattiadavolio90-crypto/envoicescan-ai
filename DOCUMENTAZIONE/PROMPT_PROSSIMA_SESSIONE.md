@@ -160,6 +160,13 @@ mai provato un valore letto dal DB. È così che il difetto è vissuto per mesi.
 **`tsc` non esegue niente.** È uscito 0 anche sulla versione con la destinazione
 sbagliata: un pulsante che punta alla pagina sbagliata non è un errore di tipo.
 
+**E `tsc` non ti protegge nemmeno dai builtin troppo recenti.** `apps/web/tsconfig.json`
+ha `target: ES2017` ma `lib: [... "esnext"]`: un **metodo di libreria** più
+recente del target (`Object.hasOwn`, ES2022) viene **accettato** da `tsc` e
+**non** downlevellato — finisce nel bundle così com'è. È sintassi vs libreria:
+solo la prima viene trasformata. Se usi un builtin recente, **cercalo nel bundle
+buildato** (`grep` in `.next/static/chunks/`), non fidarti del `tsc` verde.
+
 **Chiusura §5bis**: mutazione col bilancio *e i sopravvissuti motivati*, suite
 verde, `tsc`, `next build`, `/code-reviewer` sul cumulativo (**riproduci ogni
 rilievo prima di accettarlo** — qui ne ha prodotti 4, tutti fondati), verbale,
