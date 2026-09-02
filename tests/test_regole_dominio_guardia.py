@@ -611,34 +611,46 @@ def test_spese_generali_frontend_allineata_a_constants_py() -> None:
 _INVOICE_SERVICE = ROOT / "services" / "invoice_service.py"
 
 
-def test_il_segno_della_nota_di_credito_dipende_dal_netto() -> None:
-    """Il path XML deve decidere sul NETTO delle righe.
+def test_una_riga_negativa_marginale_non_disattiva_la_correzione() -> None:
+    """Il criterio storico ("esiste una riga gia' negativa -> non invertire") non
+    deve tornare, in nessuna forma.
 
-    Se qualcuno reintroduce `nc_inverti_in_blocco = not _ha_riga_negativa` come
-    criterio PRIMARIO, le note col netto positivo tornano a entrare nei costi.
-    Il criterio storico resta ammesso solo come fallback quando la testata non
-    e' leggibile (imponibile assente o 0).
+    Questo test non guarda il testo del sorgente — un letterale sopravvissuto in
+    un commento lo ingannerebbe, e una rinomina legittima lo romperebbe a torto.
+    Guarda il COMPORTAMENTO sul caso che distingue i due criteri: una nota tutta
+    positiva con UNA sola riga negativa marginale.
+
+    Col criterio storico quella riga disattiva l'inversione e il netto resta
+    positivo (il difetto: 9.261,35 EUR entrati nei costi). Col criterio corretto
+    il netto e' negativo.
     """
-    src = _leggi(_INVOICE_SERVICE)
+    from tests.test_invoice_service import _run_estrai_xml, _xml_td04_minimal
 
-    assert "nc_inverti_in_blocco = _netto_righe > 0" in src, (
-        "Il criterio primario della nota di credito (path XML) deve essere il "
-        "segno del netto: `nc_inverti_in_blocco = _netto_righe > 0`. "
-        "Se e' stato sostituito, le TD04 col netto positivo tornano a essere "
-        "contate come costo invece che come rimborso."
+    # +20.00 (riga esistente) + una riga da -0.50: netto +19.50, ancora positivo.
+    # Imponibile di testata coerente col netto, come nei documenti veri.
+    xml = _xml_td04_minimal().replace(
+        b"<ImponibileImporto>20.00</ImponibileImporto>",
+        b"<ImponibileImporto>19.50</ImponibileImporto>",
+    ).replace(
+        b"    </DatiBeniServizi>",
+        b"""      <DettaglioLinee>
+        <NumeroLinea>2</NumeroLinea>
+        <Descrizione>RIVALSA BOLLO N.C</Descrizione>
+        <Quantita>1.00</Quantita>
+        <PrezzoUnitario>-0.50</PrezzoUnitario>
+        <PrezzoTotale>-0.50</PrezzoTotale>
+        <AliquotaIVA>0.00</AliquotaIVA>
+      </DettaglioLinee>
+    </DatiBeniServizi>""",
     )
 
-    # Il fallback storico e' legittimo, ma DEVE stare dentro il ramo "testata non
-    # leggibile": se ricompare fuori da quella guardia, e' il criterio vecchio.
-    guardia = re.search(
-        r"if\s+totale_imponibile:.*?else:.*?nc_inverti_in_blocco\s*=\s*not\s+_ha_riga_negativa",
-        src,
-        re.S,
-    )
-    assert guardia, (
-        "Il criterio storico (`not _ha_riga_negativa`) e' ammesso SOLO come "
-        "fallback nel ramo `else` di `if totale_imponibile:`. Fuori da li' "
-        "e' il difetto che ha fatto entrare 9.261,35 EUR nei costi."
+    righe = _run_estrai_xml(xml)
+    assert len(righe) == 2, f"Attese 2 righe, trovate {len(righe)}"
+    netto = sum(r["Totale_Riga"] for r in righe)
+    assert netto < 0, (
+        f"netto {netto:+.2f}: una riga negativa marginale (-0,50 su +20,00) ha "
+        "disattivato l'inversione. E' il criterio storico, ed e' il difetto che "
+        "ha fatto contare 9.261,35 EUR come costo invece che come rimborso."
     )
 
 
