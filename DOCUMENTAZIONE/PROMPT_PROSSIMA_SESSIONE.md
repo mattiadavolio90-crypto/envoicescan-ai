@@ -1,7 +1,7 @@
 # Prompt prossima sessione — dopo `notifiche/`, e un errore che la review ha preso
 
 > Scritto il 2/9/2026 sera. La sessione ha fatto la 1ª passata su
-> `(app)/notifiche/` (20 test nuovi, 20 → 40) e corretto **un difetto che il
+> `(app)/notifiche/` (23 test nuovi, 20 → 43) e corretto **un difetto che il
 > cliente vedeva davvero**: la notifica «Manca l'incasso di ieri» arrivava senza
 > il pulsante per andare a inserirlo — su desktop **e** su telefono, dove la PWA
 > spegneva tutte le CTA.
@@ -101,6 +101,14 @@ darlo per morto senza misura è come ereditare una cifra).
 **`scripts/regen_notifiche_utente.py:83` importa `services/notification_service.py`,
 che non esiste più**: lo script è rotto. Preesistente, non introdotto qui, non
 toccato — non era la dimensione aperta.
+
+> **Accettare una correzione non è verificarla.** Il reviewer ha corretto il mio
+> totale righe; gli ho dato ragione e ho *giustificato* lo scarto con «file senza
+> newline finale» — spiegazione **inventata**: non ce n'è nemmeno uno, e nessuno
+> dei due numeri era quello vero. Se qualcuno corregge una cifra, **ri-misurala**
+> con due metodi indipendenti, e non scrivere mai la causa di uno scarto che non
+> hai verificato: quasi sempre sta nel perimetro (quali estensioni escludi,
+> tracciati o filesystem), non nell'aritmetica.
 
 **`AUDIT_COPERTURA.md` ha ancora tre cifre di riepilogo che non tornano**, e non
 da oggi. Ho aggiornato **solo il mio delta** (+58 righe, verificato con
