@@ -43,6 +43,12 @@ type Props = {
   notifiche: Notifica[];
   // hideCta: su mobile (PWA) nascondiamo i bottoni "vai a..." che porterebbero
   // fuori dall'app verso la vista desktop. Default false: desktop invariato.
+  //
+  // Conseguenza nota (2/9/2026): `incasso_mancante` nasce SUL mobile
+  // (`m/incasso-reminder.tsx`) ma la sua CTA punta a /margini, che e' desktop —
+  // quindi li' il pulsante resta nascosto, per scelta. Su mobile l'incasso si
+  // inserisce da "Movimenti" (`m/turni`): un deep-link mobile andrebbe aggiunto
+  // qui, non aggirando hideCta.
   hideCta?: boolean;
 };
 

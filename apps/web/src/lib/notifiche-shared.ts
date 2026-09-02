@@ -98,18 +98,24 @@ const LEGACY_TO_NEXT: Record<string, string> = {
   "pages/4_analisi_personalizzata.py": "/analisi-e-tag",
   "pages/2_analisi_fatture.py": "/analisi-fatture",
   dashboard: "/dashboard",
-  // Non solo path Streamlit: a DB ci sono anche NOMI di pagina. "Agenda" era il
-  // caso vivo — 33 righe (topic `incasso_mancante`), 11 attive su 3 clienti,
-  // ancora scritte l'1/9/2026 — e senza mappa la notifica "Manca l'incasso di
-  // ieri" diceva di andare in Agenda SENZA il pulsante per arrivarci. La
-  // sorgente e' corretta (`routers/scadenziario.py` scrive "/agenda" come gia'
-  // faceva `fastapi_worker.py`), ma le righe gia' a DB passano solo di qui.
-  // Le altre due sono solo storiche: nessun codice le emette piu'.
-  agenda: "/agenda",
+  // Non solo path Streamlit: a DB ci sono anche NOMI di pagina. Il caso vivo e'
+  // "Agenda" (topic `incasso_mancante`, 33 righe, 3 ancora VISIBILI su 2 utenti
+  // una volta applicato `expires_at`): la notifica "Manca l'incasso di ieri"
+  // non aveva il pulsante per arrivare all'incasso.
+  //
+  // Attenzione alla destinazione: NON e' /agenda. Gli incassi sono stati
+  // spostati fuori dall'Agenda (desktop: Margini -> Calcolo; mobile: Movimenti,
+  // ex Turni). Mandare a /agenda darebbe un pulsante che non fa fare la cosa
+  // chiesta. /margini e' anche cio' che il briefing usa gia' per lo stesso
+  // topic (`daily_briefing_service.py`) e cio' che scrive la versione live
+  // della notifica (`fastapi_worker.py`): una sola destinazione per un topic.
+  agenda: "/margini",
   "analisi margine": "/margini",
   "analisi fatture": "/analisi-fatture",
-  // "Vai ai Documenti" (1 riga, 13/5/2026) NON si mappa: la rotta /documenti
-  // non esiste. Meglio nessun pulsante di un 404 — vedi il test del fallback.
+  // "Vai ai Documenti" e "Carica Fatture"/"Gestione e Pagamenti"
+  // (`upload_handler.py`, percorso Streamlit) NON si mappano: /documenti non
+  // esiste fra le rotte di (app)/ e gli altri due non hanno una destinazione
+  // univoca. Meglio nessun pulsante di un 404 — vedi il test del fallback.
 };
 
 export function ctaDi(n: Notifica): { href: string; label: string } | null {

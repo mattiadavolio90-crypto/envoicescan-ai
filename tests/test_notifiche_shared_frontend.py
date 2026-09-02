@@ -109,36 +109,47 @@ def test_cta_rotta_sconosciuta_non_produce_un_link_rotto():
 
 # ─── il difetto del 2/9: action_page non e' solo un path Streamlit ───────────
 
-def test_cta_Agenda_porta_alla_pagina_agenda():
-    """LA REGRESSIONE. Misurato a DB il 2/9/2026: 33 righe con
-    `action_page='Agenda'` (topic `incasso_mancante`), **11 attive su 3 clienti
-    reali**, l'ultima scritta l'1/9. La mappa conosceva solo path Streamlit
-    (`pages/*.py`), non i NOMI di pagina: `ctaDi` tornava None e la notifica
-    "Manca l'incasso di ieri" diceva al ristoratore di andare in Agenda ->
-    Incassi **senza il pulsante per arrivarci**.
+def test_cta_Agenda_porta_dove_si_inserisce_l_incasso():
+    """LA REGRESSIONE, e la sua correzione dopo la review.
+
+    Misurato a DB il 2/9/2026: 33 righe con `action_page='Agenda'` (topic
+    `incasso_mancante`), di cui **3 ancora visibili su 2 utenti** una volta
+    applicato `expires_at` come fa il frontend (le altre sono scadute). La mappa
+    conosceva solo path Streamlit (`pages/*.py`), non i NOMI di pagina: `ctaDi`
+    tornava None e la notifica "Manca l'incasso di ieri" non aveva il pulsante.
+
+    **La destinazione NON e' /agenda**, ed e' l'errore che la prima stesura di
+    questo fix aveva commesso: gli incassi sono stati spostati fuori dall'Agenda
+    (desktop Margini -> Calcolo, mobile "Movimenti"). `/agenda` non contiene la
+    stringa "incass": il pulsante ci sarebbe stato, ma non avrebbe fatto fare la
+    cosa chiesta. `/margini` e' anche cio' che il briefing usa gia' per questo
+    topic e cio' che scrive la versione live della notifica nel worker.
 
     I test c'erano gia' (`pages/99_inesistente.py`) ma erano scritti guardando
-    la mappa, non i dati: nessuno usava un valore che stesse davvero a DB.
-
-    La sorgente e' stata corretta (`services/routers/scadenziario.py` ora scrive
-    "/agenda", come gia' faceva `fastapi_worker.py`), ma le righe gia' scritte
-    passano solo di qui: per decisione dell'owner non si tocca il DB.
+    la mappa, non i dati: nessuno usava un valore presente nel DB.
     """
-    assert _chiama("ctaDi", [_n("x", page="Agenda")])["href"] == "/agenda"
+    assert _chiama("ctaDi", [_n("x", page="Agenda")])["href"] == "/margini"
 
 
 def test_cta_nomi_di_pagina_storici():
-    """Nessun codice li emette piu' (verificato con grep su services/, config/,
-    worker/: gli unici action_page letterali sono "/agenda" e "Agenda"), ma
-    restano nelle notifiche vecchie a DB."""
+    """Restano nelle notifiche vecchie a DB.
+
+    Censimento completo (`grep action_page` su services/, config/, worker/,
+    scripts/): i NOMI di pagina non sono due, sono sette, tutti in
+    `upload_handler.py:2051-2145` (percorso Streamlit) piu' quello di
+    `scadenziario.py`. Questi due hanno una destinazione univoca; 'Carica
+    Fatture' e 'Gestione e Pagamenti' no, e restano senza pulsante."""
     assert _chiama("ctaDi", [_n("x", page="Analisi Margine")])["href"] == "/margini"
     assert _chiama("ctaDi", [_n("x", page="Analisi Fatture")])["href"] == "/analisi-fatture"
 
 
-def test_cta_vai_ai_documenti_resta_senza_pulsante():
-    """1 riga a DB (13/5/2026). NON si mappa: la rotta /documenti non esiste fra
-    le 14 di `app/(app)/`. Mapparla darebbe un 404 — meglio nessun pulsante."""
+def test_cta_senza_destinazione_univoca_resta_senza_pulsante():
+    """Meglio nessun pulsante di un 404. `/documenti` non esiste fra le rotte di
+    `app/(app)/`; 'Carica Fatture' e 'Gestione e Pagamenti' (`upload_handler.py`)
+    non hanno una pagina Next corrispondente."""
     assert _chiama("ctaDi", [_n("x", page="Vai ai Documenti")]) is None
+    assert _chiama("ctaDi", [_n("x", page="Carica Fatture")]) is None
+    assert _chiama("ctaDi", [_n("x", page="Gestione e Pagamenti")]) is None
 
 
 # ─── pulisci: markdown grezzo -> testo ────────────────────────────────────
