@@ -1696,7 +1696,24 @@ Mutazione: **18 mutanti, 17 uccisi**. L'unico sopravvissuto è il commento di co
 e doveva sopravvivere. Test del file 20 → 34. Suite 12.493 verdi, `tsc` 0, `next build`
 ok, nessun drift OpenAPI.
 
+### Quanto vale davvero il fix (il numero grande non è il beneficio)
+
+Le righe `Agenda` a DB sono 33, ma applicando `expires_at` come fa il frontend quelle
+**realmente visibili sono 3, su 2 utenti**. E la CTA compare solo sulla pagina
+`/notifiche` **desktop**. Il beneficio consegnato oggi è quello: 3 avvisi su 2 clienti,
+su desktop — non «11 notifiche su 3 clienti», che è il numero che avevo scritto nel
+primo commit contando anche righe scadute e invisibili.
+
+Il valore duraturo è l'altro: la sorgente non produce più il valore rotto, e il caso è
+coperto da un test che uccide il ritorno dell'errore.
+
 ### Limite accettato, non aggirato
+
+Anche il **body** è stato riscritto due volte. Diceva «sezione Agenda → Incassi»
+(sparita da mesi); l'ho corretto in «Margini → Calcolo» — e il reviewer ha preso pure
+quello: `"calcolo"` è la **chiave di rotta**, l'etichetta a schermo è «Marginalità». Di
+nuovo un testo scritto guardando il codice invece dello schermo. Ora dice «Margini →
+Marginalità con “Carica ricavi”», come lo chiama il resto del prodotto.
 
 `incasso_mancante` nasce **sul mobile**, dove `hideCta` nasconde le CTA che portano a
 viste desktop: lì il pulsante resta nascosto. È scritto nel codice accanto a `hideCta`,

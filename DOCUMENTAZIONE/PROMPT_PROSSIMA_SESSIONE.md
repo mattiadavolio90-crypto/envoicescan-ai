@@ -33,10 +33,13 @@ si dice **di chi sono**, non si committano e non si pushano.
 Ho misurato bene e concluso male, e **il `code-reviewer` mi ha bloccato**.
 
 Il dato era esatto: 33 notifiche a DB con `action_page='Agenda'` che non
-producevano nessun pulsante. La correzione no: ho mappato `Agenda → /agenda`
+producevano nessun pulsante (di cui **3 realmente visibili su 2 utenti**, una
+volta applicato `expires_at` come fa il frontend: il numero grande contava anche
+righe scadute). La correzione no: ho mappato `Agenda → /agenda`
 **deducendo la destinazione dal nome del campo**, senza guardare dove sta oggi la
 funzione. Gli incassi sono stati spostati fuori dall'Agenda: si inseriscono da
-Margini → Calcolo (desktop) e da «Movimenti» (mobile). `(app)/agenda/` non
+Margini → **Marginalità** (desktop, col pulsante «Carica ricavi») e da
+«Movimenti» (mobile). `(app)/agenda/` non
 contiene nemmeno la stringa `incass`.
 
 Avrei prodotto un pulsante che **non fa fare la cosa chiesta**, e per di più una
@@ -46,6 +49,12 @@ da sempre.
 > **Prima di mappare una CTA, cerca la funzione, non il nome.** Un
 > `grep -ril "incass" sulla cartella` costava dieci secondi e avrebbe evitato
 > tre errori (destinazione, "gemello" sbagliato, censimento incompleto).
+
+**Il reviewer ha preso anche il mio secondo tentativo**, sul testo: avevo scritto
+«Margini → Calcolo», ma `"calcolo"` è la **chiave di rotta** — a schermo il tab
+si chiama «Marginalità». Stesso errore in scala minore: guardare il codice invece
+dello schermo. Quando scrivi un testo che il cliente leggerà, **apri il file che
+disegna l'etichetta** (`tabs-switcher.tsx`), non quello che definisce la rotta.
 
 Corollario che è già costato due volte: **una frase scritta in una docstring
 diventa verità per chi legge dopo.** Avevo scritto «gli unici due `action_page`
