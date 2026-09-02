@@ -35,12 +35,20 @@ export const fetchNotifiche = cache(
   },
 );
 
-// Somma il `count` (payload o titolo "(N)") delle notifiche attive di un topic.
-// Usato dai trigger contestuali per leggere segnali GIA' calcolati dal worker
-// (es. uncategorized_rows, price_alert) senza query nuove: fetchNotifiche e'
-// gia' cache()-ata, quindi nello stesso render non aggiunge round-trip.
+// Somma il carico di un topic dalle notifiche attive. Usato dai trigger
+// contestuali per leggere segnali GIA' calcolati dal worker (es.
+// uncategorized_rows, price_alert) senza query nuove: fetchNotifiche e' gia'
+// cache()-ata, quindi nello stesso render non aggiunge round-trip.
 // Restituisce 0 se non disponibile (mai throw): un segnale assente = niente
 // trigger, che e' il fallback corretto.
+//
+// `totale` PRIMA di `count` (02/09/2026): da quando la card "da controllare"
+// mostra solo le NOVITA' degli ultimi giorni, `count` non e' piu' il carico
+// complessivo — il totale sta in `totale` e l'arretrato in `arretrato`. I
+// trigger devono guardare il carico VERO: una sede con 112 prodotti sospesi da
+// luglio (0 novita') e' esattamente il profilo per cui il trigger Check-up
+// esiste, e leggendo `count` sarebbe passata a 0 spegnendolo. I topic che non
+// hanno `totale` continuano a cadere su `count` come prima.
 export async function contaTopicAttivo(topicKey: string): Promise<number> {
   const res = await fetchNotifiche();
   if (!res) return 0;
@@ -49,6 +57,7 @@ export async function contaTopicAttivo(topicKey: string): Promise<number> {
     if (n.topic_key !== topicKey) continue;
     const p = n.payload ?? {};
     const raw =
+      (p.totale as number | undefined) ??
       (p.count as number | undefined) ??
       (p.uncategorized_rows as number | undefined) ??
       parseCountFromTitle(n.title);

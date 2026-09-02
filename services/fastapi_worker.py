@@ -6674,14 +6674,18 @@ def _briefing_raccogli_notifiche(
         except Exception as exc:
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
 
-    # Righe da controllare: calcolate LIVE come la card Salute, contando TUTTE le
-    # righe needs_review non cancellate (decisione 19/06: niente finestra 30gg, il
-    # numero deve combaciare con Analisi Fatture). Prima il briefing/campanella
-    # leggevano solo la notifica 'uncategorized_rows' scritta all'UPLOAD: se le
-    # righe finivano in needs_review per una rilavorazione AI su fatture gia'
-    # caricate, la card Salute le mostrava ma la campanella no -> incoerenza.
-    # Rimuovo la versione upload (stantia: non si aggiorna quando classifichi) e
-    # uso il conteggio live.
+    # Righe da controllare: calcolate LIVE, non lette dall'inbox. Prima il
+    # briefing/campanella leggevano solo la notifica 'uncategorized_rows' scritta
+    # all'UPLOAD: se le righe finivano in needs_review per una rilavorazione AI su
+    # fatture gia' caricate, la card Salute le mostrava ma la campanella no ->
+    # incoerenza. Rimuovo la versione upload (stantia: non si aggiorna quando
+    # classifichi) e uso il conteggio live.
+    #
+    # Dal 02/09/2026 il conteggio della CARD sono le NOVITA' degli ultimi giorni,
+    # non tutto lo storico: il totale viaggia in payload['totale'] e l'arretrato in
+    # payload['arretrato'] (vedi _briefing_righe_da_classificare). NB: la voce
+    # "classificate" della card Salute conta ancora le RIGHE su tutto lo storico —
+    # le due superfici divergono per unita' di misura E per finestra.
     if ristorante_id and "uncategorized_rows" not in spenti:
         try:
             notifications = [

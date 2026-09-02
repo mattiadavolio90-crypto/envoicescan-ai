@@ -153,6 +153,20 @@ class TestNovitaVsArretrato:
         out = _briefing_righe_da_classificare(RID, _sb(["A"], giorni_fa=6))
         assert out is not None and out["payload"]["count"] == 1
 
+    def test_il_payload_porta_sempre_il_carico_complessivo(self):
+        """INERENZA (trovata in review): `contaTopicAttivo` lato frontend alimenta
+        il trigger commerciale Check-up (soglia 15 in trigger-servizi.ts). Se il
+        payload esponesse solo le novita', una sede con 112 prodotti sospesi da
+        luglio (0 novita') spegnerebbe il trigger proprio nel caso per cui esiste.
+        `totale` deve esserci sempre, anche quando non ci sono novita'."""
+        out = _briefing_righe_da_classificare(
+            RID, _sb([f"p-{i}" for i in range(112)], giorni_fa=45)
+        )
+        assert out["payload"]["totale"] == 112, (
+            "il carico complessivo deve restare leggibile dai trigger"
+        )
+        assert out["payload"]["count"] == 0, "ma la card non ha novita' da mostrare"
+
 
 # ── Fatture mancanti: stesso pattern (voce 1 della Salute) ──
 

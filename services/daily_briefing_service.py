@@ -1114,10 +1114,24 @@ def _narrazione_e_valida(testo: str, bullets: List[str]) -> tuple:
         if formula in basso:
             return False, f"formula vietata: {formula!r}"
 
-    numeri_input = set()
+    numeri_input: set = set()
     for b in bullets:
         numeri_input |= _numeri_di(b)
-    inventati = _numeri_di(testo) - numeri_input - _NUMERI_INNOCUI
+    # L'ARROTONDAMENTO e' legittimo: da "€ 13.059,40" il modello scrive "circa
+    # 13.059 euro", e da "+26.5%" scrive "+27%". Senza tolleranza scarteremmo una
+    # narrativa corretta e degraderemmo al template in silenzio. Si accetta quindi
+    # anche l'intero piu' vicino di ogni numero in input; i valori inventati
+    # (13.559 al posto di 13.059) restano fuori.
+    ammessi = set(numeri_input)
+    for n in numeri_input:
+        try:
+            f = float(n)
+        except ValueError:
+            continue
+        for variante in (int(f), int(f) + 1):  # troncamento e arrotondamento per eccesso
+            ammessi.add(str(variante))
+
+    inventati = _numeri_di(testo) - ammessi - _NUMERI_INNOCUI
     if inventati:
         return False, f"numeri non presenti nei bullet: {sorted(inventati)}"
 

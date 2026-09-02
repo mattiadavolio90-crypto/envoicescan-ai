@@ -143,6 +143,33 @@ class TestValidazioneNarrativaAI:
     def test_narrativa_vuota_non_e_valida(self):
         assert _narrazione_e_valida("", ["x"])[0] is False
 
+    @pytest.mark.parametrize("testo", [
+        "Ieri sono entrati circa 13.059 euro, con 458 coperti.",   # troncato
+        "Ieri sono entrati circa 13.060 euro.",                    # per eccesso
+        "Ieri sono entrati 13.059,4 euro.",                        # decimale corto
+        "Lo scontrino medio è stato di 26 euro.",                  # 26,47 -> 26
+    ])
+    def test_accetta_l_arrotondamento_legittimo(self, testo):
+        """L'AI arrotonda: '€ 13.059,40' -> 'circa 13.059'. Scartarlo degraderebbe
+        al template in silenzio una narrativa corretta (segnalato in review)."""
+        bullets = [
+            "\U0001F4B0 Ieri sono entrati € 13.059,40 di incasso. "
+            "458 coperti, scontrino medio € 26,47.",
+        ]
+        valida, motivo = _narrazione_e_valida(testo, bullets)
+        assert valida is True, f"arrotondamento respinto: {motivo}"
+
+    @pytest.mark.parametrize("testo,cifra", [
+        ("Ieri sono entrati 15.200 euro.", "15200"),
+        ("Ieri sono entrati 13.559 euro.", "13559"),
+    ])
+    def test_la_tolleranza_non_lascia_passare_valori_inventati(self, testo, cifra):
+        """La tolleranza sull'arrotondamento non deve aprire la porta ai numeri
+        alterati: 13.559 al posto di 13.059 resta un errore."""
+        bullets = ["\U0001F4B0 Ieri sono entrati € 13.059,40 di incasso."]
+        valida, motivo = _narrazione_e_valida(testo, bullets)
+        assert valida is False and cifra in motivo
+
     def test_numeri_normalizza_separatori_italiani(self):
         """'€ 13.059' e '13059' sono lo stesso numero; '26,47' e '26.47' pure."""
         assert _numeri_di("€ 13.059") == _numeri_di("13059")
