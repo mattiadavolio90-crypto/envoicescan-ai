@@ -7018,15 +7018,19 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     inizio_dt = _dt.combine(inizio, _dt.min.time())
     righe_mese: List[Dict[str, Any]] = []
     try:
-        resp = (
+        # fetch_all e non .execute() diretto: PostgREST tronca a 1000 righe e la %
+        # mostrata al cliente sarebbe calcolata su un campione. Misurato il 2/9/2026:
+        # LAND 3.344 righe -> 1.000 diceva 100% invece di 99% ("tutto classificato"
+        # mentre non lo era), Villa Guardia 1.564 -> 97% invece di 96%. Il gemello
+        # _salute_indice_rosso gia' pagina: senza questo le due superfici calcolano
+        # la stessa formula su due campioni diversi.
+        righe_mese = fetch_all(
             sb.table("fatture")
-            .select("needs_review,categoria", count="exact")
+            .select("needs_review,categoria")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .gte("created_at", inizio_dt.isoformat())
-            .execute()
         )
-        righe_mese = resp.data or []
     except Exception as exc:
         logger.warning("home_salute: lettura fatture fallita: %s", exc)
 
