@@ -68,7 +68,7 @@ da tre giorni su 40 file che va spedito comunque sta su `main` come un fix da du
 righe. Con un branch per sessione le PR si impilano e la sera diventano N merge
 in ordine obbligato: l'opposto del deploy unico. Il controllo non si perde:
 finché non si pusha il lavoro non esiste per nessuno, e il `code-reviewer` gira
-sul cumulativo prima del push. Vedi `WORKFLOW.md` §0.
+sul cumulativo prima del push. Vedi `WORKFLOW.md` §1.
 
 ---
 
@@ -86,17 +86,17 @@ Il criterio non è quanto so, è **cosa gli serve per decidere il prossimo passo
 se una frase non cambia cosa farà adesso, si taglia anche se è vera. Un mio errore
 si corregge in **mezza riga**, non in cima e non in un paragrafo. Il dettaglio si
 dà per intero **se lo chiede dopo**. Vale in **ogni** sessione, anche quando non
-lo ricorda — `WORKFLOW.md` §1bis.
+lo ricorda — `WORKFLOW.md` §3.
 
 **A fine planning** (`ExitPlanMode`), sempre e senza che lo chieda: riepilogo non
 tecnico **+ tabella fase / modello / sforzo**. `ultrathink` (parola nel messaggio,
 non un menu) su apertura, audit e fix a una regola di dominio; normale
-sull'esecuzione. Dettaglio: `WORKFLOW.md` §1ter e §3.
+sull'esecuzione. Dettaglio: `WORKFLOW.md` §4.
 
 **Una cosa alla volta, chiusa davvero.** Non si apre una dimensione nuova finché
 la precedente non è provata per mutazione, **committata**, con verbale, contatore
 `AUDIT_COPERTURA.md` aggiornato e `check_documentazione.py` pulito — niente piani
-a metà in `docs/piani/`. Dettaglio: `WORKFLOW.md` §5bis.
+a metà in `docs/piani/`. Dettaglio: `WORKFLOW.md` §5.
 
 ---
 
@@ -150,7 +150,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   ridispiegare il worker (config sul dashboard, non nel repo: `railway.toml`
   documenta i servizi, non il trigger). Non esiste un "spedisco ora, deployo
   stasera": la finestra oraria (sera/notte/mattina presto) è un vincolo **sul
-  push**, salvo conferma esplicita di Mattia. Vedi `WORKFLOW.md` §0.
+  push**, salvo conferma esplicita di Mattia. Vedi `WORKFLOW.md` §1.
 - **Mai `git push` / `gh pr create` / `gh pr merge` di iniziativa.** N sessioni ≠
   N deploy: il push manda **tutti** i commit accumulati (`git log --oneline
   origin/main..main`).
@@ -159,7 +159,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   coda: 7 commit, 3 miei»). Mai committare lavoro non tuo (`git add -A` è il modo
   tipico di farlo per sbaglio). Se segnali un rischio che nasce da lavoro altrui
   di' sempre **di chi è** e **chi deve agire**, o Mattia lo legge come una tua
-  dimenticanza e ti fa chiudere roba non tua. Vedi `WORKFLOW.md` §0.
+  dimenticanza e ti fa chiudere roba non tua. Vedi `WORKFLOW.md` §1.
 - **Next.js in locale punta al DB cloud reale**: scrivi sui dati veri dei clienti.
 - **Worker locale senza `--reload`** tiene in memoria il codice vecchio: riavvialo.
 - **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in produzione

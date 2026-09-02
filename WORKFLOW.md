@@ -1,569 +1,342 @@
 # WORKFLOW — Come si lavora a una feature su ONEFLUX
 
-Una pagina. Serve a non perdere decisioni tra sessioni e a non far esplodere i
-token nelle sessioni lunghe, **senza** aggiungere cerimonia da ricordare. La
-regola guida resta quella di sempre: semplicità prioritaria. Se un passo qui ti
-costa più di quanto ti fa risparmiare, salta il passo.
+Disciplina di **processo**: il come. I vincoli di dominio — il cosa-non-rompere —
+stanno in `CLAUDE.md`.
 
-Questo documento **non è un vincolo di dominio** (quelli stanno in `CLAUDE.md`).
-È disciplina di processo: descrive il come, non il cosa-non-rompere.
+Regola guida: **semplicità prioritaria**. Se un passo costa più di quanto fa
+risparmiare, salta il passo.
+
+> ## Due regole su questo documento
+>
+> **1. Una regola nuova entra solo se ne esce una.** Chi aggiunge una sezione
+> dichiara quale toglie o accorpa. Se non ne trova nessuna da togliere, la regola
+> nuova probabilmente appartiene a un hook, a una skill o alla memoria — non qui.
+>
+> **2. Una regola sta qui solo se è azionabile e non automatizzabile.** Se un
+> hook o una skill possono eseguirla, ci vanno. Se è un fatto storico, va in
+> memoria. Il *racconto* di perché una regola esiste sta in fondo (§11), non
+> accanto alla regola.
+>
+> Perché: al 2/9/2026 questo file dichiarava «una pagina» e ne aveva **569**, con
+> la numerazione rotta per accrescimento (`1bis`, `1ter`, `5bis`). Ogni incidente
+> aveva aggiunto un paragrafo, nessuno ne aveva mai tolto uno — e le regole che
+> contano stavano in fondo, dove non arrivava più nessuno.
 
 ---
 
-## 0. Si accumula, si spedisce una volta sola
+## 1. Si accumula, si spedisce una volta sola
 
-**Regola di base, decisa il 30/8/2026, semplificata il 31/8/2026.** Tutte le
-sessioni della giornata committano su **`main` locale**. Niente branch, niente
-PR. La sera, quando Mattia lo dice: **un push, un deploy**.
+Tutte le sessioni committano su **`main` locale**. Niente branch, niente PR.
+La sera, quando Mattia lo dice: **un push, un deploy**.
 
-**Perché la versione col branch `lavoro` non bastava**: Mattia apre più sessioni
-in parallelo nella stessa giornata, e ogni sessione che non sapeva del branch
-condiviso ne apriva uno suo. Il 31/8 il lavoro era già in **due posti** (2 commit
-su `main` locale, 3 su un branch con PR aperta): la sera sarebbero stati due
-merge distinti in un ordine obbligato. Con tutto su `main` non c'è niente da
-coordinare — le sessioni si accodano da sole.
-
-Nota storica: nessuna regola aveva mai imposto branch-e-PR per ogni intervento
-(`grep -i "branch\|PR\|merge"` su questo file e su `CLAUDE.md` non trovava
-nulla di normativo). Era una consuetudine auto-alimentata, e costava caro: al
-30/8/2026 il repo aveva **19 branch remoti** (15 già dentro `main`, detriti
-puri) e **~35 locali** risalenti fino a maggio, tutti potati quel giorno. E, dato
-che spedire = deploy, **una richiesta di autorizzazione per ogni intervento**
-(5 merge il 28/8 tra le 12:44 e le 16:49, in piena fascia di servizio).
-
-### Come si lavora
-
-1. **Durante il giorno**: commit atomici su `main` locale (uno per intervento
-   concluso, così resta reversibile da solo). **Nessun push.** Nessuna PR.
-   Una sessione nuova parte da `main`, mai dal branch di un'altra sessione.
+1. **Durante il giorno**: commit atomici su `main` locale, uno per intervento
+   concluso. **Nessun push, nessuna PR.** Una sessione nuova parte da `main`.
 2. **Un branch si apre SOLO se** quel lavoro **potrebbe non essere spedito**
-   (esperimento, refactor incerto, roba che forse si butta). **Non** in base
-   alla dimensione: un lavoro grosso che va spedito comunque sta su `main`.
-   Se un branch esiste già e il lavoro va spedito, riportalo su `main` in
-   locale e chiudi il branch **senza** mergiarlo.
-3. **Prima di spedire**, nella finestra serale: `touch .claude/.pre_merge`
-   (fa girare la suite completa allo Stop), `/code-reviewer` sul cumulativo
-   `origin/main..main`, poi **un push, un deploy**.
+   (esperimento, refactor incerto). **Non** in base alla dimensione. Se un branch
+   esiste e il lavoro va spedito, riportalo su `main` e chiudilo senza mergiarlo.
+3. **Prima di spedire**: `touch .claude/.pre_merge` (fa girare la suite completa
+   allo Stop), `/code-reviewer` sul cumulativo `origin/main..main`, poi il push.
 
-### Il lavoro attraversa le sessioni: 4 sessioni ≠ 4 deploy
+**Il deploy è legato al push, non alla sessione.** Un commit locale non spedisce
+niente: 4 sessioni → 4+ commit → **un push, un deploy**. Succede da solo, se non
+si pusha.
 
-**Il deploy non è legato alla sessione, è legato al push.** Un commit locale
-non spedisce niente e non lo vede nessuno; è `git push` su `main` a far partire
-Railway (e Vercel, se il commit tocca `apps/web/**`).
-
-Quindi il lavoro di più sessioni si accumula da solo: 4 sessioni → 4+ commit su
-`main` locale → **un push, un deploy**. Non c'è niente da fare per "tenerlo
-insieme": succede se non si pusha.
-
-**Divieto operativo**: mai `git push`, `gh pr create` o `gh pr merge` di
-iniziativa. Si spedisce **solo** quando Mattia lo dice, e prima si guarda cosa
-si sta spedendo — il push manda **tutti** i commit accumulati, non solo quelli
-dell'ultima sessione:
+**Divieto operativo**: mai `git push`, `gh pr create`, `gh pr merge` di
+iniziativa. Prima di spedire, guarda cosa parte:
 
 ```bash
 git log --oneline origin/main..main    # cosa partirebbe adesso
 git diff --stat origin/main..main      # quanto, e su quali file
 ```
 
-Il numero che leggi lì **si riporta a fine sessione**, non all'apertura come
-allarme: è la coda che deve esserci.
+### Il parallelo è il regime normale
 
-### Il parallelo è il regime normale, non un'eccezione
-
-**Mattia tiene aperte più sessioni insieme**, su aree diverse, e spedisce tutto
-in una volta la sera. Quindi trovare **commit non tuoi** in `origin/main..main`
-e **file non tuoi** in `git status --short` è **lo stato atteso**: non è un
-problema da segnalare, è il metodo che funziona.
-
-**Come si riporta.** A fine sessione, una riga di contesto che distingue il tuo
-lavoro da quello che c'era già:
+Più sessioni lavorano insieme sulla stessa directory. **Commit e file non tuoi
+sono lo stato atteso**, non un allarme. A fine sessione, una riga:
 
 > In coda: 7 commit (3 miei, 4 di altre sessioni), pronti per stasera.
 
-Niente ⚠️, niente domanda. Se la sessione apre chiedendo a Mattia cosa fare dei
-commit altrui, sta chiedendo conferma della normalità — ed è successo così spesso
-da diventare la ragione di questa sezione (1/9/2026).
+Niente ⚠️, niente domanda. **Vietato**: committare lavoro non tuo (`git add -A`
+è il modo tipico di farlo per sbaglio — elenca i tuoi file); toccare senza dirlo
+un file già modificato in `git status`; pushare di iniziativa.
 
-**Cosa resta vietato**, e non è cambiato:
+**Se un rosso non è tuo**: i test possono fallire per lavoro non committato di
+un'altra sessione. Verifica che il rosso esista anche senza le modifiche altrui
+prima di concludere che l'hai rotto tu.
 
-1. **Committare lavoro non tuo.** Il modo tipico di violarlo per sbaglio è
-   `git add -A` / `git add .`: aggiungono anche i file di un'altra sessione, che
-   finiscono in un commit con un messaggio che non li descrive. Elenca i file che
-   hai toccato tu, sempre.
-2. **Toccare senza dirlo un file già modificato** in `git status`: due sessioni
-   sullo stesso file si sovrascrivono senza avviso (§9).
-3. **`git push` di iniziativa.** Vale come prima: il push È il deploy.
-
-**Se un rosso non è tuo.** Il working tree è condiviso: i test possono fallire
-per lavoro non committato di un'altra sessione — è già successo l'1/9 con due
-test di `test_flusso_dati_admin.py`, verdi su checkout pulito. Prima di
-concludere che l'hai rotto tu, verifica che il rosso esista anche senza le
-modifiche altrui.
-
-### Come si segnala un rischio che nasce da lavoro altrui
-
-Alcune cose vanno dette anche se non sono tue: una **migration non tracciata**
-(schema che non esiste in nessun file), un file che sta per partire a metà, un
-conflitto imminente. Ma **come** lo dici cambia cosa Mattia fa dopo.
-
-Sbagliato — l'1/9 è successo davvero: *«c'è ancora una migration non committata:
-se parte il codice e non lo schema, si rompe»*. Mattia ha letto una
-dimenticanza della sessione che parlava, e stava per farle committare lavoro di
-un'altra. La frase era vera e ha comunque prodotto la mossa sbagliata.
-
-Una segnalazione su lavoro altrui deve avere **tre pezzi**, sempre:
-
-1. **Di chi è** — «non è mio, è della sessione che sta facendo X».
-2. **Cosa rischia** — in una riga, concreta.
-3. **Chi deve agire** — quasi sempre: la sessione che l'ha scritto, quando
-   chiude. Se serve Mattia, dillo esplicitamente.
+**Segnalare un rischio che nasce da lavoro altrui** richiede tre pezzi: **di chi
+è**, **cosa rischia**, **chi deve agire** (quasi sempre: la sessione che l'ha
+scritto). Senza il primo, Mattia legge una tua dimenticanza.
 
 > Non è mio: una sessione sta lavorando al tab Admin e ha una migration ancora
 > non committata. Se stasera parte il codice senza lo schema, quel tab si rompe.
 > La chiude quella sessione — se non la chiude, dimmelo e la committo io.
 
-**Non offrirti di committarlo tu di default.** Il lavoro lo chiude chi l'ha
-scritto: solo quella sessione sa se è finito, e solo lei può scrivere un
-messaggio di commit che non sia un'ipotesi.
-
-### Cosa NON è cambiato
-
-Il gate resta, cambia solo *quando* scatta. La suite completa e il
-`code-reviewer` girano **prima di spedire** — che è il momento in cui contano.
-Il `code-reviewer` continua inoltre a scattare **sempre** sui path sensibili
-(auth, AI, margini, worker), a prescindere dalla dimensione: è lì che ha
-trovato i difetti che i test verdi non vedevano.
-
-### Igiene dei branch
-
-Con la regola sopra i branch non dovrebbero nascere. Se ne resta uno (eccezione
-"potrebbe non essere spedito", o residuo di una sessione precedente), va chiuso
-appena il suo lavoro è su `main` o è stato buttato. Controllo periodico:
-
-```bash
-git fetch --prune origin
-git branch -r --merged origin/main | grep -v main   # detriti: vanno via
-git branch -r --no-merged origin/main               # lavoro vero: da decidere
-```
+**Igiene branch**: con la regola sopra non dovrebbero nascere. Se ne resta uno, va
+chiuso appena il suo lavoro è su `main` o è stato buttato. `/pulisci-branch`
+elenca senza eliminare.
 
 ---
 
-## 1. Pianificare ed eseguire sono due momenti, non due sessioni obbligatorie
+## 2. Pianificare ed eseguire
 
-Lo strumento nativo per separarli è il **plan mode di Claude Code**
-(`EnterPlanMode` → si progetta in sola lettura, tu approvi, poi si esegue). È il
-**default** per qualsiasi lavoro non banale: zero file da gestire, il piano lo
-approvi tu prima che parta una sola Edit.
+Il **plan mode** è il default per qualsiasi lavoro non banale: si progetta in sola
+lettura, Mattia approva, poi si esegue.
 
-Chiudere e riaprire una sessione pulita per fase è un'ottimizzazione, **non la
-regola**. Conviene solo quando:
+Chiudere e riaprire una sessione per fase è un'ottimizzazione, **non la regola**:
 
-- il lavoro dura **più di una sessione** (giorni, o troppe fasi per una sola),
-  **oppure**
-- la cronologia accumulata è così lunga che il costo/token o la qualità stanno
-  degradando visibilmente.
+- **1-2 fasi finibili in un pomeriggio** → una sessione sola. Aprirne una seconda
+  fa spendere più token, non meno (ogni sessione riparte da zero).
+- **3+ fasi, o più giorni** → ciclo a più sessioni, con
+  `docs/piani/PIANO_<feature>.md` (§3) a portare lo stato.
 
-Su una feature piccola — la maggioranza — una sessione sola con plan mode costa
-**meno** di due sessioni, perché ogni sessione nuova ri-legge `CLAUDE.md`, le
-memorie e ri-esplora il codice (cold start). Non spezzare per abitudine.
+### Il file di piano
 
-**Come decidere, in pratica** (criterio per chi apre la sessione, non per chi
-esegue): appena il piano è scritto, guarda quante fasi ha.
-- **1-2 fasi piccole, finibili in un pomeriggio** → una sessione sola, plan
-  mode, si va dritti fino in fondo. Aprire una seconda sessione qui non fa
-  risparmiare token, ne fa spendere di più (ogni sessione nuova riparte da
-  zero).
-- **3+ fasi, o lavoro che dura più giorni** → il ciclo a più sessioni ha
-  senso: `docs/piani/PIANO_<feature>.md` (§2) come documento che porta lo
-  stato da una sessione all'altra, e a fine sessione il prompt di ripresa +
-  suggerimento del modello per la fase successiva (§3).
-
-Il ciclo a più sessioni **non è il default per ogni richiesta** — è lo
-strumento giusto solo quando la dimensione del lavoro lo giustifica davvero.
-
----
-
-## 1bis. "A che punto siamo?" si risponde in cinque righe
-
-Quando Mattia chiede **lo stato** — «a che punto siamo», «abbiamo finito»,
-«cosa manca», «facciamo un recap», «è tutto a posto» — la risposta è:
-
-1. **Una riga secca**: finito / manca X / bloccato su Y.
-2. **Al massimo 3 punti**, uno per cosa aperta, una riga ciascuno.
-3. **Se serve una sua decisione**, la domanda in fondo, una sola.
-4. **Chiudi con «Vuoi il dettaglio?»** — e fermati lì.
-
-**Massimo ~10 righe. Niente tabelle, niente blocchi di codice, niente nomi di
-file o funzioni**, salvo che il nome *sia* la risposta. Il dettaglio tecnico si
-dà **solo se lo chiede dopo**: allora sì, per esteso.
-
-Il criterio non è «quanto so», è **cosa gli serve per decidere il prossimo
-passo**. Se una frase non cambia cosa farà nei prossimi cinque minuti, va
-tagliata — anche se è vera, anche se è interessante, anche se l'ho appena
-misurata.
-
-**Non fare** (visto il 31/8, su una domanda da tre righe di risposta):
-ricostruire il ragionamento che ha portato alla conclusione; citare percorsi
-con numero di riga; spiegare *perché* una cosa non è un problema invece di dire
-che non lo è; elencare cosa non hai fatto e perché; premettere l'autocritica
-alla risposta. Sono tutte cose corrette e tutte fuori posto: la correzione di un
-mio errore si dice in mezza riga, non in un paragrafo.
-
-Vale **in ogni sessione**, non solo quando lo ricorda.
-
----
-
-## 1ter. Fine planning: riepilogo non tecnico + modello per fase
-
-**Sempre**, ad ogni chiusura del plan mode (`ExitPlanMode`), prima o insieme
-alla richiesta di approvazione: un riepilogo breve, in linguaggio **non
-tecnico**, di cosa verrà fatto — comprensibile senza aver letto il piano.
-
-**E sempre, subito sotto, questa tabella** — una riga per fase, anche quando la
-fase è una sola:
-
-| Fase | Cosa fa | Modello | Sforzo |
-|---|---|---|---|
-| 1 | *(una riga, in italiano corrente)* | Opus | `ultrathink` |
-| 2 | … | Sonnet | normale |
-
-Modello e sforzo si scelgono coi **due test secchi di §3**, fase per fase — non
-si copia la riga precedente. Se una fase è `ultrathink`, scrivi accanto **in
-mezza riga perché** (es. «tocca il MOL», «apre una dimensione nuova»): serve a
-Mattia per decidere se è d'accordo, ed è l'unico modo per accorgersi se sto
-mettendo `ultrathink` ovunque per abitudine.
-
-Con più fasi, indica anche **quali stanno nella stessa sessione** e quali no
-(§1): cambiare modello a metà sessione non si può, quindi due fasi con modelli
-diversi sono due sessioni.
-
-Non è un documento a parte: è l'ultima cosa che accompagna l'uscita dal plan
-mode, **ogni volta** — non solo su richiesta.
-
----
-
-## 2. Il file di piano: solo per lavori lunghi, uno per feature
-
-Quando (e solo quando) un lavoro supera la singola sessione, si scrive:
-
-```
-docs/piani/PIANO_<feature>.md
-```
-
-**Uno per feature**, non un `PIANO_ATTUALE.md` unico: su ONEFLUX i lavori vanno
-in parallelo (OFFSIDE + SUSHILAND + catena insieme), un file singolo forzerebbe
-una serialità che non esiste. Questi file sono **git-ignorati** (`.gitignore`:
-`docs/piani/*.md`): sono effimeri, non entrano nel repo, non triggerano
-`tests/test_documentazione_onesta.py`.
-
-Struttura minima:
+Solo per lavori oltre la singola sessione. **Uno per feature**, git-ignorato
+(`docs/piani/*.md`), effimero:
 
 ```markdown
 # PIANO — <feature>
 Sessione di apertura: <data>. Obiettivo in una frase.
 
 ## Decisioni concordate (non ridiscutere senza motivo)
-- <la cosa decisa e il perché, così una sessione futura non la re-litiga>
-
 ## Fasi
-- [ ] Fase 1 — <cosa> · modello: <vedi §3>
-- [ ] Fase 2 — <cosa> · modello: <vedi §3>
-- [x] Fase 0 — <fatta il ...>
-
+- [ ] Fase 1 — <cosa> · modello: <vedi §4>
 ## Stato / note aperte
-- <cosa manca, cosa è in dubbio, link a commit>
 ```
 
-**Confine con la memoria persistente:** i file `memory/project_*.md` restano la
-fonte di verità sullo *stato tra sessioni diverse* (sopravvivono da soli, senza
-che nessuno debba ricordarsi di leggerli). Il `PIANO_<feature>.md` è la *mappa
-operativa del lavoro in corso*. Quando la feature è deployata: si aggiorna la
-memoria `project_*` con l'esito e **si elimina** il file di piano (vedi
-`docs/storico/README.md`). Non tenere due fonti di verità sullo stesso stato.
+I `memory/project_*.md` restano la fonte di verità sullo stato **tra** sessioni;
+il piano è la mappa operativa del lavoro **in corso**. A feature deployata:
+aggiorna la memoria, **elimina** il piano. Mai due fonti sullo stesso stato.
+
+⚠️ **Si aggiorna una sessione alla volta**: due sessioni sullo stesso file si
+sovrascrivono senza avviso.
 
 ---
 
-## 3. Modello consigliato per tipo di fase
+## 3. "A che punto siamo?" si risponde in cinque righe
 
-Il criterio "modello giusto per il compito" è già in uso nei sub-agenti
-(`golive-certificatore` su Opus, `categorization-reviewer` su Sonnet). Si
-estende alle fasi di sviluppo ordinario:
+1. **Una riga secca**: finito / manca X / bloccato su Y.
+2. **Al massimo 3 punti**, uno per cosa aperta, una riga ciascuno.
+3. **Una sola domanda**, se serve una sua decisione.
+4. **«Vuoi il dettaglio?»** — e fermati lì.
 
-**Il default è Opus. Sonnet è l'eccezione**, non il regime normale
-dell'implementazione. Non esiste la regola "si pianifica con Opus e si esegue con
-Sonnet": va deciso fase per fase guardando cosa quella fase contiene davvero.
+**Massimo ~10 righe. Niente tabelle, blocchi di codice, nomi di file o funzioni**,
+salvo che il nome *sia* la risposta.
 
-| Tipo di fase | Modello | Sforzo | Perché |
+Il criterio non è «quanto so», è **cosa gli serve per decidere il prossimo passo**.
+Se una frase non cambia cosa farà nei prossimi cinque minuti, si taglia — anche se
+è vera, anche se l'hai appena misurata.
+
+**Non fare**: ricostruire il ragionamento; citare percorsi con numero di riga;
+spiegare *perché* una cosa non è un problema invece di dire che non lo è; elencare
+cosa non hai fatto; premettere l'autocritica. Un tuo errore si corregge in **mezza
+riga**, non in un paragrafo. Vale **in ogni sessione**, anche quando non lo ricorda.
+
+---
+
+## 4. Fine planning: riepilogo non tecnico + modello per fase
+
+**Sempre**, a ogni `ExitPlanMode`: un riepilogo breve in linguaggio **non tecnico**,
+comprensibile senza aver letto il piano. **E subito sotto questa tabella**, una
+riga per fase anche quando la fase è una sola:
+
+| Fase | Cosa fa | Modello | Sforzo |
 |---|---|---|---|
-| Pianificazione, design, decisioni architetturali | Opus | **`ultrathink`** | Ragionamento, trade-off, si sbaglia meno dove costa di più |
-| Audit di una dimensione, debug non ovvio | Opus | **`ultrathink`** | Serve giudizio; è la fase dove i difetti veri si nascondono |
-| Fix su regola di dominio (MOL, categorizzazione, auth) | Opus | **`ultrathink`** | Un errore qui tocca i dati veri di 7 clienti |
-| UI nuova da zero, modifiche al worker, scelte di interazione | Opus | normale | È progettazione anche se il piano la chiama "implementazione" |
-| Implementazione di un piano già deciso, con qualche scelta locale | Opus | normale | Le micro-decisioni restano, il disegno no |
-| Trascrizione: il piano dice file, riga e cosa sostituire | Sonnet | normale | Più economico, il ragionamento è già stato fatto |
-| Ricerca/scan ampia read-only nel codice | sub-agente `Explore` | — | Non consuma il contesto della sessione principale |
+| 1 | *(una riga, in italiano corrente)* | Opus | `ultrathink` |
 
-**Come si attiva lo sforzo esteso**: si scrive la parola **`ultrathink`** nel
-messaggio che apre la fase (non è un'impostazione da menu). Es.: *«ultrathink —
-apri la dimensione margini/ secondo il prompt»*. Senza quella parola la fase gira
-a sforzo normale, anche su Opus.
+Se una fase è `ultrathink`, scrivi accanto **in mezza riga perché** («tocca il
+MOL», «apre una dimensione nuova»): è l'unico modo per accorgersi se lo si sta
+mettendo ovunque per abitudine. Con più fasi, indica quali stanno nella stessa
+sessione: cambiare modello a metà sessione non si può.
 
-**Due test secchi, in quest'ordine.**
-1. *Quale modello*: la fase richiede **decisioni** (cosa togliere, dove collocare
-   una funzione, come si comporta un'interazione)? → Opus, anche se il piano è
-   dettagliato. Richiede **trascrizione** di decisioni già prese? → Sonnet. Nel
-   dubbio, Opus.
-2. *Quanto sforzo*: se sbagliare quella fase **si vede sui dati dei clienti** o
-   **costa una sessione di ripianificazione** → `ultrathink`. Se sbagliare
-   significa un test rosso che te lo dice subito → normale.
+### Quale modello, quanto sforzo
 
-`ultrathink` costa tempo e token: metterlo ovunque è come non metterlo da nessuna
-parte, perché smetti di guardare la colonna. Sta sulle fasi di apertura e di
-giudizio, non su quelle di esecuzione.
+**Il default è Opus. Sonnet è l'eccezione.** Si decide fase per fase.
 
-> **Perché questa sezione è stata riscritta (31/7/2026).** La versione precedente
-> presentava "esecuzione meccanica → Sonnet" come binario, con la caveat in nota.
-> Applicata alla lettera su "Ristrutturazione Personale" (fasi 0-5) ha prodotto
-> fasi ciascuna corretta in sé e incoerenti fra loro: una fase ha reintrodotto un
-> toggle che un commento nel codice dichiarava già ridondante, un'altra ha
-> consegnato 5 endpoint funzionanti senza la UI per raggiungerli. Il risultato —
-> "tutte le funzioni ci sono ma la pagina è incasinata" — è costato una sessione
-> intera di audit e ripianificazione. Il code-reviewer di fine fase non intercetta
-> questa classe di problemi: verifica la correttezza *dentro* la fase, mai la
-> coerenza *fra* le fasi.
-
----
-
-## 4. Fine fase ≠ deploy
-
-**Il completamento di una fase non autorizza mai un push.** E poiché
-**è il push a deployare** (§0, `CLAUDE.md`), il vincolo di finestra oraria si
-applica lì: sera/notte/mattina presto, dichiarata esplicitamente da Mattia *in
-sessione*. Vedi `feedback_deploy_solo_fuori_orario` in memoria.
-
-Una checklist tutta `[x]` significa "pronto e committato **su `main` locale**",
-non "spingi in produzione". Col ciclo ad accumulo la domanda va posta **una
-volta per ciclo**, non a ogni fase: le fasi si chiudono in silenzio, si
-spedisce insieme.
-
-Commit **atomico a fine fase**: una fase conclusa = un commit che compila e
-passa i test, così il piano e la git history raccontano la stessa storia e una
-sessione futura può riprendere da un punto pulito.
-
----
-
-## 5. Questo workflow affianca l'hook, non lo sostituisce
-
-`scripts/claude_hook_promemoria.py` (PostToolUse su Edit|Write) risolve un
-problema **diverso**: ricorda le *trappole di dominio* nell'istante in cui
-tocchi un file critico (bumpa `_BRIEFING_CODE_VERSION`, `/m` non è responsive,
-niente `__getattr__` nei router…). Continua a fare quello, sempre.
-
-Questo documento risolve l'oblio delle *decisioni concordate* e il costo/token
-delle sessioni lunghe. Sono leve complementari: l'hook parla nel momento
-dell'azione, il piano/memoria conservano l'intento tra sessioni. Nessuno dei due
-va rimosso in favore dell'altro.
-
-**I due hook `Stop`, come sono tarati oggi** (rivisti il 30/8/2026 — prima
-giravano a pieno regime a *ogni* chiusura di sessione, anche per un solo `.md`):
-
-| Hook | Quando agisce | Costo misurato |
+| Tipo di fase | Modello | Sforzo |
 |---|---|---|
-| `claude_hook_test_gate.py` | solo `.md` → **niente**; lavoro in corso → **solo i test collegati ai file toccati**; `.pre_merge`, `main`, un file globale (`conftest.py`, `requirements.txt`, `pytest.ini`…) o un file non mappabile (es. una migration `.sql`) → **suite completa** | ~20 s invece di ~140-260 s (30/8, modifica a `auth_service.py`: 13 file di test, 153 test). I tempi assoluti dipendono dalla macchina; l'ordine di grandezza no |
-| `claude_hook_reviewer_gate.py` | > **8** file non-test **o** > **400** righe nette **o** path sensibile — misurati sul **merge-base con `main`**, cioè su tutto il lavoro accumulato | scatta una volta per ciclo, non una per sessione |
+| Pianificazione, design, decisioni architetturali | Opus | `ultrathink` |
+| Audit di una dimensione, debug non ovvio | Opus | `ultrathink` |
+| Fix su regola di dominio (MOL, categorizzazione, auth) | Opus | `ultrathink` |
+| UI nuova, modifiche al worker, scelte di interazione | Opus | normale |
+| Implementazione di un piano già deciso | Opus | normale |
+| Trascrizione: il piano dice file, riga e cosa sostituire | Sonnet | normale |
+| Ricerca/scan ampia read-only | sub-agente `Explore` | — |
 
-Se il gate **non riesce a misurare** (base di confronto irrisolvibile, git in
-errore) blocca dicendolo, invece di lasciar passare in silenzio: "non lo so" e
-"niente da rivedere" non sono la stessa cosa.
+**Due test secchi.** *Quale modello*: la fase richiede **decisioni**? → Opus, anche
+se il piano è dettagliato. Solo **trascrizione**? → Sonnet. Nel dubbio, Opus.
+*Quanto sforzo*: se sbagliare **si vede sui dati dei clienti** o costa una sessione
+di ripianificazione → `ultrathink`. Se sbagliare significa un test rosso che te lo
+dice subito → normale.
 
-Le soglie precedenti (3 file / 150 righe, misurate sull'ultimo commit)
-scattavano su quasi ogni sessione: un gate che scatta sempre viene saltato per
-riflesso invece che letto. I **path sensibili restano senza soglia** — un fix
-di tre righe su `auth_service.py` o `ai_service.py` merita la review quanto un
-refactor da 400.
+`ultrathink` si attiva scrivendo la parola nel messaggio che apre la fase. Metterlo
+ovunque è come non metterlo da nessuna parte: smetti di guardare la colonna.
 
 ---
 
-## 5bis. Una cosa alla volta, chiusa davvero prima della successiva
+## 5. Una cosa alla volta, chiusa davvero
 
-**Regola di Mattia, 31/8/2026.** Una dimensione/fase si apre solo quando la
-precedente è **completamente chiusa**. Niente strascichi, niente appunti in
-giro, niente «lo finiamo dopo».
+Una dimensione/fase si apre solo quando la precedente è **completamente chiusa**.
+Niente strascichi, niente «lo finiamo dopo».
 
 **Chiusa davvero** significa tutte e cinque, non tre su cinque:
 
-1. Il codice fa quello che deve, provato **per mutazione** (§7), non solo
-   «i test passano».
-2. Il lavoro è **committato** — non `git add`-ato e basta. Il 30/8 il
-   `code-reviewer` ha bloccato una chiusura proprio per questo.
-3. **Verbale** scritto nello STORICO del ciclo, con la data.
-4. **Contatore** `DOCUMENTAZIONE/AUDIT_COPERTURA.md` aggiornato: la riga si
-   sposta (🔴 → 🔍 → 📖) e le righe si **ri-misurano**, non si copiano.
-5. **`python scripts/check_documentazione.py` pulito**, e il piano eliminato o
-   archiviato secondo §6.
+1. Il codice fa quello che deve, **provato per mutazione** (§6).
+2. Il lavoro è **committato** — non `git add`-ato.
+3. **Verbale** nello STORICO del ciclo, con la data. **Tetto 40 righe.**
+4. **Stato del ciclo aggiornato**: la dimensione si sposta in «cosa è chiuso», e
+   **ogni voce del tuo "non fatto" entra nei residui aperti**.
+5. **Contatore `AUDIT_COPERTURA.md` ri-misurato** (non copiato) e
+   `python scripts/check_documentazione.py` pulito.
 
-**Perché serve scriverlo.** Il 31/8 c'erano due piani in `docs/piani/`: uno con
-tutte e 7 le fasi spuntate e il codice già in produzione da giorni, l'altro che
-ripeteva regole superate («un solo branch di lavoro», «merge = deploy») e le
-avrebbe rimesse in circolo alla prima sessione che lo apriva. Nessuno dei due
-faceva danno di per sé: il danno è che una sessione nuova non sa **quali** dei
-documenti che trova sono ancora veri.
+**Eseguili con `/chiusura-feature`**, che li fa tutti e cinque in ordine. Un lavoro
+che non sta in una sessione non è un'eccezione: si divide in fasi, e **ogni fase**
+rispetta i cinque punti.
 
-**Un lavoro che non sta in una sessione** non è un'eccezione a questa regola: si
-divide in fasi, e **ogni fase** rispetta i 5 punti sopra. Quello che passa alla
-sessione dopo è il prompt di consegna, non un pezzo di lavoro a metà.
+**Fine fase ≠ deploy.** Una checklist tutta `[x]` significa «pronto e committato su
+`main` locale». Col ciclo ad accumulo la domanda si pone **una volta per ciclo**.
+
+**Il prompt della prossima sessione non è un passo della chiusura**: si scrive solo
+se Mattia lo chiede (`/salva-stato`).
+
+**Fine implementazione**: confronto esplicito col piano approvato. Deviazioni →
+elencate col motivo. Nessuna deviazione → dichiararlo, non darlo per scontato.
 
 ---
 
-## 6. Manutenzione della documentazione: automatica, non su richiesta
+## 6. Come si conduce un ciclo di audit
 
-**Regola vincolante, non un consiglio**: quando una fase/feature/piano si
-chiude (checklist tutta `[x]`, `docs/piani/PIANO_<feature>.md` eliminato
-secondo §2), prima di considerare il lavoro finito esegui:
+Il **metodo** vive qui; lo **stato di un ciclo** vive nel suo documento (oggi
+`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09.md`). Non duplicare: una regola scritta
+solo nel documento di stato sparisce quando il ciclo viene archiviato.
 
-```powershell
+Il documento di stato è in **due file**: quello principale dice *cosa manca* e
+resta leggibile in un minuto; il `_STORICO.md` raccoglie i verbali. Il dettaglio va
+**sempre** nello storico.
+
+- **Apri con `/apertura-sessione`**: controlli di sessione, stato, residui, e la
+  misura a DB dell'area **prima** di sceglierla.
+- **Profondità minima**: una passata read-only + una di remediation. Se la
+  remediation scrive codice, **`code-reviewer` prima di dichiarare chiusa** — non
+  opzionale.
+- **Riverifica i numeri con un metodo diverso** da quello che li ha prodotti:
+  perimetro, conteggio dei finding, gravità. Un numero preso per buono dall'agente
+  che l'ha prodotto non è verificato, è solo scritto.
+- **Una dimensione su perimetro parziale è `parziale`, non `chiusa`.**
+- **Un ciclo si chiude a copertura completa**, non alla prima passata verde.
+- **I buchi di copertura test trovati durante un audit non si chiudono in coda alla
+  stessa sessione**: sono scrittura, non audit. Si pianificano a parte.
+
+### Prova per mutazione
+
+Si rimuove il fix su **copia in scratchpad** (mai sul file del branch) e si
+controlla che i test tornino rossi. Un test che non fallisce quando il difetto
+torna non è una rete. Riporta il bilancio e **perché** i sopravvissuti
+sopravvivono.
+
+⚠️ Se il pattern non esiste nel sorgente non hai mutato niente: «sopravvissuto» non
+misura nulla.
+
+---
+
+## 7. Manutenzione della documentazione
+
+Quando una fase/feature/piano si chiude:
+
+```bash
 python scripts/check_documentazione.py
 ```
 
-Poi agisci **subito, senza chiedere conferma**, sui casi ovvi che riguardano
-il lavoro appena chiuso:
-- un documento marcato chiuso/deployato il cui contenuto è già confluito in
-  memoria (`memory/project_*.md`) o in un commit → **elimina**
-- un documento chiuso ma con valore predittivo futuro (pattern di debug,
-  causa radice non ovvia) → **sposta in `docs/storico/`** seguendo il
-  criterio di `docs/storico/README.md`
-- un link rotto generato dal tuo stesso lavoro (es. hai rinominato/spostato
-  un file citato altrove) → **ripara** il riferimento
-- un documento nuovo che hai creato e che rientra nelle categorie di
-  `DOCUMENTAZIONE/MAPPA_TECNICA.md` §6 → **aggiungi la riga all'indice**
-  nello stesso momento, non "poi"
+Poi agisci **subito, senza chiedere conferma**, sui casi ovvi del lavoro appena
+chiuso: documento chiuso il cui contenuto è già in memoria o in un commit →
+**elimina**; documento chiuso con valore predittivo → **`docs/storico/`**; link
+rotto dal tuo lavoro → **ripara**; documento nuovo → **aggiungi all'indice** di
+`MAPPA_TECNICA.md` §6 ora, non "poi".
 
-Segnala invece (non decidere da solo) solo quando è dubbio se un documento
-abbia ancora valore — es. un piano chiuso che non hai scritto tu in questa
-sessione e di cui non conosci il contesto completo.
+**Segnala invece di decidere** quando è dubbio — es. un piano che non hai scritto tu.
 
-**Perché non è un hook automatico**: nessun evento del sistema (Edit, Stop,
-fine sessione) può distinguere da solo "una feature si è appena chiusa" da
-"ho appena risposto a una domanda" — quel giudizio richiede leggere il
-contesto della conversazione, cosa che solo la sessione stessa può fare. Per
-questo la regola è comportamentale (in questo file, sempre in contesto),
-rinforzata da uno script che rende il controllo meccanico e verificabile
-invece che "a sensazione". Puoi anche lanciarlo tu in qualunque momento per
-un controllo generale, indipendente da un lavoro specifico.
+Non è un hook perché nessun evento tecnico distingue «una feature si è chiusa» da
+«ho risposto a una domanda»: quel giudizio richiede il contesto della conversazione.
 
 ---
 
-## 7. Come si conduce un ciclo di audit
+## 8. Gli hook, e come sono tarati
 
-Il **metodo** vive qui (persiste anche quando un ciclo si chiude e il suo
-documento va in `docs/storico/`). Lo **stato di un ciclo specifico** (quali
-dimensioni sono verdi, con che esito, cosa resta aperto) vive nel documento
-del ciclo — oggi `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09.md` (il 2026-07 e il 2026-08 sono
-chiuso, in `docs/storico/`). Non
-duplicare: se una regola di processo finisce scritta solo dentro il documento
-di stato, sparisce col documento quando viene archiviato.
+| Hook | Quando agisce |
+|---|---|
+| `claude_hook_test_gate.py` | solo `.md` → niente; lavoro in corso → i test dei file toccati; `.pre_merge`/`main`/file globale → suite completa |
+| `claude_hook_reviewer_gate.py` | > 8 file non-test, > 400 righe nette, o path sensibile — misurati sul merge-base con `main`. Avvisa anche se molto codice cambia senza che stato/contatore siano toccati |
+| `claude_hook_promemoria.py` | su Edit/Write: ricorda le trappole di dominio nell'istante in cui tocchi un file critico |
+| `claude_hook_db_guard.py`, `branch_guard.py`, `registra_sessione.py`, `precompact_snapshot.py` | protezioni su DB, branch e continuità di sessione |
 
-Il documento di stato è in **due file**, e vanno tenuti distinti: quello
-principale dice *cosa manca* e deve restare leggibile in un minuto; il
-`..._STORICO.md` a fianco raccoglie il dettaglio verificato di ogni passata e
-le lezioni operative. Il dettaglio di una passata va **sempre** nello storico:
-se torna nel file di stato, quello ridiventa illeggibile (è già successo — a
-fine ciclo 2026-07 una singola cella era arrivata a 16.000 caratteri).
+I **path sensibili non hanno soglia**: un fix di tre righe su `auth_service.py` o
+`ai_service.py` merita la review quanto un refactor da 400. Se un gate **non riesce
+a misurare**, blocca dicendolo: «non lo so» e «niente da rivedere» non sono la
+stessa cosa.
 
-**Profondità minima per dimensione**: una passata read-only (agente
-`oneflux-audit` o manuale) + una sessione di remediation. **Se la remediation
-scrive codice, `code-reviewer` sul diff cumulativo prima di considerare la
-dimensione chiusa** — non opzionale. Nel ciclo 2026-07, ogni volta che è
-girato ha trovato un difetto reale che i test verdi non vedevano (cache non
-invalidata, un'invalidazione che rompeva se stessa, uno streak azzerato da un
-fallback finto): non è stato un caso, il pattern si è ripetuto su ogni singola
-passata in cui è stato usato.
-
-**Riverifica i numeri con un metodo diverso da quello che li ha prodotti**
-prima di fidartene — sia il perimetro dichiarato ("~5000 righe" può essere
-1/3 del vero), sia il conteggio di un finding ("39 route" può mancarne 9), sia
-la gravità (un HIGH può essere un MEDIUM se il dato che lo aggraverebbe non è
-mai raggiungibile in produzione, e viceversa). Un numero preso per buono
-dall'agente che l'ha prodotto non è verificato, è solo scritto.
-
-**Una dimensione non è chiusa solo perché non ha errori nei findings
-elencati**: se il perimetro dichiarato non copre tutto il codice della
-dimensione (es. metà di un file grande mai letta), la dimensione resta 🟡 o
-va segnalato il gap esplicitamente — non arrotondare a 🟢 un perimetro
-parziale.
-
----
-
-## 8. Fine implementazione: riepilogo scostamenti dal piano
-
-Al termine dell'esecuzione (tutte le fasi di un piano completate, o una fase
-singola chiusa), confronto esplicito contro quanto approvato in planning:
-
-- se sono state necessarie deviazioni (fase saltata, approccio cambiato in
-  corsa, scope ridotto o ampliato) → elencarle col motivo, non lasciarle
-  implicite nel diff.
-- se nessuna deviazione → dichiararlo esplicitamente ("eseguito come
-  pianificato, nessuno scostamento"), non dare per scontato che sia ovvio.
-
-Questo è distinto dal verdetto di `code-reviewer` (§7, quello guarda
-correttezza/chiusura reale): qui si confronta *cosa è stato fatto* con *cosa
-era stato deciso*, non la qualità del codice in sé.
+L'hook parla nel momento dell'azione; il piano e la memoria conservano l'intento
+tra sessioni. Sono leve complementari.
 
 ---
 
 ## 9. Problema segnalato da un cliente: prima cerca, poi analizzi
 
-Prima di avviare un'analisi da zero su un problema riportato da un cliente,
-cerca se è già stato riscontrato: `memory/project_*.md` (fonte di verità
-sullo stato tra sessioni, §2) e `DOCUMENTAZIONE/` (inclusi
-`docs/storico/*.md` per pattern di debug già chiusi). Un problema già
-diagnosticato in passato — anche su un cliente diverso — spesso ha la stessa
-causa radice (vedi `docs/storico/README.md` per esempi già capitati su
-Invoicetronic/SDI). Solo se la ricerca non trova nulla di pertinente, parti
-da un'analisi nuova.
+Prima di un'analisi da zero, cerca se è già stato riscontrato: `memory/project_*.md`
+e `DOCUMENTAZIONE/` (inclusi i `docs/storico/*.md`). Un problema già diagnosticato —
+anche su un cliente diverso — spesso ha la stessa causa radice.
 
-**Il documento di stato si aggiorna una sessione alla volta**, mai in
-parallelo (due sessioni sullo stesso file si sovrascrivono senza avviso), e
-ogni sessione scrive **solo** la propria riga/dimensione con l'esito reale
-verificato in quella sessione — non ricostruire a memoria l'esito di una
-sessione altrui.
+---
 
-**Buchi di copertura test scoperti durante un audit non si chiudono in coda
-alla stessa sessione**: si dichiarano nel documento come lavoro a sé (sono
-scrittura, non audit) e si pianificano come sessione propria.
+## 10. Perché queste regole — il racconto
 
-**Un ciclo si dichiara chiuso solo a copertura completa del perimetro**, non
-alla prima passata verde su ogni dimensione: se anche solo alcune dimensioni
-hanno avuto una sola passata senza `code-reviewer`, il ciclo resta aperto
-finché non ricevono lo stesso scrutinio delle altre. Vedi
-`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09.md` per l'obiettivo di copertura
-corrente.
+Non sono istruzioni: sono gli incidenti che le hanno generate. Si leggono se una
+regola sembra arbitraria, non prima di lavorare.
 
-## 10. Sessioni parallele sulla stessa directory: branch short-lived
+**§1, l'accumulo.** Nessuna regola aveva mai imposto branch-e-PR: era una
+consuetudine auto-alimentata. Al 30/8/2026 il repo aveva **19 branch remoti** (15
+già dentro `main`) e ~35 locali risalenti a maggio. E, dato che spedire = deploy,
+una richiesta di autorizzazione per ogni intervento: 5 merge il 28/8 fra le 12:44 e
+le 16:49, in piena fascia di servizio. La versione col branch condiviso non bastava
+perché ogni sessione che non ne sapeva ne apriva uno suo: il 31/8 il lavoro era in
+due posti, e la sera sarebbero stati due merge in ordine obbligato.
 
-Più sessioni Claude Code lavorano spesso in contemporanea su
-`/workspaces/ONEFLUX` — niente worktree per sessione, si resta su una sola
-directory per scelta. Questo significa che `HEAD` è condiviso: una sessione
-che cambia branch lo cambia sotto tutte le altre. Due hook mitigano il
-rischio tecnico (`claude_hook_registra_sessione.py` su SessionStart,
-`claude_hook_branch_guard.py` su PreToolUse — vedi i docstring per il
-dettaglio), ma la disciplina sul ciclo di vita dei branch resta la difesa
-principale:
+**§1, il parallelo.** Le sessioni chiedevano a Mattia cosa fare dei commit altrui —
+cioè conferma della normalità — abbastanza spesso da rendere necessaria la regola
+(1/9/2026). E una segnalazione vera («c'è una migration non committata») ha prodotto
+la mossa sbagliata perché non diceva **di chi era**: Mattia ha letto una
+dimenticanza della sessione che parlava.
 
-- **Naming**: prefisso per intento, coerente con quanto già in uso —
-  `fix/`, `feat/`, `docs/`, `audit-*`.
-- **Durata massima consigliata: 3 giorni.** Un branch più vecchio, o più di
-  20 commit avanti a `main`, riceve un avviso automatico a inizio sessione
-  (non un blocco: un audit lungo legittimo resta un'eccezione dichiarata,
-  non silenziosa).
-- **Merge tempestivo**: appena la CI è verde, mergia — non lasciare un
-  branch pronto "in sospeso" oltre la sessione che lo ha aperto senza un
-  motivo esplicito.
-- **Pulizia**: `/pulisci-branch` elenca i branch locali categorizzati
-  (mergiati/attivi in un'altra sessione/da verificare) senza eliminare nulla
-  da solo — usalo quando i branch iniziano ad accumularsi.
+**§3, le cinque righe.** Il 31/8, su una domanda da tre righe di risposta, sono
+arrivati: il ragionamento completo, i percorsi con numero di riga, la spiegazione
+del perché una cosa non era un problema, e l'autocritica in cima. Tutto corretto,
+tutto fuori posto.
 
-Vale anche per `docs/piani/PIANO_*.md`: **si aggiorna una sessione alla
-volta** (stessa regola di §9, generalizzata a qualunque piano, non solo al
-documento di audit) — `claude_hook_promemoria.py` lo ricorda quando un piano
-viene toccato.
+**§4, il modello.** La versione precedente dava «esecuzione meccanica → Sonnet» come
+regola binaria. Applicata alla lettera su «Ristrutturazione Personale» ha prodotto
+fasi ciascuna corretta e incoerenti fra loro: una ha reintrodotto un toggle che un
+commento dichiarava ridondante, un'altra ha consegnato 5 endpoint senza la UI per
+raggiungerli. «Tutte le funzioni ci sono ma la pagina è incasinata» è costato una
+sessione di ripianificazione. Il `code-reviewer` non intercetta questa classe:
+verifica la correttezza *dentro* la fase, mai la coerenza *fra* le fasi.
+
+**§5, una cosa alla volta.** Il 31/8 c'erano due piani in `docs/piani/`: uno con
+tutte le fasi spuntate e il codice in produzione da giorni, l'altro che ripeteva
+regole superate («un solo branch di lavoro», «merge = deploy») e le avrebbe rimesse
+in circolo alla prima sessione che lo apriva. Il danno non è il file: è che una
+sessione nuova non sa **quali** documenti sono ancora veri.
+
+**§5, i cinque punti.** Al 2/9/2026 la skill di chiusura ne eseguiva **due**: chi la
+invocava credeva di aver chiuso e aveva saltato verbale, residui e contatore. Sei
+sessioni di fila hanno chiuso una dimensione senza aggiornare la roadmap; il file di
+stato è rimasto indietro di tre giorni e nessun controllo lo vedeva.
+
+**§6, la riverifica.** Nel ciclo 2026-07 è caduta 8 volte una severità ereditata;
+nel 2026-08 il `code-reviewer` ha trovato un errore in **ogni** fase; nel 2026-09
+le ipotesi del prompt di sessione erano false in **5 casi su 10**, e un'area
+indicata da un prompt aveva 0 righe a DB.
+
+**§8, le soglie.** Le precedenti (3 file / 150 righe, misurate sull'ultimo commit)
+scattavano su quasi ogni sessione. **Un gate che scatta sempre viene saltato per
+riflesso invece che letto** — ed è il motivo per cui ogni soglia qui è tarata
+sull'evitare il falso positivo, non sul massimizzare la copertura.
