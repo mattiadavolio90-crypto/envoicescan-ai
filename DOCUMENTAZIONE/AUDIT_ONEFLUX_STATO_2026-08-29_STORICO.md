@@ -1617,3 +1617,88 @@ ternario originale ed è fermato da una guardia strutturale).
 > La lezione che vale oltre il caso: nessuno stava cercando quel bug. È emerso perché
 > l'owner ha chiesto di **guardare i clienti veri** invece di fidarsi del caso singolo
 > nello screenshot — dove infatti la Home diceva il vero.
+
+## 2/9/2026 sera — Notifiche: un pulsante che non c'era, e uno che portava nel posto sbagliato
+
+### La misura ha scelto l'area, non il prompt
+
+Il prompt della sessione indicava di **ri-misurare la priorità invece di ereditarla**, e
+la misura ha spostato la scelta due volte. Il documento di ieri escludeva l'agenda
+(`turni_personale` 0 righe); contando le tabelle delle aree rimaste è emerso che
+`notification_inbox` ha **67 righe, 5 utenti distinti, 5 negli ultimi 7 giorni**, con
+scritture fino all'1/9. `notifiche/` era l'unica area candidata **viva**.
+
+### Il difetto: la notifica diceva di andare in un posto, senza il modo di andarci
+
+`ctaDi` (`lib/notifiche-shared.ts`) traduce `action_page` in una rotta Next e torna
+`null` quando non sa mappare — contratto voluto: meglio nessun pulsante di un 404. Ma la
+mappa conosceva solo i path Streamlit `pages/*.py`, **non i nomi di pagina**. A DB:
+33 righe con `action_page='Agenda'` (topic `incasso_mancante`), scritte fino all'1/9.
+La notifica «Manca l'incasso di ieri» arrivava al ristoratore **senza il pulsante**.
+
+L'origine non era il frontend: il codice scriveva due grafie per lo stesso concetto —
+`fastapi_worker.py` `/agenda` e `routers/scadenziario.py` `"Agenda"`.
+
+> **I test c'erano già e passavano.** Coprivano `ctaDi` con input **inventati**
+> (`pages/99_inesistente.py`), mai con un valore presente nel DB. Un test scritto
+> guardando la mappa invece dei dati misura la mappa, non la realtà. Stessa famiglia del
+> mock generoso: la copertura sembra esserci, il difetto passa.
+
+### L'errore mio, e chi l'ha preso
+
+La prima stesura mappava `Agenda → /agenda` e correggeva la sorgente allo stesso valore.
+Il `code-reviewer` l'ha bloccata: **gli incassi non si inseriscono più in Agenda**.
+`(app)/agenda/` non contiene nemmeno la stringa «incass» (i layer sono
+tutto/appuntamenti/spese/personale); si inseriscono da Margini → Calcolo su desktop e da
+«Movimenti» (ex Turni) su mobile.
+
+Il pulsante sarebbe comparso — e non avrebbe fatto fare la cosa chiesta. Peggio: avrei
+**creato** una divergenza dichiarando di chiuderne una, perché per lo stesso topic il
+briefing (`daily_briefing_service.py`) e la notifica live (`fastapi_worker.py:5573`)
+usano `/margini` da sempre.
+
+Tre errori nella stessa stesura, tutti verificati prima di accettarli:
+
+1. **Destinazione sbagliata** — corretta in `/margini` nei due punti.
+2. **Gemello identificato male**: avevo letto `fastapi_worker.py:5385` come la versione
+   giusta della stessa notifica; è `appuntamento_imminente`, un'altra. Il gemello vero è
+   `:5573`, che scriveva `/margini`.
+3. **Censimento incompleto**: avevo scritto «gli unici due `action_page` letterali del
+   codice». Sono nove: sette stanno in `upload_handler.py:2051-2145`. L'affermazione era
+   finita in una **docstring**, dove sarebbe sopravvissuta come verità.
+
+> Il valore della review non è stato trovare un bug nel codice: è stato trovare che
+> **la mia misura di partenza era giusta e la mia conclusione no**. Il dato («33 righe
+> senza pulsante») era esatto; la destinazione l'ho dedotta dal nome del campo invece che
+> da dove sta la funzione. Un `grep "incass"` sulla cartella costava dieci secondi.
+
+Ripresa anche una cifra: applicando `expires_at` come fa il frontend, le righe `Agenda`
+**realmente visibili** sono 3 su 2 utenti, non 11 su 3. Le altre erano già scadute.
+
+### Cosa protegge il fix adesso
+
+Il mutante che rimette `agenda: "/agenda"` — cioè **esattamente l'errore commesso** —
+viene ucciso da un test. L'errore non può tornare in silenzio.
+
+### La passata di copertura
+
+Estratte da `notifiche-list.tsx` le tre funzioni pure prigioniere degli `useMemo`
+(`visibili`, `contaPerFiltro`, `filtraPerSeverity`): erano già pure, ma dentro un
+componente React l'harness non le raggiunge. Comportamento invariato, provato per
+**oracolo** contro la versione a HEAD: 2.340 casi (severity × filtro × sottoinsiemi di
+`dismissed`), 0 divergenze, **validato sui due lati** (rompendo l'oracolo: 740 e 185
+divergenze — senza il secondo lato non si saprebbe se misura qualcosa).
+
+Congelato il merge `info`+`success`: `success` **non esiste nei dati veri**, quindi
+nessun dato lo proteggerebbe da una "correzione".
+
+Mutazione: **18 mutanti, 17 uccisi**. L'unico sopravvissuto è il commento di controllo,
+e doveva sopravvivere. Test del file 20 → 34. Suite 12.493 verdi, `tsc` 0, `next build`
+ok, nessun drift OpenAPI.
+
+### Limite accettato, non aggirato
+
+`incasso_mancante` nasce **sul mobile**, dove `hideCta` nasconde le CTA che portano a
+viste desktop: lì il pulsante resta nascosto. È scritto nel codice accanto a `hideCta`,
+perché la prossima sessione non lo scopra da capo — un deep-link mobile va **aggiunto**,
+non ottenuto aggirando `hideCta`.
