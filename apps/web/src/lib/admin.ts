@@ -1,3 +1,5 @@
+import { PIANI } from "@/lib/piani";
+
 export type Sede = {
   id: string;
   nome_ristorante: string;
@@ -48,12 +50,12 @@ export type ClienteDettaglio = Cliente & {
   chat_ai_enabled: boolean;
 };
 
-export const PIANO_LABEL: Record<string, string> = {
-  free: "FREE",
-  base: "BASE",
-  plus: "PLUS",
-  pro: "PRO",
-};
+// Le etichette vivono in lib/piani.ts insieme a quelle cliente: un solo record
+// per piano, cosi' le due rese non possono divergere. Ri-esportata per non
+// toccare i call-site admin.
+export const PIANO_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(PIANI).map(([k, v]) => [k, v.labelAdmin]),
+);
 
 export const PIANO_COLOR: Record<string, string> = {
   free: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",

@@ -20,18 +20,14 @@ import {
 import { cn } from "@/lib/utils";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { erroreLocalePassword, PASSWORD_HINT } from "@/lib/password-policy";
-
-const PIANO_LABEL: Record<string, string> = {
-  base: "Base",
-  plus: "Plus",
-  pro: "Pro",
-};
-
-const PIANO_PREZZO: Record<string, string> = {
-  base: "€39/mese + IVA",
-  plus: "€59/mese + IVA",
-  pro: "€79/mese + IVA",
-};
+import { etichettaPiano, prezzoPiano } from "@/lib/piani";
+import {
+  statoUsageBar,
+  statoChatAi,
+  confermaSvuotamentoValida,
+  confermaEliminazioneValida,
+  type LivelloUso,
+} from "@/lib/impostazioni-account";
 
 type AccountData = {
   email: string;
@@ -51,6 +47,10 @@ type AccountData = {
   is_admin: boolean;
 };
 
+// `new Date(iso)` su una data NUDA ("2026-06-01") la parserebbe a mezzanotte UTC
+// e in fuso negativo mostrerebbe il giorno prima. Qui e' sicuro perche' l'input
+// e' sempre un timestamp completo con offset (users.created_at / last_login).
+// Se un giorno ricevesse un YYYY-MM-DD, usare formatData di lib/format.ts.
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("it-IT", {
@@ -59,6 +59,12 @@ function fmtDate(iso: string | null): string {
     year: "numeric",
   });
 }
+
+const COLORE_USO: Record<LivelloUso, string> = {
+  critico: "bg-red-500",
+  attenzione: "bg-amber-500",
+  ok: "bg-primary",
+};
 
 function UsageBar({
   label,
@@ -71,9 +77,8 @@ function UsageBar({
   limite: number;
   avviso: string;
 }) {
-  const pct = limite > 0 ? Math.min(100, Math.round((usate / limite) * 100)) : 0;
-  const color =
-    pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-primary";
+  const { pct, livello, mostraAvviso } = statoUsageBar(usate, limite);
+  const color = COLORE_USO[livello];
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between text-sm">
@@ -85,7 +90,7 @@ function UsageBar({
       <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      {pct >= 90 && (
+      {mostraAvviso && (
         <p className="text-xs text-red-600 dark:text-red-400">{avviso}</p>
       )}
     </div>
@@ -282,7 +287,7 @@ function ZonaPericolosa() {
               <Button
                 variant="destructive"
                 onClick={handleSvuota}
-                disabled={loading || conferma.trim() !== "SVUOTA"}
+                disabled={loading || !confermaSvuotamentoValida(conferma)}
               >
                 {loading ? "Svuotamento..." : "Svuota definitivamente"}
               </Button>
@@ -403,7 +408,7 @@ function PrivacyGdprCard() {
                 <Button
                   variant="destructive"
                   onClick={handleElimina}
-                  disabled={loading || conferma.trim().toUpperCase() !== "ELIMINA"}
+                  disabled={loading || !confermaEliminazioneValida(conferma)}
                 >
                   {loading ? "Eliminazione…" : "Elimina definitivamente"}
                 </Button>
@@ -614,8 +619,9 @@ export function AccountClient({
   nomeGruppo?: string | null;
   sedi?: Sede[];
 }) {
-  const pianoLabel = PIANO_LABEL[data.piano] ?? data.piano;
-  const pianoPrezzo = PIANO_PREZZO[data.piano] ?? "";
+  const pianoLabel = etichettaPiano(data.piano);
+  const pianoPrezzo = prezzoPiano(data.piano);
+  const chatAi = statoChatAi(data.chat_limite_giorno, data.chat_usate_oggi, data.chat_pool);
 
   // Contesto catena: identità del gruppo + elenco sedi al posto della scheda
   // "Il tuo ristorante" e del piano per-sede. Tema e password restano account-level.
@@ -695,21 +701,17 @@ export function AccountClient({
             Il contatore si azzera il 1° di ogni mese.
           </p>
 
-          {data.chat_limite_giorno != null && (
+          {chatAi.modo !== "nascosto" && (
             <div className="border-t pt-4">
-              {data.chat_limite_giorno > 0 ? (
+              {chatAi.modo === "barra" ? (
                 <>
                   <UsageBar
-                    label={data.chat_pool ? "Domande all'assistente AI del gruppo (oggi)" : "Domande all'assistente AI (oggi)"}
-                    usate={data.chat_usate_oggi ?? 0}
-                    limite={data.chat_limite_giorno}
+                    label={chatAi.label}
+                    usate={chatAi.usate}
+                    limite={chatAi.limite}
                     avviso="Hai quasi esaurito le domande di oggi."
                   />
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    {data.chat_pool
-                      ? "Pool condiviso tra tutti i punti vendita e la modalità catena. Si azzera ogni giorno a mezzanotte."
-                      : "Il contatore si azzera ogni giorno a mezzanotte."}
-                  </p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">{chatAi.nota}</p>
                 </>
               ) : (
                 <div className="flex items-center justify-between text-sm">
