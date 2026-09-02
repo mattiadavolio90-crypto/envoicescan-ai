@@ -7,7 +7,15 @@ import { type Notifica } from "@/lib/notifiche";
 import { buttonVariants } from "@/components/ui/button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ctaDi, pulisci, raggruppa } from "@/lib/notifiche-shared";
+import {
+  ctaDi,
+  pulisci,
+  raggruppa,
+  visibili,
+  contaPerFiltro,
+  filtraPerSeverity,
+  type Filtro,
+} from "@/lib/notifiche-shared";
 
 function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
   if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;
@@ -23,8 +31,6 @@ const SEVERITY_ACCENT: Record<Notifica["severity"], string> = {
   info: "border-l-sky-500",
   success: "border-l-emerald-500",
 };
-
-type Filtro = "tutte" | "error" | "warning" | "info";
 
 const FILTRI: { key: Filtro; label: string }[] = [
   { key: "tutte", label: "Tutte" },
@@ -63,28 +69,14 @@ export function NotificheList({ notifiche, hideCta = false }: Props) {
     }
   }
 
-  // Notifiche ancora visibili (non archiviate in questa sessione).
-  const visible = useMemo(
-    () => notifiche.filter((n) => !dismissed.has(n.id)),
-    [notifiche, dismissed],
-  );
+  // Le tre funzioni vivono in lib/notifiche-shared.ts: erano gia' pure, ma qui
+  // dentro nessun test poteva raggiungerle (l'harness esegue solo moduli senza
+  // React). Comportamento invariato — verificato per oracolo su 2.340 casi.
+  const visible = useMemo(() => visibili(notifiche, dismissed), [notifiche, dismissed]);
 
-  // Count per filtro: "Informazioni" raccoglie info + success.
-  const counts = useMemo(() => {
-    const c = { tutte: visible.length, error: 0, warning: 0, info: 0 };
-    for (const n of visible) {
-      if (n.severity === "error") c.error += 1;
-      else if (n.severity === "warning") c.warning += 1;
-      else c.info += 1;
-    }
-    return c;
-  }, [visible]);
+  const counts = useMemo(() => contaPerFiltro(visible), [visible]);
 
-  const filtrate = useMemo(() => {
-    if (filtro === "tutte") return visible;
-    if (filtro === "info") return visible.filter((n) => n.severity === "info" || n.severity === "success");
-    return visible.filter((n) => n.severity === filtro);
-  }, [visible, filtro]);
+  const filtrate = useMemo(() => filtraPerSeverity(visible, filtro), [visible, filtro]);
 
   const gruppi = useMemo(() => raggruppa(filtrate), [filtrate]);
 

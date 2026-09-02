@@ -517,7 +517,7 @@ def genera_notifica_incasso_mancante(authorization: Optional[str] = Header(None)
         severity="warning",
         title="Manca l'incasso di ieri",
         body="Inseriscilo dalla sezione Agenda → Incassi per tenere i margini aggiornati.",
-        action_page="Agenda",
+        action_page="/agenda",
     )
     inserted = upsert_inbox_notifications([record], sb)
     return {"ok": True, "inserted": inserted}

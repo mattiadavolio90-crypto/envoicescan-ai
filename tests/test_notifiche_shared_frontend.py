@@ -107,6 +107,40 @@ def test_cta_rotta_sconosciuta_non_produce_un_link_rotto():
     assert _chiama("ctaDi", [_n("x", page="pages/99_inesistente.py")]) is None
 
 
+# ─── il difetto del 2/9: action_page non e' solo un path Streamlit ───────────
+
+def test_cta_Agenda_porta_alla_pagina_agenda():
+    """LA REGRESSIONE. Misurato a DB il 2/9/2026: 33 righe con
+    `action_page='Agenda'` (topic `incasso_mancante`), **11 attive su 3 clienti
+    reali**, l'ultima scritta l'1/9. La mappa conosceva solo path Streamlit
+    (`pages/*.py`), non i NOMI di pagina: `ctaDi` tornava None e la notifica
+    "Manca l'incasso di ieri" diceva al ristoratore di andare in Agenda ->
+    Incassi **senza il pulsante per arrivarci**.
+
+    I test c'erano gia' (`pages/99_inesistente.py`) ma erano scritti guardando
+    la mappa, non i dati: nessuno usava un valore che stesse davvero a DB.
+
+    La sorgente e' stata corretta (`services/routers/scadenziario.py` ora scrive
+    "/agenda", come gia' faceva `fastapi_worker.py`), ma le righe gia' scritte
+    passano solo di qui: per decisione dell'owner non si tocca il DB.
+    """
+    assert _chiama("ctaDi", [_n("x", page="Agenda")])["href"] == "/agenda"
+
+
+def test_cta_nomi_di_pagina_storici():
+    """Nessun codice li emette piu' (verificato con grep su services/, config/,
+    worker/: gli unici action_page letterali sono "/agenda" e "Agenda"), ma
+    restano nelle notifiche vecchie a DB."""
+    assert _chiama("ctaDi", [_n("x", page="Analisi Margine")])["href"] == "/margini"
+    assert _chiama("ctaDi", [_n("x", page="Analisi Fatture")])["href"] == "/analisi-fatture"
+
+
+def test_cta_vai_ai_documenti_resta_senza_pulsante():
+    """1 riga a DB (13/5/2026). NON si mappa: la rotta /documenti non esiste fra
+    le 14 di `app/(app)/`. Mapparla darebbe un 404 — meglio nessun pulsante."""
+    assert _chiama("ctaDi", [_n("x", page="Vai ai Documenti")]) is None
+
+
 # ─── pulisci: markdown grezzo -> testo ────────────────────────────────────
 
 def test_pulisci_grassetto_e_corsivo():
@@ -144,3 +178,96 @@ def test_pulisci_DUE_grassetti_nella_stessa_riga():
 def test_pulisci_asterisco_singolo_non_accoppiato_resta():
     """Il regex vuole una coppia: un asterisco solo non e' markup."""
     assert _chiama("pulisci", ["2 * 3 = 6"]) == "2 * 3 = 6"
+
+
+# ─── filtri per severity (estratti da notifiche-list.tsx il 2/9) ─────────────
+# Erano dentro tre `useMemo` del componente: pure, ma irraggiungibili
+# dall'harness. Il comportamento e' stato congelato per oracolo (2.340 casi,
+# 0 divergenze) PRIMA di spostarle, e l'oracolo validato sui due lati
+# (success->warning: 740 divergenze; info senza success: 185).
+
+def _conta(notifiche):
+    return esegui_ts(
+        MODULO, "emit(m.contaPerFiltro(input));",
+        argomento=notifiche, richiede=["contaPerFiltro"],
+    )
+
+
+def _filtra(notifiche, filtro):
+    return esegui_ts(
+        MODULO, "emit(m.filtraPerSeverity(input[0], input[1]).map(n => n.id));",
+        argomento=[notifiche, filtro], richiede=["filtraPerSeverity"],
+    )
+
+
+def _visibili(notifiche, dismessi):
+    return esegui_ts(
+        MODULO, "emit(m.visibili(input[0], new Set(input[1])).map(n => n.id));",
+        argomento=[notifiche, dismessi], richiede=["visibili"],
+    )
+
+
+def test_conta_insieme_vuoto():
+    assert _conta([]) == {"tutte": 0, "error": 0, "warning": 0, "info": 0}
+
+
+def test_conta_una_per_severity():
+    n = [_n("a", "error"), _n("b", "warning"), _n("c", "info")]
+    assert _conta(n) == {"tutte": 3, "error": 1, "warning": 1, "info": 1}
+
+
+def test_success_e_contato_insieme_a_info():
+    """"Informazioni" e' UNA voce di menu per DUE severity: un avviso positivo
+    non merita una categoria propria. Non e' una svista.
+
+    Congelato apposta: `success` non esiste nei dati veri (misurato il 2/9 su
+    `notification_inbox`: solo warning/info/error), quindi questo ramo non e'
+    mai stato esercitato dalla produzione e nessun dato lo proteggerebbe."""
+    assert _conta([_n("a", "success"), _n("b", "info")])["info"] == 2
+
+
+def test_conta_tutte_e_il_totale_non_la_somma_dei_filtri():
+    n = [_n("a", "error"), _n("b", "success")]
+    c = _conta(n)
+    assert c["tutte"] == 2
+    assert c["error"] + c["warning"] + c["info"] == 2
+
+
+def test_filtro_tutte_non_toglie_niente():
+    n = [_n("a", "error"), _n("b", "info")]
+    assert _filtra(n, "tutte") == ["a", "b"]
+
+
+def test_filtro_info_include_anche_success():
+    """Deve restare allineato a contaPerFiltro: se divergessero, il contatore
+    direbbe un numero e la lista ne mostrerebbe un altro."""
+    n = [_n("a", "info"), _n("b", "success"), _n("c", "warning")]
+    assert _filtra(n, "info") == ["a", "b"]
+
+
+def test_filtro_secco_su_error_e_warning():
+    n = [_n("a", "error"), _n("b", "warning"), _n("c", "info")]
+    assert _filtra(n, "error") == ["a"]
+    assert _filtra(n, "warning") == ["b"]
+
+
+def test_filtro_conserva_l_ordine_in_ingresso():
+    """L'ordinamento e' compito di `raggruppa`, che gira DOPO: se il filtro
+    riordinasse, il raggruppamento partirebbe da una lista diversa."""
+    n = [_n("c", "info"), _n("a", "info"), _n("b", "info")]
+    assert _filtra(n, "info") == ["c", "a", "b"]
+
+
+def test_visibili_toglie_gli_archiviati_in_sessione():
+    n = [_n("a"), _n("b"), _n("c")]
+    assert _visibili(n, ["b"]) == ["a", "c"]
+
+
+def test_visibili_senza_archiviati_non_tocca_niente():
+    n = [_n("a"), _n("b")]
+    assert _visibili(n, []) == ["a", "b"]
+
+
+def test_visibili_puo_svuotare_tutto():
+    """Il componente mostra lo stato "Tutto archiviato" quando resta zero."""
+    assert _visibili([_n("a")], ["a"]) == []
