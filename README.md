@@ -2,7 +2,7 @@
 
 **Versione:** 5.5  
 **Status:**  Produzione  
-**Ultimo aggiornamento:** 19 Giugno 2026
+**Ultimo aggiornamento:** 2 Settembre 2026
 
 ---
 
@@ -101,7 +101,7 @@ Guida servizi locali completa: [DEV_SERVICES_GUIDE.md](DEV_SERVICES_GUIDE.md).
 - Cookie di sessione `httpOnly` + `secure` + `sameSite` (token mai esposto a JS)
 - RLS attiva e forzata sulle tabelle con dati cliente; accesso applicativo solo via `service_role`
 - Webhook fatture autenticato via HMAC-SHA256 + anti-replay (no dipendenza da chiavi JWT)
-- Advisor Supabase: 0 ERROR sicurezza, 0 WARN performance (audit 19/06/2026)
+- Advisor Supabase: 0 ERROR sicurezza, 0 WARN performance — **misurato il 19/06/2026, non riverificato da allora**
 
 ### Strategia di Backup
 
@@ -120,30 +120,21 @@ python -m pytest tests/ -q                              # suite Python
 deno test --allow-env --allow-net supabase/functions/**/*_test.ts   # Edge Functions
 ```
 
-~9530 test Python (9533 passed, 1 skipped) + 18 test Deno (auth HMAC + routing
-multi-sede del webhook fatture). La CI (`.github/workflows/tests.yml`) lancia entrambe
-le suite su ogni push e pull request.
+~12.600 test Python + 101 test Deno (auth HMAC + routing multi-sede del webhook
+fatture). La CI (`.github/workflows/tests.yml`) lancia entrambe le suite su ogni push
+e pull request.
+
+Il frontend non ha un runner npm: la sua logica pura (`apps/web/src/lib/`) è coperta
+da test Python che eseguono il TypeScript vero con node (`tests/test_*_frontend.py`).
+Rendering e hook React non sono coperti.
 
 ---
 
-##  Matrice Agenti (Routing Rapido)
+##  Come si lavora al progetto
 
-Usa questa tabella per scegliere subito l'agente corretto ed evitare sovrapposizioni.
-
-| Quando serve | Agente consigliato | Non usare se... |
-|---|---|---|
-| Bug runtime, regressioni funzionali, problemi UX/performance applicativa | DEBUG APP INTERA | devi fare gate pre-push, compliance GDPR/cookie, o audit parity/resilience avanzato |
-| Audit avanzato locale/cloud, resilienza integrazioni, idempotenza webhook/worker, reliability dati, observability | DEEP AUDIT | vuoi solo debug generalista o manutenzione documentale |
-| Verifica prima del push (diff + test mirati + verdetto) | Test e Check Pre-Push | vuoi audit esteso operativo/compliance |
-| Coerenza documentazione/config e cleanup file obsoleti | Audit Completo App e Cleanup | stai cercando bug runtime o audit resilienza avanzato |
-| Privacy/GDPR/cookie policy e allineamento legale vs runtime | Privacy GDPR e Cookie Compliance | stai facendo debug tecnico o test pre-push |
-| Riconciliazione fatture XML vs Supabase (righe/importi/scadenze) | Verifica Fatture XML | devi riclassificare in massa le categorie |
-| Audit/riclassificazione categorie AI su Supabase | Audit Categorizzazioni Supabase | devi fare riconciliazione XML completa |
-| Pianificazione nuova implementazione prima di scrivere codice | Pianificazione Implementazioni ONEFLUX | devi fare debug/audit/compliance già in corso |
-
-Note operative:
-- In caso di dubbio tra DEBUG APP INTERA e DEEP AUDIT: usa DEBUG per bug applicativi, DEEP AUDIT per rischi sistemici tra ambienti e resilienza operativa.
-- Per task con piu aree, parti dall'agente piu specifico e poi delega il resto all'agente verticale corretto.
+Processo di sviluppo, ciclo di deploy e convenzioni: [WORKFLOW.md](WORKFLOW.md).
+Regole di dominio da non violare: [CLAUDE.md](CLAUDE.md).
+Dove sta cosa: [DOCUMENTAZIONE/MAPPA_TECNICA.md](DOCUMENTAZIONE/MAPPA_TECNICA.md).
 
 ---
 

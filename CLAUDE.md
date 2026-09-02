@@ -29,15 +29,15 @@ nella git history. Il container Railway serve il worker FastAPI.
 
 | Layer | Percorso | Note |
 |---|---|---|
-| Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — 22 pagine app + auth/legal/mobile, 169 route API |
+| Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — 14 aree app + auth/legal/mobile, 170 route API |
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` (8.547 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker API | `services/fastapi_worker.py` (8.749 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
-| Migrations | `supabase/migrations/*.sql` (canonico, 134 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | 11.424 test pytest (molti parametrizzati) + test Deno per le Edge Functions. **Zero test frontend** — vedi Trappole |
+| Migrations | `supabase/migrations/*.sql` (canonico, 138 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
+| Test | `tests/*.py` | 12.633 test pytest (molti parametrizzati) + 101 test Deno per le Edge Functions. Sul frontend: nessun runner npm — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
@@ -165,11 +165,17 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
 - **Mai `__getattr__`** per gli helper dei router: ha già rotto 9 router in produzione
   (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
 - **`/m` è un frontend separato**, non responsive: va allineato a mano.
-- **Zero test frontend**: l'unica rete su `apps/web/` è `npx tsc --noEmit`, che
-  controlla i tipi e **non esegue niente**. Un fix può passare `tsc`, sembrare
-  giusto a leggerlo e non fare nulla sui dati veri — è successo il 29/8 con una
-  guardia che misurava una soglia dopo i filtri client invece che prima, e non
-  scattava su nessuno dei 3 casi reali. **Una condizione su una soglia va provata
+- **Il frontend ha una rete, ma copre solo la logica pura.** Non esiste un runner
+  npm (`deploy-vercel.yml` scatta su `apps/web/**`: un runner lì farebbe partire un
+  deploy a ogni test). La rete sono **22 file `tests/test_*_frontend.py`** che
+  eseguono il TypeScript vero con node via `tests/helpers_ts.py` — coprono i moduli
+  di `lib/`, **non** rendering, hook, stato ed effetti, che restano scoperti.
+  Se tocchi logica in un `.tsx`, per testarla va prima estratta in `lib/`.
+- **`tsc --noEmit` non esegue niente**: controlla i tipi. Un fix può passare `tsc`,
+  sembrare giusto a leggerlo e non fare nulla sui dati veri — è successo il 29/8
+  (una soglia misurata dopo i filtri client invece che prima: non scattava su
+  nessuno dei 3 casi reali) e il 2/9 (un pulsante che puntava alla pagina
+  sbagliata: per `tsc` è codice valido). **Una condizione su una soglia va provata
   per mutazione sui valori veri**, su copia in scratchpad, mai sul file del branch.
 - **Un test verde non prova che il codice funzioni.** Un **mock generoso** (i test
   del radar passavano su `fatture_documenti.upload_id`, colonna mai esistita) o un
