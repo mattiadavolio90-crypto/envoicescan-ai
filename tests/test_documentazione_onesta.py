@@ -208,6 +208,73 @@ def test_logica_briefing_dichiara_il_vero_max_card() -> None:
     )
 
 
+def test_logica_briefing_tabella_leve_tutta_verificata() -> None:
+    """OGNI riga della tabella §9 deve riportare il valore REALE del codice.
+
+    Il test sopra ne presidiava UNA (le card), ed e' esattamente nelle altre che si
+    sono accumulate le divergenze: misurato il 2/9/2026, 6 valori su 11 erano
+    sbagliati (coperti 30% vs 0.20 reale, scontrino 15% vs 0.10, fatture mancanti
+    30 giorni vs 7, righe da classificare "30 giorni" quando non c'era finestra,
+    ricavi assenti 3 giorni vs giorni_chiusura+1, "max 5 card" vs 4).
+
+    E' il doc su cui Mattia decide le soglie: un numero falso qui diventa una
+    richiesta di modifica basata su un valore che non esiste.
+    """
+    from config.constants import COPERTI_ALERT
+    from services.daily_briefing_service import (
+        _BRIEFING_TTL_MINUTI, _MAX_CARD, SALUTE_SOGLIA_GIALLO, SALUTE_SOGLIA_VERDE,
+    )
+    from services.fastapi_worker import (
+        DA_CONTROLLARE_NOVITA_GIORNI, FATTURE_MANCANTI_GIORNI, _RIENTRO_GIORNI,
+    )
+
+    testo = _leggi(ROOT / "LOGICA_BRIEFING.md")
+
+    # (riga attesa nella tabella, cosa rappresenta) — il valore viene dal CODICE.
+    attese = [
+        (f"| Quante card mostra al massimo | {_MAX_CARD} |", "max card"),
+        (f"| Dopo quanti giorni dice \"bentornato\" | {_RIENTRO_GIORNI} giorni |",
+         "finestra rientro"),
+        (f"| Soglia scontrino medio \"notevole\" | "
+         f"{int(COPERTI_ALERT['scontrino_medio_delta_pct'] * 100)}% |",
+         "soglia scontrino"),
+        (f"| Soglia anomalia coperti | "
+         f"{int(COPERTI_ALERT['coperti_anomalia_delta_pct'] * 100)}% |",
+         "soglia coperti"),
+        (f"| Da quanti giorni senza fatture scatta l'avviso | "
+         f"{FATTURE_MANCANTI_GIORNI} giorni |", "finestra fatture mancanti"),
+        (f"| Finestra \"novita\" da controllare | "
+         f"{DA_CONTROLLARE_NOVITA_GIORNI} giorni |", "finestra novita"),
+        (f"| Ogni quanto si ricalcola in giornata | "
+         f"{_BRIEFING_TTL_MINUTI} minuti |", "TTL"),
+        (f"| Soglie colore Salute | \u2265{SALUTE_SOGLIA_VERDE} verde / "
+         f"\u2265{SALUTE_SOGLIA_GIALLO} giallo / <{SALUTE_SOGLIA_GIALLO} rosso |",
+         "soglie colore"),
+        (f"| Soglia di affidabilit\u00e0 sede nella catena | "
+         f"Salute \u2265 {SALUTE_SOGLIA_GIALLO} |", "affidabilita catena"),
+    ]
+
+    mancanti = [(riga, cosa) for riga, cosa in attese if riga not in testo]
+    if mancanti:
+        dettaglio = "\n".join(f"  - {cosa}: manca la riga  {riga}" for riga, cosa in mancanti)
+        raise AssertionError(
+            "LOGICA_BRIEFING.md §9 non riporta i valori reali del codice:\n"
+            + dettaglio
+            + "\n\nAggiorna il doc leggendo le COSTANTI, non ricopiando a mano."
+        )
+
+
+def test_logica_briefing_non_promette_la_cache_da_svuotare_a_mano() -> None:
+    """Il doc diceva che dopo un deploy la cache va svuotata a mano: falso da
+    quando esiste _BRIEFING_CODE_VERSION + snapshot_is_stale, che invalidano da
+    soli. Una procedura manuale inesistente fa perdere tempo a chi la cerca."""
+    testo = _leggi(ROOT / "LOGICA_BRIEFING.md")
+    assert "svuotare la cache a mano" not in testo, (
+        "il briefing si auto-invalida al bump di _BRIEFING_CODE_VERSION: "
+        "il doc descrive una procedura manuale che non esiste piu'"
+    )
+
+
 def test_pareto_e_finestra_alert_prezzi_coerenti() -> None:
     """Le costanti degli alert prezzi sono citate nei doc come scelte di design."""
     from services.price_impact_service import _FINESTRA_GIORNI, _PARETO_QUOTA

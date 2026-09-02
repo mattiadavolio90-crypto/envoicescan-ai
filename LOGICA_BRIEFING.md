@@ -13,7 +13,7 @@ Il briefing **non** è un testo inventato dall'AI. Funziona come una catena di
 montaggio:
 
 > dati veri → problemi/notizie con numeri esatti → si tengono solo quelli utili →
-> si mettono in ordine di importanza → si scelgono i più importanti (max 5) →
+> si mettono in ordine di importanza → si scelgono i più importanti (max 4) →
 > l'AI riscrive **solo il tono** → frase finale
 
 L'AI interviene **all'ultimo passo** e ha il divieto assoluto di toccare numeri,
@@ -42,9 +42,14 @@ riusa tutto il giorno. Tre casi:
 **Si ricalcola da solo** quando cambiano i dati che racconta: carico fatture,
 inserimento fatturato/personale/costi, inserimento ricavi/incassi.
 
-⚠️ **Un aggiornamento del programma (deploy) NON ricalcola il briefing già salvato.**
-Per questo, dopo che cambio la logica, devo svuotare la cache a mano: altrimenti
-continui a vedere il testo vecchio anche se il codice è nuovo.
+✅ **Dopo un aggiornamento del programma il briefing si rigenera da solo.** Ogni
+snapshot salvato porta dentro il numero di versione della logica che l'ha prodotto:
+se cambio le regole e alzo quel numero, gli snapshot vecchi vengono scartati alla
+prima apertura. Non c'è nessuna cache da svuotare a mano.
+
+Oltre a questo, un briefing più vecchio di **30 minuti** viene comunque rifatto:
+copre i dati che cambiano durante il giorno (righe classificate, fatture elaborate
+in sottofondo) senza aspettare il giorno dopo.
 
 ---
 
@@ -66,19 +71,22 @@ contraddicono mai. Scattano a queste condizioni:
 | **Fatturato mancante** | il mese precedente non ha fatturato (né normale né in "modalità mensile") |
 | **Costo personale mancante** | il mese precedente non ha costi del personale |
 | **Incasso di ieri mancante** | ieri non risulta nessun incasso (saltato se la sede lavora in "modalità mensile") |
-| **Righe da classificare** | ci sono righe fattura non categorizzate (ultimi 30 giorni) |
-| **Fatture costo mancanti** | mese con ricavi ma **zero costi food+spese**, oppure nessuna fattura caricata da 30 giorni |
-| **Ricavi automatici assenti** | cliente collegato ai ricavi automatici ma nessun ricavo da ≥3 giorni |
+| **Righe da classificare** | ci sono prodotti da controllare **caricati negli ultimi 7 giorni**; l'arretrato più vecchio non fa card ma viene citato nel testo se supera 20 voci |
+| **Fatture costo mancanti** | mese con ricavi ma **zero costi food+spese**, oppure nessuna fattura caricata da **7 giorni** |
+| **Ricavi automatici assenti** | cliente collegato ai ricavi automatici ma nessun ricavo da più giorni dei suoi giorni di chiusura + 1 |
 | **Alert prezzi** | un prodotto/categoria è rincarato oltre la soglia automatica |
-| **Anomalia coperti** | i coperti di ieri si scostano ≥30% dal solito |
+| **Anomalia coperti** | i coperti di ieri si scostano ≥20% dal solito (serve almeno una settimana di storico) |
 
 ---
 
-## 4. Le due "aperture" (il contesto iniziale, non to-do)
+## 4. Le tre "aperture" (il contesto iniziale, non to-do)
 
-In testa al briefing, nell'ordine: prima il rientro, poi la buona notizia
-("prima il bene, poi la rogna").
+In testa al briefing, nell'ordine: prima il benvenuto o il rientro, poi la buona
+notizia ("prima il bene, poi la rogna"). Non sono card: non si ignorano e non
+contano per il "tutto a posto".
 
+- **Benvenuto** — per un locale nuovo, che non ha ancora nessun dato. Sostituisce
+  le altre due: senza dati non c'è né un rientro né una buona notizia da dare.
 - **Rientro** — "Bentornato" se non apri il briefing da **≥7 giorni**. Propone
   l'assistenza solo se la Salute è rossa. Mai un rimprovero.
 - **Buona notizia** — sceglie la prima disponibile tra:
@@ -87,8 +95,11 @@ In testa al briefing, nell'ordine: prima il rientro, poi la buona notizia
      (altrimenti sarebbe un "+X%" falso);
   2. altrimenti **perdita in calo** (in rosso ma meno del mese prima);
   3. altrimenti **incasso di ieri** (solo di ieri; più vecchio = silenzio),
-     con lo scontrino medio se si scosta ≥15% dalla media;
-  4. altrimenti **nessuna apertura**: il briefing è solo lista di cose da fare.
+     con lo scontrino medio se si scosta ≥10% dalla media, e il confronto con la
+     media dello stesso giorno della settimana quando c'è abbastanza storico;
+  4. altrimenti **fatture arrivate ieri** — per i locali che ricevono le fatture
+     in automatico e non inseriscono l'incasso, è il loro dato fresco;
+  5. altrimenti **nessuna apertura**: il briefing è solo lista di cose da fare.
 
 ---
 
@@ -133,7 +144,7 @@ Se **nessuna voce viene selezionata**, e solo allora, il briefing dice che è tu
 ## 7. Coerenza tra briefing, campanella e Salute
 
 Briefing, campanella e card Salute leggono **le stesse fonti**. La campanella
-mostra le card del briefing più le voci minori che non sono entrate nelle prime 5.
+mostra le card del briefing più le voci minori che non sono entrate nelle prime 4.
 Per costruzione, le tre cose non possono contraddirsi.
 
 ---
@@ -181,10 +192,13 @@ un MOL falso è peggio di un MOL mancante.
 | Quali avvisi si possono spegnere | tutti tranne gli upload falliti |
 | Dopo quanti giorni dice "bentornato" | 7 giorni |
 | Quando festeggiare il MOL | positivo, in crescita, salute ok, costi presenti |
-| Soglia scontrino medio "notevole" | 15% |
-| Soglia anomalia coperti | 30% |
-| Finestra "righe/fatture recenti" | 30 giorni |
-| Finestra "ricavi automatici assenti" | 3 giorni |
+| Soglia scontrino medio "notevole" | 10% |
+| Soglia anomalia coperti | 20% |
+| Da quanti giorni senza fatture scatta l'avviso | 7 giorni |
+| Finestra "novita" da controllare | 7 giorni |
+| Quante voci arretrate prima di dirlo | 20 |
+| Finestra "ricavi automatici assenti" | giorni di chiusura + 1 |
+| Ogni quanto si ricalcola in giornata | 30 minuti |
 | Tono, lunghezza, numero di emoji | sobrio, 3 frasi, 1 emoji |
 | Soglie colore Salute | ≥80 verde / ≥50 giallo / <50 rosso |
 | Soglia di affidabilità sede nella catena | Salute ≥ 50 |

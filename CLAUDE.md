@@ -171,10 +171,10 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   guardia che misurava una soglia dopo i filtri client invece che prima, e non
   scattava su nessuno dei 3 casi reali. **Una condizione su una soglia va provata
   per mutazione sui valori veri**, su copia in scratchpad, mai sul file del branch.
-- **Un test che mocka il client non prova che la query funzioni.** I 6 test di
-  `anomaly_radar_service.py` passano da sempre su una query che filtra
-  `fatture_documenti.upload_id` — **una colonna che non esiste**. Il mock
-  rispondeva comunque, e il difetto è rimasto invisibile per mesi.
+- **Un test verde non prova che il codice funzioni.** Un **mock generoso** (i test
+  del radar passavano su `fatture_documenti.upload_id`, colonna mai esistita) o un
+  test che assicura sul **testo del sorgente** restano verdi sul bug. Un presidio si
+  prova per mutazione, o non è un presidio.
 
 ---
 
