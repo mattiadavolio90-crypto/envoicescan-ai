@@ -589,3 +589,82 @@ def test_spese_generali_frontend_allineata_a_constants_py() -> None:
         f"  solo nel frontend: {sorted(ts - set(CATEGORIE_SPESE_GENERALI))}\n"
         f"  solo nel backend:  {sorted(set(CATEGORIE_SPESE_GENERALI) - ts)}"
     )
+
+
+# --------------------------------------------------------------------------
+# Regola — Nota di credito: il segno lo decide il NETTO, non una riga qualsiasi
+# --------------------------------------------------------------------------
+# Dieci TD04 su 140 sono arrivate in produzione col netto POSITIVO: una nota di
+# credito che somma costi invece di ridurli (9.261,35 EUR su SUSHILAND, fino al
+# 2,10% di costi in eccesso su una sede in un mese).
+#
+# La causa era il discriminante "esiste almeno una riga gia' negativa -> non
+# invertire": bastava una RIVALSA BOLLO N.C da -2,00 EUR accanto a un premio da
+# +791,49 per disattivare la correzione sull'intero documento.
+#
+# Il difetto non era visibile da nessuna parte: i test passavano (nessuno
+# copriva il caso), il totale di testata quadrava, e la RPC che calcola i costi
+# (costi_automatici_mensili) fa SUM(totale_riga) senza guardare tipo_documento.
+# Solo i dati lo mostravano. Questi due test impediscono il ritorno silenzioso
+# del criterio vecchio.
+
+_INVOICE_SERVICE = ROOT / "services" / "invoice_service.py"
+
+
+def test_il_segno_della_nota_di_credito_dipende_dal_netto() -> None:
+    """Il path XML deve decidere sul NETTO delle righe.
+
+    Se qualcuno reintroduce `nc_inverti_in_blocco = not _ha_riga_negativa` come
+    criterio PRIMARIO, le note col netto positivo tornano a entrare nei costi.
+    Il criterio storico resta ammesso solo come fallback quando la testata non
+    e' leggibile (imponibile assente o 0).
+    """
+    src = _leggi(_INVOICE_SERVICE)
+
+    assert "nc_inverti_in_blocco = _netto_righe > 0" in src, (
+        "Il criterio primario della nota di credito (path XML) deve essere il "
+        "segno del netto: `nc_inverti_in_blocco = _netto_righe > 0`. "
+        "Se e' stato sostituito, le TD04 col netto positivo tornano a essere "
+        "contate come costo invece che come rimborso."
+    )
+
+    # Il fallback storico e' legittimo, ma DEVE stare dentro il ramo "testata non
+    # leggibile": se ricompare fuori da quella guardia, e' il criterio vecchio.
+    guardia = re.search(
+        r"if\s+totale_imponibile:.*?else:.*?nc_inverti_in_blocco\s*=\s*not\s+_ha_riga_negativa",
+        src,
+        re.S,
+    )
+    assert guardia, (
+        "Il criterio storico (`not _ha_riga_negativa`) e' ammesso SOLO come "
+        "fallback nel ramo `else` di `if totale_imponibile:`. Fuori da li' "
+        "e' il difetto che ha fatto entrare 9.261,35 EUR nei costi."
+    )
+
+
+def test_una_nota_di_credito_non_puo_avere_netto_positivo() -> None:
+    """Prova end-to-end sul parser, non sul testo del sorgente.
+
+    Costruisce le due forme che in produzione avevano il netto positivo — premio
+    + bollo marginale (PARTESA) e rettifica a segni misti (LODI) — e verifica che
+    il netto risulti negativo. E' la regola di dominio nella sua forma osservabile:
+    una nota di credito riduce i costi, punto.
+    """
+    from tests.test_invoice_service import (  # import locale: fixture condivise
+        _run_estrai_xml,
+        _xml_td04_premio_con_bollo,
+        _xml_td04_segni_misti,
+    )
+
+    for nome, xml in (
+        ("premio + bollo marginale (PARTESA)", _xml_td04_premio_con_bollo()),
+        ("rettifica a segni misti (LODI)", _xml_td04_segni_misti()),
+    ):
+        righe = _run_estrai_xml(xml)
+        netto = sum(r["Totale_Riga"] for r in righe)
+        assert netto < 0, (
+            f"TD04 '{nome}': netto {netto:+.2f}. Una nota di credito deve RIDURRE "
+            "i costi, quindi il netto delle sue righe deve essere negativo. "
+            "Un netto positivo viene sommato ai costi da costi_automatici_mensili, "
+            "che fa SUM(totale_riga) senza guardare tipo_documento."
+        )
