@@ -72,7 +72,16 @@ logger = get_logger('daily_briefing')
 #               2 fatture di agosto recuperate dopo il fix del parsing P7M). Senza
 #               bump il cliente continuerebbe a vedere il MOL calcolato sui costi
 #               vecchi, fino alla scadenza della cache
-_BRIEFING_CODE_VERSION = 17
+#  18 -> 02/09: (a) i conteggi che il prompt vieta di ripetere non arrivano piu'
+#               all'AI (misurato su snapshot reale del 28/8: "Controlla i 100
+#               prodotti che necessitano di verifica" — il divieto c'era, ma il
+#               numero stava nel bullet passato in input); (b) la narrativa AI ora
+#               e' VALIDATA: numeri inventati o burocratese -> si ricade sul
+#               template; (c) la card "da controllare" conta le NOVITA' (7gg) e
+#               non tutto lo storico, l'arretrato passa in narrativa (misurati 112
+#               arretrati / 0 novita' su San Giuliano, 100/46 su Villa Guardia).
+#               Senza bump il cliente vedrebbe il testo vecchio fino al TTL.
+_BRIEFING_CODE_VERSION = 18
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -103,6 +112,11 @@ _TOPIC_DATO_MANCANTE_LABEL = {
 # Topic che il cliente NON puo' spegnere dal configuratore: sono guasti tecnici
 # (perdita dati) e vanno sempre mostrati. Decisione Mattia (Step 6).
 _TOPIC_NON_DISATTIVABILI = frozenset({'upload_failed', 'upload_ricavi_failed'})
+
+# Sopra quanti prodotti arretrati la narrativa ne fa cenno. Gemella di
+# DA_CONTROLLARE_ARRETRATO_SOGLIA nel worker (che decide se emettere il record):
+# qui si decide se DIRLO. Sotto questa soglia il cliente smaltisce da solo.
+_ARRETRATO_SOGLIA_NARRATIVA = 20
 
 # Un singolo interruttore del configuratore copre piu' topic del briefing quando
 # appartengono allo stesso TEMA. Es: l'avviso "Scadenze" (key 'scadenza_superata')
@@ -529,6 +543,46 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
     return title
 
 
+# Topic il cui CONTEGGIO non deve mai arrivare all'AI: il prompt (3-septies per i
+# prezzi, tono rassicurante per le righe) le vieta di ripetere il numero, ma finche'
+# il numero sta nel bullet passato in input il modello lo ricopia — misurato il
+# 28/08/2026 su uno snapshot reale: "Controlla i 100 prodotti che necessitano di
+# verifica". Il numero resta nella CARD (dove e' utile e cliccabile); alla narrazione
+# arriva la forma senza cifra. Un divieto nel prompt non regge se l'input lo smentisce.
+_TOPIC_SENZA_CONTEGGIO_IN_NARRAZIONE = frozenset({'uncategorized_rows', 'price_alert'})
+
+
+def _bullet_per_narrazione(notif: Dict[str, Any]) -> str:
+    """Bullet destinato all'AI: come _bullet_for, ma senza i conteggi che il prompt
+    vieta di ripetere. Per gli altri topic e' identico a _bullet_for."""
+    topic = str(notif.get('topic_key') or '')
+    if topic not in _TOPIC_SENZA_CONTEGGIO_IN_NARRAZIONE:
+        return _bullet_for(notif)
+
+    payload = notif.get('payload') or {}
+    if topic == 'uncategorized_rows':
+        count = payload.get('uncategorized_rows') or payload.get('count') or 0
+        if int(count or 0) == 1:
+            return "\U0001F3F7️ C'è una voce da controllare, la trovi nella card qui sotto."
+        return "\U0001F3F7️ Ci sono voci da controllare, le trovi nella card qui sotto."
+
+    # price_alert: si tiene l'emoji (l'anonimizzazione la usa per riconoscere il
+    # bullet) e il nome del prodotto (che viene mascherato prima dell'invio), ma
+    # non la percentuale ne' l'impatto in euro.
+    top_product = payload.get('top_product')
+    is_tag = str(payload.get('top_tipo') or '') == 'tag'
+    soggetto = 'una categoria' if is_tag else 'un prodotto'
+    if top_product:
+        # Il nome va IN FONDO: _anonymize_bullets cattura tutto quello che segue
+        # l'em-dash fino a fine stringa, quindi qualsiasi coda finirebbe dentro il
+        # segnaposto (verificato: '<<P1>>' inghiottiva anche il rimando alla card).
+        return (
+            f"\U0001F4C8 Prezzi in aumento da controllare, il dettaglio è nella "
+            f"card qui sotto — {top_product}"
+        )
+    return f"\U0001F4C8 C'è {soggetto} con il prezzo in aumento, il dettaglio è nella card qui sotto."
+
+
 def _action_for(notif: Dict[str, Any]) -> Dict[str, Any]:
     """Genera l'azione strutturata che la Home offre per una notifica.
 
@@ -820,6 +874,7 @@ def _compose_narrative(
     apertura_buona: Optional[Dict[str, Any]] = None,
     apertura_rientro: Optional[Dict[str, Any]] = None,
     apertura_onboarding: Optional[Dict[str, Any]] = None,
+    c_e_arretrato: bool = False,
 ) -> str:
     """Compone il testo narrativo colloquiale con apertura, corpo e chiusura.
 
@@ -843,6 +898,14 @@ def _compose_narrative(
     apertura = "\n".join(p for p in (rientro, buona) if p)
 
     if not selected:
+        # Con un arretrato aperto NON si puo' dire "niente da sistemare": sulle sedi
+        # ferme (San Giuliano, 112 arretrati e 0 novita') la frase finiva una riga
+        # sopra l'avviso dell'arretrato, contraddicendolo. Chi chiama aggiunge la
+        # riga dell'arretrato subito dopo: qui si sceglie solo la chiusura onesta.
+        if c_e_arretrato:
+            if apertura:
+                return f"{apertura}\nPer oggi non ci sono novità da sistemare."
+            return "Per oggi non ci sono novità da sistemare."
         if apertura:
             # C'e' un'apertura (rientro e/o buona notizia) ma niente da fare.
             return f"{apertura}\nPer oggi non c'è nulla da sistemare."
@@ -987,11 +1050,87 @@ def _deanonymize(text: str, mapping: Dict[str, str]) -> str:
     return text
 
 
+# Formule burocratiche vietate dalla regola 3-octies del prompt. Misurate su
+# snapshot reali (01-02/09/2026): "e' necessario completare questo dato per avere un
+# quadro corretto" e simili ricorrono nonostante il divieto.
+_FORMULE_VIETATE = (
+    "è necessario", "e' necessario", "si rende necessario",
+    "provvedi a", "assicurati di procedere",
+)
+
+# Numeri che possono comparire nel testo AI senza essere nei bullet: sono quelli che
+# il modello scrive naturalmente parlando di date/mesi, non cifre inventate.
+_NUMERI_INNOCUI = frozenset({'1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'})
+
+
+def _numeri_di(testo: str) -> set:
+    """Estrae i numeri da un testo, normalizzando i separatori italiani.
+
+    '€ 13.059' e '13059' sono lo stesso numero; '6.4%' e '6,4' pure. Serve a
+    confrontare cosa l'AI ha scritto con cosa le e' stato dato.
+    """
+    out: set = set()
+    for grezzo in _re.findall(r'\d[\d.,]*', testo or ''):
+        n = grezzo.rstrip('.,')
+        if not n:
+            continue
+        # Separatori: in italiano il punto e' le migliaia e la virgola i decimali,
+        # ma l'AI scrive indifferentemente "26,47" o "26.47". Un separatore seguito
+        # da 1-2 cifre finali e' un DECIMALE; da esattamente 3 cifre e' migliaia.
+        # Senza questa distinzione "26.47" diventava 2647 e il validatore scartava
+        # una narrativa corretta.
+        if ',' in n:
+            n = n.replace('.', '').replace(',', '.')
+        else:
+            testa, _, coda = n.rpartition('.')
+            if testa and len(coda) != 3:
+                n = testa.replace('.', '') + '.' + coda
+            else:
+                n = n.replace('.', '')
+        try:
+            f = float(n)
+        except ValueError:
+            continue
+        # Normalizza 13059.0 -> '13059' cosi' i confronti non dipendono dai decimali.
+        out.add(str(int(f)) if f == int(f) else str(f))
+    return out
+
+
+def _narrazione_e_valida(testo: str, bullets: List[str]) -> tuple:
+    """Controlla che la narrativa AI rispetti le regole ferree del prompt.
+
+    Ritorna (valida, motivo). Due controlli, entrambi misurabili:
+      1) NUMERI INVENTATI: ogni cifra del testo deve comparire nei bullet in input.
+         E' la regola 1 del prompt ("non inventare, modificare o aggiungere NESSUN
+         numero") e finora non era verificata da niente.
+      2) BUROCRATESE: le formule vietate dalla 3-octies.
+    Un prompt senza validazione dell'output e' un auspicio, non un vincolo.
+    """
+    if not testo:
+        return False, "vuota"
+
+    basso = testo.lower()
+    for formula in _FORMULE_VIETATE:
+        if formula in basso:
+            return False, f"formula vietata: {formula!r}"
+
+    numeri_input = set()
+    for b in bullets:
+        numeri_input |= _numeri_di(b)
+    inventati = _numeri_di(testo) - numeri_input - _NUMERI_INNOCUI
+    if inventati:
+        return False, f"numeri non presenti nei bullet: {sorted(inventati)}"
+
+    return True, ""
+
+
 def _narrate_with_ai(bullets: List[str], fallback: str) -> str:
     """Genera la narrativa con GPT a partire dai bullet deterministici.
 
     Anonimizza, chiama gpt-4o-mini, ripristina i nomi, traccia i costi.
     Qualsiasi errore -> ritorna il fallback (template _compose_narrative).
+    L'output viene VALIDATO (_narrazione_e_valida): se inventa numeri o usa le
+    formule vietate si scarta e si ricade sul template.
     """
     if not bullets:
         return fallback
@@ -1012,6 +1151,13 @@ def _narrate_with_ai(bullets: List[str], fallback: str) -> str:
         )
         text = (response.choices[0].message.content or "").strip()
         if not text:
+            return fallback
+
+        # Validazione: il testo viene confrontato con i bullet ANONIMI, cioe' con
+        # quello che il modello ha davvero ricevuto (i nomi veri non ci sono ancora).
+        valida, motivo = _narrazione_e_valida(text, anon)
+        if not valida:
+            logger.warning("narrazione AI scartata (%s), uso il template", motivo)
             return fallback
 
         try:
@@ -1106,6 +1252,23 @@ def _build_snapshot(
     azioni = [_action_for(n) for n in selected]
     sev_max = _severity_max(notifications)
 
+    # ARRETRATO "da controllare": una riga di CONTESTO, non una card. Il record
+    # uncategorized_rows con count=0 (solo arretrato, nessuna novita') e' escluso
+    # da _is_actionable e quindi non compare fra i candidati: lo si ripesca da
+    # seen_topics. Senza questo, sulle sedi ferme (San Giuliano: 112 arretrati, 0
+    # novita') la card sparirebbe e l'arretrato non verrebbe detto da nessuna
+    # parte — solo meta' della decisione "tutte e due".
+    arretrato_frase = ""
+    _rec_uncat = seen_topics.get('uncategorized_rows')
+    if _rec_uncat is not None and 'uncategorized_rows' not in spenti:
+        _pay = _rec_uncat.get('payload') or {}
+        _arr = int(_pay.get('arretrato') or 0)
+        if _arr >= _ARRETRATO_SOGLIA_NARRATIVA:
+            arretrato_frase = (
+                f"\U0001F5C2️ Resta un arretrato di {_arr} prodotti da controllare in "
+                f"Analisi Fatture: conviene partire dai più recenti."
+            )
+
     # Dati mancanti: calcolati su TUTTI i candidati azionabili (non solo le 4 card
     # selezionate), perche' un dato mancante in posizione 5+ verrebbe tagliato ma
     # NON deve far comparire il verde "tutto a posto". Senza questi i numeri di
@@ -1130,6 +1293,7 @@ def _build_snapshot(
         aperture_bullets = [b for b in [_bullet_for(onboarding)] if b]
         template_narrative = _compose_narrative(
             selected, sev_max, apertura_onboarding=onboarding,
+            c_e_arretrato=bool(arretrato_frase),
         )
     else:
         aperture_bullets = [
@@ -1137,9 +1301,20 @@ def _build_snapshot(
         ]
         template_narrative = _compose_narrative(
             selected, sev_max, apertura_rientro=rientro, apertura_buona=buona_notizia,
+            c_e_arretrato=bool(arretrato_frase),
         )
-    bullets_ai = aperture_bullets + bullets
-    if use_ai and (selected or onboarding or rientro or buona_notizia):
+    # I bullet per l'AI NON sono quelli delle card: per i topic in
+    # _TOPIC_SENZA_CONTEGGIO_IN_NARRAZIONE il conteggio viene tolto, altrimenti il
+    # modello lo ricopia nonostante il divieto del prompt (vedi
+    # _bullet_per_narrazione). Le card continuano a portare il numero.
+    # L'arretrato entra come ULTIMO bullet (contesto dopo le to-do) sia nel template
+    # sia nell'input AI, cosi' viene detto in entrambi i percorsi.
+    if arretrato_frase:
+        template_narrative = f"{template_narrative}\n{arretrato_frase}"
+    bullets_ai = aperture_bullets + [_bullet_per_narrazione(n) for n in selected]
+    if arretrato_frase:
+        bullets_ai = bullets_ai + [arretrato_frase]
+    if use_ai and (selected or onboarding or rientro or buona_notizia or arretrato_frase):
         narrative = _narrate_with_ai(bullets_ai, template_narrative)
     else:
         narrative = template_narrative
@@ -1156,7 +1331,13 @@ def _build_snapshot(
         # Verde "tutto a posto" SOLO se nessuna card da fare E nessun dato mancante
         # E non e' un cliente nuovo (onboarding): un dato mancante o una sede senza
         # dati rendono falso/prematuro il verde trionfale.
-        'tutto_ok': len(selected) == 0 and len(dati_mancanti) == 0 and onboarding is None,
+        # Il verde si spegne anche con un ARRETRATO aperto: "tutto a posto" accanto
+        # a 112 prodotti da controllare sarebbe falso quanto il verde su un dato
+        # mancante. Nessuna novita' != tutto in ordine.
+        'tutto_ok': (
+            len(selected) == 0 and len(dati_mancanti) == 0
+            and onboarding is None and not arretrato_frase
+        ),
         'dati_mancanti': dati_mancanti,
         'narrative': narrative,
         'generated_at': datetime.now(timezone.utc).isoformat(),

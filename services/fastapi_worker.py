@@ -5594,55 +5594,119 @@ def _briefing_dati_mensili_mancanti(
     return out
 
 
+# Finestra entro cui un prodotto "da controllare" e' una NOVITA' su cui si puo'
+# agire oggi. Oltre, e' arretrato: si segnala nella narrativa, non come compito.
+# Tarata sui dati veri (2/9/2026): 7 giorni separa nettamente i due gruppi —
+# San Giuliano 112 totali / 0 recenti (fermo da luglio), Villa Guardia 100/46,
+# LAND 29/26 (quasi tutto fresco), Mariano 18/0, TIME CAFE 5/0.
+DA_CONTROLLARE_NOVITA_GIORNI = 7
+
+# Sopra questo totale l'arretrato merita una riga nella narrativa: sotto, il
+# cliente lo smaltisce senza che serva dirglielo.
+DA_CONTROLLARE_ARRETRATO_SOGLIA = 20
+
+
 def _briefing_righe_da_classificare(
     ristorante_id: str, supabase_client,
 ) -> Optional[Dict[str, Any]]:
-    """Notifica LIVE 'da controllare': conta i PRODOTTI DISTINTI needs_review.
-
-    Decisione Mattia 19/06: il numero del briefing deve corrispondere a quello
-    che il cliente trova aprendo Analisi Fatture (nessuna finestra temporale). Se
-    il briefing dicesse "2" (solo le caricate negli ultimi 30 giorni) e in pagina
-    ce ne fossero 9, il cliente non si raccapezza. Si conta su TUTTO lo storico
-    (caso LAND: 2 recenti, 9 totali -> 9).
+    """Notifica LIVE 'da controllare': PRODOTTI DISTINTI needs_review.
 
     Affinamento 28/06: la pagina Analisi Fatture AGGREGA per descrizione (una voce
     è da controllare se almeno una sua riga lo è). Contare le RIGHE qui sfasava il
     numero: 3 righe "COMPENSAZIONE RIGA OMAGGIO" = 1 sola voce in pagina, quindi
     la Salute diceva 6 e la pagina ne mostrava 4. Contiamo i PRODOTTI DISTINTI
     (per descrizione), così il numero combacia con cosa vede e clicca il cliente.
-    None se non c'e' nulla da controllare (zero rumore).
+
+    NOVITA' vs ARRETRATO (decisione Mattia 2/9/2026, "tutte e due"). La regola
+    precedente contava TUTTO lo storico, e sui dati veri produceva una card
+    "112 prodotti da controllare" che nessuno azzera in un giorno: un arretrato
+    travestito da compito, in cima alle 4 card. Ora:
+      - la CARD conta solo le novita' (ultimi DA_CONTROLLARE_NOVITA_GIORNI giorni):
+        un numero che si puo' davvero chiudere oggi. Zero novita' -> nessuna card;
+      - il TOTALE resta nel payload ('arretrato') e alimenta una riga della
+        narrativa quando supera DA_CONTROLLARE_ARRETRATO_SOGLIA.
+    L'elenco completo resta in Analisi Fatture, che e' dove si lavora.
+
+    LIMITE NOTO: la finestra usa `created_at` della riga, cioe' quando la fattura
+    e' stata caricata — non quando la riga e' diventata needs_review. Una riga
+    rilavorata dall'AI dopo il caricamento risulta "vecchia" anche se il dubbio e'
+    nuovo, quindi la card sottostima. Non esiste oggi una colonna con la data di
+    revisione; quando ci sara', il filtro va spostato su quella.
+
+    None se non c'e' NULLA (ne' novita' ne' arretrato): zero rumore.
     """
+    from datetime import datetime as _dt2, timedelta as _td2
     try:
-        resp = (
+        from zoneinfo import ZoneInfo as _ZI
+        oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt2.now().date()
+    soglia_novita = _dt2.combine(
+        oggi - _td2(days=DA_CONTROLLARE_NOVITA_GIORNI), _dt2.min.time()
+    ).isoformat()
+
+    try:
+        # Una sola query: si paginano tutte le righe needs_review e si separano in
+        # Python. fetch_all e non .execute() diretto — 30 giorni su una sede attiva
+        # superano il cap PostgREST di 1000 righe, e un cap qui diventerebbe un
+        # conteggio sbagliato mostrato al cliente.
+        righe = fetch_all(
             supabase_client.table("fatture")
-            .select("descrizione")
+            .select("descrizione,created_at")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .eq("needs_review", True)
-            .execute()
         )
-        descrizioni = {
-            (r.get("descrizione") or "").strip()
-            for r in (resp.data or [])
-            if (r.get("descrizione") or "").strip()
-        }
-        n = len(descrizioni)
     except Exception as exc:
         logger.warning("briefing righe da controllare: lettura fallita: %s", exc)
         return None
 
-    if not n or n <= 0:
+    tutte: set = set()
+    novita: set = set()
+    for r in (righe or []):
+        desc = (r.get("descrizione") or "").strip()
+        if not desc:
+            continue
+        tutte.add(desc)
+        if str(r.get("created_at") or "") >= soglia_novita:
+            novita.add(desc)
+
+    n_novita = len(novita)
+    n_totale = len(tutte)
+    if n_totale <= 0:
         return None
+
+    arretrato = n_totale - n_novita
+    # Nessuna novita': niente card da fare oggi. Se pero' resta un arretrato
+    # rilevante, si emette comunque il record (severity 'info') perche' la
+    # narrativa possa accennarlo — _is_actionable lo terra' fuori dalle card.
+    if n_novita <= 0 and arretrato < DA_CONTROLLARE_ARRETRATO_SOGLIA:
+        return None
+
+    if n_novita > 0:
+        title = f"{n_novita} {'prodotto' if n_novita == 1 else 'prodotti'} da controllare"
+        severity = "warning"
+    else:
+        title = f"{arretrato} prodotti da controllare in arretrato"
+        severity = "info"
 
     return {
         "id": f"uncategorized-rows-live-{ristorante_id}",
         "topic_key": "uncategorized_rows",
         "source_type": "live",
-        "severity": "warning",
-        "title": f"{n} {'prodotto' if n == 1 else 'prodotti'} da controllare",
+        "severity": severity,
+        "title": title,
         "body": "",
         "action_page": "/analisi-fatture?tab=articoli&verifica=1",
-        "payload": {"uncategorized_rows": n, "count": n},
+        "payload": {
+            # 'count'/'uncategorized_rows' = cio' che la card mostra e che il
+            # cliente puo' chiudere oggi. Restano le chiavi storiche perche'
+            # _is_actionable e _bullet_for le leggono.
+            "uncategorized_rows": n_novita,
+            "count": n_novita,
+            "arretrato": arretrato,
+            "totale": n_totale,
+        },
         "source_event_at": None,
         "dedupe_key": f"uncategorized-rows-live-{ristorante_id}",
     }
