@@ -69,6 +69,7 @@ def _carica_righe_td04(supabase):
                     "totale_riga,prezzo_unitario,totale_imponibile,ristorante_id")
             .eq("tipo_documento", "TD04")
             .is_("deleted_at", "null")
+            .order("id")
             .range(offset, offset + page - 1)
             .execute()
         )
