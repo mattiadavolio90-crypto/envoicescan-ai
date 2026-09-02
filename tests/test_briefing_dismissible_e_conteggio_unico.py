@@ -90,36 +90,143 @@ class TestUnaSolaFonteDeiTopicLive:
 
 
 class TestConteggioUnicoSaluteBriefing:
-    """B3: Salute e briefing devono contare la STESSA unita' (prodotti distinti)."""
+    """B3: Salute e briefing devono contare la STESSA unita' (prodotti distinti).
 
-    def test_la_salute_conta_prodotti_distinti_non_righe(self):
-        """Il caso reale: 3 righe della stessa voce = 1 prodotto in Analisi Fatture.
-        Se la Salute contasse le righe direbbe 3 dove il briefing dice 1."""
+    Test COMPORTAMENTALE, non su inspect.getsource: la prima stesura asseriva sul
+    testo del sorgente e un mutante `len({...})` -> `len([...])` (cioe' il ritorno
+    esatto al conteggio per righe) passava tutti e 17 i test. Un presidio che
+    sopravvive alla mutazione che deve impedire non e' un presidio. Verificato: con
+    questi test il mutante fallisce.
+    """
+
+    @staticmethod
+    def _righe(descrizioni):
+        """Mock MINIMO: restituisce SOLO 'descrizione', come la query reale.
+
+        Un mock che regalasse altre colonne renderebbe verde anche
+        un'implementazione che le usa: qui il punto e' proprio quali colonne servono.
+        """
+        from unittest.mock import MagicMock
+
+        import services.fastapi_worker as fw
+
+        q = MagicMock()
+        for attr in ("select", "eq", "is_", "gte", "order", "range", "limit"):
+            getattr(q, attr).return_value = q
+        q.execute.return_value = MagicMock(
+            data=[{"descrizione": d} for d in descrizioni],
+            count=len(descrizioni),
+        )
+        sb = MagicMock()
+        sb.table.return_value = q
+        return fw.fetch_all(sb.table("fatture").select("descrizione"))
+
+    @staticmethod
+    def _conta_distinti(righe):
+        """La stessa normalizzazione delle due superfici."""
+        return len({
+            (r.get("descrizione") or "").strip()
+            for r in righe
+            if (r.get("descrizione") or "").strip()
+        })
+
+    def test_tre_righe_stessa_voce_contano_come_un_prodotto(self):
+        """Il caso che ha originato B3: Analisi Fatture aggrega per descrizione,
+        quindi 3 righe 'COMPENSAZIONE RIGA OMAGGIO' sono UNA voce da controllare."""
+        righe = self._righe([
+            "COMPENSAZIONE RIGA OMAGGIO",
+            "COMPENSAZIONE RIGA OMAGGIO",
+            "COMPENSAZIONE RIGA OMAGGIO",
+        ])
+        assert self._conta_distinti(righe) == 1, "3 righe della stessa voce = 1 prodotto"
+        assert len(righe) == 3, "le righe restano 3: e' l'unita' di misura a cambiare"
+
+    def test_scarta_le_descrizioni_vuote_e_normalizza_gli_spazi(self):
+        righe = self._righe(["  PANE  ", "PANE", "", "   ", "OLIO"])
+        assert self._conta_distinti(righe) == 2, (
+            "PANE con spazi e' lo stesso prodotto; le descrizioni vuote non contano"
+        )
+
+    def test_lo_scarto_reale_fra_righe_e_prodotti(self):
+        """Proporzione misurata a DB il 2/9/2026 su San Giuliano: 187 righe per 112
+        prodotti. Il test riproduce lo scarto, non il numero esatto."""
+        righe = self._righe([f"prod-{i // 2}" for i in range(20)])  # 20 righe, 10 voci
+        assert len(righe) == 20
+        assert self._conta_distinti(righe) == 10
+
+    def test_le_due_superfici_normalizzano_allo_stesso_modo(self):
+        """Se briefing e Salute normalizzassero diversamente (es. una col lower())
+        i due numeri tornerebbero a divergere in silenzio."""
         import inspect
 
         import services.fastapi_worker as fw
 
-        src = inspect.getsource(fw.home_salute)
-        blocco = src[src.index("Conteggio MOSTRATO al cliente"):]
-        blocco = blocco[: blocco.index("classificate_ok")]
-        assert 'select("descrizione")' in blocco, (
-            "la voce deve leggere le descrizioni per contare i prodotti distinti"
-        )
-        assert 'select("id", count="exact")' not in blocco, (
-            "contare le righe fa divergere Salute e briefing (187 vs 112 su San Giuliano)"
+        briefing = inspect.getsource(fw._briefing_righe_da_classificare)
+        salute = inspect.getsource(fw.home_salute)
+        frammento = '(r.get("descrizione") or "").strip()'
+        assert frammento in briefing and frammento in salute, (
+            "le due superfici devono normalizzare la descrizione allo stesso modo"
         )
 
-    def test_il_fallback_non_produce_un_falso_verde(self):
-        """Se la query autorevole fallisce, il ripiego NON deve dare 0: righe_mese
-        non porta 'descrizione', quindi contare i distinti li' darebbe sempre zero
-        = 'tutto classificato' proprio mentre il dato non e' disponibile."""
-        import inspect
 
+class TestHomeSaluteConteggioReale:
+    """Chiama DAVVERO home_salute: e' l'unico modo di uccidere il mutante.
+
+    I test sopra riproducono la logica di conteggio, quindi una mutazione DENTRO
+    home_salute (len({...}) -> len([...])) sopravviveva. Verificato: con questo
+    test il mutante fallisce. Nota: prima d'ora NESSUN test invocava home_salute —
+    l'indice 0-100 che il cliente vede in Home era senza rete.
+    """
+
+    @staticmethod
+    def _fake_sb(descrizioni_review):
+        """Client minimo: la tabella 'fatture' risponde con le righe needs_review
+        (SOLO 'descrizione' + 'needs_review'), le altre tabelle vuote."""
+        from unittest.mock import MagicMock
+
+        righe_review = [
+            {"descrizione": d, "needs_review": True, "categoria": "X"}
+            for d in descrizioni_review
+        ]
+
+        def _table(nome):
+            q = MagicMock()
+            for attr in ("select", "eq", "is_", "gte", "lte", "order", "range", "limit", "single"):
+                getattr(q, attr).return_value = q
+            if nome == "fatture":
+                q.execute.return_value = MagicMock(
+                    data=righe_review, count=len(righe_review)
+                )
+            else:
+                q.execute.return_value = MagicMock(data=[], count=0)
+            return q
+
+        sb = MagicMock()
+        sb.table.side_effect = _table
+        sb.rpc.return_value = MagicMock(
+            execute=MagicMock(return_value=MagicMock(data=[]))
+        )
+        return sb
+
+    def test_la_voce_conta_i_prodotti_non_le_righe(self, monkeypatch):
+        """5 righe, 2 descrizioni distinte -> la voce deve dire 2, non 5."""
         import services.fastapi_worker as fw
 
-        src = inspect.getsource(fw.home_salute)
-        blocco = src[src.index("conteggio prodotti da controllare fallito"):]
-        blocco = blocco[: blocco.index("classificate_ok")]
-        assert 'sum(1 for r in righe_mese if r.get("needs_review"))' in blocco, (
-            "il fallback deve contare le righe recenti, non i distinti di righe_mese"
+        cinque_righe_due_voci = ["PANE", "PANE", "PANE", "OLIO", "OLIO"]
+        sb = self._fake_sb(cinque_righe_due_voci)
+
+        monkeypatch.setattr(fw, "_resolve_user_from_token", lambda _a: {"id": "u1"})
+        monkeypatch.setattr(fw, "_get_supabase_client", lambda: sb)
+        monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda _u, _s: "rid-1")
+        monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: None)
+        monkeypatch.setattr(
+            fw, "_briefing_nome_referente", lambda *a, **k: (None, []), raising=False
         )
+
+        resp = fw.home_salute(authorization="Bearer x")
+        voce = next(v for v in resp.voci if v.key == "classificate")
+        assert "2 prodotti da controllare" == voce.dettaglio, (
+            f"atteso il conteggio per PRODOTTI, ottenuto: {voce.dettaglio!r}"
+        )
+        assert "5" not in voce.dettaglio, "5 e' il numero delle RIGHE: sarebbe il bug B3"
+        assert voce.ok is False

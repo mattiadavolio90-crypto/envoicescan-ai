@@ -6195,6 +6195,12 @@ def _costi_automatici_mese(
 def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str:
     """Il testo della voce "Righe classificate" della card Salute.
 
+    NB sull'unita' di misura, che qui e' DOPPIA di proposito: la PERCENTUALE della
+    voce si calcola sulle RIGHE recenti (righe_mese, 30gg) perche' misura la qualita'
+    della pipeline; il NUMERO mostrato in questa frase sono i PRODOTTI DISTINTI su
+    tutto lo storico, perche' e' quello che il cliente ritrova cliccando in Analisi
+    Fatture (che aggrega per descrizione) ed e' l'unita' del briefing.
+
     Difetto corretto il 2/9/2026: il ramo "Nessuna riga da classificare" veniva
     scelto guardando le righe della FINESTRA recente (30 giorni) invece di quelle
     da controllare. Una sede che non caricava da oltre un mese leggeva "Nessuna
@@ -6206,10 +6212,15 @@ def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str
     "nessuna riga da classificare" e' vero solo per chi non ha proprio righe.
     """
     if da_controllare:
-        return f"{da_controllare} righe da controllare"
+        # PRODOTTI, non righe: dal 02/09/2026 `da_controllare` conta le descrizioni
+        # distinte (come il briefing e come Analisi Fatture, che aggrega per voce).
+        # Lasciare "righe" faceva leggere "112 righe" a chi ne ha 187 — la stessa
+        # frase che era gia' stata corretta una volta perche' mentiva.
+        voce = "prodotto" if da_controllare == 1 else "prodotti"
+        return f"{da_controllare} {voce} da controllare"
     if righe_totali:
-        return "Tutte le righe sono classificate"
-    return "Nessuna riga da classificare"
+        return "Tutti i prodotti sono classificati"
+    return "Nessun prodotto da classificare"
 
 
 def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:

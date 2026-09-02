@@ -19500,6 +19500,11 @@
           "cta_page": {
             "type": "string",
             "title": "Cta Page"
+          },
+          "dismissible": {
+            "type": "boolean",
+            "title": "Dismissible",
+            "default": true
           }
         },
         "type": "object",
