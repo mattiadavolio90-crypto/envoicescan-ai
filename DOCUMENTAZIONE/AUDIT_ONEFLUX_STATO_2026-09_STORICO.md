@@ -2609,32 +2609,37 @@ trovava **nessun processo** — PID morto con la sessione pienamente attiva (al
 comando dopo il PPID era già 94362). E non esiste un PID migliore da scrivere:
 verificato sulla doc ufficiale, non dedotto, il payload porta `session_id`,
 `transcript_path`, `cwd`, `permission_mode`, `hook_event_name` — **nessun
-identificativo di processo**. `session_id` era già la chiave di
-`_avvio_sessione` nel gate di review.
+identificativo di processo**.
 
 ### Cosa è cambiato
 
 Nuovo `scripts/_registro_sessioni.py`: entry senza `pid`, vivacità =
 `ultimo_visto` entro **2h**, rinfrescato da `branch_guard` (gira su ogni Bash).
-Sostituisce **3 copie** di `_pid_vivo` — incluso `pulisci_branch.py`, che non
-era nel prompt e sarebbe rimasto col vecchio schema. `reviewer_gate.py` **non
-toccato**: cercava già per `session_id`, e il fix del 3/9 ora funziona invece
-di degradare al merge-base. Il refresh non sposta `timestamp_avvio`, che è ciò
-su cui il gate attribuisce i commit.
+Sostituisce **3 copie** di `_pid_vivo` — incluso `pulisci_branch.py`, fuori dal
+prompt, che sarebbe rimasto col vecchio schema. `reviewer_gate.py` **non
+toccato**: cercava già per `session_id`, e ora funziona invece di degradare al
+merge-base.
 
-### Il fix stava per introdurre un difetto peggiore di R9
+### Il fix stava per introdurre due difetti peggiori di R9
 
-Il refresh scrive a **ogni comando Bash**, con le sessioni parallele come
-regime normale. Misurato prima di fidarsi: 5 sessioni che si rinfrescano
+**Il refresh azzerava il registro.** Scrive a ogni comando Bash, con le
+sessioni parallele come regime normale: misurato, 5 sessioni che si rinfrescano
 insieme davano **284 letture sbagliate su 300 e 0 entry superstiti su 5** —
 `write_text` tronca, chi legge vede un JSON a metà e lo tratta come registro
-vuoto. Non entry morte: registro sparito. Corretto con scrittura atomica
-(`os.replace`): stessa prova, **0 errori, 5 su 5**. Nessun lock, che in un hook
-su ogni comando bloccherebbe l'utente.
+vuoto. Non entry morte: registro sparito. Scrittura atomica (`os.replace`),
+stessa prova: **0 errori, 5 su 5**. Niente lock, che in un hook su ogni comando
+bloccherebbe l'utente.
 
-**Prove** — 13 test, **7 mutanti, 7 uccisi** (scadenza sempre vera, formato
+**La review ne ha trovato un secondo.** Una sessione scaduta viene cancellata
+dalla prima scrittura di un'altra; se poi riprende (pausa lunga, `--continue`
+il giorno dopo) `tocca()` non la re-registrava e restava invisibile **per
+sempre** — R9 daccapo. Ora si ri-registra col branch reale, e `timestamp_avvio`
+riparte da adesso: per l'attribuzione dei commit sbaglia dal lato prudente.
+
+**Prove** — 13 test, **8 mutanti, 8 uccisi** (scadenza sempre vera, formato
 vecchio vivo, esclusione di sé rimossa, dedup rimosso, refresh che non salva,
-refresh che non aggiorna, scrittura atomica tolta), su copia in scratchpad.
+refresh che non aggiorna, scrittura atomica tolta, ri-registrazione tolta), su
+copia in scratchpad.
 End-to-end: il gate ritrova la sessione, la collisione continua a scattare.
 **E osservato sul registro vero**: a fine sessione conteneva 2 sessioni reali
 vive insieme — col vecchio codice sarebbero sparite entrambe. (3 test sono

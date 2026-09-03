@@ -96,7 +96,7 @@ processo, quindi la vivacità è passata a `session_id` + scadenza rinfrescata
 (nuovo `scripts/_registro_sessioni.py`, che unifica **3 copie** di `_pid_vivo`
 — `pulisci_branch.py` era il terzo consumatore, fuori dal prompt originale).
 Effetto: il fix del 03/09 al gate di review ora funziona invece di degradare
-al merge-base. 13 test, 7/7 mutanti. Il fix stesso stava per introdurre un
+al merge-base. 13 test, 8/8 mutanti. Il fix stesso stava per introdurre un
 guasto peggiore — il refresh concorrente azzerava il registro (0 entry su 5),
 corretto con scrittura atomica prima del commit.
 

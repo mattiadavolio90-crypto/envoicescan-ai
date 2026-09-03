@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -31,6 +32,20 @@ REGISTRO = REPO_ROOT / ".claude" / ".sessioni_attive.json"
 # Rinfrescata a ogni hook: una sessione attiva non la raggiunge mai. Regola
 # solo da quanto sopravvive una sessione chiusa senza che nessuno la rimuova.
 SCADENZA_SECONDI = 2 * 60 * 60
+
+
+def _branch_corrente() -> str:
+    try:
+        esito = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return esito.stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return ""
 
 
 def sessione_viva(entry: dict) -> bool:
@@ -104,23 +119,39 @@ def registra(session_id: str, branch_atteso: str) -> None:
 
 
 def tocca(session_id: str) -> None:
-    """Rinfresca `ultimo_visto` della sessione corrente, se e' registrata.
+    """Rinfresca `ultimo_visto` della sessione corrente.
 
     Chiamata dagli hook che girano spesso: e' cio' che tiene viva una sessione
-    lunga senza allungare la scadenza per quelle abbandonate. Non registra una
-    sessione assente: `timestamp_avvio` deve restare quello vero (il gate di
-    review ci attribuisce i commit), e inventarlo qui lo falserebbe.
+    lunga senza allungare la scadenza per quelle abbandonate.
+
+    Se la sessione non c'e' piu' (scaduta durante una pausa lunga, e cancellata
+    dalla prima scrittura di un'altra sessione) la RI-REGISTRA. Senza, una
+    sessione che riprende a lavorare resterebbe invisibile per sempre: nessuna
+    collisione rilevata e il gate di review di nuovo cieco — cioe' R9 daccapo,
+    solo piu' raro. `timestamp_avvio` riparte da adesso e non e' un dato
+    inventato: e' il momento da cui questa sessione e' tornata al lavoro, e per
+    l'attribuzione dei commit sbaglia dal lato prudente (misura di meno, mai
+    lavoro altrui).
     """
     if not session_id:
         return
+    ora = time.time()
     entries = carica()
     trovata = False
     for entry in entries:
         if entry.get("session_id") == session_id:
-            entry["ultimo_visto"] = time.time()
+            entry["ultimo_visto"] = ora
             trovata = True
-    if trovata:
-        salva(entries)
+    if not trovata:
+        entries.append(
+            {
+                "session_id": session_id,
+                "branch_atteso": _branch_corrente(),
+                "timestamp_avvio": ora,
+                "ultimo_visto": ora,
+            }
+        )
+    salva(entries)
 
 
 def mia_entry(session_id: str) -> dict | None:

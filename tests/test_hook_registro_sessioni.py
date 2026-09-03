@@ -93,11 +93,31 @@ def test_il_refresh_tiene_viva_una_sessione_lunga(registro):
     )
 
 
-def test_tocca_non_registra_una_sessione_assente(registro):
-    """Inventare un timestamp_avvio falserebbe l'attribuzione dei commit."""
-    registro.tocca("MAI-REGISTRATA")
+def test_una_sessione_ripresa_dopo_una_pausa_lunga_torna_visibile(registro):
+    """R9 daccapo, in forma piu' rara — trovato dalla review del commit.
 
-    assert registro.mia_entry("MAI-REGISTRATA") is None
+    Una sessione scaduta viene cancellata dalla prima scrittura di un'altra
+    (`salva` scrive solo le vive). Se poi riprende a lavorare — pausa pranzo,
+    o `--continue` il giorno dopo — senza ri-registrazione resterebbe
+    invisibile **per sempre**: nessuna collisione rilevata e il gate di review
+    di nuovo cieco.
+    """
+    vecchio = time.time() - registro.SCADENZA_SECONDI - 60
+    _scrivi(registro, [
+        {"session_id": "PAUSA-LUNGA", "branch_atteso": "main",
+         "timestamp_avvio": vecchio, "ultimo_visto": vecchio},
+    ])
+    registro.registra("ALTRA", "main")  # un'altra sessione riscrive il file
+    assert registro.mia_entry("PAUSA-LUNGA") is None  # cancellata
+
+    registro.tocca("PAUSA-LUNGA")
+
+    entry = registro.mia_entry("PAUSA-LUNGA")
+    assert entry is not None, "la sessione ripresa resterebbe invisibile per sempre"
+    assert time.time() - entry["timestamp_avvio"] < 5, (
+        "riparte da adesso: per l'attribuzione dei commit sbaglia dal lato "
+        "prudente, misurando di meno e mai il lavoro altrui"
+    )
 
 
 def test_entry_in_formato_vecchio_e_scaduta_non_fa_crashare(registro):
