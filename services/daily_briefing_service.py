@@ -1153,10 +1153,14 @@ def _deanonymize(text: str, mapping: Dict[str, str]) -> str:
 # ma il divieto viveva solo nel prompt — e un prompt senza validazione e' un
 # auspicio, non un vincolo (gia' dimostrato dal burocratese). Lo spazio davanti
 # a "ottim" evita match dentro altre parole.
+# "straordinari" NON c'è: matcherebbe «spese straordinarie» e «manutenzione
+# straordinaria», linguaggio contabile legittimo (rilievo della review 3/9) — e
+# la degradazione al template è silenziosa, quindi un falso positivo costa più
+# del raro «margine straordinario» che lascia passare.
 _FORMULE_VIETATE = (
     "è necessario", "e' necessario", "si rende necessario",
     "provvedi a", "assicurati di procedere",
-    "fantastic", "incredibil", "straordinari", "che bello", "che notizia",
+    "fantastic", "incredibil", "che bello", "che notizia",
     "continua così", "continua cosi", "sei sulla strada giusta",
     " ottimo", " ottima",
 )

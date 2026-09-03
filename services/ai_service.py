@@ -3528,10 +3528,12 @@ def _aggiorna_brand_tracking(
 
 def ottieni_hint_per_ai(descrizione: str, user_id: str) -> Optional[str]:
     """
-    Restituisce la categoria hint per l'AI (prodotti_master con confidence 'media' o NULL).
-    Se trovato, l'AI usa questa come suggerimento debole nel payload.
-    Restituisce None se il prodotto non è in memoria o ha confidence alta/altissima
-    (in quel caso viene già bypassata l'AI completamente da categorizza_con_memoria).
+    Restituisce la categoria hint per l'AI: ogni voce di prodotti_master NON in
+    bypass. Dopo la Fase 6 (3/9) il bypass richiede una conferma — (alta/altissima
+    E verified) o streak>=3 — quindi qui arrivano anche le 'alta' mai viste da un
+    umano, oltre alle 'media'/NULL. Se trovato, l'AI lo usa come suggerimento
+    debole nel payload. None se il prodotto non è in memoria o è in bypass
+    (in quel caso l'AI viene già saltata da categorizza_con_memoria).
     """
     try:
         desc_normalized, _ = get_descrizione_normalizzata_e_originale(descrizione)

@@ -50,7 +50,6 @@ class TestValidatoreTono:
     @pytest.mark.parametrize("testo", [
         "Fantastico! Maggio chiuso con € 13.059 di margine.",
         "Maggio è andato bene, continua così.",
-        "Un margine straordinario a maggio: € 13.059.",
         "Che bello, il margine cresce: € 13.059.",
         "Il margine di maggio è ottimo: € 13.059.",
     ])
@@ -64,6 +63,16 @@ class TestValidatoreTono:
             "Maggio si è chiuso con € 13.059 di margine, +26,5% su aprile.",
             self._BULLETS,
         )
+        assert valida is True
+
+    @pytest.mark.parametrize("testo", [
+        # Linguaggio contabile legittimo (rilievo review 3/9): la degradazione al
+        # template è silenziosa, un falso positivo qui costa più del beneficio.
+        "Nel margine di maggio (€ 13.059) pesano spese straordinarie da controllare.",
+        "La manutenzione straordinaria è registrata nel margine di maggio: € 13.059.",
+    ])
+    def test_il_linguaggio_contabile_non_e_entusiasmo(self, testo):
+        valida, _ = _narrazione_e_valida(testo, self._BULLETS)
         assert valida is True
 
     def test_ottimizzare_non_e_ottimo(self):

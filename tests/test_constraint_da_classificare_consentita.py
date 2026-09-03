@@ -49,15 +49,17 @@ def test_annulla_e_successiva_alla_migration_che_annulla():
     assert _ANNULLA > "20260429223000_enforce_no_unclassified_categoria.sql"
 
 
-# Un blocco CHECK (fino a due livelli di parentesi annidate: il CHECK storico
-# usa upper(btrim(categoria))).
+# Un blocco CHECK (fino a TRE livelli di parentesi annidate: il CHECK storico
+# usa upper(btrim(categoria)); un coalesce(upper(btrim(...))) ne fa tre —
+# rilievo della review 3/9).
 # La disuguaglianza va cercata QUI DENTRO, non ovunque nel file: le migration
 # delle RPC portano legittimamente `categoria <> 'Da Classificare'` nei WHERE
 # dei calcoli margini (e' la regola di dominio stessa, presidiata da
 # test_da_classificare_sql_allineato). La prima versione di questo test
 # matchava anche quelle: falso positivo sulla migration Fase 4 del 3/9.
 _CHECK_BLOCK = re.compile(
-    r"check\s*\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)", re.IGNORECASE | re.DOTALL
+    r"check\s*\((?:[^()]|\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\))*\)",
+    re.IGNORECASE | re.DOTALL,
 )
 _DIVIETO = re.compile(r"<>\s*'da classificare'", re.IGNORECASE)
 
@@ -76,6 +78,11 @@ def test_il_rilevatore_riconosce_il_check_storico():
     assert not _rivieta_da_classificare(
         "CREATE FUNCTION f() AS $$ SELECT 1 FROM fatture "
         "WHERE categoria <> 'Da Classificare'; $$;"
+    )
+    # Tre livelli di annidamento (review 3/9): il rilevatore non deve accecarsi.
+    assert _rivieta_da_classificare(
+        "alter table fatture add constraint c check "
+        "(coalesce(upper(btrim(categoria)), '') <> 'DA CLASSIFICARE');"
     )
 
 
