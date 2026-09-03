@@ -17,6 +17,8 @@ confrontate fra loro con `===` su stringa. Non si confrontano numeri: `1.234,56`
 e `1234,56` sono lo stesso numero e due schermate diverse.
 """
 import json
+import pathlib
+import re
 
 import pytest
 
@@ -258,3 +260,39 @@ def test_fotografa_le_due_num_divergono_sui_decimali():
     diventa "1.234,6" oppure "1.234,567"."""
     diff = _confronta(_NUM_1DEC, _NUM_DEFAULT, casi=[1234.567, 0.25, 99.999], con_null=False)
     assert diff != [], "le due `num` ora coincidono: aggiorna la roadmap"
+
+
+# ─── Che la sostituzione sia davvero avvenuta ───────────────────────────────
+
+_CATENA = pathlib.Path(__file__).resolve().parents[1] / "apps/web/src/app/(app)/catena"
+
+# I 5 file che avevano una copia locale. Se una copia torna, il test di
+# equivalenza qui sopra resterebbe verde: prova che le due implementazioni
+# coincidono, non che il codice usi quella condivisa. (Trovato dal
+# code-reviewer il 3/9; il gemello `test_iva_divisori_fonte_unica.py` questa
+# verifica ce l'aveva.)
+_MIGRATI = [
+    "finestra-spesa-pv.tsx", "gruppo-tag-section.tsx",
+    "finestra-costi-gruppo.tsx", "sintesi-catena.tsx",
+]
+
+
+@pytest.mark.parametrize("nome", _MIGRATI)
+def test_i_file_migrati_non_ridefiniscono_euro(nome):
+    testo = (_CATENA / nome).read_text(encoding="utf-8")
+    assert not re.search(r"^function euro\(n: number\)", testo, re.M), (
+        f"{nome} ha di nuovo una copia locale di `euro()`: usa "
+        '`import {{ formatEuro as euro }} from "@/lib/format"`'
+    )
+    assert 'from "@/lib/format"' in testo, (
+        f"{nome} non importa piu' da @/lib/format: la fonte unica e' stata persa"
+    )
+
+
+@pytest.mark.parametrize("nome", _MIGRATI + ["finestra-margini-coperti.tsx"])
+def test_i_file_migrati_non_ridefiniscono_mesi(nome):
+    testo = (_CATENA / nome).read_text(encoding="utf-8")
+    assert not re.search(r"^const MESI(_LABEL)? = \[", testo, re.M), (
+        f"{nome} ha di nuovo una copia locale dei nomi dei mesi: usa "
+        '`import {{ MESI_LUNGHI }} from "@/lib/mesi"`'
+    )

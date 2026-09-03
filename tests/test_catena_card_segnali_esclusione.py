@@ -50,6 +50,16 @@ def test_un_errore_non_diventa_tutto_sotto_controllo(testo):
     un disservizio mostrerebbe «Tutto sotto controllo, nessuna segnalazione» —
     una rassicurazione falsa su una card che esiste per allarmare.
     """
+    # La condizione si legge normalizzata: `false && loadError && !data` rendeva
+    # il ramo d'errore irraggiungibile lasciando il test verde (mutante
+    # sopravvissuto, trovato dal code-reviewer il 3/9). Cercare la sottostringa
+    # non distingue una condizione viva da una spenta.
+    normalizzato = re.sub(r"[ \t]+", "", testo)
+    assert not re.search(r"(false|0)&&loadError|loadError&&(false|0)", normalizzato), (
+        "il ramo d'errore c'e' ma e' neutralizzato (`false && loadError`): un "
+        "fetch fallito mostrerebbe «Tutto sotto controllo»"
+    )
+
     i_errore = testo.find("loadError && !data")
     i_vuoto = testo.find("segnali.length === 0")
 

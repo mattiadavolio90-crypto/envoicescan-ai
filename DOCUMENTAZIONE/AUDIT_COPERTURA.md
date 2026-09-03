@@ -45,7 +45,7 @@ non sa montare. È un limite dichiarato, non una svista.
 | Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.814 |
 | Frontend (`apps/web/src/`, esclusi i binari) | 53.031 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **113.369** |
+| **TOTALE APP** | **113.401** |
 
 ---
 
@@ -71,7 +71,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ## Frontend — 53.031 righe
 
-> **Le somme di questa tabella chiudono a 52.949**, verificate contro
+> **Le somme di questa tabella chiudono a 52.982**, verificate contro
 > `git ls-files` il 2/9. Le tre stesure precedenti non chiudevano: giravano tre
 > totali diversi (51.413, 51.614, 52.998) nello stesso file, perché ogni sessione
 > aggiungeva il proprio delta invece di ri-sommare la colonna. **Ri-somma sempre,
@@ -82,7 +82,7 @@ non sa montare. È un limite dichiarato, non una svista.
 | `app/api/` — 170 route | 4.871 | 4.871 | 📖 | ciclo 09, 30/8 — proxy trasparente, 0 route toccano il DB |
 | `(app)/margini/` | 4.711 | 4.711 | 📖 | ciclo 09, 31/8 — 183 test, 65/65 mutanti. Resta il rendering |
 | `(app)/scadenziario/` | 2.211 | 2.211 | 📖 | ciclo 09, 31/8 — 15/15 mutanti. Resta il rendering |
-| `(app)/catena/` | 2.938 | 2.938 | 📖 100% | ciclo 09, 1/9 (3 passate) + 3/9 (R3). 290 test. `card-segnali.tsx` (110) è **esclusione motivata**, non un buco: fetch + JSX, provata da `test_catena_card_segnali_esclusione.py` (4/4 mutanti). Resta il rendering |
+| `(app)/catena/` | 2.894 | 2.971 | 📖 97% | ciclo 09, 1/9 (3 passate) + 3/9 (R3). 290 test. `card-segnali.tsx` (110) è **esclusione motivata**, non un buco: fetch + JSX. Le 77 righe di `fatture/page.tsx` non sono mai state lette (sottocartella sfuggita al conteggio fino al 3/9). Resta il rendering |
 | `(app)/analisi-e-tag/` | 1.392 | 1.518 | 📖 92% | ciclo 07 §3c |
 | `lib/` | 2.318 | 5.444 | 🟠 43% | i moduli estratti dalle sessioni di settembre; `format.ts` è la fonte unica del parsing numerico (58 chiamanti) |
 | `(app)/admin/` | 1.739 | 3.871 | 🟠 45% | ciclo 07 §3c — solo staff, non clienti |
@@ -100,14 +100,19 @@ non sa montare. È un limite dichiarato, non una svista.
 | `(auth)` + `(legal)` + `(demo)` | 0 | 1.353 | 🔴 | 552 + 575 + 226 |
 | `hooks/` + file diretti + proxy | 0 | 723 | 🔴 | include `globals.css` |
 
-**Somma: lette 27.254 · non lette 25.695 · totale 52.949** (ri-sommata il
+**Somma: lette 27.210 · non lette 25.772 · totale 52.982** (ri-sommata il
 3/09/2026, non aggiornata per delta).
 
-> ⚠️ **La tabella chiude a 52.949, il repo misura 53.031: mancano 82 righe.**
-> Non è il mio delta (il lavoro del 3/09 vale +5 righe nette sul frontend): lo
-> scarto c'era già e viene da aree cresciute senza che la loro riga fosse
-> ri-misurata. Dichiarato invece che nascosto in un arrotondamento — chi
-> ri-misura un'area, chiuda anche questo.
+> ⚠️ **La tabella chiude a 52.982, il repo misura 53.031: mancano 49 righe.**
+> Vengono da aree cresciute senza che la loro riga fosse ri-misurata, non dal
+> lavoro del 3/09 (+5 righe nette). Dichiarato invece che nascosto in un
+> arrotondamento — chi ri-misura un'area, chiuda anche questo.
+>
+> ⚠️ **Si misura con `git ls-files`, non con `*.tsx`.** La riga di `catena/`
+> diceva 2.938 perché il glob `cat catena/*.tsx` **non entra nelle
+> sottocartelle**: si è perso `catena/fatture/page.tsx` (77 righe, mai lette).
+> Un glob che non scende è un modo silenzioso di misurare meno app di quella che
+> c'è — trovato dal code-reviewer il 3/09.
 
 Le righe non lette dentro un'area 🟠 **non sono terra vergine**: una passata ha
 delimitato il perimetro e motivato l'esclusione (di solito: esposizione live
@@ -126,16 +131,16 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 37.174 | **33%** | 6.364 backend + 27.254 frontend + 3.556 Edge |
+| 📖 Letto integralmente | 37.130 | **33%** | 6.364 backend + 27.210 frontend + 3.556 Edge |
 | 🔍 / 🟠 Auditato o parzialmente coperto | 58.885 | 52% | 36.369 backend + 22.516 frontend |
 | 🔴 Mai guardato | 17.371 | **15%** | 14.054 backend + 3.317 frontend |
 | **Totale app (misurato)** | **113.401** | 100% | 56.814 + 53.031 + 3.556 |
 
-> **Ri-sommato il 3/09/2026.** Le tre righe fanno **113.430** contro un totale
-> misurato di **113.401**: **29 righe di scarto**, che restano scritte qui invece
+> **Ri-sommato il 3/09/2026.** Le tre righe fanno **113.386** contro un totale
+> misurato di **113.401**: **15 righe di scarto**, che restano scritte qui invece
 > di sparire in un arrotondamento. Vengono da righe di area cresciute senza
-> essere ri-misurate (lo stesso scarto di 82 righe dichiarato nella tabella
-> frontend), non dal lavoro del 3/09, che vale +5 righe nette.
+> essere ri-misurate (come le 49 righe dichiarate nella tabella frontend), non
+> dal lavoro del 3/09, che vale +5 righe nette.
 >
 > **La regola che genera questi scarti se la si viola:** ri-somma la colonna, non
 > aggiungere il tuo delta. **La prima stesura di questa tabella aveva tre cifre

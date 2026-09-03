@@ -25,7 +25,7 @@ Una riga per sessione. Il dettaglio è nel verbale, in coda per data.
 | 31/08 | **Voci ereditate** (3) | ✅ chiusa — 2 su 3 erano false alla ri-misura |
 | 31/08 | **Scadenziario** | ✅ chiusa — filtri, ordinamento e stato estratti in `lib/`, 15/15 mutanti |
 | 31/08 | **`(app)/margini/`** — il MOL | ✅ chiusa — 183 test, 65/65 mutanti |
-| 01→03/09 | **`(app)/catena/`** (3 passate + R3) | ✅ **chiusa al 100%** — 290 test; `card-segnali.tsx` è esclusione motivata, provata per mutazione |
+| 01→03/09 | **`(app)/catena/`** (3 passate + R3) | ✅ **97%** — 290 test; `card-segnali.tsx` è esclusione motivata. Restano 77 righe in `fatture/` mai lette: una sottocartella sfuggita al conteggio fino al 3/9 |
 | 01/09 | **Bug importi italiani** | ✅ corretti — erano in **60 punti**, non ~25; fonte unica in `lib/format.ts` |
 | 01/09 | **`(app)/dashboard/`** — logica in `lib/` | ✅ 1ª passata — 92 test, 39 mutanti / 38 uccisi |
 | 02/09 | **`(app)/impostazioni/`** — logica in `lib/` | ✅ 1ª passata — 22 test, 12/12 mutanti |

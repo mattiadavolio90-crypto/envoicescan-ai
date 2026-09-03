@@ -120,7 +120,19 @@ def test_fotografa_i_letterali_rimasti(percorso, atteso):
 
 
 def test_il_totale_dei_letterali_rimasti_e_dichiarato():
-    """Il numero che va nel verbale: 25 occorrenze ancora da migrare."""
+    """Il numero che va nel verbale: 25 occorrenze, di cui ~22 eseguibili.
+
+    **Le 25 non sono tutte codice.** In `routers/gruppo.py` tre stanno in un
+    commento (riga 205) e in un docstring (riga 567): il perimetro da migrare
+    davvero è più piccolo di quanto il conteggio grezzo suggerisce. La
+    distinzione è dichiarata qui perché un numero gonfiato fa sembrare il lavoro
+    più grande di quello che è — l'errore opposto, ma della stessa famiglia, di
+    quando le 29 erano state contate 18. Trovato dal code-reviewer il 3/9.
+
+    Il conteggio grezzo resta quello asserito: è l'unico che una regex può
+    misurare senza parsare il Python, ed è comunque il segnale giusto (una copia
+    nuova, anche in un commento, va vista).
+    """
     totale = sum(
         len(_LETTERALE.findall((_RADICE / p).read_text(encoding="utf-8")))
         for p in _ATTESI

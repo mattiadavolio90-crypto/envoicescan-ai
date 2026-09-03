@@ -55,7 +55,14 @@ def test_il_fallimento_del_load_alza_la_bandiera(testo):
         "il .catch di caricaConfig e' sparito: un load fallito non viene piu' "
         "intercettato e il componente resta con le liste vuote iniziali"
     )
-    assert "setLoadError(true)" in catch.group(1), (
+    # Le righe commentate NON contano: `// setLoadError(true);` lasciava il test
+    # verde con la guardia disattivata (mutante sopravvissuto, trovato dal
+    # code-reviewer il 3/9). Cercare una sottostringa nel sorgente conta anche
+    # il codice morto: qui si guarda solo il codice vivo.
+    vive = "\n".join(
+        r for r in catch.group(1).splitlines() if not r.strip().startswith("//")
+    )
+    assert "setLoadError(true)" in vive, (
         "il .catch non alza piu' loadError: salvare dopo un load fallito "
         "manderebbe liste vuote, che il backend legge come 'niente escluso' — "
         "riattivando in silenzio i PV e i segnali esclusi dall'utente"
@@ -73,6 +80,19 @@ def test_il_salva_e_disabilitato_quando_il_load_e_fallito(testo):
     assert "loadError" in condizione, (
         f"il Salva non guarda piu' loadError (condizione: `{condizione}`): "
         "diventa possibile salvare una configurazione mai caricata"
+    )
+    # `loadError` presente ma neutralizzato (`false && loadError`, `loadError &&
+    # false`, `!!0 && loadError`) passava il controllo sopra: la sottostringa
+    # c'e', la guardia no. Secondo mutante sopravvissuto del 3/9.
+    normalizzata = re.sub(r"\s+", "", condizione)
+    assert not re.search(r"(false|0)&&loadError|loadError&&(false|0)", normalizzata), (
+        f"loadError e' presente ma neutralizzato nella condizione: `{condizione}`. "
+        "Il Salva risulta abilitato anche dopo un load fallito"
+    )
+    assert normalizzata == "saving||loading||loadError", (
+        f"la condizione del Salva e' cambiata forma: `{condizione}`. Se e' un "
+        "miglioramento aggiorna questo test; se e' una neutralizzazione, la "
+        "guardia sulle liste vuote non c'e' piu'"
     )
 
 

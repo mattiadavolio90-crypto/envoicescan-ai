@@ -213,6 +213,12 @@ export function MobileIncassi() {
       // Il round-trip in piu' e' voluto: la versione precedente riscriveva a mano
       // la scelta override-vs-giornalieri per risparmiarlo, e nel farlo perdeva
       // la distinzione fra "zero" e "nessun dato".
+      //
+      // Niente fallback su `d.totale_netto` se `fetchNettoMese` non sa rispondere:
+      // le due chiamate interrogano lo stesso endpoint sullo stesso mese, quindi
+      // il caso e' un flake su una delle due parallele — e in quel caso "—" e' la
+      // risposta giusta. Un fallback che pesca da un'altra fonte e' esattamente
+      // com'era nato il difetto: un numero mostrato al posto di "non lo so".
       const [res, netto] = await Promise.all([
         fetch(`/api/ricavi/giornalieri?${qs}`),
         fetchNettoMese(a, m + 1),

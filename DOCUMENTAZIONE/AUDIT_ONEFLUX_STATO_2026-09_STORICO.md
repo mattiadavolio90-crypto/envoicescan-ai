@@ -2066,9 +2066,15 @@ mutante verificato come realmente applicato prima di eseguirlo):
 | via `setLoadError(true)` dal `.catch` | ucciso |
 | via `loadError` dal `disabled` del Salva | ucciso |
 | stato iniziale ≠ `[]` | ucciso |
+| `// setLoadError(true)` **commentato** | ~~sopravvissuto~~ → ucciso |
+| `disabled={... \|\| (false && loadError)}` | ~~sopravvissuto~~ → ucciso |
 
-**3 su 3.** Rete: `tests/test_catena_config_guardia_salva.py` (3 test); area
-catena verde, 62 test.
+**3 su 3 con i mutanti scelti da me, 3 su 5 con quelli del code-reviewer.** I due
+sopravvissuti erano della classe più naturale: **neutralizzare senza rimuovere il
+testo**. Cercare una sottostringa nel sorgente non distingue il codice vivo da
+quello commentato o spento da un `false &&`. Corretti: il test ora scarta le
+righe commentate e assicura la **forma esatta** della condizione. Rete:
+`tests/test_catena_config_guardia_salva.py` (3 test); area catena verde.
 
 **Limite dichiarato.** È una fotografia **strutturale**: prova che i due presidi
 esistono e sono collegati, non che React li renderizzi — `esegui_ts` non entra
@@ -2153,16 +2159,20 @@ applicato prima di eseguirlo):
 | «Riprova» non richiama `carica` | ucciso |
 | via una delle 3 guardie anti-race | ucciso |
 | aggiunto un `.sort()` (logica che qui non deve stare) | ucciso |
+| `false && loadError && !data` (ramo spento) | ~~sopravvissuto~~ → ucciso |
 
-**4 su 4.** L'ultimo è il guardiano dell'esclusione stessa: se qualcuno mette un
-calcolo in questo file, l'esclusione decade e il test lo dice.
+**4 su 4 con i miei mutanti, 4 su 5 con quelli del code-reviewer:** anche qui il
+ramo *neutralizzato* passava. Corretto con lo stesso metodo di R8. L'ultimo dei
+miei è il guardiano dell'esclusione: se qualcuno mette un calcolo in questo file,
+l'esclusione decade e il test lo dice.
 
-**Cifre ri-misurate, e due non tornavano.** Il contatore diceva
-`2.877 / 3.015 righe, 283 test`. Misurato oggi: **2.938 righe** totali in
-`catena/` (`cat *.tsx | wc -l`) e **290 test** sui 6 file dell'area. Le «138
-righe scoperte» non corrispondono a nessun raggruppamento riproducibile
-(`card-segnali` da solo è 110; con `loading` e `page` fa 215). Il contatore ora
-porta le cifre misurate, non quelle ereditate.
+**Cifre ri-misurate — e la mia prima misura era sbagliata.** Avevo scritto
+**2.938 righe** usando `cat catena/*.tsx | wc -l`: quel glob **non entra nelle
+sottocartelle** e si perdeva `catena/fatture/page.tsx` (77 righe, mai lette).
+La cifra vera è **2.971** (`git ls-files ... | xargs wc -l`), e l'area è al
+**97%**, non al 100%: le 77 righe restano scoperte. Trovato dal code-reviewer.
+I test dell'area sono **290** (il contatore diceva 283). Le «138 righe scoperte»
+del vecchio contatore non corrispondono a nessun raggruppamento riproducibile.
 
 ---
 
@@ -2254,7 +2264,12 @@ Rete: `tests/test_iva_divisori_fonte_unica.py` (9 test). Regressione: **667 test
 verdi su margini/ricavi/IVA.
 
 **Perimetro dichiarato, non taciuto:** restano **25 occorrenze** in 4 file, ora
-fotografate una per una. Se diminuiscono qualcuno sta migrando; se aumentano è
+fotografate una per una — di cui **3 in commenti/docstring** (`routers/gruppo.py`
+righe 205 e 567): il perimetro da migrare davvero è ~22, e la distinzione è
+scritta nel test perché un numero gonfiato è l'errore opposto ma della stessa
+famiglia di quando le 29 erano state contate 18 (code-reviewer, 3/9). **Nessuna
+divergenza attiva oggi:** tutte le 25 valgono `1.10`/`1.22`, coerenti con le
+costanti e con `periodi.ts`. Se diminuiscono qualcuno sta migrando; se aumentano è
 una copia nuova, ed è così che da 4 sono diventate 29.
 
 ---
