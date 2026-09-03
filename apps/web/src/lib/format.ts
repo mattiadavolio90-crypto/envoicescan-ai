@@ -19,9 +19,14 @@ export function formatEuroCompact(v: number): string {
   return formatEuro(v);
 }
 
+// Percentuale in forma **italiana**: virgola decimale, niente zero forzato.
+// Prima usava toFixed, che scrive "12.3%" col punto inglese e tronca invece di
+// arrotondare (12.35 -> "12.3%", non "12,4%"). Nessuno la chiamava piu' — le 3
+// copie in catena/ erano nate proprio per evitarla — quindi il cambio non ha
+// toccato nessuna schermata: le ha rese sostituibili.
 export function formatPct(v: number, decimali = 1): string {
   if (!isFinite(v)) return "—";
-  return `${v.toFixed(decimali)}%`;
+  return `${v.toLocaleString("it-IT", { maximumFractionDigits: decimali })}%`;
 }
 
 export function formatData(iso: string | null): string {

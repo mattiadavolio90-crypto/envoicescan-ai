@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
-import { formatEuro } from "@/lib/format";
+import { formatEuro, formatPct } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,8 +43,7 @@ function euro(n: number | null): string {
 }
 
 function pct(n: number | null): string {
-  if (n == null) return "—";
-  return `${n.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`;
+  return n == null ? "—" : formatPct(n);
 }
 
 // Arrotondato a 1 decimale (decisione owner 3/9): prima mostrava fino a 3

@@ -159,34 +159,31 @@ def test_euro_con_e_senza_guardia_null_coincidono_sui_numeri():
     assert diff == [], f"le due implementazioni di `euro` divergono: {diff}"
 
 
-def test_fotografa_formatPct_NON_e_sostituibile_alle_pct_di_catena():
-    """La sostituzione che il test ha **impedito**.
+def test_formatPct_ora_coincide_con_le_pct_di_catena():
+    """La divergenza che ha tenuto `pct` duplicata per tre mesi, ora chiusa.
 
-    Sembravano la stessa cosa e non lo sono: `formatPct` di `lib/format.ts` usa
-    `toFixed(1)`, le `pct` di catena usano `toLocaleString("it-IT")`. Divergono
-    su **tutti** i casi provati, in tre modi diversi:
+    Fino al 3/9 `formatPct` usava `toFixed(1)` e divergeva su **tutti** i casi:
 
         0      -> "0%"     (catena)  vs  "0.0%"   (lib)   decimale forzato
         12.34  -> "12,3%"            vs  "12.3%"          virgola vs punto
-        12.35  -> "12,4%"            vs  "12.3%"          arrotondamento diverso
+        12.35  -> "12,4%"            vs  "12.3%"          troncava invece di arrotondare
 
-    Il punto decimale al posto della virgola su una percentuale italiana e' un
-    difetto visibile. `pct` resta duplicata in catena finche' qualcuno non
-    decide **quale** delle due forme e' quella giusta: non e' una pulizia, e'
-    un cambio di output.
+    Il punto decimale inglese su una percentuale italiana e' un difetto
+    visibile: la forma giusta era quella di catena. Misurato il 3/9 che
+    `formatPct` **non aveva piu' nessun chiamante** (solo la definizione e un
+    re-export in `margini/periodi.ts`), allinearla non ha cambiato nessuna
+    schermata — ha solo reso sostituibili le 3 copie.
 
-    Se questo test diventa verde le due implementazioni sono state allineate:
-    allora `pct` diventa sostituibile e la roadmap va aggiornata.
+    Se questo test torna rosso qualcuno ha rimesso `toFixed` o cambiato le
+    opzioni di `toLocaleString`: le percentuali di catena cambiano forma.
     """
     diff = _confronta(
         '(n) => `${n.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`',
         "(n) => m.formatPct(n)",
-        casi=[0, 1, 12.34, 12.35, -5.55, 100],
+        casi=[0, 1, 12.34, 12.35, -5.55, 100, 1234.5, 33.333],
         con_null=False,
     )
-    assert len(diff) == 6, (
-        f"formatPct e le pct di catena non divergono piu' su tutti i casi: {diff}"
-    )
+    assert diff == [], f"formatPct e le pct di catena divergono di nuovo: {diff}"
 
 
 def test_pct_con_e_senza_guardia_null_coincidono_sui_numeri():
@@ -319,3 +316,51 @@ def test_num_nel_sorgente_arrotonda_a_un_decimale():
             "conteggi: senza l'opzione tornano fino a 3 cifre decimali "
             "(decisione owner 3/9)"
         )
+
+
+_CON_PCT = ["sintesi-catena.tsx", "finestra-margini-coperti.tsx", "gruppo-tag-section.tsx"]
+
+
+@pytest.mark.parametrize("nome", _CON_PCT)
+def test_le_tre_pct_chiamano_la_fonte_unica(nome):
+    """L'ultima duplicazione di catena, chiusa il 3/9.
+
+    Le 3 `pct` restano come **wrapper** — una e' passata per riferimento nella
+    tabella `COLS` (`fmt: pct`), le altre due tengono la guardia sul null — ma
+    la forma della stringa ora viene da un posto solo. Il test legge il corpo
+    della funzione: una copia rimessa dentro il wrapper lo fa fallire, mentre
+    un assert sul solo `import` non la vedrebbe.
+    """
+    testo = (_CATENA / nome).read_text(encoding="utf-8")
+    corpo = re.search(r"function pct\([^)]*\): string \{(.*?)\n\}", testo, re.S)
+    assert corpo, f"{nome}: `pct` non c'e' piu'"
+    assert "formatPct(" in corpo.group(1), (
+        f"{nome}: `pct` non chiama piu' `formatPct`. La forma italiana della "
+        "percentuale e' tornata a essere riscritta a mano"
+    )
+    assert "toLocaleString" not in corpo.group(1), (
+        f"{nome}: `pct` ha di nuovo una formattazione locale invece di "
+        "delegare a `formatPct`"
+    )
+
+
+def test_formatPct_nel_sorgente_usa_la_virgola_italiana():
+    """La correzione a monte, letta dal sorgente vero.
+
+    `toFixed` scrive il punto decimale inglese (`12.3%`) e tronca invece di
+    arrotondare. Le 3 copie di catena erano nate per evitarlo: se qualcuno lo
+    rimette, le percentuali di tutta la plancia cambiano forma in silenzio.
+    """
+    testo = (_CATENA.parents[2] / "lib" / "format.ts").read_text(encoding="utf-8")
+    vive = "\n".join(
+        r for r in testo.splitlines() if not r.lstrip().startswith("//")
+    )
+    corpo = re.search(r"function formatPct\([^)]*\): string \{(.*?)\n\}", vive, re.S)
+    assert corpo, "formatPct non c'e' piu' in lib/format.ts"
+    assert "toLocaleString" in corpo.group(1) and 'it-IT' in corpo.group(1), (
+        "formatPct non formatta piu' in it-IT: la virgola decimale e' persa"
+    )
+    assert "toFixed" not in corpo.group(1), (
+        "formatPct e' tornata a `toFixed`: punto inglese e troncamento, "
+        "la divergenza chiusa il 3/9"
+    )

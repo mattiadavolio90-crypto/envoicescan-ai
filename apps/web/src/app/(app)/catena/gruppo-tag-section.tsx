@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { formatEuro, formatEuro as euro } from "@/lib/format";
+import { formatEuro, formatEuro as euro, formatPct } from "@/lib/format";
 import { MESI_LUNGHI as MESI_LABEL } from "@/lib/mesi";
 import { calcolaCandidati, MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
 import {
@@ -46,7 +46,7 @@ function num(n: number): string {
   return n.toLocaleString("it-IT", { maximumFractionDigits: 1 });
 }
 function pct(n: number): string {
-  return `${n.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`;
+  return formatPct(n);
 }
 
 // Stessi preset emoji del tag di sede (parità UX).

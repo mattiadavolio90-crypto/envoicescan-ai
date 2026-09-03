@@ -24,7 +24,7 @@ import {
   type MolMensile,
 } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
-import { formatEuro as euro } from "@/lib/format";
+import { formatEuro as euro, formatPct } from "@/lib/format";
 import {
   calcolaSparkline,
   messaggioFattureDaCollocare,
@@ -43,8 +43,7 @@ import { TagCatenaDialog } from "./gruppo-tag-section";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
 
 function pct(n: number | null): string {
-  if (n == null) return "—";
-  return `${n.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`;
+  return n == null ? "—" : formatPct(n);
 }
 
 // Palette per stato salute/colore — stessa famiglia visiva della Home PV
