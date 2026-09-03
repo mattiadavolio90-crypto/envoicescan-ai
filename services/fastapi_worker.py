@@ -8253,7 +8253,7 @@ def _load_fatture_fb_for_period(
             .select("data_documento,totale_riga,categoria")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
-            .neq("categoria", "Da Classificare")
+            .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Le fatture ripartite sul gruppo arrivano gia' come quote_riparto_*
             # sui singoli PV: contarle anche qui sulla sede tecnica sarebbe doppio
             # conteggio. Stesso filtro di _calcola_costi_auto_per_mese/_per_periodo.
@@ -8291,7 +8291,7 @@ def _load_fatture_fb_per_categoria_e_mese(
             .select("data_documento,totale_riga,categoria")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
-            .neq("categoria", "Da Classificare")
+            .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Vedi _load_fatture_fb_for_period: escludere le righe ripartite
             # sulla sede tecnica per evitare doppio conteggio col meccanismo
             # quote_riparto_* gia' proiettato sui singoli PV.
@@ -8361,7 +8361,7 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
-            .neq("categoria", "Da Classificare")
+            .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Le fatture ripartite sul gruppo arrivano gia' come quote_riparto_*
             # sui singoli PV: contarle anche qui le sottrarrebbe due volte dal MOL.
             # Stesso filtro della RPC costi_automatici_mensili e di
@@ -8423,7 +8423,7 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
-            .neq("categoria", "Da Classificare")
+            .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Vedi _calcola_costi_auto_per_mese: le fatture ripartite entrano gia'
             # come quote_riparto_* sui PV, contarle qui e' doppio conteggio.
             .neq("ripartita_su_gruppo", True)

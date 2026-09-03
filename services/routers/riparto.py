@@ -61,7 +61,15 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
 
 
-router = APIRouter()
+# `dependencies` a livello di router: la guardia vale per TUTTI gli endpoint,
+# compresi quelli che verranno. Non sostituisce i `Depends` gia' presenti nelle
+# firme — misurato il 3/9/2026: FastAPI esegue prima quella del router e POI
+# quella dell'endpoint, quindi le protezioni piu' strette (`_verify_admin`, che
+# controlla la worker key E il token admin) restano intatte.
+#
+# Non e' una falla che si chiude: al 3/9 tutti i 216 endpoint erano gia'
+# protetti uno per uno. E' la rete perche' il 217esimo non nasca aperto.
+router = APIRouter(dependencies=[Depends(_verify_worker_key)])
 
 
 # ─── Helper condivisi ────────────────────────────────────────────────────────

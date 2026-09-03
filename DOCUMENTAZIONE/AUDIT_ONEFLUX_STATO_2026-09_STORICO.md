@@ -29,7 +29,9 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R4 — formattatori duplicati | 8 unificate, 8 divergono: decisione a Mattia |
 | 03/09 | R4, seconda parte — decisione presa | chiuso: separatore migliaia + decimali arrotondati |
 | 03/09 | **Le 3 `pct` + `catena/fatture/` letta** | chiuse; e ci è stato trovato **R10**, che mente al cliente |
-| 03/09 | **R10 — il guasto travestito da «niente da fare»** | chiuso su 6 pagine cliente: 4,4 M€ non spariscono più |
+| 03/09 | **R10 — il guasto travestito da «niente da fare»** | chiuso su 7 pagine cliente: 4,4 M€ non spariscono più |
+| 03/09 | **R5 + R6 — le due ipotesi che non reggevano** | chiusi: nessuna sessione propria, nessuna migration |
+| 03/09 | **R11 — la regola anche in SQL** | chiuso: le 7 RPC vive legate alla costante Python |
 
 ---
 
@@ -2493,3 +2495,99 @@ restano col vecchio schema: **esclusione motivata**.
   dall'harness, che non entra nei `.tsx`) e la riga della pagina asserita nella
   **forma esatta**, non per sottostringa.
 - `tsc` pulito. Chiavi `documenti`/`sedi`/`articoli` verificate contro il worker.
+
+
+---
+
+## 03/09/2026 — R5 e R6: due residui rimandati per ipotesi mai misurate
+
+**Verdetto:** chiusi entrambi, **SQL incluso**. Erano in fondo alla roadmap per
+due ragioni che la misura ha smontato: nessuno dei due valeva la sessione
+dedicata che si temeva.
+
+**R5 — la guardia sui router**
+- `dependencies=[Depends(_verify_worker_key)]` su tutti e **12** i router.
+- **Non chiudeva una falla**: i **216 endpoint su 216** erano già protetti uno
+  per uno. Ripartizione misurata con un audit AST (la prima stesura diceva «il
+  solo senza `dependencies` è `svuota-dati`»: **falso**, corretto dal reviewer):
+  166 `dependencies=[_verify_worker_key]`, 16 `dependencies=[_verify_admin]` e
+  **34 che si affidano alla sola firma** (33 in `admin.py`, 1 in `account.py`) —
+  tutti e 34 con `_verify_admin`, cioè la guardia **più** stretta. È prevenzione:
+  il 217° non nasce aperto.
+- **Il timore era «tocca tutto il traffico».** Misurato: FastAPI esegue prima
+  la dependency del router e **poi** quella dell'endpoint — è additiva.
+  `_verify_admin` resta più restrittiva dov'era.
+- **Prova che non ha rotto niente**: 95 rotte GET senza path-param, con e senza
+  `X-Worker-Key`, **0 differenze** di status code fra prima e dopo (snapshot
+  confrontati sullo stesso albero).
+
+**R6 — il filtro «Da Classificare»**
+- La regola «le righe non classificate restano fuori dal MOL» era scritta a
+  mano in **7 punti** (6 `.neq(...)` + 1 nella stringa PostgREST del
+  queue-worker), non 9 come diceva la roadmap.
+- `CATEGORIA_NON_CLASSIFICATA` **esisteva già** ed era usata negli stessi file
+  poche righe più su: le query erano rimaste indietro per inerzia.
+- **Nessuna migration**, contro quanto la roadmap dava per certo: la
+  sostituzione produce **la stessa identica stringa**. Verificato anche il caso
+  non banale — nel filtro PostgREST la virgola separa le condizioni e il punto i
+  campi, e `Da Classificare` non contiene né l'una né l'altro.
+
+**Non fatto, e dichiarato**
+- I letterali `"Da Classificare"` restanti nel backend Python sono log,
+  docstring, default e confronti applicativi: verificato riga per riga che
+  **nessuno di essi compare dentro una chiamata di query** (`.neq(`, `.or_(`,
+  `.in_(`), cioè nessun filtro di esclusione travestito. Toccarli è un'altra
+  dimensione.
+- Nessuno: il perimetro SQL, emerso qui, è stato chiuso subito (sotto).
+
+**Prove**
+- 27 test in `test_router_dependencies_guardia.py` (uno **esegue** un endpoint
+  nuovo senza guardia e verifica che risponda 401 lo stesso) e 9 in
+  `test_da_classificare_fonte_unica.py`.
+- Mutazione su copia in scratchpad: **6 mutanti, 6 uccisi**. Fra questi
+  `APIRouter(dependencies=[])`, che **contiene** la parola cercata e non
+  protegge nulla: la lezione del mattino, applicata prima di sbagliarla.
+
+
+---
+
+## 03/09/2026 — R11: la stessa regola, dall'altra parte del confine
+
+**Verdetto:** chiuso. Emerso chiudendo R6 e chiuso nella stessa sessione: era il
+pezzo che rendeva R6 parziale.
+
+**Il problema.** R6 ha dato una fonte unica ai 7 punti Python che escludono le
+righe `Da Classificare` dal MOL. Ma la stessa regola di dominio vive **dentro le
+RPC PostgreSQL**, e una funzione PL/pgSQL non può importare una costante Python.
+Chi cambiasse la stringa da una parte sola otterrebbe due totali diversi nella
+stessa pagina — il difetto «fix parziale» già pagato dal progetto.
+
+**Fatto**
+- `tests/test_da_classificare_sql_allineato.py`: 14 test che **legano le due
+  sponde**. Se la costante Python cambia e l'SQL no (o viceversa), la suite
+  diventa rossa.
+- **Nessuna migration riscritta**: sono lo storico di ciò che è stato applicato.
+  Il test chiede solo che una migration *nuova* usi la stessa stringa.
+
+**Trovato**
+- **Il perimetro vero si legge a DB, non nei file.** `pg_proc` sul database di
+  produzione dice **7 RPC vive** con la regola (`costi_automatici_mensili`,
+  `costi_automatici_mensili_gruppo`, `gruppo_peso_categoria`,
+  `gruppo_prezzi_categoria`, `gruppo_spesa_pivot`, `gruppo_spreco_fb_categorie`,
+  `gruppo_tag_descrizioni`), tutte con la grafia corretta e lo stesso filtro.
+  I file dicono **13 occorrenze su 12 file**, perché contengono anche RPC
+  sostituite da versioni successive.
+- **Tre cifre diverse per la stessa cosa, tutte sbagliate tranne l'ultima**: il
+  reviewer diceva «18 occorrenze su 13 file», io «33 su 20» (contando i
+  commenti), la misura in codice vivo dà **13 su 12**, e il DB **7 RPC**. È il
+  motivo per cui la regola del progetto è ri-misurare *nel momento in cui si
+  scrive il numero*.
+- Un primo pattern intercettava anche `categoria <> '📝 NOTE E DICITURE'`, che è
+  un'altra esclusione legittima: ristretto ai soli valori che iniziano per
+  `Da Cla`, così cattura anche la grafia errata storica.
+
+**Prove**
+- 14 test; **3 mutanti, 3 uccisi**: grafia errata `'Da Clasificare'` in una RPC
+  (il caso reale: in SQL non dà errore, filtra semplicemente nulla e le righe
+  rientrano nel MOL in silenzio), costante Python cambiata senza l'SQL, filtro
+  cancellato da una RPC.

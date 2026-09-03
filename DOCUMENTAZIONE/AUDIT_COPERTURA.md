@@ -42,14 +42,14 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.814 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.914 |
 | Frontend (`apps/web/src/`, esclusi i binari) | 53.239 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **113.609** |
+| **TOTALE APP** | **113.709** |
 
 ---
 
-## Backend Python — 56.814 righe
+## Backend Python — 56.914 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -58,10 +58,10 @@ non sa montare. È un limite dichiarato, non una svista.
 | `auth_service.py` | 1.782 | 📖 letto | ciclo 07, 8/8 |
 | `ai_service.py` | 5.715 | 📖 nucleo decisione + gate | ciclo 09: motore unico, gate, 9 uscite. 101 test |
 | `upload_handler.py` | 2.282 | 🔍 chiamante del gate | passa descrizione e fornitore a `valuta_fiducia` |
-| `margine_service.py` | 1.476 | 🔍 di rimbalzo | **regola di dominio MOL** |
-| `fastapi_worker.py` | 8.745 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9 |
+| `margine_service.py` | 1.483 | 🔍 di rimbalzo | **regola di dominio MOL**; 3/9 il filtro «Da Classificare» viene dalla costante (R6) |
+| `fastapi_worker.py` | 8.749 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
 | `daily_briefing_service.py` | 1.637 | 🔍 di rimbalzo | 4 sessioni di lavoro a settembre sul briefing, mai auditato come oggetto proprio |
-| `routers/` (tutti) | 16.514 | 🟠 parziale | ~4.000 letti nel ciclo 07 (workspace, tag, margini, ricavi, scadenziario); il resto no |
+| `routers/` (tutti) | 16.617 | 🟠 parziale | ~4.000 letti nel ciclo 07 (workspace, tag, margini, ricavi, scadenziario); il resto no. 3/9: **216 endpoint su 216 ri-verificati protetti** e guardia a livello di router (R5) — il perimetro *sicurezza* è chiuso, quello *logica* no |
 | `worker/` | 2.400 | 🔴 | queue-worker, **gira non presidiato** |
 | `utils/` | 2.574 | 🔴 | — |
 | `config/` | 2.379 | 🔴 | **contiene i prompt AI** — la regola di dominio n.1 |
@@ -136,15 +136,26 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 | 📖 Letto integralmente | 37.435 | **33%** | 6.364 backend + 27.515 frontend + 3.556 Edge |
 | 🔍 / 🟠 Auditato o parzialmente coperto | 58.885 | 52% | 36.369 backend + 22.516 frontend |
 | 🔴 Mai guardato | 17.256 | **15%** | 14.054 backend + 3.202 frontend |
-| **Totale app (misurato)** | **113.609** | 100% | 56.814 + 53.239 + 3.556 |
+| **Totale app (misurato)** | **113.709** | 100% | 56.914 + 53.239 + 3.556 |
 
-> **Ri-sommato il 3/09/2026, dopo R10 e la sua review.** Le tre righe fanno
-> **113.576** contro un totale misurato di **113.609**: **33 righe di scarto**, che restano scritte
-> qui invece di sparire in un arrotondamento. La riga «letto» non è un delta:
-> viene dalla **ri-somma della colonna** frontend (27.515 su 20 aree). Lo scarto
-> è quello dichiarato lì — **6 righe** che nessuna area copre — più 27 righe di
-> aree backend cresciute senza essere ri-misurate. Era 87 stamattina: è sceso
-> ri-misurando le aree invece di sommare il delta del proprio lavoro.
+> **Ri-sommato il 3/09/2026, dopo R5 e R6.** Le tre righe fanno **113.576**
+> contro un totale misurato di **113.709**: **133 righe di scarto**, che restano
+> scritte qui invece di sparire in un arrotondamento. La riga «letto» non è un
+> delta: viene dalla **ri-somma della colonna** frontend (27.515 su 20 aree).
+>
+> Lo scarto si scompone:
+> - **100** righe di backend: i commenti aggiunti ai 12 router e ai 3 file di R6;
+> - **27** righe di aree backend cresciute prima e mai ri-misurate;
+> - **6** righe di frontend già dichiarate sopra.
+>
+> `100 + 27 + 6 = 133`. Se un giorno non torna, manca una misura.
+>
+> ⚠️ **Il totale è misurato su HEAD + solo il lavoro di questa sessione**, non
+> sul working tree. Mentre R5/R6 chiudevano, un'altra sessione aveva **163 righe
+> di frontend non committate** nell'albero: contarle qui avrebbe attribuito a
+> questo ciclo lavoro di qualcun altro, e le sarebbe state contate due volte al
+> suo commit. La prima stesura lo faceva, e le dava per «committate» quando non
+> lo erano — corretto dal `code-reviewer`, poi ri-misurato.
 >
 > **La regola che genera questi scarti se la si viola:** ri-somma la colonna, non
 > aggiungere il tuo delta. **La prima stesura di questa tabella aveva tre cifre
@@ -171,7 +182,7 @@ Edge Functions, le 170 route, il MOL.
 2. **`worker/` (2.400) gira non presidiato** e non è in nessuna lista.
 3. **`daily_briefing_service.py` (1.637)** ha avuto 4 sessioni di lavoro a
    settembre ma non è mai stato auditato come oggetto proprio.
-4. **I `routers/` sono il blocco più grande a copertura parziale** (16.514 righe,
+4. **I `routers/` sono il blocco più grande a copertura parziale** (16.617 righe,
    ~4.000 lette).
 
 ---

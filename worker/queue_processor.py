@@ -55,6 +55,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from defusedxml import ElementTree as _DefusedET
 
+from config.constants import CATEGORIA_NON_CLASSIFICATA
 from services.db_service import filter_active
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
 from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
@@ -284,7 +285,9 @@ def _auto_classify_saved_rows(
             .eq("ristorante_id", ristorante_id)
             .eq("file_origine", nome_file)
         )
-        .or_("categoria.is.null,categoria.eq.Da Classificare,categoria.eq.")
+        # Il valore non contiene virgole ne' punti: interpolarlo nella stringa
+        # di filtro PostgREST da' esattamente la stessa query del letterale.
+        .or_(f"categoria.is.null,categoria.eq.{CATEGORIA_NON_CLASSIFICATA},categoria.eq.")
         .limit(10000)
         .execute()
     )

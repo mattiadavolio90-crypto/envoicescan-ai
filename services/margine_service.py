@@ -17,6 +17,7 @@ except ImportError:
 from datetime import datetime, timezone
 from config.logger_setup import get_logger
 from config.constants import (
+    CATEGORIA_NON_CLASSIFICATA,
     CATEGORIE_FOOD,
     CATEGORIE_SPESE_GENERALI,
     KPI_SOGLIE,
@@ -86,7 +87,7 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
             .eq('user_id', user_id)
             .eq('ristorante_id', ristorante_id)
             .is_('deleted_at', 'null')
-            .neq('categoria', 'Da Classificare')
+            .neq('categoria', CATEGORIA_NON_CLASSIFICATA)
             # Anti-doppio-conteggio: le righe di una fattura ripartita sul gruppo
             # NON entrano nel costo automatico della sede intestataria — il loro
             # costo rientra distribuito via quote_riparto_* (riparto_quote_mensili).
@@ -288,7 +289,7 @@ def carica_costi_per_categoria(user_id: str, ristorante_id: str,
                 .is_('deleted_at', 'null') \
                 .gte('data_documento', date_from) \
                 .lte('data_documento', date_to) \
-                .neq('categoria', 'Da Classificare') \
+                .neq('categoria', CATEGORIA_NON_CLASSIFICATA) \
                 .range(offset, offset + page_size - 1) \
                 .execute()
             
