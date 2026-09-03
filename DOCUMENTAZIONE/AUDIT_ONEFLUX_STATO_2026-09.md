@@ -6,7 +6,7 @@
 > `AUDIT_COPERTURA.md`. Se una di queste tre cose finisce nelle altre due, tutte
 > e tre diventano illeggibili — è già successo.
 
-**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 02/09/2026.**
+**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 03/09/2026.**
 I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 > ⚠️ **Rinominato il 02/09/2026.** Si chiamava `..._2026-08-29.md` e faceva
@@ -30,6 +30,7 @@ Una riga per sessione. Il dettaglio è nel verbale, in coda per data.
 | 01/09 | **`(app)/dashboard/`** — logica in `lib/` | ✅ 1ª passata — 92 test, 39 mutanti / 38 uccisi |
 | 02/09 | **`(app)/impostazioni/`** — logica in `lib/` | ✅ 1ª passata — 22 test, 12/12 mutanti |
 | 02/09 | **`(app)/notifiche/`** | ✅ chiusa — 23 test; corretto un difetto **visibile al cliente** (notifica senza pulsante) |
+| 03/09 | **Residui R8, R2, R3, R1, R7** + R4 parziale | ✅ **5 chiusi su 6** — corretto il netto mobile (euro sbagliati); R4 metà, le 8 copie divergenti aspettano una decisione |
 | 01→02/09 | **Categorizzazione** — fasi 0, 7, 1, 2, 3 | 🟠 **parziale: 5 fasi su 10** — vedi §2 |
 
 **Il metodo che ha retto:** ogni sessione ha ri-misurato le ipotesi del proprio
@@ -70,6 +71,16 @@ va misurato e portato a Mattia **prima** di attivarlo.
 >   aperto), non un buco attivo. Declassato di priorità.
 > - **R4 è più grande del dichiarato**: i formattatori duplicati sono **12, non
 >   7**, e su **5 file** (non 4). I verbali cercavano `const`, ma sono `function`.
+>
+> **Sessione del 03/09 — 5 residui chiusi su 6 affrontati.** Altre tre cifre non
+> hanno retto alla ri-misura, e vale la pena saperlo prima di fidarsi delle
+> altre:
+> - **R8 era già in produzione** dal commit `71ac3ab`, cioè dalla stessa passata
+>   che lo dichiarava aperto: copiato dal «non fatto» di un verbale senza
+>   riguardare il codice;
+> - **R7 non erano 4 letterali ma 29** (`grep -c` conta le righe, non le
+>   occorrenze: molte righe ne portano due);
+> - **R1 non era teorico**: gli incassi a DB ci sono già (1.049 righe, 6 sedi).
 
 | # | Residuo | Sforzo | Perché in questa posizione |
 |---|---|---|---|

@@ -5,7 +5,7 @@
 > somma le righe: senza questo file si sa *cosa* è stato chiuso, non *quanto*
 > manca. **È anche l'unico posto dove le somme devono tornare.**
 
-**Ri-misurato il 2/09/2026.** Le cifre si ri-misurano a ogni aggiornamento, mai
+**Ri-misurato il 3/09/2026.** Le cifre si ri-misurano a ogni aggiornamento, mai
 ereditate da qui — nemmeno dalla riga sopra:
 
 ```bash
@@ -42,14 +42,14 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.787 |
-| Frontend (`apps/web/src/`, esclusi i binari) | 53.026 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.814 |
+| Frontend (`apps/web/src/`, esclusi i binari) | 53.031 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
 | **TOTALE APP** | **113.369** |
 
 ---
 
-## Backend Python — 56.787 righe
+## Backend Python — 56.814 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -69,9 +69,9 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Frontend — 53.026 righe
+## Frontend — 53.031 righe
 
-> **Le somme di questa tabella chiudono a 53.026**, verificate contro
+> **Le somme di questa tabella chiudono a 52.949**, verificate contro
 > `git ls-files` il 2/9. Le tre stesure precedenti non chiudevano: giravano tre
 > totali diversi (51.413, 51.614, 52.998) nello stesso file, perché ogni sessione
 > aggiungeva il proprio delta invece di ri-sommare la colonna. **Ri-somma sempre,
@@ -100,7 +100,14 @@ non sa montare. È un limite dichiarato, non una svista.
 | `(auth)` + `(legal)` + `(demo)` | 0 | 1.353 | 🔴 | 552 + 575 + 226 |
 | `hooks/` + file diretti + proxy | 0 | 723 | 🔴 | include `globals.css` |
 
-**Somma: lette 27.193 · non lette 25.833 · totale 53.026.**
+**Somma: lette 27.254 · non lette 25.695 · totale 52.949** (ri-sommata il
+3/09/2026, non aggiornata per delta).
+
+> ⚠️ **La tabella chiude a 52.949, il repo misura 53.031: mancano 82 righe.**
+> Non è il mio delta (il lavoro del 3/09 vale +5 righe nette sul frontend): lo
+> scarto c'era già e viene da aree cresciute senza che la loro riga fosse
+> ri-misurata. Dichiarato invece che nascosto in un arrotondamento — chi
+> ri-misura un'area, chiuda anche questo.
 
 Le righe non lette dentro un'area 🟠 **non sono terra vergine**: una passata ha
 delimitato il perimetro e motivato l'esclusione (di solito: esposizione live
@@ -119,16 +126,22 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 37.113 | **33%** | 6.364 backend + 27.193 frontend + 3.556 Edge |
+| 📖 Letto integralmente | 37.174 | **33%** | 6.364 backend + 27.254 frontend + 3.556 Edge |
 | 🔍 / 🟠 Auditato o parzialmente coperto | 58.885 | 52% | 36.369 backend + 22.516 frontend |
 | 🔴 Mai guardato | 17.371 | **15%** | 14.054 backend + 3.317 frontend |
-| **Totale** | **113.369** | 100% | 56.787 + 53.026 + 3.556 |
+| **Totale app (misurato)** | **113.401** | 100% | 56.814 + 53.031 + 3.556 |
 
-> Verificato con l'aritmetica esplicita al momento della scrittura: le tre righe
-> sommano a 113.369. **La prima stesura di questa tabella, di oggi, aveva tre
-> cifre stimate a occhio invece che calcolate** — 30.749 / 47.157 / 35.463, che
-> non tornavano con nessuna sezione sopra. Corrette prima del commit. È lo stesso
-> errore che il file documenta da tre cicli, commesso mentre lo si riscriveva.
+> **Ri-sommato il 3/09/2026.** Le tre righe fanno **113.430** contro un totale
+> misurato di **113.401**: **29 righe di scarto**, che restano scritte qui invece
+> di sparire in un arrotondamento. Vengono da righe di area cresciute senza
+> essere ri-misurate (lo stesso scarto di 82 righe dichiarato nella tabella
+> frontend), non dal lavoro del 3/09, che vale +5 righe nette.
+>
+> **La regola che genera questi scarti se la si viola:** ri-somma la colonna, non
+> aggiungere il tuo delta. **La prima stesura di questa tabella aveva tre cifre
+> stimate a occhio** — 30.749 / 47.157 / 35.463, che non tornavano con nessuna
+> sezione sopra. È lo stesso errore che il file documenta da tre cicli, commesso
+> mentre lo si riscriveva.
 
 Quel che è letto è però il perimetro più esposto: ingresso dati, auth, DB,
 Edge Functions, le 170 route, il MOL.
