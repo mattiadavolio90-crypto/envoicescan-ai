@@ -24909,6 +24909,17 @@
               }
             ],
             "title": "Cta Page"
+          },
+          "conseguenza": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conseguenza"
           }
         },
         "type": "object",

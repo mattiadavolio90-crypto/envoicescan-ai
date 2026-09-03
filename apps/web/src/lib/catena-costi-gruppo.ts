@@ -13,6 +13,7 @@
 // Le altre anomalie restano annotate una per una col loro perche'.
 
 import { parseNumeroIt } from "@/lib/format";
+import { daScegliereCategoria } from "@/lib/categorie-spesa";
 
 /* ─── finestra-costi-gruppo.tsx: il costo manuale che si scrive ──────────── */
 
@@ -49,25 +50,66 @@ export function datiCostoValidi(descrizione: string, imp: number, categoria: str
   return Boolean(descrizione.trim()) && importoValido(imp) && Boolean(categoria);
 }
 
-/* ─── L'avviso "quote non classificate" ─────────────────────────────────── */
+/* ─── L'avviso "righe da controllare" ───────────────────────────────────── */
 
-/** L'avviso ambra si mostra solo se c'e' un importo non classificato. */
-export function mostraAvvisoDaClassificare(importo: number | null | undefined): boolean {
-  return (importo ?? 0) > 0;
+/** Il minimo che serve per giudicare una riga: il resto del documento non conta. */
+type RigaClassificabile = { categoria: string | null; needs_review: boolean };
+
+/**
+ * Quante righe, su tutti i costi della finestra, sono ancora da controllare.
+ *
+ * E' la somma esatta dei badge rossi per-costo ("N da verificare"): stesso
+ * predicato, stesso insieme di righe. Le due cifre non possono divergere, ed e'
+ * il motivo per cui questo conteggio si fa QUI e non a backend — il banner
+ * riassume cio' che l'utente vede subito sotto.
+ *
+ * Predicato: `daScegliereCategoria`, fonte unica anche per Python e SQL. Non
+ * reimplementare il confronto con "Da Classificare": la variante errata
+ * 'Da Clasificare' (una sola "s") non darebbe errore, conterebbe zero righe
+ * per sempre.
+ *
+ * SOSTITUISCE il vecchio gate a importo (`da_classificare_importo` dal backend,
+ * su riparto_costi_catena_quote). I due insiemi non coincidono: un costo
+ * manuale non ha righe, quindi una sua quota non classificata NON accende piu'
+ * questo avviso. E' voluto — da qui si corregge agendo sulle righe, e senza
+ * righe l'istruzione "aprile qui sopra" non avrebbe nulla da aprire. Quel caso
+ * resta coperto da `frammentoNonCorreggibili`, che e' un avviso separato.
+ */
+export function contaRigheDaClassificare(
+  costi: readonly { righe?: readonly RigaClassificabile[] | null }[] | null | undefined,
+): number {
+  return (costi ?? []).reduce(
+    (tot, c) =>
+      tot + (c.righe ?? []).filter((r) => daScegliereCategoria(r.needs_review, r.categoria)).length,
+    0,
+  );
+}
+
+/** L'avviso ambra si mostra solo se c'e' almeno una riga da controllare. */
+export function mostraAvvisoDaClassificare(righeDaControllare: number): boolean {
+  return righeDaControllare > 0;
 }
 
 /**
- * Frammento " (3 costi)" accanto all'importo, vuoto se il conteggio manca o e'
- * zero. Il markup resta nel .tsx: qui si decide solo il testo.
+ * Il soggetto della frase, concordato: "3 righe sono" / "1 riga e'".
  *
- * `n === 1` e `n <= 1` sono qui indistinguibili e nessun test li separa:
- * divergono solo per `0 < n < 1`, e `n` e' un conteggio di righe. Equivalenza
- * vera, provata per mutazione — per ucciderla servirebbe una fixture con un
- * conteggio frazionario, cioe' un dato che il backend non puo' produrre.
+ * Il verbo sta QUI e non nel .tsx di proposito: separarlo dal numero era il modo
+ * garantito di leggere "1 righe sono da controllare" alla prima riga singola,
+ * un caso che in produzione capita spesso (l'ultima rimasta da sistemare).
+ * Ritorna stringa vuota a zero: il chiamante gatea gia', ma un helper che
+ * produce "0 righe sono" se invocato per sbaglio e' un helper che aspetta di
+ * essere usato male.
+ *
+ * Qui `n === 1` NON e' intercambiabile con `n <= 1` come nella vecchia
+ * `frammentoConteggioCosti`: lo zero e' gia' uscito dalla guardia sopra, ma un
+ * `<= 1` renderebbe il singolare anche per i negativi, che la guardia scarta.
+ * Restano equivalenti solo perche' quella guardia esiste — non toccarne una
+ * senza l'altra.
  */
-export function frammentoConteggioCosti(n: number | null | undefined): string {
-  if ((n ?? 0) <= 0) return "";
-  return ` (${n} ${n === 1 ? "costo" : "costi"})`;
+export function frammentoRigheDaControllare(n: number | null | undefined): string {
+  const righe = n ?? 0;
+  if (righe <= 0) return "";
+  return righe === 1 ? "1 riga è" : `${righe} righe sono`;
 }
 
 /**

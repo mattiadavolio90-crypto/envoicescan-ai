@@ -10,10 +10,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  contaRigheDaClassificare,
   datiCostoValidi,
   esitoCorrezioneCategoria,
-  frammentoConteggioCosti,
   frammentoNonCorreggibili,
+  frammentoRigheDaControllare,
   mostraAvvisoDaClassificare,
   parseImportoManuale,
 } from "@/lib/catena-costi-gruppo";
@@ -72,6 +73,11 @@ type CostiComuniRes = {
   // dal MOL) una quota "Da Classificare" viene contata: la riga d'origine e' gia'
   // esclusa come ripartita_su_gruppo, quindi la quota e' l'unico posto in cui quel
   // costo esiste. Vedi 20260724220000_riparto_quote_per_categoria.sql.
+  //
+  // NON sono piu' il gate dell'avviso principale, che conta le RIGHE da controllare
+  // (l'importo non dice quanto lavoro c'e', e le righe sono l'unita' dei badge
+  // per-costo). `da_classificare_costi` resta perche' serve a interpretare
+  // `da_classificare_non_correggibili`: "N di questi costi" vs "nessuno".
   da_classificare_importo?: number;
   da_classificare_costi?: number;
   // Quanti di quei costi NON sono sistemabili da qui: le quote si correggono agendo
@@ -153,6 +159,10 @@ export function FinestraCostiGruppo({
       setBusy(null);
     }
   }
+
+  // Somma dei badge "N da verificare" dei singoli costi: il banner riassume
+  // esattamente cio' che si vede sotto, quindi si conta dagli stessi dati.
+  const righeDaControllare = contaRigheDaClassificare(data?.costi);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -268,33 +278,40 @@ export function FinestraCostiGruppo({
             </ul>
           )}
 
-          {mostraAvvisoDaClassificare(data?.da_classificare_importo) && (
+          {/* Due avvisi indipendenti, non piu' uno annidato nell'altro.
+              Il primo conta le righe da controllare (correggibili da qui, subito
+              sotto); il secondo parla dei costi la cui fattura d'origine non
+              esiste piu' — un problema che da questa finestra non si risolve e
+              che il conteggio a righe, per costruzione, non vede. */}
+          {mostraAvvisoDaClassificare(righeDaControllare) && (
             <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <p>
-                <strong className="tabular-nums">{euro(data!.da_classificare_importo!)}</strong>{" "}
-                di quote non sono ancora classificate
-                {frammentoConteggioCosti(data!.da_classificare_costi)}
-                . Finché restano così pesano tra le <em>Spese Generali</em>{" "}
-                del MOL,
-                anche se in parte sono Food &amp; Beverage. Assegna la categoria dalle
-                righe del documento qui sopra per collocarle nel secchio giusto.
-                {frammentoNonCorreggibili(
-                  data!.da_classificare_non_correggibili,
-                  data!.da_classificare_costi,
-                ) && (
-                  <>
-                    {" "}
-                    <strong>
-                      {frammentoNonCorreggibili(
-                        data!.da_classificare_non_correggibili,
-                        data!.da_classificare_costi,
-                      )}
-                    </strong>{" "}
-                    da cui correggerli: la fattura d&apos;origine non è più presente,
-                    quindi vanno rifatti eliminando e ricreando il costo di gruppo.
-                  </>
-                )}
+                Il MOL di questo mese non è ancora affidabile:{" "}
+                <strong className="tabular-nums">
+                  {frammentoRigheDaControllare(righeDaControllare)}
+                </strong>{" "}
+                da controllare. Aprile qui sopra e assegna la categoria.
+              </p>
+            </div>
+          )}
+
+          {frammentoNonCorreggibili(
+            data?.da_classificare_non_correggibili,
+            data?.da_classificare_costi,
+          ) && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <p>
+                <strong>
+                  {frammentoNonCorreggibili(
+                    data!.da_classificare_non_correggibili,
+                    data!.da_classificare_costi,
+                  )}
+                </strong>{" "}
+                da cui correggere le quote non classificate: la fattura
+                d&apos;origine non è più presente, quindi vanno rifatti
+                eliminando e ricreando il costo di gruppo.
               </p>
             </div>
           )}

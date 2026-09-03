@@ -2561,6 +2561,11 @@ class SaluteVoce(BaseModel):
     ok: bool
     dettaglio: str
     cta_page: Optional[str] = None
+    # Cosa comporta, per i numeri che il cliente sta guardando, che questa voce
+    # non sia a posto. `dettaglio` dice COSA manca, questo dice PERCHE' importa.
+    # Assente quando non c'e' niente da dire: il frontend gatea sul campo stesso,
+    # cosi' la riga sparisce da sola invece di lasciare uno spazio vuoto.
+    conseguenza: Optional[str] = None
 
 
 class SaluteResponse(BaseModel):
@@ -6260,6 +6265,34 @@ def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str
     return "Nessun prodotto da classificare"
 
 
+def _conseguenza_righe_classificate(da_controllare: int) -> Optional[str]:
+    """Perche' importa che ci siano prodotti da controllare, o None se non ce ne sono.
+
+    `_dettaglio_righe_classificate` dice COSA c'e' da fare; questa dice l'effetto
+    sui numeri che il cliente sta guardando nella stessa schermata. Prima non lo
+    diceva nessuno: la Home mostrava "112 prodotti da controllare" come un compito
+    qualsiasi, senza far capire che intanto il margine sopra non e' attendibile.
+
+    NON dire DOVE finiscono quei costi. Le due superfici che mostrano questo
+    avviso si comportano in modo OPPOSTO:
+      - righe fattura normali (questa voce): ESCLUSE dal MOL
+        (`f.categoria <> 'Da Classificare'` nelle RPC costi_automatici_*), quindi
+        il margine risulta MIGLIORE del reale;
+      - quote di costi di gruppo (finestra catena): entrano nel secchio spese
+        (_riparto_categoria_is_fb -> FALSE), quindi il MOL e' gonfio di spese.
+    Vedi la nota in 20260724220000_riparto_quote_per_categoria.sql: l'asimmetria
+    e' deliberata. Una frase che nominasse la destinazione sarebbe falsa su una
+    delle due — per questo si dice solo che il numero non e' affidabile, che e'
+    vero in entrambi i casi.
+
+    Ritorna None (non stringa vuota) quando non c'e' nulla da dire: il campo
+    assente e' il gate del frontend, che cosi' non rende una riga vuota.
+    """
+    if not da_controllare:
+        return None
+    return "Finché restano così il MOL di questo mese non è affidabile."
+
+
 # Mappa voce-Salute -> topic del configuratore. A livello di modulo perche' la
 # usano SIA home_salute SIA _salute_indice_rosso: spegnere un avviso deve togliere
 # la voce dal denominatore in entrambi, o card e gate divergono.
@@ -7242,6 +7275,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             label="Righe classificate",
             ok=classificate_ok,
             dettaglio=_dettaglio_righe_classificate(da_controllare, righe_totali_sede),
+            conseguenza=_conseguenza_righe_classificate(da_controllare),
             # Deep-link al tab Articoli gia' filtrato sulle righe da controllare,
             # quando ce ne sono; pagina liscia altrimenti.
             cta_page=("/analisi-fatture?tab=articoli&verifica=1"

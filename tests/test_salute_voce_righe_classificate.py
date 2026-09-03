@@ -19,6 +19,9 @@ Le cifre qui sotto sono ora i PRODOTTI misurati a DB.
 """
 import inspect
 
+import pytest
+
+from services.fastapi_worker import _conseguenza_righe_classificate as conseguenza
 from services.fastapi_worker import _dettaglio_righe_classificate as dettaglio
 
 
@@ -82,3 +85,56 @@ def test_la_voce_non_guarda_piu_la_finestra_recente():
     assert "Nessun prodotto da classificare" not in corpo, (
         "il testo e' tornato inline in home_salute: decide di nuovo su tot_righe"
     )
+
+
+# ── La conseguenza: perche' quei prodotti importano (3/9/2026) ──────────────
+#
+# La voce diceva COSA c'e' da fare ("112 prodotti da controllare") ma non che
+# intanto il MOL mostrato sopra non e' attendibile. La conseguenza lo dice, e
+# deve sparire quando non c'e' nulla da controllare.
+
+
+@pytest.mark.parametrize("n", [1, 5, 18, 112, 156, 518])
+def test_conseguenza_presente_quando_ci_sono_prodotti(n):
+    assert conseguenza(n) == "Finché restano così il MOL di questo mese non è affidabile."
+
+
+def test_conseguenza_assente_a_zero():
+    """None, non stringa vuota: il campo assente e' il gate del frontend.
+
+    MUTAZIONE che questo test uccide: rendere la conseguenza sempre popolata.
+    Se passasse, in Home resterebbe una riga d'allarme sotto "Tutti i prodotti
+    sono classificati" — l'esatto contrario di cio' che dice la voce.
+    """
+    assert conseguenza(0) is None
+
+
+def test_conseguenza_non_dice_dove_finiscono():
+    """Il vincolo di dominio che tiene questa frase onesta su DUE superfici.
+
+    Le righe fattura normali sono ESCLUSE dal MOL (`f.categoria <> 'Da
+    Classificare'` nelle RPC costi_automatici_*), mentre le quote dei costi di
+    gruppo entrano nel secchio spese (_riparto_categoria_is_fb -> FALSE). Vedi
+    la nota in 20260724220000_riparto_quote_per_categoria.sql: e' deliberato.
+
+    Nominare la destinazione renderebbe la frase falsa qui: in Home quei costi
+    non "finiscono nelle Spese Generali", semplicemente non ci sono, e il
+    margine risulta MIGLIORE del reale. Il confronto e' sulla stringa RESA,
+    non sul sorgente.
+    """
+    frase = conseguenza(112).lower()
+    for vietata in ("spese generali", "food", "secchio", "categoria f&b"):
+        assert vietata not in frase, f"la frase nomina una destinazione: {vietata!r}"
+
+
+def test_conseguenza_arriva_nella_voce_classificate():
+    """Il collegamento vero: la voce costruita da home_salute porta il campo.
+
+    Senza questo, `_conseguenza_righe_classificate` potrebbe essere corretta e
+    non chiamata da nessuno — la Home non mostrerebbe niente e i test sopra
+    resterebbero verdi.
+    """
+    import services.fastapi_worker as fw
+
+    corpo = inspect.getsource(fw.home_salute)
+    assert "conseguenza=_conseguenza_righe_classificate(" in corpo

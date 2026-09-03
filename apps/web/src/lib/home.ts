@@ -60,6 +60,10 @@ export type SaluteVoce = {
   ok: boolean;
   dettaglio: string;
   cta_page: string | null;
+  // Cosa comporta, per i numeri della stessa schermata, che la voce non sia a
+  // posto. Opzionale: assente sia quando non c'e' niente da dire, sia quando
+  // risponde un backend precedente. In entrambi i casi la riga non si rende.
+  conseguenza?: string | null;
 };
 
 export type Salute = {

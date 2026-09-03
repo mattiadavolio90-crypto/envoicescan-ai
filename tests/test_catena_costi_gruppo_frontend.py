@@ -22,7 +22,8 @@ from tests.helpers_ts import esegui_ts
 MODULO = "lib/catena-costi-gruppo"
 RICHIEDE = [
     "parseImportoManuale", "importoValido", "datiCostoValidi",
-    "mostraAvvisoDaClassificare", "frammentoConteggioCosti", "frammentoNonCorreggibili",
+    "mostraAvvisoDaClassificare", "contaRigheDaClassificare",
+    "frammentoRigheDaControllare", "frammentoNonCorreggibili",
     "esitoCorrezioneCategoria", "segnaliDisattivati", "pvEsclusi", "applicaToggle",
 ]
 
@@ -151,33 +152,81 @@ def test_dati_costo_invalidi(args):
     assert _ts(f"emit(m.datiCostoValidi({args}))") is False
 
 
-# ─── l'avviso "da classificare" ─────────────────────────────────────────────
+# ─── l'avviso "righe da controllare" ────────────────────────────────────────
+#
+# Dal 3/9/2026 l'avviso conta le RIGHE da controllare invece dell'importo non
+# classificato: l'importo non dice quanto lavoro c'e', e le righe sono l'unita'
+# dei badge per-costo mostrati subito sotto. Il banner deve valere esattamente
+# la somma di quei badge, ed e' cio' che questi test tengono fermo.
 
-@pytest.mark.parametrize("imp,atteso", [
-    (100, True), (0.01, True), (0, False), (None, False), (-5, False),
+
+def _costi(*gruppi):
+    """Costi finti: ogni gruppo e' la lista delle sue righe (categoria, needs_review)."""
+    import json
+    return json.dumps([
+        {"righe": [{"categoria": c, "needs_review": nr} for c, nr in righe]}
+        for righe in gruppi
+    ])
+
+
+@pytest.mark.parametrize("righe,atteso", [
+    ([("CARNE", True)], 1),                       # needs_review esplicito
+    ([("Da Classificare", False)], 1),            # stato esplicito, senza needs_review
+    ([(None, False)], 1),                         # categoria assente
+    ([("", False)], 1),                           # categoria vuota
+    ([("CARNE", False)], 0),                      # classificata: non si conta
+    ([("CARNE", True), ("VERDURE", False), (None, False)], 2),
 ])
-def test_mostra_avviso(imp, atteso):
-    val = "null" if imp is None else imp
-    assert _ts(f"emit(m.mostraAvvisoDaClassificare({val}))") is atteso
+def test_conta_righe_da_classificare(righe, atteso):
+    """Il predicato e' un OR di tre condizioni: needs_review, categoria assente,
+    stato esplicito. Ognuna da sola deve bastare — con un AND al posto dell'OR
+    i primi tre casi tornerebbero 0."""
+    assert _ts(f"emit(m.contaRigheDaClassificare({_costi(righe)}))") == atteso
 
 
-def test_mostra_avviso_campo_assente():
-    assert _ts("emit(m.mostraAvvisoDaClassificare(undefined))") is False
+def test_conta_somma_su_piu_costi():
+    """Il totale del banner = somma dei badge per-costo. Nello screenshot che ha
+    motivato la modifica: 2 + 1 + 0 = 3."""
+    costi = _costi(
+        [("CARNE", True), (None, False)],
+        [("Da Classificare", False)],
+        [("CARNE", False), ("VERDURE", False)],
+    )
+    assert _ts(f"emit(m.contaRigheDaClassificare({costi}))") == 3
+
+
+@pytest.mark.parametrize("costi", ["[]", "null", "undefined", '[{"righe": []}]', "[{}]"])
+def test_conta_righe_casi_vuoti(costi):
+    """Un costo manuale non ha righe: contribuisce 0, quindi una sua quota non
+    classificata NON accende piu' l'avviso. Divergenza VOLUTA rispetto al vecchio
+    gate a importo — da qui si corregge agendo sulle righe, e senza righe
+    l'istruzione "aprile qui sopra" non avrebbe nulla da aprire."""
+    assert _ts(f"emit(m.contaRigheDaClassificare({costi}))") == 0
 
 
 @pytest.mark.parametrize("n,atteso", [
-    (1, " (1 costo)"),
-    (3, " (3 costi)"),
+    (3, True), (1, True), (0, False), (-1, False),
+])
+def test_mostra_avviso(n, atteso):
+    assert _ts(f"emit(m.mostraAvvisoDaClassificare({n}))") is atteso
+
+
+@pytest.mark.parametrize("n,atteso", [
+    (1, "1 riga è"),
+    (2, "2 righe sono"),
+    (3, "3 righe sono"),
     (0, ""),
     (None, ""),
 ])
-def test_frammento_conteggio(n, atteso):
+def test_frammento_righe_concordanza(n, atteso):
+    """Numero e verbo stanno nello stesso frammento: separarli faceva leggere
+    "1 righe sono da controllare" all'ultima riga rimasta da sistemare."""
     val = "null" if n is None else n
-    assert _ts(f"emit(m.frammentoConteggioCosti({val}))") == atteso
+    assert _ts(f"emit(m.frammentoRigheDaControllare({val}))") == atteso
 
 
-def test_frammento_conteggio_undefined():
-    assert _ts("emit(m.frammentoConteggioCosti(undefined))") == ""
+def test_frammento_righe_undefined():
+    assert _ts("emit(m.frammentoRigheDaControllare(undefined))") == ""
 
 
 @pytest.mark.parametrize("nc,costi,atteso", [

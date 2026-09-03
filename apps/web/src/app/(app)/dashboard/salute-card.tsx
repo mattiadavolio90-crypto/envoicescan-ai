@@ -109,6 +109,16 @@ export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hide
                     {/* Dettaglio come sottotitolo (niente piu' colonna duplicata
                         a destra), e CTA sotto solo se c'e' qualcosa da fare. */}
                     <span className="text-xs text-muted-foreground">{v.dettaglio}</span>
+                    {/* L'effetto sui numeri, quando c'e'. Ambra come il pallino
+                        della voce a cui appartiene: dentro una lista allineata un
+                        riquadro farebbe rumore, qui basta il colore. Gateato sul
+                        campo, quindi sparisce da solo quando non c'e' nulla da
+                        dire — nessuna riga vuota, `gap-0.5` collassa. */}
+                    {v.conseguenza && (
+                      <span className="text-xs text-amber-600 dark:text-amber-400">
+                        {v.conseguenza}
+                      </span>
+                    )}
                     {!hideLinks && !v.ok && v.cta_page && (
                       <Link
                         href={v.cta_page}
