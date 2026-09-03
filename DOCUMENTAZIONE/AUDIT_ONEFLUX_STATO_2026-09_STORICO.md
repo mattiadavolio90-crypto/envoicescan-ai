@@ -2642,3 +2642,70 @@ guarda il testo, non solo la decisione. Osservato sul registro vero: 2 sessioni
 reali vive insieme, che il vecchio codice perdeva entrambe. (3 test passavano
 da soli e fallivano in suite: la fixture faceva `reload` di un modulo che altri
 7 file ricaricano, e `REGISTRO` tornava a puntare al registro vero.)
+
+---
+
+## 03/09/2026 — Quadratura dei numeri fra le pagine (voce §3 #1): eseguita
+
+**Cosa.** La verifica che nessuno aveva mai fatto: clienti veri, mesi veri, stessa
+cifra confrontata in ogni percorso che la mostra. Sessione interamente read-only
+(SQL + lettura codice, zero modifiche a codice/DB). Report completo con tabelle
+per sede×mese e query in `scratchpad/coerenza_numeri_report.md`; esiti aperti
+promossi in §2 come **Q1–Q4**.
+
+**Perimetro eseguito** — catena OFFSIDE per intero (OFFSIDE, OVERTIME, sede tecnica,
+2026-01→08, confronti A–E del prompt); SUSHILAND ×3 (sincronia ricavi, quadratura
+costi, «Da Classificare»); LAND DEI SAPORI (partita doppia riparto); TIME CAFE
+(switch upload). Fuori perimetro dichiarato: triangolazione Prezzi completa,
+CASATI 14 (caso coperto by-design da `_merge_override_mensile`), confronto numerico
+runtime catena-vs-sedi (garantito a livello di formula unica `_aggrega_sedi_mensili`
++ `tests/test_gruppo_aggrega_sedi.py`).
+
+**Le quadrature che tornano (misurate al centesimo, non dedotte):**
+- riparto OFFSIDE: quota out sede tecnica = quote in sedi = valori a margini,
+  **18/18 confronti a delta 0,00**; riparto LAND in pareggio (456,30 € = 456,30 €);
+- Analisi Fatture ↔ Margini: identici su ogni mese chiuso, tutte le sedi (unico
+  scarto: 85,92 € «Da Classificare» a settembre in corso — regola 1, visibile);
+- ricavi giornalieri ↔ `margini_mensili` (trigger): zero scarti su 3 sedi SUSHILAND;
+- guardrail NOTE (regola 2): zero note con importo su tutte le sedi verificate.
+
+**Trovato** (dettaglio e cifre nel report; remediation = sessioni separate):
+- **Q1 (bug)** — il segnale «margine in calo» della catena non è MAI potuto
+  scattare per le uniche due catene reali: legge lo snapshot `mol_perc` +
+  `fatturato_netto` di `margini_mensili`, mai valorizzati per quelle sedi. Tre
+  percorsi fratelli erano già stati corretti per la stessa classe; questo era
+  l'unico rimasto indietro. Nessuno se n'è accorto perché un segnale che tace non
+  mostra un numero sbagliato: non mostra niente.
+- **Q2 (decisione)** — food cost ÷lordo (Home/catena/briefing) vs ÷netto (pagina
+  Margini): 2,2–3,6 pt su 14 mesi, colore ribaltato in 3 mesi su 7 per OFFSIDE
+  (feb 35,9↔39,1; mar 35,7↔38,8; giu 37,2↔40,5 — soglia 38%).
+- **Q3 (strutturale)** — snapshot economico di `margini_mensili` incoerente per
+  costruzione (3 scrittori; la RPC `riparto_quote_mensili` ricalcola il MOL cieca
+  all'override; pct mai scritte da 2 scrittori su 3). OVERTIME febbraio: MOL
+  fotografato +50.834 € vs +28.398 € vero. Lettori attuali: solo Q1 e l'endpoint
+  `/api/margini/analisi-centri`, che risulta **senza consumatori UI**.
+- **Q4 (decisione)** — tab Calcolo vs tab Analisi: le quote riparto includono le
+  righe «Da Classificare» (deliberato, migration
+  `20260724220000_riparto_quote_per_categoria.sql`), la proiezione per centro le
+  esclude (deliberato, regola 1): 13–592 €/mese. Due regole giuste in conflitto.
+- **Latenti, oggi innocui**: `.neq("ripartita_su_gruppo", True)` in
+  `_calcola_costi_auto_per_mese` è NULL-unsafe dove la RPC usa `COALESCE` —
+  misurate 0 righe NULL su 39.420; copie stantie del fatturato in `margini_mensili`
+  per i clienti in modalità mensile (OVERTIME luglio: 0 vs 29.889 € reali).
+- **Il prezzo della regola 1, quantificato**: «Da Classificare» fuori dai margini
+  vale fino a **3.865,55 € in un mese** (SUSHILAND SAN GIULIANO, giugno) e ci sono
+  note di credito non classificate in negativo (aprile −2.967,61 €): il delta per
+  sede che la fase 4 di `docs/piani/PIANO_CATEGORIZZAZIONE.md` deve portare a
+  Mattia esiste già oggi in queste misure.
+
+**Tre finding del ciclo 07 risultati superati alla ri-misura** (la lista invecchia
+in entrambe le direzioni): soglie colore MOL unificate (la tabella locale del
+client è stata rimossa), `prezzo_medio_tag` oggi consumato dal client, switch
+`blocco_mesi_precedenti` non più morto (`services/upload_policy.py`, applicato dal
+worker, con test).
+
+**Metodo.** Ogni cifra ri-misurata a DB nel momento in cui è stata scritta; la
+tabella clienti del prompt (27/8) era già invecchiata alla partenza (OFFSIDE
+arrivato a settembre, 48 righe «Da Classificare» sulla sede tecnica). L'eccezione
+alla regola 1 nel riparto è stata cercata in migration PRIMA di chiamarla bug —
+ed era deliberata e motivata; il conflitto vero è fra lei e la proiezione (Q4).

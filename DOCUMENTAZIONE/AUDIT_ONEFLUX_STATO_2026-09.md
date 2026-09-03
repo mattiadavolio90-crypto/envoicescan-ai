@@ -35,6 +35,7 @@ Una riga per sessione. Il dettaglio è nel verbale, in coda per data.
 | 03/09 | **R10 — il guasto non è più un «niente da fare»** | ✅ chiuso — **7 pagine cliente** (scadenziario PV + catena, avvisi desktop + mobile, tag, analisi-fatture). `workerGet` torna `null` su ogni fallimento e i `?? []` lo trasformavano in lista vuota: **4,4 M€ di scadenze** potevano diventare «Nessun documento trovato». Fonte unica in `lib/esito-caricamento.ts`, 41 test, **10/10 mutanti** (2 li ha trovati il code-reviewer) |
 | 03/09 | **Residui R8, R2, R3, R1, R7, R4** | ✅ **6 su 6 chiusi** — corretto il netto mobile (euro sbagliati). Su R4 Mattia ha scelto: separatore delle migliaia e decimali arrotondati. Le 3 `pct` chiuse il 3/9: `formatPct` non aveva più chiamanti, correggerla non ha toccato nessuna schermata |
 | 01→02/09 | **Categorizzazione** — fasi 0, 7, 1, 2, 3 | 🟠 **parziale: 5 fasi su 10** — vedi §2 |
+| 03/09 | **Quadratura dei numeri fra le pagine** (voce §3 #1) | ✅ **eseguita** (read-only) — la prima verifica sui dati veri: riparto in partita doppia **18/18 al centesimo**, Analisi Fatture↔Margini al centesimo, sincronia ricavi SUSHILAND perfetta. Trovati: 1 bug (segnale «margine in calo» mai scattato per le catene), 1 decisione di prodotto (food cost ÷lordo vs ÷netto, colore ribaltato in 3 mesi su 7), 1 rischio strutturale (snapshot `margini_mensili`). 3 finding del ciclo 07 risultati già superati. Esiti aperti: **Q1–Q4 in §2**; report in `scratchpad/coerenza_numeri_report.md` |
 
 **Il metodo che ha retto:** ogni sessione ha ri-misurato le ipotesi del proprio
 prompt prima di crederci, e **in 5 casi su 10 il prompt aveva torto**. La misura
@@ -87,6 +88,19 @@ va misurato e portato a Mattia **prima** di attivarlo.
 
 **La tabella dei residui è vuota: R1-R11 sono tutti chiusi** (03/09), incluse
 le 3 `pct` e le 77 righe di `catena/fatture/`. Vedi i verbali nello storico.
+
+### Aperti dalla verifica di quadratura — 03/09 (Q1–Q4)
+
+> Esito della voce §3 #1, eseguita il 03/09 (verbale nello storico; report completo
+> in `scratchpad/coerenza_numeri_report.md`). Remediation e decisioni in sessioni
+> separate, nell'ordine qui sotto.
+
+| # | Cosa | Natura |
+|---|---|---|
+| **Q1** | Il segnale «margine in calo» della catena non è mai potuto scattare: legge lo snapshot `mol_perc` + gate `fatturato_netto > 0` di `margini_mensili`, mai valorizzati per le sedi delle due catene reali (OFFSIDE: netto 0 su tutti i mesi; OVERTIME e 3 SUSHILAND: `mol_perc` 0,00 ovunque). Blocco «Segnale 1» in `services/routers/gruppo.py`. La stessa classe di bug è già corretta in 3 percorsi fratelli (`_aggrega_sedi_mensili`, `_applica_override_netto`, segnale «ricavi mancanti») | **Bug** — fix |
+| **Q2** | Food cost con due definizioni convivono: ÷lordo (Home, catena, briefing) vs ÷netto (pagina Margini) — 2,2–3,6 punti di scarto misurati su 14 mesi, colore ribaltato in 3 mesi su 7 per OFFSIDE alla soglia 38%. Il codice stesso la dichiara «decisione di prodotto» da prendere sui tre punti insieme | **Decisione di Mattia** |
+| **Q3** | Snapshot economico di `margini_mensili` incoerente per costruzione: 3 scrittori (pagina Margini scrive tutto; trigger ricavi solo il fatturato; RPC `riparto_quote_mensili` ricalcola il MOL cieca all'override e non scrive mai le pct). Misurato: OVERTIME febbraio MOL fotografato +50.834 € vs +28.398 € vero. Oggi letto solo da Q1 e dall'endpoint senza consumatori `/api/margini/analisi-centri`: serve un presidio perché nessun lettore nuovo lo erediti | **Strutturale** |
+| **Q4** | Tab Calcolo vs tab Analisi (pagina Margini): le quote riparto includono le righe «Da Classificare» della sede tecnica (deliberato — `supabase/migrations/20260724220000_riparto_quote_per_categoria.sql`), la proiezione per centro le esclude (deliberato — regola di dominio 1). Scarto misurato 13–592 €/mese. Due regole giuste in conflitto: scegliere una rappresentazione | **Decisione di Mattia** |
 
 **R9 — chiuso il 03/09.** Il registro sessioni non usa più il PID:
 `os.getppid()` in un hook è il wrapper che muore subito, e ri-misurando si
@@ -168,7 +182,7 @@ Il conto delle righe sta in `AUDIT_COPERTURA.md`. Qui c'è l'ordine, deciso per
 
 | # | Cosa | Perché in questa posizione |
 |---|---|---|
-| **1** | **Quadratura dei numeri fra le pagine** — prendere 3 clienti veri e verificare che lo stesso dato torni in ogni schermata dove compare | 🔴 **Non è un audit di codice, è la verifica che nessuno ha mai fatto.** Il prompt esiste da agosto (`docs/storico/..._COERENZA_NUMERI.md`) e non è mai stato eseguito. Nasce dall'unico difetto trovato **dal cliente prima che dall'audit** (F&B e Spese Generali che non tornavano). È ciò che difende la reputazione, non la qualità del codice |
+| **1** | **Quadratura dei numeri fra le pagine** — prendere 3 clienti veri e verificare che lo stesso dato torni in ogni schermata dove compare | ✅ **Eseguita il 03/09** (catena OFFSIDE completa, SUSHILAND ×3, LAND, TIME CAFE — read-only, tutto ri-misurato a DB). Le quadrature fondamentali tornano al centesimo; gli esiti aperti sono **Q1–Q4 in §2**. Report: `scratchpad/coerenza_numeri_report.md` |
 | **2** | **I prompt AI** — `config/`, 2.379 righe, mai guardate | È il cuore del prodotto e la **regola di dominio n.1**. Un difetto qui non colpisce un cliente: li colpisce tutti insieme, in silenzio. Ha già dato un problema (il prompt contraddiceva la regola, ciclo 08) |
 | **3** | **Categorizzazione, fasi 4→8** — 5 fasi su 10 aperte | Lavoro già iniziato e fermo a metà: rientra nel principio «niente parziali». La fase 4 tocca il MOL su tutto lo storico, dietro flag: il delta per sede si misura e si porta a Mattia **prima** di attivarlo |
 | **4** | **Il briefing giornaliero** — `daily_briefing_service.py`, 1.637 righe | È **la prima cosa che il cliente legge ogni mattina**. Quattro sessioni di lavoro a settembre, mai auditato come oggetto proprio |
