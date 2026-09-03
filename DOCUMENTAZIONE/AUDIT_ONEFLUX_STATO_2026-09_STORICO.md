@@ -27,6 +27,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
 | 03/09 | Residuo R4 — formattatori duplicati | 8 unificate, 8 divergono: decisione a Mattia |
+| 03/09 | R4, seconda parte — decisione presa | chiuso: separatore migliaia + decimali arrotondati |
 
 ---
 
@@ -2315,3 +2316,40 @@ silenzio. Rete: `tests/test_catena_formattatori_equivalenza_frontend.py`
 
 **Decisione che resta a Mattia:** quale forma è quella giusta per `euro2`, `num`
 e `pct`. Sono 8 copie e tre domande di prodotto, non di codice.
+
+---
+
+## R4, seconda parte — la decisione di Mattia — 03/09/2026
+
+**Esito: R4 chiuso.** Portata la divergenza, Mattia ha deciso: **separatore delle
+migliaia e decimali arrotondati**.
+
+| Copia | Prima | Dopo |
+|---|---|---|
+| `euro2` in `finestra-margini-coperti` | `12345,60 €` | **`12.345,60 €`** |
+| `num` in `finestra-margini-coperti` | `1234,567` (3 dec) | **`1234,6`** (1 dec) |
+
+Entrambe le `euro2` ora chiamano `formatEuro(n, 2)` — verificato identico
+byte per byte alla forma `Intl` su 12 casi prima di sostituire. La guardia sul
+null resta: `—`, non `0,00 €`.
+
+**Le 3 `pct` restano duplicate**, e non è un residuo lasciato aperto:
+`formatPct` di `lib/format.ts` usa `toFixed` e produrrebbe `12.3%` invece di
+`12,3%`. Unificarle richiede prima di correggere `formatPct`, che ha altri
+chiamanti fuori da `catena/`.
+
+**Un errore mio, trovato da `tsc`.** Avevo classificato `euro`, `pct` e `num` di
+`finestra-margini-coperti` come **codice morto** e le avevo eliminate: il mio
+`grep -c "[^a-zA-Z_]pct("` cercava la parentesi di chiamata, ma quelle funzioni
+sono passate **per riferimento** nella tabella `COLS` (`fmt: pct`). Sono le
+colonne Margine %, Fatturato, Coperti, Scontrino medio, €MP/coperto — vivissime.
+Ripristinate. *Un grep che cerca la forma sbagliata non dice «non c'è»: dice che
+non l'ha vista.*
+
+**Mutazione:** 2 mutanti, il primo ucciso subito, **il secondo sopravvissuto** e
+poi ucciso. `num` riportata a 3 decimali passava indenne: il test *ricostruiva*
+l'implementazione e la eseguiva, provando che quella forma arrotonda — non che il
+file la usi. Aggiunto il test che legge il sorgente vero. È la stessa classe di
+buco trovata dal code-reviewer sui presidi di R8 e R3.
+
+Rete: `tests/test_catena_formattatori_equivalenza_frontend.py` (24 test).

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
+import { formatEuro } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,21 +34,24 @@ import {
   rigaExtremes,
 } from "@/lib/catena-confronti";
 
+
+// Passate per RIFERIMENTO nella tabella COLS (`fmt: pct`), non chiamate: un
+// grep che cerca `pct(` non le vede. Restano qui, con la guardia sul null che
+// distingue "non disponibile" da zero.
 function euro(n: number | null): string {
-  if (n == null) return "—";
-  return new Intl.NumberFormat("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
+  return n == null ? "—" : formatEuro(n);
 }
+
 function pct(n: number | null): string {
   if (n == null) return "—";
   return `${n.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`;
 }
+
+// Arrotondato a 1 decimale (decisione owner 3/9): prima mostrava fino a 3
+// cifre decimali sui coperti, che sono conteggi.
 function num(n: number | null): string {
   if (n == null) return "—";
-  return n.toLocaleString("it-IT");
+  return n.toLocaleString("it-IT", { maximumFractionDigits: 1 });
 }
 
 // Metriche con la LORO direzione: per €MP/coperto il BASSO è meglio (regola
@@ -313,9 +317,11 @@ export function FinestraMarginiCoperti({
 
 // ─── Dialog: spreco (€MP/coperto) per categoria, confronto fra PV ───────────
 
+// `formatEuro(v, 2)` con la guardia sul null: "—" e non "0,00 €" quando il dato
+// non c'e'. Le due copie di questa funzione divergevano (una con il separatore
+// delle migliaia, l'altra senza): unificate il 3/9 su decisione dell'owner.
 function euro2(n: number | null): string {
-  if (n == null) return "—";
-  return `${n.toFixed(2).replace(".", ",")} €`;
+  return n == null ? "—" : formatEuro(n, 2);
 }
 
 function FinestraSprecoCategorie({

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { formatEuro as euro } from "@/lib/format";
+import { formatEuro, formatEuro as euro } from "@/lib/format";
 import { MESI_LUNGHI as MESI_LABEL } from "@/lib/mesi";
 import { calcolaCandidati, MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
 import {
@@ -36,9 +36,11 @@ import type {
   GruppoTagAnalisi,
 } from "@/lib/gruppo";
 
+// `formatEuro(v, 2)` con la guardia sul null: "—" e non "0,00 €" quando il dato
+// non c'e'. Le due copie di questa funzione divergevano (una con il separatore
+// delle migliaia, l'altra senza): unificate il 3/9 su decisione dell'owner.
 function euro2(n: number | null): string {
-  if (n == null) return "—";
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);
+  return n == null ? "—" : formatEuro(n, 2);
 }
 function num(n: number): string {
   return n.toLocaleString("it-IT", { maximumFractionDigits: 1 });

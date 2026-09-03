@@ -1,20 +1,33 @@
-"""Prima di unificare 12 formattatori duplicati: quali danno davvero lo stesso output?
+"""I formattatori duplicati di `catena/`: quali erano davvero uguali, e come sono finiti.
 
-`catena/` ridefinisce `euro`, `euro2`, `num`, `pct` in **5 file** e `MESI` in
+`catena/` ridefiniva `euro`, `euro2`, `num`, `pct` in **5 file** e `MESI` in
 **4** (misurato il 03/09/2026: il residuo diceva 4 file, sono 5). Unificarli
-sembra una pulizia a costo zero. **Non lo è**: due di queste funzioni producono
-stringhe diverse, e la stringa è ciò che il cliente legge.
+sembrava una pulizia a costo zero. **Non lo era**: alcune producevano stringhe
+diverse, e la stringa è ciò che il cliente legge.
 
-Questo file misura la differenza **prima** della sostituzione, byte per byte, e
-divide le copie in due gruppi:
+Il test di equivalenza è arrivato **prima** della sostituzione e ha diviso le
+copie in due gruppi. Ha impedito un difetto vero: `formatPct` di `lib/format.ts`
+sembrava intercambiabile con le `pct` di catena e avrebbe messo **il punto
+decimale in ogni percentuale italiana** (`12.3%` invece di `12,3%`).
 
-- **sostituibili** — output identico su tutti i casi limite: si unificano;
-- **divergenti** — output diverso: NON si toccano senza una decisione dell'owner,
-  perché unificarle cambia cosa appare a schermo.
+**Cosa è stato unificato, e quando:**
 
-Metodo: le implementazioni sono ricostruite qui **verbatim** dai .tsx e
-confrontate fra loro con `===` su stringa. Non si confrontano numeri: `1.234,56`
-e `1234,56` sono lo stesso numero e due schermate diverse.
+| Copie | Esito |
+|---|---|
+| 4 × `MESI`/`MESI_LABEL` | → `MESI_LUNGHI` (byte-identiche) |
+| 4 × `euro` | → `formatEuro` (output identico, verificato) |
+| 2 × `euro2` | → `formatEuro(n, 2)` — **decisione owner 3/9**: vince la forma col separatore delle migliaia (`12.345,60 €`) |
+| 2 × `num` | → 1 decimale — **decisione owner 3/9**: i coperti sono conteggi |
+| 3 × `pct` | **restano duplicate**: `formatPct` non è sostituibile (vedi sopra) |
+
+**Due modi di provare, e servono entrambi.** I test che *ricostruiscono*
+un'implementazione e la eseguono provano che quella forma si comporta bene, non
+che il file la usi: rimettere `n.toLocaleString("it-IT")` senza opzioni li
+lasciava verdi (mutante sopravvissuto, 3/9). Per questo ogni decisione ha anche
+un test che legge il **sorgente vero**.
+
+Metodo del confronto: `===` su stringa, mai su numero — `1.234,56` e `1234,56`
+sono lo stesso numero e due schermate diverse.
 """
 import json
 import pathlib
@@ -191,75 +204,47 @@ def test_su_null_la_versione_senza_guardia_non_e_sostituibile_ma_migliora():
 
 # ─── Gruppo 2: divergenti — NON si unificano ────────────────────────────────
 
-def test_fotografa_le_due_euro2_divergono_davvero():
-    """LA ragione per cui R4 non è un refactor meccanico.
+def test_le_due_euro2_sono_state_unificate_col_separatore():
+    """La divergenza è stata **risolta** il 3/9, non più fotografata.
 
-    `gruppo-tag-section` usa `Intl` (separatore delle migliaia + spazio stretto
-    U+202F prima di €); `finestra-margini-coperti` usa
-    `toFixed(2).replace(".", ",")` (nessun separatore, spazio normale).
-    Unificarle **cambia cosa il cliente vede**: e' una decisione dell'owner, non
-    una pulizia. Le due `euro2` omonime sono gia' fra le «8 anomalie fotografate
-    di proposito» dell'1/9.
+    Decisione dell'owner: vince la forma con il separatore delle migliaia
+    (`12.345,60 €`). Entrambe le copie ora chiamano `formatEuro(n, 2)`.
 
-    Se questo test diventa verde le due implementazioni sono state allineate:
-    aggiorna la roadmap, non il test.
+    Prima: `gruppo-tag-section` usava `Intl` (separatore da 5 cifre),
+    `finestra-margini-coperti` usava `toFixed(2).replace(".", ",")` — mai il
+    separatore, e uno spazio normale invece di U+00A0.
     """
-    diff = _confronta(_EURO2_INTL, _EURO2_TOFIXED, con_null=True)
-    assert diff != [], "le due `euro2` ora coincidono: la divergenza e' stata risolta"
-    casi_diversi = {d["caso"] for d in diff}
-    assert 1234.56 in casi_diversi, (
-        f"1234.56 non diverge piu' fra le due euro2: {diff}"
-    )
+    diff = _confronta(_EURO2_INTL, "(n) => m.formatEuro(n, 2)", con_null=False)
+    assert diff == [], f"`formatEuro(n, 2)` non produce più la forma scelta: {diff}"
 
 
-@pytest.mark.parametrize("valore", [0, 1, 1234.56, 12345.6, 1234567.89, -1234.56])
-def test_le_due_euro2_differiscono_sempre_sullo_spazio(valore):
-    """**Su OGNI valore**, non solo sui grandi: `Intl` mette uno spazio unificatore
-    (U+00A0) prima di €, `toFixed` uno spazio normale.
-
-    Misurato il 03/09: e' la differenza che rende `euro2` non sostituibile in
-    modo meccanico. Invisibile a occhio, diversa byte per byte — e byte per byte
-    e' come si confrontano due schermate.
-    """
-    r = esegui_ts(
-        MODULO,
-        f"emit({{ intl: ({_EURO2_INTL})({valore}), tofixed: ({_EURO2_TOFIXED})({valore}) }});",
-        richiede=RICHIEDE,
-    )
-    assert r["intl"] != r["tofixed"], f"le due euro2 coincidono su {valore}: {r}"
-    assert "\xa0\u20ac" in r["intl"], f"la versione Intl non usa lo spazio unificatore: {r!r}"
-    assert " \u20ac" in r["tofixed"], f"la versione toFixed non usa lo spazio normale: {r!r}"
-
-
-@pytest.mark.parametrize("valore,con_separatore", [
-    (1234.56, False),      # 4 cifre: l'italiano NON separa
-    (12345.6, True),       # 5 cifre: separa
-    (1234567.89, True),
+@pytest.mark.parametrize("valore,atteso", [
+    (12345.6, "12.345,60"),        # il separatore che l'owner ha scelto
+    (1234567.89, "1.234.567,89"),
+    (1234.56, "1234,56"),          # sotto le 5 cifre l'italiano non separa
+    (2.5, "2,50"),
 ])
-def test_il_separatore_delle_migliaia_compare_solo_da_cinque_cifre(valore, con_separatore):
-    """La seconda meta' della divergenza, e la meno ovvia.
+def test_euro2_mostra_il_separatore_delle_migliaia(valore, atteso):
+    """La forma esatta, per non doverla ri-dedurre fra sei mesi."""
+    r = esegui_ts(MODULO, f"emit(m.formatEuro({valore}, 2));", richiede=RICHIEDE)
+    assert r.startswith(atteso), f"atteso «{atteso} €», ottenuto {r!r}"
 
-    Correggo una mia affermazione precedente: `Intl` **non** separa le migliaia a
-    1.234,56 — la locale italiana omette il separatore sui numeri di 4 cifre.
-    Compare da 10.000 in su. Chi decide se unificare deve sapere che la
-    differenza cambia forma a seconda dell'importo.
+
+def test_num_arrotonda_a_un_decimale():
+    """Seconda metà della decisione del 3/9.
+
+    I coperti sono conteggi: `finestra-margini-coperti` ne mostrava fino a 3
+    decimali (`1234,567`), ora 1 (`1234,6`). Allineata a `gruppo-tag-section`,
+    che già arrotondava.
     """
-    r = esegui_ts(
-        MODULO,
-        f"emit({{ intl: ({_EURO2_INTL})({valore}), tofixed: ({_EURO2_TOFIXED})({valore}) }});",
-        richiede=RICHIEDE,
+    espr = (
+        'const num = (n) => n == null ? "\\u2014"'
+        '  : n.toLocaleString("it-IT", { maximumFractionDigits: 1 });'
+        "emit([1234.567, 0.005, 99.999, 12345.6].map(num));"
     )
-    assert ("." in r["intl"]) is con_separatore, (
-        f"il separatore delle migliaia su {valore} non e' come misurato: {r!r}"
-    )
-    assert "." not in r["tofixed"], f"la versione toFixed separa le migliaia: {r!r}"
-
-
-def test_fotografa_le_due_num_divergono_sui_decimali():
-    """`num` con `maximumFractionDigits: 1` tronca, l'altra no: 1234.567
-    diventa "1.234,6" oppure "1.234,567"."""
-    diff = _confronta(_NUM_1DEC, _NUM_DEFAULT, casi=[1234.567, 0.25, 99.999], con_null=False)
-    assert diff != [], "le due `num` ora coincidono: aggiorna la roadmap"
+    assert esegui_ts(MODULO, espr, richiede=RICHIEDE) == [
+        "1234,6", "0", "100", "12.345,6",
+    ]
 
 
 # ─── Che la sostituzione sia davvero avvenuta ───────────────────────────────
@@ -296,3 +281,41 @@ def test_i_file_migrati_non_ridefiniscono_mesi(nome):
         f"{nome} ha di nuovo una copia locale dei nomi dei mesi: usa "
         '`import {{ MESI_LUNGHI }} from "@/lib/mesi"`'
     )
+
+
+@pytest.mark.parametrize("nome", ["gruppo-tag-section.tsx", "finestra-margini-coperti.tsx"])
+def test_le_due_euro2_chiamano_la_fonte_unica(nome):
+    """Che la decisione del 3/9 non venga disfatta in silenzio.
+
+    Il test sopra prova che `formatEuro(n, 2)` dà la forma giusta; questo prova
+    che i due file la **usano**. Senza, reintrodurre `toFixed(2).replace(...)`
+    lascerebbe la suite verde.
+    """
+    testo = (_CATENA / nome).read_text(encoding="utf-8")
+    assert "formatEuro(n, 2)" in testo, (
+        f"{nome} non chiama piu' `formatEuro(n, 2)`: la forma con il separatore "
+        "delle migliaia decisa il 3/9 e' stata persa"
+    )
+    assert 'toFixed(2).replace(".", ",")' not in testo, (
+        f"{nome} e' tornato a `toFixed(2).replace(...)`: e' la forma SENZA "
+        "separatore delle migliaia, scartata il 3/9"
+    )
+
+
+def test_num_nel_sorgente_arrotonda_a_un_decimale():
+    """Il gemello del test sopra per `num`, e serve davvero.
+
+    `test_num_arrotonda_a_un_decimale` **ricostruisce** l'implementazione e la
+    esegue: prova che quella forma arrotonda, non che il file la usi. Con solo
+    quello, rimettere `n.toLocaleString("it-IT")` senza opzioni lasciava la
+    suite verde — mutante sopravvissuto, misurato il 3/9.
+    """
+    for nome in ("finestra-margini-coperti.tsx", "gruppo-tag-section.tsx"):
+        testo = (_CATENA / nome).read_text(encoding="utf-8")
+        corpo = re.search(r"function num\([^)]*\): string \{(.*?)\n\}", testo, re.S)
+        assert corpo, f"{nome}: `num` non c'e' piu'"
+        assert "maximumFractionDigits: 1" in corpo.group(1), (
+            f"{nome}: `num` non arrotonda piu' a 1 decimale. I coperti sono "
+            "conteggi: senza l'opzione tornano fino a 3 cifre decimali "
+            "(decisione owner 3/9)"
+        )

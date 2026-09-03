@@ -30,7 +30,7 @@ Una riga per sessione. Il dettaglio è nel verbale, in coda per data.
 | 01/09 | **`(app)/dashboard/`** — logica in `lib/` | ✅ 1ª passata — 92 test, 39 mutanti / 38 uccisi |
 | 02/09 | **`(app)/impostazioni/`** — logica in `lib/` | ✅ 1ª passata — 22 test, 12/12 mutanti |
 | 02/09 | **`(app)/notifiche/`** | ✅ chiusa — 23 test; corretto un difetto **visibile al cliente** (notifica senza pulsante) |
-| 03/09 | **Residui R8, R2, R3, R1, R7** + R4 parziale | ✅ **5 chiusi su 6** — corretto il netto mobile (euro sbagliati); R4 metà, le 8 copie divergenti aspettano una decisione |
+| 03/09 | **Residui R8, R2, R3, R1, R7, R4** | ✅ **6 su 6 chiusi** — corretto il netto mobile (euro sbagliati). Su R4 Mattia ha scelto: separatore delle migliaia e decimali arrotondati. Restano solo le 3 `pct`, non sostituibili |
 | 01→02/09 | **Categorizzazione** — fasi 0, 7, 1, 2, 3 | 🟠 **parziale: 5 fasi su 10** — vedi §2 |
 
 **Il metodo che ha retto:** ogni sessione ha ri-misurato le ipotesi del proprio
@@ -84,7 +84,6 @@ va misurato e portato a Mattia **prima** di attivarlo.
 
 | # | Residuo | Sforzo | Perché in questa posizione |
 |---|---|---|---|
-| **R4** | **8 formattatori divergenti** in `catena/` (2 `euro2`, 2 `num`, 3 `pct`, 1 `euro` con null) | Medio | 🟡 **Parziale, per decisione.** Le 8 copie *identiche* (4 `MESI` + 4 `euro`) sono state unificate il 03/09 dopo il test di equivalenza. Queste 8 **divergono nell'output**: unificarle cambia cosa il cliente vede, ed è una scelta di Mattia. Divergenze misurate in `tests/test_catena_formattatori_equivalenza_frontend.py` |
 | **R5** | **`dependencies=[...]` a livello di `APIRouter`** — 12 router, 216 endpoint | Medio-alto | Nessuna falla attiva (0 endpoint scoperti): è **prevenzione**. Tocca tutto il traffico, vuole la sua finestra e una sessione propria |
 | **R6** | **9 copie backend del filtro `Da Classificare`** + NOTE senza emoji in `margine_service.py` e 2 RPC | Alto | **Non è un residuo da chiudere in coda**: 0 righe attive oggi, ma richiede una **migration su 7 account veri**. Si apre come dimensione a sé, quando Mattia decide |
 
