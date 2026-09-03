@@ -3122,23 +3122,34 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
         try:
             rows_globale = _fetch_all_rows(
                 supabase_client, 'prodotti_master',
-                'descrizione, categoria, confidence, consecutive_correct_classifications'
+                'descrizione, categoria, confidence, consecutive_correct_classifications, verified'
             )
 
             if rows_globale:
-                _bypass = {}   # alta/altissima o streak>=3 → skip AI direttamente
-                _hint = {}     # media/None → passa come hint, AI ha l'ultima parola
+                # Fase 6 (D4): il bypass richiede una CONFERMA — un umano
+                # (verified) o lo streak (>=3 fatture di fila senza correzioni).
+                # Prima bastava confidence 'alta', che per 357 voci era la sola
+                # parola dell'AI mai vista da nessuno: campionando quel
+                # dizionario, ~29% di errori (NOCE di manzo -> FRUTTA). Quelle
+                # voci ora passano come hint: l'AI ha l'ultima parola e il gate
+                # a valle decide, come per ogni proposta non confermata.
+                _bypass = {}   # (alta/altissima E verified) o streak>=3 → skip AI
+                _hint = {}     # tutto il resto → hint, AI ha l'ultima parola
                 _streak_promo = 0
+                _degradate_fase6 = 0
                 for row in rows_globale:
                     desc = row['descrizione']
                     cat = _normalize_category_name(row.get('categoria')) or row.get('categoria')
                     conf = row.get('confidence')
                     streak = row.get('consecutive_correct_classifications', 0) or 0
-                    if conf in ('alta', 'altissima') or streak >= 3:
+                    verified = bool(row.get('verified'))
+                    if (conf in ('alta', 'altissima') and verified) or streak >= 3:
                         _bypass[desc] = cat
                         if streak >= 3 and conf not in ('alta', 'altissima'):
                             _streak_promo += 1
                     else:
+                        if conf in ('alta', 'altissima'):
+                            _degradate_fase6 += 1
                         _hint[desc] = cat
                 _bypass_canon, canon_conflicts = _build_master_canonical_map(_bypass)
                 _memoria_cache['prodotti_master'] = _bypass
@@ -3146,9 +3157,9 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 _memoria_cache['prodotti_master_hint'] = _hint
                 logger.info(
                     f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass "
-                    f"(alta/altissima + {_streak_promo} streak>=3), "
+                    f"(alta/altissima verificate + {_streak_promo} streak>=3), "
                     f"{len(_bypass_canon)} canonici (conflicts={canon_conflicts}), "
-                    f"{len(_hint)} hint (media/None)"
+                    f"{len(_hint)} hint (di cui {_degradate_fase6} alta non verificate, Fase 6)"
                 )
         except Exception as e:
             logger.warning(f"Query 2 (prodotti_master) fallita: {e}")

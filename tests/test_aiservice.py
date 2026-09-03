@@ -128,6 +128,9 @@ class TestAiService:
                 "categoria": "ACQUA",
                 "confidence": "alta",
                 "consecutive_correct_classifications": 0,
+                # Fase 6: il bypass richiede la conferma di un umano (o lo
+                # streak) — la sola confidence 'alta' dell'AI non basta più.
+                "verified": True,
             },
             {
                 "descrizione": "Sciroppo Vaniglia",
