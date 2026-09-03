@@ -1,8 +1,11 @@
 """A/B test gpt-4o-mini vs gpt-4.1-mini sulla categorizzazione, su ground truth reale.
 
-Ground truth: correzioni MANUALI di clienti reali in prodotti_utente
-(classificato_da LIKE 'Manuale (%@%'), NON db_trigger/AI/keyword-auto (quelle
-sono automatiche, non un giudizio umano verificato).
+Ground truth: correzioni MANUALI di clienti reali in prodotti_utente —
+`classificato_da LIKE 'Manuale (%@%'` PIÙ la grafia legacy `'User'` (scritta
+dall'endpoint categoria-batch fino al 3/9/2026: 319 voci reali). Fase 8 (D10):
+il filtro precedente ignorava le seconde e il campione era parziale (205 casi
+invece del ground truth pieno). NON db_trigger/AI/keyword-auto (quelle sono
+automatiche, non un giudizio umano verificato).
 
 Uso:
     railway run --service worker -- python scripts/ab_test_modello_categorizzazione.py
@@ -30,14 +33,31 @@ MODELLI = ["gpt-4o-mini", "gpt-4.1-mini"]
 
 def carica_ground_truth() -> list[tuple[str, str]]:
     sb = get_supabase_client()
-    resp = (
+    # Due query e non un .or_(): il pattern LIKE contiene parentesi e '@', che
+    # dentro la sintassi or= di PostgREST vanno escapate — due chiamate semplici
+    # non possono sbagliare parsing.
+    rows = list(
+        (
+            sb.table("prodotti_utente")
+            .select("descrizione,categoria,classificato_da")
+            .like("classificato_da", "Manuale (%@%")
+            .execute()
+        ).data or []
+    )
+    rows += (
         sb.table("prodotti_utente")
         .select("descrizione,categoria,classificato_da")
-        .like("classificato_da", "Manuale (%@%")
+        .eq("classificato_da", "User")
         .execute()
-    )
-    rows = resp.data or []
-    return [(r["descrizione"], r["categoria"]) for r in rows if r.get("descrizione") and r.get("categoria")]
+    ).data or []
+    visti: set[str] = set()
+    out: list[tuple[str, str]] = []
+    for r in rows:
+        desc, cat = r.get("descrizione"), r.get("categoria")
+        if desc and cat and desc not in visti:
+            visti.add(desc)
+            out.append((desc, cat))
+    return out
 
 
 def valuta_modello(modello: str, casi: list[tuple[str, str]], client: OpenAI) -> dict:

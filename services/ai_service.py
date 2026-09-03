@@ -3939,15 +3939,19 @@ def _collassa_doppie(testo: str) -> str:
 def _build_patterns_collassati() -> Tuple[list, list]:
     """Stessa logica di _build_compiled_patterns ma su keyword con doppie collassate.
 
-    Salta le keyword troppo corte (<=2 char dopo collasso) per non generare match
-    troppo larghi, e quelle che collassando diventerebbero identiche a un'altra
-    keyword di categoria diversa (ambiguita' -> meglio non rischiare).
+    Fase 8 (D8): il collasso vale SOLO per le parole lunghe (>=6 char dopo il
+    collasso). Sotto quella soglia la forma collassata coincide troppo spesso
+    con una parola REALE diversa — misurate 65 keyword (POLLO->POLO, BOLLO->BOLO,
+    CAFFE->CAFE, CAPPA->CAPA...): una polo personalizzata da 60 EUR era finita
+    in CARNE. Il refuso su una parola corta lo recuperano AI e memoria, non un
+    match che scambia il prodotto. Salta anche le forme che collassando
+    diventano identiche a un'altra keyword di categoria diversa.
     """
     from collections import defaultdict
     collapsed_map: dict = defaultdict(set)
     for keyword, categoria in DIZIONARIO_CORREZIONI.items():
         ck = _collassa_doppie(keyword)
-        if len(ck) <= 2:
+        if len(ck) < 6:
             continue
         collapsed_map[ck].add((keyword, categoria))
 
