@@ -32,6 +32,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **R10 — il guasto travestito da «niente da fare»** | chiuso su 7 pagine cliente: 4,4 M€ non spariscono più |
 | 03/09 | **R5 + R6 — le due ipotesi che non reggevano** | chiusi: nessuna sessione propria, nessuna migration |
 | 03/09 | **R11 — la regola anche in SQL** | chiuso: le 7 RPC vive legate alla costante Python |
+| 03/09 | **R9 — il registro sessioni con PID morti** | chiuso: via il PID, `session_id` + scadenza rinfrescata |
 
 ---
 
@@ -2591,3 +2592,51 @@ stessa pagina — il difetto «fix parziale» già pagato dal progetto.
   (il caso reale: in SQL non dà errore, filtra semplicemente nulla e le righe
   rientrano nel MOL in silenzio), costante Python cambiata senza l'SQL, filtro
   cancellato da una RPC.
+
+---
+
+## Residuo R9 — il registro delle sessioni aveva PID morti — 03/09/2026
+
+**Esito: chiuso.** Ultimo residuo del ciclo. Tocca solo gli hook di sessione
+(`scripts/`), nessun codice di prodotto e nessun dato cliente. `AUDIT_COPERTURA.md`
+non cambia: non include `scripts/` (verificato, 0 occorrenze), che non è runtime.
+
+### La misura, rifatta prima di crederci
+
+Il verbale del 3/9 diceva «1 voce con PID morto mentre giravano 3 sessioni».
+Ri-misurato: il registro aveva **1 sola entry, la mia**, e `ps -p 94420` non
+trovava **nessun processo** — PID morto con la sessione pienamente attiva (al
+comando dopo il PPID era già 94362). E non esiste un PID migliore da scrivere:
+verificato sulla doc ufficiale, non dedotto, il payload porta `session_id`,
+`transcript_path`, `cwd`, `permission_mode`, `hook_event_name` — **nessun
+identificativo di processo**. `session_id` era già la chiave di
+`_avvio_sessione` nel gate di review.
+
+### Cosa è cambiato
+
+Nuovo `scripts/_registro_sessioni.py`: entry senza `pid`, vivacità =
+`ultimo_visto` entro **2h**, rinfrescato da `branch_guard` (gira su ogni Bash).
+Sostituisce **3 copie** di `_pid_vivo` — incluso `pulisci_branch.py`, che non
+era nel prompt e sarebbe rimasto col vecchio schema. `reviewer_gate.py` **non
+toccato**: cercava già per `session_id`, e il fix del 3/9 ora funziona invece
+di degradare al merge-base. Il refresh non sposta `timestamp_avvio`, che è ciò
+su cui il gate attribuisce i commit.
+
+### Il fix stava per introdurre un difetto peggiore di R9
+
+Il refresh scrive a **ogni comando Bash**, con le sessioni parallele come
+regime normale. Misurato prima di fidarsi: 5 sessioni che si rinfrescano
+insieme davano **284 letture sbagliate su 300 e 0 entry superstiti su 5** —
+`write_text` tronca, chi legge vede un JSON a metà e lo tratta come registro
+vuoto. Non entry morte: registro sparito. Corretto con scrittura atomica
+(`os.replace`): stessa prova, **0 errori, 5 su 5**. Nessun lock, che in un hook
+su ogni comando bloccherebbe l'utente.
+
+**Prove** — 13 test, **7 mutanti, 7 uccisi** (scadenza sempre vera, formato
+vecchio vivo, esclusione di sé rimossa, dedup rimosso, refresh che non salva,
+refresh che non aggiorna, scrittura atomica tolta), su copia in scratchpad.
+End-to-end: il gate ritrova la sessione, la collisione continua a scattare.
+**E osservato sul registro vero**: a fine sessione conteneva 2 sessioni reali
+vive insieme — col vecchio codice sarebbero sparite entrambe. (3 test sono
+passati da soli e falliti nella suite intera: la fixture faceva `reload` di un
+modulo che altri 7 file ricaricano, e `REGISTRO` tornava al registro vero.)

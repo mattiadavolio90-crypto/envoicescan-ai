@@ -4,8 +4,8 @@ in autonomia.
 
 Categorie:
 - MERGIATI IN MAIN: sicuri da eliminare (`git branch -d`).
-- ATTIVI ORA: hanno una entry viva in .claude/.sessioni_attive.json (un'altra
-  sessione Claude Code ci sta lavorando) — non toccare.
+- ATTIVI ORA: hanno una entry non scaduta in .claude/.sessioni_attive.json
+  (un'altra sessione Claude Code ci sta lavorando) — non toccare.
 - DA VERIFICARE: non mergiati, non attivi — probabilmente abbandonati, ma
   vanno controllati a mano prima di eliminarli (potrebbero avere lavoro non
   ancora spedito).
@@ -14,14 +14,15 @@ Uso: python scripts/pulisci_branch.py
 """
 from __future__ import annotations
 
-import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _registro_sessioni import carica  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REGISTRO = REPO_ROOT / ".claude" / ".sessioni_attive.json"
 
 
 def _git(*args: str) -> str:
@@ -35,30 +36,8 @@ def _git(*args: str) -> str:
     return risultato.stdout
 
 
-def _pid_vivo(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True  # esiste ma di un altro utente: comunque vivo
-    except OSError:
-        return False
-    return True
-
-
 def _branch_attivi() -> set[str]:
-    if not REGISTRO.exists():
-        return set()
-    try:
-        entries = json.loads(REGISTRO.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, ValueError, OSError):
-        return set()
-    if not isinstance(entries, list):
-        return set()
-    return {
-        e.get("branch_atteso")
-        for e in entries
-        if isinstance(e, dict) and _pid_vivo(e.get("pid", -1)) and e.get("branch_atteso")
-    }
+    return {e.get("branch_atteso") for e in carica() if e.get("branch_atteso")}
 
 
 def main() -> int:

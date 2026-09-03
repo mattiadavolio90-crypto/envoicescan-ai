@@ -11,9 +11,10 @@ natura e' gia' documentato in
 docs/storico/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md.
 
 Questo hook scrive in .claude/.sessioni_attive.json (git-ignorato, effimero)
-una entry {pid, branch_atteso, timestamp_avvio} per la sessione che parte.
-Le entry con PID non piu' vivo vengono scartate ad ogni lettura: niente
-cleanup esplicito necessario.
+una entry {session_id, branch_atteso, timestamp_avvio, ultimo_visto} per la
+sessione che parte. Le entry scadute vengono scartate ad ogni lettura: niente
+cleanup esplicito necessario. Schema e criterio di vivacita' stanno in
+scripts/_registro_sessioni.py (che spiega anche perche' non si usa il PID).
 
 Letto poi da claude_hook_branch_guard.py (PreToolUse su git checkout/switch/
 commit) per rilevare collisioni fra sessioni sullo stesso branch.
@@ -28,44 +29,19 @@ Configurato in .claude/settings.json come hook SessionStart.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _registro_sessioni import registra  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REGISTRO = REPO_ROOT / ".claude" / ".sessioni_attive.json"
 
 SOGLIA_GIORNI = 3
 SOGLIA_COMMIT = 20
-
-
-def _pid_vivo(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True  # esiste ma di un altro utente: comunque vivo
-    except OSError:
-        return False
-    return True
-
-
-def _carica_registro() -> list[dict]:
-    if not REGISTRO.exists():
-        return []
-    try:
-        entries = json.loads(REGISTRO.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, ValueError, OSError):
-        return []
-    if not isinstance(entries, list):
-        return []
-    return [e for e in entries if isinstance(e, dict) and _pid_vivo(e.get("pid", -1))]
-
-
-def _salva_registro(entries: list[dict]) -> None:
-    REGISTRO.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRO.write_text(json.dumps(entries, indent=2), encoding="utf-8")
 
 
 def _git(*args: str) -> str:
@@ -128,20 +104,9 @@ def main() -> int:
         payload = {}
 
     session_id = payload.get("session_id") or ""
-    pid = os.getppid()
     branch = _branch_corrente()
 
-    entries = _carica_registro()
-    entries = [e for e in entries if e.get("pid") != pid]
-    entries.append(
-        {
-            "pid": pid,
-            "session_id": session_id,
-            "branch_atteso": branch,
-            "timestamp_avvio": time.time(),
-        }
-    )
-    _salva_registro(entries)
+    registra(session_id, branch)
 
     avviso = _avviso_eta_branch(branch)
     if avviso:

@@ -55,7 +55,7 @@ La fase 4 (esclusione dai margini, 19 RPC) è la più pesante e la più delicata
 tocca il MOL su tutto lo storico, dietro un flag disattivato, e il delta per sede
 va misurato e portato a Mattia **prima** di attivarlo.
 
-### Residui aperti — la roadmap di chiusura
+### Residui — la roadmap, chiusa il 03/09
 
 > **Regola di Mattia (03/09/2026): i residui si chiudono TUTTI prima di aprire
 > una zona nuova.** Niente parziali che si accumulano. Questa tabella è l'ordine
@@ -85,14 +85,20 @@ va misurato e portato a Mattia **prima** di attivarlo.
 >   occorrenze: molte righe ne portano due);
 > - **R1 non era teorico**: gli incassi a DB ci sono già (1.049 righe, 6 sedi).
 
-| # | Residuo | Sforzo | Perché in questa posizione |
-|---|---|---|---|
-| **R9** | **Il registro delle sessioni ha PID morti** — `claude_hook_registra_sessione.py` salva `os.getppid()`, che è il wrapper dell'hook e muore subito | Basso | Misurato il 03/09: **1 voce con PID morto mentre giravano 3 sessioni**. Conseguenza: molte sessioni non si ritrovano nel registro e il gate di review ricade sul merge-base, cioè **il fix del 03/09 è spesso inattivo**. Il degrado è sicuro (avvisa di più, non tace), quindi non urge: va misurato quante volte l'attribuzione riesce davvero |
+**La tabella dei residui è vuota: R1-R11 sono tutti chiusi** (03/09), incluse
+le 3 `pct` e le 77 righe di `catena/fatture/`. Vedi i verbali nello storico.
 
-**Come si esegue:** resta **solo R9**, che tocca gli hook di sessione e nessun
-codice di prodotto — ed è **lavoro di un'altra sessione** (`claude_hook_*`), non
-di questa. Tutti gli altri residui del ciclo (R1-R8, R10, più le 3 `pct` e le 77
-righe di `catena/fatture/`) sono stati chiusi il 03/09 — vedi i verbali.
+**R9 — chiuso il 03/09.** Il registro sessioni non usa più il PID:
+`os.getppid()` in un hook è il wrapper che muore subito, e ri-misurando si
+vedeva **il PID già morto con la sessione ancora attiva**. La doc ufficiale
+degli hook conferma che nel payload **non esiste** nessun identificativo di
+processo, quindi la vivacità è passata a `session_id` + scadenza rinfrescata
+(nuovo `scripts/_registro_sessioni.py`, che unifica **3 copie** di `_pid_vivo`
+— `pulisci_branch.py` era il terzo consumatore, fuori dal prompt originale).
+Effetto: il fix del 03/09 al gate di review ora funziona invece di degradare
+al merge-base. 13 test, 7/7 mutanti. Il fix stesso stava per introdurre un
+guasto peggiore — il refresh concorrente azzerava il registro (0 entry su 5),
+corretto con scrittura atomica prima del commit.
 
 > **Due ipotesi della roadmap non hanno retto alla misura**, ed è il motivo per
 > cui R5 e R6 erano rimasti in fondo alla lista:
