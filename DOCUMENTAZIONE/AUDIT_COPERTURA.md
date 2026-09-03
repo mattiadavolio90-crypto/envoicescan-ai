@@ -42,34 +42,34 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.992 |
-| Frontend (`apps/web/src/`, esclusi i binari) | 53.606 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 57.263 |
+| Frontend (`apps/web/src/`, esclusi i binari) | 53.764 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.154** |
+| **TOTALE APP** | **114.583** |
 
-> Ri-misurato il 3/9 sera (sessione prompt AI). Il frontend è cresciuto di 367
-> righe per i commit paralleli del 3/9: la tabella per aree qui sotto chiudeva a
-> 53.233 prima di quei commit — la ri-somma per area spetta alla prossima
-> sessione frontend, non a questa.
+> Ri-misurato il 3/9 a fine sessione «tutte le voci» (voci §3 #2→#6). Il
+> frontend è cresciuto di ~500 righe fra commit paralleli e card Fase 4bis: la
+> tabella per aree chiudeva a 53.233 prima — la ri-somma per area spetta alla
+> prossima sessione frontend.
 
 ---
 
-## Backend Python — 56.992 righe
+## Backend Python — 57.263 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
-| `db_service.py` | 2.249 | 📖 letto | ciclo 07, 8/8 |
+| `db_service.py` | 2.284 | 📖 letto | ciclo 07, 8/8; 3/9 helper Fase 4 (`escludi_da_verificare_margini`, `rpc_params_fase4`) |
 | `invoice_service.py` | 2.333 | 📖 letto | ciclo 07, 10/8 |
 | `auth_service.py` | 1.782 | 📖 letto | ciclo 07, 8/8 |
-| `ai_service.py` | 5.715 | 📖 nucleo decisione + gate | ciclo 09: motore unico, gate, 9 uscite. 101 test |
+| `ai_service.py` | 5.742 | 📖 nucleo decisione + gate | ciclo 09: motore unico, gate, 9 uscite. 101 test |
 | `upload_handler.py` | 2.282 | 🔍 chiamante del gate | passa descrizione e fornitore a `valuta_fiducia` |
-| `margine_service.py` | 1.483 | 🔍 di rimbalzo | **regola di dominio MOL**; 3/9 il filtro «Da Classificare» viene dalla costante (R6) |
-| `fastapi_worker.py` | 8.820 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
+| `margine_service.py` | 1.487 | 🔍 di rimbalzo | **regola di dominio MOL**; 3/9 il filtro «Da Classificare» viene dalla costante (R6) |
+| `fastapi_worker.py` | 8.899 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
 | `daily_briefing_service.py` | 1.656 | 📖 letto | voce §3 #4, 3/9 sera: letto integralmente, 2 fix (formato scadenze, validatore tono v21), 3/3 mutanti. Report: `scratchpad/audit_briefing_report.md` |
-| `routers/` (tutti) | 16.617 | 🟠 parziale | ~4.000 letti nel ciclo 07 (workspace, tag, margini, ricavi, scadenziario); il resto no. 3/9: **216 endpoint su 216 ri-verificati protetti** e guardia a livello di router (R5) — il perimetro *sicurezza* è chiuso, quello *logica* no |
+| `routers/` (tutti) | 16.701 | 🟠 parziale | ~4.000 letti nel ciclo 07 (workspace, tag, margini, ricavi, scadenziario); il resto no. 3/9: **216 endpoint su 216 ri-verificati protetti** e guardia a livello di router (R5) — il perimetro *sicurezza* è chiuso, quello *logica* no |
 | `worker/` | 2.411 | 📖 letto | voce §3 #5, 3/9 sera: letto integrale — la premessa «non presidiato» era falsa. 1 latente chiuso (retry coda email), 1/1 mutanti. Report: `scratchpad/audit_worker_report.md` |
 | `utils/` | 2.574 | 🔴 | — |
-| `config/` | 2.396 | 🔍 auditato 3/9 | voce §3 #2: prompt letto integrale, dizionario validato al 100% via script (chiavi/valori/codifica), coerenza prompt↔costanti↔DB misurata. Fix: 12 chiavi mojibake. Report: `scratchpad/audit_prompt_ai_report.md` |
+| `config/` | 2.411 | 🔍 auditato 3/9 | voce §3 #2: prompt letto integrale, dizionario validato al 100% via script (chiavi/valori/codifica), coerenza prompt↔costanti↔DB misurata. Fix: 12 chiavi mojibake. Report: `scratchpad/audit_prompt_ai_report.md` |
 | `services/` (altri moduli) | 6.701 | 🔴 | riparto, foodcost, price_impact, radar… |
 
 ---
