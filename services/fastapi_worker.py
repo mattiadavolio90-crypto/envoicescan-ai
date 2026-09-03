@@ -1220,6 +1220,32 @@ _PAGINE_FLAG = frozenset({
     "scadenziario", "agenda", "workspace",
 })
 
+# Flag non-pagina che il client deve comunque RICEVERE. Non decidono il menu, ma
+# senza di essi il frontend non può applicarli: 'trigger_servizi_off' veniva
+# scartato qui e lo switch del pannello admin non aveva alcun effetto — il
+# cliente continuava a vedere i suggerimenti nonostante fosse spento.
+_FLAG_TRASPORTATI = frozenset({"trigger_servizi_off"})
+
+# Prefisso dei flag per-tab (apps/web/src/lib/tab-flags.ts: `tabOffKey`). Si
+# riconoscono per FORMA, non con un elenco delle 16 chiavi duplicato dal TS: una
+# lista gemella qui driftterebbe alla prima tab aggiunta di là.
+_TAB_OFF_PREFIX = "tab_off_"
+
+
+def _is_tab_off_key(k: str) -> bool:
+    """True per `tab_off_<sezione>_<tab>` con <sezione> fra le chiavi-pagina.
+
+    La sezione è validata perché una chiave inventata non deve viaggiare al
+    client solo per via del prefisso giusto.
+    """
+    if not k.startswith(_TAB_OFF_PREFIX):
+        return False
+    resto = k[len(_TAB_OFF_PREFIX):]
+    return any(
+        resto.startswith(sezione + "_") and len(resto) > len(sezione) + 1
+        for sezione in _PAGINE_FLAG
+    )
+
 
 def _normalize_pagine(raw) -> Optional[List[str]]:
     if raw is None:
@@ -1232,9 +1258,20 @@ def _normalize_pagine(raw) -> Optional[List[str]]:
         # account a cui non è ancora stato definito il set pagine → default APERTO
         # (None), come per pagine_abilitate=NULL. Senza questa guardia un toggle
         # impostato prima delle pagine svuotava il menu del PV (bug OFFSIDE).
+        #
+        # La guardia si valuta SOLO su _PAGINE_FLAG: le chiavi tab/trasportate non
+        # devono farla scattare, o un cliente con i soli 'tab_off_*' impostati si
+        # ritroverebbe il menu vuoto — lo stesso bug, un piano più in basso.
         if not any(k in _PAGINE_FLAG for k in raw):
             return None
-        return [k for k, v in raw.items() if v and k in _PAGINE_FLAG]
+        # La lista trasporta anche chiavi non-pagina. È sicuro perché ogni suo
+        # consumatore la interroga per appartenenza puntuale di una chiave-pagina
+        # (sidebar, page-guard, gate dei tool chat), mai iterandola: aggiungere
+        # elementi è additivo. Chi cambia questa forma controlli quei chiamanti.
+        return [
+            k for k, v in raw.items()
+            if v and (k in _PAGINE_FLAG or k in _FLAG_TRASPORTATI or _is_tab_off_key(k))
+        ]
     return None
 
 

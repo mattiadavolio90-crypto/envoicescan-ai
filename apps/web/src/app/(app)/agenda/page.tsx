@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/page-header";
-import { requirePagina } from "@/lib/page-guard";
+import { requirePaginaConTab } from "@/lib/page-guard";
 import { LayerSwitcher } from "./layer-switcher";
 import { AgendaOverview } from "./agenda-overview";
 import { AgendaView } from "../workspace/diario-tab";
@@ -12,9 +12,12 @@ export default async function AgendaPage({
 }: {
   searchParams: Promise<{ layer?: string }>;
 }) {
-  await requirePagina("agenda");
   const sp = await searchParams;
-  const layer = sp.layer ?? "tutto";
+  // Il param qui si chiama `layer`, non `tab`: il guard lo riceve come nome, cosi'
+  // un redirect ricostruisce /agenda?layer=... e non un ?tab= che nessuno legge.
+  const { tab: layer, disponibili } = await requirePaginaConTab(
+    "agenda", "agenda", sp.layer, "/agenda", "layer",
+  );
 
   return (
     <div className="space-y-4">
@@ -25,7 +28,7 @@ export default async function AgendaPage({
       />
 
       <Suspense>
-        <LayerSwitcher active={layer} />
+        <LayerSwitcher active={layer} disponibili={disponibili} />
       </Suspense>
 
       <div className="mt-2">

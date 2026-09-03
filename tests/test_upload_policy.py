@@ -173,3 +173,30 @@ class TestMessaggi:
         solo in fondo alla frase ne datava uno in modo falso."""
         msg = messaggio_blocco(BLOCCO_MESE, "2026-11-05", oggi=date(2027, 1, 15))
         assert "Dicembre 2026" in msg and "Gennaio 2027" in msg
+
+
+class TestDefaultAsimmetriciDeiBlocchi:
+    """I due blocchi hanno default OPPOSTI: e' voluto, ed e' facile allinearli per errore.
+
+    `blocco_anno_precedente` e' attivo di default (fail-open), `blocco_mesi_precedenti`
+    e' spento di default (fail-closed). Il pannello admin usava un fail-open uniforme
+    e mostrava quindi ACCESO un blocco mesi che il backend non applicava: l'admin
+    credeva di aver ristretto i caricamenti e non era vero. La correzione e' stata
+    fatta nella UI, che ora legge un `defaultOn` per voce; questi default NON vanno
+    toccati (vedi i commenti su gennaio/dicembre in upload_policy.py).
+    """
+
+    def test_blocco_mesi_spento_senza_configurazione(self):
+        # Giugno con oggi=agosto: passa solo perche' il blocco mesi NON e' attivo.
+        assert valuta_policy_data("2026-06-15", {}, oggi=OGGI) is None
+
+    def test_blocco_anno_acceso_senza_configurazione(self):
+        assert valuta_policy_data("2025-06-15", {}, oggi=OGGI) == BLOCCO_ANNO
+
+    def test_i_due_default_non_coincidono(self):
+        """Uccide il mutante "uniformo i due default": se qualcuno portasse il
+        blocco mesi a True per simmetria, una fattura di giugno verrebbe
+        rifiutata ad agosto a TUTTI i clienti, nessuno dei quali ha la chiave."""
+        mesi = valuta_policy_data("2026-06-15", {}, oggi=OGGI)
+        anno = valuta_policy_data("2025-06-15", {}, oggi=OGGI)
+        assert (mesi, anno) == (None, BLOCCO_ANNO)

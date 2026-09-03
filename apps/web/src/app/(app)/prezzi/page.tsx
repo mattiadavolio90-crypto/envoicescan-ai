@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
-import { requirePagina } from "@/lib/page-guard";
+import { requirePaginaConTab } from "@/lib/page-guard";
 import { SESSION_COOKIE, getCurrentUser } from "@/lib/auth";
 import { contaTopicAttivo } from "@/lib/notifiche";
 import { TriggerHint } from "@/components/trigger-hint";
@@ -45,9 +45,8 @@ export default async function PrezziPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  await requirePagina("prezzi");
   const sp = await searchParams;
-  const tab = sp.tab ?? "variazioni";
+  const { tab, disponibili } = await requirePaginaConTab("prezzi", "prezzi", sp.tab, "/prezzi");
   const [soglia, user, alertPrezzi] = await Promise.all([
     fetchSogliaAlert(),
     getCurrentUser(),
@@ -69,7 +68,7 @@ export default async function PrezziPage({
         subtitle="Monitora l'andamento dei prezzi e la coerenza dei fornitori nel tempo."
       />
       <Suspense>
-        <TabsSwitcher active={tab} />
+        <TabsSwitcher active={tab} disponibili={disponibili} />
       </Suspense>
       <div className="mt-2">
         {tab === "variazioni" && (

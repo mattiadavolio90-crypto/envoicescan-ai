@@ -2,20 +2,18 @@
 
 import { useTransition, useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-
-const LAYERS = [
-  { key: "tutto", label: "Tutto" },
-  { key: "appuntamenti", label: "Appuntamenti" },
-  { key: "spese", label: "Spese" },
-  { key: "personale", label: "Personale" },
-];
+import { TAB_SEZIONI, type TabDef } from "@/lib/tab-flags";
 
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function LayerSwitcher({ active }: { active: string }) {
+// Le tab sono in @/lib/tab-flags (unica fonte, condivisa col pannello admin).
+// `disponibili` arriva gia' filtrato dal server component: qui non si decide
+// nulla sui permessi, si rende cio' che il guard ha consentito.
+export function LayerSwitcher({ active, disponibili }: { active: string; disponibili?: TabDef[] }) {
+  const elenco = disponibili ?? TAB_SEZIONI["agenda"];
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -56,7 +54,7 @@ export function LayerSwitcher({ active }: { active: string }) {
 
   return (
     <div className={`flex gap-1 border-b border-border ${pending ? "opacity-70" : ""}`}>
-      {LAYERS.map((l) => {
+      {elenco.map((l) => {
         const n = badge(l.key);
         return (
           <button

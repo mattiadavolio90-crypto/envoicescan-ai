@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
-import { requirePagina } from "@/lib/page-guard";
+import { requirePaginaConTab } from "@/lib/page-guard";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
 import { InventarioTab } from "./inventario-tab";
@@ -29,9 +29,12 @@ export default async function WorkspacePage({
     redirect(`/agenda?layer=${LAYER_REDIRECT[requested]}`);
   }
 
-  await requirePagina("workspace");
-
-  const tab = requested === "inventario" ? "inventario" : "foodcost";
+  // Risolve permessi pagina E tab in un colpo: la normalizzazione difensiva del
+  // param (che qui era gia' presente) vive ora in risolviTab, insieme al
+  // filtro delle tab spente dal pannello admin.
+  const { tab, disponibili } = await requirePaginaConTab(
+    "workspace", "workspace", sp.tab, "/workspace",
+  );
 
   return (
     <div className="space-y-4">
@@ -42,7 +45,7 @@ export default async function WorkspacePage({
       />
 
       <Suspense>
-        <TabsSwitcher active={tab} />
+        <TabsSwitcher active={tab} disponibili={disponibili} />
       </Suspense>
 
       <div className="mt-2">

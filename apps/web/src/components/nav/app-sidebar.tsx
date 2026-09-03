@@ -49,6 +49,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { sezioneHaTabAttive } from "@/lib/tab-flags";
 
 const navMain = [
   { title: "Home", url: "/dashboard", icon: Home, flag: null },
@@ -111,9 +112,16 @@ export function AppSidebar({
   const pathname = usePathname();
   const router = useRouter();
 
+  // Oltre alla pagina si controlla che le resti almeno una tab: una sezione con
+  // tutte le tab spente fa 404 (page-guard), e una voce di menu che porta a una
+  // pagina inesistente e' peggio di una voce assente.
   const visibleNav = pagineAbilitate == null
     ? navMain
-    : navMain.filter((item) => item.flag === null || pagineAbilitate.includes(item.flag));
+    : navMain.filter(
+        (item) =>
+          item.flag === null ||
+          (pagineAbilitate.includes(item.flag) && sezioneHaTabAttive(pagineAbilitate, item.flag)),
+      );
 
   async function handleLogout() {
     try {

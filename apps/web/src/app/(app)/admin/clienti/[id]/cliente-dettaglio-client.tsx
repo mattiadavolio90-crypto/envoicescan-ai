@@ -14,19 +14,36 @@ import {
   LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil, Send, Lock
 } from "lucide-react";
 import { ClienteDettaglio, Sede, PIANO_LABEL, PIANO_COLOR, fmtDate, fmtDateTime } from "@/lib/admin";
+import { TAB_SEZIONI, tabOffKey, type SezioneConTab } from "@/lib/tab-flags";
 
 type Props = { cliente: ClienteDettaglio };
 
-const SIDEBAR_FLAGS: { key: string; label: string; desc: string }[] = [
-  { key: "analisi_fatture", label: "Analisi Fatture", desc: "Visualizza e gestisci fatture" },
-  { key: "prezzi", label: "Osservatorio", desc: "Variazioni prezzi, sconti, note di credito, score fornitori" },
-  { key: "margini", label: "Ricavi e Margini", desc: "Calcolo marginalità e analisi avanzate" },
-  { key: "agenda", label: "Agenda", desc: "Appuntamenti, spese extra, turni del personale" },
-  { key: "workspace", label: "Strumenti", desc: "Foodcost e inventario di magazzino" },
-  { key: "analisi_e_tag", label: "Analisi e Tag", desc: "Tag personalizzati e analytics" },
-  { key: "scadenziario", label: "Gestione Fatture", desc: "Gestione scadenze e pagamenti" },
-  { key: "blocco_anno_precedente", label: "Blocca anno precedente", desc: "Impedisce caricamento fatture dell'anno scorso" },
-  { key: "blocco_mesi_precedenti", label: "Blocca mesi precedenti", desc: "Consente solo mese corrente e precedente" },
+// `defaultOn` = stato mostrato quando la chiave non e' ancora a DB, e deve
+// combaciare con il default del BACKEND che applica il flag. Non e' uniforme:
+// upload_policy.py usa `cfg.get(BLOCCO_ANNO_KEY, True)` ma
+// `cfg.get(BLOCCO_MESI_KEY, False)`. Con un fail-open uniforme il pannello
+// mostrava acceso un blocco mesi che nessuno applicava — l'admin credeva di aver
+// ristretto i caricamenti e non era vero. Se cambi un default qui, cambia il
+// backend (o viceversa): tests/test_upload_policy.py presidia l'asimmetria.
+//
+// `sezione` collega la voce alle sue tab in TAB_SEZIONI (@/lib/tab-flags), che
+// restano l'unica fonte: qui non si duplicano.
+const SIDEBAR_FLAGS: {
+  key: string;
+  label: string;
+  desc: string;
+  defaultOn: boolean;
+  sezione?: SezioneConTab;
+}[] = [
+  { key: "analisi_fatture", label: "Analisi Fatture", desc: "Visualizza e gestisci fatture", defaultOn: true, sezione: "analisi_fatture" },
+  { key: "prezzi", label: "Osservatorio", desc: "Variazioni prezzi, sconti, note di credito, score fornitori", defaultOn: true, sezione: "prezzi" },
+  { key: "margini", label: "Ricavi e Margini", desc: "Calcolo marginalità e analisi avanzate", defaultOn: true, sezione: "margini" },
+  { key: "agenda", label: "Agenda", desc: "Appuntamenti, spese extra, turni del personale", defaultOn: true, sezione: "agenda" },
+  { key: "workspace", label: "Strumenti", desc: "Foodcost e inventario di magazzino", defaultOn: true, sezione: "workspace" },
+  { key: "analisi_e_tag", label: "Analisi e Tag", desc: "Tag personalizzati e analytics", defaultOn: true },
+  { key: "scadenziario", label: "Gestione Fatture", desc: "Gestione scadenze e pagamenti", defaultOn: true, sezione: "scadenziario" },
+  { key: "blocco_anno_precedente", label: "Blocca anno precedente", desc: "Impedisce caricamento fatture dell'anno scorso", defaultOn: true },
+  { key: "blocco_mesi_precedenti", label: "Blocca mesi precedenti", desc: "Consente solo mese corrente e precedente", defaultOn: false },
 ];
 
 export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
@@ -302,13 +319,22 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     }
   }
 
-  async function handleToggleFlag(key: string, enabled: boolean) {
+  // `etichetta` e `acceso` esistono perche' per i flag a convenzione inversa
+  // (tab, trigger servizi) il valore scritto e' l'OPPOSTO di cio' che l'admin ha
+  // acceso: un toast che leggesse `enabled` direbbe "attivato" quando spegni, e
+  // mostrerebbe la chiave grezza (`tab_off_analisi_fatture_categorie`).
+  async function handleToggleFlag(
+    key: string,
+    enabled: boolean,
+    etichetta?: string,
+    acceso?: boolean,
+  ) {
     try {
       await patch(`/api/admin/clienti/${c.id}/flags`, "PATCH", {
         pagine_abilitate: { [key]: enabled },
       });
       setC((prev) => ({ ...prev, pagine_abilitate: { ...prev.pagine_abilitate, [key]: enabled } }));
-      toast.success(`${key} ${enabled ? "attivato" : "disattivato"}`);
+      toast.success(`${etichetta ?? key} ${(acceso ?? enabled) ? "attivato" : "disattivato"}`);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
     }
@@ -471,17 +497,45 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
           <CardHeader><CardTitle className="text-base">Accesso sezioni</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {SIDEBAR_FLAGS.map((f) => {
-              const enabled = flags[f.key] !== false;
+              // `??` e non `!== false`: quest'ultimo tratta "assente" e true allo
+              // stesso modo, e rende impossibile esprimere un default spento.
+              const enabled = flags[f.key] ?? f.defaultOn;
+              const tabs = f.sezione ? TAB_SEZIONI[f.sezione] : [];
               return (
-                <div key={f.key} className="flex items-center justify-between gap-4 py-1 border-b last:border-0">
-                  <div>
-                    <p className="text-sm font-medium">{f.label}</p>
-                    <p className="text-xs text-muted-foreground">{f.desc}</p>
+                <div key={f.key} className="py-1 border-b last:border-0">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">{f.label}</p>
+                      <p className="text-xs text-muted-foreground">{f.desc}</p>
+                    </div>
+                    <Switch
+                      checked={enabled}
+                      onCheckedChange={(v: boolean) => handleToggleFlag(f.key, v, f.label)}
+                    />
                   </div>
-                  <Switch
-                    checked={enabled}
-                    onCheckedChange={(v: boolean) => handleToggleFlag(f.key, v)}
-                  />
+                  {/* Tab figlie: solo a sezione accesa (spegnerla le rende
+                      irraggiungibili comunque). I flag restano a DB e si
+                      riapplicano se la sezione viene riaccesa. */}
+                  {enabled && tabs.length > 0 && (
+                    <div className="mt-2 ml-1 pl-3 border-l space-y-1.5">
+                      {tabs.map((t) => {
+                        const chiave = tabOffKey(f.sezione as SezioneConTab, t.key);
+                        // Convenzione inversa: chiave presente = tab SPENTA.
+                        const tabOn = flags[chiave] !== true;
+                        return (
+                          <div key={t.key} className="flex items-center justify-between gap-4">
+                            <p className="text-xs text-muted-foreground">{t.label}</p>
+                            <Switch
+                              checked={tabOn}
+                              onCheckedChange={(v: boolean) =>
+                                handleToggleFlag(chiave, !v, `${f.label} › ${t.label}`, !v)
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -509,7 +563,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                   presente, non assente. Lo switch mostra l'opposto del flag-off. */}
               <Switch
                 checked={flags.trigger_servizi_off !== true}
-                onCheckedChange={(v: boolean) => handleToggleFlag("trigger_servizi_off", !v)}
+                onCheckedChange={(v: boolean) => handleToggleFlag("trigger_servizi_off", !v, "Suggerimenti servizi", v)}
               />
             </div>
           </CardContent>

@@ -2,15 +2,22 @@
 
 import { useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { TAB_SEZIONI, type TabDef } from "@/lib/tab-flags";
 import { Calculator, FlaskConical, Users } from "lucide-react";
 
-const TABS = [
-  { key: "calcolo", label: "Marginalità", icon: Calculator },
-  { key: "coperti", label: "Coperti", icon: Users },
-  { key: "analisi", label: "Analisi Avanzate", icon: FlaskConical },
-];
+// Le icone restano qui: TAB_SEZIONI e' logica pura eseguita da node nei test
+// (tests/helpers_ts.py) e non puo' importare componenti React.
+const ICONE: Record<string, typeof Calculator> = {
+  calcolo: Calculator,
+  coperti: Users,
+  analisi: FlaskConical,
+};
 
-export function TabsSwitcher({ active }: { active: string }) {
+// Le tab sono in @/lib/tab-flags (unica fonte, condivisa col pannello admin).
+// `disponibili` arriva gia' filtrato dal server component: qui non si decide
+// nulla sui permessi, si rende cio' che il guard ha consentito.
+export function TabsSwitcher({ active, disponibili }: { active: string; disponibili?: TabDef[] }) {
+  const elenco = disponibili ?? TAB_SEZIONI["margini"];
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -24,8 +31,8 @@ export function TabsSwitcher({ active }: { active: string }) {
 
   return (
     <div className={`flex gap-1 border-b border-border ${pending ? "opacity-70" : ""}`}>
-      {TABS.map((t) => {
-        const Icon = t.icon;
+      {elenco.map((t) => {
+        const Icon = ICONE[t.key];
         const isActive = active === t.key;
         return (
           <button
@@ -38,7 +45,7 @@ export function TabsSwitcher({ active }: { active: string }) {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Icon className="size-3.5" />
+            {Icon && <Icon className="size-3.5" />}
             {t.label}
           </button>
         );

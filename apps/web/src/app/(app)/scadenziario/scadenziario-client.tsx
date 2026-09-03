@@ -1336,13 +1336,26 @@ type ScadenziarioClientProps = {
    * comportano esattamente come prima.
    */
   caricamentoFallito?: boolean;
+  /**
+   * Viste consentite dal pannello admin ("agenda" = Lista, "calendario").
+   * Default = entrambe, quindi un chiamante che non la passa resta identico a
+   * prima: e' il caso della vista di CATENA (catena/fatture/page.tsx), che monta
+   * questo stesso componente in un contesto diverso dal punto vendita e NON deve
+   * ereditarne i flag. Scelta deliberata, non una dimenticanza da "uniformare".
+   */
+  visteAttive?: string[];
 };
 
-export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false }: ScadenziarioClientProps) {
+export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false, visteAttive = ["agenda", "calendario"] }: ScadenziarioClientProps) {
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
   const sedeTecnicaId = sedi.find(s => s.is_sede_tecnica)?.id;
   const [filtroSede, setFiltroSede] = useState<string>("tutte"); // "tutte" | ristorante_id | "gruppo"
-  const [view, setView] = useState<View>("agenda");
+  const mostraLista = visteAttive.includes("agenda");
+  const mostraCalendario = visteAttive.includes("calendario");
+  // Parte dalla prima vista consentita: con "agenda" fisso, spegnere la Lista
+  // avrebbe mostrato una pagina vuota senza modo di uscirne (il bottone per
+  // cambiarla non viene reso).
+  const [view, setView] = useState<View>(mostraLista ? "agenda" : "calendario");
   const [selectedFileOrigini, setSelectedFileOrigini] = useState<Set<string>>(new Set());
   const [peekDoc, setPeekDoc] = useState<Documento | null>(null);
   const [regoleOpen, setRegoleOpen] = useState(false);
@@ -1736,20 +1749,22 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex rounded-md border overflow-hidden">
-          <button
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${view === "agenda" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setView("agenda")}
-          >
-            <List className="size-3.5" /> Lista
-          </button>
-          <button
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l ${view === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setView("calendario")}
-          >
-            <CalendarDays className="size-3.5" /> Calendario
-          </button>
-        </div>
+        {mostraLista && mostraCalendario && (
+          <div className="flex rounded-md border overflow-hidden">
+            <button
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${view === "agenda" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setView("agenda")}
+            >
+              <List className="size-3.5" /> Lista
+            </button>
+            <button
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l ${view === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setView("calendario")}
+            >
+              <CalendarDays className="size-3.5" /> Calendario
+            </button>
+          </div>
+        )}
 
         <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setRegoleOpen(true)}>
           <Settings2 className="size-3.5" /> Regole fornitore

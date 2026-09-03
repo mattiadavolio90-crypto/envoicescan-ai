@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
-import { requirePagina } from "@/lib/page-guard";
+import { requirePaginaConTab } from "@/lib/page-guard";
 import { SESSION_COOKIE, getCurrentUser } from "@/lib/auth";
 import { TriggerHint } from "@/components/trigger-hint";
 import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
@@ -89,9 +89,14 @@ export default async function MarginiPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requirePagina("margini");
   const sp = await searchParams;
-  const tab = sp.tab ?? "calcolo";
+  const { tab, disponibili } = await requirePaginaConTab(
+    "margini", "margini", sp.tab, "/margini",
+    "tab", {
+      preset: sp.preset, data_da: sp.data_da, data_a: sp.data_a,
+      mese: sp.mese, anno: sp.anno,
+    },
+  );
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
 
   const [kpi, user] = await Promise.all([fetchKpiData(data_da, data_a), getCurrentUser()]);
@@ -124,7 +129,7 @@ export default async function MarginiPage({
       <div className="pb-4" />
 
       <Suspense>
-        <TabsSwitcher active={tab} />
+        <TabsSwitcher active={tab} disponibili={disponibili} />
       </Suspense>
 
       <div>

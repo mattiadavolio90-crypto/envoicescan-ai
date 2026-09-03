@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth";
+import { notFound } from "next/navigation";
 import { requirePagina } from "@/lib/page-guard";
+import { getCurrentSession } from "@/lib/auth";
+import { tabAttive } from "@/lib/tab-flags";
 import { PageHeader } from "@/components/ui/page-header";
 import { ScadenziarioClient } from "./scadenziario-client";
 import type { Documento } from "@/lib/scadenziario";
@@ -42,6 +45,15 @@ async function triggerNotifica(token: string): Promise<void> {
 
 export default async function ScadenziarioPage() {
   await requirePagina("scadenziario");
+
+  // Qui le viste non sono in URL (stato locale del client), quindi niente guard
+  // con redirect: basta non rendere i bottoni. Il 404 a viste esaurite lo si fa
+  // comunque, per non avere una regola diversa dalle altre sezioni.
+  const sessione = await getCurrentSession();
+  const pagine = sessione.status === "ok" ? sessione.user.pagine_abilitate : null;
+  const viste = tabAttive(pagine, "scadenziario").map((t) => t.key);
+  if (viste.length === 0) notFound();
+
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value ?? "";
 
@@ -64,6 +76,7 @@ export default async function ScadenziarioPage() {
       <ScadenziarioClient
         initialDocumenti={esito.righe}
         caricamentoFallito={esito.stato === "non_disponibile"}
+        visteAttive={viste}
       />
     </div>
   );

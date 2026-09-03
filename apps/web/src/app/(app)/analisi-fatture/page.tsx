@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/ui/page-header";
-import { requirePagina } from "@/lib/page-guard";
+import { requirePaginaConTab } from "@/lib/page-guard";
 import { getCurrentUser } from "@/lib/auth";
 import { contaTopicAttivo } from "@/lib/notifiche";
 import { TriggerHint } from "@/components/trigger-hint";
@@ -71,9 +71,16 @@ export default async function AnalisiFatturePage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requirePagina("analisi_fatture");
   const sp = await searchParams;
-  const tab = sp.tab ?? "articoli";
+  // Risolta PRIMA del Promise.all: `tab` decide quali fetch partono, e un
+  // redirect deciso dopo avrebbe gia' pagato le richieste della tab sbagliata.
+  const { tab, disponibili } = await requirePaginaConTab(
+    "analisi_fatture", "analisi_fatture", sp.tab, "/analisi-fatture",
+    "tab", {
+      preset: sp.preset, data_da: sp.data_da, data_a: sp.data_a,
+      mese: sp.mese, tipo: sp.tipo,
+    },
+  );
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
   const tipoProdotti = normalizeTipo(sp.tipo);
   const soloNuovi = sp.nuovi === "1";
@@ -137,7 +144,7 @@ export default async function AnalisiFatturePage({
       <KpiBar kpi={kpi} />
 
       {/* Tabs */}
-      <TabsSwitcher active={tab} />
+      <TabsSwitcher active={tab} disponibili={disponibili} />
 
       {/* Contenuto tab */}
       {tab === "articoli" && (

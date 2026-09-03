@@ -2,14 +2,13 @@
 
 import { useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { TAB_SEZIONI, type TabDef } from "@/lib/tab-flags";
 
-const TABS = [
-  { key: "articoli", label: "Articoli" },
-  { key: "categorie", label: "Categorie" },
-  { key: "fornitori", label: "Fornitori" },
-];
-
-export function TabsSwitcher({ active }: { active: string }) {
+// Le tab sono in @/lib/tab-flags (unica fonte, condivisa col pannello admin).
+// `disponibili` arriva gia' filtrato dal server component: qui non si decide
+// nulla sui permessi, si rende cio' che il guard ha consentito.
+export function TabsSwitcher({ active, disponibili }: { active: string; disponibili?: TabDef[] }) {
+  const elenco = disponibili ?? TAB_SEZIONI["analisi_fatture"];
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -28,7 +27,7 @@ export function TabsSwitcher({ active }: { active: string }) {
 
   return (
     <div className={`flex gap-1 border-b border-border ${pending ? "opacity-70" : ""}`}>
-      {TABS.map((t) => (
+      {elenco.map((t) => (
         <button
           key={t.key}
           disabled={pending}
