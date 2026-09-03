@@ -110,6 +110,22 @@ la guardia è stata provata per mutazione (3 mutanti, 3 uccisi) e legata da
 `tests/test_catena_config_guardia_salva.py`. *La lista invecchia in
 entrambe le direzioni: si ri-verifica, non si eredita.*
 
+**Chiuso prima ancora di entrare in lista — il MEDIUM catena-tag.** Il prompt di
+quadratura di agosto (`docs/storico/..._COERENZA_NUMERI.md` §E) lo dichiarava
+aperto a **236,23 €** di note di credito non scalate sul percorso catena, e da lì
+è stato ricopiato due volte come lavoro da fare. **Era già chiuso dal 27/8**:
+la migration `20260827230000_gruppo_tag_note_credito.sql` è stata applicata poche
+ore dopo la scrittura di quel prompt, che nessuno ha aggiornato. Verificato a DB
+il **03/09** chiamando la RPC vera `gruppo_tag_analisi`: LAND DEI SAPORI mostra
+245.518,38 € (il valore non corretto sarebbe 245.764,83 €), Villa Guardia
+103.821,61 € contro 103.860,66 €. Due dettagli che la citazione aveva perso: le
+RPC erano **4, non 6**, e al momento del fix la divergenza era **285,50 € su 7
+righe**, non 236,23 € su 3 — nel frattempo erano arrivate altre note di credito.
+*Un prompt archiviato invecchia come un verbale: se una sessione lo usa come
+fonte, va ri-misurato prima, non citato.* Distinto dal fix sul **segno** delle
+note di credito (`089b671`, 2/9), anch'esso chiuso e verificato: 140 TD04 a DB,
+zero col netto positivo.
+
 **Esclusioni motivate — non sono residui.** Il **rendering React** (~4.300 righe
 in margini, e ovunque) non è coperto e non lo sarà: servirebbe un runner di
 componenti in `apps/web/`, e `deploy-vercel.yml` scatta su `apps/web/**` — ogni

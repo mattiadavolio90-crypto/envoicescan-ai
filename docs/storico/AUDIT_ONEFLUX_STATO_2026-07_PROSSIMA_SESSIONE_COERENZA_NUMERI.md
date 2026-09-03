@@ -68,7 +68,7 @@ Project Supabase: `vthikmfpywilukizputn`. Usa `mcp__claude_ai_Supabase__execute_
    di gruppo attivo, agosto incluso, e OVERTIME ha 6 mesi in sola modalità
    mensile (nessun giornaliero): è la configurazione che ha innescato 2 dei 7 HIGH.
 2. **La catena OFFSIDE** — pagina `catena/`, confronto sede-singola vs vista di
-   gruppo. Qui c'è il MEDIUM ancora aperto (vedi sotto).
+   gruppo. (Il MEDIUM che stava qui è chiuso dal 27/8 — vedi §E.)
 3. **La catena SUSHILAND** (3 sedi, stesso user_id) — pagina catena, tag di gruppo.
 4. **LAND DEI SAPORI** — volume più alto, 2 fatture ripartite su gruppo.
 5. **TIME CAFE** — ha lo switch morto `blocco_mesi_precedenti` acceso.
@@ -134,12 +134,21 @@ Per ogni sede prioritaria, per ogni mese con dati, confronta questi valori
 ### E. Catena vs somma delle sedi
 - La vista catena di un totale (costi comuni, margini-coperti, spesa-pivot) deve
   = somma delle singole sedi, per lo stesso periodo.
-- **MEDIUM ANCORA APERTO (§25, §3c)**: divergenza sede-singola↔catena sui tag di
-  gruppo. Misurata: **402.182,19 € vs 402.418,42 € = 236,23 €** di note di
-  credito non scalate sul percorso catena. Esiste `gruppo_tags` id=3 "SALMONE"
-  (5 prodotti, tutti KG) su SUSHILAND e "SALMONE" analogo su OFFSIDE. Richiede
-  una migration su 6 RPC `gruppo_tag_*` → **NON fixare, conferma il numero e
-  riportalo**.
+- ✅ **MEDIUM CHIUSO — non è più da verificare.** Questo prompt (27/8) lo
+  dichiarava aperto a **236,23 €**; la migration
+  `supabase/migrations/20260827230000_gruppo_tag_note_credito.sql` è stata
+  applicata **poche ore dopo**, e nessuno ha aggiornato questa riga.
+  **Verificato a DB il 3/9/2026** chiamando la RPC vera `gruppo_tag_analisi`:
+  le 4 RPC `gruppo_tag_*` sono aggiornate e le note di credito scalano.
+  | Sede | `spesa` (mostrata oggi) | `spesa_prezzo_valido` (il vecchio valore) |
+  |---|---|---|
+  | LAND DEI SAPORI | 245.518,38 € | 245.764,83 € |
+  | SUSHILAND VILLA GUARDIA | 103.821,61 € | 103.860,66 € |
+  Anche la cifra era invecchiata: al momento del fix la divergenza era
+  **285,50 € su 7 righe**, non 236,23 € su 3 — erano arrivate altre note di
+  credito nel frattempo. Le RPC erano **4**, non 6.
+  ⚠️ Distinto dal fix sul **segno** delle note di credito (commit `089b671`,
+  2/9), anch'esso chiuso: 140 TD04 a DB, zero col netto positivo (3/9).
 
 ### F. Prezzi / alert prezzi
 - Il prezzo medio di un prodotto/tag in pagina Prezzi vs l'alert prezzi in Home
@@ -179,7 +188,7 @@ separata, come per tutti i fix del ciclo di audit.
 ## Fuori scope
 
 - Qualunque fix (codice, DB, migration).
-- Il MEDIUM catena-tag (§25): conferma il numero, non correggerlo.
+- Il MEDIUM catena-tag (§25): **già chiuso il 27/8**, verificato a DB il 3/9 — vedi §E. Non è più nel perimetro.
 - Edge Function `invoicetronic-webhook` (gestita in altra sessione, 27/8).
 - Riscrittura del parsing / dell'ingestione: già chiusa (`f005ca3`).
 - Audit di stile / accessibilità: già fatto dalla dimensione 6.
