@@ -67,7 +67,7 @@ non sa montare. È un limite dichiarato, non una svista.
 | `fastapi_worker.py` | 8.820 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
 | `daily_briefing_service.py` | 1.656 | 📖 letto | voce §3 #4, 3/9 sera: letto integralmente, 2 fix (formato scadenze, validatore tono v21), 3/3 mutanti. Report: `scratchpad/audit_briefing_report.md` |
 | `routers/` (tutti) | 16.617 | 🟠 parziale | ~4.000 letti nel ciclo 07 (workspace, tag, margini, ricavi, scadenziario); il resto no. 3/9: **216 endpoint su 216 ri-verificati protetti** e guardia a livello di router (R5) — il perimetro *sicurezza* è chiuso, quello *logica* no |
-| `worker/` | 2.403 | 🔴 | queue-worker, **gira non presidiato** |
+| `worker/` | 2.411 | 📖 letto | voce §3 #5, 3/9 sera: letto integrale — la premessa «non presidiato» era falsa. 1 latente chiuso (retry coda email), 1/1 mutanti. Report: `scratchpad/audit_worker_report.md` |
 | `utils/` | 2.574 | 🔴 | — |
 | `config/` | 2.396 | 🔍 auditato 3/9 | voce §3 #2: prompt letto integrale, dizionario validato al 100% via script (chiavi/valori/codifica), coerenza prompt↔costanti↔DB misurata. Fix: 12 chiavi mojibake. Report: `scratchpad/audit_prompt_ai_report.md` |
 | `services/` (altri moduli) | 6.701 | 🔴 | riparto, foodcost, price_impact, radar… |
@@ -184,7 +184,8 @@ Edge Functions, le 170 route, il MOL.
 
 1. ~~`config/` contiene i prompt AI e non è mai stato guardato~~ — **auditato il
    3/9** (voce §3 #2): coerenza piena, un difetto di codifica chiuso con presidio.
-2. **`worker/` (2.403) gira non presidiato** e non è in nessuna lista.
+2. ~~`worker/` gira non presidiato~~ — **letto integralmente il 3/9** (voce §3
+   #5): era il contrario, è tra i moduli più difesi; 1 latente chiuso.
 3. ~~`daily_briefing_service.py` mai auditato come oggetto proprio~~ — **letto
    integralmente il 3/9** (voce §3 #4): l'impianto regge, 2 fix minori.
 4. **I `routers/` sono il blocco più grande a copertura parziale** (16.617 righe,

@@ -581,10 +581,18 @@ def _schedule_retry(supabase, record_id: str, error: str, attempts: int, max_att
     delay = min(_BACKOFF_BASE_SEC * (2 ** (attempts - 1)), _BACKOFF_MAX_SEC)
     jitter = delay * random.uniform(-0.25, 0.25)
     delay_secs = max(30, int(delay + jitter))
+    # Timestamp CALCOLATO, non l'espressione SQL "now() + interval '...'" come
+    # stringa: PostgREST la passa come letterale timestamptz e Postgres la
+    # rifiuta ("invalid input syntax", misurato 3/9) — l'UPDATE intero falliva,
+    # il lock restava e il retry avveniva solo via recupero lock stantii, senza
+    # backoff. Mai esercitato in produzione (88 righe, tutte done al 1º colpo):
+    # latente, ma il primo errore transitorio l'avrebbe innescato.
+    from datetime import datetime, timedelta, timezone
+    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=delay_secs)).isoformat()
     try:
         supabase.table("ricavi_email_queue").update({
             "status": "failed", "attempt_count": attempts, "last_error": error[:500],
-            "next_retry_at": f"now() + interval '{delay_secs} seconds'",
+            "next_retry_at": retry_at,
             "locked_at": None, "locked_by": None,
         }).eq("id", record_id).execute()
     except Exception as exc:

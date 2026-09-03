@@ -37,6 +37,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **I prompt AI — `config/` (voce §3 #2)** | chiusa: coerenza piena; 12 chiavi mojibake riparate con presidio |
 | 03/09 | **Categorizzazione — fasi 4, 4bis, 5, 6, 8 (voce §3 #3)** | le 10 fasi del piano chiuse; migration Fase 4 e conflitti memoria a Mattia (verbali in `docs/piani/PIANO_CATEGORIZZAZIONE.md`) |
 | 03/09 | **Il briefing giornaliero (voce §3 #4)** | chiusa: letto integrale, 2 fix (formato scadenze, validatore tono), 2 memorie invecchiate |
+| 03/09 | **Il worker asincrono (voce §3 #5)** | chiusa: «non presidiato» era falso; 1 latente chiuso (retry coda email); scadenze mute → voce #6 |
 
 ---
 
@@ -2827,3 +2828,43 @@ dall'1/6** (7 record totali) mentre lo scadenziario ha 4,4 M€ di dati — il
 generatore è fuori perimetro, va guardato nelle voci §3 #5/#6; `severity_max`
 è nel payload ma nessun componente UI la legge; il modello di narrazione è
 `gpt-4o-mini` fisso (scelta economica sensata per riscrivere il tono).
+
+---
+
+## 03/09/2026 — Il worker asincrono, `worker/` (voce §3 #5): chiusa
+
+**Perimetro:** `worker/` = 2.403 righe all'apertura (2.411 alla chiusura),
+lette integralmente: `run.py` 301, `queue_processor.py` 1.430,
+`email_queue_processor.py` 602, `streamlit_stub.py` 69. Report:
+`scratchpad/audit_worker_report.md`.
+
+**La premessa della roadmap era falsa.** «Gira non presidiato» — misurato, è
+tra i moduli più difesi del backend: claim atomico con recupero lock stantii,
+watchdog per job con ri-verifica del claim prima dei side-effect costosi, SSRF
+whitelist, purge GDPR su quattro fronti, killswitch con log orario, import
+degradati e AI muta dichiarati a ERROR. Le code in produzione sono in salute:
+647 fatture `done` (retry fino a 8 tentativi arrivati in fondo, 0 arretrati),
+88/88 email ricavi `done` al primo colpo.
+
+**Chiuso 1 latente (misurato prima di chiamarlo bug):** `_schedule_retry`
+della coda email passava `"now() + interval '...'"` come STRINGA a PostgREST —
+Postgres rifiuta il cast (`'now()'` passa, l'espressione no: provato a DB).
+L'UPDATE intero falliva: niente backoff, lock non rilasciato, retry solo via
+recupero stantii. Mai esercitato (nessun fallimento email di sempre), ma il
+primo errore transitorio l'avrebbe innescato. Fix: timestamp ISO calcolato.
+3 test, 1 mutante / 1 ucciso. Suite worker/email: 149 verdi.
+
+**Trovato per strada, registrato per la voce #6:** le notifiche scadenze sono
+MUTE da giugno — `POST /api/scadenziario/notifica` scrive con
+`on_conflict="user_id,ristorante_id,topic_key"` ma quel vincolo unico NON
+esiste su `notification_inbox` (misurato su `pg_indexes`): ogni chiamata cade
+nell'`except`, il frontend è best-effort, silenzio totale. 0 righe
+`scadenze_aggregate` di sempre; i due topic vecchi (`scadenza_superata/
+imminente`), gli unici che il briefing conosce, sono fermi all'1/6. Intanto lo
+scadenziario mostra 300 fatture scadute per 4,4 M€. In più il body usa il
+formato inglese. Il fix è del router scadenziario (+ eventuale raccordo col
+briefing): voce §3 #6.
+
+**Non fatto, e dichiarato:** le RPC di coda lette come contratto, non
+ri-auditate (hanno presidi dai cicli precedenti); l'«agent notturno» di
+revisione vive in `fastapi_worker.py` → voce #6.
