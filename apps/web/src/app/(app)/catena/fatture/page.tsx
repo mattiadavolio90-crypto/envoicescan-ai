@@ -7,6 +7,7 @@ import { ScadenziarioClient } from "../../scadenziario/scadenziario-client";
 import { BlockRetry } from "../../dashboard/block-retry";
 import type { Documento, SedeCatena } from "@/lib/scadenziario";
 import { workerGet } from "@/lib/worker";
+import { esitoLista } from "@/lib/esito-caricamento";
 
 type GruppoScadenziarioResponse = {
   nome_gruppo: string;
@@ -50,11 +51,16 @@ async function FattureBlock() {
     "catena/fatture",
   );
 
+  // `data === null` = worker giu'/timeout, non "zero scadenze": senza la
+  // distinzione la pagina scriveva «Nessun documento trovato» su un guasto.
+  const esito = esitoLista<Documento>(data, "documenti");
+
   return (
     <ScadenziarioClient
-      initialDocumenti={data?.documenti ?? []}
+      initialDocumenti={esito.righe}
+      caricamentoFallito={esito.stato === "non_disponibile"}
       modalitaCatena
-      sedi={data?.sedi ?? []}
+      sedi={esitoLista<SedeCatena>(data, "sedi").righe}
     />
   );
 }

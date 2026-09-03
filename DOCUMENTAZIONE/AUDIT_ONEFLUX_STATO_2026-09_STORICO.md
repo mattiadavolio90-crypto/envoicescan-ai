@@ -29,6 +29,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R4 — formattatori duplicati | 8 unificate, 8 divergono: decisione a Mattia |
 | 03/09 | R4, seconda parte — decisione presa | chiuso: separatore migliaia + decimali arrotondati |
 | 03/09 | **Le 3 `pct` + `catena/fatture/` letta** | chiuse; e ci è stato trovato **R10**, che mente al cliente |
+| 03/09 | **R10 — il guasto travestito da «niente da fare»** | chiuso su 6 pagine cliente: 4,4 M€ non spariscono più |
 
 ---
 
@@ -2449,3 +2450,46 @@ perché **nessun mio test aveva una sessione con più di un commit**.
   (1), la stessa **nascosta dietro una riga commentata** (1): la classe che era
   sopravvissuta il 3/9 mattina.
 - 966 verdi nella regressione frontend/catena, `tsc` pulito. Commit `6dd458c`.
+
+---
+
+## 03/09/2026 — R10: il guasto travestito da «niente da fare»
+
+**Verdetto:** chiuso sulle 6 pagine che mentivano al cliente. Le 2 admin restano
+col vecchio schema: **esclusione motivata**, non un residuo.
+
+**Fatto**
+- `lib/esito-caricamento.ts` (41 righe): `esitoLista` distingue «lista vuota» da
+  «non sono riuscito a chiedere». Chi carica dichiara quale dei due è.
+- Corrette **6 pagine cliente** (scadenziario PV e catena, avvisi desktop e
+  mobile, analisi-e-tag): messaggio onesto invece di rassicurazione.
+- I due client accettano `caricamentoFallito`, default `false`: **nessun
+  chiamante esistente cambia comportamento**.
+
+**Trovato**
+- **Il perimetro era più piccolo di quanto sembrasse.** `?? []` compare ~85
+  volte, ma quasi tutte sono `useState`, rami già dietro `res.ok` o lookup in
+  memoria. La classe pericolosa — caricamento **server** dove `null` diventa
+  lista vuota — è **8 pagine**.
+- **Le due pagine avvisi mentivano due volte**: in intestazione *e* nel corpo.
+- **`analisi-e-tag` era la più cara dopo lo scadenziario**: su un guasto
+  invitava a «Crea il primo tag» chi ne ha già (16 tag, 3 utenti).
+- **Un mio cambio ha introdotto un difetto, preso rileggendo il diff.** Avevo
+  reso condizionale la chiamata (`token ? … : null`): mostrava «impossibile
+  caricare» a chi non ha sessione. `requirePagina` non garantisce la sessione
+  (`page-guard.ts:22`: l'auth la fa il layout). Forma originale ripristinata.
+
+**Non fatto, e dichiarato**
+- `admin/page.tsx` e `admin/richieste`: stesso schema, non corrette — le vede
+  solo l'owner. Dichiarato nel test (`_PAGINE_CLIENTE`), non taciuto.
+- `impostazioni/page.tsx`: una lista sedi vuota è **visibilmente** rotta, non una
+  falsa rassicurazione. Lasciata.
+
+**Prove**
+- 20 test in `tests/test_esito_caricamento_frontend.py`: 9 sul comportamento, 11
+  sul **sorgente delle pagine** — senza, `?? []` rimesso lascerebbe tutto verde.
+- Mutazione su copia in scratchpad: **6 mutanti, 6 uccisi** (`null` come vuoto a
+  monte, `?? []` rimesso, messaggio rimosso, stato ignorato, non-array come
+  guasto, `davveroVuota` senza stato).
+- `tsc` pulito. Chiavi `documenti`/`sedi` verificate contro il worker
+  (`routers/scadenziario.py:106`, `routers/gruppo.py:1441`), non dedotte.

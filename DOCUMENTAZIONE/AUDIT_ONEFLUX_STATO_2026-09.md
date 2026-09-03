@@ -25,11 +25,12 @@ Una riga per sessione. Il dettaglio è nel verbale, in coda per data.
 | 31/08 | **Voci ereditate** (3) | ✅ chiusa — 2 su 3 erano false alla ri-misura |
 | 31/08 | **Scadenziario** | ✅ chiusa — filtri, ordinamento e stato estratti in `lib/`, 15/15 mutanti |
 | 31/08 | **`(app)/margini/`** — il MOL | ✅ chiusa — 183 test, 65/65 mutanti |
-| 01→03/09 | **`(app)/catena/`** (3 passate + R3 + pct) | ✅ **100%** — 293 test; `card-segnali.tsx` è esclusione motivata. Le 77 righe di `fatture/` lette il 3/9: nessun difetto proprio, ma ci è stato trovato R10 (pattern condiviso, non di catena) |
+| 01→03/09 | **`(app)/catena/`** (3 passate + R3 + pct) | ✅ **100%** — 326 test; `card-segnali.tsx` è esclusione motivata. Le 77 righe di `fatture/` lette il 3/9: nessun difetto proprio, ma ci è stato trovato R10 (pattern condiviso, non di catena) |
 | 01/09 | **Bug importi italiani** | ✅ corretti — erano in **60 punti**, non ~25; fonte unica in `lib/format.ts` |
 | 01/09 | **`(app)/dashboard/`** — logica in `lib/` | ✅ 1ª passata — 92 test, 39 mutanti / 38 uccisi |
 | 02/09 | **`(app)/impostazioni/`** — logica in `lib/` | ✅ 1ª passata — 22 test, 12/12 mutanti |
 | 02/09 | **`(app)/notifiche/`** | ✅ chiusa — 23 test; corretto un difetto **visibile al cliente** (notifica senza pulsante) |
+| 03/09 | **R10 — il guasto non è più un «niente da fare»** | ✅ chiuso — 6 pagine cliente (scadenziario PV + catena, avvisi desktop + mobile, tag). `workerGet` torna `null` su ogni fallimento e i `?? []` lo trasformavano in lista vuota: **4,4 M€ di scadenze** potevano diventare «Nessun documento trovato». Fonte unica in `lib/esito-caricamento.ts`, 20 test, 6/6 mutanti |
 | 03/09 | **Residui R8, R2, R3, R1, R7, R4** | ✅ **6 su 6 chiusi** — corretto il netto mobile (euro sbagliati). Su R4 Mattia ha scelto: separatore delle migliaia e decimali arrotondati. Le 3 `pct` chiuse il 3/9: `formatPct` non aveva più chiamanti, correggerla non ha toccato nessuna schermata |
 | 01→02/09 | **Categorizzazione** — fasi 0, 7, 1, 2, 3 | 🟠 **parziale: 5 fasi su 10** — vedi §2 |
 
@@ -87,13 +88,11 @@ va misurato e portato a Mattia **prima** di attivarlo.
 | **R5** | **`dependencies=[...]` a livello di `APIRouter`** — 12 router, 216 endpoint | Medio-alto | Nessuna falla attiva (0 endpoint scoperti): è **prevenzione**. Tocca tutto il traffico, vuole la sua finestra e una sessione propria |
 | **R6** | **9 copie backend del filtro `Da Classificare`** + NOTE senza emoji in `margine_service.py` e 2 RPC | Alto | **Non è un residuo da chiudere in coda**: 0 righe attive oggi, ma richiede una **migration su 7 account veri**. Si apre come dimensione a sé, quando Mattia decide |
 | **R9** | **Il registro delle sessioni ha PID morti** — `claude_hook_registra_sessione.py` salva `os.getppid()`, che è il wrapper dell'hook e muore subito | Basso | Misurato il 03/09: **1 voce con PID morto mentre giravano 3 sessioni**. Conseguenza: molte sessioni non si ritrovano nel registro e il gate di review ricade sul merge-base, cioè **il fix del 03/09 è spesso inattivo**. Il degrado è sicuro (avvisa di più, non tace), quindi non urge: va misurato quante volte l'attribuzione riesce davvero |
-| **R10** | **Il worker giù diventa «Nessun documento trovato»** — `workerGet` torna `null` su *ogni* fallimento (timeout, non-2xx, rete) e i chiamanti fanno `?? []` | Medio | **Trovato il 3/9 leggendo `catena/fatture/`.** Non è un difetto di catena: il pattern è su ~8 pagine, **la gemella del PV (`scadenziario/page.tsx:19`) inclusa**. Impatto misurato a DB: 3.219 documenti non pagati, **4,4 M€**, 1.891 già scaduti, su tutte e 11 le sedi — a un cliente verrebbe detto che non ha scadenze. Il cold-start Railway (8s) rende il caso **ricorrente, non teorico**: `BlockRetry` esiste per quello, e `catena/fatture/` lo usa già per `overview` e lo perde per `documenti` nella stessa funzione |
 
-**Come si esegue:** **R10 per primo**: è l'unico che mente al cliente su dei
-soldi, e va deciso se correggerlo su tutte le pagine o solo sulle due dello
-scadenziario. Poi R5 in una sessione propria. R6 è una dimensione, non un
+**Come si esegue:** R5 in una sessione propria. R6 è una dimensione, non un
 residuo. R9 è piccolo e tocca solo gli hook (nessun codice di prodotto).
-R1, R2, R3, R4, R7 e R8 sono stati chiusi il 03/09, con le 3 `pct` — vedi i verbali.
+R1, R2, R3, R4, R7, R8 e **R10** sono stati chiusi il 03/09, con le 3 `pct` —
+vedi i verbali.
 
 **Fotografato di proposito, NON è un residuo.** Le **8 anomalie di `catena/`**
 (`ordinaRighe` coi null, `tintConti` che sceglie l'ipotesi ottimista,

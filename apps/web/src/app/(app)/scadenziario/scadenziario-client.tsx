@@ -1327,9 +1327,17 @@ type ScadenziarioClientProps = {
   // Modalità catena (Fase 3): assenti/false → comportamento identico a oggi.
   modalitaCatena?: boolean;
   sedi?: SedeCatena[];
+  /**
+   * Il caricamento server e' FALLITO (worker giu', timeout, non-2xx), che non e'
+   * la stessa cosa di "zero documenti": senza questo flag la pagina scriveva
+   * «Nessun documento trovato» su un guasto, rassicurando il cliente mentre
+   * aveva scadenze aperte. Default false: i chiamanti che non lo passano si
+   * comportano esattamente come prima.
+   */
+  caricamentoFallito?: boolean;
 };
 
-export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [] }: ScadenziarioClientProps) {
+export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false }: ScadenziarioClientProps) {
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
   const sedeTecnicaId = sedi.find(s => s.is_sede_tecnica)?.id;
   const [filtroSede, setFiltroSede] = useState<string>("tutte"); // "tutte" | ristorante_id | "gruppo"
@@ -2070,7 +2078,13 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           {documentiFiltrati.length === 0 && (
             <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
               <Calendar className="size-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">{filtriAttivi ? "Nessuna fattura corrisponde ai filtri." : "Nessun documento trovato."}</p>
+              <p className="text-sm">
+                {caricamentoFallito && documenti.length === 0
+                  ? "Non è stato possibile caricare le scadenze. Riprova fra un momento."
+                  : filtriAttivi
+                    ? "Nessuna fattura corrisponde ai filtri."
+                    : "Nessun documento trovato."}
+              </p>
               {filtriAttivi && (
                 <button className="text-xs text-primary mt-2 hover:underline" onClick={resetFiltri}>Pulisci filtri</button>
               )}

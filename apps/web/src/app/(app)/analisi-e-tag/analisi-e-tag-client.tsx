@@ -862,9 +862,16 @@ function SuggerimentiBanner({
 export function AnalisiETagClient({
   initialTags,
   initialSuggestions,
+  caricamentoFallito = false,
 }: {
   initialTags: CustomTag[];
   initialSuggestions: TagSuggestion[];
+  /**
+   * Il caricamento server e' fallito (worker giu', timeout): senza questo flag
+   * un cliente che HA dei tag leggeva «Nessun tag ancora — Crea il primo tag»,
+   * cioe' un invito a rifare da capo un lavoro che aveva gia' fatto.
+   */
+  caricamentoFallito?: boolean;
 }) {
   const [tags, setTags] = useState<CustomTag[]>(initialTags);
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>(initialSuggestions);
@@ -1132,15 +1139,26 @@ export function AnalisiETagClient({
       {tags.length === 0 && (
         <div className="rounded-lg border border-dashed border-border py-16 text-center">
           <Tags className="size-10 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm font-medium">Nessun tag ancora</p>
-          <p className="text-xs text-muted-foreground mt-1 mb-4">Crea il primo tag per raggruppare i tuoi prodotti e analizzare la spesa</p>
-          <button
-            onClick={() => setDialogTag({ open: true, tag: null })}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="size-4" />
-            Crea primo tag
-          </button>
+          {caricamentoFallito ? (
+            <>
+              <p className="text-sm font-medium">Tag non disponibili in questo momento</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Non è stato possibile caricarli. Ricarica la pagina fra un momento: i tuoi tag non sono stati persi.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium">Nessun tag ancora</p>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">Crea il primo tag per raggruppare i tuoi prodotti e analizzare la spesa</p>
+              <button
+                onClick={() => setDialogTag({ open: true, tag: null })}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="size-4" />
+                Crea primo tag
+              </button>
+            </>
+          )}
         </div>
       )}
 

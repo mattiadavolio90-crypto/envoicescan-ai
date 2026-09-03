@@ -5,6 +5,7 @@ import { requirePagina } from "@/lib/page-guard";
 import { PageHeader } from "@/components/ui/page-header";
 import type { CustomTag, TagSuggestion } from "@/lib/tag";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { esitoLista } from "@/lib/esito-caricamento";
 
 // dynamic(): il client importa recharts, usata solo per i grafici di questa
 // pagina, cosi' il chunk resta separato dal bundle condiviso.
@@ -36,14 +37,18 @@ export default async function AnalisiETagPage() {
 
   let tags: CustomTag[] = [];
   let suggestions: TagSuggestion[] = [];
+  // Senza token non c'e' stata nessuna chiamata: non e' un guasto del worker.
+  let caricamentoFallito = false;
 
   if (token) {
     const [tagsRes, suggestionsRes] = await Promise.all([
       fetchInitial<{ tags: CustomTag[] }>("/api/tag", token),
       fetchInitial<{ suggestions: TagSuggestion[] }>("/api/tag/suggestions", token),
     ]);
-    tags = tagsRes?.tags ?? [];
-    suggestions = suggestionsRes?.suggestions ?? [];
+    const esitoTag = esitoLista<CustomTag>(tagsRes, "tags");
+    tags = esitoTag.righe;
+    caricamentoFallito = esitoTag.stato === "non_disponibile";
+    suggestions = esitoLista<TagSuggestion>(suggestionsRes, "suggestions").righe;
   }
 
   return (
@@ -53,7 +58,11 @@ export default async function AnalisiETagPage() {
         title="Analisi e Tag"
         hint="Raggruppa i prodotti come ragioni tu"
       />
-      <AnalisiETagClient initialTags={tags} initialSuggestions={suggestions} />
+      <AnalisiETagClient
+        initialTags={tags}
+        initialSuggestions={suggestions}
+        caricamentoFallito={caricamentoFallito}
+      />
     </div>
   );
 }

@@ -5,8 +5,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ScadenziarioClient } from "./scadenziario-client";
 import type { Documento } from "@/lib/scadenziario";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { esitoLista } from "@/lib/esito-caricamento";
 
-async function fetchDocumenti(token: string): Promise<Documento[]> {
+// `null` = non sono riuscito a chiedere (non-2xx, timeout, rete), che NON e'
+// "zero scadenze": vedi lib/esito-caricamento.ts.
+async function fetchDocumenti(token: string): Promise<{ documenti: Documento[] } | null> {
   const h: Record<string, string> = { Authorization: `Bearer ${token}` };
   if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
   try {
@@ -15,11 +18,10 @@ async function fetchDocumenti(token: string): Promise<Documento[]> {
       cache: "no-store",
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.documenti as Documento[]) ?? [];
+    if (!res.ok) return null;
+    return (await res.json()) as { documenti: Documento[] };
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -43,10 +45,14 @@ export default async function ScadenziarioPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value ?? "";
 
-  const [documenti] = await Promise.all([
+  // Senza token la chiamata parte comunque e il worker risponde 401 -> `null`,
+  // come prima di questo fix: l'assenza di sessione la gestisce il layout, e
+  // non e' il caso che questa pagina deve distinguere.
+  const [risposta] = await Promise.all([
     fetchDocumenti(token),
     token ? triggerNotifica(token) : Promise.resolve(),
   ]);
+  const esito = esitoLista<Documento>(risposta, "documenti");
 
   return (
     <div className="space-y-5">
@@ -55,7 +61,10 @@ export default async function ScadenziarioPage() {
         title="Gestione Fatture"
         hint="Scadenze e pagamenti sotto controllo"
       />
-      <ScadenziarioClient initialDocumenti={documenti} />
+      <ScadenziarioClient
+        initialDocumenti={esito.righe}
+        caricamentoFallito={esito.stato === "non_disponibile"}
+      />
     </div>
   );
 }
