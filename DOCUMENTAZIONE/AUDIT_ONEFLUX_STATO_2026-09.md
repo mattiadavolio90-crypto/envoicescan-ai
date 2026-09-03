@@ -80,8 +80,21 @@ va misurato e portato a Mattia **prima** di attivarlo.
 | **R5** | **`dependencies=[...]` a livello di `APIRouter`** — 12 router, 216 endpoint | Medio-alto | Nessuna falla attiva (0 endpoint scoperti): è **prevenzione**. Tocca tutto il traffico, vuole la sua finestra e una sessione propria |
 | **R6** | **9 copie backend del filtro `Da Classificare`** + NOTE senza emoji in `margine_service.py` e 2 RPC | Alto | **Non è un residuo da chiudere in coda**: 0 righe attive oggi, ma richiede una **migration su 7 account veri**. Si apre come dimensione a sé, quando Mattia decide |
 
+| **R7** | **4 letterali IVA** in `margine_service.py` (`/1.10`, `/1.22` a righe 777, 799, 1101) | Basso | L'aliquota vive come numero magico in 3 punti del calcolo del **fatturato netto**. Se una cambia, cambia in un posto solo e nessuno se ne accorge. Dichiarato «remediation separata, da proporre» |
+| **R8** | **Guardia sulle liste vuote** di `config-assistente-catena` | Basso | Fix a sé, dichiarato aperto nella 3ª passata su `catena/` |
+
 **Come si esegue:** R1→R4 stanno in **una sessione** (piccoli e indipendenti).
 R5 in una sessione propria. R6 è una dimensione, non un residuo.
+
+**Fotografato di proposito, NON è un residuo.** Le **8 anomalie di `catena/`**
+(`ordinaRighe` coi null, `tintConti` che sceglie l'ipotesi ottimista,
+`incidenzaPct` che mostra «0,0%» dove il dato non esiste, le due heatmap
+divergenti, le `euro2` omonime…) sono **decisioni di Mattia**: ognuna ha già un
+test che la asserisce *sbagliata*, col perché nel corpo. Elenco nel verbale
+dell'1/9, §«Otto comportamenti fotografati». Si riaprono se Mattia lo decide, non
+si chiudono in coda a una sessione. Stessa natura: `daysToCestino` e
+`DocumentoRow.isOverdue` (label e decorazione, non decidono inclusioni né
+importi) e il mutante sul locale `"it"`.
 
 **Chiuso e depennato:** `parseImportoIt` con `replace` non globale — risolto da
 un'altra sessione senza che nessuno lo registrasse. *La lista invecchia in
