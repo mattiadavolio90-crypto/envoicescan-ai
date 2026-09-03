@@ -82,7 +82,7 @@ non sa montare. È un limite dichiarato, non una svista.
 | `app/api/` — 170 route | 4.871 | 4.871 | 📖 | ciclo 09, 30/8 — proxy trasparente, 0 route toccano il DB |
 | `(app)/margini/` | 4.711 | 4.711 | 📖 | ciclo 09, 31/8 — 183 test, 65/65 mutanti. Resta il rendering |
 | `(app)/scadenziario/` | 2.211 | 2.211 | 📖 | ciclo 09, 31/8 — 15/15 mutanti. Resta il rendering |
-| `(app)/catena/` | 2.877 | 3.015 | 🟢 95% | ciclo 09, 1/9 (3 passate) — 283 test. Le 138 scoperte non hanno logica |
+| `(app)/catena/` | 2.938 | 2.938 | 📖 100% | ciclo 09, 1/9 (3 passate) + 3/9 (R3). 290 test. `card-segnali.tsx` (110) è **esclusione motivata**, non un buco: fetch + JSX, provata da `test_catena_card_segnali_esclusione.py` (4/4 mutanti). Resta il rendering |
 | `(app)/analisi-e-tag/` | 1.392 | 1.518 | 📖 92% | ciclo 07 §3c |
 | `lib/` | 2.318 | 5.444 | 🟠 43% | i moduli estratti dalle sessioni di settembre; `format.ts` è la fonte unica del parsing numerico (58 chiamanti) |
 | `(app)/admin/` | 1.739 | 3.871 | 🟠 45% | ciclo 07 §3c — solo staff, non clienti |

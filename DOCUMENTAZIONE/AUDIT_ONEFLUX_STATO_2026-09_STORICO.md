@@ -23,6 +23,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 29/08 | Punto 9 (F2-NOTEST) + voci ereditate | *spostato qui il 2/9* |
 | 03/09 | Residuo R8 — guardia liste vuote catena | depennato: era già in produzione |
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
+| 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 
 ---
 
@@ -2119,3 +2120,43 @@ rigenerarle. Era peggio di codice morto.
 
 **Nessun riferimento** nel repo oltre alla riga di roadmap, ora depennata. Se
 servisse di nuovo, sta in git history (`ca2d3c8`).
+
+---
+
+## Residuo R3 — `card-segnali.tsx`: esclusione motivata — 03/09/2026
+
+**Esito: `catena/` chiusa al 100% del perimetro testabile**, senza forzare un
+test inutile. Le 110 righe sono state rilette una per una: «fetch + JSX» è
+esatto. I tre candidati all'estrazione non sopravvivono all'esame:
+
+1. `ICONA[s.tipo] ?? AlertTriangle` — lookup su 4 chiavi, nessun ramo; il valore
+   è un componente React, non asseribile in `lib/` senza renderizzare;
+2. la guardia anti-race `my === reqRef.current` — vive su `useRef`: estrarla
+   sarebbe indirezione creata per il test, non per il prodotto;
+3. `loadError && !data` — è rendering, già coperto dall'esclusione strutturale
+   del React (nessun runner in `apps/web/`, o `deploy-vercel.yml` deploya).
+
+**Ma una rete serviva lo stesso**, e non sulla logica: la card esiste per
+avvisare, e la regressione che conta è che un errore diventi silenzio
+rassicurante. Il sorgente lo dichiara in un commento; un commento non è un
+presidio. `tests/test_catena_card_segnali_esclusione.py` (4 test) lo lega.
+
+**Prova per mutazione** (copia in scratchpad, ogni mutante verificato come
+applicato prima di eseguirlo):
+
+| Mutante | Esito |
+|---|---|
+| rami invertiti: l'errore mostra «Tutto sotto controllo» | ucciso |
+| «Riprova» non richiama `carica` | ucciso |
+| via una delle 3 guardie anti-race | ucciso |
+| aggiunto un `.sort()` (logica che qui non deve stare) | ucciso |
+
+**4 su 4.** L'ultimo è il guardiano dell'esclusione stessa: se qualcuno mette un
+calcolo in questo file, l'esclusione decade e il test lo dice.
+
+**Cifre ri-misurate, e due non tornavano.** Il contatore diceva
+`2.877 / 3.015 righe, 283 test`. Misurato oggi: **2.938 righe** totali in
+`catena/` (`cat *.tsx | wc -l`) e **290 test** sui 6 file dell'area. Le «138
+righe scoperte» non corrispondono a nessun raggruppamento riproducibile
+(`card-segnali` da solo è 110; con `loading` e `page` fa 215). Il contatore ora
+porta le cifre misurate, non quelle ereditate.
