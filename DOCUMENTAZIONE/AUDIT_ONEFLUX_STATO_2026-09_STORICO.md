@@ -33,6 +33,8 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **R5 + R6 — le due ipotesi che non reggevano** | chiusi: nessuna sessione propria, nessuna migration |
 | 03/09 | **R11 — la regola anche in SQL** | chiuso: le 7 RPC vive legate alla costante Python |
 | 03/09 | **R9 — il registro sessioni con PID morti** | chiuso: via il PID, `session_id` + scadenza rinfrescata |
+| 03/09 | **Quadratura dei numeri fra le pagine (voce §3 #1)** | eseguita read-only: quadra al centesimo; aperti Q1–Q4 |
+| 03/09 | **I prompt AI — `config/` (voce §3 #2)** | chiusa: coerenza piena; 12 chiavi mojibake riparate con presidio |
 
 ---
 
@@ -2709,3 +2711,75 @@ tabella clienti del prompt (27/8) era già invecchiata alla partenza (OFFSIDE
 arrivato a settembre, 48 righe «Da Classificare» sulla sede tecnica). L'eccezione
 alla regola 1 nel riparto è stata cercata in migration PRIMA di chiamarla bug —
 ed era deliberata e motivata; il conflitto vero è fra lei e la proiezione (Q4).
+
+---
+
+## 03/09/2026 — I prompt AI, `config/` (voce §3 #2): chiusa
+
+**Perimetro misurato all'apertura:** `config/` = 2.389 righe (`constants.py`
+2.043, `prompt_ai_potenziato.py` 311, `logger_setup.py` 31, `__init__.py` 4);
+2.396 alla chiusura (+7 del fix). Prompt e file piccoli letti integralmente; il
+dizionario (1.268 chiavi) validato al 100% via script — chiavi, valori, codifica
+byte per byte — non letto a occhio. Report completo:
+`scratchpad/audit_prompt_ai_report.md`.
+
+**Cosa regge (misurato):**
+- **Coerenza strutturale piena**: 29 categorie ufficiali (25 F&B + 4 spese),
+  tutte con definizione nel prompt, zero extra; dizionario, regole fornitore,
+  unità di misura, alias legacy e centri di produzione: ogni valore è una
+  categoria valida.
+- **Zero categorie estranee in produzione** su tutte le righe attive di
+  `fatture` (query con lista completa + `Da Classificare` + NOTE: 0 righe).
+- **La contraddizione interna del prompt non arriva al cliente, per disegno.**
+  Il prompt dice sia «se non riconosci → Da Classificare» (regola 6, REGOLA
+  ASSOLUTA) sia «DEVI classificare ogni articolo… anche con confidence bassa»
+  (sezione formato). Il gate a valle scrive solo `alta` non-dubbia o categoria
+  confermata dal runtime deterministico — su ENTRAMBI i percorsi (coda:
+  `worker/queue_processor.py`, blocco «PRINCIPIO rev. 24/06»; upload manuale:
+  `services/upload_handler.py`, `_categoria_affidabile`). Verificato a DB: le
+  sole fonti AI scritte sono `AI_alta`/`AI_confermata`, zero righe da fonte
+  debole con categoria scritta.
+- **Parsing risposta robusto**: mappatura per `idx` esplicito, idx mancanti →
+  `Da Classificare`, categorie inventate → recupero deterministico, troncamento
+  loggato, deadline sui retry.
+
+**Difetto trovato e chiuso — 12 chiavi mojibake nel dizionario.**
+`constants.py` conteneva 21 righe con doppia codifica UTF-8 nei byte veri del
+file: 12 chiavi del dizionario (`BACCALÃ€`, `RAGÃ™`, `CAFFÃˆ`, `TÃˆ`,
+`WÃœRSTEL`, `TIRAMISÃ™`, `BIGNÃˆ`, `CONTABILITÃ€`, `PUBBLICITÃ€`, `INDENNITÃ€`,
+`ELETTRICITÃ€`, `MACCHINA CAFFÃˆ`), il `€` di `REGEX_NUMERI_UNITA` e 8 commenti.
+Compilate con `re.escape`, quelle chiavi non potevano matchare **nessuna**
+descrizione reale. Impatto misurato con onestà prima del fix:
+- **0 righe su tutto il DB contengono un carattere accentato** (le fatture
+  elettroniche scrivono senza accenti o con l'apostrofo), quindi anche le 4
+  chiavi accentate *corrette* (`GRUYÈRE`, `CAPACITÀ`, `SOUFFLÉ`, `BAMBÙ`) non
+  matchano nulla: il difetto era **latente**, non vivo;
+- copertura persa oggi ≈ 1 riga (`RAGU` di carne in CARNE anziché SALSE E
+  CREME, 59,70 €); l'innesco vero è il percorso **PDF/Vision**, che gli accenti
+  li conserva e non ha ancora prodotto righe a DB.
+
+Fix: riparate le 21 righe (round-trip cp1252→UTF-8, diff verificato riga per
+riga); aggiunti 5 gemelli senza accento per la forma reale in fattura
+(`BACCALA`, `RAGU`, `CONTABILITA`, `ELETTRICITA`, `MACCHINA CAFFE`; **non**
+`TE`, troppo corto — il tè in fattura è `THE`, già chiave). Presidio
+`tests/test_constants.py::TestDizionarioEncoding`: guardia anti-mojibake sulle
+chiavi (contenuto del dato, non testo del sorgente) + 10 casi comportamentali su
+`applica_correzioni_dizionario` (forme piane/apostrofo E accentate). **Provato
+per mutazione**: ri-corrotta una chiave e rimosso un gemello → 3 test rossi;
+ripristino → verdi. Suite: 3.330 test su categorizzazione + 284 dei file AI
+tutti verdi.
+
+**Rilievi minori, annotati e non aperti:**
+- 2 righe legacy `Da Classificare` con `needs_review=false` (SUSHILAND Villa
+  Guardia, coppia acconto/storno ±5.392,02 € a somma zero, giugno, pre-Fase 2):
+  dati, non codice; visibili comunque dal filtro per categoria.
+- Il prompt conta «26 categorie F&B» includendo MATERIALE DI CONSUMO che per le
+  costanti è spesa generale: il totale 29 torna, il raggruppamento non raggiunge
+  l'output — cosmetico.
+- Commento stale in `ai_service.py` (cita il limite di `gpt-4o-mini`, il modello
+  è `gpt-4.1-mini` dall'A/B del 5/7): fuori perimetro, solo annotato.
+
+**Non fatto, e dichiarato:** i prompt AI fuori da `config/` — il prompt del
+briefing (`daily_briefing_service.py`) si audita con la voce §3 #4, l'eventuale
+prompt chat con la §3 #6. `KPI_SOGLIE`/`COPERTI_ALERT` letti come dati (la
+soglia food cost 38 combacia col rilievo Q2): il loro *uso* è del briefing.

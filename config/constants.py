@@ -73,7 +73,7 @@ REGEX_UNITA_MISURA = [
     re.compile(r'\bVASETTO\b', re.IGNORECASE)
 ]
 
-REGEX_NUMERI_UNITA = re.compile(r'\b\d+[.,]?\d*\s*(?:KG|G|L|ML|PZ|%|EUR|â‚¬)?\b', re.IGNORECASE)
+REGEX_NUMERI_UNITA = re.compile(r'\b\d+[.,]?\d*\s*(?:KG|G|L|ML|PZ|%|EUR|€)?\b', re.IGNORECASE)
 
 REGEX_SOSTITUZIONI = {
     # Abbreviazioni GDO (Metro, Esselunga, ecc.) ---
@@ -206,13 +206,13 @@ CATEGORIE_SPESE_GENERALI = CATEGORIE_SPESE_OPERATIVE + ["MATERIALE DI CONSUMO"]
 
 
 # ============================================
-# TUTTE LE CATEGORIE (per AI e retrocompatibilitÃ )
+# TUTTE LE CATEGORIE (per AI e retrocompatibilità)
 # ============================================
 # NOTA: F&B = 25 categorie, Spese Generali = 4 categorie
 TUTTE_LE_CATEGORIE = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_SPESE_GENERALI
 
 
-# RetrocompatibilitÃ  con codice esistente
+# Retrocompatibilità con codice esistente
 CATEGORIE_FOOD = CATEGORIE_FOOD_BEVERAGE
 
 
@@ -350,8 +350,8 @@ BRAND_AMBIGUI_NO_DICT = {
 # ============================================
 # DIZIONARIO CORREZIONI INTELLIGENTE
 # ============================================
-# Mappa keyword â†’ categoria per classificazione rapida
-# Usato quando AI non Ã¨ disponibile o per validazione
+# Mappa keyword → categoria per classificazione rapida
+# Usato quando AI non è disponibile o per validazione
 DIZIONARIO_CORREZIONI = {
     # ===== CARNE =====
     "POLLO": "CARNE",
@@ -402,7 +402,10 @@ DIZIONARIO_CORREZIONI = {
     "TROTA": "PESCE",
     "SPIGOLA": "PESCE",
     "MERLUZZO": "PESCE",
-    "BACCALÃ€": "PESCE",
+    "BACCALÀ": "PESCE",
+    # Le fatture elettroniche scrivono senza accento o con apostrofo ("BACCALA'"):
+    # la chiave piana copre la forma reale, l'accentata la futura via PDF/Vision (3/9).
+    "BACCALA": "PESCE",
     "SOGLIOLA": "PESCE",
     "PESCE SPADA": "PESCE",
     "ACCIUGHE": "PESCE",
@@ -520,7 +523,7 @@ DIZIONARIO_CORREZIONI = {
     "COPPA DI TESTA": "SALUMI",
     "LARDO": "SALUMI",
     "GUANCIALE": "SALUMI",
-    # âœ… Richiesta: SALSICCIA e varianti â†’ CARNE (non SALUMI)
+    # ✅ Richiesta: SALSICCIA e varianti → CARNE (non SALUMI)
     # NOTA: Deve stare PRIMA di VASCHETTA nel dizionario (sorted by length)
     "SALSICCIA": "CARNE",
     "SALSICCE": "CARNE",
@@ -529,7 +532,7 @@ DIZIONARIO_CORREZIONI = {
     "SALSICC": "CARNE",
     "SALSIC": "CARNE",
     "WURSTEL": "SALUMI",
-    "WÃœRSTEL": "SALUMI",
+    "WÜRSTEL": "SALUMI",
     
     # ===== UOVA =====
     # NOTA: "UOVA"/"UOVO" NON sono keyword dirette: "UOVO" pescava dentro
@@ -751,7 +754,8 @@ DIZIONARIO_CORREZIONI = {
     "BOLLI": "SERVIZI E CONSULENZE",
     "SPESE BANCARIE": "SERVIZI E CONSULENZE",
     "COMMISSIONI": "SERVIZI E CONSULENZE",
-    "RAGÃ™": "SALSE E CREME",
+    "RAGÙ": "SALSE E CREME",
+    "RAGU": "SALSE E CREME",
     "SUGO": "SALSE E CREME",
     "BESCIAMELLA": "SALSE E CREME",
     "SALSA": "SALSE E CREME",
@@ -830,14 +834,14 @@ DIZIONARIO_CORREZIONI = {
     "GIARDINIERA": "SCATOLAME E CONSERVE",
     
     # ===== CAFFE E THE =====
-    "CAFFÃˆ": "CAFFE E THE",
+    "CAFFÈ": "CAFFE E THE",
     "CAFFE": "CAFFE E THE",
     "CAFFE'": "CAFFE E THE",
     "ESPRESSO": "CAFFE E THE",
     "CAPSULE": "CAFFE E THE",
     "CIALDE": "CAFFE E THE",
     "THE": "CAFFE E THE",
-    "TÃˆ": "CAFFE E THE",
+    "TÈ": "CAFFE E THE",
     "TISANA": "CAFFE E THE",
     "TISANE": "CAFFE E THE",
     "INFUSO": "CAFFE E THE",
@@ -922,7 +926,7 @@ DIZIONARIO_CORREZIONI = {
     "CROSTATA": "PASTICCERIA",
     # Dessert al cucchiaio/finiti da servire → GELATI E DESSERT (scelta dominio Mattia 25/06).
     # PASTICCERIA resta il da-forno/banco/frolla (croissant, cannoli, crostate, millefoglie).
-    "TIRAMISÃ™": "GELATI E DESSERT",
+    "TIRAMISÙ": "GELATI E DESSERT",
     "TIRAMISU": "GELATI E DESSERT",
     "PANNA COTTA": "GELATI E DESSERT",
     "MOUSSE": "GELATI E DESSERT",
@@ -931,9 +935,9 @@ DIZIONARIO_CORREZIONI = {
     "PROFITEROL": "GELATI E DESSERT",
     "MILLEFOGLIE": "PASTICCERIA",
     "CANNOLI": "PASTICCERIA",
-    "BIGNÃˆ": "PASTICCERIA",
+    "BIGNÈ": "PASTICCERIA",
     "ARAGOSTELLE": "PASTICCERIA",  # Dolci a forma di aragosta (con pistacchio/cioccolato)
-    "TARTUFI": "PASTICCERIA",  # Default per dolci (se Ã¨ tartufo vero, viene sovrascritto da admin)
+    "TARTUFI": "PASTICCERIA",  # Default per dolci (se è tartufo vero, viene sovrascritto da admin)
     "SACHER": "PASTICCERIA",
     "NOCCIOL": "PASTICCERIA",
     "MUFFIN": "PASTICCERIA",
@@ -1180,12 +1184,13 @@ DIZIONARIO_CORREZIONI = {
     "RICAMO": "SERVIZI E CONSULENZE",
     "CONSULENZA": "SERVIZI E CONSULENZE",
     "COMMERCIALISTA": "SERVIZI E CONSULENZE",
-    "CONTABILITÃ€": "SERVIZI E CONSULENZE",
+    "CONTABILITÀ": "SERVIZI E CONSULENZE",
+    "CONTABILITA": "SERVIZI E CONSULENZE",
     "CONTABILE": "SERVIZI E CONSULENZE",
     "CONSULENTE FISCALE": "SERVIZI E CONSULENZE",
     "FISCALE": "SERVIZI E CONSULENZE",
     "FATTURAZIONE ELETTRONICA": "SERVIZI E CONSULENZE",
-    "PUBBLICITÃ€": "SERVIZI E CONSULENZE",
+    "PUBBLICITÀ": "SERVIZI E CONSULENZE",
     "MARKETING": "SERVIZI E CONSULENZE",
     "SOCIAL MEDIA": "SERVIZI E CONSULENZE",
     "PUBBLICITA": "SERVIZI E CONSULENZE",
@@ -1227,7 +1232,7 @@ DIZIONARIO_CORREZIONI = {
     
     # ===== PENALI E INTERESSI =====
     "INDENNITA": "SERVIZI E CONSULENZE",
-    "INDENNITÃ€": "SERVIZI E CONSULENZE",
+    "INDENNITÀ": "SERVIZI E CONSULENZE",
     "MORA": "SERVIZI E CONSULENZE",
     "RITARDATO PAGAMENTO": "SERVIZI E CONSULENZE",
     "INTERESSI": "SERVIZI E CONSULENZE",
@@ -1250,7 +1255,8 @@ DIZIONARIO_CORREZIONI = {
     "SPESA PER LA VENDITA": "UTENZE E LOCALI",
     "SPESA PER LA TARIFFA": "UTENZE E LOCALI",
     "LUCE": "UTENZE E LOCALI",
-    "ELETTRICITÃ€": "UTENZE E LOCALI",
+    "ELETTRICITÀ": "UTENZE E LOCALI",
+    "ELETTRICITA": "UTENZE E LOCALI",
     "GAS": "UTENZE E LOCALI",
     "METANO": "UTENZE E LOCALI",
     "GPL": "UTENZE E LOCALI",
@@ -1366,7 +1372,8 @@ DIZIONARIO_CORREZIONI = {
     "MULIG": "MANUTENZIONE E ATTREZZATURE",
     "MENSOLA": "MANUTENZIONE E ATTREZZATURE",
     "ATTREZZATURA": "MANUTENZIONE E ATTREZZATURE",
-    "MACCHINA CAFFÃˆ": "MANUTENZIONE E ATTREZZATURE",
+    "MACCHINA CAFFÈ": "MANUTENZIONE E ATTREZZATURE",
+    "MACCHINA CAFFE": "MANUTENZIONE E ATTREZZATURE",
     "MACINADOSATORE": "MANUTENZIONE E ATTREZZATURE",
     "MIXER": "MANUTENZIONE E ATTREZZATURE",
     "ROBOT": "MANUTENZIONE E ATTREZZATURE",
@@ -1550,7 +1557,7 @@ DIZIONARIO_CORREZIONI = {
     "CANNONCINO": "PASTICCERIA",
     "CANNOLI SFOGLIA": "PASTICCERIA",
     "CONCHIGLIA PANNA": "PASTICCERIA",
-    # "ARAGOSTINE": duplicato rimosso (giÃ  definito sopra)
+    # "ARAGOSTINE": duplicato rimosso (già definito sopra)
     "CAPRA": "LATTICINI",
     "CAPRINO": "LATTICINI",
     "CAPRINO VACCINO": "LATTICINI",
@@ -1580,7 +1587,7 @@ DIZIONARIO_CORREZIONI = {
     "OCCHI BUE": "PASTICCERIA",
     "OCCHI DI BUE": "PASTICCERIA",
     "PARMA": "SALUMI",
-    # âœ… PASSATA â†’ SCATOLAME E CONSERVE (unificato, rimossi duplicati da righe 819-821)
+    # ✅ PASSATA → SCATOLAME E CONSERVE (unificato, rimossi duplicati da righe 819-821)
     "PASSATA": "SCATOLAME E CONSERVE",
     # "PASSATA POMOD": duplicato rimosso (definito sopra come SALSE E CREME, ora unificato)
     # "PASSATA POMODORO": duplicato rimosso (definito sopra come SALSE E CREME, ora unificato)

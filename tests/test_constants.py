@@ -149,3 +149,38 @@ class TestCostantiCustomTag:
     def test_costanti_custom_tag_unita_contengono_stringhe(self):
         assert all(isinstance(item, str) for item in CUSTOM_TAG_UNITA_KG)
         assert all(isinstance(item, str) for item in CUSTOM_TAG_UNITA_LT)
+
+
+class TestDizionarioEncoding:
+    """Audit prompt AI 3/9/2026: 12 chiavi del dizionario erano mojibake (doppia
+    codifica UTF-8: 'BACCALÃ€' invece di 'BACCALÀ') e non potevano matchare NESSUNA
+    descrizione reale. Le fatture elettroniche scrivono senza accenti, quindi
+    l'impatto era latente — ma il percorso PDF/Vision gli accenti li conserva."""
+
+    def test_nessuna_chiave_mojibake(self):
+        # 'Ã' e 'â' non esistono in nessuna parola italiana o di prodotto: se
+        # compaiono in una chiave, è di nuovo doppia codifica.
+        corrotte = [k for k in DIZIONARIO_CORREZIONI if 'Ã' in k or 'â' in k]
+        assert corrotte == [], f"chiavi con doppia codifica UTF-8: {corrotte}"
+
+    @pytest.mark.parametrize(
+        ("descrizione", "categoria_attesa"),
+        [
+            # forma reale in fattura elettronica (senza accento / con apostrofo)
+            ("BACCALA MANTECATO KG1", "PESCE"),
+            ("RAGU' DI CARNE VASCHETTA", "SALSE E CREME"),
+            ("CONTABILITA MENSILE", "SERVIZI E CONSULENZE"),
+            ("ELETTRICITA F1", "UTENZE E LOCALI"),
+            ("MACCHINA CAFFE' 2 GRUPPI", "MANUTENZIONE E ATTREZZATURE"),
+            # forma accentata (percorso PDF/Vision, che conserva gli accenti)
+            ("BACCALÀ MANTECATO KG1", "PESCE"),
+            ("RAGÙ DI CARNE VASCHETTA", "SALSE E CREME"),
+            ("CAFFÈ MISCELA ORO", "CAFFE E THE"),
+            ("TIRAMISÙ MONOPORZIONE", "GELATI E DESSERT"),
+            ("WÜRSTEL SUINO", "SALUMI"),
+        ],
+    )
+    def test_keyword_accentate_matchano(self, descrizione, categoria_attesa):
+        from services.ai_service import applica_correzioni_dizionario
+
+        assert applica_correzioni_dizionario(descrizione, "Da Classificare") == categoria_attesa

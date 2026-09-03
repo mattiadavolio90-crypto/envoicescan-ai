@@ -42,14 +42,19 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.914 |
-| Frontend (`apps/web/src/`, esclusi i binari) | 53.239 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.992 |
+| Frontend (`apps/web/src/`, esclusi i binari) | 53.606 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **113.709** |
+| **TOTALE APP** | **114.154** |
+
+> Ri-misurato il 3/9 sera (sessione prompt AI). Il frontend è cresciuto di 367
+> righe per i commit paralleli del 3/9: la tabella per aree qui sotto chiudeva a
+> 53.233 prima di quei commit — la ri-somma per area spetta alla prossima
+> sessione frontend, non a questa.
 
 ---
 
-## Backend Python — 56.914 righe
+## Backend Python — 56.992 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -59,12 +64,12 @@ non sa montare. È un limite dichiarato, non una svista.
 | `ai_service.py` | 5.715 | 📖 nucleo decisione + gate | ciclo 09: motore unico, gate, 9 uscite. 101 test |
 | `upload_handler.py` | 2.282 | 🔍 chiamante del gate | passa descrizione e fornitore a `valuta_fiducia` |
 | `margine_service.py` | 1.483 | 🔍 di rimbalzo | **regola di dominio MOL**; 3/9 il filtro «Da Classificare» viene dalla costante (R6) |
-| `fastapi_worker.py` | 8.749 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
+| `fastapi_worker.py` | 8.820 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
 | `daily_briefing_service.py` | 1.637 | 🔍 di rimbalzo | 4 sessioni di lavoro a settembre sul briefing, mai auditato come oggetto proprio |
 | `routers/` (tutti) | 16.617 | 🟠 parziale | ~4.000 letti nel ciclo 07 (workspace, tag, margini, ricavi, scadenziario); il resto no. 3/9: **216 endpoint su 216 ri-verificati protetti** e guardia a livello di router (R5) — il perimetro *sicurezza* è chiuso, quello *logica* no |
-| `worker/` | 2.400 | 🔴 | queue-worker, **gira non presidiato** |
+| `worker/` | 2.403 | 🔴 | queue-worker, **gira non presidiato** |
 | `utils/` | 2.574 | 🔴 | — |
-| `config/` | 2.379 | 🔴 | **contiene i prompt AI** — la regola di dominio n.1 |
+| `config/` | 2.396 | 🔍 auditato 3/9 | voce §3 #2: prompt letto integrale, dizionario validato al 100% via script (chiavi/valori/codifica), coerenza prompt↔costanti↔DB misurata. Fix: 12 chiavi mojibake. Report: `scratchpad/audit_prompt_ai_report.md` |
 | `services/` (altri moduli) | 6.701 | 🔴 | riparto, foodcost, price_impact, radar… |
 
 ---
@@ -177,9 +182,9 @@ Edge Functions, le 170 route, il MOL.
 
 ## Cosa questo conto fa emergere
 
-1. **`config/` (2.379) contiene i prompt AI** — la regola di dominio n.1 — e non
-   è mai stato guardato.
-2. **`worker/` (2.400) gira non presidiato** e non è in nessuna lista.
+1. ~~`config/` contiene i prompt AI e non è mai stato guardato~~ — **auditato il
+   3/9** (voce §3 #2): coerenza piena, un difetto di codifica chiuso con presidio.
+2. **`worker/` (2.403) gira non presidiato** e non è in nessuna lista.
 3. **`daily_briefing_service.py` (1.637)** ha avuto 4 sessioni di lavoro a
    settembre ma non è mai stato auditato come oggetto proprio.
 4. **I `routers/` sono il blocco più grande a copertura parziale** (16.617 righe,
