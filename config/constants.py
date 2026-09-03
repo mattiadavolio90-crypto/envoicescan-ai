@@ -1985,6 +1985,21 @@ CATEGORIA_NON_CLASSIFICATA = "Da Classificare"
 # "fallback" ora ricadono sullo stato non-classificato, non più su SERVIZI.
 CATEGORIA_FALLBACK = CATEGORIA_NON_CLASSIFICATA
 
+# Valore di categoria_fiducia che marca una riga classificata ma NON affidabile
+# (gate valuta_fiducia, Fase 3 piano categorizzazione). Fonte unica: lo scrive
+# ai_service, lo filtra la Fase 4 — se le due sponde divergono, l'esclusione
+# filtra nulla in silenzio.
+CATEGORIA_FIDUCIA_DA_VERIFICARE = "da_verificare"
+
+# Fase 4 piano categorizzazione (decisione Mattia 1/9/2026): le righe
+# `da_verificare` escono dai margini COME le 'Da Classificare', ma dietro
+# questo flag, spento finché il delta per sede non è stato misurato e portato
+# a Mattia. Ordine di attivazione obbligato: (1) applicare la migration
+# 20260903*_fase4_* al DB, (2) mettere True qui, (3) deploy. A flag spento le
+# chiamate RPC restano identiche a prima (il parametro nuovo non viene passato):
+# il codice può andare in produzione PRIMA che la migration sia applicata.
+ESCLUDI_DA_VERIFICARE_DAI_MARGINI = False
+
 # Fatture/mese incluse in ciascun piano. Fonte unica: era duplicata in tre punti
 # (account.py e due volte dentro admin.py), con il rischio che una modifica
 # commerciale ne aggiornasse solo una e i contatori divergessero.

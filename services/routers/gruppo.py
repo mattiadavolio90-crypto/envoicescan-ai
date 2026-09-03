@@ -1014,12 +1014,13 @@ def gruppo_spesa_pivot(
 
     # AGGREGAZIONE SQL (RPC gruppo_spesa_pivot): GROUP BY ristorante_id + dimensione.
     # NIENTE full-load delle righe fattura (regola non negoziabile della catena).
-    res = sb.rpc("gruppo_spesa_pivot", {
+    from services.db_service import rpc_params_fase4
+    res = sb.rpc("gruppo_spesa_pivot", rpc_params_fase4({
         "p_ristorante_ids": ids,
         "p_dimensione": dimensione,
         "p_data_da": da,
         "p_data_a": a,
-    }).execute()
+    })).execute()
 
     # Costruisce la pivot: righe = dim_val, colonne = PV.
     from collections import defaultdict
@@ -1332,9 +1333,10 @@ def gruppo_spreco_categorie(
     categorie_viste: set = set()
     cat_map_per_pv: Dict[str, Dict[tuple, float]] = {rid: {} for rid in ids}
     try:
+        from services.db_service import rpc_params_fase4
         rpc_rows = sb.rpc(
             "gruppo_spreco_fb_categorie",
-            {"p_ristorante_ids": ids, "p_data_da": data_da, "p_data_a": data_a},
+            rpc_params_fase4({"p_ristorante_ids": ids, "p_data_da": data_da, "p_data_a": data_a}),
         ).execute().data or []
         for r in rpc_rows:
             rid_r = str(r.get("ristorante_id") or "")
@@ -1763,11 +1765,12 @@ def _calcola_segnali(
     da = (oggi - _td(days=90)).isoformat()
     a = oggi.isoformat()
     try:
-        pr = sb.rpc("gruppo_peso_categoria", {
+        from services.db_service import rpc_params_fase4
+        pr = sb.rpc("gruppo_peso_categoria", rpc_params_fase4({
             "p_ristorante_ids": ids,
             "p_data_da": da,
             "p_data_a": a,
-        }).execute()
+        })).execute()
         # {cat: {rid: (peso_perc, spesa)}}
         from collections import defaultdict
         per_cat: Dict[str, Dict[str, tuple]] = defaultdict(dict)
@@ -2081,9 +2084,10 @@ def gruppo_tag_descrizioni(q: Optional[str] = None, authorization: Optional[str]
     anche i prodotti meno costosi oltre le prime 500 sono trovabili)."""
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     q_clean = (q or "").strip() or None
-    res = sb.rpc("gruppo_tag_descrizioni", {
+    from services.db_service import rpc_params_fase4
+    res = sb.rpc("gruppo_tag_descrizioni", rpc_params_fase4({
         "p_ristorante_ids": ids, "p_q": q_clean, "p_limit": 500,
-    }).execute()
+    })).execute()
     out = [
         {
             "descrizione": r.get("descrizione"),

@@ -81,6 +81,8 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
     try:
         supabase = get_supabase_client()
 
+        from services.db_service import escludi_da_verificare_margini
+
         _base_q = (
             supabase.table('fatture')
             .select('id, data_documento, data_competenza, totale_riga, categoria')
@@ -93,6 +95,7 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
             # costo rientra distribuito via quote_riparto_* (riparto_quote_mensili).
             .neq('ripartita_su_gruppo', True)
         )
+        _base_q = escludi_da_verificare_margini(_base_q)
 
         # Query unica: data_documento OPPURE data_competenza nell'anno.
         # Sostituisce il precedente approccio Q1+Q2 con deduplicazione:
@@ -176,16 +179,15 @@ def calcola_costi_automatici_per_anno_sql(user_id: str, ristorante_id: str, anno
     """
     try:
         supabase = get_supabase_client()
-        resp = supabase.rpc(
-            "costi_automatici_mensili",
-            {
-                "p_user_id": user_id,
-                "p_ristorante_id": ristorante_id,
-                "p_anno": int(anno),
-                "p_cat_food": list(CATEGORIE_FOOD),
-                "p_cat_spese": list(CATEGORIE_SPESE_GENERALI),
-            },
-        ).execute()
+        from services.db_service import rpc_params_fase4
+
+        resp = supabase.rpc("costi_automatici_mensili", rpc_params_fase4({
+            "p_user_id": user_id,
+            "p_ristorante_id": ristorante_id,
+            "p_anno": int(anno),
+            "p_cat_food": list(CATEGORIE_FOOD),
+            "p_cat_spese": list(CATEGORIE_SPESE_GENERALI),
+        })).execute()
         rows = resp.data or []
         costi_fb_mensili = {}
         costi_spese_mensili = {}
@@ -222,16 +224,15 @@ def calcola_costi_automatici_gruppo_sql(user_id: str, ristorante_ids: list, anno
         return {}
     try:
         supabase = get_supabase_client()
-        resp = supabase.rpc(
-            "costi_automatici_mensili_gruppo",
-            {
-                "p_user_id": user_id,
-                "p_ristorante_ids": ids,
-                "p_anno": int(anno),
-                "p_cat_food": list(CATEGORIE_FOOD),
-                "p_cat_spese": list(CATEGORIE_SPESE_GENERALI),
-            },
-        ).execute()
+        from services.db_service import rpc_params_fase4
+
+        resp = supabase.rpc("costi_automatici_mensili_gruppo", rpc_params_fase4({
+            "p_user_id": user_id,
+            "p_ristorante_ids": ids,
+            "p_anno": int(anno),
+            "p_cat_food": list(CATEGORIE_FOOD),
+            "p_cat_spese": list(CATEGORIE_SPESE_GENERALI),
+        })).execute()
         out: dict = {rid: ({}, {}) for rid in ids}
         for r in (resp.data or []):
             rid = str(r.get("ristorante_id"))
@@ -281,15 +282,18 @@ def carica_costi_per_categoria(user_id: str, ristorante_id: str,
         all_data = []
         offset = 0
         
+        from services.db_service import escludi_da_verificare_margini
+
         while True:
-            response = supabase.table('fatture') \
+            _q = supabase.table('fatture') \
                 .select('data_documento, data_competenza, totale_riga, categoria') \
                 .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
                 .is_('deleted_at', 'null') \
                 .gte('data_documento', date_from) \
                 .lte('data_documento', date_to) \
-                .neq('categoria', CATEGORIA_NON_CLASSIFICATA) \
+                .neq('categoria', CATEGORIA_NON_CLASSIFICATA)
+            response = escludi_da_verificare_margini(_q) \
                 .range(offset, offset + page_size - 1) \
                 .execute()
             

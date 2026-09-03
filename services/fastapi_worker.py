@@ -8278,11 +8278,12 @@ def _load_fatture_fb_for_period(
     sb, ristorante_id: str, data_da: str, data_a: str
 ) -> "Dict[str, float]":
     import pandas as pd
+    from services.db_service import escludi_da_verificare_margini
     page_size = 1000
     all_rows: List[Dict[str, Any]] = []
     offset = 0
     while True:
-        q = (
+        _q = (
             sb.table("fatture")
             .select("data_documento,totale_riga,categoria")
             .eq("ristorante_id", ristorante_id)
@@ -8294,6 +8295,9 @@ def _load_fatture_fb_for_period(
             .neq("ripartita_su_gruppo", True)
             .gte("data_documento", data_da)
             .lte("data_documento", data_a)
+        )
+        q = (
+            escludi_da_verificare_margini(_q)
             .range(offset, offset + page_size - 1)
             .execute()
         )
@@ -8316,11 +8320,12 @@ def _load_fatture_fb_per_categoria_e_mese(
 ) -> "Dict[tuple, float]":
     """Ritorna dict {(anno, mese, categoria): totale}."""
     import pandas as pd
+    from services.db_service import escludi_da_verificare_margini
     page_size = 1000
     all_rows: List[Dict[str, Any]] = []
     offset = 0
     while True:
-        q = (
+        _q = (
             sb.table("fatture")
             .select("data_documento,totale_riga,categoria")
             .eq("ristorante_id", ristorante_id)
@@ -8332,6 +8337,9 @@ def _load_fatture_fb_per_categoria_e_mese(
             .neq("ripartita_su_gruppo", True)
             .gte("data_documento", data_da)
             .lte("data_documento", data_a)
+        )
+        q = (
+            escludi_da_verificare_margini(_q)
             .range(offset, offset + page_size - 1)
             .execute()
         )
@@ -8385,12 +8393,14 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
 
     spese_gen_categorie = set(_CATEGORIE_SPESE_GENERALI)
 
+    from services.db_service import escludi_da_verificare_margini
+
     fb_tot = 0.0
     spese_tot = 0.0
     page = 0
     page_size = 1000
     while True:
-        resp = (
+        _q = (
             sb.table("fatture")
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
@@ -8405,6 +8415,9 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
                 f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
                 f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"
             )
+        )
+        resp = (
+            escludi_da_verificare_margini(_q)
             .range(page * page_size, (page + 1) * page_size - 1)
             .execute()
         )
@@ -8448,11 +8461,13 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
 
     spese_gen_categorie = set(_CATEGORIE_SPESE_GENERALI)
 
+    from services.db_service import escludi_da_verificare_margini
+
     acc: dict = {(y, m): [0.0, 0.0] for (y, m) in mesi_target}
     page = 0
     page_size = 1000
     while True:
-        resp = (
+        _q = (
             sb.table("fatture")
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
@@ -8465,6 +8480,9 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
                 f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
                 f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"
             )
+        )
+        resp = (
+            escludi_da_verificare_margini(_q)
             .range(page * page_size, (page + 1) * page_size - 1)
             .execute()
         )

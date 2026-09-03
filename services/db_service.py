@@ -37,6 +37,41 @@ def filter_active(query):
     return query.is_("deleted_at", "null")
 
 
+def escludi_da_verificare_margini(query):
+    """Fase 4 piano categorizzazione: esclude dai calcoli margini le righe con
+    `categoria_fiducia = 'da_verificare'`, MA SOLO a flag acceso
+    (`ESCLUDI_DA_VERIFICARE_DAI_MARGINI`, oggi False).
+
+    NULL-safe per costruzione: `.neq('categoria_fiducia', ...)` scarterebbe anche
+    i NULL (39.224 righe legacy = `certa` per la regola S3), che invece devono
+    restare nei margini. Fonte unica: 6 punti di filtro la usano, come
+    `filter_active` per il soft-delete.
+    """
+    from config.constants import (
+        CATEGORIA_FIDUCIA_DA_VERIFICARE,
+        ESCLUDI_DA_VERIFICARE_DAI_MARGINI,
+    )
+    if not ESCLUDI_DA_VERIFICARE_DAI_MARGINI:
+        return query
+    return query.or_(
+        f"categoria_fiducia.is.null,categoria_fiducia.neq.{CATEGORIA_FIDUCIA_DA_VERIFICARE}"
+    )
+
+
+def rpc_params_fase4(params: dict) -> dict:
+    """Gemello di `escludi_da_verificare_margini` per le chiamate RPC.
+
+    A flag acceso aggiunge `p_escludi_da_verificare: True`; a flag spento NON
+    tocca i parametri, così la chiamata resta identica a prima e funziona anche
+    su un DB dove la migration Fase 4 non è ancora applicata.
+    """
+    from config.constants import ESCLUDI_DA_VERIFICARE_DAI_MARGINI
+    if ESCLUDI_DA_VERIFICARE_DAI_MARGINI:
+        params = dict(params)
+        params["p_escludi_da_verificare"] = True
+    return params
+
+
 # Alias privato per uso interno a questo modulo
 _filter_active = filter_active
 
