@@ -74,7 +74,6 @@ va misurato e portato a Mattia **prima** di attivarlo.
 | # | Residuo | Sforzo | Perché in questa posizione |
 |---|---|---|---|
 | **R1** | **Gate mensile mobile** — `(mobile)/m/diario/mobile-incassi.tsx:274` riscrive a mano la scelta override-vs-giornalieri senza distinguere «zero» da «nessun dato» | Basso | 🔴 **L'unico che produce euro sbagliati.** Quando arriveranno gli incassi il netto sarà errato e nessuno se ne accorgerà. È il difetto che `fetchNettoMese` protegge sul desktop, in un file che non lo chiama |
-| **R2** | **`scripts/regen_notifiche_utente.py` è rotto** — importa `services/notification_service.py`, che non esiste più | Molto basso | Si rompe alla prima riga. Nessuno lo usa oggi, ma è una trappola fra sei mesi. O si ripara o si elimina |
 | **R3** | **`card-segnali.tsx`** — 110 righe scoperte (fetch + JSX) | Basso | Chiude `catena/` al **100%**: è l'unica area a un passo dal completamento |
 | **R4** | **12 formattatori duplicati** in `catena/` (`euro`, `euro2`, `num`, `pct` su 4 file) + 4 copie di `MESI` | Medio | ⚠️ Unificarli **cambia cosa il cliente vede a schermo** (le due `euro2` divergono davvero): serve prima un test di equivalenza byte-per-byte, non un refactor a mano |
 | **R5** | **`dependencies=[...]` a livello di `APIRouter`** — 12 router, 216 endpoint | Medio-alto | Nessuna falla attiva (0 endpoint scoperti): è **prevenzione**. Tocca tutto il traffico, vuole la sua finestra e una sessione propria |

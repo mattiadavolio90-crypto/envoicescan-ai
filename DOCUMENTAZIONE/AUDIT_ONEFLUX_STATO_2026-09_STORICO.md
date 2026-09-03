@@ -22,6 +22,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 02/09 | Notifiche — un pulsante che portava nel posto sbagliato | chiusa |
 | 29/08 | Punto 9 (F2-NOTEST) + voci ereditate | *spostato qui il 2/9* |
 | 03/09 | Residuo R8 — guardia liste vuote catena | depennato: era già in produzione |
+| 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 
 ---
 
@@ -2075,3 +2076,46 @@ lascerebbe il Salva abilitato. Oggi **irraggiungibile** — `_resolve_gruppo`
 (`services/routers/gruppo.py:674`) solleva 400 sotto le 2 sedi e `segnali` nasce
 da `_SEGNALI_CATALOGO`, mai vuoto. A DB: 2 righe `gruppo_assistant_config`,
 **0 con esclusioni** — nessun danno possibile oggi.
+
+---
+
+## Residuo R2 — `regen_notifiche_utente.py`: eliminato — 03/09/2026
+
+**Scelta: eliminare, non riparare.** Ripararlo avrebbe voluto dire **scrivere
+codice nuovo** per uno script che nessuno usa.
+
+**Perché era irreparabile così com'era:** importa `services.notification_service`
+(riga 17) — modulo inesistente — e da lì le funzioni
+`build_monthly_data_notifications` e `build_scadenza_documents_notifications`,
+che **non esistono in nessun punto del repo** (grep su tutti i `.py`): sparite
+con Streamlit il 17/7. Il commento a riga 27 rimandava a
+`components/notifications_panel.py`, percorso anch'esso rimosso.
+
+**Verificato eseguendolo**, non leggendolo:
+
+```
+ModuleNotFoundError: No module named 'services.notification_service'   (riga 17)
+```
+
+**Perché eliminare era la risposta giusta.** La sua funzione è coperta dal
+pipeline vivo: i 4 topic che rigenerava sono prodotti da
+`daily_briefing_service.py`, che gira in automatico. A DB (03/09):
+
+| topic | righe | ultima |
+|---|---|---|
+| `scadenza_superata` | 5 | 01/06 |
+| `costo_personale_mancante` | 3 | 05/06 |
+| `fatturato_mancante` | 3 | 05/06 |
+| `scadenza_imminente` | 2 | 01/06 |
+
+Lo scopo dichiarato («allineare un utente di test senza aspettare il giro
+automatico») non giustificava di riscrivere due builder scomparsi per duplicare
+un servizio che già gira.
+
+**Un motivo in più, emerso leggendolo:** lo step 1 fa una **DELETE** su
+`notification_inbox` *prima* di chiamare le funzioni assenti. Riparare il solo
+import avrebbe prodotto uno script che cancella le notifiche e non sa
+rigenerarle. Era peggio di codice morto.
+
+**Nessun riferimento** nel repo oltre alla riga di roadmap, ora depennata. Se
+servisse di nuovo, sta in git history (`ca2d3c8`).
