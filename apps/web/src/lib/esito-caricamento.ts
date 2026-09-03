@@ -35,7 +35,40 @@ export function esitoLista<T>(
   return { stato: "ok", righe: valore as T[] };
 }
 
-/** `true` solo quando sappiamo davvero che non c'e' niente. */
-export function davveroVuota<T>(esito: EsitoLista<T>): boolean {
-  return esito.stato === "ok" && esito.righe.length === 0;
+
+/**
+ * Il messaggio da mostrare quando non c'e' niente da elencare.
+ *
+ * Esiste come funzione, e non come ternario dentro il JSX, per una ragione
+ * misurata: un presidio che cerca il TESTO nel sorgente passa anche quando la
+ * condizione e' stata neutralizzata (`false && ...`, o un ternario che
+ * collassa). L'unico modo di provare la scelta e' **eseguirla** — e l'harness
+ * dei test esegue `lib/`, non i `.tsx`.
+ *
+ * `vuoto` e `guasto` sono i due messaggi della pagina; `conFiltri` e' il terzo
+ * caso, che riguarda solo l'elenco filtrato e non c'entra col caricamento.
+ */
+export function messaggioListaVuota(opzioni: {
+  caricamentoFallito: boolean;
+  righeCaricate: number;
+  filtriAttivi?: boolean;
+  guasto: string;
+  vuoto: string;
+  conFiltri?: string;
+}): string {
+  const { caricamentoFallito, righeCaricate, filtriAttivi, guasto, vuoto, conFiltri } = opzioni;
+  // Il guasto vince solo se non e' arrivato NIENTE: dopo un retry riuscito
+  // l'errore non deve restare appiccicato a una lista che ora ha dei dati.
+  if (caricamentoFallito && righeCaricate === 0) return guasto;
+  if (filtriAttivi && conFiltri) return conFiltri;
+  return vuoto;
+}
+
+/**
+ * `true` quando la pagina deve dire "non ci sono riuscito" invece di "non c'e'
+ * niente". Gemella booleana di `messaggioListaVuota`, per i casi in cui i due
+ * rami non sono due stringhe ma due blocchi di JSX diversi.
+ */
+export function mostraGuasto(caricamentoFallito: boolean, righeCaricate: number): boolean {
+  return caricamentoFallito && righeCaricate === 0;
 }

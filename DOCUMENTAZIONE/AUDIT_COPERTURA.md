@@ -43,9 +43,9 @@ non sa montare. È un limite dichiarato, non una svista.
 | Perimetro | Righe |
 |---|---:|
 | Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.814 |
-| Frontend (`apps/web/src/`, esclusi i binari) | 53.130 |
+| Frontend (`apps/web/src/`, esclusi i binari) | 53.239 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **113.500** |
+| **TOTALE APP** | **113.609** |
 
 ---
 
@@ -69,9 +69,9 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Frontend — 53.130 righe
+## Frontend — 53.239 righe
 
-> **Le somme di questa tabella chiudono a 53.124**, ri-sommate contro
+> **Le somme di questa tabella chiudono a 53.233**, ri-sommate contro
 > `git ls-files` il 3/9 sera (20 aree). Restano **6 righe** non coperte da
 > nessuna riga di area: erano 60, e sono scese ri-misurando le 5 aree toccate
 > da R10 invece di lasciarne crescere il delta. Le tre stesure precedenti non chiudevano: giravano tre
@@ -83,19 +83,19 @@ non sa montare. È un limite dichiarato, non una svista.
 |---|---:|---:|---|---|
 | `app/api/` — 170 route | 4.871 | 4.871 | 📖 | ciclo 09, 30/8 — proxy trasparente, 0 route toccano il DB |
 | `(app)/margini/` | 4.711 | 4.711 | 📖 | ciclo 09, 31/8 — 183 test, 65/65 mutanti. Resta il rendering |
-| `(app)/scadenziario/` | 2.234 | 2.234 | 📖 | ciclo 09, 31/8 (15/15 mutanti) + 3/9 (R10: il guasto non è più un vuoto). Resta il rendering |
+| `(app)/scadenziario/` | 2.238 | 2.238 | 📖 | ciclo 09, 31/8 (15/15 mutanti) + 3/9 (R10: il guasto non è più un vuoto). Resta il rendering |
 | `(app)/catena/` | 2.977 | 2.977 | 📖 100% | ciclo 09, 1/9 (3 passate) + 3/9 (R3, `pct`, `fatture/`). 326 test. `card-segnali.tsx` (110) è **esclusione motivata**, non un buco: fetch + JSX. `fatture/page.tsx` letta il 3/9: nessun difetto proprio, ma ci è stato trovato **R10** (pattern su ~8 pagine, non di catena). Resta il rendering |
-| `(app)/analisi-e-tag/` | 1.419 | 1.545 | 📖 92% | ciclo 07 §3c; 3/9 lo stato vuoto non invita più a rifare i tag che esistono (R10) |
-| `lib/` | 2.359 | 5.507 | 🟠 43% | i moduli estratti dalle sessioni di settembre; `format.ts` è la fonte unica del parsing; `esito-caricamento.ts` (3/9) distingue il guasto dal vuoto numerico (58 chiamanti) |
+| `(app)/analisi-e-tag/` | 1.420 | 1.546 | 📖 92% | ciclo 07 §3c; 3/9 lo stato vuoto non invita più a rifare i tag che esistono (R10) |
+| `lib/` | 2.433 | 5.581 | 🟠 44% | i moduli estratti dalle sessioni di settembre; `format.ts` è la fonte unica del parsing; `esito-caricamento.ts` (3/9) distingue il guasto dal vuoto numerico (58 chiamanti) |
 | `(app)/admin/` | 1.739 | 3.871 | 🟠 45% | ciclo 07 §3c — solo staff, non clienti |
 | `(app)/prezzi/` | 973 | 2.358 | 🟠 41% | ciclo 07 §3c |
 | `(app)/workspace/` | 1.834 | 5.021 | 🟠 37% | ciclo 07 §3c + F6 ciclo 08: il resto escluso con misura |
-| `(mobile)/` | 1.276 | 4.001 | 🟠 32% | ciclo 07 §3c; 3/9 avvisi mobile allineati al desktop (R10) |
-| `(app)/analisi-fatture/` | 809 | 2.661 | 🟠 30% | ciclo 07 §3c |
+| `(mobile)/` | 1.283 | 4.008 | 🟠 32% | ciclo 07 §3c; 3/9 avvisi mobile allineati al desktop (R10) |
+| `(app)/analisi-fatture/` | 825 | 2.677 | 🟠 31% | ciclo 07 §3c; 3/9 il tab Articoli non dice più «nessun prodotto» su un worker giù (R10) |
 | `components/` | 2.188 | 7.299 | 🟠 30% | F3 ciclo 08: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
 | `(app)/dashboard/` | 0 | 1.685 | 🟠 logica estratta | 1/9: la logica è uscita nei moduli `home-*.ts`, 92 test. Nessun `.tsx` letto |
 | `(app)/impostazioni/` | 0 | 808 | 🟠 logica estratta | 2/9: logica in `piani.ts` + `impostazioni-account.ts`, 22 test |
-| `(app)/notifiche/` | 16 | 258 | 🟠 logica estratta | 2/9: logica in `notifiche-shared.ts`, 23 test; 3/9 le due pagine avvisi non mentono più (R10) |
+| `(app)/notifiche/` | 23 | 265 | 🟠 logica estratta | 2/9: logica in `notifiche-shared.ts`, 23 test; 3/9 le due pagine avvisi non mentono più (R10) |
 | `(app)/agenda/` | 0 | 693 | 🔴 | **0 turni a DB**: scartata con misura, non dimenticata |
 | `(app)/assistenza/` | 0 | 292 | 🔴 | `marketplace_leads` 0 righe |
 | `(app)/style-guide/` | 0 | 256 | 🔴 | pagina interna |
@@ -133,15 +133,15 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 37.326 | **33%** | 6.364 backend + 27.406 frontend + 3.556 Edge |
+| 📖 Letto integralmente | 37.435 | **33%** | 6.364 backend + 27.515 frontend + 3.556 Edge |
 | 🔍 / 🟠 Auditato o parzialmente coperto | 58.885 | 52% | 36.369 backend + 22.516 frontend |
 | 🔴 Mai guardato | 17.256 | **15%** | 14.054 backend + 3.202 frontend |
-| **Totale app (misurato)** | **113.500** | 100% | 56.814 + 53.130 + 3.556 |
+| **Totale app (misurato)** | **113.609** | 100% | 56.814 + 53.239 + 3.556 |
 
-> **Ri-sommato il 3/09/2026, dopo R10.** Le tre righe fanno **113.467** contro
-> un totale misurato di **113.500**: **33 righe di scarto**, che restano scritte
+> **Ri-sommato il 3/09/2026, dopo R10 e la sua review.** Le tre righe fanno
+> **113.576** contro un totale misurato di **113.609**: **33 righe di scarto**, che restano scritte
 > qui invece di sparire in un arrotondamento. La riga «letto» non è un delta:
-> viene dalla **ri-somma della colonna** frontend (27.406 su 20 aree). Lo scarto
+> viene dalla **ri-somma della colonna** frontend (27.515 su 20 aree). Lo scarto
 > è quello dichiarato lì — **6 righe** che nessuna area copre — più 27 righe di
 > aree backend cresciute senza essere ri-misurate. Era 87 stamattina: è sceso
 > ri-misurando le aree invece di sommare il delta del proprio lavoro.

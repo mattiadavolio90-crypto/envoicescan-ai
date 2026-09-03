@@ -10,8 +10,10 @@ import {
   fetchKpi,
   fetchMesiDisponibili,
   fetchPivot,
+  type ArticoloAggregato,
   type TipoProdotti,
 } from "@/lib/fatture";
+import { esitoLista } from "@/lib/esito-caricamento";
 import { ArticoliTab } from "./articoli-tab";
 import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar } from "./kpi-bar";
@@ -140,7 +142,12 @@ export default async function AnalisiFatturePage({
       {/* Contenuto tab */}
       {tab === "articoli" && (
         <ArticoliTab
-          articoli={articoliRes?.articoli ?? []}
+          articoli={esitoLista<ArticoloAggregato>(articoliRes, "articoli").righe}
+          // Qui `null` significa una cosa sola: la chiamata e' partita (il tab
+          // e' attivo, vedi Promise.resolve(null) sopra per i tab spenti) ed e'
+          // fallita. Senza questo flag «Nessun prodotto trovato» copriva un
+          // worker giu'.
+          caricamentoFallito={esitoLista(articoliRes, "articoli").stato === "non_disponibile"}
           totalConAcquisti={articoliRes?.total_con_acquisti}
           categorie={categorieRes.categorie}
           soloNuovi={soloNuovi}

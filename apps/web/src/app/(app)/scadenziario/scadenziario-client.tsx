@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
+import { messaggioListaVuota } from "@/lib/esito-caricamento";
 import { Separator } from "@/components/ui/separator";
 import { RipartisciDialog } from "@/components/fatture/ripartisci-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -2079,11 +2080,14 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
               <Calendar className="size-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm">
-                {caricamentoFallito && documenti.length === 0
-                  ? "Non è stato possibile caricare le scadenze. Riprova fra un momento."
-                  : filtriAttivi
-                    ? "Nessuna fattura corrisponde ai filtri."
-                    : "Nessun documento trovato."}
+                {messaggioListaVuota({
+                  caricamentoFallito,
+                  righeCaricate: documenti.length,
+                  filtriAttivi,
+                  guasto: "Non è stato possibile caricare le scadenze. Riprova fra un momento.",
+                  conFiltri: "Nessuna fattura corrisponde ai filtri.",
+                  vuoto: "Nessun documento trovato.",
+                })}
               </p>
               {filtriAttivi && (
                 <button className="text-xs text-primary mt-2 hover:underline" onClick={resetFiltri}>Pulisci filtri</button>

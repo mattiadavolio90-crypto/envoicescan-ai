@@ -23,12 +23,15 @@ import {
 } from "lucide-react";
 // xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
+import { messaggioListaVuota } from "@/lib/esito-caricamento";
 import { Input } from "@/components/ui/input";
 import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
 import { formatData, formatEuro } from "./periodi";
 
 type Props = {
   articoli: ArticoloAggregato[];
+  /** Il caricamento server e' fallito: «nessun prodotto» sarebbe una bugia. */
+  caricamentoFallito?: boolean;
   totalConAcquisti?: number;
   categorie: string[];
   soloNuovi: boolean;
@@ -106,6 +109,7 @@ function SortableHeader({
 
 export function ArticoliTab({
   articoli,
+  caricamentoFallito = false,
   totalConAcquisti,
   categorie,
   soloNuovi,
@@ -398,7 +402,12 @@ export function ArticoliTab({
 
       {sorted.length === 0 ? (
         <div className="text-center py-16 text-sm text-muted-foreground">
-          Nessun prodotto trovato con i filtri selezionati.
+          {messaggioListaVuota({
+            caricamentoFallito,
+            righeCaricate: articoli.length,
+            guasto: "Non è stato possibile caricare i prodotti. Riprova fra un momento.",
+            vuoto: "Nessun prodotto trovato con i filtri selezionati.",
+          })}
         </div>
       ) : (
         <>

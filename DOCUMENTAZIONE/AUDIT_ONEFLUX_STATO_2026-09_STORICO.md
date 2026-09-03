@@ -2455,41 +2455,41 @@ perché **nessun mio test aveva una sessione con più di un commit**.
 
 ## 03/09/2026 — R10: il guasto travestito da «niente da fare»
 
-**Verdetto:** chiuso sulle 6 pagine che mentivano al cliente. Le 2 admin restano
-col vecchio schema: **esclusione motivata**, non un residuo.
+**Verdetto:** chiuso sulle 7 pagine cliente. Le 2 admin e `impostazioni/`
+restano col vecchio schema: **esclusione motivata**.
 
 **Fatto**
-- `lib/esito-caricamento.ts` (41 righe): `esitoLista` distingue «lista vuota» da
-  «non sono riuscito a chiedere». Chi carica dichiara quale dei due è.
-- Corrette **6 pagine cliente** (scadenziario PV e catena, avvisi desktop e
-  mobile, analisi-e-tag): messaggio onesto invece di rassicurazione.
-- I due client accettano `caricamentoFallito`, default `false`: **nessun
-  chiamante esistente cambia comportamento**.
+- `lib/esito-caricamento.ts`: `esitoLista` distingue «lista vuota» da «non sono
+  riuscito a chiedere»; `messaggioListaVuota` / `mostraGuasto` scelgono cosa
+  mostrare. Chi carica dichiara quale dei due casi e'.
+- Corrette **7 pagine cliente**: scadenziario PV e catena, avvisi desktop e
+  mobile, analisi-e-tag, **analisi-fatture**.
+- I client accettano `caricamentoFallito`, default `false`: **nessun chiamante
+  esistente cambia comportamento**.
 
 **Trovato**
 - **Il perimetro era più piccolo di quanto sembrasse.** `?? []` compare ~85
-  volte, ma quasi tutte sono `useState`, rami già dietro `res.ok` o lookup in
+  volte, ma quasi tutte sono `useState`, rami dietro `res.ok` o lookup in
   memoria. La classe pericolosa — caricamento **server** dove `null` diventa
-  lista vuota — è **8 pagine**.
-- **Le due pagine avvisi mentivano due volte**: in intestazione *e* nel corpo.
-- **`analisi-e-tag` era la più cara dopo lo scadenziario**: su un guasto
-  invitava a «Crea il primo tag» chi ne ha già (16 tag, 3 utenti).
-- **Un mio cambio ha introdotto un difetto, preso rileggendo il diff.** Avevo
-  reso condizionale la chiamata (`token ? … : null`): mostrava «impossibile
-  caricare» a chi non ha sessione. `requirePagina` non garantisce la sessione
-  (`page-guard.ts:22`: l'auth la fa il layout). Forma originale ripristinata.
+  lista vuota — è **9 pagine**: 7 corrette, 3 escluse. *(Dicevo 8 e ne
+  dichiaravo 9: i conti non tornavano, e la pagina mancante era proprio quella
+  non dichiarata — `analisi-fatture`, trovata dal reviewer.)*
+- Le due pagine avvisi mentivano **due volte** (intestazione e corpo);
+  `analisi-e-tag` invitava a «Crea il primo tag» chi ne ha già.
+- **Un mio cambio ha introdotto un difetto**, preso rileggendo il diff: la
+  chiamata resa condizionale (`token ? … : null`) mostrava «impossibile
+  caricare» a chi non ha sessione. Forma originale ripristinata.
 
 **Non fatto, e dichiarato**
-- `admin/page.tsx` e `admin/richieste`: stesso schema, non corrette — le vede
-  solo l'owner. Dichiarato nel test (`_PAGINE_CLIENTE`), non taciuto.
+- `admin/page.tsx` e `admin/richieste`: le vede solo l'owner. Dichiarato nel
+  test (`_PAGINE_CLIENTE`), non taciuto.
 - `impostazioni/page.tsx`: una lista sedi vuota è **visibilmente** rotta, non una
-  falsa rassicurazione. Lasciata.
+  falsa rassicurazione.
 
 **Prove**
-- 20 test in `tests/test_esito_caricamento_frontend.py`: 9 sul comportamento, 11
-  sul **sorgente delle pagine** — senza, `?? []` rimesso lascerebbe tutto verde.
-- Mutazione su copia in scratchpad: **6 mutanti, 6 uccisi** (`null` come vuoto a
-  monte, `?? []` rimesso, messaggio rimosso, stato ignorato, non-array come
-  guasto, `davveroVuota` senza stato).
-- `tsc` pulito. Chiavi `documenti`/`sedi` verificate contro il worker
-  (`routers/scadenziario.py:106`, `routers/gruppo.py:1441`), non dedotte.
+- 41 test; **10 mutanti, 10 uccisi.** I primi 6 lasciavano vivi i due del reviewer:
+  `? false : false` e `false &&` **contengono** il testo cercato e non compaiono
+  mai a schermo. Corretto in due mosse: la scelta estratta in `lib/` (eseguibile
+  dall'harness, che non entra nei `.tsx`) e la riga della pagina asserita nella
+  **forma esatta**, non per sottostringa.
+- `tsc` pulito. Chiavi `documenti`/`sedi`/`articoli` verificate contro il worker.

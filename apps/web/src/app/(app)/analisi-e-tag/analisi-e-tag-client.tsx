@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { mostraGuasto } from "@/lib/esito-caricamento";
 import type {
   CustomTag, TagSuggestion, TagAnalisiResponse,
   TagProdotto, DescrizioneDistinta,
@@ -1139,7 +1140,7 @@ export function AnalisiETagClient({
       {tags.length === 0 && (
         <div className="rounded-lg border border-dashed border-border py-16 text-center">
           <Tags className="size-10 text-muted-foreground mx-auto mb-3" />
-          {caricamentoFallito ? (
+          {mostraGuasto(caricamentoFallito, tags.length) ? (
             <>
               <p className="text-sm font-medium">Tag non disponibili in questo momento</p>
               <p className="text-xs text-muted-foreground mt-1">
