@@ -26,6 +26,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
+| 03/09 | Residuo R4 — formattatori duplicati | 8 unificate, 8 divergono: decisione a Mattia |
 
 ---
 
@@ -2255,3 +2256,47 @@ verdi su margini/ricavi/IVA.
 **Perimetro dichiarato, non taciuto:** restano **25 occorrenze** in 4 file, ora
 fotografate una per una. Se diminuiscono qualcuno sta migrando; se aumentano è
 una copia nuova, ed è così che da 4 sono diventate 29.
+
+---
+
+## Residuo R4 — formattatori duplicati: unificate 8, le altre 8 divergono — 03/09/2026
+
+**Esito: metà chiusa, metà portata a Mattia.** Il residuo lo prevedeva
+(«unificarli cambia cosa il cliente vede»): il test di equivalenza ha detto
+**quali** si potevano toccare, e ha impedito due sostituzioni sbagliate.
+
+**Unificate (output identico, provato byte per byte):**
+
+- **4 copie di `MESI`/`MESI_LABEL`** → `MESI_LUNGHI` di `lib/mesi.ts`;
+- **4 copie di `euro`** → `formatEuro` di `lib/format.ts`. Le due
+  implementazioni erano scritte in modo diverso (`Intl.NumberFormat` contro
+  `toLocaleString`) e danno la **stessa stringa** su tutti i casi: verificato,
+  non dedotto dalla somiglianza.
+
+−45 righe, +9. `catena/` verde, 610 test.
+
+**NON unificate, perché divergono davvero:**
+
+| Funzione | divergenza misurata |
+|---|---|
+| le 2 `euro2` | **sempre**: `Intl` mette U+00A0 prima di €, `toFixed` uno spazio normale. Da 5 cifre in su si aggiunge il separatore delle migliaia (`12.345,60` vs `12345,60`) |
+| le 2 `num` | decimali: `1234,6` (max 1) contro `1234,567` (default) |
+| le 3 `pct` | **`formatPct` di `lib/` non è sostituibile**: usa `toFixed`, non `toLocaleString`. Diverge su *tutti* i casi — `12.3%` invece di `12,3%` (punto al posto della virgola), `0.0%` invece di `0%`, e arrotondamento diverso (`12.35` → `12,4%` vs `12.3%`) |
+
+**Il test ha impedito un difetto, non solo documentato uno.** Sostituire `pct`
+con `formatPct` sembrava la stessa pulizia di `euro` — le firme si somigliano.
+Avrebbe messo il **punto decimale in ogni percentuale italiana** di catena.
+
+**Una mia affermazione corretta dalla misura:** avevo scritto che `Intl` separa
+le migliaia a `1.234,56`. È falso — la locale italiana non separa a 4 cifre; il
+separatore compare da 10.000. La divergenza sotto quella soglia è **solo** lo
+spazio.
+
+**Mutazione:** 3 mutanti, **3 uccisi** (un mese alterato, `formatEuro` con altri
+decimali, `formatPct` allineato). Il terzo è il guardiano della fotografia: se
+qualcuno *risolve* la divergenza, il test lo dice invece di invecchiare in
+silenzio. Rete: `tests/test_catena_formattatori_equivalenza_frontend.py`
+(17 test).
+
+**Decisione che resta a Mattia:** quale forma è quella giusta per `euro2`, `num`
+e `pct`. Sono 8 copie e tre domande di prodotto, non di codice.

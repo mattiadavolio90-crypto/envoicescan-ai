@@ -24,6 +24,7 @@ import {
   type MolMensile,
 } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
+import { formatEuro as euro } from "@/lib/format";
 import {
   calcolaSparkline,
   messaggioFattureDaCollocare,
@@ -40,14 +41,6 @@ import { UploadModal } from "@/app/(app)/analisi-fatture/upload-modal";
 import { CardSegnali } from "./card-segnali";
 import { TagCatenaDialog } from "./gruppo-tag-section";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
-
-function euro(n: number): string {
-  return new Intl.NumberFormat("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 function pct(n: number | null): string {
   if (n == null) return "—";

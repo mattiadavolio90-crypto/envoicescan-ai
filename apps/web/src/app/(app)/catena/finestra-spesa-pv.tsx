@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { formatEuro as euro } from "@/lib/format";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { type SpesaPivot } from "@/lib/gruppo";
 import { calcolaMaxCell, cellStyle, incidenzaPct, intervalloMese, pvPiuCaro } from "@/lib/catena-confronti";
 import {
@@ -22,19 +24,6 @@ import {
   rigaExportPivot,
   rigaTotalePivot,
 } from "@/lib/catena-export";
-
-const MESI = [
-  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
-];
-
-function euro(n: number): string {
-  return new Intl.NumberFormat("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 export function FinestraSpesaPV({
   open,

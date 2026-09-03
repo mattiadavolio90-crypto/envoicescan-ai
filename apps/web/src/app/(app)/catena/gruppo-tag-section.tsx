@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { formatEuro as euro } from "@/lib/format";
+import { MESI_LUNGHI as MESI_LABEL } from "@/lib/mesi";
 import { calcolaCandidati, MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
 import {
   altezzaBarraTrend,
@@ -34,18 +36,6 @@ import type {
   GruppoTagAnalisi,
 } from "@/lib/gruppo";
 
-const MESI_LABEL = [
-  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
-];
-
-function euro(n: number): string {
-  return new Intl.NumberFormat("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 function euro2(n: number | null): string {
   if (n == null) return "—";
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n);

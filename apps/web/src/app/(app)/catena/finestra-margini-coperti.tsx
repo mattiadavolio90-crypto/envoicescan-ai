@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,11 +32,6 @@ import {
   ordinaRighe,
   rigaExtremes,
 } from "@/lib/catena-confronti";
-
-const MESI = [
-  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
-];
 
 function euro(n: number | null): string {
   if (n == null) return "—";

@@ -22,20 +22,9 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
 import { CATEGORIE_TUTTE } from "@/lib/admin";
+import { formatEuro as euro } from "@/lib/format";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { daScegliereCategoria } from "@/lib/categorie-spesa";
-
-const MESI = [
-  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
-];
-
-function euro(n: number): string {
-  return new Intl.NumberFormat("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 type Quota = {
   ristorante_id: string;
@@ -442,7 +431,6 @@ function AggiungiCostoDialog({
     </Dialog>
   );
 }
-
 
 // Dettaglio di un costo di gruppo: le porzioni per categoria e le righe reali del
 // documento di struttura, entrambe chiuse di default (il default resta pulito).
