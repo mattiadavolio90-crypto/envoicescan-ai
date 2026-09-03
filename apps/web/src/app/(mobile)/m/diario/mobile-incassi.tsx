@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
-import { scorporoNetto, type NettoMese } from "@/app/(app)/margini/periodi";
+import { scorporoNetto, fetchNettoMese, type NettoMese } from "@/app/(app)/margini/periodi";
 import { parseNumeroItOZero } from "@/lib/format";
+import { nettoDaMostrare, dettaglioNettoMese } from "@/lib/ricavi-netto-mese";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 // Forma allineata a /api/ricavi/giornalieri (GET → items[], POST upsert per data).
@@ -196,7 +197,9 @@ export function MobileIncassi() {
   const [risposta, setRisposta] = useState<IncassiResponse | null>(null);
   // Il netto del mese non e' la somma dei giornalieri: se il mese e' in modalita'
   // "mensile" l'override in ricavi_modalita_mensile vince e le righe giornaliere
-  // sono dati orfani. Stessa regola del desktop (fetchNettoMese) e del worker.
+  // sono dati orfani. La regola NON si riscrive qui: si chiama `fetchNettoMese`,
+  // la stessa del desktop e del worker. `netto: null` significa "lettura fallita"
+  // ed e' diverso da zero — vedi lib/ricavi-netto-mese.ts.
   const [nettoAutorevole, setNettoAutorevole] = useState<NettoMese | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -207,31 +210,21 @@ export function MobileIncassi() {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ data_da: primoGiornoISO(a, m), data_a: ultimoGiornoISO(a, m) });
-      const [res, modalita] = await Promise.all([
+      // Il round-trip in piu' e' voluto: la versione precedente riscriveva a mano
+      // la scelta override-vs-giornalieri per risparmiarlo, e nel farlo perdeva
+      // la distinzione fra "zero" e "nessun dato".
+      const [res, netto] = await Promise.all([
         fetch(`/api/ricavi/giornalieri?${qs}`),
-        // Solo la modalita': il netto dei giornalieri ce l'abbiamo gia' dalla
-        // chiamata qui accanto. `fetchNettoMese` (desktop) rifarebbe la stessa
-        // GET — stessa regola, un round-trip in meno.
-        fetch(`/api/ricavi/modalita?anno=${a}&mese=${m + 1}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
+        fetchNettoMese(a, m + 1),
       ]);
+      setNettoAutorevole(netto);
       if (!res.ok) throw new Error();
       const d: IncassiResponse = await res.json();
       setRisposta(d);
-      setNettoAutorevole(
-        modalita?.modalita === "mensile"
-          ? {
-              netto: scorporoNetto(
-                modalita.fatturato_iva10 ?? 0,
-                modalita.fatturato_iva22 ?? 0,
-                modalita.altri_ricavi_noiva ?? 0,
-              ),
-              mensile: true,
-            }
-          : { netto: d.totale_netto ?? 0, mensile: false },
-      );
     } catch {
+      // La lista non e' caricabile, ma il netto puo' esserlo (e viceversa): non
+      // si azzera cio' che si e' letto, e non si lascia in pagina il mese prima.
+      setRisposta(null);
       toast.error("Errore caricamento incassi");
     } finally {
       setLoading(false);
@@ -271,7 +264,7 @@ export function MobileIncassi() {
     () => (risposta?.items ?? []).slice().sort((a, b) => b.data.localeCompare(a.data)),
     [risposta],
   );
-  const nettoMese = nettoAutorevole?.netto ?? risposta?.totale_netto ?? 0;
+  const kpiNetto = nettoDaMostrare(nettoAutorevole?.netto, fmtEuro);
   const meseMensile = nettoAutorevole?.mensile ?? false;
   const giorni = risposta?.giorni_con_dati ?? 0;
 
@@ -295,11 +288,9 @@ export function MobileIncassi() {
       {/* KPI netto mese */}
       <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3">
         <p className="text-xs font-medium text-primary">Incasso netto del mese</p>
-        <p className="text-2xl font-bold tabular-nums text-primary">{fmtEuro(nettoMese)}</p>
+        <p className="text-2xl font-bold tabular-nums text-primary">{kpiNetto.testo}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {meseMensile
-            ? "Totale mensile inserito da desktop"
-            : `${giorni} ${giorni === 1 ? "giorno inserito" : "giorni inseriti"}`}
+          {dettaglioNettoMese(kpiNetto.disponibile, meseMensile, giorni)}
         </p>
       </div>
 

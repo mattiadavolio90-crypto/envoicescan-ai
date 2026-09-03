@@ -24,6 +24,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R8 — guardia liste vuote catena | depennato: era già in produzione |
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
+| 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 
 ---
 
@@ -2160,3 +2161,47 @@ calcolo in questo file, l'esclusione decade e il test lo dice.
 righe scoperte» non corrispondono a nessun raggruppamento riproducibile
 (`card-segnali` da solo è 110; con `loading` e `page` fa 215). Il contatore ora
 porta le cifre misurate, non quelle ereditate.
+
+---
+
+## Residuo R1 — il gate mensile del mobile — 03/09/2026
+
+**Esito: corretto.** Era l'unico residuo che produceva euro sbagliati.
+
+**La premessa del residuo era già superata.** Diceva «quando arriveranno gli
+incassi»: gli incassi **ci sono già**. A DB il 03/09: **1.049 righe** in
+`ricavi_giornalieri` su **6 sedi**, ultimo dato il 02/09, più **17 override
+mensili** su 4 sedi.
+
+**Due difetti, non uno.** `mobile-incassi.tsx` riscriveva a mano la regola di
+`fetchNettoMese` invece di chiamarla:
+
+1. **riga 274** — `nettoAutorevole?.netto ?? risposta?.totale_netto ?? 0`: la
+   catena di `??` schiacciava `null` («non lo so») su `0` («zero incassi»). Il
+   KPI mostrava **0,00 €** su una lettura fallita.
+2. **il `catch`** — su risposta non-2xx il `throw` saltava `setNettoAutorevole`:
+   lo stato restava quello del **mese precedente**. Cambiando mese durante un
+   disservizio si leggeva il netto di un altro mese, senza avviso.
+
+**Il fix non riscrive la regola: la chiama.** `fetchNettoMese(a, m + 1)` dentro
+la `Promise.all`, e la logica di visualizzazione estratta in
+`lib/ricavi-netto-mese.ts` (`nettoDaMostrare`, `dettaglioNettoMese`) perché
+`esegui_ts` non entra nei `.tsx`. Il round-trip risparmiato dalla versione
+precedente costava la distinzione null/zero: il commento ora lo dice.
+
+**Provato eseguendo, non compilando** (`tsc` passa anche sul difetto). Le due
+funzioni concatenate come le concatena il componente, sui valori veri di giugno:
+
+| scenario | netto | a schermo |
+|---|---:|---:|
+| override mensile | 73.322,73 | `73322.73 EUR` |
+| solo giornalieri | 3.227,27 | `3227.27 EUR` |
+| mese davvero a zero | 0 | `0.00 EUR` |
+| **lettura fallita** | `null` | **`—`** |
+
+Il ramo sbagliato su giugno valeva **70.095 €** di differenza.
+
+**Mutazione:** 4 mutanti su `lib/ricavi-netto-mese.ts`, **4 uccisi** — il primo è
+il difetto originale (`?? 0`), che fa cadere 3 test. Rete:
+`tests/test_mobile_incassi_netto_frontend.py` (14 test); regressione 231 test
+verdi su margini/ricavi/format.
