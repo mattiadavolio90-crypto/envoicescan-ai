@@ -97,11 +97,13 @@ def main() -> int:
     # registro: senza, la scadenza ucciderebbe anche chi sta lavorando.
     tocca(session_id)
 
-    altre = carica(escludi_session_id=session_id)
-    if not altre:
-        return 0
-
     if PATTERN_CHECKOUT.search(comando):
+        # La collisione riguarda le ALTRE sessioni: se non ce ne sono, niente
+        # da dire. La guardia sul commit invece vale anche da soli (chi ha
+        # spostato HEAD puo' aver gia' chiuso), quindi sta fuori da qui.
+        altre = carica(escludi_session_id=session_id)
+        if not altre:
+            return 0
         destinazione = _branch_destinazione_checkout(comando)
         if destinazione:
             collisioni = [e for e in altre if e.get("branch_atteso") == destinazione]
@@ -119,9 +121,22 @@ def main() -> int:
     if PATTERN_COMMIT.search(comando):
         branch_reale = _branch_corrente()
         mia = mia_entry(session_id)
-        branch_atteso = mia.get("branch_atteso") if mia else None
+        if mia is None or not branch_reale:
+            return 0
 
-        if branch_atteso and branch_reale and branch_atteso != branch_reale:
+        branch_atteso = mia.get("branch_atteso")
+
+        # Ri-registrata dopo una pausa: il branch di partenza e' perso. Non si
+        # tace — e' il caso in cui un'altra sessione puo' aver spostato HEAD
+        # mentre questa era ferma, cioe' proprio cio' che la guardia copre.
+        if branch_atteso is None:
+            _ask(
+                f"[ONEFLUX branch guard] Questa sessione e' ripresa dopo una pausa lunga e "
+                f"non sa piu' su quale branch era partita; ora HEAD e' su '{branch_reale}'. "
+                "Un'altra sessione puo' averlo spostato nel frattempo: confermare solo dopo "
+                "aver verificato che il commit vada su questo branch."
+            )
+        elif branch_atteso != branch_reale:
             _ask(
                 f"[ONEFLUX branch guard] Questa sessione si aspettava di essere su "
                 f"'{branch_atteso}' ma il branch corrente e' '{branch_reale}' (probabilmente "

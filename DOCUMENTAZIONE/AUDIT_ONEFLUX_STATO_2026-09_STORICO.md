@@ -2597,51 +2597,48 @@ stessa pagina — il difetto «fix parziale» già pagato dal progetto.
 
 ## Residuo R9 — il registro delle sessioni aveva PID morti — 03/09/2026
 
-**Esito: chiuso.** Ultimo residuo del ciclo. Tocca solo gli hook di sessione
-(`scripts/`), nessun codice di prodotto e nessun dato cliente. `AUDIT_COPERTURA.md`
-non cambia: non include `scripts/` (verificato, 0 occorrenze), che non è runtime.
+**Esito: chiuso.** Ultimo residuo del ciclo. Tocca solo gli hook (`scripts/`),
+nessun codice di prodotto. `AUDIT_COPERTURA.md` non cambia: non include
+`scripts/` (verificato, 0 occorrenze), che non è runtime.
 
 ### La misura, rifatta prima di crederci
 
-Il verbale del 3/9 diceva «1 voce con PID morto mentre giravano 3 sessioni».
-Ri-misurato: il registro aveva **1 sola entry, la mia**, e `ps -p 94420` non
-trovava **nessun processo** — PID morto con la sessione pienamente attiva (al
-comando dopo il PPID era già 94362). E non esiste un PID migliore da scrivere:
-verificato sulla doc ufficiale, non dedotto, il payload porta `session_id`,
-`transcript_path`, `cwd`, `permission_mode`, `hook_event_name` — **nessun
-identificativo di processo**.
+Il verbale diceva «1 voce con PID morto mentre giravano 3 sessioni».
+Ri-misurato: **1 sola entry, la mia**, e `ps -p 94420` non trovava **nessun
+processo** — PID morto con la sessione attiva (al comando dopo il PPID era già
+94362). Né esiste un PID migliore: verificato sulla doc ufficiale, non dedotto,
+il payload degli hook **non porta nessun identificativo di processo**.
 
 ### Cosa è cambiato
 
 Nuovo `scripts/_registro_sessioni.py`: entry senza `pid`, vivacità =
 `ultimo_visto` entro **2h**, rinfrescato da `branch_guard` (gira su ogni Bash).
 Sostituisce **3 copie** di `_pid_vivo` — incluso `pulisci_branch.py`, fuori dal
-prompt, che sarebbe rimasto col vecchio schema. `reviewer_gate.py` **non
-toccato**: cercava già per `session_id`, e ora funziona invece di degradare al
-merge-base.
+prompt. `reviewer_gate.py` non toccato: cercava già per `session_id`, e ora
+funziona invece di degradare al merge-base.
 
-### Il fix stava per introdurre due difetti peggiori di R9
+### Il fix stava per introdurne due peggiori
 
-**Il refresh azzerava il registro.** Scrive a ogni comando Bash, con le
-sessioni parallele come regime normale: misurato, 5 sessioni che si rinfrescano
-insieme davano **284 letture sbagliate su 300 e 0 entry superstiti su 5** —
-`write_text` tronca, chi legge vede un JSON a metà e lo tratta come registro
-vuoto. Non entry morte: registro sparito. Scrittura atomica (`os.replace`),
-stessa prova: **0 errori, 5 su 5**. Niente lock, che in un hook su ogni comando
-bloccherebbe l'utente.
+**Il refresh azzerava il registro**: scrive a ogni Bash, e 5 sessioni che si
+rinfrescano insieme davano **284 letture sbagliate su 300, 0 entry su 5** —
+`write_text` tronca, chi legge vede JSON a metà e lo tratta come vuoto.
+Scrittura atomica (`os.replace`): **0 errori, 5 su 5**. Niente lock, che in un
+hook su ogni comando bloccherebbe l'utente.
 
-**La review ne ha trovato un secondo.** Una sessione scaduta viene cancellata
-dalla prima scrittura di un'altra; se poi riprende (pausa lunga, `--continue`
-il giorno dopo) `tocca()` non la re-registrava e restava invisibile **per
-sempre** — R9 daccapo. Ora si ri-registra col branch reale, e `timestamp_avvio`
-riparte da adesso: per l'attribuzione dei commit sbaglia dal lato prudente.
+**La ri-registrazione disarmava la guardia sul commit** (trovato dalla review).
+Una sessione ripresa dopo una pausa ha perso il suo `branch_atteso`; riempirlo
+con l'HEAD di adesso rendeva il confronto vero per costruzione. Ora il campo
+resta **assente** e vale «non lo so»: chiede conferma, non dà via libera.
 
-**Prove** — 13 test, **8 mutanti, 8 uccisi** (scadenza sempre vera, formato
-vecchio vivo, esclusione di sé rimossa, dedup rimosso, refresh che non salva,
-refresh che non aggiorna, scrittura atomica tolta, ri-registrazione tolta), su
-copia in scratchpad.
-End-to-end: il gate ritrova la sessione, la collisione continua a scattare.
-**E osservato sul registro vero**: a fine sessione conteneva 2 sessioni reali
-vive insieme — col vecchio codice sarebbero sparite entrambe. (3 test sono
-passati da soli e falliti nella suite intera: la fixture faceva `reload` di un
-modulo che altri 7 file ricaricano, e `REGISTRO` tornava al registro vero.)
+**E un difetto pre-esistente, mai coperto**: `if not altre: return 0` usciva
+prima della guardia sul commit, che **non girava mai se nessun'altra sessione
+era viva** — cioè quando chi ha spostato HEAD ha già chiuso.
+
+**Prove** — 19 test (13 sul registro, 6 sulla guardia che eseguono l'hook vero
+come processo), **12 mutanti, 12 uccisi**. Uno era sopravvissuto per davvero:
+disattivare il ramo del branch ignoto lasciava i test verdi perché scattava il
+generico, col messaggio «si aspettava di essere su 'None'» — l'assert ora
+guarda il testo, non solo la decisione. Osservato sul registro vero: 2 sessioni
+reali vive insieme, che il vecchio codice perdeva entrambe. (3 test passavano
+da soli e fallivano in suite: la fixture faceva `reload` di un modulo che altri
+7 file ricaricano, e `REGISTRO` tornava a puntare al registro vero.)

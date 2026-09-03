@@ -118,6 +118,11 @@ def test_una_sessione_ripresa_dopo_una_pausa_lunga_torna_visibile(registro):
         "riparte da adesso: per l'attribuzione dei commit sbaglia dal lato "
         "prudente, misurando di meno e mai il lavoro altrui"
     )
+    assert entry["branch_atteso"] is None, (
+        "il branch di partenza e' perso: riempirlo con l'HEAD di adesso "
+        "renderebbe il confronto della guardia commit vero per costruzione, "
+        "e la guardia tacerebbe proprio nel caso che deve coprire"
+    )
 
 
 def test_entry_in_formato_vecchio_e_scaduta_non_fa_crashare(registro):

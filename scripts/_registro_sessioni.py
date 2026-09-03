@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -32,20 +31,6 @@ REGISTRO = REPO_ROOT / ".claude" / ".sessioni_attive.json"
 # Rinfrescata a ogni hook: una sessione attiva non la raggiunge mai. Regola
 # solo da quanto sopravvive una sessione chiusa senza che nessuno la rimuova.
 SCADENZA_SECONDI = 2 * 60 * 60
-
-
-def _branch_corrente() -> str:
-    try:
-        esito = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return esito.stdout.strip()
-    except (subprocess.SubprocessError, OSError):
-        return ""
 
 
 def sessione_viva(entry: dict) -> bool:
@@ -132,6 +117,13 @@ def tocca(session_id: str) -> None:
     inventato: e' il momento da cui questa sessione e' tornata al lavoro, e per
     l'attribuzione dei commit sbaglia dal lato prudente (misura di meno, mai
     lavoro altrui).
+
+    `branch_atteso` invece resta **assente**: il branch da cui la sessione era
+    partita e' andato perso con l'entry, e riempirlo con l'HEAD di adesso
+    disarmerebbe la guardia sul commit — confronterebbe due valori identici per
+    costruzione, tacendo proprio nel caso che deve coprire (un'altra sessione
+    ha spostato HEAD durante la pausa). Chi legge il campo tratta l'assenza
+    come "non lo so", non come "va bene qualsiasi branch".
     """
     if not session_id:
         return
@@ -146,7 +138,7 @@ def tocca(session_id: str) -> None:
         entries.append(
             {
                 "session_id": session_id,
-                "branch_atteso": _branch_corrente(),
+                "branch_atteso": None,
                 "timestamp_avvio": ora,
                 "ultimo_visto": ora,
             }

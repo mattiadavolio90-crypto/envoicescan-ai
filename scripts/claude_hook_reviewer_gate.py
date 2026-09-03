@@ -184,9 +184,14 @@ def _tocca_path_sensibile(file_toccati: list[str], path_sensibili: list) -> str 
 # genitore del primo, che e' la base giusta da cui misurare.
 #
 # DEGRADA VERSO IL VECCHIO COMPORTAMENTO, mai verso "nessun avviso": se il
-# registro manca, se la sessione non e' registrata (una ripresa da --continue
-# non riscrive il record) o se git non risponde, si torna al merge-base. Un
-# gate che tace quando non sa e' peggio di uno che esagera.
+# registro manca, se la sessione non e' registrata o se git non risponde, si
+# torna al merge-base. Un gate che tace quando non sa e' peggio di uno che
+# esagera.
+#
+# Una sessione ripresa dopo una pausa lunga si ri-registra con
+# `timestamp_avvio` = il momento della ripresa (vedi `_registro_sessioni.tocca`):
+# la base misurata puo' escludere il proprio lavoro di prima della pausa, mai
+# includere quello di un'altra sessione.
 
 REGISTRO_SESSIONI = REPO_ROOT / ".claude" / ".sessioni_attive.json"
 
