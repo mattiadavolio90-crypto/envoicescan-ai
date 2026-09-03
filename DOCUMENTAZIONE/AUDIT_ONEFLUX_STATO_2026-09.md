@@ -51,47 +51,74 @@ La fase 4 (esclusione dai margini, 19 RPC) è la più pesante e la più delicata
 tocca il MOL su tutto lo storico, dietro un flag disattivato, e il delta per sede
 va misurato e portato a Mattia **prima** di attivarlo.
 
-### Residui aperti — le dimenticanze che nessuno vedeva
+### Residui aperti — la roadmap di chiusura
 
-> **Perché questa sezione esiste.** Ogni verbale dichiara onestamente cosa *non*
-> ha fatto, in una sezione «Non fatto, e dichiarato». Ce ne sono **6**. Ma quei
-> residui non risalivano da nessuna parte: restavano dentro verbali che nessuno
-> riapre, mentre qui sopra si leggeva «chiusa ✅». Ri-verificati sul codice il
-> 02/09/2026 — uno risultava già chiuso da un'altra sessione, e nessuno l'aveva
-> depennato. **La lista invecchia in entrambe le direzioni: va ri-verificata,
-> non ereditata.**
+> **Regola di Mattia (03/09/2026): i residui si chiudono TUTTI prima di aprire
+> una zona nuova.** Niente parziali che si accumulano. Questa tabella è l'ordine
+> di lavoro, non un elenco: si scende dall'alto e si depenna.
+>
+> **Perché questa sezione esiste.** Ogni verbale dichiara cosa *non* ha fatto, in
+> una sezione «Non fatto, e dichiarato» — ce ne sono 6. Ma quei residui non
+> risalivano da nessuna parte: restavano dentro verbali che nessuno riapre,
+> mentre qui sopra si leggeva «chiusa ✅».
+>
+> **Ri-verificati sul codice il 03/09/2026, e due cose sono cambiate rispetto a
+> come i verbali le raccontavano** — le misure, non le citazioni:
+> - **R5 non è la falla che sembrava**: tutti i **216 endpoint** hanno già una
+>   protezione esplicita (`Depends` in firma o `dependencies` nel decoratore),
+>   **zero scoperti**. È un rischio *strutturale* (un endpoint nuovo nascerebbe
+>   aperto), non un buco attivo. Declassato di priorità.
+> - **R3 è più grande del dichiarato**: i formattatori duplicati sono **12, non
+>   7**. I verbali cercavano `const`, ma sono `function`.
 
-| Residuo | Dichiarato in | Stato (verificato 02/09) |
-|---|---|---|
-| `dependencies=[...]` a livello di `APIRouter` — 238 endpoint, default aperto | 3 verbali | 🔴 **aperto** — 12 router, 0 con `dependencies` |
-| Il mobile riscrive a mano il gate mensile (`mobile-incassi.tsx`), senza distinzione null/0 | verbale margini | 🔴 **aperto** — sono euro sbagliati quando arriveranno i dati |
-| 7 copie locali di `euro`/`pct`/`num` + 4 di `MESI` in `catena/` | 2 verbali | 🔴 **aperto** — unificarle cambia output a schermo: serve prima un test di equivalenza |
-| `card-segnali.tsx` — 110 righe scoperte | verbale catena | 🔴 **aperto** — fetch + JSX, nessuna logica |
-| `scripts/regen_notifiche_utente.py` importa un modulo che non esiste più | prompt sessione | 🔴 **rotto** — preesistente, mai toccato |
-| Le 9 copie backend del filtro `Da Classificare` | verbale margini | 🔴 aperto — **0 righe attive** oggi; il fix richiede una migration su 7 account |
-| `parseImportoIt` con `replace` non globale | verbale catena | ✅ **chiuso** da un'altra sessione — nessuno l'aveva registrato |
+| # | Residuo | Sforzo | Perché in questa posizione |
+|---|---|---|---|
+| **R1** | **Gate mensile mobile** — `(mobile)/m/diario/mobile-incassi.tsx:274` riscrive a mano la scelta override-vs-giornalieri senza distinguere «zero» da «nessun dato» | Basso | 🔴 **L'unico che produce euro sbagliati.** Quando arriveranno gli incassi il netto sarà errato e nessuno se ne accorgerà. È il difetto che `fetchNettoMese` protegge sul desktop, in un file che non lo chiama |
+| **R2** | **`scripts/regen_notifiche_utente.py` è rotto** — importa `services/notification_service.py`, che non esiste più | Molto basso | Si rompe alla prima riga. Nessuno lo usa oggi, ma è una trappola fra sei mesi. O si ripara o si elimina |
+| **R3** | **`card-segnali.tsx`** — 110 righe scoperte (fetch + JSX) | Basso | Chiude `catena/` al **100%**: è l'unica area a un passo dal completamento |
+| **R4** | **12 formattatori duplicati** in `catena/` (`euro`, `euro2`, `num`, `pct` su 4 file) + 4 copie di `MESI` | Medio | ⚠️ Unificarli **cambia cosa il cliente vede a schermo** (le due `euro2` divergono davvero): serve prima un test di equivalenza byte-per-byte, non un refactor a mano |
+| **R5** | **`dependencies=[...]` a livello di `APIRouter`** — 12 router, 216 endpoint | Medio-alto | Nessuna falla attiva (0 endpoint scoperti): è **prevenzione**. Tocca tutto il traffico, vuole la sua finestra e una sessione propria |
+| **R6** | **9 copie backend del filtro `Da Classificare`** + NOTE senza emoji in `margine_service.py` e 2 RPC | Alto | **Non è un residuo da chiudere in coda**: 0 righe attive oggi, ma richiede una **migration su 7 account veri**. Si apre come dimensione a sé, quando Mattia decide |
+
+**Come si esegue:** R1→R4 stanno in **una sessione** (piccoli e indipendenti).
+R5 in una sessione propria. R6 è una dimensione, non un residuo.
+
+**Chiuso e depennato:** `parseImportoIt` con `replace` non globale — risolto da
+un'altra sessione senza che nessuno lo registrasse. *La lista invecchia in
+entrambe le direzioni: si ri-verifica, non si eredita.*
 
 **Esclusioni motivate — non sono residui.** Il **rendering React** (~4.300 righe
 in margini, e ovunque) non è coperto e non lo sarà: servirebbe un runner di
 componenti in `apps/web/`, e `deploy-vercel.yml` scatta su `apps/web/**` — ogni
-merge di un test farebbe partire un deploy di produzione. È una scelta
-strutturale dichiarata, non una svista. Vale lo stesso per le aree 🟠 del
-contatore: il perimetro escluso è stato **misurato e motivato**, riaprirlo senza
-leggere il verbale è lavoro fantasma.
+merge di un test farebbe partire un deploy di produzione. Scelta strutturale
+dichiarata, non una svista. Vale lo stesso per le aree 🟠 del contatore: il
+perimetro escluso è stato **misurato e motivato**.
 
 ---
 
-## 3. Cosa non è mai stato guardato
+## 3. Cosa manca — l'ordine di lavoro dopo i residui
 
-Non si duplica qui: il conto sta in **`AUDIT_COPERTURA.md`**, l'unico posto dove
-le somme devono tornare. In sintesi, e da ri-misurare lì: le aree mai aperte sono
-soprattutto nel **backend** — il worker non presidiato, i prompt AI in `config/`,
-le utility — più tre aree frontend minori.
+> **Vincolo (Mattia, 03/09/2026): non si apre nulla di questa sezione finché la
+> §2 non è vuota.** Una zona nuova aperta con residui in sospeso è come sono nate
+> le sei sessioni disallineate di settembre.
 
-**Il criterio per scegliere la prossima**, che ha funzionato due sere di fila:
-**conta le righe a DB delle tabelle che l'area serve**, poi decidi. Non ereditare
-una priorità da un prompt: l'agenda è stata scartata così (0 turni a DB) e
-`notifiche/` scelta al suo posto (67 righe, 5 utenti attivi).
+Il conto delle righe sta in `AUDIT_COPERTURA.md`. Qui c'è l'ordine, deciso per
+**importanza per il cliente**, non per dimensione del file.
+
+| # | Cosa | Perché in questa posizione |
+|---|---|---|
+| **1** | **Quadratura dei numeri fra le pagine** — prendere 3 clienti veri e verificare che lo stesso dato torni in ogni schermata dove compare | 🔴 **Non è un audit di codice, è la verifica che nessuno ha mai fatto.** Il prompt esiste da agosto (`docs/storico/..._COERENZA_NUMERI.md`) e non è mai stato eseguito. Nasce dall'unico difetto trovato **dal cliente prima che dall'audit** (F&B e Spese Generali che non tornavano). È ciò che difende la reputazione, non la qualità del codice |
+| **2** | **I prompt AI** — `config/`, 2.379 righe, mai guardate | È il cuore del prodotto e la **regola di dominio n.1**. Un difetto qui non colpisce un cliente: li colpisce tutti insieme, in silenzio. Ha già dato un problema (il prompt contraddiceva la regola, ciclo 08) |
+| **3** | **Categorizzazione, fasi 4→8** — 5 fasi su 10 aperte | Lavoro già iniziato e fermo a metà: rientra nel principio «niente parziali». La fase 4 tocca il MOL su tutto lo storico, dietro flag: il delta per sede si misura e si porta a Mattia **prima** di attivarlo |
+| **4** | **Il briefing giornaliero** — `daily_briefing_service.py`, 1.637 righe | È **la prima cosa che il cliente legge ogni mattina**. Quattro sessioni di lavoro a settembre, mai auditato come oggetto proprio |
+| **5** | **Il worker notturno** — `worker/`, 2.400 righe | **Gira non presidiato** e non è in nessuna lista. Se sbaglia di notte, se ne accorge il cliente al mattino |
+| **6** | **I router del worker** — 16.514 righe, ~4.000 lette | Il blocco più grande a copertura parziale. Da affrontare per router, non in blocco |
+
+Restano fuori, per misura e non per dimenticanza: `agenda/` (**0 turni a DB**),
+`assistenza/` (`marketplace_leads` 0 righe), `style-guide/` (pagina interna).
+**Il criterio per scegliere un'area resta: conta le righe a DB delle tabelle che
+serve, poi decidi.** È così che l'agenda è stata scartata e `notifiche/` scelta —
+dove è stato poi trovato un difetto che il cliente vedeva.
 
 ---
 
