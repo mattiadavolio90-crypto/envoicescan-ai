@@ -101,7 +101,7 @@ def _base_confronto() -> str:
     return ""  # nessuna base: il chiamante deve accorgersene, non misurare zero
 
 
-def _diff_stat() -> tuple[list[str], int] | None:
+def _diff_stat(base_esplicita: str = "") -> tuple[list[str], int] | None:
     """File non-test toccati e righe nette rispetto al branch base.
 
     Ritorna None quando la misura NON e' stata possibile (base irrisolvibile o
@@ -110,7 +110,7 @@ def _diff_stat() -> tuple[list[str], int] | None:
     il gate in silenzio — che e' esattamente il difetto che questo gate esiste
     per impedire altrove.
     """
-    base = _base_confronto()
+    base = base_esplicita or _base_confronto()
     if not base:
         return None
     try:
@@ -151,6 +151,119 @@ def _tocca_path_sensibile(file_toccati: list[str], path_sensibili: list) -> str 
             if pattern.search(percorso):
                 return percorso
     return None
+
+
+# --- Attribuzione dei commit alla sessione (aggiunto il 3/9/2026) ------------
+# Il gate misurava `git diff <merge-base con main>`, cioe' TUTTO il lavoro non
+# ancora pushato. Con una sessione per volta era giusto; con piu' sessioni in
+# parallelo — che qui e' il regime normale — attribuisce a chiunque prema Stop
+# anche il lavoro degli altri. Successo il 3/9: una sessione che aveva toccato
+# due soli .md si e' vista contestare "11 file / 293 righe", cioe' il lavoro di
+# un'altra sessione sui residui. Un avviso che parla di file non tuoi viene
+# ignorato per riflesso, ed e' cosi' che un gate muore.
+#
+# Il registro .sessioni_attive.json porta `timestamp_avvio` per ogni sessione:
+# i commit DELLA sessione sono quelli creati dopo quell'istante. Si prende il
+# genitore del primo, che e' la base giusta da cui misurare.
+#
+# DEGRADA VERSO IL VECCHIO COMPORTAMENTO, mai verso "nessun avviso": se il
+# registro manca, se la sessione non e' registrata (una ripresa da --continue
+# non riscrive il record) o se git non risponde, si torna al merge-base. Un
+# gate che tace quando non sa e' peggio di uno che esagera.
+
+REGISTRO_SESSIONI = REPO_ROOT / ".claude" / ".sessioni_attive.json"
+
+
+def _avvio_sessione(session_id: str) -> float | None:
+    """Istante di avvio della sessione corrente, dal registro degli hook."""
+    if not session_id or not REGISTRO_SESSIONI.exists():
+        return None
+    try:
+        entries = json.loads(REGISTRO_SESSIONI.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, OSError):
+        return None
+    if not isinstance(entries, list):
+        return None
+    for voce in entries:
+        if isinstance(voce, dict) and voce.get("session_id") == session_id:
+            avvio = voce.get("timestamp_avvio")
+            if isinstance(avvio, (int, float)):
+                return float(avvio)
+    return None
+
+
+def _base_sessione(session_id: str) -> str:
+    """Base di misura ristretta ai commit di QUESTA sessione.
+
+    Ritorna "" quando l'attribuzione non e' possibile: il chiamante ricade sul
+    merge-base con main, cioe' sul comportamento storico.
+    """
+    avvio = _avvio_sessione(session_id)
+    if avvio is None:
+        return ""
+    base_main = _base_confronto()
+    if not base_main:
+        return ""
+    try:
+        esito = subprocess.run(
+            ["git", "log", "--format=%H %ct", f"{base_main}..HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return ""
+    if esito.returncode != 0:
+        return ""
+
+    # `git log` scende dal piu' recente: l'ultimo che supera l'avvio e' il primo
+    # commit della sessione.
+    #
+    # NESSUNA TOLLERANZA all'indietro, ed e' una scelta misurata: una finestra di
+    # grazia (provata a 120s) fa rientrare il commit che un'altra sessione ha
+    # appena chiuso, che e' esattamente l'errore da eliminare. Sbagliare "in
+    # avanti" costa un avviso in meno su lavoro proprio committato nel secondo
+    # esatto dell'avvio; sbagliare "all'indietro" ti imputa il lavoro altrui —
+    # e quello e' il difetto che fa ignorare il gate.
+    primo_della_sessione = ""
+    for riga in esito.stdout.splitlines():
+        parti = riga.split()
+        if len(parti) != 2:
+            continue
+        sha, timestamp = parti
+        try:
+            if float(timestamp) >= avvio:
+                primo_della_sessione = sha
+        except ValueError:
+            continue
+
+    if not primo_della_sessione:
+        # Nessun commit attribuito. NON si misura da HEAD: git ha risoluzione al
+        # secondo, quindi una sessione che committa nello stesso secondo in cui
+        # e' partita non si riconoscerebbe nessun commit, misurerebbe zero e il
+        # gate TACEREBBE su lavoro vero. Misurato il 3/9: due commit con lo
+        # stesso %ct e il gate cieco su 9 file di codice.
+        #
+        # Si torna al merge-base ("" = comportamento storico): l'avviso puo'
+        # comprendere lavoro altrui, ma il gate parla. Fra un avviso troppo
+        # largo e un gate muto, il secondo e' il guasto peggiore — un gate muto
+        # non lo nota nessuno.
+        return ""
+
+    try:
+        esito = subprocess.run(
+            ["git", "rev-parse", f"{primo_della_sessione}^"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return ""
+    if esito.returncode != 0 or not esito.stdout.strip():
+        return ""
+    return esito.stdout.strip()
 
 
 def _head_corrente() -> str:
@@ -197,16 +310,17 @@ def _stato_non_aggiornato(file_toccati: list[str]) -> str | None:
 
 def main() -> int:
     try:
-        json.load(sys.stdin)
+        payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        pass
+        payload = {}
 
     if MARKER_OK.exists():
         MARKER_OK.unlink(missing_ok=True)
         MARKER_SEGNALATO.unlink(missing_ok=True)
         return 0
 
-    misura = _diff_stat()
+    base_sessione = _base_sessione(payload.get("session_id") or "")
+    misura = _diff_stat(base_sessione)
     if misura is None:
         print(
             json.dumps(
