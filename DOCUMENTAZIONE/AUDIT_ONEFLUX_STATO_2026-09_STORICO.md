@@ -28,6 +28,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
 | 03/09 | Residuo R4 — formattatori duplicati | 8 unificate, 8 divergono: decisione a Mattia |
 | 03/09 | R4, seconda parte — decisione presa | chiuso: separatore migliaia + decimali arrotondati |
+| 03/09 | **Le 3 `pct` + `catena/fatture/` letta** | chiuse; e ci è stato trovato **R10**, che mente al cliente |
 
 ---
 
@@ -2405,3 +2406,46 @@ cambia.
 qui sopra erano mutanti che non avevo pensato di provare, e il codice li
 conteneva. Il `code-reviewer` ha trovato quello che la mia mutazione non copriva
 perché **nessun mio test aveva una sessione con più di un commit**.
+
+
+---
+
+## 03/09/2026 — Le ultime 3 `pct` di catena, e le 77 righe mai lette
+
+**Verdetto:** chiusa. Leggere l'ultimo file ha però fatto emergere un difetto
+**non di catena** → R10.
+
+**Fatto**
+- `formatPct` corretta alla forma italiana (`toLocaleString("it-IT")` invece di
+  `toFixed`); le 3 `pct` di `sintesi-catena`, `finestra-margini-coperti` e
+  `gruppo-tag-section` ora la chiamano. Restano come wrapper: una è passata **per
+  riferimento** in `COLS` (`fmt: pct`), due tengono la guardia sul null.
+- Letto `catena/fatture/page.tsx` (77 righe): `catena/` da 97% a **100%**.
+
+**Trovato**
+- **Il blocco dichiarato non esisteva più.** Era «`formatPct` ha chiamanti fuori
+  da catena»: ne ha **zero** — solo la definizione e un re-export. L'ultimo era
+  sparito col refactor di giugno (`70136d2`), quindi correggerla non ha toccato
+  nessuna schermata. Con un chiamante vivo sarebbe stato un cambio di output.
+- `toFixed` non sbagliava solo il separatore: **tronca** dove la forma italiana
+  arrotonda (`12.35` → `12.3%` invece di `12,4%`).
+- **R10.** `catena/fatture/page.tsx:55` fa `data?.documenti ?? []`, e `workerGet`
+  torna `null` su **ogni** fallimento (timeout 8s, non-2xx, rete): il cliente
+  legge «Nessun documento trovato» mentre il worker è giù. Non è di catena — lo
+  stesso pattern è su ~8 pagine, gemella del PV inclusa
+  (`scadenziario/page.tsx:19`). A DB: **3.219 non pagate, 4,4 M€, 1.891 scadute,
+  11 sedi**. Il cold-start Railway lo rende ricorrente: `BlockRetry` esiste per
+  quello, e lo stesso file lo usa per `overview` e lo perde 15 righe sotto.
+
+**Non fatto, e dichiarato**
+- **R10 non corretto**: ~8 pagine, e la scelta (tutte o solo le due dello
+  scadenziario) è di Mattia. Fermato e portato a lui. → **R10** in roadmap.
+
+**Prove**
+- 5 test nuovi (28 nel file): quello che *fotografava* la divergenza è stato
+  **invertito**, come il suo stesso docstring prescriveva.
+- Mutazione su copia in scratchpad: **4 mutanti, 4 uccisi** — `toFixed` a monte
+  (2 rossi), locale di sistema invece di `it-IT` (2), copia rimessa in un wrapper
+  (1), la stessa **nascosta dietro una riga commentata** (1): la classe che era
+  sopravvissuta il 3/9 mattina.
+- 966 verdi nella regressione frontend/catena, `tsc` pulito. Commit `6dd458c`.
