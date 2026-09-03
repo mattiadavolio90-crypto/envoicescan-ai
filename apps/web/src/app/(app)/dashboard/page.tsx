@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { chatVisibile, statoBlocchi } from "@/lib/home-kpi";
+import { statoCardDaClassificare, vociSenzaClassificate } from "@/lib/home-da-classificare";
+import { DaClassificareCard } from "./da-classificare-card";
 import { HomeBriefing } from "./home-briefing";
 import { NotificheWidget } from "./notifiche-widget";
 import { ChatWidget } from "./chat-widget";
@@ -98,9 +100,16 @@ async function KpiSaluteBlock() {
     );
   }
 
+  // Promozione (Fase 4bis, decisione Mattia 1/9): la voce "Righe classificate"
+  // esce dall'elenco della card Salute — il dato vive nella card grande sotto la
+  // griglia. Solo qui sul desktop: il mobile non ha la card grande e tiene la voce.
+  const saluteDesktop = salute
+    ? { ...salute, voci: vociSenzaClassificate(salute.voci) }
+    : null;
+
   return (
     <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-      {salute && <SaluteCard salute={salute} />}
+      {saluteDesktop && <SaluteCard salute={saluteDesktop} />}
       {kpi && !kpiVuoto && <KpiBlock kpi={kpi} />}
       {kpiVuoto && (
         <Card>
@@ -115,6 +124,24 @@ async function KpiSaluteBlock() {
       )}
     </div>
   );
+}
+
+// Card grande "Righe da classificare" (Fase 4bis): a larghezza piena, subito
+// sotto la griglia Salute+KPI — dopo i numeri a cui si riferisce, prima del
+// resto. fetchSalute è cache(): stesso round-trip di KpiSaluteBlock, non uno in
+// più. Con worker giù o dato assente: stato di errore dentro BlockRetry (che
+// ripinga e ri-renderizza da solo), MAI il verde.
+async function DaClassificareBlock() {
+  const salute = await fetchSalute();
+  const card = statoCardDaClassificare(salute);
+  if (card.stato === "errore") {
+    return (
+      <BlockRetry endpoint="/api/home/salute">
+        <DaClassificareCard card={card} />
+      </BlockRetry>
+    );
+  }
+  return <DaClassificareCard card={card} />;
 }
 
 // La chat compare solo se abilitata e con limite > 0 (piani free = 0). Caricata
@@ -158,6 +185,10 @@ export default async function DashboardPage() {
 
         <Suspense fallback={<div className="grid gap-4 lg:grid-cols-2"><CardSkeleton /><CardSkeleton /></div>}>
           <KpiSaluteBlock />
+        </Suspense>
+
+        <Suspense fallback={<div className="h-24 animate-pulse rounded-2xl border bg-muted/40" />}>
+          <DaClassificareBlock />
         </Suspense>
 
         {/* Spazio riservato in fondo: il FAB "Chiedi a ONEFLUX" (fixed bottom-right)

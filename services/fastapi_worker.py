@@ -2568,12 +2568,24 @@ class SaluteVoce(BaseModel):
     conseguenza: Optional[str] = None
 
 
+class SaluteDaClassificare(BaseModel):
+    """Cosa resta FUORI dai margini: righe 'Da Classificare' (regola di dominio 1),
+    più le 'da_verificare' quando il flag Fase 4 è acceso. Alimenta la card grande
+    della Home (Fase 4bis): righe e importo vengono dallo STESSO predicato, così
+    la card non può dire un numero e promettere un altro."""
+    righe: int
+    importo: float
+
+
 class SaluteResponse(BaseModel):
     """Indice di salute della gestione — completezza dati del mese corrente."""
     indice: int
     colore: str  # "verde" | "giallo" | "rosso"
     mese_label: str
     voci: List[SaluteVoce]
+    # None = la query è fallita: il frontend deve mostrare lo stato di errore
+    # con "Riprova", MAI il verde — tacere su un errore rassicura a vuoto.
+    da_classificare: Optional[SaluteDaClassificare] = None
 
 
 class AlertPrezzo(BaseModel):
@@ -6265,6 +6277,50 @@ def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str
     return "Nessun prodotto da classificare"
 
 
+def _card_da_classificare(sb, ristorante_id: str) -> "Optional[SaluteDaClassificare]":
+    """Righe e importo di ciò che è ESCLUSO dai margini (card Fase 4bis).
+
+    Predicato identico a quello dei calcoli: categoria = 'Da Classificare'
+    (regola di dominio 1), più le righe `da_verificare` quando il flag Fase 4 è
+    acceso. La card promette «€ esclusi da margini e food cost», quindi conta
+    esattamente quelli — non `needs_review`, che include anche righe classificate
+    e dubbie che nei margini CI SONO (338 legacy misurate il 3/9).
+
+    Su qualunque errore ritorna None, e il frontend mostra lo stato di errore:
+    un default a zero qui sarebbe il falso verde di card-segnali.
+    """
+    try:
+        from config.constants import (
+            CATEGORIA_FIDUCIA_DA_VERIFICARE,
+            ESCLUDI_DA_VERIFICARE_DAI_MARGINI,
+        )
+
+        righe = fetch_all(
+            sb.table("fatture")
+            .select("totale_riga")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .eq("categoria", CATEGORIA_NON_CLASSIFICATA)
+        ) or []
+        n = len(righe)
+        importo = sum(float(r.get("totale_riga") or 0) for r in righe)
+        if ESCLUDI_DA_VERIFICARE_DAI_MARGINI:
+            dubbie = fetch_all(
+                sb.table("fatture")
+                .select("totale_riga")
+                .eq("ristorante_id", ristorante_id)
+                .is_("deleted_at", "null")
+                .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
+                .eq("categoria_fiducia", CATEGORIA_FIDUCIA_DA_VERIFICARE)
+            ) or []
+            n += len(dubbie)
+            importo += sum(float(r.get("totale_riga") or 0) for r in dubbie)
+        return SaluteDaClassificare(righe=n, importo=round(importo, 2))
+    except Exception as exc:
+        logger.warning("home_salute: conteggio righe/importo da classificare fallito: %s", exc)
+        return None
+
+
 def _conseguenza_righe_classificate(da_controllare: int) -> Optional[str]:
     """Perche' importa che ci siano prodotti da controllare, o None se non ce ne sono.
 
@@ -7228,6 +7284,10 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     except Exception as exc:
         logger.warning("home_salute: conteggio righe totali fallito: %s", exc)
 
+    # ── Card grande "Righe da classificare" (Fase 4bis): su errore None,
+    #    e la card mostra "Riprova" — mai il verde. ──
+    da_classificare_card = _card_da_classificare(sb, ristorante_id)
+
     # ── Indice: voci ATTIVE a peso uguale. Le voci binarie valgono 0/100;
     #    le righe usano la loro %. Senza fatture, le righe valgono 0. Le voci
     #    spente nel configuratore non pesano (e non compaiono nella card). ──
@@ -7285,7 +7345,8 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     voci = [_voci_tutte[k] for k in _voci_tutte if k not in voci_spente]
 
     return SaluteResponse(
-        indice=indice, colore=colore, mese_label=mese_label, voci=voci
+        indice=indice, colore=colore, mese_label=mese_label, voci=voci,
+        da_classificare=da_classificare_card,
     )
 
 

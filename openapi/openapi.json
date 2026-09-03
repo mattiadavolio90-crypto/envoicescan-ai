@@ -24821,6 +24821,25 @@
         ],
         "title": "RisolviConflittoBody"
       },
+      "SaluteDaClassificare": {
+        "properties": {
+          "righe": {
+            "type": "integer",
+            "title": "Righe"
+          },
+          "importo": {
+            "type": "number",
+            "title": "Importo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "righe",
+          "importo"
+        ],
+        "title": "SaluteDaClassificare",
+        "description": "Cosa resta FUORI dai margini: righe 'Da Classificare' (regola di dominio 1),\npiù le 'da_verificare' quando il flag Fase 4 è acceso. Alimenta la card grande\ndella Home (Fase 4bis): righe e importo vengono dallo STESSO predicato, così\nla card non può dire un numero e promettere un altro."
+      },
       "SalutePV": {
         "properties": {
           "ristorante_id": {
@@ -24869,6 +24888,16 @@
             },
             "type": "array",
             "title": "Voci"
+          },
+          "da_classificare": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SaluteDaClassificare"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

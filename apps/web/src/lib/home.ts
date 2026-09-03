@@ -66,11 +66,20 @@ export type SaluteVoce = {
   conseguenza?: string | null;
 };
 
+export type SaluteDaClassificare = {
+  righe: number;
+  importo: number;
+};
+
 export type Salute = {
   indice: number;
   colore: "verde" | "giallo" | "rosso";
   mese_label: string;
   voci: SaluteVoce[];
+  // Righe escluse dai margini (card grande della Home, Fase 4bis). Assente o
+  // null = la query lato worker e' fallita O risponde un backend precedente:
+  // in entrambi i casi la card mostra lo stato di errore, MAI il verde.
+  da_classificare?: SaluteDaClassificare | null;
 };
 
 export type HomeKpi = {
