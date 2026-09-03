@@ -75,7 +75,7 @@ contraddicono mai. Scattano a queste condizioni:
 | **Fatture costo mancanti** | mese con ricavi ma **zero costi food+spese**, oppure nessuna fattura caricata da **7 giorni** |
 | **Ricavi automatici assenti** | cliente collegato ai ricavi automatici ma nessun ricavo da più giorni dei suoi giorni di chiusura + 1 |
 | **Alert prezzi** | un prodotto/categoria è rincarato oltre la soglia automatica |
-| **Anomalia coperti** | i coperti di ieri si scostano ≥20% dal solito (serve almeno una settimana di storico) |
+| **Anomalia coperti** | i coperti di ieri si scostano ≥20% dal solito (servono almeno 4 giorni con coperti nel periodo di riferimento) |
 
 ---
 

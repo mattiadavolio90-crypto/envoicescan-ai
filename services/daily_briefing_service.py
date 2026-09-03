@@ -96,7 +96,16 @@ logger = get_logger('daily_briefing')
 #               che ne dipendono — buona notizia e amo Assistenza del rientro —
 #               cambiano esito per chi ha spento un avviso, quindi lo snapshot
 #               salvato con la vecchia regola va rigenerato.
-_BRIEFING_CODE_VERSION = 20
+#  21 -> 03/09: (a) i bullet delle scadenze formattavano gli importi all'inglese
+#               ("€ 1,234.50") con l'f-string nuda invece di _euro_it_cent —
+#               latente (misurati 0 bullet scadenze su 42 snapshot in cache: le
+#               notifiche scadenza non vengono generate dall'1/6), ma il primo
+#               cliente con una scadenza in card avrebbe letto il numero
+#               invertito; (b) il validatore della narrativa ora scarta anche
+#               l'entusiasmo vietato dalla regola 3/3-bis (prima solo numeri
+#               inventati e burocratese). Senza bump uno snapshot vecchio
+#               resterebbe in cache fino al TTL.
+_BRIEFING_CODE_VERSION = 21
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -510,7 +519,9 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         totale = payload.get('totale')
         if count and totale is not None:
             parola = 'fattura scaduta' if count == 1 else 'fatture scadute'
-            return f"\u26a0\ufe0f {count} {parola} per \u20ac {totale:,.2f} \u2014 controlla il pagamento."
+            # _euro_it_cent, NON f"{:,.2f}": il formato f-string e' inglese
+            # (1,234.50) e questo testo lo legge un ristoratore italiano.
+            return f"\u26a0\ufe0f {count} {parola} per \u20ac {_euro_it_cent(float(totale))} \u2014 controlla il pagamento."
         return f"\u26a0\ufe0f {title}"
 
     if topic == 'upload_failed':
@@ -534,7 +545,8 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         totale = payload.get('totale')
         if count and totale is not None:
             parola = 'fattura in scadenza' if count == 1 else 'fatture in scadenza'
-            return f"\U0001F4C5 {count} {parola} entro 7 giorni per \u20ac {totale:,.2f}."
+            # Vedi scadenza_superata: formato italiano, non l'f-string inglese.
+            return f"\U0001F4C5 {count} {parola} entro 7 giorni per \u20ac {_euro_it_cent(float(totale))}."
         return f"\U0001F4C5 {title}"
 
     if topic == 'fatture_mancanti':
@@ -1134,12 +1146,19 @@ def _deanonymize(text: str, mapping: Dict[str, str]) -> str:
     return text
 
 
-# Formule burocratiche vietate dalla regola 3-octies del prompt. Misurate su
-# snapshot reali (01-02/09/2026): "e' necessario completare questo dato per avere un
-# quadro corretto" e simili ricorrono nonostante il divieto.
+# Formule vietate dal prompt, che il validatore fa rispettare davvero.
+# Burocratese (3-octies), misurato su snapshot reali 01-02/09: "e' necessario
+# completare questo dato" ricorreva nonostante il divieto. Entusiasmo (3/3-bis),
+# aggiunto il 3/9 dall'audit briefing: misurati 0 casi su 42 snapshot in cache,
+# ma il divieto viveva solo nel prompt — e un prompt senza validazione e' un
+# auspicio, non un vincolo (gia' dimostrato dal burocratese). Lo spazio davanti
+# a "ottim" evita match dentro altre parole.
 _FORMULE_VIETATE = (
     "è necessario", "e' necessario", "si rende necessario",
     "provvedi a", "assicurati di procedere",
+    "fantastic", "incredibil", "straordinari", "che bello", "che notizia",
+    "continua così", "continua cosi", "sei sulla strada giusta",
+    " ottimo", " ottima",
 )
 
 # Numeri che possono comparire nel testo AI senza essere nei bullet: sono quelli che

@@ -35,6 +35,8 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **R9 — il registro sessioni con PID morti** | chiuso: via il PID, `session_id` + scadenza rinfrescata |
 | 03/09 | **Quadratura dei numeri fra le pagine (voce §3 #1)** | eseguita read-only: quadra al centesimo; aperti Q1–Q4 |
 | 03/09 | **I prompt AI — `config/` (voce §3 #2)** | chiusa: coerenza piena; 12 chiavi mojibake riparate con presidio |
+| 03/09 | **Categorizzazione — fasi 4, 4bis, 5, 6, 8 (voce §3 #3)** | le 10 fasi del piano chiuse; migration Fase 4 e conflitti memoria a Mattia (verbali in `docs/piani/PIANO_CATEGORIZZAZIONE.md`) |
+| 03/09 | **Il briefing giornaliero (voce §3 #4)** | chiusa: letto integrale, 2 fix (formato scadenze, validatore tono), 2 memorie invecchiate |
 
 ---
 
@@ -2783,3 +2785,45 @@ tutti verdi.
 briefing (`daily_briefing_service.py`) si audita con la voce §3 #4, l'eventuale
 prompt chat con la §3 #6. `KPI_SOGLIE`/`COPERTI_ALERT` letti come dati (la
 soglia food cost 38 combacia col rilievo Q2): il loro *uso* è del briefing.
+
+---
+
+## 03/09/2026 — Il briefing giornaliero (voce §3 #4): chiusa
+
+**Perimetro:** `services/daily_briefing_service.py`, 1.637 righe all'apertura
+(1.656 alla chiusura), **lette integralmente** — prima volta come oggetto
+proprio dopo 4 sessioni di lavoro a settembre. Verifica incrociata coi
+chiamanti nel worker e col DB (`daily_briefing_state`: 42 snapshot totali).
+Report completo: `scratchpad/audit_briefing_report.md`.
+
+**Cosa regge (misurato):** pipeline deterministica + AI solo per il tono, nomi
+anonimizzati verso OpenAI, fallback al template su ogni errore; cache a tre
+reti (code_version, TTL 30', invalidazione a eventi su 14 call site). **La
+validazione della narrativa (v18) in produzione tiene: 0 violazioni su 24
+snapshot recenti.** Due rilievi delle memorie di ciclo risultati INVECCHIATI
+alla ri-misura: le «regole di tono violate in produzione» (pre-validazione) e
+le «6 soglie su 11 sbagliate in LOGICA_BRIEFING.md» — ri-misurate tutte e 11
+le leve della tabella §9: combaciano col codice, con un'unica imprecisione
+(«una settimana di storico» coperti → sono 4 giorni con coperti,
+`min_giorni_baseline`), corretta. Memorie aggiornate.
+
+**Chiuso in sessione (bump `_BRIEFING_CODE_VERSION` 20 → 21):**
+- i bullet `scadenza_superata`/`scadenza_imminente` formattavano gli importi
+  con l'f-string nuda (`{totale:,.2f}` → «€ 1,234.50»): separatori INGLESI per
+  un lettore italiano. Latente — 0 bullet scadenze su 42 snapshot — ma il primo
+  cliente con una scadenza in card l'avrebbe letto. Fix con `_euro_it_cent`;
+- il validatore ora scarta anche l'**entusiasmo vietato** dalla regola 3/3-bis
+  ('fantastico', 'continua così', ' ottimo'…): il divieto viveva solo nel
+  prompt, e un prompt senza validazione è un auspicio — il burocratese l'aveva
+  già dimostrato. Misurati 0 casi oggi: è una rete, non un fix d'urgenza.
+- Presidio `tests/test_briefing_scadenze_formato_e_tono.py` (10 test).
+  **Mutazione**: f-string inglese reintrodotta → 2 rossi (al primo giro il
+  mutante NON matchava per gli escape `⚠` nel sorgente — rifatto con la
+  forma giusta, «un mutante che non matcha non è una prova»); lista entusiasmo
+  rimossa → 5 rossi. Suite briefing+salute: 390 verdi.
+
+**Annotato, non aperto:** le notifiche scadenza **non vengono generate
+dall'1/6** (7 record totali) mentre lo scadenziario ha 4,4 M€ di dati — il
+generatore è fuori perimetro, va guardato nelle voci §3 #5/#6; `severity_max`
+è nel payload ma nessun componente UI la legge; il modello di narrazione è
+`gpt-4o-mini` fisso (scelta economica sensata per riscrivere il tono).
