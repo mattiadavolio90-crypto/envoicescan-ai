@@ -87,8 +87,10 @@ va misurato e portato a Mattia **prima** di attivarlo.
 | **R5** | **`dependencies=[...]` a livello di `APIRouter`** — 12 router, 216 endpoint | Medio-alto | Nessuna falla attiva (0 endpoint scoperti): è **prevenzione**. Tocca tutto il traffico, vuole la sua finestra e una sessione propria |
 | **R6** | **9 copie backend del filtro `Da Classificare`** + NOTE senza emoji in `margine_service.py` e 2 RPC | Alto | **Non è un residuo da chiudere in coda**: 0 righe attive oggi, ma richiede una **migration su 7 account veri**. Si apre come dimensione a sé, quando Mattia decide |
 
+| **R9** | **Il registro delle sessioni ha PID morti** — `claude_hook_registra_sessione.py` salva `os.getppid()`, che è il wrapper dell'hook e muore subito | Basso | Misurato il 03/09: **1 voce con PID morto mentre giravano 3 sessioni**. Conseguenza: molte sessioni non si ritrovano nel registro e il gate di review ricade sul merge-base, cioè **il fix del 03/09 è spesso inattivo**. Il degrado è sicuro (avvisa di più, non tace), quindi non urge: va misurato quante volte l'attribuzione riesce davvero |
+
 **Come si esegue:** R5 in una sessione propria. R6 è una dimensione, non un
-residuo. R1, R2, R3, R7 e R8 sono stati chiusi il 03/09 — vedi i verbali.
+residuo. R9 è piccolo e tocca solo gli hook (nessun codice di prodotto). R1, R2, R3, R7 e R8 sono stati chiusi il 03/09 — vedi i verbali.
 
 **Fotografato di proposito, NON è un residuo.** Le **8 anomalie di `catena/`**
 (`ordinaRighe` coi null, `tintConti` che sceglie l'ipotesi ottimista,

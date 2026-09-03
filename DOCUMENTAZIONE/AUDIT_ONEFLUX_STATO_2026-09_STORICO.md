@@ -2353,3 +2353,55 @@ file la usi. Aggiunto il test che legge il sorgente vero. È la stessa classe di
 buco trovata dal code-reviewer sui presidi di R8 e R3.
 
 Rete: `tests/test_catena_formattatori_equivalenza_frontend.py` (24 test).
+
+---
+
+## 03/09 — Il gate di review contava il lavoro delle altre sessioni
+
+**Verdetto:** chiusa. Difetto di processo, non di prodotto: nessun numero cliente
+cambia.
+
+**Fatto**
+- Il gate Stop misurava `git diff <merge-base con origin/main>`: **tutti** i
+  commit non pushati, di qualunque sessione. Ora restringe la base ai commit
+  della sessione corrente (`timestamp_avvio` dal registro + `session_id` dal
+  payload, che il gate scartava).
+- Degrado sempre verso il comportamento storico — registro assente, sessione non
+  registrata, payload malformato → merge-base come prima. **Mai verso il
+  silenzio.**
+- Corretta la voce del MEDIUM catena-tag: dichiarato aperto a 236,23 €, era
+  **chiuso dal 27/8**. Corretto alla fonte (il prompt archiviato) e in roadmap.
+
+**Trovato — tre difetti che nessuno cercava**
+- Una **tolleranza di 120s** sull'avvio, messa per prudenza, faceva rientrare il
+  commit appena chiuso da un'altra sessione: l'errore da eliminare. Rimossa.
+- Ricadere su `"HEAD"` quando nessun commit è attribuibile rendeva il gate
+  **muto**: git ha risoluzione al secondo, e una sessione che committa nello
+  stesso secondo in cui parte misura zero. Cieco su 9 file di codice.
+- **Il marker anti-loop era condiviso** (chiave: solo HEAD). Con la base ormai
+  per-sessione, la prima che segnala zittisce la seconda. Trovato dal
+  `code-reviewer`, riprodotto: A avvisata su 18 file, B con 7 file propri →
+  silenzio.
+
+**Non fatto, e dichiarato**
+- L'attribuzione è per **finestra temporale, non per autore**: include ciò che
+  altri committano dopo l'avvio della sessione. Riduce il rumore, non lo elimina.
+  Attribuire per autore vuol dire marcare i commit — altra dimensione.
+- `claude_hook_registra_sessione.py` registra `os.getppid()`, che è il wrapper
+  dell'hook e muore subito: il registro ha **1 voce con PID morto mentre girano 3
+  sessioni**. Molte sessioni non si ritrovano e cadono nel fallback, quindi **il
+  fix è spesso inattivo**. È un altro hook: da misurare a parte. → **R9**
+
+**Prove**
+- 15 test in `tests/test_hook_reviewer_gate_sessione.py` su repo git veri in
+  `tmp_path`, con date di commit esplicite (senza, i commit cadono nello stesso
+  secondo e il test misura il proprio setup). **Erano 0 i test sugli hook.**
+- Mutazione su copia in scratchpad: 8 mutanti, 8 uccisi. Un nono
+  (`not REGISTRO.exists()`) sopravvive ed è ridondanza motivata — `read_text`
+  solleva comunque `OSError`, già catturato.
+- Suite: 12.658 verdi. Commit `f9383c2`, `92ea72c`, `878af1c`.
+
+**Lezione.** Un mutante non provato è un difetto non trovato: due dei tre difetti
+qui sopra erano mutanti che non avevo pensato di provare, e il codice li
+conteneva. Il `code-reviewer` ha trovato quello che la mia mutazione non copriva
+perché **nessun mio test aveva una sessione con più di un commit**.
