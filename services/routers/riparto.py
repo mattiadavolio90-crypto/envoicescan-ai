@@ -57,6 +57,13 @@ def _invalidate_fatture_rows_cache(*args, **kwargs):
     return _fw()._invalidate_fatture_rows_cache(*args, **kwargs)
 
 
+def _salva_correzione_memoria(*args, **kwargs):
+    """Wrapper esplicito (niente __getattr__): la Fase 5 usa la stessa funzione
+    canonica su tutti i percorsi di correzione manuale."""
+    from services.ai_service import salva_correzione_in_memoria_locale
+    return salva_correzione_in_memoria_locale(*args, **kwargs)
+
+
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
 
@@ -704,6 +711,19 @@ def riparto_riga_categoria(
 
     ricalcolo_ok = _post_scrittura_riparto(sb, user_id, int(riparto["anno"]), int(riparto["mese"]))
 
+    # Fase 5 (D5): terzo percorso di correzione — aggiornava le righe e le quote
+    # ma non insegnava nulla: il prossimo documento di gruppo con la stessa
+    # descrizione tornava da classificare. Stessa funzione canonica degli altri.
+    memoria_ok = False
+    if righe_aggiornate:
+        memoria_ok = _salva_correzione_memoria(
+            descrizione=descrizione,
+            nuova_categoria=nuova_cat,
+            user_id=user_id,
+            user_email=str(user.get("email") or ""),
+            supabase_client=sb,
+        )
+
     sedi = _carica_sedi_attive(user_id, sb)
     return {
         "ok": True,
@@ -711,6 +731,7 @@ def riparto_riga_categoria(
         "righe_aggiornate": righe_aggiornate,
         "ricalcolo_quote_ok": ricalcolo_ok,
         "sedi_impattate": [s.get("nome_ristorante") for s in sedi],
+        "memoria_aggiornata": bool(memoria_ok),
     }
 
 

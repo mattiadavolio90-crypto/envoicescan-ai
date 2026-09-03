@@ -3529,6 +3529,20 @@ def ottieni_hint_per_ai(descrizione: str, user_id: str) -> Optional[str]:
         return None
 
 
+def _e_override_manuale(classificato_da) -> bool:
+    """True se la voce di `prodotti_utente` è una correzione fatta da un umano.
+
+    Due grafie convivono a DB: `Manuale (<email>)` — scritta da
+    `salva_correzione_in_memoria_locale` — e il legacy `User`, scritto fino al
+    3/9/2026 dall'endpoint categoria-batch (misurate 319 voci reali). Le seconde
+    erano INVISIBILI ai check `startswith('Manuale')`: l'auto-save poteva
+    sovrascrivere una correzione che il cliente aveva fatto a mano. Fonte unica
+    del criterio, usata da tutti e tre i punti di protezione.
+    """
+    cd = str(classificato_da or '')
+    return cd.startswith('Manuale') or cd == 'User'
+
+
 def _esiste_override_manuale_locale(
     user_id: str,
     descrizione: str,
@@ -3570,8 +3584,7 @@ def _esiste_override_manuale_locale(
             .execute()
         )
         for row in (resp.data or []):
-            cd = str(row.get('classificato_da') or '')
-            if cd.startswith('Manuale'):
+            if _e_override_manuale(row.get('classificato_da')):
                 return True
         return False
     except Exception as e:  # pragma: no cover - difensivo
@@ -3631,8 +3644,7 @@ def flush_pending_local_saves(
                     .execute()
                 )
                 for row in (resp.data or []):
-                    cd = str(row.get('classificato_da') or '')
-                    if cd.startswith('Manuale'):
+                    if _e_override_manuale(row.get('classificato_da')):
                         protetti.add(str(row.get('descrizione') or ''))
         except Exception as sel_err:
             # In caso di errore SELECT non rischiamo: meglio skippare l'auto-save
@@ -4501,9 +4513,9 @@ def _propaga_global_override_a_fatture_storiche(
                 d_raw = (r.get('descrizione') or '').strip()
                 if not d_raw:
                     continue
-                # Solo override Manuale del cliente devono bloccare la propagazione globale
+                # Solo override manuali del cliente devono bloccare la propagazione globale
                 # (keyword-auto/AI auto-upload sono auto-categorizzazioni che vogliamo aggiornare)
-                if not str(r.get('classificato_da') or '').startswith('Manuale'):
+                if not _e_override_manuale(r.get('classificato_da')):
                     continue
                 try:
                     d_n, _ = get_descrizione_normalizzata_e_originale(d_raw)

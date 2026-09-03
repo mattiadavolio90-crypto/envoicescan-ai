@@ -854,6 +854,12 @@ def get_categorie_disponibili(
 
 # ─── Endpoint: batch update categoria (stessa descrizione) + memoria AI ────
 
+def _salva_correzione_memoria(*args, **kwargs):
+    """Wrapper esplicito (niente __getattr__, PEP 562 ha già rotto 9 router):
+    import al momento della chiamata per non pagare ai_service a import-time."""
+    from services.ai_service import salva_correzione_in_memoria_locale
+    return salva_correzione_in_memoria_locale(*args, **kwargs)
+
 @router.post("/api/fatture/categoria-batch", dependencies=[Depends(_verify_worker_key)])
 def categoria_batch(
     body: CategoriaBatchRequest,
@@ -952,36 +958,26 @@ def categoria_batch(
     if not righe_aggiornate:
         return {
             "ok": True, "righe_aggiornate": 0, "descrizione": descrizione,
-            "nuova_categoria": nuova_cat,
+            "nuova_categoria": nuova_cat, "memoria_aggiornata": False,
         }
 
-    try:
-        existing = (
-            supabase_client.table("prodotti_utente")
-            .select("id")
-            .eq("user_id", user_id)
-            .eq("descrizione", descrizione)
-            .limit(1)
-            .execute()
-        )
-        if existing.data:
-            supabase_client.table("prodotti_utente").update({
-                "categoria": nuova_cat,
-                "classificato_da": "User",
-                "updated_at": "now()",
-            }).eq("id", existing.data[0]["id"]).execute()
-        else:
-            supabase_client.table("prodotti_utente").insert({
-                "user_id": user_id,
-                "descrizione": descrizione,
-                "categoria": nuova_cat,
-                "classificato_da": "User",
-                "volte_visto": 1,
-            }).execute()
-    except Exception as e:
-        logger.warning(f"Memoria AI non salvata per '{descrizione}': {e}")
+    # Fase 5: la funzione canonica al posto della scrittura inline. Quella
+    # inline scriveva la descrizione GREZZA (chiave diversa dalla memoria che
+    # legge la normalizzata) e `classificato_da: "User"`, che i check
+    # `_e_override_manuale` non riconoscevano: l'auto-save poteva sovrascrivere
+    # la correzione. E se falliva, il cliente riceveva comunque `ok: True`.
+    memoria_ok = _salva_correzione_memoria(
+        descrizione=descrizione,
+        nuova_categoria=nuova_cat,
+        user_id=user_id,
+        user_email=str(user.get("email") or ""),
+        supabase_client=supabase_client,
+    )
 
-    return {"ok": True, "righe_aggiornate": righe_aggiornate, "descrizione": descrizione, "nuova_categoria": nuova_cat}
+    return {
+        "ok": True, "righe_aggiornate": righe_aggiornate, "descrizione": descrizione,
+        "nuova_categoria": nuova_cat, "memoria_aggiornata": bool(memoria_ok),
+    }
 
 
 # ─── Endpoint: lista righe paginata (compat con vecchio /api/fatture) ──────
@@ -1061,7 +1057,7 @@ def aggiorna_categoria_riga(
     supabase_client = _get_supabase_client()
     check = (
         supabase_client.table("fatture")
-        .select("id, totale_riga, prezzo_unitario")
+        .select("id, totale_riga, prezzo_unitario, descrizione")
         .eq("id", riga_id)
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
@@ -1090,7 +1086,18 @@ def aggiorna_categoria_riga(
         "categoria_fiducia": "certa",
     }).eq("id", riga_id).execute()
     _invalidate_fatture_rows_cache(ristorante_id)
-    return {"ok": True, "id": riga_id, "categoria": categoria}
+
+    # Fase 5 (D5): questo percorso aggiornava la riga e basta — la correzione
+    # non insegnava nulla, e la STESSA descrizione sulla fattura successiva
+    # tornava sbagliata. Stessa funzione canonica degli altri due percorsi.
+    memoria_ok = _salva_correzione_memoria(
+        descrizione=str(check.data[0].get("descrizione") or ""),
+        nuova_categoria=categoria,
+        user_id=str(user.get("id") or ""),
+        user_email=str(user.get("email") or ""),
+        supabase_client=supabase_client,
+    )
+    return {"ok": True, "id": riga_id, "categoria": categoria, "memoria_aggiornata": bool(memoria_ok)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
