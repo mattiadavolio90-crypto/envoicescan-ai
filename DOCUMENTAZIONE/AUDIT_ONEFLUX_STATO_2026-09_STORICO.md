@@ -38,6 +38,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **Categorizzazione — fasi 4, 4bis, 5, 6, 8 (voce §3 #3)** | le 10 fasi del piano chiuse; migration Fase 4 e conflitti memoria a Mattia (verbali in `docs/piani/PIANO_CATEGORIZZAZIONE.md`) |
 | 03/09 | **Il briefing giornaliero (voce §3 #4)** | chiusa: letto integrale, 2 fix (formato scadenze, validatore tono), 2 memorie invecchiate |
 | 03/09 | **Il worker asincrono (voce §3 #5)** | chiusa: «non presidiato» era falso; 1 latente chiuso (retry coda email); scadenze mute → voce #6 |
+| 03/09 | **Router, 1ª passata: scadenziario (voce §3 #6)** | le scadenze tornano a parlare: upsert su vincolo inesistente + topic sconosciuto al briefing, 0 avvisi di sempre su 4,4 M€ |
 
 ---
 
@@ -2868,3 +2869,37 @@ briefing): voce §3 #6.
 **Non fatto, e dichiarato:** le RPC di coda lette come contratto, non
 ri-auditate (hanno presidi dai cicli precedenti); l'«agent notturno» di
 revisione vive in `fastapi_worker.py` → voce #6.
+
+---
+
+## 03/09/2026 — Router, 1ª passata: scadenziario (voce §3 #6)
+
+La voce #6 va per router, non in blocco (roadmap). Prima passata sul router
+indicato dalla pista delle voci #4/#5. Report:
+`scratchpad/audit_router_scadenziario_report.md`.
+
+**Le scadenze erano mute da giugno, e nessuno se n'era accorto.**
+`POST /api/scadenziario/notifica` (parte a ogni apertura della pagina) falliva
+OGNI chiamata: upsert con `on_conflict="user_id,ristorante_id,topic_key"` su un
+vincolo unico che **non esiste** (misurato su `pg_indexes`: l'unico unique è su
+`dedupe_key`), eccezione inghiottita, frontend best-effort. E il topic che
+provava a scrivere (`scadenze_aggregate`) era comunque sconosciuto al briefing,
+che conosce solo i canonici `scadenza_superata`/`scadenza_imminente` — con
+copy, priorità, toggle e bucket settimanale già pronti, ma senza più nessun
+generatore dall'1/6. Risultato misurato: **0 notifiche di sempre**, con 300
+fatture scadute per 4,4 M€ nello scadenziario. Doppio strato dello stesso male:
+un fix parziale che lascia i consumatori indietro, e una scrittura best-effort
+che non può dire di aver fallito.
+
+**Fix:** endpoint riscritto sulla factory ufficiale (RPC idempotente, dedupe
+settimanale, refresh_on_conflict): i due topic canonici con payload
+`{count, totale}`, spegnimento a condizione rientrata (come incasso_mancante),
+importi italiani (il body scriveva "€4,400,000"). 5 test, **3 mutanti / 3
+uccisi**; suite scadenziario 136 verde. I bullet del briefing che li
+racconteranno sono quelli sistemati oggi nella voce #4 (formato italiano).
+
+**Annotato:** il trigger resta all'apertura della pagina (design esistente):
+spostarlo su un giro notturno è una decisione di prodotto, registrata e non
+presa. Le prossime passate (#6): margini/gruppo a lettura integrale, fatture,
+ricavi, riparto, admin, workspace, account, prezzi, chat, documenti, notifiche,
+più l'«agent notturno» in `fastapi_worker.py`.

@@ -3071,7 +3071,7 @@
           "Scadenziario"
         ],
         "summary": "Genera Notifica Scadenze",
-        "description": "Genera/aggiorna notifica aggregata scadenze nella inbox (upsert idempotente).",
+        "description": "Genera/aggiorna gli avvisi scadenze nella inbox (idempotente, spegne a zero).\n\nRISCRITTO il 3/9/2026 — l'endpoint era MUTO da giugno, per due difetti insieme:\n1. upsert con `on_conflict=\"user_id,ristorante_id,topic_key\"`, ma quel vincolo\n   unico NON esiste su notification_inbox (l'unico è su dedupe_key): OGNI\n   chiamata cadeva nell'except e il frontend è best-effort → silenzio totale.\n   Misurato: 0 righe `scadenze_aggregate` di sempre, mentre lo scadenziario\n   mostrava 300 fatture scadute per 4,4 M€.\n2. il topic `scadenze_aggregate` era comunque SCONOSCIUTO al briefing, che\n   conosce (con copy, priorità e toggle del configuratore) i due topic\n   canonici `scadenza_superata`/`scadenza_imminente` — quelli che nessuno\n   generava più.\nOra: factory ufficiale (dedupe settimanale + refresh_on_conflict + RPC\nidempotente), i DUE topic canonici con payload {count, totale} che il\nbriefing sa raccontare, spegnimento quando la condizione rientra, importi\nin formato italiano.",
         "operationId": "genera_notifica_scadenze_api_scadenziario_notifica_post",
         "parameters": [
           {

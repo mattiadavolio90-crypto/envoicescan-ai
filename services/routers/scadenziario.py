@@ -396,10 +396,36 @@ def delete_regola_pagamento(regola_id: str, authorization: Optional[str] = Heade
     return result
 
 
+def _euro_it_scadenze(valore: float) -> str:
+    """11543 -> '11.543' (stile italiano, senza centesimi come nella campanella)."""
+    return f"{int(round(valore)):,}".replace(",", ".")
+
+
 @router.post("/api/scadenziario/notifica", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
 def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
-    """Genera/aggiorna notifica aggregata scadenze nella inbox (upsert idempotente)."""
+    """Genera/aggiorna gli avvisi scadenze nella inbox (idempotente, spegne a zero).
+
+    RISCRITTO il 3/9/2026 — l'endpoint era MUTO da giugno, per due difetti insieme:
+    1. upsert con `on_conflict="user_id,ristorante_id,topic_key"`, ma quel vincolo
+       unico NON esiste su notification_inbox (l'unico è su dedupe_key): OGNI
+       chiamata cadeva nell'except e il frontend è best-effort → silenzio totale.
+       Misurato: 0 righe `scadenze_aggregate` di sempre, mentre lo scadenziario
+       mostrava 300 fatture scadute per 4,4 M€.
+    2. il topic `scadenze_aggregate` era comunque SCONOSCIUTO al briefing, che
+       conosce (con copy, priorità e toggle del configuratore) i due topic
+       canonici `scadenza_superata`/`scadenza_imminente` — quelli che nessuno
+       generava più.
+    Ora: factory ufficiale (dedupe settimanale + refresh_on_conflict + RPC
+    idempotente), i DUE topic canonici con payload {count, totale} che il
+    briefing sa raccontare, spegnimento quando la condizione rientra, importi
+    in formato italiano.
+    """
     from services.documenti_service import get_documenti_scadenziario
+    from services.notification_inbox_service import (
+        build_notification_record,
+        upsert_inbox_notifications,
+        dismiss_inbox_topics,
+    )
     import pandas as _pd
 
     user = _resolve_user_from_token(authorization)
@@ -432,39 +458,65 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
         except Exception:
             continue
 
-    if not scadute and not settimana:
-        return {"ok": True, "notifica": None}
-
     tot_sc = sum(d.get("totale_documento", 0) or 0 for d in scadute)
     tot_sw = sum(d.get("totale_documento", 0) or 0 for d in settimana)
 
-    parts = []
+    records = []
+    da_spegnere = []
+
     if scadute:
-        parts.append(f"{len(scadute)} scadut{'a' if len(scadute) == 1 else 'e'} (€{tot_sc:,.0f})")
+        n = len(scadute)
+        records.append(build_notification_record(
+            user_id=str(user["id"]),
+            ristorante_id=ristorante_id,
+            topic_key="scadenza_superata",
+            source_type="operativa",
+            severity="error",
+            title=f"Scadenze superate ({n})",
+            body=(
+                f"{n} {'fattura scaduta' if n == 1 else 'fatture scadute'} per "
+                f"€ {_euro_it_scadenze(tot_sc)} — controlla i pagamenti."
+            ),
+            payload={"count": n, "totale": round(float(tot_sc), 2)},
+            action_page="/scadenziario",
+        ))
+    else:
+        da_spegnere.append("scadenza_superata")
+
     if settimana:
-        parts.append(f"{len(settimana)} in scadenza questa settimana (€{tot_sw:,.0f})")
+        n = len(settimana)
+        records.append(build_notification_record(
+            user_id=str(user["id"]),
+            ristorante_id=ristorante_id,
+            topic_key="scadenza_imminente",
+            source_type="operativa",
+            severity="warning",
+            title=f"Fatture in scadenza ({n})",
+            body=(
+                f"{n} {'fattura scade' if n == 1 else 'fatture scadono'} entro 7 "
+                f"giorni per € {_euro_it_scadenze(tot_sw)}."
+            ),
+            payload={"count": n, "totale": round(float(tot_sw), 2)},
+            action_page="/scadenziario",
+        ))
+    else:
+        da_spegnere.append("scadenza_imminente")
 
-    record = {
-        "user_id": str(user["id"]),
-        "ristorante_id": ristorante_id,
-        "topic_key": "scadenze_aggregate",
-        "source_type": "scadenziario",
-        "severity": "error" if scadute else "warning",
-        "title": "Fatture in scadenza",
-        "body": " • ".join(parts),
-        "action_page": "/scadenziario",
-        "dismissed_at": None,
+    # Spegni l'avviso quando la condizione rientra (pagamenti registrati): come
+    # per incasso_mancante, un avviso che resta acceso a problema risolto mente.
+    if da_spegnere:
+        try:
+            dismiss_inbox_topics(str(user["id"]), ristorante_id, da_spegnere, sb)
+        except Exception as e:
+            logger.warning("dismiss notifiche scadenze fallito: %s", e)
+
+    inserted = upsert_inbox_notifications(records, sb) if records else 0
+    return {
+        "ok": True,
+        "inserted": inserted,
+        "scadute": len(scadute),
+        "in_scadenza": len(settimana),
     }
-
-    try:
-        sb.table("notification_inbox").upsert(
-            record, on_conflict="user_id,ristorante_id,topic_key"
-        ).execute()
-    except Exception as e:
-        logger.warning("Errore upsert notifica scadenze: %s", e)
-        return {"ok": False, "error": str(e)}
-
-    return {"ok": True, "notifica": record}
 
 
 @router.post("/api/ricavi/notifica-mancante", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
