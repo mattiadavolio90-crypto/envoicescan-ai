@@ -21,6 +21,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 01-02/09 | Categorizzazione — fasi 0, 7, 1, 2, 3 | 5 fasi su 10 |
 | 02/09 | Notifiche — un pulsante che portava nel posto sbagliato | chiusa |
 | 29/08 | Punto 9 (F2-NOTEST) + voci ereditate | *spostato qui il 2/9* |
+| 03/09 | Residuo R8 — guardia liste vuote catena | depennato: era già in produzione |
 
 ---
 
@@ -2029,3 +2030,48 @@ Le altre cifre del documento sono state ri-misurate e reggono tutte: 399 file,
 29/8: dopo i primi upload reali dovrebbero comparirne **pochi e veri**. Se ne
 compaiono molti, la ritaratura su `numero_documento` va rivista — prima del fix
 ne avrebbe prodotti 897, tutti falsi.
+
+---
+
+## Residuo R8 — la guardia c'era già — 03/09/2026
+
+**Esito: depennato, non implementato.** Il residuo chiedeva una guardia sulle
+liste vuote di `config-assistente-catena.tsx`. **Era già in produzione**, messa
+dal commit `71ac3ab` — cioè dalla **stessa 3ª passata su `catena/` che la
+dichiarava aperta**. Il residuo è stato copiato dalla sezione «non fatto» del
+verbale senza ri-guardare il codice: la lista invecchia in entrambe le
+direzioni, come `parseImportoIt`.
+
+**Cosa difende, misurato.** Lo stato iniziale di `segnali`/`pv` è `[]`, e `[]` è
+anche il payload legittimo di «non ho escluso niente»: indistinguibili. Salvare
+su un load fallito riattiva in silenzio le esclusioni dell'utente. La difesa è in
+**due** punti che nessun test legava:
+
+1. `caricaConfig().catch` → `setLoadError(true)`;
+2. `<Button onClick={salva} disabled={saving || loading || loadError}>`.
+
+Non la difendono `segnaliDisattivati`/`pvEsclusi`: su `[]` ogni loro mutazione dà
+`[]` — mutante **impossibile**, non sopravvissuto.
+
+**Prova per mutazione** (copia in scratchpad, mai sul file di lavoro; ogni
+mutante verificato come realmente applicato prima di eseguirlo):
+
+| Mutante | Esito |
+|---|---|
+| via `setLoadError(true)` dal `.catch` | ucciso |
+| via `loadError` dal `disabled` del Salva | ucciso |
+| stato iniziale ≠ `[]` | ucciso |
+
+**3 su 3.** Rete: `tests/test_catena_config_guardia_salva.py` (3 test); area
+catena verde, 62 test.
+
+**Limite dichiarato.** È una fotografia **strutturale**: prova che i due presidi
+esistono e sono collegati, non che React li renderizzi — `esegui_ts` non entra
+nei `.tsx`. Estrarre il `disabled` in `lib/` sarebbe indirezione inventata per il
+test. Stessa scelta di `test_il_dialog_hardcoda_ancora_le_aliquote`.
+
+**Perimetro non coperto, verificato a codice:** una `200` con liste vuote
+lascerebbe il Salva abilitato. Oggi **irraggiungibile** — `_resolve_gruppo`
+(`services/routers/gruppo.py:674`) solleva 400 sotto le 2 sedi e `segnali` nasce
+da `_SEGNALI_CATALOGO`, mai vuoto. A DB: 2 righe `gruppo_assistant_config`,
+**0 con esclusioni** — nessun danno possibile oggi.

@@ -81,7 +81,6 @@ va misurato e portato a Mattia **prima** di attivarlo.
 | **R6** | **9 copie backend del filtro `Da Classificare`** + NOTE senza emoji in `margine_service.py` e 2 RPC | Alto | **Non è un residuo da chiudere in coda**: 0 righe attive oggi, ma richiede una **migration su 7 account veri**. Si apre come dimensione a sé, quando Mattia decide |
 
 | **R7** | **4 letterali IVA** in `margine_service.py` (`/1.10`, `/1.22` a righe 777, 799, 1101) | Basso | L'aliquota vive come numero magico in 3 punti del calcolo del **fatturato netto**. Se una cambia, cambia in un posto solo e nessuno se ne accorge. Dichiarato «remediation separata, da proporre» |
-| **R8** | **Guardia sulle liste vuote** di `config-assistente-catena` | Basso | Fix a sé, dichiarato aperto nella 3ª passata su `catena/` |
 
 **Come si esegue:** R1→R4 stanno in **una sessione** (piccoli e indipendenti).
 R5 in una sessione propria. R6 è una dimensione, non un residuo.
@@ -97,7 +96,12 @@ si chiudono in coda a una sessione. Stessa natura: `daysToCestino` e
 importi) e il mutante sul locale `"it"`.
 
 **Chiuso e depennato:** `parseImportoIt` con `replace` non globale — risolto da
-un'altra sessione senza che nessuno lo registrasse. *La lista invecchia in
+un'altra sessione senza che nessuno lo registrasse. **R8** (guardia sulle liste
+vuote di `config-assistente-catena`) — era **già implementata** dal commit
+`71ac3ab`, cioè dalla stessa 3ª passata che la dichiarava aperta: il residuo era
+stato copiato dal «non fatto» del verbale senza ri-guardare il codice. Il 03/09
+la guardia è stata provata per mutazione (3 mutanti, 3 uccisi) e legata da
+`tests/test_catena_config_guardia_salva.py`. *La lista invecchia in
 entrambe le direzioni: si ri-verifica, non si eredita.*
 
 **Esclusioni motivate — non sono residui.** Il **rendering React** (~4.300 righe
