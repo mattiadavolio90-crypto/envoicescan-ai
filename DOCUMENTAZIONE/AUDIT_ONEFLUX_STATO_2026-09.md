@@ -68,8 +68,8 @@ va misurato e portato a Mattia **prima** di attivarlo.
 >   protezione esplicita (`Depends` in firma o `dependencies` nel decoratore),
 >   **zero scoperti**. È un rischio *strutturale* (un endpoint nuovo nascerebbe
 >   aperto), non un buco attivo. Declassato di priorità.
-> - **R3 è più grande del dichiarato**: i formattatori duplicati sono **12, non
->   7**. I verbali cercavano `const`, ma sono `function`.
+> - **R4 è più grande del dichiarato**: i formattatori duplicati sono **12, non
+>   7**, e su **5 file** (non 4). I verbali cercavano `const`, ma sono `function`.
 
 | # | Residuo | Sforzo | Perché in questa posizione |
 |---|---|---|---|
@@ -77,10 +77,8 @@ va misurato e portato a Mattia **prima** di attivarlo.
 | **R5** | **`dependencies=[...]` a livello di `APIRouter`** — 12 router, 216 endpoint | Medio-alto | Nessuna falla attiva (0 endpoint scoperti): è **prevenzione**. Tocca tutto il traffico, vuole la sua finestra e una sessione propria |
 | **R6** | **9 copie backend del filtro `Da Classificare`** + NOTE senza emoji in `margine_service.py` e 2 RPC | Alto | **Non è un residuo da chiudere in coda**: 0 righe attive oggi, ma richiede una **migration su 7 account veri**. Si apre come dimensione a sé, quando Mattia decide |
 
-| **R7** | **4 letterali IVA** in `margine_service.py` (`/1.10`, `/1.22` a righe 777, 799, 1101) | Basso | L'aliquota vive come numero magico in 3 punti del calcolo del **fatturato netto**. Se una cambia, cambia in un posto solo e nessuno se ne accorge. Dichiarato «remediation separata, da proporre» |
-
-**Come si esegue:** R1→R4 stanno in **una sessione** (piccoli e indipendenti).
-R5 in una sessione propria. R6 è una dimensione, non un residuo.
+**Come si esegue:** R5 in una sessione propria. R6 è una dimensione, non un
+residuo. R1, R2, R3, R7 e R8 sono stati chiusi il 03/09 — vedi i verbali.
 
 **Fotografato di proposito, NON è un residuo.** Le **8 anomalie di `catena/`**
 (`ordinaRighe` coi null, `tintConti` che sceglie l'ipotesi ottimista,

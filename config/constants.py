@@ -21,6 +21,16 @@ MAX_SESSIONI_ATTIVE = 5             # Sessioni (dispositivi) attive per utente: 
 COMPETENZA_AUTO_SOGLIA_GIORNI = 7   # Fatture emesse entro il giorno X → sospette del mese precedente
 COMPETENZA_AUTO_ABILITA = True       # Abilita/disabilita il suggerimento automatico
 
+# Scorporo IVA sui ricavi — i corrispettivi si inseriscono LORDI (come sul
+# registratore di cassa) e il netto si ottiene dividendo per l'aliquota.
+# Il netto così calcolato è il denominatore del MOL: un'aliquota cambiata in un
+# posto solo sposta i margini di tutto lo storico senza sollevare niente.
+# Gemelle di IVA_DIVISORE_10 / IVA_DIVISORE_22 in
+# apps/web/src/app/(app)/margini/periodi.ts — le due copie sono legate da
+# tests/test_iva_divisori_fonte_unica.py.
+IVA_DIVISORE_10 = 1.10   # Aliquota 10%: ristorazione e somministrazione
+IVA_DIVISORE_22 = 1.22   # Aliquota 22%: ordinaria (alcolici, servizi)
+
 
 # ============================================================
 # REGEX PRECOMPILATE (OTTIMIZZAZIONE PERFORMANCE)

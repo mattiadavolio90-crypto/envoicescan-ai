@@ -16,7 +16,13 @@ except ImportError:
     st = None
 from datetime import datetime, timezone
 from config.logger_setup import get_logger
-from config.constants import CATEGORIE_FOOD, CATEGORIE_SPESE_GENERALI, KPI_SOGLIE
+from config.constants import (
+    CATEGORIE_FOOD,
+    CATEGORIE_SPESE_GENERALI,
+    KPI_SOGLIE,
+    IVA_DIVISORE_10,
+    IVA_DIVISORE_22,
+)
 from utils.streamlit_compat import make_cache as _make_cache
 
 logger = get_logger('margine_service')
@@ -774,7 +780,7 @@ def calcola_risultati(df_input: pd.DataFrame) -> pd.DataFrame:
     Calcola margini e percentuali per ogni mese + riga totale anno.
     
     Formula:
-        Fatturato Netto = (Fatt_IVA10 / 1.10) + (Fatt_IVA22 / 1.22) + Altri_Ricavi_NoIVA
+        Fatturato Netto = (Fatt_IVA10 / IVA_DIVISORE_10) + (Fatt_IVA22 / IVA_DIVISORE_22) + Altri_Ricavi_NoIVA
         Costi F&B Tot = Costi_FB_Auto + Altri_FB
         Primo Margine = Fatt_Netto - Costi_FB_Tot
         MOL = Primo_Margine - Spese_Tot - Costo_Dipendenti
@@ -796,7 +802,7 @@ def calcola_risultati(df_input: pd.DataFrame) -> pd.DataFrame:
         fatt_iva10 = float(df_input.at[i, 'Fatt_IVA10'])
         fatt_iva22 = float(df_input.at[i, 'Fatt_IVA22'])
         altri_ricavi_noiva = float(df_input.at[i, 'Altri_Ricavi_NoIVA'])
-        fatt_netto = (fatt_iva10 / 1.10) + (fatt_iva22 / 1.22) + altri_ricavi_noiva
+        fatt_netto = (fatt_iva10 / IVA_DIVISORE_10) + (fatt_iva22 / IVA_DIVISORE_22) + altri_ricavi_noiva
         
         # Costi totali (auto + manuali)
         costi_fb_tot = float(df_input.at[i, 'Costi_FB_Auto']) + float(df_input.at[i, 'Altri_FB'])
@@ -1098,7 +1104,7 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
         fatt_iva10 = float(df_input.at[i, 'Fatt_IVA10'])
         fatt_iva22 = float(df_input.at[i, 'Fatt_IVA22'])
         altri_ricavi_noiva = float(df_input.at[i, 'Altri_Ricavi_NoIVA'])
-        fatt_netto = round((fatt_iva10 / 1.10) + (fatt_iva22 / 1.22) + altri_ricavi_noiva, 2)
+        fatt_netto = round((fatt_iva10 / IVA_DIVISORE_10) + (fatt_iva22 / IVA_DIVISORE_22) + altri_ricavi_noiva, 2)
         
         costi_fb_auto = float(df_input.at[i, 'Costi_FB_Auto'])
         altri_fb = float(df_input.at[i, 'Altri_FB'])

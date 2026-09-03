@@ -25,6 +25,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
+| 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
 
 ---
 
@@ -2205,3 +2206,52 @@ Il ramo sbagliato su giugno valeva **70.095 €** di differenza.
 il difetto originale (`?? 0`), che fa cadere 3 test. Rete:
 `tests/test_mobile_incassi_netto_frontend.py` (14 test); regressione 231 test
 verdi su margini/ricavi/format.
+
+---
+
+## Residuo R7 — i letterali IVA — 03/09/2026
+
+**Esito: costante nominata in `margine_service.py` + una rete su tutto il resto.**
+
+**Il residuo sottostimava il problema di sei volte.** Diceva «4 letterali in
+`margine_service.py`». Misurati il 03/09 col `grep` sull'intero backend: **29
+occorrenze in 5 file**.
+
+> **Come si contano, perché sbagliarlo è facile.** `grep -c` conta le **righe**,
+> non le occorrenze, e molte righe ne portano due (`/1.10` e `/1.22` nella stessa
+> espressione). A righe sembrano 18; contate davvero sono 29. La prima cifra che
+> avevo scritto era 18: **l'ha corretta il test**, non io.
+
+| file | occorrenze |
+|---|---:|
+| `services/fastapi_worker.py` | 10 |
+| `services/routers/ricavi.py` | 6 |
+| `services/routers/gruppo.py` | 5 |
+| `services/routers/margini.py` | 4 |
+| `services/margine_service.py` | 4 → **0** |
+
+**Scelta dell'owner:** sostituire solo in `margine_service.py` (il perimetro del
+residuo) e **legare le 25 restanti con un test**, invece di toccare 5 moduli che
+calcolano il MOL su tutto lo storico in una sessione con altri punti aperti.
+Stesso metodo di `test_margini_iva_equivalenza_frontend.py`, che sulla stessa
+classe di problema ha scelto la rete e non il refactor di massa.
+
+**Il MOL non si è spostato di un bit.** Verificato eseguendo `calcola_risultati`
+su 7 casi (0, negativi, decimali, i valori veri di giugno) e confrontando col
+risultato della formula a letterali: identico su tutti, `80.655 → 73.322,73 €`.
+
+**Mutazione** — 4 mutanti, **4 uccisi**, i due che contano davvero in cima:
+
+| Mutante | Esito |
+|---|---|
+| aliquota cambiata **solo in Python** | ucciso |
+| aliquota cambiata **solo in TypeScript** | ucciso |
+| `margine_service` torna ai letterali | ucciso |
+| copia **nuova** in un router | ucciso |
+
+Rete: `tests/test_iva_divisori_fonte_unica.py` (9 test). Regressione: **667 test**
+verdi su margini/ricavi/IVA.
+
+**Perimetro dichiarato, non taciuto:** restano **25 occorrenze** in 4 file, ora
+fotografate una per una. Se diminuiscono qualcuno sta migrando; se aumentano è
+una copia nuova, ed è così che da 4 sono diventate 29.
