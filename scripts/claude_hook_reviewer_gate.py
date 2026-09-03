@@ -44,6 +44,23 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MARKER_OK = REPO_ROOT / ".claude" / ".reviewer_gate_ok"
 MARKER_SEGNALATO = REPO_ROOT / ".claude" / ".reviewer_gate_segnalato"
 
+
+def _marker_segnalato(session_id: str) -> Path:
+    """File anti-loop, uno per sessione.
+
+    Era unico e indicizzato sul solo HEAD. Finche' tutte le sessioni misuravano
+    lo stesso diff cumulativo la chiave condivisa era coerente; da quando la base
+    e' per-sessione due sessioni hanno misure DIVERSE sullo stesso HEAD, e la
+    prima che segnala zittisce la seconda. Misurato il 3/9: MIA blocca su 18
+    file, poi ALTRA con 7 file propri sopra soglia non riceve nulla.
+    """
+    if not session_id:
+        return MARKER_SEGNALATO
+    pulito = "".join(c for c in session_id if c.isalnum() or c in "-_")[:64]
+    if not pulito:
+        return MARKER_SEGNALATO
+    return MARKER_SEGNALATO.with_name(f".reviewer_gate_segnalato_{pulito}")
+
 SOGLIA_FILE_NON_TEST = 8
 SOGLIA_RIGHE_NETTE = 400
 BRANCH_BASE = "main"
@@ -313,13 +330,19 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         payload = {}
+    if not isinstance(payload, dict):
+        # JSON valido ma non un oggetto ("stringa", [1,2]): payload.get()
+        # solleverebbe AttributeError e il gate morirebbe con exit 1.
+        payload = {}
+    session_id = payload.get("session_id") or ""
+    marker_segnalato = _marker_segnalato(session_id)
 
     if MARKER_OK.exists():
         MARKER_OK.unlink(missing_ok=True)
-        MARKER_SEGNALATO.unlink(missing_ok=True)
+        marker_segnalato.unlink(missing_ok=True)
         return 0
 
-    base_sessione = _base_sessione(payload.get("session_id") or "")
+    base_sessione = _base_sessione(session_id)
     misura = _diff_stat(base_sessione)
     if misura is None:
         print(
@@ -353,11 +376,11 @@ def main() -> int:
         return 0
 
     head = _head_corrente()
-    if MARKER_SEGNALATO.exists() and MARKER_SEGNALATO.read_text(encoding="utf-8").strip() == head:
+    if marker_segnalato.exists() and marker_segnalato.read_text(encoding="utf-8").strip() == head:
         return 0  # già segnalato per questo stato: non ripetere il blocco all'infinito
 
-    MARKER_SEGNALATO.parent.mkdir(parents=True, exist_ok=True)
-    MARKER_SEGNALATO.write_text(head, encoding="utf-8")
+    marker_segnalato.parent.mkdir(parents=True, exist_ok=True)
+    marker_segnalato.write_text(head, encoding="utf-8")
 
     avviso_stato = _stato_non_aggiornato(file_toccati)
 

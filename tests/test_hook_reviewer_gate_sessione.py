@@ -247,3 +247,81 @@ def test_con_piu_sessioni_nel_registro_usa_la_propria(tmp_path):
     assert _n_file(_esegui(repo, "MIA")) is None, (
         "il gate ha usato l'orario di un'altra sessione del registro"
     )
+
+
+def test_sessione_con_piu_commit_misura_dal_primo(tmp_path):
+    """La base e' il PRIMO commit della sessione, non l'ultimo.
+
+    Con un solo commit per sessione "primo" e "ultimo" coincidono, e il ciclo che
+    scorre git log per tenere il piu' vecchio non e' provato: un `break` dopo la
+    prima assegnazione lascerebbe la suite verde e il gate muto su meta' del
+    lavoro. Segnalato dalla review del 3/9 e riprodotto: 10 file -> 5, sotto
+    soglia, nessun avviso.
+    """
+    repo = _repo(tmp_path)
+    _file_di_codice(repo, 5, "primo")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "primo commit della sessione", quando=T_AVVIO + 10)
+    _file_di_codice(repo, 5, "secondo")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "secondo commit della sessione", quando=T_AVVIO + 20)
+    _registra(repo, "MIA", T_AVVIO)
+
+    contati = _n_file(_esegui(repo, "MIA"))
+    assert contati is not None, "gate muto su due commit di sessione"
+    assert contati >= 10, (
+        f"misurato dall'ultimo commit invece che dal primo: {contati} file invece di >=10"
+    )
+
+
+def test_il_marker_anti_loop_non_zittisce_le_altre_sessioni(tmp_path):
+    """Due sessioni, stesso HEAD, misure diverse: il marker deve essere per sessione.
+
+    Era unico e indicizzato sul solo HEAD: la prima sessione che segnalava
+    zittiva la seconda, anche con lavoro proprio sopra soglia.
+    """
+    repo = _repo(tmp_path)
+    _file_di_codice(repo, 9, "di_mia")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "lavoro di MIA", quando=T_AVVIO + 10)
+    _file_di_codice(repo, 9, "di_altra")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "lavoro di ALTRA", quando=T_AVVIO + 100)
+
+    (repo / ".claude" / ".sessioni_attive.json").write_text(
+        json.dumps(
+            [
+                {"pid": 1, "session_id": "MIA", "branch_atteso": "main", "timestamp_avvio": T_AVVIO},
+                {"pid": 2, "session_id": "ALTRA", "branch_atteso": "main", "timestamp_avvio": T_AVVIO + 90},
+            ]
+        )
+    )
+
+    assert _n_file(_esegui(repo, "MIA")) is not None, "precondizione: MIA deve segnalare"
+    assert _n_file(_esegui(repo, "ALTRA")) is not None, (
+        "il marker scritto da MIA ha zittito ALTRA sullo stesso HEAD"
+    )
+
+
+@pytest.mark.parametrize("payload", ['"una stringa"', "[1, 2, 3]", "42", "null"])
+def test_payload_json_valido_ma_non_oggetto_non_fa_crashare(tmp_path, payload):
+    """Un JSON valido che non e' un oggetto non deve uccidere il gate.
+
+    `payload.get()` su una stringa solleva AttributeError: il gate morirebbe con
+    exit 1 invece di misurare.
+    """
+    repo = _repo(tmp_path)
+    _file_di_codice(repo, 9, "codice")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "lavoro", quando=T_ALTRUI)
+
+    esito = subprocess.run(
+        [sys.executable, str(repo / "scripts" / "claude_hook_reviewer_gate.py")],
+        cwd=repo,
+        input=payload,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert esito.returncode != 1, f"gate crashato: {esito.stderr[-400:]}"
+    assert _n_file(esito.stdout.strip()) is not None, "gate muto su payload anomalo"
