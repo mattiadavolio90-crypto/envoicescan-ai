@@ -1691,80 +1691,78 @@ def _calcola_segnali(
             "segnale margine_calo saltato: user_id assente, costi live non calcolabili"
         )
     elif "margine_calo" not in segnali_off:
-        try:
-            from services.margine_service import calcola_costi_automatici_gruppo_sql
+        # {(anno, mese): mol_perc} per sede — la chiave porta l'anno, altrimenti
+        # gennaio dell'anno scorso si sovrascriverebbe con quello corrente.
+        per_pv_mesi: Dict[str, Dict[tuple, float]] = {rid: {} for rid in ids}
+        from services.margine_service import calcola_costi_automatici_gruppo_sql
 
-            # Anno corrente PRIMA: se la lettura dell'anno vecchio fallisce, i mesi
-            # gia' raccolti restano (un try attorno a entrambi li buttava via).
-            anni = sorted({oggi.year, oggi.year - 1}, reverse=True)
-            # {(anno, mese): {rid: mol_perc}} — la chiave porta l'anno, altrimenti
-            # gennaio dell'anno scorso si sovrascriverebbe con quello corrente.
-            per_pv_mesi: Dict[str, Dict[tuple, float]] = {rid: {} for rid in ids}
+        anni = sorted({oggi.year, oggi.year - 1})
 
-            for anno_i in anni:
-                try:
-                    mm = (
-                        sb.table("margini_mensili")
-                        .select(
-                            "ristorante_id,mese,fatturato_iva10,fatturato_iva22,"
-                            "altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,"
-                            "quote_riparto_fb,quote_riparto_spese,"
-                            "costo_dipendenti,costo_personale_extra"
-                        )
-                        .in_("ristorante_id", ids)
-                        .eq("anno", anno_i)
-                        .execute()
+        for anno_i in anni:
+            try:
+                mm = (
+                    sb.table("margini_mensili")
+                    .select(
+                        "ristorante_id,mese,fatturato_iva10,fatturato_iva22,"
+                        "altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,"
+                        "quote_riparto_fb,quote_riparto_spese,"
+                        "costo_dipendenti,costo_personale_extra"
                     )
-                    righe_anno = mm.data or []
-                    # Costi F&B/spese LIVE dalle fatture (non dallo snapshot) e ricavi
-                    # in modalità mensile: entrambi per anno, come i percorsi fratelli.
-                    costi_auto = calcola_costi_automatici_gruppo_sql(user_id, ids, anno_i)
-                    overrides = {rid: _overrides_mese_sede(sb, rid, anno_i) for rid in ids}
+                    .in_("ristorante_id", ids)
+                    .eq("anno", anno_i)
+                    .execute()
+                )
+                righe_anno = mm.data or []
+                # Costi F&B/spese LIVE dalle fatture (non dallo snapshot) e ricavi
+                # in modalità mensile: entrambi per anno, come i percorsi fratelli.
+                costi_auto = calcola_costi_automatici_gruppo_sql(user_id, ids, anno_i)
+                overrides = {rid: _overrides_mese_sede(sb, rid, anno_i) for rid in ids}
 
-                    mesi_anno = list(range(1, 13))
-                    if anno_i == oggi.year:
-                        mesi_anno = list(range(1, oggi.month + 1))
+                mesi_anno = list(range(1, 13))
+                if anno_i == oggi.year:
+                    mesi_anno = list(range(1, oggi.month + 1))
 
-                    for m in mesi_anno:
-                        agg_m = _aggrega_sedi_mensili(
-                            ids=ids,
-                            righe_mm=righe_anno,
-                            costi_auto=costi_auto,
-                            overrides=overrides,
-                            mesi=[m],
-                        )
-                        for rid in ids:
-                            a = agg_m.get(rid) or {}
-                            netto = float(a.get("netto") or 0)
-                            # Mese incompleto: niente ricavi, niente costi merce o
-                            # niente personale → il margine non è confrontabile.
-                            if netto <= 0 or float(a.get("fb") or 0) <= 0 or float(a.get("pers") or 0) <= 0:
-                                continue
-                            per_pv_mesi[rid][(anno_i, m)] = float(a.get("mol") or 0) / netto * 100
-                except Exception as exc:
-                    logger.warning(f"segnale margine_calo: anno {anno_i} saltato ({exc})")
+                for m in mesi_anno:
+                    agg_m = _aggrega_sedi_mensili(
+                        ids=ids,
+                        righe_mm=righe_anno,
+                        costi_auto=costi_auto,
+                        overrides=overrides,
+                        mesi=[m],
+                    )
+                    for rid in ids:
+                        a = agg_m.get(rid) or {}
+                        netto = float(a.get("netto") or 0)
+                        # Mese incompleto: niente ricavi, niente costi merce o
+                        # niente personale → il margine non è confrontabile.
+                        if netto <= 0 or float(a.get("fb") or 0) <= 0 or float(a.get("pers") or 0) <= 0:
+                            continue
+                        per_pv_mesi[rid][(anno_i, m)] = float(a.get("mol") or 0) / netto * 100
+            except Exception as exc:
+                # Il try sta DENTRO il ciclo: un guasto su un anno non butta via
+                # i mesi gia' raccolti dall'altro (prova: TestResilienzaPerAnno),
+                # e per questo l'ordine degli anni e' irrilevante.
+                logger.warning(f"segnale margine_calo: anno {anno_i} saltato ({exc})")
 
-            for rid in ids:
-                mesi_dati = per_pv_mesi[rid]
-                if len(mesi_dati) < 2:
-                    continue
-                ultimo = max(mesi_dati.keys())
-                cur = mesi_dati[ultimo]
-                prec = [mesi_dati[k] for k in _mesi_indietro(ultimo[0], ultimo[1], 3) if k in mesi_dati]
-                if not prec:
-                    continue
-                media_prec = sum(prec) / len(prec)
-                if cur < media_prec - _SOGLIA_MARGINE_CALO_PT:
-                    segnali.append({
-                        "tipo": "margine_calo",
-                        "severity": "warning",
-                        "ristorante_id": rid,
-                        "pv_nome": rid_to_nome[rid],
-                        "testo": f"Margine al {cur:.0f}%, era {media_prec:.0f}% di media nei mesi precedenti",
-                        "cta_page": "/margini",
-                    })
-        except Exception as exc:
-            logger.warning(f"segnale margine_calo non calcolato: {exc}")
+        for rid in ids:
+            mesi_dati = per_pv_mesi[rid]
+            if len(mesi_dati) < 2:
+                continue
+            ultimo = max(mesi_dati.keys())
+            cur = mesi_dati[ultimo]
+            prec = [mesi_dati[k] for k in _mesi_indietro(ultimo[0], ultimo[1], 3) if k in mesi_dati]
+            if not prec:
+                continue
+            media_prec = sum(prec) / len(prec)
+            if cur < media_prec - _SOGLIA_MARGINE_CALO_PT:
+                segnali.append({
+                    "tipo": "margine_calo",
+                    "severity": "warning",
+                    "ristorante_id": rid,
+                    "pv_nome": rid_to_nome[rid],
+                    "testo": f"Margine al {cur:.0f}%, era {media_prec:.0f}% di media nei mesi precedenti",
+                    "cta_page": "/margini",
+                })
 
     # ── Segnale 3: ricavi mancanti nel mese in corso (per PV) ──
     # Un PV ha "ricavi" se ne ha registrato in QUALSIASI modo del mese: giornalieri

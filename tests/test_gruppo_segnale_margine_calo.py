@@ -193,6 +193,33 @@ class TestPerimetro:
             )
         assert [s for s in out if s["tipo"] == "margine_calo"] == []
 
+    def test_disattivato_non_calcola_nemmeno(self):
+        """La guardia `segnali_off` sul blocco non e' ridondante col filtro finale:
+        quel filtro toglie i segnali dall'OUTPUT, ma il calcolo (una query + una RPC
+        + N override per anno) sarebbe girato lo stesso. Qui si prova che, disattivato
+        il segnale, la RPC dei costi non viene proprio chiamata."""
+        righe = {ANNO: [_mm("a", m, pers=1000.0) for m in MESI]}
+        ovr = {"a": {m: {"iva10": 11000.0, "iva22": 0.0, "altri": 0.0} for m in MESI}}
+        chiamate = []
+
+        def _costi(uid, rids, anno):
+            chiamate.append(anno)
+            return {"a": ({M1: 5900.0, M2: 5900.0, M3: 5900.0, M4: 8700.0}, {})}
+
+        with patch.object(G, "_completezza_dati_pv", return_value={}), \
+             patch.object(G, "_overrides_mese_sede",
+                          side_effect=lambda sb, rid, a: ovr.get(rid, {})), \
+             patch("services.margine_service.calcola_costi_automatici_gruppo_sql",
+                   side_effect=_costi):
+            G._calcola_segnali(
+                _sb(righe), ["a"], {"a": "PV A"},
+                segnali_off={"dati_mancanti", "ricavi_mancanti", "prezzi_sopra",
+                             "margine_calo"},
+                user_id="u1",
+            )
+
+        assert chiamate == [], "segnale disattivato: il calcolo non deve partire"
+
     def test_senza_user_id_tace(self):
         """I costi live non sono calcolabili: meglio muto che con margini al 100%."""
         righe = {ANNO: [_mm("a", m, pers=1000.0) for m in MESI]}
@@ -212,30 +239,57 @@ class TestPerimetro:
 
 
 class TestFinestraSuDueAnni:
-    """La chiave di `per_pv_mesi` porta l'ANNO: senza, gennaio dell'anno scorso
-    si sovrascriverebbe con gennaio di quest'anno e la media dei mesi precedenti
-    verrebbe calcolata su dati di due anni diversi mescolati."""
+    """La chiave di `per_pv_mesi` porta l'ANNO. Senza, i mesi dell'anno precedente
+    verrebbero sovrascritti da quelli dell'anno corrente — e per un cliente la cui
+    finestra cavalca il capodanno il segnale si SPEGNEREBBE del tutto, perche' i
+    3 mesi di confronto stanno tutti nell'anno vecchio."""
 
-    def test_mesi_di_anni_diversi_non_si_sovrascrivono(self):
-        # Stesso NUMERO di mese (12) in due anni, con margini opposti: se la chiave
-        # perdesse l'anno, uno dei due sparirebbe e il confronto cambierebbe esito.
-        prec = ANNO - 1
+    def test_finestra_a_cavallo_del_capodanno(self):
+        """Ultimo mese completo = gennaio; i 3 precedenti = ott/nov/dic dell'anno
+        prima. E' l'unico caso in cui i mesi dell'anno vecchio entrano davvero nel
+        confronto: con una chiave senza anno (o con `per_pv_mesi` riazzerato a ogni
+        anno) qui il segnale sparisce."""
+        import datetime as _d
+
+        anno_cur, anno_prec = 2027, 2026
+
+        class _FakeDate(_d.date):
+            @classmethod
+            def today(cls):
+                return cls(anno_cur, 1, 20)
+
+        class _FakeDT(_d.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return _d.datetime(anno_cur, 1, 20, 12, 0, tzinfo=tz)
+
+        # ott/nov/dic al ~31% di margine, gennaio crolla al ~3%.
         righe = {
-            prec: [_mm("a", 12, pers=1000.0)],
-            ANNO: [_mm("a", m, pers=1000.0) for m in MESI],
+            anno_prec: [_mm("a", m, pers=1000.0) for m in (10, 11, 12)],
+            anno_cur: [_mm("a", 1, pers=1000.0)],
         }
         costi = {
-            prec: {"a": ({12: 5900.0}, {})},
-            ANNO: {"a": ({M1: 5900.0, M2: 5900.0, M3: 5900.0, M4: 8700.0}, {})},
+            anno_prec: {"a": ({10: 5900.0, 11: 5900.0, 12: 5900.0}, {})},
+            anno_cur: {"a": ({1: 8700.0}, {})},
         }
         ovr_val = {"iva10": 11000.0, "iva22": 0.0, "altri": 0.0}
-        ovr = {"a": {12: ovr_val, **{m: ovr_val for m in MESI}}}
+        ovr = {"a": {m: ovr_val for m in (1, 10, 11, 12)}}
 
-        seg = _segnali(righe, costi, overrides=ovr)
+        with patch.object(G, "_completezza_dati_pv", return_value={}), \
+             patch.object(G, "_overrides_mese_sede",
+                          side_effect=lambda sb, rid, a: ovr.get(rid, {})), \
+             patch("services.margine_service.calcola_costi_automatici_gruppo_sql",
+                   side_effect=lambda uid, rids, a: costi.get(a, {})), \
+             patch.object(_d, "date", _FakeDate), \
+             patch.object(_d, "datetime", _FakeDT):
+            out = G._calcola_segnali(
+                _sb(righe), ["a"], {"a": "PV A"},
+                segnali_off={"dati_mancanti", "ricavi_mancanti", "prezzi_sopra"},
+                user_id="u1",
+            )
 
-        # Il mese piu' recente resta quello dell'anno corrente: il segnale scatta
-        # sul calo di M4, non su un mese dell'anno precedente.
-        assert len(seg) == 1
+        seg = [x for x in out if x["tipo"] == "margine_calo"]
+        assert len(seg) == 1, "i 3 mesi di confronto stanno nell'anno precedente"
         assert "Margine al" in seg[0]["testo"]
 
 
