@@ -52,6 +52,12 @@ def export_excel_personale_mensile(
 
     dipendenti_ordinati = sorted(dipendenti, key=lambda d: d["nome"])
 
+    # Ore effettivamente in griglia, accumulate cella per cella: il totale di
+    # riga deve coincidere con quello che il cliente vede sommando le celle,
+    # non con l'aggregato del Riepilogo (che include anche le righe mensili a
+    # busta paga, senza giorno, invisibili in questo foglio).
+    ore_giorno: dict[str, float] = {}
+
     # Pivot dipendente|giorno -> riga turno (una sola per cella, stesso criterio
     # della griglia mensile React: prima occorrenza vince).
     cella: dict[tuple[str, str], dict] = {}
@@ -69,7 +75,8 @@ def export_excel_personale_mensile(
     # ---- FOGLIO TURNI ----
     ws = wb.active
     ws.title = "Turni"
-    tot_cols = 1 + n_giorni
+    col_tot = 2 + n_giorni
+    tot_cols = col_tot
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=tot_cols)
     title_cell = ws.cell(row=1, column=1, value=f"TURNI {mese} — {nome_ristorante}")
     title_cell.font = Font(bold=True, size=14, color="FFFFFF")
@@ -89,6 +96,11 @@ def export_excel_personale_mensile(
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = border_thin
+    tot_header = ws.cell(row=2, column=col_tot, value="TOT ORE")
+    tot_header.font = header_font
+    tot_header.fill = header_fill
+    tot_header.alignment = Alignment(horizontal="center", vertical="center")
+    tot_header.border = border_thin
     ws.row_dimensions[2].height = 20
 
     for r, dip in enumerate(dipendenti_ordinati):
@@ -106,9 +118,10 @@ def export_excel_personale_mensile(
                 if tipo != "turno":
                     valore = SIGLA.get(tipo, "?")
                 else:
-                    ora = (t.get("ora_inizio") or "")[:5]
                     ore_tot = _ore_turno_locale(t)
-                    valore = f"{ora} ({ore_tot:g}h)" if ora else f"{ore_tot:g}h"
+                    ore_giorno[dip["id"]] = ore_giorno.get(dip["id"], 0.0) + ore_tot
+                    fascia = _fascia_oraria(t)
+                    valore = f"{fascia} ({ore_tot:g}h)" if fascia else f"{ore_tot:g}h"
             cell = ws.cell(row=row, column=col, value=valore)
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = border_thin
@@ -116,13 +129,43 @@ def export_excel_personale_mensile(
             if weekend_flags[i]:
                 cell.fill = weekend_fill
 
+        ore_riga = round(ore_giorno.get(dip["id"], 0.0), 2)
+        cell_tot = ws.cell(row=row, column=col_tot, value=ore_riga)
+        cell_tot.font = Font(bold=True, size=10)
+        cell_tot.fill = tot_fill
+        cell_tot.border = border_thin
+        cell_tot.alignment = Alignment(horizontal="center", vertical="center")
+        cell_tot.number_format = "0.00"
+
+    # Riga finale: ore complessive di tutti i dipendenti nel mese.
+    riga_tot_turni = 3 + len(dipendenti_ordinati)
+    label_tot = ws.cell(row=riga_tot_turni, column=1, value="TOTALE ORE")
+    label_tot.font = Font(bold=True, size=10)
+    label_tot.fill = tot_fill
+    label_tot.border = border_thin
+    label_tot.alignment = Alignment(horizontal="left", vertical="center")
+    for i in range(n_giorni):
+        c = ws.cell(row=riga_tot_turni, column=2 + i, value="")
+        c.fill = tot_fill
+        c.border = border_thin
+    cell_tot_gen = ws.cell(
+        row=riga_tot_turni, column=col_tot,
+        value=round(sum(ore_giorno.values()), 2),
+    )
+    cell_tot_gen.font = Font(bold=True, size=10)
+    cell_tot_gen.fill = tot_fill
+    cell_tot_gen.border = border_thin
+    cell_tot_gen.alignment = Alignment(horizontal="center", vertical="center")
+    cell_tot_gen.number_format = "0.00"
+
     ws.column_dimensions["A"].width = 22
     for i in range(n_giorni):
-        ws.column_dimensions[get_column_letter(2 + i)].width = 10
+        ws.column_dimensions[get_column_letter(2 + i)].width = 14
+    ws.column_dimensions[get_column_letter(col_tot)].width = 11
 
     # ---- FOGLIO RIEPILOGO ----
     ws2 = wb.create_sheet(title="Riepilogo")
-    tot_cols2 = 7
+    tot_cols2 = 8
     ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=tot_cols2)
     title2 = ws2.cell(row=1, column=1, value=f"RIEPILOGO {mese} — {nome_ristorante}")
     title2.font = Font(bold=True, size=14, color="FFFFFF")
@@ -130,7 +173,7 @@ def export_excel_personale_mensile(
     title2.alignment = Alignment(horizontal="center", vertical="center")
     ws2.row_dimensions[1].height = 28
 
-    headers2 = ["Dipendente", "Ore std", "Ore extra", "Costo std (€)", "Costo extra (€)", "Costo assenze (€)", "Totale (€)"]
+    headers2 = ["Dipendente", "Ore std", "Ore extra", "Ore totali", "Costo std (€)", "Costo extra (€)", "Costo assenze (€)", "Totale (€)"]
     for c, h in enumerate(headers2, start=1):
         cell = ws2.cell(row=2, column=c, value=h)
         cell.font = header_font
@@ -155,7 +198,8 @@ def export_excel_personale_mensile(
         tot_costo_ext += costo_ext
         tot_costo_ass += costo_ass
 
-        valori = [nome, ore_std, ore_ext, costo_std, costo_ext, costo_ass, totale]
+        ore_tot_dip = round(ore_std + ore_ext, 2)
+        valori = [nome, ore_std, ore_ext, ore_tot_dip, costo_std, costo_ext, costo_ass, totale]
         for c, v in enumerate(valori, start=1):
             cell = ws2.cell(row=row, column=c, value=v)
             cell.border = border_thin
@@ -163,7 +207,10 @@ def export_excel_personale_mensile(
                 cell.alignment = Alignment(horizontal="left")
             else:
                 cell.alignment = Alignment(horizontal="right")
-                if c >= 4:
+                if c == 4:
+                    cell.font = Font(bold=True, size=10)
+                    cell.number_format = "0.00"
+                elif c >= 5:
                     cell.number_format = "€ #,##0.00"
 
     riga_tot = 3 + len(dipendenti_ordinati)
@@ -172,7 +219,7 @@ def export_excel_personale_mensile(
     tot_cell.fill = tot_fill
     tot_cell.border = border_thin
     valori_tot = [
-        round(tot_ore_std, 2), round(tot_ore_ext, 2),
+        round(tot_ore_std, 2), round(tot_ore_ext, 2), round(tot_ore_std + tot_ore_ext, 2),
         round(tot_costo_std, 2), round(tot_costo_ext, 2), round(tot_costo_ass, 2),
         round(tot_costo_std + tot_costo_ext + tot_costo_ass, 2),
     ]
@@ -182,11 +229,13 @@ def export_excel_personale_mensile(
         cell.fill = tot_fill
         cell.border = border_thin
         cell.alignment = Alignment(horizontal="right")
-        if c >= 4:
+        if c == 4:
+            cell.number_format = "0.00"
+        elif c >= 5:
             cell.number_format = "€ #,##0.00"
 
     ws2.column_dimensions["A"].width = 22
-    for col_letter in ["B", "C", "D", "E", "F", "G"]:
+    for col_letter in ["B", "C", "D", "E", "F", "G", "H"]:
         ws2.column_dimensions[col_letter].width = 15
 
     buf = BytesIO()
@@ -219,3 +268,24 @@ def _ore_turno_locale(t: dict) -> float:
     except (TypeError, ValueError):
         pass
     return round(tot, 2)
+
+
+def _fascia_oraria(t: dict) -> str:
+    """'09:00-17:00', o '09:00-14:00 / 18:00-23:00' col turno spezzato.
+
+    Prima del 4/9/2026 la cella mostrava il solo orario di inizio: chi leggeva
+    l'export non poteva sapere a che ora finiva il turno, e con lo spezzato il
+    secondo slot spariva del tutto.
+    """
+    def fascia(inizio, fine) -> str:
+        i = (inizio or "")[:5]
+        f = (fine or "")[:5]
+        if i and f:
+            return f"{i}-{f}"
+        return i or ""
+
+    parti = [p for p in (
+        fascia(t.get("ora_inizio"), t.get("ora_fine")),
+        fascia(t.get("ora_inizio2"), t.get("ora_fine2")),
+    ) if p]
+    return " / ".join(parti)

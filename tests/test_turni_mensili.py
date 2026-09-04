@@ -1098,12 +1098,92 @@ class TestExportExcelPersonaleMensile:
         righe = {r[0]: r for r in ws_riep.iter_rows(min_row=3, values_only=True) if r[0]}
         # Mario: 8h std, 80€ std + 50€ assenze = 130€ totale (nessuna extra)
         assert righe["Mario Rossi"][1] == 8.0
-        assert righe["Mario Rossi"][6] == 130.0
+        assert righe["Mario Rossi"][3] == 8.0   # ore totali = std + extra
+        assert righe["Mario Rossi"][7] == 130.0
         # Anna: 8h std + 2h extra, 80+20 = 100€ totale (nessuna assenza)
         assert righe["Anna Bianchi"][2] == 2.0
-        assert righe["Anna Bianchi"][6] == 100.0
+        assert righe["Anna Bianchi"][3] == 10.0
+        assert righe["Anna Bianchi"][7] == 100.0
         # Riga TOTALE: somma dei due dipendenti
-        assert righe["TOTALE"][6] == 230.0
+        assert righe["TOTALE"][3] == 18.0
+        assert righe["TOTALE"][7] == 230.0
+
+    def test_cella_mostra_orario_inizio_e_fine(self):
+        """Il bug segnalato il 4/9/2026: la cella mostrava solo l'ora di
+        inizio, quindi dall'export non si poteva sapere quando finiva il
+        turno. Deve comparire la fascia intera, spezzato incluso."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from services.personale_export_service import export_excel_personale_mensile
+
+        turni = [
+            {"dipendente_id": "d1", "data_turno": "2026-07-01", "ora_inizio": "14:00", "ora_fine": "22:00", "tipo_giorno": "turno"},
+            {"dipendente_id": "d2", "data_turno": "2026-07-01", "ora_inizio": "08:00", "ora_fine": "14:00",
+             "ora_inizio2": "18:00", "ora_fine2": "23:00", "tipo_giorno": "turno"},
+        ]
+        xlsx = export_excel_personale_mensile(
+            turni=turni,
+            dipendenti=[{"id": "d1", "nome": "Mario Rossi"}, {"id": "d2", "nome": "Anna Bianchi"}],
+            mese="2026-07", nome_ristorante="Test SRL",
+            ore_standard_per_persona={}, ore_extra_per_persona={},
+            costo_standard_per_persona={}, costo_extra_per_persona={}, costo_assenze_per_persona={},
+        )
+        ws = load_workbook(BytesIO(xlsx))["Turni"]
+        # Anna Bianchi ordina prima di Mario Rossi -> riga 3 / riga 4.
+        assert ws.cell(row=4, column=2).value == "14:00-22:00 (8h)"
+        assert ws.cell(row=3, column=2).value == "08:00-14:00 / 18:00-23:00 (11h)"
+
+    def test_totale_ore_per_dipendente_e_complessivo_nel_foglio_turni(self):
+        """Colonna TOT ORE a fine riga + riga TOTALE ORE in fondo: sommano le
+        ore effettivamente in griglia, assenze escluse."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from services.personale_export_service import export_excel_personale_mensile
+
+        turni = [
+            {"dipendente_id": "d1", "data_turno": "2026-07-01", "ora_inizio": "14:00", "ora_fine": "22:00", "tipo_giorno": "turno"},
+            {"dipendente_id": "d1", "data_turno": "2026-07-02", "ora_inizio": "09:00", "ora_fine": "14:00", "tipo_giorno": "turno"},
+            {"dipendente_id": "d1", "data_turno": "2026-07-03", "tipo_giorno": "ferie"},
+            {"dipendente_id": "d2", "data_turno": "2026-07-01", "ora_inizio": "08:00", "ora_fine": "16:00", "ore_extra": 2, "tipo_giorno": "turno"},
+        ]
+        xlsx = export_excel_personale_mensile(
+            turni=turni,
+            dipendenti=[{"id": "d1", "nome": "Mario Rossi"}, {"id": "d2", "nome": "Anna Bianchi"}],
+            mese="2026-07", nome_ristorante="Test SRL",
+            ore_standard_per_persona={}, ore_extra_per_persona={},
+            costo_standard_per_persona={}, costo_extra_per_persona={}, costo_assenze_per_persona={},
+        )
+        ws = load_workbook(BytesIO(xlsx))["Turni"]
+        col_tot = 2 + 31  # luglio: 31 giorni
+        assert ws.cell(row=2, column=col_tot).value == "TOT ORE"
+        assert ws.cell(row=3, column=1).value == "Anna Bianchi"
+        assert ws.cell(row=3, column=col_tot).value == 10.0   # 8h + 2h extra
+        assert ws.cell(row=4, column=col_tot).value == 13.0   # 8h + 5h, ferie escluse
+        assert ws.cell(row=5, column=1).value == "TOTALE ORE"
+        assert ws.cell(row=5, column=col_tot).value == 23.0
+
+    def test_riepilogo_ha_ore_totali_per_dipendente_e_complessive(self):
+        """Seconda scheda: colonna Ore totali (std+extra) per riga e nella
+        riga TOTALE."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from services.personale_export_service import export_excel_personale_mensile
+
+        xlsx = export_excel_personale_mensile(
+            turni=[],
+            dipendenti=[{"id": "d1", "nome": "Mario Rossi"}, {"id": "d2", "nome": "Anna Bianchi"}],
+            mese="2026-07", nome_ristorante="Test SRL",
+            ore_standard_per_persona={"Mario Rossi": 160.0, "Anna Bianchi": 120.5},
+            ore_extra_per_persona={"Mario Rossi": 12.0},
+            costo_standard_per_persona={}, costo_extra_per_persona={}, costo_assenze_per_persona={},
+        )
+        ws = load_workbook(BytesIO(xlsx))["Riepilogo"]
+        intestazioni = [c.value for c in ws[2]]
+        assert intestazioni[3] == "Ore totali"
+        righe = {r[0]: r for r in ws.iter_rows(min_row=3, values_only=True) if r[0]}
+        assert righe["Mario Rossi"][3] == 172.0
+        assert righe["Anna Bianchi"][3] == 120.5
+        assert righe["TOTALE"][3] == 292.5
 
     def test_mese_senza_turni_non_solleva_eccezioni(self):
         from services.personale_export_service import export_excel_personale_mensile
@@ -1216,4 +1296,4 @@ class TestEndpointExportMensile:
         righe = {r[0]: r for r in ws_riep.iter_rows(min_row=3, values_only=True) if r[0]}
         assert "Luigi" in righe, "l'ex-dipendente deve comparire nel Riepilogo"
         # 8h a 10€/h ciascuno: Mario 80€ + Luigi 80€ = 160€ nel TOTALE.
-        assert righe["TOTALE"][6] == 160.0
+        assert righe["TOTALE"][7] == 160.0
