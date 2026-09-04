@@ -49,11 +49,13 @@ prima del lavoro è la pratica che ha prodotto più valore di tutto il ciclo.
 | Cosa | Stato |
 |---|---|
 | **Note di credito col segno sbagliato** | Codice fatto e committato. Restano **10 righe da correggere a DB**. ⚠️ **In esecuzione in un'altra sessione (02/09)** — non toccare |
-| **Categorizzazione** — fasi 4, 4bis, 5, 6, 8 | 5 fasi aperte su 10, più 2 voci emerse strada facendo. Piano in `docs/piani/PIANO_CATEGORIZZAZIONE.md` |
+| **Categorizzazione** — fasi 4, 4bis, 5, 6, 8 | ✅ **Chiuse fuori ciclo** il 03-04/09 (sessione Fable, `e36dfcd`→`8dd7a2e`), ognuna con test dedicati: 10 fasi su 10. Piano in `docs/piani/PIANO_CATEGORIZZAZIONE.md` (registra fino alla 4bis: le fasi 5, 6, 8 stanno nei commit). ⚠️ **Resta a carico di Mattia**: applicare la migration `20260903210000` e decidere se accendere il flag `ESCLUDI_DA_VERIFICARE_DAI_MARGINI` (oggi `False`, delta misurato: **zero su 11 sedi**) |
 
-La fase 4 (esclusione dai margini, 19 RPC) è la più pesante e la più delicata:
-tocca il MOL su tutto lo storico, dietro un flag disattivato, e il delta per sede
-va misurato e portato a Mattia **prima** di attivarlo.
+La fase 4 (esclusione dai margini) è la più pesante e la più delicata: tocca il
+MOL su tutto lo storico, dietro un flag disattivato, e il delta per sede va
+misurato e portato a Mattia **prima** di attivarlo. **Le RPC vive erano 7, non
+19** (ri-misurate su `pg_proc`, non contate sui file migration): la cifra vecchia
+era un conteggio sui file, non sul DB.
 
 ### Residui aperti — la roadmap di chiusura
 
@@ -88,6 +90,26 @@ va misurato e portato a Mattia **prima** di attivarlo.
 | # | Residuo | Sforzo | Perché in questa posizione |
 |---|---|---|---|
 | **R9** | **Il registro delle sessioni ha PID morti** — `claude_hook_registra_sessione.py` salva `os.getppid()`, che è il wrapper dell'hook e muore subito | Basso | Misurato il 03/09: **1 voce con PID morto mentre giravano 3 sessioni**. Conseguenza: molte sessioni non si ritrovano nel registro e il gate di review ricade sul merge-base, cioè **il fix del 03/09 è spesso inattivo**. Il degrado è sicuro (avvisa di più, non tace), quindi non urge: va misurato quante volte l'attribuzione riesce davvero |
+
+### Aperti dalla verifica di quadratura — 03/09 (Q1–Q4)
+
+> Esito della voce §3 #1, eseguita il 03/09 sui dati veri (report completo in
+> `scratchpad/coerenza_numeri_report.md`). Le quadrature fondamentali tornano al
+> centesimo; questi sono i quattro esiti che restano. Remediation e decisioni in
+> sessioni separate.
+
+| # | Cosa | Natura |
+|---|---|---|
+| **Q1** | Il segnale «margine in calo» della catena non è mai potuto scattare per nessun cliente: il blocco «Segnale 1» (`services/routers/gruppo.py`) legge due colonne **snapshot** di `margini_mensili` — gate `fatturato_netto > 0` e valore `mol_perc` — che per le sedi di catena non sono valorizzate. **Ri-misurato il 04/09**: le 3 SUSHILAND **passano** il gate su 9 mesi su 9 e cadono solo su `mol_perc` (chi corregge solo il gate non ripara niente per loro); le sedi con `mol_perc` valorizzato sono tutte mono-sede o LAND → **0 clienti serviti**. La stessa classe di bug è già corretta in 3 percorsi fratelli nello stesso file | **Bug** — fix |
+| **Q2** | Food cost con due definizioni: ÷lordo (Home, catena, briefing) vs ÷netto (pagina Margini) — 2,2–3,6 punti di scarto su 14 mesi, colore ribaltato in 3 mesi su 7 per OFFSIDE alla soglia 38% | **Decisione di Mattia** |
+| **Q3** | Snapshot economico di `margini_mensili` incoerente per costruzione: 3 scrittori che non si parlano. Misurato: OVERTIME febbraio MOL fotografato +50.834 € vs +28.398 € vero. ⚠️ **Chiuso Q1, la colonna `mol_perc` resta senza alcun lettore runtime** (verificato: il blocco Segnale 1 era l'unico): la natura della voce cambia da «serve un presidio» a «colonna morta da valutare» | **Strutturale** |
+| **Q4** | Tab Calcolo vs tab Analisi (pagina Margini): le quote riparto includono le righe «Da Classificare» della sede tecnica (deliberato), la proiezione per centro le esclude (deliberato — regola di dominio 1). Scarto 13–592 €/mese. Due regole giuste in conflitto | **Decisione di Mattia** |
+
+> **Perché questa sezione è stata riscritta il 04/09.** Il commit `4985f5f` aveva
+> riportato indietro lo stato del ciclo per tenerne fuori il lavoro Fable, e con
+> esso erano sparite anche Q1–Q4, che invece **appartengono a questo ciclo** (voce
+> §3 #1, l'unica che Fable non ha toccato). Ricostruita dal report di quadratura,
+> con le cifre ri-misurate a DB, non ricopiate.
 
 **Come si esegue:** resta **solo R9**, che tocca gli hook di sessione e nessun
 codice di prodotto — ed è **lavoro di un'altra sessione** (`claude_hook_*`), non
@@ -158,14 +180,27 @@ perimetro escluso è stato **misurato e motivato**.
 Il conto delle righe sta in `AUDIT_COPERTURA.md`. Qui c'è l'ordine, deciso per
 **importanza per il cliente**, non per dimensione del file.
 
-| # | Cosa | Perché in questa posizione |
-|---|---|---|
-| **1** | **Quadratura dei numeri fra le pagine** — prendere 3 clienti veri e verificare che lo stesso dato torni in ogni schermata dove compare | 🔴 **Non è un audit di codice, è la verifica che nessuno ha mai fatto.** Il prompt esiste da agosto (`docs/storico/..._COERENZA_NUMERI.md`) e non è mai stato eseguito. Nasce dall'unico difetto trovato **dal cliente prima che dall'audit** (F&B e Spese Generali che non tornavano). È ciò che difende la reputazione, non la qualità del codice |
-| **2** | **I prompt AI** — `config/`, 2.379 righe, mai guardate | È il cuore del prodotto e la **regola di dominio n.1**. Un difetto qui non colpisce un cliente: li colpisce tutti insieme, in silenzio. Ha già dato un problema (il prompt contraddiceva la regola, ciclo 08) |
-| **3** | **Categorizzazione, fasi 4→8** — 5 fasi su 10 aperte | Lavoro già iniziato e fermo a metà: rientra nel principio «niente parziali». La fase 4 tocca il MOL su tutto lo storico, dietro flag: il delta per sede si misura e si porta a Mattia **prima** di attivarlo |
-| **4** | **Il briefing giornaliero** — `daily_briefing_service.py`, 1.637 righe | È **la prima cosa che il cliente legge ogni mattina**. Quattro sessioni di lavoro a settembre, mai auditato come oggetto proprio |
-| **5** | **Il worker notturno** — `worker/`, 2.400 righe | **Gira non presidiato** e non è in nessuna lista. Se sbaglia di notte, se ne accorge il cliente al mattino |
-| **6** | **I router del worker** — 16.514 righe, ~4.000 lette | Il blocco più grande a copertura parziale. Da affrontare per router, non in blocco |
+> **Copertura fuori ciclo (04/09).** Cinque di queste sei voci sono già state
+> percorse dalla **sessione Fable** — un lavoro autonomo, aperto e chiuso, il cui
+> racconto vive **solo** in `DOCUMENTAZIONE/AUDIT_CON_FABLE.md` per scelta di
+> Mattia (commit `4985f5f`). Quel lavoro **non si riporta dentro questo ciclo**:
+> la colonna «Copertura reale» serve solo a non far rifare da zero ciò che è già
+> stato fatto e **deployato**. È stata misurata sul codice (`git log` sui
+> percorsi di ogni voce), non ereditata dai documenti.
+>
+> Conseguenza pratica: il vincolo qui sotto **non obbliga a rifare** le voci già
+> coperte. Restano da ripassare con Opus solo la **#3** (regola di dominio #1,
+> flag spento e migration non applicata) e la **#6** (prima passata: 1 router su
+> molti).
+
+| # | Cosa | Perché in questa posizione | Copertura reale (misurata 04/09) |
+|---|---|---|---|
+| **1** | **Quadratura dei numeri fra le pagine** — prendere 3 clienti veri e verificare che lo stesso dato torni in ogni schermata dove compare | 🔴 **Non è un audit di codice, è la verifica che nessuno ha mai fatto.** Il prompt esiste da agosto (`docs/storico/..._COERENZA_NUMERI.md`) e non è mai stato eseguito. Nasce dall'unico difetto trovato **dal cliente prima che dall'audit** (F&B e Spese Generali che non tornavano). È ciò che difende la reputazione, non la qualità del codice | ✅ **Eseguita il 03/09.** Da qui nascono Q1-Q4 (§2) |
+| **2** | **I prompt AI** — `config/`, 2.379 righe, mai guardate | È il cuore del prodotto e la **regola di dominio n.1**. Un difetto qui non colpisce un cliente: li colpisce tutti insieme, in silenzio. Ha già dato un problema (il prompt contraddiceva la regola, ciclo 08) | ✅ **Coperta fuori ciclo** (sessione Fable, `0cfc8fa`): presidio anti-mojibake provato per mutazione. **Non da ripassare** |
+| **3** | **Categorizzazione, fasi 4→8** — 5 fasi su 10 aperte | Lavoro già iniziato e fermo a metà: rientra nel principio «niente parziali». La fase 4 tocca il MOL su tutto lo storico, dietro flag: il delta per sede si misura e si porta a Mattia **prima** di attivarlo | ✅ **Coperta fuori ciclo** (Fable, `e36dfcd`→`8dd7a2e`): 10 fasi su 10, ognuna con test dedicati. ⚠️ **Da ripassare con Opus**: tocca la regola di dominio #1 e la Fase 4 ha un flag ancora **spento** + migration `20260903210000` **non applicata** |
+| **4** | **Il briefing giornaliero** — `daily_briefing_service.py`, 1.637 righe | È **la prima cosa che il cliente legge ogni mattina**. Quattro sessioni di lavoro a settembre, mai auditato come oggetto proprio | ✅ **Coperta fuori ciclo** (Fable, `79679c3`, `80fd929`). **Non da ripassare** |
+| **5** | **Il worker notturno** — `worker/`, 2.400 righe | **Gira non presidiato** e non è in nessuna lista. Se sbaglia di notte, se ne accorge il cliente al mattino | ✅ **Coperta fuori ciclo** (Fable, `3fde2dd`). ⚠️ La colonna a sinistra **è smentita dalla misura**: 7 file di test worker, non «non presidiato». **Non da ripassare** |
+| **6** | **I router del worker** — 16.514 righe, ~4.000 lette | Il blocco più grande a copertura parziale. Da affrontare per router, non in blocco | 🟠 **Prima passata fuori ciclo** (Fable, `8e6a19b`: scadenziario). **Da ripassare con Opus**: per costruzione copre 1 router su molti — è la voce più grande e resta la meno coperta |
 
 Restano fuori, per misura e non per dimenticanza: `agenda/` (**0 turni a DB**),
 `assistenza/` (`marketplace_leads` 0 righe), `style-guide/` (pagina interna).
