@@ -1159,7 +1159,7 @@ class TestExportExcelPersonaleMensile:
         assert ws.cell(row=3, column=1).value == "Anna Bianchi"
         assert ws.cell(row=3, column=col_tot).value == 10.0   # 8h + 2h extra
         assert ws.cell(row=4, column=col_tot).value == 13.0   # 8h + 5h, ferie escluse
-        assert ws.cell(row=5, column=1).value == "TOTALE ORE"
+        assert ws.cell(row=5, column=1).value == "TOTALE ORE IN GRIGLIA"
         assert ws.cell(row=5, column=col_tot).value == 23.0
 
     def test_riepilogo_ha_ore_totali_per_dipendente_e_complessive(self):

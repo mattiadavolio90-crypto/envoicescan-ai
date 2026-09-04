@@ -139,7 +139,7 @@ def export_excel_personale_mensile(
 
     # Riga finale: ore complessive di tutti i dipendenti nel mese.
     riga_tot_turni = 3 + len(dipendenti_ordinati)
-    label_tot = ws.cell(row=riga_tot_turni, column=1, value="TOTALE ORE")
+    label_tot = ws.cell(row=riga_tot_turni, column=1, value="TOTALE ORE IN GRIGLIA")
     label_tot.font = Font(bold=True, size=10)
     label_tot.fill = tot_fill
     label_tot.border = border_thin
