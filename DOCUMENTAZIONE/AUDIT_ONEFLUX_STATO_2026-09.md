@@ -6,12 +6,37 @@
 > `AUDIT_COPERTURA.md`. Se una di queste tre cose finisce nelle altre due, tutte
 > e tre diventano illeggibili — è già successo.
 
-**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 03/09/2026.**
+**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 04/09/2026 (sera).**
 I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 > ⚠️ **Rinominato il 02/09/2026.** Si chiamava `..._2026-08-29.md` e faceva
 > credere di essere «il lavoro di agosto», mentre agosto era chiuso da giorni.
 > Il ciclo vivo è di settembre.
+
+---
+
+## 0. I prossimi passi — in ordine
+
+> Ri-misurato il **04/09/2026 sera**, dopo il deploy di `a5e77f1`. Copertura app:
+> **69%** (backend 84%, frontend 51%, edge 100%) — dettaglio in
+> [`AUDIT_COPERTURA.md`](AUDIT_COPERTURA.md).
+
+| # | Cosa | Di chi è | Perché adesso |
+|---|---|---|---|
+| **1** | **Q2** — food cost ÷lordo vs ÷netto | **Decisione di Mattia** | Blocca due voci: finché non si sceglie, Home e Margini continuano a mostrare due numeri diversi sullo stesso dato (2,2-3,6 punti, colore ribaltato in 3 mesi su 7) |
+| **2** | **Q4** — quote riparto vs proiezione per centro | **Decisione di Mattia** | Due regole giuste in conflitto: serve scegliere quale rappresentazione mostrare |
+| **3** | **Flag Fase 4** + migration `20260903210000` | **Mattia** (lasciato da Fable) | ⚠️ **Il «delta zero su 11 sedi» NON vale più.** Ri-misurato il 04/09 sera: **340 righe classificate-ma-dubbie su 10 sedi**, per **26.453 €** che uscirebbero dai margini — quasi tutti su due sedi (SUSHILAND VILLA GUARDIA 13.704 €, SAN GIULIANO 12.612 €). Accendere il flag oggi **cambierebbe il MOL di clienti veri**: la misura va rifatta al momento di decidere, non ereditata |
+| **4** | **`utils/` + altri moduli `services/`** — 9.345 righe | Lavoro tecnico | **Le uniche due zone MAI guardate del backend** (riparto, foodcost, price_impact, radar). È la prossima dimensione naturale |
+| **5** | **Q3** — snapshot `margini_mensili`, 3 scrittori | Lavoro tecnico | Meno urgente di prima: chiuso Q1, `mol_perc` **non ha più alcun lettore runtime**. Da «serve un presidio» a «colonna morta da valutare» |
+| **6** | **Ripasso #3 categorizzazione e #6 router** | Lavoro tecnico | Coperte da Fable, ma #3 tocca la regola di dominio #1 e #6 ha visto **1 router su molti** |
+
+**Non da rifare:** prompt AI (#2), briefing (#4), worker (#5) — chiusi dalla
+sessione Fable con presidio provato per mutazione. Dettaglio e criterio in
+[`AUDIT_COPERTURA.md`](AUDIT_COPERTURA.md) §«Cosa ha coperto la sessione Fable».
+
+**Rilievo di prodotto aperto** (non tecnico): il testo del segnale «margine in
+calo» non dice **di quale mese** parla, e col gate di completezza può riferirsi a
+2-3 mesi fa. Rimedio minimo: «Margine di giugno al 39%…».
 
 ---
 
@@ -50,7 +75,7 @@ prima del lavoro è la pratica che ha prodotto più valore di tutto il ciclo.
 | Cosa | Stato |
 |---|---|
 | **Note di credito col segno sbagliato** | Codice fatto e committato. Restano **10 righe da correggere a DB**. ⚠️ **In esecuzione in un'altra sessione (02/09)** — non toccare |
-| **Categorizzazione** — fasi 4, 4bis, 5, 6, 8 | ✅ **Chiuse fuori ciclo** il 03-04/09 (**sessione Fable**, [`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3, `e36dfcd`→`8dd7a2e`), ognuna con test dedicati: 10 fasi su 10. Piano in `docs/piani/PIANO_CATEGORIZZAZIONE.md` (registra fino alla 4bis: le fasi 5, 6, 8 stanno nei commit). ⚠️ **Resta a carico di Mattia**: applicare la migration `20260903210000` e decidere se accendere il flag `ESCLUDI_DA_VERIFICARE_DAI_MARGINI` (oggi `False`, delta misurato: **zero su 11 sedi**) |
+| **Categorizzazione** — fasi 4, 4bis, 5, 6, 8 | ✅ **Chiuse fuori ciclo** il 03-04/09 (**sessione Fable**, [`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3, `e36dfcd`→`8dd7a2e`), ognuna con test dedicati: 10 fasi su 10. Piano in `docs/piani/PIANO_CATEGORIZZAZIONE.md` (registra fino alla 4bis: le fasi 5, 6, 8 stanno nei commit). ⚠️ **Resta a carico di Mattia**: applicare la migration `20260903210000` e decidere se accendere il flag `ESCLUDI_DA_VERIFICARE_DAI_MARGINI` (oggi `False`; il «delta zero» del 03/09 **non vale più**: 04/09 sera = 340 righe su 10 sedi, 26.453 €) |
 
 La fase 4 (esclusione dai margini) è la più pesante e la più delicata: tocca il
 MOL su tutto lo storico, dietro un flag disattivato, e il delta per sede va
@@ -90,7 +115,7 @@ era un conteggio sui file, non sul DB.
 
 | # | Residuo | Sforzo | Perché in questa posizione |
 |---|---|---|---|
-| **R9** | **Il registro delle sessioni ha PID morti** — `claude_hook_registra_sessione.py` salva `os.getppid()`, che è il wrapper dell'hook e muore subito | Basso | Misurato il 03/09: **1 voce con PID morto mentre giravano 3 sessioni**. Conseguenza: molte sessioni non si ritrovano nel registro e il gate di review ricade sul merge-base, cioè **il fix del 03/09 è spesso inattivo**. Il degrado è sicuro (avvisa di più, non tace), quindi non urge: va misurato quante volte l'attribuzione riesce davvero |
+| **R9** | ✅ **CHIUSO** — `claude_hook_registra_sessione.py` non usa più `os.getppid()`. Verificato il 04/09: commit `c8ec158`, già su `origin/main`; nel sorgente non c'è più alcuna occorrenza di `getppid`. La riga restava aperta per inerzia | — | Chiuso il 03/09 |
 
 ### Aperti dalla verifica di quadratura — 03/09 (Q1–Q4)
 
@@ -112,10 +137,11 @@ era un conteggio sui file, non sul DB.
 > §3 #1, l'unica che Fable non ha toccato). Ricostruita dal report di quadratura,
 > con le cifre ri-misurate a DB, non ricopiate.
 
-**Come si esegue:** resta **solo R9**, che tocca gli hook di sessione e nessun
-codice di prodotto — ed è **lavoro di un'altra sessione** (`claude_hook_*`), non
-di questa. Tutti gli altri residui del ciclo (R1-R8, R10, più le 3 `pct` e le 77
-righe di `catena/fatture/`) sono stati chiusi il 03/09 — vedi i verbali.
+**Come si esegue: la sezione dei residui è VUOTA.** R1-R8 e R10 chiusi il 03/09;
+**R9 chiuso** dal commit `c8ec158` (verificato il 04/09: nessun `getppid` nel sorgente,
+commit già in produzione) — restava in lista per inerzia, non perché aperto. Il vincolo
+«niente zone nuove finché §2 non è vuota» non blocca più nulla: gli unici punti aperti
+sono **Q2, Q3, Q4**, e due dei tre sono decisioni di prodotto di Mattia, non lavoro tecnico.
 
 > **Due ipotesi della roadmap non hanno retto alla misura**, ed è il motivo per
 > cui R5 e R6 erano rimasti in fondo alla lista:
