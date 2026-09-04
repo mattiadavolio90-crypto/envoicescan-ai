@@ -76,7 +76,7 @@ class GruppoKpi(BaseModel):
     margine_medio_perc: float   # margine % aggregato del gruppo (Σmol / Σnetto)
     spesa_fornitori: float      # Σ costi_fb_totali del periodo (food cost in €)
     mol: float                  # Σ mol del periodo (totale gruppo, valore assoluto)
-    food_cost_pct: Optional[float]  # Σ costi_fb_totali / Σ lordo — come food cost % della Home PV
+    food_cost_pct: Optional[float]  # Σ costi_fb_totali / Σ netto — come food cost % della Home PV
     costo_personale: float      # Σ (costo_dipendenti + costo_personale_extra)
     spese_generali: float       # Σ (costi_spese_auto + altri_costi_spese)
     # Cascata dati (decisione 19/06): "nessuno" = nessun PV ha fatturato/F&B ->
@@ -837,8 +837,9 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     tot_spese = sum(a["spese"] for a in agg.values())
     tot_pers = sum(a["pers"] for a in agg.values())
     margine_medio = round(tot_mol / tot_netto * 100, 1) if tot_netto > 0 else 0.0
-    # Food cost %: come la Home PV → costi F&B sul fatturato LORDO.
-    food_cost_pct = round(tot_fb / tot_lordo * 100, 1) if tot_lordo > 0 else None
+    # Food cost %: costi F&B sul fatturato NETTO, come la Home PV, la pagina
+    # Margini e le soglie di margine_service (decisione di Mattia, 4/9/2026).
+    food_cost_pct = round(tot_fb / tot_netto * 100, 1) if tot_netto > 0 else None
 
     # Cascata dati del gruppo (decisione 19/06): senza i costi di alcuni PV il MOL
     # aggregato e' falso. Stesso criterio del PV (presenza dati, non % salute):

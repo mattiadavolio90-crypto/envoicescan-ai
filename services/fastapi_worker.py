@@ -7478,14 +7478,13 @@ def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: in
     # modalità mensile (lì margini_mensili.mol resta a 0 → MOL falso). Ricalcolare
     # qui garantisce che la card KPI e la pagina Margini diano lo stesso MOL.
     mol = netto - fb - spese - personale
-    # ATTENZIONE al denominatore: qui e' il LORDO, mentre la pagina Margini
-    # (margini.py:273/1196/1298) usa il NETTO. Sullo stesso mese i due numeri
-    # differiscono di ~2-4 punti (misurato 27/8/2026 su OFFSIDE/OVERTIME: 14 mesi
-    # su 14, banda 2,1-3,6 pt), e attorno alla soglia 38% cambia anche il colore
-    # del giudizio. NON e' un refuso: la catena e' stata allineata di proposito a
-    # questa definizione (gruppo.py:71 "come food cost % della Home PV"), quindi
-    # cambiarla qui va fatto sui tre punti insieme ed e' una decisione di prodotto.
-    food_cost_pct = round(fb / fatturato * 100, 1) if fatturato > 0 else None
+    # Denominatore NETTO, come la pagina Margini e margine_service (soglie/notifiche).
+    # Fino al 4/9/2026 qui e in gruppo.py si divideva per il LORDO: stesso mese, due
+    # food cost diversi a seconda della pagina (2-4 punti). Le soglie di KPI_SOGLIE
+    # sono tarate sul netto, quindi il lordo giudicava con un metro piu' generoso e
+    # l'allarme non scattava: misurati 5 mesi su 5 sedi sotto 38 col lordo e sopra
+    # col netto. Decisione di Mattia (4/9): il food cost e' SEMPRE sul netto.
+    food_cost_pct = round(fb / netto * 100, 1) if netto > 0 else None
     return {
         "fatturato": round(fatturato, 2),
         "food_cost_pct": food_cost_pct,
