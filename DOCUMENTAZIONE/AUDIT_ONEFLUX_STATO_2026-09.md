@@ -6,7 +6,7 @@
 > `AUDIT_COPERTURA.md`. Se una di queste tre cose finisce nelle altre due, tutte
 > e tre diventano illeggibili — è già successo.
 
-**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 04/09/2026.**
+**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 03/09/2026.**
 I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 > ⚠️ **Rinominato il 02/09/2026.** Si chiamava `..._2026-08-29.md` e faceva
@@ -34,13 +34,7 @@ Una riga per sessione. Il dettaglio è nel verbale, in coda per data.
 | 03/09 | **R6 + R11 — il filtro «Da Classificare», Python e SQL** | ✅ chiuso — la regola «le righe non classificate restano fuori dal MOL» viene da un posto solo in Python (7 punti) e le **7 RPC vive** (misurate su `pg_proc`, non sui file) sono **legate a quella costante da un test**: se le due sponde divergono, la suite diventa rossa. **Nessuna migration** e nessuna migration riscritta |
 | 03/09 | **R10 — il guasto non è più un «niente da fare»** | ✅ chiuso — **7 pagine cliente** (scadenziario PV + catena, avvisi desktop + mobile, tag, analisi-fatture). `workerGet` torna `null` su ogni fallimento e i `?? []` lo trasformavano in lista vuota: **4,4 M€ di scadenze** potevano diventare «Nessun documento trovato». Fonte unica in `lib/esito-caricamento.ts`, 41 test, **10/10 mutanti** (2 li ha trovati il code-reviewer) |
 | 03/09 | **Residui R8, R2, R3, R1, R7, R4** | ✅ **6 su 6 chiusi** — corretto il netto mobile (euro sbagliati). Su R4 Mattia ha scelto: separatore delle migliaia e decimali arrotondati. Le 3 `pct` chiuse il 3/9: `formatPct` non aveva più chiamanti, correggerla non ha toccato nessuna schermata |
-| 01→03/09 | **Categorizzazione** — fasi 0, 7, 1, 2, 3 + **4, 4bis, 5, 6, 8 (3/9 sera)** | ✅ **le 10 fasi del piano sono chiuse** (voce §3 #3) — Fase 4 dietro flag SPENTO (7 RPC vive, non 19; migration `20260903210000` **da applicare col via di Mattia**; delta oggi 0 su 11 sedi); 4bis card in Home (non vista nel browser); 5 apprendimento unificato (+319 correzioni `User` ora protette); 6 bypass solo con conferma (378 voci→hint; **153 conflitti a Mattia**); 8 refusi corti + ground truth (D7 ridimensionato dalla misura: 0,4 €/mese). Ogni fase: mutanti provati. Restano nel piano: NUOVO 1-2 (fuori dall'ordine deciso da Mattia) e le sue decisioni. Dettaglio: `docs/piani/PIANO_CATEGORIZZAZIONE.md` |
-| 03/09 | **Quadratura dei numeri fra le pagine** (voce §3 #1) | ✅ **eseguita** (read-only) — la prima verifica sui dati veri: riparto in partita doppia **18/18 al centesimo**, Analisi Fatture↔Margini al centesimo, sincronia ricavi SUSHILAND perfetta. Trovati: 1 bug (segnale «margine in calo» mai scattato per le catene), 1 decisione di prodotto (food cost ÷lordo vs ÷netto, colore ribaltato in 3 mesi su 7), 1 rischio strutturale (snapshot `margini_mensili`). 3 finding del ciclo 07 risultati già superati. Esiti aperti: **Q1–Q4 in §2**; report in `scratchpad/coerenza_numeri_report.md` |
-| 03-04/09 | **Sessione «tutte le voci del piano»** — riassunto | ✅ verbalizzata nello storico e in `DOCUMENTAZIONE/AUDIT_CON_FABLE.md` (lo storico delle sessioni Fable): 6 voci percorse in una sessione, 14 commit, suite piena 12.908 verdi, review sul cumulativo verde. Restano a Mattia: push, migration+flag Fase 4, 153 conflitti memoria, Q1–Q4, passate router |
-| 03/09 | **Router — 1ª passata: scadenziario** (voce §3 #6) | 🟠 voce a programma (per router, come da roadmap) — **prima passata chiusa: le scadenze tornano a parlare.** `/api/scadenziario/notifica` era MUTO da giugno (upsert su un vincolo unico che non esiste + topic sconosciuto al briefing): **300 fatture scadute / 4,4 M€ senza mai un avviso**. Riscritto sulla factory ufficiale coi 2 topic canonici, payload che il briefing sa raccontare, spegnimento a condizione rientrata, formato italiano. 5 test, 3/3 mutanti. Report: `scratchpad/audit_router_scadenziario_report.md` |
-| 03/09 | **Il worker asincrono** (`worker/`, voce §3 #5) | ✅ chiusa — 2.403 righe lette integralmente. «Gira non presidiato» era falso: è tra i moduli più difesi (claim atomico, watchdog, SSRF whitelist, purge GDPR, degradi dichiarati a ERROR). Code in salute: 647 fatture done con retry funzionanti, 0 arretrati. Chiuso 1 latente: il retry della coda email non poteva scrivere (`now() + interval` come stringa → cast rifiutato, misurato). **Trovato per strada e girato alla voce #6: le notifiche scadenze sono mute da giugno** (upsert su vincolo inesistente + topic sconosciuto al briefing), con 300 scadute / 4,4 M€ mai avvisate. Report: `scratchpad/audit_worker_report.md` |
-| 03/09 | **Il briefing giornaliero** (`daily_briefing_service.py`, voce §3 #4) | ✅ chiusa — 1.637 righe lette integralmente. L'impianto regge: pipeline deterministica, AI solo per il tono, **validazione della narrativa che in produzione tiene** (0 violazioni su 24 snapshot — due rilievi in memoria risultati invecchiati, incluse le «6 soglie sbagliate» di LOGICA_BRIEFING: le 11 leve ri-misurate combaciano tutte). Chiusi in sessione (bump v21): importi delle scadenze in **formato inglese** nei bullet (latente: 0 bullet scadenze in cache) e validatore esteso all'**entusiasmo vietato** dal prompt. 3 mutanti / 3 uccisi. ⚠️ Trovato per strada: **le notifiche scadenza non vengono generate dall'1/6** — è del generatore (voce #5/#6), annotato nel report. Report: `scratchpad/audit_briefing_report.md` |
-| 03/09 | **I prompt AI** (`config/`, voce §3 #2) | ✅ chiusa — coerenza prompt↔costanti↔DB piena (29 categorie, 1.268 chiavi validate, **zero categorie estranee in produzione**); la contraddizione interna del prompt («rispondi Da Classificare» vs «classifica sempre») è **neutralizzata dal gate nel codice su entrambi i percorsi**, verificato a DB. Chiuso un difetto: **12 chiavi del dizionario erano mojibake** e non potevano matchare nulla — riparate + 5 gemelli senza accento, presidio comportamentale, **3 mutanti / 3 uccisi**. Impatto vivo misurato ~1 riga (le fatture XML non hanno accenti); l'innesco vero era il futuro percorso PDF/Vision. Report: `scratchpad/audit_prompt_ai_report.md` |
+| 01→02/09 | **Categorizzazione** — fasi 0, 7, 1, 2, 3 | 🟠 **parziale: 5 fasi su 10** — vedi §2 |
 
 **Il metodo che ha retto:** ogni sessione ha ri-misurato le ipotesi del proprio
 prompt prima di crederci, e **in 5 casi su 10 il prompt aveva torto**. La misura
@@ -55,9 +49,13 @@ prima del lavoro è la pratica che ha prodotto più valore di tutto il ciclo.
 | Cosa | Stato |
 |---|---|
 | **Note di credito col segno sbagliato** | Codice fatto e committato. Restano **10 righe da correggere a DB**. ⚠️ **In esecuzione in un'altra sessione (02/09)** — non toccare |
-| **Categorizzazione** — code di piano | Le 10 fasi sono chiuse (3/9 sera, vedi §1). In coda: **2 voci NUOVO** (guardrail IVA, RPC per la GUC del log) fuori dall'ordine deciso da Mattia, e **3 cose sue**: applicare la migration Fase 4 + attivazione flag; i **153 conflitti** memoria utente↔globale; le righe storiche da ricategorizzare. Piano in `docs/piani/PIANO_CATEGORIZZAZIONE.md` |
+| **Categorizzazione** — fasi 4, 4bis, 5, 6, 8 | 5 fasi aperte su 10, più 2 voci emerse strada facendo. Piano in `docs/piani/PIANO_CATEGORIZZAZIONE.md` |
 
-### Residui — la roadmap, chiusa il 03/09
+La fase 4 (esclusione dai margini, 19 RPC) è la più pesante e la più delicata:
+tocca il MOL su tutto lo storico, dietro un flag disattivato, e il delta per sede
+va misurato e portato a Mattia **prima** di attivarlo.
+
+### Residui aperti — la roadmap di chiusura
 
 > **Regola di Mattia (03/09/2026): i residui si chiudono TUTTI prima di aprire
 > una zona nuova.** Niente parziali che si accumulano. Questa tabella è l'ordine
@@ -87,35 +85,14 @@ prima del lavoro è la pratica che ha prodotto più valore di tutto il ciclo.
 >   occorrenze: molte righe ne portano due);
 > - **R1 non era teorico**: gli incassi a DB ci sono già (1.049 righe, 6 sedi).
 
-**La tabella dei residui è vuota: R1-R11 sono tutti chiusi** (03/09), incluse
-le 3 `pct` e le 77 righe di `catena/fatture/`. Vedi i verbali nello storico.
+| # | Residuo | Sforzo | Perché in questa posizione |
+|---|---|---|---|
+| **R9** | **Il registro delle sessioni ha PID morti** — `claude_hook_registra_sessione.py` salva `os.getppid()`, che è il wrapper dell'hook e muore subito | Basso | Misurato il 03/09: **1 voce con PID morto mentre giravano 3 sessioni**. Conseguenza: molte sessioni non si ritrovano nel registro e il gate di review ricade sul merge-base, cioè **il fix del 03/09 è spesso inattivo**. Il degrado è sicuro (avvisa di più, non tace), quindi non urge: va misurato quante volte l'attribuzione riesce davvero |
 
-### Aperti dalla verifica di quadratura — 03/09 (Q1–Q4)
-
-> Esito della voce §3 #1, eseguita il 03/09 (verbale nello storico; report completo
-> in `scratchpad/coerenza_numeri_report.md`). Remediation e decisioni in sessioni
-> separate, nell'ordine qui sotto.
-
-| # | Cosa | Natura |
-|---|---|---|
-| **Q1** | Il segnale «margine in calo» della catena non è mai potuto scattare: legge lo snapshot `mol_perc` + gate `fatturato_netto > 0` di `margini_mensili`, mai valorizzati per le sedi delle due catene reali (OFFSIDE: netto 0 su tutti i mesi; OVERTIME e 3 SUSHILAND: `mol_perc` 0,00 ovunque). Blocco «Segnale 1» in `services/routers/gruppo.py`. La stessa classe di bug è già corretta in 3 percorsi fratelli (`_aggrega_sedi_mensili`, `_applica_override_netto`, segnale «ricavi mancanti») | **Bug** — fix |
-| **Q2** | Food cost con due definizioni convivono: ÷lordo (Home, catena, briefing) vs ÷netto (pagina Margini) — 2,2–3,6 punti di scarto misurati su 14 mesi, colore ribaltato in 3 mesi su 7 per OFFSIDE alla soglia 38%. Il codice stesso la dichiara «decisione di prodotto» da prendere sui tre punti insieme | **Decisione di Mattia** |
-| **Q3** | Snapshot economico di `margini_mensili` incoerente per costruzione: 3 scrittori (pagina Margini scrive tutto; trigger ricavi solo il fatturato; RPC `riparto_quote_mensili` ricalcola il MOL cieca all'override e non scrive mai le pct). Misurato: OVERTIME febbraio MOL fotografato +50.834 € vs +28.398 € vero. Oggi letto solo da Q1 e dall'endpoint senza consumatori `/api/margini/analisi-centri`: serve un presidio perché nessun lettore nuovo lo erediti | **Strutturale** |
-| **Q4** | Tab Calcolo vs tab Analisi (pagina Margini): le quote riparto includono le righe «Da Classificare» della sede tecnica (deliberato — `supabase/migrations/20260724220000_riparto_quote_per_categoria.sql`), la proiezione per centro le esclude (deliberato — regola di dominio 1). Scarto misurato 13–592 €/mese. Due regole giuste in conflitto: scegliere una rappresentazione | **Decisione di Mattia** |
-
-**R9 — chiuso il 03/09.** Il registro sessioni non usa più il PID:
-`os.getppid()` in un hook è il wrapper che muore subito, e ri-misurando si
-vedeva **il PID già morto con la sessione ancora attiva**. La doc ufficiale
-degli hook conferma che nel payload **non esiste** nessun identificativo di
-processo, quindi la vivacità è passata a `session_id` + scadenza rinfrescata
-(nuovo `scripts/_registro_sessioni.py`, che unifica **3 copie** di `_pid_vivo`
-— `pulisci_branch.py` era il terzo consumatore, fuori dal prompt originale).
-Effetto: il fix del 03/09 al gate di review ora funziona invece di degradare
-al merge-base. 19 test, 12/12 mutanti. Il fix stesso stava per introdurne due
-peggiori, corretti prima di chiudere: il refresh concorrente azzerava il
-registro (0 entry su 5), e la ri-registrazione disarmava la guardia sul commit.
-Trovato per strada anche un difetto **pre-esistente**: quella guardia non
-girava mai se nessun'altra sessione era viva.
+**Come si esegue:** resta **solo R9**, che tocca gli hook di sessione e nessun
+codice di prodotto — ed è **lavoro di un'altra sessione** (`claude_hook_*`), non
+di questa. Tutti gli altri residui del ciclo (R1-R8, R10, più le 3 `pct` e le 77
+righe di `catena/fatture/`) sono stati chiusi il 03/09 — vedi i verbali.
 
 > **Due ipotesi della roadmap non hanno retto alla misura**, ed è il motivo per
 > cui R5 e R6 erano rimasti in fondo alla lista:
@@ -183,12 +160,12 @@ Il conto delle righe sta in `AUDIT_COPERTURA.md`. Qui c'è l'ordine, deciso per
 
 | # | Cosa | Perché in questa posizione |
 |---|---|---|
-| **1** | **Quadratura dei numeri fra le pagine** — prendere 3 clienti veri e verificare che lo stesso dato torni in ogni schermata dove compare | ✅ **Eseguita il 03/09** (catena OFFSIDE completa, SUSHILAND ×3, LAND, TIME CAFE — read-only, tutto ri-misurato a DB). Le quadrature fondamentali tornano al centesimo; gli esiti aperti sono **Q1–Q4 in §2**. Report: `scratchpad/coerenza_numeri_report.md` |
-| **2** | **I prompt AI** — `config/` (2.389 righe misurate all'apertura) | ✅ **Chiusa il 03/09** — coerenza piena, la contraddizione interna del prompt è neutralizzata dal gate nel codice (verificato a DB); chiuso il difetto delle 12 chiavi mojibake del dizionario con presidio (3/3 mutanti). Report: `scratchpad/audit_prompt_ai_report.md` |
-| **3** | **Categorizzazione, fasi 4→8** | ✅ **Chiuse il 03/09 sera** (4, 4bis, 5, 6, 8 — dettaglio in §1). La Fase 4 è dietro flag spento: migration da applicare e attivazione = decisione di Mattia, delta ri-misurato al flip |
-| **4** | **Il briefing giornaliero** — `daily_briefing_service.py` | ✅ **Chiusa il 03/09 sera** — letto integrale, 2 fix (formato scadenze, validatore tono), 2 rilievi di memoria invecchiati. Report: `scratchpad/audit_briefing_report.md` |
-| **5** | **Il worker asincrono** — `worker/` | ✅ **Chiusa il 03/09 sera** — letto integrale: la premessa «non presidiato» era falsa, 1 latente chiuso (retry coda email). Report: `scratchpad/audit_worker_report.md` |
-| **6** | **I router del worker** — 16.617 righe misurate, ~4.000 lette | 🟠 **A programma, per router** (mai in blocco). 1ª passata chiusa il 03/09: scadenziario (le notifiche scadenze erano mute da giugno — fix + presidio). Ordine delle prossime, per rischio cliente: margini/gruppo (lettura integrale), fatture, ricavi, riparto, poi gli altri. Report: `scratchpad/audit_router_scadenziario_report.md` |
+| **1** | **Quadratura dei numeri fra le pagine** — prendere 3 clienti veri e verificare che lo stesso dato torni in ogni schermata dove compare | 🔴 **Non è un audit di codice, è la verifica che nessuno ha mai fatto.** Il prompt esiste da agosto (`docs/storico/..._COERENZA_NUMERI.md`) e non è mai stato eseguito. Nasce dall'unico difetto trovato **dal cliente prima che dall'audit** (F&B e Spese Generali che non tornavano). È ciò che difende la reputazione, non la qualità del codice |
+| **2** | **I prompt AI** — `config/`, 2.379 righe, mai guardate | È il cuore del prodotto e la **regola di dominio n.1**. Un difetto qui non colpisce un cliente: li colpisce tutti insieme, in silenzio. Ha già dato un problema (il prompt contraddiceva la regola, ciclo 08) |
+| **3** | **Categorizzazione, fasi 4→8** — 5 fasi su 10 aperte | Lavoro già iniziato e fermo a metà: rientra nel principio «niente parziali». La fase 4 tocca il MOL su tutto lo storico, dietro flag: il delta per sede si misura e si porta a Mattia **prima** di attivarlo |
+| **4** | **Il briefing giornaliero** — `daily_briefing_service.py`, 1.637 righe | È **la prima cosa che il cliente legge ogni mattina**. Quattro sessioni di lavoro a settembre, mai auditato come oggetto proprio |
+| **5** | **Il worker notturno** — `worker/`, 2.400 righe | **Gira non presidiato** e non è in nessuna lista. Se sbaglia di notte, se ne accorge il cliente al mattino |
+| **6** | **I router del worker** — 16.514 righe, ~4.000 lette | Il blocco più grande a copertura parziale. Da affrontare per router, non in blocco |
 
 Restano fuori, per misura e non per dimenticanza: `agenda/` (**0 turni a DB**),
 `assistenza/` (`marketplace_leads` 0 righe), `style-guide/` (pagina interna).
