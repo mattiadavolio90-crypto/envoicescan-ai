@@ -80,3 +80,113 @@ def test_media_non_confermata_resta_hint():
     cache = _cache_con_master([_voce("Z", "media", verified=False, streak=2)])
     assert "Z" not in cache["prodotti_master"]
     assert "Z" in cache["prodotti_master_hint"]
+
+
+class _MasterFinto:
+    """Una riga di prodotti_master che RICORDA gli update, così si può far
+    girare il ciclo vero (AI conferma → streak → bypass) su più chiamate,
+    invece di costruire a mano lo stato finale."""
+
+    def __init__(self, desc, categoria, confidence, verified=False, streak=0):
+        self.row = {
+            "id": 1, "descrizione": desc, "categoria": categoria,
+            "confidence": confidence, "verified": verified,
+            "consecutive_correct_classifications": streak,
+        }
+        self.upsert_chiamato = False
+
+    def table(self, _n):
+        return self
+
+    def select(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def eq(self, col, val):
+        self._eq = (col, val)
+        return self
+
+    def execute(self):
+        col, val = getattr(self, "_eq", (None, None))
+        trovato = col == "descrizione" and val == self.row["descrizione"]
+        return SimpleNamespace(data=[dict(self.row)] if trovato else [])
+
+    def update(self, payload):
+        self.row.update(payload)
+        return self
+
+    def upsert(self, *_a, **_k):
+        self.upsert_chiamato = True
+        return self
+
+
+def test_voce_declassata_puo_rientrare_nel_bypass():
+    """Il ciclo di rientro della Fase 6, percorso completo.
+
+    Una voce 'alta' MAI verificata da un umano è esattamente ciò che la Fase 6
+    declassa. La fase le promette una via di rientro: 3 conferme di fila dell'AI
+    e torna a saltare il modello. Questo test la percorre davvero — tre chiamate
+    vere — invece di costruire a mano lo stato finale, che è ciò che rendeva il
+    presidio precedente verde su un bug che il codice non sapeva produrre.
+
+    Mutante: rimettere `if current_conf in ('alta','altissima'): return` nella
+    guardia → lo streak resta 0 e il test diventa rosso.
+    """
+    sb = _MasterFinto("NOCE DI MANZO", "CARNE", "alta", verified=False, streak=0)
+
+    for atteso in (1, 2, 3):
+        ai_mod.aggiorna_streak_classificazione("NOCE DI MANZO", "CARNE", sb)
+        assert sb.row["consecutive_correct_classifications"] == atteso, (
+            f"lo streak non sale: la voce declassata non ha via di rientro "
+            f"(atteso {atteso}, trovato {sb.row['consecutive_correct_classifications']})"
+        )
+
+    assert sb.upsert_chiamato is False, "ha creato un doppione invece di aggiornare"
+
+    # Lo stato raggiunto deve davvero riaprire il bypass in cache.
+    cache = _cache_con_master([_voce(
+        "NOCE DI MANZO", sb.row["confidence"],
+        verified=False, streak=sb.row["consecutive_correct_classifications"],
+    )])
+    assert cache["prodotti_master"]["NOCE DI MANZO"] == "CARNE", (
+        "streak a soglia ma la voce non rientra nel bypass"
+    )
+
+
+def test_voce_declassata_rientra_anche_in_grafia_normalizzata():
+    """Stessa via di rientro sul ramo gemello: la coda passa descrizioni grezze
+    mentre altri percorsi scrivono la variante normalizzata. Se la guardia
+    sbagliata resta solo qui, si corregge metà del percorso e le voci che
+    esistono in sola grafia normalizzata restano bloccate."""
+    from utils.text_utils import normalizza_descrizione
+
+    grezza = "(I)100 COP EST. X DW 280CC"
+    norm = normalizza_descrizione(grezza)
+    assert norm != grezza, "prerequisito: la grafia deve normalizzare diversa"
+
+    sb = _MasterFinto(norm, "MATERIALE DI CONSUMO", "alta", verified=False, streak=0)
+
+    for atteso in (1, 2, 3):
+        ai_mod.aggiorna_streak_classificazione(grezza, "MATERIALE DI CONSUMO", sb)
+        assert sb.row["consecutive_correct_classifications"] == atteso, (
+            f"ramo gemello: streak fermo (atteso {atteso})"
+        )
+
+    assert sb.upsert_chiamato is False, "ha creato un doppione invece di aggiornare"
+
+
+def test_chi_e_gia_in_bypass_non_viene_toccato():
+    """La guardia deve continuare a proteggere chi è GIÀ in bypass: un
+    verificato non si tocca mai, e chi è a soglia non ha nulla da guadagnare."""
+    verificato = _MasterFinto("POLLO INTERO", "CARNE", "altissima", verified=True, streak=0)
+    ai_mod.aggiorna_streak_classificazione("POLLO INTERO", "PESCE", verificato)
+    assert verificato.row["categoria"] == "CARNE", "ha sovrascritto un verificato umano"
+    assert verificato.row["consecutive_correct_classifications"] == 0
+
+    a_soglia = _MasterFinto("BURRATA 125G", "LATTICINI", "alta", verified=False, streak=3)
+    ai_mod.aggiorna_streak_classificazione("BURRATA 125G", "LATTICINI", a_soglia)
+    assert a_soglia.row["consecutive_correct_classifications"] == 3, (
+        "chi è già a soglia non deve essere ri-scritto a ogni fattura"
+    )

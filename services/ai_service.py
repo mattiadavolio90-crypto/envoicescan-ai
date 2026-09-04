@@ -85,6 +85,8 @@ from config.constants import (
     UNITA_MISURA_CATEGORIA,
     CATEGORIA_FALLBACK,
     CATEGORIA_NON_CLASSIFICATA,
+    CONFERME_PER_BYPASS,
+    CONFIDENCE_ALTA,
 )
 # PROP-6: pre-normalizza chiavi fornitore una volta sola (evita .upper() per riga)
 _CATEGORIA_PER_FORNITORE_NORM: tuple[tuple[str, str], ...] = tuple(
@@ -294,9 +296,9 @@ _remote_version_state = {
 _memoria_cache = {
     'prodotti_utente': {},         # {user_id: {descrizione: categoria}}
     'prodotti_utente_norm': {},    # {user_id: {descrizione_normalizzata: categoria}}
-    'prodotti_master': {},         # {descrizione: categoria} — solo confidence alta/altissima → bypass AI
+    'prodotti_master': {},         # {descrizione: categoria} — solo voci CONFERMATE (verified o streak) → bypass AI
     'prodotti_master_canon': {},   # {chiave_canonica: categoria} — solo match non ambiguo
-    'prodotti_master_hint': {},    # {descrizione: categoria} — confidence media/None → hint per AI
+    'prodotti_master_hint': {},    # {descrizione: categoria} — tutto il resto (incl. 'alta' non verificate) → hint per AI
     'classificazioni_manuali': {},  # {descrizione: {categoria, is_dicitura}}
     'brand_ambigui': set(),        # set di brand dinamici da Supabase (UNION con BRAND_AMBIGUI_NO_DICT)
     'version': 0,               # Incrementato ad ogni invalidazione
@@ -3143,12 +3145,12 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                     conf = row.get('confidence')
                     streak = row.get('consecutive_correct_classifications', 0) or 0
                     verified = bool(row.get('verified'))
-                    if (conf in ('alta', 'altissima') and verified) or streak >= 3:
+                    if (conf in CONFIDENCE_ALTA and verified) or streak >= CONFERME_PER_BYPASS:
                         _bypass[desc] = cat
-                        if streak >= 3 and conf not in ('alta', 'altissima'):
+                        if streak >= CONFERME_PER_BYPASS and conf not in CONFIDENCE_ALTA:
                             _streak_promo += 1
                     else:
-                        if conf in ('alta', 'altissima'):
+                        if conf in CONFIDENCE_ALTA:
                             _degradate_fase6 += 1
                         _hint[desc] = cat
                 _bypass_canon, canon_conflicts = _build_master_canonical_map(_bypass)
@@ -3248,7 +3250,12 @@ def aggiorna_streak_classificazione(
     - Se la categoria GPT coincide con quella già in prodotti_master → streak +1
     - Se la categoria è diversa → streak reset a 1 (nuova categoria)
     - Se il prodotto non esiste → inserimento con streak=1
-    - A streak >= 3 → confidence impostata ad 'alta' + cache invalidata
+    - A streak >= CONFERME_PER_BYPASS → confidence 'alta' + cache invalidata
+
+    Si esce senza toccare nulla solo per chi è GIÀ in bypass: verificato da un
+    umano, o con lo streak già a soglia. NON si esce sulla sola confidence
+    'alta': dopo la Fase 6 quell'etichetta, senza verified, non apre più il
+    bypass, e uscire qui toglieva alle voci declassate l'unica via di rientro.
 
     record_precaricato: se il chiamante ha già letto la riga (id, categoria,
     confidence, consecutive_correct_classifications, verified) per questa
@@ -3286,10 +3293,16 @@ def aggiorna_streak_classificazione(
 
             current_cat = row.get('categoria', '')
             current_streak = row.get('consecutive_correct_classifications', 0) or 0
-            current_conf = row.get('confidence')
 
-            # Non degradare prodotti già alta/altissima (sono già al massimo)
-            if current_conf in ('alta', 'altissima'):
+            # Chi e' GIA' in bypass non ha piu' niente da guadagnare da un
+            # incremento: si esce. Ma dalla Fase 6 'alta' da sola NON significa
+            # piu' bypass — serve verified (gia' gestito sopra) oppure lo
+            # streak. Uscire qui sulla sola confidence bloccava l'incremento
+            # proprio per le voci declassate dalla Fase 6 ('alta' non
+            # verificate): lo streak non saliva mai, la soglia non veniva mai
+            # raggiunta e quelle voci restavano a chiamare l'AI per sempre,
+            # senza alcuna via di rientro automatica.
+            if current_streak >= CONFERME_PER_BYPASS:
                 return
 
             if current_cat == categoria_gpt:
@@ -3302,7 +3315,7 @@ def aggiorna_streak_classificazione(
                 'categoria': categoria_gpt,
                 'consecutive_correct_classifications': now_streak,
             }
-            if now_streak >= 3:
+            if now_streak >= CONFERME_PER_BYPASS:
                 update_data['confidence'] = 'alta'
                 new_confidence = 'alta'
 
@@ -3338,17 +3351,18 @@ def aggiorna_streak_classificazione(
                 # doppione, applicando la STESSA logica del ramo match-esatto:
                 # scrivere sempre streak=1 impedirebbe l'auto-promozione ad 'alta'
                 # per i prodotti che esistono solo in grafia normalizzata.
-                if _gemello.get('verified') or _gemello.get('confidence') in ('alta', 'altissima'):
+                _streak_gem = _gemello.get('consecutive_correct_classifications') or 0
+                if _gemello.get('verified') or _streak_gem >= CONFERME_PER_BYPASS:
                     return
                 if (_gemello.get('categoria') or '') == categoria_gpt:
-                    now_streak = (_gemello.get('consecutive_correct_classifications') or 0) + 1
+                    now_streak = _streak_gem + 1
                 else:
                     now_streak = 1
                 _upd_gem: dict = {
                     'categoria': categoria_gpt,
                     'consecutive_correct_classifications': now_streak,
                 }
-                if now_streak >= 3:
+                if now_streak >= CONFERME_PER_BYPASS:
                     _upd_gem['confidence'] = 'alta'
                     new_confidence = 'alta'
                 supabase_client.table('prodotti_master') \

@@ -1991,6 +1991,23 @@ CATEGORIA_FALLBACK = CATEGORIA_NON_CLASSIFICATA
 # filtra nulla in silenzio.
 CATEGORIA_FIDUCIA_DA_VERIFICARE = "da_verificare"
 
+# Fase 6 piano categorizzazione (04/09/2026). Una voce di prodotti_master salta
+# l'AI (bypass) solo se CONFERMATA: un umano l'ha verificata, oppure lo streak
+# l'ha confermata per CONFERME_PER_BYPASS fatture di fila. La sola parola
+# dell'AI ('alta' mai vista da nessuno) non basta piu': su quel gruppo il tasso
+# di errore campionato era ~29% (NOCE di manzo -> FRUTTA).
+#
+# Fonte unica per soglia e livelli: erano ripetuti a mano in ai_service
+# (regola di bypass, incremento streak, promozione, ramo gemello). Con la
+# soglia sparsa, ritararla dopo la misura di produzione significherebbe
+# trovarne 4 e dimenticarne una.
+CONFERME_PER_BYPASS = 3
+
+# I livelli di confidence che, INSIEME a verified, aprono il bypass. Su
+# prodotti_master confidence e' TEXT libero senza CHECK: questi sono i due soli
+# valori che il codice tratta come "alta fiducia".
+CONFIDENCE_ALTA = ("alta", "altissima")
+
 # Fase 4 piano categorizzazione (decisione Mattia 1/9/2026): le righe
 # `da_verificare` escono dai margini COME le 'Da Classificare', ma dietro
 # questo flag, spento finché il delta per sede non è stato misurato e portato
