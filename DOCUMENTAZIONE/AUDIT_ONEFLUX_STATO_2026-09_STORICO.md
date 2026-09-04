@@ -39,6 +39,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **Il briefing giornaliero (voce §3 #4)** | chiusa: letto integrale, 2 fix (formato scadenze, validatore tono), 2 memorie invecchiate |
 | 03/09 | **Il worker asincrono (voce §3 #5)** | chiusa: «non presidiato» era falso; 1 latente chiuso (retry coda email); scadenze mute → voce #6 |
 | 03/09 | **Router, 1ª passata: scadenziario (voce §3 #6)** | le scadenze tornano a parlare: upsert su vincolo inesistente + topic sconosciuto al briefing, 0 avvisi di sempre su 4,4 M€ |
+| 03-04/09 | **Riassunto sessione «tutte le voci del piano»** | 6 voci percorse, 14 commit, 12.908 test verdi, review verde; resta a Mattia: push, flag Fase 4, conflitti memoria, Q1-Q4 |
 
 ---
 
@@ -2903,3 +2904,54 @@ spostarlo su un giro notturno è una decisione di prodotto, registrata e non
 presa. Le prossime passate (#6): margini/gruppo a lettura integrale, fatture,
 ricavi, riparto, admin, workspace, account, prezzi, chat, documenti, notifiche,
 più l'«agent notturno» in `fastapi_worker.py`.
+
+---
+
+## 03-04/09/2026 — Riassunto della sessione «tutte le voci del piano»
+
+> Verbale riassuntivo della sessione serale del 3/9 (chiusa nella notte sul 4/9),
+> voluto da Mattia come storico. I verbali di dettaglio delle singole voci sono
+> qui sopra; i report completi in `scratchpad/audit_*_report.md`.
+
+**Mandato**: percorrere TUTTE le voci della roadmap §3, una dopo l'altra, fino
+in fondo. Eseguito: 14 commit locali (da `0f29285` a `80fd929`), ogni chiusura
+con verbale, presidio provato per mutazione e contatore aggiornato. Suite piena
+a fine sessione: **12.908 test verdi, 0 rossi**; code-review sul cumulativo e
+sul delta entrambe verdi, zero rilievi bloccanti.
+
+**Le sei voci, in ordine:**
+1. **Quadratura dei numeri** (✅, prima parte della giornata) — la prima
+   verifica sui dati veri: riparto in partita doppia al centesimo; aperti
+   Q1–Q4 (in §2).
+2. **Prompt AI / `config/`** (✅) — coerenza piena prompt↔costanti↔DB; chiuse
+   **12 chiavi del dizionario illeggibili** (doppia codifica) che non potevano
+   matchare nulla.
+3. **Categorizzazione, fasi 4→8** (✅ le 10 fasi del piano) — esclusione righe
+   dubbie dai margini dietro flag SPENTO (7 RPC vive, non 19; migration
+   `20260903210000` da applicare col via di Mattia; delta oggi = 0 su 11 sedi);
+   card «Righe da classificare» in Home; apprendimento unificato sui 3 percorsi
+   di correzione (**319 correzioni dei clienti erano sovrascrivibili
+   dall'automatismo**: ora protette); il bypass della memoria globale richiede
+   una conferma umana o di streak (378 voci solo-AI declassate a suggerimento);
+   il correttore di refusi non scambia più le parole corte (POLLO→POLO).
+4. **Briefing giornaliero** (✅) — letto integrale: l'impianto regge, la
+   validazione della narrativa in produzione tiene (0 violazioni su 24
+   snapshot); chiusi il formato inglese negli importi delle scadenze e il
+   validatore esteso all'entusiasmo vietato (v21). Due rilievi delle memorie di
+   ciclo risultati invecchiati alla ri-misura.
+5. **Worker asincrono** (✅) — letto integrale: «gira non presidiato» era
+   falso, è tra i moduli più difesi; chiuso 1 latente (il retry della coda
+   email ricavi non poteva scrivere il backoff).
+6. **Router** (🟠 a programma, per router) — 1ª passata chiusa: **le notifiche
+   scadenze erano MUTE da giugno** (upsert su un vincolo unico inesistente +
+   topic sconosciuto al briefing) con 300 fatture scadute per 4,4 M€ mai
+   avvisate — riscritte sui topic canonici, con spegnimento a condizione
+   rientrata.
+
+**Cosa resta, e di chi è**: il **push** (spedisce i 37 commit in coda, 14 di
+questa sessione — la CI non ha ancora visto nulla); l'applicazione della
+migration Fase 4 + accensione del flag (decisione di Mattia, delta da
+ri-misurare al flip); i **153 conflitti** memoria utente↔globale (propone il
+categorization-reviewer, approva Mattia); le decisioni **Q2/Q4** e il fix
+**Q1** (prompt pronto in `docs/piani/PROMPT_Q1_SEGNALE_MARGINE_CALO.md`); le
+passate successive della voce router.

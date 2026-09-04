@@ -82,6 +82,7 @@ create_admin*.py
 *AUDIT*.md
 !AUDIT_ONEFLUX_STATO*.md
 !AUDIT_COPERTURA.md
+!AUDIT_CON_FABLE.md
 *CLEANUP*.md
 *REFACTORING*.md
 *RECAP*.txt

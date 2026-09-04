@@ -200,6 +200,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09.md` | Stato del ciclo di audit **corrente**: cosa e' chiuso, cosa e' aperto, **i residui** che i verbali dichiarano ma nessuno raccoglieva. Si legge in un minuto. A ciclo chiuso si sposta in `docs/storico/` |
 | `DOCUMENTAZIONE/AUDIT_COPERTURA.md` | **Il contatore**: quante righe dell'app sono state lette, quante solo sfiorate da una dimensione, quante mai guardate. L'unico posto dove le somme tornano — si aggiorna a ogni chiusura di sessione, ri-misurando |
 | `DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09_STORICO.md` | I verbali delle sessioni chiuse del ciclo corrente, in coda con la data |
+| `DOCUMENTAZIONE/AUDIT_CON_FABLE.md` | Lo storico **voluto da Mattia** delle sessioni di audit con Claude Fable: una sezione datata per sessione, il racconto di cosa e' stato fatto e cosa cambia per i clienti. Il dettaglio tecnico resta nei verbali del ciclo |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non aveva test che eseguono codice, cosa e' costato, le opzioni. **Chiuso il 29/8/2026** (opzione A) |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9_PROMPT.md` | Il prompt di quella sessione, archiviato |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08.md` | Indice del ciclo 2026-08, **chiuso il 29/8/2026**: 7 fasi + le 8 decisioni aperte, tutte risolte |
