@@ -72,3 +72,35 @@ def test_usa_la_costante_non_un_tre_cablato():
          patch.object(mod, "_fetch_all", lambda _sb: righe):
         d = mod._distribuzione(righe)
     assert d[CONFERME_PER_BYPASS - 1] == 10
+
+
+def test_le_verificate_non_contano_come_movimento(capsys):
+    """Il filtro `verified` deve reggere anche sotto mutazione.
+
+    Una voce verificata da una persona e' gia' in bypass: il suo streak non e'
+    un rientro. Se il filtro sparisse, una manciata di verificate con streak 1-2
+    verrebbe contata come "movimento" e ribalterebbe il verdetto da ROSSO a
+    VERDE — lo stesso modo di sbagliare che lo script esiste per impedire.
+    Lo stato qui e' bloccato (declassate tutte a 0) e deve restare ROSSO.
+    """
+    righe = (_voci(30, "alta", 2, verified=True)      # gia' in bypass: non contano
+             + _voci(373, "alta", 0)                   # declassate: ferme
+             + _voci(720, "media", 0) + _voci(128, "media", 1))
+    out = _esegui(righe, capsys)
+    assert "ROSSO" in out, (
+        "le voci verificate sono state contate come movimento delle declassate"
+    )
+    assert "VERDE" not in out
+
+
+def test_streak_oltre_soglia_resta_nel_totale(capsys):
+    """Il min() in _distribuzione accorpa tutto il sopra-soglia nell'ultima
+    colonna: senza, quelle voci sparirebbero dalla riga E dal totale in
+    silenzio. Oggi a DB nessuna supera la soglia, ma se venisse ritarata
+    verso il basso il conteggio mentirebbe."""
+    from config.constants import CONFERME_PER_BYPASS
+
+    righe = _voci(7, "alta", CONFERME_PER_BYPASS + 5)
+    d = mod._distribuzione(righe)
+    assert d[CONFERME_PER_BYPASS] == 7, "le voci sopra soglia sono sparite dal conteggio"
+    assert sum(d.values()) == 7, "il totale non torna: righe perse"
