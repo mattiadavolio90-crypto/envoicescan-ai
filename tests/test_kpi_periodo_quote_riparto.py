@@ -61,6 +61,20 @@ def test_mol_home_coincide_con_formula_barra_kpi_margini():
 
 
 def test_food_cost_pct_include_la_quota():
+    """La quota di riparto entra nel NUMERATORE del food cost.
+
+    Usa `altri_ricavi_noiva`, dove netto e lordo coincidono: questo test NON
+    presidia il denominatore (passerebbe con entrambe le formule). Quello lo fa
+    tests/test_food_cost_sempre_su_netto.py, con IVA da scorporare.
+    """
     margini = {3: _row(altri=8000, q_fb=2000)}
     kpi = fw._kpi_periodo(margini, costi_fb={}, costi_spese={}, mese=3)
     assert kpi["food_cost_pct"] == round(2000 / 8000 * 100, 1)
+
+
+def test_food_cost_pct_quota_con_iva_da_scorporare():
+    """Stessa quota, ma su ricavi con IVA: qui il denominatore conta davvero."""
+    margini = {3: _row(iva10=8800, q_fb=2000)}
+    kpi = fw._kpi_periodo(margini, costi_fb={}, costi_spese={}, mese=3)
+    assert kpi["food_cost_pct"] == 25.0, "2.000 / 8.000 netto"
+    assert kpi["food_cost_pct"] != 22.7, "22,7 sarebbe il vecchio calcolo sul lordo"
