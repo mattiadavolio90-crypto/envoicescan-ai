@@ -348,12 +348,11 @@ _ECCEZIONI_OVERRIDE = {
     "_load_mensile_overrides": "è la funzione che implementa la regola",
     "_merge_override_mensile": "wrapper della regola",
     "_overrides_mese_sede": "wrapper della regola",
-    # Segnale "margine in calo" (gruppo.py:1579, dentro _calcola_segnali): filtra
-    # su `fatturato_netto` ma il valore che usa è `mol_perc`. L'override fornisce i
-    # ricavi, non un MOL ricalcolato: includere quei mesi mostrerebbe una
-    # PERCENTUALE FALSA, che è peggio di escluderli. Debito noto, non una
-    # dimenticanza — le sedi in modalità mensile restano fuori da quel segnale.
-    "_calcola_segnali": "usa mol_perc, non i ricavi: l'override non dà un MOL",
+    # NB: `_calcola_segnali` era qui come debito noto ("usa mol_perc, non i ricavi:
+    # l'override non dà un MOL"). L'eccezione è stata RIMOSSA il 04/09 (Q1): il
+    # segnale "margine in calo" non legge più lo snapshot mol_perc, calcola il MOL
+    # con _aggrega_sedi_mensili e quindi fonde gli override come ogni altro
+    # percorso. Non c'è più nulla da eccettuare: la guardia deve sorvegliarlo.
 }
 
 
