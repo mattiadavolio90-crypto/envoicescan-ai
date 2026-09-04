@@ -2002,6 +2002,11 @@ CATEGORIA_FIDUCIA_DA_VERIFICARE = "da_verificare"
 # soglia sparsa, ritararla dopo la misura di produzione significherebbe
 # trovarne 4 e dimenticarne una.
 CONFERME_PER_BYPASS = 3
+# ATTENZIONE se la ritari: migrations/049_add_streak_to_prodotti_master.sql crea
+# idx_pm_streak_promo con `WHERE consecutive_correct_classifications >= 3`
+# cablato. La cartella migrations/ e' congelata, quindi cambiando questo valore
+# l'indice parziale smette di coprire la query e va rifatto in
+# supabase/migrations/. La fonte unica e' unica solo lato Python.
 
 # I livelli di confidence che, INSIEME a verified, aprono il bypass. Su
 # prodotti_master confidence e' TEXT libero senza CHECK: questi sono i due soli

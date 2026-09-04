@@ -190,3 +190,27 @@ def test_chi_e_gia_in_bypass_non_viene_toccato():
     assert a_soglia.row["consecutive_correct_classifications"] == 3, (
         "chi è già a soglia non deve essere ri-scritto a ogni fattura"
     )
+
+
+def test_ai_puo_correggere_la_categoria_di_una_voce_declassata():
+    """Effetto voluto della Fase 6, ma che nessun test dichiarava: la categoria
+    di una voce 'alta' MAI verificata non è più immutabile.
+
+    Prima del fix quelle voci uscivano subito e la categoria a DB restava com'era
+    — anche quando era il caso «NOCE DI MANZO → FRUTTA» che ha motivato la fase.
+    Ora l'AI può correggerla, e lo streak riparte da 1 sulla nuova categoria.
+    Vale in entrambe le direzioni: è il prezzo dichiarato di considerare quelle
+    voci non attendibili finché una conferma non le rialza.
+    """
+    sb = _MasterFinto("NOCE DI MANZO", "FRUTTA", "alta", verified=False, streak=0)
+    ai_mod.aggiorna_streak_classificazione("NOCE DI MANZO", "CARNE", sb)
+
+    assert sb.row["categoria"] == "CARNE", "l'errore della memoria non si corregge"
+    assert sb.row["consecutive_correct_classifications"] == 1, (
+        "categoria cambiata: lo streak deve ripartire, non proseguire"
+    )
+
+    # Un verificato, invece, resta intoccabile: è la riga di confine.
+    umano = _MasterFinto("POLLO", "CARNE", "altissima", verified=True, streak=0)
+    ai_mod.aggiorna_streak_classificazione("POLLO", "FRUTTA", umano)
+    assert umano.row["categoria"] == "CARNE"
