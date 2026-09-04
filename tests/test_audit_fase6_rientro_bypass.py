@@ -7,8 +7,6 @@ residuo storico, non un movimento. Il segnale e' il movimento, non il totale.
 """
 from unittest.mock import patch
 
-import pytest
-
 import scripts.audit_fase6_rientro_bypass as mod
 
 
@@ -62,6 +60,10 @@ def test_le_gia_a_soglia_non_bastano_a_dire_verde(capsys):
     righe = _voci(373, "alta", 0) + _voci(5, "alta", 3) + _voci(720, "media", 0)
     out = _esegui(righe, capsys)
     assert "VERDE" not in out, "le voci gia' a soglia sono state contate come rientri"
+    # Qui nemmeno il controllo si muove: e' INCONCLUSIVO, non ROSSO. Fermarsi a
+    # "non VERDE" lascerebbe passare uno script che confonde i due, cioe' proprio
+    # la distinzione per cui esiste.
+    assert "INCONCLUSIVO" in out, "stato senza traffico riportato come diagnosi certa"
 
 
 def test_usa_la_costante_non_un_tre_cablato():
@@ -93,7 +95,7 @@ def test_le_verificate_non_contano_come_movimento(capsys):
     assert "VERDE" not in out
 
 
-def test_streak_oltre_soglia_resta_nel_totale(capsys):
+def test_streak_oltre_soglia_resta_nel_totale():
     """Il min() in _distribuzione accorpa tutto il sopra-soglia nell'ultima
     colonna: senza, quelle voci sparirebbero dalla riga E dal totale in
     silenzio. Oggi a DB nessuna supera la soglia, ma se venisse ritarata
@@ -104,3 +106,44 @@ def test_streak_oltre_soglia_resta_nel_totale(capsys):
     d = mod._distribuzione(righe)
     assert d[CONFERME_PER_BYPASS] == 7, "le voci sopra soglia sono sparite dal conteggio"
     assert sum(d.values()) == 7, "il totale non torna: righe perse"
+
+
+def test_il_controllo_esclude_le_declassate(capsys):
+    """I due gruppi devono restare separati.
+
+    Se il 'controllo' includesse anche le declassate, le loro 5 voci gia' a
+    soglia lo farebbero sembrare in movimento e lo stato senza traffico
+    diventerebbe un ROSSO — un allarme su una tabella ferma.
+    """
+    righe = _voci(370, "alta", 0) + _voci(5, "alta", 3) + _voci(720, "media", 0)
+    out = _esegui(righe, capsys)
+    assert "INCONCLUSIVO" in out, (
+        "le declassate sono finite nel gruppo di controllo: nessuno dei due si muove"
+    )
+    assert "ROSSO" not in out
+
+
+def test_controllo_che_si_muove_solo_a_soglia_conta(capsys):
+    """Il gruppo di controllo si misura fino alla soglia INCLUSA.
+
+    Se le sue voci fossero tutte gia' rientrate (streak >= soglia) e nessuna
+    a 1-2, escluderle direbbe "nemmeno il controllo si muove" — INCONCLUSIVO —
+    mentre il contatore ha dimostrato di funzionare, ed e' bloccato solo per
+    le declassate: ROSSO.
+    """
+    from config.constants import CONFERME_PER_BYPASS
+
+    righe = _voci(373, "alta", 0) + _voci(50, "media", CONFERME_PER_BYPASS)
+    out = _esegui(righe, capsys)
+    assert "ROSSO" in out, "il controllo si e' mosso ma non viene contato"
+    assert "INCONCLUSIVO" not in out
+
+
+def test_nessuna_declassata_non_e_un_allarme(capsys):
+    """Senza voci declassate non c'e' niente da misurare: qualunque verdetto
+    diagnostico sarebbe emesso su un insieme vuoto."""
+    righe = _voci(500, "media", 1) + _voci(200, "altissima", 0, verified=True)
+    out = _esegui(righe, capsys)
+    assert "niente da misurare" in out
+    for verdetto in ("ROSSO", "VERDE", "INCONCLUSIVO"):
+        assert verdetto not in out, f"emesso {verdetto} senza voci declassate"
