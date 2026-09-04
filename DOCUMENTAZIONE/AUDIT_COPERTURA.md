@@ -124,7 +124,7 @@ voci già coperte da Fable.
 | Voce roadmap §3 | Perimetro | Esito | Da ripassare? |
 |---|---|---|---|
 | #2 prompt AI | `config/` (2.411) | 12 chiavi mojibake riparate, presidio per mutazione | **No** |
-| #3 categorizzazione | `ai_service`, `routers/` | 10 fasi su 10, test per fase | **Sì, con Opus** — regola di dominio #1, flag spento e migration non applicata |
+| #3 categorizzazione | `ai_service`, `routers/` | 10 fasi su 10, test per fase | **Sì, con Opus** — regola di dominio #1, flag ancora spento (migration `20260903210000` già applicata: 7 RPC su 7, verificata il 04/09) |
 | #4 briefing | `daily_briefing_service` (1.660) | letto riga per riga, 2 difetti chiusi | **No** |
 | #5 worker | `worker/` (2.411) | «non presidiato» smentito: 7 file di test | **No** |
 | #6 router | `routers/` (16.755) | prima passata: scadenziario muto da giugno | **Sì, con Opus** — 1 router su molti |
@@ -137,8 +137,8 @@ salirebbero da 9.345 a 14.167 righe. **È già incluso in tutte le cifre di ques
 darebbe una copertura più bassa del vero.
 
 **Cosa resta da ripassare con Opus** (non da rifare da zero): **#3
-categorizzazione** — tocca la regola di dominio #1, ha un flag ancora spento e
-una migration non applicata — e **#6 router**, dove la prima passata ha coperto
+categorizzazione** — tocca la regola di dominio #1 e ha un flag ancora spento
+(la migration è già applicata) — e **#6 router**, dove la prima passata ha coperto
 un solo router su molti. Le altre tre voci sono chiuse con presidio provato per
 mutazione: rifarle è costo senza copertura nuova.
 
