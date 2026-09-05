@@ -188,12 +188,19 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        // Il backend rifiuta il salvataggio quando una riga non e' calcolabile
+        // (422) e dice QUALE: senza questo, l'utente legge "Errore salvataggio"
+        // e non sa quale ingrediente sistemare.
+        const detail = await res.json().then((d) => d?.detail).catch(() => null);
+        throw new Error(typeof detail === "string" ? detail : "");
+      }
       toast.success(isNew ? "Ricetta salvata" : "Ricetta aggiornata");
       onSaved();
       onClose();
-    } catch {
-      toast.error("Errore salvataggio");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      toast.error(msg || "Errore salvataggio");
     } finally {
       setSaving(false);
     }
