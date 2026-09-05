@@ -42,10 +42,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.856 |
-| Frontend (`apps/web/src/`, esclusi i binari) | 53.855 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.860 |
+| Frontend (`apps/web/src/`, esclusi i binari) | 53.861 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.267** |
+| **TOTALE APP** | **114.277** |
 
 > Ri-misurato il **5/09/2026** coi comandi qui sopra (dopo `85328bf`). Il backend
 > **cala di 220 righe** rispetto al 4/09: 286 rimosse come codice morto dalla
@@ -57,10 +57,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 56.856 | 0 | **100%** |
-| Frontend | 27.515 letti + 23.024 parziali su 53.855 | **3.316** | **94%** |
+| Backend | 56.860 | 0 | **100%** |
+| Frontend | 27.515 letti + 23.030 parziali su 53.861 | **3.316** | **94%** |
 | Edge Functions | 3.556 | 0 | **100%** |
-| **App intera** | **110.951** | **3.316** | **97%** |
+| **App intera** | **110.961** | **3.316** | **97%** |
 
 > **Come si legge.** «Coperto» somma il letto integralmente (📖) e il parziale
 > (🔍/🟠): sono livelli di confidenza diversi, non equivalenti — il dettaglio per
@@ -71,7 +71,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Backend Python — 56.856 righe
+## Backend Python — 56.860 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -94,10 +94,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
-| 📖 letto integralmente | 27.418 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.821** |
+| 📖 letto integralmente | 27.422 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.821** |
 | 🔍 / 🟠 parziale | 29.438 | 52% | `fastapi_worker` 8.901, `routers/` 16.768, `upload_handler` 2.282, `margine_service` 1.487 |
 | 🔴 mai guardato | **0** | 0% | — **la zona rossa del backend e' chiusa il 5/09** |
-| **Totale backend** | **56.856** | 100% | ✅ la colonna chiude: 27.418 + 29.438 = 56.856, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
+| **Totale backend** | **56.860** | 100% | ✅ la colonna chiude: 27.422 + 29.438 = 56.860, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
 
 > **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
 > tutto merito della lettura: **286 righe erano codice morto** e sono state
@@ -151,7 +151,7 @@ mutazione: rifarle è costo senza copertura nuova.
 
 ---
 
-## Frontend — 53.855 righe
+## Frontend — 53.861 righe
 
 > ⚠️ **Ri-misurato il 4/09: 53.764 righe (+525 dal 3/09).** La tabella qui sotto
 > è ferma alla ripartizione per area del 3/09 e **non è stata ri-sommata**: le
@@ -179,7 +179,7 @@ mutazione: rifarle è costo senza copertura nuova.
 | `(app)/admin/` | 1.739 | 3.925 | 🟠 44% | ciclo 07 §3c — solo staff, non clienti |
 | `(app)/prezzi/` | 973 | 2.355 | 🟠 41% | ciclo 07 §3c |
 | `(app)/workspace/` | 1.834 | 5.032 | 🟠 36% | ciclo 07 §3c + F6 ciclo 08: il resto escluso con misura |
-| `(mobile)/` | 1.283 | 4.008 | 🟠 32% | ciclo 07 §3c; 3/9 avvisi mobile allineati al desktop (R10) |
+| `(mobile)/` | 1.283 | 4.014 | 🟠 32% | ciclo 07 §3c; 3/9 avvisi mobile allineati al desktop (R10) |
 | `(app)/analisi-fatture/` | 825 | 2.683 | 🟠 31% | ciclo 07 §3c; 3/9 il tab Articoli non dice più «nessun prodotto» su un worker giù (R10) |
 | `components/` | 2.188 | 7.307 | 🟠 30% | F3 ciclo 08: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
 | `(app)/dashboard/` | 0 | 1.795 | 🟠 logica estratta | 1/9: la logica è uscita nei moduli `home-*.ts`, 92 test. Nessun `.tsx` letto |
@@ -194,7 +194,7 @@ mutazione: rifarle è costo senza copertura nuova.
 | `hooks/` | 0 | 22 | 🔴 | un solo file, `use-mobile.ts` |
 | `proxy.ts` | 0 | 105 | 🔴 | — |
 
-**Somma: lette 27.515 · non lette 26.340 · totale 53.855.**
+**Somma: lette 27.515 · non lette 26.346 · totale 53.861.**
 
 > ✅ **Ri-misurata area per area il 5/09/2026 (sera), e la colonna chiude: scarto
 > 0** contro `git ls-files`. Era la parte più debole del file — lo scarto era
@@ -245,13 +245,21 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 58.489 | **51%** | 27.418 backend + 27.515 frontend + 3.556 Edge |
-| 🔍 / 🟠 Auditato o parzialmente coperto | 52.462 | 46% | 29.438 backend + 23.024 frontend |
+| 📖 Letto integralmente | 58.493 | **51%** | 27.422 backend + 27.515 frontend + 3.556 Edge |
+| 🔍 / 🟠 Auditato o parzialmente coperto | 52.468 | 46% | 29.438 backend + 23.030 frontend |
 | 🔴 Mai guardato | 3.316 | **3%** | **0 backend** + 3.316 frontend — la zona rossa e' tutta e solo nel frontend |
-| **Totale app (misurato)** | **114.267** | 100% | 56.856 + 53.855 + 3.556 |
+| **Totale app (misurato)** | **114.277** | 100% | 56.860 + 53.861 + 3.556 |
 
 > **Ri-sommato il 5/09/2026 (sera), dopo `6ba0d6e`.** Le tre righe fanno
-> **114.267** contro un totale misurato di **114.267**: **scarto 0**.
+> **114.277** contro un totale misurato di **114.277**: **scarto 0**.
+>
+> ⚠️ **Terza ri-misura del 05/09**, dopo i fix nati dal `code-reviewer`
+> (`35ee669`). Backend **+4** (`personale_export_service` 291 → 295: allineato
+> il calcolo ore, e il modulo sta fra i 15 gia' letti, quindi cresce la riga
+> «letto») e frontend **+6** (`(mobile)/` 4.008 → 4.014: `/m` e' un frontend
+> separato e andava allineato a mano). **La copertura non cambia**: sono righe
+> scritte in questa sessione, lette e provate, non perimetro nuovo da guardare.
+> Il rosso resta **3.316**.
 >
 > ⚠️ **Ri-misurato di nuovo il 05/09 a fine giornata**: il backend sale di **9
 > righe** (56.847 → 56.856) per il cambio del modello ore extra di questa stessa
