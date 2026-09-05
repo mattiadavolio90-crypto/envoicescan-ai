@@ -299,7 +299,7 @@ def ws_calcola(body: CalcolaRigheBody, authorization: Optional[str] = Header(Non
 @router.post("/api/workspace/foodcost/ricette", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
     """Crea nuova ricetta. Il foodcost_totale è calcolato dal server."""
-    from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE
+    from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE, RigaFoodcostNonCalcolabile
 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -311,7 +311,10 @@ def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Heade
     if body.categoria not in CATEGORIE_RICETTE:
         raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
 
-    fc_totale = calcola_ricetta(body.righe)
+    try:
+        fc_totale = calcola_ricetta(body.righe)
+    except RigaFoodcostNonCalcolabile as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     try:
         next_ordine_resp = sb.rpc("get_next_ordine_ricetta", {"p_user_id": user_id, "p_ristorante_id": ristorante_id}).execute()
@@ -339,7 +342,7 @@ def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Heade
 @router.patch("/api/workspace/foodcost/ricette/{ricetta_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
     """Aggiorna ricetta esistente. Il foodcost_totale è ricalcolato dal server."""
-    from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE
+    from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE, RigaFoodcostNonCalcolabile
 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -349,7 +352,10 @@ def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: 
     if body.categoria not in CATEGORIE_RICETTE:
         raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
 
-    fc_totale = calcola_ricetta(body.righe)
+    try:
+        fc_totale = calcola_ricetta(body.righe)
+    except RigaFoodcostNonCalcolabile as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     payload = {
         "nome": body.nome.strip(),
         "categoria": body.categoria,

@@ -131,10 +131,21 @@ def calcola_costo_riga(
     return _converti_um(quantita, um_richiesta, prezzo_base)
 
 
+class RigaFoodcostNonCalcolabile(ValueError):
+    """Una riga ingrediente non ha prodotto un costo: il totale sarebbe falso."""
+
+
 def calcola_ricetta(righe: list[dict]) -> float:
-    """Ricalcola foodcost_totale da una lista di righe ingrediente."""
+    """Ricalcola foodcost_totale da una lista di righe ingrediente.
+
+    Se una riga non e' calcolabile NON la salta: prima il costo di quella riga
+    veniva escluso dalla somma e la ricetta risultava piu' economica di quanto
+    e', con l'errore visibile solo nei log del server. Un foodcost sottostimato
+    e' peggio di un errore: decide prezzi di vendita e colora di verde un piatto
+    in perdita. Meglio rifiutare il calcolo e dire quale riga non torna.
+    """
     totale = 0.0
-    for r in righe:
+    for i, r in enumerate(righe):
         try:
             totale += calcola_costo_riga(
                 tipo=r.get("tipo", "articolo"),
@@ -147,8 +158,12 @@ def calcola_ricetta(righe: list[dict]) -> float:
                 prezzo_override=r.get("prezzo_override"),
                 foodcost_ricetta=r.get("foodcost_ricetta"),
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Errore calcolo riga foodcost: %s", r)
+            nome = r.get("nome") or r.get("descrizione") or f"riga {i + 1}"
+            raise RigaFoodcostNonCalcolabile(
+                f"Impossibile calcolare il costo di {nome}: {exc}"
+            ) from exc
     return round(totale, 4)
 
 

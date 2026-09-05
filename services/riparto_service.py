@@ -463,7 +463,10 @@ def righe_ripartite_proiettate(
         .select("riparto_id, quota_perc, quota_importo, categoria")
         .eq("ristorante_id", pv_ristorante_id)
     )
-    quote = (quote_q.execute().data) or []
+    # Paginata: senza .range() PostgREST tronca a 1000 righe senza errore ne' log.
+    # Qui il conteggio cresce come sedi x categorie x mesi, quindi il cap arriva
+    # con l'uso; un troncamento muto farebbe sparire quote gia' ripartite.
+    quote = fetch_all(quote_q)
     if not quote:
         return []
 

@@ -434,11 +434,17 @@ def verifica_integrita_fattura(
             righe_db = int(righe_db_override)
         else:
             # Fallback legacy: conteggio storico per file_origine.
-            response = supabase_client.table("fatture") \
-                .select("id", count="exact") \
-                .eq("user_id", user_id) \
-                .eq("file_origine", nome_file) \
-                .execute()
+            # Il filtro soft-delete non e' opzionale (CLAUDE.md #5): senza, il
+            # conteggio include le righe cestinate e risulta > delle righe
+            # parsed, cioe' una discrepanza di integrita' inventata.
+            # Import lazy: services.db_service importa questo modulo.
+            from services.db_service import filter_active
+            response = filter_active(
+                supabase_client.table("fatture")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .eq("file_origine", nome_file)
+            ).execute()
 
             # Usa count esatto dalle metadata della query (più affidabile)
             righe_db = response.count if response.count is not None else len(response.data) if response.data else 0
