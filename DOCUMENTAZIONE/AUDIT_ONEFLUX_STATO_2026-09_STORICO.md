@@ -24,6 +24,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R8 — guardia liste vuote catena | depennato: era già in produzione |
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 | 05/09 | `(app)/agenda/` + il ponte costo personale→MOL | chiusa — 6/7 mutanti, il 7° dichiarato ridondante |
+| 05/09 (sera) | Modello ore extra invertito + 2 contatori che mentivano | chiusa — 3/3 mutanti; il rosso frontend era 4.069 per errori di conteggio, è **3.316**; Q3 chiusa (colonna morta). Code-reviewer: 3 blocchi alla 1ª passata, verde alla 2ª |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
@@ -2819,3 +2820,148 @@ scadenziario, dove lo stesso pattern nascondeva 4,4 M€.
 **Il costo del personale è fermo a luglio su 6 sedi su 6.** Senza quel dato il MOL di
 agosto e settembre non è confrontabile con i mesi precedenti. Il briefing lo segnala
 già: serve l'inserimento, non codice.
+
+---
+
+## 05/09/2026 (sera) — Il modello delle ore extra, e due contatori che mentivano
+
+**Commit**: `cb058a6` → `37868a7` (9). **Suite**: 12.972 passed, 44 skipped, 0 failed.
+**Code-reviewer**: verde alla seconda passata, dopo 3 blocchi alla prima.
+
+### Perché questa sessione
+
+Mattia ha chiesto lo stato della copertura audit. Rileggendo i due documenti riga
+per riga invece di ereditarne le cifre, sono emersi **tre errori** che nessuno
+aveva visto perché le somme ai livelli alti tornavano lo stesso.
+
+### 1. Il rosso frontend era 4.069, ed erano due errori di conteggio
+
+Non è stato ridotto da del lavoro: era **contato male**.
+
+- Le **4.871 righe di `app/api/`** erano contate come rosse nel «conto onesto»
+  pur essendo segnate 📖 dal 30/08 **nella tabella dello stesso file**: due
+  sezioni in contraddizione fra loro per giorni.
+- La riga «`hooks/` + file diretti + proxy = **723**» sommava perimetri che si
+  sovrappongono. Le voci vere sono **481 + 22 + 105**, più i **115** di
+  `(app)/layout+loading` che non erano attribuiti a nessuna riga.
+
+**Il rosso vero è 3.316.** Ciò che ha fatto chiudere la somma è la
+**decomposizione esaustiva**: `app/` 40.476 + `components/` 7.307 + `hooks/` 22 +
+`lib/` 5.945 + `proxy.ts` 105 = 53.855, e dentro `app/` le sottocartelle tornano
+a loro volta. Senza decomporre così, tre righe si sovrapponevano in silenzio.
+
+### 2. Q3 chiusa: `mol_perc` è una colonna morta, misurata
+
+La voce chiedeva «un presidio sullo snapshot incoerente». Ri-misurata: **1 solo
+scrittore** (`margini.py:288`) e **zero lettori** — l'unico `select` su
+`margini_mensili` prende `ristorante_id,fatturato_netto`, e **nessuna RPC SQL**
+la nomina. A DB: 75 righe, 18 non-zero. Il numero sbagliato che la voce temeva
+(OVERTIME febbraio +50.834 € contro +28.398 € veri) **non raggiunge nessuna
+schermata**. Non serviva il presidio: serve decidere se droppare la colonna.
+
+⚠️ **Trappola annotata**: esistono ~15 variabili locali `mol_perc`/`MOL_Perc` in
+`margine_service.py` e `margini.py` che non c'entrano nulla con la colonna. Un
+grep sulla stringa fa credere che i lettori siano tanti.
+
+### 3. Due «decisioni di Mattia» che non erano decisioni
+
+Rimosse dalla lista, con la ragione scritta perché non tornino:
+
+- **Costo personale ago+set**: lo inseriscono **i clienti**, non Mattia. Il
+  briefing li avvisa già ogni mattina e funziona (verificato su
+  `daily_briefing_state`). Nessuna azione tecnica. *Errore mio: lo avevo scritto
+  come «le tue sedi».*
+- **Flag Fase 4**: acceso o spento toglie **0 €** (le righe `da_verificare` non
+  esistono più). Non c'è nulla da decidere su un delta zero.
+
+### 4. Il modello delle ore extra, invertito
+
+**Richiesta di Mattia**: inserendo il turno ogni giorno non serve il costo
+orario; si mette l'orario e quante di quelle ore sono extra («delta 7, extra 2 →
+ordinario 5»).
+
+Il modello era **l'opposto**: `_ore_turno` faceva `ore_orari + extra`, quindi un
+09-17 con 2 extra valeva **10 ore**. Ora ne vale **8, di cui 2 di straordinario**.
+
+Il rilievo **«ore extra senza tetto» si chiude qui**: il clamp `min(extra, ore)`
+era codice morto (l'extra era già dentro il totale); ora è la guardia viva.
+
+**`workspace.py` quel clamp non ce l'aveva** — non serviva col modello vecchio,
+serve adesso: senza, l'ordinario sarebbe uscito **negativo**.
+
+**Esposizione: zero.** 107 turni, 0 con `ore_extra`, 0 con `costo_orario`,
+ri-misurato **immediatamente prima del push**. Nessun importo si è mosso.
+
+### 5. Il widget turni
+
+Rimossa la preselezione del giorno; etichetta «Seleziona uno o più giorni:».
+C'era una guardia nascosta che **impediva di deselezionare l'ultimo giorno**:
+quello di default non era rimuovibile, solo sostituibile. Togliendola si apriva
+un buco — il Salva a selezione vuota avrebbe fatto **zero POST con un toast di
+successo** — chiuso disabilitando il pulsante.
+
+### Il code-reviewer ha trovato quello che io non avevo visto
+
+Tre blocchi alla prima passata, tutti della stessa classe: **fix parziale, i
+consumatori restano indietro.**
+
+- **`personale_export_service._ore_turno_locale`** è una **copia** di `_ore_turno`
+  ed era rimasta sul modello additivo: nello **stesso file Excel**, il foglio
+  Turni avrebbe scritto 10 ore e il Riepilogo 8.
+- **Il frontend mobile `/m`** era interamente sul modello vecchio (10h/110 € dove
+  il desktop diceva 8h/90 €) e **senza nessuno dei due clamp**: con `ore_extra=99`
+  mostrava 107h e 1.565 €. Il rilievo dichiarato chiuso era ancora aperto lì.
+- **`DATABASE_SCHEMA.md:395`** diceva in grassetto «**Additive**, non un
+  sottoinsieme»: l'esatto contrario del codice. Nota: la migration
+  `20260531140000` diceva già «sottoinsieme» — il doc era disallineato da prima.
+
+**Il test non proteggeva**: asseriva `== 10.0` col commento `# 8h + 2h extra`,
+cioè fissava il modello sbagliato. Riscritto.
+
+### Errori miei, dichiarati
+
+1. **Ho quasi scritto due cifre inventate** nel contatore (`fastapi_worker` 8.907,
+   `routers/` 16.771) per far tornare il totale. I valori veri sono 8.901 e 16.768:
+   **due errori opposti si compensavano** e la somma quadrava lo stesso.
+2. **Un mutante è sopravvissuto**: avevo aggiunto il clamp in `workspace.py` senza
+   che nessun test lo coprisse. Scritto il presidio mancante — che chiama
+   l'endpoint vero — e il mutante muore.
+3. **Ho aggiornato un totale senza il suo addendo**: `personale_export` 291 → 295
+   descritto in prosa, ma l'addendo lasciato a 291. Trovato dal reviewer.
+
+### Verifiche fatte eseguendo, non leggendo
+
+- **Export vs worker**: 4 casi, coincidono (il caso divergente del reviewer,
+  10:00-18:00 + 2 extra, dà 8.0 su entrambi).
+- **Desktop vs mobile**: estratte le due `calcolaOreTotali` **vere** dai sorgenti
+  ed eseguite affiancate su 6 casi — identiche. Il reviewer ha ripetuto la prova
+  su 8 casi **aggiungendo una controprova per mutazione** al comparatore stesso,
+  perché un comparatore che dice sempre «uguale» non prova niente.
+
+### Stato finale
+
+| Perimetro | Righe | Copertura |
+|---|---:|---|
+| Backend | 56.860 | **100%** |
+| Frontend | 53.861 | 94% (**3.316** rosse) |
+| Edge Functions | 3.556 | **100%** |
+| **App** | **114.277** | **97%** |
+
+Le tre somme chiudono a **scarto 0**, ogni addendo ripreso con `wc -l`.
+
+**Ma il 97% non è «97% al sicuro»**: solo il **51%** delle righe coperte è stato
+letto riga per riga.
+
+### Deciso da Mattia
+
+**L'esclusività giornaliero/mensile NON si tocca.** Togliendola si sarebbero
+potuti inserire i giorni *e* correggere col cedolino, ma quella guardia impedisce
+il **doppio conteggio del costo del personale nel MOL**. Il rischio sui soldi
+supera la comodità. Il ramo mensile resta l'inserimento da cedolino: nessuna
+modifica al codice.
+
+### La prossima dimensione
+
+**I router del worker**, non il frontend: 16.768 righe con ~4.000 lette, backend,
+dove passano i soldi. Le 3.316 righe rosse di frontend non muovono denaro.
+Prompt pronto in `docs/piani/PROMPT_ROUTER_ULTIMA_ZONA.md`.
