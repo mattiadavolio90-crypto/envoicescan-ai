@@ -117,11 +117,18 @@ def _turno(**over):
 def test_aggregazione_extra_oltre_le_ore_non_gonfia_il_totale():
     """Il difetto vero, al punto d'uso: 8 ore con 10 extra restano 8 ore.
 
-    Senza clamp nel chiamante: oreStd 0 + oreExt 10 = 10 ore, e 100 EUR invece
-    di 80. E' il mutante che sopravviveva ai test sulla sola ripartisciOre.
+    ⚠️ Si asseriscono le COMPONENTI, non la somma. Una prima stesura controllava
+    `oreStd + oreExt == 8.0` e `costoTot == 80.0`, e il code-reviewer ha
+    mostrato che il mutante ci passava: senza clamp escono `oreStd = -2` e
+    `oreExt = 10`, che sommano a 8, e `-20 + 100` che fa 80. **Gli errori si
+    compensano esattamente nel totale.** Il cliente avrebbe visto in card -2h
+    ordinarie e -20 EUR, con il totale giusto e un test verde.
     """
     r = _aggrega([_turno(ore_extra=10, costo_orario=10)], [8.0])
-    assert r["oreStd"]["mario"] + r["oreExt"]["mario"] == 8.0
+    assert r["oreStd"]["mario"] == 0.0, "ordinarie negative: manca il clamp nel chiamante"
+    assert r["oreExt"]["mario"] == 8.0, "straordinario oltre le ore del turno"
+    assert r["costoStd"]["mario"] == 0.0
+    assert r["costoExt"]["mario"] == 80.0
     assert r["costoTot"]["mario"] == 80.0
 
 

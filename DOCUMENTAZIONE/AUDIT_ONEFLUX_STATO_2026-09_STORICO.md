@@ -25,7 +25,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 | 05/09 | `(app)/agenda/` + il ponte costo personale→MOL | chiusa — 6/7 mutanti, il 7° dichiarato ridondante |
 | 05/09 (sera) | Modello ore extra invertito + 2 contatori che mentivano | chiusa — 3/3 mutanti; il rosso frontend era 4.069 per errori di conteggio, è **3.316**; Q3 chiusa (colonna morta). Code-reviewer: 3 blocchi alla 1ª passata, verde alla 2ª |
-| 05/09 (notte) | Il terzo consumatore del modello ore extra, e la scrittura che lo permetteva | chiusa — **11/11 mutanti**; l'aggregazione desktop gonfiava monte ore e costo del 25%; regola, aggregazione e costo turno in una fonte unica (`lib/ore-turno.ts`) provata al **punto d'uso**; dato impossibile rifiutato in scrittura su tutti e 4 gli endpoint. Code-reviewer: 2 blocchi (addendo in colonna sbagliata, PATCH mensile senza guardia sui negativi) + il mutante al call-site sopravvissuto |
+| 05/09 (notte) | Il terzo consumatore del modello ore extra, e la scrittura che lo permetteva | chiusa — **15/15 mutanti** (3 sopravvissuti alla 1ª stesura, tutti test deboli); l'aggregazione desktop gonfiava monte ore e costo del 25%; regola, aggregazione e costo turno in una fonte unica (`lib/ore-turno.ts`) provata al **punto d'uso**; dato impossibile rifiutato in scrittura su tutti e 4 gli endpoint. Code-reviewer: 2 blocchi (addendo in colonna sbagliata, PATCH mensile senza guardia sui negativi) + il mutante al call-site sopravvissuto |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
@@ -3117,9 +3117,31 @@ di cui non conosciamo il costo — che finirebbero nel MOL. La riga serviva; era
 il test a mancare. **Un mutante sopravvissuto e' una domanda, non un verdetto**:
 qui la risposta era "manca un caso", non "la riga e' inutile".
 
-**Bilancio mutazione: 11 mutanti, 11 uccisi** (3 sulla ripartizione, 8 sulle
-guardie e sui consumatori), dopo che 2 sono sopravvissuti alla prima stesura e
-hanno fatto trovare due test che non provavano quello che dichiaravano.
+### La seconda passata: il presidio nuovo era cieco per aritmetica
+
+Il reviewer ha rifatto il suo mutante sul call-site **anche dopo l'estrazione**:
+**sopravvissuto di nuovo**. Non perche' il codice fosse sbagliato, ma perche' il
+test che doveva ucciderlo asseriva la **somma**:
+
+    assert oreStd + oreExt == 8.0        # -2 + 10 = 8  ✅ passa col mutante
+    assert costoTot == 80.0              # -20 + 100 = 80  ✅ passa col mutante
+
+Le due componenti sbagliate **si compensano esattamente nel totale**. Il cliente
+avrebbe visto in card **-2 ore ordinarie e -20 EUR** con il totale giusto, e la
+suite verde. Corretto asserendo le componenti (`oreStd == 0`, `oreExt == 8`,
+`costoStd == 0`), e il mutante muore.
+
+E' la stessa forma di errore del caso decimale poche ore prima: **un test che
+verifica un aggregato non vede gli errori che si annullano dentro**. Verificare
+il totale e' precisamente cio' che questo ciclo ha gia' imparato a non fare sul
+contatore di copertura — e l'ho ripetuto su un test.
+
+**Bilancio mutazione: 15 mutanti, 15 uccisi** (ripartizione, guardie in
+scrittura, aggregazione, costo turno), dopo che **3 sono sopravvissuti alla prima
+stesura**. Nessuno dei tre indicava codice ridondante: ognuno indicava un test
+che non provava quello che dichiarava — un caso float scelto male, un caso
+mancante, un assert su un aggregato. **Il valore della mutazione non e' il
+punteggio: sono i sopravvissuti.**
 
 **Nessun dato esistente viola le guardie nuove** — misurato a DB, non dedotto:
 0 righe giornaliere su 92 con extra valorizzate, 0 mensili fuori soglia su ore e
