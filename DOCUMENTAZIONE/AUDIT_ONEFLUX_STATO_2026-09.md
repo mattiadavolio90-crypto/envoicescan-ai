@@ -6,7 +6,7 @@
 > `AUDIT_COPERTURA.md`. Se una di queste tre cose finisce nelle altre due, tutte
 > e tre diventano illeggibili — è già successo.
 
-**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 04/09/2026 (sera).**
+**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 05/09/2026 (pomeriggio).**
 I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 > ⚠️ **Rinominato il 02/09/2026.** Si chiamava `..._2026-08-29.md` e faceva
@@ -17,7 +17,8 @@ I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 ## 0. I prossimi passi — in ordine
 
-> Ri-misurato il **05/09/2026**, dopo `59ff32a`. Copertura backend: **100%**
+> Ri-misurato il **05/09/2026** (pomeriggio), dopo `f3d4e89` **deployato**.
+> Copertura backend: **100%**
 > — **la zona rossa e' chiusa**: non restano righe mai guardate. Dettaglio in
 > [`AUDIT_COPERTURA.md`](AUDIT_COPERTURA.md).
 

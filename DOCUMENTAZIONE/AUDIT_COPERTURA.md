@@ -194,10 +194,19 @@ mutazione: rifarle è costo senza copertura nuova.
 **Somma: lette 27.210 · non lette 25.772 · totale 52.982** (ri-sommata il
 3/09/2026, non aggiornata per delta).
 
-> ⚠️ **La tabella chiude a 52.982, il repo misura 53.031: mancano 49 righe.**
-> Vengono da aree cresciute senza che la loro riga fosse ri-misurata, non dal
-> lavoro del 3/09 (+5 righe nette). Dichiarato invece che nascosto in un
-> arrotondamento — chi ri-misura un'area, chiuda anche questo.
+> ⚠️ **La tabella chiude a 52.982, il repo misura 53.855 (ri-misurato il
+> 5/09/2026, sera): lo scarto è salito a 873 righe.** Era 49 il 3/09. Non viene
+> dal lavoro di audit: viene dalle **sessioni parallele che scrivono frontend**
+> mentre la tabella resta ferma (+60 righe nelle sole ultime ore del 5/09). La
+> somma qui sopra è del 3/09 e **non va citata come stato di oggi**: chi apre
+> un'area la ri-misuri con `git ls-files`, e ri-sommi la colonna.
+>
+> Aree rosse ri-misurate il 5/09: `agenda/` **692** (era 693), `assistenza/` 292,
+> `style-guide/` 256, `(auth)` 552, `(legal)` 575, `(demo)` 226, `hooks/` 22 —
+> **somma 2.615**. Il resto del rosso dichiarato (~1.454) sono file radice, route
+> API e `globals.css`: le route erano già state guardate nella passata del 30/08
+> sulle 169 route Next, quindi il rosso vero è **più piccolo di 4.069**, non più
+> grande. Va ri-attribuito, non ri-sommato a mano.
 >
 > ⚠️ **Si misura con `git ls-files`, non con `*.tsx`.** La riga di `catena/`
 > diceva 2.938 perché il glob `cat catena/*.tsx` **non entra nelle
