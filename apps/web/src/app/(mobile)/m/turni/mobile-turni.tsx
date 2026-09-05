@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
+import { ripartisciOre } from "@/lib/ore-turno";
 
 // ─── Wrapper Movimenti: Incassi / Spese / Turni ─────────────────────────────────
 // Questa e' la sezione "Movimenti" della bottom nav (ex "Turni"): raccoglie i
@@ -333,8 +334,11 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
   const oreTot = Math.round((ore1 + ore2) * 100) / 100;
-  const extraNum = Math.min(parseDecimaleItOZero(oreExtra), oreTot);
-  const stdNum = Math.max(0, Math.round((oreTot - extraNum) * 100) / 100);
+  // Il valore digitato, non ancora clampato: serve per accorgersi che eccede
+  // e dirlo, invece di salvare in silenzio un numero diverso da quello scritto.
+  const extraDigitate = parseDecimaleItOZero(oreExtra);
+  const extraEccedono = !!oreExtra && extraDigitate > oreTot + 0.01;
+  const { ordinarie: stdNum, extra: extraNum } = ripartisciOre(oreTot, extraDigitate);
   const costoNum = parseDecimaleIt(costoOrario);
   const costoNumExtra = parseDecimaleIt(costoOrarioExtra);
   const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;
@@ -395,7 +399,8 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
     }
     if (!oraInizio || !oraFine) { toast.error("Orario obbligatorio"); return; }
     if (spezzato && (!oraInizio2 || !oraFine2)) { toast.error("Inserisci il secondo slot"); return; }
-    if (oreExtra && (isNaN(extraNum) || extraNum < 0)) { toast.error("Ore extra non valide"); return; }
+    if (oreExtra && (isNaN(extraDigitate) || extraDigitate < 0)) { toast.error("Ore extra non valide"); return; }
+    if (extraEccedono) { toast.error(`Le ore extra (${fmtOre(extraDigitate)}) non possono superare le ore del turno (${fmtOre(oreTot)})`); return; }
     if (costoOrario && (isNaN(costoNum) || costoNum < 0)) { toast.error("Costo orario non valido"); return; }
     if (costoOrarioExtra && (isNaN(costoNumExtra) || costoNumExtra < 0)) { toast.error("Costo extra non valido"); return; }
     setSaving(true);
@@ -964,10 +969,8 @@ function TurniBody() {
           oreLavorate += ore;
           const std = t.costo_orario ?? 0;
           const ext = t.costo_orario_extra ?? std;
-          // Clamp come backend e desktop: le extra non possono eccedere le ore
-          // del turno, altrimenti (ore - oreExt) andrebbe negativo.
-          const oreExt = Math.min(t.ore_extra ?? 0, ore);
-          costoTot += std * (ore - oreExt) + ext * oreExt;
+          const { ordinarie: oreStd, extra: oreExt } = ripartisciOre(ore, t.ore_extra);
+          costoTot += std * oreStd + ext * oreExt;
         } else if (tipo === "ferie") { giorniFerie++; costoTot += t.importo_a_carico ?? 0; }
         else if (tipo === "malattia") { giorniMalattia++; costoTot += t.importo_a_carico ?? 0; }
         else if (tipo === "riposo") { giorniRiposo++; }

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
+import { ripartisciOre } from "@/lib/ore-turno";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -145,8 +146,7 @@ export function calcolaOreTotali(t: Turno): number {
 function calcolaCostoTurno(t: Turno): number {
   if (t.costo_orario == null) return 0;
   const oreT = calcolaOreTotali(t);
-  const ext = Math.min(t.ore_extra ?? 0, oreT);
-  const std = Math.max(0, oreT - ext);
+  const { ordinarie: std, extra: ext } = ripartisciOre(oreT, t.ore_extra);
   const coExt = t.costo_orario_extra ?? t.costo_orario;
   return std * t.costo_orario + (ext > 0 ? ext * coExt : 0);
 }
@@ -367,8 +367,11 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
   const oreTot = Math.round((ore1 + ore2) * 100) / 100;
-  const extraNum = Math.min(parseDecimaleItOZero(oreExtra), oreTot);
-  const stdNum = Math.max(0, Math.round((oreTot - extraNum) * 100) / 100);
+  // Il valore digitato, non ancora clampato: serve per accorgersi che eccede
+  // e dirlo, invece di salvare in silenzio un numero diverso da quello scritto.
+  const extraDigitate = parseDecimaleItOZero(oreExtra);
+  const extraEccedono = !!oreExtra && extraDigitate > oreTot + 0.01;
+  const { ordinarie: stdNum, extra: extraNum } = ripartisciOre(oreTot, extraDigitate);
   const costoNum = parseDecimaleIt(costoOrario);
   const costoNumExtra = parseDecimaleIt(costoOrarioExtra);
   const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;
@@ -435,7 +438,11 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
     }
     if (!oraInizio || !oraFine) { toast.error("Orario obbligatorio"); return; }
     if (spezzato && (!oraInizio2 || !oraFine2)) { toast.error("Inserisci orario del secondo slot"); return; }
-    if (oreExtra && (isNaN(extraNum) || extraNum < 0)) { toast.error("Ore extra non valide"); return; }
+    if (oreExtra && (isNaN(extraDigitate) || extraDigitate < 0)) { toast.error("Ore extra non valide"); return; }
+    // Il backend rifiuta con un 400: intercettarlo qui dice quali sono i due
+    // numeri in conflitto. Prima il campo veniva clampato in silenzio e il
+    // cliente salvava un valore diverso da quello digitato senza saperlo.
+    if (extraEccedono) { toast.error(`Le ore extra (${fmtOreDisplay(extraDigitate)}) non possono superare le ore del turno (${fmtOreDisplay(oreTot)})`); return; }
     if (costoOrario && (isNaN(costoNum) || costoNum < 0)) { toast.error("Costo orario non valido"); return; }
     setSaving(true);
     try {
@@ -1440,8 +1447,7 @@ export function PersonaleTab() {
       if ((t.tipo_giorno ?? "turno") !== "turno") continue; // riposo/ferie/malattia: fuori da ore/costo lavorato
       const n = nomePerId[t.dipendente_id] ?? t.dipendente_id;
       const ore = calcolaOreTotali(t);
-      const extra = t.ore_extra ?? 0;
-      const ordinarie = Math.max(0, ore - extra);
+      const { ordinarie, extra } = ripartisciOre(ore, t.ore_extra);
       std[n] = (std[n] ?? 0) + ordinarie;
       ext[n] = (ext[n] ?? 0) + extra;
       if (t.mensile) {
