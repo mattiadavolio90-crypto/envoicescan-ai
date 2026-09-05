@@ -2591,3 +2591,108 @@ stessa pagina — il difetto «fix parziale» già pagato dal progetto.
   (il caso reale: in SQL non dà errore, filtra semplicemente nulla e le righe
   rientrano nel MOL in silenzio), costante Python cambiata senza l'SQL, filtro
   cancellato da una RPC.
+
+---
+
+## 5/09/2026 (sera) — gli ultimi 15 moduli `services/`: la zona rossa del backend chiude
+
+**Perimetro.** I 15 moduli mai auditati. Il prompt diceva 5.147 righe: **ri-misurato,
+regge** (`find services -maxdepth 1 -name '*.py' | xargs wc -l`), unico caso del ciclo
+in cui una cifra ereditata era esatta. Dopo il lavoro sono **4.828**.
+
+**Due correzioni al prompt, prima di lavorarci.**
+- `personale_export_service` era dato «0 test»: ne ha 5 (`tests/test_turni_mensili.py:1060-1195`).
+- `documenti_service` era indicato come primo sospetto per la paginazione: **era già
+  a posto** (`fetch_all` in 3 punti, con tanto di commento che spiega il perché).
+  Il difetto vero stava altrove, e di natura diversa.
+
+### Difetto 1 — i suggerimenti Tag vedevano metà dei prodotti (attivo in produzione)
+
+`_fetch_recent_rows` chiudeva con `.limit(MAX_POOL_ROWS)` (12.000) e `.execute()`.
+PostgREST **clampa** quel limit al proprio `max_rows` (1.000) e tronca in silenzio:
+un `.limit()` generoso dà la falsa impressione di proteggere.
+
+Misurato a DB il 5/09, righe in finestra 90gg e prodotti distinti visti:
+
+| Sede | Righe | Prodotti visti | Prodotti reali |
+|---|---:|---:|---:|
+| 5444e918 | 4.209 | 454 | 1.169 |
+| cc016821 | 3.973 | 497 | 1.074 |
+| 0dca4d1f | 3.608 | 470 | 953 |
+| fd7ac484 | 4.343 | 445 | 893 |
+| 86300227 | 1.535 | 343 | 440 |
+
+**5 sedi su 11 sopra il cap.** E il pool non è una lista da mostrare: `occorrenze` e
+`fornitori` sono conteggi su quelle righe, e `MIN_ROWS_DEFAULT` /
+`MIN_FORNITORI_NEW_TAG` si applicano a quei conteggi. Un prodotto la cui seconda
+fattura sta oltre la millesima riga risulta comprato da **un solo fornitore**, cioè
+sembra una marca, e il suggerimento non nasce mai. Un tag che manca non si nota — a
+differenza di uno sbagliato: per questo era invisibile da sempre.
+
+Fix: `fetch_all(query, max_rows=MAX_POOL_ROWS)` più un `.order()` esplicito
+(`fetch_all` pagina per OFFSET: senza `ORDER BY` le pagine non sono stabili). La
+fonte è unica e serve tutti e 4 i consumatori — nessun consumatore resta indietro.
+
+### Difetto 2 — lo Scadenziario poteva presentarsi pieno e tutto sbagliato
+
+Lo Step 3 di `get_documenti_scadenziario` (lettura di `fatture_documenti`) era
+avvolto in un `except Exception` che logga un warning e **prosegue**: `docs_extra`
+restava `{}` e ogni documento usciva con `scadenza_eff=None` e `pagata=False`.
+
+La pagina si sarebbe presentata **completa** — le righe vengono dalla RPC dello
+Step 2 — ma con tutte le fatture prive di scadenza: **4.408.465,91 €** che
+spariscono come scadenze, senza un errore a schermo. Il peggiore dei fallimenti
+silenziosi trovati nel ciclo, perché il dato plausibile non fa sospettare nessuno.
+
+Fix: il guasto resta un guasto. Verificate **tutte e 4 le inerenze**: le 3 rotte di
+`scadenziario.py` e `gruppo.py` finiscono su `workerGet` → `esitoLista`
+(`lib/esito-caricamento.ts`, il fix R10 del 3/09), che distingue il guasto da «zero
+scadenze». `/api/scadenziario/notifica` **non è un job batch** (per-utente, nessun
+cron): col comportamento vecchio un guasto avrebbe **spento** gli avvisi
+interpretandolo come «zero scadenze».
+
+### 280 righe di codice morto rimosse
+
+Blocco M7 «alert soglia costi AI» (85 righe: una feature mai collegata a nulla),
+`classifica_via_worker` (62, variante non aggiornata — le mancava la discriminazione
+429 quota-vs-ratelimit), `get_documenti_list` con la sua cache a due livelli
+irraggiungibile (151 in tutto), `clear_documenti_cache`,
+`dismiss_all_inbox_notifications` (nessuna rotta, nessun bottone),
+`calcola_costi_gpt4o_mini`. I test di quest'ultima ora chiamano
+`calcola_costi_modello`: **misuravano un alias**, non il codice servito.
+
+### Il difetto che ho introdotto io, e che ha trovato il reviewer
+
+Cancellando `_get_documenti_normalized_cached` è rimasto orfano il suo
+`@_make_cache(ttl=60)`, che **si è riattaccato alla funzione successiva del file**:
+`segna_fattura_pagata`. Una **scrittura** dentro una cache a 60 secondi.
+
+Marcare una fattura pagata, de-marcarla e ri-marcarla entro un minuto: la terza
+chiamata è un cache hit — nessuna UPDATE, nessun bump di `cache_version`, nessun
+refresh di `pagata_manuale_at`, e l'API risponde `success=True` mentre il frontend
+fa aggiornamento ottimistico. I due test esistenti non lo vedevano: usano
+`pagata=True` e `pagata=False`, cioè **chiavi di cache diverse**.
+
+**La lezione**: il difetto non è nei due fix dichiarati, è nella rimozione di codice
+morto — la parte che sembrava a rischio zero. Un decoratore non è codice della
+funzione che lo precede, è codice di quella che lo segue.
+
+**Prove**
+- **6 mutanti, 5 uccisi.** Il sopravvissuto è l'`.order()`: il fake restituisce
+  sempre le righe in ordine di lista e non può simulare l'instabilità di OFFSET
+  senza `ORDER BY` — limite dello strumento, dichiarato, non presidio debole.
+- `FakePostgrest` esteso con `.not_` e `.limit()` (che **clampa** a `max_rows`, come
+  il server vero) per esercitare la query reale invece di ricalcolare la formula.
+- Suite: 12.989 → **12.995** raccolti (+8 pool tag, +2 step3, +1 cache, −5 dei test
+  del codice rimosso), **12.951 passed / 44 skipped / 0 failed**.
+- 239 rotte montate, `export_openapi.py --check-drift` OK su 196 endpoint: il
+  contratto pubblico dell'API non cambia.
+
+**Rilievi lasciati aperti** (misurati, non urgenti): `services/__init__.py:184` — il
+`raise` è dentro il `try` e viene ingoiato dall'`except Exception: pass` due righe
+dopo (solo diagnostica, e il file è coperto dalla regola #3); campanella notifiche —
+`.limit(100)` prima del filtro `dismissed_at` in Python (max attuale 33 su 100);
+`ai_cost_service:86` — `return 0` su errore DB fa risultare la quota AI sempre
+disponibile; `session_service:184` — un logout globale fallito è indistinguibile da
+uno riuscito; `_streamlit_shim` — zero test, e il conftest lo sostituisce con un
+MagicMock a superficie aperta, quindi **nessun test esercita mai lo shim reale**.

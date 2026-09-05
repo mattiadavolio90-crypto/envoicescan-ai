@@ -57,7 +57,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 52.026 | 5.147 | **91%** |
+| Backend | 56.854 | 0 | **100%** |
 | Frontend | 27.210 letti su 53.764 | ~26.554 | **51%** |
 | Edge Functions | 3.556 | 0 | **100%** |
 | **App intera** | **82.792** | **31.701** | **72%** |
@@ -88,16 +88,16 @@ non sa montare. È un limite dichiarato, non una svista.
 | `utils/` | 2.294 | 📖 letto | **5/09**: tutti gli 11 file mappati (chiamanti runtime verificati uno per uno). Rimossi `page_setup.py` e `period_helper.py` — **zero chiamanti**, il primo non importabile in produzione — e `patch_streamlit_width_api`. Corretta l'unica query su `fatture` senza soft-delete di tutto `utils/` (`validation.py`). Nuovo presidio su `fetch_all`, **3/3 mutanti** |
 | `config/` | 2.433 | 📖 letto | **contiene i prompt AI** — la regola di dominio n.1. **3/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §2): 29 categorie coerenti, 1.268 chiavi validate, 12 mojibake riparate con presidio |
 | `services/` — riparto, foodcost, radar, price_impact | 1.642 | 📖 letti | **5/09**: letti per intero. Il riparto **misurato sano a DB** (0 categorie fuori dal 100%, 0 importi che non quadrano su 171 riparti). Corretti 2 difetti latenti: quote senza paginazione (24% del cap PostgREST), foodcost che saltava la riga rotta |
-| `services/` (altri 15 moduli) | 5.147 | 🔴 | `documenti_service` 1.096, `tag_suggestion_service` 1.087, `tag_analytics` 488, `notification_inbox` 352, `personale_export` 291, `ai_cost` 282, `worker_client` 270, `__init__` 259, `multisede_routing` 223, `session_service` 219, `_streamlit_shim` 137, `upload_policy` 134, `consumi_service` 134, `worker_metrics` 106, `telegram_service` 69 |
+| `services/` (gli ultimi 15 moduli) | 4.828 | 📖 letti | **5/09**: inventario funzioni + chiamanti runtime + query + soft delete + fallback per tutti e 15. Corretti **2 difetti**: il pool dei suggerimenti Tag si fermava alla millesima riga (5 sedi su 11 sopra il cap vedevano ~450 prodotti su ~1.100) e lo Scadenziario, con lo Step 3 rotto, si presentava pieno ma con **tutte** le fatture prive di scadenza (4,4 M€ invisibili, nessun errore a schermo). **280 righe di codice morto rimosse** (blocco M7 costi AI mai collegato, `classifica_via_worker`, `get_documenti_list` con la sua cache irraggiungibile, `dismiss_all_inbox_notifications`). **4 mutanti / 4 uccisi**, uno per volta. Dettaglio: `documenti_service` 952, `tag_suggestion_service` 1.094, `tag_analytics` 488, `notification_inbox` 325, `personale_export` 291, `worker_client` 206, `ai_cost` 191, `__init__` 259, `multisede_routing` 223, `session_service` 219, `_streamlit_shim` 137, `upload_policy` 134, `consumi_service` 134, `worker_metrics` 106, `telegram_service` 69 |
 
 **Backend: copertura dopo il 5/09.** Ri-sommata la colonna (non per delta):
 
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
-| 📖 letto integralmente | 22.597 | 40% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, **`utils/` 2.294**, **riparto 571 + price_impact 415 + radar 392 + foodcost 264** |
-| 🔍 / 🟠 parziale | 29.429 | 51% | `fastapi_worker` 8.898, `routers/` 16.762, `upload_handler` 2.282, `margine_service` 1.487 |
-| 🔴 mai guardato | 5.147 | 9% | `services/`, 15 moduli — elencati uno per uno nella tabella sopra |
-| **Totale backend** | **57.173** | 100% | ✅ la colonna chiude: 22.597 + 29.429 + 5.147 = 57.173, differenza **0** — verificata **addendo per addendo**, non solo sul totale |
+| 📖 letto integralmente | 27.425 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.828** |
+| 🔍 / 🟠 parziale | 29.429 | 52% | `fastapi_worker` 8.898, `routers/` 16.762, `upload_handler` 2.282, `margine_service` 1.487 |
+| 🔴 mai guardato | **0** | 0% | — **la zona rossa del backend e' chiusa il 5/09** |
+| **Totale backend** | **56.854** | 100% | ✅ la colonna chiude: 27.425 + 29.429 = 56.854, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
 
 > **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
 > tutto merito della lettura: **286 righe erano codice morto** e sono state
