@@ -99,8 +99,8 @@ def _get_cache_version_internal(key: str) -> int:
     """Legge la versione cache da public.cache_version.
 
     NON cachata, di proposito. Questa funzione non e' un dato: e' il MECCANISMO
-    di invalidazione. Il suo valore e' la chiave con cui `get_documenti_list`
-    interroga `_get_documenti_normalized_cached`, e i tre punti che segnano una
+    di invalidazione. Il suo valore e' la chiave di cache dello scadenziario,
+    e i tre punti che segnano una
     fattura pagata / salvano o cancellano la config fornitori fanno
     read-modify-write (`version = get_cache_version(...) + 1`).
 
@@ -213,58 +213,6 @@ def _compute_stato_scadenza(scadenza_iso: Optional[str], pagata: bool, today: da
         return "🟢 Pianificata"
     except Exception:
         return "⚪ Nessuna scadenza"
-
-
-def _filter_documenti_rows(rows: List[Dict[str, Any]], filtro: str, today: date, giorni_imminenti: int) -> List[Dict[str, Any]]:
-    """Applica filtro scadenziario lato applicazione per mantenere logica uniforme."""
-    filtro_norm = str(filtro or "tutte").strip().lower()
-    if filtro_norm == "tutte":
-        return rows
-
-    filtered: List[Dict[str, Any]] = []
-    for row in rows:
-        pagata = bool(row.get("pagata"))
-        if pagata:
-            continue
-
-        scad_raw = row.get("scadenza_effettiva")
-        if not scad_raw:
-            continue
-
-        scad_dt = pd.to_datetime(scad_raw, errors="coerce")
-        if pd.isna(scad_dt):
-            continue
-
-        delta = (scad_dt.date() - today).days
-        if filtro_norm == "scadute" and delta < 0:
-            filtered.append(row)
-        elif filtro_norm == "imminenti" and 0 <= delta <= int(giorni_imminenti):
-            filtered.append(row)
-
-    return filtered
-
-
-# Cache locale a processo: viene invalidata quando cambia cache_version su DB.
-@_make_cache(ttl=60, show_spinner=False)
-def _fetch_documenti_cached(user_id: str, ristorante_id: str, cache_version: int) -> List[Dict[str, Any]]:
-    from services import get_supabase_client
-
-    sb = get_supabase_client()
-    query = (
-        sb.table("fatture_documenti")
-        .select(
-            "id,file_origine,fornitore,piva_fornitore,tipo_documento,totale_documento,"
-            "data_documento,numero_documento,"
-            "scadenza_xml,giorni_termini_xml,scadenza_effettiva,scadenza_source,"
-            "pagata,pagata_at,pagata_manuale_at,created_at"
-        )
-        .eq("user_id", user_id)
-        .eq("ristorante_id", ristorante_id)
-    )
-    query = filter_active(query).order("scadenza_effettiva", desc=False).order("created_at", desc=True)
-    # Alimenta l'intero Scadenziario: un troncamento a 1000 qui fa sparire
-    # fatture dalla pagina. La sede piu' carica e' gia' a 888 documenti.
-    return fetch_all(query)
 
 
 def _applica_regole_fornitore(
@@ -579,108 +527,10 @@ def clear_fornitori_cache() -> None:
 # ============================================================
 # CACHE DOCUMENTI NORMALIZZATI
 # Centralizza la normalizzazione (scadenza_effettiva + regole fornitore)
-# in un'unica funzione cached. get_documenti_list diventa un thin wrapper
 # che chiama questa cache e poi filtra in memoria — 0 query DB per cache hit.
 # ============================================================
 
 @_make_cache(ttl=60, show_spinner=False)
-def _get_documenti_normalized_cached(
-    user_id: str, ristorante_id: str, cache_version: int
-) -> List[Dict[str, Any]]:
-    """
-    Normalizza TUTTI i documenti applicando regole scadenza fornitore.
-    Cached 60s per cache_version → si invalida automaticamente con clear_documenti_cache().
-    Usa _fetch_documenti_cached e _get_fornitori_pagamenti_config_cached (entrambi cached)
-    → 0 query DB per cache hit.
-    """
-    rows = _fetch_documenti_cached(user_id, ristorante_id, cache_version)
-    regole_list = _get_fornitori_pagamenti_config_cached(user_id, ristorante_id)
-    regole_map: Dict[str, Dict[str, Any]] = {
-        str(r.get("piva_fornitore", "")).strip(): r
-        for r in regole_list
-        if r.get("piva_fornitore")
-    }
-    today = date.today()
-    normalized: List[Dict[str, Any]] = []
-    for row in rows:
-        scadenza_eff, source_eff = _applica_regole_fornitore(
-            fornitore=row.get("fornitore"),
-            piva_fornitore=row.get("piva_fornitore"),
-            data_documento=row.get("data_documento"),
-            scadenza_xml=row.get("scadenza_xml"),
-            giorni_termini_xml=row.get("giorni_termini_xml"),
-            user_id=user_id,
-            ristorante_id=ristorante_id,
-            regole_map=regole_map,
-        )
-        if not scadenza_eff:
-            _stored = row.get("scadenza_effettiva")
-            if _stored:
-                scadenza_eff = _to_date_iso(_stored)
-                source_eff = row.get("scadenza_source") or "stored"
-        pagata = bool(row.get("pagata"))
-        # Auto-pagato: fatture di fornitori con regola RID risultano già pagate,
-        # salvo dichiarazione esplicita dell'utente (vedi get_documenti_scadenziario,
-        # stessa guardia pagata_manuale_at).
-        if source_eff == "fornitore_rid" and not pagata and not row.get("pagata_manuale_at"):
-            pagata = True
-        normalized.append({
-            "id": row.get("id"),
-            "file_origine": row.get("file_origine"),
-            "fornitore": row.get("fornitore") or "Sconosciuto",
-            "tipo_documento": row.get("tipo_documento") or "TD01",
-            "totale_documento": _to_float_safe(row.get("totale_documento")) or 0.0,
-            "data_documento": row.get("data_documento"),
-            "numero_documento": row.get("numero_documento"),
-            "scadenza_xml": row.get("scadenza_xml"),
-            "giorni_termini_xml": row.get("giorni_termini_xml"),
-            "scadenza_effettiva": scadenza_eff,
-            "scadenza_source": source_eff,
-            "pagata": pagata,
-            "data_pagamento": _to_date_iso(row.get("pagata_at")),
-            "pagata_at": _to_date_iso(row.get("pagata_at")),
-            "stato_scadenza": _compute_stato_scadenza(scadenza_eff, pagata=pagata, today=today),
-            "created_at": row.get("created_at"),
-        })
-    return normalized
-
-
-def get_documenti_list(
-    user_id: str,
-    ristorante_id: str,
-    filtro: str = "tutte",
-    giorni_imminenti: int = 7,
-    supabase_client=None,
-) -> List[Dict[str, Any]]:
-    """
-    Restituisce lista documenti da fatture_documenti con stato scadenza calcolato.
-
-    filtro supportati:
-    - "tutte"
-    - "scadute"
-    - "imminenti"
-
-    ⚡ Performance: usa _get_documenti_normalized_cached (cached 60s) per
-    normalizzazione e regole fornitore → 0 query DB per cache hit.
-    """
-    if not user_id or not ristorante_id:
-        return []
-
-    current_version = get_cache_version("fatture_documenti", supabase_client=supabase_client)
-    # Ottieni tutti i documenti normalizzati dalla cache → O(1) per cache hit
-    all_normalized = _get_documenti_normalized_cached(str(user_id), str(ristorante_id), int(current_version))
-
-    # Applica filtro in memoria — puro Python, senza I/O
-    today = date.today()
-    return _filter_documenti_rows(all_normalized, filtro=filtro, today=today, giorni_imminenti=giorni_imminenti)
-
-
-def clear_documenti_cache() -> None:
-    """Invalida cache locale documenti."""
-    _fetch_documenti_cached.clear()
-    _get_documenti_normalized_cached.clear()
-
-
 def segna_fattura_pagata(
     file_origine: str,
     user_id: str,
@@ -896,7 +746,15 @@ def get_documenti_scadenziario(
             if fo:
                 docs_extra[(fo, rid)] = row
     except Exception as e:
-        logger.warning("get_documenti_scadenziario: errore fatture_documenti: %s", e)
+        # NON si prosegue con docs_extra vuoto: senza gli header ogni documento
+        # cade nel ramo `else` piu' sotto e esce con scadenza_eff=None e
+        # pagata=False. La pagina si presenterebbe COMPLETA (le righe vengono
+        # dalla RPC dello Step 2) ma con tutte le fatture prive di scadenza —
+        # 4,4 M€ di scadenze che spariscono come tali, senza un errore a schermo.
+        # Un guasto deve restare un guasto: il chiamante lo trasforma in 500 e il
+        # frontend lo mostra come tale (lib/esito-caricamento.ts).
+        logger.error("get_documenti_scadenziario: errore fatture_documenti: %s", e)
+        raise
 
     # ── Step 4: carica regole fornitore (una volta per sede, non per riga)
     regole_map_per_sede: Dict[str, Dict[str, Any]] = {}
@@ -1085,12 +943,10 @@ def set_scadenza_override(
 __all__ = [
     "get_cache_version",
     "upsert_fattura_documento",
-    "get_documenti_list",
     "get_documenti_scadenziario",
     "segna_fattura_pagata",
     "set_scadenza_override",
     "get_fornitori_pagamenti_config",
     "upsert_fornitori_pagamenti_config",
     "delete_fornitori_pagamenti_config",
-    "clear_documenti_cache",
 ]

@@ -402,7 +402,7 @@ def _auto_classify_saved_rows(
                 categorie = None
             except Exception as ai_exc:
                 logger.warning(
-                    "[auto_classify] classifica_via_worker fallita chunk %d-%d "
+                    "[auto_classify] classifica_via_worker_con_confidenza fallita chunk %d-%d "
                     "(tentativo %d/%d): %s",
                     i, i + len(chunk), _tentativo + 1, _MAX_CLASSIFY_RETRY, ai_exc,
                 )

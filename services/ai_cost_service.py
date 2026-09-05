@@ -38,10 +38,6 @@ def calcola_costi_modello(prompt_tokens: int, completion_tokens: int, model: str
     }
 
 
-def calcola_costi_gpt4o_mini(prompt_tokens: int, completion_tokens: int) -> dict[str, float | int]:
-    return calcola_costi_modello(prompt_tokens, completion_tokens, model="gpt-4o-mini")
-
-
 def _get_session_user_id() -> str | None:
     try:
         import streamlit as st
@@ -193,91 +189,3 @@ def track_ai_usage(
                 )
 
     return cost_data
-
-
-# === [M7] Alert soglia costi AI mensile ===
-import os as _os_ai_cost
-
-AI_MONTHLY_COST_THRESHOLD_USD = float(_os_ai_cost.environ.get('AI_MONTHLY_COST_THRESHOLD_USD', '10.0'))
-
-
-def get_monthly_ai_cost(
-    ristorante_id: str,
-    year: int | None = None,
-    month: int | None = None,
-    supabase_client=None,
-) -> dict[str, float | int]:
-    """Somma costi e token AI del mese indicato (default: mese corrente).
-
-    Ritorna {'total_cost': float, 'total_tokens': int, 'event_count': int}.
-    """
-    from datetime import datetime, timezone
-
-    if not ristorante_id:
-        return {'total_cost': 0.0, 'total_tokens': 0, 'event_count': 0}
-
-    now = datetime.now(timezone.utc)
-    _y = int(year) if year else now.year
-    _m = int(month) if month else now.month
-    _start = datetime(_y, _m, 1, tzinfo=timezone.utc).isoformat()
-    if _m == 12:
-        _end = datetime(_y + 1, 1, 1, tzinfo=timezone.utc).isoformat()
-    else:
-        _end = datetime(_y, _m + 1, 1, tzinfo=timezone.utc).isoformat()
-
-    try:
-        if supabase_client is None:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-        resp = (
-            supabase_client.table('ai_usage_events')
-            .select('total_cost,total_tokens')
-            .eq('ristorante_id', str(ristorante_id))
-            .gte('created_at', _start)
-            .lt('created_at', _end)
-            .limit(100000)
-            .execute()
-        )
-        rows = resp.data or []
-        total_cost = sum(float(r.get('total_cost') or 0.0) for r in rows)
-        total_tokens = sum(int(r.get('total_tokens') or 0) for r in rows)
-        return {
-            'total_cost': round(total_cost, 6),
-            'total_tokens': total_tokens,
-            'event_count': len(rows),
-        }
-    except Exception as exc:
-        logger.warning("⚠️ Errore lettura costi AI mensili: %s", exc)
-        return {'total_cost': 0.0, 'total_tokens': 0, 'event_count': 0}
-
-
-def check_monthly_cost_threshold(
-    ristorante_id: str,
-    threshold_usd: float | None = None,
-    supabase_client=None,
-) -> dict[str, float | bool]:
-    """Ritorna stato soglia mensile costi AI per il ristorante.
-
-    Output: {'exceeded': bool, 'current_cost': float, 'threshold': float,
-             'percentage': float, 'warning': bool (>= 80%)}.
-    """
-    _threshold = float(threshold_usd if threshold_usd is not None else AI_MONTHLY_COST_THRESHOLD_USD)
-    if _threshold <= 0 or not ristorante_id:
-        return {
-            'exceeded': False,
-            'current_cost': 0.0,
-            'threshold': _threshold,
-            'percentage': 0.0,
-            'warning': False,
-        }
-
-    usage = get_monthly_ai_cost(ristorante_id, supabase_client=supabase_client)
-    _current = float(usage['total_cost'])
-    _pct = (_current / _threshold) * 100.0 if _threshold > 0 else 0.0
-    return {
-        'exceeded': _current >= _threshold,
-        'current_cost': round(_current, 4),
-        'threshold': _threshold,
-        'percentage': round(_pct, 1),
-        'warning': _pct >= 80.0,
-    }

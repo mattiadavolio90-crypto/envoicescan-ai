@@ -8,6 +8,8 @@ Copre:
 import importlib
 import sys
 
+import pytest
+
 from services.documenti_service import get_documenti_scadenziario
 
 def _get_fatture_cestino_unwrapped():
@@ -502,3 +504,78 @@ def test_scadenziario_pagina_oltre_1000_documenti(monkeypatch):
     assert len(result) == n_documenti
     # nessun documento perso e nessuno duplicato dalle finestre di paginazione
     assert len({r["file_origine"] for r in result}) == n_documenti
+
+
+class _SupabaseStep3Rotto(_FakeSupabase):
+    """La RPC (Step 2) funziona, la lettura di fatture_documenti (Step 3) no.
+
+    E' il guasto parziale realistico: la tabella aggregata risponde, quella
+    degli header no (timeout, permission denied, rete). Prima del fix questo
+    scenario NON produceva un errore: produceva uno Scadenziario pieno di
+    righe con TUTTE le fatture senza scadenza e non pagate.
+    """
+
+    def table(self, name):
+        if name == "fatture_documenti":
+            raise RuntimeError("boom: fatture_documenti irraggiungibile")
+        return super().table(name)
+
+
+def _fatture_una_riga():
+    return [{
+        "user_id": "u1",
+        "ristorante_id": "rist-1",
+        "file_origine": "doc1.xml",
+        "fornitore": "Fornitore SRL",
+        "tipo_documento": "TD01",
+        "totale_riga": 1000.0,
+        "data_documento": "2026-01-10",
+        "created_at": "2026-01-10T10:00:00Z",
+    }]
+
+
+def test_step3_irraggiungibile_non_diventa_scadenziario_senza_scadenze(monkeypatch):
+    """Un guasto NON puo' presentarsi come 'nessuna fattura ha scadenza'.
+
+    Il difetto: lo Step 3 era avvolto in `except Exception` che logga un warning
+    e prosegue. docs_extra restava {}, quindi ogni documento cadeva nel ramo
+    `else` con scadenza_eff = None e pagata = False. Il cliente vedeva la pagina
+    popolata (le righe vengono dalla RPC) ma con 4,4 M€ di scadenze sparite come
+    tali, senza un solo messaggio di errore.
+
+    Un errore visibile e' l'esito corretto: il frontend lo traduce in guasto
+    (lib/esito-caricamento.ts, fix R10 del 3/09) invece che in dati falsi.
+    """
+    monkeypatch.setattr(
+        "services.documenti_service._get_fornitori_pagamenti_config_cached",
+        lambda *a, **k: [],
+    )
+    sb = _SupabaseStep3Rotto(_base_tables(_fatture_una_riga(), []))
+
+    with pytest.raises(Exception) as exc:
+        get_documenti_scadenziario("u1", ristorante_id="rist-1", supabase_client=sb)
+
+    assert "fatture_documenti" in str(exc.value)
+
+
+def test_step3_sano_resta_invariato(monkeypatch):
+    """Il fix non deve cambiare il comportamento quando lo Step 3 funziona."""
+    monkeypatch.setattr(
+        "services.documenti_service._get_fornitori_pagamenti_config_cached",
+        lambda *a, **k: [],
+    )
+    documenti_rows = [{
+        "user_id": "u1",
+        "ristorante_id": "rist-1",
+        "file_origine": "doc1.xml",
+        "scadenza_effettiva": "2026-02-10",
+        "scadenza_source": "xml",
+        "pagata": False,
+        "totale_documento": 1000.0,
+    }]
+    sb = _FakeSupabase(_base_tables(_fatture_una_riga(), documenti_rows))
+
+    result = get_documenti_scadenziario("u1", ristorante_id="rist-1", supabase_client=sb)
+
+    assert len(result) == 1
+    assert result[0]["scadenza_effettiva"] == "2026-02-10"

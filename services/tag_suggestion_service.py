@@ -18,6 +18,7 @@ from config.logger_setup import get_logger
 from services import get_supabase_client
 from services.db_service import _normalize_custom_tag_key, aggiungi_associazioni, clear_tags_cache, crea_tag
 from services.notification_inbox_service import build_notification_record, upsert_inbox_notifications
+from utils.supabase_paging import fetch_all
 
 logger = get_logger('tag_suggestion_service')
 
@@ -161,7 +162,14 @@ def _fetch_recent_rows(
         anchor_date = _utcnow().date()
     since_iso = (anchor_date - timedelta(days=max(1, int(window_days)))).isoformat()
 
-    rows = (
+    # `.limit(MAX_POOL_ROWS)` NON bastava: PostgREST clampa il limit al proprio
+    # `max_rows` (1000) e tronca in silenzio. Misurato il 5/9: sulle 5 sedi sopra
+    # il cap la detection vedeva ~450 prodotti distinti su ~1.100. E il pool non
+    # e' una lista da mostrare: `occorrenze` e `fornitori` sono conteggi su queste
+    # righe, e le soglie (MIN_ROWS_DEFAULT, MIN_FORNITORI_NEW_TAG) si applicano a
+    # quei conteggi — un prodotto la cui seconda fattura sta oltre la millesima
+    # riga sembra comprato da un solo fornitore e non viene mai proposto.
+    query = (
         sb.table('fatture')
         .select('descrizione,fornitore,data_documento,categoria')
         .eq('user_id', user_id)
@@ -169,10 +177,9 @@ def _fetch_recent_rows(
         .gte('data_documento', since_iso)
         .is_('deleted_at', 'null')
         .not_.in_('categoria', list(_CATEGORIE_ESCLUSE))
-        .limit(MAX_POOL_ROWS)
-        .execute().data or []
+        .order('data_documento', desc=True)
     )
-    return rows
+    return fetch_all(query, max_rows=MAX_POOL_ROWS)
 
 
 def _aggregate_pool(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:

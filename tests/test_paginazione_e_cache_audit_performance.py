@@ -32,6 +32,7 @@ class FakePostgrest:
         self._rows = rows
         self._max_rows = max_rows
         self._range = None
+        self._limit = None
         self.execute_calls = 0
 
     def select(self, *_a, **_k):
@@ -55,6 +56,17 @@ class FakePostgrest:
     def order(self, *_a, **_k):
         return self
 
+    @property
+    def not_(self):
+        return self
+
+    def limit(self, n):
+        # PostgREST CLAMPA il limit a max_rows: chiedere .limit(12000) non
+        # alza il tetto del server, lo si subisce lo stesso. E' il punto in
+        # cui un `.limit()` generoso da' la falsa impressione di proteggere.
+        self._limit = int(n)
+        return self
+
     def range(self, start, end):
         self._range = (start, end)
         return self
@@ -62,7 +74,10 @@ class FakePostgrest:
     def execute(self):
         self.execute_calls += 1
         if self._range is None:
-            rows = self._rows[: self._max_rows]
+            cap = self._max_rows
+            if self._limit is not None:
+                cap = min(self._limit, self._max_rows)
+            rows = self._rows[:cap]
         else:
             start, end = self._range
             # PostgREST: estremi inclusivi, e comunque mai piu' di max_rows.

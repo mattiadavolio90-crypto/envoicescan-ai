@@ -53,70 +53,6 @@ def _worker_base_url() -> str:
     return os.environ.get("WORKER_BASE_URL", "").rstrip("/")
 
 
-def classifica_via_worker(
-    descrizioni: List[str],
-    fornitori: Optional[List[str]] = None,
-    iva: Optional[List[int]] = None,
-    hint: Optional[List[Optional[str]]] = None,
-    user_id: Optional[str] = None,
-    ristorante_id: Optional[str] = None,
-) -> List[str]:
-    """Classifica prodotti via worker HTTP (con fallback locale su classifica_con_ai).
-
-    Args:
-        descrizioni: Lista descrizioni prodotti da classificare.
-        fornitori:   Lista fornitori corrispondenti (opzionale).
-        iva:         Lista aliquote IVA % (opzionale).
-        hint:        Lista hint categoria (opzionale, può contenere None).
-        user_id:     ID utente — usato dal worker per caricare la memoria classificazioni.
-        ristorante_id: ID ristorante — usato per rate limit giornaliero AI.
-
-    Returns:
-        Lista di stringhe categoria, allineata con `descrizioni`.
-    """
-    base = _worker_base_url()
-    if base:
-        try:
-            resp = requests.post(
-                f"{base}/api/classify",
-                json={
-                    "descrizioni": descrizioni,
-                    "fornitori": fornitori,
-                    "iva": iva,
-                    "hint": hint,
-                    "user_id": user_id,
-                    "ristorante_id": ristorante_id,
-                },
-                headers={"X-Worker-Key": _WORKER_KEY} if _WORKER_KEY else {},
-                timeout=_CLASSIFY_TIMEOUT,
-            )
-            # Non fare fallback su 4xx (errore del client, non del server)
-            if 400 <= resp.status_code < 500:
-                resp.raise_for_status()
-            resp.raise_for_status()
-            categorie = resp.json()["categorie"]
-            logger.info(
-                f"✅ Worker classify: {len(categorie)} prodotti"
-                + (f" user_id={user_id}" if user_id else "")
-            )
-            return categorie
-        except Exception as exc:
-            logger.warning(
-                f"⚠️ Worker classify non disponibile ({exc}), uso locale",
-                exc_info=False,
-            )
-
-    # ── Fallback: classificazione locale diretta ──────────────────────────
-    from services.ai_service import classifica_con_ai  # import locale per evitare circolarità
-    return classifica_con_ai(
-        descrizioni,
-        lista_fornitori=fornitori,
-        lista_iva=iva,
-        lista_hint=hint,
-        ristorante_id=ristorante_id,
-    )
-
-
 def classifica_via_worker_con_confidenza(
     descrizioni: List[str],
     fornitori: Optional[List[str]] = None,
@@ -125,7 +61,7 @@ def classifica_via_worker_con_confidenza(
     user_id: Optional[str] = None,
     ristorante_id: Optional[str] = None,
 ) -> tuple:
-    """Come classifica_via_worker, ma ritorna (categorie, confidenze) come tuple.
+    """Classifica via worker HTTP, ritornando (categorie, confidenze) come tuple.
 
     Le confidenze sono 'alta', 'media' o 'bassa' (una per descrizione).
     Se il worker HTTP non supporta ancora la confidence, usa 'media' come default.

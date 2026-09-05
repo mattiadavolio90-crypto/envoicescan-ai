@@ -293,33 +293,6 @@ def dismiss_inbox_notification(
         return False
 
 
-def dismiss_all_inbox_notifications(
-    user_id: str,
-    ristorante_id: str,
-    supabase_client=None,
-    source_type: Optional[str] = None,
-) -> bool:
-    """Soft-delete di tutte le notifiche attive per user+ristorante (opz. filtrate per source_type)."""
-    if not user_id or not ristorante_id or supabase_client is None:
-        return False
-    try:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        query = (
-            supabase_client.table('notification_inbox')
-            .update({'dismissed_at': now_iso})
-            .eq('user_id', user_id)
-            .eq('ristorante_id', ristorante_id)
-            .is_('dismissed_at', 'null')
-        )
-        if source_type:
-            query = query.eq('source_type', source_type)
-        query.execute()
-        return True
-    except Exception as exc:
-        logger.error(f"❌ Errore dismiss_all_inbox_notifications: {exc}")
-        return False
-
-
 def dismiss_inbox_topics(
     user_id: str,
     ristorante_id: str,

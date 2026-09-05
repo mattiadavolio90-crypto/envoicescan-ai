@@ -6,7 +6,6 @@ Copertura:
 - resolve_bucket(): formato corretto per tutti i topic_key
 - upsert_inbox_notifications(): chiama RPC con payload corretto
 - dismiss_inbox_notification(): isolamento tenant (no cross-user)
-- dismiss_all_inbox_notifications(): con e senza filtro source_type
 - get_inbox_notifications(): esclude scadute, marca is_new correttamente
 
 Integration scenarios:
@@ -32,7 +31,6 @@ from services.notification_inbox_service import (
     _bucket_iso_week,
     build_dedupe_key,
     build_notification_record,
-    dismiss_all_inbox_notifications,
     dismiss_inbox_notification,
     get_inbox_notifications,
     resolve_bucket,
@@ -344,54 +342,6 @@ class TestDismissInboxNotification:
         sb = MagicMock()
         sb.table.side_effect = RuntimeError("DB error")
         result = dismiss_inbox_notification('notif-id-123', supabase_client=sb)
-        assert result is False
-
-
-# ════════════════════════════════════════════════
-# DISMISS ALL
-# ════════════════════════════════════════════════
-
-class TestDismissAllInboxNotifications:
-
-    def test_dismiss_all_without_source_type_filter(self):
-        sb = _make_supabase_mock()
-        result = dismiss_all_inbox_notifications(
-            user_id=UID, ristorante_id=RID, supabase_client=sb,
-        )
-        assert result is True
-        sb.table.assert_called_with('notification_inbox')
-        # Verifica che NON sia stato applicato filtro source_type
-        eq_calls = [c.args[0] for c in sb.eq.call_args_list]
-        assert 'source_type' not in eq_calls
-
-    def test_dismiss_all_with_source_type_filter(self):
-        sb = _make_supabase_mock()
-        result = dismiss_all_inbox_notifications(
-            user_id=UID, ristorante_id=RID, supabase_client=sb,
-            source_type='upload',
-        )
-        assert result is True
-        eq_calls = [c.args[0] for c in sb.eq.call_args_list]
-        assert 'source_type' in eq_calls
-
-    def test_returns_false_without_user_id(self):
-        sb = _make_supabase_mock()
-        result = dismiss_all_inbox_notifications(
-            user_id='', ristorante_id=RID, supabase_client=sb,
-        )
-        assert result is False
-
-    def test_returns_false_without_ristorante_id(self):
-        sb = _make_supabase_mock()
-        result = dismiss_all_inbox_notifications(
-            user_id=UID, ristorante_id='', supabase_client=sb,
-        )
-        assert result is False
-
-    def test_returns_false_without_client(self):
-        result = dismiss_all_inbox_notifications(
-            user_id=UID, ristorante_id=RID, supabase_client=None,
-        )
         assert result is False
 
 

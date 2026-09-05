@@ -1882,7 +1882,7 @@ def _upload_ai_categorizzazione_async(
     isolati (verificato con 6 tenant in parallelo).
 
     Senza `force_local_worker_path(True)`: su Railway WORKER_BASE_URL e' settata
-    anche in questo processo, quindi classifica_via_worker farebbe una POST HTTP del
+    anche in questo processo, quindi classifica_via_worker_con_confidenza farebbe una POST HTTP del
     worker verso se stesso -> fallback "Da Classificare" silenzioso (cert. 24/08).
     Senza `set_ai_context`: ai_usage_events resta vuoto e il costo non e' tracciato.
 
@@ -2368,7 +2368,7 @@ async def upload_invoice(
     # ogni fattura caricata in produzione era categorizzata SOLO da regole+
     # dizionario, e tutto il resto restava 'Da Classificare' (ai_count=0 nel DB).
     # Qui invochiamo la stessa funzione completa che usava Streamlit: dentro il
-    # worker WORKER_BASE_URL non e' settata, quindi classifica_via_worker cade sul
+    # worker WORKER_BASE_URL non e' settata, quindi classifica_via_worker_con_confidenza cade sul
     # path locale (classifica_con_ai in-process), senza richiamare il worker via
     # HTTP. Best-effort: un errore AI non deve far fallire il salvataggio.
     ai_auto_summary = None
@@ -2404,7 +2404,7 @@ async def upload_invoice(
         )
 
     # Forza il path AI IN-PROCESS: se WORKER_BASE_URL fosse settata anche nel
-    # processo worker (Railway), classifica_via_worker tenterebbe una HTTP POST del
+    # processo worker (Railway), classifica_via_worker_con_confidenza tenterebbe una HTTP POST del
     # worker verso se stesso (auth/timeout -> fallback Da Classificare silenzioso).
     # force_local_worker_path usa un ContextVar (non os.environ, che e' globale
     # al PROCESSO): due upload concorrenti di tenant diversi nello stesso worker
