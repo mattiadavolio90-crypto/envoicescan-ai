@@ -1006,9 +1006,12 @@ def get_costo_personale_da_turni(
             costo_assenze_a_carico += float(t.get("importo_a_carico") or 0)
             continue
         n_turni += 1
-        ore = _ore_turno(t)                     # totale: orari + extra (giorn.) o ore_dichiarate (mensile)
+        ore = _ore_turno(t)                     # totale: orari (giorn.) o ore_dichiarate (mensile)
         extra = float(t.get("ore_extra") or 0)
-        extra = min(extra, ore)                  # difensivo: extra non può eccedere il totale
+        # Le extra sono un sottoinsieme delle ore del turno (modello 05/09/2026):
+        # piu' extra che ore lavorate non esiste, e senza clamp l'ordinario
+        # (ore - extra) diventerebbe negativo.
+        extra = min(extra, ore)
         ore_totali += ore
         ore_extra_tot += extra
         if t.get("mensile"):

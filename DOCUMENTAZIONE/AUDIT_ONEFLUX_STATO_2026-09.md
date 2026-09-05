@@ -286,44 +286,64 @@ difetto che il cliente vedeva.
 
 ---
 
-## 5. Da fare — la revisione del modello turni (richiesta di Mattia, 05/09/2026)
+## 5. Modello turni — rivisto il 05/09/2026 ✅
 
-> **Non ancora iniziata.** Registrata qui perche' e' un cambio di **modello dati**,
-> non un fix: tocca il significato delle ore extra e quindi un importo che finisce
-> nel MOL. Va pianificata, non improvvisata a fine sessione.
+**Richiesta di Mattia:** inserendo il turno ogni giorno non ha senso chiedere il
+costo orario; si inserisce l'orario e quante di quelle ore sono extra.
 
-**Il problema, con le parole di Mattia:** inserendo il turno quotidianamente non
-ha senso richiedere il costo orario — quello si conosce a fine mese dal cedolino.
+**Fatto — il modello e' stato invertito.** Le ore extra erano **additive**
+(un 09-17 con 2 extra valeva **10 ore**); ora sono un **sottoinsieme**: lo stesso
+turno vale **8 ore, di cui 2 di straordinario**. L'esempio di Mattia — «delta 7,
+extra 2 → ordinario 5» — e' stato verificato eseguendo il codice.
 
-**Il modello richiesto:**
+| Dove | Cosa e' cambiato |
+|---|---|
+| `fastapi_worker.py` `_ore_turno` | il totale viene **solo** dagli orari; `+ extra` rimosso |
+| `routers/margini.py` | il clamp `min(extra, ore)` da **codice morto** a **guardia viva** |
+| `routers/workspace.py` | **aggiunto** il clamp gemello: non c'era, e senza di esso l'ordinario usciva **negativo** |
+| `personale-tab.tsx` | `calcolaOreTotali` e il calcolo del dialog allineati, con lo stesso clamp |
 
-| Modalita' | Cosa inserisce il cliente | Cosa calcola il sistema |
-|---|---|---|
-| **Giornaliera** | Entrata, uscita, e **quante di quelle ore sono extra** | Ordinario = delta − extra. **Nessun costo orario.** Es.: delta 7, extra 2 → ordinario **5** |
-| **Mensile** | Costo e ore dal **cedolino** (facoltativi, sovrascrivono) | Totale ore **calcolato dalla somma dei giorni inseriti** |
+⚠️ **Il costo che finisce nel MOL cambia** per i turni che hanno ore extra: lo
+stesso turno che prima costava 96 € di ordinario ora ne costa 72. **Esposizione
+reale al 05/09: zero** — 107 turni a DB, `ore_extra` non valorizzato su nessuno,
+e `costo_orario` NULL su 107/107. Il cambio non tocca nessun importo esistente.
 
-⚠️ **Il punto piu' delicato: e' un'inversione, non un'aggiunta.** Oggi
-`_ore_turno` (`fastapi_worker.py:8805`) documenta e implementa il modello
-**opposto** — «le ore extra sono AGGIUNTIVE, non un sottoinsieme»: un turno 09-17
-con `ore_extra=2` vale **10 ore totali**, non 8. Nel modello nuovo vale **8 totali,
-di cui 2 extra**. Cambiano quindi:
+**Presidi: 3 mutanti, 3 uccisi**, uno per volta.
+Il mutante 3 (rimozione del clamp in `workspace.py`) e' **sopravvissuto alla prima
+prova**: il clamp era stato aggiunto senza che nessun test lo coprisse. E' stato
+scritto il presidio mancante — che chiama l'endpoint vero — e il mutante muore.
+Il rilievo «ore extra senza tetto» **si chiude qui**: non serve piu' come voce a
+parte.
 
-- `_ore_turno` e i suoi consumer, che oggi ricavano l'ordinario come
-  `(ore_totali − ore_extra)` — formula che **resta valida**, ma su un totale diverso;
-- `get_costo_personale_da_turni` (`margini.py:966-1045`), il ponte verso il MOL;
-- il presidio `tests/test_costo_personale_turni_giornaliero.py`, che oggi **fissa il
-  comportamento attuale** (`test_le_ore_extra_sono_aggiuntive_e_vanno_sul_loro_campo`
-  asserisce 10 ore): quei test vanno riscritti **di proposito**, non "aggiustati".
+### Il costo orario: cosa resta da decidere (Mattia)
 
-✅ **Effetto collaterale positivo:** il rilievo del clamp `min(extra, ore)`
-(`margini.py:1011`) **si chiude da se'**. Oggi e' codice morto perche' l'extra e'
-gia' dentro il totale e non puo' eccederlo; nel modello nuovo diventa la guardia
-**viva** che impedisce di dichiarare piu' ore extra del delta lavorato.
+Il campo `costo_orario` **e' ancora nel dialog giornaliero**, ora facoltativo di
+fatto. Toglierlo del tutto e' possibile, ma **non l'ho fatto**: il costo del
+personale nel MOL oggi arriva **solo** da li' o da un inserimento a mano, quindi
+rimuoverlo senza mettere prima in piedi la lettura dal cedolino lascerebbe i
+margini senza fonte. Va deciso insieme al punto qui sotto.
 
-⚠️ **I dati esistenti**: 107 turni a DB, **tutti giornalieri**, `ore_extra` a zero
-su tutti (misurato il 05/09). La migrazione dei dati e' quindi a costo nullo
-**oggi** — ma la cifra va ri-misurata al momento di eseguire, perche' e' gia'
-cambiata tre volte su quest'area.
+### Ramo mensile: la premessa da chiarire prima di toccarlo
+
+Mattia: «nel mensile il totale ore e' calcolato dalla somma dei giorni inseriti,
+oppure si aggiungono costo e ore lette dal cedolino».
+
+⚠️ **La prima meta' non e' realizzabile com'e' scritta, e la ragione e' una regola
+di dominio esistente**: giornaliero e mensile sono **mutuamente esclusivi** per
+dipendente/mese — `ws_personale_mensile_crea` risponde **409** se il dipendente ha
+gia' turni giornalieri in quel mese (e viceversa). Quindi **quando si usa il
+mensile non ci sono giorni da sommare**: la somma darebbe sempre zero.
+
+Le strade sono due, ed e' una scelta di prodotto:
+1. **Lasciare com'e'** — il mensile resta l'inserimento da cedolino (ore + lordo),
+   ed e' gia' quello che fa oggi;
+2. **Togliere l'esclusivita'** — si inseriscono i giorni *e* si corregge col
+   cedolino a fine mese. Piu' vicino a come lavora un ristorante, ma tocca una
+   guardia che protegge dal doppio conteggio del costo: **il rischio e' contare
+   due volte lo stesso personale nel MOL**.
+
+**Non ho scelto io**: la 2 cambia un vincolo che oggi impedisce un errore sui
+soldi. Serve la decisione di Mattia.
 
 ---
 

@@ -1225,6 +1225,9 @@ def ws_personale_list(
         monte_ore[nome] = round(monte_ore.get(nome, 0) + ore_tot, 2)
 
         extra = float(t.get("ore_extra") or 0)
+        # Stesso clamp di margini.py: le extra sono un sottoinsieme delle ore
+        # del turno, e senza guardia l'ordinario uscirebbe negativo.
+        extra = min(extra, ore_tot)
         std = round(ore_tot - extra, 2)
 
         ore_standard_per_persona[nome] = round(ore_standard_per_persona.get(nome, 0) + std, 2)

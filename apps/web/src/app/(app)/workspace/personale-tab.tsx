@@ -134,10 +134,10 @@ function calcolaSlotOre(inizio: string, fine: string): number {
 export function calcolaOreTotali(t: Turno): number {
   // Righe mensili: ore dichiarate da busta paga (gia' ord+extra).
   if (t.mensile) return Math.round((t.ore_dichiarate ?? 0) * 100) / 100;
-  // Giornaliero: ore dagli orari (ordinario) + ore extra aggiuntive.
+  // Giornaliero: il totale viene SOLO dagli orari. Le ore extra sono un
+  // sottoinsieme di quelle (modello 05/09/2026), non ore in piu'.
   let tot = calcolaSlotOre(t.ora_inizio, t.ora_fine);
   if (t.ora_inizio2 && t.ora_fine2) tot += calcolaSlotOre(t.ora_inizio2, t.ora_fine2);
-  tot += t.ore_extra ?? 0;
   return Math.round(tot * 100) / 100;
 }
 
@@ -145,7 +145,7 @@ export function calcolaOreTotali(t: Turno): number {
 function calcolaCostoTurno(t: Turno): number {
   if (t.costo_orario == null) return 0;
   const oreT = calcolaOreTotali(t);
-  const ext = t.ore_extra ?? 0;
+  const ext = Math.min(t.ore_extra ?? 0, oreT);
   const std = Math.max(0, oreT - ext);
   const coExt = t.costo_orario_extra ?? t.costo_orario;
   return std * t.costo_orario + (ext > 0 ? ext * coExt : 0);
@@ -361,12 +361,14 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
     }
   }
 
-  // Ore extra AGGIUNTIVE all'orario: ordinario = orari, totale = orari + extra.
+  // Le ore extra sono un SOTTOINSIEME del turno (modello 05/09/2026): il totale
+  // sono le ore da orario, e l'ordinario e' (totale - extra). Dichiarare piu'
+  // extra delle ore lavorate non ha senso, quindi si tagliano al totale.
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
-  const stdNum = ore1 + ore2;
-  const extraNum = parseDecimaleItOZero(oreExtra);
-  const oreTot = Math.round((stdNum + extraNum) * 100) / 100;
+  const oreTot = Math.round((ore1 + ore2) * 100) / 100;
+  const extraNum = Math.min(parseDecimaleItOZero(oreExtra), oreTot);
+  const stdNum = Math.max(0, Math.round((oreTot - extraNum) * 100) / 100);
   const costoNum = parseDecimaleIt(costoOrario);
   const costoNumExtra = parseDecimaleIt(costoOrarioExtra);
   const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;

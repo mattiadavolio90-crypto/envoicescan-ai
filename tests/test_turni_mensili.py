@@ -70,19 +70,29 @@ class TestOreTurno:
         t = {"ora_inizio": "09:00", "ora_fine": "13:30"}
         assert worker._ore_turno(t) == 4.5
 
-    def test_giornaliero_extra_aggiuntive_al_totale(self):
-        # Nuova semantica: ore extra in PIU' rispetto all'orario.
-        # 9-17 (8h) + 2h extra = 10h totali.
+    def test_giornaliero_le_extra_non_allungano_il_turno(self):
+        """Modello 05/09/2026: le extra sono un SOTTOINSIEME del turno.
+
+        9-17 sono 8 ore, e restano 8 anche dichiarandone 2 di straordinario:
+        cambia lo split (6 ordinarie + 2 extra), non il totale. Prima del
+        05/09 lo stesso turno valeva 10 ore.
+        """
         t = {"mensile": False, "ora_inizio": "09:00", "ora_fine": "17:00", "ore_extra": 2}
-        assert worker._ore_turno(t) == 10.0
+        assert worker._ore_turno(t) == 8.0
 
     def test_giornaliero_extra_con_slot_spezzato(self):
-        # 9-13 (4h) + 18-22 (4h) = 8h orari, + 1.5h extra = 9.5h.
+        # 9-13 (4h) + 18-22 (4h) = 8h totali: le 1.5h extra sono gia' dentro.
         t = {
             "mensile": False, "ora_inizio": "09:00", "ora_fine": "13:00",
             "ora_inizio2": "18:00", "ora_fine2": "22:00", "ore_extra": 1.5,
         }
-        assert worker._ore_turno(t) == 9.5
+        assert worker._ore_turno(t) == 8.0
+
+    def test_giornaliero_ore_extra_non_cambiano_il_totale_a_nessun_valore(self):
+        """Il totale dipende SOLO dagli orari: e' l'invariante del modello nuovo."""
+        base = {"mensile": False, "ora_inizio": "09:00", "ora_fine": "17:00"}
+        for extra in (0, 1, 2, 7.5, 8, 99):
+            assert worker._ore_turno({**base, "ore_extra": extra}) == 8.0
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +128,40 @@ class TestPersonaleListMensile:
         assert res["costo_standard_per_persona"]["Mario"] == 1730.0
         assert res["costo_extra_per_persona"]["Mario"] == 120.0
         assert res["costo_totale"] == 1850.0
+
+    def test_giornaliero_extra_oltre_le_ore_non_rende_negativo_l_ordinario(self):
+        """Il clamp di ws_personale_list, gemello di quello in margini.py.
+
+        Col modello 05/09/2026 le ore extra sono un sottoinsieme del turno:
+        dichiararne piu' delle ore lavorate e' incoerente. Senza clamp
+        `std = ore_tot - extra` uscirebbe **negativo** (8 - 99 = -91) e il monte
+        ore ordinarie della pagina Personale andrebbe sotto zero.
+
+        Questo presidio nasce da un mutante SOPRAVVISSUTO: il clamp era stato
+        aggiunto qui senza che nessun test lo coprisse (margini.py aveva il suo,
+        workspace.py no).
+        """
+        riga = {
+            "id": "g9", "dipendente_id": "dip-x", "data_turno": "2026-06-10",
+            "mensile": False, "tipo_giorno": "turno",
+            "ora_inizio": "09:00", "ora_fine": "17:00", "ore_extra": 99,
+            "costo_orario": 10.0, "costo_orario_extra": None,
+        }
+        turni_q = _query_mock([riga])
+        dipendenti_q = _query_mock([{"id": "dip-x", "nome": "Ugo"}])
+        storico_q = _query_mock([{"dipendente_id": "dip-x", "costo_orario": 10.0, "costo_orario_extra": None, "data_turno": "2026-06-10"}])
+        attivi_q = _query_mock([{"id": "dip-x", "nome": "Ugo", "costo_orario_default": None}])
+        calls = {"n": 0}
+        def side_effect(_name):
+            calls["n"] += 1
+            return {1: turni_q, 2: dipendenti_q, 3: storico_q}.get(calls["n"], attivi_q)
+        ctx, _ = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_personale_list(da="2026-06-01", a="2026-06-30", mensile=False, authorization="Bearer x")
+        assert res["monte_ore"]["Ugo"] == 8.0
+        assert res["ore_extra_per_persona"]["Ugo"] == 8.0
+        assert res["ore_standard_per_persona"]["Ugo"] == 0.0
+        assert res["ore_standard_per_persona"]["Ugo"] >= 0
 
     def test_costo_mensile_senza_extra(self):
         riga = {
@@ -338,9 +382,14 @@ class TestMarginiCostoPersonale:
         assert res["costo_dipendenti"] == 96.0
         assert res["costo_personale_extra"] == 0.0
 
-    def test_giornaliero_extra_aggiuntive_split_corretto(self):
-        # 9-17 (8h ordinarie) + 2h extra = 10h totali. costo std 12, extra 18.
-        # ordinario = 8×12 = 96; extra = 2×18 = 36.
+    def test_giornaliero_extra_sottoinsieme_split_corretto(self):
+        """9-17 = 8h totali, di cui 2 extra => 6 ordinarie. std 12, extra 18.
+
+        ordinario = 6x12 = 72; extra = 2x18 = 36. Col modello vecchio (extra
+        additive) lo stesso turno dava 10h e 96 EUR di ordinario: il costo che
+        finisce nel MOL **cambia**, ed e' il motivo per cui questo test e' stato
+        riscritto di proposito e non adattato.
+        """
         turni = [{
             "id": "g1", "nome": "Anna", "data_turno": "2026-06-10",
             "mensile": False, "ora_inizio": "09:00", "ora_fine": "17:00",
@@ -348,9 +397,9 @@ class TestMarginiCostoPersonale:
         }]
         with self._patch_margini(turni):
             res = margini.get_costo_personale_da_turni(anno=2026, mese=6, authorization="Bearer x")
-        assert res["ore_totali"] == 10.0
+        assert res["ore_totali"] == 8.0
         assert res["ore_extra"] == 2.0
-        assert res["costo_dipendenti"] == 96.0
+        assert res["costo_dipendenti"] == 72.0
         assert res["costo_personale_extra"] == 36.0
 
 

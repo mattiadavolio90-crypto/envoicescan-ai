@@ -11,8 +11,9 @@ su 107. Quei turni **non contribuiscono** al totale e vanno contati a parte in
 `n_senza_costo`, o il costo del mese esce silenziosamente parziale — e finisce
 in `margini_mensili.costo_dipendenti`, quindi nel MOL.
 
-Nota sul modello (docstring di `_ore_turno`): le ore extra sono AGGIUNTIVE, non
-un sottoinsieme, e l'ordinario si ricava come (ore_totali - ore_extra).
+Nota sul modello (rivisto il 05/09/2026): le ore extra sono un SOTTOINSIEME del
+turno. Il totale viene dagli orari di entrata/uscita, e `ore_extra` dice quante
+di quelle ore sono straordinario: l'ordinario resta (ore_totali - ore_extra).
 """
 from unittest.mock import MagicMock, patch
 
@@ -63,18 +64,22 @@ def test_un_turno_valorizzato_paga_le_ore_ordinarie():
     assert res["ore_totali"] == 8.0
 
 
-def test_le_ore_extra_sono_aggiuntive_e_vanno_sul_loro_campo():
-    """8h da orari + 2h extra = 10h totali; l'ordinario resta 8h."""
+def test_le_ore_extra_sono_un_sottoinsieme_del_turno():
+    """9-17 = 8h totali, di cui 2 extra => 6 ordinarie (modello 05/09/2026).
+
+    Prima del 05/09 lo stesso turno valeva 10h con 8 ordinarie: il totale non
+    dipendeva piu' dagli orari inseriti.
+    """
     res = _calcola([_turno(costo_orario=10.0, ore_extra=2)])
-    assert res["ore_totali"] == 10.0
+    assert res["ore_totali"] == 8.0
     assert res["ore_extra"] == 2.0
-    assert res["costo_dipendenti"] == 80.0
+    assert res["costo_dipendenti"] == 60.0
     assert res["costo_personale_extra"] == 20.0
 
 
 def test_costo_orario_extra_maggiorato_si_applica_solo_alle_extra():
     res = _calcola([_turno(costo_orario=10.0, ore_extra=2, costo_orario_extra=15.0)])
-    assert res["costo_dipendenti"] == 80.0
+    assert res["costo_dipendenti"] == 60.0
     assert res["costo_personale_extra"] == 30.0
 
 
@@ -101,26 +106,30 @@ def test_costo_orario_zero_non_e_costo_mancante():
     assert res["costo_dipendenti"] == 0.0
 
 
-def test_il_clamp_min_extra_ore_non_puo_mai_scattare():
-    """RILIEVO (5/9/2026) — la guardia difensiva di margini.py:1011 e' codice morto.
+def test_il_clamp_impedisce_piu_extra_delle_ore_lavorate():
+    """RILIEVO CHIUSO (05/09/2026) — il clamp di margini.py e' ora una guardia viva.
 
-    `min(extra, ore)` confronta le ore extra con `_ore_turno(t)`, che vale
-    `ore_orari + extra`: l'extra e' gia' dentro il totale, quindi non puo' mai
-    eccederlo e il clamp non scatta. Un turno di 8h con `ore_extra=99` produce
-    107h totali: l'ordinario resta 8h (107-99), ma gli straordinari valgono
-    **990 EUR** a 10 EUR/h. Il totale del mese cresce senza limite col dato
-    inserito, e non c'e' nessun tetto a proteggerlo.
+    Col modello vecchio (extra additive) `min(extra, ore)` era codice morto:
+    l'extra era gia' dentro il totale e non poteva eccederlo, quindi un turno
+    di 8h con ore_extra=99 produceva 107h totali e **990 EUR** di straordinari
+    senza alcun tetto.
 
-    Il test fissa il comportamento ATTUALE, non quello desiderato: correggerlo
-    cambia un importo che finisce nel MOL, ed e' una decisione di Mattia. Oggi
-    l'esposizione e' nulla (0 turni con ore_extra su 107 a DB, 5/9/2026), per
-    questo e' un rilievo e non un fix.
+    Col modello nuovo il totale viene solo dagli orari (8h), quindi dichiarare
+    99 ore extra su un turno di 8 e' incoerente e viene tagliato a 8: tutte le
+    ore diventano straordinario, l'ordinario va a 0 e il costo resta ancorato
+    alle ore realmente lavorate. Nessun importo puo' piu' crescere senza limite.
     """
     res = _calcola([_turno(costo_orario=10.0, ore_extra=99)])
-    assert res["ore_totali"] == 107.0
-    assert res["ore_extra"] == 99.0
-    assert res["costo_dipendenti"] == 80.0
-    assert res["costo_personale_extra"] == 990.0
+    assert res["ore_totali"] == 8.0
+    assert res["ore_extra"] == 8.0
+    assert res["costo_dipendenti"] == 0.0
+    assert res["costo_personale_extra"] == 80.0
+
+
+def test_extra_pari_alle_ore_azzera_l_ordinario_senza_andare_negativo():
+    res = _calcola([_turno(costo_orario=10.0, ore_extra=8)])
+    assert res["costo_dipendenti"] == 0.0
+    assert res["costo_personale_extra"] == 80.0
 
 
 def test_doppio_turno_nello_stesso_giorno_somma_i_due_slot():
