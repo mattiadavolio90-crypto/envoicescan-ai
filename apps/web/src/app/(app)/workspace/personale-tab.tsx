@@ -289,7 +289,7 @@ function SelettoreDipendente({
 export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, giorniDisponibili, dipendenti, costiNoti, onClose, onSaved, onDipendenteCreato }: TurnoDialogProps) {
   const [dipendenteId, setDipendenteId] = useState("");
   const [data, setData] = useState(dataDefault);
-  const [giorniSelezionati, setGiorniSelezionati] = useState<Set<string>>(new Set([dataDefault]));
+  const [giorniSelezionati, setGiorniSelezionati] = useState<Set<string>>(new Set());
   const [oraInizio, setOraInizio] = useState("09:00");
   const [oraFine, setOraFine] = useState("17:00");
   const [spezzato, setSpezzato] = useState(false);
@@ -312,7 +312,7 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
     if (open) {
       setDipendenteId(turno?.dipendente_id ?? dipendenteIdDefault ?? "");
       setData(turno?.data_turno ?? dataDefault);
-      setGiorniSelezionati(new Set([turno?.data_turno ?? dataDefault]));
+      setGiorniSelezionati(turno ? new Set([turno.data_turno]) : new Set());
       setOraInizio(turno ? fmtOra(turno.ora_inizio) : "09:00");
       setOraFine(turno ? fmtOra(turno.ora_fine) : "17:00");
       const hasSpezzato = !!(turno?.ora_inizio2 && turno?.ora_fine2);
@@ -345,7 +345,6 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
     setGiorniSelezionati(prev => {
       const next = new Set(prev);
       if (next.has(iso)) {
-        if (next.size === 1) return prev; // almeno uno sempre selezionato
         next.delete(iso);
       } else {
         next.add(iso);
@@ -356,8 +355,7 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
 
   function toggleTuttaSettimana() {
     if (giorniSelezionati.size === giorniDisponibili.length) {
-      // deseleziona tutto tranne il primo
-      setGiorniSelezionati(new Set([giorniDisponibili[0]]));
+      setGiorniSelezionati(new Set());
     } else {
       setGiorniSelezionati(new Set(giorniDisponibili));
     }
@@ -536,7 +534,7 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Giorni *
+                  Seleziona uno o più giorni:
                   {giorniSelezionati.size > 1 && (
                     <span className="ml-1.5 text-primary font-semibold">{giorniSelezionati.size} selezionati</span>
                   )}
@@ -735,7 +733,7 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
         </div>
         <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
           <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
-          <Button onClick={salva} disabled={saving}>
+          <Button onClick={salva} disabled={saving || (isNuovo && giorniSelezionati.size === 0)}>
             {saving
               ? "Salvo…"
               : isNuovo && giorniSelezionati.size > 1

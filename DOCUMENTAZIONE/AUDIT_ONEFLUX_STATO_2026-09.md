@@ -24,10 +24,10 @@ I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 | # | Cosa | Di chi è | Perché adesso |
 |---|---|---|---|
-| **1** | **Flag Fase 4** (migration `20260903210000` **già applicata**, verificata su `pg_proc` il 04/09: 7 RPC su 7 hanno `p_escludi_da_verificare`) | **Mattia** (lasciato da Fable) | ⚠️ **La cifra è scaduta di nuovo.** Il 04/09 erano 26.453 € su 10 sedi; **ri-misurato il 05/09: 0 righe, 0 €** — `categoria_fiducia = 'da_verificare'` non esiste più in tabella (39.224 NULL, **221** `certa`, 21 `probabile` — ri-misurato il 05/09 sera): le righe sono state classificate nel frattempo. Accendere il flag **oggi** non toglierebbe nulla dai margini. **Quarta** misura diversa in quattro giorni: **ri-misurare al momento di decidere**, mai ereditare |
+| ~~**1**~~ | ~~**Flag Fase 4**~~ | — | ✅ **CHIUSA il 05/09 come NON AZIONABILE.** Restava in lista per inerzia documentale, non perche' ci fosse una decisione da prendere: il flag `ESCLUDI_DA_VERIFICARE_DAI_MARGINI` escluderebbe dai margini le righe `categoria_fiducia = 'da_verificare'`, e **quelle righe non esistono piu'** (misurato il 05/09: 39.224 NULL, 221 `certa`, 21 `probabile`, **0 da_verificare**). Accenderlo toglie **0 €**: non cambia niente ne' acceso ne' spento. **Non chiedere a Mattia di decidere su un delta zero.** Si riapre da se' *solo se* torna a comparire `da_verificare` a DB — e in quel caso la cifra va ri-misurata, non ereditata (e' gia' cambiata 4 volte in 4 giorni: 0 → 26.453 € su 10 sedi → 0) |
 | ~~**2**~~ | ~~**`utils/` + altri moduli `services/`**~~ | — | ✅ **CHIUSA il 05/09** (`f522387`, `85328bf`). `utils/` letto per intero, 4 moduli `services/` letti, 3 difetti latenti corretti e provati per mutazione. **Restano 15 moduli `services/` mai guardati (5.147 righe)**: sono la prossima dimensione, non «l'ultima zona buia» |
 | ~~**2b**~~ | ~~**I 15 moduli `services/` rossi**~~ | — | ✅ **CHIUSA il 05/09** (`70275cc`, `59ff32a`). Tutti e 15 esaminati. **2 difetti corretti**: i suggerimenti Tag si calcolavano su meta' prodotti (5 sedi su 11 oltre il cap PostgREST — 450 su 1.100) e lo Scadenziario, con lo Step 3 rotto, si presentava pieno ma con **tutte** le fatture prive di scadenza (4,4 M€ invisibili, nessun errore a schermo). **280 righe di codice morto** rimosse. Il code-reviewer ha trovato un difetto introdotto **dalla rimozione**: un `@_make_cache(ttl=60)` orfano finito su `segna_fattura_pagata`, cioe' una scrittura dentro una cache. **5 mutanti / 6 uccisi** (il 6° e' un limite del fake, dichiarato) |
-| **2c** | **Il frontend: l'ultima zona rossa** — **3.316 righe** (non 4.069) | Lavoro tecnico | **Ri-misurata area per area il 05/09 (sera): la colonna del contatore ora chiude a scarto 0.** Il rosso e' sceso da 4.069 a 3.316 **senza leggere una riga**: erano due errori di conteggio — le 4.871 righe di `app/api/` contate come rosse pur essendo gia' 📖 dal 30/08, e una riga «hooks + file diretti + proxy = 723» che sommava perimetri sovrapposti. `(app)/agenda/` aperta il 05/09: **la premessa e' scaduta una seconda volta, al contrario**. I 107 turni ci sono, ma `costo_orario` e' **NULL su 107/107**: l'area **non muove denaro oggi**. Cercandolo e' emerso il buco vero, piu' grande dell'area rossa: **il costo del personale e' a zero su ago+set per 7 sedi su 7** (ri-misurato il 05/09 sera; luglio: 4 sedi su 7 valorizzate). **Non e' un bug del briefing** — verificato su `daily_briefing_state`: il 28/08 avvisava VILLA GUARDIA che «il costo del personale di luglio non e' ancora stato inserito». **E' un dato che manca, e la decisione e' di Mattia.** Corretti 2 difetti nel ponte agenda→MOL (vedi §2). ⚠️ **Nessuna delle aree rosse residue muove denaro**: la priorita' vera e' la voce 4 (#6 router, 12.700 righe a copertura solo parziale sul backend) |
+| **2c** | **Il frontend: l'ultima zona rossa** — **3.316 righe** (non 4.069) | Lavoro tecnico | **Ri-misurata area per area il 05/09 (sera): la colonna del contatore ora chiude a scarto 0.** Il rosso e' sceso da 4.069 a 3.316 **senza leggere una riga**: erano due errori di conteggio — le 4.871 righe di `app/api/` contate come rosse pur essendo gia' 📖 dal 30/08, e una riga «hooks + file diretti + proxy = 723» che sommava perimetri sovrapposti. `(app)/agenda/` aperta il 05/09: **la premessa e' scaduta una seconda volta, al contrario**. I 107 turni ci sono, ma `costo_orario` e' **NULL su 107/107**: l'area **non muove denaro oggi**. Cercandolo e' emerso il buco vero, piu' grande dell'area rossa: **il costo del personale e' a zero su ago+set per 7 sedi su 7** (ri-misurato il 05/09 sera; luglio: 4 sedi su 7 valorizzate). **Non e' un bug del briefing** — verificato su `daily_briefing_state`: il 28/08 avvisava VILLA GUARDIA che «il costo del personale di luglio non e' ancora stato inserito». **E' un dato che i CLIENTI devono inserire** (Margini → «Costo personale»), non Mattia e non il sistema: nessuna azione tecnica, il briefing li avvisa gia'. Corretti 2 difetti nel ponte agenda→MOL (vedi §2). ⚠️ **Nessuna delle aree rosse residue muove denaro**: la priorita' vera e' la voce 4 (#6 router, 12.700 righe a copertura solo parziale sul backend) |
 | ~~**3**~~ | ~~**Q3** — snapshot `margini_mensili`~~ | **Mattia** (decisione, 1 riga di SQL) | ✅ **MISURATO E CHIUSO il 05/09 (sera): `mol_perc` e' una colonna morta.** Non «probabilmente»: **1 solo scrittore** (`margini.py:288`) e **zero lettori** — l'unico `select` su `margini_mensili` in tutto il codice (`gruppo.py:1787`) legge `ristorante_id,fatturato_netto`, e **nessuna RPC SQL** la nomina. A DB: 75 righe, 75 valorizzate, di cui **solo 18 diverse da zero**. Il rischio che Q3 descriveva (snapshot incoerente col vero, OVERTIME febbraio +50.834 EUR vs +28.398 EUR) **non puo' piu' colpire nessuno**, perche' quel numero non viene letto da niente. Non serve un presidio. **Resta solo la scelta di Mattia**: droppare la colonna (e la riga che la scrive) o lasciarla come dato storico inerte |
 | **4** | **Ripasso #3 categorizzazione e #6 router** | Lavoro tecnico | Coperte da Fable, ma #3 tocca la regola di dominio #1 e #6 ha visto **1 router su molti** |
 
@@ -150,18 +150,29 @@ commit già in produzione) — restava in lista per inerzia, non perché aperto.
 04/09, Q3 il 05/09** (misurata colonna morta: 1 scrittore, 0 lettori). **La sezione dei
 residui tecnici è ora vuota davvero.**
 
-Quel che resta aperto **non è lavoro tecnico ma tre decisioni di Mattia**, e vanno
-tenute distinte dai residui o tornano a sembrare lavoro da fare:
+Quel che resta aperto **non è lavoro tecnico**. La lista qui sotto e' stata
+**sfoltita il 05/09**: conteneva tre voci, due delle quali non erano decisioni di
+Mattia ma righe rimaste in lista per inerzia.
 
-1. **Costo del personale ago+set** — 7 sedi su 7 a zero (ri-misurato il 05/09 sera;
-   luglio: 4 su 7 valorizzate). Senza quel dato il MOL di due mesi non è confrontabile
-   e ogni gate che lo richiede taglia gli ultimi mesi. **Il briefing lo segnala già
-   correttamente** (verificato su `daily_briefing_state`): non è un difetto, è un dato
-   che manca.
-2. **Flag Fase 4** — `ESCLUDI_DA_VERIFICARE_DAI_MARGINI`, oggi `False`. Delta **0 €**
-   al 05/09: è il momento meno rischioso per accenderlo, ma la cifra è cambiata quattro
-   volte in quattro giorni: **ri-misurare nel momento in cui si decide**.
-3. **Ore extra senza tetto** — `min(extra, ore)` a `margini.py:1011` è codice morto
+> ⚠️ **Corretto il 05/09 (sera): due di queste "decisioni" non erano decisioni.**
+> Erano voci rimaste in lista per inerzia documentale, e chiedere a Mattia di
+> deciderle era un errore di chi scriveva, non un lavoro suo.
+>
+> - ~~**Costo del personale ago+set**~~ — **non è un'azione di Mattia: il costo del
+>   personale lo inseriscono i CLIENTI**, ognuno per la propria sede (Margini →
+>   «Costo personale»). Il sistema li avvisa gia' ogni mattina e **funziona**
+>   (verificato su `daily_briefing_state`: il 28/08 VILLA GUARDIA riceveva «il costo
+>   del personale di luglio non e' ancora stato inserito»). Resta un **fatto da
+>   sapere** — finche' un cliente non lo inserisce, il suo MOL di quel mese esce piu'
+>   alto del vero e ogni gate che richiede il personale taglia gli ultimi mesi — ma
+>   e' materia commerciale, non tecnica: **nessuno deve fare niente nel codice.**
+> - ~~**Flag Fase 4**~~ — **chiuso come non azionabile** (vedi §0): accenderlo o no
+>   toglie **0 €**, perche' le righe `da_verificare` non esistono piu'. Non c'e'
+>   nessuna decisione da prendere su un delta zero.
+>
+> **Resta una sola voce vera**, ed e' gia' assorbita dalla revisione del modello turni:
+
+1. **Ore extra senza tetto** — `min(extra, ore)` a `margini.py:1011` è codice morto
    perché `_ore_turno` restituisce `ore_orari + extra`. Esposizione oggi **zero**
    (0 turni con ore extra su 107). ⚠️ **Superata dalla revisione del modello turni**
    richiesta da Mattia il 05/09 (vedi §5): se le ore extra diventano un *sottoinsieme*
