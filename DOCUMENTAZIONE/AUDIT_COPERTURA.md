@@ -42,25 +42,25 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 57.393 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 57.173 |
 | Frontend (`apps/web/src/`, esclusi i binari) | 53.764 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.713** |
+| **TOTALE APP** | **114.493** |
 
-> Ri-misurato il **4/09/2026 sera** coi comandi qui sopra (dopo il deploy di
-> `a5e77f1`). Il backend è cresciuto di 479 righe e il frontend di 525 rispetto
-> al 3/09: sono il lavoro della **sessione Fable**
-> ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md)), la chiusura di Q1 e le altre
-> sessioni in parallelo. **La misura invecchia: ri-prendila, non ricopiarla.**
+> Ri-misurato il **5/09/2026** coi comandi qui sopra (dopo `85328bf`). Il backend
+> **cala di 220 righe** rispetto al 4/09: 286 rimosse come codice morto dalla
+> dimensione `utils/`, meno ~66 aggiunte da questa e da altre sessioni. È la
+> prima volta nel ciclo che il perimetro si restringe invece di crescere.
+> **La misura invecchia: ri-prendila, non ricopiarla.**
 
 ### Quanta app è coperta — la risposta in una riga
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 48.048 | 9.345 | **84%** |
+| Backend | 52.026 | 5.147 | **91%** |
 | Frontend | 27.210 letti su 53.764 | ~26.554 | **51%** |
 | Edge Functions | 3.556 | 0 | **100%** |
-| **App intera** | **78.814** | **35.899** | **69%** |
+| **App intera** | **82.792** | **31.701** | **72%** |
 
 > **Come si legge.** «Coperto» somma il letto integralmente (📖) e il parziale
 > (🔍/🟠): sono livelli di confidenza diversi, non equivalenti — il dettaglio per
@@ -71,32 +71,39 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Backend Python — 57.393 righe
+## Backend Python — 57.173 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
 | `db_service.py` | 2.284 | 📖 letto | ciclo 07, 8/8 |
 | `invoice_service.py` | 2.333 | 📖 letto | ciclo 07, 10/8 |
 | `auth_service.py` | 1.782 | 📖 letto | ciclo 07, 8/8 |
-| `ai_service.py` | 5.744 | 📖 nucleo decisione + gate | ciclo 09: motore unico, gate, 9 uscite. 101 test. **4/09 fasi 5-6-8** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3): apprendimento sui 3 percorsi, bypass memoria globale, refusi parole corte |
+| `ai_service.py` | 5.758 | 📖 nucleo decisione + gate | ciclo 09: motore unico, gate, 9 uscite. 101 test. **4/09 fasi 5-6-8** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3): apprendimento sui 3 percorsi, bypass memoria globale, refusi parole corte |
 | `upload_handler.py` | 2.282 | 🔍 chiamante del gate | passa descrizione e fornitore a `valuta_fiducia` |
 | `margine_service.py` | 1.487 | 🔍 di rimbalzo | **regola di dominio MOL**; 3/9 il filtro «Da Classificare» viene dalla costante (R6); 4/09 allineato al flag Fase 4 ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3) |
-| `fastapi_worker.py` | 8.899 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
+| `fastapi_worker.py` | 8.898 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
 | `daily_briefing_service.py` | 1.660 | 📖 letto | **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §4): letto riga per riga, impianto confermato; chiusi 2 difetti latenti (importi all'inglese, validatore entusiasmo) |
 | `routers/` (tutti) | 16.755 | 🟠 parziale | ~4.000 letti nel ciclo 07; **216 endpoint su 216 protetti** e guardia a livello di router (R5) — perimetro *sicurezza* chiuso, *logica* no. **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §6, prima passata): `scadenziario` — gli avvisi erano **muti da giugno**. 4/09 **Q1**: `gruppo.py` segnale «margine in calo»; **Q2**: food cost di `gruppo_overview` e `_kpi_periodo` allineati al **netto** (erano gli unici 2 punti sul lordo); **Q4**: `riparto.py` + proiezione per centro **letti e misurati** — non un bug, coda di dati |
 | `worker/` | 2.411 | 📖 letto | **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §5): «gira non presidiato» era **falso** — 7 file di test worker, code in salute (647 fatture, 0 arretrati). Chiuso il retry della coda ricavi-email |
-| `utils/` | 2.574 | 🔴 | — |
+| `utils/` | 2.294 | 📖 letto | **5/09**: tutti gli 11 file mappati (chiamanti runtime verificati uno per uno). Rimossi `page_setup.py` e `period_helper.py` — **zero chiamanti**, il primo non importabile in produzione — e `patch_streamlit_width_api`. Corretta l'unica query su `fatture` senza soft-delete di tutto `utils/` (`validation.py`). Nuovo presidio su `fetch_all`, **3/3 mutanti** |
 | `config/` | 2.411 | 📖 letto | **contiene i prompt AI** — la regola di dominio n.1. **3/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §2): 29 categorie coerenti, 1.268 chiavi validate, 12 mojibake riparate con presidio |
-| `services/` (altri moduli) | 6.771 | 🔴 | riparto, foodcost, price_impact, radar… |
+| `services/` — riparto, foodcost, radar, price_impact | 1.642 | 📖 letti | **5/09**: letti per intero. Il riparto **misurato sano a DB** (0 categorie fuori dal 100%, 0 importi che non quadrano su 171 riparti). Corretti 2 difetti latenti: quote senza paginazione (24% del cap PostgREST), foodcost che saltava la riga rotta |
+| `services/` (altri 15 moduli) | 5.147 | 🔴 | `documenti_service` 1.096, `tag_suggestion_service` 1.087, `tag_analytics` 488, `notification_inbox` 352, `personale_export` 291, `ai_cost` 282, `worker_client` 270, `__init__` 259, `multisede_routing` 223, `session_service` 219, `_streamlit_shim` 137, `upload_policy` 134, `consumi_service` 134, `worker_metrics` 106, `telegram_service` 69 |
 
-**Backend: copertura dopo il 4/09.** Ri-sommata la colonna (non per delta):
+**Backend: copertura dopo il 5/09.** Ri-sommata la colonna (non per delta):
 
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
-| 📖 letto integralmente | 18.625 | 32% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.744, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.411 |
-| 🔍 / 🟠 parziale | 29.423 | 51% | `fastapi_worker` 8.899, `routers/` 16.755, `upload_handler` 2.282, `margine_service` 1.487 |
-| 🔴 mai guardato | 9.345 | 16% | `utils/` 2.574, `services/` altri moduli 6.771 |
-| **Totale backend** | **57.393** | 100% | ✅ la colonna chiude (verificata addendo per addendo) |
+| 📖 letto integralmente | 22.597 | 40% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.411, **`utils/` 2.294**, **riparto 571 + price_impact 415 + radar 392 + foodcost 264** |
+| 🔍 / 🟠 parziale | 29.429 | 51% | `fastapi_worker` 8.898, `routers/` 16.762, `upload_handler` 2.282, `margine_service` 1.487 |
+| 🔴 mai guardato | 5.147 | 9% | `services/`, 15 moduli — elencati uno per uno nella tabella sopra |
+| **Totale backend** | **57.173** | 100% | ✅ la colonna chiude: 22.597 + 29.429 + 5.147 = 57.173, differenza **0** |
+
+> **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
+> tutto merito della lettura: **286 righe erano codice morto** e sono state
+> rimosse, non auditate. Il resto (3.912) è stato letto davvero. E la voce
+> «`services/` altri moduli» non è più un blocco unico: i 15 moduli residui sono
+> elencati con le loro righe, così «cosa manca» si legge senza doverlo dedurre.
 
 > Le tre cifre sono state **ri-sommate voce per voce**, non stimate: la prima
 > stesura dava 20.078 / 27.963 / 9.275, che sommavano a 57.316 solo perché il
@@ -215,59 +222,52 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 37.435 | **33%** | 6.364 backend + 27.515 frontend + 3.556 Edge |
-| 🔍 / 🟠 Auditato o parzialmente coperto | 58.885 | 52% | 36.369 backend + 22.516 frontend |
-| 🔴 Mai guardato | 17.256 | **15%** | 14.054 backend + 3.202 frontend |
-| **Totale app (misurato)** | **113.709** | 100% | 56.914 + 53.239 + 3.556 |
+| 📖 Letto integralmente | 53.363 | **47%** | 22.597 backend + 27.210 frontend + 3.556 Edge |
+| 🔍 / 🟠 Auditato o parzialmente coperto | 51.945 | 45% | 29.429 backend + 22.516 frontend |
+| 🔴 Mai guardato | 9.185 | **8%** | 5.147 backend + 4.038 frontend |
+| **Totale app (misurato)** | **114.493** | 100% | 57.173 + 53.764 + 3.556 |
 
-> **Ri-sommato il 3/09/2026, dopo R5 e R6.** Le tre righe fanno **113.576**
-> contro un totale misurato di **113.709**: **133 righe di scarto**, che restano
-> scritte qui invece di sparire in un arrotondamento. La riga «letto» non è un
-> delta: viene dalla **ri-somma della colonna** frontend (27.515 su 20 aree).
+> **Ri-sommato il 5/09/2026, dopo `85328bf`.** Le tre righe fanno **114.493**
+> contro un totale misurato di **114.493**: **scarto 0**. Non è un
+> arrotondamento fortunato — è la ri-somma della colonna backend modulo per
+> modulo (22.597 + 29.429 + 5.147) più frontend ed edge ri-misurati oggi coi
+> comandi in cima al file.
 >
-> Lo scarto si scompone:
-> - **100** righe di backend: i commenti aggiunti ai 12 router e ai 3 file di R6;
-> - **27** righe di aree backend cresciute prima e mai ri-misurate;
-> - **6** righe di frontend già dichiarate sopra.
+> **La stesura precedente di questa tabella era ferma al 3/09** e portava cifre
+> che non si conciliavano con quelle di testa (totale 113.709, backend rosso
+> 14.054, «letto» al 33%): due sezioni dello stesso file dicevano due verità
+> diverse per due giorni. È stata ri-misurata da zero, non corretta per delta.
 >
-> `100 + 27 + 6 = 133`. Se un giorno non torna, manca una misura.
+> ⚠️ **Misurato su HEAD**, non sul working tree: mentre questa dimensione
+> chiudeva, altre sessioni avevano modifiche non committate nell'albero.
+> Contarle qui avrebbe attribuito a questo ciclo lavoro di altri, e le avrebbe
+> contate due volte al loro commit.
 >
-> ⚠️ **Il totale è misurato su HEAD + solo il lavoro di questa sessione**, non
-> sul working tree. Mentre R5/R6 chiudevano, un'altra sessione aveva **163 righe
-> di frontend non committate** nell'albero: contarle qui avrebbe attribuito a
-> questo ciclo lavoro di qualcun altro, e le sarebbe state contate due volte al
-> suo commit. La prima stesura lo faceva, e le dava per «committate» quando non
-> lo erano — corretto dal `code-reviewer`, poi ri-misurato.
->
-> **La regola che genera questi scarti se la si viola:** ri-somma la colonna, non
-> aggiungere il tuo delta. **La prima stesura di questa tabella aveva tre cifre
-> stimate a occhio** — 30.749 / 47.157 / 35.463, che non tornavano con nessuna
-> sezione sopra. È lo stesso errore che il file documenta da tre cicli, commesso
-> mentre lo si riscriveva.
-
-Quel che è letto è però il perimetro più esposto: ingresso dati, auth, DB,
-Edge Functions, le 170 route, il MOL.
-
-> **Queste righe si ricalcolano, non si ritoccano.** Il 31/8 una correzione è
-> stata riportata qui a mano invece di rifare la somma: il risultato dichiarava
-> 23.600 righe lette mentre le sezioni ne contavano 37.215 — e il file che esiste
-> per far tornare i conti era l'unico posto dove non tornavano. Né
-> `check_documentazione.py` né `test_documentazione_onesta.py` controllano
-> l'aritmetica: qui la rete automatica non c'è.
-
----
+> **La regola che genera gli scarti se la si viola:** ri-somma la colonna, non
+> aggiungere il tuo delta. Il 5/09 il backend è **calato** di 220 righe (286
+> rimosse come codice morto, ~66 aggiunte): chi avesse sommato un delta positivo
+> per «lavoro fatto» avrebbe sbagliato segno.
 
 ## Cosa questo conto fa emergere
 
-1. **`config/` (2.379) contiene i prompt AI** — la regola di dominio n.1 — e non
-   è mai stato guardato.
-2. **`worker/` (2.400) gira non presidiato** e non è in nessuna lista.
-3. **`daily_briefing_service.py` (1.637)** ha avuto 4 sessioni di lavoro a
-   settembre ma non è mai stato auditato come oggetto proprio.
-4. **I `routers/` sono il blocco più grande a copertura parziale** (16.617 righe,
-   ~4.000 lette).
+> Ri-scritta il **5/09**. La versione precedente era ferma a prima del 3/09 e
+> **3 punti su 4 erano diventati falsi**: dava `config/` e `worker/` come «mai
+> guardati» quando la tabella sopra li segnava già 📖, e con cifre sbagliate
+> (2.379 e 2.400 contro 2.411). Un elenco di priorità che invecchia è peggio di
+> nessun elenco: manda a lavorare dove il lavoro è già stato fatto.
 
----
+1. **I `routers/` sono ora il blocco più grande a copertura parziale** — 16.762
+   righe, ~4.000 lette. Il perimetro *sicurezza* è chiuso (216 endpoint su 216);
+   la *logica* no. È il candidato naturale alla prossima dimensione.
+2. **`documenti_service` (1.096) e `tag_suggestion_service` (1.087)** sono i due
+   moduli rossi più grandi rimasti, e insieme fanno il **42%** del residuo.
+   `tag_suggestion` tocca la categorizzazione, cioè la regola di dominio n.1.
+3. **Il frontend è il perimetro meno coperto in proporzione** (51%), e la sua
+   ripartizione per area è la parte più debole di questo file: va ri-misurata
+   area per area, non ereditata.
+4. **`services/__init__.py` (259 righe) non è un `__init__` vuoto** e contiene
+   l'auth flow del client Supabase (CLAUDE.md #3 dice di non toccarlo senza
+   capirlo): è in zona rossa e nessuno l'ha mai letto.
 
 ## Come si aggiorna
 

@@ -17,14 +17,14 @@ I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 ## 0. I prossimi passi — in ordine
 
-> Ri-misurato il **04/09/2026 sera**, dopo il deploy di `a5e77f1`. Copertura app:
-> **69%** (backend 84%, frontend 51%, edge 100%) — dettaglio in
+> Ri-misurato il **05/09/2026**, dopo `85328bf`. Copertura backend: **91%**
+> (5.147 righe ancora mai guardate, tutte in `services/`) — dettaglio in
 > [`AUDIT_COPERTURA.md`](AUDIT_COPERTURA.md).
 
 | # | Cosa | Di chi è | Perché adesso |
 |---|---|---|---|
-| **1** | **Flag Fase 4** (migration `20260903210000` **già applicata**, verificata su `pg_proc` il 04/09: 7 RPC su 7 hanno `p_escludi_da_verificare`) | **Mattia** (lasciato da Fable) | ⚠️ **Il «delta zero su 11 sedi» NON vale più.** Ri-misurato il 04/09 sera: **340 righe classificate-ma-dubbie su 10 sedi**, per **26.453 €** che uscirebbero dai margini — quasi tutti su due sedi (SUSHILAND VILLA GUARDIA 13.704 €, SAN GIULIANO 12.612 €). Accendere il flag oggi **cambierebbe il MOL di clienti veri**: la misura va rifatta al momento di decidere, non ereditata |
-| **2** | **`utils/` + altri moduli `services/`** — 9.345 righe | Lavoro tecnico | **Le uniche due zone MAI guardate del backend** (riparto, foodcost, price_impact, radar). È la prossima dimensione naturale |
+| **1** | **Flag Fase 4** (migration `20260903210000` **già applicata**, verificata su `pg_proc` il 04/09: 7 RPC su 7 hanno `p_escludi_da_verificare`) | **Mattia** (lasciato da Fable) | ⚠️ **La cifra è scaduta di nuovo.** Il 04/09 erano 26.453 € su 10 sedi; **ri-misurato il 05/09: 0 righe, 0 €** — `categoria_fiducia = 'da_verificare'` non esiste più in tabella (39.224 NULL, 217 `certa`, 21 `probabile`): le righe sono state classificate nel frattempo. Accendere il flag **oggi** non toglierebbe nulla dai margini. Terza misura diversa in tre giorni: **ri-misurare al momento di decidere**, mai ereditare |
+| ~~**2**~~ | ~~**`utils/` + altri moduli `services/`**~~ | — | ✅ **CHIUSA il 05/09** (`f522387`, `85328bf`). `utils/` letto per intero, 4 moduli `services/` letti, 3 difetti latenti corretti e provati per mutazione. **Restano 15 moduli `services/` mai guardati (5.147 righe)**: sono la prossima dimensione, non «l'ultima zona buia» |
 | **3** | **Q3** — snapshot `margini_mensili`, 3 scrittori | Lavoro tecnico | Meno urgente di prima: chiuso Q1, `mol_perc` **non ha più alcun lettore runtime**. Da «serve un presidio» a «colonna morta da valutare» |
 | **4** | **Ripasso #3 categorizzazione e #6 router** | Lavoro tecnico | Coperte da Fable, ma #3 tocca la regola di dominio #1 e #6 ha visto **1 router su molti** |
 
@@ -62,6 +62,7 @@ Una riga per sessione. Il dettaglio è nel verbale, in coda per data.
 | 03/09 | **R10 — il guasto non è più un «niente da fare»** | ✅ chiuso — **7 pagine cliente** (scadenziario PV + catena, avvisi desktop + mobile, tag, analisi-fatture). `workerGet` torna `null` su ogni fallimento e i `?? []` lo trasformavano in lista vuota: **4,4 M€ di scadenze** potevano diventare «Nessun documento trovato». Fonte unica in `lib/esito-caricamento.ts`, 41 test, **10/10 mutanti** (2 li ha trovati il code-reviewer) |
 | 03/09 | **Residui R8, R2, R3, R1, R7, R4** | ✅ **6 su 6 chiusi** — corretto il netto mobile (euro sbagliati). Su R4 Mattia ha scelto: separatore delle migliaia e decimali arrotondati. Le 3 `pct` chiuse il 3/9: `formatPct` non aveva più chiamanti, correggerla non ha toccato nessuna schermata |
 | 04/09 | **Q1 — il segnale «margine in calo»** (esito quadratura) | ✅ **chiuso** — non era mai potuto scattare per nessun cliente: leggeva lo snapshot `mol_perc`, che per le sedi di catena non è valorizzato. Ora calcola il MOL con la formula viva e un **gate di completezza per mese** (senza, i mesi con fatture non ancora arrivate uscivano al 100% e facevano scattare crolli inventati). Da **0 sedi servite** a **4 accensioni su 6**. Tolta l'eccezione nella guardia di dominio. **9 mutanti / 9 uccisi**. Ri-misurata la roadmap §3: **5 voci su 6 erano già coperte dalla sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md)) e il ciclo le dava ancora per aperte — colonna «Copertura reale» e contatore allineati |
+| 05/09 | **`utils/` + i 4 moduli `services/` mai guardati** | ✅ **chiusa** — il prompt indicava 4.198 righe di «nucleo»: la zona rossa era **9.345** (utils 2.574 + **19** moduli services, non 4). Misurato a DB prima di scegliere: il **food cost è quasi vuoto** (5 ricette, 1 utente, 0 ingredienti) mentre il **riparto muove ~68.000 €** ed è risultato **sano** (0 categorie fuori dal 100%, 0 importi che non quadrano). **3 difetti latenti** corretti, nessuno visibile in produzione: il conteggio di integrità contava le righe cestinate; le quote di riparto si leggevano senza paginare (**24% del cap PostgREST**, in crescita); il foodcost saltava la riga rotta e usciva più basso del vero. **286 righe di codice morto rimosse** (2 moduli senza un solo chiamante, di cui uno non importabile in produzione, più 162 righe di test che davano copertura fittizia). **6 mutanti / 6 uccisi**, uno per volta |
 | 01→02/09 | **Categorizzazione** — fasi 0, 7, 1, 2, 3 | 🟠 **parziale: 5 fasi su 10** — vedi §2 |
 
 **Il metodo che ha retto:** ogni sessione ha ri-misurato le ipotesi del proprio
