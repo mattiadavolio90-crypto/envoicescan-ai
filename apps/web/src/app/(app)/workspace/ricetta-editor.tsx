@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
-  CATEGORIE_RICETTE, FC_BADGE_CLASS, fmtEuro, fmtPct,
+  CATEGORIE_RICETTE, FC_BADGE_CLASS, fmtEuro, fmtPct, messaggioErroreRisposta,
   type RicettaDettaglio, type RigaRicetta, type Ingrediente, type IngredientiResponse,
 } from "@/lib/foodcost";
 
@@ -189,11 +189,8 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        // Il backend rifiuta il salvataggio quando una riga non e' calcolabile
-        // (422) e dice QUALE: senza questo, l'utente legge "Errore salvataggio"
-        // e non sa quale ingrediente sistemare.
-        const detail = await res.json().then((d) => d?.detail).catch(() => null);
-        throw new Error(typeof detail === "string" ? detail : "");
+        const corpo = await res.json().catch(() => null);
+        throw new Error(messaggioErroreRisposta(corpo, ""));
       }
       toast.success(isNew ? "Ricetta salvata" : "Ricetta aggiornata");
       onSaved();

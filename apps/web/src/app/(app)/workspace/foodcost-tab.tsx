@@ -8,7 +8,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import {
-  FC_BADGE_CLASS, fmtEuro, fmtPct, coloreFC,
+  FC_BADGE_CLASS, fmtEuro, fmtPct, coloreFC, messaggioErroreRisposta,
   type RicetteResponse, type Ricetta, type RicettaDettaglio, type CategoriaStats,
 } from "@/lib/foodcost";
 
@@ -89,11 +89,15 @@ export function FoodcostTab() {
           righe: d.righe,
         }),
       });
-      if (!cr.ok) throw new Error();
+      if (!cr.ok) {
+        const corpo = await cr.json().catch(() => null);
+        throw new Error(messaggioErroreRisposta(corpo, ""));
+      }
       toast.success("Ricetta duplicata");
       load();
-    } catch {
-      toast.error("Errore duplicazione");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      toast.error(msg || "Errore duplicazione");
     }
   }
 

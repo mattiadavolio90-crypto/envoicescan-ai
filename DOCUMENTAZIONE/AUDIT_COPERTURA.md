@@ -94,7 +94,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
-| 📖 letto integralmente | 22.597 | 40% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.411, **`utils/` 2.294**, **riparto 571 + price_impact 415 + radar 392 + foodcost 264** |
+| 📖 letto integralmente | 22.597 | 40% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, **`utils/` 2.294**, **riparto 571 + price_impact 415 + radar 392 + foodcost 264** |
 | 🔍 / 🟠 parziale | 29.429 | 51% | `fastapi_worker` 8.898, `routers/` 16.762, `upload_handler` 2.282, `margine_service` 1.487 |
 | 🔴 mai guardato | 5.147 | 9% | `services/`, 15 moduli — elencati uno per uno nella tabella sopra |
 | **Totale backend** | **57.173** | 100% | ✅ la colonna chiude: 22.597 + 29.429 + 5.147 = 57.173, differenza **0** — verificata **addendo per addendo**, non solo sul totale |
@@ -130,14 +130,14 @@ voci già coperte da Fable.
 
 | Voce roadmap §3 | Perimetro | Esito | Da ripassare? |
 |---|---|---|---|
-| #2 prompt AI | `config/` (2.411) | 12 chiavi mojibake riparate, presidio per mutazione | **No** |
+| #2 prompt AI | `config/` (2.433) | 12 chiavi mojibake riparate, presidio per mutazione | **No** |
 | #3 categorizzazione | `ai_service`, `routers/` | 10 fasi su 10, test per fase | **Sì, con Opus** — regola di dominio #1, flag ancora spento (migration `20260903210000` già applicata: 7 RPC su 7, verificata il 04/09) |
 | #4 briefing | `daily_briefing_service` (1.660) | letto riga per riga, 2 difetti chiusi | **No** |
 | #5 worker | `worker/` (2.411) | «non presidiato» smentito: 7 file di test | **No** |
 | #6 router | `routers/` (16.762) | prima passata: scadenziario muto da giugno | **Sì, con Opus** — 1 router su molti |
 
-**Effetto sul contatore, quantificato:** `config/` (2.411) e `worker/` (2.411)
-passano da 🔴 a 📖 — **4.822 righe** che risultavano mai guardate — e
+**Effetto sul contatore, quantificato:** `config/` (2.433) e `worker/` (2.411)
+passano da 🔴 a 📖 — **4.844 righe** che risultavano mai guardate — e
 `daily_briefing_service.py` (1.660) da 🔍 a 📖. Senza contare Fable, il backend
 coperto scenderebbe da 84% a **72%** (41.566 su 57.393) e le zone rosse
 salirebbero da 9.345 a 14.167 righe. **È già incluso in tutte le cifre di questo file**: escluderlo

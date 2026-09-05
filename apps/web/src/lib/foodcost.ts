@@ -131,3 +131,26 @@ export function coloreFC(incidenza: number | null | undefined): ColoreFC {
   if (incidenza <= 40) return "ambra";
   return "rosso";
 }
+
+/** Messaggio d'errore di una risposta del worker, per il toast.
+
+Il backend rifiuta il salvataggio di una ricetta con una riga non calcolabile
+(422) e nel `detail` dice QUALE ingrediente: buttarlo via lascia l'utente con
+un "Errore salvataggio" che non gli fa sistemare niente.
+
+Difensiva su tre casi reali: la risposta puo' non essere JSON (502/504 di
+Railway, HTML di errore), e FastAPI usa `detail` sia come stringa sia come
+array di oggetti per gli errori di validazione Pydantic — passare quest'ultimo
+a un toast stamperebbe "[object Object]". */
+export function messaggioErroreRisposta(corpo: unknown, fallback: string): string {
+  if (typeof corpo !== "object" || corpo === null) return fallback;
+  const detail = (corpo as { detail?: unknown }).detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d) => (typeof d === "object" && d !== null ? (d as { msg?: unknown }).msg : d))
+      .filter((m): m is string => typeof m === "string" && m.trim().length > 0);
+    if (msgs.length) return msgs.join("; ");
+  }
+  return fallback;
+}
