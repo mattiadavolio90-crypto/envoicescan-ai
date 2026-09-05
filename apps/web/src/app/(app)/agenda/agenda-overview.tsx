@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { EventoDialog } from "../workspace/diario-tab";
 import { TIPO_SPESA_LABEL } from "@/lib/categorie-spesa";
+import { formatEuro } from "@/lib/format";
+import { MESI_LUNGHI } from "@/lib/mesi";
 import {
   type Turno,
   type TipoGiorno,
@@ -46,7 +48,6 @@ const FONTI: Record<Fonte, { label: string; dot: string; chip: string; icon: typ
 
 // ─── Utilità date ─────────────────────────────────────────────────────────────
 
-const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 const GIORNI_BREVI = ["L","M","M","G","V","S","D"];
 
 function meseISO(anno: number, mese: number) {
@@ -65,9 +66,6 @@ function todayISO() {
 }
 function fmtOra(t: string | null | undefined) {
   return t ? t.slice(0, 5) : "";
-}
-function fmtEuro(v: number) {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
 }
 function isoOf(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -275,7 +273,7 @@ export function AgendaOverview() {
 
   const labelNav = vista === "settimana"
     ? `${new Date(giorniSettimana[0] + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "short" })} – ${new Date(giorniSettimana[6] + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "short" })}`
-    : `${MESI[mese]} ${anno}`;
+    : `${MESI_LUNGHI[mese]} ${anno}`;
 
   return (
     <div className="space-y-4">
@@ -432,7 +430,7 @@ export function AgendaOverview() {
                         {v.tipoGiorno && v.tipoGiorno !== "turno" && (
                           <div className="opacity-80">{TIPO_GIORNO_LABEL[v.tipoGiorno]}</div>
                         )}
-                        {v.importo != null && <div className="tabular-nums">{fmtEuro(v.importo)}</div>}
+                        {v.importo != null && <div className="tabular-nums">{formatEuro(v.importo, 2)}</div>}
                       </Link>
                     );
                   })}
@@ -547,7 +545,7 @@ function VoceRow({ v }: { v: VoceAgenda }) {
       </div>
       {v.importo != null && (
         <span className="text-sm font-semibold tabular-nums shrink-0">
-          {fmtEuro(v.importo)}
+          {formatEuro(v.importo, 2)}
         </span>
       )}
     </Link>

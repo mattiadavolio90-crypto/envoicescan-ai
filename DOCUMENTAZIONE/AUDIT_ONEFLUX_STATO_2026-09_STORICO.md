@@ -23,6 +23,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 29/08 | Punto 9 (F2-NOTEST) + voci ereditate | *spostato qui il 2/9* |
 | 03/09 | Residuo R8 — guardia liste vuote catena | depennato: era già in produzione |
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
+| 05/09 | `(app)/agenda/` + il ponte costo personale→MOL | chiusa — 6/7 mutanti, il 7° dichiarato ridondante |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
@@ -2696,3 +2697,125 @@ dopo (solo diagnostica, e il file è coperto dalla regola #3); campanella notifi
 disponibile; `session_service:184` — un logout globale fallito è indistinguibile da
 uno riuscito; `_streamlit_shim` — zero test, e il conftest lo sostituisce con un
 MagicMock a superficie aperta, quindi **nessun test esercita mai lo shim reale**.
+
+---
+
+## 5/09/2026 — `(app)/agenda/`: la premessa scaduta due volte, e il buco che c'era davvero
+
+**Verdetto: l'area rossa non era il problema. Il problema l'ha trovato la misura
+fatta per aprirla.**
+
+### La premessa, scaduta due volte in direzioni opposte
+
+`AUDIT_COPERTURA.md:188` diceva «**0 turni a DB**: scartata con misura». Il prompt
+di sessione l'aveva già corretta il 5/09 sera — «107 turni, campi economici, **muove
+soldi che finiscono nel MOL**» — e indicava `agenda/` come prima area proprio per
+questo. **Ri-misurato all'apertura, anche la seconda premessa è falsa**, al contrario:
+
+| Misura (5/09/2026) | Valore |
+|---|---:|
+| `turni_personale` | 107 righe, **1 sola sede**, 3 dipendenti, 1/8–6/9 |
+| `costo_orario` valorizzato | **0 / 107** |
+| `lordo_mensile` valorizzato | **0 / 107** |
+| `importo_extra`, `importo_a_carico` | 0,00 € |
+| `dipendenti.costo_orario_default` | NULL su tutti e 4 |
+
+**`agenda/` oggi muove 0 €.** Terza verità sulla stessa area in tre documenti: la
+riga di `AUDIT_COPERTURA.md` è stata corretta, non riscritta al ribasso.
+
+### Il buco vero, misurato cercando quello
+
+Il MOL non legge i turni. Legge `margini_mensili.costo_dipendenti +
+costo_personale_extra` (`fastapi_worker.py:7469-7479`, `margine_service.py:1124-1126`).
+L'unico ponte è `get_costo_personale_da_turni` (`margini.py:966`), **di sola lettura**,
+dietro il bottone manuale «Recupera dal tab Personale».
+
+| `margini_mensili` 2026 | Valore |
+|---|---:|
+| Mesi con `costo_dipendenti > 0` | 50 / 75 |
+| **Ultimo mese con costo, su qualsiasi sede** | **luglio** |
+| Sedi a 0 su agosto **e** settembre | **6 / 6** (fra cui sedi da 400–473 k€/mese) |
+
+I valori esistenti sono inseriti a mano e si vedono: `60000.00` identico su 3 mesi e
+4 sedi, `7319.59` clonato su mag/giu/lug con lo stesso `updated_at`, `20000.00` tondo.
+**Nessuno viene dai turni.**
+
+### Non è un bug del briefing — verificato, non dedotto
+
+Ipotesi di partenza: «il presidio tace». **Falsa.** Su `daily_briefing_state` il
+28/08 e il 27/08 VILLA GUARDIA riceveva: «👥 Il costo del personale di luglio 2026
+non è ancora stato inserito», con CTA «Inserisci costo» → `/margini`. Anche CASATI 14
+il 5/09. La logica di `fastapi_worker.py:5540-5566` è corretta (mesi attivi = con
+fatturato, fino al mese precedente).
+
+**Il sistema avvisa; il dato non è stato inserito.** È una decisione di Mattia, non
+un fix. `_BRIEFING_CODE_VERSION` **non toccato** (nessuna modifica alla logica).
+
+### I due difetti corretti nel ponte
+
+1. **Un «Recupera» a vuoto azzerava il costo del mese.** Con turni privi di
+   `costo_orario` l'endpoint torna `costo_dipendenti = 0`, e il dialog faceva
+   `setLordo(toStr(0))` → `""`: i campi si svuotavano. Un Salva successivo scriveva
+   **0** su un mese che aveva un costo vero (CASATI 14 luglio: **5.074,48 €**),
+   togliendolo dal MOL. **È esattamente lo scenario dei 107 turni reali.** Ora un
+   recupero che non produce nulla non tocca ciò che c'è.
+2. **`costo_assenze_a_carico` calcolato e buttato.** Il worker lo restituisce
+   (ferie/malattia a carico datore); il tipo `CalcoloTurni` del dialog non lo
+   dichiarava. **Non sommato** — il worker lo tiene isolato di proposito
+   (`TestMarginiCostoAssenze`) — ma ora **mostrato**, così l'utente sa che esiste e
+   può aggiungerlo a mano.
+
+Logica estratta in `apps/web/src/lib/costo-personale-turni.ts` (il `.tsx` non è
+testabile: `helpers_ts.py` esegue solo TS senza React).
+
+### Prove per mutazione — 6 uccisi su 7
+
+Backup preso **prima** del primo mutante, md5 verificato a ogni ripristino (trappola
+del 5/09 mattina). Ogni pattern verificato presente prima di mutare.
+
+| # | Mutante | Esito |
+|---|---|---|
+| 1 | guardia a vuoto rimossa (il difetto originale) | ✅ ucciso |
+| 2 | `mostraCostoAssenze` guarda i giorni invece dell'importo | ✅ ucciso |
+| 3 | `n_turni <= 0` non è più «nessun turno» | ✅ ucciso |
+| 4 | la guardia ignora l'extra | ✅ ucciso |
+| 5 | le extra ignorano `costo_orario_extra` | ✅ ucciso |
+| 6 | l'ordinario non sottrae le extra (doppio conteggio) | ✅ ucciso |
+| 7 | `continue` sui turni senza costo → `co = 0` | ⚠️ **sopravvissuto** |
+
+Il 7° è **codice ridondante, non un test debole**: con `co = 0` i prodotti valgono
+zero e il totale non cambia; `n_senza_costo` è già incrementato prima. Isolato con un
+mutante mirato (rimozione del solo `n_senza_costo += 1`): **ucciso**. Dichiarato, non
+nascosto.
+
+Un primo `sed` di mutazione era fallito silenziosamente (`||` letto come separatore):
+il file non era mai stato mutato e il verde non misurava niente. Rifatto in Python
+con `assert` sul pattern e md5 a prova.
+
+### Un rilievo aperto, non corretto
+
+**`margini.py:1011` — `min(extra, ore)` è codice morto.** Confronta le ore extra con
+`_ore_turno(t)`, che vale `ore_orari + extra`: l'extra è già dentro il totale, non può
+eccederlo. Un turno di 8h con `ore_extra = 99` produce 107h e **990 €** di
+straordinari, senza tetto. Esposizione oggi **nulla** (0 turni con `ore_extra` su 107),
+e correggerlo cambia un importo che entra nel MOL: **è una decisione di Mattia**. Il
+comportamento attuale è fissato da un test che lo dichiara.
+
+### Anche `agenda-overview.tsx`
+
+`fmtEuro` e `MESI` locali sostituiti con `@/lib/format` e `@/lib/mesi` (classe di
+difetto che il 01/09 valeva 60 punti). **Attenzione misurata**: il `fmtEuro` locale
+usava i default di `Intl` (2 decimali), `formatEuro` di lib ha `decimali = 0` — un
+`replace` cieco avrebbe arrotondato ogni spesa all'euro. Sostituito con
+`formatEuro(v, 2)` ed **equivalenza provata su 10 casi** (0, negativi, arrotondamenti,
+milioni): identici.
+
+`layer-switcher.tsx` **non** toccato: il `?? []` sui badge è dichiarato «non critici»,
+sono contatori decorativi e non alterano nessun numero di business. Diverso dallo
+scadenziario, dove lo stesso pattern nascondeva 4,4 M€.
+
+### Da portare a Mattia
+
+**Il costo del personale è fermo a luglio su 6 sedi su 6.** Senza quel dato il MOL di
+agosto e settembre non è confrontabile con i mesi precedenti. Il briefing lo segnala
+già: serve l'inserimento, non codice.

@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatEuro } from "./periodi";
 import { parseNumeroItOZero } from "@/lib/format";
+import {
+  type CalcoloTurni, esitoRecuperoTurni, mostraCostoAssenze,
+} from "@/lib/costo-personale-turni";
 
 type Props = {
   open: boolean;
@@ -20,15 +23,6 @@ type Props = {
   costoExtra: number;
   onClose: () => void;
   onSaved: () => void;
-};
-
-type CalcoloTurni = {
-  costo_dipendenti: number;
-  costo_personale_extra: number;
-  ore_totali: number;
-  ore_extra: number;
-  n_turni: number;
-  n_senza_costo: number;
 };
 
 function toStr(v: number) {
@@ -59,16 +53,21 @@ export function CostoPersonaleDialog({
       if (!res.ok) throw new Error();
       const d: CalcoloTurni = await res.json();
       setSintesi(d);
-      if (d.n_turni === 0) {
+      const esito = esitoRecuperoTurni(d);
+      if (esito.azione === "nessun_turno") {
         toast.info(`Nessun turno registrato per ${label} nel tab Personale`);
         return;
       }
-      setLordo(toStr(d.costo_dipendenti));
-      setExtra(toStr(d.costo_personale_extra));
-      if (d.costo_dipendenti === 0 && d.costo_personale_extra === 0) {
+      if (esito.azione === "non_valorizzati") {
+        // Niente da scrivere: i campi restano come sono, o un "Recupera" a vuoto
+        // azzererebbe il costo personale del mese nel MOL.
         toast.warning("I turni del mese non hanno un costo orario impostato: imposta il costo nel tab Personale o inserisci a mano");
-      } else if (d.n_senza_costo > 0) {
-        toast.warning(`${d.n_senza_costo} turni senza costo orario sono stati ignorati nel calcolo`);
+        return;
+      }
+      setLordo(toStr(esito.lordo));
+      setExtra(toStr(esito.extra));
+      if (esito.nSenzaCosto > 0) {
+        toast.warning(`${esito.nSenzaCosto} turni senza costo orario sono stati ignorati nel calcolo`);
       } else {
         toast.success("Valori recuperati dai turni — puoi modificarli prima di salvare");
       }
@@ -131,11 +130,22 @@ export function CostoPersonaleDialog({
             {recuperando ? "Recupero…" : "Recupera dal tab Personale"}
           </Button>
 
-          {sintesi && sintesi.n_turni > 0 && (
-            <p className="text-xs text-muted-foreground -mt-1 text-center">
-              {sintesi.n_turni} turni · {Math.round(sintesi.ore_totali)}h di cui {Math.round(sintesi.ore_extra)}h extra
-              {sintesi.n_senza_costo > 0 && ` · ${sintesi.n_senza_costo} senza costo orario`}
-            </p>
+          {sintesi && (sintesi.n_turni > 0 || sintesi.n_giorni_assenza > 0) && (
+            <div className="text-xs text-muted-foreground -mt-1 text-center space-y-1">
+              {sintesi.n_turni > 0 && (
+                <p>
+                  {sintesi.n_turni} turni · {Math.round(sintesi.ore_totali)}h di cui {Math.round(sintesi.ore_extra)}h extra
+                  {sintesi.n_senza_costo > 0 && ` · ${sintesi.n_senza_costo} senza costo orario`}
+                </p>
+              )}
+              {mostraCostoAssenze(sintesi) && (
+                <p>
+                  Ferie/malattia a carico: {formatEuro(sintesi.costo_assenze_a_carico)} su{" "}
+                  {sintesi.n_giorni_assenza} {sintesi.n_giorni_assenza === 1 ? "giorno" : "giorni"} — non
+                  incluso qui sopra, aggiungilo a mano se lo vuoi nel MOL.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="relative flex items-center">

@@ -185,7 +185,7 @@ mutazione: rifarle è costo senza copertura nuova.
 | `(app)/dashboard/` | 0 | 1.685 | 🟠 logica estratta | 1/9: la logica è uscita nei moduli `home-*.ts`, 92 test. Nessun `.tsx` letto |
 | `(app)/impostazioni/` | 0 | 808 | 🟠 logica estratta | 2/9: logica in `piani.ts` + `impostazioni-account.ts`, 22 test |
 | `(app)/notifiche/` | 23 | 265 | 🟠 logica estratta | 2/9: logica in `notifiche-shared.ts`, 23 test; 3/9 le due pagine avvisi non mentono più (R10) |
-| `(app)/agenda/` | 0 | 693 | 🔴 | **0 turni a DB**: scartata con misura, non dimenticata |
+| `(app)/agenda/` | 0 | 693 | 🔴 | ~~0 turni a DB~~ **premessa scaduta**: ri-misurato il 5/9/2026 → **107 turni** (1 sede, 3 dipendenti, 1/8–6/9; l'area misura oggi 694 righe, la colonna resta 693 come le altre, ri-sommate il 3/09), ma `costo_orario` **NULL su 107/107** (idem `lordo_mensile`, e `dipendenti.costo_orario_default`): l'area **non muove denaro oggi**. Il ponte verso il MOL è coperto da `test_costo_personale_turni_{frontend,giornaliero}.py` |
 | `(app)/assistenza/` | 0 | 292 | 🔴 | `marketplace_leads` 0 righe |
 | `(app)/style-guide/` | 0 | 256 | 🔴 | pagina interna |
 | `(auth)` + `(legal)` + `(demo)` | 0 | 1.353 | 🔴 | 552 + 575 + 226 |
