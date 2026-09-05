@@ -151,7 +151,7 @@ mutazione: rifarle è costo senza copertura nuova.
 
 ---
 
-## Frontend — 53.795 righe
+## Frontend — 53.855 righe
 
 > ⚠️ **Ri-misurato il 4/09: 53.764 righe (+525 dal 3/09).** La tabella qui sotto
 > è ferma alla ripartizione per area del 3/09 e **non è stata ri-sommata**: le
