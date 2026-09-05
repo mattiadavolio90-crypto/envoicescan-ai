@@ -1206,10 +1206,13 @@ class TestExportExcelPersonaleMensile:
         col_tot = 2 + 31  # luglio: 31 giorni
         assert ws.cell(row=2, column=col_tot).value == "TOT ORE"
         assert ws.cell(row=3, column=1).value == "Anna Bianchi"
-        assert ws.cell(row=3, column=col_tot).value == 10.0   # 8h + 2h extra
+        # Anna: 08-16 = 8h, di cui 2 extra. Le extra sono un SOTTOINSIEME del
+        # turno (modello 05/09/2026), quindi il totale resta 8h. Prima diceva
+        # 10.0: il foglio Turni divergeva dal foglio Riepilogo nello stesso file.
+        assert ws.cell(row=3, column=col_tot).value == 8.0
         assert ws.cell(row=4, column=col_tot).value == 13.0   # 8h + 5h, ferie escluse
         assert ws.cell(row=5, column=1).value == "TOTALE ORE IN GRIGLIA"
-        assert ws.cell(row=5, column=col_tot).value == 23.0
+        assert ws.cell(row=5, column=col_tot).value == 21.0
 
     def test_riepilogo_ha_ore_totali_per_dipendente_e_complessive(self):
         """Seconda scheda: colonna Ore totali (std+extra) per riga e nella

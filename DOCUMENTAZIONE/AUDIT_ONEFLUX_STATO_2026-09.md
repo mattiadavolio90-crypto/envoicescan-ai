@@ -318,34 +318,40 @@ parte.
 ### Il costo orario: cosa resta da decidere (Mattia)
 
 Il campo `costo_orario` **e' ancora nel dialog giornaliero**, ora facoltativo di
-fatto. Toglierlo del tutto e' possibile, ma **non l'ho fatto**: il costo del
-personale nel MOL oggi arriva **solo** da li' o da un inserimento a mano, quindi
-rimuoverlo senza mettere prima in piedi la lettura dal cedolino lascerebbe i
-margini senza fonte. Va deciso insieme al punto qui sotto.
+fatto: le ore si inseriscono senza, e il calcolo regge (i turni senza costo
+finiscono in `n_senza_costo` e sono dichiarati, non sommati in silenzio).
 
-### Ramo mensile: la premessa da chiarire prima di toccarlo
+**Non l'ho rimosso, ed e' l'unico punto ancora da decidere su quest'area.** Il
+costo del personale che entra nel MOL oggi arriva **solo** da li' o da un
+inserimento manuale in Margini: toglierlo senza prima mettere in piedi la
+lettura dal cedolino lascerebbe i margini **senza fonte**. Con l'esclusivita'
+giornaliero/mensile confermata (vedi sotto), la strada naturale e' che il costo
+arrivi dal ramo mensile — ma finche' quel percorso non e' completo, il campo
+giornaliero resta l'unica fonte e va lasciato dov'e'.
 
-Mattia: «nel mensile il totale ore e' calcolato dalla somma dei giorni inseriti,
-oppure si aggiungono costo e ore lette dal cedolino».
+### Ramo mensile: deciso — l'esclusivita' NON si tocca ✅
 
-⚠️ **La prima meta' non e' realizzabile com'e' scritta, e la ragione e' una regola
-di dominio esistente**: giornaliero e mensile sono **mutuamente esclusivi** per
-dipendente/mese — `ws_personale_mensile_crea` risponde **409** se il dipendente ha
-gia' turni giornalieri in quel mese (e viceversa). Quindi **quando si usa il
-mensile non ci sono giorni da sommare**: la somma darebbe sempre zero.
+La richiesta iniziale era «nel mensile il totale ore e' calcolato dalla somma dei
+giorni inseriti, oppure si aggiungono costo e ore lette dal cedolino».
 
-Le strade sono due, ed e' una scelta di prodotto:
-1. **Lasciare com'e'** — il mensile resta l'inserimento da cedolino (ore + lordo),
-   ed e' gia' quello che fa oggi;
-2. **Togliere l'esclusivita'** — si inseriscono i giorni *e* si corregge col
-   cedolino a fine mese. Piu' vicino a come lavora un ristorante, ma tocca una
-   guardia che protegge dal doppio conteggio del costo: **il rischio e' contare
-   due volte lo stesso personale nel MOL**.
+⚠️ **La prima meta' non era realizzabile**, e la ragione e' una regola di dominio:
+giornaliero e mensile sono **mutuamente esclusivi** per dipendente/mese
+(`ws_personale_mensile_crea` risponde **409** se il dipendente ha gia' turni
+giornalieri in quel mese, e viceversa). Quando si usa il mensile **non ci sono
+giorni da sommare**: la somma darebbe sempre zero.
 
-**Non ho scelto io**: la 2 cambia un vincolo che oggi impedisce un errore sui
-soldi. Serve la decisione di Mattia.
+**Decisione di Mattia (05/09/2026): si tiene com'e'.** Togliere l'esclusivita'
+avrebbe permesso di inserire i giorni *e* correggere col cedolino, ma quella
+guardia esiste per impedire il **doppio conteggio del costo del personale nel
+MOL** — lo stesso mese contato una volta dai turni e una dalla busta paga. Il
+rischio sui soldi supera la comodita'.
+
+Quindi il ramo mensile **resta l'inserimento da cedolino** (ore totali + lordo,
+piu' la quota straordinario), che e' gia' esattamente quello che fa oggi:
+nessuna modifica al codice.
 
 ---
+
 
 ## 4. Come si lavora a questo ciclo
 

@@ -147,13 +147,15 @@ function calcolaSlotOre(inizio: string, fine: string): number {
   if (minuti < 0) minuti += 24 * 60;
   return Math.round((minuti / 60) * 100) / 100;
 }
-// Ore totali del turno: orari (ordinario) + ore extra aggiuntive. Per le righe
-// mensili sono le ore dichiarate da busta paga.
+// Ore totali del turno: SOLO gli orari. Le ore extra sono un sottoinsieme di
+// quelle (modello 05/09/2026), non ore in piu'. Per le righe mensili sono le
+// ore dichiarate da busta paga.
+// ⚠️ /m e' un frontend separato: va tenuto allineato a mano al desktop
+// (personale-tab.tsx) e a _ore_turno del worker.
 function calcolaOreTotali(t: Turno): number {
   if (t.mensile) return Math.round((t.ore_dichiarate ?? 0) * 100) / 100;
   let tot = calcolaSlotOre(t.ora_inizio, t.ora_fine);
   if (t.ora_inizio2 && t.ora_fine2) tot += calcolaSlotOre(t.ora_inizio2, t.ora_fine2);
-  tot += t.ore_extra ?? 0;
   return Math.round(tot * 100) / 100;
 }
 function fmtOre(ore: number): string {
@@ -325,12 +327,14 @@ function TurnoDialog({ open, turno, dataDefault, dipendenti, costiNoti, onClose,
     }
   }
 
-  // Ore extra AGGIUNTIVE all'orario: ordinario = orari, totale = orari + extra.
+  // Le ore extra sono un SOTTOINSIEME del turno (modello 05/09/2026): il totale
+  // sono le ore da orario e l'ordinario e' (totale - extra), col clamp perche'
+  // dichiarare piu' extra delle ore lavorate non ha senso.
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
-  const stdNum = ore1 + ore2;
-  const extraNum = parseDecimaleItOZero(oreExtra);
-  const oreTot = Math.round((stdNum + extraNum) * 100) / 100;
+  const oreTot = Math.round((ore1 + ore2) * 100) / 100;
+  const extraNum = Math.min(parseDecimaleItOZero(oreExtra), oreTot);
+  const stdNum = Math.max(0, Math.round((oreTot - extraNum) * 100) / 100);
   const costoNum = parseDecimaleIt(costoOrario);
   const costoNumExtra = parseDecimaleIt(costoOrarioExtra);
   const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;
@@ -960,7 +964,9 @@ function TurniBody() {
           oreLavorate += ore;
           const std = t.costo_orario ?? 0;
           const ext = t.costo_orario_extra ?? std;
-          const oreExt = t.ore_extra ?? 0;
+          // Clamp come backend e desktop: le extra non possono eccedere le ore
+          // del turno, altrimenti (ore - oreExt) andrebbe negativo.
+          const oreExt = Math.min(t.ore_extra ?? 0, ore);
           costoTot += std * (ore - oreExt) + ext * oreExt;
         } else if (tipo === "ferie") { giorniFerie++; costoTot += t.importo_a_carico ?? 0; }
         else if (tipo === "malattia") { giorniMalattia++; costoTot += t.importo_a_carico ?? 0; }

@@ -246,7 +246,12 @@ def export_excel_personale_mensile(
 def _ore_turno_locale(t: dict) -> float:
     """Copia minimale di _ore_turno per il solo caso 'turno giornaliero' —
     usata nel foglio Turni (cella) dove serve solo il totale ore del giorno,
-    non l'intero split ordinario/extra gia' disponibile nei dict aggregati."""
+    non l'intero split ordinario/extra gia' disponibile nei dict aggregati.
+
+    ⚠️ E' una COPIA: va tenuta allineata a `_ore_turno` in fastapi_worker.py.
+    Il 05/09/2026 e' rimasta indietro di un commit sul cambio di modello ed e'
+    stato il code-reviewer a trovarla, non i test (che asserivano il vecchio).
+    """
     def slot(inizio: Optional[str], fine: Optional[str]) -> float:
         if not inizio or not fine:
             return 0.0
@@ -263,10 +268,9 @@ def _ore_turno_locale(t: dict) -> float:
     tot = slot(t.get("ora_inizio"), t.get("ora_fine"))
     if t.get("ora_inizio2") and t.get("ora_fine2"):
         tot += slot(t.get("ora_inizio2"), t.get("ora_fine2"))
-    try:
-        tot += float(t.get("ore_extra") or 0)
-    except (TypeError, ValueError):
-        pass
+    # Le ore extra sono un SOTTOINSIEME del turno (modello 05/09/2026), non ore
+    # in piu': il totale viene solo dagli orari. Sommarle qui faceva divergere
+    # il foglio Turni (10h) dal foglio Riepilogo (8h) nello STESSO file.
     return round(tot, 2)
 
 
