@@ -6,7 +6,7 @@
 > `AUDIT_COPERTURA.md`. Se una di queste tre cose finisce nelle altre due, tutte
 > e tre diventano illeggibili — è già successo.
 
-**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 05/09/2026 (pomeriggio).**
+**Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 05/09/2026 (sera).**
 I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 > ⚠️ **Rinominato il 02/09/2026.** Si chiamava `..._2026-08-29.md` e faceva
@@ -24,10 +24,10 @@ I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 
 | # | Cosa | Di chi è | Perché adesso |
 |---|---|---|---|
-| **1** | **Flag Fase 4** (migration `20260903210000` **già applicata**, verificata su `pg_proc` il 04/09: 7 RPC su 7 hanno `p_escludi_da_verificare`) | **Mattia** (lasciato da Fable) | ⚠️ **La cifra è scaduta di nuovo.** Il 04/09 erano 26.453 € su 10 sedi; **ri-misurato il 05/09: 0 righe, 0 €** — `categoria_fiducia = 'da_verificare'` non esiste più in tabella (39.224 NULL, 217 `certa`, 21 `probabile`): le righe sono state classificate nel frattempo. Accendere il flag **oggi** non toglierebbe nulla dai margini. Terza misura diversa in tre giorni: **ri-misurare al momento di decidere**, mai ereditare |
+| **1** | **Flag Fase 4** (migration `20260903210000` **già applicata**, verificata su `pg_proc` il 04/09: 7 RPC su 7 hanno `p_escludi_da_verificare`) | **Mattia** (lasciato da Fable) | ⚠️ **La cifra è scaduta di nuovo.** Il 04/09 erano 26.453 € su 10 sedi; **ri-misurato il 05/09: 0 righe, 0 €** — `categoria_fiducia = 'da_verificare'` non esiste più in tabella (39.224 NULL, **221** `certa`, 21 `probabile` — ri-misurato il 05/09 sera): le righe sono state classificate nel frattempo. Accendere il flag **oggi** non toglierebbe nulla dai margini. **Quarta** misura diversa in quattro giorni: **ri-misurare al momento di decidere**, mai ereditare |
 | ~~**2**~~ | ~~**`utils/` + altri moduli `services/`**~~ | — | ✅ **CHIUSA il 05/09** (`f522387`, `85328bf`). `utils/` letto per intero, 4 moduli `services/` letti, 3 difetti latenti corretti e provati per mutazione. **Restano 15 moduli `services/` mai guardati (5.147 righe)**: sono la prossima dimensione, non «l'ultima zona buia» |
 | ~~**2b**~~ | ~~**I 15 moduli `services/` rossi**~~ | — | ✅ **CHIUSA il 05/09** (`70275cc`, `59ff32a`). Tutti e 15 esaminati. **2 difetti corretti**: i suggerimenti Tag si calcolavano su meta' prodotti (5 sedi su 11 oltre il cap PostgREST — 450 su 1.100) e lo Scadenziario, con lo Step 3 rotto, si presentava pieno ma con **tutte** le fatture prive di scadenza (4,4 M€ invisibili, nessun errore a schermo). **280 righe di codice morto** rimosse. Il code-reviewer ha trovato un difetto introdotto **dalla rimozione**: un `@_make_cache(ttl=60)` orfano finito su `segna_fattura_pagata`, cioe' una scrittura dentro una cache. **5 mutanti / 6 uccisi** (il 6° e' un limite del fake, dichiarato) |
-| **2c** | **Il frontend: l'ultima zona rossa** — 4.069 righe | Lavoro tecnico | **In corso.** `(app)/agenda/` aperta il 05/09: **la premessa e' scaduta una seconda volta, al contrario**. I 107 turni ci sono, ma `costo_orario` e' **NULL su 107/107** (idem `lordo_mensile` e `costo_orario_default` sui 4 dipendenti): l'area **non muove denaro oggi**. Cercandolo e' emerso il buco vero, piu' grande dell'area rossa: **`costo_dipendenti` fermo a luglio su 6 sedi su 6** (ago+set a 0, anche su sedi da 400-473 k€/mese). **Non e' un bug del briefing** — verificato su `daily_briefing_state`: il 28/08 avvisava VILLA GUARDIA che «il costo del personale di luglio non e' ancora stato inserito». **E' un dato che manca, e la decisione e' di Mattia.** Corretti 2 difetti nel ponte agenda→MOL (vedi §2) |
+| **2c** | **Il frontend: l'ultima zona rossa** — **3.316 righe** (non 4.069) | Lavoro tecnico | **Ri-misurata area per area il 05/09 (sera): la colonna del contatore ora chiude a scarto 0.** Il rosso e' sceso da 4.069 a 3.316 **senza leggere una riga**: erano due errori di conteggio — le 4.871 righe di `app/api/` contate come rosse pur essendo gia' 📖 dal 30/08, e una riga «hooks + file diretti + proxy = 723» che sommava perimetri sovrapposti. `(app)/agenda/` aperta il 05/09: **la premessa e' scaduta una seconda volta, al contrario**. I 107 turni ci sono, ma `costo_orario` e' **NULL su 107/107**: l'area **non muove denaro oggi**. Cercandolo e' emerso il buco vero, piu' grande dell'area rossa: **il costo del personale e' a zero su ago+set per 7 sedi su 7** (ri-misurato il 05/09 sera; luglio: 4 sedi su 7 valorizzate). **Non e' un bug del briefing** — verificato su `daily_briefing_state`: il 28/08 avvisava VILLA GUARDIA che «il costo del personale di luglio non e' ancora stato inserito». **E' un dato che manca, e la decisione e' di Mattia.** Corretti 2 difetti nel ponte agenda→MOL (vedi §2). ⚠️ **Nessuna delle aree rosse residue muove denaro**: la priorita' vera e' la voce 4 (#6 router, 12.700 righe a copertura solo parziale sul backend) |
 | **3** | **Q3** — snapshot `margini_mensili`, 3 scrittori | Lavoro tecnico | Meno urgente di prima: chiuso Q1, `mol_perc` **non ha più alcun lettore runtime**. Da «serve un presidio» a «colonna morta da valutare» |
 | **4** | **Ripasso #3 categorizzazione e #6 router** | Lavoro tecnico | Coperte da Fable, ma #3 tocca la regola di dominio #1 e #6 ha visto **1 router su molti** |
 
@@ -236,11 +236,23 @@ Il conto delle righe sta in `AUDIT_COPERTURA.md`. Qui c'è l'ordine, deciso per
 | **5** | **Il worker notturno** — `worker/`, 2.400 righe | **Gira non presidiato** e non è in nessuna lista. Se sbaglia di notte, se ne accorge il cliente al mattino | ✅ **Coperta fuori ciclo** (**sessione Fable**, [`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §5, `3fde2dd`). ⚠️ La colonna a sinistra **è smentita dalla misura**: 7 file di test worker, non «non presidiato». **Non da ripassare** |
 | **6** | **I router del worker** — 16.514 righe, ~4.000 lette | Il blocco più grande a copertura parziale. Da affrontare per router, non in blocco | 🟠 **Prima passata fuori ciclo** (**sessione Fable**, [`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §6, `8e6a19b`: scadenziario). **Da ripassare con Opus**: per costruzione copre 1 router su molti — è la voce più grande e resta la meno coperta |
 
-Restano fuori, per misura e non per dimenticanza: `agenda/` (**0 turni a DB**),
-`assistenza/` (`marketplace_leads` 0 righe), `style-guide/` (pagina interna).
+Restano fuori, per misura e non per dimenticanza: `agenda/`, `assistenza/`
+(`marketplace_leads` 0 righe), `style-guide/` (pagina interna).
+
+> ⚠️ **Corretta il 05/09/2026: qui c'era scritto «`agenda/` (0 turni a DB)», ed
+> era falso.** I turni sono **107**. La premessa è scaduta **due volte** in
+> direzioni opposte: prima «0 turni, area vuota», poi «107 turni che muovono soldi
+> nel MOL» (il prompt di sessione). Ri-misurata il 5/09: i 107 turni esistono ma
+> `costo_orario` è **NULL su 107/107** (idem `lordo_mensile` e
+> `dipendenti.costo_orario_default`), quindi l'area **muove 0 €** — la conclusione
+> «resta fuori» regge, la ragione scritta no. Questa riga è quella che ha mandato
+> ad aprire l'area sbagliata: *«ci sono 107 righe» e «quelle righe muovono denaro»
+> sono due misure diverse, e la prima non implica la seconda.*
+
 **Il criterio per scegliere un'area resta: conta le righe a DB delle tabelle che
-serve, poi decidi.** È così che l'agenda è stata scartata e `notifiche/` scelta —
-dove è stato poi trovato un difetto che il cliente vedeva.
+serve — e misura la proprietà che decide (gli importi, non i record).** È così che
+l'agenda è stata scartata e `notifiche/` scelta — dove è stato poi trovato un
+difetto che il cliente vedeva.
 
 ---
 
