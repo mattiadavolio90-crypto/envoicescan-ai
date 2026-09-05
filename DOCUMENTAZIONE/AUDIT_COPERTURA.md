@@ -42,10 +42,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.847 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.856 |
 | Frontend (`apps/web/src/`, esclusi i binari) | 53.855 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.258** |
+| **TOTALE APP** | **114.267** |
 
 > Ri-misurato il **5/09/2026** coi comandi qui sopra (dopo `85328bf`). Il backend
 > **cala di 220 righe** rispetto al 4/09: 286 rimosse come codice morto dalla
@@ -57,10 +57,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 56.847 | 0 | **100%** |
+| Backend | 56.856 | 0 | **100%** |
 | Frontend | 27.515 letti + 23.024 parziali su 53.855 | **3.316** | **94%** |
 | Edge Functions | 3.556 | 0 | **100%** |
-| **App intera** | **110.942** | **3.316** | **97%** |
+| **App intera** | **110.951** | **3.316** | **97%** |
 
 > **Come si legge.** «Coperto» somma il letto integralmente (📖) e il parziale
 > (🔍/🟠): sono livelli di confidenza diversi, non equivalenti — il dettaglio per
@@ -71,7 +71,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Backend Python — 56.847 righe
+## Backend Python — 56.856 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -81,9 +81,9 @@ non sa montare. È un limite dichiarato, non una svista.
 | `ai_service.py` | 5.758 | 📖 nucleo decisione + gate | ciclo 09: motore unico, gate, 9 uscite. 101 test. **4/09 fasi 5-6-8** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3): apprendimento sui 3 percorsi, bypass memoria globale, refusi parole corte |
 | `upload_handler.py` | 2.282 | 🔍 chiamante del gate | passa descrizione e fornitore a `valuta_fiducia` |
 | `margine_service.py` | 1.487 | 🔍 di rimbalzo | **regola di dominio MOL**; 3/9 il filtro «Da Classificare» viene dalla costante (R6); 4/09 allineato al flag Fase 4 ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3) |
-| `fastapi_worker.py` | 8.898 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
+| `fastapi_worker.py` | 8.901 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
 | `daily_briefing_service.py` | 1.660 | 📖 letto | **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §4): letto riga per riga, impianto confermato; chiusi 2 difetti latenti (importi all'inglese, validatore entusiasmo) |
-| `routers/` (tutti) | 16.762 | 🟠 parziale | ~4.000 letti nel ciclo 07; **216 endpoint su 216 protetti** e guardia a livello di router (R5) — perimetro *sicurezza* chiuso, *logica* no. **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §6, prima passata): `scadenziario` — gli avvisi erano **muti da giugno**. 4/09 **Q1**: `gruppo.py` segnale «margine in calo»; **Q2**: food cost di `gruppo_overview` e `_kpi_periodo` allineati al **netto** (erano gli unici 2 punti sul lordo); **Q4**: `riparto.py` + proiezione per centro **letti e misurati** — non un bug, coda di dati |
+| `routers/` (tutti) | 16.768 | 🟠 parziale | ~4.000 letti nel ciclo 07; **216 endpoint su 216 protetti** e guardia a livello di router (R5) — perimetro *sicurezza* chiuso, *logica* no. **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §6, prima passata): `scadenziario` — gli avvisi erano **muti da giugno**. 4/09 **Q1**: `gruppo.py` segnale «margine in calo»; **Q2**: food cost di `gruppo_overview` e `_kpi_periodo` allineati al **netto** (erano gli unici 2 punti sul lordo); **Q4**: `riparto.py` + proiezione per centro **letti e misurati** — non un bug, coda di dati |
 | `worker/` | 2.411 | 📖 letto | **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §5): «gira non presidiato» era **falso** — 7 file di test worker, code in salute (647 fatture, 0 arretrati). Chiuso il retry della coda ricavi-email |
 | `utils/` | 2.294 | 📖 letto | **5/09**: tutti gli 11 file mappati (chiamanti runtime verificati uno per uno). Rimossi `page_setup.py` e `period_helper.py` — **zero chiamanti**, il primo non importabile in produzione — e `patch_streamlit_width_api`. Corretta l'unica query su `fatture` senza soft-delete di tutto `utils/` (`validation.py`). Nuovo presidio su `fetch_all`, **3/3 mutanti** |
 | `config/` | 2.433 | 📖 letto | **contiene i prompt AI** — la regola di dominio n.1. **3/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §2): 29 categorie coerenti, 1.268 chiavi validate, 12 mojibake riparate con presidio |
@@ -95,9 +95,9 @@ non sa montare. È un limite dichiarato, non una svista.
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
 | 📖 letto integralmente | 27.418 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.821** |
-| 🔍 / 🟠 parziale | 29.429 | 52% | `fastapi_worker` 8.898, `routers/` 16.762, `upload_handler` 2.282, `margine_service` 1.487 |
+| 🔍 / 🟠 parziale | 29.438 | 52% | `fastapi_worker` 8.901, `routers/` 16.768, `upload_handler` 2.282, `margine_service` 1.487 |
 | 🔴 mai guardato | **0** | 0% | — **la zona rossa del backend e' chiusa il 5/09** |
-| **Totale backend** | **56.847** | 100% | ✅ la colonna chiude: 27.418 + 29.429 = 56.847, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
+| **Totale backend** | **56.856** | 100% | ✅ la colonna chiude: 27.418 + 29.438 = 56.856, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
 
 > **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
 > tutto merito della lettura: **286 righe erano codice morto** e sono state
@@ -246,12 +246,18 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
 | 📖 Letto integralmente | 58.489 | **51%** | 27.418 backend + 27.515 frontend + 3.556 Edge |
-| 🔍 / 🟠 Auditato o parzialmente coperto | 52.453 | 46% | 29.429 backend + 23.024 frontend |
+| 🔍 / 🟠 Auditato o parzialmente coperto | 52.462 | 46% | 29.438 backend + 23.024 frontend |
 | 🔴 Mai guardato | 3.316 | **3%** | **0 backend** + 3.316 frontend — la zona rossa e' tutta e solo nel frontend |
-| **Totale app (misurato)** | **114.258** | 100% | 56.847 + 53.855 + 3.556 |
+| **Totale app (misurato)** | **114.267** | 100% | 56.856 + 53.855 + 3.556 |
 
 > **Ri-sommato il 5/09/2026 (sera), dopo `6ba0d6e`.** Le tre righe fanno
-> **114.258** contro un totale misurato di **114.258**: **scarto 0**.
+> **114.267** contro un totale misurato di **114.267**: **scarto 0**.
+>
+> ⚠️ **Ri-misurato di nuovo il 05/09 a fine giornata**: il backend sale di **9
+> righe** (56.847 → 56.856) per il cambio del modello ore extra di questa stessa
+> sessione — righe scritte, lette e provate per mutazione, quindi il backend
+> **resta al 100%**. Il frontend non si muove: le modifiche a `personale-tab.tsx`
+> sono a saldo zero.
 >
 > ⚠️ **Il rosso è sceso da 4.069 a 3.316 senza che nessuno leggesse una riga.**
 > Non è lavoro fatto: sono **due errori di conteggio corretti**. Le 4.871 righe di
@@ -260,7 +266,7 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 > «hooks + file diretti + proxy = 723» sommava perimetri sovrapposti. Ri-misurato
 > area per area, il frontend chiude a scarto 0 e il rosso vero è 3.316. Non è un
 > arrotondamento fortunato — è la ri-somma della colonna backend modulo per
-> modulo (27.418 + 29.429) più frontend ed edge ri-misurati coi comandi in cima
+> modulo (27.418 + 29.438) più frontend ed edge ri-misurati coi comandi in cima
 > al file. Il backend **cala di 319 righe** rispetto alla mattina: 280 erano
 > codice morto rimosso, il resto sono commenti sostituiti al netto dei fix.
 > **Da qui in poi la zona rossa è solo frontend**: 3.316 righe.
