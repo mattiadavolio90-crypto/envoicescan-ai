@@ -28,7 +28,7 @@ I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 | ~~**2**~~ | ~~**`utils/` + altri moduli `services/`**~~ | — | ✅ **CHIUSA il 05/09** (`f522387`, `85328bf`). `utils/` letto per intero, 4 moduli `services/` letti, 3 difetti latenti corretti e provati per mutazione. **Restano 15 moduli `services/` mai guardati (5.147 righe)**: sono la prossima dimensione, non «l'ultima zona buia» |
 | ~~**2b**~~ | ~~**I 15 moduli `services/` rossi**~~ | — | ✅ **CHIUSA il 05/09** (`70275cc`, `59ff32a`). Tutti e 15 esaminati. **2 difetti corretti**: i suggerimenti Tag si calcolavano su meta' prodotti (5 sedi su 11 oltre il cap PostgREST — 450 su 1.100) e lo Scadenziario, con lo Step 3 rotto, si presentava pieno ma con **tutte** le fatture prive di scadenza (4,4 M€ invisibili, nessun errore a schermo). **280 righe di codice morto** rimosse. Il code-reviewer ha trovato un difetto introdotto **dalla rimozione**: un `@_make_cache(ttl=60)` orfano finito su `segna_fattura_pagata`, cioe' una scrittura dentro una cache. **5 mutanti / 6 uccisi** (il 6° e' un limite del fake, dichiarato) |
 | **2c** | **Il frontend: l'ultima zona rossa** — **3.316 righe** (non 4.069) | Lavoro tecnico | **Ri-misurata area per area il 05/09 (sera): la colonna del contatore ora chiude a scarto 0.** Il rosso e' sceso da 4.069 a 3.316 **senza leggere una riga**: erano due errori di conteggio — le 4.871 righe di `app/api/` contate come rosse pur essendo gia' 📖 dal 30/08, e una riga «hooks + file diretti + proxy = 723» che sommava perimetri sovrapposti. `(app)/agenda/` aperta il 05/09: **la premessa e' scaduta una seconda volta, al contrario**. I 107 turni ci sono, ma `costo_orario` e' **NULL su 107/107**: l'area **non muove denaro oggi**. Cercandolo e' emerso il buco vero, piu' grande dell'area rossa: **il costo del personale e' a zero su ago+set per 7 sedi su 7** (ri-misurato il 05/09 sera; luglio: 4 sedi su 7 valorizzate). **Non e' un bug del briefing** — verificato su `daily_briefing_state`: il 28/08 avvisava VILLA GUARDIA che «il costo del personale di luglio non e' ancora stato inserito». **E' un dato che manca, e la decisione e' di Mattia.** Corretti 2 difetti nel ponte agenda→MOL (vedi §2). ⚠️ **Nessuna delle aree rosse residue muove denaro**: la priorita' vera e' la voce 4 (#6 router, 12.700 righe a copertura solo parziale sul backend) |
-| **3** | **Q3** — snapshot `margini_mensili`, 3 scrittori | Lavoro tecnico | Meno urgente di prima: chiuso Q1, `mol_perc` **non ha più alcun lettore runtime**. Da «serve un presidio» a «colonna morta da valutare» |
+| ~~**3**~~ | ~~**Q3** — snapshot `margini_mensili`~~ | **Mattia** (decisione, 1 riga di SQL) | ✅ **MISURATO E CHIUSO il 05/09 (sera): `mol_perc` e' una colonna morta.** Non «probabilmente»: **1 solo scrittore** (`margini.py:288`) e **zero lettori** — l'unico `select` su `margini_mensili` in tutto il codice (`gruppo.py:1787`) legge `ristorante_id,fatturato_netto`, e **nessuna RPC SQL** la nomina. A DB: 75 righe, 75 valorizzate, di cui **solo 18 diverse da zero**. Il rischio che Q3 descriveva (snapshot incoerente col vero, OVERTIME febbraio +50.834 EUR vs +28.398 EUR) **non puo' piu' colpire nessuno**, perche' quel numero non viene letto da niente. Non serve un presidio. **Resta solo la scelta di Mattia**: droppare la colonna (e la riga che la scrive) o lasciarla come dato storico inerte |
 | **4** | **Ripasso #3 categorizzazione e #6 router** | Lavoro tecnico | Coperte da Fable, ma #3 tocca la regola di dominio #1 e #6 ha visto **1 router su molti** |
 
 **Chiusi oggi, 04/09** (dettaglio in §2): **Q1** — il segnale «margine in calo»
@@ -134,7 +134,7 @@ era un conteggio sui file, non sul DB.
 |---|---|---|
 | **Q1** | ✅ **CHIUSO il 04/09.** Il segnale «margine in calo» non è mai potuto scattare per nessun cliente: leggeva due colonne **snapshot** di `margini_mensili` (gate `fatturato_netto > 0` e valore `mol_perc`), non valorizzate per le sedi di catena. **Fix**: il MOL si calcola con la formula viva (`_aggrega_sedi_mensili`), la stessa di overview e margini-coperti, con costi F&B **live** dalle fatture e override dei ricavi mensili. Un mese entra nel confronto **solo se completo** (ricavi + costi + personale): senza quel gate i mesi con fatture non ancora arrivate uscivano al **100%** e il segnale confrontava margini inventati. Ri-misurato sui dati veri: da **0 sedi servite** a **4 accensioni su 6 sedi** di catena, testi sensati, le 2 sedi in salute restano mute. Rimossa l'eccezione `_calcola_segnali` da `test_regole_dominio_guardia.py` (il debito che la giustificava non esiste più). Aggiunta anche la guardia `segnali_off` sul blocco (gli altri segnali ce l'hanno): **non era un bug visibile** — un filtro finale rimuoveva già dall'output i segnali disattivati — ma evita di calcolarli per poi buttarli. Presidio: `tests/test_gruppo_segnale_margine_calo.py` (12 test), **9 mutanti / 9 uccisi**, misurati **uno alla volta**. La cifra e' stata corretta **quattro volte** prima di reggere, sempre dal `code-reviewer`: (1) un mutante era inefficace (`elif True:` non cambiava il ramo); (2) «ordine anni» sopravviveva — era **codice ridondante**, rimosso; (3) sopravvivevano `per_pv_mesi` e `segnali_off`; (4) `per_pv_mesi` sopravviveva **ancora**, e la diagnosi precedente era sbagliata: il colpevole non era il `try` esterno ma un test i cui dati dell'anno precedente erano **decorativi**. Riscritto come finestra a cavallo del capodanno — il caso in cui i 3 mesi di confronto stanno nell'anno vecchio e il segnale, col bug, si spegneva del tutto. Lungo la strada: rimosso un `try` diventato codice morto e **due test che non provavano nulla**. ⚠️ **Al deploy**: i segnali hanno una cache giornaliera (`gruppo_segnali_state`, 1×/giorno per account) che si invalida solo al salvataggio della config — i clienti vedranno il segnale nuovo **dal giorno dopo**, o subito su `/api/gruppo/segnali?force=true`. Comportamento pre-esistente, non introdotto dal fix. ⚠️ **Rilievo aperto** (dal `code-reviewer`, non risolto qui perché è una scelta di prodotto): il testo del segnale non dice **di quale mese** parla, e col gate di completezza l'ultimo mese confrontabile può essere 2-3 mesi indietro (oggi: luglio per LAND/OFFSIDE/OVERTIME, giugno per le 3 SUSHILAND). Il cliente legge un margine giusto attribuito al momento sbagliato. Rimedio minimo suggerito: «Margine di giugno al 39%…». **Causa ri-misurata a DB il 04/09**: non sono le fatture a mancare ma il **costo del personale** — le 3 SUSHILAND hanno `costo_dipendenti = 0` da luglio, e **tutte e 6 le sedi** ce l'hanno a 0 ad agosto. È un dato che i clienti non hanno ancora inserito, non un difetto del gate | ✅ **Chiuso** |
 | **Q2** | ✅ **CHIUSO il 04/09.** Food cost con due definizioni: ÷lordo vs ÷netto. **Decisione di Mattia: sempre sul netto.** ⚠️ **Il perimetro del rilievo era sbagliato**: i punti sul lordo erano **2, non 3** — `_kpi_periodo` (Home) e `gruppo_overview` (Catena). Il **briefing non calcola il food cost**, riceve il numero già composto; `margine_service` (soglie e notifiche) e le 3 formule della pagina Margini erano **già sul netto**. **Perché contava**: coerenza fra le pagine — lo stesso mese mostrava due food cost diversi a seconda di dove lo si guardava. ⚠️ **Rettifica dal `code-reviewer`**: la prima stesura di questa voce diceva anche «l'allarme non scattava», e **non è vero**. Verificato: il valore di `_kpi_periodo`/`gruppo_overview` **non viene mai confrontato con `KPI_SOGLIE`**; gli unici due confronti a soglia vivi (`margini.py:763` e `:1257`) consumano un `fc_perc` calcolato sul netto in loco, quindi erano già corretti. `genera_commenti_kpi` ha **solo test** come chiamanti e la topic `food_cost_soglia_superata` **non ha produttore**. Nessun allarme era spento. Misurato a DB sui costi veri da fatture (non sullo snapshot, stantìo), per dimensionare lo scarto: **5 mesi su 5 sedi diverse** stavano sotto il 38% col lordo e sopra col netto — OVERTIME 6/2026 (36,9→40,3), LAND 4/2026 (36,7→39,6) e 5/2026 (37,6→40,6), SUSHILAND SAN GIULIANO 5/2026 (35,8→38,6), SUSHILAND VILLA GUARDIA 5/2026 (36,4→39,0). Delta medio +2,7 punti. Presidio: `tests/test_food_cost_sempre_su_netto.py` (8 test), **2 mutanti / 2 uccisi**. Il primo test sulla Catena **ricalcolava la formula** invece di chiamare `gruppo_overview`: sopravviveva al mutante, riscritto. ⚠️ **Al deploy**: i clienti vedranno il food cost salire di 2-4 punti — non è un peggioramento, è il numero giusto | ✅ **Chiuso** |
-| **Q3** | Snapshot economico di `margini_mensili` incoerente per costruzione: 3 scrittori che non si parlano. Misurato: OVERTIME febbraio MOL fotografato +50.834 € vs +28.398 € vero. ⚠️ **Chiuso Q1, la colonna `mol_perc` resta senza alcun lettore runtime** (verificato: il blocco Segnale 1 era l'unico): la natura della voce cambia da «serve un presidio» a «colonna morta da valutare» | **Strutturale** |
+| **Q3** | ✅ **CHIUSO il 05/09 (sera) come «colonna morta», misurato non dedotto.** Il rilievo originale: snapshot economico di `margini_mensili` incoerente per costruzione (4 punti di scrittura piu' un trigger SQL), con OVERTIME febbraio fotografato a +50.834 € contro +28.398 € veri. **Ri-misurato**: di tutti quegli scrittori **uno solo** tocca `mol_perc` (`margini.py:288`), e i lettori sono **zero** — l'unico `select` su `margini_mensili` nel codice (`gruppo.py:1787`) prende `ristorante_id,fatturato_netto`, e **nessuna RPC SQL** nomina la colonna (cercata in tutte le migration). A DB: **75 righe, 75 valorizzate, 18 diverse da zero**. Il MOL che i clienti vedono e' sempre ricalcolato con la formula viva (`_aggrega_sedi_mensili`), mai letto da qui. **Quindi il numero sbagliato non raggiunge nessuna schermata**: non serve il presidio che la voce chiedeva. ⚠️ **Attenzione a non riaprirlo per il nome**: in `margine_service.py` e `margini.py` esistono ~15 variabili locali `mol_perc`/`MOL_Perc` che **non hanno nulla a che vedere** con la colonna — sono calcoli in memoria. Cercare la stringa fa credere che i lettori siano tanti. **Resta una decisione di Mattia**, non lavoro tecnico: droppare colonna e riga che la scrive, o tenerla come storico inerte | ✅ **Chiuso** |
 | **Q4** | ✅ **CHIUSO il 04/09 come «non un bug»** — misurato, non ereditato. ⚠️ **La premessa del rilievo non regge**: non sono «due regole giuste in conflitto». La proiezione per centro somma **solo le categorie che appartengono a un centro di produzione** (FOOD, BEVERAGE, ALCOLICI, DOLCI, SHOP — verificato: `Da Classificare` non è in nessuno); la quota sparisce quindi **per omissione**, non per una scelta deliberata. Il riparto la conta, ed è corretto: è l'unico posto in cui quel costo esiste (la riga d'origine è già esclusa come `ripartita_su_gruppo`, asimmetria voluta in `20260724220000`). **Entità reale, misurata a DB**: una **sola catena** (OFFSIDE + OVERTIME), **6–296 €/mese** (non 13–592), **zero quote a categoria NULL** — il caso che il codice dichiara «più insidioso» non esiste oggi. Sono cene di lavoro, carburante, luci/monitor della sede legale: **tutte classificabili, tutte con la fattura d'origine presente**. **Perché non si tocca il codice**: il presidio esiste già ed è azionabile — `finestra-costi-gruppo.tsx` mostra «Il MOL di questo mese non è ancora affidabile: N righe da controllare. Apri qui sopra e assegna la categoria», con il caso non correggibile gestito a parte. Le due alternative sarebbero entrambe peggiori: toglierle dal riparto perde costi veri, inventare loro un centro crea una categoria falsa. **Classificare quelle righe fa quadrare le due tab da sé.** Resta una **coda di lavoro dati**, non un difetto di codice | ✅ **Chiuso** |
 
 > **Perché questa sezione è stata riscritta il 04/09.** Il commit `4985f5f` aveva
@@ -146,8 +146,27 @@ era un conteggio sui file, non sul DB.
 **Come si esegue: la sezione dei residui è VUOTA.** R1-R8 e R10 chiusi il 03/09;
 **R9 chiuso** dal commit `c8ec158` (verificato il 04/09: nessun `getppid` nel sorgente,
 commit già in produzione) — restava in lista per inerzia, non perché aperto. Il vincolo
-«niente zone nuove finché §2 non è vuota» non blocca più nulla: gli unici punti aperti
-è **Q3** soltanto (tecnico, e declassato: `mol_perc` non ha più lettori runtime): Q1, Q2 e Q4 sono stati chiusi il 04/09.
+«niente zone nuove finché §2 non è vuota» non blocca più nulla: **Q1, Q2 e Q4 chiusi il
+04/09, Q3 il 05/09** (misurata colonna morta: 1 scrittore, 0 lettori). **La sezione dei
+residui tecnici è ora vuota davvero.**
+
+Quel che resta aperto **non è lavoro tecnico ma tre decisioni di Mattia**, e vanno
+tenute distinte dai residui o tornano a sembrare lavoro da fare:
+
+1. **Costo del personale ago+set** — 7 sedi su 7 a zero (ri-misurato il 05/09 sera;
+   luglio: 4 su 7 valorizzate). Senza quel dato il MOL di due mesi non è confrontabile
+   e ogni gate che lo richiede taglia gli ultimi mesi. **Il briefing lo segnala già
+   correttamente** (verificato su `daily_briefing_state`): non è un difetto, è un dato
+   che manca.
+2. **Flag Fase 4** — `ESCLUDI_DA_VERIFICARE_DAI_MARGINI`, oggi `False`. Delta **0 €**
+   al 05/09: è il momento meno rischioso per accenderlo, ma la cifra è cambiata quattro
+   volte in quattro giorni: **ri-misurare nel momento in cui si decide**.
+3. **Ore extra senza tetto** — `min(extra, ore)` a `margini.py:1011` è codice morto
+   perché `_ore_turno` restituisce `ore_orari + extra`. Esposizione oggi **zero**
+   (0 turni con ore extra su 107). ⚠️ **Superata dalla revisione del modello turni**
+   richiesta da Mattia il 05/09 (vedi §5): se le ore extra diventano un *sottoinsieme*
+   del delta invece che additive, quel clamp torna a essere una guardia **viva** e il
+   rilievo si chiude da sé.
 
 > **Due ipotesi della roadmap non hanno retto alla misura**, ed è il motivo per
 > cui R5 e R6 erano rimasti in fondo alla lista:
@@ -253,6 +272,47 @@ Restano fuori, per misura e non per dimenticanza: `agenda/`, `assistenza/`
 serve — e misura la proprietà che decide (gli importi, non i record).** È così che
 l'agenda è stata scartata e `notifiche/` scelta — dove è stato poi trovato un
 difetto che il cliente vedeva.
+
+---
+
+## 5. Da fare — la revisione del modello turni (richiesta di Mattia, 05/09/2026)
+
+> **Non ancora iniziata.** Registrata qui perche' e' un cambio di **modello dati**,
+> non un fix: tocca il significato delle ore extra e quindi un importo che finisce
+> nel MOL. Va pianificata, non improvvisata a fine sessione.
+
+**Il problema, con le parole di Mattia:** inserendo il turno quotidianamente non
+ha senso richiedere il costo orario — quello si conosce a fine mese dal cedolino.
+
+**Il modello richiesto:**
+
+| Modalita' | Cosa inserisce il cliente | Cosa calcola il sistema |
+|---|---|---|
+| **Giornaliera** | Entrata, uscita, e **quante di quelle ore sono extra** | Ordinario = delta − extra. **Nessun costo orario.** Es.: delta 7, extra 2 → ordinario **5** |
+| **Mensile** | Costo e ore dal **cedolino** (facoltativi, sovrascrivono) | Totale ore **calcolato dalla somma dei giorni inseriti** |
+
+⚠️ **Il punto piu' delicato: e' un'inversione, non un'aggiunta.** Oggi
+`_ore_turno` (`fastapi_worker.py:8805`) documenta e implementa il modello
+**opposto** — «le ore extra sono AGGIUNTIVE, non un sottoinsieme»: un turno 09-17
+con `ore_extra=2` vale **10 ore totali**, non 8. Nel modello nuovo vale **8 totali,
+di cui 2 extra**. Cambiano quindi:
+
+- `_ore_turno` e i suoi consumer, che oggi ricavano l'ordinario come
+  `(ore_totali − ore_extra)` — formula che **resta valida**, ma su un totale diverso;
+- `get_costo_personale_da_turni` (`margini.py:966-1045`), il ponte verso il MOL;
+- il presidio `tests/test_costo_personale_turni_giornaliero.py`, che oggi **fissa il
+  comportamento attuale** (`test_le_ore_extra_sono_aggiuntive_e_vanno_sul_loro_campo`
+  asserisce 10 ore): quei test vanno riscritti **di proposito**, non "aggiustati".
+
+✅ **Effetto collaterale positivo:** il rilievo del clamp `min(extra, ore)`
+(`margini.py:1011`) **si chiude da se'**. Oggi e' codice morto perche' l'extra e'
+gia' dentro il totale e non puo' eccederlo; nel modello nuovo diventa la guardia
+**viva** che impedisce di dichiarare piu' ore extra del delta lavorato.
+
+⚠️ **I dati esistenti**: 107 turni a DB, **tutti giornalieri**, `ore_extra` a zero
+su tutti (misurato il 05/09). La migrazione dei dati e' quindi a costo nullo
+**oggi** — ma la cifra va ri-misurata al momento di eseguire, perche' e' gia'
+cambiata tre volte su quest'area.
 
 ---
 
