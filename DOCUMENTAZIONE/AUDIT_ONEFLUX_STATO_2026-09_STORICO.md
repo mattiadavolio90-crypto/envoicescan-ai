@@ -25,6 +25,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 | 05/09 | `(app)/agenda/` + il ponte costo personale→MOL | chiusa — 6/7 mutanti, il 7° dichiarato ridondante |
 | 05/09 (sera) | Modello ore extra invertito + 2 contatori che mentivano | chiusa — 3/3 mutanti; il rosso frontend era 4.069 per errori di conteggio, è **3.316**; Q3 chiusa (colonna morta). Code-reviewer: 3 blocchi alla 1ª passata, verde alla 2ª |
+| 05/09 (notte) | Il terzo consumatore del modello ore extra, e la scrittura che lo permetteva | chiusa — **10/10 mutanti** (3 frontend + 7 backend); l'aggregazione desktop gonfiava monte ore e costo del 25%; la regola ha una fonte unica (`lib/ore-turno.ts`) e il dato impossibile e' rifiutato in scrittura su **tutti e 4** gli endpoint (POST/PATCH, giornaliero e mensile) |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
@@ -2959,6 +2960,140 @@ potuti inserire i giorni *e* correggere col cedolino, ma quella guardia impedisc
 il **doppio conteggio del costo del personale nel MOL**. Il rischio sui soldi
 supera la comodità. Il ramo mensile resta l'inserimento da cedolino: nessuna
 modifica al codice.
+
+---
+
+## 05/09/2026 (notte) — Il terzo consumatore del modello ore extra
+
+**Come è emerso.** Non da una segnalazione: ri-leggendo i consumatori di
+`ore_extra` col grep dopo il deploy, cercando l'incoerenza invece di aspettarla.
+
+**Il difetto.** L'aggregazione per persona in `personale-tab.tsx` faceva
+`const extra = t.ore_extra ?? 0` **senza clamp**, mentre il costo del singolo
+turno (riga 148, stesso file) ce l'aveva. Misurato eseguendo le due versioni
+affiancate: un turno da 8 ore con `ore_extra = 10` — un errore di battitura
+plausibile — produceva **10 ore e 100 €** contro 8 e 80. **+25% su monte ore e
+costo**, nella card dei totali del tab Personale.
+
+**Perché è la terza volta.** Il 04/09 il code-reviewer aveva trovato due
+consumatori rimasti additivi (export Excel e `/m`). Il pattern non è la
+distrazione: è che la regola viveva in **cinque copie** di `Math.min(extra, ore)`,
+e una copia che manca non fa rumore. Correggere la sesta copia avrebbe rimandato
+il problema alla settima.
+
+**Il fix.** La ripartizione ordinarie/extra è ora una **fonte unica**,
+`apps/web/src/lib/ore-turno.ts` (`ripartisciOre`), importata da desktop e mobile.
+Sta in `lib/` perché è l'unico posto che `tests/helpers_ts.py` sa eseguire: la
+regola è provata sul **TypeScript vero**, non su un assert al sorgente.
+
+**Prova per mutazione — 3 mutanti, 3 uccisi.**
+
+| # | Mutante | Esito |
+|---|---|---|
+| 1 | tolto il clamp (`min(extra, tot)` → `extra`) | ucciso — 2 test rossi |
+| 2 | ritorno al modello additivo (`tot - extra` → `tot + extra`) | ucciso — 4 test rossi |
+| 3 | tolto l'arrotondamento a 2 decimali | **sopravvissuto**, poi ucciso |
+
+⚠️ **Il mutante 3 sopravvissuto vale più degli altri due.** Il test sui decimali
+usava `7.7 − 0.3`, che in floating point fa **esattamente 7.4**: passava per
+fortuna, non per merito, e non misurava ciò che dichiarava. Misurato con `node -e`
+il caso che diverge davvero — `8.7 − 0.3 = 8.399999999999999` — il mutante muore.
+Un mutante sopravvissuto non dice sempre «il codice è ridondante»: qui diceva
+«il tuo test non prova quello che credi».
+
+**Contatore.** Frontend 53.861 → **53.891**, app **114.307**. La prima ri-somma
+dava scarto 2: `workspace/` e `(mobile)/` avevano perso una riga ciascuno,
+riportata nei «Totali» ma non fra i parziali. **Corretto l'addendo, non il
+totale.**
+
+### La seconda parte: il dato impossibile si accettava in scrittura
+
+Chiuso il clamp mancante, la domanda vera era **perche' ogni lettore dovesse
+difendersi**. Misurato: il ramo **mensile** rifiutava gia' `ore_extra >
+ore_totali` con un 400 esplicito; il **giornaliero** — l'unico che i dati reali
+percorrono — accettava qualunque valore in silenzio.
+
+**Due difetti distinti, non uno.**
+
+1. **Backend permissivo.** `POST /api/workspace/personale` non validava le extra,
+   e `PATCH .../{id}` nemmeno: anche con la sola POST protetta, la guardia si
+   sarebbe aggirata creando un turno valido e modificandolo subito dopo.
+2. **Frontend che clampava zitto.** Digitando 10 su un turno da 8 il campo
+   mostrava 10 e ne salvava 8. **Salvare un numero diverso da quello digitato
+   senza dirlo e' peggio che rifiutarlo**: il cliente crede di aver inserito un
+   dato che non c'e'. Accanto, un controllo morto (`extraNum < 0`) che non poteva
+   scattare, perche' guardava il valore gia' clampato.
+
+**Il fix.** Guardia in scrittura su entrambi gli endpoint, con l'errore che
+**nomina i due numeri in conflitto** ("le ore extra (10) non possono superare le
+ore del turno (8)"), e il frontend che intercetta il caso prima di chiamare —
+desktop e `/m` allineati.
+
+**Lo stesso buco c'era anche sul mensile.** Cercandolo invece di fermarsi al
+giornaliero: `POST /mensile` validava dal 30/7, `PATCH /mensile/{id}` **no** —
+identica via di aggiramento. E la validazione della POST univa due casi in una
+condizione sola: inserendo `-1` il cliente leggeva *"non possono superare le ore
+totali"*, vero ma non il suo errore. Separati in due messaggi.
+
+**Prova per mutazione — 7 mutanti, 7 uccisi.**
+
+| # | Mutante | Esito |
+|---|---|---|
+| 1 | guardia giornaliera in creazione disattivata | ucciso — 3 test rossi |
+| 2 | guardia giornaliera in aggiornamento disattivata | ucciso — 2 test rossi |
+| 3 | il PATCH parziale ignora gli orari a DB | ucciso — 2 test rossi |
+| 4 | confine stretto (`>=` invece di `> ore + 0.01`) | ucciso — 2 test rossi |
+| 5 | guardia mensile in aggiornamento disattivata | ucciso — 3 test rossi |
+| 6 | il totale nel body non ha la precedenza su quello a DB | ucciso — 1 test rosso |
+| 7 | validata solo la coppia ore, non l'importo | ucciso — 1 test rosso |
+
+I mutanti 3 e 6 sono quelli che insegnano: entrambi **rompono il caso legittimo**
+invece di lasciar passare quello illegittimo. Senza leggere la riga esistente,
+modificare le sole ore extra si sarebbe validato contro un turno vuoto (0 ore),
+rendendo il campo **immodificabile**; senza la precedenza del body, alzare monte
+ore e straordinario insieme sarebbe stato rifiutato. Una guardia si prova nelle
+**due direzioni**, o si sostituisce un difetto con un altro.
+
+**Un caso limite che quasi rompeva la produzione.** Il turno **22:00-02:00** vale
+4 ore, non −20, perche' `_ore_turno` usa `timedelta.seconds`. Se la guardia
+avesse calcolato le ore in modo ingenuo, **ogni turno serale con straordinario**
+— il caso normale di un ristorante — sarebbe stato rifiutato da una validazione
+nata per un caso raro. Verificato con `node`/`python` prima di scriverlo, e ora
+c'e' un test.
+
+### Un rosso in suite che non era un difetto
+
+La prima suite intera dava **1 failed** su
+`test_route_api_auth_dichiarativa::test_authorization_resta_un_segnale_affidabile`,
+verde se rilanciato da solo. Causa: quel test usa `inspect.getsource`, che rilegge
+il **file da disco** durante l'esecuzione — e io stavo modificando `workspace.py`
+mentre la suite girava. Righe sfalsate, endpoint che sembra non risolvere
+l'identita'. Verificato che i due endpoint toccati chiamano
+`_resolve_user_from_token` (55 occorrenze nel file), e ri-eseguita la suite a
+codice fermo: verde. **Il test ha fatto il suo mestiere segnalando invece di
+tacere**; la lezione e' quella gia' in memoria — non si tocca l'albero mentre
+pytest lo legge.
+
+**Nessun dato esistente viola le guardie nuove** — misurato a DB, non dedotto:
+0 righe giornaliere su 92 con extra valorizzate, 0 mensili fuori soglia su ore e
+su importo. Era il rischio vero di una validazione aggiunta a posteriori: se
+anche una sola riga storica l'avesse violata, il cliente si sarebbe trovato
+**bloccato in modifica** su un turno gia' salvato, con un 400 su un dato che il
+sistema stesso gli aveva accettato. Da verificare **prima** di aggiungere una
+guardia, non dopo.
+
+**Esposizione clienti: zero**, ri-misurata a DB il 05/09 notte: 107 turni, di
+cui **92 con `ore_extra` valorizzato ma tutti a 0**, e `costo_orario` **NULL su
+107/107**. Nessun turno poteva innescare il difetto (serve `extra > ore`), e
+senza costo orario il costo resta 0 comunque. Il difetto era **latente, non
+attivo**.
+
+⚠️ Detto «ore_extra è NULL su tutti i turni» sarebbe stato **falso**: è
+valorizzato su 92. Ciò che vale zero è il *valore*, non la presenza — la stessa
+distinzione fra contare i record e misurare la proprietà che decide che aveva
+già capovolto tre volte la premessa su `agenda/`.
+
+---
 
 ### La prossima dimensione
 

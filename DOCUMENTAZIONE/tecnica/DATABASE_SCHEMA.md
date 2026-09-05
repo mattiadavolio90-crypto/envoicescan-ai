@@ -392,12 +392,12 @@ Migrazione automatica da `note_diario` → `diario_eventi` nella migration SQL.
 | data_turno | DATE | |
 | ora_inizio / ora_fine | TIME | Turno giornaliero (ignorati se `mensile=TRUE`) |
 | ora_inizio2 / ora_fine2 | TIME (nullable) | Secondo slot per turno spezzato |
-| ore_extra | NUMERIC DEFAULT 0 | **Sottoinsieme** delle ore del turno, non ore in più (modello rivisto il 05/09/2026): il totale viene dagli orari, e `ordinario = ore_totali - ore_extra`. Un 09-17 con `ore_extra=2` vale **8h, di cui 2 di straordinario** (prima del 05/09 valeva 10h). Chi legge questo campo deve applicare il clamp `min(ore_extra, ore_totali)`: dichiarare più extra delle ore lavorate è incoerente e farebbe uscire l'ordinario negativo |
+| ore_extra | NUMERIC DEFAULT 0 | **Sottoinsieme** delle ore del turno, non ore in più (modello rivisto il 05/09/2026): il totale viene dagli orari, e `ordinario = ore_totali - ore_extra`. Un 09-17 con `ore_extra=2` vale **8h, di cui 2 di straordinario** (prima del 05/09 valeva 10h). Dal 05/09/2026 (sera) **la scrittura lo garantisce**: tutti e 4 gli endpoint (POST e PATCH, giornaliero e mensile) rifiutano `ore_extra > ore del turno/mese` con un 400 — `_valida_ore_extra_giornaliero`, `_valida_ore_extra_aggiornamento` e `_valida_extra_mensile_aggiornamento` in `services/routers/workspace.py`. Prima validavano solo le due POST, quindi bastava creare una riga valida e modificarla subito dopo. I lettori mantengono comunque il clamp `min(ore_extra, ore_totali)` per le righe scritte prima della guardia: lato frontend è la funzione unica `ripartisciOre` (`apps/web/src/lib/ore-turno.ts`) |
 | costo_orario / costo_orario_extra | NUMERIC (nullable) | €/h; se `costo_orario_extra` è NULL si usa `costo_orario` anche per le ore extra |
 | tipo_giorno | TEXT DEFAULT 'turno' | `turno` \| `riposo` \| `ferie` \| `malattia`. Righe non-`turno` non hanno orari (sono uno stato-giorno esplicito, non un turno vuoto) |
 | importo_a_carico | NUMERIC (nullable) | Solo per `ferie`/`malattia`; sommato a parte in `costo_assenze_a_carico`, mai in `costo_dipendenti` (per non falsare il MOL) |
 | mensile | BOOLEAN DEFAULT FALSE | TRUE = riga aggregata da busta paga invece che turno giornaliero. Esclusività giornaliero/mensile per dipendente+mese verificata a livello applicativo |
-| ore_dichiarate / lordo_mensile / importo_extra | NUMERIC (nullable) | Solo se `mensile=TRUE`: ore totali (già ord+extra) e lordo del mese dalla busta paga reale, non ricalcolati da tariffa |
+| ore_dichiarate / lordo_mensile / importo_extra | NUMERIC (nullable) | Solo se `mensile=TRUE`: ore totali (già ord+extra) e lordo del mese dalla busta paga reale, non ricalcolati da tariffa. `ore_extra ≤ ore_dichiarate` e `importo_extra ≤ lordo_mensile` sono garantiti in scrittura (400) su POST e PATCH |
 | note | TEXT (nullable) | |
 | created_at | TIMESTAMPTZ | |
 
