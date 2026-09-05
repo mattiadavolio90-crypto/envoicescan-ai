@@ -99,8 +99,8 @@ def _get_cache_version_internal(key: str) -> int:
     """Legge la versione cache da public.cache_version.
 
     NON cachata, di proposito. Questa funzione non e' un dato: e' il MECCANISMO
-    di invalidazione. Il suo valore e' la chiave di cache dello scadenziario,
-    e i tre punti che segnano una
+    di invalidazione. Il suo valore e' la chiave di cache dello scadenziario, e
+    i tre punti che segnano una
     fattura pagata / salvano o cancellano la config fornitori fanno
     read-modify-write (`version = get_cache_version(...) + 1`).
 
@@ -524,13 +524,6 @@ def clear_fornitori_cache() -> None:
     _get_fornitori_pagamenti_config_cached.clear()
 
 
-# ============================================================
-# CACHE DOCUMENTI NORMALIZZATI
-# Centralizza la normalizzazione (scadenza_effettiva + regole fornitore)
-# che chiama questa cache e poi filtra in memoria — 0 query DB per cache hit.
-# ============================================================
-
-@_make_cache(ttl=60, show_spinner=False)
 def segna_fattura_pagata(
     file_origine: str,
     user_id: str,

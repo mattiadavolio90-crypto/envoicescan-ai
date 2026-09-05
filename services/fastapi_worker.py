@@ -4778,7 +4778,7 @@ def chat_ai(
     )
 
     # Tracking costi monetari nel ledger AI (fail-safe: non blocca la risposta).
-    # Alimenta l'alert soglia costi mensile, come la categorizzazione.
+    # Alimenta il ledger dei consumi AI (pannello admin), come la categorizzazione.
     try:
         from services.ai_cost_service import track_ai_usage
         track_ai_usage(

@@ -592,3 +592,41 @@ def test_delete_regola_di_un_altro_account_ritorna_ok_false():
     )
 
     assert result["ok"] is False
+
+
+def test_segna_fattura_pagata_non_e_cachata_la_seconda_scrittura_arriva_a_db():
+    """Una SCRITTURA non puo' stare dietro una cache.
+
+    Il 5/9, rimuovendo `_get_documenti_normalized_cached` (codice morto), il suo
+    decoratore `@_make_cache(ttl=60)` e' rimasto orfano e si e' riattaccato alla
+    funzione successiva del file: `segna_fattura_pagata`. `make_cache` non e' piu'
+    un guscio vuoto ma una TTLCache vera, quindi la seconda chiamata con gli
+    stessi argomenti entro 60s tornava dalla cache: nessuna UPDATE al DB, nessun
+    bump di cache_version, nessun refresh di pagata_manuale_at — e l'endpoint
+    rispondeva comunque success=True.
+
+    I due test qui sopra non lo vedevano: usano pagata=True e pagata=False, cioe'
+    chiavi di cache diverse. Serve la STESSA chiamata due volte.
+    """
+    doc = _doc_rid(pagata=False, pagata_manuale_at=None)
+    sb = _FakeSupabase({"fatture_documenti": [doc]})
+
+    kwargs = dict(
+        file_origine="rid.xml", user_id="u1", ristorante_id="rist-1",
+        pagata=True, supabase_client=sb,
+    )
+
+    assert segna_fattura_pagata(**kwargs)["success"] is True
+    assert doc["pagata"] is True
+
+    # l'utente de-marca fuori banda (o un'altra sessione cambia il dato):
+    # la seconda chiamata identica DEVE tornare a scrivere, non servire la cache
+    doc["pagata"] = False
+    doc["pagata_manuale_at"] = None
+
+    assert segna_fattura_pagata(**kwargs)["success"] is True
+    assert doc["pagata"] is True, (
+        "seconda chiamata servita dalla cache: l'API risponde success ma il DB "
+        "non e' stato aggiornato"
+    )
+    assert doc["pagata_manuale_at"] is not None

@@ -90,7 +90,9 @@ uno strumento che legge il DB**, mai dalla memoria del modello. L'LLM decide
 
 **Costo monetario:** ogni risposta accumula i token di **tutti i round** del loop
 e li scrive nel ledger via `track_ai_usage(operation_type="chat", ...)` — stesso
-sistema della categorizzazione, alimenta l'alert soglia costi mensile.
+sistema della categorizzazione. Il ledger alimenta il pannello admin dei consumi
+(l'alert soglia costi mensile e' stato rimosso il 5/09: non ha mai avuto
+chiamanti runtime).
 
 ---
 
