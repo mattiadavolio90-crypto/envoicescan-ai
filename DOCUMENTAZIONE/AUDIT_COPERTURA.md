@@ -222,16 +222,18 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 53.363 | **47%** | 22.597 backend + 27.210 frontend + 3.556 Edge |
+| 📖 Letto integralmente | 58.191 | **51%** | 27.425 backend + 27.210 frontend + 3.556 Edge |
 | 🔍 / 🟠 Auditato o parzialmente coperto | 51.945 | 45% | 29.429 backend + 22.516 frontend |
-| 🔴 Mai guardato | 9.185 | **8%** | 5.147 backend + 4.038 frontend |
-| **Totale app (misurato)** | **114.493** | 100% | 57.173 + 53.764 + 3.556 |
+| 🔴 Mai guardato | 4.069 | **4%** | **0 backend** + 4.069 frontend — la zona rossa e' tutta e solo nel frontend |
+| **Totale app (misurato)** | **114.205** | 100% | 56.854 + 53.795 + 3.556 |
 
-> **Ri-sommato il 5/09/2026, dopo `85328bf`.** Le tre righe fanno **114.493**
-> contro un totale misurato di **114.493**: **scarto 0**. Non è un
+> **Ri-sommato il 5/09/2026 (sera), dopo `5fb12b7`.** Le tre righe fanno
+> **114.205** contro un totale misurato di **114.205**: **scarto 0**. Non è un
 > arrotondamento fortunato — è la ri-somma della colonna backend modulo per
-> modulo (22.597 + 29.429 + 5.147) più frontend ed edge ri-misurati oggi coi
-> comandi in cima al file.
+> modulo (27.425 + 29.429) più frontend ed edge ri-misurati coi comandi in cima
+> al file. Il backend **cala di 319 righe** rispetto alla mattina: 280 erano
+> codice morto rimosso, il resto sono commenti sostituiti al netto dei fix.
+> **Da qui in poi la zona rossa è solo frontend**: 4.069 righe.
 >
 > **La stesura precedente di questa tabella era ferma al 3/09** e portava cifre
 > che non si conciliavano con quelle di testa (totale 113.709, backend rosso
