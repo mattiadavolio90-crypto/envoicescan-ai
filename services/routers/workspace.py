@@ -1088,6 +1088,34 @@ def ws_dipendenti_merge(dipendente_id: str, target_id: str, authorization: Optio
 
 # ─── Workspace: Personale ───────────────────────────────────────────────────
 
+def _valida_ore_extra_giornaliero(body) -> None:
+    """Rifiuta piu' straordinario delle ore effettivamente lavorate.
+
+    Le extra sono un SOTTOINSIEME del turno (modello 05/09/2026): con 8 ore di
+    orario e 10 di extra l'ordinario sarebbe negativo. Il ramo mensile lo
+    rifiuta gia' con un 400; il giornaliero accettava in silenzio, e ogni
+    consumatore a valle doveva difendersi con un clamp — uno se l'era
+    dimenticato, gonfiando monte ore e costo del 25%.
+
+    Si valida qui, dove il dato entra: un clamp silenzioso salverebbe un numero
+    diverso da quello digitato senza dirlo.
+    """
+    if body.ore_extra is None:
+        return
+    ore = _ore_turno({
+        "ora_inizio": body.ora_inizio, "ora_fine": body.ora_fine,
+        "ora_inizio2": body.ora_inizio2, "ora_fine2": body.ora_fine2,
+    })
+    extra = float(body.ore_extra)
+    if extra < 0:
+        raise HTTPException(status_code=400, detail="Le ore extra non possono essere negative")
+    if extra > ore + 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Le ore extra ({extra:g}) non possono superare le ore del turno ({ore:g})",
+        )
+
+
 class NuovoTurnoBody(BaseModel):
     dipendente_id: str
     data_turno: str  # YYYY-MM-DD
@@ -1479,6 +1507,7 @@ def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Heade
             status_code=409,
             detail=f"Questo dipendente ha già un inserimento mensile per {mese}. Elimina la riga mensile per inserire turni giornalieri.",
         )
+    _valida_ore_extra_giornaliero(body)
     payload: dict = {
         "ristorante_id": ristorante_id,
         "user_id": user_id,
@@ -1692,8 +1721,16 @@ def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[st
     if body.ore_totali <= 0 and body.lordo <= 0:
         raise HTTPException(status_code=400, detail="Inserisci almeno le ore o il lordo del mese")
     ore_ext = float(body.ore_extra or 0)
-    if ore_ext < 0 or ore_ext > body.ore_totali + 0.01:
-        raise HTTPException(status_code=400, detail="Le ore extra non possono superare le ore totali")
+    # Due errori distinti, due messaggi: con la condizione unita, inserendo -1
+    # il cliente leggeva "non possono superare le ore totali" — vero ma non il
+    # suo errore, e quindi inutile per correggerlo.
+    if ore_ext < 0:
+        raise HTTPException(status_code=400, detail="Le ore extra non possono essere negative")
+    if ore_ext > body.ore_totali + 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Le ore extra ({ore_ext:g}) non possono superare le ore totali del mese ({body.ore_totali:g})",
+        )
     imp_ext = float(body.importo_extra or 0)
     if imp_ext < 0 or imp_ext > body.lordo + 0.01:
         raise HTTPException(status_code=400, detail="L'importo extra non può superare il lordo")
@@ -1755,12 +1792,50 @@ def ws_personale_aggiorna_mensile(turno_id: str, body: AggiornaTurnoMensileBody,
         updates["note"] = raw["note"] or None
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    # Come sul giornaliero: la POST validava e il PATCH no, quindi la guardia
+    # si aggirava creando una riga valida e modificandola subito dopo. Il PATCH
+    # e' parziale, quindi il monte ore si legge a DB se non e' nel body.
+    _valida_extra_mensile_aggiornamento(sb, turno_id, ristorante_id, updates)
     resp = (
         sb.table("turni_personale").update(updates)
         .eq("id", turno_id).eq("ristorante_id", ristorante_id).eq("mensile", True)
         .execute()
     )
     return resp.data[0] if resp.data else {}
+
+
+def _valida_extra_mensile_aggiornamento(sb, turno_id: str, ristorante_id: str, updates: dict) -> None:
+    """Straordinario e importo extra non possono eccedere i totali del mese.
+
+    Vale su ciascuna delle due coppie (ore, importo) e legge da DB il totale
+    che il PATCH non sta cambiando: aggiornare le sole extra deve confrontarsi
+    con il monte ore che resta, non con zero.
+    """
+    if updates.get("ore_extra") is None and updates.get("importo_extra") is None:
+        return
+    resp = (
+        sb.table("turni_personale")
+        .select("ore_dichiarate,lordo_mensile")
+        .eq("id", turno_id).eq("ristorante_id", ristorante_id).eq("mensile", True)
+        .execute()
+    )
+    riga = (resp.data or [{}])[0] if resp.data else {}
+    if not riga:
+        return
+    coppie = (
+        ("ore_extra", "ore_dichiarate", "Le ore extra", "le ore totali del mese"),
+        ("importo_extra", "lordo_mensile", "L'importo extra", "il lordo del mese"),
+    )
+    for campo, campo_tot, etichetta, etichetta_tot in coppie:
+        valore = updates.get(campo)
+        if valore is None:
+            continue
+        totale = float(updates.get(campo_tot, riga.get(campo_tot)) or 0)
+        if float(valore) > totale + 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{etichetta} ({float(valore):g}) non possono superare {etichetta_tot} ({totale:g})",
+            )
 
 
 @router.patch("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
@@ -1782,6 +1857,12 @@ def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization:
             updates[campo] = raw[campo]
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    # Stessa guardia della creazione. Il PATCH e' parziale: gli orari possono non
+    # essere nel body, quindi il turno effettivo si ricostruisce dalla riga a DB
+    # sovrascritta con i campi in arrivo. Senza questo, la validazione della
+    # POST si aggirerebbe creando un turno valido e modificandolo subito dopo.
+    if updates.get("ore_extra") is not None:
+        _valida_ore_extra_aggiornamento(sb, turno_id, ristorante_id, updates)
     # .eq("mensile", False): questo PATCH gestisce solo turni giornalieri, non puo'
     # corrompere una riga mensile (che ha il suo endpoint /mensile/{id}).
     resp = (
@@ -1790,6 +1871,34 @@ def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization:
         .execute()
     )
     return resp.data[0] if resp.data else {}
+
+
+def _valida_ore_extra_aggiornamento(sb, turno_id: str, ristorante_id: str, updates: dict) -> None:
+    """Come _valida_ore_extra_giornaliero, ma per un PATCH parziale.
+
+    Legge gli orari a DB e li sovrascrive con quelli in arrivo: modificare le
+    sole ore extra deve essere validato contro il turno che resta, non contro
+    un turno vuoto.
+    """
+    resp = (
+        sb.table("turni_personale")
+        .select("ora_inizio,ora_fine,ora_inizio2,ora_fine2")
+        .eq("id", turno_id).eq("ristorante_id", ristorante_id).eq("mensile", False)
+        .execute()
+    )
+    riga = (resp.data or [{}])[0] if resp.data else {}
+    if not riga:
+        return  # turno inesistente: ci pensa l'update a non trovare nulla
+    orari = {c: updates.get(c, riga.get(c)) for c in ("ora_inizio", "ora_fine", "ora_inizio2", "ora_fine2")}
+    ore = _ore_turno(orari)
+    extra = float(updates["ore_extra"])
+    if extra < 0:
+        raise HTTPException(status_code=400, detail="Le ore extra non possono essere negative")
+    if extra > ore + 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Le ore extra ({extra:g}) non possono superare le ore del turno ({ore:g})",
+        )
 
 
 @router.delete("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
