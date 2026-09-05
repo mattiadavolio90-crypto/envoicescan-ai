@@ -25,7 +25,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 | 05/09 | `(app)/agenda/` + il ponte costo personale→MOL | chiusa — 6/7 mutanti, il 7° dichiarato ridondante |
 | 05/09 (sera) | Modello ore extra invertito + 2 contatori che mentivano | chiusa — 3/3 mutanti; il rosso frontend era 4.069 per errori di conteggio, è **3.316**; Q3 chiusa (colonna morta). Code-reviewer: 3 blocchi alla 1ª passata, verde alla 2ª |
-| 05/09 (notte) | Il terzo consumatore del modello ore extra, e la scrittura che lo permetteva | chiusa — **10/10 mutanti** (3 frontend + 7 backend); l'aggregazione desktop gonfiava monte ore e costo del 25%; la regola ha una fonte unica (`lib/ore-turno.ts`) e il dato impossibile e' rifiutato in scrittura su **tutti e 4** gli endpoint (POST/PATCH, giornaliero e mensile) |
+| 05/09 (notte) | Il terzo consumatore del modello ore extra, e la scrittura che lo permetteva | chiusa — **11/11 mutanti**; l'aggregazione desktop gonfiava monte ore e costo del 25%; regola, aggregazione e costo turno in una fonte unica (`lib/ore-turno.ts`) provata al **punto d'uso**; dato impossibile rifiutato in scrittura su tutti e 4 gli endpoint. Code-reviewer: 2 blocchi (addendo in colonna sbagliata, PATCH mensile senza guardia sui negativi) + il mutante al call-site sopravvissuto |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
@@ -3073,6 +3073,53 @@ l'identita'. Verificato che i due endpoint toccati chiamano
 codice fermo: verde. **Il test ha fatto il suo mestiere segnalando invece di
 tacere**; la lezione e' quella gia' in memoria — non si tocca l'albero mentre
 pytest lo legge.
+
+### Il code-reviewer ha trovato 2 blocchi, ed erano entrambi miei
+
+**1. Il `+109` messo nella colonna sbagliata.** Avevo attribuito le righe nuove
+di backend alla riga «letto integralmente» perche' sono nuove e presidiate. Ma
+stanno in `services/routers/workspace.py`, che e' un modulo **parziale**: il
+totale chiudeva lo stesso a 56.969 e lo scarto restava 0, quindi la verifica
+sul totale non lo vedeva. **E' il difetto esatto contro cui questo file mette in
+guardia** — due errori che si compensano — commesso mentre scrivevo la nota che
+ci mette in guardia. Correzione: `routers/` 16.768 → 16.889, parziale 29.559,
+letto integralmente 27.422 (invariato). Righe nuove e coperte da test **non
+promuovono il modulo che le contiene**.
+
+**2. Il PATCH mensile accettava i negativi.** Avevo scritto «tutti e 4 gli
+endpoint validano», ma `_valida_extra_mensile_aggiornamento` controllava solo
+l'eccesso, non `< 0` — a differenza degli altri tre helper. Il reviewer l'ha
+misurato chiamando l'endpoint vero. **Non e' simmetrico all'eccesso**: il clamp
+`min(extra, ore)` dei lettori difende solo dall'ALTO, quindi un negativo arriva
+intatto in `margini.py`, dove `ore - extra` cresce e **gonfia** `costo_dipendenti`.
+Chiuso con la guardia e 2 test (mensile e giornaliero), mutante 8 ucciso.
+
+### Il rilievo che valeva piu' dei due blocchi
+
+Il reviewer ha rimesso `t.ore_extra ?? 0` **nel chiamante** e ha lanciato 1.100
+test: **tutti verdi, mutante sopravvissuto**. I miei 6 test provavano
+`ripartisciOre` in isolamento — la libreria era giusta, il consumatore no, ed
+**e' il consumatore che si e' rotto tre volte**. Un presidio sulla funzione
+estratta non e' un presidio sul punto d'uso.
+
+Rimedio: l'aggregazione per persona e il costo del singolo turno sono usciti dai
+`.tsx` e vivono in `lib/ore-turno.ts` (`aggregaPerPersona`,
+`costoTurnoGiornaliero`), dove `helpers_ts.py` li **esegue davvero**. Non per
+eleganza: perche' li' il mutante muore. Ri-eseguito il mutante del reviewer:
+**ucciso**. 12 test nuovi.
+
+⚠️ **Un altro mutante sopravvissuto, un'altra lezione.** Sostituendo
+`if (costoOrario == null) return 0` con `costoOrario ?? 0` tutti i test
+restavano verdi — sembrava codice ridondante, visto che moltiplicare per zero
+da' zero. Misurate le due versioni affiancate: divergono quando `costo_orario` e'
+NULL **ma `costo_orario_extra` no**, e il fallback inventa **30 EUR** su un turno
+di cui non conosciamo il costo — che finirebbero nel MOL. La riga serviva; era
+il test a mancare. **Un mutante sopravvissuto e' una domanda, non un verdetto**:
+qui la risposta era "manca un caso", non "la riga e' inutile".
+
+**Bilancio mutazione: 11 mutanti, 11 uccisi** (3 sulla ripartizione, 8 sulle
+guardie e sui consumatori), dopo che 2 sono sopravvissuti alla prima stesura e
+hanno fatto trovare due test che non provavano quello che dichiaravano.
 
 **Nessun dato esistente viola le guardie nuove** — misurato a DB, non dedotto:
 0 righe giornaliere su 92 con extra valorizzate, 0 mensili fuori soglia su ore e

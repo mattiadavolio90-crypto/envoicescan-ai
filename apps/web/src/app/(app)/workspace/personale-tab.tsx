@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
-import { ripartisciOre } from "@/lib/ore-turno";
+import { ripartisciOre, aggregaPerPersona, costoTurnoGiornaliero } from "@/lib/ore-turno";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -144,11 +144,7 @@ export function calcolaOreTotali(t: Turno): number {
 
 // Costo di un singolo turno giornaliero: ordinario × costo_orario + extra × costo extra.
 function calcolaCostoTurno(t: Turno): number {
-  if (t.costo_orario == null) return 0;
-  const oreT = calcolaOreTotali(t);
-  const { ordinarie: std, extra: ext } = ripartisciOre(oreT, t.ore_extra);
-  const coExt = t.costo_orario_extra ?? t.costo_orario;
-  return std * t.costo_orario + (ext > 0 ? ext * coExt : 0);
+  return costoTurnoGiornaliero(calcolaOreTotali(t), t.ore_extra, t.costo_orario, t.costo_orario_extra);
 }
 
 export function fmtOreDisplay(ore: number): string {
@@ -1437,39 +1433,12 @@ export function PersonaleTab() {
   }
 
   // Calcola sempre lato frontend dai turni — robusto anche con worker vecchio
-  const { oreStdPerPersona, oreExtPerPersona, costoStdPerPersona, costoExtPerPersona, costoPerPersona } = (() => {
-    const std: Record<string, number> = {};
-    const ext: Record<string, number> = {};
-    const cStd: Record<string, number> = {};
-    const cExt: Record<string, number> = {};
-    const cTot: Record<string, number> = {};
-    for (const t of turni) {
-      if ((t.tipo_giorno ?? "turno") !== "turno") continue; // riposo/ferie/malattia: fuori da ore/costo lavorato
-      const n = nomePerId[t.dipendente_id] ?? t.dipendente_id;
-      const ore = calcolaOreTotali(t);
-      const { ordinarie, extra } = ripartisciOre(ore, t.ore_extra);
-      std[n] = (std[n] ?? 0) + ordinarie;
-      ext[n] = (ext[n] ?? 0) + extra;
-      if (t.mensile) {
-        // Riga mensile: costo dal lordo reale, non da tariffa oraria.
-        const lordo = t.lordo_mensile ?? 0;
-        const impExt = t.importo_extra ?? 0;
-        const ordCost = Math.max(0, lordo - impExt);
-        cStd[n] = (cStd[n] ?? 0) + ordCost;
-        cExt[n] = (cExt[n] ?? 0) + impExt;
-        cTot[n] = (cTot[n] ?? 0) + lordo;
-        continue;
-      }
-      const coStd = t.costo_orario ?? null;
-      const coExt = t.costo_orario_extra ?? coStd;
-      if (coStd != null) {
-        cStd[n] = (cStd[n] ?? 0) + ordinarie * coStd;
-        cExt[n] = (cExt[n] ?? 0) + extra * (coExt ?? coStd);
-        cTot[n] = (cTot[n] ?? 0) + ordinarie * coStd + extra * (coExt ?? coStd);
-      }
-    }
-    return { oreStdPerPersona: std, oreExtPerPersona: ext, costoStdPerPersona: cStd, costoExtPerPersona: cExt, costoPerPersona: cTot };
-  })();
+  const { oreStd: oreStdPerPersona, oreExt: oreExtPerPersona, costoStd: costoStdPerPersona,
+          costoExt: costoExtPerPersona, costoTot: costoPerPersona } = aggregaPerPersona(
+    turni,
+    (t) => nomePerId[t.dipendente_id] ?? t.dipendente_id,
+    (t) => calcolaOreTotali(t as Turno),
+  );
 
   const oreStdTotale = Object.values(oreStdPerPersona).reduce((s, v) => s + v, 0);
   const oreExtTotale = Object.values(oreExtPerPersona).reduce((s, v) => s + v, 0);

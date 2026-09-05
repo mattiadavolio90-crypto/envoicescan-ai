@@ -42,21 +42,28 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.969 |
-| Frontend (`apps/web/src/`, esclusi i binari) | 53.902 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.981 |
+| Frontend (`apps/web/src/`, esclusi i binari) | 53.955 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.427** |
+| **TOTALE APP** | **114.492** |
 
 > Ri-misurato il **5/09/2026 sera** coi comandi qui sopra. Il backend **cala di
 > 220 righe** rispetto al 4/09: 286 rimosse come codice morto dalla dimensione
 > `utils/`, meno ~66 aggiunte da questa e da altre sessioni. È la prima volta nel
 > ciclo che il perimetro si restringe invece di crescere.
 >
-> Il frontend passa da 53.861 a **53.902** (+41) e il backend da 56.860 a
-> **56.969** (+109): `lib/ore-turno.ts` come fonte unica della ripartizione
+> Il frontend passa da 53.861 a **53.955** (+94) e il backend da 56.860 a
+> **56.981** (+121): `lib/ore-turno.ts` come fonte unica della ripartizione
 > ordinarie/extra, le guardie in scrittura sui 4 endpoint dei turni, e la
-> validazione lato dialog. Tutte righe **lette e presidiate**, quindi entrano
-> nella colonna «letto integralmente», non fra le parziali.
+> validazione lato dialog.
+>
+> ⚠️ **Le 121 righe di backend stanno in `routers/` (16.768 → 16.889), che è una
+> riga PARZIALE.** Una prima stesura le aveva messe fra le «lette integralmente»
+> perché sono nuove e presidiate: il totale chiudeva lo stesso a 56.969, ma
+> l'addendo era nella colonna sbagliata. È **il difetto esatto** contro cui
+> questo file mette in guardia — trovato dal code-reviewer, non da me. Righe
+> nuove e coperte da test non promuovono il **modulo** che le contiene: `routers/`
+> resta parziale finché non è letto per intero.
 >
 > ⚠️ **Due trappole di misura, entrambe pagate qui.** `git ls-files` da solo dice
 > **53.859**, perché i file nuovi non sono ancora tracciati: si misura
@@ -70,10 +77,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 56.969 | 0 | **100%** |
-| Frontend | 27.558 letti + 23.028 parziali su 53.902 | **3.316** | **94%** |
+| Backend | 56.981 | 0 | **100%** |
+| Frontend | 27.611 letti + 23.028 parziali su 53.955 | **3.316** | **94%** |
 | Edge Functions | 3.556 | 0 | **100%** |
-| **App intera** | **111.111** | **3.316** | **97%** |
+| **App intera** | **111.176** | **3.316** | **97%** |
 
 > **Come si legge.** «Coperto» somma il letto integralmente (📖) e il parziale
 > (🔍/🟠): sono livelli di confidenza diversi, non equivalenti — il dettaglio per
@@ -84,7 +91,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Backend Python — 56.969 righe
+## Backend Python — 56.981 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -108,9 +115,9 @@ non sa montare. È un limite dichiarato, non una svista.
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
 | 📖 letto integralmente | 27.422 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.825** |
-| 🔍 / 🟠 parziale | 29.438 | 52% | `fastapi_worker` 8.901, `routers/` 16.768, `upload_handler` 2.282, `margine_service` 1.487 |
+| 🔍 / 🟠 parziale | 29.559 | 52% | `fastapi_worker` 8.901, `routers/` **16.889**, `upload_handler` 2.282, `margine_service` 1.487 |
 | 🔴 mai guardato | **0** | 0% | — **la zona rossa del backend e' chiusa il 5/09** |
-| **Totale backend** | **56.969** | 100% | ✅ la colonna chiude: 27.531 + 29.438 = 56.969, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
+| **Totale backend** | **56.981** | 100% | ✅ la colonna chiude: 27.422 + 29.559 = 56.981, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
 
 > **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
 > tutto merito della lettura: **286 righe erano codice morto** e sono state
@@ -164,7 +171,7 @@ mutazione: rifarle è costo senza copertura nuova.
 
 ---
 
-## Frontend — 53.902 righe
+## Frontend — 53.955 righe
 
 > ⚠️ **Ri-misurato il 4/09: 53.764 righe (+525 dal 3/09).** La tabella qui sotto
 > è ferma alla ripartizione per area del 3/09 e **non è stata ri-sommata**: le
@@ -188,11 +195,11 @@ mutazione: rifarle è costo senza copertura nuova.
 | `(app)/scadenziario/` | 2.238 | 2.266 | 📖 | ciclo 09, 31/8 (15/15 mutanti) + 3/9 (R10: il guasto non è più un vuoto). Resta il rendering |
 | `(app)/catena/` | 2.977 | 3.000 | 📖 100% | ciclo 09, 1/9 (3 passate) + 3/9 (R3, `pct`, `fatture/`). 326 test. `card-segnali.tsx` (110) è **esclusione motivata**, non un buco: fetch + JSX. Resta il rendering |
 | `(app)/analisi-e-tag/` | 1.420 | 1.546 | 📖 92% | ciclo 07 §3c; 3/9 lo stato vuoto non invita più a rifare i tag che esistono (R10) |
-| `lib/` | 2.465 | 5.977 | 🟠 41% | i moduli estratti dalle sessioni di settembre; `format.ts` è la fonte unica del parsing; `esito-caricamento.ts` (3/9) distingue il guasto dal vuoto numerico (58 chiamanti); `ore-turno.ts` (5/9) è la fonte unica della ripartizione ordinarie/extra, 6 test, 3/3 mutanti |
+| `lib/` | 2.552 | 6.064 | 🟠 41% | i moduli estratti dalle sessioni di settembre; `format.ts` è la fonte unica del parsing; `esito-caricamento.ts` (3/9) distingue il guasto dal vuoto numerico (58 chiamanti); `ore-turno.ts` (5/9) è la fonte unica della ripartizione ordinarie/extra, 6 test, 3/3 mutanti |
 | `(app)/admin/` | 1.739 | 3.925 | 🟠 44% | ciclo 07 §3c — solo staff, non clienti |
 | `(app)/prezzi/` | 973 | 2.355 | 🟠 41% | ciclo 07 §3c |
-| `(app)/workspace/` | 1.841 | 5.038 | 🟠 37% | ciclo 07 §3c + F6 ciclo 08: il resto escluso con misura |
-| `(mobile)/` | 1.287 | 4.017 | 🟠 32% | ciclo 07 §3c; 3/9 avvisi mobile allineati al desktop (R10) |
+| `(app)/workspace/` | 1.810 | 5.007 | 🟠 36% | ciclo 07 §3c + F6 ciclo 08: il resto escluso con misura |
+| `(mobile)/` | 1.284 | 4.014 | 🟠 32% | ciclo 07 §3c; 3/9 avvisi mobile allineati al desktop (R10) |
 | `(app)/analisi-fatture/` | 825 | 2.683 | 🟠 31% | ciclo 07 §3c; 3/9 il tab Articoli non dice più «nessun prodotto» su un worker giù (R10) |
 | `components/` | 2.188 | 7.307 | 🟠 30% | F3 ciclo 08: 2.188 lette, 2.414 campionate, 2.675 escluse con misura |
 | `(app)/dashboard/` | 0 | 1.795 | 🟠 logica estratta | 1/9: la logica è uscita nei moduli `home-*.ts`, 92 test. Nessun `.tsx` letto |
@@ -207,7 +214,7 @@ mutazione: rifarle è costo senza copertura nuova.
 | `hooks/` | 0 | 22 | 🔴 | un solo file, `use-mobile.ts` |
 | `proxy.ts` | 0 | 105 | 🔴 | — |
 
-**Somma: lette 27.558 · non lette 26.344 · totale 53.902.**
+**Somma: lette 27.611 · non lette 26.344 · totale 53.955.**
 
 > ✅ **Ri-misurata area per area il 5/09/2026 (sera), e la colonna chiude: scarto
 > 0** contro `git ls-files`. Era la parte più debole del file — lo scarto era
@@ -217,8 +224,8 @@ mutazione: rifarle è costo senza copertura nuova.
 > passate (non è ri-misurabile a posteriori).
 >
 > **La verifica che ha fatto chiudere la somma** è la decomposizione esaustiva:
-> `app/` (40.491) + `components/` (7.307) + `hooks/` (22) + `lib/` (5.977) +
-> `proxy.ts` (105) = **53.902**, e dentro `app/` la somma delle sottocartelle
+> `app/` (40.457) + `components/` (7.307) + `hooks/` (22) + `lib/` (6.064) +
+> `proxy.ts` (105) = **53.955**, e dentro `app/` la somma delle sottocartelle
 > torna a sua volta. Senza decomporre così, tre righe si sovrapponevano in
 > silenzio. Ri-verificata il 5/09 sera dopo l'estrazione di `ore-turno.ts`:
 > **scarto 0 sugli addendi**, non solo sul totale.
@@ -259,13 +266,13 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 58.645 | **51%** | 27.531 backend + 27.558 frontend + 3.556 Edge |
-| 🔍 / 🟠 Auditato o parzialmente coperto | 52.466 | 46% | 29.438 backend + 23.028 frontend |
+| 📖 Letto integralmente | 58.589 | **51%** | 27.422 backend + 27.611 frontend + 3.556 Edge |
+| 🔍 / 🟠 Auditato o parzialmente coperto | 52.587 | 46% | 29.559 backend + 23.028 frontend |
 | 🔴 Mai guardato | 3.316 | **3%** | **0 backend** + 3.316 frontend — la zona rossa e' tutta e solo nel frontend |
-| **Totale app (misurato)** | **114.427** | 100% | 56.969 + 53.902 + 3.556 |
+| **Totale app (misurato)** | **114.492** | 100% | 56.981 + 53.955 + 3.556 |
 
 > **Ri-sommato il 5/09/2026 (sera), dopo l'estrazione di `lib/ore-turno.ts`.** Le
-> tre righe fanno **114.427** contro un totale misurato di **114.427**: **scarto 0**.
+> tre righe fanno **114.492** contro un totale misurato di **114.492**: **scarto 0**.
 >
 > ⚠️ La prima ri-somma dava **114.309**, scarto 2: `workspace/` e `(mobile)/`
 > avevano perso una riga ciascuno (sostituita dall'import del modulo condiviso) e

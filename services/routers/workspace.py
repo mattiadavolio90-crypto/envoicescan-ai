@@ -1830,6 +1830,18 @@ def _valida_extra_mensile_aggiornamento(sb, turno_id: str, ristorante_id: str, u
         valore = updates.get(campo)
         if valore is None:
             continue
+        # Il negativo va rifiutato quanto l'eccesso: il clamp min(extra, ore) dei
+        # lettori difende solo dall'alto, quindi un valore sotto zero arriva
+        # intatto in margini.py e GONFIA costo_dipendenti (ore - extra cresce).
+        # La POST mensile lo rifiuta gia': senza questo, bastava creare una riga
+        # valida e correggerla in negativo - lo stesso bypass che questo helper
+        # esiste per chiudere, su un altro asse.
+        if float(valore) < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{etichetta} non possono essere negative" if campo == "ore_extra"
+                else f"{etichetta} non può essere negativo",
+            )
         totale = float(updates.get(campo_tot, riga.get(campo_tot)) or 0)
         if float(valore) > totale + 0.01:
             raise HTTPException(

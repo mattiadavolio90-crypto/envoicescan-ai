@@ -80,3 +80,153 @@ def test_i_decimali_non_si_accumulano():
     """
     r = _ripartisci(8.7, 0.3)
     assert r["ordinarie"] == 8.4, r["ordinarie"]
+
+
+# ── l'aggregazione per persona ───────────────────────────────────────────────
+# Questi test esistono per una lezione precisa: i test sopra provano
+# `ripartisciOre` in ISOLAMENTO, e il code-reviewer ha mostrato che restavano
+# tutti verdi rimettendo `t.ore_extra ?? 0` senza clamp nel chiamante. La
+# libreria era giusta e il consumatore no — che e' esattamente il difetto
+# ripetuto tre volte. Per questo l'aggregazione e' stata spostata in `lib/`:
+# non per eleganza, ma perche' li' il presidio puo' eseguirla davvero.
+
+RICHIEDE_AGG = ["ripartisciOre", "aggregaPerPersona"]
+
+
+def _aggrega(turni, ore_per_turno):
+    """Chiama aggregaPerPersona col vero TypeScript.
+
+    `ore` viaggia dentro ogni turno perche' le callback non attraversano il
+    ponte JSON: il modulo le riceve come funzioni costruite di la'.
+    """
+    return esegui_ts(
+        MODULO,
+        "emit(m.aggregaPerPersona(input.turni, (t) => t.dipendente_id, (t) => t.ore))",
+        {"turni": [dict(t, ore=o) for t, o in zip(turni, ore_per_turno)]},
+        richiede=RICHIEDE_AGG,
+    )
+
+
+def _turno(**over):
+    t = {"dipendente_id": "mario", "tipo_giorno": "turno", "mensile": False,
+         "ore_extra": None, "costo_orario": None, "costo_orario_extra": None}
+    t.update(over)
+    return t
+
+
+def test_aggregazione_extra_oltre_le_ore_non_gonfia_il_totale():
+    """Il difetto vero, al punto d'uso: 8 ore con 10 extra restano 8 ore.
+
+    Senza clamp nel chiamante: oreStd 0 + oreExt 10 = 10 ore, e 100 EUR invece
+    di 80. E' il mutante che sopravviveva ai test sulla sola ripartisciOre.
+    """
+    r = _aggrega([_turno(ore_extra=10, costo_orario=10)], [8.0])
+    assert r["oreStd"]["mario"] + r["oreExt"]["mario"] == 8.0
+    assert r["costoTot"]["mario"] == 80.0
+
+
+def test_aggregazione_somma_piu_turni_della_stessa_persona():
+    r = _aggrega(
+        [_turno(ore_extra=2, costo_orario=10), _turno(ore_extra=1, costo_orario=10)],
+        [8.0, 6.0],
+    )
+    assert r["oreStd"]["mario"] == 11.0     # (8-2) + (6-1)
+    assert r["oreExt"]["mario"] == 3.0
+    assert r["costoTot"]["mario"] == 140.0  # 14 ore x 10
+
+
+def test_aggregazione_tariffa_extra_maggiorata():
+    r = _aggrega([_turno(ore_extra=2, costo_orario=10, costo_orario_extra=15)], [8.0])
+    assert r["costoStd"]["mario"] == 60.0
+    assert r["costoExt"]["mario"] == 30.0
+    assert r["costoTot"]["mario"] == 90.0
+
+
+def test_aggregazione_riposi_e_assenze_restano_fuori():
+    """Contarli diluirebbe la media oraria mostrata in card."""
+    for tipo in ("riposo", "ferie", "malattia"):
+        r = _aggrega([_turno(tipo_giorno=tipo, costo_orario=10)], [8.0])
+        assert r["oreStd"] == {}, tipo
+        assert r["costoTot"] == {}, tipo
+
+
+def test_aggregazione_turno_senza_tariffa_conta_le_ore_ma_non_il_costo():
+    """Senza costo_orario non si inventa un costo: e' il caso dei 107 turni reali."""
+    r = _aggrega([_turno(costo_orario=None)], [8.0])
+    assert r["oreStd"]["mario"] == 8.0
+    assert r["costoTot"] == {}
+
+
+def test_aggregazione_riga_mensile_usa_il_lordo_non_la_tariffa():
+    """Dalla busta paga il costo e' un dato, non un ricalcolo."""
+    r = _aggrega(
+        [_turno(mensile=True, lordo_mensile=2000, importo_extra=300, ore_extra=20)],
+        [160.0],
+    )
+    assert r["costoStd"]["mario"] == 1700.0
+    assert r["costoExt"]["mario"] == 300.0
+    assert r["costoTot"]["mario"] == 2000.0
+    assert r["oreExt"]["mario"] == 20.0
+
+
+def test_aggregazione_tiene_separate_le_persone():
+    r = _aggrega(
+        [_turno(dipendente_id="mario", costo_orario=10),
+         _turno(dipendente_id="lucia", costo_orario=20)],
+        [8.0, 4.0],
+    )
+    assert r["costoTot"]["mario"] == 80.0
+    assert r["costoTot"]["lucia"] == 80.0
+    assert r["oreStd"]["lucia"] == 4.0
+
+
+# ── il costo del singolo turno ───────────────────────────────────────────────
+# Stessa formula in tre punti (tab desktop, /m, riepilogo mensile) e uno era
+# rimasto indietro. Ora e' una sola funzione, provata qui.
+
+RICHIEDE_COSTO = ["ripartisciOre", "costoTurnoGiornaliero"]
+
+
+def _costo(ore, extra, co, coExt=None):
+    return esegui_ts(
+        MODULO,
+        "emit(m.costoTurnoGiornaliero(input.ore, input.extra, input.co, input.coExt))",
+        {"ore": ore, "extra": extra, "co": co, "coExt": coExt},
+        richiede=RICHIEDE_COSTO,
+    )
+
+
+def test_costo_turno_senza_tariffa_e_zero_non_un_errore():
+    """Il caso dei 107 turni reali: costo_orario NULL su tutti."""
+    assert _costo(8.0, 2.0, None) == 0
+
+
+def test_senza_tariffa_standard_non_si_paga_nemmeno_lo_straordinario():
+    """costo_orario NULL ma costo_orario_extra valorizzato: totale 0, non 30.
+
+    Il guard `if (costoOrario == null) return 0` sembra ridondante — un mutante
+    che lo sostituisce con `costoOrario ?? 0` passa tutti gli altri test, perche'
+    moltiplicare per zero da' comunque zero. Ma con la sola tariffa extra
+    impostata il fallback inventa **30 EUR** da un turno di cui non conosciamo
+    il costo, e quel numero finirebbe nel MOL. Misurato affiancando le due
+    versioni, non dedotto: il mutante era sopravvissuto e diceva che mancava
+    questo test, non che la riga fosse inutile.
+    """
+    assert _costo(8.0, 2.0, None, 15.0) == 0
+
+
+def test_costo_turno_extra_oltre_le_ore_non_gonfia_l_importo():
+    """8 ore a 10 EUR restano 80, anche dichiarando 10 ore di straordinario."""
+    assert _costo(8.0, 10.0, 10.0) == 80.0
+
+
+def test_costo_turno_tariffa_extra_si_applica_solo_alle_extra():
+    assert _costo(8.0, 2.0, 10.0, 15.0) == 90.0     # 6x10 + 2x15
+
+
+def test_costo_turno_senza_tariffa_extra_usa_quella_standard():
+    assert _costo(8.0, 2.0, 10.0, None) == 80.0
+
+
+def test_costo_turno_tutto_straordinario():
+    assert _costo(6.0, 6.0, 10.0, 20.0) == 120.0

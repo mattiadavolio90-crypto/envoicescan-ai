@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
-import { ripartisciOre } from "@/lib/ore-turno";
+import { ripartisciOre, costoTurnoGiornaliero } from "@/lib/ore-turno";
 
 // ─── Wrapper Movimenti: Incassi / Spese / Turni ─────────────────────────────────
 // Questa e' la sezione "Movimenti" della bottom nav (ex "Turni"): raccoglie i
@@ -967,10 +967,7 @@ function TurniBody() {
           giorniLavorati++;
           const ore = calcolaOreTotali(t);
           oreLavorate += ore;
-          const std = t.costo_orario ?? 0;
-          const ext = t.costo_orario_extra ?? std;
-          const { ordinarie: oreStd, extra: oreExt } = ripartisciOre(ore, t.ore_extra);
-          costoTot += std * oreStd + ext * oreExt;
+          costoTot += costoTurnoGiornaliero(ore, t.ore_extra, t.costo_orario, t.costo_orario_extra);
         } else if (tipo === "ferie") { giorniFerie++; costoTot += t.importo_a_carico ?? 0; }
         else if (tipo === "malattia") { giorniMalattia++; costoTot += t.importo_a_carico ?? 0; }
         else if (tipo === "riposo") { giorniRiposo++; }

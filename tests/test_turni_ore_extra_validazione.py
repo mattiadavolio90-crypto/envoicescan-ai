@@ -216,3 +216,30 @@ def test_mensile_extra_negative_rifiutate_con_il_messaggio_giusto():
         with pytest.raises(HTTPException) as e:
             workspace.ws_personale_crea_mensile(body, authorization="Bearer x")
     assert "negative" in e.value.detail
+
+
+def test_mensile_extra_negative_rifiutate_anche_in_aggiornamento():
+    """Il negativo e' l'altro asse dello stesso bypass: crea valido, poi correggi.
+
+    Non e' simmetrico all'eccesso: il clamp `min(extra, ore)` dei lettori
+    difende solo dall'ALTO, quindi un valore sotto zero arriva intatto in
+    margini.py, dove `ore - extra` cresce e **gonfia** costo_dipendenti. Il
+    dialog non lo permette, ma l'API si chiama anche direttamente.
+    """
+    with pytest.raises(HTTPException) as e:
+        _aggiorna_mensile(_MENSILE, ore_extra=-5)
+    assert e.value.status_code == 400
+    assert "negative" in e.value.detail
+
+    with pytest.raises(HTTPException) as e:
+        _aggiorna_mensile(_MENSILE, importo_extra=-100)
+    assert e.value.status_code == 400
+    assert "negativo" in e.value.detail
+
+
+def test_giornaliero_extra_negative_rifiutate_anche_in_aggiornamento():
+    """Lo stesso asse sul ramo giornaliero: gia' coperto, qui reso esplicito."""
+    with pytest.raises(HTTPException) as e:
+        _aggiorna(_ESISTENTE, ore_extra=-2)
+    assert e.value.status_code == 400
+    assert "negative" in e.value.detail
