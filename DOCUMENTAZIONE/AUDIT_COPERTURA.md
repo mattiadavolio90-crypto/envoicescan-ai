@@ -42,10 +42,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 57.173 |
-| Frontend (`apps/web/src/`, esclusi i binari) | 53.764 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.847 |
+| Frontend (`apps/web/src/`, esclusi i binari) | 53.795 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.493** |
+| **TOTALE APP** | **114.198** |
 
 > Ri-misurato il **5/09/2026** coi comandi qui sopra (dopo `85328bf`). Il backend
 > **cala di 220 righe** rispetto al 4/09: 286 rimosse come codice morto dalla
@@ -57,8 +57,8 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 56.854 | 0 | **100%** |
-| Frontend | 27.210 letti su 53.764 | ~26.554 | **51%** |
+| Backend | 56.847 | 0 | **100%** |
+| Frontend | 27.210 letti + 22.516 parziali su 53.795 | **4.069** | **92%** |
 | Edge Functions | 3.556 | 0 | **100%** |
 | **App intera** | **82.792** | **31.701** | **72%** |
 
@@ -71,7 +71,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Backend Python — 57.173 righe
+## Backend Python — 56.847 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -88,16 +88,16 @@ non sa montare. È un limite dichiarato, non una svista.
 | `utils/` | 2.294 | 📖 letto | **5/09**: tutti gli 11 file mappati (chiamanti runtime verificati uno per uno). Rimossi `page_setup.py` e `period_helper.py` — **zero chiamanti**, il primo non importabile in produzione — e `patch_streamlit_width_api`. Corretta l'unica query su `fatture` senza soft-delete di tutto `utils/` (`validation.py`). Nuovo presidio su `fetch_all`, **3/3 mutanti** |
 | `config/` | 2.433 | 📖 letto | **contiene i prompt AI** — la regola di dominio n.1. **3/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §2): 29 categorie coerenti, 1.268 chiavi validate, 12 mojibake riparate con presidio |
 | `services/` — riparto, foodcost, radar, price_impact | 1.642 | 📖 letti | **5/09**: letti per intero. Il riparto **misurato sano a DB** (0 categorie fuori dal 100%, 0 importi che non quadrano su 171 riparti). Corretti 2 difetti latenti: quote senza paginazione (24% del cap PostgREST), foodcost che saltava la riga rotta |
-| `services/` (gli ultimi 15 moduli) | 4.828 | 📖 letti | **5/09**: inventario funzioni + chiamanti runtime + query + soft delete + fallback per tutti e 15. Corretti **2 difetti**: il pool dei suggerimenti Tag si fermava alla millesima riga (5 sedi su 11 sopra il cap vedevano ~450 prodotti su ~1.100) e lo Scadenziario, con lo Step 3 rotto, si presentava pieno ma con **tutte** le fatture prive di scadenza (4,4 M€ invisibili, nessun errore a schermo). **280 righe di codice morto rimosse** (blocco M7 costi AI mai collegato, `classifica_via_worker`, `get_documenti_list` con la sua cache irraggiungibile, `dismiss_all_inbox_notifications`). **4 mutanti / 4 uccisi**, uno per volta. Dettaglio: `documenti_service` 952, `tag_suggestion_service` 1.094, `tag_analytics` 488, `notification_inbox` 325, `personale_export` 291, `worker_client` 206, `ai_cost` 191, `__init__` 259, `multisede_routing` 223, `session_service` 219, `_streamlit_shim` 137, `upload_policy` 134, `consumi_service` 134, `worker_metrics` 106, `telegram_service` 69 |
+| `services/` (gli ultimi 15 moduli) | 4.821 | 📖 letti | **5/09**: inventario funzioni + chiamanti runtime + query + soft delete + fallback per tutti e 15. Corretti **2 difetti**: il pool dei suggerimenti Tag si fermava alla millesima riga (5 sedi su 11 sopra il cap vedevano ~450 prodotti su ~1.100) e lo Scadenziario, con lo Step 3 rotto, si presentava pieno ma con **tutte** le fatture prive di scadenza (4,4 M€ invisibili, nessun errore a schermo). **280 righe di codice morto rimosse** (blocco M7 costi AI mai collegato, `classifica_via_worker`, `get_documenti_list` con la sua cache irraggiungibile, `dismiss_all_inbox_notifications`). **4 mutanti / 4 uccisi**, uno per volta. Dettaglio: `documenti_service` 945, `tag_suggestion_service` 1.094, `tag_analytics` 488, `notification_inbox` 325, `personale_export` 291, `worker_client` 206, `ai_cost` 191, `__init__` 259, `multisede_routing` 223, `session_service` 219, `_streamlit_shim` 137, `upload_policy` 134, `consumi_service` 134, `worker_metrics` 106, `telegram_service` 69 |
 
 **Backend: copertura dopo il 5/09.** Ri-sommata la colonna (non per delta):
 
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
-| 📖 letto integralmente | 27.425 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.828** |
+| 📖 letto integralmente | 27.418 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.821** |
 | 🔍 / 🟠 parziale | 29.429 | 52% | `fastapi_worker` 8.898, `routers/` 16.762, `upload_handler` 2.282, `margine_service` 1.487 |
 | 🔴 mai guardato | **0** | 0% | — **la zona rossa del backend e' chiusa il 5/09** |
-| **Totale backend** | **56.854** | 100% | ✅ la colonna chiude: 27.425 + 29.429 = 56.854, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
+| **Totale backend** | **56.847** | 100% | ✅ la colonna chiude: 27.418 + 29.429 = 56.847, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
 
 > **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
 > tutto merito della lettura: **286 righe erano codice morto** e sono state
@@ -151,7 +151,7 @@ mutazione: rifarle è costo senza copertura nuova.
 
 ---
 
-## Frontend — 53.764 righe
+## Frontend — 53.795 righe
 
 > ⚠️ **Ri-misurato il 4/09: 53.764 righe (+525 dal 3/09).** La tabella qui sotto
 > è ferma alla ripartizione per area del 3/09 e **non è stata ri-sommata**: le
@@ -222,18 +222,25 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
-| 📖 Letto integralmente | 58.191 | **51%** | 27.425 backend + 27.210 frontend + 3.556 Edge |
+| 📖 Letto integralmente | 58.184 | **51%** | 27.418 backend + 27.210 frontend + 3.556 Edge |
 | 🔍 / 🟠 Auditato o parzialmente coperto | 51.945 | 45% | 29.429 backend + 22.516 frontend |
 | 🔴 Mai guardato | 4.069 | **4%** | **0 backend** + 4.069 frontend — la zona rossa e' tutta e solo nel frontend |
-| **Totale app (misurato)** | **114.205** | 100% | 56.854 + 53.795 + 3.556 |
+| **Totale app (misurato)** | **114.198** | 100% | 56.847 + 53.795 + 3.556 |
 
 > **Ri-sommato il 5/09/2026 (sera), dopo `5fb12b7`.** Le tre righe fanno
-> **114.205** contro un totale misurato di **114.205**: **scarto 0**. Non è un
+> **114.198** contro un totale misurato di **114.198**: **scarto 0**. Non è un
 > arrotondamento fortunato — è la ri-somma della colonna backend modulo per
-> modulo (27.425 + 29.429) più frontend ed edge ri-misurati coi comandi in cima
+> modulo (27.418 + 29.429) più frontend ed edge ri-misurati coi comandi in cima
 > al file. Il backend **cala di 319 righe** rispetto alla mattina: 280 erano
 > codice morto rimosso, il resto sono commenti sostituiti al netto dei fix.
 > **Da qui in poi la zona rossa è solo frontend**: 4.069 righe.
+>
+> ⚠️ **Ri-corretto dopo `59ff32a`**: la prima stesura di stasera diceva backend
+> 56.854 e 15 moduli 4.828 — cifre prese **prima** del commit che ha rimosso il
+> decoratore orfano (7 righe). Il totale in cima era addirittura rimasto a
+> 57.173/114.493, di stamattina: **tre cifre diverse nello stesso file**. È lo
+> stesso errore che questo file documenta da giorni — misurare prima dell'ultima
+> modifica invece che nel momento in cui si scrive il numero.
 >
 > **La stesura precedente di questa tabella era ferma al 3/09** e portava cifre
 > che non si conciliavano con quelle di testa (totale 113.709, backend rosso

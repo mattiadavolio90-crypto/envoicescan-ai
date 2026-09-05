@@ -2598,7 +2598,7 @@ stessa pagina — il difetto «fix parziale» già pagato dal progetto.
 
 **Perimetro.** I 15 moduli mai auditati. Il prompt diceva 5.147 righe: **ri-misurato,
 regge** (`find services -maxdepth 1 -name '*.py' | xargs wc -l`), unico caso del ciclo
-in cui una cifra ereditata era esatta. Dopo il lavoro sono **4.828**.
+in cui una cifra ereditata era esatta. Dopo il lavoro sono **4.821**.
 
 **Due correzioni al prompt, prima di lavorarci.**
 - `personale_export_service` era dato «0 test»: ne ha 5 (`tests/test_turni_mensili.py:1060-1195`).
