@@ -24,6 +24,19 @@ Fattura (SDI o upload) → parsing → categorizzazione AI → DB → margini/re
 
 Tutto il resto del prodotto è al servizio di questa catena.
 
+**Quanto ci passa dentro** (misurato il **6/9/2026** — ri-misuralo, non
+ereditarlo): 7 account, **12 sedi** di cui 11 con fatture e 8 sopra le mille
+righe. **39.466 righe fattura per 4,05 M€**, di cui 184 ancora
+`Da Classificare` (2.103 €) e 864 ripartite su gruppo. **14,77 M€ di incassi**
+su 1.064 giornate e 6 sedi. Ultima fattura e ultimo incasso: **5/9/2026** — il
+sistema è alimentato ogni giorno, non è un archivio.
+
+```sql
+-- il conto sopra, per rifarlo
+SELECT count(*), count(DISTINCT ristorante_id), round(sum(totale_riga)::numeric,0)
+FROM fatture WHERE deleted_at IS NULL;
+```
+
 ---
 
 ## 2. Dove sta cosa
@@ -32,7 +45,7 @@ Tutto il resto del prodotto è al servizio di questa catena.
 |---|---|
 | Una pagina che il cliente vede | `apps/web/src/app/(app)/<pagina>/` |
 | Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive |
-| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (158 route, solo proxy) |
+| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (170 route, solo proxy) |
 | Logica di business | `services/*.py` |
 | Un endpoint del worker | `services/routers/*.py` (12 router) |
 | Schema DB | `supabase/migrations/` (canonico) |
@@ -57,7 +70,7 @@ Tutto il resto del prodotto è al servizio di questa catena.
 `account` · `admin` · `cestino` · `fatture` · `gruppo` · `margini` · `prezzi` ·
 `ricavi` · `riparto` · `scadenziario` · `tag` · `workspace`
 
-`services/fastapi_worker.py` (~7.700 righe) tiene ancora briefing, KPI Home e
+`services/fastapi_worker.py` (**8.901 righe**, misurate il 6/9/2026) tiene ancora briefing, KPI Home e
 infrastruttura. Non è un errore da correggere di corsa: lo split è già stato
 fatto una volta (11.190 → 4.400 righe) e un tentativo di scorciatoia con
 `__getattr__` ha rotto 9 router in produzione. Se lo tocchi, usa wrapper
@@ -67,9 +80,22 @@ espliciti.
 
 ## 3. Perché è così (le decisioni che non si leggono dal codice)
 
-**Il frontend non calcola niente.** Next.js proxia e disegna; ogni conto sta nel
-worker. Motivo: un solo posto dove la logica può divergere. Le 158 route in
-`api/*` sono deliberatamente stupide.
+**Il frontend non calcola gli importi che contano.** Next.js proxia e disegna;
+il MOL, i margini, il riparto e il foodcost li calcola il worker. Motivo: un solo
+posto dove la logica può divergere. Le route in `api/*` sono deliberatamente
+stupide.
+
+> ⚠️ **"Non calcola niente" era vero al primo giro e oggi non lo è più**: in
+> `apps/web/src/lib/` ci sono 49 moduli, e diversi fanno conti veri
+> (`margini.ts`, `foodcost.ts`, `home-kpi.ts`, `ore-turno.ts`). Sono derivazioni
+> di presentazione — ordinamenti, soglie, ripartizioni di un totale già
+> calcolato — e **stanno in `lib/` proprio perché lì i test eseguono il
+> TypeScript vero** (30 file `tests/test_*_frontend.py` via `helpers_ts.py`); un
+> `.tsx` non è testabile. La regola che regge non è "zero calcolo lato client" ma
+> **una sola fonte per ogni regola**: se una formula esiste sia nel worker sia nel
+> frontend, i due valori divergeranno. È già successo quattro volte sul calcolo
+> delle ore turno (05-06/09/2026), l'ultima con lo stesso turno che valeva 30 €
+> nell'export e 0 € a schermo.
 
 **Il worker è separato dalla coda.** `worker` (FastAPI, HTTP) e `queue-worker`
 (`worker/run.py`, nessuna porta) sono due servizi Railway dalla stessa immagine,

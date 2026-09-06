@@ -6,9 +6,9 @@ Analizza fatture elettroniche XML/P7M/PDF, categorizza prodotti con AI (GPT-4.1-
 genera report su margini, prezzi fornitori, foodcost.
 
 **Owner:** Mattia D'Avolio — sviluppatore singolo.
-**In produzione dal 1 luglio 2026.** 7 account cliente attivi / 11 punti vendita
-(misurato il 29/8/2026): 4 con migliaia di righe fattura e accesso nell'ultima
-settimana, gli altri con pochi dati.
+**In produzione dal 1 luglio 2026.** 7 account cliente / 12 sedi, 11 con fatture
+(misurato il 6/9/2026): 8 oltre le mille righe, 4 alimentate nell'ultima
+settimana. Volumi in `DOCUMENTAZIONE/MAPPA_TECNICA.md` §1.
 
 > Le cifre di questo file vanno **ri-misurate**, non ereditate: il 29/8/2026 la
 > riga sopra diceva ancora «2 clienti in test» e «go-live: 1 luglio» a due mesi
@@ -33,11 +33,11 @@ nella git history. Il container Railway serve il worker FastAPI.
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` (8.749 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker API | `services/fastapi_worker.py` (8.901 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
-| Migrations | `supabase/migrations/*.sql` (canonico, 138 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | 12.633 test pytest (molti parametrizzati) + 101 test Deno per le Edge Functions. Sul frontend: nessun runner npm — vedi Trappole |
+| Migrations | `supabase/migrations/*.sql` (canonico, 139 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
+| Test | `tests/*.py` | 13.010 test pytest (molti parametrizzati) + 101 test Deno per le Edge Functions. Sul frontend: nessun runner npm — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
@@ -167,7 +167,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
 - **`/m` è un frontend separato**, non responsive: va allineato a mano.
 - **Il frontend ha una rete, ma copre solo la logica pura.** Niente runner npm
   (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test). Sono
-  **22 file `tests/test_*_frontend.py`** che eseguono il TypeScript vero con node
+  **30 file `tests/test_*_frontend.py`** che eseguono il TypeScript vero con node
   (`tests/helpers_ts.py`): coprono `lib/`, **non** rendering, hook, stato ed
   effetti. Per testare logica in un `.tsx`, va prima estratta in `lib/`.
 - **Né `tsc` né un test verde provano che il codice funzioni.** `tsc --noEmit`

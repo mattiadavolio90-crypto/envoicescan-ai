@@ -236,7 +236,22 @@ torna non è una rete. Riporta il bilancio e **perché** i sopravvissuti
 sopravvivono.
 
 ⚠️ Se il pattern non esiste nel sorgente non hai mutato niente: «sopravvissuto» non
-misura nulla.
+misura nulla. Vale anche se **riscrivi la stessa logica in altra forma**: sembra
+una mutazione, non lo è.
+
+**Un sopravvissuto è una domanda, non un verdetto**, e si risponde **eseguendo
+le due versioni affiancate** su casi limite — non ragionandoci. Se divergono su
+un input reale, la riga serve e **manca un test**; se non divergono mai, è
+ridondante. Nelle 18 prove del 05-06/09/2026 i 4 sopravvissuti erano **tutti**
+test deboli, nessuno codice ridondante: un caso float che non divergeva
+(`7.7-0.3` fa 7.4 esatto), un caso mancante, un assert su un aggregato, due
+parametri mai incrociati.
+
+**Muta anche il punto d'uso, non solo la funzione.** Un mutante nel chiamante è
+sopravvissuto a 1.100 test verdi perché i presidi provavano la libreria estratta
+e non chi la chiama — ed è il chiamante che si era rotto tre volte. Se la logica
+sta in un `.tsx` non testabile, estrarla in `lib/` è ciò che rende possibile la
+prova, non un abbellimento.
 
 ---
 
