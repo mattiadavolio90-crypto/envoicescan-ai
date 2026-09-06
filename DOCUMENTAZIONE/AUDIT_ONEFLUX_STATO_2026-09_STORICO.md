@@ -35,6 +35,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **R10 — il guasto travestito da «niente da fare»** | chiuso su 7 pagine cliente: 4,4 M€ non spariscono più |
 | 03/09 | **R5 + R6 — le due ipotesi che non reggevano** | chiusi: nessuna sessione propria, nessuna migration |
 | 03/09 | **R11 — la regola anche in SQL** | chiuso: le 7 RPC vive legate alla costante Python |
+| 06/09 | **Router del worker — `margini.py`** | chiusa — 7/8 mutanti; un tab leggeva lo snapshot e l'altro l'override: **0,00 EUR invece di 402.168** su una sede, 4 sedi toccate |
 
 ---
 
@@ -3222,3 +3223,146 @@ già capovolto tre volte la premessa su `agenda/`.
 **I router del worker**, non il frontend: 16.768 righe con ~4.000 lette, backend,
 dove passano i soldi. Le 3.316 righe rosse di frontend non muovono denaro.
 Prompt pronto in `docs/piani/PROMPT_ROUTER_ULTIMA_ZONA.md`.
+
+---
+
+## Router del worker — `margini.py` — 06/09/2026
+
+**Prima dimensione dei router** (`services/routers/`, 16.897 righe misurate, non
+16.768 come portavano tre righe diverse del contatore). Area scelta dopo la
+misura, non dal prompt: `margini.py` è il MOL, tocca una regola di dominio ed è
+il router mal presidiato con più denaro dietro (`margini_mensili`: 75 righe,
+9 sedi, 14,8 M€).
+
+### La premessa del prompt era sovrastimata
+
+`PROMPT_ROUTER_ULTIMA_ZONA.md` dava una tabella «endpoint testati per router».
+Ri-contando quanti path di endpoint compaiono davvero nel testo dei test:
+`fatture.py` **4/15** (il prompt diceva 8), `margini.py` **5/12**, `ricavi.py`
+**5/9** (diceva 7/8). Le cifre grosse invece reggono tutte: 39.466 righe fattura
+/ 4,05 M€ / 11 sedi, `prezzi_preferiti` 8 righe, turni a esposizione zero.
+
+### Il difetto: due tab della stessa pagina, due fatturati
+
+`get_analisi_centri` leggeva `margini_mensili.fatturato_netto` (lo snapshot).
+`get_analisi_avanzata` — **stesso file, stessa pagina** — fondeva già l'override
+«modalità mensile». Per chi inserisce il fatturato come totale del mese lo
+snapshot resta **0**: i due tab mostravano fatturati diversi sugli stessi mesi.
+
+Misurato a DB, **4 sedi** interessate:
+
+| Sede | Prima | Dopo |
+|---|---:|---:|
+| `bdda08d1…` | **0,00 €** (9 mesi su 9 a zero) | **402.168,22 €** |
+| `86300227…` | 378.965,36 € | 449.060,58 € |
+| `dcf1996e…` | 219.232,18 € | 249.168,21 € |
+| `f16aebe5…` | 36.701,32 € | 45.181,32 € |
+
+**L'eccezione nella guardia di dominio era la causa, non l'effetto.** Diceva «lo
+split per centro non esiste nell'override mensile»: vero per lo **split**, falso
+per il **totale netto** — e `analisi-avanzata` lo dimostrava già, fondendo il
+totale e tenendo lo split dietro `split_attivo`. Rimossa: ora la guardia
+sorveglia anche questo endpoint.
+
+Allineato anche l'arrotondamento delle 5 percentuali di `/api/margini/kpi` da 1 a
+2 decimali, come `/api/margini/analisi`. Non è estetica: `food_cost_perc`
+alimenta la soglia del trigger Consulenza (default **38**, confronto stretto), e
+un food cost in (38,00; 38,05] arrotondato a 38,0 non lo faceva scattare. A
+schermo è invisibile: il frontend riformatta tutto con `toFixed(0)`.
+
+### Prova per mutazione — 8 mutanti, 7 uccisi, 1 che ha misurato il presidio
+
+Backup `.bak` preso da albero pulito **prima del primo**, un mutante per volta.
+
+| # | Mutante | Esito |
+|---|---|---|
+| 1 | Rimuove l'uso dell'override in `analisi-centri` | ucciso da 3 test |
+| 2 | Whitelist `_CELL_FIELDS_EDITABILI` disattivata | ucciso da 6 casi |
+| 3 | Whitelist che rifiuta **tutto** | ucciso dai 4 casi legittimi |
+| 4 | Rimuove `max(0.0, …)` sui negativi | ucciso |
+| 5 | `food_cost_perc` torna a 1 decimale | **sopravvissuto**, poi ucciso |
+| 6 | `mol_perc` torna a 1 decimale | ucciso da 3 casi |
+| 7 | Rimuove l'uso dell'override, lascia la chiamata | ucciso dai 3 funzionali |
+| 8 | Rimuove anche la chiamata `_load_mensile_overrides` | ucciso dalla guardia |
+
+**Il 5° è la lezione della sessione.** Il presidio confrontava l'helper
+`_aggrega_mensili_margini` con l'endpoint `/analisi`: l'arrotondamento vive nella
+**response** di `get_margini_kpi`, che il test non chiamava mai. Riscritto per
+chiamare entrambi gli endpoint — poi ucciso da tutti e 3 gli scenari.
+
+**Il 7° e l'8° delimitano il perimetro della guardia di dominio**, e vanno letti
+insieme: il test `test_letture_ricavi_da_margini_mensili_applicano_override`
+rileva l'**assenza della chiamata** a `_load_mensile_overrides`, non il mancato
+**uso** del risultato. Col mutante 7 (chiamata presente, risultato ignorato)
+resta verde. È un limite strutturale di un test che legge il sorgente, non
+introdotto qui e valido per tutti i chiamanti: la rete vera sono i 3 test
+funzionali. Corretta comunque la funzione perché ignori le righe di **commento**
+(`_senza_commenti`): senza, un commento che nomina `ricavi_modalita_mensile`
+basta a far passare la guardia — trovato dal code-reviewer.
+
+### I presidi (18 casi nuovi, su 3 file esistenti)
+
+Tutti chiamano **l'endpoint vero**, mai la formula ricalcolata, e asseriscono le
+**componenti** oltre al totale (due errori opposti quadrano la somma).
+
+- `test_analisi_margini_quote_riparto.py`: override applicato, fallback sullo
+  snapshot, precedenza dell'override, e **coerenza `analisi-centri` ↔
+  `analisi-avanzata`** — la rete contro il prossimo fix parziale.
+- `test_kpi_periodo_quote_riparto.py`: coerenza `/kpi` ↔ `/analisi` su MOL,
+  1° margine, costi, personale e percentuali (3 scenari parametrizzati, scelti
+  perché cadono male sull'arrotondamento).
+- `test_margini_endpoint_rpc.py`: whitelist di `POST /margini/cella` nelle **due**
+  direzioni (rifiuta `mol`, `quote_riparto_*`, `ristorante_id`, `user_id`;
+  accetta i 4 campi editabili), più la fotografia del clamp sui negativi.
+
+### Misurato e NON corretto — dichiarato con la sua ragione
+
+1. **Snapshot `margini_mensili.mol` stantio**: 43 righe su 75 divergono dalla
+   formula viva, scarto massimo **473.526 €**. **Nessun consumatore lo legge**:
+   `_kpi_periodo` ricalcola deliberatamente (e lo documenta), `carica_margini_anno`
+   seleziona la colonna senza usarla. Stessa classe di `mol_perc` (Q3, chiusa il
+   05/09). Latente.
+2. **`n_attivi > 0` vs `netto > 0`** fra `/analisi` e `/kpi`: **non divergono**.
+   `get_margini_analisi` ha una guardia doppia — il ramo esterno contiene comunque
+   `if tot_netto > 0` su ogni percentuale. Fondendo l'override, i mesi con costi e
+   senza ricavi sono **4 (2 sedi × 2 mesi) per 927 €**, e `n_attivi` non è mai 0.
+3. **Override senza riga `margini_mensili`**: entrambi gli endpoint iterano sulle
+   righe snapshot, quindi un mese con solo override sarebbe invisibile. Misurato:
+   **0 casi su 17 override, 0 €**. Latente, e identico in `analisi-avanzata`.
+4. **Split per centro incoerente col nuovo totale**: **1 caso** a DB (sede
+   `86300227`, giugno: totale 73.322 € contro somma centri 3.227 €). Non è una
+   regressione — l'override non contiene lo split, per progetto, e `analisi-avanzata`
+   si comporta già così. Il frontend maschera i centri senza split dietro
+   `has_fatturato` / `fatturato_split_attivo`: nessuna percentuale assurda a video.
+5. **`margine_service.py`, blocco Streamlit morto**: non solo `calcola_risultati`
+   (l'unica copia della formula MOL che **non** somma le quote di riparto), ma
+   anche `build_transposed_df`, `export_excel_margini`, `calcola_kpi_anno`,
+   `genera_commenti_kpi` — **zero chiamanti di produzione**. Il resto del modulo è
+   vivo (`calcola_costi_automatici_per_anno_sql`, 6 call site;
+   `calcola_costi_automatici_gruppo_sql` alimenta la catena). Rimuoverlo è una
+   dimensione sua, non la coda di questa.
+6. **La formula MOL è scritta in 7 punti** (5 Python + 2 RPC SQL). Le 5 Python
+   sono **identiche** — verificate riga per riga — quindi la duplicazione oggi non
+   produce alcuna divergenza. Unificarle tocca la catena e una copia non
+   raggiungibile da pytest: debito dichiarato, non chiuso in silenzio.
+
+### Code-reviewer
+
+Verde alla prima passata, con 5 rilievi non bloccanti. Due sono stati **corretti
+qui**: la guardia che passava su un commento (mutante 7-8) e la soglia food cost
+citata a 35 nel commento del codice quando il default è **38** — cifra scritta
+senza misurarla, l'errore ricorrente di questo progetto. Gli altri tre sono i
+punti 3, 4 e 5 qui sopra.
+
+### Verifica
+
+Suite **13.028 passed**, 44 skipped (baseline pre-lavoro: 13.010).
+`export_openapi.py --check-drift`: nessun drift, 196 endpoint.
+`check_documentazione.py` pulito. **Nessun push** — coda di 1 commit non mio.
+
+### Cosa resta dei router
+
+11 router su 12. `fatture.py` è il prossimo candidato (4/15 endpoint nominati nei
+test, 4,05 M€, alimentato ieri); `admin.py` è il più grande e mal coperto ma serve
+**solo lo staff** — ultimo, non primo. `prezzi.py` è il meno presidiato (10%) e la
+sua tabella ha **8 righe**: area che muove 0 €.

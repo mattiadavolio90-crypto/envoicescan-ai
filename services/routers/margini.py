@@ -1360,8 +1360,8 @@ def get_margini_kpi(
         # pagina (KpiBar da /kpi sopra i tab, CalcoloTab da /analisi sotto) e a 1
         # decimale davano due percentuali diverse sullo stesso numero. Non e' solo
         # estetica: food_cost_perc alimenta la soglia del trigger Consulenza
-        # (lib/trigger-servizi.ts:144, confronto stretto `fc > soglia`), che con
-        # 35,04 arrotondato a 35,0 non scattava.
+        # (lib/trigger-servizi.ts, confronto stretto `fc > soglia`, default 38):
+        # un food cost in (38,00; 38,05] arrotondato a 38,0 non lo faceva scattare.
         food_cost_perc=round(cur["fb"] / netto * 100, 2) if netto > 0 else 0.0,
         primo_margine_perc=round(cur["pm"] / netto * 100, 2) if netto > 0 else 0.0,
         spese_perc=round(cur["spese"] / netto * 100, 2) if netto > 0 else 0.0,

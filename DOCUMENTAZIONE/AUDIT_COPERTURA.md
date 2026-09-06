@@ -103,7 +103,7 @@ non sa montare. È un limite dichiarato, non una svista.
 | `margine_service.py` | 1.487 | 🔍 di rimbalzo | **regola di dominio MOL**; 3/9 il filtro «Da Classificare» viene dalla costante (R6); 4/09 allineato al flag Fase 4 ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §3) |
 | `fastapi_worker.py` | 8.901 | 🔍 per router | voce Salute coperta con 10 test dopo il bug del 2/9; 3/9 le 4 copie del filtro «Da Classificare» legate alla costante (R6) |
 | `daily_briefing_service.py` | 1.660 | 📖 letto | **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §4): letto riga per riga, impianto confermato; chiusi 2 difetti latenti (importi all'inglese, validatore entusiasmo) |
-| `routers/` (tutti) | 16.768 | 🟠 parziale | ~4.000 letti nel ciclo 07; **216 endpoint su 216 protetti** e guardia a livello di router (R5) — perimetro *sicurezza* chiuso, *logica* no. **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §6, prima passata): `scadenziario` — gli avvisi erano **muti da giugno**. 4/09 **Q1**: `gruppo.py` segnale «margine in calo»; **Q2**: food cost di `gruppo_overview` e `_kpi_periodo` allineati al **netto** (erano gli unici 2 punti sul lordo); **Q4**: `riparto.py` + proiezione per centro **letti e misurati** — non un bug, coda di dati |
+| `routers/` (tutti) | 16.915 | 🟠 parziale | **6/09: `margini.py` (1.377) letto e chiuso** — `get_analisi_centri` leggeva lo snapshot mentre il gemello `get_analisi_avanzata` fondeva gia' l'override mensile: **4 sedi** con fatturato sbagliato, una a **0,00 EUR invece di 402.168**. Rimossa l'eccezione nella guardia di dominio (era vera per lo split, falsa per il totale). 8 mutanti, 7 uccisi + 1 che ha misurato il perimetro della guardia. ~4.000 letti nel ciclo 07; **216 endpoint su 216 protetti** e guardia a livello di router (R5) — perimetro *sicurezza* chiuso, *logica* no. **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §6, prima passata): `scadenziario` — gli avvisi erano **muti da giugno**. 4/09 **Q1**: `gruppo.py` segnale «margine in calo»; **Q2**: food cost di `gruppo_overview` e `_kpi_periodo` allineati al **netto** (erano gli unici 2 punti sul lordo); **Q4**: `riparto.py` + proiezione per centro **letti e misurati** — non un bug, coda di dati |
 | `worker/` | 2.411 | 📖 letto | **4/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §5): «gira non presidiato» era **falso** — 7 file di test worker, code in salute (647 fatture, 0 arretrati). Chiuso il retry della coda ricavi-email |
 | `utils/` | 2.294 | 📖 letto | **5/09**: tutti gli 11 file mappati (chiamanti runtime verificati uno per uno). Rimossi `page_setup.py` e `period_helper.py` — **zero chiamanti**, il primo non importabile in produzione — e `patch_streamlit_width_api`. Corretta l'unica query su `fatture` senza soft-delete di tutto `utils/` (`validation.py`). Nuovo presidio su `fetch_all`, **3/3 mutanti** |
 | `config/` | 2.433 | 📖 letto | **contiene i prompt AI** — la regola di dominio n.1. **3/09, sessione Fable** ([`AUDIT_CON_FABLE.md`](AUDIT_CON_FABLE.md) §2): 29 categorie coerenti, 1.268 chiavi validate, 12 mojibake riparate con presidio |
@@ -115,9 +115,9 @@ non sa montare. È un limite dichiarato, non una svista.
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
 | 📖 letto integralmente | 27.422 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.825** |
-| 🔍 / 🟠 parziale | 29.567 | 52% | `fastapi_worker` 8.901, `routers/` **16.897**, `upload_handler` 2.282, `margine_service` 1.487 |
+| 🔍 / 🟠 parziale | 29.585 | 52% | `fastapi_worker` 8.901, `routers/` **16.915**, `upload_handler` 2.282, `margine_service` 1.487 |
 | 🔴 mai guardato | **0** | 0% | — **la zona rossa del backend e' chiusa il 5/09** |
-| **Totale backend** | **56.989** | 100% | ✅ la colonna chiude: 27.422 + 29.567 = 56.989, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
+| **Totale backend** | **57.007** | 100% | ✅ la colonna chiude: 27.422 + 29.585 = 57.007, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta (6/09: +18 righe dal fix override in `margini.py`) |
 
 > **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
 > tutto merito della lettura: **286 righe erano codice morto** e sono state
@@ -154,7 +154,7 @@ voci già coperte da Fable.
 | #3 categorizzazione | `ai_service`, `routers/` | 10 fasi su 10, test per fase | **Sì, con Opus** — regola di dominio #1, flag ancora spento (migration `20260903210000` già applicata: 7 RPC su 7, verificata il 04/09) |
 | #4 briefing | `daily_briefing_service` (1.660) | letto riga per riga, 2 difetti chiusi | **No** |
 | #5 worker | `worker/` (2.411) | «non presidiato» smentito: 7 file di test | **No** |
-| #6 router | `routers/` (16.762) | prima passata: scadenziario muto da giugno | **Sì, con Opus** — 1 router su molti |
+| #6 router | `routers/` (16.915) | 6/09: `margini.py` chiuso (2º router su 12) | **Sì, con Opus** — 10 router ancora da fare |
 
 **Effetto sul contatore, quantificato:** `config/` (2.433) e `worker/` (2.411)
 passano da 🔴 a 📖 — **4.844 righe** che risultavano mai guardate — e
@@ -336,9 +336,11 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 > (2.379 e 2.400 contro 2.411). Un elenco di priorità che invecchia è peggio di
 > nessun elenco: manda a lavorare dove il lavoro è già stato fatto.
 
-1. **I `routers/` sono ora il blocco più grande a copertura parziale** — 16.762
-   righe, ~4.000 lette. Il perimetro *sicurezza* è chiuso (216 endpoint su 216);
-   la *logica* no. È il candidato naturale alla prossima dimensione.
+1. **I `routers/` sono ora il blocco più grande a copertura parziale** — 16.915
+   righe, ~5.400 lette (6/09: `margini.py`). Il perimetro *sicurezza* è chiuso
+   (216 endpoint su 216); la *logica* no. Prossimo candidato **`fatture.py`**:
+   4 endpoint su 15 nominati nei test, 4,05 M€, alimentato ieri. `admin.py` è il
+   più grande e mal coperto ma serve **solo lo staff**: ultimo, non primo.
 2. **`documenti_service` (1.096) e `tag_suggestion_service` (1.087)** sono i due
    moduli rossi più grandi rimasti, e insieme fanno il **42%** del residuo.
    `tag_suggestion` tocca la categorizzazione, cioè la regola di dominio n.1.

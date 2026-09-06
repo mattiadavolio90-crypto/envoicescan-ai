@@ -406,6 +406,20 @@ def _funzione_attorno(testo: str, posizione: int) -> tuple[str, str]:
     return nome, "\n".join(tutte[inizio:fine])
 
 
+def _senza_commenti(corpo: str) -> str:
+    """Il corpo di una funzione senza le righe di commento.
+
+    Senza questo la guardia passa su un COMMENTO che nomina l'override: il
+    06/09 un commento con la parola `ricavi_modalita_mensile` ha reso il test
+    verde su `get_analisi_centri` mentre il codice era stato mutato per NON
+    applicare piu' l'override. Un presidio che legge il sorgente deve leggere
+    il codice, non la prosa che lo circonda.
+    """
+    return "\n".join(
+        riga for riga in corpo.splitlines() if not riga.lstrip().startswith("#")
+    )
+
+
 def _letture_ricavi_senza_override(testo: str) -> list[str]:
     fuori_regola = []
     for match in _LEGGE_MARGINI_MENSILI.finditer(testo):
@@ -417,7 +431,7 @@ def _letture_ricavi_senza_override(testo: str) -> list[str]:
             continue  # scrittura (upsert/update/insert), non una lettura
         if not _CAMPI_RICAVO.search(istruzione):
             continue  # legge coperti/costi/split centri: l'override non c'entra
-        if _APPLICA_OVERRIDE.search(corpo):
+        if _APPLICA_OVERRIDE.search(_senza_commenti(corpo)):
             continue
         fuori_regola.append(f"{nome}(): {' '.join(istruzione.split())[:110]}")
     return fuori_regola
