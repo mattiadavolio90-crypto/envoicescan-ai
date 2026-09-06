@@ -410,6 +410,14 @@ def _funzione_attorno(testo: str, posizione: int) -> tuple[str, str]:
 # di codice: senza toglierli entrambi, `_senza_commenti` copre solo i commenti a
 # riga intera e la guardia resta cieca esattamente come prima. Misurato il 06/09:
 # `gruppo.py` e `ricavi.py` nominano davvero l'override in docstring.
+#
+# ⚠️ Limite noto e MISURATO (06/09): `_COMMENTO_INLINE` tronca la riga al primo
+# `#`, anche quando sta dentro una stringa (`colore = "#fff"; x = ...`). Nel
+# runtime ci sono 58 righe cosi', ma su **nessuna** di esse compare il pattern
+# dell'override: impatto reale **zero casi**, verificato eseguendo la guardia su
+# tutti i sorgenti. Un tokenizer sarebbe esatto, ma fallisce su 1 corpo su 38
+# (IndentationError: il corpo estratto non e' un modulo valido) e li' tornerebbe
+# cieco in silenzio — peggio di un'euristica il cui limite e' scritto qui.
 _DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')
 _COMMENTO_INLINE = re.compile(r"#.*$")
 
