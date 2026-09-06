@@ -412,13 +412,20 @@ def _funzione_attorno(testo: str, posizione: int) -> tuple[str, str]:
 # `gruppo.py` e `ricavi.py` nominano davvero l'override in docstring.
 #
 # ⚠️ Limite noto e MISURATO (06/09): `_COMMENTO_INLINE` tronca la riga al primo
-# `#`, anche quando sta dentro una stringa (`colore = "#fff"; x = ...`). Succede
-# su **27 righe** dei 30 corpi che questa guardia esamina davvero, ma su
-# **nessuna** di esse compare il pattern dell'override: impatto reale **zero
-# casi**. (Una prima stesura diceva 58: era un conteggio su tutto il runtime con
-# un'euristica piu' larga, non sul perimetro della guardia — corretto dopo la
-# terza passata di review, che non riusciva a riprodurre la cifra.)
-# Un tokenizer sarebbe esatto, ma fallisce su 1 corpo su 38
+# `#`, anche quando sta dentro una stringa. Succede su **9 righe** — i colori
+# esadecimali di `margini.py` (`"#6b7280"`) e i titoli markdown del prompt chat
+# in `fastapi_worker.py` (`"\n## Costi per categoria"`) — sui **30 corpi
+# distinti** che questa guardia esamina. Su **nessuna** di esse compare il
+# pattern dell'override: impatto reale **zero casi**, verificato anche per
+# comportamento (disattivando il troncamento, l'esito non cambia su nessun file).
+#
+# La cifra e' stata sbagliata due volte, sempre per lo stesso motivo: contava un
+# insieme piu' largo del fenomeno. Prima 58 (righe di TUTTO il runtime, non dei
+# corpi ispezionati), poi 27 (tutte le righe con un `#`, di cui 18 sono commenti
+# inline veri, che la regex toglie correttamente: quello e' il suo lavoro, non il
+# suo limite). Il numero da guardare e' 9.
+#
+# Un tokenizer sarebbe esatto, ma fallisce su 1 delle 38 estrazioni
 # (IndentationError: il corpo estratto non e' un modulo valido) e li' tornerebbe
 # cieco in silenzio — peggio di un'euristica il cui limite e' scritto qui.
 _DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')
