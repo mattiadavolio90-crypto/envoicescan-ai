@@ -25,7 +25,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | Residuo R2 — `regen_notifiche_utente.py` | eliminato: funzione coperta dal briefing |
 | 05/09 | `(app)/agenda/` + il ponte costo personale→MOL | chiusa — 6/7 mutanti, il 7° dichiarato ridondante |
 | 05/09 (sera) | Modello ore extra invertito + 2 contatori che mentivano | chiusa — 3/3 mutanti; il rosso frontend era 4.069 per errori di conteggio, è **3.316**; Q3 chiusa (colonna morta). Code-reviewer: 3 blocchi alla 1ª passata, verde alla 2ª |
-| 05/09 (notte) | Il terzo consumatore del modello ore extra, e la scrittura che lo permetteva | chiusa — **15/15 mutanti** (3 sopravvissuti alla 1ª stesura, tutti test deboli); l'aggregazione desktop gonfiava monte ore e costo del 25%; regola, aggregazione e costo turno in una fonte unica (`lib/ore-turno.ts`) provata al **punto d'uso**; dato impossibile rifiutato in scrittura su tutti e 4 gli endpoint. Code-reviewer: 2 blocchi (addendo in colonna sbagliata, PATCH mensile senza guardia sui negativi) + il mutante al call-site sopravvissuto |
+| 05/09 (notte) | Il terzo consumatore del modello ore extra, e la scrittura che lo permetteva | chiusa — **17/17 mutanti** (4 sopravvissuti alla 1ª stesura, tutti test deboli); 3 passate di code-reviewer; l'aggregazione desktop gonfiava monte ore e costo del 25%; regola, aggregazione e costo turno in una fonte unica (`lib/ore-turno.ts`) provata al **punto d'uso**; dato impossibile rifiutato in scrittura su tutti e 4 gli endpoint. Code-reviewer: 2 blocchi (addendo in colonna sbagliata, PATCH mensile senza guardia sui negativi) + il mutante al call-site sopravvissuto |
 | 03/09 | Residuo R3 — `card-segnali.tsx` | esclusione motivata: `catena/` al 100% |
 | 03/09 | **Residuo R1 — gate mensile mobile** | **corretto: era l'unico con euro sbagliati** |
 | 03/09 | Residuo R7 — letterali IVA | costante + rete: erano 29, non 4 |
@@ -3136,12 +3136,41 @@ verifica un aggregato non vede gli errori che si annullano dentro**. Verificare
 il totale e' precisamente cio' che questo ciclo ha gia' imparato a non fare sul
 contatore di copertura — e l'ho ripetuto su un test.
 
-**Bilancio mutazione: 15 mutanti, 15 uccisi** (ripartizione, guardie in
-scrittura, aggregazione, costo turno), dopo che **3 sono sopravvissuti alla prima
-stesura**. Nessuno dei tre indicava codice ridondante: ognuno indicava un test
-che non provava quello che dichiarava — un caso float scelto male, un caso
-mancante, un assert su un aggregato. **Il valore della mutazione non e' il
-punteggio: sono i sopravvissuti.**
+### La terza passata: lo stesso difetto una funzione piu' in la'
+
+Corretta la forma del test su `aggregaPerPersona`, il reviewer ha trovato **lo
+stesso buco in `costoTurnoGiornaliero`**: mutante sopravvissuto, 19 test verdi.
+La causa non era la somma stavolta, ma **due dimensioni che non si incrociavano
+mai**: un test con extra eccedenti (tariffa unica) e uno con tariffa maggiorata
+(extra in-range). Con una sola tariffa gli errori si compensano — `-2x10 +
+10x10 = 80`, identico al valore giusto. Appena le tariffe differiscono:
+
+| caso | corretto | senza clamp |
+|---|---:|---:|
+| `costo(8, 10, 10, 15)` | **120 EUR** | **130 EUR** |
+
+Ed e' il caso nominale dello straordinario maggiorato, cioe' il motivo per cui
+`costo_orario_extra` esiste. Aggiunto il caso incrociato su **entrambe** le
+funzioni — non solo dove l'aveva trovato — perche' la lacuna era di schema, non
+di funzione.
+
+**Perche' non era in produzione:** `costo_orario` e' NULL su 107 turni su 107 e
+nessuno ha una tariffa extra. Latente, non attivo.
+
+⚠️ **Una variazione visibile su `/m`, corretta ma silenziosa** (segnalata dal
+reviewer): con `costo_orario` NULL e `costo_orario_extra` valorizzato il vecchio
+codice mostrava **30 EUR**, il nuovo mostra **0**. E' la scelta giusta — non si
+inventa il costo di un turno di cui non conosciamo la tariffa — ma e' un numero
+che cambia, non un refactor neutro. Impatto oggi: zero righe.
+
+**Bilancio mutazione: 17 mutanti, 17 uccisi**, dopo che **4 sono sopravvissuti
+alla prima stesura**. Nessuno dei quattro indicava codice ridondante: ognuno
+indicava un test che non provava quello che dichiarava — un caso float scelto
+male, un caso mancante, un assert su un aggregato che nasconde errori che si
+compensano, due dimensioni mai incrociate. **Il valore della mutazione non e' il
+punteggio: sono i sopravvissuti.** E il reviewer e' servito **tre volte**: ogni
+giro ha trovato qualcosa che il giro precedente aveva corretto solo dove si
+vedeva.
 
 **Nessun dato esistente viola le guardie nuove** — misurato a DB, non dedotto:
 0 righe giornaliere su 92 con extra valorizzate, 0 mensili fuori soglia su ore e

@@ -149,6 +149,22 @@ def test_aggregazione_tariffa_extra_maggiorata():
     assert r["costoTot"]["mario"] == 90.0
 
 
+def test_aggregazione_extra_eccedenti_con_tariffa_maggiorata():
+    """Le due dimensioni incrociate anche qui, non solo su costoTurnoGiornaliero.
+
+    Stessa lacuna trovata nella funzione gemella: un test con extra eccedenti e
+    uno con tariffa maggiorata, mai insieme. Qui le componenti sono gia'
+    asserite (quindi il mutante muore comunque), ma il caso incrociato e' quello
+    che vale in euro: 120 e non 130.
+    """
+    r = _aggrega([_turno(ore_extra=10, costo_orario=10, costo_orario_extra=15)], [8.0])
+    assert r["oreStd"]["mario"] == 0.0
+    assert r["oreExt"]["mario"] == 8.0
+    assert r["costoStd"]["mario"] == 0.0
+    assert r["costoExt"]["mario"] == 120.0
+    assert r["costoTot"]["mario"] == 120.0
+
+
 def test_aggregazione_riposi_e_assenze_restano_fuori():
     """Contarli diluirebbe la media oraria mostrata in card."""
     for tipo in ("riposo", "ferie", "malattia"):
@@ -229,6 +245,22 @@ def test_costo_turno_extra_oltre_le_ore_non_gonfia_l_importo():
 
 def test_costo_turno_tariffa_extra_si_applica_solo_alle_extra():
     assert _costo(8.0, 2.0, 10.0, 15.0) == 90.0     # 6x10 + 2x15
+
+
+def test_costo_turno_extra_eccedenti_con_tariffa_maggiorata():
+    """Le DUE dimensioni insieme: extra oltre le ore E tariffa extra diversa.
+
+    ⚠️ Il caso che mancava, trovato dal code-reviewer al terzo giro. C'era un
+    test con extra eccedenti (ma tariffa unica) e uno con tariffa maggiorata (ma
+    extra in-range): **le due dimensioni non si incrociavano mai**, e senza
+    clamp il mutante restava verde perche' con una sola tariffa gli errori si
+    compensano (-2x10 + 10x10 = 80, come il caso corretto).
+
+    Con tariffe diverse non si compensano piu': 130 EUR invece di 120. E'
+    esattamente il caso nominale dello straordinario maggiorato, cioe' il motivo
+    per cui il campo esiste.
+    """
+    assert _costo(8.0, 10.0, 10.0, 15.0) == 120.0   # 0x10 + 8x15, non 8x15+(-2)x10
 
 
 def test_costo_turno_senza_tariffa_extra_usa_quella_standard():
