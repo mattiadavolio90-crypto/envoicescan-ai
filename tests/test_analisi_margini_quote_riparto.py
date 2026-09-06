@@ -126,3 +126,111 @@ def test_analisi_categoria_mese_esclude_righe_ripartite_su_gruppo():
     with patch.object(fw, "_righe_quote_gruppo", return_value=[]):
         out = fw._load_fatture_fb_per_categoria_e_mese(sb, "rid-tecnica", "2026-07-01", "2026-07-31")
     assert out == {(2026, 7, "CARNE"): 100.0}
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# get_analisi_centri e l'override "modalita' mensile" (audit 06/09)
+#
+# Chi inserisce il fatturato come totale del mese ha margini_mensili.
+# fatturato_netto a ZERO: i ricavi veri vivono in ricavi_modalita_mensile.
+# `get_analisi_centri` leggeva solo lo snapshot, mentre `get_analisi_avanzata`
+# — stesso file, stessa pagina — fondeva gia' l'override: due tab della stessa
+# schermata Margini davano fatturati diversi sugli stessi mesi. Misurato il
+# 06/09 a DB: una sede con snapshot 0,00 su 9 mesi su 9 e ~292.000 EUR di
+# ricavi reali nell'override.
+#
+# I test chiamano l'ENDPOINT, non la formula: un test che ricalcola il conto
+# sopravvive al mutante.
+# ───────────────────────────────────────────────────────────────────────────
+import services.routers.margini as margini
+
+
+def _patch_centri(saved_rows, overrides, costi_per_cat):
+    """Isola l'endpoint da auth/DB lasciando vivo il calcolo che si vuole provare."""
+    q = MagicMock()
+    q.select.return_value = q
+    q.eq.return_value = q
+    q.gte.return_value = q
+    q.lte.return_value = q
+    q.in_.return_value = q
+    q.execute.return_value = MagicMock(data=saved_rows or [])
+    client = MagicMock()
+    client.table.return_value = q
+    return patch.multiple(
+        margini,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=client),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
+        _load_fatture_fb_for_period=MagicMock(return_value=dict(costi_per_cat)),
+        _load_mensile_overrides=MagicMock(return_value=dict(overrides)),
+    )
+
+
+def test_analisi_centri_vede_il_fatturato_in_modalita_mensile():
+    """Snapshot a zero + override valorizzato: il fatturato NON puo' uscire 0.
+
+    Numeri scritti a mano, non ricalcolati: 11.000/1.10 + 12.200/1.22 + 500
+    = 10.000 + 10.000 + 500 = 20.500.
+    """
+    with _patch_centri(
+        saved_rows=[{"anno": 2026, "mese": 3, "fatturato_netto": 0.0}],
+        overrides={(2026, 3): {"iva10": 11000.0, "iva22": 12200.0, "altri": 500.0}},
+        costi_per_cat={"CARNE": 4500.0},
+    ):
+        resp = margini.get_analisi_centri("2026-03-01", "2026-03-31", authorization="Bearer x")
+
+    # Le COMPONENTI, non solo il totale: due errori opposti quadrano la somma.
+    assert resp.fatturato_netto_periodo == 20500.0
+    assert resp.totale_costi_fb == 4500.0
+    assert resp.primo_margine == 16000.0
+    assert resp.mesi_con_dati == [3], "il mese ha ricavi: non puo' risultare senza dati"
+
+
+def test_analisi_centri_senza_override_usa_lo_snapshot():
+    """Il fallback resta quello di prima: chi non e' in modalita' mensile non cambia."""
+    with _patch_centri(
+        saved_rows=[{"anno": 2026, "mese": 3, "fatturato_netto": 8000.0}],
+        overrides={},
+        costi_per_cat={"CARNE": 3000.0},
+    ):
+        resp = margini.get_analisi_centri("2026-03-01", "2026-03-31", authorization="Bearer x")
+
+    assert resp.fatturato_netto_periodo == 8000.0
+    assert resp.primo_margine == 5000.0
+    assert resp.mesi_con_dati == [3]
+
+
+def test_analisi_centri_override_ha_la_precedenza_sullo_snapshot():
+    """Snapshot valorizzato E override presente: vince l'override.
+
+    Se vincesse lo snapshot il totale sarebbe 999,0: il test lo esclude.
+    """
+    with _patch_centri(
+        saved_rows=[{"anno": 2026, "mese": 5, "fatturato_netto": 999.0}],
+        overrides={(2026, 5): {"iva10": 2200.0, "iva22": 0.0, "altri": 0.0}},
+        costi_per_cat={},
+    ):
+        resp = margini.get_analisi_centri("2026-05-01", "2026-05-31", authorization="Bearer x")
+
+    assert resp.fatturato_netto_periodo == 2000.0
+
+
+def test_analisi_centri_e_avanzata_danno_lo_stesso_fatturato():
+    """La rete vera: i due tab della stessa pagina, sugli stessi dati.
+
+    E' il presidio che impedisce al prossimo fix di essere di nuovo parziale —
+    la divergenza fra questi due endpoint e' gia' costata un fatturato a zero.
+    """
+    saved = [{"anno": 2026, "mese": 3, "fatturato_netto": 0.0}]
+    overrides = {(2026, 3): {"iva10": 11000.0, "iva22": 12200.0, "altri": 500.0}}
+
+    with _patch_centri(saved, overrides, {"CARNE": 4500.0}):
+        centri = margini.get_analisi_centri("2026-03-01", "2026-03-31", authorization="Bearer x")
+
+    with _patch_centri(saved, overrides, {"CARNE": 4500.0}), \
+            patch.object(margini, "_load_fatture_fb_per_categoria_e_mese",
+                         MagicMock(return_value={(2026, 3, "CARNE"): 4500.0})):
+        avanzata = margini.get_analisi_avanzata("2026-03-01", "2026-03-31", authorization="Bearer x")
+
+    assert centri.fatturato_netto_periodo == avanzata.fatturato_netto_periodo
+    assert centri.primo_margine == avanzata.primo_margine

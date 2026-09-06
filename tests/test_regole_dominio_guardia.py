@@ -339,11 +339,13 @@ _ECCEZIONI_OVERRIDE = {
     # È il vettore di regressione più probabile della regola — un quarto
     # chiamante distratto avrebbe fatturato 0 senza alcun segnale.
     "carica_margini_anno": "ritorna righe grezze, l'override lo applica il chiamante",
-    # Analisi per centro di produzione: lo split food/beverage/alcolici/dolci
-    # esiste SOLO in margini_mensili — l'override mensile non lo contiene, quindi
-    # non è fondibile qui. Per una sede in modalità mensile la pagina resta a 0:
-    # limite noto della feature, non una dimenticanza di questa regola.
-    "get_analisi_centri": "lo split per centro non esiste nell'override mensile",
+    # NB: `get_analisi_centri` era qui ("lo split per centro non esiste
+    # nell'override mensile"). L'eccezione è stata RIMOSSA il 06/09: la premessa
+    # era vera solo per lo SPLIT, non per il totale netto — e il gemello
+    # `get_analisi_avanzata` lo dimostrava, fondendo l'override sul totale e
+    # tenendo lo split dallo snapshot dietro `split_attivo`. Finché l'eccezione
+    # è rimasta, i due tab della stessa pagina Margini mostravano fatturati
+    # diversi sugli stessi mesi. Ora fonde anche lui: niente da eccettuare.
     # Definizione dell'override stesso e suoi wrapper.
     "_load_mensile_overrides": "è la funzione che implementa la regola",
     "_merge_override_mensile": "wrapper della regola",

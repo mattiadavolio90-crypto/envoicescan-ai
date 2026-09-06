@@ -81,3 +81,82 @@ def test_get_margini_dodici_mesi_sempre_presenti():
     with p_router, p_rpc:
         resp = margini.get_margini(anno=2026, authorization="Bearer x")
     assert [m.mese for m in resp.mesi] == list(range(1, 13))
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# POST /api/margini/cella — la whitelist _CELL_FIELDS_EDITABILI (audit 06/09)
+#
+# E' l'unica barriera fra il body di una richiesta e un UPDATE su
+# margini_mensili: senza, `field` finirebbe come nome di colonna in un update
+# costruito dal client. Endpoint vivo (calcolo-tab.tsx:195) e senza test.
+#
+# Il caso che conta e' `quote_riparto_fb`: colonna REALE e scrivibile a DB, ma
+# popolata solo dal motore riparto (riparto_quote_mensili) e sola lettura per
+# l'utente. Se cadesse dalla whitelist, un client potrebbe riscrivere le quote
+# di gruppo — 68.564 EUR su 22 righe, misurati il 06/09 — e falsare il MOL.
+# ───────────────────────────────────────────────────────────────────────────
+import pytest
+from fastapi import HTTPException
+
+
+def _patch_cella(existing_rows):
+    q = MagicMock()
+    q.select.return_value = q
+    q.eq.return_value = q
+    q.limit.return_value = q
+    q.update.return_value = q
+    q.insert.return_value = q
+    q.execute.return_value = SimpleNamespace(data=existing_rows or [])
+    client = MagicMock()
+    client.table.return_value = q
+    return patch.multiple(
+        margini,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=client),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
+        _invalidate_home_kpi_cache=MagicMock(),
+    ), patch("services.daily_briefing_service.invalidate_today_briefing", MagicMock()), client
+
+
+@pytest.mark.parametrize("campo", [
+    "mol",                  # derivato: si calcola, non si scrive
+    "quote_riparto_fb",     # sola lettura: la popola il motore riparto
+    "quote_riparto_spese",
+    "fatturato_iva10",      # ricavi: hanno il loro endpoint
+    "ristorante_id",        # cambiare sede a una riga altrui
+    "user_id",
+])
+def test_cella_rifiuta_i_campi_fuori_whitelist(campo):
+    p_router, p_brief, client = _patch_cella([])
+    body = margini.MarginiCellaRequest(anno=2026, mese=3, field=campo, value=100.0)
+    with p_router, p_brief:
+        with pytest.raises(HTTPException) as exc:
+            margini.update_margini_cella(body, authorization="Bearer x")
+    assert exc.value.status_code == 400
+    # Nessuna scrittura deve partire: il 400 arriva PRIMA del DB.
+    assert not client.table.return_value.update.called
+    assert not client.table.return_value.insert.called
+
+
+@pytest.mark.parametrize("campo", sorted(margini._CELL_FIELDS_EDITABILI))
+def test_cella_accetta_i_campi_in_whitelist(campo):
+    """L'altra direzione: la guardia non deve bloccare cio' che e' editabile.
+
+    Senza questo, un mutante che rifiuta TUTTO passerebbe i test sopra.
+    """
+    p_router, p_brief, _ = _patch_cella([{"id": "r1"}])
+    body = margini.MarginiCellaRequest(anno=2026, mese=3, field=campo, value=250.0)
+    with p_router, p_brief:
+        resp = margini.update_margini_cella(body, authorization="Bearer x")
+    assert resp.field == campo
+    assert resp.value == 250.0
+
+
+def test_cella_azzera_i_valori_negativi():
+    """FOTOGRAFIA di `max(0.0, ...)` (margini.py:941): un costo negativo diventa 0,
+    in silenzio e senza errore. Non e' il valore che l'utente ha digitato."""
+    p_router, p_brief, _ = _patch_cella([{"id": "r1"}])
+    body = margini.MarginiCellaRequest(anno=2026, mese=3, field="altri_costi_fb", value=-50.0)
+    with p_router, p_brief:
+        resp = margini.update_margini_cella(body, authorization="Bearer x")
+    assert resp.value == 0.0

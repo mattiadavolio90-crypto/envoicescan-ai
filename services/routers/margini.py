@@ -516,6 +516,14 @@ def get_analisi_centri(
         .execute()
     )
 
+    # Il fatturato di una sede in modalita' mensile NON sta nello snapshot
+    # (margini_mensili.fatturato_netto resta 0): sta in ricavi_modalita_mensile.
+    # get_analisi_avanzata lo fonde gia'; senza questo, i due tab della stessa
+    # pagina Margini davano fatturati diversi sugli stessi mesi.
+    mensile_overrides = _load_mensile_overrides(
+        sb, ristorante_id, list(range(d_da.year, d_a.year + 1))
+    )
+
     fatturato_netto_periodo = 0.0
     fatturato_per_centro: Dict[str, float] = {c: 0.0 for c in _CENTRI_CON_FATTURATO}
     mesi_con_dati: List[int] = []
@@ -527,7 +535,11 @@ def get_analisi_centri(
         row_d = _date(anno_r, mese_r, 1)
         if not (_date(d_da.year, d_da.month, 1) <= row_d <= _date(d_a.year, d_a.month, 1)):
             continue
-        fatt = float(r.get("fatturato_netto") or 0)
+        ov = mensile_overrides.get((anno_r, mese_r))
+        fatt = (
+            _calc_netto(ov["iva10"], ov["iva22"], ov["altri"])
+            if ov else float(r.get("fatturato_netto") or 0)
+        )
         fatturato_netto_periodo += fatt
         if fatt > 0:
             mesi_con_dati.append(mese_r)
@@ -1344,11 +1356,17 @@ def get_margini_kpi(
         spese_generali=round(cur["spese"], 2),
         costo_personale=round(cur["pers"], 2),
         mol=round(cur["mol"], 2),
-        food_cost_perc=round(cur["fb"] / netto * 100, 1) if netto > 0 else 0.0,
-        primo_margine_perc=round(cur["pm"] / netto * 100, 1) if netto > 0 else 0.0,
-        spese_perc=round(cur["spese"] / netto * 100, 1) if netto > 0 else 0.0,
-        personale_perc=round(cur["pers"] / netto * 100, 1) if netto > 0 else 0.0,
-        mol_perc=round(cur["mol"] / netto * 100, 1) if netto > 0 else 0.0,
+        # 2 decimali come get_margini_analisi: i due endpoint servono la STESSA
+        # pagina (KpiBar da /kpi sopra i tab, CalcoloTab da /analisi sotto) e a 1
+        # decimale davano due percentuali diverse sullo stesso numero. Non e' solo
+        # estetica: food_cost_perc alimenta la soglia del trigger Consulenza
+        # (lib/trigger-servizi.ts:144, confronto stretto `fc > soglia`), che con
+        # 35,04 arrotondato a 35,0 non scattava.
+        food_cost_perc=round(cur["fb"] / netto * 100, 2) if netto > 0 else 0.0,
+        primo_margine_perc=round(cur["pm"] / netto * 100, 2) if netto > 0 else 0.0,
+        spese_perc=round(cur["spese"] / netto * 100, 2) if netto > 0 else 0.0,
+        personale_perc=round(cur["pers"] / netto * 100, 2) if netto > 0 else 0.0,
+        mol_perc=round(cur["mol"] / netto * 100, 2) if netto > 0 else 0.0,
         confronto_label="",
         spark_lordo=cur["spark_lordo"],
         spark_fb=cur["spark_fb"],
