@@ -163,6 +163,44 @@ class TestPersonaleListMensile:
         assert res["ore_standard_per_persona"]["Ugo"] == 0.0
         assert res["ore_standard_per_persona"]["Ugo"] >= 0
 
+    def test_senza_tariffa_standard_non_si_paga_nemmeno_lo_straordinario(self):
+        """costo_orario NULL ma costo_orario_extra valorizzato: costo 0.
+
+        Divergenza trovata dal code-reviewer alla 4a passata. Questo percorso
+        (pagina Personale + export Excel) pagava le extra a 15 EUR/h su un turno
+        di cui **non conosciamo la tariffa**, mentre `costoTurnoGiornaliero` lato
+        frontend restituisce 0 e `margini.py` scarta la riga (`n_senza_costo`).
+        Lo stesso turno mostrava due importi diversi a seconda di dove lo si
+        guardava: e' esattamente la classe di difetto che questa sessione
+        chiude, ricomparsa su un asse che non avevo guardato.
+
+        Senza tariffa standard il costo del turno e' ignoto: inventarne una
+        parte lo farebbe entrare nei totali con un numero che nessuno ha
+        inserito.
+        """
+        riga = {
+            "id": "g10", "dipendente_id": "dip-y", "data_turno": "2026-06-11",
+            "mensile": False, "tipo_giorno": "turno",
+            "ora_inizio": "09:00", "ora_fine": "17:00", "ore_extra": 2,
+            "costo_orario": None, "costo_orario_extra": 15.0,
+        }
+        turni_q = _query_mock([riga])
+        dipendenti_q = _query_mock([{"id": "dip-y", "nome": "Ada"}])
+        storico_q = _query_mock([])
+        attivi_q = _query_mock([{"id": "dip-y", "nome": "Ada", "costo_orario_default": None}])
+        calls = {"n": 0}
+        def side_effect(_name):
+            calls["n"] += 1
+            return {1: turni_q, 2: dipendenti_q, 3: storico_q}.get(calls["n"], attivi_q)
+        ctx, _ = _patch_workspace(side_effect)
+        with ctx:
+            res = workspace.ws_personale_list(da="2026-06-01", a="2026-06-30", mensile=False, authorization="Bearer x")
+        assert res["costo_extra_per_persona"].get("Ada", 0) == 0, "pagate le extra senza tariffa standard"
+        assert res["costo_standard_per_persona"].get("Ada", 0) == 0
+        assert res["costo_totale"] == 0
+        # Le ORE restano contate: e' il costo a non essere noto, non il lavoro.
+        assert res["monte_ore"]["Ada"] == 8.0
+
     def test_costo_mensile_senza_extra(self):
         riga = {
             "id": "m2", "dipendente_id": "dip-anna", "data_turno": "2026-06-01",

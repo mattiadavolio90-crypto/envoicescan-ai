@@ -1280,8 +1280,16 @@ def ws_personale_list(
 
         co_std = t.get("costo_orario")
         co_ext = t.get("costo_orario_extra")
-        # Se costo_orario_extra non impostato, usa costo_orario anche per le extra
-        co_ext_eff = float(co_ext) if co_ext is not None else (float(co_std) if co_std is not None else None)
+        # Senza tariffa standard non si paga nemmeno lo straordinario: il costo
+        # del turno non lo conosciamo, e pagare le sole extra inventerebbe un
+        # importo che finisce nel MOL. E' la stessa scelta di
+        # costoTurnoGiornaliero (apps/web/src/lib/ore-turno.ts): senza questa
+        # riga i due percorsi mostravano importi diversi per lo stesso turno.
+        # Se costo_orario_extra non e' impostato, si usa costo_orario.
+        co_ext_eff = (
+            None if co_std is None
+            else (float(co_ext) if co_ext is not None else float(co_std))
+        )
         if co_std is not None:
             costo_standard_per_persona[nome] = round(
                 costo_standard_per_persona.get(nome, 0) + std * float(co_std), 2
