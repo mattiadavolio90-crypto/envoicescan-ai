@@ -42,10 +42,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.989 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 57.007 |
 | Frontend (`apps/web/src/`, esclusi i binari) | 53.955 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.500** |
+| **TOTALE APP** | **114.518** |
 
 > Ri-misurato il **5/09/2026 sera** coi comandi qui sopra. Il backend **cala di
 > 220 righe** rispetto al 4/09: 286 rimosse come codice morto dalla dimensione
@@ -77,10 +77,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 56.989 | 0 | **100%** |
+| Backend | 57.007 | 0 | **100%** |
 | Frontend | 27.611 letti + 23.028 parziali su 53.955 | **3.316** | **94%** |
 | Edge Functions | 3.556 | 0 | **100%** |
-| **App intera** | **111.184** | **3.316** | **97%** |
+| **App intera** | **111.202** | **3.316** | **97%** |
 
 > **Come si legge.** «Coperto» somma il letto integralmente (📖) e il parziale
 > (🔍/🟠): sono livelli di confidenza diversi, non equivalenti — il dettaglio per
@@ -91,7 +91,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Backend Python — 56.989 righe
+## Backend Python — 57.007 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -267,12 +267,14 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
 | 📖 Letto integralmente | 58.589 | **51%** | 27.422 backend + 27.611 frontend + 3.556 Edge |
-| 🔍 / 🟠 Auditato o parzialmente coperto | 52.595 | 46% | 29.567 backend + 23.028 frontend |
+| 🔍 / 🟠 Auditato o parzialmente coperto | 52.613 | 46% | 29.585 backend + 23.028 frontend |
 | 🔴 Mai guardato | 3.316 | **3%** | **0 backend** + 3.316 frontend — la zona rossa e' tutta e solo nel frontend |
-| **Totale app (misurato)** | **114.500** | 100% | 56.989 + 53.955 + 3.556 |
+| **Totale app (misurato)** | **114.518** | 100% | 57.007 + 53.955 + 3.556 |
 
-> **Ri-sommato il 5/09/2026 (sera), dopo l'estrazione di `lib/ore-turno.ts`.** Le
-> tre righe fanno **114.500** contro un totale misurato di **114.500**: **scarto 0**.
+> **Ri-sommato il 6/09/2026**, dopo il fix override in `margini.py` (+18 righe di
+> backend). Le tre righe fanno **114.518** contro un totale misurato di
+> **114.518**: **scarto 0** — ri-misurato addendo per addendo coi comandi in testa
+> al file, non aggiornato per delta.
 >
 > ⚠️ La prima ri-somma dava **114.309**, scarto 2: `workspace/` e `(mobile)/`
 > avevano perso una riga ciascuno (sostituita dall'import del modulo condiviso) e

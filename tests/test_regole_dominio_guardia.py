@@ -406,6 +406,14 @@ def _funzione_attorno(testo: str, posizione: int) -> tuple[str, str]:
     return nome, "\n".join(tutte[inizio:fine])
 
 
+# Le docstring non iniziano con `#` e i commenti inline stanno in coda a una riga
+# di codice: senza toglierli entrambi, `_senza_commenti` copre solo i commenti a
+# riga intera e la guardia resta cieca esattamente come prima. Misurato il 06/09:
+# `gruppo.py` e `ricavi.py` nominano davvero l'override in docstring.
+_DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')
+_COMMENTO_INLINE = re.compile(r"#.*$")
+
+
 def _senza_commenti(corpo: str) -> str:
     """Il corpo di una funzione senza le righe di commento.
 
@@ -415,8 +423,11 @@ def _senza_commenti(corpo: str) -> str:
     applicare piu' l'override. Un presidio che legge il sorgente deve leggere
     il codice, non la prosa che lo circonda.
     """
+    senza_docstring = _DOCSTRING.sub("", corpo)
     return "\n".join(
-        riga for riga in corpo.splitlines() if not riga.lstrip().startswith("#")
+        _COMMENTO_INLINE.sub("", riga)
+        for riga in senza_docstring.splitlines()
+        if not riga.lstrip().startswith("#")
     )
 
 

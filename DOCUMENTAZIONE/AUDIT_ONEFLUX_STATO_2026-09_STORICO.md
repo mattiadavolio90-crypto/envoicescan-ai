@@ -3228,7 +3228,8 @@ Prompt pronto in `docs/piani/PROMPT_ROUTER_ULTIMA_ZONA.md`.
 
 ## Router del worker — `margini.py` — 06/09/2026
 
-**Prima dimensione dei router** (`services/routers/`, 16.897 righe misurate, non
+**Prima dimensione dei router** (`services/routers/`, **16.915** righe misurate a fine
+lavoro — 16.897 prima del fix, non
 16.768 come portavano tre righe diverse del contatore). Area scelta dopo la
 misura, non dal prompt: `margini.py` è il MOL, tocca una regola di dominio ed è
 il router mal presidiato con più denaro dietro (`margini_mensili`: 75 righe,
