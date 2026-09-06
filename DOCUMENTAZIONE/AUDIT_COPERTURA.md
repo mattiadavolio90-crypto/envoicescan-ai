@@ -42,10 +42,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Righe |
 |---|---:|
-| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.981 |
+| Backend Python (`services/`, `utils/`, `config/`, `worker/`) | 56.989 |
 | Frontend (`apps/web/src/`, esclusi i binari) | 53.955 |
 | Edge Functions (`supabase/functions/`) | 3.556 |
-| **TOTALE APP** | **114.492** |
+| **TOTALE APP** | **114.500** |
 
 > Ri-misurato il **5/09/2026 sera** coi comandi qui sopra. Il backend **cala di
 > 220 righe** rispetto al 4/09: 286 rimosse come codice morto dalla dimensione
@@ -53,7 +53,7 @@ non sa montare. È un limite dichiarato, non una svista.
 > ciclo che il perimetro si restringe invece di crescere.
 >
 > Il frontend passa da 53.861 a **53.955** (+94) e il backend da 56.860 a
-> **56.981** (+121): `lib/ore-turno.ts` come fonte unica della ripartizione
+> **56.989** (+129): `lib/ore-turno.ts` come fonte unica della ripartizione
 > ordinarie/extra, le guardie in scrittura sui 4 endpoint dei turni, e la
 > validazione lato dialog.
 >
@@ -77,10 +77,10 @@ non sa montare. È un limite dichiarato, non una svista.
 
 | Perimetro | Coperto (📖 + 🔍/🟠) | Mai guardato 🔴 | % coperta |
 |---|---:|---:|---:|
-| Backend | 56.981 | 0 | **100%** |
+| Backend | 56.989 | 0 | **100%** |
 | Frontend | 27.611 letti + 23.028 parziali su 53.955 | **3.316** | **94%** |
 | Edge Functions | 3.556 | 0 | **100%** |
-| **App intera** | **111.176** | **3.316** | **97%** |
+| **App intera** | **111.184** | **3.316** | **97%** |
 
 > **Come si legge.** «Coperto» somma il letto integralmente (📖) e il parziale
 > (🔍/🟠): sono livelli di confidenza diversi, non equivalenti — il dettaglio per
@@ -91,7 +91,7 @@ non sa montare. È un limite dichiarato, non una svista.
 
 ---
 
-## Backend Python — 56.981 righe
+## Backend Python — 56.989 righe
 
 | Modulo | Righe | Stato | Riferimento |
 |---|---:|---|---|
@@ -115,9 +115,9 @@ non sa montare. È un limite dichiarato, non una svista.
 | Stato | Righe | % | Moduli |
 |---|---:|---:|---|
 | 📖 letto integralmente | 27.422 | 48% | `db_service` 2.284, `invoice_service` 2.333, `auth_service` 1.782, `ai_service` 5.758, `daily_briefing_service` 1.660, `worker/` 2.411, `config/` 2.433, `utils/` 2.294, riparto 571 + price_impact 415 + radar 392 + foodcost 264, **+ gli ultimi 15 moduli `services/` 4.825** |
-| 🔍 / 🟠 parziale | 29.559 | 52% | `fastapi_worker` 8.901, `routers/` **16.889**, `upload_handler` 2.282, `margine_service` 1.487 |
+| 🔍 / 🟠 parziale | 29.567 | 52% | `fastapi_worker` 8.901, `routers/` **16.897**, `upload_handler` 2.282, `margine_service` 1.487 |
 | 🔴 mai guardato | **0** | 0% | — **la zona rossa del backend e' chiusa il 5/09** |
-| **Totale backend** | **56.981** | 100% | ✅ la colonna chiude: 27.422 + 29.559 = 56.981, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
+| **Totale backend** | **56.989** | 100% | ✅ la colonna chiude: 27.422 + 29.567 = 56.989, differenza **0** — ri-misurata **addendo per addendo** col comando in testa al file, non dedotta per delta |
 
 > **Cosa è cambiato il 5/09.** La zona rossa passa da 9.345 a 5.147 righe. Non è
 > tutto merito della lettura: **286 righe erano codice morto** e sono state
@@ -267,12 +267,12 @@ bassa). Rileggerle da zero è il lavoro fantasma che il metodo vieta.
 | | Righe | % | da dove viene |
 |---|---:|---:|---|
 | 📖 Letto integralmente | 58.589 | **51%** | 27.422 backend + 27.611 frontend + 3.556 Edge |
-| 🔍 / 🟠 Auditato o parzialmente coperto | 52.587 | 46% | 29.559 backend + 23.028 frontend |
+| 🔍 / 🟠 Auditato o parzialmente coperto | 52.595 | 46% | 29.567 backend + 23.028 frontend |
 | 🔴 Mai guardato | 3.316 | **3%** | **0 backend** + 3.316 frontend — la zona rossa e' tutta e solo nel frontend |
-| **Totale app (misurato)** | **114.492** | 100% | 56.981 + 53.955 + 3.556 |
+| **Totale app (misurato)** | **114.500** | 100% | 56.989 + 53.955 + 3.556 |
 
 > **Ri-sommato il 5/09/2026 (sera), dopo l'estrazione di `lib/ore-turno.ts`.** Le
-> tre righe fanno **114.492** contro un totale misurato di **114.492**: **scarto 0**.
+> tre righe fanno **114.500** contro un totale misurato di **114.500**: **scarto 0**.
 >
 > ⚠️ La prima ri-somma dava **114.309**, scarto 2: `workspace/` e `(mobile)/`
 > avevano perso una riga ciascuno (sostituita dall'import del modulo condiviso) e

@@ -8,7 +8,7 @@
 
 **Ciclo aperto il 29/08/2026, tuttora in corso. Stato aggiornato al 05/09/2026 (sera, dopo `37868a7`).**
 
-> **Copertura app: 97%** (111.176 su 114.492). Backend ed Edge Functions **100%**;
+> **Copertura app: 97%** (111.184 su 114.500). Backend ed Edge Functions **100%**;
 > restano **3.316 righe di frontend** mai guardate, nessuna delle quali muove denaro.
 > ⚠️ **Il 97% non è «97% al sicuro»**: delle righe coperte, solo il **51%** è stato
 > letto riga per riga — il resto è passato sotto una lente specifica, che trova i
