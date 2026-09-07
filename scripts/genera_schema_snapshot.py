@@ -214,9 +214,12 @@ ORDER BY c.relname, t.tgname;
 # il DB di test direbbe "57 funzioni aperte ad anon" invece di 6, e un test sui
 # permessi misurerebbe il default di Postgres, non il progetto.
 #
-# Le 6 che anon PUO' eseguire lo sono proprio perche' la revoca manca: nessuna
-# ha un GRANT nominale ad anon. Sono i buchi lasciati dai `REVOKE` del 19-20/06
-# quando una migration successiva ha ricreato la funzione con DROP+CREATE.
+# Le 6 che anon PUO' eseguire hanno invece GRANT NOMINALI ad anon e
+# authenticated, non solo il permesso via PUBLIC: vengono dalle DEFAULT
+# PRIVILEGES del progetto Supabase (`pg_default_acl`, defaclobjtype='f'), che
+# concedono EXECUTE a quei ruoli su ogni funzione creata. Per questo lo snapshot
+# emette anche i GRANT nominali: senza, il DB di test non riprodurrebbe il
+# difetto e un test sui permessi passerebbe a torto.
 Q_REVOKE_PUBLIC = """
 SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS sig
 FROM pg_proc p

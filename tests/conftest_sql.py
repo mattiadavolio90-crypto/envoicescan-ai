@@ -30,6 +30,7 @@ messaggio esplicito — mai passano in silenzio.
 """
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 
@@ -38,30 +39,68 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT = REPO_ROOT / "supabase" / "schema_snapshot.sql"
 
-# Le migration canoniche piu' recenti dello snapshot vanno applicate sopra:
-# lo snapshot e' una fotografia, il repo puo' essere avanti. Il confronto e'
-# sul nome file (timestamp) contro la data di rigenerazione dello snapshot.
 MIGRAZIONI = REPO_ROOT / "supabase" / "migrations"
+
+# Lo snapshot e' una fotografia: il repo puo' contenere migration non ancora
+# applicate al live, o applicate dopo la rigenerazione. Vanno caricate SOPRA lo
+# snapshot, altrimenti i test misurano un database piu' vecchio del repo — e una
+# migration nuova (per esempio una che revoca permessi) risulterebbe verde senza
+# essere mai stata eseguita.
+#
+# Il taglio e' il timestamp nel nome file confrontato con la data di
+# rigenerazione dichiarata dallo snapshot: `-- Rigenerato il AAAA-MM-GG`.
+
+
+def _migrazioni_dopo_lo_snapshot(testo_snapshot: str) -> list[Path]:
+    import re
+
+    match = re.search(r"^-- Rigenerato il (\d{4})-(\d{2})-(\d{2})\.", testo_snapshot, re.M)
+    if not match:
+        return []
+    # Il timestamp Supabase e' AAAAMMGGHHMMSS: si confronta il prefisso AAAAMMGG.
+    # `>=` e non `>`: una migration dello STESSO giorno puo' essere posteriore
+    # alla rigenerazione, e riapplicarla e' innocuo (i REVOKE/GRANT e i
+    # CREATE OR REPLACE sono idempotenti), mentre saltarla non lo e'.
+    giorno_snapshot = "".join(match.groups())
+    recenti = []
+    for percorso in sorted(MIGRAZIONI.glob("*.sql")):
+        prefisso = percorso.name[:8]
+        if prefisso.isdigit() and prefisso >= giorno_snapshot:
+            recenti.append(percorso)
+    return recenti
+
+
+def _dipendenza(nome: str, motivo: str):
+    """Importa una dipendenza dei test SQL, o si ferma nel modo giusto.
+
+    In LOCALE si puo' saltare: chi lavora sul frontend non deve installare un
+    Postgres per far girare la suite. In CI no — `pgserver` e `psycopg` sono in
+    `requirements-lock.txt`, quindi mancarli significa che l'ambiente e' rotto, e
+    un salto silenzioso spegnerebbe questi test proprio dove servono. Misurato il
+    07/09/2026 mascherando il modulo: senza questa guardia la CI riportava
+    "38 skipped" ed exit 0.
+    """
+    try:
+        return importlib.import_module(nome)
+    except ImportError:
+        if os.environ.get("CI"):
+            pytest.fail(
+                f"{nome} non importabile in CI: e' in requirements-lock.txt, "
+                f"quindi l'ambiente non e' quello atteso. {motivo}",
+                pytrace=False,
+            )
+        pytest.skip(f"{nome} non installato: {motivo}", allow_module_level=True)
 
 
 def _pgserver():
-    try:
-        import pgserver  # noqa: F401
-    except ImportError:
-        pytest.skip(
-            "pgserver non installato: i test sulla logica SQL richiedono un "
-            "Postgres locale (`pip install pgserver`)",
-            allow_module_level=True,
-        )
-    return __import__("pgserver")
+    return _dipendenza(
+        "pgserver",
+        "i test sulla logica SQL richiedono un Postgres locale (`pip install pgserver`)",
+    )
 
 
 def _psycopg():
-    try:
-        import psycopg  # noqa: F401
-    except ImportError:
-        pytest.skip("psycopg non installato", allow_module_level=True)
-    return __import__("psycopg")
+    return _dipendenza("psycopg", "serve per parlare col Postgres di test")
 
 
 @pytest.fixture(scope="session")
@@ -77,11 +116,25 @@ def _server_sql(tmp_path_factory):
     server = pgserver.get_server(str(datadir))
     uri = server.get_uri()
 
+    testo_snapshot = SNAPSHOT.read_text(encoding="utf-8")
     with psycopg.connect(uri, autocommit=True) as conn:
-        conn.execute(SNAPSHOT.read_text(encoding="utf-8"))
+        conn.execute(testo_snapshot)
         # Il search_path della sessione che carica non sopravvive: va messo
         # sul database, cosi' ogni connessione successiva trova uuid_generate_v4.
-        conn.execute('ALTER DATABASE postgres SET search_path TO public, extensions')
+        conn.execute("ALTER DATABASE postgres SET search_path TO public, extensions")
+
+        for percorso in _migrazioni_dopo_lo_snapshot(testo_snapshot):
+            try:
+                conn.execute(percorso.read_text(encoding="utf-8"))
+            except Exception as errore:  # pragma: no cover - dipende dal repo
+                # Una migration che non si applica sopra lo snapshot e' un
+                # problema vero (o la migration e' rotta, o lo snapshot e'
+                # vecchio): va detto, non ingoiato. Il fallimento e' rumoroso
+                # perche' i test successivi girerebbero su uno schema sbagliato.
+                pytest.fail(
+                    f"migration {percorso.name} non applicabile sopra "
+                    f"schema_snapshot.sql: {errore}"
+                )
 
     yield uri
 

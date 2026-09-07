@@ -59,6 +59,7 @@ pluggy==1.6.0
 postgrest==2.28.3
 propcache==0.4.1
 protobuf==6.33.1
+pgserver==0.1.4
 psycopg==3.3.4
 psycopg-binary==3.3.4
 py-serializable==2.1.0
