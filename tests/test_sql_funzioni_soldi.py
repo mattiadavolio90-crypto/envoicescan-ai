@@ -877,3 +877,87 @@ def test_riparto_rifiuta_un_utente_nullo(db_sql, sql):
     with pytest.raises(psycopg.errors.RaiseException, match="p_user_id"):
         sql("SELECT public.riparto_quote_mensili(NULL, 2026, 3)")
     db_sql.rollback()
+
+
+# ---------------------------------------------------------------------------
+# costi_automatici_mensili_gruppo — la gemella multi-sede
+#
+# Stessa logica della precedente, ma su piu' sedi in una query sola, con
+# ristorante_id nel risultato. Alimenta la Sintesi di catena
+# (services/margine_service.py:229) e porta le STESSE regole di dominio.
+#
+# Va coperta a parte: e' una funzione distinta, e un mutante sulla sorella non
+# la tocca. Trovata scoperta dal code-reviewer.
+# ---------------------------------------------------------------------------
+
+
+def _costi_gruppo(sql, *, sedi=(SEDE, SEDE_B), anno=2026):
+    return sql(
+        "SELECT ristorante_id::text, mese, food, spese "
+        "FROM public.costi_automatici_mensili_gruppo(%s, %s, %s, %s, %s) "
+        "ORDER BY ristorante_id, mese",
+        UTENTE, list(sedi), anno, CAT_FOOD, CAT_SPESE,
+    )
+
+
+def test_costi_gruppo_tiene_separate_le_sedi(db_sql, sql):
+    """Il totale di catena puo' essere giusto con le sedi scambiate: si
+    asserisce sede per sede, non sulla somma."""
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE, SEDE_B))
+    _riga_fattura(db_sql, sede=SEDE, numero_riga=1, categoria="CARNE",
+                  totale=Decimal("100.00"))
+    _riga_fattura(db_sql, sede=SEDE_B, numero_riga=2, categoria="CARNE",
+                  totale=Decimal("250.00"))
+
+    assert _costi_gruppo(sql) == [
+        (SEDE, 3, Decimal("100.00"), Decimal("0")),
+        (SEDE_B, 3, Decimal("250.00"), Decimal("0")),
+    ]
+
+
+def test_costi_gruppo_separa_food_da_spese(db_sql, sql):
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE,))
+    _riga_fattura(db_sql, numero_riga=1, categoria="CARNE", totale=Decimal("100.00"))
+    _riga_fattura(db_sql, numero_riga=2, categoria="UTENZE", totale=Decimal("30.00"))
+
+    assert _costi_gruppo(sql, sedi=(SEDE,)) == [(SEDE, 3, Decimal("100.00"), Decimal("30.00"))]
+
+
+def test_costi_gruppo_esclude_da_classificare(db_sql, sql):
+    """Regola di dominio #1, sul percorso di catena."""
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE,))
+    _riga_fattura(db_sql, numero_riga=1, categoria="CARNE", totale=Decimal("100.00"))
+    _riga_fattura(db_sql, numero_riga=2, categoria="Da Classificare", totale=Decimal("999.00"))
+
+    assert _costi_gruppo(sql, sedi=(SEDE,))[0][2] == Decimal("100.00")
+
+
+def test_costi_gruppo_esclude_cestino_e_righe_ripartite(db_sql, sql):
+    """Regola #5 e anti-doppio-conteggio."""
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE,))
+    _riga_fattura(db_sql, numero_riga=1, categoria="CARNE", totale=Decimal("100.00"))
+    _riga_fattura(db_sql, numero_riga=2, categoria="CARNE", totale=Decimal("400.00"),
+                  deleted=True)
+    _riga_fattura(db_sql, numero_riga=3, categoria="CARNE", totale=Decimal("500.00"),
+                  ripartita=True)
+
+    assert _costi_gruppo(sql, sedi=(SEDE,))[0][2] == Decimal("100.00")
+
+
+def test_costi_gruppo_ignora_le_sedi_non_richieste(db_sql, sql):
+    """Chiedere una sede e riceverne due significa gonfiare il MOL di catena."""
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE, SEDE_B))
+    _riga_fattura(db_sql, sede=SEDE, numero_riga=1, categoria="CARNE",
+                  totale=Decimal("100.00"))
+    _riga_fattura(db_sql, sede=SEDE_B, numero_riga=2, categoria="CARNE",
+                  totale=Decimal("250.00"))
+
+    assert [r[0] for r in _costi_gruppo(sql, sedi=(SEDE,))] == [SEDE]
+
+
+def test_costi_gruppo_la_competenza_ha_precedenza(db_sql, sql):
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE,))
+    _riga_fattura(db_sql, numero_riga=1, categoria="CARNE", totale=Decimal("100.00"),
+                  data_documento="2026-03-10", data_competenza="2026-01-31")
+
+    assert [r[1] for r in _costi_gruppo(sql, sedi=(SEDE,))] == [1]

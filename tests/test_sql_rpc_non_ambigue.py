@@ -137,8 +137,10 @@ def test_la_variante_text_di_get_distinct_files_non_esiste_piu(sql):
         "la variante (text) e' tornata: reintroduce l'ambiguita' PGRST203 e "
         "conta le fatture cestinate"
     )
-    assert firme, "get_distinct_files e' sparita del tutto: i chiamanti in "
-    "services/db_service.py e services/upload_handler.py si aspettano che esista"
+    assert firme, (
+        "get_distinct_files e' sparita del tutto: i chiamanti in "
+        "services/db_service.py e services/upload_handler.py si aspettano che esista"
+    )
 
 
 @pytest.mark.parametrize(

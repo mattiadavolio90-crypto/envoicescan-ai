@@ -7,11 +7,19 @@ vive **anche dentro le RPC PostgreSQL**, e una funzione PL/pgSQL non può
 importare una costante Python.
 
 **Misurato il 3/09/2026 sul DB di produzione** (`pg_proc`, non i file):
-**7 RPC vive** contengono la regola (13 occorrenze su 12 file di migration) — `costi_automatici_mensili`,
-`costi_automatici_mensili_gruppo`, `gruppo_peso_categoria`,
-`gruppo_prezzi_categoria`, `gruppo_spesa_pivot`, `gruppo_spreco_fb_categorie`,
-`gruppo_tag_descrizioni` — tutte con la grafia corretta e lo stesso filtro
-`categoria <> 'Da Classificare'`.
+**7 RPC vive** contenevano la regola (13 occorrenze su 12 file di migration) —
+`costi_automatici_mensili`, `costi_automatici_mensili_gruppo`,
+`gruppo_peso_categoria`, `gruppo_prezzi_categoria`, `gruppo_spesa_pivot`,
+`gruppo_spreco_fb_categorie`, `gruppo_tag_descrizioni` — tutte con la grafia
+corretta e lo stesso filtro `categoria <> 'Da Classificare'`.
+
+**Aggiornamento 07/09/2026: sono 6.** `gruppo_prezzi_categoria` non aveva alcun
+chiamante ed e' eliminata dalla migration `20260907194500`. Resta in lista qui
+sotto di proposito: questo test legge i FILE di migration, che sono storico
+immutabile, e quel testo continuera' a contenerla per sempre. Toglierla dalla
+lista non renderebbe il test piu' vero, e lasciarla non lo rende rosso — ma il
+conteggio «7 RPC vive» a DB da oggi e' sbagliato, ed e' il genere di riga che
+mente per mesi se nessuno la data.
 
 **Cosa protegge questo test.** Non può interrogare il DB (la suite mockizza
 Supabase), quindi guarda **i file di migration**, che sono ciò che verrà
@@ -94,6 +102,11 @@ def test_le_sette_rpc_vive_sono_dichiarate():
     Non è un test sul database (la suite lo mockizza): è il promemoria di quali
     RPC portano la regola, così chi ne aggiunge una sa che deve entrare in lista
     — e chi legge sa che il perimetro SQL esiste.
+
+    `gruppo_prezzi_categoria` e' eliminata dal DB dal 07/09/2026 ma resta in
+    lista: qui si cercano i file di migration, non le funzioni vive, e le
+    migration non si riscrivono. Il presidio sulle funzioni VIVE e' un'altra
+    cosa e sta in `tests/test_sql_funzioni_soldi.py`, che le esegue davvero.
     """
     attese = {
         "costi_automatici_mensili",
