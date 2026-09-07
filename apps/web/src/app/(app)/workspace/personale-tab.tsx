@@ -688,7 +688,7 @@ export function TurnoDialog({ open, turno, dataDefault, dipendenteIdDefault, gio
           {!isAssenza && (
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore extra (in più)</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore extra (di cui)</label>
               <Input
                 type="text"
                 inputMode="decimal"
