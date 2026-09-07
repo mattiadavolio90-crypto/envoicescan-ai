@@ -311,7 +311,7 @@ def _head_corrente() -> str:
 # dimensione" non e' deducibile da un diff, quindi si segnala e si lascia
 # decidere. Un blocco su un'euristica verrebbe aggirato per riflesso.
 
-_DOC_STATO = ("DOCUMENTAZIONE/AUDIT_COPERTURA.md", "DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_")
+_DOC_STATO = ("DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md", "DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_")
 _PREFISSI_CODICE = ("services/", "apps/web/src/", "worker/", "utils/", "config/")
 SOGLIA_FILE_CODICE_SENZA_STATO = 4
 

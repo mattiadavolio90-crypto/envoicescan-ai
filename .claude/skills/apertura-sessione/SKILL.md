@@ -36,7 +36,7 @@ In quest'ordine, e fermati appena sai cosa fare:
 3. `docs/piani/PIANO_*.md` — se esistono, c'è lavoro multi-sessione in corso.
    ⚠️ **Un piano può essere in esecuzione in un'altra sessione**: controlla prima
    di toccarlo.
-4. `DOCUMENTAZIONE/AUDIT_COPERTURA.md` — solo se devi scegliere un'area nuova.
+4. `DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` — solo se devi scegliere un'area nuova.
 
 **Non aprire lo `_STORICO.md`** per sapere cosa manca: è l'archivio. Si apre solo
 per il dettaglio di una dimensione che stai riaprendo (ha un indice in cima).
