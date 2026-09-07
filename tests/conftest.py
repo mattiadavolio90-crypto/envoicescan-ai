@@ -71,9 +71,27 @@ def _rete_vietata(*args, **kwargs):
     raise ReteVietataNeiTest(f"connessione di rete vietata nei test: {args[:1]}")
 
 
+# UNICA eccezione: il socket UNIX del Postgres locale dei test sulla logica SQL
+# (tests/conftest_sql.py). Non e' rete — non ha host ne' porta, non esce dalla
+# macchina e non puo' raggiungere il DB dei clienti, che e' su TCP+TLS. Senza
+# questa deroga la guardia bloccherebbe anche quello; disattivarla del tutto
+# per far girare quei test riaprirebbe la strada al DB di produzione.
+_connect_reale = socket.socket.connect
+_connect_ex_reale = socket.socket.connect_ex
+
+
+def _consenti_solo_socket_unix(reale):
+    def _wrapper(self, indirizzo, *args, **kwargs):
+        if getattr(self, "family", None) == socket.AF_UNIX:
+            return reale(self, indirizzo, *args, **kwargs)
+        raise ReteVietataNeiTest(f"connessione di rete vietata nei test: {indirizzo!r}")
+
+    return _wrapper
+
+
 socket.getaddrinfo = _rete_vietata
-socket.socket.connect = _rete_vietata
-socket.socket.connect_ex = _rete_vietata
+socket.socket.connect = _consenti_solo_socket_unix(_connect_reale)
+socket.socket.connect_ex = _consenti_solo_socket_unix(_connect_ex_reale)
 
 # --- st.secrets deve essere un dict di STRINGHE ------------------------------
 # services._get_supabase_credentials() prova st.secrets PRIMA delle env var, e un
@@ -171,3 +189,11 @@ def _reset_worker_caches():
     except Exception:
         pass
     yield
+
+
+# --- Fixture per i test che eseguono SQL vero --------------------------------
+# `tests/conftest_sql.py` non viene raccolto da pytest (il nome non e'
+# `conftest.py`): va registrato come plugin, ed e' registrato QUI perche' le sue
+# fixture servano a tutta la cartella `tests/`. Le fixture partono solo quando un
+# test le chiede: chi non le usa non paga l'avvio di Postgres.
+pytest_plugins = ["tests.conftest_sql"]
