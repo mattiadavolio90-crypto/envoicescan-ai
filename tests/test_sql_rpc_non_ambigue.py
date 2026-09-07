@@ -125,6 +125,48 @@ def test_una_sola_variante_accetta_gli_argomenti_del_chiamante(sql, nome, passat
     )
 
 
+def test_l_ambiguita_e_un_difetto_che_questi_test_sanno_vedere(db_sql, sql):
+    """Il presidio si prova su un'ambiguita' VERA, creata qui dentro.
+
+    Senza questo test gli altri sarebbero tautologici: dal 07/09/2026 lo
+    snapshot e la migration hanno gia' tolto le varianti di troppo, quindi
+    "non e' ambigua" e' vero anche se il presidio non funzionasse. Qui
+    l'ambiguita' si ricrea in transazione (annullata a fine test) e si verifica
+    che il modo di misurare la veda davvero.
+
+    Prima esisteva un modo piu' comodo di provarlo — rimettere il wrapper nello
+    snapshot — ma non misurava piu' niente: la migration applicata sopra lo
+    ricancellava, e il test tornava verde da solo.
+    """
+    prima = _nomi_parametri_accettati(sql, "get_distinct_files")
+    assert len(prima) == 1, f"atteso 1 solo overload di partenza, trovati: {prima}"
+
+    with db_sql.cursor() as cur:
+        cur.execute(
+            "CREATE FUNCTION public.get_distinct_files(p_user_id uuid) "
+            "RETURNS TABLE(file_origine text) LANGUAGE sql SECURITY DEFINER "
+            "SET search_path TO '' AS $$ SELECT f.file_origine FROM "
+            "public.get_distinct_files(p_user_id, NULL::uuid) AS f; $$"
+        )
+
+    dopo = [
+        firma for firma, obbligatori in _nomi_parametri_accettati(sql, "get_distinct_files")
+        if set(obbligatori) <= {"p_user_id"}
+    ]
+    assert len(dopo) == 2, (
+        "reintrodotto il wrapper, il conteggio degli overload compatibili non e' "
+        f"cambiato: {dopo}. Il modo di misurare non vede l'ambiguita', quindi gli "
+        "altri test di questo file non provano nulla."
+    )
+
+    import psycopg
+
+    with pytest.raises(psycopg.errors.AmbiguousFunction):
+        sql("SELECT * FROM public.get_distinct_files("
+            "  p_user_id => '11111111-1111-4111-8111-111111111111'::uuid)")
+    db_sql.rollback()
+
+
 def test_la_variante_text_di_get_distinct_files_non_esiste_piu(sql):
     """Era senza guardia auth, non filtrava il cestino e non si eseguiva.
 

@@ -1646,28 +1646,6 @@ BEGIN
     RETURNING q.*;
 END;
 $function$;
-CREATE OR REPLACE FUNCTION public.conta_ristoranti_utente(p_user_id uuid)
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-DECLARE
-    v_count INTEGER;
-BEGIN
-    IF COALESCE(auth.role(), '') <> 'service_role' AND p_user_id IS DISTINCT FROM auth.uid() THEN
-        RAISE EXCEPTION 'Accesso negato';
-    END IF;
-
-    SELECT COUNT(*)::INTEGER
-    INTO v_count
-    FROM public.ristoranti AS r
-    WHERE r.user_id = p_user_id
-      AND r.attivo = true;
-
-    RETURN v_count;
-END;
-$function$;
 CREATE OR REPLACE FUNCTION public.crea_riparto_con_quote(p_user_id uuid, p_origine text, p_file_origine text, p_fornitore text, p_descrizione text, p_importo_totale numeric, p_tipo text, p_anno integer, p_mese integer, p_regola text, p_quote jsonb)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -1706,35 +1684,6 @@ BEGIN
     FROM jsonb_array_elements(p_quote) AS q;
 
     RETURN v_riparto_id;
-END;
-$function$;
-CREATE OR REPLACE FUNCTION public.create_ristorante_for_user(p_user_id uuid, p_nome text, p_piva character varying, p_ragione_sociale text DEFAULT NULL::text)
- RETURNS TABLE(id uuid, nome_ristorante text, partita_iva character varying)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-BEGIN
-    IF COALESCE(auth.role(), '') <> 'service_role' AND p_user_id IS DISTINCT FROM auth.uid() THEN
-        RAISE EXCEPTION 'Accesso negato';
-    END IF;
-
-    RETURN QUERY
-    INSERT INTO public.ristoranti (
-        user_id,
-        nome_ristorante,
-        partita_iva,
-        ragione_sociale,
-        attivo
-    )
-    VALUES (
-        p_user_id,
-        p_nome,
-        p_piva,
-        p_ragione_sociale,
-        true
-    )
-    RETURNING public.ristoranti.id, public.ristoranti.nome_ristorante, public.ristoranti.partita_iva;
 END;
 $function$;
 CREATE OR REPLACE FUNCTION public.dashboard_stats_aggregata(p_user_id uuid, p_ristorante_id uuid)
@@ -1959,22 +1908,6 @@ BEGIN
       )
     ORDER BY e.created_at DESC
     LIMIT COALESCE(p_limit, 100);
-END;
-$function$;
-CREATE OR REPLACE FUNCTION public.get_distinct_files(p_user_id text)
- RETURNS TABLE(file_origine text)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-BEGIN
-    RETURN QUERY
-    SELECT DISTINCT f.file_origine
-    FROM fatture f
-    WHERE f.user_id = p_user_id
-      AND f.file_origine IS NOT NULL
-      AND f.file_origine != ''
-    ORDER BY f.file_origine;
 END;
 $function$;
 CREATE OR REPLACE FUNCTION public.get_distinct_files(p_user_id uuid, p_ristorante_id uuid DEFAULT NULL::uuid)
@@ -2658,53 +2591,6 @@ BEGIN
     RETURN v_updated;
 END;
 $function$;
-CREATE OR REPLACE FUNCTION public.swap_ricette_order(ricetta_id_1 uuid, ricetta_id_2 uuid)
- RETURNS boolean
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-DECLARE
-    v_user_1 UUID;
-    v_user_2 UUID;
-    v_ordine_1 INTEGER;
-    v_ordine_2 INTEGER;
-BEGIN
-    SELECT r.user_id, r.ordine_visualizzazione
-    INTO v_user_1, v_ordine_1
-    FROM public.ricette AS r
-    WHERE r.id = ricetta_id_1
-    FOR UPDATE;
-
-    SELECT r.user_id, r.ordine_visualizzazione
-    INTO v_user_2, v_ordine_2
-    FROM public.ricette AS r
-    WHERE r.id = ricetta_id_2
-    FOR UPDATE;
-
-    IF v_user_1 IS NULL OR v_user_2 IS NULL THEN
-        RAISE EXCEPTION 'Ricette non trovate';
-    END IF;
-
-    IF v_user_1 IS DISTINCT FROM v_user_2 THEN
-        RAISE EXCEPTION 'Le ricette non appartengono allo stesso utente';
-    END IF;
-
-    IF COALESCE(auth.role(), '') <> 'service_role' AND v_user_1 IS DISTINCT FROM auth.uid() THEN
-        RAISE EXCEPTION 'Accesso negato';
-    END IF;
-
-    UPDATE public.ricette
-    SET ordine_visualizzazione = v_ordine_2
-    WHERE id = ricetta_id_1;
-
-    UPDATE public.ricette
-    SET ordine_visualizzazione = v_ordine_1
-    WHERE id = ricetta_id_2;
-
-    RETURN true;
-END;
-$function$;
 CREATE OR REPLACE FUNCTION public.track_ai_usage_event(p_ristorante_id uuid, p_operation_type text DEFAULT 'pdf'::text, p_model text DEFAULT 'gpt-4o-mini'::text, p_prompt_tokens integer DEFAULT 0, p_completion_tokens integer DEFAULT 0, p_input_cost numeric DEFAULT 0, p_output_cost numeric DEFAULT 0, p_total_cost numeric DEFAULT 0, p_user_id uuid DEFAULT NULL::uuid, p_source_file text DEFAULT NULL::text, p_item_count integer DEFAULT 1, p_metadata jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
  LANGUAGE plpgsql
@@ -3052,15 +2938,6 @@ AS $function$
     GROUP BY base.ristorante_id, base.mese
     ORDER BY base.ristorante_id, base.mese;
 $function$;
-CREATE OR REPLACE FUNCTION public.get_distinct_files(p_user_id uuid)
- RETURNS TABLE(file_origine text)
- LANGUAGE sql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-    SELECT f.file_origine
-    FROM public.get_distinct_files(p_user_id, NULL::uuid) AS f;
-$function$;
 CREATE OR REPLACE FUNCTION public.gruppo_peso_categoria(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean DEFAULT false)
  RETURNS TABLE(ristorante_id uuid, categoria text, spesa numeric, peso_perc numeric)
  LANGUAGE sql
@@ -3101,33 +2978,6 @@ AS $function$
     FROM righe r
     JOIN tot_pv t ON t.rid = r.rid
     WHERE t.tot_fb > 0;
-$function$;
-CREATE OR REPLACE FUNCTION public.gruppo_prezzi_categoria(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean DEFAULT false)
- RETURNS TABLE(ristorante_id uuid, categoria text, prezzo_medio numeric, n_righe bigint)
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-    SELECT
-        f.ristorante_id,
-        f.categoria,
-        CASE
-            WHEN SUM(CASE WHEN f.quantita > 0 THEN f.quantita ELSE 0 END) > 0
-            THEN SUM(CASE WHEN f.quantita > 0 THEN f.totale_riga ELSE 0 END)
-                 / NULLIF(SUM(CASE WHEN f.quantita > 0 THEN f.quantita ELSE 0 END), 0)
-            ELSE AVG(f.prezzo_unitario)
-        END AS prezzo_medio,
-        COUNT(*)::bigint AS n_righe
-    FROM fatture f
-    WHERE f.ristorante_id = ANY(p_ristorante_ids)
-      AND f.deleted_at IS NULL
-      AND f.categoria <> 'Da Classificare'
-      AND (NOT p_escludi_da_verificare OR COALESCE(f.categoria_fiducia, '') <> 'da_verificare')
-      AND f.prezzo_unitario > 0
-      AND COALESCE(f.data_competenza, f.data_documento) IS NOT NULL
-      AND COALESCE(f.data_competenza, f.data_documento) >= p_data_da
-      AND COALESCE(f.data_competenza, f.data_documento) <= p_data_a
-    GROUP BY f.ristorante_id, f.categoria;
 $function$;
 CREATE OR REPLACE FUNCTION public.gruppo_salute_componenti(p_ristorante_ids uuid[], p_inizio timestamp with time zone, p_anno integer, p_mese integer)
  RETURNS TABLE(ristorante_id uuid, n_fatture bigint, n_needs_review bigint, netto numeric, personale numeric)
@@ -3772,20 +3622,15 @@ REVOKE ALL ON FUNCTION public.chat_top_categoria_fornitore(p_user_id uuid, p_ris
 REVOKE ALL ON FUNCTION public.chat_usage_check_and_log(p_user_id uuid, p_ristorante_id uuid, p_limite integer, p_pool boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.claim_batch_for_processing(p_worker_id text, p_batch_size integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.claim_ricavi_email_batch(p_worker_id text, p_batch_size integer) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.conta_ristoranti_utente(p_user_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.costi_automatici_mensili(p_user_id uuid, p_ristorante_id uuid, p_anno integer, p_cat_food text[], p_cat_spese text[], p_escludi_da_verificare boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.costi_automatici_mensili_gruppo(p_user_id uuid, p_ristorante_ids uuid[], p_anno integer, p_cat_food text[], p_cat_spese text[], p_escludi_da_verificare boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.crea_riparto_con_quote(p_user_id uuid, p_origine text, p_file_origine text, p_fornitore text, p_descrizione text, p_importo_totale numeric, p_tipo text, p_anno integer, p_mese integer, p_regola text, p_quote jsonb) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.create_ristorante_for_user(p_user_id uuid, p_nome text, p_piva character varying, p_ragione_sociale text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.dashboard_stats_aggregata(p_user_id uuid, p_ristorante_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_ai_costs_summary(p_days integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_ai_costs_timeseries(p_days integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_ai_recent_operations(p_days integer, p_limit integer) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.get_distinct_files(p_user_id text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.get_distinct_files(p_user_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_distinct_files(p_user_id uuid, p_ristorante_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.gruppo_peso_categoria(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.gruppo_prezzi_categoria(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.gruppo_salute_componenti(p_ristorante_ids uuid[], p_inizio timestamp with time zone, p_anno integer, p_mese integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.gruppo_spesa_pivot(p_ristorante_ids uuid[], p_dimensione text, p_data_da date, p_data_a date, p_escludi_da_verificare boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.gruppo_spreco_fb_categorie(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean) FROM PUBLIC;
@@ -3808,7 +3653,6 @@ REVOKE ALL ON FUNCTION public.schedule_retry(p_queue_id bigint, p_error_msg text
 REVOKE ALL ON FUNCTION public.soft_delete_fatture_massivo(p_user_id uuid, p_ristorante_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sostituisci_quote_riparto(p_riparto_id uuid, p_user_id uuid, p_tipo text, p_regola text, p_importo_totale numeric, p_quote jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sposta_fattura_a_sede(p_user_id uuid, p_file_origine text, p_ristorante_id uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.swap_ricette_order(ricetta_id_1 uuid, ricetta_id_2 uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.track_ai_usage_event(p_ristorante_id uuid, p_operation_type text, p_model text, p_prompt_tokens integer, p_completion_tokens integer, p_input_cost numeric, p_output_cost numeric, p_total_cost numeric, p_user_id uuid, p_source_file text, p_item_count integer, p_metadata jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.upsert_notification_inbox(p_notifications jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.gruppo_tag_analisi(p_ristorante_ids uuid[], p_descrizione_keys text[], p_data_da date, p_data_a date) FROM PUBLIC, anon, authenticated;
@@ -3830,21 +3674,16 @@ GRANT EXECUTE ON FUNCTION public.chat_top_categoria_fornitore(p_user_id uuid, p_
 GRANT EXECUTE ON FUNCTION public.chat_usage_check_and_log(p_user_id uuid, p_ristorante_id uuid, p_limite integer, p_pool boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.claim_batch_for_processing(p_worker_id text, p_batch_size integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.claim_ricavi_email_batch(p_worker_id text, p_batch_size integer) TO service_role;
-GRANT EXECUTE ON FUNCTION public.conta_ristoranti_utente(p_user_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.costi_automatici_mensili(p_user_id uuid, p_ristorante_id uuid, p_anno integer, p_cat_food text[], p_cat_spese text[], p_escludi_da_verificare boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.costi_automatici_mensili_gruppo(p_user_id uuid, p_ristorante_ids uuid[], p_anno integer, p_cat_food text[], p_cat_spese text[], p_escludi_da_verificare boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.crea_riparto_con_quote(p_user_id uuid, p_origine text, p_file_origine text, p_fornitore text, p_descrizione text, p_importo_totale numeric, p_tipo text, p_anno integer, p_mese integer, p_regola text, p_quote jsonb) TO service_role;
-GRANT EXECUTE ON FUNCTION public.create_ristorante_for_user(p_user_id uuid, p_nome text, p_piva character varying, p_ragione_sociale text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.dashboard_stats_aggregata(p_user_id uuid, p_ristorante_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_ai_costs_summary(p_days integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_ai_costs_timeseries(p_days integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_ai_recent_operations(p_days integer, p_limit integer) TO service_role;
-GRANT EXECUTE ON FUNCTION public.get_distinct_files(p_user_id text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.get_distinct_files(p_user_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_distinct_files(p_user_id uuid, p_ristorante_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_next_ordine_ricetta(p_user_id uuid, p_ristorante_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.gruppo_peso_categoria(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean) TO service_role;
-GRANT EXECUTE ON FUNCTION public.gruppo_prezzi_categoria(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.gruppo_salute_componenti(p_ristorante_ids uuid[], p_inizio timestamp with time zone, p_anno integer, p_mese integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.gruppo_spesa_pivot(p_ristorante_ids uuid[], p_dimensione text, p_data_da date, p_data_a date, p_escludi_da_verificare boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.gruppo_spreco_fb_categorie(p_ristorante_ids uuid[], p_data_da date, p_data_a date, p_escludi_da_verificare boolean) TO service_role;
@@ -3870,7 +3709,6 @@ GRANT EXECUTE ON FUNCTION public.schedule_retry(p_queue_id bigint, p_error_msg t
 GRANT EXECUTE ON FUNCTION public.soft_delete_fatture_massivo(p_user_id uuid, p_ristorante_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sostituisci_quote_riparto(p_riparto_id uuid, p_user_id uuid, p_tipo text, p_regola text, p_importo_totale numeric, p_quote jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sposta_fattura_a_sede(p_user_id uuid, p_file_origine text, p_ristorante_id uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.swap_ricette_order(ricetta_id_1 uuid, ricetta_id_2 uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.track_ai_usage_event(p_ristorante_id uuid, p_operation_type text, p_model text, p_prompt_tokens integer, p_completion_tokens integer, p_input_cost numeric, p_output_cost numeric, p_total_cost numeric, p_user_id uuid, p_source_file text, p_item_count integer, p_metadata jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.upsert_notification_inbox(p_notifications jsonb) TO service_role;
 ALTER TABLE public.ai_review_log ENABLE ROW LEVEL SECURITY;
