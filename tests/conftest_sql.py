@@ -56,7 +56,15 @@ def _migrazioni_dopo_lo_snapshot(testo_snapshot: str) -> list[Path]:
 
     match = re.search(r"^-- Rigenerato il (\d{4})-(\d{2})-(\d{2})\.", testo_snapshot, re.M)
     if not match:
-        return []
+        # Senza la data non si puo' sapere quali migration sono posteriori, e un
+        # `return []` silenzioso farebbe girare i test su uno schema piu' vecchio
+        # del repo: verdi per omissione. Dato assente non e' via libera.
+        pytest.fail(
+            "schema_snapshot.sql non dichiara la data di rigenerazione "
+            "(riga `-- Rigenerato il AAAA-MM-GG.`): impossibile stabilire quali "
+            "migration applicare sopra. Rigenerare lo snapshot.",
+            pytrace=False,
+        )
     # Il timestamp Supabase e' AAAAMMGGHHMMSS: si confronta il prefisso AAAAMMGG.
     # `>=` e non `>`: una migration dello STESSO giorno puo' essere posteriore
     # alla rigenerazione, e riapplicarla e' innocuo (i REVOKE/GRANT e i
