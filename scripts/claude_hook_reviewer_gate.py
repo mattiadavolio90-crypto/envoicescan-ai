@@ -311,13 +311,21 @@ def _head_corrente() -> str:
 # dimensione" non e' deducibile da un diff, quindi si segnala e si lascia
 # decidere. Un blocco su un'euristica verrebbe aggirato per riflesso.
 
-_DOC_STATO = ("DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md", "DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_")
+_DOC_STATO = "DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md"
 _PREFISSI_CODICE = ("services/", "apps/web/src/", "worker/", "utils/", "config/")
 SOGLIA_FILE_CODICE_SENZA_STATO = 4
 
 
-def _stato_non_aggiornato(file_toccati: list[str]) -> str | None:
-    """Molto codice toccato e nessun documento di stato: probabile chiusura muta."""
+def _stato_non_aggiornato(file_toccati: list[str], avvio: float | None) -> str | None:
+    """Molto codice toccato e documento di stato fermo: probabile chiusura muta.
+
+    Il documento di stato non passa da `git diff`: e' ignorato da git
+    (`.gitignore`, `*AUDIT*.md`) e i `.md` sono comunque esclusi da
+    `file_toccati`. Fino al 7/9/2026 il confronto era su quella lista, quindi
+    sempre falso: l'avviso usciva anche a documento aggiornato. Si misura invece
+    l'ultima modifica del file su disco contro l'avvio della sessione. Senza
+    avvio noto (registro assente) non si puo' misurare e si tace.
+    """
     di_codice = [
         f
         for f in file_toccati
@@ -325,9 +333,15 @@ def _stato_non_aggiornato(file_toccati: list[str]) -> str | None:
     ]
     if len(di_codice) <= SOGLIA_FILE_CODICE_SENZA_STATO:
         return None
-    if any(f.startswith(_DOC_STATO) for f in file_toccati):
+    if avvio is None:
         return None
-    return f"{len(di_codice)} file di codice, nessun aggiornamento a stato/contatore"
+    try:
+        modificato = (REPO_ROOT / _DOC_STATO).stat().st_mtime
+    except OSError:
+        modificato = None
+    if modificato is not None and modificato >= avvio:
+        return None
+    return f"{len(di_codice)} file di codice, {_DOC_STATO} fermo da prima della sessione"
 
 
 def main() -> int:
@@ -387,7 +401,7 @@ def main() -> int:
     marker_segnalato.parent.mkdir(parents=True, exist_ok=True)
     marker_segnalato.write_text(head, encoding="utf-8")
 
-    avviso_stato = _stato_non_aggiornato(file_toccati)
+    avviso_stato = _stato_non_aggiornato(file_toccati, _avvio_sessione(session_id))
 
     motivo = (
         f"path sensibile toccato ({match_sensibile})"

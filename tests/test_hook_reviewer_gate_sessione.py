@@ -325,3 +325,62 @@ def test_payload_json_valido_ma_non_oggetto_non_fa_crashare(tmp_path, payload):
     )
     assert esito.returncode != 1, f"gate crashato: {esito.stderr[-400:]}"
     assert _n_file(esito.stdout.strip()) is not None, "gate muto su payload anomalo"
+
+
+# ── Documento di stato: si misura su disco, non nel diff ─────────────────────
+#
+# Fino al 7/9/2026 l'avviso "[stato documentazione]" cercava il doc di stato in
+# `file_toccati`, da cui i .md sono esclusi a monte: usciva SEMPRE, anche a
+# documento appena aggiornato (misurato svuotando la costante: 15 test su 15
+# verdi). Ora il gate guarda l'ultima modifica del file rispetto all'avvio della
+# sessione. Questi test costruiscono il caso vero: molto codice e il doc fermo,
+# oppure il doc toccato dopo l'avvio.
+
+DOC_STATO = "DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md"
+
+
+def _avviso_stato(uscita: str) -> str | None:
+    if not uscita:
+        return None
+    motivo = json.loads(uscita)["reason"]
+    if "[stato documentazione]" not in motivo:
+        return None
+    return motivo.split("[stato documentazione]", 1)[1].split("\n", 1)[0].strip()
+
+
+def _sessione_con_molto_codice(tmp_path: Path, mtime_doc: int) -> Path:
+    import os
+
+    repo = _repo(tmp_path)
+    _file_di_codice(repo, 9, "mio")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "codice della sessione", quando=T_MIO)
+    _registra(repo, "MIA", T_AVVIO)
+    doc = repo / DOC_STATO
+    doc.write_text("stato")
+    os.utime(doc, (mtime_doc, mtime_doc))
+    return repo
+
+
+def test_doc_di_stato_fermo_da_prima_della_sessione_viene_segnalato(tmp_path):
+    repo = _sessione_con_molto_codice(tmp_path, mtime_doc=T0)
+    avviso = _avviso_stato(_esegui(repo, "MIA"))
+    assert avviso is not None, "9 file di codice e doc di stato mai toccato: il gate ha taciuto"
+    assert DOC_STATO in avviso, f"l'avviso non dice quale documento e' fermo: {avviso!r}"
+
+
+def test_doc_di_stato_aggiornato_in_sessione_non_viene_segnalato(tmp_path):
+    repo = _sessione_con_molto_codice(tmp_path, mtime_doc=T_MIO + 1)
+    uscita = _esegui(repo, "MIA")
+    assert _n_file(uscita) is not None, "setup rotto: il gate deve comunque chiedere la review"
+    assert _avviso_stato(uscita) is None, (
+        f"documento aggiornato dopo l'avvio ma il gate lo contesta: {_avviso_stato(uscita)!r}"
+    )
+
+
+def test_doc_di_stato_assente_viene_segnalato(tmp_path):
+    repo = _sessione_con_molto_codice(tmp_path, mtime_doc=T0)
+    (repo / DOC_STATO).unlink()
+    assert _avviso_stato(_esegui(repo, "MIA")) is not None, (
+        "documento di stato inesistente e' il caso peggiore: il gate deve dirlo"
+    )
