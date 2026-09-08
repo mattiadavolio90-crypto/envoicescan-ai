@@ -175,3 +175,30 @@ class TestLoScriptDichiaraChiE:
         sorgente = inspect.getsource(script.carica_righe)
         assert "categoria_fonte" in sorgente
         assert "reviewed_at" in sorgente
+
+
+def test_lo_script_si_lancia_come_e_documentato():
+    """`python scripts/ricategorizza_sede.py --help` deve funzionare.
+
+    Il difetto che questo test previene, e che ho introdotto io il 09/09
+    rifattorizzando: spostando gli import di `services` in cima al file, lanciare
+    lo script per percorso (come dice il suo stesso docstring) falliva con
+    `ModuleNotFoundError: No module named 'services'` — perche' cosi' Python
+    mette in sys.path `scripts/`, non la radice del repo. Nessuno degli altri
+    test lo vedeva: importano il modulo per percorso da una sessione pytest che
+    ha gia' la radice nel path.
+
+    `--help` esce prima di `main()`, quindi non tocca ne' i secrets ne' il DB.
+    """
+    import subprocess
+
+    radice = SCRIPT.parent.parent
+    esito = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"],
+        capture_output=True, text=True, timeout=120, cwd=str(radice),
+    )
+
+    assert esito.returncode == 0, (
+        f"lo script non si avvia come documentato: {esito.stderr[-400:]}"
+    )
+    assert "--commit" in esito.stdout

@@ -42,6 +42,12 @@ import tomllib
 import uuid
 from pathlib import Path
 
+# La radice del repo va nel path PRIMA di importare `services`: questo file si
+# lancia come `python scripts/ricategorizza_sede.py` (cosi' e' documentato
+# sopra), e in quel modo Python mette in sys.path `scripts/`, non la radice.
+# Finche' gli import stavano dopo la lettura dei secrets il caso non si vedeva.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from services.ai_service import (
     applica_correzioni_dizionario,
     applica_regole_categoria_forti,
