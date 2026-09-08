@@ -36,9 +36,19 @@ PATTERN_RISCHIO: list[tuple[re.Pattern, str]] = [
         "Comando railway che modifica/riavvia un servizio in produzione.",
     ),
     (
+        # Solo SQL vero, non la parola "update" dentro un grep o un nome di file:
+        # servono la forma completa del comando (DELETE FROM / UPDATE <tab> SET /
+        # DROP <oggetto> / TRUNCATE) e l'assenza di WHERE. Il pattern precedente
+        # cercava la sola keyword e chiedeva conferma su ogni
+        # `grep "def .*update"`, cioe' decine di volte per sessione.
         re.compile(
-            r"\b(DELETE|UPDATE|DROP|TRUNCATE)\b(?!.*\bWHERE\b)",
-            re.IGNORECASE,
+            r"(?:"
+            r"\bDELETE\s+FROM\b"
+            r"|\bUPDATE\s+[\w.\"']+\s+SET\b"
+            r"|\bDROP\s+(?:TABLE|VIEW|SCHEMA|DATABASE|INDEX|FUNCTION|TRIGGER|POLICY|TYPE|COLUMN)\b"
+            r"|\bTRUNCATE\s+(?:TABLE\s+)?[\w.\"']+"
+            r")(?!.*\bWHERE\b)",
+            re.IGNORECASE | re.DOTALL,
         ),
         "Comando SQL distruttivo (DELETE/UPDATE/DROP/TRUNCATE) senza WHERE visibile.",
     ),
