@@ -32,9 +32,17 @@ import pytest
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "ricategorizza_sede.py"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def script():
-    """Il modulo vero, importato senza eseguire main() ne' toccare la rete."""
+    """Il modulo vero, importato senza eseguire main() ne' toccare la rete.
+
+    Scope per-test e NON per-modulo: i test che eseguono `main()` sostituiscono
+    `_client`/`carica_righe`/`aggiorna_categoria_fatture` sul modulo, e con un
+    modulo condiviso il patch di un test restava attaccato a quello dopo —
+    misurato: `test_il_dry_run_non_scrive` vedeva la scrittura del test
+    precedente e falliva a seconda dell'ORDINE, non del codice. Reimportare
+    costa pochi ms e rende i test indipendenti.
+    """
     spec = importlib.util.spec_from_file_location("_ricategorizza_sede_test", SCRIPT)
     modulo = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = modulo
