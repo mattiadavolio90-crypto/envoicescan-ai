@@ -6,9 +6,9 @@ Analizza fatture elettroniche XML/P7M/PDF, categorizza prodotti con AI (GPT-4.1-
 genera report su margini, prezzi fornitori, foodcost.
 
 **Owner:** Mattia D'Avolio — sviluppatore singolo.
-**In produzione dal 1 luglio 2026.** 7 account cliente / 12 sedi, 11 con fatture
-(misurato il 6/9/2026): 8 oltre le mille righe, 4 alimentate nell'ultima
-settimana. Volumi in `DOCUMENTAZIONE/MAPPA_TECNICA.md` §1.
+**In produzione dal 1 luglio 2026.** 7 account cliente (6 con fatture caricate)
+/ 12 sedi, 11 con fatture (ri-misurato l'8/9/2026): 8 oltre le mille righe, 4
+alimentate nell'ultima settimana. Volumi in `DOCUMENTAZIONE/MAPPA_TECNICA.md` §1.
 
 > Le cifre di questo file vanno **ri-misurate**, non ereditate: il 29/8/2026 la
 > riga sopra diceva ancora «2 clienti in test» e «go-live: 1 luglio» a due mesi

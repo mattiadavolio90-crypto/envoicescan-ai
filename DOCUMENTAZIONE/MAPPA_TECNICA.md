@@ -24,17 +24,28 @@ Fattura (SDI o upload) → parsing → categorizzazione AI → DB → margini/re
 
 Tutto il resto del prodotto è al servizio di questa catena.
 
-**Quanto ci passa dentro** (misurato il **6/9/2026** — ri-misuralo, non
-ereditarlo): 7 account, **12 sedi** di cui 11 con fatture e 8 sopra le mille
-righe. **39.466 righe fattura per 4,05 M€**, di cui 184 ancora
-`Da Classificare` (2.103 €) e 864 ripartite su gruppo. **14,77 M€ di incassi**
-su 1.064 giornate e 6 sedi. Ultima fattura e ultimo incasso: **5/9/2026** — il
-sistema è alimentato ogni giorno, non è un archivio.
+**Quanto ci passa dentro** (ri-misurato sul DB live l'**8/9/2026** — ri-misuralo,
+non ereditarlo): **7 account** di cui **6** hanno caricato almeno una riga,
+**12 sedi** di cui 11 con fatture e 8 sopra le mille righe. **39.515 righe fattura per 4,06 M€**, di cui 184
+ancora `Da Classificare` (2.103 €). **14,88 M€ di incassi** su 1.074 giornate e
+6 sedi. Ultima fattura in ordine di data documento: **8/9/2026** (caricata la
+sera del 7); ultimo incasso: **7/9/2026** — il sistema è alimentato ogni
+giorno, non è un archivio.
+
+> **«7 account» e «6 account» sono entrambi giusti**: 7 esistono in `users`, 6
+> hanno almeno una riga fattura. La query qui sotto conta i secondi. Tenere una
+> cifra sola avrebbe fatto sembrare un errore quello che è solo un cliente che
+> non ha ancora caricato.
 
 ```sql
 -- il conto sopra, per rifarlo
-SELECT count(*), count(DISTINCT ristorante_id), round(sum(totale_riga)::numeric,0)
+SELECT count(*), count(DISTINCT ristorante_id), count(DISTINCT user_id),
+       round(sum(totale_riga)::numeric,0)
 FROM fatture WHERE deleted_at IS NULL;
+-- gli incassi stanno in tre colonne, non una:
+SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
+                +coalesce(altri_ricavi_noiva,0))::numeric,0),
+       count(*), count(DISTINCT ristorante_id) FROM ricavi_giornalieri;
 ```
 
 ---
