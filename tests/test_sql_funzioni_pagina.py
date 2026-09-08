@@ -4,9 +4,15 @@ Perche' questo file esiste
 ==========================
 Sul DB live vivono 75 funzioni `public`. I test SQL esistenti ne ESEGUONO 12 per
 nome (piu' i trigger): tutte le altre non sono mai state eseguite da un test.
-Delle 52 restanti, 35 sono trigger di orario e job di pulizia che non muovono
-numeri. Le 17 che restano sono vive — ogni nome ha almeno un chiamante in
-`services/`, `worker/` o `apps/web/src/` — e calcolano o registrano numeri.
+Di quelle 63, **22 sono di servizio** (prefissi `update_*`, `set_*`, `fn_*`,
+`purge_*`, `trg_*`: trigger di orario e job di pulizia, non muovono numeri) —
+contate sullo snapshot, non ereditate: il prompt di questa sessione diceva 35.
+Le 17 indicate come «vive» hanno tutte almeno un chiamante in `services/`,
+`worker/` o `apps/web/src/` e calcolano o registrano numeri, ma non esauriscono
+l'inventario: restano **24 funzioni mai classificate**, alcune delle quali vive
+(`dashboard_stats_aggregata`, `soft_delete_fatture_massivo`,
+`crea_riparto_con_quote`, `gruppo_tag_analisi`). Chi riprende il tema parta da
+quelle, non dal numero 17.
 
 Questo file copre le **8 di Livello 1**: quelle i cui numeri finiscono davanti
 al cliente. Le 9 di Livello 2 (`admin_*`, `get_ai_costs_*`, `increment_ai_cost`,
@@ -52,6 +58,14 @@ UTENTE = "44444444-4444-4444-8444-444444444444"
 SEDE = "55555555-5555-4555-8555-555555555555"
 SEDE_B = "66666666-6666-4666-8666-666666666666"
 
+# Un secondo tenant, seminato SEMPRE e con dati rumorosi. Non e' ornamento:
+# con un solo utente in tabella, neutralizzare il filtro `ristorante_id = ...`
+# o `user_id = ...` non cambia nessun risultato, e i test restano verdi mentre
+# la funzione perde l'isolamento fra clienti. Con un estraneo che ha righe
+# sulle stesse descrizioni, lo stesso mutante diventa rosso ovunque.
+ESTRANEO = "77777777-7777-4777-8777-777777777777"
+SEDE_ESTRANEA = "88888888-8888-4888-8888-888888888888"
+
 DA_CLASSIFICARE = "Da Classificare"
 
 
@@ -68,7 +82,49 @@ def _semina_utente_e_sedi(db_sql, sedi=(SEDE,)):
                 "partita_iva, attivo) VALUES (%s, %s, %s, %s, true)",
                 (sede, UTENTE, f"Sede {numero}", f"9876543210{numero}"),
             )
+        cur.execute(
+            "INSERT INTO public.users (id, email, password_hash, nome_ristorante) "
+            "VALUES (%s, 'estraneo@oneflux.test', 'x', 'Estraneo')",
+            (ESTRANEO,),
+        )
+        cur.execute(
+            "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, "
+            "partita_iva, attivo) VALUES (%s, %s, 'Estraneo', '00000000009', true)",
+            (SEDE_ESTRANEA, ESTRANEO),
+        )
+    _semina_rumore_estraneo(db_sql)
     return UTENTE
+
+
+def _semina_rumore_estraneo(db_sql):
+    """Righe di un ALTRO cliente, sulle stesse descrizioni, categorie e date.
+    Se un filtro di isolamento sparisce, questi importi entrano nei totali dei
+    test e li fanno fallire.
+
+    Il rumore sta tutto sulla sede dell'estraneo, MAI sulla sede sotto test: le
+    funzioni `gruppo_*` filtrano per sede e basta, quindi una riga di un altro
+    utente sulla sede chiesta entrerebbe nei loro totali a ragione, non per un
+    difetto. Misurato: seminandola, 10 test cadevano su un comportamento
+    corretto.
+
+    Le date coprono tutta la finestra dei test (2026 e gli ultimi giorni) e
+    `created_at` resta quello di default (now()), dentro il `p_inizio` di
+    `gruppo_salute_componenti`.
+    """
+    with db_sql.cursor() as cur:
+        cur.execute("SELECT (CURRENT_DATE - 3)::text")
+        recente = cur.fetchone()[0]
+
+    for descrizione in ("SALMONE 5-6", "TONNO", "COMMISSIONI"):
+        for data in ("2026-03-10", "2026-01-05", recente):
+            _riga(db_sql, sede=SEDE_ESTRANEA, utente=ESTRANEO,
+                  descrizione=descrizione, categoria="PESCE",
+                  fornitore="FORNITORE ESTRANEO", totale=Decimal("7777.00"),
+                  data_documento=data)
+            _riga(db_sql, sede=SEDE_ESTRANEA, utente=ESTRANEO,
+                  descrizione=descrizione, categoria="CARNE",
+                  fornitore="FORNITORE ESTRANEO", totale=Decimal("6666.00"),
+                  data_documento=data)
 
 
 def _riga(db_sql, *, sede=SEDE, descrizione="SALMONE 5-6", fornitore="ADC SRL",
@@ -286,6 +342,57 @@ def test_descrizioni_filtra_su_q_e_rispetta_il_limite(db_sql, sql):
     assert [r[1] for r in _descrizioni(sql, limite=1)] == ["TONNO PINNA GIALLA"]
 
 
+def test_descrizioni_flag_da_verificare_esclude_solo_se_acceso(db_sql, sql):
+    """Stesso flag del pivot, sull'altra RPC: era l'unico dei due parametri
+    `p_escludi_da_verificare` non provato."""
+    _semina_utente_e_sedi(db_sql)
+    _riga(db_sql, descrizione="SALMONE 5-6", totale=Decimal("100.00"))
+    _riga(db_sql, descrizione="SALMONE 5-6", totale=Decimal("60.00"), fiducia="da_verificare")
+
+    spento = {r[1]: r[3] for r in _descrizioni(sql, escludi=False)}
+    acceso = {r[1]: r[3] for r in _descrizioni(sql, escludi=True)}
+    assert spento["SALMONE 5-6"] == Decimal("160.00")
+    assert acceso["SALMONE 5-6"] == Decimal("100.00")
+
+
+def test_descrizioni_l_etichetta_e_la_grafia_piu_recente(db_sql, sql):
+    """`(array_agg(descrizione ORDER BY data_documento DESC))[1]`: fra due
+    grafie della stessa cosa, in pagina compare quella vista per ultima."""
+    _semina_utente_e_sedi(db_sql)
+    _riga(db_sql, descrizione="salmone  5-6", totale=Decimal("10.00"),
+          data_documento="2026-01-10")
+    _riga(db_sql, descrizione="SALMONE 5-6", totale=Decimal("10.00"),
+          data_documento="2026-05-10")
+
+    righe = _descrizioni(sql)
+    assert len(righe) == 1, "le due grafie non sono cadute nella stessa chiave"
+    assert righe[0][0] == "SALMONE 5-6", "ha etichettato il tag con la grafia vecchia"
+
+
+def test_pivot_taglia_anche_sul_bordo_inferiore_della_finestra(db_sql, sql):
+    """Il bordo superiore era gia' provato, l'inferiore no: senza questo, la
+    finestra si poteva allargare all'indietro senza test rossi."""
+    _semina_utente_e_sedi(db_sql)
+    _riga(db_sql, categoria="PESCE", totale=Decimal("100.00"), data_documento="2026-06-15")
+    _riga(db_sql, categoria="CARNE", totale=Decimal("900.00"), data_documento="2026-01-05")
+
+    valori = {r[1]: r[2] for r in _pivot(sql, da="2026-06-01", a="2026-06-30")}
+    assert valori == {"PESCE": Decimal("100.00")}, "una riga prima di p_data_da e' entrata"
+
+
+def test_trend_e_fornitori_tagliano_su_entrambi_i_bordi(db_sql, sql):
+    """Il `BETWEEN` di queste due RPC: una riga prima e una dopo la finestra."""
+    _semina_utente_e_sedi(db_sql)
+    _riga(db_sql, descrizione="SALMONE 5-6", totale=Decimal("50.00"), data_documento="2026-06-15")
+    _riga(db_sql, descrizione="SALMONE 5-6", totale=Decimal("900.00"), data_documento="2026-01-05")
+    _riga(db_sql, descrizione="SALMONE 5-6", totale=Decimal("700.00"), data_documento="2026-12-20")
+
+    assert [r[2] for r in _trend(sql, ["SALMONE 5-6"], da="2026-06-01", a="2026-06-30")] \
+        == [Decimal("50.00")]
+    assert [r[1] for r in _fornitori(sql, ["SALMONE 5-6"], da="2026-06-01", a="2026-06-30")] \
+        == [Decimal("50.00")]
+
+
 def test_fornitori_ripartisce_la_spesa_del_tag(db_sql, sql):
     _semina_utente_e_sedi(db_sql)
     _riga(db_sql, descrizione="SALMONE 5-6", fornitore="ADC SRL", totale=Decimal("100.00"))
@@ -392,6 +499,14 @@ def _margini_mensili(db_sql, *, sede=SEDE, anno=2026, mese=3, iva10=0, iva22=0,
             "fatturato_iva10, fatturato_iva22, altri_ricavi_noiva, costo_dipendenti, "
             "costo_personale_extra) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (UTENTE, sede, anno, mese, iva10, iva22, noiva, dipendenti, extra),
+        )
+        # stesso mese, cliente diverso: se il filtro per sede sparisce, questi
+        # 999.999 entrano nel netto e il test muore.
+        cur.execute(
+            "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, "
+            "fatturato_iva10, costo_dipendenti) VALUES (%s, %s, %s, %s, 999999, 888888) "
+            "ON CONFLICT DO NOTHING",
+            (ESTRANEO, SEDE_ESTRANEA, anno, mese),
         )
 
 
@@ -659,6 +774,18 @@ def test_quota_e_per_sede_ma_il_pool_la_unisce(db_sql, sql):
     assert _quota(sql, sede=SEDE, limite=2, pool=True) == -1
 
 
+def test_quota_senza_sede_conta_sull_utente(db_sql, sql):
+    """Il terzo ramo della WHERE: `p_ristorante_id IS NULL` a pool spento conta
+    per utente. Era l'unico dei tre non isolato."""
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE, SEDE_B))
+    # due domande gia' consumate su due sedi diverse
+    assert _quota(sql, sede=SEDE, limite=5) == 1
+    assert _quota(sql, sede=SEDE_B, limite=5) == 1
+
+    # senza sede: contano entrambe, perche' il criterio diventa l'utente
+    assert _quota(sql, sede=None, limite=5) == 3
+
+
 def test_quota_azzera_a_mezzanotte_UTC_non_italiana(db_sql, sql):
     """DIVERGENZA NOTA E NON DECISA (07/09/2026): il taglio e' mezzanotte UTC,
     che in Italia cade all'01:00 (inverno) o alle 02:00 (estate). Un cliente che
@@ -689,3 +816,111 @@ def test_quota_azzera_a_mezzanotte_UTC_non_italiana(db_sql, sql):
     # limite 2: una sola delle due righe conta, quindi la prossima passa ed e' la 2a
     assert _quota(sql, limite=2) == 2
     assert _quota(sql, limite=2) == -1
+
+
+# ---------------------------------------------------------------------------
+# Isolamento fra clienti
+#
+# Ogni test di questo file semina anche un SECONDO cliente
+# (`_semina_rumore_estraneo`) con righe sulle stesse descrizioni, categorie e
+# date. Questi test lo rendono esplicito: sono la rete che cade se un filtro
+# `ristorante_id = ...` o `user_id = ...` sparisce da uno dei corpi.
+#
+# Sette funzioni si difendono SOLO cosi': `articoli_da_fatture` e
+# `chat_top_categoria_fornitore` non sono nemmeno SECURITY DEFINER, e le
+# `gruppo_*` ricevono la lista di sedi dal chiamante. Non c'e' RLS a coprirle:
+# in ONEFLUX `auth.uid()` e' sempre NULL e ogni client usa `service_role`.
+# ---------------------------------------------------------------------------
+
+def test_nessuna_funzione_restituisce_dati_di_un_altro_cliente(db_sql, sql):
+    _semina_utente_e_sedi(db_sql)
+    _riga(db_sql, descrizione="SALMONE 5-6", categoria="PESCE",
+          fornitore="ADC SRL", totale=Decimal("100.00"),
+          data_documento="2026-03-10", created_at="2026-02-01")
+    _margini_mensili(db_sql, iva10=1000)
+
+    # La semina dell'estraneo e' avvenuta: senza, questi assert non provano nulla.
+    estranee = sql("SELECT count(*) FROM public.fatture WHERE user_id = %s", ESTRANEO)
+    assert estranee[0][0] == 18, "il rumore dell'estraneo non e' stato seminato"
+
+    # pivot: nessun importo dell'estraneo, e nessuna sua sede fra le chiavi
+    for sede_vista, _, totale in _pivot(sql):
+        assert str(sede_vista) == SEDE
+        assert totale < Decimal("1000"), "importi di un altro cliente nel pivot"
+
+    # tag: le descrizioni coincidono, quindi solo il filtro sede separa i totali
+    assert {r[3] for r in _descrizioni(sql)} == {Decimal("100.00")}
+    assert [r[1] for r in _fornitori(sql, ["SALMONE 5-6"])] == [Decimal("100.00")]
+    assert [r[2] for r in _trend(sql, ["SALMONE 5-6"])] == [Decimal("100.00")]
+
+    # salute: netto e conteggio fatture restano quelli della sede chiesta
+    _, n_fatture, _, netto, _ = _salute(sql)[0]
+    assert (n_fatture, netto) == (1, Decimal("1000"))
+
+    # articoli e chat: filtrano su user_id + ristorante_id
+    assert {r[0] for r in _articoli(sql)} == {"SALMONE 5-6"}
+    categorie = {r[1]: r[2] for r in _top(sql, giorni=3650) if r[0] == "categoria"}
+    assert categorie == {"PESCE": Decimal("100.00")}
+
+
+def test_articoli_e_salute_isolano_anche_quando_un_filtro_solo_discrimina(db_sql, sql):
+    """`articoli_da_fatture` e `gruppo_salute_componenti` filtrano su piu' colonne
+    insieme (user_id + ristorante_id la prima; ristorante_id + created_at la
+    seconda). Con dati in cui i filtri sono ridondanti, toglierne uno non cambia
+    il risultato e il mutante sopravvive: misurato, tre mutanti restavano verdi.
+
+    Qui ogni riga estranea e' distinguibile da UN SOLO filtro per volta:
+    - stesso utente, sede diversa -> solo `ristorante_id` la esclude;
+    - stessa sede, utente diverso -> solo `user_id` la esclude.
+    """
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE, SEDE_B))
+    _riga(db_sql, sede=SEDE, descrizione="SALMONE 5-6", categoria="PESCE",
+          totale=Decimal("100.00"), prezzo=Decimal("100.00"))
+    # stesso utente, ALTRA sede: solo il filtro sulla sede la tiene fuori
+    _riga(db_sql, sede=SEDE_B, descrizione="TONNO ALTRA SEDE", categoria="PESCE",
+          totale=Decimal("500.00"), prezzo=Decimal("500.00"))
+    # stessa sede, ALTRO utente: solo il filtro sull'utente la tiene fuori
+    _riga(db_sql, sede=SEDE, utente=ESTRANEO, descrizione="BRANZINO ALTRUI",
+          categoria="PESCE", totale=Decimal("900.00"), prezzo=Decimal("900.00"))
+
+    articoli = {r[0] for r in _articoli(sql, sede=SEDE)}
+    assert articoli == {"SALMONE 5-6"}, f"isolamento rotto in articoli: {articoli}"
+
+    # salute: la sede B ha una fattura sua, la sede A una sola (quella altrui
+    # sulla stessa sede conta: la funzione filtra per sede, non per utente)
+    per_sede = {str(r[0]): r[1] for r in _salute(sql, sedi=(SEDE,))}
+    assert per_sede[SEDE] == 2, "la funzione conta per sede: 2 righe su SEDE"
+    solo_b = {str(r[0]): r[1] for r in _salute(sql, sedi=(SEDE_B,))}
+    assert solo_b[SEDE_B] == 1, "isolamento rotto in salute: la sede B ne ha una"
+
+
+def test_salute_non_conta_le_fatture_di_un_altro_mese_di_margini(db_sql, sql):
+    """Due sedi con margini diversi nello stesso mese restano separate.
+
+    NOTA sui due `WHERE ... = ANY(p_ristorante_ids)` dentro le CTE `f` e `m`
+    (snapshot righe 3082 e 3093): neutralizzarli **non** fa fallire questo
+    test, e non e' una debolezza del test. Le due CTE raggruppano per
+    `ristorante_id` e il risultato passa da
+    `unnest(p_ristorante_ids) LEFT JOIN f ON f.rid = r`: e' il JOIN a
+    selezionare le sedi chieste, quindi quei due WHERE sono una
+    **ottimizzazione ridondante**, non il presidio dell'isolamento. Un mutante
+    sopravvissuto qui dice che la riga e' ridondante, non che manca un test —
+    e toglierli davvero costerebbe solo una scansione piu' larga.
+    """
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE, SEDE_B))
+    _margini_mensili(db_sql, sede=SEDE, iva10=1000)
+    _margini_mensili(db_sql, sede=SEDE_B, iva10=250)
+
+    per_sede = {str(r[0]): r[3] for r in _salute(sql, sedi=(SEDE, SEDE_B))}
+    assert per_sede[SEDE] == Decimal("1000")
+    assert per_sede[SEDE_B] == Decimal("250"), "i margini delle due sedi si sono mescolati"
+
+
+def test_la_quota_della_chat_non_si_mescola_fra_clienti(db_sql, sql):
+    _semina_utente_e_sedi(db_sql)
+    for _ in range(3):
+        _quota(sql, limite=3)
+    assert _quota(sql, limite=3) == -1, "l'utente ha esaurito la sua quota"
+
+    # l'estraneo parte da zero: la quota non e' globale
+    assert _quota(sql, utente=ESTRANEO, sede=SEDE_ESTRANEA, limite=3) == 1
