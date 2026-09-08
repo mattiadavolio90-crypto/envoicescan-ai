@@ -9,7 +9,7 @@ _SERVIZI_CANONI_RE su "LINEA" (gamberi in SERVIZI), "COMO ACQUA S.R.L" fa
 scattare _ACQUA_CONFEZIONATA_RE (bolletta idrica fra le bevande), e all'opposto
 la ragione sociale davanti alla descrizione rompe i match del dizionario.
 
-Perche' questo file e' stato riscritto il 09/09/2026
+Perche' questo file e' stato riscritto il 08/09/2026
 ===================================================
 La versione precedente definiva una `_pipeline` LOCALE, che il suo stesso
 docstring dichiarava "Replica di pipeline_deterministica": copiava a mano cinque
@@ -50,7 +50,7 @@ def script():
     return modulo
 
 
-# Righe reali di SUSHILAND VILLA GUARDIA, misurate sul DB live il 09/09/2026.
+# Righe reali di SUSHILAND VILLA GUARDIA, misurate sul DB live il 08/09/2026.
 # La 128426 e' il caso del precedente: decisa a mano come CARNE il 25/06
 # (reviewed_by='admin-pasta-ripiena-2026-06-25'), la pipeline la vuole in
 # "PASTA E CEREALI".
@@ -124,7 +124,7 @@ class TestFornitoreNonContaminaLaDescrizione:
 
 class TestNonSovrascrivereCioCheUnUmanoHaDeciso:
     def test_la_riga_arbitrata_del_precedente_non_viene_toccata(self, script):
-        """Il caso vivo del 09/09: senza guardia questa riga diventava PASTA."""
+        """Il caso vivo del 08/09: senza guardia questa riga diventava PASTA."""
         proposta = script.pipeline_deterministica(
             RIGA_ARBITRATA["descrizione"], "CARNE", RIGA_ARBITRATA["fornitore"]
         )
@@ -168,7 +168,7 @@ class TestNonSovrascrivereCioCheUnUmanoHaDeciso:
 
 class TestLoScriptDichiaraChiE:
     def test_la_scrittura_passa_dal_chokepoint_attribuito(self, script, monkeypatch):
-        """Prima del 09/09 lo script scriveva con `.update()` diretto: ogni sua
+        """Prima del 08/09 lo script scriveva con `.update()` diretto: ogni sua
         riga finiva nel registro come `db_trigger`, indistinguibile dal worker.
         E' cio' che ha reso il precedente del 26/08 impossibile da misurare.
 
@@ -245,7 +245,7 @@ class TestLoScriptDichiaraChiE:
 def test_lo_script_si_lancia_come_e_documentato():
     """`python scripts/ricategorizza_sede.py --help` deve funzionare.
 
-    Il difetto che questo test previene, e che ho introdotto io il 09/09
+    Il difetto che questo test previene, e che ho introdotto io il 08/09
     rifattorizzando: spostando gli import di `services` in cima al file, lanciare
     lo script per percorso (come dice il suo stesso docstring) falliva con
     `ModuleNotFoundError: No module named 'services'` — perche' cosi' Python

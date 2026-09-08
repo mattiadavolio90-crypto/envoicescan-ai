@@ -296,7 +296,7 @@ def test_la_dichiarazione_della_gemella_non_cola(db_sql, sql, scalare):
 # La guardia sulle righe gia' arbitrate (`p_salta_arbitrate`).
 #
 # Il precedente e' del 26/08: `scripts/ricategorizza_sede.py` avrebbe
-# sovrascritto 19 correzioni manuali. Misurato il 09/09/2026 il caso e' ancora
+# sovrascritto 19 correzioni manuali. Misurato il 08/09/2026 il caso e' ancora
 # vivo sul live: la riga 128426 di VILLA GUARDIA ("INVOLTINO VIETNAM (POLLO)",
 # decisa a mano come CARNE il 25/06) passata nella pipeline dello script ne esce
 # "PASTA E CEREALI".

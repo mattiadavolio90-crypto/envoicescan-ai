@@ -111,7 +111,7 @@ def aggiorna_categoria_fatture(
     passa da qui con source='correzione_cliente' — deve poter riscrivere le
     proprie righe, o non potrebbe correggersi due volte. Chi scrive per conto
     d'altri (uno script massivo su una sede) deve invece fermarsi: e' il
-    precedente del 26/08, ancora vivo il 09/09 sulla riga 128426 di VILLA
+    precedente del 26/08, ancora vivo il 08/09 sulla riga 128426 di VILLA
     GUARDIA.
 
     Chi lo accende NON deve dedurre le righe saltate dal ritorno: questa

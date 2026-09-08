@@ -16,7 +16,7 @@ Passate:
 Le righe gia' arbitrate da un umano NON si toccano
 ==================================================
 Precedente del 26/08: questo script avrebbe sovrascritto 19 correzioni manuali,
-e fu trovato per caso leggendo il codice. Misurato il 09/09/2026 il caso era
+e fu trovato per caso leggendo il codice. Misurato il 08/09/2026 il caso era
 ancora vivo: la riga 128426 di VILLA GUARDIA ("INVOLTINO VIETNAM (POLLO)",
 decisa a mano come CARNE il 25/06) passata in `pipeline_deterministica` ne esce
 "PASTA E CEREALI" — un involtino di pollo fra la pasta.
@@ -111,7 +111,7 @@ def pipeline_deterministica(desc, cat_attuale, fornitore=None):
 def e_arbitrata(riga):
     """La riga porta la decisione di un umano?
 
-    Le due condizioni sono DISGIUNTE sul live (misurato il 09/09: 12 righe per
+    Le due condizioni sono DISGIUNTE sul live (misurato il 08/09: 12 righe per
     `categoria_fonte`, 318 per `reviewed_at`, unione 330): controllarne una sola
     lascerebbe scoperta l'altra meta' del perimetro.
     """

@@ -2,7 +2,17 @@
 -- scripts/genera_schema_snapshot.py. NON modificare a mano: rigenerare.
 -- Serve a montare il Postgres dei test (le migration del repo non
 -- ricostruiscono il database: vedi il docstring dello script).
--- Rigenerato il 2026-09-09.
+-- Rigenerato il 2026-09-08.
+--
+-- Eccezione dell'08/09/2026: questo file NON e' stato rigenerato dallo
+-- script, ma allineato A MANO al catalogo live (`pg_get_functiondef`).
+-- Lo script richiede SUPABASE_DB_URL (la password Postgres del progetto),
+-- che non e' disponibile: decisione presa sapendone il costo, non una
+-- distrazione. La regola sopra resta valida per chiunque abbia la URL.
+-- Allineati a mano: il corpo di fn_log_category_change (la costante
+-- c_uuid, che nello snapshot era una regex inlineata nei due usi) e la
+-- posizione di _azzera_attribuzione_categoria (era in cima al blocco,
+-- prima delle IMMUTABLE; l'ORDER BY dello script la mette fra le plpgsql).
 
 -- Ambiente Supabase ricreato per il DB di test: ruoli, schema auth, GUC.
 -- NON fa parte dello schema dell'applicazione — vedi scripts/genera_schema_snapshot.py.
@@ -1318,19 +1328,6 @@ CREATE INDEX users_reset_code_idx ON public.users USING btree (reset_code);
 -- Delle 96 policy RLS si riporta solo l'abilitazione: ogni client dell'app
 -- usa service_role (BYPASSRLS), quindi le policy non filtrano nulla e
 -- ricopiarle darebbe ai test una protezione solo apparente.
-CREATE OR REPLACE FUNCTION public._azzera_attribuzione_categoria()
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-    PERFORM set_config('app.category_change_source', '', true);
-    PERFORM set_config('app.category_change_batch_id', '', true);
-    PERFORM set_config('app.category_change_actor_email', '', true);
-    PERFORM set_config('app.category_change_actor_user_id', '', true);
-END;
-$function$;
 CREATE OR REPLACE FUNCTION public._riparto_categoria_is_fb(p_categoria text)
  RETURNS boolean
  LANGUAGE sql
@@ -1448,6 +1445,19 @@ BEGIN
     GET DIAGNOSTICS v_count = ROW_COUNT;
     PERFORM public._azzera_attribuzione_categoria();
     RETURN v_count;
+END;
+$function$;
+CREATE OR REPLACE FUNCTION public._azzera_attribuzione_categoria()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+    PERFORM set_config('app.category_change_source', '', true);
+    PERFORM set_config('app.category_change_batch_id', '', true);
+    PERFORM set_config('app.category_change_actor_email', '', true);
+    PERFORM set_config('app.category_change_actor_user_id', '', true);
 END;
 $function$;
 CREATE OR REPLACE FUNCTION public.accoda_upload_ambiguo(p_user_id uuid, p_piva_raw text, p_xml_content text, p_nome_file text, p_indirizzo_raw text, p_xml_hash text, p_payload_meta jsonb DEFAULT '{}'::jsonb, p_anteprima_righe jsonb DEFAULT NULL::jsonb)
@@ -3358,6 +3368,7 @@ DECLARE
     v_ristorante_id UUID;
     v_file_origine TEXT;
     v_numero_riga INTEGER;
+    c_uuid CONSTANT TEXT := '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$';
 BEGIN
     IF TG_OP <> 'UPDATE' THEN
         RETURN NEW;
@@ -3378,16 +3389,12 @@ BEGIN
     v_source := COALESCE(NULLIF(current_setting('app.category_change_source', true), ''), 'db_trigger');
     v_batch_text := NULLIF(current_setting('app.category_change_batch_id', true), '');
 
-    IF v_batch_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' THEN
+    IF v_batch_text ~* c_uuid THEN
         v_batch_id := v_batch_text::UUID;
     ELSE
         v_batch_id := NULL;
     END IF;
 
-    -- Accesso SICURO ai campi che esistono solo su alcune tabelle (es. fatture ha
-    -- ristorante_id/file_origine/numero_riga, prodotti_utente no). to_jsonb(...)->>'campo'
-    -- ritorna NULL se il campo non esiste, evitando l'errore "record new has no field"
-    -- che PL/pgSQL solleverebbe risolvendo NEW.<campo> a compile-time anche dentro un CASE.
     v_ristorante_id := NULLIF(COALESCE(to_jsonb(NEW)->>'ristorante_id', to_jsonb(OLD)->>'ristorante_id'), '')::UUID;
 
     IF TG_TABLE_NAME = 'fatture' THEN
@@ -3413,7 +3420,7 @@ BEGIN
         v_numero_riga,
         OLD.categoria,
         NEW.categoria,
-        CASE WHEN v_actor_sub_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' THEN v_actor_sub_text::UUID ELSE NULL END,
+        CASE WHEN v_actor_sub_text ~* c_uuid THEN v_actor_sub_text::UUID ELSE NULL END,
         v_actor_email,
         v_source,
         v_batch_id,

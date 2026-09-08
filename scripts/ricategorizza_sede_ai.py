@@ -124,7 +124,7 @@ desc_map = {}
 desc_to_ids = {}
 desc_importo = {}
 # Le righe gia' decise da un umano non entrano nemmeno nel piano. Oggi nessuna
-# riga arbitrata e' 'Da Classificare' sul live (misurato il 09/09: 330 protette,
+# riga arbitrata e' 'Da Classificare' sul live (misurato il 08/09: 330 protette,
 # tutte con una categoria), quindi questo filtro non toglie lavoro: e' la rete
 # per quando il filtro a monte cambiera'.
 n_arbitrate_saltate = 0

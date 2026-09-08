@@ -191,7 +191,7 @@ def test_la_guardia_arriva_alla_rpc_quando_si_chiede():
 def test_chi_non_chiede_la_guardia_non_manda_il_parametro():
     """Non basta che il parametro valga False: non deve proprio essere inviato.
 
-    Il difetto che questo test previene, trovato dalla review il 09/09: mandarlo
+    Il difetto che questo test previene, trovato dalla review il 08/09: mandarlo
     sempre significa che, finche' sul DB c'e' la firma a 7 argomenti, PostgREST
     risponde PGRST202 a OGNI chiamata — le 13 esistenti comprese — e ognuna cade
     nel fallback HTTP, che scrive ma senza attribuzione. Il registro tornerebbe

@@ -2,7 +2,7 @@
 --
 -- Il precedente e' del 26/08: `scripts/ricategorizza_sede.py` avrebbe
 -- sovrascritto 19 correzioni manuali, e fu trovato per caso leggendo il codice.
--- Misurato il 09/09/2026 il caso e' ancora vivo: la riga 128426 di VILLA GUARDIA
+-- Misurato il 08/09/2026 il caso e' ancora vivo: la riga 128426 di VILLA GUARDIA
 -- ("INVOLTINO VIETNAM (POLLO)", decisa a mano come CARNE il 25/06) oggi passa
 -- nella pipeline dello script e ne esce "PASTA E CEREALI".
 --
@@ -18,7 +18,7 @@
 -- il bug che pretende di evitare.
 --
 -- `IS DISTINCT FROM` e non `<>`: le 318 righe con `reviewed_at` valorizzato
--- hanno tutte `categoria_fonte` NULL (misurato sul live il 09/09). Con `<>` il
+-- hanno tutte `categoria_fonte` NULL (misurato sul live il 08/09). Con `<>` il
 -- predicato varrebbe NULL e la riga passerebbe: la guardia sarebbe inerte
 -- proprio sul 96% del perimetro che deve proteggere.
 --
