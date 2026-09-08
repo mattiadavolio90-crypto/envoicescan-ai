@@ -37,7 +37,7 @@ nella git history. Il container Railway serve il worker FastAPI.
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico, 143 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | **13.281 pytest** (13.237 verdi + 44 skip; ri-misurati l'08/09/2026), di cui **164 su un Postgres vero** (`-m sql`) + 101 Deno. Frontend: nessun runner npm — vedi Trappole |
+| Test | `tests/*.py` | **13.237 verdi + 44 skip** l'08/09/2026 — il totale **si muove coi file `.md`** (`test_documentazione_onesta` è parametrizzato su quelli), e da `tests/` sono 9 in meno che dalla root. **164 su un Postgres vero** (`-m sql`) + 101 Deno. Frontend: nessun runner npm — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
