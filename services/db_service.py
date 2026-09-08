@@ -131,19 +131,29 @@ def aggiorna_categoria_fatture(
             "%d righe. Finira' nel registro come non attribuita.", len(ids)
         )
 
+    parametri: Dict[str, Any] = {
+        "p_ids": list(ids),
+        "p_categoria": categoria,
+        "p_source": source,
+        "p_extra": extra or {},
+        "p_actor_email": attore_email,
+        "p_actor_user_id": attore_user_id,
+        "p_batch_id": batch_id,
+    }
+    # `p_salta_arbitrate` si manda SOLO a chi lo chiede, e non sempre: finche' sul
+    # DB c'e' la firma a 7 argomenti, mandarlo a tutti farebbe rispondere PGRST202
+    # a OGNI chiamata — le 13 esistenti comprese — e ognuna cadrebbe nel fallback
+    # HTTP, che scrive ma senza attribuzione. Il registro tornerebbe cieco proprio
+    # per il lavoro dei Punti 1 e 2, gia' in produzione. Cosi' invece il codice
+    # funziona sia prima sia dopo la migration, e l'ordine fra push e migration
+    # smette di essere un vincolo da ricordare.
+    if salta_correzioni_manuali:
+        parametri["p_salta_arbitrate"] = True
+
     try:
         risposta = supabase_client.rpc(
             "aggiorna_categoria_fatture_attribuita",
-            {
-                "p_ids": list(ids),
-                "p_categoria": categoria,
-                "p_source": source,
-                "p_extra": extra or {},
-                "p_actor_email": attore_email,
-                "p_actor_user_id": attore_user_id,
-                "p_batch_id": batch_id,
-                "p_salta_arbitrate": salta_correzioni_manuali,
-            },
+            parametri,
         ).execute()
         # int() e non un isinstance: la RPC ritorna uno scalare, ma un `data`
         # incapsulato in lista uscirebbe dalla firma `-> int` e finirebbe in

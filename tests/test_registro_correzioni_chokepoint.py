@@ -188,15 +188,24 @@ def test_la_guardia_arriva_alla_rpc_quando_si_chiede():
     assert parametri["p_salta_arbitrate"] is True
 
 
-def test_senza_chiederla_la_guardia_resta_spenta():
-    """I 13 chiamanti esistenti non la passano: il default non deve cambiare
-    il loro comportamento, o il cliente non potrebbe correggersi due volte."""
+def test_chi_non_chiede_la_guardia_non_manda_il_parametro():
+    """Non basta che il parametro valga False: non deve proprio essere inviato.
+
+    Il difetto che questo test previene, trovato dalla review il 09/09: mandarlo
+    sempre significa che, finche' sul DB c'e' la firma a 7 argomenti, PostgREST
+    risponde PGRST202 a OGNI chiamata — le 13 esistenti comprese — e ognuna cade
+    nel fallback HTTP, che scrive ma senza attribuzione. Il registro tornerebbe
+    cieco proprio per il lavoro gia' in produzione, e l'ordine fra push e
+    migration diventerebbe un vincolo da ricordare a memoria.
+    """
     client = _ClientRPC()
     aggiorna_categoria_fatture(
         client, ids=[1], categoria="PESCE", source="correzione_cliente",
     )
     _, parametri = client.chiamate[0]
-    assert parametri["p_salta_arbitrate"] is False
+    assert "p_salta_arbitrate" not in parametri, (
+        "il parametro nuovo non deve raggiungere una RPC che potrebbe non averlo"
+    )
 
 
 def test_il_fallback_replica_la_guardia():

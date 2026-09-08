@@ -159,13 +159,70 @@ class TestNonSovrascrivereCioCheUnUmanoHaDeciso:
 
 
 class TestLoScriptDichiaraChiE:
-    def test_la_scrittura_passa_dal_chokepoint_attribuito(self, script):
+    def test_la_scrittura_passa_dal_chokepoint_attribuito(self, script, monkeypatch):
         """Prima del 09/09 lo script scriveva con `.update()` diretto: ogni sua
         riga finiva nel registro come `db_trigger`, indistinguibile dal worker.
-        E' cio' che ha reso il precedente del 26/08 impossibile da misurare."""
-        sorgente = SCRIPT.read_text(encoding="utf-8")
-        assert "aggiorna_categoria_fatture" in sorgente
-        assert script.SOURCE == "script_ricategorizza_sede"
+        E' cio' che ha reso il precedente del 26/08 impossibile da misurare.
+
+        Questo test ESEGUE `main()` con un client finto. La prima stesura si
+        limitava a cercare "aggiorna_categoria_fatture" nel sorgente: restava
+        verde rimettendo la scrittura diretta, perche' il solo import bastava a
+        soddisfare l'assert (il nome compare due volte nel file). Verificato per
+        mutazione — 12 passed sul difetto — e riscritto.
+        """
+        scritture = []
+
+        class _TabellaVietata:
+            def update(self, *_a, **_k):  # pragma: no cover - deve fallire
+                raise AssertionError(
+                    "scrittura diretta su fatture: deve passare dal chokepoint"
+                )
+
+        class _ClientFinto:
+            def table(self, _nome):
+                return _TabellaVietata()
+
+        def _chokepoint_finto(_client, **kwargs):
+            scritture.append(kwargs)
+            return len(kwargs["ids"])
+
+        monkeypatch.setattr(script, "_client", lambda: _ClientFinto())
+        monkeypatch.setattr(script, "carica_righe", lambda _sb, _rid: [
+            _riga(id=11, descrizione="INVOLTINO VIETNAM (POLLO) 7X1,9KGX50PZ",
+                  categoria="CARNE"),
+            RIGA_ARBITRATA,
+        ])
+        monkeypatch.setattr(script, "aggiorna_categoria_fatture", _chokepoint_finto)
+
+        assert script.main(["VILLA_GUARDIA", "--commit"]) == 0
+
+        assert len(scritture) == 1, "la riga libera deve essere scritta"
+        chiamata = scritture[0]
+        assert chiamata["ids"] == [11], "la riga arbitrata non deve arrivare alla scrittura"
+        assert chiamata["source"] == "script_ricategorizza_sede", (
+            "senza `source` la riga finisce nel registro come db_trigger, "
+            "indistinguibile dal worker"
+        )
+        assert chiamata["batch_id"], "un'esecuzione si deve leggere come un lotto"
+        assert chiamata["salta_correzioni_manuali"] is True, (
+            "la seconda cintura: se la selezione sbagliasse, la RPC non deve scrivere"
+        )
+
+    def test_il_dry_run_non_scrive(self, script, monkeypatch):
+        """Il default e' dry-run: senza --commit non deve partire nessuna scrittura."""
+        scritture = []
+        monkeypatch.setattr(script, "_client", lambda: object())
+        monkeypatch.setattr(script, "carica_righe", lambda _sb, _rid: [
+            _riga(id=12, descrizione="INVOLTINO VIETNAM (POLLO) 7X1,9KGX50PZ",
+                  categoria="CARNE"),
+        ])
+        monkeypatch.setattr(
+            script, "aggiorna_categoria_fatture",
+            lambda *_a, **k: scritture.append(k) or 0,
+        )
+
+        assert script.main(["VILLA_GUARDIA"]) == 0
+        assert scritture == [], "senza --commit non si scrive"
 
     def test_la_select_porta_le_colonne_che_la_guardia_legge(self, script):
         """Senza `categoria_fonte`/`reviewed_at` nella select, `e_arbitrata`
