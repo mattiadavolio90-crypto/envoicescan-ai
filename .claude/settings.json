@@ -64,9 +64,27 @@
       "Bash(git fetch *)",
       "Bash(railway variables *)",
       "Bash(python -c \"import json; json.load\\(open\\('.claude/settings.json'\\)\\); print\\('JSON valido'\\)\")",
-      "Bash(git commit -m 'chore\\(settings\\): reincorpora regole gh pr perse in un rewrite del working tree *)"
+      "Bash(git commit -m 'chore\\(settings\\): reincorpora regole gh pr perse in un rewrite del working tree *)",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(date -Iseconds > .claude/.reviewer_gate_ok && ls -la .claude/.reviewer_gate_ok && cat .claude/.reviewer_gate_ok)",
+      "Bash(timeout 900 python -m pytest tests/test_salute_voce_righe_classificate.py tests/test_catena_costi_gruppo_frontend.py -q)",
+      "Bash(sed -i 's/| 03\\\\/09 | \\\\*\\\\*Router, 1ª passata: scadenziario \\(voce §3 #6\\)\\\\*\\\\* | le scadenze tornano a parlare: upsert su vincolo inesistente + topic sconosciuto al briefing, 0 avvisi di sempre su 4,4 M€ |/| 03\\\\/09 | **Router, 1ª passata: scadenziario \\(voce §3 #6\\)** | le scadenze tornano a parlare: upsert su vincolo inesistente + topic sconosciuto al briefing, 0 avvisi di sempre su 4,4 M€ |\\\\n| 03-04\\\\/09 | **Riassunto sessione «tutte le voci del piano»** | 6 voci percorse, 14 commit, 12.908 test verdi, review verde; resta a Mattia: push, flag Fase 4, conflitti memoria, Q1-Q4 |/' DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_2026-09_STORICO.md)",
+      "Bash(python scripts/check_documentazione.py)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(grep -v -E '\\\\.\\(woff|woff2|svg|png|jpg|ico\\)$')",
+      "Bash(gh run *)",
+      "Bash(python3 -c \"print\\('routers meno margini:', 16915-1377\\)\")",
+      "Bash(python3 scripts/check_documentazione.py)",
+      "Bash(timeout 900 python -m pytest tests/test_ore_turno_frontend.py tests/test_turni_ore_extra_validazione.py tests/test_costo_personale_turni_frontend.py -q)",
+      "Bash(timeout 900 python -m pytest tests/test_ore_turno_frontend.py tests/test_costo_personale_turni_frontend.py -q)",
+      "mcp__claude_ai_Supabase__get_edge_function",
+      "Bash(python3 -m pytest tests/test_documentazione_onesta.py -q)"
     ],
-    "defaultMode": "acceptEdits"
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "/workspaces/ONEFLUX/.claude",
+      "/workspaces/ONEFLUX/DOCUMENTAZIONE"
+    ]
   },
   "hooks": {
     "SessionStart": [

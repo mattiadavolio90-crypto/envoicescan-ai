@@ -147,3 +147,56 @@ def test_nessuna_declassata_non_e_un_allarme(capsys):
     assert "niente da misurare" in out
     for verdetto in ("ROSSO", "VERDE", "INCONCLUSIVO"):
         assert verdetto not in out, f"emesso {verdetto} senza voci declassate"
+
+
+class _SupabaseFinto:
+    """Simula la paginazione PostgREST: `range` inclusivo, cap a 1000 righe."""
+
+    def __init__(self, totale):
+        self.righe = [
+            {"descrizione": f"D{i}", "categoria": "CARNE", "confidence": "media",
+             "verified": False, "consecutive_correct_classifications": 0}
+            for i in range(totale)
+        ]
+        self.pagine = 0
+
+    def table(self, _n):
+        return self
+
+    def select(self, *_a, **_k):
+        return self
+
+    def range(self, start, end):
+        self._range = (start, end)
+        return self
+
+    def execute(self):
+        from types import SimpleNamespace
+        start, end = self._range
+        self.pagine += 1
+        # PostgREST: `range` e' INCLUSIVO su entrambi gli estremi. Chiederne
+        # 1001 per pagina sfalsa gli offset delle pagine successive, quindi il
+        # fake lo segnala invece di assorbirlo in silenzio.
+        ampiezza = end - start + 1
+        assert ampiezza <= 1000, f"pagina da {ampiezza} righe: range inclusivo sbagliato"
+        return SimpleNamespace(data=self.righe[start:end + 1])
+
+
+def test_fetch_all_legge_tutte_le_pagine():
+    """La paginazione non deve troncare.
+
+    E' l'unica parte dello script che i test non esercitano mai, perche' altrove
+    `_fetch_all` e' sostituito da uno stub. Se uscisse a `<= 1000` leggerebbe
+    solo la prima pagina: sulle ~2.900 voci reali le declassate potrebbero
+    sparire tutte e lo script direbbe "niente da misurare" proprio sullo stato
+    che deve diagnosticare — con ogni altro test verde. In questo progetto una
+    misura su campione troncato ha gia' prodotto cifre sbagliate.
+    """
+    for totale in (0, 999, 1000, 1001, 2913):
+        sb = _SupabaseFinto(totale)
+        assert len(mod._fetch_all(sb)) == totale, f"troncato a {totale} righe"
+
+    # Il caso reale: 2.913 voci = 3 pagine (1000 + 1000 + 913).
+    sb = _SupabaseFinto(2913)
+    mod._fetch_all(sb)
+    assert sb.pagine == 3, f"pagine lette: {sb.pagine}, attese 3"
