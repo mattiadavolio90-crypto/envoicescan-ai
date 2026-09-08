@@ -18,6 +18,9 @@ from fastapi import HTTPException
 import services.routers.fatture as fatture
 
 
+_CAP_POSTGREST = 1000
+
+
 class _Query:
     def __init__(self, client, table):
         self._c = client
@@ -69,6 +72,12 @@ class _Query:
             if self._range is not None:
                 inizio, fine = self._range
                 rows = rows[inizio:fine + 1]
+            else:
+                # Senza .range() la fonte TRONCA a 1000 e non lo dice: e' il
+                # comportamento vero di PostgREST, ed e' cio' che rende
+                # falsificabile il test sulla paginazione. Un fake che
+                # restituisse tutto passerebbe anche col codice rotto.
+                rows = rows[:_CAP_POSTGREST]
             return SimpleNamespace(data=rows)
         if self._t == "prodotti_utente":
             return SimpleNamespace(data=[])
@@ -187,3 +196,72 @@ def test_batch_rispetta_riga_ids_nel_guardrail():
     upd = sb.updates["fatture"][-1]
     # anche se la riga 2 sarebbe idonea per importo, riga_ids la esclude a monte
     assert upd["in_ids"] == [1]
+
+
+# ─── categoria-batch oltre le 1000 righe ────────────────────────────────────
+#
+# PostgREST tronca a 1000 righe SENZA errore. Le due select che precedono la
+# scrittura in `categoria_batch` passano da fetch_all per questo: la riga 913
+# risolve gli id da aggiornare, la riga 930 rilegge gli importi nel ramo NOTE E
+# DICITURE. Il difetto e' silenzioso in entrambi i casi — le righe oltre la
+# millesima non vengono aggiornate e nessuno se ne accorge — e sul live una
+# sola descrizione su una sede e' gia' a 930 righe ("SALMONE 5-6", misurate
+# l'08/09/2026): il margine e' una manciata di fatture.
+#
+# Rimettendo `.execute().data` al posto di `fetch_all(...)` la suite intera
+# resta verde (misurato dalla review l'08/09): senza questi due test il fix non
+# ha rete. I test NON verificano che il codice chiami `.range()` — sarebbe un
+# test sulla forma. Verificano che, davanti a una fonte che tronca come fa
+# PostgREST, il risultato sia completo.
+
+
+def test_batch_aggiorna_anche_le_righe_oltre_la_millesima():
+    righe = [
+        {"id": i, "totale_riga": 12.0, "prezzo_unitario": 12.0}
+        for i in range(1, 2501)
+    ]
+    sb = _FakeSB(righe)
+    p, _ = _patch_common(sb)
+    with p:
+        out = fatture.categoria_batch(
+            fatture.CategoriaBatchRequest(nuova_categoria="CARNE", descrizione="SALMONE 5-6"),
+            authorization="Bearer x",
+        )
+
+    upd = sb.updates["fatture"][-1]
+    assert upd["in_ids"] is not None, "la select non ha risolto nessun id: il test non prova nulla"
+    # Il conteggio da solo non basta: un errore di offset ne restituirebbe 2500
+    # sbagliati. Si asserisce l'INSIEME degli id, e in particolare quelli che
+    # cadono oltre il cap.
+    assert set(upd["in_ids"]) == set(range(1, 2501))
+    assert 1001 in upd["in_ids"] and 2500 in upd["in_ids"]
+    assert out["righe_aggiornate"] == 2500
+
+
+def test_batch_note_vede_le_righe_a_importo_zero_oltre_la_millesima():
+    # Le righe a importo zero stanno TUTTE oltre il cap: se la seconda select
+    # non pagina, il guardrail non ne trova nessuna e l'endpoint risponde 422
+    # su una richiesta legittima.
+    righe = [
+        {"id": i, "totale_riga": 12.0, "prezzo_unitario": 12.0}
+        for i in range(1, 1201)
+    ] + [
+        {"id": i, "totale_riga": 0.0, "prezzo_unitario": 0.0}
+        for i in range(1201, 1401)
+    ]
+    sb = _FakeSB(righe)
+    p, _ = _patch_common(sb)
+    with p:
+        out = fatture.categoria_batch(
+            fatture.CategoriaBatchRequest(
+                nuova_categoria="NOTE E DICITURE", descrizione="COMMISSIONI BANCARIE",
+            ),
+            authorization="Bearer x",
+        )
+
+    upd = sb.updates["fatture"][-1]
+    assert upd["payload"]["categoria"] == "📝 NOTE E DICITURE"
+    # Regola di dominio #2: entrano SOLO le righe a importo zero, e ci entrano
+    # tutte anche se vivono oltre la millesima.
+    assert set(upd["in_ids"]) == set(range(1201, 1401))
+    assert out["righe_aggiornate"] == 200
