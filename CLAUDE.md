@@ -37,7 +37,7 @@ nella git history. Il container Railway serve il worker FastAPI.
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico, 143 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | 13.234 test pytest (molti parametrizzati) + 101 test Deno per le Edge Functions. Sul frontend: nessun runner npm — vedi Trappole |
+| Test | `tests/*.py` | **13.281 pytest** (13.237 verdi + 44 skip; ri-misurati l'08/09/2026), di cui **164 su un Postgres vero** (`-m sql`) + 101 Deno. Frontend: nessun runner npm — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
@@ -166,16 +166,16 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
 - **`/m` è un frontend separato**, non responsive: va allineato a mano.
 - **Il frontend ha una rete, ma copre solo la logica pura.** Niente runner npm
-  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test). Sono
-  **30 file `tests/test_*_frontend.py`** che eseguono il TypeScript vero con node
-  (`tests/helpers_ts.py`): coprono `lib/`, **non** rendering, hook, stato ed
-  effetti. Per testare logica in un `.tsx`, va prima estratta in `lib/`.
-- **Né `tsc` né un test verde provano che il codice funzioni.** `tsc --noEmit`
-  controlla i tipi e non esegue niente (29/8: soglia misurata dopo i filtri client,
-  non scattava su nessuno dei 3 casi reali; 2/9: pulsante verso la pagina sbagliata).
-  Restano verdi sul bug anche un **mock generoso** (i test del radar passavano su
-  `fatture_documenti.upload_id`, colonna mai esistita) e un test che assicura sul
-  **testo del sorgente**. **Un presidio si prova per mutazione**, o non è un presidio.
+  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test): **30 file
+  `tests/test_*_frontend.py`** eseguono il TypeScript con node e coprono `lib/`,
+  **non** rendering, hook, stato ed effetti — la logica di un `.tsx` va estratta lì.
+- **Né `tsc` né un test verde provano che il codice funzioni.** `tsc --noEmit` non
+  esegue niente (29/8: soglia misurata dopo i filtri client; 2/9: pulsante verso la
+  pagina sbagliata), e restano verdi sul bug anche un **mock generoso** (i test del
+  radar passavano su `fatture_documenti.upload_id`, colonna mai esistita) e un test
+  sul **testo del sorgente**. Le funzioni SQL vanno **eseguite** (`-m sql`, 164): lì
+  un mutante sopravvissuto accusa spesso le **seed** (con un solo cliente, 7 erano
+  verdi senza isolamento). **Un presidio si prova per mutazione.**
 
 ---
 

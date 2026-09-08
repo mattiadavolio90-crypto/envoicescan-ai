@@ -152,6 +152,38 @@ beneficio; lo shim costa zero e non mente.
 
 ---
 
+### La logica dentro il database, e come si prova
+
+Sul live vivono **75 funzioni `public`, 26 trigger, 96 policy** (ri-misurati
+l'08/09/2026). Non è codice accessorio: `gruppo_spesa_pivot` calcola il pivot
+della pagina Catena, `articoli_da_fatture` i prezzi da cui parte il foodcost,
+`chat_usage_check_and_log` il limite giornaliero della chat.
+
+**Le migration del repo non ricostruiscono il database** — applicarle su un
+Postgres vuoto dà 18 tabelle su 59. Il DB dei test si monta invece da
+`supabase/schema_snapshot.sql`, uno snapshot del catalogo live, sopra il quale
+la fixture (`tests/conftest_sql.py`) applica le sole migration con prefisso
+`>=` la data dichiarata nell'intestazione dello snapshot. I test così marcati
+girano con `-m sql`: **164 all'08/09/2026**.
+
+> Lo snapshot si rigenera con `scripts/genera_schema_snapshot.py`, che richiede
+> `SUPABASE_DB_URL`. Quando quella variabile non c'è, l'allineamento si fa a
+> mano prendendo i corpi da `pg_get_functiondef` — è successo l'08/09, ed è
+> **dichiarato nell'intestazione del file**, non solo in un verbale. L'ordine
+> delle funzioni nel file non è estetica: una `LANGUAGE sql` che ne chiama
+> un'altra esige che quella esista già, quindi lo script ordina IMMUTABLE →
+> plpgsql → sql → trigger. Se l'ordine si rompe, il DB dei test non si monta.
+
+**Una funzione SQL si prova eseguendola**, non leggendone il testo né mockando
+il client: `pg_get_functiondef` restituisce lo stesso testo anche quando il
+comportamento è cambiato. Il modello è `tests/test_sql_funzioni_soldi.py` e
+`tests/test_sql_funzioni_pagina.py` — si seminano righe vere (soft-deleted e
+`Da Classificare` comprese, **più un secondo cliente**, o l'isolamento fra
+tenant non è presidiato) e si asseriscono le **componenti**, mai il solo
+aggregato.
+
+---
+
 ## 4. Le trappole (costano ore se non le sai)
 
 | Trappola | Cosa succede |
@@ -164,6 +196,8 @@ beneficio; lo shim costa zero e non mente.
 | Migration in `migrations/` | Cartella **congelata** (001→082). Il canonico è `supabase/migrations/` |
 | `__getattr__` per gli helper dei router | Ha già rotto 9 router in produzione (PEP 562). Usa wrapper espliciti |
 | Modifica solo desktop | `/m` è separato: va allineato a mano |
+| Test SQL che seminano un solo cliente | L'isolamento fra tenant non è presidiato: togliere `WHERE ristorante_id = ...` non fa fallire niente |
+| Snapshot dello schema disallineato dal live | I 164 test `-m sql` girano su un DB che non è quello vero: verdi senza significato |
 
 ---
 
