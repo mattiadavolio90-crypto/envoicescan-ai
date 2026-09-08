@@ -906,7 +906,11 @@ def categoria_batch(
     )
     if body.riga_ids:
         _sel_target = _sel_target.in_("id", body.riga_ids)
-    _ids_da_aggiornare = [r["id"] for r in ((_sel_target.execute()).data or [])]
+    # fetch_all e non .execute(): PostgREST tronca a 1000 righe SENZA errore.
+    # L'UPDATE che questa select ha sostituito non aveva limiti, e una sola
+    # descrizione arriva gia' a 930 righe su una sede reale (misurato l'08/09):
+    # oltre la soglia il cliente vedrebbe "fatto" con le righe in piu' non toccate.
+    _ids_da_aggiornare = [r["id"] for r in fetch_all(_sel_target)]
     # Guardrail dominio #2: NOTE E DICITURE solo su importo zero (stesso pattern
     # di admin.py:967-976) — senza questo check il batch scrive la variante con
     # emoji anche su righe con importo diverso da zero, aggirando il constraint DB.
@@ -920,7 +924,10 @@ def categoria_batch(
         )
         if body.riga_ids:
             _sel_q = _sel_q.in_("id", body.riga_ids)
-        _candidate_rows = (_sel_q.execute()).data or []
+        # Stesso troncamento silenzioso del ramo normale (difetto pre-esistente):
+        # qui decide quali righe hanno importo zero, quindi una riga persa oltre
+        # le 1000 resterebbe fuori dal guardrail invece che protetta da esso.
+        _candidate_rows = fetch_all(_sel_q)
         def _imp(r):
             t = float(r.get("totale_riga") or 0)
             return t if t != 0 else float(r.get("prezzo_unitario") or 0)

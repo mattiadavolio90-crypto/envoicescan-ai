@@ -631,7 +631,10 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                                 'categoria_fonte': 'L4_dicitura',
                                 'categoria_fiducia': 'certa',
                             },
-                            attore_user_id=str(user_id) if user_id else None,
+                            # Nessun attore: qui decide l'AI, non l'utente.
+                            # `user_id` e' il proprietario delle righe (tenant), e
+                            # metterlo in actor_user_id direbbe che e' stato lui a
+                            # correggere. `source='post_upload'` basta a dire chi e' stato.
                             batch_id=lotto_upload,
                             user_id=user_id,
                             ristorante_id=ristorante_id,
@@ -857,7 +860,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         'categoria_fonte': fonte_target,
                         'categoria_fiducia': fiducia_target,
                     },
-                    attore_user_id=str(user_id) if user_id else None,
+                    # Come sopra: scrittura automatica, nessun attore umano.
                     batch_id=lotto_upload,
                     user_id=user_id,
                     ristorante_id=ristorante_id,

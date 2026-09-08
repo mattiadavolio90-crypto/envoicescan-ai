@@ -40,6 +40,18 @@ def filter_active(query):
 SOURCE_NON_DICHIARATA = "non_dichiarata"
 
 
+def _conteggio_int(dato) -> int:
+    """Normalizza a int il ritorno della RPC (scalare, lista o None)."""
+    if isinstance(dato, list):
+        dato = dato[0] if dato else 0
+    if isinstance(dato, dict):
+        dato = next(iter(dato.values()), 0)
+    try:
+        return int(dato or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def aggiorna_categoria_fatture(
     supabase_client,
     *,
@@ -79,6 +91,13 @@ def aggiorna_categoria_fatture(
     fermare la coda fatture e' peggio del dato mancante. La riga resta
     riconoscibile come non attribuita invece di essere spacciata per nota.
 
+    PERIMETRO: solo `fatture`. La memoria delle correzioni (`prodotti_utente`)
+    resta scoperta: la scrivono degli `upsert` (ai_service, upload_handler) che
+    non passano da un UPDATE e non possono impostare i GUC — e da PostgREST non
+    esiste una transazione in cui metterli. Sul live sono 110 righe di registro,
+    tutte `db_trigger`. Serve una RPC che faccia l'upsert lato DB: e' lavoro suo,
+    non un parametro in piu' qui.
+
     `user_id`/`ristorante_id` NON servono alla RPC (che lavora per id): servono a
     tenere il FALLBACK HTTP stretto quanto la query che sostituisce. Vanno passati
     dai call site che filtravano per tenant, o in fallback l'update sarebbe piu'
@@ -108,7 +127,10 @@ def aggiorna_categoria_fatture(
                 "p_batch_id": batch_id,
             },
         ).execute()
-        return risposta.data if isinstance(risposta.data, int) else (risposta.data or 0)
+        # int() e non un isinstance: la RPC ritorna uno scalare, ma un `data`
+        # incapsulato in lista uscirebbe dalla firma `-> int` e finirebbe in
+        # `righe_aggiornate`, che decide cosa vede il cliente.
+        return _conteggio_int(risposta.data)
     except Exception as errore_rpc:
         # Fallback HTTP come in `elimina_fattura_completa`: la scrittura passa,
         # ma senza attribuzione. Si segnala forte, perche' e' il caso in cui il
@@ -129,54 +151,6 @@ def aggiorna_categoria_fatture(
         if ristorante_id:
             query = query.eq("ristorante_id", ristorante_id)
         risposta = query.execute()
-        return len(risposta.data or [])
-
-
-def aggiorna_categoria_prodotto(
-    supabase_client,
-    *,
-    user_id: str,
-    descrizione: str,
-    categoria: str,
-    source: str = SOURCE_NON_DICHIARATA,
-    attore_email: Optional[str] = None,
-    attore_user_id: Optional[str] = None,
-    batch_id: Optional[str] = None,
-) -> int:
-    """Come sopra, per la memoria delle correzioni (`prodotti_utente`).
-
-    Il trigger e' attivo su entrambe le tabelle: usare la RPC solo su `fatture`
-    lascerebbe meta' registro cieco.
-    """
-    if source == SOURCE_NON_DICHIARATA:
-        logger.warning(
-            "aggiorna_categoria_prodotto: scrittura senza `source` dichiarata "
-            "(%s). Finira' nel registro come non attribuita.", descrizione
-        )
-    try:
-        risposta = supabase_client.rpc(
-            "aggiorna_categoria_prodotto_attribuita",
-            {
-                "p_user_id": user_id,
-                "p_descrizione": descrizione,
-                "p_categoria": categoria,
-                "p_source": source,
-                "p_actor_email": attore_email,
-                "p_actor_user_id": attore_user_id,
-                "p_batch_id": batch_id,
-            },
-        ).execute()
-        return risposta.data if isinstance(risposta.data, int) else (risposta.data or 0)
-    except Exception as errore_rpc:
-        logger.warning(
-            "RPC aggiorna_categoria_prodotto_attribuita non disponibile, "
-            "fallback HTTP senza attribuzione: %s", errore_rpc
-        )
-        risposta = (
-            supabase_client.table("prodotti_utente")
-            .update({"categoria": categoria})
-            .eq("user_id", user_id).eq("descrizione", descrizione).execute()
-        )
         return len(risposta.data or [])
 
 

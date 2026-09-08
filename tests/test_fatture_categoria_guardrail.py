@@ -25,6 +25,7 @@ class _Query:
         self._filters = {}
         self._select_cols = None
         self._in_ids = None
+        self._range = None
         self._update_payload = None
 
     def select(self, cols=None, *a, **k):
@@ -39,6 +40,14 @@ class _Query:
 
     def in_(self, col, ids):
         self._in_ids = list(ids)
+        return self
+
+    def range(self, start, end):
+        # `categoria_batch` risolve gli id con fetch_all, che pagina con .range():
+        # senza, PostgREST tronca a 1000 righe in silenzio (una sola descrizione
+        # su una sede reale e' gia' a 930). Il fake deve saper paginare, o il test
+        # non esercita il percorso vero.
+        self._range = (start, end)
         return self
 
     def update(self, payload):
@@ -57,6 +66,9 @@ class _Query:
             rows = self._c.rows
             if self._in_ids is not None:
                 rows = [r for r in rows if r["id"] in self._in_ids]
+            if self._range is not None:
+                inizio, fine = self._range
+                rows = rows[inizio:fine + 1]
             return SimpleNamespace(data=rows)
         if self._t == "prodotti_utente":
             return SimpleNamespace(data=[])

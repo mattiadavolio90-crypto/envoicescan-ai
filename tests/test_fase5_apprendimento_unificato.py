@@ -115,6 +115,10 @@ class _QueryFatture:
     def is_(self, *_a, **_k): return self
     def in_(self, *_a, **_k): return self
     def limit(self, *_a, **_k): return self
+    # `categoria_batch` risolve gli id con fetch_all, che pagina con .range().
+    # Come gli altri filtri di questo fake, non restringe: le righe sono poche e
+    # servono tutte.
+    def range(self, *_a, **_k): return self
 
     def update(self, payload):
         self._update = payload
