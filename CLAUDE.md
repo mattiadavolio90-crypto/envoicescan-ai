@@ -33,11 +33,11 @@ nella git history. Il container Railway serve il worker FastAPI.
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` (8.901 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker API | `services/fastapi_worker.py` (8.930 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
-| Migrations | `supabase/migrations/*.sql` (canonico, 139 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | 13.010 test pytest (molti parametrizzati) + 101 test Deno per le Edge Functions. Sul frontend: nessun runner npm — vedi Trappole |
+| Migrations | `supabase/migrations/*.sql` (canonico, 143 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
+| Test | `tests/*.py` | 13.234 test pytest (molti parametrizzati) + 101 test Deno per le Edge Functions. Sul frontend: nessun runner npm — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
