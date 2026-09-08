@@ -250,3 +250,35 @@ def test_il_fallback_senza_guardia_non_filtra_le_arbitrate():
     filtri = client.registro["filtri"]
     assert "or" not in filtri
     assert "reviewed_at" not in filtri
+
+
+def test_i_percorsi_di_produzione_restano_compatibili_con_la_rpc_a_sette_argomenti():
+    """Nessun percorso del cliente/worker/admin deve dipendere dalla migration.
+
+    L'inerenza che questo test presidia: `aggiorna_categoria_fatture` ha 11
+    chiamanti applicativi, e uno solo di loro (gli script) chiede la guardia.
+    Se il parametro nuovo finisse nel payload di tutti, sul DB con la sola firma
+    a 7 argomenti PostgREST risponderebbe PGRST202 a OGNI scrittura e tutte
+    cadrebbero nel fallback HTTP — che scrive ma non attribuisce. Il registro
+    tornerebbe cieco proprio per il lavoro gia' in produzione, e Railway
+    ridispiega senza filtro di path: basterebbe il push a innescarlo.
+    """
+    percorsi = [
+        {"source": "correzione_cliente", "attore_email": "a@b.it", "ristorante_id": "R"},
+        {"source": "worker_coda", "batch_id": "L"},
+        {"source": "admin_propagazione", "attore_email": "a@b.it"},
+        {"source": "admin_classifica", "attore_user_id": "U"},
+        {"source": "post_upload", "batch_id": "L"},
+        {"source": "agent_notturno", "batch_id": "L"},
+    ]
+    for kwargs in percorsi:
+        client = _ClientRPC()
+        aggiorna_categoria_fatture(client, ids=[1], categoria="CARNE", **kwargs)
+        _, parametri = client.chiamate[0]
+        assert "p_salta_arbitrate" not in parametri, (
+            f"il percorso {kwargs['source']} manda un parametro che la RPC in "
+            "produzione potrebbe non avere: cadrebbe nel fallback anonimo"
+        )
+        assert len(parametri) == 7, (
+            f"{kwargs['source']}: {len(parametri)} parametri invece di 7"
+        )
