@@ -2,7 +2,7 @@
 -- scripts/genera_schema_snapshot.py. NON modificare a mano: rigenerare.
 -- Serve a montare il Postgres dei test (le migration del repo non
 -- ricostruiscono il database: vedi il docstring dello script).
--- Rigenerato il 2026-09-08.
+-- Rigenerato il 2026-09-09.
 
 -- Ambiente Supabase ricreato per il DB di test: ruoli, schema auth, GUC.
 -- NON fa parte dello schema dell'applicazione — vedi scripts/genera_schema_snapshot.py.
@@ -1387,7 +1387,7 @@ AS $function$
         ''
     );
 $function$;
-CREATE OR REPLACE FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb DEFAULT '{}'::jsonb, p_actor_email text DEFAULT NULL::text, p_actor_user_id uuid DEFAULT NULL::uuid, p_batch_id uuid DEFAULT NULL::uuid)
+CREATE OR REPLACE FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb DEFAULT '{}'::jsonb, p_actor_email text DEFAULT NULL::text, p_actor_user_id uuid DEFAULT NULL::uuid, p_batch_id uuid DEFAULT NULL::uuid, p_salta_arbitrate boolean DEFAULT false)
  RETURNS integer
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -1413,7 +1413,11 @@ BEGIN
         reviewed_at = COALESCE((p_extra->>'reviewed_at')::timestamp, reviewed_at),
         reviewed_by = COALESCE(p_extra->>'reviewed_by', reviewed_by)
     WHERE id = ANY(p_ids)
-      AND deleted_at IS NULL;
+      AND deleted_at IS NULL
+      AND (
+          NOT p_salta_arbitrate
+          OR (categoria_fonte IS DISTINCT FROM 'correzione_cliente' AND reviewed_at IS NULL)
+      );
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
 
@@ -3729,7 +3733,7 @@ REVOKE ALL ON FUNCTION public.scadenziario_fatture_aggregate(p_user_id uuid, p_r
 REVOKE ALL ON FUNCTION public.scarta_fattura_da_coda(p_queue_id bigint, p_user_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.schedule_retry(p_queue_id bigint, p_error_msg text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public._azzera_attribuzione_categoria() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid, p_salta_arbitrate boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.aggiorna_categoria_prodotto_attribuita(p_user_id uuid, p_descrizione text, p_categoria text, p_source text, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.soft_delete_fatture_massivo(p_user_id uuid, p_ristorante_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sostituisci_quote_riparto(p_riparto_id uuid, p_user_id uuid, p_tipo text, p_regola text, p_importo_totale numeric, p_quote jsonb) FROM PUBLIC;
@@ -3788,7 +3792,7 @@ GRANT EXECUTE ON FUNCTION public.scadenziario_fatture_aggregate(p_user_id uuid, 
 GRANT EXECUTE ON FUNCTION public.scarta_fattura_da_coda(p_queue_id bigint, p_user_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.schedule_retry(p_queue_id bigint, p_error_msg text) TO service_role;
 GRANT EXECUTE ON FUNCTION public._azzera_attribuzione_categoria() TO service_role;
-GRANT EXECUTE ON FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid, p_salta_arbitrate boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.aggiorna_categoria_prodotto_attribuita(p_user_id uuid, p_descrizione text, p_categoria text, p_source text, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.soft_delete_fatture_massivo(p_user_id uuid, p_ristorante_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sostituisci_quote_riparto(p_riparto_id uuid, p_user_id uuid, p_tipo text, p_regola text, p_importo_totale numeric, p_quote jsonb) TO service_role;
