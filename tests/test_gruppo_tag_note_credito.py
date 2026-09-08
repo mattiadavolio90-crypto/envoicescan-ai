@@ -14,10 +14,18 @@ seconda che il cliente guardasse la sede o il gruppo.
 Misurato sul DB live prima del fix (tag SALMONE, l'unico popolato): 7 note di
 credito reali di ADC S.R.L., 285,50 EUR di spesa sovrastimata su 2 sedi.
 
-Questi test leggono il FILE di migration: non esiste una suite pgTAP in questo
-progetto e le RPC non sono esercitabili da pytest. Difendono l'invariante che
-conta — quali RPC possono filtrare sul prezzo e quali no — e cadono se qualcuno
+Questi test leggono il FILE di migration. Difendono l'invariante che conta —
+quali RPC possono filtrare sul prezzo e quali no — e cadono se qualcuno
 reintroduce il filtro sulla spesa.
+
+**Aggiornato l'08/09/2026**: la riga «le RPC non sono esercitabili da pytest»
+non e' piu' vera e va tolta, o questo file mente. Dal 07/09 esiste la fixture
+`db_sql` (`tests/conftest_sql.py`): monta un Postgres vero dallo snapshot dello
+schema live, e le RPC si eseguono. `tests/test_sql_funzioni_pagina.py` chiama
+davvero `gruppo_tag_fornitori` e `gruppo_tag_trend` e verifica sui NUMERI che
+la nota di credito venga scalata — cosa che un test sul testo della migration
+non puo' fare. Questo file resta perche' misura una cosa diversa: che il filtro
+sbagliato non venga reintrodotto in una migration futura.
 """
 import pathlib
 import re
