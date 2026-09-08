@@ -6,6 +6,7 @@ import time
 import logging
 import html as _html
 import re
+import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
@@ -518,8 +519,12 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
     if supabase_client is None or not user_id or not file_names:
         return summary
 
+    # Un upload = un lotto: le righe classificate da questa passata si leggono
+    # nel registro come un'unica operazione automatica.
+    lotto_upload = str(uuid.uuid4())
+
     try:
-        from services.db_service import filter_active as _fa
+        from services.db_service import aggiorna_categoria_fatture, filter_active as _fa
         query = _fa(
             supabase_client.table('fatture')
             .select('id, descrizione, fornitore, iva_percentuale, prezzo_unitario, totale_riga, quantita, categoria, needs_review, tipo_documento, file_origine')
@@ -613,14 +618,24 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         for row in meta['rows']
                     )
                     if note_ids:
-                        q_note = supabase_client.table('fatture').update({
-                            'categoria': '📝 NOTE E DICITURE',
-                            'needs_review': False,
-                            'categoria_fonte': 'L4_dicitura',
-                            'categoria_fiducia': 'certa',
-                        }).eq('user_id', user_id).is_("deleted_at", "null").in_('id', note_ids)
-                        q_note = add_ristorante_filter(q_note, ristorante_id)
-                        q_note.execute()
+                        # Gli id vengono gia' da una query filtrata per user_id e
+                        # sede (sopra): restringere per id e' equivalente, e passa
+                        # dalla RPC che dichiara chi sta scrivendo.
+                        aggiorna_categoria_fatture(
+                            supabase_client,
+                            ids=note_ids,
+                            categoria='📝 NOTE E DICITURE',
+                            source='post_upload',
+                            extra={
+                                'needs_review': False,
+                                'categoria_fonte': 'L4_dicitura',
+                                'categoria_fiducia': 'certa',
+                            },
+                            attore_user_id=str(user_id) if user_id else None,
+                            batch_id=lotto_upload,
+                            user_id=user_id,
+                            ristorante_id=ristorante_id,
+                        )
                         summary['resolved_rows'] += len(note_ids)
                         summary['resolved_descriptions'] += 1
                     if has_importo:
@@ -832,14 +847,21 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                 summary['resolved_descriptions'] += 1
 
             for (categoria_target, needs_review_target, fonte_target, fiducia_target), row_ids in chunk_update_groups.items():
-                q = supabase_client.table('fatture').update({
-                    'categoria': categoria_target,
-                    'needs_review': needs_review_target,
-                    'categoria_fonte': fonte_target,
-                    'categoria_fiducia': fiducia_target,
-                }).eq('user_id', user_id).in_('id', row_ids)
-                q = add_ristorante_filter(q, ristorante_id)
-                q.execute()
+                aggiorna_categoria_fatture(
+                    supabase_client,
+                    ids=row_ids,
+                    categoria=categoria_target,
+                    source='post_upload',
+                    extra={
+                        'needs_review': needs_review_target,
+                        'categoria_fonte': fonte_target,
+                        'categoria_fiducia': fiducia_target,
+                    },
+                    attore_user_id=str(user_id) if user_id else None,
+                    batch_id=lotto_upload,
+                    user_id=user_id,
+                    ristorante_id=ristorante_id,
+                )
                 summary['resolved_rows'] += len(row_ids)
 
             if ai_memory_upserts:

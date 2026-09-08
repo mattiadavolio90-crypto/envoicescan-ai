@@ -263,7 +263,10 @@ def _patch_env(monkeypatch, master_rows):
     monkeypatch.setattr(admin_router, "get_supabase_client", lambda: _SB())
     monkeypatch.setattr(
         "services.ai_service._propaga_global_override_a_fatture_storiche",
-        lambda desc, cat, _c: rec["propagazioni"].append((desc, cat)) or 3,
+        # **_kw: la propagazione riceve anche l'attore admin (attore_email /
+        # attore_user_id), che il registro correzioni usa per sapere CHI ha
+        # propagato su fatture di clienti diversi.
+        lambda desc, cat, _c, **_kw: rec["propagazioni"].append((desc, cat)) or 3,
     )
     return admin_router, rec
 

@@ -63,6 +63,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any, Tuple, Union
@@ -4511,6 +4512,8 @@ def _propaga_global_override_a_fatture_storiche(
     desc_normalized: str,
     nuova_categoria: str,
     supabase_client,
+    attore_email: str | None = None,
+    attore_user_id: str | None = None,
 ) -> int:
     """
     Propaga una promozione globale (admin → memoria globale) alle fatture storiche
@@ -4622,20 +4625,37 @@ def _propaga_global_override_a_fatture_storiche(
         # come fa già routers/admin.py:967-984 per lo stesso genere di scrittura.
         now_iso = datetime.now(timezone.utc).isoformat()
         updated_total = 0
+        # Un solo lotto per l'intera propagazione: nel registro queste righe —
+        # che sono di CLIENTI DIVERSI — si riconoscono come un'unica decisione
+        # admin invece che come N correzioni scollegate. E' esattamente il caso
+        # che nel 2026 si e' potuto ricostruire solo leggendo il codice.
+        lotto = str(uuid.uuid4())
+        from services.db_service import aggiorna_categoria_fatture
         for i in range(0, len(candidate_ids), 500):
             ids_chunk = candidate_ids[i:i + 500]
             try:
-                supabase_client.table('fatture').update({
-                    'categoria': nuova_categoria,
-                    'needs_review': False,
-                    'reviewed_at': now_iso,
-                    'reviewed_by': 'admin-global-propagation',
-                    # Fase 2 — propagazione di una decisione admin: l'origine resta
-                    # umana anche sulle righe raggiunte per propagazione, non solo
-                    # su quella che l'admin ha guardato.
-                    'categoria_fonte': 'correzione_admin',
-                    'categoria_fiducia': 'certa',
-                }).in_('id', ids_chunk).is_('deleted_at', 'null').execute()
+                # Il conteggio resta quello storico (len del chunk): questa
+                # funzione ritorna "quante righe ho chiesto di propagare", ed e'
+                # il numero che l'endpoint admin mostra e logga.
+                aggiorna_categoria_fatture(
+                    supabase_client,
+                    ids=ids_chunk,
+                    categoria=nuova_categoria,
+                    source="admin_propagazione",
+                    extra={
+                        'needs_review': False,
+                        'reviewed_at': now_iso,
+                        'reviewed_by': 'admin-global-propagation',
+                        # Fase 2 — propagazione di una decisione admin: l'origine
+                        # resta umana anche sulle righe raggiunte per
+                        # propagazione, non solo su quella che l'admin ha guardato.
+                        'categoria_fonte': 'correzione_admin',
+                        'categoria_fiducia': 'certa',
+                    },
+                    attore_email=attore_email,
+                    attore_user_id=attore_user_id,
+                    batch_id=lotto,
+                )
                 updated_total += len(ids_chunk)
             except Exception as _upd_err:
                 logger.warning(f"propaga_global: UPDATE batch fallito ({_upd_err})")

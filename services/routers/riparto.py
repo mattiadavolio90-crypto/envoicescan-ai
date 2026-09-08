@@ -15,6 +15,7 @@ Principi (PIANO_RIPARTIZIONE_COSTI_CATENA.md 1/7):
 
 Pattern import lazy identico a fatture.py (evita il ciclo router<->fastapi_worker).
 """
+import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -23,6 +24,8 @@ from pydantic import BaseModel
 import logging
 
 from utils.validation import normalizza_categoria_richiesta, importo_riga_per_guardrail
+# db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
+from services.db_service import aggiorna_categoria_fatture
 from utils.supabase_paging import fetch_all
 from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIA_NON_CLASSIFICATA as _CATEGORIA_NON_CLASSIFICATA
 
@@ -684,21 +687,22 @@ def riparto_riga_categoria(
                 detail="NOTE E DICITURE non applicabile: la riga ha importo diverso da zero.",
             )
 
-    res = (
-        sb.table("fatture")
-        .update({
-            "categoria": nuova_cat,
+    # Fase 2 — terzo dei tre percorsi di correzione (gli altri due sono in
+    # routers/fatture.py): tutti e tre devono registrare che a decidere e' stato
+    # un umano, o la provenienza dice il falso su una riga verificata.
+    righe_aggiornate = aggiorna_categoria_fatture(
+        sb,
+        ids=target_ids,
+        categoria=nuova_cat,
+        source="correzione_cliente",
+        extra={
             "needs_review": False,
-            # Fase 2 — terzo dei tre percorsi di correzione (gli altri due sono in
-            # routers/fatture.py): tutti e tre devono registrare che a decidere e'
-            # stato un umano, o la provenienza dice il falso su una riga verificata.
             "categoria_fonte": "correzione_cliente",
             "categoria_fiducia": "certa",
-        })
-        .in_("id", target_ids)
-        .execute()
+        },
+        attore_user_id=str(user_id) if user_id else None,
+        batch_id=str(uuid.uuid4()) if len(target_ids) > 1 else None,
     )
-    righe_aggiornate = len(res.data or [])
 
     # Le quote portano ancora la categoria vecchia: ricalcolarle sui pesi aggiornati.
     try:

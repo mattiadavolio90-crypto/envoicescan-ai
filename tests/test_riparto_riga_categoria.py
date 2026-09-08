@@ -69,11 +69,21 @@ class _FakeSB:
         self.righe = righe
         self.updates = []
         self.in_filters = []
+        self.rpc_chiamate = []
 
     def table(self, name):
         return _Query(self, name)
 
     def rpc(self, name, params):
+        # La correzione di categoria passa dalla RPC attribuita (registro
+        # correzioni, 08/09/2026): va REGISTRATA, non ingoiata. Un fake che
+        # restituisce data=None su tutto fa sparire la scrittura e con essa il
+        # conteggio delle righe aggiornate.
+        self.rpc_chiamate.append((name, params))
+        if name == "aggiorna_categoria_fatture_attribuita":
+            return SimpleNamespace(
+                execute=lambda: SimpleNamespace(data=len(params.get("p_ids") or []))
+            )
         return SimpleNamespace(execute=lambda: SimpleNamespace(data=None))
 
 
@@ -108,10 +118,19 @@ def test_corregge_la_riga_reale_e_riesplode_le_quote():
     # Fase 2: l'update porta anche la provenienza — una correzione manuale e' la
     # fonte piu' attendibile che esista, e senza registrarla la riga conserverebbe
     # quella automatica che l'aveva sbagliata.
-    assert ("fatture", {
-        "categoria": "CARNE", "needs_review": False,
-        "categoria_fonte": "correzione_cliente", "categoria_fiducia": "certa",
-    }) in sb.updates
+    # Dall'08/09/2026 passa dalla RPC attribuita, che aggiunge CHI ha corretto.
+    scrittura = [c for c in sb.rpc_chiamate
+                 if c[0] == "aggiorna_categoria_fatture_attribuita"]
+    assert len(scrittura) == 1, "la correzione non e' passata dalla RPC attribuita"
+    params = scrittura[0][1]
+    assert params["p_categoria"] == "CARNE"
+    assert params["p_extra"] == {
+        "needs_review": False,
+        "categoria_fonte": "correzione_cliente",
+        "categoria_fiducia": "certa",
+    }
+    assert params["p_source"] == "correzione_cliente"
+    assert params["p_actor_user_id"] == "user-1"
     # forza=True: senza, le quote resterebbero sulla categoria vecchia.
     assert esplodi.call_args.kwargs.get("forza") is True
 

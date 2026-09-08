@@ -56,7 +56,7 @@ if _PROJECT_ROOT not in sys.path:
 from defusedxml import ElementTree as _DefusedET
 
 from config.constants import CATEGORIA_NON_CLASSIFICATA
-from services.db_service import filter_active
+from services.db_service import aggiorna_categoria_fatture, filter_active
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
 from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
 
@@ -296,6 +296,10 @@ def _auto_classify_saved_rows(
     if not rows:
         return 0, 0
 
+    # Un solo lotto per file: nel registro le righe di questa passata si
+    # riconoscono come un'unica classificazione automatica.
+    lotto = str(uuid.uuid4())
+
     # Dedupe per descrizione mantenendo allineati fornitore/IVA, e raccogli gli id
     # di TUTTE le righe per ciascuna descrizione: l'update finale avviene per id
     # (non per .eq("descrizione")), eliminando la fragilita' del match testuale
@@ -519,18 +523,21 @@ def _auto_classify_saved_rows(
             if not target_ids:
                 continue
             # Update per id (non per .eq("descrizione")): robusto a spazi/troncamento.
-            resp = (
-                supabase.table("fatture")
-                .update({
-                    "categoria": categoria,
+            # Via RPC attribuita: il registro deve sapere che e' stato il worker,
+            # e un batch_id unico per file fa leggere le N righe come UN lotto
+            # invece che come N correzioni indipendenti.
+            n = aggiorna_categoria_fatture(
+                supabase,
+                ids=target_ids,
+                categoria=categoria,
+                source="worker_coda",
+                extra={
                     "needs_review": needs_review,
                     "categoria_fonte": fonte,
                     "categoria_fiducia": fiducia,
-                })
-                .in_("id", target_ids)
-                .execute()
+                },
+                batch_id=lotto,
             )
-            n = len(resp.data or [])
             updated_rows += n
             if n > 0:
                 aggiorna_streak_classificazione(

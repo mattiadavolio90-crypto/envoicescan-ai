@@ -22,6 +22,7 @@ Path/gate/response/forma dei body invariati rispetto all'originale.
 import os
 import re
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
@@ -42,6 +43,8 @@ import logging
 logger = logging.getLogger("fastapi_worker")
 
 from utils.ttl_cache import TTLCache
+# db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
+from services.db_service import aggiorna_categoria_fatture
 from utils.supabase_paging import fetch_all
 from config.constants import PIANO_LIMITI_FATTURE_MESE, PIANO_LIMITE_FATTURE_DEFAULT
 
@@ -1038,7 +1041,17 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         "categoria_fonte": "correzione_admin",
         "categoria_fiducia": "certa",
     }
-    sb.table("fatture").update(update_payload).in_("id", target_ids).is_("deleted_at", "null").execute()
+    _categoria_scritta = update_payload.pop("categoria")
+    aggiorna_categoria_fatture(
+        sb,
+        ids=target_ids,
+        categoria=_categoria_scritta,
+        source="admin_classifica",
+        extra=update_payload,
+        attore_email=admin_user.get("email"),
+        attore_user_id=str(admin_user.get("id")) if admin_user.get("id") else None,
+        batch_id=str(uuid.uuid4()) if len(target_ids) > 1 else None,
+    )
     for _rid in rid_coinvolti:
         _invalidate_fatture_rows_cache(_rid)
     if not rid_coinvolti:
@@ -1275,6 +1288,8 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
     sb = get_supabase_client()
     admin_emails = _admin_emails_set()
     now = datetime.now(timezone.utc).isoformat()
+    # Una passata di auto-review = un lotto, anche se tocca clienti diversi.
+    lotto_auto_review = str(uuid.uuid4())
 
     if body.cliente_id:
         allowed_ids = [body.cliente_id]
@@ -1325,14 +1340,22 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
                 continue
             ids = df[df["descrizione"] == desc]["id"].tolist()
             cat_da = str(df[df["descrizione"] == desc]["categoria"].iloc[0] or "")
-            sb.table("fatture").update({
-                "categoria": "📝 NOTE E DICITURE",
-                "needs_review": False,
-                "reviewed_at": now,
-                "reviewed_by": "auto-review",
-                "categoria_fonte": "L4_dicitura",
-                "categoria_fiducia": "certa",
-            }).in_("id", ids).is_("deleted_at", "null").execute()
+            aggiorna_categoria_fatture(
+                sb,
+                ids=ids,
+                categoria="📝 NOTE E DICITURE",
+                source="admin_auto_review",
+                extra={
+                    "needs_review": False,
+                    "reviewed_at": now,
+                    "reviewed_by": "auto-review",
+                    "categoria_fonte": "L4_dicitura",
+                    "categoria_fiducia": "certa",
+                },
+                attore_email=admin_user.get("email"),
+                attore_user_id=str(admin_user.get("id")) if admin_user.get("id") else None,
+                batch_id=lotto_auto_review,
+            )
             sb.table("prodotti_master").upsert({
                 "descrizione": desc,
                 "categoria": "📝 NOTE E DICITURE",
@@ -1512,8 +1535,13 @@ def admin_qualita_memoria_update(
     if categoria_cambiata:
         try:
             desc_normalized, _ = get_descrizione_normalizzata_e_originale(prev.get("descrizione") or "")
+            # L'identita' dell'admin arriva fin dentro la propagazione: senza,
+            # una scrittura che tocca le fatture di TUTTI i clienti resterebbe
+            # anonima nel registro.
             righe_propagate = _propaga_global_override_a_fatture_storiche(
                 desc_normalized, body.categoria, sb,
+                attore_email=admin_user.get("email"),
+                attore_user_id=str(admin_user.get("id")) if admin_user.get("id") else None,
             )
             if righe_propagate:
                 _invalidate_fatture_rows_cache()
@@ -1717,6 +1745,11 @@ def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depends(_v
         # provenienza va azzerata insieme a reviewed_at/reviewed_by, o descriverebbe
         # una decisione che non esiste piu'. NULL = legacy, cioe' "non lo sappiamo":
         # e' la verita', perche' la fonte originaria non e' stata conservata.
+        # NON passa da aggiorna_categoria_fatture: quella RPC fa COALESCE sui campi
+        # di `extra` (per non azzerare cio' che il chiamante non nomina), quindi
+        # qui conserverebbe i valori vecchi invece di cancellarli — l'opposto di un
+        # annullamento. Il registro segna comunque il cambio di categoria, come
+        # 'db_trigger'.
         sb.table("fatture").update({
             "categoria": categoria_da,
             "needs_review": True,

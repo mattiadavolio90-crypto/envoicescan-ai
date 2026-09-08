@@ -170,11 +170,22 @@ class TestTuttiIPercorsiDiCorrezioneRegistranoLUmano:
 
     def test_la_correzione_manuale_e_certa(self):
         """Un umano che guarda la riga e' la fonte piu' attendibile che esista, e
-        i tre update di questo file la scrivono esplicitamente `certa` — non la
-        derivano da `_fiducia_per_fonte`, che di "correzione_cliente" non sa nulla."""
+        gli update di questo file la scrivono esplicitamente `certa` — non la
+        derivano da `_fiducia_per_fonte`, che di "correzione_cliente" non sa nulla.
+
+        Si contano le scritture, non un totale fisso: dall'08/09/2026 i due rami
+        di `categoria_batch` (normale e NOTE E DICITURE) convergono su UNA sola
+        chiamata attribuita, quindi il numero di letterali e' sceso senza che
+        cambiasse il comportamento. Cio' che deve restare vero e' l'accoppiamento:
+        ogni `correzione_cliente` porta con se' `certa`.
+        """
         src = Path("services/routers/fatture.py").read_text(encoding="utf-8")
-        assert src.count('"categoria_fonte": "correzione_cliente"') == 3
-        assert src.count('"categoria_fiducia": "certa"') == 3
+        fonti = src.count('"categoria_fonte": "correzione_cliente"')
+        assert fonti >= 2, "i percorsi di correzione manuale sono spariti dal file"
+        assert src.count('"categoria_fiducia": "certa"') == fonti
+        # E ogni scrittura dichiara anche CHI ha corretto: senza `source` la riga
+        # finisce nel registro come anonima (4.132 righe cosi' fino all'08/09).
+        assert src.count('source="correzione_cliente"') == fonti
 
 
 class TestScrittureAutomaticheRegistranoLaFonte:

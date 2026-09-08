@@ -32,6 +32,7 @@ import secrets
 import sys
 import threading
 import time
+import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -245,6 +246,17 @@ def _agent_notturno_persist() -> None:
         logger.warning("agent_notturno: impossibile persistere config: %s", exc)
 
 
+def _aggiorna_categoria_fatture(*args, **kwargs):
+    """Wrapper esplicito su services.db_service.aggiorna_categoria_fatture.
+
+    Import differito come gli altri helper di questo modulo. Wrapper e non
+    module-level __getattr__: PEP 562 non risolve i lookup di nome globale
+    interni alle funzioni, e quella strada ha gia' rotto 9 router in produzione.
+    """
+    from services.db_service import aggiorna_categoria_fatture
+    return aggiorna_categoria_fatture(*args, **kwargs)
+
+
 def _run_agent_notturno() -> dict:
     """Esegue l'agent notturno: auto-review + pre-classificazione media + digest."""
     if _agent_notturno_state["running"]:
@@ -254,6 +266,11 @@ def _run_agent_notturno() -> dict:
     _agent_notturno_state["running"] = True
     t0 = time.monotonic()
     logger.info("🤖 Agent notturno: avvio")
+
+    # Una passata notturna = un lotto. Nel registro le righe che tocca — di
+    # clienti diversi — si leggono come UNA esecuzione automatica, non come N
+    # correzioni indipendenti.
+    lotto_notturno = str(uuid.uuid4())
 
     try:
         import pandas as pd
@@ -321,14 +338,20 @@ def _run_agent_notturno() -> dict:
                     continue
                 ids = df[df["descrizione"] == desc]["id"].tolist()
                 cat_da = str(df[df["descrizione"] == desc]["categoria"].iloc[0] or "")
-                sb.table("fatture").update({
-                    "categoria": "📝 NOTE E DICITURE",
-                    "needs_review": False,
-                    "reviewed_at": now_iso,
-                    "reviewed_by": "agent-notturno",
-                    "categoria_fonte": "L4_dicitura",
-                    "categoria_fiducia": "certa",
-                }).in_("id", ids).is_("deleted_at", "null").execute()
+                _aggiorna_categoria_fatture(
+                    sb,
+                    ids=ids,
+                    categoria="📝 NOTE E DICITURE",
+                    source="agent_notturno",
+                    extra={
+                        "needs_review": False,
+                        "reviewed_at": now_iso,
+                        "reviewed_by": "agent-notturno",
+                        "categoria_fonte": "L4_dicitura",
+                        "categoria_fiducia": "certa",
+                    },
+                    batch_id=lotto_notturno,
+                )
                 sb.table("prodotti_master").upsert({
                     "descrizione": desc, "categoria": "📝 NOTE E DICITURE",
                     "confidence": "altissima", "verified": True,
@@ -381,20 +404,26 @@ def _run_agent_notturno() -> dict:
                     # `decisione_deterministica` due righe sopra): buttarla via
                     # sarebbe il caso peggiore, una riga scritta da una decisione
                     # tracciabile che risulta senza provenienza.
-                    sb.table("fatture").update({
-                        "categoria": cat_forte,
-                        "needs_review": False,
-                        "reviewed_at": now_iso,
-                        "reviewed_by": "agent-notturno",
-                        "categoria_fonte": _fonte_agent,
-                        # Fase 3 — la fiducia passa dal gate, non e' ricalcolata a
-                        # mano: era l'unico punto che la hardcodava, e sono proprio
-                        # le righe rimaste in coda, cioe' le piu' esposte a una
-                        # descrizione illeggibile.
-                        "categoria_fiducia": valuta_fiducia(
-                            _fonte_agent, cat_forte, desc
-                        ),
-                    }).in_("id", ids).is_("deleted_at", "null").execute()
+                    _aggiorna_categoria_fatture(
+                        sb,
+                        ids=ids,
+                        categoria=cat_forte,
+                        source="agent_notturno",
+                        extra={
+                            "needs_review": False,
+                            "reviewed_at": now_iso,
+                            "reviewed_by": "agent-notturno",
+                            "categoria_fonte": _fonte_agent,
+                            # Fase 3 — la fiducia passa dal gate, non e'
+                            # ricalcolata a mano: era l'unico punto che la
+                            # hardcodava, e sono proprio le righe rimaste in coda,
+                            # cioe' le piu' esposte a una descrizione illeggibile.
+                            "categoria_fiducia": valuta_fiducia(
+                                _fonte_agent, cat_forte, desc
+                            ),
+                        },
+                        batch_id=lotto_notturno,
+                    )
                     sb.table("prodotti_master").upsert({
                         "descrizione": desc, "categoria": cat_forte,
                         "confidence": "alta", "verified": True,

@@ -7,6 +7,7 @@ e' usata anche dalla route upload (worker) e _load_num_documento_map e' condivis
 con il router prezzi: tutto importato da qui. Path/gate/response invariati.
 """
 import re
+import uuid
 from html import unescape
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +17,8 @@ from pydantic import BaseModel
 from config.constants import TUTTE_LE_CATEGORIE
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
+# db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
+from services.db_service import aggiorna_categoria_fatture
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -892,23 +895,18 @@ def categoria_batch(
     # Aggiorna le righe con stessa descrizione del ristorante; se riga_ids e'
     # fornito, restringe l'update a quelle righe (prima il campo era dichiarato
     # ma ignorato: l'update toccava sempre TUTTE le righe con quella descrizione).
-    update_q = (
+    # Gli id si risolvono PRIMA: la scrittura attribuita lavora per id, ed e'
+    # l'unico modo perche' il registro sappia che e' stato questo cliente.
+    _sel_target = (
         supabase_client.table("fatture")
-        .update({
-            "categoria": nuova_cat,
-            "needs_review": False,
-            # Fase 2 — vedi il ramo NOTE piu' sotto: una correzione manuale e' la
-            # fonte piu' attendibile che esista. Vale su ENTRAMBI i rami, o una
-            # riga corretta a mano terrebbe la provenienza automatica sbagliata.
-            "categoria_fonte": "correzione_cliente",
-            "categoria_fiducia": "certa",
-        })
+        .select("id")
         .eq("ristorante_id", ristorante_id)
         .eq("descrizione", descrizione)
         .is_("deleted_at", "null")
     )
     if body.riga_ids:
-        update_q = update_q.in_("id", body.riga_ids)
+        _sel_target = _sel_target.in_("id", body.riga_ids)
+    _ids_da_aggiornare = [r["id"] for r in ((_sel_target.execute()).data or [])]
     # Guardrail dominio #2: NOTE E DICITURE solo su importo zero (stesso pattern
     # di admin.py:967-976) — senza questo check il batch scrive la variante con
     # emoji anche su righe con importo diverso da zero, aggirando il constraint DB.
@@ -929,25 +927,28 @@ def categoria_batch(
         _target_ids = [r["id"] for r in _candidate_rows if _imp(r) == 0]
         if not _target_ids:
             raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: tutte le righe hanno importo diverso da zero.")
-        update_q = (
-            supabase_client.table("fatture")
-            .update({
-                "categoria": nuova_cat,
-                "needs_review": False,
-                # Fase 2 — una correzione del cliente e' la fonte piu' attendibile che
-                # esista: un umano ha guardato quella riga. Senza questo, una riga
-                # corretta a mano conserverebbe per sempre la provenienza automatica
-                # che l'aveva sbagliata, e la Fase 4 potrebbe escluderla dai margini
-                # proprio dopo che il cliente l'ha sistemata.
-                "categoria_fonte": "correzione_cliente",
-                "categoria_fiducia": "certa",
-            })
-            .eq("ristorante_id", ristorante_id)
-            .in_("id", _target_ids)
-            .is_("deleted_at", "null")
-        )
-    res_update = update_q.execute()
-    righe_aggiornate = len(res_update.data or [])
+        # Guardrail dominio #2: si scrive solo sulle righe a importo zero.
+        _ids_da_aggiornare = _target_ids
+    # Fase 2 — una correzione del cliente e' la fonte piu' attendibile che
+    # esista: un umano ha guardato quella riga. Senza `categoria_fonte`, una riga
+    # corretta a mano conserverebbe per sempre la provenienza automatica che
+    # l'aveva sbagliata. `source` invece dice CHI ha scritto, ed e' l'unico
+    # percorso in cui quel "chi" e' un utente vero.
+    righe_aggiornate = aggiorna_categoria_fatture(
+        supabase_client,
+        ids=_ids_da_aggiornare,
+        categoria=nuova_cat,
+        source="correzione_cliente",
+        extra={
+            "needs_review": False,
+            "categoria_fonte": "correzione_cliente",
+            "categoria_fiducia": "certa",
+        },
+        attore_email=str(user.get("email") or "") or None,
+        attore_user_id=str(user_id) if user_id else None,
+        batch_id=str(uuid.uuid4()) if len(_ids_da_aggiornare) > 1 else None,
+        ristorante_id=ristorante_id,
+    )
     if righe_aggiornate:
         _invalidate_fatture_rows_cache(ristorante_id)
 
@@ -1077,14 +1078,21 @@ def aggiorna_categoria_riga(
         if importo != 0:
             raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: la riga ha importo diverso da zero.")
 
-    supabase_client.table("fatture").update({
-        "categoria": categoria,
-        "needs_review": False,
-        # Fase 2 — quarto e ultimo percorso di correzione manuale. Tutti registrano
-        # la stessa fonte: e' quello che rende la provenienza affidabile a valle.
-        "categoria_fonte": "correzione_cliente",
-        "categoria_fiducia": "certa",
-    }).eq("id", riga_id).execute()
+    # Fase 2 — quarto e ultimo percorso di correzione manuale. Tutti registrano
+    # la stessa fonte: e' quello che rende la provenienza affidabile a valle.
+    aggiorna_categoria_fatture(
+        supabase_client,
+        ids=[riga_id],
+        categoria=categoria,
+        source="correzione_cliente",
+        extra={
+            "needs_review": False,
+            "categoria_fonte": "correzione_cliente",
+            "categoria_fiducia": "certa",
+        },
+        attore_email=str(user.get("email") or "") or None,
+        attore_user_id=str(user.get("id")) if user.get("id") else None,
+    )
     _invalidate_fatture_rows_cache(ristorante_id)
 
     # Fase 5 (D5): questo percorso aggiornava la riga e basta — la correzione

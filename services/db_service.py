@@ -37,6 +37,149 @@ def filter_active(query):
     return query.is_("deleted_at", "null")
 
 
+SOURCE_NON_DICHIARATA = "non_dichiarata"
+
+
+def aggiorna_categoria_fatture(
+    supabase_client,
+    *,
+    ids: List[int],
+    categoria: str,
+    source: str = SOURCE_NON_DICHIARATA,
+    extra: Optional[Dict[str, Any]] = None,
+    attore_email: Optional[str] = None,
+    attore_user_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    ristorante_id: Optional[str] = None,
+) -> int:
+    """Scrive `categoria` su `fatture` dichiarando CHI sta scrivendo.
+
+    Perche' passa da una RPC e non da `.table("fatture").update(...)`
+    ====================================================================
+    Il trigger `fn_log_category_change` alimenta `category_change_log` leggendo
+    dei GUC di SESSIONE. PostgREST prende una connessione dal pool a ogni
+    richiesta, quindi dal client non si possono mettere `SET LOCAL` e l'UPDATE
+    nella stessa transazione: il GUC finirebbe su un'altra connessione, o su
+    quella di un'altra richiesta in volo — attribuendo la scrittura all'utente
+    sbagliato. Un registro che attribuisce male e' peggio di uno vuoto, perche'
+    sembra affidabile. Dentro la RPC, invece, sono per costruzione la stessa
+    transazione.
+
+    Non passare l'attore negli header del client: e' un singleton di processo
+    (`services/__init__.py:205`), e scriverci sopra e' gia' costato un incidente
+    (vedi `_riallinea_auth_header`).
+
+    `source` dice CHI HA ESEGUITO la scrittura (worker_coda, correzione_cliente);
+    `extra["categoria_fonte"]` dice QUALE REGOLA ha deciso (L2_locale, AI_alta).
+    Sono due domande diverse.
+
+    Chi non dichiara non viene bloccato: si segnala e si scrive comunque. Un
+    vincolo giusto messo nell'hot-path del worker sarebbe una regressione — li'
+    fermare la coda fatture e' peggio del dato mancante. La riga resta
+    riconoscibile come non attribuita invece di essere spacciata per nota.
+
+    `user_id`/`ristorante_id` NON servono alla RPC (che lavora per id): servono a
+    tenere il FALLBACK HTTP stretto quanto la query che sostituisce. Vanno passati
+    dai call site che filtravano per tenant, o in fallback l'update sarebbe piu'
+    largo dell'originale.
+
+    Ritorna il numero di righe aggiornate.
+    """
+    if not ids:
+        return 0
+
+    if source == SOURCE_NON_DICHIARATA:
+        logger.warning(
+            "aggiorna_categoria_fatture: scrittura senza `source` dichiarata su "
+            "%d righe. Finira' nel registro come non attribuita.", len(ids)
+        )
+
+    try:
+        risposta = supabase_client.rpc(
+            "aggiorna_categoria_fatture_attribuita",
+            {
+                "p_ids": list(ids),
+                "p_categoria": categoria,
+                "p_source": source,
+                "p_extra": extra or {},
+                "p_actor_email": attore_email,
+                "p_actor_user_id": attore_user_id,
+                "p_batch_id": batch_id,
+            },
+        ).execute()
+        return risposta.data if isinstance(risposta.data, int) else (risposta.data or 0)
+    except Exception as errore_rpc:
+        # Fallback HTTP come in `elimina_fattura_completa`: la scrittura passa,
+        # ma senza attribuzione. Si segnala forte, perche' e' il caso in cui il
+        # registro torna cieco.
+        logger.warning(
+            "RPC aggiorna_categoria_fatture_attribuita non disponibile, fallback "
+            "HTTP senza attribuzione: %s", errore_rpc
+        )
+        payload: Dict[str, Any] = {"categoria": categoria}
+        payload.update(extra or {})
+        query = filter_active(
+            supabase_client.table("fatture").update(payload).in_("id", list(ids))
+        )
+        # Gli stessi filtri di tenant della query sostituita: un fallback piu'
+        # largo dell'originale sarebbe una falla di isolamento, non un ripiego.
+        if user_id:
+            query = query.eq("user_id", user_id)
+        if ristorante_id:
+            query = query.eq("ristorante_id", ristorante_id)
+        risposta = query.execute()
+        return len(risposta.data or [])
+
+
+def aggiorna_categoria_prodotto(
+    supabase_client,
+    *,
+    user_id: str,
+    descrizione: str,
+    categoria: str,
+    source: str = SOURCE_NON_DICHIARATA,
+    attore_email: Optional[str] = None,
+    attore_user_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+) -> int:
+    """Come sopra, per la memoria delle correzioni (`prodotti_utente`).
+
+    Il trigger e' attivo su entrambe le tabelle: usare la RPC solo su `fatture`
+    lascerebbe meta' registro cieco.
+    """
+    if source == SOURCE_NON_DICHIARATA:
+        logger.warning(
+            "aggiorna_categoria_prodotto: scrittura senza `source` dichiarata "
+            "(%s). Finira' nel registro come non attribuita.", descrizione
+        )
+    try:
+        risposta = supabase_client.rpc(
+            "aggiorna_categoria_prodotto_attribuita",
+            {
+                "p_user_id": user_id,
+                "p_descrizione": descrizione,
+                "p_categoria": categoria,
+                "p_source": source,
+                "p_actor_email": attore_email,
+                "p_actor_user_id": attore_user_id,
+                "p_batch_id": batch_id,
+            },
+        ).execute()
+        return risposta.data if isinstance(risposta.data, int) else (risposta.data or 0)
+    except Exception as errore_rpc:
+        logger.warning(
+            "RPC aggiorna_categoria_prodotto_attribuita non disponibile, "
+            "fallback HTTP senza attribuzione: %s", errore_rpc
+        )
+        risposta = (
+            supabase_client.table("prodotti_utente")
+            .update({"categoria": categoria})
+            .eq("user_id", user_id).eq("descrizione", descrizione).execute()
+        )
+        return len(risposta.data or [])
+
+
 def escludi_da_verificare_margini(query):
     """Fase 4 piano categorizzazione: esclude dai calcoli margini le righe con
     `categoria_fiducia = 'da_verificare'`, MA SOLO a flag acceso
