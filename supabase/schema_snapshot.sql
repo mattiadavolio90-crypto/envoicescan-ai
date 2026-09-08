@@ -2,7 +2,7 @@
 -- scripts/genera_schema_snapshot.py. NON modificare a mano: rigenerare.
 -- Serve a montare il Postgres dei test (le migration del repo non
 -- ricostruiscono il database: vedi il docstring dello script).
--- Rigenerato il 2026-09-07.
+-- Rigenerato il 2026-09-08.
 
 -- Ambiente Supabase ricreato per il DB di test: ruoli, schema auth, GUC.
 -- NON fa parte dello schema dell'applicazione — vedi scripts/genera_schema_snapshot.py.
@@ -1318,6 +1318,19 @@ CREATE INDEX users_reset_code_idx ON public.users USING btree (reset_code);
 -- Delle 96 policy RLS si riporta solo l'abilitazione: ogni client dell'app
 -- usa service_role (BYPASSRLS), quindi le policy non filtrano nulla e
 -- ricopiarle darebbe ai test una protezione solo apparente.
+CREATE OR REPLACE FUNCTION public._azzera_attribuzione_categoria()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+    PERFORM set_config('app.category_change_source', '', true);
+    PERFORM set_config('app.category_change_batch_id', '', true);
+    PERFORM set_config('app.category_change_actor_email', '', true);
+    PERFORM set_config('app.category_change_actor_user_id', '', true);
+END;
+$function$;
 CREATE OR REPLACE FUNCTION public._riparto_categoria_is_fb(p_categoria text)
  RETURNS boolean
  LANGUAGE sql
@@ -1373,6 +1386,65 @@ AS $function$
         ),
         ''
     );
+$function$;
+CREATE OR REPLACE FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb DEFAULT '{}'::jsonb, p_actor_email text DEFAULT NULL::text, p_actor_user_id uuid DEFAULT NULL::uuid, p_batch_id uuid DEFAULT NULL::uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+    v_count integer;
+BEGIN
+    IF p_ids IS NULL OR array_length(p_ids, 1) IS NULL THEN
+        RETURN 0;
+    END IF;
+
+    PERFORM set_config('app.category_change_source', COALESCE(p_source, ''), true);
+    PERFORM set_config('app.category_change_batch_id', COALESCE(p_batch_id::text, ''), true);
+    PERFORM set_config('app.category_change_actor_email', COALESCE(p_actor_email, ''), true);
+    PERFORM set_config('app.category_change_actor_user_id', COALESCE(p_actor_user_id::text, ''), true);
+
+    UPDATE public.fatture SET
+        categoria = p_categoria,
+        needs_review = COALESCE((p_extra->>'needs_review')::boolean, needs_review),
+        categoria_fonte = COALESCE(p_extra->>'categoria_fonte', categoria_fonte),
+        categoria_fiducia = COALESCE(p_extra->>'categoria_fiducia', categoria_fiducia),
+        reviewed_at = COALESCE((p_extra->>'reviewed_at')::timestamp, reviewed_at),
+        reviewed_by = COALESCE(p_extra->>'reviewed_by', reviewed_by)
+    WHERE id = ANY(p_ids)
+      AND deleted_at IS NULL;
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+
+    PERFORM public._azzera_attribuzione_categoria();
+
+    RETURN v_count;
+END;
+$function$;
+CREATE OR REPLACE FUNCTION public.aggiorna_categoria_prodotto_attribuita(p_user_id uuid, p_descrizione text, p_categoria text, p_source text, p_actor_email text DEFAULT NULL::text, p_actor_user_id uuid DEFAULT NULL::uuid, p_batch_id uuid DEFAULT NULL::uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+    v_count integer;
+BEGIN
+    PERFORM set_config('app.category_change_source', COALESCE(p_source, ''), true);
+    PERFORM set_config('app.category_change_batch_id', COALESCE(p_batch_id::text, ''), true);
+    PERFORM set_config('app.category_change_actor_email', COALESCE(p_actor_email, ''), true);
+    PERFORM set_config('app.category_change_actor_user_id', COALESCE(p_actor_user_id::text, ''), true);
+
+    UPDATE public.prodotti_utente
+       SET categoria = p_categoria
+     WHERE user_id = p_user_id
+       AND descrizione = p_descrizione;
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    PERFORM public._azzera_attribuzione_categoria();
+    RETURN v_count;
+END;
 $function$;
 CREATE OR REPLACE FUNCTION public.accoda_upload_ambiguo(p_user_id uuid, p_piva_raw text, p_xml_content text, p_nome_file text, p_indirizzo_raw text, p_xml_hash text, p_payload_meta jsonb DEFAULT '{}'::jsonb, p_anteprima_righe jsonb DEFAULT NULL::jsonb)
  RETURNS TABLE(queue_id bigint, created boolean)
@@ -3291,8 +3363,14 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    v_actor_sub_text := NULLIF(current_setting('request.jwt.claim.sub', true), '');
-    v_actor_email := NULLIF(current_setting('request.jwt.claim.email', true), '');
+    v_actor_sub_text := COALESCE(
+        NULLIF(current_setting('app.category_change_actor_user_id', true), ''),
+        NULLIF(current_setting('request.jwt.claim.sub', true), '')
+    );
+    v_actor_email := COALESCE(
+        NULLIF(current_setting('app.category_change_actor_email', true), ''),
+        NULLIF(current_setting('request.jwt.claim.email', true), '')
+    );
     v_source := COALESCE(NULLIF(current_setting('app.category_change_source', true), ''), 'db_trigger');
     v_batch_text := NULLIF(current_setting('app.category_change_batch_id', true), '');
 
@@ -3650,6 +3728,9 @@ REVOKE ALL ON FUNCTION public.riparto_quote_mensili(p_user_id uuid, p_anno integ
 REVOKE ALL ON FUNCTION public.scadenziario_fatture_aggregate(p_user_id uuid, p_ristorante_ids uuid[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.scarta_fattura_da_coda(p_queue_id bigint, p_user_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.schedule_retry(p_queue_id bigint, p_error_msg text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._azzera_attribuzione_categoria() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.aggiorna_categoria_prodotto_attribuita(p_user_id uuid, p_descrizione text, p_categoria text, p_source text, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.soft_delete_fatture_massivo(p_user_id uuid, p_ristorante_id uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sostituisci_quote_riparto(p_riparto_id uuid, p_user_id uuid, p_tipo text, p_regola text, p_importo_totale numeric, p_quote jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sposta_fattura_a_sede(p_user_id uuid, p_file_origine text, p_ristorante_id uuid) FROM PUBLIC;
@@ -3706,6 +3787,9 @@ GRANT EXECUTE ON FUNCTION public.riparto_quote_mensili(p_user_id uuid, p_anno in
 GRANT EXECUTE ON FUNCTION public.scadenziario_fatture_aggregate(p_user_id uuid, p_ristorante_ids uuid[]) TO service_role;
 GRANT EXECUTE ON FUNCTION public.scarta_fattura_da_coda(p_queue_id bigint, p_user_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.schedule_retry(p_queue_id bigint, p_error_msg text) TO service_role;
+GRANT EXECUTE ON FUNCTION public._azzera_attribuzione_categoria() TO service_role;
+GRANT EXECUTE ON FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.aggiorna_categoria_prodotto_attribuita(p_user_id uuid, p_descrizione text, p_categoria text, p_source text, p_actor_email text, p_actor_user_id uuid, p_batch_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.soft_delete_fatture_massivo(p_user_id uuid, p_ristorante_id uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sostituisci_quote_riparto(p_riparto_id uuid, p_user_id uuid, p_tipo text, p_regola text, p_importo_totale numeric, p_quote jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sposta_fattura_a_sede(p_user_id uuid, p_file_origine text, p_ristorante_id uuid) TO service_role;
