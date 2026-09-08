@@ -11,8 +11,11 @@
 -- distrazione. La regola sopra resta valida per chiunque abbia la URL.
 -- Allineati a mano: il corpo di fn_log_category_change (la costante
 -- c_uuid, che nello snapshot era una regex inlineata nei due usi) e la
--- posizione di _azzera_attribuzione_categoria (era in cima al blocco,
--- prima delle IMMUTABLE; l'ORDER BY dello script la mette fra le plpgsql).
+-- posizione di _azzera_attribuzione_categoria (era in cima al blocco, prima
+-- delle IMMUTABLE; l'ORDER BY dello script la mette fra le plpgsql, e la
+-- collation la ordina come 'azzera' — quindi PRIMA di accoda_upload_ambiguo,
+-- non dopo le aggiorna_*. Posizione verificata riproducendo quell'ORDER BY
+-- sul catalogo live, non dedotta.)
 
 -- Ambiente Supabase ricreato per il DB di test: ruoli, schema auth, GUC.
 -- NON fa parte dello schema dell'applicazione — vedi scripts/genera_schema_snapshot.py.
@@ -1384,6 +1387,19 @@ AS $function$
         ''
     );
 $function$;
+CREATE OR REPLACE FUNCTION public._azzera_attribuzione_categoria()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+    PERFORM set_config('app.category_change_source', '', true);
+    PERFORM set_config('app.category_change_batch_id', '', true);
+    PERFORM set_config('app.category_change_actor_email', '', true);
+    PERFORM set_config('app.category_change_actor_user_id', '', true);
+END;
+$function$;
 CREATE OR REPLACE FUNCTION public.aggiorna_categoria_fatture_attribuita(p_ids bigint[], p_categoria text, p_source text, p_extra jsonb DEFAULT '{}'::jsonb, p_actor_email text DEFAULT NULL::text, p_actor_user_id uuid DEFAULT NULL::uuid, p_batch_id uuid DEFAULT NULL::uuid, p_salta_arbitrate boolean DEFAULT false)
  RETURNS integer
  LANGUAGE plpgsql
@@ -1445,19 +1461,6 @@ BEGIN
     GET DIAGNOSTICS v_count = ROW_COUNT;
     PERFORM public._azzera_attribuzione_categoria();
     RETURN v_count;
-END;
-$function$;
-CREATE OR REPLACE FUNCTION public._azzera_attribuzione_categoria()
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-    PERFORM set_config('app.category_change_source', '', true);
-    PERFORM set_config('app.category_change_batch_id', '', true);
-    PERFORM set_config('app.category_change_actor_email', '', true);
-    PERFORM set_config('app.category_change_actor_user_id', '', true);
 END;
 $function$;
 CREATE OR REPLACE FUNCTION public.accoda_upload_ambiguo(p_user_id uuid, p_piva_raw text, p_xml_content text, p_nome_file text, p_indirizzo_raw text, p_xml_hash text, p_payload_meta jsonb DEFAULT '{}'::jsonb, p_anteprima_righe jsonb DEFAULT NULL::jsonb)
