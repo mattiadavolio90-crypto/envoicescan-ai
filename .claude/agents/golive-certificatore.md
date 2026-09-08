@@ -30,7 +30,8 @@ MAI il DB, non correggi categorie, non lanci script che scrivono.
    onestamente parcheggiata. In caso di dubbio, verifica su `CLAUDE.md`.
 
 2. **NON SCRIVERE MAI nel DB.** Sei read-only. In particolare NON invocare mai
-   `scripts/ricategorizza_sede.py` (fa UPDATE senza gate), né alcun `UPDATE`/
+   `scripts/ricategorizza_sede.py` (scrive sui dati veri: dal 09/09 salta le righe
+   già arbitrate, ma resta una scrittura massiva), né alcun `UPDATE`/
    `INSERT`/`DELETE` su `fatture`/`prodotti_*`. Se emergono categorie da
    correggere, le PROPONI e rimandi a `categorization-reviewer` (che ha il flusso
    human-in-the-loop). Tu certifichi, non correggi.

@@ -64,6 +64,7 @@ def aggiorna_categoria_fatture(
     batch_id: Optional[str] = None,
     user_id: Optional[str] = None,
     ristorante_id: Optional[str] = None,
+    salta_correzioni_manuali: bool = False,
 ) -> int:
     """Scrive `categoria` su `fatture` dichiarando CHI sta scrivendo.
 
@@ -103,6 +104,22 @@ def aggiorna_categoria_fatture(
     dai call site che filtravano per tenant, o in fallback l'update sarebbe piu'
     largo dell'originale.
 
+    `salta_correzioni_manuali` protegge le righe che un umano ha gia' arbitrato
+    (`categoria_fonte='correzione_cliente'` oppure `reviewed_at` valorizzato).
+    E' OPT-IN e non un default, per una ragione di dominio: cio' che un cliente
+    decide vale per LUI. Chi scrive per se' — la correzione dal frontend, che
+    passa da qui con source='correzione_cliente' — deve poter riscrivere le
+    proprie righe, o non potrebbe correggersi due volte. Chi scrive per conto
+    d'altri (uno script massivo su una sede) deve invece fermarsi: e' il
+    precedente del 26/08, ancora vivo il 09/09 sulla riga 128426 di VILLA
+    GUARDIA.
+
+    Chi lo accende NON deve dedurre le righe saltate dal ritorno: questa
+    funzione ritorna solo quante ne ha scritte. Il chiamante che vuole dire
+    all'operatore *quali* ha saltato se le seleziona prima (vedi
+    `scripts/ricategorizza_sede.py`): saltare in silenzio e' il difetto da non
+    introdurre.
+
     Ritorna il numero di righe aggiornate.
     """
     if not ids:
@@ -125,6 +142,7 @@ def aggiorna_categoria_fatture(
                 "p_actor_email": attore_email,
                 "p_actor_user_id": attore_user_id,
                 "p_batch_id": batch_id,
+                "p_salta_arbitrate": salta_correzioni_manuali,
             },
         ).execute()
         # int() e non un isinstance: la RPC ritorna uno scalare, ma un `data`
@@ -150,6 +168,18 @@ def aggiorna_categoria_fatture(
             query = query.eq("user_id", user_id)
         if ristorante_id:
             query = query.eq("ristorante_id", ristorante_id)
+        if salta_correzioni_manuali:
+            # La guardia va replicata anche qui, o il fallback sarebbe piu' largo
+            # della RPC che sostituisce — e proprio nel caso in cui il registro e'
+            # gia' cieco.
+            # `.or_(is.null, neq.)` e non `.neq()` secco, per la stessa ragione
+            # gia' scritta in `escludi_da_verificare_margini`: `.neq()` scarta
+            # ANCHE i NULL, e sul live `categoria_fonte` e' NULL su 39.221 righe
+            # su 39.515. Un `.neq()` qui non proteggerebbe di piu': bloccherebbe
+            # il 99% del lavoro legittimo.
+            query = query.or_(
+                "categoria_fonte.is.null,categoria_fonte.neq.correzione_cliente"
+            ).is_("reviewed_at", "null")
         risposta = query.execute()
         return len(risposta.data or [])
 

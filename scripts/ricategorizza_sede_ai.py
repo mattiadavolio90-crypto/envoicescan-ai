@@ -18,7 +18,7 @@ Uso:
   python -m scripts.ricategorizza_sede_ai COSTI_GRUPPO            # dry-run
   python -m scripts.ricategorizza_sede_ai COSTI_GRUPPO --commit   # scrive
 """
-import sys, time, tomllib
+import sys, time, tomllib, uuid
 from pathlib import Path
 
 secrets = tomllib.loads(Path(".streamlit/secrets.toml").read_text(encoding="utf-8"))
@@ -33,7 +33,10 @@ os.environ.setdefault("SUPABASE_URL", sup.get("url", ""))
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", sup.get("service_role_key", ""))
 
 from supabase import create_client
-from services.db_service import filter_active
+from services.db_service import aggiorna_categoria_fatture, filter_active
+from utils.supabase_paging import fetch_all
+
+SOURCE = "script_ricategorizza_sede_ai"
 from services.invoice_service import _to_int_safe
 from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
 from services.ai_service import (
@@ -99,17 +102,20 @@ def _runtime_conferma_categoria(descrizione, categoria) -> bool:
     return finale.upper() == cat.upper()
 
 
-unresolved = (
+# `fetch_all` e non `.limit(10000)`: PostgREST tronca le select a 1000 righe
+# SENZA errore, quindi quel limite dava solo falsa sicurezza — su una sede reale
+# oltre le 1000 Da Classificare, la passata ne vedeva 1000 e dichiarava di aver
+# finito. `fetch_all` pagina e, al cap, lo dice invece di tacere.
+rows = fetch_all(
     filter_active(
         sb.table("fatture")
-        .select("id, descrizione, fornitore, iva_percentuale, totale_riga")
+        .select("id, descrizione, fornitore, iva_percentuale, totale_riga, "
+                "categoria_fonte, reviewed_at")
         .eq("ristorante_id", rid)
     )
     .or_("categoria.is.null,categoria.eq.Da Classificare,categoria.eq.")
-    .limit(10000)
-    .execute()
+    .order("id")
 )
-rows = unresolved.data or []
 print(f"[{sede}] righe Da Classificare: {len(rows)}")
 if not rows:
     sys.exit(0)
@@ -117,9 +123,18 @@ if not rows:
 desc_map = {}
 desc_to_ids = {}
 desc_importo = {}
+# Le righe gia' decise da un umano non entrano nemmeno nel piano. Oggi nessuna
+# riga arbitrata e' 'Da Classificare' sul live (misurato il 09/09: 330 protette,
+# tutte con una categoria), quindi questo filtro non toglie lavoro: e' la rete
+# per quando il filtro a monte cambiera'.
+n_arbitrate_saltate = 0
 for row in rows:
     desc = str(row.get("descrizione") or "").strip()
     if not desc:
+        continue
+    if (str(row.get("categoria_fonte") or "") == "correzione_cliente"
+            or row.get("reviewed_at")):
+        n_arbitrate_saltate += 1
         continue
     row_id = row.get("id")
     if row_id is not None:
@@ -138,6 +153,10 @@ for row in rows:
 
 descrizioni = list(desc_map.keys())
 print(f"  descrizioni distinte: {len(descrizioni)}")
+if n_arbitrate_saltate:
+    # Saltare in silenzio sposterebbe solo il problema: chi lancia lo script
+    # deve vedere che qualcosa e' stato escluso, e perche'.
+    print(f"  saltate perche' gia' decise a mano: {n_arbitrate_saltate}")
 
 updates = {}   # id -> (categoria, needs_review)
 diff_cat = {}
@@ -233,11 +252,24 @@ if COMMIT and updates:
     for row_id, (cat, nr, _desc) in updates.items():
         groups.setdefault((cat, nr), []).append(row_id)
     tot = 0
+    lotto = str(uuid.uuid4())
     for (cat, nr), ids in groups.items():
         for i in range(0, len(ids), 500):
             chunk_ids = ids[i:i+500]
-            sb.table("fatture").update({"categoria": cat, "needs_review": nr}).in_("id", chunk_ids).execute()
-            tot += len(chunk_ids)
+            # Dal chokepoint, non con `.update()` diretto: senza `source` ogni
+            # riga di questo script finiva nel registro come `db_trigger`,
+            # indistinguibile dal worker. `salta_correzioni_manuali` e' la rete
+            # sul filtro gia' applicato a monte.
+            tot += aggiorna_categoria_fatture(
+                sb,
+                ids=chunk_ids,
+                categoria=cat,
+                source=SOURCE,
+                extra={"needs_review": nr},
+                batch_id=lotto,
+                ristorante_id=rid,
+                salta_correzioni_manuali=True,
+            )
     # Streak: solo dopo il commit, come in produzione
     for desc in {d for _c, _n, d in updates.values()}:
         cat_scritta = next(c for c, _n, d in updates.values() if d == desc)
@@ -245,6 +277,6 @@ if COMMIT and updates:
             aggiorna_streak_classificazione(desc, cat_scritta, sb, record_precaricato=_STREAK_NON_PRECARICATO)
         except Exception as _e:
             print(f"  streak fallito per '{desc[:50]}': {_e}")
-    print(f"  COMMIT: {tot} righe aggiornate")
+    print(f"  COMMIT: {tot} righe aggiornate (lotto {lotto})")
 elif updates:
     print("  (dry-run: nessuna scrittura — aggiungi --commit per applicare)")

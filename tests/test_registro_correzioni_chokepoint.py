@@ -42,6 +42,13 @@ class _Query:
         self._r["filtri"][colonna] = valore
         return self
 
+    def or_(self, espressione):
+        # PostgREST prende l'espressione come stringa: il test la conserva
+        # testuale, perche' e' proprio la sua forma a decidere se i NULL
+        # sopravvivono (`.neq()` secco li scarterebbe).
+        self._r["filtri"]["or"] = espressione
+        return self
+
     def execute(self):
         return type("R", (), {"data": [{"id": i} for i in self._r["ids"]]})()
 
@@ -159,3 +166,78 @@ def test_il_fallback_non_e_piu_largo_della_query_che_sostituisce():
     assert client.registro["filtri"]["ristorante_id"] == "sede-1"
     # E il soft-delete resta rispettato: una riga nel cestino non torna in vita.
     assert client.registro["filtri"]["deleted_at"] == "null"
+
+
+# ---------------------------------------------------------------------------
+# La guardia sulle correzioni gia' arbitrate.
+#
+# Il parametro e' opt-in: chi scrive per se' (il cliente dal frontend) deve
+# poter riscrivere le proprie righe, chi scrive per conto d'altri (uno script)
+# no. Qui si prova che la scelta arriva alla RPC e che il fallback HTTP non e'
+# piu' largo di lei.
+# ---------------------------------------------------------------------------
+
+
+def test_la_guardia_arriva_alla_rpc_quando_si_chiede():
+    client = _ClientRPC()
+    aggiorna_categoria_fatture(
+        client, ids=[1, 2], categoria="CARNE", source="script_ricategorizza_sede",
+        salta_correzioni_manuali=True,
+    )
+    _, parametri = client.chiamate[0]
+    assert parametri["p_salta_arbitrate"] is True
+
+
+def test_senza_chiederla_la_guardia_resta_spenta():
+    """I 13 chiamanti esistenti non la passano: il default non deve cambiare
+    il loro comportamento, o il cliente non potrebbe correggersi due volte."""
+    client = _ClientRPC()
+    aggiorna_categoria_fatture(
+        client, ids=[1], categoria="PESCE", source="correzione_cliente",
+    )
+    _, parametri = client.chiamate[0]
+    assert parametri["p_salta_arbitrate"] is False
+
+
+def test_il_fallback_replica_la_guardia():
+    """Se il fallback non la replicasse, scriverebbe le righe che la RPC salta —
+    e proprio nel caso in cui il registro e' gia' cieco."""
+    client = _ClientSenzaRPC()
+    aggiorna_categoria_fatture(
+        client, ids=[7], categoria="CARNE", source="script_ricategorizza_sede",
+        salta_correzioni_manuali=True,
+    )
+    filtri = client.registro["filtri"]
+    assert filtri.get("reviewed_at") == "null"
+    assert filtri.get("or") == (
+        "categoria_fonte.is.null,categoria_fonte.neq.correzione_cliente"
+    )
+
+
+def test_il_fallback_con_la_guardia_non_scarta_le_righe_senza_fonte():
+    """Il difetto che questo test previene, misurato sul live: `categoria_fonte`
+    e' NULL su 39.221 righe su 39.515. Un `.neq()` secco le scarterebbe tutte
+    (PostgREST esclude i NULL come `<>` in SQL), e la guardia bloccherebbe il
+    99% del lavoro legittimo invece di proteggere le 330 arbitrate. La forma
+    `or_(is.null, neq.)` e' l'unica che distingue i due casi — la stessa gia'
+    usata da `escludi_da_verificare_margini`."""
+    client = _ClientSenzaRPC()
+    aggiorna_categoria_fatture(
+        client, ids=[7], categoria="CARNE", source="script_ricategorizza_sede",
+        salta_correzioni_manuali=True,
+    )
+    espressione = client.registro["filtri"].get("or", "")
+    assert "categoria_fonte.is.null" in espressione, (
+        "senza il ramo is.null la guardia scarta le righe mai arbitrate"
+    )
+
+
+def test_il_fallback_senza_guardia_non_filtra_le_arbitrate():
+    """L'altra direzione: chi non chiede la guardia non deve subirla."""
+    client = _ClientSenzaRPC()
+    aggiorna_categoria_fatture(
+        client, ids=[7], categoria="PESCE", source="correzione_cliente",
+    )
+    filtri = client.registro["filtri"]
+    assert "or" not in filtri
+    assert "reviewed_at" not in filtri

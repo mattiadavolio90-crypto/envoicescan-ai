@@ -184,7 +184,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
 - Nessun commento nel codice se non per motivi non ovvi
 - `filter_active()` da `services.db_service` per tutte le query con soft-delete
 - Le migration SQL vanno SOLO in `supabase/migrations/` con nome timestamp `AAAAMMGGHHMMSS_nome.sql` (formato Supabase CLI). La cartella `migrations/` (numerazione `001`–`082`) è storica e congelata: non aggiungere file lì. Stato reale applicato = DB live, non i file.
-- I file in `scripts/` e `tools/` sono operativi/manutentivi — non fanno parte del runtime
+- I file in `scripts/` e `tools/` sono operativi/manutentivi — non fanno parte del runtime. **Se scrivono sui dati veri**: dry-run di default, e scrittura da `aggiorna_categoria_fatture` con `source`/`batch_id` + `salta_correzioni_manuali=True` (uno script scrive per conto d'altri: non tocca ciò che un umano ha deciso, e stampa le saltate). Il cliente che corregge le proprie righe passa **senza** quel flag.
 
 ---
 

@@ -290,3 +290,158 @@ def test_la_dichiarazione_della_gemella_non_cola(db_sql, sql, scalare):
     assert dopo[5] == "db_trigger", "l'attore della gemella e' colato sulla scrittura dopo"
     assert dopo[3] is None and dopo[4] is None
     assert dopo[6] is None
+
+
+# ---------------------------------------------------------------------------
+# La guardia sulle righe gia' arbitrate (`p_salta_arbitrate`).
+#
+# Il precedente e' del 26/08: `scripts/ricategorizza_sede.py` avrebbe
+# sovrascritto 19 correzioni manuali. Misurato il 09/09/2026 il caso e' ancora
+# vivo sul live: la riga 128426 di VILLA GUARDIA ("INVOLTINO VIETNAM (POLLO)",
+# decisa a mano come CARNE il 25/06) passata nella pipeline dello script ne esce
+# "PASTA E CEREALI".
+#
+# La regola: cio' che un cliente decide vale per LUI. Chi scrive per se' deve
+# poter riscrivere le proprie righe, chi scrive per conto d'altri no. Per questo
+# i test sotto coprono ENTRAMBE le direzioni: se coprissero solo il blocco, un
+# default cambiato a `true` passerebbe inosservato e romperebbe il cliente.
+# ---------------------------------------------------------------------------
+
+
+def _categoria(sql, riga):
+    return sql("SELECT categoria FROM public.fatture WHERE id = %s", riga)[0][0]
+
+
+def test_la_guardia_salta_la_riga_rivista_a_mano(db_sql, sql, scalare):
+    """`reviewed_at` valorizzato: uno script massivo non la tocca."""
+    _semina_utente_e_sede(db_sql)
+    riga = _riga_fattura(db_sql, categoria="CARNE")
+    with db_sql.cursor() as cur:
+        cur.execute(
+            "UPDATE public.fatture SET reviewed_at = now(), "
+            "reviewed_by = 'admin-pasta-ripiena-2026-06-25' WHERE id = %s",
+            (riga,),
+        )
+
+    aggiornate = scalare(
+        "SELECT public.aggiorna_categoria_fatture_attribuita("
+        "%s, %s, %s, %s, %s, %s, %s, %s)",
+        [riga], "PASTA E CEREALI", "script_ricategorizza_sede",
+        "{}", None, None, None, True,
+    )
+
+    assert aggiornate == 0, "una riga rivista a mano non deve essere riscritta da uno script"
+    assert _categoria(sql, riga) == "CARNE"
+
+
+def test_la_guardia_salta_la_correzione_del_cliente(db_sql, sql, scalare):
+    """`categoria_fonte='correzione_cliente'`: idem, per l'altra meta' del perimetro.
+
+    Le due condizioni sono DISGIUNTE sul live (12 righe per fonte, 318 per
+    reviewed_at, unione 330): un test su una sola lascerebbe scoperta l'altra.
+    """
+    _semina_utente_e_sede(db_sql)
+    riga = _riga_fattura(db_sql, categoria="CARNE")
+    with db_sql.cursor() as cur:
+        cur.execute(
+            "UPDATE public.fatture SET categoria_fonte = 'correzione_cliente' WHERE id = %s",
+            (riga,),
+        )
+
+    aggiornate = scalare(
+        "SELECT public.aggiorna_categoria_fatture_attribuita("
+        "%s, %s, %s, %s, %s, %s, %s, %s)",
+        [riga], "PASTA E CEREALI", "script_ricategorizza_sede",
+        "{}", None, None, None, True,
+    )
+
+    assert aggiornate == 0
+    assert _categoria(sql, riga) == "CARNE"
+
+
+def test_la_guardia_non_ferma_le_righe_mai_arbitrate(db_sql, sql, scalare):
+    """Il lavoro utile dello script deve passare, o la guardia sarebbe un blocco.
+
+    Senza questo, una guardia che rifiuta TUTTO sarebbe verde sugli altri test.
+    """
+    _semina_utente_e_sede(db_sql)
+    riga = _riga_fattura(db_sql, categoria="Da Classificare")
+
+    aggiornate = scalare(
+        "SELECT public.aggiorna_categoria_fatture_attribuita("
+        "%s, %s, %s, %s, %s, %s, %s, %s)",
+        [riga], "CARNE", "script_ricategorizza_sede",
+        "{}", None, None, None, True,
+    )
+
+    assert aggiornate == 1
+    assert _categoria(sql, riga) == "CARNE"
+
+
+def test_il_cliente_puo_riscrivere_la_propria_correzione(db_sql, sql, scalare):
+    """La regressione da NON introdurre: la guardia e' opt-in, non un default.
+
+    Il frontend passa dallo stesso chokepoint (`services/routers/fatture.py:944`).
+    Se la guardia fosse sempre attiva, un cliente non potrebbe correggere due
+    volte la stessa riga — la guardia diventerebbe il bug che pretende di
+    evitare. Qui si prova che senza il flag la riga arbitrata cambia eccome.
+    """
+    _semina_utente_e_sede(db_sql)
+    riga = _riga_fattura(db_sql, categoria="CARNE")
+    with db_sql.cursor() as cur:
+        cur.execute(
+            "UPDATE public.fatture SET categoria_fonte = 'correzione_cliente', "
+            "reviewed_at = now() WHERE id = %s",
+            (riga,),
+        )
+
+    aggiornate = scalare(
+        "SELECT public.aggiorna_categoria_fatture_attribuita("
+        "%s, %s, %s, %s, %s, %s, %s, %s)",
+        [riga], "PESCE", "correzione_cliente",
+        "{}", "mattia@oneflux.test", ATTORE, None, False,
+    )
+
+    assert aggiornate == 1, "il cliente deve poter correggere due volte la stessa riga"
+    assert _categoria(sql, riga) == "PESCE"
+
+
+def test_la_guardia_e_spenta_quando_non_si_chiede(db_sql, sql, scalare):
+    """I 13 chiamanti esistenti passano 7 argomenti: il default non deve bloccarli."""
+    _semina_utente_e_sede(db_sql)
+    riga = _riga_fattura(db_sql, categoria="CARNE")
+    with db_sql.cursor() as cur:
+        cur.execute("UPDATE public.fatture SET reviewed_at = now() WHERE id = %s", (riga,))
+
+    aggiornate = scalare(
+        "SELECT public.aggiorna_categoria_fatture_attribuita(%s, %s, %s, %s, %s, %s, %s)",
+        [riga], "PESCE", "admin_classifica", "{}", None, None, None,
+    )
+
+    assert aggiornate == 1, "senza il flag il comportamento storico non cambia"
+    assert _categoria(sql, riga) == "PESCE"
+
+
+def test_la_guardia_distingue_le_righe_dentro_lo_stesso_lotto(db_sql, sql, scalare):
+    """Un lotto misto: passano le libere, restano ferme le arbitrate.
+
+    E' il caso reale di uno script su una sede: la maggior parte delle righe e'
+    da correggere, poche sono state decise a mano. Un test su una riga sola non
+    distinguerebbe "salta quella giusta" da "salta tutto" o "non salta niente".
+    """
+    _semina_utente_e_sede(db_sql)
+    libera = _riga_fattura(db_sql, numero_riga=1, categoria="Da Classificare")
+    arbitrata = _riga_fattura(db_sql, numero_riga=2, categoria="CARNE")
+    with db_sql.cursor() as cur:
+        cur.execute("UPDATE public.fatture SET reviewed_at = now() WHERE id = %s", (arbitrata,))
+
+    aggiornate = scalare(
+        "SELECT public.aggiorna_categoria_fatture_attribuita("
+        "%s, %s, %s, %s, %s, %s, %s, %s)",
+        [libera, arbitrata], "PESCE", "script_ricategorizza_sede",
+        "{}", None, None, None, True,
+    )
+
+    assert aggiornate == 1, "deve scrivere solo la riga libera"
+    assert _categoria(sql, libera) == "PESCE"
+    assert _categoria(sql, arbitrata) == "CARNE"
