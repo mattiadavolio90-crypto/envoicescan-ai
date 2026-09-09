@@ -97,6 +97,25 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   aggiornato: cadeva sia per il cambio voluto sia per un MOCK GENEROSO che
 >   serviva le righe needs_review anche alla query sugli esclusi, fondendo due
 >   popolazioni diverse.
+>   **Due mie affermazioni corrette dalla review, misurate a DB:**
+>   (a) il costo del round-trip in piu' NON e' assorbito da `_LIVE_SEGNALI_CACHE`
+>   come diceva il piano — quella cache copre solo `get_notifiche` (:2836),
+>   mentre il briefing chiama `_briefing_righe_da_classificare` direttamente da
+>   `_briefing_raccogli_notifiche` (:6953), fuori cache. Il costo e' comunque
+>   assorbito, ma da un ALTRO meccanismo: lo snapshot briefing e' cache-first
+>   con `code_version` + TTL, quindi la raccolta gira 1-2 volte al giorno.
+>   Esito accettabile, motivazione sbagliata: si annota perche' la prossima
+>   volta qualcuno ci si appoggia.
+>   (b) il rosso di `test_arretrato_sotto_soglia_e_silenzio` NON era un flake da
+>   concorrenza come avevo scritto: era deterministico gia' su `4b0c9a5`, una
+>   regressione mia mascherata da un mock generoso.
+>   **Misura sui dati veri (chi cambia davvero in produzione):** una sola sede
+>   cliente guadagna voce — SUSHILAND MARIANO, 13 righe / 474,92 EUR, prima
+>   muta perche' l'arretrato (18) stava sotto soglia. LAND (-1.302,36 EUR) era
+>   salvata **per caso** dal suo arretrato di 29: il bug dei due cancelli era
+>   latente, non attivo, e sarebbe scattato appena sceso sotto 20. Perdono il
+>   verde "tutte classificate" le 5 sedi a zero righe escluse (TIME CAFE,
+>   CASATI 14, IL BARETTINO, OVERTIME, ambiente di test), come deciso.
 >   Suite **13.322 verdi, 44 skip**.
 
 ---
