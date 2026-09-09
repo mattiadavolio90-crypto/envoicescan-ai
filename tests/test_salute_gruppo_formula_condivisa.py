@@ -156,3 +156,23 @@ class TestCostiMesePerSede:
         """None != {}: il chiamante deve poter distinguere "non lo so" da
         "nessun costo", o reintroduce il falso rosso."""
         assert gruppo._costi_mese_per_sede(None, [RID], 2026, 8) is None
+
+    def test_a_gennaio_il_fallback_interroga_l_anno_precedente(self, monkeypatch):
+        """Bordo che si manifesterebbe solo a gennaio: il mese chiuso e' dicembre
+        dell'anno PRIMA, mentre `costi_auto_gruppo` in gruppo_overview e' dell'anno
+        corrente. Il chiamante passa costi_auto=None in quel caso, e l'helper deve
+        ricalcolare sull'anno giusto — altrimenti leggerebbe dicembre da una
+        struttura che non lo contiene e ogni sede risulterebbe senza costi."""
+        chiamate = []
+
+        def _fake(user_id, ids, anno):
+            chiamate.append(anno)
+            return {RID: ({12: 500.0}, {12: 100.0})}
+
+        import services.margine_service as ms
+        monkeypatch.setattr(ms, "calcola_costi_automatici_gruppo_sql", _fake)
+        # Anno DELIBERATAMENTE lontano da quello corrente: con 2026 un mutante che
+        # usasse datetime.now().year sopravviverebbe (misurato, e' successo).
+        out = gruppo._costi_mese_per_sede("u1", [RID], 2019, 12, costi_auto=None)
+        assert chiamate == [2019], "deve chiedere l'anno del mese chiuso, non quello corrente"
+        assert out == {RID: 600.0}
