@@ -617,6 +617,20 @@ def _costi_mese_per_sede(
     None se il dato non e' determinabile (nessun user_id o RPC fallita): il
     chiamante ripiega sul criterio vecchio invece di inventare uno zero, che
     direbbe "nessun costo" quando in realta' non lo sappiamo.
+
+    LIMITE NOTO (review 9/9/2026), preesistente e CONDIVISO COL PV: il None qui
+    copre il ramo "manca user_id" e le eccezioni, ma NON il caso in cui la catena
+    di fallback di margine_service degrada fino in fondo. I tre livelli
+    (calcola_costi_automatici_gruppo_sql -> _per_anno_sql -> _per_anno pandas) non
+    rilanciano mai: l'ultimo ritorna ({}, {}), che qui diventa 0.0 e vale "nessun
+    costo". Con tutti e tre rotti insieme ogni sede risulta senza costi (indice
+    100 -> 75, e un falso "mancano le fatture costo"). Non e' un falso VERDE, ed e'
+    lo stesso comportamento di _costi_automatici_mese nel PV
+    (fastapi_worker.py:6272, `float(cfb.get(mese) or 0)`): divergere qui
+    ricreerebbe la divergenza PV/catena che questo fix elimina. Il posto giusto per
+    chiuderlo e' far distinguere a calcola_costi_automatici_per_anno "zero costi"
+    da "non lo so" — modifica che tocca tutti i chiamanti dei margini, PV incluso,
+    e va fatta la' con i suoi test, non qui.
     """
     if not ids:
         return {}

@@ -7,8 +7,10 @@ divergeva in due modi indipendenti:
 
 1a. DENOMINATORE FISSO: divideva sempre per 4, ignorando i toggle del
     configuratore. Una voce spenta valeva 0 qui e usciva dal denominatore nel PV
-    -> stessa sede, due indici diversi. (Nessun cliente aveva voci spente al
-    momento del fix: e' un presidio, non una correzione visibile.)
+    -> stessa sede, due indici diversi. Nessuna SEDE DI CATENA aveva voci della
+    Salute spente al momento del fix (una sede non-catena, CASATI 14, ha 4 topic
+    spenti ma nessuno mappa sulle 4 voci di _VOCE_TOPIC_SALUTE): e' un presidio,
+    non una correzione visibile.
 
 1b. VOCE "FATTURE" SU UN'ALTRA POPOLAZIONE: contava le RIGHE caricate negli
     ultimi 30 giorni invece degli EURO di costi del mese chiuso (criterio del PV
