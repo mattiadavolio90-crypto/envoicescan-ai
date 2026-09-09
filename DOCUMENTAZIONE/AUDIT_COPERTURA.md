@@ -141,7 +141,27 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   "margine %" e' nascosto: un numero falso con l'avviso e' la decisione, due
 >   sarebbero rumore. `tsc --noEmit` pulito. NON fatta la prova visiva nel
 >   browser (qui non c'e'): dichiarato.
->   Suite **13.337 verdi, 44 skip**.
+>   **Review: rossa al primo giro, per il doc.** Avevo riscritto la tabella
+>   della cascata in LOGICA_BRIEFING.md e lasciato venti righe sotto la nota
+>   del 17/7 che diceva ancora "il MOL e' correttamente nascosto" — la
+>   contraddizione che `test_documentazione_onesta` non puo' vedere (verifica
+>   simboli, non senso). Riscritta come storico. Insieme: (a) il commento dei
+>   tipi in `lib/gruppo.ts` affermava due cose ora false ("1° margine", "MOL
+>   no"), corretto; (b) la sparkline con dati incompleti aveva colore e delta
+>   neutri ma la FRECCIA ancora direzionale — un simbolo che certifica la
+>   direzione di un MOL gonfiato: tolta, ed etichetta con caveat; (c) avevo
+>   scritto "la catena adotta il modello del PV" mentre su Personale/Spese fa
+>   il CONTRARIO (il PV li mostra, la catena li nasconde): scelta di prodotto
+>   legittima, ma va detta come divergenza deliberata, non come allineamento —
+>   ora lo dice il codice e il doc.
+>   Non della fase, ma esiste: `test_home_briefing_cache_first` e' intermittente
+>   perche' `_GENERATED_AT` e' catturato a IMPORT (riga 40) e una suite a
+>   cavallo della mezzanotte UTC lo vede diventare "ieri" a meta' corsa.
+>   Trappola gia' in memoria; chi tocca quel test dovrebbe congelare la data.
+>   La misura su GRUPPO OFFSIDE (che MOL vedra' da domani) NON e' stata
+>   possibile: MCP Supabase senza permesso. Resta da fare prima del push.
+>   Suite **13.346 verdi, 44 skip** (ri-misurata dal reviewer dalla root: la
+>   cifra 13.337 del commit era gia' superata da due commit docs altrui).
 
 ---
 

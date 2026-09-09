@@ -11,11 +11,16 @@ export type GruppoKpi = {
   food_cost_pct: number | null;
   costo_personale: number;
   spese_generali: number;
-  // Cascata dati: "nessuno" (niente numeri, completa i PV) | "food" (food cost/1°
-  // margine si', MOL no) | "completo" (MOL affidabile).
+  // Cascata dati: "nessuno" (niente numeri, completa i PV) | "food" (spese food
+  // presenti ma a qualche PV mancano i costi: il MOL c'e' ed e' GONFIATO verso
+  // l'alto — dal 9/9/2026 si mostra con l'avviso, come fa il PV, non piu'
+  // nascosto dietro il food cost) | "completo" (MOL affidabile).
+  // NB: margine_medio_perc e' Σmol/Σnetto (gruppo.py), cioe' lo stesso MOL in
+  // percentuale — NON un "primo margine": nel ramo "food" e' gonfiato anche lui.
   // "non_determinabile" = la completezza dei PV non e' stata letta (RPC in
   // errore). NON e' un sinonimo di "nessuno": li' sappiamo che i dati mancano,
   // qui non sappiamo niente — e il client mostra lo stato di errore, non numeri.
+  // Chi sceglie cosa mostrare per ogni livello: metricaPrincipaleConti.
   livello_dati: "nessuno" | "food" | "completo" | "non_determinabile";
   pv_da_completare: number | null;   // null = non determinabile (≠ zero)
 };

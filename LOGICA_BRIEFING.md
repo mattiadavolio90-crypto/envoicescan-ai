@@ -210,8 +210,18 @@ piano (screenshot del 9/9: "FOOD COST DEL GRUPPO 39,1%" in catena, "MOL −14.59
 nel PV). Ora la catena fa come il PV: il numero si vede sempre, e quando non è
 reale lo dice l'avviso — non il silenzio.
 
-> Verificato il 17/7 su SUSHILAND: 3 sedi su 4 non hanno il costo personale, quindi
-> il gruppo è al livello "food" e il MOL è correttamente nascosto.
+**Una divergenza deliberata dal PV, da sapere:** con i costi incompleti il PV
+mostra il MOL **e** tutto il breakdown (Personale e Spese inclusi); la catena
+mostra il MOL ma **nasconde** Personale e Spese. Lì i costi mancano a una sede e
+le righe restano i suoi numeri; qui una somma di gruppo a cui manca il personale
+di 2 PV su 4, etichettata "Costo personale", sarebbe un secondo numero falso
+sotto il primo, senza un avviso suo. Scelta di prodotto, non un bug: se si vuole
+il breakdown parziale va aggiunto con il suo caveat.
+
+> Storico. Verificato il 17/7 su SUSHILAND: 3 sedi su 4 non avevano il costo
+> personale, quindi il gruppo stava al livello "food" e il MOL era **nascosto** —
+> era la regola di allora. Dal 9/9/2026 nello stesso caso il MOL si vede, in ambra
+> e con l'avviso. Il livello di SUSHILAND oggi non è stato ri-misurato.
 
 ---
 

@@ -155,12 +155,16 @@ function MolSparkline({ punti, anno, affidabile }: { punti: MolMensile[]; anno: 
   return (
     <div className="mt-4 border-t pt-3">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground/70">Andamento margine {anno}</span>
+        <span className="text-xs font-medium text-muted-foreground/70">
+          Andamento margine {anno}{!affidabile && " · dati incompleti"}
+        </span>
         {ytdPct != null && (
           <span
             className={cn("inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums", coloreDelta)}
           >
-            {su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+            {/* La freccia e' un giudizio quanto il colore: su un MOL gonfiato
+                niente direzione certificata, resta solo il numero. */}
+            {affidabile && (su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
             {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
             <span className="ml-1 font-normal text-muted-foreground/60">
               {meseDa} → {meseA}
@@ -335,8 +339,14 @@ function ContiGruppoCard({
 
       {/* Breakdown: Fatturato e Food cost sempre (il food cost UNA volta: prima,
           nel ramo incompleto, stava anche come numero grande). Personale/Spese
-          solo con costi completi — una somma parziale etichettata "del gruppo"
-          sarebbe un secondo numero falso sotto il primo. */}
+          solo con costi completi.
+          DIVERGENZA DELIBERATA dal PV (9/9/2026): KpiBlock con `costi_mancanti`
+          mostra il MOL E tutto il breakdown, Personale e Spese inclusi. Qui no:
+          li' i costi mancano a UNA sede e le righe sono comunque i suoi numeri;
+          qui una somma di gruppo a cui manca il personale di 2 PV su 4,
+          etichettata "Costo personale", sarebbe un secondo numero falso sotto
+          il primo — e senza un avviso suo. Scelta di prodotto, non un bug: se
+          si vuole il breakdown parziale, serve anche il suo caveat. */}
       <div className="mt-auto space-y-1.5">
         <VoceConto colore="emerald" label="Fatturato gruppo (IVA incl.)" value={euro(kpi.fatturato)} onClick={onApriMargini} />
         <VoceConto
