@@ -31,9 +31,14 @@ export const MIN_VALORI_CONFRONTO = 2;
 
 // Heatmap a token di tema (come "Spesa per PV"): intensità sfondo dalla frazione
 // sul massimo di colonna. Dà "forma" alla tabella senza colori hardcoded.
+//
+// Scala 10%->70% (era 5%->35%): in tema CHIARO la vecchia escursione valeva
+// 1,51:1 fra i due estremi, con 8 salti su 11 sotto 1,02:1 — a schermo si
+// distingueva "bianco" da "azzurrino", non l'intensità. Misurato in light mode
+// il 9/9/2026. In dark l'effetto era leggibile: il difetto era solo sul chiaro.
 export function heatStyle(v: number | null, max: number): Record<string, string> {
   if (v == null || max <= 0 || v <= 0) return {};
-  const a = 0.05 + (v / max) * 0.30;
+  const a = 0.10 + (v / max) * 0.60;
   return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
 }
 
@@ -152,12 +157,16 @@ export function rigaExtremes(r: SprecoCategoriaRiga): { best: number | null; wor
 // della cella sul massimo della pivot. Usa la primary con alpha → contrasto su
 // entrambi i temi, niente colori hardcoded.
 //
-// ATTENZIONE: coefficienti DIVERSI da heatStyle (0.06/0.34 contro 0.05/0.30), e
+// ATTENZIONE: coefficienti DIVERSI da heatStyle (0.12/0.68 contro 0.10/0.60), e
 // firma non-nullable. Le due heatmap restano due funzioni distinte: unificarle
 // cambierebbe i colori a schermo, che e' una correzione travestita da pulizia.
+//
+// Scala allargata il 9/9/2026 insieme a heatStyle (era 0.06/0.34), per lo stesso
+// motivo: in tema chiaro l'escursione era troppo stretta per leggere l'intensità.
+// Il rapporto fra le due funzioni e' conservato, non e' un'unificazione.
 export function cellStyle(v: number, max: number): Record<string, string> {
   if (max <= 0 || v <= 0) return {};
-  const a = 0.06 + (v / max) * 0.34;
+  const a = 0.12 + (v / max) * 0.68;
   return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
 }
 

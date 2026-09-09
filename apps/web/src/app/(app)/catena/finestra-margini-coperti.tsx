@@ -210,7 +210,7 @@ export function FinestraMarginiCoperti({
           ) : (
             <>
               <table className="w-full border-separate border-spacing-0 text-sm">
-                <thead className="sticky top-0 z-30 bg-popover">
+                <thead className="sticky top-0 z-30 bg-popover shadow-[0_1px_0_0_var(--color-border)]">
                   <tr>
                     <th className="sticky left-0 z-40 bg-popover px-3 py-2 text-left font-semibold">
                       Punto vendita
@@ -391,7 +391,7 @@ function FinestraSprecoCategorie({
           ) : (
             <>
               <table className="w-full border-separate border-spacing-0 text-sm">
-                <thead className="sticky top-0 z-30 bg-popover">
+                <thead className="sticky top-0 z-30 bg-popover shadow-[0_1px_0_0_var(--color-border)]">
                   <tr>
                     <th className="sticky left-0 z-40 bg-popover px-3 py-2 text-left font-semibold">
                       Categoria

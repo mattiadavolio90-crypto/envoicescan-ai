@@ -153,7 +153,7 @@ export function FinestraSpesaPV({
             </div>
           ) : (
             <table className="w-full border-separate border-spacing-0 text-sm">
-              <thead className="sticky top-0 z-30 bg-popover">
+              <thead className="sticky top-0 z-30 bg-popover shadow-[0_1px_0_0_var(--color-border)]">
                 <tr>
                   <th className="sticky left-0 z-40 bg-popover px-3 py-2 text-left font-semibold">
                     {data.dimensione === "fornitore" ? "Fornitore" : "Categoria"}
@@ -190,7 +190,10 @@ export function FinestraSpesaPV({
                           style={cellStyle(v, maxCell)}
                           className={cn(
                             "px-3 py-2 text-right tabular-nums",
-                            isMax && "font-semibold text-primary",
+                            // NON text-primary: su fondo heatmap tinto in tema
+                            // chiaro misurava 1,79:1 (illeggibile) — ed e'
+                            // proprio il valore che la tabella vuole far notare.
+                            isMax && "font-semibold text-sky-800 dark:text-sky-300",
                           )}
                           title={isMax ? "Punto vendita che spende di più in questa voce" : undefined}
                         >

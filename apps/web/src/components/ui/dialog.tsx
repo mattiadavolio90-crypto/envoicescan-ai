@@ -31,7 +31,11 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        // bg-black/25 (era /10): con /10 in tema chiaro il fondo passava da
+        // #ffffff a #e6e6e6, 1,25:1 — il dialog si staccava solo grazie al blur,
+        // e su schermi poco contrastati non si staccava affatto. Resta comunque
+        // molto piu' leggero del default shadcn (/50), che qui e' voluto.
+        "fixed inset-0 isolate z-50 bg-black/25 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}

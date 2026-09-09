@@ -166,7 +166,11 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+    // `w-fit`: senza, il contenitore fisso resta largo quanto il viewport e la
+    // sua meta' invisibile a sinistra intercetta i click sui bottoni che le
+    // finiscono sotto (misurato il 9/9/2026 su /catena: "Vedi PV" non
+    // cliccabile). Il figlio e' gia' ancorato in basso a destra.
+    <div className="fixed bottom-6 right-6 z-50 flex w-fit flex-col items-end gap-3">
       {/* Pannello chat */}
       {open && (
         <div className="flex h-[420px] w-[340px] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">

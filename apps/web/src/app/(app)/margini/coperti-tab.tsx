@@ -219,7 +219,8 @@ export function CopertiTab({ dataDa, dataA }: Props) {
             </colgroup>
             <thead className="bg-muted/40">
               <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                <th className="sticky left-0 z-20 bg-muted/40 text-left px-3 py-2.5 font-semibold border-r border-border">Voce</th>
+                {/* Sfondo OPACO: vedi nota in calcolo-tab.tsx (stessa tabella sticky). */}
+                <th className="sticky left-0 z-20 bg-[color-mix(in_oklab,var(--color-muted)40%,var(--color-card))] text-left px-3 py-2.5 font-semibold border-r border-border">Voce</th>
                 {mesiVisibili.map((m) => {
                   const isCur = m.anno === ANNO_MESE_CORRENTE.anno && m.mese === ANNO_MESE_CORRENTE.mese;
                   return (
@@ -230,7 +231,7 @@ export function CopertiTab({ dataDa, dataA }: Props) {
                     </th>
                   );
                 })}
-                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-600 dark:text-sky-400">
+                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--color-sky-500)16%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-800 dark:text-sky-400">
                   {isMedia ? "Media" : "Totale"}
                 </th>
               </tr>
@@ -423,7 +424,7 @@ function MeseRow({
           </td>
         );
       })}
-      <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-r border-sky-500/50 ${color ?? "text-sky-600 dark:text-sky-400"}`}>
+      <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-sky-500)16%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-r border-sky-500/50 ${color ?? "text-sky-600 dark:text-sky-400"}`}>
         {total}
       </td>
     </tr>
@@ -631,13 +632,13 @@ function CopertiCategorieDialog({
             <table className="w-full text-sm border-collapse">
               <thead className="bg-muted/40">
                 <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <th className="sticky left-0 z-10 bg-muted/40 text-left px-3 py-2.5 font-semibold border-r border-border">
+                  <th className="sticky left-0 z-10 bg-[color-mix(in_oklab,var(--color-muted)40%,var(--color-card))] text-left px-3 py-2.5 font-semibold border-r border-border">
                     Categoria
                   </th>
                   {data.mesi_label.map((l) => (
                     <th key={l} className="text-right px-3 py-2.5 font-semibold border-r border-border whitespace-nowrap">{l}</th>
                   ))}
-                  <th className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
+                  <th className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)16%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
                     Media
                   </th>
                 </tr>
@@ -653,7 +654,7 @@ function CopertiCategorieDialog({
                         {fmtEuro2(m.valore)}
                       </td>
                     ))}
-                    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
+                    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)16%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-emerald-500/50 text-emerald-700 dark:text-emerald-400">
                       {fmtEuro2(r.media)}
                     </td>
                   </tr>

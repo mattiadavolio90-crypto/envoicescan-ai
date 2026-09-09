@@ -54,13 +54,18 @@ function Sparkline({ values: rawValues, color }: { values: number[]; color: stri
 
 type Tone = "sky" | "orange" | "emerald" | "rose" | "violet" | "pink";
 
+// I valori sono 16px/700: per WCAG NON sono "large text", quindi la soglia AA e'
+// 4.5:1, non 3:1. Misurato in tema chiaro il 9/9/2026, le tinte -600 di orange
+// (#f54a00 -> 3,58:1) ed emerald (#009966 -> 3,65:1) erano sotto — ed erano
+// proprio "Costi F&B" e "Margine Lordo", i due numeri piu' letti della barra.
+// Le -700 rientrano; la dark resta invariata (le -400 su fondo scuro sono ok).
 const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
-  sky:     { border: "border-sky-500/40",     hover: "hover:border-sky-500/70",     value: "text-sky-600 dark:text-sky-400" },
-  orange:  { border: "border-orange-500/40",  hover: "hover:border-orange-500/70",  value: "text-orange-600 dark:text-orange-400" },
-  emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-600 dark:text-emerald-400" },
-  rose:    { border: "border-rose-500/40",    hover: "hover:border-rose-500/70",    value: "text-rose-600 dark:text-rose-400" },
-  violet:  { border: "border-violet-500/40",  hover: "hover:border-violet-500/70",  value: "text-violet-600 dark:text-violet-400" },
-  pink:    { border: "border-pink-500/40",    hover: "hover:border-pink-500/70",    value: "text-pink-600 dark:text-pink-400" },
+  sky:     { border: "border-sky-500/40",     hover: "hover:border-sky-500/70",     value: "text-sky-700 dark:text-sky-400" },
+  orange:  { border: "border-orange-500/40",  hover: "hover:border-orange-500/70",  value: "text-orange-700 dark:text-orange-400" },
+  emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-700 dark:text-emerald-400" },
+  rose:    { border: "border-rose-500/40",    hover: "hover:border-rose-500/70",    value: "text-rose-700 dark:text-rose-400" },
+  violet:  { border: "border-violet-500/40",  hover: "hover:border-violet-500/70",  value: "text-violet-700 dark:text-violet-400" },
+  pink:    { border: "border-pink-500/40",    hover: "hover:border-pink-500/70",    value: "text-pink-700 dark:text-pink-400" },
 };
 
 // Colori hex allineati al TONE per i tratti SVG sparkline

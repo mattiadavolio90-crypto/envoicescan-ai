@@ -441,8 +441,10 @@ function TagDialog({
             </div>
           </div>
         )}
+        {/* border-t: senza stacco dalla lista scrollabile sopra, l'ultima riga
+            tagliata a meta' sembrava parte di questo testo di aiuto. */}
         {step === 2 && matchingDesc.length > filteredDesc.length && (
-          <p className="px-5 pb-2 text-xs text-muted-foreground shrink-0">
+          <p className="border-t border-border px-5 pt-2 pb-2 text-xs text-muted-foreground shrink-0">
             Mostrati {filteredDesc.length} di {matchingDesc.length} prodotti — usa la ricerca per trovare gli altri.
           </p>
         )}
@@ -575,8 +577,10 @@ function AggiungiProdottiDialog({
             </div>
           )}
         </div>
+        {/* border-t: senza stacco dalla lista scrollabile sopra, l'ultima riga
+            tagliata a meta' sembrava parte di questo testo di aiuto. */}
         {matching.length > filtered.length && (
-          <p className="px-5 pb-2 text-xs text-muted-foreground shrink-0">
+          <p className="border-t border-border px-5 pt-2 pb-2 text-xs text-muted-foreground shrink-0">
             Mostrati {filtered.length} di {matching.length} prodotti — usa la ricerca per trovare gli altri.
           </p>
         )}

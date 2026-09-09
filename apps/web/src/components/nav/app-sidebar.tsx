@@ -268,7 +268,7 @@ export function AppSidebar({
                   <SidebarMenuButton
                     render={<Link href="/catena" />}
                     isActive={pathname === "/catena"}
-                    className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                    className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
                   >
                     <Building2 />
                     <span>Catena</span>
@@ -278,7 +278,7 @@ export function AppSidebar({
                   <SidebarMenuButton
                     render={<Link href="/catena/fatture" />}
                     isActive={pathname === "/catena/fatture"}
-                    className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                    className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
                   >
                     <CalendarCheck />
                     <span>Gestione Fatture</span>
@@ -293,7 +293,7 @@ export function AppSidebar({
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/catena" />}
-                      className="!text-sky-600 dark:!text-sky-400 font-medium"
+                      className="!text-sky-800 dark:!text-sky-400 font-medium"
                     >
                       <ArrowLeft />
                       <span>Torna alla catena</span>
@@ -305,7 +305,7 @@ export function AppSidebar({
                     <SidebarMenuButton
                       render={<Link href={item.url} />}
                       isActive={pathname === item.url}
-                      className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                      className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
                     >
                       <item.icon />
                       <span>{item.title}</span>
@@ -327,7 +327,7 @@ export function AppSidebar({
                 <SidebarMenuButton
                   render={<Link href="/admin" />}
                   isActive={pathname.startsWith("/admin")}
-                  className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                  className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
                 >
                   <ShieldCheck />
                   <span>Admin</span>
@@ -339,7 +339,7 @@ export function AppSidebar({
                 <SidebarMenuButton
                   render={<Link href={item.url} />}
                   isActive={pathname === item.url}
-                  className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                  className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
                 >
                   <item.icon />
                   <span>{item.title}</span>

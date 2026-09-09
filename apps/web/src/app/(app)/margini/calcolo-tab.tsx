@@ -359,7 +359,9 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
             </colgroup>
             <thead className="bg-muted/40">
               <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                <th className="sticky left-0 z-20 bg-muted/40 text-left px-3 py-2.5 font-semibold border-r border-border">
+                {/* Sfondo OPACO, non bg-muted/40: una cella sticky semitrasparente
+                    lascia trasparire le intestazioni dei mesi che le scorrono sotto. */}
+                <th className="sticky left-0 z-20 bg-[color-mix(in_oklab,var(--color-muted)40%,var(--color-card))] text-left px-3 py-2.5 font-semibold border-r border-border">
                   Voce
                 </th>
                 {mesiVisibili.map((m) => {
@@ -378,7 +380,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                     </th>
                   );
                 })}
-                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-600 dark:text-sky-400">
+                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--color-sky-500)16%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-800 dark:text-sky-400">
                   {isMedia ? "Media" : "Totale"}
                 </th>
               </tr>
@@ -654,7 +656,7 @@ function TotalCell({
   const pct = pctIncidenza(raw, totali.fatturato_netto);
 
   return (
-    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums border-l-2 border-r border-sky-500/50 align-middle">
+    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-sky-500)16%,var(--color-card))] text-right px-3 py-2 tabular-nums border-l-2 border-r border-sky-500/50 align-middle">
       <div className={`tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>{display}</div>
       {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
     </td>

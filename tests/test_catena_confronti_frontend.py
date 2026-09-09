@@ -337,8 +337,28 @@ def test_heat_style_intensita_cresce_col_valore():
     basso = _chiama("heatStyle", [10, 100])["backgroundColor"]
     alto = _chiama("heatStyle", [100, 100])["backgroundColor"]
     assert basso != alto
-    assert "8%" in basso   # 0.05 + 0.10*0.30 = 0.08
-    assert "35%" in alto   # 0.05 + 1.00*0.30 = 0.35
+    assert "16%" in basso  # 0.10 + 0.10*0.60 = 0.16
+    assert "70%" in alto   # 0.10 + 1.00*0.60 = 0.70
+
+
+def test_heat_style_escursione_larga_abbastanza_per_il_tema_chiaro():
+    """La scala deve separare gli estremi, non solo variare.
+
+    Con la vecchia scala (5%->35%) in tema chiaro i due estremi distavano
+    1,51:1 e 8 salti su 11 stavano sotto 1,02:1: a schermo l'intensita' non si
+    leggeva. Qui si asserisce l'AMPIEZZA (>= 50 punti di alpha fra minimo e
+    massimo), non i due letterali: e' la proprieta' che serviva, e regge a una
+    ritaratura futura purche' resti leggibile.
+    """
+    import re
+
+    def _alpha(v: float) -> int:
+        css = _chiama("heatStyle", [v, 100])["backgroundColor"]
+        m = re.search(r"(\d+)%", css)
+        assert m, f"nessuna percentuale in {css!r}"
+        return int(m.group(1))
+
+    assert _alpha(100) - _alpha(1) >= 50
 
 
 def test_cell_style_spento_su_zero_e_max_non_positivo():
@@ -347,15 +367,19 @@ def test_cell_style_spento_su_zero_e_max_non_positivo():
 
 
 def test_le_due_heatmap_hanno_coefficienti_DIVERSI():
-    """FOTOGRAFATO: `heatStyle` (0.05/0.30) e `cellStyle` (0.06/0.34) divergono.
+    """FOTOGRAFATO: `heatStyle` (0.10/0.60) e `cellStyle` (0.12/0.68) divergono.
 
     Due tabelle affiancate colorano lo stesso rapporto con intensita' diverse.
     Unificarle sarebbe una correzione travestita da pulizia — cambierebbe i
     colori a schermo — quindi restano due funzioni e il test dichiara la
     divergenza invece di nasconderla.
+
+    Le due scale sono state allargate insieme il 9/9/2026 (erano 0.05/0.30 e
+    0.06/0.34) perche' in tema chiaro l'intensita' non si leggeva: la
+    divergenza e' stata CONSERVATA, non sanata.
     """
     assert _chiama("heatStyle", [100, 100])["backgroundColor"] != _chiama("cellStyle", [100, 100])["backgroundColor"]
-    assert "40%" in _chiama("cellStyle", [100, 100])["backgroundColor"]  # 0.06 + 0.34
+    assert "80%" in _chiama("cellStyle", [100, 100])["backgroundColor"]  # 0.12 + 0.68
 
 
 # ─── calcolaHeatMax ────────────────────────────────────────────────────────
