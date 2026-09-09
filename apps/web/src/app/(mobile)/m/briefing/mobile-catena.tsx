@@ -100,6 +100,10 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   // Cascata come il desktop: il MOL si mostra solo se i dati sono completi,
   // altrimenti sarebbe gonfiato → si mostra il food cost e si avvisa.
   const completo = kpi.livello_dati === "completo";
+  // Quarto stato (9/9/2026): la completezza non e' stata letta. Non si mostra
+  // nessun numero come valido — ne' MOL ne' food cost, che dipendono entrambi da
+  // dati di cui non sappiamo nulla. /m e' un frontend separato: allineato a mano.
+  const nonDeterminabile = kpi.livello_dati === "non_determinabile";
 
   return (
     <div className="space-y-4">
@@ -132,14 +136,27 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
       <div
         className={cn(
           "rounded-2xl border p-5 text-center",
-          !completo
-            ? "bg-gradient-to-br from-amber-500/10 to-background"
-            : molPos
-              ? "bg-gradient-to-br from-emerald-500/10 to-background"
-              : "bg-gradient-to-br from-rose-500/10 to-background",
+          nonDeterminabile
+            ? "bg-card"
+            : !completo
+              ? "bg-gradient-to-br from-amber-500/10 to-background"
+              : molPos
+                ? "bg-gradient-to-br from-emerald-500/10 to-background"
+                : "bg-gradient-to-br from-rose-500/10 to-background",
         )}
       >
-        {completo ? (
+        {nonDeterminabile ? (
+          <>
+            <div className="flex items-center justify-center gap-2 text-sm font-semibold">
+              <AlertTriangle className="size-4 text-rose-500" />
+              Conti del gruppo non disponibili
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Non è stato possibile leggere i dati dei punti vendita: i numeri del
+              gruppo non sono affidabili in questo momento.
+            </p>
+          </>
+        ) : completo ? (
           <>
             <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
               MOL del gruppo · {overview.periodo_label}
@@ -174,7 +191,10 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
               {kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              fatturato {euro(kpi.fatturato)} · {kpi.pv_da_completare} PV da completare: MOL non ancora calcolabile
+              fatturato {euro(kpi.fatturato)} ·{" "}
+              {kpi.pv_da_completare != null
+                ? `${kpi.pv_da_completare} PV da completare: MOL non ancora calcolabile`
+                : "dati di costo incompleti: MOL non ancora calcolabile"}
             </div>
           </>
         )}
@@ -185,7 +205,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
         <div className="mb-2 flex items-baseline justify-between">
           <span className="text-sm font-semibold">Salute del gruppo</span>
           <span className={cn("text-sm font-bold tabular-nums", TXT[overview.salute_colore])}>
-            {overview.salute_indice}/100
+            {overview.salute_indice != null ? `${overview.salute_indice}/100` : "—"}
           </span>
         </div>
         <ul className="space-y-1">
@@ -199,7 +219,9 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
               >
                 <span className={cn("size-2.5 shrink-0 rounded-full", DOT[pv.colore])} />
                 <span className="min-w-0 flex-1 truncate text-sm">{pv.nome}</span>
-                <span className={cn("text-sm font-semibold tabular-nums", TXT[pv.colore])}>{pv.indice}</span>
+                <span className={cn("text-sm font-semibold tabular-nums", TXT[pv.colore])}>
+                  {pv.indice ?? "—"}
+                </span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
               </button>
             </li>

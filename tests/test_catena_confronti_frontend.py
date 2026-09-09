@@ -629,17 +629,25 @@ def test_tint_giallo_quando_i_dati_non_bastano(livello):
     assert _chiama("tintConti", [{"mol": 999999.0, "livello_dati": livello}]) == "giallo"
 
 
-def test_tint_fotografa_il_default_ottimista_sul_campo_assente():
-    """ANOMALIA FOTOGRAFATA: campo assente -> "completo", l'ipotesi PIU' ottimista.
+def test_tint_campo_assente_sceglie_la_prudenza_non_l_ottimismo():
+    """ANOMALIA CORRETTA (9/9/2026). Il test precedente FOTOGRAFAVA il difetto:
+    campo assente -> "completo", cioe' l'ipotesi PIU' ottimista sull'assenza.
 
     Se il worker smettesse di mandare `livello_dati` (deploy parziale, campo
-    rinominato), la card certificherebbe in verde un MOL che nessuno ha
-    verificato. La scelta prudente sarebbe il giallo. `GruppoKpi` dichiara il
-    campo non-nullable, quindi TypeScript non vedrebbe mai il caso: la difesa e'
-    solo a runtime, ed e' tarata dalla parte sbagliata.
+    rinominato), la card certificava in VERDE un MOL che nessuno ha verificato.
+    `GruppoKpi` dichiara il campo non-nullable, quindi TypeScript non vede mai il
+    caso: la difesa e' solo a runtime, ed era tarata dalla parte sbagliata.
     """
-    assert _chiama("tintConti", [{"mol": 1000.0}]) == "verde"
-    assert _chiama("tintConti", [{"mol": 1000.0, "livello_dati": None}]) == "verde"
+    assert _chiama("tintConti", [{"mol": 1000.0}]) == "giallo"
+    assert _chiama("tintConti", [{"mol": 1000.0, "livello_dati": None}]) == "giallo"
+
+
+def test_tint_giallo_sullo_stato_non_determinabile():
+    """Il quarto stato introdotto dal backend: la completezza non e' stata letta.
+    Mai verde, per quanto grosso sia il MOL."""
+    assert _chiama(
+        "tintConti", [{"mol": 999999.0, "livello_dati": "non_determinabile"}]
+    ) == "giallo"
 
 
 # ─── offsetAnello ──────────────────────────────────────────────────────────

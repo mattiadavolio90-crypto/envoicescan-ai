@@ -256,12 +256,14 @@ export function calcolaSparkline(punti: PuntoMol[], W = 240, H = 40, PAD = 4): S
 
 // A cascata: con dati incompleti il MOL e' falso -> card neutra (no verde/rosso).
 //
-// ANOMALIA FOTOGRAFATA: `livello_dati ?? "completo"` sceglie sull'assenza del
-// campo l'ipotesi PIU' ottimista — un worker che lo omettesse mostrerebbe MOL e
-// margini come affidabili. Il tipo GruppoKpi lo dichiara non-nullable, quindi
-// TypeScript non vedrebbe mai il caso: la difesa e' solo a runtime.
+// ANOMALIA CORRETTA (9/9/2026): il default era `livello_dati ?? "completo"`,
+// cioe' l'ipotesi PIU' ottimista sull'ASSENZA del campo — un worker che lo
+// omettesse avrebbe mostrato MOL e margini come affidabili. Il tipo GruppoKpi lo
+// dichiara non-nullable, quindi TypeScript non vede mai il caso: la difesa e'
+// solo a runtime, ed e' per questo che il default deve essere prudente.
+// Ora il campo assente vale "non_determinabile" -> card gialla, mai verde.
 export function tintConti(kpi: { mol: number; livello_dati?: string | null }): "verde" | "rosso" | "giallo" {
-  const livello = kpi.livello_dati ?? "completo";
+  const livello = kpi.livello_dati ?? "non_determinabile";
   const molPos = kpi.mol >= 0;
   return livello === "completo" ? (molPos ? "verde" : "rosso") : "giallo";
 }

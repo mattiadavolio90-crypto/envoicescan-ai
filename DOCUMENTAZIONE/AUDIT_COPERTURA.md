@@ -37,6 +37,13 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 > - 09/09/2026, `5a88675` — l'indice di Salute della catena non divergeva piu' da
 >   quello del PV: +12 test di comportamento su `_salute_indici_batch` /
 >   `_completezza_dati_pv`, 4 mutanti uccisi. Suite **13.270 verdi, 44 skip**.
+> - 09/09/2026 — in catena un errore non diventa piu' "tutto a posto": 7 punti
+>   dove un `except` produceva il valore che significa "va bene" (compreso il
+>   gate `tutto_ok`, acceso ogni mattina dalla cache segnali non ancora
+>   generata). +15 test di comportamento, 9 mutanti uccisi — uno **sopravvissuto
+>   al primo giro**: il presidio guardava l'helper mentre la riga mutata stava
+>   nell'endpoint, e il test e' stato riscritto per chiamare `gruppo_overview`.
+>   Suite **13.287 verdi, 44 skip**.
 
 ---
 

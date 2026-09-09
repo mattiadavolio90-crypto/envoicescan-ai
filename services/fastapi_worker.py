@@ -3647,8 +3647,14 @@ def _build_chat_system_prompt_catena(
             f"- Fatturato gruppo: €{ov.kpi.fatturato:,.2f}\n"
             f"- Margine medio: {ov.kpi.margine_medio_perc:.1f}%\n"
             f"- Spesa fornitori: €{ov.kpi.spesa_fornitori:,.2f}\n"
-            f"- Salute del gruppo: {ov.salute_indice}/100\n"
-            "\n### Ranking punti vendita (per margine %)\n"
+            # None = non determinabile: senza questo l'AI leggerebbe "None/100" e
+            # lo riferirebbe al cliente come se fosse un punteggio.
+            + (
+                f"- Salute del gruppo: {ov.salute_indice}/100\n"
+                if ov.salute_indice is not None
+                else "- Salute del gruppo: non disponibile in questo momento\n"
+            )
+            + "\n### Ranking punti vendita (per margine %)\n"
         )
         for r in ov.ranking:
             if r.dati_incompleti:

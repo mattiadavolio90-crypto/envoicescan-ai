@@ -83,9 +83,15 @@ class GruppoKpi(BaseModel):
     # non mostrare numeri; "food" = ci sono F&B ma manca personale/spese in qualche
     # PV -> food cost e 1° margine si', MOL no (sarebbe gonfiato); "completo" = tutti
     # i PV hanno fatturato + F&B + personale -> MOL affidabile.
-    livello_dati: str = "completo"
+    # "non_determinabile" (9/9/2026) = la completezza NON e' stata letta (RPC in
+    # errore): non si sa se il MOL sia affidabile, e il client mostra lo stato di
+    # errore con retry. Il default e' questo, non "completo": un campo assente non
+    # e' una promessa di affidabilita'.
+    livello_dati: str = "non_determinabile"
     # Quanti PV hanno ancora dati base da completare (per la nota nella card).
-    pv_da_completare: int = 0
+    # None quando la completezza non e' determinabile: zero direbbe "nessuno da
+    # completare", che e' l'opposto di "non lo so".
+    pv_da_completare: Optional[int] = None
 
 
 class MolMensile(BaseModel):
@@ -96,8 +102,11 @@ class MolMensile(BaseModel):
 class SalutePV(BaseModel):
     ristorante_id: str
     nome: str
-    indice: int                 # 0-100, stessa formula della salute PV
-    colore: str                 # "verde" | "giallo" | "rosso"
+    # 0-100, stessa formula della salute PV. None = NON DETERMINABILE (la RPC
+    # delle componenti non ha risposto): il client mostra lo stato di errore, mai
+    # uno zero — che si leggerebbe come "sede messa malissimo".
+    indice: Optional[int] = None
+    colore: str                 # "verde" | "giallo" | "rosso" | "grigio" (= non lo so)
 
 
 class RankingPV(BaseModel):
@@ -139,8 +148,9 @@ class GruppoOverviewResponse(BaseModel):
     kpi: GruppoKpi
     mol_mensile: List[MolMensile]   # serie MOL per mese (sparkline andamento gruppo)
     mol_mensile_anno: int
-    salute_indice: int          # media semplice degli indici di salute dei PV
-    salute_colore: str          # "verde" | "giallo" | "rosso"
+    # Media semplice degli indici di salute dei PV. None = non determinabile.
+    salute_indice: Optional[int] = None
+    salute_colore: str          # "verde" | "giallo" | "rosso" | "grigio" (= non lo so)
     salute_pv: List[SalutePV]   # dettaglio per-PV (voci della card salute gruppo)
     ranking: List[RankingPV]
 
@@ -301,12 +311,13 @@ def _saluto_ora() -> str:
 def _build_briefing(
     nome_gruppo: str,
     ranking: List["RankingPV"],
-    salute_indice: int,
+    salute_indice: Optional[int],
     salute_colore: str,
-    n_segnali: int,
+    n_segnali: Optional[int],
     sev_max: str,
     salute_pv: Optional[List["SalutePV"]] = None,
     incompleti_ids: Optional[set] = None,
+    completezza_nota: bool = True,
     n_fatture_da_collocare: int = 0,
     n_fatture_arrivate_ieri: Optional[int] = None,
     fatture_ieri_da_assegnare: bool = False,
@@ -321,7 +332,11 @@ def _build_briefing(
     controllo" se la salute è rossa o ci sono sedi incomplete. Fallback alla salute
     per-PV (<50) se incompleti_ids non è disponibile."""
     incompleti_ids = incompleti_ids or set()
-    salute_by_id = {s.ristorante_id: s.indice for s in (salute_pv or [])}
+    salute_by_id = {
+        s.ristorante_id: s.indice
+        for s in (salute_pv or [])
+        if s.indice is not None
+    }
 
     def _affidabile(r: "RankingPV") -> bool:
         if r.dati_incompleti or r.margine_perc is None:
@@ -393,9 +408,21 @@ def _build_briefing(
     # "Tutto sotto controllo" SOLO se non manca davvero nulla: niente segnali,
     # salute non rossa, nessuna sede incompleta, niente fatture in sospeso. Mai dire
     # che va tutto bene mentre la salute è bassa (la contraddizione segnalata da Mattia).
+    #
+    # Ogni condizione è affermativa: serve SAPERE che va bene, non "non sapere che
+    # va male". Un dato mancante spegne il gate invece di accenderlo — è la regola
+    # "dato assente ≠ via libera" che il PV applica ovunque:
+    #  - n_segnali None = cache di oggi non ancora generata o illeggibile (prima
+    #    accendeva il gate ogni mattina, vedi _conta_segnali_cache);
+    #  - salute_colore sconosciuto: `!= "rosso"` era VERO per qualunque valore
+    #    diverso da "rosso", "non lo so" compreso;
+    #  - completezza_nota False = la lettura della completezza è fallita, quindi
+    #    n_incompleti == 0 non significa "nessuna sede incompleta".
     tutto_ok = (
-        n_segnali == 0 and salute_colore != "rosso"
-        and n_incompleti == 0 and n_fatture_da_collocare == 0
+        n_segnali == 0
+        and salute_colore in ("verde", "giallo")
+        and completezza_nota and n_incompleti == 0
+        and n_fatture_da_collocare == 0
     )
     if tutto_ok:
         frasi.append("Nessuna segnalazione aperta: tutto in ordine.")
@@ -485,13 +512,19 @@ def _fatture_arrivate_ieri_gruppo(sb, user_id: str, ids: List[str]) -> Dict[str,
     return {"n_assegnate": n_assegnate, "n_in_coda": n_in_coda}
 
 
-def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:
+def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
     """(n_segnali, severity_max) dallo snapshot segnali di OGGI in cache.
 
-    Read-only: NON ricalcola (il calcolo avviene su /api/gruppo/segnali). Se la
-    cache di oggi non c'è ancora, ritorna (0, "info") — il briefing si limita a
-    margini/salute finché la card segnali non genera lo snapshot. Coerente con la
-    regola "stessa fonte dati"."""
+    Read-only: NON ricalcola (il calcolo avviene su /api/gruppo/segnali).
+
+    Ritorna n_segnali=None quando NON SI SA: cache di oggi assente, oppure
+    lettura fallita. Non è la stessa cosa di zero, ed è il caso NORMALE del
+    primo caricamento della giornata — la cache la scrive /api/gruppo/segnali,
+    che il client chiama DOPO il render della pagina. Ritornando 0 il briefing
+    scriveva "Nessuna segnalazione aperta: tutto in ordine." ogni mattina,
+    mentre la card sotto stava ancora calcolando e poteva poi mostrare avvisi.
+    Chi legge deve trattare None come "non determinabile" (vedi tutto_ok in
+    _build_briefing), mai come "nessun segnale"."""
     from datetime import datetime as _dt
     try:
         from zoneinfo import ZoneInfo
@@ -516,19 +549,26 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:
                     sev_max = s.get("severity")
             return len(segnali), sev_max
     except Exception:
-        pass
-    return 0, "info"
+        return None, "info"
+    return None, "info"
 
 
 def _salute_componenti_raw(
     sb, ids: List[str], anno: Optional[int] = None, mese: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+) -> Optional[List[Dict[str, Any]]]:
     """Righe grezze della RPC gruppo_salute_componenti (n_fatture, n_needs_review,
     netto, personale per PV). Fonte UNICA condivisa da _salute_indici_batch e
     _completezza_dati_pv: cosi' l'overview chiama la RPC una sola volta. Se
     anno/mese non sono passati: mese precedente + finestra 30gg, come
     /api/home/salute. Se mese e' passato esplicitamente (selettore periodo
-    nel dialog margini/spreco), la completezza viene valutata su quel mese."""
+    nel dialog margini/spreco), la completezza viene valutata su quel mese.
+
+    Ritorna None quando la RPC fallisce: NON [] . Lista vuota significa "nessuna
+    riga per queste sedi" ed e' un dato; None significa "non lo so". Prima si
+    tornava [] e ogni PV finiva a indice 0 — un falso ROSSO, cioe' la card che
+    afferma un dato che non ha, mentre nello stesso payload la completezza
+    diceva "completo". Chi chiama deve propagare l'incertezza, non convertirla
+    in un valore (vedi gruppo_overview)."""
     from datetime import datetime as _dt, timedelta as _td
     if not ids:
         return []
@@ -552,8 +592,9 @@ def _salute_componenti_raw(
             "p_mese": mc_mese,
         }).execute()
         rows = res.data or []
-    except Exception:
-        return []
+    except Exception as exc:
+        logger.warning("catena: RPC gruppo_salute_componenti fallita: %s", exc)
+        return None
     return _applica_override_netto(sb, rows, mc_anno, mc_mese)
 
 
@@ -685,7 +726,7 @@ def _voci_spente_per_sede(sb, ids: List[str]) -> Dict[str, set]:
 def _salute_indici_batch(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
     costi_mese: Optional[Dict[str, float]] = None,
-) -> Dict[str, int]:
+) -> Optional[Dict[str, int]]:
     """Indice di salute (0-100) per OGNI sede, stessa formula 4-voci di
     /api/home/salute (fatture del mese chiuso, fatturato, costo personale,
     % classificate). `rows` opzionale per riusare una RPC gia' fatta (overview).
@@ -705,6 +746,11 @@ def _salute_indici_batch(
     PV) e VILLA GUARDIA (1.564 righe, 0 EUR -> 74). Se `costi_mese` non e'
     disponibile (None) si ripiega sul caricamento recente, come fa il PV quando la
     RPC costi non risponde: e' un ripiego dichiarato, non un verde inventato.
+
+    NON DETERMINABILE (9/9/2026): ritorna None se la RPC delle componenti fallisce.
+    Prima quella RPC tornava [] e ogni sede finiva a indice 0, cioe' un falso
+    ROSSO su tutta la catena: la card affermava un dato che non aveva. Zero e'
+    una misura, l'assenza di misura non lo e'.
     """
     from services.daily_briefing_service import calcola_indice_salute
 
@@ -713,6 +759,8 @@ def _salute_indici_batch(
         return out
     if rows is None:
         rows = _salute_componenti_raw(sb, ids)
+    if rows is None:
+        return None
     spente_map = _voci_spente_per_sede(sb, ids)
     for r in rows:
         rid = str(r.get("ristorante_id"))
@@ -963,20 +1011,32 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         user_id, ids, _mc_anno, _mc_mese,
         costi_auto=costi_auto_gruppo if _mc_anno == anno else None,
     )
+    # Un errore qui NON diventa "tutto a posto" (9/9/2026): prima l'except
+    # metteva completezza = {}, cioe' "nessun PV da completare", e la cascata
+    # concludeva livello_dati = "completo" -> la card Conti mostrava il MOL di
+    # gruppo come affidabile proprio quando non si sapeva se lo fosse. E' la
+    # regola "dato assente != via libera" che il PV applica ovunque.
     try:
         completezza = _completezza_dati_pv(
             sb, ids, rows=salute_rows, costi_mese=costi_mese_map,
         )
-    except Exception:
-        completezza = {}
-    incompleti_ids = set(completezza.keys())
-    pv_da_completare = len(completezza)
-    if tot_lordo <= 0 or tot_fb <= 0:
-        livello_dati = "nessuno"
-    elif pv_da_completare > 0:
-        livello_dati = "food"
+    except Exception as exc:
+        logger.warning("catena: completezza PV non determinabile: %s", exc)
+        completezza = None
+    completezza_nota = completezza is not None
+    if completezza is None:
+        incompleti_ids: set = set()
+        pv_da_completare = None
+        livello_dati = "non_determinabile"
     else:
-        livello_dati = "completo"
+        incompleti_ids = set(completezza.keys())
+        pv_da_completare = len(completezza)
+        if tot_lordo <= 0 or tot_fb <= 0:
+            livello_dati = "nessuno"
+        elif pv_da_completare > 0:
+            livello_dati = "food"
+        else:
+            livello_dati = "completo"
 
     kpi = GruppoKpi(
         fatturato=round(tot_lordo, 2),
@@ -1005,7 +1065,13 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         # Incompleto = nessun ricavo OPPURE mancano i costi (food/personale): stesso
         # criterio del briefing, così il ranking non mostra "0% rosso" per le sedi
         # che semplicemente non hanno ancora caricato i costi.
-        incompleti = a["netto"] <= 0 or rid in incompleti_ids
+        # Se la completezza non e' determinabile, `incompleti_ids` e' vuoto ma NON
+        # significa "tutti completi": si marca incompleto e il margine% resta
+        # soppresso, come nei due dialog. Senza questo, lo stesso falso verde
+        # chiuso nella card Conti rientrava dalla porta del ranking.
+        incompleti = (
+            a["netto"] <= 0 or not completezza_nota or rid in incompleti_ids
+        )
         mol_perc = None if incompleti else round(a["mol"] / a["netto"] * 100, 1)
         ranking.append(RankingPV(
             ristorante_id=rid,
@@ -1020,30 +1086,44 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
 
     # Salute del gruppo = MEDIA SEMPLICE degli indici di salute dei PV. Esponiamo
     # anche il dettaglio per-PV (le "voci" della card salute gruppo).
-    def _colore_salute(ix: int) -> str:
+    def _colore_salute(ix: Optional[int]) -> str:
+        if ix is None:
+            return "grigio"
         if ix >= 80:
             return "verde"
         if ix >= 50:
             return "giallo"
         return "rosso"
 
+    # None = la RPC delle componenti non ha risposto. Prima tornava [] e ogni sede
+    # finiva a 0 -> catena tutta ROSSA per un errore di lettura, con la card che
+    # affermava un dato che non aveva. Ora l'incertezza arriva al client come
+    # "grigio" e lui mostra lo stato di errore.
     indici_map = _salute_indici_batch(
         sb, ids, rows=salute_rows, costi_mese=costi_mese_map,
     )
-    indici = list(indici_map.values())
-    salute_indice = round(sum(indici) / len(indici)) if indici else 0
-    salute_colore = _colore_salute(salute_indice)
-    # Dettaglio per-PV, dal più debole (serve attenzione) al più sano.
-    salute_pv = [
-        SalutePV(
-            ristorante_id=rid,
-            nome=rid_to_nome[rid],
-            indice=indici_map[rid],
-            colore=_colore_salute(indici_map[rid]),
-        )
-        for rid in ids
-    ]
-    salute_pv.sort(key=lambda x: x.indice)
+    if indici_map is None:
+        salute_indice = None
+        salute_colore = "grigio"
+        salute_pv = [
+            SalutePV(ristorante_id=rid, nome=rid_to_nome[rid], indice=None, colore="grigio")
+            for rid in ids
+        ]
+    else:
+        indici = list(indici_map.values())
+        salute_indice = round(sum(indici) / len(indici)) if indici else 0
+        salute_colore = _colore_salute(salute_indice)
+        # Dettaglio per-PV, dal più debole (serve attenzione) al più sano.
+        salute_pv = [
+            SalutePV(
+                ristorante_id=rid,
+                nome=rid_to_nome[rid],
+                indice=indici_map[rid],
+                colore=_colore_salute(indici_map[rid]),
+            )
+            for rid in ids
+        ]
+        salute_pv.sort(key=lambda x: (x.indice if x.indice is not None else -1))
 
     # Briefing: legge il conteggio segnali dalla cache di OGGI (read-only, niente
     # ricalcolo qui → overview resta leggera; i segnali si calcolano alla loro
@@ -1071,6 +1151,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     briefing = _build_briefing(
         nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max,
         salute_pv=salute_pv, incompleti_ids=incompleti_ids,
+        completezza_nota=completezza_nota,
         n_fatture_da_collocare=n_da_collocare,
         n_fatture_arrivate_ieri=n_arrivate_ieri_tot or None,
         fatture_ieri_da_assegnare=arrivate_ieri["n_in_coda"] > 0,
@@ -1278,7 +1359,7 @@ def gruppo_margini_coperti(
     # personale): stesso criterio del briefing/overview. Senza, mostrerebbe 0% in
     # rosso (sembra in perdita) invece di "dati incompleti".
     try:
-        incompleti_set = set(
+        comp_dialog = (
             _completezza_dati_pv(
                 sb, ids, anno=anno, mese=mese_sel,
                 # Solo su mese singolo: sulla vista anno "i costi del mese" non
@@ -1288,10 +1369,15 @@ def gruppo_margini_coperti(
                                          costi_auto=costi_auto_gruppo)
                     if mese_sel else None
                 ),
-            ).keys()
+            )
         )
-    except Exception:
-        incompleti_set = set()
+    except Exception as exc:
+        logger.warning("catena: completezza PV non determinabile: %s", exc)
+        comp_dialog = None
+    # None = non determinabile: NON si finge che siano tutti completi. Un set
+    # vuoto qui significherebbe "nessun PV incompleto" e i PV senza costi
+    # entrerebbero nel confronto come se fossero affidabili.
+    incompleti_set = set(comp_dialog.keys()) if comp_dialog is not None else None
 
     # Stessa formula di gruppo_overview e del PV (helper condiviso: una sola copia).
     mesi_periodo = [mese_sel] if mese_sel else list(range(1, mese_corr + 1))
@@ -1322,7 +1408,14 @@ def gruppo_margini_coperti(
         )
 
     righe = [
-        _riga(rid, rid_to_nome[rid], agg[rid], agg[rid]["netto"] <= 0 or rid in incompleti_set)
+        # incompleti_set None = completezza non determinabile: si marca la riga
+        # incompleta (margine soppresso) invece di presentarla come affidabile.
+        _riga(
+            rid, rid_to_nome[rid], agg[rid],
+            agg[rid]["netto"] <= 0
+            or incompleti_set is None
+            or rid in incompleti_set,
+        )
         for rid in ids
     ]
     righe.sort(key=lambda x: (x.dati_incompleti, -(x.margine_perc or 0), x.nome))
@@ -1414,7 +1507,7 @@ def gruppo_spreco_categorie(
     data_a = f"{ult_y}-{ult_m:02d}-{_cal.monthrange(ult_y, ult_m)[1]:02d}"
 
     try:
-        incompleti_set = set(
+        comp_dialog = (
             _completezza_dati_pv(
                 sb, ids, anno=anno, mese=mese_sel,
                 # Solo su mese singolo: sulla vista anno "i costi del mese" non
@@ -1424,10 +1517,15 @@ def gruppo_spreco_categorie(
                                          costi_auto=None)
                     if mese_sel else None
                 ),
-            ).keys()
+            )
         )
-    except Exception:
-        incompleti_set = set()
+    except Exception as exc:
+        logger.warning("catena: completezza PV non determinabile: %s", exc)
+        comp_dialog = None
+    # None = non determinabile: NON si finge che siano tutti completi. Un set
+    # vuoto qui significherebbe "nessun PV incompleto" e i PV senza costi
+    # entrerebbero nel confronto come se fossero affidabili.
+    incompleti_set = set(comp_dialog.keys()) if comp_dialog is not None else None
 
     # Coperti per (rid, anno, mese): margini_mensili + override mensile (stessa
     # fonte del PV). Una sola lettura per tutti i PV.
@@ -1524,7 +1622,8 @@ def gruppo_spreco_categorie(
         SprecoCategoriePV(
             ristorante_id=rid,
             nome=rid_to_nome[rid],
-            dati_incompleti=(rid in incompleti_set),
+            # None = non determinabile: prudenza, non "completo".
+            dati_incompleti=(incompleti_set is None or rid in incompleti_set),
         )
         for rid in ids
     ]
@@ -1731,8 +1830,8 @@ def _completezza_dati_pv(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
     anno: Optional[int] = None, mese: Optional[int] = None,
     costi_mese: Optional[Dict[str, float]] = None,
-) -> Dict[str, List[str]]:
-    """Per ogni PV, la lista dei dati BASE mancanti (vuota = completo).
+) -> Optional[Dict[str, List[str]]]:
+    """Per ogni PV, la lista dei dati BASE mancanti (dict vuoto = tutti completi).
 
     Criterio deciso (presenza dati, non % salute): un PV è affidabile per i confronti
     di margine/MOL solo se ha fatturato + fatture costo (F&B) + costo personale del
@@ -1746,13 +1845,21 @@ def _completezza_dati_pv(
     Le due cose vivono nella STESSA card (l'indice per-PV e la riga "Mancano ..."):
     con criteri diversi la card diceva "75, completo" e il PV "voce rossa" sugli
     stessi dati. Senza `costi_mese` si ripiega su `n_fatture`, come prima.
+
+    NON DETERMINABILE (9/9/2026): ritorna None se la RPC delle componenti
+    fallisce. Il dict vuoto significa "nessun PV ha dati mancanti" ed e' la
+    risposta piu' ottimista possibile: darla quando la lettura e' fallita
+    accendeva "livello_dati = completo" e il MOL di gruppo come se fosse
+    affidabile. Chi chiama distingue i due casi.
     """
     out: Dict[str, List[str]] = {}
     if not ids:
         return out
     if rows is None:
         rows = _salute_componenti_raw(sb, ids, anno=anno, mese=mese)
-    by_id = {str(r.get("ristorante_id")): r for r in (rows or [])}
+    if rows is None:
+        return None
+    by_id = {str(r.get("ristorante_id")): r for r in rows}
     for rid in ids:
         r = by_id.get(rid) or {}
         manca: List[str] = []
@@ -1815,6 +1922,8 @@ def _calcola_segnali(
                 sb, ids,
                 costi_mese=_costi_mese_per_sede(user_id, ids, _mc_anno, _mc_mese),
             )
+            if comp is None:
+                raise RuntimeError("completezza PV non determinabile")
             for rid in ids:
                 manca = comp.get(rid)
                 if manca:
@@ -1826,8 +1935,20 @@ def _calcola_segnali(
                         "testo": "Mancano " + _elenco_it(manca) + " — vai a completare nel punto vendita",
                         "cta_page": "/dashboard",
                     })
-        except Exception:
-            pass
+        except Exception as exc:
+            # Un errore NON puo' sparire in silenzio: senza questo segnale la card
+            # mostra "Tutto sotto controllo" con la spunta verde, che e' proprio
+            # cio' che il commento di card-segnali.tsx dichiara di voler impedire.
+            # Si emette un segnale che DICE di non sapere, invece di tacere.
+            logger.warning("catena: segnale dati_mancanti non calcolabile: %s", exc)
+            segnali.append({
+                "tipo": "dati_mancanti",
+                "severity": "warning",
+                "ristorante_id": ids[0] if ids else "",
+                "pv_nome": "Catena",
+                "testo": "Non è stato possibile controllare i dati dei punti vendita — riprova più tardi",
+                "cta_page": "/catena",
+            })
 
     # ── Segnale 1: margine in calo (per PV vs se stesso) ──
     # Il MOL% si CALCOLA con la formula viva (_aggrega_sedi_mensili), non si legge

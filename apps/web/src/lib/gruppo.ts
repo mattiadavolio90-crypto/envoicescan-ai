@@ -13,8 +13,11 @@ export type GruppoKpi = {
   spese_generali: number;
   // Cascata dati: "nessuno" (niente numeri, completa i PV) | "food" (food cost/1°
   // margine si', MOL no) | "completo" (MOL affidabile).
-  livello_dati: "nessuno" | "food" | "completo";
-  pv_da_completare: number;
+  // "non_determinabile" = la completezza dei PV non e' stata letta (RPC in
+  // errore). NON e' un sinonimo di "nessuno": li' sappiamo che i dati mancano,
+  // qui non sappiamo niente — e il client mostra lo stato di errore, non numeri.
+  livello_dati: "nessuno" | "food" | "completo" | "non_determinabile";
+  pv_da_completare: number | null;   // null = non determinabile (≠ zero)
 };
 
 export type MolMensile = {
@@ -25,8 +28,8 @@ export type MolMensile = {
 export type SalutePV = {
   ristorante_id: string;
   nome: string;
-  indice: number;
-  colore: "verde" | "giallo" | "rosso";
+  indice: number | null;   // null = non determinabile (≠ 0, che sarebbe "sede messa malissimo")
+  colore: "verde" | "giallo" | "rosso" | "grigio";
 };
 
 export type RankingPV = {
@@ -61,8 +64,8 @@ export type GruppoOverview = {
   kpi: GruppoKpi;
   mol_mensile: MolMensile[];
   mol_mensile_anno: number;
-  salute_indice: number;
-  salute_colore: "verde" | "giallo" | "rosso";
+  salute_indice: number | null;      // null = non determinabile (≠ 0)
+  salute_colore: "verde" | "giallo" | "rosso" | "grigio";
   salute_pv: SalutePV[];
   ranking: RankingPV[];
 };

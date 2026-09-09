@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Split,
   ClipboardList,
+  TriangleAlert,
 } from "lucide-react";
 import {
   type GruppoOverview,
@@ -87,7 +88,9 @@ const TINT = {
     orb1: "bg-transparent",
     orb2: "bg-transparent",
     dot: "bg-muted-foreground/40",
-    label: "Dati incompleti",
+    // "Non lo so", non "i dati mancano": il grigio ora copre anche il caso in cui
+    // la lettura e' fallita, dove non sappiamo nemmeno se i dati ci siano.
+    label: "Dato non disponibile",
   },
 } as const;
 
@@ -200,9 +203,45 @@ function ContiGruppoCard({
   onApriMargini: () => void;
 }) {
   const { kpi } = overview;
-  const livello = kpi.livello_dati ?? "completo";
+  // Default PRUDENTE (9/9/2026): il campo assente vale "non_determinabile", non
+  // "completo". Prima l'assenza sceglieva l'ipotesi piu' ottimista e la card
+  // mostrava il MOL come affidabile senza sapere se lo fosse. Stessa correzione
+  // di tintConti in lib/catena-confronti.ts, che qui e' la fonte del colore.
+  const livello = kpi.livello_dati ?? "non_determinabile";
   // A cascata: con dati incompleti il MOL e' falso -> card neutra (no verde/rosso).
   const tint = TINT[tintConti(kpi)];
+
+  // Livello "non determinabile": la completezza non e' stata letta. Non si mostra
+  // NESSUN numero come se fosse valido — ne' il MOL ne' il food cost: entrambi
+  // dipendono da dati che non sappiamo se ci siano. Si dice che non si sa e si
+  // offre il retry, come fa il PV con BlockRetry.
+  if (livello === "non_determinabile") {
+    return (
+      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card p-6 sm:p-7">
+        <div className="mb-4 flex items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">I conti del gruppo</h2>
+          <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <div className="rounded-full bg-rose-500/15 p-3 ring-1 ring-rose-500/20">
+            <TriangleAlert className="size-6 text-rose-500" />
+          </div>
+          <p className="text-sm font-semibold">Conti del gruppo non disponibili</p>
+          <p className="max-w-xs text-sm text-muted-foreground">
+            Non è stato possibile leggere i dati dei punti vendita: i numeri del
+            gruppo non sono affidabili in questo momento.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="text-xs font-medium text-primary transition-colors hover:underline"
+          >
+            Riprova
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Livello "nessuno": niente numeri, si indirizza a completare i PV.
   if (livello === "nessuno") {
@@ -265,7 +304,9 @@ function ContiGruppoCard({
             {kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
           </div>
           <span className="mt-1 text-xs text-muted-foreground/70">
-            {kpi.pv_da_completare} PV con dati incompleti: MOL non ancora calcolabile
+            {kpi.pv_da_completare != null
+              ? `${kpi.pv_da_completare} PV con dati incompleti: MOL non ancora calcolabile`
+              : "Dati di costo incompleti: MOL non ancora calcolabile"}
           </span>
         </button>
       )}
@@ -294,10 +335,13 @@ function ContiGruppoCard({
 }
 
 // ─── Card "Salute del gruppo" (gemella di SaluteCard) ──────────────────────
-function AnelloSalute({ indice, colore }: { indice: number; colore: ColoreTint }) {
+function AnelloSalute({ indice, colore }: { indice: number | null; colore: ColoreTint }) {
   const r = 52;
   const c = 2 * Math.PI * r;
-  const offset = offsetAnello(indice, r);
+  // indice null = non determinabile: anello VUOTO e "—" al centro. Uno zero
+  // disegnerebbe un anello a fondo scala, cioe' "sede messa malissimo", che e'
+  // un'affermazione — e non sappiamo niente.
+  const offset = indice != null ? offsetAnello(indice, r) : c;
   const tint = TINT[colore];
   return (
     <div className="relative size-32 shrink-0">
@@ -311,8 +355,10 @@ function AnelloSalute({ indice, colore }: { indice: number; colore: ColoreTint }
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn("text-3xl font-bold tabular-nums", tint.text)}>{indice}</span>
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">su 100</span>
+        <span className={cn("text-3xl font-bold tabular-nums", tint.text)}>{indice ?? "—"}</span>
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+          {indice != null ? "su 100" : "non disponibile"}
+        </span>
       </div>
     </div>
   );
@@ -326,7 +372,7 @@ function SaluteGruppoCard({
   onApriPV,
   switching,
 }: {
-  indice: number;
+  indice: number | null;
   colore: ColoreTint;
   salutePv: SalutePV[];
   ranking: RankingPV[];
@@ -380,7 +426,7 @@ function SaluteGruppoCard({
                         r?.dati_incompleti ? "text-muted-foreground/40" : t.text,
                       )}
                     >
-                      {pv.indice}
+                      {pv.indice ?? "—"}
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
                   </button>
