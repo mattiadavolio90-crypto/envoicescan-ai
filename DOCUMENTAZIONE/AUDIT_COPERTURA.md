@@ -84,7 +84,20 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   Le due popolazioni restano DUE FRASI separate: `testo` conta i prodotti
 >   `needs_review` (7 giorni), `dettaglio` le righe 'Da Classificare' (storico,
 >   escluse dai margini). Legarle in una frase sola sarebbe falso.
->   Suite **13.320 verdi, 44 skip**.
+>   **Verifica delle inerenze (post-commit)**: ha trovato un difetto vero che i
+>   9 mutanti non coprivano — i DUE cancelli in fila usavano criteri diversi
+>   (`_dettaglio_esclusi` sulle righe, `_briefing_righe_da_classificare`
+>   sull'importo): su LAND il record non veniva emesso a monte e la riga
+>   spariva prima che la frase la componesse, senza che il presidio a valle
+>   potesse accorgersene. +1 mutante (**10 su 10**). E tre commenti
+>   promettevano ancora la card eliminata: `SaluteResponse.da_classificare` e'
+>   servito ma non piu' letto da nessun componente (il campo resta: toglierlo e'
+>   una modifica di contratto a se').
+>   Un test esistente (`test_arretrato_sotto_soglia_e_silenzio`) e' stato
+>   aggiornato: cadeva sia per il cambio voluto sia per un MOCK GENEROSO che
+>   serviva le righe needs_review anche alla query sugli esclusi, fondendo due
+>   popolazioni diverse.
+>   Suite **13.322 verdi, 44 skip**.
 
 ---
 
