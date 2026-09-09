@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 
 from services.fastapi_worker import (
     DA_CONTROLLARE_ARRETRATO_SOGLIA,
+    SaluteDaClassificare,
     _briefing_righe_da_classificare,
     _briefing_fatture_mancanti,
 )
@@ -139,14 +140,49 @@ class TestNovitaVsArretrato:
         assert out["payload"]["count"] == 26
         assert out["payload"]["arretrato"] == 3
 
-    def test_arretrato_sotto_soglia_e_silenzio(self):
-        """TIME CAFE (5) e Mariano (18): sotto soglia, nessun record."""
+    def test_arretrato_sotto_soglia_e_silenzio(self, monkeypatch):
+        """TIME CAFE (5) e Mariano (18): sotto soglia, nessun record.
+
+        Dal 9/9/2026 (Fase 4) il silenzio richiede una condizione in piu': che non
+        ci siano nemmeno RIGHE escluse dai margini, diventate una ragione propria
+        per parlare quando il banner in fondo alla Home e' stato eliminato. Qui si
+        misura il caso "davvero niente da dire", quindi `_card_da_classificare`
+        deve rispondere zero.
+
+        Il monkeypatch NON e' una comodita': `_sb` e' un MagicMock che risponde la
+        stessa cosa a QUALSIASI query, quindi servirebbe alla query sugli esclusi
+        le stesse descrizioni di needs_review — due popolazioni diverse fuse in
+        una dal mock. E' la trappola del "mock generoso" gia' pagata una volta in
+        questo repo: senza l'isolamento, questo test misurerebbe un caso che in
+        produzione non esiste.
+        """
+        monkeypatch.setattr(
+            "services.fastapi_worker._card_da_classificare",
+            lambda *_a, **_k: SaluteDaClassificare(righe=0, importo=0.0),
+        )
         for n in (5, 18):
             assert n < DA_CONTROLLARE_ARRETRATO_SOGLIA
             out = _briefing_righe_da_classificare(
                 RID, _sb([f"p-{i}" for i in range(n)], giorni_fa=45)
             )
             assert out is None, f"{n} arretrati sotto soglia: zero rumore"
+
+    def test_arretrato_sotto_soglia_ma_righe_escluse_parla(self, monkeypatch):
+        """La controprova: stessa sede, ma con euro fuori dai margini.
+
+        E' il caso che prima copriva SOLO il banner in fondo alla Home. Senza
+        questo ramo, eliminato il banner, gli euro non sarebbero detti da nessuno.
+        """
+        monkeypatch.setattr(
+            "services.fastapi_worker._card_da_classificare",
+            lambda *_a, **_k: SaluteDaClassificare(righe=1, importo=86.4),
+        )
+        out = _briefing_righe_da_classificare(
+            RID, _sb([f"p-{i}" for i in range(5)], giorni_fa=45)
+        )
+        assert out is not None
+        assert out["payload"]["esclusi_importo"] == 86.4
+        assert out["title"] == "1 riga non classificata"
 
     def test_le_novita_restano_novita_al_limite_della_finestra(self):
         """Una riga caricata 6 giorni fa e' ancora novita' (finestra 7)."""
