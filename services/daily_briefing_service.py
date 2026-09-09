@@ -387,6 +387,16 @@ def _fatture_arrivate_frase(payload: Dict[str, Any]) -> str:
 
     `righe_da_controllare` resta nel payload (lo produce
     _fatture_arrivate_ieri_sdi): smette solo di essere reso in questa frase.
+
+    LIMITE NOTO: il rimando funziona finche' la card `uncategorized_rows` c'e'.
+    Non c'e' in tre casi — se il cliente ha spento quella voce dal configuratore
+    (il filtro guarda il topic_key, e questa apertura e' `buona_notizia`: prima
+    l'accenno passava lo stesso), se la card cade fuori dalle _MAX_CARD per
+    priorita', o se le due unita' di misura divergono (righe di ieri qui,
+    descrizioni distinte su 7 giorni li'). Nei casi 2 e 3 il comportamento non
+    cambia rispetto a prima; nel caso 1 chi ha spento la voce ora non ne sente
+    piu' parlare — che e' quello che ha chiesto. Presidiato in
+    tests/test_briefing_niente_ripetizione.py.
     """
     n = int(payload.get('n_fatture') or 0)
     importo = _euro_it(float(payload.get('importo') or 0))

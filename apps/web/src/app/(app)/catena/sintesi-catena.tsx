@@ -98,6 +98,8 @@ type ColoreTint = keyof typeof TINT;
 
 // ─── Briefing di gruppo (hero) ─────────────────────────────────────────────
 function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; nomeGruppo: string }) {
+  // Default codaVisibile=true: sul desktop la coda da assegnare sta subito sotto.
+  const msgDaCollocare = messaggioFattureDaCollocare(briefing);
   return (
     <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-6 sm:p-8">
       <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-400/15 blur-3xl" />
@@ -107,7 +109,14 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
           <Sparkles className="size-4" />
           <span>Il tuo assistente · catena</span>
         </div>
-        <AscoltaButton testo={`${briefing.saluto}, ${nomeGruppo}. ${briefing.narrativa}`} />
+        {/* La riga "fatture da collocare" entra nell'audio: e' l'unica AZIONE
+            del giorno, e da quando non sta piu' nella narrativa chi ascolta non
+            la sentirebbe affatto. */}
+        <AscoltaButton
+          testo={[`${briefing.saluto}, ${nomeGruppo}.`, briefing.narrativa, msgDaCollocare]
+            .filter(Boolean)
+            .join(" ")}
+        />
       </div>
       <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
         {briefing.saluto}, {nomeGruppo}
@@ -115,10 +124,10 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
       <p className="mt-4 max-w-none text-base leading-relaxed text-foreground/90 sm:text-lg">
         {briefing.narrativa}
       </p>
-      {messaggioFattureDaCollocare(briefing) && (
+      {msgDaCollocare && (
         <p className="mt-3 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-500">
           <ClipboardList className="size-4 shrink-0" />
-          {messaggioFattureDaCollocare(briefing)}
+          {msgDaCollocare}
         </p>
       )}
     </div>

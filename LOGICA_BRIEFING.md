@@ -119,7 +119,14 @@ contano per il "tutto a posto".
    > controllare: trovi il dettaglio qui sotto"*.
    >
    > Il posto che possiede un'informazione è **quello che ha la CTA**: l'apertura
-   > accenna alla novità, la voce to-do rimanda alla card. Vale anche in catena,
+   > accenna alla novità, la voce to-do rimanda alla card.
+   >
+   > *Limite noto*: se quella voce è **spenta dal configuratore**, l'informazione
+   > non la dà più nessuno — prima l'accenno in apertura passava comunque, perché
+   > il filtro dei topic spenti guarda un'altra voce. È coerente con la richiesta
+   > del cliente (ha spento proprio quell'avviso), ma va saputo.
+   >
+   > Vale anche in catena,
    > dove per lo stesso motivo la narrativa **non parla più** delle fatture di
    > gruppo da collocare: quel tema vive nel campo strutturato, e il rimando lo
    > scrive il client — che è l'unico a sapere se la coda esiste (sul mobile non

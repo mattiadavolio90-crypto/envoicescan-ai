@@ -97,28 +97,54 @@ class TestNienteRipetizionePV:
         assert "qui sotto" not in f
         assert "3.283" in f
 
-    def test_righe_di_ieri_rientrano_sempre_nella_finestra_della_card(self):
-        """Il caso limite dichiarato nel piano, qui reso esplicito.
+    def test_senza_la_card_l_informazione_non_la_dice_nessuno(self):
+        """LIMITE NOTO, non un difetto introdotto qui — ma va scritto, non
+        nascosto.
 
-        L'apertura tace perche' "tanto lo dice la card". Vale solo se la card
-        c'e': `righe_da_controllare` conta righe di IERI, la card conta prodotti
-        distinti negli ultimi 7 giorni. Entrambe filtrano su `created_at` della
-        riga (fastapi_worker: _fatture_arrivate_ieri_sdi e
-        _briefing_righe_da_classificare), quindi una riga di ieri e' sempre
-        dentro la finestra dei 7 giorni: la card esiste.
+        L'apertura tace sulle righe da controllare perche' lo dice la voce to-do.
+        La prima stesura di questo test affermava che la card c'e' SEMPRE ("righe
+        di ieri => dentro la finestra di 7 giorni"): vero per la finestra
+        temporale — entrambe filtrano su `created_at` — ma NON in assoluto. La
+        review ha trovato tre casi in cui la card non compare:
 
-        Se un domani le due finestre divergessero, questo scenario — righe dubbie
-        ieri ma nessuna card — lascerebbe l'informazione detta da NESSUNO.
+          1. TOGGLE UTENTE: la card e' calcolata solo `if "uncategorized_rows"
+             not in spenti` (fastapi_worker:6902) e il topic e' disattivabile dal
+             configuratore. Il filtro agisce sul `topic_key`, e l'apertura ha
+             `topic_key = "buona_notizia"`: chi spegne quella voce PRIMA riceveva
+             comunque l'accenno, ora non lo riceve piu' da nessuna parte.
+          2. UNITA' DIVERSE: l'apertura conta RIGHE needs_review di ieri, la card
+             DESCRIZIONI DISTINTE su 7 giorni; con 0 novita' e arretrato sotto
+             soglia _briefing_righe_da_classificare torna None.
+          3. _MAX_CARD = 4: `uncategorized_rows` ha priorita' 30, dopo topic piu'
+             urgenti; con 4 topic sopra di lui la card viene troncata.
+
+        Il caso 1 e' l'unico dove il taglio PEGGIORA qualcosa, ed e' difendibile:
+        chi spegne "Righe da controllare" ha chiesto di non sentirne parlare. I
+        casi 2 e 3 esistevano identici prima del fix, perche' la coda
+        dell'apertura richiedeva comunque righe dubbie DI IERI.
+
+        Questo test blinda il comportamento E il suo limite: se un domani si
+        volesse riportare l'informazione in apertura, si riparte da qui.
         """
         snap = _build_snapshot(_notifiche(righe_ieri=3, prodotti_da_controllare=0),
                                use_ai=False)
 
-        # Con count=0 la card non e' azionabile: se questo scenario diventasse
-        # possibile, il cliente resterebbe senza l'informazione.
         assert not any(a["topic_key"] == "uncategorized_rows" for a in snap["azioni"])
         assert "da controllare" not in snap["narrative"], (
-            "oggi nessuno lo dice, ed e' corretto solo perche' lo scenario non "
-            "esiste: righe di ieri => card presente"
+            "senza card nessuno lo dice: limite noto e documentato, non una svista"
+        )
+
+    def test_col_toggle_spento_la_novita_delle_fatture_resta(self):
+        """Contro-prova sul caso 1: spegnere "Righe da controllare" non deve
+        zittire anche l'apertura positiva, che e' un topic diverso."""
+        snap = _build_snapshot(
+            _notifiche(righe_ieri=1, prodotti_da_controllare=2),
+            use_ai=False, topics_disabled=["uncategorized_rows"],
+        )
+
+        assert "3.283" in snap["narrative"], "l'apertura non dipende da quel toggle"
+        assert "da controllare" not in snap["narrative"], (
+            "il cliente ha chiesto di non sentir parlare di righe da controllare"
         )
 
 

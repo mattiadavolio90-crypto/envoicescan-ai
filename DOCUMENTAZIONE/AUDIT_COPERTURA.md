@@ -55,8 +55,12 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   lo stesso difetto su un altro tema, con in piu' un "qui sotto" FALSO su
 >   mobile, dove la coda non esiste. +9 test, 4 mutanti uccisi, 5 test esistenti
 >   ROVESCIATI (asserivano il testo duplicato). `_BRIEFING_CODE_VERSION` 21 -> 22:
->   senza bump la cache avrebbe servito la frase vecchia fino al TTL.
->   Suite **13.308 verdi, 44 skip**.
+>   senza bump la cache avrebbe servito la frase vecchia fino al TTL. La review
+>   ha trovato una REGRESSIONE introdotta dal fix stesso (su mobile spariva
+>   l'unica azione del giorno) e una mia affermazione piu' forte del vero — "la
+>   card c'e' sempre" vale per la finestra temporale, non col toggle utente ne'
+>   col taglio a 4 card: corrette entrambe, +3 test, 5 mutanti uccisi.
+>   Suite **13.310 verdi, 44 skip**.
 
 ---
 

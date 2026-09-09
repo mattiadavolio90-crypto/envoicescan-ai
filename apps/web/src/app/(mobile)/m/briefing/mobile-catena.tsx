@@ -118,7 +118,16 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
             <Sparkles className="size-3.5" />
             Il tuo assistente · catena
           </div>
-          <AscoltaButton testo={`${overview.briefing.saluto}, ${overview.nome_gruppo}. ${overview.briefing.narrativa}`} />
+          {/* Come sul desktop: l'unica azione del giorno entra nell'audio. */}
+          <AscoltaButton
+            testo={[
+              `${overview.briefing.saluto}, ${overview.nome_gruppo}.`,
+              overview.briefing.narrativa,
+              msgDaCollocare,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          />
         </div>
         <h1 className="mt-2 text-xl font-bold tracking-tight">
           {overview.briefing.saluto}, {overview.nome_gruppo}

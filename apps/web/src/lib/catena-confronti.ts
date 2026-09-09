@@ -298,8 +298,13 @@ export function messaggioFattureDaCollocare(
   const cosa = uno ? "1 fattura di gruppo da collocare" : `${n} fatture di gruppo da collocare`;
   // Solo dove la coda esiste si può dire "qui sotto": su mobile sarebbe falso.
   const dove = codaVisibile ? " qui sotto" : "";
-  // La narrativa ha già dato il rimando: qui solo il totale, senza imperativo.
-  if (briefing.n_fatture_arrivate_ieri) {
+  // Si toglie l'imperativo SOLO se la narrativa ha davvero dato il rimando — e
+  // lo dà solo dove la coda è visibile ("da assegnare a un locale", col desktop
+  // che ha la coda subito sotto). Su mobile la narrativa NON rimanda a nulla:
+  // togliere anche l'imperativo lascerebbe il cliente con un numero e nessuna
+  // azione. Le due condizioni vanno insieme: la seconda da sola era una
+  // regressione introdotta insieme a `codaVisibile`.
+  if (briefing.n_fatture_arrivate_ieri && codaVisibile) {
     return uno ? `In tutto c'è ${cosa}${dove}.` : `In tutto ci sono ${cosa}${dove}.`;
   }
   const azione = codaVisibile

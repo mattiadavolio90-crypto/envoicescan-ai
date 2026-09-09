@@ -767,18 +767,36 @@ def test_con_coda_visibile_il_testo_desktop_non_cambia():
     )
 
 
-def test_su_mobile_niente_doppio_imperativo_quando_la_narrativa_ha_parlato():
-    """Il difetto peggiore del mobile: la copia a mano NON aveva il ramo
-    protettivo, quindi con novita' + arretrato uscivano due imperativi di fila
-    ("le trovi qui sotto" dal backend + "falle dal computer per assegnarle").
-    Ora il ramo vale su entrambe le superfici, perche' la funzione e' una sola."""
+def test_su_mobile_l_azione_resta_anche_se_ieri_e_arrivato_qualcosa():
+    """REGRESSIONE CORRETTA il 9/9/2026, trovata dalla review.
+
+    L'imperativo si toglie perche' LA NARRATIVA HA GIA' DATO IL RIMANDO. Ma la
+    narrativa lo da' solo dove la coda e' visibile: da quando l'apertura di
+    catena non dice piu' "le trovi qui sotto", su mobile non rimanda a niente.
+    Togliere anche l'imperativo lasciava il cliente con un numero e nessuna
+    azione — e la prima stesura di questo test blindava proprio quello.
+
+    Le due condizioni vanno insieme: "la narrativa ha parlato" E "la coda e'
+    visibile".
+    """
     out = _chiama(
         "messaggioFattureDaCollocare",
         [{"n_fatture_da_collocare": 3, "n_fatture_arrivate_ieri": 2}, False],
     )
-    assert out == "In tutto ci sono 3 fatture di gruppo da collocare."
+    assert "dal computer" in out, "su mobile l'azione va detta: la narrativa non la da'"
+    assert "qui sotto" not in out
+
+
+def test_su_desktop_niente_doppio_imperativo_quando_la_narrativa_ha_parlato():
+    """Il ramo "senza imperativo" resta dov'e' sempre stato: sul desktop, dove la
+    narrativa apre con "sono arrivate N fatture, da assegnare a un locale" e la
+    coda sta subito sotto. Ripetere "assegnale" suonerebbe un rimprovero."""
+    out = _chiama(
+        "messaggioFattureDaCollocare",
+        [{"n_fatture_da_collocare": 3, "n_fatture_arrivate_ieri": 2}],
+    )
+    assert out == "In tutto ci sono 3 fatture di gruppo da collocare qui sotto."
     assert "assegna" not in out
-    assert "computer" not in out
 
 
 # ─── Accesso alla modalità catena (estratti da page.tsx l'1/9) ──────────────
