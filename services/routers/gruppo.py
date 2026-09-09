@@ -603,17 +603,103 @@ def _applica_override_netto(
     return rows
 
 
+def _costi_mese_per_sede(
+    user_id: Optional[str], ids: List[str], anno: int, mese: int,
+    costi_auto: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, float]]:
+    """EURO di costi automatici (food + spese) del mese, per sede.
+
+    Stessa fonte del PV (`_costi_automatici_mese` -> RPC costi_automatici_mensili):
+    qui si usa la variante di gruppo, gia' calcolata da gruppo_overview
+    (`calcola_costi_automatici_gruppo_sql`, forma {rid: (food_per_mese, spese_per_mese)}),
+    che si passa in `costi_auto` per non rifare la query.
+
+    None se il dato non e' determinabile (nessun user_id o RPC fallita): il
+    chiamante ripiega sul criterio vecchio invece di inventare uno zero, che
+    direbbe "nessun costo" quando in realta' non lo sappiamo.
+    """
+    if not ids:
+        return {}
+    if costi_auto is None:
+        if not user_id:
+            return None
+        try:
+            from services.margine_service import calcola_costi_automatici_gruppo_sql
+            costi_auto = calcola_costi_automatici_gruppo_sql(user_id, ids, anno)
+        except Exception as exc:
+            logger.warning("salute gruppo: costi automatici del mese falliti: %s", exc)
+            return None
+    out: Dict[str, float] = {}
+    for rid in ids:
+        food, spese = (costi_auto or {}).get(str(rid)) or ({}, {})
+        out[str(rid)] = float((food or {}).get(mese) or 0) + float((spese or {}).get(mese) or 0)
+    return out
+
+
+def _voci_spente_per_sede(sb, ids: List[str]) -> Dict[str, set]:
+    """Voci della Salute spente nel configuratore, per ogni sede.
+
+    I toggle sono PER SEDE (assistant_preferences.topics_disabled): due locali
+    dello stesso gruppo possono avere configurazioni diverse. Stessa traduzione
+    topic -> voce del PV (_VOCE_TOPIC_SALUTE + espandi_topic_spenti): importata,
+    MAI ricopiata — la copia della formula e' esattamente il modo in cui l'indice
+    di gruppo aveva iniziato a divergere da quello del PV.
+
+    Best-effort come nel PV: se la lettura fallisce nessuna voce viene esclusa
+    (fail-open, l'indice resta quello su 4 voci).
+    """
+    out: Dict[str, set] = {rid: set() for rid in ids}
+    if not ids:
+        return out
+    try:
+        from services.daily_briefing_service import espandi_topic_spenti
+        fw = _fw()
+        for rid in ids:
+            try:
+                _, td = fw._briefing_nome_referente(None, rid, sb)
+                spenti = set(espandi_topic_spenti(td or []))
+                out[rid] = {
+                    k for k, t in fw._VOCE_TOPIC_SALUTE.items() if t in spenti
+                }
+            except Exception:
+                continue
+    except Exception as exc:
+        logger.warning("salute gruppo: lettura topic spenti fallita: %s", exc)
+    return out
+
+
 def _salute_indici_batch(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
+    costi_mese: Optional[Dict[str, float]] = None,
 ) -> Dict[str, int]:
     """Indice di salute (0-100) per OGNI sede, stessa formula 4-voci di
-    /api/home/salute (fatture recenti, fatturato, costo personale, % classificate).
-    `rows` opzionale per riusare una RPC gia' fatta (overview)."""
+    /api/home/salute (fatture del mese chiuso, fatturato, costo personale,
+    % classificate). `rows` opzionale per riusare una RPC gia' fatta (overview).
+
+    FORMULA CONDIVISA (9/9/2026): l'indice si calcola con `calcola_indice_salute`,
+    la stessa funzione del PV, invece di una copia locale. La copia divideva SEMPRE
+    per 4 e ignorava i toggle del configuratore: era la TERZA copia della formula,
+    rimasta fuori dal consolidamento del 2/9 (che aveva unito home_salute e
+    _salute_indice_rosso). Una sede con una voce spenta valeva 0 su quella voce
+    qui e usciva dal denominatore nel PV -> due indici diversi per la stessa sede.
+
+    VOCE "FATTURE" (9/9/2026): misura gli EURO di costi automatici del mese chiuso
+    (`costi_mese`), come il PV, non piu' il conteggio di righe caricate negli
+    ultimi 30 giorni. Il vecchio criterio dava un falso verde alle sedi che
+    caricano fatture vecchie: misurato l'8/9 su LAND DEI SAPORI (3.344 righe
+    caricate, 0 EUR di competenza agosto -> indice 75 in catena e voce ROSSA nel
+    PV) e VILLA GUARDIA (1.564 righe, 0 EUR -> 74). Se `costi_mese` non e'
+    disponibile (None) si ripiega sul caricamento recente, come fa il PV quando la
+    RPC costi non risponde: e' un ripiego dichiarato, non un verde inventato.
+    """
+    from services.daily_briefing_service import calcola_indice_salute
+
     out: Dict[str, int] = {rid: 0 for rid in ids}
     if not ids:
         return out
     if rows is None:
         rows = _salute_componenti_raw(sb, ids)
+    spente_map = _voci_spente_per_sede(sb, ids)
     for r in rows:
         rid = str(r.get("ristorante_id"))
         if rid not in out:
@@ -622,15 +708,22 @@ def _salute_indici_batch(
         n_needs = int(r.get("n_needs_review") or 0)
         netto = float(r.get("netto") or 0)
         personale = float(r.get("personale") or 0)
-        fatture_ok = n_fatture > 0
+        if costi_mese is None:
+            fatture_ok = n_fatture > 0
+        else:
+            fatture_ok = float(costi_mese.get(rid) or 0) > 0
+        # La % di righe classificate resta sulla finestra di caricamento: misura
+        # la qualita' di cio' che e' entrato, non la competenza del mese.
         pct_classificate = round((n_fatture - n_needs) / n_fatture * 100) if n_fatture > 0 else 0
-        score = (
-            (100 if fatture_ok else 0)
-            + (100 if netto > 0 else 0)
-            + (100 if personale > 0 else 0)
-            + (pct_classificate if fatture_ok else 0)
-        ) / 4
-        out[rid] = round(score)
+        out[rid] = calcola_indice_salute(
+            {
+                "fatture": 100 if fatture_ok else 0,
+                "fatturato": 100 if netto > 0 else 0,
+                "personale": 100 if personale > 0 else 0,
+                "classificate": pct_classificate if n_fatture > 0 else 0,
+            },
+            spente_map.get(rid) or set(),
+        )
     return out
 
 
@@ -849,8 +942,17 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     #  - tutti i PV con fatturato + F&B + personale -> "completo" (MOL affidabile).
     # RPC salute componenti UNA volta sola: la condividono completezza e indici.
     salute_rows = _salute_componenti_raw(sb, ids)
+    # Voce "fatture" = EURO del mese chiuso (come il PV), non righe caricate di
+    # recente. `costi_auto_gruppo` e' gia' in memoria: nessuna query in piu'.
+    _mc_anno, _mc_mese = (anno, mese_corr - 1) if mese_corr > 1 else (anno - 1, 12)
+    costi_mese_map = _costi_mese_per_sede(
+        user_id, ids, _mc_anno, _mc_mese,
+        costi_auto=costi_auto_gruppo if _mc_anno == anno else None,
+    )
     try:
-        completezza = _completezza_dati_pv(sb, ids, rows=salute_rows)
+        completezza = _completezza_dati_pv(
+            sb, ids, rows=salute_rows, costi_mese=costi_mese_map,
+        )
     except Exception:
         completezza = {}
     incompleti_ids = set(completezza.keys())
@@ -911,7 +1013,9 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
             return "giallo"
         return "rosso"
 
-    indici_map = _salute_indici_batch(sb, ids, rows=salute_rows)
+    indici_map = _salute_indici_batch(
+        sb, ids, rows=salute_rows, costi_mese=costi_mese_map,
+    )
     indici = list(indici_map.values())
     salute_indice = round(sum(indici) / len(indici)) if indici else 0
     salute_colore = _colore_salute(salute_indice)
@@ -1161,7 +1265,16 @@ def gruppo_margini_coperti(
     # rosso (sembra in perdita) invece di "dati incompleti".
     try:
         incompleti_set = set(
-            _completezza_dati_pv(sb, ids, anno=anno, mese=mese_sel).keys()
+            _completezza_dati_pv(
+                sb, ids, anno=anno, mese=mese_sel,
+                # Solo su mese singolo: sulla vista anno "i costi del mese" non
+                # sono definiti, e si resta sul criterio per righe.
+                costi_mese=(
+                    _costi_mese_per_sede(user_id, ids, anno, mese_sel,
+                                         costi_auto=costi_auto_gruppo)
+                    if mese_sel else None
+                ),
+            ).keys()
         )
     except Exception:
         incompleti_set = set()
@@ -1288,7 +1401,16 @@ def gruppo_spreco_categorie(
 
     try:
         incompleti_set = set(
-            _completezza_dati_pv(sb, ids, anno=anno, mese=mese_sel).keys()
+            _completezza_dati_pv(
+                sb, ids, anno=anno, mese=mese_sel,
+                # Solo su mese singolo: sulla vista anno "i costi del mese" non
+                # sono definiti, e si resta sul criterio per righe.
+                costi_mese=(
+                    _costi_mese_per_sede(user_id, ids, anno, mese_sel,
+                                         costi_auto=None)
+                    if mese_sel else None
+                ),
+            ).keys()
         )
     except Exception:
         incompleti_set = set()
@@ -1594,6 +1716,7 @@ def _elenco_it(voci: List[str]) -> str:
 def _completezza_dati_pv(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
     anno: Optional[int] = None, mese: Optional[int] = None,
+    costi_mese: Optional[Dict[str, float]] = None,
 ) -> Dict[str, List[str]]:
     """Per ogni PV, la lista dei dati BASE mancanti (vuota = completo).
 
@@ -1602,7 +1725,14 @@ def _completezza_dati_pv(
     mese. Riusa la RPC gruppo_salute_componenti (netto/personale/n_fatture). `rows`
     opzionale per riusare una RPC gia' fatta (overview). `anno`/`mese` opzionali per
     valutare la completezza su un periodo scelto dall'utente invece dell'ultimo mese
-    chiuso (ignorati se `rows` e' gia' passato). Best-effort."""
+    chiuso (ignorati se `rows` e' gia' passato). Best-effort.
+
+    "Le fatture costo" (9/9/2026): stesso criterio della voce `fatture` dell'indice
+    di salute — EURO di costi del mese (`costi_mese`), non righe caricate di recente.
+    Le due cose vivono nella STESSA card (l'indice per-PV e la riga "Mancano ..."):
+    con criteri diversi la card diceva "75, completo" e il PV "voce rossa" sugli
+    stessi dati. Senza `costi_mese` si ripiega su `n_fatture`, come prima.
+    """
     out: Dict[str, List[str]] = {}
     if not ids:
         return out
@@ -1614,7 +1744,11 @@ def _completezza_dati_pv(
         manca: List[str] = []
         if float(r.get("netto") or 0) <= 0:
             manca.append("il fatturato")
-        if int(r.get("n_fatture") or 0) <= 0:
+        if costi_mese is None:
+            fatture_ok = int(r.get("n_fatture") or 0) > 0
+        else:
+            fatture_ok = float(costi_mese.get(rid) or 0) > 0
+        if not fatture_ok:
             manca.append("le fatture costo")
         if float(r.get("personale") or 0) <= 0:
             manca.append("il costo del personale")
@@ -1657,7 +1791,16 @@ def _calcola_segnali(
     # Riusa la RPC della salute (stesse componenti netto/personale/n_fatture).
     if "dati_mancanti" not in segnali_off:
         try:
-            comp = _completezza_dati_pv(sb, ids)
+            # Stesso criterio dell'indice: EURO del mese chiuso, non righe
+            # caricate di recente (vedi _salute_indici_batch). Senza user_id
+            # l'helper torna None e si ripiega sul conteggio righe.
+            _mc_anno, _mc_mese = (
+                (oggi.year, oggi.month - 1) if oggi.month > 1 else (oggi.year - 1, 12)
+            )
+            comp = _completezza_dati_pv(
+                sb, ids,
+                costi_mese=_costi_mese_per_sede(user_id, ids, _mc_anno, _mc_mese),
+            )
             for rid in ids:
                 manca = comp.get(rid)
                 if manca:
