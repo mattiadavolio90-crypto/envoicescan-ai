@@ -344,8 +344,16 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
 
     export: Dict[str, Any] = {
         "esportato_il": datetime.now(timezone.utc).isoformat(),
-        "titolare_trattamento": "Recoma System S.r.l. (P.IVA IT09599210961)",
-        "nota": "Export dati personali ai sensi dell'art. 20 GDPR. Non include password (solo hash, non esportabile) né token di sessione.",
+        "titolare_trattamento": "RECOMASYSTEM Srl (P.IVA IT12993240154)",
+        "nota": (
+            "Export dati personali ai sensi dell'art. 20 GDPR. "
+            "Non include: password (conservata solo come hash, non reversibile) "
+            "e token di sessione, per ragioni di sicurezza; i log tecnici di "
+            "esercizio (accessi, upload, utilizzo AI, modifiche di categoria), "
+            "che sono dati di funzionamento del servizio soggetti a cancellazione "
+            "automatica. Per ottenerli puoi scrivere al titolare del trattamento "
+            "esercitando il diritto di accesso (art. 15)."
+        ),
     }
 
     # Profilo (whitelist di campi: niente password_hash, reset_code, token)
@@ -363,6 +371,7 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
     _TABELLE = [
         ("ristoranti", "user_id", "ristoranti"),
         ("fatture", "user_id", "fatture"),
+        ("fatture_documenti", "user_id", "fatture_documenti"),
         ("margini_mensili", "user_id", "margini_mensili"),
         ("ricavi_giornalieri", "user_id", "ricavi_giornalieri"),
         ("spese_extra", "user_id", "spese_extra"),
@@ -370,6 +379,8 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
         ("ingredienti_utente", "user_id", "ingredienti_utente"),
         ("inventario_voci", "user_id", "inventario_voci"),
         ("diario_eventi", "user_id", "diario_eventi"),
+        ("note_diario", "user_id", "note_diario"),
+        ("custom_tags", "user_id", "custom_tags"),
         ("turni_personale", "user_id", "turni_personale"),
         ("notification_inbox", "user_id", "notifiche"),
     ]
@@ -381,12 +392,19 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
             logger.warning("esporta-dati: %s: %s", tabella, exc)
             export[label] = []
 
-    # dipendenti non ha user_id (solo ristorante_id): ramo dedicato, stessa
-    # risoluzione ristorante usata dal resto dell'export.
+    # dipendenti non ha user_id (solo ristorante_id): ramo dedicato. Si itera su
+    # TUTTE le sedi dell'utente, non sulla sola sede attiva — un cliente
+    # multi-sede riceveva un export parziale senza che nulla glielo dicesse, e
+    # l'art. 20 non ammette una portabilità che dipende da quale schermata era
+    # aperta al momento della richiesta.
     try:
-        ristorante_id = _resolve_ristorante_id(user, sb)
-        if ristorante_id:
-            r = sb.table("dipendenti").select("*").eq("ristorante_id", ristorante_id).execute()
+        ids_sedi = [
+            str(r["id"])
+            for r in (export.get("ristoranti") or [])
+            if r.get("id")
+        ]
+        if ids_sedi:
+            r = sb.table("dipendenti").select("*").in_("ristorante_id", ids_sedi).execute()
             export["dipendenti"] = r.data or []
         else:
             export["dipendenti"] = []

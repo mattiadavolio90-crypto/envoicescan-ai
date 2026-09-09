@@ -93,6 +93,18 @@ WORKER_PURGE_INTERVAL_SECONDS = int(os.environ.get("WORKER_PURGE_INTERVAL_SECOND
 WORKER_RETENTION_INTERVAL_SECONDS = int(os.environ.get("WORKER_RETENTION_INTERVAL_SECONDS", str(24 * 3600)))  # default 24h
 WORKER_QUEUE_PURGE_INTERVAL_SECONDS = int(os.environ.get("WORKER_QUEUE_PURGE_INTERVAL_SECONDS", str(6 * 3600)))  # default 6h (xml_content + raw_body_sample su fatture_queue)
 
+# Retention GDPR su sessioni e log con dati personali (migration
+# 20260909143000_retention_gdpr_log_e_sessioni.sql). I giorni stanno qui e non
+# come DEFAULT della funzione soltanto: la RPC li riceve sempre espliciti, così
+# il valore in esercizio è leggibile senza aprire il DB. Girano col gate 24h.
+_PURGE_RETENTION_GDPR = (
+    ("purge_sessioni_scadute", 90),
+    ("purge_email_rate_log", 90),
+    ("purge_category_change_log", 365),
+    ("purge_ai_usage_events", 365),
+    ("purge_marketplace_leads", 730),
+)
+
 # ─── Assicura PROJECT_ROOT in sys.path ────────────────────────────────────────
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
@@ -260,6 +272,20 @@ def main() -> int:
                         logger.info("🧹 Retention upload_events: %d righe eliminate", _ue_deleted.data)
                 except Exception as retention_exc:
                     logger.warning("Errore retention upload_events: %s", retention_exc)
+
+                # Sessioni e log con dati personali (09/09/2026, audit compliance):
+                # ip/user_agent, email del destinatario e dell'attore restavano
+                # senza scadenza. Una purge che fallisce non deve fermare le altre:
+                # ognuna nel suo try, il ciclo prosegue comunque.
+                for _rpc, _giorni in _PURGE_RETENTION_GDPR:
+                    try:
+                        _res = _qp_get_supabase_client().rpc(
+                            _rpc, {"p_retention_days": _giorni}
+                        ).execute()
+                        if (_res.data or 0) > 0:
+                            logger.info("🧹 %s: %d righe eliminate", _rpc, _res.data)
+                    except Exception as retention_exc:
+                        logger.warning("Errore %s: %s", _rpc, retention_exc)
 
                 last_retention_time = now
 

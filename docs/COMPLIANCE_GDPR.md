@@ -26,7 +26,7 @@ su larga scala di categorie particolari, no monitoraggio sistematico su larga sc
 | Ricezione SDI | Ingest automatico fatture da Invoicetronic | Art. 6.1.b (contratto) | Metadati ed eventi webhook fattura | XML purgato dalla coda entro 24h dall'elaborazione |
 | Dati operativi | Foodcost, ricette, margini, diario | Art. 6.1.b (contratto) | Ricette, ingredienti, note, margini, ricavi | Durata del rapporto |
 | Log operativi | Trasparenza, supporto tecnico | Art. 6.1.f (legittimo interesse) | Log upload, log utilizzo AI (modello, token, costo) | Durata dell'account |
-| Sicurezza accessi | Anti-brute-force | Art. 6.1.f (legittimo interesse) | Tentativi di login | 15 minuti (rate limiting), poi eliminati |
+| Sicurezza accessi | Anti-brute-force | Art. 6.1.f (legittimo interesse) | Tentativi di login | 24 ore (blocco dopo 5 tentativi per 15 min), poi eliminati |
 
 ---
 
@@ -35,14 +35,34 @@ su larga scala di categorie particolari, no monitoraggio sistematico su larga sc
 | Fornitore | Ruolo | Sede dati | Garanzie trasferimento | Stato DPA (verificato 08/07/2026) |
 |---|---|---|---|---|
 | Supabase Inc. | Hosting database PostgreSQL | UE — Frankfurt 🇩🇪 | Dati persistiti solo in UE | Disponibile, **non automatico**: da richiedere dal dashboard org ("legal documents") → firma via PandaDoc. [supabase.com/legal/dpa](https://supabase.com/legal/dpa) |
-| OpenAI LP | Categorizzazione AI | USA | SCC UE; dati elaborati on-the-fly, non usati per training | Disponibile, **non automatico**: serve account business (non personale) + modulo online con ragione sociale/org ID → firma elettronica. [openai.com/policies/data-processing-addendum](https://openai.com/policies/data-processing-addendum/) |
-| Brevo SAS | Email transazionale (SMTP) | UE — Francia 🇫🇷 | Nessun contenuto fattura trasmesso | **Automatico** — incluso come Annex 2 delle General Terms accettate alla creazione account, nessuna azione richiesta |
+| OpenAI LP | AI: categorizzazione articoli, lettura documenti (Vision) e assistente conversazionale | USA | SCC UE; dati elaborati on-the-fly, non usati per training | Disponibile, **non automatico**: serve account business (non personale) + modulo online con ragione sociale/org ID → firma elettronica. [openai.com/policies/data-processing-addendum](https://openai.com/policies/data-processing-addendum/) |
+| Brevo SAS | Email transazionale (SMTP) + inbound allegati ricavi | UE — Francia 🇫🇷 | Nessun contenuto fattura trasmesso; transitano gli XLS dei ricavi | **Automatico** — incluso come Annex 2 delle General Terms accettate alla creazione account, nessuna azione richiesta |
 | Invoicetronic S.r.l. | Ricezione fatture SDI + webhook | Italia 🇮🇹 | XML grezzo non archiviato dopo la consegna | **Non trovato** un DPA pubblico standard (piccola società IT) — da richiedere via email/supporto diretto |
 | Vercel Inc. | Hosting frontend (Next.js) | UE / USA | SCC UE; nessun dato applicativo persistito | Disponibile ([vercel.com/legal/dpa](https://vercel.com/legal/dpa)), non verificato con certezza se automatico o da accettare esplicitamente — da confermare |
-| Railway Corp. | Worker elaborazione + API | USA | SCC UE; elaborazione in memoria, nessun dato persistito | Disponibile, **non automatico**: da compilare un modulo DocuSign dedicato. [railway.com/legal/dpa](https://railway.com/legal/dpa) |
+| Railway Corp. | Worker elaborazione + API | USA | SCC UE; nessun dato applicativo persistito (log tecnici con identificativi utente sullo stdout del fornitore) | Disponibile, **non automatico**: da compilare un modulo DocuSign dedicato. [railway.com/legal/dpa](https://railway.com/legal/dpa) |
 
-I trasferimenti extra-UE (OpenAI, Railway, Vercel) sono coperti da **Clausole
-Contrattuali Standard UE (SCC)**. Il database con i dati persistiti resta in UE.
+| GitHub Inc. | Custodia backup cifrati del DB (`pg_dump` giornaliero) | USA | SCC UE; artifact cifrato, retention 14gg poi eliminazione automatica | Incluso nei GitHub Customer Terms (DPA standard Microsoft) — da confermare per l'account in uso |
+
+I trasferimenti extra-UE (OpenAI, Railway, Vercel, GitHub) sono coperti da
+**Clausole Contrattuali Standard UE (SCC)**. Il database con i dati persistiti
+resta in UE.
+
+**Cosa esce verso OpenAI, per flusso** (verificato nel codice il 09/09/2026):
+
+| Flusso | Codice | Dati trasmessi |
+|---|---|---|
+| Categorizzazione articoli | `services/ai_service.py` | descrizione riga, nome fornitore, aliquota IVA. Nessun importo |
+| Vision su PDF/scontrini | `services/invoice_service.py` | **immagine integrale del documento** in base64: tutto cio' che vi e' stampato |
+| Chat assistente | `services/fastapi_worker.py` (`_build_chat_system_prompt`) | KPI economici, top categorie e top fornitori con importi, nome attivita' |
+| Briefing giornaliero | `services/daily_briefing_service.py` | **anonimizzato**: prodotti/fornitori sostituiti prima dell'invio e ripristinati dopo |
+
+**Telegram** (`services/telegram_service.py`, Edge Functions) riceve gli alert
+operativi. **Non e' un sub-responsabile** perche' non gli vengono trasmessi dati
+personali: dal 09/09/2026 l'email del mittente negli alert ricavi esce
+**mascherata** (`maskEmail`, dominio + prime 2 lettere), il valore esatto resta
+su `ricavi_email_queue.email_sender`. Se un alert futuro dovesse portare fuori
+un dato personale, Telegram FZ-LLC (extra-UE) va prima aggiunto a questa tabella
+e all'informativa pubblica.
 
 Ricerca 08/07/2026 fatta su fonti pubbliche (pagine ufficiali dei fornitori);
 alcuni fetch diretti (Brevo, OpenAI) hanno restituito 403 e le informazioni
@@ -54,7 +74,9 @@ di considerare l'attivazione conclusa per ciascun fornitore.
 ## 3. Misure di Sicurezza Tecniche e Organizzative (Art. 32)
 
 **Tecniche:**
-- Password: hashing Argon2id (m=65536, t=3, p=1) — standard OWASP; password in chiaro mai archiviata.
+- Password: hashing Argon2id (m=65536, t=3, p=4) — standard OWASP; password in chiaro mai archiviata.
+  I parametri sono asseriti da `tests/test_auth_argon2_parametri.py` e devono
+  restare allineati al testo della privacy pubblica (presidiato da un test).
 - Cifratura in transito: TLS 1.3 su tutti i canali.
 - Cifratura a riposo: AES-256 (gestita da Supabase).
 - Controllo accessi multi-tenant: Row-Level Security PostgreSQL **attiva e forzata**
@@ -112,19 +134,41 @@ Reclamo all'autorità di controllo: **Garante per la Protezione dei Dati Persona
 
 - Dati account e operativi: per la durata del rapporto contrattuale.
 - File XML/P7M grezzi: purgati dopo il processing; quelli via SDI entro 24h dalla coda.
-- Tentativi di accesso: 15 minuti.
+- Tentativi di accesso: 24 ore (`auth_service.controlla_rate_limit`, cleanup inline).
+  I 15 minuti sono la durata del *blocco* (`_LOCKOUT_MINUTES`), non la conservazione.
+- Sessioni (`ip`, `user_agent`): 90 giorni dall'ultimo utilizzo
+  (`purge_sessioni_scadute`). La sessione scade comunque dopo 8h di inattivita'
+  (`SESSION_INACTIVITY_HOURS`), quindi la purge non tocca mai una sessione viva.
+- `email_rate_log` (destinatario): 90 giorni (`purge_email_rate_log`).
+- `category_change_log` (actor_email) e `ai_usage_events` (nomi file): 365 giorni
+  (`purge_category_change_log`, `purge_ai_usage_events`).
+- `marketplace_leads` (email, nome, messaggio): 730 giorni, **solo stato
+  `archiviato`** (`purge_marketplace_leads`) — un lead aperto e' una trattativa
+  in corso e non si cancella a tempo.
 - Alla cancellazione dell'account: eliminazione **permanente e a cascata** (FK
   ON DELETE CASCADE) su fatture, ristoranti, ricette, ricavi, margini, sessioni,
   tag, notifiche, ecc. La memoria AI globale (dati aggregati non riferibili al
   singolo) non costituisce dato personale dell'interessato e non viene esportata.
+
+> Le cinque retention sopra sono state introdotte il 09/09/2026
+> (`supabase/migrations/20260909143000_retention_gdpr_log_e_sessioni.sql`):
+> prima quelle tabelle conservavano dati personali a tempo indeterminato.
+> Girano nel loop del worker col gate 24h (`worker/run.py`, `_PURGE_RETENTION_GDPR`)
+> e sono eseguite sul serio dai test in `tests/test_sql_retention_gdpr.py` (`-m sql`).
 
 ---
 
 ## 6. Cookie
 
 Utilizzati **esclusivamente cookie tecnici** strettamente necessari (sessione di
-login, funzionamento). Nessun cookie di profilazione, analytics o di terze parti;
-nessun pixel di tracciamento; font self-hosted. Ai sensi del Provvedimento Garante
+login, funzionamento, preferenza di vista). Nessun cookie di profilazione,
+analytics o di terze parti; nessun pixel di tracciamento; font self-hosted.
+
+> Il 09/09/2026 `@vercel/analytics` risultava montato nel root layout mentre
+> questo documento, la privacy pubblica e il banner dichiaravano l'assenza di
+> analytics: la dipendenza e' stata **rimossa** e un test
+> (`tests/test_privacy_policy_veritiera.py`) impedisce che rientri senza che i
+> documenti vengano aggiornati. Ai sensi del Provvedimento Garante
 del 10/06/2021 i cookie tecnici **non richiedono consenso preventivo** ma solo
 informativa, fornita in-app (`/privacy`) e tramite banner informativo non bloccante.
 
@@ -133,8 +177,12 @@ informativa, fornita in-app (`/privacy`) e tramite banner informativo non blocca
 | `oneflux_session` | Tecnico/sessione | 30 giorni | Token opaco ad alta entropia |
 | `oneflux_session_backup` | Tecnico/admin | 8 ore | Token admin durante impersonazione di supporto |
 | `oneflux_impersonate` | Tecnico/admin | 8 ore | Flag (nessun dato personale) |
+| `oneflux_view` | Tecnico/preferenza | 30 giorni | Modalita' vista scelta (`chain`/`pv`), solo account multi-sede |
 
-Tutti `HttpOnly + Secure + SameSite=Lax`.
+I tre cookie di sessione/admin sono `HttpOnly + Secure + SameSite=Lax`.
+`oneflux_view` e' scritto dall'interfaccia (quindi **non** HttpOnly) ed e'
+`Secure + SameSite=Lax` in produzione: contiene solo la preferenza di
+visualizzazione, nessun identificativo.
 
 ---
 

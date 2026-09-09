@@ -84,7 +84,9 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
         body: JSON.stringify({ ristorante_id: id }),
       });
       if (!res.ok) throw new Error();
-      document.cookie = `oneflux_view=pv; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+      document.cookie = `oneflux_view=pv; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax${
+        window.location.protocol === "https:" ? "; secure" : ""
+      }`;
       router.push("/m/briefing");
       router.refresh();
     } catch {

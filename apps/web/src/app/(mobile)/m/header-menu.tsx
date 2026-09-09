@@ -8,7 +8,8 @@ import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 
 function writeViewCookie(v: "chain" | "pv") {
   if (typeof document === "undefined") return;
-  document.cookie = `oneflux_view=${v}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+  const secure = window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `oneflux_view=${v}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax${secure}`;
 }
 function isChainCookie(): boolean {
   if (typeof document === "undefined") return false;

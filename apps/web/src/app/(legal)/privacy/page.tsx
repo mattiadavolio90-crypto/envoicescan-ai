@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Privacy & Cookie Policy</h1>
       <p className="text-xs text-muted-foreground">
-        Ultimo aggiornamento: 19 giugno 2026 — versione 4.1
+        Ultimo aggiornamento: 9 settembre 2026 — versione 4.2
       </p>
 
       <h2>Titolare del Trattamento</h2>
@@ -45,11 +45,19 @@ export default function PrivacyPage() {
           ricevute automaticamente tramite SDI (Invoicetronic)
         </li>
         <li>
-          <strong>Dati operativi:</strong> ricette, ingredienti, note diario, margini mensili
+          <strong>Dati operativi:</strong> ricette, ingredienti, note diario, margini mensili,
+          incassi giornalieri
+        </li>
+        <li>
+          <strong>Dati del personale</strong> (solo se l&apos;utente utilizza la sezione Personale):
+          nome del dipendente, turni di lavoro e costo orario o retribuzione lorda mensile,
+          inseriti dall&apos;utente per il calcolo del costo del lavoro
         </li>
         <li>
           <strong>Dati di sessione:</strong> token di sessione opachi ad alta entropia generati lato
-          server, con scadenza, timestamp login/logout e controlli di inattività
+          server, con scadenza, timestamp login/logout e controlli di inattività; indirizzo IP e
+          identificativo del browser (user agent) della sessione, per sicurezza e riconoscimento
+          degli accessi
         </li>
         <li>
           <strong>Log operativi:</strong> registro upload (nome file, esito, conteggi righe),
@@ -70,6 +78,14 @@ export default function PrivacyPage() {
         <strong>⚠️ Importante:</strong> questo servizio NON effettua Conservazione Sostitutiva ai
         sensi del D.M. 17 giugno 2014. L&apos;utente resta responsabile della conservazione fiscale
         delle fatture elettroniche per 10 anni presso i canali certificati AgID.
+      </LegalCallout>
+
+      <LegalCallout>
+        <strong>Dati di terzi inseriti dall&apos;utente:</strong> se utilizzi la sezione Personale
+        inserisci dati riferiti ai tuoi dipendenti. Rispetto a quei dati <strong>sei tu il
+        titolare del trattamento</strong> e RECOMASYSTEM Srl agisce come responsabile per tuo
+        conto: resta a tuo carico informare il personale e disporre di una base giuridica per il
+        trattamento, secondo gli obblighi che già ti competono come datore di lavoro.
       </LegalCallout>
 
       <h2>Base Giuridica del Trattamento</h2>
@@ -97,15 +113,24 @@ export default function PrivacyPage() {
           coda entro 24 ore dall&apos;elaborazione.
         </li>
         <li>
-          <strong>Log operativi (upload e AI):</strong> conservati per la durata dell&apos;account a
-          fini di trasparenza e supporto tecnico.
+          <strong>Log operativi (upload, utilizzo AI, modifiche di categoria):</strong> conservati
+          12 mesi, poi eliminati automaticamente.
         </li>
         <li>
-          <strong>Log applicativi:</strong> rotazione automatica, senza dati PII in chiaro.
+          <strong>Sessioni di accesso</strong> (indirizzo IP e browser utilizzato): eliminate
+          dopo 90 giorni dall&apos;ultimo utilizzo. La sessione scade comunque dopo 8 ore di
+          inattività.
         </li>
         <li>
-          <strong>Tentativi di accesso:</strong> conservati per 15 minuti (rate limiting
-          anti-brute-force), poi eliminati automaticamente.
+          <strong>Log applicativi:</strong> i log tecnici di esercizio (diagnostica ed errori)
+          possono contenere identificativi utente, tra cui l&apos;indirizzo email, e sono
+          conservati presso i fornitori di hosting (Railway, Vercel) secondo le rispettive
+          policy di conservazione. Non contengono password né dati di pagamento.
+        </li>
+        <li>
+          <strong>Tentativi di accesso:</strong> registrati per il rate limiting
+          anti-brute-force (blocco dopo 5 tentativi falliti per 15 minuti) ed eliminati
+          automaticamente entro 24 ore.
         </li>
         <li>
           Alla cancellazione dell&apos;account, <strong>tutti i dati vengono eliminati in modo
@@ -126,11 +151,16 @@ export default function PrivacyPage() {
           ],
           [
             "OpenAI LP",
-            "Elaborazione AI categorizzazione",
+            "Elaborazione AI: categorizzazione articoli, lettura documenti (PDF/immagini) e assistente conversazionale",
             "USA",
-            "Clausole contrattuali standard UE (SCCs); dati elaborati on-the-fly, non archiviati per training",
+            "Clausole contrattuali standard UE (SCCs); dati elaborati on-the-fly, non archiviati per training. Vedi il dettaglio dei tre flussi qui sotto",
           ],
-          ["Brevo SAS", "SMTP transazionale", "UE — Francia 🇫🇷", "Nessun contenuto di fatture trasmesso"],
+          [
+            "Brevo SAS",
+            "Invio email transazionali e ricezione email con allegati ricavi",
+            "UE — Francia 🇫🇷",
+            "Nessun contenuto di fatture trasmesso; transitano i file di riepilogo incassi inviati dal gestionale di cassa",
+          ],
           [
             "Invoicetronic S.r.l.",
             "Ricezione fatture SDI e inoltro webhook",
@@ -147,10 +177,48 @@ export default function PrivacyPage() {
             "Railway Corp.",
             "Worker elaborazione fatture e API",
             "USA",
-            "Elaborazione in memoria, nessun dato persistito; SCCs UE",
+            "Nessun dato applicativo persistito (il database resta su Supabase); log tecnici di esercizio; SCCs UE",
+          ],
+          [
+            "GitHub Inc.",
+            "Custodia dei backup cifrati del database",
+            "USA",
+            "Copia di sicurezza giornaliera, conservata 14 giorni e poi eliminata automaticamente; SCCs UE",
           ],
         ]}
       />
+
+      <h3>Cosa viene trasmesso a OpenAI</h3>
+      <p>
+        L&apos;intelligenza artificiale è utilizzata in tre modi distinti, con dati diversi:
+      </p>
+      <ul>
+        <li>
+          <strong>Categorizzazione degli articoli:</strong> vengono trasmessi la descrizione
+          della riga di fattura, il nome del fornitore e l&apos;aliquota IVA. Nessun importo,
+          nessun dato dell&apos;utente.
+        </li>
+        <li>
+          <strong>Lettura di documenti PDF e fotografie:</strong> quando una fattura o uno
+          scontrino non è in formato elettronico, l&apos;immagine del documento viene trasmessa
+          integralmente per l&apos;estrazione dei dati. Include quindi tutto ciò che è stampato
+          sul documento (fornitore, partite IVA, indirizzi, importi).
+        </li>
+        <li>
+          <strong>Assistente conversazionale:</strong> per rispondere alle domande vengono
+          trasmessi gli indicatori economici dell&apos;attività (fatturato, food cost, costo del
+          personale, margine), le principali categorie di spesa e i principali fornitori con i
+          relativi importi, oltre al nome dell&apos;attività.
+        </li>
+      </ul>
+      <p>
+        Il briefing giornaliero è invece elaborato in forma <strong>anonimizzata</strong>: nomi di
+        prodotti e fornitori sono sostituiti prima dell&apos;invio e ripristinati alla ricezione.
+      </p>
+      <p>
+        OpenAI opera come responsabile del trattamento: i dati trasmessi tramite API{" "}
+        <strong>non sono utilizzati per l&apos;addestramento dei modelli</strong>.
+      </p>
 
       <h2>Cookie e Tecnologie di Tracciamento</h2>
       <p>
@@ -187,15 +255,24 @@ export default function PrivacyPage() {
             "Flag tecnico (nessun dato personale)",
             "Solo per account amministratori; segnala una sessione di supporto attiva",
           ],
+          [
+            "oneflux_view",
+            "Tecnico / preferenza",
+            "30 giorni",
+            "Modalità di visualizzazione scelta (catena o singolo punto vendita)",
+            "Solo per account con più sedi; ricorda l'ultima vista aperta",
+          ],
         ]}
       />
       <p>
-        Tutti i cookie sono impostati con <strong>SameSite=Lax</strong>, flag{" "}
-        <strong>Secure</strong> in produzione (trasmessi solo su HTTPS) e{" "}
-        <strong>HttpOnly</strong> (non accessibili da JavaScript). Nessun cookie contiene dati
-        personali in chiaro: l&apos;identità dell&apos;utente eventualmente impersonato da un
-        amministratore durante una sessione di supporto è derivata lato server e non è esposta nei
-        cookie del browser.
+        Tutti i cookie sono impostati con <strong>SameSite=Lax</strong> e flag{" "}
+        <strong>Secure</strong> in produzione (trasmessi solo su HTTPS). I cookie di sessione e
+        amministrativi sono inoltre <strong>HttpOnly</strong> (non accessibili da JavaScript); il
+        cookie di preferenza <strong>oneflux_view</strong>, che memorizza solo la modalità di
+        visualizzazione scelta, è impostato dall&apos;interfaccia e quindi leggibile da JavaScript.
+        Nessun cookie contiene dati personali in chiaro: l&apos;identità dell&apos;utente
+        eventualmente impersonato da un amministratore durante una sessione di supporto è derivata
+        lato server e non è esposta nei cookie del browser.
       </p>
       <p>
         <strong>NON utilizziamo:</strong>
@@ -237,7 +314,7 @@ export default function PrivacyPage() {
       <p>In conformità all&apos;Art. 32 GDPR, adottiamo le seguenti misure:</p>
       <ul>
         <li>
-          <strong>Cifratura password:</strong> Argon2id (m=65536, t=3, p=1) — standard OWASP
+          <strong>Cifratura password:</strong> Argon2id (m=65536, t=3, p=4) — standard OWASP
         </li>
         <li>
           <strong>Cifratura in transito:</strong> TLS 1.3 su tutti i canali

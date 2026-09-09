@@ -83,7 +83,10 @@ function readViewCookie(): ViewMode | null {
 
 function writeViewCookie(v: ViewMode) {
   if (typeof document === "undefined") return;
-  document.cookie = `${VIEW_COOKIE}=${v}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+  // secure solo su HTTPS: in locale (http://localhost) il browser scarterebbe
+  // il cookie e la modalita' catena/PV non si ricorderebbe piu'.
+  const secure = window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `${VIEW_COOKIE}=${v}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax${secure}`;
 }
 
 type AppSidebarProps = {

@@ -11,7 +11,9 @@ export default function TerminiPage() {
   return (
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Termini di Servizio</h1>
-      <p className="text-xs text-muted-foreground">Ultimo aggiornamento: 19 giugno 2026</p>
+      <p className="text-xs text-muted-foreground">
+        Ultimo aggiornamento: 9 settembre 2026 — versione 1.1
+      </p>
 
       <h2>1. Oggetto del Servizio</h2>
       <p>
@@ -77,7 +79,7 @@ export default function TerminiPage() {
       <ul>
         <li>La classificazione automatica dei prodotti è fornita tramite intelligenza artificiale e ha natura <strong>indicativa</strong>.</li>
         <li>Il Titolare <strong>non garantisce l&apos;accuratezza al 100%</strong> delle classificazioni AI.</li>
-        <li>I contenuti delle fatture vengono trasmessi al provider AI <strong>esclusivamente on-the-fly</strong> per la categorizzazione, senza archivio permanente.</li>
+        <li>I contenuti delle fatture e i dati economici dell&apos;attività vengono trasmessi al provider AI <strong>esclusivamente on-the-fly</strong>, senza archivio permanente e senza utilizzo per l&apos;addestramento dei modelli. Il dettaglio di cosa viene trasmesso, per ciascuna funzione, è nella <Link href="/privacy">Privacy &amp; Cookie Policy</Link>.</li>
         <li>L&apos;utente è tenuto a verificare e correggere le classificazioni quando necessario.</li>
         <li>Il Servizio fornisce strumenti di revisione e conferma manuale a tale scopo.</li>
       </ul>

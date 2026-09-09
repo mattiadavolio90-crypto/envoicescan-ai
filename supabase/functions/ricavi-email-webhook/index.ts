@@ -114,6 +114,21 @@ export function hasXlsMagicBytes(bytes: Uint8Array): boolean {
   return ole2.every((b, i) => bytes[i] === b)
 }
 
+// Telegram (Telegram FZ-LLC, extra-UE) non è un sub-responsabile dichiarato
+// nell'informativa privacy: gli alert non devono portargli fuori dati personali.
+// L'indirizzo del mittente è un dato personale, ma serve per riconoscere quale
+// gestionale sta scrivendo: esce mascherato (dominio + prime 2 lettere della
+// parte locale), abbastanza per diagnosticare. Il valore esatto resta su
+// ricavi_email_queue.email_sender, che è dove si va a mappare il mittente.
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf('@')
+  if (at <= 0) return '(mittente non valido)'
+  const local = email.slice(0, at)
+  const domain = email.slice(at + 1)
+  const visible = local.slice(0, 2)
+  return `${visible}${'*'.repeat(Math.max(1, local.length - visible.length))}@${domain}`
+}
+
 // Alert Telegram non bloccante — stesso pattern di
 // invoicetronic-webhook.notifyTelegramUnrecognizedEvent: silenzioso se i secret
 // non sono configurati, mai propaga errori. Serve perché i due modi in cui i
@@ -353,7 +368,7 @@ export const handler = async (req: Request): Promise<Response> => {
       console.info(`[email-wh] Mittente sconosciuto: ${senderEmail}`)
       await notifyTelegram([
         '⚠️ Ricavi email: mittente sconosciuto',
-        `Da: ${senderEmail}`,
+        `Da: ${maskEmail(senderEmail)}`,
         `Oggetto: ${subject || '—'}`,
         `Allegati XLS: ${xlsAtts.length}`,
         'La riga resta in ricavi_email_queue status=unknown_sender e NON viene',
@@ -378,7 +393,7 @@ export const handler = async (req: Request): Promise<Response> => {
         )
         await notifyTelegram([
           '⚠️ Ricavi email: allegato non recuperabile',
-          `Da: ${senderEmail}`,
+          `Da: ${maskEmail(senderEmail)}`,
           `File: ${filename}`,
           'Registrato in ricavi_email_queue status=failed.',
         ].join('\n'))
@@ -397,7 +412,7 @@ export const handler = async (req: Request): Promise<Response> => {
         )
         await notifyTelegram([
           '⚠️ Ricavi email: allegato non è un foglio XLS/XLSX',
-          `Da: ${senderEmail}`,
+          `Da: ${maskEmail(senderEmail)}`,
           `File: ${filename}`,
           'Registrato in ricavi_email_queue status=failed.',
         ].join('\n'))
@@ -438,7 +453,7 @@ export const handler = async (req: Request): Promise<Response> => {
         )
         await notifyTelegram([
           '⚠️ Ricavi email: upload Storage fallito',
-          `Da: ${senderEmail}`,
+          `Da: ${maskEmail(senderEmail)}`,
           `File: ${filename}`,
           'Registrato in ricavi_email_queue status=failed.',
         ].join('\n'))

@@ -116,7 +116,12 @@ def test_esporta_non_include_password_ne_token():
     # controlliamo le chiavi reali dei dati, non il testo descrittivo.
     profilo_keys = set((out.get("profilo") or {}).keys())
     assert not (profilo_keys & {"password", "password_hash", "reset_code", "reset_token", "session_token"})
-    assert out["titolare_trattamento"].startswith("Recoma System")
+    # Il titolare va nominato con la P.IVA REALE: fino al 9/9/2026 qui c'era
+    # "Recoma System" con la P.IVA storica errata (09599210961), corretta
+    # ovunque il 10/7 tranne che nel file scaricato dal cliente — e questo
+    # assert la sanciva invece di prenderla.
+    assert "12993240154" in out["titolare_trattamento"]
+    assert "09599210961" not in out["titolare_trattamento"]
 
 
 def test_esporta_include_le_sezioni_dati():
