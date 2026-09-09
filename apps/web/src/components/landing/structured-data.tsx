@@ -48,7 +48,7 @@ export function StructuredData() {
       url: "https://www.oneflux.it",
       logo: "https://www.oneflux.it/icon.svg",
       vatID: "IT12993240154",
-      email: "mattia.davolio@recomasystem.it",
+      email: "md@oneflux.it",
       contactPoint: {
         "@type": "ContactPoint",
         contactType: "sales",

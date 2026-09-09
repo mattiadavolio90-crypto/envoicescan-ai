@@ -165,16 +165,23 @@ un solo errore nei log.
 1. **DPA non firmati** con Supabase, OpenAI, Invoicetronic, Vercel, Railway
    (solo Brevo automatico). Checklist in `docs/COMPLIANCE_GDPR.md` §8. È la
    lacuna formale più concreta: la privacy li chiama già «sub-responsabili».
-2. **Regione Supabase**: privacy e dossier dichiarano «UE — Frankfurt», ma **non
-   è verificabile da alcun file del repo**. Se il progetto non fosse in UE, la
-   dichiarazione al cliente sarebbe falsa. Da confermare dal dashboard.
-3. **Email di contatto divergenti**: i legali usano `md@oneflux.it`, landing e
-   structured data `mattia.davolio@recomasystem.it`. Il cliente vede due
-   indirizzi per lo stesso titolare, e uno solo può essere quello per
-   l'esercizio dei diritti.
-4. **2FA assente anche per gli admin**, che possono impersonare qualsiasi
+2. **2FA assente anche per gli admin**, che possono impersonare qualsiasi
    cliente. Non obbligatoria, ma è la misura art. 32 più sproporzionata rispetto
    al livello di accesso.
+
+Chiusi il 09/09/2026, confermati dall'owner:
+
+- **Regione Supabase: confermata UE** dall'owner sul dashboard. La privacy e
+  `docs/COMPLIANCE_GDPR.md` dichiaravano «Frankfurt» senza che il repo potesse
+  verificarlo da solo — ora è un fatto confermato, non più un'ipotesi.
+- **Email di contatto**: non erano due varianti dello stesso indirizzo, erano
+  **tre indirizzi con tre ruoli distinti**: `md@oneflux.it` (titolare, usato nei
+  documenti legali) resta invariato; `agent@oneflux.it` è il mittente delle email
+  transazionali automatiche (`services/routers/admin.py`), corretto così com'era;
+  `mattia.davolio@recomasystem.it` in `structured-data.tsx` e
+  `landing-content.ts` era un residuo della vecchia ragione sociale (Recoma
+  System, corretta ovunque il 10/7 tranne lì, stesso pattern della P.IVA in
+  §1) — allineato a `md@oneflux.it`.
 
 ---
 

@@ -196,7 +196,7 @@ export const LANDING = {
     umanoPre: "Dall'altra parte c'è una persona vera. Scrivici quando vuoi, niente ticket, niente attese. ",
     umanoServizi: "Guarda i nostri servizi",
     whatsappLabel: "Scrivici su WhatsApp",
-    email: "mattia.davolio@recomasystem.it",
+    email: "md@oneflux.it",
     privacyHref: "/privacy",
     terminiHref: "/termini",
     // "Recoma System" reso rosso e cliccabile (RecomaLink) sia qui sia in cima
