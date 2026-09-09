@@ -169,8 +169,10 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   che mostra un mese ("agosto", 0 EUR) il totale di gruppo (710.885 EUR) si
 >   leggeva come un anno chiuso. Ora `_label_anno_parziale` scrive "Anno 2026 ·
 >   gen–set, settembre in corso", nell'overview E nei tre endpoint che usano la
->   stessa finestra (dialog Margini e Coperti, Spesa per PV, analisi tag — il
->   quarto non era nel piano: trovato cercando chi altro scriveva "Anno"):
+>   stessa finestra (dialog Margini e Coperti, dialog Spreco per categoria,
+>   analisi tag — il quarto non era nel piano: trovato cercando chi altro
+>   scriveva "Anno"; la pivot Spesa per PV NON cambia, e fa bene: la sua
+>   finestra e' l'anno intero):
 >   correggere solo l'overview li avrebbe lasciati a dire "Anno 2026" nel
 >   titolo e nel nome del file esportato. La finestra NON cambia:
 >   portarla al mese come il PV e' una decisione di prodotto, non un fix.
@@ -210,10 +212,20 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   helper e nei quattro endpoint, soglie nei tre punti, palette senza dark e
 >   senza grigio), `tsc --noEmit` pulito, OpenAPI senza drift. NON fatta la
 >   prova visiva nel browser: dichiarato.
->   Suite **13.306 verdi, 44 skip** da `tests/` senza `test_documentazione_onesta`
->   (girata a parte dopo il verbale: 53 verdi), cioe' **13.359**; l'ultima
->   modifica (l'endpoint tag) e' coperta dai 176 test mirati e da una seconda
->   corsa piena lanciata insieme alla review.
+>   Suite **13.360 verdi, 44 skip** da `tests/` (seconda corsa piena sul commit
+>   finale; la prima, senza il test dell'endpoint tag e senza
+>   `test_documentazione_onesta`, dava 13.306 + 53); **13.369 dalla root**,
+>   ri-misurata dal reviewer.
+>   **Review: verde**, con la ri-misura sul DB fatta per conto suo (gennaio
+>   2026 OFFSIDE SPORTS PUB: F&B 18.419,14 / spese 25.357,51 identiche nelle
+>   due RPC; Σ food 2026 234.856,73 in entrambe) e 5 mutanti rifatti, tutti
+>   uccisi. Tre rilievi non bloccanti, sistemati nel commit di chiusura: il
+>   verbale nominava "Spesa per PV" al posto di "Spreco per categoria"; il
+>   titolo del dialog Spreco allineava tre "·" con la nuova etichetta (ora un
+>   trattino); `/m` aveva una TERZA e una QUARTA copia della palette (`DOT` e
+>   `TXT` in `mobile-catena.tsx`), identiche per caso — ora derivate da
+>   `SALUTE_TINT`. Il PV, con la palette unica, guadagna le varianti dark del
+>   testo: un cambio visivo reale sulla Home, voluto.
 
 ---
 

@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
 import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
 import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
+import { SALUTE_TINT } from "@/lib/salute-tint";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
   dati_mancanti: ClipboardList,
@@ -25,18 +26,14 @@ const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
   prezzi_sopra: Tag,
   ricavi_mancanti: CalendarX,
 };
-const DOT: Record<string, string> = {
-  verde: "bg-emerald-500",
-  giallo: "bg-amber-500",
-  rosso: "bg-rose-500",
-  grigio: "bg-muted-foreground/40",
-};
-const TXT: Record<string, string> = {
-  verde: "text-emerald-600 dark:text-emerald-500",
-  giallo: "text-amber-600 dark:text-amber-500",
-  rosso: "text-rose-600 dark:text-rose-500",
-  grigio: "text-muted-foreground",
-};
+// Punto e testo per colore della Salute: dalla palette unica (lib/salute-tint).
+// Qui vivevano la terza e la quarta copia, gia' identiche per caso (9/9/2026).
+const DOT: Record<string, string> = Object.fromEntries(
+  Object.entries(SALUTE_TINT).map(([k, v]) => [k, v.dot]),
+);
+const TXT: Record<string, string> = Object.fromEntries(
+  Object.entries(SALUTE_TINT).map(([k, v]) => [k, v.text]),
+);
 
 function euro(n: number): string {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);

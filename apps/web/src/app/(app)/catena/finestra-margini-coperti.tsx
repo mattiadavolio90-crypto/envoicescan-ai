@@ -380,7 +380,7 @@ function FinestraSprecoCategorie({
             <Sprout className="size-4 text-emerald-500" />
             Spreco per categoria · confronto punti vendita
             {data?.periodo_label && (
-              <span className="text-xs font-normal text-muted-foreground">· {data.periodo_label}</span>
+              <span className="text-xs font-normal text-muted-foreground">— {data.periodo_label}</span>
             )}
           </DialogTitle>
         </DialogHeader>
