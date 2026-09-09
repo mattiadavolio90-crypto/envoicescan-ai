@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
 import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
-import { messaggioFattureDaCollocare } from "@/lib/catena-confronti";
+import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
   dati_mancanti: ClipboardList,
@@ -98,13 +98,17 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
 
   const { kpi } = overview;
   const molPos = kpi.mol >= 0;
-  // Cascata come il desktop: il MOL si mostra solo se i dati sono completi,
-  // altrimenti sarebbe gonfiato → si mostra il food cost e si avvisa.
-  const completo = kpi.livello_dati === "completo";
-  // Quarto stato (9/9/2026): la completezza non e' stata letta. Non si mostra
-  // nessun numero come valido — ne' MOL ne' food cost, che dipendono entrambi da
-  // dati di cui non sappiamo nulla. /m e' un frontend separato: allineato a mano.
-  const nonDeterminabile = kpi.livello_dati === "non_determinabile";
+  // Stessa funzione del desktop (9/9/2026): il MOL e' il numero grande anche con
+  // dati di costo incompleti — prima qui, come sul desktop, al suo posto c'era il
+  // food cost. /m e' un frontend separato: la scelta del ramo e il testo
+  // dell'avviso vengono dalla funzione condivisa, cosi' non possono divergere.
+  // Porta anche lo stato "vuoto" (nessun dato), che qui prima non esisteva: si
+  // finiva nel ramo food cost con un "—" grande e una frase sul MOL.
+  const metrica = metricaPrincipaleConti(kpi);
+  const affidabile = metrica.stato === "mol" && metrica.affidabile;
+  const avviso = metrica.stato === "mol" ? metrica.avviso : null;
+  const nonDeterminabile = metrica.stato === "errore";
+  const vuoto = metrica.stato === "vuoto";
   // codaVisibile=false: su /m la coda da assegnare non esiste, quindi il testo
   // rimanda al computer invece che "qui sotto".
   const msgDaCollocare = messaggioFattureDaCollocare(overview.briefing, false);
@@ -145,13 +149,13 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
         )}
       </div>
 
-      {/* Conti del gruppo (compatto) — MOL se completo, altrimenti food cost */}
+      {/* Conti del gruppo (compatto) — il MOL sempre; ambra finche' non e' reale */}
       <div
         className={cn(
           "rounded-2xl border p-5 text-center",
-          nonDeterminabile
+          nonDeterminabile || vuoto
             ? "bg-card"
-            : !completo
+            : !affidabile
               ? "bg-gradient-to-br from-amber-500/10 to-background"
               : molPos
                 ? "bg-gradient-to-br from-emerald-500/10 to-background"
@@ -169,46 +173,53 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
               gruppo non sono affidabili in questo momento.
             </p>
           </>
-        ) : completo ? (
+        ) : vuoto ? (
           <>
-            <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
-              MOL del gruppo · {overview.periodo_label}
-            </div>
-            <div className={cn("mt-1 text-4xl font-black tabular-nums", molPos ? TXT.verde : TXT.rosso)}>
-              {euro(kpi.mol)}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              margine {pct(kpi.margine_medio_perc)} · fatturato {euro(kpi.fatturato)}
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Food cost</div>
-                <div className="text-sm font-semibold tabular-nums">{pct(kpi.food_cost_pct)}</div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Personale</div>
-                <div className="text-sm font-semibold tabular-nums">{euro(kpi.costo_personale)}</div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Spese gen.</div>
-                <div className="text-sm font-semibold tabular-nums">{euro(kpi.spese_generali)}</div>
-              </div>
-            </div>
+            <div className="text-sm font-semibold text-amber-700 dark:text-amber-400">Dati ancora incompleti</div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Mancano fatturato e costi nei punti vendita: completa i dati per leggere
+              food cost e margini del gruppo.
+            </p>
           </>
         ) : (
           <>
             <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
-              Food cost del gruppo · {overview.periodo_label}
+              MOL del gruppo · {overview.periodo_label}
             </div>
-            <div className="mt-1 text-4xl font-black tabular-nums">
-              {kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
+            <div className={cn("mt-1 text-4xl font-black tabular-nums", affidabile ? (molPos ? TXT.verde : TXT.rosso) : TXT.giallo)}>
+              {euro(kpi.mol)}
             </div>
+            {/* margine_medio_perc e' lo stesso MOL in percentuale: solo se reale.
+                Con costi incompleti al suo posto c'e' il food cost, che invece
+                regge — e cosi' compare UNA volta, non piu' come numero grande. */}
             <div className="mt-1 text-xs text-muted-foreground">
-              fatturato {euro(kpi.fatturato)} ·{" "}
-              {kpi.pv_da_completare != null
-                ? `${kpi.pv_da_completare} PV da completare: MOL non ancora calcolabile`
-                : "dati di costo incompleti: MOL non ancora calcolabile"}
+              {affidabile
+                ? `margine ${pct(kpi.margine_medio_perc)}`
+                : `food cost ${kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}`}
+              {" "}· fatturato {euro(kpi.fatturato)}
             </div>
+            {avviso && (
+              <p className="mt-2 flex items-start justify-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                <span>{avviso}</span>
+              </p>
+            )}
+            {affidabile && (
+              <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Food cost</div>
+                  <div className="text-sm font-semibold tabular-nums">{pct(kpi.food_cost_pct)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Personale</div>
+                  <div className="text-sm font-semibold tabular-nums">{euro(kpi.costo_personale)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Spese gen.</div>
+                  <div className="text-sm font-semibold tabular-nums">{euro(kpi.spese_generali)}</div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

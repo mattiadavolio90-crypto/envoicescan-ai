@@ -29,6 +29,7 @@ import { formatEuro as euro, formatPct } from "@/lib/format";
 import {
   calcolaSparkline,
   messaggioFattureDaCollocare,
+  metricaPrincipaleConti,
   offsetAnello,
   tintConti,
 } from "@/lib/catena-confronti";
@@ -136,12 +137,20 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
 
 // ─── Sparkline andamento MOL del gruppo (come MolAndamento della Home) ──────
 
-function MolSparkline({ punti, anno }: { punti: MolMensile[]; anno: number }) {
+function MolSparkline({ punti, anno, affidabile }: { punti: MolMensile[]; anno: number; affidabile: boolean }) {
   const W = 240;
   const H = 40;
   const spark = calcolaSparkline(punti, W, H, 4);
   if (!spark) return null;
   const { d, ytdPct, su, stroke, meseDa, meseA, cx, cy } = spark;
+  // Con dati di costo incompleti la curva e' quella del MOL gonfiato: ambra come
+  // la card, e il delta SENZA verde/rosso — un "in meglio" potrebbe essere solo
+  // un costo che manca, non una vittoria da certificare (stessa regola del
+  // Trend neutro del PV sul MOL negativo).
+  const colore = affidabile ? stroke : "text-amber-500";
+  const coloreDelta = affidabile
+    ? su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500"
+    : "text-muted-foreground";
 
   return (
     <div className="mt-4 border-t pt-3">
@@ -149,10 +158,7 @@ function MolSparkline({ punti, anno }: { punti: MolMensile[]; anno: number }) {
         <span className="text-xs font-medium text-muted-foreground/70">Andamento margine {anno}</span>
         {ytdPct != null && (
           <span
-            className={cn(
-              "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
-              su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
-            )}
+            className={cn("inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums", coloreDelta)}
           >
             {su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
             {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
@@ -163,8 +169,8 @@ function MolSparkline({ punti, anno }: { punti: MolMensile[]; anno: number }) {
         )}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="h-10 w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="Andamento del margine del gruppo">
-        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
-        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", stroke)} />
+        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", colore)} />
+        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", colore)} />
       </svg>
     </div>
   );
@@ -212,19 +218,20 @@ function ContiGruppoCard({
   onApriMargini: () => void;
 }) {
   const { kpi } = overview;
-  // Default PRUDENTE (9/9/2026): il campo assente vale "non_determinabile", non
-  // "completo". Prima l'assenza sceglieva l'ipotesi piu' ottimista e la card
-  // mostrava il MOL come affidabile senza sapere se lo fosse. Stessa correzione
-  // di tintConti in lib/catena-confronti.ts, che qui e' la fonte del colore.
-  const livello = kpi.livello_dati ?? "non_determinabile";
+  // La scelta del ramo e il testo dell'avviso vengono dalla funzione pura in
+  // lib/catena-confronti.ts (condivisa con /m, e testabile — questo .tsx no).
+  // Il default prudente sul campo assente sta li', insieme a quello di tintConti.
+  const metrica = metricaPrincipaleConti(kpi);
   // A cascata: con dati incompleti il MOL e' falso -> card neutra (no verde/rosso).
   const tint = TINT[tintConti(kpi)];
+  const affidabile = metrica.stato === "mol" && metrica.affidabile;
+  const avviso = metrica.stato === "mol" ? metrica.avviso : null;
 
   // Livello "non determinabile": la completezza non e' stata letta. Non si mostra
   // NESSUN numero come se fosse valido — ne' il MOL ne' il food cost: entrambi
   // dipendono da dati che non sappiamo se ci siano. Si dice che non si sa e si
   // offre il retry, come fa il PV con BlockRetry.
-  if (livello === "non_determinabile") {
+  if (metrica.stato === "errore") {
     return (
       <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card p-6 sm:p-7">
         <div className="mb-4 flex items-baseline justify-between gap-2">
@@ -253,7 +260,7 @@ function ContiGruppoCard({
   }
 
   // Livello "nessuno": niente numeri, si indirizza a completare i PV.
-  if (livello === "nessuno") {
+  if (metrica.stato === "vuoto") {
     return (
       <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card p-6 sm:p-7">
         <div className="mb-4 flex items-baseline justify-between gap-2">
@@ -284,43 +291,52 @@ function ContiGruppoCard({
         <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
       </div>
 
-      {livello === "completo" ? (
-        /* MOL gruppo + margine medio → apre il confronto Margini e Coperti */
+      {/* MOL del gruppo → apre il confronto Margini e Coperti. SEMPRE, anche con
+          dati di costo incompleti (9/9/2026): il PV lo mostra sempre, e qui
+          nasconderlo dietro il food cost faceva sembrare le due viste due
+          prodotti diversi. Quando non e' reale lo dice l'avviso sotto, non il
+          silenzio; il colore lo decide tintConti (giallo finche' non e' reale). */}
+      <button
+        type="button"
+        onClick={onApriMargini}
+        className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
+      >
+        <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">MOL del gruppo</span>
+        <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>{euro(kpi.mol)}</div>
+        <div className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground/70">
+          {/* margine_medio_perc e' Σmol/Σnetto (gruppo.py:76): lo STESSO numero
+              gonfiato, in percentuale. Un numero falso con l'avviso e' la
+              decisione; due sarebbero rumore. Solo quando il MOL e' reale. */}
+          {affidabile && (
+            <span className={cn("rounded-full px-2 py-0.5 font-medium", tint.badge)}>margine {pct(kpi.margine_medio_perc)}</span>
+          )}
+          <span className="inline-flex items-center gap-0.5 font-medium text-primary">
+            confronta i PV <ArrowRight className="size-3" />
+          </span>
+        </div>
+      </button>
+
+      {/* Dati di costo incompleti: il MOL sopra e' gonfiato verso l'alto (mancano
+          costi). Lo si dice chiaro — il banner ambra del PV per le fatture
+          mancanti fa lo stesso — e si porta a vedere QUALI PV: la finestra
+          Margini e Coperti li marca come "dati incompleti". */}
+      {avviso && (
         <button
           type="button"
           onClick={onApriMargini}
-          className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
+          className="mb-1 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-xs text-amber-700 transition-colors hover:bg-amber-500/15 dark:text-amber-400"
         >
-          <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">MOL del gruppo</span>
-          <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>{euro(kpi.mol)}</div>
-          <div className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground/70">
-            <span className={cn("rounded-full px-2 py-0.5 font-medium", tint.badge)}>margine {pct(kpi.margine_medio_perc)}</span>
-            <span className="inline-flex items-center gap-0.5 font-medium text-primary">
-              confronta i PV <ArrowRight className="size-3" />
-            </span>
-          </div>
-        </button>
-      ) : (
-        /* Livello "food": food cost si', MOL no (sarebbe gonfiato). Si mostra il
-           food cost come dato principale e si avvisa che mancano dati per il MOL. */
-        <button
-          type="button"
-          onClick={onApriSpesa}
-          className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
-        >
-          <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">Food cost del gruppo</span>
-          <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>
-            {kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
-          </div>
-          <span className="mt-1 text-xs text-muted-foreground/70">
-            {kpi.pv_da_completare != null
-              ? `${kpi.pv_da_completare} PV con dati incompleti: MOL non ancora calcolabile`
-              : "Dati di costo incompleti: MOL non ancora calcolabile"}
+          <TriangleAlert className="mt-px size-3.5 shrink-0" />
+          <span>
+            {avviso}. <span className="font-medium">Vedi quali PV →</span>
           </span>
         </button>
       )}
 
-      {/* Breakdown: Fatturato e Food cost sempre; Personale/Spese/MOL solo se completo. */}
+      {/* Breakdown: Fatturato e Food cost sempre (il food cost UNA volta: prima,
+          nel ramo incompleto, stava anche come numero grande). Personale/Spese
+          solo con costi completi — una somma parziale etichettata "del gruppo"
+          sarebbe un secondo numero falso sotto il primo. */}
       <div className="mt-auto space-y-1.5">
         <VoceConto colore="emerald" label="Fatturato gruppo (IVA incl.)" value={euro(kpi.fatturato)} onClick={onApriMargini} />
         <VoceConto
@@ -330,7 +346,7 @@ function ContiGruppoCard({
           value={kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
           onClick={onApriSpesa}
         />
-        {livello === "completo" && (
+        {affidabile && (
           <>
             <VoceConto colore="amber" segno="−" label="Costo personale" value={euro(kpi.costo_personale)} onClick={onApriMargini} />
             <VoceConto colore="amber" segno="−" label="Spese generali" value={euro(kpi.spese_generali)} onClick={onApriMargini} />
@@ -338,7 +354,9 @@ function ContiGruppoCard({
         )}
       </div>
 
-      {livello === "completo" && <MolSparkline punti={overview.mol_mensile} anno={overview.mol_mensile_anno} />}
+      {/* L'andamento segue il MOL: se il numero si vede, si vede la sua curva —
+          in ambra finche' non e' reale. Il PV la mostra sempre. */}
+      <MolSparkline punti={overview.mol_mensile} anno={overview.mol_mensile_anno} affidabile={affidabile} />
     </div>
   );
 }

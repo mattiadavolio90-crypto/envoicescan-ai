@@ -190,18 +190,25 @@ Regole:
 
 ### La cascata dei dati del gruppo (RISOLTO, verificato 17/7)
 
-La card "I conti del gruppo" **non mostra più numeri gonfiati** quando alle sedi
-mancano i costi. Funziona a tre livelli, decisi dalla presenza dei dati (non dalla
-percentuale di salute):
+La card "I conti del gruppo" **mette il MOL al centro come il PV** (dal 9/9/2026)
+e, quando i costi sono incompleti, **lo dice accanto invece di nasconderlo**.
+Funziona a quattro livelli, decisi dalla presenza dei dati (non dalla percentuale
+di salute), scelti da `metricaPrincipaleConti` in `lib/catena-confronti.ts` —
+una funzione sola per desktop e `/m`, così le due superfici non divergono:
 
 | Livello | Quando | Cosa mostra |
 |---|---|---|
+| **non_determinabile** | la completezza dei PV non è stata letta (RPC in errore) | Nessun numero: "Conti del gruppo non disponibili" + Riprova. Mai il verde |
 | **nessuno** | il gruppo non ha né fatturato né spese food | Nessun numero: "Dati ancora incompleti, completa i punti vendita" |
-| **food** | ci sono le spese food, ma a qualche sede manca il **personale** | Food cost sì, **MOL nascosto** + "N PV senza costo personale: MOL non ancora calcolabile". Card gialla, mai verde/rosso |
+| **food** | ci sono le spese food, ma a qualche sede manca il **personale** | **MOL grande** in ambra + avviso "N PV con dati di costo incompleti: questo margine non è reale" (porta alla finestra Margini, che marca quali). Food cost nella riga sotto, una volta. Badge "margine %" **nascosto**: è Σmol/Σnetto, cioè lo stesso numero gonfiato. Card gialla, mai verde/rosso |
 | **completo** | tutte le sedi hanno fatturato + food + personale | MOL e margine, colore verde/rosso |
 
-**Perché:** senza il costo del personale di una sede il MOL aggregato è falso — e
-un MOL falso è peggio di un MOL mancante.
+**Perché:** senza il costo del personale di una sede il MOL aggregato è gonfiato
+verso l'alto. Fino al 9/9 la catena lo **nascondeva** e al suo posto metteva il
+food cost: due viste dello stesso prodotto con due metriche diverse in primo
+piano (screenshot del 9/9: "FOOD COST DEL GRUPPO 39,1%" in catena, "MOL −14.590 €"
+nel PV). Ora la catena fa come il PV: il numero si vede sempre, e quando non è
+reale lo dice l'avviso — non il silenzio.
 
 > Verificato il 17/7 su SUSHILAND: 3 sedi su 4 non hanno il costo personale, quindi
 > il gruppo è al livello "food" e il MOL è correttamente nascosto.

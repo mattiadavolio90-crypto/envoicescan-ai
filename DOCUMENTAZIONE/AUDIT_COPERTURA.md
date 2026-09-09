@@ -117,6 +117,31 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   verde "tutte classificate" le 5 sedi a zero righe escluse (TIME CAFE,
 >   CASATI 14, IL BARETTINO, OVERTIME, ambiente di test), come deciso.
 >   Suite **13.322 verdi, 44 skip**.
+>
+> - **09/09/2026 — Fase 5: il MOL al centro anche nella catena.** Con dati di
+>   costo incompleti la card "I conti del gruppo" NASCONDEVA il MOL e al suo
+>   posto metteva il food cost, mentre il PV nello stesso caso lo mostra con un
+>   avviso accanto: due viste dello stesso prodotto con due metriche diverse in
+>   primo piano (screenshot del 9/9). Ora la catena fa come il PV: MOL grande
+>   sempre, in ambra e con l'avviso "N PV con dati di costo incompleti: questo
+>   margine non e' reale" (porta alla finestra Margini, che marca quali) finche'
+>   non e' reale; food cost nella riga sotto, una volta; l'andamento segue il
+>   MOL in ambra e senza certificare verde un "in meglio" che potrebbe essere
+>   solo un costo mancante. `/m` allineato a mano, e guadagna lo stato "vuoto"
+>   che non aveva (finiva nel ramo food cost con un "—" grande).
+>   La scelta del ramo e il testo dell'avviso vivono in una funzione pura nuova,
+>   `metricaPrincipaleConti` (`lib/catena-confronti.ts`), condivisa da desktop e
+>   `/m`: il rendering `.tsx` non e' testabile, e due copie a mano divergono.
+>   +15 test, **7 mutanti su 7**, con un PRESIDIO INCROCIATO: tintConti
+>   certifica verde/rosso se e solo se la metrica dichiara il MOL affidabile —
+>   il test che avrebbe fermato la divergenza PV-catena da cui e' nato il piano.
+>   Trovato misurando: `margine_medio_perc` e' **Σmol/Σnetto** (gruppo.py:76),
+>   cioe' lo stesso MOL gonfiato in percentuale — non il primo margine come il
+>   commento del tipo TS lascia intendere. Nel ramo incompleto il badge
+>   "margine %" e' nascosto: un numero falso con l'avviso e' la decisione, due
+>   sarebbero rumore. `tsc --noEmit` pulito. NON fatta la prova visiva nel
+>   browser (qui non c'e'): dichiarato.
+>   Suite **13.337 verdi, 44 skip**.
 
 ---
 

@@ -284,6 +284,54 @@ export function tintConti(kpi: { mol: number; livello_dati?: string | null }): "
   return livello === "completo" ? (molPos ? "verde" : "rosso") : "giallo";
 }
 
+// ─── Metrica principale della card "I conti del gruppo" ───────────────────
+//
+// Decisione (Mattia, 9/9/2026): il MOL e' il numero grande ANCHE quando i dati
+// di costo sono incompleti — come fa il PV (KpiBlock), che lo mostra sempre e
+// gli mette l'avviso accanto. Prima la catena, nello stesso caso, NASCONDEVA il
+// MOL e al suo posto metteva il food cost: due viste dello stesso prodotto che
+// mettevano in primo piano due metriche diverse.
+//
+// Il MOL con un PV senza costo personale e' gonfiato VERSO L'ALTO (mancano
+// costi): mostrarlo senza avviso sarebbe una bugia, mostrarlo CON l'avviso e'
+// quello che il PV gia' fa. Il colore resta a tintConti, che in questo caso da'
+// giallo: e' il presidio che impedisce a un MOL gonfiato di sembrare una
+// vittoria, e conta di piu' ora che il numero si vede.
+//
+// Una funzione sola per desktop e /m: se le due superfici la condividono non
+// possono divergere — stessa ragione di messaggioFattureDaCollocare. Anche il
+// testo dell'avviso sta qui, cosi' singolare/plurale e wording sono provati
+// una volta e valgono per entrambe.
+export type MetricaConti =
+  | { stato: "errore" }                                   // completezza non letta
+  | { stato: "vuoto" }                                    // niente da mostrare
+  | { stato: "mol"; affidabile: true; avviso: null }
+  | { stato: "mol"; affidabile: false; avviso: string };
+
+export function metricaPrincipaleConti(kpi: {
+  livello_dati?: string | null;
+  pv_da_completare?: number | null;
+}): MetricaConti {
+  // Stesso default prudente di tintConti: campo assente = non lo sappiamo. E un
+  // valore mai visto (rinomina, deploy parziale) cade qui, non in "completo".
+  const livello = kpi.livello_dati ?? "non_determinabile";
+  if (livello === "completo") return { stato: "mol", affidabile: true, avviso: null };
+  if (livello === "food") {
+    // pv_da_completare null = non determinabile (Fase 2): l'avviso non inventa
+    // un numero, dice che i dati sono incompleti e basta.
+    const n = kpi.pv_da_completare;
+    const chi =
+      n == null || n <= 0
+        ? "Dati di costo incompleti"
+        : n === 1
+          ? "1 PV con dati di costo incompleti"
+          : `${n} PV con dati di costo incompleti`;
+    return { stato: "mol", affidabile: false, avviso: `${chi}: questo margine non è reale` };
+  }
+  if (livello === "nessuno") return { stato: "vuoto" };
+  return { stato: "errore" };
+}
+
 // Offset del cerchio SVG dell'anello salute: indice 0-100 clampato.
 export function offsetAnello(indice: number, r: number): number {
   const c = 2 * Math.PI * r;

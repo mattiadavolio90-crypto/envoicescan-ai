@@ -681,6 +681,72 @@ def test_tint_giallo_sullo_stato_non_determinabile():
     ) == "giallo"
 
 
+# ─── metricaPrincipaleConti ───────────────────────────────────────────────
+#
+# Fase 5 (9/9/2026): il MOL e' il numero grande della card "I conti del gruppo"
+# anche con dati di costo incompleti — come il PV, che lo mostra sempre e gli
+# mette l'avviso accanto. Prima la catena, nello stesso caso, NASCONDEVA il MOL
+# dietro il food cost. La scelta del ramo vive in una funzione pura condivisa
+# da desktop e /m: il rendering .tsx non e' testabile, e due copie a mano
+# divergono (e' gia' successo con messaggioFattureDaCollocare).
+
+
+def test_metrica_dati_completi_mol_affidabile_senza_avviso():
+    out = _chiama("metricaPrincipaleConti", [{"livello_dati": "completo", "pv_da_completare": 0}])
+    assert out == {"stato": "mol", "affidabile": True, "avviso": None}
+
+
+def test_metrica_ramo_food_mostra_il_mol_ma_lo_dichiara_non_reale():
+    """E' il cambio di questa fase: il MOL si VEDE (stato mol) ma non e'
+    affidabile, e l'avviso lo dice — non sparisce piu' dietro il food cost."""
+    out = _chiama("metricaPrincipaleConti", [{"livello_dati": "food", "pv_da_completare": 2}])
+    assert out["stato"] == "mol"
+    assert out["affidabile"] is False
+    assert out["avviso"] == "2 PV con dati di costo incompleti: questo margine non è reale"
+
+
+def test_metrica_avviso_singolare_con_un_solo_pv():
+    out = _chiama("metricaPrincipaleConti", [{"livello_dati": "food", "pv_da_completare": 1}])
+    assert out["avviso"].startswith("1 PV con dati di costo incompleti")
+
+
+@pytest.mark.parametrize("n", [None, 0])
+def test_metrica_avviso_generico_se_non_si_sa_quanti_pv(n):
+    """pv_da_completare null = non determinabile (Fase 2): l'avviso non inventa
+    un numero, dice che i dati sono incompleti e basta."""
+    out = _chiama("metricaPrincipaleConti", [{"livello_dati": "food", "pv_da_completare": n}])
+    assert out["avviso"] == "Dati di costo incompleti: questo margine non è reale"
+
+
+def test_metrica_nessun_dato_niente_numeri():
+    assert _chiama("metricaPrincipaleConti", [{"livello_dati": "nessuno"}]) == {"stato": "vuoto"}
+
+
+@pytest.mark.parametrize("kpi", [
+    {"livello_dati": "non_determinabile"},
+    {"livello_dati": None},
+    {},
+    {"livello_dati": "valore_futuro_sconosciuto"},
+])
+def test_metrica_campo_assente_o_ignoto_e_errore_non_ottimismo(kpi):
+    """Stesso default prudente di tintConti: se non si sa, nessun numero come
+    valido — e un valore mai visto non diventa "completo"."""
+    assert _chiama("metricaPrincipaleConti", [kpi]) == {"stato": "errore"}
+
+
+@pytest.mark.parametrize("livello", ["completo", "food", "nessuno", "non_determinabile", None])
+def test_metrica_e_tint_non_possono_divergere(livello):
+    """PRESIDIO INCROCIATO: il MOL e' certificato (verde/rosso) SE E SOLO SE la
+    metrica lo dichiara affidabile. Due funzioni, una regola: se una cambia da
+    sola, questo test e' rosso. E' il test che avrebbe fermato la divergenza
+    PV-catena da cui e' nato tutto il piano."""
+    kpi = {"mol": 1000.0, "livello_dati": livello, "pv_da_completare": 1}
+    certificato = _chiama("tintConti", [kpi]) != "giallo"
+    met = _chiama("metricaPrincipaleConti", [kpi])
+    affidabile = met.get("stato") == "mol" and met.get("affidabile") is True
+    assert certificato == affidabile
+
+
 # ─── offsetAnello ──────────────────────────────────────────────────────────
 
 
