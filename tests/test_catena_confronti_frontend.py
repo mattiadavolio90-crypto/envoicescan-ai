@@ -337,18 +337,17 @@ def test_heat_style_intensita_cresce_col_valore():
     basso = _chiama("heatStyle", [10, 100])["backgroundColor"]
     alto = _chiama("heatStyle", [100, 100])["backgroundColor"]
     assert basso != alto
-    assert "16%" in basso  # 0.10 + 0.10*0.60 = 0.16
-    assert "70%" in alto   # 0.10 + 1.00*0.60 = 0.70
+    assert "14%" in basso  # 0.10 + 0.10*0.40 = 0.14
+    assert "50%" in alto   # 0.10 + 1.00*0.40 = 0.50
 
 
 def test_heat_style_escursione_larga_abbastanza_per_il_tema_chiaro():
     """La scala deve separare gli estremi, non solo variare.
 
     Con la vecchia scala (5%->35%) in tema chiaro i due estremi distavano
-    1,51:1 e 8 salti su 11 stavano sotto 1,02:1: a schermo l'intensita' non si
-    leggeva. Qui si asserisce l'AMPIEZZA (>= 50 punti di alpha fra minimo e
-    massimo), non i due letterali: e' la proprieta' che serviva, e regge a una
-    ritaratura futura purche' resti leggibile.
+    1,36:1: a schermo l'intensita' non si leggeva. Qui si asserisce l'AMPIEZZA
+    (>= 35 punti di alpha) E il TETTO (<= 55), non i due letterali: sono le due
+    proprieta' che servono, e reggono a una ritaratura futura.
     """
     import re
 
@@ -358,7 +357,15 @@ def test_heat_style_escursione_larga_abbastanza_per_il_tema_chiaro():
         assert m, f"nessuna percentuale in {css!r}"
         return int(m.group(1))
 
-    assert _alpha(100) - _alpha(1) >= 50
+    assert _alpha(100) - _alpha(1) >= 35
+
+    # ...ma il tetto ha un LIMITE SUPERIORE, e serve tanto quanto il minimo.
+    # Il primo tentativo di correzione porto' la scala a 10%->70% guardando solo
+    # il tema chiaro: in dark il fondo divento' cosi' saturo da cancellare il
+    # testo che ci sta sopra (`cellTone` rose-500 a 1,06:1, cioe' il segnale
+    # "peggiore della catena" invisibile). Un test che vincola solo l'ampiezza
+    # lascia passare quel mutante: 0.50+0.50 avrebbe ampiezza 50 e celle nere.
+    assert _alpha(100) <= 55
 
 
 def test_cell_style_spento_su_zero_e_max_non_positivo():
@@ -367,7 +374,7 @@ def test_cell_style_spento_su_zero_e_max_non_positivo():
 
 
 def test_le_due_heatmap_hanno_coefficienti_DIVERSI():
-    """FOTOGRAFATO: `heatStyle` (0.10/0.60) e `cellStyle` (0.12/0.68) divergono.
+    """FOTOGRAFATO: `heatStyle` (0.10/0.40) e `cellStyle` (0.12/0.46) divergono.
 
     Due tabelle affiancate colorano lo stesso rapporto con intensita' diverse.
     Unificarle sarebbe una correzione travestita da pulizia — cambierebbe i
@@ -379,7 +386,7 @@ def test_le_due_heatmap_hanno_coefficienti_DIVERSI():
     divergenza e' stata CONSERVATA, non sanata.
     """
     assert _chiama("heatStyle", [100, 100])["backgroundColor"] != _chiama("cellStyle", [100, 100])["backgroundColor"]
-    assert "80%" in _chiama("cellStyle", [100, 100])["backgroundColor"]  # 0.12 + 0.68
+    assert "58%" in _chiama("cellStyle", [100, 100])["backgroundColor"]  # 0.12 + 0.46
 
 
 # ─── calcolaHeatMax ────────────────────────────────────────────────────────

@@ -320,10 +320,10 @@ sono tutti contrasto, opacità e stacking.
    che la tabella esiste per far notare.
 
 4. **Le scale di alpha si schiacciano.** La heatmap andava 5%→35% di `--primary`
-   su trasparente: in chiaro **1,51:1 fra i due estremi**, con **8 salti su 11
-   sotto 1,02:1**. Si distingueva "bianco" da "azzurrino", non l'intensità.
-   Portata a 10%→70%. Stessa cosa per la colonna "Totale" all'8% (1,07:1 → 16%)
-   e per l'overlay dei dialog (`bg-black/10` = 1,25:1 → `/25`).
+   su trasparente: in chiaro **1,36:1 fra i due estremi**, con quasi tutti i
+   salti sotto 1,02:1. Si distingueva "bianco" da "azzurrino", non l'intensità.
+   Portata a 10%→50%. Stessa cosa per l'overlay dei dialog (`bg-black/10` =
+   1,25:1 → `/25`).
 
 5. **Bianco su bianco.** Gli header sticky di Catena erano `bg-popover` senza
    bordo: corretti in dark, invisibili in chiaro quando ci scorre sotto una riga
@@ -341,6 +341,45 @@ click. In `/catena` il bottone "Vedi PV" non era premibile. Risolto con `w-fit`.
 > angoli delle card" e l'aveva classificato come difetto **estetico**. Era un
 > bottone morto. Un elemento `fixed` senza larghezza esplicita va sempre
 > verificato con `elementsFromPoint`, non a occhio.
+
+> Lo stesso difetto era anche in `components/demo/demo-chat.tsx` (Demo Tour),
+> trovato dal `code-reviewer` cercando il **gemello** invece del solo caso
+> segnalato.
+
+### L'errore che ha richiesto una seconda passata
+
+La prima stesura di queste correzioni ha tarato **tutto sul chiaro senza
+ri-misurare lo scuro** — che è il default e il tema di 5 clienti su 7. Il
+`code-reviewer` ha calcolato i contrasti sull'altro tema e trovato tre
+regressioni che i miei numeri, tutti veri, non mostravano:
+
+| Modifica pensata per il chiaro | Effetto sullo scuro |
+|---|---|
+| heatmap 5%→35% portata a 10%→70% | `cellTone` rose-500 da 2,36 a **1,06:1** — il segnale "peggiore della catena" cancellato |
+| `text-primary` → `sky-300` sul valore evidenziato | da 3,53 a **1,89:1**, e in chiaro comunque solo 3,35 |
+| colonna "Totale" dall'8% al 16% di sky | fondo raddoppiato sotto testi lasciati a `-600`: da 3,78 a **3,48:1**, peggio di prima |
+
+**Le tre hanno la stessa forma:** su un fondo tinto, **fondo e testo competono**.
+Alzare l'intensità del fondo per farlo "esistere" consuma il contrasto di ciò che
+ci sta sopra, e nei due temi il costo cade su lati opposti.
+
+Le correzioni definitive scelgono un **canale diverso** invece di spingere quello
+sbagliato:
+
+- **heatmap**: tetto al **50%**, che è un compromesso fra i temi, non un massimo.
+  Verificato: testo neutro a 5,80:1 in dark e 11,82:1 in light
+- **valore più caro** in "Spesa per PV": segnalato col **peso** (`font-bold`) e
+  dal triangolo già presente, non con una tinta. Nessuna tinta azzurra regge su
+  fondo tinto in entrambi i temi
+- **colonna "Totale"**: fondo **riportato all'8%** e **bordo pieno** al posto di
+  `border-sky-500/50`. Il fondo non era la leva giusta — anche al 16% la colonna
+  resta a 1,13:1 dalla card, mentre peggiora ogni testo che ci sta sopra. È il
+  **bordo** a delimitare una colonna, non il riempimento
+
+> **La regola generale:** su un fondo colorato, per evidenziare si cambia canale
+> (peso, bordo, icona), non saturazione. E ogni ritaratura di un fondo va
+> misurata **in entrambi i temi**, sui testi che ci finiscono sopra — non solo
+> sul fondo stesso.
 
 ### Come è stato verificato
 
@@ -379,7 +418,9 @@ grep -rn "text-primary\b" --include=*.tsx apps/web/src
 ```
 
 > **Nota sui test:** `tests/test_catena_confronti_frontend.py` fotografava i
-> coefficienti esatti delle due heatmap. Cambiandoli si è colta l'occasione per
-> aggiungere un test sull'**ampiezza** della scala (≥50 punti di alpha fra
-> minimo e massimo) invece dei soli letterali: verifica la proprietà che serve —
-> "la scala si legge" — e regge a una ritaratura futura. Provato per mutazione.
+> coefficienti esatti delle due heatmap. Cambiandoli si è aggiunto un test sulle
+> **due proprietà** che servono davvero: ampiezza ≥35 punti di alpha (la scala si
+> legge) **e tetto ≤55** (il fondo non cancella il testo). La prima versione
+> vincolava solo l'ampiezza, e il `code-reviewer` ha notato che un mutante
+> `0.50+0.50` sarebbe passato — proprio la classe di difetto appena corretta.
+> Entrambi i limiti sono provati per mutazione.

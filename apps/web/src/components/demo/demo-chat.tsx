@@ -49,7 +49,10 @@ export function DemoChat({ open }: { open: boolean }) {
   const rimanenti = 15 - (fase >= 6 ? 2 : fase >= 3 ? 1 : 0);
 
   return (
-    <div className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-3">
+    // `w-fit`: stesso difetto del FAB in dashboard/chat-widget.tsx — senza, il
+    // contenitore fisso resta largo quanto il viewport e intercetta i click su
+    // cio' che gli finisce sotto a sinistra.
+    <div className="fixed bottom-6 right-6 z-30 flex w-fit flex-col items-end gap-3">
       {open && (
         // Altezza responsiva: su finestre basse il pannello non deve superare lo
         // spazio disponibile e finire sotto la barra-guida in alto. Cap a 420px ma

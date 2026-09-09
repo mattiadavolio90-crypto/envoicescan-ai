@@ -32,13 +32,19 @@ export const MIN_VALORI_CONFRONTO = 2;
 // Heatmap a token di tema (come "Spesa per PV"): intensità sfondo dalla frazione
 // sul massimo di colonna. Dà "forma" alla tabella senza colori hardcoded.
 //
-// Scala 10%->70% (era 5%->35%): in tema CHIARO la vecchia escursione valeva
-// 1,51:1 fra i due estremi, con 8 salti su 11 sotto 1,02:1 — a schermo si
-// distingueva "bianco" da "azzurrino", non l'intensità. Misurato in light mode
-// il 9/9/2026. In dark l'effetto era leggibile: il difetto era solo sul chiaro.
+// Scala 10%->50% (era 5%->35%): in tema CHIARO la vecchia escursione valeva
+// 1,36:1 fra i due estremi, con quasi tutti i salti sotto 1,02:1 — a schermo si
+// distingueva "bianco" da "azzurrino", non l'intensità.
+//
+// Il TETTO e' un compromesso fra i due temi, non un massimo libero. In dark il
+// fondo compete col testo che ci sta sopra: al 70% le tinte di `cellTone`
+// crollavano (rose-500 a 1,06:1, cioe' invisibile — ed e' il segnale "peggiore
+// della catena"). Al 50% il testo neutro sta a 5,80:1 in dark e 11,82:1 in
+// light, e l'escursione della scala resta 2,51:1 in dark / 1,51:1 in light.
+// Alzare ancora il tetto significa scegliere il fondo contro il testo.
 export function heatStyle(v: number | null, max: number): Record<string, string> {
   if (v == null || max <= 0 || v <= 0) return {};
-  const a = 0.10 + (v / max) * 0.60;
+  const a = 0.10 + (v / max) * 0.40;
   return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
 }
 
@@ -157,16 +163,17 @@ export function rigaExtremes(r: SprecoCategoriaRiga): { best: number | null; wor
 // della cella sul massimo della pivot. Usa la primary con alpha → contrasto su
 // entrambi i temi, niente colori hardcoded.
 //
-// ATTENZIONE: coefficienti DIVERSI da heatStyle (0.12/0.68 contro 0.10/0.60), e
+// ATTENZIONE: coefficienti DIVERSI da heatStyle (0.12/0.46 contro 0.10/0.40), e
 // firma non-nullable. Le due heatmap restano due funzioni distinte: unificarle
 // cambierebbe i colori a schermo, che e' una correzione travestita da pulizia.
 //
 // Scala allargata il 9/9/2026 insieme a heatStyle (era 0.06/0.34), per lo stesso
 // motivo: in tema chiaro l'escursione era troppo stretta per leggere l'intensità.
-// Il rapporto fra le due funzioni e' conservato, non e' un'unificazione.
+// Il rapporto fra le due funzioni e' conservato, non e' un'unificazione — e vale
+// lo stesso tetto prudente, per la ragione spiegata su heatStyle.
 export function cellStyle(v: number, max: number): Record<string, string> {
   if (max <= 0 || v <= 0) return {};
-  const a = 0.12 + (v / max) * 0.68;
+  const a = 0.12 + (v / max) * 0.46;
   return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
 }
 

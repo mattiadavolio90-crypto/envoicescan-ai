@@ -190,10 +190,13 @@ export function FinestraSpesaPV({
                           style={cellStyle(v, maxCell)}
                           className={cn(
                             "px-3 py-2 text-right tabular-nums",
-                            // NON text-primary: su fondo heatmap tinto in tema
-                            // chiaro misurava 1,79:1 (illeggibile) — ed e'
-                            // proprio il valore che la tabella vuole far notare.
-                            isMax && "font-semibold text-sky-800 dark:text-sky-300",
+                            // Il PV piu' caro si segnala col PESO, non col
+                            // colore: sopra una cella di heatmap tinta nessuna
+                            // tinta azzurra regge in ENTRAMBI i temi (text-primary
+                            // dava 1,80:1 in light; sky-300 scendeva a 1,89:1 in
+                            // dark). Il neutro sta a 11,8:1 / 5,8:1, e il triangolo
+                            // accanto al numero porta gia' l'informazione.
+                            isMax && "font-bold",
                           )}
                           title={isMax ? "Punto vendita che spende di più in questa voce" : undefined}
                         >

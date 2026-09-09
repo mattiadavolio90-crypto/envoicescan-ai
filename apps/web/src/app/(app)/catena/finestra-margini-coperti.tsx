@@ -251,15 +251,29 @@ export function FinestraMarginiCoperti({
                           dati incompleti
                         </td>
                       ) : (
-                        COLS.map((c) => (
-                          <td
-                            key={c.key}
-                            style={HEAT.has(c.key) ? heatStyle(r[c.key] as number | null, heatMax[c.key]) : undefined}
-                            className={cn("px-3 py-2 text-right tabular-nums", cellTone(c, r))}
-                          >
-                            {c.fmt(r[c.key] as number | null)}
-                          </td>
-                        ))
+                        COLS.map((c) => {
+                          // Due canali per lo stesso significato NON si sommano:
+                          // sulle colonne con heatmap il fondo tinto mangia il
+                          // contrasto delle tinte di `cellTone` (rosso a 1,65:1
+                          // in dark sulla cella piu' intensa), e il rosso e'
+                          // proprio il "peggiore della catena". Li' l'evidenza
+                          // passa al PESO; sulle colonne a fondo pulito il
+                          // colore resta, perche' li' e' leggibile.
+                          const heat = HEAT.has(c.key);
+                          const tone = cellTone(c, r);
+                          return (
+                            <td
+                              key={c.key}
+                              style={heat ? heatStyle(r[c.key] as number | null, heatMax[c.key]) : undefined}
+                              className={cn(
+                                "px-3 py-2 text-right tabular-nums",
+                                heat ? (tone && "font-bold") : tone,
+                              )}
+                            >
+                              {c.fmt(r[c.key] as number | null)}
+                            </td>
+                          );
+                        })
                       )}
                     </tr>
                   ))}
