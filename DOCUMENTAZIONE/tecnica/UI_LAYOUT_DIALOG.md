@@ -4,7 +4,8 @@
 > l'audit: qui c'è cosa è già stato controllato, cosa è stato corretto, e
 > soprattutto **le classi di difetto** che si ripresentano.
 >
-> Ultima passata: **28 agosto 2026** — audit completo sui dialog.
+> Ultima passata: **9 settembre 2026** — tema chiaro (§7).
+> Passata precedente: **28 agosto 2026** — audit completo sui dialog.
 
 ---
 
@@ -287,3 +288,98 @@ ricostruibili a posteriori.
 > esiste storico p95 da consultare dopo. È anche il motivo per cui il 502 di
 > `spreco-categorie` non è mai comparso nei log: quando è stato osservato,
 > nessuno stava guardando.
+
+---
+
+## 7. Il tema chiaro — passata del 09/09/2026
+
+Fino a qui ogni controllo grafico era stato fatto in **tema scuro**, che è il
+default (`layout.tsx`, e `DEFAULT 'dark'` sulla colonna `users.tema`). Ma il
+tema è una preferenza per account: al 9/9/2026 **2 clienti su 7 usano il
+chiaro**, e uno dei due è fra i più grossi del parco (29.911 righe fattura).
+
+Nove difetti trovati, **nessuno visibile in dark**. Il layout non c'entrava:
+sono tutti contrasto, opacità e stacking.
+
+### Perché il chiaro rompe cose che lo scuro non rompe
+
+1. **`bg-*/opacità` su celle sticky.** Su fondo scuro un velo semitrasparente
+   sembra opaco; su bianco lascia passare tutto. `bg-muted/40` su una cella
+   sticky faceva trasparire le intestazioni dei mesi che le scorrevano sotto —
+   mentre le `<td>` accanto, già opache, stavano bene. **Una cella sticky vuole
+   un fondo pieno**, e su token si scrive `bg-[color-mix(in_oklab,var(--color-muted)40%,var(--color-card))]`.
+
+2. **Le tinte `-500`/`-600` sono tarate sul fondo scuro.** In chiaro finiscono
+   sotto AA: i KPI di Margini sono **16px/700**, che per WCAG **non è "large
+   text"** (serve ≥18.66px bold), quindi la soglia è **4.5:1** e non 3:1.
+   `orange-600` dava 3,58 e `emerald-600` 3,65 — proprio "Costi F&B" e "Margine
+   Lordo". Regola: in light usare **`-700`**, lasciando `dark:` sulle `-400`.
+
+3. **`text-primary` su fondo tinto.** `--primary` è azzurro a luminosità 0,685:
+   su una cella di heatmap dava **1,79:1**, cioè invisibile — ed era il numero
+   che la tabella esiste per far notare.
+
+4. **Le scale di alpha si schiacciano.** La heatmap andava 5%→35% di `--primary`
+   su trasparente: in chiaro **1,51:1 fra i due estremi**, con **8 salti su 11
+   sotto 1,02:1**. Si distingueva "bianco" da "azzurrino", non l'intensità.
+   Portata a 10%→70%. Stessa cosa per la colonna "Totale" all'8% (1,07:1 → 16%)
+   e per l'overlay dei dialog (`bg-black/10` = 1,25:1 → `/25`).
+
+5. **Bianco su bianco.** Gli header sticky di Catena erano `bg-popover` senza
+   bordo: corretti in dark, invisibili in chiaro quando ci scorre sotto una riga
+   chiara. Aggiunta una linea con `shadow-[0_1px_0_0_var(--color-border)]`
+   (una `border-bottom` su `<thead>` non è affidabile con `border-collapse`).
+
+### Il difetto peggiore non era un colore
+
+Il contenitore del FAB "Chiedi a ONEFLUX" (`dashboard/chat-widget.tsx`) è
+`fixed bottom-6 right-6` ma **senza larghezza**: da flex container si estendeva
+per tutto il viewport, e la sua metà **invisibile a sinistra** intercettava i
+click. In `/catena` il bottone "Vedi PV" non era premibile. Risolto con `w-fit`.
+
+> **Lezione di metodo:** l'audit di agosto aveva già visto il FAB "che copre gli
+> angoli delle card" e l'aveva classificato come difetto **estetico**. Era un
+> bottone morto. Un elemento `fixed` senza larghezza esplicita va sempre
+> verificato con `elementsFromPoint`, non a occhio.
+
+### Come è stato verificato
+
+Stesso metodo della §4 (Claude nella sidebar di Chrome), con **due differenze
+che hanno fatto la qualità del risultato**:
+
+- gli è stato chiesto di riportare **misure** (`getComputedStyle`, contrasti
+  calcolati, `elementsFromPoint`), non impressioni. Tutti i numeri di questa
+  sezione vengono da lì
+- ha dichiarato **cosa non poteva misurare**: con un account a 1 sede `/catena`
+  resta in caricamento, con 2 PV le tabelle non vanno mai in overflow
+  orizzontale. Un audit che dice "questo non l'ho potuto vedere" vale più di uno
+  che riporta tutto verde
+
+### Cosa resta scoperto
+
+- **Overflow orizzontale delle tabelle di catena**: servirebbe un account con
+  ≥4 punti vendita. Con 2 PV `scrollWidth == clientWidth`, il caso non si dà.
+- **Il dialog "Prodotti di «…»" in tema chiaro**: per aprirlo serve un tag di
+  catena esistente, e crearlo significa scrivere sui dati del cliente. Misurato
+  sull'equivalente mono-PV in `/analisi-e-tag`, stesso componente.
+- **Viewport fisse** (1280, 1440): l'audit è stato fatto a finestra libera.
+- **Il tema chiaro su `/m`** (mobile): mai guardato, né in questa passata né prima.
+
+### Grep utili per questa classe di difetti
+
+```bash
+# celle sticky con fondo semitrasparente (devono essere opache)
+grep -rn "sticky" --include=*.tsx apps/web/src | grep -E "bg-[a-z-]+/[0-9]+"
+
+# tinte -500/-600 come colore di testo senza variante dark:
+grep -rn "text-[a-z]+-[56]00" --include=*.tsx apps/web/src | grep -v "dark:"
+
+# text-primary come colore di testo su fondi colorati
+grep -rn "text-primary\b" --include=*.tsx apps/web/src
+```
+
+> **Nota sui test:** `tests/test_catena_confronti_frontend.py` fotografava i
+> coefficienti esatti delle due heatmap. Cambiandoli si è colta l'occasione per
+> aggiungere un test sull'**ampiezza** della scala (≥50 punti di alpha fra
+> minimo e massimo) invece dei soli letterali: verifica la proprietà che serve —
+> "la scala si legge" — e regge a una ritaratura futura. Provato per mutazione.
