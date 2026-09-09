@@ -32,6 +32,12 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 > 09/09/2026: +21 test (16 sui documenti legali, 12 sulle purge, meno quelli
 > ricontati), +5 funzioni di retention eseguite davvero, +1 migration.
 
+> **Lavoro ordinario dopo la certificazione** (non rientra nel perimetro d'audit,
+> vale la regola «quando tocchi un file, lo copri»):
+> - 09/09/2026, `5a88675` — l'indice di Salute della catena non divergeva piu' da
+>   quello del PV: +12 test di comportamento su `_salute_indici_batch` /
+>   `_completezza_dati_pv`, 4 mutanti uccisi. Suite **13.270 verdi, 44 skip**.
+
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
