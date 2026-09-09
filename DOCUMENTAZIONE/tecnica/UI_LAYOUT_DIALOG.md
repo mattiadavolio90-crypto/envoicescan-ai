@@ -373,8 +373,9 @@ sbagliato:
   fondo tinto in entrambi i temi
 - **colonna "Totale"**: fondo **riportato all'8%** e **bordo pieno** al posto di
   `border-sky-500/50`. Il fondo non era la leva giusta — anche al 16% la colonna
-  resta a 1,13:1 dalla card, mentre peggiora ogni testo che ci sta sopra. È il
-  **bordo** a delimitare una colonna, non il riempimento
+  resta a 1,18:1 dalla card in chiaro (1,26 in scuro), mentre peggiora ogni
+  testo che ci sta sopra. È il **bordo** a delimitare una colonna, non il
+  riempimento
 
 > **La regola generale:** su un fondo colorato, per evidenziare si cambia canale
 > (peso, bordo, icona), non saturazione. E ogni ritaratura di un fondo va
