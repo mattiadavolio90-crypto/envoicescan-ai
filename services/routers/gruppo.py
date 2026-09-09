@@ -330,7 +330,9 @@ def _build_briefing(
     costo personale. Senza, il margine è FINTO: non la usiamo per dire "va
     meglio/peggio" e la contiamo tra quelle da completare. Mai "tutto sotto
     controllo" se la salute è rossa o ci sono sedi incomplete. Fallback alla salute
-    per-PV (<50) se incompleti_ids non è disponibile."""
+    per-PV (rossa, sotto SALUTE_SOGLIA_GIALLO) se incompleti_ids non è disponibile."""
+    from services.daily_briefing_service import salute_e_rossa
+
     incompleti_ids = incompleti_ids or set()
     salute_by_id = {
         s.ristorante_id: s.indice
@@ -344,7 +346,7 @@ def _build_briefing(
         if incompleti_ids:
             return r.ristorante_id not in incompleti_ids
         ix = salute_by_id.get(r.ristorante_id)
-        return ix is None or ix >= 50
+        return ix is None or not salute_e_rossa(ix)
 
     completi = [r for r in ranking if _affidabile(r)]
     frasi: List[str] = []
@@ -382,11 +384,11 @@ def _build_briefing(
         frasi.append(f"{completi[0].nome} è al {completi[0].margine_perc:.0f}% di margine.")
 
     # Sedi con dati da completare: per PRESENZA di dati (costi mancanti). Fallback
-    # alla salute (<50) o, in ultima istanza, al solo fatturato.
+    # alla salute rossa (soglia del PV) o, in ultima istanza, al solo fatturato.
     if incompleti_ids:
         n_incompleti = len(incompleti_ids)
     elif salute_by_id:
-        n_incompleti = sum(1 for ix in salute_by_id.values() if ix < 50)
+        n_incompleti = sum(1 for ix in salute_by_id.values() if salute_e_rossa(ix))
     else:
         n_incompleti = sum(1 for r in ranking if r.dati_incompleti)
     if n_incompleti:
@@ -811,6 +813,21 @@ def _periodo_anno_corrente() -> tuple[int, str]:
     return oggi.year, f"Anno {oggi.year}"
 
 
+def _colore_salute_o_grigio(ix: Optional[int]) -> str:
+    """Colore dell'indice di Salute con le soglie del PV; None = "grigio" (non lo so).
+
+    Fino al 9/9/2026 gruppo_overview riscriveva 80/50 come letterali: le soglie
+    erano state consolidate in daily_briefing_service il 2/9 (erano gia' in due
+    punti del worker piu' un commento nel frontend) e questa era la terza copia,
+    rimasta fuori. I valori coincidevano, ma una soglia cambiata nel PV qui non
+    sarebbe stata seguita.
+    """
+    if ix is None:
+        return "grigio"
+    from services.daily_briefing_service import colore_salute
+    return colore_salute(ix)
+
+
 def _anno_mese_corrente() -> tuple[int, int]:
     """(anno, mese) correnti in fuso Europe/Rome. Serve a NON sommare i mesi
     futuri: margini_mensili può contenere righe di mesi non ancora trascorsi
@@ -916,6 +933,23 @@ _MESI_IT = [
 ]
 
 
+def _label_anno_parziale(anno: int, mese_corr: int) -> str:
+    """Etichetta della finestra "anno fino al mese corrente" della catena.
+
+    La catena somma da gennaio al mese CORRENTE, che e' parziale; il PV isola il
+    mese in corso e lo etichetta "· in corso". Con la sola scritta "Anno 2026" il
+    totale di gruppo si leggeva come un anno chiuso accanto a un PV che mostra un
+    mese (9/9/2026: 710.885 EUR contro 0 EUR, senza che nulla dicesse che i due
+    numeri non parlano dello stesso periodo). Qui l'etichetta dice sia l'arco sia
+    che l'ultimo mese non e' finito.
+    """
+    m = min(max(int(mese_corr), 1), 12)
+    nome = _MESI_IT[m - 1]
+    if m == 1:
+        return f"Anno {anno} · {nome} in corso"
+    return f"Anno {anno} · gen–{nome[:3]}, {nome} in corso"
+
+
 def _periodo_da_query(data_da: Optional[str], data_a: Optional[str]) -> tuple[str, str, str]:
     """Normalizza il periodo: default = anno corrente. Ritorna (da_iso, a_iso, label).
 
@@ -950,7 +984,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
 
     anno, mese_corr = _anno_mese_corrente()
-    periodo_label = f"Anno {anno}"
+    periodo_label = _label_anno_parziale(anno, mese_corr)
 
     # Righe margini_mensili dell'anno FINO AL MESE CORRENTE per le sedi del gruppo
     # (niente mesi futuri: sarebbero proiezioni/seed che gonfiano i totali). Da qui
@@ -1010,8 +1044,9 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # Cascata dati del gruppo (decisione 19/06): senza i costi di alcuni PV il MOL
     # aggregato e' falso. Stesso criterio del PV (presenza dati, non % salute):
     #  - nessun fatturato/F&B nel gruppo -> "nessuno" (niente numeri, completa i PV);
-    #  - F&B presenti ma qualche PV senza personale -> "food" (food cost/1° margine
-    #    si', MOL no: sarebbe gonfiato);
+    #  - F&B presenti ma qualche PV senza personale -> "food": il MOL e' gonfiato
+    #    e il client lo mostra in ambra con l'avviso accanto, mai come verdetto
+    #    (metricaPrincipaleConti, 9/9/2026);
     #  - tutti i PV con fatturato + F&B + personale -> "completo" (MOL affidabile).
     # RPC salute componenti UNA volta sola: la condividono completezza e indici.
     salute_rows = _salute_componenti_raw(sb, ids)
@@ -1097,15 +1132,6 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
 
     # Salute del gruppo = MEDIA SEMPLICE degli indici di salute dei PV. Esponiamo
     # anche il dettaglio per-PV (le "voci" della card salute gruppo).
-    def _colore_salute(ix: Optional[int]) -> str:
-        if ix is None:
-            return "grigio"
-        if ix >= 80:
-            return "verde"
-        if ix >= 50:
-            return "giallo"
-        return "rosso"
-
     # None = la RPC delle componenti non ha risposto. Prima tornava [] e ogni sede
     # finiva a 0 -> catena tutta ROSSA per un errore di lettura, con la card che
     # affermava un dato che non aveva. Ora l'incertezza arriva al client come
@@ -1123,14 +1149,14 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     else:
         indici = list(indici_map.values())
         salute_indice = round(sum(indici) / len(indici)) if indici else 0
-        salute_colore = _colore_salute(salute_indice)
+        salute_colore = _colore_salute_o_grigio(salute_indice)
         # Dettaglio per-PV, dal più debole (serve attenzione) al più sano.
         salute_pv = [
             SalutePV(
                 ristorante_id=rid,
                 nome=rid_to_nome[rid],
                 indice=indici_map[rid],
-                colore=_colore_salute(indici_map[rid]),
+                colore=_colore_salute_o_grigio(indici_map[rid]),
             )
             for rid in ids
         ]
@@ -1337,7 +1363,8 @@ def gruppo_margini_coperti(
     anno, mese_corr = _anno_mese_corrente()
     mese_sel = mese if (mese and 1 <= mese <= 12) else None
     periodo_label = (
-        f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}" if mese_sel else f"Anno {anno}"
+        f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}" if mese_sel
+        else _label_anno_parziale(anno, mese_corr)
     )
 
     # margini_mensili: ricavi + costi MANUALI + quote riparto + coperti (già
@@ -1502,7 +1529,8 @@ def gruppo_spreco_categorie(
     anno, mese_corr = _anno_mese_corrente()
     mese_sel = mese if (mese and 1 <= mese <= 12) else None
     periodo_label = (
-        f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}" if mese_sel else f"Anno {anno}"
+        f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}" if mese_sel
+        else _label_anno_parziale(anno, mese_corr)
     )
     fw = _fw()
 
@@ -2593,7 +2621,7 @@ def gruppo_tag_analisi(
     else:
         da = f"{anno}-01-01"
         a = f"{anno}-{mese_corr:02d}-{_cal.monthrange(anno, mese_corr)[1]:02d}"
-        periodo_label = f"Anno {anno}"
+        periodo_label = _label_anno_parziale(anno, mese_corr)
 
     per_pv: List[TagAnalisiPV] = []
     fornitori: List[TagFornitore] = []

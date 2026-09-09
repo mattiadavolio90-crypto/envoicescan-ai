@@ -43,57 +43,15 @@ import { UploadModal } from "@/app/(app)/analisi-fatture/upload-modal";
 import { CardSegnali } from "./card-segnali";
 import { TagCatenaDialog } from "./gruppo-tag-section";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
+import { SALUTE_TINT } from "@/lib/salute-tint";
 
 function pct(n: number | null): string {
   return n == null ? "—" : formatPct(n);
 }
 
-// Palette per stato salute/colore — stessa famiglia visiva della Home PV
-// (gradiente + orb + ring), token a tema → dark/light-safe.
-const TINT = {
-  verde: {
-    ring: "text-emerald-500",
-    text: "text-emerald-600 dark:text-emerald-500",
-    badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
-    card: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.03] to-background",
-    orb1: "bg-emerald-400/15",
-    orb2: "bg-emerald-400/8",
-    dot: "bg-emerald-500",
-    label: "In salute",
-  },
-  giallo: {
-    ring: "text-amber-500",
-    text: "text-amber-600 dark:text-amber-500",
-    badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
-    card: "bg-gradient-to-br from-amber-500/10 via-amber-500/[0.03] to-background",
-    orb1: "bg-amber-400/15",
-    orb2: "bg-amber-400/8",
-    dot: "bg-amber-500",
-    label: "Da completare",
-  },
-  rosso: {
-    ring: "text-rose-500",
-    text: "text-rose-600 dark:text-rose-500",
-    badge: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400",
-    card: "bg-gradient-to-br from-rose-500/10 via-rose-500/[0.03] to-background",
-    orb1: "bg-rose-400/15",
-    orb2: "bg-rose-400/8",
-    dot: "bg-rose-500",
-    label: "Dati incompleti",
-  },
-  grigio: {
-    ring: "text-muted-foreground/40",
-    text: "text-muted-foreground",
-    badge: "bg-muted text-muted-foreground",
-    card: "bg-card",
-    orb1: "bg-transparent",
-    orb2: "bg-transparent",
-    dot: "bg-muted-foreground/40",
-    // "Non lo so", non "i dati mancano": il grigio ora copre anche il caso in cui
-    // la lettura e' fallita, dove non sappiamo nemmeno se i dati ci siano.
-    label: "Dato non disponibile",
-  },
-} as const;
+// Palette per stato salute/colore: la STESSA della Home PV (lib/salute-tint),
+// non una copia — le due erano già divergenti sul tema scuro (9/9/2026).
+const TINT = SALUTE_TINT;
 
 type ColoreTint = keyof typeof TINT;
 
@@ -392,10 +350,16 @@ function AnelloSalute({ indice, colore }: { indice: number | null; colore: Color
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn("text-3xl font-bold tabular-nums", tint.text)}>{indice ?? "—"}</span>
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
-          {indice != null ? "su 100" : "non disponibile"}
+        {/* Stessa unità della card Salute del PV ("78%"): era "78 su 100" qui e
+            "78/100" sul mobile — tre letture per lo stesso numero (9/9/2026). */}
+        <span className={cn("text-3xl font-bold tabular-nums", tint.text)}>
+          {indice != null ? `${indice}%` : "—"}
         </span>
+        {indice == null && (
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+            non disponibile
+          </span>
+        )}
       </div>
     </div>
   );

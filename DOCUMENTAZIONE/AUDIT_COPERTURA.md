@@ -162,6 +162,58 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   possibile: MCP Supabase senza permesso. Resta da fare prima del push.
 >   Suite **13.346 verdi, 44 skip** (ri-misurata dal reviewer dalla root: la
 >   cifra 13.337 del commit era gia' superata da due commit docs altrui).
+>
+> - **09/09/2026 — Fase 6: periodo dichiarato, soglie condivise, misure su
+>   OFFSIDE.** Tre cose piccole e una misura. (6a) La catena somma da gennaio
+>   al mese CORRENTE, parziale, e lo etichettava "Anno 2026": accanto a un PV
+>   che mostra un mese ("agosto", 0 EUR) il totale di gruppo (710.885 EUR) si
+>   leggeva come un anno chiuso. Ora `_label_anno_parziale` scrive "Anno 2026 ·
+>   gen–set, settembre in corso", nell'overview E nei tre endpoint che usano la
+>   stessa finestra (dialog Margini e Coperti, Spesa per PV, analisi tag — il
+>   quarto non era nel piano: trovato cercando chi altro scriveva "Anno"):
+>   correggere solo l'overview li avrebbe lasciati a dire "Anno 2026" nel
+>   titolo e nel nome del file esportato. La finestra NON cambia:
+>   portarla al mese come il PV e' una decisione di prodotto, non un fix.
+>   (6b) Le soglie 80/50 dell'indice di Salute erano in `daily_briefing_service`
+>   dal 2/9 e `gruppo.py` le riscriveva come letterali in TRE punti (colore del
+>   gruppo e dei PV; ripiego "salute rossa = da completare" in `_build_briefing`,
+>   due volte): ora `_colore_salute_o_grigio` e `salute_e_rossa` importati. Il
+>   test che mancava: si cambia `SALUTE_SOGLIA_VERDE` e la catena deve seguire
+>   — prima restava verde. (6d) L'indice aveva tre unita' per lo stesso numero
+>   ("78%" nel PV, "78 su 100" in catena, "78/100" su `/m`): ora "%" ovunque.
+>   La palette della Salute era in due copie (`COLORI` nel PV, `TINT` in catena)
+>   e gia' divergenti: il PV non aveva le varianti dark del testo. Una sola in
+>   `lib/salute-tint.ts`, importata da entrambe; il PV guadagna il tema scuro.
+>   Corretto anche il commento della cascata in `gruppo.py` che diceva ancora
+>   "MOL no" (falso dalla Fase 5). NON allineati i nomi delle voci ("Fatture
+>   caricate" nel PV vs "le fatture costo" in catena): in catena sono oggetti di
+>   una frase ("Mancano ... — vai a completare"), non etichette; e non tolto il
+>   "dati incompleti" ripetuto in tre punti della schermata catena: sono tre
+>   superfici con tre ruoli (verdetto, qualifica del numero, elenco azionabile)
+>   e togliere il caveat accanto al numero sarebbe il bug della Fase 5 daccapo.
+>   **Le due misure di 6c, ESEGUITE su GRUPPO OFFSIDE** (2 PV, 2026, sola
+>   lettura, coi percorsi veri: `_kpi_periodo` del PV e `_aggrega_sedi_mensili`
+>   della catena, stesso mese): (1) food cost per sede-mese identico nelle due
+>   viste su 18 sede-mesi, base NETTO in entrambe (gen: OFFSIDE 44,6%, OVERTIME
+>   28,2%; gruppo 39,1% = 32.657,92/83.522,86); (2) Σ MOL dei PV = MOL del
+>   gruppo su tutti e 9 i mesi, scarto massimo 0,01 EUR di arrotondamento
+>   (gen −9.552,46; ago −25.429,63; set −11.666,61). In piu' le due RPC costi
+>   (`costi_automatici_mensili` del PV e `..._gruppo` della catena) danno lo
+>   stesso F&B e le stesse spese al centesimo su ogni sede-mese. Nessuna
+>   divergenza: nessuno stop. Un dato che spiega gli screenshot, non un bug:
+>   agosto e settembre hanno costi ma ZERO ricavi inseriti in entrambe le
+>   sedi, quindi il PV mostra agosto a 0 EUR con MOL −14.589,54 e l'anno di
+>   gruppo (MOL 93.508,43) porta dentro due mesi in perdita per assenza di
+>   fatturato — e' il caso "personale/ricavi a 0 sui mesi recenti" gia' in
+>   memoria, e l'etichetta nuova lo dice.
+>   +23 test (13 backend, 10 frontend), **10 mutanti su 10** (etichetta nel
+>   helper e nei quattro endpoint, soglie nei tre punti, palette senza dark e
+>   senza grigio), `tsc --noEmit` pulito, OpenAPI senza drift. NON fatta la
+>   prova visiva nel browser: dichiarato.
+>   Suite **13.306 verdi, 44 skip** da `tests/` senza `test_documentazione_onesta`
+>   (girata a parte dopo il verbale: 53 verdi), cioe' **13.359**; l'ultima
+>   modifica (l'endpoint tag) e' coperta dai 176 test mirati e da una seconda
+>   corsa piena lanciata insieme alla review.
 
 ---
 

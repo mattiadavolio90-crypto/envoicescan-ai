@@ -3,38 +3,11 @@ import { Check, ArrowRight } from "lucide-react";
 import { type Salute } from "@/lib/home";
 import { offsetAnello } from "@/lib/catena-confronti";
 import { cn } from "@/lib/utils";
+import { SALUTE_TINT } from "@/lib/salute-tint";
 
 // Palette per i 3 stati dell'indice. Verde >=80, Giallo 50-79, Rosso <50
 // (soglie decise lato backend, qui solo i colori).
-const COLORI = {
-  verde: {
-    ring: "text-emerald-500",
-    text: "text-emerald-600",
-    badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
-    label: "In salute",
-    card: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.03] to-background",
-    orb1: "bg-emerald-400/15",
-    orb2: "bg-emerald-400/8",
-  },
-  giallo: {
-    ring: "text-amber-500",
-    text: "text-amber-600",
-    badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
-    label: "Da completare",
-    card: "bg-gradient-to-br from-amber-500/10 via-amber-500/[0.03] to-background",
-    orb1: "bg-amber-400/15",
-    orb2: "bg-amber-400/8",
-  },
-  rosso: {
-    ring: "text-rose-500",
-    text: "text-rose-600",
-    badge: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400",
-    label: "Dati incompleti",
-    card: "bg-gradient-to-br from-rose-500/10 via-rose-500/[0.03] to-background",
-    orb1: "bg-rose-400/15",
-    orb2: "bg-rose-400/8",
-  },
-} as const;
+const COLORI = SALUTE_TINT;
 
 function Anello({ indice, colore }: { indice: number; colore: Salute["colore"] }) {
   const r = 52;

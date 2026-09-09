@@ -229,7 +229,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
         <div className="mb-2 flex items-baseline justify-between">
           <span className="text-sm font-semibold">Salute del gruppo</span>
           <span className={cn("text-sm font-bold tabular-nums", TXT[overview.salute_colore])}>
-            {overview.salute_indice != null ? `${overview.salute_indice}/100` : "—"}
+            {overview.salute_indice != null ? `${overview.salute_indice}%` : "—"}
           </span>
         </div>
         <ul className="space-y-1">
