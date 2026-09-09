@@ -400,8 +400,6 @@ def test_calcolo_degradato_non_finisce_nella_cache_del_giorno(monkeypatch):
     assert scritture == [], "un calcolo degradato non va cristallizzato per 24h"
     # L'avviso arriva comunque al cliente: non salvarlo != non dirlo.
     assert len(resp.segnali) == 1
-    # Il marker interno non esce nel payload pubblico.
-    assert not hasattr(resp.segnali[0], "_degradato")
 
 
 def test_calcolo_sano_finisce_in_cache(monkeypatch):
@@ -439,3 +437,57 @@ def test_calcolo_sano_finisce_in_cache(monkeypatch):
     gruppo.gruppo_segnali(authorization="Bearer t")
 
     assert len(scritture) == 1
+    # Il marker interno non finisce nello SNAPSHOT, che e' JSON grezzo e resta in
+    # DB fino a mezzanotte. Si guarda il dict scritto, non il modello di
+    # risposta: su un BaseModel `hasattr(resp, "_degradato")` e' falso comunque
+    # (Pydantic non crea attributi per campi sconosciuti), quindi quell'assert
+    # sopravviveva alla rimozione del `pop` — non misurava niente.
+    assert "_degradato" not in scritture[0]["snapshot"]["segnali"][0]
+
+
+def test_il_marker_viene_tolto_da_tutti_i_segnali_non_solo_dal_primo(monkeypatch):
+    """Nota 2 della review: `any(s.pop(...) for s in segnali)` cortocircuita al
+    primo True e lascia il marker negli elementi successivi.
+
+    Oggi un solo punto lo emette, quindi il difetto non e' visibile in
+    produzione; ma la lista viene serializzata in due posti e la riga si legge
+    come se ripulisse tutto. Qui si presidia il contratto, non il caso di oggi.
+
+    NB: il presidio sta sulla LISTA, non sul modello di risposta: su un
+    BaseModel `hasattr(resp, "_degradato")` e' falso comunque (Pydantic non crea
+    attributi per campi sconosciuti), quindi un assert li' sopravviverebbe alla
+    mutazione — e' il primo assert che avevo scritto, tolto perche' non misurava
+    niente.
+    """
+    segnali = [
+        {"tipo": "dati_mancanti", "severity": "warning", "ristorante_id": "",
+         "pv_nome": "Catena", "testo": "primo", "cta_page": "/catena",
+         "_degradato": True},
+        {"tipo": "dati_mancanti", "severity": "warning", "ristorante_id": "",
+         "pv_nome": "Catena", "testo": "secondo", "cta_page": "/catena",
+         "_degradato": True},
+    ]
+
+    class _Sb:
+        def table(self, nome):
+            class _T:
+                def upsert(self, payload, **k): return self
+                def select(self, *a, **k): return self
+                def eq(self, *a, **k): return self
+                def limit(self, *a, **k): return self
+                def execute(self): return type("R", (), {"data": []})()
+
+            return _T()
+
+    monkeypatch.setattr(
+        gruppo, "_resolve_gruppo",
+        lambda auth: (_Sb(), "u1", [{"id": RID}], "Gruppo", {RID: "Sede 1"}, [RID]),
+    )
+    monkeypatch.setattr(gruppo, "_get_gruppo_config", lambda sb, uid: (set(), set()))
+    monkeypatch.setattr(gruppo, "_calcola_segnali", lambda *a, **k: segnali)
+
+    gruppo.gruppo_segnali(authorization="Bearer t")
+
+    assert all("_degradato" not in s for s in segnali), (
+        "il marker deve sparire da TUTTI gli elementi, non solo dal primo"
+    )

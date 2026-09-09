@@ -48,7 +48,7 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   (2 account, 28/6 → 9/9) c'era almeno un segnale, da 4 a 28, mai zero — quindi
 >   non "ogni tanto": **ogni giornata con dati, la prima apertura della pagina
 >   mentiva**, fino al primo calcolo dei segnali (fra le 07:31 e le 16:21).
->   Suite **13.294 verdi, 44 skip**.
+>   Suite **13.295 verdi, 44 skip**.
 
 ---
 

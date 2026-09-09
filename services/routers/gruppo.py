@@ -2221,7 +2221,15 @@ def gruppo_segnali(
     # `dati_mancanti` per-PV, che sui dati veri sono 2-3 al giorno su ogni
     # snapshot — avvisi reali, sostituiti da "riprova più tardi". Senza scrittura
     # la richiesta successiva ricalcola e trova i segnali veri.
-    degradato = any(s.pop("_degradato", False) for s in segnali)
+    # `pop` e non `get`: il marker e' un dettaglio interno di _calcola_segnali e
+    # non deve sopravvivere nella lista. Oggi le due forme sarebbero equivalenti
+    # (quando il marker c'e' la cache non si scrive, e Segnale() ignora i campi
+    # sconosciuti), ma la lista viene serializzata in DUE punti e basta che un
+    # domani un secondo segnale porti il marker perche' la differenza conti.
+    # Si ripuliscono TUTTI gli elementi: `any()` su un generatore di `pop`
+    # cortocircuiterebbe al primo True, lasciando sporchi i successivi.
+    marcati = [bool(s.pop("_degradato", False)) for s in segnali]
+    degradato = any(marcati)
 
     # Salva lo snapshot di oggi (best-effort: un errore di scrittura non deve far
     # fallire la lettura dei segnali appena calcolati).
