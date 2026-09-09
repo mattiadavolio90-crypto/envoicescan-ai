@@ -260,19 +260,32 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
               const Icon = ICONA[s.tipo] ?? AlertTriangle;
               return (
                 <li key={`${s.tipo}-${s.ristorante_id}-${i}`}>
-                  <button
-                    type="button"
-                    disabled={switching}
-                    onClick={() => drill(s.ristorante_id)}
-                    className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left active:bg-accent disabled:opacity-50"
-                  >
-                    <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-xs font-semibold text-muted-foreground">{s.pv_nome}</span>
-                      <span className="block text-sm">{s.testo}</span>
-                    </span>
-                    <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary" />
-                  </button>
+                  {/* Senza ristorante_id il segnale non porta da nessuna parte
+                      (es. "non e' stato possibile controllare"): toccarlo
+                      cambierebbe sede al cliente. Riga non cliccabile. */}
+                  {s.ristorante_id ? (
+                    <button
+                      type="button"
+                      disabled={switching}
+                      onClick={() => drill(s.ristorante_id)}
+                      className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left active:bg-accent disabled:opacity-50"
+                    >
+                      <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-semibold text-muted-foreground">{s.pv_nome}</span>
+                        <span className="block text-sm">{s.testo}</span>
+                      </span>
+                      <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary" />
+                    </button>
+                  ) : (
+                    <div className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left">
+                      <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-semibold text-muted-foreground">{s.pv_nome}</span>
+                        <span className="block text-sm">{s.testo}</span>
+                      </span>
+                    </div>
+                  )}
                 </li>
               );
             })}

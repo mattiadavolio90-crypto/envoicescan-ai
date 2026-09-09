@@ -1941,13 +1941,21 @@ def _calcola_segnali(
             # cio' che il commento di card-segnali.tsx dichiara di voler impedire.
             # Si emette un segnale che DICE di non sapere, invece di tacere.
             logger.warning("catena: segnale dati_mancanti non calcolabile: %s", exc)
+            # ristorante_id VUOTO di proposito: questo segnale non e' una
+            # destinazione. Con `ids[0]` il bottone "Vedi PV" avrebbe COMMUTATO la
+            # sede attiva del cliente (cookie + preferenza, effetto persistente)
+            # su un PV arbitrario, per un avviso che dice solo "riprova". Il
+            # client non rende il bottone quando l'id e' vuoto.
             segnali.append({
                 "tipo": "dati_mancanti",
                 "severity": "warning",
-                "ristorante_id": ids[0] if ids else "",
+                "ristorante_id": "",
                 "pv_nome": "Catena",
                 "testo": "Non è stato possibile controllare i dati dei punti vendita — riprova più tardi",
                 "cta_page": "/catena",
+                # Marca il calcolo come DEGRADATO: chi lo riceve non deve
+                # metterlo in cache per la giornata (vedi gruppo_segnali).
+                "_degradato": True,
             })
 
     # ── Segnale 1: margine in calo (per PV vs se stesso) ──
@@ -2208,17 +2216,25 @@ def gruppo_segnali(
     segnali = _calcola_segnali(sb, ids, rid_to_nome, seg_off, pv_excl, user_id)
     generated_at = _dt.now(_tz.utc).isoformat()
 
+    # Un calcolo DEGRADATO non entra in cache (9/9/2026). La cache dura fino a
+    # mezzanotte: un blip di due secondi della RPC avrebbe cancellato per 24 ore i
+    # `dati_mancanti` per-PV, che sui dati veri sono 2-3 al giorno su ogni
+    # snapshot — avvisi reali, sostituiti da "riprova più tardi". Senza scrittura
+    # la richiesta successiva ricalcola e trova i segnali veri.
+    degradato = any(s.pop("_degradato", False) for s in segnali)
+
     # Salva lo snapshot di oggi (best-effort: un errore di scrittura non deve far
     # fallire la lettura dei segnali appena calcolati).
-    try:
-        sb.table("gruppo_segnali_state").upsert({
-            "user_id": user_id,
-            "generated_for_date": today_iso,
-            "snapshot": {"segnali": segnali, "generated_at": generated_at},
-            "updated_at": generated_at,
-        }, on_conflict="user_id,generated_for_date").execute()
-    except Exception:
-        pass
+    if not degradato:
+        try:
+            sb.table("gruppo_segnali_state").upsert({
+                "user_id": user_id,
+                "generated_for_date": today_iso,
+                "snapshot": {"segnali": segnali, "generated_at": generated_at},
+                "updated_at": generated_at,
+            }, on_conflict="user_id,generated_for_date").execute()
+        except Exception:
+            pass
 
     return SegnaliResponse(
         nome_gruppo=nome_gruppo,

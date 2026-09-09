@@ -40,10 +40,15 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 > - 09/09/2026 — in catena un errore non diventa piu' "tutto a posto": 7 punti
 >   dove un `except` produceva il valore che significa "va bene" (compreso il
 >   gate `tutto_ok`, acceso ogni mattina dalla cache segnali non ancora
->   generata). +15 test di comportamento, 9 mutanti uccisi — uno **sopravvissuto
->   al primo giro**: il presidio guardava l'helper mentre la riga mutata stava
->   nell'endpoint, e il test e' stato riscritto per chiamare `gruppo_overview`.
->   Suite **13.287 verdi, 44 skip**.
+>   generata). +22 test di comportamento, 13 mutanti uccisi — tre
+>   **sopravvissuti al primo giro**, tutti per la stessa ragione: il presidio
+>   guardava un helper mentre la riga mutata stava dentro l'endpoint. Riscritti
+>   chiamando `gruppo_overview` / `gruppo_margini_coperti` /
+>   `gruppo_spreco_categorie`. Misurato sul DB: su **34 snapshot su 34**
+>   (2 account, 28/6 → 9/9) c'era almeno un segnale, da 4 a 28, mai zero — quindi
+>   non "ogni tanto": **ogni giornata con dati, la prima apertura della pagina
+>   mentiva**, fino al primo calcolo dei segnali (fra le 07:31 e le 16:21).
+>   Suite **13.294 verdi, 44 skip**.
 
 ---
 

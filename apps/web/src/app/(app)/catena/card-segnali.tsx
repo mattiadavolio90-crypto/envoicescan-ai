@@ -91,15 +91,20 @@ export function CardSegnali({
                   <div className="text-xs font-semibold text-muted-foreground">{s.pv_nome}</div>
                   <div className="text-sm">{s.testo}</div>
                 </div>
-                <button
-                  type="button"
-                  disabled={switching}
-                  onClick={() => vaiAlPV(s.ristorante_id, s.cta_page)}
-                  className="inline-flex shrink-0 items-center gap-1 self-center rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent disabled:opacity-50"
-                >
-                  Vedi PV
-                  <ArrowRight className="size-3.5" />
-                </button>
+                {/* Senza ristorante_id il segnale NON e' una destinazione (es.
+                    l'avviso "non e' stato possibile controllare"): il bottone
+                    commuterebbe la sede attiva su un PV arbitrario. */}
+                {s.ristorante_id ? (
+                  <button
+                    type="button"
+                    disabled={switching}
+                    onClick={() => vaiAlPV(s.ristorante_id, s.cta_page)}
+                    className="inline-flex shrink-0 items-center gap-1 self-center rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent disabled:opacity-50"
+                  >
+                    Vedi PV
+                    <ArrowRight className="size-3.5" />
+                  </button>
+                ) : null}
               </li>
             );
           })}

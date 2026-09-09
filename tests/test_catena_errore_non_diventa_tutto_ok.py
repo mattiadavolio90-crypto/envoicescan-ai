@@ -269,3 +269,173 @@ def test_overview_completezza_ignota_non_certifica_i_margini():
     assert resp.kpi.pv_da_completare is None, "zero direbbe 'nessuno da completare'"
     assert resp.ranking[0].dati_incompleti is True
     assert resp.ranking[0].margine_perc is None
+
+
+# ── I due dialog: correzione scritta ma NON presidiata ───────────────────────
+#
+# I punti 2b/2c erano stati corretti senza test: rimettendo `set()` al posto di
+# `None`, l'intera suite restava verde (due mutanti sopravvissuti, trovati dal
+# code-reviewer). Qui si chiamano i due endpoint veri, come per l'overview: la
+# riga da presidiare vive nell'endpoint, non in un helper.
+
+def _dialog(fn, completezza, **kw):
+    """gruppo_margini_coperti / gruppo_spreco_categorie con la completezza
+    forzata. mese=6 perche' `costi_mese` (e quindi il ramo che ci interessa) si
+    attiva solo sul mese singolo, non sulla vista anno."""
+    sb = MagicMock()
+    q = MagicMock()
+    for m in ("select", "in_", "eq", "lte", "order", "limit"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=[RIGA_COMPLETA])
+    sb.table.return_value = q
+    rpc_res = MagicMock()
+    rpc_res.execute.return_value = MagicMock(data=[])
+    sb.rpc.return_value = rpc_res
+
+    with patch.object(gruppo, "_resolve_gruppo",
+                      return_value=(sb, "u1", [{"id": "a"}], "Gruppo",
+                                    {"a": "PV a"}, ["a"])), \
+         patch.object(gruppo, "_anno_mese_corrente", return_value=(2026, 6)), \
+         patch.object(gruppo, "_completezza_dati_pv", return_value=completezza), \
+         patch.object(gruppo, "_costi_mese_per_sede", return_value={"a": 4_000.0}), \
+         patch.object(gruppo, "_overrides_mese_sede", return_value={}), \
+         patch("services.margine_service.calcola_costi_automatici_gruppo_sql",
+               return_value={"a": ({6: 4_000.0}, {})}):
+        return fn(mese=6, authorization="Bearer t", **kw)
+
+
+def test_dialog_margini_completezza_nota_confronta_i_pv():
+    """Contro-prova: coi dati completi il confronto si fa."""
+    resp = _dialog(gruppo.gruppo_margini_coperti, {})
+
+    assert resp.righe[0].dati_incompleti is False
+    assert resp.righe[0].margine_perc is not None
+
+
+def test_dialog_margini_non_confronta_i_pv_se_la_completezza_e_ignota():
+    """2b: `incompleti_set = set()` su errore faceva entrare nel confronto dei PV
+    di cui non si sapeva se avessero i costi — presentati come affidabili."""
+    resp = _dialog(gruppo.gruppo_margini_coperti, None)
+
+    assert resp.righe[0].dati_incompleti is True
+    assert resp.righe[0].margine_perc is None
+
+
+def test_dialog_spreco_completezza_nota_non_marca_incompleto():
+    """Contro-prova per il secondo dialog."""
+    resp = _dialog(gruppo.gruppo_spreco_categorie, {})
+
+    assert resp.pv[0].dati_incompleti is False
+
+
+def test_dialog_spreco_marca_incompleto_se_la_completezza_e_ignota():
+    """2c: stesso difetto di 2b nella finestra Spreco per categoria."""
+    resp = _dialog(gruppo.gruppo_spreco_categorie, None)
+
+    assert resp.pv[0].dati_incompleti is True
+
+
+# ── I due rilievi della review sul segnale d'errore ──────────────────────────
+
+def _segnali_degradati(monkeypatch):
+    monkeypatch.setattr(
+        gruppo, "_completezza_dati_pv",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("giu'")),
+    )
+    monkeypatch.setattr(gruppo, "_costi_mese_per_sede", lambda *a, **k: None)
+    return gruppo._calcola_segnali(
+        None, [RID, RID2], {RID: "Sede 1", RID2: "Sede 2"},
+        segnali_off={"margine_calo", "prezzi_sopra", "ricavi_mancanti"},
+        user_id="u1",
+    )
+
+
+def test_segnale_di_errore_non_porta_a_un_pv_arbitrario(monkeypatch):
+    """Con `ids[0]` il bottone "Vedi PV" COMMUTAVA la sede attiva del cliente
+    (cookie + preferenza, effetto persistente) su un punto vendita scelto a caso,
+    per un avviso che dice solo "riprova più tardi". L'id vuoto e' il segnale al
+    client di non rendere il bottone."""
+    seg = _segnali_degradati(monkeypatch)
+
+    assert seg[0]["ristorante_id"] == ""
+
+
+def test_calcolo_degradato_non_finisce_nella_cache_del_giorno(monkeypatch):
+    """La cache dei segnali vive fino a mezzanotte: salvare un calcolo degradato
+    avrebbe cancellato per 24 ore i `dati_mancanti` veri (2-3 al giorno su ogni
+    snapshot in produzione), sostituiti da "riprova più tardi"."""
+    scritture = []
+
+    class _Sb:
+        def table(self, nome):
+            sb_self = self
+
+            class _T:
+                def upsert(self, payload, **k):
+                    scritture.append(payload)
+                    return self
+
+                def select(self, *a, **k): return self
+                def eq(self, *a, **k): return self
+                def limit(self, *a, **k): return self
+                def execute(self): return type("R", (), {"data": []})()
+
+            return _T()
+
+    monkeypatch.setattr(
+        gruppo, "_resolve_gruppo",
+        lambda auth: (_Sb(), "u1", [{"id": RID}], "Gruppo", {RID: "Sede 1"}, [RID]),
+    )
+    monkeypatch.setattr(gruppo, "_get_gruppo_config", lambda sb, uid: (set(), set()))
+    monkeypatch.setattr(
+        gruppo, "_calcola_segnali",
+        lambda *a, **k: [{
+            "tipo": "dati_mancanti", "severity": "warning", "ristorante_id": "",
+            "pv_nome": "Catena", "testo": "Non è stato possibile controllare",
+            "cta_page": "/catena", "_degradato": True,
+        }],
+    )
+    resp = gruppo.gruppo_segnali(authorization="Bearer t")
+
+    assert scritture == [], "un calcolo degradato non va cristallizzato per 24h"
+    # L'avviso arriva comunque al cliente: non salvarlo != non dirlo.
+    assert len(resp.segnali) == 1
+    # Il marker interno non esce nel payload pubblico.
+    assert not hasattr(resp.segnali[0], "_degradato")
+
+
+def test_calcolo_sano_finisce_in_cache(monkeypatch):
+    """Contro-prova: senza degrado la cache si scrive come sempre — altrimenti il
+    fix avrebbe spento la cache per tutti."""
+    scritture = []
+
+    class _Sb:
+        def table(self, nome):
+            class _T:
+                def upsert(self, payload, **k):
+                    scritture.append(payload)
+                    return self
+
+                def select(self, *a, **k): return self
+                def eq(self, *a, **k): return self
+                def limit(self, *a, **k): return self
+                def execute(self): return type("R", (), {"data": []})()
+
+            return _T()
+
+    monkeypatch.setattr(
+        gruppo, "_resolve_gruppo",
+        lambda auth: (_Sb(), "u1", [{"id": RID}], "Gruppo", {RID: "Sede 1"}, [RID]),
+    )
+    monkeypatch.setattr(gruppo, "_get_gruppo_config", lambda sb, uid: (set(), set()))
+    monkeypatch.setattr(
+        gruppo, "_calcola_segnali",
+        lambda *a, **k: [{
+            "tipo": "dati_mancanti", "severity": "warning", "ristorante_id": RID,
+            "pv_nome": "Sede 1", "testo": "Mancano le fatture costo",
+            "cta_page": "/dashboard",
+        }],
+    )
+    gruppo.gruppo_segnali(authorization="Bearer t")
+
+    assert len(scritture) == 1

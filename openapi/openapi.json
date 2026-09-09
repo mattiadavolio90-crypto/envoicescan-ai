@@ -21334,12 +21334,18 @@
           "livello_dati": {
             "type": "string",
             "title": "Livello Dati",
-            "default": "completo"
+            "default": "non_determinabile"
           },
           "pv_da_completare": {
-            "type": "integer",
-            "title": "Pv Da Completare",
-            "default": 0
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pv Da Completare"
           }
         },
         "type": "object",
@@ -21386,7 +21392,14 @@
             "title": "Mol Mensile Anno"
           },
           "salute_indice": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Salute Indice"
           },
           "salute_colore": {
@@ -21417,7 +21430,6 @@
           "kpi",
           "mol_mensile",
           "mol_mensile_anno",
-          "salute_indice",
           "salute_colore",
           "salute_pv",
           "ranking"
@@ -24851,7 +24863,14 @@
             "title": "Nome"
           },
           "indice": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Indice"
           },
           "colore": {
@@ -24863,7 +24882,6 @@
         "required": [
           "ristorante_id",
           "nome",
-          "indice",
           "colore"
         ],
         "title": "SalutePV"
