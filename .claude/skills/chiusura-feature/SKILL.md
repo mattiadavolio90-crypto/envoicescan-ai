@@ -78,7 +78,7 @@ Nel file di stato (`DOCUMENTAZIONE/AUDIT_ONEFLUX_STATO_<ciclo>.md`):
 
 ### 5. Il contatore, ri-misurato — e `check_documentazione.py` pulito
 
-`DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md`: aggiorna il punto chiuso e **ri-misura**
+`DOCUMENTAZIONE/AUDIT_COPERTURA.md`: aggiorna il punto chiuso e **ri-misura**
 coi comandi che il file porta con sé (`coverage`, non «righe lette»). Il contatore
 per righe dei cicli 07/08/09 è archiviato in `docs/storico/audit-2026-09/`: non
 ri-aprirlo — misurava quante righe qualcuno aveva letto, non se il codice funziona.

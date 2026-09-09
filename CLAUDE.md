@@ -95,7 +95,7 @@ sull'esecuzione. Dettaglio: `WORKFLOW.md` §4.
 
 **Una cosa alla volta, chiusa davvero.** Non si apre una dimensione nuova finché
 la precedente non è provata per mutazione, **committata**, con verbale, contatore
-`DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` aggiornato e `check_documentazione.py` pulito — niente piani
+`DOCUMENTAZIONE/AUDIT_COPERTURA.md` aggiornato e `check_documentazione.py` pulito — niente piani
 a metà in `docs/piani/`. Dettaglio: `WORKFLOW.md` §5.
 
 ---

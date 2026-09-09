@@ -187,7 +187,7 @@ Niente strascichi, niente «lo finiamo dopo».
 3. **Verbale** nello STORICO del ciclo, con la data. **Tetto 40 righe.**
 4. **Stato del ciclo aggiornato**: la dimensione si sposta in «cosa è chiuso», e
    **ogni voce del tuo "non fatto" entra nei residui aperti**.
-5. **`DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` ri-misurato** (non copiato) e
+5. **`DOCUMENTAZIONE/AUDIT_COPERTURA.md` ri-misurato** (non copiato) e
    `python scripts/check_documentazione.py` pulito.
 
 **Eseguili con `/chiusura-feature`**, che li fa tutti e cinque in ordine. Un lavoro
@@ -208,7 +208,7 @@ elencate col motivo. Nessuna deviazione → dichiararlo, non darlo per scontato.
 ## 6. Come si conduce un ciclo di audit
 
 Il **metodo** vive qui; lo **stato di un ciclo** vive nel suo documento (oggi
-`DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md`). Non duplicare: una regola scritta
+`DOCUMENTAZIONE/AUDIT_COPERTURA.md`). Non duplicare: una regola scritta
 solo nel documento di stato sparisce quando il ciclo viene archiviato.
 
 Il documento di stato è in **due file**: quello principale dice *cosa manca* e

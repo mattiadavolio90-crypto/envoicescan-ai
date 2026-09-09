@@ -270,7 +270,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | Documento | Quando aprirlo |
 |---|---|
 | `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert — primo posto dove guardare |
-| `DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` | **L'unico documento di audit vivo** (dal 07/09/2026): cosa non e' mai stato guardato e perche' proprio quello. I quattro doc dei cicli 07/08/09 sono archiviati in `docs/storico/audit-2026-09/` e `docs/storico/` |
+| `DOCUMENTAZIONE/AUDIT_COPERTURA.md` | **Il certificato dei tre cicli di audit** (dal 09/09/2026, commit `13d188e`): cosa e' stato coperto, con quale metro, e la procedura per ripartire **dal diff** invece che da capo. Tracciato da git di proposito. I verbali dei cicli 07/08/09 sono archiviati in `docs/storico/` e `docs/storico/audit-2026-09/` |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non aveva test che eseguono codice, cosa e' costato, le opzioni. **Chiuso il 29/8/2026** (opzione A) |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9_PROMPT.md` | Il prompt di quella sessione, archiviato |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08.md` | Indice del ciclo 2026-08, **chiuso il 29/8/2026**: 7 fasi + le 8 decisioni aperte, tutte risolte |

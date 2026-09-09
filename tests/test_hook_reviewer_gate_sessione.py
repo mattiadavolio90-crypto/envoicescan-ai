@@ -336,7 +336,7 @@ def test_payload_json_valido_ma_non_oggetto_non_fa_crashare(tmp_path, payload):
 # sessione. Questi test costruiscono il caso vero: molto codice e il doc fermo,
 # oppure il doc toccato dopo l'avvio.
 
-DOC_STATO = "DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md"
+DOC_STATO = "DOCUMENTAZIONE/AUDIT_COPERTURA.md"
 
 
 def _avviso_stato(uscita: str) -> str | None:
