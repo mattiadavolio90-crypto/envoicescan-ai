@@ -148,6 +148,20 @@ un solo errore nei log.
 
 ## Cosa resta aperto — richiede l'owner, non il codice
 
+> **0. La migration non e' applicata al DB live.** Verificato su `pg_proc` il
+> 09/09/2026: le 5 funzioni di purge esistono nel repo e nei test (che girano su
+> un Postgres locale con le migration post-snapshot applicate), **non in
+> produzione**. Finche' non viene applicata, `worker/run.py` chiama 5 RPC
+> inesistenti ogni 24h — non un crash, ogni purge ha il suo `try`, ma la
+> retention e' **dichiarata al cliente e non applicata**: esattamente la classe
+> di difetto che questo audit esisteva per chiudere. Va applicata al live nella
+> finestra oraria, prima o insieme al push.
+>
+> Lezione riusabile, gia' in memoria ma ricascataci qui: *scrivere una migration
+> non e' applicarla, e un test verde su Postgres locale non dice niente sullo
+> stato del live.* Lo stato reale si misura su `pg_proc`.
+
+
 1. **DPA non firmati** con Supabase, OpenAI, Invoicetronic, Vercel, Railway
    (solo Brevo automatico). Checklist in `docs/COMPLIANCE_GDPR.md` §8. È la
    lacuna formale più concreta: la privacy li chiama già «sub-responsabili».
