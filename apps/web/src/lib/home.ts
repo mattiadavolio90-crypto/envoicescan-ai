@@ -84,6 +84,11 @@ export type Salute = {
   // Righe escluse dai margini (card grande della Home, Fase 4bis). Assente o
   // null = la query lato worker e' fallita O risponde un backend precedente:
   // in entrambi i casi la card mostra lo stato di errore, MAI il verde.
+  // Righe/importo esclusi dai margini. Nessun componente lo legge dal 9/9/2026:
+  // la card grande che lo consumava è stata eliminata (duplicava la voce del
+  // briefing) e il dato arriva ora dentro `BriefingAzione.dettaglio`. Il campo
+  // resta perché il backend continua a servirlo — rimuoverlo è una modifica di
+  // contratto, non la coda di questa fase.
   da_classificare?: SaluteDaClassificare | null;
 };
 

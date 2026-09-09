@@ -5804,7 +5804,7 @@ def _briefing_righe_da_classificare(
     if (
         n_novita <= 0
         and arretrato < DA_CONTROLLARE_ARRETRATO_SOGLIA
-        and esclusi_importo <= 0
+        and (esclusi.righe if esclusi is not None else 0) <= 0
     ):
         return None
 
