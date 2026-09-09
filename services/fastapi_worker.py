@@ -2605,9 +2605,14 @@ class SaluteVoce(BaseModel):
 
 class SaluteDaClassificare(BaseModel):
     """Cosa resta FUORI dai margini: righe 'Da Classificare' (regola di dominio 1),
-    più le 'da_verificare' quando il flag Fase 4 è acceso. Alimenta la card grande
-    della Home (Fase 4bis): righe e importo vengono dallo STESSO predicato, così
-    la card non può dire un numero e promettere un altro."""
+    più le 'da_verificare' quando il flag Fase 4 è acceso. Righe e importo vengono
+    dallo STESSO predicato, così non si può dire un numero e prometterne un altro.
+
+    Alimentava la card grande della Home (Fase 4bis), eliminata il 9/9/2026
+    perché duplicava la voce del briefing. Il dato ora viaggia nel payload di
+    `uncategorized_rows` come seconda riga della card; questo modello resta
+    servito da `home_salute` per non cambiare il contratto API in una fase che
+    non è sua."""
     righe: int
     importo: float
 
@@ -5795,16 +5800,23 @@ def _briefing_righe_da_classificare(
     # Euro esclusi dai margini: stesso predicato dei calcoli, riusato e non
     # riscritto. None (non zero) se la lettura fallisce.
     esclusi = _card_da_classificare(supabase_client, ristorante_id)
-    esclusi_importo = float(esclusi.importo) if esclusi is not None else 0.0
+    esclusi_righe = int(esclusi.righe) if esclusi is not None else 0
 
     # Nessuna novita': niente card da fare oggi. Si emette comunque il record
     # (severity 'info') perche' la narrativa possa accennarlo — _is_actionable lo
     # terra' fuori dalle card — se resta un arretrato rilevante OPPURE se ci sono
-    # euro fuori dai margini, che sono una ragione propria per parlare.
+    # righe fuori dai margini, che sono una ragione propria per parlare.
+    #
+    # Il gate e' sulle RIGHE, non sull'importo, per la stessa ragione di
+    # _dettaglio_esclusi: un totale NEGATIVO e' un dato vero, non un'assenza.
+    # LAND ha -1.302,36 EUR di note di credito non classificate (misurati il
+    # 3/9): con `importo <= 0` il record non sarebbe emesso e la riga sparirebbe
+    # a monte, prima ancora che la frase la componga. Due cancelli in fila
+    # devono usare lo stesso criterio, o il primo annulla in silenzio il secondo.
     if (
         n_novita <= 0
         and arretrato < DA_CONTROLLARE_ARRETRATO_SOGLIA
-        and (esclusi.righe if esclusi is not None else 0) <= 0
+        and esclusi_righe <= 0
     ):
         return None
 
@@ -7365,8 +7377,12 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     except Exception as exc:
         logger.warning("home_salute: conteggio righe totali fallito: %s", exc)
 
-    # ── Card grande "Righe da classificare" (Fase 4bis): su errore None,
-    #    e la card mostra "Riprova" — mai il verde. ──
+    # ── Righe/importo esclusi dai margini: su errore None, mai zero. ──
+    #    La card grande che consumava questo campo e' stata ELIMINATA il
+    #    9/9/2026 (Fase 4: era un doppione della voce del briefing). Il campo
+    #    resta nel contratto `SaluteResponse` — oggi nessun componente lo legge,
+    #    ma toglierlo e' una modifica di API a se'. Il dato vive ora nel payload
+    #    di `uncategorized_rows`, via _briefing_righe_da_classificare.
     da_classificare_card = _card_da_classificare(sb, ristorante_id)
 
     # ── Indice: voci ATTIVE a peso uguale. Le voci binarie valgono 0/100;

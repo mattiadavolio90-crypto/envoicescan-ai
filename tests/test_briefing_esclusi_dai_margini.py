@@ -328,3 +328,23 @@ def test_zero_righe_tace_anche_con_un_importo_qualsiasi():
         "topic_key": "uncategorized_rows",
         "payload": {"esclusi_righe": 0, "esclusi_importo": 0.0},
     }) is None
+
+
+def test_arretrato_piccolo_con_totale_negativo_emette_comunque_il_record():
+    """Il cancello a MONTE (worker) ha lo stesso criterio di quello a valle.
+
+    LAND: -1.302,36 € di note di credito non classificate. Con un gate su
+    `importo <= 0` qui, il record non verrebbe nemmeno emesso — e il presidio su
+    `_dettaglio_esclusi` non se ne accorgerebbe, perché testa la frase quando il
+    record esiste già. Due cancelli in fila devono usare lo stesso criterio, o il
+    primo annulla in silenzio il lavoro del secondo.
+    """
+    rec = _briefing_righe_da_classificare(
+        "rid",
+        _sb(needs_review=[_riga(f"P{i}", VECCHIA) for i in range(3)],
+            esclusi=[{"totale_riga": -1302.36}, {"totale_riga": 0}]),
+    )
+    assert rec is not None, "un totale negativo non è un'assenza: il record si emette"
+    assert rec["payload"]["esclusi_righe"] == 2
+    azione = _action_for(rec)
+    assert "1.302" in azione["dettaglio"]

@@ -24861,7 +24861,7 @@
           "importo"
         ],
         "title": "SaluteDaClassificare",
-        "description": "Cosa resta FUORI dai margini: righe 'Da Classificare' (regola di dominio 1),\npiù le 'da_verificare' quando il flag Fase 4 è acceso. Alimenta la card grande\ndella Home (Fase 4bis): righe e importo vengono dallo STESSO predicato, così\nla card non può dire un numero e promettere un altro."
+        "description": "Cosa resta FUORI dai margini: righe 'Da Classificare' (regola di dominio 1),\npiù le 'da_verificare' quando il flag Fase 4 è acceso. Righe e importo vengono\ndallo STESSO predicato, così non si può dire un numero e prometterne un altro.\n\nAlimentava la card grande della Home (Fase 4bis), eliminata il 9/9/2026\nperché duplicava la voce del briefing. Il dato ora viaggia nel payload di\n`uncategorized_rows` come seconda riga della card; questo modello resta\nservito da `home_salute` per non cambiare il contratto API in una fase che\nnon è sua."
       },
       "SalutePV": {
         "properties": {
