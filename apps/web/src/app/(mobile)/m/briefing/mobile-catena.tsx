@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
 import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
+import { messaggioFattureDaCollocare } from "@/lib/catena-confronti";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
   dati_mancanti: ClipboardList,
@@ -104,6 +105,9 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   // nessun numero come valido — ne' MOL ne' food cost, che dipendono entrambi da
   // dati di cui non sappiamo nulla. /m e' un frontend separato: allineato a mano.
   const nonDeterminabile = kpi.livello_dati === "non_determinabile";
+  // codaVisibile=false: su /m la coda da assegnare non esiste, quindi il testo
+  // rimanda al computer invece che "qui sotto".
+  const msgDaCollocare = messaggioFattureDaCollocare(overview.briefing, false);
 
   return (
     <div className="space-y-4">
@@ -120,14 +124,14 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           {overview.briefing.saluto}, {overview.nome_gruppo}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-foreground/90">{overview.briefing.narrativa}</p>
-        {(overview.briefing.n_fatture_da_collocare ?? 0) > 0 && (
+        {/* Stessa funzione del desktop, con codaVisibile=false: qui la coda da
+            assegnare non esiste. Prima questo messaggio era una copia a mano,
+            SENZA il ramo che evita il doppio imperativo quando la narrativa ha
+            gia' parlato — il vincolo esisteva solo sul desktop. */}
+        {msgDaCollocare && (
           <p className="mt-3 flex items-start gap-2 text-sm font-medium text-amber-700 dark:text-amber-500">
             <ClipboardList className="mt-0.5 size-4 shrink-0" />
-            <span>
-              {overview.briefing.n_fatture_da_collocare === 1
-                ? "C'è 1 fattura di gruppo da collocare: falla dal computer per assegnarla a una sede o dividerla fra i locali."
-                : `Ci sono ${overview.briefing.n_fatture_da_collocare} fatture di gruppo da collocare: falle dal computer per assegnarle a una sede o dividerle fra i locali.`}
-            </span>
+            <span>{msgDaCollocare}</span>
           </p>
         )}
       </div>

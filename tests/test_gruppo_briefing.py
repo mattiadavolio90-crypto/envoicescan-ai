@@ -106,8 +106,12 @@ def test_fatture_da_collocare_accenno_asciutto_senza_numero():
     )
     # Conteggio esposto come campo strutturato (il numero vero, per la card).
     assert out.n_fatture_da_collocare == 3
-    # La narrativa accenna ma NON riporta il numero né l'imperativo.
-    assert "da collocare" in out.narrativa.lower()
+    # ROVESCIATO il 9/9/2026: la narrativa TACE del tutto sul tema. L'accenno
+    # "Ci sono fatture di gruppo da collocare: le trovi qui sotto." duplicava la
+    # riga che il client genera da questo stesso campo (messaggioFattureDaCollocare),
+    # e "qui sotto" era falso su mobile, dove la coda non esiste. Ora il tema ha
+    # un solo padrone: il campo strutturato, reso da chi sa se la coda c'è.
+    assert "da collocare" not in out.narrativa.lower()
     assert "3 fatture" not in out.narrativa
     assert "assegnale" not in out.narrativa.lower()
     # Con fatture in sospeso non si dice "tutto in ordine".
@@ -136,7 +140,14 @@ def test_nessuna_fattura_da_collocare_campo_a_zero():
 # man mano che il routing per indirizzo copre più fornitori OFFSIDE, il peso si
 # sposta da 'in coda' a 'già assegnate' senza toccare questa funzione.
 
-def test_fatture_arrivate_ieri_in_coda_rimanda_alla_card():
+def test_fatture_arrivate_ieri_in_coda_dice_la_novita_senza_rimando():
+    """ROVESCIATO il 9/9/2026 (era ..._rimanda_alla_card).
+
+    "qui sotto" non puo' stare nella narrativa CONDIVISA: la coda da assegnare
+    esiste solo sul desktop, quindi su mobile la frase era falsa. Il rimando lo
+    fa il client, che sa se la coda c'e' (messaggioFattureDaCollocare con
+    codaVisibile). Il commento sopra questo blocco in gruppo.py lo prescriveva
+    gia' — e il codice lo violava in due punti."""
     ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
     salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
     out = _build_briefing(
@@ -146,7 +157,7 @@ def test_fatture_arrivate_ieri_in_coda_rimanda_alla_card():
     )
     assert "11 fatture" in out.narrativa
     assert "da assegnare a un locale" in out.narrativa
-    assert "qui sotto" in out.narrativa
+    assert "qui sotto" not in out.narrativa
 
 
 def test_fatture_arrivate_ieri_gia_sui_pv_rimanda_al_pv():
@@ -190,7 +201,14 @@ def test_novita_di_ieri_non_ripete_arretrato_non_ridondante():
     assert "11 fatture" in out.narrativa
 
 
-def test_senza_novita_ma_con_arretrato_accenna_senza_numero():
+def test_senza_novita_ma_con_arretrato_la_narrativa_tace():
+    """ROVESCIATO il 9/9/2026 (era ..._accenna_senza_numero).
+
+    E' il caso che produceva la ripetizione in catena: con arretrato e nessuna
+    novita' di ieri uscivano due righe adiacenti che dicevano la stessa cosa —
+    l'accenno del backend e la riga del client, che in quel ramo usa proprio
+    l'imperativo. I due `if` guardavano la STESSA variabile con polarita'
+    opposta."""
     ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
     salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
     out = _build_briefing(
@@ -199,7 +217,9 @@ def test_senza_novita_ma_con_arretrato_accenna_senza_numero():
         n_fatture_da_collocare=365, n_fatture_arrivate_ieri=None,
     )
     assert "365" not in out.narrativa
-    assert "da collocare" in out.narrativa.lower()
+    assert "da collocare" not in out.narrativa.lower()
+    # Il dato non si perde: vive nel campo strutturato, che il client rende.
+    assert out.n_fatture_da_collocare == 365
 
 
 def test_senza_novita_senza_arretrato_silenzio_sul_tema_fatture():

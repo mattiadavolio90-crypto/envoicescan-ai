@@ -8,8 +8,12 @@ fresco e' l'arrivo delle fatture. Questi test blindano:
 - `_fatture_arrivate_ieri_sdi`: conta le fatture (file_origine distinti) comparse
   ieri, l'importo e le righe da controllare, SOLO se sdi_attivo=true; None
   altrimenti (niente apertura forzata su chi non e' SDI o non ha ricevuto nulla).
-- `_fatture_arrivate_frase`: accenno con un paio di numeri (quante + importo), e le
-  righe da controllare rimandano alla card sotto — senza diventare un elenco.
+- `_fatture_arrivate_frase`: accenno con un paio di numeri (quante + importo) e
+  NULL'ALTRO. Fino al 9/9/2026 la frase portava anche una coda sulle righe da
+  controllare ("; una riga e' da controllare, la trovi qui sotto"), che ripeteva
+  parola per parola la voce to-do `uncategorized_rows` due righe piu' sotto,
+  rimandando alla stessa card. I due test che asserivano quella coda sono stati
+  ROVESCIATI: ora pretendono che l'apertura NON parli di righe da controllare.
 
 Decisione Mattia 22/07 (piano briefing dinamico): Strada A, solo il briefing che
 accenna; se un giorno nasce la card SDI dedicata, l'accenno toglie gli importi e
@@ -159,14 +163,17 @@ def test_ignora_righe_senza_file_origine():
 
 # ── _fatture_arrivate_frase (accenno) ────────────────────────────────────────
 
-def test_frase_plurale_con_importo_e_righe():
+def test_frase_plurale_con_importo_non_parla_di_righe_da_controllare():
+    """ROVESCIATO il 9/9/2026: prima pretendeva "2 righe" e "qui sotto" nella
+    frase. Quella coda ripeteva la voce to-do che sta due righe sotto e rimanda
+    alla stessa card. L'apertura dice la novita', il rimando lo fa chi ha la CTA."""
     p = {"tipo": "fatture_arrivate", "n_fatture": 3, "importo": 1240,
          "righe_da_controllare": 2}
     f = _fatture_arrivate_frase(p)
     assert "3 fatture" in f
     assert "1.240" in f  # importo formattato all'italiana
-    assert "2 righe" in f
-    assert "qui sotto" in f  # rimanda alla card, non elenca
+    assert "controllare" not in f
+    assert "qui sotto" not in f
 
 
 def test_frase_singolare():
@@ -179,11 +186,15 @@ def test_frase_singolare():
     assert "controllare" not in f
 
 
-def test_frase_una_riga_da_controllare_singolare():
+def test_frase_tace_sulle_righe_anche_quando_ce_ne_e_una_sola():
+    """ROVESCIATO il 9/9/2026 (era test_frase_una_riga_da_controllare_singolare).
+    E' il caso dello screenshot che ha aperto il lavoro: una riga da controllare,
+    detta sia qui sia nella voce to-do."""
     p = {"tipo": "fatture_arrivate", "n_fatture": 2, "importo": 500,
          "righe_da_controllare": 1}
     f = _fatture_arrivate_frase(p)
-    assert "una riga" in f
+    assert "una riga" not in f
+    assert "2 fatture" in f, "la novita' si dice comunque: e' l'apertura positiva"
 
 
 def test_frase_vuota_se_zero_fatture():

@@ -98,7 +98,10 @@ contano per il "tutto a posto".
      con lo scontrino medio se si scosta ≥10% dalla media, e il confronto con la
      media dello stesso giorno della settimana quando c'è abbastanza storico;
   4. altrimenti **fatture arrivate ieri** — per i locali che ricevono le fatture
-     in automatico e non inseriscono l'incasso, è il loro dato fresco;
+     in automatico e non inseriscono l'incasso, è il loro dato fresco. Dice
+     **quante e quanto, e basta**: fino al 9/9/2026 aggiungeva anche le righe da
+     controllare, ripetendo parola per parola la voce che sta due righe sotto e
+     rimanda alla stessa card (vedi §5.1);
   5. altrimenti **nessuna apertura**: il briefing è solo lista di cose da fare.
 
 ---
@@ -106,6 +109,21 @@ contano per il "tutto a posto".
 ## 5. Come sceglie e ordina le voci
 
 1. **Una voce per argomento** — niente doppioni dello stesso tema.
+
+   > ### 5.1 Chi possiede un'informazione la dice una volta sola
+   >
+   > La regola vale anche **fra apertura e corpo**, non solo dentro l'elenco:
+   > sono due blocchi che vengono concatenati senza controllo di sovrapposizione,
+   > ed è lì che il 9/9/2026 il cliente leggeva *"una riga è da controllare, la
+   > trovi qui sotto"* seguito, due righe dopo, da *"Ci sono alcune righe da
+   > controllare: trovi il dettaglio qui sotto"*.
+   >
+   > Il posto che possiede un'informazione è **quello che ha la CTA**: l'apertura
+   > accenna alla novità, la voce to-do rimanda alla card. Vale anche in catena,
+   > dove per lo stesso motivo la narrativa **non parla più** delle fatture di
+   > gruppo da collocare: quel tema vive nel campo strutturato, e il rimando lo
+   > scrive il client — che è l'unico a sapere se la coda esiste (sul mobile non
+   > c'è, quindi "qui sotto" sarebbe falso).
 2. **Solo ciò su cui puoi agire** — i conteggi compaiono solo se > 0; un upload
    fallito compare solo se era automatico (quello manuale lo vedi mentre carichi).
 3. **Rispetta gli interruttori del configuratore** — le voci che hai spento

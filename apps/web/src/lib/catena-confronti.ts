@@ -277,18 +277,39 @@ export function offsetAnello(indice: number, r: number): number {
 // Riga "fatture di gruppo da collocare". Se la narrativa ha già accennato alla
 // novità di ieri (apertura "sono arrivate N fatture"), qui basta il numero totale
 // senza ripetere l'imperativo "assegnale/dividile" — già dato sopra.
-export function messaggioFattureDaCollocare(briefing: {
-  n_fatture_da_collocare?: number;
-  n_fatture_arrivate_ieri?: number | null;
-}): string | null {
-  if ((briefing.n_fatture_da_collocare ?? 0) <= 0) return null;
-  return briefing.n_fatture_arrivate_ieri
-    ? briefing.n_fatture_da_collocare === 1
-      ? "In tutto c'è 1 fattura di gruppo da collocare qui sotto."
-      : `In tutto ci sono ${briefing.n_fatture_da_collocare} fatture di gruppo da collocare qui sotto.`
-    : briefing.n_fatture_da_collocare === 1
-      ? "C'è 1 fattura di gruppo da collocare qui sotto: assegnala a una sede o dividila fra i locali."
-      : `Ci sono ${briefing.n_fatture_da_collocare} fatture di gruppo da collocare qui sotto: assegnale a una sede o dividile fra i locali.`;
+//
+// `codaVisibile` (9/9/2026): la coda da assegnare esiste SOLO sul desktop. Il
+// backend non sa su quale client finirà la frase, quindi il wording lo sceglie
+// chi rende: "qui sotto" dove la coda c'è, "dal computer" dove non c'è. Prima il
+// mobile riscriveva il messaggio a mano, senza il ramo che evita il doppio
+// imperativo: con novità + arretrato usciva "le trovi qui sotto" (falso su
+// mobile) seguito da "falle dal computer per assegnarle". Una sola funzione per
+// due superfici = non possono più divergere.
+export function messaggioFattureDaCollocare(
+  briefing: {
+    n_fatture_da_collocare?: number;
+    n_fatture_arrivate_ieri?: number | null;
+  },
+  codaVisibile = true,
+): string | null {
+  const n = briefing.n_fatture_da_collocare ?? 0;
+  if (n <= 0) return null;
+  const uno = n === 1;
+  const cosa = uno ? "1 fattura di gruppo da collocare" : `${n} fatture di gruppo da collocare`;
+  // Solo dove la coda esiste si può dire "qui sotto": su mobile sarebbe falso.
+  const dove = codaVisibile ? " qui sotto" : "";
+  // La narrativa ha già dato il rimando: qui solo il totale, senza imperativo.
+  if (briefing.n_fatture_arrivate_ieri) {
+    return uno ? `In tutto c'è ${cosa}${dove}.` : `In tutto ci sono ${cosa}${dove}.`;
+  }
+  const azione = codaVisibile
+    ? uno
+      ? "assegnala a una sede o dividila fra i locali"
+      : "assegnale a una sede o dividile fra i locali"
+    : uno
+      ? "falla dal computer per assegnarla a una sede o dividerla fra i locali"
+      : "falle dal computer per assegnarle a una sede o dividerle fra i locali";
+  return uno ? `C'è ${cosa}${dove}: ${azione}.` : `Ci sono ${cosa}${dove}: ${azione}.`;
 }
 
 // ─── Accesso alla modalità catena ──────────────────────────────────────────

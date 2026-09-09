@@ -105,7 +105,17 @@ logger = get_logger('daily_briefing')
 #               l'entusiasmo vietato dalla regola 3/3-bis (prima solo numeri
 #               inventati e burocratese). Senza bump uno snapshot vecchio
 #               resterebbe in cache fino al TTL.
-_BRIEFING_CODE_VERSION = 21
+#  22 -> 09/09: l'apertura "fatture arrivate" (📥) non dice piu' le righe da
+#               controllare. Quella coda ripeteva parola per parola la voce to-do
+#               `uncategorized_rows` due righe piu' sotto, rimandando alla stessa
+#               card: sullo screenshot del 9/9 il cliente leggeva "una riga e' da
+#               controllare, la trovi qui sotto" e subito dopo "Ci sono alcune
+#               righe da controllare: trovi il dettaglio qui sotto". Ora
+#               l'apertura dice la novita' (quante fatture, quanto) e il rimando
+#               lo fa chi ha la CTA. Cambia il TESTO servito al cliente: senza
+#               bump lo snapshot in cache continuerebbe a servire la frase
+#               vecchia fino al TTL.
+_BRIEFING_CODE_VERSION = 22
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -350,8 +360,7 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
 
 def _fatture_arrivate_frase(payload: Dict[str, Any]) -> str:
     """Accenno alle fatture comparse ieri (apertura positiva per le sedi SDI che
-    non inseriscono l'incasso, es. OFFSIDE). Un paio di numeri (quante + importo)
-    e, se ci sono, le righe da controllare — che rimandano alla card sotto.
+    non inseriscono l'incasso, es. OFFSIDE): quante e quanto, gia' registrate.
 
     ANTI-RIDONDANZA (piano 22/07, Strada A): OGGI non esiste una card "fatture
     ricevute via SDI" in Home, quindi l'accenno puo' portare gli importi. Se un
@@ -359,21 +368,33 @@ def _fatture_arrivate_frase(payload: Dict[str, Any]) -> str:
     card ("sono arrivate fatture nuove, le trovi qui sotto"), come gia' fa
     price_alert col suo dettaglio: un solo posto possiede i numeri, il briefing
     accenna. Cambia solo questo template, non la logica.
+
+    LE RIGHE DA CONTROLLARE NON SI DICONO QUI (9/9/2026). La coda "; una riga e'
+    da controllare, la trovi qui sotto" c'era, e produceva questo, a due righe di
+    distanza nello stesso briefing:
+
+        Ieri e' arrivata una fattura per € 3.283, gia' registrata; UNA RIGA E'
+        DA CONTROLLARE, LA TROVI QUI SOTTO.
+        Da sistemare oggi:
+        CI SONO ALCUNE RIGHE DA CONTROLLARE: TROVI IL DETTAGLIO QUI SOTTO.
+
+    Due frasi che dicono la stessa cosa e rimandano alla stessa card. La regola
+    e' gia' scritta qui sopra — "un solo posto possiede i numeri" — e il posto e'
+    la voce to-do `uncategorized_rows`, che ha anche la CTA. Nel percorso
+    template la ripetizione era deterministica; in quello AI il prompt chiedeva
+    gia' di non ripetere il conteggio, ma riceveva due bullet identici nel
+    contenuto e ripeteva lo stesso.
+
+    `righe_da_controllare` resta nel payload (lo produce
+    _fatture_arrivate_ieri_sdi): smette solo di essere reso in questa frase.
     """
     n = int(payload.get('n_fatture') or 0)
     importo = _euro_it(float(payload.get('importo') or 0))
-    da_contr = int(payload.get('righe_da_controllare') or 0)
     if n <= 0:
         return ""
     if n == 1:
-        base = f"\U0001F4E5 Ieri è arrivata una fattura per € {importo}, già registrata"
-    else:
-        base = f"\U0001F4E5 Ieri sono arrivate {n} fatture per € {importo}, già registrate"
-    if da_contr == 1:
-        base += "; una riga è da controllare, la trovi qui sotto"
-    elif da_contr > 1:
-        base += f"; {da_contr} righe sono da controllare, le trovi qui sotto"
-    return base + "."
+        return f"\U0001F4E5 Ieri è arrivata una fattura per € {importo}, già registrata."
+    return f"\U0001F4E5 Ieri sono arrivate {n} fatture per € {importo}, già registrate."
 
 
 def _rientro_bullet(payload: Dict[str, Any]) -> str:
@@ -1078,9 +1099,9 @@ _NARRATION_SYSTEM_PROMPT = (
     "giorno della settimana, media dei martedi', coperti, scontrino medio), "
     "riportalo cosi' com'e' — e' un dato calcolato, NON tagliarlo. Non aggiungerne "
     "di tuoi. Per l'apertura 'fatture arrivate' (📥): riporta quante fatture e "
-    "l'importo cosi' come dati, e se il bullet dice che ci sono righe da "
-    "controllare rimanda alla card sotto SENZA ripetere quante — quel dettaglio "
-    "vive nelle card, come per l'alert prezzi. "
+    "l'importo cosi' come dati, e NIENT'ALTRO — in particolare non aggiungere le "
+    "righe da controllare, che sono gia' una voce a se' piu' sotto con la sua "
+    "card: dirle due volte e' la ripetizione che questa istruzione evita. "
     "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋), apri con un saluto "
     "breve e pacato, senza enfasi. Se include un'offerta di aiuto, riportala UNA "
     "volta sola, gentile e senza insistere: mai una pressione ne' un rimprovero. "

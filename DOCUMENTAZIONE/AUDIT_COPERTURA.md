@@ -49,6 +49,14 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   non "ogni tanto": **ogni giornata con dati, la prima apertura della pagina
 >   mentiva**, fino al primo calcolo dei segnali (fra le 07:31 e le 16:21).
 >   Suite **13.295 verdi, 44 skip**.
+> - 09/09/2026 — il briefing non dice piu' due volte la stessa cosa. L'apertura
+>   "fatture arrivate" ripeteva la voce to-do che sta due righe sotto e rimanda
+>   alla stessa card (percorso template: ripetizione deterministica); in catena
+>   lo stesso difetto su un altro tema, con in piu' un "qui sotto" FALSO su
+>   mobile, dove la coda non esiste. +9 test, 4 mutanti uccisi, 5 test esistenti
+>   ROVESCIATI (asserivano il testo duplicato). `_BRIEFING_CODE_VERSION` 21 -> 22:
+>   senza bump la cache avrebbe servito la frase vecchia fino al TTL.
+>   Suite **13.308 verdi, 44 skip**.
 
 ---
 

@@ -736,6 +736,51 @@ def test_messaggio_torna_all_imperativo_se_ieri_non_e_arrivato_nulla(ieri):
     assert "assegnale" in out
 
 
+# ─── codaVisibile: il wording lo sceglie chi rende (9/9/2026) ───────────────
+
+
+@pytest.mark.parametrize("n", [1, 3])
+def test_senza_coda_visibile_non_si_dice_qui_sotto(n):
+    """Su mobile la coda da assegnare NON esiste: "qui sotto" sarebbe falso.
+
+    Il backend non sa su quale client finira' la frase, quindi il rimando lo
+    sceglie chi rende. Prima il mobile riscriveva il messaggio a mano e le due
+    superfici potevano divergere — infatti divergevano.
+    """
+    out = _chiama(
+        "messaggioFattureDaCollocare",
+        [{"n_fatture_da_collocare": n, "n_fatture_arrivate_ieri": None}, False],
+    )
+    assert "qui sotto" not in out
+    assert "dal computer" in out
+
+
+def test_con_coda_visibile_il_testo_desktop_non_cambia():
+    """Contro-prova: il default resta il comportamento desktop di prima."""
+    out = _chiama(
+        "messaggioFattureDaCollocare",
+        [{"n_fatture_da_collocare": 3, "n_fatture_arrivate_ieri": None}],
+    )
+    assert out == (
+        "Ci sono 3 fatture di gruppo da collocare qui sotto: "
+        "assegnale a una sede o dividile fra i locali."
+    )
+
+
+def test_su_mobile_niente_doppio_imperativo_quando_la_narrativa_ha_parlato():
+    """Il difetto peggiore del mobile: la copia a mano NON aveva il ramo
+    protettivo, quindi con novita' + arretrato uscivano due imperativi di fila
+    ("le trovi qui sotto" dal backend + "falle dal computer per assegnarle").
+    Ora il ramo vale su entrambe le superfici, perche' la funzione e' una sola."""
+    out = _chiama(
+        "messaggioFattureDaCollocare",
+        [{"n_fatture_da_collocare": 3, "n_fatture_arrivate_ieri": 2}, False],
+    )
+    assert out == "In tutto ci sono 3 fatture di gruppo da collocare."
+    assert "assegna" not in out
+    assert "computer" not in out
+
+
 # ─── Accesso alla modalità catena (estratti da page.tsx l'1/9) ──────────────
 
 ACCESSO = ["deveRedirigereAPuntoVendita", "chatCatenaAttiva"]

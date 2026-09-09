@@ -359,8 +359,12 @@ def _build_briefing(
             if n_fatture_arrivate_ieri == 1
             else f"Ieri sono arrivate {n_fatture_arrivate_ieri} fatture per il gruppo"
         )
+        # Niente "le trovi qui sotto" (9/9/2026): la coda da assegnare esiste solo
+        # sul desktop, e il rimando spetta a chi ha la CTA — e' lo stesso taglio
+        # fatto nell'apertura del PV (_fatture_arrivate_frase). Vedi il commento
+        # piu' sotto: questa narrativa e' CONDIVISA fra desktop e mobile.
         if fatture_ieri_da_assegnare:
-            frasi.append(base + ", da assegnare a un locale: le trovi qui sotto.")
+            frasi.append(base + ", da assegnare a un locale.")
         else:
             frasi.append(base + ": entra nel punto vendita per il dettaglio.")
 
@@ -397,13 +401,20 @@ def _build_briefing(
     # narrativa condivisa (l'imperativo "assegnale/dividile" non è azionabile su
     # mobile, dove la coda non esiste): resta nel campo strutturato
     # n_fatture_da_collocare e ogni client sceglie il wording e il CTA giusti.
-    # ECCEZIONE: se ieri non è arrivato nulla di nuovo ma resta arretrato, un
-    # accenno asciutto SENZA numero (il numero vive solo nella card sotto — non è
-    # ridondante col blocco sopra: qui parliamo di arretrato, non di novità). Se
-    # invece ieri è arrivato qualcosa, quel blocco ha già gestito il rimando: non
-    # ripetiamo qui per non duplicare lo stesso concetto due volte.
-    if not n_fatture_arrivate_ieri and n_fatture_da_collocare:
-        frasi.append("Ci sono fatture di gruppo da collocare: le trovi qui sotto.")
+    # L'ECCEZIONE E' STATA TOLTA (9/9/2026). C'era un accenno "Ci sono fatture di
+    # gruppo da collocare: le trovi qui sotto." quando ieri non era arrivato
+    # nulla ma restava arretrato. Violava la regola scritta qui sopra due volte —
+    # l'imperativo "qui sotto" nella narrativa condivisa — e produceva questo, su
+    # due righe adiacenti:
+    #   "Ci sono fatture di gruppo da collocare: le trovi qui sotto."
+    #   "Ci sono 3 fatture di gruppo da collocare qui sotto: assegnale a una sede
+    #    o dividile fra i locali."
+    # I due `if` guardavano la STESSA variabile con polarita' opposta: il backend
+    # parlava quando `not n_fatture_arrivate_ieri`, e in quel caso il client
+    # passava proprio al ramo con l'imperativo. La protezione lato client
+    # (messaggioFattureDaCollocare) copriva solo il caso opposto.
+    # Ora `messaggioFattureDaCollocare` e' l'UNICO posto che parla di fatture da
+    # collocare, e sa se la coda e' visibile.
 
     # "Tutto sotto controllo" SOLO se non manca davvero nulla: niente segnali,
     # salute non rossa, nessuna sede incompleta, niente fatture in sospeso. Mai dire
