@@ -13,18 +13,24 @@
 
 ## La riga che conta
 
-**Al commit `13d188e` del 09/09/2026** i tre cicli di audit (2026-07, 2026-08,
-2026-09) sono **tutti chiusi**. Nessuna dimensione resta aperta. Da qui vale la
-regola ordinaria: *quando tocchi un file, lo copri*.
+**Al commit `a82213e` del 09/09/2026** i tre cicli di audit (2026-07, 2026-08,
+2026-09) sono **tutti chiusi**, e con essi l'audit di compliance legale dello
+stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
+*quando tocchi un file, lo copri*.
 
 | | |
 |---|---|
-| Commit certificato | `13d188e73fa4cc1bfb3779c61ee4a904758cd15a` |
+| Commit certificato | `a82213e24effde39297993d54d8fd97c2485dc96` |
 | Data | 09/09/2026 |
-| Suite | 13.237 verdi, 44 skip, 0 rossi — di cui **164 su un Postgres vero** (`-m sql`) e 101 Deno |
+| Suite | 13.258 verdi, 44 skip, 0 rossi — di cui **176 su un Postgres vero** (`-m sql`) e 101 Deno |
 | Copertura backend eseguita | **61%** (`services,utils,config,worker` — 24.239 stmts, 8.944 miss) |
 | Perimetro backend | 57.297 righe Python |
-| Logica SQL | 143 migration; **20 funzioni del DB eseguite da test** (erano 0 fino al 07/09) |
+| Logica SQL | 144 migration; **25 funzioni del DB eseguite da test** (erano 0 fino al 07/09) |
+
+> Il commit precedentemente certificato era `13d188e` (13.237 verdi, 164 SQL,
+> 143 migration, 20 funzioni). La differenza e' l'audit di compliance del
+> 09/09/2026: +21 test (16 sui documenti legali, 12 sulle purge, meno quelli
+> ricontati), +5 funzioni di retention eseguite davvero, +1 migration.
 
 ---
 
@@ -35,8 +41,8 @@ Il punto di questo file è **evitare l'audit totale**. Si procede così:
 ### 1. Si misura il diff, non il codice
 
 ```bash
-git diff --stat 13d188e..HEAD -- services utils config worker apps/web/src supabase
-git log --oneline 13d188e..HEAD | wc -l
+git diff --stat a82213e..HEAD -- services utils config worker apps/web/src supabase
+git log --oneline a82213e..HEAD | wc -l
 ```
 
 Una dimensione della tabella qui sotto si riapre **solo se il diff tocca i suoi
@@ -76,12 +82,13 @@ farebbe riaprire la dimensione**.
 | Performance | 07/2026 | query, indici, N+1 | rallentamenti misurati in produzione |
 | AI / pipeline categorizzazione | 07-08/2026 | prompt, fallback, regole di dominio #1 e #2 | si tocca `ai_service.py` o il dizionario |
 | Database (schema) | 30/07/2026 | schema, FK, orfani, indici — 9 finding | migration che cambiano struttura |
-| **Database (corpi delle funzioni)** | **07-08/09/2026** | **78 corpi letti dal live** con `pg_get_functiondef`, 20 eseguiti da test | **nuove funzioni SQL, o `.rpc()` nuove** |
+| **Database (corpi delle funzioni)** | **07-09/09/2026** | **78 corpi letti dal live** con `pg_get_functiondef`, 25 eseguiti da test | **nuove funzioni SQL, o `.rpc()` nuove** |
 | Test / copertura | 09/2026 | copertura eseguita, non letta: 61% | scende sotto 61% |
 | Edge Functions | 27/08/2026 | deployate v40/v13, repo avanti di 10 righe di soli commenti | si modifica `supabase/functions/` (**il deploy è manuale**) |
 | DevOps / Config | 07-08/2026 | CI, secrets, runbook, backup provato il 10/08 | cambia la pipeline o il provider |
 | Registro delle correzioni | 08/09/2026 | ogni scrittura su `fatture` dichiara attore, `source`, `batch_id` | nuovo scrittore di `categoria` che non passa dal chokepoint |
 | Script che scrivono in produzione | 08/09/2026 | 41 censiti, 8 vivi dopo il go-live | nuovo script che scrive a DB |
+| **Compliance legale (privacy, cookie, termini, GDPR)** | **09/09/2026** | documenti pubblici confrontati **col codice**, non riletti: destinatari dei dati vs host contattati, retention dichiarate vs purge esistenti, export art. 20 vs tabelle con PII | **cambia un flusso di dati verso terzi, o una dichiarazione della privacy** |
 
 ---
 
