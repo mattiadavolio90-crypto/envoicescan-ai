@@ -17,7 +17,7 @@ Deno.env.set('WEBHOOK_TEST_MODE', '1')
 
 const {
   timingSafeEqual, isXls, buildPath, notifyTelegram, getAttachmentBytes, handler,
-  hasXlsMagicBytes, readBodyCapped, BodyTooLargeError,
+  hasXlsMagicBytes, readBodyCapped, BodyTooLargeError, maskEmail,
 } = await import('./index.ts')
 
 // ─── Auth: confronto token ────────────────────────────────────────────────────
@@ -336,4 +336,37 @@ Deno.test('handler: JSON non valido → 400', async () => {
     body: 'non-json{',
   }))
   assertEquals(resp.status, 400)
+})
+
+
+// ─── maskEmail: Telegram non deve ricevere dati personali ─────────────────────
+// Telegram FZ-LLC e' extra-UE e NON e' un sub-responsabile dichiarato
+// nell'informativa: gli alert non possono portargli fuori l'indirizzo del
+// mittente. Il presidio sta qui e non nel test Python corrispondente, che
+// verifica solo che gli alert CHIAMINO maskEmail: quel test resta verde anche
+// su una maskEmail che ritorna l'email intatta.
+
+Deno.test('maskEmail: non lascia passare l\'indirizzo completo', () => {
+  const originale = 'cassa@ristorante.it'
+  const mascherata = maskEmail(originale)
+  assert(!mascherata.includes(originale), 'l\'email completa e\' finita nell\'alert')
+  assert(!mascherata.startsWith('cassa@'), 'la parte locale non e\' stata mascherata')
+})
+
+Deno.test('maskEmail: tiene il dominio, che serve a riconoscere il gestionale', () => {
+  assertEquals(maskEmail('cassa@ristorante.it'), 'ca***@ristorante.it')
+  assertEquals(maskEmail('x.y+z@sub.dominio.co.uk'), 'x.***@sub.dominio.co.uk')
+})
+
+Deno.test('maskEmail: maschera anche le parti locali cortissime', () => {
+  // Con local piu' corto di 2 caratteri il taglio non deve degenerare in
+  // "nessun asterisco" (cioe' indirizzo in chiaro).
+  assertEquals(maskEmail('a@b.it'), 'a*@b.it')
+  assertEquals(maskEmail('ab@c.it'), 'ab*@c.it')
+})
+
+Deno.test('maskEmail: input non valido non espone nulla', () => {
+  for (const input of ['', 'senzachiocciola', '@nolocal.it']) {
+    assertEquals(maskEmail(input), '(mittente non valido)')
+  }
 })

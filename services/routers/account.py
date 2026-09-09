@@ -403,6 +403,20 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
             for r in (export.get("ristoranti") or [])
             if r.get("id")
         ]
+        if not ids_sedi:
+            # La lista sedi è vuota anche quando la query "ristoranti" è fallita
+            # (il suo except la lascia a []): un utente senza sedi e un errore
+            # parziale sono indistinguibili da qui. Si ricade sulla sede attiva,
+            # e comunque si segnala — un export art. 20 incompleto in silenzio è
+            # il difetto che questo ramo esisteva per chiudere.
+            ripiego = _resolve_ristorante_id(user, sb)
+            if ripiego:
+                logger.warning(
+                    "esporta-dati: elenco sedi vuoto, ripiego sulla sede attiva "
+                    "(export dipendenti potenzialmente parziale) | user=%s", user_id,
+                )
+                ids_sedi = [str(ripiego)]
+
         if ids_sedi:
             r = sb.table("dipendenti").select("*").in_("ristorante_id", ids_sedi).execute()
             export["dipendenti"] = r.data or []

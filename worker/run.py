@@ -251,18 +251,24 @@ def main() -> int:
                     logger.warning("Errore purge fatture_queue/ricavi_email_queue: %s", queue_purge_exc)
                 last_queue_purge_time = now
 
-            # Retention fatture > 2 anni (batch sicuro da 500 righe, ogni 24h)
-            if purge_fatture_retention and (now - last_retention_time) >= WORKER_RETENTION_INTERVAL_SECONDS:
-                try:
-                    retention_result = purge_fatture_retention(batch_size=500)
-                    if retention_result.get("righe_eliminate", 0) > 0:
-                        logger.info(
-                            "🧹 Retention fatture: %d righe eliminate (%d dal cestino)",
-                            retention_result["righe_eliminate"],
-                            retention_result.get("righe_da_cestino", 0),
-                        )
-                except Exception as retention_exc:
-                    logger.warning("Errore retention fatture: %s", retention_exc)
+            # Retention a gate 24h. Il gate NON dipende più da
+            # purge_fatture_retention: quello è un import opzionale da
+            # services.db_service (degradato a None più sopra se fallisce), e
+            # legarci le altre retention le spegneva tutte per una dipendenza
+            # che non le riguarda. Ora l'import governa solo il proprio blocco.
+            if (now - last_retention_time) >= WORKER_RETENTION_INTERVAL_SECONDS:
+                # Retention fatture > 2 anni (batch sicuro da 500 righe)
+                if purge_fatture_retention:
+                    try:
+                        retention_result = purge_fatture_retention(batch_size=500)
+                        if retention_result.get("righe_eliminate", 0) > 0:
+                            logger.info(
+                                "🧹 Retention fatture: %d righe eliminate (%d dal cestino)",
+                                retention_result["righe_eliminate"],
+                                retention_result.get("righe_da_cestino", 0),
+                            )
+                    except Exception as retention_exc:
+                        logger.warning("Errore retention fatture: %s", retention_exc)
 
                 # upload_events > 12 mesi (30/7/2026, audit Database): stesso gate 24h.
                 try:
