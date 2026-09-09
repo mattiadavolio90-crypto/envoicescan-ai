@@ -2560,6 +2560,12 @@ class BriefingAzione(BaseModel):
     testo: str
     cta_label: str
     cta_page: str
+    # Seconda riga opzionale, in tono attenuato sotto `testo`. Nasce dalla Fase 4
+    # (9/9/2026): la card grande "Righe da classificare" e' stata eliminata e
+    # l'informazione che portava — gli euro esclusi dai margini — vive qui.
+    # ASSENTE, non stringa vuota, quando il dato non c'e': la query puo' fallire,
+    # e "0 EUR esclusi" direbbe al cliente una cosa che non sappiamo.
+    dettaglio: Optional[str] = None
     # False = "Ignora" non va offerto: il segnale e' ricalcolato LIVE a ogni
     # briefing e tornerebbe al refresh, quindi il bottone mentirebbe. Deciso qui
     # (stessa regola di get_notifiche, :2781) e non lato client: prima il frontend
@@ -5728,7 +5734,20 @@ def _briefing_righe_da_classificare(
     nuovo, quindi la card sottostima. Non esiste oggi una colonna con la data di
     revisione; quando ci sara', il filtro va spostato su quella.
 
-    None se non c'e' NULLA (ne' novita' ne' arretrato): zero rumore.
+    ESCLUSI DAI MARGINI (Fase 4, 9/9/2026). Il payload porta anche `esclusi_righe`
+    e `esclusi_importo` (righe 'Da Classificare', predicato di _card_da_classificare):
+    e' l'informazione che mostrava la card grande in fondo alla Home, ora fusa qui.
+    Sono una POPOLAZIONE DIVERSA da needs_review — righe vs prodotti distinti,
+    storico vs 7 giorni, escluse dai margini vs quasi tutte gia' dentro — quindi
+    non si sommano e non si sostituiscono: convivono come due fatti distinti.
+    Su errore le due chiavi restano ASSENTI, mai a zero: assente = non si stampa,
+    zero direbbe "nessun euro escluso" mentre la query e' fallita.
+
+    None se non c'e' NULLA: ne' novita', ne' arretrato sopra soglia, ne' euro
+    esclusi. Gli euro sono una ragione PROPRIA per parlare (Fase 4): senza,
+    un cliente con 0 novita' e meno di DA_CONTROLLARE_ARRETRATO_SOGLIA prodotti
+    arretrati non sentirebbe piu' nominare i suoi euro fuori dai margini — e'
+    lo stato normale di un piccolo arretrato, non un caso raro.
     """
     from datetime import datetime as _dt2, timedelta as _td2
     try:
@@ -5772,18 +5791,53 @@ def _briefing_righe_da_classificare(
         return None
 
     arretrato = n_totale - n_novita
-    # Nessuna novita': niente card da fare oggi. Se pero' resta un arretrato
-    # rilevante, si emette comunque il record (severity 'info') perche' la
-    # narrativa possa accennarlo — _is_actionable lo terra' fuori dalle card.
-    if n_novita <= 0 and arretrato < DA_CONTROLLARE_ARRETRATO_SOGLIA:
+
+    # Euro esclusi dai margini: stesso predicato dei calcoli, riusato e non
+    # riscritto. None (non zero) se la lettura fallisce.
+    esclusi = _card_da_classificare(supabase_client, ristorante_id)
+    esclusi_importo = float(esclusi.importo) if esclusi is not None else 0.0
+
+    # Nessuna novita': niente card da fare oggi. Si emette comunque il record
+    # (severity 'info') perche' la narrativa possa accennarlo — _is_actionable lo
+    # terra' fuori dalle card — se resta un arretrato rilevante OPPURE se ci sono
+    # euro fuori dai margini, che sono una ragione propria per parlare.
+    if (
+        n_novita <= 0
+        and arretrato < DA_CONTROLLARE_ARRETRATO_SOGLIA
+        and esclusi_importo <= 0
+    ):
         return None
 
     if n_novita > 0:
         title = f"{n_novita} {'prodotto' if n_novita == 1 else 'prodotti'} da controllare"
         severity = "warning"
-    else:
+    elif arretrato >= DA_CONTROLLARE_ARRETRATO_SOGLIA:
         title = f"{arretrato} prodotti da controllare in arretrato"
         severity = "info"
+    else:
+        # Qui si parla SOLO per gli euro fuori dai margini: l'arretrato e' sotto
+        # soglia e il suo numero non e' la ragione del record. Dirlo nel titolo
+        # accosterebbe un conteggio di prodotti a un importo di righe, che sono
+        # due popolazioni diverse — il bug B3 daccapo.
+        n_esc = int(esclusi.righe) if esclusi is not None else 0
+        voce = "riga non classificata" if n_esc == 1 else "righe non classificate"
+        title = f"{n_esc} {voce}"
+        severity = "info"
+
+    payload: Dict[str, Any] = {
+        # 'count'/'uncategorized_rows' = cio' che la card mostra e che il
+        # cliente puo' chiudere oggi. Restano le chiavi storiche perche'
+        # _is_actionable e _bullet_for le leggono.
+        "uncategorized_rows": n_novita,
+        "count": n_novita,
+        "arretrato": arretrato,
+        "totale": n_totale,
+    }
+    # Assenti su errore, non a zero: e' la regola di _card_da_classificare, e
+    # l'unico modo perche' la riga non si stampi invece di dire il falso.
+    if esclusi is not None:
+        payload["esclusi_righe"] = int(esclusi.righe)
+        payload["esclusi_importo"] = float(esclusi.importo)
 
     return {
         "id": f"uncategorized-rows-live-{ristorante_id}",
@@ -5793,15 +5847,7 @@ def _briefing_righe_da_classificare(
         "title": title,
         "body": "",
         "action_page": "/analisi-fatture?tab=articoli&verifica=1",
-        "payload": {
-            # 'count'/'uncategorized_rows' = cio' che la card mostra e che il
-            # cliente puo' chiudere oggi. Restano le chiavi storiche perche'
-            # _is_actionable e _bullet_for le leggono.
-            "uncategorized_rows": n_novita,
-            "count": n_novita,
-            "arretrato": arretrato,
-            "totale": n_totale,
-        },
+        "payload": payload,
         "source_event_at": None,
         "dedupe_key": f"uncategorized-rows-live-{ristorante_id}",
     }

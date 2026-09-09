@@ -160,7 +160,12 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
               )}
             >
               <SeverityIcon severity={a.severity} />
-              <p className="flex-1 text-sm leading-snug">{a.testo}</p>
+              <div className="flex-1">
+                <p className="text-sm leading-snug">{a.testo}</p>
+                {a.dettaglio && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">{a.dettaglio}</p>
+                )}
+              </div>
               {puoIgnorare(a) && (
                 <button
                   type="button"

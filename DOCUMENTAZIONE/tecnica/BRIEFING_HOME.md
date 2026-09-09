@@ -21,7 +21,15 @@ Il briefing è il blocco in cima alla Home (`/dashboard`). Ha tre parti:
 2. **Narrativa** — un discorsetto colloquiale che riassume la giornata. Apre con
    una **buona notizia** (se c'è) e poi elenca le cose da sistemare.
 3. **Card "Da fare oggi"** — le notifiche azionabili come bottoni cliccabili
-   (max 5). La buona notizia **non** è una card.
+   (max 5). La buona notizia **non** è una card. Una card può portare una
+   **seconda riga** (`dettaglio`, tono attenuato): dal 9/9/2026 la voce
+   `uncategorized_rows` ci mette gli € esclusi da margini e food cost, che prima
+   stavano in una card grande a sé in fondo alla Home — eliminata perché era un
+   doppione visivo della stessa voce. Le due righe contano **popolazioni
+   diverse** (prodotti `needs_review` degli ultimi 7 giorni sopra, righe
+   'Da Classificare' di tutto lo storico sotto): restano due frasi separate,
+   perché legarle in una sola direbbe il falso. Il campo è **assente**, mai a
+   zero, quando la query fallisce.
 
 **Filosofia (decisa da Mattia):** non è un report, è il "buongiorno". Deve essere
 **onesto** (mai dire cose false → il cliente si fida) e **non sterile** (quando le

@@ -8,6 +8,11 @@ export type BriefingAzione = {
   testo: string;
   cta_label: string;
   cta_page: string;
+  // Seconda riga opzionale, in tono attenuato sotto `testo` (Fase 4, 9/9/2026):
+  // gli euro esclusi da margini e food cost, che prima stavano nella card grande
+  // in fondo alla Home. ASSENTE quando il dato manca — mai "0 €", che direbbe
+  // "nessun euro escluso" mentre la query lato worker e' fallita.
+  dettaglio?: string;
   // Deciso dal backend: false = il segnale e' live e tornerebbe al refresh,
   // quindi "Ignora" mentirebbe. Opzionale perche' uno snapshot in cache generato
   // prima del 02/09/2026 non ce l'ha -> si ricade su ignorabilePerTopic().

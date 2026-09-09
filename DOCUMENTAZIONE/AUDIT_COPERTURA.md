@@ -61,6 +61,30 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   card c'e' sempre" vale per la finestra temporale, non col toggle utente ne'
 >   col taglio a 4 card: corrette entrambe, +3 test, 5 mutanti uccisi.
 >   Suite **13.310 verdi, 44 skip**.
+>
+> - **09/09/2026 — Fase 4: il banner in fondo alla Home fuso nella card.** La
+>   card grande "Righe da classificare" era un doppione visivo della voce che il
+>   briefing mostra gia' in cima ("2 prodotti da controllare"): due blocchi con
+>   due numeri diversi che al cliente sembrano la stessa cosa. Decisione di
+>   Mattia: una card sola, due righe; a zero righe non si mostra nulla (il verde
+>   "tutte classificate" sparisce). Eliminati `da-classificare-card.tsx`,
+>   `lib/home-da-classificare.ts` e `test_home_da_classificare_frontend.py`; la
+>   voce "Righe classificate" e' tornata nell'elenco Salute desktop, da cui era
+>   uscita l'1/9 proprio perche' la promuoveva quella card. Gli euro esclusi dai
+>   margini viaggiano ora nel payload di `uncategorized_rows` e diventano la
+>   seconda riga (`dettaglio`). +15 test, **8 mutanti uccisi**.
+>   `_BRIEFING_CODE_VERSION` 22 -> 23.
+>   Due cose trovate misurando e non leggendo: (a) un mutante sopravvissuto ha
+>   smascherato una mia guardia RIDONDANTE (`'esclusi_importo' not in payload`,
+>   coperta gia' dal gate a valle) — rimossa, non presidiata a forza; (b)
+>   togliendola ho visto che gateavo su `importo <= 0`, che avrebbe fatto
+>   sparire in silenzio la riga di LAND (-1.302,36 EUR di note di credito non
+>   classificate, misurati il 3/9): un totale negativo e' un dato vero, non
+>   un'assenza. Il gate e' passato sulle RIGHE, con presidio dedicato.
+>   Le due popolazioni restano DUE FRASI separate: `testo` conta i prodotti
+>   `needs_review` (7 giorni), `dettaglio` le righe 'Da Classificare' (storico,
+>   escluse dai margini). Legarle in una frase sola sarebbe falso.
+>   Suite **13.320 verdi, 44 skip**.
 
 ---
 

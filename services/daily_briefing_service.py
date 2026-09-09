@@ -115,7 +115,16 @@ logger = get_logger('daily_briefing')
 #               lo fa chi ha la CTA. Cambia il TESTO servito al cliente: senza
 #               bump lo snapshot in cache continuerebbe a servire la frase
 #               vecchia fino al TTL.
-_BRIEFING_CODE_VERSION = 22
+#  23 -> 09/09: la card grande "Righe da classificare" in fondo alla Home e'
+#               sparita e la sua informazione e' entrata nel briefing: la voce
+#               `uncategorized_rows` porta ora una seconda riga (`dettaglio`)
+#               con gli euro esclusi da margini e food cost, e la frase
+#               dell'arretrato la dice anche quando l'arretrato e' SOTTO soglia
+#               (prima quel cliente — 0 novita', pochi prodotti arretrati — non
+#               sentiva nominare i suoi euro esclusi da nessuna parte, perche'
+#               glieli diceva solo il banner). Cambia il testo servito: senza
+#               bump la cache continuerebbe a servire lo snapshot senza la riga.
+_BRIEFING_CODE_VERSION = 23
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -727,7 +736,7 @@ def _action_for(notif: Dict[str, Any]) -> Dict[str, Any]:
     raw_page = str(notif.get('action_page') or '')
     cta_page = raw_page if raw_page.startswith('/') else fallback_page
 
-    return {
+    azione = {
         'id':        str(notif.get('id') or ''),
         'topic_key': topic,
         'severity':  str(notif.get('severity') or 'info'),
@@ -738,6 +747,47 @@ def _action_for(notif: Dict[str, Any]) -> Dict[str, Any]:
         # live torna al refresh, quindi offrirlo sarebbe ingannevole.
         'dismissible': topic not in TOPIC_LIVE_NON_IGNORABILI,
     }
+
+    # Seconda riga: gli euro esclusi dai margini (Fase 4, 9/9/2026 — la card
+    # grande in fondo alla Home e' stata eliminata e la sua informazione vive
+    # qui). Due popolazioni DIVERSE nella stessa card: `testo` conta i prodotti
+    # needs_review, questa riga conta le righe 'Da Classificare' che i margini
+    # NON vedono. Restano due frasi separate proprio per non legarle in una sola
+    # che sarebbe falsa ("2 prodotti, 86 EUR esclusi").
+    # Chiave assente = query fallita: la riga non si stampa, invece di dire zero.
+    dettaglio = _dettaglio_esclusi(notif)
+    if dettaglio:
+        azione['dettaglio'] = dettaglio
+    return azione
+
+
+def _dettaglio_esclusi(notif: Dict[str, Any]) -> Optional[str]:
+    """Riga 'N EUR esclusi da margini e food cost', o None se non c'e' nulla da dire.
+
+    None quando: il topic non e' uncategorized_rows, la chiave e' assente (query
+    fallita nel worker) o non c'e' NESSUNA riga esclusa. Mai "0 € esclusi": una
+    promessa di completezza che il dato, quando manca, non regge.
+
+    Il gate e' sulle RIGHE, non sull'importo: un totale negativo e' un dato vero,
+    non un'assenza. LAND aveva -1.302,36 € di note di credito non classificate
+    (misurato il 3/9/2026) e la card grande glielo diceva; gateare su
+    `importo <= 0` avrebbe fatto sparire quella riga in silenzio proprio dove
+    c'e' piu' da sistemare.
+    """
+    if str(notif.get('topic_key') or '') != 'uncategorized_rows':
+        return None
+    payload = notif.get('payload') or {}
+    try:
+        importo = float(payload.get('esclusi_importo') or 0)
+        righe = int(payload.get('esclusi_righe') or 0)
+    except (TypeError, ValueError):
+        return None
+    if righe <= 0:
+        return None
+    return (
+        f"€ {_euro_it(importo)} esclusi da margini e food cost finché non "
+        f"{'la sistemi' if righe == 1 else 'le sistemi'}"
+    )
 
 
 def _parse_count_from_title(title: str) -> Optional[int]:
@@ -1415,10 +1465,23 @@ def _build_snapshot(
     if _rec_uncat is not None and 'uncategorized_rows' not in spenti:
         _pay = _rec_uncat.get('payload') or {}
         _arr = int(_pay.get('arretrato') or 0)
+        # Gli euro fuori dai margini sono una ragione PROPRIA per parlare, non un
+        # ornamento dell'arretrato (Fase 4, 9/9/2026): senza questo ramo, chi ha
+        # 0 novità e un arretrato sotto soglia non sentirebbe più nominare i suoi
+        # euro esclusi da nessuna parte — prima glielo diceva la card grande.
+        _esclusi = _dettaglio_esclusi(_rec_uncat)
         if _arr >= _ARRETRATO_SOGLIA_NARRATIVA:
             arretrato_frase = (
                 f"\U0001F5C2️ Resta un arretrato di {_arr} prodotti da controllare in "
                 f"Analisi Fatture: conviene partire dai più recenti."
+            )
+            if _esclusi:
+                arretrato_frase += f" {_esclusi[0].upper()}{_esclusi[1:]}."
+        elif _esclusi:
+            _n_esc = int(_pay.get('esclusi_righe') or 0)
+            _voce = 'riga non classificata' if _n_esc == 1 else 'righe non classificate'
+            arretrato_frase = (
+                f"\U0001F5C2️ {_n_esc} {_voce}: {_esclusi}."
             )
 
     # Dati mancanti: calcolati su TUTTI i candidati azionabili (non solo le 4 card
