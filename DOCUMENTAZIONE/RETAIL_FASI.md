@@ -3,9 +3,9 @@
 Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
 ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**; gate 1-8 e 10
-passati; gate 9: quattro letture (due del reviewer, una a mano, la quarta del reviewer sul
-cumulativo) hanno trovato **cinque buchi della stessa famiglia, tutti chiusi** (vedi «Seconda»,
-«Terza» e «Quarta lettura»); la **quinta passata del reviewer sul cumulativo** decide la chiusura.
+passati; gate 9: cinque letture (quattro del reviewer, una a mano) hanno trovato **sei buchi
+della stessa famiglia, tutti chiusi** (vedi «Seconda», «Terza», «Quarta» e «Quinta lettura»); la
+**sesta passata del reviewer sul cumulativo** decide la chiusura.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -248,7 +248,7 @@ dalla prima sede; sbloccarlo richiederebbe di propagare a tutte le sedi, rimanda
       `tipo_attivita` → su un account retail la sede tecnica nascerebbe `'ristorazione'`.
       Copiare il valore dalla stessa sede reale da cui già copia la P.IVA. Anche questa è
       SQL nella stessa migration (`CREATE OR REPLACE`), stessa firma
-- [x] `_SEDE_SELECT` (`services/routers/admin.py:2930`), `NuovaSedeBody` /
+- [x] `_SEDE_SELECT` (`services/routers/admin.py`), `NuovaSedeBody` /
       `ModificaSedeBody` (`:2933-2953`, pattern come `piano`), `admin_crea_sede` (`:2966`,
       insert a `:2991`), `admin_modifica_sede`
 - [x] **Vincolo di omogeneità** in `admin_crea_sede`, con `.eq("sede_tecnica", False)`:
@@ -561,7 +561,8 @@ zero due volte.
 
 **Stato del gate 9**: due passate complete del reviewer (entrambe rosse, entrambe chiuse),
 la terza interrotta dal limite API e sostituita da questo inventario, la quarta rifatta alle
-21:40 sul cumulativo (rossa, vedi «Quarta lettura»). Sui non bloccanti: il
+21:40 sul cumulativo e la quinta alle 22:00, entrambe rosse (vedi «Quarta» e «Quinta lettura»).
+Sui non bloccanti: il
 verbale era più forte del vero (la riga qui sopra lo corregge); il `-16 righe` su
 `AUDIT_COPERTURA.md` era la base non ancora rebasata su `main`, risolto col rebase;
 `settore_sede`/`is_retail` senza chiamanti sono superficie per le fasi 3-4; l'N+1 latente
@@ -582,16 +583,39 @@ dell'uscita. IVA 10 è un dato normale di fattura: era la norma, non un caso lim
 Fix: kwarg additivo `settore=None` nel guardrail (per un negozio ritorna la categoria
 normalizzata, intatta: la premessa «IVA bassa ⇒ food» è da ristorante, la merce di un negozio
 ha qualunque aliquota) e nel wrapper `_applica_tutti_guardrail`, passato dai 5 punti runtime
-(`classifica_con_ai` ×4, L7 ×1). I due chiamanti negli script manuali
-(`scripts/ricategorizza_sede.py`, `scripts/ricategorizza_sede_ai.py`, dry-run di default) non
-lo passano: residuo dichiarato in PIANO_RETAIL.md, da chiudere prima che esista una sede
-retail. Test: +10 in `tests/test_retail_guardrail_iva.py` (guardrail da solo, wrapper,
+(`classifica_con_ai` ×4, L7 ×1). L'unico altro chiamante, `scripts/ricategorizza_sede.py`
+(manuale, dry-run di default), non lo passa; `ricategorizza_sede_ai.py` non chiama il guardrail
+ma replica il deterministico runtime e lo streak senza gate settore: entrambi residuo dichiarato
+in PIANO_RETAIL.md, da chiudere prima che esista una sede retail. Test: +10 in `tests/test_retail_guardrail_iva.py` (guardrail da solo, wrapper,
 percorso di successo con e senza confidenze, L7 con «SERVIZIO DI PRODUZIONE POLLO», che il
 dizionario mette in SERVIZI e il guardrail portava in CARNE; ogni caso affiancato a `None` e
 'ristorazione'). **5 mutanti su 5 uccisi** (gate spento, gate rovesciato, i tre punti runtime
 senza `settore`); il sesto, su un percorso degradato, **sopravvive perché lì la categoria
 retail è già «Da Classificare»** e il guardrail non ha su cosa agire: quel kwarg è
 uniformità, non un presidio. Baseline a zero ×2 in processi nuovi; suite 13.487 verdi.
+
+### Quinta lettura (code-reviewer sul cumulativo, 10/9 ore 22:00): il sesto buco è la mano dell'admin
+
+Ancora eseguito, non dedotto: in `admin_qualita_classifica` il commit `64fbe5b` guardava solo
+la promozione in `prodotti_master`, ma `aggiorna_categoria_fatture` riceveva **tutti** gli id
+del gruppo. La coda raggruppa per descrizione su tutti i clienti (47 gruppi misti su 264, fino
+a 5 sedi) e le righe dei negozi ci restano per scelta (1.5): l'admin sceglieva SALUMI per il
+ristorante e la riga della ferramenta usciva SALUMI a DB. Il mio test sul gruppo misto
+asseriva solo la memoria globale, con una spesa generale lecita anche per un negozio.
+
+Fix: se la categoria scelta è food, gli id dei tenant retail escono dalla scrittura e restano in
+coda (la risposta lo dice: `righe_in_coda`); se non resta nessuna riga, 422 come per NOTE a
+importo diverso da zero; una spesa generale va su tutte le righe come prima. Test: +4 in
+`tests/test_retail_coda_admin.py` (gruppo misto con food, negozio solo con food → 422, gruppo
+misto con spesa generale, ristoranti soli con food come prima). **4 mutanti su 4 uccisi** (filtro
+tolto, predicato rovesciato, settore rovesciato, 422 tolto). Suite 13.491 verdi.
+
+Fuori dal blocco, dichiarato dal reviewer e lasciato alla Fase 3 (dove le sei whitelist di
+scrittura sono già in elenco): le correzioni del cliente (`routers/fatture.py`,
+`routers/riparto.py`) validano su `TUTTE_LE_CATEGORIE`, non per settore. Il menu è già filtrato
+(1.7) e la memoria scritta è quella locale del tenant; una chiamata API diretta scriverebbe però
+CARNE sulla riga di un negozio. La migration non è stata verificata sul DB vivo dal reviewer
+(accesso MCP negato): lo stato applicato si misura su `information_schema` prima del push.
 
 **Etichette (gate 6)**: nella Fase 1 nessuna etichetta cliente cambia. L'unico testo nuovo sta
 nel pannello **admin** (select «Settore», badge solo se retail), che non è un'interfaccia
@@ -691,8 +715,8 @@ torna indietro.
 per soli `.md`), e il codice nuovo leggerebbe una colonna inesistente.
 
 Il guasto sarebbe circoscritto, non totale: il worker seleziona sempre colonne esplicite,
-mai `*` — `_SEDE_SELECT` (`routers/admin.py:2930`) e `_resolve_sede_attiva`
-(`fastapi_worker.py:8036`). Il codice vecchio convive con la colonna nuova senza
+mai `*` — `_SEDE_SELECT` (`routers/admin.py`) e `_resolve_sede_attiva`
+(`fastapi_worker.py`). Il codice vecchio convive con la colonna nuova senza
 accorgersene. Resta un guasto in produzione: l'ordine non cambia.
 
 Sequenza: `apply_migration` → verifica su `information_schema` (tutte le sedi a

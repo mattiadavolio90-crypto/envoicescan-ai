@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 import services.fastapi_worker  # noqa: F401 — carica i moduli condivisi
 import services.routers.admin as admin
 import services.settore_service as ss
@@ -177,3 +179,52 @@ def test_suggerisci_ai_non_manda_i_negozi_al_prompt_dei_ristoranti(monkeypatch):
     monkeypatch.setattr(ss, "settore_utente", lambda uid, supabase_client=None: SETTORI.get(uid, "ristorazione"))
     admin.admin_qualita_suggerisci_ai(admin.SuggerisciAiBody(), admin_user=_ADMIN)
     assert ricevuti == [["u-rist"]]
+
+
+# ── classifica: la categoria scelta a mano non va sulle righe dei negozi ─────
+# Quinta lettura del reviewer: il gate del commit 64fbe5b guardava solo la
+# promozione in memoria globale, ma `aggiorna_categoria_fatture` riceveva TUTTI
+# gli id del gruppo — e un gruppo e' regolarmente misto (47 su 264, fino a 5
+# sedi). L'admin sceglieva SALUMI per il ristorante e la riga della ferramenta
+# usciva SALUMI a DB.
+
+def _classifica_scritture(monkeypatch, righe, categoria):
+    sb = _ClassificaSB({"fatture": righe, "prodotti_master": [], "ai_review_log": []})
+    scritte: list = []
+    monkeypatch.setattr(ss, "settore_utente", lambda uid, supabase_client=None: SETTORI.get(uid, "ristorazione"))
+    with patch.multiple(
+        admin,
+        get_supabase_client=lambda *a, **k: sb,
+        aggiorna_categoria_fatture=lambda *_a, **kw: scritte.append((sorted(kw["ids"]), kw["categoria"])) or len(kw["ids"]),
+        _log_review_action=lambda *a, **k: None,
+        _invalidate_fatture_rows_cache=lambda *a, **k: None,
+    ):
+        try:
+            out = admin.admin_qualita_classifica(admin.ClassificaBody(ids=[r["id"] for r in righe], categoria=categoria), admin_user=_ADMIN)
+        except HTTPException as e:
+            out = e.status_code
+    return out, scritte, [op for op in sb.ops if op[1] == "prodotti_master"]
+
+
+def test_gruppo_misto_una_food_va_solo_sulle_righe_del_ristorante(monkeypatch):
+    out, scritte, master = _classifica_scritture(monkeypatch, [_riga_cl(1, "u-retail"), _riga_cl(2, "u-rist")], "SALUMI")
+    assert scritte == [([2], "SALUMI")]
+    assert out == {"ok": True, "righe_aggiornate": 1, "righe_in_coda": 1}
+    assert master == [("upsert", "prodotti_master")]
+
+
+def test_righe_di_un_negozio_con_una_food_restano_in_coda(monkeypatch):
+    out, scritte, master = _classifica_scritture(monkeypatch, [_riga_cl(1, "u-retail")], "SALUMI")
+    assert (out, scritte, master) == (422, [], [])
+
+
+def test_gruppo_misto_una_spesa_generale_va_su_tutte_le_righe(monkeypatch):
+    out, scritte, _ = _classifica_scritture(monkeypatch, [_riga_cl(1, "u-retail"), _riga_cl(2, "u-rist")], "MANUTENZIONE E ATTREZZATURE")
+    assert scritte == [([1, 2], "MANUTENZIONE E ATTREZZATURE")]
+    assert out["righe_in_coda"] == 0
+
+
+def test_per_i_ristoranti_una_food_si_scrive_come_prima(monkeypatch):
+    out, scritte, master = _classifica_scritture(monkeypatch, [_riga_cl(1, "u-rist"), _riga_cl(2, "u-rist")], "SALUMI")
+    assert scritte == [([1, 2], "SALUMI")]
+    assert out["righe_aggiornate"] == 2 and master == [("upsert", "prodotti_master")]

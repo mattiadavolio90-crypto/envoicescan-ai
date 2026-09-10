@@ -47,6 +47,7 @@ from utils.ttl_cache import TTLCache
 from services.db_service import aggiorna_categoria_fatture
 from utils.supabase_paging import fetch_all
 from config.constants import (
+    CATEGORIE_FOOD_BEVERAGE,
     PIANO_LIMITI_FATTURE_MESE,
     PIANO_LIMITE_FATTURE_DEFAULT,
     SETTORE_RETAIL,
@@ -1031,7 +1032,7 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
     # regolarmente cross-ristorante — misurati 47 gruppi su 264, fino a 5 sedi.
     # Servono tutti i ristorante_id distinti, o si invaliderebbe una sede sola
     # lasciando le altre col contatore stantio.
-    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria,ristorante_id,user_id").in_("id", body.ids).execute()
+    row_resp = sb.table("fatture").select("id,descrizione,prezzo_unitario,categoria,ristorante_id,user_id").in_("id", body.ids).execute()
     prima_desc = ""
     prima_cat_da = ""
     rid_coinvolti = set()
@@ -1039,6 +1040,26 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         prima_desc = row_resp.data[0].get("descrizione", "")
         prima_cat_da = row_resp.data[0].get("categoria") or ""
         rid_coinvolti = {r.get("ristorante_id") for r in row_resp.data if r.get("ristorante_id")}
+
+    from services.settore_service import settore_utente
+    righe_ristorazione = [
+        r for r in (row_resp.data or [])
+        if settore_utente(r.get("user_id"), sb) != SETTORE_RETAIL
+    ]
+    righe_in_coda = 0
+    if body.categoria in CATEGORIE_FOOD_BEVERAGE and row_resp.data:
+        # Un negozio non riceve una categoria food nemmeno dall'admin: la coda
+        # raggruppa per descrizione su tutti i clienti, e in un gruppo misto la
+        # scrittura va solo alle righe dei ristoranti. Le altre restano in coda.
+        ids_ristorazione = {r.get("id") for r in righe_ristorazione}
+        prima = len(target_ids)
+        target_ids = [i for i in target_ids if i in ids_ristorazione]
+        righe_in_coda = prima - len(target_ids)
+        if not target_ids:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{body.categoria} non e' una categoria ammessa per un negozio: le righe restano in coda.",
+            )
 
     update_payload = {
         "categoria": body.categoria,
@@ -1071,11 +1092,6 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
     if row_resp.data:
         # La memoria globale e' dei ristoranti: se le righe classificate sono tutte
         # di account retail non si promuove (stessa guardia di risolvi_conflitto).
-        from services.settore_service import settore_utente
-        righe_ristorazione = [
-            r for r in row_resp.data
-            if settore_utente(r.get("user_id"), sb) != SETTORE_RETAIL
-        ]
         if body.salva_memoria and not righe_ristorazione:
             logger.info("admin_qualita_classifica: righe di account retail, memoria globale non toccata")
         if body.salva_memoria and righe_ristorazione:
@@ -1101,8 +1117,8 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         nota=f"salva_memoria={body.salva_memoria}",
     )
 
-    logger.info("admin_qualita_classifica: %d righe → %s | admin=%s", len(target_ids), body.categoria, admin_user.get("email"))
-    return {"ok": True, "righe_aggiornate": len(target_ids)}
+    logger.info("admin_qualita_classifica: %d righe → %s | admin=%s | %d righe di negozi lasciate in coda", len(target_ids), body.categoria, admin_user.get("email"), righe_in_coda)
+    return {"ok": True, "righe_aggiornate": len(target_ids), "righe_in_coda": righe_in_coda}
 
 
 class SuggerisciAiBody(BaseModel):
