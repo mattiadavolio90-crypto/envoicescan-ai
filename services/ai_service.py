@@ -73,6 +73,8 @@ from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, 
 
 # Import da moduli interni
 from config.constants import (
+    CATEGORIE_FOOD_BEVERAGE,
+    SETTORE_RETAIL,
     DIZIONARIO_CORREZIONI,
     BRAND_AMBIGUI_NO_DICT,
     TUTTE_LE_CATEGORIE,
@@ -4922,6 +4924,7 @@ def categorizza_con_memoria(
     pending_local_saves: Optional[List[Dict[str, Any]]] = None,
     return_fallback_flag: bool = False,
     totale_riga: Optional[float] = None,
+    settore: Optional[str] = None,
 ) -> Union[str, Tuple[str, bool]]:
     """
     Categorizza usando memoria GLOBALE multi-livello con CACHE IN-MEMORY.
@@ -4958,6 +4961,14 @@ def categorizza_con_memoria(
     global _memoria_cache
 
     def _ret(categoria: str, is_fallback: bool = False, fonte: Optional[str] = None):
+        # Retail (RETAIL_FASI.md 1.3): per un negozio una categoria food non esiste.
+        # Qualunque livello l'abbia proposta — memoria admin, locale o globale, regola
+        # fornitore, dizionario — la riga torna "Da Classificare" con is_fallback=True:
+        # il chiamante la manda all'AI e la marca needs_review. I livelli generici
+        # (utenze, note a importo zero, manutenzione, unita' di misura) passano:
+        # sono giusti anche per un negozio. Tutti i return passano da qui.
+        if settore == SETTORE_RETAIL and categoria in CATEGORIE_FOOD_BEVERAGE:
+            categoria, is_fallback, fonte = "Da Classificare", True, "nessuna"
         # I match veri (memoria/regole/fornitore/UM/dizionario) NON sono fallback.
         #
         # Fase 2 — la provenienza esce da un CANALE LATERALE (`ultima_provenienza`),
@@ -5122,6 +5133,11 @@ def categorizza_con_memoria(
         logger.info(
             f"🧭 OVERRIDE SICUREZZA (keyword): '{descrizione[:60]}' -> {categoria_keyword} [{motivo_override}]"
         )
+    if settore == SETTORE_RETAIL and categoria_keyword in CATEGORIE_FOOD_BEVERAGE:
+        # Seconda guardia retail: l'auto-save qui sotto legge categoria_keyword, non il
+        # ritorno di _ret. Senza, la memoria locale di un negozio si riempirebbe di
+        # CARNE e VERDURE che il filtro d'uscita poi nasconde.
+        categoria_keyword, motivo_override = "Da Classificare", None
     
     # 💾 SALVATAGGIO AUTOMATICO IN MEMORIA LOCALE UTENTE
     # Evita contaminazione cross-tenant: i suggerimenti automatici non entrano nella memoria globale.

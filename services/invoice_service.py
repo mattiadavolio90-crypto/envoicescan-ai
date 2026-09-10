@@ -774,6 +774,14 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         if current_user_id:
             carica_memoria_completa(current_user_id)
             logger.info("✅ Cache memoria precaricata per elaborazione XML")
+
+        # Settore dell'account, UNA volta per documento e fuori dal loop righe
+        # (RETAIL_FASI.md 1.2): viaggia come argomento fino al classificatore.
+        # Senza user_id (anteprima coda, test) resta None = percorso ristorazione.
+        settore_documento = None
+        if current_user_id:
+            from services.settore_service import settore_utente
+            settore_documento = settore_utente(current_user_id)
         
         contenuto_bytes = file_caricato.read()
 
@@ -1165,6 +1173,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     pending_local_saves=_pending_local_saves,
                     return_fallback_flag=True,
                     totale_riga=totale_riga,
+                    settore=settore_documento,
                 )
                 # Fase 2 — letta QUI perche' e' un ContextVar: va letta prima che il
                 # ciclo passi alla riga successiva, o si legge la provenienza di

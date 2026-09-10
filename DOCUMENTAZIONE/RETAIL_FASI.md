@@ -2,7 +2,7 @@
 
 Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
-ri-cattura della baseline, vedi «Trovato durante la 1.1»). Prossima: **1.3**.
+ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3 chiusa**. Prossima: **1.4**.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -331,7 +331,7 @@ per documento» si spunta in 1.3, dove il settore entra nella classificazione.
 - [x] Query: `user_id = ? and attivo = true and sede_tecnica = false limit 1`
 - [x] **Utente senza sedi → `'ristorazione'`** (caso reale: `auth_service.py:517-520`
       crea account senza sedi se manca la P.IVA). Fail-safe nella direzione giusta
-- [ ] Risolto **una volta per documento**, fuori dal loop righe
+- [x] Risolto **una volta per documento**, fuori dal loop righe
 - [x] **Mai** negli header del client Supabase: è un singleton condiviso, i suoi header
       sono stato globale e hanno già rotto la produzione. Il dato viaggia come argomento
 
@@ -342,14 +342,28 @@ finisce sul dizionario. Il canale per mandare una riga all'AI esiste già ed è 
 `Da Classificare` con `is_fallback=True` — i chiamanti lo interpretano come "passala
 all'AI e marca `needs_review`" (`services/invoice_service.py:1157-1170`).
 
-- [ ] Gate dentro la closure `_ret` (`:4952-4980`): **tutti i 12 return passano di lì**,
+- [x] Gate dentro la closure `_ret` (`:4952-4980`): **tutti i 12 return passano di lì**,
       nessun early-return la salta. Se retail e la categoria è in `CATEGORIE_FOOD_BEVERAGE`
       → `Da Classificare` + `is_fallback=True`, provenienza `"nessuna"`
-- [ ] **Non filtrare** i livelli generici, corretti anche per un negozio: L0 fornitore
+- [x] **Non filtrare** i livelli generici, corretti anche per un negozio: L0 fornitore
       utility → UTENZE, L4 dicitura → NOTE (gate `prezzo == 0`), L6 unità di misura,
       guardrail. Il gate guarda **solo** l'appartenenza alle food
-- [ ] Seconda guardia sull'auto-save locale (`:5124`): riceve `categoria_keyword`, non il
+- [x] Seconda guardia sull'auto-save locale (`:5124`): riceve `categoria_keyword`, non il
       ritorno di `_ret` — il filtro da solo non lo blocca
+
+**Chiusa il 10/9 sera.** `categorizza_con_memoria(..., settore=None)`: kwarg in coda, i
+chiamanti di oggi non lo passano e il percorso resta letteralmente quello di prima
+(provato: con `None` e `'ristorazione'` output e provenienza identici). Il gate sta in
+`_ret` (da cui passano tutti i return) e restituisce `Da Classificare` con
+`is_fallback=True` e provenienza `nessuna`; la seconda guardia azzera `categoria_keyword`
+prima dell'auto-save. L'unico chiamante di produzione è `estrai_dati_da_xml`
+(`invoice_service.py`), che risolve `settore_utente(user_id)` **una volta per documento**
+e lo passa come argomento; senza `user_id` (anteprima coda) resta `None`. Test:
+`tests/test_retail_filtro_uscita_classificazione.py` (11) e
+`tests/test_retail_settore_per_documento.py` (3, sul parser vero con XML sintetico).
+**7 mutanti su 7 uccisi** su base verde (gate spento, seconda guardia spenta, gate solo
+CARNE, gate rovesciato sui ristoranti, gate senza fallback, parser che non passa o non
+risolve il settore). Check baseline a zero prima e dopo la mutazione.
 
 ### 1.4 Post-AI: quattro punti che riporterebbero in food
 
