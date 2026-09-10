@@ -2179,8 +2179,15 @@ async def upload_invoice(
                 _AnteprimaFileLike as _AntFL,
                 costruisci_anteprima_righe as _build_ant,
             )
+            from services.settore_service import settore_utente as _settore_ant
             _ant_bytes = contents if isinstance(contents, (bytes, bytearray)) else str(contents).encode("utf-8")
-            _righe_ant = _estrai_ant(_AntFL(_ant_bytes, nome_file_canonico), user_id=None) or []
+            # user_id=None di proposito (sola lettura), ma il settore si passa: senza,
+            # l'anteprima di un negozio nascerebbe gia' con categorie food in cache.
+            _righe_ant = _estrai_ant(
+                _AntFL(_ant_bytes, nome_file_canonico),
+                user_id=None,
+                settore=_settore_ant(user_id, supabase_client),
+            ) or []
             _anteprima_righe = _build_ant(_righe_ant)
         except Exception as ant_err:
             logger.warning("upload AMBIGUO: anteprima all'ingresso fallita (non bloccante): %s", ant_err)

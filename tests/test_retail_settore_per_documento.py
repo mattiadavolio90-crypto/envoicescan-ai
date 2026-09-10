@@ -1,8 +1,9 @@
 """Il settore arriva al classificatore UNA volta per documento (RETAIL_FASI.md 1.2/1.3).
 
 `estrai_dati_da_xml` risolve `settore_utente(user_id)` fuori dal loop righe e lo
-passa a ogni `categorizza_con_memoria` come argomento. Senza `user_id`
-(anteprima coda, test) il settore resta None: percorso ristorazione invariato.
+passa a ogni `categorizza_con_memoria` come argomento. Senza `user_id` e senza
+`settore` esplicito (test) resta None: percorso ristorazione invariato. L'anteprima
+coda passa il settore esplicitamente: `test_retail_anteprima_settore.py`.
 Esterni mockati sul modulo sorgente (`services.ai_service`,
 `services.settore_service`): sono import locali dentro la funzione.
 """

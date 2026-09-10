@@ -3,9 +3,9 @@
 Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
 ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**; gate 1-8 e 10
-passati; gate 9: cinque letture (quattro del reviewer, una a mano) hanno trovato **sei buchi
-della stessa famiglia, tutti chiusi** (vedi «Seconda», «Terza», «Quarta» e «Quinta lettura»); la
-**sesta passata del reviewer sul cumulativo** decide la chiusura.
+passati; gate 9: sei letture (cinque del reviewer, una a mano) hanno trovato **sette buchi
+della stessa famiglia, tutti chiusi** (vedi le sezioni «lettura», dalla seconda alla sesta); la
+**settima passata del reviewer sul cumulativo** decide la chiusura.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -361,7 +361,8 @@ chiamanti di oggi non lo passano e il percorso resta letteralmente quello di pri
 `is_fallback=True` e provenienza `nessuna`; la seconda guardia azzera `categoria_keyword`
 prima dell'auto-save. L'unico chiamante di produzione è `estrai_dati_da_xml`
 (`invoice_service.py`), che risolve `settore_utente(user_id)` **una volta per documento**
-e lo passa come argomento; senza `user_id` (anteprima coda) resta `None`. Test:
+e lo passa come argomento; senza `user_id` e senza `settore` esplicito resta `None` —
+l'anteprima coda lo passa esplicitamente (vedi «Sesta lettura»). Test:
 `tests/test_retail_filtro_uscita_classificazione.py` (11) e
 `tests/test_retail_settore_per_documento.py` (3, sul parser vero con XML sintetico).
 **7 mutanti su 7 uccisi** su base verde (gate spento, seconda guardia spenta, gate solo
@@ -561,8 +562,8 @@ zero due volte.
 
 **Stato del gate 9**: due passate complete del reviewer (entrambe rosse, entrambe chiuse),
 la terza interrotta dal limite API e sostituita da questo inventario, la quarta rifatta alle
-21:40 sul cumulativo e la quinta alle 22:00, entrambe rosse (vedi «Quarta» e «Quinta lettura»).
-Sui non bloccanti: il
+21:40 sul cumulativo, la quinta alle 22:00 e la sesta alle 22:30, tutte rosse (vedi «Quarta»,
+«Quinta» e «Sesta lettura»). Sui non bloccanti: il
 verbale era più forte del vero (la riga qui sopra lo corregge); il `-16 righe` su
 `AUDIT_COPERTURA.md` era la base non ancora rebasata su `main`, risolto col rebase;
 `settore_sede`/`is_retail` senza chiamanti sono superficie per le fasi 3-4; l'N+1 latente
@@ -616,6 +617,38 @@ scrittura sono già in elenco): le correzioni del cliente (`routers/fatture.py`,
 (1.7) e la memoria scritta è quella locale del tenant; una chiamata API diretta scriverebbe però
 CARNE sulla riga di un negozio. La migration non è stata verificata sul DB vivo dal reviewer
 (accesso MCP negato): lo stato applicato si misura su `information_schema` prima del push.
+
+### Sesta lettura (code-reviewer sul cumulativo, 10/9 ore 22:30): il settimo buco è l'anteprima
+
+Eseguito sulla catena vera: `estrai_dati_da_xml(xml, user_id=None)` + `costruisci_anteprima_righe`
+dava SALUMI a «PROSCIUTTO CRUDO STAGIONATO». È l'anteprima della coda «da assegnare»
+(`riparto_anteprima_coda`) e la sua gemella generata **all'ingresso** di ogni documento ambiguo
+(`upload_invoice`, salvata in `fatture_queue.anteprima_righe`): entrambe passano `user_id=None`
+di proposito — niente memoria, niente scritture — ma senza utente il parser non risolveva il
+settore, e un negozio vedeva food sulla propria merce, in cache prima ancora di aprire la
+schermata (sul DB vivo: 13 righe `da_assegnare` e 367 anteprime persistite su 3 account). Il
+verbale della 1.3 registrava il fatto («senza `user_id` resta `None`») senza dirne la
+conseguenza. Stesso schema dei sei precedenti: un `settore=None` arrivato per una ragione che
+non c'entra col settore.
+
+Fix: `settore` esplicito in `estrai_dati_da_xml` (vince su `user_id`; assente → si risolve da
+`user_id` come prima), passato dai due chiamanti dall'utente autenticato. Il gemello Vision
+(`estrai_dati_da_scontrino_vision`) legge l'utente solo da `st.session_state`, che in
+produzione è il guscio vuoto: **nessun chiamante in produzione** (`handle_uploaded_files` è il
+percorso Streamlit, zero invocazioni in `services/`, `worker/`, `scripts/`) — non toccato. Lo
+script `_recupera_anteprime_offside_storiche.py` (OFFSIDE, un ristorante) resta a
+`user_id=None`. Test: +7 in `tests/test_retail_anteprima_settore.py` (parser con settore
+esplicito senza utente, esplicito che vince sull'utente, senza esplicito come prima; endpoint
+anteprima; `upload_invoice` eseguito fino al ramo ambiguo con routing e RPC finti, per negozio
+e per ristorante). **3 mutanti su 3 uccisi** (parser che ignora il settore, endpoint e ingresso
+senza `settore`). Suite 13.498 verdi.
+
+Dal reviewer, non bloccanti: la cache del settore è per processo (`invalida_cache` non
+raggiunge il queue-worker, che vede un cambio settore entro 300 s: residuo esplicito, inerte
+finché non esiste una sede retail); un rosso isolato in `test_home_briefing_cache_first.py`
+alla prima passata, verde da solo e alla seconda — file non toccato dal branch, ordine dei
+test, non regressione retail; la migration verificata sul live come **non applicata** (colonna
+assente, funzione non aggiornata), coerente col vincolo.
 
 **Etichette (gate 6)**: nella Fase 1 nessuna etichetta cliente cambia. L'unico testo nuovo sta
 nel pannello **admin** (select «Settore», badge solo se retail), che non è un'interfaccia

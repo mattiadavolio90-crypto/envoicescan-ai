@@ -925,7 +925,9 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
     scritture (carica_memoria_completa e flush_pending_local_saves sono entrambe
     condizionate a user_id essere valorizzato — con None restano no-op). La categoria
     mostrata è quindi una stima (dizionario/regole globali), non la classificazione
-    definitiva che il documento riceverà una volta collocato su un locale."""
+    definitiva che il documento riceverà una volta collocato su un locale. Il settore
+    dell'account viaggia esplicitamente (`settore=`), perché con user_id=None il parser
+    non può risolverlo: senza, un negozio vedrebbe categorie food sulla propria merce."""
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
@@ -974,12 +976,14 @@ def riparto_anteprima_coda(queue_id: int, authorization: Optional[str] = Header(
             return {"righe": [], "disponibile": False, "motivo": motivo}
 
     from services.invoice_service import estrai_dati_da_xml
+    from services.settore_service import settore_utente
     nome_file = (row.get("payload_meta") or {}).get("nome_file") or f"queue_{queue_id}.xml"
     xml_bytes = xml_content.encode("utf-8") if isinstance(xml_content, str) else xml_content
     file_like = _AnteprimaFileLike(xml_bytes, nome_file)
+    settore = settore_utente(user_id, sb)
 
     try:
-        righe = estrai_dati_da_xml(file_like, user_id=None) or []
+        righe = estrai_dati_da_xml(file_like, user_id=None, settore=settore) or []
     except Exception as exc:
         logger.warning("Anteprima coda: parsing fallito queue_id=%s: %s", queue_id, exc)
         return {"righe": [], "disponibile": False, "motivo": "illeggibile"}

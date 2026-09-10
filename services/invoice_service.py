@@ -726,7 +726,7 @@ def decodifica_xml_sicuro(contenuto_bytes) -> str:
     return contenuto
 
 
-def estrai_dati_da_xml(file_caricato, user_id: str = None):
+def estrai_dati_da_xml(file_caricato, user_id: str = None, settore: Optional[str] = None):
     """
     Estrae dati da fatture XML elettroniche italiane.
     
@@ -735,6 +735,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         user_id:       ID utente per precarico memoria classificazioni.
                        Se None, tenta di leggerlo da st.session_state (retrocompatibilità
                        con path Streamlit). Passare esplicitamente dal worker FastAPI.
+        settore:       settore dell'account ('ristorazione' | 'retail'), indipendente da
+                       user_id: chi parsa in sola lettura (anteprima coda, user_id=None
+                       per non attivare memoria e scritture) lo passa esplicitamente.
+                       Se None si risolve da user_id come prima.
         
     Returns:
         List[Dict]: righe prodotto estratte. Lista vuota SOLO per un XML valido
@@ -777,9 +781,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
 
         # Settore dell'account, UNA volta per documento e fuori dal loop righe
         # (RETAIL_FASI.md 1.2): viaggia come argomento fino al classificatore.
-        # Senza user_id (anteprima coda, test) resta None = percorso ristorazione.
-        settore_documento = None
-        if current_user_id:
+        # Il settore esplicito vince: l'anteprima coda parsa con user_id=None di
+        # proposito (niente memoria, niente scritture) ma il settore lo conosce.
+        settore_documento = settore
+        if settore_documento is None and current_user_id:
             from services.settore_service import settore_utente
             settore_documento = settore_utente(current_user_id)
         
