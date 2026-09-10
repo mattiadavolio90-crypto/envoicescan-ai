@@ -4,8 +4,9 @@ Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
 ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**; gate 1-8 e 10
 passati; gate 9: sei letture (cinque del reviewer, una a mano) hanno trovato **sette buchi
-della stessa famiglia, tutti chiusi** (vedi le sezioni «lettura», dalla seconda alla sesta); la
-**settima passata del reviewer sul cumulativo** decide la chiusura.
+della stessa famiglia, tutti chiusi** (vedi le sezioni «lettura», dalla seconda alla sesta);
+**settima passata del reviewer verde** (10/9 ore 23:00, cumulativo di 14 commit, codice a
+`50fc209`). **Fase 1 CHIUSA.** Prossima: Fase 2 con Opus, ultrathink.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -216,7 +217,7 @@ catturato. Un `check` verde una volta sola non è una prova: se ne fanno **due**
 
 ---
 
-## Fase 1 — Isolamento · **bloccante per tutte le altre** · Fable, ultrathink, ~3 giorni
+## Fase 1 — Isolamento · **bloccante per tutte le altre** · Fable, ultrathink · **CHIUSA** 10/9/2026 (`50fc209`)
 
 Nessuna fase successiva parte prima che questa abbia passato il gate. Sottofasi
 nell'ordine: ogni casella si spunta col gate 4-5 (baseline) rifatto.
@@ -650,6 +651,30 @@ alla prima passata, verde da solo e alla seconda — file non toccato dal branch
 test, non regressione retail; la migration verificata sul live come **non applicata** (colonna
 assente, funzione non aggiornata), coerente col vincolo.
 
+### Settima lettura (code-reviewer sul cumulativo, 10/9 ore 23:00): verde
+
+Nessun ottavo buco: il reviewer ha ripercorso ogni chiamante vivo di `estrai_dati_da_xml` (6),
+`classifica_con_ai` (2), `categorizza_con_memoria` / `ottieni_categoria_prodotto` (tutti i
+return passano da `_ret` / `_ret_ocp`), worker, admin, agente notturno, propagazione, Edge
+Functions. Ha verificato che il fake di `upload_invoice` attraversa il percorso vero (mutando
+la guardia magic-bytes i due test cadono) e che Vision è davvero morto (unico chiamante in
+`legacy_streamlit/app_controllers.py`, mai importato da `services/`, `worker/`, `scripts/`).
+Baseline a zero ×2, suite 13.498, `-m sql` 180, OpenAPI senza drift, 5.699 righe di test
+aggiunte e 0 cancellate. Marker `.reviewer_gate_ok` scritto.
+
+Residui nuovi, da tenere accanto alla cache 300 s: (1) le **anteprime già persistite** in
+`fatture_queue.anteprima_righe` non si ri-parsano — un documento entrato in coda prima del
+cambio settore mostrerà ancora food finché la cache non viene azzerata (inerte oggi: nessuna
+sede retail esiste); (2) `_runtime_conferma_categoria` (`worker/queue_processor.py`) non ha il
+gate settore: può solo confermare una categoria già proposta col gate, mai produrne una —
+asimmetria, non presidio; (3) la **migration va misurata sul DB vivo** prima del push
+(`information_schema.columns` per `ristoranti.tipo_attivita`, `pg_proc` per
+`assegna_fattura_a_sede_tecnica`): il reviewer non ha avuto accesso.
+
+**Bilancio Fase 1**: 14 commit, 16 file di test nuovi (5.699 righe), **69 mutanti uccisi, 1
+sopravvissuto motivato** (quarta lettura: percorsi degradati, categoria retail già «Da
+Classificare»), baseline a zero dopo ogni passo, 7 buchi trovati in 6 letture e chiusi.
+
 **Etichette (gate 6)**: nella Fase 1 nessuna etichetta cliente cambia. L'unico testo nuovo sta
 nel pannello **admin** (select «Settore», badge solo se retail), che non è un'interfaccia
 cliente.
@@ -789,6 +814,7 @@ tocca i ristoranti.
 - **Rientro** (retail → ristorazione): le righe `ARTICOLO DI VENDITA` restano, cadono nel
   catch-all (MOL corretto) e nel secchio "fb" (coerente). Il cliente vede una categoria in
   più. Accettabile.
+- **Anteprime già in cache** e **cache settore per processo**: vedi «Settima lettura», residui.
 - **`test_documentazione_onesta.py` non scansiona questo file** (lista fissa di documenti):
   finché resta sul branch può mentire senza che un test lo dica. Al merge su `main` va
   aggiunto alla lista, o i suoi riferimenti a simboli e righe vanno ri-misurati a mano.
@@ -819,7 +845,7 @@ così Mattia cambia modello a mano.
 | Fase | Modello | Sforzo |
 |---|---|---|
 | 0 — snapshot, backup, worktree | Opus | **chiusa** 10/9 (`b642e3c`) |
-| 1 — isolamento | **Fable** | **ultrathink** — 3 giorni: 4 file condivisi, 12 punti di uscita, il fix tenant sulle fatture di tutti |
+| 1 — isolamento | **Fable** | **chiusa** 10/9 (`50fc209`) — ultrathink, un giorno invece di tre: 4 file condivisi, 12 punti di uscita, 7 buchi trovati in 6 letture e chiusi |
 | 2 — prompt retail | Opus | **ultrathink** — 1 giorno: regola di dominio #1 |
 | 3 — spegnimenti ed etichette | Opus | normale — 2 giorni |
 | 4 — briefing, chat, soglie | Opus | normale — 1 giorno |

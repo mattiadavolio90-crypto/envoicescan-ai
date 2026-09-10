@@ -86,6 +86,21 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   chiamanti di `fetch_all` su 34 senza `.order()`**, stessa classe. Suite
 >   **13.363 verdi, 44 skip**.
 >
+> - **10/09/2026, branch `retail` (14 commit, NON spedito) — Fase 1 del retail:
+>   l'isolamento per settore.** Colonna `ristoranti.tipo_attivita` (migration
+>   scritta, NON applicata), `services/settore_service.py`, e un kwarg additivo
+>   `settore` lungo tutta la catena di classificazione (memoria, GPT,
+>   `classifica_con_ai`, guardrail IVA, hint, worker, coda admin, propagazione,
+>   agente notturno, dropdown, anteprima coda). Per i ristoranti niente cambia:
+>   baseline di sola lettura sui dati veri a zero dopo ogni passo (56 righe di
+>   costi, 3.475 categorie). Sette passate di review (sei del reviewer, una a
+>   mano) hanno trovato **sette buchi della stessa famiglia** — un
+>   `settore=None` arrivato per una ragione che non c'entra col settore — tutti
+>   chiusi eseguendo il codice, non leggendolo. +16 file di test (5.699 righe,
+>   0 test esistenti toccati), 69 mutanti uccisi, 1 sopravvissuto motivato.
+>   Verbale completo: `DOCUMENTAZIONE/RETAIL_FASI.md`. Suite **13.498 verdi,
+>   45 skip**, `-m sql` 180.
+>
 > - **09/09/2026 — Fase 4: il banner in fondo alla Home fuso nella card.** La
 >   card grande "Righe da classificare" era un doppione visivo della voce che il
 >   briefing mostra gia' in cima ("2 prodotti da controllare"): due blocchi con
