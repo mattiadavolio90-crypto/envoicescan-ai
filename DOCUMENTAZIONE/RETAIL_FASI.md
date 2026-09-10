@@ -1,9 +1,8 @@
 # Retail — le fasi dell'implementazione
 
-Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`). **Fase 1.1 scritta, provata e
-committata, ma il suo gate 4-5 è sospeso**: il `check` della baseline non è più
-riproducibile per un difetto di paginazione in `ai_service` che esiste in produzione
-(vedi «Trovato durante la 1.1»). **Decisione a Mattia** prima di proseguire con 1.2.
+Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
+passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
+ri-cattura della baseline, vedi «Trovato durante la 1.1»). Prossima: **1.3**.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -221,8 +220,8 @@ nell'ordine: ogni casella si spunta col gate 4-5 (baseline) rifatto.
 
 ### 1.1 Migration e perno
 
-**Stato 10/9 sera — codice fatto e provato, caselle NON spuntate**: il gate 4-5 non è
-passato per una causa esterna alla 1.1 (sotto). Fatto e misurato: migration
+**Chiusa il 10/9 sera** (commit `eb8818c` dopo il rebase; gate 4-5 passato con due check a
+zero dopo il fix `da269ad` su `main`). Fatto e misurato: migration
 `20260910163000_add_tipo_attivita.sql` (si scrive, non si applica; il harness `-m sql` la
 applica sopra lo snapshot: **180 verdi**, erano 176 prima — il «164» di questo documento
 era una cifra ereditata); `_SEDE_SELECT` con `tipo_attivita` e usato anche da
@@ -238,22 +237,22 @@ riesportato senza drift, suite **13.385 verdi** (+25). Decisione presa (da confe
 con più sedi il settore **non si cambia** dal pannello — un account retail nasce tale
 dalla prima sede; sbloccarlo richiederebbe di propagare a tutte le sedi, rimandato.
 
-- [ ] `supabase/migrations/AAAAMMGGHHMMSS_add_tipo_attivita.sql`:
+- [x] `supabase/migrations/AAAAMMGGHHMMSS_add_tipo_attivita.sql`:
       `ALTER TABLE ristoranti ADD COLUMN tipo_attivita TEXT NOT NULL DEFAULT 'ristorazione'`
       + `CHECK (tipo_attivita IN ('ristorazione','retail'))`. **Si scrive, non si applica.**
-- [ ] **Ereditarietà della sede tecnica**: l'INSERT dentro `assegna_fattura_a_sede_tecnica`
+- [x] **Ereditarietà della sede tecnica**: l'INSERT dentro `assegna_fattura_a_sede_tecnica`
       (`supabase/schema_snapshot.sql:1614-1621`) elenca 6 colonne e non include
       `tipo_attivita` → su un account retail la sede tecnica nascerebbe `'ristorazione'`.
       Copiare il valore dalla stessa sede reale da cui già copia la P.IVA. Anche questa è
       SQL nella stessa migration (`CREATE OR REPLACE`), stessa firma
-- [ ] `_SEDE_SELECT` (`services/routers/admin.py:2930`), `NuovaSedeBody` /
+- [x] `_SEDE_SELECT` (`services/routers/admin.py:2930`), `NuovaSedeBody` /
       `ModificaSedeBody` (`:2933-2953`, pattern come `piano`), `admin_crea_sede` (`:2966`,
       insert a `:2991`), `admin_modifica_sede`
-- [ ] **Vincolo di omogeneità** in `admin_crea_sede`, con `.eq("sede_tecnica", False)`:
+- [x] **Vincolo di omogeneità** in `admin_crea_sede`, con `.eq("sede_tecnica", False)`:
       la sede tecnica è esclusa dal vincolo (coerente coi 15+ punti che già la escludono)
-- [ ] `UserPublic` (`services/fastapi_worker.py:1176`) e `SessionUser`
+- [x] `UserPublic` (`services/fastapi_worker.py:1176`) e `SessionUser`
       (`apps/web/src/lib/auth.ts:19`), campo additivo col default
-- [ ] Frontend admin: form sede in `cliente-dettaglio-client.tsx`, tipo `Sede` in
+- [x] Frontend admin: form sede in `cliente-dettaglio-client.tsx`, tipo `Sede` in
       `apps/web/src/lib/admin.ts:3`
 
 ### Trovato durante la 1.1: la memoria locale si carica a metà (paginazione senza ORDER BY)
@@ -292,17 +291,32 @@ confronti gli **id distinti** e non il conteggio. `utils/supabase_paging.fetch_a
 stesso rischio per i chiamanti senza `.order()` (l'esempio nel suo docstring non lo ha).
 
 **Non è retail e non è in questo piano**: cambia il comportamento per i ristoranti (in
-meglio), quindi lo decide Mattia — su questo branch, o su `main` con il push di stasera
-(più urgente del retail: un cliente pagante perde le proprie correzioni a intermittenza).
-Finché non c'è, il gate 4-5 non è riproducibile e la 1.2 non si apre.
+meglio), quindi lo ha deciso Mattia: **su `main`, commit `da269ad`** (10/9 sera), col push di
+stasera. `.order("id")` in `_fetch_all_rows`, test provato con tre mutanti (senza ordine,
+per descrizione, decrescente), due fake di test esistenti hanno imparato `.order()` (col suo
+ok). Dopo il fix: 10 letture su 10 complete. Il reviewer ha misurato il costo (~2 ms in più
+sull'ultima pagina, index scan sulla PK) e contato **33 chiamanti di `fetch_all` senza
+`.order()` su 34** — stessa classe, superficie 13× su `fatture`: decisione separata.
+
+**Effetto collaterale del fix, dichiarato**: nella mappa normalizzata della memoria locale
+(`prodotti_utente_norm`) più voci possono collidere sulla stessa chiave (le 6 «PER CONSUMO
+FUSTI BIRRA MORETTI MESE …» di SUSHILAND normalizzano tutte a «PER CONSUMO FUSTI BIRRA
+MORETTI»: 1 manuale SERVIZI, 4 automatiche BIRRE) e **vince l'ultima caricata**. Prima
+l'ordine era quello fisico (≈ la più recente); ora è per `id` (uuid: deterministico ma
+arbitrario). Sui dati veri cambia **1 riga su 3.475** (Villa Guardia, GIUGNO: BIRRE →
+SERVIZI E CONSULENZE, cioè verso la correzione manuale del cliente). La baseline è stata
+**ri-catturata** su `main` + fix (la baseline fotografa il codice) e il check è a zero due
+volte. **Domanda di design per Mattia, non urgente**: sulle collisioni dovrebbe vincere per
+regola la voce manuale sulle automatiche (e la più recente a parità), non l'ordine di
+lettura. Oggi non lo fa in nessuna delle due versioni.
 
 ### 1.2 `services/settore_service.py` (nuovo)
 
 Modulo separato: `ai_service.py` è già importato da mezzo mondo, e la funzione serve anche
 a router che non fanno AI.
 
-**Stato 10/9 sera — scritto e provato, caselle NON spuntate** (stesso motivo della 1.1: il
-gate 4-5 aspetta il fix di paginazione su `main`). `settore_utente` / `settore_sede` /
+**Chiusa il 10/9 sera** (commit `4743b2a` dopo il rebase; stesso gate della 1.1).
+`settore_utente` / `settore_sede` /
 `is_retail` / `invalida_cache`, cache con lock e TTL 300 s, errore DB **non** messo in cache,
 valore sconosciuto → ristorazione. Cablato in `/api/auth/login` e `/api/auth/me`
 (`UserPublic.tipo_attivita`, che prima restava al default) e nell'admin: crea, modifica del
@@ -311,14 +325,14 @@ settore ed elimina sede invalidano la cache dell'account. Test nuovi:
 `tests/test_retail_sede_tipo_attivita.py`. **11 mutanti su 11 uccisi.** «Risolto una volta
 per documento» si spunta in 1.3, dove il settore entra nella classificazione.
 
-- [ ] `settore_utente(user_id)` e `settore_sede(ristorante_id)`
-- [ ] Cache modulo-level con `threading.Lock` + TTL **300s** (pattern di `_memoria_cache`,
+- [x] `settore_utente(user_id)` e `settore_sede(ristorante_id)`
+- [x] Cache modulo-level con `threading.Lock` + TTL **300s** (pattern di `_memoria_cache`,
       `ai_service.py:290-291`; TTL corto: il settore cambia solo per mano dell'admin)
-- [ ] Query: `user_id = ? and attivo = true and sede_tecnica = false limit 1`
-- [ ] **Utente senza sedi → `'ristorazione'`** (caso reale: `auth_service.py:517-520`
+- [x] Query: `user_id = ? and attivo = true and sede_tecnica = false limit 1`
+- [x] **Utente senza sedi → `'ristorazione'`** (caso reale: `auth_service.py:517-520`
       crea account senza sedi se manca la P.IVA). Fail-safe nella direzione giusta
 - [ ] Risolto **una volta per documento**, fuori dal loop righe
-- [ ] **Mai** negli header del client Supabase: è un singleton condiviso, i suoi header
+- [x] **Mai** negli header del client Supabase: è un singleton condiviso, i suoi header
       sono stato globale e hanno già rotto la produzione. Il dato viaggia come argomento
 
 ### 1.3 Filtro d'uscita nella classificazione
