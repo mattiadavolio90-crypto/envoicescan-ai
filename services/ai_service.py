@@ -4236,6 +4236,7 @@ def _applica_guardrail_iva_bassa_spese_generali(
     categoria: str,
     iva_percentuale: Optional[float] = None,
     prezzo: Optional[float] = None,
+    settore: Optional[str] = None,
 ) -> str:
     """Ultimo recupero soft: prova a correggere le spese generali sospette con IVA 4/5/10.
 
@@ -4245,6 +4246,11 @@ def _applica_guardrail_iva_bassa_spese_generali(
     applicata a valle dal chiamante che scrive a DB, per riga.
     """
     categoria_norm = _normalize_category_name(categoria) or categoria
+    if settore == SETTORE_RETAIL:
+        # "IVA bassa su una spesa generale = probabilmente food" e' una premessa da
+        # ristorante: la merce di un negozio ha qualunque aliquota, e il recupero
+        # porterebbe la riga in CAFFE E THE o VINI dopo ogni filtro d'uscita.
+        return categoria_norm
     if categoria_norm not in CATEGORIE_SPESE_GENERALI:
         return categoria_norm
 
@@ -4395,6 +4401,7 @@ def _applica_tutti_guardrail(
     categoria: str,
     prezzo: float,
     iva_percentuale: Optional[float] = None,
+    settore: Optional[str] = None,
 ) -> str:
     """A1: helper centralizzato che applica tutti i guardrail in sequenza.
 
@@ -4403,7 +4410,7 @@ def _applica_tutti_guardrail(
     Per i soli check NOTE/prezzo (FORNITORE, UM) usare direttamente
     _applica_guardrail_note_con_importo.
     """
-    cat = _applica_guardrail_iva_bassa_spese_generali(descrizione, categoria, iva_percentuale)
+    cat = _applica_guardrail_iva_bassa_spese_generali(descrizione, categoria, iva_percentuale, settore=settore)
     cat = _applica_guardrail_note_con_importo(descrizione, cat, prezzo)
     return cat
 
@@ -5149,7 +5156,7 @@ def categorizza_con_memoria(
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
     categoria_keyword, motivo_override = applica_regole_categoria_forti(descrizione, categoria_keyword)
     # A1: usa helper centralizzato per applicare entrambi i guardrail in sequenza
-    categoria_keyword = _applica_tutti_guardrail(descrizione, categoria_keyword, _importo_guardrail, iva_percentuale)
+    categoria_keyword = _applica_tutti_guardrail(descrizione, categoria_keyword, _importo_guardrail, iva_percentuale, settore=settore)
     if motivo_override:
         logger.info(
             f"🧭 OVERRIDE SICUREZZA (keyword): '{descrizione[:60]}' -> {categoria_keyword} [{motivo_override}]"
@@ -5579,7 +5586,7 @@ def classifica_con_ai(
                     else decisione_deterministica(desc)
                 )
                 output.append(
-                    _applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value)
+                    _applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value, settore=settore)
                 )
             if return_confidenze:
                 return output, ["bassa"] * len(output)
@@ -5767,7 +5774,7 @@ def classifica_con_ai(
         output_confidenze = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-            cat_out = _applica_guardrail_iva_bassa_spese_generali(desc, risultati.get(desc, "Da Classificare"), iva_value)
+            cat_out = _applica_guardrail_iva_bassa_spese_generali(desc, risultati.get(desc, "Da Classificare"), iva_value, settore=settore)
             output.append(cat_out)
             # confidence: "bassa" se ancora Da Classificare, altrimenti quanto registrato
             conf_out = "bassa" if cat_out == "Da Classificare" else confidenze_risultati.get(desc, "media")
@@ -5791,7 +5798,7 @@ def classifica_con_ai(
                 ("Da Classificare", None, None) if settore == SETTORE_RETAIL
                 else decisione_deterministica(desc)
             )
-            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
+            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value, settore=settore))
         if return_confidenze:
             return output, ["bassa"] * len(output)
         return output
@@ -5810,7 +5817,7 @@ def classifica_con_ai(
                 ("Da Classificare", None, None) if settore == SETTORE_RETAIL
                 else decisione_deterministica(desc)
             )
-            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
+            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value, settore=settore))
         if return_confidenze:
             return output, ["bassa"] * len(output)
         return output

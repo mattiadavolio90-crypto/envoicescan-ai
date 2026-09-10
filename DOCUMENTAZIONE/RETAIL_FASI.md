@@ -3,8 +3,9 @@
 Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
 ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**; gate 1-8 e 10
-passati; gate 9: due review complete e chiuse, terza interrotta dal limite API (vedi «Terza
-lettura») — **da rifare** prima di dichiarare la fase chiusa dal reviewer.
+passati; gate 9: quattro letture (due del reviewer, una a mano, la quarta del reviewer sul
+cumulativo) hanno trovato **cinque buchi della stessa famiglia, tutti chiusi** (vedi «Seconda»,
+«Terza» e «Quarta lettura»); la **quinta passata del reviewer sul cumulativo** decide la chiusura.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -559,13 +560,39 @@ file (non quello esistente) e il mutante ora è ucciso da entrambi i test. Check
 zero due volte.
 
 **Stato del gate 9**: due passate complete del reviewer (entrambe rosse, entrambe chiuse),
-la terza interrotta dal limite API e sostituita da questo inventario. **Va rifatta quando il
-limite si resetta**, prima di dichiarare la fase chiusa dal reviewer. Sui non bloccanti: il
+la terza interrotta dal limite API e sostituita da questo inventario, la quarta rifatta alle
+21:40 sul cumulativo (rossa, vedi «Quarta lettura»). Sui non bloccanti: il
 verbale era più forte del vero (la riga qui sopra lo corregge); il `-16 righe` su
 `AUDIT_COPERTURA.md` era la base non ancora rebasata su `main`, risolto col rebase;
 `settore_sede`/`is_retail` senza chiamanti sono superficie per le fasi 3-4; l'N+1 latente
 in `_propaga_global_override_a_fatture_storiche` (un `settore_utente` per riga candidata,
 assorbito dalla cache 300 s) resta annotato.
+### Quarta lettura (code-reviewer sul cumulativo, 10/9 ore 21:40): il quinto buco sta a valle di tutto
+
+Il reviewer ha eseguito il codice, non letto: `classifica_con_ai(['CAFFE MISCELA BAR 1KG'],
+lista_iva=[10], settore='retail')` con GPT che risponde MATERIALE DI CONSUMO usciva
+**CAFFE E THE**. La causa: `_applica_guardrail_iva_bassa_spese_generali` («una spesa generale
+con IVA 4/5/10 è sospetta: prova a recuperare una food dal dizionario») gira sul percorso di
+successo **dopo** la validazione per settore, e sul livello L7 di `categorizza_con_memoria`
+**prima** della seconda guardia, che avrebbe riportato la riga a «Da Classificare» invece di
+lasciarle la spesa generale. Nessun test retail passava `lista_iva` con un valore basso, e
+l'inventario della terza lettura guardava le scritture in memoria, non i passaggi a valle
+dell'uscita. IVA 10 è un dato normale di fattura: era la norma, non un caso limite.
+
+Fix: kwarg additivo `settore=None` nel guardrail (per un negozio ritorna la categoria
+normalizzata, intatta: la premessa «IVA bassa ⇒ food» è da ristorante, la merce di un negozio
+ha qualunque aliquota) e nel wrapper `_applica_tutti_guardrail`, passato dai 5 punti runtime
+(`classifica_con_ai` ×4, L7 ×1). I due chiamanti negli script manuali
+(`scripts/ricategorizza_sede.py`, `scripts/ricategorizza_sede_ai.py`, dry-run di default) non
+lo passano: residuo dichiarato in PIANO_RETAIL.md, da chiudere prima che esista una sede
+retail. Test: +10 in `tests/test_retail_guardrail_iva.py` (guardrail da solo, wrapper,
+percorso di successo con e senza confidenze, L7 con «SERVIZIO DI PRODUZIONE POLLO», che il
+dizionario mette in SERVIZI e il guardrail portava in CARNE; ogni caso affiancato a `None` e
+'ristorazione'). **5 mutanti su 5 uccisi** (gate spento, gate rovesciato, i tre punti runtime
+senza `settore`); il sesto, su un percorso degradato, **sopravvive perché lì la categoria
+retail è già «Da Classificare»** e il guardrail non ha su cosa agire: quel kwarg è
+uniformità, non un presidio. Baseline a zero ×2 in processi nuovi; suite 13.487 verdi.
+
 **Etichette (gate 6)**: nella Fase 1 nessuna etichetta cliente cambia. L'unico testo nuovo sta
 nel pannello **admin** (select «Settore», badge solo se retail), che non è un'interfaccia
 cliente.
