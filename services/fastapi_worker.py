@@ -1362,6 +1362,8 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
     except Exception:
         pass
 
+    from services.settore_service import settore_utente
+
     return LoginResponse(
         token=token,
         user=UserPublic(
@@ -1371,6 +1373,7 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
             num_sedi=num_sedi,
             pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
             is_admin=_is_admin_email(user.get("email")),
+            tipo_attivita=settore_utente(str(user["id"])),
         ),
     )
 
@@ -1421,6 +1424,8 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
     except Exception:
         pass
 
+    from services.settore_service import settore_utente
+
     return UserPublic(
         id=str(user["id"]),
         email=user["email"],
@@ -1432,6 +1437,7 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         is_admin=_is_admin_email(user.get("email")),
         tema=(user.get("tema") or "dark"),
         privacy_accepted=bool(user.get("privacy_accepted_at")),
+        tipo_attivita=settore_utente(str(user["id"])),
     )
 
 

@@ -3055,6 +3055,8 @@ def admin_crea_sede(
         "attivo": True,
         "tipo_attivita": settore,
     }).execute()
+    from services.settore_service import invalida_cache
+    invalida_cache(cliente_id)
     logger.info("admin_crea_sede: cliente=%s sede=%s | admin=%s", cliente_id, body.nome_ristorante, admin_user.get("email"))
     return r.data[0] if r.data else {"ok": True}
 
@@ -3117,6 +3119,9 @@ def admin_modifica_sede(
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
 
     sb.table("ristoranti").update(upd).eq("id", sede_id).execute()
+    if "tipo_attivita" in upd:
+        from services.settore_service import invalida_cache
+        invalida_cache(cliente_id)
     # Il canale del briefing dipende da sdi_attivo: invalida il briefing di oggi
     # della sede cosi' il messaggio fatture-mancanti si aggiorna subito.
     if body.sdi_attivo is not None:
@@ -3141,6 +3146,8 @@ def admin_elimina_sede(
     if not resp.data:
         raise HTTPException(status_code=404, detail="Sede non trovata")
     sb.table("ristoranti").delete().eq("id", sede_id).execute()
+    from services.settore_service import invalida_cache
+    invalida_cache(cliente_id)
     logger.warning("admin_elimina_sede: sede=%s (%s) | admin=%s", sede_id, resp.data[0].get("nome_ristorante"), admin_user.get("email"))
     return {"ok": True}
 

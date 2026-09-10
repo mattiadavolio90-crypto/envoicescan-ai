@@ -301,6 +301,16 @@ Finché non c'è, il gate 4-5 non è riproducibile e la 1.2 non si apre.
 Modulo separato: `ai_service.py` è già importato da mezzo mondo, e la funzione serve anche
 a router che non fanno AI.
 
+**Stato 10/9 sera — scritto e provato, caselle NON spuntate** (stesso motivo della 1.1: il
+gate 4-5 aspetta il fix di paginazione su `main`). `settore_utente` / `settore_sede` /
+`is_retail` / `invalida_cache`, cache con lock e TTL 300 s, errore DB **non** messo in cache,
+valore sconosciuto → ristorazione. Cablato in `/api/auth/login` e `/api/auth/me`
+(`UserPublic.tipo_attivita`, che prima restava al default) e nell'admin: crea, modifica del
+settore ed elimina sede invalidano la cache dell'account. Test nuovi:
+`tests/test_settore_service.py` (14), `tests/test_auth_settore_wiring.py` (3), +4 in
+`tests/test_retail_sede_tipo_attivita.py`. **11 mutanti su 11 uccisi.** «Risolto una volta
+per documento» si spunta in 1.3, dove il settore entra nella classificazione.
+
 - [ ] `settore_utente(user_id)` e `settore_sede(ristorante_id)`
 - [ ] Cache modulo-level con `threading.Lock` + TTL **300s** (pattern di `_memoria_cache`,
       `ai_service.py:290-291`; TTL corto: il settore cambia solo per mano dell'admin)
@@ -345,10 +355,12 @@ all'AI e marca `needs_review`" (`services/invoice_service.py:1157-1170`).
       (`worker/queue_processor.py:543`, che ha `user_id` in scope). Firma invariata
 - [ ] Scrittura `salva_correzione_in_memoria_globale` (`:4673`), via `routers/admin.py:1657`
 - [ ] Lettura L3 dentro `categorizza_con_memoria` (`:5068`, `:5080`) — già coperta da `_ret`
-- [ ] Lettura `suggerisci_categoria_da_memoria` (`:3839`) — **funzione diversa**, legge in
-      proprio: guardia separata
-- [ ] Lettura `_hint_da_memoria_globale` (`:3546`) — inietta un hint nel **prompt GPT**
-      ("CARNE" su una riga di ferramenta): sfugge a qualunque filtro d'uscita
+- [ ] Lettura `ottieni_categoria_prodotto` (`:3740`, chiamata da `invoice_service.py:1700`,
+      percorso PDF/Vision) — **funzione diversa**, legge in proprio: guardia separata.
+      (Il piano la chiamava `suggerisci_categoria_da_memoria`: nome mai esistito, ri-misurato)
+- [ ] Lettura `ottieni_hint_per_ai` (`:3544`, chiamata da `upload_handler.py:661`) — inietta
+      un hint nel **prompt GPT** ("CARNE" su una riga di ferramenta): sfugge a qualunque
+      filtro d'uscita. (Il piano la chiamava `_hint_da_memoria_globale`: idem)
 
 ### 1.6 Propagazione storica — il difetto più grave, esiste già oggi
 

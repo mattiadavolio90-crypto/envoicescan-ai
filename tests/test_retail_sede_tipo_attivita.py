@@ -63,6 +63,10 @@ class _Query:
         self._payload = dict(row)
         return self
 
+    def delete(self):
+        self._op = "delete"
+        return self
+
     def eq(self, campo, valore):
         self._eq.append((campo, valore))
         return self
@@ -93,6 +97,10 @@ class _Query:
                 if self._match(riga):
                     riga.update(self._payload)
             self._scritture.append(("update", dict(self._payload)))
+            return _Res([])
+        if self._op == "delete":
+            self._store[:] = [r for r in self._store if not self._match(r)]
+            self._scritture.append(("delete", list(self._eq)))
             return _Res([])
         righe = [dict(r) for r in self._store if self._match(r)]
         if self._colonne is not None:
@@ -270,3 +278,38 @@ def test_user_public_nasce_ristorazione():
 def test_user_public_rifiuta_un_settore_sconosciuto():
     with pytest.raises(ValidationError):
         fw.UserPublic(id="1", email="a@b.it", tipo_attivita="bar")
+
+
+# ── invalidazione della cache del settore ────────────────────────────────────
+
+@pytest.fixture
+def invalidazioni(monkeypatch):
+    import services.settore_service as ss
+    registro: list = []
+    monkeypatch.setattr(ss, "invalida_cache", lambda user_id=None: registro.append(user_id))
+    return registro
+
+
+def test_creare_una_sede_invalida_la_cache_del_settore(sb, invalidazioni):
+    sb([])
+    _crea("retail")
+    assert invalidazioni == [CLIENTE]
+
+
+def test_cambiare_il_settore_invalida_la_cache(sb, invalidazioni):
+    sb([_sede("a", "ristorazione")])
+    _modifica("a", tipo_attivita="retail")
+    assert invalidazioni == [CLIENTE]
+
+
+def test_una_modifica_senza_settore_non_invalida(sb, invalidazioni):
+    sb([_sede("a", "retail")])
+    _modifica("a", nome_ristorante="Rinominata")
+    assert invalidazioni == []
+
+
+def test_eliminare_una_sede_invalida_la_cache(sb, invalidazioni):
+    fake = sb([_sede("a", "retail")])
+    admin.admin_elimina_sede(CLIENTE, "a", admin_user=ADMIN)
+    assert invalidazioni == [CLIENTE]
+    assert fake.tables["ristoranti"] == []
