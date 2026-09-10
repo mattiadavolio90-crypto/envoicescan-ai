@@ -19,7 +19,31 @@ import services.fastapi_worker  # noqa: F401 — carica i moduli condivisi
 import services.routers.admin as admin
 import services.settore_service as ss
 from tests.test_admin_qualita_fix_audit import _ADMIN, _FakeSB as _ClassificaSB
-from tests.test_categorie_admin import FakeClient
+from tests.test_categorie_admin import FakeClient, _Query
+
+
+class _QueryConUpdate(_Query):
+    """Il fake esistente non conosce `.update()`: senza, il ramo sconti/omaggi
+    dell'auto-review moriva nell'`except` prima della promozione e il test
+    passava a vuoto (memoria vuota per un errore, non per la guardia)."""
+
+    def update(self, payload):
+        self._op = "update"
+        self._payload = dict(payload)
+        return self
+
+    def execute(self):
+        if self._op == "update":
+            for r in self._store:
+                if self._matches(r):
+                    r.update(self._payload)
+            return super().execute()
+        return super().execute()
+
+
+class FakeClientConUpdate(FakeClient):
+    def table(self, name):
+        return _QueryConUpdate(self._tables.setdefault(name, []))
 
 UTENTI = [
     {"id": "u-rist", "email": "rist@x.it", "nome_ristorante": "Trattoria"},
@@ -94,3 +118,62 @@ def test_classificare_righe_di_un_ristorante_promuove_come_prima(monkeypatch):
 
 def test_gruppo_misto_promuove_per_i_ristoranti(monkeypatch):
     assert _classifica(monkeypatch, [_riga_cl(1, "u-retail"), _riga_cl(2, "u-rist")]) == [("upsert", "prodotti_master")]
+
+
+# ── auto-review e suggerimenti AI: le altre due porte della memoria globale ──
+# Inventario di ogni scrittura su prodotti_master (terza lettura, fatta a mano):
+# `admin_qualita_auto_review` promuoveva la categoria GIA' presente sulla riga —
+# per un negozio ARTICOLO DI VENDITA — verified=True: da li' ai ristoranti come
+# bypass. `admin_qualita_suggerisci_ai` mandava le righe dei negozi al prompt dei
+# ristoranti e salvava il suggerimento in memoria globale.
+
+def _riga_ar(id_, desc, user, prezzo, categoria=None, totale=None):
+    return {"id": id_, "descrizione": desc, "categoria": categoria, "prezzo_unitario": prezzo,
+            "totale_riga": prezzo if totale is None else totale, "quantita": 1, "tipo_documento": "TD01",
+            "needs_review": True, "user_id": user, "fornitore": "X", "iva_percentuale": 22}
+
+
+def _auto_review(monkeypatch, righe):
+    sb = FakeClientConUpdate({"users": UTENTI, "fatture": righe, "prodotti_master": [], "ai_review_log": []})
+    scritte: list = []
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+    monkeypatch.setattr(admin, "_admin_emails_set", lambda: set())
+    monkeypatch.setattr(admin, "aggiorna_categoria_fatture", lambda *_a, **kw: scritte.append((sorted(kw["ids"]), kw["categoria"])) or len(kw["ids"]))
+    monkeypatch.setattr(admin, "_log_review_action", lambda *a, **k: None)
+    monkeypatch.setattr(ss, "settore_utente", lambda uid, supabase_client=None: SETTORI.get(uid, "ristorazione"))
+    admin.admin_qualita_auto_review(admin.AutoReviewBody(cliente_id=None), admin_user=_ADMIN)
+    return scritte, [(r["descrizione"], r["categoria"]) for r in sb.dump("prodotti_master")]
+
+
+def test_auto_review_una_dicitura_di_un_negozio_si_classifica_ma_non_entra_in_memoria_globale(monkeypatch):
+    scritte, memoria = _auto_review(monkeypatch, [_riga_ar(1, "SPESE DI TRASPORTO", "u-retail", 0.0)])
+    assert scritte == [([1], "📝 NOTE E DICITURE")]
+    assert memoria == []
+
+
+def test_auto_review_la_stessa_dicitura_di_un_ristorante_si_promuove_come_prima(monkeypatch):
+    scritte, memoria = _auto_review(monkeypatch, [_riga_ar(1, "SPESE DI TRASPORTO", "u-rist", 0.0)])
+    assert scritte == [([1], "📝 NOTE E DICITURE")]
+    assert memoria == [("SPESE DI TRASPORTO", "📝 NOTE E DICITURE")]
+
+
+def test_auto_review_uno_sconto_di_un_negozio_non_porta_articolo_di_vendita_ai_ristoranti(monkeypatch):
+    scritte, memoria = _auto_review(monkeypatch, [_riga_ar(1, "SCONTO FINALE OMAGGIO", "u-retail", 0.0, categoria="ARTICOLO DI VENDITA")])
+    assert all(cat != "ARTICOLO DI VENDITA" for _d, cat in memoria)
+    assert memoria == []
+
+
+def test_auto_review_gruppo_misto_promuove_per_i_ristoranti(monkeypatch):
+    _, memoria = _auto_review(monkeypatch, [_riga_ar(1, "SPESE DI TRASPORTO", "u-retail", 0.0), _riga_ar(2, "SPESE DI TRASPORTO", "u-rist", 0.0)])
+    assert memoria == [("SPESE DI TRASPORTO", "📝 NOTE E DICITURE")]
+
+
+def test_suggerisci_ai_non_manda_i_negozi_al_prompt_dei_ristoranti(monkeypatch):
+    sb = FakeClient({"users": UTENTI})
+    ricevuti: list = []
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+    monkeypatch.setattr(admin, "_admin_emails_set", lambda: set())
+    monkeypatch.setattr(admin, "prepara_suggerimenti_ai", lambda _sb, allowed_ids, **kw: ricevuti.append(list(allowed_ids)) or {"suggerite": 0, "saltate": 0, "errori": 0})
+    monkeypatch.setattr(ss, "settore_utente", lambda uid, supabase_client=None: SETTORI.get(uid, "ristorazione"))
+    admin.admin_qualita_suggerisci_ai(admin.SuggerisciAiBody(), admin_user=_ADMIN)
+    assert ricevuti == [["u-rist"]]

@@ -1285,6 +1285,10 @@ def admin_qualita_suggerisci_ai(body: SuggerisciAiBody, admin_user: dict = Depen
         users_resp = sb.table("users").select("id,email").execute()
         allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
 
+    # Retail: i suggerimenti sono col prompt dei ristoranti e finiscono in
+    # prodotti_master (memoria globale): gli account retail restano fuori.
+    from services.settore_service import settore_utente
+    allowed_ids = [uid for uid in allowed_ids if settore_utente(uid, sb) != SETTORE_RETAIL]
     res = prepara_suggerimenti_ai(
         sb, allowed_ids, only_ids=body.ids,
         attore=f"admin:{admin_user.get('email', 'admin')}",
@@ -1322,7 +1326,7 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
     offset = 0
     while True:
         q = (sb.table("fatture")
-             .select("id,descrizione,categoria,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review")
+             .select("id,descrizione,categoria,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review,user_id")
              .is_("deleted_at", "null")
              .in_("user_id", allowed_ids)
              .order("id")
@@ -1340,6 +1344,17 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
         return {"ok": True, "classificate": 0, "salvate_memoria": 0, "errori": 0}
 
     df = pd.DataFrame(all_rows)
+    # Retail: le righe si classificano (una dicitura a importo zero e' una dicitura
+    # anche per un negozio; lo sconto conferma la categoria che la riga ha gia'),
+    # ma la memoria globale e' dei ristoranti: una descrizione si promuove solo se
+    # almeno una delle sue righe e' di un account ristorazione. Senza questa
+    # guardia "ARTICOLO DI VENDITA" entrerebbe in prodotti_master verified=True e
+    # da li' arriverebbe ai ristoranti come bypass.
+    from services.settore_service import settore_utente
+    df["_ristorazione"] = df["user_id"].map(lambda u: settore_utente(u, sb) != SETTORE_RETAIL)
+
+    def _promuovibile(descrizione: str) -> bool:
+        return bool(df[df["descrizione"] == descrizione]["_ristorazione"].any())
     df["descrizione"] = df["descrizione"].apply(lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x)
     meta = classify_special_row_vectorized(df)
     df["bucket"] = meta["bucket"]
@@ -1376,14 +1391,15 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
                 attore_user_id=str(admin_user.get("id")) if admin_user.get("id") else None,
                 batch_id=lotto_auto_review,
             )
-            sb.table("prodotti_master").upsert({
-                "descrizione": desc,
-                "categoria": "📝 NOTE E DICITURE",
-                "confidence": "altissima",
-                "verified": True,
-                "classificato_da": "auto-review",
-                "ultima_modifica": now,
-            }, on_conflict="descrizione").execute()
+            if _promuovibile(desc):
+                sb.table("prodotti_master").upsert({
+                    "descrizione": desc,
+                    "categoria": "📝 NOTE E DICITURE",
+                    "confidence": "altissima",
+                    "verified": True,
+                    "classificato_da": "auto-review",
+                    "ultima_modifica": now,
+                }, on_conflict="descrizione").execute()
             _log_review_action(sb, "auto-review", "auto_review", "📝 NOTE E DICITURE", ids, desc, cat_da, "bucket=dicitura")
             classificate += len(ids)
             salvate += 1
@@ -1403,14 +1419,15 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
                 "reviewed_at": now,
                 "reviewed_by": "auto-review",
             }).in_("id", ids).is_("deleted_at", "null").execute()
-            sb.table("prodotti_master").upsert({
-                "descrizione": desc,
-                "categoria": cat,
-                "confidence": "alta",
-                "verified": True,
-                "classificato_da": "auto-review",
-                "ultima_modifica": now,
-            }, on_conflict="descrizione").execute()
+            if _promuovibile(desc):
+                sb.table("prodotti_master").upsert({
+                    "descrizione": desc,
+                    "categoria": cat,
+                    "confidence": "alta",
+                    "verified": True,
+                    "classificato_da": "auto-review",
+                    "ultima_modifica": now,
+                }, on_conflict="descrizione").execute()
             _log_review_action(sb, "auto-review", "auto_review", cat, ids, desc, cat, "bucket=sconto_omaggio")
             classificate += len(ids)
             salvate += 1

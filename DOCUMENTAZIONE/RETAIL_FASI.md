@@ -2,8 +2,9 @@
 
 Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
-ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**. In corso: **gate di fine
-fase** (10 punti) e code-reviewer sul cumulativo del branch.
+ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**; gate 1-8 e 10
+passati; gate 9: due review complete e chiuse, terza interrotta dal limite API (vedi «Terza
+lettura») — **da rifare** prima di dichiarare la fase chiusa dal reviewer.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -525,7 +526,41 @@ volta, il filtro dell'agente). Check baseline a zero due volte.
    Resta per la Fase 3: la whitelist di `admin_qualita_classifica` è `TUTTE_LE_CATEGORIE`,
    quindi l'admin non può ancora scrivere ARTICOLO DI VENDITA (checklist «sei whitelist»).
    Test: `tests/test_retail_coda_admin.py` (6, sull'endpoint vero con gli harness esistenti).
-   **3 mutanti su 3 uccisi.** Check baseline a zero due volte. Sui non bloccanti: il
+   **3 mutanti su 3 uccisi.** Check baseline a zero due volte.
+
+### Terza lettura — fatta a mano: la review automatica si è interrotta
+
+La terza passata del code-reviewer si è fermata per il **limite di sessione dell'API**
+(reset alle 19:00 UTC), non per un rosso: non ha scritto niente e non ha lasciato processi.
+Ho fatto io il punto che le avevo chiesto — **l'inventario di ogni scrittura su
+`prodotti_master` e `prodotti_utente`** raggiungibile in produzione (grep a riga singola e
+multi-riga, 20 punti) — e ne è uscito un quarto buco, della stessa famiglia del terzo:
+
+| Punto di scrittura | Cosa scrive | Esito per un account retail |
+|---|---|---|
+| `ai_service.py:3334/3380/3385` (`aggiorna_streak_classificazione`) | master | guardato nel chiamante (1.5) |
+| `ai_service.py:3726`, `:5193` (auto-save locale) | utente | categoria già gated (seconda guardia 1.3) |
+| `ai_service.py:4483` (`salva_correzione_in_memoria_locale`) | utente | correzione del cliente stesso: locale, giusta |
+| `ai_service.py:4765/4794` (`salva_correzione_in_memoria_globale`) | master | unico chiamante guardato (400, 1.5) |
+| `upload_handler.py:903` (memoria AI post-upload) | utente | categoria da `classifica_via_worker`, gated (1.4) |
+| `fastapi_worker.py:360/383/432` (agente notturno) | master | account retail esclusi prima della query (seconda lettura) |
+| `admin.py:1084` (`admin_qualita_classifica`) | master | solo se almeno una riga ristorazione (seconda lettura) |
+| `admin.py:1257` (`prepara_suggerimenti_ai`) | master, solo `categoria_suggerita` | chiamanti: agente notturno (retail esclusi) e **`admin_qualita_suggerisci_ai` (ora esclude i retail)** |
+| **`admin.py:1379/1406` (`admin_qualita_auto_review`)** | master, `verified=True` | **era SCOPERTO**: per gli sconti/omaggi promuoveva la categoria già presente sulla riga — per un negozio ARTICOLO DI VENDITA — e da lì ai ristoranti come bypass. Ora le righe si classificano (una dicitura a importo zero è tale anche per un negozio, lo sconto conferma la categoria che la riga ha già) ma la promozione avviene solo se la descrizione ha almeno una riga ristorazione, come in `classifica` |
+| `admin.py:1549/1581` (update/delete di una voce globale per id) | master | azioni dell'admin su voci già globali: neutre |
+| `admin.py:1695` (marca «eccezione locale accettata») | utente | neutro |
+| `db_service.py:1952` (cancellazione account) | utente | neutro |
+
+Test: +5 in `tests/test_retail_coda_admin.py` (auto-review sugli endpoint veri, dicitura e
+sconto di un negozio, gruppo misto; filtro dei suggerimenti). **2 mutanti su 2 uccisi** — il
+test sugli sconti al primo giro passava **a vuoto**: il fake esistente non conosce
+`.update()` e il ramo moriva nell'`except` prima della promozione; esteso il fake nel mio
+file (non quello esistente) e il mutante ora è ucciso da entrambi i test. Check baseline a
+zero due volte.
+
+**Stato del gate 9**: due passate complete del reviewer (entrambe rosse, entrambe chiuse),
+la terza interrotta dal limite API e sostituita da questo inventario. **Va rifatta quando il
+limite si resetta**, prima di dichiarare la fase chiusa dal reviewer. Sui non bloccanti: il
 verbale era più forte del vero (la riga qui sopra lo corregge); il `-16 righe` su
 `AUDIT_COPERTURA.md` era la base non ancora rebasata su `main`, risolto col rebase;
 `settore_sede`/`is_retail` senza chiamanti sono superficie per le fasi 3-4; l'N+1 latente
