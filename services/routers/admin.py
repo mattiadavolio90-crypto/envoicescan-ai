@@ -970,6 +970,14 @@ def admin_qualita_coda(
         # A2: suggerimento con FONTE esplicita (deterministico affidabile, poi AI).
         desc = str(g.get("descrizione") or "")
         cat_attuale = str(g.get("categoria") or "")
+        # Retail: dizionario, regole e suggerimenti AI sono dei ristoranti. Un gruppo
+        # con righe di un negozio resta in coda per la classificazione a mano, senza
+        # suggerimento: «Accetta tutti» raccoglie le fonti regola/memoria in blocco.
+        from services.settore_service import settore_utente
+        if any(settore_utente(u, sb) == SETTORE_RETAIL for u in uids):
+            g["categoria_suggerita"] = None
+            g["fonte"] = None
+            continue
         suggerita, fonte = _suggerimento_deterministico(desc, cat_attuale)
         if not suggerita and desc:
             ai = suggerimenti_ai.get(desc.strip().upper())
@@ -1023,7 +1031,7 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
     # regolarmente cross-ristorante — misurati 47 gruppi su 264, fino a 5 sedi.
     # Servono tutti i ristorante_id distinti, o si invaliderebbe una sede sola
     # lasciando le altre col contatore stantio.
-    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria,ristorante_id").in_("id", body.ids).execute()
+    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria,ristorante_id,user_id").in_("id", body.ids).execute()
     prima_desc = ""
     prima_cat_da = ""
     rid_coinvolti = set()
@@ -1061,7 +1069,16 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         _invalidate_fatture_rows_cache()
 
     if row_resp.data:
-        if body.salva_memoria:
+        # La memoria globale e' dei ristoranti: se le righe classificate sono tutte
+        # di account retail non si promuove (stessa guardia di risolvi_conflitto).
+        from services.settore_service import settore_utente
+        righe_ristorazione = [
+            r for r in row_resp.data
+            if settore_utente(r.get("user_id"), sb) != SETTORE_RETAIL
+        ]
+        if body.salva_memoria and not righe_ristorazione:
+            logger.info("admin_qualita_classifica: righe di account retail, memoria globale non toccata")
+        if body.salva_memoria and righe_ristorazione:
             prezzo = float(row_resp.data[0].get("prezzo_unitario") or 0)
             if prima_desc and not (body.categoria == "📝 NOTE E DICITURE" and prezzo > 0):
                 sb.table("prodotti_master").upsert({

@@ -483,7 +483,7 @@ il comportamento di prima.
 | `get_categorie_disponibili` | frontend (`/api/fatture/categorie`) | contratto invariato |
 | `UserPublic` / `ClassifyRequest` | OpenAPI riesportato: nessun drift | — |
 | `_fetch_all_rows` (main, `da269ad`) | 4 chiamanti, tutti in `ai_service` | ordinati per `id` |
-| **`decisione_deterministica`** (il dizionario dei ristoranti: la vera superficie d'uscita, mancava in questa tabella — segnalato dal reviewer) | 12 chiamanti: `queue_processor:180` (override guardato in 1.4; la conferma può solo confermare categorie generiche), `upload_handler:62` e `:801` (conferma ed etichetta di fonte: idem), `ai_service:3889` (`_ret_ocp`), `:5474` (validazione per settore), `:5700` (safety net spento), **`:5575`/`:5783`/`:5797` (i tre rami degradati: erano SCOPERTI)**, **`fastapi_worker:397` (agente notturno: era SCOPERTO)**, `admin.py:820` (suggerimento mostrato all'admin, nessuna scrittura), `:1171` (`prepara_suggerimenti_ai`, scrive solo `prodotti_master.categoria_suggerita`, fuori scope dichiarato), `:1454` (elenco «sospette», sola lettura) | 2 buchi chiusi (sotto), 10 coperti o dichiarati |
+| **`decisione_deterministica`** (il dizionario dei ristoranti: la vera superficie d'uscita, mancava in questa tabella — segnalato dal reviewer) | 12 chiamanti: `queue_processor:180` (override guardato in 1.4; la conferma può solo confermare categorie generiche), `upload_handler:62` e `:801` (conferma ed etichetta di fonte: idem), `ai_service:3889` (`_ret_ocp`), `:5474` (validazione per settore), `:5700` (safety net spento), **`:5575`/`:5783`/`:5797` (i tre rami degradati: erano SCOPERTI)**, **`fastapi_worker:397` (agente notturno: era SCOPERTO)**, `admin.py:820` (**era dichiarato «nessuna scrittura», falso**: il suggerimento arriva al bulk «Accetta tutti» — terzo buco, chiuso sotto), `:1171` (`prepara_suggerimenti_ai`, scrive solo `prodotti_master.categoria_suggerita`, fuori scope dichiarato), `:1454` (elenco «sospette», sola lettura) | 3 buchi chiusi (sotto), 9 coperti o dichiarati |
 
 ### Seconda lettura (code-reviewer, 10/9 sera): due buchi veri, chiusi
 
@@ -507,7 +507,25 @@ dizionario dei ristoranti senza guardare il settore:
 
 Test: +3 in `tests/test_retail_post_ai.py` (i tre rami, eseguiti come ha fatto il reviewer)
 e `tests/test_retail_agente_notturno.py` (3). **4 mutanti su 4 uccisi** (i tre rami uno per
-volta, il filtro dell'agente). Check baseline a zero due volte. Sui non bloccanti: il
+volta, il filtro dell'agente). Check baseline a zero due volte.
+
+3. **La coda qualità dell'admin** (terza lettura del reviewer): avevo classificato
+   `_suggerimento_deterministico` come «suggerimento mostrato all'admin, nessuna
+   scrittura». Falso: `admin_qualita_coda` lavora su tutti gli utenti non-admin, il
+   frontend (`admin/categorie/categorie-client.tsx`, «Accetta tutti») scrive in blocco
+   proprio le fonti `regola`/`memoria`, e `admin_qualita_classifica` promuove poi la
+   descrizione in `prodotti_master` `verified=True`. Delle due strade possibili (escludere i
+   negozi dalla coda, o tenerli senza suggerimento) ho scelto la **seconda**, coerente con la
+   guardia già scritta in `admin_qualita_risolvi_conflitto`: l'admin deve poter classificare
+   a mano le righe di un negozio (finché la Fase 2 non porta il prompt retail, è l'unica via),
+   quindi un gruppo che contiene righe retail **resta in coda senza suggerimento** (né
+   deterministico né AI: «Accetta tutti» non lo raccoglie), e `admin_qualita_classifica`
+   **non promuove** in memoria globale quando le righe sono tutte di account retail (un
+   gruppo misto promuove per i ristoranti, come oggi). **Decisione da confermare con Mattia.**
+   Resta per la Fase 3: la whitelist di `admin_qualita_classifica` è `TUTTE_LE_CATEGORIE`,
+   quindi l'admin non può ancora scrivere ARTICOLO DI VENDITA (checklist «sei whitelist»).
+   Test: `tests/test_retail_coda_admin.py` (6, sull'endpoint vero con gli harness esistenti).
+   **3 mutanti su 3 uccisi.** Check baseline a zero due volte. Sui non bloccanti: il
 verbale era più forte del vero (la riga qui sopra lo corregge); il `-16 righe` su
 `AUDIT_COPERTURA.md` era la base non ancora rebasata su `main`, risolto col rebase;
 `settore_sede`/`is_retail` senza chiamanti sono superficie per le fasi 3-4; l'N+1 latente
