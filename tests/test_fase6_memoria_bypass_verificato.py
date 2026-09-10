@@ -17,7 +17,7 @@ import services.ai_service as ai_mod
 
 def _query(data):
     q = MagicMock()
-    for m in ["select", "eq", "neq", "gte", "lte", "is_", "range", "or_", "in_", "limit"]:
+    for m in ["select", "eq", "neq", "gte", "lte", "is_", "order", "range", "or_", "in_", "limit"]:
         getattr(q, m).return_value = q
     q.execute.return_value = SimpleNamespace(data=data)
     return q

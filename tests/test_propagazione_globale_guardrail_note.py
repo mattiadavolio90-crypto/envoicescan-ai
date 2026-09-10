@@ -57,6 +57,9 @@ class _Query:
         self._in_filter = (f, list(vals))
         return self
 
+    def order(self, _col, **_k):
+        return self
+
     def range(self, _start, _end):
         return self
 

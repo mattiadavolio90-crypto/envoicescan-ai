@@ -2999,7 +2999,15 @@ _PAGE_SIZE = 1000  # Supabase default limit
 
 
 def _fetch_all_rows(supabase_client, table: str, select: str, filters: dict | None = None) -> list:
-    """Paginazione generica per superare il limite di 1000 righe di Supabase."""
+    """Paginazione generica per superare il limite di 1000 righe di Supabase.
+
+    Ordina per `id` (chiave primaria di tutte le tabelle chiamanti): senza un
+    ordine totale OFFSET/LIMIT non garantisce che le pagine siano fette dello
+    stesso elenco. Misurato il 10/09/2026 su `prodotti_utente` di un cliente con
+    3.067 voci: 2 letture su 10 tornavano con 66 e 653 righe mancanti, rimpiazzate
+    da duplicati, con il totale SEMPRE 3.067 — e la memoria locale del cliente
+    restava a meta' in cache per un'ora, con le sue correzioni ignorate.
+    """
     all_rows = []
     offset = 0
     while True:
@@ -3007,7 +3015,7 @@ def _fetch_all_rows(supabase_client, table: str, select: str, filters: dict | No
         if filters:
             for col, val in filters.items():
                 q = q.eq(col, val)
-        result = q.range(offset, offset + _PAGE_SIZE - 1).execute()
+        result = q.order("id").range(offset, offset + _PAGE_SIZE - 1).execute()
         batch = result.data or []
         all_rows.extend(batch)
         if len(batch) < _PAGE_SIZE:
