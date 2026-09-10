@@ -2,7 +2,8 @@
 
 Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
-ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3, 1.4 e 1.5 chiuse**. Prossima: **1.6**.
+ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**. In corso: **gate di fine
+fase** (10 punti) e code-reviewer sul cumulativo del branch.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -427,19 +428,65 @@ descrizione comune riscrive la categoria sulle fatture storiche di **tutti i cli
 Non è un problema retail: è un fix per i clienti attuali, e va **detto a Mattia** quando
 si chiude.
 
-- [ ] Filtro tenant **dentro** la funzione (ha due chiamanti: `admin.py:1541` e `:1657`)
-- [ ] Test per mutazione: correzione su un cliente → zero UPDATE sulle fatture di altri
+- [x] Filtro tenant **dentro** la funzione (ha due chiamanti: `admin.py:1541` e `:1657`)
+- [x] Test per mutazione: correzione su un cliente → zero UPDATE sulle fatture di altri
+
+**Chiusa il 10/9 sera — con una precisazione che spetta a Mattia.** Il filtro è per
+**settore** del tenant, dentro la funzione (tre chiamanti: `admin.py` e le due promozioni in
+`salva_correzione_in_memoria_globale`): le fatture di un account retail non vengono
+riscritte da una correzione della memoria globale, che è dei ristoranti. **Non** ho
+limitato la propagazione al solo cliente della correzione, come la frase «zero UPDATE sulle
+fatture di altri» poteva far pensare: il docstring della funzione e il test esistente
+`tests/test_propagazione_globale_guardrail_note.py` (due utenti, entrambi raggiunti)
+dichiarano il raggio cross-cliente fra ristoranti come comportamento **voluto** — è la
+promozione admin alla memoria globale, «per tutti». Cambiarlo sarebbe una modifica ai
+ristoranti (violerebbe il vincolo) e una decisione di prodotto: se Mattia la vuole, è un
+lavoro a sé. Test: `tests/test_retail_propagazione_tenant.py` (3). **2 mutanti su 2
+uccisi.** Nota nella stessa funzione: la paginazione delle `fatture` candidate usa
+`range()` senza `ORDER BY` (stessa classe di `da269ad`): non toccata, sta nell'elenco dei
+33 chiamanti da decidere.
 
 ### 1.7 Dropdown categorie
 
 `services/routers/fatture.py:820-855` unisce `categorie_usate` (già filtrate per
 `ristorante_id`) alle **canoniche non filtrate**.
 
-- [ ] Non inserire `ARTICOLO DI VENDITA` nella tabella `categorie` (è globale: comparirebbe
+- [x] Non inserire `ARTICOLO DI VENDITA` nella tabella `categorie` (è globale: comparirebbe
       nel menu di ogni ristorante). Compare da sola via `categorie_usate` appena esiste una riga
-- [ ] Filtrare le canoniche per settore
+- [x] Filtrare le canoniche per settore
+
+**Chiusa il 10/9 sera.** Per un account retail le canoniche diventano
+`categorie_ammesse('retail')` (ARTICOLO DI VENDITA + spese generali); le usate della sede
+restano; per i ristoranti l'unione è quella di oggi. Test:
+`tests/test_retail_dropdown_categorie.py` (4). **3 mutanti su 3 uccisi.** Check baseline a
+zero due volte dopo 1.6+1.7.
 
 ---
+
+### Inerenze della Fase 1 — chi chiama cosa (gate 8)
+
+Ogni simbolo toccato, coi chiamanti misurati col grep **prima** della modifica. Le firme
+sono tutte **additive** (kwarg in coda con default `None`): chi non passa il settore ottiene
+il comportamento di prima.
+
+| Simbolo toccato | Chiamanti (misurati) | Esito |
+|---|---|---|
+| `ristoranti.tipo_attivita` (colonna) | `_SEDE_SELECT` ×2, `admin_dettaglio_cliente` (ora usa `_SEDE_SELECT`), `assegna_fattura_a_sede_tecnica` (SQL), frontend `Sede` | tutti aggiornati |
+| `categorizza_con_memoria(settore=)` | `invoice_service.estrai_dati_da_xml` (unico in produzione), `scripts/retail_baseline.py` (non passa: baseline = ristorazione) | 1 cablato, 1 volutamente no |
+| `classifica_con_ai(settore=)` | `fastapi_worker.classify` (cablato), `worker_client` fallback locale (cablato), `admin.prepara_suggerimenti_ai` (fuori scope: `prodotti_master` è solo-ristorazione per la 1.5) | 2 cablati, 1 dichiarato |
+| `_chiama_gpt_classificazione(settore=)` | solo `classifica_con_ai` (prima chiamata + retry) | entrambe |
+| `ottieni_categoria_prodotto(settore=)` | `invoice_service.estrai_dati_da_scontrino_vision` | cablato |
+| `ottieni_hint_per_ai(settore=)` | `upload_handler._run_post_upload_ai_categorization` | cablato |
+| `_propaga_global_override_a_fatture_storiche` (filtro interno) | `admin.py` (memoria update), `salva_correzione_in_memoria_globale` ×2 | filtro nel corpo: vale per tutti |
+| `aggiorna_streak_classificazione` | `worker/queue_processor.py` (guardia nel chiamante) | firma invariata |
+| `salva_correzione_in_memoria_globale` | `admin_qualita_risolvi_conflitto` (guardia nel chiamante) | firma invariata |
+| `get_categorie_disponibili` | frontend (`/api/fatture/categorie`) | contratto invariato |
+| `UserPublic` / `ClassifyRequest` | OpenAPI riesportato: nessun drift | — |
+| `_fetch_all_rows` (main, `da269ad`) | 4 chiamanti, tutti in `ai_service` | ordinati per `id` |
+
+**Etichette (gate 6)**: nella Fase 1 nessuna etichetta cliente cambia. L'unico testo nuovo sta
+nel pannello **admin** (select «Settore», badge solo se retail), che non è un'interfaccia
+cliente.
 
 ## Fase 2 — Prompt retail · Opus, ultrathink, ~1 giorno
 

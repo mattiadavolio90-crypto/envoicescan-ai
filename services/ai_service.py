@@ -4629,11 +4629,24 @@ def _propaga_global_override_a_fatture_storiche(
                 except Exception:
                     d_n = d_raw
                 if (d_n or '').strip() == desc_normalized:
-                    candidate_ids.append(row['id'])
+                    candidate_ids.append((row['id'], row.get('user_id')))
             if len(chunk) < page_size:
                 break
             page += 1
 
+        if not candidate_ids:
+            return 0
+
+        # Retail: la memoria globale e' dei ristoranti. Una correzione pensata per
+        # loro non riscrive le fatture di un negozio, che quella descrizione la
+        # classifica a modo suo. Il filtro sta QUI perche' i tre chiamanti (admin
+        # e le due promozioni in salva_correzione_in_memoria_globale) passino
+        # tutti dallo stesso punto.
+        from services.settore_service import settore_utente
+        candidate_ids = [
+            rid for rid, uid in candidate_ids
+            if settore_utente(uid, supabase_client) != SETTORE_RETAIL
+        ]
         if not candidate_ids:
             return 0
 

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from config.constants import TUTTE_LE_CATEGORIE
+from config.constants import SETTORE_RETAIL, TUTTE_LE_CATEGORIE
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
 # db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
@@ -849,6 +849,14 @@ def get_categorie_disponibili(
         canoniche = sorted({c["nome"] for c in (res_master.data or []) if c.get("nome") and "DICITURE" not in c["nome"].upper()})
     except Exception:
         canoniche = []
+
+    # La tabella `categorie` e' la tassonomia dei ristoranti: per un negozio il
+    # menu offre l'unica categoria merce e le spese generali. ARTICOLO DI VENDITA
+    # non entra nella tabella (comparirebbe nel menu di ogni ristorante): arriva
+    # da `categorie_ammesse`, oltre che dalle usate appena esiste una riga.
+    from services.settore_service import categorie_ammesse, settore_utente
+    if settore_utente(user.get("id"), supabase_client) == SETTORE_RETAIL:
+        canoniche = categorie_ammesse(SETTORE_RETAIL)
 
     # Unione
     tutte = sorted(set(categorie_usate) | set(canoniche))
