@@ -5572,7 +5572,12 @@ def classifica_con_ai(
             output = []
             for idx, desc in enumerate(lista_descrizioni):
                 iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-                categoria, _motivo, _conf = decisione_deterministica(desc)
+                # Retail: il nucleo offline e' il dizionario dei ristoranti — in degrado la
+                # riga resta in coda (regola #1) invece di uscire CARNE o VINI.
+                categoria, _motivo, _conf = (
+                    ("Da Classificare", None, None) if settore == SETTORE_RETAIL
+                    else decisione_deterministica(desc)
+                )
                 output.append(
                     _applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value)
                 )
@@ -5780,7 +5785,12 @@ def classifica_con_ai(
             # Stesso nucleo del percorso normale: un batch degradato da un errore
             # di rete/parsing non deve perdere il livello di precisione piu' alto
             # disponibile offline, ne' decidere con un ordine diverso dagli altri.
-            categoria, _motivo, _conf = decisione_deterministica(desc)
+            # Retail: il nucleo offline e' il dizionario dei ristoranti — in degrado la
+            # riga resta in coda (regola #1) invece di uscire CARNE o VINI.
+            categoria, _motivo, _conf = (
+                ("Da Classificare", None, None) if settore == SETTORE_RETAIL
+                else decisione_deterministica(desc)
+            )
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
         if return_confidenze:
             return output, ["bassa"] * len(output)
@@ -5794,7 +5804,12 @@ def classifica_con_ai(
         output = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-            categoria, _motivo, _conf = decisione_deterministica(desc)
+            # Retail: il nucleo offline e' il dizionario dei ristoranti — in degrado la
+            # riga resta in coda (regola #1) invece di uscire CARNE o VINI.
+            categoria, _motivo, _conf = (
+                ("Da Classificare", None, None) if settore == SETTORE_RETAIL
+                else decisione_deterministica(desc)
+            )
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
         if return_confidenze:
             return output, ["bassa"] * len(output)

@@ -201,3 +201,33 @@ def test_retail_anche_il_retry_valida_col_settore():
     risposte = ("Da Classificare", "CARNE", "CARNE", "CARNE", "CARNE")
     assert ai.classifica_con_ai(["BISTECCA DI MANZO"], openai_client=_gpt_sequenza(*risposte), settore="retail") == ["Da Classificare"]
     assert ai.classifica_con_ai(["BISTECCA DI MANZO"], openai_client=_gpt_sequenza(*risposte), settore=None) == ["CARNE"]
+
+
+# ── rami degradati: OpenAI assente, JSON rotto, errore generico ──────────────
+# Trovati dal reviewer: i tre fallback offline chiamavano il dizionario dei
+# ristoranti senza guardare il settore. Non e' un caso raro: il worker scrive
+# comunque quelle categorie (`_ai_muta` viene solo loggato).
+
+_DEGRADO = ["BISTECCA DI MANZO", "VINO ROSSO", "TROTA SALMONATA"]
+
+
+def test_senza_client_openai_un_negozio_resta_in_coda_un_ristorante_va_al_dizionario(monkeypatch):
+    monkeypatch.setattr(ai, "_get_openai_client", lambda: (_ for _ in ()).throw(RuntimeError("chiave assente")))
+    assert ai.classifica_con_ai(list(_DEGRADO), settore="retail") == ["Da Classificare"] * 3
+    assert ai.classifica_con_ai(list(_DEGRADO), settore=None) == ["CARNE", "VINI", "PESCE"]
+
+
+def test_con_json_rotto_un_negozio_resta_in_coda(monkeypatch):
+    def _rotto(*_a, **_k):
+        raise json.JSONDecodeError("rotto", "{", 0)
+    monkeypatch.setattr(ai, "_chiama_gpt_classificazione", _rotto)
+    assert ai.classifica_con_ai(list(_DEGRADO), openai_client=object(), settore="retail") == ["Da Classificare"] * 3
+    assert ai.classifica_con_ai(list(_DEGRADO), openai_client=object(), settore=None) == ["CARNE", "VINI", "PESCE"]
+
+
+def test_con_errore_generico_un_negozio_resta_in_coda(monkeypatch):
+    def _boom(*_a, **_k):
+        raise RuntimeError("rete giu'")
+    monkeypatch.setattr(ai, "_chiama_gpt_classificazione", _boom)
+    assert ai.classifica_con_ai(list(_DEGRADO), openai_client=object(), settore="retail") == ["Da Classificare"] * 3
+    assert ai.classifica_con_ai(list(_DEGRADO), openai_client=object(), settore="ristorazione") == ["CARNE", "VINI", "PESCE"]

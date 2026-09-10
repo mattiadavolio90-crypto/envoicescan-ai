@@ -286,6 +286,11 @@ def _run_agent_notturno() -> dict:
         # Carica tutti gli utenti non-admin
         users_resp = sb.table("users").select("id,email").execute()
         allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
+        # Retail (RETAIL_FASI.md 1.5): l'agente decide col dizionario e le regole dei
+        # ristoranti e promuove in memoria globale. Per un negozio non deve girare:
+        # le sue righe in coda restano in coda, per l'AI col prompt del settore.
+        from services.settore_service import settore_utente
+        allowed_ids = [uid for uid in allowed_ids if settore_utente(uid, sb) != SETTORE_RETAIL]
         if not allowed_ids:
             return {"classificate": 0, "errori": 0, "elapsed_s": 0}
 
@@ -595,6 +600,7 @@ def _build_allowed_origins() -> List[str]:
 from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centralizzato
 from config.constants import CATEGORIE_SPESE_GENERALI as _CATEGORIE_SPESE_GENERALI
 from config.constants import CATEGORIA_NON_CLASSIFICATA
+from config.constants import SETTORE_RETAIL
 from utils.ttl_cache import TTLCache  # cache TTL thread-safe con single-flight
 from utils.supabase_paging import fetch_all  # paginazione oltre il cap PostgREST
 

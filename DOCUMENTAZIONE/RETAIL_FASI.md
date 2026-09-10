@@ -483,7 +483,36 @@ il comportamento di prima.
 | `get_categorie_disponibili` | frontend (`/api/fatture/categorie`) | contratto invariato |
 | `UserPublic` / `ClassifyRequest` | OpenAPI riesportato: nessun drift | — |
 | `_fetch_all_rows` (main, `da269ad`) | 4 chiamanti, tutti in `ai_service` | ordinati per `id` |
+| **`decisione_deterministica`** (il dizionario dei ristoranti: la vera superficie d'uscita, mancava in questa tabella — segnalato dal reviewer) | 12 chiamanti: `queue_processor:180` (override guardato in 1.4; la conferma può solo confermare categorie generiche), `upload_handler:62` e `:801` (conferma ed etichetta di fonte: idem), `ai_service:3889` (`_ret_ocp`), `:5474` (validazione per settore), `:5700` (safety net spento), **`:5575`/`:5783`/`:5797` (i tre rami degradati: erano SCOPERTI)**, **`fastapi_worker:397` (agente notturno: era SCOPERTO)**, `admin.py:820` (suggerimento mostrato all'admin, nessuna scrittura), `:1171` (`prepara_suggerimenti_ai`, scrive solo `prodotti_master.categoria_suggerita`, fuori scope dichiarato), `:1454` (elenco «sospette», sola lettura) | 2 buchi chiusi (sotto), 10 coperti o dichiarati |
 
+### Seconda lettura (code-reviewer, 10/9 sera): due buchi veri, chiusi
+
+Il reviewer ha **eseguito** il codice, non letto: `classifica_con_ai(["BISTECCA DI MANZO",
+"VINO ROSSO", "TROTA SALMONATA"], settore="retail")` con OpenAI assente restituiva
+`['CARNE', 'VINI', 'PESCE']`. Due punti d'uscita food fuori dal gate, entrambi passavano dal
+dizionario dei ristoranti senza guardare il settore:
+
+1. **I tre rami degradati di `classifica_con_ai`** (client OpenAI assente, JSON rotto,
+   errore generico): decidevano col dizionario. Non è un caso raro — il worker riconosce il
+   degrado (`_ai_muta`) ma **scrive comunque** quelle categorie. Ora per il retail restano
+   `Da Classificare` (regola #1); per i ristoranti invariato. Il sorgente conserva le tre
+   chiamate letterali a `decisione_deterministica(desc)`: un test esistente
+   (`test_classifica_con_ai_non_ricompone_la_pipeline`) ne conta la presenza.
+2. **L'agente notturno** (`_run_agent_notturno`) riclassificava la coda di **tutti** gli
+   utenti non-admin col dizionario e promuoveva la descrizione in `prodotti_master`
+   `verified=True`: per un negozio righe riscritte in CARNE/VINI **e** memoria globale dei
+   ristoranti contaminata. Ora gli account retail sono esclusi **prima** della query sulle
+   fatture: ciò che non viene letto non può essere scritto. Le loro righe in coda aspettano
+   l'AI col prompt del settore (Fase 2).
+
+Test: +3 in `tests/test_retail_post_ai.py` (i tre rami, eseguiti come ha fatto il reviewer)
+e `tests/test_retail_agente_notturno.py` (3). **4 mutanti su 4 uccisi** (i tre rami uno per
+volta, il filtro dell'agente). Check baseline a zero due volte. Sui non bloccanti: il
+verbale era più forte del vero (la riga qui sopra lo corregge); il `-16 righe` su
+`AUDIT_COPERTURA.md` era la base non ancora rebasata su `main`, risolto col rebase;
+`settore_sede`/`is_retail` senza chiamanti sono superficie per le fasi 3-4; l'N+1 latente
+in `_propaga_global_override_a_fatture_storiche` (un `settore_utente` per riga candidata,
+assorbito dalla cache 300 s) resta annotato.
 **Etichette (gate 6)**: nella Fase 1 nessuna etichetta cliente cambia. L'unico testo nuovo sta
 nel pannello **admin** (select «Settore», badge solo se retail), che non è un'interfaccia
 cliente.
