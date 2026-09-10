@@ -36,6 +36,9 @@ export type SessionUser = {
   // un consenso reale (GDPR Art. 7.1). Default true per compatibilita' coi
   // vecchi token che non lo includono ancora nella risposta.
   privacy_accepted?: boolean;
+  // Settore dell'account: 'ristorazione' o 'retail'. Opzionale per i token
+  // precedenti alla colonna: assente vale 'ristorazione'.
+  tipo_attivita?: "ristorazione" | "retail";
 };
 
 function workerHeaders(extra: HeadersInit = {}): HeadersInit {

@@ -13,7 +13,7 @@ import { NativeSelect } from "@/components/ui/select";
 import {
   LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil, Send, Lock
 } from "lucide-react";
-import { ClienteDettaglio, Sede, PIANO_LABEL, PIANO_COLOR, fmtDate, fmtDateTime } from "@/lib/admin";
+import { ClienteDettaglio, Sede, Settore, PIANO_LABEL, PIANO_COLOR, SETTORE_LABEL, SETTORE_OPTIONS, fmtDate, fmtDateTime } from "@/lib/admin";
 import { TAB_SEZIONI, tabOffKey, type SezioneConTab } from "@/lib/tab-flags";
 
 type Props = { cliente: ClienteDettaglio };
@@ -70,6 +70,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [sCap, setSCap] = useState("");
   const [sComune, setSComune] = useState("");
   const [sPiano, setSPiano] = useState("base");
+  const [sTipo, setSTipo] = useState<Settore>("ristorazione");
   const [sedeSaving, setSedeSaving] = useState(false);
 
   // Sede dialog (modifica)
@@ -81,7 +82,12 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [eCap, setECap] = useState("");
   const [eComune, setEComune] = useState("");
   const [ePiano, setEPiano] = useState("base");
+  const [eTipo, setETipo] = useState<Settore>("ristorazione");
   const [editSedeSaving, setEditSedeSaving] = useState(false);
+
+  // In v1 le sedi di un account hanno lo stesso settore (lo impone il worker):
+  // con almeno una sede il settore e' deciso, e i dialog lo mostrano bloccato.
+  const settoreAccount: Settore | null = c.sedi.length > 0 ? (c.sedi[0].tipo_attivita ?? "ristorazione") : null;
 
   // Modifica dati account (etichetta + gruppo). Il piano è per-SEDE, non qui.
   const [modificaDialog, setModificaDialog] = useState(false);
@@ -238,12 +244,13 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         cap: sCap.trim() || undefined,
         comune: sComune.trim() || undefined,
         piano: sPiano,
+        tipo_attivita: settoreAccount ?? sTipo,
       });
       setC((prev) => ({ ...prev, sedi: [...prev.sedi, sede], n_sedi: prev.n_sedi + 1 }));
       toast.success("Sede creata");
       setSedeDialog(false);
       setSNome(""); setSPiva(""); setSRagione("");
-      setSIndirizzo(""); setSCap(""); setSComune(""); setSPiano("base");
+      setSIndirizzo(""); setSCap(""); setSComune(""); setSPiano("base"); setSTipo("ristorazione");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
@@ -276,6 +283,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     setECap(sede.cap || "");
     setEComune(sede.comune || "");
     setEPiano(sede.piano || "base");
+    setETipo(sede.tipo_attivita ?? "ristorazione");
   }
 
   async function handleModificaSedeSubmit() {
@@ -291,6 +299,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         cap: eCap.trim() || null,
         comune: eComune.trim() || null,
         piano: ePiano,
+        tipo_attivita: eTipo,
       });
       setC((prev) => ({ ...prev, sedi: prev.sedi.map((s) => (s.id === updated.id ? updated : s)) }));
       toast.success("Sede aggiornata");
@@ -592,6 +601,11 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                         <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 ${PIANO_COLOR[sede.piano || "base"] || ""}`}>
                           {PIANO_LABEL[sede.piano || "base"] || sede.piano}
                         </span>
+                        {sede.tipo_attivita === "retail" && (
+                          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                            {SETTORE_LABEL.retail}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground tabular-nums">{sede.partita_iva || "—"}</p>
                       {ubicazione ? (
@@ -794,6 +808,15 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <option value="pro">Pro (200 fatture)</option>
               </NativeSelect>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-tipo">Settore</Label>
+              <NativeSelect id="s-tipo" value={settoreAccount ?? sTipo} onValueChange={(v) => setSTipo(v as Settore)} disabled={settoreAccount !== null}>
+                {SETTORE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </NativeSelect>
+              {settoreAccount !== null && (
+                <p className="text-xs text-muted-foreground">Le sedi di un account hanno lo stesso settore: un ristorante e un negozio sono due account.</p>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.
             </p>
@@ -846,6 +869,15 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <option value="plus">Plus (100 fatture)</option>
                 <option value="pro">Pro (200 fatture)</option>
               </NativeSelect>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="e-tipo">Settore</Label>
+              <NativeSelect id="e-tipo" value={eTipo} onValueChange={(v) => setETipo(v as Settore)} disabled={c.sedi.length > 1}>
+                {SETTORE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </NativeSelect>
+              {c.sedi.length > 1 && (
+                <p className="text-xs text-muted-foreground">Con più sedi il settore non si cambia da qui: le sedi di un account hanno lo stesso settore.</p>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.

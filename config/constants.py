@@ -2085,3 +2085,13 @@ CUSTOM_TAG_COLOR_DEFAULT = "#2563EB"   # Colore default tag
 CUSTOM_TAG_UNITA_KG = {"KG", "GR"}     # Unita normalizzate riconducibili a KG
 CUSTOM_TAG_UNITA_LT = {"LT", "ML", "CL"}  # Unita normalizzate riconducibili a LT
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SETTORE DELLA SEDE (retail) — DOCUMENTAZIONE/RETAIL_FASI.md
+# ═══════════════════════════════════════════════════════════════════════════
+# Valori ammessi da `ristoranti.tipo_attivita` (CHECK a DB). Ogni deviazione
+# retail nel codice scatta su SETTORE_RETAIL; il percorso comune resta quello
+# dei ristoranti. In v1 tutte le sedi di un account hanno lo stesso settore.
+SETTORE_RISTORAZIONE = "ristorazione"
+SETTORE_RETAIL = "retail"
+SETTORI_SEDE = (SETTORE_RISTORAZIONE, SETTORE_RETAIL)

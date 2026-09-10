@@ -22871,6 +22871,18 @@
               }
             ],
             "title": "Sdi Attivo"
+          },
+          "tipo_attivita": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(ristorazione|retail)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Attivita"
           }
         },
         "type": "object",
@@ -23335,6 +23347,18 @@
               }
             ],
             "title": "Piano Inizio At"
+          },
+          "tipo_attivita": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(ristorazione|retail)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Attivita"
           }
         },
         "type": "object",
@@ -26444,6 +26468,15 @@
             "type": "boolean",
             "title": "Privacy Accepted",
             "default": true
+          },
+          "tipo_attivita": {
+            "type": "string",
+            "enum": [
+              "ristorazione",
+              "retail"
+            ],
+            "title": "Tipo Attivita",
+            "default": "ristorazione"
           }
         },
         "type": "object",

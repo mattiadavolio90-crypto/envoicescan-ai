@@ -1,6 +1,9 @@
 # Retail — le fasi dell'implementazione
 
-Stato al **10/09/2026**: Fase 0 chiusa (commit `b642e3c`), Fase 1 da aprire.
+Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`). **Fase 1.1 scritta, provata e
+committata, ma il suo gate 4-5 è sospeso**: il `check` della baseline non è più
+riproducibile per un difetto di paginazione in `ai_service` che esiste in produzione
+(vedi «Trovato durante la 1.1»). **Decisione a Mattia** prima di proseguire con 1.2.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -205,6 +208,10 @@ sospetto da riaprire.
 e il `check` si esegue **in un processo nuovo**, mai riusando un processo che ha già
 catturato. Un `check` verde una volta sola non è una prova: se ne fanno **due**.
 
+**Aggiornamento 10/9 sera**: il fatto non spiegato È spiegato — vedi «Trovato durante la
+1.1». Due check verdi di fila (16:20) non erano una prova: la lettura sbagliata capita
+~2 volte su 10.
+
 ---
 
 ## Fase 1 — Isolamento · **bloccante per tutte le altre** · Fable, ultrathink, ~3 giorni
@@ -213,6 +220,23 @@ Nessuna fase successiva parte prima che questa abbia passato il gate. Sottofasi
 nell'ordine: ogni casella si spunta col gate 4-5 (baseline) rifatto.
 
 ### 1.1 Migration e perno
+
+**Stato 10/9 sera — codice fatto e provato, caselle NON spuntate**: il gate 4-5 non è
+passato per una causa esterna alla 1.1 (sotto). Fatto e misurato: migration
+`20260910163000_add_tipo_attivita.sql` (si scrive, non si applica; il harness `-m sql` la
+applica sopra lo snapshot: **180 verdi**, erano 176 prima — il «164» di questo documento
+era una cifra ereditata); `_SEDE_SELECT` con `tipo_attivita` e usato anche da
+`admin_dettaglio_cliente` (aveva la stessa lista copiata a mano); body con `pattern` come
+`piano`; `_settore_sede_coerente` in `routers/admin.py` (vincolo di omogeneità, sede
+tecnica esclusa, la sede stessa esclusa in modifica, 400 senza scrivere); `UserPublic`
+con `Literal` e default; `SessionUser`/`Sede`/form admin (select «Settore», bloccato
+quando l'account ha già sedi; badge solo se retail). Costanti `SETTORE_*` in
+`config/constants.py`. Test nuovi: `tests/test_retail_sede_tipo_attivita.py` (21) e
+`tests/test_sql_retail_tipo_attivita.py` (4). **11 mutanti su 11 uccisi**, uno per volta,
+`.bak` preso prima, ognuno dal test che doveva ucciderlo. `tsc --noEmit` pulito, OpenAPI
+riesportato senza drift, suite **13.385 verdi** (+25). Decisione presa (da confermare):
+con più sedi il settore **non si cambia** dal pannello — un account retail nasce tale
+dalla prima sede; sbloccarlo richiederebbe di propagare a tutte le sedi, rimandato.
 
 - [ ] `supabase/migrations/AAAAMMGGHHMMSS_add_tipo_attivita.sql`:
       `ALTER TABLE ristoranti ADD COLUMN tipo_attivita TEXT NOT NULL DEFAULT 'ristorazione'`
@@ -231,6 +255,46 @@ nell'ordine: ogni casella si spunta col gate 4-5 (baseline) rifatto.
       (`apps/web/src/lib/auth.ts:19`), campo additivo col default
 - [ ] Frontend admin: form sede in `cliente-dettaglio-client.tsx`, tipo `Sede` in
       `apps/web/src/lib/admin.ts:3`
+
+### Trovato durante la 1.1: la memoria locale si carica a metà (paginazione senza ORDER BY)
+
+Il `check` dopo la 1.1 divergeva — 6 righe di LAND DEI SAPORI, poi 7 di San Giuliano,
+poi 7 di Villa Guardia, **una sede per esecuzione, sempre verso `Da Classificare`**, con
+un salto vero (`CONTRIBUTO SPESE DI CONSEGNA`: `SERVIZI E CONSULENZE` → `GELATI E
+DESSERT`). La 1.1 non tocca `ai_service`, i contatori del DB erano invariati e le stesse
+righe in isolamento uscivano giuste 3 volte su 3.
+
+Misurato, non dedotto (10/9 sera, sola lettura):
+
+- **tutte e 14 le righe divergenti sono `L2_locale`** (`ultima_provenienza()`), e
+  svuotando in-process la sola memoria locale si ottiene *esattamente* l'output
+  divergente, salto a GELATI compreso (regola fornitore L5 che prende il posto della
+  memoria);
+- le tre sedi sono **lo stesso utente** (`51015cc8`, SUSHILAND): l'unico con più di
+  mille voci in `prodotti_utente` (**3.067 = 4 pagine**; gli altri: 779, 658, 639, 217, 24);
+- `ai_service._fetch_all_rows` pagina con `range()` **senza ORDER BY**. Su 10 letture
+  consecutive di quell'utente: **8 complete, 2 con buchi — 66 e 653 id mancanti su
+  3.067**, sostituiti da duplicati, **con il totale sempre 3.067**. Nessuna scrittura in
+  corso (ultimo `updated_at` 27/8): è il planner che cambia ordine fisico fra una pagina
+  e l'altra della stessa lettura;
+- la Fase 0 aveva «provato» la paginazione contando le righe (3.067 su 20 esecuzioni):
+  un aggregato che torna con errori che si compensano. Le 6 ipotesi scartate e le 24
+  divergenze delle 10:58 sono spiegate da questo.
+
+**Effetto in produzione, oggi, per un cliente ristorazione**: il worker carica la memoria
+locale di SUSHILAND a metà in ~2 letture su 10, la tiene in cache per **1 ora**
+(`_CACHE_TTL_SECONDS`), e in quell'ora le correzioni del cliente sulle voci mancanti non
+valgono: le righe finiscono all'AI, al dizionario o alla regola fornitore. Stessa classe
+su `prodotti_master` (2.913 righe = 3 pagine, memoria globale di **tutti** i clienti).
+`_fetch_all_rows` ha 4 chiamanti, tutti in `ai_service.py` (`:3092`, `:3126`, `:3172`,
+`:4542`). Fix candidato: un `.order("id")` dentro `_fetch_all_rows`, più un test che
+confronti gli **id distinti** e non il conteggio. `utils/supabase_paging.fetch_all` ha lo
+stesso rischio per i chiamanti senza `.order()` (l'esempio nel suo docstring non lo ha).
+
+**Non è retail e non è in questo piano**: cambia il comportamento per i ristoranti (in
+meglio), quindi lo decide Mattia — su questo branch, o su `main` con il push di stasera
+(più urgente del retail: un cliente pagante perde le proprie correzioni a intermittenza).
+Finché non c'è, il gate 4-5 non è riproducibile e la 1.2 non si apre.
 
 ### 1.2 `services/settore_service.py` (nuovo)
 

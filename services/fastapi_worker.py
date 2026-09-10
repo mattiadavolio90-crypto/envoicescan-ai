@@ -37,7 +37,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 def _oggi_rome() -> date:
@@ -1220,6 +1220,10 @@ class UserPublic(BaseModel):
     # mostra un modale bloccante di accettazione al primo accesso finche' non
     # viene registrato un consenso reale (GDPR Art. 7.1).
     privacy_accepted: bool = True
+    # Settore dell'account: 'ristorazione' (default) o 'retail'. Additivo col
+    # default, cosi' token e client che non lo conoscono non cambiano. In v1 e'
+    # per account (sedi omogenee): lo risolve services/settore_service.py.
+    tipo_attivita: Literal["ristorazione", "retail"] = "ristorazione"
 
 
 class LoginResponse(BaseModel):

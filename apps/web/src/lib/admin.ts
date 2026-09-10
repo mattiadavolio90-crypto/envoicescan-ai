@@ -1,5 +1,19 @@
 import { PIANI } from "@/lib/piani";
 
+// Settore della sede (colonna ristoranti.tipo_attivita). In v1 tutte le sedi di
+// un account hanno lo stesso valore: lo impone il worker, la UI lo mostra.
+export type Settore = "ristorazione" | "retail";
+
+export const SETTORE_LABEL: Record<Settore, string> = {
+  ristorazione: "Ristorazione",
+  retail: "Retail (negozio)",
+};
+
+export const SETTORE_OPTIONS: { value: Settore; label: string }[] = [
+  { value: "ristorazione", label: SETTORE_LABEL.ristorazione },
+  { value: "retail", label: SETTORE_LABEL.retail },
+];
+
 export type Sede = {
   id: string;
   nome_ristorante: string;
@@ -15,6 +29,9 @@ export type Sede = {
   // l'admin all'attivazione del servizio: decide il canale del briefing.
   sdi_attivo?: boolean;
   sdi_attivo_dal?: string | null;
+  // Opzionale: una risposta del worker precedente alla colonna non lo porta, e
+  // l'assenza vale 'ristorazione'.
+  tipo_attivita?: Settore;
 };
 
 export type TrialInfo = {

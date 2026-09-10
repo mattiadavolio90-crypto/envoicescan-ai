@@ -46,7 +46,12 @@ from utils.ttl_cache import TTLCache
 # db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
 from services.db_service import aggiorna_categoria_fatture
 from utils.supabase_paging import fetch_all
-from config.constants import PIANO_LIMITI_FATTURE_MESE, PIANO_LIMITE_FATTURE_DEFAULT
+from config.constants import (
+    PIANO_LIMITI_FATTURE_MESE,
+    PIANO_LIMITE_FATTURE_DEFAULT,
+    SETTORE_RISTORAZIONE,
+    SETTORI_SEDE,
+)
 
 # Cache in-process per gli endpoint Admin pesanti (overview, badge...). Sono dati
 # di monitoraggio che l'admin guarda: un TTL breve e' accettabile e li toglie dal
@@ -416,10 +421,7 @@ def admin_dettaglio_cliente(cliente_id: str):
 
     # sede_tecnica esclusa come in lista_clienti e lista_sedi: senza il filtro
     # questo era il terzo punto in cui lo stesso cliente aveva due conteggi di sedi.
-    sedi_resp = sb.table("ristoranti").select(
-        "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,"
-        "sdi_attivo,sdi_attivo_dal"
-    ).eq("user_id", cliente_id).eq("sede_tecnica", False).execute()
+    sedi_resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("user_id", cliente_id).eq("sede_tecnica", False).execute()
     sedi = sedi_resp.data or []
 
     piano = (u.get("piano") or "base").lower()
@@ -2927,7 +2929,54 @@ def admin_impersona_exit(body: ImpersonaExitBody, admin_user: dict = Depends(_ve
 # sedi con stessa P.IVA: un trigger DB calcola `indirizzo_match` da questi tre e il
 # webhook Invoicetronic lo confronta con l'indirizzo della fattura. Senza, le
 # fatture multi-sede finiscono in coda `da_assegnare` (smistamento manuale).
-_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,sdi_attivo,sdi_attivo_dal"
+_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,sdi_attivo,sdi_attivo_dal,tipo_attivita"
+
+_SETTORE_PATTERN = "^(" + "|".join(SETTORI_SEDE) + ")$"
+
+
+def _settore_sede_coerente(
+    sb,
+    cliente_id: str,
+    richiesto: Optional[str],
+    *,
+    escludi_sede_id: Optional[str] = None,
+) -> str:
+    """Settore da scrivere su una sede, coerente con le altre sedi reali dell'account.
+
+    In v1 le sedi di un account hanno tutte lo stesso settore (RETAIL_FASI.md):
+    un ristorante e un negozio dello stesso proprietario sono due account. La
+    sede tecnica ("Costi comuni di gruppo") e' esclusa come negli altri punti che
+    contano le sedi: la crea una funzione SQL e non e' un punto vendita.
+
+    - `richiesto` assente: eredita il settore delle sedi esistenti; senza sedi,
+      'ristorazione' (il default della colonna, e il fail-safe nella direzione
+      giusta: un negozio visto da ristorante e' un'etichetta sbagliata, un
+      ristorante visto da negozio e' un'analisi spenta).
+    - `richiesto` diverso da quello delle sedi esistenti: 400, non si scrive.
+    """
+    q = (
+        sb.table("ristoranti").select("id,tipo_attivita")
+        .eq("user_id", cliente_id).eq("sede_tecnica", False)
+    )
+    if escludi_sede_id:
+        q = q.neq("id", escludi_sede_id)
+    esistenti = {(r.get("tipo_attivita") or SETTORE_RISTORAZIONE) for r in (q.execute().data or [])}
+    if richiesto is None:
+        if len(esistenti) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="L'account ha sedi con settori diversi: indica il settore della sede.",
+            )
+        return next(iter(esistenti)) if esistenti else SETTORE_RISTORAZIONE
+    if esistenti and esistenti != {richiesto}:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Le sedi di un account hanno tutte lo stesso settore (oggi: {', '.join(sorted(esistenti))}). "
+                "Un ristorante e un negozio dello stesso proprietario sono due account."
+            ),
+        )
+    return richiesto
 
 
 class NuovaSedeBody(BaseModel):
@@ -2939,6 +2988,9 @@ class NuovaSedeBody(BaseModel):
     comune: Optional[str] = Field(None, max_length=100)
     piano: Optional[str] = Field(None, pattern="^(free|base|plus|pro)$")
     piano_inizio_at: Optional[str] = None
+    # Settore della sede. Assente = eredita dalle sedi dell'account, o
+    # 'ristorazione' se e' la prima (vedi _settore_sede_coerente).
+    tipo_attivita: Optional[str] = Field(None, pattern=_SETTORE_PATTERN)
 
 
 class ModificaSedeBody(BaseModel):
@@ -2954,6 +3006,7 @@ class ModificaSedeBody(BaseModel):
     # l'admin all'attivazione del servizio: decide il canale del briefing
     # fatture-mancanti ("verifica flusso" vs "carica a mano").
     sdi_attivo: Optional[bool] = None
+    tipo_attivita: Optional[str] = Field(None, pattern=_SETTORE_PATTERN)
 
 
 @router.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
@@ -2988,6 +3041,7 @@ def admin_crea_sede(
             status_code=400,
             detail=f"Esiste già una sede con P.IVA {piva}: indica l'indirizzo per distinguere le sedi e smistare le fatture.",
         )
+    settore = _settore_sede_coerente(sb, cliente_id, body.tipo_attivita)
     r = sb.table("ristoranti").insert({
         "user_id": cliente_id,
         "nome_ristorante": body.nome_ristorante.strip(),
@@ -2999,6 +3053,7 @@ def admin_crea_sede(
         "piano": body.piano or "base",
         "piano_inizio_at": body.piano_inizio_at or None,
         "attivo": True,
+        "tipo_attivita": settore,
     }).execute()
     logger.info("admin_crea_sede: cliente=%s sede=%s | admin=%s", cliente_id, body.nome_ristorante, admin_user.get("email"))
     return r.data[0] if r.data else {"ok": True}
@@ -3047,6 +3102,10 @@ def admin_modifica_sede(
         upd["piano"] = body.piano
     if body.piano_inizio_at is not None:
         upd["piano_inizio_at"] = body.piano_inizio_at or None
+    if body.tipo_attivita is not None:
+        upd["tipo_attivita"] = _settore_sede_coerente(
+            sb, cliente_id, body.tipo_attivita, escludi_sede_id=sede_id,
+        )
     if body.sdi_attivo is not None:
         upd["sdi_attivo"] = bool(body.sdi_attivo)
         # Traccia la data di attivazione la prima volta che si accende; la azzera
