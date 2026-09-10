@@ -56,7 +56,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from defusedxml import ElementTree as _DefusedET
 
-from config.constants import CATEGORIA_NON_CLASSIFICATA
+from config.constants import CATEGORIA_NON_CLASSIFICATA, SETTORE_RETAIL
 from services.db_service import aggiorna_categoria_fatture, filter_active
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
 from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
@@ -325,6 +325,12 @@ def _auto_classify_saved_rows(
     if not rows:
         return 0, 0
 
+    # Settore dell'account, una volta per file: per un negozio l'override
+    # deterministico qui sotto resta spento (dizionario e regole forti sono dei
+    # ristoranti: su una riga di ferramenta direbbero CARNE con certezza).
+    from services.settore_service import settore_utente
+    _settore = settore_utente(user_id)
+
     # Un solo lotto per file: nel registro le righe di questa passata si
     # riconoscono come un'unica classificazione automatica.
     lotto = str(uuid.uuid4())
@@ -513,7 +519,7 @@ def _auto_classify_saved_rows(
             # CONFERMARE la scelta AI: se GPT sbagliava (es. BLACK BURGER→PRODOTTI DA
             # FORNO, media) il dizionario che sapeva "CARNE" restava muto e la riga
             # finiva Da Classificare. Ora il runtime, se certo, decide lui.
-            _cat_runtime = _categoria_deterministica_runtime(desc)
+            _cat_runtime = _categoria_deterministica_runtime(desc) if _settore != SETTORE_RETAIL else None
             if _cat_runtime and _cat_runtime.upper() != str(categoria).strip().upper():
                 categoria = _cat_runtime
             # Guardrail NOTE E DICITURE: vietata su righe con importo != 0 (regola di
@@ -568,7 +574,10 @@ def _auto_classify_saved_rows(
                 batch_id=lotto,
             )
             updated_rows += n
-            if n > 0:
+            # Retail: lo streak promuove la voce nella memoria GLOBALE dei ristoranti
+            # (prodotti_master, condivisa fra tutti i clienti): una riga di negozio
+            # non deve entrarci, ne' come ARTICOLO DI VENDITA ne' come altro.
+            if n > 0 and _settore != SETTORE_RETAIL:
                 aggiorna_streak_classificazione(
                     desc, categoria, supabase,
                     record_precaricato=(

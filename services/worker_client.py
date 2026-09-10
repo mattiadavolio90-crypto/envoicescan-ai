@@ -137,6 +137,12 @@ def classifica_via_worker_con_confidenza(
 
     # ── Fallback: classificazione locale diretta ──────────────────────────
     from services.ai_service import classifica_con_ai  # import locale per evitare circolarità
+    # Stesso settore che /api/classify risolve dal body: il percorso locale non
+    # deve classificare un negozio come ristorante solo perche' il worker e' giu'.
+    settore = None
+    if user_id:
+        from services.settore_service import settore_utente
+        settore = settore_utente(user_id)
     return classifica_con_ai(
         descrizioni,
         lista_fornitori=fornitori,
@@ -144,6 +150,7 @@ def classifica_via_worker_con_confidenza(
         lista_hint=hint,
         ristorante_id=ristorante_id,
         return_confidenze=True,
+        settore=settore,
     )
 
 

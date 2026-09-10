@@ -26,7 +26,14 @@ import threading
 import time
 from typing import Optional
 
-from config.constants import SETTORE_RETAIL, SETTORE_RISTORAZIONE, SETTORI_SEDE
+from config.constants import (
+    CATEGORIA_ARTICOLO_DI_VENDITA,
+    CATEGORIE_SPESE_GENERALI,
+    SETTORE_RETAIL,
+    SETTORE_RISTORAZIONE,
+    SETTORI_SEDE,
+    TUTTE_LE_CATEGORIE,
+)
 from config.logger_setup import get_logger
 
 logger = get_logger("settore")
@@ -110,6 +117,18 @@ def settore_sede(ristorante_id: Optional[str], supabase_client=None) -> str:
 
 def is_retail(user_id: Optional[str], supabase_client=None) -> bool:
     return settore_utente(user_id, supabase_client) == SETTORE_RETAIL
+
+
+def categorie_ammesse(settore: Optional[str]) -> list[str]:
+    """Le categorie che una riga di questo settore puo' avere.
+
+    Ristorazione (e settore ignoto): TUTTE_LE_CATEGORIE, la stessa lista di oggi.
+    Retail: l'unica categoria merce piu' le 4 spese generali. Sempre una lista
+    nuova: chi la riceve non puo' modificare le costanti condivise.
+    """
+    if settore == SETTORE_RETAIL:
+        return [CATEGORIA_ARTICOLO_DI_VENDITA] + list(CATEGORIE_SPESE_GENERALI)
+    return list(TUTTE_LE_CATEGORIE)
 
 
 def invalida_cache(user_id: Optional[str] = None) -> None:

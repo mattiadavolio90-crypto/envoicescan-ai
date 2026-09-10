@@ -3551,7 +3551,7 @@ def _aggiorna_brand_tracking(
         logger.debug(f"Brand tracking silenzioso fallito per '{brand}': {e}")
 
 
-def ottieni_hint_per_ai(descrizione: str, user_id: str) -> Optional[str]:
+def ottieni_hint_per_ai(descrizione: str, user_id: str, settore: Optional[str] = None) -> Optional[str]:
     """
     Restituisce la categoria hint per l'AI: ogni voce di prodotti_master NON in
     bypass. Dopo la Fase 6 (3/9) il bypass richiede una conferma — (alta/altissima
@@ -3560,6 +3560,10 @@ def ottieni_hint_per_ai(descrizione: str, user_id: str) -> Optional[str]:
     debole nel payload. None se il prodotto non è in memoria o è in bypass
     (in quel caso l'AI viene già saltata da categorizza_con_memoria).
     """
+    if settore == SETTORE_RETAIL:
+        # La memoria globale e' dei ristoranti: un hint "CARNE" nel prompt di una
+        # riga di ferramenta sfuggirebbe a ogni filtro d'uscita.
+        return None
     try:
         desc_normalized, _ = get_descrizione_normalizzata_e_originale(descrizione)
         return _memoria_cache.get('prodotti_master_hint', {}).get(desc_normalized)
@@ -3747,7 +3751,7 @@ def _traccia_memoria_categorizzata(descrizione: str):
             logger.warning(f"⚠️ Raggiunto limite {_MEMORIA_CAP} righe memoria categorizzate nella sessione")
 
 
-def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=None) -> str:
+def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=None, settore: Optional[str] = None) -> str:
     """
     Ottiene categoria prodotto con priorità IBRIDA usando CACHE IN-MEMORY.
     ELIMINA N+1 QUERY: usa cache invece di query ripetute.
@@ -3789,6 +3793,10 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
     # rimuove sopravvive, ed e' giusto cosi' — ma e' cio' che tiene se un domani
     # qualcuno aggiunge un `return` nudo.
     def _ret_ocp(categoria: str, fonte: str) -> str:
+        # Retail: stesso gate di `_ret` in categorizza_con_memoria — una categoria
+        # food non esiste per un negozio, da qualunque livello arrivi.
+        if settore == SETTORE_RETAIL and categoria in CATEGORIE_FOOD_BEVERAGE:
+            categoria, fonte = "Da Classificare", "nessuna"
         # `fornitore=None` perche' questa funzione non lo riceve: e' la firma, non una
         # dimenticanza. Oggi non cambia nulla — `descrizione_e_dubbia` ignora del tutto
         # quel parametro dal 26/06 — ma se un giorno tornasse a pesare, questo percorso
@@ -5274,6 +5282,13 @@ def _wait_entro_deadline(retry_state) -> float:
         return attesa
     return max(0.0, min(attesa, rimanente))
 
+def _categorie_ammesse_per(settore: Optional[str]) -> list:
+    # Import locale: settore_service non importa ai_service, ma la dipendenza
+    # resta a senso unico anche se un giorno dovesse.
+    from services.settore_service import categorie_ammesse
+
+    return categorie_ammesse(settore)
+
 
 @retry(
     stop=_stop_su_tentativi_o_deadline,
@@ -5288,6 +5303,7 @@ def _chiama_gpt_classificazione(
     lista_iva: Optional[List[int]] = None,
     lista_hint: Optional[List[Optional[str]]] = None,
     return_confidenze: bool = False,
+    settore: Optional[str] = None,
 ) -> Union[List[str], Tuple[List[str], List[str]]]:
     """
     Singola chiamata GPT per classificazione. Ritorna lista categorie (stesso ordine input).
@@ -5433,9 +5449,16 @@ def _chiama_gpt_classificazione(
         # Fix B1: una categoria GPT vietata (es. NOTE E DICITURE) viene rimappata dal
         # nucleo deterministico a una categoria reale invece di degradare a
         # "Da Classificare" e innescare retry inutili.
-        if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
-            logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → recupero runtime deterministico")
-            cat, _motivo_rec, _conf_rec = decisione_deterministica(desc)
+        if cat not in _categorie_ammesse_per(settore) and cat != "Da Classificare":
+            if settore == SETTORE_RETAIL:
+                # Retail: la whitelist e' quella del settore (ARTICOLO DI VENDITA +
+                # spese generali). Niente recupero deterministico: il dizionario e'
+                # dei ristoranti e riporterebbe la riga in CARNE. Resta in coda.
+                logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' (retail) → Da Classificare")
+                cat = "Da Classificare"
+            else:
+                logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → recupero runtime deterministico")
+                cat, _motivo_rec, _conf_rec = decisione_deterministica(desc)
         risultati.append(cat)
 
         conf = conf_by_idx.get(idx) or "media"
@@ -5463,6 +5486,7 @@ def classifica_con_ai(
     openai_client: Optional[OpenAI] = None,
     ristorante_id: Optional[str] = None,
     return_confidenze: bool = False,
+    settore: Optional[str] = None,
 ) -> Union[List[str], Tuple[List[str], List[str]]]:
     """
     Classificazione AI con JSON strutturato + correzioni dizionario.
@@ -5587,7 +5611,7 @@ def classifica_con_ai(
     try:
         # 🧠 PRIMA CHIAMATA GPT (max_tokens=4096 per evitare troncamenti)
         cats_prima, confs_prima = _chiama_gpt_classificazione(
-            da_chiedere_gpt, openai_client, max_tokens=4096,
+            da_chiedere_gpt, openai_client, max_tokens=4096, settore=settore,
             lista_fornitori=_get_fornitori_aligned(da_chiedere_gpt),
             lista_iva=_get_iva_aligned(da_chiedere_gpt),
             lista_hint=_get_hint_aligned(da_chiedere_gpt),
@@ -5638,6 +5662,7 @@ def classifica_con_ai(
                         lista_iva=_get_iva_aligned(chunk_retry),
                         lista_hint=_get_hint_aligned(chunk_retry),
                         return_confidenze=True,
+                        settore=settore,
                     )
 
                     for desc, cat, conf in zip(chunk_retry, cats_retry, confs_retry):
@@ -5651,7 +5676,10 @@ def classifica_con_ai(
         
         # 🔧 SAFETY NET: Applica regole forti + dizionario ai "Da Classificare" residui
         _fallback_count = 0
-        for desc in da_chiedere_gpt:
+        # Retail: safety net e override post-AI restano spenti. Sono il dizionario e le
+        # regole forti dei ristoranti: su una riga di ferramenta riporterebbero CARNE.
+        # Le righe che l'AI non risolve restano "Da Classificare", in coda (regola #1).
+        for desc in (da_chiedere_gpt if settore != SETTORE_RETAIL else []):
             if risultati.get(desc) == "Da Classificare":
                 # Nucleo deterministico condiviso con categorizza_con_memoria (L7):
                 # dizionario -> regole forti, un ordine solo. Prima qui l'ordine era
@@ -5693,7 +5721,7 @@ def classifica_con_ai(
         # Coerente con la fase A (categorizza_con_memoria), dove applica_regole_categoria_forti
         # è già applicata all'output del dizionario senza condizione "Da Classificare".
         _override_count = 0
-        for desc in da_chiedere_gpt:
+        for desc in (da_chiedere_gpt if settore != SETTORE_RETAIL else []):
             cat_corrente = risultati.get(desc)
             if not cat_corrente or cat_corrente == "Da Classificare":
                 continue  # già gestito dal safety net sopra

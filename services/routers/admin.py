@@ -49,6 +49,7 @@ from utils.supabase_paging import fetch_all
 from config.constants import (
     PIANO_LIMITI_FATTURE_MESE,
     PIANO_LIMITE_FATTURE_DEFAULT,
+    SETTORE_RETAIL,
     SETTORE_RISTORAZIONE,
     SETTORI_SEDE,
 )
@@ -1645,12 +1646,21 @@ def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user: dict
     sb = get_supabase_client()
     now = datetime.now(timezone.utc).isoformat()
 
-    local_resp = sb.table("prodotti_utente").select("descrizione,categoria").eq("id", body.local_id).limit(1).execute()
+    local_resp = sb.table("prodotti_utente").select("descrizione,categoria,user_id").eq("id", body.local_id).limit(1).execute()
     if not local_resp.data:
         raise HTTPException(status_code=404, detail="Record locale non trovato")
     local = local_resp.data[0]
 
     if body.azione == "promuovi":
+        # La memoria globale (prodotti_master) e' dei ristoranti: una voce di un
+        # account retail non si promuove, ne' come ARTICOLO DI VENDITA ne' come
+        # spesa generale — comparirebbe come bypass o hint per tutti i clienti.
+        from services.settore_service import settore_utente
+        if settore_utente(local.get("user_id")) == SETTORE_RETAIL:
+            raise HTTPException(
+                status_code=400,
+                detail="La voce appartiene a un account retail: la memoria globale e' dei ristoranti e non si promuove.",
+            )
         glb_resp = (
             sb.table("prodotti_master").select("categoria")
             .eq("descrizione", local["descrizione"]).limit(1).execute()

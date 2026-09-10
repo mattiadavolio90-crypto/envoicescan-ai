@@ -549,6 +549,10 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
 
         invalida_cache_memoria()
         carica_memoria_completa(user_id, supabase_client=supabase_client)
+        # Settore dell'account, una volta per lotto: gli hint dalla memoria globale
+        # (dei ristoranti) non entrano nel prompt di un negozio.
+        from services.settore_service import settore_utente
+        settore = settore_utente(user_id, supabase_client)
 
         desc_map: dict[str, dict] = {}
         for row in unresolved_rows:
@@ -658,7 +662,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
             chunk_update_groups: dict[tuple[str, bool, str, object], list[int]] = {}
             fornitori = [desc_map[d]['fornitore'] for d in chunk]
             iva = [desc_map[d]['iva'] for d in chunk]
-            hint = [ottieni_hint_per_ai(d, user_id) for d in chunk]
+            hint = [ottieni_hint_per_ai(d, user_id, settore=settore) for d in chunk]
 
             if summary.get('ai_rate_limited'):
                 # Quota già esaurita su un chunk precedente: gli altri fallirebbero

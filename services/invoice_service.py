@@ -1621,6 +1621,11 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         
         righe_prodotti = []
         current_user_id = st.session_state.get('user_data', {}).get('id')
+        # Settore una volta per documento (come in estrai_dati_da_xml).
+        settore_documento = None
+        if current_user_id:
+            from services.settore_service import settore_utente
+            settore_documento = settore_utente(current_user_id)
 
         # Precarica memoria per categorizzazione (come in XML path)
         if current_user_id:
@@ -1706,7 +1711,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             # "Da Classificare" in NOTE E DICITURE dopo questa riga, e la riga
             # finirebbe a DB dichiarando una fonte che nessuno ha deciso.
             if current_user_id:
-                categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id)
+                categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id, settore=settore_documento)
                 _pdf_fonte, _pdf_fiducia = ultima_provenienza()
             else:
                 # 'nessuna', non NULL: per contratto NULL significa "legacy, si tratta

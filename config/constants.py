@@ -2095,3 +2095,7 @@ CUSTOM_TAG_UNITA_LT = {"LT", "ML", "CL"}  # Unita normalizzate riconducibili a L
 SETTORE_RISTORAZIONE = "ristorazione"
 SETTORE_RETAIL = "retail"
 SETTORI_SEDE = (SETTORE_RISTORAZIONE, SETTORE_RETAIL)
+# L'unica categoria merce del retail (decisione del 7/9). NON entra in
+# TUTTE_LE_CATEGORIE ne' nelle liste condivise: comparirebbe nei menu dei
+# ristoranti. Le whitelist per settore stanno in services/settore_service.py.
+CATEGORIA_ARTICOLO_DI_VENDITA = "ARTICOLO DI VENDITA"

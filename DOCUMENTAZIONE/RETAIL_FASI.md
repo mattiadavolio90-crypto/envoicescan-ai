@@ -2,7 +2,7 @@
 
 Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
-ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3 chiusa**. Prossima: **1.4**.
+ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3, 1.4 e 1.5 chiuse**. Prossima: **1.6**.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -367,28 +367,56 @@ risolve il settore). Check baseline a zero prima e dopo la mutazione.
 
 ### 1.4 Post-AI: quattro punti che riporterebbero in food
 
-- [ ] **`:5412` — bloccante**: `if cat not in TUTTE_LE_CATEGORIE` sostituisce la categoria
+- [x] **`:5412` — bloccante**: `if cat not in TUTTE_LE_CATEGORIE` sostituisce la categoria
       con `decisione_deterministica(desc)`. Senza questo, il prompt retail (Fase 2) **non
       produce nulla**, qualunque cosa risponda GPT, e il sintomo sarebbe indistinguibile
       da "il prompt non funziona". Whitelist di validazione funzione del settore —
       **mai** aggiungere `ARTICOLO DI VENDITA` a `TUTTE_LE_CATEGORIE`
-- [ ] `:5629` safety net (`decisione_deterministica` sui `Da Classificare`): saltare se retail
-- [ ] `:5676` override post-AI (`applica_regole_categoria_forti`): saltare se retail
-- [ ] `worker/queue_processor.py:487` `_categoria_deterministica_runtime`: scavalca la
+- [x] `:5629` safety net (`decisione_deterministica` sui `Da Classificare`): saltare se retail
+- [x] `:5676` override post-AI (`applica_regole_categoria_forti`): saltare se retail
+- [x] `worker/queue_processor.py:487` `_categoria_deterministica_runtime`: scavalca la
       proposta AI quando il dizionario è certo. Saltare se retail
+
+**Chiusa il 10/9 sera.** `categorie_ammesse(settore)` in `settore_service` (ristorazione →
+`TUTTE_LE_CATEGORIE` identica; retail → `ARTICOLO DI VENDITA` + 4 spese generali; la costante
+`CATEGORIA_ARTICOLO_DI_VENDITA` sta in `config/constants.py` **fuori** da ogni lista
+condivisa). `_chiama_gpt_classificazione` e `classifica_con_ai` prendono `settore=None` in
+coda; la validazione usa la whitelist del settore e per il retail **non** recupera dal
+dizionario (resta `Da Classificare`); safety net e override post-AI spenti per il retail,
+anche nei retry. Il settore si risolve dall'`user_id` in **`/api/classify`** (il body lo ha
+già: contratto HTTP invariato, OpenAPI senza drift), nel fallback locale di
+`worker_client` e una volta per file in `_auto_classify_saved_rows`, dove l'override
+deterministico resta spento. Fuori scope dichiarato: `prepara_suggerimenti_ai` (admin)
+lavora su `prodotti_master`, che la 1.5 tiene solo-ristorazione. Test:
+`tests/test_retail_post_ai.py` (16, sul classificatore vero con un client OpenAI finto,
+sull'endpoint vero e sull'harness esistente del worker). **9 mutanti su 9 uccisi** — uno
+(il retry che perde il settore) è sopravvissuto al primo giro perché il test faceva
+rispondere «Da Classificare» anche ai retry: aggiunto il caso in cui il retry propone una
+food. Check baseline a zero due volte.
 
 ### 1.5 Memoria globale — 2 scritture, 3 letture
 
-- [ ] Scrittura `aggiorna_streak_classificazione` (`:3240`): guardia **nel chiamante**
+- [x] Scrittura `aggiorna_streak_classificazione` (`:3240`): guardia **nel chiamante**
       (`worker/queue_processor.py:543`, che ha `user_id` in scope). Firma invariata
-- [ ] Scrittura `salva_correzione_in_memoria_globale` (`:4673`), via `routers/admin.py:1657`
-- [ ] Lettura L3 dentro `categorizza_con_memoria` (`:5068`, `:5080`) — già coperta da `_ret`
-- [ ] Lettura `ottieni_categoria_prodotto` (`:3740`, chiamata da `invoice_service.py:1700`,
+- [x] Scrittura `salva_correzione_in_memoria_globale` (`:4673`), via `routers/admin.py:1657`
+- [x] Lettura L3 dentro `categorizza_con_memoria` (`:5068`, `:5080`) — già coperta da `_ret`
+- [x] Lettura `ottieni_categoria_prodotto` (`:3740`, chiamata da `invoice_service.py:1700`,
       percorso PDF/Vision) — **funzione diversa**, legge in proprio: guardia separata.
       (Il piano la chiamava `suggerisci_categoria_da_memoria`: nome mai esistito, ri-misurato)
-- [ ] Lettura `ottieni_hint_per_ai` (`:3544`, chiamata da `upload_handler.py:661`) — inietta
+- [x] Lettura `ottieni_hint_per_ai` (`:3544`, chiamata da `upload_handler.py:661`) — inietta
       un hint nel **prompt GPT** ("CARNE" su una riga di ferramenta): sfugge a qualunque
       filtro d'uscita. (Il piano la chiamava `_hint_da_memoria_globale`: idem)
+
+**Chiusa il 10/9 sera.** Scritture: nel worker lo streak parte solo se `_settore !=
+retail` (la riga si scrive lo stesso); la promozione admin (`admin_qualita_risolvi_conflitto`,
+azione `promuovi`) legge anche `user_id` dalla voce locale e risponde **400** se l'account è
+retail. Letture: `ottieni_categoria_prodotto(..., settore=None)` ha lo stesso gate di `_ret`
+dentro `_ret_ocp`; `ottieni_hint_per_ai(..., settore=None)` restituisce `None` per il retail;
+L3 era già coperta dal gate della 1.3. Cablaggio: `_run_post_upload_ai_categorization`
+risolve il settore una volta per lotto e lo passa agli hint; `estrai_dati_da_scontrino_vision`
+una volta per documento. Test: `tests/test_retail_memoria_globale.py` (10, riusando gli
+harness esistenti del worker, del pannello admin e del Vision). **7 mutanti su 7 uccisi.**
+Check baseline a zero due volte.
 
 ### 1.6 Propagazione storica — il difetto più grave, esiste già oggi
 

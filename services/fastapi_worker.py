@@ -835,6 +835,14 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
         from services.ai_service import set_ai_context
         set_ai_context(ristorante_id=body.ristorante_id, user_id=body.user_id)
 
+        # Settore dell'account, risolto QUI (il body ha gia' user_id) e non nel
+        # contratto HTTP: chiamanti vecchi e nuovi passano dallo stesso punto.
+        # Senza user_id resta None = percorso ristorazione.
+        settore = None
+        if body.user_id:
+            from services.settore_service import settore_utente
+            settore = settore_utente(body.user_id)
+
         openai_client = OpenAI(api_key=openai_api_key)
         categorie, confidenze = classifica_con_ai(
             lista_descrizioni=body.descrizioni,
@@ -844,6 +852,7 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
             openai_client=openai_client,
             ristorante_id=body.ristorante_id,
             return_confidenze=True,
+            settore=settore,
         )
 
         # Letto QUI: siamo nel processo che ha eseguito classifica_con_ai, l'unico
