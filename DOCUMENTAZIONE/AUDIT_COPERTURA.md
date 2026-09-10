@@ -62,6 +62,22 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   col taglio a 4 card: corrette entrambe, +3 test, 5 mutanti uccisi.
 >   Suite **13.310 verdi, 44 skip**.
 >
+> - **10/09/2026, `da269ad` — la memoria si caricava a pagine senza un ordine, e
+>   perdeva righe in silenzio.** `_fetch_all_rows` (4 chiamanti in `ai_service`)
+>   paginava con `range()` senza ORDER BY: misurato sul DB vivo, su 10 letture
+>   della memoria locale di un cliente con 3.067 voci, 2 tornavano con 66 e 653
+>   id mancanti rimpiazzati da duplicati, col totale SEMPRE 3.067 — il worker
+>   teneva quella memoria a meta' in cache per un'ora e in quell'ora le
+>   correzioni del cliente non valevano. Trovato per caso dalla baseline del
+>   retail (non riproducibile), non da un test: un aggregato che torna nasconde
+>   errori che si compensano. Ora `.order("id")`; +3 test, 3 mutanti uccisi
+>   (senza ordine, per descrizione, decrescente); due fake di test esistenti
+>   hanno imparato `.order()` (decisione di Mattia). Effetto collaterale
+>   dichiarato: sulle collisioni della memoria normalizzata vince l'ultima voce
+>   per `id` invece che per ordine fisico (1 riga su 3.475 sui dati veri). Da
+>   decidere a parte: **33 chiamanti di `fetch_all` su 34 senza `.order()`**,
+>   stessa classe. Suite **13.363 verdi, 44 skip**.
+>
 > - **09/09/2026 — Fase 4: il banner in fondo alla Home fuso nella card.** La
 >   card grande "Righe da classificare" era un doppione visivo della voce che il
 >   briefing mostra gia' in cima ("2 prodotti da controllare"): due blocchi con
