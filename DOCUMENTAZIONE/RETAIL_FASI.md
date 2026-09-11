@@ -7,7 +7,8 @@ passati; gate 9: sei letture (cinque del reviewer, una a mano) hanno trovato **s
 della stessa famiglia, tutti chiusi** (vedi le sezioni «lettura», dalla seconda alla sesta);
 **settima passata del reviewer verde** (11/9 ore 00:46, cumulativo di 14 commit, codice a
 `50fc209`). **Fase 1 CHIUSA.** **Fase 2 CHIUSA** l'11/9 mattina (prompt retail, 2 file di
-test nuovi, 11 mutanti uccisi, 10 gate passati). Prossima: Fase 3 con Opus normale.
+test nuovi, 11 mutanti uccisi, 10 gate passati, ottava lettura del reviewer verde alle 06:02
+con due residui-script dichiarati). Prossima: Fase 3 con Opus normale.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -746,11 +747,64 @@ chiaro davanti al presidio, che restava **verde**. Corretto solo nel test nuovo
 l'apostrofo nel prompt food, il suo presidio non lo vede. Da dire quando si toccherà.
 
 Gate: suite **13.526 verdi / 45 skip** (+28), `-m sql` **180**, `git diff main -- tests/`
-**5.699 aggiunte / 0 cancellate** e nessun file di test modificato, baseline `check` a zero
+**6.067 aggiunte / 0 cancellate** e nessun file di test modificato, baseline `check` a zero
 **×2** in processi nuovi (più uno subito dopo la modifica a `ai_service.py`), OpenAPI
 **senza drift** (196 endpoint: il contratto HTTP non cambia, il settore si risolve dentro),
 `check_documentazione.py` pulito. Nessuna etichetta cliente toccata: il prompt non è
 un'interfaccia.
+
+> **Cifra corretta dal reviewer**: avevo scritto «5.699 aggiunte» riprendendola dal bilancio
+> di Fase 1 invece di ri-misurarla. Sono **6.067**: la differenza sono le due fixture JSON
+> della baseline (`categorie_deterministiche.json` 3.477 + `costi_per_sede_mese.json` 226),
+> che sono dati, non test. Il vincolo regge identico — 0 cancellate, 0 file in stato `M`.
+
+### Ottava lettura (code-reviewer sul cumulativo, 11/9 ore 06:02): verde
+
+Nessun ottavo buco nei percorsi eseguiti. Il reviewer ha ri-eseguito **tre mutanti** (dispatch
+invertito → 10 rossi; settore perso al cablaggio `:5393` → 3 rossi; settore rimosso **solo**
+dalla riga 5690 del retry → 2 rossi), verificando i md5 dopo il ripristino, e ha ripercorso
+ogni chiamante vivo di `classifica_con_ai` / `_chiama_gpt_classificazione`. Ha riesaminato doc
+e test **dopo** il commit doc `286dd6f` di una sessione parallela (solo `.md`, zero codice).
+
+**Due residui nuovi, della stessa famiglia dei sette della Fase 1** — un `settore=None`
+arrivato per una ragione che non c'entra col settore:
+
+- `scripts/catscan_arbitro.py:32` e `scripts/catscan_senza_segnale.py:55` chiamano
+  `classifica_con_ai(...)` **senza `settore`**: su righe di un negozio l'arbitro GPT verrebbe
+  interrogato col prompt dei ristoranti. **Innocui oggi** — verificato che nessuno dei due
+  scrive (nessun `.insert/.upsert/.update`, le sole occorrenze di `insert` sono
+  `sys.path.insert`): sono diagnostici che stampano a video. Il danno sarebbe **una diagnosi
+  sbagliata**, non dati sporchi.
+- **Cosa li renderebbe nocivi**: (1) se il loro output venisse promosso a scrittura — è il
+  precedente del 10/9, lo script «di sola lettura» che creò 308 voci; (2) più concreto, se
+  venissero usati per **misurare la qualità della classificazione retail**: il loro verdetto
+  «GPT diverge» sarebbe sistematicamente falso sui negozi, e si concluderebbe che il prompt
+  retail funziona male quando non è stato nemmeno usato.
+- **Quando guardarli: Fase 4** (è lì che si misura la qualità sui dati veri, quindi è lì che
+  uno di questi script verrebbe rilanciato), e comunque prima della chiusura finale, insieme a
+  `ricategorizza_sede*.py` e `_runtime_conferma_categoria`.
+
+**Il limite del presidio food resta un residuo dichiarato**: `tests/test_prompt_ai_coerenza_dominio.py:31-33`
+cerca `NON è MAI` con la e accentata e resterebbe verde su un divieto scritto `NON e' MAI`. Il
+reviewer conferma che **non toccarlo era la scelta giusta** — il vincolo «nessun test esistente
+modificato» è il più forte della fase, e il limite è **latente**: il prompt food oggi non
+contiene alcun divieto con apostrofo, quindi il presidio non sta mancando nulla di reale. Il
+modello da portarci quando sarà lecito è la normalizzazione già scritta in
+`tests/test_retail_prompt_coerenza_dominio.py`.
+
+**Sullo scostamento NOTE E DICITURE il reviewer è d'accordo, con una ragione più forte della
+mia**: per il retail una categoria fuori whitelist diventa `Da Classificare` **senza** recupero
+deterministico (`ai_service.py:5472-5479`, a differenza del ramo ristorazione). Ammetterla nel
+prompt avrebbe creato un'uscita che il modello vede come legittima e che il sistema rifiuta
+**sempre**: un errore silenzioso auto-inflitto. E non lascia scoperto nulla — le diciture a
+importo zero continuano ad arrivare da L4 / `classify_special_row_vectorized`, percorso **non**
+gated per settore (in `worker/queue_processor.py` i soli gate retail sono a `:493` e `:551`),
+quindi un negozio riceve `📝 NOTE E DICITURE` sulle righe a zero come prima, senza che l'AI
+debba proporla.
+
+> **Avvertenza del reviewer, da tenere**: non aver trovato l'ottavo buco non dimostra che non
+> esista — dimostra che non è nei percorsi eseguiti. I sette della Fase 1 sono emersi in sei
+> letture successive.
 
 **Punto di partenza lasciato dalla Fase 1** (così la sessione non lo ri-cerca):
 - Il prompt vive in `config/prompt_ai_potenziato.py` (`PROMPT_CLASSIFICAZIONE_AI`,
@@ -903,6 +957,11 @@ tocca i ristoranti.
   catch-all (MOL corretto) e nel secchio "fb" (coerente). Il cliente vede una categoria in
   più. Accettabile.
 - **Anteprime già in cache** e **cache settore per processo**: vedi «Settima lettura», residui.
+- **Script diagnostici senza gate settore**: `scripts/catscan_arbitro.py:32`,
+  `scripts/catscan_senza_segnale.py:55` (chiamano `classifica_con_ai` senza `settore`) e
+  `scripts/ricategorizza_sede*.py`. Nessuno scrive: il danno è una diagnosi sbagliata su un
+  cliente retail, non dati sporchi. **Da guardare in Fase 4**, prima di misurare la qualità
+  della classificazione retail sui dati veri — vedi «Ottava lettura».
 - **`test_documentazione_onesta.py` non scansiona questo file** (lista fissa di documenti):
   finché resta sul branch può mentire senza che un test lo dica. Al merge su `main` va
   aggiunto alla lista, o i suoi riferimenti a simboli e righe vanno ri-misurati a mano.
