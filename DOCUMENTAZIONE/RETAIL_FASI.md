@@ -1,16 +1,19 @@
 # Retail — le fasi dell'implementazione
 
 Stato all'**11/09/2026, pomeriggio**: **Fasi 0, 1, 2, 3 e 4 CHIUSE**. Branch
-`retail`, **37 commit** sopra `main`, HEAD `e91f576`, **mai pushato**
-(`origin/retail` non esiste). Il conteggio esclude i commit che lo aggiornano:
-si rilegge da `git log --oneline main..retail | wc -l`, non da questa riga.
+`retail`, **mai pushato** (`origin/retail` non esiste).
+
+> **Il numero di commit non sta scritto qui**, di proposito: una cifra in un file
+> versionato non puo' contare i commit che la aggiornano, e le prime due stesure
+> di questa riga erano infatti sbagliate in due modi diversi. Si legge con
+> `git log --oneline main..retail | wc -l`, che e' sempre giusto.
 Fase 0 `b642e3c` · Fase 1 `50fc209` (sette buchi della stessa famiglia trovati dal
 reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 (11 mutanti) · **Fase 3** `5d9f367`, `c7e0d3b`, `dd6ac5e`, `c693a17`, `81d65a5`,
 `5c98761`, `77b9e7c` (56 presidi, 17 mutanti, reviewer verde due volte).
-**Fase 4** `23c0706`, `f76ddf1`, `ec43fc2`, `a6bb45d`, `e91f576` (+ `a4166e4`
-verbale): **231 presidi, 37 mutanti, 6 presidi finti** smascherati dalla
-mutazione, reviewer 🔴 due volte e poi chiuso.
+**Fase 4** `23c0706`, `f76ddf1`, `ec43fc2`, `a6bb45d`, `e91f576`, `d4867c0`
+(+ `a4166e4`, `2aec741` verbale): **241 presidi, 43 mutanti, 7 presidi finti**
+smascherati dalla mutazione, reviewer 🔴 **tre volte** e poi chiuso.
 **Prossima: Fase 5 (sorveglianza post-deploy), Opus, ~mezza giornata.**
 
 > ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
@@ -1055,10 +1058,10 @@ sarebbero rossi se il vincolo venisse violato.
 ## Fase 4 — Briefing, chat AI, soglie · Opus normale · **CHIUSA** 11/09/2026
 
 Commit: `23c0706` (chat: prompt + gate tool), `f76ddf1` (soglie, nome KPI,
-frontend), `ec43fc2` (topic, script, bump briefing), `a6bb45d` (fix della prima
-review), `e91f576` (fix della seconda). **231 presidi nuovi** (suite 13.582 →
-**13.813**), **0 test esistenti toccati**, **37 mutanti** — 31 uccisi subito,
-**6 sopravvissuti che hanno smascherato altrettanti presidi finti**, riscritti e
+frontend), `ec43fc2` (topic, script, bump briefing), `a6bb45d`, `e91f576`,
+`d4867c0` (fix delle tre review). **241 presidi nuovi** (suite 13.582 →
+**13.823**), **0 test esistenti toccati**, **43 mutanti** — 36 uccisi subito,
+**7 sopravvissuti che hanno smascherato altrettanti presidi finti**, riscritti e
 ri-mutati.
 
 - [x] **Chat, blocco benchmark** — il prompt diceva «Rispondi SOLO a domande sui
@@ -1133,9 +1136,19 @@ Non dalla rilettura. È il motivo per cui ogni presidio nuovo va mutato:
    `_valuta_soglia_margine`, non sull'endpoint;
 6. **i quattro presidi su `_chat_tools_gruppo` chiamavano la funzione
    direttamente**, e il mutante che rimetteva `_CHAT_TOOLS_GRUPPO` al call site
-   sopravviveva a tutta la suite. Il punto 1 di questo elenco era lo **stesso
-   difetto**, chiuso e riaperto nello stesso file, sul fix successivo: provare
-   la funzione non prova il suo wiring.
+   sopravviveva a tutta la suite;
+7. **lo stesso, su `_topics_per_settore` e `_pagine_con_settore`** — trovati
+   dalla terza lettura. Il secondo e' il piu' grave della fase: e' il gate
+   della **Fase 3**, e con `pagine_abilitate` NULL (il default di quasi tutti
+   gli account) un mutante al call site fa tornare `None`, quindi **nessun**
+   `tab_off_*` raggiunge il client. Gli spegnimenti si sarebbero spenti in
+   silenzio, a ogni login, con la suite verde.
+
+**Quattro occorrenze dello stesso difetto in una fase sola** (il settore al
+prompt, i tool di gruppo, i topic, le pagine), ogni volta col codice corretto e
+il presidio che misurava la funzione invece del suo uso. La regola sta scritta
+in testa a `tests/test_wiring_settore_endpoint.py`: **provare la funzione non
+prova che qualcuno la usi** — per ogni gate si muta il CALL SITE, non il corpo.
 
 ### Il vincolo di Mattia è stato violato due volte, e ripristinato
 
@@ -1166,7 +1179,7 @@ copriva uno). Entrambe corrette in `a6bb45d`.
 
 ### Gate di fine fase
 
-Suite **13.813** verdi / 45 skip (da 13.582: **+231**, 0 esistenti toccati),
+Suite **13.823** verdi / 45 skip (da 13.582: **+241**, 0 esistenti toccati),
 `git diff main -- tests/` con cancellazioni **solo** su
 `test_prompt_ai_coerenza_dominio.py` (l'unico autorizzato, Fase 2), baseline
 **«Diff a zero»** (56 righe di costi, 3.475 categorie) dopo ogni casella,

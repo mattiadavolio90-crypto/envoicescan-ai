@@ -109,7 +109,7 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   saltava il chokepoint dove la Fase 1 aveva messo il filtro. Tutti e quattro
 >   sono la **famiglia dei sette buchi della Fase 1**: un gate a monte che non
 >   copre il punto a valle, e si trovano eseguendo, non leggendo.
->   **37 mutanti, 6 dei quali hanno smascherato presidi finti** — il settore non
+>   **43 mutanti, 7 dei quali hanno smascherato presidi finti** — il settore non
 >   arrivava dall'endpoint al prompt; un `settore=` cercato in una finestra di
 >   testo pescava la chiamata successiva (riscritto sull'AST); il vincolo del
 >   prompt ristorazione asseriva sei sottostringhe **scelte**, ed era cieco
@@ -118,14 +118,21 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   trovata dal reviewer confrontando gli md5 del prompt sui due commit. Ora il
 >   confronto e' sul prompt **intero** contro uno snapshot del commit di ieri, e
 >   il prompt dei ristoranti ha lo stesso md5 di prima. Nello stesso giro, **due
->   affermazioni false nei miei commit**, corrette. **Il sesto presidio finto e'
->   lo stesso difetto del primo, riaperto**: i quattro presidi sui tool di gruppo
->   chiamavano la funzione direttamente, e il mutante che ne annullava il wiring
->   sopravviveva a tutta la suite — provare la funzione non prova che qualcuno la
->   usi. Suite **13.813 verdi, 45 skip** (+231 presidi, 0 test esistenti
->   toccati), baseline a zero dopo ogni casella, OpenAPI senza drift (196
->   endpoint), `tsc` pulito, `_BRIEFING_CODE_VERSION` 23 → 24. Commit `23c0706`,
->   `f76ddf1`, `ec43fc2`, `a6bb45d`, `e91f576`.
+>   affermazioni false nei miei commit**, corrette. **Lo stesso difetto e'
+>   tornato QUATTRO volte in questa fase sola** — il settore al prompt, i tool di
+>   gruppo, i topic del configuratore, le pagine abilitate — ogni volta col
+>   codice corretto e il presidio che misurava la funzione invece del suo uso.
+>   L'ultimo e' il piu' grave: `_pagine_con_settore` e' il gate della **Fase 3**,
+>   e con `pagine_abilitate` NULL (il default di quasi tutti gli account) un
+>   mutante al call site fa tornare `None`, quindi nessun `tab_off_*` raggiunge
+>   il client: gli spegnimenti si sarebbero spenti **in silenzio, a ogni login**,
+>   con la suite verde. Regola scritta in testa a
+>   `tests/test_wiring_settore_endpoint.py`: **provare la funzione non prova che
+>   qualcuno la usi**, e per ogni gate si muta il CALL SITE. Suite **13.823
+>   verdi, 45 skip** (+241 presidi, 0 test esistenti toccati), baseline a zero
+>   dopo ogni casella, OpenAPI senza drift (196 endpoint), `tsc` pulito,
+>   `_BRIEFING_CODE_VERSION` 23 → 24. Commit `23c0706`, `f76ddf1`, `ec43fc2`,
+>   `a6bb45d`, `e91f576`, `d4867c0`.
 >
 > - **11/09/2026, branch `retail` (NON spedito) — Fase 3 del retail: spegnimenti,
 >   etichette e le sei whitelist di scrittura.** Le whitelist validavano la
