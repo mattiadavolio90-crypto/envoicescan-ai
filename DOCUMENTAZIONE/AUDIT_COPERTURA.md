@@ -86,6 +86,29 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   chiamanti di `fetch_all` su 34 senza `.order()`**, stessa classe. Suite
 >   **13.363 verdi, 44 skip**.
 >
+> - **11/09/2026, branch `retail` (NON spedito) — Fase 2 del retail: il prompt
+>   dei negozi.** Il classificatore AI aveva un solo prompt, scritto per un
+>   ristorante: a un negozio proponeva 26 categorie alimentari che la validazione
+>   per settore (Fase 1) scartava tutte, e il sintomo era indistinguibile da
+>   «l'AI non classifica niente». `PROMPT_CLASSIFICAZIONE_RETAIL` ha cinque
+>   categorie e una domanda sola — si rivende, o serve a far funzionare il
+>   negozio? — decisa da fornitore e contesto della fattura, non dal prodotto
+>   (lo stesso martello e' merce in una ferramenta e attrezzatura in una
+>   libreria); quando gli indizi mancano la riga resta `Da Classificare`.
+>   `get_prompt_classificazione(articoli_json, settore=None)`: kwarg additivo,
+>   `None`/`ristorazione`/valore ignoto ritornano **letteralmente** il testo di
+>   oggi, provato per uguaglianza e non con `in`. Cablaggio: **una riga** in
+>   `ai_service.py:5393`, unico consumatore vivo del prompt. +2 file di test
+>   (28 test, 0 esistenti toccati), **11 mutanti uccisi**, di cui due rifatti
+>   perche' invalidi (uno mutava un commento, uno non si applicava affatto: il
+>   verde non misurava niente). Il decimo ha trovato un buco nel presidio
+>   stesso — il regex copiato dal test food cerca `NON è MAI` con la e
+>   accentata e resta verde su un divieto scritto con l'apostrofo. Ottava
+>   lettura del reviewer verde, con due residui-script dichiarati
+>   (`catscan_*` senza gate settore, non scrivono: da guardare in Fase 4).
+>   Verbale: `DOCUMENTAZIONE/RETAIL_FASI.md`. Suite **13.526 verdi, 45 skip**,
+>   `-m sql` 180, baseline a zero x2.
+>
 > - **10-11/09/2026, branch `retail` (15 commit, NON spedito) — Fase 1 del retail:
 >   l'isolamento per settore.** Colonna `ristoranti.tipo_attivita` (migration
 >   scritta, NON applicata), `services/settore_service.py`, e un kwarg additivo
