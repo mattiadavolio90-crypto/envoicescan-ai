@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { EventoDialog } from "../workspace/diario-tab";
-import { TIPO_SPESA_LABEL } from "@/lib/categorie-spesa";
+import { tipoSpesaLabel, type Settore } from "@/lib/categorie-spesa";
 import { formatEuro } from "@/lib/format";
 import { MESI_LUNGHI } from "@/lib/mesi";
 import {
@@ -90,7 +90,7 @@ interface DipendenteRaw { id: string; nome: string; }
 
 // ─── Vista aggregata "Tutto" ───────────────────────────────────────────────────
 
-export function AgendaOverview() {
+export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
   const today = todayISO();
   const now = new Date();
   const [anno, setAnno] = useState(now.getFullYear());
@@ -132,7 +132,7 @@ export function AgendaOverview() {
           out.push({
             id: `sp-${s.id}`, fonte: "spesa", data: s.data_spesa,
             titolo: s.descrizione,
-            dettaglio: s.categoria ?? TIPO_SPESA_LABEL[s.tipo],
+            dettaglio: s.categoria ?? tipoSpesaLabel(s.tipo, settore),
             importo: s.importo,
           });
         }

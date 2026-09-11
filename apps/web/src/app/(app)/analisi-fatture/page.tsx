@@ -161,6 +161,7 @@ export default async function AnalisiFatturePage({
           soloVerifica={soloVerifica}
           soloRipartite={soloRipartite}
           filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}
+          settore={user?.tipo_attivita}
         />
       )}
 
@@ -169,6 +170,7 @@ export default async function AnalisiFatturePage({
           pivot={pivotCategorie}
           dimensione="categoria"
           filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}
+          settore={user?.tipo_attivita}
         />
       )}
 
@@ -177,6 +179,7 @@ export default async function AnalisiFatturePage({
           pivot={pivotFornitori}
           dimensione="fornitore"
           filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}
+          settore={user?.tipo_attivita}
         />
       )}
 

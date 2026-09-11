@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePaginaConTab } from "@/lib/page-guard";
+import { getCurrentUser } from "@/lib/auth";
 import { LayerSwitcher } from "./layer-switcher";
 import { AgendaOverview } from "./agenda-overview";
 import { AgendaView } from "../workspace/diario-tab";
@@ -18,13 +19,16 @@ export default async function AgendaPage({
   const { tab: layer, disponibili } = await requirePaginaConTab(
     "agenda", "agenda", sp.layer, "/agenda", "layer",
   );
+  // getCurrentUser e' avvolto in cache() di React: il layout l'ha gia' chiamato
+  // in questo render, quindi il settore non costa una chiamata in piu'.
+  const settore = (await getCurrentUser())?.tipo_attivita;
 
   return (
     <div className="space-y-4">
       <PageHeader
         icon="calendar"
         title="Agenda"
-        hint="Tutto ciò che succede nel tuo locale, giorno per giorno: appuntamenti, spese e turni del personale."
+        hint={`Tutto ciò che succede nel tuo ${settore === "retail" ? "negozio" : "locale"}, giorno per giorno: appuntamenti, spese e turni del personale.`}
       />
 
       <Suspense>
@@ -34,7 +38,7 @@ export default async function AgendaPage({
       <div className="mt-2">
         {layer === "tutto" && (
           <Suspense>
-            <AgendaOverview />
+            <AgendaOverview settore={settore} />
           </Suspense>
         )}
         {layer === "appuntamenti" && (
@@ -44,7 +48,7 @@ export default async function AgendaPage({
         )}
         {layer === "spese" && (
           <Suspense>
-            <SpeseView />
+            <SpeseView settore={settore} />
           </Suspense>
         )}
         {layer === "personale" && (

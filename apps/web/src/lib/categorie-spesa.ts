@@ -66,3 +66,41 @@ export const TIPO_SPESA_LABEL: Record<TipoSpesa, string> = {
   fb: "Costi F&B",
   generale: "Spese Generali",
 };
+
+// ─── Etichette per settore (Fase 3 retail) ─────────────────────────────────
+//
+// "Costi F&B" e "Food Cost" descrivono un ristorante: per un negozio la stessa
+// grandezza e' il costo della merce che rivende. Le stringhe della ristorazione
+// NON si toccano — sono quelle qui sopra, e restano il default di ogni funzione
+// di questo blocco: un chiamante che non passa il settore vede esattamente
+// l'app di ieri. E' il vincolo di Mattia, ed e' anche il motivo per cui il
+// parametro e' opzionale invece che obbligatorio.
+export type Settore = "ristorazione" | "retail";
+
+const TIPO_SPESA_LABEL_RETAIL: Record<TipoSpesa, string> = {
+  fb: "Costi Merce",
+  generale: "Spese Generali",
+};
+
+export function tipoSpesaLabel(tipo: TipoSpesa, settore?: Settore | null): string {
+  return settore === "retail" ? TIPO_SPESA_LABEL_RETAIL[tipo] : TIPO_SPESA_LABEL[tipo];
+}
+
+// L'etichetta del costo merce dove compare da sola (KPI, export, titoli di
+// colonna). Per i ristoranti e' "Food Cost", la grafia che l'app usa oggi.
+export function costoMerceLabel(settore?: Settore | null): string {
+  return settore === "retail" ? "Costo Merce" : "Food Cost";
+}
+
+// Il filtro "Food & Beverage" dei tab articoli/pivot. Per un negozio quel
+// gruppo e' la merce di rivendita: la categoria e' una sola, ma il filtro
+// continua a separarla dalle spese generali, che esistono per entrambi.
+export function filtroMerceLabel(settore?: Settore | null): string {
+  return settore === "retail" ? "Merce" : "Food & Beverage";
+}
+
+// Il nome dell'attivita' dove l'app si rivolge al cliente ("il tuo locale") o
+// ricade su un default ("Ristorante" in sidebar e layout).
+export function attivitaLabel(settore?: Settore | null): string {
+  return settore === "retail" ? "Negozio" : "Ristorante";
+}

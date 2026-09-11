@@ -10,7 +10,8 @@ import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import {
   CATEGORIE_SPESA_FB,
   CATEGORIE_SPESA_GENERALI,
-  TIPO_SPESA_LABEL,
+  tipoSpesaLabel,
+  type Settore,
   tipoDaCategoria,
   type TipoSpesa,
 } from "@/lib/categorie-spesa";
@@ -67,9 +68,10 @@ interface DialogProps {
   dataDefault: string;
   onClose: () => void;
   onSaved: () => void;
+  settore?: Settore | null;
 }
 
-function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps) {
+function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: DialogProps) {
   const [data, setData] = useState(dataDefault);
   const [categoria, setCategoria] = useState("");
   const [importo, setImporto] = useState("");
@@ -149,7 +151,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps
               <p className="mt-1.5 text-[11px] text-muted-foreground">
                 Rientra in:{" "}
                 <span className={`font-semibold ${tipo === "fb" ? "text-orange-600 dark:text-orange-400" : "text-purple-600 dark:text-purple-400"}`}>
-                  {TIPO_SPESA_LABEL[tipo]}
+                  {tipoSpesaLabel(tipo, settore)}
                 </span>
               </p>
             )}
@@ -202,7 +204,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: DialogProps
 
 // ─── Componente principale ──────────────────────────────────────────────────────
 
-export function MobileSpese() {
+export function MobileSpese({ settore }: { settore?: Settore | null } = {}) {
   const today = todayISO();
   const now = new Date();
   const [anno, setAnno] = useState(now.getFullYear());
@@ -283,7 +285,7 @@ export function MobileSpese() {
       {/* KPI totali */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-2xl ring-1 ring-orange-500/60 bg-orange-50 dark:bg-orange-950/20 p-3">
-          <p className="text-xs font-medium text-orange-700 dark:text-orange-500">Costi F&B extra</p>
+          <p className="text-xs font-medium text-orange-700 dark:text-orange-500">{tipoSpesaLabel("fb", settore)} extra</p>
           <p className="text-lg font-bold tabular-nums text-orange-700 dark:text-orange-400">{fmtEuro(totFb)}</p>
         </div>
         <div className="rounded-2xl ring-1 ring-purple-500/60 bg-purple-50 dark:bg-purple-950/20 p-3">
@@ -343,6 +345,7 @@ export function MobileSpese() {
         dataDefault={dataDefault}
         onClose={() => { setDialogOpen(false); setEditSpesa(null); }}
         onSaved={() => load(anno, mese)}
+        settore={settore}
       />
 
       <ConfirmDialog

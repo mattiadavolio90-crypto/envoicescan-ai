@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { attivitaLabel } from "@/lib/categorie-spesa";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -83,7 +84,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppSidebar
         userEmail={user.email}
         userInitials={getInitials(user.sede_attiva_nome ?? user.nome_ristorante, user.email)}
-        ristoranteNome={user.sede_attiva_nome ?? user.nome_ristorante ?? "Ristorante"}
+        ristoranteNome={user.sede_attiva_nome ?? user.nome_ristorante ?? attivitaLabel(user.tipo_attivita)}
         isAdmin={user.is_admin}
         pagineAbilitate={user.pagine_abilitate}
       />

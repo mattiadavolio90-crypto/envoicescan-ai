@@ -8,7 +8,7 @@ import {
   type PivotResponse,
   type TrendResponse,
 } from "@/lib/fatture";
-import { SPESE_GENERALI_SET } from "@/lib/categorie-spesa";
+import { SPESE_GENERALI_SET, filtroMerceLabel, type Settore } from "@/lib/categorie-spesa";
 import { categoriaIcon, formatEuro, formatEuroCompact } from "./periodi";
 import { puntiSparkline } from "@/lib/sparkline-punti";
 
@@ -20,11 +20,16 @@ type Props = {
     data_a?: string;
     tipo_prodotti?: string;
   };
+  settore?: Settore | null;
 };
 
-const TIPO_OPTIONS = [
+// Il filtro "Food & Beverage" per un negozio e' la merce di rivendita: la
+// categoria e' una sola, ma il filtro continua a separarla dalle spese
+// generali, che esistono per entrambi i settori. Senza settore resta la
+// dicitura di oggi, cosi' i ristoranti non cambiano.
+const tipoOptions = (settore?: Settore | null) => [
   { key: "tutti", label: "Tutti" },
-  { key: "food_beverage", label: "Food & Beverage" },
+  { key: "food_beverage", label: filtroMerceLabel(settore) },
   { key: "spese_generali", label: "Spese Generali" },
 ];
 
@@ -33,7 +38,7 @@ const VISTE = [
   { key: "grafico", label: "Grafico" },
 ];
 
-export function PivotTab({ pivot, dimensione, filtri }: Props) {
+export function PivotTab({ pivot, dimensione, filtri, settore }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -112,7 +117,7 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
       {/* Sub-filtri */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
-          {TIPO_OPTIONS.map((t) => (
+          {tipoOptions(settore).map((t) => (
             <button
               key={t.key}
               disabled={pending}

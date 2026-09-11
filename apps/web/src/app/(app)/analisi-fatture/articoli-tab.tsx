@@ -7,6 +7,8 @@ import {
   SPESE_GENERALI_SET,
   CATEGORIA_NON_CLASSIFICATA,
   daScegliereCategoria,
+  filtroMerceLabel,
+  type Settore,
 } from "@/lib/categorie-spesa";
 import {
   AlertTriangle,
@@ -42,6 +44,7 @@ type Props = {
     data_a?: string;
     tipo_prodotti?: string;
   };
+  settore?: Settore | null;
 };
 
 type SortKey =
@@ -56,9 +59,13 @@ type SortKey =
 
 type SortDir = "asc" | "desc" | null;
 
-const TIPO_OPTIONS = [
+// Il filtro "Food & Beverage" per un negozio e' la merce di rivendita: la
+// categoria e' una sola, ma il filtro continua a separarla dalle spese
+// generali, che esistono per entrambi i settori. Senza settore resta la
+// dicitura di oggi, cosi' i ristoranti non cambiano.
+const tipoOptions = (settore?: Settore | null) => [
   { key: "tutti", label: "Tutti" },
-  { key: "food_beverage", label: "Food & Beverage" },
+  { key: "food_beverage", label: filtroMerceLabel(settore) },
   { key: "spese_generali", label: "Spese Generali" },
 ];
 
@@ -116,6 +123,7 @@ export function ArticoliTab({
   soloVerifica,
   soloRipartite,
   filtri,
+  settore,
 }: Props) {
   // C'è almeno un articolo ripartito? Se no, il toggle "Solo ripartite" non serve
   // (sede non di catena) → non lo mostriamo, per non aggiungere rumore al 99% dei clienti.
@@ -274,7 +282,7 @@ export function ArticoliTab({
       {/* Sub-filtri */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
-          {TIPO_OPTIONS.map((t) => (
+          {tipoOptions(settore).map((t) => (
             <button
               key={t.key}
               disabled={pending}

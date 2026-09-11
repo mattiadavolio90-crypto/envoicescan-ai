@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
+import type { Settore } from "@/lib/categorie-spesa";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
 import { ripartisciOre, costoTurnoGiornaliero } from "@/lib/ore-turno";
 
@@ -18,7 +19,7 @@ import { ripartisciOre, costoTurnoGiornaliero } from "@/lib/ore-turno";
 
 type MovTab = "incassi" | "spese" | "turni";
 
-export function MobileTurni() {
+export function MobileTurni({ settore }: { settore?: Settore | null } = {}) {
   const [tab, setTab] = useState<MovTab>("incassi");
 
   return (
@@ -46,7 +47,7 @@ export function MobileTurni() {
         })}
       </div>
 
-      {tab === "incassi" ? <MobileIncassi /> : tab === "spese" ? <MobileSpese /> : <TurniBody />}
+      {tab === "incassi" ? <MobileIncassi /> : tab === "spese" ? <MobileSpese settore={settore} /> : <TurniBody />}
     </div>
   );
 }

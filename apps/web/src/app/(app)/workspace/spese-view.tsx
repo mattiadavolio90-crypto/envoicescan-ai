@@ -11,7 +11,8 @@ import { toast } from "sonner";
 import {
   CATEGORIE_SPESA_FB,
   CATEGORIE_SPESA_GENERALI,
-  TIPO_SPESA_LABEL,
+  tipoSpesaLabel,
+  type Settore,
   tipoDaCategoria,
   type TipoSpesa,
 } from "@/lib/categorie-spesa";
@@ -73,9 +74,10 @@ interface SpesaDialogProps {
   dataDefault: string;
   onClose: () => void;
   onSaved: () => void;
+  settore?: Settore | null;
 }
 
-function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialogProps) {
+function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: SpesaDialogProps) {
   const [data, setData] = useState(dataDefault);
   const [categoria, setCategoria] = useState("");
   const [importo, setImporto] = useState("");
@@ -157,7 +159,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialog
               <p className="text-[11px] text-muted-foreground mt-1.5">
                 Rientra in:{" "}
                 <span className={`font-semibold ${tipo === "fb" ? "text-orange-600 dark:text-orange-400" : "text-purple-600 dark:text-purple-400"}`}>
-                  {TIPO_SPESA_LABEL[tipo]}
+                  {tipoSpesaLabel(tipo, settore)}
                 </span>
               </p>
             ) : (
@@ -216,7 +218,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved }: SpesaDialog
 
 type FiltroTipo = "tutte" | TipoSpesa;
 
-export function SpeseView() {
+export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
   const oggi = toISO(new Date());
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
   const [risposta, setRisposta] = useState<SpeseResponse | null>(null);
@@ -283,7 +285,7 @@ export function SpeseView() {
     const headers = ["Data", "Tipo", "Categoria", "Descrizione", "Importo", "Note"];
     const rows = voci.map(s => [
       fmtData(s.data_spesa),
-      TIPO_SPESA_LABEL[s.tipo],
+      tipoSpesaLabel(s.tipo, settore),
       s.categoria ?? "",
       s.descrizione,
       num(s.importo),
@@ -411,7 +413,7 @@ export function SpeseView() {
               <span className="text-xs text-muted-foreground tabular-nums w-12 shrink-0">{fmtData(s.data_spesa)}</span>
               <span
                 className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 max-w-[190px] truncate ${TIPO_BADGE[s.tipo]}`}
-                title={s.categoria ?? TIPO_SPESA_LABEL[s.tipo]}
+                title={s.categoria ?? tipoSpesaLabel(s.tipo, settore)}
               >
                 {s.categoria ?? (s.tipo === "fb" ? "F&B" : "Gen.")}
               </span>
@@ -439,6 +441,7 @@ export function SpeseView() {
         dataDefault={dataDefault}
         onClose={() => { setDialogOpen(false); setEditSpesa(null); }}
         onSaved={() => load(da, fine)}
+        settore={settore}
       />
 
       <ConfirmDialog
