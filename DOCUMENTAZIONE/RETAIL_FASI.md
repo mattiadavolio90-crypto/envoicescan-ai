@@ -17,7 +17,9 @@ smascherati dalla mutazione, reviewer 🔴 **tre volte** e poi chiuso.
 **Fase 5** (sorveglianza post-deploy) **CHIUSA** 11/9/2026: 18 mutanti, 2 presidi
 finti smascherati (stesso errore due volte: un assert sul sorgente invece che sul
 comportamento), 2 difetti veri trovati dai presidi, reviewer 🟢 **due volte**.
-**Prossima: la Chiusura finale** (due migration da applicare, non una).
+**Prossima: la Chiusura finale.** Le due migration sono state **applicate sul DB
+vivo l'11/9 sera** (contratto «PRIMA DEL PUSH», punti 1-4): restano il rientro su
+`main` con rebase e la rimozione del worktree.
 
 > ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
 >
@@ -1314,7 +1316,8 @@ succede davvero.
 ### Cosa e' stato scritto
 
 - `supabase/migrations/20260911170000_v_categorie_settore_incoerenti.sql` — la view,
-  **scritta e NON applicata** (vincolo di sola lettura della fase). Due classi:
+  **scritta e non applicata** *(vero durante la fase; applicata poi alla Chiusura,
+  l'11/9 sera)* — il vincolo di sola lettura valeva mentre si lavorava. Due classi:
   `ristorazione_con_categoria_retail` e la speculare `retail_con_categoria_food`.
   Legge `tipo_attivita` via `to_jsonb(r)->>` cosi' e' creabile **anche prima** della
   migration `20260910163000` (verificato: oggi la colonna non c'e', e tutte e 12 le
@@ -1442,10 +1445,11 @@ baseline non andava ri-catturata — e infatti e' rimasta a zero).
 
 ### Dichiarati, non chiusi
 
-- **La migration della view NON e' applicata**, come tutte quelle del branch: va
-  applicata insieme a `20260910163000_add_tipo_attivita.sql` prima del push, o
-  l'endpoint risponderebbe 500 su una view inesistente. **Sono ora DUE le migration
-  da applicare**, non una: la riga 1 del contratto «PRIMA DEL PUSH» va letta cosi'.
+- **~~La migration della view non e' applicata~~ — APPLICATA l'11/9 sera**, insieme
+  a `20260910163000_add_tipo_attivita.sql`, con l'approvazione di Mattia. Era il
+  residuo piu' pesante di questa fase: senza, l'endpoint avrebbe risposto 500 su una
+  view inesistente al primo ridispiegamento di Railway. Misure dopo l'applicazione
+  nel contratto «PRIMA DEL PUSH» in cima.
 - **Il monitor non ha ancora visto rosso in produzione**, per costruzione: non
   esiste una sede retail. Ha visto rosso su Postgres vero (10 test), che e' il piu'
   vicino possibile finche' un negozio non esiste.
