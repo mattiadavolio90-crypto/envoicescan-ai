@@ -107,8 +107,15 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   — il monitor avrebbe preso 404 e taciuto per sempre. Due difetti veri trovati
 >   dai presidi e non dalla lettura: `?ore=0` allargava la finestra invece di
 >   stringerla (`or` su un falsy), e l'endpoint non aveva una guardia propria — vista
->   **solo dalla suite intera**, verde a file isolato. Suite **13.868 verdi, 45
->   skip**; `-m sql` **190**; OpenAPI **197** endpoint senza drift.
+>   **solo dalla suite intera**, verde a file isolato. Reviewer **🟢** con tutte le
+>   cifre ri-misurate; i suoi 3 findings non bloccanti chiusi lo stesso (la view era
+>   l'unica delle 4 del repo senza `security_invoker`; il letterale della categoria
+>   retail non era legato alla costante; la guardia per-rotta non era provata — il
+>   test del 401 restava verde togliendola, perche' misurava il gate del router).
+>   Coperto anche il caso «colonna `tipo_attivita` assente», che e' lo **stato reale
+>   del DB oggi** e che nessun presidio copriva (`conftest_sql` applica sempre la
+>   migration). **17 mutanti, 17 uccisi.** Suite **13.872 verdi, 45 skip**;
+>   `-m sql` **191**; OpenAPI **197** endpoint senza drift.
 >
 > - **11/09/2026, branch `retail` (NON spedito) — Fase 4 del retail: briefing,
 >   chat AI e soglie.** La chat diceva a un negozio «Rispondi SOLO a domande sui

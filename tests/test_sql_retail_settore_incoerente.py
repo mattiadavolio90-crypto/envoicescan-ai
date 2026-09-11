@@ -20,7 +20,11 @@ COSTRUISCE, riga per riga.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+
+RADICE = Path(__file__).resolve().parents[1]
 
 pytestmark = pytest.mark.sql
 
@@ -101,6 +105,39 @@ def test_la_classe_speculare_negozio_con_categoria_food(db_sql, sql):
     assert len(righe) == 1
     assert righe[0][0] == "retail_con_categoria_food"
     assert righe[0][3] == "retail"
+
+
+def test_la_view_regge_anche_senza_la_colonna_tipo_attivita(db_sql, sql):
+    """Il caso che il harness NON copre da solo, e che il reviewer ha segnalato.
+
+    `conftest_sql` applica ogni migration con prefisso >= alla data dello
+    snapshot, quindi `20260910163000_add_tipo_attivita` e' SEMPRE gia' applicata
+    qui: il caso «colonna assente» non lo esercita nessun test. Ma sul DB vivo,
+    oggi, la colonna NON c'e' — le migration del branch si applicano solo al
+    deploy — e se questa view non fosse creabile prima, l'ordine fra le due
+    migration diventerebbe un vincolo da ricordare a memoria.
+
+    Qui la colonna si toglie e si ri-crea la view: deve restare creabile, e ogni
+    sede deve essere letta come 'ristorazione' (il default della migration).
+    Tutto dentro la transazione del test, che viene annullata.
+    """
+    _semina_sede(db_sql, tipo="ristorazione")
+    _registra_cambio(db_sql, "CARNE", "ARTICOLO DI VENDITA")
+
+    corpo = (
+        (RADICE / "supabase" / "migrations"
+         / "20260911170000_v_categorie_settore_incoerenti.sql")
+        .read_text(encoding="utf-8")
+        .replace("BEGIN;", "").replace("COMMIT;", "")
+    )
+    with db_sql.cursor() as cur:
+        cur.execute("DROP VIEW public.v_categorie_settore_incoerenti")
+        cur.execute("ALTER TABLE public.ristoranti DROP COLUMN tipo_attivita")
+        cur.execute(corpo)
+
+    righe = _incoerenze(sql)
+    assert len(righe) == 1, "senza la colonna la view smette di vedere l'anomalia"
+    assert righe[0][3] == "ristorazione", "senza la colonna la sede va letta come ristorazione"
 
 
 # ── Il silenzio: tutto cio' che NON deve far scattare l'alert ────────────────

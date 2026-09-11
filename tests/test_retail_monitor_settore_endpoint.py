@@ -254,6 +254,55 @@ def test_la_lista_food_della_view_e_quella_delle_costanti():
     assert nella_view == set(CATEGORIE_FOOD_BEVERAGE)
 
 
+def test_la_rotta_resta_protetta_anche_senza_la_guardia_del_router():
+    """La guardia PER-ROTTA, isolata dalla rete del router.
+
+    Il reviewer della Fase 5 ha notato che `test_senza_la_worker_key...` resta
+    verde anche togliendo il `Depends` dalla rotta, perche' l'APIRouter ne ha
+    gia' uno: quel test misura la difesa del router, non quella aggiunta. Qui si
+    prova lo scenario ESATTO per cui la guardia per-rotta esiste — qualcuno che
+    domani rimuove il `dependencies` dall'APIRouter — leggendo le dependency
+    dichiarate sulla rotta stessa.
+    """
+    import services.fastapi_worker as fw
+    from fastapi.routing import APIRoute
+
+    rotte = [r for r in fw.app.routes
+             if isinstance(r, APIRoute) and r.path == ROTTA]
+    assert len(rotte) == 1, f"rotta non montata una volta sola: {rotte}"
+
+    # FastAPI fonde le due dichiarazioni in una lista sola e indistinguibile, per
+    # cui «c'e' _verify_worker_key» resterebbe vero anche con una sola delle due:
+    # si contano. Due = router + rotta; una sola = una delle due e' sparita.
+    guardie = [d for d in rotte[0].dependencies
+               if getattr(getattr(d, "dependency", None), "__name__", "") == "_verify_worker_key"]
+    assert len(guardie) == 2, (
+        "attese DUE guardie (quella del router e quella della rotta): con una "
+        "sola, togliere il `dependencies` dall'APIRouter lascerebbe la rotta "
+        f"scoperta. Viste: {len(guardie)}"
+    )
+
+
+def test_la_categoria_retail_della_view_e_quella_delle_costanti():
+    """Come per la lista food: la view ripete in SQL il letterale
+    'ARTICOLO DI VENDITA'. Se la costante venisse rinominata e la view no, la
+    classe 1 — quella per cui esiste tutta la fase — smetterebbe di vedere
+    qualsiasi cosa, in silenzio e senza che nessuna query fallisca."""
+    from config.constants import CATEGORIA_ARTICOLO_DI_VENDITA
+
+    testo = VIEW_SQL.read_text(encoding="utf-8")
+    assert f"l.new_categoria = '{CATEGORIA_ARTICOLO_DI_VENDITA}'" in testo
+
+
+def test_la_view_dichiara_security_invoker():
+    """Senza, CREATE VIEW eredita SECURITY DEFINER dal ruolo di chi la crea e
+    bypassa RLS (audit anti-hacker del 20/6: 14 view chiuse per questo). La
+    gemella v_riparto_incoerenze lo imposta; questa e' l'unica che potrebbe
+    dimenticarlo, e l'advisor Supabase lo segnalerebbe appena applicata."""
+    testo = VIEW_SQL.read_text(encoding="utf-8")
+    assert "SET (security_invoker = true)" in testo
+
+
 def test_la_view_non_scrive_niente():
     """Vincolo della fase: il monitor e' sola lettura. Una view con dentro un
     INSERT/UPDATE/DELETE non sarebbe piu' un osservatore."""

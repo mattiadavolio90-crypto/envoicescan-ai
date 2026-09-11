@@ -14,8 +14,9 @@ reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 **Fase 4** `23c0706`, `f76ddf1`, `ec43fc2`, `a6bb45d`, `e91f576`, `d4867c0`
 (+ `a4166e4`, `2aec741` verbale): **241 presidi, 43 mutanti, 7 presidi finti**
 smascherati dalla mutazione, reviewer 🔴 **tre volte** e poi chiuso.
-**Fase 5** (sorveglianza post-deploy) **CHIUSA** 11/9/2026: 11 mutanti, 1 presidio
-finto smascherato, 2 difetti veri trovati dai presidi.
+**Fase 5** (sorveglianza post-deploy) **CHIUSA** 11/9/2026: 17 mutanti, 1 presidio
+finto smascherato, 2 difetti veri trovati dai presidi, reviewer 🟢 con i 3 findings
+non bloccanti chiusi lo stesso.
 **Prossima: la Chiusura finale** (due migration da applicare, non una).
 
 > ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
@@ -1323,7 +1324,7 @@ succede davvero.
   minuti dopo `riparto_coerenza_check`, per non far partire due curl insieme).
   **Nessun secret nuovo**: `WORKER_SECRET_KEY` e i due Telegram esistono gia'.
 
-### Mutazione: 11 mutanti, e uno ha smascherato un presidio finto
+### Mutazione: 17 mutanti (11 in stesura + 6 dopo la review), e uno ha smascherato un presidio finto
 
 Un mutante alla volta, `.bak` preso **prima** del primo, e ogni volta verificato col
 `diff` che il mutante fosse **davvero applicato** prima di leggere l'esito.
@@ -1341,6 +1342,11 @@ Un mutante alla volta, `.bak` preso **prima** del primo, e ogni volta verificato
 | 9 | il workflow interroga un path sbagliato | **SOPRAVVISSUTO** → presidio riscritto |
 | 10 | l'alert parte sempre (`if: always()`) | ucciso |
 | 12 | la worker key sparisce dal curl | ucciso |
+| 13 | il letterale `ARTICOLO DI VENDITA` diverge dalla costante | ucciso |
+| 14 | `security_invoker` rimosso dalla view | ucciso |
+| 15 | **la guardia per-rotta** rimossa (resta quella del router) | ucciso |
+| 16 | **la guardia del router** rimossa (resta quella per-rotta) | ucciso |
+| 17 | `to_jsonb(r)->>` sostituito da `r.tipo_attivita` | ucciso |
 
 **Il 9 e' la lezione della fase.** Il presidio asseriva `ROTTA in testo`: il path
 compare **anche nel commento in testa al workflow**, quindi l'assert restava verde
@@ -1358,6 +1364,7 @@ confrontarla, poi ri-mutato (M9-bis): ucciso.
    Il gate del router bastava oggi, ma se domani qualcuno togliesse quel
    `dependencies`, l'endpoint resterebbe scoperto. Aggiunto `Depends(_verify_worker_key)`
    esplicito: **nessun test modificato per questo**, era il codice a mancare.
+   Il presidio che lo prova davvero e' arrivato solo dopo la review (M15/M16).
 
 ### L'unico test esistente toccato, autorizzato da Mattia
 
@@ -1370,10 +1377,41 @@ misurata e scartata **da Mattia**: in CI non esiste un bearer admin — tutti i 
 di sorveglianza che colpiscono il worker usano solo `X-Worker-Key` — quindi avrebbe
 reso il monitor irraggiungibile, cioe' l'obiettivo della fase mancato.
 
+### La review: 🟢 alla prima lettura, e tre findings chiusi lo stesso
+
+Il `code-reviewer` ha ri-misurato **tutte** le cifre di questo verbale e tornano
+tutte. Nessun finding bloccante; i tre non bloccanti sono stati chiusi comunque,
+perche' la migration non e' ancora applicata ed e' il momento piu' economico:
+
+1. **`security_invoker` mancante** — era l'unica delle 4 view del repo a non
+   averlo; la gemella `v_riparto_incoerenze` lo imposta con una ragione scritta
+   (senza, `CREATE VIEW` eredita SECURITY DEFINER e bypassa RLS: 14 view chiuse
+   per questo nell'audit del 20/6). Aggiunto, + presidio, mutato (M14): ucciso.
+2. **Il letterale `'ARTICOLO DI VENDITA'` non era legato alla costante** —
+   asimmetrico rispetto alla lista food, che il suo presidio ce l'aveva.
+   Aggiunto il presidio gemello, mutato (M13): ucciso.
+3. **La guardia per-rotta non era provata** — e il reviewer ha ragione: il test
+   del 401 restava verde togliendola, perche' il gate del router copre comunque.
+   Misurava la difesa del router, non quella aggiunta. FastAPI fonde le due
+   dichiarazioni in una lista indistinguibile, quindi il presidio nuovo le
+   **conta** (due = router + rotta). Mutato nei due sensi opposti — via la
+   guardia della rotta (M15), via quella del router (M16): entrambi uccisi.
+
+Il reviewer ha anche segnalato che **il caso «colonna `tipo_attivita` assente»
+non era coperto da nessun presidio**: `conftest_sql` applica ogni migration con
+prefisso >= alla data dello snapshot (08/09), quindi `20260910163000` e' sempre
+gia' applicata e il caso non si esercita — pur essendo lo stato **reale del DB
+oggi**. Chiuso con un test che toglie la colonna e ri-crea la view dentro la
+transazione: mutato sostituendo `to_jsonb(r)->>` col riferimento diretto
+`r.tipo_attivita`, com'e' naturale scriverlo (M17): ucciso.
+
+**17 mutanti in tutto, 17 uccisi**, uno dei quali (il 9) sopravvissuto alla prima
+stesura e ucciso dopo aver riscritto il presidio.
+
 ### Gate di fine fase
 
-Suite **13.868** verdi / 45 skip (da 13.840 dopo il rebase: **+28**), `-m sql`
-**190** (da 180: +10, su Postgres vero), `git diff main -- tests/` con cancellazioni
+Suite **13.872** verdi / 45 skip (da 13.840 dopo il rebase: **+32**), `-m sql`
+**191** (da 180: +11, su Postgres vero), `git diff main -- tests/` con cancellazioni
 **solo** su `test_prompt_ai_coerenza_dominio.py` (l'unico autorizzato, Fase 2),
 baseline **«Diff a zero»** (56 righe di costi, 3.475 categorie) **due volte in
 processi nuovi**, i due presidi automatici del vincolo verdi (83 test), OpenAPI

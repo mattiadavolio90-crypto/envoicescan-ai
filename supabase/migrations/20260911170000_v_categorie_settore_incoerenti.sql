@@ -117,6 +117,14 @@ WHERE l.table_name = 'fatture'
       'PRODOTTI DA FORNO', 'SPEZIE E AROMI', 'GELATI E DESSERT', 'SHOP', 'SUSHI VARIE'
   );
 
+-- SECURITY INVOKER esplicito, per la stessa ragione scritta nella gemella
+-- v_riparto_incoerenze (20260727230000:63): senza, CREATE VIEW eredita SECURITY
+-- DEFINER dal ruolo di chi la crea e bypasserebbe RLS — come le 14 view chiuse
+-- nell'audit anti-hacker del 20/6. Qui l'accesso passa comunque solo dal worker
+-- con service_role_key, ma la view resta corretta per costruzione (e l'advisor
+-- Supabase `security_definer_view` non la segnala appena applicata).
+ALTER VIEW public.v_categorie_settore_incoerenti SET (security_invoker = true);
+
 COMMENT ON VIEW public.v_categorie_settore_incoerenti IS
     'Retail Fase 5: cambi di categoria incoerenti col settore della sede. '
     'Sola lettura, alimenta GET /api/admin/retail/categorie-incoerenti e il '
