@@ -1,14 +1,52 @@
 # Retail — le fasi dell'implementazione
 
-Stato al **11/09/2026, notte**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
-passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
-ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**; gate 1-8 e 10
-passati; gate 9: sei letture (cinque del reviewer, una a mano) hanno trovato **sette buchi
-della stessa famiglia, tutti chiusi** (vedi le sezioni «lettura», dalla seconda alla sesta);
-**settima passata del reviewer verde** (11/9 ore 00:46, cumulativo di 14 commit, codice a
-`50fc209`). **Fase 1 CHIUSA.** **Fase 2 CHIUSA** l'11/9 mattina (prompt retail, 2 file di
-test nuovi, 11 mutanti uccisi, 10 gate passati, ottava lettura del reviewer verde alle 06:02
-con due residui-script dichiarati). Prossima: Fase 3 con Opus normale.
+Stato all'**11/09/2026, mattina**: **Fasi 0, 1, 2 e 3 CHIUSE**. Branch `retail`,
+30 commit sopra `main`, HEAD `77b9e7c`, **mai pushato** (`origin/retail` non esiste).
+Fase 0 `b642e3c` · Fase 1 `50fc209` (sette buchi della stessa famiglia trovati dal
+reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
+(11 mutanti) · **Fase 3** `5d9f367`, `c7e0d3b`, `dd6ac5e`, `c693a17`, `81d65a5`,
+`5c98761`, `77b9e7c` (56 presidi, 17 mutanti, reviewer verde due volte).
+**Prossima: Fase 4 (briefing, chat AI, soglie) con Opus normale, ~1 giorno.**
+
+> ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
+>
+> Mattia **non applica niente a mano**: ogni passo qui sotto lo esegue la sessione
+> che porta il retail al deploy, e glielo si fa approvare passo per passo. Se stai
+> leggendo questo file in una sessione nuova, **questa lista è il contratto**: non
+> si pusha finché non è tutta spuntata, e non si spunta niente "da quello che
+> ricordo" — si misura.
+>
+> 1. **La migration `20260910163000_add_tipo_attivita.sql` NON è applicata.**
+>    Va applicata sul DB **prima** del push (Railway ridispiega a ogni commit, anche
+>    per soli `.md`, e il codice nuovo leggerebbe una colonna inesistente).
+>    È l'**unica** migration del branch: verificato con
+>    `git diff main --name-only -- supabase/migrations/`.
+>    Contiene due cose, non una: la colonna `ristoranti.tipo_attivita` **e** il
+>    `CREATE OR REPLACE` di `assegna_fattura_a_sede_tecnica` (la sede tecnica deve
+>    ereditare il settore, o su un account retail nascerebbe 'ristorazione').
+> 2. **Misura lo stato reale prima di applicare**, non fidarti di questo file:
+>    `information_schema.columns` per la colonna, `pg_proc` per la funzione.
+>    Una migration data per pendente ed essere già applicata è successo (memoria
+>    `stato-migration-si-verifica-su-pg-proc`). È idempotente, ma va comunque misurata.
+> 3. **Dopo l'applicazione, verifica che tutte le sedi siano `'ristorazione'`**: il
+>    default deve aver coperto le 12 sedi esistenti. Una sede a `'retail'` prima che
+>    esista un cliente retail è un errore, non un dato.
+> 4. **Ri-cattura la baseline e falla girare a zero due volte**, in processi nuovi,
+>    *dopo* la migration: `python scripts/retail_baseline.py check`.
+> 5. **Rebase su `main` e ri-esegui tutto** (suite, `-m sql`, tsc, OpenAPI,
+>    `check_documentazione`): fra l'ultima fase e il deploy `main` sarà avanzato.
+>    Se il rebase porta dentro modifiche a `ai_service.py`, `margine_service.py` o a
+>    funzioni SQL, **la baseline si ri-cattura**: fotografa il codice, non solo i dati.
+> 6. **`/code-reviewer` sul cumulativo completo**, non sull'ultima fase.
+> 7. **`_BRIEFING_CODE_VERSION`** (`services/daily_briefing_service.py:127`, oggi **23**):
+>    va bumpato **se e solo se** la Fase 4 tocca la logica del briefing, o il cliente
+>    continua a vedere il testo vecchio (cache giornaliera + TTL 30').
+> 8. **Il push lo decide Mattia**, nella sua finestra (sera/notte/mattina presto), e
+>    spedisce **tutto** `main`: si conta la coda e si dice di chi è
+>    (`git log --oneline origin/main..main`). Mai `git push` di iniziativa.
+>
+> Il rollback sta in «Tornare indietro», in fondo a questo file. Prima del push il
+> costo è zero: il branch non esiste per nessuno.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -1009,17 +1047,52 @@ sarebbero rossi se il vincolo venisse violato.
 
 ---
 
-## Fase 4 — Briefing, chat AI, soglie · Opus, ~1 giorno
+## Fase 4 — Briefing, chat AI, soglie · Opus normale, ~1 giorno
 
-- [ ] Chat: blocco benchmark (`fastapi_worker.py:3552-3628`) — `:3552` dice "Rispondi SOLO
-      a domande sui dati del ristorante", `:3618` hardcoda "soglia normale è 28-33%"
-- [ ] **Gate tool sul settore, non sulla pagina**: `_TOOL_FLAG` (`:4759-4767`) mappa
-      **sia `query_margini` sia `query_coperti` sul flag `margini`** → spegnere i coperti
-      via `pagine_abilitate` toglierebbe al negozio anche i margini
-- [ ] Briefing: `_CONFIG_TOPICS` (`:2689`) acquisisce la dimensione settore
-- [ ] **Bump `_BRIEFING_CODE_VERSION`** o il cliente continua a vedere il testo vecchio
-      (cache giornaliera + TTL 30')
-- [ ] Soglie: nessun colore per il retail in v1, solo confronto coi mesi precedenti
+> **Righe ri-misurate l'11/9 dopo la Fase 3**: quelle del piano originale erano
+> sballate (il codice si è mosso). Ri-misurale comunque prima di toccare: un
+> numero di riga in un doc invecchia, `grep` no.
+
+- [ ] **Chat, blocco benchmark** — `fastapi_worker.py:3641` dice «Rispondi SOLO a
+      domande sui dati **del ristorante**»; `:3707` hardcoda «soglia normale è
+      28-33%» dentro un esempio di risposta. Per un negozio sono entrambe false.
+- [ ] **Gate tool sul settore, non sulla pagina** — `_TOOL_FLAG`
+      (`fastapi_worker.py:4848-4857`) mappa **sia `query_margini` sia
+      `query_coperti` sul flag `margini`**: spegnere i coperti via
+      `pagine_abilitate` toglierebbe al negozio anche i margini.
+      ⚠️ **La Fase 3 ha reso questo punto più concreto, non l'ha risolto**: ora un
+      negozio ha davvero `tab_off_margini_coperti`, ma i `tab_off_*` non sono
+      chiavi-pagina, quindi il gate tool non li guarda — il negozio **non vede la
+      tab Coperti e può comunque chiedere i coperti in chat**. È l'incoerenza che
+      il reviewer ha confermato come voce di Fase 4, non come buco della 3.
+- [ ] **Briefing: `_CONFIG_TOPICS`** (`fastapi_worker.py:2818`) acquisisce la
+      dimensione settore.
+- [ ] **Bump `_BRIEFING_CODE_VERSION`** (`services/daily_briefing_service.py:127`,
+      oggi **23**) — **solo se** si tocca la logica del briefing, altrimenti il
+      cliente continua a vedere il testo vecchio (cache giornaliera + TTL 30').
+- [ ] **Soglie: nessun colore per il retail in v1**, solo confronto coi mesi
+      precedenti (i benchmark vanno da 35% a 78%: un colore sarebbe inventato).
+      `_KPI_SOGLIE_MARGINI` (`routers/margini.py:823`) e `_valuta_soglia_margine`
+      (`:863`).
+- [ ] **Eredità dichiarata dalla Fase 3, da fare QUI** (non è lavoro nuovo: è la
+      metà che non si poteva spezzare):
+      - il nome KPI `"Food Cost"` a `routers/margini.py:1272` — è legato ai testi
+        delle soglie della riga sopra: rinominarlo da solo lascerebbe un negozio a
+        leggere mezzo testo da ristorante. Si fanno **insieme**;
+      - l'hint «la salute economica del tuo locale» in
+        `apps/web/src/app/(app)/margini/page.tsx:120`;
+      - `costoMerceLabel()` in `lib/categorie-spesa.ts` esiste, è provata, e ha
+        **zero chiamanti**: è il pezzo che aspetta questo lavoro.
+- [ ] **Residui-script della Fase 2, da guardare qui** (è il momento in cui
+      verrebbero rilanciati per misurare la qualità del retail):
+      `scripts/catscan_arbitro.py:32` e `scripts/catscan_senza_segnale.py:55`
+      chiamano `classifica_con_ai` **senza settore** — un negozio riceverebbe il
+      prompt dei ristoranti. **Verificato che non scrivono**: il danno sarebbe una
+      diagnosi sbagliata a video, non dati sporchi.
+- [ ] **Residuo dichiarato dal reviewer (Fase 1)**: `scripts/ricategorizza_sede.py`
+      e `scripts/ricategorizza_sede_ai.py` replicano il blocco di classificazione
+      senza gate settore. Script manuali, per sede, dry-run di default: vanno
+      guardati **prima che esista una sede retail**.
 
 ---
 
