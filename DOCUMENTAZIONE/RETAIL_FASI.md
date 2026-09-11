@@ -308,8 +308,12 @@ sull'ultima pagina, index scan sulla PK) e contato **33 chiamanti di `fetch_all`
 FUSTI BIRRA MORETTI MESE …» di SUSHILAND normalizzano tutte a «PER CONSUMO FUSTI BIRRA
 MORETTI»: 1 manuale SERVIZI, 4 automatiche BIRRE) e **vince l'ultima caricata**. Prima
 l'ordine era quello fisico (≈ la più recente); ora è per `id` (uuid: deterministico ma
-arbitrario). Sui dati veri cambia **1 riga su 3.475** (Villa Guardia, GIUGNO: BIRRE →
-SERVIZI E CONSULENZE, cioè verso la correzione manuale del cliente). La baseline è stata
+arbitrario). Sulla baseline cambia **1 riga su 3.475** (Villa Guardia, GIUGNO: BIRRE →
+SERVIZI E CONSULENZE, verso la correzione manuale) — ma la baseline campiona: ri-misurato
+sulla memoria intera l'11/9 (review dei commit di `main`), cambiano **39 chiavi su 5.206**, e
+sul cliente da 3.067 voci in **5 gruppi su 28 è la correzione manuale a perdere** contro
+un'automatica. La direzione non è «verso il manuale»: è arbitraria (uuid), prima arbitraria
+*e* instabile, ora arbitraria e ferma. La baseline è stata
 **ri-catturata** su `main` + fix (la baseline fotografa il codice) e il check è a zero due
 volte. **Domanda di design per Mattia, non urgente**: sulle collisioni dovrebbe vincere per
 regola la voce manuale sulle automatiche (e la più recente a parità), non l'ordine di
