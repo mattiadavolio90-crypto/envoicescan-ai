@@ -35,11 +35,13 @@ from config.prompt_ai_potenziato import (
 def test_il_prompt_retail_non_vieta_la_categoria_di_dominio():
     """Nessuna riga deve dichiarare "Da Classificare" una risposta non valida.
 
-    Il regex del test food (`test_prompt_ai_coerenza_dominio.py`) cerca
-    "NON è MAI" con la e accentata. Un divieto scritto "NON e' MAI" gli
-    sfugge — misurato mutando questo prompt: il presidio restava verde col
-    divieto scritto davanti. Qui la riga si normalizza prima di cercarla, cosi'
-    la grafia dell'accento non decide se il presidio vede o no.
+    Il regex del test food (`test_prompt_ai_coerenza_dominio.py`) cercava
+    "NON è MAI" con la e accentata. Non gli sfuggiva ogni divieto con apostrofo
+    — l'alternativa "MAI una risposta" non ha accenti e ne intercettava una
+    parte — ma bastava "NON e' MAI valida" per passargli davanti col verde:
+    reggeva per caso, non per costruzione. Misurato mutando questo prompt.
+    Qui la riga si normalizza e gli spazi sono elastici, cosi' né la grafia
+    dell'accento né la spaziatura decidono se il presidio vede o no.
     """
     def _normalizza(riga: str) -> str:
         for accentata, piana in (("è", "e"), ("é", "e"), ("à", "a"), ("ò", "o")):
@@ -49,7 +51,7 @@ def test_il_prompt_retail_non_vieta_la_categoria_di_dominio():
     divieti = [
         riga.strip() for riga in PROMPT_CLASSIFICAZIONE_RETAIL.splitlines()
         if "Da Classificare" in riga and re.search(
-            r"(?:NON e MAI|non e mai|MAI una risposta|NON e una risposta)",
+            r"(?:NON\s+e\s+MAI|non\s+e\s+mai|MAI\s+una\s+risposta|NON\s+e\s+una\s+risposta)",
             _normalizza(riga), re.IGNORECASE,
         )
     ]

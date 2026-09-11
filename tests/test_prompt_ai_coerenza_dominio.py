@@ -34,8 +34,8 @@ def test_il_prompt_non_vieta_la_categoria_di_dominio():
     "Da Classificare NON e' MAI valida" — nessuna delle due — e il divieto
     passava davanti al presidio col verde. Misurato l'11/9/2026 mutando prima il
     gemello retail, che aveva ereditato lo stesso punto cieco. La riga si
-    normalizza prima di cercarla, cosi' la grafia dell'accento non decide se il
-    presidio vede o no.
+    normalizza prima di cercarla e gli spazi sono elastici, cosi' né la grafia
+    dell'accento né la spaziatura decidono se il presidio vede o no.
     """
     def _normalizza(riga: str) -> str:
         for accentata, piana in (("è", "e"), ("é", "e"), ("à", "a"), ("ò", "o")):
@@ -45,7 +45,7 @@ def test_il_prompt_non_vieta_la_categoria_di_dominio():
     divieti = [
         riga.strip() for riga in PROMPT_CLASSIFICAZIONE_AI.splitlines()
         if "Da Classificare" in riga and re.search(
-            r"(?:NON e MAI|non e mai|MAI una risposta|NON e una risposta)",
+            r"(?:NON\s+e\s+MAI|non\s+e\s+mai|MAI\s+una\s+risposta|NON\s+e\s+una\s+risposta)",
             _normalizza(riga), re.IGNORECASE,
         )
     ]

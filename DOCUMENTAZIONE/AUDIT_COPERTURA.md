@@ -102,8 +102,10 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   (28 test, 0 esistenti toccati), **11 mutanti uccisi**, di cui due rifatti
 >   perche' invalidi (uno mutava un commento, uno non si applicava affatto: il
 >   verde non misurava niente). Il decimo ha trovato un buco nel presidio
->   stesso — il regex copiato dal test food cerca `NON è MAI` con la e
->   accentata e resta verde su un divieto scritto con l'apostrofo. Ottava
+>   stesso — il regex copiato dal test food reggeva **per caso**: restava
+>   verde su `NON e' MAI valida`, che non contiene né `NON è MAI` né
+>   `MAI una risposta`. Chiuso anche sul test food l'11/9 (`87a0739`, ok
+>   esplicito di Mattia per toccare un test esistente). Ottava
 >   lettura del reviewer verde, con due residui-script dichiarati
 >   (`catscan_*` senza gate settore, non scrivono: da guardare in Fase 4).
 >   Verbale: `DOCUMENTAZIONE/RETAIL_FASI.md`. Suite **13.526 verdi, 45 skip**,
