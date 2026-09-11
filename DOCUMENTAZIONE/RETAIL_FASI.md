@@ -14,9 +14,9 @@ reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 **Fase 4** `23c0706`, `f76ddf1`, `ec43fc2`, `a6bb45d`, `e91f576`, `d4867c0`
 (+ `a4166e4`, `2aec741` verbale): **241 presidi, 43 mutanti, 7 presidi finti**
 smascherati dalla mutazione, reviewer 🔴 **tre volte** e poi chiuso.
-**Fase 5** (sorveglianza post-deploy) **CHIUSA** 11/9/2026: 17 mutanti, 1 presidio
-finto smascherato, 2 difetti veri trovati dai presidi, reviewer 🟢 con i 3 findings
-non bloccanti chiusi lo stesso.
+**Fase 5** (sorveglianza post-deploy) **CHIUSA** 11/9/2026: 18 mutanti, 2 presidi
+finti smascherati (stesso errore due volte: un assert sul sorgente invece che sul
+comportamento), 2 difetti veri trovati dai presidi, reviewer 🟢 **due volte**.
 **Prossima: la Chiusura finale** (due migration da applicare, non una).
 
 > ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
@@ -1324,7 +1324,7 @@ succede davvero.
   minuti dopo `riparto_coerenza_check`, per non far partire due curl insieme).
   **Nessun secret nuovo**: `WORKER_SECRET_KEY` e i due Telegram esistono gia'.
 
-### Mutazione: 17 mutanti (11 in stesura + 6 dopo la review), e uno ha smascherato un presidio finto
+### Mutazione: 18 mutanti (11 in stesura + 7 dopo le due review), e due hanno smascherato un presidio finto
 
 Un mutante alla volta, `.bak` preso **prima** del primo, e ogni volta verificato col
 `diff` che il mutante fosse **davvero applicato** prima di leggere l'esito.
@@ -1347,6 +1347,7 @@ Un mutante alla volta, `.bak` preso **prima** del primo, e ogni volta verificato
 | 15 | **la guardia per-rotta** rimossa (resta quella del router) | ucciso |
 | 16 | **la guardia del router** rimossa (resta quella per-rotta) | ucciso |
 | 17 | `to_jsonb(r)->>` sostituito da `r.tipo_attivita` | ucciso |
+| 18 | la riga `ALTER VIEW ... security_invoker` **commentata** | **SOPRAVVISSUTO** al grep → presidio reso comportamentale |
 
 **Il 9 e' la lezione della fase.** Il presidio asseriva `ROTTA in testo`: il path
 compare **anche nel commento in testa al workflow**, quindi l'assert restava verde
@@ -1405,13 +1406,31 @@ oggi**. Chiuso con un test che toglie la colonna e ri-crea la view dentro la
 transazione: mutato sostituendo `to_jsonb(r)->>` col riferimento diretto
 `r.tipo_attivita`, com'e' naturale scriverlo (M17): ucciso.
 
-**17 mutanti in tutto, 17 uccisi**, uno dei quali (il 9) sopravvissuto alla prima
-stesura e ucciso dopo aver riscritto il presidio.
+### Seconda lettura: 🟢, e un presidio mio che sarebbe mentito
+
+Il reviewer ha confermato i quattro presidi nuovi mutandoli lui, e ha misurato
+una cosa che avevo sbagliato: **`test_la_view_dichiara_security_invoker` era un
+grep sul sorgente**, e commentando la riga `ALTER VIEW` la view nasce senza
+l'opzione mentre **32 test restano verdi** — il letterale sopravvive nel commento.
+E' la stessa famiglia del mutante 9, ripresentata nel fix di un finding.
+Sostituito con un presidio **comportamentale** che legge `pg_class.reloptions`
+sulla view davvero creata (`-m sql`), e mutato col mutante esatto del reviewer
+(M18, la riga commentata): ucciso.
+
+Ha anche verificato — misurando, non deducendo — il rischio che avevo sollevato:
+`security_invoker` **non rende cieco il monitor**, perche' `service_role` e'
+`NOLOGIN BYPASSRLS` e BYPASSRLS si applica al ruolo invocante; con invoker il
+worker continua a vedere le righe di tutti gli account (2 su 2 in prova).
+
+**18 mutanti in tutto, 18 uccisi**, due dei quali (il 9 e il 18) sopravvissuti
+alla prima stesura del rispettivo presidio e uccisi dopo averlo riscritto — ed
+erano **lo stesso errore**: un assert che cerca un letterale nel sorgente invece
+di misurare il comportamento.
 
 ### Gate di fine fase
 
-Suite **13.872** verdi / 45 skip (da 13.840 dopo il rebase: **+32**), `-m sql`
-**191** (da 180: +11, su Postgres vero), `git diff main -- tests/` con cancellazioni
+Suite **13.873** verdi / 45 skip (da 13.840 dopo il rebase: **+33**), `-m sql`
+**192** (da 180: +12, su Postgres vero), `git diff main -- tests/` con cancellazioni
 **solo** su `test_prompt_ai_coerenza_dominio.py` (l'unico autorizzato, Fase 2),
 baseline **«Diff a zero»** (56 righe di costi, 3.475 categorie) **due volte in
 processi nuovi**, i due presidi automatici del vincolo verdi (83 test), OpenAPI
@@ -1429,6 +1448,12 @@ baseline non andava ri-catturata — e infatti e' rimasta a zero).
 - **Il monitor non ha ancora visto rosso in produzione**, per costruzione: non
   esiste una sede retail. Ha visto rosso su Postgres vero (10 test), che e' il piu'
   vicino possibile finche' un negozio non esiste.
+- **Nessuna CI ha mai visto questo codice**: il branch non e' mai stato pushato,
+  quindi le 13.873 verdi sono locali. E' vero per tutto il branch, non solo per
+  questa fase, e si chiude al push.
+- **La view non ha `GRANT`**, come la gemella `v_riparto_incoerenze`: su Supabase
+  dipende dalle default privileges. Da guardare **quando la migration verra'
+  applicata** (memoria `revoke-from-public-non-basta-su-supabase`).
 - **L'attribuzione resta da accendere**: finche' nessuno valorizza i GUC, il
   registro sa *cosa* e' cambiato ma non *chi* l'ha cambiato. Non blocca questa fase
   (il segnale non ne dipende), ma e' la ragione per cui il monitor non puo' oggi

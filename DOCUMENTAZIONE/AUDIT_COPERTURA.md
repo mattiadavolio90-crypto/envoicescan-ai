@@ -114,8 +114,12 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   test del 401 restava verde togliendola, perche' misurava il gate del router).
 >   Coperto anche il caso «colonna `tipo_attivita` assente», che e' lo **stato reale
 >   del DB oggi** e che nessun presidio copriva (`conftest_sql` applica sempre la
->   migration). **17 mutanti, 17 uccisi.** Suite **13.872 verdi, 45 skip**;
->   `-m sql` **191**; OpenAPI **197** endpoint senza drift.
+>   migration). Alla **seconda lettura** il reviewer ha trovato che il presidio su
+>   `security_invoker` era un grep sul sorgente: commentando la riga `ALTER VIEW`,
+>   la view nasce senza l'opzione e **32 test restano verdi** — stesso errore del
+>   mutante 9, ripresentato nel fix di un finding. Reso comportamentale su
+>   `pg_class.reloptions`. **18 mutanti, 18 uccisi**, 2 presidi finti smascherati.
+>   Suite **13.873 verdi, 45 skip**; `-m sql` **192**; OpenAPI **197** senza drift.
 >
 > - **11/09/2026, branch `retail` (NON spedito) — Fase 4 del retail: briefing,
 >   chat AI e soglie.** La chat diceva a un negozio «Rispondi SOLO a domande sui

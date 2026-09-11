@@ -140,6 +140,27 @@ def test_la_view_regge_anche_senza_la_colonna_tipo_attivita(db_sql, sql):
     assert righe[0][3] == "ristorazione", "senza la colonna la sede va letta come ristorazione"
 
 
+def test_la_view_e_creata_con_security_invoker(scalare):
+    """COMPORTAMENTALE, non un grep sul sorgente.
+
+    Il presidio gemello in test_retail_monitor_settore_endpoint.py cerca il
+    letterale nel file, e la seconda lettura del reviewer ha misurato il suo
+    punto cieco: commentando la riga `ALTER VIEW`, la view nasce SENZA l'opzione
+    e quel test resta verde, perche' il letterale sopravvive nel commento.
+    Qui si legge `pg_class.reloptions` sulla view davvero creata dall'harness.
+
+    Cosa protegge: senza `security_invoker`, una view eredita SECURITY DEFINER
+    dal ruolo che la crea e bypassa le RLS di chi la interroga — la ragione per
+    cui 14 view sono state chiuse nell'audit anti-hacker del 20/6.
+    """
+    opzioni = scalare(
+        "SELECT reloptions FROM pg_class "
+        "WHERE relname = 'v_categorie_settore_incoerenti' AND relkind = 'v'"
+    )
+    assert opzioni is not None, "la view non dichiara nessuna opzione: security_invoker assente"
+    assert "security_invoker=true" in opzioni, opzioni
+
+
 # ── Il silenzio: tutto cio' che NON deve far scattare l'alert ────────────────
 
 @pytest.mark.parametrize(
