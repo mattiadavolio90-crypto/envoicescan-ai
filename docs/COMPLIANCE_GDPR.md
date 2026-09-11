@@ -91,19 +91,29 @@ di considerare l'attivazione conclusa per ciascun fornitore.
   da chiavi JWT condivise).
 
 **Organizzative:**
-- Suite di test automatizzati (~9530 Python + 18 Deno) eseguiti in CI su ogni rilascio.
+- Suite di test automatizzati (13.380 Python verdi + 44 skip; 117 Deno verdi su
+  118, ri-misurati l'11/09/2026) eseguiti in CI su ogni rilascio. Il test Deno
+  rosso è `[email-wh] Decode base64` in `ricavi-email-webhook`, non correlato al
+  trattamento dei dati personali descritto qui.
 - Audit di sicurezza periodico: 19/06/2026 (pre go-live, 2 vettori di lettura
   non autorizzata chiusi) + riverifica 06/07/2026 (post go-live) — advisor
   Supabase **0 ERROR sicurezza, 0 WARN performance** invariato. Un item
   emerso il 6/7: `auth_leaked_password_protection` disabilitato su Supabase
-  Auth (controllo contro password compromesse via HaveIBeenPwned) — il bridge
-  Supabase Auth nativo è attivo in produzione (`SKIP_SUPABASE_AUTH` non
-  settata), quindi rilevante. Verificato visivamente il 6/7 sul pannello
-  (Authentication → Sign In / Providers → Email → "Prevent use of leaked
-  passwords"): il controllo è **disattivato e non attivabile**, etichettato
-  esplicitamente "Only available on Pro plan and above" — non è una
-  configurazione mancante ma un limite del piano Free. Nessuna azione
-  possibile lato codice o pannello finché il progetto resta su Free.
+  Auth (controllo contro password compromesse via HaveIBeenPwned). Verificato
+  visivamente il 6/7 sul pannello (Authentication → Sign In / Providers → Email
+  → "Prevent use of leaked passwords"): il controllo è **disattivato e non
+  attivabile**, etichettato "Only available on Pro plan and above" — non una
+  configurazione mancante ma un limite del piano Free.
+  **Aggiornamento 11/09/2026: l'item non è più rilevante.** Il bridge Supabase
+  Auth è **disattivato in produzione** (`SKIP_SUPABASE_AUTH=1` sul worker
+  Railway) dopo l'incidente del giorno stesso: creava un client Supabase nuovo
+  a ogni login, esaurendo le connessioni e facendo cadere la creazione delle
+  sessioni. Il bridge falliva comunque (400 su `/auth/v1/token`), perché su
+  questo progetto l'auth è custom e `auth.uid()` è sempre NULL. Le password
+  sono verificate **solo** via Argon2id su `public.users`, quindi il controllo
+  anti-password-compromesse di Supabase Auth non era comunque nel percorso di
+  login reale. La robustezza delle password resta presidiata dalla validazione
+  applicativa (vedi sopra) e da Argon2id + rate limiting.
 - Backup database: nessun PITR nativo (piano Free, "Daily backups" è incluso
   solo dal piano Pro e comunque non equivale a PITR continuo). Colmato con
   workflow indipendente `pg_dump` giornaliero (`.github/workflows/db_backup.yml`,
