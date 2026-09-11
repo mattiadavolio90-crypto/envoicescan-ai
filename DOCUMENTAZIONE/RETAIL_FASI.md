@@ -1,17 +1,17 @@
 # Retail — le fasi dell'implementazione
 
-Stato all'**11/09/2026, sera**: **IMPLEMENTAZIONE CHIUSA** — Fasi 0-5 e Chiusura.
-Il branch `retail` e' stato riportato su **`main` in locale con rebase**
-(fast-forward, nessun merge commit), il branch e il worktree sono stati rimossi, e
-le **due migration sono applicate sul DB**. **Non e' ancora stato pushato**: il push
-lo decide Mattia e spedisce tutto `main`.
+Stato all'**11/09/2026, sera**: **IMPLEMENTAZIONE CHIUSA E IN PRODUZIONE** — Fasi
+0-5 e Chiusura. Il branch `retail` e' stato riportato su **`main` con rebase**
+(fast-forward, nessun merge commit), branch e worktree rimossi, le **due migration
+applicate sul DB**, e il tutto **pushato l'11/9 alle 20:14 UTC** (`283dcf2..2dbc77d`,
+deciso da Mattia). Punto di ritorno: tag `pre-deploy-retail-20260911` (= `283dcf2`).
 
 > **Il numero di commit non sta scritto qui**, di proposito: una cifra in un file
 > versionato non puo' contare i commit che la aggiornano, e le prime due stesure
 > di questa riga erano infatti sbagliate in due modi diversi. Finche' il lavoro non
 > e' pushato si legge con `git log --oneline origin/main..main | wc -l`, che conta
 > pero' **anche i commit delle altre sessioni**: si guarda chi li ha fatti prima di
-> attribuirseli.
+> attribuirseli. Dopo il push la cifra si legge da `git log 283dcf2..2dbc77d`.
 Fase 0 `b642e3c` · Fase 1 `50fc209` (sette buchi della stessa famiglia trovati dal
 reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 (11 mutanti) · **Fase 3** `5d9f367`, `c7e0d3b`, `dd6ac5e`, `c693a17`, `81d65a5`,
@@ -22,9 +22,11 @@ smascherati dalla mutazione, reviewer 🔴 **tre volte** e poi chiuso.
 **Fase 5** (sorveglianza post-deploy) **CHIUSA** 11/9/2026: 18 mutanti, 2 presidi
 finti smascherati (stesso errore due volte: un assert sul sorgente invece che sul
 comportamento), 2 difetti veri trovati dai presidi, reviewer 🟢 **due volte**.
-**Prossima: la Chiusura finale.** Le due migration sono state **applicate sul DB
-vivo l'11/9 sera** (contratto «PRIMA DEL PUSH», punti 1-4): restano il rientro su
-`main` con rebase e la rimozione del worktree.
+**Chiusura finale fatta e deployata l'11/9 sera.** Misurato 20 minuti dopo il push:
+CI tutta verde (compresa la suite, che vedeva il codice per la prima volta), worker
+su `2dbc77d`, Vercel READY, monitor `200` con `totale: 0`, zero scritture sui dati
+dei clienti dal push, baseline «Diff a zero» di nuovo. Reviewer 🟢 sul cumulativo
+dei 50 commit (7 mutanti su call-site condivisi, tutti uccisi).
 
 > ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
 >
@@ -54,17 +56,17 @@ vivo l'11/9 sera** (contratto «PRIMA DEL PUSH», punti 1-4): restano il rientro
 > 4. **✅ Baseline «Diff a zero» DUE volte DOPO le migration**, in processi nuovi
 >    (56 righe di costi, 3.475 categorie invariate) + `retail_backup.py --verify`
 >    allineato. I numeri dei ristoranti non si sono mossi di un centesimo.
-> 5. **Rebase su `main` e ri-esegui tutto** (suite, `-m sql`, tsc, OpenAPI,
+> 5. **✅ Rebase su `main` e ri-esegui tutto** (suite, `-m sql`, tsc, OpenAPI,
 >    `check_documentazione`): fra l'ultima fase e il deploy `main` sarà avanzato.
 >    Se il rebase porta dentro modifiche a `ai_service.py`, `margine_service.py` o a
 >    funzioni SQL, **la baseline si ri-cattura**: fotografa il codice, non solo i dati.
-> 6. **`/code-reviewer` sul cumulativo completo**, non sull'ultima fase.
+> 6. **✅ `/code-reviewer` sul cumulativo completo**, non sull'ultima fase (verde
+>    prima del push e di nuovo dopo, sui 50 commit in produzione).
 > 7. **`_BRIEFING_CODE_VERSION`: ✅ GIA' FATTO** — bumpata 23 → **24** dalla Fase 4
 >    (`ec43fc2`), che tocca la logica del briefing: per un negozio l'anomalia
 >    coperti non viene piu' generata. Non va toccata di nuovo prima del push.
-> 8. **Il push lo decide Mattia**, nella sua finestra (sera/notte/mattina presto), e
->    spedisce **tutto** `main`: si conta la coda e si dice di chi è
->    (`git log --oneline origin/main..main`). Mai `git push` di iniziativa.
+> 8. **✅ Il push lo ha deciso Mattia** l'11/9 alle 20:14 UTC: 50 commit, tutti
+>    retail tranne 1 GDPR di un'altra sessione. Mai `git push` di iniziativa.
 >
 > Il rollback sta in «Tornare indietro», in fondo a questo file. Prima del push il
 > costo è zero: il branch non esiste per nessuno.
@@ -84,7 +86,7 @@ e due fonti sullo stesso stato sono un rischio, non una comodita' (`WORKFLOW.md`
 
 ## ~~Come si riprende~~ — non c'e' piu' niente da riprendere
 
-> **Superato dalla Chiusura dell'11/09/2026.** Il branch `retail` e il worktree
+> **Dall'11/09/2026 (Chiusura) non c'e' piu' niente da eseguire qui.** Il branch `retail` e il worktree
 > `/home/vscode/ONEFLUX-retail` **non esistono piu'**: il lavoro sta su `main` in
 > `/workspaces/ONEFLUX` e le due migration sono applicate. Questo blocco resta come
 > traccia di come si e' lavorato, non come istruzioni da eseguire — i comandi qui
@@ -1584,10 +1586,17 @@ tocca i ristoranti.
       branch `retail` eliminato, worktree rimosso
 - [x] Memoria di progetto aggiornata, `docs/piani/PIANO_RETAIL.md` eliminato
 
-**Non fatto, e non spetta a me**: il **push**. Lo decide Mattia, e spedisce tutto
-`main`. Al momento della chiusura la coda e' di **48 commit** (47 del retail + 1 GDPR
-di un'altra sessione) e tocca `apps/web/**`: partono **entrambe** le pipeline, Vercel
-e Railway. La coda va ri-misurata subito prima di pushare, non ripresa da qui.
+- [x] **Push**, deciso da Mattia l'11/9 alle 20:14 UTC: 50 commit (49 del retail + 1
+      GDPR di un'altra sessione; alla stesura della riga sopra erano 48, poi tre di
+      sola documentazione). Sono partite **entrambe** le pipeline, Vercel e Railway.
+- [x] **Misurato dopo il deploy**: worker su `2dbc77d`, Vercel READY, monitor `200`
+      con `totale: 0`, zero scritture su fatture / prodotti / registro / sessioni /
+      briefing / chat nei 20 minuti dopo il push, baseline «Diff a zero» di nuovo.
+      Gli errori nei log (PostgREST «Thread killed by timeout manager», `/m` «worker
+      error: 401») sono **precedenti al push** e con la stessa frequenza tutto il giorno.
+
+**Rollback**, se mai servisse: tag `pre-deploy-retail-20260911` (= `283dcf2`, il commit
+in produzione prima del push) + backup dati `~/oneflux-backup/20260910_105630`.
 
 ---
 
