@@ -109,7 +109,7 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   saltava il chokepoint dove la Fase 1 aveva messo il filtro. Tutti e quattro
 >   sono la **famiglia dei sette buchi della Fase 1**: un gate a monte che non
 >   copre il punto a valle, e si trovano eseguendo, non leggendo.
->   **35 mutanti, 5 dei quali hanno smascherato presidi finti** — il settore non
+>   **37 mutanti, 6 dei quali hanno smascherato presidi finti** — il settore non
 >   arrivava dall'endpoint al prompt; un `settore=` cercato in una finestra di
 >   testo pescava la chiamata successiva (riscritto sull'AST); il vincolo del
 >   prompt ristorazione asseriva sei sottostringhe **scelte**, ed era cieco
@@ -118,11 +118,14 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   trovata dal reviewer confrontando gli md5 del prompt sui due commit. Ora il
 >   confronto e' sul prompt **intero** contro uno snapshot del commit di ieri, e
 >   il prompt dei ristoranti ha lo stesso md5 di prima. Nello stesso giro, **due
->   affermazioni false nei miei commit**, corrette. Suite **13.811 verdi, 45
->   skip** (+229 presidi, 0 test esistenti toccati), baseline a zero dopo ogni
->   casella, OpenAPI senza drift (196 endpoint), `tsc` pulito,
->   `_BRIEFING_CODE_VERSION` 23 → 24. Commit `23c0706`, `f76ddf1`, `ec43fc2`,
->   `a6bb45d`.
+>   affermazioni false nei miei commit**, corrette. **Il sesto presidio finto e'
+>   lo stesso difetto del primo, riaperto**: i quattro presidi sui tool di gruppo
+>   chiamavano la funzione direttamente, e il mutante che ne annullava il wiring
+>   sopravviveva a tutta la suite — provare la funzione non prova che qualcuno la
+>   usi. Suite **13.813 verdi, 45 skip** (+231 presidi, 0 test esistenti
+>   toccati), baseline a zero dopo ogni casella, OpenAPI senza drift (196
+>   endpoint), `tsc` pulito, `_BRIEFING_CODE_VERSION` 23 → 24. Commit `23c0706`,
+>   `f76ddf1`, `ec43fc2`, `a6bb45d`, `e91f576`.
 >
 > - **11/09/2026, branch `retail` (NON spedito) — Fase 3 del retail: spegnimenti,
 >   etichette e le sei whitelist di scrittura.** Le whitelist validavano la
