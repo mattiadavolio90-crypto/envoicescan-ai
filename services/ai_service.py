@@ -5390,7 +5390,7 @@ def _chiama_gpt_classificazione(
         ]
         articoli_json = json.dumps(payload, ensure_ascii=False)
 
-    prompt = get_prompt_classificazione(articoli_json)
+    prompt = get_prompt_classificazione(articoli_json, settore=settore)
     
     # Decisione di dominio (A/B test 5/7/2026 su 213 correzioni manuali reali,
     # vedi scripts/ab_test_modello_categorizzazione.py): gpt-4.1-mini +5.1 punti

@@ -6,7 +6,8 @@ ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**;
 passati; gate 9: sei letture (cinque del reviewer, una a mano) hanno trovato **sette buchi
 della stessa famiglia, tutti chiusi** (vedi le sezioni «lettura», dalla seconda alla sesta);
 **settima passata del reviewer verde** (11/9 ore 00:46, cumulativo di 14 commit, codice a
-`50fc209`). **Fase 1 CHIUSA.** Prossima: Fase 2 con Opus, ultrathink.
+`50fc209`). **Fase 1 CHIUSA.** **Fase 2 CHIUSA** l'11/9 mattina (prompt retail, 2 file di
+test nuovi, 11 mutanti uccisi, 10 gate passati). Prossima: Fase 3 con Opus normale.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
@@ -485,6 +486,7 @@ il comportamento di prima.
 | `aggiorna_streak_classificazione` | `worker/queue_processor.py` (guardia nel chiamante) | firma invariata |
 | `salva_correzione_in_memoria_globale` | `admin_qualita_risolvi_conflitto` (guardia nel chiamante) | firma invariata |
 | `get_categorie_disponibili` | frontend (`/api/fatture/categorie`) | contratto invariato |
+| `get_prompt_classificazione(settore=)` (Fase 2) | 1 solo consumatore vivo: `ai_service._chiama_gpt_classificazione:5393` (cablato). `scripts/ab_test_modello_categorizzazione.py:76` non passa il settore → ristorazione, voluto | 1 cablato, 1 dichiarato |
 | `UserPublic` / `ClassifyRequest` | OpenAPI riesportato: nessun drift | — |
 | `_fetch_all_rows` (main, `da269ad`) | 4 chiamanti, tutti in `ai_service` | ordinati per `id` |
 | **`decisione_deterministica`** (il dizionario dei ristoranti: la vera superficie d'uscita, mancava in questa tabella — segnalato dal reviewer) | 12 chiamanti: `queue_processor:180` (override guardato in 1.4; la conferma può solo confermare categorie generiche), `upload_handler:62` e `:801` (conferma ed etichetta di fonte: idem), `ai_service:3889` (`_ret_ocp`), `:5474` (validazione per settore), `:5700` (safety net spento), **`:5575`/`:5783`/`:5797` (i tre rami degradati: erano SCOPERTI)**, **`fastapi_worker:397` (agente notturno: era SCOPERTO)**, `admin.py:820` (**era dichiarato «nessuna scrittura», falso**: il suggerimento arriva al bulk «Accetta tutti» — terzo buco, chiuso sotto), `:1171` (`prepara_suggerimenti_ai`, scrive solo `prodotti_master.categoria_suggerita`, fuori scope dichiarato), `:1454` (elenco «sospette», sola lettura) | 3 buchi chiusi (sotto), 9 coperti o dichiarati |
@@ -679,14 +681,72 @@ Classificare»), baseline a zero dopo ogni passo, 7 buchi trovati in 6 letture e
 nel pannello **admin** (select «Settore», badge solo se retail), che non è un'interfaccia
 cliente.
 
-## Fase 2 — Prompt retail · Opus, ultrathink, ~1 giorno
+## Fase 2 — Prompt retail · Opus, ultrathink · **CHIUSA** 11/9/2026
 
 Verificabile end-to-end **solo dopo 1.4**.
 
-- [ ] Prompt quasi binario: merce da rivendere / spesa di struttura / nota a importo zero,
+- [x] Prompt quasi binario: merce da rivendere / spesa di struttura,
       scelto per settore dove oggi si usa `PROMPT_CLASSIFICAZIONE_AI`
-- [ ] Replicare `tests/test_prompt_ai_coerenza_dominio.py` sul prompt retail: divieto NOTE
-      con importo ≠ 0, `Da Classificare` esplicito
+- [x] Replicare `tests/test_prompt_ai_coerenza_dominio.py` sul prompt retail:
+      divieto NOTE, `Da Classificare` esplicito
+
+**Chiusa l'11/9/2026 mattina.** `PROMPT_CLASSIFICAZIONE_RETAIL` in
+`config/prompt_ai_potenziato.py`, accanto a quello dei ristoranti che resta
+**letteralmente** intatto (3 righe rimosse in tutto il file: la vecchia firma della
+funzione, riscritta col kwarg). `get_prompt_classificazione(articoli_json, settore=None)`:
+kwarg additivo in coda, `None`/`'ristorazione'`/qualunque valore ignoto ritornano il testo
+di oggi — fail-safe nella stessa direzione di `settore_service`. Cablaggio: **una riga**
+in `services/ai_service.py:5393`, l'unico consumatore del prompt in tutto il repo
+(`scripts/ab_test_modello_categorizzazione.py` non passa il settore: resta ristorazione).
+
+**Il prompt, in sostanza**: cinque categorie e una domanda sola — *si rivende o serve a far
+funzionare il negozio?* La distinzione non dipende dal prodotto ma dalla destinazione (lo
+stesso martello è merce in una ferramenta e attrezzatura in una libreria), quindi il prompt
+la fa decidere al **fornitore e al contesto della fattura**, non alla descrizione: se gli
+indizi si contraddicono o mancano, `Da Classificare`. Divieto esplicito sulle categorie
+alimentari, che per un negozio non esistono: un alimento venduto da un negozio è
+`ARTICOLO DI VENDITA` come ogni altra merce.
+
+**Scostamento dal punto di partenza, deliberato**: il piano elencava
+`📝 NOTE E DICITURE` fra le uscite ammesse del prompt retail «solo a importo zero». Non lo
+è: la categoria **non è in `categorie_ammesse('retail')`** (né in quella dei ristoranti) —
+è riservata all'admin, arriva dal dizionario/L4 e non dall'AI, e la validazione a valle la
+scarterebbe comunque. Il prompt retail quindi la **vieta**, esattamente come quello food:
+regola di dominio #2 rispettata sui due lati. Uscite reali: `ARTICOLO DI VENDITA`, le 4
+spese generali, `Da Classificare`.
+
+Test (2 file nuovi, 28 test, **0 test esistenti toccati**):
+`tests/test_retail_prompt_coerenza_dominio.py` (20) replica i 6 presidi di dominio sul
+testo retail e aggiunge i vincoli del settore — nessuna food fra le uscite proposte,
+l'elenco del prompt `==` `categorie_ammesse('retail') + Da Classificare`, nessun residuo
+che parli di ristoranti, e l'uguaglianza letterale del prompt food;
+`tests/test_retail_prompt_cablaggio.py` (8) esegue il classificatore vero con un client
+finto e legge il `messages[0]["content"]` **davvero inviato**, prima chiamata **e retry**.
+
+**11 mutanti su 11 uccisi**, uno per volta, `.bak` preso prima e md5 verificato dopo ogni
+ripristino: prompt food sempre scelto; cablaggio che perde il settore; gate rovesciato (il
+prompt retail ai ristoranti — 10 test rossi); retry che perde il settore; prompt che vieta
+`Da Classificare`; food proposta come uscita; sesta categoria fuori whitelist; divieto NOTE
+rimosso; grafia `Da Clasificare`; prompt che torna a parlare di ristoranti; categoria merce
+rinominata. Due mutanti sono stati **rifatti perché invalidi**: uno mutava un commento
+Python invece della costante (la riga trovata per numero stava sopra la `"""`), l'altro non
+si era applicato affatto (assert fallito su `count == 1`: la stringa esiste in **entrambi**
+i prompt) — in tutti e due i casi il verde non misurava niente, e senza il controllo
+sarebbe stato scambiato per «presidio che regge».
+
+**Un buco vero nel mio presidio, trovato dalla mutazione**: il regex copiato dal test food
+cerca `NON è MAI` con la *e accentata*. Il mutante scriveva `NON e' MAI` — divieto in
+chiaro davanti al presidio, che restava **verde**. Corretto solo nel test nuovo
+(normalizzando accenti e apostrofi prima di cercare): `test_prompt_ai_coerenza_dominio.py`
+**non si tocca**, ma ha lo stesso limite — se un giorno qualcuno riscrive quel divieto con
+l'apostrofo nel prompt food, il suo presidio non lo vede. Da dire quando si toccherà.
+
+Gate: suite **13.526 verdi / 45 skip** (+28), `-m sql` **180**, `git diff main -- tests/`
+**5.699 aggiunte / 0 cancellate** e nessun file di test modificato, baseline `check` a zero
+**×2** in processi nuovi (più uno subito dopo la modifica a `ai_service.py`), OpenAPI
+**senza drift** (196 endpoint: il contratto HTTP non cambia, il settore si risolve dentro),
+`check_documentazione.py` pulito. Nessuna etichetta cliente toccata: il prompt non è
+un'interfaccia.
 
 **Punto di partenza lasciato dalla Fase 1** (così la sessione non lo ri-cerca):
 - Il prompt vive in `config/prompt_ai_potenziato.py` (`PROMPT_CLASSIFICAZIONE_AI`,
@@ -870,7 +930,7 @@ così Mattia cambia modello a mano.
 |---|---|---|
 | 0 — snapshot, backup, worktree | Opus | **chiusa** 10/9 (`b642e3c`) |
 | 1 — isolamento | **Fable** | **chiusa** 11/9 (`50fc209`) — ultrathink, un giorno invece di tre: 4 file condivisi, 12 punti di uscita, 7 buchi trovati in 6 letture e chiusi |
-| 2 — prompt retail | Opus | **ultrathink** — 1 giorno: regola di dominio #1 |
+| 2 — prompt retail | Opus | **chiusa** 11/9 — ultrathink, mezza giornata: 11 mutanti, 1 buco nel presidio trovato mutando |
 | 3 — spegnimenti ed etichette | Opus | normale — 2 giorni |
 | 4 — briefing, chat, soglie | Opus | normale — 1 giorno |
 | 5 — sorveglianza | Opus | normale — mezza giornata |

@@ -4,6 +4,9 @@
 Prompt AI Potenziato con Esempi Pratici
 Questo file contiene il prompt per la classificazione AI con esempi per ogni categoria.
 """
+from typing import Optional
+
+from config.constants import SETTORE_RETAIL
 
 PROMPT_CLASSIFICAZIONE_AI = """
 Sei un esperto classifier per ristoranti con 20+ anni di esperienza.
@@ -306,6 +309,195 @@ Quando presenti, usa i metadati come CONTESTO di supporto:
 {ARTICOLI}
 """
 
-def get_prompt_classificazione(articoli_json: str) -> str:
-    """Ritorna il prompt con gli articoli da classificare"""
-    return PROMPT_CLASSIFICAZIONE_AI.replace("{ARTICOLI}", articoli_json)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PROMPT RETAIL — DOCUMENTAZIONE/RETAIL_FASI.md Fase 2
+# ═══════════════════════════════════════════════════════════════════════════
+# Un negozio ha UNA sola categoria merce (ARTICOLO DI VENDITA) piu' le 4 spese
+# generali: la tassonomia food non esiste per lui, e il dizionario dei
+# ristoranti resta spento (RETAIL_FASI.md 1.3/1.4). Questo prompt e' quindi
+# l'unica fonte di categoria oltre alla memoria locale del cliente: la regola
+# di dominio #1 vale qui esattamente come nel prompt dei ristoranti — se non
+# riconosce, "Da Classificare", non la categoria piu' probabile.
+PROMPT_CLASSIFICAZIONE_RETAIL = """
+Sei un esperto di controllo di gestione per negozi al dettaglio.
+Classifica queste righe di fattura d'acquisto usando RAGIONAMENTO e CONTESTO.
+
+═══════════════════════════════════════════════════════════════════
+📋 LE UNICHE 5 CATEGORIE AMMESSE
+═══════════════════════════════════════════════════════════════════
+
+1. **ARTICOLO DI VENDITA** - Merce acquistata per essere RIVENDUTA al cliente
+   finale, qualunque sia il prodotto. E' il costo del venduto del negozio.
+   Esempi: "TRAPANO AVVITATORE 18V", "ROMANZO - IL NOME DELLA ROSA",
+   "MAGLIA COTONE TG.M", "SHAMPOO 250ML", "VITI TSP 4X40 CF.100",
+   "CARTUCCIA HP 302", "GIOCATTOLO PELUCHE ORSO", "SEDIA DA GIARDINO"
+
+2. **MANUTENZIONE E ATTREZZATURE** - Manutenzione, riparazioni, attrezzature e
+   forniture DUREVOLI del negozio, non destinate alla rivendita.
+   Esempi: "MANUTENZIONE IMPIANTO CLIMA", "SCAFFALATURA METALLICA NEGOZIO",
+   "RIPARAZIONE SERRANDA", "REGISTRATORE DI CASSA", "ASSISTENZA TECNICA"
+
+3. **SERVIZI E CONSULENZE** - Consulenze, commercialista, POS, marketing,
+   software, trasporti, spese e oneri amministrativi.
+   Esempi: "COMMERCIALISTA", "COMMISSIONE POS", "SOFTWARE GESTIONALE",
+   "PUBBLICITA'", "SPESE DI TRASPORTO", "CONTRIBUTO SPESE DI CONSEGNA"
+
+4. **UTENZE E LOCALI** - Luce, gas, acqua, telefonia, affitto, locazioni,
+   mutui immobile, IMU, TARI, condominio.
+   Esempi: "BOLLETTA ENEL", "GAS METANO", "SERVIZIO IDRICO",
+   "CANONE AFFITTO", "TARI RIFIUTI"
+
+5. **MATERIALE DI CONSUMO** - Materiali di consumo del negozio NON rivenduti:
+   imballaggi, sacchetti, rotoli scontrino, cancelleria interna, pulizia.
+   Esempi: "SHOPPER CARTA PERSONALIZZATI", "ROTOLI TERMICI CASSA",
+   "NASTRO ADESIVO IMBALLO", "DETERSIVO PAVIMENTI", "SACCHI SPAZZATURA"
+
+═══════════════════════════════════════════════════════════════════
+🎯 LA DOMANDA DECISIVA: si rivende o serve a far funzionare il negozio?
+═══════════════════════════════════════════════════════════════════
+
+La distinzione NON dipende da cosa sia il prodotto: dipende dalla sua
+destinazione. Lo stesso martello e' ARTICOLO DI VENDITA in una ferramenta e
+MANUTENZIONE E ATTREZZATURE in una libreria.
+
+Indizi che la riga sia merce da rivendere (→ ARTICOLO DI VENDITA):
+- il fornitore e' un grossista/distributore/produttore del settore del negozio;
+- la riga ha quantita' multiple, taglie, colori, codici EAN o codici articolo;
+- e' uno fra molti articoli simili della stessa fattura.
+
+Indizi che sia una spesa di struttura (→ una delle 4 categorie di spesa):
+- riga unica o isolata in una fattura di servizi;
+- il fornitore e' utility, telecom, banca, studio professionale, manutentore;
+- la descrizione nomina il negozio stesso, il locale, l'impianto, la cassa.
+
+Se gli indizi si contraddicono o mancano, NON indovinare: "Da Classificare".
+
+═══════════════════════════════════════════════════════════════════
+🎯 REGOLE (PRIORITA')
+═══════════════════════════════════════════════════════════════════
+
+1. **UTILITY E TELECOM**: se il fornitore e' utility/telecom (TIM, Vodafone,
+   Fastweb, Wind, Iliad, ENI, A2A, Enel, Acea, Hera, Sorgenia), TUTTE le righe
+   della fattura → "UTENZE E LOCALI", canoni compresi.
+
+2. **SERVIZI, SPESE E ONERI**: servizio, penale, mora, interessi, trasporto,
+   consegna, spese di gestione, spese amministrative, commissioni, bolli
+   → "SERVIZI E CONSULENZE".
+   - ⚠️ NON usare MAI "NOTE E DICITURE" - categoria riservata solo per admin!
+
+3. **CANONE va letto nel contesto**: locazione/immobile/affitto → "UTENZE E
+   LOCALI"; canone software/servizio/assistenza → "SERVIZI E CONSULENZE";
+   noleggio attrezzatura → "MANUTENZIONE E ATTREZZATURE".
+
+4. **DUREVOLE O DI CONSUMO**: se resta nel negozio per anni (arredo, impianti,
+   macchine, scaffali, insegne) → "MANUTENZIONE E ATTREZZATURE"; se si esaurisce
+   con l'uso (imballaggi, cancelleria, pulizia) → "MATERIALE DI CONSUMO".
+
+5. **IMBALLAGGIO**: sacchetti, shopper, scatole, nastro, carta da regalo servono
+   a consegnare la merce, non sono merce → "MATERIALE DI CONSUMO".
+   ⚠️ A meno che il negozio venda proprio imballaggi: se l'intera fattura e'
+   fatta di quegli articoli in quantita' da rivendita → "ARTICOLO DI VENDITA".
+
+6. **RESI, SCONTI E ABBUONI**: una riga di sconto, reso o abbuono appartiene
+   alla stessa categoria della merce a cui si riferisce → "ARTICOLO DI VENDITA"
+   se riguarda merce da rivendere.
+
+7. **INCERTEZZE**: classifica quando riconosci la destinazione della riga.
+   Se la descrizione non te lo permette, rispondi "Da Classificare": e' una
+   risposta legittima e attesa, non un fallimento.
+   - Sigle/codici illeggibili, descrizioni troncate o generiche → "Da Classificare"
+   - MIX/ASSORTITI di merce da rivendere → "ARTICOLO DI VENDITA"
+
+═══════════════════════════════════════════════════════════════════
+⚠️ ERRORI DA EVITARE
+═══════════════════════════════════════════════════════════════════
+
+🚨 REGOLA ASSOLUTA: non inventare MAI una categoria per una riga che non
+   riconosci. Se la descrizione ti fa riconoscere la destinazione, classificala
+   con sicurezza. Se NON la riconosci, rispondi "Da Classificare": viene
+   rivista a mano. Una categoria sbagliata sporca i margini in silenzio; un
+   "Da Classificare" resta visibile in coda finche' qualcuno lo sistema.
+
+❌ NON usare MAI categorie alimentari (CARNE, PESCE, VINI, LATTICINI, BEVANDE,
+   FRUTTA, VERDURE, PASTICCERIA...): NON esistono per un negozio. Un alimento
+   messo in vendita da un negozio e' "ARTICOLO DI VENDITA" come ogni altra merce.
+❌ NON usare MAI "FOOD", "SHOP", "MERCE", "COSTO DEL VENDUTO" - non esistono!
+❌ NON usare MAI "NOTE E DICITURE" - categoria riservata solo admin!
+❌ NON mettere la merce da rivendere in "MATERIALE DI CONSUMO" solo perche' non
+   e' cibo: "MATERIALE DI CONSUMO" e' cio' che il NEGOZIO consuma, non cio' che vende.
+❌ NON mettere gli scaffali, l'insegna o il registratore di cassa in "ARTICOLO
+   DI VENDITA": restano nel negozio, sono "MANUTENZIONE E ATTREZZATURE".
+❌ NON mettere le righe di utility/telecom in "SERVIZI E CONSULENZE" - sono
+   "UTENZE E LOCALI"!
+✅ Merce da rivendere, qualunque essa sia → ARTICOLO DI VENDITA
+✅ Imballaggi, shopper, rotoli cassa, cancelleria, pulizia → MATERIALE DI CONSUMO
+✅ Arredo, impianti, macchine, riparazioni → MANUTENZIONE E ATTREZZATURE
+✅ Trasporto, consegna, commissioni, consulenze, software → SERVIZI E CONSULENZE
+✅ Luce, gas, acqua, telefono, affitto, TARI → UTENZE E LOCALI
+
+═══════════════════════════════════════════════════════════════════
+📝 FORMATO RISPOSTA
+═══════════════════════════════════════════════════════════════════
+
+Ogni articolo in input ha un campo "idx" (numero progressivo da 0). DEVI restituire
+UN risultato per OGNI idx ricevuto, riportando lo STESSO idx. Questo serve ad
+ancorare ogni categoria al suo articolo: NON affidarti all'ordine, usa l'idx.
+
+Rispondi SOLO in JSON con un array "risultati", un oggetto per ogni articolo:
+{
+  "risultati": [
+    {"idx": 0, "categoria": "CATEGORIA", "confidence": "alta"},
+    {"idx": 1, "categoria": "CATEGORIA", "confidence": "media"}
+  ]
+}
+
+REGOLE FERREE sull'allineamento:
+- Un solo oggetto per ciascun idx ricevuto. NON aggiungere idx non richiesti.
+- NON unire due articoli in uno, NON dividere un articolo in due.
+- Il numero di oggetti in "risultati" DEVE essere uguale al numero di articoli ricevuti.
+- Riporta sempre l'idx esatto dell'articolo che stai classificando.
+
+Livelli di confidenza (scegli uno per ogni articolo):
+- "alta"  → descrizione chiara, destinazione certa
+- "media" → destinazione probabile, ma qualche ambiguita' di contesto
+- "bassa" → descrizione troppo generica/vaga/in codice per essere certa
+             (es. "VARIE", "ASSORTITI", "PRODOTTO 01", solo un codice numerico)
+
+Usa esattamente uno di questi 6 valori, nient'altro:
+"ARTICOLO DI VENDITA", "MANUTENZIONE E ATTREZZATURE", "SERVIZI E CONSULENZE",
+"UTENZE E LOCALI", "MATERIALE DI CONSUMO", "Da Classificare".
+
+═══════════════════════════════════════════════════════════════════
+🎯 ARTICOLI DA CLASSIFICARE
+═══════════════════════════════════════════════════════════════════
+
+Gli articoli sono forniti in formato JSON. Puo' essere:
+- Lista semplice: ["descrizione1", "descrizione2", ...]
+- Lista arricchita: [{"articolo": "descrizione", "fornitore": "X", "iva": 22}, ...]
+
+Quando presenti, usa i metadati come CONTESTO di supporto:
+- **fornitore**: e' l'indizio piu' forte sulla destinazione della riga. Un
+  grossista del settore vende merce; una utility, una banca o uno studio
+  professionale no.
+- **iva**: aliquota IVA come indizio debole. NON classificare MAI una riga solo
+  in base all'IVA: la descrizione e il fornitore restano i dati principali.
+
+{ARTICOLI}
+"""
+
+
+def get_prompt_classificazione(articoli_json: str, settore: Optional[str] = None) -> str:
+    """Ritorna il prompt con gli articoli da classificare.
+
+    `settore` e' additivo: None o 'ristorazione' restituiscono LETTERALMENTE il
+    prompt di sempre. Solo SETTORE_RETAIL sceglie il prompt dei negozi
+    (RETAIL_FASI.md Fase 2).
+    """
+    base = (
+        PROMPT_CLASSIFICAZIONE_RETAIL
+        if settore == SETTORE_RETAIL
+        else PROMPT_CLASSIFICAZIONE_AI
+    )
+    return base.replace("{ARTICOLI}", articoli_json)
