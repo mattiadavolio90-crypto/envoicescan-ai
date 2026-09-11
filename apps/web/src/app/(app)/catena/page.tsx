@@ -46,9 +46,10 @@ async function SintesiBlock() {
   if (deveRedirigereAPuntoVendita(overview)) {
     redirect("/dashboard");
   }
-  // getCurrentUser e' in cache() di React: il layout l'ha gia' chiamato in
-  // questo render. Serve alla finestra dei costi di gruppo, il cui menu deve
-  // offrire solo le categorie che il worker accetta per questo settore.
+  // Serve alla finestra dei costi di gruppo, il cui menu deve offrire solo le
+  // categorie che il worker accetta per questo settore. Costa un /api/auth/me
+  // per render: il layout chiama getCurrentSession, che e' una entry cache()
+  // diversa sopra un verifySession non memoizzato.
   const settore = (await getCurrentUser())?.tipo_attivita;
   return <SintesiCatena overview={overview} settore={settore} />;
 }

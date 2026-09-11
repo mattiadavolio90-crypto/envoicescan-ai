@@ -914,8 +914,18 @@ debba proporla.
       «ricette e foodcost», cioe' la tab che questa fase ha appena spento per un
       negozio — prometteva uno strumento inesistente. Resta fuori quello di
       `margini/page.tsx`, che e' **Fase 4** insieme alle soglie.
-      Il settore arriva da `getCurrentUser()`, che e' in `cache()` di React:
-      nessuna chiamata in piu' al worker.
+      Il settore arriva da `getCurrentUser()`.
+      ⚠️ **Correzione dopo la seconda review**: avevo scritto «e' in `cache()` di
+      React: **nessuna chiamata in piu' al worker**». **E' falso.** `cache()`
+      deduplica le chiamate *nella stessa pagina*, ma il layout `(app)` usa
+      `getCurrentSession` — una entry `cache()` **diversa**, sopra un
+      `verifySession` che **non e' memoizzato** (`lib/auth.ts:90`). Ogni pagina
+      che aggiunge `getCurrentUser()` paga quindi **un `/api/auth/me` in piu' per
+      render**. Non e' una regressione di questa fase (`analisi-fatture`,
+      `margini` e `catena` avevano gia' il pattern) e non cambia il
+      comportamento, ma la frase agli atti era sbagliata. Se il costo dara'
+      fastidio, il fix vero e' memoizzare `verifySession`, non togliere il
+      settore dalle pagine: e' **lavoro a se', fuori da questa fase.**
 - [x] Backend/export: **non fatto, e non per dimenticanza.**
       `margine_service.py` (`export_excel_margini`, `build_transposed_df`) ha
       **zero chiamanti in produzione** — codice Streamlit morto, e lo dichiara il

@@ -19,8 +19,11 @@ export default async function AgendaPage({
   const { tab: layer, disponibili } = await requirePaginaConTab(
     "agenda", "agenda", sp.layer, "/agenda", "layer",
   );
-  // getCurrentUser e' avvolto in cache() di React: il layout l'ha gia' chiamato
-  // in questo render, quindi il settore non costa una chiamata in piu'.
+  // getCurrentUser e' avvolto in cache(), quindi piu' chiamate NELLA STESSA
+  // pagina costano una volta sola. Non e' gratis pero': il layout usa
+  // getCurrentSession, che e' una entry cache() diversa sopra un verifySession
+  // NON memoizzato, quindi questa riga aggiunge un /api/auth/me per render.
+  // Stesso pattern delle pagine che gia' lo fanno (analisi-fatture, margini).
   const settore = (await getCurrentUser())?.tipo_attivita;
 
   return (
