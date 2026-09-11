@@ -2880,9 +2880,12 @@ _TOPIC_DESCRIZIONE_RETAIL = {
 def _topics_per_settore(settore: Optional[str]) -> List[tuple]:
     """`_CONFIG_TOPICS` filtrato e ri-etichettato per il settore.
 
-    Per la ristorazione (e per ogni settore ignoto) ritorna ESATTAMENTE la lista
-    di oggi, stesso ordine e stesse stringhe: e' il vincolo di Mattia, e un
-    presidio lo confronta per uguaglianza.
+    Per la ristorazione (e per ogni settore ignoto) ritorna la lista di oggi:
+    stesso ordine, stesse stringhe. Il presidio la confronta per UGUAGLIANZA e
+    non per identita', perche' il fast path qui sotto e' un'ottimizzazione, non
+    un contratto — la list comprehension ricostruirebbe una lista uguale.
+    (`_chat_tools_gruppo` invece garantisce l'identita', ed e' asserita cosi':
+    li' una copia significherebbe che qualcuno ha ricostruito le description.)
     """
     spenti = _TOPIC_OFF_PER_SETTORE.get(settore or "", frozenset())
     if not spenti and settore != SETTORE_RETAIL:

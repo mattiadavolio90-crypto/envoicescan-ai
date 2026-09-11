@@ -343,3 +343,59 @@ def test_api_classify_ricade_sulla_sede_se_manca_l_utente(monkeypatch):
 
     fw.classify(richiesta, fw.ClassifyRequest(descrizioni=["MARTELLO"]))
     assert ricevuti[-1]["settore"] is None
+
+
+def _tools_gruppo_offerti(settore, monkeypatch):
+    """La lista che arriva DAVVERO al loop nel ramo catena.
+
+    Senza questo, i quattro presidi su `_chat_tools_gruppo` provano che la
+    funzione e' corretta, non che qualcuno la usi: un mutante che rimette
+    `_CHAT_TOOLS_GRUPPO` al call site sopravvive a tutta la suite. E' la stessa
+    famiglia del presidio gia' smascherato in questa fase — «il settore non
+    arrivava dall'endpoint al prompt» — chiuso li' e riaperto qui.
+    """
+    catturati = {}
+
+    def _loop(client, messages, tools, esegui, log_ctx=""):
+        catturati["descrizioni"] = {
+            t["function"]["name"]: t["function"]["description"] for t in tools
+        }
+        return ("ok", 1, 1)
+
+    sb = _sb()
+    sb.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(count=3)
+    sb.rpc.return_value = MagicMock(execute=MagicMock(return_value=MagicMock(data=1)))
+
+    monkeypatch.setattr(fw, "_resolve_user_from_token", lambda auth: dict(USER))
+    monkeypatch.setattr("services.get_supabase_client", lambda: sb)
+    monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, s: "rid-1")
+    monkeypatch.setattr(fw, "_chat_quota_pool", lambda u, s: (30, True))
+    monkeypatch.setattr(fw, "_chat_domande_oggi", lambda *a, **k: 1)
+    monkeypatch.setattr(fw, "_gruppo_chat_disabilitata", lambda uid, s: False)
+    monkeypatch.setattr(fw, "_build_chat_system_prompt_catena", lambda *a, **k: "prompt")
+    monkeypatch.setattr(fw, "_chat_loop_openai", _loop)
+    monkeypatch.setattr("services.settore_service.settore_utente", lambda uid, sb=None: settore)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    fw.chat_ai(
+        fw.ChatRequest(messages=[fw.ChatMessage(role="user", content="chi va meglio?")],
+                       contesto="catena"),
+        authorization="Bearer t",
+    )
+    return catturati["descrizioni"]
+
+
+def test_la_catena_di_un_negozio_riceve_davvero_le_descrizioni_deviate(monkeypatch):
+    d = _tools_gruppo_offerti(SETTORE_RETAIL, monkeypatch)
+    assert "coperti" not in d["gruppo_margini_coperti"].lower(), (
+        "l'endpoint offre ancora la description con i coperti: il fix e' nella "
+        "funzione ma non nel punto che la chiama"
+    )
+    assert "margine" in d["gruppo_margini_coperti"].lower()
+
+
+def test_la_catena_di_un_ristorante_riceve_le_descrizioni_di_ieri(monkeypatch):
+    d = _tools_gruppo_offerti(SETTORE_RISTORAZIONE, monkeypatch)
+    atteso = {t["function"]["name"]: t["function"]["description"]
+              for t in fw._CHAT_TOOLS_GRUPPO}
+    assert d == atteso
