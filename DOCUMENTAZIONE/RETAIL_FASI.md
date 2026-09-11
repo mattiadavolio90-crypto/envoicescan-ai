@@ -740,14 +740,20 @@ i prompt) — in tutti e due i casi il verde non misurava niente, e senza il con
 sarebbe stato scambiato per «presidio che regge».
 
 **Un buco vero nel mio presidio, trovato dalla mutazione**: il regex copiato dal test food
-cerca `NON è MAI` con la *e accentata*. Il mutante scriveva `NON e' MAI` — divieto in
-chiaro davanti al presidio, che restava **verde**. Corretto normalizzando accenti e
-apostrofi prima di cercare. In fase lo avevo corretto **solo nel test nuovo**, perché
+guardava la *grafia* del divieto invece del suo senso, e restava **verde** con il divieto
+scritto in chiaro davanti. Corretto normalizzando accenti e apostrofi e rendendo elastici
+gli spazi. In fase lo avevo corretto **solo nel test nuovo**, perché
 `test_prompt_ai_coerenza_dominio.py` è un test esistente; **chiuso anche lì l'11/9/2026 con
-l'ok esplicito di Mattia** — dettaglio e tabella dei mutanti in fondo alla sezione.
+l'ok esplicito di Mattia**.
+
+⚠️ La prima stesura di questo verbale diceva che il regex «cerca `NON è MAI` con la e
+accentata, quindi è cieco all'apostrofo». **È falso e l'ha smentito la mutazione**: la
+spiegazione esatta, con la tabella dei 5 mutanti, è in fondo alla sezione. Lasciata qui la
+correzione perché era la prima cosa che si leggeva scorrendo dall'alto.
 
 Gate: suite **13.526 verdi / 45 skip** (+28), `-m sql` **180**, `git diff main -- tests/`
-**6.067 aggiunte / 0 cancellate** e nessun file di test modificato, baseline `check` a zero
+**6.067 aggiunte / 0 cancellate** e nessun file di test modificato (in fase; l'unico test
+esistente toccato è arrivato dopo, l'11/9, con l'ok esplicito), baseline `check` a zero
 **×2** in processi nuovi (più uno subito dopo la modifica a `ai_service.py`), OpenAPI
 **senza drift** (196 endpoint: il contratto HTTP non cambia, il settore si risolve dentro),
 `check_documentazione.py` pulito. Nessuna etichetta cliente toccata: il prompt non è
@@ -805,7 +811,30 @@ ogni ripristino (`config/prompt_ai_potenziato.py` torna a `0f076c03…`, byte-id
 | 1 | `"Da Classificare" NON e' MAI una risposta valida.` | ucciso (1 failed) | ucciso (1 failed) |
 | 2 | `"Da Classificare" NON e' MAI valida: scegli sempre una categoria.` | **sopravvissuto (6 passed)** | **ucciso (1 failed)** |
 
-Il mutante 2 è la prova del buco e della sua chiusura. Entrambi verificati nella **costante
+Il mutante 2 è la prova del buco e della sua chiusura.
+
+**Nona lettura del reviewer (11/9, `c83e44c`): lo stesso buco su un altro asse.** La
+normalizzazione toglieva accenti e apostrofi ma **non collassava gli spazi**: dopo il replace
+la riga diventa `NON  e  MAI` e il pattern letterale non matcha. Le alternative ora usano
+`\s+`, in **entrambi** i test. Altri 3 mutanti, sulla costante viva con assert di avvenuta
+applicazione:
+
+| # | Mutante (grafia dello spazio) | Pattern precedente | Pattern elastico |
+|---|---|---|---|
+| 3 | `NON  e' MAI valida` (doppio spazio) | **sopravvissuto** | **ucciso** |
+| 4 | `NON\te' MAI valida` (tab) | **sopravvissuto** | **ucciso** |
+| 5 | `NON e' MAI valida` (spazio singolo) | ucciso | ucciso |
+
+Falsi positivi sui prompt veri: **0 nel food, 0 nel retail**. Il reviewer ha ri-misurato la
+tabella in autonomia e aggiunto un mutante suo (tripli spazi: stesso esito), rilevando che
+`\s` matcha **anche `\n`**: a impedire che il presidio attraversi le righe non è il regex ma
+`splitlines()`. Vale la pena saperlo prima di rimaneggiarlo.
+
+**Un residuo consapevole, con l'accordo del reviewer**: il presidio è *polarity-blind* — farebbe
+rosso su una riga legittima come `Inventare una categoria NON e' MAI accettabile: usa
+"Da Classificare"`. Non lo restringo: inseguire la polarità con un regex lo rende fragile
+proprio dove serve robusto, e l'errore «rosso su testo legittimo» si vede in un minuto, mentre
+«verde sul divieto» è invisibile — in questo progetto è già costato il 29/8. Entrambi verificati nella **costante
 viva** prima di leggere l'esito (`NON e' MAI` in `PROMPT_CLASSIFICAZIONE_AI` = True, nel retail
 = False): un mutante che non si applica produce lo stesso verde di un presidio che regge.
 
