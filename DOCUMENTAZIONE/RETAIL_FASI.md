@@ -1210,8 +1210,75 @@ fase non tocca SQL.
 
 ## Fase 5 — Sorveglianza post-deploy · Opus, ~mezza giornata
 
-- [ ] Verifica periodica che confronti le categorie dei ristoranti nel tempo e segnali
-      cambi non manuali. Trasforma "l'abbiamo rispettato" in "sappiamo che regge"
+> **Perché esiste.** Le Fasi 1-4 hanno dimostrato il vincolo **al momento del
+> commit**: baseline a zero, 241 presidi, 43 mutanti. Ma la baseline è una
+> fotografia che scatta qualcuno a mano, e i presidi girano sul codice — non
+> sui dati dei clienti dopo il deploy. Questa fase trasforma «l'abbiamo
+> rispettato» in «sappiamo che regge», senza che serva una query manuale.
+>
+> **Il caso che deve intercettare**: una riga di un ristorante che cambia
+> categoria per una ragione che non è un umano. È il danno peggiore che il
+> retail può fare, ed è **silenzioso** — nessun errore, nessun test rosso, e il
+> cliente lo scopre dal MOL sbagliato settimane dopo.
+
+### Quello che esiste già, e NON va riscritto
+
+Misurato sul branch l'11/9/2026:
+
+- **`public.category_change_log`** registra ogni UPDATE che cambia
+  `fatture.categoria`, via trigger `fn_log_category_change`
+  (`supabase/migrations/20260429181500_add_category_change_log.sql` per la
+  tabella, `20260908160000_registro_correzioni_attribuito.sql` per
+  l'attribuzione). Colonne utili: `changed_at`, `ristorante_id`, `descrizione`,
+  `old_categoria`, `new_categoria`, `actor_email`, `source`, `batch_id`.
+  **Dal 8/9 lo scrittore si dichiara**: `source` distingue `correzione_cliente`,
+  gli script (`script_ricategorizza_sede_ai`…) e il `db_trigger` anonimo.
+  Prima di quella data 4.132 righe hanno `source='db_trigger'` e attore NULL:
+  **il registro è utile solo da lì in avanti**, e la query va tarata di
+  conseguenza — non si conta lo storico come se fosse attribuito.
+- **`scripts/retail_baseline.py`** (`capture` / `check`): confronta costi e
+  classificazione sui dati veri. È **manuale e puntuale**, e chiamarlo da un
+  cron non basterebbe: confronta col file catturato, che invecchia. Serve come
+  modello di *come si legge senza scrivere* (proxy + `pending_local_saves`),
+  non come motore della sorveglianza.
+- **Il pattern dei check periodici**: `.github/workflows/riparto_coerenza_check.yml`
+  è il più vicino — cron giornaliero, `curl` a un endpoint admin del worker con
+  `X-Worker-Key`, alert Telegram solo se il conteggio è diverso da zero, e un
+  commento in testa che spiega **quale danno previene**. In
+  `.github/workflows/` ce ne sono **12** in tutto, di cui 5 di sorveglianza
+  (`*_check.yml`, `*_monitor.yml`): hanno tutti questa forma.
+
+### Le caselle
+
+- [ ] **Misurare prima di progettare**: `category_change_log` sul DB vivo —
+      quante righe da dopo l'8/9, quali `source` distinti, quante senza attore.
+      Se l'attribuzione non fosse ancora popolata come il doc dice, la fase
+      cambia forma (memoria `cifra-ripresa-da-un-doc-non-e-misurata`).
+- [ ] **Endpoint admin di sola lettura** nel worker che risponda alla domanda:
+      *nelle ultime 24h, quante righe di un cliente RISTORAZIONE hanno cambiato
+      categoria senza un attore umano?* Forma della response coerente con
+      `/api/admin/riparto/incoerenze` (un `totale` + il dettaglio), perché è
+      quella che il workflow sa già leggere.
+- [ ] **Workflow di sorveglianza** sul modello di `riparto_coerenza_check.yml`:
+      cron giornaliero, alert solo su anomalia, commento in testa che dica quale
+      danno previene. **Non** deve scattare su un cambio legittimo — la
+      classificazione automatica di una fattura NUOVA non è un'anomalia: il
+      segnale è il cambio su una riga **già classificata**.
+- [ ] **Provarlo su un'anomalia vera**, non solo sul caso pulito: la domanda
+      «riconosce un cambio che non dovrebbe esserci?» si risponde costruendo il
+      caso, non leggendo la query. Un monitor che non ha mai visto rosso non si
+      sa se funziona.
+- [ ] **Presidi con mutazione anche sul CALL SITE**, non solo sul corpo: è la
+      lezione che la Fase 4 ha pagato quattro volte.
+
+### Due vincoli specifici di questa fase
+
+1. **Sola lettura, come tutte le altre.** Un monitor che scrive è un monitor che
+   può sbagliare sui dati veri. L'endpoint è `GET`, la query è `SELECT`.
+2. **Il rumore uccide un monitor.** Un alert che scatta ogni giorno viene
+   ignorato entro una settimana, e a quel punto non esiste più. Meglio una
+   soglia che tace troppo di una che grida: la prima si stringe dopo aver visto
+   i dati veri, la seconda non si riapre più.
 
 ---
 
