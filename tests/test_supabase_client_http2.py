@@ -109,6 +109,29 @@ def test_il_client_anon_non_viene_usato_per_query_dati():
 
     assert nomi_anon, "nessun assegnamento del client anon trovato: test da aggiornare"
 
+    # Gli alias condizionali sono il modo in cui il client anon viene davvero
+    # usato: `_refresh_client = _anon if _anon is not None else supabase_client`.
+    # Senza questo passaggio un `_refresh_client.table()` sfuggirebbe al presidio
+    # — punto cieco trovato dal code-reviewer. Si itera perche' un alias puo'
+    # nascere da un altro alias.
+    for _ in range(5):
+        nuovi = set()
+        for nodo in ast.walk(albero):
+            if isinstance(nodo, ast.Assign) and isinstance(nodo.value, ast.IfExp):
+                rami = [nodo.value.body, nodo.value.orelse]
+                if any(isinstance(r, ast.Name) and r.id in nomi_anon for r in rami):
+                    for t in nodo.targets:
+                        if isinstance(t, ast.Name) and t.id not in nomi_anon:
+                            nuovi.add(t.id)
+        if not nuovi:
+            break
+        nomi_anon |= nuovi
+
+    assert "_refresh_client" in nomi_anon, (
+        "l'alias condizionale del client anon non e' stato risolto: "
+        f"nomi tracciati = {sorted(nomi_anon)}"
+    )
+
     # Nessuno di quei nomi deve finire in una `.table(...)`.
     usi_vietati = []
     for nodo in ast.walk(albero):

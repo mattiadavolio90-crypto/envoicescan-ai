@@ -27,6 +27,7 @@ Compatibilità:
 from __future__ import annotations
 
 import io
+import hashlib
 import logging
 import os
 import sys
@@ -258,7 +259,9 @@ def get_supabase_client():
             "Imposta SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY nelle env vars."
         )
 
-    cache_key = f"{url}::{key[:8]}"
+    # Hash della chiave, non i suoi primi caratteri: due service_role key con lo
+    # stesso prefisso restituirebbero il client sbagliato.
+    cache_key = f"{url}::{hashlib.sha256(key.encode()).hexdigest()[:16]}"
     cached = _CLIENT_CACHE.get(cache_key)
     if cached is not None:
         return cached
