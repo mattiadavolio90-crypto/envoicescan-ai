@@ -14,6 +14,12 @@ import { LifeBuoy, WifiOff } from "lucide-react";
 // PWA solo dentro l'app: manifest + flag installazione vivono qui, non nel root,
 // cosi' la landing pubblica "/" non mostra il prompt "Installa ONEFLUX" di Chrome.
 export const metadata: Metadata = {
+  // Dentro l'app la tab mostra il brand: il claim commerciale del root e' per
+  // la landing pubblica, non per chi ha gia' fatto login.
+  // absolute: bypassa il template "%s · ONEFLUX" del root, che senza darebbe
+  // "ONEFLUX · ONEFLUX". Il template va ridichiarato: absolute lo azzera per le
+  // pagine figlie, che altrimenti perderebbero il suffisso di brand in silenzio.
+  title: { absolute: "ONEFLUX", template: "%s · ONEFLUX" },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

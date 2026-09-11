@@ -13,6 +13,16 @@ import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
 import { IncassoReminder } from "./incasso-reminder";
 import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
+import type { Metadata } from "next";
+
+// Come (app)/layout.tsx: dentro l'app la tab mostra il brand, non il claim
+// commerciale del root. (mobile) e' un route-group fratello, va allineato a mano.
+export const metadata: Metadata = {
+  // absolute: bypassa il template "%s · ONEFLUX" del root, che senza darebbe
+  // "ONEFLUX · ONEFLUX". Il template va ridichiarato: absolute lo azzera per le
+  // pagine figlie, che altrimenti perderebbero il suffisso di brand in silenzio.
+  title: { absolute: "ONEFLUX", template: "%s · ONEFLUX" },
+};
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   // Le tre chiamate al worker partono insieme (prima auth era awaitata da sola,
