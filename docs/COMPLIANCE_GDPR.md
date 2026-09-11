@@ -91,10 +91,12 @@ di considerare l'attivazione conclusa per ciascun fornitore.
   da chiavi JWT condivise).
 
 **Organizzative:**
-- Suite di test automatizzati (13.380 Python verdi + 44 skip; 117 Deno verdi su
-  118, ri-misurati l'11/09/2026) eseguiti in CI su ogni rilascio. Il test Deno
-  rosso è `[email-wh] Decode base64` in `ricavi-email-webhook`, non correlato al
-  trattamento dei dati personali descritto qui.
+- Suite di test automatizzati (13.389 Python verdi + 44 skip, 117 Deno verdi)
+  eseguiti in CI su ogni rilascio. Cifre lette dal run CI `Tests` su `283dcf2`
+  dell'11/09/2026, non da una misura locale: la suite Python conta 9 test in più
+  se lanciata dalla root invece che da `tests/`, e i test Deno sono quelli del
+  glob `supabase/functions/**/*_test.ts` (il file `test.ts` di
+  `invoicetronic-webhook`, senza suffisso `_test`, non ne fa parte).
 - Audit di sicurezza periodico: 19/06/2026 (pre go-live, 2 vettori di lettura
   non autorizzata chiusi) + riverifica 06/07/2026 (post go-live) — advisor
   Supabase **0 ERROR sicurezza, 0 WARN performance** invariato. Un item
