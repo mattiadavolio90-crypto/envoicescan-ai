@@ -139,10 +139,17 @@ def classifica_via_worker_con_confidenza(
     from services.ai_service import classifica_con_ai  # import locale per evitare circolarità
     # Stesso settore che /api/classify risolve dal body: il percorso locale non
     # deve classificare un negozio come ristorante solo perche' il worker e' giu'.
+    # Il settore si risolve dall'account, ma se il chiamante ha solo la SEDE
+    # (gli script manuali per sede: ricategorizza_sede_ai.py passa
+    # `user_id=None`) si ricade sulla sede, che in v1 e' omogenea con l'account.
+    # Senza questo fallback un negozio riceverebbe il prompt dei ristoranti.
     settore = None
     if user_id:
         from services.settore_service import settore_utente
         settore = settore_utente(user_id)
+    elif ristorante_id:
+        from services.settore_service import settore_sede
+        settore = settore_sede(ristorante_id)
     return classifica_con_ai(
         descrizioni,
         lista_fornitori=fornitori,

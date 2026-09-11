@@ -124,7 +124,15 @@ logger = get_logger('daily_briefing')
 #               sentiva nominare i suoi euro esclusi da nessuna parte, perche'
 #               glieli diceva solo il banner). Cambia il testo servito: senza
 #               bump la cache continuerebbe a servire lo snapshot senza la riga.
-_BRIEFING_CODE_VERSION = 23
+#          v24: retail (Fase 4). Per un negozio l'anomalia coperti non viene piu'
+#               generata (`_TOPIC_OFF_PER_SETTORE`): la cassa manda solo il
+#               fatturato e la tab Coperti e' spenta dalla Fase 3, quindi quella
+#               card puntava a una pagina che il cliente non puo' aprire. Cambia
+#               l'insieme delle notifiche nello snapshot: senza bump un negozio
+#               continuerebbe a vedere la card vecchia per tutta la giornata
+#               (cache giornaliera + TTL 30'). Per i ristoranti lo snapshot e'
+#               invariato — la rigenerazione produce lo stesso testo di ieri.
+_BRIEFING_CODE_VERSION = 24
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

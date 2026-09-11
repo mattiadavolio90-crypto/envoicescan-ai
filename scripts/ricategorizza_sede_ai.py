@@ -34,6 +34,8 @@ os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", sup.get("service_role_key", "
 
 from supabase import create_client
 from services.db_service import aggiorna_categoria_fatture, filter_active
+from services.settore_service import settore_sede
+from config.constants import CATEGORIE_FOOD_BEVERAGE, SETTORE_RETAIL
 from utils.supabase_paging import fetch_all
 
 SOURCE = "script_ricategorizza_sede_ai"
@@ -75,6 +77,12 @@ COMMIT = "--commit" in sys.argv
 set_global_memory_enabled(True)
 force_local_worker_path(True)
 set_ai_context(ristorante_id=rid, user_id=None)
+
+# Il settore della sede: `classifica_via_worker_con_confidenza` lo risolve da
+# solo (user_id assente -> ricade sulla sede), ma serve anche QUI, per i punti
+# post-AI che riscriverebbero la categoria dopo.
+_SETTORE_SEDE = settore_sede(rid)
+print(f"[{sede}] settore: {_SETTORE_SEDE}")
 
 _MAX_CLASSIFY_RETRY = 3
 _CLASSIFY_RETRY_BACKOFF = 2.0
@@ -210,11 +218,22 @@ for i in range(0, len(descrizioni), chunk_size):
         )
         _forn = desc_map.get(desc, ("", 0))[0]
         _cat_runtime = _categoria_deterministica_runtime(desc)
+        # Il runtime deterministico (dizionario + regole forti) SOVRASCRIVE
+        # l'esito AI, e produce categorie food. Per un negozio e' esattamente il
+        # punto post-AI che la Fase 1 ha chiuso in produzione (ai_service `_ret`,
+        # i 4 punti della 1.4): senza questo gate il filtro sul prompt sarebbe
+        # inutile, perche' la categoria giusta verrebbe riscritta subito dopo.
+        if _SETTORE_SEDE == SETTORE_RETAIL and _cat_runtime in CATEGORIE_FOOD_BEVERAGE:
+            _cat_runtime = None
         if _cat_runtime and _cat_runtime.upper() != str(categoria).strip().upper():
             categoria = _cat_runtime
         categoria = _applica_guardrail_note_con_importo(
             desc, categoria, desc_importo.get(desc, 0.0)
         )
+        # Il guardrail note puo' riportare a una categoria food anche a valle:
+        # ultimo controllo prima che la riga sia dichiarata affidabile.
+        if _SETTORE_SEDE == SETTORE_RETAIL and categoria in CATEGORIE_FOOD_BEVERAGE:
+            categoria = "Da Classificare"
         _confermata_runtime = _runtime_conferma_categoria(desc, categoria)
         _alta_affidabile = (
             conf == 'alta'

@@ -57,6 +57,7 @@ from services.ai_service import (
     set_global_memory_enabled,
 )
 from services.db_service import aggiorna_categoria_fatture
+from config.constants import CATEGORIE_FOOD_BEVERAGE, SETTORE_RETAIL
 
 SEDI = {
     "SAN_GIULIANO": "5444e918-8616-464c-a109-5d8aba226805",
@@ -83,7 +84,7 @@ def _client():
     return create_client(sup.get("url", ""), sup.get("service_role_key", ""))
 
 
-def pipeline_deterministica(desc, cat_attuale, fornitore=None):
+def pipeline_deterministica(desc, cat_attuale, fornitore=None, settore=None):
     """Regole forti + dizionario, con guardrail note. Ritorna categoria nuova.
 
     Il fornitore NON va concatenato alla descrizione: entrerebbe nel dizionario e
@@ -105,6 +106,13 @@ def pipeline_deterministica(desc, cat_attuale, fornitore=None):
             return "UTENZE E LOCALI"
     cat = applica_correzioni_dizionario(desc, "Da Classificare")
     cat, _ = applica_regole_categoria_forti(desc, cat)
+    # Stesso filtro d'uscita che la Fase 1 ha messo in `categorizza_con_memoria`
+    # (`_ret`, ai_service.py): per un negozio una categoria food non esiste, da
+    # qualunque livello arrivi. Qui serve replicato perche' questo script chiama
+    # dizionario e regole DIRETTAMENTE, senza passare da quel chokepoint — ed e'
+    # lo stesso motivo per cui i sette buchi della Fase 1 erano tutti a valle.
+    if settore == SETTORE_RETAIL and cat in CATEGORIE_FOOD_BEVERAGE:
+        return "Da Classificare"
     return cat
 
 
@@ -120,7 +128,7 @@ def e_arbitrata(riga):
     return bool(riga.get("reviewed_at"))
 
 
-def seleziona_aggiornamenti(rows):
+def seleziona_aggiornamenti(rows, settore=None):
     """Decide cosa riscrivere, e cosa lasciare stare.
 
     Ritorna `(updates, saltate, diff_cat)`: `updates` e' {id: (categoria, needs_review)},
@@ -138,7 +146,7 @@ def seleziona_aggiornamenti(rows):
         cat_old = str(r.get("categoria") or "")
         if not desc.strip():
             continue
-        cat_new = pipeline_deterministica(desc, cat_old, r.get("fornitore"))
+        cat_new = pipeline_deterministica(desc, cat_old, r.get("fornitore"), settore)
         # guardrail note con importo
         try:
             iva = float(r.get("iva_percentuale") or 0)
@@ -202,11 +210,16 @@ def main(argv=None):
     set_global_memory_enabled(False)
 
     sb = _client()
+    # Il settore si legge dalla SEDE: lo script lavora per ristorante_id, e in v1
+    # le sedi di un account sono omogenee. Senza, un negozio verrebbe
+    # ricategorizzato con le categorie food del dizionario.
+    from services.settore_service import settore_sede
+    settore = settore_sede(rid, sb)
     rows = carica_righe(sb, rid)
-    print(f"[{sede}] righe attive: {len(rows)}")
+    print(f"[{sede}] righe attive: {len(rows)} (settore: {settore})")
 
     n_da_class_prima = sum(1 for r in rows if str(r.get("categoria")) == "Da Classificare")
-    updates, saltate, diff_cat = seleziona_aggiornamenti(rows)
+    updates, saltate, diff_cat = seleziona_aggiornamenti(rows, settore)
     n_da_class_dopo = n_da_class_prima - sum(
         1 for r in rows
         if str(r.get("categoria")) == "Da Classificare" and r["id"] in updates

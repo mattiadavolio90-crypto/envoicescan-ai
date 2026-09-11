@@ -16,6 +16,7 @@ if envp.exists():
 from supabase import create_client
 from collections import Counter, defaultdict
 from services.ai_service import applica_regole_categoria_forti, applica_correzioni_dizionario, _is_fornitore_utenze_sempre, classifica_con_ai
+from services.settore_service import settore_utente
 sb = create_client(os.environ['SUPABASE_URL'], os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ['SUPABASE_KEY'])
 
 rows=[]; off=0
@@ -48,14 +49,34 @@ for (uid,desc),info in agg.items():
 
 print(f"Senza segnale: {len(senza)}")
 descs=[s['descrizione'] for s in senza]; forn=[s['forn'] for s in senza]
+# Il settore va passato, o un negozio riceve il prompt dei ristoranti e la
+# diagnosi a video accusa righe giuste. Le righe portano lo `user_id`, quindi si
+# RAGGRUPPA per settore: un chunk misto avrebbe un solo prompt per clienti di
+# settori diversi. Lo script e' di sola lettura.
+_settori={}
+for r in senza:
+    uid=r.get('user_id')
+    if uid not in _settori:
+        _settori[uid]=settore_utente(uid) if uid else None
+
+gpt=[None]*len(senza)
+_per_settore={}
+for idx,r in enumerate(senza):
+    _per_settore.setdefault(_settori.get(r.get('user_id')),[]).append(idx)
+
 # chunk piccoli: isola eventuali errori di parsing GPT su batch lunghi
-gpt=[]
-for i in range(0,len(descs),20):
-    try:
-        gpt += classifica_con_ai(descs[i:i+20], lista_fornitori=forn[i:i+20])
-    except Exception as e:
-        print(f"  (chunk {i} fallito: {str(e)[:50]})")
-        gpt += ['Da Classificare']*len(descs[i:i+20])
+for settore,indici in _per_settore.items():
+    for i in range(0,len(indici),20):
+        blocco=indici[i:i+20]
+        try:
+            esiti=classifica_con_ai([descs[j] for j in blocco],
+                                    lista_fornitori=[forn[j] for j in blocco],
+                                    settore=settore)
+        except Exception as e:
+            print(f"  (chunk {i} settore={settore} fallito: {str(e)[:50]})")
+            esiti=['Da Classificare']*len(blocco)
+        for j,cat in zip(blocco,esiti):
+            gpt[j]=cat
 div=[]
 for s,g in zip(senza,gpt):
     if g and g!='Da Classificare' and g!=s['cat']:

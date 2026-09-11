@@ -18,21 +18,43 @@ if envp.exists():
             k, _, v = ln.partition('='); os.environ.setdefault(k.strip(), v.strip())
 
 from services.ai_service import classifica_con_ai
+from services.settore_service import settore_utente
 
 div = json.load(open('_divergenze_categorie.json', encoding='utf-8'))
 descs = [d['descrizione'] for d in div]
 forn = [d.get('fornitore') or '' for d in div]
 
-# GPT in chunk piccoli: un eventuale errore di parsing JSON isola pochi casi
-# invece di compromettere l'intero set (problema visto su batch lunghi).
-cats_gpt = []
+# Il settore va passato, o un negozio riceve il prompt dei ristoranti e la
+# diagnosi a video accusa righe giuste. Il JSON porta lo `user_id` per riga
+# (catscan_freddo.py:108), quindi si RAGGRUPPA per settore prima di chiamare:
+# un chunk misto avrebbe un solo prompt per clienti di settori diversi.
+# Lo script e' di sola lettura — `classifica_con_ai` qui non scrive.
+_settori = {}
+for d in div:
+    uid = d.get('user_id')
+    if uid not in _settori:
+        _settori[uid] = settore_utente(uid) if uid else None
+
+cats_gpt = [None] * len(div)
 CHUNK = 20
-for i in range(0, len(descs), CHUNK):
-    try:
-        cats_gpt += classifica_con_ai(descs[i:i+CHUNK], lista_fornitori=forn[i:i+CHUNK])
-    except Exception as e:
-        print(f"  (chunk {i}-{i+CHUNK} fallito: {str(e)[:60]} -> Da Classificare)")
-        cats_gpt += ['Da Classificare'] * len(descs[i:i+CHUNK])
+_per_settore = {}
+for idx, d in enumerate(div):
+    _per_settore.setdefault(_settori.get(d.get('user_id')), []).append(idx)
+
+for settore, indici in _per_settore.items():
+    for i in range(0, len(indici), CHUNK):
+        blocco = indici[i:i+CHUNK]
+        try:
+            esiti = classifica_con_ai(
+                [descs[j] for j in blocco],
+                lista_fornitori=[forn[j] for j in blocco],
+                settore=settore,
+            )
+        except Exception as e:
+            print(f"  (chunk {i}-{i+CHUNK} settore={settore} fallito: {str(e)[:60]} -> Da Classificare)")
+            esiti = ['Da Classificare'] * len(blocco)
+        for j, cat in zip(blocco, esiti):
+            cats_gpt[j] = cat
 
 esiti = {'gpt=proposta (ERRORE probabile)': [], 'gpt=attuale (falso positivo regola)': [],
          'gpt=terza via (incerto)': []}

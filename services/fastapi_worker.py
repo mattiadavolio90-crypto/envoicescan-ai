@@ -2853,6 +2853,40 @@ _CONFIG_TOPICS: List[tuple] = [
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
 _CONFIG_TOPICS_BLOCCATI = frozenset(k for (k, _l, b, _d) in _CONFIG_TOPICS if b)
 
+# Topic che per un settore non esistono. Un negozio non ha coperti — la cassa
+# manda solo il fatturato, e la Fase 3 gli ha spento la tab: lasciare il topic
+# nel configuratore offrirebbe di accendere un avviso su un dato che non arriva
+# mai, e la sua CTA punterebbe a una tab che non puo' aprire.
+_TOPIC_OFF_PER_SETTORE: Dict[str, frozenset] = {
+    SETTORE_RETAIL: frozenset({"coperti_anomalia"}),
+}
+
+# Le descrizioni che NOMINANO qualcosa che per il settore non esiste. La voce
+# resta (l'avviso serve a entrambi), cambia solo cio' che promette: il fatturato
+# di un negozio serve al costo merce, non al food cost.
+_TOPIC_DESCRIZIONE_RETAIL = {
+    "fatturato_mancante":
+        "Ti ricordo di inserire il fatturato del mese, serve per costo merce e MOL.",
+}
+
+
+def _topics_per_settore(settore: Optional[str]) -> List[tuple]:
+    """`_CONFIG_TOPICS` filtrato e ri-etichettato per il settore.
+
+    Per la ristorazione (e per ogni settore ignoto) ritorna ESATTAMENTE la lista
+    di oggi, stesso ordine e stesse stringhe: e' il vincolo di Mattia, e un
+    presidio lo confronta per uguaglianza.
+    """
+    spenti = _TOPIC_OFF_PER_SETTORE.get(settore or "", frozenset())
+    if not spenti and settore != SETTORE_RETAIL:
+        return _CONFIG_TOPICS
+    testi = _TOPIC_DESCRIZIONE_RETAIL if settore == SETTORE_RETAIL else {}
+    return [
+        (k, l, b, testi.get(k, d))
+        for (k, l, b, d) in _CONFIG_TOPICS
+        if k not in spenti
+    ]
+
 
 def _filtra_notifiche_topic_spenti(
     rows: List[Dict[str, Any]],
@@ -5870,10 +5904,18 @@ def _briefing_dati_mensili_mancanti(
     # Anomalia COPERTI di ieri: notifica SOLO su scostamento forte vs riferimento
     # (mese in corso). Parametrizzata in COPERTI_ALERT, niente rumore quotidiano.
     # Toggle spento -> non calcolare. Best-effort: non blocca le altre notifiche.
+    # Per un negozio il topic non esiste proprio (_TOPIC_OFF_PER_SETTORE): la
+    # cassa manda solo il fatturato e la tab Coperti e' spenta dalla Fase 3.
+    # Il gate sta QUI e non nel chiamante perche' i chiamanti sono due, e uno
+    # non passa nemmeno `spenti`: risolvere il settore dalla sede li copre
+    # entrambi senza cambiare la firma.
     try:
+        from services.settore_service import settore_sede
+        _settore_sede = settore_sede(ristorante_id, supabase_client)
+        _coperti_off = "coperti_anomalia" in _TOPIC_OFF_PER_SETTORE.get(_settore_sede, frozenset())
         anomalia = (
             _briefing_anomalia_coperti(ristorante_id, supabase_client, oggi)
-            if "coperti_anomalia" not in spenti else None
+            if "coperti_anomalia" not in spenti and not _coperti_off else None
         )
         if anomalia:
             out.append(anomalia)
@@ -7979,6 +8021,8 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, sb)
+    from services.settore_service import settore_utente
+    settore = settore_utente(str(user["id"]), sb)
 
     nome = ""
     disabled: set = set()
@@ -8024,7 +8068,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
 
     topics = [
         ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato, descrizione=descrizione)
-        for (key, label, bloccato, descrizione) in _CONFIG_TOPICS
+        for (key, label, bloccato, descrizione) in _topics_per_settore(settore)
     ]
     return ConfigResponse(
         nome_referente=nome, topics=topics,
@@ -8056,6 +8100,14 @@ def home_config_post(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
+    from services.settore_service import settore_utente
+    settore = settore_utente(str(user["id"]), sb)
+
+    # `validi` e `bloccati` restano sulla lista COMPLETA, non su quella del
+    # settore: un topic spento per settore che il cliente avesse gia' in
+    # `topics_disabled` non deve essere scartato dalla persistenza — sparirebbe
+    # dal record e si riaccenderebbe da solo se un giorno il settore cambia.
+    # Il settore filtra cosa si VEDE, non cosa e' salvabile.
     bloccati = {k for (k, _l, b, _d) in _CONFIG_TOPICS if b}
     validi = {k for (k, _l, _b, _d) in _CONFIG_TOPICS}
     disabled = [
@@ -8141,7 +8193,7 @@ def home_config_post(
     disabled_set = set(disabled)
     topics = [
         ConfigTopic(key=key, label=label, enabled=key not in disabled_set, bloccato=bloccato, descrizione=descrizione)
-        for (key, label, bloccato, descrizione) in _CONFIG_TOPICS
+        for (key, label, bloccato, descrizione) in _topics_per_settore(settore)
     ]
     chat_ai = True if body.chat_ai_enabled is None else bool(body.chat_ai_enabled)
     # Pool condiviso per gli account multi-sede (coerente con l'endpoint chat).
