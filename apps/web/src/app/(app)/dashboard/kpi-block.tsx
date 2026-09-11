@@ -4,6 +4,7 @@ import { type HomeKpi } from "@/lib/home";
 import { calcolaSparkline, type PuntoMol } from "@/lib/catena-confronti";
 import { formatEuro } from "@/lib/format";
 import { tintaTrend } from "@/lib/home-kpi";
+import { costoMerceLabel, type Settore } from "@/lib/categorie-spesa";
 import { cn } from "@/lib/utils";
 
 function Trend({
@@ -155,7 +156,7 @@ function MolAndamento({
   );
 }
 
-export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
+export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | null }) {
   if (!kpi.has_data) return null;
   const molPos = kpi.mol >= 0;
 
@@ -220,8 +221,9 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         >
           <span className="mt-px">⚠</span>
           <span>
-            Mancano le fatture costo di {kpi.periodo_label.toLowerCase()}: il food cost risulta
-            0 e questo margine non è reale. Si aggiorna da solo appena arrivano.
+            Mancano le fatture costo di {kpi.periodo_label.toLowerCase()}: il{" "}
+            {costoMerceLabel(settore).toLowerCase()} risulta 0 e questo margine non è reale.
+            Si aggiorna da solo appena arrivano.
           </span>
         </Link>
       )}
@@ -240,7 +242,10 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         />
         <RigaVoce
           colore="amber"
-          label="Food cost"
+          // La Home scrive "Food cost" con la c minuscola, `costoMerceLabel`
+          // restituisce "Food Cost": usarla qui cambierebbe un'etichetta a un
+          // ristorante, che e' esattamente il vincolo da non violare.
+          label={settore === "retail" ? costoMerceLabel(settore) : "Food cost"}
           value={
             kpi.food_cost_pct != null
               ? `${kpi.food_cost_pct.toLocaleString("it-IT")}%`

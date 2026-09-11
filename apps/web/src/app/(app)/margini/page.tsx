@@ -117,7 +117,11 @@ export default async function MarginiPage({
       <PageHeader
         icon="bar-chart"
         title="Ricavi e Margini"
-        hint="La salute economica del tuo locale"
+        hint={
+          user?.tipo_attivita === "retail"
+            ? "La salute economica del tuo negozio"
+            : "La salute economica del tuo locale"
+        }
       />
 
       <Suspense>
@@ -136,7 +140,7 @@ export default async function MarginiPage({
         {tab === "calcolo" && (
           <ErrorBoundary>
             <Suspense>
-              <CalcoloTab dataDa={data_da} dataA={data_a} />
+              <CalcoloTab dataDa={data_da} dataA={data_a} settore={user?.tipo_attivita} />
             </Suspense>
           </ErrorBoundary>
         )}

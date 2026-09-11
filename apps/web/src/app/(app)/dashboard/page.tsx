@@ -12,6 +12,8 @@ import { BlockRetry } from "./block-retry";
 import { HomeAutoRefresh } from "./home-auto-refresh";
 import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth";
+import { costoMerceLabel } from "@/lib/categorie-spesa";
 
 // Streaming con Suspense per blocco: ogni sezione carica i suoi dati in modo
 // indipendente. Prima un unico Promise.all bloccante aspettava la chiamata piu'
@@ -70,7 +72,12 @@ async function KpiSaluteBlock() {
   // Solo kpi + salute: prima si chiamava anche fetchDashboardStats() (endpoint
   // pesante su clienti con migliaia di righe) solo per ricavare isEmpty, ma lo
   // stato vuoto e' gia' deducibile da kpi/salute — niente round-trip in piu'.
-  const [kpi, salute] = await Promise.all([fetchKpi(), fetchSalute()]);
+  // NON e' gratis: il layout usa `getCurrentSession`, una entry cache() DIVERSA
+  // sopra un `verifySession` non memoizzato, quindi questa e' una chiamata in
+  // piu' al worker per render (stesso costo dichiarato in Fase 3 per le altre
+  // pagine). Se un giorno pesa, il fix e' memoizzare `verifySession`, non
+  // togliere il settore dalle pagine.
+  const [kpi, salute, user] = await Promise.all([fetchKpi(), fetchSalute(), getCurrentUser()]);
 
   // Distinzione importante:
   //   - entrambi null  => il worker NON ha risposto (cold-start/timeout): retry,
@@ -105,14 +112,15 @@ async function KpiSaluteBlock() {
   return (
     <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
       {salute && <SaluteCard salute={salute} />}
-      {kpi && !kpiVuoto && <KpiBlock kpi={kpi} />}
+      {kpi && !kpiVuoto && <KpiBlock kpi={kpi} settore={user?.tipo_attivita} />}
       {kpiVuoto && (
         <Card>
           <CardContent className="flex h-full flex-col items-center justify-center py-16 text-center">
             <Receipt className="mx-auto size-12 text-muted-foreground/40" />
             <p className="mt-4 text-base font-medium">Nessun dato di margine per questo mese</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Carica le fatture e inserisci il fatturato per vedere qui food cost e MOL.
+              Carica le fatture e inserisci il fatturato per vedere qui{" "}
+              {costoMerceLabel(user?.tipo_attivita).toLowerCase()} e MOL.
             </p>
           </CardContent>
         </Card>

@@ -23,9 +23,11 @@ async function BriefingBlock() {
 
 // Conti (MOL): caricato in streaming, non blocca il briefing.
 async function ContiBlock() {
-  const kpi = await fetchKpi();
+  // `/m` e' un frontend separato, non responsive: va allineato a mano, o il
+  // negozio leggerebbe "Food cost" sul telefono e "Costo Merce" sul desktop.
+  const [kpi, user] = await Promise.all([fetchKpi(), getCurrentUser()]);
   if (!kpi) return null;
-  return <KpiBlock kpi={kpi} />;
+  return <KpiBlock kpi={kpi} settore={user?.tipo_attivita} />;
 }
 
 // Salute della gestione: anch'essa in streaming.

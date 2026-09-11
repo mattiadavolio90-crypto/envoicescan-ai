@@ -20,6 +20,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { parseDecimaleItOZero } from "@/lib/format";
+import { type Settore } from "@/lib/categorie-spesa";
+import { commentoPerKpi, nomeKpiMerce } from "@/lib/kpi-margini";
 
 type Commento = {
   kpi_nome: string;
@@ -137,9 +139,10 @@ const SECTION_CONFIG: Record<Section, { color: string; bg: string; border: strin
 type Props = {
   dataDa: string;
   dataA: string;
+  settore?: Settore | null;
 };
 
-export function CalcoloTab({ dataDa, dataA }: Props) {
+export function CalcoloTab({ dataDa, dataA, settore }: Props) {
   const [data, setData] = useState<AnalisiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [caricaOpen, setCaricaOpen] = useState(false);
@@ -439,7 +442,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
       </div>
 
       {/* Analisi visiva: cascata conto economico + gauge + commenti */}
-      <AnalisiVisiva data={data} totaliVista={totaliRiepilogo ?? data.totali} isMedia={isMedia} />
+      <AnalisiVisiva data={data} totaliVista={totaliRiepilogo ?? data.totali} isMedia={isMedia} settore={settore} />
 
       {costoPersMese && (
         <CostoPersonaleDialog
@@ -817,10 +820,12 @@ function AnalisiVisiva({
   data,
   totaliVista,
   isMedia,
+  settore,
 }: {
   data: AnalisiResponse;
   totaliVista: MesePivot;
   isMedia: boolean;
+  settore?: Settore | null;
 }) {
   const t = totaliVista;
   const hasData = t.fatturato_netto > 0 || t.costi_fb_totali > 0;
@@ -830,8 +835,14 @@ function AnalisiVisiva({
   // bande (verde/giallo/arancio/rosso), il TS ne aveva 3, e sul MOL i due
   // giudizi si contraddicevano su tutta la banda 5-20% — il gauge poteva essere
   // ambra con il commento accanto rosso. La palette resta quella del gauge.
+  // Il nome del KPI merce lo decide il worker in base al settore
+  // (_nome_kpi_per_settore, routers/margini.py): un negozio riceve «Costo
+  // Merce». Cercare qui il letterale "Food Cost" non troverebbe il suo
+  // commento, e il gauge perderebbe colore E diagnosi senza un errore — e'
+  // il difetto che il commento sopra descrive gia' per "Costi Gestione".
   const fc = data.food_cost_perc;
-  const fcColor = coloreDaCommento(data.commenti, "Food Cost");
+  const labelMerce = nomeKpiMerce(settore);
+  const fcColor = coloreDaCommento(data.commenti, labelMerce);
   const pm = data.primo_margine_perc;
   const pmColor = coloreDaCommento(data.commenti, "1° Margine");
   const sg = data.spese_gen_perc;
@@ -865,7 +876,7 @@ function AnalisiVisiva({
           {/* Gauge con diagnosi integrata */}
           <div className="flex flex-col gap-0 divide-y divide-border">
             {[
-              { label: "Food Cost",      kpiNome: "Food Cost",       valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
+              { label: labelMerce,       kpiNome: labelMerce,        valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
               { label: "1° Margine",     kpiNome: "1° Margine",      valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
               { label: "Costi Gestione", kpiNome: "Spese Generali",  valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
               { label: "MOL",            kpiNome: "MOL",             valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "#22c55e", valueColor: molColor },
@@ -873,9 +884,7 @@ function AnalisiVisiva({
               // Il match e' sul nome che manda /api/margini/analisi (margini.py:1209-1213),
               // non sull'etichetta a video: il gauge "Costi Gestione" cercava se stesso
               // mentre il worker manda "Spese Generali", e restava senza emoji ne commento.
-              const commento = data.commenti.find(
-                (c) => normalizzaKpi(c.kpi_nome) === normalizzaKpi(g.kpiNome)
-              );
+              const commento = commentoPerKpi(data.commenti, g.kpiNome);
               return (
                 <div key={g.label} className="flex items-center gap-6 py-5">
                   <Gauge {...g} size="sm" />
@@ -952,7 +961,7 @@ const GAUGE_PER_EMOJI: Record<string, string> = {
 };
 
 function coloreDaCommento(commenti: Commento[], kpiNome: string): string {
-  const c = commenti.find((x) => normalizzaKpi(x.kpi_nome) === normalizzaKpi(kpiNome));
+  const c = commentoPerKpi(commenti, kpiNome);
   // Senza commento il colore e' NEUTRO, non ambra: il worker popola `commenti`
   // solo se c'e' almeno un mese con fatturato > 0 (margini.py:1207), mentre il
   // gauge si renderizza anche con soli costi (hasData include costi_fb_totali).
@@ -960,12 +969,6 @@ function coloreDaCommento(commenti: Commento[], kpiNome: string): string {
   // percentuali sono tutte 0 — un giudizio ambra su dati assenti sarebbe una
   // valutazione inventata, come lo era il verde/rosso delle soglie locali.
   return (c && GAUGE_PER_EMOJI[c.emoji]) ?? GAUGE_NEUTRAL;
-}
-
-/** I nomi KPI viaggiano come stringhe display su entrambi i lati (nessuna chiave
- *  stabile nella response): il confronto ignora spazi, gradi e maiuscole. */
-function normalizzaKpi(nome: string): string {
-  return nome.toLowerCase().replace(/[°\s]/g, "");
 }
 
 function Gauge({

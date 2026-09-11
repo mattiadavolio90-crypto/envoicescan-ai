@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from config.constants import SETTORE_RETAIL
 from config.logger_setup import get_logger
 
 logger = get_logger("router_margini")
@@ -860,7 +861,40 @@ _CELL_FIELDS_EDITABILI = {
 }
 
 
-def _valuta_soglia_margine(valore: float, key: str, crescente: bool = True) -> tuple:
+# Le voci che per il retail cambiano NOME, e i testi delle soglie che le
+# nominano: sono un blocco solo. Rinominare il KPI senza i testi lascerebbe un
+# negozio a leggere «Costo Merce · Food cost eccellente».
+_KPI_NOME_RETAIL = {"food_cost": "Costo Merce"}
+
+# Le voci per cui il retail NON riceve un giudizio di soglia (decisione di
+# Mattia per la v1): l'incidenza della merce sul fatturato va da ~35% a ~78%
+# secondo cosa si vende, e una soglia unica colorerebbe di rosso clienti sani.
+# Le altre voci (personale, spese generali, MOL) restano giudicate: sono
+# incidenze sul fatturato che non dipendono dal tipo di merce.
+#
+# «Nessun giudizio» non e' «nessun commento»: la riga resta, con l'emoji neutra
+# che il frontend gia' mappa su un colore NEUTRO (`coloreDaCommento`,
+# calcolo-tab.tsx), e dice il valore invece di valutarlo. Togliere la voce
+# spegnerebbe il gauge, che e' una cosa diversa da non colorarlo.
+_KPI_SENZA_SOGLIA_RETAIL = frozenset({"food_cost"})
+
+_TESTO_SENZA_SOGLIA_RETAIL = (
+    "Per il commercio non esiste una soglia di riferimento valida: "
+    "confronta questo valore coi tuoi mesi precedenti"
+)
+
+
+def _nome_kpi_per_settore(key: str, nome_default: str, settore: Optional[str]) -> str:
+    if settore == SETTORE_RETAIL:
+        return _KPI_NOME_RETAIL.get(key, nome_default)
+    return nome_default
+
+
+def _valuta_soglia_margine(
+    valore: float, key: str, crescente: bool = True, settore: Optional[str] = None,
+) -> tuple:
+    if settore == SETTORE_RETAIL and key in _KPI_SENZA_SOGLIA_RETAIL:
+        return ("ℹ️", _TESTO_SENZA_SOGLIA_RETAIL)
     soglie = _KPI_SOGLIE_MARGINI.get(key, [])
     if not soglie:
         return ("ℹ️", "")
@@ -1140,6 +1174,9 @@ def get_margini_analisi(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
+    from services.settore_service import settore_utente
+    settore = settore_utente(str(user["id"]), sb)
+
     d_da = _date.fromisoformat(data_da)
     d_a = _date.fromisoformat(data_a)
 
@@ -1275,9 +1312,9 @@ def get_margini_analisi(
             ("personale", pers_perc, True, "Costo del Lavoro"),
             ("mol", mol_perc, False, "MOL"),
         ]:
-            emoji, testo = _valuta_soglia_margine(val, key, crescente)
+            emoji, testo = _valuta_soglia_margine(val, key, crescente, settore)
             commenti.append(CommentoKpi(
-                kpi_nome=nome,
+                kpi_nome=_nome_kpi_per_settore(key, nome, settore),
                 percentuale=f"{val:.1f}%",
                 commento=testo,
                 emoji=emoji,
