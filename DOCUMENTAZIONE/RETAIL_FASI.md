@@ -1,12 +1,17 @@
 # Retail — le fasi dell'implementazione
 
-Stato all'**11/09/2026, sera**: **Fasi 0, 1, 2, 3, 4 e 5 CHIUSE** — tutte. Branch
-`retail`, **mai pushato** (`origin/retail` non esiste).
+Stato all'**11/09/2026, sera**: **IMPLEMENTAZIONE CHIUSA** — Fasi 0-5 e Chiusura.
+Il branch `retail` e' stato riportato su **`main` in locale con rebase**
+(fast-forward, nessun merge commit), il branch e il worktree sono stati rimossi, e
+le **due migration sono applicate sul DB**. **Non e' ancora stato pushato**: il push
+lo decide Mattia e spedisce tutto `main`.
 
 > **Il numero di commit non sta scritto qui**, di proposito: una cifra in un file
 > versionato non puo' contare i commit che la aggiornano, e le prime due stesure
-> di questa riga erano infatti sbagliate in due modi diversi. Si legge con
-> `git log --oneline main..retail | wc -l`, che e' sempre giusto.
+> di questa riga erano infatti sbagliate in due modi diversi. Finche' il lavoro non
+> e' pushato si legge con `git log --oneline origin/main..main | wc -l`, che conta
+> pero' **anche i commit delle altre sessioni**: si guarda chi li ha fatti prima di
+> attribuirseli.
 Fase 0 `b642e3c` · Fase 1 `50fc209` (sette buchi della stessa famiglia trovati dal
 reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 (11 mutanti) · **Fase 3** `5d9f367`, `c7e0d3b`, `dd6ac5e`, `c693a17`, `81d65a5`,
@@ -67,8 +72,9 @@ vivo l'11/9 sera** (contratto «PRIMA DEL PUSH», punti 1-4): restano il rientro
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
 fasi con checklist, gate, deploy, rollback. Il piano di plan-mode
 (`~/.claude/plans/mi-piacerebbe-che-l-app-curious-milner.md`) è **superato** da questo
-file. Lo stato per riprendere la sessione sta in `docs/piani/PIANO_RETAIL.md` (locale,
-git-ignorato): punta qui, non duplica.
+file. Lo stato per riprendere la sessione stava in `docs/piani/PIANO_RETAIL.md`
+(locale, git-ignorato), **eliminato alla Chiusura dell'11/9/2026**: il lavoro e' finito
+e due fonti sullo stesso stato sono un rischio, non una comodita' (`WORKFLOW.md` §2).
 
 > Si aggiorna **durante** il lavoro, non alla fine: le caselle si spuntano quando il gate
 > di fase è passato, non quando il codice è scritto. Il nome del file non è casuale: il
@@ -649,7 +655,7 @@ ha qualunque aliquota) e nel wrapper `_applica_tutti_guardrail`, passato dai 5 p
 (`classifica_con_ai` ×4, L7 ×1). L'unico altro chiamante, `scripts/ricategorizza_sede.py`
 (manuale, dry-run di default), non lo passa; `ricategorizza_sede_ai.py` non chiama il guardrail
 ma replica il deterministico runtime e lo streak senza gate settore: entrambi residuo dichiarato
-in PIANO_RETAIL.md, da chiudere prima che esista una sede retail. Test: +10 in `tests/test_retail_guardrail_iva.py` (guardrail da solo, wrapper,
+(residuo dichiarato a suo tempo), da chiudere prima che esista una sede retail. Test: +10 in `tests/test_retail_guardrail_iva.py` (guardrail da solo, wrapper,
 percorso di successo con e senza confidenze, L7 con «SERVIZIO DI PRODUZIONE POLLO», che il
 dizionario mette in SERVIZI e il guardrail portava in CARNE; ogni caso affiancato a `None` e
 'ristorazione'). **5 mutanti su 5 uccisi** (gate spento, gate rovesciato, i tre punti runtime
@@ -1557,16 +1563,27 @@ tocca i ristoranti.
 
 ## Chiusura finale — quando tutte le fasi hanno passato il gate
 
-- [ ] `git rebase main` e suite verde sul cumulativo
-- [ ] `/code-reviewer` sul cumulativo del branch, non solo sull'ultima fase
-- [ ] Baseline: `capture` su `main` aggiornato, poi `check` sul branch → zero
-- [ ] `CLAUDE.md`: una riga su `tipo_attivita` nelle regole di dominio;
-      `tests/test_documentazione_onesta.py`: questo file nella lista (l'indice §6 di
-      `MAPPA_TECNICA.md` lo cita già dal 10/9)
-- [ ] Migration applicata sul DB **prima** del push, per mano di Mattia (sequenza sopra)
-- [ ] Commit portati su `main` con rebase (non merge), branch eliminato, worktree rimosso
-- [ ] Memoria di progetto aggiornata, `docs/piani/PIANO_RETAIL.md` eliminato
-      (`WORKFLOW.md` §2: mai due fonti sullo stesso stato)
+**Eseguita l'11/09/2026 sera.** Tutte le caselle sono spuntate:
+
+- [x] `git rebase main` e suite verde sul cumulativo — rebasato **due volte** (la
+      seconda su `bb08c9f`, un commit GDPR arrivato da una sessione parallela mentre
+      lavoravo): 13.877 verdi / 45 skip, `-m sql` 192, OpenAPI 197 senza drift
+- [x] `/code-reviewer` sul cumulativo completo (47 commit), non sull'ultima fase: 🟢
+- [x] Baseline «Diff a zero» **dopo** le migration, in processi nuovi
+- [x] `CLAUDE.md`: `tipo_attivita` e' la **regola di dominio 7** (file a 199 righe,
+      sotto il tetto che il suo test impone); questo file e' in `DOC_VIVI` di
+      `tests/test_documentazione_onesta.py`
+- [x] **Le DUE migration applicate sul DB** (approvate da Mattia passo passo), prima
+      misurate pendenti e poi ri-misurate: 12 sedi su 12 `'ristorazione'`, view con
+      `security_invoker=true` e 0 righe incoerenti sui dati veri
+- [x] Commit portati su `main` con **rebase (fast-forward, nessun merge commit)**,
+      branch `retail` eliminato, worktree rimosso
+- [x] Memoria di progetto aggiornata, `docs/piani/PIANO_RETAIL.md` eliminato
+
+**Non fatto, e non spetta a me**: il **push**. Lo decide Mattia, e spedisce tutto
+`main`. Al momento della chiusura la coda e' di **48 commit** (47 del retail + 1 GDPR
+di un'altra sessione) e tocca `apps/web/**`: partono **entrambe** le pipeline, Vercel
+e Railway. La coda va ri-misurata subito prima di pushare, non ripresa da qui.
 
 ---
 
