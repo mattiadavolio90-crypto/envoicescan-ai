@@ -1,11 +1,11 @@
 # Retail — le fasi dell'implementazione
 
-Stato al **10/09/2026, sera**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
+Stato al **11/09/2026, notte**: Fase 0 chiusa (`b642e3c`); **1.1 e 1.2 chiuse** (gate 4-5
 passato: due check a zero dopo il fix di paginazione `da269ad` su `main` e la
 ri-cattura della baseline, vedi «Trovato durante la 1.1»); **1.3-1.7 chiuse**; gate 1-8 e 10
 passati; gate 9: sei letture (cinque del reviewer, una a mano) hanno trovato **sette buchi
 della stessa famiglia, tutti chiusi** (vedi le sezioni «lettura», dalla seconda alla sesta);
-**settima passata del reviewer verde** (10/9 ore 23:00, cumulativo di 14 commit, codice a
+**settima passata del reviewer verde** (11/9 ore 00:46, cumulativo di 14 commit, codice a
 `50fc209`). **Fase 1 CHIUSA.** Prossima: Fase 2 con Opus, ultrathink.
 
 **Questo è il documento unico dell'implementazione**: contesto, decisioni, fatti misurati,
@@ -217,7 +217,7 @@ catturato. Un `check` verde una volta sola non è una prova: se ne fanno **due**
 
 ---
 
-## Fase 1 — Isolamento · **bloccante per tutte le altre** · Fable, ultrathink · **CHIUSA** 10/9/2026 (`50fc209`)
+## Fase 1 — Isolamento · **bloccante per tutte le altre** · Fable, ultrathink · **CHIUSA** 11/9/2026 (`50fc209`)
 
 Nessuna fase successiva parte prima che questa abbia passato il gate. Sottofasi
 nell'ordine: ogni casella si spunta col gate 4-5 (baseline) rifatto.
@@ -651,7 +651,7 @@ alla prima passata, verde da solo e alla seconda — file non toccato dal branch
 test, non regressione retail; la migration verificata sul live come **non applicata** (colonna
 assente, funzione non aggiornata), coerente col vincolo.
 
-### Settima lettura (code-reviewer sul cumulativo, 10/9 ore 23:00): verde
+### Settima lettura (code-reviewer sul cumulativo, 11/9 ore 00:46): verde
 
 Nessun ottavo buco: il reviewer ha ripercorso ogni chiamante vivo di `estrai_dati_da_xml` (6),
 `classifica_con_ai` (2), `categorizza_con_memoria` / `ottieni_categoria_prodotto` (tutti i
@@ -687,6 +687,30 @@ Verificabile end-to-end **solo dopo 1.4**.
       scelto per settore dove oggi si usa `PROMPT_CLASSIFICAZIONE_AI`
 - [ ] Replicare `tests/test_prompt_ai_coerenza_dominio.py` sul prompt retail: divieto NOTE
       con importo ≠ 0, `Da Classificare` esplicito
+
+**Punto di partenza lasciato dalla Fase 1** (così la sessione non lo ri-cerca):
+- Il prompt vive in `config/prompt_ai_potenziato.py` (`PROMPT_CLASSIFICAZIONE_AI`,
+  `get_prompt_classificazione(articoli_json)`); l'unico consumatore è
+  `_chiama_gpt_classificazione` in `services/ai_service.py`, che ha già il kwarg `settore` e
+  lo usa solo per la **validazione** dell'uscita (`_categorie_ammesse_per(settore)`: per un
+  negozio `ARTICOLO DI VENDITA` + le 4 spese generali; una food o una categoria inventata →
+  «Da Classificare», nessun recupero dal dizionario). La scelta del prompt per settore va
+  fatta lì: `get_prompt_classificazione(articoli_json, settore=settore)`, kwarg additivo, con
+  `None`/'ristorazione' che ritorna **letteralmente** il testo di oggi (test: uguaglianza con
+  `PROMPT_CLASSIFICAZIONE_AI`, non `in`).
+- Per un negozio gli hint (`ottieni_hint_per_ai`) sono già `None`; safety net, override delle
+  regole forti e guardrail IVA sono già spenti: il prompt retail è l'unica fonte di categoria
+  oltre alla memoria locale del cliente.
+- Uscite ammesse dal prompt retail: `ARTICOLO DI VENDITA`, le 4 di `CATEGORIE_SPESE_GENERALI`,
+  `📝 NOTE E DICITURE` solo a importo zero, `Da Classificare` esplicito quando incerto.
+- Test da scrivere (file nuovi, come sempre): la copia dei 6 test di
+  `tests/test_prompt_ai_coerenza_dominio.py` sul testo retail; un test di cablaggio che catturi
+  il prompt inviato al client finto (`_gpt` in `tests/test_retail_post_ai.py` registra
+  `chat.completions.create`) per `settore='retail'` e per `None`; un mutante che faccia
+  scegliere sempre il prompt dei ristoranti.
+- La baseline (`retail_baseline.py check`) non chiama GPT: il vincolo sui ristoranti qui lo
+  prova il test di uguaglianza del prompt, più la suite. Migration e deploy restano alla
+  «Chiusura finale»: nessuna fase intermedia li richiede.
 
 ---
 
@@ -845,7 +869,7 @@ così Mattia cambia modello a mano.
 | Fase | Modello | Sforzo |
 |---|---|---|
 | 0 — snapshot, backup, worktree | Opus | **chiusa** 10/9 (`b642e3c`) |
-| 1 — isolamento | **Fable** | **chiusa** 10/9 (`50fc209`) — ultrathink, un giorno invece di tre: 4 file condivisi, 12 punti di uscita, 7 buchi trovati in 6 letture e chiusi |
+| 1 — isolamento | **Fable** | **chiusa** 11/9 (`50fc209`) — ultrathink, un giorno invece di tre: 4 file condivisi, 12 punti di uscita, 7 buchi trovati in 6 letture e chiusi |
 | 2 — prompt retail | Opus | **ultrathink** — 1 giorno: regola di dominio #1 |
 | 3 — spegnimenti ed etichette | Opus | normale — 2 giorni |
 | 4 — briefing, chat, soglie | Opus | normale — 1 giorno |

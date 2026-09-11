@@ -86,7 +86,7 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   chiamanti di `fetch_all` su 34 senza `.order()`**, stessa classe. Suite
 >   **13.363 verdi, 44 skip**.
 >
-> - **10/09/2026, branch `retail` (14 commit, NON spedito) — Fase 1 del retail:
+> - **10-11/09/2026, branch `retail` (15 commit, NON spedito) — Fase 1 del retail:
 >   l'isolamento per settore.** Colonna `ristoranti.tipo_attivita` (migration
 >   scritta, NON applicata), `services/settore_service.py`, e un kwarg additivo
 >   `settore` lungo tutta la catena di classificazione (memoria, GPT,
