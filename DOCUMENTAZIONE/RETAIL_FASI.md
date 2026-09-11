@@ -1064,6 +1064,24 @@ frontend), `ec43fc2` (topic, script, bump briefing), `a6bb45d`, `e91f576`,
 **7 sopravvissuti che hanno smascherato altrettanti presidi finti**, riscritti e
 ri-mutati.
 
+I **sei file di test nuovi** (nessun esistente toccato), con cui si ri-conta la
+cifra sopra invece di ereditarla:
+
+| File | Cosa presidia |
+|---|---|
+| `tests/test_chat_settore_retail.py` | prompt di sede e catena, gate tool, `/api/classify` |
+| `tests/test_margini_soglie_settore.py` | soglie, nome KPI, i due endpoint margini |
+| `tests/test_kpi_margini_frontend.py` | il match gauge↔commento, eseguendo il TS vero |
+| `tests/test_briefing_topic_settore.py` | topic per settore e generazione della notifica |
+| `tests/test_script_settore_retail.py` | i quattro script e il fallback sulla sede |
+| `tests/test_wiring_settore_endpoint.py` | i gate nei **call site** — la lezione della fase |
+
+```
+python -m pytest tests/test_chat_settore_retail.py tests/test_margini_soglie_settore.py \
+  tests/test_kpi_margini_frontend.py tests/test_briefing_topic_settore.py \
+  tests/test_script_settore_retail.py tests/test_wiring_settore_endpoint.py -q
+```
+
 - [x] **Chat, blocco benchmark** — il prompt diceva «Rispondi SOLO a domande sui
       dati **del ristorante**» e hardcodava «soglia normale è 28-33%». Per il
       retail i benchmark non esistono (da ~35% a ~78% secondo cosa si vende): al
