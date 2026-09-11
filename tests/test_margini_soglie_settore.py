@@ -166,3 +166,106 @@ def test_endpoint_lascia_al_negozio_le_voci_ancora_valide():
     c = _commenti_endpoint(SETTORE_RETAIL)
     assert c["MOL"].emoji != "ℹ️"
     assert c["Costo del Lavoro"].emoji != "ℹ️"
+
+
+# ── La tabella delle soglie, non solo la formula che la legge ────────────
+#
+# `test_ramo_ristorazione_identico_al_comportamento_di_ieri` ricalcola la
+# formula dalla tabella: resterebbe verde se cambiasse la TABELLA. Qui i valori
+# di ieri sono scritti a mano, una volta, e confrontati.
+
+_SOGLIE_DI_IERI = {
+    "food_cost": [
+        (28, "🟢", "Food cost eccellente — ottimo controllo acquisti e sprechi"),
+        (33, "🟡", "Food cost nella norma per il settore ristorazione"),
+        (38, "🟠", "Food cost sopra la media — valutare ottimizzazione acquisti o menù"),
+        (100, "🔴", "Food cost critico — necessaria revisione fornitori, porzioni e sprechi"),
+    ],
+    "spese_generali": [
+        (15, "🟢", "Spese generali contenute — gestione efficiente"),
+        (22, "🟡", "Spese generali nella norma"),
+        (28, "🟠", "Spese generali elevate — verificare utenze e contratti"),
+        (100, "🔴", "Spese generali fuori controllo — necessaria rinegoziazione"),
+    ],
+    "personale": [
+        (24, "🟢", "Costo del lavoro contenuto — buona efficienza del personale"),
+        (30, "🟡", "Costo del lavoro nella norma per il settore"),
+        (35, "🟠", "Costo del lavoro elevato — verificare turni, produttività e coperti"),
+        (100, "🔴", "Costo del lavoro critico — incidenza troppo alta sul fatturato"),
+    ],
+    "primo_margine": [
+        (55, "🔴", "1° Margine molto basso — costi F&B troppo alti rispetto al fatturato"),
+        (62, "🟠", "1° Margine sotto la media — margine di miglioramento sui costi"),
+        (70, "🟡", "1° Margine nella norma per il settore"),
+        (200, "🟢", "1° Margine eccellente — ottima marginalità sui prodotti"),
+    ],
+    "mol": [
+        (5, "🔴", "MOL critico — l'attività non genera margine sufficiente"),
+        (12, "🟠", "MOL basso — necessario contenere costi o incrementare ricavi"),
+        (20, "🟡", "MOL nella norma — margine operativo adeguato"),
+        (200, "🟢", "MOL eccellente — ottima redditività operativa"),
+    ],
+}
+
+
+def test_le_soglie_dei_ristoranti_sono_quelle_di_ieri():
+    """Il retail non doveva toccare i numeri della ristorazione, e nemmeno i
+    testi: un cliente che legge «nella norma» su una banda diversa e' un
+    cambiamento, anche se il colore resta lo stesso."""
+    assert _KPI_SOGLIE_MARGINI == _SOGLIE_DI_IERI
+
+
+# ── L'endpoint analisi-avanzata: il gate frontend non copre il backend ───
+#
+# La tab «Analisi Avanzate» e' spenta per il retail dalla Fase 3
+# (`tab_off_margini_analisi`), ma l'endpoint resta raggiungibile: un gate lato
+# client non e' un gate. E' la stessa famiglia dei sette buchi della Fase 1, e
+# un mutante che toglieva il settore da qui e' sopravvissuto a 158 test verdi
+# finche' questo presidio non e' esistito.
+
+def _commenti_centri(settore):
+    q = MagicMock()
+    for m in ("select", "eq", "in_", "gte", "lte"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = SimpleNamespace(data=[{
+        "anno": 2026, "mese": 3, "fatturato_netto": 10000.0,
+        "fatturato_food": 10000.0, "fatturato_beverage": 0.0,
+        "fatturato_alcolici": 0.0, "fatturato_dolci": 0.0,
+    }])
+    client = MagicMock()
+    client.table.return_value = q
+
+    with patch.multiple(
+        margini,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=client),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
+    ), patch.object(
+        margini, "_load_fatture_fb_per_categoria_e_mese",
+        MagicMock(return_value={(2026, 3, "CARNE"): 6000.0}),
+    ), patch.object(
+        margini, "_load_mensile_overrides", MagicMock(return_value={})
+    ), patch(
+        "services.settore_service.settore_utente", MagicMock(return_value=settore)
+    ):
+        resp = margini.get_analisi_avanzata("2026-03-01", "2026-03-31", authorization="Bearer x")
+    return list(resp.commenti)
+
+
+def test_analisi_avanzata_non_da_un_colore_di_soglia_a_un_negozio():
+    incidenze = [
+        c for c in _commenti_centri(SETTORE_RETAIL) if "Incidenza costi" in c.kpi_nome
+    ]
+    assert incidenze, "nessun commento di incidenza: il test sarebbe vacuo"
+    assert all(c.emoji == "ℹ️" for c in incidenze), (
+        "un negozio ha ricevuto il colore di una soglia della ristorazione "
+        f"({[c.emoji for c in incidenze]})"
+    )
+
+
+def test_analisi_avanzata_da_ancora_il_colore_a_un_ristorante():
+    incidenze = [
+        c for c in _commenti_centri(SETTORE_RISTORAZIONE) if "Incidenza costi" in c.kpi_nome
+    ]
+    assert incidenze
+    assert all(c.emoji in ("🟢", "🟡", "🟠", "🔴") for c in incidenze)

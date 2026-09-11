@@ -14,6 +14,8 @@ Il presidio piu' importante e' `test_ramo_ristorazione_e_identico_a_prima`: il
 vincolo di Mattia e' che un cliente ristorazione non veda cambiare nemmeno
 un'etichetta, e qui si dimostra per uguaglianza col testo letterale di ieri.
 """
+import re
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -95,39 +97,47 @@ def test_ristorante_riceve_ancora_la_riga_dei_coperti(monkeypatch):
 
 # ── 2. Il vincolo: per un ristorante NON cambia niente ────────────────────
 
-_BENCHMARK_RISTORAZIONE = """## Benchmark di settore (ristorazione italiana — usa questi per valutare)
-Quando l'utente chiede "va bene?", "è troppo?", "sono nella norma?", usa queste soglie per dare una valutazione concreta:
+_FIXTURE_IERI = (
+    Path(__file__).resolve().parent / "fixtures" / "chat_prompt_ristorazione_pre_fase4.txt"
+)
 
-**Food cost %** (costi food ÷ fatturato):
-- <28% → eccellente | 28-33% → nella norma | 33-38% → sopra la media (attenzione) | >38% → critico
+# Le date che il prompt calcola da `oggi`: nella fixture sono segnaposto, o il
+# presidio diventerebbe rosso domani senza che il codice sia cambiato.
+_NEUTRALIZZA = (
+    (re.compile(r"Oggi e' \d{1,2} \w+ \d{4}\. L'anno corrente e' \d{4}\."),
+     "Oggi e' <DATA>. L'anno corrente e' <ANNO>."),
+    (re.compile(r"usa SEMPRE l'anno corrente \(\d{4}\)"),
+     "usa SEMPRE l'anno corrente (<ANNO>)"),
+    (re.compile(r"\(oggi è il \d{1,2}\)"), "(oggi è il <GIORNO>)"),
+)
 
-**MOL %** (margine operativo lordo ÷ fatturato):
-- >20% → eccellente | 12-20% → nella norma | 5-12% → basso | <5% → critico
 
-**Costo personale %** (costo personale ÷ fatturato):
-- <24% → contenuto | 24-30% → nella norma | 30-35% → elevato | >35% → critico
-
-**Spese generali %** (spese generali ÷ fatturato):
-- <15% → contenute | 15-22% → nella norma | 22-28% → elevate | >28% → fuori controllo
-
-Esempio corretto: "Il tuo food cost è al 26,5% → eccellente per il settore (soglia normale è 28-33%)."
-NON inventare benchmark diversi da questi. Se non riesci a calcolare la % perché manca fatturato o costi, dillo."""
+def _senza_date(testo: str) -> str:
+    for pattern, segnaposto in _NEUTRALIZZA:
+        testo = pattern.sub(segnaposto, testo)
+    return testo
 
 
 @pytest.mark.parametrize("settore", [SETTORE_RISTORAZIONE, None, "", "valore_ignoto"])
 def test_ramo_ristorazione_e_identico_a_prima(settore, monkeypatch):
-    """Il testo letterale di ieri, non una sua parafrasi.
+    """Il prompt INTERO contro uno snapshot preso da `23c0706~1`, non sei
+    sottostringhe scelte.
 
-    Include i casi `None`/ignoto: il fail-safe del settore va verso la
+    La prima stesura di questo presidio asseriva sottostringhe, ed era CIECA
+    proprio sulle quattro righe che avevo cambiato senza accorgermene — una
+    delle quali sgrammaticata («da il pesce»). Il reviewer l'ha smascherata
+    generando il prompt sui due commit e confrontando gli md5: e' lo stesso modo
+    in cui va provato adesso.
+
+    Include i casi `None`/vuoto/ignoto: il fail-safe del settore va verso la
     ristorazione, ed e' li' che cade ogni chiamante che non lo passa.
     """
-    p = _prompt(settore, monkeypatch)
-    assert _BENCHMARK_RISTORAZIONE in p
-    assert 'integrato nel gestionale del ristorante "TEST"' in p
-    assert "Rispondi SOLO a domande sui dati del ristorante: costi, fornitori, food cost, margini, MOL, fatture, scadenze." in p
-    assert "da collega esperto in F&B" in p
-    assert "- Food cost: 30.0%" in p
-    assert '## Food cost "0.0%" o "n/d": NON è cibo a costo zero' in p
+    atteso = _senza_date(_FIXTURE_IERI.read_text(encoding="utf-8"))
+    ottenuto = _senza_date(_prompt(settore, monkeypatch))
+    assert ottenuto == atteso, (
+        "il prompt di un RISTORANTE e' cambiato: e' il vincolo di Mattia, "
+        "nemmeno un'etichetta"
+    )
 
 
 def test_settore_none_e_ristorazione_danno_lo_stesso_prompt(monkeypatch):
@@ -250,3 +260,86 @@ def test_il_settore_arriva_davvero_al_prompt(monkeypatch):
 def test_il_settore_ristorazione_arriva_al_prompt(monkeypatch):
     c = _tools_offerti(SETTORE_RISTORAZIONE, monkeypatch)
     assert c["settore_al_prompt"] == SETTORE_RISTORAZIONE
+
+
+# ── Findings della review, chiusi qui ────────────────────────────────────
+
+def test_la_description_dei_tool_di_gruppo_non_promette_i_coperti_a_un_negozio():
+    """La *description* e' testo che il modello legge e su cui decide. Il tool
+    resta (serve i margini, e toglierlo li toglierebbe insieme ai coperti), ma
+    dice solo cio' che per un negozio e' vero."""
+    tools = {t["function"]["name"]: t["function"]["description"]
+             for t in fw._chat_tools_gruppo(SETTORE_RETAIL)}
+    assert "coperti" not in tools["gruppo_margini_coperti"].lower()
+    assert "scontrino" not in tools["gruppo_margini_coperti"].lower()
+    assert "margine" in tools["gruppo_margini_coperti"].lower()
+
+
+def test_i_tool_di_gruppo_restano_tutti_disponibili_al_negozio():
+    """Cambia la descrizione, non l'insieme: un negozio deve poter confrontare
+    i suoi punti vendita come prima."""
+    assert ([t["function"]["name"] for t in fw._chat_tools_gruppo(SETTORE_RETAIL)]
+            == [t["function"]["name"] for t in fw._CHAT_TOOLS_GRUPPO])
+
+
+@pytest.mark.parametrize("settore", [SETTORE_RISTORAZIONE, None, "", "valore_ignoto"])
+def test_i_tool_di_gruppo_di_un_ristorante_sono_l_oggetto_di_oggi(settore):
+    """Identita', non uguaglianza: una copia significherebbe che qualcuno ha
+    ricostruito la lista, ed e' il punto in cui un testo si perde."""
+    assert fw._chat_tools_gruppo(settore) is fw._CHAT_TOOLS_GRUPPO
+
+
+def test_deviare_le_descrizioni_non_muta_la_costante_condivisa():
+    """`_CHAT_TOOLS_GRUPPO` e' di modulo: mutarla la cambierebbe per TUTTI i
+    processi, ristoranti compresi, e il bug sarebbe intermittente (il primo
+    negozio che apre la chat rovina i ristoranti di quel processo).
+
+    Il confronto NON puo' essere «prima == dopo» letto dalla costante stessa:
+    un mutante che la riscrive in place la cambia gia' alla prima chiamata, e
+    il confronto resta verde. Si misura invece che un RISTORANTE, chiamato
+    DOPO un negozio, riceva ancora le descrizioni di ieri."""
+    fw._chat_tools_gruppo(SETTORE_RETAIL)
+    dopo = {t["function"]["name"]: t["function"]["description"]
+            for t in fw._chat_tools_gruppo(SETTORE_RISTORAZIONE)}
+    assert "coperti" in dopo["gruppo_margini_coperti"].lower(), (
+        "un negozio ha rovinato le descrizioni dei ristoranti nello stesso processo"
+    )
+    assert "pesce" in dopo["gruppo_spesa"].lower()
+
+
+def test_api_classify_ricade_sulla_sede_se_manca_l_utente(monkeypatch):
+    """Simmetria col fallback locale di `worker_client`: senza, lo STESSO
+    chiamante otterrebbe un settore diverso a seconda che il worker HTTP sia
+    raggiungibile, e il sintomo sarebbe indistinguibile da «il prompt retail
+    non funziona»."""
+    ricevuti: list = []
+
+    def _finta(**kw):
+        ricevuti.append(kw)
+        return ["ARTICOLO DI VENDITA"], ["alta"]
+
+    import services.ai_service as ai
+    monkeypatch.setattr(ai, "classifica_con_ai", _finta)
+    monkeypatch.setattr(ai, "carica_memoria_completa", lambda *a, **k: None)
+    monkeypatch.setattr(ai, "set_ai_context", lambda *a, **k: None)
+    monkeypatch.setattr(ai, "ai_degradata", lambda: False)
+    monkeypatch.setattr("services.settore_service.settore_utente",
+                        lambda uid, sb=None: SETTORE_RISTORAZIONE)
+    monkeypatch.setattr("services.settore_service.settore_sede",
+                        lambda rid, sb=None: SETTORE_RETAIL)
+    monkeypatch.setattr(fw, "_check_rate_limit", lambda *a, **k: None)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    richiesta = MagicMock()
+    richiesta.client = None
+    richiesta.headers = {}
+
+    fw.classify(richiesta, fw.ClassifyRequest(descrizioni=["MARTELLO"], ristorante_id="rid-1"))
+    assert ricevuti[-1]["settore"] == SETTORE_RETAIL
+
+    fw.classify(richiesta, fw.ClassifyRequest(descrizioni=["MARTELLO"], user_id="u-1",
+                                              ristorante_id="rid-1"))
+    assert ricevuti[-1]["settore"] == SETTORE_RISTORAZIONE, "la sede ha vinto sull'account"
+
+    fw.classify(richiesta, fw.ClassifyRequest(descrizioni=["MARTELLO"]))
+    assert ricevuti[-1]["settore"] is None

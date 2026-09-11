@@ -647,6 +647,13 @@ def get_analisi_avanzata(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
+    # I centri di produzione sono 5 secchi food: la tab e' spenta per il retail
+    # (`tab_off_margini_analisi`, Fase 3), ma l'endpoint resta raggiungibile e
+    # i suoi commenti userebbero le soglie della ristorazione. Stessa famiglia
+    # dei sette buchi della Fase 1: un gate frontend che non copre il backend.
+    from services.settore_service import settore_utente
+    settore = settore_utente(str(user["id"]), sb)
+
     d_da = _date.fromisoformat(data_da)
     d_a = _date.fromisoformat(data_a)
 
@@ -773,7 +780,7 @@ def get_analisi_avanzata(
         if not c.has_fatturato or c.costo_totale == 0:
             continue
         fc = c.incidenza_su_fatt
-        emoji, testo = _valuta_soglia_margine(fc, "food_cost", crescente=True)
+        emoji, testo = _valuta_soglia_margine(fc, "food_cost", crescente=True, settore=settore)
         commenti.append(CommentoKpi(
             kpi_nome=f"{c.icona} {c.centro} — Incidenza costi",
             percentuale=f"{fc:.1f}%",

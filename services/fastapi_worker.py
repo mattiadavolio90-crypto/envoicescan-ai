@@ -844,10 +844,17 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
         # Settore dell'account, risolto QUI (il body ha gia' user_id) e non nel
         # contratto HTTP: chiamanti vecchi e nuovi passano dallo stesso punto.
         # Senza user_id resta None = percorso ristorazione.
+        # Stessa cascata del fallback locale (`worker_client`): senza la
+        # simmetria lo STESSO chiamante otterrebbe un settore diverso a seconda
+        # che il worker HTTP sia raggiungibile o no — e il sintomo sarebbe
+        # indistinguibile da «il prompt retail non funziona».
         settore = None
         if body.user_id:
             from services.settore_service import settore_utente
             settore = settore_utente(body.user_id)
+        elif body.ristorante_id:
+            from services.settore_service import settore_sede
+            settore = settore_sede(body.ristorante_id)
 
         openai_client = OpenAI(api_key=openai_api_key)
         categorie, confidenze = classifica_con_ai(
@@ -3344,8 +3351,42 @@ def _build_chat_system_prompt(
     _retail = settore == SETTORE_RETAIL
     _attivita = "negozio" if _retail else "ristorante"
     _merce_kpi = "Costo merce" if _retail else "Food cost"
-    _esempio_voce = "una linea di prodotto" if _retail else "il pesce"
     _tono_competenza = "da collega che conosce il commercio" if _retail else "da collega esperto in F&B"
+    # Le quattro righe qui sotto sono nominali per una ragione precisa: la prima
+    # stesura le aveva riscritte "in modo neutro" ANCHE per i ristoranti, e una
+    # era pure sgrammaticata ("da il pesce" al posto di "dal pesce", perche' un
+    # nome di voce sostituito dentro una frase non porta con se' la preposizione
+    # giusta). Il ramo ristorazione qui e' il testo letterale di ieri, byte per
+    # byte, e un presidio lo confronta col prompt INTERO — non piu' per
+    # sottostringhe scelte, che erano cieche proprio su queste righe.
+    _chi_carica = (
+        "le fatture si caricano" if _retail
+        else "i ristoranti caricano le fatture"
+    )
+    _argomenti_fuori = "" if _retail else "ricette generiche, "
+    _del_locale = "dell'attivita'" if _retail else "del locale"
+    _chi_capisce = (
+        "Chi gestisce un negozio capisce" if _retail
+        else 'Un ristoratore capisce'
+    )
+    # Un esempio di stile, non una regola: si scrive per intero nei due rami
+    # invece di comporlo da pezzi, cosi' la preposizione resta giusta in
+    # entrambi ("dal pesce", "da una linea di prodotto").
+    if _retail:
+        _esempio_sintesi = (
+            'Quando hai più dati connessi, collegali in una frase invece di elencarli '
+            'separatamente. Es.: invece di "costo merce 62,5% — una linea di prodotto è la '
+            'categoria maggiore" scrivi "il costo merce al 62,5% è trainato principalmente '
+            'da una linea di prodotto (€188k, 36% dei costi)". Mostra il ragionamento, non '
+            'solo i numeri.'
+        )
+    else:
+        _esempio_sintesi = (
+            'Quando hai più dati connessi, collegali in una frase invece di elencarli '
+            'separatamente. Es.: invece di "food cost 26,5% — il pesce è la categoria '
+            'maggiore" scrivi "il food cost al 26,5% è trainato principalmente dal pesce '
+            '(€188k, 36% dei costi food)". Mostra il ragionamento, non solo i numeri.'
+        )
     # I coperti non esistono per un negozio: la cassa manda solo il fatturato, e
     # il gate tool (chat_ai, _TOOL_VIETATI_PER_SETTORE) toglie query_coperti dagli
     # strumenti. Senza togliere ANCHE questa riga il prompt continuerebbe a
@@ -3736,10 +3777,10 @@ Oggi e' {oggi_str}. L'anno corrente e' {oggi.year}. {range_dati}
 Quando l'utente non specifica l'anno, usa SEMPRE l'anno corrente ({oggi.year}) — MAI un anno passato.
 "Ultimo acquisto", "ultima fattura", "recente" NON sono un periodo: non filtrare per mese/anno, cerca il piu' recente in assoluto.
 Non inventare anni: se dopo aver usato l'anno corrente non trovi nulla, dillo e proponi di cercare in tutto lo storico.
-Il MESE CORRENTE e' quasi sempre incompleto: le fatture si caricano a fine mese o in ritardo. Se cerchi "questo mese" e lo strumento risponde vuoto (o segnala "mese_non_ancora_caricato"), NON dire "non hai speso nulla": spiega che il mese in corso non e' ancora caricato e proponi l'ultimo mese disponibile.
+Il MESE CORRENTE e' quasi sempre incompleto: {_chi_carica} a fine mese o in ritardo. Se cerchi "questo mese" e lo strumento risponde vuoto (o segnala "mese_non_ancora_caricato"), NON dire "non hai speso nulla": spiega che il mese in corso non e' ancora caricato e proponi l'ultimo mese disponibile.
 
 Rispondi SOLO a domande sui dati del {_attivita}: costi, fornitori, {_merce_kpi.lower()}, margini, MOL, fatture, scadenze.
-Per argomenti non pertinenti (notizie, argomenti personali) rispondi educatamente che puoi aiutare solo sulla gestione dell'attivita'.
+Per argomenti non pertinenti ({_argomenti_fuori}notizie, argomenti personali) rispondi educatamente che puoi aiutare solo sulla gestione {_del_locale}.
 
 Tono: diretto, concreto, {_tono_competenza} — non da chatbot generico. Risposte brevi (2-5 righe al massimo).
 
@@ -3778,13 +3819,13 @@ NON dare una risposta secca su un numero incompleto senza avvertire. Un numero p
 NON chiudere ogni risposta con "Vuoi sapere altro?" o "Vuoi che controlli X?" come formula automatica. Proponi un follow-up SOLO se c'è davvero qualcosa di rilevante da aggiungere che l'utente probabilmente non ha ancora visto (es. un'anomalia collegata). Se la risposta è completa, fermati lì.
 
 ## Sintetizza, non elencare dati isolati
-Quando hai più dati connessi, collegali in una frase invece di elencarli separatamente. Es.: invece di "{_merce_kpi.lower()} 26,5% — {_esempio_voce} è la categoria maggiore" scrivi "il {_merce_kpi.lower()} al 26,5% è trainato principalmente da {_esempio_voce} (€188k, 36% dei costi)". Mostra il ragionamento, non solo i numeri.
+{_esempio_sintesi}
 
 ## Ragiona sempre in termini di impatto economico reale
 Quando l'utente chiede se conviene fare qualcosa (risparmiare, cambiare fornitore, tagliare una categoria), NON rispondere con un'altra domanda generica. Calcola subito l'impatto concreto con i dati che hai:
 - Se una voce è fuori soglia benchmark, stima quanto vale rientrare nella norma. Es.: "il personale è al 35% su €516.152 di fatturato — rientrare al 30% varrebbe €25.800/mese in più di MOL."
 - Se una voce è già ottimizzata, dillo esplicitamente e reindirizza l'attenzione dove c'è margine vero. Es.: "le spese generali sono già al 7% (eccellente) — non è lì che guadagni di più. Il margine reale è sul personale o sui fornitori di pesce."
-- Usa sempre €, non solo %. Chi gestisce un'attivita' capisce "€25.000 in più" meglio di "5 punti percentuali".
+- Usa sempre €, non solo %. {_chi_capisce} "€25.000 in più" meglio di "5 punti percentuali".
 - Se non hai abbastanza dati per calcolare l'impatto, dillo e chiedi solo il dato mancante — non fare una lista di domande.
 
 Usa i dati qui sotto: sono gli stessi che il cliente vede nella sua schermata Home. Se un dato c'e' qui, NON dire che non hai dati.
@@ -3957,6 +3998,45 @@ _CHAT_TOOLS_GRUPPO = [
         },
     },
 ]
+
+
+# La *description* di un tool e' testo che il modello legge e su cui decide: per
+# una catena retail quella di `gruppo_margini_coperti` prometteva coperti e
+# scontrino medio, dati che un negozio non ha. Il tool resta — serve i margini,
+# e toglierlo li toglierebbe insieme ai coperti, che e' il difetto che questa
+# fase e' venuta a chiudere — ma dice solo cio' che per quel settore e' vero.
+_GRUPPO_DESCRIZIONE_RETAIL = {
+    "gruppo_margini_coperti": (
+        "Confronto per punto vendita di margine % e fatturato. Usalo per 'quale PV "
+        "ha il margine peggiore', 'chi fattura di piu''."
+    ),
+    "gruppo_spesa": (
+        "Spesa per punto vendita ripartita per categoria o fornitore. Usalo per "
+        "'quale PV spende di piu' dal fornitore X', 'come e' distribuita la spesa "
+        "fra i punti vendita'."
+    ),
+}
+
+
+def _chat_tools_gruppo(settore: Optional[str]) -> List[Dict[str, Any]]:
+    """`_CHAT_TOOLS_GRUPPO` con le descrizioni del settore.
+
+    Per la ristorazione (e per ogni settore ignoto) ritorna l'oggetto di oggi,
+    non una copia: e' il vincolo, e un presidio lo confronta per identita'.
+    """
+    if settore != SETTORE_RETAIL:
+        return _CHAT_TOOLS_GRUPPO
+    fuori = []
+    for t in _CHAT_TOOLS_GRUPPO:
+        nuova = _GRUPPO_DESCRIZIONE_RETAIL.get(t["function"]["name"])
+        if not nuova:
+            fuori.append(t)
+            continue
+        # Copia profonda del solo ramo che cambia: mutare `_CHAT_TOOLS_GRUPPO`
+        # lo cambierebbe per TUTTI i processi, ristoranti compresi.
+        copia = {**t, "function": {**t["function"], "description": nuova}}
+        fuori.append(copia)
+    return fuori
 
 
 def _gruppo_router_mod():
@@ -4930,7 +5010,7 @@ def chat_ai(
         reply, p_tok, c_tok = _chat_loop_openai(
             client,
             messages,
-            _CHAT_TOOLS_GRUPPO,
+            _chat_tools_gruppo(settore_chat),
             lambda nome, args: _chat_esegui_tool_gruppo(nome, args, authorization),
             log_ctx="chat[catena]",
         )
