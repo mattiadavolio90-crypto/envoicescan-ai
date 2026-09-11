@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePaginaConTab } from "@/lib/page-guard";
+import { getCurrentUser } from "@/lib/auth";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
 import { InventarioTab } from "./inventario-tab";
@@ -36,12 +37,20 @@ export default async function WorkspacePage({
     "workspace", "workspace", sp.tab, "/workspace",
   );
 
+  // L'hint nominava «ricette e foodcost», che per un negozio e' la tab che
+  // questa fase ha appena spento: avrebbe promesso uno strumento inesistente.
+  const settore = (await getCurrentUser())?.tipo_attivita;
+
   return (
     <div className="space-y-4">
       <PageHeader
         icon="wrench"
         title="Strumenti"
-        hint="Gli strumenti di analisi del tuo locale: ricette e foodcost, inventario di magazzino."
+        hint={
+          settore === "retail"
+            ? "Gli strumenti di analisi del tuo negozio: inventario di magazzino."
+            : "Gli strumenti di analisi del tuo locale: ricette e foodcost, inventario di magazzino."
+        }
       />
 
       <Suspense>

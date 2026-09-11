@@ -910,6 +910,10 @@ debba proporla.
       dialog, `agenda-overview`, i `TIPO_OPTIONS` di `articoli-tab` e `pivot-tab`,
       il fallback `"Ristorante"` del layout, l'hint «nel tuo locale» della pagina
       agenda e **`/m` a mano** (una sola etichetta hardcoded, meno del previsto).
+      Dopo la review, corretto anche l'hint di `workspace/page.tsx`: nominava
+      «ricette e foodcost», cioe' la tab che questa fase ha appena spento per un
+      negozio — prometteva uno strumento inesistente. Resta fuori quello di
+      `margini/page.tsx`, che e' **Fase 4** insieme alle soglie.
       Il settore arriva da `getCurrentUser()`, che e' in `cache()` di React:
       nessuna chiamata in piu' al worker.
 - [x] Backend/export: **non fatto, e non per dimenticanza.**
@@ -938,11 +942,18 @@ debba proporla.
 - [x] Sei whitelist di scrittura su `categorie_ammesse(settore)`. **Quattro** ci
       passano (`fatture.py` batch e PATCH, `riparto.py` manuale e riga di gruppo
       via `normalizza_categoria_richiesta`, che prende un `settore` opzionale).
-      **Due restano su `TUTTE_LE_CATEGORIE` di proposito**: `admin.py`
-      suggerisci-ai e memoria globale scrivono solo su `prodotti_master`, che e'
-      la memoria dei ristoranti e che la Fase 1 ha gia' chiuso al retail —
-      ammettere li' ARTICOLO DI VENDITA creerebbe una voce che nessun negozio puo'
-      leggere. **Esclusione motivata, non dimenticanza.**
+      **Due restano su `TUTTE_LE_CATEGORIE` di proposito**: ammettere li'
+      ARTICOLO DI VENDITA creerebbe una voce in `prodotti_master` — la memoria
+      dei ristoranti, che la Fase 1 ha gia' chiuso al retail — che nessun negozio
+      puo' leggere. **Esclusione motivata, non dimenticanza.**
+      ⚠️ **Correzione dopo la review**: la prima stesura diceva che entrambe
+      «scrivono solo su `prodotti_master`». **E' falso per la seconda**:
+      `admin_qualita_memoria_update` propaga anche sulle `fatture` di tutti i
+      clienti, via `_propaga_global_override_a_fatture_storiche`. Resta sicura,
+      ma per una ragione diversa da quella che avevo scritto — il filtro
+      `settore_utente(uid) != SETTORE_RETAIL` che la **Fase 1** ha messo dentro
+      quella funzione, prima dell'UPDATE. La conclusione regge, la motivazione
+      era sbagliata.
       La whitelist della coda admin diventa l'**unione** dei due settori: senza,
       l'admin non poteva classificare la riga di un negozio da nessuna
       interfaccia (era il residuo dichiarato alla riga 536). Allargarla apriva
