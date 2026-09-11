@@ -82,13 +82,16 @@ e due fonti sullo stesso stato sono un rischio, non una comodita' (`WORKFLOW.md`
 
 ---
 
-## Come si riprende — in quest'ordine, in un processo nuovo
+## ~~Come si riprende~~ — non c'e' piu' niente da riprendere
 
-Tutto nel worktree, mai in `/workspaces/ONEFLUX` (che resta su `main` per le sessioni
-parallele):
+> **Superato dalla Chiusura dell'11/09/2026.** Il branch `retail` e il worktree
+> `/home/vscode/ONEFLUX-retail` **non esistono piu'**: il lavoro sta su `main` in
+> `/workspaces/ONEFLUX` e le due migration sono applicate. Questo blocco resta come
+> traccia di come si e' lavorato, non come istruzioni da eseguire — i comandi qui
+> sotto oggi fallirebbero. Se serve rimettere le mani sul retail, si parte da `main`.
 
 ```
-cd /home/vscode/ONEFLUX-retail
+cd /home/vscode/ONEFLUX-retail             # (non esiste piu')
 git branch --show-current                  # deve dire: retail
 git log --oneline main..retail             # i commit del lavoro (Fase 0: b642e3c)
 git status --short                         # pulito, salvo file di altre sessioni
@@ -118,7 +121,8 @@ per mano di Mattia**. Il 10/9 uno script di snapshot ha creato 308 voci in
 `prodotti_utente` su 4 clienti reali (cancellate, DB riportato allo stato esatto e
 verificato contro backup): è la ragione dei presidi in `scripts/retail_baseline.py`.
 
-**Dove si lavora**: branch `retail` nel worktree `/home/vscode/ONEFLUX-retail`.
+**Dove si lavorava** (fino alla Chiusura dell'11/9, poi rientrato su `main`):
+branch `retail` nel worktree `/home/vscode/ONEFLUX-retail`.
 Mai su `main`: il push serale spedisce tutto `main`, e un retail a metà significherebbe
 codice che legge `tipo_attivita` prima che la migration esista. È l'unica ragione che
 `WORKFLOW.md` §1 ammette per un branch — il lavoro potrebbe non essere spedito.

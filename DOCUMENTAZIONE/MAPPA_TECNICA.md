@@ -252,7 +252,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `PIANO_WEB_MARKETING.md` | Roadmap SEO/marketing viva, 4 pilastri |
 | `docs/piani/PIANO_<feature>.md` | Solo se esiste — lavoro multi-sessione in corso ora (git-ignorato, effimero) |
 | `LOGICA_BRIEFING.md` | Per cambiare **cosa dice** il briefing Home (soglie, priorità, tono) |
-| `DOCUMENTAZIONE/RETAIL_FASI.md` | Apertura ai clienti retail: fasi, gate, vincolo zero-cambiamenti per i ristoranti (branch `retail`) |
+| `DOCUMENTAZIONE/RETAIL_FASI.md` | Apertura ai clienti retail: fasi, gate, vincolo zero-cambiamenti per i ristoranti. **Implementazione chiusa l'11/9/2026**, rientrata su `main`; migration applicate |
 
 ### Voglio capire un dominio tecnico specifico
 | Documento | Quando aprirlo |
