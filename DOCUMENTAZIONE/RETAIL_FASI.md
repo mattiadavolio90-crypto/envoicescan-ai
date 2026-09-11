@@ -883,27 +883,108 @@ debba proporla.
 
 ## Fase 3 — Spegnimenti ed etichette · Opus, ~2 giorni
 
-- [ ] Spenti per retail: ricette (`workspace/foodcost`), coperti (`margini/coperti`),
-      **tab Centri di produzione** (`services/routers/margini.py:551-576`: un negozio con
-      una sola categoria merce vedrebbe 5 centri a zero con icone 🍖🍷🍰)
-- [ ] Radar anomalie resta inerte (`anomaly_radar_service.py:51`, 5 categorie food):
-      **accettato e dichiarato** — feature muta per il retail, non un guasto
-- [ ] Etichette da dizionario per settore. Centro frontend: `TIPO_SPESA_LABEL`
-      (`lib/categorie-spesa.ts:78-81`); poi `TIPO_OPTIONS` in `pivot-tab.tsx` e
-      `articoli-tab.tsx`, `margini/calcolo-tab.tsx`, `kpi-bar.tsx`, `analisi-tab.tsx`,
-      metadata `app/layout.tsx`, fallback `"Ristorante"` in `app/(app)/layout.tsx:80` e
-      `app-sidebar.tsx:108`, **`/m` a mano** (frontend separato, non responsive)
-- [ ] Backend/export: `margine_service.py:1173-1175, 1334, 1444` ('Costi F&B', 'Food Cost');
-      `routers/margini.py:824-828` ("settore ristorazione", "menù", "porzioni")
-- [ ] Tre liste categorie frontend, tutte condivise coi ristoranti: `admin.ts:76-88`
-      (`CATEGORIE_TUTTE`, sorgente delle altre), `categorie-spesa.ts:39-45`
-      (**aggiungere ARTICOLO qui lo farebbe comparire nel dropdown spese extra dei
-      ristoranti: è esattamente la violazione del vincolo**),
-      `analisi-fatture/periodi.ts:68-97` (`CATEGORIA_ICONS`: senza voce, appare senza icona)
-- [ ] Sei whitelist di scrittura che condividono la costante — `utils/validation.py:525`
-      (`valida_categoria_utente`), `routers/fatture.py:884`, `:1059`,
-      `routers/admin.py:995`, `:1208`, `:1514`: una funzione `categorie_ammesse(settore)`
-      in `settore_service`, non sei `if` copiati
+**CHIUSA l'11/9/2026** — 4 commit (`5d9f367`, `c7e0d3b`, `dd6ac5e`, `c693a17`),
+56 presidi nuovi in 3 file, **17 mutanti uno alla volta, tutti uccisi**.
+
+- [x] Spenti per retail: ricette (`workspace/foodcost`), coperti (`margini/coperti`),
+      **tab Centri di produzione** — fatti con il meccanismo dei flag per-tab
+      dell'admin (`tab_off_*`), non con uno nuovo: stessa **convenzione inversa**
+      (chiave presente = tab spenta), ed e' la ragione per cui i ristoranti non
+      cambiano di una virgola — non hanno nessuna di quelle chiavi.
+      `_normalize_pagine` **non e' stata toccata** (5 chiamanti e presidi che ne
+      asseriscono la firma): gli spegnimenti stanno in `_pagine_con_settore`, che
+      la avvolge. Il caso che conta e' `pagine_abilitate=None`, il default di
+      quasi tutti gli account: per un ristorante resta `None`, per un negozio
+      diventa la lista di tutte le pagine piu' i `tab_off`, o gli spegnimenti non
+      arriverebbero mai al client.
+- [x] Radar anomalie resta inerte (`anomaly_radar_service.py:51`, 5 categorie food):
+      **verificato, non ereditato dal piano** — `CATEGORIE_CRITICHE` e' hardcoded e
+      un solo chiamante (`invoice_service.py:2170`). Per un negozio il radar non
+      trova nulla: feature muta, non un guasto. **Accettato e dichiarato.**
+- [x] Etichette per settore. Centro unico in `lib/categorie-spesa.ts`
+      (`tipoSpesaLabel`, `costoMerceLabel`, `filtroMerceLabel`, `attivitaLabel`):
+      in tutte il settore e' **opzionale** e il ramo senza settore e' quello della
+      ristorazione, cosi' un chiamante distratto mostra l'app di ieri invece di
+      un'etichetta sbagliata a un cliente pagante. `TIPO_SPESA_LABEL` resta
+      esportata e **letteralmente invariata**. Collegati: `spese-view` e il suo
+      dialog, `agenda-overview`, i `TIPO_OPTIONS` di `articoli-tab` e `pivot-tab`,
+      il fallback `"Ristorante"` del layout, l'hint «nel tuo locale» della pagina
+      agenda e **`/m` a mano** (una sola etichetta hardcoded, meno del previsto).
+      Il settore arriva da `getCurrentUser()`, che e' in `cache()` di React:
+      nessuna chiamata in piu' al worker.
+- [x] Backend/export: **non fatto, e non per dimenticanza.**
+      `margine_service.py` (`export_excel_margini`, `build_transposed_df`) ha
+      **zero chiamanti in produzione** — codice Streamlit morto, e lo dichiara il
+      repo stesso (`personale_export_service.py`: «nessun endpoint proprio, solo
+      riferimento visivo»). Cambiarne le etichette avrebbe richiesto di toccare
+      test esistenti per un risultato che nessun cliente vede.
+      `routers/margini.py:824-828` e' `_KPI_SOGLIE_MARGINI`, che e' **Fase 4**
+      (riga «Soglie: nessun colore per il retail in v1»): il nome `"Food Cost"`
+      di `:1272` e' legato a quei testi, e rinominarlo ora lascerebbe un negozio a
+      leggere mezzo testo da ristorante. Si fanno insieme, li'.
+- [x] Liste categorie frontend. **Il buco vero non era nelle tre liste ma nel
+      menu della catena**: `finestra-costi-gruppo.tsx` offriva `CATEGORIE_TUTTE` a
+      chiunque, quindi a un negozio mostrava CARNE — che il backend, gated nella
+      prima casella, rifiuta con **400**. Ora `categorieSelezionabili(settore)`,
+      gemella di `categorie_ammesse(settore)`, **con un presidio che confronta le
+      due**: se divergono fallisce il test invece del cliente.
+      `ARTICOLO DI VENDITA` **non** entra in `CATEGORIE_TUTTE` ne' in
+      `CATEGORIE_SPESA_FB/GENERALI` (il mutante 15 lo conferma: mettercela fa
+      diventare rosso anche il presidio automatico preesistente). L'icona sta in
+      `CATEGORIA_ICONS`, dove e' sicura — mappa per nome con fallback, non una
+      partizione. Due correzioni: `🏷️` era il **fallback generico** (una voce che
+      vale quanto la sua assenza) e `📦` gia' di MATERIALE DI CONSUMO; ora `🏪`,
+      verificato senza collisioni.
+- [x] Sei whitelist di scrittura su `categorie_ammesse(settore)`. **Quattro** ci
+      passano (`fatture.py` batch e PATCH, `riparto.py` manuale e riga di gruppo
+      via `normalizza_categoria_richiesta`, che prende un `settore` opzionale).
+      **Due restano su `TUTTE_LE_CATEGORIE` di proposito**: `admin.py`
+      suggerisci-ai e memoria globale scrivono solo su `prodotti_master`, che e'
+      la memoria dei ristoranti e che la Fase 1 ha gia' chiuso al retail —
+      ammettere li' ARTICOLO DI VENDITA creerebbe una voce che nessun negozio puo'
+      leggere. **Esclusione motivata, non dimenticanza.**
+      La whitelist della coda admin diventa l'**unione** dei due settori: senza,
+      l'admin non poteva classificare la riga di un negozio da nessuna
+      interfaccia (era il residuo dichiarato alla riga 536). Allargarla apriva
+      pero' la direzione opposta — e il vincolo vale in entrambe: aggiunto il
+      **gate speculare**, ARTICOLO DI VENDITA non raggiunge le righe di un
+      ristorante in un gruppo misto.
+
+### Cosa ha insegnato la mutazione (3 presidi su 56 erano finti)
+
+| # | Mutante | Esito |
+|---|---|---|
+| 6 | `riparto_riga_categoria` senza settore | **SOPRAVVISSUTO** a 28 test verdi |
+| 10 | chiave tab storpiata in `copertini` | sopravviveva al presidio scritto apposta |
+| 12 | `!== "ristorazione"` invece di `=== "retail"` | ucciso dai presidi fail-safe |
+| 15 | ARTICOLO DI VENDITA nelle liste condivise | ucciso **anche** dal presidio automatico |
+| 17 | ristoranti che ricevono la lista del negozio | ucciso da 6 presidi |
+
+1. **Il mutante 6 e' sopravvissuto** perche' il presidio era sulla funzione
+   condivisa e non sull'endpoint. E i primi test scritti per ucciderlo erano
+   sull'**endpoint sbagliato** — `riparto_manuale` invece di
+   `riparto_riga_categoria`: stessa chiamata, funzione diversa. Vale
+   [[mutante-va-mutato-nella-funzione-giusta]].
+2. **Il mutante 10 ha smascherato un presidio finto**: il test scritto apposta per
+   le chiavi inesistenti confrontava il TS con la lista attesa **scritta nel test**,
+   e il mutante cambiava le due in blocco. Ora legge la costante viva, ed e'
+   l'unico che uccide quel mutante da solo.
+3. **Il presidio sui consumatori contava anche i commenti**, e falliva su due righe
+   che *spiegano* l'etichetta: una guardia che grida su una spiegazione e tace su
+   un bug scritto dentro un commento.
+4. **Il mutante 12 e' quello che conta in produzione**: col confronto rovesciato un
+   settore assente faceva scivolare un **ristorante** sulle etichette del negozio.
+   E' il modo silenzioso in cui il vincolo si sarebbe rotto.
+
+### Gate di fine fase
+
+Suite **13.582** (da 13.526: +56 presidi, 0 esistenti toccati), `-m sql` **180**,
+baseline **«Diff a zero»** dopo ogni casella, OpenAPI senza drift (196 endpoint),
+`tsc --noEmit` pulito, `git diff main -- tests/` con cancellazioni **solo** su
+`test_prompt_ai_coerenza_dominio.py` (l'unico autorizzato, Fase 2). I due presidi
+automatici del vincolo (`test_spese_extra.py:238`,
+`test_categorie_spesa_frontend.py:92`) **verdi**, e il mutante 15 prova che
+sarebbero rossi se il vincolo venisse violato.
 
 ---
 

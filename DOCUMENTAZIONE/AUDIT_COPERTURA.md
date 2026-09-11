@@ -86,6 +86,28 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   chiamanti di `fetch_all` su 34 senza `.order()`**, stessa classe. Suite
 >   **13.363 verdi, 44 skip**.
 >
+> - **11/09/2026, branch `retail` (NON spedito) — Fase 3 del retail: spegnimenti,
+>   etichette e le sei whitelist di scrittura.** Le whitelist validavano la
+>   categoria in arrivo contro `TUTTE_LE_CATEGORIE`, la lista dei ristoranti: il
+>   menu del client era gia' filtrato dalla Fase 1, ma la whitelist e' l'ultimo
+>   cancello prima del DB, e una chiamata API diretta scriveva CARNE sulla riga
+>   di un negozio. Quattro punti passano ora da `categorie_ammesse(settore)`; due
+>   restano su `TUTTE_LE_CATEGORIE` **di proposito** (scrivono solo su
+>   `prodotti_master`, memoria dei ristoranti gia' chiusa al retail). Ricette,
+>   coperti e centri di produzione spenti col meccanismo `tab_off_*` esistente,
+>   senza toccare `_normalize_pagine` (5 chiamanti). Etichette da un centro unico
+>   col settore **opzionale**, default ristorazione. Trovato e chiuso un
+>   disallineamento client/server: il menu della catena offriva a un negozio
+>   categorie che il backend rifiuta con 400.
+>   **17 mutanti, tutti uccisi, ma 3 presidi su 56 erano finti** e li ha
+>   smascherati la mutazione: uno era sulla funzione condivisa invece che
+>   sull'endpoint (mutante 6 sopravvissuto a 28 test verdi), uno confrontava il
+>   frontend con la lista attesa scritta **dentro il test** (cambiavano in blocco
+>   col mutante), uno contava anche i commenti. Suite **13.582 verdi, 45 skip**
+>   (+56 presidi, 0 test esistenti toccati), `-m sql` 180, baseline a zero dopo
+>   ogni casella, OpenAPI senza drift, `tsc` pulito. Commit `5d9f367`, `c7e0d3b`,
+>   `dd6ac5e`, `c693a17`.
+>
 > - **11/09/2026, branch `retail` (NON spedito) — Fase 2 del retail: il prompt
 >   dei negozi.** Il classificatore AI aveva un solo prompt, scritto per un
 >   ristorante: a un negozio proponeva 26 categorie alimentari che la validazione
