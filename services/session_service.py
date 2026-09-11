@@ -29,6 +29,46 @@ logger = get_logger('session')
 # Throttle in-process per le scritture di last_seen_at: {token: last_write_epoch}.
 _LAST_SEEN_THROTTLE: dict = {}
 
+# Retry dell'insert di sessione sulle sole cadute di connessione (vedi crea_sessione).
+_INSERT_TENTATIVI = 3
+_INSERT_BACKOFF_SECONDS = 0.2
+
+
+def _e_errore_di_connessione(exc: Exception) -> bool:
+    """True se l'eccezione e' una caduta di trasporto, non un rifiuto del server.
+
+    Il GOAWAY di Supabase su una connessione riusata arriva come
+    RemoteProtocolError/ConnectionTerminated; si riconosce per nome della classe
+    invece che importando httpx/httpcore, che non sono dipendenze dirette di
+    questo modulo. Un errore applicativo (constraint, permesso, 4xx) NON deve
+    finire qui: va propagato subito.
+    """
+    attuale: Optional[BaseException] = exc
+    visti = 0
+    while attuale is not None and visti < 10:
+        nome = type(attuale).__name__
+        if nome in (
+            "RemoteProtocolError",
+            "ConnectError",
+            "ConnectTimeout",
+            "ReadTimeout",
+            "WriteTimeout",
+            "PoolTimeout",
+            "ReadError",
+            "WriteError",
+            "ProtocolError",
+        ):
+            return True
+        attuale = attuale.__cause__ or attuale.__context__
+        visti += 1
+    return False
+
+
+def _e_duplicato_token(exc: Exception) -> bool:
+    """True se l'insert e' fallito perche' il token esiste gia' (23505)."""
+    testo = str(exc).lower()
+    return "23505" in testo or "duplicate key" in testo
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -59,13 +99,43 @@ def crea_sessione(
     sb = _client(supabase_client)
     token = secrets.token_urlsafe(32)
 
-    sb.table("sessioni").insert({
+    payload = {
         "user_id": str(user_id),
         "token": token,
         "source": source,
         "user_agent": (user_agent or "")[:500] or None,
         "ip": (ip or "")[:100] or None,
-    }).execute()
+    }
+
+    # Una connessione chiusa lato server ma ancora nel pool fa fallire il primo
+    # riuso (RemoteProtocolError). httpx non ritenta un INSERT, quindi senza
+    # questo il login restituisce 500 con le credenziali gia' verificate: e'
+    # accaduto in produzione l'11/09/2026. Il token e' generato prima del ciclo,
+    # quindi il ritentativo e' idempotente; se l'insert era in realta' passato,
+    # il secondo tentativo sbatte sull'indice unico e quel duplicato vale
+    # successo (la sessione esiste ed e' quella di questo token).
+    ultimo_errore: Optional[Exception] = None
+    for tentativo in range(_INSERT_TENTATIVI):
+        try:
+            sb.table("sessioni").insert(payload).execute()
+            ultimo_errore = None
+            break
+        except Exception as exc:
+            if _e_duplicato_token(exc):
+                ultimo_errore = None
+                break
+            if not _e_errore_di_connessione(exc):
+                raise
+            ultimo_errore = exc
+            logger.warning(
+                "Insert sessione fallito per errore di connessione (tentativo %d/%d): %s",
+                tentativo + 1, _INSERT_TENTATIVI, exc,
+            )
+            if tentativo < _INSERT_TENTATIVI - 1:
+                time.sleep(_INSERT_BACKOFF_SECONDS * (2 ** tentativo))
+
+    if ultimo_errore is not None:
+        raise ultimo_errore
 
     _evict_oltre_cap(str(user_id), sb)
     return token

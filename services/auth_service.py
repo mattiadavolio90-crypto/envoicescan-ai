@@ -728,12 +728,38 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
         return False
 
 
+# Client anon cachato per processo (vedi docstring sotto): None non viene mai
+# memorizzato, cosi' una chiave configurata dopo l'avvio viene comunque usata.
+_ANON_CLIENT = None
+
+
 def _get_supabase_anon_client():
     """
-    Crea un client Supabase con anon_key per operazioni lato utente
-    (sign_in_with_password, refresh_session). Non cachato — usato solo
-    durante il login, non in loop caldi.
+    Client Supabase con anon_key per operazioni lato utente
+    (sign_in_with_password, refresh_session).
+
+    Cachato per processo. Prima non lo era, col commento "usato solo durante il
+    login, non in loop caldi": ma il login E' un loop caldo, e ogni chiamata
+    creava un client nuovo con il proprio pool di connessioni, mai chiuso.
+    L'11/09/2026 questo ha esaurito le connessioni verso Supabase in produzione:
+    i login rispondevano 500 "Errore creazione sessione" perche' l'INSERT in
+    `sessioni` cadeva con ConnectionTerminated (sempre a last_stream_id:3, anche
+    su un worker appena riavviato — il pool non era "vecchio", erano i client a
+    essere troppi).
+
+    A differenza del singleton service_role questo client NON va riallineato
+    negli header: sign_in_with_password ci scrive sopra il JWT dell'utente ed e'
+    corretto che sia cosi', perche' qui non si fanno query dati. Non usarlo per
+    leggere/scrivere tabelle.
+
+    Si cachea solo il successo: mettere un @lru_cache sulla funzione intera
+    memorizzerebbe anche il None di "chiave non ancora configurata", e il client
+    non verrebbe piu' creato per tutta la vita del processo.
     """
+    global _ANON_CLIENT
+    if _ANON_CLIENT is not None:
+        return _ANON_CLIENT
+
     import os as _os
     try:
         import streamlit as _st
@@ -747,7 +773,8 @@ def _get_supabase_anon_client():
         return None
     try:
         from supabase import create_client as _cc
-        return _cc(url, anon_key)
+        _ANON_CLIENT = _cc(url, anon_key)
+        return _ANON_CLIENT
     except Exception:
         return None
 

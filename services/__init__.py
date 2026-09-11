@@ -202,6 +202,37 @@ def _get_supabase_credentials() -> tuple[str, str]:
     )
 
 
+def _disattiva_http2(client) -> None:
+    """Porta il trasporto di PostgREST su HTTP/1.1, in-place.
+
+    postgrest-py costruisce di suo un httpx.Client(http2=True). Su una
+    connessione HTTP/2 tenuta viva nel pool, il GOAWAY con cui Supabase la chiude
+    (error_code:0, chiusura regolare) non la invalida lato client: la richiesta
+    successiva la riprende dal pool e muore con RemoteProtocolError /
+    ConnectionTerminated. Su un INSERT httpx non ritenta (non idempotente) -> 500.
+    E' cosi' che sono caduti i login l'11/09/2026: PATCH su users 200, INSERT su
+    sessioni subito dopo terminato sullo stesso last_stream_id.
+
+    Si agisce sul client gia' costruito invece di passarne uno nostro via
+    SyncClientOptions(httpx_client=...): quella strada fa perdere gli header che
+    supabase-py inietta nel suo (apikey, accept-profile, content-profile), e
+    senza apikey ogni query risponde 401.
+    """
+    try:
+        sessione = client.postgrest.session
+        pool = sessione._transport._pool
+    except Exception:
+        logger_fallback = __import__("logging").getLogger(__name__)
+        logger_fallback.warning(
+            "Impossibile disattivare HTTP/2 sul client PostgREST: struttura httpx "
+            "inattesa. Il client resta su HTTP/2 (vedi incidente login 11/09/2026)."
+        )
+        return
+    pool._http2 = False
+    if getattr(pool, "_keepalive_expiry", None) is None or pool._keepalive_expiry > 5.0:
+        pool._keepalive_expiry = 5.0
+
+
 @lru_cache(maxsize=1)
 def _cached_client():
     options = SyncClientOptions(
@@ -209,7 +240,9 @@ def _cached_client():
         storage_client_timeout=30,
     )
     url, key = _get_supabase_credentials()
-    return create_client(url, key, options=options)
+    client = create_client(url, key, options=options)
+    _disattiva_http2(client)
+    return client
 
 
 @lru_cache(maxsize=1)
