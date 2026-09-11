@@ -73,10 +73,18 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   errori che si compensano. Ora `.order("id")`; +3 test, 3 mutanti uccisi
 >   (senza ordine, per descrizione, decrescente); due fake di test esistenti
 >   hanno imparato `.order()` (decisione di Mattia). Effetto collaterale
->   dichiarato: sulle collisioni della memoria normalizzata vince l'ultima voce
->   per `id` invece che per ordine fisico (1 riga su 3.475 sui dati veri). Da
->   decidere a parte: **33 chiamanti di `fetch_all` su 34 senza `.order()`**,
->   stessa classe. Suite **13.363 verdi, 44 skip**.
+>   dichiarato: sulle collisioni della memoria normalizzata il vincitore era
+>   gia' arbitrario e instabile fra una ricarica e l'altra; ora e'
+>   deterministico (ultima voce per `id`, uuid casuale, senza semantica
+>   temporale). Ri-misurato l'11/09/2026 in sola lettura, dopo che la review
+>   dei commit di `main` aveva contestato la cifra «1 riga su 3.475» (era la
+>   baseline, che campiona): **39 chiavi su 5.206** cambiano categoria rispetto
+>   alla lettura per ordine fisico; sul cliente da 3.067 voci 28 gruppi
+>   collidono e in **5 una correzione manuale perde** contro un'automatica —
+>   la direzione non e' «verso il manuale», e' arbitraria. Da decidere a
+>   parte: precedenza `classificato_da` manuale > automatico, e i **33
+>   chiamanti di `fetch_all` su 34 senza `.order()`**, stessa classe. Suite
+>   **13.363 verdi, 44 skip**.
 >
 > - **09/09/2026 — Fase 4: il banner in fondo alla Home fuso nella card.** La
 >   card grande "Righe da classificare" era un doppione visivo della voce che il
