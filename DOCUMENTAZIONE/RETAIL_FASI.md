@@ -741,10 +741,10 @@ sarebbe stato scambiato per «presidio che regge».
 
 **Un buco vero nel mio presidio, trovato dalla mutazione**: il regex copiato dal test food
 cerca `NON è MAI` con la *e accentata*. Il mutante scriveva `NON e' MAI` — divieto in
-chiaro davanti al presidio, che restava **verde**. Corretto solo nel test nuovo
-(normalizzando accenti e apostrofi prima di cercare): `test_prompt_ai_coerenza_dominio.py`
-**non si tocca**, ma ha lo stesso limite — se un giorno qualcuno riscrive quel divieto con
-l'apostrofo nel prompt food, il suo presidio non lo vede. Da dire quando si toccherà.
+chiaro davanti al presidio, che restava **verde**. Corretto normalizzando accenti e
+apostrofi prima di cercare. In fase lo avevo corretto **solo nel test nuovo**, perché
+`test_prompt_ai_coerenza_dominio.py` è un test esistente; **chiuso anche lì l'11/9/2026 con
+l'ok esplicito di Mattia** — dettaglio e tabella dei mutanti in fondo alla sezione.
 
 Gate: suite **13.526 verdi / 45 skip** (+28), `-m sql` **180**, `git diff main -- tests/`
 **6.067 aggiunte / 0 cancellate** e nessun file di test modificato, baseline `check` a zero
@@ -784,13 +784,33 @@ arrivato per una ragione che non c'entra col settore:
   uno di questi script verrebbe rilanciato), e comunque prima della chiusura finale, insieme a
   `ricategorizza_sede*.py` e `_runtime_conferma_categoria`.
 
-**Il limite del presidio food resta un residuo dichiarato**: `tests/test_prompt_ai_coerenza_dominio.py:31-33`
-cerca `NON è MAI` con la e accentata e resterebbe verde su un divieto scritto `NON e' MAI`. Il
-reviewer conferma che **non toccarlo era la scelta giusta** — il vincolo «nessun test esistente
-modificato» è il più forte della fase, e il limite è **latente**: il prompt food oggi non
-contiene alcun divieto con apostrofo, quindi il presidio non sta mancando nulla di reale. Il
-modello da portarci quando sarà lecito è la normalizzazione già scritta in
-`tests/test_retail_prompt_coerenza_dominio.py`.
+**Il limite del presidio food: chiuso l'11/9/2026 con l'ok esplicito di Mattia.** Era stato
+lasciato come residuo perché il vincolo «nessun test esistente modificato» è il più forte della
+fase; Mattia ha autorizzato la modifica prima di aprire la Fase 3.
+
+`tests/test_prompt_ai_coerenza_dominio.py` ora normalizza accenti e apostrofi per riga, come il
+gemello retail. **La causa era più stretta di come l'avevo scritta**: il regex non era cieco a
+tutti i divieti con apostrofo — l'alternativa `MAI una risposta`, che l'accento non ce l'ha,
+ne intercettava alcuni. Reggeva **per caso, non per costruzione**: bastava
+`"Da Classificare" NON e' MAI valida` — né `NON è MAI` né `MAI una risposta` — e il divieto
+passava davanti al presidio. La prima stesura del commento attribuiva il buco alla sola `è`
+accentata, e la mutazione l'ha smentita: il primo mutante (`NON e' MAI una risposta`) veniva
+ucciso **anche dal presidio vecchio**.
+
+**Provato per mutazione, un mutante alla volta**, con `.bak` preso prima e md5 verificato dopo
+ogni ripristino (`config/prompt_ai_potenziato.py` torna a `0f076c03…`, byte-identico):
+
+| # | Mutante nel prompt food | Presidio vecchio | Presidio corretto |
+|---|---|---|---|
+| 1 | `"Da Classificare" NON e' MAI una risposta valida.` | ucciso (1 failed) | ucciso (1 failed) |
+| 2 | `"Da Classificare" NON e' MAI valida: scegli sempre una categoria.` | **sopravvissuto (6 passed)** | **ucciso (1 failed)** |
+
+Il mutante 2 è la prova del buco e della sua chiusura. Entrambi verificati nella **costante
+viva** prima di leggere l'esito (`NON e' MAI` in `PROMPT_CLASSIFICAZIONE_AI` = True, nel retail
+= False): un mutante che non si applica produce lo stesso verde di un presidio che regge.
+
+Suite dopo la correzione: **13.526 verdi, 45 skip** — invariata. Il prompt food non è stato
+toccato: l'unico file modificato è il test.
 
 **Sullo scostamento NOTE E DICITURE il reviewer è d'accordo, con una ragione più forte della
 mia**: per il retail una categoria fuori whitelist diventa `Da Classificare` **senza** recupero

@@ -26,12 +26,29 @@ from config.prompt_ai_potenziato import (
 
 
 def test_il_prompt_non_vieta_la_categoria_di_dominio():
-    """Nessuna riga deve dichiarare "Da Classificare" una risposta non valida."""
-    testo = PROMPT_CLASSIFICAZIONE_AI
-    divieti = re.findall(
-        r'^.*"?Da Classificare"?.*(?:NON è MAI|non è mai|MAI una risposta).*$',
-        testo, re.MULTILINE | re.IGNORECASE,
-    )
+    """Nessuna riga deve dichiarare "Da Classificare" una risposta non valida.
+
+    Il regex cercava "NON è MAI" con la e accentata, e reggeva su
+    "NON e' MAI una risposta" solo grazie all'alternativa "MAI una risposta",
+    che l'accento non ce l'ha: per caso, non per costruzione. Bastava
+    "Da Classificare NON e' MAI valida" — nessuna delle due — e il divieto
+    passava davanti al presidio col verde. Misurato l'11/9/2026 mutando prima il
+    gemello retail, che aveva ereditato lo stesso punto cieco. La riga si
+    normalizza prima di cercarla, cosi' la grafia dell'accento non decide se il
+    presidio vede o no.
+    """
+    def _normalizza(riga: str) -> str:
+        for accentata, piana in (("è", "e"), ("é", "e"), ("à", "a"), ("ò", "o")):
+            riga = riga.replace(accentata, piana)
+        return riga.replace("'", "").replace("`", "")
+
+    divieti = [
+        riga.strip() for riga in PROMPT_CLASSIFICAZIONE_AI.splitlines()
+        if "Da Classificare" in riga and re.search(
+            r"(?:NON e MAI|non e mai|MAI una risposta|NON e una risposta)",
+            _normalizza(riga), re.IGNORECASE,
+        )
+    ]
     assert not divieti, (
         "Il prompt vieta all'AI la categoria che la regola di dominio #1 "
         f"impone di usare quando non riconosce la riga: {divieti}"
