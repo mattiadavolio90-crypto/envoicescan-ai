@@ -112,6 +112,12 @@ class FakeClient:
         return _Query(self.sessioni, op=None)
 
 
+@pytest.fixture(autouse=True)
+def _niente_attesa_nei_test(monkeypatch):
+    """Vale per tutto il modulo: azzera il backoff del retry in crea_sessione."""
+    monkeypatch.setattr(ss, "_INSERT_BACKOFF_SECONDS", 0)
+
+
 @pytest.fixture
 def fake():
     c = FakeClient()
@@ -236,11 +242,6 @@ class _ClientCheCade(FakeClient):
         return q
 
 
-@pytest.fixture(autouse=True)
-def _niente_attesa_nei_test(monkeypatch):
-    monkeypatch.setattr(ss, "_INSERT_BACKOFF_SECONDS", 0)
-
-
 def test_crea_sessione_ritenta_dopo_caduta_connessione():
     sb = _ClientCheCade(cadute=2)
     token = ss.crea_sessione("u1", supabase_client=sb)
@@ -287,6 +288,25 @@ def test_duplicato_token_vale_successo():
 # esauriva le connessioni verso Supabase e l'INSERT in `sessioni` cadeva con
 # ConnectionTerminated -> login 500 con le credenziali gia' verificate.
 
+
+def _senza_streamlit(monkeypatch):
+    """Sul worker st.secrets non esiste e la funzione cade sulle env var; nei
+    test lo shim Streamlit risponde, quindi va neutralizzato o non si misura il
+    percorso reale."""
+    import sys, types
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("no secrets")
+
+    class _S:
+        def __getitem__(self, _k): _boom()
+        def get(self, *_a, **_k): _boom()
+
+    finto = types.ModuleType("streamlit")
+    finto.secrets = _S()
+    monkeypatch.setitem(sys.modules, "streamlit", finto)
+
+
 def test_client_anon_creato_una_volta_sola(monkeypatch):
     from services import auth_service as a
 
@@ -299,19 +319,7 @@ def test_client_anon_creato_una_volta_sola(monkeypatch):
     monkeypatch.setattr(a, "_ANON_CLIENT", None)
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon")
-    # Sul worker st.secrets non esiste: la funzione cade sulle env var. Nei test
-    # lo shim Streamlit risponde, quindi va neutralizzato o non si misura il
-    # percorso reale.
-    monkeypatch.setattr(a, "_ANON_CLIENT", None)
-    import sys, types
-    finto_st = types.ModuleType("streamlit")
-    def _boom(*_a, **_k):
-        raise RuntimeError("no secrets")
-    class _S:
-        def __getitem__(self, _k): _boom()
-        def get(self, *_a, **_k): _boom()
-    finto_st.secrets = _S()
-    monkeypatch.setitem(sys.modules, "streamlit", finto_st)
+    _senza_streamlit(monkeypatch)
     import supabase
     monkeypatch.setattr(supabase, "create_client", _fake_create_client)
 
@@ -332,15 +340,7 @@ def test_client_anon_non_memorizza_il_fallimento(monkeypatch):
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
     monkeypatch.delenv("SUPABASE_KEY", raising=False)
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
-    import sys, types
-    finto_st = types.ModuleType("streamlit")
-    def _boom(*_a, **_k):
-        raise RuntimeError("no secrets")
-    class _S:
-        def __getitem__(self, _k): _boom()
-        def get(self, *_a, **_k): _boom()
-    finto_st.secrets = _S()
-    monkeypatch.setitem(sys.modules, "streamlit", finto_st)
+    _senza_streamlit(monkeypatch)
     import supabase
     monkeypatch.setattr(supabase, "create_client", lambda url, key: object())
 

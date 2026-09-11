@@ -222,8 +222,8 @@ def _disattiva_http2(client) -> None:
         sessione = client.postgrest.session
         pool = sessione._transport._pool
     except Exception:
-        logger_fallback = __import__("logging").getLogger(__name__)
-        logger_fallback.warning(
+        from config.logger_setup import get_logger as _get_logger
+        _get_logger("services").warning(
             "Impossibile disattivare HTTP/2 sul client PostgREST: struttura httpx "
             "inattesa. Il client resta su HTTP/2 (vedi incidente login 11/09/2026)."
         )
@@ -289,4 +289,10 @@ def get_supabase_client():
     """
     client = _cached_client()
     _riallinea_auth_header(client, _cached_service_role_key())
+    # Va rifatto a ogni giro, non solo alla costruzione: sugli eventi auth
+    # (SIGNED_IN / TOKEN_REFRESHED / SIGNED_OUT) supabase-py azzera _postgrest, e
+    # l'accesso successivo lo ricostruisce con un pool nuovo che nasce http2=True
+    # — il fix sparirebbe in silenzio proprio sul percorso che
+    # _riallinea_auth_header presidia. E' idempotente e costa due getattr.
+    _disattiva_http2(client)
     return client

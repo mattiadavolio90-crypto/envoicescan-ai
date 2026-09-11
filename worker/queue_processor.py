@@ -238,8 +238,18 @@ def _sleep_backoff_entro_budget(tentativo: int) -> None:
         time.sleep(attesa)
 
 
+_CLIENT_CACHE: dict = {}
+
+
 def get_supabase_client():
-    """Client Supabase per worker CLI, senza dipendenze da Streamlit UI."""
+    """Client Supabase per worker CLI, senza dipendenze da Streamlit UI.
+
+    Cachato per (url, key): questa funzione viene chiamata dentro il `while True`
+    del queue-worker (worker/run.py), quindi senza cache creava un client nuovo —
+    con pool di connessioni proprio, mai chiuso — a ogni ciclo di polling. E' lo
+    stesso pattern che l'11/09/2026 ha esaurito le connessioni verso Supabase sul
+    worker web e faceva cadere i login con ConnectionTerminated.
+    """
     url = os.environ.get("SUPABASE_URL", "")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
     if not url or not key:
@@ -248,14 +258,30 @@ def get_supabase_client():
             "Imposta SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY nelle env vars."
         )
 
-    if SyncClientOptions is None:
-        return create_client(url, key)
+    cache_key = f"{url}::{key[:8]}"
+    cached = _CLIENT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
-    options = SyncClientOptions(
-        postgrest_client_timeout=30,
-        storage_client_timeout=30,
-    )
-    return create_client(url, key, options=options)
+    if SyncClientOptions is None:
+        client = create_client(url, key)
+    else:
+        options = SyncClientOptions(
+            postgrest_client_timeout=30,
+            storage_client_timeout=30,
+        )
+        client = create_client(url, key, options=options)
+
+    try:
+        from services import _disattiva_http2
+        _disattiva_http2(client)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "HTTP/2 non disattivato sul client del queue-worker", exc_info=True
+        )
+
+    _CLIENT_CACHE[cache_key] = client
+    return client
 
 
 def _auto_classify_saved_rows(

@@ -71,6 +71,62 @@ Se compaiono errori tipo `column X does not exist` o `relation Y does not exist`
 
 ---
 
+## 3bis. I clienti non riescono ad accedere — "Errore creazione sessione"
+
+Sintomo: la pagina di login mostra **"Errore creazione sessione"**, il worker e
+Vercel rispondono 200 e veloci (il punto 1 non trova niente).
+
+**Il redeploy NON risolve.** È la trappola di questo incidente: sembra un pool di
+connessioni "avvelenato" dall'uptime, ma l'errore si ripresenta su un worker
+appena riavviato.
+
+```bash
+railway logs --service worker | grep -iE "Errore creazione sessione|ConnectionTerminated"
+```
+
+Se compare `httpx.RemoteProtocolError: <ConnectionTerminated error_code:0>`:
+
+1. **Guarda `last_stream_id`.** Se è **basso e sempre uguale** (es. `:3`) anche
+   dopo un riavvio, non è una connessione vecchia rimasta in cache: muore la
+   n-esima richiesta di una connessione **nuova**. Il problema è a monte, in chi
+   apre le connessioni.
+2. **Conta i client Supabase creati nel percorso caldo.** Un `create_client()`
+   dentro una funzione chiamata a ogni richiesta (o dentro un `while True`) apre
+   un pool nuovo che non viene mai chiuso: è una perdita di connessioni.
+3. Verifica che le credenziali passino comunque:
+   ```sql
+   SELECT email, last_login FROM users WHERE last_login > now() - interval '1 hour';
+   SELECT count(*) FROM sessioni WHERE created_at > now() - interval '1 hour';
+   ```
+   `last_login` aggiornato + zero sessioni nuove = le password sono verificate e
+   si rompe **solo** la creazione della sessione.
+
+**Rimedio immediato senza deploy** (incidente 11/09/2026): il bridge Supabase
+Auth creava un client nuovo a ogni login e falliva comunque (400 su
+`/auth/v1/token`, 404 su `/auth/v1/admin/users`, perché `auth.uid()` è sempre
+NULL qui). Si spegne con il killswitch già previsto dal codice:
+
+```bash
+railway variables --service worker --set "SKIP_SUPABASE_AUTH=1"
+```
+
+Misurato dopo: zero `ConnectionTerminated` su `crea_sessione`, latenza login da
+~4s a 0,78s. Il login resta pienamente funzionante (path Argon2).
+
+> ⚠️ **Non testare il login con password sbagliate.** Dopo 5 tentativi scatta il
+> lockout di 15 minuti sull'account (`login_attempts`), e da quel momento
+> nemmeno la password giusta entra — sembra che il fix non abbia funzionato.
+> Successo l'11/09/2026. Per verificare basta il codice di risposta: **401** =
+> catena sana (credenziali rifiutate), **500** = il bug è ancora lì, **429** =
+> account bloccato, aspetta 15 minuti.
+
+Nota: `ConnectionTerminated` su `login_attempts` (cleanup / `registra_tentativo`)
+è dentro try/except non bloccanti e **non** impedisce il login. Va però ricordato
+che in quel caso `controlla_rate_limit` ritorna `(False, 0)`: il lockout si apre
+proprio mentre il sistema è sotto stress.
+
+---
+
 ## 4. Coda ricavi bloccata (alert dedicato)
 
 ```sql
