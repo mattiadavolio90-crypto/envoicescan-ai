@@ -86,6 +86,30 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   chiamanti di `fetch_all` su 34 senza `.order()`**, stessa classe. Suite
 >   **13.363 verdi, 44 skip**.
 >
+> - **11/09/2026, branch `retail` (NON spedito) — Fase 5 del retail: sorveglianza
+>   post-deploy.** Le Fasi 1-4 hanno dimostrato il vincolo «i ristoranti non
+>   cambiano» **al momento del commit**; questa lo sorveglia **sui dati veri dopo
+>   il deploy**, dove il danno si vedrebbe. La misura ha fatto cadere la premessa
+>   della fase: il piano voleva contare i cambi «senza attore umano», ma su
+>   **4.135** righe di `category_change_log` quelle con un attore sono **0** e
+>   `source` ha **un solo valore** (`db_trigger`) — i GUC che il trigger legge non
+>   li imposta nessun codice applicativo, solo le migration li nominano. Un filtro
+>   sull'attore avrebbe selezionato il 100% delle righe: rumore puro, e un alert
+>   che scatta ogni giorno viene ignorato entro una settimana. Segnale riscritto su
+>   base **semantica**: una riga di una sede ristorazione che finisce in
+>   `ARTICOLO DI VENDITA` e' sbagliata chiunque l'abbia scritta. Non tocca le
+>   classi legittime (42,3% `Da Classificare`→reale, 55,7% reale→reale, 2,0%
+>   ritorno in coda): guarda solo l'incrocio categoria×settore, che sullo storico
+>   completo vale **0**. Scritti una view (**non applicata**), un endpoint `GET` di
+>   sola lettura e un workflow cron con alert solo su anomalia. **11 mutanti**, di
+>   cui uno ha smascherato un **presidio finto**: `ROTTA in testo` restava verde col
+>   `curl` puntato altrove, perche' il path compare anche nel commento del workflow
+>   — il monitor avrebbe preso 404 e taciuto per sempre. Due difetti veri trovati
+>   dai presidi e non dalla lettura: `?ore=0` allargava la finestra invece di
+>   stringerla (`or` su un falsy), e l'endpoint non aveva una guardia propria — vista
+>   **solo dalla suite intera**, verde a file isolato. Suite **13.868 verdi, 45
+>   skip**; `-m sql` **190**; OpenAPI **197** endpoint senza drift.
+>
 > - **11/09/2026, branch `retail` (NON spedito) — Fase 4 del retail: briefing,
 >   chat AI e soglie.** La chat diceva a un negozio «Rispondi SOLO a domande sui
 >   dati del ristorante» e gli dava i benchmark della ristorazione italiana come

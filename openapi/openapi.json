@@ -15895,6 +15895,68 @@
         }
       }
     },
+    "/api/admin/retail/categorie-incoerenti": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Retail Categorie Incoerenti",
+        "description": "Sorveglianza sola lettura (Retail Fase 5): righe che hanno cambiato categoria\nfinendo nel settore SBAGLIATO. Legge `v_categorie_settore_incoerenti`\n(migration 20260911170000).\n\nIl danno che previene\n─────────────────────────────────────────────────────────────────────────\nUna riga di un cliente RISTORAZIONE che finisce in ARTICOLO DI VENDITA — la\ncategoria che esiste solo per i negozi. E' il danno peggiore che il retail\npuo' fare ai clienti attuali, ed e' SILENZIOSO: nessun errore, nessun test\nrosso, e il cliente lo scopre dal MOL sbagliato settimane dopo. I presidi\ndelle Fasi 1-4 girano sul codice al momento del commit; questo guarda i dati\nveri dopo il deploy.\n\nDue classi, mai sommate in un unico numero con significati diversi:\n  - ristorazione_con_categoria_retail: il caso sopra.\n  - retail_con_categoria_food: la speculare (un negozio che riceve una\n    categoria food, che la Fase 1 esclude gia' in uscita: se ne arriva una,\n    qualcosa ha aggirato il gate).\n\nPerche' NON e' gatato da `_verify_admin` come il resto del router\n─────────────────────────────────────────────────────────────────────────\nStesso motivo dichiarato per /api/admin/riparto/incoerenze: il consumatore e'\nun workflow GitHub Actions (codice macchina, non un admin che naviga /admin),\ne la worker key del router basta. Se un giorno lo si esponesse alla pagina\n/admin va aggiunto `_verify_admin`, perche' ritorna dati di TUTTI gli account\nsenza filtro per chiamante.\n\nForma della response uguale a /api/admin/riparto/incoerenze (`totale` +\ndettaglio): e' quella che i workflow di sorveglianza sanno gia' leggere.\n\nNon corregge niente: espone lo stato e si ferma.",
+        "operationId": "retail_categorie_incoerenti_api_admin_retail_categorie_incoerenti_get",
+        "parameters": [
+          {
+            "name": "ore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 24,
+              "title": "Ore"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retail Categorie Incoerenti Api Admin Retail Categorie Incoerenti Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/overview": {
       "get": {
         "tags": [

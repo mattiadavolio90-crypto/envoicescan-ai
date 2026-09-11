@@ -1,6 +1,6 @@
 # Retail — le fasi dell'implementazione
 
-Stato all'**11/09/2026, pomeriggio**: **Fasi 0, 1, 2, 3 e 4 CHIUSE**. Branch
+Stato all'**11/09/2026, sera**: **Fasi 0, 1, 2, 3, 4 e 5 CHIUSE** — tutte. Branch
 `retail`, **mai pushato** (`origin/retail` non esiste).
 
 > **Il numero di commit non sta scritto qui**, di proposito: una cifra in un file
@@ -14,7 +14,9 @@ reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 **Fase 4** `23c0706`, `f76ddf1`, `ec43fc2`, `a6bb45d`, `e91f576`, `d4867c0`
 (+ `a4166e4`, `2aec741` verbale): **241 presidi, 43 mutanti, 7 presidi finti**
 smascherati dalla mutazione, reviewer 🔴 **tre volte** e poi chiuso.
-**Prossima: Fase 5 (sorveglianza post-deploy), Opus, ~mezza giornata.**
+**Fase 5** (sorveglianza post-deploy) **CHIUSA** 11/9/2026: 11 mutanti, 1 presidio
+finto smascherato, 2 difetti veri trovati dai presidi.
+**Prossima: la Chiusura finale** (due migration da applicare, non una).
 
 > ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
 >
@@ -24,11 +26,13 @@ smascherati dalla mutazione, reviewer 🔴 **tre volte** e poi chiuso.
 > si pusha finché non è tutta spuntata, e non si spunta niente "da quello che
 > ricordo" — si misura.
 >
-> 1. **La migration `20260910163000_add_tipo_attivita.sql` NON è applicata.**
+> 1. **DUE migration NON applicate** (non una: la seconda l'ha aggiunta la Fase 5).
+>    **`20260910163000_add_tipo_attivita.sql`** e
+>    **`20260911170000_v_categorie_settore_incoerenti.sql`** (la view del monitor:
+>    senza, l'endpoint di sorveglianza risponde 500).
 >    Va applicata sul DB **prima** del push (Railway ridispiega a ogni commit, anche
 >    per soli `.md`, e il codice nuovo leggerebbe una colonna inesistente).
->    È l'**unica** migration del branch: verificato con
->    `git diff main --name-only -- supabase/migrations/`.
+>    Si ri-verifica con `git diff main --name-only -- supabase/migrations/`.
 >    Contiene due cose, non una: la colonna `ristoranti.tipo_attivita` **e** il
 >    `CREATE OR REPLACE` di `assegna_fattura_a_sede_tecnica` (la sede tecnica deve
 >    ereditare il settore, o su un account retail nascerebbe 'ristorazione').
@@ -1250,26 +1254,16 @@ Misurato sul branch l'11/9/2026:
 
 ### Le caselle
 
-- [ ] **Misurare prima di progettare**: `category_change_log` sul DB vivo —
-      quante righe da dopo l'8/9, quali `source` distinti, quante senza attore.
-      Se l'attribuzione non fosse ancora popolata come il doc dice, la fase
-      cambia forma (memoria `cifra-ripresa-da-un-doc-non-e-misurata`).
-- [ ] **Endpoint admin di sola lettura** nel worker che risponda alla domanda:
-      *nelle ultime 24h, quante righe di un cliente RISTORAZIONE hanno cambiato
-      categoria senza un attore umano?* Forma della response coerente con
-      `/api/admin/riparto/incoerenze` (un `totale` + il dettaglio), perché è
-      quella che il workflow sa già leggere.
-- [ ] **Workflow di sorveglianza** sul modello di `riparto_coerenza_check.yml`:
-      cron giornaliero, alert solo su anomalia, commento in testa che dica quale
-      danno previene. **Non** deve scattare su un cambio legittimo — la
-      classificazione automatica di una fattura NUOVA non è un'anomalia: il
-      segnale è il cambio su una riga **già classificata**.
-- [ ] **Provarlo su un'anomalia vera**, non solo sul caso pulito: la domanda
-      «riconosce un cambio che non dovrebbe esserci?» si risponde costruendo il
-      caso, non leggendo la query. Un monitor che non ha mai visto rosso non si
-      sa se funziona.
-- [ ] **Presidi con mutazione anche sul CALL SITE**, non solo sul corpo: è la
-      lezione che la Fase 4 ha pagato quattro volte.
+- [x] **Misurare prima di progettare**: fatto, e ha **cambiato la forma della fase**
+      (vedi sotto: l'attribuzione e' vuota, il segnale non poteva essere «senza attore»).
+- [x] **Endpoint admin di sola lettura**: `GET /api/admin/retail/categorie-incoerenti`
+      (`services/routers/admin.py`), forma `totale` + dettaglio come il gemello riparto.
+- [x] **Workflow di sorveglianza**: `.github/workflows/retail_settore_check.yml`,
+      cron 06:40 UTC, alert Telegram solo se `totale != 0`.
+- [x] **Provato su un'anomalia vera**: il rosso e' costruito riga per riga su un
+      Postgres vero (`tests/test_sql_retail_settore_incoerente.py`), non letto.
+- [x] **Presidi con mutazione anche sul CALL SITE**: 11 mutanti, 1 presidio finto
+      smascherato e corretto (dettaglio sotto).
 
 ### Due vincoli specifici di questa fase
 
@@ -1279,6 +1273,128 @@ Misurato sul branch l'11/9/2026:
    ignorato entro una settimana, e a quel punto non esiste più. Meglio una
    soglia che tace troppo di una che grida: la prima si stringe dopo aver visto
    i dati veri, la seconda non si riapre più.
+
+---
+
+### La misura ha cambiato la forma della fase
+
+La prima casella — «misura, non fidarti del doc» — ha fatto cadere la premessa su cui
+la fase era progettata. Il piano diceva: conta i cambi di categoria **senza un attore
+umano**, leggendo `actor_email`/`source`. Misurato sul DB vivo l'11/09/2026:
+
+| Fatto | Cifra |
+|---|---|
+| righe in `category_change_log` | **4.135** (4.022 su `fatture`, 113 su `prodotti_utente`) |
+| righe **con** un attore | **0** — su tutte, comprese le 3 dopo l'8/9 |
+| valori distinti di `source` | **1**: `db_trigger` |
+
+Il doc diceva «dall'8/9 lo scrittore si dichiara»: le colonne esistono e la RPC
+`aggiorna_categoria_fatture_attribuita` e' sul DB con tutti gli 8 argomenti, ma i GUC
+che il trigger legge (`app.category_change_actor_*`) non li ha ancora valorizzati
+nessuna scrittura reale — **nel repo non c'e' codice applicativo che li imposti**
+(grep: compaiono solo dentro le migration). Un filtro su `actor_email IS NULL`
+avrebbe quindi selezionato il **100%** delle righe: rumore puro, e un alert che
+scatta ogni giorno viene ignorato entro una settimana.
+
+**Il segnale e' quindi semantico e non basato sull'attore**: una riga di una sede
+RISTORAZIONE che finisce in `ARTICOLO DI VENDITA` e' sbagliata **chiunque** l'abbia
+scritta — un umano che sbaglia e' comunque una cosa da sapere. `actor_email` e
+`source` viaggiano gia' nel dettaglio della response: quando l'attribuzione sara'
+popolata, il filtro si stringe senza cambiare la forma.
+
+**Perche' non fa rumore**, misurato sullo storico dei 4.022 cambi su `fatture`:
+42,3% `Da Classificare` → categoria reale (lavoro normale), 55,7% reale → reale,
+2,0% ritorno in coda. Il monitor **non guarda nessuna di queste classi**: guarda solo
+l'incrocio fra categoria d'arrivo e settore della sede, che sullo storico completo
+vale **0 righe** (0 cambi da/verso `ARTICOLO DI VENDITA` in 4.135). Tace finche' non
+succede davvero.
+
+### Cosa e' stato scritto
+
+- `supabase/migrations/20260911170000_v_categorie_settore_incoerenti.sql` — la view,
+  **scritta e NON applicata** (vincolo di sola lettura della fase). Due classi:
+  `ristorazione_con_categoria_retail` e la speculare `retail_con_categoria_food`.
+  Legge `tipo_attivita` via `to_jsonb(r)->>` cosi' e' creabile **anche prima** della
+  migration `20260910163000` (verificato: oggi la colonna non c'e', e tutte e 12 le
+  sedi vengono lette come 'ristorazione', che e' il default di quella migration).
+- `services/routers/admin.py` — l'endpoint, `GET`, query `SELECT`, nessuna scrittura.
+  Finestra 24h (cap 720) e le due classi mai sommate in un numero solo.
+- `.github/workflows/retail_settore_check.yml` — cron giornaliero 06:40 UTC (dieci
+  minuti dopo `riparto_coerenza_check`, per non far partire due curl insieme).
+  **Nessun secret nuovo**: `WORKER_SECRET_KEY` e i due Telegram esistono gia'.
+
+### Mutazione: 11 mutanti, e uno ha smascherato un presidio finto
+
+Un mutante alla volta, `.bak` preso **prima** del primo, e ogni volta verificato col
+`diff` che il mutante fosse **davvero applicato** prima di leggere l'esito.
+
+| # | Mutante | Esito |
+|---|---|---|
+| 1 | la classe 1 si restringe a `old <> 'Da Classificare'` | ucciso |
+| 2 | cade il filtro `tipo_attivita = 'ristorazione'` | ucciso |
+| 3 | cade il filtro `table_name = 'fatture'` | ucciso |
+| 4 | `CARNE` sparisce dalla lista food | ucciso |
+| 5 | **la rotta viene smontata** (funzione intatta) | ucciso |
+| 6 | la chiave `totale` rinominata | ucciso |
+| 7 | le due classi sommate in un secchio solo | ucciso |
+| 8 | cade il filtro sulla finestra temporale | ucciso |
+| 9 | il workflow interroga un path sbagliato | **SOPRAVVISSUTO** → presidio riscritto |
+| 10 | l'alert parte sempre (`if: always()`) | ucciso |
+| 12 | la worker key sparisce dal curl | ucciso |
+
+**Il 9 e' la lezione della fase.** Il presidio asseriva `ROTTA in testo`: il path
+compare **anche nel commento in testa al workflow**, quindi l'assert restava verde
+con il `curl` puntato altrove — un monitor che riceve 404 e, per come e' scritto lo
+step, si limita a loggare un errore: tacerebbe per sempre. E' esattamente
+`assert-in-non-e-assert-uguale`. Riscritto per isolare **la riga del curl** e
+confrontarla, poi ri-mutato (M9-bis): ucciso.
+
+### Due difetti veri trovati dai presidi, non dalla lettura
+
+1. **`?ore=0` allargava la finestra invece di stringerla**: `int(ore or DEFAULT)` —
+   `0` e' falsy, quindi diventava 24. Corretto con `ore is not None`.
+2. **L'endpoint non aveva una guardia propria**: `tests/test_router_dependencies_guardia.py`
+   lo ha visto **solo nella suite intera** (girando il file da solo era verde).
+   Il gate del router bastava oggi, ma se domani qualcuno togliesse quel
+   `dependencies`, l'endpoint resterebbe scoperto. Aggiunto `Depends(_verify_worker_key)`
+   esplicito: **nessun test modificato per questo**, era il codice a mancare.
+
+### L'unico test esistente toccato, autorizzato da Mattia
+
+`tests/test_route_api_auth_dichiarativa.py`: **+8 righe, 0 cancellazioni**. E' la
+allowlist `SENZA_IDENTITA_MOTIVATI`, e aggiungere una voce motivata e' il punto di
+estensione **previsto dal test stesso** — nessuna asserzione e' stata cambiata, nessun
+test adattato per farlo passare. La voce e' gemella di quella gia' presente per
+`/api/admin/riparto/incoerenze`. L'alternativa (gate `_verify_admin`) e' stata
+misurata e scartata **da Mattia**: in CI non esiste un bearer admin — tutti i workflow
+di sorveglianza che colpiscono il worker usano solo `X-Worker-Key` — quindi avrebbe
+reso il monitor irraggiungibile, cioe' l'obiettivo della fase mancato.
+
+### Gate di fine fase
+
+Suite **13.868** verdi / 45 skip (da 13.840 dopo il rebase: **+28**), `-m sql`
+**190** (da 180: +10, su Postgres vero), `git diff main -- tests/` con cancellazioni
+**solo** su `test_prompt_ai_coerenza_dominio.py` (l'unico autorizzato, Fase 2),
+baseline **«Diff a zero»** (56 righe di costi, 3.475 categorie) **due volte in
+processi nuovi**, i due presidi automatici del vincolo verdi (83 test), OpenAPI
+rigenerato e senza drift (**197 endpoint**, da 196), `check_documentazione.py` pulito.
+Rebase su `main` fatto a inizio fase (5 commit di altre sessioni: login, GDPR, web;
+nessuno tocca `ai_service.py`, `margine_service.py` o funzioni SQL, quindi la
+baseline non andava ri-catturata — e infatti e' rimasta a zero).
+
+### Dichiarati, non chiusi
+
+- **La migration della view NON e' applicata**, come tutte quelle del branch: va
+  applicata insieme a `20260910163000_add_tipo_attivita.sql` prima del push, o
+  l'endpoint risponderebbe 500 su una view inesistente. **Sono ora DUE le migration
+  da applicare**, non una: la riga 1 del contratto «PRIMA DEL PUSH» va letta cosi'.
+- **Il monitor non ha ancora visto rosso in produzione**, per costruzione: non
+  esiste una sede retail. Ha visto rosso su Postgres vero (10 test), che e' il piu'
+  vicino possibile finche' un negozio non esiste.
+- **L'attribuzione resta da accendere**: finche' nessuno valorizza i GUC, il
+  registro sa *cosa* e' cambiato ma non *chi* l'ha cambiato. Non blocca questa fase
+  (il segnale non ne dipende), ma e' la ragione per cui il monitor non puo' oggi
+  distinguere una correzione legittima dell'admin da una scrittura automatica.
 
 ---
 
@@ -1399,6 +1515,6 @@ così Mattia cambia modello a mano.
 | 2 — prompt retail | Opus | **chiusa** 11/9 — ultrathink, mezza giornata: 11 mutanti, 1 buco nel presidio trovato mutando |
 | 3 — spegnimenti ed etichette | Opus | normale — 2 giorni |
 | 4 — briefing, chat, soglie | Opus | normale — 1 giorno |
-| 5 — sorveglianza | Opus | normale — mezza giornata |
+| 5 — sorveglianza | Opus | **chiusa** 11/9 — normale, mezza giornata: 11 mutanti, 1 presidio finto |
 
 Totale ~7,5 giorni. Fase 1 bloccante per tutte; 3 e 4 indipendenti fra loro.

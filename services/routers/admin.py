@@ -3382,3 +3382,110 @@ def admin_attiva_trial(cliente_id: str, admin_user: dict = Depends(_verify_admin
         raise HTTPException(status_code=400, detail=msg)
     logger.info("admin_attiva_trial: cliente=%s | admin=%s", cliente_id, admin_user.get("email"))
     return {"ok": True, "message": msg}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RETAIL — sorveglianza post-deploy (Fase 5)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Finestra di default del monitor. 24h e non 1h: il workflow gira una volta al
+# giorno, e una finestra piu' stretta della cadenza lascerebbe buchi ciechi fra
+# una run e l'altra. Il cap a 30 giorni tiene la query lontana da una scansione
+# completa del registro (4.135 righe oggi, ma cresce).
+RETAIL_MONITOR_ORE_DEFAULT = 24
+RETAIL_MONITOR_ORE_MAX = 720
+
+
+@router.get("/api/admin/retail/categorie-incoerenti", tags=["Admin"],
+            dependencies=[Depends(_verify_worker_key)])
+def retail_categorie_incoerenti(ore: int = RETAIL_MONITOR_ORE_DEFAULT) -> Dict[str, Any]:
+    """Sorveglianza sola lettura (Retail Fase 5): righe che hanno cambiato categoria
+    finendo nel settore SBAGLIATO. Legge `v_categorie_settore_incoerenti`
+    (migration 20260911170000).
+
+    Il danno che previene
+    ─────────────────────────────────────────────────────────────────────────
+    Una riga di un cliente RISTORAZIONE che finisce in ARTICOLO DI VENDITA — la
+    categoria che esiste solo per i negozi. E' il danno peggiore che il retail
+    puo' fare ai clienti attuali, ed e' SILENZIOSO: nessun errore, nessun test
+    rosso, e il cliente lo scopre dal MOL sbagliato settimane dopo. I presidi
+    delle Fasi 1-4 girano sul codice al momento del commit; questo guarda i dati
+    veri dopo il deploy.
+
+    Due classi, mai sommate in un unico numero con significati diversi:
+      - ristorazione_con_categoria_retail: il caso sopra.
+      - retail_con_categoria_food: la speculare (un negozio che riceve una
+        categoria food, che la Fase 1 esclude gia' in uscita: se ne arriva una,
+        qualcosa ha aggirato il gate).
+
+    Perche' NON e' gatato da `_verify_admin` come il resto del router
+    ─────────────────────────────────────────────────────────────────────────
+    Stesso motivo dichiarato per /api/admin/riparto/incoerenze: il consumatore e'
+    un workflow GitHub Actions (codice macchina, non un admin che naviga /admin),
+    e la worker key del router basta. Se un giorno lo si esponesse alla pagina
+    /admin va aggiunto `_verify_admin`, perche' ritorna dati di TUTTI gli account
+    senza filtro per chiamante.
+
+    Forma della response uguale a /api/admin/riparto/incoerenze (`totale` +
+    dettaglio): e' quella che i workflow di sorveglianza sanno gia' leggere.
+
+    Non corregge niente: espone lo stato e si ferma."""
+    # `ore if ore is not None` e non `ore or ...`: con `or`, un ?ore=0 e' falsy e
+    # diventerebbe 24 invece di essere ristretto a 1 — una finestra che si allarga
+    # quando l'hai chiesta piu' stretta.
+    richiesto = RETAIL_MONITOR_ORE_DEFAULT if ore is None else int(ore)
+    finestra_ore = max(1, min(richiesto, RETAIL_MONITOR_ORE_MAX))
+    da = (datetime.now(timezone.utc) - timedelta(hours=finestra_ore)).isoformat()
+
+    sb = get_supabase_client()
+    righe = (
+        sb.table("v_categorie_settore_incoerenti")
+        .select("*")
+        .gte("changed_at", da)
+        .order("changed_at", desc=True)
+        .execute()
+        .data
+    ) or []
+
+    # Una chiave per tipo_incoerenza, senza `else` catch-all: un tipo nuovo
+    # aggiunto alla view finirebbe nel secchio sbagliato e l'alert direbbe una
+    # cosa per un'altra (stessa regola di riparto_incoerenze).
+    _SECCHI = {
+        "ristorazione_con_categoria_retail": "ristorazione_con_categoria_retail",
+        "retail_con_categoria_food": "retail_con_categoria_food",
+    }
+    per_tipo: Dict[str, List[Dict[str, Any]]] = {v: [] for v in _SECCHI.values()}
+    altro: List[Dict[str, Any]] = []
+
+    for r in righe:
+        voce = {
+            "changed_at": r.get("changed_at"),
+            "user_id": str(r["user_id"]) if r.get("user_id") else None,
+            "ristorante_id": str(r["ristorante_id"]) if r.get("ristorante_id") else None,
+            "nome_ristorante": r.get("nome_ristorante"),
+            "tipo_attivita": r.get("tipo_attivita"),
+            "descrizione": r.get("descrizione"),
+            "old_categoria": r.get("old_categoria"),
+            "new_categoria": r.get("new_categoria"),
+            "file_origine": r.get("file_origine"),
+            "numero_riga": r.get("numero_riga"),
+            # `actor_email`/`source` viaggiano nel dettaglio ma NON filtrano: sul
+            # live l'attribuzione e' vuota su tutte le 4.135 righe del registro
+            # (misurato 11/09/2026), quindi un filtro su di essa selezionerebbe
+            # il 100% delle righe. Quando sara' popolata, sono gia' qui.
+            "actor_email": r.get("actor_email"),
+            "source": r.get("source"),
+        }
+        secchio = _SECCHI.get(r.get("tipo_incoerenza"))
+        if secchio:
+            per_tipo[secchio].append(voce)
+        else:
+            altro.append({**voce, "tipo_incoerenza": r.get("tipo_incoerenza")})
+
+    return {
+        "totale": len(righe),
+        "finestra_ore": finestra_ore,
+        "ristorazione_con_categoria_retail": per_tipo["ristorazione_con_categoria_retail"],
+        "retail_con_categoria_food": per_tipo["retail_con_categoria_food"],
+        "altro": altro,
+    }

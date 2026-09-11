@@ -1,0 +1,94 @@
+name: Retail Settore Check - ONEFLUX
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sorveglia che l'apertura ai negozi (retail) non tocchi i clienti ristorazione.
+# Retail Fase 5, 11/9/2026 — DOCUMENTAZIONE/RETAIL_FASI.md.
+#
+# Causa che questo monitor previene: una riga di un cliente RISTORAZIONE che
+# cambia categoria finendo in ARTICOLO DI VENDITA — la categoria che esiste solo
+# per i negozi. Il MOL del ristorante conterebbe quel costo nel posto sbagliato.
+# E' il danno peggiore che il retail puo' fare ai clienti attuali, ed e'
+# SILENZIOSO: nessun errore, nessun test rosso, nessun 500. Il cliente lo
+# scoprirebbe dal MOL sbagliato settimane dopo.
+#
+# Le Fasi 1-4 hanno dimostrato il vincolo AL MOMENTO DEL COMMIT (baseline a zero,
+# 241 presidi, 43 mutanti), ma quei presidi girano sul CODICE. Questo guarda i
+# DATI VERI dopo il deploy, che e' l'unico posto dove il danno si vedrebbe.
+# Copre anche la classe speculare (un negozio che riceve una categoria food).
+#
+# PERCHE' NON FA RUMORE: non guarda quante righe cambiano categoria — la
+# classificazione di una fattura nuova e' lavoro normale (sullo storico: 42,3%
+# 'Da Classificare' → reale, 55,7% reale → reale). Guarda solo l'INCROCIO fra
+# categoria d'arrivo e settore della sede, che sullo storico completo dei clienti
+# attuali vale ZERO. Se questo alert scatta, e' successo qualcosa davvero.
+#
+# GITHUB SECRETS richiesti (tutti gia' presenti, nessuno nuovo):
+#   WORKER_SECRET_KEY                      gia' usato da riparto_coerenza_check.yml
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   gia' presenti (uptime_check.yml)
+#
+# COSTO: 1 run/giorno, < 5s.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    # Una volta al giorno, 06:40 UTC — dieci minuti dopo riparto_coerenza_check,
+    # per non far partire due curl insieme sullo stesso worker.
+    - cron: '40 6 * * *'
+  workflow_dispatch: # avvio manuale per test
+
+permissions:
+  contents: read
+
+jobs:
+  check-settore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Interroga /api/admin/retail/categorie-incoerenti
+        id: check
+        env:
+          # WORKER_HEALTH_URL e' un secret opzionale (stesso usato da
+          # keepalive_worker.yml): se assente si usa l'URL di produzione noto.
+          WORKER_URL: ${{ secrets.WORKER_HEALTH_URL || 'https://worker-production-a552.up.railway.app' }}
+        run: |
+          RESP=$(curl -s -w "\n%{http_code}" \
+            -H "X-Worker-Key: ${{ secrets.WORKER_SECRET_KEY }}" \
+            --max-time 30 \
+            "${WORKER_URL}/api/admin/retail/categorie-incoerenti?ore=24" || echo -e "\n000")
+          HTTP_CODE=$(echo "$RESP" | tail -n1)
+          BODY=$(echo "$RESP" | sed '$d')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Endpoint categorie-incoerenti non raggiungibile (HTTP $HTTP_CODE)"
+            echo "totale=-1" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          TOTALE=$(echo "$BODY" | jq -r '.totale // 0')
+          RIST=$(echo "$BODY" | jq -r '.ristorazione_con_categoria_retail | length')
+          RET=$(echo "$BODY" | jq -r '.retail_con_categoria_food | length')
+          echo "totale=$TOTALE" >> $GITHUB_OUTPUT
+          echo "rist=$RIST" >> $GITHUB_OUTPUT
+          echo "ret=$RET" >> $GITHUB_OUTPUT
+          echo "Incoerenze settore trovate: $TOTALE (ristorazione=$RIST, retail=$RET)"
+
+      - name: Invia alert Telegram
+        if: steps.check.outputs.totale != '0'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOTALE: ${{ steps.check.outputs.totale }}
+          RIST: ${{ steps.check.outputs.rist }}
+          RET: ${{ steps.check.outputs.ret }}
+        run: |
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
+            echo "Telegram non configurato, salto."
+            exit 0
+          fi
+          if [ "$TOTALE" = "-1" ]; then
+            MSG="⚠️ Retail settore check: endpoint non raggiungibile, verifica il worker."
+          else
+            MSG=$(printf '🚨 Categorie fuori settore nelle ultime 24h: %s\n  ristorazione con categoria retail: %s\n  retail con categoria food: %s\nDettaglio: GET /api/admin/retail/categorie-incoerenti\nRunbook: DOCUMENTAZIONE/RETAIL_FASI.md' "$TOTALE" "$RIST" "$RET")
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_CHAT_ID}" \
+            --data-urlencode "text=${MSG}"

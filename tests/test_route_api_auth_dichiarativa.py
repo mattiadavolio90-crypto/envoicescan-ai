@@ -69,6 +69,14 @@ SENZA_IDENTITA_MOTIVATI = {
         "non un admin che naviga /admin. Scelta argomentata in riparto.py:1004-1010, "
         "che avverte: per esporlo alla pagina admin servirebbe _verify_admin."
     ),
+    ("GET", "/api/admin/retail/categorie-incoerenti"): (
+        "Consumatore dichiarato: workflow GitHub Actions retail_settore_check.yml "
+        "(retail Fase 5), non un admin che naviga /admin — in CI non esiste un "
+        "bearer admin, i workflow hanno solo WORKER_SECRET_KEY. Sola lettura, "
+        "nessuna scrittura. Stessa scelta e stessa avvertenza del gemello qui "
+        "sopra, argomentata in admin.py: per esporlo alla pagina admin "
+        "servirebbe _verify_admin."
+    ),
     ("POST", "/api/admin/riparto/auto-pulisci"): (
         "Stesso gate macchina di /incoerenze (riparto.py:1069-1070). Con ?apply=true "
         "SCRIVE su qualunque account: rischio noto e accettato, non una dimenticanza."
