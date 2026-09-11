@@ -141,3 +141,48 @@ def test_ogni_uso_del_filtro_merce_passa_dal_centro():
         if '"Food & Beverage"' in riga and not riga.lstrip().startswith(("//", "*", "/*"))
     ]
     assert not colpevoli, f"etichetta hardcoded invece di filtroMerceLabel: {colpevoli}"
+
+
+# ── La lista selezionabile del client concorda col backend ──────────────────
+# Il presidio che conta davvero di questa casella: se le due divergono, il
+# client offre una voce che il worker rifiuta con 400 (o nasconde una voce
+# valida). Non e' un'ipotesi: le sei whitelist di scrittura gated poche ore fa
+# rifiutano CARNE per un negozio, e il menu della catena la offriva.
+
+from config.constants import (  # noqa: E402
+    CATEGORIA_ARTICOLO_DI_VENDITA as _ARTICOLO,
+    CATEGORIE_SPESE_GENERALI,
+)
+from services.settore_service import categorie_ammesse  # noqa: E402
+
+
+def test_la_lista_del_negozio_e_quella_che_il_backend_accetta():
+    ts = set(_ts("emit(m.categorieSelezionabili('retail'));"))
+    server = set(categorie_ammesse("retail"))
+    assert ts == server, (
+        "client e backend offrono categorie diverse a un negozio: "
+        f"solo client {ts - server}, solo server {server - ts}"
+    )
+
+
+def test_la_lista_del_negozio_e_la_merce_piu_le_spese_generali():
+    ts = set(_ts("emit(m.categorieSelezionabili('retail'));"))
+    assert ts == {_ARTICOLO} | set(CATEGORIE_SPESE_GENERALI)
+
+
+@pytest.mark.parametrize("settore_js", ["undefined", "null", '"ristorazione"', '"RETAIL"'])
+def test_per_un_ristorante_la_lista_e_esattamente_quella_di_ieri(settore_js):
+    """Non "contiene le stesse voci": e' lo STESSO array, ordine compreso. Un
+    riordino sarebbe un cambiamento visibile nel menu di un cliente pagante."""
+    assert _ts(f"emit(m.categorieSelezionabili({settore_js}));") == _ts("emit(m.CATEGORIE_TUTTE);")
+
+
+def test_la_categoria_del_negozio_non_e_entrata_nelle_liste_condivise():
+    """Il vincolo, dal lato client. I due presidi automatici lo dicono in
+    Python; questo lo dice sul modulo che alimenta i menu dei ristoranti."""
+    out = _ts(
+        "emit({tutte: m.CATEGORIE_TUTTE, fb: m.CATEGORIE_SPESA_FB,"
+        " gen: m.CATEGORIE_SPESA_GENERALI});"
+    )
+    for nome, lista in out.items():
+        assert _ARTICOLO not in lista, f"{_ARTICOLO} e' finita in {nome}: menu dei ristoranti sporcato"

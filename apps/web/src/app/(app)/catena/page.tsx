@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { SintesiCatena } from "./sintesi-catena";
+import { getCurrentUser } from "@/lib/auth";
 import { ChatWidget } from "../dashboard/chat-widget";
 import { BlockRetry } from "../dashboard/block-retry";
 
@@ -45,7 +46,11 @@ async function SintesiBlock() {
   if (deveRedirigereAPuntoVendita(overview)) {
     redirect("/dashboard");
   }
-  return <SintesiCatena overview={overview} />;
+  // getCurrentUser e' in cache() di React: il layout l'ha gia' chiamato in
+  // questo render. Serve alla finestra dei costi di gruppo, il cui menu deve
+  // offrire solo le categorie che il worker accetta per questo settore.
+  const settore = (await getCurrentUser())?.tipo_attivita;
+  return <SintesiCatena overview={overview} settore={settore} />;
 }
 
 // Chat di catena: pool AI unico (limite = somma dei limiti delle sedi). Compare

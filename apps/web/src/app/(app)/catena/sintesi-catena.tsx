@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { Settore } from "@/lib/categorie-spesa";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -471,7 +472,7 @@ function ConfrontoCard({
   );
 }
 
-export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
+export function SintesiCatena({ overview, settore }: { overview: GruppoOverview; settore?: Settore | null }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
   const [spesaOpen, setSpesaOpen] = useState(false);
@@ -571,7 +572,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
 
       {/* Finestre: caricano i dati solo all'apertura (lazy). */}
       <FinestraSpesaPV open={spesaOpen} onOpenChange={setSpesaOpen} />
-      <FinestraCostiGruppo open={costiGruppoOpen} onOpenChange={setCostiGruppoOpen} />
+      <FinestraCostiGruppo open={costiGruppoOpen} onOpenChange={setCostiGruppoOpen} settore={settore} />
       <FinestraMarginiCoperti open={marginiOpen} onOpenChange={setMarginiOpen} />
       <TagCatenaDialog open={tagOpen} onOpenChange={setTagOpen} />
     </div>

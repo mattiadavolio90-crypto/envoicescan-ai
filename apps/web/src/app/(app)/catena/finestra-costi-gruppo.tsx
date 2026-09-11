@@ -22,7 +22,7 @@ import { NativeSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
-import { CATEGORIE_TUTTE } from "@/lib/admin";
+import { categorieSelezionabili, type Settore } from "@/lib/categorie-spesa";
 import { formatEuro as euro } from "@/lib/format";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { daScegliereCategoria } from "@/lib/categorie-spesa";
@@ -90,10 +90,16 @@ type CostiComuniRes = {
 export function FinestraCostiGruppo({
   open,
   onOpenChange,
+  settore,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  settore?: Settore | null;
 }) {
+  // Le categorie offerte devono essere quelle che il worker accetta: le sei
+  // whitelist di scrittura rifiutano CARNE per un negozio con un 400, e questo
+  // menu la offriva. Senza settore resta la lista di oggi.
+  const categorieMenu = categorieSelezionabili(settore);
   const annoCorrente = new Date().getFullYear();
   const meseCorrente = new Date().getMonth() + 1;
   const [mese, setMese] = useState<number>(meseCorrente);
@@ -245,7 +251,7 @@ export function FinestraCostiGruppo({
                     </span>
                   </div>
 
-                  <DettagliCosto costo={c} onCorretto={carica} />
+                  <DettagliCosto costo={c} onCorretto={carica} categorieMenu={categorieMenu} />
 
                   <div className="mt-2 flex gap-2">
                     {c.origine === "manuale" && (
@@ -326,6 +332,7 @@ export function FinestraCostiGruppo({
             setAddOpen(false);
             carica();
           }}
+          categorieMenu={categorieMenu}
         />
 
         <ConfirmDialog
@@ -348,12 +355,14 @@ function AggiungiCostoDialog({
   anno,
   mese,
   onDone,
+  categorieMenu,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   anno: number;
   mese: number;
   onDone: () => void;
+  categorieMenu: string[];
 }) {
   const [descrizione, setDescrizione] = useState("");
   const [importo, setImporto] = useState("");
@@ -425,7 +434,7 @@ function AggiungiCostoDialog({
               <div className="flex h-[38px] items-center rounded-md border bg-background px-3">
                 <DropdownCategoria
                   value={categoria}
-                  categorie={CATEGORIE_TUTTE}
+                  categorie={categorieMenu}
                   onSelect={setCategoria}
                   daScegliere={!categoria}
                 />
@@ -457,9 +466,11 @@ function AggiungiCostoDialog({
 function DettagliCosto({
   costo,
   onCorretto,
+  categorieMenu,
 }: {
   costo: Costo;
   onCorretto: () => void;
+  categorieMenu: string[];
 }) {
   const [apriRighe, setApriRighe] = useState(false);
   const [salvando, setSalvando] = useState<number | null>(null);
@@ -533,7 +544,7 @@ function DettagliCosto({
                     </span>
                     <DropdownCategoria
                       value={r.categoria ?? ""}
-                      categorie={CATEGORIE_TUTTE}
+                      categorie={categorieMenu}
                       onSelect={(c) => correggi(r, c)}
                       saving={salvando === r.id}
                       daScegliere={daScegliere}

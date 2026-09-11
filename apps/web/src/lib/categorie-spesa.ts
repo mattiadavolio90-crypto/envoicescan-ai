@@ -1,4 +1,6 @@
-import { CATEGORIE_TUTTE } from "@/lib/admin";
+import { CATEGORIE_TUTTE, type Settore } from "@/lib/admin";
+
+export type { Settore };
 
 // Le 4 categorie NON Food & Beverage (config/constants.py CATEGORIE_SPESE_GENERALI).
 // "MATERIALE DI CONSUMO" e' qui pur non essendo ovvio: dal punto di vista logico
@@ -75,7 +77,8 @@ export const TIPO_SPESA_LABEL: Record<TipoSpesa, string> = {
 // di questo blocco: un chiamante che non passa il settore vede esattamente
 // l'app di ieri. E' il vincolo di Mattia, ed e' anche il motivo per cui il
 // parametro e' opzionale invece che obbligatorio.
-export type Settore = "ristorazione" | "retail";
+// Il tipo e' quello di lib/admin.ts, non una seconda definizione: due copie
+// dello stesso union type divergono alla prima aggiunta di un settore.
 
 const TIPO_SPESA_LABEL_RETAIL: Record<TipoSpesa, string> = {
   fb: "Costi Merce",
@@ -103,4 +106,24 @@ export function filtroMerceLabel(settore?: Settore | null): string {
 // ricade su un default ("Ristorante" in sidebar e layout).
 export function attivitaLabel(settore?: Settore | null): string {
   return settore === "retail" ? "Negozio" : "Ristorante";
+}
+
+// La categoria merce del retail. NON entra in CATEGORIE_TUTTE (lib/admin.ts) ne'
+// in CATEGORIE_SPESA_FB/GENERALI: quelle alimentano i menu dei RISTORANTI, e due
+// presidi automatici — tests/test_spese_extra.py:238 e
+// tests/test_categorie_spesa_frontend.py:92 — diventano rossi se ci finisce
+// dentro. E' il vincolo di Mattia, non un dettaglio di implementazione.
+export const CATEGORIA_ARTICOLO_DI_VENDITA = "ARTICOLO DI VENDITA";
+
+// Ri-esportata perche' questo modulo e' il centro delle liste per il cliente:
+// lib/admin.ts importa lib/piani.ts e non gira isolato sotto node.
+export { CATEGORIE_TUTTE };
+
+// Le categorie selezionabili a mano su un costo, per settore. Gemella di
+// `categorie_ammesse(settore)` in services/settore_service.py: se divergono, il
+// client offre una voce che il backend rifiuta con 400 (o viceversa, nasconde
+// una voce valida). Senza settore resta la lista di oggi.
+export function categorieSelezionabili(settore?: Settore | null): string[] {
+  if (settore !== "retail") return CATEGORIE_TUTTE;
+  return [CATEGORIA_ARTICOLO_DI_VENDITA, ...CATEGORIE_TUTTE.filter((c) => SPESE_GENERALI_SET.has(c))];
 }

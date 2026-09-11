@@ -95,6 +95,12 @@ export const CATEGORIA_ICONS: Record<string, string> = {
   "SERVIZI E CONSULENZE": "📋",
   "UTENZE E LOCALI": "🔌",
   "MANUTENZIONE E ATTREZZATURE": "🔧",
+  // Retail: l'unica categoria merce di un negozio. Qui e' sicuro — questa e' una
+  // mappa per nome con fallback, non una partizione: nessun menu dei ristoranti
+  // la legge come elenco (a differenza di CATEGORIE_TUTTE in lib/admin.ts, dove
+  // aggiungerla sarebbe la violazione del vincolo). Senza voce il negozio
+  // vedrebbe la sua unica categoria col segnaposto generico.
+  "ARTICOLO DI VENDITA": "🏪",
 };
 
 export function categoriaIcon(cat: string | null | undefined): string {
