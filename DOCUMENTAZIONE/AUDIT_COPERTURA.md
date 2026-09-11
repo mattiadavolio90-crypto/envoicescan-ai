@@ -86,6 +86,44 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   chiamanti di `fetch_all` su 34 senza `.order()`**, stessa classe. Suite
 >   **13.363 verdi, 44 skip**.
 >
+> - **11/09/2026, branch `retail` (NON spedito) — Fase 4 del retail: briefing,
+>   chat AI e soglie.** La chat diceva a un negozio «Rispondi SOLO a domande sui
+>   dati del ristorante» e gli dava i benchmark della ristorazione italiana come
+>   se fossero suoi (per il retail non esistono: da ~35% a ~78% secondo cosa si
+>   vende). Il gate dei tool guardava le chiavi-PAGINA, e i `tab_off_*` della
+>   Fase 3 non lo sono: il negozio non vedeva la tab Coperti e poteva comunque
+>   chiederli in chat — e spegnerli via `pagine_abilitate` non era
+>   un'alternativa, perche' `query_margini` e `query_coperti` condividono lo
+>   stesso flag. Gate spostato sul settore, in **due punti**: la lista offerta al
+>   modello e l'esecuzione nel dispatcher, che esegue per nome e non consulta
+>   `tools`. Soglie: nessun colore sul KPI merce, ma la riga **resta** con
+>   l'emoji neutra (il frontend mappa l'assenza di commento sullo stesso gauge
+>   neutro: toglierla l'avrebbe spento). Nome KPI «Costo Merce» e testi delle
+>   soglie rinominati **insieme**, o il negozio leggeva mezzo testo da ristorante.
+>   **Il residuo degli script era piu' profondo di come era stato dichiarato**:
+>   non solo «chiamano `classifica_con_ai` senza settore», ma sia `/api/classify`
+>   sia il fallback locale risolvevano il settore SOLO da `user_id`, e
+>   `ricategorizza_sede_ai.py` passa `user_id=None` — cadeva su ristorazione
+>   **per costruzione**; lo stesso script ha un punto post-AI che sovrascrive
+>   l'esito col dizionario; e `ricategorizza_sede.py` non usa affatto l'AI, quindi
+>   saltava il chokepoint dove la Fase 1 aveva messo il filtro. Tutti e quattro
+>   sono la **famiglia dei sette buchi della Fase 1**: un gate a monte che non
+>   copre il punto a valle, e si trovano eseguendo, non leggendo.
+>   **35 mutanti, 5 dei quali hanno smascherato presidi finti** — il settore non
+>   arrivava dall'endpoint al prompt; un `settore=` cercato in una finestra di
+>   testo pescava la chiamata successiva (riscritto sull'AST); il vincolo del
+>   prompt ristorazione asseriva sei sottostringhe **scelte**, ed era cieco
+>   proprio sulle quattro righe che avevo cambiato senza accorgermene — una pure
+>   sgrammaticata in produzione («trainato principalmente **da il pesce**»),
+>   trovata dal reviewer confrontando gli md5 del prompt sui due commit. Ora il
+>   confronto e' sul prompt **intero** contro uno snapshot del commit di ieri, e
+>   il prompt dei ristoranti ha lo stesso md5 di prima. Nello stesso giro, **due
+>   affermazioni false nei miei commit**, corrette. Suite **13.811 verdi, 45
+>   skip** (+229 presidi, 0 test esistenti toccati), baseline a zero dopo ogni
+>   casella, OpenAPI senza drift (196 endpoint), `tsc` pulito,
+>   `_BRIEFING_CODE_VERSION` 23 → 24. Commit `23c0706`, `f76ddf1`, `ec43fc2`,
+>   `a6bb45d`.
+>
 > - **11/09/2026, branch `retail` (NON spedito) — Fase 3 del retail: spegnimenti,
 >   etichette e le sei whitelist di scrittura.** Le whitelist validavano la
 >   categoria in arrivo contro `TUTTE_LE_CATEGORIE`, la lista dei ristoranti: il

@@ -1,12 +1,15 @@
 # Retail — le fasi dell'implementazione
 
-Stato all'**11/09/2026, mattina**: **Fasi 0, 1, 2 e 3 CHIUSE**. Branch `retail`,
-30 commit sopra `main`, HEAD `77b9e7c`, **mai pushato** (`origin/retail` non esiste).
+Stato all'**11/09/2026, pomeriggio**: **Fasi 0, 1, 2, 3 e 4 CHIUSE**. Branch
+`retail`, 35 commit sopra `main`, HEAD `a6bb45d`, **mai pushato** (`origin/retail`
+non esiste).
 Fase 0 `b642e3c` · Fase 1 `50fc209` (sette buchi della stessa famiglia trovati dal
 reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 (11 mutanti) · **Fase 3** `5d9f367`, `c7e0d3b`, `dd6ac5e`, `c693a17`, `81d65a5`,
 `5c98761`, `77b9e7c` (56 presidi, 17 mutanti, reviewer verde due volte).
-**Prossima: Fase 4 (briefing, chat AI, soglie) con Opus normale, ~1 giorno.**
+**Fase 4** `23c0706`, `f76ddf1`, `ec43fc2`, `a6bb45d` (229 presidi, 35 mutanti,
+5 presidi finti smascherati dalla mutazione, reviewer 🔴 poi chiuso).
+**Prossima: Fase 5 (sorveglianza post-deploy), Opus, ~mezza giornata.**
 
 > ## ⛔ PRIMA DEL PUSH — la lista che NON si ricostruisce a memoria
 >
@@ -38,9 +41,9 @@ reviewer in sei letture, tutti chiusi) · Fase 2 `a7075f9` + residuo `e90ac30`
 >    Se il rebase porta dentro modifiche a `ai_service.py`, `margine_service.py` o a
 >    funzioni SQL, **la baseline si ri-cattura**: fotografa il codice, non solo i dati.
 > 6. **`/code-reviewer` sul cumulativo completo**, non sull'ultima fase.
-> 7. **`_BRIEFING_CODE_VERSION`** (`services/daily_briefing_service.py:127`, oggi **23**):
->    va bumpato **se e solo se** la Fase 4 tocca la logica del briefing, o il cliente
->    continua a vedere il testo vecchio (cache giornaliera + TTL 30').
+> 7. **`_BRIEFING_CODE_VERSION`: ✅ GIA' FATTO** — bumpata 23 → **24** dalla Fase 4
+>    (`ec43fc2`), che tocca la logica del briefing: per un negozio l'anomalia
+>    coperti non viene piu' generata. Non va toccata di nuovo prima del push.
 > 8. **Il push lo decide Mattia**, nella sua finestra (sera/notte/mattina presto), e
 >    spedisce **tutto** `main`: si conta la coda e si dice di chi è
 >    (`git log --oneline origin/main..main`). Mai `git push` di iniziativa.
@@ -1047,52 +1050,122 @@ sarebbero rossi se il vincolo venisse violato.
 
 ---
 
-## Fase 4 — Briefing, chat AI, soglie · Opus normale, ~1 giorno
+## Fase 4 — Briefing, chat AI, soglie · Opus normale · **CHIUSA** 11/09/2026
 
-> **Righe ri-misurate l'11/9 dopo la Fase 3**: quelle del piano originale erano
-> sballate (il codice si è mosso). Ri-misurale comunque prima di toccare: un
-> numero di riga in un doc invecchia, `grep` no.
+Commit: `23c0706` (chat: prompt + gate tool), `f76ddf1` (soglie, nome KPI,
+frontend), `ec43fc2` (topic, script, bump briefing), `a6bb45d` (fix della
+review). **229 presidi nuovi** (suite 13.582 → **13.811**), **0 test esistenti
+toccati**, **35 mutanti** — 30 uccisi subito, **5 sopravvissuti che hanno
+smascherato altrettanti presidi finti**, riscritti e ri-mutati.
 
-- [ ] **Chat, blocco benchmark** — `fastapi_worker.py:3641` dice «Rispondi SOLO a
-      domande sui dati **del ristorante**»; `:3707` hardcoda «soglia normale è
-      28-33%» dentro un esempio di risposta. Per un negozio sono entrambe false.
-- [ ] **Gate tool sul settore, non sulla pagina** — `_TOOL_FLAG`
-      (`fastapi_worker.py:4848-4857`) mappa **sia `query_margini` sia
-      `query_coperti` sul flag `margini`**: spegnere i coperti via
-      `pagine_abilitate` toglierebbe al negozio anche i margini.
-      ⚠️ **La Fase 3 ha reso questo punto più concreto, non l'ha risolto**: ora un
-      negozio ha davvero `tab_off_margini_coperti`, ma i `tab_off_*` non sono
-      chiavi-pagina, quindi il gate tool non li guarda — il negozio **non vede la
-      tab Coperti e può comunque chiedere i coperti in chat**. È l'incoerenza che
-      il reviewer ha confermato come voce di Fase 4, non come buco della 3.
-- [ ] **Briefing: `_CONFIG_TOPICS`** (`fastapi_worker.py:2818`) acquisisce la
-      dimensione settore.
-- [ ] **Bump `_BRIEFING_CODE_VERSION`** (`services/daily_briefing_service.py:127`,
-      oggi **23**) — **solo se** si tocca la logica del briefing, altrimenti il
-      cliente continua a vedere il testo vecchio (cache giornaliera + TTL 30').
-- [ ] **Soglie: nessun colore per il retail in v1**, solo confronto coi mesi
-      precedenti (i benchmark vanno da 35% a 78%: un colore sarebbe inventato).
-      `_KPI_SOGLIE_MARGINI` (`routers/margini.py:823`) e `_valuta_soglia_margine`
-      (`:863`).
-- [ ] **Eredità dichiarata dalla Fase 3, da fare QUI** (non è lavoro nuovo: è la
-      metà che non si poteva spezzare):
-      - il nome KPI `"Food Cost"` a `routers/margini.py:1272` — è legato ai testi
-        delle soglie della riga sopra: rinominarlo da solo lascerebbe un negozio a
-        leggere mezzo testo da ristorante. Si fanno **insieme**;
-      - l'hint «la salute economica del tuo locale» in
-        `apps/web/src/app/(app)/margini/page.tsx:120`;
-      - `costoMerceLabel()` in `lib/categorie-spesa.ts` esiste, è provata, e ha
-        **zero chiamanti**: è il pezzo che aspetta questo lavoro.
-- [ ] **Residui-script della Fase 2, da guardare qui** (è il momento in cui
-      verrebbero rilanciati per misurare la qualità del retail):
-      `scripts/catscan_arbitro.py:32` e `scripts/catscan_senza_segnale.py:55`
-      chiamano `classifica_con_ai` **senza settore** — un negozio riceverebbe il
-      prompt dei ristoranti. **Verificato che non scrivono**: il danno sarebbe una
-      diagnosi sbagliata a video, non dati sporchi.
-- [ ] **Residuo dichiarato dal reviewer (Fase 1)**: `scripts/ricategorizza_sede.py`
-      e `scripts/ricategorizza_sede_ai.py` replicano il blocco di classificazione
-      senza gate settore. Script manuali, per sede, dry-run di default: vanno
-      guardati **prima che esista una sede retail**.
+- [x] **Chat, blocco benchmark** — il prompt diceva «Rispondi SOLO a domande sui
+      dati **del ristorante**» e hardcodava «soglia normale è 28-33%». Per il
+      retail i benchmark non esistono (da ~35% a ~78% secondo cosa si vende): al
+      loro posto il confronto coi propri mesi precedenti. Deviato anche il
+      prompt di **catena** — un account retail multi-sede ci arriva davvero,
+      perché quel gate conta le sedi, non il settore.
+- [x] **Gate tool sul settore, non sulla pagina** — `_TOOL_VIETATI_PER_SETTORE`.
+      Il gate è in **due punti**: la lista offerta al modello **e** l'esecuzione
+      nel dispatcher, che esegue per nome e non consulta `tools` — un nome
+      allucinato passerebbe il solo gate della lista.
+- [x] **Briefing: `_CONFIG_TOPICS`** acquisisce il settore (`_topics_per_settore`).
+      `coperti_anomalia` sparisce per un negozio; `fatturato_mancante` resta ma
+      non promette più il food cost. Il gate è anche **dove la notifica nasce**,
+      dentro `_briefing_dati_mensili_mancanti`: quello sulla lista non l'avrebbe
+      tolta dalla campanella. `validi`/`bloccati` del POST restano sulla lista
+      **completa** — il settore filtra cosa si vede, non cosa è salvabile.
+- [x] **Bump `_BRIEFING_CODE_VERSION` 23 → 24** — cambia l'insieme delle
+      notifiche nello snapshot.
+- [x] **Soglie: nessun colore per il retail** (`_KPI_SENZA_SOGLIA_RETAIL`). Ma
+      «nessun giudizio» non è «nessun commento»: la riga resta con l'emoji
+      neutra, perché il frontend mappa l'**assenza** di commento sullo stesso
+      gauge neutro — toglierla avrebbe spento il gauge. Personale, spese
+      generali, MOL e primo margine restano giudicati: sono incidenze che non
+      dipendono dal tipo di merce.
+- [x] **Eredità della Fase 3**: nome KPI «Costo Merce» (`_nome_kpi_per_settore`),
+      hint di `margini/page.tsx`, e `costoMerceLabel()` finalmente collegata —
+      KPI Home, mobile `/m` incluso.
+- [x] **Residui-script**: tutti e quattro, più `worker_client`.
+
+### Il buco degli script era più profondo del residuo dichiarato
+
+Il residuo diceva «chiamano `classifica_con_ai` senza settore». Eseguendo:
+
+1. **sia `/api/classify` sia il fallback locale** risolvevano il settore SOLO da
+   `user_id`. `ricategorizza_sede_ai.py` passa `user_id=None` e solo la sede:
+   cadeva sul percorso ristorazione **per costruzione**. Aggiunto il fallback su
+   `ristorante_id` in entrambi (l'account resta prioritario: è la fonte
+   autorevole, la sede è il ripiego di chi non ce l'ha);
+2. lo stesso script ha un punto **post-AI** (`_categoria_deterministica_runtime`)
+   che **sovrascrive** l'esito dell'AI col dizionario. Senza gate lì, il filtro
+   sul prompt sarebbe stato inutile;
+3. **`ricategorizza_sede.py` non usa affatto l'AI**: chiama dizionario e regole
+   forti direttamente, saltando il chokepoint `categorizza_con_memoria` dove la
+   Fase 1 aveva messo il filtro d'uscita;
+4. i due `catscan_*` raggruppano ora per settore: un chunk misto avrebbe avuto
+   un solo prompt per clienti di settori diversi.
+
+Tutti e quattro sono **la stessa famiglia dei sette buchi della Fase 1**: un
+gate a monte che non copre il punto a valle. Si trovano **eseguendo**, non
+leggendo.
+
+### Cinque presidi finti, smascherati dalla mutazione
+
+Non dalla rilettura. È il motivo per cui ogni presidio nuovo va mutato:
+
+1. **il settore non arrivava dall'endpoint al prompt** — 20 test verdi
+   misuravano la funzione, non il suo chiamante;
+2. **`settore=` cercato in una finestra di 400 caratteri** dopo la chiamata: la
+   finestra pescava il `settore=` della chiamata **successiva**. Riscritto
+   sull'**AST**, guardando la singola `Call`;
+3. **il vincolo del prompt ristorazione asseriva sei sottostringhe scelte** — ed
+   era cieco proprio sulle quattro righe che avevo cambiato (vedi sotto). Ora
+   confronta il prompt **intero** contro uno snapshot generato dal commit di
+   ieri (`tests/fixtures/chat_prompt_ristorazione_pre_fase4.txt`), con le sole
+   date a segnaposto, o sarebbe rosso domani senza che il codice cambi;
+4. **la costante dei tool confrontata con se stessa** dopo che il mutante
+   l'aveva già riscritta in place. Ora si misura che un RISTORANTE, chiamato
+   DOPO un negozio, riceva ancora le descrizioni di ieri;
+5. **`get_analisi_avanzata` non era coperto**: asserivo su
+   `_valuta_soglia_margine`, non sull'endpoint.
+
+### Il vincolo di Mattia è stato violato due volte, e ripristinato
+
+- **Il tono «da collega esperto in F&B»**: l'avevo neutralizzato anche per i
+  ristoranti. Rosso subito, ripristinato.
+- **Quattro righe del prompt**, trovate dal `code-reviewer` generando il prompt
+  sui due commit e confrontando gli md5 (11.081 → 11.064 byte). Una era pure
+  **sgrammaticata in produzione**: «trainato principalmente **da il pesce**»,
+  perché avevo sostituito un nome di voce dentro una frase senza la sua
+  preposizione. La variante retail era corretta — il difetto esisteva **solo**
+  dove non doveva esserci niente. Ora il prompt dei ristoranti ha lo **stesso
+  md5** di ieri.
+
+Nello stesso giro, **due affermazioni false nei miei commit**: che il ramo
+ristorazione fosse «provato per uguaglianza» (asseriva sottostringhe), e che il
+fallback sulla sede coprisse sia `/api/classify` sia il percorso locale (ne
+copriva uno). Entrambe corrette in `a6bb45d`.
+
+### Dichiarati, non chiusi
+
+- **Il prompt di catena** per un negozio dice di ignorare la parte coperti di
+  `gruppo_margini_coperti` invece di togliere il tool: toglierlo porterebbe via
+  anche i margini, che al negozio servono. Stessa ragione per cui il gate non
+  poteva stare sulle pagine.
+- **La descrizione dei tool di gruppo** è deviata per settore, ma i tool di
+  gruppo NON passano dal gate `_TOOL_VIETATI_PER_SETTORE`: il ramo catena esce
+  prima. Oggi non c'è niente da spegnere lì.
+
+### Gate di fine fase
+
+Suite **13.811** verdi / 45 skip (da 13.582: **+229**, 0 esistenti toccati),
+`git diff main -- tests/` con cancellazioni **solo** su
+`test_prompt_ai_coerenza_dominio.py` (l'unico autorizzato, Fase 2), baseline
+**«Diff a zero»** (56 righe di costi, 3.475 categorie) dopo ogni casella,
+OpenAPI senza drift (**196 endpoint**), `tsc --noEmit` pulito, i due presidi
+automatici del vincolo (`test_spese_extra.py:238`,
+`test_categorie_spesa_frontend.py:92`) **verdi**. `-m sql` non rieseguito: la
+fase non tocca SQL.
 
 ---
 
