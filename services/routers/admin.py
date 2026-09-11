@@ -47,6 +47,7 @@ from utils.ttl_cache import TTLCache
 from services.db_service import aggiorna_categoria_fatture
 from utils.supabase_paging import fetch_all
 from config.constants import (
+    CATEGORIA_ARTICOLO_DI_VENDITA,
     CATEGORIE_FOOD_BEVERAGE,
     PIANO_LIMITI_FATTURE_MESE,
     PIANO_LIMITE_FATTURE_DEFAULT,
@@ -1000,11 +1001,20 @@ class ClassificaBody(BaseModel):
 def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_verify_admin)):
     """Classifica un gruppo di righe e opzionalmente salva in memoria globale."""
     from datetime import datetime, timezone
-    from config.constants import TUTTE_LE_CATEGORIE
+    from services.settore_service import categorie_ammesse
 
     # Validazione categoria: deve essere reale (o NOTE E DICITURE). Prima si scriveva
     # qualsiasi stringa <=100 char direttamente su fatture.
-    _categorie_valide = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE"}
+    # Fase 3: l'admin classifica righe di TUTTI i clienti, ristoranti e negozi
+    # insieme (la coda raggruppa per descrizione), quindi qui l'unione dei due
+    # settori e' la whitelist giusta. Non e' un buco: a valle il gate per riga
+    # gia' impedisce che una categoria food raggiunga il negozio, e il gate
+    # speculare qui sotto fa lo stesso per ARTICOLO DI VENDITA sui ristoranti.
+    _categorie_valide = (
+        set(categorie_ammesse(SETTORE_RISTORAZIONE))
+        | set(categorie_ammesse(SETTORE_RETAIL))
+        | {"📝 NOTE E DICITURE"}
+    )
     if body.categoria not in _categorie_valide:
         raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
 
@@ -1059,6 +1069,21 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
             raise HTTPException(
                 status_code=422,
                 detail=f"{body.categoria} non e' una categoria ammessa per un negozio: le righe restano in coda.",
+            )
+
+    if body.categoria == CATEGORIA_ARTICOLO_DI_VENDITA and row_resp.data:
+        # Speculare al gate qui sopra: da quando la whitelist ammette l'unione dei
+        # due settori, una categoria del negozio potrebbe raggiungere le righe di
+        # un ristorante in un gruppo misto. Il vincolo di Mattia vale nelle due
+        # direzioni: un ristorante non cambia di una virgola.
+        ids_ristorazione = {r.get("id") for r in righe_ristorazione}
+        prima = len(target_ids)
+        target_ids = [i for i in target_ids if i not in ids_ristorazione]
+        righe_in_coda += prima - len(target_ids)
+        if not target_ids:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{body.categoria} non e' una categoria ammessa per un ristorante: le righe restano in coda.",
             )
 
     update_payload = {

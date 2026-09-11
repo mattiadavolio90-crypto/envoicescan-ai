@@ -889,7 +889,13 @@ def categoria_batch(
     # constraint DB rifiuta solo "Da Clasificare", una categoria inventata/refuso
     # passerebbe e sporcherebbe margini e report su TUTTE le righe della descrizione.
     # La variante senza emoji è normalizzata subito sotto.
-    _categorie_ammesse = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
+    # Per settore (Fase 3): il menu e' gia' filtrato lato client, ma una chiamata
+    # API diretta scriverebbe CARNE sulla riga di un negozio. NOTE resta ammessa
+    # per entrambi: arriva da L4/dizionario, non dall'AI, e il guardrail
+    # importo-zero la governa a valle.
+    from services.settore_service import categorie_ammesse, settore_utente
+    _settore = settore_utente(user_id, _get_supabase_client())
+    _categorie_ammesse = set(categorie_ammesse(_settore)) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
     if nuova_cat not in _categorie_ammesse:
         raise HTTPException(status_code=400, detail=f"Categoria '{nuova_cat}' non riconosciuta")
     if nuova_cat == "NOTE E DICITURE":
@@ -1064,7 +1070,10 @@ def aggiorna_categoria_riga(
     # "Da Clasificare", ma una categoria inventata/refuso passerebbe e sporcherebbe
     # margini e report. La variante senza emoji è normalizzata subito sotto, così
     # il guardrail importo-zero (regola dominio #2) si applica a un solo valore.
-    _categorie_ammesse = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
+    # Per settore (Fase 3): stessa ragione della batch qui sopra.
+    from services.settore_service import categorie_ammesse, settore_utente
+    _settore = settore_utente(user.get("id"), _get_supabase_client())
+    _categorie_ammesse = set(categorie_ammesse(_settore)) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
     if categoria not in _categorie_ammesse:
         raise HTTPException(status_code=400, detail=f"Categoria '{categoria}' non riconosciuta")
     if categoria == "NOTE E DICITURE":

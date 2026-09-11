@@ -506,7 +506,9 @@ def is_prezzo_valido(prezzo: float, min_val: float = 0.001, max_val: float = 100
         return False
 
 
-def normalizza_categoria_richiesta(categoria: Optional[str]) -> str:
+def normalizza_categoria_richiesta(
+    categoria: Optional[str], settore: Optional[str] = None
+) -> str:
     """Valida e normalizza una categoria scelta dall'utente, o solleva ValueError.
 
     Unico punto di verità per le scritture di categoria provenienti dal client
@@ -518,16 +520,21 @@ def normalizza_categoria_richiesta(categoria: Optional[str]) -> str:
     riconosce la riga, NON una scelta che l'utente possa applicare a mano — va
     rifiutata (insieme alla grafia errata "Da Clasificare").
 
+    `settore` (Fase 3 retail): senza argomento vale la lista di sempre, quindi i
+    chiamanti che non lo passano si comportano esattamente come prima. Con
+    'retail' la whitelist e' quella del negozio: senza, una chiamata API diretta
+    scriverebbe CARNE su un costo di gruppo di un negozio.
+
     Ritorna la categoria normalizzata (la variante senza emoji di NOTE E DICITURE
     diventa quella con emoji, così il guardrail importo-zero si applica a un solo
     valore). Il chiamante traduce ValueError nel proprio HTTP 400.
     """
-    from config.constants import TUTTE_LE_CATEGORIE
+    from services.settore_service import categorie_ammesse
 
     cat = (categoria or "").strip()
     if not cat or cat in ("Da Clasificare", "Da Classificare"):
         raise ValueError("Categoria non valida")
-    if cat not in (set(TUTTE_LE_CATEGORIE) | _NOTE_EQUIVALENTS):
+    if cat not in (set(categorie_ammesse(settore)) | _NOTE_EQUIVALENTS):
         raise ValueError(f"Categoria '{cat}' non riconosciuta")
     return "📝 NOTE E DICITURE" if cat == "NOTE E DICITURE" else cat
 

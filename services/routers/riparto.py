@@ -570,8 +570,11 @@ def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Hea
     sb = _get_supabase_client()
     user_id = str(user["id"])
     sedi = _require_catena(user_id, sb)
+    from services.settore_service import settore_utente
     try:
-        categoria = normalizza_categoria_richiesta(body.categoria)
+        categoria = normalizza_categoria_richiesta(
+            body.categoria, settore_utente(user_id, sb)
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if categoria == "📝 NOTE E DICITURE":
@@ -628,8 +631,11 @@ def riparto_riga_categoria(
     user_id = str(user["id"])
     _require_catena(user_id, sb)
 
+    from services.settore_service import settore_utente
     try:
-        nuova_cat = normalizza_categoria_richiesta(body.nuova_categoria)
+        nuova_cat = normalizza_categoria_richiesta(
+            body.nuova_categoria, settore_utente(user_id, sb)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
