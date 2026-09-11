@@ -20,12 +20,11 @@ alimentate nell'ultima settimana. Volumi in `DOCUMENTAZIONE/MAPPA_TECNICA.md` §
 
 Il frontend di **produzione è Next.js** su Vercel (`app.oneflux.it`). Streamlit è
 stato dismesso con lo switch DNS dell'8/6/2026 e **rimosso dal repo il 17/7/2026**
-(`app.py`, `pages/`, `components/`, `controllers/`, `static/`): se ti serve, sta
-nella git history. Il container Railway serve il worker FastAPI.
+(`app.py`, `pages/`, …): sta nella git history. Railway serve il worker FastAPI.
 
-> I moduli di `services/` fanno ancora `import streamlit as st`, ma il pacchetto
-> **non è installato**: `services/_streamlit_shim.py` lo sostituisce con un guscio
-> vuoto. Non reintrodurre la dipendenza; gli `st.` residui sono no-op.
+> I moduli di `services/` fanno ancora `import streamlit as st`, ma il pacchetto **non è
+> installato**: `services/_streamlit_shim.py` lo sostituisce con un guscio vuoto. Non
+> reintrodurre la dipendenza; gli `st.` residui sono no-op.
 
 | Layer | Percorso | Note |
 |---|---|---|
@@ -52,6 +51,7 @@ nella git history. Il container Railway serve il worker FastAPI.
 4. **`ADMIN_EMAILS`** normalizzato lowercase — confronti email sempre `.strip().lower()`.
 5. **Soft delete**: query su `fatture` e `prodotti` devono filtrare `deleted_at IS NULL`. Usare `filter_active()` da `services.db_service`. Non rimuovere `.not_.is_("deleted_at", "null")` nelle query cestino (quelle sono intenzionali).
 6. **Worker separato**: operazioni pesanti (classificazione AI, parsing fatture) vanno nel worker FastAPI / queue-worker — il frontend Next.js non esegue logica pesante, chiama le route `/api/*` del worker.
+7. **Settore della sede** (`ristoranti.tipo_attivita`: `ristorazione` default, `retail`): ogni deviazione per i negozi scatta sul settore, **il percorso comune resta quello dei ristoranti** — che non devono vedere nessun cambiamento, nemmeno un'etichetta. `ARTICOLO DI VENDITA` è solo dei negozi e **non entra** nelle costanti condivise. Si risolve con `services/settore_service.py`, una volta per documento/richiesta, e viaggia come argomento (mai negli header del client: è un singleton). Fail-safe → `ristorazione`. Dettaglio: `DOCUMENTAZIONE/RETAIL_FASI.md`.
 
 ---
 

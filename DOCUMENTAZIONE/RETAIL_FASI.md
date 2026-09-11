@@ -27,8 +27,8 @@ comportamento), 2 difetti veri trovati dai presidi, reviewer 🟢 **due volte**.
 > si pusha finché non è tutta spuntata, e non si spunta niente "da quello che
 > ricordo" — si misura.
 >
-> 1. **DUE migration NON applicate** (non una: la seconda l'ha aggiunta la Fase 5).
->    **`20260910163000_add_tipo_attivita.sql`** e
+> 1. **✅ FATTO l'11/9/2026 sera — DUE migration APPLICATE sul DB vivo**, in
+>    quest'ordine: **`20260910163000_add_tipo_attivita.sql`** e
 >    **`20260911170000_v_categorie_settore_incoerenti.sql`** (la view del monitor:
 >    senza, l'endpoint di sorveglianza risponde 500).
 >    Va applicata sul DB **prima** del push (Railway ridispiega a ogni commit, anche
@@ -37,15 +37,16 @@ comportamento), 2 difetti veri trovati dai presidi, reviewer 🟢 **due volte**.
 >    Contiene due cose, non una: la colonna `ristoranti.tipo_attivita` **e** il
 >    `CREATE OR REPLACE` di `assegna_fattura_a_sede_tecnica` (la sede tecnica deve
 >    ereditare il settore, o su un account retail nascerebbe 'ristorazione').
-> 2. **Misura lo stato reale prima di applicare**, non fidarti di questo file:
->    `information_schema.columns` per la colonna, `pg_proc` per la funzione.
->    Una migration data per pendente ed essere già applicata è successo (memoria
->    `stato-migration-si-verifica-su-pg-proc`). È idempotente, ma va comunque misurata.
-> 3. **Dopo l'applicazione, verifica che tutte le sedi siano `'ristorazione'`**: il
->    default deve aver coperto le 12 sedi esistenti. Una sede a `'retail'` prima che
->    esista un cliente retail è un errore, non un dato.
-> 4. **Ri-cattura la baseline e falla girare a zero due volte**, in processi nuovi,
->    *dopo* la migration: `python scripts/retail_baseline.py check`.
+> 2. **✅ Misurato prima di applicare** (11/9): colonna assente, constraint assente,
+>    view assente, `assegna_fattura_a_sede_tecnica` presente ma **nella versione
+>    vecchia** (`position('tipo_attivita' in prosrc)` = 0). Erano davvero pendenti.
+>    Dopo: colonna 1, constraint 1, funzione che cita il settore, view con
+>    `reloptions = {security_invoker=true}` e **0 righe incoerenti** sui dati veri.
+> 3. **✅ Misurato dopo**: **12 sedi su 12 a `'ristorazione'`** (1 delle quali tecnica),
+>    nessuna a `'retail'`. Il default ha coperto tutto l'esistente.
+> 4. **✅ Baseline «Diff a zero» DUE volte DOPO le migration**, in processi nuovi
+>    (56 righe di costi, 3.475 categorie invariate) + `retail_backup.py --verify`
+>    allineato. I numeri dei ristoranti non si sono mossi di un centesimo.
 > 5. **Rebase su `main` e ri-esegui tutto** (suite, `-m sql`, tsc, OpenAPI,
 >    `check_documentazione`): fra l'ultima fase e il deploy `main` sarà avanzato.
 >    Se il rebase porta dentro modifiche a `ai_service.py`, `margine_service.py` o a

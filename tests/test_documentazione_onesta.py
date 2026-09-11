@@ -34,6 +34,10 @@ DOC_VIVI = [
     ROOT / "LOGICA_BRIEFING.md",
     ROOT / "README.md",
     ROOT / "WORKFLOW.md",
+    # Aggiunto alla Chiusura del retail (11/9/2026): finche' non era in questa
+    # lista, RETAIL_FASI.md poteva citare un simbolo o una P.IVA sbagliata senza
+    # che un test lo dicesse — ed e' il documento unico di tutta l'implementazione.
+    ROOT / "DOCUMENTAZIONE" / "RETAIL_FASI.md",
 ]
 
 # P.IVA reale del titolare (RECOMASYSTEM Srl, Trezzano sul Naviglio).
