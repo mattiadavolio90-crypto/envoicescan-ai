@@ -1295,6 +1295,52 @@ def _is_tab_off_key(k: str) -> bool:
     )
 
 
+# Spegnimenti per settore (Fase 3 retail). Sono tab che per un negozio non hanno
+# un significato: le ricette (`workspace/foodcost`) e i coperti
+# (`margini/coperti`) descrivono un servizio al tavolo che un negozio non ha, e
+# la cassa di un retail manda solo il fatturato.
+#
+# Stessa CONVENZIONE INVERSA dei flag dell'admin (`tab_off_*`, apps/web/src/lib/
+# tab-flags.ts): la chiave e' PRESENTE quando la tab e' SPENTA. Cosi' i clienti
+# ristorazione — che non hanno nessuna di queste chiavi — non cambiano di una
+# virgola, ed e' il vincolo di Mattia.
+_TAB_OFF_PER_SETTORE: Dict[str, frozenset] = {
+    SETTORE_RETAIL: frozenset({
+        "tab_off_workspace_foodcost",
+        "tab_off_margini_coperti",
+        # I centri di produzione stanno nella tab «Analisi Avanzate» di margini:
+        # sono 5 secchi food (FOOD/BEVERAGE/ALCOLICI/DOLCI/SHOP) con le loro
+        # icone. Un negozio, che ha UNA categoria merce, li vedrebbe tutti a
+        # zero tranne uno — una pagina che non dice niente, con le emoji di un
+        # ristorante sopra.
+        "tab_off_margini_analisi",
+    }),
+}
+
+
+def _pagine_con_settore(raw, settore: Optional[str]) -> Optional[List[str]]:
+    """`_normalize_pagine` piu' gli spegnimenti di settore.
+
+    Funzione separata, e non un parametro in piu' su `_normalize_pagine`: quella
+    ha cinque chiamanti e presidi che ne asseriscono la firma, e il settore non
+    c'entra col significato di `users.pagine_abilitate`.
+
+    Il caso che conta e' `raw=None` (nessuna restrizione, il default di quasi
+    tutti gli account): per un ristorante resta None — nessun cambiamento — ma
+    per un negozio deve comunque diventare una lista, o gli spegnimenti non
+    arriverebbero mai al client. La lista in quel caso porta TUTTE le
+    chiavi-pagina piu' i tab_off: "nessuna restrizione" per un negozio significa
+    tutte le pagine aperte, non nessuna.
+    """
+    spenti = _TAB_OFF_PER_SETTORE.get(settore or "")
+    base = _normalize_pagine(raw)
+    if not spenti:
+        return base
+    if base is None:
+        return sorted(_PAGINE_FLAG) + sorted(spenti)
+    return base + [k for k in sorted(spenti) if k not in base]
+
+
 def _normalize_pagine(raw) -> Optional[List[str]]:
     if raw is None:
         return None
@@ -1379,6 +1425,10 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
 
     from services.settore_service import settore_utente
 
+    # Risolto una volta: alimenta sia il settore del client sia gli spegnimenti
+    # di tab, che senza sarebbero due letture della stessa cosa.
+    _settore_login = settore_utente(str(user["id"]))
+
     return LoginResponse(
         token=token,
         user=UserPublic(
@@ -1386,9 +1436,11 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
             email=user["email"],
             nome_ristorante=user.get("nome_ristorante"),
             num_sedi=num_sedi,
-            pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
+            pagine_abilitate=_pagine_con_settore(
+                user.get("pagine_abilitate"), _settore_login
+            ),
             is_admin=_is_admin_email(user.get("email")),
-            tipo_attivita=settore_utente(str(user["id"])),
+            tipo_attivita=_settore_login,
         ),
     )
 
@@ -1441,6 +1493,9 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
 
     from services.settore_service import settore_utente
 
+    # Come nel login: una lettura sola per settore e spegnimenti.
+    _settore_sessione = settore_utente(str(user["id"]))
+
     return UserPublic(
         id=str(user["id"]),
         email=user["email"],
@@ -1448,11 +1503,13 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         sede_attiva_nome=sede_nome,
         sede_attiva_id=sede_id,
         num_sedi=num_sedi,
-        pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
+        pagine_abilitate=_pagine_con_settore(
+            user.get("pagine_abilitate"), _settore_sessione
+        ),
         is_admin=_is_admin_email(user.get("email")),
         tema=(user.get("tema") or "dark"),
         privacy_accepted=bool(user.get("privacy_accepted_at")),
-        tipo_attivita=settore_utente(str(user["id"])),
+        tipo_attivita=_settore_sessione,
     )
 
 
