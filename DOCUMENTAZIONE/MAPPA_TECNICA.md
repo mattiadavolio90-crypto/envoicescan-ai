@@ -58,7 +58,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 |---|---|
 | Una pagina che il cliente vede | `apps/web/src/app/(app)/<pagina>/` |
 | Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive |
-| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (170 route, solo proxy) |
+| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (171 route, solo proxy) |
 | Logica di business | `services/*.py` |
 | Un endpoint del worker | `services/routers/*.py` (12 router) |
 | Schema DB | `supabase/migrations/` (canonico) |
@@ -83,7 +83,18 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 `account` · `admin` · `cestino` · `fatture` · `gruppo` · `margini` · `prezzi` ·
 `ricavi` · `riparto` · `scadenziario` · `tag` · `workspace`
 
-`services/fastapi_worker.py` (**8.901 righe**, misurate il 6/9/2026) tiene ancora briefing, KPI Home e
+> **`fatture.oscurata`** (dal 12/9/2026) — il cliente esclude una fattura da tutti
+> i conteggi lasciandola visibile e consultabile in Gestione Fatture, senza
+> cestinarla. Non c'è un choke point: il filtro è scritto a mano in ~30 query e in
+> 13 funzioni SQL. **Chi conta soldi filtra `oscurata = false`** (helper
+> `escludi_oscurate` in `db_service`); chi mostra la lista, il cestino e
+> l'anteprima righe NO. Una query nuova su `fatture` che non decide fa fallire
+> `tests/test_oscurate_choke_point.py`, che tiene l'elenco motivato delle esenzioni.
+> Una fattura già ripartita sul gruppo non si può escludere (409): senza righe
+> reali il riparto proietta le quote dal ramo sintetico, e il costo resterebbe vivo
+> sui punti vendita.
+
+`services/fastapi_worker.py` (**9.342 righe**, misurate il 12/9/2026) tiene ancora briefing, KPI Home e
 infrastruttura. Non è un errore da correggere di corsa: lo split è già stato
 fatto una volta (11.190 → 4.400 righe) e un tentativo di scorciatoia con
 `__getattr__` ha rotto 9 router in produzione. Se lo tocchi, usa wrapper
