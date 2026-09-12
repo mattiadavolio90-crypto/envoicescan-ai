@@ -16,6 +16,11 @@ export type Documento = {
   pagata_at: string | null;
   stato_scadenza: string;
   is_nuovo?: boolean;
+  // Esclusa dai conti dal cliente: resta VISIBILE in lista (sezione dedicata) ma
+  // esce da KPI, bucket, cash-flow e da ogni conteggio dell'app. Opzionale come
+  // `is_nota_credito`: un worker che non la manda ancora deve dare "non esclusa",
+  // non far crashare la pagina.
+  oscurata?: boolean;
   // Presenti SOLO in modalità catena (endpoint /api/gruppo/scadenziario):
   // assenti in mono-sede, coerente con get_documenti_scadenziario lato worker.
   ristorante_id?: string;
@@ -105,6 +110,10 @@ export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   let pagate_mese_count = 0, pagate_mese_totale = 0;
 
   for (const doc of documenti) {
+    // Esclusa dai conti = ne' costo ne' debito: se restasse qui il cliente la
+    // escluderebbe per pulire i margini e se la ritroverebbe in "Da pagare",
+    // due verita' diverse sullo stesso documento nella stessa pagina.
+    if (doc.oscurata) continue;
     if (doc.is_nota_credito) continue; // le NC non sono debiti da pagare
     const totale = doc.totale_documento || 0;
 
@@ -160,8 +169,15 @@ export function bucketizeDocumenti(documenti: Documento[]) {
   const senzaScadenza: Documento[] = [];
   const pagate: Documento[] = [];
   const noteCredito: Documento[] = [];
+  const oscurate: Documento[] = [];
 
   for (const doc of documenti) {
+    // PRIMO controllo, prima di NC e pagata: una nota di credito esclusa dai
+    // conti comparirebbe altrimenti in due sezioni insieme.
+    if (doc.oscurata) {
+      oscurate.push(doc);
+      continue;
+    }
     // Le note di credito non sono obbligazioni di pagamento: niente bucket di
     // scadenza, vanno in una sezione informativa separata.
     if (doc.is_nota_credito) {
@@ -183,7 +199,7 @@ export function bucketizeDocumenti(documenti: Documento[]) {
     else oltre.push(doc);
   }
 
-  return { scadute, settimana, mese, oltre, senzaScadenza, pagate, noteCredito };
+  return { scadute, settimana, mese, oltre, senzaScadenza, pagate, noteCredito, oscurate };
 }
 
 // ── Cash-flow: esposizione futura aggregata ──────────────────────────────────
@@ -214,7 +230,7 @@ export function buildCashFlow(documenti: Documento[]): CashFascia[] {
   ];
 
   for (const doc of documenti) {
-    if (doc.pagata || doc.is_nota_credito) continue;
+    if (doc.pagata || doc.is_nota_credito || doc.oscurata) continue;
     const s = parseLocalDate(doc.scadenza_effettiva);
     if (!s) continue; // le senza scadenza hanno già il loro alert dedicato
     const t = doc.totale_documento || 0;
@@ -249,7 +265,8 @@ export function buildCashFlow(documenti: Documento[]): CashFascia[] {
 export type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 export type Ordine = "scadenza" | "importo" | "fornitore";
 export type StatoDocumento =
-  | "Nota di credito" | "Pagata" | "Scaduta" | "Senza scadenza" | "Da pagare";
+  | "Fuori dai conti" | "Nota di credito" | "Pagata" | "Scaduta"
+  | "Senza scadenza" | "Da pagare";
 export type FornitoreEntry = { key: string; label: string };
 export type ConfiniPeriodo = { today: Date; in7: Date; in30: Date };
 export type TotaleSede = { count: number; totale: number };
@@ -329,6 +346,7 @@ export function elencaFornitori(documenti: Documento[]): FornitoreEntry[] {
  * il CSV non puo' divergere da cio' che si vede a video.
  */
 export function statoDocumento(d: Documento, today?: Date): StatoDocumento {
+  if (d.oscurata) return "Fuori dai conti";
   if (d.is_nota_credito) return "Nota di credito";
   if (d.pagata) return "Pagata";
   const limite = today ?? confiniPeriodo().today;
@@ -419,7 +437,7 @@ export function aggregaPerSede(
     ? new Set(filtri.fornitori) : null;
   for (const d of documenti) {
     if (!d.ristorante_id || !matchDocumento(d, filtri, confini, chiavi)) continue;
-    if (d.is_nota_credito || d.pagata) continue;
+    if (d.is_nota_credito || d.pagata || d.oscurata) continue;
     const acc = perSede.get(d.ristorante_id) ?? { count: 0, totale: 0 };
     acc.count += 1;
     acc.totale += d.totale_documento || 0;

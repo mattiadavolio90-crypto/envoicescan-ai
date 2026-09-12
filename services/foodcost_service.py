@@ -216,6 +216,7 @@ def _articoli_rows_full_load(supabase, user_id: str, ristorante_id: str, categor
         .eq("user_id", user_id)
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
+        .eq("oscurata", False)
         .not_.in_("categoria", categorie_escluse)
         .order("data_documento", desc=True)
     )

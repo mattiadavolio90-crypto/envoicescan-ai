@@ -219,6 +219,10 @@ def _riga(desc, user="user-1", rid="rist-1", cat="CARNE", deleted=None, data="20
         "user_id": user,
         "ristorante_id": rid,
         "deleted_at": deleted,
+        # Il fake APPLICA i filtri (scelta documentata in testa al file): senza
+        # questa chiave la riga sparisce da .eq("oscurata", False) e il test
+        # fallirebbe per la fixture, non per il codice.
+        "oscurata": False,
     }
 
 

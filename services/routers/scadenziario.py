@@ -136,6 +136,11 @@ def get_scadenziario_calendario(
             continue
         if doc.get("is_nota_credito"):
             continue
+        if doc.get("oscurata"):
+            # Esclusa dai conti = esclusa anche dalle scadenze: avvisare di pagare
+            # una fattura che il cliente ha detto di non contare e' la stessa
+            # incoerenza dei KPI, vista dalla inbox.
+            continue
         scad = doc.get("scadenza_effettiva")
         if not scad:
             continue
@@ -442,6 +447,11 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
         if doc.get("pagata"):
             continue
         if doc.get("is_nota_credito"):
+            continue
+        if doc.get("oscurata"):
+            # Esclusa dai conti = esclusa anche dalle scadenze: avvisare di pagare
+            # una fattura che il cliente ha detto di non contare e' la stessa
+            # incoerenza dei KPI, vista dalla inbox.
             continue
         scad = doc.get("scadenza_effettiva")
         if not scad:

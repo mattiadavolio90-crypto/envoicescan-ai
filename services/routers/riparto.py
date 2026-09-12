@@ -389,7 +389,7 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
     # Carica le righe della fattura (importo = somma totale_riga, periodo da data).
     righe = (
         sb.table("fatture")
-        .select("id, totale_riga, data_documento, data_competenza, fornitore, piva_cedente, ripartita_su_gruppo")
+        .select("id, totale_riga, data_documento, data_competenza, fornitore, piva_cedente, ripartita_su_gruppo, oscurata")
         .eq("user_id", user_id)
         .eq("file_origine", fo)
         .is_("deleted_at", "null")
@@ -399,6 +399,11 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     if any(bool(r.get("ripartita_su_gruppo")) for r in righe):
         raise HTTPException(status_code=409, detail="Fattura già ripartita sul gruppo")
+    # Simmetrico al 409 di /api/fatture/oscura: una fattura esclusa dai conti non
+    # puo' essere ripartita, o il costo che il cliente ha tolto rientrerebbe dalla
+    # porta delle quote proiettate sui punti vendita.
+    if any(bool(r.get("oscurata")) for r in righe):
+        raise HTTPException(status_code=409, detail="Fattura esclusa dai conti")
 
     # Somma con segno: per una nota di credito (TD04) il parser ha già invertito le
     # righe, quindi `importo` è NEGATIVO ed è giusto che lo resti — la NC va ripartita

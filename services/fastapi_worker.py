@@ -1780,6 +1780,7 @@ def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardSta
             .select("file_origine,data_documento,fornitore,categoria,totale_riga")
             .eq("user_id", user_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
         )
         if ristorante_id:
             _q = _q.eq("ristorante_id", ristorante_id)
@@ -3316,6 +3317,7 @@ def _chat_top_cat_forn(
         .select("totale_riga,categoria,fornitore")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
+        .eq("oscurata", False)
         .gte("data_documento", da)
     )
     if ristorante_id:
@@ -3510,6 +3512,7 @@ def _build_chat_system_prompt(
                     .select("id", count="exact")
                     .eq("user_id", user_id_str)
                     .is_("deleted_at", "null")
+                    .eq("oscurata", False)
                     .gte("data_documento", _mc_inizio)
                     .lte("data_documento", _mc_fine)
                 )
@@ -3622,6 +3625,7 @@ def _build_chat_system_prompt(
                     .select("id", count="exact")
                     .eq("user_id", user_id_str)
                     .is_("deleted_at", "null")
+                    .eq("oscurata", False)
                     .in_("categoria", list(_CATEGORIE_SPESE_GENERALI))
                     .gte("data_documento", _mc_inizio)
                     .lte("data_documento", _mc_fine)
@@ -3654,6 +3658,7 @@ def _build_chat_system_prompt(
                     .select("id", count="exact")
                     .eq("user_id", user_id_str)
                     .is_("deleted_at", "null")
+                    .eq("oscurata", False)
                     .eq("categoria", CATEGORIA_NON_CLASSIFICATA)
                 )
                 if ristorante_id:
@@ -4202,6 +4207,7 @@ def _chat_query_costi(
             .select("totale_riga,categoria,fornitore,descrizione,data_documento")
             .eq("user_id", user_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
         )
         if ristorante_id:
             q = q.eq("ristorante_id", ristorante_id)
@@ -4489,6 +4495,7 @@ def _chat_ultimi_acquisti(
         .select("data_documento,descrizione,fornitore,categoria,totale_riga,quantita,unita_misura")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
+        .eq("oscurata", False)
     )
     if ristorante_id:
         q = q.eq("ristorante_id", ristorante_id)
@@ -4538,6 +4545,7 @@ def _chat_trend_prezzo(
         .select("descrizione,fornitore,prezzo_unitario,quantita,totale_riga,data_documento")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
+        .eq("oscurata", False)
         .gt("prezzo_unitario", 0)
         .gte("data_documento", da)
     )
@@ -4706,6 +4714,7 @@ def _chat_confronto_prezzi(
         .select("descrizione,fornitore,prezzo_unitario,data_documento")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
+        .eq("oscurata", False)
         # Tollerante come gli altri tool: cerca su descrizione OR categoria, cosi'
         # "mozzarella" trova anche righe categorizzate ma con descrizione diversa.
         .or_((lambda _p: f"descrizione.ilike.%{_p}%,categoria.ilike.%{_p}%")(_sanitize_postgrest_term(prodotto)))
@@ -5385,6 +5394,7 @@ def _fatture_arrivate_ieri_sdi(
             .select("file_origine,totale_riga,needs_review")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .gte("created_at", inizio_ieri.isoformat())
             .lt("created_at", inizio_oggi.isoformat())
         )
@@ -6082,6 +6092,7 @@ def _briefing_righe_da_classificare(
             .select("descrizione,created_at")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .eq("needs_review", True)
         )
     except Exception as exc:
@@ -6701,6 +6712,7 @@ def _card_da_classificare(sb, ristorante_id: str) -> "Optional[SaluteDaClassific
             .select("totale_riga")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .eq("categoria", CATEGORIA_NON_CLASSIFICATA)
         ) or []
         n = len(righe)
@@ -6711,6 +6723,7 @@ def _card_da_classificare(sb, ristorante_id: str) -> "Optional[SaluteDaClassific
                 .select("totale_riga")
                 .eq("ristorante_id", ristorante_id)
                 .is_("deleted_at", "null")
+                .eq("oscurata", False)
                 .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
                 .eq("categoria_fiducia", CATEGORIA_FIDUCIA_DA_VERIFICARE)
             ) or []
@@ -6796,6 +6809,7 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
                 .select("needs_review,categoria")
                 .eq("ristorante_id", ristorante_id)
                 .is_("deleted_at", "null")
+                .eq("oscurata", False)
                 .gte("created_at", inizio_dt.isoformat())
             )
         except Exception:
@@ -7556,6 +7570,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             .select("needs_review,categoria")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .gte("created_at", inizio_dt.isoformat())
         )
     except Exception as exc:
@@ -7649,6 +7664,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             .select("descrizione")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .eq("needs_review", True)
         )
         da_controllare = len({
@@ -7677,6 +7693,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             .select("id", count="exact")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .limit(1)
             .execute()
         )
@@ -8449,6 +8466,7 @@ def _build_fatture_base_query(supabase_client, ristorante_id: str):
         )
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
+        .eq("oscurata", False)
     )
 
 
@@ -8763,6 +8781,7 @@ def _load_fatture_fb_for_period(
             .select("data_documento,totale_riga,categoria")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Le fatture ripartite sul gruppo arrivano gia' come quote_riparto_*
             # sui singoli PV: contarle anche qui sulla sede tecnica sarebbe doppio
@@ -8805,6 +8824,7 @@ def _load_fatture_fb_per_categoria_e_mese(
             .select("data_documento,totale_riga,categoria")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Vedi _load_fatture_fb_for_period: escludere le righe ripartite
             # sulla sede tecnica per evitare doppio conteggio col meccanismo
@@ -8880,6 +8900,7 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Le fatture ripartite sul gruppo arrivano gia' come quote_riparto_*
             # sui singoli PV: contarle anche qui le sottrarrebbe due volte dal MOL.
@@ -8947,6 +8968,7 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
             .select("categoria,totale_riga,data_documento,data_competenza")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             # Vedi _calcola_costi_auto_per_mese: le fatture ripartite entrano gia'
             # come quote_riparto_* sui PV, contarle qui e' doppio conteggio.

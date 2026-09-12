@@ -498,15 +498,15 @@ def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
     sb = _get_supabase_client()
     ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     from config.constants import CATEGORIE_SPESE_GENERALI
-    from services.db_service import filter_active
+    from services.db_service import escludi_oscurate, filter_active
     from utils.supabase_paging import fetch_all
     all_rows = fetch_all(
-        filter_active(
+        escludi_oscurate(filter_active(
             sb.table("fatture")
             .select("descrizione,prezzo_unitario,unita_misura,categoria,data_documento")
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
-        )
+        ))
         .not_.in_("categoria", CATEGORIE_SPESE_GENERALI)
         .order("data_documento", desc=True)
     )

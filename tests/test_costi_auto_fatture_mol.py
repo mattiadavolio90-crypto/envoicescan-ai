@@ -198,12 +198,18 @@ class _FakeSB:
 
 
 def _fattura(categoria=CAT_FB, totale=100.0, documento="2026-03-15",
-             competenza=None, ristorante_id=RID, ripartita=False, deleted_at=None):
+             competenza=None, ristorante_id=RID, ripartita=False, deleted_at=None,
+             oscurata=False):
     """Riga di `fatture` con i soli campi che gli helper leggono.
 
     `ripartita_su_gruppo` e' sempre valorizzato (mai None): sul DB live la colonna
     e' NOT NULL DEFAULT false (verificato 10/8/2026, 0 righe NULL su 34.000),
     quindi la semantica SQL del NULL non entra in questi test.
+
+    `oscurata` idem (NOT NULL DEFAULT false, migration 20260912): va valorizzata
+    perche' il fake FILTRA davvero per colonna, e una riga senza la chiave sparisce
+    da `.eq("oscurata", False)` — un mock che ignorasse il filtro sarebbe verde
+    anche se il codice smettesse di applicarlo.
     """
     return {
         "categoria": categoria,
@@ -213,6 +219,7 @@ def _fattura(categoria=CAT_FB, totale=100.0, documento="2026-03-15",
         "ristorante_id": ristorante_id,
         "ripartita_su_gruppo": ripartita,
         "deleted_at": deleted_at,
+        "oscurata": oscurata,
     }
 
 

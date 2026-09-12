@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } fro
 import { toast } from "sonner";
 import {
   AlertTriangle, ArchiveRestore, ArrowUpDown, Calendar, CalendarDays, Check, ChevronDown,
-  ChevronRight, Download, Filter, List, Loader2, MapPin, Pencil, Search, Settings2, Split, Trash2, X,
+  ChevronRight, Download, Eye, EyeOff, Filter, List, Loader2, MapPin, Pencil, Search, Settings2,
+  Split, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -171,6 +172,11 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
           {doc.numero_documento && (
             <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
           )}
+          {doc.oscurata && (
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+              fuori dai conti
+            </span>
+          )}
           <ScadenzaBadge source={doc.scadenza_source} />
           {doc.sede_nome && (
             <SedeBadge nome={doc.sede_nome} isSedeTecnica={!!doc.ristorante_id && doc.ristorante_id === sedeTecnicaId} />
@@ -226,7 +232,7 @@ function AgendaSection({
   const [open, setOpen] = useState(defaultOpen);
   const checkboxRef = useRef<HTMLInputElement>(null);
 
-  const selectableDocs = docs.filter(d => !d.pagata);
+  const selectableDocs = docs.filter(d => !d.pagata && !d.oscurata);
   const selectedCount = selectableDocs.filter(d => selectedFileOrigini.has(d.file_origine)).length;
   const allSelected = selectableDocs.length > 0 && selectedCount === selectableDocs.length;
   const someSelected = selectedCount > 0 && !allSelected;
@@ -288,6 +294,79 @@ function AgendaSection({
 }
 
 // ── Note di credito section (read-only, non pagabili) ─────────────────────────
+
+function OscurateSection({
+  docs,
+  onPeek,
+  onOscura,
+  sedeTecnicaId,
+}: {
+  docs: Documento[];
+  onPeek: (doc: Documento) => void;
+  onOscura: (doc: Documento, oscurata: boolean) => Promise<void>;
+  sedeTecnicaId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (docs.length === 0) return null;
+  const totale = docs.reduce((s, d) => s + Math.abs(d.totale_documento || 0), 0);
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="flex items-center px-3 py-3 hover:bg-muted/30 transition-colors">
+        <button className="flex-1 flex items-center justify-between" onClick={() => setOpen(o => !o)}>
+          <div className="flex items-center gap-2">
+            {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+            <span className="font-semibold text-sm text-muted-foreground">Fuori dai conti</span>
+            <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
+            <span className="text-[10px] font-medium rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
+              non conteggiate
+            </span>
+          </div>
+          <span className="text-sm font-medium text-muted-foreground">{formatEuro(totale)}</span>
+        </button>
+      </div>
+
+      {open && (
+        <div className="border-t divide-y divide-border/50">
+          {docs.map((doc) => (
+            <div
+              key={`${doc.file_origine}::${doc.ristorante_id ?? ""}`}
+              className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/50"
+            >
+              <button className="flex-1 min-w-0 text-left cursor-pointer" onClick={() => onPeek(doc)}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-sm truncate max-w-[200px]">{doc.fornitore}</span>
+                  {doc.numero_documento && (
+                    <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
+                  )}
+                  {doc.sede_nome && (
+                    <SedeBadge nome={doc.sede_nome} isSedeTecnica={!!doc.ristorante_id && doc.ristorante_id === sedeTecnicaId} />
+                  )}
+                </div>
+                {doc.data_documento && (
+                  <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                    <span>Documento: {formatDate(doc.data_documento)}</span>
+                  </div>
+                )}
+              </button>
+              <span className="text-sm font-medium text-muted-foreground flex-shrink-0">
+                {formatEuro(doc.totale_documento)}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs flex-shrink-0"
+                onClick={() => { void onOscura(doc, false); }}
+              >
+                <Eye className="size-3.5" /> Rimetti nei conti
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function NoteCreditoSection({
   docs,
@@ -562,6 +641,7 @@ type PeekDialogProps = {
   onPaga: (doc: Documento, pagata: boolean) => void;
   onSetScadenza: (doc: Documento, data: string | null) => Promise<void>;
   onElimina: (doc: Documento) => Promise<void>;
+  onOscura: (doc: Documento, oscurata: boolean) => Promise<void>;
   onSpostata: (doc: Documento) => void;
   // Modalità catena: "Sposta sede"/"Ripartisci sul gruppo" restano nascosti
   // (agiscono sulla sede ATTIVA del PV loggato, non su quella del documento —
@@ -569,7 +649,7 @@ type PeekDialogProps = {
   modalitaCatena?: boolean;
 };
 
-function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onSpostata, modalitaCatena = false }: PeekDialogProps) {
+function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, onSpostata, modalitaCatena = false }: PeekDialogProps) {
   const [editingScadenza, setEditingScadenza] = useState(false);
   const [scadenzaInput, setScadenzaInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -578,6 +658,8 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onSpostata
   const [loadingRighe, setLoadingRighe] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [oscuraConfirm, setOscuraConfirm] = useState(false);
+  const [oscurando, setOscurando] = useState(false);
   // Sedi del cliente: la sezione "Sposta in altra sede" compare SOLO se l'account
   // ha più di una sede (clienti multi-sede con P.IVA condivisa). Per gli altri
   // resta invisibile: niente UI inutile.
@@ -592,6 +674,8 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onSpostata
     setRighe([]);
     setDeleteConfirm(false);
     setDeleting(false);
+    setOscuraConfirm(false);
+    setOscurando(false);
     setSpostandoVerso(null);
   }, [doc]);
 
@@ -641,6 +725,19 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onSpostata
       toast.error(err instanceof Error ? err.message : "Errore durante l'eliminazione");
       setDeleting(false);
       setDeleteConfirm(false);
+    }
+  }
+
+  async function handleOscura() {
+    if (!doc) return;
+    setOscurando(true);
+    try {
+      await onOscura(doc, !doc.oscurata);
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Operazione non riuscita");
+      setOscurando(false);
+      setOscuraConfirm(false);
     }
   }
 
@@ -905,6 +1002,42 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onSpostata
               )}
 
               <Separator />
+
+              {/* Escludi dai conti — l'alternativa NON distruttiva all'eliminazione,
+                  messa prima apposta: chi arriva qui per "togliere una fattura dai
+                  numeri" incontra questa e non il cestino. Etichetta in italiano
+                  corrente: "oscurata" e' il nome tecnico della colonna, non una
+                  parola che il cliente debba imparare. */}
+              <div>
+                {!oscuraConfirm ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-muted-foreground hover:text-foreground gap-1.5"
+                    onClick={() => setOscuraConfirm(true)}
+                  >
+                    {doc.oscurata ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                    {doc.oscurata ? "Rimetti nei conti" : "Escludi dai conti"}
+                  </Button>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-center text-muted-foreground">
+                      {doc.oscurata
+                        ? "Tornerà a contare in margini, foodcost e analisi."
+                        : "Resterà in elenco ma uscirà da margini, foodcost e analisi."}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => setOscuraConfirm(false)} disabled={oscurando}>
+                        Annulla
+                      </Button>
+                      <Button variant="default" size="sm" className="flex-1 gap-1.5" onClick={handleOscura} disabled={oscurando}>
+                        {oscurando && <Loader2 className="size-3.5 animate-spin" />}
+                        Conferma
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Elimina fattura */}
               <div>
@@ -1444,6 +1577,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       senzaScadenza: ordinaDocumenti(b.senzaScadenza, ordine),
       pagate: ordinaDocumenti(b.pagate, ordine),
       noteCredito: ordinaDocumenti(b.noteCredito, ordine),
+      oscurate: ordinaDocumenti(b.oscurate, ordine),
     };
   }, [documentiFiltrati, ordine]);
 
@@ -1602,6 +1736,32 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     setPeekDoc(null);
     // Ricarica il cestino se era già aperto
     if (cestinoOpen) loadCestino();
+  }
+
+  async function handleOscura(doc: Documento, oscurata: boolean) {
+    const res = await fetch("/api/fatture/oscura", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_origine: doc.file_origine, oscurata, ristorante_id: doc.ristorante_id }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const detail = data.detail ?? "";
+      if (detail === "already_in_trash") throw new Error("La fattura è nel cestino");
+      if (detail === "ripartita_su_gruppo") throw new Error("È ripartita sul gruppo: rimuovi prima il riparto");
+      throw new Error(detail || "Operazione non riuscita");
+    }
+    toast.success(oscurata ? "Fattura esclusa dai conti" : "Fattura rimessa nei conti");
+    // `.map` e non `.filter` come handleElimina: la riga RESTA in elenco, cambia
+    // solo sezione. Il match include ristorante_id perche' in catena lo stesso
+    // file_origine puo' esistere su piu' sedi: senza, si marcherebbero a video
+    // due fatture con un solo click (handleElimina e handleSetScadenza hanno
+    // questo difetto — preesistente, non allargato qui).
+    setDocumenti(prev => prev.map(d =>
+      d.file_origine === doc.file_origine && d.ristorante_id === doc.ristorante_id
+        ? { ...d, oscurata }
+        : d
+    ));
   }
 
   function handleSpostata(doc: Documento) {
@@ -2090,6 +2250,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           <AgendaSection title="Senza scadenza" docs={buckets.senzaScadenza} defaultOpen={false} accentClass="text-muted-foreground" {...sharedProps} />
           <AgendaSection title="Pagate" docs={buckets.pagate} defaultOpen={false} accentClass="text-emerald-600 dark:text-emerald-400" {...sharedProps} />
           <NoteCreditoSection docs={buckets.noteCredito} onPeek={setPeekDoc} sedeTecnicaId={sedeTecnicaId} />
+          <OscurateSection docs={buckets.oscurate} onPeek={setPeekDoc} onOscura={handleOscura} sedeTecnicaId={sedeTecnicaId} />
 
           {documentiFiltrati.length === 0 && (
             <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
@@ -2141,6 +2302,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         onPaga={(doc, pagata) => handlePaga(doc, pagata)}
         onSetScadenza={handleSetScadenza}
         onElimina={handleElimina}
+        onOscura={handleOscura}
         onSpostata={handleSpostata}
         modalitaCatena={modalitaCatena}
       />

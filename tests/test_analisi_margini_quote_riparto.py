@@ -105,9 +105,9 @@ def test_analisi_periodo_esclude_righe_ripartite_su_gruppo():
     la esclude (_calcola_costi_auto_per_mese/_per_periodo)."""
     righe = [
         {"categoria": "CARNE", "totale_riga": 300.0, "data_documento": "2026-07-10",
-         "ristorante_id": "rid-tecnica", "deleted_at": None, "ripartita_su_gruppo": True},
+         "ristorante_id": "rid-tecnica", "deleted_at": None, "oscurata": False, "ripartita_su_gruppo": True},
         {"categoria": "CARNE", "totale_riga": 100.0, "data_documento": "2026-07-11",
-         "ristorante_id": "rid-tecnica", "deleted_at": None, "ripartita_su_gruppo": False},
+         "ristorante_id": "rid-tecnica", "deleted_at": None, "oscurata": False, "ripartita_su_gruppo": False},
     ]
     sb = _mock_sb_con_righe(righe)
     with patch.object(fw, "_righe_quote_gruppo", return_value=[]):
@@ -118,9 +118,9 @@ def test_analisi_periodo_esclude_righe_ripartite_su_gruppo():
 def test_analisi_categoria_mese_esclude_righe_ripartite_su_gruppo():
     righe = [
         {"categoria": "CARNE", "totale_riga": 300.0, "data_documento": "2026-07-10",
-         "ristorante_id": "rid-tecnica", "deleted_at": None, "ripartita_su_gruppo": True},
+         "ristorante_id": "rid-tecnica", "deleted_at": None, "oscurata": False, "ripartita_su_gruppo": True},
         {"categoria": "CARNE", "totale_riga": 100.0, "data_documento": "2026-07-11",
-         "ristorante_id": "rid-tecnica", "deleted_at": None, "ripartita_su_gruppo": False},
+         "ristorante_id": "rid-tecnica", "deleted_at": None, "oscurata": False, "ripartita_su_gruppo": False},
     ]
     sb = _mock_sb_con_righe(righe)
     with patch.object(fw, "_righe_quote_gruppo", return_value=[]):

@@ -63,6 +63,12 @@ class FatturaEliminaRequest(BaseModel):
     ristorante_id: Optional[str] = None
 
 
+class FatturaOscuraRequest(BaseModel):
+    file_origine: str
+    oscurata: bool
+    ristorante_id: Optional[str] = None
+
+
 def _resolve_ristorante_scrivibile(user, sb, ristorante_id_body: Optional[str]) -> str:
     """Risolve la sede su cui scrivere: sede ATTIVA se il body non la specifica,
     altrimenti la sede indicata PREVIO controllo di appartenenza all'account
@@ -250,3 +256,116 @@ def elimina_fattura_soft(
     except Exception:
         logger.exception(f"Errore soft-delete fattura {file_origine}")
         raise HTTPException(status_code=500, detail="Errore durante l'eliminazione della fattura.")
+
+
+@router.post("/api/fatture/oscura", tags=["Fatture"], dependencies=[Depends(_verify_worker_key)])
+def oscura_fattura(
+    body: FatturaOscuraRequest, authorization: Optional[str] = Header(None)
+):
+    """Esclude una fattura da TUTTI i conteggi (o la rimette dentro), lasciandola
+    visibile e consultabile in Gestione Fatture.
+
+    Non e' il cestino: il cestino la fa sparire e dopo 30 giorni la cancella. Qui
+    la fattura resta in elenco, marcata, e un click la riporta nei conti.
+
+    Vive in questo router e non in uno nuovo perche' e' la terza azione sullo
+    stesso oggetto (cestina / ripristina / escludi) e riusa
+    `_resolve_ristorante_scrivibile`: un router dedicato duplicherebbe i wrapper
+    lazy senza aggiungere niente.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_scrivibile(user, sb, body.ristorante_id)
+    user_id = str(user["id"])
+
+    file_origine = str(body.file_origine or "").strip()
+    if not file_origine:
+        raise HTTPException(status_code=400, detail="file_origine obbligatorio")
+
+    try:
+        # Stesso check di elimina_fattura_soft: senza filtro deleted_at nella
+        # query (problemi di compatibilita' con is_() in alcuni contesti FastAPI),
+        # controllato a mano sul record. Il vincolo di sede e' essenziale per i
+        # multi-sede con stessa P.IVA: lo stesso file_origine puo' esistere su
+        # piu' sedi.
+        check = (
+            sb.table("fatture")
+            .select("id, deleted_at, oscurata")
+            .eq("user_id", user_id)
+            .eq("file_origine", file_origine)
+            .eq("ristorante_id", ristorante_id)
+            .limit(1)
+            .execute()
+        )
+        if not check.data:
+            raise HTTPException(status_code=404, detail="not_found")
+
+        row = check.data[0]
+        if row.get("deleted_at"):
+            # Due stati di esclusione sovrapposti aprirebbero la domanda "cosa
+            # succede se la ripristino dal cestino?" senza una risposta scritta.
+            raise HTTPException(status_code=409, detail="already_in_trash")
+
+        # Una fattura di struttura gia' ripartita sul gruppo NON puo' essere
+        # esclusa qui. Escluderla non toglierebbe il costo dai punti vendita: le
+        # quote sono proiettate da `riparto_service`, che senza righe reali cade
+        # sul ramo SINTETICO e proietta lo stesso -- "oscurata alla fonte, viva a
+        # valle", peggio che non averla esclusa perche' il cliente crede di
+        # averlo fatto. Si rimuove prima il riparto.
+        if body.oscurata:
+            rip = (
+                sb.table("riparto_costi_catena")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("file_origine", file_origine)
+                .limit(1)
+                .execute()
+            )
+            if rip.data:
+                raise HTTPException(status_code=409, detail="ripartita_su_gruppo")
+
+        if bool(row.get("oscurata")) == bool(body.oscurata):
+            # Idempotente, a differenza del cestino: qui non c'e' una race da
+            # proteggere e un doppio click non deve diventare un errore a video.
+            return {"success": True, "righe": 0, "oscurata": bool(body.oscurata)}
+
+        upd = (
+            sb.table("fatture")
+            .update({
+                "oscurata": bool(body.oscurata),
+                "oscurata_at": "now()" if body.oscurata else None,
+            })
+            .eq("user_id", user_id)
+            .eq("file_origine", file_origine)
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        righe = len(upd.data or [])
+
+        logger.info(
+            "Fattura %s dai conti: %s | user=%s | ristorante=%s | righe=%d",
+            "esclusa" if body.oscurata else "rimessa", file_origine, user_id,
+            ristorante_id, righe,
+        )
+
+        # DUE invalidazioni, non una. `clear_fatture_cache` copre le cache di
+        # db_service (stats, margini); `_invalidate_fatture_rows_cache` copre il
+        # funnel Analisi Fatture, la cache di PREZZI e lo snapshot Home del
+        # giorno. elimina_fattura_soft chiama solo la prima: e' un buco che qui
+        # non va replicato, perche' escludere una fattura cambia proprio i numeri
+        # serviti da quelle tre.
+        from services.db_service import clear_fatture_cache
+        clear_fatture_cache()
+        try:
+            _fw()._invalidate_fatture_rows_cache(ristorante_id)
+        except Exception as exc:  # pragma: no cover - non deve bloccare la scrittura
+            logger.warning("invalidazione cache righe fallita: %s", exc)
+
+        return {"success": True, "righe": righe, "oscurata": bool(body.oscurata)}
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Errore esclusione dai conti per %s", file_origine)
+        raise HTTPException(status_code=500, detail="Errore durante l'operazione.")

@@ -749,6 +749,35 @@ def get_documenti_scadenziario(
         logger.error("get_documenti_scadenziario: errore fatture_documenti: %s", e)
         raise
 
+    # ── Step 3b: quali documenti sono ESCLUSI dai conti ("oscurata")
+    # Query a parte e non un campo della RPC: il flag vive su `fatture` e la RPC
+    # aggregata torna una riga per documento, ma estenderne il RETURNS TABLE
+    # avrebbe richiesto DROP+CREATE (Postgres rifiuta CREATE OR REPLACE che cambia
+    # il tipo di ritorno) e quindi una finestra di errori PostgREST sulla lista.
+    # Questa query e' piccola per costruzione: torna SOLO le escluse, sull'indice
+    # parziale idx_fatture_oscurata. Non si legge da `fatture_documenti` perche'
+    # 6 documenti attivi su 3.530 non hanno header (misurato l'11/9/2026) e
+    # sarebbero risultati "non esclusi" per assenza di riga.
+    oscurate: set = set()
+    try:
+        q3 = (
+            sb.table("fatture")
+            .select("file_origine,ristorante_id")
+            .eq("user_id", user_id)
+            .eq("oscurata", True)
+            .is_("deleted_at", "null")
+        )
+        q3 = q3.in_("ristorante_id", ids) if is_multi else q3.eq("ristorante_id", ids[0])
+        for row in fetch_all(q3):
+            fo_o = str(row.get("file_origine") or "").strip()
+            if fo_o:
+                oscurate.add((fo_o, str(row.get("ristorante_id") or "")))
+    except Exception as e:
+        # A differenza dello Step 3, qui NON si rilancia: un guasto su questa
+        # query lascerebbe la pagina senza badge "Fuori dai conti", non senza
+        # dati. Meglio una lista completa con un badge mancante che un 500.
+        logger.error("get_documenti_scadenziario: errore lettura oscurate: %s", e)
+
     # ── Step 4: carica regole fornitore (una volta per sede, non per riga)
     regole_map_per_sede: Dict[str, Dict[str, Any]] = {}
     for rid in ids:
@@ -828,6 +857,7 @@ def get_documenti_scadenziario(
             "stato_scadenza": _compute_stato_scadenza(scadenza_eff, pagata=pagata, today=today),
             "created_at": base.get("created_at"),
             "is_nuovo": (base.get("created_at") or "") >= cutoff_nuovo,
+            "oscurata": (fo, rid) in oscurate,
         }
         if is_multi:
             doc_out["ristorante_id"] = rid

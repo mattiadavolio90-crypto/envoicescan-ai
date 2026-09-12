@@ -37,6 +37,24 @@ def filter_active(query):
     return query.is_("deleted_at", "null")
 
 
+def escludi_oscurate(query):
+    """Esclude dai CONTEGGI le fatture che il cliente ha escluso dai conti.
+
+    La regola, per intero: `oscurata` vive su `fatture` e solo li'. **Chi conta
+    soldi la chiama; chi mostra la lista di Gestione Fatture, il cestino e
+    l'anteprima righe NO** — il senso della funzione e' tenere la fattura
+    consultabile e fuori dai numeri insieme, quindi filtrarla anche in lista la
+    farebbe sparire come il cestino.
+
+    `.eq("oscurata", False)` e NON la forma NULL-safe `.or_(is.null,neq)` di
+    `escludi_da_verificare_margini`: quella esiste perche' `categoria_fiducia` e'
+    nullable con 39.224 righe legacy a NULL. Qui la colonna e' NOT NULL DEFAULT
+    false, quindi non esistono NULL da salvare e la forma piu' lunga sarebbe solo
+    piu' lenta. Non "uniformare per coerenza".
+    """
+    return query.eq("oscurata", False)
+
+
 SOURCE_NON_DICHIARATA = "non_dichiarata"
 
 
@@ -346,7 +364,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None, solo_ultimi_gi
     dati = []
     try:
         # Prima query per ottenere il count totale (usa head per performance)
-        query_count = _filter_active(supabase_client.table("fatture").select("id", count="exact", head=True).eq("user_id", user_id))
+        query_count = escludi_oscurate(_filter_active(supabase_client.table("fatture").select("id", count="exact", head=True).eq("user_id", user_id)))
         if ristorante_id:
             query_count = query_count.eq("ristorante_id", ristorante_id)
         if _data_floor is not None:
@@ -365,7 +383,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None, solo_ultimi_gi
         
         while page < max_pages:
             offset = page * page_size
-            query_select = _filter_active(supabase_client.table("fatture").select(columns).eq("user_id", user_id))
+            query_select = escludi_oscurate(_filter_active(supabase_client.table("fatture").select(columns).eq("user_id", user_id)))
             if ristorante_id:
                 query_select = query_select.eq("ristorante_id", ristorante_id)
             if _data_floor is not None:

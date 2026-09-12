@@ -499,6 +499,7 @@ def _fatture_arrivate_ieri_gruppo(sb, user_id: str, ids: List[str]) -> Dict[str,
             .select("file_origine")
             .in_("ristorante_id", ids)
             .is_("deleted_at", "null")
+            .eq("oscurata", False)
             .gte("created_at", inizio.isoformat())
             .lt("created_at", fine.isoformat())
         )

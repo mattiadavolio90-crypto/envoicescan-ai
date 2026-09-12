@@ -89,6 +89,7 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
             .eq('user_id', user_id)
             .eq('ristorante_id', ristorante_id)
             .is_('deleted_at', 'null')
+            .eq('oscurata', False)
             .neq('categoria', CATEGORIA_NON_CLASSIFICATA)
             # Anti-doppio-conteggio: le righe di una fattura ripartita sul gruppo
             # NON entrano nel costo automatico della sede intestataria — il loro
@@ -290,6 +291,7 @@ def carica_costi_per_categoria(user_id: str, ristorante_id: str,
                 .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
                 .is_('deleted_at', 'null') \
+                .eq('oscurata', False) \
                 .gte('data_documento', date_from) \
                 .lte('data_documento', date_to) \
                 .neq('categoria', CATEGORIA_NON_CLASSIFICATA)
