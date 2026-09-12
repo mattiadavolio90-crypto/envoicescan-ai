@@ -133,3 +133,42 @@ def test_l_etichetta_del_mese_e_in_italiano(tz):
 @pytest.mark.parametrize("tz", FUSI)
 def test_elenco_vuoto_non_produce_gruppi_fantasma(tz):
     assert _gruppi([], tz) == []
+
+
+def test_la_guardia_vuoto_testa_i_gruppi_resi_non_i_documenti_filtrati():
+    """Il messaggio "nessuna fattura" non puo' comparire sotto un elenco pieno.
+
+    Il ramo `lista_mensile` costruisce l'elenco da `gruppiMensili`, che nasce da
+    `documentiCalendario` e IGNORA il filtro periodo (i suoi chip sono nascosti in
+    questa vista). Testare `documentiFiltrati` — che al periodo obbedisce — mette
+    le due collezioni in disaccordo: con "Solo scadute" attivo e zero scadute, il
+    riquadro "Nessuna fattura corrisponde ai filtri" compariva sotto tutti i mesi.
+    Nessun dato perso, ma la pagina si contraddiceva.
+
+    E' una guardia sul sorgente e non sul comportamento perche' il rendering
+    condizionale di un .tsx non e' raggiungibile dai test che eseguono il TS:
+    qui si misura l'ANCORA (quale collezione viene testata), non un letterale di
+    testo — una rinomina del messaggio non la fa gridare.
+    """
+    import pathlib
+    import re
+
+    sorgente = (pathlib.Path(__file__).resolve().parent.parent
+                / "apps/web/src/app/(app)/scadenziario/scadenziario-client.tsx"
+                ).read_text(encoding="utf-8")
+
+    inizio = sorgente.find('view === "lista_mensile" ? (')
+    assert inizio > 0, "il ramo lista_mensile non esiste piu'"
+    # fino all'inizio del ramo successivo (il calendario)
+    fine = sorgente.find("<CalendarView", inizio)
+    ramo = sorgente[inizio:fine if fine > inizio else len(sorgente)]
+
+    guardie = re.findall(r"\{(\w+)\.length === 0 &&", ramo)
+    assert guardie, "il ramo lista_mensile non ha piu' una guardia di elenco vuoto"
+    assert "documentiFiltrati" not in guardie, (
+        "la guardia di elenco vuoto testa `documentiFiltrati`, ma il ramo rende "
+        f"`gruppiMensili`: {guardie}. Le due collezioni divergono quando e' attivo "
+        "un filtro periodo, e il messaggio 'nessuna fattura' compare sotto un "
+        "elenco pieno."
+    )
+    assert "gruppiMensili" in guardie, guardie

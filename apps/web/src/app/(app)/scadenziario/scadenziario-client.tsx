@@ -2341,7 +2341,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             />
           ))}
 
-          {documentiFiltrati.length === 0 && (
+          {/* Si testa cio' che si RENDE: questo ramo costruisce l'elenco da
+              `gruppiMensili` (che ignora il filtro periodo, qui nascosto), non da
+              `documentiFiltrati`. Con "Solo scadute" attivo e zero scadute, il
+              messaggio "nessuna fattura" compariva sotto un elenco pieno. */}
+          {gruppiMensili.length === 0 && (
             <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
               <CalendarRange className="size-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm">
