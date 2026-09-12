@@ -1461,6 +1461,12 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
             ),
             is_admin=_is_admin_email(user.get("email")),
             tipo_attivita=_settore_login,
+            # NON valorizza le PREFERENZE (`tema`, `vista_fatture`): qui escono
+            # sempre col default. Oggi e' inerte — il frontend legge il `token` da
+            # questa risposta e scarta il resto, e le preferenze le prende da
+            # /api/auth/me (che le valorizza). Chi un domani volesse leggerle da
+            # qui le troverebbe SBAGLIATE in silenzio: valorizzale prima di
+            # usarle, non fidarti di questo payload.
         ),
     )
 

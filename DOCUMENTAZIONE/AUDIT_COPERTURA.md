@@ -216,6 +216,24 @@ stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
 >   Verbale: `DOCUMENTAZIONE/RETAIL_FASI.md`. Suite **13.526 verdi, 45 skip**,
 >   `-m sql` 180, baseline a zero x2.
 >
+> - **12/09/2026, `c171433`+`ba359d1`+`49a548b` — Gestione Fatture: "Escludi dai
+>   conti" e la vista "Per mese".** Colonna `fatture.oscurata` (migration
+>   APPLICATA sul DB live): il cliente toglie una fattura da tutti i conteggi
+>   lasciandola visibile in lista. Il filtro non ha un choke point — ~30 query
+>   Python e 13 funzioni SQL — quindi oltre ai presidi di comportamento c'e' una
+>   guardia anti-decadimento (`tests/test_oscurate_choke_point.py`) che obbliga
+>   ogni query nuova su `fatture` a dichiarare se conta soldi o no, con elenco
+>   motivato delle esenzioni: senza, l'helper farebbe la fine di `filter_active`
+>   (0 usi su 30 siti in `fastapi_worker.py`). Piu' `users.vista_fatture`
+>   (migration APPLICATA) per la terza vista. **+70 test**, tutti provati per
+>   mutazione: 3 mutanti isolati sulle RPC, 4 sui filtri frontend, 3
+>   sull'endpoint, 1 sul fuso (muore solo su America/Los_Angeles), 1 sulla
+>   guardia. Due reperti del reviewer chiusi: empty-state della vista per mese su
+>   una collezione diversa da quella resa, e `auth_login` che non valorizza le
+>   preferenze (inerte oggi, documentato dove si incontra). Suite **13.943
+>   verdi, 45 skip**, `-m sql` 208 (23 funzioni del DB esercitate, verificate
+>   contro `pg_proc`).
+>
 > - **10-11/09/2026, branch `retail` (15 commit, NON spedito) — Fase 1 del retail:
 >   l'isolamento per settore.** Colonna `ristoranti.tipo_attivita` (migration
 >   scritta, NON applicata), `services/settore_service.py`, e un kwarg additivo
