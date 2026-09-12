@@ -458,3 +458,77 @@ export function formatDate(iso: string | null): string {
     return iso;
   }
 }
+
+// ── Vista "Per mese": l'elenco senza scadenze ────────────────────────────────
+//
+// La vista Lista raggruppa per FASCIA DI SCADENZA (Scadute / Questa settimana /
+// ...): e' uno scadenziario. Chi non gestisce i pagamenti da questa pagina vuole
+// l'altra cosa — l'elenco delle fatture in ordine di tempo, per mese.
+//
+// Si raggruppa su `data_documento` e non su `scadenza_effettiva`: quest'ultima e'
+// calcolata (override, regole fornitore, XML) e puo' mancare del tutto, quindi
+// mesi diversi per la stessa fattura a seconda di una regola cambiata. La data
+// del documento e' un fatto della fattura, non una deduzione.
+
+export type GruppoMese = {
+  chiave: string;   // "YYYY-MM", oppure "" per il gruppo senza data
+  label: string;    // "marzo 2026"
+  docs: Documento[];
+  totale: number;
+  count: number;
+};
+
+const SENZA_DATA = "";
+
+/**
+ * Raggruppa per mese della data fattura, dal piu' RECENTE al piu' vecchio.
+ *
+ * Le fatture senza `data_documento` finiscono in un gruppo "Senza data" in coda,
+ * non vengono scartate: `data_documento` e' nullable sul DB, e scartarle
+ * significherebbe che il totale di questa vista non torna con quello della Lista
+ * — una vista che perde righe in silenzio e' peggio di una vista che non c'e'.
+ *
+ * Le date si leggono con `parseLocalDate`: `new Date("2026-03-01")` e' mezzanotte
+ * UTC, che a ovest di Greenwich cade il 28 febbraio e sposta la fattura nel mese
+ * sbagliato. E' il difetto gia' corretto due volte in questo modulo.
+ */
+export function raggruppaPerMeseFattura(documenti: Documento[]): GruppoMese[] {
+  const gruppi = new Map<string, Documento[]>();
+
+  for (const doc of documenti) {
+    const d = parseLocalDate(doc.data_documento);
+    const chiave = d
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      : SENZA_DATA;
+    const lista = gruppi.get(chiave);
+    if (lista) lista.push(doc);
+    else gruppi.set(chiave, [doc]);
+  }
+
+  const fmt = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
+
+  const out: GruppoMese[] = [...gruppi.entries()].map(([chiave, docs]) => {
+    let label = "Senza data";
+    if (chiave !== SENZA_DATA) {
+      const [anno, mese] = chiave.split("-").map(Number);
+      label = fmt.format(new Date(anno, mese - 1, 1));
+    }
+    return {
+      chiave,
+      label,
+      // Dentro il mese, la piu' recente in alto: stesso verso dei mesi.
+      docs: [...docs].sort((a, b) =>
+        (b.data_documento ?? "").localeCompare(a.data_documento ?? "")),
+      totale: docs.reduce((s, d) => s + (d.totale_documento || 0), 0),
+      count: docs.length,
+    };
+  });
+
+  // "YYYY-MM" ordina lessicograficamente come cronologicamente: nessun Date da
+  // costruire per ordinare. Il gruppo senza data ha chiave "" e finisce da solo
+  // in coda, perche' la stringa vuota e' minore di ogni "YYYY-MM" e l'ordine e'
+  // decrescente. Una guardia esplicita per spingerlo in fondo sarebbe codice
+  // morto: provata per mutazione, rimuoverla non cambia nessun risultato.
+  out.sort((a, b) => b.chiave.localeCompare(a.chiave));
+  return out;
+}

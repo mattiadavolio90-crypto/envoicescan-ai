@@ -63,6 +63,7 @@ export const TAB_SEZIONI: Record<SezioneConTab, readonly TabDef[]> = {
   scadenziario: [
     { key: "agenda", label: "Lista" },
     { key: "calendario", label: "Calendario" },
+    { key: "lista_mensile", label: "Per mese" },
   ],
 };
 

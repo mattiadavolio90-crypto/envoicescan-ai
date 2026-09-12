@@ -77,6 +77,7 @@ export default async function ScadenziarioPage() {
         initialDocumenti={esito.righe}
         caricamentoFallito={esito.stato === "non_disponibile"}
         visteAttive={viste}
+        vistaIniziale={sessione.status === "ok" ? sessione.user.vista_fatture : undefined}
       />
     </div>
   );

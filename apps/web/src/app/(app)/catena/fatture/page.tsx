@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { requirePagina } from "@/lib/page-guard";
+import { getCurrentSession } from "@/lib/auth";
 import { fetchGruppoOverview } from "@/lib/gruppo";
 import { PageHeader } from "@/components/ui/page-header";
 import { ScadenziarioClient } from "../../scadenziario/scadenziario-client";
@@ -55,10 +56,16 @@ async function FattureBlock() {
   // distinzione la pagina scriveva «Nessun documento trovato» su un guasto.
   const esito = esitoLista<Documento>(data, "documenti");
 
+  // La preferenza di vista segue l'account, quindi vale anche qui. `getCurrentSession`
+  // e' avvolta in cache() di React: non aggiunge una chiamata al worker, riusa
+  // quella gia' fatta dal layout per questa richiesta.
+  const sessione = await getCurrentSession();
+
   return (
     <ScadenziarioClient
       initialDocumenti={esito.righe}
       caricamentoFallito={esito.stato === "non_disponibile"}
+      vistaIniziale={sessione.status === "ok" ? sessione.user.vista_fatture : undefined}
       modalitaCatena
       sedi={esitoLista<SedeCatena>(data, "sedi").righe}
     />

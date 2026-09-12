@@ -3540,6 +3540,80 @@
         }
       }
     },
+    "/api/fatture/oscura": {
+      "post": {
+        "tags": [
+          "Fatture"
+        ],
+        "summary": "Oscura Fattura",
+        "description": "Esclude una fattura da TUTTI i conteggi (o la rimette dentro), lasciandola\nvisibile e consultabile in Gestione Fatture.\n\nNon e' il cestino: il cestino la fa sparire e dopo 30 giorni la cancella. Qui\nla fattura resta in elenco, marcata, e un click la riporta nei conti.\n\nVive in questo router e non in uno nuovo perche' e' la terza azione sullo\nstesso oggetto (cestina / ripristina / escludi) e riusa\n`_resolve_ristorante_scrivibile`: un router dedicato duplicherebbe i wrapper\nlazy senza aggiungere niente.",
+        "operationId": "oscura_fattura_api_fatture_oscura_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FatturaOscuraRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/account/me": {
       "get": {
         "tags": [
@@ -3692,7 +3766,7 @@
           "Account"
         ],
         "summary": "Account Preferenze",
-        "description": "Salva le preferenze di aspetto del cliente (tema). Segue l'account.",
+        "description": "Salva le preferenze del cliente (tema, vista di Gestione Fatture).\n\nSegue l'account e non il browser: in localStorage si perderebbe al primo\naccesso da un altro dispositivo.\n\nWhitelist SEPARATA per campo: un solo `if ... not in (...)` condiviso\nrifiuterebbe la vista perche' non e' un tema.",
         "operationId": "account_preferenze_api_account_preferenze_post",
         "parameters": [
           {
@@ -20928,6 +21002,35 @@
         ],
         "title": "FatturaEliminaRequest"
       },
+      "FatturaOscuraRequest": {
+        "properties": {
+          "file_origine": {
+            "type": "string",
+            "title": "File Origine"
+          },
+          "oscurata": {
+            "type": "boolean",
+            "title": "Oscurata"
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_origine",
+          "oscurata"
+        ],
+        "title": "FatturaOscuraRequest"
+      },
       "FatturatoCentriData": {
         "properties": {
           "anno": {
@@ -23923,14 +24026,29 @@
       "PreferenzeBody": {
         "properties": {
           "tema": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Tema"
+          },
+          "vista_fatture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vista Fatture"
           }
         },
         "type": "object",
-        "required": [
-          "tema"
-        ],
         "title": "PreferenzeBody"
       },
       "PreferitiResponse": {
@@ -26525,6 +26643,11 @@
             "type": "string",
             "title": "Tema",
             "default": "dark"
+          },
+          "vista_fatture": {
+            "type": "string",
+            "title": "Vista Fatture",
+            "default": "agenda"
           },
           "privacy_accepted": {
             "type": "boolean",

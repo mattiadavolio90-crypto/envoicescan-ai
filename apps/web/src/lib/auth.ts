@@ -31,6 +31,9 @@ export type SessionUser = {
   pagine_abilitate: string[] | null;
   is_admin: boolean;
   tema?: "dark" | "light";
+  // Vista preferita di Gestione Fatture. Opzionale per compatibilita' coi token
+  // emessi prima: chi non la porta atterra sulla Lista, come sempre.
+  vista_fatture?: "agenda" | "calendario" | "lista_mensile";
   // False per gli account creati prima dell'introduzione del consenso esplicito
   // (2/6/2026): la UI mostra un modale bloccante finche' non viene registrato
   // un consenso reale (GDPR Art. 7.1). Default true per compatibilita' coi

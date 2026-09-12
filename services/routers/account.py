@@ -94,7 +94,7 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     user_row = (
         sb.table("users")
         .select("id, email, nome_ristorante, ragione_sociale, partita_iva, piano, "
-                "price_alert_threshold, tema, created_at, last_login")
+                "price_alert_threshold, tema, vista_fatture, created_at, last_login")
         .eq("id", user_id)
         .single()
         .execute()
@@ -233,7 +233,14 @@ def account_cambia_password(
 
 
 class PreferenzeBody(BaseModel):
-    tema: str
+    # Entrambi opzionali: il client manda SOLO il campo che sta cambiando. Con
+    # `tema` obbligatorio, salvare la vista avrebbe richiesto di rispedire anche
+    # il tema — e un client che non lo facesse prenderebbe un 422 senza motivo.
+    tema: Optional[str] = None
+    vista_fatture: Optional[str] = None
+
+
+VISTE_FATTURE = ("agenda", "calendario", "lista_mensile")
 
 
 @router.post("/api/account/preferenze", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
@@ -241,14 +248,35 @@ def account_preferenze(
     body: PreferenzeBody,
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
-    """Salva le preferenze di aspetto del cliente (tema). Segue l'account."""
+    """Salva le preferenze del cliente (tema, vista di Gestione Fatture).
+
+    Segue l'account e non il browser: in localStorage si perderebbe al primo
+    accesso da un altro dispositivo.
+
+    Whitelist SEPARATA per campo: un solo `if ... not in (...)` condiviso
+    rifiuterebbe la vista perche' non e' un tema.
+    """
     user = _resolve_user_from_token(authorization)
-    tema = (body.tema or "").strip().lower()
-    if tema not in ("dark", "light"):
-        raise HTTPException(status_code=400, detail="Tema non valido")
+    aggiornamenti: Dict[str, Any] = {}
+
+    if body.tema is not None:
+        tema = (body.tema or "").strip().lower()
+        if tema not in ("dark", "light"):
+            raise HTTPException(status_code=400, detail="Tema non valido")
+        aggiornamenti["tema"] = tema
+
+    if body.vista_fatture is not None:
+        vista = (body.vista_fatture or "").strip().lower()
+        if vista not in VISTE_FATTURE:
+            raise HTTPException(status_code=400, detail="Vista non valida")
+        aggiornamenti["vista_fatture"] = vista
+
+    if not aggiornamenti:
+        raise HTTPException(status_code=400, detail="Nessuna preferenza da salvare")
+
     sb = _get_supabase_client()
-    sb.table("users").update({"tema": tema}).eq("id", str(user["id"])).execute()
-    return {"ok": True, "tema": tema}
+    sb.table("users").update(aggiornamenti).eq("id", str(user["id"])).execute()
+    return {"ok": True, **aggiornamenti}
 
 
 class SvuotaDatiBody(BaseModel):
@@ -360,7 +388,7 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
     try:
         prof = sb.table("users").select(
             "id,email,nome_ristorante,nome_referente,partita_iva,ragione_sociale,"
-            "tema,piano,privacy_accepted_at,created_at"
+            "tema,vista_fatture,piano,privacy_accepted_at,created_at"
         ).eq("id", user_id).limit(1).execute()
         export["profilo"] = (prof.data or [None])[0]
     except Exception as exc:

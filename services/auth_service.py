@@ -1262,7 +1262,7 @@ def verifica_sessione_da_cookie(
                         return None
                     # Carica dati custom da public.users
                     user_resp = supabase_client.table("users") \
-                        .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, tema, "
+                        .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, tema, vista_fatture, "
                                 "ultimo_ristorante_id, last_seen_at, session_token_created_at, privacy_accepted_at") \
                         .eq("id", auth_uid) \
                         .eq("attivo", True) \
@@ -1308,7 +1308,7 @@ def verifica_sessione_da_cookie(
         if _sess_user_id:
             _ur = supabase_client.table('users') \
                 .select("id, email, nome_ristorante, nome_referente, attivo, "
-                        "pagine_abilitate, tema, last_seen_at, ultimo_ristorante_id, privacy_accepted_at") \
+                        "pagine_abilitate, tema, vista_fatture, last_seen_at, ultimo_ristorante_id, privacy_accepted_at") \
                 .eq('id', _sess_user_id) \
                 .eq('attivo', True) \
                 .execute()
@@ -1326,7 +1326,7 @@ def verifica_sessione_da_cookie(
         # PATH LEGACY: session_token opaco su public.users
         # ----------------------------------------------------------------
         response = supabase_client.table('users') \
-            .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, tema, "
+            .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, tema, vista_fatture, "
                     "session_token, session_token_created_at, last_seen_at, "
                     "ultimo_ristorante_id, privacy_accepted_at") \
             .eq('session_token', token) \
@@ -1350,7 +1350,7 @@ def verifica_sessione_da_cookie(
                         if auth_uid:
                             ur = supabase_client.table("users") \
                                 .select("id, email, nome_ristorante, nome_referente, attivo, "
-                                        "pagine_abilitate, tema, ultimo_ristorante_id, last_seen_at, "
+                                        "pagine_abilitate, tema, vista_fatture, ultimo_ristorante_id, last_seen_at, "
                                         "session_token_created_at, privacy_accepted_at") \
                                 .eq("id", auth_uid).eq("attivo", True).execute()
                             if ur.data:

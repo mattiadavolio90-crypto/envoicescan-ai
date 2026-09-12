@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } fro
 import { toast } from "sonner";
 import {
   AlertTriangle, ArchiveRestore, ArrowUpDown, Calendar, CalendarDays, Check, ChevronDown,
-  ChevronRight, Download, Eye, EyeOff, Filter, List, Loader2, MapPin, Pencil, Search, Settings2,
+  CalendarRange, ChevronRight, Download, Eye, EyeOff, Filter, List, Loader2, MapPin, Pencil, Search, Settings2,
   Split, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { NativeSelect } from "@/components/ui/select";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, buildCashFlow, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, elencaFornitori, statoDocumento,
   filtraDocumenti, aggregaPerSede,
 } from "@/lib/scadenziario";
@@ -146,9 +146,16 @@ type DocumentoRowProps = {
   onPaga: (doc: Documento) => void;
   onPeek: (doc: Documento) => void;
   sedeTecnicaId?: string;
+  /**
+   * Nella vista "Per mese" sparisce tutto cio' che riguarda le scadenze: badge
+   * della fonte, data di scadenza, selezione multipla e "Paga". Una prop su
+   * questo componente e non un secondo componente copiato, che al primo fix
+   * divergerebbe mostrando due elenchi diversi per le stesse fatture.
+   */
+  mostraScadenze?: boolean;
 };
 
-function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecnicaId }: DocumentoRowProps) {
+function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecnicaId, mostraScadenze = true }: DocumentoRowProps) {
   const isOverdue = statoDocumento(doc) === "Scaduta";
 
   return (
@@ -177,14 +184,14 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
               fuori dai conti
             </span>
           )}
-          <ScadenzaBadge source={doc.scadenza_source} />
+          {mostraScadenze && <ScadenzaBadge source={doc.scadenza_source} />}
           {doc.sede_nome && (
             <SedeBadge nome={doc.sede_nome} isSedeTecnica={!!doc.ristorante_id && doc.ristorante_id === sedeTecnicaId} />
           )}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
           {doc.data_documento && <span>Fattura: {formatDate(doc.data_documento)}</span>}
-          {doc.scadenza_effettiva && (
+          {mostraScadenze && doc.scadenza_effettiva && (
             <span className={isOverdue && !doc.pagata ? "text-rose-600 font-medium" : ""}>
               Scade: {formatDate(doc.scadenza_effettiva)}
             </span>
@@ -196,7 +203,7 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
         <p className="font-semibold text-sm">{formatEuro(doc.totale_documento)}</p>
       </div>
 
-      {!doc.pagata && (
+      {mostraScadenze && !doc.pagata && (
         <Button
           variant="outline"
           size="sm"
@@ -223,11 +230,16 @@ type AgendaSectionProps = {
   onPeek: (doc: Documento) => void;
   accentClass?: string;
   sedeTecnicaId?: string;
+  /** Vedi DocumentoRow: nella vista "Per mese" le scadenze non esistono. */
+  mostraScadenze?: boolean;
+  /** Sottotitolo a destra del titolo (la vista "Per mese" ci mette il totale). */
+  sommario?: string;
 };
 
 function AgendaSection({
   title, docs, defaultOpen = true,
   selectedFileOrigini, onToggleSelect, onToggleAll, onPaga, onPeek, accentClass = "", sedeTecnicaId,
+  mostraScadenze = true, sommario,
 }: AgendaSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const checkboxRef = useRef<HTMLInputElement>(null);
@@ -247,7 +259,7 @@ function AgendaSection({
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="flex items-center px-3 py-3 hover:bg-muted/30 transition-colors">
-        {selectableDocs.length > 0 && (
+        {mostraScadenze && selectableDocs.length > 0 && (
           <input
             ref={checkboxRef}
             type="checkbox"
@@ -285,6 +297,7 @@ function AgendaSection({
               onPaga={onPaga}
               onPeek={onPeek}
               sedeTecnicaId={sedeTecnicaId}
+              mostraScadenze={mostraScadenze}
             />
           ))}
         </div>
@@ -1427,7 +1440,7 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type View = "agenda" | "calendario";
+type View = "agenda" | "calendario" | "lista_mensile";
 
 const ORDINE_LABELS: Record<Ordine, string> = {
   scadenza: "Scadenza (prima le vicine)",
@@ -1477,18 +1490,40 @@ type ScadenziarioClientProps = {
    * ereditarne i flag. Scelta deliberata, non una dimenticanza da "uniformare".
    */
   visteAttive?: string[];
+  /**
+   * Vista su cui atterrare, dalla preferenza salvata sull'account
+   * (`users.vista_fatture`). Se non e' fra quelle consentite dall'admin si cade
+   * sulla prima permessa: altrimenti spegnere una vista lascerebbe chi l'aveva
+   * salvata su una pagina vuota, senza il bottone per uscirne.
+   */
+  vistaIniziale?: string;
 };
 
-export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false, visteAttive = ["agenda", "calendario"] }: ScadenziarioClientProps) {
+export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false, visteAttive = ["agenda", "calendario", "lista_mensile"], vistaIniziale }: ScadenziarioClientProps) {
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
   const sedeTecnicaId = sedi.find(s => s.is_sede_tecnica)?.id;
   const [filtroSede, setFiltroSede] = useState<string>("tutte"); // "tutte" | ristorante_id | "gruppo"
-  const mostraLista = visteAttive.includes("agenda");
-  const mostraCalendario = visteAttive.includes("calendario");
-  // Parte dalla prima vista consentita: con "agenda" fisso, spegnere la Lista
-  // avrebbe mostrato una pagina vuota senza modo di uscirne (il bottone per
-  // cambiarla non viene reso).
-  const [view, setView] = useState<View>(mostraLista ? "agenda" : "calendario");
+  // Ordine di preferenza dei fallback: la Lista resta la vista "normale".
+  const ORDINE_VISTE: View[] = ["agenda", "calendario", "lista_mensile"];
+  const visteConsentite = ORDINE_VISTE.filter(v => visteAttive.includes(v));
+  // Parte dalla preferenza salvata, se e' ancora consentita; altrimenti dalla
+  // prima permessa. Con una vista fissa, spegnerla avrebbe mostrato una pagina
+  // vuota senza modo di uscirne (il bottone per cambiarla non viene reso).
+  const vistaSalvata = ORDINE_VISTE.find(v => v === vistaIniziale && visteAttive.includes(v));
+  const [view, setView] = useState<View>(vistaSalvata ?? visteConsentite[0] ?? "agenda");
+
+  // Il salvataggio e' best-effort e NON blocca il cambio vista: se il POST
+  // fallisce la scelta resta attiva per questa sessione, invece di lampeggiare
+  // tornando indietro sotto le dita del cliente (stesso trattamento del tema in
+  // impostazioni/account-client.tsx).
+  function cambiaVista(v: View) {
+    setView(v);
+    void fetch("/api/account/preferenze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vista_fatture: v }),
+    }).catch(() => {});
+  }
   const [selectedFileOrigini, setSelectedFileOrigini] = useState<Set<string>>(new Set());
   const [peekDoc, setPeekDoc] = useState<Documento | null>(null);
   const [regoleOpen, setRegoleOpen] = useState(false);
@@ -1860,6 +1895,13 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
   const totaleNonPagateFiltrate = documentiFiltrati.filter(d => !d.pagata).length;
 
+  // Vista "Per mese": stessi filtri della Lista (fornitore, sede, ricerca), ma
+  // NON il periodo — quello filtra su `scadenza_effettiva`, che qui non esiste.
+  const gruppiMensili = useMemo(
+    () => raggruppaPerMeseFattura(documentiCalendario),
+    [documentiCalendario],
+  );
+
   const sharedProps = {
     selectedFileOrigini,
     onToggleSelect: toggleSelect,
@@ -1873,8 +1915,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     <div className="space-y-5 pb-20">
       {/* KPI bar — le card sono cliccabili e applicano il filtro periodo
           corrispondente (toggle: riclicco la card attiva → torno a "tutti").
-          "Pagate (mese)" è un consuntivo, non un filtro: resta informativa. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          "Pagate (mese)" è un consuntivo, non un filtro: resta informativa.
+          Nascosta in "Per mese": scadute / questa settimana / da pagare sono
+          tutte grandezze di scadenza, e questa e' la vista di chi non le usa. */}
+      <div className={`grid grid-cols-2 lg:grid-cols-4 gap-3 ${view === "lista_mensile" ? "hidden" : ""}`}>
         <KpiCard
           label={filtriAttivi ? "Scadute (filtro)" : "Scadute"}
           count={kpi.scadute_count} totale={kpi.scadute_totale} tone="rose"
@@ -1909,20 +1953,24 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        {mostraLista && mostraCalendario && (
+        {/* Reso come `map` e non con una condizione per coppia: con tre viste
+            un `mostraLista && mostraCalendario` avrebbe nascosto il bottone
+            proprio quando le viste sono piu' di due. */}
+        {visteConsentite.length > 1 && (
           <div className="flex rounded-md border overflow-hidden">
-            <button
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${view === "agenda" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-              onClick={() => setView("agenda")}
-            >
-              <List className="size-3.5" /> Lista
-            </button>
-            <button
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l ${view === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-              onClick={() => setView("calendario")}
-            >
-              <CalendarDays className="size-3.5" /> Calendario
-            </button>
+            {visteConsentite.map((v, i) => {
+              const Icona = v === "agenda" ? List : v === "calendario" ? CalendarDays : CalendarRange;
+              const etichetta = v === "agenda" ? "Lista" : v === "calendario" ? "Calendario" : "Per mese";
+              return (
+                <button
+                  key={v}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l" : ""} ${view === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                  onClick={() => cambiaVista(v)}
+                >
+                  <Icona className="size-3.5" /> {etichetta}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -2075,8 +2123,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
           <Separator orientation="vertical" className="h-5" />
 
-          {/* Finestra temporale */}
-          <div className="flex items-center gap-1.5">
+          {/* Finestra temporale — filtra su `scadenza_effettiva`, quindi in
+              "Per mese" non avrebbe alcun effetto visibile: un chip che si
+              accende e non cambia l'elenco e' peggio di un chip assente. */}
+          <div className={`items-center gap-1.5 ${view === "lista_mensile" ? "hidden" : "flex"}`}>
             {(["settimana", "mese"] as Periodo[]).map(p => {
               const labels: Partial<Record<Periodo, string>> = { settimana: "Questa settimana", mese: "Questo mese" };
               return (
@@ -2261,6 +2311,45 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                   righeCaricate: documenti.length,
                   filtriAttivi,
                   guasto: "Non è stato possibile caricare le scadenze. Riprova fra un momento.",
+                  conFiltri: "Nessuna fattura corrisponde ai filtri.",
+                  vuoto: "Nessun documento trovato.",
+                })}
+              </p>
+              {filtriAttivi && (
+                <button className="text-xs text-primary mt-2 hover:underline" onClick={resetFiltri}>Pulisci filtri</button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : view === "lista_mensile" ? (
+        <div className="space-y-3">
+          {gruppiMensili.map((g) => (
+            <AgendaSection
+              key={g.chiave || "senza-data"}
+              title={g.label}
+              docs={g.docs}
+              // Solo il mese piu' recente aperto: con anni di storico, aprirli
+              // tutti riempirebbe la pagina di righe che nessuno ha chiesto.
+              defaultOpen={g === gruppiMensili[0]}
+              mostraScadenze={false}
+              selectedFileOrigini={selectedFileOrigini}
+              onToggleSelect={() => {}}
+              onToggleAll={() => {}}
+              onPaga={(d: Documento) => handlePaga(d, true)}
+              onPeek={setPeekDoc}
+              sedeTecnicaId={sedeTecnicaId}
+            />
+          ))}
+
+          {documentiFiltrati.length === 0 && (
+            <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+              <CalendarRange className="size-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">
+                {messaggioListaVuota({
+                  caricamentoFallito,
+                  righeCaricate: documenti.length,
+                  filtriAttivi,
+                  guasto: "Non è stato possibile caricare le fatture. Riprova fra un momento.",
                   conFiltri: "Nessuna fattura corrisponde ai filtri.",
                   vuoto: "Nessun documento trovato.",
                 })}
