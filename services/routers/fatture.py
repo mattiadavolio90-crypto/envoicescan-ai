@@ -802,6 +802,7 @@ def get_fornitori_disponibili(
             .select("fornitore")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            .order("id")
             .range(offset, offset + page_size - 1)
             .execute()
         )

@@ -484,6 +484,7 @@ sintesi).
 
 | Lente | Chiusa il | Metro usato | Artefatto | Si riapre se… |
 |---|---|---|---|---|
+| **L1 — Sweep per classe di difetto** | 14/09/2026 (parziale) | rilevatori AST/grep su 8 classi (707 candidati), triage per classe, refutazione con misura sul DB solo per il cap PostgREST; 6 fix con mutante | `docs/storico/audit-2026-09/CLASSI_DI_DIFETTO.md`: 2 confermati e corretti, chokepoint `fetch_all` ordinato, residui per file:riga | si rieseguono i rilevatori quando si tocca `services/` o `apps/web/src/lib`; le classi non refutate si riaprono leggendo il chiamante |
 | **L3 — La produzione parla** | 14/09/2026 | battito di 60 tabelle sul DB live (sola lettura), 13 workflow CI, corpi dei monitor, errori runtime Vercel e log/advisor Supabase del 13/09 | `docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md`: 2 silenzi veri, 1 monitor corretto | ogni mese, o dopo un job/cron/webhook nuovo: si ri-esegue il battito e si confronta |
 
 ## Cosa NON è coperto — e resta una scelta, non una dimenticanza

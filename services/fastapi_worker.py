@@ -8738,7 +8738,15 @@ def _load_mensile_overrides(sb, ristorante_id: str, annos: List[int]) -> Dict[tu
             .eq("modalita", "mensile")
             .execute()
         )
-    except Exception:
+    except Exception as exc:
+        # {} e' letto da 20+ consumatori come "nessun mese in modalita' mensile":
+        # una sede mensile esce a fatturato 0 e MOL -100%. Il valore resta {}
+        # (ogni chiamante ha un suo ripiego), ma il silenzio no: prima di questo
+        # log nessuno poteva sapere che era successo (14/09/2026).
+        logger.exception(
+            "_load_mensile_overrides: lettura fallita per sede %s anni %s, ricado su {} — %s",
+            ristorante_id, annos, exc,
+        )
         return {}
     out: Dict[tuple, Dict[str, float]] = {}
     for r in (resp.data or []):

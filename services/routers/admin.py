@@ -764,6 +764,7 @@ def _descrizioni_impronta_umana(sb, allowed_ids: list) -> set:
                 resp = (sb.table("prodotti_utente")
                         .select("descrizione,classificato_da")
                         .in_("user_id", allowed_ids)
+                        .order("id")
                         .range(off, off + 999).execute())
                 chunk = resp.data or []
                 for r in chunk:
@@ -782,6 +783,7 @@ def _descrizioni_impronta_umana(sb, allowed_ids: list) -> set:
             resp = (sb.table("prodotti_master")
                     .select("descrizione,classificato_da,verified")
                     .eq("verified", True)
+                    .order("id")
                     .range(off, off + 999).execute())
             chunk = resp.data or []
             for r in chunk:

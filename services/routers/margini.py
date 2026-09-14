@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from config.constants import SETTORE_RETAIL
+from config.constants import IVA_DIVISORE_10, IVA_DIVISORE_22, SETTORE_RETAIL
 from config.logger_setup import get_logger
 
 logger = get_logger("router_margini")
@@ -256,7 +256,7 @@ def save_margini(
         # nel record, altrimenti il bulk-upsert postgrest le azzererebbe.
         q_fb = float(ec.get("quote_riparto_fb") or 0)
         q_spese = float(ec.get("quote_riparto_spese") or 0)
-        fatt_netto = (m.fatturato_iva10 / 1.10) + (m.fatturato_iva22 / 1.22) + m.altri_ricavi_noiva
+        fatt_netto = (m.fatturato_iva10 / IVA_DIVISORE_10) + (m.fatturato_iva22 / IVA_DIVISORE_22) + m.altri_ricavi_noiva
         costi_fb_tot = m.costi_fb_auto + m.altri_costi_fb + q_fb
         costi_spese_tot = m.costi_spese_auto + m.altri_costi_spese + q_spese
         costi_pers = m.costo_dipendenti + m.costo_personale_extra

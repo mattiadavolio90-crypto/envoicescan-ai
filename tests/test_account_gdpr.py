@@ -35,6 +35,14 @@ class _Q:
     def limit(self, *_a, **_k):
         return self
 
+    # L'export pagina con fetch_all dal 14/09/2026 (prima si fermava a 1000
+    # righe): il fake impara range/order, come i fake di ai_service il 10/09.
+    def order(self, *_a, **_k):
+        return self
+
+    def range(self, *_a, **_k):
+        return self
+
     def execute(self):
         return SimpleNamespace(data=self._store)
 

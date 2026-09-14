@@ -40,6 +40,7 @@ e' una RPC che aggrega lato database (vedi `dashboard_stats_aggregata`).
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any, Dict, List
 
 logger = logging.getLogger("supabase_paging")
@@ -52,8 +53,33 @@ PAGE_SIZE = 1000
 MAX_ROWS = 50000
 
 
+def _con_ordine_totale(builder):
+    """Aggiunge `.order("id")` se la query non dichiara un ordine.
+
+    OFFSET/LIMIT senza ORDER BY non garantisce che le pagine siano fette dello
+    stesso elenco: misurato il 10/09/2026 su `prodotti_utente` (3.067 voci),
+    2 letture su 10 tornavano con 66 e 653 id mancanti rimpiazzati da
+    duplicati, col totale sempre uguale. Il 14/09/2026 28 chiamanti su 35 non
+    ordinavano: questo e' il punto unico che li chiude.
+
+    Si salta: le RPC (non hanno una colonna `id`: `articoli_da_fatture` in
+    foodcost_service risponderebbe 400), i builder che hanno gia' un `order`,
+    e i builder che non espongono i parametri (fake dei test).
+    """
+    if "RPC" in type(builder).__name__:
+        return builder
+    params = getattr(getattr(builder, "request", None), "params", None)
+    # Solo un vero mapping (httpx.QueryParams, dict): un MagicMock risponde a
+    # tutto e farebbe deviare la catena configurata dal test verso un figlio
+    # vuoto (visto il 14/09: `_briefing_righe_da_classificare` tornava None).
+    if not isinstance(params, Mapping) or "order" in params:
+        return builder
+    return builder.order("id")
+
+
 def fetch_all(builder, page_size: int = PAGE_SIZE, max_rows: int = MAX_ROWS) -> List[Dict[str, Any]]:
     """Esegue `builder` a pagine e ritorna TUTTE le righe, non solo le prime 1000."""
+    builder = _con_ordine_totale(builder)
     rows: List[Dict[str, Any]] = []
     offset = 0
     while True:

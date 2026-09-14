@@ -643,7 +643,7 @@ def get_documenti_scadenziario(
     from services import get_supabase_client
 
     sb = supabase_client or get_supabase_client()
-    today = date.today()
+    today = _oggi_rome()
 
     is_multi = isinstance(ristorante_id, (list, tuple, set))
     ids = [str(r) for r in ristorante_id] if is_multi else [str(ristorante_id)]
@@ -955,7 +955,7 @@ def set_scadenza_override(
             "stato_scadenza": _compute_stato_scadenza(
                 update_payload.get("scadenza_effettiva"),
                 pagata=bool(row.get("pagata", False)),
-                today=date.today(),
+                today=_oggi_rome(),
             ),
         }
     except Exception as exc:

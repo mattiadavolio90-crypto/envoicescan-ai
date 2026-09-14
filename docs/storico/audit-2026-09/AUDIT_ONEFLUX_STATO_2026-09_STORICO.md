@@ -37,6 +37,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **R11 — la regola anche in SQL** | chiuso: le 7 RPC vive legate alla costante Python |
 | 06/09 | **Router del worker — `margini.py`** | chiusa — 7/8 mutanti; un tab leggeva lo snapshot e l'altro l'override: **0,00 EUR invece di 402.168** su una sede, 4 sedi toccate |
 | 14/09 | **Lente trasversale L3 — la produzione parla** (mappa dei silenzi) | chiusa — 2 silenzi veri (4 sedi «SDI attivo» senza eventi da 83 gg; OFFSIDE 20 fatture in attesa da 11 gg), 1 monitor che taceva corretto |
+| 14/09 | **Lente trasversale L1 — sweep per classe di difetto** (8 classi, 707 candidati) | chiusa parziale — 2 confermati con misura e corretti (export GDPR troncato, mappa fornitori), chokepoint `fetch_all` ordinato, 6/6 mutanti; 5 refutatori caduti: il resto è triage dichiarato |
 
 ---
 
@@ -3426,4 +3427,54 @@ accettato.
 **Non fatto, e dichiarato.** Nessun cron nuovo (proposto in §5 della mappa);
 log Supabase/Vercel oltre il 13/09 (MCP scollegato); nessuna verifica sul
 pannello Invoicetronic (esterno). Materiale per L5 e L6 annotato nella mappa.
+
+---
+
+## 14/09/2026 — Lente trasversale L1: lo sweep per classe di difetto
+
+**Perché.** Ogni classe di difetto era stata trovata «incontrandola» (except→ok
+9 volte, cap 1000 6 volte, formula duplicata 8 volte); nessuno l'aveva cercata
+ovunque. Catalogo, cifre e residui in
+`docs/storico/audit-2026-09/CLASSI_DI_DIFETTO.md`.
+
+**Come.** Rilevatori AST/grep in locale (707 candidati in 8 classi; 10 file col
+BOM leggibili solo con `utf-8-sig`), un agente per classe per il triage (8,
+866k token), refutazione con misura sul DB per il cap (1 agente: 2 confermati,
+14 refutati con la cifra). **Cinque refutatori caduti per limite di sessione**:
+le altre classi restano triage, e Mattia ha chiesto di fermare i subagent per
+costo. Fix e presidi fatti a mano.
+
+**Corretto (6 mutanti / 6 uccisi, uno per fix).**
+1. `account.py` export art. 20: `select` senza `range` consegnava 1000 righe
+   per tabella; misurato: 4 clienti su 6 troncati (29.911 fatture → 1000).
+   Ora `fetch_all` con cap 200.000.
+2. `scadenziario.py` mappa nome→P.IVA su tutti i documenti della sede senza
+   paginazione: LAND a 938/1000, +214 in 30 giorni. Ora `fetch_all`.
+3. `utils/supabase_paging.fetch_all` — **chokepoint**: aggiunge `.order("id")`
+   quando la query non ha un ordine (28 chiamanti su 35), salta le RPC (una
+   `articoli_da_fatture` senza `id` risponderebbe 400) e i fake senza
+   parametri. Più `.order("id")` nei 3 loop `.range` scritti a mano.
+4. `documenti_service.py`: lo stato «Scaduta/In scadenza» usava `date.today()`
+   (UTC) mentre `_oggi_rome()` esisteva nello stesso file: fra le 22 e le 24
+   UTC il giorno era sbagliato. Due punti (lettura e scrittura).
+5. `_load_mensile_overrides` ritornava `{}` **senza log** su errore DB: 20+
+   consumatori lo leggono come «nessun mese mensile» (fatturato 0, MOL −100%).
+   Ora logga; il valore resta `{}` (ogni chiamante ha il suo ripiego):
+   propagare l'errore è una decisione da prendere con i 20 chiamanti davanti.
+6. `margini.py:259` `/1.10 /1.22` → costanti IVA (mutante equivalente).
+Un fake di test esistente (`test_account_gdpr.py`) ha imparato `range`/`order`
+(come i fake di ai_service il 10/09); la fotografia dei letterali IVA
+(`test_iva_divisori_fonte_unica.py`) scende da 25 a 23. La suite intera ha
+trovato un difetto del chokepoint che i test mirati non vedevano: un builder
+`MagicMock` risponde a `.request.params` e la catena configurata dal test
+deviava su un figlio vuoto (3 test del briefing rossi). Ora l'ordine si
+aggiunge solo se i parametri sono un vero `Mapping` (httpx.QueryParams, dict).
+
+**Non fatto, e dichiarato.** Le 7 medie del frontend R10 (`.tsx`, non
+mutabile), le 2 `periodi.ts` in Server Component, i 9 except→ok medi (fra cui
+`ai_cost_service.py:84`: fail-closed è una decisione di prodotto) e il
+chokepoint `get_or_set` che cacha `[]` su errore: elencati nel catalogo con
+file:riga. Nessun presidio strutturale AST nuovo: il chokepoint di `fetch_all`
+è il presidio della classe più ricorrente; le altre classi restano rilevatori
+da rieseguire, non test.
 

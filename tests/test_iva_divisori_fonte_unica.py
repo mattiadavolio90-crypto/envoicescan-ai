@@ -7,7 +7,7 @@ accorge il cliente.
 **La mappa, misurata il 03/09/2026** (`grep -rn "1\\.10\\|1\\.22" --include=*.py`):
 
     services/fastapi_worker.py     10      services/routers/gruppo.py   5
-    services/routers/ricavi.py      6      services/routers/margini.py  4
+    services/routers/ricavi.py      6      services/routers/margini.py  2
     services/margine_service.py     4  →   0, migrato alle costanti
 
 Attenzione a come si contano: `grep -c` conta le **righe**, non le occorrenze, e
@@ -44,7 +44,7 @@ _ATTESI = {
     "services/fastapi_worker.py": 10,
     "services/routers/gruppo.py": 5,
     "services/routers/ricavi.py": 6,
-    "services/routers/margini.py": 4,
+    "services/routers/margini.py": 2,  # 14/09/2026: fatt_netto di save_margini usa IVA_DIVISORE_*
 }
 
 # `\s*` e non uno spazio letterale: `/1.10` e `/ 1.10` sono lo stesso letterale,
@@ -137,7 +137,7 @@ def test_il_totale_dei_letterali_rimasti_e_dichiarato():
         len(_LETTERALE.findall((_RADICE / p).read_text(encoding="utf-8")))
         for p in _ATTESI
     )
-    assert totale == 25, (
-        f"i letterali IVA ancora sparsi nel backend sono {totale}, non 25: la "
+    assert totale == 23, (
+        f"i letterali IVA ancora sparsi nel backend sono {totale}, non 23: la "
         "mappa nel docstring di questo file non è più vera, ri-misurala"
     )

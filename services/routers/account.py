@@ -396,6 +396,7 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
         export["profilo"] = None
 
     # Tabelle dati dell'utente. (tabella, colonna_user, etichetta_export)
+    _MAX_RIGHE_EXPORT = 200_000
     _TABELLE = [
         ("ristoranti", "user_id", "ristoranti"),
         ("fatture", "user_id", "fatture"),
@@ -414,8 +415,14 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
     ]
     for tabella, col, label in _TABELLE:
         try:
-            r = sb.table(tabella).select("*").eq(col, user_id).execute()
-            export[label] = r.data or []
+            # Senza paginazione PostgREST consegna le prime 1000 righe senza
+            # errore: il 14/09/2026 4 clienti su 6 ricevevano un export art. 20
+            # troncato (29.911 fatture consegnate come 1000). Il cap di fetch_all
+            # e' alzato perche' l'export deve essere integrale, non "grande".
+            export[label] = fetch_all(
+                sb.table(tabella).select("*").eq(col, user_id).order("id"),
+                max_rows=_MAX_RIGHE_EXPORT,
+            )
         except Exception as exc:
             logger.warning("esporta-dati: %s: %s", tabella, exc)
             export[label] = []

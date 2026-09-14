@@ -9,6 +9,8 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from utils.supabase_paging import fetch_all
+
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
 # WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
@@ -284,6 +286,7 @@ def get_fornitori_scadenziario(authorization: Optional[str] = Header(None)):
                 .eq("user_id", uid)
                 .eq("ristorante_id", ristorante_id)
             )
+            .order("id")
             .range(offset, offset + page_size - 1)
             .execute()
         )
@@ -295,18 +298,21 @@ def get_fornitori_scadenziario(authorization: Optional[str] = Header(None)):
             break
         offset += page_size
 
-    # Step 2: mappa nome → piva da fatture_documenti (opzionale)
+    # Step 2: mappa nome → piva da fatture_documenti (opzionale). Paginata:
+    # senza .range() PostgREST consegna 1000 righe senza errore, e la sede piu'
+    # grande era a 938 documenti con P.IVA il 14/09/2026 (+214 in 30 giorni):
+    # i fornitori oltre il cap sarebbero usciti senza piva_fornitore.
     nome_to_piva: Dict[str, str] = {}
     try:
-        r2 = (
+        righe_doc = fetch_all(
             sb.table("fatture_documenti")
             .select("fornitore,piva_fornitore")
             .eq("user_id", uid)
             .eq("ristorante_id", ristorante_id)
             .not_.is_("piva_fornitore", "null")
-            .execute()
+            .order("id")
         )
-        for row in (r2.data or []):
+        for row in righe_doc:
             nome = str(row.get("fornitore") or "").strip()
             piva = str(row.get("piva_fornitore") or "").strip()
             if nome and piva and nome not in nome_to_piva:
