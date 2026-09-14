@@ -435,7 +435,7 @@ percorsi**. Se `supabase/migrations/` è identico, la logica SQL non va riletta:
 
 ```bash
 python -m pytest tests/ -q                      # atteso: verde
-python -m pytest -q -m sql                      # 164 su Postgres vero
+python -m pytest -q -m sql                      # 523 su Postgres vero (misurato il 14/09/2026)
 python -m coverage run --source=services,utils,config,worker -m pytest tests/ -q
 python -m coverage report --sort=cover          # atteso: >= 61%
 ```
@@ -495,7 +495,7 @@ obbligatoria per considerare chiuse le altre.
 
 | Ordine | Lente | Cosa guarda | Modello |
 |---|---|---|---|
-| **prossima** | L4 — Esito statistico dell'AI | tasso di correzione per fonte, matrice di confusione, golden set dalle 319 correzioni manuali | Fable normale |
+| **prossima** | L4 — Esito statistico dell'AI — prompt pronto in `docs/piani/PROMPT_FASE4_ESITO_STATISTICO_AI.md` | tasso di correzione per fonte, matrice di confusione, golden set dalle 319 correzioni manuali. ⚠️ il «per fonte» va verificato prima: `fatture.categoria_fonte` era **0 su 39.224** il 1/9, e `category_change_log` ha 0 attori | Opus `ultrathink` in apertura (scegliere cosa è ground truth), Fable normale sull'esecuzione |
 | 5 | L5 — Ciclo di vita di colonne e campi | scritte mai lette, lette mai scritte, servite mai consumate, tipi divergenti su 60 tabelle | Sonnet/Fable normale (inventario meccanico) |
 | 6 | L6 — Tempo, concorrenza, dipendenze che cadono | freeze-time sui fusi estremi, 2 worker su `claim_batch`, OpenAI 429 a metà batch **con tenacity smontato** | Fable `ultrathink` sui casi |
 | 7 | L7 — Fatture ostili in ingresso | ~20 FatturaPA avversarie attraverso parse → guardrail → AI → DB → margini → briefing | Fable `ultrathink` sui casi |

@@ -173,7 +173,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   esegue niente (29/8: soglia misurata dopo i filtri client; 2/9: pulsante verso la
   pagina sbagliata), e restano verdi sul bug anche un **mock generoso** (i test del
   radar passavano su `fatture_documenti.upload_id`, colonna mai esistita) e un test
-  sul **testo del sorgente**. Le funzioni SQL vanno **eseguite** (`-m sql`, 164): lì
+  sul **testo del sorgente**. Le funzioni SQL vanno **eseguite** (`-m sql`, 523): lì
   un mutante sopravvissuto accusa spesso le **seed** (con un solo cliente, 7 erano
   verdi senza isolamento). **Un presidio si prova per mutazione.**
 
