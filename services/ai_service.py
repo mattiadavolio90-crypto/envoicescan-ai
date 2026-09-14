@@ -4415,6 +4415,53 @@ def _applica_tutti_guardrail(
     return cat
 
 
+def _attribuisci_correzione_prodotto(
+    supabase_client,
+    user_id: str,
+    descrizione_normalizzata: str,
+    nuova_categoria: str,
+    user_email: str,
+) -> bool:
+    """Fa dichiarare al registro CHI corregge una voce di `prodotti_utente`.
+
+    Ritorna True solo se la RPC ha davvero aggiornato una riga. False copre tre
+    casi diversi e tutti leciti: la voce non esisteva (il cliente corregge una
+    descrizione mai vista), aveva gia' quella categoria, oppure la RPC non e'
+    disponibile. In nessuno dei tre la correzione va persa: l'upsert a valle
+    scrive comunque, esattamente come prima di questo fix.
+
+    Non solleva mai: un registro che non riesce ad attribuire non deve impedire
+    al cliente di correggersi.
+    """
+    if not supabase_client or not user_id or not descrizione_normalizzata:
+        return False
+    try:
+        risposta = supabase_client.rpc(
+            "aggiorna_categoria_prodotto_attribuita",
+            {
+                "p_user_id": str(user_id),
+                "p_descrizione": descrizione_normalizzata,
+                "p_categoria": nuova_categoria,
+                "p_source": "correzione_cliente",
+                "p_actor_email": (user_email or None),
+                "p_actor_user_id": str(user_id),
+                "p_batch_id": None,
+            },
+        ).execute()
+        dati = risposta.data
+        if isinstance(dati, list):
+            dati = dati[0] if dati else 0
+        if isinstance(dati, dict):
+            dati = list(dati.values())[0] if dati else 0
+        return int(dati or 0) > 0
+    except Exception as errore_rpc:
+        logger.warning(
+            "RPC aggiorna_categoria_prodotto_attribuita non disponibile, la "
+            "correzione resta anonima nel registro: %s", errore_rpc
+        )
+        return False
+
+
 def salva_correzione_in_memoria_locale(
     descrizione: str,
     nuova_categoria: str,
@@ -4464,7 +4511,27 @@ def salva_correzione_in_memoria_locale(
             return False
         
         logger.info(f"💾 SALVATAGGIO LOCALE: '{desc_normalized}' → {nuova_categoria} (user={user_email})")
-        
+
+        # L'attribuzione va PRIMA dell'upsert, e solo quando la riga esiste gia' con
+        # una categoria diversa: e' l'unico caso in cui il trigger scrive nel registro
+        # (logga i soli UPDATE, e solo a categoria cambiata). Misurato sul DB live il
+        # 14/09/2026: tutte e 113 le righe di `category_change_log` su
+        # `prodotti_utente` sono senza attore, comprese 3 del 10/09 — dopo che
+        # l'attribuzione era gia' in produzione. La RPC gemella esisteva ed era
+        # testata, ma NON aveva chiamanti: la stessa correzione del cliente
+        # registrava chi l'aveva fatta su `fatture` e restava anonima qui.
+        # L'upsert resta il percorso di scrittura (la RPC fa solo UPDATE e non
+        # saprebbe inserire una descrizione mai vista); se l'attribuzione va a buon
+        # fine l'upsert riscrive lo stesso valore e il trigger non produce una
+        # seconda riga di log.
+        _attribuita = _attribuisci_correzione_prodotto(
+            supabase_client=supabase_client,
+            user_id=user_id,
+            descrizione_normalizzata=desc_normalized,
+            nuova_categoria=nuova_categoria,
+            user_email=user_email,
+        )
+
         # Colonne ESSENZIALI (sicuramente presenti nella tabella)
         upsert_data = {
             'user_id': user_id,

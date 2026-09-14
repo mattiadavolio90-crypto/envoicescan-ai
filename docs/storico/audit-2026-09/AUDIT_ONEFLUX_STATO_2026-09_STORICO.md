@@ -39,6 +39,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 14/09 | **Lente trasversale L3 — la produzione parla** (mappa dei silenzi) | chiusa — 2 silenzi veri (4 sedi «SDI attivo» senza eventi da 83 gg; OFFSIDE 20 fatture in attesa da 11 gg), 1 monitor che taceva corretto |
 | 14/09 | **Lente trasversale L1 — sweep per classe di difetto** (8 classi, 707 candidati) | chiusa parziale — 2 confermati con misura e corretti (export GDPR troncato, mappa fornitori), chokepoint `fetch_all` ordinato, 6/6 mutanti; 5 refutatori caduti: il resto è triage dichiarato |
 | 14/09 | **Lente trasversale L2 — isolamento fra clienti, eseguito** (240 operazioni, 2 clienti su Postgres vero) | chiusa — 152 chiamate cross-tenant, 0 leak, 0 scritture; 2 difetti corretti (PATCH turno con dipendente altrui; assegna-sede 500 invece di 404); 8/12 mutanti uccisi, 4 spiegati |
+| 14/09 | **Lente trasversale L4 — esito statistico dell'AI** (la domanda si e' rovesciata) | chiusa — **l'AI decide l'1,3%** delle righe con provenienza: misurare "quanto sbaglia" avrebbe descritto 4 righe su 39.530. 1 difetto corretto (la correzione del cliente restava anonima nel registro della memoria); 5/6 mutanti, 1 spiegato eseguendo |
 
 ---
 
@@ -3528,3 +3529,55 @@ di `gruppo_tags`/`gruppo_tag_prodotti`: rattoppata in fixture, **da rigenerare**
 
 **Non fatto.** 39 POST/PATCH/DELETE senza id di risorsa (scrivono sulla sede
 attiva: non possono nominare B), 53 admin, 6 macchina.
+
+---
+
+## 14/09/2026 — Lente trasversale L4: l'esito statistico dell'AI
+
+**La domanda era sbagliata, e la misura lo ha detto subito.** Delle 309 righe
+attive con provenienza, **l'AI ne ha decise 4 — l'1,3%**. Il 94,8% e' deciso
+*prima* del modello (memoria locale 183, regole 83, dizionario 11), il 3,9% da un
+umano: misurare "quanto sbaglia l'AI" avrebbe descritto 4 righe su 39.530. Non e'
+un guasto, e' il disegno — il modello e' l'ultima risorsa. Reso riproducibile con
+`scripts/audit_chi_decide_la_categoria.py`: il segnale e' il **cambiamento** della
+quota, non il valore.
+
+**Cosa NON era misurabile, detto invece che aggirato.** `categoria_fonte` copre
+309 righe su 39.530 (0,8%), tutte di settembre: la stratificazione per fonte sullo
+storico non esiste e nessun backfill puo' inventarla. `category_change_log` ha
+old->new su tutte le 4.135 righe (la matrice c'e') ma **0 attori**: non distingue
+una correzione umana da una automatica.
+
+**La matrice, letta con prudenza.** Le coppie piu' dense sono bidirezionali —
+ACQUA<->BEVANDE 239, GELATI<->LATTICINI 168 — ma **l'86% delle righe (2.956 su
+3.429) e' cambiato una volta sola**: righe diverse che vanno nei due versi,
+confini ambigui fra categorie, non una riga che oscilla. I ritorni alla categoria
+precedente (414 su 347 righe) sono di giugno-luglio; a settembre zero, **ma
+settembre ha 10 eventi in tutto**: assenza di traffico, non un miglioramento.
+
+**Il difetto corretto.** Una sola azione del cliente scrive in due posti: la riga
+in `fatture` e la voce in `prodotti_utente`. Dal 08/09 le scritture dichiarano
+l'attore, ma **solo il primo percorso era collegato**:
+`aggiorna_categoria_prodotto_attribuita` esisteva sul DB live, testata, con **zero
+chiamanti in produzione**. Tutte e 113 le righe di registro su `prodotti_utente`
+sono anonime, **3 del 10/09** — dopo il deploy dell'attribuzione. Il registro
+sapeva chi aveva cambiato la fattura e non chi aveva cambiato la memoria, la meta'
+che decide le classificazioni future.
+
+**Mutanti: 6, 5 uccisi.** Sul call site (chiamata rimossa, attore NULL,
+attribuzione dopo l'upsert) e sullo script (cestino incluso, `AI_alta` non contata
+come AI). Il sesto — via `.order("id")` — e' **sopravvissuto**: eseguendo le due
+versioni affiancate su 1.500 righe, stessi id e zero mancanti. In transazione e
+senza scritture concorrenti l'ordine fisico regge; la divergenza del 10/09 (653 id
+su 3.067) non e' riproducibile in un test. La riga resta perche' in produzione
+quel caso e' reale.
+
+**Due cose guardate e dichiarate sane.** `prodotti_master` e' ferma dal 26/08 (0
+scritture, 397 righe fattura nuove): la scrivono **solo** le correzioni admin. E le
+373 voci declassate dalla Fase 6 sono ancora a streak 0 come il 04/09 — non perche'
+la via di rientro sia chiusa (fu corretta), ma perche' in 19 giorni **4 righe**
+hanno raggiunto l'AI.
+
+**Residuo per L5**: `correzioni_count` e `ultimo_correttore` su `prodotti_master`
+hanno **0 scrittori e 0 lettori**. Suite **14.285 + 45 skip** (root), `-m sql`
+**533**, OpenAPI 198 senza drift. Nessun push.
