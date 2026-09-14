@@ -51,6 +51,14 @@ se è configurata, il canale è muto: in entrambi i casi oggi lo dice solo
 questa misura. **Decisione di Mattia** (verifica sul pannello Invoicetronic,
 `invoicetronic-readiness`); proposta tecnica in §4.
 
+> **Risposta di Mattia (14/09/2026):** il flag mente perché **SDI non è ancora
+> stato collegato** per quelle sedi; lo farà a breve. Quindi non è un difetto
+> da correggere: `sdi_attivo = true` è stato acceso in anticipo sulla
+> configurazione. Resta valida la proposta di §4 (un controllo che confronti
+> flag ed eventi), che diventerà utile **quando** il collegamento sarà fatto —
+> se dopo l'attivazione le sedi restassero mute, oggi nessuno se ne
+> accorgerebbe.
+
 ### 2b. OFFSIDE: 20 fatture SDI in attesa da 11 giorni, e nessuno lo dice
 
 Le tre sedi del gruppo OFFSIDE hanno **la stessa P.IVA e lo stesso
@@ -75,6 +83,13 @@ monitor cron (grep `da_assegnare` in `daily_briefing_service.py`,
 `notification_inbox_service.py`, `.github/workflows/`: 0 — file letti, non
 vuoti). Manca un avviso **attivo**, non il dato. **Decisione di Mattia**:
 briefing/notifica oltre N giorni, e/o alert admin.
+
+> **Risposta di Mattia (14/09/2026):** lo smistamento **è del cliente** — la
+> coda su `/catena` e il badge ambra sono il canale previsto, e va bene così.
+> Nessun avviso attivo da costruire ora. La misura resta a verbale come
+> baseline: fino al 31/08 le righe venivano chiuse (mediana 64 h, p90 14 gg),
+> dal 31/08 no. Si riapre solo se l'arretrato cresce ancora senza che il
+> cliente lo smaltisca.
 
 ## 3. Cosa dice sul prodotto (non sono bug)
 

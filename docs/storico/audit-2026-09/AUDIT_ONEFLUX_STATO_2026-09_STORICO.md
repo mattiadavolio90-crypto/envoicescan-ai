@@ -3393,7 +3393,11 @@ deciso dopo la lezione del 13/09 (1,65M token bruciati da 30 agenti).
    (ultime: 27/08, 27/08, 21/07, 21/07). Il confronto flag↔eventi ESISTE nel
    briefing di sede (`fatture_mancanti`, canale dal flag) ma per gli account
    di catena quel briefing non viene generato (fermo 28/08–07/08): non ha mai
-   potuto scattare. Decisione di Mattia (Invoicetronic o canale muto).
+   potuto scattare. **Deciso il 14/09 da Mattia: SDI non è ancora collegato
+   per quelle sedi** (lo farà a breve), il flag è stato acceso in anticipo —
+   non è un difetto. Il controllo flag↔eventi resta una proposta utile *dopo*
+   il collegamento: se le sedi restassero mute, oggi nessuno se ne
+   accorgerebbe.
 2. OFFSIDE: 3 sedi con stessa P.IVA e stesso indirizzo → routing ambiguo per
    costruzione (`best_score<0,40` o `gap<0,20` → `da_assegnare`, corretto).
    Sulle 20 di oggi decide solo il `gap` (17 hanno `best_score` = 0,40).
@@ -3401,7 +3405,10 @@ deciso dopo la lezione del 13/09 (1,65M token bruciati da 30 agenti).
    31/08 non le chiude nessuno: **20 in coda, la più vecchia del 03/09**, con
    il cliente attivo (09/09, 14/09). Lo mostrano la coda su `/catena` e
    l'admin Flusso dati; briefing, notifiche e cron no (grep: 0). Manca un
-   avviso attivo. Decisione di Mattia: avviso oltre N giorni.
+   avviso attivo. **Deciso il 14/09 da Mattia: lo smistamento è del cliente**,
+   la coda su `/catena` è il canale previsto — nessun avviso da costruire. La
+   misura resta come baseline; si riapre solo se l'arretrato cresce senza che
+   il cliente lo smaltisca.
 3. `ricavi_queue_monitor.yml` **taceva quando la sua chiamata falliva**: senza
    `Content-Range` (401/5xx/rete) `STUCK=0` → «coda sana». Classe «guardia
    che tace quando non sa» (07/2026, 2 monitor verdi su errore). **Corretto**:
