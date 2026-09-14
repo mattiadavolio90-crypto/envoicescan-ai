@@ -3495,17 +3495,15 @@ letti in tre cicli, mai eseguiti.
 
 **Come.** `tests/helpers_supabase_sql.py` traduce le catene del builder
 supabase-py in SQL sul Postgres dei test SQL, sul sottoinsieme misurato nel
-codice (eq 944, select 428, `or_` con `and()`, `rpc` con `range`); il resto
-solleva. Due clienti × 2 sedi × ~20 risorse, worker in-process.
+codice; il resto solleva. Due clienti × 2 sedi × ~20 risorse, worker in-process.
 `tests/test_isolamento_per_risorsa.py` (314 test, 53 s, `-m sql`): le **66
-operazioni** con un id di risorsa (76 ricette, 10 varianti «mia risorsa + sede
-altrui») chiamate nei due versi **e sui propri id** — senza questo controllo due
-404 erano falsi (risorsa non seminata); le **73 GET** a tenant di sessione
-eseguite come A con B seminato (28 devono nominare una risorsa di A: su un 200
-vuoto «non contiene B» non misura niente); 8 RPC `gruppo_*`, 2 chat. Oracoli ciechi alla
-forma della risposta: marker `_B_SEGRETO`, id noti, **impronta di ogni tabella
-tenant prima/dopo**, righe nuove che puntano a id altrui. Ricette e GET sono
-legate alle rotte: la 241ª nasce coperta o rompe.
+operazioni** con un id di risorsa (76 ricette) chiamate nei due versi **e sui
+propri id** — senza quel controllo due 404 erano falsi (risorsa non seminata);
+le **73 GET** a tenant di sessione eseguite come A con B seminato (41 devono
+nominare una risorsa di A: su un 200 vuoto «non contiene B» non misura niente);
+8 RPC `gruppo_*`, 2 chat. Oracoli ciechi alla forma della risposta: marker,
+id noti, **impronta di ogni tabella tenant prima/dopo**, righe nuove che puntano
+a id altrui. Ricette e GET sono legate alle rotte: la 241ª nasce coperta o rompe.
 
 **Esiti: 152 chiamate cross-tenant** (piu' 76 di controllo sui propri id e 73 GET)**, 0 leak, 0 scritture sull'altro. 2 difetti.**
 1. `PATCH /api/workspace/personale/{turno_id}` accettava un `dipendente_id`
@@ -3513,16 +3511,19 @@ legate alle rotte: la 241ª nasce coperta o rompe.
    di un altro — `ON DELETE RESTRICT`, l'altro non poteva più eliminarlo. Ora 404.
 2. `POST /api/fatture/assegna-sede` con la propria coda e la sede di un altro:
    la RPC rifiutava con RAISE, il cliente riceveva **500**. Ora 404 in Python.
-**Mutanti: 10 singoli sul call site, 6 uccisi**, 4 sopravvissuti spiegati con
+**Mutanti: 11 singoli sul call site, 7 uccisi**, 4 sopravvissuti spiegati con
 una misura: `_assert_tag_ownership` e `aggiorna_tag` sono guardie indipendenti
-(**tolte insieme — mutante doppio dichiarato — la rete prende**);
+(**tolte insieme — mutante doppio — la rete prende**);
 `_resolve_ristorante_scrivibile` è ridondante con `segna_fattura_pagata`
-(ucciso); `sposta-sede` lo regge la RPC (SQL, già eseguita in
-`test_sql_funzioni_soldi.py`).
+(ucciso); `sposta-sede` lo regge la RPC SQL.
 
-**Trovato nell'harness.** Lo snapshot ha perso l'`IDENTITY` di `gruppo_tags`/
-`gruppo_tag_prodotti` (`20260617230000_gruppo_tags.sql`): ripristinata nella
-fixture, **snapshot da rigenerare** (verificato sulla migration).
+**Due punti ciechi del presidio, trovati dal code-reviewer.** L'oracolo di leak
+confrontava il marker con le maiuscole mentre `/api/prezzi/preferiti` proietta
+**solo** chiavi minuscole: ora `.lower()`, mutante ucciso sulla riga
+dell'endpoint (non sul gemello a riga 272, dove sarebbe stato falso). E 13 GET
+nominavano gia' il chiamante senza essere nel controllo positivo: 28 -> 41.
+Lo snapshot ha perso l'`IDENTITY` di `gruppo_tags`/`gruppo_tag_prodotti`
+(`20260617230000_gruppo_tags.sql`): rattoppata in fixture, **da rigenerare**.
 
-**Non fatto, e dichiarato.** 39 POST/PATCH/DELETE senza id di risorsa (scrivono
-sulla sede attiva: non possono nominare B), 53 admin, 6 macchina.
+**Non fatto.** 39 POST/PATCH/DELETE senza id di risorsa (scrivono sulla sede
+attiva: non possono nominare B), 53 admin, 6 macchina.

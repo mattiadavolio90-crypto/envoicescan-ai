@@ -657,7 +657,12 @@ def _verdetto(resp, mio: Cliente, altro: Cliente, prima_altro, dopo_altro, prima
     if cambiate:
         problemi.append(f"CRITICO: righe dell'altro cliente cambiate in {cambiate}")
 
-    if altro.marker in corpo:
+    # `.lower()` come il controllo positivo: alcune risorse sono seminate con la
+    # chiave normalizzata minuscola (prezzi_preferiti, fornitori_pagamenti_config)
+    # e `/api/prezzi/preferiti` proietta SOLO quelle — un confronto sensibile alle
+    # maiuscole le lascerebbe passare, e quella riga non ha nemmeno un id in `ids`
+    # che faccia da rete.
+    if altro.marker.lower() in corpo.lower():
         problemi.append("LEAK: la risposta contiene dati dell'altro cliente (marker)")
     trapelati = [i for i in altro.id_noti() if _contiene_id(corpo, i)]
     if trapelati:
@@ -722,21 +727,34 @@ def test_controllo_la_stessa_ricetta_sui_propri_id_trova_la_risorsa(scenario, ri
 # positivo delle letture. Senza, «la risposta non contiene B» e' banalmente vero
 # su un 200 vuoto, e il test sarebbe verde anche se l'endpoint non leggesse
 # niente (stessa trappola del 404 che non prova l'ownership).
-# Fuori dall'elenco le letture che per costruzione non possono nominare una
-# risorsa seminata: categorie di dominio, id di coda, KPI e aggregati numerici, e
-# `/api/riparto/regola-fornitore`, che trova la regola di A (verificato: risponde
-# `{"regola":"equa"}`) ma non rimanda il nome del fornitore che gli e' stato dato.
+# Fuori dall'elenco restano solo le letture che NON possono nominare una risorsa
+# seminata, ognuna per un motivo verificato nella proiezione dell'endpoint:
+# KPI e aggregati numerici; `/api/fatture/categorie` (proietta `categoria`, cioe'
+# dominio); `/api/riparto/regola-fornitore` (proietta regola/tipo/percentuali, non
+# il fornitore ricevuto); `/api/fatture/da-assegnare`, che un `fornitore` lo
+# espone ma leggendolo da `payload_meta.piva_cedente`, chiave che questa seed non
+# scrive — motivo della seed, non dell'endpoint: se la seed cambia, va in elenco.
+# L'elenco e' il confine di cio' che si PUO' provare, non di cio' che e' comodo:
+# le 13 voci aggiunte il 14/09 nominavano gia' il chiamante e non erano in lista.
 GET_CHE_MOSTRANO_IL_PROPRIO = {
     "/api/auth/me", "/api/account/me", "/api/account/sedi", "/api/account/esporta-dati",
-    "/api/tag", "/api/tag/descrizioni", "/api/fatture", "/api/fatture/fornitori",
+    "/api/tag", "/api/tag/descrizioni", "/api/tag/suggestions",
+    "/api/fatture", "/api/fatture/fornitori",
     "/api/fatture/articoli-aggregati", "/api/fatture/righe-articolo",
     "/api/scadenziario", "/api/scadenziario/fornitori",
-    "/api/scadenziario/regole", "/api/cestino", "/api/prezzi/preferiti",
-    "/api/workspace/foodcost/ricette", "/api/workspace/foodcost/ingredienti-manuali",
-    "/api/workspace/inventario", "/api/workspace/diario", "/api/workspace/dipendenti",
-    "/api/workspace/personale", "/api/workspace/spese", "/api/gruppo/overview",
-    "/api/gruppo/tag", "/api/gruppo/tag/descrizioni", "/api/gruppo/scadenziario",
-    "/api/gruppo/cestino", "/api/notifiche",
+    "/api/scadenziario/regole", "/api/cestino", "/api/dashboard/stats",
+    "/api/prezzi/preferiti", "/api/prezzi/variazioni", "/api/prezzi/score-fornitori",
+    "/api/prezzi/storico-prodotto",
+    "/api/workspace/foodcost/ricette", "/api/workspace/foodcost/ingredienti",
+    "/api/workspace/foodcost/ingredienti-manuali",
+    "/api/workspace/inventario", "/api/workspace/inventario/articoli",
+    "/api/workspace/diario", "/api/workspace/dipendenti",
+    "/api/workspace/personale", "/api/workspace/spese",
+    "/api/gruppo/overview", "/api/gruppo/tag", "/api/gruppo/tag/descrizioni",
+    "/api/gruppo/scadenziario", "/api/gruppo/cestino", "/api/gruppo/segnali",
+    "/api/gruppo/assistant-config", "/api/gruppo/costi-comuni",
+    "/api/gruppo/margini-coperti", "/api/gruppo/spesa-pivot",
+    "/api/gruppo/spreco-categorie", "/api/notifiche",
 }
 
 
