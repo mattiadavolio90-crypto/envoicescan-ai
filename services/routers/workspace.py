@@ -1877,6 +1877,13 @@ def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization:
             updates[campo] = raw[campo]
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    # Stessa guardia della creazione (riga 1510): il dipendente nuovo deve essere
+    # di questa sede. Senza, un cliente puo' puntare un proprio turno al
+    # dipendente di un altro cliente — misurato eseguendo il 14/09/2026 (L2):
+    # la riga restava sua, ma con una FK verso una risorsa altrui (e ON DELETE
+    # RESTRICT: l'altro cliente non poteva piu' eliminare il suo dipendente).
+    if updates.get("dipendente_id") and not _dipendente_esiste(sb, ristorante_id, str(updates["dipendente_id"])):
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
     # Stessa guardia della creazione. Il PATCH e' parziale: gli orari possono non
     # essere nel body, quindi il turno effettivo si ricostruisce dalla riga a DB
     # sovrascritta con i campi in arrivo. Senza questo, la validazione della

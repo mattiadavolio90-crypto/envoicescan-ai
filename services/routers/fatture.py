@@ -1315,6 +1315,23 @@ def fatture_assegna_sede(
     if not owns.data:
         raise HTTPException(status_code=404, detail="Fattura non trovata o già assegnata")
 
+    # Anche la sede di destinazione dev'essere del chiamante. La RPC lo
+    # ricontrolla e rifiuta con RAISE, ma un'eccezione SQL arriva al cliente
+    # come 500 — misurato eseguendo il 14/09/2026 (L2) con la propria coda e la
+    # sede di un altro account: la scrittura non passava, la risposta era un
+    # errore interno invece di un rifiuto.
+    sede = (
+        sb.table("ristoranti")
+        .select("id")
+        .eq("id", rid)
+        .eq("user_id", user_id)
+        .eq("attivo", True)
+        .limit(1)
+        .execute()
+    )
+    if not sede.data:
+        raise HTTPException(status_code=404, detail="Sede non trovata")
+
     res = sb.rpc(
         "assegna_fattura_a_sede",
         {"p_queue_id": body.queue_id, "p_ristorante_id": rid},

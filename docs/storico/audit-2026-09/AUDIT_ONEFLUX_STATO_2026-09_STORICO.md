@@ -38,6 +38,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 06/09 | **Router del worker — `margini.py`** | chiusa — 7/8 mutanti; un tab leggeva lo snapshot e l'altro l'override: **0,00 EUR invece di 402.168** su una sede, 4 sedi toccate |
 | 14/09 | **Lente trasversale L3 — la produzione parla** (mappa dei silenzi) | chiusa — 2 silenzi veri (4 sedi «SDI attivo» senza eventi da 83 gg; OFFSIDE 20 fatture in attesa da 11 gg), 1 monitor che taceva corretto |
 | 14/09 | **Lente trasversale L1 — sweep per classe di difetto** (8 classi, 707 candidati) | chiusa parziale — 2 confermati con misura e corretti (export GDPR troncato, mappa fornitori), chokepoint `fetch_all` ordinato, 6/6 mutanti; 5 refutatori caduti: il resto è triage dichiarato |
+| 14/09 | **Lente trasversale L2 — isolamento fra clienti, eseguito** (240 operazioni, 2 clienti su Postgres vero) | chiusa — 152 chiamate cross-tenant, 0 leak, 0 scritture; 2 difetti corretti (PATCH turno con dipendente altrui; assegna-sede 500 invece di 404); 6/10 mutanti uccisi, 4 spiegati |
 
 ---
 
@@ -3485,3 +3486,43 @@ file:riga. Nessun presidio strutturale AST nuovo: il chokepoint di `fetch_all`
 è il presidio della classe più ricorrente; le altre classi restano rilevatori
 da rieseguire, non test.
 
+## 14/09/2026 — Lente trasversale L2: isolamento fra clienti, provato eseguendo
+
+**Perché.** «216/216 endpoint protetti» misurava l'autenticazione. Con
+`auth.uid()` NULL e ogni client su `service_role`, i filtri `user_id`/
+`ristorante_id` nel Python sono l'unica barriera fra un cliente e l'altro:
+letti in tre cicli, mai eseguiti.
+
+**Come.** `tests/helpers_supabase_sql.py` traduce le catene del builder
+supabase-py in SQL sul Postgres dei test SQL, sul sottoinsieme misurato nel
+codice (eq 944, select 428, `or_` con `and()`, `rpc` con `range`); il resto
+solleva. Due clienti × 2 sedi × ~20 risorse, worker in-process.
+`tests/test_isolamento_per_risorsa.py` (314 test, 53 s, `-m sql`): le **66
+operazioni** con un id di risorsa (76 ricette, 10 varianti «mia risorsa + sede
+altrui») chiamate nei due versi **e sui propri id** — senza questo controllo due
+404 erano falsi (risorsa non seminata); le **73 GET** a tenant di sessione
+eseguite come A con B seminato (28 devono nominare una risorsa di A: su un 200
+vuoto «non contiene B» non misura niente); 8 RPC `gruppo_*`, 2 chat. Oracoli ciechi alla
+forma della risposta: marker `_B_SEGRETO`, id noti, **impronta di ogni tabella
+tenant prima/dopo**, righe nuove che puntano a id altrui. Ricette e GET sono
+legate alle rotte: la 241ª nasce coperta o rompe.
+
+**Esiti: 152 chiamate cross-tenant** (piu' 76 di controllo sui propri id e 73 GET)**, 0 leak, 0 scritture sull'altro. 2 difetti.**
+1. `PATCH /api/workspace/personale/{turno_id}` accettava un `dipendente_id`
+   altrui (la POST lo validava): turno del chiamante con FK verso un dipendente
+   di un altro — `ON DELETE RESTRICT`, l'altro non poteva più eliminarlo. Ora 404.
+2. `POST /api/fatture/assegna-sede` con la propria coda e la sede di un altro:
+   la RPC rifiutava con RAISE, il cliente riceveva **500**. Ora 404 in Python.
+**Mutanti: 10 singoli sul call site, 6 uccisi**, 4 sopravvissuti spiegati con
+una misura: `_assert_tag_ownership` e `aggiorna_tag` sono guardie indipendenti
+(**tolte insieme — mutante doppio dichiarato — la rete prende**);
+`_resolve_ristorante_scrivibile` è ridondante con `segna_fattura_pagata`
+(ucciso); `sposta-sede` lo regge la RPC (SQL, già eseguita in
+`test_sql_funzioni_soldi.py`).
+
+**Trovato nell'harness.** Lo snapshot ha perso l'`IDENTITY` di `gruppo_tags`/
+`gruppo_tag_prodotti` (`20260617230000_gruppo_tags.sql`): ripristinata nella
+fixture, **snapshot da rigenerare** (verificato sulla migration).
+
+**Non fatto, e dichiarato.** 39 POST/PATCH/DELETE senza id di risorsa (scrivono
+sulla sede attiva: non possono nominare B), 53 admin, 6 macchina.

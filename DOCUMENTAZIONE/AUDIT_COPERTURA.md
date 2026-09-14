@@ -486,6 +486,7 @@ sintesi).
 |---|---|---|---|---|
 | **L1 — Sweep per classe di difetto** | 14/09/2026 (parziale) | rilevatori AST/grep su 8 classi (707 candidati), triage per classe, refutazione con misura sul DB solo per il cap PostgREST; 6 fix con mutante | `docs/storico/audit-2026-09/CLASSI_DI_DIFETTO.md`: 2 confermati e corretti, chokepoint `fetch_all` ordinato, residui per file:riga | si rieseguono i rilevatori quando si tocca `services/` o `apps/web/src/lib`; le classi non refutate si riaprono leggendo il chiamante |
 | **L3 — La produzione parla** | 14/09/2026 | battito di 60 tabelle sul DB live (sola lettura), 13 workflow CI, corpi dei monitor, errori runtime Vercel e log/advisor Supabase del 13/09 | `docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md`: 2 silenzi veri, 1 monitor corretto | ogni mese, o dopo un job/cron/webhook nuovo: si ri-esegue il battito e si confronta |
+| **L2 — Isolamento fra clienti, eseguito** | 14/09/2026 | 240 operazioni classificate dall'OpenAPI: le 66 con un id di risorsa chiamate con la sessione di A e gli id di B, nei due versi e sui propri id (controllo positivo); le 73 GET a tenant di sessione (28 con controllo positivo) eseguite con l'altro cliente seminato; 8 RPC `gruppo_*` + 2 chat — su un Postgres vero attraverso `tests/helpers_supabase_sql.py` (il builder Supabase tradotto in SQL); impronta di ogni tabella tenant prima/dopo; 10 mutanti sul call site, 6 uccisi, 4 spiegati con misura | `tests/test_isolamento_per_risorsa.py` (313 test, `-m sql`): 152 chiamate cross-tenant (piu' 76 di controllo sui propri id), **0 leak, 0 scritture sull'altro**; 2 difetti corretti (PATCH turno accettava un dipendente altrui; assegna-sede rispondeva 500 invece di 404) | da solo: un endpoint nuovo con un id di risorsa senza ricetta, o una GET cliente nuova fuori da `GET_SESSIONE`, fa fallire i test strutturali; a mano quando cambiano `_resolve_ristorante_id`/`_resolve_gruppo` o si rigenera lo snapshot (che oggi ha perso l'identity di `gruppo_tags`) |
 
 ### Le lenti ancora da fare, in ordine
 
@@ -494,8 +495,7 @@ obbligatoria per considerare chiuse le altre.
 
 | Ordine | Lente | Cosa guarda | Modello |
 |---|---|---|---|
-| **prossima** | **L2 — Isolamento fra clienti, eseguito** | le 240 operazioni OpenAPI chiamate con la sessione del cliente A e l'id del cliente B; oggi «216/216 protetti» vuol dire *autenticati*, non isolati | Fable `ultrathink` (sicurezza) |
-| 4 | L4 — Esito statistico dell'AI | tasso di correzione per fonte, matrice di confusione, golden set dalle 319 correzioni manuali | Fable normale |
+| **prossima** | L4 — Esito statistico dell'AI | tasso di correzione per fonte, matrice di confusione, golden set dalle 319 correzioni manuali | Fable normale |
 | 5 | L5 — Ciclo di vita di colonne e campi | scritte mai lette, lette mai scritte, servite mai consumate, tipi divergenti su 60 tabelle | Sonnet/Fable normale (inventario meccanico) |
 | 6 | L6 — Tempo, concorrenza, dipendenze che cadono | freeze-time sui fusi estremi, 2 worker su `claim_batch`, OpenAI 429 a metà batch **con tenacity smontato** | Fable `ultrathink` sui casi |
 | 7 | L7 — Fatture ostili in ingresso | ~20 FatturaPA avversarie attraverso parse → guardrail → AI → DB → margini → briefing | Fable `ultrathink` sui casi |
