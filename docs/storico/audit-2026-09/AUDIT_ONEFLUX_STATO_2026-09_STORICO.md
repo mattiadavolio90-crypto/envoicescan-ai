@@ -38,7 +38,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 06/09 | **Router del worker — `margini.py`** | chiusa — 7/8 mutanti; un tab leggeva lo snapshot e l'altro l'override: **0,00 EUR invece di 402.168** su una sede, 4 sedi toccate |
 | 14/09 | **Lente trasversale L3 — la produzione parla** (mappa dei silenzi) | chiusa — 2 silenzi veri (4 sedi «SDI attivo» senza eventi da 83 gg; OFFSIDE 20 fatture in attesa da 11 gg), 1 monitor che taceva corretto |
 | 14/09 | **Lente trasversale L1 — sweep per classe di difetto** (8 classi, 707 candidati) | chiusa parziale — 2 confermati con misura e corretti (export GDPR troncato, mappa fornitori), chokepoint `fetch_all` ordinato, 6/6 mutanti; 5 refutatori caduti: il resto è triage dichiarato |
-| 14/09 | **Lente trasversale L2 — isolamento fra clienti, eseguito** (240 operazioni, 2 clienti su Postgres vero) | chiusa — 152 chiamate cross-tenant, 0 leak, 0 scritture; 2 difetti corretti (PATCH turno con dipendente altrui; assegna-sede 500 invece di 404); 6/10 mutanti uccisi, 4 spiegati |
+| 14/09 | **Lente trasversale L2 — isolamento fra clienti, eseguito** (240 operazioni, 2 clienti su Postgres vero) | chiusa — 152 chiamate cross-tenant, 0 leak, 0 scritture; 2 difetti corretti (PATCH turno con dipendente altrui; assegna-sede 500 invece di 404); 8/12 mutanti uccisi, 4 spiegati |
 
 ---
 
@@ -3496,7 +3496,7 @@ letti in tre cicli, mai eseguiti.
 **Come.** `tests/helpers_supabase_sql.py` traduce le catene del builder
 supabase-py in SQL sul Postgres dei test SQL, sul sottoinsieme misurato nel
 codice; il resto solleva. Due clienti × 2 sedi × ~20 risorse, worker in-process.
-`tests/test_isolamento_per_risorsa.py` (314 test, 53 s, `-m sql`): le **66
+`tests/test_isolamento_per_risorsa.py` (315 test, 54 s, `-m sql`): le **66
 operazioni** con un id di risorsa (76 ricette) chiamate nei due versi **e sui
 propri id** — senza quel controllo due 404 erano falsi (risorsa non seminata);
 le **73 GET** a tenant di sessione eseguite come A con B seminato (41 devono
@@ -3511,7 +3511,7 @@ a id altrui. Ricette e GET sono legate alle rotte: la 241ª nasce coperta o romp
    di un altro — `ON DELETE RESTRICT`, l'altro non poteva più eliminarlo. Ora 404.
 2. `POST /api/fatture/assegna-sede` con la propria coda e la sede di un altro:
    la RPC rifiutava con RAISE, il cliente riceveva **500**. Ora 404 in Python.
-**Mutanti: 11 singoli sul call site, 7 uccisi**, 4 sopravvissuti spiegati con
+**Mutanti: 12 singoli sul call site, 8 uccisi**, 4 sopravvissuti spiegati con
 una misura: `_assert_tag_ownership` e `aggiorna_tag` sono guardie indipendenti
 (**tolte insieme — mutante doppio — la rete prende**);
 `_resolve_ristorante_scrivibile` è ridondante con `segna_fattura_pagata`
@@ -3519,11 +3519,12 @@ una misura: `_assert_tag_ownership` e `aggiorna_tag` sono guardie indipendenti
 
 **Due punti ciechi del presidio, trovati dal code-reviewer.** L'oracolo di leak
 confrontava il marker con le maiuscole mentre `/api/prezzi/preferiti` proietta
-**solo** chiavi minuscole: ora `.lower()`, mutante ucciso sulla riga
-dell'endpoint (non sul gemello a riga 272, dove sarebbe stato falso). E 13 GET
-nominavano gia' il chiamante senza essere nel controllo positivo: 28 -> 41.
-Lo snapshot ha perso l'`IDENTITY` di `gruppo_tags`/`gruppo_tag_prodotti`
-(`20260617230000_gruppo_tags.sql`): rattoppata in fixture, **da rigenerare**.
+**solo** chiavi minuscole: ora `.lower()` (mutante ucciso sulla riga
+dell'endpoint, non sul gemello a riga 272). E 13 GET nominavano gia' il
+chiamante senza essere nel controllo positivo: 28 -> 41, e ora un test di
+sessione **rompe** se una GET nomina il chiamante restando fuori — l'elenco lo
+aggiorna una persona, non si aggiorna da solo. Lo snapshot ha perso l'`IDENTITY`
+di `gruppo_tags`/`gruppo_tag_prodotti`: rattoppata in fixture, **da rigenerare**.
 
 **Non fatto.** 39 POST/PATCH/DELETE senza id di risorsa (scrivono sulla sede
 attiva: non possono nominare B), 53 admin, 6 macchina.

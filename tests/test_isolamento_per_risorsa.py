@@ -758,6 +758,11 @@ GET_CHE_MOSTRANO_IL_PROPRIO = {
 }
 
 
+# Esito del controllo positivo per path, riempito dalle GET mentre girano e
+# letto da `test_nessuna_get_verificabile_resta_fuori_dal_controllo_positivo`.
+_ESITI_CONTROLLO_POSITIVO: Dict[str, bool] = {}
+
+
 @pytest.mark.parametrize("path", sorted(GET_SESSIONE), ids=lambda p: p)
 def test_get_a_tenant_di_sessione_non_mostra_l_altro_cliente(scenario, path):
     """Le GET senza id nel contratto leggono la sede attiva della sessione: con B
@@ -769,7 +774,9 @@ def test_get_a_tenant_di_sessione_non_mostra_l_altro_cliente(scenario, path):
     resp = scenario.chiama(a, "GET", path, params=params)
     dopo_b = scenario.impronta(b)
     problemi = _verdetto(resp, a, b, prima_b, dopo_b, {}, {}, set())
-    if path in GET_CHE_MOSTRANO_IL_PROPRIO and a.marker.lower() not in (resp.text or "").lower():
+    nomina_il_proprio = a.marker.lower() in (resp.text or "").lower()
+    _ESITI_CONTROLLO_POSITIVO[path] = nomina_il_proprio
+    if path in GET_CHE_MOSTRANO_IL_PROPRIO and not nomina_il_proprio:
         problemi.append(
             "CONTROLLO: la risposta non nomina nessuna risorsa del chiamante — "
             "«non contiene B» qui non misura niente"
@@ -783,6 +790,39 @@ def test_le_get_del_controllo_positivo_esistono(worker):
     morta e' una lettura che nessuno verifica piu'."""
     fantasmi = sorted(GET_CHE_MOSTRANO_IL_PROPRIO - set(GET_SESSIONE))
     assert not fantasmi, f"voci di GET_CHE_MOSTRANO_IL_PROPRIO fuori da GET_SESSIONE: {fantasmi}"
+
+
+def test_nessuna_get_verificabile_resta_fuori_dal_controllo_positivo():
+    """L'elenco non deve degradare da solo.
+
+    `GET_SESSIONE` e' presidiato (una GET nuova ci entra o il test struttrale
+    rompe), `GET_CHE_MOSTRANO_IL_PROPRIO` no: una lettura nuova che nomina il
+    chiamante puo' restare fuori, e nessuno se ne accorge. E' successo — 13 GET
+    lo facevano gia' e sono state trovate solo perche' qualcuno le ha misurate.
+
+    Il test non deve PREVEDERE quali GET nominano il chiamante (staticamente non
+    si puo'): le chiamate sopra hanno gia' la risposta in mano e la registrano.
+    Qui si guarda l'esito raccolto e si ROMPE — l'elenco non si aggiorna da solo,
+    lo aggiorna una persona.
+
+    Gira solo dopo le GET (dipende da `-m sql` e dall'intero file): se ne sono
+    state eseguite poche, salta invece di dare un verde che non misura niente.
+    """
+    if len(_ESITI_CONTROLLO_POSITIVO) < len(GET_SESSIONE):
+        pytest.skip(
+            f"solo {len(_ESITI_CONTROLLO_POSITIVO)}/{len(GET_SESSIONE)} GET eseguite in "
+            "questo giro: l'elenco si verifica sul file intero"
+        )
+    fuori = sorted(
+        path for path, nomina in _ESITI_CONTROLLO_POSITIVO.items()
+        if nomina and path not in GET_CHE_MOSTRANO_IL_PROPRIO
+    )
+    assert not fuori, (
+        "Queste GET nominano una risorsa del chiamante ma non sono nel controllo "
+        "positivo, quindi per loro «la risposta non contiene B» non e' una "
+        "misura:\n  " + "\n  ".join(fuori)
+        + "\n\nAggiungile a GET_CHE_MOSTRANO_IL_PROPRIO."
+    )
 
 
 # ─── Le RPC di catena e della chat, chiamate direttamente ─────────────────────
