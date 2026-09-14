@@ -228,6 +228,34 @@ resta leggibile in un minuto; il `_STORICO.md` raccoglie i verbali. Il dettaglio
 - **I buchi di copertura test trovati durante un audit non si chiudono in coda alla
   stessa sessione**: sono scrittura, non audit. Si pianificano a parte.
 
+### Il costo di un audit: gli agenti si usano per contraddire, non per moltiplicare
+
+Un audit si conduce **in sessione**: i rilevatori (grep, AST, SQL) si scrivono e
+si lanciano in locale, i risultati si leggono qui. **L'unico sub-agente che
+aggiunge qualità è il `code-reviewer` a fine fase**, perché guarda il lavoro da
+fuori e senza sapere cosa speravi di trovare — nella sessione trasversale del
+13-14/09 ha trovato un bug pre-esistente che nessuno cercava (il monitor ricavi
+che non spediva l'email nemmeno a coda bloccata) e ha bocciato tre affermazioni
+più forti del misurato.
+
+**Il fan-out su lavoro meccanico non aggiunge qualità, moltiplica il costo.** Un
+workflow di 30 agenti che leggevano 15.000 righe di verbali *interi*, con
+lettore + contestatore per blocco e il JSON pieno ripassato a valle, ha bruciato
+**1,65M token**: 18 agenti su 30 sono morti sul limite di sessione e la sintesi
+non è mai partita — i risultati sono stati recuperati a mano dal journal. Lo
+sweep successivo (8 classi di difetto, 8 agenti) è costato altri **870k** e ha
+prodotto **triage, non prove**: 14 dei candidati segnalati si sono rivelati falsi
+allarmi quando li ho misurati io a DB. Ogni sub-agente riparte senza la cache
+della sessione: dieci agenti sono dieci letture pagate a prezzo pieno della
+stessa mappa.
+
+Quindi, prima di lanciare un workflow in un audit: **cosa mi dà che un grep e una
+query non mi danno?** Se la risposta è «più in fretta», non si lancia — la
+velocità non è il vincolo, il budget dell'abbonamento sì. Se lo si lancia
+comunque: ≤ 12 agenti, candidati **già calcolati in locale** (mai file interi da
+rileggere), **una** lettura per elemento, verifica avversaria solo sui reali, e
+**giro di taratura su 2 elementi** con lettura del costo prima del resto.
+
 ### Prova per mutazione
 
 Si rimuove il fix su **copia in scratchpad** (mai sul file del branch) e si

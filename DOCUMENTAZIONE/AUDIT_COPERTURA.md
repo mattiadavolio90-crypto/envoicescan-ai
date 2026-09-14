@@ -487,6 +487,25 @@ sintesi).
 | **L1 — Sweep per classe di difetto** | 14/09/2026 (parziale) | rilevatori AST/grep su 8 classi (707 candidati), triage per classe, refutazione con misura sul DB solo per il cap PostgREST; 6 fix con mutante | `docs/storico/audit-2026-09/CLASSI_DI_DIFETTO.md`: 2 confermati e corretti, chokepoint `fetch_all` ordinato, residui per file:riga | si rieseguono i rilevatori quando si tocca `services/` o `apps/web/src/lib`; le classi non refutate si riaprono leggendo il chiamante |
 | **L3 — La produzione parla** | 14/09/2026 | battito di 60 tabelle sul DB live (sola lettura), 13 workflow CI, corpi dei monitor, errori runtime Vercel e log/advisor Supabase del 13/09 | `docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md`: 2 silenzi veri, 1 monitor corretto | ogni mese, o dopo un job/cron/webhook nuovo: si ri-esegue il battito e si confronta |
 
+### Le lenti ancora da fare, in ordine
+
+Ognuna è **una sessione a sé** (regola §5: una cosa alla volta). Nessuna è
+obbligatoria per considerare chiuse le altre.
+
+| Ordine | Lente | Cosa guarda | Modello |
+|---|---|---|---|
+| **prossima** | **L2 — Isolamento fra clienti, eseguito** | le 240 operazioni OpenAPI chiamate con la sessione del cliente A e l'id del cliente B; oggi «216/216 protetti» vuol dire *autenticati*, non isolati | Fable `ultrathink` (sicurezza) |
+| 4 | L4 — Esito statistico dell'AI | tasso di correzione per fonte, matrice di confusione, golden set dalle 319 correzioni manuali | Fable normale |
+| 5 | L5 — Ciclo di vita di colonne e campi | scritte mai lette, lette mai scritte, servite mai consumate, tipi divergenti su 60 tabelle | Sonnet/Fable normale (inventario meccanico) |
+| 6 | L6 — Tempo, concorrenza, dipendenze che cadono | freeze-time sui fusi estremi, 2 worker su `claim_batch`, OpenAI 429 a metà batch **con tenacity smontato** | Fable `ultrathink` sui casi |
+| 7 | L7 — Fatture ostili in ingresso | ~20 FatturaPA avversarie attraverso parse → guardrail → AI → DB → margini → briefing | Fable `ultrathink` sui casi |
+| 8 | L8 — Mappa cache/snapshot e ordine di deploy | matrice scrittura × 16 cache × 6 invalidatori; snapshot vs formula viva | Fable normale |
+| 9 | L9 — Giornata del cliente e parità `/m` | account nuovo percorso in ordine cliente; stati vuoti, CTA morte, coppie desktop/mobile | Fable normale |
+
+**Come si conducono** (vale per tutte): rilevatori e misure **in sessione**, un
+solo `code-reviewer` alla fine. Il perché sta in `WORKFLOW.md` §6 — «gli agenti
+si usano per contraddire, non per moltiplicare».
+
 ## Cosa NON è coperto — e resta una scelta, non una dimenticanza
 
 Va scritto qui perché **nessun audit futuro lo riscopra come se fosse una novità**.
