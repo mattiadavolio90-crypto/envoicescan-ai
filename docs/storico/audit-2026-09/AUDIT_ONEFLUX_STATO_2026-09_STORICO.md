@@ -3389,19 +3389,27 @@ deciso dopo la lezione del 13/09 (1,65M token bruciati da 30 agenti).
 1. `ristoranti.sdi_attivo=true` dal 23/06 su 6 sedi; eventi SDI reali solo per
    la P.IVA OFFSIDE/OVERTIME. LAND: ultimo 13/04 (prima del flag); SUSHILAND
    ×3: **mai**. 4 sedi su 6 senza un evento in 83 giorni, fatture solo a mano
-   (ultime: 27/08, 27/08, 21/07, 21/07). Nessun controllo confronta flag ed
-   eventi. Decisione di Mattia (configurazione Invoicetronic o canale muto).
+   (ultime: 27/08, 27/08, 21/07, 21/07). Il confronto flag↔eventi ESISTE nel
+   briefing di sede (`fatture_mancanti`, canale dal flag) ma per gli account
+   di catena quel briefing non viene generato (fermo 28/08–07/08): non ha mai
+   potuto scattare. Decisione di Mattia (Invoicetronic o canale muto).
 2. OFFSIDE: 3 sedi con stessa P.IVA e stesso indirizzo → routing ambiguo per
    costruzione (`best_score<0,40` o `gap<0,20` → `da_assegnare`, corretto).
+   Sulle 20 di oggi decide solo il `gap` (17 hanno `best_score` = 0,40).
    Storico: mediana 64 h, p90 14 gg, max 23 gg prima dell'assegnazione. Dal
    31/08 non le chiude nessuno: **20 in coda, la più vecchia del 03/09**, con
-   il cliente attivo (09/09, 14/09). Briefing, notifiche e admin non lo dicono
-   (grep `da_assegnare`: 0). Decisione di Mattia: avviso oltre N giorni.
+   il cliente attivo (09/09, 14/09). Lo mostrano la coda su `/catena` e
+   l'admin Flusso dati; briefing, notifiche e cron no (grep: 0). Manca un
+   avviso attivo. Decisione di Mattia: avviso oltre N giorni.
 3. `ricavi_queue_monitor.yml` **taceva quando la sua chiamata falliva**: senza
    `Content-Range` (401/5xx/rete) `STUCK=0` → «coda sana». Classe «guardia
    che tace quando non sa» (07/2026, 2 monitor verdi su errore). **Corretto**:
    status HTTP letto dagli header, `stuck=-1` → alert «controllo fallito».
    Provato in locale su 500/401/vuoto/206/200 (vecchia logica su 500: 0).
+   **Il reviewer ha trovato che taceva anche nel caso nominale**: il sample
+   `jq -Rs` già quotato rompeva il JSON di Brevo → 400 → nessuna email, run
+   verde. Body ora costruito con `jq -n --arg`, `exit 1` se Brevo non risponde
+   2xx; provato con `jq -e` su entrambi i rami, con apici e virgolette.
 4. Rumore attribuito, non perdita: Vercel `gruppo.overview 400` (account
    mono-sede su `/catena`, 8 volte/3 mesi), `home.config 401` su `/m`
    (sessione scaduta, poi redirect). Advisor: 4 funzioni-soldi con
@@ -3411,6 +3419,10 @@ deciso dopo la lezione del 13/09 (1,65M token bruciati da 30 agenti).
 **0 FAILED negli ultimi 30 giorni**. CLAUDE.md «4 sedi alimentate nell'ultima
 settimana» (8/9) oggi sono 2 (OFFSIDE, OVERTIME).
 
+**Review 🟠→corretta.** Tre affermazioni più forti del misurato riscritte
+(sopra); una contestazione del reviewer era invece sbagliata
+(`notification_inbox_service.py` esiste: il grep valeva). Ri-misurato, non
+accettato.
 **Non fatto, e dichiarato.** Nessun cron nuovo (proposto in §5 della mappa);
 log Supabase/Vercel oltre il 13/09 (MCP scollegato); nessuna verifica sul
 pannello Invoicetronic (esterno). Materiale per L5 e L6 annotato nella mappa.

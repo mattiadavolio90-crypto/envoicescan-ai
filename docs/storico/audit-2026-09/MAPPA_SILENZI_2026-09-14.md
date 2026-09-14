@@ -14,7 +14,7 @@
 | Cosa | Ultima evidenza | Se fallisce | Chi se ne accorge | Verdetto |
 |---|---|---|---|---|
 | Backup DB (`db_backup.yml`) | 14/09 03:29, success | run rosso + Telegram/mail | Mattia | ✅ |
-| Coda ricavi email (`ricavi_email_queue`) | 99/99 `done`, ultimo 14/09 03:03 | monitor orario | **il monitor taceva se la SUA chiamata falliva** → corretto oggi | ⚠️→✅ |
+| Coda ricavi email (`ricavi_email_queue`) | 99/99 `done`, ultimo 14/09 03:03 | monitor orario | **il monitor taceva in ENTRAMBI i casi**: se la sua chiamata falliva (`STUCK=0` → «sana») e, trovato dal reviewer, anche a coda davvero bloccata (JSON dell'email rotto → Brevo 400 → run verde). Corretti tutti e due oggi | ⚠️⚠️→✅ |
 | Incassi (`ricavi_giornalieri`) | 30 righe in 7 gg, ultimo giorno 13/09 | — | briefing «incasso mancante» (37 notifiche, 25 chiuse) | ✅ |
 | Briefing giornaliero (`daily_briefing_state`) | generato 14/09; 6 in 7 gg | cache-first: testo vecchio | nessuno (vedi §3) | ✅ tecnico |
 | Segnali di gruppo (`gruppo_segnali_state`) | 14/09 (OFFSIDE), 11/09 (SUSHILAND) | — | — | ✅ |
@@ -42,8 +42,12 @@ nessuna cancellata: i mesi vuoti sono maggio e giugno) le P.IVA con eventi
 un solo evento SDI in 83 giorni**, e le loro fatture entrano solo a mano
 (LAND e VILLA GUARDIA: ultimo caricamento 27/08; MARIANO e SAN GIULIANO:
 21/07, ultima data documento 30/06). Nessun controllo confronta il flag con
-gli eventi. Se è una configurazione Invoicetronic mai completata, il flag
-mente; se è configurata, il canale è muto: in entrambi i casi lo dice solo
+gli eventi **in modo attivo**: il confronto esiste nel briefing di sede
+(`fastapi_worker.py` ≈6211, topic `fatture_mancanti`, canale `sdi` dal flag),
+ma per gli account di catena il briefing di sede non viene generato (vedi §3:
+fermo al 28/08, 10/08, 07/08), quindi non ha mai potuto scattare per queste
+4 sedi. Se è una configurazione Invoicetronic mai completata, il flag mente;
+se è configurata, il canale è muto: in entrambi i casi oggi lo dice solo
 questa misura. **Decisione di Mattia** (verifica sul pannello Invoicetronic,
 `invoicetronic-readiness`); proposta tecnica in §4.
 
@@ -52,9 +56,11 @@ questa misura. **Decisione di Mattia** (verifica sul pannello Invoicetronic,
 Le tre sedi del gruppo OFFSIDE hanno **la stessa P.IVA e lo stesso
 indirizzo** (Via Montalbino 4, Milano): l'indirizzo arriva (sta in
 `payload_meta.indirizzo_destinatario`), ma non può discriminare. La Edge
-Function usa lo storico fornitore→sede (`fallback_tried`), e se
-`best_score < 0,40` o `gap < 0,20` mette la riga in `da_assegnare` — corretto:
-mai assegnare a caso. Da luglio il **75–90 % delle righe è `mode: manual`**
+Function usa lo storico fornitore→sede (`fallback_tried`) e mette la riga in
+`da_assegnare` se `best_score < 0,40` **o** `gap < 0,20` — corretto: mai
+assegnare a caso. Sulle 20 di oggi decide **solo il gap** (0,036 su 17, 0,015
+su 3): 17 hanno `best_score` esattamente 0,40. Abbassare la soglia dello score
+non cambierebbe nulla; conta il distacco fra le due sedi migliori. Da luglio il **75–90 % delle righe è `mode: manual`**
 (W29: 22 su 26); fino a fine agosto venivano tutte chiuse (dal cliente nella
 coda su `/catena`, o dall'admin) con **mediana 64 ore, p90 14 giorni, massimo
 23 giorni** dalla ricezione. Dal 31/08 non le chiude più nessuno: **20 in
@@ -62,10 +68,13 @@ coda su `/catena`, o dall'admin) con **mediana 64 ore, p90 14 giorni, massimo
 cliente ha aperto l'app il 09/09 e il 14/09. Il fornitore più frequente
 (`08973230967`, 8 delle 20) ha uno storico 9 «Costi comuni» / 2 OFFSIDE:
 ambiguo per costruzione. Per il cliente quelle fatture **non esistono in
-nessun numero** finché non sceglie; il briefing, le notifiche e l'admin non
-lo nominano (grep `da_assegnare` in `daily_briefing_service.py`,
-`notification_inbox_service.py`, `.github/workflows/`: 0). **Decisione di
-Mattia**: avviso nel briefing/notifica oltre N giorni, e/o alert admin.
+nessun numero** finché non sceglie. Chi lo dice: la coda stessa su `/catena`
+(badge ambra) e la pagina admin *Flusso dati* («N da smistare»,
+`flusso-dati-client.tsx:363`). Chi NON lo dice: il briefing, le notifiche e i
+monitor cron (grep `da_assegnare` in `daily_briefing_service.py`,
+`notification_inbox_service.py`, `.github/workflows/`: 0 — file letti, non
+vuoti). Manca un avviso **attivo**, non il dato. **Decisione di Mattia**:
+briefing/notifica oltre N giorni, e/o alert admin.
 
 ## 3. Cosa dice sul prodotto (non sono bug)
 

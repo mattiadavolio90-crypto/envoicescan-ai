@@ -100,22 +100,29 @@ jobs:
           STUCK: ${{ steps.check.outputs.stuck }}
           SAMPLE_RAW: ${{ steps.check.outputs.sample }}
         run: |
-          # Serializza il sample JSON dentro l'htmlContent in modo sicuro (jq -Rs)
-          SAMPLE=$(printf '%s' "$SAMPLE_RAW" | jq -Rs . )
+          # Il body Brevo si costruisce con jq -n --arg: ogni valore (subject,
+          # html, sample con ragioni sociali e apici) viene escapato da jq, non
+          # dal quoting shell. Prima: SAMPLE=$(... | jq -Rs .) era GIA' quotato e
+          # finiva dentro \"$HTML\" -> JSON rotto -> Brevo 400 -> nessuna email,
+          # con il run verde (trovato dal code-reviewer il 14/09/2026: il ramo
+          # "coda bloccata" non aveva mai potuto avvisare).
           if [ "$STUCK" -lt 0 ]; then
             SUBJECT="🚨 Monitor coda ricavi ONEFLUX: controllo FALLITO"
             HTML="<h2>⚠️ Il monitor non ha potuto leggere la coda ricavi</h2><p>La chiamata a Supabase non ha risposto 200: chiave scaduta, PostgREST giu' o rete assente. <strong>Non sappiamo se la coda e' sana.</strong></p><p>Verifica <code>SUPABASE_SERVICE_ROLE_KEY</code> nei GitHub Secrets e lo stato del progetto Supabase.</p>"
           else
             SUBJECT="🚨 Coda ricavi ONEFLUX bloccata ($STUCK email)"
-            HTML="<h2>⚠️ Il worker ricavi non sta consumando la coda</h2><p>Ci sono <strong>$STUCK</strong> email in <code>ricavi_email_queue</code> ferme da oltre ${STALE_MINUTES} minuti (stato pending/processing).</p><p>Gli incassi dei clienti NON stanno entrando in app.</p><p><strong>Causa più probabile:</strong> il servizio <code>queue-worker</code> su Railway è fermo. Verifica che <code>WORKER_ENABLED=1</code> e che il deploy sia attivo.</p><p>Righe bloccate (prime 5):</p><pre>$SAMPLE</pre>"
+            HTML="<h2>⚠️ Il worker ricavi non sta consumando la coda</h2><p>Ci sono <strong>$STUCK</strong> email in <code>ricavi_email_queue</code> ferme da oltre ${STALE_MINUTES} minuti (stato pending/processing).</p><p>Gli incassi dei clienti NON stanno entrando in app.</p><p><strong>Causa più probabile:</strong> il servizio <code>queue-worker</code> su Railway è fermo. Verifica che <code>WORKER_ENABLED=1</code> e che il deploy sia attivo.</p><p>Righe bloccate (prime 5):</p><pre>${SAMPLE_RAW}</pre>"
           fi
-          curl -s -X POST https://api.brevo.com/v3/smtp/email \
+          BODY=$(jq -n --arg subject "$SUBJECT" --arg html "$HTML" '{
+            sender: {name: "ONEFLUX Monitor", email: "agent@oneflux.it"},
+            to: [{email: "md@oneflux.it", name: "Mattia"}],
+            subject: $subject, htmlContent: $html }')
+          BREVO_CODE=$(curl -s -o /tmp/brevo.txt -w "%{http_code}" -X POST https://api.brevo.com/v3/smtp/email \
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"sender\": {\"name\": \"ONEFLUX Monitor\", \"email\": \"agent@oneflux.it\"},
-              \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
-              \"subject\": \"$SUBJECT\",
-              \"htmlContent\": \"$HTML\"
-            }"
-          echo "📧 Alert inviato a md@oneflux.it"
+            -d "$BODY")
+          if [ "$BREVO_CODE" != "201" ] && [ "$BREVO_CODE" != "200" ] && [ "$BREVO_CODE" != "202" ]; then
+            echo "::error::Alert email NON inviato (Brevo HTTP $BREVO_CODE): $(head -c 300 /tmp/brevo.txt)"
+            exit 1
+          fi
+          echo "📧 Alert inviato a md@oneflux.it (Brevo HTTP $BREVO_CODE)"
