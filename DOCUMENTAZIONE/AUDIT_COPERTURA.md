@@ -474,6 +474,18 @@ farebbe riaprire la dimensione**.
 
 ---
 
+## Lenti trasversali — dal 14/09/2026
+
+I tre cicli hanno guardato l'app **per strato**. Queste lenti la guardano **per
+proprietà che attraversa gli strati**, e ognuna produce un artefatto che prima
+non esisteva. Regola: un workflow ≤ 12 agenti, candidati calcolati in locale,
+una lettura per elemento (lezione del 13/09: 30 agenti, 1,65M token, zero
+sintesi).
+
+| Lente | Chiusa il | Metro usato | Artefatto | Si riapre se… |
+|---|---|---|---|---|
+| **L3 — La produzione parla** | 14/09/2026 | battito di 60 tabelle sul DB live (sola lettura), 13 workflow CI, corpi dei monitor, errori runtime Vercel e log/advisor Supabase del 13/09 | `docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md`: 2 silenzi veri, 1 monitor corretto | ogni mese, o dopo un job/cron/webhook nuovo: si ri-esegue il battito e si confronta |
+
 ## Cosa NON è coperto — e resta una scelta, non una dimenticanza
 
 Va scritto qui perché **nessun audit futuro lo riscopra come se fosse una novità**.

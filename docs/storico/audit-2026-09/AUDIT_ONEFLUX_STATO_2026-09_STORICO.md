@@ -36,6 +36,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 03/09 | **R5 + R6 — le due ipotesi che non reggevano** | chiusi: nessuna sessione propria, nessuna migration |
 | 03/09 | **R11 — la regola anche in SQL** | chiuso: le 7 RPC vive legate alla costante Python |
 | 06/09 | **Router del worker — `margini.py`** | chiusa — 7/8 mutanti; un tab leggeva lo snapshot e l'altro l'override: **0,00 EUR invece di 402.168** su una sede, 4 sedi toccate |
+| 14/09 | **Lente trasversale L3 — la produzione parla** (mappa dei silenzi) | chiusa — 2 silenzi veri (4 sedi «SDI attivo» senza eventi da 83 gg; OFFSIDE 20 fatture in attesa da 11 gg), 1 monitor che taceva corretto |
 
 ---
 
@@ -3367,3 +3368,50 @@ Suite **13.028 passed**, 44 skipped (baseline pre-lavoro: 13.010).
 test, 4,05 M€, alimentato ieri); `admin.py` è il più grande e mal coperto ma serve
 **solo lo staff** — ultimo, non primo. `prezzi.py` è il meno presidiato (10%) e la
 sua tabella ha **8 righe**: area che muove 0 €.
+
+---
+
+## 14/09/2026 — Lente trasversale L3: la produzione parla (mappa dei silenzi)
+
+**Perché questa lente.** Tre cicli hanno letto codice e misurato dati; nessuno
+aveva letto *cosa il sistema ha fatto*: telemetria, code, job, monitor, errori
+runtime. I silenzi (avvisi muti da giugno, radar spento da maggio) erano stati
+scoperti dal codice, mesi dopo. Dettaglio, cifre e comandi in
+`docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md`.
+
+**Come.** Nessun workflow multi-agente: uno script di sola lettura sul DB live
+(60 tabelle: righe, ultimo timestamp, stati, ultimi 7 giorni) più query
+mirate; `gh run list` sui 13 workflow; lettura dei corpi dei monitor;
+Vercel/Supabase/advisor dal 13/09 via MCP (oggi scollegati). Dimensionamento
+deciso dopo la lezione del 13/09 (1,65M token bruciati da 30 agenti).
+
+**Trovato.**
+1. `ristoranti.sdi_attivo=true` dal 23/06 su 6 sedi; eventi SDI reali solo per
+   la P.IVA OFFSIDE/OVERTIME. LAND: ultimo 13/04 (prima del flag); SUSHILAND
+   ×3: **mai**. 4 sedi su 6 senza un evento in 83 giorni, fatture solo a mano
+   (ultime: 27/08, 27/08, 21/07, 21/07). Nessun controllo confronta flag ed
+   eventi. Decisione di Mattia (configurazione Invoicetronic o canale muto).
+2. OFFSIDE: 3 sedi con stessa P.IVA e stesso indirizzo → routing ambiguo per
+   costruzione (`best_score<0,40` o `gap<0,20` → `da_assegnare`, corretto).
+   Storico: mediana 64 h, p90 14 gg, max 23 gg prima dell'assegnazione. Dal
+   31/08 non le chiude nessuno: **20 in coda, la più vecchia del 03/09**, con
+   il cliente attivo (09/09, 14/09). Briefing, notifiche e admin non lo dicono
+   (grep `da_assegnare`: 0). Decisione di Mattia: avviso oltre N giorni.
+3. `ricavi_queue_monitor.yml` **taceva quando la sua chiamata falliva**: senza
+   `Content-Range` (401/5xx/rete) `STUCK=0` → «coda sana». Classe «guardia
+   che tace quando non sa» (07/2026, 2 monitor verdi su errore). **Corretto**:
+   status HTTP letto dagli header, `stuck=-1` → alert «controllo fallito».
+   Provato in locale su 500/401/vuoto/206/200 (vecchia logica su 500: 0).
+4. Rumore attribuito, non perdita: Vercel `gruppo.overview 400` (account
+   mono-sede su `/catena`, 8 volte/3 mesi), `home.config 401` su `/m`
+   (sessione scaduta, poi redirect). Advisor: 4 funzioni-soldi con
+   `search_path` mutabile, 3 FK senza indice, 40 indici mai usati.
+
+**Cifre smentite.** Gli «117 upload FAILED» del primo campione erano feb–giu:
+**0 FAILED negli ultimi 30 giorni**. CLAUDE.md «4 sedi alimentate nell'ultima
+settimana» (8/9) oggi sono 2 (OFFSIDE, OVERTIME).
+
+**Non fatto, e dichiarato.** Nessun cron nuovo (proposto in §5 della mappa);
+log Supabase/Vercel oltre il 13/09 (MCP scollegato); nessuna verifica sul
+pannello Invoicetronic (esterno). Materiale per L5 e L6 annotato nella mappa.
+

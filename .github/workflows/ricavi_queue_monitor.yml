@@ -59,9 +59,22 @@ jobs:
             "${{ secrets.SUPABASE_URL }}/rest/v1/ricavi_email_queue?select=id,email_subject,status,created_at,attempt_count,last_error&status=in.(pending,processing)&created_at=lt.${THRESHOLD}&order=created_at.asc" \
             || echo "[]")
 
-          # Content-Range: items 0-N/TOTAL  →  estrai TOTAL
-          STUCK=$(grep -i "content-range" /tmp/headers.txt | sed -E 's/.*\/([0-9]+).*/\1/' | tr -d '\r')
-          if [ -z "$STUCK" ]; then STUCK=0; fi
+          # Prima di leggere il conteggio: la chiamata e' andata a buon fine?
+          # Senza questo controllo un 401 (chiave scaduta), un 5xx o una rete
+          # assente lasciavano l'header vuoto, STUCK diventava 0 e il monitor
+          # dichiarava "coda sana" proprio quando non aveva potuto guardarla.
+          # Trovato il 14/09/2026 (mappa dei silenzi): stuck=-1 fa scattare
+          # l'alert come per le altre sonde, con un testo che dice "controllo
+          # fallito", non "coda bloccata".
+          HTTP_CODE=$(grep -iE '^HTTP/' /tmp/headers.txt 2>/dev/null | tail -n1 | awk '{print $2}' | tr -d '\r')
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "206" ]; then
+            echo "::error::Controllo coda ricavi NON eseguito (HTTP ${HTTP_CODE:-000}): il monitor non sa se la coda e' sana"
+            STUCK=-1
+          else
+            # Content-Range: items 0-N/TOTAL  →  estrai TOTAL
+            STUCK=$(grep -i "content-range" /tmp/headers.txt | sed -E 's/.*\/([0-9]+).*/\1/' | tr -d '\r')
+            if [ -z "$STUCK" ]; then STUCK=0; fi
+          fi
 
           echo "Email bloccate: $STUCK"
           echo "stuck=$STUCK" >> $GITHUB_OUTPUT
@@ -70,7 +83,9 @@ jobs:
           echo "$RESP" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          if [ "$STUCK" -gt 0 ]; then
+          if [ "$STUCK" -lt 0 ]; then
+            echo "❌ Controllo fallito: nessun verdetto sulla coda ricavi"
+          elif [ "$STUCK" -gt 0 ]; then
             echo "❌ Coda ricavi NON drenata: $STUCK email vecchie oltre ${STALE_MINUTES} min"
           else
             echo "✅ Coda ricavi sana (nessuna email bloccata oltre ${STALE_MINUTES} min)"
@@ -87,13 +102,20 @@ jobs:
         run: |
           # Serializza il sample JSON dentro l'htmlContent in modo sicuro (jq -Rs)
           SAMPLE=$(printf '%s' "$SAMPLE_RAW" | jq -Rs . )
+          if [ "$STUCK" -lt 0 ]; then
+            SUBJECT="🚨 Monitor coda ricavi ONEFLUX: controllo FALLITO"
+            HTML="<h2>⚠️ Il monitor non ha potuto leggere la coda ricavi</h2><p>La chiamata a Supabase non ha risposto 200: chiave scaduta, PostgREST giu' o rete assente. <strong>Non sappiamo se la coda e' sana.</strong></p><p>Verifica <code>SUPABASE_SERVICE_ROLE_KEY</code> nei GitHub Secrets e lo stato del progetto Supabase.</p>"
+          else
+            SUBJECT="🚨 Coda ricavi ONEFLUX bloccata ($STUCK email)"
+            HTML="<h2>⚠️ Il worker ricavi non sta consumando la coda</h2><p>Ci sono <strong>$STUCK</strong> email in <code>ricavi_email_queue</code> ferme da oltre ${STALE_MINUTES} minuti (stato pending/processing).</p><p>Gli incassi dei clienti NON stanno entrando in app.</p><p><strong>Causa più probabile:</strong> il servizio <code>queue-worker</code> su Railway è fermo. Verifica che <code>WORKER_ENABLED=1</code> e che il deploy sia attivo.</p><p>Righe bloccate (prime 5):</p><pre>$SAMPLE</pre>"
+          fi
           curl -s -X POST https://api.brevo.com/v3/smtp/email \
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{
               \"sender\": {\"name\": \"ONEFLUX Monitor\", \"email\": \"agent@oneflux.it\"},
               \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
-              \"subject\": \"🚨 Coda ricavi ONEFLUX bloccata ($STUCK email)\",
-              \"htmlContent\": \"<h2>⚠️ Il worker ricavi non sta consumando la coda</h2><p>Ci sono <strong>$STUCK</strong> email in <code>ricavi_email_queue</code> ferme da oltre ${STALE_MINUTES} minuti (stato pending/processing).</p><p>Gli incassi dei clienti NON stanno entrando in app.</p><p><strong>Causa più probabile:</strong> il servizio <code>queue-worker</code> su Railway è fermo. Verifica che <code>WORKER_ENABLED=1</code> e che il deploy sia attivo.</p><p>Righe bloccate (prime 5):</p><pre>$SAMPLE</pre>\"
+              \"subject\": \"$SUBJECT\",
+              \"htmlContent\": \"$HTML\"
             }"
           echo "📧 Alert inviato a md@oneflux.it"

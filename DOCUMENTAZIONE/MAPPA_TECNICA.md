@@ -289,6 +289,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md` | Dettaglio verificato del ciclo 2026-08 e della sessione che ne ha chiuso gli 8 punti (radar, P.IVA, prompt AI, Argon2, riparto), con le query che dimostrano ogni misura |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md` | Indice del ciclo 2026-07, **chiuso il 28/8/2026**: tutte le dimensioni verdi, nessuna voce aperta |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md` | Il dettaglio verificato di ogni passata del ciclo 2026-07 (perimetro, findings, numeri misurati) + le lezioni operative (§1–§33). Si apre quando si riapre una dimensione, non per sapere cosa manca |
+| `docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md` | La mappa dei silenzi (14/09/2026): per ogni job, coda, monitor e webhook, ultima evidenza, cosa produce quando fallisce e chi se ne accorge. Si ri-esegue, non si rilegge |
 | `docs/DEPLOY_RUNBOOK.md` | Per ricreare/verificare i servizi Railway da zero |
 | `docs/BACKUP_DISASTER_RECOVERY.md` | Perdita/corruzione dati: come funziona il backup notturno, come ripristinarlo passo per passo (procedura testata) |
 | `docs/storico/` | Solo se il problema somiglia a uno già visto (diagnosi Invoicetronic, migration legacy) — indice in `docs/storico/README.md` |
