@@ -4424,10 +4424,14 @@ def _attribuisci_correzione_prodotto(
 ) -> bool:
     """Fa dichiarare al registro CHI corregge una voce di `prodotti_utente`.
 
-    Ritorna True solo se la RPC ha davvero aggiornato una riga. False copre tre
-    casi diversi e tutti leciti: la voce non esisteva (il cliente corregge una
-    descrizione mai vista), aveva gia' quella categoria, oppure la RPC non e'
-    disponibile. In nessuno dei tre la correzione va persa: l'upsert a valle
+    Ritorna True se la RPC ha toccato una riga — attenzione: "toccato", non
+    "cambiato". La RPC conta le righe dell'UPDATE, quindi riscrivere la stessa
+    categoria ritorna True lo stesso; il registro resta pulito perche' e' il
+    trigger a ignorare gli update che non cambiano la categoria.
+
+    False copre due casi leciti: la voce non esisteva (il cliente corregge una
+    descrizione mai vista, il caso piu' frequente) oppure la RPC non e'
+    disponibile. In nessuno dei due la correzione va persa: l'upsert a valle
     scrive comunque, esattamente come prima di questo fix.
 
     Non solleva mai: un registro che non riesce ad attribuire non deve impedire
@@ -4524,13 +4528,22 @@ def salva_correzione_in_memoria_locale(
         # saprebbe inserire una descrizione mai vista); se l'attribuzione va a buon
         # fine l'upsert riscrive lo stesso valore e il trigger non produce una
         # seconda riga di log.
-        _attribuita = _attribuisci_correzione_prodotto(
+        attribuita = _attribuisci_correzione_prodotto(
             supabase_client=supabase_client,
             user_id=user_id,
             descrizione_normalizzata=desc_normalized,
             nuova_categoria=nuova_categoria,
             user_email=user_email,
         )
+        if not attribuita:
+            # Non e' un errore: la voce non esisteva (caso piu' frequente), aveva
+            # gia' quella categoria, o la RPC non c'era. Si logga a DEBUG perche'
+            # la differenza conta solo quando si rilegge il registro e ci si chiede
+            # perche' una correzione non compaia con il suo attore.
+            logger.debug(
+                "Correzione non attribuita nel registro (voce nuova o invariata): '%s'",
+                desc_normalized,
+            )
 
         # Colonne ESSENZIALI (sicuramente presenti nella tabella)
         upsert_data = {

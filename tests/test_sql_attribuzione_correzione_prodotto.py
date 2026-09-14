@@ -185,3 +185,38 @@ def test_la_dichiarazione_non_cola_sulla_scrittura_dopo(db_sql, sql):
     assert len(righe) == 2
     assert righe[0][2] == EMAIL
     assert righe[1][2] is None, "la dichiarazione e' colata sulla scrittura dopo"
+
+
+def test_dice_se_ha_attribuito_oppure_no(db_sql):
+    """Il ritorno dell'helper distingue i tre casi, e qualcuno lo legge.
+
+    Il code-reviewer ha fatto notare che il valore era assegnato e mai usato: un
+    ritorno che nessuno legge non e' protetto da niente, e puo' invertirsi senza
+    che un test se ne accorga. Ora `salva_correzione_in_memoria_locale` lo usa
+    per il log, e questo test ne fissa il significato:
+      - voce esistente con categoria diversa -> True (il registro ha l'attore)
+      - voce mai vista                       -> False (niente da aggiornare)
+      - voce gia' in quella categoria        -> True, e NON e' un refuso: la RPC
+        conta le righe che l'UPDATE tocca, non quelle che cambiano davvero. Il
+        registro resta pulito lo stesso, perche' e' il TRIGGER a ignorare gli
+        update che non cambiano la categoria. Misurato scrivendo il test: avevo
+        previsto False.
+    """
+    from services.ai_service import _attribuisci_correzione_prodotto
+
+    _semina_utente(db_sql)
+    _voce(db_sql, "acqua panna 1l", "BEVANDE")
+
+    def attribuisci(descrizione, categoria):
+        return _attribuisci_correzione_prodotto(
+            supabase_client=_client(db_sql),
+            user_id=UTENTE,
+            descrizione_normalizzata=_chiave(descrizione),
+            nuova_categoria=categoria,
+            user_email=EMAIL,
+        )
+
+    assert attribuisci("acqua panna 1l", "ACQUA") is True
+    assert attribuisci("mai vista", "CARNE") is False
+    # riscrittura identica: la RPC tocca la riga (True), il registro non logga
+    assert attribuisci("acqua panna 1l", "ACQUA") is True

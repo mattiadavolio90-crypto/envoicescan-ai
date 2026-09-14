@@ -36,7 +36,7 @@ stato dismesso con lo switch DNS dell'8/6/2026 e **rimosso dal repo il 17/7/2026
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico, 148 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | **14.285 verdi + 45 skip** il 14/09/2026 — il totale **si muove coi file `.md`** (`test_documentazione_onesta` è parametrizzato su quelli), e da `tests/` sono 9 in meno che dalla root. **533 su un Postgres vero** (`-m sql`, di cui 315 dell'isolamento fra clienti) + 101 Deno. Frontend: nessun runner npm — vedi Trappole |
+| Test | `tests/*.py` | **14.286 verdi + 45 skip** il 14/09/2026 — il totale **si muove coi file `.md`** (`test_documentazione_onesta` è parametrizzato su quelli), e da `tests/` sono 9 in meno che dalla root. **534 su un Postgres vero** (`-m sql`, di cui 315 dell'isolamento fra clienti) + 101 Deno. Frontend: nessun runner npm — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
@@ -173,7 +173,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   esegue niente (29/8: soglia misurata dopo i filtri client; 2/9: pulsante verso la
   pagina sbagliata), e restano verdi sul bug anche un **mock generoso** (i test del
   radar passavano su `fatture_documenti.upload_id`, colonna mai esistita) e un test
-  sul **testo del sorgente**. Le funzioni SQL vanno **eseguite** (`-m sql`, 533): lì
+  sul **testo del sorgente**. Le funzioni SQL vanno **eseguite** (`-m sql`, 534): lì
   un mutante sopravvissuto accusa spesso le **seed** (con un solo cliente, 7 erano
   verdi senza isolamento). **Un presidio si prova per mutazione.**
 

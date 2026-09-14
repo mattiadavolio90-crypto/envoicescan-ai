@@ -3543,17 +3543,20 @@ un guasto, e' il disegno — il modello e' l'ultima risorsa. Reso riproducibile 
 quota, non il valore.
 
 **Cosa NON era misurabile, detto invece che aggirato.** `categoria_fonte` copre
-309 righe su 39.530 (0,8%), tutte di settembre: la stratificazione per fonte sullo
-storico non esiste e nessun backfill puo' inventarla. `category_change_log` ha
+309 righe su 39.530 (0,8%), **306 delle quali di settembre** (le altre 3 sono
+correzioni del cliente su fatture vecchie, che timbrano la provenienza): la
+stratificazione per fonte sullo storico non esiste e nessun backfill puo'
+inventarla. `category_change_log` ha
 old->new su tutte le 4.135 righe (la matrice c'e') ma **0 attori**: non distingue
 una correzione umana da una automatica.
 
 **La matrice, letta con prudenza.** Le coppie piu' dense sono bidirezionali —
 ACQUA<->BEVANDE 239, GELATI<->LATTICINI 168 — ma **l'86% delle righe (2.956 su
 3.429) e' cambiato una volta sola**: righe diverse che vanno nei due versi,
-confini ambigui fra categorie, non una riga che oscilla. I ritorni alla categoria
-precedente (414 su 347 righe) sono di giugno-luglio; a settembre zero, **ma
-settembre ha 10 eventi in tutto**: assenza di traffico, non un miglioramento.
+confini ambigui fra categorie, non una riga che oscilla. I ritorni *immediati* alla
+categoria precedente (414 eventi su 347 righe; 434 contando anche quelli non
+consecutivi) sono di giugno-luglio; a settembre zero, **ma settembre ha 10 eventi
+in tutto**: assenza di traffico, non un miglioramento.
 
 **Il difetto corretto.** Una sola azione del cliente scrive in due posti: la riga
 in `fatture` e la voce in `prodotti_utente`. Dal 08/09 le scritture dichiarano
@@ -3573,11 +3576,12 @@ su 3.067) non e' riproducibile in un test. La riga resta perche' in produzione
 quel caso e' reale.
 
 **Due cose guardate e dichiarate sane.** `prodotti_master` e' ferma dal 26/08 (0
-scritture, 397 righe fattura nuove): la scrivono **solo** le correzioni admin. E le
-373 voci declassate dalla Fase 6 sono ancora a streak 0 come il 04/09 — non perche'
-la via di rientro sia chiusa (fu corretta), ma perche' in 19 giorni **4 righe**
-hanno raggiunto l'AI.
+scritture mentre arrivavano **5.370** righe fattura): la scrivono **solo** le
+correzioni admin. E delle
+378 voci declassate dalla Fase 6, **373 sono a streak 0 e 5 a streak 3**
+(ri-misurato oggi, non ereditato dal 04/09) — non perche' la via di rientro sia
+chiusa (fu corretta), ma perche' in 19 giorni **4 righe** hanno raggiunto l'AI.
 
 **Residuo per L5**: `correzioni_count` e `ultimo_correttore` su `prodotti_master`
-hanno **0 scrittori e 0 lettori**. Suite **14.285 + 45 skip** (root), `-m sql`
-**533**, OpenAPI 198 senza drift. Nessun push.
+hanno **0 scrittori e 0 lettori**. Suite **14.286 + 45 skip** (root), `-m sql`
+**534**, OpenAPI 198 senza drift. Nessun push.
