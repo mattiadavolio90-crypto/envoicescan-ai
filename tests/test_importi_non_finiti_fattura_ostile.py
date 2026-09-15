@@ -415,3 +415,41 @@ def test_una_scrittura_parziale_non_dichiara_zero_righe(monkeypatch):
         f"righe={esito['righe']} ma a DB ce ne sono {registro['scritte']}: "
         "il chiamante crede che il DB sia pulito"
     )
+
+
+# ---------------------------------------------------------------------------
+# Inerenza: il segnale non deve perdersi al livello sopra.
+#
+# `salva_fattura_processata` ora dichiara la scrittura parziale, ma
+# `/api/upload/invoice` rispondeva `righe_salvate=0` su qualunque fallimento —
+# lo stesso difetto un piano piu' su, con in piu' un consumatore frontend
+# (`upload-modal.tsx` mostra `data.righe_salvate` accanto allo stato "error").
+# ---------------------------------------------------------------------------
+
+
+def test_l_api_di_upload_non_dichiara_zero_righe_su_scrittura_parziale():
+    from services import fastapi_worker
+
+    righe, errore = fastapi_worker._esito_salvataggio_fallito(
+        {"success": False, "error": "boom", "righe": 500, "righe_parziali": True}
+    )
+    assert righe == 500, "l'API dice 0 righe mentre 500 sono a DB"
+    assert "500" in errore and "salvate" in errore
+
+
+def test_l_api_non_inventa_un_avviso_quando_non_c_e_scrittura_parziale():
+    """Controllo positivo: un fallimento pulito resta un fallimento pulito."""
+    from services import fastapi_worker
+
+    righe, errore = fastapi_worker._esito_salvataggio_fallito(
+        {"success": False, "error": "boom", "righe": 0, "righe_parziali": False}
+    )
+    assert righe == 0
+    assert errore == "boom", "avviso di scrittura parziale su un errore che non lo e'"
+
+
+def test_l_api_regge_un_result_senza_le_chiavi_nuove():
+    """Retrocompatibilita': un chiamante vecchio non deve far esplodere la rotta."""
+    from services import fastapi_worker
+
+    assert fastapi_worker._esito_salvataggio_fallito({}) == (0, "Errore salvataggio")

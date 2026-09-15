@@ -1883,6 +1883,20 @@ def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardSta
 # UPLOAD
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _esito_salvataggio_fallito(result: dict) -> tuple[int, str]:
+    """(righe gia' a DB, messaggio d'errore) per un salvataggio fallito.
+
+    `righe_salvate` NON e' 0 per definizione: `salva_fattura_processata` scrive a
+    chunk di 500, quindi un fallimento a meta' lascia i chunk precedenti nel DB.
+    Dire 0 fa credere che il database sia rimasto pulito.
+    """
+    gia_scritte = result.get("righe", 0) or 0
+    errore = result.get("error", "Errore salvataggio")
+    if result.get("righe_parziali"):
+        errore = f"{errore} — attenzione: {gia_scritte} righe risultano gia' salvate"
+    return gia_scritte, errore
+
+
 class UploadInvoiceResponse(BaseModel):
     success: bool
     filename: str
@@ -2502,11 +2516,15 @@ async def upload_invoice(
     elapsed_ms = int((_time.monotonic() - t0) * 1000)
 
     if not result.get("success"):
+        # righe_salvate NON e' 0 per definizione: se un chunk era gia' passato la
+        # fattura e' a DB a meta'. Dire 0 su una scrittura parziale fa credere al
+        # cliente (e a chi legge il log) che il DB sia rimasto pulito.
+        _gia_scritte, _errore = _esito_salvataggio_fallito(result)
         return UploadInvoiceResponse(
             success=False,
             filename=filename,
-            righe_salvate=0,
-            error=result.get("error", "Errore salvataggio"),
+            righe_salvate=_gia_scritte,
+            error=_errore,
             elapsed_ms=elapsed_ms,
         )
 
