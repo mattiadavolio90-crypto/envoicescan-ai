@@ -658,3 +658,73 @@ def test_il_worker_tace_quando_non_c_e_troncamento(caplog):
         perse = queue_processor._avvisa_se_troncata({"righe_troncate": 0}, 42, "ok.xml")
     assert perse == 0
     assert "TRONCATE" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# La riparazione che nessun test proteggeva (4° rilievo del reviewer).
+#
+# `_tot_grezzo` decideva se una nota di credito ha righe negative usando
+# `float()` nudo: su un totale in formato it-IT ("-12,50", come lo mandano
+# diversi gestionali) sollevava, l'except tornava 0.0, e la riga negativa NON
+# veniva contata. Conseguenza: `nc_inverti_in_blocco` diventava True e i segni
+# dell'INTERO documento venivano invertiti al contrario.
+#
+# Passare da `_to_float_safe` lo ripara, ma era una riparazione senza presidio:
+# rimettendo `float()` la suite restava verde.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("righe,atteso,perche", [
+    ([{"totale": "10.00"}, {"totale": "5.00"}], True,
+     "documento tutto positivo: si inverte in blocco"),
+    ([{"totale": "10.00"}, {"totale": "-12.50"}], False,
+     "ha una riga negativa col punto: si rispettano i segni"),
+    ([{"totale": "10,00"}, {"totale": "-12,50"}], False,
+     "ha una riga negativa in formato it-IT: era IL BUG, float() la leggeva 0.0"),
+    ([{"totale": "-1.234,56"}], False,
+     "negativa it-IT con separatore di migliaia"),
+    ([], True, "nessuna riga: niente da rispettare"),
+    ([{"totale": None}, {"totale": ""}], True,
+     "totali assenti: nessuna riga negativa dimostrata"),
+    ([{"totale": "abc"}], True,
+     "totale illeggibile: non si inventa un segno"),
+])
+def test_la_strategia_di_segno_della_nota_di_credito(righe, atteso, perche):
+    assert invoice_service._inverti_nota_credito_in_blocco(righe) is atteso, perche
+
+
+def test_una_riga_negativa_it_it_cambia_la_strategia_di_segno():
+    """Il caso che distingue il fix dal codice di prima, isolato.
+
+    Con `float()` nudo la seconda riga valeva 0.0, quindi "nessuna riga negativa"
+    e inversione in blocco: i segni dell'intero documento sarebbero stati
+    ribaltati rispetto alla testata.
+    """
+    solo_punto = [{"totale": "10.00"}, {"totale": "-12.50"}]
+    solo_virgola = [{"totale": "10,00"}, {"totale": "-12,50"}]
+    assert (invoice_service._inverti_nota_credito_in_blocco(solo_punto)
+            is invoice_service._inverti_nota_credito_in_blocco(solo_virgola)), (
+        "il formato decimale cambia la strategia di segno: e' il bug che "
+        "`_to_float_safe` ripara — due fatture identiche tranne la virgola "
+        "finirebbero con i segni opposti"
+    )
+
+
+def test_il_guardiano_ast_confronta_anche_la_firma():
+    """Punto cieco chiuso: il confronto col codice di git guardava solo il CORPO.
+
+    Sabotare il `default` nella firma di `_float_pre_fix` (es. `default=0.0`
+    invece di `default=None`) sopravviveva al guardiano, perche' `ast.unparse`
+    del corpo non contiene gli argomenti.
+    """
+    import inspect
+
+    for copia, nome in ((_float_pre_fix, "_float_pre_fix"), (_int_pre_fix, "_int_pre_fix")):
+        firma = inspect.signature(copia)
+        assert list(firma.parameters) == ["value", "default"], (
+            f"{nome} ha cambiato i parametri: {list(firma.parameters)}"
+        )
+        assert firma.parameters["default"].default is None, (
+            f"{nome} ha un default diverso da None nella firma: i test di "
+            "equivalenza confronterebbero due cose non confrontabili"
+        )

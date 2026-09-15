@@ -137,6 +137,27 @@ def _to_int_safe(value: Any, default: Optional[int] = None) -> Optional[int]:
     return int(numero)
 
 
+def _inverti_nota_credito_in_blocco(righe: Any) -> bool:
+    """True se i segni della nota di credito vanno invertiti tutti insieme.
+
+    Convenzione: se il documento e' "tutto positivo" i segni si invertono in
+    blocco; se ha gia' righe negative (riaddebito/storno misti) si rispettano.
+
+    Il totale va letto con `_to_float_safe` e non con `float()`: su un importo in
+    formato it-IT (`"-12,50"`, come lo mandano diversi gestionali) `float()`
+    solleva, il vecchio `except` tornava 0.0, e **una riga negativa non veniva
+    contata come negativa** — cioe' si invertivano i segni di TUTTO il documento
+    al contrario.
+    """
+    def totale(riga: Any) -> float:
+        try:
+            return _to_float_safe(riga.get('totale'), 0.0) or 0.0
+        except (ValueError, TypeError, AttributeError):
+            return 0.0
+
+    return not any(totale(riga) < 0 for riga in (righe or []))
+
+
 def _numeri_riga_scontrino(riga: Dict[str, Any]) -> Dict[str, float]:
     """I tre campi numerici di una riga letta dal Vision, sempre finiti.
 
@@ -1696,13 +1717,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         # che è condiviso con tutte le fatture normali.
         nc_inverti_in_blocco = False
         if is_nota_credito:
-            def _tot_grezzo(_r):
-                try:
-                    return _to_float_safe(_r.get('totale'), 0.0) or 0.0
-                except (ValueError, TypeError):
-                    return 0.0
-            _ha_riga_negativa = any(_tot_grezzo(_r) < 0 for _r in dati.get('righe', []))
-            nc_inverti_in_blocco = not _ha_riga_negativa
+            nc_inverti_in_blocco = _inverti_nota_credito_in_blocco(dati.get('righe', []))
             logger.info(
                 "📋 NOTA DI CREDITO (PDF): "
                 + ("nessuna riga negativa → inverto in blocco" if nc_inverti_in_blocco
