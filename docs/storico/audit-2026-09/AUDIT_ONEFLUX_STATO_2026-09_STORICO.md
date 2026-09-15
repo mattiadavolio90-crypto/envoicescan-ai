@@ -3663,11 +3663,11 @@ che il claim scrive `locked_at` **una volta per lotto** e gli item si elaborano 
 item dopo due timeout il lock ha gia' piu' di 10 minuti, un secondo processo (container vecchio
 in deploy, drain manuale da GitHub, worker locale col processore inline acceso di default) lo
 rilascia e se lo prende, e il primo lo marca done sotto i suoi piedi purgando l'XML. **Corretto**:
-`_rinnova_lock` all'inizio di ogni item (UPDATE scoped su `locked_by`), item saltato se il lock non
-e' piu' nostro — `tests/test_worker_lock_per_item.py` (6) e `tests/test_sql_concorrenza_coda.py`
-(4, `-m sql`, uno esegue la funzione vera sul builder tradotto in SQL). **11 mutanti, 11 uccisi**
-(2 sullo snapshot). Per Mattia: quota chat sul giorno **UTC** (Python e RPC concordano); il SDK
-ritenta 2 volte sotto i 3 di tenacity (~815 s per lotto nel queue-worker anche col timeout nuovo);
-`_get_openai_client` non e' cached in produzione (shim passthrough). «Tenacity smontato» (riga L6
-del 14/09) era scaduto dal 28/8; il lockout e' fail-closed nel controllo, best-effort nella
-registrazione. `-m sql` **538 verdi (534 + 4)**; root **14.319 verdi + 45 skip**. Nessun push; in coda 16 commit prima di questi, nessuno mio.
+`_rinnova_lock` a ogni item (UPDATE scoped su `locked_by`), item saltato se il lock non e' piu'
+nostro — `tests/test_worker_lock_per_item.py` (6) e `tests/test_sql_concorrenza_coda.py` (4,
+`-m sql`, uno esegue la funzione vera sul builder tradotto in SQL). **11 mutanti, 11 uccisi**
+(2 sullo snapshot). La coda gemella dei ricavi ha lo stesso lock per lotto ma non il moltiplicatore
+(lotti da 5, nessun watchdog, un download e un parse): lasciata com'e'. Per Mattia: quota chat sul
+giorno **UTC**; il SDK ritenta 2 volte sotto i 3 di tenacity (~815 s per lotto anche col timeout
+nuovo); `_get_openai_client` non e' cached in produzione (shim passthrough). `-m sql` **538 verdi**;
+root **14.319 + 45 skip**. Nessun push; in coda 16 commit prima di questi, nessuno mio.
