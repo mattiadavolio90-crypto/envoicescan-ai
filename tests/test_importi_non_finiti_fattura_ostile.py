@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import io
 import math
+import pathlib
 import uuid
 
 import pytest
@@ -453,3 +454,136 @@ def test_l_api_regge_un_result_senza_le_chiavi_nuove():
     from services import fastapi_worker
 
     assert fastapi_worker._esito_salvataggio_fallito({}) == (0, "Errore salvataggio")
+
+
+# ---------------------------------------------------------------------------
+# Equivalenza col comportamento PRE-FIX su tutto cio' che non e' un non finito.
+#
+# Le guardie `math.isfinite` sono entrate in helper con 16 call site nel solo
+# `invoice_service`: se un valore LEGITTIMO tornasse `default` dove prima tornava
+# un numero, sarebbe una regressione silenziosa sui dati veri dei clienti — e la
+# vedrebbe solo il cliente, sui suoi euro.
+#
+# Qui le due implementazioni (pre-fix, ricopiata da git, e quella attuale) girano
+# affiancate su tutto quello che una FatturaPA vera puo' contenere: formati it-IT,
+# negativi delle note di credito, notazione esponenziale, stringhe illeggibili,
+# tipi non-stringa. L'unica differenza ammessa e' sui non finiti.
+# ---------------------------------------------------------------------------
+
+VALORI_DI_TRAFFICO = [
+    "0", "1", "10.00", "2,5", "1.234,56", "-15.00", "-0.01", "999999.99",
+    "0.0001", "1e3", "1E3", "  5  ", "5,", "0,5", ".5", "1.000.000,50",
+    "12,345", "", "  ", "abc", "N/A", "None", "null", "--", "1,2,3", "€10",
+    "10%", "+7", "0x10", "1_000", None, 0, 1, -1, 2.5, -2.5, 0.0, True, False,
+    1000000, "1" * 15,
+]
+
+
+def _float_pre_fix(value, default=None):
+    """`_to_float_safe` come era prima delle guardie (git HEAD~3)."""
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return default
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_pre_fix(value, default=None):
+    """`_to_int_safe` come era prima delle guardie."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return default
+    try:
+        return int(float(text.replace(",", ".")))
+    except (TypeError, ValueError):
+        return default
+
+
+def _uguali(a, b):
+    if isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b):
+        return True
+    return a == b
+
+
+@pytest.mark.parametrize("valore", VALORI_DI_TRAFFICO, ids=repr)
+@pytest.mark.parametrize("default", [None, 0.0, 1.0], ids=["def-None", "def-0", "def-1"])
+def test_le_guardie_non_cambiano_il_traffico_normale_float(valore, default):
+    assert _uguali(_float_pre_fix(valore, default),
+                   invoice_service._to_float_safe(valore, default)), (
+        f"REGRESSIONE: _to_float_safe({valore!r}, {default!r}) e' cambiato su un valore "
+        "che non e' un non finito — 16 call site leggono questo helper"
+    )
+
+
+@pytest.mark.parametrize("valore", VALORI_DI_TRAFFICO, ids=repr)
+@pytest.mark.parametrize("default", [None, 0], ids=["def-None", "def-0"])
+def test_le_guardie_non_cambiano_il_traffico_normale_int(valore, default):
+    assert _uguali(_int_pre_fix(valore, default),
+                   invoice_service._to_int_safe(valore, default)), (
+        f"REGRESSIONE: _to_int_safe({valore!r}, {default!r}) e' cambiato su un valore "
+        "che non e' un non finito"
+    )
+
+
+def test_le_copie_pre_fix_corrispondono_davvero_al_codice_di_git():
+    """Il confronto sopra vale solo se `_float_pre_fix` e' la versione VERA di prima.
+
+    Se l'avessi trascritta male, i test di equivalenza diventerebbero una tautologia
+    che non misura niente. Qui il corpo delle due copie si confronta con il sorgente
+    del commit precedente al fix, letto da git e normalizzato con l'AST (`ast.unparse`
+    azzera differenze di virgolette, spaziatura e commenti).
+    """
+    import ast
+    import inspect
+    import subprocess
+    import textwrap
+
+    radice = pathlib.Path(__file__).resolve().parents[1]
+    sorgente = subprocess.run(
+        ["git", "show", "5c3aea0~1:services/invoice_service.py"],
+        capture_output=True, text=True, cwd=str(radice),
+    )
+    if sorgente.returncode != 0:
+        pytest.skip("commit 5c3aea0 non raggiungibile (storia riscritta o shallow clone)")
+
+    def corpo_normalizzato(codice: str, nome: str) -> str:
+        # invoice_service.py comincia con un BOM (U+FEFF): ast.parse lo rifiuta
+        # come carattere non stampabile.
+        albero = ast.parse(codice.lstrip("\ufeff"))
+        for nodo in ast.walk(albero):
+            if isinstance(nodo, ast.FunctionDef) and nodo.name == nome:
+                istruzioni = nodo.body
+                if (istruzioni and isinstance(istruzioni[0], ast.Expr)
+                        and isinstance(istruzioni[0].value, ast.Constant)
+                        and isinstance(istruzioni[0].value.value, str)):
+                    istruzioni = istruzioni[1:]  # via la docstring
+                return "\n".join(ast.unparse(i) for i in istruzioni)
+        raise AssertionError(f"{nome} non trovata")
+
+    for nome_git, copia in (("_to_float_safe", _float_pre_fix),
+                            ("_to_int_safe", _int_pre_fix)):
+        atteso = corpo_normalizzato(sorgente.stdout, nome_git)
+        ottenuto = corpo_normalizzato(
+            textwrap.dedent(inspect.getsource(copia)), copia.__name__
+        )
+        assert ottenuto == atteso, (
+            f"la copia pre-fix di {nome_git} nel test NON corrisponde al codice di "
+            f"5c3aea0~1: i test di equivalenza non misurano nulla.\n"
+            f"--- git ---\n{atteso}\n--- test ---\n{ottenuto}"
+        )
