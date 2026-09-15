@@ -940,9 +940,26 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
 
     if not result.get("success"):
         err = result.get("error", "unknown")
+        # Se alcuni chunk erano gia' passati la fattura e' a DB a meta': va detto
+        # nell'errore, o su esaurimento tentativi l'item muore "senza righe scritte"
+        # mentre il cliente vede mezza fattura nei costi.
+        if result.get("righe_parziali"):
+            err = f"{err} [SCRITTURA PARZIALE: {result.get('righe', 0)} righe gia' a DB]"
         return ItemResult(
             queue_id=queue_id, event_id=event_id, status="retry",
             error=f"salva_fattura_processata error={err}",
+        )
+
+    # Troncamento: il documento aveva piu' righe del tetto. Con silent=True il
+    # messaggio a video non esiste e la verifica d'integrita' confronta il
+    # gia'-troncato col DB, quindi non se ne accorge: qui resta almeno un warning
+    # esplicito con il numero di righe di costo che il cliente NON vedra'.
+    _troncate = result.get("righe_troncate") or 0
+    if _troncate:
+        logger.warning(
+            "[item=%d] %s: %d righe TRONCATE oltre il tetto — la fattura a DB e' "
+            "incompleta e i costi del cliente sono sottostimati",
+            queue_id, nome_file, _troncate,
         )
 
     # Sede tecnica "Costi comuni di gruppo": ogni fattura che vi atterra è per

@@ -16,6 +16,7 @@ Dipendenze:
 """
 
 import json
+import math
 import re
 from datetime import datetime
 import pandas as pd
@@ -82,16 +83,32 @@ def _to_float_safe(value: Any, default: Optional[float] = None) -> Optional[floa
     if value is None:
         return default
     if isinstance(value, (int, float)):
-        return float(value)
+        # Anche il ramo "e' gia' un numero" deve passare dalla guardia: `json.loads`
+        # restituisce un float nan VERO su `{"totale": NaN}` (JSON valido per
+        # Python), quindi qui non arriva solo la stringa "nan".
+        numero_diretto = float(value)
+        return numero_diretto if math.isfinite(numero_diretto) else default
     text = str(value).strip()
     if not text:
         return default
     if ',' in text:
         text = text.replace('.', '').replace(',', '.')
     try:
-        return float(text)
+        numero = float(text)
     except (TypeError, ValueError):
         return default
+    # "nan"/"inf"/"1e400" sono float() validi ma NON sono importi.
+    # Oggi il danno e' una SCRITTURA PARZIALE, non un NaN in pagina: httpx
+    # serializza con allow_nan=False, quindi l'upsert del chunk (500 righe)
+    # solleva ValueError e una fattura piu' lunga resta scritta a meta'.
+    # La guardia sta comunque QUI, a monte, perche' il DB non farebbe da rete:
+    # misurato su Postgres il 15/09/2026, numeric(10,2) ACCETTA NaN, SUM() lo
+    # propaga (il food cost del mese diventa NaN) e NaN > qualunque cifra,
+    # quindi passerebbe anche i filtri di soglia. Basta un client che non passi
+    # da httpx (SQL diretto, psycopg, una RPC) perche' il danno diventi quello.
+    if not math.isfinite(numero):
+        return default
+    return numero
 
 
 def _to_int_safe(value: Any, default: Optional[int] = None) -> Optional[int]:
@@ -103,14 +120,39 @@ def _to_int_safe(value: Any, default: Optional[int] = None) -> Optional[int]:
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        return int(value)
+        # int(float('nan')) -> ValueError, int(float('inf')) -> OverflowError:
+        # entrambi sfuggono all'except piu' in basso, che copre solo la stringa.
+        return int(value) if math.isfinite(value) else default
     text = str(value).strip()
     if not text:
         return default
     try:
-        return int(float(text.replace(',', '.')))
+        numero = float(text.replace(',', '.'))
     except (TypeError, ValueError):
         return default
+    # int(float('inf')) solleva OverflowError, che questo except NON cattura:
+    # un helper "safe" che esplode e' peggio di uno che torna il default.
+    if not math.isfinite(numero):
+        return default
+    return int(numero)
+
+
+def _numeri_riga_scontrino(riga: Dict[str, Any]) -> Dict[str, float]:
+    """I tre campi numerici di una riga letta dal Vision, sempre finiti.
+
+    Chokepoint del percorso scontrino/PDF: prima ognuno faceva `float()` nudo con
+    `except (ValueError, TypeError)`, che "nan"/"inf" NON sollevano. La risposta
+    del Vision si legge con `json.loads`, che accetta anche i letterali nudi
+    `NaN`/`Infinity` (estensione Python) e produce un float non finito vero.
+    """
+    quantita = _to_float_safe(riga.get('quantita'), 1.0)
+    prezzo = _to_float_safe(riga.get('prezzo_unitario'), 0.0)
+    totale = _to_float_safe(riga.get('totale'), 0.0)
+    return {
+        'quantita': 1.0 if quantita is None else quantita,
+        'prezzo_unitario': 0.0 if prezzo is None else prezzo,
+        'totale': 0.0 if totale is None else totale,
+    }
 
 
 def _normalizza_piva_cedente(value: Any) -> Optional[str]:
@@ -1656,7 +1698,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         if is_nota_credito:
             def _tot_grezzo(_r):
                 try:
-                    return float(_r.get('totale', 0) or 0)
+                    return _to_float_safe(_r.get('totale'), 0.0) or 0.0
                 except (ValueError, TypeError):
                     return 0.0
             _ha_riga_negativa = any(_tot_grezzo(_r) < 0 for _r in dati.get('righe', []))
@@ -1670,24 +1712,15 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         for idx, riga in enumerate(dati.get('righe', []), start=1):
             descrizione = normalizza_stringa(riga.get('descrizione', 'Articolo senza nome'))
             
-            try:
-                quantita = float(riga.get('quantita', 1.0))
-            except (ValueError, TypeError):
-                quantita = 1.0
-            
-            try:
-                prezzo_unitario = float(riga.get('prezzo_unitario', 0))
-            except (ValueError, TypeError):
-                prezzo_unitario = 0
-            
+            _numeri = _numeri_riga_scontrino(riga)
+            quantita = _numeri['quantita']
+            prezzo_unitario = _numeri['prezzo_unitario']
+
             # Estrai e normalizza unità di misura
             unita_misura_raw = riga.get('unita_misura', 'PZ')
             unita_misura = normalizza_unita_misura(unita_misura_raw)
             
-            try:
-                totale_riga = float(riga.get('totale', 0))
-            except (ValueError, TypeError):
-                totale_riga = 0
+            totale_riga = _numeri['totale']
 
             # IVA estratta dal Vision (intero %): prima era hardcoded a 0, il che
             # azzerava il guardrail IVA-bassa e lo scorporo a valle sui PDF.
@@ -1961,6 +1994,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
     # Cap righe per documento: l'upsert avviene a chunk di 500 senza transazione
     # complessiva, quindi un fallimento a metà lascerebbe la fattura scritta a metà.
     # Limitare il volume riduce la finestra in cui questo può succedere.
+    _righe_troncate = 0
     if len(dati_prodotti) > _MAX_RIGHE_PER_FATTURA:
         logger.warning(
             "⚠️ %s: %d righe eccedono il limite di %d — troncate.",
@@ -1972,6 +2006,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 f"⚠️ {nome_file}: {len(dati_prodotti)} righe superano il limite di "
                 f"{_MAX_RIGHE_PER_FATTURA}. Salvate le prime {_MAX_RIGHE_PER_FATTURA}.",
             )
+        _righe_troncate = len(dati_prodotti) - _MAX_RIGHE_PER_FATTURA
         dati_prodotti = dati_prodotti[:_MAX_RIGHE_PER_FATTURA]
 
     num_righe = len(dati_prodotti)
@@ -2286,10 +2321,16 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 except Exception as briefing_exc:
                     logger.warning("invalidazione briefing post-upload fallita: %s", briefing_exc)
 
+            # `righe_troncate` > 0 significa che il documento aveva PIU' righe di
+            # quante ne abbiamo salvate: fuori da Streamlit (worker, silent=True)
+            # il messaggio a video non parte e la verifica d'integrita' confronta
+            # il gia'-troncato con il DB, quindi tornerebbe "OK" su una fattura
+            # incompleta. Qui il chiamante ha il numero per dirlo.
             return {
                 "success": True,
                 "error": None,
                 "righe": righe_confermate,
+                "righe_troncate": _righe_troncate,
                 "location": "supabase"
             }
             
@@ -2332,11 +2373,15 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             if not silent:
                 _ui_msg("error", f"❌ Errore salvataggio {nome_file}. Riprova.")
 
+            # `righe` e' quanto e' DAVVERO a DB, non 0: se un chunk era gia' passato
+            # la fattura resta scritta a meta' e il chiamante deve poterlo sapere
+            # (il log lo diceva gia' con SAVED_PARTIAL, il valore di ritorno no).
             return {
                 "success": False,
                 "error": str(e),
-                "righe": 0,
-                "location": None
+                "righe": _righe_scritte,
+                "righe_parziali": _righe_scritte > 0,
+                "location": "supabase" if _righe_scritte else None
             }
     else:
         if not silent:

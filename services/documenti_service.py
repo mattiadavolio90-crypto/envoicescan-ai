@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -48,18 +49,28 @@ def _to_int_safe(value: Any) -> Optional[int]:
     if value in (None, "", "N/A", "None"):
         return None
     try:
-        return int(float(str(value).replace(",", ".")))
+        numero = float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return None
+    # int(float('inf')) solleva OverflowError, fuori da questo except.
+    if not math.isfinite(numero):
+        return None
+    return int(numero)
 
 
 def _to_float_safe(value: Any) -> Optional[float]:
     if value in (None, "", "N/A", "None"):
         return None
     try:
-        return float(str(value).replace(",", "."))
+        numero = float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return None
+    # "nan"/"inf" sono float() validi ma non sono importi (gemello della guardia
+    # in invoice_service): oggi httpx li blocca in serializzazione, lasciando una
+    # scrittura a meta'; il DB non farebbe da rete (numeric accetta NaN).
+    if not math.isfinite(numero):
+        return None
+    return numero
 
 
 def _tipo_documento_safe(value: Any) -> str:
