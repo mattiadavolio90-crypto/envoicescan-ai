@@ -54,6 +54,27 @@ def test_lo_stesso_istante_da_lo_stesso_giorno_di_roma_in_ogni_fuso(tz):
     )
 
 
+@pytest.mark.parametrize("etichetta,istante,atteso", [
+    # 25/10/2026: l'Italia torna a CET alle 03:00. Prima e dopo il cambio e' lo stesso giorno,
+    # ma l'offset da UTC e' diverso (+02:00 / +01:00): un helper che sottraesse un'ora fissa
+    # sbaglierebbe da una delle due parti.
+    ("01:30 a Roma, ancora ora legale", "2026-10-24T23:30:00Z", [2026, 10, 25]),
+    ("02:30 a Roma, ora solare", "2026-10-25T01:30:00Z", [2026, 10, 25]),
+    # 29/03/2026: l'ora legale comincia, le 02:00 non esistono.
+    ("03:30 a Roma il giorno del salto", "2026-03-29T01:30:00Z", [2026, 3, 29]),
+    # Capodanno: qui sbagliare il giorno significa sbagliare l'ANNO del preset.
+    ("00:30 del 1° gennaio a Roma", "2025-12-31T23:30:00Z", [2026, 1, 1]),
+    # Il caso che distingue il fuso VERO da un offset fisso di +2h: d'inverno Roma e'
+    # +01:00, quindi alle 22:30Z e' ancora il 31 dicembre. Chi somma due ore fisse
+    # (giusto d'estate) e' gia' all'anno nuovo, e «Anno in corso» parte dal 1° gennaio
+    # dell'anno sbagliato con tutti i KPI a zero.
+    ("23:30 del 31 dicembre a Roma, ora solare", "2026-12-31T22:30:00Z", [2026, 12, 31]),
+])
+@pytest.mark.parametrize("tz", ["UTC", "Europe/Rome", "Pacific/Kiritimati"])
+def test_i_cambi_d_ora_non_spostano_il_giorno(etichetta, istante, atteso, tz):
+    assert _oggi_a_roma(tz, istante) == atteso, f"{etichetta}: giorno sbagliato in {tz}"
+
+
 def test_a_mezzogiorno_utc_non_cambia_nulla():
     """Controllo positivo: fuori dalla finestra notturna i due giorni coincidono gia'."""
     assert _oggi_a_roma("UTC", "2026-09-30T12:00:00Z") == [2026, 9, 30]
