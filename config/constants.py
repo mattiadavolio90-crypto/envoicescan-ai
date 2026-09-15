@@ -2044,6 +2044,11 @@ MAX_DESC_LENGTH_DB = 500
 
 # Budget AI giornaliero per ristorante
 MAX_AI_CALLS_PER_DAY = 1000      # Max classificazioni AI al giorno per ristorante
+# Timeout per singola richiesta HTTP verso OpenAI. Senza, il SDK aspetta 600 s
+# (openai.DEFAULT_TIMEOUT) e un batch appeso tiene un processo per 10 minuti, per
+# ogni retry del SDK (2) e di tenacity (3). 90 s e' il tempo massimo stimato per un
+# batch grande (worker_client._CLASSIFY_TIMEOUT: chunk di 30-50 righe, 4096 token).
+OPENAI_TIMEOUT_SECONDS = 90.0
 VISION_DAILY_LIMIT = 50          # Max chiamate Vision (PDF/JPG/PNG) al giorno per ristorante
 
 # Memoria sessione AI

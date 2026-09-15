@@ -856,7 +856,8 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
             from services.settore_service import settore_sede
             settore = settore_sede(body.ristorante_id)
 
-        openai_client = OpenAI(api_key=openai_api_key)
+        from config.constants import OPENAI_TIMEOUT_SECONDS
+        openai_client = OpenAI(api_key=openai_api_key, timeout=OPENAI_TIMEOUT_SECONDS)
         categorie, confidenze = classifica_con_ai(
             lista_descrizioni=body.descrizioni,
             lista_fornitori=body.fornitori,
@@ -2452,6 +2453,7 @@ async def upload_invoice(
             _pagine_cfg,
             is_admin=_is_admin_email(user.get("email")),
             is_trial=_is_trial,
+            oggi=_oggi_rome(),
         )
         if _blocco:
             logger.warning(
@@ -2465,6 +2467,7 @@ async def upload_invoice(
                 error=messaggio_blocco(
                     _blocco,
                     righe[0].get("Data_Documento") or righe[0].get("data_documento"),
+                    oggi=_oggi_rome(),
                 ),
                 routing_status=routing_status,
                 sede_assegnata=sede_assegnata,

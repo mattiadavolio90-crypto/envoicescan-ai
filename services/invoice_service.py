@@ -1462,7 +1462,8 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
             if not api_key:
                 st.error("❌ OPENAI_API_KEY mancante")
                 return []
-            openai_client = OpenAI(api_key=api_key)
+            from config.constants import OPENAI_TIMEOUT_SECONDS
+            openai_client = OpenAI(api_key=api_key, timeout=OPENAI_TIMEOUT_SECONDS)
 
         # � Admin e impersonazione bypassano i limiti Vision per test operativi
         ristorante_id = st.session_state.get('ristorante_id')

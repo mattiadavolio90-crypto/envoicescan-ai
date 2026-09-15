@@ -751,6 +751,39 @@ def _claim_ancora_valido(supabase, queue_id: int, worker_id: Optional[str]) -> b
     return rows[0].get("locked_by") == worker_id
 
 
+def _rinnova_lock(supabase, queue_id: int, worker_id: Optional[str]) -> bool:
+    """Riporta locked_at a adesso sull'item, solo se il lock e' ancora di questo worker.
+
+    claim_batch_for_processing scrive locked_at UNA volta per tutto il lotto; gli item
+    si elaborano in serie, ognuno fino a JOB_TIMEOUT. Al terzo item dopo due timeout il
+    lock del lotto ha gia' piu' di STALE_LOCK_MIN: il release_stale_locks di un altro
+    processo (container vecchio durante un deploy, drain da GitHub, worker locale col
+    processore inline) lo rilascerebbe e claim_batch lo darebbe a lui, mentre questo
+    worker lo elabora ancora e alla fine lo marcherebbe done sotto i suoi piedi —
+    mark_queue_item_done e schedule_retry non chiedono chi chiama. Rinnovare il lock
+    all'inizio di ogni item riporta la soglia sull'item (JOB_TIMEOUT < STALE_LOCK_MIN).
+
+    Ritorna False se il lock non e' piu' nostro: l'item va saltato. Su errore di rete
+    ritorna True, come _claim_ancora_valido: un controllo accessorio non ferma la coda.
+    """
+    if not worker_id:
+        return True
+    from datetime import datetime, timezone
+    try:
+        resp = (
+            supabase.table("fatture_queue")
+            .update({"locked_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", queue_id)
+            .eq("locked_by", worker_id)
+            .eq("status", "processing")
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("[item=%d] rinnovo lock fallito (%s), procedo", queue_id, exc)
+        return True
+    return bool(resp.data)
+
+
 # ─── Elaborazione di un singolo item ─────────────────────────────────────────
 
 def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = None) -> ItemResult:
@@ -1364,6 +1397,14 @@ def run_cycle() -> CycleStats:
     for item in batch:
         queue_id = item["id"]
         t0 = time.monotonic()
+
+        if not _rinnova_lock(supabase, queue_id, worker_id):
+            logger.warning(
+                "[item=%d] il lock non e' piu' di questo worker prima di iniziare: salto",
+                queue_id,
+            )
+            stats.skipped += 1
+            continue
 
         # ── Watchdog timeout per singolo job ─────────────────────────────────
         job_done: threading.Event = threading.Event()

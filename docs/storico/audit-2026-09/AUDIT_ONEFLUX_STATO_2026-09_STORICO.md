@@ -41,6 +41,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 14/09 | **Lente trasversale L2 — isolamento fra clienti, eseguito** (240 operazioni, 2 clienti su Postgres vero) | chiusa — 152 chiamate cross-tenant, 0 leak, 0 scritture; 2 difetti corretti (PATCH turno con dipendente altrui; assegna-sede 500 invece di 404); 8/12 mutanti uccisi, 4 spiegati |
 | 14/09 | **Lente trasversale L4 — esito statistico dell'AI** (la domanda si e' rovesciata) | chiusa — **l'AI decide l'1,3%** delle righe con provenienza: misurare "quanto sbaglia" avrebbe descritto 4 righe su 39.530. 1 difetto corretto (la correzione del cliente restava anonima nel registro della memoria); 5/6 mutanti, 1 spiegato eseguendo |
 | 15/09 | **Lente trasversale L5 — ciclo di vita di colonne e campi** (667 colonne, 59 tabelle) | chiusa — **nessuna colonna letta-e-mai-scritta che produca un numero sbagliato**: 4 lo sono per costruzione (`fattore_kg` ×2, `users.session_token` ×2), le altre 43 NULL al 100% hanno uno scrittore e nessun cliente le ha compilate; 11 colonne + 2 tabelle morte proposte per il drop, 4 decisioni; rilevatore riproducibile, 11/11 mutanti + 1 sullo snapshot; saldato il debito identity di L2. Code-reviewer: 4 blocchi alla 1ª passata (2 tabelle «morte» che non lo erano, una lettura SQL persa, verbale lungo) |
+| 15/09 | **Lente trasversale L6 — tempo, concorrenza, dipendenze che cadono** | chiusa — un caso **eseguito** per famiglia: ora congelata sull'upload, due worker sulla coda, 429 sotto il retry vero. **3 difetti corretti**: la policy date dell'upload decideva col giorno UTC (00:30 del 1° a Roma); i client OpenAI senza timeout (600 s di default, 2 retry nascosti); il lock della coda era del lotto ma il lavoro dell'item — trovato dalla verifica avversaria, che ha refutato il mio «irraggiungibile». 11/11 mutanti. Il perimetro del prompt era sbagliato due volte (commenti contati come codice, timeout su chiamate multi-riga persi dal grep): rimisurato con l'AST |
 
 ---
 
@@ -3627,3 +3628,46 @@ allineato a mano (niente `SUPABASE_DB_URL`) con l'identity e le 4 colonne che no
 rattoppo nella fixture di `test_isolamento_per_risorsa.py` e' tolto. Mutante: snapshot senza
 identity → la fixture dei tag di gruppo va in errore. `-m sql` **534 verdi**; suite dalla root
 **14.299 verdi + 45 skip** (15/09, dopo i fix del reviewer). Nessun push; in coda 12 commit prima di questi, nessuno mio.
+
+---
+
+## 15/09/2026 — Lente trasversale L6: tempo, concorrenza, dipendenze che cadono
+
+**Ogni caso e' stato fatto succedere, non letto.** *Tempo*: ora congelata alle 00:30 del primo
+marzo a Roma, server ancora al 28 febbraio: la policy dell'upload (`valuta_policy_data` /
+`messaggio_blocco`) leggeva `date.today()` UTC, ammetteva una fattura di gennaio gia' fuori dai
+due mesi consentiti e nominava «Gennaio o Febbraio» invece di «Febbraio o Marzo». **Corretto al
+call site** (`oggi=_oggi_rome()` alle due chiamate in `fastapi_worker.py`; l'helper c'era);
+`tests/test_upload_policy_giorno_di_roma.py` attraversa l'endpoint vero. Le altre letture
+dell'ora senza fuso (6 nel codice, non 8: due erano commenti) non decidono date che il cliente
+vede. *Concorrenza*: due `claim_batch_for_processing` con la prima transazione aperta si dividono
+12 fatture senza sovrapporsi e il secondo **non aspetta** (`SKIP LOCKED`); `assegna_fattura_a_sede`
+fa il contrario di proposito: il secondo aspetta il commit del primo in un thread, riceve FALSE
+e la sede resta quella del primo. *Dipendenze*: `openai.RateLimitError` sotto il `@retry` di
+produzione: due 429 e una risposta valida non perdono il lotto, tre 429 esauriscono i tre
+tentativi veri, un RuntimeError non si ritenta, un 429 persistente lascia la riga **Da
+Classificare** col degrado dichiarato — regola #1 (`tests/test_ai_429_attraverso_il_retry_vero.py`).
+
+**Il difetto vero era dove il grep non guarda.** Le 11 chiamate `requests`/`httpx` hanno tutte
+un timeout: il prompt diceva «8 su 11 senza» perche' il kwarg stava tre righe sotto la riga
+del grep (rimisurato con l'AST). Senza timeout erano i **client OpenAI**, 3 su 4, col default del
+SDK 2.32: **600 s in lettura e 2 retry nascosti** sotto i 3 di tenacity, che ritenta anche i
+timeout — fino a 30 minuti per tentativo, e il budget AI (25 s) tronca le attese, non la richiesta
+in volo. `OPENAI_TIMEOUT_SECONDS = 90` (il tempo massimo stimato per un batch grande), fabbrica
+`_nuovo_client_openai`, guardia AST su ogni `OpenAI(` (`tests/test_openai_client_timeout.py`).
+
+**La verifica avversaria ha refutato il mio «irraggiungibile».** `mark_queue_item_done` e
+`schedule_retry` non chiedono chi chiama; avevo scritto che non si arriva a chiamarli sull'item
+di un altro perche' `JOB_TIMEOUT` (300 s) sta sotto il lock stantio (600 s). Il refutatore ha visto
+che il claim scrive `locked_at` **una volta per lotto** e gli item si elaborano in serie: al terzo
+item dopo due timeout il lock ha gia' piu' di 10 minuti, un secondo processo (container vecchio
+in deploy, drain manuale da GitHub, worker locale col processore inline acceso di default) lo
+rilascia e se lo prende, e il primo lo marca done sotto i suoi piedi purgando l'XML. **Corretto**:
+`_rinnova_lock` all'inizio di ogni item (UPDATE scoped su `locked_by`), item saltato se il lock non
+e' piu' nostro — `tests/test_worker_lock_per_item.py` (6) e `tests/test_sql_concorrenza_coda.py`
+(4, `-m sql`, uno esegue la funzione vera sul builder tradotto in SQL). **11 mutanti, 11 uccisi**
+(2 sullo snapshot). Per Mattia: quota chat sul giorno **UTC** (Python e RPC concordano); il SDK
+ritenta 2 volte sotto i 3 di tenacity (~815 s per lotto nel queue-worker anche col timeout nuovo);
+`_get_openai_client` non e' cached in produzione (shim passthrough). «Tenacity smontato» (riga L6
+del 14/09) era scaduto dal 28/8; il lockout e' fail-closed nel controllo, best-effort nella
+registrazione. `-m sql` **538 verdi (534 + 4)**; root **14.319 verdi + 45 skip**. Nessun push; in coda 16 commit prima di questi, nessuno mio.

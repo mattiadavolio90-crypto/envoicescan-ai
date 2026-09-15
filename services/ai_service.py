@@ -2965,6 +2965,12 @@ def set_global_memory_enabled(enabled: bool):
 # ============================================================
 # INIZIALIZZAZIONE OPENAI CLIENT
 # ============================================================
+def _nuovo_client_openai(api_key: str) -> OpenAI:
+    """Client OpenAI col timeout del progetto: il default del SDK e' 600 s in lettura."""
+    from config.constants import OPENAI_TIMEOUT_SECONDS
+    return OpenAI(api_key=api_key, timeout=OPENAI_TIMEOUT_SECONDS)
+
+
 @st.cache_resource
 def _get_openai_client() -> OpenAI:
     """
@@ -2990,7 +2996,7 @@ def _get_openai_client() -> OpenAI:
         logger.error("API Key OpenAI non trovata né in st.secrets né in OPENAI_API_KEY")
         raise ValueError("API Key OpenAI mancante")
 
-    return OpenAI(api_key=api_key)
+    return _nuovo_client_openai(api_key)
 
 
 # ============================================================
