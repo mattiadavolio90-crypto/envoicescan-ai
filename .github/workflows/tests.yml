@@ -17,6 +17,13 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          # Storia completa: test_importi_non_finiti_fattura_ostile.py confronta
+          # l'implementazione pre-fix degli helper numerici col sorgente di un
+          # commit passato (`git show 5c3aea0~1:...`). Col default di checkout
+          # (shallow, depth 1) quel test si SKIPPA in silenzio e il guardiano dei
+          # 205 test di equivalenza diventa decorativo proprio sulla pipeline.
+          fetch-depth: 0
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5

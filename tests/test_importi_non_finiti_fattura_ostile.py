@@ -560,7 +560,18 @@ def test_le_copie_pre_fix_corrispondono_davvero_al_codice_di_git():
         capture_output=True, text=True, cwd=str(radice),
     )
     if sorgente.returncode != 0:
-        pytest.skip("commit 5c3aea0 non raggiungibile (storia riscritta o shallow clone)")
+        # In CI NON si skippa: `tests.yml` chiede `fetch-depth: 0` proprio per questo
+        # test, e uno skip silenzioso renderebbe decorativi i 205 test di equivalenza
+        # esattamente dove contano. In locale su un clone shallow si skippa.
+        import os
+
+        if os.environ.get("CI"):
+            raise AssertionError(
+                "git show 5c3aea0~1 non risolve in CI: manca `fetch-depth: 0` sul "
+                "checkout del job pytest (.github/workflows/tests.yml). Senza storia "
+                "questo guardiano non verifica nulla."
+            )
+        pytest.skip("commit 5c3aea0 non raggiungibile (clone shallow in locale)")
 
     def corpo_normalizzato(codice: str, nome: str) -> str:
         # invoice_service.py comincia con un BOM (U+FEFF): ast.parse lo rifiuta
@@ -587,3 +598,63 @@ def test_le_copie_pre_fix_corrispondono_davvero_al_codice_di_git():
             f"5c3aea0~1: i test di equivalenza non misurano nulla.\n"
             f"--- git ---\n{atteso}\n--- test ---\n{ottenuto}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Il worker e' l'unico posto dove il segnale diventa visibile a un umano.
+#
+# Il code-reviewer ha fatto notare che le righe di `queue_processor` che loggano
+# troncamento e scrittura parziale non avevano nessun presidio: due suoi mutanti
+# ci sopravvivevano, cioe' cancellandole la suite restava verde. Sono il capolinea
+# di tutta la catena — se tacciono, nessuno sa che la fattura e' incompleta.
+# ---------------------------------------------------------------------------
+
+
+def test_l_errore_del_worker_dichiara_la_scrittura_parziale():
+    from worker import queue_processor
+
+    messaggio = queue_processor._errore_salvataggio(
+        {"error": "boom", "righe": 500, "righe_parziali": True}
+    )
+    assert "500" in messaggio and "PARZIALE" in messaggio, (
+        f"l'errore del worker non dice che 500 righe sono a DB: {messaggio!r} — "
+        "su esaurimento tentativi l'item muore 'senza righe scritte'"
+    )
+
+
+def test_l_errore_del_worker_non_inventa_un_parziale():
+    """Controllo positivo: un errore pulito non deve parlare di scrittura parziale."""
+    from worker import queue_processor
+
+    assert queue_processor._errore_salvataggio({"error": "boom"}) == "boom"
+    assert queue_processor._errore_salvataggio({}) == "unknown"
+
+
+def test_il_worker_logga_il_troncamento(caplog):
+    """Il warning e' l'unico segnale che esista: `silent=True` spegne quello a video."""
+    import logging
+
+    from worker import queue_processor
+
+    with caplog.at_level(logging.WARNING, logger=queue_processor.logger.name):
+        perse = queue_processor._avvisa_se_troncata(
+            {"righe_troncate": 500}, 42, "grossa.xml"
+        )
+    assert perse == 500
+    testo = caplog.text
+    assert "TRONCATE" in testo and "500" in testo and "grossa.xml" in testo, (
+        f"il troncamento non compare nei log: {testo!r} — la fattura a DB e' "
+        "incompleta e nessuno lo sa"
+    )
+
+
+def test_il_worker_tace_quando_non_c_e_troncamento(caplog):
+    """Controllo positivo: nessun allarme sulle fatture normali, o viene ignorato."""
+    import logging
+
+    from worker import queue_processor
+
+    with caplog.at_level(logging.WARNING, logger=queue_processor.logger.name):
+        perse = queue_processor._avvisa_se_troncata({"righe_troncate": 0}, 42, "ok.xml")
+    assert perse == 0
+    assert "TRONCATE" not in caplog.text
