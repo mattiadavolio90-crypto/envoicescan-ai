@@ -3633,41 +3633,41 @@ identity → la fixture dei tag di gruppo va in errore. `-m sql` **534 verdi**; 
 
 ## 15/09/2026 — Lente trasversale L6: tempo, concorrenza, dipendenze che cadono
 
-**Ogni caso e' stato fatto succedere, non letto.** *Tempo*: ora congelata alle 00:30 del primo
-marzo a Roma, server ancora al 28 febbraio: la policy dell'upload (`valuta_policy_data` /
-`messaggio_blocco`) leggeva `date.today()` UTC, ammetteva una fattura di gennaio gia' fuori dai
-due mesi consentiti e nominava «Gennaio o Febbraio» invece di «Febbraio o Marzo». **Corretto al
-call site** (`oggi=_oggi_rome()` alle due chiamate in `fastapi_worker.py`; l'helper c'era);
-`tests/test_upload_policy_giorno_di_roma.py` attraversa l'endpoint vero. Le altre letture
-dell'ora senza fuso (6 nel codice, non 8: due erano commenti) non decidono date che il cliente
-vede. *Concorrenza*: due `claim_batch_for_processing` con la prima transazione aperta si dividono
-12 fatture senza sovrapporsi e il secondo **non aspetta** (`SKIP LOCKED`); `assegna_fattura_a_sede`
-fa il contrario di proposito: il secondo aspetta il commit del primo in un thread, riceve FALSE
-e la sede resta quella del primo. *Dipendenze*: `openai.RateLimitError` sotto il `@retry` di
-produzione: due 429 e una risposta valida non perdono il lotto, tre 429 esauriscono i tre
-tentativi veri, un RuntimeError non si ritenta, un 429 persistente lascia la riga **Da
-Classificare** col degrado dichiarato — regola #1 (`tests/test_ai_429_attraverso_il_retry_vero.py`).
+**Ogni caso e' stato fatto succedere, non letto.** *Tempo*: ora congelata alle 00:30 del 1° a Roma,
+server ancora al giorno prima. La policy dell'upload leggeva `date.today()` UTC: ammetteva una
+fattura di gennaio gia' fuori dai due mesi consentiti e nominava «Gennaio o Febbraio» invece di
+«Febbraio o Marzo» — corretto al call site (`oggi=_oggi_rome()`, l'helper c'era). *Concorrenza*: due
+`claim_batch_for_processing` con la prima transazione aperta si dividono 12 fatture senza
+sovrapporsi e il secondo **non aspetta** (`SKIP LOCKED`); `assegna_fattura_a_sede` fa il contrario
+di proposito: il secondo aspetta il commit del primo, riceve FALSE, la sede resta quella del primo.
+*Dipendenze*: `openai.RateLimitError` sotto il `@retry` vero — due 429 e una risposta valida non
+perdono il lotto, tre esauriscono i tentativi, un 429 persistente lascia la riga **Da Classificare**
+col degrado dichiarato (regola #1).
 
-**Il difetto vero era dove il grep non guarda.** Le 11 chiamate `requests`/`httpx` hanno tutte
-un timeout: il prompt diceva «8 su 11 senza» perche' il kwarg stava tre righe sotto la riga
-del grep (rimisurato con l'AST). Senza timeout erano i **client OpenAI**, 3 su 4, col default del
-SDK 2.32: **600 s in lettura e 2 retry nascosti** sotto i 3 di tenacity, che ritenta anche i
-timeout — fino a 30 minuti per tentativo, e il budget AI (25 s) tronca le attese, non la richiesta
-in volo. `OPENAI_TIMEOUT_SECONDS = 90` (il tempo massimo stimato per un batch grande), fabbrica
-`_nuovo_client_openai`, guardia AST su ogni `OpenAI(` (`tests/test_openai_client_timeout.py`).
+**Il difetto vero era dove il grep non guarda.** Le 11 chiamate `requests`/`httpx` hanno tutte un
+timeout: il prompt diceva «8 su 11 senza» perche' il kwarg stava tre righe sotto la riga del grep
+(rimisurato con l'AST). Senza timeout erano i **client OpenAI**, 3 su 4, col default del SDK 2.32:
+**600 s in lettura e 2 retry nascosti** sotto i 3 di tenacity, che ritenta anche i timeout — fino a
+mezz'ora per tentativo, e il budget AI (25 s) tronca le attese, non la richiesta in volo.
+`OPENAI_TIMEOUT_SECONDS = 90` e guardia AST su ogni `OpenAI(`.
 
-**La verifica avversaria ha refutato il mio «irraggiungibile».** `mark_queue_item_done` e
-`schedule_retry` non chiedono chi chiama; avevo scritto che non si arriva a chiamarli sull'item
-di un altro perche' `JOB_TIMEOUT` (300 s) sta sotto il lock stantio (600 s). Il refutatore ha visto
-che il claim scrive `locked_at` **una volta per lotto** e gli item si elaborano in serie: al terzo
-item dopo due timeout il lock ha gia' piu' di 10 minuti, un secondo processo (container vecchio
-in deploy, drain manuale da GitHub, worker locale col processore inline acceso di default) lo
-rilascia e se lo prende, e il primo lo marca done sotto i suoi piedi purgando l'XML. **Corretto**:
-`_rinnova_lock` a ogni item (UPDATE scoped su `locked_by`), item saltato se il lock non e' piu'
-nostro — `tests/test_worker_lock_per_item.py` (6) e `tests/test_sql_concorrenza_coda.py` (4,
-`-m sql`, uno esegue la funzione vera sul builder tradotto in SQL). **11 mutanti, 11 uccisi**
-(2 sullo snapshot). La coda gemella dei ricavi ha lo stesso lock per lotto ma non il moltiplicatore
-(lotti da 5, nessun watchdog, un download e un parse): lasciata com'e'. Per Mattia: quota chat sul
-giorno **UTC**; il SDK ritenta 2 volte sotto i 3 di tenacity (~815 s per lotto anche col timeout
-nuovo); `_get_openai_client` non e' cached in produzione (shim passthrough). `-m sql` **538 verdi**;
-root **14.319 + 45 skip**. Nessun push; in coda 16 commit prima di questi, nessuno mio.
+**Due volte la verifica avversaria mi ha smentito, ed entrambe erano difetti veri.** (1) Avevo
+scritto che `mark_queue_item_done`/`schedule_retry` sono senza controllo del chiamante ma
+irraggiungibili, perche' `JOB_TIMEOUT` (300 s) sta sotto il lock stantio (600 s): confrontavo due
+grandezze diverse. Il claim scrive `locked_at` **una volta per lotto**: al terzo item, dopo due
+timeout, il lock ha gia' 10 minuti, un secondo processo (deploy, drain, worker locale) lo riprende e
+il primo lo marca done sotto i suoi piedi, purgando l'XML. `_rinnova_lock` a ogni item, scoped su
+`locked_by`, item saltato se non e' piu' nostro. (2) Avevo chiuso il frontend con «le date senza
+fuso servono solo al nome di un file»: `calcolaPeriodo(preset)` senza argomento sta in due **Server
+Component** (Margini, Analisi fatture) che su Vercel girano in UTC. Alle 00:30 del 1° ottobre a Roma
+«Mese in corso» rispondeva `2026-09-01 -> 2026-09-30`: **KPI, food cost e MOL del mese precedente
+per intero**, sotto l'etichetta sbagliata. Helper `oggiARoma()` passato ai due call site; il
+presidio esistente sui fusi confrontava col giorno del processo di test e non poteva vederlo.
+
+**Quattro difetti, 20 presidi nuovi, 14 mutanti, 14 uccisi** (2 sullo snapshot). La coda gemella dei
+ricavi ha lo stesso lock per lotto senza il moltiplicatore (lotti da 5, nessun watchdog), ma nessun
+`release_stale_locks` e un claim che salta i `processing`: un item bloccato li' resterebbe appeso
+per sempre — a DB oggi 100 righe tutte `done`, **0 lock appesi**, mai successo: lasciata com'e'. Per
+Mattia: quota chat sul giorno **UTC**; il SDK ritenta 2 volte sotto i 3 di tenacity; un item che
+sfonda il timeout durante la classificazione continua a pagare l'AI fino alla fine. `-m sql` **538
+verdi**; root **14.328 + 45 skip**. Nessun push; in coda 16 commit prima di questi, nessuno mio.

@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePaginaConTab } from "@/lib/page-guard";
+import { oggiARoma } from "@/lib/oggi-roma";
 import { getCurrentUser } from "@/lib/auth";
 import { contaTopicAttivo } from "@/lib/notifiche";
 import { TriggerHint } from "@/components/trigger-hint";
@@ -57,7 +58,8 @@ function resolvePeriodo(sp: SearchParams): {
     "anno_corrente",
   ];
   const safe = validPresets.includes(preset) ? preset : "anno_corrente";
-  const calc = calcolaPeriodo(safe);
+  // Server Component su Vercel (UTC): vedi il commento gemello in margini/page.tsx.
+  const calc = calcolaPeriodo(safe, oggiARoma());
   return { data_da: calc.data_da, data_a: calc.data_a, preset: safe };
 }
 

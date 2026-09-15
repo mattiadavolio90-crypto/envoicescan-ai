@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePaginaConTab } from "@/lib/page-guard";
+import { oggiARoma } from "@/lib/oggi-roma";
 import { SESSION_COOKIE, getCurrentUser } from "@/lib/auth";
 import { TriggerHint } from "@/components/trigger-hint";
 import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
@@ -46,7 +47,10 @@ function resolvePeriodo(sp: SearchParams): {
   if ((preset === "personalizzato" || preset === "mese_specifico") && sp.data_da && sp.data_a) {
     return { data_da: sp.data_da, data_a: sp.data_a, preset, mese: sp.mese };
   }
-  const calc = calcolaPeriodo(preset);
+  // oggiARoma(): questa funzione gira in un Server Component, e Vercel e' in UTC.
+  // Senza, fra mezzanotte e le 02:00 italiane il preset chiude sul giorno prima —
+  // il 1° del mese significa mostrare il mese precedente per intero.
+  const calc = calcolaPeriodo(preset, oggiARoma());
   return { data_da: calc.data_da, data_a: calc.data_a, preset };
 }
 
