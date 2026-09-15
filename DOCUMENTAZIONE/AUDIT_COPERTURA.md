@@ -496,7 +496,7 @@ obbligatoria per considerare chiuse le altre.
 
 | Ordine | Lente | Cosa guarda | Modello |
 |---|---|---|---|
-| **prossima** | L5 — Ciclo di vita di colonne e campi | scritte mai lette, lette mai scritte, servite mai consumate, tipi divergenti su 60 tabelle | Sonnet/Fable normale (inventario meccanico) |
+| **prossima** | L5 — Ciclo di vita di colonne e campi — prompt pronto in `docs/piani/PROMPT_FASE5_CICLO_DI_VITA_CAMPI.md`, col rilevatore gia' tarato | scritte mai lette, lette mai scritte, servite mai consumate. Perimetro **ri-misurato il 15/09**: **59** tabelle (non 60), **667 colonne**, 336 nomi distinti; primo giro **20 candidate morte in 6 secondi**, di cui almeno una viva (`idempotency_key`, usata solo in SQL). La classe piu' grave — **letta e mai scritta** — il conteggio delle occorrenze NON la trova: va cercata a parte | Sonnet/Fable normale (inventario meccanico) |
 | 6 | L6 — Tempo, concorrenza, dipendenze che cadono | freeze-time sui fusi estremi, 2 worker su `claim_batch`, OpenAI 429 a metà batch **con tenacity smontato** | Fable `ultrathink` sui casi |
 | 7 | L7 — Fatture ostili in ingresso | ~20 FatturaPA avversarie attraverso parse → guardrail → AI → DB → margini → briefing | Fable `ultrathink` sui casi |
 | 8 | L8 — Mappa cache/snapshot e ordine di deploy | matrice scrittura × 16 cache × 6 invalidatori; snapshot vs formula viva | Fable normale |

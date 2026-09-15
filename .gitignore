@@ -99,6 +99,9 @@ create_admin*.py
 # La cartella e il suo README restano tracciati, i singoli piani no.
 docs/piani/*.md
 !docs/piani/README.md
+# Anche gli script di lavoro di un piano (rilevatori, prototipi) sono effimeri:
+# se uno serve stabilmente, il suo posto e' scripts/, non qui.
+docs/piani/*.py
 
 # Marker di stato per l'hook Stop claude_hook_reviewer_gate.py: effimero, per-sessione.
 .claude/.reviewer_gate_ok
