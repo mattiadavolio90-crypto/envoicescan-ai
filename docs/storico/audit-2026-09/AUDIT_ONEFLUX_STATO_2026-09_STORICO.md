@@ -40,7 +40,7 @@ scrittura, col comando accanto — mai ereditata da un documento precedente.
 | 14/09 | **Lente trasversale L1 — sweep per classe di difetto** (8 classi, 707 candidati) | chiusa parziale — 2 confermati con misura e corretti (export GDPR troncato, mappa fornitori), chokepoint `fetch_all` ordinato, 6/6 mutanti; 5 refutatori caduti: il resto è triage dichiarato |
 | 14/09 | **Lente trasversale L2 — isolamento fra clienti, eseguito** (240 operazioni, 2 clienti su Postgres vero) | chiusa — 152 chiamate cross-tenant, 0 leak, 0 scritture; 2 difetti corretti (PATCH turno con dipendente altrui; assegna-sede 500 invece di 404); 8/12 mutanti uccisi, 4 spiegati |
 | 14/09 | **Lente trasversale L4 — esito statistico dell'AI** (la domanda si e' rovesciata) | chiusa — **l'AI decide l'1,3%** delle righe con provenienza: misurare "quanto sbaglia" avrebbe descritto 4 righe su 39.530. 1 difetto corretto (la correzione del cliente restava anonima nel registro della memoria); 5/6 mutanti, 1 spiegato eseguendo |
-| 15/09 | **Lente trasversale L5 — ciclo di vita di colonne e campi** (667 colonne, 59 tabelle) | chiusa — **nessuna colonna letta-e-mai-scritta che produca un numero sbagliato**: 4 lo sono per costruzione (`fattore_kg` ×2, `users.session_token` ×2), le altre 43 NULL al 100% hanno uno scrittore e nessun cliente le ha compilate; 13 colonne + 4 tabelle morte proposte per il drop; rilevatore riproducibile, 10/10 mutanti + 1 sullo snapshot; saldato il debito identity di L2 |
+| 15/09 | **Lente trasversale L5 — ciclo di vita di colonne e campi** (667 colonne, 59 tabelle) | chiusa — **nessuna colonna letta-e-mai-scritta che produca un numero sbagliato**: 4 lo sono per costruzione (`fattore_kg` ×2, `users.session_token` ×2), le altre 43 NULL al 100% hanno uno scrittore e nessun cliente le ha compilate; 11 colonne + 2 tabelle morte proposte per il drop, 4 decisioni; rilevatore riproducibile, 11/11 mutanti + 1 sullo snapshot; saldato il debito identity di L2. Code-reviewer: 4 blocchi alla 1ª passata (2 tabelle «morte» che non lo erano, una lettura SQL persa, verbale lungo) |
 
 ---
 
@@ -3591,44 +3591,39 @@ hanno **0 scrittori e 0 lettori**. Suite **14.286 + 45 skip** (root), `-m sql`
 
 ## 15/09/2026 — Lente trasversale L5: ciclo di vita di colonne e campi
 
-**La classe grave non c'e', e si sa perche'.** 667 colonne su 59 tabelle (336 nomi
-distinti): per ognuna il rilevatore separa le **letture** (select, filtri, `row["col"]`,
-`obj.col`) dalle **scritture** (chiavi di insert/update/upsert, `INSERT INTO`, `UPDATE SET`,
-`NEW.col` nei trigger, default) su 540 file di codice + 10 Edge Function + 149 SQL, e le
-incrocia con la fotografia dei dati live (righe, non-NULL, distinti per colonna). **47 colonne
-sono NULL al 100% su tabelle con righe**: lette una per una al call site, **nessuna e' letta
-senza scrittore in modo da mostrare un numero sbagliato**. Quattro lo sono per costruzione:
-`custom_tag_prodotti.fattore_kg` e `gruppo_tag_prodotti.fattore_kg` (l'analitica converte in
-kg, l'API scrive, ma il frontend manda `fattore_kg: null` cablato: la conversione per unita' a
-pezzo non puo' mai partire) e `users.session_token` + `_created_at` (ramo legacy di
-`auth_service.py`, 0 token residui). Le altre 43 hanno uno scrittore vero e sono NULL perche'
-nessun cliente ha compilato il campo (tariffe dei turni, override scadenza, coperti mensili,
-`piano_inizio_at` su `users`), o il dato non arriva dalla sorgente (`giorni_termini_xml` solo se
-l'XML ha i termini senza la scadenza; `xml_url` che Invoicetronic non manda mai), o sono lock
-transitori. `category_change_log.actor_*` resta **non misurabile**: 0 eventi su `fatture` dall'8/9.
+**La classe grave non c'e', e si sa perche'.** 667 colonne su 59 tabelle: per ognuna il
+rilevatore (`scripts/audit_ciclo_vita_colonne.py`) separa le **letture** (select, filtri,
+`row["col"]`, `obj.col`) dalle **scritture** (chiavi di insert/update/upsert, `INSERT INTO`,
+`UPDATE SET`, `NEW.col` nei trigger, default) su 540 file di codice + 10 Edge Function + 149
+SQL, e le incrocia con la fotografia dei dati live. **47 colonne sono NULL al 100% su tabelle
+con righe**: lette una per una al call site, **nessuna mostra un numero sbagliato**. Quattro
+sono lette e mai scritte per costruzione: `fattore_kg` su due tabelle (l'analitica converte in
+kg, il frontend manda `fattore_kg: null` cablato) e `users.session_token` + `_created_at`
+(ramo legacy di `auth_service.py`, 0 token). Le altre 43 hanno uno scrittore vero: nessun
+cliente ha compilato il campo (tariffe dei turni, override scadenza, coperti mensili), o il
+dato non arriva (`giorni_termini_xml` solo se l'XML ha i termini senza la scadenza; `xml_url`
+che Invoicetronic non manda), o sono lock transitori. `category_change_log.actor_*` resta
+**non misurabile**: 0 eventi su `fatture` dall'8/9.
 
-**L'inventario e la proposta.** `docs/storico/audit-2026-09/CICLO_DI_VITA_COLONNE.md`, generato
-dal JSON dello script (cifre non trascritte): 15 mai nominate, 20 scritte e mai lette
-(telemetria e attribuzioni: nessun difetto), 582 vive. Per Mattia: **13 colonne morte** (fra cui
-`fatture.data_elaborazione`, default `now()` su 39.646 righe, doppione di `created_at`;
-`upload_events.ack/ack_at/ack_by`; `fornitore_norm` con un UNIQUE inerte) e **4 tabelle morte**
-(`brand_ambigui`, `memoria_ai_categorie`, `review_ignored`, `email_rate_log`: 0 righe, 0
-riferimenti), piu' 3 decisioni. **Niente cancellato.**
+**Inventario e proposta** in `docs/storico/audit-2026-09/CICLO_DI_VITA_COLONNE.md`, generato
+dal JSON dello script: 15 mai nominate, 18 scritte e mai lette (telemetria: nessun difetto),
+584 vive. Per Mattia: **11 colonne morte** (`fatture.data_elaborazione`, default `now()` su
+39.646 righe, doppione di `created_at`; `upload_events.ack/ack_at/ack_by`; `fornitore_norm`
+con un UNIQUE inerte…), **2 tabelle morte** (`memoria_ai_categorie`, `review_ignored`) e
+**4 decisioni**. **Niente cancellato.**
 
-**Il rilevatore si e' rotto due volte prima di misurare, e l'ha detto un test.** Alla prima
-stesura 10 file Python col BOM — fra cui `fastapi_worker.py` e `invoice_service.py` — non si
-lasciavano parsare e venivano saltati in silenzio: `bypass_guardia_piva` e `topics_disabled`
-risultavano «scritte mai lette» ed erano lette proprio li'. Poi `ALTER TABLE x ADD COLUMN y` su
-una riga contava come uso. Oggi i file non parsati fanno fallire la taratura, e
-`tests/test_audit_ciclo_vita_colonne.py` (12 presidi su un mini-repo sintetico + taratura sul
-repo vero) ha ucciso **10/10 mutanti** (BOM, `\b`, ADD COLUMN, `NEW.col`, costante di modulo,
-dati che smentiscono, insert opaco, file taciuto, `UPDATE SET`, drift).
+**Il rilevatore ha mentito tre volte prima di misurare, e ogni volta l'ha detto qualcuno.**
+10 file col BOM (`fastapi_worker.py`, `invoice_service.py`…) saltati in silenzio dall'AST;
+`ALTER TABLE x ADD COLUMN y` su una riga contato come uso (presidio); nell'SQL un nome scritto
+nel file perdeva le sue letture (code-reviewer) — direzione che spinge verso «morta». Il
+reviewer ha anche bocciato due tabelle «morte» del primo giro: `brand_ambigui` e' viva in
+`ai_service.py` con apici singoli, `email_rate_log` ha un job GDPR che la presuppone. Oggi i
+file non parsati fanno fallire la taratura; `tests/test_audit_ciclo_vita_colonne.py` (13
+presidi su un mini-repo sintetico + taratura sul repo vero) ha ucciso **11/11 mutanti**.
 
-**Il debito di L2, saldato.** `genera_schema_snapshot.py` non emetteva `attidentity`:
-`gruppo_tags.id` e `gruppo_tag_prodotti.id` uscivano senza default e la fixture di
-`test_isolamento_per_risorsa.py` li rattoppava. Ora il generatore emette `GENERATED BY DEFAULT
-AS IDENTITY` (e non pre-crea le sequenze identity), lo snapshot e' allineato a mano (niente
-`SUPABASE_DB_URL`, come l'8/9) con anche le 4 colonne che non aveva (`fatture.oscurata`,
-`oscurata_at`, `ristoranti.tipo_attivita`, `users.vista_fatture`), il rattoppo e' tolto. Mutante:
-snapshot senza identity → la fixture dei tag di gruppo va in errore. `-m sql`: **534 verdi**.
-Suite dalla root: **14.288 verdi + 45 skip** (15/09), doc riletti dopo con `test_documentazione_onesta`. Nessun push; in coda 12 commit prima di questo, nessuno mio.
+**Il debito di L2, saldato.** `genera_schema_snapshot.py` non emetteva `attidentity`: ora
+emette `GENERATED BY DEFAULT AS IDENTITY` e non pre-crea le sequenze identity; lo snapshot e'
+allineato a mano (niente `SUPABASE_DB_URL`) con l'identity e le 4 colonne che non aveva, il
+rattoppo nella fixture di `test_isolamento_per_risorsa.py` e' tolto. Mutante: snapshot senza
+identity → la fixture dei tag di gruppo va in errore. `-m sql` **534 verdi**; suite dalla root
+**14.299 verdi + 45 skip** (15/09, dopo i fix del reviewer). Nessun push; in coda 12 commit prima di questi, nessuno mio.

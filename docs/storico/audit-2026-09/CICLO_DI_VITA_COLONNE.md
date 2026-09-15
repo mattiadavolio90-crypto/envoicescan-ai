@@ -13,7 +13,7 @@ codice al call site, una per una. Il CSV accanto e' la fotografia dei dati live
 |---|---|
 | Tabelle `BASE TABLE` in `public` | 59 |
 | Colonne | 667 (336 nomi distinti) |
-| File letti | 540 di codice (py/ts/tsx) + 10 Edge Function + 149 SQL, in 16.9 s |
+| File letti | 540 di codice (py/ts/tsx) + 10 Edge Function + 149 SQL, in 16.5 s |
 | Tabelle vuote | 10 (80 colonne che i dati non possono giudicare) |
 | Colonne NULL al 100% in tabelle con righe | **47** (il bacino della classe grave) |
 | Colonne costanti (1 valore distinto, mai NULL) | 82 |
@@ -28,11 +28,11 @@ a 4/12/16/37 file, `idempotency_key` viva solo in SQL, `ack` non gonfiata da «f
 
 | Esito del rilevatore | Colonne | Cosa vuol dire |
 |---|---|---|
-| viva | 582 | letta e scritta (o scritta di fatto: ha valori a DB) |
+| viva | 584 | letta e scritta (o scritta di fatto: ha valori a DB) |
 | mai nominata | 15 | 0 riferimenti nel codice, nelle Edge Function e negli usi SQL |
 | letta, scrittura incerta | 44 | letta; nessuna scrittura attribuita, ma la tabella ha scritture opache o e' vuota/NULL: esaminate a mano sotto |
 | letta e mai scritta | 6 | letta; nessuna scrittura da nessuna parte e i dati non smentiscono |
-| scritta e mai letta | 20 | ha uno scrittore e nessun lettore: lavoro sprecato a ogni riga |
+| scritta e mai letta | 18 | ha uno scrittore e nessun lettore: lavoro sprecato a ogni riga |
 
 ## La classe grave, cercata esplicitamente: letta e mai scritta
 
@@ -62,7 +62,7 @@ quattro vere stavano fra le 44 «incerte», dove la tabella ha scritture opache.
 | `category_change_log.actor_email` | viva | 0/4135 non-NULL, 0 distinti | **non misurabile** — il trigger li scrive dai GUC di sessione; 0 eventi su fatture dal deploy dell'8/9 (ultimo 03/09), e i 3 su prodotti_utente del 10/09 sono gli anonimi gia' corretti da L4. Si rimisura al primo traffico |
 | `category_change_log.actor_user_id` | scritta mai letta | 0/4135 non-NULL, 0 distinti | **non misurabile** — con actor_email |
 | `category_change_log.batch_id` | viva | 0/4135 non-NULL, 0 distinti | **non misurabile** — con actor_email |
-| `classificazioni_manuali.user_id` | letta scrittura incerta | 0/4 non-NULL, 0 distinti | **morta** — NULL su 4/4: l'unica lettura del codice e' un DELETE per user_id in svuota_cestino, che non matcha mai |
+| `classificazioni_manuali.user_id` | letta scrittura incerta | 0/4 non-NULL, 0 distinti | **decisione** — NULL su 4/4; l'unica lettura del codice e' un DELETE per user_id in svuota_cestino, che non matcha mai. Se la tabella torna scritta dall'app, serve: sta nella stessa decisione |
 | `custom_tag_prodotti.fattore_kg` | letta scrittura incerta | 0/170 non-NULL, 0 distinti | **letta e mai scritta** — letta da tag_analytics (conversione in kg) e dall'API; l'unico scrittore riceve dal frontend un `fattore_kg: null` cablato (analisi-e-tag-client.tsx): la conversione per unita' a pezzo non puo' mai attivarsi. NULL su 170/170 |
 | `custom_tag_suggestions.snooze_until` | viva | 0/62 non-NULL, 0 distinti | **mai usata** — snooze scritto da tag_suggestion_service, nessun cliente l'ha usato |
 | `dipendenti.costo_orario_default` | letta scrittura incerta | 0/4 non-NULL, 0 distinti | **mai usata** — POST/PATCH dipendente lo scrivono; nessuno dei 4 dipendenti ha una tariffa |
@@ -108,8 +108,8 @@ quattro vere stavano fra le 44 «incerte», dove la tabella ha scritture opache.
 
 | Colonna | Rilevatore | Dati | Verdetto |
 |---|---|---|---|
-| `classificazioni_manuali.validato_da` | mai nominata | 4/4 non-NULL, 1 distinti | **morta** — tabella scritta a mano il 30/12/2025 (4 righe); la legge solo l'agente categorization-reviewer |
-| `email_rate_log.oggetto_hash` | mai nominata | 0/0 non-NULL, 0 distinti | **morta** — tabella vuota, 0 riferimenti nel codice e nelle funzioni SQL |
+| `classificazioni_manuali.validato_da` | mai nominata | 4/4 non-NULL, 1 distinti | **decisione** — 0 riferimenti; ma la tabella (4 righe scritte a mano il 30/12/2025) e' letta da ai_service come memoria admin e dall'agente categorization-reviewer: si decide sulla tabella, non sulla colonna |
+| `email_rate_log.oggetto_hash` | mai nominata | 0/0 non-NULL, 0 distinti | **decisione** — tabella senza nessuno scrittore nel codice (0 righe); ma il job GDPR purge_email_rate_log (worker/run.py) la presuppone: si toglie insieme al job e al suo test, o si collega chi doveva scriverla |
 | `fatture.data_elaborazione` | mai nominata | 39646/39646 non-NULL, 3559 distinti | **morta** — default now() su 39.646 righe: doppione di created_at che nessuno legge |
 | `fatture_documenti.note_pagamento` | mai nominata | 0/3905 non-NULL, 0 distinti | **morta** — 0 riferimenti, 0 valori su 3.905 documenti |
 | `prodotti_master.correzioni_count` | mai nominata | 2913/2913 non-NULL, 1 distinti | **morta** — confermata da L4 |
@@ -134,11 +134,9 @@ non rilegge. Costano una scrittura per riga; si tengono se servono a un'indagine
 | Colonna | Rilevatore | Dati | Verdetto |
 |---|---|---|---|
 | `ai_review_log.annullato_da` | scritta mai letta | 0/51 non-NULL, 0 distinti | **mai usata** — idem |
-| `ai_usage_events.item_count` | scritta mai letta | 554/554 non-NULL, 21 distinti | **scritta, mai riletta** — telemetria AI; la legge il report SQL nello stesso file dello scrittore, che il rilevatore non separa |
-| `ai_usage_events.model` | scritta mai letta | 554/554 non-NULL, 2 distinti | **scritta, mai riletta** — idem |
 | `app_settings.updated_by` | scritta mai letta | 1/1 non-NULL, 1 distinti | **scritta, mai riletta** — scritto dall'admin, mai mostrato |
-| `brand_ambigui.prima_vista` | scritta mai letta | 0/0 non-NULL, 0 distinti | **morta** — idem |
-| `brand_ambigui.tasso_correzione` | scritta mai letta | 0/0 non-NULL, 0 distinti | **morta** — idem |
+| `brand_ambigui.prima_vista` | scritta mai letta | 0/0 non-NULL, 0 distinti | **mai usata** — con brand |
+| `brand_ambigui.tasso_correzione` | scritta mai letta | 0/0 non-NULL, 0 distinti | **mai usata** — con brand |
 | `category_change_log.actor_user_id` | scritta mai letta | 0/4135 non-NULL, 0 distinti | **non misurabile** — con actor_email |
 | `custom_tag_suggestions.feedback_note` | scritta mai letta | 10/62 non-NULL, 2 distinti | **scritta, mai riletta** — feedback del cliente (10/62), mai riletto |
 | `fatture.oscurata_at` | scritta mai letta | 1/39646 non-NULL, 1 distinti | **scritta, mai riletta** — 1 riga; si legge `oscurata`, non la data |
@@ -159,7 +157,7 @@ non rilegge. Costano una scrittura per riga; si tengono se servono a un'indagine
 
 | Colonna | Rilevatore | Dati | Verdetto |
 |---|---|---|---|
-| `email_rate_log.destinatario` | letta mai scritta | 0/0 non-NULL, 0 distinti | **morta** — idem |
+| `email_rate_log.destinatario` | letta mai scritta | 0/0 non-NULL, 0 distinti | **decisione** — idem |
 | `fornitori_pagamenti_config.fornitore_norm` | letta mai scritta | 0/11 non-NULL, 0 distinti | **morta** — 0 riferimenti nel codice; la nominano solo un indice UNIQUE inerte (i NULL sono distinti) e un CHECK. NULL su 11/11 |
 | `memoria_ai_categorie.descrizione_normalizzata` | letta mai scritta | 0/0 non-NULL, 0 distinti | **morta** — tabella vuota, 0 riferimenti: la memoria vive in prodotti_utente/prodotti_master |
 | `note_diario.testo` | letta mai scritta | 0/0 non-NULL, 0 distinti | **mai usata** — 0 note |
@@ -170,10 +168,10 @@ non rilegge. Costano una scrittura per riga; si tengono se servono a un'indagine
 
 | Tabella | Righe | Stato | Perche' |
 |---|---|---|---|
-| `brand_ambigui` | 0 | **morta** | 0 righe, 0 riferimenti nel codice, 0 funzioni SQL |
+| `brand_ambigui` | 0 | **mai usata** | 0 righe, ma viva: ai_service.py la legge (cache memoria) e la scrive (upsert) alla correzione di un brand ambiguo — mai scattato |
 | `memoria_ai_categorie` | 0 | **morta** | 0 righe, 0 riferimenti: la memoria vive in prodotti_utente/prodotti_master |
 | `review_ignored` | 0 | **morta** | 0 righe, 0 riferimenti, nemmeno nell'agente |
-| `email_rate_log` | 0 | **morta** | 0 righe, 0 riferimenti nel codice e nelle funzioni SQL |
+| `email_rate_log` | 0 | **decisione** | 0 righe e nessuno scrittore nel codice; il job GDPR purge_email_rate_log del worker la presuppone |
 | `classificazioni_manuali` | 4 | **dell'agente** | 4 righe scritte a mano il 30/12/2025; l'app non la scrive, l'agente categorization-reviewer la legge come priorita' globale |
 | `review_confirmed` | 131 | **dell'agente** | 131 righe (giu-lug) scritte dall'agente categorization-reviewer |
 | `ingredienti_utente` | 0 | **mai usata** | 0 righe, scrittori nel codice (ricette) |
@@ -191,11 +189,21 @@ e riceve i payload in blocco) e in gran parte sono campi interni — hash, token
 provenienze. Non e' una classe di difetto: e' l'elenco da cui partire se un giorno si vuole
 snellire i payload. Lo stampa lo script, in coda.
 
+## Limiti del perimetro
+
+`tools/` (script manutentivi) non e' scandito: un grep a mano sulle colonne morte vi trova un solo
+riferimento, `dismissed_notification_ids` in `tools/check_migrations.py`, che non cambia il verdetto.
+Nell'SQL una colonna nominata in un `WHERE` conta come letta anche se e' un job di purge; e le
+tabelle si attribuiscono solo dalle catene con il nome letterale (`.table("x")`): il resto e' opaco.
+Il primo giro di questa lente ha dichiarato morte `brand_ambigui` ed `email_rate_log`: il
+code-reviewer ha trovato lettori e scrittori con apici singoli e un job GDPR. Le tabelle che
+sopra risultano «morte» sono state ricontrollate con entrambi gli apici e nelle funzioni SQL.
+
 ## Proposta per Mattia — niente e' stato cancellato
 
 Far cadere una colonna e' irreversibile: qui c'e' la lista, la migration la decide lui.
 
-**13 colonne morte** (0 lettori, 0 scrittori, nessun dato che serva):
+**11 colonne morte** (0 lettori, 0 scrittori, nessun dato che serva):
 - `fatture.data_elaborazione`
 - `upload_events.ack`
 - `upload_events.ack_at`
@@ -207,14 +215,13 @@ Far cadere una colonna e' irreversibile: qui c'e' la lista, la migration la deci
 - `prodotti_master.ultimo_correttore`
 - `prodotti_master.descrizione_originale`
 - `fornitori_pagamenti_config.fornitore_norm`
-- `classificazioni_manuali.validato_da`
-- `classificazioni_manuali.user_id`
 
-**4 tabelle morte** (0 righe, 0 riferimenti nel codice e nelle funzioni SQL): `brand_ambigui`, `memoria_ai_categorie`, `review_ignored`, `email_rate_log`.
+**2 tabelle morte** (0 righe, 0 riferimenti nel codice e nelle funzioni SQL): `memoria_ai_categorie`, `review_ignored`.
 
-**3 decisioni**, non drop:
+**4 decisioni**, non drop:
+- `email_rate_log`: nessuno la scrive, ma `purge_email_rate_log` (retention GDPR, `worker/run.py`) e il suo test la presuppongono. O si toglie tutto insieme, o si collega chi doveva scriverla.
 - `fattore_kg` (due tabelle): o si aggiunge il campo nell'interfaccia dei tag, o si tolgono colonna e ramo di conversione. Oggi la conversione in kg per le unita' a pezzo e' promessa dal codice e impossibile per il cliente.
-- `classificazioni_manuali` e `review_confirmed`: le usa solo l'agente `categorization-reviewer`. Restano tabelle dell'agente o si portano nell'app?
+- `classificazioni_manuali` (con le sue colonne `validato_da` e `user_id`, morte nel codice) e `review_confirmed`: la prima e' letta da `ai_service.py` come memoria admin e scritta solo a mano, la seconda solo dall'agente `categorization-reviewer`. Restano tabelle dell'agente/admin o si portano nell'app?
 - `users.session_token` + `session_token_created_at` e il ramo legacy in `auth_service.py`: 0 token residui, si puo' chiudere il ramo insieme alle colonne.
 
 ## Come si rilancia

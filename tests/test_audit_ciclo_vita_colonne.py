@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS public.turni (
 );
 CREATE TABLE IF NOT EXISTS public.altra (
     id bigint NOT NULL,
-    costo numeric
+    costo numeric,
+    scritta_e_letta text
 );
 CREATE OR REPLACE FUNCTION public.trg_turni() RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN
@@ -68,6 +69,8 @@ MIGRAZIONE = """\
 ALTER TABLE public.turni ADD COLUMN sola_def text;
 COMMENT ON COLUMN public.turni.sola_def IS 'letta_sola';
 UPDATE public.turni SET scritta_e_basta = 'x' WHERE id = 1;
+INSERT INTO public.altra (id, scritta_e_letta) VALUES (1, 'x');
+SELECT scritta_e_letta FROM public.altra WHERE id = 1;
 """
 
 PYTHON_CON_BOM = "﻿" + '''
@@ -144,6 +147,16 @@ def test_update_sql_e_una_scrittura_attribuita(repo):
     r = righe["turni.scritta_e_basta"]
     assert r["scritture_tab"] == 1
     assert r["esito"] == "scritta_mai_letta"
+
+
+def test_scritta_e_letta_nello_stesso_file_sql_ha_entrambe(repo):
+    """INSERT e SELECT nello stesso file: la lettura non sparisce perche' c'e'
+    la scrittura. Alla prima stesura spariva (rilievo del code-reviewer, 15/09)."""
+    righe, _ = _inventario(repo)
+    r = righe["altra.scritta_e_letta"]
+    assert r["scritture_tab"] == 1
+    assert r["letture_nome"] == 1
+    assert r["esito"] == "viva"
 
 
 def test_il_trigger_scrive_senza_comparire_nel_codice(repo):

@@ -45,6 +45,18 @@ Trappole gia' pagate (15/09/2026), incorporate qui
    di dati puo' non essere letta da nessuno. Il CSV `--stat` (vedi sotto) serve
    a incrociare, non a decidere da solo.
 
+Limiti dichiarati
+=================
+- `tools/` non e' nel perimetro (script manutentivi, non runtime): un grep a
+  mano l'ha trovato innocuo il 15/09 (un solo hit, in tools/check_migrations.py).
+- Nell'SQL, lettura e scrittura si distinguono per statement: le colonne di un
+  `INSERT`/`UPDATE SET`/`NEW.col :=` sono scritture, ogni altro uso e' lettura.
+  Una funzione che la nomina in un `WHERE` conta come lettore anche se e' un
+  job di purge: il verdetto «scritta mai letta» va comunque riletto al call site.
+- Le tabelle si attribuiscono solo dalle catene che le nominano con una
+  stringa letterale (`.table("x")`, `.from("x")`, `INSERT INTO x`). Un nome
+  di tabella in una variabile lascia la scrittura «opaca senza tabella».
+
 Uso
 ===
     python scripts/audit_ciclo_vita_colonne.py                 # inventario
@@ -406,23 +418,37 @@ def scandisci_sql(percorso: pathlib.Path, occ: Occorrenze, nomi: set[str],
     usi = _senza_definizioni(testo)
     nominati = set(IDENT.findall(usi)) & nomi
 
+    # Le letture si contano sul testo RESIDUO, tolti gli statement di scrittura:
+    # un nome scritto da un INSERT e letto da un SELECT nello stesso file ha
+    # entrambe. (Prima stesura: chi era scritto nel file perdeva ogni lettura —
+    # e' la direzione che spinge verso «morta», l'ha visto il code-reviewer.)
+    residuo = list(usi)
+
+    def _cancella(inizio: int, fine: int) -> None:
+        for i in range(inizio, fine):
+            residuo[i] = " "
+
     for m in RE_SQL_INSERT.finditer(usi):
         for c in set(IDENT.findall(m.group(2))) & nomi:
             occ.scrivi(c, m.group(1), f"{rel}:insert")
+        _cancella(m.start(2), m.end(2))
     for m in RE_SQL_UPDATE.finditer(usi):
         for c in set(RE_SQL_ASSEGNA.findall(m.group(2))) & nomi:
             occ.scrivi(c, m.group(1), f"{rel}:update")
+        _cancella(m.start(2), m.end(2))
     for m in RE_SQL_UPSERT.finditer(usi):
         ins = RE_SQL_INSERT.search(usi, max(0, m.start() - 3000), m.start())
         tab = ins.group(1) if ins else None
         for c in set(RE_SQL_ASSEGNA.findall(m.group(1))) & nomi:
             occ.scrivi(c, tab, f"{rel}:upsert")
+        _cancella(m.start(1), m.end(1))
     for f in RE_SQL_FUNZIONE.finditer(usi):
         tab = trigger_tabella.get(f.group(1))
-        for c in set(RE_SQL_NEW.findall(f.group(3))) & nomi:
-            occ.scrivi(c, tab, f"{rel}:trigger {f.group(1)}")
-    scritti = {n for (k, t, n) in occ.dove if k == "S" and any(d.startswith(rel) for d in occ.dove[(k, t, n)])}
-    for c in nominati - scritti:
+        for m in RE_SQL_NEW.finditer(f.group(3)):
+            if m.group(1) in nomi:
+                occ.scrivi(m.group(1), tab, f"{rel}:trigger {f.group(1)}")
+            _cancella(f.start(3) + m.start(), f.start(3) + m.end())
+    for c in set(IDENT.findall("".join(residuo))) & nomi:
         occ.leggi(c, None, f"{rel}:sql")
     return nominati
 
