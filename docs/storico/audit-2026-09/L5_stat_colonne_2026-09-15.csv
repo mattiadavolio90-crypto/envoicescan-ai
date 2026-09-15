@@ -1,0 +1,668 @@
+tabella,colonna,tipo,nullable,default,n,nn,nd
+ai_review_log,annullato_at,timestamp with time zone,YES,,51,0,0
+ai_review_log,annullato_da,text,YES,,51,0,0
+ai_review_log,attore,text,NO,,51,51,1
+ai_review_log,azione,text,NO,,51,51,1
+ai_review_log,categoria_a,text,NO,,51,51,16
+ai_review_log,categoria_da,text,YES,,51,51,16
+ai_review_log,created_at,timestamp with time zone,NO,now(),51,51,51
+ai_review_log,descrizione,text,YES,,51,51,51
+ai_review_log,id,bigint,NO,nextval('ai_review_log_id_seq'::regclass),51,51,51
+ai_review_log,ids_fatture,ARRAY,NO,'{}'::bigint[],51,51,51
+ai_review_log,nota,text,YES,,51,51,2
+ai_review_log,righe_count,integer,NO,0,51,51,9
+ai_usage_events,completion_tokens,integer,NO,0,554,554,135
+ai_usage_events,created_at,timestamp with time zone,NO,now(),554,554,554
+ai_usage_events,id,bigint,NO,nextval('ai_usage_events_id_seq'::regclass),554,554,554
+ai_usage_events,input_cost,numeric,NO,0,554,554,213
+ai_usage_events,item_count,integer,NO,1,554,554,21
+ai_usage_events,metadata,jsonb,NO,'{}'::jsonb,554,554,26
+ai_usage_events,model,text,NO,'gpt-4o-mini'::text,554,554,2
+ai_usage_events,operation_type,text,NO,,554,554,2
+ai_usage_events,output_cost,numeric,NO,0,554,554,142
+ai_usage_events,prompt_tokens,integer,NO,0,554,554,280
+ai_usage_events,ristorante_id,uuid,NO,,554,554,11
+ai_usage_events,source_file,text,YES,,554,0,0
+ai_usage_events,total_cost,numeric,NO,0,554,554,286
+ai_usage_events,total_tokens,integer,NO,0,554,554,315
+ai_usage_events,user_id,uuid,YES,,554,143,5
+app_settings,key,text,NO,,1,1,1
+app_settings,updated_at,timestamp with time zone,NO,now(),1,1,1
+app_settings,updated_by,text,YES,,1,1,1
+app_settings,value,jsonb,NO,,1,1,1
+assistant_preferences,alert_prezzi_solo_preferiti,boolean,NO,false,3,3,2
+assistant_preferences,chat_ai_enabled,boolean,NO,true,3,3,1
+assistant_preferences,giorni_chiusura_settimanali,smallint,NO,0,3,3,1
+assistant_preferences,nome_referente,text,YES,,3,2,2
+assistant_preferences,ristorante_id,uuid,NO,,3,3,3
+assistant_preferences,topics_disabled,jsonb,NO,'[]'::jsonb,3,3,2
+assistant_preferences,updated_at,timestamp with time zone,NO,now(),3,3,3
+brand_ambigui,aggiunto_automaticamente,boolean,NO,false,0,0,0
+brand_ambigui,brand,text,NO,,0,0,0
+brand_ambigui,categorie_viste,ARRAY,NO,'{}'::text[],0,0,0
+brand_ambigui,id,bigint,NO,nextval('brand_ambigui_id_seq'::regclass),0,0,0
+brand_ambigui,num_correzioni,integer,NO,0,0,0,0
+brand_ambigui,prima_vista,timestamp with time zone,NO,now(),0,0,0
+brand_ambigui,tasso_correzione,numeric,NO,0,0,0,0
+brand_ambigui,ultima_modifica,timestamp with time zone,NO,now(),0,0,0
+cache_version,key,text,NO,,3,3,3
+cache_version,updated_at,timestamp with time zone,NO,now(),3,3,3
+cache_version,version,bigint,NO,1,3,3,3
+categorie,attiva,boolean,NO,true,31,31,1
+categorie,created_at,timestamp with time zone,NO,now(),31,31,1
+categorie,icona,text,NO,'📦'::text,31,31,31
+categorie,id,bigint,NO,nextval('categorie_id_seq'::regclass),31,31,31
+categorie,nome,text,NO,,31,31,31
+categorie,ordinamento,integer,NO,999,31,31,31
+categorie,updated_at,timestamp with time zone,NO,now(),31,31,1
+category_change_log,actor_email,text,YES,,4135,0,0
+category_change_log,actor_user_id,uuid,YES,,4135,0,0
+category_change_log,batch_id,uuid,YES,,4135,0,0
+category_change_log,changed_at,timestamp with time zone,NO,now(),4135,4135,1580
+category_change_log,descrizione,text,YES,,4135,4135,1615
+category_change_log,details,jsonb,NO,'{}'::jsonb,4135,4135,2
+category_change_log,file_origine,text,YES,,4135,4022,1214
+category_change_log,id,bigint,NO,nextval('category_change_log_id_seq'::regclass),4135,4135,4135
+category_change_log,new_categoria,text,YES,,4135,4135,31
+category_change_log,numero_riga,integer,YES,,4135,4022,144
+category_change_log,old_categoria,text,YES,,4135,4135,31
+category_change_log,ristorante_id,uuid,YES,,4135,4022,11
+category_change_log,source,text,NO,'db_trigger'::text,4135,4135,1
+category_change_log,table_name,text,NO,,4135,4135,2
+category_change_log,target_id,text,YES,,4135,4135,3533
+category_change_log,user_id,uuid,YES,,4135,4135,6
+chat_usage_log,created_at,timestamp with time zone,YES,now(),78,78,78
+chat_usage_log,id,uuid,NO,gen_random_uuid(),78,78,78
+chat_usage_log,ristorante_id,uuid,YES,,78,77,6
+chat_usage_log,user_id,uuid,YES,,78,78,4
+classificazioni_manuali,categoria_corretta,text,NO,,4,4,1
+classificazioni_manuali,created_at,timestamp without time zone,YES,now(),4,4,4
+classificazioni_manuali,descrizione,text,NO,,4,4,4
+classificazioni_manuali,id,integer,NO,nextval('classificazioni_manuali_id_seq'::regclass),4,4,4
+classificazioni_manuali,is_dicitura,boolean,YES,false,4,4,1
+classificazioni_manuali,user_id,uuid,YES,,4,0,0
+classificazioni_manuali,validato_da,text,NO,,4,4,1
+custom_tag_prodotti,created_at,timestamp with time zone,NO,now(),170,170,18
+custom_tag_prodotti,descrizione,text,NO,,170,170,126
+custom_tag_prodotti,descrizione_key,text,NO,,170,170,126
+custom_tag_prodotti,fattore_kg,numeric,YES,,170,0,0
+custom_tag_prodotti,id,bigint,NO,nextval('custom_tag_prodotti_id_seq'::regclass),170,170,170
+custom_tag_prodotti,ristorante_id,uuid,NO,,170,170,4
+custom_tag_prodotti,tag_id,bigint,NO,,170,170,15
+custom_tag_prodotti,user_id,uuid,NO,,170,170,2
+custom_tag_suggestion_items,created_at,timestamp with time zone,NO,now(),330,330,75
+custom_tag_suggestion_items,descrizione,text,NO,,330,330,295
+custom_tag_suggestion_items,descrizione_key,text,NO,,330,330,295
+custom_tag_suggestion_items,fornitori_count,integer,NO,0,330,330,1
+custom_tag_suggestion_items,id,bigint,NO,nextval('custom_tag_suggestion_items_id_seq'::regclass),330,330,330
+custom_tag_suggestion_items,last_seen_date,date,YES,,330,330,55
+custom_tag_suggestion_items,occorrenze,integer,NO,1,330,330,12
+custom_tag_suggestion_items,ristorante_id,uuid,NO,,330,330,3
+custom_tag_suggestion_items,selected_by_default,boolean,NO,true,330,330,1
+custom_tag_suggestion_items,suggestion_id,bigint,NO,,330,330,62
+custom_tag_suggestion_items,user_id,uuid,NO,,330,330,3
+custom_tag_suggestions,cluster_key,text,NO,,62,62,60
+custom_tag_suggestions,confidence_score,numeric,YES,,62,62,14
+custom_tag_suggestions,created_at,timestamp with time zone,NO,now(),62,62,62
+custom_tag_suggestions,detection_window_days,integer,NO,30,62,62,2
+custom_tag_suggestions,feedback_note,text,YES,,62,10,2
+custom_tag_suggestions,first_seen_at,timestamp with time zone,NO,now(),62,62,9
+custom_tag_suggestions,id,bigint,NO,nextval('custom_tag_suggestions_id_seq'::regclass),62,62,62
+custom_tag_suggestions,last_seen_at,timestamp with time zone,NO,now(),62,62,10
+custom_tag_suggestions,matched_products_count,integer,NO,0,62,62,13
+custom_tag_suggestions,matched_rows_count,integer,NO,0,62,62,23
+custom_tag_suggestions,ristorante_id,uuid,NO,,62,62,3
+custom_tag_suggestions,snooze_until,timestamp with time zone,YES,,62,0,0
+custom_tag_suggestions,status,text,NO,'pending'::text,62,62,3
+custom_tag_suggestions,suggested_tag_name,text,YES,,62,55,49
+custom_tag_suggestions,suggestion_type,text,NO,,62,62,2
+custom_tag_suggestions,target_tag_id,bigint,YES,,62,9,8
+custom_tag_suggestions,updated_at,timestamp with time zone,NO,now(),62,62,54
+custom_tag_suggestions,user_id,uuid,NO,,62,62,3
+custom_tags,colore,text,YES,,16,6,1
+custom_tags,created_at,timestamp with time zone,NO,now(),16,16,16
+custom_tags,emoji,text,YES,,16,10,4
+custom_tags,id,bigint,NO,nextval('custom_tags_id_seq'::regclass),16,16,16
+custom_tags,nome,text,NO,,16,16,16
+custom_tags,ristorante_id,uuid,NO,,16,16,5
+custom_tags,user_id,uuid,NO,,16,16,3
+daily_briefing_state,created_at,timestamp with time zone,NO,now(),49,49,49
+daily_briefing_state,generated_for_date,date,NO,,49,49,28
+daily_briefing_state,id,uuid,NO,gen_random_uuid(),49,49,49
+daily_briefing_state,ristorante_id,uuid,NO,,49,49,12
+daily_briefing_state,snapshot,jsonb,NO,'{}'::jsonb,49,49,49
+daily_briefing_state,updated_at,timestamp with time zone,NO,now(),49,49,49
+daily_briefing_state,user_id,uuid,NO,,49,49,7
+diario_eventi,colore,text,YES,'sky'::text,2,2,2
+diario_eventi,created_at,timestamp with time zone,YES,now(),2,2,2
+diario_eventi,data_evento,date,NO,,2,2,2
+diario_eventi,descrizione,text,YES,,2,2,2
+diario_eventi,id,uuid,NO,gen_random_uuid(),2,2,2
+diario_eventi,ora_fine,time without time zone,YES,,2,2,1
+diario_eventi,ora_inizio,time without time zone,YES,,2,2,1
+diario_eventi,ristorante_id,uuid,NO,,2,2,1
+diario_eventi,titolo,text,NO,,2,2,2
+diario_eventi,updated_at,timestamp with time zone,YES,now(),2,2,2
+diario_eventi,user_id,uuid,NO,,2,2,1
+dipendenti,attivo,boolean,NO,true,4,4,1
+dipendenti,costo_orario_default,numeric,YES,,4,0,0
+dipendenti,created_at,timestamp with time zone,YES,now(),4,4,4
+dipendenti,id,uuid,NO,gen_random_uuid(),4,4,4
+dipendenti,nome,text,NO,,4,4,4
+dipendenti,ristorante_id,uuid,NO,,4,4,2
+dipendenti,updated_at,timestamp with time zone,YES,now(),4,4,4
+email_rate_log,created_at,timestamp with time zone,NO,now(),0,0,0
+email_rate_log,destinatario,text,NO,,0,0,0
+email_rate_log,id,uuid,NO,gen_random_uuid(),0,0,0
+email_rate_log,oggetto_hash,text,YES,,0,0,0
+email_rate_log,ristorante_id,uuid,YES,,0,0,0
+email_rate_log,user_id,uuid,YES,,0,0,0
+fatture,categoria,text,YES,'Da Classificare'::text,39646,39646,31
+fatture,categoria_fiducia,text,YES,,39646,395,2
+fatture,categoria_fonte,text,YES,,39646,413,9
+fatture,codice_articolo,text,YES,,39646,39646,5095
+fatture,created_at,timestamp with time zone,YES,now(),39646,39646,3559
+fatture,data_competenza,date,YES,,39646,229,2
+fatture,data_consegna,date,YES,,39646,13134,219
+fatture,data_documento,date,YES,,39646,39646,246
+fatture,data_elaborazione,timestamp with time zone,YES,now(),39646,39646,3559
+fatture,deleted_at,timestamp with time zone,YES,,39646,12,2
+fatture,descrizione,text,NO,,39646,39646,7049
+fatture,file_origine,text,NO,,39646,39646,3531
+fatture,fornitore,text,NO,,39646,39646,312
+fatture,id,bigint,NO,nextval('fatture_id_seq'::regclass),39646,39646,39646
+fatture,iva_percentuale,numeric,YES,0,39646,39646,5
+fatture,needs_review,boolean,YES,false,39646,39646,2
+fatture,numero_riga,integer,NO,,39646,39646,657
+fatture,oscurata,boolean,NO,false,39646,39646,2
+fatture,oscurata_at,timestamp with time zone,YES,,39646,1,1
+fatture,piva_cedente,text,YES,,39646,30059,269
+fatture,prezzo_standard,numeric,YES,NULL::numeric,39646,30860,4787
+fatture,prezzo_unitario,numeric,YES,0,39646,39646,3295
+fatture,quantita,numeric,YES,1,39646,39646,2215
+fatture,reviewed_at,timestamp without time zone,YES,,39646,318,14
+fatture,reviewed_by,text,YES,,39646,821,11
+fatture,ripartita_su_gruppo,boolean,NO,false,39646,39646,2
+fatture,ristorante_id,uuid,NO,,39646,39646,11
+fatture,sconto_percentuale,numeric,YES,0,39646,39646,375
+fatture,stato,text,YES,''::text,39646,39646,1
+fatture,tipo_documento,character varying,YES,'TD01'::character varying,39646,39646,7
+fatture,totale_documento,numeric,YES,,39646,39646,3176
+fatture,totale_imponibile,numeric,YES,,39646,39646,3127
+fatture,totale_iva,numeric,YES,,39646,39646,2862
+fatture,totale_riga,numeric,YES,0,39646,39646,9287
+fatture,unita_misura,text,YES,,39646,39646,59
+fatture,user_id,uuid,NO,,39646,39646,6
+fatture_documenti,created_at,timestamp with time zone,NO,now(),3905,3905,3020
+fatture_documenti,data_competenza,date,YES,,3905,7,2
+fatture_documenti,data_documento,date,YES,,3905,3905,252
+fatture_documenti,deleted_at,timestamp with time zone,YES,,3905,336,15
+fatture_documenti,file_origine,text,NO,,3905,3905,3560
+fatture_documenti,fornitore,text,YES,,3905,3905,313
+fatture_documenti,giorni_termini_xml,integer,YES,,3905,0,0
+fatture_documenti,id,uuid,NO,gen_random_uuid(),3905,3905,3905
+fatture_documenti,note_pagamento,text,YES,,3905,0,0
+fatture_documenti,numero_documento,text,YES,,3905,3434,3105
+fatture_documenti,pagata,boolean,NO,false,3905,3905,2
+fatture_documenti,pagata_at,timestamp with time zone,YES,,3905,391,16
+fatture_documenti,pagata_manuale_at,timestamp with time zone,YES,,3905,20,20
+fatture_documenti,piva_fornitore,text,YES,,3905,3434,288
+fatture_documenti,ristorante_id,uuid,NO,,3905,3905,11
+fatture_documenti,scadenza_effettiva,date,YES,,3905,2361,247
+fatture_documenti,scadenza_override,date,YES,,3905,0,0
+fatture_documenti,scadenza_source,text,NO,'none'::text,3905,3905,2
+fatture_documenti,scadenza_xml,date,YES,,3905,2361,247
+fatture_documenti,segno_compensazione,smallint,NO,1,3905,3905,2
+fatture_documenti,source_origin,text,NO,'manual'::text,3905,3905,2
+fatture_documenti,tipo_documento,character varying,NO,'TD01'::character varying,3905,3905,7
+fatture_documenti,totale_documento,numeric,YES,,3905,3898,3202
+fatture_documenti,totale_imponibile,numeric,YES,,3905,3898,3152
+fatture_documenti,totale_iva,numeric,YES,,3905,3823,2882
+fatture_documenti,updated_at,timestamp with time zone,NO,now(),3905,3905,2995
+fatture_documenti,user_id,uuid,NO,,3905,3905,6
+fatture_queue,anteprima_at,timestamp with time zone,YES,,677,383,53
+fatture_queue,anteprima_righe,jsonb,YES,,677,383,353
+fatture_queue,attempt_count,integer,NO,0,677,677,4
+fatture_queue,correlation_id,text,YES,,677,81,81
+fatture_queue,created_at,timestamp with time zone,NO,now(),677,677,675
+fatture_queue,event_id,text,NO,,677,677,677
+fatture_queue,id,bigint,NO,,677,677,677
+fatture_queue,indirizzo_raw,text,YES,,677,339,39
+fatture_queue,last_error,text,YES,,677,11,3
+fatture_queue,locked_at,timestamp with time zone,YES,,677,0,0
+fatture_queue,locked_by,text,YES,,677,0,0
+fatture_queue,max_attempts,integer,NO,8,677,677,1
+fatture_queue,next_retry_at,timestamp with time zone,NO,now(),677,677,673
+fatture_queue,payload_meta,jsonb,YES,,677,677,675
+fatture_queue,piva_raw,text,NO,,677,677,4
+fatture_queue,processed_at,timestamp with time zone,YES,,677,673,673
+fatture_queue,ristorante_id,uuid,YES,,677,673,5
+fatture_queue,source,text,NO,'invoicetronic'::text,677,677,2
+fatture_queue,status,text,NO,'pending'::text,677,677,2
+fatture_queue,user_id,uuid,YES,,677,674,3
+fatture_queue,xml_content,text,YES,,677,1,1
+fatture_queue,xml_hash,text,YES,,677,594,591
+fatture_queue,xml_purged_at,timestamp with time zone,YES,,677,673,673
+fatture_queue,xml_url,text,YES,,677,0,0
+fornitori_pagamenti_config,attiva,boolean,NO,true,11,11,1
+fornitori_pagamenti_config,created_at,timestamp with time zone,NO,now(),11,11,11
+fornitori_pagamenti_config,data_riferimento,text,NO,'data_documento'::text,11,11,1
+fornitori_pagamenti_config,fornitore_norm,text,YES,,11,0,0
+fornitori_pagamenti_config,giorni_pagamento,integer,NO,,11,11,3
+fornitori_pagamenti_config,id,uuid,NO,gen_random_uuid(),11,11,11
+fornitori_pagamenti_config,modalita,text,YES,,11,11,3
+fornitori_pagamenti_config,note,text,YES,,11,0,0
+fornitori_pagamenti_config,piva_fornitore,text,YES,,11,11,10
+fornitori_pagamenti_config,ristorante_id,uuid,NO,,11,11,3
+fornitori_pagamenti_config,updated_at,timestamp with time zone,NO,now(),11,11,11
+fornitori_pagamenti_config,user_id,uuid,NO,,11,11,3
+gruppo_assistant_config,chat_disabilitata,boolean,NO,false,2,2,1
+gruppo_assistant_config,pv_esclusi,ARRAY,NO,'{}'::uuid[],2,2,1
+gruppo_assistant_config,segnali_disattivati,ARRAY,NO,'{}'::text[],2,2,1
+gruppo_assistant_config,updated_at,timestamp with time zone,NO,now(),2,2,2
+gruppo_assistant_config,user_id,uuid,NO,,2,2,2
+gruppo_segnali_state,created_at,timestamp with time zone,NO,now(),39,39,39
+gruppo_segnali_state,generated_for_date,date,NO,,39,39,31
+gruppo_segnali_state,id,uuid,NO,gen_random_uuid(),39,39,39
+gruppo_segnali_state,snapshot,jsonb,NO,'{}'::jsonb,39,39,39
+gruppo_segnali_state,updated_at,timestamp with time zone,NO,now(),39,39,39
+gruppo_segnali_state,user_id,text,NO,,39,39,3
+gruppo_tag_prodotti,created_at,timestamp with time zone,NO,now(),78,78,9
+gruppo_tag_prodotti,descrizione,text,NO,,78,78,73
+gruppo_tag_prodotti,descrizione_key,text,NO,,78,78,73
+gruppo_tag_prodotti,fattore_kg,numeric,YES,,78,0,0
+gruppo_tag_prodotti,id,bigint,NO,,78,78,78
+gruppo_tag_prodotti,tag_id,bigint,NO,,78,78,3
+gruppo_tag_prodotti,user_id,uuid,NO,,78,78,1
+gruppo_tags,colore,text,YES,,3,0,0
+gruppo_tags,created_at,timestamp with time zone,NO,now(),3,3,3
+gruppo_tags,emoji,text,YES,,3,2,2
+gruppo_tags,id,bigint,NO,,3,3,3
+gruppo_tags,nome,text,NO,,3,3,3
+gruppo_tags,user_id,uuid,NO,,3,3,1
+ingredienti_utente,attivo,boolean,YES,true,0,0,0
+ingredienti_utente,categoria,character varying,YES,,0,0,0
+ingredienti_utente,created_at,timestamp with time zone,YES,now(),0,0,0
+ingredienti_utente,fornitore,character varying,YES,,0,0,0
+ingredienti_utente,id,uuid,NO,gen_random_uuid(),0,0,0
+ingredienti_utente,nome,character varying,NO,,0,0,0
+ingredienti_utente,note,text,YES,,0,0,0
+ingredienti_utente,prezzo_per_um,numeric,NO,,0,0,0
+ingredienti_utente,ristorante_id,uuid,YES,,0,0,0
+ingredienti_utente,um,character varying,NO,'KG'::character varying,0,0,0
+ingredienti_utente,updated_at,timestamp with time zone,YES,now(),0,0,0
+ingredienti_utente,user_id,uuid,NO,,0,0,0
+ingredienti_workspace,categoria,character varying,YES,,0,0,0
+ingredienti_workspace,created_at,timestamp with time zone,YES,now(),0,0,0
+ingredienti_workspace,id,uuid,NO,gen_random_uuid(),0,0,0
+ingredienti_workspace,nome,character varying,NO,,0,0,0
+ingredienti_workspace,note,text,YES,,0,0,0
+ingredienti_workspace,prezzo_per_um,numeric,NO,,0,0,0
+ingredienti_workspace,ristorante_id,uuid,YES,,0,0,0
+ingredienti_workspace,um,character varying,NO,'KG'::character varying,0,0,0
+ingredienti_workspace,updated_at,timestamp with time zone,YES,now(),0,0,0
+ingredienti_workspace,user_id,uuid,NO,,0,0,0
+inventario_voci,categoria,text,NO,''::text,6,6,4
+inventario_voci,created_at,timestamp with time zone,YES,now(),6,6,5
+inventario_voci,data_inventario,date,NO,,6,6,3
+inventario_voci,id,uuid,NO,gen_random_uuid(),6,6,6
+inventario_voci,nome,text,NO,,6,6,4
+inventario_voci,note,text,YES,,6,0,0
+inventario_voci,prezzo_unitario,numeric,NO,0,6,6,4
+inventario_voci,quantita,numeric,NO,0,6,6,4
+inventario_voci,ristorante_id,uuid,YES,,6,6,1
+inventario_voci,um,text,NO,'KG'::text,6,6,3
+inventario_voci,updated_at,timestamp with time zone,YES,now(),6,6,5
+inventario_voci,user_id,uuid,YES,,6,6,1
+inventario_voci,valore_totale,numeric,YES,,6,6,5
+login_attempts,attempted_at,timestamp with time zone,YES,now(),30,30,30
+login_attempts,email,text,NO,,30,30,17
+login_attempts,id,bigint,NO,,30,30,30
+login_attempts,success,boolean,YES,false,30,30,2
+margini_mensili,altri_costi_fb,numeric,YES,0,75,75,8
+margini_mensili,altri_costi_spese,numeric,YES,0,75,75,5
+margini_mensili,altri_ricavi_noiva,numeric,YES,0,75,75,44
+margini_mensili,anno,integer,NO,,75,75,1
+margini_mensili,coperti,integer,YES,,75,36,36
+margini_mensili,costi_fb_auto,numeric,YES,0,75,75,14
+margini_mensili,costi_fb_totali,numeric,YES,0,75,75,26
+margini_mensili,costi_spese_auto,numeric,YES,0,75,75,14
+margini_mensili,costo_dipendenti,numeric,YES,0,75,75,12
+margini_mensili,costo_personale_extra,numeric,YES,0,75,75,17
+margini_mensili,created_at,timestamp without time zone,YES,now(),75,75,32
+margini_mensili,fatturato_alcolici,numeric,YES,0,75,75,7
+margini_mensili,fatturato_beverage,numeric,YES,0,75,75,7
+margini_mensili,fatturato_dolci,numeric,YES,0,75,75,6
+margini_mensili,fatturato_food,numeric,YES,0,75,75,7
+margini_mensili,fatturato_iva10,numeric,YES,0,75,75,56
+margini_mensili,fatturato_iva22,numeric,YES,0,75,75,1
+margini_mensili,fatturato_netto,numeric,YES,0,75,75,56
+margini_mensili,food_cost_perc,numeric,YES,0,75,75,13
+margini_mensili,id,uuid,NO,uuid_generate_v4(),75,75,75
+margini_mensili,mese,integer,NO,,75,75,9
+margini_mensili,mol,numeric,YES,0,75,75,36
+margini_mensili,mol_perc,numeric,YES,0,75,75,14
+margini_mensili,personale_perc,numeric,YES,0,75,75,7
+margini_mensili,primo_margine,numeric,YES,0,75,75,35
+margini_mensili,quote_riparto_fb,numeric,NO,0,75,75,13
+margini_mensili,quote_riparto_spese,numeric,NO,0,75,75,21
+margini_mensili,ristorante_id,uuid,NO,,75,75,9
+margini_mensili,spese_perc,numeric,YES,0,75,75,13
+margini_mensili,updated_at,timestamp without time zone,YES,now(),75,75,50
+margini_mensili,user_id,uuid,NO,,75,75,5
+marketplace_leads,contatto_email,text,YES,,0,0,0
+marketplace_leads,contatto_nome,text,YES,,0,0,0
+marketplace_leads,created_at,timestamp with time zone,YES,now(),0,0,0
+marketplace_leads,id,uuid,NO,gen_random_uuid(),0,0,0
+marketplace_leads,messaggio,text,NO,''::text,0,0,0
+marketplace_leads,ristorante_id,uuid,YES,,0,0,0
+marketplace_leads,servizio_key,text,NO,,0,0,0
+marketplace_leads,servizio_label,text,NO,,0,0,0
+marketplace_leads,stato,text,NO,'nuovo'::text,0,0,0
+marketplace_leads,updated_at,timestamp with time zone,YES,now(),0,0,0
+marketplace_leads,user_id,uuid,YES,,0,0,0
+memoria_ai_categorie,categoria,character varying,NO,,0,0,0
+memoria_ai_categorie,descrizione_normalizzata,character varying,NO,,0,0,0
+memoria_ai_categorie,id,uuid,NO,gen_random_uuid(),0,0,0
+memoria_ai_categorie,updated_at,timestamp with time zone,YES,now(),0,0,0
+memoria_ai_categorie,user_id,uuid,NO,,0,0,0
+note_diario,created_at,timestamp with time zone,YES,now(),0,0,0
+note_diario,id,uuid,NO,gen_random_uuid(),0,0,0
+note_diario,ristorante_id,uuid,YES,,0,0,0
+note_diario,testo,text,NO,,0,0,0
+note_diario,updated_at,timestamp with time zone,YES,now(),0,0,0
+note_diario,user_id,uuid,NO,,0,0,0
+notification_inbox,action_page,text,YES,,74,74,11
+notification_inbox,body,text,NO,,74,74,33
+notification_inbox,created_at,timestamp with time zone,NO,now(),74,74,65
+notification_inbox,dedupe_key,text,NO,,74,74,72
+notification_inbox,dismissed_at,timestamp with time zone,YES,,74,30,13
+notification_inbox,expires_at,timestamp with time zone,YES,,74,74,73
+notification_inbox,id,uuid,NO,gen_random_uuid(),74,74,74
+notification_inbox,payload,jsonb,NO,'{}'::jsonb,74,74,28
+notification_inbox,ristorante_id,uuid,NO,,74,74,7
+notification_inbox,severity,text,NO,,74,74,3
+notification_inbox,source_event_at,timestamp with time zone,NO,now(),74,74,73
+notification_inbox,source_type,text,NO,,74,74,2
+notification_inbox,title,text,NO,,74,74,31
+notification_inbox,topic_key,text,NO,,74,74,11
+notification_inbox,user_id,uuid,NO,,74,74,6
+piva_ristoranti,id,uuid,NO,gen_random_uuid(),14,14,14
+piva_ristoranti,nome_ristorante,text,NO,,14,14,14
+piva_ristoranti,piva,character varying,NO,,14,14,12
+piva_ristoranti,ristorante_id,uuid,NO,,14,14,14
+piva_ristoranti,user_id,uuid,NO,,14,14,7
+prezzi_preferiti,created_at,timestamp with time zone,NO,now(),8,8,8
+prezzi_preferiti,descrizione_key,text,NO,,8,8,8
+prezzi_preferiti,fornitore_key,text,NO,,8,8,7
+prezzi_preferiti,id,bigint,NO,nextval('prezzi_preferiti_id_seq'::regclass),8,8,8
+prezzi_preferiti,ristorante_id,uuid,NO,,8,8,3
+prezzi_preferiti,user_id,uuid,NO,,8,8,2
+prodotti_master,categoria,text,NO,,2913,2913,30
+prodotti_master,categoria_suggerita,text,YES,,2913,0,0
+prodotti_master,classificato_da,text,YES,'AI'::text,2913,2913,31
+prodotti_master,confidence,text,YES,'alta'::text,2913,2913,3
+prodotti_master,consecutive_correct_classifications,integer,NO,0,2913,2913,4
+prodotti_master,correzioni_count,integer,YES,0,2913,2913,1
+prodotti_master,created_at,timestamp without time zone,YES,now(),2913,2913,2602
+prodotti_master,descrizione,text,NO,,2913,2913,2913
+prodotti_master,descrizione_originale,text,YES,,2913,0,0
+prodotti_master,id,integer,NO,nextval('prodotti_master_id_seq'::regclass),2913,2913,2913
+prodotti_master,suggerimento_fonte,text,YES,,2913,0,0
+prodotti_master,suggerito_at,timestamp without time zone,YES,,2913,0,0
+prodotti_master,ultima_modifica,timestamp without time zone,YES,now(),2913,2913,2564
+prodotti_master,ultimo_correttore,text,YES,,2913,0,0
+prodotti_master,verified,boolean,YES,false,2913,2913,2
+prodotti_master,volte_visto,integer,YES,1,2913,2913,3
+prodotti_utente,categoria,text,NO,,5400,5400,30
+prodotti_utente,classificato_da,text,YES,,5400,5191,15
+prodotti_utente,created_at,timestamp with time zone,YES,now(),5400,5400,3622
+prodotti_utente,descrizione,text,NO,,5400,5400,5009
+prodotti_utente,id,uuid,NO,gen_random_uuid(),5400,5400,5400
+prodotti_utente,updated_at,timestamp with time zone,YES,now(),5400,5400,3429
+prodotti_utente,user_id,uuid,NO,,5400,5400,6
+prodotti_utente,volte_visto,integer,YES,1,5400,5400,7
+regole_turni_ricorrenti,attiva,boolean,NO,true,0,0,0
+regole_turni_ricorrenti,costo_orario,numeric,YES,,0,0,0
+regole_turni_ricorrenti,created_at,timestamp with time zone,YES,now(),0,0,0
+regole_turni_ricorrenti,dipendente_id,uuid,NO,,0,0,0
+regole_turni_ricorrenti,giorno_settimana,smallint,NO,,0,0,0
+regole_turni_ricorrenti,id,uuid,NO,gen_random_uuid(),0,0,0
+regole_turni_ricorrenti,ora_fine,text,YES,,0,0,0
+regole_turni_ricorrenti,ora_fine2,text,YES,,0,0,0
+regole_turni_ricorrenti,ora_inizio,text,YES,,0,0,0
+regole_turni_ricorrenti,ora_inizio2,text,YES,,0,0,0
+regole_turni_ricorrenti,ristorante_id,uuid,NO,,0,0,0
+regole_turni_ricorrenti,tipo_giorno,text,NO,,0,0,0
+regole_turni_ricorrenti,updated_at,timestamp with time zone,YES,now(),0,0,0
+review_confirmed,categoria_finale,text,NO,,131,131,26
+review_confirmed,confirmed_at,timestamp with time zone,YES,now(),131,131,8
+review_confirmed,confirmed_by,text,NO,,131,131,1
+review_confirmed,descrizione,text,NO,,131,131,131
+review_confirmed,id,bigint,NO,nextval('review_confirmed_id_seq'::regclass),131,131,131
+review_confirmed,is_correct,boolean,YES,true,131,131,1
+review_confirmed,note,text,YES,,131,131,16
+review_ignored,descrizione,text,NO,,0,0,0
+review_ignored,id,bigint,NO,nextval('review_ignored_id_seq'::regclass),0,0,0
+review_ignored,ignored_at,timestamp with time zone,YES,now(),0,0,0
+review_ignored,ignored_by,text,NO,,0,0,0
+review_ignored,ignored_until,timestamp with time zone,NO,,0,0,0
+review_ignored,row_id,text,NO,,0,0,0
+ricavi_email_queue,attachment_name,text,YES,,100,90,1
+ricavi_email_queue,attempt_count,integer,NO,0,100,100,2
+ricavi_email_queue,created_at,timestamp with time zone,NO,now(),100,100,100
+ricavi_email_queue,email_sender,text,NO,,100,100,2
+ricavi_email_queue,email_subject,text,YES,,100,90,1
+ricavi_email_queue,id,uuid,NO,gen_random_uuid(),100,100,100
+ricavi_email_queue,idempotency_key,text,NO,,100,100,100
+ricavi_email_queue,imported_rows,integer,YES,,100,100,5
+ricavi_email_queue,last_error,text,YES,,100,0,0
+ricavi_email_queue,locked_at,timestamp with time zone,YES,,100,0,0
+ricavi_email_queue,locked_by,text,YES,,100,0,0
+ricavi_email_queue,max_attempts,integer,NO,5,100,100,1
+ricavi_email_queue,next_retry_at,timestamp with time zone,NO,now(),100,100,100
+ricavi_email_queue,processed_at,timestamp with time zone,YES,,100,100,100
+ricavi_email_queue,ristorante_id,uuid,YES,,100,100,1
+ricavi_email_queue,status,text,NO,'pending'::text,100,100,1
+ricavi_email_queue,storage_path,text,YES,,100,90,90
+ricavi_email_queue,user_id,uuid,YES,,100,100,1
+ricavi_email_sender_map,attivo,boolean,NO,true,2,2,1
+ricavi_email_sender_map,created_at,timestamp with time zone,NO,now(),2,2,2
+ricavi_email_sender_map,email_sender,text,NO,,2,2,2
+ricavi_email_sender_map,gestionale,text,NO,'passbi_v1'::text,2,2,1
+ricavi_email_sender_map,id,uuid,NO,gen_random_uuid(),2,2,2
+ricavi_email_sender_map,ristorante_id,uuid,NO,,2,2,1
+ricavi_giornalieri,altri_ricavi_noiva,numeric,NO,0,1108,1108,1024
+ricavi_giornalieri,coperti,integer,YES,,1108,1025,490
+ricavi_giornalieri,created_at,timestamp with time zone,NO,now(),1108,1108,430
+ricavi_giornalieri,data,date,NO,,1108,1108,257
+ricavi_giornalieri,fatturato_iva10,numeric,NO,0,1108,1108,1106
+ricavi_giornalieri,fatturato_iva22,numeric,NO,0,1108,1108,1
+ricavi_giornalieri,id,uuid,NO,gen_random_uuid(),1108,1108,1108
+ricavi_giornalieri,ristorante_id,uuid,NO,,1108,1108,6
+ricavi_giornalieri,source,text,NO,'manuale'::text,1108,1108,3
+ricavi_giornalieri,source_meta,jsonb,YES,,1108,1025,2
+ricavi_giornalieri,updated_at,timestamp with time zone,NO,now(),1108,1108,431
+ricavi_giornalieri,user_id,uuid,NO,,1108,1108,3
+ricavi_modalita_mensile,altri_ricavi_noiva,numeric,NO,0,17,17,15
+ricavi_modalita_mensile,anno,integer,NO,,17,17,1
+ricavi_modalita_mensile,coperti,integer,YES,,17,0,0
+ricavi_modalita_mensile,fatturato_iva10,numeric,NO,0,17,17,17
+ricavi_modalita_mensile,fatturato_iva22,numeric,NO,0,17,17,1
+ricavi_modalita_mensile,id,uuid,NO,gen_random_uuid(),17,17,17
+ricavi_modalita_mensile,mese,integer,NO,,17,17,7
+ricavi_modalita_mensile,modalita,text,NO,'giornaliero'::text,17,17,1
+ricavi_modalita_mensile,ristorante_id,uuid,NO,,17,17,4
+ricavi_modalita_mensile,updated_at,timestamp with time zone,NO,now(),17,17,17
+ricavi_ragione_sociale_map,created_at,timestamp with time zone,NO,now(),5,5,3
+ricavi_ragione_sociale_map,gestionale,text,NO,'passbi_v1'::text,5,5,1
+ricavi_ragione_sociale_map,id,uuid,NO,gen_random_uuid(),5,5,5
+ricavi_ragione_sociale_map,ragione_sociale_norm,text,NO,,5,5,5
+ricavi_ragione_sociale_map,ristorante_id,uuid,NO,,5,5,4
+ricette,categoria,text,NO,,5,5,5
+ricette,created_at,timestamp with time zone,YES,now(),5,5,5
+ricette,foodcost_totale,numeric,NO,0,5,5,5
+ricette,id,uuid,NO,uuid_generate_v4(),5,5,5
+ricette,ingredienti,jsonb,NO,'[]'::jsonb,5,5,5
+ricette,nome,text,NO,,5,5,5
+ricette,note,text,YES,,5,0,0
+ricette,ordine_visualizzazione,integer,YES,0,5,5,5
+ricette,prezzo_vendita_ivainc,numeric,YES,NULL::numeric,5,1,1
+ricette,ristorante_id,uuid,YES,,5,5,1
+ricette,updated_at,timestamp with time zone,YES,now(),5,5,5
+ricette,user_id,uuid,NO,,5,5,1
+riparto_costi_catena,anno,integer,NO,,181,181,1
+riparto_costi_catena,created_at,timestamp with time zone,NO,now(),181,181,181
+riparto_costi_catena,descrizione,text,NO,,181,181,73
+riparto_costi_catena,file_origine,text,YES,,181,181,181
+riparto_costi_catena,fornitore,text,YES,,181,181,56
+riparto_costi_catena,id,uuid,NO,gen_random_uuid(),181,181,181
+riparto_costi_catena,importo_totale,numeric,NO,,181,181,153
+riparto_costi_catena,mese,integer,NO,,181,181,9
+riparto_costi_catena,origine,text,NO,'fattura'::text,181,181,1
+riparto_costi_catena,regola,text,NO,'equa'::text,181,181,2
+riparto_costi_catena,tipo,text,NO,'generale'::text,181,181,2
+riparto_costi_catena,updated_at,timestamp with time zone,NO,now(),181,181,181
+riparto_costi_catena,user_id,uuid,NO,,181,181,2
+riparto_costi_catena_quote,categoria,text,YES,,522,522,27
+riparto_costi_catena_quote,id,uuid,NO,gen_random_uuid(),522,522,522
+riparto_costi_catena_quote,quota_importo,numeric,NO,,522,522,304
+riparto_costi_catena_quote,quota_perc,numeric,NO,,522,522,5
+riparto_costi_catena_quote,riparto_id,uuid,NO,,522,522,181
+riparto_costi_catena_quote,ristorante_id,uuid,NO,,522,522,6
+riparto_regole_fornitore,attiva,boolean,NO,true,26,26,1
+riparto_regole_fornitore,created_at,timestamp with time zone,NO,now(),26,26,26
+riparto_regole_fornitore,fornitore,text,NO,,26,26,26
+riparto_regole_fornitore,id,uuid,NO,gen_random_uuid(),26,26,26
+riparto_regole_fornitore,percentuali,jsonb,YES,,26,0,0
+riparto_regole_fornitore,regola,text,NO,'equa'::text,26,26,1
+riparto_regole_fornitore,tipo,text,NO,'generale'::text,26,26,1
+riparto_regole_fornitore,updated_at,timestamp with time zone,NO,now(),26,26,26
+riparto_regole_fornitore,user_id,uuid,NO,,26,26,1
+ristoranti,ai_categorization_count,integer,YES,0,15,15,11
+ristoranti,ai_cost_total,numeric,YES,0,15,15,12
+ristoranti,ai_last_usage,timestamp without time zone,YES,,15,11,11
+ristoranti,ai_pdf_count,integer,YES,0,15,15,2
+ristoranti,attivo,boolean,YES,true,15,15,1
+ristoranti,bypass_guardia_piva,boolean,NO,false,15,15,2
+ristoranti,cap,text,YES,,15,2,2
+ristoranti,comune,text,YES,,15,2,1
+ristoranti,created_at,timestamp without time zone,YES,now(),15,15,15
+ristoranti,id,uuid,NO,gen_random_uuid(),15,15,15
+ristoranti,indirizzo,text,YES,,15,2,2
+ristoranti,indirizzo_match,text,YES,,15,2,2
+ristoranti,nome_ristorante,text,NO,,15,15,14
+ristoranti,nuovi_da,timestamp with time zone,YES,,15,10,9
+ristoranti,partita_iva,character varying,NO,,15,15,12
+ristoranti,piano,text,YES,,15,10,2
+ristoranti,piano_inizio_at,timestamp with time zone,YES,,15,4,1
+ristoranti,ragione_sociale,text,YES,,15,11,9
+ristoranti,sdi_attivo,boolean,NO,false,15,15,2
+ristoranti,sdi_attivo_dal,date,YES,,15,6,1
+ristoranti,sede_tecnica,boolean,NO,false,15,15,2
+ristoranti,tipo_attivita,text,NO,'ristorazione'::text,15,15,1
+ristoranti,updated_at,timestamp without time zone,YES,now(),15,15,15
+ristoranti,user_id,uuid,NO,,15,15,8
+sessioni,created_at,timestamp with time zone,NO,now(),412,412,412
+sessioni,id,uuid,NO,gen_random_uuid(),412,412,412
+sessioni,ip,text,YES,,412,403,23
+sessioni,last_seen_at,timestamp with time zone,NO,now(),412,412,412
+sessioni,revoked_at,timestamp with time zone,YES,,412,395,395
+sessioni,source,text,NO,'login'::text,412,412,5
+sessioni,token,text,NO,,412,412,412
+sessioni,user_agent,text,YES,,412,403,2
+sessioni,user_id,uuid,NO,,412,412,7
+spese_extra,categoria,text,YES,,16,1,1
+spese_extra,created_at,timestamp with time zone,YES,now(),16,16,16
+spese_extra,data_spesa,date,NO,,16,16,9
+spese_extra,descrizione,text,NO,,16,16,5
+spese_extra,id,uuid,NO,gen_random_uuid(),16,16,16
+spese_extra,importo,numeric,NO,,16,16,15
+spese_extra,note,text,YES,,16,1,1
+spese_extra,ristorante_id,uuid,NO,,16,16,4
+spese_extra,tipo,text,NO,,16,16,2
+spese_extra,user_id,uuid,NO,,16,16,3
+system_maintenance_status,error_message,text,YES,,1,0,0
+system_maintenance_status,job_name,text,NO,,1,1,1
+system_maintenance_status,last_run_at,timestamp with time zone,YES,,1,1,1
+system_maintenance_status,rows_deleted,integer,NO,0,1,1,1
+system_maintenance_status,rows_from_trash,integer,NO,0,1,1,1
+system_maintenance_status,status,text,NO,'ok'::text,1,1,1
+system_maintenance_status,updated_at,timestamp with time zone,NO,"timezone('utc'::text, now())",1,1,1
+turni_personale,costo_orario,numeric,YES,,125,0,0
+turni_personale,costo_orario_extra,numeric,YES,,125,0,0
+turni_personale,created_at,timestamp with time zone,YES,now(),125,125,125
+turni_personale,data_turno,date,NO,,125,125,43
+turni_personale,dipendente_id,uuid,NO,,125,125,3
+turni_personale,id,uuid,NO,gen_random_uuid(),125,125,125
+turni_personale,importo_a_carico,numeric,YES,,125,0,0
+turni_personale,importo_extra,numeric,YES,,125,0,0
+turni_personale,lordo_mensile,numeric,YES,,125,0,0
+turni_personale,mensile,boolean,NO,false,125,125,1
+turni_personale,note,text,YES,,125,0,0
+turni_personale,ora_fine,time without time zone,NO,,125,125,13
+turni_personale,ora_fine2,time without time zone,YES,,125,5,2
+turni_personale,ora_inizio,time without time zone,NO,,125,125,14
+turni_personale,ora_inizio2,time without time zone,YES,,125,5,2
+turni_personale,ore_dichiarate,numeric,YES,,125,0,0
+turni_personale,ore_extra,numeric,YES,0,125,110,1
+turni_personale,ristorante_id,uuid,NO,,125,125,1
+turni_personale,tipo_giorno,text,NO,'turno'::text,125,125,3
+turni_personale,user_id,uuid,NO,,125,125,1
+upload_events,ack,boolean,YES,false,6983,6983,1
+upload_events,ack_at,timestamp with time zone,YES,,6983,0,0
+upload_events,ack_by,text,YES,,6983,0,0
+upload_events,alert_data_consegna,text,YES,,6983,1199,2
+upload_events,created_at,timestamp with time zone,NO,now(),6983,6983,6983
+upload_events,details,jsonb,YES,,6983,6983,396
+upload_events,error_message,text,YES,,6983,230,49
+upload_events,error_stage,text,YES,,6983,230,4
+upload_events,file_name,text,NO,,6983,6983,3645
+upload_events,file_type,text,YES,,6983,6983,2
+upload_events,id,uuid,NO,gen_random_uuid(),6983,6983,6983
+upload_events,needs_ack,boolean,NO,false,6983,6983,2
+upload_events,ristorante_id,uuid,YES,,6983,6172,11
+upload_events,rows_excluded,integer,YES,0,6983,6983,1
+upload_events,rows_parsed,integer,YES,0,6983,6983,91
+upload_events,rows_saved,integer,YES,0,6983,6983,98
+upload_events,status,text,NO,,6983,6983,3
+upload_events,user_email,text,NO,,6983,6983,5
+upload_events,user_id,uuid,NO,,6983,6983,6
+upload_locks,locked_at,timestamp with time zone,NO,now(),0,0,0
+upload_locks,ristorante_id,uuid,NO,,0,0,0
+upload_locks,user_id,uuid,NO,,0,0,0
+users,attivo,boolean,YES,true,8,8,1
+users,auth_uid,uuid,YES,,8,5,5
+users,created_at,timestamp with time zone,YES,now(),8,8,8
+users,dismissed_notification_ids,jsonb,NO,'{}'::jsonb,8,8,3
+users,email,character varying,NO,,8,8,8
+users,id,uuid,NO,gen_random_uuid(),8,8,8
+users,last_briefing_seen,timestamp with time zone,YES,,8,6,6
+users,last_login,timestamp with time zone,YES,,8,8,8
+users,last_logout,timestamp with time zone,YES,,8,5,5
+users,last_reset_requested_at,timestamp with time zone,YES,,8,1,1
+users,last_seen_at,timestamp with time zone,YES,,8,8,8
+users,login_attempts,integer,YES,0,8,8,1
+users,nome_gruppo,text,YES,,8,2,2
+users,nome_referente,text,YES,,8,1,1
+users,nome_ristorante,character varying,NO,,8,8,8
+users,note_admin,text,YES,,8,0,0
+users,pagine_abilitate,jsonb,YES,,8,4,3
+users,partita_iva,character varying,YES,,8,3,3
+users,password_changed_at,timestamp with time zone,YES,now(),8,8,8
+users,password_hash,character varying,NO,,8,8,8
+users,piano,character varying,YES,'free'::character varying,8,8,2
+users,piano_inizio_at,timestamp with time zone,YES,,8,0,0
+users,price_alert_threshold,numeric,YES,5.0,8,8,2
+users,privacy_accepted_at,timestamp with time zone,YES,,8,7,7
+users,ragione_sociale,text,YES,,8,2,2
+users,reset_code,text,YES,,8,1,1
+users,reset_expires,timestamp with time zone,YES,,8,1,1
+users,ruolo,character varying,YES,'cliente'::character varying,8,8,1
+users,session_token,text,YES,,8,0,0
+users,session_token_created_at,timestamp with time zone,YES,,8,0,0
+users,tema,text,NO,'dark'::text,8,8,2
+users,trial_activated_at,timestamp with time zone,YES,,8,0,0
+users,trial_active,boolean,NO,false,8,8,1
+users,ultimo_ristorante_id,uuid,YES,,8,4,4
+users,vista_fatture,text,NO,'agenda'::text,8,8,1
