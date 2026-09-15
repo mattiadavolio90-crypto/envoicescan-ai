@@ -497,7 +497,7 @@ obbligatoria per considerare chiuse le altre.
 
 | Ordine | Lente | Cosa guarda | Modello |
 |---|---|---|---|
-| **prossima** | L6 — Tempo, concorrenza, dipendenze che cadono | freeze-time sui fusi estremi, 2 worker su `claim_batch`, OpenAI 429 a metà batch **con tenacity smontato** | Fable `ultrathink` sui casi |
+| **prossima** | L6 — Tempo, concorrenza, dipendenze che cadono | **perimetro misurato il 15/09/2026** (prompt pronto: `docs/piani/PROMPT_FASE6_TEMPO_CONCORRENZA_DIPENDENZE.md`): 8 letture dell'ora **senza fuso** in 6 file su server UTC, 3 soli test che congelano l'ora; 4 processi API + 1 queue-worker, 2 RPC con `SKIP LOCKED` e 3 `FOR UPDATE` senza, 10 presidi su `claim_batch_for_processing` **tutti a un worker**; 4 call site OpenAI (1 sotto `@retry`), 8 chiamate HTTP su 11 **senza timeout**. ⚠️ la premessa «tenacity smontato nei test» scritta qui il 14/09 era **scaduta dal 28/8**: il conftest mocka solo streamlit, il retry è vero ma provato su una funzione sintetica. Casi da **eseguire**: ora congelata sui fusi estremi, due `claim` concorrenti su Postgres vero, `RateLimitError` a metà lotto attraverso il `@retry` vero del call site | Fable `ultrathink` sui casi |
 | 7 | L7 — Fatture ostili in ingresso | ~20 FatturaPA avversarie attraverso parse → guardrail → AI → DB → margini → briefing | Fable `ultrathink` sui casi |
 | 8 | L8 — Mappa cache/snapshot e ordine di deploy | matrice scrittura × 16 cache × 6 invalidatori; snapshot vs formula viva | Fable normale |
 | 9 | L9 — Giornata del cliente e parità `/m` | account nuovo percorso in ordine cliente; stati vuoti, CTA morte, coppie desktop/mobile | Fable normale |
