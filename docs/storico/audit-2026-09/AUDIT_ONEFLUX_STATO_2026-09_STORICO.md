@@ -3670,4 +3670,4 @@ ricavi ha lo stesso lock per lotto senza il moltiplicatore (lotti da 5, nessun w
 per sempre — a DB oggi 100 righe tutte `done`, **0 lock appesi**, mai successo: lasciata com'e'. Per
 Mattia: quota chat sul giorno **UTC**; il SDK ritenta 2 volte sotto i 3 di tenacity; un item che
 sfonda il timeout durante la classificazione continua a pagare l'AI fino alla fine. `-m sql` **538
-verdi**; root **14.328 + 45 skip**. Nessun push; in coda 16 commit prima di questi, nessuno mio.
+verdi**; root **14.343 + 45 skip**. Nessun push; in coda 15 commit prima di questi, nessuno mio.
