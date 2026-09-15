@@ -499,7 +499,7 @@ obbligatoria per considerare chiuse le altre.
 
 | Ordine | Lente | Cosa guarda | Modello |
 |---|---|---|---|
-| **prossima** | L8 — Mappa cache/snapshot e ordine di deploy | matrice scrittura × 16 cache × 6 invalidatori; snapshot vs formula viva | Fable normale |
+| **prossima** | L8 — Mappa cache/snapshot e ordine di deploy | matrice scrittura × cache × invalidatore (misurato il 15/09/2026: 10 file backend, 132 file frontend, 56 punti di invalidazione, 3 tabelle di stato vive); snapshot vs formula viva | **Opus** normale — la stima «Fable» precedeva la misura del perimetro: qui il difetto e' una cella vuota che si vede solo incrociando tre liste, non un caso da scegliere bene |
 | 9 | L9 — Giornata del cliente e parità `/m` | account nuovo percorso in ordine cliente; stati vuoti, CTA morte, coppie desktop/mobile | Fable normale |
 
 **Come si conducono** (vale per tutte): rilevatori e misure **in sessione**, un
