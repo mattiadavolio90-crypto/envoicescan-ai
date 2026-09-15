@@ -99,6 +99,7 @@ import csv
 import json
 import pathlib
 import re
+import subprocess
 import sys
 import time
 
@@ -119,10 +120,14 @@ SCRITTORI_BUILDER = {"insert", "upsert", "update"}
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # Taratura del 15/09/2026 (file di codice che nominano il nome, perimetro DIR_CODICE).
+# Le cifre contano i file VERSIONATI: `deleted_at` fu inciso a 37 misurando un
+# filesystem con 4 script di lavoro non committati in `scripts/`, e in CI (checkout
+# pulito) ne risultavano 33 — rosso sul solo ambiente, col repo identico. Ora il
+# perimetro e' `git ls-files`, quindi la cifra giusta e' 33 ovunque.
 TARATURA_FILE_CODICE = {
     "correzioni_count": 0, "ultimo_correttore": 0,           # morte, confermate da L4
     "consecutive_correct_classifications": 4, "categoria_fonte": 12,
-    "tipo_attivita": 16, "deleted_at": 37,                   # vive
+    "tipo_attivita": 16, "deleted_at": 33,                   # vive
 }
 
 
@@ -166,7 +171,31 @@ def leggi_stat(percorso: pathlib.Path) -> dict[tuple[str, str], dict]:
 # ---------------------------------------------------------------- file
 
 
+def _file_versionati() -> set[pathlib.Path] | None:
+    """I path tracciati da git, o None se git non risponde.
+
+    Il perimetro deve essere il REPO, non il filesystem: uno script di lavoro non
+    versionato in `scripts/` conta come file di codice e sposta la cifra. E' gia'
+    successo — la taratura di `deleted_at` fu incisa a 37 su una macchina con 4
+    script locali non committati, e in CI (checkout pulito) ne risultavano 33: il
+    test di taratura falliva sul solo ambiente, senza che il repo fosse cambiato.
+    """
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "-z"],
+            capture_output=True, timeout=30, check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return {
+        (ROOT / nome).resolve()
+        for nome in res.stdout.decode("utf-8", "replace").split("\0")
+        if nome
+    }
+
+
 def elenca_file(radici: tuple[str, ...], estensioni: tuple[str, ...]) -> list[pathlib.Path]:
+    versionati = _file_versionati()
     out: list[pathlib.Path] = []
     for radice in radici:
         base = ROOT / radice
@@ -176,6 +205,8 @@ def elenca_file(radici: tuple[str, ...], estensioni: tuple[str, ...]) -> list[pa
             if p.suffix not in estensioni or not p.is_file():
                 continue
             if any(parte in ESCLUDI for parte in p.parts) or p.resolve() == QUESTO_FILE:
+                continue
+            if versionati is not None and p.resolve() not in versionati:
                 continue
             out.append(p)
     return out
