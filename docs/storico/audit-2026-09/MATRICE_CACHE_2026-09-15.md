@@ -18,7 +18,7 @@ questa pagina e la differenza è spiegata.
 |---|---|---|---|
 | File backend che nominano cache/TTL | 10 | **21** file, **595** righe | il prompt contava un grep più stretto; la cifra grezza è rumore (variabili locali chiamate `cache`, memoria AI, pool di client) |
 | Cache **dichiarate** (AST, non grep) | — | **82** in 20 file | inventario `scratchpad/inv_cache.py`: assegnazioni a nome `*cache*` + decoratori |
-| Cache che **servono dati al cliente** | — | **14** strutture + **12** funzioni `@_make_cache` | è questa la riga su cui vive la lente, non le 595 |
+| Cache che **servono dati al cliente** | — | **14** strutture + **11** funzioni `@_make_cache` | è questa la riga su cui vive la lente, non le 595. (Il primo conteggio diceva 12: il grep pescava anche due occorrenze in **commento**. Il reviewer l'ha corretto, ri-misurato con `grep '^@_make_cache'`) |
 | Punti di invalidazione | 56 | **82 righe**, riconducibili a **11 invalidatori con nome** | `clear_fatture_cache`, `clear_tags_cache`, `clear_fornitori_cache`, `clear_fatturato_centri_cache`, `clear_ai_deadline`, `invalidate_today_briefing`, `_invalidate_fatture_rows_cache`, `_invalidate_home_kpi_cache`, `_invalidate_sede_attiva_cache`, `_invalidate_assist_pref_cache`, `_invalidate_prezzi_rows_cache` (+4 wrapper espliciti nei router, che non sono invalidatori nuovi) |
 | File frontend con direttive | 132 file / 165 occorrenze | **132 / 165** ✔ | confermato: 158 `no-store`, 4 `revalidate`, 3 `force-dynamic`, 0 `unstable_cache` |
 | Tabelle di stato/snapshot vive | 3 | **3** ✔ | `cache_version` (3), `daily_briefing_state` (53), `gruppo_segnali_state` (40) — tutte scritte il 15/09 |

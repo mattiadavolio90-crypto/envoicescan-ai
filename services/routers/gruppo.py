@@ -529,10 +529,14 @@ def _fatture_arrivate_ieri_gruppo(sb, user_id: str, ids: List[str]) -> Dict[str,
 def _snapshot_versione_corrente(snapshot: Optional[Dict[str, Any]]) -> bool:
     """True se lo snapshot e' stato prodotto dalla versione di logica in esecuzione.
 
-    Usato dai DUE lettori di gruppo_segnali_state (l'endpoint e
-    `_conta_segnali_cache`, che alimenta il briefing di catena): se ne
-    controllasse solo uno, dopo un deploy la pagina mostrerebbe i segnali nuovi e
-    il briefing continuerebbe a contare quelli vecchi.
+    Usato dai due lettori dello snapshot gruppo_segnali_state: l'endpoint
+    `gruppo_segnali` e `_conta_segnali_cache`, che alimenta il briefing di catena.
+    Se se ne controllasse solo uno, dopo un deploy la pagina mostrerebbe i segnali
+    nuovi e il briefing continuerebbe a contare quelli vecchi.
+
+    I consumatori dell'endpoint sono invece tre: il terzo e' il tool della chat di
+    catena (`fastapi_worker.py`, `nome == "gruppo_segnali"`), che chiamando
+    l'endpoint eredita questo controllo senza doverlo ripetere.
 
     Uno snapshot senza `code_version` e' di un codice anteriore a questo presidio:
     non e' corrente. Un valore illeggibile vale come non corrente — meglio
