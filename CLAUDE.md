@@ -141,8 +141,8 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
 
 ## Trappole che sono già costate ore
 
-- **Briefing:** dopo una modifica alla logica, **bumpa `_BRIEFING_CODE_VERSION`**
-  o il cliente continua a vedere il testo vecchio (cache giornaliera + TTL 30').
+- **Snapshot giornalieri:** cambi la logica → **bumpa la sua `*_CODE_VERSION`** o il
+  cliente legge il vecchio: `_BRIEFING_CODE_VERSION` (+TTL 30'), `_SEGNALI_CODE_VERSION`.
 - **Il deploy È l'arrivo del codice su `origin/main`**: **un commit locale non
   deploya niente**, è il `push` a spedire. Le due pipeline differiscono:
   **Vercel** parte solo se il commit tocca `apps/web/**` (`deploy-vercel.yml`,

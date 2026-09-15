@@ -526,6 +526,26 @@ def _fatture_arrivate_ieri_gruppo(sb, user_id: str, ids: List[str]) -> Dict[str,
     return {"n_assegnate": n_assegnate, "n_in_coda": n_in_coda}
 
 
+def _snapshot_versione_corrente(snapshot: Optional[Dict[str, Any]]) -> bool:
+    """True se lo snapshot e' stato prodotto dalla versione di logica in esecuzione.
+
+    Usato dai DUE lettori di gruppo_segnali_state (l'endpoint e
+    `_conta_segnali_cache`, che alimenta il briefing di catena): se ne
+    controllasse solo uno, dopo un deploy la pagina mostrerebbe i segnali nuovi e
+    il briefing continuerebbe a contare quelli vecchi.
+
+    Uno snapshot senza `code_version` e' di un codice anteriore a questo presidio:
+    non e' corrente. Un valore illeggibile vale come non corrente — meglio
+    ricalcolare che servire qualcosa di dubbio.
+    """
+    if not snapshot:
+        return False
+    try:
+        return int(snapshot.get("code_version") or 0) == _SEGNALI_CODE_VERSION
+    except (TypeError, ValueError):
+        return False
+
+
 def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
     """(n_segnali, severity_max) dallo snapshot segnali di OGGI in cache.
 
@@ -555,7 +575,13 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
             .execute()
         )
         if resp.data:
-            segnali = (resp.data[0].get("snapshot") or {}).get("segnali") or []
+            snap = resp.data[0].get("snapshot") or {}
+            # Versione diversa = snapshot di un altro codice. Si tratta come
+            # "non determinabile" (None), non come "nessun segnale": il gate
+            # tutto_ok non deve accendersi su un conteggio che non vale piu'.
+            if not _snapshot_versione_corrente(snap):
+                return None, "info"
+            segnali = snap.get("segnali") or []
             sev_rank = {"error": 2, "warning": 1, "info": 0}
             sev_max = "info"
             for s in segnali:
@@ -1763,6 +1789,17 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # sede + naviga alla pagina del PV giusto. Calcolo 1×/giorno (cache su
 # gruppo_segnali_state, per account), payload JSON piccolo.
 
+# Versione della logica che produce i segnali. Finisce nello snapshot e viene
+# confrontata in lettura: se non combacia, lo snapshot e' stato prodotto da un
+# codice diverso e va ricalcolato (auto-invalidazione su deploy). Stesso patto di
+# _BRIEFING_CODE_VERSION in daily_briefing_service, e stessa ragione: la cache qui
+# dura fino a mezzanotte di Roma e l'unico svuotamento esistente e' per-account,
+# al salvataggio della config assistente. Senza questo, un deploy che cambia
+# soglie o regole non si vedeva fino al giorno dopo.
+# BUMPALA quando cambi _calcola_segnali, le soglie qui sotto o la forma dei
+# segnali. Storico: 1 = versione iniziale del presidio (15/09/2026, audit L8).
+_SEGNALI_CODE_VERSION = 1
+
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
 
@@ -2244,11 +2281,15 @@ def gruppo_segnali(
             )
             if cached.data:
                 snap = cached.data[0].get("snapshot") or {}
-                return SegnaliResponse(
-                    nome_gruppo=nome_gruppo,
-                    generated_at=snap.get("generated_at"),
-                    segnali=[Segnale(**s) for s in (snap.get("segnali") or [])],
-                )
+                # Snapshot prodotto da un'altra versione della logica: non si
+                # serve, si ricalcola. Senza questo un deploy che cambia soglie o
+                # regole restava invisibile fino a mezzanotte di Roma.
+                if _snapshot_versione_corrente(snap):
+                    return SegnaliResponse(
+                        nome_gruppo=nome_gruppo,
+                        generated_at=snap.get("generated_at"),
+                        segnali=[Segnale(**s) for s in (snap.get("segnali") or [])],
+                    )
         except Exception:
             pass
 
@@ -2278,7 +2319,11 @@ def gruppo_segnali(
             sb.table("gruppo_segnali_state").upsert({
                 "user_id": user_id,
                 "generated_for_date": today_iso,
-                "snapshot": {"segnali": segnali, "generated_at": generated_at},
+                "snapshot": {
+                    "segnali": segnali,
+                    "generated_at": generated_at,
+                    "code_version": _SEGNALI_CODE_VERSION,
+                },
                 "updated_at": generated_at,
             }, on_conflict="user_id,generated_for_date").execute()
         except Exception:
