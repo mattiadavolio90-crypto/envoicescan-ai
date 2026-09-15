@@ -51,6 +51,9 @@ Limiti dichiarati
   mano l'ha trovato innocuo il 15/09 (un solo hit, in tools/check_migrations.py).
 - Nell'SQL, lettura e scrittura si distinguono per statement: le colonne di un
   `INSERT`/`UPDATE SET`/`NEW.col :=` sono scritture, ogni altro uso e' lettura.
+  In `UPDATE t SET a = b` l'intera clausola SET e' scrittura: `b` perde la sua
+  lettura (verificato il 15/09 che non sposta nessun verdetto: le colonne
+  «morte» hanno tutte 0 usi SQL).
   Una funzione che la nomina in un `WHERE` conta come lettore anche se e' un
   job di purge: il verdetto «scritta mai letta» va comunque riletto al call site.
 - Le tabelle si attribuiscono solo dalle catene che le nominano con una

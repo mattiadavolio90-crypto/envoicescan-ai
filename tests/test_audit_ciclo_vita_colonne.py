@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS public.turni (
 CREATE TABLE IF NOT EXISTS public.altra (
     id bigint NOT NULL,
     costo numeric,
-    scritta_e_letta text
+    scritta_e_letta text,
+    solo_nella_insert text
 );
 CREATE OR REPLACE FUNCTION public.trg_turni() RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN
@@ -69,7 +70,7 @@ MIGRAZIONE = """\
 ALTER TABLE public.turni ADD COLUMN sola_def text;
 COMMENT ON COLUMN public.turni.sola_def IS 'letta_sola';
 UPDATE public.turni SET scritta_e_basta = 'x' WHERE id = 1;
-INSERT INTO public.altra (id, scritta_e_letta) VALUES (1, 'x');
+INSERT INTO public.altra (id, scritta_e_letta, solo_nella_insert) VALUES (1, 'x', 'y');
 SELECT scritta_e_letta FROM public.altra WHERE id = 1;
 """
 
@@ -157,6 +158,12 @@ def test_scritta_e_letta_nello_stesso_file_sql_ha_entrambe(repo):
     assert r["scritture_tab"] == 1
     assert r["letture_nome"] == 1
     assert r["esito"] == "viva"
+    # E la colonna che sta SOLO nella lista dell'INSERT non e' una lettura: senza
+    # la cancellazione dello span lo sarebbe (e' questo che uccide il mutante).
+    solo = righe["altra.solo_nella_insert"]
+    assert solo["scritture_tab"] == 1
+    assert solo["letture_nome"] == 0
+    assert solo["esito"] == "scritta_mai_letta"
 
 
 def test_il_trigger_scrive_senza_comparire_nel_codice(repo):

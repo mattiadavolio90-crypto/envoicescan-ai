@@ -202,6 +202,7 @@ sopra risultano «morte» sono state ricontrollate con entrambi gli apici e nell
 ## Proposta per Mattia — niente e' stato cancellato
 
 Far cadere una colonna e' irreversibile: qui c'e' la lista, la migration la decide lui.
+`fornitore_norm` e' anche seminata da `tests/test_isolamento_per_risorsa.py`: il drop tocca quel seed.
 
 **11 colonne morte** (0 lettori, 0 scrittori, nessun dato che serva):
 - `fatture.data_elaborazione`
