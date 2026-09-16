@@ -143,7 +143,7 @@ export function DemoMargini() {
           {[
             { label: "Ricavi", cls: "text-sky-700 dark:text-sky-300 border-sky-500/40" },
             { label: "Costi F&B", cls: "text-orange-700 dark:text-orange-300 border-orange-500/40" },
-            { label: "Costi Gestione", cls: "text-purple-700 dark:text-purple-300 border-purple-500/40" },
+            { label: "Spese Generali", cls: "text-purple-700 dark:text-purple-300 border-purple-500/40" },
             { label: "Personale", cls: "text-pink-700 dark:text-pink-300 border-pink-500/40" },
             { label: "Totali & Margini", cls: "text-emerald-700 dark:text-emerald-300 border-emerald-500/40" },
           ].map((c) => (
@@ -204,7 +204,7 @@ export function DemoMargini() {
             <div className="flex flex-col divide-y divide-border">
               <GaugeRow label="Food Cost" value={periodo.food_cost_perc} track="#f97316" c={demoMarginiCommenti.food_cost} tone="amber" />
               <GaugeRow label="1° Margine" value={periodo.primo_margine_perc} track="#10b981" c={demoMarginiCommenti.primo_margine} tone="green" />
-              <GaugeRow label="Costi Gestione" value={periodo.spese_gen_perc} track="#8b5cf6" c={demoMarginiCommenti.costi_gestione} tone="green" />
+              <GaugeRow label="Spese Generali" value={periodo.spese_gen_perc} track="#8b5cf6" c={demoMarginiCommenti.costi_gestione} tone="green" />
               <GaugeRow label="MOL" value={periodo.mol_perc} track="#22c55e" c={demoMarginiCommenti.mol} tone="amber" />
             </div>
           </div>
@@ -278,7 +278,7 @@ function CascataPL() {
     { label: "Fatturato Netto", value: tot.fatturato_netto, result: true, rgb: "14,165,233" },
     { label: "− Costi F&B", value: tot.costi_fb_totali, result: false, rgb: "249,115,22" },
     { label: "= 1° Margine", value: tot.primo_margine, result: true, rgb: "16,185,129" },
-    { label: "− Costi Gestione", value: tot.costi_spese_totali + tot.costi_personale, result: false, rgb: "168,85,247" },
+    { label: "− Spese Generali + Personale", value: tot.costi_spese_totali + tot.costi_personale, result: false, rgb: "168,85,247" },
     { label: "= MOL", value: tot.mol, result: true, rgb: "16,185,129" },
   ];
   const refMax = Math.max(1, ...steps.map((s) => Math.abs(s.value)));

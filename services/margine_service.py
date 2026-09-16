@@ -1033,7 +1033,7 @@ def genera_commenti_kpi(kpi: dict, df_risultati, mesi_filtro: list = None) -> li
     # 3. Spese Generali %
     sg = kpi.get('spese_gen_perc_media', 0.0)
     emoji, testo = _valuta_soglia(sg, 'spese_generali', crescente=True)
-    commenti.append({'kpi_nome': 'Costi Gestione', 'percentuale': f'{sg:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
+    commenti.append({'kpi_nome': 'Spese Generali', 'percentuale': f'{sg:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
     
     # 4. MOL %
     mol = kpi.get('mol_perc_medio', 0.0)
