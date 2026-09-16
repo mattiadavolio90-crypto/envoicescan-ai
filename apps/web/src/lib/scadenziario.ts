@@ -402,6 +402,40 @@ export function mostraBordoScaduta(
 }
 
 /**
+ * Le scadute che il calendario NON sta mostrando, perche' cadono in un altro mese.
+ *
+ * Il calendario disegna una casella sola per le scadenze del mese visualizzato:
+ * e' corretto, ma su una sede reale le scadute erano 414 sparse su SEI mesi
+ * (Villa Guardia, 16/09/2026). Nessun mese puo' mostrarle tutte, per
+ * costruzione — e il cliente leggeva "641.555 € scaduti" in cima con sotto una
+ * griglia quasi vuota, senza che la pagina spiegasse il perche'.
+ *
+ * Gli esclusi sono gli stessi del calendario e dei KPI (pagate, note di credito,
+ * escluse dai conti): un conteggio con una popolazione diversa direbbe un numero
+ * che nessun'altra parte della pagina conferma.
+ *
+ * `mese` e' 0-based come `Date.getMonth()`, per combaciare col componente.
+ */
+export function scaduteFuoriDalMese(
+  documenti: Documento[],
+  anno: number,
+  mese: number,
+  today?: Date,
+): { count: number; totale: number } {
+  let count = 0;
+  let totale = 0;
+  for (const doc of documenti) {
+    if (statoDocumento(doc, today) !== "Scaduta") continue;
+    const s = parseLocalDate(doc.scadenza_effettiva);
+    if (!s) continue;
+    if (s.getFullYear() === anno && s.getMonth() === mese) continue;
+    count++;
+    totale += doc.totale_documento || 0;
+  }
+  return { count, totale };
+}
+
+/**
  * Filtri comuni: periodo + fornitori + is_nuovo. NON include il filtro sede —
  * il KPI per-sede deve riflettere gli altri filtri attivi ma non quello di sede,
  * altrimenti sarebbe sempre un'unica barra.

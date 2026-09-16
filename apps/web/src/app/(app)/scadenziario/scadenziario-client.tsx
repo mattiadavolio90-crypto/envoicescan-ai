@@ -24,6 +24,7 @@ import {
   type Periodo, type Ordine, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, elencaFornitori, statoDocumento, mostraBordoScaduta,
+  scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare,
 } from "@/lib/scadenziario";
 
@@ -514,6 +515,15 @@ function CalendarView({ documenti }: CalendarViewProps) {
     });
   }, [documenti, anno, mese, selectedDay]);
 
+  // Le scadute degli altri mesi: il calendario mostra una finestra sola, e su
+  // una sede reale sono sparse su piu' mesi. Senza questa riga la griglia vuota
+  // sembra dire "non c'e' niente da pagare" mentre i riquadri sopra dicono il
+  // contrario.
+  const fuoriMese = useMemo(
+    () => scaduteFuoriDalMese(documenti, anno, mese),
+    [documenti, anno, mese],
+  );
+
   const cells: (number | null)[] = [
     ...Array(startOffset).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -530,6 +540,16 @@ function CalendarView({ documenti }: CalendarViewProps) {
           <ChevronRight className="size-4" />
         </Button>
       </div>
+
+      {fuoriMese.count > 0 && (
+        <p className="text-xs text-muted-foreground -mt-1">
+          <span className="font-medium text-rose-600 dark:text-rose-400">
+            {fuoriMese.count} {fuoriMese.count === 1 ? "fattura scaduta" : "fatture scadute"}
+          </span>
+          {" "}({formatEuro(fuoriMese.totale)}) {fuoriMese.count === 1 ? "ha" : "hanno"} scadenza
+          in altri mesi e non compare{fuoriMese.count === 1 ? "" : "no"} qui. Le trovi nella vista Lista.
+        </p>
+      )}
 
       <div className="grid grid-cols-7 gap-1">
         {GIORNI_SETTIMANA.map(g => (
