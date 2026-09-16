@@ -382,6 +382,26 @@ export function statoDocumento(d: Documento, today?: Date): StatoDocumento {
 }
 
 /**
+ * Il bordo rosso della riga: solo dove la scadenza e' anche mostrata.
+ *
+ * La vista "Per mese" nasconde di proposito tutto cio' che riguarda le scadenze
+ * (vedi `DocumentoRowProps.mostraScadenze`). Il bordo era l'unica delle cinque
+ * conseguenze rimasta fuori: la riga restava marcata "in ritardo" mentre la data
+ * che lo giustifica era nascosta, e il cliente non aveva modo di spiegarsela.
+ *
+ * Sta qui e non nel .tsx perche' la rete di test del frontend copre `lib/`: una
+ * condizione dentro il componente non sarebbe misurabile da nessun test.
+ */
+export function mostraBordoScaduta(
+  d: Documento,
+  mostraScadenze: boolean,
+  today?: Date,
+): boolean {
+  if (!mostraScadenze) return false;
+  return statoDocumento(d, today) === "Scaduta";
+}
+
+/**
  * Filtri comuni: periodo + fornitori + is_nuovo. NON include il filtro sede —
  * il KPI per-sede deve riflettere gli altri filtri attivi ma non quello di sede,
  * altrimenti sarebbe sempre un'unica barra.

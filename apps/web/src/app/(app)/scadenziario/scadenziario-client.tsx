@@ -23,7 +23,7 @@ import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
-  ordinaDocumenti, elencaFornitori, statoDocumento,
+  ordinaDocumenti, elencaFornitori, statoDocumento, mostraBordoScaduta,
   filtraDocumenti, aggregaPerSede, contaDaPagare,
 } from "@/lib/scadenziario";
 
@@ -148,21 +148,28 @@ type DocumentoRowProps = {
   sedeTecnicaId?: string;
   /**
    * Nella vista "Per mese" sparisce tutto cio' che riguarda le scadenze: badge
-   * della fonte, data di scadenza, selezione multipla e "Paga". Una prop su
-   * questo componente e non un secondo componente copiato, che al primo fix
-   * divergerebbe mostrando due elenchi diversi per le stesse fatture.
+   * della fonte, data di scadenza, selezione multipla, "Paga" e il bordo rosso
+   * di riga. Una prop su questo componente e non un secondo componente copiato,
+   * che al primo fix divergerebbe mostrando due elenchi diversi per le stesse
+   * fatture.
+   *
+   * Il bordo era rimasto fuori da questo elenco fino al 16/09/2026: la riga
+   * segnalava "in ritardo" mentre la data che lo giustifica era nascosta qui
+   * sotto. La decisione vive in `mostraBordoScaduta` (lib/scadenziario), dove i
+   * test la raggiungono.
    */
   mostraScadenze?: boolean;
 };
 
 function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecnicaId, mostraScadenze = true }: DocumentoRowProps) {
   const isOverdue = statoDocumento(doc) === "Scaduta";
+  const bordoScaduta = mostraBordoScaduta(doc, mostraScadenze);
 
   return (
     <div
       className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors cursor-pointer group
         ${selected ? "bg-primary/8" : "hover:bg-muted/50"}
-        ${isOverdue && !doc.pagata ? "border-l-2 border-rose-500/60" : ""}`}
+        border-l-2 ${bordoScaduta ? "border-rose-500/60" : "border-transparent"}`}
       onClick={() => onPeek(doc)}
     >
       <input
