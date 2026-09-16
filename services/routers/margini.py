@@ -923,6 +923,12 @@ def _mesi_senza_costi(mesi_attivi: list) -> int:
 # senza ripetere la frase lunga, e soprattutto non e' vuoto (vedi sopra).
 _TESTO_INCOMPLETO_BREVE = "Nessun giudizio: mancano costi in alcuni mesi del periodo"
 
+# Le voci che il frontend rende come gauge (calcolo-tab.tsx): "Costo del Lavoro"
+# NON e' fra queste — il worker manda cinque commenti, i gauge sono quattro. La
+# spiegazione con le cifre va su una voce VISIBILE, altrimenti il cliente legge
+# cinque volte il rimando breve e mai il motivo.
+_KPI_CON_GAUGE = frozenset({"food_cost", "primo_margine", "spese_generali", "mol"})
+
 
 def _testo_dati_incompleti(n_senza: int, n_attivi: int) -> str:
     mesi = "mese" if n_senza == 1 else "mesi"
@@ -1360,6 +1366,7 @@ def get_margini_analisi(
         testo_incompleto = (
             _testo_dati_incompleti(n_senza_costi, n_attivi) if n_senza_costi > 0 else None
         )
+        spiegazione_data = False
         for key, val, crescente, nome in [
             ("food_cost", fc_perc, True, "Food Cost"),
             ("primo_margine", pm_perc, False, "1° Margine"),
@@ -1368,15 +1375,25 @@ def get_margini_analisi(
             ("mol", mol_perc, False, "MOL"),
         ]:
             if testo_incompleto:
-                # La spiegazione per esteso una volta sola, sulla PRIMA voce: e' la
-                # stessa per tutte e cinque (la base incompleta e' comune) e
-                # ripeterla cinque volte di fila la fa leggere zero. Le altre
-                # portano il rimando breve, MAI stringa vuota: il frontend rende
-                # `commento?.commento ?? "—"` (calcolo-tab.tsx), e `??` non scatta
-                # su "" — una stringa vuota uscirebbe come riga bianca sotto al
-                # gauge, non come trattino.
+                # La spiegazione per esteso una volta sola: e' la stessa per tutte e
+                # cinque (la base incompleta e' comune) e ripeterla cinque volte di
+                # fila la fa leggere zero. Le altre portano il rimando breve, MAI
+                # stringa vuota: il frontend rende `commento?.commento ?? "—"`
+                # (calcolo-tab.tsx), e `??` non scatta su "" — una stringa vuota
+                # uscirebbe come riga bianca sotto al gauge, non come trattino.
+                #
+                # Su `_KPI_CON_GAUGE`, non sulla prima voce della lista: il frontend
+                # rende QUATTRO gauge e "Costo del Lavoro" non e' fra questi. Legarsi
+                # all'ordine della lista qui sopra significherebbe che riordinandola
+                # la frase con le cifre finisce sull'unica voce che nessuno vede.
                 emoji = "ℹ️"
-                testo = testo_incompleto if not commenti else _TESTO_INCOMPLETO_BREVE
+                testo = (
+                    testo_incompleto
+                    if key in _KPI_CON_GAUGE and not spiegazione_data
+                    else _TESTO_INCOMPLETO_BREVE
+                )
+                if testo is testo_incompleto:
+                    spiegazione_data = True
             else:
                 emoji, testo = _valuta_soglia_margine(val, key, crescente, settore)
             commenti.append(CommentoKpi(

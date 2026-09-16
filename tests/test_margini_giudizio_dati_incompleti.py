@@ -219,3 +219,24 @@ def test_endpoint_nessun_commento_e_mai_vuoto():
     )
     for nome, voce in c.items():
         assert voce.commento.strip(), f"{nome} ha commento vuoto"
+
+
+def test_la_spiegazione_sta_su_una_voce_che_il_frontend_mostra():
+    """La frase con le cifre non deve finire sull'unica voce senza gauge.
+
+    Il worker manda CINQUE commenti, `calcolo-tab.tsx` rende QUATTRO gauge:
+    "Costo del Lavoro" non ne ha uno. Ancorare la spiegazione alla prima voce
+    della lista funzionava per caso — riordinandola, la frase con le cifre
+    sarebbe finita sull'unica voce che nessuno vede, e il cliente avrebbe letto
+    cinque volte il rimando breve senza mai il motivo.
+    """
+    c = _commenti_endpoint(
+        [_mese(2026, 1, 110000.0), _mese(2026, 2, 110000.0)],
+        {(2026, 2): (30000.0, 5000.0)},
+        "2026-01-01", "2026-02-28",
+    )
+    con_cifre = [n for n, x in c.items() if "1 mese su 2 mesi" in x.commento]
+    assert len(con_cifre) == 1, f"spiegazione su {len(con_cifre)} voci: {con_cifre}"
+    assert con_cifre[0] != "Costo del Lavoro", (
+        "la spiegazione e' sull'unica voce senza gauge: il cliente non la vede"
+    )
