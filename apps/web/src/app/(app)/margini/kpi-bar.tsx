@@ -125,7 +125,7 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
     { label: "Fatturato Netto",  numeric: kpi.fatturato_netto, sub: `lordo ${formatEuro(kpi.fatturato_lordo)}`, tone: "sky",    spark: kpi.spark_lordo },
     { label: "Costi F&B",        numeric: kpi.costi_fb,                                                          tone: "orange", spark: kpi.spark_fb },
     { label: "Margine Lordo",    numeric: kpi.primo_margine,                                                     tone: kpi.primo_margine >= 0 ? "emerald" : "rose", spark: kpi.spark_margine },
-    { label: "Costi Gestione",   numeric: kpi.spese_generali,                                                    tone: "violet", spark: kpi.spark_spese },
+    { label: "Spese Generali",   numeric: kpi.spese_generali,                                                    tone: "violet", spark: kpi.spark_spese },
     { label: "Costo Personale",  numeric: kpi.costo_personale,                                                   tone: "pink",   spark: kpi.spark_personale },
     { label: "MOL",              numeric: kpi.mol,                                                                tone: molTone,  spark: kpi.spark_mol },
   ];

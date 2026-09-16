@@ -890,6 +890,38 @@ _TESTO_SENZA_SOGLIA_RETAIL = (
     "confronta questo valore coi tuoi mesi precedenti"
 )
 
+# Mesi con ricavi ma SENZA alcun costo automatico: il margine di quel mese non e'
+# un risultato, e' un buco nei dati. `costi_mancanti` (fastapi_worker._kpi_periodo)
+# gia' lo riconosce per il SINGOLO mese, ma sull'aggregato non scattava: basta che
+# qualche mese i costi ce li abbia perche' la condizione sia falsa.
+#
+# Misurato il 16/09/2026 su una sede reale, anno in corso: 4 mesi su 9 senza costi
+# merce e 3 senza personale portavano la media del MOL al 68%, con il giudizio
+# "MOL eccellente — ottima redditivita' operativa" in verde. I soli mesi completi
+# (apr-giu) dicevano 34,9%, 39,2%, 39,3%. L'app si complimentava su dati che non
+# aveva — il danno peggiore per un cliente che deve fidarsi dei numeri.
+#
+# Il NUMERO resta (decisione di Mattia: il calcolo non si tocca, e l'avviso di
+# incompletezza esiste gia' altrove): sparisce il GIUDIZIO, sostituito dal conteggio
+# dei mesi incompleti. Stessa forma del caso retail: emoji neutra che il frontend
+# mappa gia' su colore neutro (`coloreDaCommento`, calcolo-tab.tsx), riga che resta
+# al suo posto e dice il valore invece di valutarlo.
+def _mesi_senza_costi(mesi_attivi: list) -> int:
+    """Quanti mesi con fatturato non hanno NESSUN costo automatico (F&B + spese)."""
+    return sum(
+        1 for p in mesi_attivi
+        if (p.costi_fb_totali or 0) <= 0 and (p.costi_spese_totali or 0) <= 0
+    )
+
+
+def _testo_dati_incompleti(n_senza: int, n_attivi: int) -> str:
+    mesi = "mese" if n_senza == 1 else "mesi"
+    su = "mese" if n_attivi == 1 else "mesi"
+    return (
+        f"Nessun giudizio: {n_senza} {mesi} su {n_attivi} {su} del periodo non ha "
+        "costi registrati, quindi la media non e' confrontabile con una soglia"
+    )
+
 
 def _nome_kpi_per_settore(key: str, nome_default: str, settore: Optional[str]) -> str:
     if settore == SETTORE_RETAIL:
@@ -1312,6 +1344,12 @@ def get_margini_analisi(
     # Commenti automatici
     commenti: List[CommentoKpi] = []
     if n_attivi > 0:
+        # Se il periodo contiene mesi con ricavi e zero costi, le percentuali sono
+        # calcolate su una base incompleta: il numero resta, il giudizio no.
+        n_senza_costi = _mesi_senza_costi(mesi_attivi)
+        testo_incompleto = (
+            _testo_dati_incompleti(n_senza_costi, n_attivi) if n_senza_costi > 0 else None
+        )
         for key, val, crescente, nome in [
             ("food_cost", fc_perc, True, "Food Cost"),
             ("primo_margine", pm_perc, False, "1° Margine"),
@@ -1319,7 +1357,10 @@ def get_margini_analisi(
             ("personale", pers_perc, True, "Costo del Lavoro"),
             ("mol", mol_perc, False, "MOL"),
         ]:
-            emoji, testo = _valuta_soglia_margine(val, key, crescente, settore)
+            if testo_incompleto:
+                emoji, testo = ("ℹ️", testo_incompleto)
+            else:
+                emoji, testo = _valuta_soglia_margine(val, key, crescente, settore)
             commenti.append(CommentoKpi(
                 kpi_nome=_nome_kpi_per_settore(key, nome, settore),
                 percentuale=f"{val:.1f}%",

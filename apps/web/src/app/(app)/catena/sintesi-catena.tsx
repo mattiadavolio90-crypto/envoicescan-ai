@@ -410,13 +410,20 @@ function SaluteGruppoCard({
                     className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3 py-2 text-left text-sm transition-colors hover:bg-background/70 disabled:opacity-50"
                   >
                     <span className={cn("size-2.5 shrink-0 rounded-full", t.dot)} />
-                    <span className="min-w-0 flex-1 truncate">{pv.nome}</span>
+                    {/* min-w, non solo flex-1: fino al 16/09/2026 il nome era l'UNICO
+                        elemento della riga senza shrink-0 — pallino, "dati incompleti",
+                        indice e freccia erano tutti incomprimibili. A 1140px (un
+                        portatile) l'unico che poteva cedere era lui, e truncate lo
+                        portava a larghezza ZERO: la riga diceva "● dati incompleti 0 ›"
+                        senza dire di quale sede. In una pagina che serve a confrontare
+                        i punti vendita. Il nome e' il dato, non l'accessorio. */}
+                    <span className="min-w-[7ch] flex-1 truncate">{pv.nome}</span>
                     {r?.dati_incompleti ? (
                       // Dati incompleti: l'indice sotto è inaffidabile (calcolato su dati
                       // parziali), quindi NON lo affianchiamo a un margine% che darebbe
                       // l'illusione di due numeri attendibili. Il dettaglio di cosa manca
                       // vive in "Da vedere nella catena" — un solo posto per quell'info.
-                      <span className="shrink-0 text-xs text-muted-foreground/60">dati incompleti</span>
+                      <span className="min-w-0 truncate text-xs text-muted-foreground/60">dati incompleti</span>
                     ) : r && r.margine_perc != null ? (
                       <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
                         margine {pct(r.margine_perc)}

@@ -96,6 +96,30 @@ export function todayLocalIso(): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+
+/**
+ * Quante fatture sono DA PAGARE: la stessa popolazione dei bucket di scadenza
+ * (Scadute, Questa settimana, Questo mese, Oltre, Senza scadenza).
+ *
+ * Esclude cio' che ha una sezione propria e non e' un'obbligazione di pagamento:
+ * le escluse dai conti, le note di credito e le gia' pagate — gli stessi tre
+ * predicati, nello stesso ordine, di `bucketizeDocumenti` e `computeKpi`.
+ *
+ * Esiste perche' il contatore in cima alla lista sommava OGNI documento
+ * filtrato: su una sede reale diceva "426 su 581" mentre la sezione Scadute ne
+ * elencava 414 — la differenza erano 12 note di credito scadute. Il numero non
+ * era falso, era di un'altra popolazione rispetto a quella elencata sotto.
+ */
+export function contaDaPagare(documenti: Documento[]): number {
+  let n = 0;
+  for (const doc of documenti) {
+    if (doc.oscurata) continue;
+    if (doc.is_nota_credito) continue;
+    if (doc.pagata) continue;
+    n++;
+  }
+  return n;
+}
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   const today = new Date();
   today.setHours(0, 0, 0, 0);

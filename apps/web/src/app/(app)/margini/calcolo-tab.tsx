@@ -75,7 +75,7 @@ const ROWS: RowDef[] = [
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
   { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
   { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
-  { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: DERIVE.totale_costi, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
+  { key: "totale_costi",          label: "= Spese Generali + Personale", type: "computed", section: "spese", isMetric: true, derive: DERIVE.totale_costi, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
   { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
 
@@ -336,7 +336,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
         {([
           { label: "Ricavi", section: "ricavi" as Section },
           { label: "Costi F&B", section: "fb" as Section },
-          { label: "Costi Gestione", section: "spese" as Section },
+          { label: "Spese Generali", section: "spese" as Section },
           { label: "Personale", section: "personale" as Section },
           { label: "Totali & Margini", section: "margine" as Section },
         ]).map((c) => (
@@ -878,12 +878,14 @@ function AnalisiVisiva({
             {[
               { label: labelMerce,       kpiNome: labelMerce,        valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
               { label: "1° Margine",     kpiNome: "1° Margine",      valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
-              { label: "Costi Gestione", kpiNome: "Spese Generali",  valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
+              { label: "Spese Generali", kpiNome: "Spese Generali",  valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
               { label: "MOL",            kpiNome: "MOL",             valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "#22c55e", valueColor: molColor },
             ].map((g) => {
               // Il match e' sul nome che manda /api/margini/analisi (margini.py:1209-1213),
-              // non sull'etichetta a video: il gauge "Costi Gestione" cercava se stesso
-              // mentre il worker manda "Spese Generali", e restava senza emoji ne commento.
+              // non sull'etichetta a video: il gauge si chiamava "Costi Gestione" e
+              // cercava se stesso mentre il worker manda "Spese Generali", restando
+              // senza emoji ne commento. Dal 16/09/2026 label e kpiNome coincidono,
+              // ma il match resta sul nome del worker: e' quello il contratto.
               const commento = commentoPerKpi(data.commenti, g.kpiNome);
               return (
                 <div key={g.label} className="flex items-center gap-6 py-5">
@@ -911,7 +913,7 @@ function CascataPL({ t }: { t: MesePivot }) {
     { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", rgb: "14,165,233" },
     { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", rgb: "249,115,22" },
     { label: "= 1° Margine", value: t.primo_margine, kind: "result", rgb: t.primo_margine >= 0 ? "16,185,129" : "244,63,94" },
-    { label: "− Costi Gestione", value: t.costi_spese_totali + t.costi_personale, kind: "cost", rgb: "168,85,247" },
+    { label: "− Spese Generali + Personale", value: t.costi_spese_totali + t.costi_personale, kind: "cost", rgb: "168,85,247" },
     { label: "= MOL", value: t.mol, kind: "result", rgb: t.mol >= 0 ? "16,185,129" : "244,63,94" },
   ];
   const refMax = Math.max(1, ...steps.map((s) => Math.abs(s.value)));

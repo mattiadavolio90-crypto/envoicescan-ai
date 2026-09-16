@@ -24,7 +24,7 @@ import {
   type Periodo, type Ordine, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, elencaFornitori, statoDocumento,
-  filtraDocumenti, aggregaPerSede,
+  filtraDocumenti, aggregaPerSede, contaDaPagare,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -2264,9 +2264,16 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         {view === "agenda" && (
           <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
             <span>
+              {/* Conta le fatture DA PAGARE, la stessa popolazione dei bucket di
+                  scadenza elencati sotto. Fino al 16/09/2026 contava ogni
+                  documento filtrato: su Villa Guardia diceva "426 su 581" mentre
+                  la sezione Scadute ne elencava 414, perche' dentro i 426
+                  c'erano anche le 12 note di credito scadute (che hanno la loro
+                  sezione, non un bucket di scadenza) e le escluse dai conti.
+                  Due popolazioni diverse a due centimetri di distanza. */}
               {filtriAttivi
-                ? `${documentiFiltrati.length} su ${documenti.length} fatture`
-                : `${documenti.length} fatture totali`}
+                ? `${contaDaPagare(documentiFiltrati)} su ${contaDaPagare(documenti)} fatture da pagare`
+                : `${contaDaPagare(documenti)} fatture da pagare`}
             </span>
             <div className="flex gap-3">
               {totaleNonPagateFiltrate > 0 && (
