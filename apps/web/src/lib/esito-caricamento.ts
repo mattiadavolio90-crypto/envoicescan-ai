@@ -72,3 +72,36 @@ export function messaggioListaVuota(opzioni: {
 export function mostraGuasto(caricamentoFallito: boolean, righeCaricate: number): boolean {
   return caricamentoFallito && righeCaricate === 0;
 }
+
+
+/**
+ * Lo stesso principio applicato a un OGGETTO invece che a una lista.
+ *
+ * I KPI di /margini non sono righe: sono sei totali. `fetchKpiData` ripiega su
+ * sei zeri quando il worker non risponde entro 8s, risponde male o manca la
+ * sessione — e fino al 16/09/2026 quel ripiego era indistinguibile da un
+ * periodo davvero vuoto. L'audit ha visto i riquadri fermi a "0 €" per oltre 30
+ * secondi mentre la tabella sotto, che chiama un endpoint diverso lato client,
+ * si popolava: non stavano caricando, si erano gia' arresi.
+ *
+ * `non_disponibile` e' la stessa distinzione di `EsitoLista`, in forma di flag
+ * perche' qui il dato non e' un array.
+ */
+export type StatoKpi = { non_disponibile?: boolean };
+
+/** I riquadri devono mostrare un trattino invece di una cifra. */
+export function kpiNonDisponibile(kpi: StatoKpi | null | undefined): boolean {
+  return !!kpi?.non_disponibile;
+}
+
+/**
+ * I segnali commerciali possono essere valutati su questi KPI.
+ *
+ * `trigger-servizi` dichiara: «un campo assente = "non lo so", quindi il
+ * trigger relativo non scatta». Su un ripiego, passare `molNegativo: false`
+ * affermerebbe che il MOL e' sano — un giudizio su numeri mai arrivati.
+ */
+export function kpiValutabiliPerTrigger(kpi: StatoKpi | null | undefined): boolean {
+  if (!kpi) return false;
+  return !kpi.non_disponibile;
+}

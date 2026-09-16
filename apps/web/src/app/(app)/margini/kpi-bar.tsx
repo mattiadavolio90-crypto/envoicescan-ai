@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatEuro } from "./periodi";
 import { puntiSparkline } from "@/lib/sparkline-punti";
+import { kpiNonDisponibile } from "@/lib/esito-caricamento";
 
 export type KpiData = {
   fatturato_lordo: number;
@@ -24,6 +25,15 @@ export type KpiData = {
   delta_personale_pct: number | null;
   delta_mol_pct: number | null;
   confronto_label: string;
+  /**
+   * true quando i numeri NON arrivano dal worker: timeout, risposta non ok o
+   * sessione assente. Senza questo flag il ripiego a zeri era indistinguibile
+   * da un periodo davvero vuoto — il cliente leggeva sei riquadri a "0 €" per
+   * decine di secondi credendoli un dato, mentre la tabella sotto (che usa un
+   * altro endpoint) si popolava. Opzionale: i consumatori che non lo passano
+   * si comportano come prima.
+   */
+  non_disponibile?: boolean;
   spark_lordo?: number[];
   spark_fb?: number[];
   spark_margine?: number[];
@@ -133,15 +143,23 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       {cards.map((c) => (
-        <KpiCard key={c.label} card={c} animate={animate} />
+        <KpiCard key={c.label} card={c} animate={animate} nonDisponibile={kpiNonDisponibile(kpi)} />
       ))}
+      {kpiNonDisponibile(kpi) && (
+        <p className="col-span-2 md:col-span-3 lg:col-span-6 text-[11px] text-muted-foreground">
+          Non sono riuscito a caricare questi totali. I dati ci sono: ricarica la
+          pagina fra un momento. La tabella qui sotto non e' interessata.
+        </p>
+      )}
     </div>
   );
 }
 
-function KpiCard({ card: c, animate }: { card: CardDef; animate: boolean }) {
+function KpiCard({ card: c, animate, nonDisponibile }: {
+  card: CardDef; animate: boolean; nonDisponibile: boolean;
+}) {
   const t = TONE[c.tone];
-  const shown = useCountUp(c.numeric, animate);
+  const shown = useCountUp(c.numeric, animate && !nonDisponibile);
   return (
     <div
       className={`@container rounded-xl border ${t.border} ${t.hover} bg-card px-4 pt-3 pb-2 transition-colors flex flex-col gap-1`}
@@ -150,12 +168,12 @@ function KpiCard({ card: c, animate }: { card: CardDef; animate: boolean }) {
         {c.label}
       </p>
       <p className={`text-[clamp(1rem,4cqw,1.5rem)] font-bold tracking-tight leading-tight tabular-nums whitespace-nowrap ${t.value}`}>
-        {formatEuro(shown)}
+        {nonDisponibile ? "—" : formatEuro(shown)}
       </p>
-      {c.sub && (
+      {c.sub && !nonDisponibile && (
         <p className="text-[11px] text-muted-foreground leading-none">{c.sub}</p>
       )}
-      {c.spark && c.spark.length >= 2 && (
+      {!nonDisponibile && c.spark && c.spark.length >= 2 && (
         <div className="mt-1">
           <Sparkline values={c.spark} color={TONE_COLOR[c.tone]} />
         </div>

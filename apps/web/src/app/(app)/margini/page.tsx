@@ -13,6 +13,7 @@ import { KpiBar, type KpiData } from "./kpi-bar";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { kpiValutabiliPerTrigger } from "@/lib/esito-caricamento";
 
 // dynamic(): i 3 tab importano recharts. Solo la tab attiva monta il suo
 // componente, ma senza dynamic() il bundle della pagina includeva comunque
@@ -57,7 +58,9 @@ function resolvePeriodo(sp: SearchParams): {
 async function fetchKpiData(data_da: string, data_a: string): Promise<KpiData> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const fallback: KpiData = {
+  // `zeri` e' la forma del dato, non un risultato: serve a garantire che ogni
+  // campo numerico sia definito anche su risposta parziale del worker.
+  const zeri: KpiData = {
     fatturato_lordo: 0, fatturato_netto: 0, costi_fb: 0, primo_margine: 0,
     spese_generali: 0, costo_personale: 0, mol: 0,
     food_cost_perc: 0, primo_margine_perc: 0, spese_perc: 0,
@@ -66,7 +69,10 @@ async function fetchKpiData(data_da: string, data_a: string): Promise<KpiData> {
     delta_spese_pct: null, delta_personale_pct: null, delta_mol_pct: null,
     confronto_label: "periodo prec.",
   };
-  if (!token) return fallback;
+  // Il ripiego dichiara di esserlo. Prima era identico a un periodo davvero
+  // vuoto: stessi sei zeri, nessun modo per il cliente di distinguerli.
+  const nonDisponibile: KpiData = { ...zeri, non_disponibile: true };
+  if (!token) return nonDisponibile;
 
   const h: Record<string, string> = { Authorization: `Bearer ${token}` };
   if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
@@ -78,13 +84,13 @@ async function fetchKpiData(data_da: string, data_a: string): Promise<KpiData> {
       cache: "no-store",
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return fallback;
+    if (!res.ok) return nonDisponibile;
     const raw = await res.json();
     // Merge col fallback: garantisce che ogni campo numerico sia sempre definito
     // anche se il worker ritorna un oggetto parziale.
-    return { ...fallback, ...raw } as KpiData;
+    return { ...zeri, ...raw } as KpiData;
   } catch {
-    return fallback;
+    return nonDisponibile;
   }
 }
 
@@ -109,7 +115,11 @@ export default async function MarginiPage({
   // soglia (dati gia' nel KPI di pagina, nessuna query nuova). Mostrato solo se
   // il toggle cliente e' attivo e c'e' un segnale reale.
   const triggerOn = triggerAbilitati(user?.pagine_abilitate);
-  const trigger = triggerOn
+  // Su KPI non disponibili i segnali restano ASSENTI, non zero: il contratto di
+  // trigger-servizi dice "un campo assente = non lo so, il trigger non scatta".
+  // Passare `molNegativo: false` e `foodCostPct: 0` sarebbe dichiarare di sapere
+  // che il MOL e' sano — un giudizio su numeri che non sono arrivati.
+  const trigger = triggerOn && kpiValutabiliPerTrigger(kpi)
     ? valutaTrigger("margini", {
         foodCostPct: kpi.food_cost_perc,
         molNegativo: kpi.mol < 0,
