@@ -202,3 +202,20 @@ def test_endpoint_tutte_le_voci_diventano_neutre_insieme():
     )
     for nome in ("Food Cost", "1° Margine", "Spese Generali", "Costo del Lavoro", "MOL"):
         assert c[nome].emoji == "ℹ️", f"{nome} giudica su base incompleta"
+
+
+def test_endpoint_nessun_commento_e_mai_vuoto():
+    """Nessuna voce esce con commento "" — il frontend lo renderebbe come riga bianca.
+
+    `calcolo-tab.tsx` rende `commento?.commento ?? "—"`: il `??` scatta su
+    null/undefined, NON su stringa vuota. Mostrare la spiegazione lunga una volta
+    sola (giusto) tentava di lasciare le altre a "", che a video e' uno spazio
+    bianco sotto al gauge invece del trattino. Le altre portano il rimando breve.
+    """
+    c = _commenti_endpoint(
+        [_mese(2026, 1, 110000.0), _mese(2026, 2, 110000.0)],
+        {(2026, 2): (30000.0, 5000.0)},
+        "2026-01-01", "2026-02-28",
+    )
+    for nome, voce in c.items():
+        assert voce.commento.strip(), f"{nome} ha commento vuoto"

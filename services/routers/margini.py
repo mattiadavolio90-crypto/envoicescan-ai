@@ -919,6 +919,11 @@ def _mesi_senza_costi(mesi_attivi: list) -> int:
     )
 
 
+# Il rimando per le voci successive alla prima: dice perche' non c'e' un giudizio
+# senza ripetere la frase lunga, e soprattutto non e' vuoto (vedi sopra).
+_TESTO_INCOMPLETO_BREVE = "Nessun giudizio: mancano costi in alcuni mesi del periodo"
+
+
 def _testo_dati_incompleti(n_senza: int, n_attivi: int) -> str:
     mesi = "mese" if n_senza == 1 else "mesi"
     su = "mese" if n_attivi == 1 else "mesi"
@@ -1363,12 +1368,15 @@ def get_margini_analisi(
             ("mol", mol_perc, False, "MOL"),
         ]:
             if testo_incompleto:
-                # La spiegazione una volta sola, sulla PRIMA voce: e' la stessa per
-                # tutte e cinque (la base incompleta e' comune), e ripeterla cinque
-                # volte di fila la fa leggere zero. Le altre restano neutre con la
-                # sola percentuale — la riga c'e', non giudica.
+                # La spiegazione per esteso una volta sola, sulla PRIMA voce: e' la
+                # stessa per tutte e cinque (la base incompleta e' comune) e
+                # ripeterla cinque volte di fila la fa leggere zero. Le altre
+                # portano il rimando breve, MAI stringa vuota: il frontend rende
+                # `commento?.commento ?? "—"` (calcolo-tab.tsx), e `??` non scatta
+                # su "" — una stringa vuota uscirebbe come riga bianca sotto al
+                # gauge, non come trattino.
                 emoji = "ℹ️"
-                testo = testo_incompleto if not commenti else ""
+                testo = testo_incompleto if not commenti else _TESTO_INCOMPLETO_BREVE
             else:
                 emoji, testo = _valuta_soglia_margine(val, key, crescente, settore)
             commenti.append(CommentoKpi(
