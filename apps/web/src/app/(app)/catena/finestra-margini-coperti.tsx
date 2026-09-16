@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
+import { mostraPrincipale, mostraSecondaria } from "@/lib/finestre-annidate";
 import { formatEuro, formatPct } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,6 +87,15 @@ export function FinestraMarginiCoperti({
   const [sortKey, setSortKey] = useState<keyof MarginiCopertiPV>("margine_perc");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [categorieOpen, setCategorieOpen] = useState(false);
+  // Il componente non si smonta mai (sintesi-catena lo rende sempre, passando
+  // `open` come prop): senza questo reset il flag sopravvive alla chiusura, e
+  // alla riapertura l'utente si ritrova davanti "Categorie" invece di "Margini
+  // e coperti". Prima che la seconda finestra uscisse dall'albero del Dialog
+  // padre il problema non esisteva: spariva insieme a lui.
+  useEffect(() => {
+    if (!open) setCategorieOpen(false);
+  }, [open]);
+  const finestre = { aperta: open, secondariaAperta: categorieOpen };
   const reqRef = useRef(0);
 
   const annoCorrente = new Date().getFullYear();
@@ -158,7 +168,7 @@ export function FinestraMarginiCoperti({
 
   return (
     <>
-      <Dialog open={open && !categorieOpen} onOpenChange={onOpenChange}>
+      <Dialog open={mostraPrincipale(finestre)} onOpenChange={onOpenChange}>
         <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
           <DialogHeader className="shrink-0 border-b px-5 py-4">
             <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
@@ -324,7 +334,7 @@ export function FinestraMarginiCoperti({
           impilate e la X della seconda chiudeva solo quella in cima, lasciando
           l'utente in una finestra che non aveva riaperto lui. Ora la seconda
           SOSTITUISCE la prima, e chiudendola si torna da dove si era partiti. */}
-      {categorieOpen && (
+      {mostraSecondaria(finestre) && (
         <FinestraSprecoCategorie
           mese={periodo !== "anno" ? Number(periodo) : null}
           onClose={() => setCategorieOpen(false)}
