@@ -895,8 +895,13 @@ _TESTO_SENZA_SOGLIA_RETAIL = (
 # gia' lo riconosce per il SINGOLO mese, ma sull'aggregato non scattava: basta che
 # qualche mese i costi ce li abbia perche' la condizione sia falsa.
 #
-# Misurato il 16/09/2026 su una sede reale, anno in corso: 4 mesi su 9 senza costi
-# merce e 3 senza personale portavano la media del MOL al 68%, con il giudizio
+# NB: `costi_spese_totali` include le quote di riparto dei costi di gruppo
+# (margini.py, sp_tot). Un mese con 114 EUR di sola quota su 393.000 EUR di
+# ricavi conta quindi come "con costi" — e' la stessa soglia di `costi_mancanti`
+# (fastapi_worker._kpi_periodo), e la coerenza fra i due e' voluta.
+#
+# Misurato il 16/09/2026 su una sede reale, anno in corso: 3 mesi su 9 senza alcun
+# costo e 3 senza personale portavano la media del MOL al 68%, con il giudizio
 # "MOL eccellente — ottima redditivita' operativa" in verde. I soli mesi completi
 # (apr-giu) dicevano 34,9%, 39,2%, 39,3%. L'app si complimentava su dati che non
 # aveva — il danno peggiore per un cliente che deve fidarsi dei numeri.
@@ -1358,7 +1363,12 @@ def get_margini_analisi(
             ("mol", mol_perc, False, "MOL"),
         ]:
             if testo_incompleto:
-                emoji, testo = ("ℹ️", testo_incompleto)
+                # La spiegazione una volta sola, sulla PRIMA voce: e' la stessa per
+                # tutte e cinque (la base incompleta e' comune), e ripeterla cinque
+                # volte di fila la fa leggere zero. Le altre restano neutre con la
+                # sola percentuale — la riga c'e', non giudica.
+                emoji = "ℹ️"
+                testo = testo_incompleto if not commenti else ""
             else:
                 emoji, testo = _valuta_soglia_margine(val, key, crescente, settore)
             commenti.append(CommentoKpi(

@@ -1,10 +1,17 @@
 """Niente giudizio di soglia quando il periodo ha mesi senza costi.
 
-Misurato il 16/09/2026 su una sede reale, anno in corso: 4 mesi su 9 senza costi
-merce (e 3 senza personale) portavano la media del MOL al 68%, con "MOL
+Misurato il 16/09/2026 su una sede reale, anno in corso: 3 mesi su 9 senza alcun
+costo (e 3 senza personale) portavano la media del MOL al 68%, con "MOL
 eccellente — ottima redditivita' operativa" in verde. I soli mesi completi
 (apr-giu) dicevano 34,9%, 39,2%, 39,3%. L'app si complimentava su dati che non
 aveva.
+
+**La cifra e' 3, non 4.** Alla prima stesura avevo scritto 4 contando gennaio
+fra i mesi vuoti: gennaio ha 114,08 EUR di `quote_riparto_spese` (quota di un
+costo di gruppo), che entra in `costi_spese_totali` e quindi lo rende un mese
+"con costi". L'avevo misurato guardando `altri_costi_*` senza le quote — il
+reviewer l'ha ri-misurato e aveva ragione. La fixture qui sotto rispecchia i
+dati veri, quote comprese.
 
 `costi_mancanti` (fastapi_worker._kpi_periodo) gia' riconosceva il caso, ma per
 il SINGOLO mese: sull'aggregato — cioe' sul periodo che la pagina apre di
@@ -32,9 +39,11 @@ class _Mese:
         self.costi_spese_totali = spese
 
 
-# Il caso reale: 9 mesi attivi, 4 senza alcun costo (gen, feb, ago, set).
+# Il caso reale, coi valori letti a DB: 9 mesi attivi, 3 senza alcun costo
+# (feb, ago, set). Gennaio NON e' fra questi: ha 114,08 EUR di quota di riparto
+# spese, che basta a renderlo un mese "con costi" — vedi docstring.
 CASO_REALE = [
-    _Mese(fb=0, spese=0),          # gen
+    _Mese(fb=0, spese=114.08),     # gen: sola quota di riparto di gruppo
     _Mese(fb=0, spese=0),          # feb
     _Mese(fb=37777, spese=1734),   # mar
     _Mese(fb=133473, spese=41800), # apr
@@ -47,7 +56,18 @@ CASO_REALE = [
 
 
 def test_conta_i_mesi_senza_alcun_costo():
-    assert _mesi_senza_costi(CASO_REALE) == 4
+    assert _mesi_senza_costi(CASO_REALE) == 3
+
+
+def test_una_quota_di_riparto_rende_il_mese_completo():
+    """Il caso di gennaio: 114,08 EUR di sola quota di gruppo, e il mese conta.
+
+    E' la stessa soglia di `costi_mancanti` (fastapi_worker._kpi_periodo): la
+    coerenza fra i due e' voluta. Isolato in un test suo perche' e' proprio il
+    dettaglio su cui avevo sbagliato la misura.
+    """
+    assert _mesi_senza_costi([_Mese(fb=0, spese=114.08)]) == 0
+    assert _mesi_senza_costi([_Mese(fb=0, spese=0)]) == 1
 
 
 def test_un_periodo_tutto_completo_non_ha_mesi_da_segnalare():
@@ -147,7 +167,10 @@ def test_endpoint_niente_giudizio_se_un_mese_del_periodo_non_ha_costi():
     )
     assert c["MOL"].emoji == "ℹ️", f"giudizio su dati incompleti: {c['MOL'].commento}"
     assert "eccellente" not in c["MOL"].commento
-    assert "1 mese su 2 mesi" in c["MOL"].commento
+    # La spiegazione compare UNA volta sola, non su tutte e cinque le voci: e' la
+    # stessa frase per tutte, e ripetuta cinque volte non la legge nessuno.
+    con_testo = [n for n, x in c.items() if "1 mese su 2 mesi" in x.commento]
+    assert len(con_testo) == 1, f"spiegazione ripetuta su {con_testo}"
 
 
 def test_endpoint_giudica_ancora_quando_tutti_i_mesi_hanno_costi():

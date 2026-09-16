@@ -120,6 +120,7 @@ export function contaDaPagare(documenti: Documento[]): number {
   }
   return n;
 }
+
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
