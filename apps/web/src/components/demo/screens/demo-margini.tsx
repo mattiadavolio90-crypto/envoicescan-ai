@@ -77,7 +77,7 @@ const ROWS: Row[] = [
   { label: "Altre Spese Generali", key: "altri_costi_spese" },
   { label: "Costo Personale Lordo", key: "costo_dipendenti", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "text-pink-600 dark:text-pink-400" },
   { label: "Costo Personale Extra", key: "costo_personale_extra", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "text-pink-600 dark:text-pink-400" },
-  { label: "= Costi gestione totali", key: "totale_costi", metric: true, sep: true, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "text-violet-600 dark:text-violet-400" },
+  { label: "= Spese Generali + Personale", key: "totale_costi", metric: true, sep: true, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "text-violet-600 dark:text-violet-400" },
 ];
 
 function pct(raw: number, netto: number): string | null {
