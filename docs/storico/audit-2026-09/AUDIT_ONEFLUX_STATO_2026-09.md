@@ -26,7 +26,7 @@ I cicli 2026-07 e 2026-08 sono chiusi e archiviati in `docs/storico/`.
 > Ri-misurato il **05/09/2026** (pomeriggio), dopo `f3d4e89` **deployato**.
 > Copertura backend: **100%**
 > — **la zona rossa e' chiusa**: non restano righe mai guardate. Dettaglio in
-> [`AUDIT_COPERTURA.md`](AUDIT_COPERTURA.md).
+> [`AUDIT_COPERTURA.md`](../../../DOCUMENTAZIONE/AUDIT_COPERTURA.md).
 
 | # | Cosa | Di chi è | Perché adesso |
 |---|---|---|---|
@@ -43,7 +43,7 @@ misurato, non è un bug ma coda di lavoro dati.
 
 **Non da rifare:** prompt AI (#2), briefing (#4), worker (#5) — chiusi dalla
 sessione Fable con presidio provato per mutazione. Dettaglio e criterio in
-[`AUDIT_COPERTURA.md`](AUDIT_COPERTURA.md) §«Cosa ha coperto la sessione Fable».
+[`AUDIT_COPERTURA.md`](../../../DOCUMENTAZIONE/AUDIT_COPERTURA.md) §«Cosa ha coperto la sessione Fable».
 
 **Rilievo di prodotto aperto** (non tecnico): il testo del segnale «margine in
 calo» non dice **di quale mese** parla, e col gate di completezza può riferirsi a

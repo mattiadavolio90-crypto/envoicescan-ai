@@ -8,24 +8,35 @@
 >
 > È tracciato da git di proposito (eccezione a `*AUDIT*.md` in `.gitignore`,
 > riga 84): un certificato invisibile al versionamento non certifica niente.
+>
+> **Se quello che cerchi e' «quanto lavoro e' stato fatto»**, non e' questo il
+> file: e' `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md`, che misura il
+> periodo 01/07 → 17/09 in un colpo solo. Questo qui serve a **ripartire**, non a
+> fare il bilancio.
 
 ---
 
 ## La riga che conta
 
-**Al commit `a82213e` del 09/09/2026** i tre cicli di audit (2026-07, 2026-08,
-2026-09) sono **tutti chiusi**, e con essi l'audit di compliance legale dello
-stesso giorno. Nessuna dimensione resta aperta. Da qui vale la regola ordinaria:
-*quando tocchi un file, lo copri*.
+**Al commit `05640af` del 17/09/2026** i tre cicli di audit (2026-07, 2026-08,
+2026-09) sono **tutti chiusi**, e con essi l'audit di compliance legale del
+09/09 e **otto delle nove lenti trasversali**. Resta aperta la sola L9. Da qui
+vale la regola ordinaria: *quando tocchi un file, lo copri*.
 
 | | |
 |---|---|
-| Commit certificato | `a82213e24effde39297993d54d8fd97c2485dc96` |
-| Data | 09/09/2026 |
-| Suite | 13.258 verdi, 44 skip, 0 rossi — di cui **176 su un Postgres vero** (`-m sql`) e 101 Deno |
-| Copertura backend eseguita | **61%** (`services,utils,config,worker` — 24.239 stmts, 8.944 miss) |
-| Perimetro backend | 57.297 righe Python |
-| Logica SQL | 144 migration; **25 funzioni del DB eseguite da test** (erano 0 fino al 07/09) |
+| Commit certificato | `05640af` |
+| Data | 17/09/2026 |
+| Suite | **14.768 raccolti** (14.184 verdi + 45 skip fuori da `-m sql`) — di cui **539 su un Postgres vero** e 101 Deno |
+| Copertura backend eseguita | **65%** (`services,utils,config,worker` — 24.958 stmts, 8.224 miss) |
+| Logica SQL | 148 migration; **25 funzioni del DB eseguite da test** (erano 0 fino al 07/09) |
+| Lenti trasversali | **8 su 9 chiuse**, 14 difetti corretti — `docs/storico/audit-2026-09/INDICE_LENTI_L1_L8.md` |
+
+> **Certificazione precedente: `a82213e` del 09/09/2026** — 13.258 verdi, 176 SQL,
+> 61% di copertura, 144 migration. Quella riga e' rimasta ferma mentre il ciclo
+> delle otto lenti (14 → 17/09) andava avanti: **+138 commit, +64 file di test
+> (12.132 righe), 220 file toccati, +30.646 righe**. Il bilancio completo del
+> periodo sta in `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md`.
 
 > Il commit precedentemente certificato era `13d188e` (13.237 verdi, 164 SQL,
 > 143 migration, 20 funzioni). La differenza e' l'audit di compliance del
