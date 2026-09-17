@@ -14,6 +14,8 @@ scadute, su 11 sedi su 11**.
 distinzione regge, **inclusa** la differenza che conta: una risposta *arrivata*
 ma senza il campo e' un vuoto legittimo, un `null` no.
 """
+import re
+
 import pytest
 
 from tests.helpers_ts import esegui_ts
@@ -360,28 +362,51 @@ def test_ogni_stato_vuoto_mobile_passa_da_stato_lista(pagina):
     Il difetto del primo giro non fu la logica ma il CENSIMENTO: in
     `mobile-turni.tsx` il flag fu collegato alla sola vista mese, e le altre due
     (mensile, e la giornaliera che e' il DEFAULT) restarono col difetto intero.
-    Un test per file non lo avrebbe mai visto; questo conta i rami.
-
-    La regola: ogni `length === 0` vivo deve avere accanto un ramo deciso da
-    `statoLista`, cioe' tanti `stato* === "vuoto"` quanti sono gli stati vuoti.
+    Un test per file non lo avrebbe mai visto.
     """
     vivo = _codice_vivo(_APP / pagina)
     assert "statoLista(" in vivo, f"{pagina} non usa piu' statoLista"
-
-    vuoti = vivo.count('=== "vuoto"')
-    guasti = vivo.count('=== "guasto"')
     length0 = vivo.count("length === 0")
     assert length0 == 0, (
         f"{pagina}: restano {length0} `length === 0` che decidono da soli se "
         "mostrare uno stato vuoto. Ogni lista deve passare da `statoLista`, o "
         "quel ramo torna a dire «non c'e' niente» su dati mai arrivati (L9)."
     )
-    assert vuoti == guasti, (
-        f"{pagina}: {vuoti} rami «vuoto» ma {guasti} rami «guasto». Ogni vista "
-        "ha la sua lista e il suo stato vuoto: se ne manca uno, quella vista "
-        "conserva il difetto (in mobile-turni.tsx ne mancavano 2 su 3)."
-    )
-    assert vuoti >= 1, f"{pagina}: nessun ramo «vuoto» trovato"
+
+
+@pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
+def test_ogni_variabile_di_stato_ha_entrambi_i_rami(pagina):
+    """Il conteggio aggregato non basta: si pareggia duplicando.
+
+    Terzo giro di review. La guardia precedente chiedeva `#vuoto == #guasto` su
+    tutto il file, e il reviewer l'ha aggirata **togliendo il ramo guasto della
+    vista di default** e **duplicando** quello di un'altra vista: conteggio 3/3,
+    69 test verdi, e il cliente che apre `/m/turni` rilegge «Nessun turno per
+    questo giorno.» col worker giu'. Riprodotto: sopravviveva.
+
+    E' [assert-su-aggregato-nasconde-errori-che-si-compensano]: la somma torna
+    perche' due errori opposti si annullano. L'invariante era globale mentre il
+    difetto e' **per-vista**.
+
+    La forma robusta lega ogni variabile ai SUOI rami: per ogni `statoX` passato
+    a `statoLista`, devono esistere sia `statoX === "guasto"` sia
+    `statoX === "vuoto"`. Non richiede di rendere il componente.
+    """
+    vivo = _codice_vivo(_APP / pagina)
+
+    # le variabili di stato sono quelle che ricevono il risultato di statoLista
+    stati = set(re.findall(r"const\s+(\w+)\s*=\s*statoLista\(", vivo))
+    assert stati, f"{pagina}: nessuna variabile assegnata da statoLista()"
+
+    for nome in sorted(stati):
+        for ramo in ("guasto", "vuoto"):
+            atteso = f'{nome} === "{ramo}"'
+            assert atteso in vivo, (
+                f"{pagina}: `{nome}` non ha il ramo «{ramo}» ({atteso!r}).\n"
+                "Ogni vista ha la sua lista e i suoi rami: se ne manca uno, "
+                "quella vista conserva il difetto di L9 — e il conteggio "
+                "complessivo puo' restare in pari duplicandone un altro."
+            )
 
 
 # Parole che compaiono SOLO nel messaggio di guasto: dicono al cliente che il
@@ -392,11 +417,32 @@ def test_ogni_stato_vuoto_mobile_passa_da_stato_lista(pagina):
 _PAROLE_GUASTO = ("Non è stato possibile", "Riprova")
 
 
+def _corpo_del_ramo(righe: list[str], i: int) -> str:
+    """Il JSX di UN ramo, dalla sua apertura al ramo successivo.
+
+    Non una finestra fissa: al terzo giro il presidio leggeva `righe[i:i+3]` e
+    il reviewer l'ha bucata in **entrambe** le direzioni, solo riformattando il
+    JSX su piu' righe (come farebbe Prettier, o un messaggio piu' lungo):
+      - falso positivo: un ramo corretto col testo alla quarta riga -> rosso su
+        una riformattazione innocua, che e' il modo in cui un presidio viene
+        disattivato;
+      - falso negativo: il testo di guasto nascosto nel ramo del vuoto, spinto
+        oltre la finestra -> verde sul difetto.
+    Il delimitatore e' strutturale: `) : ` apre il ramo seguente.
+    """
+    corpo = []
+    for r in righe[i + 1 :]:
+        if r.startswith(") : ") or r.startswith(") : (") or r == ") : (":
+            break
+        corpo.append(r)
+    return " ".join(corpo)
+
+
 @pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
 def test_il_messaggio_giusto_sta_nel_ramo_giusto(pagina):
     """L'accoppiamento fra il ramo e il testo che ci sta dentro.
 
-    Mutante H del code-reviewer: scambiare i due messaggi lascia verdi tutte le
+    Mutante del code-reviewer: scambiare i due messaggi lascia verdi tutte le
     guardie che contano i rami e le loro condizioni, perche' nessuna guarda cosa
     c'e' DENTRO il ramo. Col worker giu' il cliente rilegge «Nessuna spesa extra
     in questo mese.» — il difetto originale, intatto.
@@ -407,22 +453,24 @@ def test_il_messaggio_giusto_sta_nel_ramo_giusto(pagina):
     vivo = _codice_vivo(_APP / pagina)
     righe = [" ".join(r.split()) for r in vivo.splitlines()]
 
-    # ogni riga che apre un ramo "guasto" e' seguita dal messaggio di guasto...
+    visti_guasto = 0
     for i, r in enumerate(righe):
         if '=== "guasto"' in r and "?" in r:
-            blocco = " ".join(righe[i : i + 3])
-            assert any(par in blocco for par in _PAROLE_GUASTO), (
+            visti_guasto += 1
+            corpo = _corpo_del_ramo(righe, i)
+            assert any(par in corpo for par in _PAROLE_GUASTO), (
                 f"{pagina}: il ramo del guasto non contiene il messaggio di "
-                f"guasto ({blocco[:120]!r}). Se i due messaggi sono stati "
+                f"guasto ({corpo[:140]!r}). Se i due messaggi sono stati "
                 "scambiati, col worker giu' il cliente legge «non c'e' niente»."
             )
-        # ...e nessun ramo "vuoto" contiene il messaggio di guasto
         if '=== "vuoto"' in r and "?" in r:
-            blocco = " ".join(righe[i : i + 3])
-            assert not any(par in blocco for par in _PAROLE_GUASTO), (
+            corpo = _corpo_del_ramo(righe, i)
+            assert not any(par in corpo for par in _PAROLE_GUASTO), (
                 f"{pagina}: il ramo del VUOTO contiene il messaggio di guasto "
-                f"({blocco[:120]!r}): i due messaggi sono scambiati."
+                f"({corpo[:140]!r}): i due messaggi sono scambiati, e un mese "
+                "davvero vuoto viene annunciato come un errore."
             )
+    assert visti_guasto >= 1, f"{pagina}: nessun ramo «guasto» trovato"
 
 
 @pytest.mark.parametrize("pagina", _CLIENT_MOBILE)

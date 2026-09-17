@@ -25,7 +25,7 @@ per scelta dichiarata: le classi non refutate si chiudono leggendo il chiamante.
 | **L6** | 15/09 | Tempo, concorrenza, dipendenze che cadono | **4** | 6 file di test (44 presidi) |
 | **L7** | 15/09 | Fatture ostili in ingresso | **3** | `tests/test_importi_non_finiti_fattura_ostile.py` (286) |
 | **L8** | 15/09 | Mappa cache/snapshot e ordine di deploy | 1 | `MATRICE_CACHE_2026-09-15.md` + 17 presidi |
-| **L9** | 17/09 | Giornata del cliente e parita' `/m` | **4** (su 6 stati vuoti) | `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 24 presidi |
+| **L9** | 17/09 | Giornata del cliente e parita' `/m` | **4** (su 6 stati vuoti) | `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 32 presidi |
 
 **Totale: 18 difetti corretti**, ognuno provato per mutazione.
 
@@ -226,12 +226,16 @@ forma del codice: due mutanti *evasivi* (`false &&` sul ramo, reset del flag nel
 decisione** in `statoLista()` (lib/), che i test **eseguono**. Al terzo giro
 altri 4 mutanti scritti **da fuori**: 2 sopravvissuti, piu' il ritorno del
 mutante storico — avevo *sostituito* il vecchio presidio invece di affiancarlo.
-17 mutanti in tutto, tutti uccisi.
+Al quarto giro altri 3 (conteggio dei rami aggirato duplicandone uno; la
+finestra di righe porosa nelle due direzioni): **20 provati, 20 uccisi**.
 
-**2 sospetti scartati dopo verifica:** il blocco KPI che sparisce su `/m` si
-comporta identico al desktop; il briefing mobile era gia' corretto.
+**2 sospetti scartati dopo verifica:** il blocco KPI mobile — che il primo giro
+dichiarava «identico al desktop» e **non lo e'** (il desktop ha tre stati via
+`statoBlocchi`, fra cui un `BlockRetry` che riprova): resta scartato come
+**scelta diversa accettata**, perche' un blocco assente non afferma nulla di
+falso; e il briefing mobile, gia' corretto.
 
-📄 `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 12 presidi
+📄 `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 32 presidi
 
 ## Cosa si impara leggendole di fila
 

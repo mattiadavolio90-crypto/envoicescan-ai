@@ -9,9 +9,9 @@ domanda se il telefono gli dice le stesse cose del desktop.
 |---|---|
 | Perimetro | **22 pagine desktop + 7 mobile**, 171 route API, 10 componenti client mobile che caricano dati |
 | Difetti corretti | **4** (stati vuoti mobile che affermavano il falso) |
-| Presidi | +12 casi in `tests/test_esito_caricamento_frontend.py` (45 → 53 nel file) |
-| Mutanti | **6 provati, 6 uccisi** — di cui **1 sopravvissuto al primo giro** e poi chiuso |
-| Suite | 14.184 → **14.196 verdi**, 0 rossi |
+| Presidi | **+32 casi** in `tests/test_esito_caricamento_frontend.py` (**41 → 73** nel file) + `statoLista()` in `lib/esito-caricamento.ts` |
+| Mutanti | **20 provati, 20 uccisi** in quattro giri — di cui **6 sopravvissuti** al primo tentativo del rispettivo presidio |
+| Suite | 14.184 → **14.216 verdi**, 0 rossi |
 
 ---
 
@@ -299,9 +299,71 @@ accanto alla sua stessa correzione** — accodata, non sostituita. Chi leggeva l
 riga trovava entrambe le versioni. E' [[cifra-vive-in-piu-punti]] applicata a una
 frase invece che a un numero.
 
+---
+
+## Il quarto giro — l'invariante globale e la finestra fissa
+
+Terza review, altri due difetti nei **presidi** (il codice di produzione era
+ormai corretto).
+
+### Il conteggio dei rami si pareggia duplicando
+
+La guardia chiedeva `#vuoto == #guasto` **su tutto il file**. Il reviewer l'ha
+aggirata togliendo il ramo guasto della **vista di default** dei turni e
+duplicando quello di un'altra vista: conteggio 3/3, **69 test verdi**, e il
+cliente che apre `/m/turni` rilegge «Nessun turno per questo giorno.» col worker
+giu'. Riprodotto: sopravviveva davvero.
+
+E' [[assert-su-aggregato-nasconde-errori-che-si-compensano]] — la somma torna
+perche' due errori opposti si annullano. **L'invariante era globale mentre il
+difetto e' per-vista**: la stessa classe di errore del primo giro (censire
+l'unita' sbagliata), spostata dal file al conteggio aggregato.
+
+Sostituita da una guardia che **lega ogni variabile ai suoi rami**: per ogni
+`statoX` assegnato da `statoLista`, devono esistere sia `statoX === "guasto"`
+sia `statoX === "vuoto"`. Duplicare non aiuta piu': manca il nome giusto.
+
+### La finestra di tre righe era porosa in due direzioni
+
+Il presidio sull'accoppiamento ramo/messaggio leggeva `righe[i:i+3]`. Bastava
+riformattare il JSX su piu' righe — come farebbe Prettier, o un messaggio piu'
+lungo — per bucarlo **in entrambi i sensi**:
+
+- **falso positivo**: un ramo corretto col testo alla quarta riga faceva
+  fallire il test. Un presidio che grida su una riformattazione innocua e'
+  un presidio che viene disattivato al primo allarme.
+- **falso negativo**: il testo di guasto nascosto nel ramo del vuoto, spinto
+  oltre la finestra, passava. Un mese davvero vuoto annunciato come errore.
+
+Ora il blocco si chiude sul **delimitatore strutturale** (`) : `, che apre il
+ramo seguente) invece che su un conteggio di righe. Entrambe le direzioni
+verificate: il mutante muore, la riformattazione resta verde.
+
+### Le cifre, ancora
+
+La baseline del file di test era dichiarata **45** ed era **41** (misurata
+eseguendo `pytest --collect-only` su `3a040e7~1`). Il «+24 presidi» derivava da
+`69 − 45`, cioe' da una **sottrazione su una base mai misurata**: i presidi di
+L9 sono **32** (41 → 73). E `INDICE_LENTI` conservava la frase «identico al
+desktop» — corretta due giri prima nel registro, **non qui**: la correzione era
+stata applicata a un file su due.
+
+### I mutanti dei quattro giri
+
+| Giro | Provati | Sopravvissuti al primo tentativo |
+|---|---|---|
+| 1 | 6 | 1 (`setFallito(true)` → `(false)`) |
+| 2 | 7 | 1 (`caricamentoFallito: false` letterale) |
+| 3 | 4 (scritti **da fuori**) | 3 (ritorno del mutante storico, shadowing, messaggi scambiati) |
+| 4 | 3 (scritti **da fuori**) | 2 (ramo duplicato, finestra porosa) |
+
+**20 provati, 20 uccisi.** Sette sono sopravvissuti al primo tentativo del
+presidio che avrebbe dovuto ucciderli — e **cinque dei sette** li ha scritti il
+reviewer, non io.
+
 ### La lezione
 
-Tre errori di metodo, non di logica.
+Quattro errori di metodo, non di logica.
 
 1. **Il perimetro si conta sull'unita' che ha il difetto** — qui lo stato vuoto,
    non il file che lo contiene.
@@ -314,6 +376,13 @@ Tre errori di metodo, non di logica.
    grande: togliendo il vecchio assert ho riaperto il difetto che quella lente
    era nata per chiudere. Quando si sposta una logica, il presidio vecchio si
    **affianca** finche' non si e' dimostrato che il nuovo lo include.
+
+4. **Un invariante aggregato non prova una proprieta' per-elemento.**
+   `#vuoto == #guasto` si pareggia duplicando; la forma robusta lega ogni
+   elemento alla sua proprieta'. E un blocco di testo si delimita su un
+   **delimitatore**, mai su un numero fisso di righe: la finestra sbaglia in
+   entrambe le direzioni, e il falso positivo e' il piu' dannoso dei due perche'
+   fa disattivare il presidio.
 
 Il confine resta dichiarato: `statoLista` e' eseguita, il resto e' lettura di
 forma. Una riscrittura completa dei testi, o un refactoring che rinomina tutto in
