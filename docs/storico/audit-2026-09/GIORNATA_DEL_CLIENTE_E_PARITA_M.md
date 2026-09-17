@@ -53,11 +53,27 @@ davvero quel parametro, ci scrolla e apre il dialog. E le chiavi emesse sono
 legate a quelle accettate **dal tipo** (`servizioKey: Servizio["key"]`), quindi
 una chiave inventata non compila.
 
-### Blocco KPI che sparisce — verificato, non e' una disparita'
+### Blocco KPI che sparisce — scelta diversa dal desktop, accettata
 
-Su `/m` il blocco dei conti fa `if (!kpi) return null`. Sembrava un silenzio
-mobile, ma il desktop fa `{kpi && !kpiVuoto && ...}`: **stesso comportamento**.
-E' una scelta coerente fra i due frontend, non un difetto. Scartato.
+Su `/m` il blocco dei conti fa `if (!kpi) return null`: **un** ramo. Il desktop
+ne ha **tre**, via `statoBlocchi(kpi, salute)` in `lib/home-kpi.ts`:
+
+| Situazione | Desktop | Mobile |
+|---|---|---|
+| worker giu' (`!kpi && !salute`) | `BlockRetry` + skeleton — **riprova** | blocco assente |
+| cliente senza dati (`has_data === false`) | card «Nessun dato di margine per questo mese» | `KpiBlock` |
+| dati ok | `KpiBlock` | `KpiBlock` |
+
+**Il primo giro di questa lente lo aveva dichiarato «stesso comportamento»,
+guardando solo l'ultima riga della catena** (`{kpi && !kpiVuoto && ...}`), che
+presa da sola somiglia a `if (!kpi) return null`. Sopra c'e' un early return che
+il mobile non ha: rilievo del code-reviewer, corretto qui.
+
+Resta **scartato come difetto**, ma per una ragione diversa da quella scritta
+prima: un blocco **assente** non afferma nulla di falso, mentre «Nessun incasso
+inserito» si'. E' una degradazione piu' povera, non una bugia — e sulla PWA puo'
+essere deliberata. Se un giorno si volesse allineare, l'helper ha gia'
+`kpiNonDisponibile` per questo. **Scelta diversa, accettata; non «identica».**
 
 ### Briefing mobile — gia' corretto
 
@@ -82,10 +98,14 @@ Censiti i 6 file mobile con uno stato vuoto, **4 non distinguevano i due casi**:
 | `m/diario/mobile-incassi.tsx` | «Nessun incasso inserito in questo mese.» |
 | `m/diario/mobile-spese.tsx` | «Nessuna spesa extra in questo mese.» |
 | `m/diario/mobile-diario.tsx` | «Nessun evento per questo giorno.» |
-| `m/turni/mobile-turni.tsx` | «Nessun turno per questo mese.» |
+| `m/turni/mobile-turni.tsx` | «Nessun turno per questo mese.» + altri **2 rami** (vedi sotto) |
 
-Tutti e quattro hanno la stessa forma: `loading ? skeleton : lista.length === 0 ?
+Tutti hanno la stessa forma: `loading ? skeleton : lista.length === 0 ?
 "Nessun…"`. **Manca il terzo ramo.**
+
+> ⚠️ **Il primo giro contava i FILE, non gli stati vuoti** — e su
+> `mobile-turni.tsx` ne ha visto uno dei tre. Vedi «Il secondo giro» piu' sotto:
+> gli stati vuoti da correggere erano **6**, non 4.
 
 **Perche' e' un difetto vero e non teorico.** Tre cose misurate:
 
@@ -148,6 +168,90 @@ Ogni mutante e' stato verificato come **realmente applicato** (hash del file
 cambiato) e ogni ripristino confrontato per hash col file pre-mutazione.
 
 ---
+
+---
+
+## Il secondo giro — cosa ha trovato il code-reviewer
+
+La prima stesura di questa lente e' stata dichiarata chiusa e **bocciata dalla
+review**. Tre rilievi veri, tutti corretti prima del commit definitivo.
+
+### 1. Il censimento contava i file, non gli stati vuoti
+
+`mobile-turni.tsx` ha **tre viste** mutuamente esclusive, ognuna con la sua
+lista e il suo stato vuoto. Il flag era stato collegato **alla prima soltanto**:
+
+| Riga | Vista | Lista | Primo giro |
+|---|---|---|---|
+| ~1054 | mese | `riepilogoMese` | ✅ corretta |
+| ~1128 | mensile | `righeMensili` | ❌ scoperta |
+| ~1193 | **giornaliera — il DEFAULT** | `turniGiorno` | ❌ scoperta |
+
+`modalita` parte da `"giornaliero"`: **il primo giro aveva corretto il ramo che
+si raggiunge dopo aver toccato il selettore, e lasciato scoperto quello che si
+apre da solo.** Un `grep -c "length === 0"` sul file ne restituiva tre; il
+censimento ne aveva contato uno per file.
+
+Gli stati vuoti corretti sono quindi **6**, non 4 — su 4 file.
+
+### 2. I presidi erano neutralizzabili: i mutanti evasivi
+
+I sei mutanti del primo giro erano tutti della stessa famiglia — **cancellare o
+invertire un token che il test cerca esplicitamente**. Nessuno costruito
+*sapendo* cosa il test legge. Il reviewer ne ha scritti due che sopravvivevano:
+
+```
+) : (false && mostraGuasto(fallito, voci.length)) ? (   // il ramo non si accende
+} finally { setFallito(false); setLoading(false); }     // il flag muore a ogni giro
+```
+
+Entrambi **ripristinano il difetto intero con la suite verde**. Il secondo e' il
+peggiore: soddisfa alla lettera un test che chiede «esiste `setFallito(true)` ed
+esiste `setFallito(false)`», mentre il reset a ogni giro cancella il primo.
+
+**La correzione non e' stata un test in piu', ma spostare la decisione.** La
+scelta fra caricamento / guasto / vuoto / dati e' ora `statoLista()` in
+`lib/esito-caricamento.ts`, che i test **eseguono** (8 casi + l'invariante «con
+un guasto non si dice mai vuoto»). Nei `.tsx` resta una riga che la chiama e tre
+rami che ne confrontano il risultato.
+
+Restano tre guardie di **forma** sul sorgente, per ciò che l'harness non può
+eseguire — e una di esse e' nata da un mutante sopravvissuto **alla guardia
+stessa**:
+
+| Guardia | Mutante che uccide |
+|---|---|
+| nessun `length === 0` vivo, e `#vuoto == #guasto` | un ramo dimenticato in una delle tre viste |
+| nessun `false &&` su un ramo `=== "guasto"` | il ramo spento da una costante |
+| nessun `setFallito` dentro un `finally` | il flag riazzerato a ogni giro |
+| ogni `statoLista({...})` passa `caricamentoFallito: fallito` | **`caricamentoFallito: false` letterale**, che spegne il guasto di **una vista sola** |
+
+### 3. «Identico al desktop» era piu' forte del vero
+
+Vedi la sezione sul blocco KPI, riscritta.
+
+### I sette mutanti del secondo giro
+
+| # | Dove | Mutazione | Esito |
+|---|---|---|---|
+| A | spese `.tsx` | `(false && stato === "guasto")` | ucciso |
+| B | spese `.tsx` | `setFallito(false)` nel `finally` | ucciso |
+| C | `lib/` | `statoLista` ritorna sempre `"vuoto"` | ucciso |
+| D | `lib/` | tolto `if (caricamento)` — lo skeleton non vince | ucciso |
+| E | turni `.tsx` | tolto il ramo guasto della **vista di default** | ucciso |
+| F | turni `.tsx` | `caricamentoFallito: false` sulla vista di default | **sopravvissuto**, poi ucciso |
+| G | `lib/` | `righeCaricate > 0` → `>= 0` | ucciso |
+
+**7 su 7**, ognuno verificato come applicato davvero (hash) e ogni ripristino
+confrontato per hash.
+
+### La lezione
+
+Due errori di metodo, non di logica. **Il perimetro si conta sull'unita' che ha
+il difetto** — qui lo stato vuoto, non il file. E **una batteria di mutanti che
+li scrive chi ha scritto il presidio misura solo cio' che il presidio gia'
+guarda**: i mutanti evasivi vanno chiesti a qualcun altro, o costruiti partendo
+dal test e non dal codice.
 
 ## Cosa NON e' stato guardato — e resta una scelta
 

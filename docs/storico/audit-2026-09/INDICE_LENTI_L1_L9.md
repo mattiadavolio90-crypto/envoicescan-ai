@@ -25,7 +25,7 @@ per scelta dichiarata: le classi non refutate si chiudono leggendo il chiamante.
 | **L6** | 15/09 | Tempo, concorrenza, dipendenze che cadono | **4** | 6 file di test (44 presidi) |
 | **L7** | 15/09 | Fatture ostili in ingresso | **3** | `tests/test_importi_non_finiti_fattura_ostile.py` (286) |
 | **L8** | 15/09 | Mappa cache/snapshot e ordine di deploy | 1 | `MATRICE_CACHE_2026-09-15.md` + 17 presidi |
-| **L9** | 17/09 | Giornata del cliente e parita' `/m` | **4** | `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 12 presidi |
+| **L9** | 17/09 | Giornata del cliente e parita' `/m` | **4** (su 6 stati vuoti) | `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 16 presidi |
 
 **Totale: 18 difetti corretti**, ognuno provato per mutazione.
 
@@ -218,10 +218,13 @@ dicevano «Nessun incasso inserito in questo mese.» mentre il worker era giu'.
 Lo stato iniziale e' `null`, quindi la frase falsa compare **all'apertura della
 pagina**; il toast d'errore sparisce dopo pochi secondi e la lascia li'.
 
-**Il mutante che conta:** il primo presidio verificava che i file *chiamassero*
-`mostraGuasto`, e `setFallito(false)` al posto di `true` gli **sopravviveva** —
-difetto intatto, guardia verde. Chiuso verificando le due transizioni del flag e
-**l'ordine dei rami** (il guasto prima del vuoto, o e' irraggiungibile).
+**La review ha bocciato la prima stesura.** Il censimento contava i **file** e
+non gli stati vuoti: `mobile-turni.tsx` ne ha **tre**, e il flag era collegato al
+primo — restava scoperta anche la vista **di default**. E i presidi leggevano la
+forma del codice: due mutanti *evasivi* (`false &&` sul ramo, reset del flag nel
+`finally`) ripristinavano il difetto con la suite verde. Chiuso **spostando la
+decisione** in `statoLista()` (lib/), che i test **eseguono**. 7 mutanti, 7
+uccisi — uno dei quali sopravvissuto alla guardia nuova, e poi chiuso.
 
 **2 sospetti scartati dopo verifica:** il blocco KPI che sparisce su `/m` si
 comporta identico al desktop; il briefing mobile era gia' corretto.

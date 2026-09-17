@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { mostraGuasto } from "@/lib/esito-caricamento";
+import { statoLista } from "@/lib/esito-caricamento";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
@@ -338,6 +338,10 @@ function MobileAgenda() {
   const fmtGiorno = (iso: string) =>
     new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
 
+  // Lo stato lo decide `lib/`, dove i test lo ESEGUONO: nel JSX un ramo si
+  // spegne con un `false &&` senza rompere nessun presidio (L9).
+  const stato = statoLista({ caricamento: loading, caricamentoFallito: fallito, righeCaricate: eventiGiorno.length });
+
   return (
     <div className="space-y-4">
       {/* Calendario */}
@@ -357,15 +361,15 @@ function MobileAgenda() {
       {/* Eventi del giorno */}
       <div className="space-y-2.5">
         <h2 className="text-sm font-semibold capitalize">{fmtGiorno(giornoSel)}</h2>
-        {loading ? (
+        {stato === "caricamento" ? (
           <div className="space-y-2.5">
             {[0, 1].map((i) => (
               <div key={i} className="h-16 animate-pulse rounded-xl border bg-muted/40" />
             ))}
           </div>
-        ) : mostraGuasto(fallito, eventiGiorno.length) ? (
+        ) : stato === "guasto" ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare il diario. Riprova fra un momento.</p>
-        ) : eventiGiorno.length === 0 ? (
+        ) : stato === "vuoto" ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessun evento per questo giorno.</p>
         ) : (
           eventiGiorno.map((e) => {

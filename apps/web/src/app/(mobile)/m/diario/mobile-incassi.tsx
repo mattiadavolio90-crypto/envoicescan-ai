@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { mostraGuasto } from "@/lib/esito-caricamento";
+import { statoLista } from "@/lib/esito-caricamento";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { scorporoNetto, fetchNettoMese, type NettoMese } from "@/app/(app)/margini/periodi";
@@ -279,6 +279,9 @@ export function MobileIncassi() {
   const kpiNetto = nettoDaMostrare(nettoAutorevole?.netto, fmtEuro);
   const meseMensile = nettoAutorevole?.mensile ?? false;
   const giorni = risposta?.giorni_con_dati ?? 0;
+  // Lo stato lo decide `lib/`, dove i test lo ESEGUONO: nel JSX un ramo si
+  // spegne con un `false &&` senza rompere nessun presidio (L9).
+  const stato = statoLista({ caricamento: loading, caricamentoFallito: fallito, righeCaricate: voci.length });
 
   const dataDefault = useMemo(() => {
     return today.startsWith(meseISO(anno, mese)) ? today : primoGiornoISO(anno, mese);
@@ -308,15 +311,15 @@ export function MobileIncassi() {
 
       {/* Lista voci */}
       <div className="space-y-2.5">
-        {loading ? (
+        {stato === "caricamento" ? (
           <div className="space-y-2.5">
             {[0, 1].map((i) => (
               <div key={i} className="h-14 animate-pulse rounded-xl border bg-muted/40" />
             ))}
           </div>
-        ) : mostraGuasto(fallito, voci.length) ? (
+        ) : stato === "guasto" ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare gli incassi. Riprova fra un momento.</p>
-        ) : voci.length === 0 ? (
+        ) : stato === "vuoto" ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessun incasso inserito in questo mese.</p>
         ) : (<>
           {meseMensile && (

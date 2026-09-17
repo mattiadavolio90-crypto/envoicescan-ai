@@ -231,10 +231,11 @@ def test_mostra_guasto_e_la_gemella_booleana(fallito, righe, atteso):
         # anche quando il worker non aveva risposto — con lo stato iniziale a
         # `null`, cioe' proprio all'apertura della pagina. Il toast d'errore
         # sparisce dopo pochi secondi e lascia in pagina la frase falsa.
-        ("(mobile)/m/diario/mobile-incassi.tsx", "mostraGuasto"),
-        ("(mobile)/m/diario/mobile-spese.tsx", "mostraGuasto"),
-        ("(mobile)/m/diario/mobile-diario.tsx", "mostraGuasto"),
-        ("(mobile)/m/turni/mobile-turni.tsx", "mostraGuasto"),
+        # Delegano a `statoLista`, che i test ESEGUONO: vedi sopra.
+        ("(mobile)/m/diario/mobile-incassi.tsx", "statoLista"),
+        ("(mobile)/m/diario/mobile-spese.tsx", "statoLista"),
+        ("(mobile)/m/diario/mobile-diario.tsx", "statoLista"),
+        ("(mobile)/m/turni/mobile-turni.tsx", "statoLista"),
     ],
 )
 def test_le_pagine_delegano_la_scelta_invece_di_riscriverla(pagina, funzione):
@@ -272,18 +273,77 @@ _FLAG_ATTESO = {
 }
 
 
-# ─── I quattro client mobile: il flag non basta chiamarlo, deve ALZARSI ─────
+# ─── I client mobile: la decisione ESEGUITA, non letta ─────────────────────
 #
-# Mutante provato il 17/09 (L9) e **sopravvissuto** alla sola guardia di delega:
+# Primo giro di L9: i presidi leggevano la FORMA delle righe dei `.tsx`, perche'
+# l'harness esegue `lib/` e non i componenti. Il code-reviewer ha costruito due
+# mutanti EVASIVI — scritti sapendo cosa il test cerca — e sono sopravvissuti
+# entrambi, ripristinando il difetto intero con la suite verde:
 #
-#     } catch {
-#       setFallito(false);   // invece di true
+#     ) : (false && mostraGuasto(fallito, voci.length)) ? (   // ramo spento
+#     } finally { setFallito(false); setLoading(false); }     // flag riazzerato
 #
-# Il file continua a importare e chiamare `mostraGuasto`, quindi
-# `test_le_pagine_delegano_la_scelta_invece_di_riscriverla` resta verde — e il
-# cliente rilegge «Nessun incasso inserito in questo mese.» col worker giu'.
-# Serve verificare le DUE transizioni: si alza nel catch, si abbassa sul
-# successo (o il messaggio d'errore resta appiccicato dopo un retry riuscito).
+# Il secondo e' il piu' insidioso: soddisfa alla lettera un test che chiede
+# «esiste setFallito(true) ed esiste setFallito(false)», mentre il reset a ogni
+# giro cancella il primo. La lezione e' quella di [assert-in-non-e-assert-uguale]
+# portata un passo piu' in la': nessuna lettura del sorgente chiude la famiglia,
+# perche' i modi di spegnere un ramo sono infiniti e i modi di cercarlo no.
+#
+# La decisione e' stata quindi ESTRATTA in `statoLista` (lib/), dove i test la
+# eseguono davvero. Nei `.tsx` resta una riga che la chiama e tre rami che
+# confrontano il risultato: la logica che puo' sbagliare sta tutta qui sotto.
+
+
+def _stato(caricamento: str, fallito: str, righe: int) -> str:
+    return esegui_ts(
+        MODULO,
+        f"""emit(m.statoLista({{
+          caricamento: {caricamento}, caricamentoFallito: {fallito},
+          righeCaricate: {righe},
+        }}))""",
+        richiede=["statoLista"],
+    )
+
+
+@pytest.mark.parametrize(
+    "caricamento,fallito,righe,atteso",
+    [
+        # Lo skeleton vince su tutto: mentre carica non si afferma niente.
+        ("true", "false", 0, "caricamento"),
+        ("true", "true", 0, "caricamento"),
+        ("true", "true", 5, "caricamento"),
+        # Finito il caricamento, con righe si mostrano le righe.
+        ("false", "false", 3, "dati"),
+        # Il caso del difetto: niente righe E caricamento fallito.
+        ("false", "true", 0, "guasto"),
+        # Il vuoto vero: il worker ha risposto «zero».
+        ("false", "false", 0, "vuoto"),
+        # Dopo un retry riuscito il guasto non resta appiccicato ai dati.
+        ("false", "true", 7, "dati"),
+    ],
+)
+def test_stato_lista_distingue_i_quattro_casi(caricamento, fallito, righe, atteso):
+    """Il cuore di L9, eseguito: nessun mutante evasivo sopravvive a questo."""
+    assert _stato(caricamento, fallito, righe) == atteso
+
+
+def test_stato_lista_non_dice_mai_vuoto_su_un_guasto():
+    """La proprieta' in forma generale, su tutta la griglia.
+
+    Scritta separata dai casi sopra perche' e' l'invariante che il difetto
+    violava: con `caricamentoFallito` e zero righe, la risposta non puo' essere
+    "vuoto" — cioe' l'affermazione «non hai niente» su dati mai arrivati.
+    """
+    for righe in (0, 1, 50):
+        for caricamento in ("true", "false"):
+            got = _stato(caricamento, "true", righe)
+            if caricamento == "false" and righe == 0:
+                assert got == "guasto"
+            else:
+                assert got != "vuoto"
+
+
+# ─── Il ponte: i client chiamano la funzione, e nessun ramo resta scoperto ───
 
 _CLIENT_MOBILE = [
     "(mobile)/m/diario/mobile-incassi.tsx",
@@ -294,38 +354,92 @@ _CLIENT_MOBILE = [
 
 
 @pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
-def test_il_flag_mobile_si_alza_sul_guasto_e_si_abbassa_sul_successo(pagina):
-    """Le due transizioni, sulla riga normalizzata: non basta che il nome compaia."""
+def test_ogni_stato_vuoto_mobile_passa_da_stato_lista(pagina):
+    """Nessuna lista puo' dire «non c'e' niente» decidendolo da sola.
+
+    Il difetto del primo giro non fu la logica ma il CENSIMENTO: in
+    `mobile-turni.tsx` il flag fu collegato alla sola vista mese, e le altre due
+    (mensile, e la giornaliera che e' il DEFAULT) restarono col difetto intero.
+    Un test per file non lo avrebbe mai visto; questo conta i rami.
+
+    La regola: ogni `length === 0` vivo deve avere accanto un ramo deciso da
+    `statoLista`, cioe' tanti `stato* === "vuoto"` quanti sono gli stati vuoti.
+    """
     vivo = _codice_vivo(_APP / pagina)
-    righe = [" ".join(r.split()) for r in vivo.splitlines()]
-    assert "setFallito(true);" in righe, (
-        f"{pagina}: nessun `setFallito(true)` vivo. Il flag non si alza mai, "
-        "quindi `mostraGuasto` e' sempre false e la lista torna a dire «non "
-        "c'e' niente» su dati mai arrivati (L9)."
+    assert "statoLista(" in vivo, f"{pagina} non usa piu' statoLista"
+
+    vuoti = vivo.count('=== "vuoto"')
+    guasti = vivo.count('=== "guasto"')
+    length0 = vivo.count("length === 0")
+    assert length0 == 0, (
+        f"{pagina}: restano {length0} `length === 0` che decidono da soli se "
+        "mostrare uno stato vuoto. Ogni lista deve passare da `statoLista`, o "
+        "quel ramo torna a dire «non c'e' niente» su dati mai arrivati (L9)."
     )
-    assert "setFallito(false);" in righe, (
-        f"{pagina}: manca `setFallito(false)` sul caricamento riuscito: dopo un "
-        "retry andato a buon fine il messaggio di guasto resta in pagina."
+    assert vuoti == guasti, (
+        f"{pagina}: {vuoti} rami «vuoto» ma {guasti} rami «guasto». Ogni vista "
+        "ha la sua lista e il suo stato vuoto: se ne manca uno, quella vista "
+        "conserva il difetto (in mobile-turni.tsx ne mancavano 2 su 3)."
     )
+    assert vuoti >= 1, f"{pagina}: nessun ramo «vuoto» trovato"
 
 
 @pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
-def test_il_ramo_del_guasto_mobile_precede_quello_del_vuoto(pagina):
-    """L'ordine dei rami e' la sostanza del fix.
+def test_il_ramo_del_guasto_mobile_non_e_spento_e_il_flag_non_e_riazzerato(pagina):
+    """L'ultimo miglio, e il suo limite dichiarato.
 
-    `mostraGuasto(...)` deve essere valutato PRIMA di `length === 0`: invertendoli
-    il ramo del guasto diventa irraggiungibile — una lista fallita e' sempre
-    anche una lista vuota, quindi il primo ternario la cattura per sempre.
+    `statoLista` e' eseguita dai test, ma il suo USO nel JSX no: l'harness non
+    importa i `.tsx` (`tests/helpers_ts.py`). Due mutanti evasivi del
+    code-reviewer sopravvivono a ogni test di comportamento, perche' agiscono
+    fuori dalla funzione:
+
+        ) : (false && stato === "guasto") ? (      # il ramo non si accende mai
+        } finally { setFallito(false); ... }       # il flag muore a ogni giro
+
+    Questa e' una lettura del SORGENTE, con tutti i limiti che il resto del file
+    documenta: uccide i due mutanti noti e le loro varianti dirette, non chiude
+    la famiglia. La chiusura vera sarebbe un runner frontend (punto 9, ciclo
+    2026-08: decisione esplicita di Mattia in senso contrario).
     """
     vivo = _codice_vivo(_APP / pagina)
-    i_guasto = vivo.find("mostraGuasto(fallito")
-    assert i_guasto != -1, f"{pagina}: nessuna chiamata viva a mostraGuasto(fallito, ...)"
-    dopo = vivo[i_guasto:]
-    i_vuoto = dopo.find("=== 0 ?")
-    assert i_vuoto != -1, (
-        f"{pagina}: dopo il ramo del guasto non c'e' piu' il ramo del vuoto: "
-        "i due casi sono tornati indistinguibili."
-    )
+    righe = [" ".join(r.split()) for r in vivo.splitlines()]
+
+    # (a) nessun ramo «guasto» spento da una costante
+    for r in righe:
+        if '=== "guasto"' in r:
+            assert "false &&" not in r and "&& false" not in r, (
+                f"{pagina}: il ramo del guasto e' spento da una costante "
+                f"({r!r}). Il difetto di L9 e' ripristinato: il cliente rilegge "
+                "«non c'e' niente» su dati mai arrivati."
+            )
+
+    # (c) ogni chiamata passa il FLAG, non una costante. Mutante sopravvissuto
+    # al primo giro di questa guardia:
+    #     statoLista({ ..., caricamentoFallito: false, ... })
+    # spegne il guasto di UNA vista sola — e in `mobile-turni.tsx` le viste sono
+    # tre, quindi il difetto torna dove nessuno guarda.
+    for r in righe:
+        if "statoLista({" in r:
+            assert "caricamentoFallito: fallito" in r, (
+                f"{pagina}: una chiamata a statoLista non passa il flag ({r!r}). "
+                "Con una costante quella vista non mostra mai il guasto."
+            )
+
+    # (b) il flag non viene riazzerato nel `finally`, che gira SEMPRE
+    dentro_finally = False
+    for r in righe:
+        if r.startswith("} finally {"):
+            dentro_finally = True
+            continue
+        if dentro_finally:
+            if r in ("}", "});"):
+                dentro_finally = False
+                continue
+            assert "setFallito(" not in r, (
+                f"{pagina}: `setFallito` dentro il `finally` ({r!r}): gira a "
+                "ogni caricamento, riuscito o no, e cancella il `true` del "
+                "catch. Il flag va alzato nel catch e abbassato nel try."
+            )
 
 
 @pytest.mark.parametrize("pagina,atteso", sorted(_FLAG_ATTESO.items()))

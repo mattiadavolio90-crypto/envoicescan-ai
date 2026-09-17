@@ -75,6 +75,37 @@ export function mostraGuasto(caricamentoFallito: boolean, righeCaricate: number)
 
 
 /**
+ * Quale dei tre stati mostrare sotto uno skeleton: caricamento, guasto, vuoto.
+ *
+ * Esiste per una ragione misurata (L9, 17/09/2026). I client mobile avevano la
+ * scelta scritta come ternario a catena nel JSX, e il presidio poteva solo
+ * LEGGERE la forma di quelle righe — l'harness esegue `lib/`, non i `.tsx`. Due
+ * mutanti evasivi sopravvivevano a quel presidio ripristinando il difetto
+ * intero, con la suite verde:
+ *
+ *   ) : (false && mostraGuasto(fallito, voci.length)) ? (   // ramo spento
+ *   } finally { setFallito(false); ... }                    // flag riazzerato
+ *
+ * Entrambi soddisfano un test che cerca le stringhe giuste. Nessuno dei due
+ * sopravvive a un test che ESEGUE questa funzione.
+ */
+export type StatoLista = "caricamento" | "guasto" | "vuoto" | "dati";
+
+export function statoLista(opzioni: {
+  caricamento: boolean;
+  caricamentoFallito: boolean;
+  righeCaricate: number;
+}): StatoLista {
+  const { caricamento, caricamentoFallito, righeCaricate } = opzioni;
+  // Lo skeleton vince: mentre si carica non si afferma ne' il vuoto ne' il guasto.
+  if (caricamento) return "caricamento";
+  if (righeCaricate > 0) return "dati";
+  // Niente righe: l'unica domanda che resta e' se il vuoto sia stato misurato.
+  return caricamentoFallito ? "guasto" : "vuoto";
+}
+
+
+/**
  * Lo stesso principio applicato a un OGGETTO invece che a una lista.
  *
  * I KPI di /margini non sono righe: sono sei totali. `fetchKpiData` ripiega su

@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { mostraGuasto } from "@/lib/esito-caricamento";
+import { statoLista } from "@/lib/esito-caricamento";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import {
@@ -275,6 +275,10 @@ export function MobileSpese({ settore }: { settore?: Settore | null } = {}) {
     return t.startsWith(meseISO(anno, mese)) ? t : `${meseISO(anno, mese)}-01`;
   }, [today, anno, mese]);
 
+  // Lo stato lo decide `lib/`, dove i test lo ESEGUONO: nel JSX un ramo si
+  // spegne con un `false &&` senza rompere nessun presidio (L9).
+  const stato = statoLista({ caricamento: loading, caricamentoFallito: fallito, righeCaricate: voci.length });
+
   return (
     <div className="space-y-4">
       {/* Navigazione mese */}
@@ -302,15 +306,15 @@ export function MobileSpese({ settore }: { settore?: Settore | null } = {}) {
 
       {/* Lista voci */}
       <div className="space-y-2.5">
-        {loading ? (
+        {stato === "caricamento" ? (
           <div className="space-y-2.5">
             {[0, 1].map((i) => (
               <div key={i} className="h-14 animate-pulse rounded-xl border bg-muted/40" />
             ))}
           </div>
-        ) : mostraGuasto(fallito, voci.length) ? (
+        ) : stato === "guasto" ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare le spese. Riprova fra un momento.</p>
-        ) : voci.length === 0 ? (
+        ) : stato === "vuoto" ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessuna spesa extra in questo mese.</p>
         ) : (
           voci.map((s) => (

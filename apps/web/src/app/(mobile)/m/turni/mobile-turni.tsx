@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, Banknote,
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { mostraGuasto } from "@/lib/esito-caricamento";
+import { statoLista } from "@/lib/esito-caricamento";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
@@ -993,6 +993,15 @@ function TurniBody() {
 
   const fmtSett = `${lunedi.getDate()} ${MESI[lunedi.getMonth()]} – ${addDays(lunedi, 6).getDate()} ${MESI[addDays(lunedi, 6).getMonth()]}`;
 
+  // Tre viste, tre liste, TRE stati — e non uno solo. Nel primo giro di L9 il
+  // flag era collegato alla sola vista mese, cioe' quella che si raggiunge dopo
+  // aver toccato il selettore; la giornaliera (il default, `modalita` parte da
+  // "giornaliero") e la mensile restavano col difetto intero. Lo stato lo decide
+  // `lib/`, dove i test lo ESEGUONO.
+  const statoGiorno = statoLista({ caricamento: loading, caricamentoFallito: fallito, righeCaricate: turniGiorno.length });
+  const statoMensile = statoLista({ caricamento: loading, caricamentoFallito: fallito, righeCaricate: righeMensili.length });
+  const statoMese = statoLista({ caricamento: loading, caricamentoFallito: fallito, righeCaricate: riepilogoMese.length });
+
   return (
     <div className="space-y-4">
       {/* Toggle modalità: turni giornalieri vs totali mensili */}
@@ -1047,13 +1056,13 @@ function TurniBody() {
       {isVistaMese ? (
         // ── Vista mese (giornaliero, accordion per dipendente) ──────────────────
         <div className="space-y-2.5">
-          {loading ? (
+          {statoMese === "caricamento" ? (
             <div className="space-y-2.5">
               {[0, 1].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-xl border bg-muted/40" />)}
             </div>
-          ) : mostraGuasto(fallito, riepilogoMese.length) ? (
+          ) : statoMese === "guasto" ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare i turni. Riprova fra un momento.</p>
-          ) : riepilogoMese.length === 0 ? (
+          ) : statoMese === "vuoto" ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Nessun turno per questo mese.</p>
           ) : (
             riepilogoMese.map((r) => {
@@ -1121,11 +1130,13 @@ function TurniBody() {
             </div>
           )}
           <div className="space-y-2.5">
-            {loading ? (
+            {statoMensile === "caricamento" ? (
               <div className="space-y-2.5">
                 {[0, 1].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-xl border bg-muted/40" />)}
               </div>
-            ) : righeMensili.length === 0 ? (
+            ) : statoMensile === "guasto" ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare gli inserimenti mensili. Riprova fra un momento.</p>
+            ) : statoMensile === "vuoto" ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 Nessun inserimento mensile. Usa + per aggiungere i totali da busta paga.
               </p>
@@ -1186,11 +1197,13 @@ function TurniBody() {
 
           {/* Turni del giorno */}
           <div className="space-y-2.5">
-            {loading ? (
+            {statoGiorno === "caricamento" ? (
               <div className="space-y-2.5">
                 {[0, 1].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-xl border bg-muted/40" />)}
               </div>
-            ) : turniGiorno.length === 0 ? (
+            ) : statoGiorno === "guasto" ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare i turni. Riprova fra un momento.</p>
+            ) : statoGiorno === "vuoto" ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Nessun turno per questo giorno.</p>
             ) : (
               turniGiorno.map((t) => {
