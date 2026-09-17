@@ -420,6 +420,50 @@ def test_ogni_variabile_di_stato_ha_entrambi_i_rami(pagina):
     )
 
 
+@pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
+def test_i_rami_di_un_ternario_nominano_lo_stesso_stato(pagina):
+    """I tre rami di una vista devono parlare della STESSA lista.
+
+    Quinto giro di review, mutante V: scambiare i nomi **fra due viste** — la
+    vista mese che governa il guasto della giornaliera e viceversa — lascia gli
+    insiemi identici (entrambi i nomi compaiono in entrambi i ruoli) e passa la
+    guardia precedente. I tre stati condividono `loading` e `fallito` e divergono
+    solo per `righeCaricate`, quindi nel caso piu' comune — worker giu', tutte le
+    liste vuote — il cliente vede ancora il messaggio giusto; ma su stati misti
+    una vista decide in base ai dati di un'altra.
+
+    Qui si passa da «quali nomi esistono» a **«quali nomi stanno insieme»**: in
+    una catena `X === "caricamento" ? … : Y === "guasto" ? … : Z === "vuoto"`,
+    X, Y e Z devono essere lo stesso nome.
+    """
+    vivo = _codice_vivo(_APP / pagina)
+    righe = [" ".join(r.split()) for r in vivo.splitlines()]
+
+    catene, corrente = [], None
+    for r in righe:
+        m = re.search(r'(\w+) === "(caricamento|guasto|vuoto)"', r)
+        if not m:
+            continue
+        nome, ruolo = m.group(1), m.group(2)
+        if ruolo == "caricamento":          # apre una catena nuova
+            if corrente:
+                catene.append(corrente)
+            corrente = {ruolo: nome}
+        elif corrente is not None:
+            corrente[ruolo] = nome
+    if corrente:
+        catene.append(corrente)
+
+    assert catene, f"{pagina}: nessuna catena di rami trovata"
+    for c in catene:
+        nomi = set(c.values())
+        assert len(nomi) == 1, (
+            f"{pagina}: una vista mescola gli stati {sorted(nomi)} nei suoi rami "
+            f"({c}).\nOgni vista deve decidere sulla PROPRIA lista: incrociandoli, "
+            "una vista mostra il guasto in base ai dati di un'altra."
+        )
+
+
 # Parole che compaiono SOLO nel messaggio di guasto: dicono al cliente che il
 # problema e' nostro e che puo' riprovare. Se finiscono nel ramo del vuoto (o
 # spariscono dal ramo del guasto) i due casi si sono scambiati di posto, e il

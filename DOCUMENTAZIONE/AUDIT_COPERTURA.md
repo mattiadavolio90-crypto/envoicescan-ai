@@ -27,7 +27,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 |---|---|
 | Commit certificato | `0ee1c7b` |
 | Data | 17/09/2026 |
-| Suite | **14.800 raccolti** (14.216 verdi + 45 skip fuori da `-m sql`) — di cui **539 su un Postgres vero** e 101 Deno. Misurato a `0ee1c7b`, ultimo dei cinque giri di L9: a `3a040e7` (prima delle review) erano 14.780 e 14.196 |
+| Suite | **14.804 raccolti** (14.220 verdi + 45 skip fuori da `-m sql`) — di cui **539 su un Postgres vero** e 101 Deno |
 | Copertura backend eseguita | **65%** (`services,utils,config,worker` — 24.958 stmts, 8.224 miss) |
 | Logica SQL | 148 migration; **25 funzioni del DB eseguite da test** (erano 0 fino al 07/09) |
 | Lenti trasversali | **9 su 9 chiuse**, 18 difetti corretti — `docs/storico/audit-2026-09/INDICE_LENTI_L1_L9.md` |

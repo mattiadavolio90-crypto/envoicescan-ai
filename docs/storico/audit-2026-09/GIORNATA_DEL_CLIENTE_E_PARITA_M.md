@@ -9,9 +9,9 @@ domanda se il telefono gli dice le stesse cose del desktop.
 |---|---|
 | Perimetro | **22 pagine desktop + 7 mobile**, 171 route API, 10 componenti client mobile che caricano dati |
 | Difetti corretti | **4** (stati vuoti mobile che affermavano il falso) |
-| Presidi | **+32 casi** in `tests/test_esito_caricamento_frontend.py` (**41 → 73** nel file) + `statoLista()` in `lib/esito-caricamento.ts` |
-| Mutanti | **22 provati, 22 uccisi** in cinque giri — di cui **9 sopravvissuti** al primo tentativo del rispettivo presidio, **7 scritti dal code-reviewer** |
-| Suite | 14.184 → **14.216 verdi**, 0 rossi |
+| Presidi | **+36 casi** in `tests/test_esito_caricamento_frontend.py` (**41 → 77** nel file) + `statoLista()` in `lib/esito-caricamento.ts` |
+| Mutanti | **23 provati, 23 uccisi** in sei giri — di cui **10 sopravvissuti** al primo tentativo del rispettivo presidio, **8 scritti dal code-reviewer** |
+| Suite | 14.184 → **14.220 verdi**, 0 rossi |
 
 ---
 
@@ -357,9 +357,10 @@ stata applicata a un file su due.
 | 3 | 4 (scritti **da fuori**) | 3 (ritorno del mutante storico, shadowing, messaggi scambiati) |
 | 4 | 3 (scritti **da fuori**) | 2 (ramo duplicato, finestra porosa) |
 | 5 | 2 (scritti **da fuori**) | 2 (regex dell'assegnazione aggirata, parser troncato da un ternario annidato) |
+| 6 | 1 (scritto **da fuori**) | 1 (i rami di due viste che si **scambiano** lo stato) |
 
-**22 provati, 22 uccisi.** Nove sono sopravvissuti al primo tentativo del
-presidio che avrebbe dovuto ucciderli — e **sette dei nove** li ha scritti il
+**23 provati, 23 uccisi.** Dieci sono sopravvissuti al primo tentativo del
+presidio che avrebbe dovuto ucciderli — e **otto dei dieci** li ha scritti il
 reviewer, non io. Dal terzo giro in poi **tutti** i mutanti sopravvissuti sono
 suoi: i miei avevano smesso di trovare qualcosa molto prima che il codice fosse
 a posto.
@@ -400,6 +401,28 @@ ramo finisce al `) : ` che torna al livello di partenza.
 Il reviewer proponeva di dichiararlo come limite noto invece di chiuderlo. E'
 stato chiuso: contare le parentesi costa otto righe, e un limite dichiarato in
 un docstring e' un difetto che nessuno rilegge.
+
+---
+
+## Il sesto giro — «quali nomi esistono» non e' «quali nomi stanno insieme»
+
+Quinta review, un solo rilievo. La guardia sugli insiemi chiedeva che ogni stato
+con un ramo «vuoto» avesse anche il suo «guasto». Il reviewer ha scambiato i
+nomi **fra due viste** — la vista mese che governa il guasto della giornaliera e
+viceversa — e gli insiemi sono rimasti **identici**, perche' entrambi i nomi
+compaiono in entrambi i ruoli. 73 verdi.
+
+L'impatto e' piu' ristretto dei giri precedenti, ed e' giusto dirlo: i tre stati
+condividono `loading` e `fallito` e divergono solo per `righeCaricate`, quindi
+nel caso piu' comune — worker giu' all'apertura, tutte le liste vuote — il
+cliente vede ancora il messaggio giusto. Il difetto si manifesta su **stati
+misti**: una vista decide in base ai dati di un'altra.
+
+Il reviewer lasciava la scelta fra chiuderlo e dichiararlo come limite noto. E'
+stato **chiuso**, come i due giri precedenti: la guardia passa da «quali nomi
+esistono» a **«quali nomi stanno insieme»** — in una catena
+`X === "caricamento" ? … : Y === "guasto" ? … : Z === "vuoto"`, X, Y e Z devono
+essere lo stesso nome. Trenta righe, e chiude la famiglia degli incroci.
 
 ### La lezione
 
