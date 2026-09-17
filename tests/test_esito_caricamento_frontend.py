@@ -376,37 +376,48 @@ def test_ogni_stato_vuoto_mobile_passa_da_stato_lista(pagina):
 
 @pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
 def test_ogni_variabile_di_stato_ha_entrambi_i_rami(pagina):
-    """Il conteggio aggregato non basta: si pareggia duplicando.
+    """Ogni stato che sa dire «vuoto» deve saper dire anche «guasto».
 
-    Terzo giro di review. La guardia precedente chiedeva `#vuoto == #guasto` su
-    tutto il file, e il reviewer l'ha aggirata **togliendo il ramo guasto della
-    vista di default** e **duplicando** quello di un'altra vista: conteggio 3/3,
-    69 test verdi, e il cliente che apre `/m/turni` rilegge «Nessun turno per
-    questo giorno.» col worker giu'. Riprodotto: sopravviveva.
+    Due giri di review su questa sola guardia, e ogni volta il difetto e' finito
+    sulla **vista di default** dei turni — quella che il cliente apre per prima.
 
-    E' [assert-su-aggregato-nasconde-errori-che-si-compensano]: la somma torna
-    perche' due errori opposti si annullano. L'invariante era globale mentre il
-    difetto e' **per-vista**.
+    Terzo giro: la guardia contava `#vuoto == #guasto` su tutto il file, e si
+    pareggiava **duplicando** un ramo mentre una vista restava scoperta
+    ([assert-su-aggregato-nasconde-errori-che-si-compensano]: la somma torna
+    perche' due errori opposti si annullano).
 
-    La forma robusta lega ogni variabile ai SUOI rami: per ogni `statoX` passato
-    a `statoLista`, devono esistere sia `statoX === "guasto"` sia
-    `statoX === "vuoto"`. Non richiede di rendere il componente.
+    Quarto giro: la guardia raccoglieva i nomi da
+    `const X = statoLista(...)`, e bastava interporre qualcosa fra l'uguale e la
+    chiamata per uscire dall'insieme presidiato — una semplificazione che uno
+    scriverebbe in buona fede:
+
+        const statoGiorno = loading ? "caricamento" : statoLista({...});
+
+    Percio' i nomi si raccolgono da **come lo stato e' usato**, non da come e'
+    assegnato: ogni `X` che compare in `X === "vuoto"` deve comparire anche in
+    `X === "guasto"`, e viceversa. Lavora su **insiemi** e non su conteggi,
+    quindi regge anche alla duplicazione del terzo giro.
     """
     vivo = _codice_vivo(_APP / pagina)
 
-    # le variabili di stato sono quelle che ricevono il risultato di statoLista
-    stati = set(re.findall(r"const\s+(\w+)\s*=\s*statoLista\(", vivo))
-    assert stati, f"{pagina}: nessuna variabile assegnata da statoLista()"
+    con_vuoto = set(re.findall(r'(\w+)\s*===\s*"vuoto"', vivo))
+    con_guasto = set(re.findall(r'(\w+)\s*===\s*"guasto"', vivo))
 
-    for nome in sorted(stati):
-        for ramo in ("guasto", "vuoto"):
-            atteso = f'{nome} === "{ramo}"'
-            assert atteso in vivo, (
-                f"{pagina}: `{nome}` non ha il ramo «{ramo}» ({atteso!r}).\n"
-                "Ogni vista ha la sua lista e i suoi rami: se ne manca uno, "
-                "quella vista conserva il difetto di L9 — e il conteggio "
-                "complessivo puo' restare in pari duplicandone un altro."
-            )
+    assert con_vuoto, f"{pagina}: nessuno stato con un ramo «vuoto»"
+    assert "statoLista(" in vivo, f"{pagina} non usa piu' statoLista"
+
+    senza_guasto = con_vuoto - con_guasto
+    assert not senza_guasto, (
+        f"{pagina}: {sorted(senza_guasto)} dice «non c'e' niente» ma non sa dire "
+        "«non sono riuscito a chiedere».\nQuella vista conserva il difetto di L9: "
+        "col worker giu' il cliente legge che non ha dati. Ogni vista ha la sua "
+        "lista e i suoi rami (in mobile-turni.tsx le viste sono tre)."
+    )
+    senza_vuoto = con_guasto - con_vuoto
+    assert not senza_vuoto, (
+        f"{pagina}: {sorted(senza_vuoto)} ha il ramo del guasto ma non quello "
+        "del vuoto: un mese davvero vuoto non ha piu' un messaggio suo."
+    )
 
 
 # Parole che compaiono SOLO nel messaggio di guasto: dicono al cliente che il
@@ -418,7 +429,8 @@ _PAROLE_GUASTO = ("Non è stato possibile", "Riprova")
 
 
 def _corpo_del_ramo(righe: list[str], i: int) -> str:
-    """Il JSX di UN ramo, dalla sua apertura al ramo successivo.
+    """Il JSX di UN ramo, dalla sua apertura al ramo successivo dello STESSO
+    ternario.
 
     Non una finestra fissa: al terzo giro il presidio leggeva `righe[i:i+3]` e
     il reviewer l'ha bucata in **entrambe** le direzioni, solo riformattando il
@@ -428,13 +440,24 @@ def _corpo_del_ramo(righe: list[str], i: int) -> str:
         disattivato;
       - falso negativo: il testo di guasto nascosto nel ramo del vuoto, spinto
         oltre la finestra -> verde sul difetto.
-    Il delimitatore e' strutturale: `) : ` apre il ramo seguente.
+
+    Non basta pero' fermarsi alla prima riga che inizia con `) : `: al quarto
+    giro il reviewer ha annidato un ternario dentro il corpo, che produce quella
+    sequenza **prima** della fine del ramo, e il parser smetteva di leggere due
+    righe troppo presto (mutante B12). Si conta quindi la profondita': il ramo
+    finisce al `) : ` che torna al livello di partenza.
     """
-    corpo = []
+    corpo: list[str] = []
+    profondita = 0
     for r in righe[i + 1 :]:
-        if r.startswith(") : ") or r.startswith(") : (") or r == ") : (":
+        # un `) : ` al livello di partenza chiude QUESTO ramo; piu' in dentro
+        # appartiene a un ternario annidato e fa parte del corpo.
+        if profondita == 0 and (r.startswith(") : ") or r == ") : ("):
             break
         corpo.append(r)
+        profondita += r.count("(") - r.count(")")
+        if profondita < 0:
+            profondita = 0
     return " ".join(corpo)
 
 

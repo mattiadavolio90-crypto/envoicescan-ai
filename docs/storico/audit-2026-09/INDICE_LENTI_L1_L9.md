@@ -226,8 +226,11 @@ forma del codice: due mutanti *evasivi* (`false &&` sul ramo, reset del flag nel
 decisione** in `statoLista()` (lib/), che i test **eseguono**. Al terzo giro
 altri 4 mutanti scritti **da fuori**: 2 sopravvissuti, piu' il ritorno del
 mutante storico — avevo *sostituito* il vecchio presidio invece di affiancarlo.
-Al quarto giro altri 3 (conteggio dei rami aggirato duplicandone uno; la
-finestra di righe porosa nelle due direzioni): **20 provati, 20 uccisi**.
+Quattro giri di review, tutti rossi: **22 mutanti provati, 22 uccisi**, di cui 9
+sopravvissuti al primo tentativo del presidio che doveva ucciderli — **7 scritti
+dal reviewer**. Dal terzo giro in poi i difetti non erano piu' nel codice ma nei
+**presidi**, e ogni volta il buco e' finito sulla stessa vista: quella di
+default.
 
 **2 sospetti scartati dopo verifica:** il blocco KPI mobile — che il primo giro
 dichiarava «identico al desktop» e **non lo e'** (il desktop ha tre stati via

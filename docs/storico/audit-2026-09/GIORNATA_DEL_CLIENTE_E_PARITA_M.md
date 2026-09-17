@@ -10,7 +10,7 @@ domanda se il telefono gli dice le stesse cose del desktop.
 | Perimetro | **22 pagine desktop + 7 mobile**, 171 route API, 10 componenti client mobile che caricano dati |
 | Difetti corretti | **4** (stati vuoti mobile che affermavano il falso) |
 | Presidi | **+32 casi** in `tests/test_esito_caricamento_frontend.py` (**41 → 73** nel file) + `statoLista()` in `lib/esito-caricamento.ts` |
-| Mutanti | **20 provati, 20 uccisi** in quattro giri — di cui **6 sopravvissuti** al primo tentativo del rispettivo presidio |
+| Mutanti | **22 provati, 22 uccisi** in cinque giri — di cui **9 sopravvissuti** al primo tentativo del rispettivo presidio, **7 scritti dal code-reviewer** |
 | Suite | 14.184 → **14.216 verdi**, 0 rossi |
 
 ---
@@ -356,14 +356,54 @@ stata applicata a un file su due.
 | 2 | 7 | 1 (`caricamentoFallito: false` letterale) |
 | 3 | 4 (scritti **da fuori**) | 3 (ritorno del mutante storico, shadowing, messaggi scambiati) |
 | 4 | 3 (scritti **da fuori**) | 2 (ramo duplicato, finestra porosa) |
+| 5 | 2 (scritti **da fuori**) | 2 (regex dell'assegnazione aggirata, parser troncato da un ternario annidato) |
 
-**20 provati, 20 uccisi.** Sette sono sopravvissuti al primo tentativo del
-presidio che avrebbe dovuto ucciderli — e **cinque dei sette** li ha scritti il
-reviewer, non io.
+**22 provati, 22 uccisi.** Nove sono sopravvissuti al primo tentativo del
+presidio che avrebbe dovuto ucciderli — e **sette dei nove** li ha scritti il
+reviewer, non io. Dal terzo giro in poi **tutti** i mutanti sopravvissuti sono
+suoi: i miei avevano smesso di trovare qualcosa molto prima che il codice fosse
+a posto.
+
+---
+
+## Il quinto giro — la guardia guardava l'assegnazione, non l'uso
+
+Quarta review. Codice di produzione corretto; ancora due difetti nel **parser**
+del presidio, ed e' notevole che entrambe le volte il buco sia finito **sulla
+stessa vista**: la giornaliera dei turni, quella che il cliente apre per prima.
+
+### La regex si aggira interponendo qualsiasi cosa
+
+La guardia raccoglieva i nomi da `const X = statoLista(...)`. Basta un ternario
+fra l'uguale e la chiamata — **una semplificazione che uno scriverebbe in buona
+fede** — e quel nome esce dall'insieme presidiato:
+
+```tsx
+const statoGiorno = loading ? "caricamento" : statoLista({ ... });
+```
+
+Tolto poi il suo ramo guasto: **73 verdi**, difetto L9 integrale sulla vista di
+default. Riprodotto.
+
+**I nomi si raccolgono da come lo stato e' USATO, non da come e' assegnato**:
+ogni `X` in `X === "vuoto"` deve comparire anche in `X === "guasto"` e viceversa.
+Insiemi, non conteggi — cosi' regge anche alla duplicazione del terzo giro.
+
+### Il delimitatore si tronca su un ternario annidato
+
+`_corpo_del_ramo` si fermava alla prima riga che inizia con `) : `. Un ternario
+annidato nel corpo produce quella sequenza **prima** della fine del ramo, e il
+parser smetteva di leggere due righe troppo presto: il testo di guasto nascosto
+nel ramo del **vuoto** passava. Ora si conta la profondita' di parentesi e il
+ramo finisce al `) : ` che torna al livello di partenza.
+
+Il reviewer proponeva di dichiararlo come limite noto invece di chiuderlo. E'
+stato chiuso: contare le parentesi costa otto righe, e un limite dichiarato in
+un docstring e' un difetto che nessuno rilegge.
 
 ### La lezione
 
-Quattro errori di metodo, non di logica.
+Cinque errori di metodo, non di logica.
 
 1. **Il perimetro si conta sull'unita' che ha il difetto** — qui lo stato vuoto,
    non il file che lo contiene.
@@ -383,6 +423,12 @@ Quattro errori di metodo, non di logica.
    **delimitatore**, mai su un numero fisso di righe: la finestra sbaglia in
    entrambe le direzioni, e il falso positivo e' il piu' dannoso dei due perche'
    fa disattivare il presidio.
+
+5. **Una guardia deve guardare l'USO, non la forma della dichiarazione.**
+   Raccogliere i nomi dall'assegnazione li perde tutti appena qualcuno
+   riscrive la riga; raccoglierli dai rami in cui compaiono e' invariante a
+   come sono nati. E un parser di testo che si ferma su un delimitatore va
+   scritto **contando la profondita'**, o lo tronca il primo annidamento.
 
 Il confine resta dichiarato: `statoLista` e' eseguita, il resto e' lettura di
 forma. Una riscrittura completa dei testi, o un refactoring che rinomina tutto in
