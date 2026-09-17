@@ -18,14 +18,14 @@
 
 ## La riga che conta
 
-**Al commit `0ee1c7b` del 17/09/2026** i tre cicli di audit (2026-07, 2026-08,
+**Al commit `1011d10` del 17/09/2026** i tre cicli di audit (2026-07, 2026-08,
 2026-09) sono **tutti chiusi**, e con essi l'audit di compliance legale del
 09/09 e **tutte e nove le lenti trasversali** (L9 chiusa il 17/09). Da qui vale
 la regola ordinaria: *quando tocchi un file, lo copri*.
 
 | | |
 |---|---|
-| Commit certificato | `0ee1c7b` |
+| Commit certificato | `1011d10` — l'ultimo dei sei giri di review di L9, ed e' qui che la suite e' stata misurata |
 | Data | 17/09/2026 |
 | Suite | **14.804 raccolti** (14.220 verdi + 45 skip fuori da `-m sql`) — di cui **539 su un Postgres vero** e 101 Deno |
 | Copertura backend eseguita | **65%** (`services,utils,config,worker` — 24.958 stmts, 8.224 miss) |
