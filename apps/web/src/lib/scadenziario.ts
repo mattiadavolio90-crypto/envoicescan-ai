@@ -381,25 +381,11 @@ export function statoDocumento(d: Documento, today?: Date): StatoDocumento {
   return "Da pagare";
 }
 
-/**
- * Il bordo rosso della riga: solo dove la scadenza e' anche mostrata.
- *
- * La vista "Per mese" nasconde di proposito tutto cio' che riguarda le scadenze
- * (vedi `DocumentoRowProps.mostraScadenze`). Il bordo era l'unica delle cinque
- * conseguenze rimasta fuori: la riga restava marcata "in ritardo" mentre la data
- * che lo giustifica era nascosta, e il cliente non aveva modo di spiegarsela.
- *
- * Sta qui e non nel .tsx perche' la rete di test del frontend copre `lib/`: una
- * condizione dentro il componente non sarebbe misurabile da nessun test.
- */
-export function mostraBordoScaduta(
-  d: Documento,
-  mostraScadenze: boolean,
-  today?: Date,
-): boolean {
-  if (!mostraScadenze) return false;
-  return statoDocumento(d, today) === "Scaduta";
-}
+/* `mostraBordoScaduta` viveva qui. Rimossa il 17/09/2026 insieme al bordo rosso
+   di riga che decideva: le sezioni dell'agenda sono gia' partizionate per stato,
+   quindi dentro "Scadute" il bordo coloriva TUTTE le righe senza distinguerne
+   nessuna — 414 su una sede reale, «un muro rosso senza fine». Il segnale di
+   ritardo resta sul titolo di sezione e sulla data di scadenza. */
 
 /**
  * Le scadute che il calendario NON sta mostrando, perche' cadono in un altro mese.

@@ -91,6 +91,17 @@ const GRAVITA_STYLE: Record<Gravita, { dot: string; ring: string; label: string 
   medio: { dot: "bg-amber-400", ring: "border-l-amber-400", label: "Medio" },
 };
 
+/**
+ * Larghezze delle tre colonne di prezzo, condivise fra l'intestazione della
+ * lista e ogni riga. Sono l'unico modo per allineare colonne dentro card in
+ * flex: senza, ogni riga si dimensiona sul proprio contenuto e i numeri non
+ * stanno incolonnati. `w-20` regge "€1.234,56"; l'ultimo e' piu' largo perche'
+ * sotto ci sta anche la percentuale ("+123,4%").
+ */
+const COL_MEDIA = "w-20";
+const COL_PENULTIMO = "w-20";
+const COL_ULTIMO = "w-24";
+
 /** Fallback: ricava i punti dalla stringa di presentazione "€1,20 → €1,35".
  *  Perde i decimali oltre il secondo — usare `storico_valori` quando c'e'. */
 function parseStorico(s: string): number[] {
@@ -101,12 +112,15 @@ function parseStorico(s: string): number[] {
     .filter((n) => !isNaN(n));
 }
 
-function Sparkline({ values, rialzo }: { values: number[]; rialzo: boolean }) {
+function Sparkline({ values }: { values: number[] }) {
   const w = 96;
   const h = 32;
   const points = puntiSparkline(values, { w, h });
   if (!points) return <div className="h-8 w-24" />;
-  const stroke = rialzo ? "rgb(244 63 94)" : "rgb(16 185 129)";
+  // Grigio dal 17/09/2026: la direzione la dice gia' la linea stessa (sale o
+  // scende) e, dove conta, l'impatto in euro. Colorarla era il terzo rosso
+  // della riga.
+  const stroke = "rgb(148 163 184)";
   const coppie = points.split(" ").map((p) => p.split(","));
   return (
     <svg width={w} height={h} className="overflow-visible shrink-0">
@@ -318,7 +332,6 @@ const AlertCard = memo(function AlertCard({
 }) {
   const g = gravita(r);
   const style = GRAVITA_STYLE[g];
-  const rialzo = r.aumento_perc > 0;
   // storico_valori arriva grezzo dal worker; parseStorico resta come fallback per
   // le response servite dalla cache prima del deploy che ha aggiunto il campo.
   const spark = r.storico_valori ?? parseStorico(r.storico);
@@ -347,28 +360,43 @@ const AlertCard = memo(function AlertCard({
             </p>
           </div>
 
-          <div className="text-right shrink-0">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Media periodo</p>
+          {/* Le tre etichette ("MEDIA PERIODO / PENULTIMO / ULTIMO") stavano qui
+              dentro, cioe' ripetute in ognuna delle 76 righe della pagina. Dal
+              17/09/2026 stanno una volta sola nell'intestazione sopra la lista.
+              Le larghezze fisse COL_* sono condivise con quell'intestazione:
+              servono a tenere le colonne in fila (prima ondulavano di 20-40 px
+              da una riga all'altra, a seconda della lunghezza delle cifre) e
+              cambiarne una qui senza cambiarla la' scolla i titoli dai dati. */}
+          <div className={`text-right shrink-0 ${COL_MEDIA}`}>
             <p className="text-xs tabular-nums text-muted-foreground">€{r.media.toFixed(2)}</p>
           </div>
 
-          <div className="text-right shrink-0">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Penultimo</p>
+          <div className={`text-right shrink-0 ${COL_PENULTIMO}`}>
             <p className="text-xs tabular-nums text-muted-foreground">€{r.penultimo.toFixed(2)}</p>
           </div>
 
-          <div className="text-right shrink-0">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ultimo</p>
+          <div className={`text-right shrink-0 ${COL_ULTIMO}`}>
             <p className="text-xs font-bold tabular-nums text-foreground">€{r.ultimo.toFixed(2)}</p>
-            <p className={`text-lg font-bold leading-tight ${rialzo ? "text-rose-600" : "text-emerald-600"}`}>
+            {/* Percentuale neutra dal 17/09/2026. Prima era rossa sui rialzi e
+                verde sui ribassi: nella stessa riga il bordo e il pallino
+                dicevano invece l'ENTITA' (`Math.abs` dell'impatto), cosi' un
+                ribasso da 200 € — una buona notizia — usciva con bordo rosso
+                "critico" e numero verde. Due segnali che si annullavano. Il
+                segno resta leggibile nel numero stesso e, dove pesa davvero,
+                nell'impatto in euro qui a destra. */}
+            <p className="text-lg font-bold leading-tight tabular-nums">
               {fmtPct(r.aumento_perc)}
             </p>
           </div>
 
-          <Sparkline values={spark} rialzo={rialzo} />
+          <Sparkline values={spark} />
 
+          {/* Etichetta nell'intestazione, come le tre colonne di prezzo. Questo
+              e' l'unico valore della riga che resta colorato: il colore segue il
+              SEGNO (rosso = ti costa di piu'), che e' l'unica delle tre
+              semantiche di rosso della vecchia riga a dire se la notizia e'
+              buona o cattiva. */}
           <div className="text-right shrink-0 w-28">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Impatto/mese</p>
             <p className={`text-sm font-semibold ${r.impatto_stimato > 0 ? "text-rose-600" : r.impatto_stimato < 0 ? "text-emerald-600" : "text-muted-foreground"}`}>
               {r.impatto_stimato !== 0 ? fmtEuro(r.impatto_stimato, true) : "—"}
             </p>
@@ -894,13 +922,35 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         </div>
       )}
 
-      {/* Stato vuoto positivo */}
+      {/* Stato vuoto. "Stabili" e' una RASSICURAZIONE, e vale solo se le fatture
+          ci sono: fino al 17/09/2026 usciva anche su un anno senza una sola
+          fattura caricata, dove l'app non sa nulla dei prezzi.
+          `fatture_nel_periodo` e' opzionale (le response in cache prima di quel
+          deploy non ce l'hanno): `undefined` vuol dire "non lo so" e tiene il
+          messaggio neutro, mai la rassicurazione. */}
       {data && variazioni.length === 0 && (
-        <div className="rounded-lg border border-border bg-card py-10 text-center">
-          <CheckCircle2 className="size-8 text-emerald-500 mx-auto mb-2" />
-          <p className="text-sm font-medium">Nessuna variazione sopra il {soglia}%</p>
-          <p className="text-xs text-muted-foreground mt-1">I prezzi dei tuoi fornitori sono stabili nel {anno}.</p>
-        </div>
+        data.fatture_nel_periodo === 0 ? (
+          <div className="rounded-lg border border-border bg-card py-10 text-center">
+            <Calendar className="size-8 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-sm font-medium">Nessuna fattura nel periodo</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Senza fatture non è possibile confrontare i prezzi. Caricale o scegli un altro periodo.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-card py-10 text-center">
+            <CheckCircle2 className="size-8 text-emerald-500 mx-auto mb-2" />
+            <p className="text-sm font-medium">Nessuna variazione sopra il {soglia}%</p>
+            {/* La rassicurazione solo con fatture CONTATE (> 0). `null`/assente
+                = "non lo so" (response in cache da prima del 17/09/2026): il
+                messaggio resta al fatto nudo, senza affermare nulla sui prezzi. */}
+            {(data.fatture_nel_periodo ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                I prezzi dei tuoi fornitori sono stabili nel {anno}.
+              </p>
+            )}
+          </div>
+        )
       )}
 
       {/* Loading iniziale */}
@@ -915,6 +965,27 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       {/* Lista card */}
       {variazioni.length > 0 && (
         <>
+          {/* Intestazione: le tre etichette una volta sola invece che dentro
+              ognuna delle righe. La struttura ricalca quella di AlertCard —
+              stessi spazi vuoti per stella, pallino, nome, sparkline e chevron —
+              perche' le colonne restino incolonnate. Nascosta sotto sm: li' la
+              riga va a capo e un'intestazione a colonne non corrisponderebbe
+              piu' a nulla. */}
+          <div
+            aria-hidden
+            className="hidden sm:flex items-center gap-3 px-4 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground"
+          >
+            <span className="size-4 shrink-0" />
+            <span className="size-2.5 shrink-0" />
+            <span className="min-w-0 flex-1" />
+            <span className={`text-right shrink-0 ${COL_MEDIA}`}>Media periodo</span>
+            <span className={`text-right shrink-0 ${COL_PENULTIMO}`}>Penultimo</span>
+            <span className={`text-right shrink-0 ${COL_ULTIMO}`}>Ultimo</span>
+            <span className="w-24 shrink-0" />
+            <span className="text-right shrink-0 w-28">Impatto/mese</span>
+            <span className="size-4 shrink-0" />
+          </div>
+
           <div className="space-y-2">
             {visible.map((r) => {
               const key = `${r.prodotto}|${r.fornitore}`;

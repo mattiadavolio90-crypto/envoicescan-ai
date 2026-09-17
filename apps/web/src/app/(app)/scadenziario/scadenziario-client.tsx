@@ -23,7 +23,7 @@ import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
-  ordinaDocumenti, elencaFornitori, statoDocumento, mostraBordoScaduta,
+  ordinaDocumenti, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare,
 } from "@/lib/scadenziario";
@@ -149,28 +149,33 @@ type DocumentoRowProps = {
   sedeTecnicaId?: string;
   /**
    * Nella vista "Per mese" sparisce tutto cio' che riguarda le scadenze: badge
-   * della fonte, data di scadenza, selezione multipla, "Paga" e il bordo rosso
-   * di riga. Una prop su questo componente e non un secondo componente copiato,
-   * che al primo fix divergerebbe mostrando due elenchi diversi per le stesse
-   * fatture.
-   *
-   * Il bordo era rimasto fuori da questo elenco fino al 16/09/2026: la riga
-   * segnalava "in ritardo" mentre la data che lo giustifica era nascosta qui
-   * sotto. La decisione vive in `mostraBordoScaduta` (lib/scadenziario), dove i
-   * test la raggiungono.
+   * della fonte, data di scadenza, selezione multipla e "Paga". Una prop su
+   * questo componente e non un secondo componente copiato, che al primo fix
+   * divergerebbe mostrando due elenchi diversi per le stesse fatture.
    */
   mostraScadenze?: boolean;
 };
 
+/**
+ * Niente bordo rosso per riga.
+ *
+ * Fino al 17/09/2026 ogni riga scaduta portava un `border-l-2 border-rose-500/60`.
+ * Su una sede reale le scadute sono 414 (1.685 in vista gruppo): l'audit visivo
+ * del 16/09 ha letto la pagina come «un muro rosso senza fine», voto 8 su 10, la
+ * piu' pesante dell'app.
+ *
+ * E non distingueva nulla: le sezioni sono gia' partizionate per stato, quindi
+ * dentro "Scadute" TUTTE le righe erano rosse e nelle altre nessuna. Il segnale
+ * lo danno il titolo di sezione (rose-600) e la data di scadenza qui sotto, che
+ * restano.
+ */
 function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecnicaId, mostraScadenze = true }: DocumentoRowProps) {
   const isOverdue = statoDocumento(doc) === "Scaduta";
-  const bordoScaduta = mostraBordoScaduta(doc, mostraScadenze);
 
   return (
     <div
       className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors cursor-pointer group
-        ${selected ? "bg-primary/8" : "hover:bg-muted/50"}
-        border-l-2 ${bordoScaduta ? "border-rose-500/60" : "border-transparent"}`}
+        ${selected ? "bg-primary/8" : "hover:bg-muted/50"}`}
       onClick={() => onPeek(doc)}
     >
       <input
@@ -2327,7 +2332,12 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           {filtroPeriodo === "tutti" && (
             <CashFlowBar documenti={documentiCalendario} />
           )}
-          <AgendaSection title="Scadute" docs={buckets.scadute} accentClass="text-rose-600 dark:text-rose-400" {...sharedProps} />
+          {/* Chiusa all'apertura dal 17/09/2026: su una sede reale sono 414
+              righe (1.685 in vista gruppo), e montarle tutte spingeva "Questo
+              mese" — cio' su cui si agisce — a ~38 schermate di distanza. Il
+              totale resta leggibile nel riquadro in cima e nel titolo di
+              sezione; chi ci lavora paga un clic. */}
+          <AgendaSection title="Scadute" docs={buckets.scadute} defaultOpen={false} accentClass="text-rose-600 dark:text-rose-400" {...sharedProps} />
           <AgendaSection title="Questa settimana" docs={buckets.settimana} accentClass="text-orange-600 dark:text-orange-400" {...sharedProps} />
           <AgendaSection title="Questo mese" docs={buckets.mese} {...sharedProps} />
           <AgendaSection title="Oltre il mese" docs={buckets.oltre} defaultOpen={false} {...sharedProps} />

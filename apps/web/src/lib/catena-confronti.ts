@@ -284,6 +284,27 @@ export function tintConti(kpi: { mol: number; livello_dati?: string | null }): "
   return livello === "completo" ? (molPos ? "verde" : "rosso") : "giallo";
 }
 
+/**
+ * Lo stesso, per il MOL del singolo PV (Home → KpiBlock).
+ *
+ * Il PV non ha `livello_dati` — quello e' un'aggregazione di gruppo: ha
+ * `costi_mancanti`, che il worker alza quando il mese ha ricavi ma zero food e
+ * zero spese (`_kpi_periodo`). Il significato pero' e' lo stesso, e lo stesso
+ * deve essere il colore: fino al 17/09/2026 la Home mostrava quel MOL gonfiato
+ * in VERDE e gigante, col banner ambra sotto che diceva «questo margine non e'
+ * reale». Su una sede reale: 416.798 € verdi su un mese a costi zero, cioe' un
+ * margine del 100%.
+ *
+ * Due funzioni e non una perche' i due input sono diversi (`livello_dati` e'
+ * una stringa a piu' valori, `costi_mancanti` un booleano); stanno qui vicine
+ * perche' la regola che applicano e' una sola — un MOL che non e' reale non si
+ * colora come una vittoria — e separate divergerebbero.
+ */
+export function tintContiPV(kpi: { mol: number; costi_mancanti?: boolean }): "verde" | "rosso" | "giallo" {
+  if (kpi.costi_mancanti) return "giallo";
+  return kpi.mol >= 0 ? "verde" : "rosso";
+}
+
 // ─── Metrica principale della card "I conti del gruppo" ───────────────────
 //
 // Decisione (Mattia, 9/9/2026): il MOL e' il numero grande ANCHE quando i dati

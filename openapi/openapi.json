@@ -26821,6 +26821,17 @@
           "soglia": {
             "type": "number",
             "title": "Soglia"
+          },
+          "fatture_nel_periodo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fatture Nel Periodo"
           }
         },
         "type": "object",

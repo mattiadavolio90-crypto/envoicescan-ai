@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { type HomeKpi } from "@/lib/home";
-import { calcolaSparkline, type PuntoMol } from "@/lib/catena-confronti";
+import { calcolaSparkline, tintContiPV, type PuntoMol } from "@/lib/catena-confronti";
 import { formatEuro } from "@/lib/format";
 import { tintaTrend } from "@/lib/home-kpi";
 import { costoMerceLabel, type Settore } from "@/lib/categorie-spesa";
+import { SALUTE_TINT } from "@/lib/salute-tint";
 import { cn } from "@/lib/utils";
 
 function Trend({
@@ -159,28 +160,34 @@ function MolAndamento({
 export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | null }) {
   if (!kpi.has_data) return null;
   const molPos = kpi.mol >= 0;
+  /**
+   * Con i costi mancanti il MOL non e' un risultato: e' un buco.
+   *
+   * Il banner ambra qui sotto lo dichiara dal 18/06, ma fino al 17/09/2026 il
+   * numero restava verde e gigante e il trend restava "in meglio" — la pagina si
+   * contraddiceva nella stessa schermata. Su una sede reale mostrava 416.798 €
+   * in verde su un mese con costi e personale a zero, cioe' un margine del 100%.
+   *
+   * Il giallo, non il grigio: e' quello che la Catena fa gia' col MOL di gruppo
+   * (`tintConti`, «il presidio che impedisce a un MOL gonfiato di sembrare una
+   * vittoria»), e lega il numero al banner ambra che lo spiega. Stessa palette
+   * condivisa, cosi' le due viste non divergono.
+   *
+   * La decisione sta in `tintContiPV` (lib/catena-confronti) e non qui: dentro
+   * il .tsx nessun test la raggiungerebbe.
+   */
+  const tint = SALUTE_TINT[tintContiPV(kpi)];
+  const molAttendibile = !kpi.costi_mancanti;
 
   return (
     <div
       className={cn(
         "relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7",
-        molPos
-          ? "bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.03] to-background"
-          : "bg-gradient-to-br from-rose-500/10 via-rose-500/[0.03] to-background",
+        tint.card,
       )}
     >
-      <div
-        className={cn(
-          "pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl",
-          molPos ? "bg-emerald-400/15" : "bg-rose-400/15",
-        )}
-      />
-      <div
-        className={cn(
-          "pointer-events-none absolute -bottom-20 left-1/4 size-52 rounded-full blur-3xl",
-          molPos ? "bg-emerald-400/8" : "bg-rose-400/8",
-        )}
-      />
+      <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
+      <div className={cn("pointer-events-none absolute -bottom-20 left-1/4 size-52 rounded-full blur-3xl", tint.orb2)} />
 
       <div className="mb-4 flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold">I tuoi conti</h2>
@@ -195,19 +202,15 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
         <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
           = MOL (margine)
         </span>
-        <div
-          className={cn(
-            "text-5xl font-black tabular-nums leading-none sm:text-6xl",
-            molPos ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
-          )}
-        >
+        <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>
           {formatEuro(kpi.mol)}
         </div>
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground/60">
           {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
           {/* MOL negativo -> trend neutro (mai verde): "meno in perdita" non e' una
-              vittoria da festeggiare. */}
-          <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos} />
+              vittoria da festeggiare. Stessa cosa coi costi mancanti: il delta
+              confronta un margine gonfiato con uno vero. */}
+          <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos || !molAttendibile} />
         </div>
       </Link>
 

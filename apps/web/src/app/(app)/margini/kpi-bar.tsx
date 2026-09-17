@@ -62,30 +62,41 @@ function Sparkline({ values: rawValues, color }: { values: number[]; color: stri
   );
 }
 
-type Tone = "sky" | "orange" | "emerald" | "rose" | "violet" | "pink";
+type Tone = "neutro" | "emerald" | "rose";
 
-// I valori sono 16px/700: per WCAG NON sono "large text", quindi la soglia AA e'
-// 4.5:1, non 3:1. Misurato in tema chiaro il 9/9/2026, le tinte -600 di orange
-// (#f54a00 -> 3,58:1) ed emerald (#009966 -> 3,65:1) erano sotto — ed erano
-// proprio "Costi F&B" e "Margine Lordo", i due numeri piu' letti della barra.
-// Le -700 rientrano; la dark resta invariata (le -400 su fondo scuro sono ok).
+/**
+ * Cinque riquadri neutri, il colore solo sul MOL.
+ *
+ * Fino al 17/09/2026 i sei riquadri avevano sei tinte diverse (sky, orange,
+ * emerald, violet, pink + il MOL): l'audit visivo del 16/09 li ha letti come
+ * «un arcobaleno, non un sistema». Una regola c'era — il colore indicava la
+ * famiglia di voci, e la tabella sotto la rispetta — ma non si capiva senza
+ * leggere la legenda, e si rompeva in tre punti: l'azzurro valeva sia "ricavi"
+ * sia "cliccabile"; Margine Lordo e MOL avevano lo STESSO verde, quindi
+ * sembravano la stessa cosa; e il verde non voleva dire "va bene", visto che il
+ * MOL restava verde anche coi costi a zero.
+ *
+ * Il legame coi colori della tabella (`calcolo-tab.tsx`) resta sui nomi delle
+ * voci, che sono identici. La tabella non si tocca: li' il colore distingue
+ * righe adiacenti, qui distingueva riquadri gia' separati da un bordo.
+ *
+ * I valori sono 16px/700: per WCAG NON sono "large text", quindi la soglia AA e'
+ * 4.5:1, non 3:1. Misurato in tema chiaro il 9/9/2026, le tinte -600 di orange
+ * (#f54a00 -> 3,58:1) ed emerald (#009966 -> 3,65:1) erano sotto. Le -700
+ * rientrano; la dark resta invariata (le -400 su fondo scuro sono ok).
+ */
 const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
-  sky:     { border: "border-sky-500/40",     hover: "hover:border-sky-500/70",     value: "text-sky-700 dark:text-sky-400" },
-  orange:  { border: "border-orange-500/40",  hover: "hover:border-orange-500/70",  value: "text-orange-700 dark:text-orange-400" },
+  neutro:  { border: "border-border",         hover: "hover:border-muted-foreground/40", value: "text-foreground" },
   emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-700 dark:text-emerald-400" },
   rose:    { border: "border-rose-500/40",    hover: "hover:border-rose-500/70",    value: "text-rose-700 dark:text-rose-400" },
-  violet:  { border: "border-violet-500/40",  hover: "hover:border-violet-500/70",  value: "text-violet-700 dark:text-violet-400" },
-  pink:    { border: "border-pink-500/40",    hover: "hover:border-pink-500/70",    value: "text-pink-700 dark:text-pink-400" },
 };
 
-// Colori hex allineati al TONE per i tratti SVG sparkline
+// Colori hex allineati al TONE per i tratti SVG sparkline. Il neutro usa un
+// grigio esplicito: l'SVG non eredita `currentColor` qui.
 const TONE_COLOR: Record<Tone, string> = {
-  sky:     "#0ea5e9",
-  orange:  "#f97316",
+  neutro:  "#9ca3af",
   emerald: "#10b981",
   rose:    "#f43f5e",
-  violet:  "#8b5cf6",
-  pink:    "#ec4899",
 };
 
 type CardDef = {
@@ -131,12 +142,14 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
     setAnimate(!reduce);
   }, []);
 
+  // "Margine Lordo" era emerald/rose come il MOL: due riquadri identici per due
+  // grandezze diverse. Va a neutro con gli altri — il MOL resta l'unico colorato.
   const cards: CardDef[] = [
-    { label: "Fatturato Netto",  numeric: kpi.fatturato_netto, sub: `lordo ${formatEuro(kpi.fatturato_lordo)}`, tone: "sky",    spark: kpi.spark_lordo },
-    { label: "Costi F&B",        numeric: kpi.costi_fb,                                                          tone: "orange", spark: kpi.spark_fb },
-    { label: "Margine Lordo",    numeric: kpi.primo_margine,                                                     tone: kpi.primo_margine >= 0 ? "emerald" : "rose", spark: kpi.spark_margine },
-    { label: "Spese Generali",   numeric: kpi.spese_generali,                                                    tone: "violet", spark: kpi.spark_spese },
-    { label: "Costo Personale",  numeric: kpi.costo_personale,                                                   tone: "pink",   spark: kpi.spark_personale },
+    { label: "Fatturato Netto",  numeric: kpi.fatturato_netto, sub: `lordo ${formatEuro(kpi.fatturato_lordo)}`, tone: "neutro", spark: kpi.spark_lordo },
+    { label: "Costi F&B",        numeric: kpi.costi_fb,                                                          tone: "neutro", spark: kpi.spark_fb },
+    { label: "Margine Lordo",    numeric: kpi.primo_margine,                                                     tone: "neutro", spark: kpi.spark_margine },
+    { label: "Spese Generali",   numeric: kpi.spese_generali,                                                    tone: "neutro", spark: kpi.spark_spese },
+    { label: "Costo Personale",  numeric: kpi.costo_personale,                                                   tone: "neutro", spark: kpi.spark_personale },
     { label: "MOL",              numeric: kpi.mol,                                                                tone: molTone,  spark: kpi.spark_mol },
   ];
 

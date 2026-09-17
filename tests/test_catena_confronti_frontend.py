@@ -681,6 +681,48 @@ def test_tint_giallo_sullo_stato_non_determinabile():
     ) == "giallo"
 
 
+# ─── tintContiPV (il MOL del singolo PV, Home) ─────────────────────────────
+#
+# Stessa regola di tintConti su un input diverso: il PV non ha `livello_dati`
+# ma `costi_mancanti`. Fino al 17/09/2026 la Home NON applicava la regola: il
+# MOL gonfiato restava verde e gigante col banner ambra sotto che lo smentiva.
+
+
+def test_tint_pv_verde_con_mol_positivo_e_costi_presenti():
+    assert _chiama("tintContiPV", [{"mol": 1000.0, "costi_mancanti": False}]) == "verde"
+
+
+def test_tint_pv_rosso_con_mol_negativo_e_costi_presenti():
+    assert _chiama("tintContiPV", [{"mol": -1000.0, "costi_mancanti": False}]) == "rosso"
+
+
+def test_tint_pv_zero_conta_come_positivo():
+    """Coerente con tintConti: `>= 0`, non `> 0`."""
+    assert _chiama("tintContiPV", [{"mol": 0, "costi_mancanti": False}]) == "verde"
+
+
+def test_tint_pv_giallo_quando_mancano_i_costi():
+    """Il caso misurato: MOL enorme perche' i costi sono a zero, non perche' la
+    sede vada bene. 416.798 EUR su un mese a costi zero = margine 100%."""
+    assert _chiama("tintContiPV", [{"mol": 416798.0, "costi_mancanti": True}]) == "giallo"
+
+
+def test_tint_pv_il_giallo_vince_anche_sul_mol_negativo():
+    """Con i costi mancanti il MOL non e' attendibile in NESSUNA direzione:
+    il rosso sarebbe un giudizio su un numero che non sappiamo."""
+    assert _chiama("tintContiPV", [{"mol": -5000.0, "costi_mancanti": True}]) == "giallo"
+
+
+def test_tint_pv_campo_assente_non_e_giallo():
+    """L'altra direzione, e qui la prudenza sta DALL'ALTRA PARTE rispetto a
+    tintConti: `costi_mancanti` e' un flag che il worker ALZA per segnalare il
+    guasto, non un livello che descrive la completezza. Assente significa "il
+    worker non ha niente da segnalare", cioe' il caso normale — trattarlo come
+    giallo dipingerebbe d'ambra ogni Home servita da una cache un po' vecchia."""
+    assert _chiama("tintContiPV", [{"mol": 1000.0}]) == "verde"
+    assert _chiama("tintContiPV", [{"mol": -1000.0}]) == "rosso"
+
+
 # ─── metricaPrincipaleConti ───────────────────────────────────────────────
 #
 # Fase 5 (9/9/2026): il MOL e' il numero grande della card "I conti del gruppo"

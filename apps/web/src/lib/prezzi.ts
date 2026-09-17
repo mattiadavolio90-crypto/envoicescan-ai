@@ -23,6 +23,19 @@ export type VariazioniResponse = {
   impatto_netto: number;
   fornitori_coinvolti: number;
   soglia: number;
+  /**
+   * Fatture (documenti distinti) nel periodo, anche quelle che non producono
+   * variazioni. Distingue "nessuna variazione" da "nessuna fattura": senza,
+   * un anno vuoto mostrava "i prezzi sono stabili nel 2025", cioe' rassicurava
+   * su dati inesistenti.
+   *
+   * Nullable per un motivo preciso: `null`/`undefined` significano "non lo so"
+   * (response in cache da prima del deploy del 17/09/2026, o un worker che non
+   * popola il campo) e sono ben diversi da `0` ("nessuna fattura"). Trattare
+   * l'assenza come 0 direbbe "nessuna fattura" anche a una sede con migliaia di
+   * documenti — per questo il default lato worker e' None, non 0.
+   */
+  fatture_nel_periodo?: number | null;
 };
 
 export type ScontoOmaggioItem = {

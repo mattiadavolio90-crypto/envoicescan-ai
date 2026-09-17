@@ -129,6 +129,18 @@ class VariazioniResponse(BaseModel):
     impatto_netto: float
     fornitori_coinvolti: int
     soglia: float
+    # Fatture (documenti distinti) nel periodo, indipendentemente dal fatto che
+    # producano variazioni. Serve al frontend per distinguere "nessuna
+    # variazione" da "nessuna fattura": fino al 17/09/2026 un anno senza fatture
+    # mostrava "I prezzi dei tuoi fornitori sono stabili nel 2025", cioe'
+    # rassicurava su dati che non esistevano.
+    #
+    # Il default e' None ("non lo so"), NON 0. Con 0 un endpoint che smettesse di
+    # popolare il campo direbbe al frontend "nessuna fattura" per OGNI cliente,
+    # comprese le sedi con migliaia di documenti — un difetto peggiore di quello
+    # che questo campo corregge. Misurato: mutando via l'assegnazione qui sotto,
+    # con default 0 nessun presidio se ne accorgeva.
+    fatture_nel_periodo: Optional[int] = None
 
 
 class ScontoOmaggioItem(BaseModel):
@@ -438,6 +450,27 @@ def _load_fatture_for_prezzi(
     )
 
 
+def _conta_fatture_distinte(rows: list) -> int:
+    """Quante FATTURE (documenti distinti) stanno in queste righe.
+
+    `rows` sono righe di fattura, non fatture: una fattura da 40 articoli e' 40
+    righe con lo stesso `file_origine`. Il cliente conta documenti, e la
+    differenza non e' cosmetica — su una sede reale sono ordini di grandezza
+    diversi.
+
+    Serve a distinguere "nessuna variazione di prezzo" da "nessuna fattura
+    caricata": senza, la pagina Osservatorio diceva "i prezzi dei tuoi fornitori
+    sono stabili nel 2025" su un anno in cui non c'era una sola fattura.
+
+    Sta qui, fuori dall'endpoint, perche' dentro sarebbe raggiungibile solo
+    mockando auth + Supabase: un presidio che non si puo' scrivere e' un
+    presidio che non c'e'.
+    """
+    return len({
+        r.get("file_origine") for r in rows if r.get("file_origine")
+    })
+
+
 def _load_nc_file_origini(sb, ristorante_id: str, data_da: str, data_a: str) -> set:
     """Set di file_origine che sono vere note di credito (segno_compensazione=-1).
     Usato per distinguere sconti su fattura normale (→ Sconti tab) da NC reali.
@@ -514,12 +547,15 @@ def get_variazioni_prezzi(
         impatto_netto = round(sum(v['impatto_stimato'] for v in variazioni), 2)
         fornitori = {v['fornitore'] for v in variazioni}
 
+    fatture_nel_periodo = _conta_fatture_distinte(all_rows)
+
     return VariazioniResponse(
         variazioni=[VariazionePrezzo(**v) for v in variazioni],
         scostamento_medio=scostamento_medio,
         impatto_netto=impatto_netto,
         fornitori_coinvolti=len(fornitori),
         soglia=soglia,
+        fatture_nel_periodo=fatture_nel_periodo,
     )
 
 

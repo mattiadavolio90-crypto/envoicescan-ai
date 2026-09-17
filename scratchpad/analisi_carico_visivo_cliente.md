@@ -723,15 +723,41 @@ giornata.**
 
 Tutti interventi di sola apparenza: **nessuna funzione tolta.**
 
-| Intervento | Costo | Chi ci perde |
+> **Stato al 17/09/2026** — eseguita, con due correzioni rispetto a come era
+> scritta qui. Tre voci fra le più urgenti del documento **erano già state
+> chiuse il 16/09**, dai fix della giornata, dopo che l'audit era stato scritto:
+> i nomi delle sedi in Catena (`3c6862e`), i numeri animati durante il
+> caricamento (`kpi-bar.tsx:162`, il count-up è disabilitato quando i KPI non
+> sono disponibili) e il contatore "426 su 581" (`3c6862e`). Chi riprende da
+> questo documento **ri-misuri il codice prima di lavorare**: qui sotto la
+> tabella è aggiornata, il resto del documento no.
+
+| Intervento | Costo | Chi ci perde | Stato 17/09 |
+|---|---|---|---|
+| Togliere la cornice rossa alle righe di Gestione Fatture | <1h | nessuno | **fatto** |
+| Non animare i numeri finché il dato non è arrivato | <1h | nessuno | già chiuso il 16/09 |
+| Riquadri di Margini grigi, colore solo sul MOL | <1h | un aggancio visivo con la tabella | **fatto** |
+| Osservatorio: colore solo sull'impatto in euro | <1h | chi cercava "i rossi" | **fatto** |
+| Togliere gli sfondi tinti alle card di Home e Catena | <1h | nessuno | **non fatto** |
+| Grigi i riquadri Righe / Prodotti diversi / Media al mese | <1h | nessuno | **non fatto** |
+| "Costi di gruppo" come quarta scheda in Catena | <1h | nessuno | **non fatto** |
+
+Fatti in più, dalla Parte 1 e dai rilievi ancora veri:
+
+| Intervento | Dove | Stato |
 |---|---|---|
-| Togliere la cornice rossa alle righe di Gestione Fatture | <1h | nessuno |
-| Non animare i numeri finché il dato non è arrivato | <1h | nessuno |
-| Riquadri di Margini grigi, colore solo sul MOL | <1h | un aggancio visivo con la tabella |
-| Osservatorio: colore solo sull'impatto in euro | <1h | chi cercava "i rossi" |
-| Togliere gli sfondi tinti alle card di Home e Catena | <1h | nessuno |
-| Grigi i riquadri Righe / Prodotti diversi / Media al mese | <1h | nessuno |
-| "Costi di gruppo" come quarta scheda in Catena | <1h | nessuno |
+| "Scadute" chiusa all'apertura | `scadenziario-client.tsx` | **fatto** |
+| MOL della Home giallo coi costi mancanti (era verde) | `kpi-block.tsx` via `tintContiPV` | **fatto** |
+| Osservatorio: etichette di colonna una volta sola | `variazioni-tab.tsx` | **fatto** |
+| Niente "prezzi stabili" su un periodo senza fatture | worker + `variazioni-tab.tsx` | **fatto** |
+
+**Due scelte cambiate rispetto a quanto scritto sopra.** Il MOL della Home è
+**giallo**, non grigio: è quello che la Catena già fa (`tintConti`, «il presidio
+che impedisce a un MOL gonfiato di sembrare una vittoria») e lega il numero al
+banner ambra che lo spiega. E il campo `fatture_nel_periodo` del worker torna
+`null`, non `0`, quando non è calcolato: col default a `0` un endpoint che
+smettesse di popolarlo direbbe "nessuna fattura" a ogni cliente — misurato per
+mutazione, nessun presidio se ne accorgeva.
 
 **Effetto atteso:** le due pagine più pesanti (voto 8 e 7) perdono il muro rosso e
 l'arcobaleno, e l'app smette di mostrare numeri falsi in apertura. Nessuna
@@ -757,8 +783,17 @@ giorni).
 
 ## Appendice — Parte 2, verifiche nel codice
 
+> **I numeri di riga qui sotto sono quelli del 16/09 e non valgono più**: gli
+> interventi del 17/09 hanno spostato le righe in `kpi-bar.tsx`, `kpi-block.tsx`,
+> `variazioni-tab.tsx`, `scadenziario-client.tsx` e `sintesi-catena.tsx`. Valgono
+> ancora i **nomi** dei simboli e dei file: cercali, non fidarti del numero.
+> (Anche altrove nel documento — `sintesi-catena.tsx:413`, `kpi-bar.tsx:128`,
+> `calcolo-tab.tsx:914` — vale la stessa avvertenza.)
+
 - **Numeri animati:** `useCountUp`, `margini/kpi-bar.tsx:88-113` — sale da 0 al
-  valore in 500 ms; rispetta già `prefers-reduced-motion`.
+  valore in 500 ms; rispetta già `prefers-reduced-motion`. *Dal 16/09 il
+  count-up è disabilitato quando i KPI non sono disponibili: non anima più
+  durante il caricamento.*
 - **Tabella tagliata:** `overflow-x-auto` su contenitore unico,
   `analisi-fatture/articoli-tab.tsx:422` — la barra nasce in fondo all'elemento,
   cioè sotto tutte le righe.
