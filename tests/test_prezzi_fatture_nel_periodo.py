@@ -26,7 +26,20 @@ from services.routers.prezzi import _conta_fatture_distinte
 
 
 def _riga(file_origine, **kw):
-    r = {"file_origine": file_origine, "descrizione": "X", "prezzo_unitario": 1.0}
+    """Le colonne che `_load_fatture_for_prezzi` seleziona davvero: il calcolo
+    vero le legge tutte, e una fixture piu' magra lo fa esplodere invece di
+    misurarlo."""
+    r = {
+        "file_origine": file_origine,
+        "descrizione": "X",
+        "categoria": "CARNE",
+        "fornitore": "FORN",
+        "prezzo_unitario": 1.0,
+        "quantita": 1.0,
+        "totale_riga": 1.0,
+        "data_documento": "2025-03-01",
+        "tipo_documento": "TD01",
+    }
     r.update(kw)
     return r
 
@@ -70,3 +83,54 @@ def test_file_origine_vuoto_non_conta():
 def test_solo_righe_senza_origine_danno_zero():
     """Il caso che deve comportarsi come "nessuna fattura", non come "una"."""
     assert _conta_fatture_distinte([{"descrizione": "a"}, _riga("")]) == 0
+
+
+# ── Il wiring: che l'endpoint lo POPOLI davvero ─────────────────────────────
+#
+# I test sopra provano la funzione. Provare la funzione non prova che qualcuno la
+# usi: mutando via `fatture_nel_periodo=...` dalla `return VariazioniResponse(...)`
+# restavano tutti verdi, e anche `export_openapi --check-drift` (lo schema nasce
+# dalla DICHIARAZIONE del campo, non dall'assegnazione). Il rilievo e' del
+# code-reviewer; questi due test chiudono il buco.
+
+from unittest.mock import MagicMock, patch
+
+import services.routers.prezzi as prezzi_router
+
+
+def _endpoint_con(righe):
+    """Chiama l'endpoint vero con auth e Supabase fuori gioco.
+
+    `_calcola_variazioni_prezzi_sync` resta quello vero: non e' il soggetto qui,
+    e su righe con un solo prezzo per prodotto non produce variazioni — lo stato
+    vuoto, cioe' proprio il caso in cui il campo decide il messaggio.
+    """
+    with patch.object(prezzi_router, "_resolve_user_from_token", MagicMock(return_value={"id": "u1"})), \
+         patch.object(prezzi_router, "_get_supabase_client", MagicMock(return_value=object())), \
+         patch.object(prezzi_router, "_resolve_ristorante_id", MagicMock(return_value="r1")), \
+         patch.object(prezzi_router, "_load_fatture_for_prezzi", MagicMock(return_value=righe)), \
+         patch.object(prezzi_router, "_carica_preferiti_keys", MagicMock(return_value=set())):
+        return prezzi_router.get_variazioni_prezzi(
+            data_da="2025-01-01", data_a="2025-12-31", authorization="Bearer x",
+        )
+
+
+def test_endpoint_riporta_le_fatture_del_periodo():
+    """Due documenti, quattro righe: la response deve dire 2, non 4 e non 0."""
+    righe = [
+        _riga("F1.xml", descrizione="A", data_documento="2025-03-01"),
+        _riga("F1.xml", descrizione="B", data_documento="2025-03-01"),
+        _riga("F2.xml", descrizione="C", data_documento="2025-04-01"),
+        _riga("F2.xml", descrizione="D", data_documento="2025-04-01"),
+    ]
+    assert _endpoint_con(righe).fatture_nel_periodo == 2
+
+
+def test_endpoint_su_periodo_vuoto_dice_zero_non_none():
+    """La distinzione che regge tutto il messaggio dell'Osservatorio: `0` e'
+    "nessuna fattura" (niente rassicurazione), `None` sarebbe "non lo so".
+    Il periodo vuoto e' un fatto misurato, e deve arrivare come 0."""
+    resp = _endpoint_con([])
+    assert resp.fatture_nel_periodo == 0
+    assert resp.fatture_nel_periodo is not None
+    assert resp.variazioni == []

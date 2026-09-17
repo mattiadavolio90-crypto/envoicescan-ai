@@ -114,28 +114,39 @@ function RigaVoce({
 function MolAndamento({
   punti,
   anno,
+  affidabile,
 }: {
   punti: PuntoMol[];
   anno: number | null;
+  affidabile: boolean;
 }) {
   const spark = calcolaSparkline(punti);
   if (!spark) return null;
   const { d, ytdPct, su, stroke, meseDa, meseA, cx, cy } = spark;
+  // Con i costi mancanti questa curva e' quella del MOL gonfiato: ambra come la
+  // card, e il delta senza verde/rosso. Copiato da `MolSparkline` della catena
+  // (sintesi-catena.tsx), che risolveva gia' lo stesso caso: fino al 17/09/2026
+  // la Home neutralizzava il numero grande e il Trend ma lasciava qui sotto una
+  // curva verde con la freccia in su, cioe' la stessa contraddizione ottanta
+  // righe piu' in basso.
+  const colore = affidabile ? stroke : "text-amber-500";
+  const coloreDelta = affidabile
+    ? su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500"
+    : "text-muted-foreground";
 
   return (
     <div className="mt-4 border-t pt-3">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground/70">
-          Andamento margine{anno ? ` ${anno}` : ""}
+          Andamento margine{anno ? ` ${anno}` : ""}{!affidabile && " · dati incompleti"}
         </span>
         {ytdPct != null && (
           <span
-            className={cn(
-              "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
-              su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
-            )}
+            className={cn("inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums", coloreDelta)}
           >
-            {su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+            {/* La freccia e' un giudizio quanto il colore: su un MOL gonfiato
+                niente direzione certificata, resta solo il numero. */}
+            {affidabile && (su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
             {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
             <span className="ml-1 font-normal text-muted-foreground/60">
               {meseDa} → {meseA}
@@ -150,8 +161,8 @@ function MolAndamento({
         role="img"
         aria-label="Andamento del margine nei mesi dell'anno"
       >
-        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
-        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", stroke)} />
+        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", colore)} />
+        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", colore)} />
       </svg>
     </div>
   );
@@ -289,7 +300,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
           Nessuna soglia qui: la decide calcolaSparkline (che con < 2 punti
           torna null). Prima questo call-site diceva `> 0` mentre la guardia
           vera era `< 2` — due numeri per la stessa regola, in due file. */}
-      <MolAndamento punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} />
+      <MolAndamento punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} affidabile={molAttendibile} />
     </div>
   );
 }
