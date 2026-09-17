@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, Banknote,
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { mostraGuasto } from "@/lib/esito-caricamento";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
@@ -821,6 +822,9 @@ function TurniBody() {
   const [lunedi, setLunedi] = useState(() => lunediDi(new Date()));
   const [meseBase, setMeseBase] = useState(() => toISO(new Date()).slice(0, 7));
   const [data, setData] = useState<PersonaleResponse | null>(null);
+  // Un caricamento fallito non e' un mese vuoto: senza questo flag la lista
+  // afferma "non c'e' niente" su dati che non sono mai arrivati.
+  const [fallito, setFallito] = useState(false);
   const [loading, setLoading] = useState(false);
   const [giornoSel, setGiornoSel] = useState(() => toISO(new Date()));
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -849,7 +853,9 @@ function TurniBody() {
       const res = await fetch(`/api/workspace/personale?da=${daISO}&a=${aISO}&mensile=${soloMensile}`);
       if (!res.ok) throw new Error();
       setData(await res.json());
+      setFallito(false);
     } catch {
+      setFallito(true);
       toast.error("Errore caricamento turni");
     } finally {
       setLoading(false);
@@ -1045,6 +1051,8 @@ function TurniBody() {
             <div className="space-y-2.5">
               {[0, 1].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-xl border bg-muted/40" />)}
             </div>
+          ) : mostraGuasto(fallito, riepilogoMese.length) ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare i turni. Riprova fra un momento.</p>
           ) : riepilogoMese.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Nessun turno per questo mese.</p>
           ) : (

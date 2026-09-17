@@ -225,6 +225,16 @@ def test_mostra_guasto_e_la_gemella_booleana(fallito, righe, atteso):
         ("(mobile)/m/notifiche/page.tsx", "messaggioListaVuota"),
         ("(app)/analisi-fatture/articoli-tab.tsx", "messaggioListaVuota"),
         ("(app)/analisi-e-tag/analisi-e-tag-client.tsx", "mostraGuasto"),
+        # L9, 17/09/2026: il fix di R10 era arrivato al desktop e non a `/m`.
+        # Su 6 file mobile con uno stato vuoto, uno solo (notifiche) delegava.
+        # Gli altri quattro dicevano «Nessun incasso inserito in questo mese.»
+        # anche quando il worker non aveva risposto — con lo stato iniziale a
+        # `null`, cioe' proprio all'apertura della pagina. Il toast d'errore
+        # sparisce dopo pochi secondi e lascia in pagina la frase falsa.
+        ("(mobile)/m/diario/mobile-incassi.tsx", "mostraGuasto"),
+        ("(mobile)/m/diario/mobile-spese.tsx", "mostraGuasto"),
+        ("(mobile)/m/diario/mobile-diario.tsx", "mostraGuasto"),
+        ("(mobile)/m/turni/mobile-turni.tsx", "mostraGuasto"),
     ],
 )
 def test_le_pagine_delegano_la_scelta_invece_di_riscriverla(pagina, funzione):
@@ -260,6 +270,62 @@ _FLAG_ATTESO = {
     "(app)/catena/fatture/page.tsx":
         'caricamentoFallito={esito.stato === "non_disponibile"}',
 }
+
+
+# ─── I quattro client mobile: il flag non basta chiamarlo, deve ALZARSI ─────
+#
+# Mutante provato il 17/09 (L9) e **sopravvissuto** alla sola guardia di delega:
+#
+#     } catch {
+#       setFallito(false);   // invece di true
+#
+# Il file continua a importare e chiamare `mostraGuasto`, quindi
+# `test_le_pagine_delegano_la_scelta_invece_di_riscriverla` resta verde — e il
+# cliente rilegge «Nessun incasso inserito in questo mese.» col worker giu'.
+# Serve verificare le DUE transizioni: si alza nel catch, si abbassa sul
+# successo (o il messaggio d'errore resta appiccicato dopo un retry riuscito).
+
+_CLIENT_MOBILE = [
+    "(mobile)/m/diario/mobile-incassi.tsx",
+    "(mobile)/m/diario/mobile-spese.tsx",
+    "(mobile)/m/diario/mobile-diario.tsx",
+    "(mobile)/m/turni/mobile-turni.tsx",
+]
+
+
+@pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
+def test_il_flag_mobile_si_alza_sul_guasto_e_si_abbassa_sul_successo(pagina):
+    """Le due transizioni, sulla riga normalizzata: non basta che il nome compaia."""
+    vivo = _codice_vivo(_APP / pagina)
+    righe = [" ".join(r.split()) for r in vivo.splitlines()]
+    assert "setFallito(true);" in righe, (
+        f"{pagina}: nessun `setFallito(true)` vivo. Il flag non si alza mai, "
+        "quindi `mostraGuasto` e' sempre false e la lista torna a dire «non "
+        "c'e' niente» su dati mai arrivati (L9)."
+    )
+    assert "setFallito(false);" in righe, (
+        f"{pagina}: manca `setFallito(false)` sul caricamento riuscito: dopo un "
+        "retry andato a buon fine il messaggio di guasto resta in pagina."
+    )
+
+
+@pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
+def test_il_ramo_del_guasto_mobile_precede_quello_del_vuoto(pagina):
+    """L'ordine dei rami e' la sostanza del fix.
+
+    `mostraGuasto(...)` deve essere valutato PRIMA di `length === 0`: invertendoli
+    il ramo del guasto diventa irraggiungibile — una lista fallita e' sempre
+    anche una lista vuota, quindi il primo ternario la cattura per sempre.
+    """
+    vivo = _codice_vivo(_APP / pagina)
+    i_guasto = vivo.find("mostraGuasto(fallito")
+    assert i_guasto != -1, f"{pagina}: nessuna chiamata viva a mostraGuasto(fallito, ...)"
+    dopo = vivo[i_guasto:]
+    i_vuoto = dopo.find("=== 0 ?")
+    assert i_vuoto != -1, (
+        f"{pagina}: dopo il ramo del guasto non c'e' piu' il ramo del vuoto: "
+        "i due casi sono tornati indistinguibili."
+    )
 
 
 @pytest.mark.parametrize("pagina,atteso", sorted(_FLAG_ATTESO.items()))

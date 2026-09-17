@@ -1,4 +1,4 @@
-# Le lenti trasversali L1→L8 — indice — settembre 2026
+# Le lenti trasversali L1→L9 — indice — settembre 2026
 
 I tre cicli di audit precedenti hanno guardato l'app **per strato** (security, bug,
 performance, database…). Queste otto lenti la guardano **per proprieta' che attraversa
@@ -8,7 +8,8 @@ Questo file e' l'**indice**: dice cosa ha guardato ogni lente, cosa ha trovato e
 sta il suo artefatto. Non sostituisce i verbali — li elenca. Il registro con metro
 completo e condizioni di riapertura resta `DOCUMENTAZIONE/AUDIT_COPERTURA.md`.
 
-**Stato: 8 lenti su 9 chiuse.** Manca L9 (giornata del cliente e parita' `/m`).
+**Stato: tutte e 9 le lenti sono chiuse** (L9 il 17/09/2026). L1 resta *parziale*
+per scelta dichiarata: le classi non refutate si chiudono leggendo il chiamante.
 
 ---
 
@@ -24,12 +25,14 @@ completo e condizioni di riapertura resta `DOCUMENTAZIONE/AUDIT_COPERTURA.md`.
 | **L6** | 15/09 | Tempo, concorrenza, dipendenze che cadono | **4** | 6 file di test (44 presidi) |
 | **L7** | 15/09 | Fatture ostili in ingresso | **3** | `tests/test_importi_non_finiti_fattura_ostile.py` (286) |
 | **L8** | 15/09 | Mappa cache/snapshot e ordine di deploy | 1 | `MATRICE_CACHE_2026-09-15.md` + 17 presidi |
+| **L9** | 17/09 | Giornata del cliente e parita' `/m` | **4** | `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 12 presidi |
 
-**Totale: 14 difetti corretti**, ognuno provato per mutazione.
+**Totale: 18 difetti corretti**, ognuno provato per mutazione.
 
 > Le quattro lenti senza un `.md` proprio (L2, L4, L6, L7) hanno il loro verbale
 > **dentro la riga di `AUDIT_COPERTURA.md`**, che per quelle e' lunga quanto un
-> documento. Sono le uniche il cui racconto vive in un solo posto.
+> documento. Sono le uniche il cui racconto vive in un solo posto — ed e' la
+> ragione per cui L9, che sarebbe stata la quinta, ha un verbale suo.
 
 ---
 
@@ -194,6 +197,36 @@ confronto saltava il livello proxy di Next.
 📄 `MATRICE_CACHE_2026-09-15.md` + `tests/test_segnali_catena_snapshot_versionato.py` (17)
 
 ---
+
+---
+
+## L9 — La giornata del cliente e la parita' `/m` · 17/09/2026
+
+**La lente in cui la prima misura ha corretto la premessa.** «Parita' `/m`»
+suggerisce uno specchio; sono **22 pagine desktop e 7 mobile**, perche' il mobile
+non e' una riduzione del desktop ma un prodotto diverso (5 tab: Home, Agenda,
+Movimenti, Assistente, Profilo). Cercare «le 15 pagine mancanti» avrebbe prodotto
+un elenco di non-difetti. La domanda utile: **dove il mobile dice al cliente
+qualcosa di diverso, e piu' sbagliato, davanti agli stessi dati.**
+
+**CTA morte: cercate, zero trovate.** Tutti gli `href`/`router.push` letterali
+confrontati con le 36 rotte reali; le destinazioni costruite lette a mano.
+
+**4 difetti corretti — lo stesso difetto quattro volte.** Il fix R10 del 3/9 era
+arrivato al desktop e **non a `/m`**: su 6 file mobile con uno stato vuoto, 4
+dicevano «Nessun incasso inserito in questo mese.» mentre il worker era giu'.
+Lo stato iniziale e' `null`, quindi la frase falsa compare **all'apertura della
+pagina**; il toast d'errore sparisce dopo pochi secondi e la lascia li'.
+
+**Il mutante che conta:** il primo presidio verificava che i file *chiamassero*
+`mostraGuasto`, e `setFallito(false)` al posto di `true` gli **sopravviveva** —
+difetto intatto, guardia verde. Chiuso verificando le due transizioni del flag e
+**l'ordine dei rami** (il guasto prima del vuoto, o e' irraggiungibile).
+
+**2 sospetti scartati dopo verifica:** il blocco KPI che sparisce su `/m` si
+comporta identico al desktop; il briefing mobile era gia' corretto.
+
+📄 `GIORNATA_DEL_CLIENTE_E_PARITA_M.md` + 12 presidi
 
 ## Cosa si impara leggendole di fila
 

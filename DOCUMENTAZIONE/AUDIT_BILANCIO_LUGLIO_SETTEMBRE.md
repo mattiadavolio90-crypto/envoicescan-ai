@@ -15,7 +15,7 @@
 |---|---|
 | **Quanto lavoro e' stato fatto** (questo file) | `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md` |
 | **Cosa e' gia' stato guardato, con quale metro, e quando si riapre** | `DOCUMENTAZIONE/AUDIT_COPERTURA.md` |
-| **Le otto lenti trasversali, una per una** | `docs/storico/audit-2026-09/INDICE_LENTI_L1_L8.md` |
+| **Le nove lenti trasversali, una per una** | `docs/storico/audit-2026-09/INDICE_LENTI_L1_L9.md` |
 | **Il racconto di ogni singola sessione** | `docs/storico/*_STORICO.md` (3 file, 8.858 righe) |
 
 Tutto il resto e' materiale di lavoro: verbali di singola lente, prompt di fase
@@ -70,13 +70,13 @@ architettura, qualita', AI, database, test, Edge Functions, DevOps.
 - **Ciclo 2026-09** — chiuso il 09/09, insieme all'audit di compliance legale.
   Ha chiuso l'ultima zona mai letta del backend.
 
-### 2. Otto lenti trasversali — 14 → 17 settembre
+### 2. Nove lenti trasversali — 14 → 17 settembre
 
 Cambio di metodo: non piu' per strato, ma **per proprieta' che attraversa gli
 strati**. Ognuna ha prodotto un artefatto che prima non esisteva.
 
-**14 difetti corretti, ognuno provato per mutazione.** Il dettaglio sta in
-`INDICE_LENTI_L1_L8.md`; i tre piu' significativi:
+**18 difetti corretti, ognuno provato per mutazione.** Il dettaglio sta in
+`INDICE_LENTI_L1_L9.md`; i tre piu' significativi:
 
 - **L6** — il periodo di default di Margini e Analisi fatture lo decideva il
   giorno del *server*: alle 00:30 del 1° ottobre, «Mese in corso» avrebbe
@@ -137,18 +137,25 @@ Il delta misurato, da `a82213e` a `05640af`:
 
 ---
 
-## Cosa manca — tre cose, dette per nome
+## Cosa manca — due cose, dette per nome
 
-1. **L9 — «Giornata del cliente e parita' `/m`»**, la nona e ultima lente. Non
-   iniziata, e **senza piano scritto** (L5–L8 ne avevano uno ciascuna). E' l'unica
-   voce in coda.
-2. **Quattro lenti su otto non hanno un verbale proprio** — L2, L4, L6, L7. Il
+> **Il ciclo delle lenti e' chiuso: L9 il 17/09/2026.** Nessuna lente resta in
+> coda. Da qui vale la regola ordinaria — *quando tocchi un file, lo copri*.
+
+1. **Quattro lenti su nove non hanno un verbale proprio** — L2, L4, L6, L7. Il
    loro racconto vive **solo** dentro la riga di `AUDIT_COPERTURA.md`, che per
    quelle e' lunga quanto un documento. L6 ha corretto 4 difetti, L7 tre: e'
-   parecchio lavoro affidato a una cella di tabella.
-3. **I residui dichiarati di L1** — le classi di difetto non refutate restano
+   parecchio lavoro affidato a una cella di tabella. (L9 sarebbe stata la quinta:
+   per questo ha un `.md` suo.)
+2. **I residui dichiarati di L1** — le classi di difetto non refutate restano
    aperte, elencate per `file:riga` in `CLASSI_DI_DIFETTO.md`. Si chiudono
    leggendo il chiamante, una per una.
+
+E un limite dichiarato, che non e' una voce di coda ma va saputo: **l'harness dei
+test esegue `lib/`, non i `.tsx`**. La logica di rendering del frontend e'
+presidiata per *forma*, non per comportamento — chiuderlo richiederebbe un runner
+frontend, che e' una decisione gia' presa in senso contrario (punto 9, ciclo
+2026-08).
 
 > Quel che **non** manca, ed e' bene dirlo: il backend non ha piu' righe mai
 > guardate, il perimetro di sicurezza e' chiuso (216 endpoint su 216), e i tre

@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { mostraGuasto } from "@/lib/esito-caricamento";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
@@ -270,6 +271,9 @@ function MobileAgenda() {
   const [anno, setAnno] = useState(now.getFullYear());
   const [mese, setMese] = useState(now.getMonth());
   const [eventi, setEventi] = useState<EventoDiario[]>([]);
+  // Un caricamento fallito non e' un mese vuoto: senza questo flag la lista
+  // afferma "non c'e' niente" su dati che non sono mai arrivati.
+  const [fallito, setFallito] = useState(false);
   const [loading, setLoading] = useState(false);
   const [giornoSel, setGiornoSel] = useState<string>(today);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -283,7 +287,9 @@ function MobileAgenda() {
       if (!res.ok) throw new Error();
       const d = await res.json();
       setEventi(d.eventi ?? []);
+      setFallito(false);
     } catch {
+      setFallito(true);
       toast.error("Errore caricamento diario");
     } finally {
       setLoading(false);
@@ -357,6 +363,8 @@ function MobileAgenda() {
               <div key={i} className="h-16 animate-pulse rounded-xl border bg-muted/40" />
             ))}
           </div>
+        ) : mostraGuasto(fallito, eventiGiorno.length) ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare il diario. Riprova fra un momento.</p>
         ) : eventiGiorno.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessun evento per questo giorno.</p>
         ) : (

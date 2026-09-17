@@ -284,7 +284,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert — primo posto dove guardare |
 | `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md` | **Quanto lavoro di audit e' stato fatto** dal 01/07 al 17/09/2026, misurato: 803 commit, 245 file di test nuovi, tre cicli piu' otto lenti. E' il punto d'ingresso: da qui si scende negli altri: |
 | `DOCUMENTAZIONE/AUDIT_COPERTURA.md` | **Il certificato dei tre cicli di audit** (dal 17/09/2026, commit `05640af`): cosa e' stato coperto, con quale metro, e la procedura per ripartire **dal diff** invece che da capo. Tracciato da git di proposito. I verbali dei cicli 07/08/09 sono archiviati in `docs/storico/` e `docs/storico/audit-2026-09/` |
-| `docs/storico/audit-2026-09/INDICE_LENTI_L1_L8.md` | Le **otto lenti trasversali** L1→L8 una per una: cosa guarda, cosa ha trovato, dove sta il suo artefatto. 14 difetti corretti |
+| `docs/storico/audit-2026-09/INDICE_LENTI_L1_L9.md` | Le **nove lenti trasversali** L1→L9 una per una: cosa guarda, cosa ha trovato, dove sta il suo artefatto. 18 difetti corretti |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non aveva test che eseguono codice, cosa e' costato, le opzioni. **Chiuso il 29/8/2026** (opzione A) |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9_PROMPT.md` | Il prompt di quella sessione, archiviato |
 | `docs/storico/AUDIT_ONEFLUX_STATO_2026-08.md` | Indice del ciclo 2026-08, **chiuso il 29/8/2026**: 7 fasi + le 8 decisioni aperte, tutte risolte |

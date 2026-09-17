@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { mostraGuasto } from "@/lib/esito-caricamento";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { scorporoNetto, fetchNettoMese, type NettoMese } from "@/app/(app)/margini/periodi";
@@ -195,6 +196,9 @@ export function MobileIncassi() {
   const [anno, setAnno] = useState(now.getFullYear());
   const [mese, setMese] = useState(now.getMonth());
   const [risposta, setRisposta] = useState<IncassiResponse | null>(null);
+  // `null` per un guasto non e' `null` per un mese vuoto: la lista qui sotto
+  // diceva "Nessun incasso inserito" anche quando il worker non aveva risposto.
+  const [fallito, setFallito] = useState(false);
   // Il netto del mese non e' la somma dei giornalieri: se il mese e' in modalita'
   // "mensile" l'override in ricavi_modalita_mensile vince e le righe giornaliere
   // sono dati orfani. La regola NON si riscrive qui: si chiama `fetchNettoMese`,
@@ -227,10 +231,12 @@ export function MobileIncassi() {
       if (!res.ok) throw new Error();
       const d: IncassiResponse = await res.json();
       setRisposta(d);
+      setFallito(false);
     } catch {
       // La lista non e' caricabile, ma il netto puo' esserlo (e viceversa): non
       // si azzera cio' che si e' letto, e non si lascia in pagina il mese prima.
       setRisposta(null);
+      setFallito(true);
       toast.error("Errore caricamento incassi");
     } finally {
       setLoading(false);
@@ -308,6 +314,8 @@ export function MobileIncassi() {
               <div key={i} className="h-14 animate-pulse rounded-xl border bg-muted/40" />
             ))}
           </div>
+        ) : mostraGuasto(fallito, voci.length) ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Non è stato possibile caricare gli incassi. Riprova fra un momento.</p>
         ) : voci.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessun incasso inserito in questo mese.</p>
         ) : (<>
