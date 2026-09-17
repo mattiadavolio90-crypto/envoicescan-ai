@@ -36,7 +36,7 @@ stato dismesso con lo switch DNS dell'8/6/2026 e **rimosso dal repo il 17/7/2026
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico, 148 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
-| Test | `tests/*.py` | **14.629 verdi + 45 skip** il 15/09/2026 — il totale **si muove coi file `.md`** (`test_documentazione_onesta` è parametrizzato su quelli), e da `tests/` sono 9 in meno che dalla root. **539 su un Postgres vero** (`-m sql`, di cui 315 dell'isolamento fra clienti) + 101 Deno. Frontend: nessun runner npm — vedi Trappole |
+| Test | `tests/*.py` | **14.184 verdi + 45 skip** al commit `05640af` del 17/09/2026 (14.768 raccolti coi 539 `-m sql`) — il totale **si muove coi file `.md`** (`test_documentazione_onesta` è parametrizzato su quelli), e da `tests/` sono 9 in meno che dalla root. **539 su un Postgres vero** (`-m sql`, di cui 315 dell'isolamento fra clienti) + 101 Deno. Frontend: nessun runner npm — vedi Trappole |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
 `auth.uid()` è sempre NULL — auth custom, non Supabase Auth.
@@ -166,7 +166,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
 - **`/m` è un frontend separato**, non responsive: va allineato a mano.
 - **Il frontend ha una rete, ma copre solo la logica pura.** Niente runner npm
-  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test): **34 file
+  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test): **40 file
   `tests/test_*_frontend.py`** eseguono il TypeScript con node e coprono `lib/`,
   **non** rendering, hook, stato ed effetti — la logica di un `.tsx` va estratta lì.
 - **Né `tsc` né un test verde provano che il codice funzioni.** `tsc --noEmit` non

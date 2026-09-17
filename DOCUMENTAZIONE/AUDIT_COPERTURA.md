@@ -446,12 +446,12 @@ percorsi**. Se `supabase/migrations/` è identico, la logica SQL non va riletta:
 
 ```bash
 python -m pytest tests/ -q                      # atteso: verde
-python -m pytest -q -m sql                      # 534 su Postgres vero (misurato il 14/09/2026)
+python -m pytest -q -m sql                      # 539 su Postgres vero (misurato il 17/09/2026)
 python -m coverage run --source=services,utils,config,worker -m pytest tests/ -q
-python -m coverage report --sort=cover          # atteso: >= 61%
+python -m coverage report --sort=cover          # atteso: >= 65%
 ```
 
-**Se la copertura è scesa sotto il 61%**, qualcuno ha aggiunto codice senza
+**Se la copertura è scesa sotto il 65%**, qualcuno ha aggiunto codice senza
 presidio: quello è il perimetro da guardare, ed è già la risposta alla domanda
 «da dove comincio».
 
@@ -476,7 +476,7 @@ farebbe riaprire la dimensione**.
 | AI / pipeline categorizzazione | 07-08/2026 | prompt, fallback, regole di dominio #1 e #2 | si tocca `ai_service.py` o il dizionario |
 | Database (schema) | 30/07/2026 | schema, FK, orfani, indici — 9 finding | migration che cambiano struttura |
 | **Database (corpi delle funzioni)** | **07-09/09/2026** | **78 corpi letti dal live** con `pg_get_functiondef`, 25 eseguiti da test | **nuove funzioni SQL, o `.rpc()` nuove** |
-| Test / copertura | 09/2026 | copertura eseguita, non letta: 61% | scende sotto 61% |
+| Test / copertura | 09/2026 | copertura eseguita, non letta: 65% | scende sotto 65% |
 | Edge Functions | 27/08/2026 | deployate v40/v13, repo avanti di 10 righe di soli commenti | si modifica `supabase/functions/` (**il deploy è manuale**) |
 | DevOps / Config | 07-08/2026 | CI, secrets, runbook, backup provato il 10/08 | cambia la pipeline o il provider |
 | Registro delle correzioni | 08/09/2026 | ogni scrittura su `fatture` dichiara attore, `source`, `batch_id` | nuovo scrittore di `categoria` che non passa dal chokepoint |
@@ -530,7 +530,7 @@ Va scritto qui perché **nessun audit futuro lo riscopra come se fosse una novit
 |---|---|---|
 | Frontend `.tsx` | 42.293 righe: rendering, hook, stato, effetti | Nessun runner npm **per scelta d'impianto**: `deploy-vercel.yml` scatta su `apps/web/**`, un runner deployerebbe a ogni test. La logica pura si estrae in `lib/` (87% presidiato) |
 | 7 funzioni SQL di staff | `admin_ai_mensile`, `admin_consumi_mensili`, `admin_conteggio_fatture`, `admin_fatture_per_mese`, `get_ai_costs_summary`, `get_ai_costs_timeseries`, `get_ai_recent_operations` | Le vede solo l'owner, non i clienti; non spostano un euro sui loro numeri. Rendimento basso |
-| Copertura backend oltre il 61% | 10 router su 12 a copertura parziale | Le aree grasse sono state prese e ognuna ha dato un bug vero. Oltre, il rendimento cala: si copre **quando si tocca il file** |
+| Copertura backend oltre il 65% | 10 router su 12 a copertura parziale | Le aree grasse sono state prese e ognuna ha dato un bug vero. Oltre, il rendimento cala: si copre **quando si tocca il file** |
 | 96 policy RLS | mai lette una per una | Con `auth.uid()` sempre NULL e ogni client su `service_role` (BYPASSRLS) **non filtrano nulla**: la protezione è applicativa, ed è già la dimensione Security |
 | Costo del personale fermo a luglio | MOL di agosto/settembre non confrontabile | **Decisione dell'owner del 07/09/2026**: lo inseriscono i clienti (Margini → «Costo personale»), il briefing li avvisa dal 28/08 |
 | Ricostruzione del DB dalle migration | 230 migration su un Postgres vuoto: **18 tabelle su 59, 171 file falliti** | Il repo **non sa ricostruire il database**. I test SQL girano sullo snapshot dello schema live (`supabase/schema_snapshot.sql`), non sulle migration. Un «Postgres in CI con le migration applicate» non è un'opzione |

@@ -25,11 +25,11 @@ archiviati, CSV di misura. Si aprono quando servono, non si leggono di fila.
 
 ## La cifra sola
 
-**In 78 giorni: 803 commit, 310 dei quali correzioni, 245 file di test nuovi, e
+**In 78 giorni: 805 commit, 289 dei quali correzioni, 245 file di test nuovi, e
 tre cicli di audit piu' otto lenti trasversali — tutti chiusi.**
 
-La suite e' passata da poco piu' di 11.000 test a **14.768**. La copertura
-eseguita del backend e' al **65%**.
+La suite e' passata da poco piu' di 11.000 test a **14.768** (al commit
+certificato `05640af`). La copertura eseguita del backend e' al **65%**.
 
 ---
 
@@ -37,17 +37,17 @@ eseguita del backend e' al **65%**.
 
 | Misura | Valore | Come e' stata presa |
 |---|---|---|
-| Commit dal 01/07/2026 | **803** | `git log --since=2026-07-01` |
-| — di cui `fix(...)` | **310** (39%) | stesso comando, filtrato sul prefisso |
-| Distribuzione | 136 a luglio · 302 ad agosto · **365 a settembre** | per mese |
+| Commit dal 01/07/2026 | **805** | `git log --since=2026-07-01 --oneline` contato |
+| — di cui `fix(...)` | **289** (36%) | stesso comando, subject che iniziano con `fix(` |
+| Distribuzione | 136 a luglio · 302 ad agosto · **367 a settembre** | per mese |
 | File di test creati | **245** (su 318 totali in `tests/`) | `--diff-filter=A` su `tests/test_*.py` |
 | Righe di test nel repo | **74.130** | `wc -l` su `git ls-files 'tests/*.py'` |
-| Test raccolti dalla suite | **14.768** | `pytest --collect-only` dalla root |
+| Test raccolti dalla suite | **14.768** al commit `05640af` | `pytest --collect-only` dalla root |
 | Copertura backend eseguita | **65%** (24.958 stmts, 8.224 miss) | `coverage run -m pytest -m "not sql"`, 429 s |
-| Documentazione d'audit | **17.173 righe** su 36 file | `wc -l` sui `.md` di audit tracciati |
+| Documentazione d'audit | **16.463 righe** su 33 file | `wc -l` sui `.md` di audit **tracciati da git** |
 | Strumenti d'audit riusabili | **9 script**, 1.817 righe | `scripts/audit_*.py` |
 
-> **Il 39% di commit di correzione non e' un segnale di fragilita'.** E' la firma
+> **Il 36% di commit di correzione non e' un segnale di fragilita'.** E' la firma
 > di un periodo in cui si e' andati a **cercare** i difetti invece di aspettarli:
 > in un audit, trovare e correggere *e'* il prodotto.
 
@@ -95,7 +95,7 @@ senza presidi si consuma; con i presidi, il difetto non torna.
   **eseguite**, non lette. Fino al 07/09 le funzioni del DB coperte da test erano
   **zero**; oggi sono 25.
 - **101 test Deno** sulle Edge Functions.
-- **34 file** che eseguono TypeScript con node, per la logica pura del frontend.
+- **40 file** che eseguono TypeScript con node, per la logica pura del frontend.
 - La documentazione viva e' protetta da `tests/test_documentazione_onesta.py`: un
   `.md` che cita un simbolo inesistente fa fallire la suite.
 
@@ -109,15 +109,17 @@ senza presidi si consuma; con i presidi, il difetto non torna.
 
 ## Il contatore di copertura era indietro — di quanto
 
-`AUDIT_COPERTURA.md` certifica il commit **`a82213e` del 09/09/2026**. Tutto il
-ciclo delle otto lenti (14 → 17 settembre) sta nelle sue righe di tabella, ma
-**non e' mai rientrato nella "riga che conta"** in cima al file.
+Fino al 17/09 `AUDIT_COPERTURA.md` certificava il commit **`a82213e` del
+09/09/2026**. Tutto il ciclo delle otto lenti (14 → 17 settembre) stava nelle sue
+righe di tabella, ma **non era mai rientrato nella "riga che conta"** in cima al
+file. La riga e' stata portata a `05640af` insieme a questo bilancio.
 
-Il delta misurato oggi, da `a82213e` a `05640af`:
+Il delta misurato, da `a82213e` a `05640af`:
 
-| | Certificato (09/09) | Oggi (17/09) | Delta |
+| | Certificato (09/09) | A `05640af` (17/09) | Delta |
 |---|---|---|---|
-| Suite | 13.258 verdi | **14.768** raccolti | **+1.510** |
+| Suite, test verdi | 13.258 verdi | **14.184** verdi | **+926** |
+| — raccolti in totale | — | **14.768** (14.184 + 45 skip + 539 `-m sql`) | — |
 | Test su Postgres vero | 176 | **539** | **+363** |
 | Copertura backend | 61% | **65%** | **+4 punti** |
 | Commit | — | — | **+138** (39 fix, 8 test, 48 docs) |
@@ -125,9 +127,13 @@ Il delta misurato oggi, da `a82213e` a `05640af`:
 | Migration | 144 | 148 | **+4** |
 | Diff complessivo | — | — | **220 file, +30.646 / −1.288 righe** |
 
-**In pratica: dopo la certificazione e' stato fatto un altro audit intero.** La
-riga in cima al contatore va aggiornata, ed e' l'unica correzione di sostanza che
-questo bilancio impone.
+**In pratica: dopo la certificazione e' stato fatto un altro audit intero.**
+
+> **Perche' due righe e non una.** I 13.258 del 09/09 erano test **verdi**; i
+> 14.768 di oggi sono **raccolti**, e comprendono i 539 `-m sql` e i 45 skip che
+> nel primo termine non c'erano. Confrontarli direttamente darebbe **+1.510**
+> invece di +926: e' il delta che questo documento riportava nella sua prima
+> stesura. Due cifre vere non sono confrontabili se non misurano la stessa cosa.
 
 ---
 
@@ -170,10 +176,14 @@ push.
 
 ---
 
-## Nota su un duplicato
+## Nota su un duplicato — rimosso
 
-`docs/storico/audit-2026-09/AUDIT_COPERTURA.md` e' una **copia ferma al
+`docs/storico/audit-2026-09/AUDIT_COPERTURA.md` era una **copia ferma al
 07/09/2026**, divergente da quella viva in `DOCUMENTAZIONE/` (373 righe contro
-555, e senza le righe delle lenti). Nessun documento la cita. E' un fossile:
-chi lo aprisse per primo leggerebbe uno stato vecchio di dieci giorni credendolo
-corrente.
+555 di allora) e senza le righe delle lenti. Nessun documento la citava, e chi
+l'avesse aperta per prima avrebbe letto uno stato vecchio di dieci giorni
+credendolo corrente.
+
+**E' stata cancellata il 17/09/2026 da `3307a36`**, lo stesso commit che ha
+creato questo bilancio: oggi nel repo esiste una sola `AUDIT_COPERTURA.md`, in
+`DOCUMENTAZIONE/`. La nota resta a verbale del perche' e' sparita.

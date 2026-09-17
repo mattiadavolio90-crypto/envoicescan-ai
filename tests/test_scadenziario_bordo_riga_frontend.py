@@ -13,7 +13,7 @@ inspiegabile.
 
 `mostraBordoScaduta` e' la decisione estratta in `lib/`, dove la rete di test
 del frontend arriva davvero: dentro il .tsx nessun test la vedrebbe (nessun
-runner npm, i 34 file `test_*_frontend.py` coprono solo `lib/`).
+runner npm, i 40 file `test_*_frontend.py` coprono solo `lib/`).
 
 Le due direzioni contano entrambe
 =================================
