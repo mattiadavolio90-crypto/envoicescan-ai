@@ -18,16 +18,16 @@
 
 ## La riga che conta
 
-**Al commit `3a040e7` del 17/09/2026** i tre cicli di audit (2026-07, 2026-08,
+**Al commit `ceb458e` del 17/09/2026** i tre cicli di audit (2026-07, 2026-08,
 2026-09) sono **tutti chiusi**, e con essi l'audit di compliance legale del
 09/09 e **tutte e nove le lenti trasversali** (L9 chiusa il 17/09). Da qui vale
 la regola ordinaria: *quando tocchi un file, lo copri*.
 
 | | |
 |---|---|
-| Commit certificato | `3a040e7` |
+| Commit certificato | `ceb458e` |
 | Data | 17/09/2026 |
-| Suite | **14.800 raccolti** (14.216 verdi + 45 skip fuori da `-m sql`) — di cui **539 su un Postgres vero** e 101 Deno |
+| Suite | **14.800 raccolti** (14.216 verdi + 45 skip fuori da `-m sql`) — di cui **539 su un Postgres vero** e 101 Deno. Misurato a `ceb458e`: a `3a040e7`, dove L9 non era ancora rivista, erano 14.780 e 14.196 |
 | Copertura backend eseguita | **65%** (`services,utils,config,worker` — 24.958 stmts, 8.224 miss) |
 | Logica SQL | 148 migration; **25 funzioni del DB eseguite da test** (erano 0 fino al 07/09) |
 | Lenti trasversali | **9 su 9 chiuse**, 18 difetti corretti — `docs/storico/audit-2026-09/INDICE_LENTI_L1_L9.md` |

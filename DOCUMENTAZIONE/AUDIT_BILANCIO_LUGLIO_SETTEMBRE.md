@@ -25,26 +25,30 @@ archiviati, CSV di misura. Si aprono quando servono, non si leggono di fila.
 
 ## La cifra sola
 
-**In 78 giorni: 805 commit, 289 dei quali correzioni, 245 file di test nuovi, e
-tre cicli di audit piu' otto lenti trasversali — tutti chiusi.**
+**In 78 giorni: 811 commit, 291 dei quali correzioni, 245 file di test nuovi, e
+tre cicli di audit piu' nove lenti trasversali — tutti chiusi.**
 
-La suite e' passata da poco piu' di 11.000 test a **14.768** (al commit
-certificato `05640af`). La copertura eseguita del backend e' al **65%**.
+La suite e' passata da poco piu' di 11.000 test a **14.800** (al commit
+`ceb458e`, con cui si chiude L9). La copertura eseguita del backend e' al **65%**.
 
 ---
 
 ## Il lavoro, in numeri misurati oggi
 
+> Ogni cifra porta il **commit su cui e' stata presa**. Il periodo si e' chiuso in
+> due tempi: il bilancio fino a `05640af`, poi L9 fino a `ceb458e`. Misure prese
+> in momenti diversi non si sommano a mente — l'ancora dice quale vale quando.
+
 | Misura | Valore | Come e' stata presa |
 |---|---|---|
-| Commit dal 01/07/2026 | **805** | `git log --since=2026-07-01 --oneline` contato |
-| — di cui `fix(...)` | **289** (36%) | stesso comando, subject che iniziano con `fix(` |
-| Distribuzione | 136 a luglio · 302 ad agosto · **367 a settembre** | per mese |
+| Commit dal 01/07/2026 | **811** a `ceb458e` | `git log --since=2026-07-01 --oneline` contato |
+| — di cui `fix(...)` | **291** (36%) | stesso comando, subject che iniziano con `fix(` |
+| Distribuzione | 136 a luglio · 302 ad agosto · **373 a settembre** | per mese |
 | File di test creati | **245** (su 318 totali in `tests/`) | `--diff-filter=A` su `tests/test_*.py` |
-| Righe di test nel repo | **74.130** | `wc -l` su `git ls-files 'tests/*.py'` |
-| Test raccolti dalla suite | **14.768** al commit `05640af` | `pytest --collect-only` dalla root |
+| Righe di test nel repo | **74.454** | `wc -l` su `git ls-files 'tests/*.py'` |
+| Test raccolti dalla suite | **14.800** a `ceb458e` (14.768 a `05640af`) | `pytest --collect-only` dalla root |
 | Copertura backend eseguita | **65%** (24.958 stmts, 8.224 miss) | `coverage run -m pytest -m "not sql"`, 429 s |
-| Documentazione d'audit | **16.463 righe** su 33 file | `wc -l` sui `.md` di audit **tracciati da git** |
+| Documentazione d'audit | **16.988 righe** su 34 file | `wc -l` sui `.md` di audit **tracciati da git** |
 | Strumenti d'audit riusabili | **9 script**, 1.817 righe | `scripts/audit_*.py` |
 
 > **Il 36% di commit di correzione non e' un segnale di fragilita'.** E' la firma
@@ -76,7 +80,7 @@ Cambio di metodo: non piu' per strato, ma **per proprieta' che attraversa gli
 strati**. Ognuna ha prodotto un artefatto che prima non esisteva.
 
 **18 difetti corretti, ognuno provato per mutazione.** Il dettaglio sta in
-`INDICE_LENTI_L1_L9.md`; i tre piu' significativi:
+`INDICE_LENTI_L1_L9.md`; i quattro piu' significativi:
 
 - **L6** — il periodo di default di Margini e Analisi fatture lo decideva il
   giorno del *server*: alle 00:30 del 1° ottobre, «Mese in corso» avrebbe
@@ -85,6 +89,13 @@ strati**. Ognuna ha prodotto un artefatto che prima non esisteva.
   degli helper di conversione e arrivavano a Postgres, dove `SUM()` li propaga.
 - **L2** — 152 chiamate cross-tenant eseguite su un Postgres vero: **0 leak**, e
   2 difetti d'isolamento corretti.
+- **L9** — col worker giu', quattro pagine di `/m` dicevano «Nessun incasso
+  inserito in questo mese.» su dati **mai arrivati**. Il fix del 3/9 che
+  distingue «non c'e' niente» da «non sono riuscito a chiedere» era arrivato al
+  desktop e non al mobile: l'helper lo usavano 11 file, **uno solo** dei quali
+  su `/m`. E non e' un caso di bordo — lo stato iniziale e' `null`/`[]`, quindi
+  la frase falsa compare **alla prima apertura della pagina**, mentre il toast
+  d'errore sparisce dopo pochi secondi e lascia in pagina solo quella.
 
 ### 3. La rete di presidi
 
@@ -135,6 +146,22 @@ Il delta misurato, da `a82213e` a `05640af`:
 > invece di +926: e' il delta che questo documento riportava nella sua prima
 > stesura. Due cifre vere non sono confrontabili se non misurano la stessa cosa.
 
+**Poi e' arrivata L9**, nello stesso giorno ma dopo `05640af`. Il contatore
+certifica ora **`ceb458e`**, ed e' li' che si ferma il periodo:
+
+| | A `05640af` | A `ceb458e` (L9 chiusa) | Delta |
+|---|---|---|---|
+| Suite, test verdi | 14.184 | **14.216** | **+32** (i presidi di L9) |
+| — raccolti in totale | 14.768 | **14.800** | **+32** |
+| Test su Postgres vero | 539 | **539** | — |
+| Commit | — | — | **+4** |
+| Lenti chiuse | 8 su 9 | **9 su 9** | **+1** |
+| Difetti corretti dalle lenti | 14 | **18** | **+4** |
+
+> Le due tabelle non si sommano a mente: la prima confronta `a82213e` con
+> `05640af`, la seconda `05640af` con `ceb458e`. Ogni riga dice su quale commit
+> e' stata presa, ed e' l'unico modo perche' restino vere quando il repo si muove.
+
 ---
 
 ## Cosa manca — due cose, dette per nome
@@ -163,13 +190,13 @@ frontend, che e' una decisione gia' presa in senso contrario (punto 9, ciclo
 
 ---
 
-## Le due cose che questo periodo ha insegnato sul metodo
+## Le tre cose che questo periodo ha insegnato sul metodo
 
 **Un test verde non prova niente; un mutante ucciso si'.** E' la lezione che
 attraversa tutti e tre i cicli. Sono rimasti verdi sul bug: un mock generoso (i
 test del radar passavano su una colonna mai esistita), un `tsc --noEmit`, un test
 che legge il *sorgente* invece di eseguirlo. Per questo ogni difetto corretto in
-queste otto lenti e' stato provato per mutazione — e in tre casi la mutazione ha
+queste nove lenti e' stato provato per mutazione — e in tre casi la mutazione ha
 rivelato che il presidio era **finto**.
 
 **Una cifra ereditata e' una cifra sbagliata.** E' successo abbastanza volte da
@@ -180,6 +207,28 @@ rilevatore di L5 camminava sul **filesystem** invece che sul repo, contava 4
 script mai committati, ed era **verde in locale e rosso in CI sullo stesso
 commit**. Tre passate di review locali non l'avevano visto: l'ha trovato il primo
 push.
+
+**Chi scrive il presidio non puo' essere l'unico a provarlo.** E' la lezione di
+**L9**, ed e' costata quattro review, tutte rosse. 22 mutanti provati e uccisi,
+ma **9 sono sopravvissuti al primo tentativo** del presidio che doveva ucciderli
+— e **7 dei 9 li ha scritti il code-reviewer**, non chi aveva scritto i presidi.
+Dal terzo giro in poi *tutti* i sopravvissuti sono suoi. La ragione e'
+strutturale, non di bravura: una batteria di mutanti scritta da chi conosce il
+presidio misura **cio' che il presidio gia' guarda**. I miei cancellavano il
+token che il test cerca; i suoi lo lasciavano al suo posto e cambiavano il
+significato intorno — un flag riazzerato nel `finally`, una variabile in
+*shadowing*, i due messaggi **scambiati** fra il ramo del guasto e quello del
+vuoto, un ramo duplicato per far quadrare un conteggio aggregato mentre la vista
+di default restava scoperta.
+
+Il corollario e' piu' scomodo: **una copertura non si sostituisce, si affianca.**
+Sempre in L9, spostare la decisione in un helper eseguibile sembrava un
+miglioramento netto — e ha **riaperto il difetto che la lente era nata per
+chiudere**. L'helper copre la *decisione*; il booleano che gli arriva nasce nel
+`catch` di un `.tsx`, che l'harness non esegue. Il mutante storico della lente e'
+tornato a sopravvivere, con la suite verde. Le due coperture erano **ortogonali,
+non alternative**: toglierne una per l'altra ha lasciato scoperto proprio il
+punto d'ingresso del difetto.
 
 ---
 
