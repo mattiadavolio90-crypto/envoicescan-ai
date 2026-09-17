@@ -245,13 +245,80 @@ Vedi la sezione sul blocco KPI, riscritta.
 **7 su 7**, ognuno verificato come applicato davvero (hash) e ogni ripristino
 confrontato per hash.
 
+---
+
+## Il terzo giro — quando la correzione toglie una copertura
+
+La seconda stesura e' stata **bocciata di nuovo**, e il rilievo principale e' il
+piu' istruttivo dei tre giri.
+
+### La regressione: sostituire invece di affiancare
+
+Spostando la decisione in `statoLista` avevo **sostituito** il vecchio presidio
+sulle transizioni del flag, invece di affiancarlo. Risultato: il mutante
+storico di questa lente — `setFallito(true)` → `(false)` nel `catch`, quello che
+il verbale chiamava «il mutante che conta» — **e' tornato a sopravvivere**, con
+69 test verdi. Dopo la correzione era **rosso**; dopo il "miglioramento", verde.
+
+La ragione e' netta: `statoLista` decide bene **dato** `caricamentoFallito`, ma
+quel booleano **nasce nel `catch` di un `.tsx`**, che l'harness non esegue.
+L'estrazione ha chiuso i mutanti che agiscono *sulla decisione* e ha scoperto
+quello che agisce *sul suo input*. **Le due coperture sono ortogonali, non
+alternative.**
+
+### I mutanti scritti da fuori
+
+Il reviewer ne ha costruiti quattro **conoscendo** le quattro guardie. Due
+uccisi, due sopravvissuti — piu' il ritorno del mutante storico:
+
+| # | Mutante | Primo esito | Ora |
+|---|---|---|---|
+| I | `setFallito(true)` → `(false)` nel catch | **sopravvissuto** | ucciso |
+| J | `caricamentoFallito: falsoFlag` (costante via variabile) | ucciso da (d) | ucciso |
+| K | state rinominato + `const fallito = false;` (**shadowing**) | **sopravvissuto** | ucciso |
+| H | i due **messaggi scambiati** fra ramo guasto e ramo vuoto | **sopravvissuto** | ucciso |
+
+**K** soddisfaceva la guardia (d) alla lettera — `caricamentoFallito: fallito` e'
+testualmente presente su tutte e tre le chiamate — mentre spegneva il guasto in
+**tutte** le viste insieme: (d) verificava il *nome* dell'argomento, non la sua
+*provenienza*. Chiuso dal ripristino di I, che ancora l'identita'
+`fallito` ↔ `setFallito`.
+
+**H** e' il piu' sottile: nessuna guardia guardava **dentro** il ramo. Scambiando
+i due testi il cliente col worker giu' rilegge «Nessuna spesa extra in questo
+mese.» e tutte le guardie restano verdi. Chiuso con un presidio
+sull'**accoppiamento ramo/messaggio** (le parole «Non e' stato possibile» e
+«Riprova» devono stare nel ramo del guasto e **non** in quello del vuoto).
+
+### Le cifre, di nuovo
+
+Due errori nello stesso file: la riga «Suite» della *riga che conta* era rimasta
+a 14.768/14.184 mentre il commit accanto aggiornava l'hash certificato; e la
+frase «il blocco KPI si comporta **identico al desktop**» era **sopravvissuta
+accanto alla sua stessa correzione** — accodata, non sostituita. Chi leggeva la
+riga trovava entrambe le versioni. E' [[cifra-vive-in-piu-punti]] applicata a una
+frase invece che a un numero.
+
 ### La lezione
 
-Due errori di metodo, non di logica. **Il perimetro si conta sull'unita' che ha
-il difetto** — qui lo stato vuoto, non il file. E **una batteria di mutanti che
-li scrive chi ha scritto il presidio misura solo cio' che il presidio gia'
-guarda**: i mutanti evasivi vanno chiesti a qualcun altro, o costruiti partendo
-dal test e non dal codice.
+Tre errori di metodo, non di logica.
+
+1. **Il perimetro si conta sull'unita' che ha il difetto** — qui lo stato vuoto,
+   non il file che lo contiene.
+2. **Una batteria di mutanti scritta da chi ha scritto il presidio misura solo
+   cio' che il presidio gia' guarda.** Su 4 mutanti scritti da fuori, 2 sono
+   passati al primo colpo. Vanno chiesti a qualcun altro, o costruiti partendo
+   dal **test** e non dal codice.
+3. **Migliorare un presidio non autorizza a rimuoverne un altro.** Estrarre la
+   decisione in `lib/` era giusto, ma ha coperto un insieme *diverso*, non piu'
+   grande: togliendo il vecchio assert ho riaperto il difetto che quella lente
+   era nata per chiudere. Quando si sposta una logica, il presidio vecchio si
+   **affianca** finche' non si e' dimostrato che il nuovo lo include.
+
+Il confine resta dichiarato: `statoLista` e' eseguita, il resto e' lettura di
+forma. Una riscrittura completa dei testi, o un refactoring che rinomina tutto in
+modo coerente, passerebbe ancora — per chiuderla servirebbe un runner che renda i
+componenti.
 
 ## Cosa NON e' stato guardato — e resta una scelta
 

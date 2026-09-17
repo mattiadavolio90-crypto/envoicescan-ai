@@ -384,6 +384,79 @@ def test_ogni_stato_vuoto_mobile_passa_da_stato_lista(pagina):
     assert vuoti >= 1, f"{pagina}: nessun ramo «vuoto» trovato"
 
 
+# Parole che compaiono SOLO nel messaggio di guasto: dicono al cliente che il
+# problema e' nostro e che puo' riprovare. Se finiscono nel ramo del vuoto (o
+# spariscono dal ramo del guasto) i due casi si sono scambiati di posto, e il
+# difetto di L9 e' ripristinato identico — col worker giu' il cliente legge
+# «Nessuna spesa extra in questo mese.».
+_PAROLE_GUASTO = ("Non è stato possibile", "Riprova")
+
+
+@pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
+def test_il_messaggio_giusto_sta_nel_ramo_giusto(pagina):
+    """L'accoppiamento fra il ramo e il testo che ci sta dentro.
+
+    Mutante H del code-reviewer: scambiare i due messaggi lascia verdi tutte le
+    guardie che contano i rami e le loro condizioni, perche' nessuna guarda cosa
+    c'e' DENTRO il ramo. Col worker giu' il cliente rilegge «Nessuna spesa extra
+    in questo mese.» — il difetto originale, intatto.
+
+    Qui si legge il sorgente (l'harness non rende i `.tsx`): copre lo scambio e
+    la sparizione, non una riscrittura completa dei testi.
+    """
+    vivo = _codice_vivo(_APP / pagina)
+    righe = [" ".join(r.split()) for r in vivo.splitlines()]
+
+    # ogni riga che apre un ramo "guasto" e' seguita dal messaggio di guasto...
+    for i, r in enumerate(righe):
+        if '=== "guasto"' in r and "?" in r:
+            blocco = " ".join(righe[i : i + 3])
+            assert any(par in blocco for par in _PAROLE_GUASTO), (
+                f"{pagina}: il ramo del guasto non contiene il messaggio di "
+                f"guasto ({blocco[:120]!r}). Se i due messaggi sono stati "
+                "scambiati, col worker giu' il cliente legge «non c'e' niente»."
+            )
+        # ...e nessun ramo "vuoto" contiene il messaggio di guasto
+        if '=== "vuoto"' in r and "?" in r:
+            blocco = " ".join(righe[i : i + 3])
+            assert not any(par in blocco for par in _PAROLE_GUASTO), (
+                f"{pagina}: il ramo del VUOTO contiene il messaggio di guasto "
+                f"({blocco[:120]!r}): i due messaggi sono scambiati."
+            )
+
+
+@pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
+def test_il_flag_mobile_si_alza_nel_catch_e_si_abbassa_sul_successo(pagina):
+    """L'INPUT della decisione, che `statoLista` non puo' coprire.
+
+    `statoLista` decide bene *dato* `caricamentoFallito`, ma quel booleano nasce
+    nel `catch` di un `.tsx`, che l'harness non esegue. Le due coperture sono
+    **ortogonali, non alternative**: al secondo giro di L9 questo assert era
+    stato *sostituito* dall'estrazione in `lib/` invece che affiancato, e il
+    mutante storico della lente — `setFallito(true)` -> `(false)` nel catch —
+    **e' tornato a sopravvivere** con 61 test verdi. Rilievo del code-reviewer.
+
+    Copre anche lo shadowing (`const fallito = false;` accanto a uno state
+    rinominato): ancora l'identita' fra il flag passato e il setter che lo alza.
+    """
+    vivo = _codice_vivo(_APP / pagina)
+    righe = [" ".join(r.split()) for r in vivo.splitlines()]
+    assert "setFallito(true);" in righe, (
+        f"{pagina}: nessun `setFallito(true)` vivo. Il flag non si alza mai, "
+        "quindi `statoLista` riceve sempre `false` e la lista torna a dire "
+        "«non c'e' niente» su dati mai arrivati (L9)."
+    )
+    assert "setFallito(false);" in righe, (
+        f"{pagina}: manca `setFallito(false)` sul caricamento riuscito: dopo un "
+        "retry andato a buon fine il guasto resta appiccicato ai dati."
+    )
+    assert "const [fallito, setFallito]" in " ".join(righe), (
+        f"{pagina}: lo state non si chiama piu' `fallito`. Se e' stato "
+        "rinominato lasciando un `const fallito` accanto, le guardie sul nome "
+        "dell'argomento restano verdi mentre il guasto e' spento ovunque."
+    )
+
+
 @pytest.mark.parametrize("pagina", _CLIENT_MOBILE)
 def test_il_ramo_del_guasto_mobile_non_e_spento_e_il_flag_non_e_riazzerato(pagina):
     """L'ultimo miglio, e il suo limite dichiarato.
