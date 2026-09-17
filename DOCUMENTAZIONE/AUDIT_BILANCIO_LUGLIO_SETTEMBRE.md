@@ -25,30 +25,31 @@ archiviati, CSV di misura. Si aprono quando servono, non si leggono di fila.
 
 ## La cifra sola
 
-**In 78 giorni: 811 commit, 291 dei quali correzioni, 245 file di test nuovi, e
+**In 78 giorni: 812 commit, 291 dei quali correzioni, 245 file di test nuovi, e
 tre cicli di audit piu' nove lenti trasversali — tutti chiusi.**
 
 La suite e' passata da poco piu' di 11.000 test a **14.800** (al commit
-`ceb458e`, con cui si chiude L9). La copertura eseguita del backend e' al **65%**.
+`0ee1c7b`, con cui si chiude L9). La copertura eseguita del backend e' al **65%**.
 
 ---
 
 ## Il lavoro, in numeri misurati oggi
 
 > Ogni cifra porta il **commit su cui e' stata presa**. Il periodo si e' chiuso in
-> due tempi: il bilancio fino a `05640af`, poi L9 fino a `ceb458e`. Misure prese
-> in momenti diversi non si sommano a mente — l'ancora dice quale vale quando.
+> due tempi: il bilancio fino a `05640af`, poi L9 fino a `0ee1c7b` (cinque giri
+> di review). Misure prese in momenti diversi non si sommano a mente — l'ancora
+> dice quale vale quando.
 
 | Misura | Valore | Come e' stata presa |
 |---|---|---|
-| Commit dal 01/07/2026 | **811** a `ceb458e` | `git log --since=2026-07-01 --oneline` contato |
+| Commit dal 01/07/2026 | **812** a `0ee1c7b` | `git log --since=2026-07-01T00:00:00 --oneline` contato (senza l'ora si perde il commit al confine) |
 | — di cui `fix(...)` | **291** (36%) | stesso comando, subject che iniziano con `fix(` |
-| Distribuzione | 136 a luglio · 302 ad agosto · **373 a settembre** | per mese |
+| Distribuzione | 136 a luglio · 302 ad agosto · **374 a settembre** | per mese (somma 812, torna col totale) |
 | File di test creati | **245** (su 318 totali in `tests/`) | `--diff-filter=A` su `tests/test_*.py` |
 | Righe di test nel repo | **74.454** | `wc -l` su `git ls-files 'tests/*.py'` |
-| Test raccolti dalla suite | **14.800** a `ceb458e` (14.768 a `05640af`) | `pytest --collect-only` dalla root |
+| Test raccolti dalla suite | **14.800** a `0ee1c7b` (14.768 a `05640af`) | `pytest --collect-only` dalla root |
 | Copertura backend eseguita | **65%** (24.958 stmts, 8.224 miss) | `coverage run -m pytest -m "not sql"`, 429 s |
-| Documentazione d'audit | **16.988 righe** su 34 file | `wc -l` sui `.md` di audit **tracciati da git** |
+| Documentazione d'audit | **17.037 righe** su 34 file | `wc -l` sui `.md` di audit **tracciati da git** |
 | Strumenti d'audit riusabili | **9 script**, 1.817 righe | `scripts/audit_*.py` |
 
 > **Il 36% di commit di correzione non e' un segnale di fragilita'.** E' la firma
@@ -147,19 +148,19 @@ Il delta misurato, da `a82213e` a `05640af`:
 > stesura. Due cifre vere non sono confrontabili se non misurano la stessa cosa.
 
 **Poi e' arrivata L9**, nello stesso giorno ma dopo `05640af`. Il contatore
-certifica ora **`ceb458e`**, ed e' li' che si ferma il periodo:
+certifica ora **`0ee1c7b`**, ed e' li' che si ferma il periodo:
 
-| | A `05640af` | A `ceb458e` (L9 chiusa) | Delta |
+| | A `05640af` | A `0ee1c7b` (L9 chiusa) | Delta |
 |---|---|---|---|
 | Suite, test verdi | 14.184 | **14.216** | **+32** (i presidi di L9) |
 | — raccolti in totale | 14.768 | **14.800** | **+32** |
 | Test su Postgres vero | 539 | **539** | — |
-| Commit | — | — | **+4** |
+| Commit | — | — | **+5** |
 | Lenti chiuse | 8 su 9 | **9 su 9** | **+1** |
 | Difetti corretti dalle lenti | 14 | **18** | **+4** |
 
 > Le due tabelle non si sommano a mente: la prima confronta `a82213e` con
-> `05640af`, la seconda `05640af` con `ceb458e`. Ogni riga dice su quale commit
+> `05640af`, la seconda `05640af` con `0ee1c7b`. Ogni riga dice su quale commit
 > e' stata presa, ed e' l'unico modo perche' restino vere quando il repo si muove.
 
 ---
