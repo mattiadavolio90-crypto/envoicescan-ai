@@ -13,7 +13,7 @@ codice al call site, una per una. Il CSV accanto e' la fotografia dei dati live
 |---|---|
 | Tabelle `BASE TABLE` in `public` | 59 |
 | Colonne | 667 (336 nomi distinti) |
-| File letti | 540 di codice (py/ts/tsx) + 10 Edge Function + 149 SQL, in 16.5 s |
+| File letti | **528** di codice (py/ts/tsx) + 10 Edge Function + 148 SQL — ri-misurato il 16/09/2026 dopo il fix del perimetro (vedi appendice). Il 15/09 diceva «540 + 149»: contava anche file non versionati, presenti su una sola macchina |
 | Tabelle vuote | 10 (80 colonne che i dati non possono giudicare) |
 | Colonne NULL al 100% in tabelle con righe | **47** (il bacino della classe grave) |
 | Colonne costanti (1 valore distinto, mai NULL) | 82 |
@@ -21,7 +21,8 @@ codice al call site, una per una. Il CSV accanto e' la fotografia dei dati live
 | Drift snapshot/dati al rilancio | nessuno — le 4 colonne che lo snapshot dell'08/09 non aveva (`fatture.oscurata`, `fatture.oscurata_at`, `ristoranti.tipo_attivita`, `users.vista_fatture`) sono state aggiunte a mano il 15/09/2026 |
 
 Taratura (casi di esito noto, `--taratura`): le due colonne morte di L4 a 0, le quattro vive
-a 4/12/16/37 file, `idempotency_key` viva solo in SQL, `ack` non gonfiata da «fallback»,
+a 4/12/16/**33** file (era 37 fino al fix del 16/09: vedi appendice), `idempotency_key`
+viva solo in SQL, `ack` non gonfiata da «fallback»,
 `bypass_guardia_piva` letta in `fastapi_worker.py`. Se non torna, e' rotto il rilevatore.
 
 ## Esito per classe
@@ -235,3 +236,54 @@ python scripts/audit_ciclo_vita_colonne.py --dove turni_personale.costo_orario  
 
 Il CSV va rigenerato sul DB live (query nel docstring dello script) quando si rilancia: e' la
 fotografia di un giorno, non uno schema. Se `--taratura` fallisce, l'inventario non va creduto.
+
+---
+
+## Appendice — 16/09/2026: il rilevatore misurava il filesystem, non il repo
+
+**Come e' venuto fuori.** Il push dei 33 commit accumulati (L5→L8) e' stato il primo
+passaggio in CI dopo tre giorni. `tests.yml` e' tornato **rosso su un test solo**:
+
+```
+FAILED tests/test_audit_ciclo_vita_colonne.py::test_taratura_sul_repo_vero
+AssertionError: assert ['deleted_at: file_codice atteso 37, trovato 33'] == []
+```
+
+Verde in locale, rosso in CI, **sullo stesso commit**. Quando i due ambienti divergono
+col codice identico, la differenza e' nell'ambiente.
+
+**La causa.** `elenca_file` raccoglieva i file con `rglob` sul **filesystem**. In
+`scripts/` vivevano 4 script di lavoro mai committati — `debug_user_data.py`,
+`verifica_coerenza_pagine.py`, `verifica_lotto.py`, `_simula_review_sangiuliano.py` —
+che nominano `deleted_at`. In locale 37, in un checkout pulito 33: **37 - 4 = 33**, la
+cifra esatta dell'errore. La taratura del 15/09 era stata incisa su una misura
+inquinata da file che esistono su una macchina sola.
+
+Non era il test a sbagliare: **in CI misurava la verita'**, ed e' stato il test a
+trovare il difetto che tre passate di review locali non avevano visto.
+
+**Il fix** (`77eef5a`). Il perimetro ora e' `git ls-files`: il rilevatore misura il
+**repo**, e locale e CI concordano per costruzione. Se git non risponde (uso fuori da
+un checkout) si torna al filesystem, cosi' i 12 test sul mini-repo sintetico in
+`tmp_path` continuano a girare. Taratura di `deleted_at` corretta a **33**.
+
+**Provato per mutazione, 2 mutanti uccisi** — file ripristinato e hash confrontato
+dopo ognuno:
+
+| Mutante | Esito |
+|---|---|
+| `if versionati is not None and ...` → `if False:` (filtro disattivato) | ✝ `test_taratura_sul_repo_vero` fallisce |
+| `"deleted_at": 33` → `37` (la cifra inquinata rimessa) | ✝ stesso test fallisce |
+
+**Cosa NON e' cambiato.** Le altre cinque cifre di taratura erano gia' misurate su
+file versionati (verificate una per una: `correzioni_count` 0, `ultimo_correttore` 0,
+`consecutive_correct_classifications` 4, `categoria_fonte` 12, `tipo_attivita` 16).
+E soprattutto **nessun verdetto dell'audit si sposta**: le colonne «lette e mai
+scritte» restano le stesse 6, gli esiti complessivi sono 584 vive / 18 scritte mai
+lette / 44 incerte / 15 mai nominate / 6 lette mai scritte. Il fix cambia il
+**conteggio dei file**, non le conclusioni di L5.
+
+**La lezione, che vale oltre questo script.** Un rilevatore che cammina sul filesystem
+misura *la macchina di chi lo lancia*. Ogni cifra prodotta cosi' e' irriproducibile,
+e diventa un rosso di CI mesi dopo, quando nessuno ricorda perche'. Il perimetro di
+uno strumento d'audit e' il repo.
