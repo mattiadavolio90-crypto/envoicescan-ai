@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
+import { ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
 import { mostraPrincipale, mostraSecondaria } from "@/lib/finestre-annidate";
 import { formatEuro, formatPct } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -259,7 +260,7 @@ export function FinestraMarginiCoperti({
                         </td>
                         {r.dati_incompleti ? (
                           <td colSpan={COLS.length} className="px-3 py-2 text-right text-xs text-muted-foreground">
-                            Incompleto
+                            {ETICHETTA_INCOMPLETO}
                           </td>
                         ) : (
                           COLS.map((c) => {
@@ -320,7 +321,7 @@ export function FinestraMarginiCoperti({
                 <p className="mt-3 text-xs text-muted-foreground">
                   <span className="text-emerald-600 dark:text-emerald-500">verde</span> = migliore della
                   catena, <span className="text-rose-600 dark:text-rose-500">rosso</span> = peggiore. Per «€
-                  materia prima / coperto» il valore basso è il migliore. «Incompleto» = al punto
+                  materia prima / coperto» il valore basso è il migliore. «{ETICHETTA_INCOMPLETO}» = al punto
                   vendita mancano fatturato, fatture costo o costo personale del periodo. Importi al
                   <span className="font-medium"> netto IVA</span> (i «conti del gruppo» mostrano il lordo, IVA inclusa).
                 </p>

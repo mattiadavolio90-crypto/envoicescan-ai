@@ -1524,14 +1524,18 @@ export function PersonaleTab() {
       {/* ── KPI cards ── */}
       {turni.length > 0 && (
         <div className="space-y-3">
-          {/* min-w-0 + truncate su tutte e sei le colonne: il contenitore e'
-              flex justify-between e senza valvole nessun figlio puo' cedere. A
-              1140px (il portatile su cui il 16/09 si era gia' rotto il nome
-              sede in Catena) lo spazio utile per card e' ~223px, e il caso
-              peggiore NON e' "Paghe non inserite" (~131px) ma un costo vero a
-              text-4xl: "12.450,00 €" ne chiede ~230 da solo. La strettezza
-              esisteva quindi gia' con le paghe inserite. Da guardare a schermo:
-              queste sono misure sulle classi, non un rendering. */}
+          {/* NIENTE truncate in queste card: qui ogni colonna e' un numero, e
+              text-overflow taglia sempre in coda — "12.450,00 €" diventerebbe
+              "12.45…", un importo plausibile ma falso, senza nemmeno la "€" a
+              segnalare il taglio. Un numero mutilato che sembra intero e' molto
+              peggio di un blocco che sborda, che almeno si vede. (Provato il
+              18/09: le valvole messe per lo spazio producevano esattamente
+              questo.) Lo spazio E' stretto: a 1140px restano ~223px per card e
+              un costo vero a text-4xl ne chiede ~221 da solo, prima delle ore.
+              Ma e' strettezza PREESISTENTE, presente ogni volta che le paghe
+              sono inserite: va risolta in fase 3 riducendo la taglia del testo,
+              non tagliando le cifre. Misure sulle classi e sulle metriche del
+              font, NON un rendering: da guardare a schermo a 1140 e 1280. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Card 1: Ore ordinarie */}
             <Card className="ring-1 ring-green-500/50 bg-green-50/60 dark:bg-green-950/20">
@@ -1541,8 +1545,8 @@ export function PersonaleTab() {
                   <p className="text-xs font-semibold uppercase tracking-widest text-green-700 dark:text-green-500">Costo ordinarie</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="min-w-0 truncate text-4xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none">{fmtOreDisplay(oreStdTotale)}</p>
-                  <p className="min-w-0 truncate text-4xl font-black tabular-nums text-green-600 dark:text-green-500 leading-none text-right">
+                  <p className="text-4xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none">{fmtOreDisplay(oreStdTotale)}</p>
+                  <p className="shrink-0 text-4xl font-black tabular-nums text-green-600 dark:text-green-500 leading-none text-right">
                     {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-sm font-semibold text-green-600/60 dark:text-green-500/60">Paghe non inserite</span>}
                   </p>
                 </div>
@@ -1557,8 +1561,8 @@ export function PersonaleTab() {
                   <p className="text-xs font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-500">Costo straord.</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="min-w-0 truncate text-4xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none">{fmtOreDisplay(oreExtTotale)}</p>
-                  <p className="min-w-0 truncate text-4xl font-black tabular-nums text-amber-600 dark:text-amber-500 leading-none text-right">
+                  <p className="text-4xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none">{fmtOreDisplay(oreExtTotale)}</p>
+                  <p className="shrink-0 text-4xl font-black tabular-nums text-amber-600 dark:text-amber-500 leading-none text-right">
                     {costoExtTotale > 0 ? fmtEuro(costoExtTotale) : <span className="text-sm font-semibold text-amber-600/60 dark:text-amber-500/60">Paghe non inserite</span>}
                   </p>
                 </div>
@@ -1573,8 +1577,8 @@ export function PersonaleTab() {
                   <p className="text-xs font-semibold uppercase tracking-widest text-sky-700 dark:text-sky-400">Costo totale</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="min-w-0 truncate text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtOreDisplay(totaleOre)}</p>
-                  <p className="min-w-0 truncate text-4xl font-black tabular-nums text-sky-600 dark:text-sky-400 leading-none text-right">
+                  <p className="text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtOreDisplay(totaleOre)}</p>
+                  <p className="shrink-0 text-4xl font-black tabular-nums text-sky-600 dark:text-sky-400 leading-none text-right">
                     {/* Senza paghe inserite il costo e' 0: fino al 18/09/2026 questa
                         card ripiegava sulla media di ore al giorno, cioe' mostrava delle
                         ORE sotto l'etichetta "Costo totale". Ora dice che manca il dato,

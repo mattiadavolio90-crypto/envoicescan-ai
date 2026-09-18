@@ -664,54 +664,84 @@ def test_nota_incompleti_su_nan_non_produce_nota():
 #
 # Nato da un difetto vero (18/09/2026): la cella dell'export diceva "Incompleto"
 # mentre la stessa tabella a schermo diceva "incompleto" minuscolo. Il cliente
-# scaricava il file e leggeva una parola diversa da quella che aveva visto.
-# Nessun test lo vedeva: quelli sopra eseguono `lib/catena-export.ts` via node,
-# ma i `.tsx` non sono raggiungibili da `esegui_ts` (serve JSX), quindi la
-# coerenza fra le due sponde non era presidiata da nessuna parte.
+# scaricava il file e leggeva una parola diversa da quella vista.
 #
-# Qui la costante e' ESEGUITA (non riletta dal sorgente: un assert sul testo del
-# file sopravviverebbe alla mutazione) e confrontata con cio' che i .tsx
-# scrivono a video.
+# La prima stesura di questo presidio confrontava le due grafie con un regex che
+# ancorava il letterale "[Ii]ncompleto": vedeva solo le divergenze di GRAFIA di
+# quella parola, e un mutante realistico (schermo -> "Parziale", export fermo)
+# gli SOPRAVVIVEVA -- proprio lo scenario di una rinomina, cioe' il lavoro in
+# corso. Il pattern cercava se stesso.
+#
+# Ora la parola vive in UNA costante (`ETICHETTA_INCOMPLETO` in lib/salute-tint)
+# importata da chi la scrive a video e dall'export: la coerenza la garantisce il
+# compilatore. Questi test presidiano cio' che il compilatore NON puo' vedere --
+# che nessuno torni a scrivere la parola a mano, reintroducendo una seconda
+# fonte.
+
+def _PATTERN_LETTERALE(parola):
+    """La parola circondata da un delimitatore di stringa o da tag JSX."""
+    import re as _re
+    delim = "[\"'`><]"
+    return delim + r"\s*" + _re.escape(parola) + r"\s*" + delim
+
 
 SORGENTI_A_VIDEO = [
     "apps/web/src/app/(app)/catena/sintesi-catena.tsx",
     "apps/web/src/app/(app)/catena/finestra-margini-coperti.tsx",
     "apps/web/src/app/(mobile)/m/briefing/mobile-catena.tsx",
-    "apps/web/src/lib/salute-tint.ts",
 ]
 
 
-def _cella_incompleti_eseguita():
-    return _esegui("emit(m.CELLA_DATI_INCOMPLETI);")
-
-
 def test_la_cella_export_e_la_parola_del_badge_salute():
-    """L'export non puo' inventare una grafia sua: e' la stessa del badge."""
+    """L'export non ha una grafia sua: e' la costante condivisa, eseguita."""
     from pathlib import Path
 
-    cella = _cella_incompleti_eseguita()
+    cella = _esegui("emit(m.CELLA_DATI_INCOMPLETI);")
     salute = Path("apps/web/src/lib/salute-tint.ts").read_text(encoding="utf-8")
-    assert f'label: "{cella}"' in salute, (
-        f"l'export scrive {cella!r} ma salute-tint non ha quella label: "
-        "schermo ed export divergono, come il 18/09"
+    assert f'ETICHETTA_INCOMPLETO = "{cella}"' in salute, (
+        f"l'export produce {cella!r} ma non e' il valore di ETICHETTA_INCOMPLETO: "
+        "schermo ed export sono tornati a due fonti diverse"
     )
 
 
 @pytest.mark.parametrize("sorgente", SORGENTI_A_VIDEO)
-def test_nessuna_grafia_divergente_a_video(sorgente):
-    """Nessun .tsx scrive lo stato con una grafia diversa dalla costante."""
+def test_il_ramo_dati_incompleti_usa_la_costante(sorgente):
+    """Il ramo che rende lo stato a video DEVE rendere la costante.
+
+    Ancora il RAMO (`dati_incompleti ? (` che apre un blocco JSX), non la
+    parola: un presidio che cerca "Incompleto" non vede una rinomina verso
+    "Parziale", ed e' proprio quello lo scenario di questa fase. Qui invece
+    qualunque parola scritta a mano in quel ramo fallisce.
+
+    Solo i rami che rendono JSX (`? (`): `dati_incompleti ? "bg-muted/20" : ...`
+    sceglie una classe CSS, non un'etichetta, e non deve entrarci.
+    """
     import re
     from pathlib import Path
 
-    cella = _cella_incompleti_eseguita()
     testo = Path(sorgente).read_text(encoding="utf-8")
+    righe = testo.splitlines()
 
-    # Solo le stringhe a video: `>parola<` in JSX e `label: "parola"`.
-    a_video = set(re.findall(r">\s*([Ii]ncompleto)\s*<", testo))
-    a_video |= set(re.findall(r'label:\s*"([Ii]ncompleto)"', testo))
-
-    divergenti = {p for p in a_video if p != cella}
-    assert not divergenti, (
-        f"{sorgente} scrive {sorted(divergenti)} ma l'export scrive {cella!r}: "
-        "il cliente vedrebbe due parole per lo stesso stato"
+    rami = [
+        i for i, l in enumerate(righe)
+        if re.search(r"dati_incompleti\s*\?\s*\($", l.rstrip())
+    ]
+    assert rami, (
+        f"{sorgente}: nessun ramo JSX `dati_incompleti ? (` — se e' stato "
+        "rinominato, aggiorna questo test invece di cancellarlo"
     )
+
+    for i in rami:
+        # fino al ramo alternativo `) : ...`, che chiude il caso "incompleto"
+        blocco = []
+        for l in righe[i + 1 : i + 30]:
+            if re.match(r"\s*\)\s*:", l):
+                break
+            if l.lstrip().startswith(("//", "*", "/*")):
+                continue
+            blocco.append(l)
+        corpo = "\n".join(blocco)
+        assert "ETICHETTA_INCOMPLETO" in corpo, (
+            f"{sorgente}:{i + 1} il ramo dati_incompleti scrive l'etichetta a "
+            f"mano invece di usare ETICHETTA_INCOMPLETO:\n{corpo}"
+        )

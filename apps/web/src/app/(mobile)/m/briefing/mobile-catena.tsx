@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
 import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
 import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
-import { SALUTE_TINT } from "@/lib/salute-tint";
+import { SALUTE_TINT, ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
   dati_mancanti: ClipboardList,
@@ -332,7 +332,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
                 <span className={cn("size-2.5 shrink-0 rounded-full", DOT[(pv.colore as string) ?? "grigio"])} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{pv.nome}</span>
                 {pv.dati_incompleti ? (
-                  <span className="text-xs text-muted-foreground">Incompleto</span>
+                  <span className="text-xs text-muted-foreground">{ETICHETTA_INCOMPLETO}</span>
                 ) : (
                   <span className={cn("text-sm font-semibold tabular-nums", TXT[(pv.colore as string) ?? "grigio"])}>
                     {pct(pv.margine_perc)}

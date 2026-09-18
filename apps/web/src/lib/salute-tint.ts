@@ -10,6 +10,19 @@
  * catena; il PV oggi non lo emette ma la chiave e' qui perche' se un giorno lo
  * emettera' avra' gia' il suo colore, non un crash su una chiave assente.
  */
+/**
+ * La parola con cui il prodotto dice "i dati di questa sede non sono completi".
+ *
+ * Fonte unica, importata da chi la scrive a video E dall'export Excel. Nasce da
+ * un difetto del 18/09/2026: la cella dell'export diceva "Incompleto" mentre la
+ * stessa tabella a schermo diceva "incompleto" minuscolo, e il cliente
+ * scaricava il file leggendo una parola diversa da quella vista. Un presidio a
+ * regex ci vedeva solo le divergenze di GRAFIA di questa parola, non quelle
+ * verso una parola diversa (che e' lo scenario di una rinomina). Con una
+ * costante sola la coerenza la garantisce il compilatore, non un test.
+ */
+export const ETICHETTA_INCOMPLETO = "Incompleto";
+
 export const SALUTE_TINT = {
   verde: {
     ring: "text-emerald-500",
@@ -39,7 +52,7 @@ export const SALUTE_TINT = {
     orb1: "bg-rose-400/15",
     orb2: "bg-rose-400/8",
     dot: "bg-rose-500",
-    label: "Incompleto",
+    label: ETICHETTA_INCOMPLETO,
   },
   grigio: {
     ring: "text-muted-foreground/40",

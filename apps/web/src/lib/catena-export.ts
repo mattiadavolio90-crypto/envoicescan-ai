@@ -17,6 +17,7 @@ import type { MarginiCopertiPV, SpesaPivot } from "@/lib/gruppo";
 // chiamanti in tre file diversi. Si importa invece di ri-dichiararla: una
 // quarta copia della stessa regex sarebbe il modo tipico di farle divergere.
 import { slugPeriodo } from "@/lib/catena-tag";
+import { ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
 
 /**
  * Colonna dell'export margini: il sottoinsieme di `Col` che serve a costruire
@@ -25,7 +26,9 @@ import { slugPeriodo } from "@/lib/catena-tag";
  */
 export type ColonnaExport = { key: keyof MarginiCopertiPV; label: string };
 
-export const CELLA_DATI_INCOMPLETI = "Incompleto";
+// Deriva dall'etichetta a video: schermo ed export non possono piu' divergere
+// senza che il compilatore lo sappia (18/09/2026, difetto B5).
+export const CELLA_DATI_INCOMPLETI = ETICHETTA_INCOMPLETO;
 export const CELLA_VUOTA = "—";
 
 /**
