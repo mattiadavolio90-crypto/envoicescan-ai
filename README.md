@@ -120,7 +120,7 @@ python -m pytest tests/ -q                              # suite Python
 deno test --allow-env --allow-net supabase/functions/**/*_test.ts   # Edge Functions
 ```
 
-~12.600 test Python + 101 test Deno (auth HMAC + routing multi-sede del webhook
+~14.800 test Python + 117 test Deno (auth HMAC + routing multi-sede del webhook
 fatture). La CI (`.github/workflows/tests.yml`) lancia entrambe le suite su ogni push
 e pull request.
 
