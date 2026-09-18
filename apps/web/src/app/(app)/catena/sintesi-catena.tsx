@@ -282,7 +282,7 @@ function ContiGruppoCard({
       {/* Dati di costo incompleti: il MOL sopra e' gonfiato verso l'alto (mancano
           costi). Lo si dice chiaro — il banner ambra del PV per le fatture
           mancanti fa lo stesso — e si porta a vedere QUALI PV: la finestra
-          Margini e Coperti li marca come "dati incompleti". */}
+          Margini e Coperti li marca come "Incompleto". */}
       {avviso && (
         <button
           type="button"
@@ -416,7 +416,9 @@ function SaluteGruppoCard({
                         portatile) l'unico che poteva cedere era lui, e truncate lo
                         portava a larghezza ZERO: la riga diceva "● dati incompleti 0 ›"
                         senza dire di quale sede. In una pagina che serve a confrontare
-                        i punti vendita. Il nome e' il dato, non l'accessorio. */}
+                        i punti vendita. Il nome e' il dato, non l'accessorio.
+                        (Le due stringhe qui sopra sono quelle del 16/09: dal 18/09
+                        l'etichetta e' ETICHETTA_INCOMPLETO, "Incompleto".) */}
                     <span className="min-w-[7ch] flex-1 truncate">{pv.nome}</span>
                     {r?.dati_incompleti ? (
                       // Dati incompleti: l'indice sotto è inaffidabile (calcolato su dati

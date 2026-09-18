@@ -678,13 +678,6 @@ def test_nota_incompleti_su_nan_non_produce_nota():
 # che nessuno torni a scrivere la parola a mano, reintroducendo una seconda
 # fonte.
 
-def _PATTERN_LETTERALE(parola):
-    """La parola circondata da un delimitatore di stringa o da tag JSX."""
-    import re as _re
-    delim = "[\"'`><]"
-    return delim + r"\s*" + _re.escape(parola) + r"\s*" + delim
-
-
 def _sorgenti_che_rendono_lo_stato():
     """I .tsx che rendono a video il ramo `dati_incompleti`, CERCATI.
 
@@ -746,8 +739,11 @@ def test_il_ramo_dati_incompleti_usa_la_costante(sorgente):
         if re.search(r"dati_incompleti\s*\?\s*\($", l.rstrip())
     ]
     assert rami, (
-        f"{sorgente}: nessun ramo JSX `dati_incompleti ? (` — se e' stato "
-        "rinominato, aggiorna questo test invece di cancellarlo"
+        f"{sorgente} e' stato selezionato perche' rende `dati_incompleti`, ma il "
+        "ramo non e' nella forma `? (` attesa qui. Se il sorgente l'ha riscritto "
+        "in un'altra forma valida (es. `&&`), estendi il riconoscimento del ramo "
+        "qui sotto; se l'etichetta e' sparita del tutto, aggiorna questo test "
+        "invece di cancellarlo."
     )
 
     for i in rami:
