@@ -53,28 +53,28 @@ type KpiCardProps = {
   label: string;
   count: number;
   totale: number;
-  tone: "rose" | "orange" | "sky" | "emerald";
+  tone: "negativo" | "incerto" | "blu" | "positivo";
   active?: boolean;
   onClick?: () => void;
 };
 
 const TONE_CLASSES = {
-  rose:    "border-rose-500/40 hover:border-rose-500/70",
-  orange:  "border-orange-500/40 hover:border-orange-500/70",
-  sky:     "border-sky-500/40 hover:border-sky-500/70",
-  emerald: "border-emerald-500/40 hover:border-emerald-500/70",
+  negativo: "border-negativo/40 hover:border-negativo/70",
+  incerto:  "border-incerto/40 hover:border-incerto/70",
+  blu:      "border-primary/40 hover:border-primary/70",
+  positivo: "border-positivo/40 hover:border-positivo/70",
 };
 const TONE_VALUE = {
-  rose:    "text-rose-600 dark:text-rose-400",
-  orange:  "text-orange-600 dark:text-orange-400",
-  sky:     "text-sky-600 dark:text-sky-400",
-  emerald: "text-emerald-600 dark:text-emerald-400",
+  negativo: "text-negativo",
+  incerto:  "text-incerto",
+  blu:      "text-primary-text",
+  positivo: "text-positivo",
 };
 const TONE_ACTIVE = {
-  rose:    "border-rose-500 ring-2 ring-rose-500/30",
-  orange:  "border-orange-500 ring-2 ring-orange-500/30",
-  sky:     "border-sky-500 ring-2 ring-sky-500/30",
-  emerald: "border-emerald-500 ring-2 ring-emerald-500/30",
+  negativo: "border-negativo ring-2 ring-negativo/30",
+  incerto:  "border-incerto ring-2 ring-incerto/30",
+  blu:      "border-primary ring-2 ring-primary/30",
+  positivo: "border-positivo ring-2 ring-positivo/30",
 };
 
 function KpiCard({ label, count, totale, tone, active = false, onClick }: KpiCardProps) {
@@ -104,10 +104,10 @@ function KpiCard({ label, count, totale, tone, active = false, onClick }: KpiCar
 function ScadenzaBadge({ source }: { source: string | null }) {
   if (!source || source === "stored") return null;
   const map: Record<string, { label: string; className: string }> = {
-    override: { label: "manuale", className: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400" },
-    xml:      { label: "da fattura", className: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400" },
-    fornitore: { label: "da regola", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
-    fornitore_rid: { label: "RID", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    override: { label: "manuale", className: "bg-accent text-primary-text" },
+    xml:      { label: "da fattura", className: "bg-accent text-primary-text" },
+    fornitore: { label: "da regola", className: "bg-accent text-primary-text" },
+    fornitore_rid: { label: "RID", className: "bg-accent text-primary-text" },
     none: { label: "nessuna", className: "bg-muted text-muted-foreground" },
   };
   const entry = map[source] ?? { label: source, className: "bg-muted text-muted-foreground" };
@@ -121,12 +121,12 @@ function ScadenzaBadge({ source }: { source: string | null }) {
 // ── Documento row ────────────────────────────────────────────────────────────
 
 // Badge Sede — solo modalità catena. Stesso stile del badge "Ripartita" in
-// articoli-tab.tsx:572-579 per la sede tecnica (viola + Split, "Gruppo").
+// articoli-tab.tsx per la sede tecnica (blu del brand + Split, "Gruppo").
 function SedeBadge({ nome, isSedeTecnica }: { nome: string; isSedeTecnica: boolean }) {
   if (isSedeTecnica) {
     return (
       <span
-        className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap"
+        className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent text-primary-text font-semibold inline-flex items-center gap-0.5 whitespace-nowrap"
         title="Costo comune di gruppo, non attribuito a un singolo punto vendita"
       >
         <Split className="size-2.5" /> Gruppo
@@ -205,7 +205,7 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
           {doc.data_documento && <span>Fattura: {formatDate(doc.data_documento)}</span>}
           {mostraScadenze && doc.scadenza_effettiva && (
-            <span className={isOverdue && !doc.pagata ? "text-rose-600 font-medium" : ""}>
+            <span className={isOverdue && !doc.pagata ? "text-negativo font-medium" : ""}>
               Scade: {formatDate(doc.scadenza_effettiva)}
             </span>
           )}
@@ -413,9 +413,9 @@ function NoteCreditoSection({
         <button className="flex-1 flex items-center justify-between" onClick={() => setOpen(o => !o)}>
           <div className="flex items-center gap-2">
             {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
-            <span className="font-semibold text-sm text-violet-600 dark:text-violet-400">Note di credito</span>
+            <span className="font-semibold text-sm text-primary-text">Note di credito</span>
             <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
-            <span className="text-[10px] font-medium rounded-full px-2 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+            <span className="text-[10px] font-medium rounded-full px-2 py-0.5 bg-accent text-primary-text">
               non da pagare
             </span>
           </div>
@@ -437,7 +437,7 @@ function NoteCreditoSection({
                   {doc.numero_documento && (
                     <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
                   )}
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-accent text-primary-text">
                     nota di credito
                   </span>
                   {doc.sede_nome && (
@@ -451,7 +451,7 @@ function NoteCreditoSection({
                 )}
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="font-semibold text-sm text-violet-600 dark:text-violet-400">
+                <p className="font-semibold text-sm text-primary-text">
                   {formatEuro(Math.abs(doc.totale_documento || 0))}
                 </p>
               </div>
@@ -548,7 +548,7 @@ function CalendarView({ documenti }: CalendarViewProps) {
 
       {fuoriMese.count > 0 && (
         <p className="text-xs text-muted-foreground -mt-1">
-          <span className="font-medium text-rose-600 dark:text-rose-400">
+          <span className="font-medium text-negativo">
             {fuoriMese.count} {fuoriMese.count === 1 ? "fattura scaduta" : "fatture scadute"}
           </span>
           {" "}({formatEuro(fuoriMese.totale)}) {fuoriMese.count === 1 ? "ha" : "hanno"} scadenza
@@ -576,7 +576,7 @@ function CalendarView({ documenti }: CalendarViewProps) {
           // pieno → bianco; su intensità medio-bassa lo sfondo è semitrasparente →
           // sky scuro in light, sky chiaro in dark (segue il tema sotto la cella).
           const onBg = !isSelected && hasAmount
-            ? (intensity > 0.55 ? "text-white" : "text-sky-900 dark:text-sky-100")
+            ? (intensity > 0.55 ? "text-white" : "text-primary-text")
             : "";
 
           return (
@@ -853,7 +853,7 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
                 </div>
                 <div className="flex justify-between text-sm items-center gap-2">
                   <span className="text-muted-foreground">Stato</span>
-                  <span className={`font-medium ${doc.pagata ? "text-emerald-600" : ""}`}>
+                  <span className={`font-medium ${doc.pagata ? "text-positivo" : ""}`}>
                     {doc.pagata ? `Pagata${doc.pagata_at ? ` il ${formatDate(doc.pagata_at)}` : ""}` : doc.stato_scadenza}
                   </span>
                 </div>
@@ -965,7 +965,7 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
               {/* Azione pagamento */}
               <div>
                 {doc.is_nota_credito ? (
-                  <div className="rounded-lg border border-violet-500/40 bg-violet-50 dark:bg-violet-900/10 px-4 py-3 text-sm text-violet-800 dark:text-violet-300">
+                  <div className="rounded-lg border border-primary/40 bg-accent px-4 py-3 text-sm text-primary-text">
                     Questa è una <strong>nota di credito</strong>: è un accredito del fornitore, non un importo da pagare. Per questo è esclusa da scadenze e totali.
                   </div>
                 ) : doc.pagata ? (
@@ -1338,7 +1338,7 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
                     </div>
 
                     {senzaPiva.length > 0 && (
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                      <p className="text-[11px] text-incerto">
                         {senzaPiva.length} fornitore/i senza P.IVA verranno ignorati al salvataggio.
                       </p>
                     )}
@@ -1953,30 +1953,30 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       <div className={`grid grid-cols-2 lg:grid-cols-4 gap-3 ${view === "lista_mensile" ? "hidden" : ""}`}>
         <KpiCard
           label={filtriAttivi ? "Scadute (filtro)" : "Scadute"}
-          count={kpi.scadute_count} totale={kpi.scadute_totale} tone="rose"
+          count={kpi.scadute_count} totale={kpi.scadute_totale} tone="negativo"
           active={filtroPeriodo === "scadute"}
           onClick={() => setFiltroPeriodo(p => p === "scadute" ? "tutti" : "scadute")}
         />
         <KpiCard
           label={filtriAttivi ? "Settimana (filtro)" : "Questa settimana"}
-          count={kpi.settimana_count} totale={kpi.settimana_totale} tone="orange"
+          count={kpi.settimana_count} totale={kpi.settimana_totale} tone="incerto"
           active={filtroPeriodo === "settimana"}
           onClick={() => setFiltroPeriodo(p => p === "settimana" ? "tutti" : "settimana")}
         />
         <KpiCard
           label={filtriAttivi ? "Da pagare (filtro)" : "Da pagare"}
-          count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="sky"
+          count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="blu"
           active={filtroPeriodo === "tutti" && !filtriAttivi}
           onClick={() => resetFiltri()}
         />
-        <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="emerald" />
+        <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="positivo" />
       </div>
 
       {/* Alert senza scadenza (solo senza filtri attivi per non confondere) */}
       {!filtriAttivi && buckets.senzaScadenza.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 text-sm">
-          <AlertTriangle className="size-4 text-amber-600 flex-shrink-0" />
-          <span className="text-amber-800 dark:text-amber-300 flex-1">
+        <div className="flex items-center gap-3 rounded-lg border border-incerto/40 bg-incerto/10 px-4 py-3 text-sm">
+          <AlertTriangle className="size-4 text-incerto flex-shrink-0" />
+          <span className="text-incerto flex-1">
             <strong>{buckets.senzaScadenza.length}</strong> fattur{buckets.senzaScadenza.length === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0))}).
             Apri una fattura e imposta la data manualmente.
           </span>
@@ -2080,7 +2080,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                         {item.data_documento && <span>Data: {formatDateCestino(item.data_documento)}</span>}
                         <span>Eliminata: {formatDateCestino(item.deleted_at)}</span>
-                        <span className={`font-medium ${urgent ? "text-rose-600" : ""}`}>
+                        <span className={`font-medium ${urgent ? "text-negativo" : ""}`}>
                           {days === 0 ? "Eliminazione imminente" : `${days}g al 30°`}
                         </span>
                       </div>
@@ -2226,10 +2226,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                   className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold border transition-colors
                     ${active
                       ? s.is_sede_tecnica
-                        ? "bg-violet-600 text-white border-violet-600"
+                        ? "bg-primary text-primary-foreground border-primary"
                         : "bg-primary text-primary-foreground border-primary"
                       : s.is_sede_tecnica
-                        ? "border-violet-500/40 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300 dark:hover:bg-violet-900/30"
+                        ? "border-primary/40 bg-accent text-primary-text hover:bg-primary/10"
                         : "border-border hover:bg-muted text-foreground"}`}
                 >
                   {s.is_sede_tecnica ? <Split className="size-3.5 flex-shrink-0" /> : <MapPin className="size-3.5 flex-shrink-0" />}
@@ -2337,12 +2337,12 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               mese" — cio' su cui si agisce — a ~38 schermate di distanza. Il
               totale resta leggibile nel riquadro in cima e nel titolo di
               sezione; chi ci lavora paga un clic. */}
-          <AgendaSection title="Scadute" docs={buckets.scadute} defaultOpen={false} accentClass="text-rose-600 dark:text-rose-400" {...sharedProps} />
-          <AgendaSection title="Questa settimana" docs={buckets.settimana} accentClass="text-orange-600 dark:text-orange-400" {...sharedProps} />
+          <AgendaSection title="Scadute" docs={buckets.scadute} defaultOpen={false} accentClass="text-negativo" {...sharedProps} />
+          <AgendaSection title="Questa settimana" docs={buckets.settimana} accentClass="text-incerto" {...sharedProps} />
           <AgendaSection title="Questo mese" docs={buckets.mese} {...sharedProps} />
           <AgendaSection title="Oltre il mese" docs={buckets.oltre} defaultOpen={false} {...sharedProps} />
           <AgendaSection title="Senza scadenza" docs={buckets.senzaScadenza} defaultOpen={false} accentClass="text-muted-foreground" {...sharedProps} />
-          <AgendaSection title="Pagate" docs={buckets.pagate} defaultOpen={false} accentClass="text-emerald-600 dark:text-emerald-400" {...sharedProps} />
+          <AgendaSection title="Pagate" docs={buckets.pagate} defaultOpen={false} accentClass="text-positivo" {...sharedProps} />
           <NoteCreditoSection docs={buckets.noteCredito} onPeek={setPeekDoc} sedeTecnicaId={sedeTecnicaId} />
           <OscurateSection docs={buckets.oscurate} onPeek={setPeekDoc} onOscura={handleOscura} sedeTecnicaId={sedeTecnicaId} />
 
