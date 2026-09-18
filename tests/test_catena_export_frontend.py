@@ -685,11 +685,30 @@ def _PATTERN_LETTERALE(parola):
     return delim + r"\s*" + _re.escape(parola) + r"\s*" + delim
 
 
-SORGENTI_A_VIDEO = [
-    "apps/web/src/app/(app)/catena/sintesi-catena.tsx",
-    "apps/web/src/app/(app)/catena/finestra-margini-coperti.tsx",
-    "apps/web/src/app/(mobile)/m/briefing/mobile-catena.tsx",
-]
+def _sorgenti_che_rendono_lo_stato():
+    """I .tsx che rendono a video il ramo `dati_incompleti`, CERCATI.
+
+    Non una lista scritta a mano: quella resterebbe verde il giorno che un
+    quarto file rende lo stato con una parola propria — ed e' esattamente cosi'
+    che sono nati i difetti di questa fase (`/m` dimenticato, la legenda
+    dimenticata). Qui il perimetro se lo calcola il test.
+    """
+    import re
+    from pathlib import Path
+
+    trovati = []
+    for f in Path("apps/web/src").rglob("*.tsx"):
+        testo = f.read_text(encoding="utf-8")
+        righe = [
+            l for l in testo.splitlines()
+            if not l.lstrip().startswith(("//", "*", "/*"))
+        ]
+        if any(re.search(r"dati_incompleti\s*\?\s*\($", l.rstrip()) for l in righe):
+            trovati.append(str(f))
+    return sorted(trovati)
+
+
+SORGENTI_A_VIDEO = _sorgenti_che_rendono_lo_stato()
 
 
 def test_la_cella_export_e_la_parola_del_badge_salute():
