@@ -38,8 +38,8 @@ function Trend({
       className={cn(
         "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
         tinta === null && "text-muted-foreground",
-        tinta === true && "text-emerald-600 dark:text-emerald-500",
-        tinta === false && "text-rose-600 dark:text-rose-500",
+        tinta === true && "text-positivo",
+        tinta === false && "text-negativo",
       )}
     >
       <Icon className="size-3" />
@@ -74,7 +74,7 @@ function RigaVoce({
   // un numero che non mi piace -> un click e sono dove lo controllo.
   href?: string;
 }) {
-  const dotCn = colore === "emerald" ? "bg-emerald-400" : "bg-amber-400";
+  const dotCn = colore === "emerald" ? "bg-positivo" : "bg-incerto";
   const contenuto = (
     <>
       <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", dotCn)} />
@@ -129,9 +129,9 @@ function MolAndamento({
   // la Home neutralizzava il numero grande e il Trend ma lasciava qui sotto una
   // curva verde con la freccia in su, cioe' la stessa contraddizione ottanta
   // righe piu' in basso.
-  const colore = affidabile ? stroke : "text-amber-500";
+  const colore = affidabile ? stroke : "text-incerto";
   const coloreDelta = affidabile
-    ? su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500"
+    ? su ? "text-positivo" : "text-negativo"
     : "text-muted-foreground";
 
   return (
@@ -231,7 +231,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
       {kpi.costi_mancanti && (
         <Link
           href="/analisi-fatture"
-          className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 transition-colors hover:bg-amber-500/15 dark:text-amber-400"
+          className="mt-2 flex items-start gap-2 rounded-xl border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors hover:bg-incerto/10"
         >
           <span className="mt-px">⚠</span>
           <span>

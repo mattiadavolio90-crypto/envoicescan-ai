@@ -67,12 +67,12 @@ export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hide
               {salute.voci.map((v) => (
                 <li key={v.key} className="flex items-start gap-3 text-sm">
                   {v.ok ? (
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/40">
-                      <Check className="size-3.5 text-emerald-600" />
+                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-positivo/10">
+                      <Check className="size-3.5 text-positivo" />
                     </span>
                   ) : (
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
-                      <span className="size-2 rounded-full bg-amber-500" />
+                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-incerto/10">
+                      <span className="size-2 rounded-full bg-incerto" />
                     </span>
                   )}
                   <div className="flex flex-1 flex-col gap-0.5">
@@ -88,7 +88,7 @@ export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hide
                         campo, quindi sparisce da solo quando non c'e' nulla da
                         dire — nessuna riga vuota, `gap-0.5` collassa. */}
                     {v.conseguenza && (
-                      <span className="text-xs text-amber-600 dark:text-amber-400">
+                      <span className="text-xs text-incerto">
                         {v.conseguenza}
                       </span>
                     )}

@@ -24,9 +24,9 @@ const TYPEWRITER_ENABLED = true;
 
 function SeverityIcon({ severity }: { severity: BriefingAzione["severity"] }) {
   if (severity === "error") return <XCircle className="size-5 text-destructive shrink-0" />;
-  if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;
-  if (severity === "success") return <CheckCircle className="size-5 text-emerald-500 shrink-0" />;
-  return <Info className="size-5 text-sky-500 shrink-0" />;
+  if (severity === "warning") return <AlertTriangle className="size-5 text-incerto shrink-0" />;
+  if (severity === "success") return <CheckCircle className="size-5 text-positivo shrink-0" />;
+  return <Info className="size-5 text-primary shrink-0" />;
 }
 
 function useTypewriter(text: string, enabled: boolean) {
@@ -110,9 +110,9 @@ export function HomeBriefing({ briefing }: Props) {
   return (
     <section className="space-y-6">
       {/* HERO — la voce dell'assistente */}
-      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-400/15 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-violet-400/10 blur-3xl" />
+      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-accent blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-primary/10 blur-3xl" />
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-medium text-primary/80">
             <Sparkles className="size-4" />
@@ -133,11 +133,11 @@ export function HomeBriefing({ briefing }: Props) {
 
       {/* AZIONI — le card da svuotare */}
       {tuttoOk ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.07] via-transparent to-transparent py-10 text-center">
-          <div className="rounded-full bg-emerald-500/15 p-3 ring-1 ring-emerald-500/20">
-            <Check className="size-7 text-emerald-500" />
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-positivo/20 bg-gradient-to-br from-positivo/[0.07] via-transparent to-transparent py-10 text-center">
+          <div className="rounded-full bg-positivo/10 p-3 ring-1 ring-positivo/20">
+            <Check className="size-7 text-positivo" />
           </div>
-          <p className="text-base font-semibold text-emerald-600 dark:text-emerald-400">
+          <p className="text-base font-semibold text-positivo">
             Tutto in ordine per oggi
           </p>
           <p className="text-sm text-muted-foreground">
@@ -147,11 +147,11 @@ export function HomeBriefing({ briefing }: Props) {
       ) : visibili.length === 0 && datiMancanti.length > 0 ? (
         // Nessuna card urgente, ma mancano dati: senza quelli i numeri sono falsi.
         // Niente verde: nota neutra che dice cosa completare per il quadro reale.
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.07] via-transparent to-transparent py-8 text-center">
-          <div className="rounded-full bg-amber-500/15 p-3 ring-1 ring-amber-500/20">
-            <Info className="size-6 text-amber-500" />
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-incerto/20 bg-gradient-to-br from-incerto/[0.07] via-transparent to-transparent py-8 text-center">
+          <div className="rounded-full bg-incerto/10 p-3 ring-1 ring-incerto/20">
+            <Info className="size-6 text-incerto" />
           </div>
-          <p className="text-base font-semibold text-amber-700 dark:text-amber-400">
+          <p className="text-base font-semibold text-incerto">
             Nessuna azione urgente
           </p>
           <p className="max-w-md text-sm text-muted-foreground">

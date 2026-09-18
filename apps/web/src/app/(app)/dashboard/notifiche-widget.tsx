@@ -27,18 +27,18 @@ import { type Notifica } from "@/lib/notifiche";
 import { ctaDi, pulisci, raggruppa } from "@/lib/notifiche-shared";
 
 function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
-  if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;
+  if (severity === "warning") return <AlertTriangle className="size-5 text-incerto shrink-0" />;
   if (severity === "error") return <XCircle className="size-5 text-destructive shrink-0" />;
-  if (severity === "success") return <CheckCircle className="size-5 text-emerald-500 shrink-0" />;
-  return <Info className="size-5 text-sky-500 shrink-0" />;
+  if (severity === "success") return <CheckCircle className="size-5 text-positivo shrink-0" />;
+  return <Info className="size-5 text-primary shrink-0" />;
 }
 
 // Bordo sinistro colorato = priorita' a colpo d'occhio (allineato alla pagina).
 const SEVERITY_ACCENT: Record<Notifica["severity"], string> = {
   error: "border-l-destructive",
-  warning: "border-l-amber-500",
-  info: "border-l-sky-500",
-  success: "border-l-emerald-500",
+  warning: "border-l-incerto",
+  info: "border-l-primary",
+  success: "border-l-positivo",
 };
 
 type Props = { count: number };
@@ -117,14 +117,14 @@ export function NotificheWidget({ count }: Props) {
           <Button
             size="sm"
             variant="outline"
-            className="w-fit gap-1.5 border-amber-500/40 text-amber-600 hover:border-amber-500/60 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-500 dark:hover:bg-amber-950/30"
+            className="w-fit gap-1.5 border-incerto/40 text-incerto hover:border-incerto/60 hover:bg-incerto/10 hover:text-incerto"
           />
         }
       >
         <Bell className="size-3.5" />
         Vedi tutti gli avvisi
         {count > 0 && (
-          <span className="ml-0.5 flex min-w-4 items-center justify-center rounded-full bg-amber-500/20 px-1 text-[11px] font-bold text-amber-700 dark:text-amber-400">
+          <span className="ml-0.5 flex min-w-4 items-center justify-center rounded-full bg-incerto/10 px-1 text-[11px] font-bold text-incerto">
             {count}
           </span>
         )}

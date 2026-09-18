@@ -182,7 +182,7 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
               <p
                 className={cn(
                   "text-[11px] mt-0.5",
-                  esaurite ? "text-amber-600 dark:text-amber-500" : "text-muted-foreground",
+                  esaurite ? "text-incerto" : "text-muted-foreground",
                 )}
               >
                 {esaurite
