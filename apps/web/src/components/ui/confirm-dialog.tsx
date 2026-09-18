@@ -35,7 +35,7 @@ export function ConfirmDialog({
           </button>
           <button
             onClick={() => { onConferma(); onClose(); }}
-            className="flex-1 rounded-lg bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground active:scale-[0.98]"
+            className="flex-1 rounded-lg bg-destructive py-2.5 text-sm font-semibold text-white active:scale-[0.98]"
           >
             {confermaLabel}
           </button>
