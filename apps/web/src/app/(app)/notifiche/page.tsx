@@ -33,7 +33,7 @@ export default async function NotifichePage() {
         }
         badge={
           unread > 0 ? (
-            <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-sm font-bold text-white">
+            <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-positivo px-1.5 text-sm font-bold text-white">
               {unread}
             </span>
           ) : null

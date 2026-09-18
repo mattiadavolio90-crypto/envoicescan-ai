@@ -61,8 +61,8 @@ function fmtDate(iso: string | null): string {
 }
 
 const COLORE_USO: Record<LivelloUso, string> = {
-  critico: "bg-red-500",
-  attenzione: "bg-amber-500",
+  critico: "bg-negativo",
+  attenzione: "bg-incerto",
   ok: "bg-primary",
 };
 
@@ -91,7 +91,7 @@ function UsageBar({
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
       {mostraAvviso && (
-        <p className="text-xs text-red-600 dark:text-red-400">{avviso}</p>
+        <p className="text-xs text-destructive">{avviso}</p>
       )}
     </div>
   );
@@ -192,7 +192,7 @@ function CambioPasswordForm() {
             </div>
           )}
           {success && (
-            <div className="rounded-md bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
+            <div className="rounded-md bg-positivo/10 border border-positivo/30 px-3 py-2 text-sm text-positivo">
               Password aggiornata con successo.
             </div>
           )}

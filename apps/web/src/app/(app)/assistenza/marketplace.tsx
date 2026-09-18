@@ -43,7 +43,7 @@ const ICONS: Record<ServizioIconName, LucideIcon> = {
 
 // Stile WhatsApp (verde) condiviso tra card e dialog.
 const WHATSAPP_CLS =
-  "gap-1.5 border-emerald-500/40 text-emerald-600 hover:border-emerald-500/60 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-500 dark:hover:bg-emerald-950/30";
+  "gap-1.5 border-positivo/40 text-positivo hover:border-positivo/60 hover:bg-positivo/10 hover:text-positivo";
 
 // Tre gruppi visivi, ciascuno con contorno spesso (border-2) e ombra colorata
 // coordinata sullo stesso accento:
@@ -53,28 +53,28 @@ const WHATSAPP_CLS =
 // L'ombra colorata usa shadow-<color>-500/<alpha>: l'alone prende la tinta.
 const CARD_VARIANT: Record<NonNullable<Servizio["variant"]>, string> = {
   default:
-    "border-2 border-sky-500/40 bg-sky-500/[0.03] shadow-lg shadow-sky-500/10 " +
-    "hover:border-sky-500/60 hover:shadow-sky-500/20",
+    "border-2 border-primary/40 bg-card shadow-lg shadow-primary/10 " +
+    "hover:border-primary/60 hover:shadow-primary/20",
   featured:
-    "relative z-10 border-2 border-amber-400/70 bg-amber-400/[0.06] " +
-    "scale-[1.04] -translate-y-2 shadow-2xl shadow-amber-500/30 " +
-    "hover:scale-[1.06] hover:-translate-y-3 hover:border-amber-400 hover:shadow-amber-500/40",
+    "relative z-10 border-2 border-primary/70 bg-accent " +
+    "scale-[1.04] -translate-y-2 shadow-2xl shadow-primary/30 " +
+    "hover:scale-[1.06] hover:-translate-y-3 hover:border-primary hover:shadow-primary/40",
   partner:
-    "border-2 border-red-500/40 bg-red-500/[0.03] shadow-lg shadow-red-500/10 " +
-    "hover:border-red-500/60 hover:shadow-red-500/20",
+    "border-2 border-primary/40 bg-card shadow-lg shadow-primary/10 " +
+    "hover:border-primary/60 hover:shadow-primary/20",
 };
 
 const ICON_TILE: Record<NonNullable<Servizio["variant"]>, string> = {
-  default: "bg-sky-500/15 text-sky-500",
-  featured: "bg-amber-400/20 text-amber-500",
-  partner: "bg-red-500/15 text-red-500",
+  default: "bg-accent text-primary-text",
+  featured: "bg-primary text-primary-foreground",
+  partner: "bg-accent text-primary-text",
 };
 
 // Badge prezzo, in tinta col gruppo. Mostrato in alto a destra di ogni card.
 const PRICE_BADGE: Record<NonNullable<Servizio["variant"]>, string> = {
-  default: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-  featured: "bg-amber-400/15 text-amber-600 dark:text-amber-400",
-  partner: "bg-red-500/10 text-red-600 dark:text-red-400",
+  default: "bg-accent text-primary-text",
+  featured: "bg-accent text-primary-text",
+  partner: "bg-accent text-primary-text",
 };
 
 export function Marketplace() {
@@ -163,16 +163,16 @@ export function Marketplace() {
                 "flex h-full flex-col rounded-xl p-5 transition-all duration-200",
                 CARD_VARIANT[variant],
                 evidenziata === s.key &&
-                  "ring-2 ring-sky-500 ring-offset-2 ring-offset-background",
+                  "ring-2 ring-primary ring-offset-2 ring-offset-background",
               )}
             >
               {variant === "featured" && (
-                <span className="mb-3 inline-flex w-fit items-center rounded-full bg-amber-400/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                <span className="mb-3 inline-flex w-fit items-center rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-medium text-primary-text">
                   Punto di partenza
                 </span>
               )}
               {s.partnerLabel && (
-                <span className="mb-3 inline-flex w-fit items-center rounded-full bg-red-500/10 px-2.5 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">
+                <span className="mb-3 inline-flex w-fit items-center rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-medium text-primary-text">
                   {s.partnerLabel}
                 </span>
               )}

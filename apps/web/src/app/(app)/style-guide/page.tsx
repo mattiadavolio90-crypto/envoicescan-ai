@@ -32,9 +32,9 @@ const mockFatture = [
 ];
 
 const statoColore: Record<string, string> = {
-  pagata: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  "da pagare": "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  scaduta: "bg-red-500/15 text-red-400 border-red-500/30",
+  pagata: "bg-positivo/10 text-positivo border-positivo/30",
+  "da pagare": "bg-incerto/10 text-incerto border-incerto/30",
+  scaduta: "bg-negativo/10 text-negativo border-negativo/30",
 };
 
 export default function StyleGuidePage() {
@@ -42,7 +42,7 @@ export default function StyleGuidePage() {
     <div className="max-w-4xl space-y-10">
       <div>
         <h1 className="text-2xl font-bold">Style Guide — ONEFLUX 2.0</h1>
-        <p className="text-muted-foreground mt-1">Componenti base del design system dark.</p>
+        <p className="text-muted-foreground mt-1">Componenti base del design system, nei due temi.</p>
       </div>
 
       <Separator />
@@ -66,6 +66,44 @@ export default function StyleGuidePage() {
               <p className="text-xs text-muted-foreground">{c.label}</p>
             </div>
           ))}
+        </div>
+
+        {/* I token della coerenza visiva (18/09/2026): il colore ha tre livelli.
+            Blu = il neutro dell'app, grigio = il dato che non giudica,
+            verde/rosso/ambra = solo giudizio. Ogni token porta i due temi. */}
+        <h3 className="text-sm font-semibold pt-2">Il colore ha tre livelli</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "primary — superfici, bordi, icone", className: "bg-primary" },
+            { label: "primary-text — il blu quando e' testo", className: "bg-primary-text" },
+            { label: "accent — fondo tinto blu", className: "bg-accent" },
+            { label: "positivo — va bene", className: "bg-positivo" },
+            { label: "negativo — va male", className: "bg-negativo" },
+            { label: "incerto — dato incompleto", className: "bg-incerto" },
+            { label: "destructive — azione pericolosa, errore", className: "bg-destructive" },
+            { label: "muted-foreground — testo secondario", className: "bg-muted-foreground" },
+          ].map((c) => (
+            <div key={c.label} className="space-y-1.5">
+              <div className={`h-12 rounded-md ${c.className}`} />
+              <p className="text-xs text-muted-foreground">{c.label}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-primary-text font-medium">Testo blu su fondo neutro</span>
+          <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-primary-text">chip blu</span>
+          <span className="rounded-full bg-positivo/10 px-2.5 py-0.5 text-xs font-medium text-positivo">chip positivo</span>
+          <span className="rounded-full bg-negativo/10 px-2.5 py-0.5 text-xs font-medium text-negativo">chip negativo</span>
+          <span className="rounded-full bg-incerto/10 px-2.5 py-0.5 text-xs font-medium text-incerto">chip incerto</span>
+          <span className="text-xs text-muted-foreground">tinte semantiche a /10, mai /15</span>
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex gap-1.5">
+            {["bg-grafico-1", "bg-grafico-2", "bg-grafico-3", "bg-grafico-4", "bg-grafico-5"].map((c) => (
+              <div key={c} className={`h-8 flex-1 rounded-md ${c}`} />
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">grafico-1..5 — le serie dei grafici: una rampa del blu e due grigi, non un colore per serie</p>
         </div>
       </section>
 
@@ -157,7 +195,7 @@ export default function StyleGuidePage() {
                 <CardTitle className="text-2xl font-bold">{kpi.value}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className={`text-xs font-medium ${kpi.positive ? "text-emerald-400" : "text-red-400"}`}>
+                <p className={`text-xs font-medium ${kpi.positive ? "text-positivo" : "text-negativo"}`}>
                   {kpi.delta}
                 </p>
               </CardContent>
