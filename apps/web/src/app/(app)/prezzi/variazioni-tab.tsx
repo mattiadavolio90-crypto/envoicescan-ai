@@ -274,7 +274,7 @@ function ListaAcquisti({
                 <th className="text-right px-3 py-2 text-muted-foreground font-medium">Qtà</th>
                 <th className="text-right px-3 py-2 text-muted-foreground font-medium">Prezzo unit.</th>
                 <th className="text-right px-3 py-2 text-muted-foreground font-medium">Totale</th>
-                <th className="text-right px-3 py-2 text-muted-foreground font-medium">vs media</th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Rispetto alla media</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">

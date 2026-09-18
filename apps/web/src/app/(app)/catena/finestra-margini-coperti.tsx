@@ -259,7 +259,7 @@ export function FinestraMarginiCoperti({
                         </td>
                         {r.dati_incompleti ? (
                           <td colSpan={COLS.length} className="px-3 py-2 text-right text-xs text-muted-foreground">
-                            incompleto
+                            Incompleto
                           </td>
                         ) : (
                           COLS.map((c) => {
@@ -320,7 +320,7 @@ export function FinestraMarginiCoperti({
                 <p className="mt-3 text-xs text-muted-foreground">
                   <span className="text-emerald-600 dark:text-emerald-500">verde</span> = migliore della
                   catena, <span className="text-rose-600 dark:text-rose-500">rosso</span> = peggiore. Per «€
-                  materia prima / coperto» il valore basso è il migliore. «dati incompleti» = al punto
+                  materia prima / coperto» il valore basso è il migliore. «Incompleto» = al punto
                   vendita mancano fatturato, fatture costo o costo personale del periodo. Importi al
                   <span className="font-medium"> netto IVA</span> (i «conti del gruppo» mostrano il lordo, IVA inclusa).
                 </p>

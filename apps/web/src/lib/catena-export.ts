@@ -35,7 +35,7 @@ export const CELLA_VUOTA = "—";
  * `calcolaExtremes(righe, cols)` no, e' lo stesso: righe/dati prima, config dopo.
  *
  * Un PV con `dati_incompleti` non esce con i suoi numeri: esce con la scritta
- * `"dati incompleti"` in OGNI colonna. E' voluto — pubblicare il fatturato di
+ * `"Incompleto"` in OGNI colonna. E' voluto — pubblicare il fatturato di
  * una sede che non ha ancora i costi caricati farebbe leggere come definitivo
  * un dato che l'UI dichiara parziale.
  */
@@ -55,7 +55,7 @@ export function rigaExportMargini(
  * La riga "gruppo" con la qualificazione `(parziale)` sul margine.
  *
  * Il suffisso si applica SOLO se la cella contiene davvero un numero: su una
- * cella gia' `"dati incompleti"` o `"—"` si leggerebbe `"— (parziale)"`, che
+ * cella gia' `"Incompleto"` o `"—"` si leggerebbe `"— (parziale)"`, che
  * non aggiunge nulla e sembra un errore di formattazione. La nota in coda al
  * foglio resta comunque (vedi `notaIncompleti`), quindi l'informazione non si
  * perde: cambia solo dove la si legge.

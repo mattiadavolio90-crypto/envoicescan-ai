@@ -332,7 +332,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
                 <span className={cn("size-2.5 shrink-0 rounded-full", DOT[(pv.colore as string) ?? "grigio"])} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{pv.nome}</span>
                 {pv.dati_incompleti ? (
-                  <span className="text-xs text-muted-foreground">dati incompleti</span>
+                  <span className="text-xs text-muted-foreground">Incompleto</span>
                 ) : (
                   <span className={cn("text-sm font-semibold tabular-nums", TXT[(pv.colore as string) ?? "grigio"])}>
                     {pct(pv.margine_perc)}
