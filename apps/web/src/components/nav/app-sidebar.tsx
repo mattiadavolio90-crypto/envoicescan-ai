@@ -268,7 +268,7 @@ export function AppSidebar({
                   <SidebarMenuButton
                     render={<Link href="/catena" />}
                     isActive={pathname === "/catena"}
-                    className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                    className="data-active:!bg-accent data-active:!text-primary-text data-active:!font-semibold data-active:!border-l-2 data-active:!border-primary"
                   >
                     <Building2 />
                     <span>Catena</span>
@@ -278,7 +278,7 @@ export function AppSidebar({
                   <SidebarMenuButton
                     render={<Link href="/catena/fatture" />}
                     isActive={pathname === "/catena/fatture"}
-                    className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                    className="data-active:!bg-accent data-active:!text-primary-text data-active:!font-semibold data-active:!border-l-2 data-active:!border-primary"
                   >
                     <CalendarCheck />
                     <span>Gestione Fatture</span>
@@ -293,7 +293,7 @@ export function AppSidebar({
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/catena" />}
-                      className="!text-sky-800 dark:!text-sky-400 font-medium"
+                      className="!text-primary-text font-medium"
                     >
                       <ArrowLeft />
                       <span>Torna alla catena</span>
@@ -305,7 +305,7 @@ export function AppSidebar({
                     <SidebarMenuButton
                       render={<Link href={item.url} />}
                       isActive={pathname === item.url}
-                      className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                      className="data-active:!bg-accent data-active:!text-primary-text data-active:!font-semibold data-active:!border-l-2 data-active:!border-primary"
                     >
                       <item.icon />
                       <span>{item.title}</span>
@@ -327,7 +327,7 @@ export function AppSidebar({
                 <SidebarMenuButton
                   render={<Link href="/admin" />}
                   isActive={pathname.startsWith("/admin")}
-                  className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                  className="data-active:!bg-accent data-active:!text-primary-text data-active:!font-semibold data-active:!border-l-2 data-active:!border-primary"
                 >
                   <ShieldCheck />
                   <span>Admin</span>
@@ -339,7 +339,7 @@ export function AppSidebar({
                 <SidebarMenuButton
                   render={<Link href={item.url} />}
                   isActive={pathname === item.url}
-                  className="data-active:!bg-sky-500/15 data-active:!text-sky-800 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                  className="data-active:!bg-accent data-active:!text-primary-text data-active:!font-semibold data-active:!border-l-2 data-active:!border-primary"
                 >
                   <item.icon />
                   <span>{item.title}</span>
@@ -401,12 +401,12 @@ export function AppSidebar({
                       onClick={() => router.push("/catena")}
                       className="flex items-center gap-2 py-2.5"
                     >
-                      <Building2 className="size-4 shrink-0 text-sky-500" />
+                      <Building2 className="size-4 shrink-0 text-primary" />
                       <span className="flex flex-1 flex-col leading-tight">
                         <span className="text-sm font-medium">Vista catena</span>
                         <span className="text-xs text-muted-foreground">Tutti i punti vendita</span>
                       </span>
-                      {inChain && <Check className="ml-auto size-4 shrink-0 text-sky-500" />}
+                      {inChain && <Check className="ml-auto size-4 shrink-0 text-primary" />}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -428,7 +428,7 @@ export function AppSidebar({
                         className="flex items-start gap-2 py-2.5"
                       >
                         <Check
-                          className={`size-4 mt-0.5 shrink-0 ${corrente ? "opacity-100 text-sky-500" : "opacity-0"}`}
+                          className={`size-4 mt-0.5 shrink-0 ${corrente ? "opacity-100 text-primary" : "opacity-0"}`}
                         />
                         <span className="flex flex-col leading-tight">
                           <span className="text-sm font-medium">{s.nome}</span>

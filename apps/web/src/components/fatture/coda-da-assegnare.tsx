@@ -329,14 +329,14 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
         className={
           vuoto
             ? "flex w-full items-center gap-3 rounded-2xl border bg-card p-5 text-left"
-            : "group flex w-full items-center gap-4 rounded-2xl border border-l-4 border-l-amber-500 bg-card p-5 text-left transition-colors hover:bg-accent"
+            : "group flex w-full items-center gap-4 rounded-2xl border border-l-4 border-l-incerto bg-card p-5 text-left transition-colors hover:bg-accent"
         }
       >
         <span
           className={
             vuoto
-              ? "flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500"
-              : "flex size-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400"
+              ? "flex size-11 shrink-0 items-center justify-center rounded-xl bg-positivo/10 text-positivo"
+              : "flex size-11 shrink-0 items-center justify-center rounded-xl bg-incerto/10 text-incerto"
           }
         >
           {vuoto ? <CheckCircle2 className="size-5" /> : <Split className="size-5" />}
@@ -345,7 +345,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           <span className="flex items-center gap-2 text-sm font-semibold">
             Gestione fatture di gruppo
             {!vuoto && (
-              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <span className="rounded-full bg-incerto/10 px-2 py-0.5 text-xs font-medium text-incerto">
                 {items.length}
               </span>
             )}
@@ -373,9 +373,9 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           <DialogHeader className="shrink-0 border-b px-5 py-4">
             <DialogTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
               <span className="flex items-center gap-2">
-                <Split className="size-4 text-amber-500" />
+                <Split className="size-4 text-incerto" />
                 Gestione fatture di gruppo
-                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                <span className="rounded-full bg-incerto/10 px-2 py-0.5 text-xs font-medium text-incerto">
                   {items.length}
                 </span>
               </span>
@@ -388,7 +388,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           </DialogHeader>
 
           <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3">
-            <p className="mb-3 text-sm font-medium text-amber-600 dark:text-amber-400">
+            <p className="mb-3 text-sm font-medium text-incerto">
               Scegli la sede se è di un locale, oppure “Dividi tra i locali” se è un costo comune.
             </p>
 
@@ -422,7 +422,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                         key={s.id}
                         disabled={bulkBusy}
                         onClick={() => eseguiBulk((id) => assegnaCore(id, s.id), `assegnate a ${s.nome}`)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-sky-500/10 hover:border-sky-500 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-accent hover:border-primary disabled:opacity-50"
                       >
                         <MapPin className="size-3.5" />
                         {s.nome}
@@ -502,7 +502,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                     <div className="flex flex-wrap gap-2 pt-1">
                       <button
                         onClick={() => setAnteprima(f)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 px-3 py-1.5 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/10 hover:border-amber-500 dark:text-amber-400"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-incerto/40 px-3 py-1.5 text-xs font-medium text-incerto transition-colors hover:bg-incerto/10 hover:border-incerto"
                       >
                         <Eye className="size-3.5" />
                         Anteprima
@@ -522,7 +522,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                           key={s.id}
                           disabled={inCorso(f.queue_id)}
                           onClick={() => assegna(f.queue_id, s.id)}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-sky-500/10 hover:border-sky-500 disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:border-primary disabled:opacity-50"
                         >
                           <MapPin className="size-3.5" />
                           {s.nome}

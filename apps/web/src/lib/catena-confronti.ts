@@ -53,9 +53,9 @@ export function heatStyle(v: number | null, max: number): Record<string, string>
 // null/0 e' fatta BENE (0% e' un dato, null e' "non lo so"): il test la protegge.
 export function margineDot(perc: number | null, incompleti: boolean): string {
   if (incompleti || perc == null) return "bg-muted-foreground/30";
-  if (perc >= SOGLIA_MARGINE_VERDE) return "bg-emerald-500";
-  if (perc >= SOGLIA_MARGINE_GIALLO) return "bg-amber-500";
-  return "bg-rose-500";
+  if (perc >= SOGLIA_MARGINE_VERDE) return "bg-positivo";
+  if (perc >= SOGLIA_MARGINE_GIALLO) return "bg-incerto";
+  return "bg-negativo";
 }
 
 // Colonne "di grandezza" su cui applicare la heatmap.
@@ -144,8 +144,8 @@ export function cellTone(
   if (v == null) return "";
   const ex = extremes[col.key];
   if (ex.best == null) return "";
-  if (v === ex.best && v !== ex.worst) return "text-emerald-600 dark:text-emerald-500 font-semibold";
-  if (v === ex.worst && v !== ex.best) return "text-rose-600 dark:text-rose-500 font-semibold";
+  if (v === ex.best && v !== ex.worst) return "text-positivo font-semibold";
+  if (v === ex.worst && v !== ex.best) return "text-negativo font-semibold";
   return "";
 }
 
@@ -264,7 +264,7 @@ export function calcolaSparkline(punti: PuntoMol[], W = 240, H = 40, PAD = 4): S
   const ultimo = punti[n - 1].mol;
   const ytdPct = primo > 0 ? ((ultimo - primo) / primo) * 100 : null;
   const su = ultimo >= primo;
-  const stroke = su ? "text-emerald-500" : "text-rose-500";
+  const stroke = su ? "text-positivo" : "text-negativo";
   const meseDa = MESI_ABBR[(punti[0].mese - 1) % 12] ?? "";
   const meseA = MESI_ABBR[(punti[n - 1].mese - 1) % 12] ?? "";
   return { d, ytdPct, su, stroke, meseDa, meseA, cx: x(n - 1), cy: y(ultimo) };

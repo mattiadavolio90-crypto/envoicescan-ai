@@ -246,12 +246,12 @@ export function buildCashFlow(documenti: Documento[]): CashFascia[] {
   const in7 = d(7), in30 = d(30), in60 = d(60), in90 = d(90);
 
   const fasce: CashFascia[] = [
-    { label: "Scadute", totale: 0, count: 0, tone: "bg-rose-500" },
-    { label: "Entro 7gg", totale: 0, count: 0, tone: "bg-orange-500" },
-    { label: "8–30gg", totale: 0, count: 0, tone: "bg-amber-500" },
-    { label: "31–60gg", totale: 0, count: 0, tone: "bg-sky-500" },
-    { label: "61–90gg", totale: 0, count: 0, tone: "bg-indigo-500" },
-    { label: "Oltre 90gg", totale: 0, count: 0, tone: "bg-slate-400" },
+    { label: "Scadute", totale: 0, count: 0, tone: "bg-negativo" },
+    { label: "Entro 7gg", totale: 0, count: 0, tone: "bg-incerto" },
+    { label: "8–30gg", totale: 0, count: 0, tone: "bg-incerto/60" },
+    { label: "31–60gg", totale: 0, count: 0, tone: "bg-primary" },
+    { label: "61–90gg", totale: 0, count: 0, tone: "bg-primary/60" },
+    { label: "Oltre 90gg", totale: 0, count: 0, tone: "bg-muted-foreground/40" },
   ];
 
   for (const doc of documenti) {

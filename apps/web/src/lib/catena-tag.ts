@@ -53,8 +53,8 @@ export function estremiPrezzo(
   };
 }
 
-export const CLASSE_PREZZO_MIN = "text-emerald-600 dark:text-emerald-500";
-export const CLASSE_PREZZO_MAX = "text-rose-600 dark:text-rose-500";
+export const CLASSE_PREZZO_MIN = "text-positivo";
+export const CLASSE_PREZZO_MAX = "text-negativo";
 
 /**
  * Classi Tailwind del prezzo medio di un PV. Restituisce la stringa gia'

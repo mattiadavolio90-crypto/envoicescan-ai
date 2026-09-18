@@ -79,13 +79,13 @@ def test_soglie_esportate_dal_modulo():
 @pytest.mark.parametrize(
     "perc,atteso",
     [
-        (15, "bg-emerald-500"),
-        (15.1, "bg-emerald-500"),
-        (14.9, "bg-amber-500"),
-        (8, "bg-amber-500"),
-        (7.9, "bg-rose-500"),
-        (0, "bg-rose-500"),
-        (-12, "bg-rose-500"),
+        (15, "bg-positivo"),
+        (15.1, "bg-positivo"),
+        (14.9, "bg-incerto"),
+        (8, "bg-incerto"),
+        (7.9, "bg-negativo"),
+        (0, "bg-negativo"),
+        (-12, "bg-negativo"),
     ],
 )
 def test_margine_dot_soglie(perc, atteso):
@@ -99,7 +99,7 @@ def test_margine_dot_zero_e_null_sono_diversi():
     distinzione c'e' ed e' giusta. Il test la blinda perche' un `?? 0` di troppo
     la cancellerebbe senza che nessuno se ne accorga.
     """
-    assert _chiama("margineDot", [0, False]) == "bg-rose-500"
+    assert _chiama("margineDot", [0, False]) == "bg-negativo"
     assert _chiama("margineDot", [None, False]) == "bg-muted-foreground/30"
 
 
@@ -268,8 +268,8 @@ def _tone(righe, col_key, nome):
 
 def test_cell_tone_verde_al_migliore_rosso_al_peggiore():
     righe = [_pv("a", margine=5), _pv("b", margine=25)]
-    assert "emerald" in _tone(righe, "margine_perc", "b")
-    assert "rose" in _tone(righe, "margine_perc", "a")
+    assert "positivo" in _tone(righe, "margine_perc", "b")
+    assert "negativo" in _tone(righe, "margine_perc", "a")
 
 
 def test_cell_tone_niente_colore_se_tutti_uguali():
@@ -307,7 +307,7 @@ def test_cell_tone_incompleto_col_valore_del_migliore_resta_neutro():
     """
     righe = [_pv("a", margine=10), _pv("b", margine=30), _pv("incompleto", margine=30, incompleti=True)]
     assert _tone(righe, "margine_perc", "incompleto") == ""
-    assert "emerald" in _tone(righe, "margine_perc", "b")
+    assert "positivo" in _tone(righe, "margine_perc", "b")
 
 
 def test_cell_tone_null_non_si_colora_quando_best_e_null():
@@ -544,14 +544,14 @@ def test_sparkline_variazione_e_colore_in_salita():
     out = _chiama("calcolaSparkline", [_punti(100.0, 150.0)])
     assert out["ytdPct"] == 50.0
     assert out["su"] is True
-    assert "emerald" in out["stroke"]
+    assert "positivo" in out["stroke"]
 
 
 def test_sparkline_variazione_e_colore_in_discesa():
     out = _chiama("calcolaSparkline", [_punti(200.0, 100.0)])
     assert out["ytdPct"] == -50.0
     assert out["su"] is False
-    assert "rose" in out["stroke"]
+    assert "negativo" in out["stroke"]
 
 
 def test_sparkline_serie_piatta_non_divide_per_zero():
@@ -614,7 +614,7 @@ def test_sparkline_mol_negativo_in_risalita_e_VERDE():
     out = _chiama("calcolaSparkline", [_punti(-74031.50, -19221.87)])
     assert out["ytdPct"] is None        # la % non e' calcolabile: resta nascosta
     assert out["su"] is True            # ma la direzione si sa: sta risalendo
-    assert "emerald" in out["stroke"]
+    assert "positivo" in out["stroke"]
 
 
 def test_sparkline_negativo_che_PEGGIORA_resta_rosso():
@@ -622,7 +622,7 @@ def test_sparkline_negativo_che_PEGGIORA_resta_rosso():
     out = _chiama("calcolaSparkline", [_punti(-5000.0, -50000.0)])
     assert out["ytdPct"] is None
     assert out["su"] is False
-    assert "rose" in out["stroke"]
+    assert "negativo" in out["stroke"]
 
 
 def test_sparkline_partendo_da_zero_la_percentuale_resta_nulla():

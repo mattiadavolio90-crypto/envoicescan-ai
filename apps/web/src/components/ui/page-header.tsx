@@ -60,7 +60,7 @@ export function PageHeader({ icon, title, hint, badge, actions, subtitle }: Page
   const Icon = ICONS[icon];
   const heading = (
     <div className="flex items-center gap-3">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-primary-text">
         <Icon className="size-5" />
       </div>
       <h1 className="text-2xl font-bold tracking-tight leading-none">{title}</h1>

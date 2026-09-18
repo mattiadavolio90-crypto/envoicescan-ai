@@ -25,33 +25,33 @@ export const ETICHETTA_INCOMPLETO = "Incompleto";
 
 export const SALUTE_TINT = {
   verde: {
-    ring: "text-emerald-500",
-    text: "text-emerald-600 dark:text-emerald-500",
-    badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
-    card: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.03] to-background",
-    orb1: "bg-emerald-400/15",
-    orb2: "bg-emerald-400/8",
-    dot: "bg-emerald-500",
+    ring: "text-positivo",
+    text: "text-positivo",
+    badge: "bg-positivo/10 text-positivo",
+    card: "bg-gradient-to-br from-positivo/10 via-positivo/[0.03] to-background",
+    orb1: "bg-positivo/10",
+    orb2: "bg-positivo/8",
+    dot: "bg-positivo",
     label: "Completo",
   },
   giallo: {
-    ring: "text-amber-500",
-    text: "text-amber-600 dark:text-amber-500",
-    badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
-    card: "bg-gradient-to-br from-amber-500/10 via-amber-500/[0.03] to-background",
-    orb1: "bg-amber-400/15",
-    orb2: "bg-amber-400/8",
-    dot: "bg-amber-500",
+    ring: "text-incerto",
+    text: "text-incerto",
+    badge: "bg-incerto/10 text-incerto",
+    card: "bg-gradient-to-br from-incerto/10 via-incerto/[0.03] to-background",
+    orb1: "bg-incerto/10",
+    orb2: "bg-incerto/8",
+    dot: "bg-incerto",
     label: "Quasi completo",
   },
   rosso: {
-    ring: "text-rose-500",
-    text: "text-rose-600 dark:text-rose-500",
-    badge: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400",
-    card: "bg-gradient-to-br from-rose-500/10 via-rose-500/[0.03] to-background",
-    orb1: "bg-rose-400/15",
-    orb2: "bg-rose-400/8",
-    dot: "bg-rose-500",
+    ring: "text-negativo",
+    text: "text-negativo",
+    badge: "bg-negativo/10 text-negativo",
+    card: "bg-gradient-to-br from-negativo/10 via-negativo/[0.03] to-background",
+    orb1: "bg-negativo/10",
+    orb2: "bg-negativo/8",
+    dot: "bg-negativo",
     label: ETICHETTA_INCOMPLETO,
   },
   grigio: {
@@ -70,13 +70,14 @@ export const SALUTE_TINT = {
 
 export type ColoreSalute = keyof typeof SALUTE_TINT;
 
-/** Le classi devono reggere in ENTRAMBI i temi: un colore pieno senza variante
- *  dark e' il difetto che la copia del PV aveva (misura, non gusto). */
-export function tintHaEntrambiITemi(colore: ColoreSalute): boolean {
-  const t = SALUTE_TINT[colore];
-  const pieno = /\b(?:text|bg)-(?:emerald|amber|rose)-\d{3}\b/;
-  for (const cls of [t.text, t.badge]) {
-    if (pieno.test(cls) && !cls.includes("dark:")) return false;
-  }
-  return true;
+export type Tint = (typeof SALUTE_TINT)[ColoreSalute];
+
+/** Le classi devono reggere in ENTRAMBI i temi (misura, non gusto). Fino al
+ *  18/09/2026 lo garantiva una variante `dark:` per ogni colore pieno; ora lo
+ *  garantisce il token (`positivo`, `incerto`, `negativo`), che porta i due
+ *  valori. Il difetto da cercare e' quindi una classe di palette cruda
+ *  (`emerald-600`, `sky-500`...), che ha un valore solo e non conosce il tema. */
+export function tintUsaSoloToken(t: Pick<Tint, "ring" | "text" | "badge" | "card" | "orb1" | "orb2" | "dot">): boolean {
+  const crudo = /\b(?:text|bg|from|via|to|border|ring)-(?:sky|blue|indigo|violet|purple|pink|emerald|green|teal|amber|yellow|orange|rose|red|slate|gray|zinc)-\d{2,3}\b/;
+  return ![t.ring, t.text, t.badge, t.card, t.orb1, t.orb2, t.dot].some((cls) => crudo.test(cls));
 }

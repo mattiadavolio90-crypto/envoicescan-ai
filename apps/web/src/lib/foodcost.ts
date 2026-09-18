@@ -101,16 +101,16 @@ export const CATEGORIE_RICETTE = [
 export const UM_OPTIONS = ["G", "KG", "ML", "CL", "LT", "PZ"] as const;
 
 export const FC_COLORE_CLASS: Record<ColoreFC, string> = {
-  verde: "text-emerald-600 dark:text-emerald-400",
-  ambra: "text-amber-600 dark:text-amber-400",
-  rosso: "text-destructive",
+  verde: "text-positivo",
+  ambra: "text-incerto",
+  rosso: "text-negativo",
   grigio: "text-muted-foreground",
 };
 
 export const FC_BADGE_CLASS: Record<ColoreFC, string> = {
-  verde: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
-  ambra: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400 border-amber-200 dark:border-amber-800",
-  rosso: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400 border-red-200 dark:border-red-800",
+  verde: "bg-positivo/10 text-positivo border-positivo/30",
+  ambra: "bg-incerto/10 text-incerto border-incerto/30",
+  rosso: "bg-negativo/10 text-negativo border-negativo/30",
   grigio: "bg-muted text-muted-foreground border-border",
 };
 

@@ -1,16 +1,19 @@
 """La palette della Salute e' UNA (lib/salute-tint), e regge in entrambi i temi.
 
 Fino al 9/9/2026 la Home PV e la catena avevano ciascuna la propria copia: quella
-del PV era senza varianti dark sul testo (emerald-600 su fondo scuro). Il test
-non puo' vedere i .tsx che la importano; puo' vedere che la fonte unica esiste,
-che ha i quattro colori del contratto, e che nessun colore pieno e' mono-tema.
+del PV era senza varianti dark sul testo (emerald-600 su fondo scuro). Dal
+18/09/2026 la palette usa i token (`positivo`/`incerto`/`negativo`), che portano
+i due temi da soli: il difetto da cercare non e' piu' il `dark:` mancante ma la
+classe di palette cruda, che ha un valore solo. Il test non puo' vedere i .tsx
+che la importano; puo' vedere che la fonte unica esiste, che ha i quattro colori
+del contratto, e che nessuna classe e' cruda.
 """
 import pytest
 
 from tests.helpers_ts import esegui_ts
 
 MODULO = "lib/salute-tint"
-RICHIEDE = ("tintHaEntrambiITemi",)
+RICHIEDE = ("tintUsaSoloToken",)
 
 
 def _tint():
@@ -30,22 +33,28 @@ def test_ogni_colore_ha_le_chiavi_che_le_due_viste_usano(colore):
 
 
 @pytest.mark.parametrize("colore", ["verde", "giallo", "rosso", "grigio"])
-def test_nessun_colore_pieno_senza_variante_dark(colore):
-    """Il difetto della copia PV: `text-emerald-600` senza `dark:`. Misurato dal
-    modulo stesso, cosi' chi aggiunge una classe piena ha il rosso subito."""
-    assert esegui_ts(MODULO, "emit(m.tintHaEntrambiITemi(input))", colore,
-                     richiede=RICHIEDE) is True
+def test_nessuna_classe_di_palette_cruda(colore):
+    """Il difetto della copia PV era `text-emerald-600` senza `dark:`; coi token
+    la stessa classe e' un difetto anche col `dark:`, perche' scavalca il tema.
+    Misurato dal modulo stesso, cosi' chi la aggiunge ha il rosso subito."""
+    assert esegui_ts(MODULO, "emit(m.tintUsaSoloToken(m.SALUTE_TINT[input]))",
+                     colore, richiede=RICHIEDE) is True
 
 
-def test_il_controllo_sui_temi_vede_davvero_una_classe_mono_tema():
-    """Controprova del presidio: una palette con un colore pieno e senza `dark:`
-    deve risultare mono-tema, altrimenti il test sopra e' verde per vuoto."""
+@pytest.mark.parametrize("chiave,cruda", [
+    ("text", "text-emerald-600 dark:text-emerald-400"),
+    ("badge", "bg-amber-50 text-incerto"),
+    ("card", "bg-gradient-to-br from-sky-500/10 to-background"),
+    ("dot", "bg-rose-500"),
+])
+def test_la_guardia_vede_davvero_una_classe_cruda(chiave, cruda):
+    """Controprova sulla FUNZIONE vera, non su una regex ricopiata nel test: una
+    palette con una classe cruda in qualunque chiave deve essere bocciata, e
+    anche se ha la variante `dark:` (il vecchio criterio l'avrebbe promossa)."""
     out = esegui_ts(
         MODULO,
-        "const t = m.SALUTE_TINT; "
-        "const finto = {...t, verde: {...t.verde, text: 'text-emerald-600'}}; "
-        "const pieno = /\\b(?:text|bg)-(?:emerald|amber|rose)-\\d{3}\\b/; "
-        "emit(pieno.test(finto.verde.text) && !finto.verde.text.includes('dark:'))",
+        "emit(m.tintUsaSoloToken({...m.SALUTE_TINT.verde, [input.chiave]: input.cruda}))",
+        {"chiave": chiave, "cruda": cruda},
         richiede=RICHIEDE,
     )
-    assert out is True
+    assert out is False

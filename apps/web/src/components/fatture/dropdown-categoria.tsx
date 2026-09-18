@@ -74,7 +74,7 @@ export function DropdownCategoria({
       <DropdownMenuTrigger
         disabled={saving}
         className={`text-xs inline-flex items-center gap-1.5 hover:underline text-left disabled:opacity-60 ${
-          daScegliere ? "text-rose-700 hover:text-rose-800" : "hover:text-primary"
+          daScegliere ? "text-incerto" : "hover:text-primary"
         }`}
       >
         <span className={compact ? "text-sm leading-none" : "text-base leading-none"}>{icon}</span>
@@ -84,7 +84,7 @@ export function DropdownCategoria({
         {saving ? (
           <Loader2 className="size-3 animate-spin" />
         ) : (
-          <ChevronDown className={`size-3 ${daScegliere ? "text-rose-500" : "text-muted-foreground"}`} />
+          <ChevronDown className={`size-3 ${daScegliere ? "text-incerto" : "text-muted-foreground"}`} />
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-80 min-w-52">

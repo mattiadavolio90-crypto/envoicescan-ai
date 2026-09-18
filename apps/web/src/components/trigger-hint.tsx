@@ -81,11 +81,11 @@ export function TriggerHint({ trigger, enabled = true, className }: Props) {
       role="note"
       aria-label="Suggerimento servizi"
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-sky-500/30 bg-sky-500/[0.04] px-4 py-3",
+        "flex items-center gap-3 rounded-xl border border-primary/30 bg-accent px-4 py-3",
         className,
       )}
     >
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-primary-text">
         <Sparkles className="size-4" />
       </div>
       <p className="min-w-0 flex-1 text-sm leading-snug text-foreground/90">
