@@ -206,7 +206,7 @@ export function FinestraCostiGruppo({
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
           ) : loadError && !data ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <AlertTriangle className="size-7 text-rose-500" />
+              <AlertTriangle className="size-7 text-negativo" />
               <p className="text-sm text-muted-foreground">
                 Non è stato possibile caricare i dati.
               </p>
@@ -290,7 +290,7 @@ export function FinestraCostiGruppo({
               esiste piu' — un problema che da questa finestra non si risolve e
               che il conteggio a righe, per costruzione, non vede. */}
           {mostraAvvisoDaClassificare(righeDaControllare) && (
-            <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <p>
                 Il MOL di questo mese non è ancora affidabile:{" "}
@@ -306,7 +306,7 @@ export function FinestraCostiGruppo({
             data?.da_classificare_non_correggibili,
             data?.da_classificare_costi,
           ) && (
-            <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <p>
                 <strong>
@@ -525,7 +525,7 @@ function DettagliCosto({
             />
             righe del documento ({costo.righe.length})
             {daVerificare > 0 && (
-              <span className="ml-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[0.65rem] font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+              <span className="ml-1 rounded-full bg-negativo/10 px-1.5 py-0.5 text-[0.65rem] font-semibold text-negativo">
                 {daVerificare} da verificare
               </span>
             )}

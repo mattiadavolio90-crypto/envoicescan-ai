@@ -652,7 +652,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                     quella sede → il confronto prezzi tra PV si abilita aggiungendo
                     le varianti delle altre. */}
                 {soloUnPvConSpesa(data!.per_pv) && (
-                  <p className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-400">
+                  <p className="mt-2 rounded-md border border-primary/30 bg-accent px-3 py-2 text-xs text-primary-text">
                     Solo un punto vendita ha spesa: aggiungi al tag anche le descrizioni «{tag.nome}» delle
                     altre sedi (da «Prodotti») per confrontare i prezzi tra i punti vendita.
                   </p>

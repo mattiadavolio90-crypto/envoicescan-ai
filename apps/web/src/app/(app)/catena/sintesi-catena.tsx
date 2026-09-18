@@ -61,9 +61,9 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
   // Default codaVisibile=true: sul desktop la coda da assegnare sta subito sotto.
   const msgDaCollocare = messaggioFattureDaCollocare(briefing);
   return (
-    <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-6 sm:p-8">
-      <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-400/15 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-violet-400/10 blur-3xl" />
+    <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background p-6 sm:p-8">
+      <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-accent blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-primary/10 blur-3xl" />
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-primary/80">
           <Sparkles className="size-4" />
@@ -85,7 +85,7 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
         {briefing.narrativa}
       </p>
       {msgDaCollocare && (
-        <p className="mt-3 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-500">
+        <p className="mt-3 flex items-center gap-2 text-sm font-medium text-incerto">
           <ClipboardList className="size-4 shrink-0" />
           {msgDaCollocare}
         </p>
@@ -106,9 +106,9 @@ function MolSparkline({ punti, anno, affidabile }: { punti: MolMensile[]; anno: 
   // la card, e il delta SENZA verde/rosso — un "in meglio" potrebbe essere solo
   // un costo che manca, non una vittoria da certificare (stessa regola del
   // Trend neutro del PV sul MOL negativo).
-  const colore = affidabile ? stroke : "text-amber-500";
+  const colore = affidabile ? stroke : "text-incerto";
   const coloreDelta = affidabile
-    ? su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500"
+    ? su ? "text-positivo" : "text-negativo"
     : "text-muted-foreground";
 
   return (
@@ -160,7 +160,7 @@ function VoceConto({
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
     >
-      <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", colore === "emerald" ? "bg-emerald-400" : "bg-amber-400")} />
+      <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", colore === "emerald" ? "bg-positivo" : "bg-incerto")} />
       <span className="min-w-0 flex-1 text-sm text-muted-foreground">
         {segno && <span className="mr-1 text-muted-foreground/50">{segno}</span>}
         {label}
@@ -202,8 +202,8 @@ function ContiGruppoCard({
           <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <div className="rounded-full bg-rose-500/15 p-3 ring-1 ring-rose-500/20">
-            <TriangleAlert className="size-6 text-rose-500" />
+          <div className="rounded-full bg-negativo/10 p-3 ring-1 ring-negativo/20">
+            <TriangleAlert className="size-6 text-negativo" />
           </div>
           <p className="text-sm font-semibold">Conti del gruppo non disponibili</p>
           <p className="max-w-xs text-sm text-muted-foreground">
@@ -231,10 +231,10 @@ function ContiGruppoCard({
           <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <div className="rounded-full bg-amber-500/15 p-3 ring-1 ring-amber-500/20">
-            <Receipt className="size-6 text-amber-500" />
+          <div className="rounded-full bg-incerto/10 p-3 ring-1 ring-incerto/20">
+            <Receipt className="size-6 text-incerto" />
           </div>
-          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Dati ancora incompleti</p>
+          <p className="text-sm font-semibold text-incerto">Dati ancora incompleti</p>
           <p className="max-w-xs text-sm text-muted-foreground">
             Mancano fatturato e costi nei punti vendita: completa i dati per leggere
             food cost e margini del gruppo.
@@ -287,7 +287,7 @@ function ContiGruppoCard({
         <button
           type="button"
           onClick={onApriMargini}
-          className="mb-1 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-xs text-amber-700 transition-colors hover:bg-amber-500/15 dark:text-amber-400"
+          className="mb-1 flex items-start gap-2 rounded-xl border border-incerto/30 bg-incerto/10 px-3 py-2 text-left text-xs text-incerto transition-colors hover:bg-incerto/10"
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
@@ -542,8 +542,8 @@ export function SintesiCatena({ overview, settore }: { overview: GruppoOverview;
           colore. La coda resta la voce prominente (bordo ambra, badge conteggio);
           "Costi di gruppo" era isolata in mezzo alle altre 3 card di confronto,
           lontana dalla coda che la alimenta. */}
-      <div className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.03] p-3 sm:p-4">
-        <span className="mb-2 inline-block px-1 text-xs font-medium uppercase tracking-wide text-sky-700/70 dark:text-sky-400/70">
+      <div className="rounded-2xl border border-primary/20 bg-accent p-3 sm:p-4">
+        <span className="mb-2 inline-block px-1 text-xs font-medium uppercase tracking-wide text-primary-text">
           Gruppo
         </span>
         <div className="grid gap-3 sm:grid-cols-2">

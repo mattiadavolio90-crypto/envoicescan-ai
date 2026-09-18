@@ -62,7 +62,7 @@ export function CardSegnali({
         <p className="mt-3 text-sm text-muted-foreground">Controllo i punti vendita…</p>
       ) : loadError && !data ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <AlertTriangle className="size-4 text-rose-500" />
+          <AlertTriangle className="size-4 text-negativo" />
           Non è stato possibile controllare i punti vendita.
           <button
             type="button"
@@ -74,7 +74,7 @@ export function CardSegnali({
         </div>
       ) : segnali.length === 0 ? (
         <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <CheckCircle2 className="size-4 text-emerald-500" />
+          <CheckCircle2 className="size-4 text-positivo" />
           Tutto sotto controllo, nessuna segnalazione.
         </p>
       ) : (
@@ -86,7 +86,7 @@ export function CardSegnali({
                 key={`${s.tipo}-${s.ristorante_id}-${i}`}
                 className="flex items-start gap-3 rounded-xl border bg-background/40 p-3"
               >
-                <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                <Icon className="mt-0.5 size-4 shrink-0 text-incerto" />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-muted-foreground">{s.pv_nome}</div>
                   <div className="text-sm">{s.testo}</div>

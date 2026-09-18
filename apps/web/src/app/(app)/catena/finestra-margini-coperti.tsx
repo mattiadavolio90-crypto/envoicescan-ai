@@ -188,7 +188,7 @@ export function FinestraMarginiCoperti({
                   className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
                   title="Costo materia prima per coperto, per categoria, a confronto tra i punti vendita"
                 >
-                  <Sprout className="size-3.5 text-emerald-500" />
+                  <Sprout className="size-3.5 text-positivo" />
                   Categorie
                 </button>
                 <button
@@ -209,7 +209,7 @@ export function FinestraMarginiCoperti({
               <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
             ) : loadError && !data ? (
               <div className="flex flex-col items-center gap-3 py-16 text-center">
-                <AlertTriangle className="size-7 text-rose-500" />
+                <AlertTriangle className="size-7 text-negativo" />
                 <p className="text-sm text-muted-foreground">
                   Non è stato possibile caricare i dati.
                 </p>
@@ -302,7 +302,7 @@ export function FinestraMarginiCoperti({
                           {c.fmt(data.gruppo[c.key] as number | null)}
                           {/* Margine di gruppo parziale: alcune sedi non hanno i costi. */}
                           {c.key === "margine_perc" && data.n_incompleti > 0 && (
-                            <span className="ml-1 align-middle text-[10px] font-normal text-amber-600 dark:text-amber-500">
+                            <span className="ml-1 align-middle text-[10px] font-normal text-incerto">
                               parziale
                             </span>
                           )}
@@ -312,15 +312,15 @@ export function FinestraMarginiCoperti({
                   </tbody>
                 </table>
                 {data.n_incompleti > 0 && (
-                  <p className="mt-3 flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <p className="mt-3 flex items-center gap-1.5 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
                     <AlertTriangle className="size-3.5 shrink-0" />
                     Margine di gruppo <span className="font-medium">parziale</span>: {data.n_incompleti}{" "}
                     {data.n_incompleti === 1 ? "sede non ha" : "sedi non hanno"} ancora i costi caricati.
                   </p>
                 )}
                 <p className="mt-3 text-xs text-muted-foreground">
-                  <span className="text-emerald-600 dark:text-emerald-500">verde</span> = migliore della
-                  catena, <span className="text-rose-600 dark:text-rose-500">rosso</span> = peggiore. Per «€
+                  <span className="text-positivo">verde</span> = migliore della
+                  catena, <span className="text-negativo">rosso</span> = peggiore. Per «€
                   materia prima / coperto» il valore basso è il migliore. «{ETICHETTA_INCOMPLETO}» = al punto
                   vendita mancano fatturato, fatture costo o costo personale del periodo. Importi al
                   <span className="font-medium"> netto IVA</span> (i «conti del gruppo» mostrano il lordo, IVA inclusa).
@@ -394,7 +394,7 @@ function FinestraSprecoCategorie({
       <DialogContent className="flex max-h-[88vh] flex-col gap-0 w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
         <DialogHeader className="shrink-0 border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Sprout className="size-4 text-emerald-500" />
+            <Sprout className="size-4 text-positivo" />
             Spreco per categoria · confronto punti vendita
             {data?.periodo_label && (
               <span className="text-xs font-normal text-muted-foreground">— {data.periodo_label}</span>
@@ -407,7 +407,7 @@ function FinestraSprecoCategorie({
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
           ) : loadError && !data ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <AlertTriangle className="size-7 text-rose-500" />
+              <AlertTriangle className="size-7 text-negativo" />
               <p className="text-sm text-muted-foreground">
                 Non è stato possibile caricare i dati.
               </p>
@@ -436,7 +436,7 @@ function FinestraSprecoCategorie({
                         <span className="block truncate">{p.nome}</span>
                       </th>
                     ))}
-                    <th className="px-3 py-2 text-right font-bold text-emerald-700 dark:text-emerald-400">
+                    <th className="px-3 py-2 text-right font-bold text-positivo">
                       Media gruppo
                     </th>
                   </tr>
@@ -455,9 +455,9 @@ function FinestraSprecoCategorie({
                             v == null || ex.best == null
                               ? ""
                               : v === ex.best && v !== ex.worst
-                                ? "text-emerald-600 dark:text-emerald-500 font-semibold"
+                                ? "text-positivo font-semibold"
                                 : v === ex.worst && v !== ex.best
-                                  ? "text-rose-600 dark:text-rose-500 font-semibold"
+                                  ? "text-negativo font-semibold"
                                   : "";
                           return (
                             <td key={c.ristorante_id} className={cn("px-3 py-2 text-right tabular-nums", tone)}>
@@ -465,7 +465,7 @@ function FinestraSprecoCategorie({
                             </td>
                           );
                         })}
-                        <td className="px-3 py-2 text-right font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-positivo">
                           {euro2(r.media_gruppo)}
                         </td>
                       </tr>
@@ -477,8 +477,8 @@ function FinestraSprecoCategorie({
                 Quanto costa in <span className="font-medium">materie prime per coperto</span> ogni
                 categoria, a confronto tra i punti vendita. Per categoria:{" "}
                 <span className="font-medium">spesa F&amp;B ÷ coperti</span> dei soli mesi con fatture
-                caricate. <span className="text-emerald-600 dark:text-emerald-500">verde</span> = il PV
-                più efficiente sulla categoria, <span className="text-rose-600 dark:text-rose-500">rosso</span>{" "}
+                caricate. <span className="text-positivo">verde</span> = il PV
+                più efficiente sulla categoria, <span className="text-negativo">rosso</span>{" "}
                 = il più caro. SHOP escluso (merce da rivendita). «—» = nessun dato per quel PV.
               </p>
             </>

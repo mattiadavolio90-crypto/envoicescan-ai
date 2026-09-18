@@ -139,7 +139,7 @@ export function FinestraSpesaPV({
             <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
           ) : loadError && !data ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <AlertTriangle className="size-7 text-rose-500" />
+              <AlertTriangle className="size-7 text-negativo" />
               <p className="text-sm text-muted-foreground">
                 Non è stato possibile caricare i dati.
               </p>
