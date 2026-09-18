@@ -93,9 +93,9 @@ Guida servizi locali completa: [DEV_SERVICES_GUIDE.md](DEV_SERVICES_GUIDE.md).
 - Validazione magic bytes su file caricati (PDF, XML, P7M)
 - Protezione XSS su dati utente
 - Sanitizzazione input AI (anti prompt injection)
-- Limite upload: max 100 file / 200 MB per sessione
+- Limite upload: max 250 file / 200 MB per sessione (50 MB per singolo file)
 - Budget giornaliero AI: max 1000 chiamate/giorno
-- Rotazione log automatica: 50 MB / 10 backup
+- Log su stdout (`config/logger_setup.py`): la rotazione la fa la piattaforma (Railway), non l'app
 - PII rimossi dai log (GDPR Art. 32)
 - XSRF protection attiva, CORS limitato a origin espliciti
 - Cookie di sessione `httpOnly` + `secure` + `sameSite` (token mai esposto a JS)
