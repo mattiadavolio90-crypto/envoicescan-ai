@@ -704,6 +704,25 @@ def _sorgenti_che_rendono_lo_stato():
 SORGENTI_A_VIDEO = _sorgenti_che_rendono_lo_stato()
 
 
+def test_il_perimetro_del_presidio_non_e_vuoto():
+    """Un perimetro a zero renderebbe MUTO il test parametrizzato qui sotto.
+
+    Senza questa guardia, rinominare il campo `dati_incompleti` (una rinomina di
+    contratto, cioe' proprio il lavoro di questa fase) fa sparire tutti i
+    parametri: `parametrize` non genera piu' alcun test, l'`assert rami` che sta
+    DENTRO il test non viene mai eseguito, e la suite passa con un solo skip
+    silenzioso — mentre l'etichetta potrebbe divergere dall'export in tutti e
+    tre i file insieme. "Zero test eseguiti" non e' "nessun difetto".
+    """
+    assert len(SORGENTI_A_VIDEO) >= 3, (
+        f"il presidio non trova piu' i sorgenti che rendono lo stato "
+        f"(trovati: {SORGENTI_A_VIDEO}). Se il campo `dati_incompleti` e' stato "
+        "rinominato, aggiorna _sorgenti_che_rendono_lo_stato(); se i file sono "
+        "stati spostati, aggiorna il percorso di ricerca. NON cancellare questo "
+        "test: senza perimetro il presidio sotto e' muto."
+    )
+
+
 def test_la_cella_export_e_la_parola_del_badge_salute():
     """L'export non ha una grafia sua: e' la costante condivisa, eseguita."""
     from pathlib import Path

@@ -1530,16 +1530,19 @@ export function PersonaleTab() {
               segnalare il taglio. Un numero mutilato che sembra intero e' molto
               peggio di un blocco che sborda, che almeno si vede. (Provato il
               18/09: le valvole messe per lo spazio producevano esattamente
-              questo.) Lo spazio E' stretto: a 1140px restano ~223px per card e
-              un costo vero a text-4xl ne chiede ~221 da solo, prima delle ore.
-              Ma e' strettezza PREESISTENTE, presente ogni volta che le paghe
+              questo.) Lo spazio E' comunque stretto, ma per un'altra ragione, ed
+              e' strettezza PREESISTENTE, presente ogni volta che le paghe
               sono inserite: va risolta in fase 3 riducendo la taglia del testo,
-              non tagliando le cifre. Misurato con le metriche di Inter (cifre
-              tabulari 0.601em, font-black ~1.09): a 1140px "12.450,00 €" da solo
-              vale ~259px su ~223 utili, quindi eccede PRIMA ancora delle ore —
-              non e' un problema di ripartizione fra le due colonne, e nessuna
-              valvola lo risolve. Misure sulle classi e sul font, NON un
-              rendering: da guardare a schermo a 1140 e 1280. */}
+              non tagliando le cifre. Misurato glifo per glifo su Inter: a 1140px
+              restano ~223px utili per card, e "12.450,00 €" a text-4xl ne vale
+              ~206 (7 cifre tabulari 0.601em + punteggiatura + "€" 0.636; il peso
+              NON allarga le cifre, perche' tabular-nums ne fissa l'advance —
+              font-black cambia lo spessore del tratto, non la cella del glifo).
+              L'importo da solo quindi ci starebbe: e' la SOMMA a non starci,
+              206 + 8 di gap + ~151 delle ore = ~365px su 223. Per questo nessuna
+              valvola risolve: non c'e' modo di ripartire 365 in 223. Misure
+              sulle classi e sul font, NON un rendering: da guardare a schermo a
+              1140 e 1280. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Card 1: Ore ordinarie */}
             <Card className="ring-1 ring-green-500/50 bg-green-50/60 dark:bg-green-950/20">
