@@ -87,11 +87,11 @@ export function InventarioDatePicker({ value, snapshots, onChange }: Props) {
       {/* Trigger */}
       <button
         onClick={() => setOpen(v => !v)}
-        className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 flex items-center gap-2 min-w-[130px]"
+        className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring flex items-center gap-2 min-w-[130px]"
       >
         <span>{fmtData(value)}</span>
         {snapshotSet.has(value) && (
-          <span className="size-2 rounded-full bg-sky-400 shrink-0" title="Inventario esistente" />
+          <span className="size-2 rounded-full bg-primary shrink-0" title="Inventario esistente" />
         )}
       </button>
 
@@ -144,7 +144,7 @@ export function InventarioDatePicker({ value, snapshots, onChange }: Props) {
                 >
                   {day}
                   {hasSnapshot && !isSelected && (
-                    <span className="absolute bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full bg-sky-400" />
+                    <span className="absolute bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full bg-primary" />
                   )}
                   {hasSnapshot && isSelected && (
                     <span className="absolute bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full bg-white/70" />
@@ -156,7 +156,7 @@ export function InventarioDatePicker({ value, snapshots, onChange }: Props) {
 
           {/* Legend */}
           <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border">
-            <span className="size-2 rounded-full bg-sky-400 shrink-0" />
+            <span className="size-2 rounded-full bg-primary shrink-0" />
             <span className="text-xs text-muted-foreground">Inventario esistente</span>
           </div>
         </div>

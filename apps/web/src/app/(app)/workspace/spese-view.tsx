@@ -56,14 +56,14 @@ function fmtEuro(v: number): string {
 }
 
 const TIPO_BADGE: Record<TipoSpesa, string> = {
-  fb: "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200",
-  generale: "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200",
+  fb: "bg-accent text-primary-text",
+  generale: "bg-accent text-primary-text",
 };
 
 // Ring per tipo — coerente con lo stile a card bordate di Personale.
 const TIPO_RING: Record<TipoSpesa, string> = {
-  fb: "ring-orange-500/50 hover:bg-orange-500/5",
-  generale: "ring-purple-500/50 hover:bg-purple-500/5",
+  fb: "ring-primary/50 hover:bg-accent",
+  generale: "ring-primary/50 hover:bg-accent",
 };
 
 // ─── Dialog spesa ─────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
             {categoria ? (
               <p className="text-[11px] text-muted-foreground mt-1.5">
                 Rientra in:{" "}
-                <span className={`font-semibold ${tipo === "fb" ? "text-orange-600 dark:text-orange-400" : "text-purple-600 dark:text-purple-400"}`}>
+                <span className="font-semibold text-foreground">
                   {tipoSpesaLabel(tipo, settore)}
                 </span>
               </p>
@@ -377,22 +377,22 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
 
       {/* KPI totali — stile coerente con Personale (card grandi) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="ring-1 ring-orange-500/50 bg-orange-50/60 dark:bg-orange-950/20">
+        <Card className="ring-1 ring-border bg-card">
           <CardContent className="py-5 px-6 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-orange-700 dark:text-orange-500">Costi F&amp;B extra</p>
-            <p className="text-4xl font-black tabular-nums text-orange-700 dark:text-orange-400 leading-none">{fmtEuro(totFb)}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Costi F&amp;B extra</p>
+            <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtEuro(totFb)}</p>
           </CardContent>
         </Card>
-        <Card className="ring-1 ring-purple-500/50 bg-purple-50/60 dark:bg-purple-950/20">
+        <Card className="ring-1 ring-border bg-card">
           <CardContent className="py-5 px-6 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-purple-700 dark:text-purple-500">Spese Generali extra</p>
-            <p className="text-4xl font-black tabular-nums text-purple-700 dark:text-purple-400 leading-none">{fmtEuro(totGenerale)}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Spese Generali extra</p>
+            <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtEuro(totGenerale)}</p>
           </CardContent>
         </Card>
-        <Card className="ring-1 ring-sky-500/50 bg-sky-50/60 dark:bg-sky-950/20">
+        <Card className="ring-1 ring-primary/50 bg-card">
           <CardContent className="py-5 px-6 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-sky-700 dark:text-sky-400">Totale extra</p>
-            <p className="text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtEuro(totale)}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-primary-text">Totale extra</p>
+            <p className="text-4xl font-black tabular-nums text-primary-text leading-none">{fmtEuro(totale)}</p>
           </CardContent>
         </Card>
       </div>

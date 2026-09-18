@@ -224,19 +224,19 @@ export function InventarioTab() {
       {/* KPI */}
       {kpi && (
         <div className="grid grid-cols-3 gap-3">
-          <Card className="ring-sky-400/60">
+          <Card className="ring-primary/60">
             <CardContent className="py-3 px-4">
               <p className="text-xs text-muted-foreground">Valore magazzino</p>
               <p className="text-2xl font-bold">{fmtEuro(kpi.valore_totale)}</p>
             </CardContent>
           </Card>
-          <Card className="ring-sky-400/60">
+          <Card className="ring-primary/60">
             <CardContent className="py-3 px-4">
               <p className="text-xs text-muted-foreground">Prodotti contati</p>
               <p className="text-2xl font-bold">{kpi.n_articoli}</p>
             </CardContent>
           </Card>
-          <Card className="ring-sky-400/60">
+          <Card className="ring-primary/60">
             <CardContent className="py-3 px-4">
               <p className="text-xs text-muted-foreground">Categorie</p>
               <p className="text-2xl font-bold">{kpi.n_categorie}</p>

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { type VoceInventario, type ArticoloInventario, UM_INVENTARIO } from "@/lib/inventario";
 
 const selectCls =
-  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
+  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring";
 
 function fmtEuro(v: number) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
@@ -245,7 +245,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
             onFocus={() => { if (nome.length >= 2) setNomePopoverOpen(true); }}
             onBlur={() => setTimeout(() => setNomePopoverOpen(false), 150)}
             placeholder="Digita per cercare nelle fatture o inserisci manualmente…"
-            className="focus:ring-sky-500 focus:border-sky-500"
+            className="focus:ring-ring focus:border-ring"
             autoFocus={!isEdit}
           />
           {nomePopoverOpen && suggerimenti.length > 0 && (
@@ -274,7 +274,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
             value={categoria}
             onChange={e => setCategoria(e.target.value)}
             placeholder="Es. LATTICINI"
-            className="focus:ring-sky-500 focus:border-sky-500"
+            className="focus:ring-ring focus:border-ring"
           />
         </div>
 
@@ -289,7 +289,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
               value={quantita}
               onChange={e => setQuantita(e.target.value)}
               placeholder="0"
-              className="focus:ring-sky-500 focus:border-sky-500"
+              className="focus:ring-ring focus:border-ring"
             />
           </div>
           <div className="space-y-1.5">
@@ -314,7 +314,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
               value={prezzoUm}
               onChange={e => onPrezzoChange(e.target.value)}
               placeholder="0.00"
-              className="focus:ring-sky-500 focus:border-sky-500"
+              className="focus:ring-ring focus:border-ring"
             />
           </div>
         </div>
@@ -334,7 +334,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
             value={note}
             onChange={e => setNote(e.target.value)}
             placeholder="Es. marca, lotto, scaffale…"
-            className="focus:ring-sky-500 focus:border-sky-500"
+            className="focus:ring-ring focus:border-ring"
           />
         </div>
 

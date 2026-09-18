@@ -225,8 +225,8 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
   }, []);
 
   // Classe comune per i <select> nativi — focus ring blu coerente con Input
-  const selectCls = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
-  const selectSmCls = "h-8 w-full rounded-md border border-input bg-background px-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
+  const selectCls = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring";
+  const selectSmCls = "h-8 w-full rounded-md border border-input bg-background px-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring";
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
@@ -243,7 +243,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
             placeholder="es. Pizza Margherita, Besciamella, Ragù bolognese…"
             value={nome}
             onChange={e => setNome(e.target.value)}
-            className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+            className="h-10 focus:ring-2 focus:ring-ring focus:border-ring"
           />
         </div>
 
@@ -268,13 +268,13 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
               step="0.50"
               value={prezzoVendita}
               onChange={e => setPrezzoVendita(e.target.value)}
-              className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              className="h-10 focus:ring-2 focus:ring-ring focus:border-ring"
             />
           </div>
         </div>
 
         {categoria === "SEMILAVORATI" && (
-          <p className="text-xs text-sky-600 dark:text-sky-400 -mt-2">
+          <p className="text-xs text-primary-text -mt-2">
             I semilavorati possono essere usati come ingredienti in altre ricette.
           </p>
         )}
@@ -286,7 +286,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <Input
-                className="h-10 pl-9 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="h-10 pl-9 focus:ring-2 focus:ring-ring focus:border-ring"
                 placeholder="Cerca tra le fatture, ingredienti manuali o semilavorati…"
                 value={searchIng}
                 onChange={e => { setSearchIng(e.target.value); setDropdownOpen(true); }}
@@ -356,7 +356,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                         step="1"
                         value={r.quantita || ""}
                         onChange={e => aggiornaRiga(r._key, { quantita: parseFloat(e.target.value) || 0 })}
-                        className="h-8 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        className="h-8 text-right text-sm w-full focus:ring-2 focus:ring-ring focus:border-ring"
                       />
                     </td>
                     <td className="px-2 py-2">
@@ -377,7 +377,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                           placeholder={r.grammatura_confezione ? String(r.grammatura_confezione) : "—"}
                           value={r.grammatura_confezione ?? ""}
                           onChange={e => aggiornaRiga(r._key, { grammatura_confezione: parseFloat(e.target.value) || null })}
-                          className="h-8 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className="h-8 text-right text-sm w-full focus:ring-2 focus:ring-ring focus:border-ring"
                           title="Grammatura confezione in g/ml"
                         />
                       ) : (
@@ -416,7 +416,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
               max="100"
               value={fcTarget}
               onChange={e => setFcTarget(e.target.value)}
-              className="h-8 w-16 text-center focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              className="h-8 w-16 text-center focus:ring-2 focus:ring-ring focus:border-ring"
             />
             <span className="text-muted-foreground">% →</span>
             <strong className="text-base">{fmtEuro(prezzoSuggerito)}</strong>

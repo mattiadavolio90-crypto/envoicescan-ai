@@ -24,13 +24,16 @@ export interface EventoDiario {
 
 // ─── Colori disponibili ───────────────────────────────────────────────────────
 
+// I colori che il cliente puo' dare a un appunto sono i token dell'app, cosi'
+// reggono nei due temi. "Viola" (chiave `purple`) non ha un token ed e' uscito
+// dal selettore il 18/09/2026: gli appunti salvati con quella chiave cadono sul
+// primo colore, via `coloreInfo`.
 const COLORI: { key: string; label: string; dot: string; badge: string }[] = [
-  { key: "sky",    label: "Blu",     dot: "bg-sky-500",    badge: "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200" },
-  { key: "green",  label: "Verde",   dot: "bg-green-500",  badge: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" },
-  { key: "amber",  label: "Arancio", dot: "bg-amber-500",  badge: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200" },
-  { key: "red",    label: "Rosso",   dot: "bg-red-500",    badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" },
-  { key: "purple", label: "Viola",   dot: "bg-purple-500", badge: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200" },
-  { key: "gray",   label: "Grigio",  dot: "bg-gray-400",   badge: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+  { key: "sky",   label: "Blu",     dot: "bg-primary",  badge: "bg-accent text-primary-text" },
+  { key: "green", label: "Verde",   dot: "bg-positivo", badge: "bg-positivo/10 text-positivo" },
+  { key: "amber", label: "Arancio", dot: "bg-incerto",  badge: "bg-incerto/10 text-incerto" },
+  { key: "red",   label: "Rosso",   dot: "bg-negativo", badge: "bg-negativo/10 text-negativo" },
+  { key: "gray",  label: "Grigio",  dot: "bg-muted-foreground/60", badge: "bg-muted text-muted-foreground" },
 ];
 
 function coloreInfo(key: string) {

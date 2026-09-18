@@ -29,7 +29,7 @@ function fmtQta(v: number) {
 }
 
 const selectCls =
-  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
+  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring";
 
 interface Props {
   open: boolean;
@@ -177,15 +177,15 @@ function ConfrontaTab({ snapshots }: { snapshots: SnapshotDate[] }) {
             </div>
             <div className={`rounded-md border px-3 py-2 ${
               confronto.delta_valore > 0
-                ? "border-emerald-500/40 bg-emerald-50 dark:bg-emerald-900/10"
+                ? "border-positivo/40 bg-positivo/10"
                 : confronto.delta_valore < 0
-                  ? "border-red-500/40 bg-red-50 dark:bg-red-900/10"
+                  ? "border-negativo/40 bg-negativo/10"
                   : "border-border"
             }`}>
               <p className="text-xs text-muted-foreground">Differenza</p>
               <p className={`text-lg font-bold tabular-nums ${
-                confronto.delta_valore > 0 ? "text-emerald-600 dark:text-emerald-400"
-                : confronto.delta_valore < 0 ? "text-red-600 dark:text-red-400" : ""
+                confronto.delta_valore > 0 ? "text-positivo"
+                : confronto.delta_valore < 0 ? "text-negativo" : ""
               }`}>{fmtDelta(confronto.delta_valore)}</p>
             </div>
           </div>
@@ -207,18 +207,18 @@ function ConfrontaTab({ snapshots }: { snapshots: SnapshotDate[] }) {
                   <tr key={i} className="hover:bg-muted/30">
                     <td className="px-3 py-1.5">
                       <span className="font-medium">{r.nome}</span>
-                      {r.stato === "nuovo" && <span className="ml-1.5 text-[10px] rounded px-1 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">nuovo</span>}
-                      {r.stato === "uscito" && <span className="ml-1.5 text-[10px] rounded px-1 py-0.5 bg-red-500/15 text-red-700 dark:text-red-400">uscito</span>}
+                      {r.stato === "nuovo" && <span className="ml-1.5 text-[10px] rounded px-1 py-0.5 bg-positivo/10 text-positivo">nuovo</span>}
+                      {r.stato === "uscito" && <span className="ml-1.5 text-[10px] rounded px-1 py-0.5 bg-negativo/10 text-negativo">uscito</span>}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{r.stato === "nuovo" ? "—" : fmtQta(r.qta_a)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{r.stato === "uscito" ? "—" : fmtQta(r.qta_b)}</td>
                     <td className={`px-2 py-1.5 text-right tabular-nums ${
-                      r.delta_qta > 0 ? "text-emerald-600 dark:text-emerald-400"
-                      : r.delta_qta < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+                      r.delta_qta > 0 ? "text-positivo"
+                      : r.delta_qta < 0 ? "text-negativo" : "text-muted-foreground"
                     }`}>{r.delta_qta === 0 ? "—" : (r.delta_qta > 0 ? "+" : "−") + fmtQta(Math.abs(r.delta_qta))}</td>
                     <td className={`px-3 py-1.5 text-right tabular-nums font-medium ${
-                      r.delta_valore > 0 ? "text-emerald-600 dark:text-emerald-400"
-                      : r.delta_valore < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+                      r.delta_valore > 0 ? "text-positivo"
+                      : r.delta_valore < 0 ? "text-negativo" : "text-muted-foreground"
                     }`}>{fmtDelta(r.delta_valore)}</td>
                   </tr>
                 ))}

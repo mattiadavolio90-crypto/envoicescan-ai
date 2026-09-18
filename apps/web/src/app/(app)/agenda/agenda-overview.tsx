@@ -41,9 +41,11 @@ interface VoceAgenda {
 }
 
 const FONTI: Record<Fonte, { label: string; dot: string; chip: string; icon: typeof CalendarDays; href: string }> = {
-  appuntamento: { label: "Appuntamenti", dot: "bg-sky-500",    chip: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200",       icon: CalendarDays, href: "/agenda?layer=appuntamenti" },
-  spesa:        { label: "Spese",        dot: "bg-orange-500", chip: "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200", icon: Wallet,       href: "/agenda?layer=spese" },
-  turno:        { label: "Personale",    dot: "bg-violet-500", chip: "bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200", icon: Users,        href: "/agenda?layer=personale" },
+  // Tre fonti, tre pallini: blu, grigio e celeste (--grafico-*), non tre tinte.
+  // I turni sono la fonte piu' frequente, quindi la piu' chiara.
+  appuntamento: { label: "Appuntamenti", dot: "bg-grafico-1", chip: "bg-accent text-primary-text", icon: CalendarDays, href: "/agenda?layer=appuntamenti" },
+  spesa:        { label: "Spese",        dot: "bg-grafico-4", chip: "bg-accent text-primary-text", icon: Wallet,       href: "/agenda?layer=spese" },
+  turno:        { label: "Personale",    dot: "bg-grafico-3", chip: "bg-accent text-primary-text", icon: Users,        href: "/agenda?layer=personale" },
 };
 
 // ─── Utilità date ─────────────────────────────────────────────────────────────
@@ -477,7 +479,7 @@ function PannelloPersonale({ voci }: { voci: VoceAgenda[] }) {
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b border-border">
-        <Users className="size-3.5 text-violet-500 shrink-0" />
+        <Users className="size-3.5 text-primary shrink-0" />
         <span className="text-xs font-semibold">Personale</span>
         <span className="text-xs text-muted-foreground ml-auto tabular-nums">
           {nLavora > 0 ? `${nLavora} in servizio · ${fmtOreDisplay(oreTotali)}` : "nessuno in servizio"}

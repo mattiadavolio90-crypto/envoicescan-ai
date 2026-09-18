@@ -171,7 +171,7 @@ export function FoodcostTab() {
               <p>🟢 ≤30% ottimo · 🟡 30–40% accettabile · 🔴 &gt;40% da rivedere</p>
             </div>
             <div className="border-t pt-2 space-y-1 text-muted-foreground">
-              <p className="flex items-center gap-1.5"><AlertTriangle className="size-3.5 text-amber-500" /> = il prezzo di un ingrediente è aumentato nelle fatture rispetto a quando hai salvato la ricetta.</p>
+              <p className="flex items-center gap-1.5"><AlertTriangle className="size-3.5 text-incerto" /> = il prezzo di un ingrediente è aumentato nelle fatture rispetto a quando hai salvato la ricetta.</p>
               <p>Usa le frecce ▲▼ per ordinare le ricette e l&apos;icona copia per duplicarne una.</p>
             </div>
         </InfoPopover>
@@ -180,19 +180,19 @@ export function FoodcostTab() {
       {/* KPI */}
       {kpi && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
+          <Card className="ring-primary/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Ricette totali</p>
             <p className="text-2xl font-bold">{kpi.totale}</p>
           </CardContent></Card>
-          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
+          <Card className="ring-primary/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Costo medio ricetta</p>
             <p className="text-2xl font-bold">{fmtEuro(kpi.costo_medio)}</p>
           </CardContent></Card>
-          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
+          <Card className="ring-primary/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Margine medio</p>
             <p className="text-2xl font-bold">{fmtEuro(kpi.margine_medio)}</p>
           </CardContent></Card>
-          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
+          <Card className="ring-primary/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Incidenza FC media</p>
             <p className="text-2xl font-bold">{fmtPct(kpi.incidenza_media)}</p>
           </CardContent></Card>
@@ -250,7 +250,7 @@ export function FoodcostTab() {
       ) : (
         <div className="space-y-2">
           {ricetteFiltrate.map((r, idx) => (
-            <Card key={r.id} className="ring-sky-400/60 transition-colors hover:ring-sky-400">
+            <Card key={r.id} className="ring-primary/60 transition-colors hover:ring-primary">
               <CardContent className="py-3 px-4 flex items-center gap-3">
                 {/* Frecce riordino — solo senza filtro categoria */}
                 {filtroCategoria === "TUTTI" && (
@@ -278,7 +278,7 @@ export function FoodcostTab() {
                     <p className="font-medium truncate">{r.nome}</p>
                     {r.alert_prezzo && (
                       <span title={`Prezzo aumentato per: ${(r.ingredienti_aumentati ?? []).join(", ")}`} className="shrink-0">
-                        <AlertTriangle className="size-4 text-amber-500" />
+                        <AlertTriangle className="size-4 text-incerto" />
                       </span>
                     )}
                   </div>

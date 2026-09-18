@@ -138,7 +138,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
               value={nome}
               onChange={e => setNome(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && nome.trim() && prezzo) handleCrea(); }}
-              className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              className="h-10 focus:ring-2 focus:ring-ring focus:border-ring"
             />
           </div>
           <div className="grid grid-cols-[1fr_7rem_auto] gap-3 items-end">
@@ -152,7 +152,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
                 value={prezzo}
                 onChange={e => setPrezzo(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && nome.trim() && prezzo) handleCrea(); }}
-                className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="h-10 focus:ring-2 focus:ring-ring focus:border-ring"
               />
             </div>
             <div className="space-y-1.5">
@@ -160,7 +160,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
               <select
                 value={um}
                 onChange={e => setUm(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
               >
                 {UM_LIST.map(u => <option key={u} value={u}>{u}</option>)}
               </select>

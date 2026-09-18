@@ -46,9 +46,9 @@ export const TIPO_GIORNO_LABEL: Record<TipoGiorno, string> = {
 };
 
 export const TIPO_GIORNO_BADGE: Record<Exclude<TipoGiorno, "turno">, string> = {
-  riposo: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
-  ferie: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  malattia: "bg-red-500/10 text-red-600 dark:text-red-400",
+  riposo: "bg-muted text-muted-foreground",
+  ferie: "bg-accent text-primary-text",
+  malattia: "bg-negativo/10 text-negativo",
 };
 
 export interface Dipendente {
@@ -84,16 +84,15 @@ export interface PersonaleResponse {
 
 // ─── Utilità ──────────────────────────────────────────────────────────────────
 
-// Palette colori dipendenti — ciclica, usata nell'accordion per dipendente.
+// Palette dipendenti — ciclica, usata nell'accordion per dipendente. Un
+// dipendente e' una categoria, non un giudizio: la rampa del brand e i due
+// grigi (--grafico-*), non otto tinte.
 const DIP_PALETTE = [
-  { ring: "ring-sky-500/60",     bg: "bg-sky-500/10"     },
-  { ring: "ring-emerald-500/60", bg: "bg-emerald-500/10" },
-  { ring: "ring-violet-500/60",  bg: "bg-violet-500/10"  },
-  { ring: "ring-rose-500/60",    bg: "bg-rose-500/10"    },
-  { ring: "ring-orange-500/60",  bg: "bg-orange-500/10"  },
-  { ring: "ring-teal-500/60",    bg: "bg-teal-500/10"    },
-  { ring: "ring-pink-500/60",    bg: "bg-pink-500/10"    },
-  { ring: "ring-indigo-500/60",  bg: "bg-indigo-500/10"  },
+  { ring: "ring-grafico-1/60", bg: "bg-grafico-1/10" },
+  { ring: "ring-grafico-2/60", bg: "bg-grafico-2/10" },
+  { ring: "ring-grafico-3/60", bg: "bg-grafico-3/10" },
+  { ring: "ring-grafico-4/60", bg: "bg-grafico-4/10" },
+  { ring: "ring-grafico-5/60", bg: "bg-grafico-5/10" },
 ] as const;
 
 function getDipColor(nomi: string[], nome: string) {
@@ -893,8 +892,8 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipend
             )}
 
             {(haGiaTurni || haGiaMensile) && (
-              <div className="rounded-md border border-amber-500/50 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2">
-                <p className="text-xs text-amber-700 dark:text-amber-400">
+              <div className="rounded-md border border-incerto/50 bg-incerto/10 px-3 py-2">
+                <p className="text-xs text-incerto">
                   {haGiaTurni ? (
                     <>
                       <strong>{nomeSelezionato}</strong> ha già turni giornalieri in {fmtMese(mese)}.
@@ -1545,47 +1544,47 @@ export function PersonaleTab() {
               1140 e 1280. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Card 1: Ore ordinarie */}
-            <Card className="ring-1 ring-green-500/50 bg-green-50/60 dark:bg-green-950/20">
+            <Card className="ring-1 ring-border bg-card">
               <CardContent className="py-5 px-6 space-y-2">
                 <div className="flex justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-green-700 dark:text-green-500">Ore ordinarie</p>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-green-700 dark:text-green-500">Costo ordinarie</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Ore ordinarie</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Costo ordinarie</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="text-4xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none">{fmtOreDisplay(oreStdTotale)}</p>
-                  <p className="shrink-0 text-4xl font-black tabular-nums text-green-600 dark:text-green-500 leading-none text-right">
-                    {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-sm font-semibold text-green-600/60 dark:text-green-500/60">Paghe non inserite</span>}
+                  <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtOreDisplay(oreStdTotale)}</p>
+                  <p className="shrink-0 text-4xl font-black tabular-nums text-foreground leading-none text-right">
+                    {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-sm font-semibold text-positivo">Paghe non inserite</span>}
                   </p>
                 </div>
               </CardContent>
             </Card>
 
             {/* Card 2: Straordinario */}
-            <Card className="ring-1 ring-amber-500/50 bg-amber-50/60 dark:bg-amber-950/20">
+            <Card className="ring-1 ring-border bg-card">
               <CardContent className="py-5 px-6 space-y-2">
                 <div className="flex justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-500">Ore straord.</p>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-500">Costo straord.</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Ore straord.</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Costo straord.</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="text-4xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none">{fmtOreDisplay(oreExtTotale)}</p>
-                  <p className="shrink-0 text-4xl font-black tabular-nums text-amber-600 dark:text-amber-500 leading-none text-right">
-                    {costoExtTotale > 0 ? fmtEuro(costoExtTotale) : <span className="text-sm font-semibold text-amber-600/60 dark:text-amber-500/60">Paghe non inserite</span>}
+                  <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtOreDisplay(oreExtTotale)}</p>
+                  <p className="shrink-0 text-4xl font-black tabular-nums text-foreground leading-none text-right">
+                    {costoExtTotale > 0 ? fmtEuro(costoExtTotale) : <span className="text-sm font-semibold text-incerto">Paghe non inserite</span>}
                   </p>
                 </div>
               </CardContent>
             </Card>
 
             {/* Card 3: Totale */}
-            <Card className="ring-1 ring-sky-500/50 bg-sky-50/60 dark:bg-sky-950/20">
+            <Card className="ring-1 ring-primary/50 bg-card">
               <CardContent className="py-5 px-6 space-y-2">
                 <div className="flex justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-sky-700 dark:text-sky-400">Totale ore</p>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-sky-700 dark:text-sky-400">Costo totale</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-primary-text">Totale ore</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-primary-text">Costo totale</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtOreDisplay(totaleOre)}</p>
-                  <p className="shrink-0 text-4xl font-black tabular-nums text-sky-600 dark:text-sky-400 leading-none text-right">
+                  <p className="text-4xl font-black tabular-nums text-primary-text leading-none">{fmtOreDisplay(totaleOre)}</p>
+                  <p className="shrink-0 text-4xl font-black tabular-nums text-primary-text leading-none text-right">
                     {/* Senza paghe inserite il costo e' 0: fino al 18/09/2026 questa
                         card ripiegava sulla media di ore al giorno, cioe' mostrava delle
                         ORE sotto l'etichetta "Costo totale". Ora dice che manca il dato,
@@ -1593,7 +1592,7 @@ export function PersonaleTab() {
                         mostravano "—", che non spiegava perche' l'importo non c'era. */}
                     {costoTotale > 0
                       ? fmtEuro(costoTotale)
-                      : <span className="text-sm font-semibold text-sky-600/60 dark:text-sky-400/60">Paghe non inserite</span>
+                      : <span className="text-sm font-semibold text-incerto">Paghe non inserite</span>
                     }
                   </p>
                 </div>
@@ -1630,8 +1629,8 @@ export function PersonaleTab() {
                     >
                       <span className="font-semibold text-sm truncate">{n}</span>
                       <span className="text-sm tabular-nums text-muted-foreground shrink-0">{fmtOreDisplay(oreN)}</span>
-                      {extN > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums shrink-0">+{fmtOreDisplay(extN)} str.</span>}
-                      {costoN > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 font-semibold tabular-nums shrink-0">{fmtEuro(costoN)}</span>}
+                      {extN > 0 && <span className="text-xs text-incerto tabular-nums shrink-0">+{fmtOreDisplay(extN)} str.</span>}
+                      {costoN > 0 && <span className="text-xs text-primary-text font-semibold tabular-nums shrink-0">{fmtEuro(costoN)}</span>}
                       {assenzeN > 0 && (
                         <span className="text-xs text-muted-foreground shrink-0">
                           {assenzeN} {assenzeN === 1 ? "assenza" : "assenze"}
@@ -1642,14 +1641,14 @@ export function PersonaleTab() {
                       {turniN.length > 0 && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
                           daBustaPaga
-                            ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                            ? "bg-accent text-primary-text"
                             : "bg-muted text-muted-foreground"
                         }`}>
                           {daBustaPaga ? "busta paga" : "a turni"}
                         </span>
                       )}
                       {disattivato && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-incerto/10 text-incerto">
                           disattivato
                         </span>
                       )}
@@ -1698,7 +1697,7 @@ export function PersonaleTab() {
                                     {TIPO_GIORNO_LABEL[t.tipo_giorno as TipoGiorno]}
                                   </span>
                                   {(t.importo_a_carico ?? 0) > 0 && (
-                                    <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(t.importo_a_carico!)} a carico</span>
+                                    <span className="text-xs text-primary-text tabular-nums">{fmtEuro(t.importo_a_carico!)} a carico</span>
                                   )}
                                   <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
@@ -1713,8 +1712,8 @@ export function PersonaleTab() {
                                 <>
                                   <span className="text-muted-foreground w-24 shrink-0 capitalize">{fmtMese(t.data_turno.slice(0, 7))}</span>
                                   <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
-                                  {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
-                                  {(t.lordo_mensile ?? 0) > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(t.lordo_mensile!)} lordo</span>}
+                                  {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-incerto tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
+                                  {(t.lordo_mensile ?? 0) > 0 && <span className="text-xs text-primary-text tabular-nums">{fmtEuro(t.lordo_mensile!)} lordo</span>}
                                   {t.note && <span className="min-w-0 text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
                                   <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditMensile(t); setMensileDialogOpen(true); }}>
@@ -1733,8 +1732,8 @@ export function PersonaleTab() {
                                     {t.ora_inizio2 && t.ora_fine2 && <span className="opacity-60 ml-1">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>}
                                   </span>
                                   <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
-                                  {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
-                                  {costoT > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(costoT)}</span>}
+                                  {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-incerto tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
+                                  {costoT > 0 && <span className="text-xs text-primary-text tabular-nums">{fmtEuro(costoT)}</span>}
                                   {t.note && <span className="min-w-0 text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
                                   <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
