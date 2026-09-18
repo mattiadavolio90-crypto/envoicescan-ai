@@ -448,6 +448,32 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   portatile a 1140/1280px: le card di Agenda -> Personale con le paghe
 >   inserite — difetto **preesistente**, sede in fase 3.
 
+> - 18/09/2026 sera, `47657a2` — **coerenza visiva, fase 2 (colore)**, 13
+>   commit da `7bffae6`: nel frontend del cliente il colore passa dai token
+>   (`primary`/`primary-text`/`accent`, `positivo`/`negativo`/`incerto`,
+>   `grafico-1..5`), mai dalla palette Tailwind. Misurato dopo: **0 classi di
+>   palette, 0 esadecimali, 0 `var(--color-*)`** nel perimetro (tutta
+>   `apps/web/src` meno admin, demo, `/m`, landing, auth, legal); in tutto
+>   `src/` da 1.561 a 458, tutte nelle aree escluse. Suite **15.485 verdi + 45
+>   skip = 15.530 raccolti** dalla root (`python -m pytest -q -p no:randomly`),
+>   **+722** rispetto alle fasi 0-1: `tests/test_globals_css_contrasto.py`
+>   (41: converte l'oklch di `globals.css` in sRGB e misura il contrasto sui
+>   fondi reali nei due temi; 6 mutanti uccisi) e
+>   `tests/test_colori_solo_token_frontend.py` (674 casi su 168 file; 8 mutanti,
+>   6 rossi e 2 verdi come atteso — un commento e admin non devono scattare).
+>   `tsc --noEmit`: 0 errori nel sorgente. **Un bug preesistente trovato dal
+>   presidio prima di nascere**: `text-destructive-foreground` nel dialog di
+>   conferma, token mai dichiarato, che Tailwind rendeva come niente. Il primo
+>   run completo aveva UN rosso — un test che chiedeva `dark:` alle classi
+>   prezzo della catena, premessa vecchia — corretto in `47657a2`.
+>   **Aperto, dichiarato:** l'app non e' stata guardata a schermo (da questa
+>   sessione non si renderizza): la verifica nei due temi la fa Mattia, partendo
+>   da `/style-guide` che ora mostra tutti i token. Residui nuovi in
+>   `scratchpad/piano_coerenza_visiva.md` §12: il bianco sui bottoni
+>   `bg-primary` (2,71:1 / 2,17:1, kit shadcn, decisione di Mattia) e «Viola»
+>   tolto dal selettore del diario (nessun token; gli appunti gia' viola si
+>   vedono blu, da confermare).
+
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

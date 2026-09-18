@@ -240,7 +240,7 @@ azzurro; renderla leggermente evidenziata per intero — è quella che si guarda
 |---|---|---|---|
 | **0 — Fondamenta** ✅ **CHIUSA** (commit `7cb145c`, 18/09) | Token `--positivo`/`--negativo`/`--incerto` definiti su entrambi i temi. Nessun cambio visibile, provato per mutazione. | Tutto il resto ci si appoggia. Farlo dopo = rifarlo due volte. | nullo |
 | **1 — Parole** ✅ **CHIUSA** (commit `5f7a6f7`, 18/09) | H1, M2, AF2, F3, W3, C2 + Q.tà, Incid. Fatturato, Vs media | Indipendente dalla grafica, si può fare in parallelo | nullo |
-| **2 — Colore** | Sostituire le 759 classi hardcoded coi token, pagina per pagina. Eliminare i 233 decorativi. H5, M3, O1, AF1, AF3, W1, W2, C1 | **È il cuore:** risolve insieme l'incoerenza dell'azzurro, l'arcobaleno e il disallineamento dark/light — tre sintomi della stessa causa | medio — va guardato a schermo in entrambi i temi |
+| **2 — Colore** ✅ **CHIUSA** (12 commit da `7bffae6` a `1a81d92`, 18/09) | Sostituire le 759 classi hardcoded coi token, pagina per pagina. Eliminare i 233 decorativi. H5, M3, O1, AF1, AF3, W1, W2, C1 | **È il cuore:** risolve insieme l'incoerenza dell'azzurro, l'arcobaleno e il disallineamento dark/light — tre sintomi della stessa causa | medio — va guardato a schermo in entrambi i temi |
 | **3 — Densità** | Tabella Margini (§4), H2-H4, M1, M4-M5, O2-O4, F1-F2-F4, AF4, T2-T4, W4-W5, C3 | Tocca i layout: serve l'occhio di Mattia prima di committare | alto — **una pagina per volta** |
 
 **Modo di lavoro sulla fase 3** (decisione delegata a me): propongo **una pagina
@@ -726,22 +726,92 @@ legal). Questo porta dentro anche `assistenza`, `notifiche`, `impostazioni` e
 | # | Cosa | Stato |
 |---|---|---|
 | 2.0 | token `--primary-text`, rampa `--grafico-*`, ritaratura semantici light, test di contrasto | ✅ |
-| 2.1 | condivisi: sidebar, page-header, trigger-hint, error-boundary, `components/fatture`, `lib/*` | |
-| 2.2 | Home (`dashboard/`) | |
-| 2.3 | Ricavi e Margini (`margini/`, 44 hex) | |
-| 2.4 | Osservatorio (`prezzi/`) | |
-| 2.5 | Gestione Fatture (`scadenziario/`, 34 violet) | |
-| 2.6 | Analisi Fatture (`analisi-fatture/`) | |
-| 2.7 | Analisi e Tag | |
-| 2.8 | Agenda e Personale (`workspace/` + `agenda/`) | |
-| 2.9 | Catena | |
-| 2.10 | assistenza, notifiche, impostazioni, style-guide | |
-| 2.11 | presidio di convenzione + verbale + contatore | |
+| 2.1 | condivisi: sidebar, page-header, trigger-hint, error-boundary, `components/fatture`, `lib/*` | ✅ `ab8f91b` |
+| 2.2 | Home (`dashboard/`) | ✅ `e20f3c0` |
+| 2.3 | Ricavi e Margini (`margini/`, 44 hex) | ✅ `a8f13d8` |
+| 2.4 | Osservatorio (`prezzi/`) | ✅ `6be024d` |
+| 2.5 | Gestione Fatture (`scadenziario/`, 34 violet) | ✅ `5c1db48` |
+| 2.6 | Analisi Fatture (`analisi-fatture/`) | ✅ `e4b484d` |
+| 2.7 | Analisi e Tag | ✅ `8646e60` |
+| 2.8 | Agenda e Personale (`workspace/` + `agenda/`) | ✅ `06bd099` |
+| 2.9 | Catena | ✅ `1587375` |
+| 2.10 | assistenza, notifiche, impostazioni, style-guide | ✅ `f19db1e` |
+| 2.11 | presidio di convenzione + verbale + contatore | ✅ `1a81d92` + verbale |
 
-### Residuo nuovo, misurato (va in coda al §11)
+### Esito della fase 2 (18/09, sera — 12 commit da `7bffae6` a `1a81d92`)
+
+**Misurato dopo, con lo stesso script dell'inventario:** nel perimetro del
+cliente (tutta `src/` meno admin, demo, `/m`, landing, auth, legal) **0 classi
+di palette, 0 esadecimali fra virgolette, 0 `var(--color-<palette>)`**. In
+tutto `src/` le classi di palette passano da **1.561 a 458**, tutte nelle aree
+escluse (admin 164, demo 126, `/m`+auth+legal 120, landing 26, `lib/admin`).
+`sky-*` da 376 a 94, nessuno nel perimetro. 63 file toccati, +1.043/−710 righe.
+`tsc --noEmit`: 0 errori nel sorgente (l'unico errore è un `validator.ts` stale
+in `.next/dev/types`, che cita una pagina `probe` inesistente).
+
+**Come è stato fatto.** Un riscrittore (nello scratchpad di sessione) ha
+applicato il mapping alle classi dentro le stringhe, collassando ogni coppia
+`x-600 dark:x-400` in un token; **ogni file è stato poi riletto nel diff**, e
+lì sono uscite le decisioni che nessuna regola meccanica poteva prendere —
+elencate nei commit. Le più importanti:
+
+- **Il verde usato come decorazione** (icone di sezione, «Scontrino medio», la
+  colonna Totale dei coperti) era stato promosso a `positivo` dal mapping
+  emerald→positivo: riportato a blu, perché non è un giudizio. È il difetto
+  tipico di questa fase: il riscrittore vede la famiglia, non il significato.
+- **Tabella dei margini**: righe di input neutre, righe «= Totale» in blu
+  leggibile, margine e MOL dal segno; `SECTION_CONFIG` e la legenda a chip
+  **rimossi** (spiegavano colori che non ci sono più). È un pezzo del §4b
+  anticipato: senza il colore, la gerarchia la fanno grassetto e separatori
+  già presenti.
+- **O1 chiuso**: la gravità delle variazioni (critico/alto/medio) è una scala
+  di grigi, il giudizio sta solo sull'impatto in euro.
+- **H5/W1/W2**: le card tinte (Personale, Spese) sono neutre col totale in
+  blu; il numero porta il colore, non il pannello.
+- **AF1/T1**: i riquadri KPI sono neutri con «Spesa totale» in blu.
+- **Il viola aveva due significati** (Note di credito, sede tecnica «Gruppo»)
+  e la palette per dipendente ne aveva otto: categorie, ora blu e rampa.
+- **Diario**: il colore che il cliente sceglie per un appunto passa sui token,
+  e **«Viola» esce dal selettore** (nessun token): gli appunti già salvati con
+  quella chiave cadono sul primo colore. Decisione presa qui, **da confermare
+  con Mattia** (si rimette con una riga).
+- **Bug preesistente trovato dal presidio**: `text-destructive-foreground` nel
+  dialog di conferma non era mai stato dichiarato — il bottone rosso aveva il
+  testo del colore sbagliato nel tema chiaro.
+- **Style guide**: era tarata sul solo dark (`-400` senza `dark:`); ora sui
+  token, con una sezione che mostra i tre livelli, i chip e la rampa — l'unica
+  pagina dove verificare tutti i token nei due temi da un posto solo.
+
+**Deviazioni dal piano, dichiarate:** perimetro allargato ad assistenza,
+notifiche, impostazioni, style-guide (§7 diceva «solo pagine principali»; il
+presidio vuole esclusioni, non inclusioni); legenda dei margini rimossa
+(densità, ma conseguenza diretta del colore); `focus:ring-sky-500` → token
+`ring` (19 input).
+
+**Come è provato:** `tests/test_globals_css_contrasto.py` (41, 6 mutanti
+uccisi) e `tests/test_colori_solo_token_frontend.py` (674 casi su **168** file — il
+messaggio del commit `1a81d92` dice 134, cifra scritta senza misurarla; 8
+mutanti, 6 rossi e 2 verdi come atteso: un commento e admin non devono
+scattare). **Suite intera a repo fermo, al commit `47657a2`: 15.485 verdi +
+45 skip = 15.530 raccolti** (`python -m pytest -q -p no:randomly` dalla root);
+il primo run completo aveva UN rosso, un test che chiedeva la variante `dark:`
+alle classi prezzo della catena — la premessa vecchia — corretto in `47657a2`. La rete frontend (39 file) e i 10 test che leggono i sorgenti delle
+pagine: verdi. **Non provato: l'occhio.** Da questa sessione non si renderizza
+(niente Playwright, e le pagine vere vogliono i dati di un cliente): la verifica
+a schermo nei due temi la fa Mattia — la style guide è il posto da cui partire.
+
+### Residui nuovi, misurati (vanno in coda al §11)
 
 **R9 — il bianco sui bottoni `bg-primary` fa 2,71:1 in light e 2,17:1 in dark.**
 È il kit shadcn così com'è (`--primary-foreground: oklch(1 0 0)`), su tutti i
 bottoni dell'app da sempre. Sistemarlo vuol dire scurire il blu del brand sui
 bottoni o mettere testo scuro sul blu nel dark: **è una decisione di Mattia**,
-non un fix.
+non un fix. Lo stesso vale per il bottone rosso del dialog di conferma
+(`bg-destructive text-white`).
+
+**R10 — «Viola» tolto dal selettore del diario**: gli appunti salvati con la
+chiave `purple` si vedono blu. Da confermare o da rimettere (una riga).
+
+**R11 — verifica a schermo nei due temi** di tutte le pagine: non fatta da
+questa sessione, per impossibilità. La fase 3 (densità) va comunque una pagina
+per volta *mostrata*, quindi la verifica può avvenire lì.
