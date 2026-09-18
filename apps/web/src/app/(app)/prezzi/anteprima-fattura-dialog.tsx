@@ -109,7 +109,7 @@ export function AnteprimaFatturaDialog({
                     return (
                       <tr
                         key={i}
-                        className={evid ? "bg-amber-100/60 dark:bg-amber-500/15" : "hover:bg-muted/20"}
+                        className={evid ? "bg-incerto/10" : "hover:bg-muted/20"}
                       >
                         <td className="px-3 py-2 max-w-[260px]">
                           <p className={`truncate ${evid ? "font-semibold" : ""}`} title={r.descrizione}>

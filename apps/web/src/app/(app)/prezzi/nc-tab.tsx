@@ -135,8 +135,8 @@ export function NcTab() {
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { icon: Euro, label: hasFiltri ? "Totale credito (filtrato)" : "Totale Note di Credito", value: fmtEuro(totaleFiltrato), color: "text-sky-500" },
-            { icon: FileX2, label: hasFiltri ? `Righe (filtrate da ${data.note.length})` : "Righe trovate", value: String(filtered.length), color: "text-sky-500" },
+            { icon: Euro, label: hasFiltri ? "Totale credito (filtrato)" : "Totale Note di Credito", value: fmtEuro(totaleFiltrato), color: "text-primary-text" },
+            { icon: FileX2, label: hasFiltri ? `Righe (filtrate da ${data.note.length})` : "Righe trovate", value: String(filtered.length), color: "text-primary-text" },
             { icon: FileText, label: hasFiltri ? `Documenti (filtrati da ${data.n_documenti})` : "Documenti NC", value: String(nDocumentiFiltrati), color: "text-muted-foreground" },
             { icon: Building2, label: "Fornitori", value: String(nFornitori), color: "text-muted-foreground" },
           ].map((k) => (
@@ -194,7 +194,7 @@ export function NcTab() {
                   <td className="px-3 py-2 border-r border-border text-right">
                     {r.quantita !== null ? r.quantita.toFixed(2) : "—"}
                   </td>
-                  <td className="px-3 py-2 border-r border-border text-right font-semibold text-sky-600 dark:text-sky-400">
+                  <td className="px-3 py-2 border-r border-border text-right font-semibold text-primary-text">
                     {fmtEuro(r.credito)}
                   </td>
                   <td className="px-3 py-2 border-r border-border font-mono text-[11px] whitespace-nowrap">{r.numero_documento || "—"}</td>

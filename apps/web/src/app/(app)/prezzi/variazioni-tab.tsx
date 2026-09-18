@@ -85,10 +85,13 @@ function gravita(r: VariazionePrezzo): Gravita {
   return "medio";
 }
 
+// La gravita' misura QUANTO e' grande la variazione, non se e' buona o cattiva:
+// un risparmio del 95% e' "critico" quanto un rincaro del 95%. Per questo e' una
+// scala di grigi; il giudizio (rosso/verde) sta sull'impatto in euro accanto.
 const GRAVITA_STYLE: Record<Gravita, { dot: string; ring: string; label: string }> = {
-  critico: { dot: "bg-rose-500", ring: "border-l-rose-500", label: "Critico" },
-  alto: { dot: "bg-orange-500", ring: "border-l-orange-500", label: "Alto" },
-  medio: { dot: "bg-amber-400", ring: "border-l-amber-400", label: "Medio" },
+  critico: { dot: "bg-foreground", ring: "border-l-foreground", label: "Critico" },
+  alto: { dot: "bg-muted-foreground", ring: "border-l-muted-foreground", label: "Alto" },
+  medio: { dot: "bg-muted-foreground/50", ring: "border-l-muted-foreground/50", label: "Medio" },
 };
 
 /**
@@ -198,7 +201,7 @@ function PrezzoChart({
       <p className="text-xs text-muted-foreground">
         Media: <span className="font-semibold text-foreground">€{mediaLabel.toFixed(2)}</span>
         {punti.length < 2 && fallbackPrezzi && fallbackPrezzi.length >= 2 && (
-          <span className="ml-2 text-amber-500">(ultimi {fallbackPrezzi.length} acquisti disponibili)</span>
+          <span className="ml-2 text-incerto">(ultimi {fallbackPrezzi.length} acquisti disponibili)</span>
         )}
       </p>
       <ResponsiveContainer width="100%" height={200}>
@@ -223,18 +226,18 @@ function PrezzoChart({
           />
           <ReferenceLine
             y={0}
-            stroke="#f43f5e"
+            stroke="var(--muted-foreground)"
             strokeDasharray="4 4"
             strokeWidth={1.5}
             label={{
               value: "Media",
               position: "insideTopRight",
               fontSize: 10,
-              fill: "#f43f5e",
+              fill: "var(--muted-foreground)",
               dy: -4,
             }}
           />
-          <Line type="monotone" dataKey="var_pct" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5, fill: "#60a5fa", stroke: "var(--card)", strokeWidth: 2 }} />
+          <Line type="monotone" dataKey="var_pct" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary)" }} activeDot={{ r: 5, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -297,7 +300,7 @@ function ListaAcquisti({
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                       {p.totale_riga != null ? fmtEuro(p.totale_riga) : "—"}
                     </td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${delta > 0.05 ? "text-rose-600" : delta < -0.05 ? "text-emerald-600" : "text-muted-foreground"}`}>
+                    <td className={`px-3 py-2 text-right tabular-nums ${delta > 0.05 ? "text-negativo" : delta < -0.05 ? "text-positivo" : "text-muted-foreground"}`}>
                       {Math.abs(delta) < 0.05 ? "—" : fmtPct(delta)}
                     </td>
                   </tr>
@@ -349,7 +352,7 @@ const AlertCard = memo(function AlertCard({
             aria-pressed={preferito}
             className="shrink-0 -m-1 p-1 rounded hover:bg-muted transition-colors cursor-pointer"
           >
-            <Star className={`size-4 transition-colors ${preferito ? "fill-amber-400 text-amber-400" : "text-muted-foreground/50 hover:text-amber-400"}`} />
+            <Star className={`size-4 transition-colors ${preferito ? "fill-incerto text-incerto" : "text-muted-foreground/50 hover:text-incerto"}`} />
           </span>
           <span className={`size-2.5 rounded-full ${style.dot} shrink-0`} aria-hidden />
 
@@ -397,7 +400,7 @@ const AlertCard = memo(function AlertCard({
               semantiche di rosso della vecchia riga a dire se la notizia e'
               buona o cattiva. */}
           <div className="text-right shrink-0 w-28">
-            <p className={`text-sm font-semibold ${r.impatto_stimato > 0 ? "text-rose-600" : r.impatto_stimato < 0 ? "text-emerald-600" : "text-muted-foreground"}`}>
+            <p className={`text-sm font-semibold ${r.impatto_stimato > 0 ? "text-negativo" : r.impatto_stimato < 0 ? "text-positivo" : "text-muted-foreground"}`}>
               {r.impatto_stimato !== 0 ? fmtEuro(r.impatto_stimato, true) : "—"}
             </p>
           </div>
@@ -432,12 +435,11 @@ const AlertCard = memo(function AlertCard({
   );
 });
 
-type KpiTone = "sky" | "emerald" | "rose";
+type KpiTone = "positivo" | "negativo";
 
 const KPI_TONE: Record<KpiTone, { border: string; hover: string; value: string }> = {
-  sky:     { border: "border-sky-500/40",     hover: "hover:border-sky-500/70",     value: "text-sky-600 dark:text-sky-400" },
-  emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-600 dark:text-emerald-400" },
-  rose:    { border: "border-rose-500/40",    hover: "hover:border-rose-500/70",    value: "text-rose-600 dark:text-rose-400" },
+  positivo: { border: "border-positivo/40", hover: "hover:border-positivo/70", value: "text-positivo" },
+  negativo: { border: "border-negativo/40", hover: "hover:border-negativo/70", value: "text-negativo" },
 };
 
 function KpiCard({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: KpiTone }) {
@@ -713,7 +715,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
             Personalizzato
           </button>
           {currentRange.data_da && currentRange.data_a && (
-            <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+            <span className="ml-2 text-xs font-medium text-primary-text">
               {fmtRangeIt(currentRange.data_da, currentRange.data_a)}
             </span>
           )}
@@ -724,7 +726,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
               </p>
               <div className="space-y-1.5 text-muted-foreground">
                 <p><strong className="text-foreground">Media</strong> = il prezzo medio del prodotto nel periodo.</p>
-                <p><TriangleAlert className="inline size-3.5 text-amber-500" /> = prezzo <strong className="text-foreground">aumentato</strong> oltre la soglia che hai impostato · <CheckCircle2 className="inline size-3.5 text-emerald-500" /> = stabile o in calo.</p>
+                <p><TriangleAlert className="inline size-3.5 text-incerto" /> = prezzo <strong className="text-foreground">aumentato</strong> oltre la soglia che hai impostato · <CheckCircle2 className="inline size-3.5 text-positivo" /> = stabile o in calo.</p>
                 <p>Clicca un prodotto per vedere lo <strong className="text-foreground">storico</strong> nel tempo e la fattura di origine.</p>
               </div>
               <div className="border-t border-border pt-2 space-y-1.5 text-muted-foreground">
@@ -818,19 +820,19 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
             label="Rincari medi"
             value={rincari.length > 0 ? fmtPct(rincaroMedio) : "—"}
             sub={`${rincari.length} prodott${rincari.length === 1 ? "o" : "i"} in aumento`}
-            tone="rose"
+            tone="negativo"
           />
           <KpiCard
             label="Risparmi medi"
             value={risparmi.length > 0 ? fmtPct(risparmioMedio) : "—"}
             sub={`${risparmi.length} prodott${risparmi.length === 1 ? "o" : "i"} in calo`}
-            tone="emerald"
+            tone="positivo"
           />
           <KpiCard
             label="Scostamento medio"
             value={filtered.length > 0 ? fmtPct(scostamentoFiltrato) : "—"}
             sub={`su ${filtered.length} variazion${filtered.length === 1 ? "e" : "i"}`}
-            tone={scostamentoFiltrato < 0 ? "emerald" : "rose"}
+            tone={scostamentoFiltrato < 0 ? "positivo" : "negativo"}
           />
           <KpiCard
             label="Impatto stimato/mese"
@@ -843,7 +845,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                 ? `su ${filtered.length} di ${variazioni.length} variazioni`
                 : "effetto sui costi mensili"
             }
-            tone={impattoFiltrato < 0 ? "emerald" : "rose"}
+            tone={impattoFiltrato < 0 ? "positivo" : "negativo"}
           />
         </div>
       )}
@@ -862,7 +864,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
               onClick={() => setSoloPreferiti(true)}
               className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full transition-colors ${soloPreferiti ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             >
-              <Star className={`size-3 ${soloPreferiti ? "fill-current" : "fill-amber-400 text-amber-400"}`} />
+              <Star className={`size-3 ${soloPreferiti ? "fill-current" : "fill-incerto text-incerto"}`} />
               Preferiti{nPreferiti > 0 ? ` (${nPreferiti})` : ""}
             </button>
           </div>
@@ -906,18 +908,18 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       {/* N. variazioni + legenda gravità — appena sopra la lista */}
       {data && variazioni.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <TriangleAlert className="size-4 text-rose-500 shrink-0" />
+          <TriangleAlert className="size-4 text-negativo shrink-0" />
           <p className="text-sm font-semibold">
             {filtered.length} variazioni
             {filtered.length !== variazioni.length && (
               <span className="text-muted-foreground font-normal"> (filtrate da {variazioni.length})</span>
             )}
-            {nCritici > 0 && <span className="text-rose-600"> · {nCritici} critiche</span>}
+            {nCritici > 0 && <span className="font-medium text-foreground"> · {nCritici} critiche</span>}
           </p>
           <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500 shrink-0" />Critico</span>
-            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500 shrink-0" />Alto</span>
-            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400 shrink-0" />Medio</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-foreground shrink-0" />Critico</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-muted-foreground shrink-0" />Alto</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-muted-foreground/50 shrink-0" />Medio</span>
           </div>
         </div>
       )}
@@ -939,7 +941,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-card py-10 text-center">
-            <CheckCircle2 className="size-8 text-emerald-500 mx-auto mb-2" />
+            <CheckCircle2 className="size-8 text-positivo mx-auto mb-2" />
             <p className="text-sm font-medium">Nessuna variazione sopra il {soglia}%</p>
             {/* La rassicurazione solo con fatture CONTATE (> 0). `null`/assente
                 = "non lo so" (response in cache da prima del 17/09/2026): il
@@ -1029,7 +1031,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           )}
           {filtered.length === 0 && soloPreferiti && nPreferiti === 0 && (
             <div className="rounded-lg border border-dashed border-border py-10 text-center">
-              <Star className="size-7 text-amber-400 mx-auto mb-2" />
+              <Star className="size-7 text-incerto mx-auto mb-2" />
               <p className="text-sm font-medium">Non hai ancora prodotti preferiti</p>
               <p className="text-xs text-muted-foreground mt-1">Tocca la ⭐ accanto a un prodotto per seguirne i prezzi qui.</p>
             </div>

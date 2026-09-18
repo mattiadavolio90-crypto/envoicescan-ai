@@ -58,10 +58,10 @@ function isoDateRange(anno: number, mese: number | null): { data_da: string; dat
 
 // ─── Mappa stato → etichetta + colori (dark UI sobria, no gamification) ──────
 const STATO_META: Record<ScoreStato, { label: string; dot: string; text: string; ring: string }> = {
-  affidabile:          { label: "Affidabile",        dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", ring: "border-l-emerald-500" },
-  da_monitorare:       { label: "Da monitorare",     dot: "bg-amber-400",   text: "text-amber-600 dark:text-amber-400",     ring: "border-l-amber-400" },
-  instabile:           { label: "Instabile",         dot: "bg-rose-500",    text: "text-rose-600 dark:text-rose-400",       ring: "border-l-rose-500" },
-  provvisorio:         { label: "Provvisorio",       dot: "bg-sky-400",     text: "text-sky-600 dark:text-sky-400",         ring: "border-l-sky-400" },
+  affidabile:          { label: "Affidabile",        dot: "bg-positivo", text: "text-positivo", ring: "border-l-positivo" },
+  da_monitorare:       { label: "Da monitorare",     dot: "bg-incerto",   text: "text-incerto",     ring: "border-l-incerto" },
+  instabile:           { label: "Instabile",         dot: "bg-negativo",    text: "text-negativo",       ring: "border-l-negativo" },
+  provvisorio:         { label: "Provvisorio",       dot: "bg-primary",     text: "text-primary-text",         ring: "border-l-primary" },
   dati_insufficienti:  { label: "Dati insufficienti",dot: "bg-muted-foreground/40", text: "text-muted-foreground",         ring: "border-l-border" },
 };
 
@@ -73,9 +73,9 @@ function affidabilitaLabel(a: ScoreFornitore["affidabilita_dato"]): string {
 
 // Stato per asse: lettura qualitativa, niente voto numerico.
 const METRICA_META: Record<MetricaStato, { label: string; dot: string; text: string }> = {
-  stabile:        { label: "Stabile",        dot: "bg-emerald-500",         text: "text-emerald-600 dark:text-emerald-400" },
-  da_monitorare:  { label: "Da monitorare",  dot: "bg-amber-400",           text: "text-amber-600 dark:text-amber-400" },
-  instabile:      { label: "Da verificare",  dot: "bg-rose-500",            text: "text-rose-600 dark:text-rose-400" },
+  stabile:        { label: "Stabile",        dot: "bg-positivo",         text: "text-positivo" },
+  da_monitorare:  { label: "Da monitorare",  dot: "bg-incerto",           text: "text-incerto" },
+  instabile:      { label: "Da verificare",  dot: "bg-negativo",            text: "text-negativo" },
   non_valutabile: { label: "Non valutabile", dot: "bg-muted-foreground/40", text: "text-muted-foreground" },
 };
 
@@ -123,7 +123,7 @@ function CopyButton({ testo }: { testo: string }) {
       onClick={copy}
       className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
     >
-      {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+      {copied ? <Check className="size-3.5 text-positivo" /> : <Copy className="size-3.5" />}
       {copied ? "Copiato" : "Copia"}
     </button>
   );
@@ -184,11 +184,11 @@ function DettaglioDialog({
                 {f.segnali.map((s, i) => (
                   <li key={i} className="flex items-start gap-2.5 text-sm leading-relaxed">
                     {s.tono === "positivo" ? (
-                      <Sparkles className="size-4 text-emerald-500 mt-0.5 shrink-0" />
+                      <Sparkles className="size-4 text-positivo mt-0.5 shrink-0" />
                     ) : s.tono === "neutro" ? (
-                      <Info className="size-4 text-sky-500 mt-0.5 shrink-0" />
+                      <Info className="size-4 text-primary mt-0.5 shrink-0" />
                     ) : (
-                      <TriangleAlert className="size-4 text-amber-500 mt-0.5 shrink-0" />
+                      <TriangleAlert className="size-4 text-incerto mt-0.5 shrink-0" />
                     )}
                     <span className="text-foreground">{s.testo}</span>
                   </li>
@@ -228,7 +228,7 @@ function DettaglioDialog({
               </>
             ) : (
               <div className="flex items-start gap-2.5 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                <Sparkles className="size-4 text-emerald-500 mt-0.5 shrink-0" />
+                <Sparkles className="size-4 text-positivo mt-0.5 shrink-0" />
                 <p>{f.bozza.motivo || "Non emergono motivi per una trattativa con questo fornitore."}</p>
               </div>
             )}
@@ -387,7 +387,7 @@ export function ScoreTab() {
             );
           })}
           {preset === "personalizzato" && dataDaCustom && dataACustom && (
-            <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+            <span className="ml-2 text-xs font-medium text-primary-text">
               {fmtItDate(dataDaCustom)} → {fmtItDate(dataACustom)}
             </span>
           )}
@@ -443,7 +443,7 @@ export function ScoreTab() {
       {/* Nota sul significato — spiegabilità prima di tutto */}
       {data && fornitori.length > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          <ShieldCheck className="size-4 text-sky-500 mt-0.5 shrink-0" />
+          <ShieldCheck className="size-4 text-primary mt-0.5 shrink-0" />
           <p className="flex-1">
             Per ogni fornitore leggi quanto è stato <span className="text-foreground">stabile, coerente
             e leggibile</span> nel tempo sui tuoi acquisti, area per area. Non è un voto sul listino
@@ -461,7 +461,7 @@ export function ScoreTab() {
                 <p><strong className="text-foreground">Documenti</strong> = note di credito e storni (un segnale, non una colpa).</p>
               </div>
               <div className="border-t border-border pt-2 space-y-1.5 text-muted-foreground">
-                <p>Ogni area è <span className="text-emerald-600 dark:text-emerald-400 font-medium">Stabile</span>, <span className="text-amber-600 dark:text-amber-400 font-medium">Da monitorare</span> o <span className="text-rose-600 dark:text-rose-400 font-medium">Da verificare</span>. Lo stato in alto non è mai più ottimista dell&apos;area peggiore.</p>
+                <p>Ogni area è <span className="text-positivo font-medium">Stabile</span>, <span className="text-incerto font-medium">Da monitorare</span> o <span className="text-negativo font-medium">Da verificare</span>. Lo stato in alto non è mai più ottimista dell&apos;area peggiore.</p>
                 <p>Con pochi dati mostra <em>Dati insufficienti</em> o <em>Provvisorio</em>: meglio nessun giudizio che uno sbagliato.</p>
               </div>
             </InfoPopover>
@@ -480,8 +480,8 @@ export function ScoreTab() {
 
       {/* Errore */}
       {!loading && error && (
-        <div className="rounded-lg border border-rose-500/40 bg-card py-10 text-center">
-          <TriangleAlert className="size-7 text-rose-500 mx-auto mb-2" />
+        <div className="rounded-lg border border-negativo/40 bg-card py-10 text-center">
+          <TriangleAlert className="size-7 text-negativo mx-auto mb-2" />
           <p className="text-sm font-medium">Non sono riuscito a calcolare lo score</p>
           <button onClick={() => load()} className="mt-3 text-xs text-primary hover:underline">Riprova</button>
         </div>

@@ -147,7 +147,7 @@ export function ScontiTab() {
             );
           })}
           {preset === "personalizzato" && dataDaCustom && dataACustom && (
-            <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+            <span className="ml-2 text-xs font-medium text-primary-text">
               {fmtItDate(dataDaCustom)} → {fmtItDate(dataACustom)}
             </span>
           )}
@@ -241,9 +241,9 @@ export function ScontiTab() {
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { icon: Euro, label: "Risparmiato (sconti)", value: fmtEuro(totaleRisparmiato), color: "text-emerald-500" },
-            { icon: Tag, label: hasFiltri ? `Sconti (filtrati da ${data.n_sconti})` : "Sconti ricevuti", value: String(nSconti), color: "text-emerald-500" },
-            { icon: Gift, label: hasFiltri ? `Omaggi (filtrati da ${data.n_omaggi})` : "Omaggi ricevuti", value: String(nOmaggi), color: "text-sky-500" },
+            { icon: Euro, label: "Risparmiato (sconti)", value: fmtEuro(totaleRisparmiato), color: "text-positivo" },
+            { icon: Tag, label: hasFiltri ? `Sconti (filtrati da ${data.n_sconti})` : "Sconti ricevuti", value: String(nSconti), color: "text-positivo" },
+            { icon: Gift, label: hasFiltri ? `Omaggi (filtrati da ${data.n_omaggi})` : "Omaggi ricevuti", value: String(nOmaggi), color: "text-primary-text" },
             { icon: Building2, label: "Fornitori", value: String(nFornitori), color: "text-muted-foreground" },
           ].map((k) => (
             <div key={k.label} className="rounded-md border border-border p-3 bg-card flex items-start gap-2">
@@ -297,8 +297,8 @@ export function ScontiTab() {
                     <span
                       className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                         r.tipo === "sconto"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                          : "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
+                          ? "bg-positivo/10 text-positivo"
+                          : "bg-accent text-primary-text"
                       }`}
                     >
                       {r.tipo === "sconto" ? "Sconto" : "Omaggio"}
@@ -310,7 +310,7 @@ export function ScontiTab() {
                   <td className="px-3 py-2 border-r border-border text-right">
                     {r.quantita !== null ? r.quantita.toFixed(2) : "—"}
                   </td>
-                  <td className="px-3 py-2 border-r border-border text-right font-medium text-emerald-600 dark:text-emerald-400">
+                  <td className="px-3 py-2 border-r border-border text-right font-medium text-positivo">
                     {r.tipo === "sconto" ? fmtEuro(r.valore) : "—"}
                   </td>
                   <td className="px-3 py-2 border-r border-border whitespace-nowrap">{fmtData(r.data)}</td>
