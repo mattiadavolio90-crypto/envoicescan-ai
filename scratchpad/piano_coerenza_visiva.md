@@ -814,4 +814,19 @@ chiave `purple` si vedono blu. Da confermare o da rimettere (una riga).
 
 **R11 — verifica a schermo nei due temi** di tutte le pagine: non fatta da
 questa sessione, per impossibilità. La fase 3 (densità) va comunque una pagina
-per volta *mostrata*, quindi la verifica può avvenire lì.
+per volta *mostrata*, quindi la verifica può avvenire lì. Da guardare per
+primo: il food cost «rosso» che passa da `destructive` a `negativo`
+(`lib/foodcost.ts`), l'unico punto dove cambia *quale* token, non solo
+palette→token.
+
+**R12 — `/m` a metà** (rilievo della review, 18/09 sera): il briefing mobile
+(`app/(mobile)/m/briefing/mobile-catena.tsx`) importa `SALUTE_TINT`, che ora è
+sui token, e nelle righe accanto tiene ancora `emerald-500`, `amber-700`,
+`rose-500` scritti a mano — due verdi diversi nella stessa schermata. `/m` è
+fuori perimetro per decisione (§7); chi lo allineerà parte da lì.
+
+**Da tenere d'occhio, non residui:** il presidio ha una lista di utility
+non-colore; `text-shadow-*` (Tailwind 4.1) e `outline-offset` senza numero
+oggi non sono usati e farebbero un falso rosso — si aggiungono quando servono.
+`color-mix(in oklch, …)` nella cascata e nel gauge contro `in oklab` altrove:
+stesso effetto, due grafie.
