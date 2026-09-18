@@ -390,7 +390,7 @@ function SaluteGruppoCard({
       <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
       <div className={cn("pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full blur-3xl", tint.orb2)} />
       <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Salute e margini per sede</h2>
+        <h2 className="text-sm font-semibold">Completezza dati e margini per sede</h2>
         <span className="text-xs text-muted-foreground/70">media {salutePv.length} {salutePv.length === 1 ? "sede" : "sedi"}</span>
       </div>
       <div className="flex min-w-0 flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">
@@ -429,13 +429,17 @@ function SaluteGruppoCard({
                         margine {pct(r.margine_perc)}
                       </span>
                     ) : null}
+                    {/* L'indice e' una completezza 0-100, ma fino al 18/09/2026 era
+                        un numero nudo (0, 25, 49): sembrava euro o un voto. L'unita'
+                        sta sul numero, non in una parola accanto, perche' a 1140px
+                        questa riga aveva gia' schiacciato il nome della sede. */}
                     <span
                       className={cn(
-                        "w-8 text-right text-sm font-semibold tabular-nums",
+                        "w-12 text-right text-sm font-semibold tabular-nums",
                         r?.dati_incompleti ? "text-muted-foreground/40" : t.text,
                       )}
                     >
-                      {pv.indice ?? "—"}
+                      {pv.indice != null ? `${pv.indice}%` : "—"}
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
                   </button>

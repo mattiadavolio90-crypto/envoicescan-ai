@@ -1054,7 +1054,7 @@ export function AnalisiETagClient({
 
       // Sheet Fornitori
       if (analisi.fornitori.fornitori.length > 0) {
-        const header = ["Fornitore", "Spesa (€)", "Acquisti", "Q.tà", "Prezzo medio", "Δ% vs media", "% sul tag"];
+        const header = ["Fornitore", "Spesa (€)", "Acquisti", "Quantità", "Prezzo medio", "Δ% vs media", "% sul tag"];
         const rows = analisi.fornitori.fornitori.map(f => [
           f.fornitore, f.spesa_totale, f.num_acquisti, f.quantita_totale,
           f.prezzo_medio ?? "—", f.delta_pct, f.incidenza_spesa,
@@ -1320,7 +1320,7 @@ export function AnalisiETagClient({
                               numero mai visibile. E' anche il campo corretto il 24/8 da
                               media semplice a ponderata. */}
                           <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
-                            Vs media
+                            Rispetto alla media
                             {fornitori.aggregati?.prezzo_medio_tag != null && (
                               <span className="block font-normal text-[10px] text-muted-foreground/70">
                                 {/* Solo il valore: quantita_label e' un'intestazione di

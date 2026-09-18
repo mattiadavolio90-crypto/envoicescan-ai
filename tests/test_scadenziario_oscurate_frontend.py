@@ -166,7 +166,7 @@ def test_l_esclusione_vince_su_nota_di_credito_e_pagata(tz):
         MODULO, "emit(input.map((d) => m.statoDocumento(d)));",
         argomento=docs, tz=tz, richiede=["statoDocumento"],
     )
-    assert stati == ["Fuori dai conti", "Fuori dai conti"]
+    assert stati == ["Escluse da te", "Escluse da te"]
 
 
 @pytest.mark.parametrize("tz", FUSI)

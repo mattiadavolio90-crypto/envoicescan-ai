@@ -615,7 +615,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                 <KpiCard label="Quantità" value={num(data!.quantita_totale)} />
                 <KpiCard label="Prezzo medio" value={euro2(data!.prezzo_medio)} />
                 <KpiCard label="Fornitori" value={String(data!.n_fornitori)} />
-                <KpiCard label="Righe" value={String(data!.per_pv.reduce((s, p) => s + p.n_righe, 0))} />
+                <KpiCard label="Voci in fattura" value={String(data!.per_pv.reduce((s, p) => s + p.n_righe, 0))} />
               </div>
 
               {/* Per punto vendita */}

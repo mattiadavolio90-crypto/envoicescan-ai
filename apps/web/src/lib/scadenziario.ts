@@ -290,7 +290,7 @@ export function buildCashFlow(documenti: Documento[]): CashFascia[] {
 export type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 export type Ordine = "scadenza" | "importo" | "fornitore";
 export type StatoDocumento =
-  | "Fuori dai conti" | "Nota di credito" | "Pagata" | "Scaduta"
+  | "Escluse da te" | "Nota di credito" | "Pagata" | "Scaduta"
   | "Senza scadenza" | "Da pagare";
 export type FornitoreEntry = { key: string; label: string };
 export type ConfiniPeriodo = { today: Date; in7: Date; in30: Date };
@@ -371,7 +371,7 @@ export function elencaFornitori(documenti: Documento[]): FornitoreEntry[] {
  * il CSV non puo' divergere da cio' che si vede a video.
  */
 export function statoDocumento(d: Documento, today?: Date): StatoDocumento {
-  if (d.oscurata) return "Fuori dai conti";
+  if (d.oscurata) return "Escluse da te";
   if (d.is_nota_credito) return "Nota di credito";
   if (d.pagata) return "Pagata";
   const limite = today ?? confiniPeriodo().today;

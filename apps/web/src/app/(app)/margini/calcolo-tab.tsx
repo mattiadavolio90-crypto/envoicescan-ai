@@ -70,13 +70,13 @@ const ROWS: RowDef[] = [
   { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", derive: DERIVE.costi_fb_auto, valueColor: "white" },
   { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
   { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "orange" },
-  { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
+  { key: "primo_margine",         label: "Margine su food&beverage", type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
   { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", derive: DERIVE.costi_spese_auto, valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
   { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
   { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
   { key: "totale_costi",          label: "= Spese Generali + Personale", type: "computed", section: "spese", isMetric: true, derive: DERIVE.totale_costi, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
-  { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
+  { key: "mol",                   label: "Guadagno finale (MOL)",  type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
 
 // Separatori tra blocchi: bordo top più marcato prima di questi indici
@@ -877,7 +877,7 @@ function AnalisiVisiva({
           <div className="flex flex-col gap-0 divide-y divide-border">
             {[
               { label: labelMerce,       kpiNome: labelMerce,        valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
-              { label: "1° Margine",     kpiNome: "1° Margine",      valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
+              { label: "Margine F&B",    kpiNome: "1° Margine",      valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
               { label: "Spese Generali", kpiNome: "Spese Generali",  valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
               { label: "MOL",            kpiNome: "MOL",             valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "#22c55e", valueColor: molColor },
             ].map((g) => {
@@ -912,7 +912,7 @@ function CascataPL({ t }: { t: MesePivot }) {
   const steps: { label: string; value: number; kind: "result" | "cost"; rgb: string }[] = [
     { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", rgb: "14,165,233" },
     { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", rgb: "249,115,22" },
-    { label: "= 1° Margine", value: t.primo_margine, kind: "result", rgb: t.primo_margine >= 0 ? "16,185,129" : "244,63,94" },
+    { label: "Margine su food&beverage", value: t.primo_margine, kind: "result", rgb: t.primo_margine >= 0 ? "16,185,129" : "244,63,94" },
     { label: "− Spese Generali + Personale", value: t.costi_spese_totali + t.costi_personale, kind: "cost", rgb: "168,85,247" },
     { label: "= MOL", value: t.mol, kind: "result", rgb: t.mol >= 0 ? "16,185,129" : "244,63,94" },
   ];

@@ -60,7 +60,7 @@ export function KpiBar({ kpi }: Props) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <KpiCard tone="sky"     label="Spesa totale"     numeric={kpi.totale}        format={formatEuro} animate={animate} />
-      <KpiCard tone="violet"  label="Righe"            numeric={kpi.num_righe}     format={fmtInt}     animate={animate} />
+      <KpiCard tone="violet"  label="Voci in fattura"            numeric={kpi.num_righe}     format={fmtInt}     animate={animate} />
       <KpiCard tone="emerald" label="Prodotti diversi" numeric={kpi.num_prodotti}  format={fmtInt}     animate={animate} />
       <KpiCard tone="orange"  label="Media al mese"    numeric={kpi.media_mensile} format={formatEuro} animate={animate} />
     </div>

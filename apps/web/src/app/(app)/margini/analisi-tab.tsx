@@ -551,7 +551,7 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
             </div>
             {/* Incidenza */}
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Incid. Fatturato</p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">% sugli incassi</p>
               <p className={`text-lg font-bold tabular-nums ${incidenzaColor}`}>
                 {centro.has_fatturato ? `${fc.toFixed(1)}%` : "—"}
               </p>

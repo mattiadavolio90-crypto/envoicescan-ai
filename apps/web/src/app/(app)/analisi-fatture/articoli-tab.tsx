@@ -437,7 +437,7 @@ export function ArticoliTab({
                     <SortableHeader label="Ultimo acq." sortKey="ultimo_acquisto" current={sort} onClick={cycleSort} />
                   </th>
                   <th className="text-right px-3 py-2 font-medium">
-                    <SortableHeader label="Q.tà" sortKey="quantita_totale" current={sort} align="right" onClick={cycleSort} />
+                    <SortableHeader label="Quantità" sortKey="quantita_totale" current={sort} align="right" onClick={cycleSort} />
                   </th>
                   <th className="text-right px-3 py-2 font-medium whitespace-nowrap">
                     <SortableHeader label="€ medio" sortKey="prezzo_unit_medio" current={sort} align="right" onClick={cycleSort} />

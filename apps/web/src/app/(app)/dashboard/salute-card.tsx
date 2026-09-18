@@ -52,7 +52,7 @@ export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hide
       <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
       <div className={cn("pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full blur-3xl", tint.orb2)} />
       <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Salute della gestione</h2>
+        <h2 className="text-sm font-semibold">Completezza dati</h2>
         <span className="text-xs capitalize text-muted-foreground/70">{salute.mese_label}</span>
       </div>
       <div className="flex flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">

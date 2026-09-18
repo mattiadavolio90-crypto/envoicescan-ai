@@ -342,7 +342,7 @@ function OscurateSection({
         <button className="flex-1 flex items-center justify-between" onClick={() => setOpen(o => !o)}>
           <div className="flex items-center gap-2">
             {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
-            <span className="font-semibold text-sm text-muted-foreground">Fuori dai conti</span>
+            <span className="font-semibold text-sm text-muted-foreground">Escluse da te</span>
             <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
             <span className="text-[10px] font-medium rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
               non conteggiate

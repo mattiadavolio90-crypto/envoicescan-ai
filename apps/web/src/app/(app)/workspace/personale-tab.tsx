@@ -1447,14 +1447,6 @@ export function PersonaleTab() {
   const costoTotale = costoStdTotale + costoExtTotale;
   const totaleOre = oreStdTotale + oreExtTotale;
 
-  // Giorni distinti con almeno un turno
-  // Solo giorni effettivamente lavorati: contare anche riposi e ferie
-  // diluirebbe la media oraria mostrata sulla card Totale.
-  const giorniConTurni = new Set(
-    turni.filter(t => !t.mensile && (t.tipo_giorno ?? "turno") === "turno").map(t => t.data_turno)
-  ).size;
-  const mediaGiornaliera = giorniConTurni > 0 ? totaleOre / giorniConTurni : 0;
-
   // I chip-giorno del dialog sono sempre quelli del mese in vista.
   const giorniDialogoTurno = giorniDelMese(meseBase);
   const giornoDefaultDialogo = giorniDialogoTurno.includes(oggi) ? oggi : giorniDialogoTurno[0];
@@ -1575,11 +1567,13 @@ export function PersonaleTab() {
                 <div className="flex items-end justify-between gap-2">
                   <p className="text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtOreDisplay(totaleOre)}</p>
                   <p className="text-4xl font-black tabular-nums text-sky-600 dark:text-sky-400 leading-none text-right">
+                    {/* Senza paghe inserite il costo e' 0: fino al 18/09/2026 la card
+                        ripiegava sulla media di ore al giorno, cioe' mostrava delle ORE
+                        sotto l'etichetta "Costo totale". Meglio dire che manca il dato:
+                        le altre due card gia' mostrano "—" nello stesso caso. */}
                     {costoTotale > 0
                       ? fmtEuro(costoTotale)
-                      : giorniConTurni > 1
-                        ? <span className="text-xl font-semibold text-sky-600/60 dark:text-sky-400/60">~{fmtOreDisplay(mediaGiornaliera)}/g</span>
-                        : <span className="text-sky-600/30">—</span>
+                      : <span className="text-base font-semibold text-sky-600/60 dark:text-sky-400/60">Paghe non inserite</span>
                     }
                   </p>
                 </div>

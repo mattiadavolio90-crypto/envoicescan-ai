@@ -177,7 +177,7 @@ export function NcTab() {
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-muted/60">
-                {["Data", "Fornitore", "Prodotto", "Categoria", "Q.tà", "Credito", "N. Documento", "File"].map((h) => (
+                {["Data", "Fornitore", "Prodotto", "Categoria", "Quantità", "Credito", "N. Documento", "File"].map((h) => (
                   <th key={h} className="text-left px-3 py-2 font-semibold border-r last:border-r-0 border-border">
                     {h}
                   </th>

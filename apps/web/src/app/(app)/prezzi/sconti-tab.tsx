@@ -283,7 +283,7 @@ export function ScontiTab() {
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-muted/60">
-                {["Tipo", "Prodotto", "Categoria", "Fornitore", "Q.tà", "Valore", "Data", "N. Documento", "File"].map((h) => (
+                {["Tipo", "Prodotto", "Categoria", "Fornitore", "Quantità", "Valore", "Data", "N. Documento", "File"].map((h) => (
                   <th key={h} className="text-left px-3 py-2 font-semibold border-r last:border-r-0 border-border">
                     {h}
                   </th>

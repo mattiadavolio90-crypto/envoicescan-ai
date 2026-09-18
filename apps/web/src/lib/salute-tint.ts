@@ -19,7 +19,7 @@ export const SALUTE_TINT = {
     orb1: "bg-emerald-400/15",
     orb2: "bg-emerald-400/8",
     dot: "bg-emerald-500",
-    label: "In salute",
+    label: "Completo",
   },
   giallo: {
     ring: "text-amber-500",
@@ -29,7 +29,7 @@ export const SALUTE_TINT = {
     orb1: "bg-amber-400/15",
     orb2: "bg-amber-400/8",
     dot: "bg-amber-500",
-    label: "Da completare",
+    label: "Quasi completo",
   },
   rosso: {
     ring: "text-rose-500",
@@ -39,7 +39,7 @@ export const SALUTE_TINT = {
     orb1: "bg-rose-400/15",
     orb2: "bg-rose-400/8",
     dot: "bg-rose-500",
-    label: "Dati incompleti",
+    label: "Incompleto",
   },
   grigio: {
     ring: "text-muted-foreground/40",
