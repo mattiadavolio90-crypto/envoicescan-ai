@@ -345,20 +345,27 @@ temporaneo Tailwind genera `text-positivo` / `bg-incerto/10` / `border-negativo`
 risolte nei due temi; rimosso il consumatore le classi **non esistono** (0)
 mentre i token restano definiti (6). `git diff --stat`: un solo file.
 
-### ⚠️ Vincolo misurato che la fase 2 deve rispettare
+### ⚠️ Vincolo misurato — **superato dalla fase 2.0** (18/09, sera)
 
 Testo di un token **sul fondo tinto dello stesso token** (`bg-*/10`, il pattern
-di H5, W2, C1) resta **sotto 4,5:1 in entrambi i temi**:
+di H5, W2, C1) con la prima taratura restava sotto 4,5:1 in light. La colonna
+dark di questa tabella era **mis-misurata**: lo script della fase 0 usava come
+card `#303030` (sRGB 0,188) invece della vera `--card` dark, `oklch(0.205)` =
+`#171717`. Rimisurato con la conversione verificata sui valori pubblicati da
+Tailwind (`tests/test_globals_css_contrasto.py`):
 
-| | light | dark |
-|---|---|---|
-| positivo su fondo positivo /10 | 3,95:1 | 5,66:1 |
-| negativo su fondo negativo /10 | 4,43:1 | 4,23:1 |
-| incerto su fondo incerto /10 | 4,02:1 | 6,35:1 |
+| testo sul proprio fondo /10 | light, taratura fase 0 | **light, fase 2.0** | dark (fase 0, sbagliata) | **dark, vera** |
+|---|---|---|---|---|
+| positivo | 3,95:1 | **4,71:1** (L 0,548→0,51) | 5,66:1 | 7,8:1 |
+| negativo | 4,43:1 | **4,76:1** (L 0,560→0,54) | 4,23:1 | 5,8:1 |
+| incerto | 4,02:1 | **4,60:1** (L 0,575→0,54) | 6,35:1 | 8,8:1 |
 
-**Quindi: sui fondi tinti non si usa lo stesso token per testo e fondo.** O il
-testo va su `--foreground`, o il fondo resta neutro col solo numero colorato —
-che è esattamente ciò che H5 rileva come *più leggibile nel light*.
+I tre token light sono stati **ritarati** (avevano zero consumatori: nessun
+pixel cambia) e il vincolo **sparisce**: `bg-positivo/10 text-positivo` si legge
+in entrambi i temi. Resta una regola sola, più semplice: **le tinte semantiche
+si scrivono `/10`, non `/15`** (al /15 il light torna sotto: 4,28 / 4,34 / 4,29).
+La raccomandazione di H5 (fondo neutro, solo il numero colorato) resta valida
+come scelta di design per i pannelli grandi, non più come obbligo di contrasto.
 
 ---
 
@@ -626,3 +633,115 @@ senza prima guardare — due dei suoi rilievi «più gravi» erano falsi):
 > **cambia i numeri che il cliente legge**. R8 va fatto provando l'equivalenza
 > **caso per caso**, mai con un replace globale: altrimenti un lavoro «di sole
 > parole» cambia gli importi a video.
+
+---
+
+## 12. Fase 2 — colore: regole, inventario e stato (18/09, sera)
+
+### L'inventario di oggi, col metodo dichiarato
+
+Occorrenze (non righe) di classi `prop-famiglia-tonalità[/opacità]` su
+`.ts/.tsx`, con `prop` ∈ text/bg/border/ring/from/to/via/fill/stroke/shadow/…
+Script: `scratchpad` di sessione, rieseguibile. Cifre diverse dal §1 (322/233/759)
+perché il metodo conta più proprietà (ring, from/to, fill) e non solo le righe:
+
+| Zona | file | classi | `sky` | decorativi | semantici | hex |
+|---|---|---|---|---|---|---|
+| tutto `src/` | 93 | 1.561 | 376 | 272 | 881 | 77 |
+| `(app)/workspace` + `agenda` | 11 | 250 | 92 | 62 | 88 | 0 |
+| `(app)/margini` | 8 | 201 | 65 | 41 | 92 | **44** |
+| `(app)/prezzi` | 5 | 101 | 25 | 3 | 73 | 5 |
+| `(app)/scadenziario` | 1 | 92 | 12 | 46 | 34 | 0 |
+| `(app)/catena` | 6 | 75 | 10 | 2 | 63 | 0 |
+| `(app)/analisi-fatture` | 5 | 70 | 18 | 15 | 37 | 5 |
+| `(app)/dashboard` | 5 | 63 | 5 | 2 | 56 | 0 |
+| `(app)/analisi-e-tag` | 1 | 41 | 4 | 6 | 31 | 5 |
+| `(app)/assistenza`, `notifiche`, `impostazioni`, `style-guide` | 5 | 70 | 13 | 0 | 57 | 0 |
+| `components/nav` (sidebar, su ogni pagina) | 1 | 25 | 25 | 0 | 0 | 0 |
+| `lib/` condivisi dalle pagine (`salute-tint`, `foodcost`, `catena-*`, `scadenziario`) | 5 | 77 | 1 | 2 | 74 | 0 |
+| `(app)/admin`, `components/demo`, `/m`, landing, auth — **fuori perimetro** | ~40 | ~560 | | | | |
+
+### Perimetro (deviazione dichiarata dal §7)
+
+§7 dice «solo pagine principali». Il presidio però non può avere una lista
+scritta a mano di cartelle *incluse* (marcisce): è più onesto **tutta l'app del
+cliente** meno le esclusioni decise (`admin`, `demo`, `/m`, landing, auth,
+legal). Questo porta dentro anche `assistenza`, `notifiche`, `impostazioni` e
+`style-guide` — 70 classi, stesse voci di menu delle pagine principali, e una
+*style guide* che contraddice lo stile è il documento peggiore che ci sia.
+
+### Le tre scoperte che cambiano il disegno
+
+1. **`--primary` come testo fa 2,71:1 su bianco.** Sotto ogni soglia. È il motivo
+   per cui le pagine scrivono `text-sky-700` a mano. Nuovo token
+   **`--primary-text`**: light `oklch(0.50 0.11 237.3)` (≈ sky-700, 5,9:1 su
+   bianco, ≥4,8 su card/accent/muted), dark = `--primary` (9,1:1). Regola:
+   **testo blu → `text-primary-text`; superfici/bordi/anelli/icone → `primary`;
+   fondo tinto blu → `bg-accent`** (già tarato per tema, opaco).
+2. **La tabella dark del vincolo era sbagliata** (sopra, §6-bis). Ritarati i
+   semantici light; il vincolo sparisce; resta «tinte semantiche a `/10`».
+3. **I grafici hanno bisogno di una scala, non di un arcobaleno.** Cinque serie
+   in cinque tinte (M3, `CENTRO_COLOR`, `COLORI_LINEE`) diventano una rampa del
+   brand: `--grafico-1` (= primary) · `-2` (più scuro) · `-3` (più chiaro) ·
+   `-4` (= muted-foreground) · `-5` (= foreground). Le serie **con un giudizio**
+   (netto/lordo, sopra/sotto media) usano i semantici; le linee di riferimento
+   («Media») vanno in grigio. Nei TSX si scrive `var(--grafico-2)`, mai un hex:
+   `var()` dentro le prop di recharts è già in uso nel repo (`stroke: "var(--card)"`).
+
+### Il mapping, famiglia per famiglia
+
+| Era | Diventa | Nota |
+|---|---|---|
+| `text-sky-600/700/800/900` + `dark:text-sky-400/300` | `text-primary-text` | la coppia light/dark collassa: il token porta i due temi |
+| `text-sky-400/500` (icone) | `text-primary` | se è testo leggibile → `primary-text` (verifica a mano) |
+| `bg-sky-500/8…15`, `bg-sky-50/100`, `dark:bg-sky-900/950…` | `bg-accent` | fondo tinto blu, opaco, tarato per tema |
+| `bg-sky-400/500` pieno | `bg-primary` | `hover:bg-sky-600` → `hover:bg-primary/90` |
+| `border/ring/from/shadow-sky-*[/N]` | stesso prop su `primary` | opacità conservata |
+| `focus:ring-sky-500`, `focus:border-sky-500` | `focus:ring-ring`, `focus:border-ring` | il token del focus esiste già |
+| `emerald`/`green` | `positivo` | tinte `/15` → `/10` |
+| `rose`/`red` | `negativo` | **`destructive`** se è azione pericolosa o errore di sistema (elimina, error-boundary) |
+| `amber`/`yellow` | `incerto` | anche gli avvisi: è lo stesso ruolo visivo |
+| `orange` | `incerto` se avvisa, altrimenti `primary`/grigio | decorativo nel piano, ma spesso usato come ambra |
+| `violet`/`purple`/`pink`/`blue`/`indigo`/`teal` | `primary`/`accent` o grigio, **a mano** | il colore era la sola cosa che li distingueva: dove serviva distinguere, resta la forma (grassetto, bordo) |
+| `slate`/`gray` | `muted-foreground` / `muted` / `border` | |
+| hex nei grafici | `var(--grafico-N)` / `var(--positivo)` … | `app/layout.tsx` `themeColor` resta hex: è metadata, non CSS |
+
+### Come si prova
+
+- `tests/test_globals_css_contrasto.py` — **41 test**: converte l'oklch di
+  `globals.css` in sRGB (matematica verificata su due valori pubblicati da
+  Tailwind) e misura il contrasto dei token sui fondi reali, nei due temi.
+  Provato con 6 mutanti (token schiarito, scurito, cancellato, dark che diverge).
+- Presidio di convenzione (a fine fase): nel perimetro nessuna classe di
+  palette cruda, nessun hex fra virgolette, ogni token usato è dichiarato in
+  `@theme`, nessun `text-T` insieme a `bg-T/15`. Provato per mutazione.
+- `tsc --noEmit` dopo ogni sotto-fase.
+- **A schermo, nei due temi: lo può fare solo Mattia.** Da questa sessione non si
+  può renderizzare l'app (niente Playwright, e l'unico modo di vedere le pagine
+  vere sarebbe una sessione su dati di un cliente). Ogni sotto-fase dichiara
+  cosa è stato misurato e cosa resta da guardare.
+
+### Sotto-fasi (un commit ciascuna)
+
+| # | Cosa | Stato |
+|---|---|---|
+| 2.0 | token `--primary-text`, rampa `--grafico-*`, ritaratura semantici light, test di contrasto | ✅ |
+| 2.1 | condivisi: sidebar, page-header, trigger-hint, error-boundary, `components/fatture`, `lib/*` | |
+| 2.2 | Home (`dashboard/`) | |
+| 2.3 | Ricavi e Margini (`margini/`, 44 hex) | |
+| 2.4 | Osservatorio (`prezzi/`) | |
+| 2.5 | Gestione Fatture (`scadenziario/`, 34 violet) | |
+| 2.6 | Analisi Fatture (`analisi-fatture/`) | |
+| 2.7 | Analisi e Tag | |
+| 2.8 | Agenda e Personale (`workspace/` + `agenda/`) | |
+| 2.9 | Catena | |
+| 2.10 | assistenza, notifiche, impostazioni, style-guide | |
+| 2.11 | presidio di convenzione + verbale + contatore | |
+
+### Residuo nuovo, misurato (va in coda al §11)
+
+**R9 — il bianco sui bottoni `bg-primary` fa 2,71:1 in light e 2,17:1 in dark.**
+È il kit shadcn così com'è (`--primary-foreground: oklch(1 0 0)`), su tutti i
+bottoni dell'app da sempre. Sistemarlo vuol dire scurire il blu del brand sui
+bottoni o mettere testo scuro sul blu nel dark: **è una decisione di Mattia**,
+non un fix.

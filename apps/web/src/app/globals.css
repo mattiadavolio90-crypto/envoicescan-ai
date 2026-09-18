@@ -19,6 +19,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -29,6 +30,11 @@
   --color-positivo: var(--positivo);
   --color-negativo: var(--negativo);
   --color-incerto: var(--incerto);
+  --color-grafico-1: var(--grafico-1);
+  --color-grafico-2: var(--grafico-2);
+  --color-grafico-3: var(--grafico-3);
+  --color-grafico-4: var(--grafico-4);
+  --color-grafico-5: var(--grafico-5);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -55,9 +61,16 @@
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
-    /* ONEFLUX blue #0ea5e9 */
+    /* ONEFLUX blue: sky-500 (#0ea5e9 in Tailwind v3, oklch in v4). */
     --primary: oklch(0.685 0.169 237.3);
     --primary-foreground: oklch(1 0 0);
+    /* Il blu quando e' TESTO. --primary su bianco fa 2,7:1 (misurato il
+       18/09/2026): sotto ogni soglia, ed e' il motivo per cui le pagine
+       scrivevano `text-sky-700` a mano. Questo e' quel sky-700, tarato sulla
+       tonalita' del brand: >= 4,5:1 su bianco, su --card, su --accent e su
+       --muted. Regola: testo blu -> text-primary-text; superfici, bordi,
+       anelli e icone decorative -> primary. */
+    --primary-text: oklch(0.50 0.11 237.3);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
@@ -71,13 +84,25 @@
     --accent-foreground: oklch(0.3 0.08 237.3);
     --destructive: oklch(0.577 0.245 27.325);
     /* Colori del giudizio, tarati a mano sui due temi (18/09/2026).
-       Light: contrasto >= 4.5:1 su bianco -- i valori in uso nelle pagine
-       (emerald-600 3.77:1, amber-600 3.19:1) erano sotto soglia. --negativo
-       resta distinto da --destructive: quello e' l'azione pericolosa e
-       l'errore di sistema, questo e' il dato in perdita. */
-    --positivo: oklch(0.548 0.132 163.2);
-    --negativo: oklch(0.560 0.215 17.6);
-    --incerto: oklch(0.575 0.148 58.3);
+       Light: >= 4,5:1 su bianco E sul proprio fondo tinto /10 (il pattern
+       chip/badge `bg-positivo/10 text-positivo`): i valori in uso nelle
+       pagine (emerald-600 3,77:1, amber-600 3,19:1) erano sotto soglia, e
+       la prima taratura (0.548/0.560/0.575) reggeva su bianco ma non sul
+       fondo /10 (3,95/4,43/4,02). Sul /15 restano sotto: le tinte semantiche
+       si scrivono /10. --negativo resta distinto da --destructive: quello e'
+       l'azione pericolosa e l'errore di sistema, questo e' il dato in
+       perdita. Misure in tests/test_globals_css_contrasto.py. */
+    --positivo: oklch(0.51 0.11 163.2);
+    --negativo: oklch(0.54 0.215 17.6);
+    --incerto: oklch(0.54 0.13 58.3);
+    /* Serie dei grafici: una rampa del blu piu' due grigi, non un colore per
+       serie. 1 = il brand, 2 = piu' scuro, 3 = piu' chiaro, 4-5 = grigi. Le
+       serie con un giudizio (ricavi/costi, sopra/sotto) usano i semantici. */
+    --grafico-1: var(--primary);
+    --grafico-2: oklch(0.50 0.11 237.3);
+    --grafico-3: oklch(0.82 0.09 237.3);
+    --grafico-4: var(--muted-foreground);
+    --grafico-5: var(--foreground);
     /* Bordi leggermente piu' marcati (0.922 -> 0.90) cosi' card, tab e bottoni
        hanno un contorno visibile in light: lo stato attivo si distingue meglio. */
     --border: oklch(0.90 0 0);
@@ -103,6 +128,8 @@
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.751 0.148 237.3);
     --primary-foreground: oklch(1 0 0);
+    /* Al buio il brand si legge gia' (9,1:1 su --background): un solo blu. */
+    --primary-text: oklch(0.751 0.148 237.3);
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.269 0 0);
@@ -112,10 +139,16 @@
     --destructive: oklch(0.704 0.191 22.216);
     /* Dark: luminosita' piu' alta per staccarsi dal nero, come --primary
        (0.685 -> 0.751). Sono i valori gia' scelti dalle pagine nel tema scuro
-       (emerald/rose/amber-400), che al buio sono gia' sopra soglia. */
+       (emerald/rose/amber-400): su --card (oklch 0.205 = #171717) fanno
+       9,3 / 6,7 / 10,7:1, e sul proprio fondo /10 restano sopra 5,7:1. */
     --positivo: oklch(0.773 0.153 163.2);
     --negativo: oklch(0.719 0.169 13.4);
     --incerto: oklch(0.837 0.164 84.4);
+    --grafico-1: var(--primary);
+    --grafico-2: oklch(0.60 0.12 237.3);
+    --grafico-3: oklch(0.88 0.06 237.3);
+    --grafico-4: var(--muted-foreground);
+    --grafico-5: var(--foreground);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.751 0.148 237.3);
