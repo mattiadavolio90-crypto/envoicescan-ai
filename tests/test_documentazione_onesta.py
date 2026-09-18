@@ -38,6 +38,13 @@ DOC_VIVI = [
     # lista, RETAIL_FASI.md poteva citare un simbolo o una P.IVA sbagliata senza
     # che un test lo dicesse — ed e' il documento unico di tutta l'implementazione.
     ROOT / "DOCUMENTAZIONE" / "RETAIL_FASI.md",
+    # Aggiunto alla chiusura delle fasi 0-1 della coerenza visiva (18/9/2026),
+    # per la stessa ragione di RETAIL_FASI: e' il documento unico di quella
+    # implementazione, cita decine di simboli e percorsi (ETICHETTA_INCOMPLETO,
+    # MAX_FILES_PER_UPLOAD, upload_handler.py:1028, i 4 nomi di funzione SQL del
+    # residuo R1) e le fasi 2-3 lo riscriveranno: senza presidio invecchia in
+    # silenzio, che e' cio' che questo test esiste per impedire.
+    ROOT / "scratchpad" / "piano_coerenza_visiva.md",
 ]
 
 # P.IVA reale del titolare (RECOMASYSTEM Srl, Trezzano sul Naviglio).

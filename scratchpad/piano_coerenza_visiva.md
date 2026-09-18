@@ -613,9 +613,16 @@ senza prima guardare — due dei suoi rilievi «più gravi» erano falsi):
 | R5 | **Troncamenti senza tooltip**: 109 nomi fornitore tagliati, nomi sede al 24%, colonna File. Nessun `title`, nessun `aria-label`: **il dato non è recuperabile dall'interfaccia** | Fase 3 — è il rilievo più sostanzioso dell'audit |
 | R6 | **`/m` è una seconda interfaccia** con tipografia propria fino a 9px, e il redirect sarebbe **a senso unico** | Perimetro: oggi escluso per decisione (§7) |
 | R7 | **Payload della rotta 3,2-9,2 s**: il collo di bottiglia non è il layout ma il rendering server-side | **Non è estetica**: backend, lavoro separato |
-| R8 | **Formati di numero e data incoerenti** nella stessa schermata (`38.246 €` / `3954 €` / `€8.30`; `01/01/26` / `01 set 2026`) | **Fase 1 (parole)** — è la sola voce dell'audit che appartiene a una fase già chiusa: si riapre qui o si fa in coda |
+| R8 | **Formati di numero e data incoerenti** nella stessa schermata (`38.246 €` / `3954 €` / `€8.30`; `01/01/26` / `01 set 2026`). **Causa misurata:** `lib/format.ts` si dichiara «FONTE UNICA» ed espone `formatEuro(v, decimali = 0)`, ma alcuni punti lo **scavalcano** con formattatori propri — `anteprima-fattura-dialog.tsx:123` usa `€${…toFixed(4)}` (4 decimali, **senza spazio**), `variazioni-tab.tsx:173,182,199` usa `€${…toFixed(2)}`. Non è «qualche formato storto»: è un formattatore condiviso aggirato | **Fase 1 (parole)** — la sola voce dell'audit che appartiene a una fase già chiusa: si riapre qui o si fa in coda |
 
-> **R8 merita una nota**: è l'unico residuo che sarebbe stato di competenza della
-> fase 1, chiusa il 18/09. Non è una dimenticanza di quella fase — l'audit è
-> arrivato dopo — ma se si vuole la fase 1 «completa» va fatto, non rimandato per
-> sempre.
+> **R8 merita due note.**
+>
+> **È l'unico residuo di competenza della fase 1**, chiusa il 18/09. Non è una
+> dimenticanza di quella fase — l'audit è arrivato dopo — ma se si vuole la fase 1
+> «completa» va fatto, non rimandato per sempre.
+>
+> **⚠️ Trappola già pagata** (memoria `sostituire-un-formattatore-locale-cambia-i-decimali`):
+> sostituire un `fmtEuro` locale a 2 decimali con `formatEuro` (default **0**)
+> **cambia i numeri che il cliente legge**. R8 va fatto provando l'equivalenza
+> **caso per caso**, mai con un replace globale: altrimenti un lavoro «di sole
+> parole» cambia gli importi a video.
