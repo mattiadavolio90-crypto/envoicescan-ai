@@ -96,7 +96,7 @@ function FiltroPeriodoTag({
           Personalizzato
         </button>
         {preset === "personalizzato" && dataDa && dataA && (
-          <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+          <span className="ml-2 text-xs font-medium text-primary-text">
             {fmtItDate(dataDa)} → {fmtItDate(dataA)}
           </span>
         )}
@@ -204,10 +204,10 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
             itemStyle={{ color: "var(--foreground)" }}
             contentStyle={TOOLTIP_STYLE}
           />
-          <ReferenceLine y={0} stroke="#f43f5e" strokeDasharray="4 4" strokeWidth={1.5}
-            label={{ value: "Media", position: "insideTopRight", fontSize: 10, fill: "#f43f5e", dy: -4 }} />
-          <Line type="monotone" dataKey="var_perc" stroke="#60a5fa" strokeWidth={2}
-            dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5, fill: "#60a5fa", stroke: "var(--card)", strokeWidth: 2 }} />
+          <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" strokeWidth={1.5}
+            label={{ value: "Media", position: "insideTopRight", fontSize: 10, fill: "var(--muted-foreground)", dy: -4 }} />
+          <Line type="monotone" dataKey="var_perc" stroke="var(--primary)" strokeWidth={2}
+            dot={{ r: 3, fill: "var(--primary)" }} activeDot={{ r: 5, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -681,11 +681,11 @@ function SuggestionCard({
   const isNewTag = s.suggestion_type === "new_tag";
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-card overflow-hidden">
+    <div className="rounded-xl border border-incerto/30 bg-card overflow-hidden">
       {/* Header cliccabile */}
       <button
         onClick={() => setExpanded(v => !v)}
-        className="w-full text-left px-4 py-3 hover:bg-amber-500/5 transition-colors"
+        className="w-full text-left px-4 py-3 hover:bg-incerto/5 transition-colors"
       >
         <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="min-w-0">
@@ -709,7 +709,7 @@ function SuggestionCard({
 
       {/* Dettaglio espanso */}
       {expanded && (
-        <div className="border-t border-amber-500/20 px-4 pb-4 pt-3 space-y-3">
+        <div className="border-t border-incerto/20 px-4 pb-4 pt-3 space-y-3">
           {/* Nome tag modificabile */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -811,18 +811,18 @@ function SuggerimentiBanner({
   const nascosti = filtrati.length - visibili.length;
 
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-amber-500/8 p-4 space-y-3">
+    <div className="rounded-xl border border-incerto/40 bg-incerto/8 p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <Lightbulb className="size-4 text-amber-500 shrink-0" />
-          <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+          <Lightbulb className="size-4 text-incerto shrink-0" />
+          <span className="text-sm font-semibold text-incerto">
             {suggestions.length} suggeriment{suggestions.length === 1 ? "o" : "i"} intelligent{suggestions.length === 1 ? "e" : "i"}
           </span>
         </div>
         <button
           onClick={onRefresh}
           disabled={refreshing}
-          className="p-1.5 rounded-md hover:bg-amber-500/15 transition-colors text-amber-600 dark:text-amber-400 disabled:opacity-50 shrink-0"
+          className="p-1.5 rounded-md hover:bg-incerto/10 transition-colors text-incerto disabled:opacity-50 shrink-0"
           title="Aggiorna suggerimenti"
         >
           <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
@@ -836,7 +836,7 @@ function SuggerimentiBanner({
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Cerca fra i suggerimenti…"
-            className="w-full rounded-md border border-amber-500/30 bg-background/60 pl-8 pr-3 py-1.5 text-sm"
+            className="w-full rounded-md border border-incerto/30 bg-background/60 pl-8 pr-3 py-1.5 text-sm"
           />
         </div>
       )}
@@ -854,7 +854,7 @@ function SuggerimentiBanner({
       {!query.trim() && (nascosti > 0 || mostraTutti) && (
         <button
           onClick={() => setMostraTutti(v => !v)}
-          className="w-full py-2 text-sm font-medium rounded-lg border border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+          className="w-full py-2 text-sm font-medium rounded-lg border border-incerto/30 text-incerto hover:bg-incerto/10 transition-colors"
         >
           {mostraTutti ? "Mostra solo i primi 5" : `Mostra tutti (altri ${nascosti})`}
         </button>
@@ -1122,7 +1122,7 @@ export function AnalisiETagClient({
           disabled={refreshingSuggestions}
           className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium border transition-all disabled:opacity-60 ml-auto ${
             suggestions.length > 0
-              ? "bg-amber-500/15 border-amber-500/50 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25"
+              ? "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10"
               : "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
           }`}
           title="Analizza prodotti non taggati e trova suggerimenti"
@@ -1134,7 +1134,7 @@ export function AnalisiETagClient({
           {refreshingSuggestions
             ? "Analisi in corso…"
             : suggestions.length > 0
-              ? <><span className="inline-flex items-center justify-center size-5 rounded-full bg-amber-500 text-white text-[10px] font-bold">{suggestions.length}</span> Suggerimenti</>
+              ? <><span className="inline-flex items-center justify-center size-5 rounded-full bg-incerto text-white text-[10px] font-bold">{suggestions.length}</span> Suggerimenti</>
               : "Suggerimenti"
           }
         </button>
@@ -1188,7 +1188,7 @@ export function AnalisiETagClient({
                   <button
                     onClick={() => deleteTag(selectedTag.id)}
                     disabled={deletingId === selectedTag.id}
-                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-negativo text-white hover:bg-negativo disabled:opacity-50 transition-colors"
                   >
                     {deletingId === selectedTag.id ? "…" : "Conferma eliminazione"}
                   </button>
@@ -1202,7 +1202,7 @@ export function AnalisiETagClient({
               ) : (
                 <button
                   onClick={() => setDeleteConfirm(selectedTag.id)}
-                  className="p-1.5 text-xs rounded-md border border-border text-muted-foreground hover:text-rose-600 hover:border-rose-300 transition-colors"
+                  className="p-1.5 text-xs rounded-md border border-border text-muted-foreground hover:text-negativo hover:border-negativo/30 transition-colors"
                   title="Elimina tag"
                 >
                   <Trash2 className="size-3.5" />
@@ -1241,11 +1241,11 @@ export function AnalisiETagClient({
           )}
           {!loadingAnalisi && analisi?.vuoto === false && kpi && (
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <KpiCard label="Totale spesa" value={fmtEuro(kpi.spesa_totale)} tone="border-sky-500/40 hover:border-sky-500/70" />
-              <KpiCard label={kpi.quantita_label} value={kpi.quantita_norm_totale.toLocaleString("it-IT", { maximumFractionDigits: 1 })} tone="border-violet-500/40 hover:border-violet-500/70" />
-              <KpiCard label={kpi.prezzo_label} value={kpi.prezzo_medio_ponderato != null ? fmtEuro(kpi.prezzo_medio_ponderato) : "—"} tone="border-emerald-500/40 hover:border-emerald-500/70" />
-              <KpiCard label="Fornitori" value={String(kpi.num_fornitori)} tone="border-orange-500/40 hover:border-orange-500/70" />
-              <KpiCard label="Fatture" value={String(kpi.num_fatture)} tone="border-pink-500/40 hover:border-pink-500/70" />
+              <KpiCard label="Totale spesa" value={fmtEuro(kpi.spesa_totale)} tone="border-primary/40 hover:border-primary/70" />
+              <KpiCard label={kpi.quantita_label} value={kpi.quantita_norm_totale.toLocaleString("it-IT", { maximumFractionDigits: 1 })} tone="border-border hover:border-muted-foreground/40" />
+              <KpiCard label={kpi.prezzo_label} value={kpi.prezzo_medio_ponderato != null ? fmtEuro(kpi.prezzo_medio_ponderato) : "—"} tone="border-border hover:border-muted-foreground/40" />
+              <KpiCard label="Fornitori" value={String(kpi.num_fornitori)} tone="border-border hover:border-muted-foreground/40" />
+              <KpiCard label="Fatture" value={String(kpi.num_fatture)} tone="border-border hover:border-muted-foreground/40" />
             </div>
           )}
           {!loadingAnalisi && analisi?.vuoto === false && kpi?.unita_dominante && (kpi.spesa_esclusa_mix ?? 0) !== 0 && (
@@ -1339,7 +1339,7 @@ export function AnalisiETagClient({
                             <td className="px-4 py-2.5 text-right tabular-nums">{fmtEuro(f.spesa_totale)}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{f.num_acquisti}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{f.prezzo_medio != null ? fmtEuro(f.prezzo_medio) : "—"}</td>
-                            <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${f.delta_pct > 5 ? "text-rose-600" : f.delta_pct < -5 ? "text-emerald-600" : "text-muted-foreground"}`}>
+                            <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${f.delta_pct > 5 ? "text-negativo" : f.delta_pct < -5 ? "text-positivo" : "text-muted-foreground"}`}>
                               {fmtPct(f.delta_pct, true)}
                             </td>
                             <td className="px-4 py-2.5 text-right">
@@ -1404,7 +1404,7 @@ export function AnalisiETagClient({
                     <button
                       onClick={() => removeProdotto(p.id)}
                       disabled={removingId === p.id}
-                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-rose-600 disabled:opacity-50 transition-colors"
+                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-negativo disabled:opacity-50 transition-colors"
                       title="Rimuovi"
                     >
                       {removingId === p.id ? <RefreshCw className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
