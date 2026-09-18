@@ -423,7 +423,7 @@ function SaluteGruppoCard({
                       // parziali), quindi NON lo affianchiamo a un margine% che darebbe
                       // l'illusione di due numeri attendibili. Il dettaglio di cosa manca
                       // vive in "Da vedere nella catena" — un solo posto per quell'info.
-                      <span className="min-w-0 truncate text-xs text-muted-foreground/60">dati incompleti</span>
+                      <span className="min-w-0 truncate text-xs text-muted-foreground/60">incompleto</span>
                     ) : r && r.margine_perc != null ? (
                       <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
                         margine {pct(r.margine_perc)}

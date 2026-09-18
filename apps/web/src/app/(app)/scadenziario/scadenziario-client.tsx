@@ -194,7 +194,7 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
           )}
           {doc.oscurata && (
             <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
-              fuori dai conti
+              esclusa da te
             </span>
           )}
           {mostraScadenze && <ScadenzaBadge source={doc.scadenza_source} />}

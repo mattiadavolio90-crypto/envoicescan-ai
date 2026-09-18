@@ -884,8 +884,10 @@ function AnalisiVisiva({
               // Il match e' sul nome che manda /api/margini/analisi (margini.py:1209-1213),
               // non sull'etichetta a video: il gauge si chiamava "Costi Gestione" e
               // cercava se stesso mentre il worker manda "Spese Generali", restando
-              // senza emoji ne commento. Dal 16/09/2026 label e kpiNome coincidono,
-              // ma il match resta sul nome del worker: e' quello il contratto.
+              // senza emoji ne commento. Dal 18/09/2026 label e kpiNome NON coincidono
+              // piu' per primo_margine (a video "Margine F&B", chiave "1° Margine"):
+              // il match resta sul nome del worker, e' quello il contratto. Rinominare
+              // kpiNome per allinearlo all'etichetta spegne emoji e commento.
               const commento = commentoPerKpi(data.commenti, g.kpiNome);
               return (
                 <div key={g.label} className="flex items-center gap-6 py-5">

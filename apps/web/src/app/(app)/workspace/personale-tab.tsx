@@ -1535,7 +1535,7 @@ export function PersonaleTab() {
                 <div className="flex items-end justify-between gap-2">
                   <p className="text-4xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none">{fmtOreDisplay(oreStdTotale)}</p>
                   <p className="text-4xl font-black tabular-nums text-green-600 dark:text-green-500 leading-none text-right">
-                    {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-green-600/30">—</span>}
+                    {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-base font-semibold text-green-600/60 dark:text-green-500/60">Paghe non inserite</span>}
                   </p>
                 </div>
               </CardContent>
@@ -1551,7 +1551,7 @@ export function PersonaleTab() {
                 <div className="flex items-end justify-between gap-2">
                   <p className="text-4xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none">{fmtOreDisplay(oreExtTotale)}</p>
                   <p className="text-4xl font-black tabular-nums text-amber-600 dark:text-amber-500 leading-none text-right">
-                    {costoExtTotale > 0 ? fmtEuro(costoExtTotale) : <span className="text-amber-600/30">—</span>}
+                    {costoExtTotale > 0 ? fmtEuro(costoExtTotale) : <span className="text-base font-semibold text-amber-600/60 dark:text-amber-500/60">Paghe non inserite</span>}
                   </p>
                 </div>
               </CardContent>
@@ -1567,10 +1567,11 @@ export function PersonaleTab() {
                 <div className="flex items-end justify-between gap-2">
                   <p className="text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtOreDisplay(totaleOre)}</p>
                   <p className="text-4xl font-black tabular-nums text-sky-600 dark:text-sky-400 leading-none text-right">
-                    {/* Senza paghe inserite il costo e' 0: fino al 18/09/2026 la card
-                        ripiegava sulla media di ore al giorno, cioe' mostrava delle ORE
-                        sotto l'etichetta "Costo totale". Meglio dire che manca il dato:
-                        le altre due card gia' mostrano "—" nello stesso caso. */}
+                    {/* Senza paghe inserite il costo e' 0: fino al 18/09/2026 questa
+                        card ripiegava sulla media di ore al giorno, cioe' mostrava delle
+                        ORE sotto l'etichetta "Costo totale". Ora dice che manca il dato,
+                        e lo dicono tutte e tre allo stesso modo: prima le altre due
+                        mostravano "—", che non spiegava perche' l'importo non c'era. */}
                     {costoTotale > 0
                       ? fmtEuro(costoTotale)
                       : <span className="text-base font-semibold text-sky-600/60 dark:text-sky-400/60">Paghe non inserite</span>

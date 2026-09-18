@@ -25,7 +25,7 @@ import { slugPeriodo } from "@/lib/catena-tag";
  */
 export type ColonnaExport = { key: keyof MarginiCopertiPV; label: string };
 
-export const CELLA_DATI_INCOMPLETI = "dati incompleti";
+export const CELLA_DATI_INCOMPLETI = "Incompleto";
 export const CELLA_VUOTA = "—";
 
 /**

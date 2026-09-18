@@ -67,11 +67,11 @@ def test_riga_export_margini_dati_incompleti_nasconde_ogni_numero():
     )
     assert r == {
         "Punto vendita": "Centro",
-        "Margine %": "dati incompleti",
-        "Fatturato": "dati incompleti",
-        "Coperti": "dati incompleti",
-        "Scontrino medio": "dati incompleti",
-        "€ materia prima / coperto": "dati incompleti",
+        "Margine %": "Incompleto",
+        "Fatturato": "Incompleto",
+        "Coperti": "Incompleto",
+        "Scontrino medio": "Incompleto",
+        "€ materia prima / coperto": "Incompleto",
     }
 
 
@@ -118,7 +118,7 @@ def test_riga_export_margini_incompleti_prevale_su_null():
         "emit(m.rigaExportMargini(input.r, input.c));",
         {"r": _pv(dati_incompleti=True, margine_perc=None), "c": COLS},
     )
-    assert r["Margine %"] == "dati incompleti"
+    assert r["Margine %"] == "Incompleto"
 
 
 # ─── Riga gruppo e qualificazione "(parziale)" ──────────────────────────────
@@ -154,7 +154,7 @@ def test_riga_gruppo_non_qualifica_una_cella_dati_incompleti():
         "emit(m.rigaExportGruppo(input.r, input.c, 3));",
         {"r": _pv(dati_incompleti=True), "c": COLS},
     )
-    assert r["Margine %"] == "dati incompleti"
+    assert r["Margine %"] == "Incompleto"
 
 
 def test_riga_gruppo_qualifica_anche_un_margine_zero():
@@ -517,7 +517,7 @@ def test_costanti_esposte_coerenti_con_le_celle():
     v = _esegui(
         "emit({ inc: m.CELLA_DATI_INCOMPLETI, vuota: m.CELLA_VUOTA, max: m.MAX_NOME_FOGLIO });"
     )
-    assert v == {"inc": "dati incompleti", "vuota": "—", "max": 31}
+    assert v == {"inc": "Incompleto", "vuota": "—", "max": 31}
 
 
 # ─── Lacune chiuse dopo la mutazione (1/9) ──────────────────────────────────
@@ -618,7 +618,7 @@ def test_ogni_riga_ha_tutte_le_colonne_dell_header():
             "in Excel le celle slitterebbero"
         )
     assert r["gruppo"]["Margine %"] == "11.7 (parziale)"
-    assert r["rows"][1]["Fatturato"] == "dati incompleti"
+    assert r["rows"][1]["Fatturato"] == "Incompleto"
 
 
 def test_ogni_riga_pivot_ha_tutte_le_colonne_dell_header():

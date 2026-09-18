@@ -824,7 +824,7 @@ function RigheArticolo({
         <tr className="text-muted-foreground border-b">
           <th className="text-left py-1 pr-4 font-medium">Data</th>
           <th className="text-left py-1 pr-4 font-medium">Fornitore</th>
-          <th className="text-right py-1 pr-4 font-medium">Q.tà</th>
+          <th className="text-right py-1 pr-4 font-medium">Quantità</th>
           <th className="text-right py-1 pr-4 font-medium">€ unit.</th>
           <th className="text-right py-1 pr-6 font-medium">Totale</th>
           <th className="text-left py-1 pr-4 font-medium whitespace-nowrap">N° fattura</th>
