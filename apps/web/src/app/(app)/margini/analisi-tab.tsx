@@ -67,12 +67,14 @@ type AnalisiAvanzataResponse = {
   mesi_con_dati: number[];
 };
 
+// I centri sono categorie, non giudizi: una scala del blu piu' due grigi
+// (globals.css, --grafico-*), non un colore per centro.
 const CENTRO_COLOR: Record<string, string> = {
-  FOOD: "#f97316",
-  BEVERAGE: "#0ea5e9",
-  ALCOLICI: "#a855f7",
-  DOLCI: "#ec4899",
-  SHOP: "#64748b",
+  FOOD: "var(--grafico-1)",
+  BEVERAGE: "var(--grafico-2)",
+  ALCOLICI: "var(--grafico-3)",
+  DOLCI: "var(--grafico-4)",
+  SHOP: "var(--grafico-5)",
 };
 
 const CENTRI_FATT = ["FOOD", "BEVERAGE", "ALCOLICI", "DOLCI"] as const;
@@ -270,12 +272,12 @@ function RipartizioneDialog({
                 })}
               </div>
               <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold ${
-                valid ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
-                : totale > netto ? "border-rose-500/40 bg-rose-500/5 text-rose-700 dark:text-rose-400"
-                : "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                valid ? "border-positivo/40 bg-positivo/5 text-positivo"
+                : totale > netto ? "border-negativo/40 bg-negativo/5 text-negativo"
+                : "border-incerto/40 bg-incerto/5 text-incerto"
               }`}>
                 <div className="flex-1 bg-muted/50 rounded-full h-2 overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${netto > 0 ? Math.min((totale / netto) * 100, 100) : 0}%`, backgroundColor: valid ? "#22c55e" : totale > netto ? "#ef4444" : "#f59e0b" }} />
+                  <div className="h-full rounded-full transition-all" style={{ width: `${netto > 0 ? Math.min((totale / netto) * 100, 100) : 0}%`, backgroundColor: valid ? "var(--positivo)" : totale > netto ? "var(--negativo)" : "var(--incerto)" }} />
                 </div>
                 <span className="shrink-0 tabular-nums">
                   {mode === "euro" ? `${formatEuro(totale)} / ${formatEuro(netto)}` : `${netto > 0 ? ((totale / netto) * 100).toFixed(1) : "0.0"}% / 100%`}
@@ -433,7 +435,7 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
           mese={meseRef}
           meseLabel={meseLabelRef}
           centro={dettaglioCentroSel ?? centroDettaglio.centro}
-          color={CENTRO_COLOR[dettaglioCentroSel ?? centroDettaglio.centro] ?? "#94a3b8"}
+          color={CENTRO_COLOR[dettaglioCentroSel ?? centroDettaglio.centro] ?? "var(--grafico-4)"}
           centri={centriFatturato}
           onCentroChange={(c) => setDettaglioCentroSel(c)}
           onClose={() => setDettaglioOpen(false)}
@@ -508,15 +510,15 @@ function MiniBar({ pct, color, opacity = 0.75 }: { pct: number; color: string; o
 
 function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: CentroDetailItem[] }) {
   const [expanded, setExpanded] = useState(false);
-  const color = CENTRO_COLOR[centro.centro] ?? "#94a3b8";
+  const color = CENTRO_COLOR[centro.centro] ?? "var(--grafico-4)";
 
   const fc = centro.incidenza_su_fatt;
-  const incidenzaColor = !centro.has_fatturato ? "text-muted-foreground" : "text-sky-600 dark:text-sky-400";
+  const incidenzaColor = !centro.has_fatturato ? "text-muted-foreground" : "text-primary-text";
 
   const margineColor =
     !centro.has_fatturato ? "text-muted-foreground"
-    : centro.margine >= 0 ? "text-emerald-600 dark:text-emerald-400"
-    : "text-rose-600 dark:text-rose-400";
+    : centro.margine >= 0 ? "text-positivo"
+    : "text-negativo";
 
   // Massimi tra tutti i centri per normalizzare le barre dell'header
   const maxCosto = Math.max(1, ...totali.map((c) => c.costo_totale));
@@ -541,13 +543,13 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
             {/* Costo F&B */}
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Costo F&B</p>
-              <p className="text-lg font-bold tabular-nums text-orange-600 dark:text-orange-400">
+              <p className="text-lg font-bold tabular-nums text-foreground">
                 {formatEuroCompact(centro.costo_totale)}
               </p>
-              <p className="text-[11px] tabular-nums text-orange-500/70 dark:text-orange-400/60 mt-0.5">
+              <p className="text-[11px] tabular-nums text-muted-foreground mt-0.5">
                 {centro.incidenza_su_fb.toFixed(1)}% su tot. F&B
               </p>
-              <MiniBar pct={(centro.costo_totale / maxCosto) * 100} color="#f97316" />
+              <MiniBar pct={(centro.costo_totale / maxCosto) * 100} color="var(--grafico-2)" />
             </div>
             {/* Incidenza */}
             <div>
@@ -556,7 +558,7 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
                 {centro.has_fatturato ? `${fc.toFixed(1)}%` : "—"}
               </p>
               {centro.has_fatturato
-                ? <MiniBar pct={fc} color="#0ea5e9" />
+                ? <MiniBar pct={fc} color="var(--grafico-1)" />
                 : <div className="h-1.5 mt-1" />}
             </div>
             {/* Margine */}
@@ -566,7 +568,7 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
                 {centro.has_fatturato ? formatEuroCompact(centro.margine) : "—"}
               </p>
               {centro.has_fatturato
-                ? <MiniBar pct={(Math.abs(centro.margine) / maxMargine) * 100} color={centro.margine >= 0 ? "#22c55e" : "#ef4444"} opacity={0.9} />
+                ? <MiniBar pct={(Math.abs(centro.margine) / maxMargine) * 100} color={centro.margine >= 0 ? "var(--positivo)" : "var(--negativo)"} opacity={0.9} />
                 : <div className="h-1.5 mt-1" />}
             </div>
           </div>
@@ -597,25 +599,25 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
               <div className="flex-1 grid grid-cols-3 gap-6 items-start">
                 {/* Col 1: costo + % su costo centro + barra */}
                 <div className="text-right">
-                  <p className="text-sm font-semibold tabular-nums text-orange-600 dark:text-orange-400">
+                  <p className="text-sm font-semibold tabular-nums text-foreground">
                     {formatEuroCompact(cat.costo)}
                   </p>
-                  <p className="text-[10px] tabular-nums text-orange-500/70 dark:text-orange-400/60">
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
                     {centro.costo_totale > 0 ? `${((cat.costo / centro.costo_totale) * 100).toFixed(1)}%` : "—"}
                   </p>
-                  <MiniBar pct={(cat.costo / maxCatCosto) * 100} color="#f97316" opacity={0.6} />
+                  <MiniBar pct={(cat.costo / maxCatCosto) * 100} color="var(--grafico-2)" opacity={0.6} />
                 </div>
                 {/* Col 2: % su centro + barra blu */}
                 <div className="text-right">
-                  <p className="text-sm tabular-nums text-sky-600 dark:text-sky-400">
+                  <p className="text-sm tabular-nums text-primary-text">
                     {cat.pct_su_centro.toFixed(1)}%
                   </p>
-                  <MiniBar pct={cat.pct_su_centro} color="#0ea5e9" opacity={0.65} />
+                  <MiniBar pct={cat.pct_su_centro} color="var(--grafico-1)" opacity={0.65} />
                 </div>
                 {/* Col 3: peso % sul centro — verde/rosso per semaforo */}
                 {(() => {
                   const peso = centro.costo_totale > 0 ? (cat.costo / centro.costo_totale) * 100 : 0;
-                  const pesoColor = { text: "text-emerald-600 dark:text-emerald-400", bar: "#22c55e" };
+                  const pesoColor = { text: "text-positivo", bar: "var(--positivo)" };
                   return (
                     <div className="text-right">
                       <p className={`text-sm tabular-nums ${pesoColor.text}`}>
@@ -639,7 +641,7 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
    GRAFICI
    ──────────────────────────────────────────────────────────────────────────── */
 function CentriDonutChart({ centri }: { centri: CentroDetailItem[] }) {
-  const chartData = centri.map((c) => ({ name: c.centro, value: c.costo_totale, fill: CENTRO_COLOR[c.centro] ?? "#94a3b8" }));
+  const chartData = centri.map((c) => ({ name: c.centro, value: c.costo_totale, fill: CENTRO_COLOR[c.centro] ?? "var(--grafico-4)" }));
   if (chartData.length === 0) return <p className="text-sm text-muted-foreground py-8 text-center">Nessun costo nel periodo</p>;
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -752,7 +754,7 @@ function DettaglioCentroDialog({
           {/* Selettore centro */}
           <div className="flex flex-wrap gap-1.5 mt-3">
             {centri.map((c) => {
-              const cColor = CENTRO_COLOR[c.centro] ?? "#94a3b8";
+              const cColor = CENTRO_COLOR[c.centro] ?? "var(--grafico-4)";
               const active = c.centro === centro;
               return (
                 <button
@@ -828,18 +830,18 @@ function DettaglioCentroDialog({
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatBox label="Giorni compilati" value={`${compilati.length} / ${giorni.length}`} />
-                <StatBox label="Media giornaliera" value={formatEuro(media)} color="text-sky-600 dark:text-sky-400" />
+                <StatBox label="Media giornaliera" value={formatEuro(media)} color="text-primary-text" />
                 <StatBox
                   label="Giorno migliore"
                   value={migliore ? formatEuro(migliore.fatturato) : "—"}
                   sub={migliore ? `${parseInt(migliore.data.slice(8), 10)} ${meseLabel}` : undefined}
-                  color="text-emerald-600 dark:text-emerald-400"
+                  color="text-positivo"
                 />
                 <StatBox
                   label="Giorno peggiore"
                   value={peggiore ? formatEuro(peggiore.fatturato) : "—"}
                   sub={peggiore ? `${parseInt(peggiore.data.slice(8), 10)} ${meseLabel}` : undefined}
-                  color="text-rose-600 dark:text-rose-400"
+                  color="text-negativo"
                 />
               </div>
             </>
@@ -895,7 +897,7 @@ function AndamentoLineChart({ andamento, centri, mode }: { andamento: AndamentoM
         />
         <Legend wrapperStyle={{ fontSize: 12, color: "var(--foreground)" }} iconType="circle" />
         {centriAttivi.map((centro) => (
-          <Line key={centro} type="monotone" dataKey={centro} stroke={CENTRO_COLOR[centro] ?? "#94a3b8"} strokeWidth={2} dot={{ r: 3, fill: CENTRO_COLOR[centro] ?? "#94a3b8" }} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} name={centro} />
+          <Line key={centro} type="monotone" dataKey={centro} stroke={CENTRO_COLOR[centro] ?? "var(--grafico-4)"} strokeWidth={2} dot={{ r: 3, fill: CENTRO_COLOR[centro] ?? "var(--grafico-4)" }} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} name={centro} />
         ))}
       </LineChart>
     </ResponsiveContainer>

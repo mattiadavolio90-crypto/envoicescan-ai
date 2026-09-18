@@ -88,7 +88,7 @@ export function FiltriPeriodo({ presetCorrente, dataDa, dataA, meseSelezionato }
           <Settings2 className="size-3" />
           Personalizzato
         </button>
-        <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+        <span className="ml-2 text-xs font-medium text-primary-text">
           {formatData(dataDa)} → {formatData(dataA)}
         </span>
       </div>

@@ -184,27 +184,23 @@ export function CopertiTab({ dataDa, dataA }: Props) {
           value={fmtInt(k.coperti_totali)}
           delta={k.delta_coperti_pct}
           deltaLabel={k.confronto_label}
-          accent="sky"
         />
         <KpiCard
           icon={<CalendarDays className="size-4" />}
           label="Media / giorno"
           value={k.coperti_medi_giorno != null ? fmtInt(k.coperti_medi_giorno) : "—"}
-          accent="violet"
         />
         <KpiCard
           icon={<Receipt className="size-4" />}
           label="Scontrino medio"
           value={k.scontrino_medio_netto != null ? formatEuro(k.scontrino_medio_netto) : "—"}
           sub={k.scontrino_medio_lordo != null ? `${formatEuro(k.scontrino_medio_lordo)} lordo` : undefined}
-          accent="emerald"
         />
         <KpiCard
           icon={<Trophy className="size-4" />}
           label="Giorno più pieno"
           value={k.giorno_top ? `${fmtInt(k.giorno_top.coperti)}` : "—"}
           sub={k.giorno_top ? formatDataBreve(k.giorno_top.data) : undefined}
-          accent="amber"
         />
       </div>
 
@@ -225,13 +221,13 @@ export function CopertiTab({ dataDa, dataA }: Props) {
                   const isCur = m.anno === ANNO_MESE_CORRENTE.anno && m.mese === ANNO_MESE_CORRENTE.mese;
                   return (
                     <th key={`${m.anno}-${m.mese}`}
-                      className={`text-right px-3 py-2.5 font-semibold ${isCur ? "text-sky-500 dark:text-sky-400 border-l border-r border-sky-500/50" : "border-r border-border"}`}>
-                      {isCur && <span className="mr-1 inline-block size-1.5 rounded-full bg-sky-400 align-middle" />}
+                      className={`text-right px-3 py-2.5 font-semibold ${isCur ? "text-primary-text border-l border-r border-primary/50" : "border-r border-border"}`}>
+                      {isCur && <span className="mr-1 inline-block size-1.5 rounded-full bg-primary align-middle" />}
                       {m.label}
                     </th>
                   );
                 })}
-                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500 text-sky-800 dark:text-sky-400">
+                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-primary text-primary-text">
                   {isMedia ? "Media" : "Totale"}
                 </th>
               </tr>
@@ -240,14 +236,14 @@ export function CopertiTab({ dataDa, dataA }: Props) {
               <MeseRow label="Coperti" mesi={mesiVisibili}
                 value={(m) => fmtInt(m.coperti)}
                 total={fmtInt(aggregaCoperti(mesiVisibili, isMedia, numMesiAttivi))}
-                metric color="text-sky-600 dark:text-sky-400" />
+                metric color="text-primary-text" />
               <MeseRow label="Ricavi netti" mesi={mesiVisibili}
                 value={(m) => m.ricavi_netto > 0 ? formatEuro(m.ricavi_netto) : "—"}
                 total={formatEuro(aggregaRicavi(mesiVisibili, isMedia, numMesiAttivi))} />
               <MeseRow label="Scontrino medio (netto)" mesi={mesiVisibili}
                 value={(m) => m.scontrino_medio_netto != null ? formatEuro(m.scontrino_medio_netto) : "—"}
                 total={k.scontrino_medio_netto != null ? formatEuro(k.scontrino_medio_netto) : "—"}
-                metric color="text-emerald-600 dark:text-emerald-400" />
+                metric color="text-primary-text" />
               <MeseRow label="Scontrino medio (lordo)" mesi={mesiVisibili}
                 value={(m) => m.scontrino_medio_lordo != null ? formatEuro(m.scontrino_medio_lordo) : "—"}
                 total={k.scontrino_medio_lordo != null ? formatEuro(k.scontrino_medio_lordo) : "—"}
@@ -262,12 +258,12 @@ export function CopertiTab({ dataDa, dataA }: Props) {
         {mesiVisibili.map((m) => {
           const isCur = m.anno === ANNO_MESE_CORRENTE.anno && m.mese === ANNO_MESE_CORRENTE.mese;
           return (
-            <div key={`${m.anno}-${m.mese}`} className={`rounded-lg border bg-card p-3 ${isCur ? "border-sky-500/50" : "border-border"}`}>
+            <div key={`${m.anno}-${m.mese}`} className={`rounded-lg border bg-card p-3 ${isCur ? "border-primary/50" : "border-border"}`}>
               <p className="text-sm font-semibold mb-2">{m.label}</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <Stat label="Coperti" value={fmtInt(m.coperti)} color="text-sky-600 dark:text-sky-400" />
+                <Stat label="Coperti" value={fmtInt(m.coperti)} color="text-primary-text" />
                 <Stat label="Ricavi netti" value={m.ricavi_netto > 0 ? formatEuro(m.ricavi_netto) : "—"} />
-                <Stat label="Scontrino netto" value={m.scontrino_medio_netto != null ? formatEuro(m.scontrino_medio_netto) : "—"} color="text-emerald-600 dark:text-emerald-400" />
+                <Stat label="Scontrino netto" value={m.scontrino_medio_netto != null ? formatEuro(m.scontrino_medio_netto) : "—"} color="text-primary-text" />
                 <Stat label="Scontrino lordo" value={m.scontrino_medio_lordo != null ? formatEuro(m.scontrino_medio_lordo) : "—"} />
               </div>
             </div>
@@ -315,7 +311,7 @@ function EfficienzaSection({
     <div className="rounded-lg border border-border bg-card p-4 space-y-4">
       <div className="flex items-start gap-2">
         <h3 className="text-base font-semibold flex items-center gap-1.5">
-          <Sprout className="size-4 text-emerald-500" />
+          <Sprout className="size-4 text-primary" />
           Efficienza materia prima
         </h3>
         <InfoPopover title="Cos'è e come leggerla">
@@ -349,11 +345,11 @@ function EfficienzaSection({
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
               Costo materia prima / coperto
             </p>
-            <p className="text-2xl font-bold tabular-nums mt-1 text-emerald-600 dark:text-emerald-400">
+            <p className="text-2xl font-bold tabular-nums mt-1 text-primary-text">
               {kpi.costo_fb_per_coperto != null ? formatEuro(kpi.costo_fb_per_coperto) : "—"}
             </p>
             {delta != null && (
-              <p className={`text-xs mt-1 flex items-center gap-0.5 ${deltaBuono ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+              <p className={`text-xs mt-1 flex items-center gap-0.5 ${deltaBuono ? "text-positivo" : "text-negativo"}`}>
                 {deltaBuono ? <TrendingDown className="size-3" /> : <TrendingUp className="size-3" />}
                 {delta >= 0 ? "+" : ""}{delta}% nel periodo
               </p>
@@ -384,14 +380,14 @@ function EfficienzaSection({
                   labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
                   itemStyle={{ color: "var(--foreground)" }}
                 />
-                <Line type="monotone" dataKey="fbPerCoperto" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} name="fbPerCoperto" />
-                <Line type="monotone" dataKey="scontrino" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="scontrino" />
+                <Line type="monotone" dataKey="fbPerCoperto" stroke="var(--grafico-1)" strokeWidth={2} dot={{ r: 3 }} name="fbPerCoperto" />
+                <Line type="monotone" dataKey="scontrino" stroke="var(--grafico-2)" strokeWidth={2} dot={{ r: 3 }} name="scontrino" />
               </LineChart>
             </ResponsiveContainer>
           )}
           <div className="flex items-center justify-center gap-4 mt-2 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-orange-500" /> Materia prima/coperto</span>
-            <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-emerald-500" /> Scontrino medio</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-grafico-1" /> Materia prima/coperto</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-grafico-2" /> Scontrino medio</span>
           </div>
         </div>
       </div>
@@ -419,12 +415,12 @@ function MeseRow({
         const isCur = m.anno === ANNO_MESE_CORRENTE.anno && m.mese === ANNO_MESE_CORRENTE.mese;
         return (
           <td key={`${m.anno}-${m.mese}`}
-            className={`text-right px-3 py-2 tabular-nums ${isCur ? "border-l border-r border-sky-500/50" : "border-r border-border"} ${color ?? ""}`}>
+            className={`text-right px-3 py-2 tabular-nums ${isCur ? "border-l border-r border-primary/50" : "border-r border-border"} ${color ?? ""}`}>
             {value(m)}
           </td>
         );
       })}
-      <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-r border-sky-500 ${color ?? "text-sky-600 dark:text-sky-400"}`}>
+      <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-r border-primary ${color ?? "text-primary-text"}`}>
         {total}
       </td>
     </tr>
@@ -441,15 +437,8 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
 }
 
 /* ─── Card KPI ────────────────────────────────────────────────────────────── */
-const ACCENTS: Record<string, string> = {
-  sky: "text-sky-600 dark:text-sky-400",
-  violet: "text-violet-600 dark:text-violet-400",
-  emerald: "text-emerald-600 dark:text-emerald-400",
-  amber: "text-amber-600 dark:text-amber-400",
-};
-
 function KpiCard({
-  icon, label, value, sub, delta, deltaLabel, accent = "sky",
+  icon, label, value, sub, delta, deltaLabel,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -457,17 +446,16 @@ function KpiCard({
   sub?: string;
   delta?: number | null;
   deltaLabel?: string;
-  accent?: string;
 }) {
   return (
     <div className="rounded-lg border border-border bg-card p-3">
-      <div className={`flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-medium ${ACCENTS[accent]}`}>
+      <div className={`flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-medium text-muted-foreground`}>
         {icon}{label}
       </div>
       <p className="text-xl font-bold tabular-nums mt-1.5">{value}</p>
       {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
       {delta != null && (
-        <p className={`text-[11px] mt-0.5 flex items-center gap-0.5 ${delta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+        <p className={`text-[11px] mt-0.5 flex items-center gap-0.5 ${delta >= 0 ? "text-positivo" : "text-negativo"}`}>
           {delta >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
           {delta >= 0 ? "+" : ""}{delta}% {deltaLabel}
         </p>
@@ -485,7 +473,7 @@ function MediaPerDowChart({ media }: { media: (number | null)[] }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-3">
-        <CalendarDays className="size-4 text-violet-500" />
+        <CalendarDays className="size-4 text-primary" />
         Media coperti per giorno settimana
       </h3>
       {!hasAny ? (
@@ -505,7 +493,7 @@ function MediaPerDowChart({ media }: { media: (number | null)[] }) {
             />
             <Bar dataKey="media" radius={[3, 3, 0, 0]} maxBarSize={40}>
               {chartData.map((d, i) => (
-                <RCell key={i} fill={d.media >= maxV * 0.85 ? "#8b5cf6" : "#a78bfa"} opacity={d.has ? 0.9 : 0.2} />
+                <RCell key={i} fill={d.media >= maxV * 0.85 ? "var(--grafico-1)" : "var(--grafico-3)"} opacity={d.has ? 0.9 : 0.2} />
               ))}
             </Bar>
           </BarChart>
@@ -524,7 +512,7 @@ function TrendScontrinoChart({ mesi }: { mesi: CopertiMese[] }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-3">
-        <Receipt className="size-4 text-emerald-500" />
+        <Receipt className="size-4 text-primary" />
         Trend scontrino medio
       </h3>
       {chartData.length < 2 ? (
@@ -543,8 +531,8 @@ function TrendScontrinoChart({ mesi }: { mesi: CopertiMese[] }) {
               labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
               itemStyle={{ color: "var(--foreground)" }}
             />
-            <Line type="monotone" dataKey="netto" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="lordo" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+            <Line type="monotone" dataKey="netto" stroke="var(--grafico-1)" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="lordo" stroke="var(--grafico-4)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
           </LineChart>
         </ResponsiveContainer>
       )}
@@ -589,7 +577,7 @@ function CopertiCategorieDialog({
         <DialogHeader className="px-6 pt-5 pb-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between gap-4">
             <DialogTitle className="flex items-center gap-2 text-base">
-              <Sprout className="size-4 text-emerald-500" />
+              <Sprout className="size-4 text-primary" />
               Costo materia prima per coperto · per categoria
               <InfoPopover title="Come si calcola">
                 <p className="text-muted-foreground">
@@ -638,7 +626,7 @@ function CopertiCategorieDialog({
                   {data.mesi_label.map((l) => (
                     <th key={l} className="text-right px-3 py-2.5 font-semibold border-r border-border whitespace-nowrap">{l}</th>
                   ))}
-                  <th className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-emerald-500 text-emerald-700 dark:text-emerald-400">
+                  <th className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-primary text-primary-text">
                     Media
                   </th>
                 </tr>
@@ -654,7 +642,7 @@ function CopertiCategorieDialog({
                         {fmtEuro2(m.valore)}
                       </td>
                     ))}
-                    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-emerald-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-emerald-500 text-emerald-700 dark:text-emerald-400">
+                    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 py-2 tabular-nums font-bold border-l-2 border-primary text-primary-text">
                       {fmtEuro2(r.media)}
                     </td>
                   </tr>
@@ -777,15 +765,15 @@ function DettaglioCopertiDialog({
                     labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
                     itemStyle={{ color: "var(--foreground)" }}
                   />
-                  <Bar dataKey="coperti" radius={[3, 3, 0, 0]} maxBarSize={26} fill="#0ea5e9" opacity={0.9} />
+                  <Bar dataKey="coperti" radius={[3, 3, 0, 0]} maxBarSize={26} fill="var(--grafico-1)" opacity={0.9} />
                 </BarChart>
               </ResponsiveContainer>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatBox label="Giorni con dati" value={`${giorniMese.length}`} />
-                <StatBox label="Coperti totali" value={fmtInt(totale)} color="text-sky-600 dark:text-sky-400" />
-                <StatBox label="Giorno più pieno" value={top ? fmtInt(top.coperti) : "—"} sub={top ? formatDataBreve(top.data) : undefined} color="text-emerald-600 dark:text-emerald-400" />
-                <StatBox label="Giorno più scarico" value={min ? fmtInt(min.coperti) : "—"} sub={min ? formatDataBreve(min.data) : undefined} color="text-rose-600 dark:text-rose-400" />
+                <StatBox label="Coperti totali" value={fmtInt(totale)} color="text-primary-text" />
+                <StatBox label="Giorno più pieno" value={top ? fmtInt(top.coperti) : "—"} sub={top ? formatDataBreve(top.data) : undefined} color="text-positivo" />
+                <StatBox label="Giorno più scarico" value={min ? fmtInt(min.coperti) : "—"} sub={min ? formatDataBreve(min.data) : undefined} color="text-negativo" />
               </div>
             </>
           )}

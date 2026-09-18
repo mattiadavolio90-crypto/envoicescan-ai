@@ -62,7 +62,7 @@ function Sparkline({ values: rawValues, color }: { values: number[]; color: stri
   );
 }
 
-type Tone = "neutro" | "emerald" | "rose";
+type Tone = "neutro" | "positivo" | "negativo";
 
 /**
  * Cinque riquadri neutri, il colore solo sul MOL.
@@ -82,21 +82,22 @@ type Tone = "neutro" | "emerald" | "rose";
  *
  * I valori sono 16px/700: per WCAG NON sono "large text", quindi la soglia AA e'
  * 4.5:1, non 3:1. Misurato in tema chiaro il 9/9/2026, le tinte -600 di orange
- * (#f54a00 -> 3,58:1) ed emerald (#009966 -> 3,65:1) erano sotto. Le -700
- * rientrano; la dark resta invariata (le -400 su fondo scuro sono ok).
+ * (#f54a00 -> 3,58:1) ed emerald (#009966 -> 3,65:1) erano sotto. Dal 18/09
+ * i colori sono i token `positivo`/`negativo`, misurati sui due temi in
+ * tests/test_globals_css_contrasto.py.
  */
 const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
   neutro:  { border: "border-border",         hover: "hover:border-muted-foreground/40", value: "text-foreground" },
-  emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-700 dark:text-emerald-400" },
-  rose:    { border: "border-rose-500/40",    hover: "hover:border-rose-500/70",    value: "text-rose-700 dark:text-rose-400" },
+  positivo: { border: "border-positivo/40", hover: "hover:border-positivo/70", value: "text-positivo" },
+  negativo: { border: "border-negativo/40", hover: "hover:border-negativo/70", value: "text-negativo" },
 };
 
-// Colori hex allineati al TONE per i tratti SVG sparkline. Il neutro usa un
-// grigio esplicito: l'SVG non eredita `currentColor` qui.
+// Gli stessi token del TONE per i tratti SVG sparkline, come var(): l'SVG non
+// eredita `currentColor` qui.
 const TONE_COLOR: Record<Tone, string> = {
-  neutro:  "#9ca3af",
-  emerald: "#10b981",
-  rose:    "#f43f5e",
+  neutro:   "var(--muted-foreground)",
+  positivo: "var(--positivo)",
+  negativo: "var(--negativo)",
 };
 
 type CardDef = {
@@ -134,7 +135,7 @@ function useCountUp(target: number, enabled: boolean): number {
 }
 
 export function KpiBar({ kpi }: { kpi: KpiData }) {
-  const molTone: Tone = kpi.mol >= 0 ? "emerald" : "rose";
+  const molTone: Tone = kpi.mol >= 0 ? "positivo" : "negativo";
 
   const [animate, setAnimate] = useState(false);
   useEffect(() => {

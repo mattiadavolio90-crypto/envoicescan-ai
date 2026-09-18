@@ -114,7 +114,7 @@ export function CostoPersonaleDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Users className="size-4 text-pink-500" />
+            <Users className="size-4 text-primary" />
             Costo del personale — {label}
           </DialogTitle>
         </DialogHeader>

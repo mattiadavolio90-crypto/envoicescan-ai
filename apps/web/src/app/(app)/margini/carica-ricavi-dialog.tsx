@@ -31,9 +31,9 @@ type Props = {
 };
 
 const SOURCE_LABEL: Record<string, { label: string; color: string }> = {
-  manuale: { label: "Manuale", color: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
-  xls: { label: "XLS", color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
-  email: { label: "Email", color: "bg-sky-500/15 text-sky-700 dark:text-sky-400" },
+  manuale: { label: "Manuale", color: "bg-muted text-muted-foreground" },
+  xls: { label: "XLS", color: "bg-accent text-primary-text" },
+  email: { label: "Email", color: "bg-accent text-primary-text" },
 };
 
 export function CaricaRicaviDialog({ open, onOpenChange, dataDa, dataA, onImported }: Props) {
@@ -376,11 +376,11 @@ function GrigliaView({
       ) : modalita === "mensile" ? (
         /* Blocco mensile */
         <div className="space-y-4 max-w-xl">
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <div className="rounded-lg border border-incerto/30 bg-incerto/5 px-3 py-2 text-xs text-incerto">
             ⚠️ Inserendo i dati in modalità mensile, avranno precedenza rispetto ai dati inseriti giornalieri. Usare la modalità mensile solo se non si caricano i ricavi giornalieri.
           </div>
           {precompilatoDaMargini && (
-            <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-xs text-sky-700 dark:text-sky-400">
+            <div className="rounded-lg border border-primary/30 bg-accent px-3 py-2 text-xs text-primary-text">
               ℹ️ Questi importi sono <strong>proposti</strong> dai totali già presenti in Margini
               per {meseSel.label}: non sono ancora un totale mensile salvato. Controllali prima
               di confermare.
@@ -418,7 +418,7 @@ function GrigliaView({
         /* Calendario mensile */
         <div className="space-y-3">
           {eraMensile && (
-            <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-xs text-sky-700 dark:text-sky-400">
+            <div className="rounded-lg border border-primary/30 bg-accent px-3 py-2 text-xs text-primary-text">
               ℹ️ Questo mese è attualmente caricato come <strong>totale mensile</strong>. Salvando in
               modalità giornaliera i ricavi torneranno a essere calcolati dai singoli giorni.
             </div>
@@ -581,9 +581,9 @@ function GiornoCell({
           <button
             className={`min-h-16 rounded-lg border p-2 flex flex-col items-start justify-between text-left transition-all hover:border-primary/50 hover:shadow-sm ${
               dirty
-                ? "border-sky-500/60 bg-sky-500/10"
+                ? "border-primary/60 bg-accent"
                 : hasData
-                ? "border-emerald-500/40 bg-emerald-500/5"
+                ? "border-positivo/40 bg-positivo/5"
                 : isWeekend
                 ? "border-border bg-muted/30"
                 : "border-border bg-card"
@@ -639,7 +639,7 @@ function GiornoCell({
           </div>
           <div className="flex items-center justify-between gap-2 pt-1">
             {hasData ? (
-              <button onClick={clear} className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1">
+              <button onClick={clear} className="text-xs text-destructive flex items-center gap-1">
                 <Trash2 className="size-3" /> Svuota
               </button>
             ) : <span />}

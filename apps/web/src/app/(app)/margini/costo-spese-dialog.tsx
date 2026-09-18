@@ -38,8 +38,8 @@ function toStr(v: number) {
 }
 
 const META: Record<TipoSpesaCella, { titolo: string; campo: string; colore: string }> = {
-  fb: { titolo: "Altri Costi F&B", campo: "altri_costi_fb", colore: "text-orange-500" },
-  generale: { titolo: "Altre Spese Generali", campo: "altri_costi_spese", colore: "text-purple-500" },
+  fb: { titolo: "Altri Costi F&B", campo: "altri_costi_fb", colore: "text-primary" },
+  generale: { titolo: "Altre Spese Generali", campo: "altri_costi_spese", colore: "text-primary" },
 };
 
 export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClose, onSaved }: Props) {

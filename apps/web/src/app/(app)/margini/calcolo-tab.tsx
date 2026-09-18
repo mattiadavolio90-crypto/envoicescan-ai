@@ -49,7 +49,7 @@ type EditableField =
 
 type Section = "ricavi" | "fb" | "spese" | "personale" | "margine";
 
-type ValueColor = "white" | "sign" | "purple" | "sky" | "orange" | "pink";
+type ValueColor = "white" | "sign" | "totale";
 
 type RowDef = RowLike & {
   label: string;
@@ -66,17 +66,17 @@ const ROWS: RowDef[] = [
   { key: "fatturato_iva10",       label: "Ricavi IVA 10%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
-  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-sky-500 dark:text-sky-400", valueColor: "sky" },
+  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
   { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", derive: DERIVE.costi_fb_auto, valueColor: "white" },
   { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
-  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "orange" },
-  { key: "primo_margine",         label: "Margine su food&beverage", type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
+  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  { key: "primo_margine",         label: "Margine su food&beverage", type: "computed", section: "margine", isMetric: true, labelColor: "text-primary-text", valueColor: "sign" },
   { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", derive: DERIVE.costi_spese_auto, valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
-  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
-  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
-  { key: "totale_costi",          label: "= Spese Generali + Personale", type: "computed", section: "spese", isMetric: true, derive: DERIVE.totale_costi, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
-  { key: "mol",                   label: "Guadagno finale (MOL)",  type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
+  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
+  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "white" },
+  { key: "totale_costi",          label: "= Spese Generali + Personale", type: "computed", section: "spese", isMetric: true, derive: DERIVE.totale_costi, labelColor: "text-primary-text", valueColor: "totale" },
+  { key: "mol",                   label: "Guadagno finale (MOL)",  type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-primary-text", valueColor: "sign" },
 ];
 
 // Separatori tra blocchi: bordo top più marcato prima di questi indici
@@ -86,15 +86,14 @@ const SEP_BEFORE = new Set([4, 8, 12]);
 function valueColorCls(vc: ValueColor, raw: number): string {
   if (vc === "sign") {
     return raw > 0
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-positivo"
       : raw < 0
-      ? "text-rose-600 dark:text-rose-400"
+      ? "text-negativo"
       : "text-muted-foreground";
   }
-  if (vc === "purple") return "text-violet-600 dark:text-violet-400";
-  if (vc === "sky") return "text-sky-600 dark:text-sky-400";
-  if (vc === "orange") return "text-orange-600 dark:text-orange-400";
-  if (vc === "pink") return "text-pink-600 dark:text-pink-400";
+  // Le righe "= Totale" sono dati calcolati senza giudizio: il blu del brand,
+  // nella versione che si legge. Il giudizio (segno) resta a margine e MOL.
+  if (vc === "totale") return "text-primary-text";
   return ""; // white = foreground
 }
 
@@ -102,39 +101,6 @@ const ANNO_MESE_CORRENTE = (() => {
   const d = new Date();
   return { anno: d.getFullYear(), mese: d.getMonth() + 1 };
 })();
-
-const SECTION_CONFIG: Record<Section, { color: string; bg: string; border: string; rgb: string }> = {
-  ricavi: {
-    color: "text-sky-700 dark:text-sky-300",
-    bg: "bg-sky-500/8",
-    border: "border-l-sky-500",
-    rgb: "14,165,233",
-  },
-  fb: {
-    color: "text-orange-700 dark:text-orange-300",
-    bg: "bg-orange-500/8",
-    border: "border-l-orange-500",
-    rgb: "249,115,22",
-  },
-  spese: {
-    color: "text-purple-700 dark:text-purple-300",
-    bg: "bg-purple-500/8",
-    border: "border-l-purple-500",
-    rgb: "168,85,247",
-  },
-  personale: {
-    color: "text-pink-700 dark:text-pink-300",
-    bg: "bg-pink-500/8",
-    border: "border-l-pink-500",
-    rgb: "236,72,153",
-  },
-  margine: {
-    color: "text-emerald-700 dark:text-emerald-300",
-    bg: "bg-emerald-500/10",
-    border: "border-l-emerald-500",
-    rgb: "16,185,129",
-  },
-};
 
 type Props = {
   dataDa: string;
@@ -331,24 +297,6 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
         />
       )}
 
-      {/* Legenda colori */}
-      <div className="flex flex-wrap gap-1.5">
-        {([
-          { label: "Ricavi", section: "ricavi" as Section },
-          { label: "Costi F&B", section: "fb" as Section },
-          { label: "Spese Generali", section: "spese" as Section },
-          { label: "Personale", section: "personale" as Section },
-          { label: "Totali & Margini", section: "margine" as Section },
-        ]).map((c) => (
-          <span
-            key={c.label}
-            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${SECTION_CONFIG[c.section].color} border ${SECTION_CONFIG[c.section].border.replace("border-l-", "border-")}/40`}
-          >
-            {c.label}
-          </span>
-        ))}
-      </div>
-
       {/* Tabella trasposta — desktop */}
       <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
@@ -374,16 +322,16 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                       key={`${m.anno}-${m.mese}`}
                       className={`text-right px-3 py-2.5 font-semibold ${
                         isCurrent
-                          ? "text-sky-500 dark:text-sky-400 border-l border-r border-sky-500/50"
+                          ? "text-primary-text border-l border-r border-primary/50"
                           : "border-r border-border"
                       }`}
                     >
-                      {isCurrent && <span className="mr-1 inline-block size-1.5 rounded-full bg-sky-400 align-middle" />}
+                      {isCurrent && <span className="mr-1 inline-block size-1.5 rounded-full bg-primary align-middle" />}
                       {m.label}
                     </th>
                   );
                 })}
-                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500 text-sky-800 dark:text-sky-400">
+                <th className="sticky right-0 z-20 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 py-2.5 font-bold border-l-2 border-r border-primary text-primary-text">
                   {isMedia ? "Media" : "Totale"}
                 </th>
               </tr>
@@ -498,7 +446,7 @@ function Cell({
   const display = raw === 0 ? "—" : formatEuro(raw);
 
   const currentCls = isCurrent
-    ? "border-l border-r border-sky-500/50"
+    ? "border-l border-r border-primary/50"
     : "border-r border-border";
 
   // Righe personale: cella cliccabile che apre il widget (recupera da Personale o manuale)
@@ -610,7 +558,7 @@ function EditableCell({
   const pct = pctIncidenza(liveVal, netto);
 
   const currentCls = isCurrent
-    ? "border-l border-r border-sky-500/50"
+    ? "border-l border-r border-primary/50"
     : "border-r border-border";
 
   return (
@@ -632,9 +580,9 @@ function EditableCell({
         placeholder="—"
         className={`w-full px-3 pt-2 pb-0 text-right tabular-nums bg-transparent border-0 outline-none transition-colors text-[15px] ${
           saved
-            ? "bg-emerald-500/10"
+            ? "bg-positivo/10"
             : saving
-            ? "bg-sky-500/5"
+            ? "bg-primary/5"
             : "hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset"
         }`}
       />
@@ -659,7 +607,7 @@ function TotalCell({
   const pct = pctIncidenza(raw, totali.fatturato_netto);
 
   return (
-    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--color-sky-500)8%,var(--color-card))] text-right px-3 py-2 tabular-nums border-l-2 border-r border-sky-500 align-middle">
+    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 py-2 tabular-nums border-l-2 border-r border-primary align-middle">
       <div className={`tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>{display}</div>
       {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
     </td>
@@ -797,7 +745,7 @@ function MobileEditInput({
       placeholder="—"
       className={`w-32 h-8 px-2 text-right tabular-nums rounded border bg-transparent outline-none transition-colors text-sm ${
         saved
-          ? "border-emerald-500 bg-emerald-500/10"
+          ? "border-positivo bg-positivo/10"
           : "border-input focus:border-primary focus:bg-background"
       }`}
     />
@@ -807,10 +755,10 @@ function MobileEditInput({
 /* ============================================================ */
 /* Analisi visiva: cascata conto economico + gauge + commenti    */
 /* ============================================================ */
-const GAUGE_GREEN = "#10b981";
-const GAUGE_AMBER = "#f59e0b";
-const GAUGE_ROSE = "#f43f5e";
-const GAUGE_NEUTRAL = "#94a3b8";
+const GAUGE_GREEN = "var(--positivo)";
+const GAUGE_AMBER = "var(--incerto)";
+const GAUGE_ROSE = "var(--negativo)";
+const GAUGE_NEUTRAL = "var(--muted-foreground)";
 
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v));
@@ -856,7 +804,7 @@ function AnalisiVisiva({
         <BarChart3 className="size-4 text-primary" />
         Analisi visiva
         {isMedia && (
-          <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full">
+          <span className="text-[11px] font-medium text-primary-text bg-accent px-2 py-0.5 rounded-full">
             valori medi mensili
           </span>
         )}
@@ -876,10 +824,10 @@ function AnalisiVisiva({
           {/* Gauge con diagnosi integrata */}
           <div className="flex flex-col gap-0 divide-y divide-border">
             {[
-              { label: labelMerce,       kpiNome: labelMerce,        valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
-              { label: "Margine F&B",    kpiNome: "1° Margine",      valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
-              { label: "Spese Generali", kpiNome: "Spese Generali",  valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
-              { label: "MOL",            kpiNome: "MOL",             valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "#22c55e", valueColor: molColor },
+              { label: labelMerce,       kpiNome: labelMerce,        valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "var(--grafico-1)", valueColor: fcColor },
+              { label: "Margine F&B",    kpiNome: "1° Margine",      valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "var(--grafico-1)", valueColor: pmColor },
+              { label: "Spese Generali", kpiNome: "Spese Generali",  valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "var(--grafico-1)", valueColor: sgColor },
+              { label: "MOL",            kpiNome: "MOL",             valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "var(--grafico-1)", valueColor: molColor },
             ].map((g) => {
               // Il match e' sul nome che manda /api/margini/analisi (margini.py:1209-1213),
               // non sull'etichetta a video: il gauge si chiamava "Costi Gestione" e
@@ -911,12 +859,12 @@ function AnalisiVisiva({
 }
 
 function CascataPL({ t }: { t: MesePivot }) {
-  const steps: { label: string; value: number; kind: "result" | "cost"; rgb: string }[] = [
-    { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", rgb: "14,165,233" },
-    { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", rgb: "249,115,22" },
-    { label: "Margine su food&beverage", value: t.primo_margine, kind: "result", rgb: t.primo_margine >= 0 ? "16,185,129" : "244,63,94" },
-    { label: "− Spese Generali + Personale", value: t.costi_spese_totali + t.costi_personale, kind: "cost", rgb: "168,85,247" },
-    { label: "= MOL", value: t.mol, kind: "result", rgb: t.mol >= 0 ? "16,185,129" : "244,63,94" },
+  const steps: { label: string; value: number; kind: "result" | "cost"; colore: string }[] = [
+    { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", colore: "var(--grafico-1)" },
+    { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", colore: "var(--grafico-4)" },
+    { label: "Margine su food&beverage", value: t.primo_margine, kind: "result", colore: t.primo_margine >= 0 ? "var(--positivo)" : "var(--negativo)" },
+    { label: "− Spese Generali + Personale", value: t.costi_spese_totali + t.costi_personale, kind: "cost", colore: "var(--grafico-4)" },
+    { label: "= MOL", value: t.mol, kind: "result", colore: t.mol >= 0 ? "var(--positivo)" : "var(--negativo)" },
   ];
   const refMax = Math.max(1, ...steps.map((s) => Math.abs(s.value)));
 
@@ -935,15 +883,15 @@ function CascataPL({ t }: { t: MesePivot }) {
                 className="h-full rounded transition-all duration-500"
                 style={{
                   width: `${w}%`,
-                  backgroundColor: `rgb(${s.rgb})`,
+                  backgroundColor: s.colore,
                   opacity: isResult ? 0.95 : 0.65,
-                  boxShadow: isResult ? `0 0 14px rgba(${s.rgb},0.5)` : undefined,
+                  boxShadow: isResult ? `0 0 14px color-mix(in oklch, ${s.colore} 50%, transparent)` : undefined,
                 }}
               />
             </div>
             <span
               className={`w-28 sm:w-32 shrink-0 text-right text-base tabular-nums ${isResult ? "font-bold" : "text-muted-foreground"}`}
-              style={isResult ? { color: `rgb(${s.rgb})` } : undefined}
+              style={isResult ? { color: s.colore } : undefined}
             >
               {formatEuro(s.value)}
             </span>
@@ -1027,7 +975,7 @@ function Gauge({
           strokeLinecap="round"
           pathLength={100}
           strokeDasharray={`${f * 100} 100`}
-          style={{ filter: f > 0.05 ? `drop-shadow(0 0 4px ${trackColor}90)` : undefined }}
+          style={{ filter: f > 0.05 ? `drop-shadow(0 0 4px color-mix(in oklch, ${trackColor} 56%, transparent))` : undefined }}
         />
         {/* Valore centrato con colore performance */}
         <text
@@ -1233,27 +1181,27 @@ function DettaglioGiornalieroDialog({
                     iconType="circle"
                     iconSize={8}
                   />
-                  <Bar dataKey="iva10" name="IVA 10%" stackId="netto" fill="#0ea5e9" opacity={0.9} maxBarSize={28} />
-                  <Bar dataKey="iva22" name="IVA 22%" stackId="netto" fill="#10b981" opacity={0.9} maxBarSize={28} />
-                  <Bar dataKey="noiva" name="Senza IVA" stackId="netto" fill="#eab308" opacity={0.9} maxBarSize={28} radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="iva10" name="IVA 10%" stackId="netto" fill="var(--grafico-1)" opacity={0.9} maxBarSize={28} />
+                  <Bar dataKey="iva22" name="IVA 22%" stackId="netto" fill="var(--grafico-2)" opacity={0.9} maxBarSize={28} />
+                  <Bar dataKey="noiva" name="Senza IVA" stackId="netto" fill="var(--grafico-3)" opacity={0.9} maxBarSize={28} radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
 
               {/* 4 statistiche */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatBox label="Giorni compilati" value={`${compilati.length} / ${giorni.length}`} />
-                <StatBox label="Media giornaliera" value={formatEuro(media)} color="text-sky-600 dark:text-sky-400" />
+                <StatBox label="Media giornaliera" value={formatEuro(media)} color="text-primary-text" />
                 <StatBox
                   label="Giorno migliore"
                   value={migliore ? formatEuro(migliore.fatturato_netto) : "—"}
                   sub={migliore ? `${parseInt(migliore.data.slice(8), 10)} ${label}` : undefined}
-                  color="text-emerald-600 dark:text-emerald-400"
+                  color="text-positivo"
                 />
                 <StatBox
                   label="Giorno peggiore"
                   value={peggiore ? formatEuro(peggiore.fatturato_netto) : "—"}
                   sub={peggiore ? `${parseInt(peggiore.data.slice(8), 10)} ${label}` : undefined}
-                  color="text-rose-600 dark:text-rose-400"
+                  color="text-negativo"
                 />
               </div>
             </>
