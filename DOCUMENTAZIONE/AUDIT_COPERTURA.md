@@ -425,6 +425,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `SALUTE_TINT`. Il PV, con la palette unica, guadagna le varianti dark del
 >   testo: un cambio visivo reale sulla Home, voluto.
 
+> - 18/09/2026, `0999871` — **coerenza visiva, fasi 0-1** (lavoro estetico, non
+>   audit): token `--positivo`/`--negativo`/`--incerto` tarati sui due temi e
+>   **senza consumatori** (la fase 0 non doveva cambiare un pixel, e non lo
+>   cambia), piu' 10 rinomine di etichette. Suite **14.224 verdi + 45 skip**
+>   (14.808 raccolti dalla root, 14.799 da `tests/`, 539 `-m sql` deselezionati:
+>   i conti quadrano). **+5 test**, tutti sul file dell'export catena.
+>   **Review: verde al SESTO giro**, 10 difetti veri (B1-B10). Nessuno trovato
+>   leggendo: tutti da un mutante o da una ricerca rifatta con un metodo diverso
+>   da quello che li aveva mancati. I tre piu' seri erano dentro *fix* di rilievi
+>   precedenti — l'export Excel che diceva una parola diversa dallo schermo nella
+>   stessa tabella; `truncate` messo per fare spazio che rendeva "12.450,00 €"
+>   come "12.45…", un importo plausibile e falso; il presidio che a perimetro
+>   vuoto taceva con un solo skip. In questa fase **la correzione e' stata
+>   pericolosa quanto il difetto**.
+>   **Aperto, dichiarato:** l'app non e' mai stata guardata a schermo. Le cifre di
+>   layout vengono dalle metriche del font, e fra le due stime "calcolate" c'e'
+>   stata una divergenza del 26% corretta solo al quinto giro. Da vedere su un
+>   portatile a 1140/1280px: le card di Agenda -> Personale con le paghe
+>   inserite — difetto **preesistente**, sede in fase 3.
+
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
