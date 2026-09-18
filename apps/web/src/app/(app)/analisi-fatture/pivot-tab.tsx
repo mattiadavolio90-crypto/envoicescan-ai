@@ -399,7 +399,7 @@ function PivotTable({
                       {v > 0 ? (
                         <div className="flex flex-col items-end leading-tight">
                           <span>{formatEuroCompact(v)}</span>
-                          <span className="text-[10px] font-medium text-amber-600">
+                          <span className="text-[10px] font-medium text-incerto">
                             {incPct.toFixed(0)}%
                           </span>
                         </div>
@@ -412,7 +412,7 @@ function PivotTable({
                 <td className="px-3 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap">
                   {formatEuro(row.totale)}
                 </td>
-                <td className="px-3 py-1.5 text-right font-medium tabular-nums text-amber-600">
+                <td className="px-3 py-1.5 text-right font-medium tabular-nums text-incerto">
                   {row.incidenza_pct.toFixed(0)}%
                 </td>
               </tr>
@@ -447,7 +447,7 @@ function intensityToBg(intensity: number): string {
 
 // ─── Grafico trend ─────────────────────────────────────────────────────────
 
-const COLORI_LINEE = ["#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
+const COLORI_LINEE = ["var(--grafico-1)", "var(--grafico-2)", "var(--grafico-3)", "var(--grafico-4)", "var(--grafico-5)"];
 
 function sortRowsForPills(
   rows: PivotResponse["rows"],
@@ -568,7 +568,7 @@ function TrendChart({
       </div>
 
       {error && (
-        <p className="text-xs text-rose-600">Errore caricamento grafico: {error}</p>
+        <p className="text-xs text-negativo">Errore caricamento grafico: {error}</p>
       )}
 
       {!loading && !error && selectedForTrend.length === 0 && (

@@ -48,9 +48,9 @@ const MAX_SIZE_MB = 50;
 
 function StatusIcon({ status }: { status: FileStatus }) {
   if (status === "uploading") return <Loader2 className="size-4 animate-spin text-primary shrink-0" />;
-  if (status === "success") return <CheckCircle className="size-4 text-emerald-500 shrink-0" />;
-  if (status === "queued") return <MapPin className="size-4 text-amber-500 shrink-0" />;
-  if (status === "skipped") return <Info className="size-4 text-sky-500 shrink-0" />;
+  if (status === "success") return <CheckCircle className="size-4 text-positivo shrink-0" />;
+  if (status === "queued") return <MapPin className="size-4 text-incerto shrink-0" />;
+  if (status === "skipped") return <Info className="size-4 text-primary shrink-0" />;
   if (status === "error") return <XCircle className="size-4 text-destructive shrink-0" />;
   return <FileText className="size-4 text-muted-foreground shrink-0" />;
 }
@@ -284,20 +284,20 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                   <p className="font-medium truncate">{entry.file.name}</p>
                   <p className="text-muted-foreground">{humanSize(entry.file.size)}</p>
                   {entry.status === "success" && (
-                    <p className="text-emerald-600 mt-0.5">
+                    <p className="text-positivo mt-0.5">
                       {entry.fornitore ? `${entry.fornitore} · ` : ""}
                       {entry.righe} righe
                       {entry.data_documento ? ` · ${entry.data_documento}` : ""}
                       {entry.sede_assegnata && (
                         <span
-                          className={`ml-1 ${entry.cross_sede ? "text-amber-600 font-medium" : "text-sky-600"}`}
+                          className={`ml-1 ${entry.cross_sede ? "text-incerto font-medium" : "text-primary-text"}`}
                         >
                           → {entry.sede_assegnata}
                           {entry.cross_sede && " (altra sede)"}
                         </span>
                       )}
                       {(entry.needs_review ?? 0) > 0 && (
-                        <span className="text-amber-500 ml-1">
+                        <span className="text-incerto ml-1">
                           <AlertTriangle className="size-3 inline mr-0.5" />
                           {entry.needs_review} {entry.needs_review === 1 ? "riga ha" : "righe hanno"} categoria da verificare
                         </span>
@@ -305,12 +305,12 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                     </p>
                   )}
                   {entry.status === "queued" && (
-                    <p className="text-amber-600 mt-0.5">
+                    <p className="text-incerto mt-0.5">
                       Intestata alla società, non a un locale: è in attesa che tu scelga dove va.
                     </p>
                   )}
                   {entry.status === "skipped" && (
-                    <p className="text-amber-600 mt-0.5">
+                    <p className="text-incerto mt-0.5">
                       {entry.skip_motivo === "PIVA_NESSUNA_SEDE"
                         ? "Questa fattura è intestata a una partita IVA che non corrisponde a nessuna tua sede: non è stata caricata."
                         : entry.skip_motivo === "GIA_IN_CODA"
@@ -346,10 +346,10 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
             in catena): senza questo avviso le fatture sparirebbero in un posto che
             da qui non si vede. */}
         {queued > 0 && !uploading && (
-          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
-            <MapPin className="size-4 shrink-0 text-amber-500" />
+          <div className="flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/5 p-3 text-xs">
+            <MapPin className="size-4 shrink-0 text-incerto" />
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-amber-700 dark:text-amber-400">
+              <p className="font-medium text-incerto">
                 {queued === 1
                   ? "1 fattura è intestata alla società, non a un locale"
                   : `${queued} fatture sono intestate alla società, non a un locale`}
@@ -362,7 +362,7 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
               {contesto === "pv" && (
                 <Link
                   href="/catena"
-                  className="mt-1.5 inline-flex items-center gap-1 font-medium text-amber-700 underline underline-offset-2 hover:text-amber-800 dark:text-amber-400"
+                  className="mt-1.5 inline-flex items-center gap-1 font-medium text-incerto underline underline-offset-2 hover:text-incerto"
                 >
                   Vai alla vista del gruppo
                   <ArrowRight className="size-3" />
@@ -375,17 +375,17 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
         <div className="flex items-center justify-between gap-2 -mx-4 -mb-4 mt-2 px-4 py-3 border-t bg-muted/50 rounded-b-xl">
           <span className="text-xs text-muted-foreground">
             {success > 0 && (
-              <span className="text-emerald-600 font-medium">
+              <span className="text-positivo font-medium">
                 {success === 1 ? "1 caricata" : `${success} caricate`} · {totRighe} righe
               </span>
             )}
             {queued > 0 && (
-              <span className="text-amber-600 font-medium ml-2">
+              <span className="text-incerto font-medium ml-2">
                 · {queued} da assegnare
               </span>
             )}
             {skipped > 0 && (
-              <span className="text-amber-600 font-medium ml-2">
+              <span className="text-incerto font-medium ml-2">
                 · {skipped} {skipped === 1 ? "scartata" : "scartate"}
               </span>
             )}

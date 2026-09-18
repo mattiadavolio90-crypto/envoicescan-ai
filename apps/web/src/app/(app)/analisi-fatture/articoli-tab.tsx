@@ -346,32 +346,32 @@ export function ArticoliTab({
 
       {/* Toggle: Nuovi / Solo verifica */}
       <div className={`flex items-center gap-2 ${pending ? "opacity-70" : ""}`}>
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-sky-500/30 bg-sky-500/5">
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-primary/30 bg-accent">
           <input
             type="checkbox"
             checked={soloNuovi}
             onChange={(e) => setUrlParam({ nuovi: e.target.checked ? "1" : undefined })}
           />
-          <Sparkles className="size-3.5 text-amber-500" />
+          <Sparkles className="size-3.5 text-incerto" />
           Nuovi caricati
         </label>
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-sky-500/30 bg-sky-500/5">
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-primary/30 bg-accent">
           <input
             type="checkbox"
             checked={soloVerifica}
             onChange={(e) => setUrlParam({ verifica: e.target.checked ? "1" : undefined })}
           />
-          <AlertTriangle className="size-3.5 text-amber-500" />
+          <AlertTriangle className="size-3.5 text-incerto" />
           Solo da verificare
         </label>
         {hasRipartite && (
-          <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-violet-500/30 bg-violet-500/5">
+          <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-primary/30 bg-accent">
             <input
               type="checkbox"
               checked={soloRipartite}
               onChange={(e) => setUrlParam({ ripartite: e.target.checked ? "1" : undefined })}
             />
-            <Split className="size-3.5 text-violet-500" />
+            <Split className="size-3.5 text-primary" />
             Solo ripartite
           </label>
         )}
@@ -396,12 +396,12 @@ export function ArticoliTab({
           )}
         </span>
         {sorted.length > 0 && (
-          <span className="text-xs inline-flex items-center gap-1.5 text-sky-500">
+          <span className="text-xs inline-flex items-center gap-1.5 text-primary-text">
             Totale filtrato:
             <span className="font-semibold tabular-nums">
               {formatEuro(totaleFiltrato, 2)}
             </span>
-            <span className="text-sky-500/70">
+            <span className="text-muted-foreground">
               · {quantitaFiltrata.toLocaleString("it-IT")} acquisti
             </span>
           </span>
@@ -632,7 +632,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
 
   return (
     <>
-      <tr className="border-b hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors">
+      <tr className="border-b hover:bg-accent transition-colors">
         <td className="px-1 align-top pt-2.5">
           <button onClick={onToggle} className="text-muted-foreground hover:text-foreground">
             {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -642,7 +642,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
           <div className="flex items-center gap-1.5">
             {articolo.is_nuovo && (
               <span
-                className="size-1.5 shrink-0 rounded-full bg-amber-400"
+                className="size-1.5 shrink-0 rounded-full bg-incerto"
                 title="Caricato di recente"
                 aria-label="Caricato di recente"
               />
@@ -652,7 +652,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
             </span>
             {ripartita && (
               <span
-                className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap"
+                className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent text-primary-text font-semibold inline-flex items-center gap-0.5 whitespace-nowrap"
                 title="Include la tua quota di un costo ripartito sul gruppo — correggendo la categoria cambia la quota di tutte le sedi"
               >
                 <Split className="size-2.5" /> Ripartita
@@ -666,7 +666,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
               const haProposta = Boolean(currentCat) && currentCat !== CATEGORIA_NON_CLASSIFICATA;
               return (
                 <>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-negativo/10 text-negativo font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
                     <AlertTriangle className="size-2.5" /> Verifica
                   </span>
                   {haProposta && (
@@ -675,7 +675,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
                       disabled={saving}
                       onClick={() => saveCategoria(currentCat, true)}
                       title={`Conferma categoria «${currentCat}»`}
-                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-60"
+                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-positivo/10 text-positivo hover:bg-positivo/10 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-60"
                     >
                       {saving ? (
                         <Loader2 className="size-2.5 animate-spin" />
@@ -732,7 +732,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
               {trendPct !== null && Math.abs(trendPct) >= 1 && (
                 <span
                   className={`text-[10px] font-semibold inline-flex items-center ${
-                    trendPct > 0 ? "text-rose-600" : "text-emerald-600"
+                    trendPct > 0 ? "text-negativo" : "text-positivo"
                   }`}
                   title={`Variazione vs periodo precedente: ${trendPct > 0 ? "+" : ""}${trendPct}%`}
                 >
@@ -838,13 +838,13 @@ function RigheArticolo({
           return (
             <tr
               key={r.id}
-              className="border-b last:border-0 hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors"
+              className="border-b last:border-0 hover:bg-accent transition-colors"
             >
               <td className="py-1 pr-4 text-muted-foreground">{formatData(r.data_documento)}</td>
               <td className="py-1 pr-4">
                 {r.fornitore}
                 {isNuova && (
-                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
+                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-incerto/10 text-incerto font-semibold whitespace-nowrap">
                     Nuovo
                   </span>
                 )}

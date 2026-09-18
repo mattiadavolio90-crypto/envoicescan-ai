@@ -8,13 +8,15 @@ type Props = {
   kpi: KpiResponse | null;
 };
 
-type Tone = "sky" | "violet" | "emerald" | "orange";
+type Tone = "blu" | "neutro";
 
+// Quattro riquadri, quattro colori, nessuna gerarchia (AF1 del piano): "Spesa
+// totale" e "Voci in fattura" pesavano uguale. Nessuno dei quattro e' un
+// giudizio, quindi nessuno e' verde o rosso: il dato che conta e' in blu, gli
+// altri tre neutri.
 const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
-  sky:     { border: "border-sky-500/40",     hover: "hover:border-sky-500/70",     value: "text-sky-600 dark:text-sky-400" },
-  violet:  { border: "border-violet-500/40",  hover: "hover:border-violet-500/70",  value: "text-violet-600 dark:text-violet-400" },
-  emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-600 dark:text-emerald-400" },
-  orange:  { border: "border-orange-500/40",  hover: "hover:border-orange-500/70",  value: "text-orange-600 dark:text-orange-400" },
+  blu:    { border: "border-primary/40", hover: "hover:border-primary/70", value: "text-primary-text" },
+  neutro: { border: "border-border", hover: "hover:border-muted-foreground/40", value: "text-foreground" },
 };
 
 // Count-up al primo render: il valore sale da 0 al target in ~500ms. Il dato
@@ -59,10 +61,10 @@ export function KpiBar({ kpi }: Props) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <KpiCard tone="sky"     label="Spesa totale"     numeric={kpi.totale}        format={formatEuro} animate={animate} />
-      <KpiCard tone="violet"  label="Voci in fattura"            numeric={kpi.num_righe}     format={fmtInt}     animate={animate} />
-      <KpiCard tone="emerald" label="Prodotti diversi" numeric={kpi.num_prodotti}  format={fmtInt}     animate={animate} />
-      <KpiCard tone="orange"  label="Media al mese"    numeric={kpi.media_mensile} format={formatEuro} animate={animate} />
+      <KpiCard tone="blu"    label="Spesa totale"     numeric={kpi.totale}        format={formatEuro} animate={animate} />
+      <KpiCard tone="neutro" label="Voci in fattura"            numeric={kpi.num_righe}     format={fmtInt}     animate={animate} />
+      <KpiCard tone="neutro" label="Prodotti diversi" numeric={kpi.num_prodotti}  format={fmtInt}     animate={animate} />
+      <KpiCard tone="neutro" label="Media al mese"    numeric={kpi.media_mensile} format={formatEuro} animate={animate} />
     </div>
   );
 }
