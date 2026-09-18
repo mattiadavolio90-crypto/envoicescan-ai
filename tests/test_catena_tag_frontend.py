@@ -129,9 +129,12 @@ def test_fotografa_prezzi_uniformi_prendono_entrambe_le_classi():
     assert _ts("emit(m.classePrezzo(5, 5, 5))") == f"{MIN_CLS} {MAX_CLS}"
 
 
-def test_classe_prezzo_include_la_variante_dark():
-    """Assert assoluto: 'contiene emerald' sopravviverebbe alla perdita di dark:."""
-    assert "dark:" in MIN_CLS and "dark:" in MAX_CLS
+def test_classe_prezzo_usa_solo_token():
+    """Fino al 18/09/2026 chiedeva la variante `dark:`, perche' "contiene emerald"
+    sopravviveva alla perdita del tema scuro. Coi token (`positivo`/`negativo`)
+    i due temi li porta il token, e il difetto da cercare e' la classe di palette
+    cruda -- o un `dark:` ridondante. Assert assoluto, non "contiene"."""
+    assert MIN_CLS == "text-positivo" and MAX_CLS == "text-negativo"
 
 
 # ─── larghezzaBarra / altezzaBarraTrend ─────────────────────────────────────

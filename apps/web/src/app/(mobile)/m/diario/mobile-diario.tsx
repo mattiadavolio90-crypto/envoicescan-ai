@@ -26,7 +26,6 @@ const COLORI: { key: string; label: string; dot: string }[] = [
   { key: "green", label: "Verde", dot: "bg-green-500" },
   { key: "amber", label: "Arancio", dot: "bg-amber-500" },
   { key: "red", label: "Rosso", dot: "bg-red-500" },
-  { key: "purple", label: "Viola", dot: "bg-purple-500" },
   { key: "gray", label: "Grigio", dot: "bg-gray-400" },
 ];
 
