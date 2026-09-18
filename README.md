@@ -93,7 +93,10 @@ Guida servizi locali completa: [DEV_SERVICES_GUIDE.md](DEV_SERVICES_GUIDE.md).
 - Validazione magic bytes su file caricati (PDF, XML, P7M)
 - Protezione XSS su dati utente
 - Sanitizzazione input AI (anti prompt injection)
-- Limite upload: max 250 file / 200 MB per sessione (50 MB per singolo file)
+- Limite upload: **50 MB per file** (worker, `fastapi_worker.py:616`) e **200 MB
+  per richiesta** (route Next.js, 413). Il tetto di 250 file
+  (`MAX_FILES_PER_UPLOAD`) e' applicato **solo** nel percorso Streamlit
+  dismesso: nel percorso vivo il limite effettivo sono i 200 MB
 - Budget giornaliero AI: max 1000 chiamate/giorno
 - Log su stdout (`config/logger_setup.py`): la rotazione la fa la piattaforma (Railway), non l'app
 - PII rimossi dai log (GDPR Art. 32)
@@ -101,7 +104,13 @@ Guida servizi locali completa: [DEV_SERVICES_GUIDE.md](DEV_SERVICES_GUIDE.md).
 - Cookie di sessione `httpOnly` + `secure` + `sameSite` (token mai esposto a JS)
 - RLS attiva e forzata sulle tabelle con dati cliente; accesso applicativo solo via `service_role`
 - Webhook fatture autenticato via HMAC-SHA256 + anti-replay (no dipendenza da chiavi JWT)
-- Advisor Supabase: 0 ERROR sicurezza, 0 WARN performance — **misurato il 19/06/2026, non riverificato da allora**
+- Advisor Supabase (**ri-misurato il 18/09/2026**): **0 ERROR** sicurezza e
+  **0 WARN performance**. Restano **5 WARN sicurezza**: 4 funzioni con
+  `search_path` mutabile (`_riparto_categoria_is_fb`, `costi_automatici_mensili`,
+  `costi_automatici_mensili_gruppo`, `articoli_da_fatture`) e la protezione
+  password compromesse disattivata — quest'ultima non si applica: l'auth e'
+  custom (Argon2id), non Supabase Auth. Gli INFO su RLS senza policy sono
+  attesi: `auth.uid()` e' sempre NULL e l'accesso passa da `service_role_key`
 
 ### Strategia di Backup
 
