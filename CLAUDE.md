@@ -32,7 +32,7 @@ stato dismesso con lo switch DNS dell'8/6/2026 e **rimosso dal repo il 17/7/2026
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` (8.930 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker API | `services/fastapi_worker.py` (9.377 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico, 148 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |
@@ -166,7 +166,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
 - **`/m` è un frontend separato**, non responsive: va allineato a mano.
 - **Il frontend ha una rete, ma copre solo la logica pura.** Niente runner npm
-  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test): **40 file
+  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test): **39 file
   `tests/test_*_frontend.py`** eseguono il TypeScript con node e coprono `lib/`,
   **non** rendering, hook, stato ed effetti — la logica di un `.tsx` va estratta lì.
 - **Né `tsc` né un test verde provano che il codice funzioni.** `tsc --noEmit` non
