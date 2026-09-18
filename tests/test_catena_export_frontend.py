@@ -658,3 +658,60 @@ def test_nota_incompleti_su_nan_non_produce_nota():
     assert _esegui("emit(m.notaIncompleti(NaN));") is None
     assert _esegui("emit(m.notaIncompleti(0));") is None
     assert _esegui("emit(m.notaIncompleti(1));") is not None
+
+
+# ─── Schermo ed export dicono la stessa parola ──────────────────────────────
+#
+# Nato da un difetto vero (18/09/2026): la cella dell'export diceva "Incompleto"
+# mentre la stessa tabella a schermo diceva "incompleto" minuscolo. Il cliente
+# scaricava il file e leggeva una parola diversa da quella che aveva visto.
+# Nessun test lo vedeva: quelli sopra eseguono `lib/catena-export.ts` via node,
+# ma i `.tsx` non sono raggiungibili da `esegui_ts` (serve JSX), quindi la
+# coerenza fra le due sponde non era presidiata da nessuna parte.
+#
+# Qui la costante e' ESEGUITA (non riletta dal sorgente: un assert sul testo del
+# file sopravviverebbe alla mutazione) e confrontata con cio' che i .tsx
+# scrivono a video.
+
+SORGENTI_A_VIDEO = [
+    "apps/web/src/app/(app)/catena/sintesi-catena.tsx",
+    "apps/web/src/app/(app)/catena/finestra-margini-coperti.tsx",
+    "apps/web/src/app/(mobile)/m/briefing/mobile-catena.tsx",
+    "apps/web/src/lib/salute-tint.ts",
+]
+
+
+def _cella_incompleti_eseguita():
+    return _esegui("emit(m.CELLA_DATI_INCOMPLETI);")
+
+
+def test_la_cella_export_e_la_parola_del_badge_salute():
+    """L'export non puo' inventare una grafia sua: e' la stessa del badge."""
+    from pathlib import Path
+
+    cella = _cella_incompleti_eseguita()
+    salute = Path("apps/web/src/lib/salute-tint.ts").read_text(encoding="utf-8")
+    assert f'label: "{cella}"' in salute, (
+        f"l'export scrive {cella!r} ma salute-tint non ha quella label: "
+        "schermo ed export divergono, come il 18/09"
+    )
+
+
+@pytest.mark.parametrize("sorgente", SORGENTI_A_VIDEO)
+def test_nessuna_grafia_divergente_a_video(sorgente):
+    """Nessun .tsx scrive lo stato con una grafia diversa dalla costante."""
+    import re
+    from pathlib import Path
+
+    cella = _cella_incompleti_eseguita()
+    testo = Path(sorgente).read_text(encoding="utf-8")
+
+    # Solo le stringhe a video: `>parola<` in JSX e `label: "parola"`.
+    a_video = set(re.findall(r">\s*([Ii]ncompleto)\s*<", testo))
+    a_video |= set(re.findall(r'label:\s*"([Ii]ncompleto)"', testo))
+
+    divergenti = {p for p in a_video if p != cella}
+    assert not divergenti, (
+        f"{sorgente} scrive {sorted(divergenti)} ma l'export scrive {cella!r}: "
+        "il cliente vedrebbe due parole per lo stesso stato"
+    )
