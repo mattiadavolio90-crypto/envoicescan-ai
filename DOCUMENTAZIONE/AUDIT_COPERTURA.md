@@ -428,9 +428,12 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 > - 18/09/2026, `0999871` — **coerenza visiva, fasi 0-1** (lavoro estetico, non
 >   audit): token `--positivo`/`--negativo`/`--incerto` tarati sui due temi e
 >   **senza consumatori** (la fase 0 non doveva cambiare un pixel, e non lo
->   cambia), piu' 10 rinomine di etichette. Suite **14.224 verdi + 45 skip**
->   (14.808 raccolti dalla root, 14.799 da `tests/`, 539 `-m sql` deselezionati:
->   i conti quadrano). **+5 test**, tutti sul file dell'export catena.
+>   cambia), piu' 10 rinomine di etichette. Suite **14.763 verdi + 45 skip**
+>   (= 14.808, tutti i raccolti dalla root; da `tests/` sono 14.799), **di cui
+>   539 su un Postgres vero** (`-m sql`): nel run di default girano, non sono
+>   esclusi — `pytest.ini` non ha `addopts`, il marker serve a isolarli o a
+>   escluderli **a richiesta**. Comando misurato: `python -m pytest -q
+>   -p no:randomly`. **+5 test**, tutti sul file dell'export catena.
 >   **Review: verde al SESTO giro**, 10 difetti veri (B1-B10). Nessuno trovato
 >   leggendo: tutti da un mutante o da una ricerca rifatta con un metodo diverso
 >   da quello che li aveva mancati. I tre piu' seri erano dentro *fix* di rilievi
