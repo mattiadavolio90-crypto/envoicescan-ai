@@ -26,6 +26,9 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-positivo: var(--positivo);
+  --color-negativo: var(--negativo);
+  --color-incerto: var(--incerto);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -67,6 +70,14 @@
     --accent: oklch(0.94 0.04 237.3);
     --accent-foreground: oklch(0.3 0.08 237.3);
     --destructive: oklch(0.577 0.245 27.325);
+    /* Colori del giudizio, tarati a mano sui due temi (18/09/2026).
+       Light: contrasto >= 4.5:1 su bianco -- i valori in uso nelle pagine
+       (emerald-600 3.77:1, amber-600 3.19:1) erano sotto soglia. --negativo
+       resta distinto da --destructive: quello e' l'azione pericolosa e
+       l'errore di sistema, questo e' il dato in perdita. */
+    --positivo: oklch(0.548 0.132 163.2);
+    --negativo: oklch(0.560 0.215 17.6);
+    --incerto: oklch(0.575 0.148 58.3);
     /* Bordi leggermente piu' marcati (0.922 -> 0.90) cosi' card, tab e bottoni
        hanno un contorno visibile in light: lo stato attivo si distingue meglio. */
     --border: oklch(0.90 0 0);
@@ -99,6 +110,12 @@
     --accent: oklch(0.25 0.04 237.3);
     --accent-foreground: oklch(0.85 0.06 237.3);
     --destructive: oklch(0.704 0.191 22.216);
+    /* Dark: luminosita' piu' alta per staccarsi dal nero, come --primary
+       (0.685 -> 0.751). Sono i valori gia' scelti dalle pagine nel tema scuro
+       (emerald/rose/amber-400), che al buio sono gia' sopra soglia. */
+    --positivo: oklch(0.773 0.153 163.2);
+    --negativo: oklch(0.719 0.169 13.4);
+    --incerto: oklch(0.837 0.164 84.4);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.751 0.148 237.3);
