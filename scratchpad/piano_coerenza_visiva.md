@@ -795,8 +795,8 @@ mutanti, 6 rossi e 2 verdi come atteso: un commento e admin non devono
 scattare). **Suite intera a repo fermo, al commit `47657a2`: 15.485 verdi +
 45 skip = 15.530 raccolti** (`python -m pytest -q -p no:randomly` dalla root);
 il primo run completo aveva UN rosso, un test che chiedeva la variante `dark:`
-alle classi prezzo della catena — la premessa vecchia — corretto in `47657a2`. La rete frontend (39 file) e i 10 test che leggono i sorgenti delle
-pagine: verdi. **Non provato: l'occhio.** Da questa sessione non si renderizza
+alle classi prezzo della catena — la premessa vecchia — corretto in `47657a2`. La rete frontend (40 file **contando il presidio nuovo**: erano 39 quando
+l'ho eseguita) e i 10 test che leggono i sorgenti delle pagine: verdi. **Non provato: l'occhio.** Da questa sessione non si renderizza
 (niente Playwright, e le pagine vere vogliono i dati di un cliente): la verifica
 a schermo nei due temi la fa Mattia — la style guide è il posto da cui partire.
 
