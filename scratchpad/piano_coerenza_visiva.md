@@ -241,12 +241,17 @@ azzurro; renderla leggermente evidenziata per intero — è quella che si guarda
 | **0 — Fondamenta** ✅ **CHIUSA** (commit `7cb145c`, 18/09) | Token `--positivo`/`--negativo`/`--incerto` definiti su entrambi i temi. Nessun cambio visibile, provato per mutazione. | Tutto il resto ci si appoggia. Farlo dopo = rifarlo due volte. | nullo |
 | **1 — Parole** ✅ **CHIUSA** (commit `5f7a6f7`, 18/09) | H1, M2, AF2, F3, W3, C2 + Q.tà, Incid. Fatturato, Vs media | Indipendente dalla grafica, si può fare in parallelo | nullo |
 | **2 — Colore** ✅ **CHIUSA** (12 commit da `7bffae6` a `1a81d92`, 18/09) | Sostituire le 759 classi hardcoded coi token, pagina per pagina. Eliminare i 233 decorativi. H5, M3, O1, AF1, AF3, W1, W2, C1 | **È il cuore:** risolve insieme l'incoerenza dell'azzurro, l'arcobaleno e il disallineamento dark/light — tre sintomi della stessa causa | medio — va guardato a schermo in entrambi i temi |
-| **3 — Densità** | Tabella Margini (§4), H2-H4, M1, M4-M5, O2-O4, F1-F2-F4, AF4, T2-T4, W4-W5, C3 | Tocca i layout: serve l'occhio di Mattia prima di committare | alto — **una pagina per volta** |
+| **3 — Densità** ⏸️ **DA RIVEDERE PRIMA DI COMINCIARE** | L'elenco del 18/09 era: Tabella Margini (§4), H2-H4, M1, M4-M5, O2-O4, F1-F2-F4, AF4, T2-T4, W4-W5, C3. Dopo la verifica sul codice e sui 70 screenshot (§13) **ne restano 14 su 22**: vedi §14. | Tocca i layout: serve l'occhio di Mattia prima di committare | alto — **una pagina per volta** |
 
 **Modo di lavoro sulla fase 3** (decisione delegata a me): propongo **una pagina
 per volta**, la mostro, e passo alla successiva solo quando quella è chiusa.
 È la regola di `WORKFLOW.md` §5 — sui layout è l'unico modo per non accumulare
 quattro pagine da rifare insieme.
+
+**Ordine deciso da Mattia il 21/09**, dopo il giro sugli screenshot: **prima R5
+(i 93 troncamenti senza tooltip), O2 e O4** — che sono dati *nascosti o
+sbagliati*, non densità, e si chiudono senza il suo occhio — **e la fase 3
+dopo**, con l'elenco rivisto del §14.
 
 ---
 
@@ -921,3 +926,83 @@ verificato**: nessuna immagine a 1140/1280px, che è la larghezza dove il §11
 sospettava il problema delle card Agenda→Personale, e dove il commento nel
 codice di `personale-tab.tsx:1540` calcola 365px di contenuto su 223 di spazio.
 Serve una finestra stretta, non un altro screenshot a tutto schermo.
+
+---
+
+## 14. Fase 3 riveduta — cosa resta davvero, dopo codice e screenshot
+
+L'elenco del §5 è del 18/09 e precede sia i 12 commit della fase 2 sia il giro
+visivo del §13. **Dei 22 rilievi ne restano 14.** Questa è la lista da cui si
+parte quando la fase 3 si apre; l'elenco vecchio non va più usato.
+
+**Prima della fase 3 si fanno R5, O2 e O4** (decisione di Mattia, 21/09): non
+sono densità — sono dati che l'interfaccia nasconde o dice male — e non
+richiedono il suo occhio. La fase 3 viene dopo.
+
+### 14.1 Gli 8 che cadono
+
+| Rilievo | Perché cade | Verificato |
+|---|---|---|
+| **H3** anello perso nel pannello | ring 128px in pannello con padding e senza altezza fissa: la geometria descritta non esiste | codice, `salute-card.tsx:18-19,51` |
+| **H4** «Vai alla pagina» ×4 | un solo punto nel codice, non quattro | codice, `salute-card.tsx:98-101` |
+| **M5** ciambella a due fette | è a N fette, con tooltip e legenda | codice + screen 33, 38 |
+| **W4** «COSTO ORDINARIE» col trattino | oggi scrive «Paghe non inserite» | codice + screen 27, 29 |
+| **F1** fasce vuote nello Scadenziario | con una sola fascia piena la lettura è immediata: «tutto scaduto» si capisce a colpo d'occhio | **screen 12, 25** |
+| **T2** date ammassate sull'asse Tag | le date sono otto e leggibili | **screen 6, 7, 19, 20** |
+| **W4b** «Paghe non inserite» in verde | chiuso oggi, `61f6a30` | screen 27, 29 |
+| **C3** segnali duplicati | chiuso oggi, `5942dfc` + `541b961` (`/m`) | screen 42, 46 |
+
+M5 e W4 dipendevano dai dati: lo screenshot originale era probabilmente vero
+allora e semplicemente non si riproduce più. **T2 merita una riga a parte:** il
+rischio nel codice è reale (nessun `interval` su `XAxis`, backend non limitato
+in `tag_analytics_service.py:238-272`), ma su nessun dato reale di oggi si
+manifesta. Non è lavoro della fase 3; se un cliente accumulerà abbastanza punti
+tornerà da solo, e allora sarà un bug con una causa nota.
+
+### 14.2 I 14 che restano
+
+**Il pezzo grosso — la tabella Margini (§4).** Tre decisioni, tutte di Mattia:
+
+- **(a) l'interruttore € / % / entrambi**, default €, preferenza ricordata.
+  Oggi ogni cella porta il valore *e* la percentuale sotto (`calcolo-tab.tsx:604-611`);
+  l'unico interruttore esistente è Totale/Media (`:244-263`). **Domanda aperta:
+  la percentuale sotto ogni numero serve sempre, o quasi mai?**
+- **(b) la gerarchia tipografica** al posto del colore: dettaglio grigio
+  regolare, totali in grassetto con un filo di separazione sopra, MOL in fondo
+  più grande.
+- **(c) la colonna del mese corrente** — **già fatta e già buona**: negli
+  screenshot 4, 17 la colonna evidenziata in blu tenue funziona meglio
+  dell'asterisco che sostituisce. Resta solo da confermare che piaccia.
+
+**I grafici senza scala** (2):
+
+- **M4** — le sei tessere di Margini: `<svg>` + `<polyline>` nudi
+  (`kpi-bar.tsx:45-62`), nessun asse, nessun `<title>`, nessun hover. Si capisce
+  se sale o scende, non di quanto. Visibile negli screen 4, 17.
+- **AF4** — mezzo chiuso: la tendenza di Analisi Fatture è una spezzata vera a
+  più punti (`pivot-tab.tsx:206-225`), manca solo la scala. Screen 57, 58.
+
+**Dati nascosti o detti male** (3 — **si fanno PRIMA della fase 3**):
+
+- **R5** — 93 troncamenti su 125 senza `title`. Il modello da copiare è già nel
+  codice: `pivot-tab.tsx:379` (`truncate max-w-44` **con** `title={row.dimensione}`). Peggiori: `scadenziario-client.tsx` 9 su 10,
+  `workspace/personale-tab.tsx` 6 su 6, `catena/gruppo-tag-section.tsx` 5 su 5.
+  Visibile negli screen 13, 26, 44, 47 e nel nome sede della barra laterale.
+- **O2** — la colonna «File» mostra al cliente i nomi XML grezzi
+  (`IT02621200126_037BG.xml`), in Sconti e in Note di Credito. Screen 10, 11,
+  23, 24. `sconti-tab.tsx:286,318`, `nc-tab.tsx:180,201`.
+- **O4** — la frase di sintesi dei fornitori si ripete identica: 4 frasi in
+  tutto per tutti (`prezzi.py:1317-1322`). Screen 31, 36.
+
+**Il resto** (6): H2, M1, F2, F4, T3 (resta solo la sovrapposizione
+dell'etichetta «Media», il colore è già a posto), T4 (nessun limite sui
+prodotti, `analisi-e-tag-client.tsx:1366-1415`), W5.
+
+### 14.3 Il vincolo che non cambia
+
+La fase 3 è **layout**, e il §6 dice che va rivista dopo aver visto l'app: ora
+l'abbiamo vista, ma **solo a ~1900px**. Resta aperto **R2**: nessuno screenshot
+a 1140/1280px, che è la larghezza dove il commento in `personale-tab.tsx:1540`
+calcola 365px di contenuto su 223 di spazio. **Una pagina per volta, mostrata
+prima di passare oltre** (§7) vale ancora: gli screenshot dicono com'è adesso,
+non come sarà dopo una modifica al layout.
