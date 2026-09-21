@@ -37,6 +37,7 @@ import {
   headerArticoli,
   headerDettaglio,
   nomeFileArticoli,
+  paramsExportRighe,
   rigaExportArticolo,
   rigaExportDettaglio,
 } from "@/lib/articoli-export";
@@ -279,20 +280,10 @@ export function ArticoliTab({
     if (exporting) return;
     setExporting(true);
     try {
-      const params = new URLSearchParams();
-      if (filtri.data_da) params.set("data_da", filtri.data_da);
-      if (filtri.data_a) params.set("data_a", filtri.data_a);
-      // Stesso filtro dell'aggregato, per la stessa ragione dell'espansione riga:
-      // senza, le descrizioni a cavallo fra F&B e spese generali porterebbero nel
-      // foglio 2 righe che non compongono il totale del foglio 1.
-      if (filtri.tipo_prodotti && filtri.tipo_prodotti !== "tutti") {
-        params.set("tipo_prodotti", filtri.tipo_prodotti);
-      }
-      // "Nuovi caricati" non e' un filtro client come gli altri cinque: l'aggregato
-      // lo applica server-side e ci ricalcola sopra i totali del foglio 1. Senza
-      // questo parametro il foglio 2 uscirebbe con tutto lo storico degli stessi
-      // articoli, e i due fogli mostrerebbero due totali diversi.
-      if (soloNuovi) params.set("solo_nuovi", "true");
+      // La querystring si costruisce in `paramsExportRighe`, non qui: e' la riga
+      // che decide se il foglio 2 parla dello stesso periodo del foglio 1, e
+      // dentro il componente nessun test poteva vederla.
+      const params = paramsExportRighe({ ...filtri, soloNuovi });
       const res = await fetch(`/api/fatture/righe-export?${params}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -107,6 +107,39 @@ export function rigaExportDettaglio(r: RigaFattura): Record<string, string | num
 }
 
 /**
+ * I parametri con cui l'export chiede le righe di dettaglio al worker.
+ *
+ * Vive qui e non dentro `exportXls` perche' e' la gamba che nessun test vedeva:
+ * il 21/09/2026 il foglio 2 usciva senza il filtro "Nuovi caricati" e mostrava
+ * tutto lo storico degli articoli mentre il foglio 1 mostrava l'ultimo carico
+ * (misurato su una sede vera: 4.833 righe e 512.669 EUR contro 1.545 e 170.596).
+ * Il difetto e' stato corretto nel worker e nel client, ma finche' la
+ * costruzione della querystring e' rimasta dentro il componente React,
+ * toglierne una riga non faceva fallire nulla.
+ *
+ * Le regole in una riga ciascuna:
+ * - `tipo_prodotti` si manda solo se non e' "tutti", come fa l'espansione riga:
+ *   altrimenti il totale del foglio 1 (filtrato) non e' la somma del foglio 2.
+ * - `solo_nuovi` e' l'unico dei sei filtri che il worker deve conoscere: gli
+ *   altri cinque vivono nel browser e viaggiano come elenco di descrizioni.
+ */
+export function paramsExportRighe(f: {
+  data_da?: string;
+  data_a?: string;
+  tipo_prodotti?: string;
+  soloNuovi?: boolean;
+}): string {
+  const params = new URLSearchParams();
+  if (f.data_da) params.set("data_da", f.data_da);
+  if (f.data_a) params.set("data_a", f.data_a);
+  if (f.tipo_prodotti && f.tipo_prodotti !== "tutti") {
+    params.set("tipo_prodotti", f.tipo_prodotti);
+  }
+  if (f.soloNuovi) params.set("solo_nuovi", "true");
+  return params.toString();
+}
+
+/**
  * Nome del file scaricato. Invariato rispetto all'export a foglio singolo: chi
  * ha automatismi o cartelle che lo cercano per nome non se ne accorge.
  *

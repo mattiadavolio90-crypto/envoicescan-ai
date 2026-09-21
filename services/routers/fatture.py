@@ -453,6 +453,12 @@ def _cutoff_nuovo(supabase_client, ristorante_id: str) -> str:
     due fogli dello stesso file Excel. Quando la logica viveva in due copie il
     rischio non era teorico — il foglio di dettaglio e' nato senza il filtro
     "Nuovo" del tutto, e i due fogli mostravano totali diversi (21/09/2026).
+
+    NON e' l'unica copia nel repo: al 21/09/2026 leggono `nuovi_da` per conto
+    proprio anche get_fatture_kpi (qui sotto, riga ~344), documenti_service e
+    worker/queue_processor. Oggi sono tutte semanticamente identiche a questa,
+    quindi non c'e' un difetto aperto; accorparle attraversa tre moduli e due
+    processi ed e' una fase a se', con i suoi mutanti.
     """
     from datetime import datetime, timedelta, timezone
     ristorante_row = (
@@ -681,7 +687,8 @@ def _righe_troncate(n_righe: int) -> bool:
     Nessuna delle due e' grave: l'avviso non cambia il contenuto del file, dice
     solo di restringere il periodo. Misurarlo esattamente vorrebbe dire far
     restituire il flag a _fetch_fatture_rows, cambiando il contratto di una
-    funzione con 11 chiamanti su un path caldo: costo sproporzionato al margine.
+    funzione con 9 chiamanti (misurati il 21/09/2026) su un path caldo: costo
+    sproporzionato al margine.
 
     Margine misurato il 21/09/2026 a DB: la sede piu' popolosa ha 12.956 righe in
     TUTTO il suo storico, circa un quarto del tetto. L'avviso quindi oggi non

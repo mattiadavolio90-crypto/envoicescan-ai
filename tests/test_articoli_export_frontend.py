@@ -22,7 +22,8 @@ MODULO = "lib/articoli-export"
 # intestazioni, i due nomi foglio) sarebbero un falso negativo silenzioso — una
 # rinomina le farebbe arrivare `undefined` senza che il prologo se ne accorga —
 # quindi la loro esistenza la presidia test_esportazioni_valore_presenti.
-FUNZIONI = ["rigaExportArticolo", "rigaExportDettaglio", "nomeFileArticoli"]
+FUNZIONI = ["rigaExportArticolo", "rigaExportDettaglio", "nomeFileArticoli",
+            "paramsExportRighe"]
 
 VALORI = ["headerArticoli", "headerDettaglio", "FOGLIO_ARTICOLI", "FOGLIO_DETTAGLIO"]
 
@@ -224,3 +225,44 @@ def test_nome_file_invariato_rispetto_al_foglio_singolo():
     accorgersi del secondo foglio."""
     nome = _esegui("emit(m.nomeFileArticoli(new Date('2026-09-21T14:30:00Z')));")
     assert nome == "articoli_2026-09-21.xlsx"
+
+
+# ─── I parametri con cui si chiede il dettaglio ─────────────────────────────
+
+def _params(**kw):
+    return _esegui("emit(m.paramsExportRighe(input));", kw)
+
+
+class TestParamsExportRighe:
+    """La gamba del fix che stava dentro il componente e che nessun test vedeva.
+
+    Il 21/09/2026 il foglio 2 usciva senza il filtro "Nuovi caricati": mostrava
+    tutto lo storico mentre il foglio 1 mostrava l'ultimo carico. Corretto nel
+    worker e nel client, ma finche' la querystring si costruiva dentro
+    `exportXls` toglierne una riga non faceva fallire niente — misurato: 492
+    test verdi con la riga rimossa.
+    """
+
+    def test_solo_nuovi_presente_quando_la_checkbox_e_attiva(self):
+        assert "solo_nuovi=true" in _params(
+            data_da="2026-09-01", data_a="2026-09-30", soloNuovi=True)
+
+    def test_solo_nuovi_assente_quando_la_checkbox_e_spenta(self):
+        """Non `solo_nuovi=false`: il parametro non ci deve proprio essere, o il
+        worker lo leggerebbe comunque come presente in una futura lettura lasca."""
+        assert "solo_nuovi" not in _params(
+            data_da="2026-09-01", data_a="2026-09-30", soloNuovi=False)
+
+    def test_periodo_propagato(self):
+        q = _params(data_da="2026-09-01", data_a="2026-09-30")
+        assert "data_da=2026-09-01" in q and "data_a=2026-09-30" in q
+
+    def test_tipo_prodotti_propagato_se_non_tutti(self):
+        assert "tipo_prodotti=food_beverage" in _params(tipo_prodotti="food_beverage")
+
+    def test_tipo_prodotti_tutti_non_si_manda(self):
+        """"tutti" non e' un filtro: mandarlo cambierebbe il ramo del worker."""
+        assert "tipo_prodotti" not in _params(tipo_prodotti="tutti")
+
+    def test_nessun_filtro_nessun_parametro(self):
+        assert _params() == ""
