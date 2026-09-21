@@ -830,3 +830,78 @@ non-colore; `text-shadow-*` (Tailwind 4.1) e `outline-offset` senza numero
 oggi non sono usati e farebbero un falso rosso — si aggiungono quando servono.
 `color-mix(in oklch, …)` nella cascata e nel gauge contro `in oklab` altrove:
 stesso effetto, due grafie.
+
+---
+
+## 13. L'app vista a schermo — 70 screenshot, 21/09/2026
+
+Il giro visivo che il §6 dichiarava mancante («l'app non è mai stata vista in
+movimento») e che il §11 aveva messo in R11. Mattia ha caricato **70
+screenshot** in `SCREEN APP 18.09/` (nome della cartella vecchio, contenuto
+rifatto la mattina del 21/09, dopo i 12 commit della fase 2): **entrambi i
+temi**, tre account diversi — CASATI 14 (singola sede), Gruppo SUSHILAND (5 PV)
+e Gruppo OFFSIDE (finestre di ripartizione).
+
+**Esito generale: il colore della fase 2 regge.** Nessun token non dichiarato,
+nessun riquadro trasparente, nessuna coppia testo/fondo illeggibile in nessuno
+dei due temi. La tabella Margini con la colonna del mese corrente evidenziata
+in blu tenue funziona meglio dell'asterisco che sostituisce (§4c, chiuso).
+
+### 13.1 Due bug veri, trovati guardando
+
+**«Paghe non inserite» in verde** (Agenda → Personale, screen 27 e 29, in
+entrambi i temi) — `fix(agenda)` `61f6a30`. Un dato *mancante* colorato come un
+esito positivo. Le tre tessere affiancate dicevano la stessa cosa con tre
+colori: `text-positivo` la prima, `text-incerto` le altre due, mentre il
+commento sopra la terza dichiarava già che «lo dicono tutte e tre allo stesso
+modo» — il codice non faceva quello che il suo stesso commento diceva. Il verde
+l'ha introdotto `06bd099`, **un commit della fase 2**: è esattamente la trappola
+`il-riscrittore-vede-la-famiglia`, la riscrittura ha letto la famiglia del
+colore invece del significato. Presidio nuovo dentro
+`test_colori_solo_token_frontend.py`: *la stessa etichetta a video non porta due
+token semantici diversi nello stesso file* — regola generale, non toppa sulla
+riga. Provato per mutazione (rimesso `text-positivo` → 1 failed sul file
+giusto, 167 file verdi intorno). Il presidio passa da 674 a 842 test.
+
+**Lo stesso avviso ripetuto per 5 PV** (Catena → «Da vedere», screen 42 e 46) —
+`fix(catena)` `5942dfc`. 13 righe di cui 5 identiche parola per parola. C3 del
+§3, confermato a video. La trappola del raggruppamento è il bottone «Vedi PV»,
+che è una **destinazione**: comprimere a una riga con un solo id avrebbe
+commutato la sede attiva su un PV arbitrario (cookie + preferenza, effetto
+persistente) — lo stesso incidente che il commento del file già documentava per
+i segnali senza `ristorante_id`. Il gruppo tiene **tutti** i PV, il bottone
+compare solo quando la destinazione è una, i nomi vanno nel `title`. La logica
+sta in `lib/catena-segnali.ts` e **non** in `lib/gruppo.ts` perché quello
+importa `react` e `./worker` e sotto node non si carica: la rete frontend non
+avrebbe potuto eseguirlo. 4 mutanti su 4 uccisi.
+
+### 13.2 Rilievi del §3 confermati a video
+
+- **O2** — la colonna «File» mostra al cliente i nomi XML grezzi
+  (`IT02621200126_037BG.xml`), in Sconti e in Note di Credito (screen 10, 11,
+  23, 24). Aperto.
+- **O4** — la frase di sintesi si ripete identica: «Relazione complessivamente
+  solida…» due fornitori di fila, «Fornitore stabile e coerente nel periodo
+  osservato» tre di fila (screen 31, 36). 4 frasi in tutto per tutti i
+  fornitori, e si nota. Aperto.
+- **R5** — troncamenti senza tooltip, visibili in quattro schermate diverse:
+  `AVICOVO S.N.C. DI SEVESO…`, `BRICOMAN ITALIA S.R.L. S…`, `SUSHILAND
+  MARIAN…` (il nome sede nella barra laterale). Aperto, 93 punti su 125.
+
+### 13.3 Rilievi che a video NON si riproducono
+
+- **F1** (fasce vuote nello Scadenziario, screen 12 e 25): con una sola fascia
+  piena la lettura è immediata — «tutto scaduto» si capisce a colpo d'occhio.
+  **Chiuso, non era un difetto.**
+- **T2** (date ammassate sull'asse di Analisi e Tag, screen 6, 7, 19, 20): le
+  date sono otto e leggibili. Il rischio nel codice resta reale (nessun
+  `interval`, backend non limitato), ma **su nessun dato reale di oggi si
+  manifesta**: non è lavoro della fase 3.
+
+### 13.4 Cosa resta da guardare
+
+Tutti gli screenshot sono a schermo pieno (~1900px). **R2 resta aperto e non
+verificato**: nessuna immagine a 1140/1280px, che è la larghezza dove il §11
+sospettava il problema delle card Agenda→Personale, e dove il commento nel
+codice di `personale-tab.tsx:1540` calcola 365px di contenuto su 223 di spazio.
+Serve una finestra stretta, non un altro screenshot a tutto schermo.
