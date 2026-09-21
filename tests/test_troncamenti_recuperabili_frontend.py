@@ -32,7 +32,27 @@ APERTURA = re.compile(r"<(\w+)\s+([^>]*?)/?>", re.S)
 # regex, quindi `\btruncate\b` matcha anche `truncate-none` (che il
 # troncamento lo TOGLIE). Stessa famiglia di `regex-su-classi-ordine-e-percorsi`.
 TRONCA = re.compile(r"(?<![\w-])(truncate|text-ellipsis|line-clamp-\d+)(?![\w-])")
-HA_TITOLO = re.compile(r"\b(title|aria-label)\s*=")
+# `title=` va cercato come ATTRIBUTO, non come testo. Il 21/09 un `title`
+# finito DENTRO il template literal della classe
+# (`className={`truncate ... title={v.titolo}`}`) veniva contato come presente:
+# il tooltip non esisteva e il presidio taceva. Cercare una sottostringa nel
+# blob degli attributi e' `assert-in-non-e-assert-uguale` applicato a un
+# rilevatore — prima si svuotano le stringhe, poi si cerca.
+_ATTRIBUTO_TITOLO = re.compile(r"(?:^|[\s{])(title|aria-label)\s*=")
+_STRINGA = re.compile(r"'[^']*'|\"[^\"]*\"|`(?:[^`\\]|\\.)*`", re.S)
+
+
+def _svuota_stringhe(attributi: str) -> str:
+    """Ogni stringa diventa spazi: cosi' resta solo la STRUTTURA degli attributi.
+
+    I `${...}` dentro un template literal sono codice, non testo, ma quello che
+    cerchiamo qui e' un attributo JSX, che dentro una stringa non puo' stare.
+    """
+    return _STRINGA.sub(lambda m: " " * len(m.group(0)), attributi)
+
+
+def _ha_titolo(attributi: str) -> bool:
+    return bool(_ATTRIBUTO_TITOLO.search(_svuota_stringhe(attributi)))
 
 # Il perimetro e' quello del presidio colori, IMPORTATO invece che ricopiato:
 # due liste scritte a mano divergono, e una cartella nuova finirebbe dentro una
@@ -81,7 +101,7 @@ def _troncamenti(p: Path) -> list[dict]:
         fuori.append({
             "file": rel,
             "riga": src[: m.start()].count("\n") + 1,
-            "titolo": bool(HA_TITOLO.search(m.group(2))),
+            "titolo": _ha_titolo(m.group(2)),
             "contenuto": contenuto[:60],
         })
     return fuori
@@ -97,7 +117,7 @@ def test_il_perimetro_non_e_vuoto():
     assert any(p.name == "scadenziario-client.tsx" for p in PERIMETRO)
 
 
-def test_il_rilevatore_riconosce_le_forme_che_il_codice_usa(tmp_path):
+def test_il_rilevatore_riconosce_le_forme_che_il_codice_usa():
     """Un rilevatore che non matcha non misura niente: le forme si dichiarano.
 
     `mutante-che-non-matcha-non-e-una-prova` applicata al presidio stesso.
@@ -114,15 +134,40 @@ def test_il_rilevatore_riconosce_le_forme_che_il_codice_usa(tmp_path):
         ('<span className="truncate-none">{x}</span>', 0, 0),
     ]
     for sorgente, attesi, con_titolo in casi:
-        f = tmp_path / "prova.tsx"
-        f.write_text(sorgente, encoding="utf-8")
         trovati = [
-            {"titolo": bool(HA_TITOLO.search(m.group(2)))}
+            {"titolo": _ha_titolo(m.group(2))}
             for m in APERTURA.finditer(_neutralizza(sorgente))
             if TRONCA.search(m.group(2))
         ]
         assert len(trovati) == attesi, sorgente
         assert sum(t["titolo"] for t in trovati) == con_titolo, sorgente
+
+
+def test_un_title_dentro_la_classe_non_conta_come_title():
+    """Il refuso vero del 21/09: `title` finito DENTRO le backtick della classe.
+
+    `className={`truncate ... title={v.titolo}`}` non produce nessun attributo
+    nel DOM — il tooltip non c'e' — ma un rilevatore che cerca la sottostringa
+    `title=` nel blob degli attributi lo conta come presente, e tace. Il primo
+    giro di questo presidio lo faceva: 75 su 77 dichiarati 76 su 77.
+    """
+    rotto = '<span className={`truncate ${x ? "a" : ""} title={v.titolo}`}>{v.titolo}</span>'
+    m = APERTURA.search(rotto)
+    assert TRONCA.search(m.group(2)), "il caso deve troncare, o non prova niente"
+    assert not _ha_titolo(m.group(2)), "un title dentro la classe non e' un attributo"
+
+    giusto = '<span className={`truncate ${x ? "a" : ""}`} title={v.titolo}>{v.titolo}</span>'
+    assert _ha_titolo(APERTURA.search(giusto).group(2))
+
+
+def test_una_classe_che_si_chiama_title_non_conta_come_title():
+    """`title=` dentro una stringa qualunque, non solo nelle backtick."""
+    for rotto in (
+        '<span className="truncate" data-x="title=1">{y}</span>',
+        "<span className='truncate title=fake'>{y}</span>",
+    ):
+        m = APERTURA.search(rotto)
+        assert not _ha_titolo(m.group(2)), rotto
 
 
 def test_un_troncamento_in_un_commento_non_si_conta():

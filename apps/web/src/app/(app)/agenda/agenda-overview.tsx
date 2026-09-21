@@ -491,7 +491,7 @@ function PannelloPersonale({ voci }: { voci: VoceAgenda[] }) {
           const assente = tipo !== "turno";
           return (
             <div key={v.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
-              <span className={`font-medium truncate ${assente ? "text-muted-foreground" : ""} title={v.titolo}`}>
+              <span className={`font-medium truncate ${assente ? "text-muted-foreground" : ""}`} title={v.titolo}>
                 {v.titolo}
               </span>
               {assente ? (
