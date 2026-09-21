@@ -982,7 +982,7 @@ tornerà da solo, e allora sarà un bug con una causa nota.
 - **AF4** — mezzo chiuso: la tendenza di Analisi Fatture è una spezzata vera a
   più punti (`pivot-tab.tsx:206-225`), manca solo la scala. Screen 57, 58.
 
-**Dati nascosti o detti male** (3 — **si fanno PRIMA della fase 3**):
+**Dati nascosti o detti male** (3 — ✅ **CHIUSI il 21/09**, vedi §15):
 
 - **R5** — 93 troncamenti su 125 senza `title`. Il modello da copiare è già nel
   codice: `pivot-tab.tsx:379` (`truncate max-w-44` **con** `title={row.dimensione}`). Peggiori: `scadenziario-client.tsx` 9 su 10,
@@ -1006,3 +1006,77 @@ a 1140/1280px, che è la larghezza dove il commento in `personale-tab.tsx:1540`
 calcola 365px di contenuto su 223 di spazio. **Una pagina per volta, mostrata
 prima di passare oltre** (§7) vale ancora: gli screenshot dicono com'è adesso,
 non come sarà dopo una modifica al layout.
+
+---
+
+## 15. R5, O2, O4 — chiusi il 21/09/2026
+
+I tre rilievi che non erano densità ma **dati nascosti o detti male**, fatti
+prima della fase 3 perché non richiedevano l'occhio di Mattia.
+
+### R5 — un testo troncato deve restare leggibile (`b7029ac`)
+
+**62 `title` aggiunti**, da 63 elementi nudi su 77 (82%) a **1 su 77**. L'unica
+eccezione è dichiarata e motivata nel presidio: `ETICHETTA_INCOMPLETO` in
+`sintesi-catena.tsx`, costante fissa che troncata resta riconoscibile.
+
+**La cifra «93 su 125» del §13 era sbagliata**: contava le *righe* col grep,
+non gli elementi (`grep-c-conta-righe-non-occorrenze`). Il numero vero era
+**63 su 77**. Il presidio nuovo
+(`tests/test_troncamenti_recuperabili_frontend.py`) conta gli elementi e
+neutralizza i commenti invece di cancellarli, così il numero di riga che
+riporta è quello del file vero.
+
+Due difetti del rilevatore trovati **dai suoi stessi test**, prima del commit:
+- `\btruncate\b` matchava `truncate-none`, che il troncamento lo *toglie* (il
+  trattino è un confine di parola per la regex) — `regex-su-classi-ordine-e-percorsi`
+- il perimetro l'avevo riscritto a mano con `app/(admin)` mentre la cartella
+  vera è `app/(app)/admin/`: 8 file fuori perimetro dichiarati rossi. Ora
+  `ESCLUSI` si **importa** dal presidio colori invece di ricopiarlo.
+
+### O2 — il nome del file XML non è un dato del cliente (`99e983f`)
+
+Tolta la colonna «File» da Sconti e Omaggi, da Note di Credito e da **un terzo
+posto che il presidio ha trovato e che non era nel piano**: Analisi Fatture →
+Articoli aveva la stessa colonna, con lo stesso difetto, subito dopo «N.
+Documento».
+
+Il **campo resta**: in `nc-tab.tsx:73` `r.documento` conta i documenti distinti
+per il KPI «Documenti NC». Era sbagliata la resa a video, non il dato. Resta a
+video anche `item.fornitore || item.file_origine` nello scadenziario,
+dichiarato come ripiego: lì il file è l'unica cosa che identifica una riga di
+cui non si è riconosciuto il fornitore.
+
+Il primo giro del presidio dava 4 rossi: **3 erano falsi positivi** (chiavi
+React, dichiarazioni di tipo, handler) e 1 era il caso vero. Ristretto al testo
+*renderizzato* (`>{x}<`), che è quello che il cliente legge.
+
+### O4 — la sintesi dice cosa è successo, non il suo stato (`743cbaf`)
+
+> prima: «Fornitore stabile e coerente nel periodo osservato.»
+> dopo: «Relazione instabile: aumento del 45% su Pane (~€6/mese).»
+
+I segnali erano già specifici **due righe sopra** nel codice e la sintesi li
+ignorava, scegliendo fra 4 stringhe in base al solo stato. Ora lo stato è la
+cornice e il segnale porta il fatto.
+
+Tre cose trovate dalla **mutazione**, non dalla lettura:
+- `stabilita` non è un fatto osservato ma il modo in cui il codice dice «non ho
+  niente da segnalare», e porta già una cornice sua: incollata alla nostra dava
+  «Relazione stabile: relazione stabile: nessun segnale…». Escluso.
+- il primo caso di prova **non produceva nessun rincaro**: la variazione si
+  misura fra ultimo e penultimo prezzo, e un +40% a metà storico seguito da due
+  mesi fermi non la supera — `caso-di-test-va-scelto-dove-i-due-mondi-divergono`.
+- avevo scritto un ordinamento per peso del tono: **due mutanti gli sono
+  sopravvissuti**, perché i segnali di attenzione sono già emessi prima dei
+  neutri e quel codice non era raggiungibile da nessun dato reale. Tolto e
+  sostituito dalla regola vera, con un test che fotografa l'ordine.
+
+Nessun test toccava `frase_sintesi`: per questo il difetto è durato. Ora 8.
+
+### Cosa resta
+
+La **fase 3** (§14), 11 rilievi: la tabella Margini con le sue tre decisioni, i
+due grafici senza scala (M4, AF4) e sei ritocchi minori. Vincolo invariato:
+**una pagina per volta, mostrata prima di passare oltre**, e **R2 mai
+verificato** — nessuno ha ancora visto l'app sotto i 1900px.
