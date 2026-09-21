@@ -8516,6 +8516,15 @@ def _exclude_note_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [r for r in rows if (r.get("categoria") or "") not in CATEGORIE_NOTE_WORKER]
 
 
+# Tetto di sicurezza alla scansione di _fetch_fatture_rows: oltre questo numero di
+# righe lette la paginazione si ferma. Costante e non letterale perche' l'export
+# righe (router fatture, /righe-export) deve poter DIRE al cliente che il file e'
+# troncato, e un 50000 ricopiato la' avrebbe smesso di corrispondere al primo
+# ritocco qui. Riguarda SOLO questa funzione: l'altro 50000 del repo
+# (routers/fatture.py, get_fornitori_disponibili) e' la paginazione di una query
+# propria, indipendente da questa — non e' un gemello da allineare.
+_FATTURE_ROWS_CAP = 50000
+
 _FATTURE_ROWS_CACHE: Dict[str, tuple] = {}  # key -> (expires_at, rows)
 # TTL corto: abbatte i 4 full-scan dello STESSO caricamento pagina (che avvengono
 # in pochi secondi) senza tenere dati stale a lungo dopo una modifica categoria/
@@ -8663,7 +8672,7 @@ def _fetch_fatture_rows(
         if len(batch) < page_size:
             break
         offset += page_size
-        if offset >= 50000:  # safety cap
+        if offset >= _FATTURE_ROWS_CAP:  # safety cap
             break
 
     all_rows = _exclude_note_rows(all_rows)

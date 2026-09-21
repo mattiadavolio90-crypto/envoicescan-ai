@@ -6253,6 +6253,137 @@
         }
       }
     },
+    "/api/fatture/righe-export": {
+      "post": {
+        "summary": "Get Righe Export",
+        "description": "Righe singole dell'intero periodo, per il foglio \"Dettaglio righe\".\n\nGemello di /righe-articolo, che serve l'espansione di UNA riga a video e per\nquesto prende una sola descrizione. L'export ne ha centinaia: una chiamata per\narticolo sarebbe altrettante richieste HTTP dal browser.\n\n`descrizioni` nel body esiste per un motivo preciso: i filtri Cerca /\nFornitore / Categoria / Solo verifica / Solo ripartite del tab Articoli sono\napplicati SOLO nel browser, il worker non li conosce. Il client manda l'elenco\ndegli articoli che ha davvero a schermo, cosi' il foglio di dettaglio contiene\nle righe di quegli articoli e non di altri. Assente -> tutto il periodo.\n\n`solo_nuovi` invece e' un parametro, non una descrizione: a differenza degli\naltri cinque filtri e' applicato SERVER-side anche dall'aggregato, che con\nesso ricalcola totale_speso/quantita/num_acquisti sulle sole righe\ndell'ultima sessione di upload. Mandare le sole descrizioni non basterebbe:\nil foglio 1 direbbe \"ultimo carico\" e il foglio 2 tutto lo storico di quegli\narticoli — due totali diversi nello stesso file.\n\nE' un POST benche' legga soltanto: quell'elenco arriva a centinaia di voci e\nin querystring sfonderebbe i limiti di lunghezza URL di proxy e server. Non\nscrive nulla.",
+        "operationId": "get_righe_export_api_fatture_righe_export_post",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "tipo_prodotti",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo Prodotti"
+            }
+          },
+          {
+            "name": "solo_nuovi",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Solo Nuovi"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RigheExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RigheExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/fatture/pivot": {
       "get": {
         "summary": "Get Fatture Pivot",
@@ -24777,6 +24908,47 @@
           "piva_cedente"
         ],
         "title": "RigaFattura"
+      },
+      "RigheExportRequest": {
+        "properties": {
+          "descrizioni": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descrizioni"
+          }
+        },
+        "type": "object",
+        "title": "RigheExportRequest"
+      },
+      "RigheExportResponse": {
+        "properties": {
+          "righe": {
+            "items": {
+              "$ref": "#/components/schemas/RigaFattura"
+            },
+            "type": "array",
+            "title": "Righe"
+          },
+          "troncato": {
+            "type": "boolean",
+            "title": "Troncato",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "righe"
+        ],
+        "title": "RigheExportResponse"
       },
       "RiordinaBody": {
         "properties": {

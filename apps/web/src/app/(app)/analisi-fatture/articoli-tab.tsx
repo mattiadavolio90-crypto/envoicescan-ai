@@ -24,7 +24,22 @@ import {
   Split,
 } from "lucide-react";
 // xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
-import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
+import {
+  type ArticoloAggregato,
+  type RigaFattura,
+  type RigheExportResponse,
+} from "@/lib/fatture";
+// Le celle dell'export vivono qui, fuori dal componente, per essere misurabili
+// da un test senza montare React ne' xlsx.
+import {
+  FOGLIO_ARTICOLI,
+  FOGLIO_DETTAGLIO,
+  headerArticoli,
+  headerDettaglio,
+  nomeFileArticoli,
+  rigaExportArticolo,
+  rigaExportDettaglio,
+} from "@/lib/articoli-export";
 import { messaggioListaVuota } from "@/lib/esito-caricamento";
 import { Input } from "@/components/ui/input";
 import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
@@ -142,6 +157,7 @@ export function ArticoliTab({
   const [categoriaFilter, setCategoriaFilter] = useState("");
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ key: SortKey | null; dir: SortDir }>({
     key: "totale_speso",
@@ -256,25 +272,63 @@ export function ArticoliTab({
     });
   }
 
+  // Due fogli: il riepilogo per articolo (invariato) e il dettaglio riga per riga.
+  // Il dettaglio richiede una fetch perche' il client non ce l'ha: l'aggregazione
+  // avviene nel worker e le righe singole non arrivano mai al browser.
   async function exportXls() {
-    const XLSX = await import("xlsx");
-    const data = sorted.map((a) => ({
-      Descrizione: a.descrizione,
-      Categoria: a.categoria ?? "",
-      Fornitore: a.fornitore_principale,
-      "Altri fornitori": a.altri_fornitori.join("; "),
-      "Ultimo acquisto": a.ultimo_acquisto ?? "",
-      Quantità: a.quantita_totale,
-      UM: a.unita_misura ?? "",
-      "€ medio": a.prezzo_unit_medio ?? "",
-      "Trend prezzo %": a.prezzo_unit_trend_pct ?? "",
-      "Totale speso": a.totale_speso,
-      "N° acquisti": a.num_acquisti,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Articoli");
-    XLSX.writeFile(wb, `articoli_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (filtri.data_da) params.set("data_da", filtri.data_da);
+      if (filtri.data_a) params.set("data_a", filtri.data_a);
+      // Stesso filtro dell'aggregato, per la stessa ragione dell'espansione riga:
+      // senza, le descrizioni a cavallo fra F&B e spese generali porterebbero nel
+      // foglio 2 righe che non compongono il totale del foglio 1.
+      if (filtri.tipo_prodotti && filtri.tipo_prodotti !== "tutti") {
+        params.set("tipo_prodotti", filtri.tipo_prodotti);
+      }
+      // "Nuovi caricati" non e' un filtro client come gli altri cinque: l'aggregato
+      // lo applica server-side e ci ricalcola sopra i totali del foglio 1. Senza
+      // questo parametro il foglio 2 uscirebbe con tutto lo storico degli stessi
+      // articoli, e i due fogli mostrerebbero due totali diversi.
+      if (soloNuovi) params.set("solo_nuovi", "true");
+      const res = await fetch(`/api/fatture/righe-export?${params}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Le descrizioni a schermo, non il periodo intero: Cerca, Fornitore,
+        // Categoria, Solo verifica e Solo ripartite vivono solo nel browser, e
+        // senza questo elenco il dettaglio conterrebbe articoli che l'utente ha
+        // appena escluso dalla vista.
+        body: JSON.stringify({ descrizioni: sorted.map((a) => a.descrizione) }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const data: RigheExportResponse = await res.json();
+
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
+      const wsArticoli = XLSX.utils.json_to_sheet(sorted.map(rigaExportArticolo), {
+        header: [...headerArticoli],
+      });
+      XLSX.utils.book_append_sheet(wb, wsArticoli, FOGLIO_ARTICOLI);
+      const wsDettaglio = XLSX.utils.json_to_sheet((data.righe ?? []).map(rigaExportDettaglio), {
+        header: [...headerDettaglio],
+      });
+      XLSX.utils.book_append_sheet(wb, wsDettaglio, FOGLIO_DETTAGLIO);
+      XLSX.writeFile(wb, nomeFileArticoli(new Date()));
+
+      if (data.troncato) {
+        toast.warning(
+          "L'export ha raggiunto il limite di righe: il foglio di dettaglio potrebbe essere incompleto. Riprova su un periodo più breve.",
+        );
+      }
+    } catch {
+      // Nessun file a meta': o due fogli, o un errore. Un xlsx scaricato con il
+      // solo riepilogo sarebbe indistinguibile dal difetto che stiamo togliendo.
+      toast.error("Export non riuscito. Riprova fra qualche istante.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -337,10 +391,11 @@ export function ArticoliTab({
 
         <button
           onClick={exportXls}
-          disabled={sorted.length === 0}
-          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium disabled:opacity-50"
+          disabled={sorted.length === 0 || exporting}
+          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
         >
-          Esporta Excel
+          {exporting && <Loader2 className="size-3 animate-spin" />}
+          {exporting ? "Esporto…" : "Esporta Excel"}
         </button>
       </div>
 

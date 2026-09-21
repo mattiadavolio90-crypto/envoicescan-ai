@@ -69,6 +69,10 @@ def _categorie_note_worker():
     return _fw().CATEGORIE_NOTE_WORKER
 
 
+def _fatture_rows_cap():
+    return _fw()._FATTURE_ROWS_CAP
+
+
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
 
@@ -138,6 +142,24 @@ class ArticoliResponse(BaseModel):
     # annullano ha totale_speso 0 ma righe di acquisto vere (misurato: fino a 14
     # articoli per sede).
     total_con_acquisti: int = 0
+
+
+class RigheExportRequest(BaseModel):
+    # None -> tutto il periodo. Lista -> solo quegli articoli (match esatto).
+    # Lista VUOTA -> nessuna riga, ed e' voluto: significa "a schermo non c'e'
+    # nulla", non "non ho filtri". Il bottone e' comunque disabilitato in quel
+    # caso, ma l'endpoint non deve indovinare l'intenzione del chiamante.
+    descrizioni: Optional[List[str]] = None
+
+
+class RigheExportResponse(BaseModel):
+    righe: List[RigaFattura]
+    # True quando la scansione ha toccato il tetto di _fetch_fatture_rows e il
+    # risultato PUO' essere incompleto. Esiste perche' quel tetto e' un `break`
+    # silenzioso: senza questo campo l'export consegnerebbe un file con meno
+    # righe del dovuto senza che nulla lo dica, che e' peggio del difetto che
+    # questo endpoint rimedia. Conservativo: vedi _righe_troncate.
+    troncato: bool = False
 
 
 class KpiResponse(BaseModel):
@@ -423,6 +445,26 @@ def get_fatture_kpi(
     )
 
 
+def _cutoff_nuovo(supabase_client, ristorante_id: str) -> str:
+    """Istante da cui una riga e' "Nuova": `nuovi_da` del ristorante (impostato
+    all'inizio di ogni sessione di upload), con fallback a 24h al primo avvio.
+
+    Condiviso fra /articoli-aggregati e /righe-export: e' la stessa soglia per i
+    due fogli dello stesso file Excel. Quando la logica viveva in due copie il
+    rischio non era teorico — il foglio di dettaglio e' nato senza il filtro
+    "Nuovo" del tutto, e i due fogli mostravano totali diversi (21/09/2026).
+    """
+    from datetime import datetime, timedelta, timezone
+    ristorante_row = (
+        supabase_client.table("ristoranti").select("nuovi_da")
+        .eq("id", ristorante_id).single().execute()
+    )
+    nuovi_da_raw = (ristorante_row.data or {}).get("nuovi_da")
+    if nuovi_da_raw:
+        return nuovi_da_raw
+    return (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+
+
 # ─── Endpoint: articoli aggregati (vista default tab Articoli) ─────────────
 
 @router.get("/api/fatture/articoli-aggregati", response_model=ArticoliResponse, dependencies=[Depends(_verify_worker_key)])
@@ -445,15 +487,7 @@ def get_articoli_aggregati(
 
     supabase_client = _get_supabase_client()
 
-    # cutoff "Nuovo": usa nuovi_da dal ristorante (impostato all'inizio di ogni sessione upload).
-    # Fallback a 24h se nuovi_da non è ancora impostato (primo avvio).
-    from datetime import datetime, timedelta, timezone
-    ristorante_row = supabase_client.table("ristoranti").select("nuovi_da").eq("id", ristorante_id).single().execute()
-    nuovi_da_raw = (ristorante_row.data or {}).get("nuovi_da")
-    if nuovi_da_raw:
-        cutoff_nuovo = nuovi_da_raw
-    else:
-        cutoff_nuovo = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    cutoff_nuovo = _cutoff_nuovo(supabase_client, ristorante_id)
 
     rows = _fetch_fatture_rows(
         supabase_client, ristorante_id, data_da, data_a, tipo_prodotti, search
@@ -631,6 +665,103 @@ def get_righe_articolo(
         fields["numero_documento"] = num_map.get(r.get("file_origine", ""), "") or None
         result.append(RigaFattura(**fields))
     return result
+
+
+# ─── Endpoint: righe di dettaglio per l'export Excel ───────────────────────
+
+def _righe_troncate(n_righe: int) -> bool:
+    """Il risultato ha toccato il tetto di scansione di _fetch_fatture_rows?
+
+    E' una stima, in entrambe le direzioni, perche' il tetto agisce sulle righe
+    LETTE dal DB e qui si conta cio' che ne esce:
+    - puo' dire False su un troncamento vero, se _exclude_note_rows e il filtro
+      tipo_prodotti hanno scartato abbastanza righe da riportare il totale sotto;
+    - puo' dire True senza troncamento su un PV di catena, perche' le quote
+      proiettate si sommano DOPO il tetto (fastapi_worker, _fetch_fatture_rows).
+    Nessuna delle due e' grave: l'avviso non cambia il contenuto del file, dice
+    solo di restringere il periodo. Misurarlo esattamente vorrebbe dire far
+    restituire il flag a _fetch_fatture_rows, cambiando il contratto di una
+    funzione con 11 chiamanti su un path caldo: costo sproporzionato al margine.
+
+    Margine misurato il 21/09/2026 a DB: la sede piu' popolosa ha 12.956 righe in
+    TUTTO il suo storico, circa un quarto del tetto. L'avviso quindi oggi non
+    scatta mai; esiste per il giorno in cui una sede ci arrivera', che con un
+    export sull'intero periodo e' il caso realistico.
+    """
+    return n_righe >= _fatture_rows_cap()
+
+
+@router.post("/api/fatture/righe-export", response_model=RigheExportResponse, dependencies=[Depends(_verify_worker_key)])
+def get_righe_export(
+    payload: RigheExportRequest,
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    tipo_prodotti: Optional[str] = None,
+    solo_nuovi: bool = False,
+    authorization: Optional[str] = Header(None),
+) -> RigheExportResponse:
+    """Righe singole dell'intero periodo, per il foglio "Dettaglio righe".
+
+    Gemello di /righe-articolo, che serve l'espansione di UNA riga a video e per
+    questo prende una sola descrizione. L'export ne ha centinaia: una chiamata per
+    articolo sarebbe altrettante richieste HTTP dal browser.
+
+    `descrizioni` nel body esiste per un motivo preciso: i filtri Cerca /
+    Fornitore / Categoria / Solo verifica / Solo ripartite del tab Articoli sono
+    applicati SOLO nel browser, il worker non li conosce. Il client manda l'elenco
+    degli articoli che ha davvero a schermo, cosi' il foglio di dettaglio contiene
+    le righe di quegli articoli e non di altri. Assente -> tutto il periodo.
+
+    `solo_nuovi` invece e' un parametro, non una descrizione: a differenza degli
+    altri cinque filtri e' applicato SERVER-side anche dall'aggregato, che con
+    esso ricalcola totale_speso/quantita/num_acquisti sulle sole righe
+    dell'ultima sessione di upload. Mandare le sole descrizioni non basterebbe:
+    il foglio 1 direbbe "ultimo carico" e il foglio 2 tutto lo storico di quegli
+    articoli — due totali diversi nello stesso file.
+
+    E' un POST benche' legga soltanto: quell'elenco arriva a centinaia di voci e
+    in querystring sfonderebbe i limiti di lunghezza URL di proxy e server. Non
+    scrive nulla.
+    """
+    user = _resolve_user_from_token(authorization)
+    supabase_client = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    rows = _fetch_fatture_rows(
+        supabase_client, ristorante_id, data_da, data_a, tipo_prodotti
+    )
+    troncato = _righe_troncate(len(rows))
+
+    # Stessa soglia e stesso confronto dell'aggregato (_cutoff_nuovo e' condiviso):
+    # i due fogli devono rispondere alla stessa domanda.
+    if solo_nuovi:
+        cutoff_nuovo = _cutoff_nuovo(supabase_client, ristorante_id)
+        rows = [r for r in rows if (r.get("created_at") or "") >= cutoff_nuovo]
+
+    if payload.descrizioni is not None:
+        # Match esatto come in /righe-articolo. Le descrizioni vuote non possono
+        # selezionare nulla: l'aggregato le scarta (fatture.py, get_articoli_aggregati),
+        # quindi non esistono a schermo e un "" in lista sarebbe un errore del client.
+        volute = {d.strip() for d in payload.descrizioni if d and d.strip()}
+        rows = [r for r in rows if (r.get("descrizione") or "").strip() in volute]
+
+    # Le righe di uno stesso articolo restano contigue e in ordine di data: e' il
+    # foglio che il cliente scorre, non una risposta che un componente riordina.
+    # Due sort invece di una chiave composita: sort e' stabile, quindi il secondo
+    # conserva l'ordine per data dentro ogni descrizione, e "data decrescente" resta
+    # leggibile invece di diventare una chiave invertita a mano.
+    rows.sort(key=lambda r: (r.get("data_documento") or ""), reverse=True)
+    rows.sort(key=lambda r: (r.get("descrizione") or ""))
+
+    num_map = _load_num_documento_map(supabase_client, ristorante_id)
+    righe: List[RigaFattura] = []
+    for r in rows:
+        fields = {k: v for k, v in r.items() if k in RigaFattura.model_fields}
+        fields["numero_documento"] = num_map.get(r.get("file_origine", ""), "") or None
+        righe.append(RigaFattura(**fields))
+    return RigheExportResponse(righe=righe, troncato=troncato)
 
 
 # ─── Endpoint: pivot estesa (mese/trimestre/anno auto) ─────────────────────

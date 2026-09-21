@@ -46,6 +46,12 @@ export type ArticoloAggregato = {
   file_origine_gruppo?: string | null;
 };
 
+export type RigheExportResponse = {
+  righe: RigaFattura[];
+  /** La scansione ha toccato il tetto del worker: il file puo' essere incompleto. */
+  troncato?: boolean;
+};
+
 export type ArticoliResponse = {
   articoli: ArticoloAggregato[];
   total: number;
