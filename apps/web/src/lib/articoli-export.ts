@@ -140,6 +140,29 @@ export function paramsExportRighe(f: {
 }
 
 /**
+ * Il corpo della richiesta con cui l'export chiede le righe di dettaglio.
+ *
+ * E' l'elenco degli articoli che l'utente ha DAVVERO a schermo. I filtri Cerca,
+ * Fornitore, Categoria, Solo verifica e Solo ripartite vivono solo nel browser:
+ * il worker non li conosce, quindi senza questo elenco il foglio 2 conterrebbe
+ * righe di articoli appena esclusi dalla vista.
+ *
+ * Sta qui e non dentro `exportXls` per la stessa ragione di `paramsExportRighe`:
+ * dentro il componente nessun test lo raggiungeva, e svuotarlo passava 498 test
+ * verdi (misurato il 21/09/2026).
+ *
+ * Una lista vuota resta vuota e non diventa `undefined`: significa "a schermo
+ * non c'e' nulla", che e' diverso da "nessun filtro". Il worker distingue i due
+ * casi, e appiattirli qui gli farebbe esportare l'intero periodo proprio quando
+ * l'utente ha filtrato via tutto.
+ */
+export function bodyExportRighe(
+  articoli: readonly { descrizione: string }[],
+): { descrizioni: string[] } {
+  return { descrizioni: articoli.map((a) => a.descrizione) };
+}
+
+/**
  * Nome del file scaricato. Invariato rispetto all'export a foglio singolo: chi
  * ha automatismi o cartelle che lo cercano per nome non se ne accorge.
  *

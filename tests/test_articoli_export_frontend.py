@@ -23,7 +23,7 @@ MODULO = "lib/articoli-export"
 # rinomina le farebbe arrivare `undefined` senza che il prologo se ne accorga —
 # quindi la loro esistenza la presidia test_esportazioni_valore_presenti.
 FUNZIONI = ["rigaExportArticolo", "rigaExportDettaglio", "nomeFileArticoli",
-            "paramsExportRighe"]
+            "paramsExportRighe", "bodyExportRighe"]
 
 VALORI = ["headerArticoli", "headerDettaglio", "FOGLIO_ARTICOLI", "FOGLIO_DETTAGLIO"]
 
@@ -266,3 +266,43 @@ class TestParamsExportRighe:
 
     def test_nessun_filtro_nessun_parametro(self):
         assert _params() == ""
+
+
+class TestBodyExportRighe:
+    """L'altra gamba dello stesso tipo: l'elenco degli articoli a schermo.
+
+    Svuotarlo faceva uscire nel foglio 2 le righe di articoli che l'utente aveva
+    appena filtrato via, e passava **498 test verdi** (misurato il 21/09/2026)
+    finche' e' vissuto dentro il componente.
+    """
+
+    def test_manda_le_descrizioni_degli_articoli_a_schermo(self):
+        out = _esegui(
+            "emit(m.bodyExportRighe(input));",
+            [{"descrizione": "POMODORO"}, {"descrizione": "MOZZARELLA"}],
+        )
+        assert out == {"descrizioni": ["POMODORO", "MOZZARELLA"]}
+
+    def test_conserva_l_ordine_di_schermo(self):
+        """Il foglio 2 e' ordinato dal worker, ma l'elenco che parte e' quello
+        che l'utente vede: invertirlo qui direbbe che l'ordine non conta."""
+        out = _esegui(
+            "emit(m.bodyExportRighe(input));",
+            [{"descrizione": "B"}, {"descrizione": "A"}, {"descrizione": "C"}],
+        )
+        assert out["descrizioni"] == ["B", "A", "C"]
+
+    def test_lista_vuota_resta_vuota(self):
+        """Non `undefined`: "a schermo non c'e' nulla" e "nessun filtro" sono due
+        cose diverse, e il worker le distingue."""
+        out = _esegui("emit(m.bodyExportRighe(input));", [])
+        assert out == {"descrizioni": []}
+
+    def test_manda_solo_le_descrizioni_non_l_articolo_intero(self):
+        """Il body non deve portarsi dietro righe_ids, totali e categorie: sono
+        dati che il worker non usa e che gonfierebbero la richiesta."""
+        out = _esegui(
+            "emit(m.bodyExportRighe(input));",
+            [{"descrizione": "POMODORO", "totale_speso": 288.0, "righe_ids": [1, 2]}],
+        )
+        assert out == {"descrizioni": ["POMODORO"]}

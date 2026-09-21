@@ -32,6 +32,7 @@ import {
 // Le celle dell'export vivono qui, fuori dal componente, per essere misurabili
 // da un test senza montare React ne' xlsx.
 import {
+  bodyExportRighe,
   FOGLIO_ARTICOLI,
   FOGLIO_DETTAGLIO,
   headerArticoli,
@@ -287,11 +288,7 @@ export function ArticoliTab({
       const res = await fetch(`/api/fatture/righe-export?${params}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Le descrizioni a schermo, non il periodo intero: Cerca, Fornitore,
-        // Categoria, Solo verifica e Solo ripartite vivono solo nel browser, e
-        // senza questo elenco il dettaglio conterrebbe articoli che l'utente ha
-        // appena escluso dalla vista.
-        body: JSON.stringify({ descrizioni: sorted.map((a) => a.descrizione) }),
+        body: JSON.stringify(bodyExportRighe(sorted)),
       });
       if (!res.ok) throw new Error(String(res.status));
       const data: RigheExportResponse = await res.json();
