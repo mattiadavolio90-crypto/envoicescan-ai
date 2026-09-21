@@ -828,7 +828,6 @@ function RigheArticolo({
           <th className="text-right py-1 pr-4 font-medium">€ unit.</th>
           <th className="text-right py-1 pr-6 font-medium">Totale</th>
           <th className="text-left py-1 pr-4 font-medium whitespace-nowrap">N° fattura</th>
-          <th className="text-left py-1 font-medium">File</th>
         </tr>
       </thead>
       <tbody>
@@ -860,9 +859,6 @@ function RigheArticolo({
               </td>
               <td className="py-1 pr-4 text-muted-foreground whitespace-nowrap">
                 {r.numero_documento || <em className="opacity-50">—</em>}
-              </td>
-              <td className="py-1 text-muted-foreground truncate max-w-40" title={r.file_origine}>
-                {r.file_origine}
               </td>
             </tr>
           );

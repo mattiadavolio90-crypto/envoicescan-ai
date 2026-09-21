@@ -177,7 +177,7 @@ export function NcTab() {
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-muted/60">
-                {["Data", "Fornitore", "Prodotto", "Categoria", "Quantità", "Credito", "N. Documento", "File"].map((h) => (
+                {["Data", "Fornitore", "Prodotto", "Categoria", "Quantità", "Credito", "N. Documento"].map((h) => (
                   <th key={h} className="text-left px-3 py-2 font-semibold border-r last:border-r-0 border-border">
                     {h}
                   </th>
@@ -198,7 +198,6 @@ export function NcTab() {
                     {fmtEuro(r.credito)}
                   </td>
                   <td className="px-3 py-2 border-r border-border font-mono text-[11px] whitespace-nowrap">{r.numero_documento || "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-[10px] max-w-[140px] truncate" title={r.documento}>{r.documento}</td>
                 </tr>
               ))}
             </tbody>
