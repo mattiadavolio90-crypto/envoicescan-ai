@@ -1016,9 +1016,17 @@ prima della fase 3 perché non richiedevano l'occhio di Mattia.
 
 ### R5 — un testo troncato deve restare leggibile (`b7029ac`)
 
-**62 `title` aggiunti**, da 63 elementi nudi su 77 (82%) a **1 su 77**. L'unica
-eccezione è dichiarata e motivata nel presidio: `ETICHETTA_INCOMPLETO` in
+**62 `title` aggiunti**, da 63 elementi nudi a **1 su 74**. L'unica eccezione è
+dichiarata e motivata nel presidio: `ETICHETTA_INCOMPLETO` in
 `sintesi-catena.tsx`, costante fissa che troncata resta riconoscibile.
+
+> La prima stesura diceva «76 su 77» ed era **gonfiata**: il rilevatore cercava
+> la sottostringa `title=` nel blocco degli attributi e la trovava anche dentro
+> le backtick della classe. In `agenda-overview.tsx:494` il `title` era proprio
+> lì — nessun attributo nel DOM, nessun tooltip, e il presidio zitto. Trovato
+> dalla review, corretto in `9515039`: le stringhe si svuotano *prima* di
+> cercare. La mutazione di ieri non lo copriva perché *toglieva* l'attributo
+> invece di **spostarlo**.
 
 **La cifra «93 su 125» del §13 era sbagliata**: contava le *righe* col grep,
 non gli elementi (`grep-c-conta-righe-non-occorrenze`). Il numero vero era
