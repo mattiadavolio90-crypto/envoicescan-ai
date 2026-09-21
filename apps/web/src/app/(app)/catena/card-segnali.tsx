@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, TrendingDown, Tag, CalendarX, ArrowRight, CheckCircle2, ClipboardList } from "lucide-react";
 import { type Segnale, type SegnaliGruppo } from "@/lib/gruppo";
+import { raggruppaSegnali } from "@/lib/catena-segnali";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
   dati_mancanti: ClipboardList,
@@ -49,7 +50,7 @@ export function CardSegnali({
     carica();
   }, [carica]);
 
-  const segnali = data?.segnali ?? [];
+  const segnali = raggruppaSegnali(data?.segnali ?? []);
 
   return (
     <div className="rounded-2xl border bg-card p-5">
@@ -81,24 +82,32 @@ export function CardSegnali({
         <ul className="mt-3 space-y-2">
           {segnali.map((s, i) => {
             const Icon = ICONA[s.tipo] ?? AlertTriangle;
+            const nomi = s.pv.map((p) => p.pv_nome).join(" · ");
             return (
               <li
-                key={`${s.tipo}-${s.ristorante_id}-${i}`}
+                key={`${s.tipo}-${s.pv[0].ristorante_id}-${i}`}
                 className="flex items-start gap-3 rounded-xl border bg-background/40 p-3"
               >
                 <Icon className="mt-0.5 size-4 shrink-0 text-incerto" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-muted-foreground">{s.pv_nome}</div>
+                  {/* Il `title` porta i nomi per intero: raggruppando, questa
+                      riga puo' elencare 5 PV e il troncamento renderebbe il
+                      dato irrecuperabile dall'interfaccia. */}
+                  <div className="truncate text-xs font-semibold text-muted-foreground" title={nomi}>
+                    {s.pv.length > 1 ? `${s.pv.length} punti vendita · ${nomi}` : nomi}
+                  </div>
                   <div className="text-sm">{s.testo}</div>
                 </div>
-                {/* Senza ristorante_id il segnale NON e' una destinazione (es.
-                    l'avviso "non e' stato possibile controllare"): il bottone
-                    commuterebbe la sede attiva su un PV arbitrario. */}
-                {s.ristorante_id ? (
+                {/* Il bottone e' una DESTINAZIONE: lo si rende solo quando ce
+                    n'e' una sola. Con piu' PV raggruppati manderebbe l'utente
+                    su un PV arbitrario — lo stesso motivo per cui non si rende
+                    sui segnali senza ristorante_id ("non e' stato possibile
+                    controllare"), che non sono destinazioni. */}
+                {s.pv.length === 1 && s.pv[0].ristorante_id ? (
                   <button
                     type="button"
                     disabled={switching}
-                    onClick={() => vaiAlPV(s.ristorante_id, s.cta_page)}
+                    onClick={() => vaiAlPV(s.pv[0].ristorante_id, s.pv[0].cta_page)}
                     className="inline-flex shrink-0 items-center gap-1 self-center rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent disabled:opacity-50"
                   >
                     Vedi PV
