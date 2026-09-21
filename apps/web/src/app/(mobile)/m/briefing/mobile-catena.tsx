@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
 import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
 import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
+import { raggruppaSegnali } from "@/lib/catena-segnali";
 import { SALUTE_TINT, ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
@@ -277,23 +278,27 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
-            {segnali.map((s, i) => {
+            {raggruppaSegnali(segnali).map((s, i) => {
               const Icon = ICONA[s.tipo] ?? AlertTriangle;
+              const nomi = s.pv.map((p) => p.pv_nome).join(" \u00b7 ");
+              const etichetta = s.pv.length > 1 ? `${s.pv.length} punti vendita \u00b7 ${nomi}` : nomi;
               return (
-                <li key={`${s.tipo}-${s.ristorante_id}-${i}`}>
+                <li key={`${s.tipo}-${s.pv[0].ristorante_id}-${i}`}>
                   {/* Senza ristorante_id il segnale non porta da nessuna parte
                       (es. "non e' stato possibile controllare"): toccarlo
-                      cambierebbe sede al cliente. Riga non cliccabile. */}
-                  {s.ristorante_id ? (
+                      cambierebbe sede al cliente. Riga non cliccabile. Stesso
+                      motivo quando il gruppo tiene piu' PV: la destinazione
+                      sarebbe una fra cinque, scelta a caso. */}
+                  {s.pv.length === 1 && s.pv[0].ristorante_id ? (
                     <button
                       type="button"
                       disabled={switching}
-                      onClick={() => drill(s.ristorante_id)}
+                      onClick={() => drill(s.pv[0].ristorante_id)}
                       className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left active:bg-accent disabled:opacity-50"
                     >
                       <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-xs font-semibold text-muted-foreground">{s.pv_nome}</span>
+                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={nomi}>{etichetta}</span>
                         <span className="block text-sm">{s.testo}</span>
                       </span>
                       <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary" />
@@ -302,7 +307,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
                     <div className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left">
                       <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-xs font-semibold text-muted-foreground">{s.pv_nome}</span>
+                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={nomi}>{etichetta}</span>
                         <span className="block text-sm">{s.testo}</span>
                       </span>
                     </div>

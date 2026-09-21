@@ -166,17 +166,81 @@ def test_nessun_testo_semantico_sul_proprio_fondo_sopra_il_10(file: Path):
 # `text-incerto` sulle altre due: lo stesso dato mancante letto come un esito
 # positivo su una tessera e come un avviso sulle altre, in tre tessere
 # affiancate che il commento del codice dichiarava gia' allineate.
-ETICHETTA_SEMANTICA = re.compile(
-    r"text-(positivo|negativo|incerto)[^\"'>]*\"\s*>\s*([^<{][^<]*?)\s*</span>"
-)
+#
+# La prima stesura (21/09) chiedeva `<span className="...">` con apici doppi e
+# il testo subito dopo: catturava 33 occorrenze su 215 (15%). Persi i `<p>`,
+# i ternari, `cn(...)`, gli apici singoli e ogni attributo scritto DOPO
+# className. E soprattutto: `Paghe{" "}non inserite` finiva in una chiave
+# diversa da `Paghe non inserite`, cioe' lo stesso bug riscritto con uno
+# spazio JSX in mezzo sarebbe passato — `mutante-che-non-matcha-non-e-una-prova`
+# applicata al presidio stesso. Ora il tag e' qualunque, il token si cerca in
+# tutto l'attributo className (ternari e cn compresi) e il testo si NORMALIZZA
+# prima del confronto.
+APERTURA = re.compile(r"<(\w+)\s+([^>]*?)>", re.S)
+TESTO_FINO_AL_TAG = re.compile(r"\A([^<]*)")
+SPAZIO_JSX = re.compile(r"\{\s*[\"'` ]\s*[\"'`]\s*\}")
+ESPRESSIONE_JSX = re.compile(r"\{[^{}]*\}")
+
+
+def _etichette_semantiche(src: str) -> list[tuple[str, str]]:
+    """(token, testo normalizzato) per ogni elemento con un token semantico.
+
+    Il testo e' quello che il cliente LEGGE: `{" "}` diventa uno spazio e una
+    `{espressione}` diventa un segnaposto, cosi' due scritture diverse della
+    stessa etichetta hanno la stessa chiave. Un'etichetta fatta di sola
+    espressione (`{nome}`) non e' un'etichetta fissa e si scarta.
+    """
+    fuori = []
+    for m in APERTURA.finditer(src):
+        attributi = m.group(2)
+        token = [t for t in SEMANTICI if re.search(rf"\btext-{t}\b", attributi)]
+        if len(token) != 1:
+            continue  # zero, oppure un ternario fra due semantici: non e' fisso
+        grezzo = TESTO_FINO_AL_TAG.match(src[m.end():]).group(1)
+        testo = ESPRESSIONE_JSX.sub("•", SPAZIO_JSX.sub(" ", grezzo))
+        testo = " ".join(testo.split())
+        if testo and testo != "•":
+            fuori.append((token[0], testo))
+    return fuori
 
 
 @pytest.mark.parametrize("file", PERIMETRO, ids=lambda p: p.relative_to(SRC).as_posix())
 def test_una_etichetta_non_cambia_colore_semantico_nello_stesso_file(file: Path):
     per_testo: dict[str, set[str]] = {}
-    for m in ETICHETTA_SEMANTICA.finditer(_senza_commenti(file.read_text(encoding="utf-8"))):
-        token, testo = m.group(1), " ".join(m.group(2).split())
-        if testo:
-            per_testo.setdefault(testo, set()).add(token)
+    for token, testo in _etichette_semantiche(_senza_commenti(file.read_text(encoding="utf-8"))):
+        per_testo.setdefault(testo, set()).add(token)
     discordi = {t: sorted(k) for t, k in per_testo.items() if len(k) > 1}
     assert not discordi, f"stessa etichetta con colori semantici diversi: {discordi}"
+
+
+def test_il_presidio_delle_etichette_vede_le_forme_che_il_codice_usa():
+    """Fuori dalla parametrizzazione: se la regex smette di matchare, il test
+    sopra passerebbe per vuoto su ogni file. Qui le forme si dichiarano."""
+    casi = [
+        ('<span className="text-positivo">Fatto</span>', ("positivo", "Fatto")),
+        ("<p className='text-negativo'>Perso</p>", ("negativo", "Perso")),
+        ('<div title="x" className="text-incerto" key="k">Forse</div>', ("incerto", "Forse")),
+        ('<td className={cn("a", "text-positivo")}>Fatto</td>', ("positivo", "Fatto")),
+        ('<span className={`text-incerto ${x}`}>Forse</span>', ("incerto", "Forse")),
+        ('<span\n  className="text-positivo"\n>\n  Fatto\n</span>', ("positivo", "Fatto")),
+        ('<span className="text-positivo">Paghe{" "}non inserite</span>', ("positivo", "Paghe non inserite")),
+    ]
+    for sorgente, atteso in casi:
+        assert _etichette_semantiche(sorgente) == [atteso], sorgente
+
+    # Non deve catturare: nessun token, etichetta di sola espressione, e un
+    # ternario FRA due semantici (li' il colore non e' fisso e il confronto
+    # non avrebbe senso).
+    assert _etichette_semantiche('<span className="text-muted-foreground">Ciao</span>') == []
+    assert _etichette_semantiche('<span className="text-positivo">{nome}</span>') == []
+    assert _etichette_semantiche('<span className={ok ? "text-positivo" : "text-negativo"}>Esito</span>') == []
+
+
+def test_la_stessa_etichetta_scritta_in_due_modi_ha_la_stessa_chiave():
+    """Il difetto che la prima stesura aveva: `{" "}` cambiava la chiave, e
+    il bug riscritto con uno spazio JSX sarebbe passato."""
+    src = (
+        '<span className="text-positivo">Paghe{" "}non inserite</span>'
+        '<span className="text-incerto">Paghe non inserite</span>'
+    )
+    assert {t for _, t in _etichette_semantiche(src)} == {"Paghe non inserite"}

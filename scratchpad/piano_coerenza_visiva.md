@@ -861,7 +861,14 @@ colore invece del significato. Presidio nuovo dentro
 `test_colori_solo_token_frontend.py`: *la stessa etichetta a video non porta due
 token semantici diversi nello stesso file* — regola generale, non toppa sulla
 riga. Provato per mutazione (rimesso `text-positivo` → 1 failed sul file
-giusto, 167 file verdi intorno). Il presidio passa da 674 a 842 test.
+giusto, 168 file verdi intorno), **e nella forma che la prima stesura
+lasciava passare**: `Paghe{" "}non inserite` finiva in una chiave diversa
+da `Paghe non inserite`, cioè lo stesso bug riscritto con uno spazio JSX
+sarebbe sfuggito. La prima regex catturava 33 etichette su 215 (15%);
+quella riscritta ne prende 75 (34%) — il resto non sono etichette fisse
+(icone senza testo, numeri calcolati, testo di sola espressione) e in una
+regola sul testo a video non possono entrare. Il presidio passa da 674 a
+**849** test, misurati con `--collect-only`, non sommati.
 
 **Lo stesso avviso ripetuto per 5 PV** (Catena → «Da vedere», screen 42 e 46) —
 `fix(catena)` `5942dfc`. 13 righe di cui 5 identiche parola per parola. C3 del
@@ -871,7 +878,10 @@ commutato la sede attiva su un PV arbitrario (cookie + preferenza, effetto
 persistente) — lo stesso incidente che il commento del file già documentava per
 i segnali senza `ristorante_id`. Il gruppo tiene **tutti** i PV, il bottone
 compare solo quando la destinazione è una, i nomi vanno nel `title`. La logica
-sta in `lib/catena-segnali.ts` e **non** in `lib/gruppo.ts` perché quello
+sta in `lib/catena-segnali.ts` — usata **sia** dal desktop **sia** da `/m`
+(`m/briefing/mobile-catena.tsx`, allineato nello stesso giro: consumava lo
+stesso endpoint e mostrava le stesse 5 righe identiche) — e **non** in
+`lib/gruppo.ts` perché quello
 importa `react` e `./worker` e sotto node non si carica: la rete frontend non
 avrebbe potuto eseguirlo. 4 mutanti su 4 uccisi.
 
