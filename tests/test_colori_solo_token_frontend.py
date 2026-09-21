@@ -158,3 +158,25 @@ def test_nessun_testo_semantico_sul_proprio_fondo_sopra_il_10(file: Path):
             if re.search(rf"\btext-{t}\b", s) and re.search(rf"\bbg-{t}/(1[1-9]|[2-9]\d|100)\b", s):
                 violazioni.append(s.strip()[:80])
     assert not violazioni, f"testo e fondo dello stesso token sopra /10: {violazioni[:3]}"
+
+
+# Lo stesso testo a video con due colori semantici diversi nello stesso file.
+# Il 18/09 `06bd099` (fase 2, "le card non sono piu' tinte") ha lasciato
+# "Paghe non inserite" `text-positivo` sulla prima card del Personale e
+# `text-incerto` sulle altre due: lo stesso dato mancante letto come un esito
+# positivo su una tessera e come un avviso sulle altre, in tre tessere
+# affiancate che il commento del codice dichiarava gia' allineate.
+ETICHETTA_SEMANTICA = re.compile(
+    r"text-(positivo|negativo|incerto)[^\"'>]*\"\s*>\s*([^<{][^<]*?)\s*</span>"
+)
+
+
+@pytest.mark.parametrize("file", PERIMETRO, ids=lambda p: p.relative_to(SRC).as_posix())
+def test_una_etichetta_non_cambia_colore_semantico_nello_stesso_file(file: Path):
+    per_testo: dict[str, set[str]] = {}
+    for m in ETICHETTA_SEMANTICA.finditer(_senza_commenti(file.read_text(encoding="utf-8"))):
+        token, testo = m.group(1), " ".join(m.group(2).split())
+        if testo:
+            per_testo.setdefault(testo, set()).add(token)
+    discordi = {t: sorted(k) for t, k in per_testo.items() if len(k) > 1}
+    assert not discordi, f"stessa etichetta con colori semantici diversi: {discordi}"

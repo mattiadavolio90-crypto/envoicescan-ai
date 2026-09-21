@@ -1553,7 +1553,7 @@ export function PersonaleTab() {
                 <div className="flex items-end justify-between gap-2">
                   <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtOreDisplay(oreStdTotale)}</p>
                   <p className="shrink-0 text-4xl font-black tabular-nums text-foreground leading-none text-right">
-                    {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-sm font-semibold text-positivo">Paghe non inserite</span>}
+                    {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-sm font-semibold text-incerto">Paghe non inserite</span>}
                   </p>
                 </div>
               </CardContent>
