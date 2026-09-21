@@ -425,3 +425,142 @@ class TestNcCreditoPerFornitore:
         assert out.get("FORN") == pytest.approx(20.0)
         # NON ha riletto la tabella fatture (solo fatture_documenti via _FakeQuery)
         assert sb.fatture_loaded is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# frase_sintesi — deve DIRE qualcosa del singolo fornitore
+#
+# Fino al 21/09/2026 le frasi erano QUATTRO per tutti: la pagina mostrava tre
+# volte di fila "Fornitore stabile e coerente nel periodo osservato" e due
+# volte "Relazione complessivamente solida" (screenshot 31 e 36). Rilievo O4.
+# I segnali erano gia' specifici due righe sopra e la sintesi li ignorava.
+# ─────────────────────────────────────────────────────────────────────────────
+class TestFraseSintesi:
+    def _tre_fornitori_diversi(self):
+        """Tre relazioni con storie diverse: rincaro, altalena, stabilita'."""
+        righe = []
+        # RINCARO: il salto e' sull'ULTIMO acquisto. La variazione si misura
+        # fra ultimo e penultimo prezzo: un +40% a meta' storico, seguito da due
+        # mesi fermi, non produce nessun segnale (il primo giro di questo test
+        # sbagliava proprio qui — `caso-di-test-va-scelto-dove-i-due-mondi-divergono`).
+        righe += _serie("PANE", "RINCARO SRL", [
+            ("2026-01-10", 1.00), ("2026-02-10", 1.00), ("2026-03-10", 1.00),
+            ("2026-04-10", 1.00), ("2026-05-10", 1.45),
+        ])
+        # ALTALENA: su e giu' su piu' prodotti
+        for prod in ("OLIO", "BURRO"):
+            righe += _serie(prod, "ALTALENA SPA", [
+                ("2026-01-10", 5.00), ("2026-02-10", 6.50), ("2026-03-10", 5.10),
+                ("2026-04-10", 6.60), ("2026-05-10", 5.05),
+            ])
+        # STABILE: prezzo fermo
+        righe += _serie("SALE", "STABILE SNC", [
+            ("2026-01-10", 2.00), ("2026-02-10", 2.00), ("2026-03-10", 2.00),
+            ("2026-04-10", 2.00), ("2026-05-10", 2.00),
+        ])
+        return _by_name(_score(righe))
+
+    def test_fornitori_con_storie_diverse_hanno_frasi_diverse(self):
+        """Il difetto vero: la stessa frase ripetuta su tutta la pagina."""
+        per_nome = self._tre_fornitori_diversi()
+        frasi = [f.frase_sintesi for f in per_nome.values()]
+        assert len(frasi) == 3, per_nome.keys()
+        assert len(set(frasi)) == 3, f"frasi ripetute: {frasi}"
+
+    def test_la_frase_riporta_il_fatto_osservato(self):
+        """Non basta che differiscano: devono dire COSA e' stato visto.
+
+        Se la frase ripete solo l'etichetta dello stato, il badge accanto la
+        mostra gia' e la riga non aggiunge niente.
+        """
+        per_nome = self._tre_fornitori_diversi()
+        visti = 0
+        for nome, f in per_nome.items():
+            # `stabilita` non e' un fatto osservato: e' il modo in cui il codice
+            # dice "non ho niente da segnalare", e porta gia' una cornice sua.
+            fatti = [sg for sg in f.segnali if sg.tipo != "stabilita"]
+            if not fatti:
+                continue
+            visti += 1
+            assert any(
+                sg.testo.rstrip(".").lower()[:25] in f.frase_sintesi.lower()
+                for sg in fatti
+            ), f"{nome}: la frase '{f.frase_sintesi}' non riporta nessuno dei suoi segnali"
+        assert visti >= 2, f"il caso non produce abbastanza segnali da verificare: {visti}"
+
+    def test_la_frase_finisce_con_un_punto_e_non_ha_doppi_spazi(self):
+        """Si compone da pezzi: e' il punto dove nascono i refusi di incollaggio."""
+        for f in self._tre_fornitori_diversi().values():
+            assert f.frase_sintesi.endswith("."), f.frase_sintesi
+            assert "  " not in f.frase_sintesi, f.frase_sintesi
+            assert ".." not in f.frase_sintesi, f.frase_sintesi
+            assert ": " in f.frase_sintesi or f.frase_sintesi.count(" ") > 3
+
+    def test_senza_segnali_la_frase_resta_una_frase_intera(self):
+        """Un fornitore senza niente da dire non produce una frase monca."""
+        righe = _serie("SALE", "MUTO SRL", [
+            ("2026-04-10", 2.00), ("2026-05-10", 2.00),
+        ])
+        f = _by_name(_score(righe))["MUTO SRL"]
+        assert f.frase_sintesi
+        assert f.frase_sintesi[0].isupper(), f.frase_sintesi
+        assert f.frase_sintesi.endswith("."), f.frase_sintesi
+
+    def test_lo_storico_corto_resta_dichiarato_provvisorio(self):
+        """La lettura provvisoria viene PRIMA del segnale: con due prezzi non
+        si racconta una storia, si dice che non si sa ancora."""
+        righe = _serie("PANE", "NUOVO SRL", [
+            ("2026-05-10", 1.00), ("2026-06-10", 1.60),
+        ])
+        f = _by_name(_score(righe))["NUOVO SRL"]
+        if f.stato == "provvisorio":
+            assert "provvisoria" in f.frase_sintesi.lower(), f.frase_sintesi
+
+    def test_la_cornice_non_si_ripete_col_segnale_di_stabilita(self):
+        """`stabilita` porta gia' la sua cornice ("Relazione stabile: ...").
+
+        Incollata alla nostra dava "Relazione stabile: relazione stabile:
+        nessun segnale...". Il caso serve perche' un fornitore senza fatti ma
+        CON il segnale di stabilita' e' l'unico che lo espone.
+        """
+        righe = _serie("SALE", "FERMO SRL", [
+            ("2026-01-10", 2.00), ("2026-02-10", 2.00), ("2026-03-10", 2.00),
+            ("2026-04-10", 2.00), ("2026-05-10", 2.00),
+        ])
+        f = _by_name(_score(righe))["FERMO SRL"]
+        assert any(sg.tipo == "stabilita" for sg in f.segnali), f.segnali
+        basso = f.frase_sintesi.lower()
+        assert basso.count("relazione stabile") <= 1, f.frase_sintesi
+        assert ": relazione" not in basso, f.frase_sintesi
+
+    def test_fra_piu_segnali_la_frase_porta_quello_di_attenzione(self):
+        """Con un rincaro E una nota di credito, la sintesi dice il rincaro.
+
+        Vale perche' i segnali sono gia' emessi in ordine di gravita': le
+        attenzioni prima dei neutri. Questo test fotografa quell'ordine — se
+        cambiasse, la sintesi comincerebbe a dire la nota di credito e qui si
+        vedrebbe.
+        """
+        righe = _serie("PANE", "MISTO SRL", [
+            ("2026-01-10", 1.00), ("2026-02-10", 1.00), ("2026-03-10", 1.00),
+            ("2026-04-10", 1.00), ("2026-05-10", 1.45),
+        ])
+        f = _by_name(_score(righe, nc={"MISTO SRL": 900.0}))["MISTO SRL"]
+        toni = {sg.tono for sg in f.segnali}
+        assert "attenzione" in toni and "neutro" in toni, [
+            (sg.tipo, sg.tono) for sg in f.segnali
+        ]
+        assert "aumento" in f.frase_sintesi.lower(), f.frase_sintesi
+        assert "note di credito" not in f.frase_sintesi.lower(), f.frase_sintesi
+
+    def test_il_fatto_si_incolla_in_minuscolo_dopo_i_due_punti(self):
+        """"Relazione instabile: Aumento del 45%..." e' un refuso di
+        incollaggio: dopo i due punti la frase continua, non ricomincia."""
+        righe = _serie("PANE", "MAIUSC SRL", [
+            ("2026-01-10", 1.00), ("2026-02-10", 1.00), ("2026-03-10", 1.00),
+            ("2026-04-10", 1.00), ("2026-05-10", 1.45),
+        ])
+        f = _by_name(_score(righe))["MAIUSC SRL"]
+        assert ": " in f.frase_sintesi, f.frase_sintesi
+        dopo = f.frase_sintesi.split(": ", 1)[1]
+        assert dopo[0].islower(), f.frase_sintesi

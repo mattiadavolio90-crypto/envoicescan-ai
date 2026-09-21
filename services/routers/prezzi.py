@@ -1313,18 +1313,49 @@ def _calcola_score_fornitori(
             ))
 
         # ── Frase di sintesi ─────────────────────────────────────────────────
-        if stato == "affidabile":
-            frase = "Fornitore stabile e coerente nel periodo osservato."
-        elif stato == "da_monitorare":
-            frase = (
-                "C'è un'area che merita attenzione, anche se nel complesso la relazione regge."
-                if declassato_per_asse
-                else "Relazione complessivamente solida, con qualche segnale da tenere d'occhio."
-            )
-        elif stato == "provvisorio":
+        # Fino al 21/09/2026 qui c'erano QUATTRO frasi per tutti i fornitori,
+        # scelte solo in base allo stato: su una pagina con sei fornitori si
+        # leggeva tre volte di fila "Fornitore stabile e coerente nel periodo
+        # osservato" e due volte "Relazione complessivamente solida" (screenshot
+        # 31 e 36). Una frase che non cambia fra un fornitore e l'altro non e'
+        # una sintesi: e' un'etichetta dello stato, che il badge accanto mostra
+        # gia'.
+        #
+        # I segnali sopra sono gia' specifici ("Prezzi altalenanti su 3
+        # prodotti", "Note di credito per €1.250"): la sintesi li USA invece di
+        # ignorarli. Lo stato resta la cornice, il segnale porta il fatto.
+        _cornice = {
+            "affidabile": "Relazione stabile",
+            "da_monitorare": "Relazione nel complesso solida",
+            "provvisorio": "Lettura provvisoria",
+            "instabile": "Relazione instabile",
+        }.get(stato, "Relazione da verificare")
+
+        # Il PRIMO segnale, non "il piu' importante": i segnali sopra sono gia'
+        # emessi in ordine di gravita' (rincari, sconti persi, oscillazioni —
+        # tutti `attenzione` — poi le note di credito, `neutro`). Un ordinamento
+        # per peso del tono qui sarebbe codice che non si puo' raggiungere: ho
+        # provato a mutarlo e nessun dato reale lo distingue dal prendere il
+        # primo. Se un giorno i segnali cambiassero ordine, si ordina QUI, con
+        # un caso che lo dimostri.
+        #
+        # `stabilita` si esclude: non e' un fatto osservato, e' il modo in cui il
+        # codice dice "non ho niente da segnalare" — e il suo testo porta gia'
+        # una cornice sua ("Relazione stabile: ..."), che incollata alla nostra
+        # produceva "Relazione stabile: relazione stabile: nessun segnale...".
+        _fatti = [sg for sg in segnali if sg.tipo != "stabilita"]
+        _principale = _fatti[0] if _fatti else None
+
+        if stato == "provvisorio":
             frase = "Lettura provvisoria: lo storico disponibile è ancora limitato."
+        elif _principale is not None:
+            _fatto = _principale.testo.rstrip(".")
+            _fatto = _fatto[0].lower() + _fatto[1:] if _fatto else _fatto
+            frase = f"{_cornice}: {_fatto}."
+        elif stato == "da_monitorare" and declassato_per_asse:
+            frase = "C'è un'area che merita attenzione, anche se nel complesso la relazione regge."
         else:
-            frase = "Diversi segnali di instabilità: vale la pena un confronto."
+            frase = f"{_cornice} nel periodo osservato."
 
         risultati.append(ScoreFornitore(
             fornitore=nome,
