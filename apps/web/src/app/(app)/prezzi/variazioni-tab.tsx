@@ -291,7 +291,7 @@ function ListaAcquisti({
                   >
                     <td className="px-3 py-2 tabular-nums">{fmtData(p.data)}</td>
                     <td className="px-3 py-2 max-w-[160px]">
-                      <span className="text-primary truncate inline-block max-w-full align-bottom">
+                      <span className="text-primary truncate inline-block max-w-full align-bottom" title={p.numero_documento || "—"}>
                         {p.numero_documento || "—"}
                       </span>
                     </td>
@@ -357,8 +357,8 @@ const AlertCard = memo(function AlertCard({
           <span className={`size-2.5 rounded-full ${style.dot} shrink-0`} aria-hidden />
 
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-sm truncate">{r.prodotto}</p>
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="font-semibold text-sm truncate" title={r.prodotto}>{r.prodotto}</p>
+            <p className="text-xs text-muted-foreground truncate" title={`${r.fornitore} · ${r.categoria} · ${fmtData(r.data)}`}>
               {r.fornitore} · {r.categoria} · {fmtData(r.data)}
             </p>
           </div>
@@ -448,7 +448,7 @@ function KpiCard({ label, value, sub, tone }: { label: string; value: string; su
     <div className={`rounded-xl border ${t.border} ${t.hover} bg-card px-4 py-3 flex flex-col gap-1 transition-colors`}>
       <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-none">{label}</span>
       <span className={`text-2xl font-bold tracking-tight leading-tight ${t.value}`}>{value}</span>
-      {sub && <span className="text-[11px] text-muted-foreground leading-tight truncate">{sub}</span>}
+      {sub && <span className="text-[11px] text-muted-foreground leading-tight truncate" title={sub}>{sub}</span>}
     </div>
   );
 }

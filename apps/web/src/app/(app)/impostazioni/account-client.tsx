@@ -593,9 +593,9 @@ function SediGruppoCard({ sedi }: { sedi: Sede[] }) {
           >
             <MapPin className="size-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium">{s.nome}</span>
+              <span className="block truncate text-sm font-medium" title={s.nome}>{s.nome}</span>
               {(s.indirizzo || s.comune) && (
-                <span className="block truncate text-xs text-muted-foreground">
+                <span className="block truncate text-xs text-muted-foreground" title={[s.indirizzo, s.comune].filter(Boolean).join(" · ")}>
                   {[s.indirizzo, s.comune].filter(Boolean).join(" · ")}
                 </span>
               )}

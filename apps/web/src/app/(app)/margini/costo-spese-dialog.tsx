@@ -137,7 +137,7 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1">
                   {dettaglio.map(([cat, tot]) => (
                     <div key={cat} className="flex items-baseline justify-between gap-3 text-xs">
-                      <span className="truncate text-muted-foreground">{cat}</span>
+                      <span className="truncate text-muted-foreground" title={cat}>{cat}</span>
                       <span className="shrink-0 font-medium tabular-nums">{formatEuro(tot)}</span>
                     </div>
                   ))}

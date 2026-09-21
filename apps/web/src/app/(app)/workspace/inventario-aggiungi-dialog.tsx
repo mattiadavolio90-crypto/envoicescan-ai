@@ -215,7 +215,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
             {bozze.map((b, i) => (
               <div key={i} className="flex items-center gap-2 px-3 py-2 text-sm">
                 <div className="min-w-0 flex-1">
-                  <span className="font-medium truncate block">{b.nome}</span>
+                  <span className="font-medium truncate block" title={b.nome}>{b.nome}</span>
                   <span className="text-xs text-muted-foreground">
                     {b.quantita} {b.um} × {b.prezzo_unitario > 0 ? fmtEuro(b.prezzo_unitario) : "—"}
                     {" = "}

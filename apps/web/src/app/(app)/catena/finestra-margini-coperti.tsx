@@ -255,7 +255,7 @@ export function FinestraMarginiCoperti({
                         <td className="sticky left-0 z-10 max-w-[14rem] bg-popover px-3 py-2 font-medium">
                           <span className="flex items-center gap-2">
                             <span className={cn("size-2 shrink-0 rounded-full", margineDot(r.margine_perc, r.dati_incompleti))} />
-                            <span className="truncate">{r.nome}</span>
+                            <span className="truncate" title={r.nome}>{r.nome}</span>
                           </span>
                         </td>
                         {r.dati_incompleti ? (
@@ -294,7 +294,7 @@ export function FinestraMarginiCoperti({
                       <td className="sticky left-0 z-10 bg-popover px-3 py-2">
                         <span className="flex items-center gap-2">
                           <span className="size-2 shrink-0 rounded-full bg-primary" />
-                          <span className="truncate">{data.gruppo.nome}</span>
+                          <span className="truncate" title={data.gruppo.nome}>{data.gruppo.nome}</span>
                         </span>
                       </td>
                       {COLS.map((c) => (
@@ -433,7 +433,7 @@ function FinestraSprecoCategorie({
                         className="max-w-[10rem] px-3 py-2 text-right font-semibold"
                         title={p.nome}
                       >
-                        <span className="block truncate">{p.nome}</span>
+                        <span className="block truncate" title={p.nome}>{p.nome}</span>
                       </th>
                     ))}
                     <th className="px-3 py-2 text-right font-bold text-positivo">
@@ -447,7 +447,7 @@ function FinestraSprecoCategorie({
                     return (
                       <tr key={r.categoria} className="border-t transition-colors hover:bg-muted/30">
                         <td className="sticky left-0 z-10 max-w-[16rem] bg-popover px-3 py-2 font-medium">
-                          <span className="block truncate">{r.categoria}</span>
+                          <span className="block truncate" title={r.categoria}>{r.categoria}</span>
                         </td>
                         {r.per_pv.map((c) => {
                           const v = c.valore;

@@ -1129,7 +1129,7 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 px-3 py-2 group">
-                      <span className="min-w-0 font-medium text-sm flex-1 truncate">{d.nome}</span>
+                      <span className="min-w-0 font-medium text-sm flex-1 truncate" title={d.nome}>{d.nome}</span>
                       {d.costo_orario_default != null && (
                         <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                           {fmtEuro(d.costo_orario_default)}/h
@@ -1172,7 +1172,7 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
                     <div className="space-y-1 mt-1.5">
                       {disattivati.map(d => (
                         <div key={d.id} className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border">
-                          <span className="min-w-0 text-sm flex-1 truncate text-muted-foreground">{d.nome}</span>
+                          <span className="min-w-0 text-sm flex-1 truncate text-muted-foreground" title={d.nome}>{d.nome}</span>
                           <Button size="sm" variant="outline" onClick={() => cambiaStato(d, "riattiva")} disabled={busy}>
                             Riattiva
                           </Button>
@@ -1627,7 +1627,7 @@ export function PersonaleTab() {
                       onClick={() => setExpandedDip(isOpen ? null : n)}
                       className="flex items-center gap-3 flex-1 min-w-0 text-left"
                     >
-                      <span className="font-semibold text-sm truncate">{n}</span>
+                      <span className="font-semibold text-sm truncate" title={n}>{n}</span>
                       <span className="text-sm tabular-nums text-muted-foreground shrink-0">{fmtOreDisplay(oreN)}</span>
                       {extN > 0 && <span className="text-xs text-incerto tabular-nums shrink-0">+{fmtOreDisplay(extN)} str.</span>}
                       {costoN > 0 && <span className="text-xs text-primary-text font-semibold tabular-nums shrink-0">{fmtEuro(costoN)}</span>}
@@ -1714,7 +1714,7 @@ export function PersonaleTab() {
                                   <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
                                   {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-incerto tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
                                   {(t.lordo_mensile ?? 0) > 0 && <span className="text-xs text-primary-text tabular-nums">{fmtEuro(t.lordo_mensile!)} lordo</span>}
-                                  {t.note && <span className="min-w-0 text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
+                                  {t.note && <span className="min-w-0 text-xs text-muted-foreground italic truncate flex-1" title={t.note}>{t.note}</span>}
                                   <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditMensile(t); setMensileDialogOpen(true); }}>
                                       <Pencil className="size-3" />
@@ -1734,7 +1734,7 @@ export function PersonaleTab() {
                                   <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
                                   {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-incerto tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
                                   {costoT > 0 && <span className="text-xs text-primary-text tabular-nums">{fmtEuro(costoT)}</span>}
-                                  {t.note && <span className="min-w-0 text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
+                                  {t.note && <span className="min-w-0 text-xs text-muted-foreground italic truncate flex-1" title={t.note}>{t.note}</span>}
                                   <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
                                       <Pencil className="size-3" />

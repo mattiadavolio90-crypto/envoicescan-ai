@@ -167,7 +167,7 @@ function KpiCard({ label, value, sub, tone }: { label: string; value: string; su
   return (
     <div className={`rounded-lg border ${tone} bg-card px-4 pt-3 pb-2.5 flex flex-col gap-1 min-w-0 transition-colors`}>
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-tight min-h-[28px] flex items-start">{label}</p>
-      <p className="text-xl font-bold tracking-tight truncate">{value}</p>
+      <p className="text-xl font-bold tracking-tight truncate" title={value}>{value}</p>
       {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
     </div>
   );
@@ -430,7 +430,7 @@ function TagDialog({
                           <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
                             {sel && <Check className="size-3 text-primary-foreground" />}
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-medium">{d.descrizione}</span>
+                          <span className="min-w-0 flex-1 truncate font-medium" title={d.descrizione}>{d.descrizione}</span>
                           <span className="text-xs text-muted-foreground shrink-0">{d.occorrenze} occ.</span>
                         </button>
                       );
@@ -569,7 +569,7 @@ function AggiungiProdottiDialog({
                     <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
                       {sel && <Check className="size-3 text-primary-foreground" />}
                     </span>
-                    <span className="min-w-0 flex-1 truncate font-medium">{d.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium" title={d.descrizione}>{d.descrizione}</span>
                     <span className="text-xs text-muted-foreground shrink-0">{d.occorrenze} occ.</span>
                   </button>
                 );
@@ -697,7 +697,7 @@ function SuggestionCard({
               {s.matched_rows_count} acquist{s.matched_rows_count === 1 ? "o" : "i"} negli ultimi 30 giorni
             </p>
             {!expanded && (
-              <p className="text-xs text-muted-foreground mt-1 truncate">
+              <p className="text-xs text-muted-foreground mt-1 truncate" title={s.items.slice(0, 3).map(i => i.descrizione).join(" · ")}>
                 {s.items.slice(0, 3).map(i => i.descrizione).join(" · ")}
                 {s.items.length > 3 && ` + altri ${s.items.length - 3}`}
               </p>
@@ -751,7 +751,7 @@ function SuggestionCard({
                     <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
                       {sel && <Check className="size-2.5 text-primary-foreground" />}
                     </span>
-                    <span className="min-w-0 flex-1 truncate font-medium">{item.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium" title={item.descrizione}>{item.descrizione}</span>
                     <span className="text-xs text-muted-foreground shrink-0">{item.occorrenze} occ.</span>
                   </button>
                 );
@@ -1400,7 +1400,7 @@ export function AnalisiETagClient({
               <div className="rounded-lg border border-border divide-y divide-border">
                 {prodotti.map(p => (
                   <div key={p.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.descrizione}>{p.descrizione}</span>
                     <button
                       onClick={() => removeProdotto(p.id)}
                       disabled={removingId === p.id}

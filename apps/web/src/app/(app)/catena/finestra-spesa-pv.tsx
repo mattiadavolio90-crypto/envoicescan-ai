@@ -160,7 +160,7 @@ export function FinestraSpesaPV({
                   </th>
                   {data.pv.map((p) => (
                     <th key={p.id} className="px-3 py-2 text-right font-semibold">
-                      <span className="block max-w-[10rem] truncate">{p.nome}</span>
+                      <span className="block max-w-[10rem] truncate" title={p.nome}>{p.nome}</span>
                     </th>
                   ))}
                   <th className="px-3 py-2 text-right font-semibold">Totale</th>
@@ -178,7 +178,7 @@ export function FinestraSpesaPV({
                         ) : (
                           <Truck className="size-3.5 shrink-0 text-muted-foreground/60" />
                         )}
-                        <span className="truncate">{row.dim_val}</span>
+                        <span className="truncate" title={row.dim_val}>{row.dim_val}</span>
                       </span>
                     </td>
                     {data.pv.map((p) => {

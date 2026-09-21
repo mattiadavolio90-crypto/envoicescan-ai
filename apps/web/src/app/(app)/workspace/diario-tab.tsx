@@ -375,7 +375,7 @@ export function AgendaView() {
                   <div className={`mt-1 size-2.5 rounded-full flex-shrink-0 ${col.dot}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">{e.titolo}</span>
+                      <span className="font-medium text-sm truncate" title={e.titolo}>{e.titolo}</span>
                       {(e.ora_inizio || e.ora_fine) && (
                         <span className="text-xs text-muted-foreground flex-shrink-0">
                           {fmtOra(e.ora_inizio)}{e.ora_fine ? `–${fmtOra(e.ora_fine)}` : ""}

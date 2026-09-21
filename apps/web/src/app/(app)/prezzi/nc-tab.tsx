@@ -189,7 +189,7 @@ export function NcTab() {
                 <tr key={i} className="border-t border-border hover:bg-muted/20 transition-colors">
                   <td className="px-3 py-2 border-r border-border whitespace-nowrap">{fmtData(r.data)}</td>
                   <td className="px-3 py-2 border-r border-border font-medium">{r.fornitore}</td>
-                  <td className="px-3 py-2 border-r border-border max-w-[200px] truncate">{r.descrizione}</td>
+                  <td className="px-3 py-2 border-r border-border max-w-[200px] truncate" title={r.descrizione}>{r.descrizione}</td>
                   <td className="px-3 py-2 border-r border-border text-muted-foreground">{r.categoria}</td>
                   <td className="px-3 py-2 border-r border-border text-right">
                     {r.quantita !== null ? r.quantita.toFixed(2) : "—"}
@@ -198,7 +198,7 @@ export function NcTab() {
                     {fmtEuro(r.credito)}
                   </td>
                   <td className="px-3 py-2 border-r border-border font-mono text-[11px] whitespace-nowrap">{r.numero_documento || "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-[10px] max-w-[140px] truncate">{r.documento}</td>
+                  <td className="px-3 py-2 text-muted-foreground text-[10px] max-w-[140px] truncate" title={r.documento}>{r.documento}</td>
                 </tr>
               ))}
             </tbody>

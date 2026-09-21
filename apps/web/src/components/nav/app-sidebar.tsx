@@ -198,6 +198,15 @@ export function AppSidebar({
   // sempre falso. Su /catena è sempre vero (ci arriva solo un multi-sede).
   const inChain = isCatenaPage || (hasMultiSede && !isPerPvPage && viewMode === "chain");
 
+  // Estratta perche' serve due volte: nel testo e nel `title` che lo rende
+  // leggibile quando tronca (nomi come "SUSHILAND MARIANO COMENSE SRL" non ci
+  // stanno nella barra).
+  const etichettaSede = inChain
+    ? nomeGruppo
+      ? `Gruppo ${nomeGruppo}`
+      : "Tutti i punti vendita"
+    : sedeAttivaNome;
+
   async function handleCambiaSede(ristoranteId: string) {
     if (switching) return;
     setSwitching(true);
@@ -375,14 +384,10 @@ export function AppSidebar({
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex min-w-0 flex-col gap-0.5 leading-none flex-1 text-left">
-                      <span className="text-sm font-medium truncate">
-                        {inChain
-                          ? nomeGruppo
-                            ? `Gruppo ${nomeGruppo}`
-                            : "Tutti i punti vendita"
-                          : sedeAttivaNome}
+                      <span className="text-sm font-medium truncate" title={etichettaSede}>
+                        {etichettaSede}
                       </span>
-                      <span className="text-xs text-muted-foreground truncate">{userEmail}</span>
+                      <span className="text-xs text-muted-foreground truncate" title={userEmail}>{userEmail}</span>
                     </div>
                     <ChevronsUpDown className="ml-auto size-4" />
                   </SidebarMenuButton>
@@ -433,7 +438,7 @@ export function AppSidebar({
                         <span className="flex flex-col leading-tight">
                           <span className="text-sm font-medium">{s.nome}</span>
                           {(s.indirizzo || s.comune) && (
-                            <span className="text-xs text-muted-foreground truncate max-w-[180px]">
+                            <span className="text-xs text-muted-foreground truncate max-w-[180px]" title={[s.indirizzo, s.comune].filter(Boolean).join(" · ")}>
                               {[s.indirizzo, s.comune].filter(Boolean).join(" · ")}
                             </span>
                           )}

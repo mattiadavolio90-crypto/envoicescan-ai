@@ -61,7 +61,7 @@ function SelectTrigger({ className, children, ...props }: SelectTriggerProps) {
 
 function SelectValue({ placeholder }: { placeholder?: string }) {
   const { value } = React.useContext(SelectContext);
-  return <span className="truncate">{value || placeholder}</span>;
+  return <span className="truncate" title={value || placeholder}>{value || placeholder}</span>;
 }
 
 type SelectContentProps = {

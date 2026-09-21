@@ -555,7 +555,7 @@ function TrendChart({
                 style={isSel ? { backgroundColor: COLORI_LINEE[colorIdx] } : undefined}
               >
                 {dimensione === "categoria" && <span>{categoriaIcon(r.dimensione)}</span>}
-                <span className="truncate max-w-32">{r.dimensione}</span>
+                <span className="truncate max-w-32" title={r.dimensione}>{r.dimensione}</span>
               </button>
             );
           })}

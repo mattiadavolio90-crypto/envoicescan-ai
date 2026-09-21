@@ -595,7 +595,7 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
           {centro.categorie_dettaglio.map((cat) => (
             <div key={cat.categoria} className="flex items-center gap-3 py-2 border-b border-border/20 last:border-0">
               <div className="w-7 shrink-0" />
-              <span className="text-sm text-muted-foreground w-36 shrink-0 truncate">{cat.categoria}</span>
+              <span className="text-sm text-muted-foreground w-36 shrink-0 truncate" title={cat.categoria}>{cat.categoria}</span>
               <div className="flex-1 grid grid-cols-3 gap-6 items-start">
                 {/* Col 1: costo + % su costo centro + barra */}
                 <div className="text-right">

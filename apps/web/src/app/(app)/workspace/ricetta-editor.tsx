@@ -307,7 +307,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                       <span className="shrink-0 text-xs">
                         {ing.tipo === "articolo" ? "🟢" : ing.tipo === "manuale" ? "📝" : "🥘"}
                       </span>
-                      <span className="truncate">{labelIngrediente(ing)}</span>
+                      <span className="truncate" title={labelIngrediente(ing)}>{labelIngrediente(ing)}</span>
                     </button>
                   ))
                 )}

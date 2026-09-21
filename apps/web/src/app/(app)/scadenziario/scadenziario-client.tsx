@@ -188,7 +188,7 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm truncate max-w-[200px]">{doc.fornitore}</span>
+          <span className="font-medium text-sm truncate max-w-[200px]" title={doc.fornitore}>{doc.fornitore}</span>
           {doc.numero_documento && (
             <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
           )}
@@ -361,7 +361,7 @@ function OscurateSection({
             >
               <button className="flex-1 min-w-0 text-left cursor-pointer" onClick={() => onPeek(doc)}>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm truncate max-w-[200px]">{doc.fornitore}</span>
+                  <span className="font-medium text-sm truncate max-w-[200px]" title={doc.fornitore}>{doc.fornitore}</span>
                   {doc.numero_documento && (
                     <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
                   )}
@@ -433,7 +433,7 @@ function NoteCreditoSection({
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm truncate max-w-[200px]">{doc.fornitore}</span>
+                  <span className="font-medium text-sm truncate max-w-[200px]" title={doc.fornitore}>{doc.fornitore}</span>
                   {doc.numero_documento && (
                     <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
                   )}
@@ -610,7 +610,7 @@ function CalendarView({ documenti }: CalendarViewProps) {
           <p className="text-xs font-medium text-muted-foreground">{selectedDay} {MESI[mese]} — {dayDocs.length} fattur{dayDocs.length === 1 ? "a" : "e"}</p>
           {dayDocs.map(doc => (
             <div key={doc.file_origine} className="flex items-center justify-between text-sm px-1">
-              <span className="truncate max-w-[200px] text-muted-foreground">{doc.fornitore}</span>
+              <span className="truncate max-w-[200px] text-muted-foreground" title={doc.fornitore}>{doc.fornitore}</span>
               <span className="font-medium ml-2">{formatEuro(doc.totale_documento)}</span>
             </div>
           ))}
@@ -1245,7 +1245,7 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
                   {regole.map(reg => (
                     <div key={reg.id} className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{pivaToNome[reg.piva_fornitore] || reg.piva_fornitore}</p>
+                        <p className="text-sm font-medium truncate" title={pivaToNome[reg.piva_fornitore] || reg.piva_fornitore}>{pivaToNome[reg.piva_fornitore] || reg.piva_fornitore}</p>
                         <p className="text-xs text-muted-foreground">
                           {MODALITA_LABELS[reg.modalita] ?? reg.modalita}
                           <span className="mx-1.5 opacity-40">·</span>
@@ -1328,7 +1328,7 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
                               onChange={() => toggleFornitore(f.fornitore)}
                               className="size-3.5 accent-primary flex-shrink-0"
                             />
-                            <span className="min-w-0 text-xs truncate flex-1">{f.fornitore}</span>
+                            <span className="min-w-0 text-xs truncate flex-1" title={f.fornitore}>{f.fornitore}</span>
                             {!f.piva_fornitore && (
                               <span className="text-[10px] text-muted-foreground italic flex-shrink-0">senza P.IVA</span>
                             )}
@@ -1413,7 +1413,7 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
             className={`h-8 text-xs gap-1.5 max-w-[240px] justify-start ${selected.size > 0 ? "border-primary text-primary" : ""}`}
           >
             <Filter className="size-3.5 flex-shrink-0" />
-            <span className="truncate">{label}</span>
+            <span className="truncate" title={label}>{label}</span>
             {selected.size > 0 && (
               <span className="ml-auto flex-shrink-0 size-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
                 {selected.size}
@@ -1460,7 +1460,7 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
                   onChange={() => toggle(f.key)}
                   className="size-3.5 accent-primary flex-shrink-0"
                 />
-                <span className="truncate">{f.label}</span>
+                <span className="truncate" title={f.label}>{f.label}</span>
               </label>
             ))
           )}
@@ -2074,7 +2074,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                   <div key={item.file_origine} className="flex items-center gap-3 px-3 py-2.5 rounded-md border bg-background hover:bg-muted/30 transition-colors">
                     <div className="flex-1 min-w-0 space-y-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium truncate">{item.fornitore || item.file_origine}</span>
+                        <span className="text-sm font-medium truncate" title={item.fornitore || item.file_origine}>{item.fornitore || item.file_origine}</span>
                         <span className="text-xs text-muted-foreground">{item.num_righe} prodott{item.num_righe === 1 ? "o" : "i"}</span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">

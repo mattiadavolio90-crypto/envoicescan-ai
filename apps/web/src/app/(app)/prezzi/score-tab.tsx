@@ -255,10 +255,10 @@ function FornitoreRow({ f, onOpen }: { f: ScoreFornitore; onOpen: () => void }) 
       <div className="flex items-center gap-4 px-4 py-3">
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-sm truncate">{f.fornitore}</p>
+            <p className="font-semibold text-sm truncate" title={f.fornitore}>{f.fornitore}</p>
             <StatoBadge stato={f.stato} size="sm" />
           </div>
-          <p className="text-xs text-muted-foreground truncate">{f.frase_sintesi}</p>
+          <p className="text-xs text-muted-foreground truncate" title={f.frase_sintesi}>{f.frase_sintesi}</p>
           {/* Striscia per asse: dove sta l'attenzione, a colpo d'occhio */}
           {f.sottometriche.length > 0 && (
             <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">

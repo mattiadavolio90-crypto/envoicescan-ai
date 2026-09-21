@@ -426,7 +426,7 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
                     const info = FONTI[v.fonte];
                     return (
                       <Link key={v.id} href={info.href} className={`block rounded px-1.5 py-1 text-[10px] ${info.chip} hover:opacity-80 transition-opacity`}>
-                        <div className="font-semibold truncate">{v.ora ? `${v.ora} ` : ""}{v.titolo}</div>
+                        <div className="font-semibold truncate" title={`${v.ora ? `${v.ora} ` : ""}${v.titolo}`}>{v.ora ? `${v.ora} ` : ""}{v.titolo}</div>
                         {/* Un'assenza va detta: senza, in settimana un giorno di
                             ferie sembra un turno senza orario. */}
                         {v.tipoGiorno && v.tipoGiorno !== "turno" && (
@@ -491,7 +491,7 @@ function PannelloPersonale({ voci }: { voci: VoceAgenda[] }) {
           const assente = tipo !== "turno";
           return (
             <div key={v.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
-              <span className={`font-medium truncate ${assente ? "text-muted-foreground" : ""}`}>
+              <span className={`font-medium truncate ${assente ? "text-muted-foreground" : ""} title={v.titolo}`}>
                 {v.titolo}
               </span>
               {assente ? (
@@ -535,7 +535,7 @@ function VoceRow({ v }: { v: VoceAgenda }) {
       <span className={`mt-1 size-2.5 rounded-full shrink-0 ${info.dot}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate">{v.titolo}</span>
+          <span className="font-medium text-sm truncate" title={v.titolo}>{v.titolo}</span>
           {v.ora && <span className="text-xs text-muted-foreground shrink-0">{v.ora}</span>}
           {assente && (
             <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded shrink-0 ${TIPO_GIORNO_BADGE[v.tipoGiorno as Exclude<TipoGiorno, "turno">]}`}>
@@ -543,7 +543,7 @@ function VoceRow({ v }: { v: VoceAgenda }) {
             </span>
           )}
         </div>
-        {v.dettaglio && !assente && <p className="text-xs text-muted-foreground truncate">{v.dettaglio}</p>}
+        {v.dettaglio && !assente && <p className="text-xs text-muted-foreground truncate" title={v.dettaglio}>{v.dettaglio}</p>}
       </div>
       {v.importo != null && (
         <span className="text-sm font-semibold tabular-nums shrink-0">

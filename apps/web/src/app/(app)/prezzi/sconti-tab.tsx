@@ -304,7 +304,7 @@ export function ScontiTab() {
                       {r.tipo === "sconto" ? "Sconto" : "Omaggio"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 border-r border-border max-w-[180px] truncate">{r.descrizione}</td>
+                  <td className="px-3 py-2 border-r border-border max-w-[180px] truncate" title={r.descrizione}>{r.descrizione}</td>
                   <td className="px-3 py-2 border-r border-border text-muted-foreground">{r.categoria}</td>
                   <td className="px-3 py-2 border-r border-border">{r.fornitore}</td>
                   <td className="px-3 py-2 border-r border-border text-right">
@@ -315,7 +315,7 @@ export function ScontiTab() {
                   </td>
                   <td className="px-3 py-2 border-r border-border whitespace-nowrap">{fmtData(r.data)}</td>
                   <td className="px-3 py-2 border-r border-border font-mono text-[11px] whitespace-nowrap">{r.numero_documento || "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-[10px] max-w-[140px] truncate">{r.fattura}</td>
+                  <td className="px-3 py-2 text-muted-foreground text-[10px] max-w-[140px] truncate" title={r.fattura}>{r.fattura}</td>
                 </tr>
               ))}
             </tbody>

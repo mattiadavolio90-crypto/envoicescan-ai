@@ -190,7 +190,7 @@ export function TagCatenaDialog({
                     ) : (
                       <TagIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.nome}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium" title={t.nome}>{t.nome}</span>
                     <span className="text-xs text-muted-foreground">
                       {t.n_prodotti ?? 0} {t.n_prodotti === 1 ? "prodotto" : "prodotti"}
                     </span>
@@ -397,7 +397,7 @@ function ProdottiDialog({
                     key={a.id}
                     className="flex items-center gap-2 rounded-lg border bg-background/40 px-3 py-2 text-sm"
                   >
-                    <span className="min-w-0 flex-1 truncate">{a.descrizione}</span>
+                    <span className="min-w-0 flex-1 truncate" title={a.descrizione}>{a.descrizione}</span>
                     <button
                       type="button"
                       onClick={() => rimuovi(a.id)}
@@ -468,7 +468,7 @@ function ProdottiDialog({
                         >
                           {sel && <Check className="size-3 text-primary-foreground" />}
                         </span>
-                        <span className="min-w-0 flex-1 truncate">{d.descrizione}</span>
+                        <span className="min-w-0 flex-1 truncate" title={d.descrizione}>{d.descrizione}</span>
                         <span className="text-xs text-muted-foreground">{euro(d.spesa)}</span>
                       </button>
                     </li>
@@ -625,7 +625,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                   {data!.per_pv.map((p) => (
                     <li key={p.ristorante_id} className="rounded-xl border bg-background/40 p-3">
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-medium">{p.nome}</span>
+                        <span className="truncate text-sm font-medium" title={p.nome}>{p.nome}</span>
                         <span className="text-sm font-semibold tabular-nums">{euro(p.spesa)}</span>
                       </div>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -669,7 +669,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                         <div className="flex items-baseline justify-between gap-2 text-sm">
                           <span className="flex min-w-0 items-center gap-1.5">
                             <Truck className="size-3.5 shrink-0 text-muted-foreground/60" />
-                            <span className="truncate font-medium">{f.nome}</span>
+                            <span className="truncate font-medium" title={f.nome}>{f.nome}</span>
                           </span>
                           <span className="shrink-0 tabular-nums">{euro(f.spesa)} · {pct(f.incidenza_pct)}</span>
                         </div>

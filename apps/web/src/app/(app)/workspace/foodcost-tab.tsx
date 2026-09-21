@@ -275,7 +275,7 @@ export function FoodcostTab() {
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <p className="font-medium truncate">{r.nome}</p>
+                    <p className="font-medium truncate" title={r.nome}>{r.nome}</p>
                     {r.alert_prezzo && (
                       <span title={`Prezzo aumentato per: ${(r.ingredienti_aumentati ?? []).join(", ")}`} className="shrink-0">
                         <AlertTriangle className="size-4 text-incerto" />

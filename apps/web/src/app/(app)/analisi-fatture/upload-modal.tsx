@@ -281,7 +281,7 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
               >
                 <StatusIcon status={entry.status} />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{entry.file.name}</p>
+                  <p className="font-medium truncate" title={entry.file.name}>{entry.file.name}</p>
                   <p className="text-muted-foreground">{humanSize(entry.file.size)}</p>
                   {entry.status === "success" && (
                     <p className="text-positivo mt-0.5">

@@ -417,7 +417,7 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
               >
                 {s.categoria ?? (s.tipo === "fb" ? "F&B" : "Gen.")}
               </span>
-              <span className="text-sm flex-1 min-w-0 truncate">
+              <span className="text-sm flex-1 min-w-0 truncate" title={s.note ? `${s.descrizione} · ${s.note}` : s.descrizione}>
                 {s.descrizione}
                 {s.note && <span className="ml-1.5 text-xs text-muted-foreground italic">· {s.note}</span>}
               </span>
