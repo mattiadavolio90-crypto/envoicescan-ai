@@ -883,7 +883,13 @@ sta in `lib/catena-segnali.ts` — usata **sia** dal desktop **sia** da `/m`
 stesso endpoint e mostrava le stesse 5 righe identiche) — e **non** in
 `lib/gruppo.ts` perché quello
 importa `react` e `./worker` e sotto node non si carica: la rete frontend non
-avrebbe potuto eseguirlo. 4 mutanti su 4 uccisi.
+avrebbe potuto eseguirlo. 4 mutanti su 4 uccisi — ma **uno dei quattro
+muta un percorso che in produzione non si raggiunge**: `severity: "error"`
+non è prodotto da nessuno dei 5 emettitori in `gruppo.py`, che
+scrivono tutti `"warning"`. Il test resta (il campo è nel tipo e nel
+payload: il giorno che il backend lo usa, un gruppo che declassa a warning
+un PV in errore sarebbe un bug silenzioso), ma la cifra «4 su 4» diceva
+più di quanto provasse: i mutanti su codice vivo sono **3**.
 
 ### 13.2 Rilievi del §3 confermati a video
 
