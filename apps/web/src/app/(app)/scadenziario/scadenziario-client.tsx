@@ -26,6 +26,7 @@ import {
   ordinaDocumenti, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
+  chiaviSelezionaTutte, statoSelezioneSezione,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -263,8 +264,8 @@ function AgendaSection({
   const checkboxRef = useRef<HTMLInputElement>(null);
 
   const selectableDocs = documentiSelezionabili(docs);
-  const selectedCount = selectableDocs.filter(d => selectedFileOrigini.has(d.file_origine)).length;
-  const allSelected = selectableDocs.length > 0 && selectedCount === selectableDocs.length;
+  const { selezionati: selectedCount, tutte: allSelected } =
+    statoSelezioneSezione(docs, selectedFileOrigini);
   const someSelected = selectedCount > 0 && !allSelected;
 
   useEffect(() => {
@@ -635,13 +636,19 @@ function CashFlowBar({ documenti }: { documenti: Documento[] }) {
   const fasce = useMemo(() => buildCashFlow(documenti), [documenti]);
   const totale = fasce.reduce((s, f) => s + f.totale, 0);
   const max = Math.max(1, ...fasce.map(f => f.totale));
-  if (totale === 0) return null;
+
+  // Una fascia conta se porta un importo, in qualunque direzione: `is_nota_credito`
+  // e' solo TD04, e in produzione esistono documenti non-TD04 con somma negativa
+  // (misurati il 22/09: 3, su due sedi). Contare i soli positivi faceva sparire
+  // la card quando i segni si annullavano, e disegnava sei barre vuote quando
+  // l'unica fascia valorizzata era negativa.
+  const valorizzate = fasce.filter(f => f.totale !== 0);
+  if (valorizzate.length === 0) return null;
 
   // Sei barre di cui cinque a zero non sono un grafico: e' una barra sola con
   // cinque segnaposto. Per CASATI si vedeva «Scadute 1.0k€» e cinque «0€».
   // Un profilo di esposizione si legge se ci sono almeno due fasce da
   // confrontare; altrimenti la stessa informazione sta in una riga.
-  const valorizzate = fasce.filter(f => f.totale > 0);
   if (valorizzate.length === 1) {
     const sola = valorizzate[0];
     return (
@@ -1720,8 +1727,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   }
 
   function selectAllVisible() {
-    const all = documentiSelezionabili(documentiFiltrati);
-    setSelectedFileOrigini(new Set(all.map(d => d.file_origine)));
+    setSelectedFileOrigini(new Set(chiaviSelezionaTutte(documentiFiltrati)));
   }
 
   function deselectAll() {
@@ -1952,7 +1958,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     toast.success("CSV scaricato — aprilo con Excel");
   }
 
-  const totaleSelezionabiliFiltrate = documentiSelezionabili(documentiFiltrati).length;
+  const totaleSelezionabiliFiltrate = chiaviSelezionaTutte(documentiFiltrati).length;
 
   // Vista "Per mese": stessi filtri della Lista (fornitore, sede, ricerca), ma
   // NON il periodo — quello filtra su `scadenza_effettiva`, che qui non esiste.

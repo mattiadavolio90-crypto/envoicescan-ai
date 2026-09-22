@@ -138,6 +138,41 @@ export function documentiSelezionabili(documenti: Documento[]): Documento[] {
   return documenti.filter(d => !d.oscurata && !d.is_nota_credito && !d.pagata);
 }
 
+/**
+ * Le chiavi che «Seleziona tutte» manda a `POST /api/scadenziario/pagata`.
+ *
+ * Vive qui, e non dentro il componente, perche' e' la parte che si puo'
+ * provare: un test sulla sola `documentiSelezionabili` resta verde anche se il
+ * pulsante in pagina torna a filtrare `!pagata` — ed e' proprio il difetto che
+ * queste funzioni esistono per chiudere (tre popolazioni per la stessa frase).
+ *
+ * Perche' importa oltre al numero a schermo: l'endpoint non ha guardie sui
+ * TD04 e il dialog del singolo documento RIFIUTA di segnare pagata una nota di
+ * credito. Prima, «Seleziona tutte» era l'unica strada per scriverci sopra.
+ */
+export function chiaviSelezionaTutte(documenti: Documento[]): string[] {
+  return documentiSelezionabili(documenti).map(d => d.file_origine);
+}
+
+/**
+ * Stato della checkbox in testa a una sezione: [selezionabili, selezionati].
+ * «Tutte» deve valere sulla stessa popolazione che il pulsante seleziona, o la
+ * spunta di sezione non diventa mai piena dopo un «Seleziona tutte».
+ */
+export function statoSelezioneSezione(
+  docs: Documento[],
+  selezionate: Iterable<string>,
+): { selezionabili: number; selezionati: number; tutte: boolean } {
+  const set = new Set(selezionate);
+  const selezionabili = documentiSelezionabili(docs);
+  const selezionati = selezionabili.filter(d => set.has(d.file_origine)).length;
+  return {
+    selezionabili: selezionabili.length,
+    selezionati,
+    tutte: selezionabili.length > 0 && selezionati === selezionabili.length,
+  };
+}
+
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   const today = new Date();
   today.setHours(0, 0, 0, 0);

@@ -211,3 +211,114 @@ class TestDocumentiSelezionabili:
             richiede=["documentiSelezionabili"],
         )
         assert isinstance(out, list) and out and isinstance(out[0], dict)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# I CALL SITE, non solo il predicato.
+#
+# Gli otto test qui sopra provano `documentiSelezionabili` in isolamento: con
+# quelli soli si poteva rimettere `filter(d => !d.pagata)` dentro
+# `selectAllVisible`, nel contatore del pulsante e nelle checkbox di sezione, e
+# la suite restava verde. E' la stessa classe di difetto che C1 corregge — un
+# fix che lascia indietro i suoi consumatori — quindi la logica dei tre punti
+# vive in lib/ e si prova da qui.
+#
+# Non e' solo un numero: `POST /api/scadenziario/pagata` non ha guardie sui
+# TD04 e il dialog del singolo documento RIFIUTA di segnare pagata una nota di
+# credito. «Seleziona tutte» era l'unica strada per scriverci sopra.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _chiavi(documenti, tz):
+    return esegui_ts(
+        MODULO,
+        "emit(m.chiaviSelezionaTutte(input));",
+        argomento=documenti,
+        tz=tz,
+        richiede=["chiaviSelezionaTutte"],
+    )
+
+
+def _stato(documenti, selezionate, tz):
+    return esegui_ts(
+        MODULO,
+        "emit(m.statoSelezioneSezione(input.docs, input.sel));",
+        argomento={"docs": documenti, "sel": list(selezionate)},
+        tz=tz,
+        richiede=["statoSelezioneSezione"],
+    )
+
+
+def _doc_fo(fo, **kw):
+    return _doc(id=fo, file_origine=fo, **kw)
+
+
+@pytest.mark.parametrize("tz", FUSI)
+class TestChiaviSelezionaTutte:
+    def test_non_manda_la_nota_di_credito_all_endpoint(self, tz):
+        """Il caso che scriveva `pagata=true` su un TD04."""
+        docs = [_doc_fo("a.xml"), _doc_fo("nc.xml", is_nota_credito=True)]
+        assert _chiavi(docs, tz) == ["a.xml"]
+
+    def test_non_manda_l_oscurata(self, tz):
+        docs = [_doc_fo("a.xml"), _doc_fo("osc.xml", oscurata=True)]
+        assert _chiavi(docs, tz) == ["a.xml"]
+
+    def test_non_manda_la_gia_pagata(self, tz):
+        docs = [_doc_fo("a.xml"), _doc_fo("p.xml", pagata=True)]
+        assert _chiavi(docs, tz) == ["a.xml"]
+
+    def test_manda_le_chiavi_non_i_documenti(self, tz):
+        out = _chiavi([_doc_fo("a.xml"), _doc_fo("b.xml")], tz)
+        assert out == ["a.xml", "b.xml"]
+
+    def test_quante_ne_manda_e_quante_ne_annuncia(self, tz):
+        """Il numero sul pulsante e' `chiaviSelezionaTutte(...).length`: e'
+        la stessa chiamata, quindi non possono divergere. Il test blocca il
+        ritorno a due espressioni diverse."""
+        docs = [
+            _doc_fo("a.xml"),
+            _doc_fo("b.xml"),
+            _doc_fo("nc.xml", is_nota_credito=True),
+            _doc_fo("osc.xml", oscurata=True),
+        ]
+        assert len(_chiavi(docs, tz)) == _conta(docs, tz) == 2
+
+
+@pytest.mark.parametrize("tz", FUSI)
+class TestStatoSelezioneSezione:
+    def test_dopo_seleziona_tutte_la_sezione_risulta_piena(self, tz):
+        """L'invariante fra i due punti: se la checkbox di sezione contasse
+        una popolazione diversa da quella che il pulsante seleziona, non
+        diventerebbe mai piena — che era il comportamento vero."""
+        docs = [_doc_fo("a.xml"), _doc_fo("nc.xml", is_nota_credito=True)]
+        stato = _stato(docs, _chiavi(docs, tz), tz)
+        assert stato["tutte"] is True
+        assert stato["selezionati"] == 1
+
+    def test_una_sezione_di_sole_note_di_credito_non_e_mai_piena(self, tz):
+        docs = [_doc_fo("nc1.xml", is_nota_credito=True), _doc_fo("nc2.xml", is_nota_credito=True)]
+        stato = _stato(docs, ["nc1.xml", "nc2.xml"], tz)
+        assert stato["selezionabili"] == 0
+        assert stato["tutte"] is False
+
+    def test_selezione_parziale(self, tz):
+        docs = [_doc_fo("a.xml"), _doc_fo("b.xml")]
+        stato = _stato(docs, ["a.xml"], tz)
+        assert (stato["selezionati"], stato["tutte"]) == (1, False)
+
+    def test_le_chiavi_estranee_non_contano(self, tz):
+        docs = [_doc_fo("a.xml")]
+        stato = _stato(docs, ["a.xml", "di-un-altra-sezione.xml"], tz)
+        assert stato["selezionati"] == 1
+        assert stato["tutte"] is True
+
+    def test_una_pagata_selezionata_non_rende_piena_la_sezione(self, tz):
+        docs = [_doc_fo("a.xml"), _doc_fo("p.xml", pagata=True)]
+        stato = _stato(docs, ["p.xml"], tz)
+        assert stato["selezionati"] == 0
+        assert stato["tutte"] is False
+
+    def test_sezione_vuota(self, tz):
+        stato = _stato([], [], tz)
+        assert (stato["selezionabili"], stato["tutte"]) == (0, False)
