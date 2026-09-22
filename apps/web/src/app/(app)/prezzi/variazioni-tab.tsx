@@ -40,17 +40,17 @@ function fmtRangeIt(da: string, a: string): string {
   return `${f(da)} → ${f(a)}`;
 }
 
-function fmtEuro(v: number, withSign = false): string {
+function fmtEuro(v: number, withSign = false, decimali = 2): string {
   const sign = withSign && v > 0 ? "+" : v < 0 ? "-" : "";
   return `${sign}€ ${new Intl.NumberFormat("it-IT", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: decimali,
+    maximumFractionDigits: decimali,
   }).format(Math.abs(v))}`;
 }
 
 function fmtPct(v: number): string {
   const sign = v > 0 ? "+" : "";
-  return `${sign}${v.toFixed(1)}%`;
+  return `${sign}${v.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
 function fmtData(s: string): string {
@@ -173,7 +173,7 @@ function PrezzoChart({
       data: fmtData(p.data),
       prezzo: p.prezzo_unitario,
       var_pct: mediaUsata > 0 ? Math.round(((p.prezzo_unitario - mediaUsata) / mediaUsata) * 1000) / 10 : 0,
-      label: `€${p.prezzo_unitario.toFixed(2)}`,
+      label: fmtEuro(p.prezzo_unitario),
     }));
   } else if (fallbackPrezzi && fallbackPrezzi.length >= 2) {
     const fb = fallbackPrezzi;
@@ -182,7 +182,7 @@ function PrezzoChart({
       data: `#${i + 1}`,
       prezzo: p,
       var_pct: fbMedia > 0 ? Math.round(((p - fbMedia) / fbMedia) * 1000) / 10 : 0,
-      label: `€${p.toFixed(2)}`,
+      label: fmtEuro(p),
     }));
   } else {
     return (
@@ -199,7 +199,7 @@ function PrezzoChart({
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground">
-        Media: <span className="font-semibold text-foreground">€{mediaLabel.toFixed(2)}</span>
+        Media: <span className="font-semibold text-foreground">{fmtEuro(mediaLabel)}</span>
         {punti.length < 2 && fallbackPrezzi && fallbackPrezzi.length >= 2 && (
           <span className="ml-2 text-incerto">(ultimi {fallbackPrezzi.length} acquisti disponibili)</span>
         )}
@@ -218,7 +218,7 @@ function PrezzoChart({
             formatter={(value, _name, props) => {
               const v = typeof value === "number" ? value : 0;
               const payload = props.payload as ChartPoint | undefined;
-              return [`${v > 0 ? "+" : ""}${v.toFixed(1)}% (${payload?.label ?? ""})`, "Variazione"];
+              return [`${fmtPct(v)} (${payload?.label ?? ""})`, "Variazione"];
             }}
             labelStyle={{ fontSize: 11, color: "var(--muted-foreground)" }}
             itemStyle={{ color: "var(--foreground)" }}
@@ -296,7 +296,7 @@ function ListaAcquisti({
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{p.quantita ?? "—"}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">€{p.prezzo_unitario.toFixed(4)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium">{fmtEuro(p.prezzo_unitario, false, 4)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                       {p.totale_riga != null ? fmtEuro(p.totale_riga) : "—"}
                     </td>
@@ -371,15 +371,15 @@ const AlertCard = memo(function AlertCard({
               da una riga all'altra, a seconda della lunghezza delle cifre) e
               cambiarne una qui senza cambiarla la' scolla i titoli dai dati. */}
           <div className={`text-right shrink-0 ${COL_MEDIA}`}>
-            <p className="text-xs tabular-nums text-muted-foreground">€{r.media.toFixed(2)}</p>
+            <p className="text-xs tabular-nums text-muted-foreground">{fmtEuro(r.media)}</p>
           </div>
 
           <div className={`text-right shrink-0 ${COL_PENULTIMO}`}>
-            <p className="text-xs tabular-nums text-muted-foreground">€{r.penultimo.toFixed(2)}</p>
+            <p className="text-xs tabular-nums text-muted-foreground">{fmtEuro(r.penultimo)}</p>
           </div>
 
           <div className={`text-right shrink-0 ${COL_ULTIMO}`}>
-            <p className="text-xs font-bold tabular-nums text-foreground">€{r.ultimo.toFixed(2)}</p>
+            <p className="text-xs font-bold tabular-nums text-foreground">{fmtEuro(r.ultimo)}</p>
             {/* Percentuale neutra dal 17/09/2026. Prima era rossa sui rialzi e
                 verde sui ribassi: nella stessa riga il bordo e il pallino
                 dicevano invece l'ENTITA' (`Math.abs` dell'impatto), cosi' un
@@ -735,7 +735,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                 <p className="text-foreground text-xs bg-muted/50 rounded px-2 py-1">aumento di prezzo × quantità abituale × acquisti al mese</p>
                 <p>Così un piccolo rincaro su ciò che ordini spesso può pesare più di un grosso aumento su qualcosa di raro. La lista parte dall&apos;impatto più alto.</p>
               </div>
-              <div className="border-t border-border pt-2 text-muted-foreground">
+              <div className="border-t border-border pt-2 space-y-1.5 text-muted-foreground">
+                <p><strong className="text-foreground">Mostra variazioni da … % in su</strong> filtra solo questa pagina. La soglia degli avvisi si imposta nell&apos;assistente, in Home.</p>
                 <p>Dati dalle tue fatture reali: servono almeno due acquisti dello stesso prodotto.</p>
               </div>
             </InfoPopover>
@@ -786,33 +787,6 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         )}
       </div>
 
-      {/* ── Soglia di visualizzazione (NON imposta gli avvisi) ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-sm text-muted-foreground">Mostra variazioni da</label>
-        <input
-          type="number"
-          min="0"
-          max="50"
-          step="0.5"
-          value={sogliaInput}
-          onChange={(e) => setSogliaInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") applicaFiltroSoglia(); }}
-          className="w-16 rounded-md border border-border px-2 py-1.5 text-sm bg-background text-right"
-        />
-        <span className="text-sm text-muted-foreground">% in su</span>
-        <button
-          onClick={applicaFiltroSoglia}
-          disabled={loading}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
-        >
-          <Search className="size-3" />
-          Applica
-        </button>
-        <span className="text-xs text-muted-foreground basis-full sm:basis-auto">
-          Filtro solo per questa pagina. La soglia degli avvisi si imposta nell&apos;assistente, in Home.
-        </span>
-      </div>
-
       {/* ── KPI di sintesi (specifici del tab Variazioni) ── */}
       {data && variazioni.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -850,9 +824,34 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         </div>
       )}
 
-      {/* Filtri di secondo livello — visibili solo quando ci sono dati */}
-      {variazioni.length > 0 && (
+      {/* Filtri di secondo livello. La riga compare gia' con le sole fatture nel
+          periodo, non con le variazioni: la soglia sta qui dentro ed e' proprio
+          cio' che puo' svuotare la lista — dietro `variazioni.length > 0` il
+          cliente resterebbe chiuso fuori, senza modo di riabbassarla. */}
+      {data && (data.fatture_nel_periodo ?? 0) > 0 && (
         <div className="flex flex-wrap gap-2 items-center">
+          {/* La soglia prima aveva una riga propria con bottone «Applica» e una
+              frase di due righe: il primo prodotto finiva a 460 px dal titolo.
+              La spiegazione e' passata nell'InfoPopover del periodo. */}
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5">
+            <label htmlFor="soglia-variazioni" className="text-sm text-muted-foreground whitespace-nowrap">Mostra da</label>
+            <input
+              id="soglia-variazioni"
+              type="number"
+              min="0"
+              max="50"
+              step="0.5"
+              value={sogliaInput}
+              onChange={(e) => setSogliaInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") applicaFiltroSoglia(); }}
+              onBlur={() => applicaFiltroSoglia()}
+              disabled={loading}
+              className="w-12 bg-transparent text-sm text-right outline-none disabled:opacity-50"
+            />
+            <span className="text-sm text-muted-foreground whitespace-nowrap">% in su</span>
+          </div>
+          {variazioni.length > 0 && (
+          <>
           <div className="inline-flex rounded-full border border-border p-0.5 bg-background">
             <button
               onClick={() => setSoloPreferiti(false)}
@@ -901,6 +900,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
             >
               Azzera filtri
             </button>
+          )}
+          </>
           )}
         </div>
       )}

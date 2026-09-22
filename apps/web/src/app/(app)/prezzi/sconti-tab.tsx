@@ -239,21 +239,29 @@ export function ScontiTab() {
 
       {/* Banner KPI */}
       {data && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { icon: Euro, label: "Risparmiato (sconti)", value: fmtEuro(totaleRisparmiato), color: "text-positivo" },
-            { icon: Tag, label: hasFiltri ? `Sconti (filtrati da ${data.n_sconti})` : "Sconti ricevuti", value: String(nSconti), color: "text-positivo" },
-            { icon: Gift, label: hasFiltri ? `Omaggi (filtrati da ${data.n_omaggi})` : "Omaggi ricevuti", value: String(nOmaggi), color: "text-primary-text" },
-            { icon: Building2, label: "Fornitori", value: String(nFornitori), color: "text-muted-foreground" },
-          ].map((k) => (
-            <div key={k.label} className="rounded-md border border-border p-3 bg-card flex items-start gap-2">
-              <k.icon className={`size-4 mt-0.5 shrink-0 ${k.color}`} />
-              <div>
-                <p className="text-xs text-muted-foreground leading-tight">{k.label}</p>
-                <p className="text-base font-bold mt-0.5">{k.value}</p>
-              </div>
+        /* Quattro card affiancate per un valore e tre conteggi: su una pagina
+           da due righe la cornice pesava piu' del contenuto. Il risparmio e' il
+           dato, il resto e' il suo contesto e sta su una riga. */
+        <div className="rounded-md border border-border bg-card p-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <div className="flex items-start gap-2">
+            <Euro className="size-4 mt-0.5 shrink-0 text-positivo" />
+            <div>
+              <p className="text-xs text-muted-foreground leading-tight">Risparmiato (sconti)</p>
+              <p className="text-base font-bold mt-0.5">{fmtEuro(totaleRisparmiato)}</p>
             </div>
-          ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            <Tag className="inline size-3.5 mr-1 -mt-0.5 text-positivo" />
+            {nSconti} scont{nSconti === 1 ? "o" : "i"}
+            {hasFiltri && ` (filtrati da ${data.n_sconti})`}
+            {" · "}
+            <Gift className="inline size-3.5 mr-1 -mt-0.5 text-primary-text" />
+            {nOmaggi} omagg{nOmaggi === 1 ? "io" : "i"}
+            {hasFiltri && ` (filtrati da ${data.n_omaggi})`}
+            {" · "}
+            <Building2 className="inline size-3.5 mr-1 -mt-0.5" />
+            {nFornitori} fornitor{nFornitori === 1 ? "e" : "i"}
+          </p>
         </div>
       )}
 

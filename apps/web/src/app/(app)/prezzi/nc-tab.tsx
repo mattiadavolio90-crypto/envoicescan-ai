@@ -131,23 +131,33 @@ export function NcTab() {
         )}
       </div>
 
-      {/* Banner KPI */}
+      {/* Banner KPI. Prima erano quattro card affiancate e tre portavano un
+          conteggio: con 2 righe su 2 documenti di 2 fornitori la pagina
+          ripeteva «2» tre volte. L'importo e' il dato, la struttura e' il suo
+          contesto e sta in una riga sola sotto. */}
       {data && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { icon: Euro, label: hasFiltri ? "Totale credito (filtrato)" : "Totale Note di Credito", value: fmtEuro(totaleFiltrato), color: "text-primary-text" },
-            { icon: FileX2, label: hasFiltri ? `Righe (filtrate da ${data.note.length})` : "Righe trovate", value: String(filtered.length), color: "text-primary-text" },
-            { icon: FileText, label: hasFiltri ? `Documenti (filtrati da ${data.n_documenti})` : "Documenti NC", value: String(nDocumentiFiltrati), color: "text-muted-foreground" },
-            { icon: Building2, label: "Fornitori", value: String(nFornitori), color: "text-muted-foreground" },
-          ].map((k) => (
-            <div key={k.label} className="rounded-md border border-border p-3 bg-card flex items-start gap-2">
-              <k.icon className={`size-4 mt-0.5 shrink-0 ${k.color}`} />
-              <div>
-                <p className="text-xs text-muted-foreground leading-tight">{k.label}</p>
-                <p className="text-base font-bold mt-0.5">{k.value}</p>
-              </div>
+        <div className="rounded-md border border-border bg-card p-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <div className="flex items-start gap-2">
+            <Euro className="size-4 mt-0.5 shrink-0 text-primary-text" />
+            <div>
+              <p className="text-xs text-muted-foreground leading-tight">
+                {hasFiltri ? "Totale credito (filtrato)" : "Totale Note di Credito"}
+              </p>
+              <p className="text-base font-bold mt-0.5">{fmtEuro(totaleFiltrato)}</p>
             </div>
-          ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            <FileX2 className="inline size-3.5 mr-1 -mt-0.5" />
+            {filtered.length} rig{filtered.length === 1 ? "a" : "he"}
+            {hasFiltri && ` (filtrate da ${data.note.length})`}
+            {" · "}
+            <FileText className="inline size-3.5 mr-1 -mt-0.5" />
+            {nDocumentiFiltrati} document{nDocumentiFiltrati === 1 ? "o" : "i"}
+            {hasFiltri && ` (filtrati da ${data.n_documenti})`}
+            {" · "}
+            <Building2 className="inline size-3.5 mr-1 -mt-0.5" />
+            {nFornitori} fornitor{nFornitori === 1 ? "e" : "i"}
+          </p>
         </div>
       )}
 
