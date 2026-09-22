@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { RefreshCw, Tag, Gift, Building2, Euro, Calendar, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ScontiOmaggiResponse } from "@/lib/prezzi";
+import { formatEuro } from "@/lib/format";
+import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
@@ -17,7 +19,8 @@ function fmtItDate(iso: string) {
 
 function fmtEuro(v: number): string {
   if (v === 0) return "—";
-  return `€ ${new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
+  // Simbolo in coda, come il resto del prodotto (lib/format): qui stava in testa.
+  return formatEuro(v, 2);
 }
 
 function fmtData(s: string): string {
@@ -27,12 +30,6 @@ function fmtData(s: string): string {
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function isoDateRange(anno: number, mese: number | null): { data_da: string; data_a: string } {
-  if (mese === null) return { data_da: `${anno}-01-01`, data_a: `${anno}-12-31` };
-  const mm = String(mese).padStart(2, "0");
-  const lastDay = new Date(anno, mese, 0).getDate();
-  return { data_da: `${anno}-${mm}-01`, data_a: `${anno}-${mm}-${lastDay}` };
-}
 
 export function ScontiTab() {
   const [anno, setAnno] = useState(ANNO_CORRENTE);
@@ -238,7 +235,11 @@ export function ScontiTab() {
       </div>
 
       {/* Banner KPI */}
-      {data && (
+      {/* Senza righe nel periodo la card mostrava «0,00 € · 0 · 0 · 0» e
+          subito sotto compariva gia' «Nessun...»: due modi di dire la stessa
+          cosa, di cui uno e' una cornice piena di zeri. Stessa condizione
+          dell'empty state qui sotto. */}
+      {data && filtered.length > 0 && (
         /* Quattro card affiancate per un valore e tre conteggi: su una pagina
            da due righe la cornice pesava piu' del contenuto. Il risparmio e' il
            dato, il resto e' il suo contesto e sta su una riga. */

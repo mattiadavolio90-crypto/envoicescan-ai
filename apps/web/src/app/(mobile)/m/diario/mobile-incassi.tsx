@@ -11,6 +11,7 @@ import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { scorporoNetto, fetchNettoMese, type NettoMese } from "@/app/(app)/margini/periodi";
 import { parseNumeroItOZero } from "@/lib/format";
 import { nettoDaMostrare, dettaglioNettoMese } from "@/lib/ricavi-netto-mese";
+import { formatEuro } from "@/lib/format";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 // Forma allineata a /api/ricavi/giornalieri (GET → items[], POST upsert per data).
@@ -53,7 +54,7 @@ function fmtData(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
 }
 function fmtEuro(v: number) {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+  return formatEuro(v, 2);
 }
 function parseImporto(s: string): number {
   return s ? parseNumeroItOZero(s) : 0;

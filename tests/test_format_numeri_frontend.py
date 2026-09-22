@@ -335,3 +335,84 @@ def test_decimale_gestisce_null_e_spazi_come_l_importo():
         richiede=DECIMALE,
     )
     assert r == {"nullo": True, "undef": True, "nbsp": 8.5, "euro": 12.5}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# `formatEuroCompact` — gli assi dei grafici (Margini, pivot Analisi Fatture,
+# calendario Gestione Fatture).
+#
+# Tre difetti misurati il 22/09/2026, tutti visibili sullo STESSO asse:
+#  1. il simbolo saltava da coda a testa passando i mille — «730 €» accanto a
+#     «€ 5.2k» — perche' sotto la soglia si cadeva in formatEuro (coda) e sopra
+#     si concatenava a mano (testa);
+#  2. 999,6 usciva «1000 €» accanto a 1000 → «€ 1.0k»: due scritture per lo
+#     stesso ordine di grandezza, a un decimo di euro di distanza;
+#  3. 999.999 usciva «€ 1000.0k» invece di «1.0M €», perche' la soglia si
+#     confrontava col valore GREZZO mentre `toFixed(1)` arrotonda ATTRAVERSO
+#     di essa.
+#
+# Il terzo e' la ragione per cui il confronto va fatto sul valore GIA'
+# arrotondato: spostare soltanto il simbolo non lo avrebbe corretto.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# Lo spazio prima del simbolo: sotto la soglia si passa da `formatEuro`, che
+# usa `Intl` e produce uno SPAZIO UNIFICATORE (U+00A0); sopra la soglia la
+# stringa e' composta qui e usa lo spazio normale. All'occhio sono identici,
+# per un confronto di stringhe no — ed e' la ragione per cui questi test
+# normalizzano invece di scrivere due attese diverse.
+def _compatto(valore):
+    out = esegui_ts(
+        MODULO,
+        "emit(m.formatEuroCompact(input));",
+        argomento=valore,
+        richiede=["formatEuroCompact"],
+    )
+    return out.replace("\u00a0", " ")
+
+
+class TestFormatEuroCompact:
+    def test_il_simbolo_sta_sempre_in_coda(self):
+        """Il difetto piu' visibile: sulla stessa riga di etichette convivevano
+        «730 €» e «€ 5.2k»."""
+        for v in [0, 730, 1000, 5200, 1_000_000]:
+            assert _compatto(v).rstrip().endswith("€"), (v, _compatto(v))
+
+    def test_sotto_i_mille_resta_l_importo_intero(self):
+        assert _compatto(730) == "730 €"
+
+    def test_a_mille_passa_alle_migliaia(self):
+        assert _compatto(1000) == "1.0k €"
+        assert _compatto(5200) == "5.2k €"
+
+    def test_il_valore_che_arrotonda_a_mille_non_resta_indietro(self):
+        """999,6 usciva «1000 €» mentre 1000 usciva «1.0k»: stesso ordine di
+        grandezza, due scritture diverse."""
+        assert _compatto(999.6) == "1.0k €"
+        assert _compatto(1000) == "1.0k €"
+
+    def test_non_esiste_piu_mille_k(self):
+        """999.999 usciva «1000.0k»: il gradino dei milioni non scattava."""
+        assert _compatto(999_999) == "1.0M €"
+        assert "1000.0k" not in _compatto(999_999)
+
+    def test_il_milione_e_il_milione(self):
+        assert _compatto(1_000_000) == "1.0M €"
+        assert _compatto(1_500_000) == "1.5M €"
+
+    def test_i_negativi_tengono_il_segno_e_la_scala(self):
+        assert _compatto(-5200) == "-5.2k €"
+        assert _compatto(-1_500_000) == "-1.5M €"
+
+    def test_lo_zero(self):
+        assert _compatto(0) == "0 €"
+
+    def test_la_soglia_delle_migliaia_cade_dove_si_arrotonda(self):
+        """Sotto 950 resta in euro, sopra passa a k: e' il punto in cui
+        `toFixed(1)` porta a 1.0."""
+        assert _compatto(950) == "950 €"
+        assert _compatto(951) == "1.0k €"
+
+    def test_la_soglia_dei_milioni_cade_dove_si_arrotonda(self):
+        assert _compatto(950_000) == "950.0k €"
+        assert _compatto(950_001) == "1.0M €"

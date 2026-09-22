@@ -16,8 +16,9 @@ import type { VariazioniResponse, VariazionePrezzo, StoricoPrezzoResponse, Stori
 import { Input } from "@/components/ui/input";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { AnteprimaFatturaDialog } from "./anteprima-fattura-dialog";
-import { parseDecimaleIt } from "@/lib/format";
+import { parseDecimaleIt, formatEuro } from "@/lib/format";
 import { puntiSparkline } from "@/lib/sparkline-punti";
+import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const PAGE_SIZE = 100;
@@ -25,12 +26,6 @@ const MESI_LUNGHI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno
 
 type ModoPeriodo = "anno" | "mese" | "custom";
 
-function isoDateRange(anno: number, mese: number | null): { data_da: string; data_a: string } {
-  if (mese === null) return { data_da: `${anno}-01-01`, data_a: `${anno}-12-31` };
-  const lastDay = new Date(anno, mese, 0).getDate();
-  const mm = String(mese).padStart(2, "0");
-  return { data_da: `${anno}-${mm}-01`, data_a: `${anno}-${mm}-${lastDay}` };
-}
 
 function fmtRangeIt(da: string, a: string): string {
   const f = (iso: string) => {
@@ -40,12 +35,12 @@ function fmtRangeIt(da: string, a: string): string {
   return `${f(da)} → ${f(a)}`;
 }
 
+// Simbolo in coda come il resto del prodotto. Il «+» pero' resta e non si puo'
+// delegare a formatEuro, che non lo produce: a riga 404 distingue un rincaro
+// («+18,05 €») da un risparmio, ed e' l'informazione della colonna.
 function fmtEuro(v: number, withSign = false, decimali = 2): string {
-  const sign = withSign && v > 0 ? "+" : v < 0 ? "-" : "";
-  return `${sign}€ ${new Intl.NumberFormat("it-IT", {
-    minimumFractionDigits: decimali,
-    maximumFractionDigits: decimali,
-  }).format(Math.abs(v))}`;
+  const segno = withSign && v > 0 ? "+" : "";
+  return `${segno}${formatEuro(v, decimali)}`;
 }
 
 function fmtPct(v: number): string {

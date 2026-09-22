@@ -12,6 +12,7 @@ import { MobileSpese } from "../diario/mobile-spese";
 import type { Settore } from "@/lib/categorie-spesa";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
 import { ripartisciOre, costoTurnoGiornaliero } from "@/lib/ore-turno";
+import { formatEuro } from "@/lib/format";
 
 // ─── Wrapper Movimenti: Incassi / Spese / Turni ─────────────────────────────────
 // Questa e' la sezione "Movimenti" della bottom nav (ex "Turni"): raccoglie i
@@ -141,7 +142,7 @@ function fmtMese(mese: string): string {
   return new Date(ay, am - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 }
 function fmtEuro(v: number): string {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+  return formatEuro(v, 2);
 }
 function calcolaSlotOre(inizio: string, fine: string): number {
   const [ih, im] = inizio.split(":").map(Number);

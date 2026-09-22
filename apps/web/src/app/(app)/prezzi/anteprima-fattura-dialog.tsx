@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { formatEuro } from "@/lib/format";
 
 type RigaFattura = {
   numero_riga: number;
@@ -17,10 +18,8 @@ type RigaFattura = {
 
 function fmtEuro(v: number | null | undefined): string {
   if (v == null) return "—";
-  return `€ ${new Intl.NumberFormat("it-IT", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(v)}`;
+  // Simbolo in coda, come il resto del prodotto (lib/format): qui stava in testa.
+  return formatEuro(v, 2);
 }
 
 // Match della riga in evidenza: stessa logica del backend (UPPER+TRIM, prefisso).
@@ -120,7 +119,7 @@ export function AnteprimaFatturaDialog({
                         <td className="px-3 py-2 text-right tabular-nums">{r.quantita ?? "—"}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.unita_misura ?? ""}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {r.prezzo_unitario != null ? `€${r.prezzo_unitario.toFixed(4)}` : "—"}
+                          {r.prezzo_unitario != null ? formatEuro(r.prezzo_unitario, 4) : "—"}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                           {r.iva_percentuale ?? "—"}%

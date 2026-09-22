@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, ChevronUp, RefreshCw, TrendingUp,
-  PieChart as PieChartIcon, Settings2, ChevronLeft, ChevronRight, X as XIcon, BarChart3,
+  PieChart as PieChartIcon, Settings2, ChevronLeft, ChevronRight, X as XIcon, BarChart3, TriangleAlert,
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
@@ -440,6 +440,27 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
           onCentroChange={(c) => setDettaglioCentroSel(c)}
           onClose={() => setDettaglioOpen(false)}
         />
+      )}
+
+      {/* Senza la ripartizione ricavi, due colonne su tre delle schede sono
+          trattini e la pagina non dice perche'. La spiegazione esisteva gia'
+          ma solo dentro l'InfoPopover e dentro il dialog, cioe' in due posti
+          che il cliente apre solo se sospetta di doverlo fare. Qui e' sopra le
+          schede vuote, dove il problema si vede, e porta al pulsante giusto. */}
+      {centriConCosto.length > 0 && centriFatturato.length === 0 && (
+        <button
+          type="button"
+          onClick={() => setRipartizioneOpen(true)}
+          className="flex w-full items-center gap-3 rounded-lg border border-incerto/40 bg-incerto/10 px-4 py-3 text-left text-sm transition-colors hover:bg-incerto/15"
+        >
+          <TriangleAlert className="size-4 text-incerto flex-shrink-0" />
+          <span className="flex-1 text-incerto">
+            Margini e incidenze non sono calcolabili per centro: manca la{" "}
+            <strong>ripartizione dei ricavi</strong>. Impostala una volta e queste
+            colonne si riempiono.
+          </span>
+          <Settings2 className="size-3.5 flex-shrink-0 text-incerto" />
+        </button>
       )}
 
       {/* Tabella centri */}

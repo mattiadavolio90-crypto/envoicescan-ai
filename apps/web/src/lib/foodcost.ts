@@ -114,9 +114,15 @@ export const FC_BADGE_CLASS: Record<ColoreFC, string> = {
   grigio: "bg-muted text-muted-foreground border-border",
 };
 
+// Copia locale, non un import: `tests/helpers_ts.py` esegue QUESTO modulo con
+// node, che non risolve un import relativo senza estensione (provato il
+// 22/09/2026: 11 test rossi con ERR_MODULE_NOT_FOUND). Stesso motivo per cui
+// `lib/catena-confronti.ts` tiene la sua `intervalloMese`. L'output e'
+// byte-identico a `formatEuro(v, 2)` — verificato su 19 valori, limiti di
+// arrotondamento inclusi — ed e' il test di equivalenza a tenerle allineate.
 export function fmtEuro(v: number | null | undefined): string {
   if (v == null) return "—";
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 }
 
 export function fmtPct(v: number | null | undefined): string {

@@ -976,7 +976,7 @@
           "Home"
         ],
         "summary": "Indice di salute della gestione — completezza dati del mese",
-        "description": "Misura quanto i dati recenti sono completi.\n\nQuattro voci a peso uguale (25% ciascuna): fatture caricate, fatturato\ninserito, costo personale inserito, righe classificate. Conta \"a posto\"\nSOLO se i dati sono davvero arrivati (non basta l'automatismo attivo).\n\nFinestra: ultimi 30 giorni mobili (non il mese di calendario), cosi' il\ngiorno 1 del mese l'indice non si azzera di colpo. Tutti i calcoli qui nel\nbackend; la Home si limita a mostrare.",
+        "description": "Misura quanto i dati recenti sono completi.\n\nQuattro voci a peso uguale (25% ciascuna): fatture caricate, fatturato\ninserito, costo personale inserito, righe classificate. Conta \"a posto\"\nSOLO se i dati sono davvero arrivati (non basta l'automatismo attivo).\n\nFinestre: TRE, ed e' voluto. Fatturato, personale e fatture guardano\nl'ULTIMO MESE COMPLETO, lo stesso di cui parlano le card «manca\nfatturato/personale», cosi' Salute e card non si contraddicono. «Righe\nclassificate» resta sui 30 giorni mobili, cosi' il giorno 1 del mese\nl'indice non si azzera di colpo. Per questo l'intestazione non dichiara\nun periodo (`mese_label` vuoto dal 22/09/2026): qualunque titolo unico\nsarebbe falso per almeno una voce. Ognuna porta il suo periodo nel testo.\n\nNota: l'assistente della Home usa una TERZA finestra, 7 giorni\n(FATTURE_MANCANTI_GIORNI), quindi puo' dire «non ci sono fatture di\nrecente» mentre questa card dice «Completo». Sono entrambe vere.\n\nTutti i calcoli qui nel backend; la Home si limita a mostrare.",
         "operationId": "home_salute_api_home_salute_get",
         "parameters": [
           {

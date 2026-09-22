@@ -7523,9 +7523,19 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     inserito, costo personale inserito, righe classificate. Conta "a posto"
     SOLO se i dati sono davvero arrivati (non basta l'automatismo attivo).
 
-    Finestra: ultimi 30 giorni mobili (non il mese di calendario), cosi' il
-    giorno 1 del mese l'indice non si azzera di colpo. Tutti i calcoli qui nel
-    backend; la Home si limita a mostrare.
+    Finestre: TRE, ed e' voluto. Fatturato, personale e fatture guardano
+    l'ULTIMO MESE COMPLETO, lo stesso di cui parlano le card «manca
+    fatturato/personale», cosi' Salute e card non si contraddicono. «Righe
+    classificate» resta sui 30 giorni mobili, cosi' il giorno 1 del mese
+    l'indice non si azzera di colpo. Per questo l'intestazione non dichiara
+    un periodo (`mese_label` vuoto dal 22/09/2026): qualunque titolo unico
+    sarebbe falso per almeno una voce. Ognuna porta il suo periodo nel testo.
+
+    Nota: l'assistente della Home usa una TERZA finestra, 7 giorni
+    (FATTURE_MANCANTI_GIORNI), quindi puo' dire «non ci sono fatture di
+    recente» mentre questa card dice «Completo». Sono entrambe vere.
+
+    Tutti i calcoli qui nel backend; la Home si limita a mostrare.
     """
     from datetime import datetime as _dt, timedelta as _td
 
@@ -7537,12 +7547,24 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     inizio = oggi - _td(days=29)  # finestra mobile di 30 giorni inclusivi
     data_da = inizio.isoformat()
     data_a = oggi.isoformat()
-    mese_label = "ultimi 30 giorni"
+    # L'intestazione NON dichiara piu' una finestra: la card ne usa tre.
+    # Nata a 30 giorni il 1/6/2026, ha poi visto migrare al mese solare
+    # fatturato e personale (subito) e le fatture (8959e88, 18/6), senza che
+    # il titolo seguisse: a schermo si leggeva «Ultimi 30 Giorni» sopra tre
+    # voci su quattro che dicono «Agosto». Ogni voce porta gia' il suo periodo
+    # nel proprio testo, e «Righe classificate» resta davvero sui 30 giorni:
+    # un titolo unico sarebbe falso comunque lo si scriva (decisione Mattia,
+    # 22/09/2026). Il campo resta nel contratto — tre consumatori lo leggono —
+    # ma vuoto il frontend non lo mostra.
+    mese_label = ""
 
     # Fatturato e Personale si valutano sull'ULTIMO MESE COMPLETO (il mese
     # precedente), lo stesso di cui parlano le card "manca fatturato/personale".
-    # Cosi' Salute e card non si contraddicono mai. Le altre due voci (fatture,
-    # classificate) restano sulla finestra mobile di 30 giorni.
+    # Cosi' Salute e card non si contraddicono mai. Dal 18/6/2026 (8959e88) ci
+    # sono anche le FATTURE: resta sui 30 giorni mobili la sola voce "righe
+    # classificate". Il commento diceva ancora "le altre due" ed e' stato
+    # corretto il 22/09: e' la riga che ha fatto credere a una sessione che le
+    # voci sul mese fossero due invece di tre.
     _MESI_IT_SAL = [
         "", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
         "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",

@@ -18,6 +18,7 @@ import {
 } from "@/lib/categorie-spesa";
 import { parseNumeroIt } from "@/lib/format";
 import { csvSpese, nomeFileSpese, puoEsportareSpese } from "@/lib/spese-export";
+import { formatEuro } from "@/lib/format";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ function fmtData(iso: string) {
 }
 
 function fmtEuro(v: number): string {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+  return formatEuro(v, 2);
 }
 
 const TIPO_BADGE: Record<TipoSpesa, string> = {
@@ -375,8 +376,12 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
         </div>
       </div>
 
-      {/* KPI totali — stile coerente con Personale (card grandi) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* KPI totali — stile coerente con Personale (card grandi).
+          La card «Totale extra» compare solo se somma DUE addendi veri: con una
+          delle due componenti a zero ripeteva parola per parola la card accanto
+          («100,00 €» scritto due volte), e la griglia si adatta al numero di
+          card per non lasciare un buco. Stessa regola di Personale. */}
+      <div className={`grid grid-cols-1 gap-3 ${totFb !== 0 && totGenerale !== 0 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <Card className="ring-1 ring-border bg-card">
           <CardContent className="py-5 px-6 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Costi F&amp;B extra</p>
@@ -389,12 +394,14 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
             <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtEuro(totGenerale)}</p>
           </CardContent>
         </Card>
-        <Card className="ring-1 ring-primary/50 bg-card">
-          <CardContent className="py-5 px-6 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-primary-text">Totale extra</p>
-            <p className="text-4xl font-black tabular-nums text-primary-text leading-none">{fmtEuro(totale)}</p>
-          </CardContent>
-        </Card>
+        {totFb !== 0 && totGenerale !== 0 && (
+          <Card className="ring-1 ring-primary/50 bg-card">
+            <CardContent className="py-5 px-6 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-primary-text">Totale extra</p>
+              <p className="text-4xl font-black tabular-nums text-primary-text leading-none">{fmtEuro(totale)}</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Lista */}

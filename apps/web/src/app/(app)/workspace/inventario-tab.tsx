@@ -17,10 +17,11 @@ import {
 import { InventarioAggiungiDialog } from "./inventario-aggiungi-dialog";
 import { InventarioDatePicker } from "./inventario-date-picker";
 import { InventarioStoricoDialog } from "./inventario-storico-dialog";
+import { formatEuro } from "@/lib/format";
 
 function fmtEuro(v: number | null | undefined) {
   if (v == null) return "—";
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+  return formatEuro(v, 2);
 }
 
 function todayISO() {

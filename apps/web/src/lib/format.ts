@@ -12,10 +12,25 @@ export function formatEuro(v: number, decimali = 0): string {
   });
 }
 
+// Tre difetti misurati il 22/09/2026, tutti visibili sullo stesso asse:
+//  - il simbolo saltava da coda a testa passando i mille: «730 €» accanto a
+//    «€ 5.2k», perche' sotto la soglia si cadeva in formatEuro (simbolo in
+//    coda) e sopra si concatenava a mano (simbolo in testa);
+//  - 999,6 usciva «1000 €» accanto a 1000 → «1.0k»: due scritture diverse per
+//    lo stesso ordine di grandezza, a un decimo di euro di distanza;
+//  - 999.999 usciva «1000.0k» invece di «1.0M», perche' la soglia si
+//    confrontava col valore GREZZO mentre toFixed(1) arrotonda ATTRAVERSO di
+//    essa. Per questo il confronto va fatto sul valore gia' arrotondato.
 export function formatEuroCompact(v: number): string {
   const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `€ ${(v / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1000) return `€ ${(v / 1000).toFixed(1)}k`;
+  // Lo spazio e' U+00A0 (unificatore), lo stesso che `Intl` mette in
+  // `formatEuro`: con lo spazio normale i due rami della funzione
+  // produrrebbero una spaziatura diversa a un euro di distanza, e il numero
+  // potrebbe andare a capo staccandosi dal simbolo.
+  const milioni = Number((abs / 1_000_000).toFixed(1));
+  if (milioni >= 1) return `${(v / 1_000_000).toFixed(1)}M\u00a0€`;
+  const migliaia = Number((abs / 1000).toFixed(1));
+  if (migliaia >= 1) return `${(v / 1000).toFixed(1)}k\u00a0€`;
   return formatEuro(v);
 }
 

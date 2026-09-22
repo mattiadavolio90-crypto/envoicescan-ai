@@ -23,6 +23,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { formatEuro } from "@/lib/format";
+import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
 import type {
   ScoreFornitore,
   ScoreFornitoriResponse,
@@ -46,15 +48,10 @@ function fmtItDate(iso: string) {
 }
 
 function fmtEuro(v: number): string {
-  return `€ ${new Intl.NumberFormat("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)}`;
+  // Simbolo in coda, come il resto del prodotto (lib/format): qui stava in testa.
+  return formatEuro(v);
 }
 
-function isoDateRange(anno: number, mese: number | null): { data_da: string; data_a: string } {
-  if (mese === null) return { data_da: `${anno}-01-01`, data_a: `${anno}-12-31` };
-  const mm = String(mese).padStart(2, "0");
-  const lastDay = new Date(anno, mese, 0).getDate();
-  return { data_da: `${anno}-${mm}-01`, data_a: `${anno}-${mm}-${lastDay}` };
-}
 
 // ─── Mappa stato → etichetta + colori (dark UI sobria, no gamification) ──────
 const STATO_META: Record<ScoreStato, { label: string; dot: string; text: string; ring: string }> = {

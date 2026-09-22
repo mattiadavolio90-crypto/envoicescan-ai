@@ -17,6 +17,7 @@ import {
   type TipoSpesa,
 } from "@/lib/categorie-spesa";
 import { parseNumeroIt } from "@/lib/format";
+import { formatEuro } from "@/lib/format";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ function fmtData(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
 }
 function fmtEuro(v: number) {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+  return formatEuro(v, 2);
 }
 
 const TIPO_BADGE: Record<TipoSpesa, string> = {

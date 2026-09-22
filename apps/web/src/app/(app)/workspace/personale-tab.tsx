@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
 import { ripartisciOre, aggregaPerPersona, costoTurnoGiornaliero } from "@/lib/ore-turno";
+import { formatEuro } from "@/lib/format";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ export function fmtOreDisplay(ore: number): string {
 }
 
 export function fmtEuro(v: number): string {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+  return formatEuro(v, 2);
 }
 
 export function orarioTurno(t: Turno): string {
@@ -1542,7 +1543,10 @@ export function PersonaleTab() {
               valvola risolve: non c'e' modo di ripartire 365 in 223. Misure
               sulle classi e sul font, NON un rendering: da guardare a schermo a
               1140 e 1280. */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Due o tre colonne secondo quante card ci sono davvero: con la
+              Card 3 nascosta, `sm:grid-cols-3` lascerebbe un buco a destra —
+              cioe' la cornice vuota che questo lavoro elimina altrove. */}
+          <div className={`grid grid-cols-1 gap-3 ${oreStdTotale > 0 && oreExtTotale > 0 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
             {/* Card 1: Ore ordinarie */}
             <Card className="ring-1 ring-border bg-card">
               <CardContent className="py-5 px-6 space-y-2">
@@ -1575,7 +1579,14 @@ export function PersonaleTab() {
               </CardContent>
             </Card>
 
-            {/* Card 3: Totale */}
+            {/* Card 3: Totale — solo se somma DUE addendi veri.
+                Con lo straordinario a zero ripeteva parola per parola la Card 1
+                («303h 30m» scritto due volte a due centimetri di distanza); col
+                caso opposto — ore ordinarie a zero e solo straordinario, che
+                capita quando i giorni sono tutti riposo/ferie tranne gli extra —
+                ripeteva la Card 2. Una somma di un addendo solo non e' una
+                sintesi, e' la stessa cifra scritta in grande una seconda volta. */}
+            {oreStdTotale > 0 && oreExtTotale > 0 && (
             <Card className="ring-1 ring-primary/50 bg-card">
               <CardContent className="py-5 px-6 space-y-2">
                 <div className="flex justify-between">
@@ -1598,6 +1609,7 @@ export function PersonaleTab() {
                 </div>
               </CardContent>
             </Card>
+            )}
           </div>
 
           {/* Elenco per dipendente: turni giornalieri e righe da busta paga

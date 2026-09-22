@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { mostraGuasto } from "@/lib/esito-caricamento";
+import { formatEuro } from "@/lib/format";
+import { intervalloPeriodo } from "@/lib/periodo";
 import type {
   CustomTag, TagSuggestion, TagAnalisiResponse,
   TagProdotto, DescrizioneDistinta,
@@ -31,11 +33,12 @@ const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Lugl
 
 type PeriodoPreset = "anno_corrente" | "mese_specifico" | "personalizzato";
 
+// Guscio sulla fonte unica (lib/periodo): qui le chiavi si chiamano `da`/`a`
+// e tre call site le destrutturano cosi'. Rinominarle sarebbe un cambiamento
+// piu' grande del difetto che risolve; la MATEMATICA e' una sola.
 function isoRange(anno: number, mese: number | null) {
-  if (mese === null) return { da: `${anno}-01-01`, a: `${anno}-12-31` };
-  const last = new Date(anno, mese, 0).getDate();
-  const mm = String(mese).padStart(2, "0");
-  return { da: `${anno}-${mm}-01`, a: `${anno}-${mm}-${last}` };
+  const { data_da, data_a } = intervalloPeriodo(anno, mese);
+  return { da: data_da, a: data_a };
 }
 
 function fmtItDate(iso: string) {
@@ -145,7 +148,8 @@ function FiltroPeriodoTag({
 }
 
 function fmtEuro(v: number) {
-  return `€ ${new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
+  // Simbolo in coda, come il resto del prodotto (lib/format): qui stava in testa.
+  return formatEuro(v, 2);
 }
 function fmtPct(v: number, signed = false) {
   return `${signed && v > 0 ? "+" : ""}${v.toFixed(1)}%`;

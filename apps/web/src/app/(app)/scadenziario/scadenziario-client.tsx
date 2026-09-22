@@ -594,13 +594,20 @@ function CalendarView({ documenti }: CalendarViewProps) {
                 ${isToday ? "ring-2 ring-primary ring-offset-1" : ""}
                 ${isSelected ? "bg-primary text-primary-foreground" : hasAmount ? "" : "hover:bg-muted/50"}
               `}
-              style={hasAmount && !isSelected ? { backgroundColor: `rgba(14,165,233,${bgOpacity})` } : {}}
+              // Era `rgba(14,165,233, a)`: un azzurro fisso, identico nei due
+              // temi, mentre il testo sopra si ribalta col tema (onBg, qui
+              // sopra). Stessa correzione gia' fatta sulla heatmap della pivot
+              // e in catena: color-mix su un token, cosi' fondo e testo
+              // seguono lo stesso tema. L'intensita' resta quella di prima.
+              style={hasAmount && !isSelected
+                ? { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(bgOpacity * 100)}%, transparent)` }
+                : {}}
             >
               <span className={`font-semibold leading-none ${isToday && !isSelected ? "text-primary" : ""} ${onBg}`}>{day}</span>
               {hasAmount && (
                 <>
                   <span className={`text-[9px] leading-none mt-0.5 font-medium ${isSelected ? "text-primary-foreground/90" : onBg}`}>
-                    {totale >= 1000 ? `${(totale / 1000).toFixed(1)}k` : Math.round(totale).toString()}€
+                    {formatEuroCompact(totale)}
                   </span>
                   <span className={`text-[8px] leading-none mt-0.5 ${isSelected ? "text-primary-foreground/70" : onBg} opacity-80`}>
                     {count} fatt.

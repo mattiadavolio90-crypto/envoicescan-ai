@@ -1,17 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, FileX2, Building2, Euro, FileText } from "lucide-react";
+import { RefreshCw, FileX2, Building2, Euro, FileText, Calendar, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import type { NoteCreditoResponse } from "@/lib/prezzi";
-import { FiltroMeseAnno } from "@/components/ui/filtro-mese-anno";
+import { MESI_LUNGHI } from "@/lib/mesi";
+import { formatEuro } from "@/lib/format";
+import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
 
 const ANNO_CORRENTE = new Date().getFullYear();
-const ANNI = Array.from({ length: 5 }, (_, i) => ANNO_CORRENTE - i);
+
+type PeriodoPreset = "anno_corrente" | "mese_specifico" | "personalizzato";
+
+function fmtItDate(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
 
 function fmtEuro(v: number): string {
   if (v === 0) return "—";
-  return `€ ${new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
+  // Simbolo in coda, come il resto del prodotto (lib/format): qui stava in testa.
+  return formatEuro(v, 2);
 }
 
 function fmtData(s: string): string {
@@ -21,27 +30,28 @@ function fmtData(s: string): string {
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function isoDateRange(anno: number, mese: number | null): { data_da: string; data_a: string } {
-  if (mese === null) return { data_da: `${anno}-01-01`, data_a: `${anno}-12-31` };
-  const mm = String(mese).padStart(2, "0");
-  const lastDay = new Date(anno, mese, 0).getDate();
-  return { data_da: `${anno}-${mm}-01`, data_a: `${anno}-${mm}-${lastDay}` };
-}
 
 export function NcTab() {
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [mese, setMese] = useState<number | null>(null);
+  const [preset, setPreset] = useState<PeriodoPreset>("anno_corrente");
+  const [dataDaCustom, setDataDaCustom] = useState("");
+  const [dataACustom, setDataACustom] = useState("");
+  const [showMese, setShowMese] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
   const [data, setData] = useState<NoteCreditoResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroFornitore, setFiltroFornitore] = useState("");
 
-  async function load(a = anno, m = mese) {
+  async function load(dataDa?: string, dataA?: string) {
     setLoading(true);
     try {
-      const { data_da, data_a } = isoDateRange(a, m);
-      const qs = new URLSearchParams({ data_da, data_a });
+      const r = dataDa && dataA
+        ? { data_da: dataDa, data_a: dataA }
+        : isoDateRange(anno, mese);
+      const qs = new URLSearchParams({ data_da: r.data_da, data_a: r.data_a });
       const res = await fetch(`/api/prezzi/note-credito?${qs}`);
       if (!res.ok) throw new Error();
       setData(await res.json());
@@ -54,8 +64,31 @@ export function NcTab() {
 
   useEffect(() => { load(); }, []);
 
-  function handleAnno(a: number) { setAnno(a); load(a, mese); }
-  function handleMese(m: number | null) { setMese(m); load(anno, m); }
+  function applyAnno() {
+    setPreset("anno_corrente");
+    setMese(null);
+    setShowMese(false);
+    setShowCustom(false);
+    setAnno(ANNO_CORRENTE);
+    const r = isoDateRange(ANNO_CORRENTE, null);
+    load(r.data_da, r.data_a);
+  }
+
+  function applyMese(yearMonth: string) {
+    if (!yearMonth) return;
+    const [y, m] = yearMonth.split("-").map(Number);
+    setAnno(y);
+    setMese(m);
+    setPreset("mese_specifico");
+    const r = isoDateRange(y, m);
+    load(r.data_da, r.data_a);
+  }
+
+  function applyCustom(da: string, a: string) {
+    if (!da || !a) return;
+    setPreset("personalizzato");
+    load(da, a);
+  }
 
   const note = data?.note ?? [];
 
@@ -77,23 +110,90 @@ export function NcTab() {
 
   return (
     <div className="space-y-4">
-      {/* Filtro periodo */}
-      <div className="flex flex-wrap items-center gap-3">
-        <FiltroMeseAnno
-          anno={anno}
-          mese={mese}
-          anni={ANNI}
-          onAnnoChange={handleAnno}
-          onMeseChange={handleMese}
-        />
-        <button
-          onClick={() => load()}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-          Aggiorna
-        </button>
+      {/* Filtro periodo — stessa grammatica dei tab fratelli (Sconti, Score,
+          Variazioni) e del resto dell'app: chip, non due tendine. Fino al
+          22/09/2026 questa era l'UNICA pagina su nove col menu a tendina, e
+          offriva anche meno: mancava l'intervallo personalizzato che tutte le
+          sorelle hanno. `components/ui/filtro-mese-anno.tsx` resta in casa ma
+          senza consumatori: il suo commento dichiarava «componente unico»
+          mentre lo usava una pagina sola. */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(["anno_corrente", "mese_specifico", "personalizzato"] as PeriodoPreset[]).map((p) => {
+            const labels: Record<PeriodoPreset, React.ReactNode> = {
+              anno_corrente: "Anno in corso",
+              mese_specifico: <><Calendar className="size-3 inline mr-1" />Seleziona mese</>,
+              personalizzato: <><Settings2 className="size-3 inline mr-1" />Personalizzato</>,
+            };
+            const chipBase = "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1";
+            const chipActive = "bg-primary text-primary-foreground border-primary";
+            const chipIdle = "bg-background border-input hover:bg-muted";
+            return (
+              <button
+                key={p}
+                onClick={() => {
+                  if (p === "anno_corrente") { applyAnno(); }
+                  else if (p === "mese_specifico") { setShowMese(true); setShowCustom(false); setPreset("mese_specifico"); }
+                  else { setShowCustom(true); setShowMese(false); setPreset("personalizzato"); }
+                }}
+                className={`${chipBase} ${preset === p ? chipActive : chipIdle}`}
+              >
+                {labels[p]}
+              </button>
+            );
+          })}
+          {preset === "personalizzato" && dataDaCustom && dataACustom && (
+            <span className="ml-2 text-xs font-medium text-primary-text">
+              {fmtItDate(dataDaCustom)} → {fmtItDate(dataACustom)}
+            </span>
+          )}
+          <button
+            onClick={() => load()}
+            disabled={loading}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            Aggiorna
+          </button>
+        </div>
+
+        {showMese && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Mese:</span>
+            <select
+              value={mese != null ? `${anno}-${String(mese).padStart(2, "0")}` : ""}
+              onChange={(e) => applyMese(e.target.value)}
+              className="h-7 text-xs rounded-md border border-input bg-background px-2"
+            >
+              <option value="" disabled>Seleziona un mese</option>
+              {Array.from({ length: 4 }, (_, i) => ANNO_CORRENTE - i).flatMap((y) =>
+                MESI_LUNGHI.map((label, mi) => {
+                  const val = `${y}-${String(mi + 1).padStart(2, "0")}`;
+                  return <option key={val} value={val}>{label} {y}</option>;
+                })
+              )}
+            </select>
+          </div>
+        )}
+
+        {showCustom && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Dal</span>
+            <input
+              type="date"
+              value={dataDaCustom}
+              onChange={(e) => { setDataDaCustom(e.target.value); applyCustom(e.target.value, dataACustom); }}
+              className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+            />
+            <span className="text-xs text-muted-foreground">al</span>
+            <input
+              type="date"
+              value={dataACustom}
+              onChange={(e) => { setDataACustom(e.target.value); applyCustom(dataDaCustom, e.target.value); }}
+              className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+            />
+          </div>
+        )}
       </div>
 
       {/* Filtri secondari */}
@@ -135,7 +235,11 @@ export function NcTab() {
           conteggio: con 2 righe su 2 documenti di 2 fornitori la pagina
           ripeteva «2» tre volte. L'importo e' il dato, la struttura e' il suo
           contesto e sta in una riga sola sotto. */}
-      {data && (
+      {/* Senza righe nel periodo la card mostrava «0,00 € · 0 · 0 · 0» e
+          subito sotto compariva gia' «Nessun...»: due modi di dire la stessa
+          cosa, di cui uno e' una cornice piena di zeri. Stessa condizione
+          dell'empty state qui sotto. */}
+      {data && filtered.length > 0 && (
         <div className="rounded-md border border-border bg-card p-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex items-start gap-2">
             <Euro className="size-4 mt-0.5 shrink-0 text-primary-text" />
