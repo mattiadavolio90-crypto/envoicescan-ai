@@ -137,3 +137,77 @@ def test_una_fattura_da_pagare_in_piu_muove_il_contatore(tz):
 @pytest.mark.parametrize("tz", FUSI)
 def test_lista_vuota(tz):
     assert _conta([], tz) == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# «Seleziona tutte (N)»: il numero sul pulsante deve dire cosa fa il pulsante.
+#
+# Il fix del 16/09 aveva corretto il contatore ma non i due consumatori accanto:
+# fino al 22/09/2026 la stessa riga portava tre popolazioni diverse —
+#   «8 fatture da pagare»   -> contaDaPagare   (no oscurate, no NC, no pagate)
+#   «Seleziona tutte (9)»   -> !pagata         (dentro anche oscurate e NC)
+#   checkbox di riga        -> !pagata && !oscurata
+# e «Seleziona tutte» finiva per selezionare documenti che il cliente non
+# poteva spuntare a mano.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _selezionabili(documenti, tz):
+    return esegui_ts(
+        MODULO,
+        "emit(m.documentiSelezionabili(input).map(d => d.id));",
+        argomento=documenti,
+        tz=tz,
+        richiede=["documentiSelezionabili"],
+    )
+
+
+@pytest.mark.parametrize("tz", FUSI)
+class TestDocumentiSelezionabili:
+    def test_e_la_stessa_popolazione_del_contatore(self, tz):
+        """L'invariante che tiene insieme i due numeri della riga."""
+        docs = [
+            _doc(id="paga-1"),
+            _doc(id="paga-2", scadenza_effettiva=_iso(5)),
+            _doc(id="pagata", pagata=True),
+            _doc(id="oscurata", oscurata=True),
+            _doc(id="nota-credito", is_nota_credito=True),
+        ]
+        assert len(_selezionabili(docs, tz)) == _conta(docs, tz)
+
+    def test_la_nota_credito_non_e_selezionabile(self, tz):
+        """Era il 9° di «Seleziona tutte (9)» accanto a «8 da pagare»."""
+        docs = [_doc(id="ok"), _doc(id="nc", is_nota_credito=True)]
+        assert _selezionabili(docs, tz) == ["ok"]
+
+    def test_l_oscurata_non_e_selezionabile(self, tz):
+        """Le checkbox di riga gia' la escludevano: «Seleziona tutte» no."""
+        docs = [_doc(id="ok"), _doc(id="osc", oscurata=True)]
+        assert _selezionabili(docs, tz) == ["ok"]
+
+    def test_la_pagata_non_e_selezionabile(self, tz):
+        docs = [_doc(id="ok"), _doc(id="gia", pagata=True)]
+        assert _selezionabili(docs, tz) == ["ok"]
+
+    def test_una_nota_credito_gia_pagata_resta_fuori_una_volta_sola(self, tz):
+        docs = [_doc(id="ok"), _doc(id="nc", is_nota_credito=True, pagata=True)]
+        assert _selezionabili(docs, tz) == ["ok"]
+
+    def test_senza_esclusioni_le_prende_tutte(self, tz):
+        docs = [_doc(id="a"), _doc(id="b"), _doc(id="c")]
+        assert _selezionabili(docs, tz) == ["a", "b", "c"]
+
+    def test_elenco_vuoto(self, tz):
+        assert _selezionabili([], tz) == []
+
+    def test_restituisce_i_documenti_non_il_conteggio(self, tz):
+        """Il chiamante ne mappa `file_origine` per la selezione."""
+        docs = [_doc(id="a"), _doc(id="pagata", pagata=True)]
+        out = esegui_ts(
+            MODULO,
+            "emit(m.documentiSelezionabili(input));",
+            argomento=docs,
+            tz=tz,
+            richiede=["documentiSelezionabili"],
+        )
+        assert isinstance(out, list) and out and isinstance(out[0], dict)

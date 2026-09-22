@@ -22,10 +22,10 @@ import { NativeSelect } from "@/components/ui/select";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
-  filtraDocumenti, aggregaPerSede, contaDaPagare,
+  filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -57,6 +57,11 @@ type KpiCardProps = {
   active?: boolean;
   onClick?: () => void;
 };
+
+// Sopra questa soglia «apri la fattura e scrivi la data» non e' piu' un
+// consiglio ma un lavoro: per il gruppo SUSHILAND sono 723 aperture. Il banner
+// passa a proporre la regola per fornitore, che le risolve in blocco.
+const SOGLIA_REGOLE_FORNITORE = 10;
 
 const TONE_CLASSES = {
   negativo: "border-negativo/40 hover:border-negativo/70",
@@ -257,7 +262,7 @@ function AgendaSection({
   const [open, setOpen] = useState(defaultOpen);
   const checkboxRef = useRef<HTMLInputElement>(null);
 
-  const selectableDocs = docs.filter(d => !d.pagata && !d.oscurata);
+  const selectableDocs = documentiSelezionabili(docs);
   const selectedCount = selectableDocs.filter(d => selectedFileOrigini.has(d.file_origine)).length;
   const allSelected = selectableDocs.length > 0 && selectedCount === selectableDocs.length;
   const someSelected = selectedCount > 0 && !allSelected;
@@ -632,6 +637,28 @@ function CashFlowBar({ documenti }: { documenti: Documento[] }) {
   const max = Math.max(1, ...fasce.map(f => f.totale));
   if (totale === 0) return null;
 
+  // Sei barre di cui cinque a zero non sono un grafico: e' una barra sola con
+  // cinque segnaposto. Per CASATI si vedeva «Scadute 1.0k€» e cinque «0€».
+  // Un profilo di esposizione si legge se ci sono almeno due fasce da
+  // confrontare; altrimenti la stessa informazione sta in una riga.
+  const valorizzate = fasce.filter(f => f.totale > 0);
+  if (valorizzate.length === 1) {
+    const sola = valorizzate[0];
+    return (
+      <div className="rounded-lg border bg-card px-4 py-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Esposizione futura
+        </p>
+        <p className="text-sm">
+          <span className="font-bold tabular-nums">{formatEuro(sola.totale)}</span>
+          <span className="text-muted-foreground">
+            {" "}in {sola.label.toLowerCase()} · {sola.count} fattur{sola.count === 1 ? "a" : "e"}
+          </span>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -655,7 +682,7 @@ function CashFlowBar({ documenti }: { documenti: Documento[] }) {
             <div className="text-center leading-tight">
               <p className="text-[10px] text-muted-foreground font-medium">{f.label}</p>
               <p className="text-xs font-semibold tabular-nums">
-                {f.totale >= 1000 ? `${(f.totale / 1000).toFixed(1)}k€` : `${Math.round(f.totale)}€`}
+                {formatEuroCompact(f.totale)}
               </p>
             </div>
           </div>
@@ -1693,7 +1720,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   }
 
   function selectAllVisible() {
-    const all = documentiFiltrati.filter(d => !d.pagata);
+    const all = documentiSelezionabili(documentiFiltrati);
     setSelectedFileOrigini(new Set(all.map(d => d.file_origine)));
   }
 
@@ -1925,7 +1952,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     toast.success("CSV scaricato — aprilo con Excel");
   }
 
-  const totaleNonPagateFiltrate = documentiFiltrati.filter(d => !d.pagata).length;
+  const totaleSelezionabiliFiltrate = documentiSelezionabili(documentiFiltrati).length;
 
   // Vista "Per mese": stessi filtri della Lista (fornitore, sede, ricerca), ma
   // NON il periodo — quello filtra su `scadenza_effettiva`, che qui non esiste.
@@ -1972,16 +1999,34 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="positivo" />
       </div>
 
-      {/* Alert senza scadenza (solo senza filtri attivi per non confondere) */}
-      {!filtriAttivi && buckets.senzaScadenza.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-incerto/40 bg-incerto/10 px-4 py-3 text-sm">
-          <AlertTriangle className="size-4 text-incerto flex-shrink-0" />
-          <span className="text-incerto flex-1">
-            <strong>{buckets.senzaScadenza.length}</strong> fattur{buckets.senzaScadenza.length === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0))}).
-            Apri una fattura e imposta la data manualmente.
-          </span>
-        </div>
-      )}
+      {/* Alert senza scadenza (solo senza filtri attivi per non confondere).
+          Il consiglio era «Apri una fattura e imposta la data manualmente»,
+          scritto in un div inerte: per il gruppo SUSHILAND sono 723 fatture,
+          cioe' 723 aperture a mano. La scorciatoia che le risolve in blocco —
+          una regola per fornitore, «30gg» — esisteva gia' 25 righe piu' sotto
+          nella toolbar, ma il banner non la nominava. Sopra la soglia il
+          consiglio diventa quello giusto, e l'intero banner ci porta. */}
+      {!filtriAttivi && buckets.senzaScadenza.length > 0 && (() => {
+        const n = buckets.senzaScadenza.length;
+        const tot = buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0);
+        const inBlocco = n >= SOGLIA_REGOLE_FORNITORE;
+        return (
+          <button
+            type="button"
+            onClick={() => setRegoleOpen(true)}
+            className="flex w-full items-center gap-3 rounded-lg border border-incerto/40 bg-incerto/10 px-4 py-3 text-left text-sm transition-colors hover:bg-incerto/15"
+          >
+            <AlertTriangle className="size-4 text-incerto flex-shrink-0" />
+            <span className="text-incerto flex-1">
+              <strong>{n}</strong> fattur{n === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(tot)}).{" "}
+              {inBlocco
+                ? "Imposta i termini di pagamento del fornitore e si risolvono tutte insieme."
+                : "Imposta i termini del fornitore, oppure apri la fattura e scrivi la data a mano."}
+            </span>
+            <Settings2 className="size-3.5 text-incerto flex-shrink-0" />
+          </button>
+        );
+      })()}
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -2308,9 +2353,9 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                 : `${contaDaPagare(documenti)} fatture da pagare`}
             </span>
             <div className="flex gap-3">
-              {totaleNonPagateFiltrate > 0 && (
+              {totaleSelezionabiliFiltrate > 0 && (
                 <button className="text-primary hover:underline" onClick={selectAllVisible}>
-                  Seleziona tutte ({totaleNonPagateFiltrate})
+                  Seleziona tutte ({totaleSelezionabiliFiltrate})
                 </button>
               )}
               {selectedFileOrigini.size > 0 && (

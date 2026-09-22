@@ -121,6 +121,23 @@ export function contaDaPagare(documenti: Documento[]): number {
   return n;
 }
 
+/**
+ * I documenti che il pulsante «Seleziona tutte» puo' davvero selezionare.
+ *
+ * Erano tre popolazioni per la stessa frase, a due centimetri l'una dall'altra:
+ * il contatore diceva «8 fatture da pagare» (`contaDaPagare`, senza oscurate ne'
+ * note di credito), il pulsante accanto diceva «Seleziona tutte (9)» (solo
+ * `!pagata`) e le checkbox di riga ne offrivano altre ancora (`!pagata &&
+ * !oscurata`). «Seleziona tutte» arrivava quindi a selezionare note di credito
+ * e oscurate che il cliente non poteva spuntare a mano.
+ *
+ * Stessi tre predicati di `contaDaPagare`: e' la stessa popolazione, e il
+ * numero sul pulsante deve dire cosa fa il pulsante.
+ */
+export function documentiSelezionabili(documenti: Documento[]): Documento[] {
+  return documenti.filter(d => !d.oscurata && !d.is_nota_credito && !d.pagata);
+}
+
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -513,7 +530,7 @@ export function aggregaPerSede(
 
 // formatEuro centralizzato in lib/format.ts (era equivalente). formatDate resta
 // qui: usa un formato diverso ("15 gen 2026") specifico dello scadenziario.
-export { formatEuro } from "@/lib/format";
+export { formatEuro, formatEuroCompact } from "@/lib/format";
 
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";
