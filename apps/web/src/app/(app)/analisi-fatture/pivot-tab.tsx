@@ -219,15 +219,29 @@ function maxRowValue(periodi: Record<string, number>): number {
   return Math.max(...Object.values(periodi), 1);
 }
 
-function Sparkline({ values }: { values: number[] }) {
+// La spezzata diceva «sale» o «scende», mai *di quanto*: nessun asse, nessuna
+// etichetta, nessun hover. Due sparkline identiche a vedersi potevano valere
+// una 200 EUR e l'altra 20.000. Min e max danno la scala senza aggiungere
+// inchiostro alla cella, che e' larga 64 px.
+function Sparkline({ values, etichette }: { values: number[]; etichette?: string[] }) {
   const w = 64;
   const h = 18;
   const points = puntiSparkline(values, { w, h, ancoraZero: true, decimali: null });
   if (!points) {
     return <span className="text-muted-foreground text-[10px]">—</span>;
   }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const iMin = values.indexOf(min);
+  const iMax = values.indexOf(max);
+  const quando = (i: number) => (etichette && etichette[i] ? ` (${etichette[i]})` : "");
+  const scala =
+    min === max
+      ? `Sempre ${formatEuroCompact(max)}`
+      : `Da ${formatEuroCompact(min)}${quando(iMin)} a ${formatEuroCompact(max)}${quando(iMax)}`;
   return (
-    <svg width={w} height={h} className="text-primary inline-block">
+    <svg width={w} height={h} className="text-primary inline-block" role="img" aria-label={scala}>
+      <title>{scala}</title>
       <polyline
         fill="none"
         stroke="currentColor"
@@ -291,6 +305,8 @@ function PivotTable({
   setSort: (f: (prev: SortState) => SortState) => void;
 }) {
   const labelDim = dimensione === "categoria" ? "Categoria" : "Fornitore";
+  // "del mese" sarebbe falso con granularita' trimestre o anno.
+  const granuCella = pivot.granularita;
 
   function cycleSort(k: string) {
     setSort((prev) => prossimoSort(prev, k));
@@ -298,9 +314,13 @@ function PivotTable({
 
 
   return (
-    <div className="rounded-lg border overflow-x-auto">
+    <div className="rounded-lg border overflow-auto max-h-[70vh]">
       <table className="w-full text-xs">
-        <thead className="bg-muted/50 border-b">
+        {/* Con 109 fornitori (il massimo misurato in produzione) scorrendo si
+            perdeva l'intestazione dei mesi e non si sapeva piu' quale colonna
+            si stava leggendo. Meglio dello sfoltire per pagine: la tabella e'
+            ordinata per spesa, le prime righe sono quelle che contano. */}
+        <thead className="bg-muted border-b sticky top-0 z-20">
           <tr>
             <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-44">
               <PivotSortHeader
@@ -336,7 +356,7 @@ function PivotTable({
             </th>
             <th className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-16">
               <PivotSortHeader
-                label="%"
+                label="% tot."
                 sortKey="incidenza_pct"
                 current={sort}
                 align="right"
@@ -369,7 +389,10 @@ function PivotTable({
                   </span>
                 </td>
                 <td className="px-2 py-1.5 text-center">
-                  <Sparkline values={row.sparkline} />
+                  <Sparkline
+                    values={row.sparkline}
+                    etichette={pivot.periodi_labels.slice(-row.sparkline.length)}
+                  />
                 </td>
                 {pivot.periodi.map((p) => {
                   const v = row.periodi[p] ?? 0;
@@ -386,8 +409,15 @@ function PivotTable({
                       {v > 0 ? (
                         <div className="flex flex-col items-end leading-tight">
                           <span>{formatEuroCompact(v)}</span>
-                          <span className="text-[10px] font-medium text-incerto">
-                            {incPct.toFixed(0)}%
+                          {/* Quota SUL MESE, non sul totale di periodo come la
+                              colonna «% tot.». Aveva lo stesso text-incerto e lo
+                              stesso toFixed(0) dell'altra: due basi diverse con
+                              lo stesso vestito, sulla stessa riga. */}
+                          <span
+                            className="text-[10px] text-muted-foreground"
+                            title={`${incPct.toFixed(0)}% del totale di ${pivot.periodi_labels[pivot.periodi.indexOf(p)] ?? p}`}
+                          >
+                            {incPct.toFixed(0)}% del {granuCella}
                           </span>
                         </div>
                       ) : (
@@ -426,10 +456,18 @@ function PivotTable({
   );
 }
 
+// Il fondo era `rgba(14,165,233, a)`: un azzurro fisso, IDENTICO nei due temi,
+// mentre il testo eredita --foreground e si ribalta. In dark il contrasto se lo
+// mangiava la cella piu' intensa. Stessa soluzione gia' adottata in
+// catena/finestra-margini-coperti (via `heatStyle` in lib/catena-confronti):
+// color-mix su un token, cosi' il fondo segue il tema come il testo.
+// La CURVA resta quella di prima (max 0.35, soglia 0.02): la copia di heatStyle
+// arriva a 0.50 e partirebbe da 0.14, cioe' tingerebbe molto piu' di oggi —
+// qui si corregge il contrasto, non si ridisegna la tabella.
 function intensityToBg(intensity: number): string {
   if (intensity <= 0.02) return "transparent";
   const alpha = Math.min(0.35, intensity * 0.4);
-  return `rgba(14, 165, 233, ${alpha.toFixed(3)})`;
+  return `color-mix(in oklab, var(--primary) ${Math.round(alpha * 100)}%, transparent)`;
 }
 
 // ─── Grafico trend ─────────────────────────────────────────────────────────

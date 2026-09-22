@@ -251,6 +251,49 @@ def _period_label(key: str, granularita: str) -> str:
     return f"{_MESI_LABEL_IT[int(m)]} {y[2:]}"
 
 
+def _espandi_periodi(periodi: List[str], granularita: str) -> List[str]:
+    """Riempie i buchi fra il primo e l'ultimo periodo presente.
+
+    Le colonne della pivot nascevano dai soli periodi CON righe: un mese senza
+    fatture spariva e a schermo si leggeva «Gen, Mar, Apr» come se fosse una
+    serie continua — la tabella e la sparkline trattano le colonne come
+    equidistanti nel tempo. Un mese a zero e' un dato ("non ho comprato"),
+    non un mese che non esiste.
+
+    Non estende oltre i dati: riempie l'interno, non allunga il range.
+    """
+    if len(periodi) < 2:
+        return list(periodi)
+    ordinati = sorted(periodi)
+    primo, ultimo = ordinati[0], ordinati[-1]
+
+    if granularita == "anno":
+        return [str(y) for y in range(int(primo), int(ultimo) + 1)]
+
+    if granularita == "trimestre":
+        y1, q1 = int(primo[:4]), int(primo[-1])
+        y2, q2 = int(ultimo[:4]), int(ultimo[-1])
+        out = []
+        y, q = y1, q1
+        while (y, q) <= (y2, q2):
+            out.append(f"{y}-Q{q}")
+            q += 1
+            if q > 4:
+                q, y = 1, y + 1
+        return out
+
+    y1, m1 = int(primo[:4]), int(primo[5:7])
+    y2, m2 = int(ultimo[:4]), int(ultimo[5:7])
+    out = []
+    y, m = y1, m1
+    while (y, m) <= (y2, m2):
+        out.append(f"{y}-{m:02d}")
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
 def _scegli_granularita(periodi_set: set) -> str:
     """Sceglie granularita automatica basata sul numero di mesi nel periodo."""
     n = len(periodi_set)
@@ -798,10 +841,12 @@ def get_fatture_pivot(
     # (note/diciture/omaggi, non acquisti).
     rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) != 0]
 
-    # Determina granularita dai mesi presenti
+    # Determina granularita sull'ARCO coperto, non sui soli mesi con righe: con
+    # una fattura a gennaio 2024 e una a dicembre 2026 i mesi presenti sono 2 —
+    # sceglierebbe "mese" e, riempiendo i buchi, uscirebbero 36 colonne mensili.
     mesi_presenti = {(r.get("data_documento") or "")[:7] for r in rows if r.get("data_documento")}
     mesi_presenti.discard("")
-    granularita = _scegli_granularita(mesi_presenti)
+    granularita = _scegli_granularita(set(_espandi_periodi(sorted(mesi_presenti), "mese")))
 
     col = "categoria" if dimensione == "categoria" else "fornitore"
     from collections import defaultdict
@@ -818,7 +863,7 @@ def get_fatture_pivot(
         agg[dim_val][key] += float(r.get("totale_riga") or 0)
         periodi_set.add(key)
 
-    periodi = sorted(periodi_set)
+    periodi = _espandi_periodi(sorted(periodi_set), granularita)
     periodi_labels = [_period_label(p, granularita) for p in periodi]
 
     grand_total = sum(sum(d.values()) for d in agg.values())
@@ -882,10 +927,13 @@ def get_fatture_trend(
     # spesa anche nella Ripartizione, o le fette non sommano al totale della card.
     rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) != 0]
 
+    # Stesso riempimento dell'Andamento (pivot): qui pesa di piu', perche' e' un
+    # grafico a linee — un mese assente non lascia un buco, sposta la pendenza.
     mesi_presenti = {(r.get("data_documento") or "")[:7] for r in rows if r.get("data_documento")}
     mesi_presenti.discard("")
-    granularita = _scegli_granularita(mesi_presenti)
-    periodi = sorted(mesi_presenti) if granularita == "mese" else sorted({_period_key(r.get("data_documento", ""), granularita) for r in rows if r.get("data_documento")})
+    granularita = _scegli_granularita(set(_espandi_periodi(sorted(mesi_presenti), "mese")))
+    presenti = sorted(mesi_presenti) if granularita == "mese" else sorted({_period_key(r.get("data_documento", ""), granularita) for r in rows if r.get("data_documento")})
+    periodi = _espandi_periodi(presenti, granularita)
     periodi_labels = [_period_label(p, granularita) for p in periodi]
 
     col = "categoria" if dimensione == "categoria" else "fornitore"
