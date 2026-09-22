@@ -1145,7 +1145,7 @@ export function AnalisiETagClient({
             suggestions.length === 0
               ? "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
               : suggerimentiAperti
-                ? "bg-incerto/25 border-incerto text-incerto hover:bg-incerto/25"
+                ? "bg-incerto/10 border-incerto text-incerto ring-2 ring-incerto/40"
                 : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10"
           }`}
           title={suggestions.length > 0 ? "Mostra o nascondi i suggerimenti" : "Analizza prodotti non taggati e trova suggerimenti"}

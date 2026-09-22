@@ -137,6 +137,20 @@ class TestEndpointPivotColonne:
         assert res.totali_periodo["2026-02"] == 0.0
         assert res.grand_total == 2200.0
 
+    def test_la_media_divide_per_le_colonne_non_per_gli_acquisti(self):
+        """Il numero che si muove col riempimento, e l'unico che esce anche
+        nel foglio Excel scaricato (pivot-tab.tsx, colonna «Media»).
+
+        2200 su tre mesi (Gen, Feb vuoto, Mar) = 733,33. Dividendo per i soli
+        mesi con acquisti — il comportamento di prima — verrebbe 1100.
+        """
+        res = _pivot_con([
+            _riga("2026-01-15", "CARNE", 1000.0),
+            _riga("2026-03-10", "CARNE", 1200.0),
+        ])
+        riga = next(r for r in res.rows if r.dimensione == "CARNE")
+        assert riga.media == 733.33
+
     def test_la_riga_non_porta_la_chiave_del_mese_vuoto(self):
         # `periodi` dichiara la colonna; la riga resta sparsa e il frontend
         # legge `?? 0`. Inventare una chiave a 0 direbbe "acquisto da 0 EUR".
@@ -214,6 +228,14 @@ class TestEndpointTrendColonne:
         ])
         serie = next(s for s in res.serie if s.valore == "CARNE")
         assert serie.totale == 2200.0
+
+    def test_la_media_della_serie_divide_per_le_colonne(self):
+        res = _trend_con([
+            _riga("2026-01-15", "CARNE", 1000.0),
+            _riga("2026-03-10", "CARNE", 1200.0),
+        ])
+        serie = next(s for s in res.serie if s.valore == "CARNE")
+        assert serie.media == 733.33
 
     def test_arco_lungo_non_esplode(self):
         res = _trend_con([
