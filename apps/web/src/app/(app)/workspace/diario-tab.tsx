@@ -231,21 +231,29 @@ function CalendarioMini({ anno, mese, eventi, selezionato, onSelect }: Calendari
           const iso = `${anno}-${String(mese + 1).padStart(2, "0")}-${String(giorno).padStart(2, "0")}`;
           const isOggi = iso === oggi;
           const isSel = iso === selezionato;
-          const dots = (eventiPerGiorno[iso] ?? []).slice(0, 4);
+          const eventiGiorno = eventiPerGiorno[iso] ?? [];
+          const dots = eventiGiorno.slice(0, 3);
+          const extra = eventiGiorno.length - dots.length;
           return (
             <button
               key={iso}
               onClick={() => onSelect(iso)}
+              title={eventiGiorno.length > 0 ? `${eventiGiorno.length} ${eventiGiorno.length === 1 ? "appunto" : "appunti"}` : undefined}
               className={`flex flex-col items-center justify-start rounded-lg py-1.5 min-h-[44px] text-sm transition-colors
                 ${isSel ? "bg-primary text-primary-foreground font-semibold" : isOggi ? "ring-1 ring-primary font-semibold" : "hover:bg-muted"}
               `}
             >
               <span>{giorno}</span>
               {dots.length > 0 && (
-                <div className="flex gap-0.5 mt-1">
+                <div className="flex items-center gap-0.5 mt-1">
                   {dots.map((e, di) => (
                     <span key={di} className={`size-1.5 rounded-full ${coloreInfo(e.colore).dot} ${isSel ? "opacity-90" : ""}`} />
                   ))}
+                  {extra > 0 && (
+                    <span className={`text-[9px] leading-none font-medium ${isSel ? "text-primary-foreground opacity-90" : "text-muted-foreground"}`}>
+                      +{extra}
+                    </span>
+                  )}
                 </div>
               )}
             </button>

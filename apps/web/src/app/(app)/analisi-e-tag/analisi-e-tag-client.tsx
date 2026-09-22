@@ -23,6 +23,7 @@ import type {
  *  dominio: serve solo a non montare 1800 nodi in un dialog. Quando taglia,
  *  la UI lo dice esplicitamente. */
 const MAX_DESC_VISIBILI = 80;
+const PRODOTTI_VISIBILI = 12;
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const MESI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
@@ -191,7 +192,7 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
         Media periodo: <span className="font-semibold text-foreground">{fmtEuro(media)}</span>
       </p>
       <ResponsiveContainer width="100%" height={200}>
-        <LineChart data={data} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
+        <LineChart data={data} margin={{ top: 8, right: 46, bottom: 4, left: 8 }}>
           <XAxis dataKey="data" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
           <YAxis domain={domain} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false}
             tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}%`} />
@@ -205,7 +206,7 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
             contentStyle={TOOLTIP_STYLE}
           />
           <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" strokeWidth={1.5}
-            label={{ value: "Media", position: "insideTopRight", fontSize: 10, fill: "var(--muted-foreground)", dy: -4 }} />
+            label={{ value: "Media", position: "right", fontSize: 10, fill: "var(--muted-foreground)" }} />
           <Line type="monotone" dataKey="var_perc" stroke="var(--primary)" strokeWidth={2}
             dot={{ r: 3, fill: "var(--primary)" }} activeDot={{ r: 5, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }} />
         </LineChart>
@@ -784,11 +785,13 @@ function SuggestionCard({
 
 /* ── Banner Suggerimenti ── */
 function SuggerimentiBanner({
-  suggestions, onRefresh, refreshing,
+  suggestions, onRefresh, refreshing, aperto, onChiudi,
 }: {
   suggestions: TagSuggestion[];
   onRefresh: () => void;
   refreshing: boolean;
+  aperto: boolean;
+  onChiudi: () => void;
 }) {
   const [mostraTutti, setMostraTutti] = useState(false);
   const [query, setQuery] = useState("");
@@ -803,7 +806,7 @@ function SuggerimentiBanner({
     });
   }, [suggestions, query]);
 
-  if (suggestions.length === 0) return null;
+  if (suggestions.length === 0 || !aperto) return null;
 
   // Con una ricerca attiva si mostra tutto cio' che combacia: nascondere i
   // risultati dietro un "mostra altri" vanificherebbe la ricerca stessa.
@@ -819,14 +822,23 @@ function SuggerimentiBanner({
             {suggestions.length} suggeriment{suggestions.length === 1 ? "o" : "i"} intelligent{suggestions.length === 1 ? "e" : "i"}
           </span>
         </div>
-        <button
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="p-1.5 rounded-md hover:bg-incerto/10 transition-colors text-incerto disabled:opacity-50 shrink-0"
-          title="Aggiorna suggerimenti"
-        >
-          <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="p-1.5 rounded-md hover:bg-incerto/10 transition-colors text-incerto disabled:opacity-50"
+            title="Aggiorna suggerimenti"
+          >
+            <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={onChiudi}
+            className="p-1.5 rounded-md hover:bg-incerto/10 transition-colors text-incerto"
+            title="Chiudi suggerimenti"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
       </div>
 
       {suggestions.length > 5 && (
@@ -894,6 +906,8 @@ export function AnalisiETagClient({
   const [prodotti, setProdotti] = useState<TagProdotto[]>([]);
   const [loadingProdotti, setLoadingProdotti] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [prodottiTuttiVisibili, setProdottiTuttiVisibili] = useState(false);
+  const [suggerimentiAperti, setSuggerimentiAperti] = useState(false);
 
   const [dialogTag, setDialogTag] = useState<{ open: boolean; tag: CustomTag | null }>({ open: false, tag: null });
   const [dialogAggiungi, setDialogAggiungi] = useState(false);
@@ -1080,6 +1094,8 @@ export function AnalisiETagClient({
         suggestions={suggestions}
         onRefresh={async () => { await refreshSuggestions(); await reloadTags(); }}
         refreshing={refreshingSuggestions}
+        aperto={suggerimentiAperti}
+        onChiudi={() => setSuggerimentiAperti(false)}
       />
 
       {/* ── Chip tag + azioni ── */}
@@ -1118,14 +1134,21 @@ export function AnalisiETagClient({
 
         {/* Bottone suggerimenti — widget colorato */}
         <button
-          onClick={async () => { await refreshSuggestions(); await reloadTags(); }}
+          onClick={async () => {
+            if (suggestions.length > 0) { setSuggerimentiAperti(v => !v); return; }
+            await refreshSuggestions();
+            await reloadTags();
+            setSuggerimentiAperti(true);
+          }}
           disabled={refreshingSuggestions}
           className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium border transition-all disabled:opacity-60 ml-auto ${
-            suggestions.length > 0
-              ? "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10"
-              : "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
+            suggestions.length === 0
+              ? "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
+              : suggerimentiAperti
+                ? "bg-incerto/25 border-incerto text-incerto hover:bg-incerto/25"
+                : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10"
           }`}
-          title="Analizza prodotti non taggati e trova suggerimenti"
+          title={suggestions.length > 0 ? "Mostra o nascondi i suggerimenti" : "Analizza prodotti non taggati e trova suggerimenti"}
         >
           {refreshingSuggestions
             ? <RefreshCw className="size-3.5 animate-spin" />
@@ -1397,20 +1420,35 @@ export function AnalisiETagClient({
             )}
 
             {!loadingProdotti && prodotti.length > 0 && (
-              <div className="rounded-lg border border-border divide-y divide-border">
-                {prodotti.map(p => (
-                  <div key={p.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.descrizione}>{p.descrizione}</span>
-                    <button
-                      onClick={() => removeProdotto(p.id)}
-                      disabled={removingId === p.id}
-                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-negativo disabled:opacity-50 transition-colors"
-                      title="Rimuovi"
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {(prodottiTuttiVisibili ? prodotti : prodotti.slice(0, PRODOTTI_VISIBILI)).map(p => (
+                    <span
+                      key={p.id}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/30 py-1 pl-3 pr-1.5 text-xs font-medium"
                     >
-                      {removingId === p.id ? <RefreshCw className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
-                    </button>
-                  </div>
-                ))}
+                      <span className="truncate" title={p.descrizione}>{p.descrizione}</span>
+                      <button
+                        onClick={() => removeProdotto(p.id)}
+                        disabled={removingId === p.id}
+                        className="shrink-0 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-negativo disabled:opacity-50 transition-colors"
+                        title="Rimuovi"
+                      >
+                        {removingId === p.id ? <RefreshCw className="size-3 animate-spin" /> : <X className="size-3" />}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                {prodotti.length > PRODOTTI_VISIBILI && (
+                  <button
+                    onClick={() => setProdottiTuttiVisibili(v => !v)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {prodottiTuttiVisibili
+                      ? "Mostra meno"
+                      : `Mostra tutti (${prodotti.length})`}
+                  </button>
+                )}
               </div>
             )}
           </div>
