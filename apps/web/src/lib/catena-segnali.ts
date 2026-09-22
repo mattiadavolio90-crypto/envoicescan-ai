@@ -41,6 +41,11 @@ export function raggruppaSegnali(segnali: Segnale[]): SegnaleRaggruppato[] {
       if (s.severity === "error") out[gia].severity = "error";
     }
   }
-  return out;
+  // Un gruppo promosso a errore restava dov'era la sua PRIMA occorrenza, cioe'
+  // sotto avvisi meno gravi: il backend aveva ordinato per severita' PRIMA che
+  // la promozione avvenisse, quindi quell'ordine non vale piu' per le righe
+  // promosse. Si riordina solo per severita', con `sort` stabile: a parita' di
+  // gravita' l'ordine del backend (per tipo) resta intatto.
+  return out.sort((a, b) => Number(b.severity === "error") - Number(a.severity === "error"));
 }
 

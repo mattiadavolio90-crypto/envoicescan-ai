@@ -1010,3 +1010,65 @@ def test_chat_attiva_col_limite_uno():
     assert _accesso(
         "emit(m.chatCatenaAttiva({ enabled: true, limite_giorno: 1 }));"
     ) is True
+
+
+# ─── abbreviaNomiPv: le intestazioni non perdono la parte che distingue ─────
+#
+# Le colonne della modale «Spesa per PV» sono `truncate` a 10rem. Con cinque
+# sedi che iniziano tutte per «SUSHILAND» si leggeva «SUSHILAND VILLA G… /
+# SUSHILAND SAN GIU… / SUSHILAND MARIAN…»: il troncamento mangiava esattamente
+# la coda, cioe' l'unica parte diversa. Il prefisso comune si toglie a monte.
+#
+# Il nome intero resta nel `title` a schermo e nell'export Excel: in un foglio
+# aperto mesi dopo «MARIANO» da solo non dice di chi e'.
+
+
+class TestAbbreviaNomiPv:
+    def _abbrevia(self, nomi):
+        return _chiama("abbreviaNomiPv", [nomi])
+
+    def test_toglie_il_prefisso_comune(self):
+        assert self._abbrevia([
+            "SUSHILAND VILLA GUARDIA",
+            "SUSHILAND SAN GIULIANO",
+            "SUSHILAND MARIANO",
+        ]) == ["VILLA GUARDIA", "SAN GIULIANO", "MARIANO"]
+
+    def test_taglia_sulle_parole_non_sui_caratteri(self):
+        """Un prefisso a caratteri su «ROMA NORD»/«ROMA NOVA» lascerebbe
+        «RD»/«VA»: illeggibili, e per giunta simili fra loro."""
+        assert self._abbrevia(["ROMA NORD", "ROMA NOVA"]) == ["NORD", "NOVA"]
+
+    def test_niente_prefisso_comune_niente_taglio(self):
+        assert self._abbrevia(["OFFSIDE", "CASATI 14"]) == ["OFFSIDE", "CASATI 14"]
+
+    def test_non_azzera_la_sede_che_e_il_prefisso(self):
+        """«SUSHILAND» e «SUSHILAND MARIANO»: togliere la parola comune
+        lascerebbe una colonna SENZA nome."""
+        assert self._abbrevia(["SUSHILAND", "SUSHILAND MARIANO"]) == [
+            "SUSHILAND", "SUSHILAND MARIANO",
+        ]
+
+    def test_non_produce_due_colonne_uguali(self):
+        """Due sedi omonime: meglio il nome lungo troncato che due
+        intestazioni identiche, che renderebbero la tabella illeggibile."""
+        assert self._abbrevia(["BAR CENTRO", "BAR CENTRO"]) == ["BAR CENTRO", "BAR CENTRO"]
+
+    def test_una_sola_sede_resta_intera(self):
+        assert self._abbrevia(["SUSHILAND MARIANO"]) == ["SUSHILAND MARIANO"]
+
+    def test_elenco_vuoto(self):
+        assert self._abbrevia([]) == []
+
+    def test_prefisso_di_piu_parole(self):
+        assert self._abbrevia([
+            "GRUPPO SUSHI NORD",
+            "GRUPPO SUSHI SUD",
+        ]) == ["NORD", "SUD"]
+
+    def test_gli_spazi_multipli_non_creano_parole_vuote(self):
+        assert self._abbrevia(["SUSHILAND  VILLA", "SUSHILAND  SAN"]) == ["VILLA", "SAN"]
+
+    def test_non_tocca_l_ordine(self):
+        out = self._abbrevia(["X ULTIMO", "X PRIMO"])
+        assert out == ["ULTIMO", "PRIMO"]

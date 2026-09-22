@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, Download, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { formatEuro as euro } from "@/lib/format";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { type SpesaPivot } from "@/lib/gruppo";
-import { calcolaMaxCell, cellStyle, incidenzaPct, intervalloMese, pvPiuCaro } from "@/lib/catena-confronti";
+import { abbreviaNomiPv, calcolaMaxCell, cellStyle, incidenzaPct, intervalloMese, pvPiuCaro } from "@/lib/catena-confronti";
 import {
   etichettaDimensione,
   headerPivot,
@@ -42,6 +42,11 @@ export function FinestraSpesaPV({
 
   const annoCorrente = new Date().getFullYear();
   const meseCorrente = new Date().getMonth() + 1; // 1-12
+
+  const intestazioniPv = useMemo(
+    () => abbreviaNomiPv((data?.pv ?? []).map((p) => p.nome)),
+    [data],
+  );
 
   const carica = useCallback(() => {
     const my = ++reqRef.current;
@@ -81,6 +86,9 @@ export function FinestraSpesaPV({
     if (!data) return;
     const XLSX = await import("xlsx");
     const dimLabel = etichettaDimensione(data.dimensione);
+    // Nomi INTERI, non le intestazioni abbreviate dello schermo: li' il prefisso
+    // comune si toglie perche' le altre colonne danno il contesto, in un foglio
+    // Excel aperto mesi dopo «MARIANO» da solo non dice di chi e'.
     const header = headerPivot(dimLabel, data.pv);
     const rows = data.rows.map((r) => rigaExportPivot(r, data.pv, dimLabel));
     const totaleRow = rigaTotalePivot(data.totali_pv, data.grand_total, data.pv, dimLabel);
@@ -158,9 +166,14 @@ export function FinestraSpesaPV({
                   <th className="sticky left-0 z-40 bg-popover px-3 py-2 text-left font-semibold">
                     {data.dimensione === "fornitore" ? "Fornitore" : "Categoria"}
                   </th>
-                  {data.pv.map((p) => (
+                  {/* Le intestazioni sono troncate a 10rem: con cinque colonne
+                      che iniziano tutte per «SUSHILAND» si leggeva «SUSHILAND
+                      VILLA G… / SUSHILAND SAN GIU… / SUSHILAND MARIAN…», cioe'
+                      spariva la parte che le distingue. Il nome intero resta
+                      nel title. */}
+                  {data.pv.map((p, i) => (
                     <th key={p.id} className="px-3 py-2 text-right font-semibold">
-                      <span className="block max-w-[10rem] truncate" title={p.nome}>{p.nome}</span>
+                      <span className="block max-w-[10rem] truncate" title={p.nome}>{intestazioniPv[i]}</span>
                     </th>
                   ))}
                   <th className="px-3 py-2 text-right font-semibold">Totale</th>

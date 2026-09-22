@@ -133,3 +133,52 @@ def test_nessun_segnale_si_perde_per_strada(n):
     """Somma di controllo: quanti PV entrano, tanti ne escono."""
     out = _raggruppa([_seg("dati_mancanti", f"PV{i}") for i in range(n)])
     assert sum(len(g["pv"]) for g in out) == n
+
+
+# ─── Un errore non sta sotto un avviso ──────────────────────────────────────
+#
+# Il backend ordina per severita' PRIMA che il raggruppamento avvenga, ma la
+# severita' del gruppo puo' SALIRE dopo: basta che uno dei PV fusi sia in
+# errore. Fino al 22/09/2026 il gruppo restava alla posizione della sua prima
+# occorrenza — cioe' un errore poteva finire sotto un warning, nella card che
+# serve a dire «guarda prima questo».
+
+
+def test_il_gruppo_promosso_a_errore_risale():
+    """Il warning arriva per primo dal backend; il secondo segnale dello
+    stesso gruppo e' un errore e lo promuove. La riga promossa deve salire."""
+    out = _raggruppa([
+        _seg("avviso_a", "PV1", rid="r1", testo="Solo un avviso", severity="warning"),
+        _seg("dati_mancanti", "PV2", rid="r2", testo="Mancano dati", severity="warning"),
+        _seg("dati_mancanti", "PV3", rid="r3", testo="Mancano dati", severity="error"),
+    ])
+    assert [g["severity"] for g in out] == ["error", "warning"]
+    assert out[0]["testo"] == "Mancano dati"
+
+
+def test_a_parita_di_severita_l_ordine_del_backend_resta():
+    """Il riordino e' SOLO per gravita': l'ordine per tipo deciso dal backend
+    non va rimescolato, o la card cambia disposizione a ogni caricamento."""
+    out = _raggruppa([
+        _seg("tipo_a", "PV1", rid="r1", testo="Primo", severity="warning"),
+        _seg("tipo_b", "PV2", rid="r2", testo="Secondo", severity="warning"),
+        _seg("tipo_c", "PV3", rid="r3", testo="Terzo", severity="warning"),
+    ])
+    assert [g["testo"] for g in out] == ["Primo", "Secondo", "Terzo"]
+
+
+def test_piu_errori_restano_nell_ordine_fra_loro():
+    out = _raggruppa([
+        _seg("tipo_a", "PV1", rid="r1", testo="Errore uno", severity="error"),
+        _seg("tipo_b", "PV2", rid="r2", testo="Avviso", severity="warning"),
+        _seg("tipo_c", "PV3", rid="r3", testo="Errore due", severity="error"),
+    ])
+    assert [g["testo"] for g in out] == ["Errore uno", "Errore due", "Avviso"]
+
+
+def test_un_errore_gia_in_testa_non_si_muove():
+    out = _raggruppa([
+        _seg("tipo_a", "PV1", rid="r1", testo="Grave", severity="error"),
+        _seg("tipo_b", "PV2", rid="r2", testo="Meno grave", severity="warning"),
+    ])
+    assert [g["testo"] for g in out] == ["Grave", "Meno grave"]

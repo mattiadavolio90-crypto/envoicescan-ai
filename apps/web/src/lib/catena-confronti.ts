@@ -435,3 +435,40 @@ export function chatCatenaAttiva<T extends { enabled: boolean; limite_giorno: nu
 ): config is T {
   return Boolean(config && config.enabled && config.limite_giorno > 0);
 }
+
+/**
+ * Toglie dai nomi dei PV la parte iniziale che hanno tutti in comune.
+ *
+ * Le intestazioni della modale «Spesa per PV» sono `truncate` a 10rem: con
+ * cinque colonne che iniziano tutte per «SUSHILAND» si leggeva
+ * «SUSHILAND VILLA G… / SUSHILAND SAN GIU… / SUSHILAND MARIAN…», cioe' spariva
+ * esattamente la parte che le distingue. Il prefisso si toglie solo se e' comune
+ * a TUTTI (il nome intero resta nel `title`).
+ *
+ * Il taglio e' sui confini di parola, non sui caratteri: con «ROMA NORD» e
+ * «ROMA NOVA» un prefisso a caratteri lascerebbe «RD»/«VA». Se due sedi si
+ * chiamano uguale si restituiscono i nomi interi: due colonne con la stessa
+ * intestazione sono peggio di due nomi lunghi troncati.
+ */
+export function abbreviaNomiPv(nomi: readonly string[]): string[] {
+  if (nomi.length < 2) return [...nomi];
+
+  const parole = nomi.map((n) => n.trim().split(/\s+/));
+  let comuni = 0;
+  const minLen = Math.min(...parole.map((p) => p.length));
+  while (comuni < minLen - 1) {
+    const parola = parole[0][comuni];
+    if (!parole.every((p) => p[comuni] === parola)) break;
+    comuni++;
+  }
+  if (comuni === 0) return [...nomi];
+
+  const corti = parole.map((p) => p.slice(comuni).join(" "));
+  // Niente guardia sul vuoto: il ciclo si ferma a `minLen - 1`, quindi a ogni
+  // nome resta sempre almeno una parola. Provato per mutazione — togliendo un
+  // controllo sul vuoto nessun test cambia, perche' quel caso non esiste.
+  // Due etichette identiche invece capitano (sedi omonime) e vanno evitate:
+  // meglio il nome lungo troncato che due colonne indistinguibili.
+  if (new Set(corti).size !== corti.length) return [...nomi];
+  return corti;
+}

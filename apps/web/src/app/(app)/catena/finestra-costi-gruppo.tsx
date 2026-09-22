@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, CopyPlus, FileText, PencilLine, ChevronDown, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, CopyPlus, FileText, PencilLine, ChevronDown, AlertTriangle, Scale } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -166,6 +166,31 @@ export function FinestraCostiGruppo({
     }
   }
 
+  // Le card da fattura avevano UNA sola azione, e distruttiva: «Rimuovi
+  // ripartizione» in rosso. Sei bottoni rossi a schermo, e per cambiare una
+  // ripartizione a percentuali bisognava rimuoverla e rifarla da capo.
+  // `PATCH /api/riparto/{id}` esisteva gia', proxy incluso, e non era chiamato
+  // da nessuna parte: la regola «equa» non richiede percentuali, quindi il
+  // ritorno a parti uguali e' l'azione non distruttiva che mancava.
+  async function riportaAParitUguali(c: Costo) {
+    if (busy) return;
+    setBusy(c.id);
+    try {
+      const res = await fetch(`/api/riparto/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regola: "equa" }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Ripartito in parti uguali");
+      carica();
+    } catch {
+      toast.error("Impossibile cambiare la ripartizione");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // Somma dei badge "N da verificare" dei singoli costi: il banner riassume
   // esattamente cio' che si vede sotto, quindi si conta dagli stessi dati.
   const righeDaControllare = contaRigheDaClassificare(data?.costi);
@@ -253,7 +278,18 @@ export function FinestraCostiGruppo({
 
                   <DettagliCosto costo={c} onCorretto={carica} categorieMenu={categorieMenu} />
 
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {c.regola === "percentuali" && (
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => riportaAParitUguali(c)}
+                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-50"
+                      >
+                        <Scale className="size-3.5" />
+                        Riporta a parti uguali
+                      </button>
+                    )}
                     {c.origine === "manuale" && (
                       <button
                         type="button"
