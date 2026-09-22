@@ -17,6 +17,7 @@ import {
   type TipoSpesa,
 } from "@/lib/categorie-spesa";
 import { parseNumeroIt } from "@/lib/format";
+import { csvSpese, nomeFileSpese, puoEsportareSpese } from "@/lib/spese-export";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -279,34 +280,6 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
     }
   }
 
-  function esportaCSV() {
-    if (!risposta || risposta.voci.length === 0) return;
-    const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
-    const headers = ["Data", "Tipo", "Categoria", "Descrizione", "Importo", "Note"];
-    const rows = voci.map(s => [
-      fmtData(s.data_spesa),
-      tipoSpesaLabel(s.tipo, settore),
-      s.categoria ?? "",
-      s.descrizione,
-      num(s.importo),
-      s.note ?? "",
-    ]);
-    rows.push([]);
-    rows.push(["TOTALE F&B", "", "", "", num(risposta.totale_fb), ""]);
-    rows.push(["TOTALE GENERALI", "", "", "", num(risposta.totale_generale), ""]);
-    const csv = [headers, ...rows]
-      .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
-      .join("\r\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `spese_${da}_${fine}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("CSV scaricato — aprilo con Excel");
-  }
-
   const tutteVoci = risposta?.voci ?? [];
   // Categorie effettivamente presenti nel mese: un select con le 29 sempre tutte
   // sarebbe pieno di voci che non filtrano nulla.
@@ -318,6 +291,33 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
   const totFb = risposta?.totale_fb ?? 0;
   const totGenerale = risposta?.totale_generale ?? 0;
   const totale = risposta?.totale ?? 0;
+
+  // Sta dopo `voci` e non prima come la versione precedente: quella controllava
+  // `risposta.voci` (il mese intero) e scriveva `voci` (il mese filtrato), e con
+  // un filtro che non seleziona nulla scaricava un file senza righe con sotto i
+  // totali del mese intero. Ora guardia, righe e totali guardano tutti la stessa
+  // cosa: cio' che il cliente ha davanti.
+  function esportaCSV() {
+    if (!puoEsportareSpese(voci)) {
+      toast.error("Nessuna spesa da esportare con i filtri attivi");
+      return;
+    }
+    const csv = csvSpese(
+      voci,
+      fmtData,
+      (tipo) => tipoSpesaLabel(tipo as TipoSpesa, settore),
+      "fb",
+      "generale",
+    );
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomeFileSpese(da, fine);
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV scaricato — aprilo con Excel");
+  }
 
   return (
     <div className="space-y-4">

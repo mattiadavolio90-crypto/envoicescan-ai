@@ -11,6 +11,12 @@ import {
 import { SPESE_GENERALI_SET, filtroMerceLabel, type Settore } from "@/lib/categorie-spesa";
 import { categoriaIcon, formatEuro, formatEuroCompact } from "./periodi";
 import { puntiSparkline } from "@/lib/sparkline-punti";
+import {
+  ordinaRighePivot,
+  prossimoSort,
+  SORT_PIVOT_INIZIALE,
+  type SortState,
+} from "@/lib/pivot-ordinamento";
 
 type Props = {
   pivot: PivotResponse;
@@ -45,6 +51,10 @@ export function PivotTab({ pivot, dimensione, filtri, settore }: Props) {
   const [pending, startTransition] = useTransition();
   const [vista, setVista] = useState<"tabella" | "grafico">("tabella");
   const [selectedForTrend, setSelectedForTrend] = useState<string[]>([]);
+  // L'ordinamento vive qui e non dentro `PivotTable` perche' il bottone
+  // "Esporta Excel" e' in questo componente: con lo stato la' sotto, il file
+  // usciva nell'ordine del server mentre a schermo c'era quello scelto.
+  const [sort, setSort] = useState<SortState>(SORT_PIVOT_INIZIALE);
 
   // Quando cambiano i dati pivot (es. cambio tipo/periodo), rimuove dal set di confronto
   // le voci che non esistono più nel nuovo dataset, così le pill non restano "fantasma".
@@ -52,6 +62,9 @@ export function PivotTab({ pivot, dimensione, filtri, settore }: Props) {
     const available = new Set(pivot.rows.map((r) => r.dimensione));
     setSelectedForTrend((prev) => prev.filter((v) => available.has(v)));
   }, [pivot.rows]);
+
+  // Le righe come il cliente le vede: la tabella le stampa, l'export le scrive.
+  const righeOrdinate = useMemo(() => ordinaRighePivot(pivot.rows, sort), [pivot.rows, sort]);
 
   function setParam(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(sp.toString());
@@ -76,7 +89,7 @@ export function PivotTab({ pivot, dimensione, filtri, settore }: Props) {
     });
     header.push("Totale", "Media", "% sul totale");
 
-    const dataRows = pivot.rows.map((r) => {
+    const dataRows = righeOrdinate.map((r) => {
       const row: Record<string, string | number> = { [dimLabel]: r.dimensione };
       periodi.forEach((p, i) => {
         const v = r.periodi[p] ?? 0;
@@ -172,7 +185,10 @@ export function PivotTab({ pivot, dimensione, filtri, settore }: Props) {
           {vista === "tabella" && (
             <PivotTable
               pivot={pivot}
+              righeOrdinate={righeOrdinate}
               dimensione={dimensione}
+              sort={sort}
+              setSort={setSort}
               selectedForTrend={selectedForTrend}
               onToggleSelect={(d) => {
                 setSelectedForTrend((prev) =>
@@ -224,7 +240,6 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-type SortState = { key: string | null; dir: "asc" | "desc" | null };
 
 function PivotSortHeader({
   label,
@@ -260,55 +275,27 @@ function PivotSortHeader({
 
 function PivotTable({
   pivot,
+  righeOrdinate,
   dimensione,
   selectedForTrend,
   onToggleSelect,
+  sort,
+  setSort,
 }: {
   pivot: PivotResponse;
+  righeOrdinate: readonly PivotResponse["rows"][number][];
   dimensione: "categoria" | "fornitore";
   selectedForTrend: string[];
   onToggleSelect: (dim: string) => void;
+  sort: SortState;
+  setSort: (f: (prev: SortState) => SortState) => void;
 }) {
   const labelDim = dimensione === "categoria" ? "Categoria" : "Fornitore";
 
-  const [sort, setSort] = useState<SortState>({ key: "totale", dir: "desc" });
-
   function cycleSort(k: string) {
-    setSort((prev) => {
-      if (prev.key !== k) return { key: k, dir: "asc" };
-      if (prev.dir === "asc") return { key: k, dir: "desc" };
-      if (prev.dir === "desc") return { key: null, dir: null };
-      return { key: k, dir: "asc" };
-    });
+    setSort((prev) => prossimoSort(prev, k));
   }
 
-  const sortedRows = useMemo(() => {
-    if (!sort.key || !sort.dir) return pivot.rows;
-    return [...pivot.rows].sort((a, b) => {
-      let va: number | string;
-      let vb: number | string;
-      if (sort.key === "dimensione") {
-        va = a.dimensione;
-        vb = b.dimensione;
-      } else if (sort.key === "totale") {
-        va = a.totale;
-        vb = b.totale;
-      } else if (sort.key === "incidenza_pct") {
-        va = a.incidenza_pct;
-        vb = b.incidenza_pct;
-      } else {
-        va = a.periodi[sort.key!] ?? 0;
-        vb = b.periodi[sort.key!] ?? 0;
-      }
-      let cmp: number;
-      if (typeof va === "string" && typeof vb === "string") {
-        cmp = va.localeCompare(vb, "it", { sensitivity: "base" });
-      } else {
-        cmp = (va as number) - (vb as number);
-      }
-      return sort.dir === "asc" ? cmp : -cmp;
-    });
-  }, [pivot.rows, sort]);
 
   return (
     <div className="rounded-lg border overflow-x-auto">
@@ -359,7 +346,7 @@ function PivotTable({
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => {
+          {righeOrdinate.map((row) => {
             const rowMax = maxRowValue(row.periodi);
             const isSelected = selectedForTrend.includes(row.dimensione);
             return (
