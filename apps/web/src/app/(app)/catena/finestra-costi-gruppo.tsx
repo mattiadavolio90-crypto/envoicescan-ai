@@ -108,6 +108,12 @@ export function FinestraCostiGruppo({
   const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [daEliminare, setDaEliminare] = useState<Costo | null>(null);
+  // «Riporta a parti uguali» non e' reversibile: `sostituisci_quote_riparto`
+  // fa DELETE + INSERT delle quote e le percentuali precedenti non sono
+  // salvate da nessuna parte. Un click per sbaglio su un 70/30 costruito a
+  // mano lo porta a 50/50 e la ripartizione originale e' persa. «Non
+  // distruttiva» vale per il riparto, non per il dato che contiene.
+  const [daRiequilibrare, setDaRiequilibrare] = useState<Costo | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const reqRef = useRef(0);
 
@@ -182,7 +188,16 @@ export function FinestraCostiGruppo({
         body: JSON.stringify({ regola: "equa" }),
       });
       if (!res.ok) throw new Error();
-      toast.success("Ripartito in parti uguali");
+      // Le quote sono scritte, ma su un riparto da fattura possono essere
+      // rimaste monolitiche: in quel caso il mensile instrada tutto l'importo
+      // in un solo secchio F&B/spese e il MOL si sposta. Un «fatto» liscio
+      // qui direbbe al cliente il contrario di quello che e' successo.
+      const esito = await res.json().catch(() => null);
+      if (esito?.esplosione_categorie_ok === false) {
+        toast.warning("Ripartito in parti uguali, ma le categorie non sono state ricalcolate: controlla i margini del mese.");
+      } else {
+        toast.success("Ripartito in parti uguali");
+      }
       carica();
     } catch {
       toast.error("Impossibile cambiare la ripartizione");
@@ -283,7 +298,7 @@ export function FinestraCostiGruppo({
                       <button
                         type="button"
                         disabled={busy !== null}
-                        onClick={() => riportaAParitUguali(c)}
+                        onClick={() => setDaRiequilibrare(c)}
                         className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-50"
                       >
                         <Scale className="size-3.5" />
@@ -369,6 +384,15 @@ export function FinestraCostiGruppo({
             carica();
           }}
           categorieMenu={categorieMenu}
+        />
+
+        <ConfirmDialog
+          open={daRiequilibrare !== null}
+          titolo="Ripartire in parti uguali?"
+          messaggio="Le percentuali impostate su questo costo verranno sostituite e non sono recuperabili."
+          confermaLabel="Riparti in parti uguali"
+          onConferma={() => { if (daRiequilibrare) riportaAParitUguali(daRiequilibrare); }}
+          onClose={() => setDaRiequilibrare(null)}
         />
 
         <ConfirmDialog

@@ -1069,6 +1069,19 @@ class TestAbbreviaNomiPv:
     def test_gli_spazi_multipli_non_creano_parole_vuote(self):
         assert self._abbrevia(["SUSHILAND  VILLA", "SUSHILAND  SAN"]) == ["VILLA", "SAN"]
 
+    def test_uno_spazio_in_testa_non_spegne_l_abbreviazione(self):
+        """`ristoranti.nome_ristorante` e' testo scritto a mano: uno spazio
+        iniziale su una sola sede faceva fallire il confronto del prefisso e
+        l'abbreviazione si spegneva del tutto — cioe' tornava il bug che
+        questa funzione risolve, per colpa di un dato sporco."""
+        assert self._abbrevia([
+            " SUSHILAND VILLA GUARDIA",
+            "SUSHILAND SAN GIULIANO",
+        ]) == ["VILLA GUARDIA", "SAN GIULIANO"]
+
+    def test_spazio_in_coda(self):
+        assert self._abbrevia(["SUSHILAND VILLA ", "SUSHILAND SAN"]) == ["VILLA", "SAN"]
+
     def test_non_tocca_l_ordine(self):
         out = self._abbrevia(["X ULTIMO", "X PRIMO"])
         assert out == ["ULTIMO", "PRIMO"]

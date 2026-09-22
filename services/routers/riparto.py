@@ -793,15 +793,39 @@ def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: 
         "p_tipo": tipo, "p_regola": regola, "p_importo_totale": importo,
         "p_quote": quote,
     }).execute()
+    # L'esito dell'esplosione va RIPORTATO, non solo loggato. La RPC qui sopra
+    # ha gia' scritto quote monolitiche (categoria=None): se l'esplosione non
+    # va a segno, la RPC mensile instrada tutto l'importo in un solo secchio
+    # F&B/spese — il MOL si sposta. E `esplodi_quote_per_categoria` torna False
+    # SENZA sollevare in due casi realistici (nessuna riga viva o netto ~0;
+    # riparto senza quote), quindi l'except da solo non lo rileva.
+    # Finora ci arrivava solo del codice; dal 22/09 ci arriva il cliente con un
+    # click («Riporta a parti uguali»), e rispondere `ok` liscio significa
+    # dirgli che e' andata bene mentre i suoi numeri si sono mossi.
+    # Stesso campo della sorella `riparto_riga_categoria`.
+    esplosione_ok: Optional[bool] = None
     if rip["origine"] == "fattura" and rip.get("file_origine"):
         try:
             from services.riparto_service import esplodi_quote_per_categoria
-            esplodi_quote_per_categoria(sb, user_id, riparto_id, rip["file_origine"])
+            esplosione_ok = bool(
+                esplodi_quote_per_categoria(sb, user_id, riparto_id, rip["file_origine"])
+            )
         except Exception as exc:
+            esplosione_ok = False
             logger.warning("esplosione quote per categoria fallita (resta legacy) riparto=%s: %s", riparto_id, exc)
+        if esplosione_ok is False:
+            logger.warning(
+                "riparto %s: quote rimaste monolitiche, il mensile le instrada in un solo secchio",
+                riparto_id,
+            )
 
-    _post_scrittura_riparto(sb, user_id, int(rip["anno"]), int(rip["mese"]))
-    return {"ok": True, "quote": quote}
+    ricalcolo_ok = _post_scrittura_riparto(sb, user_id, int(rip["anno"]), int(rip["mese"]))
+    return {
+        "ok": True,
+        "quote": quote,
+        "esplosione_categorie_ok": esplosione_ok,
+        "ricalcolo_quote_ok": ricalcolo_ok,
+    }
 
 
 @router.delete("/api/riparto/{riparto_id}", dependencies=[Depends(_verify_worker_key)])

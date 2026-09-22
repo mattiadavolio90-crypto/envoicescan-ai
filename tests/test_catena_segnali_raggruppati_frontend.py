@@ -99,8 +99,12 @@ def test_i_segnali_senza_ristorante_id_non_si_raggruppano():
 
 
 def test_l_ordine_del_backend_non_cambia():
-    """Il backend ordina per severita' e tipo. Il gruppo prende il posto della
-    sua PRIMA occorrenza, cosi' un raggruppamento non riordina la card."""
+    """Il backend ordina per severita' e tipo, e a PARITA' di gravita' quel
+    suo ordine resta: il gruppo prende il posto della sua prima occorrenza.
+
+    Dal 22/09/2026 c'e' un'eccezione, coperta piu' sotto: un gruppo PROMOSSO a
+    errore risale, perche' il backend aveva ordinato prima che la promozione
+    esistesse. Qui sono tutti warning, quindi la regola vale intera."""
     out = _raggruppa([
         _seg("margine_calo", "Alfa", testo="Margine in calo"),
         _seg("dati_mancanti", "Beta", testo="Mancano i costi"),
@@ -158,13 +162,18 @@ def test_il_gruppo_promosso_a_errore_risale():
 
 def test_a_parita_di_severita_l_ordine_del_backend_resta():
     """Il riordino e' SOLO per gravita': l'ordine per tipo deciso dal backend
-    non va rimescolato, o la card cambia disposizione a ogni caricamento."""
+    non va rimescolato, o la card cambia disposizione a ogni caricamento.
+
+    Dieci elementi, non tre: con tre, un comparatore instabile a volte non li
+    rimescola affatto e il test passa lo stesso — un presidio che uccide il
+    mutante 2 volte su 3 non e' un presidio.
+    """
+    attesi = [f"Avviso {i:02d}" for i in range(10)]
     out = _raggruppa([
-        _seg("tipo_a", "PV1", rid="r1", testo="Primo", severity="warning"),
-        _seg("tipo_b", "PV2", rid="r2", testo="Secondo", severity="warning"),
-        _seg("tipo_c", "PV3", rid="r3", testo="Terzo", severity="warning"),
+        _seg(f"tipo_{i}", f"PV{i}", rid=f"r{i}", testo=t, severity="warning")
+        for i, t in enumerate(attesi)
     ])
-    assert [g["testo"] for g in out] == ["Primo", "Secondo", "Terzo"]
+    assert [g["testo"] for g in out] == attesi
 
 
 def test_piu_errori_restano_nell_ordine_fra_loro():

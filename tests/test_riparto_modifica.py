@@ -177,3 +177,74 @@ def test_modifica_chiama_rpc_transazionale_non_delete_insert_diretto():
     assert "riparto_costi_catena_quote" not in sb.deletes
     assert "riparto_costi_catena_quote" not in sb.inserts
     assert "riparto_costi_catena" not in sb.updates
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# L'esito dell'esplosione arriva al chiamante.
+#
+# Fino al 22/09/2026 il valore di ritorno di `esplodi_quote_per_categoria`
+# veniva buttato via e la PATCH rispondeva `{"ok": true}` comunque. Il caso che
+# sfuggiva non e' l'eccezione (gia' coperta sopra) ma il `False` SENZA
+# sollevare, che la funzione restituisce in due casi realistici: nessuna riga
+# viva / netto ~0, e riparto senza quote. In quel caso le quote restano
+# monolitiche (categoria=None), la RPC mensile instrada tutto l'importo in un
+# solo secchio F&B/spese e il MOL si sposta.
+#
+# Perche' ora conta: fino a ieri qui ci arrivava solo del codice. Dal 22/09 il
+# pulsante «Riporta a parti uguali» della finestra Costi di gruppo ce lo porta
+# con un click, e un `ok` liscio dice al cliente il contrario di quel che e'
+# successo.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_esplosione_a_false_lo_dice_nella_risposta():
+    """`False` senza eccezione: il caso che l'except non vede."""
+    _sb, p, _ = _patch(dict(_RIPARTO_DA_FATTURA))
+    with p, patch(
+        "services.riparto_service.esplodi_quote_per_categoria", MagicMock(return_value=False)
+    ):
+        out = riparto.riparto_modifica("riparto-1", _body(regola="equa"), authorization="Bearer x")
+    assert out["esplosione_categorie_ok"] is False
+
+
+def test_esplosione_riuscita_lo_dice_nella_risposta():
+    _sb, p, _ = _patch(dict(_RIPARTO_DA_FATTURA))
+    with p, patch(
+        "services.riparto_service.esplodi_quote_per_categoria", MagicMock(return_value=True)
+    ):
+        out = riparto.riparto_modifica("riparto-1", _body(regola="equa"), authorization="Bearer x")
+    assert out["esplosione_categorie_ok"] is True
+
+
+def test_esplosione_che_solleva_risulta_fallita_non_ignota():
+    """L'eccezione non deve produrre lo stesso esito del «non serviva»."""
+    _sb, p, _ = _patch(dict(_RIPARTO_DA_FATTURA))
+    with p, patch(
+        "services.riparto_service.esplodi_quote_per_categoria",
+        MagicMock(side_effect=RuntimeError("timeout")),
+    ):
+        out = riparto.riparto_modifica("riparto-1", _body(regola="equa"), authorization="Bearer x")
+    assert out["ok"] is True
+    assert out["esplosione_categorie_ok"] is False
+
+
+def test_sul_manuale_l_esplosione_non_si_applica():
+    """`None`, non `False`: sul riparto manuale non c'e' niente da esplodere,
+    e dirlo «fallito» farebbe apparire un avviso che non ha senso."""
+    _sb, p, _ = _patch(dict(_RIPARTO_MANUALE))
+    with p, patch(
+        "services.riparto_service.esplodi_quote_per_categoria", MagicMock(return_value=False)
+    ):
+        out = riparto.riparto_modifica("riparto-2", _body(regola="equa"), authorization="Bearer x")
+    assert out["esplosione_categorie_ok"] is None
+
+
+def test_la_patch_riporta_anche_l_esito_del_ricalcolo():
+    """Stesso campo della sorella `riparto_riga_categoria`."""
+    _sb, p, mock_post = _patch(dict(_RIPARTO_DA_FATTURA))
+    mock_post.return_value = False
+    with p, patch(
+        "services.riparto_service.esplodi_quote_per_categoria", MagicMock(return_value=True)
+    ):
+        out = riparto.riparto_modifica("riparto-1", _body(regola="equa"), authorization="Bearer x")
+    assert out["ricalcolo_quote_ok"] is False
