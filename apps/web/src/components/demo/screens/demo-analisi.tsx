@@ -11,7 +11,7 @@ import { DemoAnchor } from "../demo-anchor";
 
 // Analisi Fatture del Demo Tour: replica 1:1 della pagina reale.
 // Testata (PageHeader + azione Upload) → FiltriPeriodo (chip periodo) → KpiBar
-// reale (4 KPI) → TabsSwitcher (Articoli/Categorie/Fornitori) → tabella articoli
+// reale (2 KPI dal 22/09/2026, erano 4) → TabsSwitcher (Articoli/Categorie/Fornitori) → tabella articoli
 // con le categorie e le icone VERE dell'app. Tutti gli elementi sono inerti
 // (la navigazione nella demo la guida il tour), ma visivamente identici.
 

@@ -20158,6 +20158,17 @@
           "file_origine": {
             "type": "string",
             "title": "File Origine"
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
           }
         },
         "type": "object",
@@ -20171,6 +20182,17 @@
           "file_origine": {
             "type": "string",
             "title": "File Origine"
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
           }
         },
         "type": "object",

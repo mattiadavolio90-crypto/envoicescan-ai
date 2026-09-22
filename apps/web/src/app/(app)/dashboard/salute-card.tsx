@@ -15,8 +15,8 @@ function Anello({ indice, colore }: { indice: number; colore: Salute["colore"] }
   const offset = offsetAnello(indice, r);
   const tint = COLORI[colore];
   return (
-    <div className="relative size-32 shrink-0">
-      <svg viewBox="0 0 120 120" className="size-32 -rotate-90">
+    <div className="relative size-28 shrink-0">
+      <svg viewBox="0 0 120 120" className="size-28 -rotate-90">
         <circle
           cx="60" cy="60" r={r}
           className="stroke-muted"
@@ -48,7 +48,7 @@ export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hide
   const tint = COLORI[salute.colore];
 
   return (
-    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7", tint.card)}>
+    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-5 sm:p-6", tint.card)}>
       <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
       <div className={cn("pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full blur-3xl", tint.orb2)} />
       <div className="mb-4 flex items-baseline justify-between gap-2">

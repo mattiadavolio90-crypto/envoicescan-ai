@@ -58,12 +58,13 @@ export const TAB_SEZIONI: Record<SezioneConTab, readonly TabDef[]> = {
     { key: "foodcost", label: "Foodcost" },
     { key: "inventario", label: "Inventario" },
   ],
-  // La vista "Lista" ha chiave tecnica `agenda` per ragioni storiche: e' il
+  // La vista «Da pagare» ha chiave tecnica `agenda` per ragioni storiche (si
+  // chiamava «Lista» fino al 22/09/2026): e' il
   // valore del type View in scadenziario-client.tsx, non un refuso.
   scadenziario: [
-    { key: "agenda", label: "Lista" },
+    { key: "agenda", label: "Da pagare" },
     { key: "calendario", label: "Calendario" },
-    { key: "lista_mensile", label: "Per mese" },
+    { key: "lista_mensile", label: "Archivio fatture" },
   ],
 };
 

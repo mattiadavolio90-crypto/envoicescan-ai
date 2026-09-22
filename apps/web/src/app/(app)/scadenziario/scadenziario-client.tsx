@@ -19,6 +19,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
+import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type FornitoreEntry,
@@ -654,7 +655,7 @@ function CashFlowBar({ documenti }: { documenti: Documento[] }) {
     return (
       <div className="rounded-lg border bg-card px-4 py-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Esposizione futura
+          Quando pagherai
         </p>
         <p className="text-sm">
           <span className="font-bold tabular-nums">{formatEuro(sola.totale)}</span>
@@ -669,8 +670,12 @@ function CashFlowBar({ documenti }: { documenti: Documento[] }) {
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
+        {/* Si chiamava «Esposizione futura», ma la prima fascia di
+            buildCashFlow e' «Scadute» (lib/scadenziario.ts:301): il riquadro
+            mostra anche il passato, e quando quella e' l'unica fascia con
+            soldi il titolo diceva il contrario di cio' che c'era sotto. */}
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Esposizione futura
+          Quando pagherai
         </p>
         <p className="text-sm font-bold tabular-nums">{formatEuro(totale)}</p>
       </div>
@@ -1521,6 +1526,12 @@ type CestinoItem = {
   totale: number;
   deleted_at: string;
   data_documento: string;
+  // Il backend lo manda solo in modalita' catena (db_service.py, ramo
+  // `is_multi`): li' il cestino elenca le fatture di TUTTE le sedi, e senza
+  // rispedirlo ripristina/elimina agirebbero sulla sede attiva invece che su
+  // quella del documento.
+  ristorante_id?: string;
+  sede_nome?: string;
 };
 
 function formatDateCestino(iso: string | null) {
@@ -1549,7 +1560,7 @@ type ScadenziarioClientProps = {
    */
   caricamentoFallito?: boolean;
   /**
-   * Viste consentite dal pannello admin ("agenda" = Lista, "calendario").
+   * Viste consentite dal pannello admin ("agenda" = Da pagare, "calendario").
    * Default = entrambe, quindi un chiamante che non la passa resta identico a
    * prima: e' il caso della vista di CATENA (catena/fatture/page.tsx), che monta
    * questo stesso componente in un contesto diverso dal punto vendita e NON deve
@@ -1601,6 +1612,9 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   const [cestinoItems, setCestinoItems] = useState<CestinoItem[]>([]);
   const [cestinoLoading, setCestinoLoading] = useState(false);
   const [cestinoConfirmElimina, setCestinoConfirmElimina] = useState<CestinoItem | null>(null);
+  // «Svuota tutto» era l'unica azione del cestino senza conferma, ed e' un hard
+  // delete: le due per-riga ce l'hanno da sempre.
+  const [cestinoConfermaSvuota, setCestinoConfermaSvuota] = useState(false);
   const [cestinoActionLoading, setCestinoActionLoading] = useState(false);
 
   // ── Filtri
@@ -1888,7 +1902,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       const res = await fetch("/api/cestino/ripristina", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_origine: item.file_origine }),
+        body: JSON.stringify({ file_origine: item.file_origine, ristorante_id: item.ristorante_id }),
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.detail || "Errore ripristino"); return; }
@@ -1906,7 +1920,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       const res = await fetch("/api/cestino/elimina", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_origine: cestinoConfirmElimina.file_origine }),
+        body: JSON.stringify({
+          file_origine: cestinoConfirmElimina.file_origine,
+          ristorante_id: cestinoConfirmElimina.ristorante_id,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.detail || "Errore eliminazione"); return; }
@@ -1917,14 +1934,20 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     finally { setCestinoActionLoading(false); }
   }
 
+  // L'endpoint svuota la sola sede ATTIVA (cestino.py: _resolve_ristorante_id),
+  // per scelta: svuotare tutte le sedi di una catena con un click sarebbe piu'
+  // pericoloso del difetto che risolve. Ma in catena la lista mostra le fatture
+  // di TUTTE le sedi, e `setCestinoItems([])` le faceva sparire tutte a video:
+  // quelle delle altre sedi sembravano cancellate e ricomparivano al primo
+  // «Aggiorna». Si ricarica dal server, che dice la verita'.
   async function handleCestinoSvuota() {
     setCestinoActionLoading(true);
     try {
       const res = await fetch("/api/cestino/svuota", { method: "POST" });
       const data = await res.json();
       if (!res.ok) { toast.error(data.detail || "Errore svuotamento"); return; }
-      toast.success(`Cestino svuotato`);
-      setCestinoItems([]);
+      toast.success("Cestino svuotato");
+      await loadCestino();
     } catch { toast.error("Errore di connessione"); }
     finally { setCestinoActionLoading(false); }
   }
@@ -2025,8 +2048,15 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             <AlertTriangle className="size-4 text-incerto flex-shrink-0" />
             <span className="text-incerto flex-1">
               <strong>{n}</strong> fattur{n === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(tot)}).{" "}
+              {/* In catena il conteggio e' di TUTTE le sedi, ma le regole
+                  fornitore sono per-sede (routers/scadenziario.py risolve una
+                  sola sede con _resolve_ristorante_id): su SUSHILAND il banner
+                  diceva 723 e la finestra ne poteva sistemare 114. Il testo
+                  non promette piu' di quanto la finestra mantenga. */}
               {inBlocco
-                ? "Imposta i termini di pagamento del fornitore e si risolvono tutte insieme."
+                ? modalitaCatena
+                  ? "Imposta i termini di pagamento del fornitore: valgono per la sede su cui stai lavorando, e vanno ripetuti sulle altre."
+                  : "Imposta i termini di pagamento del fornitore e si risolvono tutte insieme."
                 : "Imposta i termini del fornitore, oppure apri la fattura e scrivi la data a mano."}
             </span>
             <Settings2 className="size-3.5 text-incerto flex-shrink-0" />
@@ -2036,6 +2066,25 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* L'unica pagina dell'app senza aiuto, ed e' quella con tre viste e
+            quattro card che si contengono a vicenda. Sta nella toolbar del
+            client — non accanto al titolo, che e' un Server Component senza
+            slot per figli — cosi' arriva anche alla catena. */}
+        <InfoPopover title="Come leggere Gestione Fatture">
+          <div className="space-y-1.5 text-muted-foreground">
+            <p><strong className="text-foreground">Da pagare</strong> = cosa devi pagare e quando, raggruppato per scadenza.</p>
+            <p><strong className="text-foreground">Calendario</strong> = le stesse scadenze sul calendario, giorno per giorno.</p>
+            <p><strong className="text-foreground">Archivio fatture</strong> = tutte le fatture per mese di emissione, <em>senza</em> scadenze: serve per consultarle, non per pagarle.</p>
+          </div>
+          <div className="border-t border-border pt-2 space-y-1.5 text-muted-foreground">
+            <p className="font-medium text-foreground">Le card in alto non si sommano</p>
+            <p><strong className="text-foreground">Da pagare</strong> e&apos; il totale: <strong className="text-foreground">Scadute</strong> e <strong className="text-foreground">Questa settimana</strong> sono due sue parti, gia&apos; comprese dentro.</p>
+          </div>
+          <div className="border-t border-border pt-2 text-muted-foreground">
+            <p><strong className="text-foreground">Quando pagherai</strong> distribuisce le fatture non pagate per fascia di scadenza. Le gia&apos; scadute sono la prima fascia.</p>
+          </div>
+        </InfoPopover>
+
         {/* Reso come `map` e non con una condizione per coppia: con tre viste
             un `mostraLista && mostraCalendario` avrebbe nascosto il bottone
             proprio quando le viste sono piu' di due. */}
@@ -2043,10 +2092,21 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           <div className="flex rounded-md border overflow-hidden">
             {visteConsentite.map((v, i) => {
               const Icona = v === "agenda" ? List : v === "calendario" ? CalendarDays : CalendarRange;
-              const etichetta = v === "agenda" ? "Lista" : v === "calendario" ? "Calendario" : "Per mese";
+              // «Lista / Calendario / Per mese» descrivevano la FORMA della
+              // pagina, non la domanda a cui risponde, e nessuna diceva che
+              // "Per mese" e' l'unica che nasconde le scadenze — cioe' proprio
+              // la funzione che serve per consultare le fatture senza scadenze.
+              const etichetta = v === "agenda" ? "Da pagare" : v === "calendario" ? "Calendario" : "Archivio fatture";
+              const spiegazione =
+                v === "agenda"
+                  ? "Cosa devi pagare e quando, raggruppato per scadenza"
+                  : v === "calendario"
+                    ? "Le scadenze sul calendario, giorno per giorno"
+                    : "Tutte le fatture per mese di emissione, senza scadenze";
               return (
                 <button
                   key={v}
+                  title={spiegazione}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l" : ""} ${view === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
                   onClick={() => cambiaVista(v)}
                 >
@@ -2090,16 +2150,41 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               Cestino Fatture
             </p>
             <div className="flex items-center gap-2">
+              {/* Conferma inline, come le due azioni per-riga qui sotto: questa
+                  pagina non usa ConfirmDialog. In catena il bottone dice quale
+                  sede svuota, perche' la lista ne mostra piu' di una e
+                  l'endpoint agisce sulla sola sede attiva. */}
               {cestinoItems.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-destructive hover:text-destructive"
-                  onClick={handleCestinoSvuota}
-                  disabled={cestinoActionLoading}
-                >
-                  <Trash2 className="size-3.5 mr-1" /> Svuota tutto
-                </Button>
+                cestinoConfermaSvuota ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {modalitaCatena ? "Elimini il cestino di questa sede?" : "Elimini tutto il cestino?"}
+                    </span>
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCestinoConfermaSvuota(false)} disabled={cestinoActionLoading}>
+                      Annulla
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => { setCestinoConfermaSvuota(false); handleCestinoSvuota(); }}
+                      disabled={cestinoActionLoading}
+                    >
+                      {cestinoActionLoading ? <Loader2 className="size-3.5 animate-spin" /> : "Elimina"}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-destructive hover:text-destructive"
+                    onClick={() => setCestinoConfermaSvuota(true)}
+                    disabled={cestinoActionLoading}
+                  >
+                    <Trash2 className="size-3.5 mr-1" />
+                    {modalitaCatena ? "Svuota questa sede" : "Svuota tutto"}
+                  </Button>
+                )
               )}
               <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={loadCestino} disabled={cestinoLoading}>
                 {cestinoLoading ? <Loader2 className="size-3.5 animate-spin" /> : "Aggiorna"}
@@ -2122,11 +2207,16 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                 const days = daysToCestino(item.deleted_at);
                 const urgent = days <= 5;
                 return (
-                  <div key={item.file_origine} className="flex items-center gap-3 px-3 py-2.5 rounded-md border bg-background hover:bg-muted/30 transition-colors">
+                  <div key={`${item.file_origine}|${item.ristorante_id ?? ""}`} className="flex items-center gap-3 px-3 py-2.5 rounded-md border bg-background hover:bg-muted/30 transition-colors">
                     <div className="flex-1 min-w-0 space-y-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium truncate" title={item.fornitore || item.file_origine}>{item.fornitore || item.file_origine}</span>
                         <span className="text-xs text-muted-foreground">{item.num_righe} prodott{item.num_righe === 1 ? "o" : "i"}</span>
+                        {item.sede_nome && (
+                          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {item.sede_nome}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                         {item.data_documento && <span>Data: {formatDateCestino(item.data_documento)}</span>}
@@ -2147,7 +2237,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                       >
                         <ArchiveRestore className="size-3.5" /> Ripristina
                       </Button>
-                      {cestinoConfirmElimina?.file_origine === item.file_origine ? (
+                      {cestinoConfirmElimina?.file_origine === item.file_origine &&
+                       cestinoConfirmElimina?.ristorante_id === item.ristorante_id ? (
                         <div className="flex gap-1">
                           <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCestinoConfirmElimina(null)} disabled={cestinoActionLoading}>
                             Annulla

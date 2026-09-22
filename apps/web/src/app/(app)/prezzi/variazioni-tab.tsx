@@ -661,8 +661,6 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   // KPI di sintesi mostrati in cima al tab (specifici di "Variazioni Prezzo")
   const rincari = useMemo(() => filtered.filter((r) => r.aumento_perc > 0), [filtered]);
   const risparmi = useMemo(() => filtered.filter((r) => r.aumento_perc < 0), [filtered]);
-  const rincaroMedio = rincari.length > 0 ? rincari.reduce((a, r) => a + r.aumento_perc, 0) / rincari.length : 0;
-  const risparmioMedio = risparmi.length > 0 ? risparmi.reduce((a, r) => a + r.aumento_perc, 0) / risparmi.length : 0;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -787,25 +785,23 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         )}
       </div>
 
-      {/* ── KPI di sintesi (specifici del tab Variazioni) ── */}
+      {/* ── KPI di sintesi (specifici del tab Variazioni) ──
+          Erano quattro. «Rincari medi» e «Risparmi medi» sono usciti il
+          22/09/2026: erano medie aritmetiche SEMPLICI delle percentuali
+          (`reduce(...)/length`), quindi un prodotto da 8 EUR pesava quanto uno
+          da 2.000, e non c'e' nessuna difesa contro le righe anomale — il
+          backend confronta gli ultimi due prezzi unitari e basta
+          (routers/prezzi.py:330-336). Una singola riga sballata di un
+          fornitore produceva un -95% che dominava la media. Un numero che non
+          orienta nessuna decisione e puo' mentire e' rumore, non sintesi.
+          Il conteggio di quanti prodotti salgono e quanti scendono resta, ma
+          sotto «Scostamento medio»: quello e' un dato onesto. */}
       {data && variazioni.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard
-            label="Rincari medi"
-            value={rincari.length > 0 ? fmtPct(rincaroMedio) : "—"}
-            sub={`${rincari.length} prodott${rincari.length === 1 ? "o" : "i"} in aumento`}
-            tone="negativo"
-          />
-          <KpiCard
-            label="Risparmi medi"
-            value={risparmi.length > 0 ? fmtPct(risparmioMedio) : "—"}
-            sub={`${risparmi.length} prodott${risparmi.length === 1 ? "o" : "i"} in calo`}
-            tone="positivo"
-          />
+        <div className="grid grid-cols-2 gap-3">
           <KpiCard
             label="Scostamento medio"
             value={filtered.length > 0 ? fmtPct(scostamentoFiltrato) : "—"}
-            sub={`su ${filtered.length} variazion${filtered.length === 1 ? "e" : "i"}`}
+            sub={`${rincari.length} in aumento · ${risparmi.length} in calo`}
             tone={scostamentoFiltrato < 0 ? "positivo" : "negativo"}
           />
           <KpiCard

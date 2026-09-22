@@ -1238,7 +1238,7 @@ class UserPublic(BaseModel):
     pagine_abilitate: Optional[List[str]] = None
     is_admin: bool = False
     tema: str = "dark"
-    # Vista preferita di Gestione Fatture ("agenda" = Lista, "calendario",
+    # Vista preferita di Gestione Fatture ("agenda" = Da pagare, "calendario",
     # "lista_mensile"). Default per i token vecchi che non la portano.
     vista_fatture: str = "agenda"
     # False per gli account creati prima dell'introduzione del consenso esplicito

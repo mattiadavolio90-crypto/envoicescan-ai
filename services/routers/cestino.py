@@ -50,12 +50,22 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
 router = APIRouter(dependencies=[Depends(_verify_worker_key)])
 
 
+# In modalita' catena il cestino ELENCA le fatture di tutte le sedi
+# (get_fatture_cestino con ristorante_id=None, db_service.py), ma fino al
+# 22/09/2026 ripristina ed elimina risolvevano sempre la sede ATTIVA: agire su
+# una fattura di un'altra sede falliva con "non trovata", o peggio cercava quel
+# file_origine nella sede sbagliata. Nello stesso file /api/fatture/elimina e
+# /api/fatture/oscura passavano gia' da `_resolve_ristorante_scrivibile`, che
+# accetta la sede dal body previo controllo di appartenenza: era
+# un'incoerenza interna, non una scelta.
 class CestinoRipristinaRequest(BaseModel):
     file_origine: str
+    ristorante_id: Optional[str] = None
 
 
 class CestinoEliminaRequest(BaseModel):
     file_origine: str
+    ristorante_id: Optional[str] = None
 
 
 class FatturaEliminaRequest(BaseModel):
@@ -112,15 +122,19 @@ def ripristina_dal_cestino(
     from services.db_service import ripristina_fattura
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, sb)
-    if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    ristorante_id = _resolve_ristorante_scrivibile(user, sb, body.ristorante_id)
 
     file_origine = str(body.file_origine or "").strip()
     if not file_origine:
         raise HTTPException(status_code=400, detail="file_origine obbligatorio")
 
-    result = ripristina_fattura(file_origine, user_id=str(user["id"]), ristorante_id=ristorante_id)
+    # `supabase_client` esplicito: la funzione accetta il parametro ma senza
+    # passarlo se ne crea uno suo (db_service.py:1849-1851), e cosi' l'endpoint
+    # non e' provabile — un test che lo chiama va a sbattere sulla rete vera
+    # invece che sul client del test. Stesso client gia' risolto qui sopra.
+    result = ripristina_fattura(
+        file_origine, user_id=str(user["id"]), ristorante_id=ristorante_id, supabase_client=sb
+    )
 
     if not result.get("success"):
         err = result.get("error", "Errore")
@@ -138,17 +152,20 @@ def elimina_definitivamente(
     from services.db_service import elimina_fattura_completa
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, sb)
-    if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    ristorante_id = _resolve_ristorante_scrivibile(user, sb, body.ristorante_id)
 
     file_origine = str(body.file_origine or "").strip()
     if not file_origine:
         raise HTTPException(status_code=400, detail="file_origine obbligatorio")
 
+    # `supabase_client` esplicito, come per `ripristina_fattura` qui sopra:
+    # senza, la funzione se ne crea uno suo (db_service.py:1279) e l'endpoint
+    # non e' provabile — un test va a sbattere sulla rete vera. Ed e' l'azione
+    # irreversibile del file: e' quella che deve avere il presidio piu' solido.
     result = elimina_fattura_completa(
         file_origine,
         user_id=str(user["id"]),
+        supabase_client=sb,
         ristoranteid=ristorante_id,
         soft_delete=False,
     )

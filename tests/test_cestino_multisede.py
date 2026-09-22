@@ -199,3 +199,151 @@ def test_sposta_ok_ritorna_righe_spostate(monkeypatch):
     )
     assert res["ok"] is True
     assert res["righe_spostate"] == 1
+
+
+# ─── Bug C (22/09/2026): ripristina/elimina del cestino ignoravano la sede ────
+#
+# In modalita' catena il cestino ELENCA le fatture di tutte le sedi
+# (get_fatture_cestino con ristorante_id=None) ma i due endpoint che ci agiscono
+# sopra risolvevano sempre la sede ATTIVA: ripristinare una fattura di un'altra
+# sede falliva, o cercava quel file_origine nella sede sbagliata — e con
+# file_origine omonimo su due sedi (lo scenario del Bug A) poteva ripristinare
+# la fattura sbagliata.
+#
+# Nello stesso file /api/fatture/elimina e /api/fatture/oscura passavano gia' da
+# `_resolve_ristorante_scrivibile`: era un'incoerenza interna, non una scelta.
+
+
+def test_ripristina_usa_la_sede_del_documento_non_quella_attiva(monkeypatch):
+    """Sede attiva r1, fattura nel cestino su r2: con ristorante_id esplicito
+    il ripristino deve agire su r2."""
+    sb = FakeClient({
+        "fatture": [
+            {"id": "b1", "user_id": "u1", "ristorante_id": "r2", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+        "ristoranti": [{"id": "r2", "user_id": "u1", "attivo": True}],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    res = cestino.ripristina_dal_cestino(
+        cestino.CestinoRipristinaRequest(file_origine="F.xml", ristorante_id="r2"),
+        authorization="Bearer x",
+    )
+    assert res["success"] is True
+    assert sb.dump("fatture")[0]["deleted_at"] is None
+
+
+def test_ripristina_senza_sede_resta_sulla_sede_attiva(monkeypatch):
+    """Punto vendita singolo: il body non porta la sede e il comportamento
+    di prima non cambia."""
+    sb = FakeClient({
+        "fatture": [
+            {"id": "a1", "user_id": "u1", "ristorante_id": "r1", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    res = cestino.ripristina_dal_cestino(
+        cestino.CestinoRipristinaRequest(file_origine="F.xml"), authorization="Bearer x"
+    )
+    assert res["success"] is True
+    assert sb.dump("fatture")[0]["deleted_at"] is None
+
+
+def test_ripristina_sede_di_un_altro_account_404(monkeypatch):
+    """L'isolamento fra clienti vale anche qui: la sede indicata non e' mia."""
+    sb = FakeClient({
+        "fatture": [
+            {"id": "c1", "user_id": "u2", "ristorante_id": "r9", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+        "ristoranti": [{"id": "r9", "user_id": "u2", "attivo": True}],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    with pytest.raises(HTTPException) as ei:
+        cestino.ripristina_dal_cestino(
+            cestino.CestinoRipristinaRequest(file_origine="F.xml", ristorante_id="r9"),
+            authorization="Bearer x",
+        )
+    assert ei.value.status_code == 404
+    # Il DETTAGLIO, non solo il codice: togliendo l'ownership check del router
+    # si otterrebbe un 404 lo stesso, ma da `ripristina_fattura` che non trova
+    # righe con quel user_id («not_found»). Due 404 per ragioni diverse, e un
+    # test che guarda solo il codice non distingue la guardia dal caso fortuito.
+    assert ei.value.detail == "Sede non trovata"
+    assert sb.dump("fatture")[0]["deleted_at"] == "2026-09-20T10:00:00Z"
+
+
+def test_ripristina_non_tocca_l_omonima_dell_altra_sede(monkeypatch):
+    """Lo scenario del Bug A, sul ripristino: stesso file_origine su due sedi,
+    entrambe nel cestino. Ripristinare r2 non deve risuscitare r1."""
+    sb = FakeClient({
+        "fatture": [
+            {"id": "a1", "user_id": "u1", "ristorante_id": "r1", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+            {"id": "b1", "user_id": "u1", "ristorante_id": "r2", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+        "ristoranti": [{"id": "r2", "user_id": "u1", "attivo": True}],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    cestino.ripristina_dal_cestino(
+        cestino.CestinoRipristinaRequest(file_origine="F.xml", ristorante_id="r2"),
+        authorization="Bearer x",
+    )
+    by_id = {r["id"]: r for r in sb.dump("fatture")}
+    assert by_id["b1"]["deleted_at"] is None
+    assert by_id["a1"]["deleted_at"] == "2026-09-20T10:00:00Z"
+
+
+def test_elimina_definitivo_sede_di_un_altro_account_404(monkeypatch):
+    """La cancellazione irreversibile e' il caso in cui l'isolamento pesa di piu'."""
+    sb = FakeClient({
+        "fatture": [
+            {"id": "c1", "user_id": "u2", "ristorante_id": "r9", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+        "ristoranti": [{"id": "r9", "user_id": "u2", "attivo": True}],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    with pytest.raises(HTTPException) as ei:
+        cestino.elimina_definitivamente(
+            cestino.CestinoEliminaRequest(file_origine="F.xml", ristorante_id="r9"),
+            authorization="Bearer x",
+        )
+    assert ei.value.status_code == 404
+    assert ei.value.detail == "Sede non trovata"
+    assert len(sb.dump("fatture")) == 1
+
+
+def test_elimina_definitivo_cancella_solo_la_sede_indicata(monkeypatch):
+    """Il gemello di `test_ripristina_non_tocca_l_omonima_dell_altra_sede`,
+    sull'azione IRREVERSIBILE: stesso file_origine nel cestino di due sedi,
+    si elimina definitivamente quella di r2 e la riga di r1 deve restare.
+
+    Mancava: i test coprivano i due 404 e il ripristino, ma nessuno provava
+    che l'hard delete colpisse davvero la sede indicata e solo quella.
+    """
+    sb = FakeClient({
+        "fatture": [
+            {"id": "a1", "user_id": "u1", "ristorante_id": "r1", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+            {"id": "b1", "user_id": "u1", "ristorante_id": "r2", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+        "ristoranti": [{"id": "r2", "user_id": "u1", "attivo": True}],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")  # sede attiva r1, si elimina su r2
+
+    cestino.elimina_definitivamente(
+        cestino.CestinoEliminaRequest(file_origine="F.xml", ristorante_id="r2"),
+        authorization="Bearer x",
+    )
+
+    rimaste = sb.dump("fatture")
+    assert [r["id"] for r in rimaste] == ["a1"], rimaste

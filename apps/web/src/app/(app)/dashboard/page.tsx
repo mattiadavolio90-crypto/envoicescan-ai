@@ -151,7 +151,7 @@ export default async function DashboardPage() {
   return (
     <>
       <HomeAutoRefresh />
-      <div className="space-y-8">
+      <div className="space-y-6">
         <Suspense fallback={null}>
           <ConfigBlock />
         </Suspense>

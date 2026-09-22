@@ -53,6 +53,8 @@ class _Query:
         self._limit = None
         self._update_vals = None
         self._is_null = []
+        self._is_not_null = []
+        self._negato = False
         self._count = None
         self._range = None
 
@@ -61,9 +63,34 @@ class _Query:
         self._count = _k.get("count")
         return self
 
+    # `.not_` e' un ACCESSORE, non un metodo: in supabase-py si scrive
+    # `.not_.is_("deleted_at", "null")`, cioe' nega il filtro successivo.
+    # Serve al percorso del cestino (righe con deleted_at valorizzato); i test
+    # che usavano solo `.is_` non lo toccano.
+    #
+    # Qui e' supportato SOLO davanti a `is_`. La produzione usa anche
+    # `.not_.in_` (invoice_service, foodcost_service, tag_suggestion_service,
+    # routers/workspace): senza questa guardia il fake non negherebbe quel
+    # filtro e lascerebbe il flag armato, negando per sbaglio il PRIMO `is_`
+    # successivo — un verde falso, in un helper condiviso da 4 file di test.
+    # Meglio un errore rumoroso di una negazione silenziosamente sbagliata.
+    @property
+    def not_(self):
+        self._negato = True
+        return self
+
+    def _vieta_negazione(self, nome: str) -> None:
+        if self._negato:
+            self._negato = False
+            raise NotImplementedError(
+                f"_Query: `.not_.{nome}()` non e' supportato da questo fake. "
+                "Implementalo (e provalo) invece di ottenere un filtro non negato."
+            )
+
     def is_(self, f, val):
         if val == "null":
-            self._is_null.append(f)
+            (self._is_not_null if self._negato else self._is_null).append(f)
+        self._negato = False
         return self
 
     def update(self, vals):
@@ -71,15 +98,25 @@ class _Query:
         self._update_vals = dict(vals)
         return self
 
+    # Hard delete: serve al percorso di `elimina_fattura_completa`
+    # (soft_delete=False), l'azione irreversibile del cestino. Senza, quel
+    # percorso non era provabile affatto.
+    def delete(self, *_a, **_k):
+        self._op = "delete"
+        return self
+
     def eq(self, f, v):
+        self._vieta_negazione("eq")
         self._filters.append((f, v))
         return self
 
     def in_(self, f, vals):
+        self._vieta_negazione("in_")
         self._in = (f, list(vals))
         return self
 
     def gte(self, f, soglia):
+        self._vieta_negazione("gte")
         self._gte.append((f, soglia))
         return self
 
@@ -108,6 +145,9 @@ class _Query:
         for f in self._is_null:
             if row.get(f) is not None:
                 return False
+        for f in self._is_not_null:
+            if row.get(f) is None:
+                return False
         return True
 
     def execute(self):
@@ -116,6 +156,15 @@ class _Query:
             for r in rows:
                 r.update(self._update_vals)
             return _Result([dict(r) for r in rows])
+        if self._op == "delete":
+            eliminate = [dict(r) for r in rows]
+            # Si rimuove per IDENTITA', non per valore: due righe di sedi
+            # diverse possono avere gli stessi campi e `list.remove` toglierebbe
+            # la prima che combacia — cioe' potenzialmente quella sbagliata,
+            # proprio lo scenario che questo fake serve a provare.
+            ids = {id(r) for r in rows}
+            self._store[:] = [r for r in self._store if id(r) not in ids]
+            return _Result(eliminate)
         total = len(rows)
         out = [dict(r) for r in rows]
         if self._range is not None:

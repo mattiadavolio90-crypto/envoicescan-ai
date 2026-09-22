@@ -193,7 +193,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
   return (
     <div
       className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7",
+        "relative flex h-full flex-col overflow-hidden rounded-2xl border p-5 sm:p-6",
         tint.card,
       )}
     >
@@ -213,7 +213,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
         <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
           = MOL (margine)
         </span>
-        <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>
+        <div className={cn("text-4xl font-black tabular-nums leading-none sm:text-5xl", tint.text)}>
           {formatEuro(kpi.mol)}
         </div>
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground/60">

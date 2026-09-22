@@ -242,11 +242,17 @@ export function ScontiTab() {
         /* Quattro card affiancate per un valore e tre conteggi: su una pagina
            da due righe la cornice pesava piu' del contenuto. Il risparmio e' il
            dato, il resto e' il suo contesto e sta su una riga. */
-        <div className="rounded-md border border-border bg-card p-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <div className="rounded-md border border-border bg-card p-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex items-start gap-2">
             <Euro className="size-4 mt-0.5 shrink-0 text-positivo" />
             <div>
-              <p className="text-xs text-muted-foreground leading-tight">Risparmiato (sconti)</p>
+              {/* L'importo e' calcolato su `filtered` (riga 115) ma l'etichetta
+                  non lo diceva mai: filtrando un fornitore si leggeva un totale
+                  parziale credendolo del periodo. Note di credito lo dichiara
+                  gia' (nc-tab.tsx:144), qui no: stessa condizione, stesse parole. */}
+              <p className="text-xs text-muted-foreground leading-tight">
+                {hasFiltri ? "Risparmiato (filtrato)" : "Risparmiato (sconti)"}
+              </p>
               <p className="text-base font-bold mt-0.5">{fmtEuro(totaleRisparmiato)}</p>
             </div>
           </div>

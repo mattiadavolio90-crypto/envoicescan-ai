@@ -136,7 +136,7 @@ export function NcTab() {
           ripeteva «2» tre volte. L'importo e' il dato, la struttura e' il suo
           contesto e sta in una riga sola sotto. */}
       {data && (
-        <div className="rounded-md border border-border bg-card p-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <div className="rounded-md border border-border bg-card p-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="flex items-start gap-2">
             <Euro className="size-4 mt-0.5 shrink-0 text-primary-text" />
             <div>

@@ -60,17 +60,18 @@ export function KpiBar({ kpi }: Props) {
   if (!kpi) return null;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <KpiCard tone="blu"    label="Spesa totale"     numeric={kpi.totale}        format={formatEuro} animate={animate} />
-      <KpiCard tone="neutro" label="Voci in fattura"            numeric={kpi.num_righe}     format={fmtInt}     animate={animate} />
-      <KpiCard tone="neutro" label="Prodotti diversi" numeric={kpi.num_prodotti}  format={fmtInt}     animate={animate} />
-      <KpiCard tone="neutro" label="Media al mese"    numeric={kpi.media_mensile} format={formatEuro} animate={animate} />
+    // Erano quattro. «Voci in fattura» e «Prodotti diversi» sono uscite il
+    // 22/09/2026: entrambe erano gia' scritte piu' sotto nella stessa pagina
+    // (articoli-tab.tsx: «N prodotti» e «N acquisti»), e la prima portava
+    // anche una contraddizione muta — la card contava 1347 righe escludendo
+    // quelle a importo zero, la riga sotto ne diceva 1348 includendole, e la
+    // differenza era un omaggio a 0 EUR che nulla spiegava. Con un solo
+    // conteggio in pagina la contraddizione non puo' piu' esistere.
+    <div className="grid grid-cols-2 gap-3">
+      <KpiCard tone="blu"    label="Spesa totale"  numeric={kpi.totale}        format={formatEuro} animate={animate} />
+      <KpiCard tone="neutro" label="Media al mese" numeric={kpi.media_mensile} format={formatEuro} animate={animate} />
     </div>
   );
-}
-
-function fmtInt(v: number): string {
-  return Math.round(v).toLocaleString("it-IT");
 }
 
 function KpiCard({

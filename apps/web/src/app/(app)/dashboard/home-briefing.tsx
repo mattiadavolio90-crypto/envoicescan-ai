@@ -108,9 +108,9 @@ export function HomeBriefing({ briefing }: Props) {
   const tuttoOk = briefing.tutto_ok && visibili.length === 0;
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-5">
       {/* HERO — la voce dell'assistente */}
-      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background p-6 sm:p-8">
+      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background p-5 sm:p-6">
         <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-accent blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-primary/10 blur-3xl" />
         <div className="flex items-center justify-between gap-2">
@@ -120,10 +120,10 @@ export function HomeBriefing({ briefing }: Props) {
           </div>
           <AscoltaButton testo={`${briefing.saluto}. ${briefing.narrativa}`} />
         </div>
-        <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
+        <h1 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">
           {briefing.saluto}
         </h1>
-        <p className="mt-4 max-w-none whitespace-pre-line text-base leading-relaxed text-foreground/90 sm:text-lg">
+        <p className="mt-3 max-w-none whitespace-pre-line text-base leading-relaxed text-foreground/90">
           {narrativa}
           {animate && narrativa.length < briefing.narrativa.length && (
             <span className="ml-0.5 inline-block h-5 w-0.5 animate-pulse bg-primary align-middle" />
