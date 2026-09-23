@@ -271,13 +271,20 @@ def test_il_punto_finale_della_sparkline_non_e_un_cerchio():
     torna a guardare una cosa gia' dichiarata risolta (trovato in revisione il
     23/09/2026). Ora e' un <rect> con la larghezza divisa per la stessa scala.
     """
+    # Finestra = TUTTO il file, non il solo corpo di `Sparkline`.
+    #
+    # La prima stesura partiva da `src.index("function Sparkline(")`, ma le
+    # costanti del modulo stanno SOPRA la funzione: una costante di scala
+    # ri-dichiarata li' — cioe' esattamente dove stava `ASPETTO` — passava
+    # inosservata, e con essa il difetto vero (punto ovale a meta' larghezza).
+    # Trovato dalla seconda revisione, 23/09/2026: il presidio scritto per
+    # difendere la correzione non copriva il punto in cui il difetto era nato.
+    #
+    # Righe di commento escluse: senza, il test falliva sul commento che spiega
+    # di NON usare <circle>.
     src = _KPI_BAR.read_text(encoding="utf-8")
-    inizio = src.index("function Sparkline(")
-    # Righe di commento ESCLUSE: la prima stesura di questo test falliva sul
-    # commento che spiega di NON usare <circle>. Terza volta in giornata che un
-    # presidio conta i commenti invece del codice.
     corpo = "\n".join(
-        r for r in src[inizio:src.index("\n}\n", inizio)].splitlines()
+        r for r in src.splitlines()
         if not r.lstrip().startswith(("//", "*", "/*"))
     )
     assert "<circle" not in corpo, (
@@ -288,13 +295,24 @@ def test_il_punto_finale_della_sparkline_non_e_un_cerchio():
         "vectorEffect non ha effetto su una forma con il solo fill: e' una "
         "protezione dichiarata e inesistente"
     )
-    # Ne' una COSTANTE di scala: la seconda stesura compensava dividendo per
-    # `ASPETTO = 2`, ma il fattore vero dipende dalla larghezza della card, che
-    # da A1 cambia col tab — 2,16 con sei tessere, 4,8 con tre, 15,2 con una
-    # sola (Coperti). Una costante li' e' sbagliata per costruzione. Il punto
-    # ora e' in PIXEL fuori dall'SVG, dove la scala non lo tocca.
-    assert "ASPETTO" not in corpo, (
-        "il punto compensa la deformazione con una costante: la scala dipende "
-        "dalla larghezza della card, che cambia col tab"
+    # E ora il COMPORTAMENTO, non il nome di una costante.
+    #
+    # La stesura precedente asseriva `"ASPETTO" not in corpo`: difendeva una
+    # PAROLA. Bastava chiamarla `SCALA_X` per rimettere il difetto — punto ovale
+    # a meta' larghezza — con tutti i test verdi (mutante M15 della seconda
+    # revisione, sopravvissuto). Quello che rende il punto tondo e' che le sue
+    # due dimensioni siano la STESSA espressione: qualunque divisore su una
+    # delle due lo deforma, comunque lo si chiami.
+    larghezza = re.search(r"width:\s*([^,\n]+),", corpo)
+    altezza = re.search(r"height:\s*([^,\n]+),", corpo)
+    assert larghezza and altezza, "non trovo le dimensioni del punto finale"
+    assert larghezza.group(1).strip() == altezza.group(1).strip(), (
+        f"il punto non e' tondo: width={larghezza.group(1).strip()} "
+        f"height={altezza.group(1).strip()} — con preserveAspectRatio='none' "
+        "una dimensione scalata esce ovale, e il fattore dipende dalla "
+        "larghezza della card, che cambia col tab"
     )
-    assert "PUNTO_PX" in corpo, "il punto finale non e' piu' dimensionato in pixel"
+    # E che quella misura sia in PIXEL (un numero), non in unita' della viewBox.
+    assert re.search(r"const PUNTO_PX\s*=\s*\d", corpo), (
+        "il punto finale non e' piu' dimensionato in pixel"
+    )

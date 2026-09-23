@@ -118,7 +118,11 @@ function Sparkline({ values: rawValues, color, label }: {
             top: `${(cy / h) * 100}%`,
             width: PUNTO_PX,
             height: PUNTO_PX,
-            marginLeft: -PUNTO_PX / 2,
+            // Intero, non meta': l'ultimo punto ha SEMPRE x = 100 (`puntiSparkline`
+            // emette `x = i * w/(n-1)`, quindi l'ultimo cade esattamente su `w`).
+            // Con meta' diametro il pallino resterebbe tagliato a filo del box —
+            // difetto ereditato dal vecchio <circle cx=100>, non introdotto qui.
+            marginLeft: -PUNTO_PX,
             marginTop: -PUNTO_PX / 2,
             backgroundColor: color,
           }}
