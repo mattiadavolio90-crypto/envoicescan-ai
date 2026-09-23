@@ -474,6 +474,71 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   tolto dal selettore del diario (nessun token; gli appunti gia' viola si
 >   vedono blu, da confermare).
 
+> - **23/09/2026, `0435b0f`→`e501355` (6 commit) — fase 1 «assistente
+>   consulente»: il briefing smette di festeggiare le perdite e di sollecitare
+>   l'impossibile.** Tre difetti misurati sui 43 briefing di produzione.
+>   (a) **Buona notizia disonesta**: sede `dcf1996e`, 1-2/9, «Agosto mostra un
+>   miglioramento: la perdita e' scesa a € 9.380» su due mesi con fatturato
+>   **0,00** — la "perdita" era la sola somma dei costi. Il gate guardava
+>   `costi_mancanti`, che per costruzione (`_kpi_periodo`) e' `fatturato > 0 and
+>   fb <= 0 and spese <= 0`: **False proprio quando il fatturato e' 0**, cioe'
+>   lasciava passare il caso che doveva fermare. Ora `_mesi_confrontabili` chiede
+>   incassi su ENTRAMBI i mesi. Misurato nel farlo: col fatturato a 0 il MOL non
+>   puo' essere positivo, quindi il ramo "crescita" era gia' protetto per
+>   aritmetica — la sua guardia e' dichiarata **non presidiabile per mutazione**
+>   invece che contata fra i mutanti uccisi.
+>   (b) **Personale reclamato dal 1°**: la busta paga arriva a meta' mese, 5 sedi
+>   su 5 "in ritardo" ad agosto e settembre erano la norma. Ora dal 15
+>   (`_GIORNO_SOLLECITO_PERSONALE`), mesi piu' vecchi subito.
+>   (c) **Incasso ripetuto ogni giorno** (ignorato 25 volte su 35, un cliente ha
+>   spento 4 avvisi). Prima stesura sbagliata: avevo ancorato la `dedupe_key`
+>   alla settimana ISO **senza verificare chi la legge** — `_build_snapshot`
+>   raggruppa per `topic_key` e quella chiave finisce solo in
+>   `notifications_fingerprint`, che per suo docstring nessuno rilegge: l'avviso
+>   sarebbe tornato ogni giorno come prima. Il topic e' in
+>   `TOPIC_LIVE_NON_IGNORABILI` (il cliente non puo' spegnerlo), quindi l'unica
+>   misura e' **non emetterlo**: gate all'emissione.
+>   **La scelta del giorno e' stata sbagliata due volte, per lo stesso errore di
+>   misura.** Lunedi' per abitudine; poi martedi' perche' «lunedi' 16,9% di buchi
+>   contro una media del 4-5%». Quel dato contava le **chiusure come
+>   dimenticanze**: tutti e 11 i buchi del lunedi' erano di UNA sede (CASATI 14),
+>   chiusa il lunedi'. Escludendo per ogni sede i giorni che non lavora, il
+>   lunedi' ha **0 buchi su 52** e la distribuzione e' piatta (3-6%): si prende il
+>   massimo, **giovedi'** (6,2%). Il reviewer ha confermato con un criterio piu'
+>   severo (via anche 14 buchi consecutivi di ferie): 3 su 6 restano il giovedi'.
+>   **Coerenza con Salute** (trovata cercando chi altro legge cio' che cambiavo,
+>   non nel diff): il briefing taceva sul personale fino al 15 ma `/api/home/salute`
+>   e `_salute_indice_rosso` lo marcavano mancante dal 1° — l'incoerenza che il
+>   docstring di `home_salute` dichiara di voler evitare, e `_salute_indice_rosso`
+>   e' **il gate della buona notizia**, quindi un dato non ancora dovuto la
+>   sopprimeva. Regola unica in `_personale_gia_dovuto`, col caso del capodanno.
+>   `_BRIEFING_CODE_VERSION` 24 -> 25. **Mutanti: 11 applicati, 11 uccisi**, uno
+>   alla volta; piu' il ramo "crescita" dichiarato non presidiabile.
+>   **Tre miei errori di metodo, corretti e registrati perche' si ripetono:**
+>   (1) ho chiamato in due punti una `def` andata persa in una riscrittura —
+>   sintassi valida, suite verde, due `NameError` in produzione, perche' nessun
+>   test eseguiva quei rami; (2) un `cp` di ripristino dentro un ciclo ha
+>   sovrascritto il backup con una versione **gia' mutata**: una suite ha dato 11
+>   rossi finti e una guardia e' rimasta disattivata a `pass` senza che il
+>   checksum lo rivelasse — ora il ripristino si fa con `git checkout`, unica
+>   fonte affidabile; (3) ho dichiarato «15.810 verdi» misurando il **working
+>   tree**: il test corretto non era committato, quindi HEAD conteneva ancora la
+>   versione debole. Una cifra si dichiara sullo stato committato.
+>   Due presidi erano **finti** e il reviewer li ha smascherati: asserivano su
+>   `inspect.getsource` (che il simbolo esistesse), non sul comportamento —
+>   riscritti eseguendo `_salute_indice_rosso` e `home_salute`.
+>   Suite **15.810 verdi, 45 skip** (`-m "not sql" -p no:randomly`), misurata a
+>   repo fermo su HEAD `e501355`.
+>   **Aperti, dichiarati:** (i) prima del 15 l'indice di Salute e' meno
+>   probabilmente rosso e quell'indice e' il gate della buona notizia — 9
+>   combinazioni passano da rossa a non-rossa, 5 con la voce fatturato rossa: la
+>   notizia resta aritmeticamente vera, ma l'allargamento **va deciso da Mattia**;
+>   (ii) `giorni_chiusura_settimanali` esiste su `assistant_preferences` (NON su
+>   `ristoranti`) e `_briefing_dati_mensili_mancanti` **non lo legge**: una sede
+>   chiusa nel giorno guardato riceve l'avviso a vuoto; (iii) il mobile continua a
+>   scrivere in `notification_inbox` una riga al giorno che nessun lettore in
+>   produzione usa piu'. **Non pushato**: lo decide Mattia.
+
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
