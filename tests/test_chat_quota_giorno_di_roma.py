@@ -376,3 +376,66 @@ def test_i_due_fallback_sul_piano_sconosciuto_restano_simmetrici():
     # non deve regalare la quota del pro.
     assert fw._chat_budget_mensile_per_piano("enterprise") == fw.CHAT_BUDGET_MENSILE_PIANO["base"]
     assert fw._chat_limite_per_piano("enterprise") == fw.CHAT_LIMITI_PIANO["base"]
+
+
+def test_la_finestra_del_mese_parte_dal_primo_a_mezzanotte_di_roma(monkeypatch):
+    """`_chat_domande_mese` e' l'unico punto dove la finestra del mese vive in
+    Python: e' la gemella della RPC, e se divergono nessuno se ne accorge.
+
+    Il caso si sceglie DOVE I DUE MONDI DIVERGONO: a meta' mese, dove «dal primo»
+    e «da oggi» danno risultati diversi. Un mutante che sostituisce
+    `_oggi.replace(day=1)` con `_oggi` conta solo la giornata e sopravvive a
+    qualunque test che usi il primo del mese.
+    """
+    registro: dict = {}
+
+    class _Q:
+        def select(self, *a, **k):
+            return self
+
+        def gte(self, campo, valore):
+            registro["inizio"] = valore
+            return self
+
+        def eq(self, *a, **k):
+            return self
+
+        def execute(self):
+            return MagicMock(count=7)
+
+    client = MagicMock()
+    client.table.return_value = _Q()
+
+    # 18 luglio: se la finestra fosse «oggi» partirebbe dal 18, non dal 1°.
+    istante = datetime(2026, 7, 18, 14, 0, tzinfo=ROMA)
+
+    class _Orologio(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return istante.astimezone(tz) if tz else istante
+
+    monkeypatch.setattr("datetime.datetime", _Orologio)
+    assert fw._chat_domande_mese("rid", "uid", client) == 7
+
+    inizio = datetime.fromisoformat(registro["inizio"])
+    atteso = datetime(2026, 7, 1, 0, 0, tzinfo=ROMA)
+    assert inizio == atteso, (
+        f"la finestra del mese parte da {inizio.isoformat()} invece che dal "
+        f"primo a mezzanotte di Roma ({atteso.isoformat()}): il budget mensile "
+        "conterebbe una finestra sbagliata"
+    )
+
+
+def test_il_default_del_limite_giorno_non_e_quello_vecchio():
+    """`ChatConfig.chat_limite_giorno` ha un default, usato quando il valore vero
+    non arriva. Lasciarlo a 10 (il tetto pre-23/09) mostrerebbe al cliente un
+    numero che non esiste piu' in nessun piano."""
+    import inspect
+
+    campi = fw.ConfigResponse.model_fields
+    default = campi["chat_limite_giorno"].default
+    assert default == fw.CHAT_LIMITI_PIANO["base"], (
+        f"il default e' {default} ma il tetto 'base' ora e' "
+        f"{fw.CHAT_LIMITI_PIANO['base']}: il contatore mostrerebbe il valore "
+        "vecchio quando quello vero non arriva"
+    )
