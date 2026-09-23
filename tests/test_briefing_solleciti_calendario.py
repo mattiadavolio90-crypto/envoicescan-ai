@@ -286,30 +286,49 @@ def test_indice_rosso_non_conta_il_personale_non_ancora_dovuto():
 
 
 def test_card_completezza_non_conta_il_personale_non_ancora_dovuto():
-    """ESEGUE la voce personale di `home_salute` prima e dopo il 15.
+    """ESEGUE `home_salute` e guarda la voce «personale» nella risposta vera.
 
-    E' l'altro consumatore della regola. Senza questo, la card direbbe «manca»
-    mentre il briefing tace — l'incoerenza che il docstring di `home_salute`
-    dichiara di voler evitare. Si chiama la funzione interna che compone le
-    voci, non l'endpoint HTTP: qui serve la decisione, non il trasporto.
+    Prima versione: verificava la regola in isolamento e poi contava gli usi di
+    `_personale_gia_dovuto` dentro `home_salute` con `inspect.getsource`. Meta'
+    di quel test era un assert sul sorgente — lo stesso difetto che avevo appena
+    corretto altrove: sopravvive a una modifica che rompe il comportamento
+    lasciando il testo, e grida su una rinomina innocua. Qui si chiama la
+    funzione: la dependency di auth vale solo via HTTP, quindi si patchano i
+    cinque punti esterni e si legge la voce.
+
+    E' l'altro consumatore della regola: senza, la card direbbe «manca» mentre
+    il briefing tace.
     """
-    from services.fastapi_worker import _personale_gia_dovuto
+    from services.fastapi_worker import home_salute
 
-    # La regola e' la stessa che home_salute applica alla sua voce; qui si
-    # verifica che la voce NON risulti mancante prima del 15 e lo risulti dopo.
-    # (La composizione completa dell'endpoint richiede auth e 6 tabelle: il
-    # comportamento che conta e' questo, ed e' lo stesso ramo.)
-    prima = _personale_gia_dovuto(date(2026, 9, 3), (2026, 8))
-    dopo = _personale_gia_dovuto(date(2026, 9, 20), (2026, 8))
-    assert (prima, dopo) == (False, True)
+    righe = [{
+        "fatturato_iva10": 10000, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "costo_dipendenti": 0, "costo_personale_extra": 0,
+    }]
 
-    # E la guardia deve essere DAVVERO cablata in home_salute, non solo esistere:
-    # il conteggio delle chiamate difende il ramo dalla rimozione silenziosa.
-    import inspect
-    import services.fastapi_worker as fw
+    def _voce_personale(giorno):
+        patches = [
+            patch("services.fastapi_worker._resolve_user_from_token",
+                  return_value={"id": "user-1"}),
+            patch("services.fastapi_worker._get_supabase_client",
+                  return_value=_sb_salute(righe)),
+            patch("services.fastapi_worker._resolve_ristorante_id", return_value=RID),
+            patch("services.fastapi_worker._costi_automatici_mese", return_value=5000.0),
+            _oggi(giorno),
+        ]
+        for pa in patches:
+            pa.start()
+        try:
+            resp = home_salute(authorization="Bearer x")
+        finally:
+            for pa in reversed(patches):
+                pa.stop()
+        return next(v for v in resp.voci if v.key == "personale")
 
-    usi = inspect.getsource(fw.home_salute).count("_personale_gia_dovuto(")
-    assert usi == 1, f"home_salute non applica piu' la regola (usi={usi})"
+    prima = _voce_personale(3)
+    dopo = _voce_personale(20)
+    assert prima.ok is True, "la card dice «manca» su un dato non ancora dovuto"
+    assert dopo.ok is False, "dal 15 il dato e' dovuto: se manca, va detto"
 
 
 def test_la_campanella_passa_dallo_stesso_gate_del_briefing():
