@@ -3169,17 +3169,29 @@ _GIORNO_SOLLECITO_PERSONALE = 15
 # `dedupe_key` finisce solo in `notifications_fingerprint`, che per suo stesso
 # docstring nessuno rilegge. La soppressione va fatta qui, alla fonte.
 #
-# MARTEDI', non lunedi' (misurato su ricavi_giornalieri, 90 giorni, tutte le
-# sedi attive, giorni-sede attesi via generate_series): il gate controlla
-# l'incasso di IERI, quindi il giorno scelto decide quale giorno si guarda.
-# Buchi per giorno: lunedi' 16,9% (11 su 65) contro una media del 4-5% e un
-# minimo di 3,1% la domenica. Col lunedi' si guardava la domenica — il giorno
-# in cui il dato manca MENO — e si taceva il martedi', l'unico da cui il buco
-# del lunedi' e' visibile: copertura 2 casi su 27, il 7,4%. Col martedi' si
-# guarda il lunedi': 11 su 27, il 40,7%, a parita' di frequenza (uno a
-# settimana). La prima stesura aveva scelto il lunedi' per abitudine, non sui
-# dati.
-_GIORNO_SOLLECITO_INCASSO = 1
+# GIOVEDI'. Il giorno scelto decide quale giorno si guarda (il gate controlla
+# l'incasso di IERI), quindi va scelto sui buchi VERI, non sulle assenze.
+#
+# Prima misura (sbagliata, 23/09): "lunedi' 16,9% contro una media del 4-5%".
+# Contava le CHIUSURE come dimenticanze: tutti e 11 i buchi del lunedi' erano
+# di una sola sede (CASATI 14), chiusa il lunedi' — 2 incassi su 13 lunedi'
+# contro 10-11 negli altri giorni. Escludendo per ogni sede i giorni che non
+# lavora (soglia: meno del 50% di occorrenze con incasso), il lunedi' ha ZERO
+# buchi su 52, e i buchi veri sono quasi uniformi:
+#
+#     lun 0,0% (0/52) · dom 3,1% · ven 3,1% · sab 3,1%
+#     mar 4,6% · mer 5,0% · GIO 6,2% (4/65)  <- il massimo
+#
+# Con la distribuzione piatta il giorno conta poco: si prende il massimo. Il
+# giovedi' guarda il mercoledi' ed e' l'unico giorno infrasettimanale lontano
+# sia dal weekend sia dal lunedi' di chiusura tipico della ristorazione, quindi
+# non sistematicamente sovrapposto a un giorno non lavorato.
+#
+# NOTA per chi tocchera' questa soglia: `giorni_chiusura_settimanali` esiste
+# (su `assistant_preferences`, NON su `ristoranti`) ma questa funzione non lo
+# legge. Finche' non lo legge, una sede chiusa nel giorno guardato riceve
+# l'avviso a vuoto. E' il residuo vero dietro questa costante.
+_GIORNO_SOLLECITO_INCASSO = 3
 
 CHAT_LIMITI_PIANO: Dict[str, int] = {
     "free": 0,

@@ -181,14 +181,26 @@ def test_incasso_segnalato_una_volta_a_settimana():
 
 
 def test_incasso_torna_la_settimana_dopo():
-    """Una volta a settimana, non una volta e basta: deve tornare."""
+    """Una volta a settimana, non una volta e basta: deve tornare.
+
+    NOTA: questi test derivano il giorno da `_GIORNO_SOLLECITO_INCASSO`, quindi
+    cambiarne il VALORE non li fa cadere — di proposito. La cadenza (una volta a
+    settimana, e che torni) e' una regola e si presidia; QUALE giorno e' una
+    scelta di prodotto, misurata sui buchi veri e motivata accanto alla
+    costante. Un test che cablasse il giovedi' presidierebbe il numero, non la
+    regola, e andrebbe riscritto a ogni ritaratura.
+    """
     from services.fastapi_worker import _GIORNO_SOLLECITO_INCASSO
 
-    # 21/09/2026 e' un lunedi: +offset = il giorno di emissione, +7 = quello dopo.
-    primo = 21 + _GIORNO_SOLLECITO_INCASSO
+    # 14/09/2026 e' un lunedi: +offset = il giorno di emissione, +7 = quello
+    # dopo. Si parte dal 14 e non dal 21 perche' con offset alti il "+7"
+    # sconfinerebbe oltre il 30 settembre (un 31 settembre non esiste).
+    from datetime import timedelta
+
+    primo = date(2026, 9, 14) + timedelta(days=_GIORNO_SOLLECITO_INCASSO)
     visti = []
-    for giorno in (primo, primo + 7):
-        with _oggi(giorno):
+    for d in (primo, primo + timedelta(days=7)):
+        with _oggi(d.day, d.month, d.year):
             out = _briefing_dati_mensili_mancanti(
                 RID, _sb(_righe_fatturato_senza_personale(), incasso_ieri=False)
             )
