@@ -3157,6 +3157,11 @@ def crea_marketplace_lead(
 # free = chat disattivata; base 10, plus 20, pro 30.
 # Costo stimato per sede/mese con gpt-4.1-mini (post-ottimizzazione: max_tokens=600, round=2):
 # base ~$0.02, plus ~$0.03, pro ~$0.06. Per 10 clienti tutti Pro: ~$0.63/mese totale.
+# Giorno del mese da cui si sollecita il costo del personale del mese appena
+# chiuso. Prima di questa data il dato non e' ancora disponibile al cliente: la
+# busta paga arriva a meta' mese. Vedi _briefing_dati_mensili.
+_GIORNO_SOLLECITO_PERSONALE = 15
+
 CHAT_LIMITI_PIANO: Dict[str, int] = {
     "free": 0,
     "base": 10,
@@ -5510,6 +5515,25 @@ def _scontrino_medio_significativo(
     }
 
 
+def _mesi_confrontabili(kpi: Dict[str, Any], kpi_prec: Dict[str, Any]) -> bool:
+    """True se i due mesi reggono un confronto di MOL da dichiarare al cliente.
+
+    Il gate storico guardava solo `costi_mancanti`, che per costruzione
+    (`_kpi_periodo`) e' `fatturato > 0 and fb <= 0 and spese <= 0`: e' False
+    proprio quando il fatturato e' 0, cioe' lascia passare il caso peggiore. In
+    produzione ha prodotto «Agosto mostra un miglioramento: la perdita e' scesa
+    a 9.380 EUR» su due mesi con fatturato 0,00 — dove la "perdita" era la sola
+    somma dei costi e il "miglioramento" era che ne erano stati inseriti meno.
+    Un mese senza incassi non e' un mese andato meglio: non se ne parla.
+    """
+    for k in (kpi, kpi_prec):
+        if float(k.get("fatturato") or 0) <= 0:
+            return False
+        if k.get("costi_mancanti"):
+            return False
+    return True
+
+
 def _briefing_buona_notizia(
     user_id: str, ristorante_id: str, supabase_client,
 ) -> Optional[Dict[str, Any]]:
@@ -5592,7 +5616,7 @@ def _briefing_buona_notizia(
                 # 0%. In entrambi i casi cadiamo sull'incasso di ieri (o sul
                 # silenzio): l'incoerenza la risolve l'utente completando i dati.
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
-                        and not kpi.get("costi_mancanti")
+                        and _mesi_confrontabili(kpi, kpi_prec)
                         and not _salute_indice_rosso(ristorante_id, supabase_client)):
                     delta_pct = round((mol_curr - mol_prec) / abs(mol_prec) * 100, 1)
                     return {
@@ -5617,7 +5641,7 @@ def _briefing_buona_notizia(
                 # E' incoraggiante ("sei sulla strada giusta") senza fingere che
                 # vada bene. Decisione Mattia: segnalarlo come spinta.
                 if (mol_curr < 0 and mol_prec < 0 and mol_curr > mol_prec
-                        and not kpi.get("costi_mancanti")
+                        and _mesi_confrontabili(kpi, kpi_prec)
                         and not _salute_indice_rosso(ristorante_id, supabase_client)):
                     return {
                         "id": f"buona-notizia-perdita-{anno_usato}-{mese_usato:02d}",
@@ -5932,7 +5956,17 @@ def _briefing_dati_mensili_mancanti(
         m for m, d in righe_anno.items() if d["netto"] > 0 and m <= mc_mese
     )
     # Mesi attivi senza costo personale inserito.
-    mesi_senza_personale = [m for m in mesi_attivi if righe_anno.get(m, {}).get("personale", 0) <= 0]
+    # GIORNO DEL SOLLECITO (23/09): il mese appena chiuso non si reclama dal 1°.
+    # La busta paga del consulente del lavoro arriva a meta' mese: chiedere il
+    # personale di settembre il 1° ottobre segnala come "in ritardo" un cliente
+    # puntuale. Misurato: 5 sedi su 5 "in ritardo" ad agosto e settembre, cioe'
+    # la norma, non un'anomalia -> il cliente impara a ignorare l'assistente.
+    # I mesi PIU' VECCHI restano sollecitati subito: quelli sono in ritardo davvero.
+    mesi_senza_personale = [
+        m for m in mesi_attivi
+        if righe_anno.get(m, {}).get("personale", 0) <= 0
+        and not (m == mc_mese and oggi.day < _GIORNO_SOLLECITO_PERSONALE)
+    ]
     # Fatturato del solo mese precedente (per l'alert fatturato, che resta mensile).
     fatturato_ok = bool(righe_anno.get(mc_mese, {}).get("netto", 0) > 0)
 
@@ -5984,7 +6018,8 @@ def _briefing_dati_mensili_mancanti(
             mese_corrente_mensile = (oggi.year, oggi.month) in _load_mensile_overrides(
                 supabase_client, ristorante_id, [oggi.year]
             )
-            ieri = (oggi - _td2(days=1)).isoformat()
+            ieri_d = oggi - _td2(days=1)
+            ieri = ieri_d.isoformat()
             ric = (
                 supabase_client.table("ricavi_giornalieri")
                 .select("data")
@@ -6010,6 +6045,13 @@ def _briefing_dati_mensili_mancanti(
                 )
                 ha_storia_incassi = bool(stor.data or [])
             if not mese_corrente_mensile and not (ric.data or []) and ha_storia_incassi:
+                # UNA VOLTA A SETTIMANA (23/09). Prima la dedupe_key conteneva la
+                # data di ieri, quindi era nuova ogni giorno: il sollecito tornava
+                # 7 volte a settimana. Misurato: ignorato 25 volte su 35 (71%), e
+                # un cliente ha spento 4 avvisi dal configuratore. Ancorando la
+                # chiave alla settimana ISO l'avviso compare una volta sola: chi
+                # non inserisce l'incasso lo sa gia', ripeterlo insegna a ignorare.
+                _iso_anno, _iso_sett, _ = ieri_d.isocalendar()
                 out.append({
                     "id": f"incasso-mancante-live-{ieri}",
                     "topic_key": "incasso_mancante",
@@ -6020,7 +6062,7 @@ def _briefing_dati_mensili_mancanti(
                     "action_page": "/margini",
                     "payload": {},
                     "source_event_at": None,
-                    "dedupe_key": f"incasso-mancante-live-{ieri}",
+                    "dedupe_key": f"incasso-mancante-live-{_iso_anno}-W{_iso_sett:02d}",
                 })
         except Exception as exc:
             logger.warning("briefing dati mensili: check incasso ieri fallito: %s", exc)

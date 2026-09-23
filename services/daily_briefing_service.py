@@ -132,7 +132,7 @@ logger = get_logger('daily_briefing')
 #               continuerebbe a vedere la card vecchia per tutta la giornata
 #               (cache giornaliera + TTL 30'). Per i ristoranti lo snapshot e'
 #               invariato — la rigenerazione produce lo stesso testo di ieri.
-_BRIEFING_CODE_VERSION = 24
+_BRIEFING_CODE_VERSION = 25
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
