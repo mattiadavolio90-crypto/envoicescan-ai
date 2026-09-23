@@ -619,7 +619,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   basso ovunque ma **distribuito al contrario del tetto** — l'unico cliente che
 >   usa la chat oggi ha 2 sedi `base`, pool 20/giorno, ed e' in crescita (3, 4, 5,
 >   6, 6); chi ha 150 non la apre. E' un valore commerciale: lo decide lui.
->   **Non pushato.**
+>   **Suite: 15.833 passed, 45 skipped, 0 failed** (`-m "not sql" -p no:randomly`),
+>   misurata su `c240208`; durante il run un'altra sessione ha committato
+>   `bf28328` (fase 3 margini, nessun file mio), quindi la cifra include anche i
+>   loro test nuovi. **Non pushato.**
 
 ---
 
