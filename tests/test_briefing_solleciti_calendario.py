@@ -75,8 +75,6 @@ def _oggi(giorno, mese=9, anno=2026):
     """
     import datetime as _dtmod
 
-    fisso = date(anno, mese, giorno)
-
     class _FakeDateTime(_dtmod.datetime):
         @classmethod
         def now(cls, tz=None):
@@ -128,32 +126,105 @@ def test_mesi_piu_vecchi_sollecitati_subito():
     )
 
 
-def test_incasso_stessa_chiave_dentro_la_settimana():
-    """Due giorni della stessa settimana ISO -> stessa dedupe_key.
+def test_incasso_segnalato_una_volta_a_settimana():
+    """L'avviso ESISTE un giorno e NON esiste negli altri sei.
 
-    E' la chiave che decide se l'avviso ricompare: uguale = gia' visto.
+    Si misura la presenza del topic, non la forma della `dedupe_key`: una prima
+    stesura ancorava la chiave alla settimana ISO, ma `_build_snapshot`
+    raggruppa per `topic_key` e la chiave finisce solo in
+    `notifications_fingerprint`, che per suo stesso docstring nessuno rilegge —
+    l'avviso sarebbe tornato ogni giorno esattamente come prima. Un test sulla
+    chiave sarebbe stato verde su quel difetto.
+
+    `incasso_mancante` e' in TOPIC_LIVE_NON_IGNORABILI: il cliente non puo'
+    nemmeno spegnerlo, quindi l'unica misura possibile e' non emetterlo.
     """
-    chiavi = set()
-    for giorno in (22, 23, 24):  # lun/mar/mer della stessa settimana
+    giorni_con_avviso = []
+    # 21-27 settembre 2026: una settimana intera, lunedi -> domenica.
+    for giorno in range(21, 28):
         with _oggi(giorno):
             out = _briefing_dati_mensili_mancanti(
                 RID, _sb(_righe_fatturato_senza_personale(), incasso_ieri=False)
             )
-        for n in out:
-            if n["topic_key"] == "incasso_mancante":
-                chiavi.add(n["dedupe_key"])
-    assert len(chiavi) == 1, f"l'avviso ricompare piu' volte a settimana: {chiavi}"
+        if "incasso_mancante" in _topics(out):
+            giorni_con_avviso.append(giorno)
+    assert len(giorni_con_avviso) == 1, (
+        f"l'avviso compare {len(giorni_con_avviso)} volte a settimana: {giorni_con_avviso}"
+    )
 
 
-def test_incasso_chiave_diversa_la_settimana_dopo():
-    """Settimana nuova -> chiave nuova: l'avviso torna, una volta."""
-    chiavi = set()
-    for giorno in (23, 30):  # due settimane ISO diverse
+def test_incasso_torna_la_settimana_dopo():
+    """Una volta a settimana, non una volta e basta: deve tornare."""
+    visti = []
+    for giorno in (21, 28):  # due lunedi consecutivi
         with _oggi(giorno):
             out = _briefing_dati_mensili_mancanti(
                 RID, _sb(_righe_fatturato_senza_personale(), incasso_ieri=False)
             )
-        for n in out:
-            if n["topic_key"] == "incasso_mancante":
-                chiavi.add(n["dedupe_key"])
-    assert len(chiavi) == 2, f"l'avviso non torna la settimana dopo: {chiavi}"
+        visti.append("incasso_mancante" in _topics(out))
+    assert visti == [True, True], f"l'avviso non torna la settimana dopo: {visti}"
+
+
+def test_incasso_presente_non_genera_avviso():
+    """Il gate settimanale non deve inventare avvisi quando il dato c'e'."""
+    with _oggi(21):
+        out = _briefing_dati_mensili_mancanti(
+            RID, _sb(_righe_fatturato_senza_personale(), incasso_ieri=True)
+        )
+    assert "incasso_mancante" not in _topics(out)
+
+
+
+# ── Coerenza fra briefing, card «Completezza dati» e indice di salute ────────
+# Le tre voci misurano lo stesso dato. Se solo il briefing tacesse prima del 15,
+# la card direbbe «manca» mentre il briefing non ne parla — l'incoerenza che
+# `home_salute` dichiara nel docstring di voler evitare. E `_salute_indice_rosso`
+# e' il GATE della «buona notizia»: un rosso per un dato non ancora dovuto la
+# sopprimerebbe senza motivo.
+
+def test_regola_del_dovuto_sul_mese_appena_chiuso():
+    from services.fastapi_worker import _personale_gia_dovuto as dovuto
+
+    assert dovuto(date(2026, 9, 3), (2026, 8)) is False
+    assert dovuto(date(2026, 9, _GIORNO_SOLLECITO_PERSONALE), (2026, 8)) is True
+    # Mesi piu' vecchi: sempre dovuti, anche il 3 del mese.
+    assert dovuto(date(2026, 9, 3), (2026, 6)) is True
+
+
+def test_regola_del_dovuto_attraversa_il_capodanno():
+    """A gennaio il mese appena chiuso e' dicembre dell'anno PRIMA.
+
+    Senza il caso esplicito, un confronto su `oggi.month - 1` darebbe 0 e la
+    regola si applicherebbe al mese sbagliato per tutto gennaio.
+    """
+    from services.fastapi_worker import _personale_gia_dovuto as dovuto
+
+    assert dovuto(date(2026, 1, 3), (2025, 12)) is False
+    assert dovuto(date(2026, 1, 20), (2025, 12)) is True
+    assert dovuto(date(2026, 1, 3), (2025, 11)) is True
+
+
+def test_i_consumatori_della_regola_esistono_e_sono_chiamabili():
+    """Il nome chiamato deve esistere: un helper mai definito e' un NameError.
+
+    Difetto reale occorso scrivendo questa fase: la chiamata a
+    `_personale_gia_dovuto` era stata inserita in `home_salute` e in
+    `_salute_indice_rosso` mentre la sua `def` era andata persa. Sintassi
+    valida, suite verde, e in produzione due NameError — perche' nessun test
+    eseguiva quei rami.
+
+    Qui si presidia il legame: ogni punto che CHIAMA la regola deve poterla
+    risolvere. Si legge il sorgente solo per trovare i chiamanti; la prova e'
+    che il simbolo esista davvero nel modulo ed sia invocabile.
+    """
+    import inspect
+    import services.fastapi_worker as fw
+
+    src = inspect.getsource(fw)
+    assert "_personale_gia_dovuto(" in src, "la regola non e' piu' usata da nessuno"
+    # Deve esistere come attributo vero del modulo, non solo come testo.
+    assert callable(getattr(fw, "_personale_gia_dovuto", None)), (
+        "la regola e' chiamata ma non definita: NameError a runtime"
+    )
+    # E deve essere definita, non solo importata per caso.
+    assert "def _personale_gia_dovuto(" in src

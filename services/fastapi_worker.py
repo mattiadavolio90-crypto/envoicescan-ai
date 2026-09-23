@@ -3162,6 +3162,14 @@ def crea_marketplace_lead(
 # busta paga arriva a meta' mese. Vedi _briefing_dati_mensili.
 _GIORNO_SOLLECITO_PERSONALE = 15
 
+# Giorno della settimana (0=lunedi) in cui si segnala l'incasso mancante. Il
+# topic e' in TOPIC_LIVE_NON_IGNORABILI: il cliente non puo' spegnerlo, quindi
+# l'unica forma di misura e' NON EMETTERLO. Ancorare la sola `dedupe_key` alla
+# settimana non basta: _build_snapshot raggruppa per `topic_key` e la
+# `dedupe_key` finisce solo in `notifications_fingerprint`, che per suo stesso
+# docstring nessuno rilegge. La soppressione va fatta qui, alla fonte.
+_GIORNO_SOLLECITO_INCASSO = 0
+
 CHAT_LIMITI_PIANO: Dict[str, int] = {
     "free": 0,
     "base": 10,
@@ -5615,6 +5623,14 @@ def _briefing_buona_notizia(
                 # fatturato - personale, un "+172%!" falso accanto a un food cost
                 # 0%. In entrambi i casi cadiamo sull'incasso di ieri (o sul
                 # silenzio): l'incoerenza la risolve l'utente completando i dati.
+                # NOTA sul gate qui: e' una guardia IN PROFONDITA', non
+                # presidiabile per mutazione. Con fatturato 0 il MOL non puo'
+                # essere positivo (e' netto - costi, e i costi non sono
+                # negativi), quindi `mol_prec > 0` esclude gia' da solo il mese
+                # senza incassi: mutando questo gate nessun test cade. Resta
+                # perche' la regola valga per costruzione in entrambi i rami,
+                # non perche' un test la difenda. Il gate che difende il difetto
+                # reale e' quello del ramo "perdita in calo", sotto.
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
                         and _mesi_confrontabili(kpi, kpi_prec)
                         and not _salute_indice_rosso(ristorante_id, supabase_client)):
@@ -6044,7 +6060,9 @@ def _briefing_dati_mensili_mancanti(
                     .execute()
                 )
                 ha_storia_incassi = bool(stor.data or [])
-            if not mese_corrente_mensile and not (ric.data or []) and ha_storia_incassi:
+            if (not mese_corrente_mensile and not (ric.data or [])
+                    and ha_storia_incassi
+                    and oggi.weekday() == _GIORNO_SOLLECITO_INCASSO):
                 # UNA VOLTA A SETTIMANA (23/09). Prima la dedupe_key conteneva la
                 # data di ieri, quindi era nuova ogni giorno: il sollecito tornava
                 # 7 volte a settimana. Misurato: ignorato 25 volte su 35 (71%), e
@@ -6053,7 +6071,7 @@ def _briefing_dati_mensili_mancanti(
                 # non inserisce l'incasso lo sa gia', ripeterlo insegna a ignorare.
                 _iso_anno, _iso_sett, _ = ieri_d.isocalendar()
                 out.append({
-                    "id": f"incasso-mancante-live-{ieri}",
+                    "id": f"incasso-mancante-live-{_iso_anno}-W{_iso_sett:02d}",
                     "topic_key": "incasso_mancante",
                     "source_type": "live",
                     "severity": "warning",
@@ -6847,6 +6865,30 @@ _VOCE_TOPIC_SALUTE = {
 }
 
 
+def _personale_gia_dovuto(oggi, anno_mese: tuple) -> bool:
+    """True se il costo del personale di quel mese e' gia' esigibile.
+
+    Il mese appena chiuso non lo e' prima del giorno
+    `_GIORNO_SOLLECITO_PERSONALE`: la busta paga del consulente del lavoro
+    arriva a meta' mese. Serve in PIU' punti che misurano la stessa cosa — il
+    sollecito del briefing, la card «Completezza dati» e l'indice di salute —
+    perche' correggerne uno solo le fa divergere: la card direbbe «manca»
+    mentre il briefing tace, ed e' esattamente l'incoerenza che `home_salute`
+    dichiara di voler evitare nel suo docstring. Peggio, `_salute_indice_rosso`
+    e' il gate della «buona notizia»: un rosso per un dato non ancora dovuto la
+    sopprimerebbe senza motivo.
+
+    I mesi piu' vecchi sono sempre dovuti: quelli sono in ritardo davvero.
+    """
+    anno, mese = anno_mese
+    mese_appena_chiuso = (
+        (oggi.year - 1, 12) if oggi.month == 1 else (oggi.year, oggi.month - 1)
+    )
+    if (anno, mese) == mese_appena_chiuso:
+        return oggi.day >= _GIORNO_SOLLECITO_PERSONALE
+    return True
+
+
 def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
     """True se l'indice di Salute della gestione e' 'rosso' (< 50).
 
@@ -6923,6 +6965,9 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
                 if (float(r.get("costo_dipendenti") or 0)
                         + float(r.get("costo_personale_extra") or 0)) > 0:
                     personale_ok = True
+            # Non ancora dovuto = non "mancante": vedi _personale_gia_dovuto.
+            if not _personale_gia_dovuto(oggi, (mc_anno, mc_mese)):
+                personale_ok = True
             fatturato_ok = netto > 0
         except Exception:
             pass
@@ -7716,6 +7761,9 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             if (float(r.get("costo_dipendenti") or 0)
                     + float(r.get("costo_personale_extra") or 0)) > 0:
                 personale_ok = True
+        # Non ancora dovuto = non "mancante": vedi _personale_gia_dovuto.
+        if not _personale_gia_dovuto(oggi, (mc_anno, mc_mese)):
+            personale_ok = True
         fatturato_ok = netto > 0
     except Exception as exc:
         logger.warning("home_salute: lettura fatturato/personale margini fallita: %s", exc)

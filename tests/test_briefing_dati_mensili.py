@@ -100,6 +100,31 @@ def _sb(margini_rows, incasso_ieri=True, modalita_rows=None, ha_storia=True):
     return q
 
 
+
+def _nel_giorno_del_sollecito_incasso():
+    """Pinna "oggi" al giorno in cui l'avviso incasso viene emesso.
+
+    Dal 23/09/2026 `incasso_mancante` non esce ogni giorno ma una volta a
+    settimana (il topic e' in TOPIC_LIVE_NON_IGNORABILI: il cliente non puo'
+    spegnerlo, quindi l'unica misura e' non emetterlo). Senza pinnare la data
+    questi test sarebbero verdi o rossi a seconda del giorno in cui gira la
+    suite. L'asserzione resta quella di prima: se manca l'incasso, il topic c'e'.
+    """
+    import datetime as _dtmod
+    from unittest.mock import patch as _patch
+    from services.fastapi_worker import _GIORNO_SOLLECITO_INCASSO
+
+    # 21/09/2026 e' un lunedi: +offset porta al giorno di emissione voluto.
+    giorno = 21 + _GIORNO_SOLLECITO_INCASSO
+
+    class _FakeDateTime(_dtmod.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return _dtmod.datetime(2026, 9, giorno, 12, 0, tzinfo=tz)
+
+    return _patch.object(_dtmod, "datetime", _FakeDateTime)
+
+
 def _topics(notifs):
     return {n["topic_key"] for n in notifs}
 
@@ -228,7 +253,8 @@ def test_incasso_ieri_mancante_genera_notifica():
         "fatturato_iva10": 1000, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
         "costo_dipendenti": 500, "costo_personale_extra": 0,
     }]
-    out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=False))
+    with _nel_giorno_del_sollecito_incasso():
+        out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=False))
     assert _topics(out) == {"incasso_mancante"}
 
 
@@ -255,7 +281,8 @@ def test_incasso_e_mensili_insieme():
     # Manca solo il fatturato del MESE PRECEDENTE: per averlo assente lo mettiamo a
     # zero ma teniamo un altro mese attivo? Semplifichiamo: fatturato presente ->
     # niente fatturato_mancante; restano personale (mese attivo a zero) + incasso.
-    out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=False))
+    with _nel_giorno_del_sollecito_incasso():
+        out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=False))
     assert _topics(out) == {"costo_personale_mancante", "incasso_mancante"}
 
 
