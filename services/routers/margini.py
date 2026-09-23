@@ -895,10 +895,13 @@ _TESTO_SENZA_SOGLIA_RETAIL = (
 # gia' lo riconosce per il SINGOLO mese, ma sull'aggregato non scattava: basta che
 # qualche mese i costi ce li abbia perche' la condizione sia falsa.
 #
-# NB: `costi_spese_totali` include le quote di riparto dei costi di gruppo
-# (margini.py, sp_tot). Un mese con 114 EUR di sola quota su 393.000 EUR di
-# ricavi conta quindi come "con costi" — e' la stessa soglia di `costi_mancanti`
-# (fastapi_worker._kpi_periodo), e la coerenza fra i due e' voluta.
+# NB: dal 23/09/2026 la soglia guarda i soli costi F&B. Un mese con 114 EUR di
+# sola quota di riparto SPESE su 393.000 EUR di ricavi resta quindi "senza
+# costi" — prima contava come "con costi", e il MOL usciva verde all'86% con
+# food cost 0%. Le quote di riparto F&B invece lo completano: e' merce comprata
+# dal gruppo. E' la stessa soglia di `costi_mancanti` (fastapi_worker.
+# _kpi_periodo) e di `_costi_mese_per_sede` (routers/gruppo.py): la coerenza fra
+# le quattro e' voluta.
 #
 # Misurato il 16/09/2026 su una sede reale, anno in corso: 3 mesi su 9 senza alcun
 # costo e 3 senza personale portavano la media del MOL al 68%, con il giudizio

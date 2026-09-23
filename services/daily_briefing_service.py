@@ -132,7 +132,15 @@ logger = get_logger('daily_briefing')
 #               continuerebbe a vedere la card vecchia per tutta la giornata
 #               (cache giornaliera + TTL 30'). Per i ristoranti lo snapshot e'
 #               invariato — la rigenerazione produce lo stesso testo di ieri.
-_BRIEFING_CODE_VERSION = 25
+#          v25->v26 (23/09/2026): la soglia "mese senza costi" guarda i soli
+#               costi F&B, non piu' F&B + spese. La card `fatture_mancanti`
+#               (tipo `mese_senza_costi`) nasce da `_costi_automatici_mese`, che
+#               ora ignora le spese: le sedi con sole utenze e zero merce prima
+#               NON ricevevano l'avviso e ora lo ricevono — misurati 4 mesi a DB
+#               (CASATI 14 Set 2026, SUSHILAND x3 Gen 2026, 101-114 EUR di sole
+#               spese). Cambia l'insieme delle notifiche nello snapshot: senza
+#               bump quelle sedi resterebbero senza la card fino a scadenza.
+_BRIEFING_CODE_VERSION = 26
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

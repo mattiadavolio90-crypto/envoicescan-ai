@@ -144,10 +144,29 @@ class TestCompletezzaStessoCriterio:
 class TestCostiMesePerSede:
     """L'helper che estrae gli EURO del mese dalla struttura dei costi di gruppo."""
 
-    def test_somma_food_e_spese_del_mese_richiesto(self):
+    def test_conta_la_merce_e_ignora_le_spese_del_mese_richiesto(self):
+        """I soli F&B: 13.677,05, non 13.892,53 (che includeva 215,48 di spese).
+
+        Fino al 23/09/2026 sommava food + spese, e bastavano 114 EUR di utenze a
+        dichiarare "completo" un mese senza una sola bolla di merce: la Salute di
+        gruppo dava il verde mentre il PV della stessa sede diceva «mancano le
+        fatture costo» (SUSHILAND gennaio 2026). Gemella di
+        `_costi_automatici_mese` nel PV: vanno mosse insieme.
+        """
         costi = {RID: ({8: 13677.05, 7: 999.0}, {8: 215.48})}
         out = gruppo._costi_mese_per_sede("u1", [RID], 2026, 8, costi_auto=costi)
-        assert out == {RID: pytest.approx(13892.53)}
+        assert out == {RID: pytest.approx(13677.05)}
+
+    def test_le_sole_spese_non_bastano_a_completare_il_mese(self):
+        """Il caso SUSHILAND gennaio: 114 EUR di utenze, zero merce -> 0.
+
+        E' il valore che i due chiamanti confrontano con `> 0` (gruppo.py:820 e
+        1952) per decidere la voce «fatture» della Salute di catena e la riga
+        «Mancano le fatture costo»: se qui torna 114, la catena contraddice il PV.
+        """
+        costi = {RID: ({8: 0.0}, {8: 114.0})}
+        out = gruppo._costi_mese_per_sede("u1", [RID], 2026, 8, costi_auto=costi)
+        assert out == {RID: 0.0}
 
     def test_mese_senza_costi_vale_zero(self):
         costi = {RID: ({7: 999.0}, {})}
@@ -177,4 +196,6 @@ class TestCostiMesePerSede:
         # usasse datetime.now().year sopravviverebbe (misurato, e' successo).
         out = gruppo._costi_mese_per_sede("u1", [RID], 2019, 12, costi_auto=None)
         assert chiamate == [2019], "deve chiedere l'anno del mese chiuso, non quello corrente"
-        assert out == {RID: 600.0}
+        # 500 di merce, non 600: le 100 di spese non contano dal 23/09/2026.
+        # Quello che questo test presidia resta l'ANNO interrogato, qui sopra.
+        assert out == {RID: 500.0}

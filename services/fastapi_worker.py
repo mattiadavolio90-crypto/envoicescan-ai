@@ -5687,8 +5687,9 @@ def _mesi_confrontabili(kpi: Dict[str, Any], kpi_prec: Dict[str, Any]) -> bool:
     """True se i due mesi reggono un confronto di MOL da dichiarare al cliente.
 
     Il gate storico guardava solo `costi_mancanti`, che per costruzione
-    (`_kpi_periodo`) e' `fatturato > 0 and fb <= 0 and spese <= 0`: e' False
-    proprio quando il fatturato e' 0, cioe' lascia passare il caso peggiore. In
+    (`_kpi_periodo`) e' `fatturato > 0 and fb <= 0` (fino al 23/09/2026 anche
+    `and spese <= 0`): e' False proprio quando il fatturato e' 0, cioe' lascia
+    passare il caso peggiore. In
     produzione ha prodotto «Agosto mostra un miglioramento: la perdita e' scesa
     a 9.380 EUR» su due mesi con fatturato 0,00 — dove la "perdita" era la sola
     somma dei costi e il "miglioramento" era che ne erano stati inseriti meno.

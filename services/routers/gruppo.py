@@ -692,7 +692,15 @@ def _costi_mese_per_sede(
     user_id: Optional[str], ids: List[str], anno: int, mese: int,
     costi_auto: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, float]]:
-    """EURO di costi automatici (food + spese) del mese, per sede.
+    """EURO di FATTURE MERCE (F&B) del mese, per sede.
+
+    Somma i soli costi F&B, non piu' food + spese (23/09/2026, gemella di
+    `_costi_automatici_mese` nel PV). Con la somma bastavano 114 EUR di utenze a
+    dichiarare "completo" un mese senza una sola bolla di merce: misurato lo
+    stesso giorno su SUSHILAND gennaio 2026, la Salute di gruppo dava il verde e
+    metteva la sede a indice pieno mentre il PV della stessa sede diceva
+    «mancano le fatture costo». Il valore e' letto solo come `> 0` (righe 820 e
+    1952), mai come importo.
 
     Stessa fonte del PV (`_costi_automatici_mese` -> RPC costi_automatici_mensili):
     qui si usa la variante di gruppo, gia' calcolata da gruppo_overview
@@ -711,7 +719,7 @@ def _costi_mese_per_sede(
     costo". Con tutti e tre rotti insieme ogni sede risulta senza costi (indice
     100 -> 75, e un falso "mancano le fatture costo"). Non e' un falso VERDE, ed e'
     lo stesso comportamento di _costi_automatici_mese nel PV
-    (fastapi_worker.py:6272, `float(cfb.get(mese) or 0)`): divergere qui
+    (`float(cfb.get(mese) or 0)`): divergere qui
     ricreerebbe la divergenza PV/catena che questo fix elimina. Il posto giusto per
     chiuderlo e' far distinguere a calcola_costi_automatici_per_anno "zero costi"
     da "non lo so" — modifica che tocca tutti i chiamanti dei margini, PV incluso,
@@ -731,7 +739,7 @@ def _costi_mese_per_sede(
     out: Dict[str, float] = {}
     for rid in ids:
         food, spese = (costi_auto or {}).get(str(rid)) or ({}, {})
-        out[str(rid)] = float((food or {}).get(mese) or 0) + float((spese or {}).get(mese) or 0)
+        out[str(rid)] = float((food or {}).get(mese) or 0)
     return out
 
 
