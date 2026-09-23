@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Logo, Wordmark } from "@/components/brand/logo";
 import { LogoSpinner } from "@/components/brand/logo-spinner";
-import { isPhoneViewport } from "@/lib/device";
+import { serviVistaMobile } from "@/lib/device";
 
 // Su TELEFONO, in assenza di un next esplicito, il default e' /m (la PWA): cosi'
 // il login fa un full reload direttamente sulla vista mobile, senza il rimbalzo
@@ -18,9 +18,11 @@ import { isPhoneViewport } from "@/lib/device";
 // "Installa ONEFLUX". Atterrando direttamente su /m con un vero page load,
 // l'evento arriva mentre il listener di /m e' gia' montato.
 // I TABLET (iPad/Android tablet) vanno sempre su desktop: schermo grande, app
-// completa (vedi lib/device.ts).
+// completa (vedi lib/device.ts). Chi ha scelto "Versione desktop" dal menu di
+// /m resta su desktop anche rientrando dal login, altrimenti la scelta durerebbe
+// una sessione sola.
 function defaultNext(): string {
-  if (isPhoneViewport()) return "/m";
+  if (serviVistaMobile()) return "/m";
   return "/dashboard";
 }
 
@@ -99,7 +101,7 @@ function LoginForm() {
       // Atterraggio: admin → /admin; cliente catena (≥2 sedi) su desktop → /catena
       // (la plancia di gruppo è il suo punto di vista naturale, "prima l'insieme,
       // poi scendi nel PV"); tutti gli altri → default (/dashboard o /m su telefono).
-      const isCatena = (data.user?.num_sedi ?? 1) >= 2 && !isPhoneViewport();
+      const isCatena = (data.user?.num_sedi ?? 1) >= 2 && !serviVistaMobile();
       const destination =
         next ||
         (data.user?.is_admin ? "/admin" : isCatena ? "/catena" : defaultNext());

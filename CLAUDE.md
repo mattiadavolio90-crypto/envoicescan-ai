@@ -166,7 +166,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
   (PEP 562 non risolve i global lookup interni). Usa wrapper espliciti.
 - **`/m` è un frontend separato**, non responsive: va allineato a mano.
 - **Il frontend ha una rete, ma copre solo la logica pura.** Niente runner npm
-  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test): **40 file
+  (`deploy-vercel.yml` scatta su `apps/web/**`: deployerebbe a ogni test): **52 file
   `tests/test_*_frontend.py`** eseguono il TypeScript con node e coprono `lib/`,
   **non** rendering, hook, stato ed effetti — la logica di un `.tsx` va estratta lì.
 - **Né `tsc` né un test verde provano che il codice funzioni.** `tsc --noEmit` non
