@@ -102,20 +102,6 @@ def test_dopo_mezzanotte_la_finestra_non_e_quella_del_giorno_prima(monkeypatch):
     assert inizio == datetime(2026, 7, 18, 0, 0, tzinfo=ROMA)
 
 
-def test_il_messaggio_di_limite_dice_quando_si_azzera():
-    """Il 429 prometteva 'Riprova domani', che col fuso vecchio era falso.
-
-    Ora la finestra e' il giorno di Roma, quindi il contatore si azzera davvero
-    a mezzanotte — e il messaggio lo dice, invece di lasciarlo indovinare.
-    """
-    import inspect
-
-    sorgente = inspect.getsource(fw.chat_ai)
-    assert "Il contatore si azzera a mezzanotte" in sorgente
-    assert "Riprova domani" not in sorgente, (
-        "'Riprova domani' non dice quando: col contatore sul giorno di Roma "
-        "l'azzeramento e' a mezzanotte, e il messaggio deve dirlo"
-    )
 
 
 def test_un_blocco_lascia_traccia_nei_log(monkeypatch, caplog):
@@ -155,6 +141,19 @@ def test_un_blocco_lascia_traccia_nei_log(monkeypatch, caplog):
             fw.chat_ai(body, "Bearer x")
 
     assert ei.value.status_code == 429, f"atteso 429, ricevuto {ei.value.status_code}"
+
+    # Il testo che il cliente legge davvero, non quello scritto nel file: una
+    # guardia su `inspect.getsource` sopravvive a un mutante che sposta la frase
+    # in un commento e tronca il messaggio (provato dal reviewer: 7/7 verdi).
+    detail = str(ei.value.detail)
+    assert "si azzera a mezzanotte" in detail, (
+        "il 429 non dice quando riparte: «per oggi» da solo non basta, il "
+        f"cliente non sa se aspettare un'ora o un giorno. Detail: {detail!r}"
+    )
+    assert "domani" not in detail, (
+        "«domani» e' l'indicazione che era falsa col fuso UTC e resta imprecisa "
+        f"con quello di Roma: l'azzeramento e' a mezzanotte. Detail: {detail!r}"
+    )
     messaggi = " | ".join(r.getMessage() for r in caplog.records)
     assert "limite giornaliero raggiunto" in messaggi, (
         "il blocco non ha lasciato traccia nei log: un rifiuto resta invisibile "

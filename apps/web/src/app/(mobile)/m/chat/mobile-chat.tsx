@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MAX_STORICO_INVIATO, messaggioRisposta } from "@/lib/home-chat";
 import { Logo } from "@/components/brand/logo";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 // Il backend accetta al massimo 20 messaggi: inviamo solo la coda piu' recente
 // per non sforare dopo ~20 scambi (la conversazione resta intera a schermo).
-const MAX_STORICO_INVIATO = 16;
 
 const SUGGERIMENTI = [
   "Qual è il mio food cost?",
@@ -45,18 +45,13 @@ export function MobileChat() {
         body: JSON.stringify({ messages: nuovi.slice(-MAX_STORICO_INVIATO) }),
       });
       const data = (await res.json()) as { reply?: string; error?: string };
-      let reply: string;
-      if (data.reply) {
-        reply = data.reply;
-      } else if (res.status === 429) {
-        reply = data.error || "Hai raggiunto il limite di domande per oggi. Il contatore si azzera a mezzanotte.";
-      } else if (res.status === 403) {
-        reply = data.error || "La chat non è disponibile nel tuo piano attuale.";
-      } else if (res.status === 504) {
-        reply = "L'assistente ha impiegato troppo tempo. Riprova.";
-      } else {
-        reply = data.error || "Si è verificato un errore. Riprova.";
-      }
+      // Stessa decisione del desktop, presa in un solo posto. Era ricopiata a
+      // mano qui: le due copie erano identiche riga per riga, ma solo quella in
+      // `lib/` e' eseguita dai test — e infatti la correzione del messaggio 429
+      // ha dovuto toccarle entrambe. L'harness non esegue i .tsx: la logica che
+      // decide cosa legge il cliente deve stare in `lib/`, o nessun presidio la
+      // raggiunge.
+      const reply = messaggioRisposta(res.status, data);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "Errore di connessione. Controlla la rete e riprova." }]);

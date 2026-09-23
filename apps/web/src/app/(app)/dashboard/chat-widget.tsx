@@ -186,7 +186,7 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede
                 )}
               >
                 {esaurite
-                  ? "Limite di oggi raggiunto — torna domani"
+                  ? "Limite di oggi raggiunto — si azzera a mezzanotte"
                   : `Ti restano ${rimanenti} ${rimanenti === 1 ? "domanda" : "domande"} oggi`}
               </p>
             </div>

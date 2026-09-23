@@ -167,3 +167,42 @@ def test_contatore_su_altri_errori_non_si_muove():
 def test_contatore_zero_dal_backend_non_e_confuso_con_assente():
     """`typeof === "number"` e non `||`: lo zero e' un valore, non un'assenza."""
     assert _chiama("contatoreAggiornato", [200, {"domande_oggi": 0}, 20, 9]) == 0
+
+
+# ─── il mobile usa questa libreria, non una sua copia ─────────────────────
+
+def test_la_chat_mobile_non_ricopia_la_decisione_sui_messaggi():
+    """`/m/chat` deve CHIAMARE `messaggioRisposta`, non duplicarla.
+
+    Fino al 23/09/2026 `mobile-chat.tsx` aveva la stessa catena di `if`
+    ricopiata a mano, identica riga per riga. Due copie della stessa decisione
+    di cui l'harness ne esegue **una sola**: quando il messaggio del 429 e'
+    stato corretto perche' diceva il falso, la copia mobile e' rimasta indietro
+    e nessun test se ne e' accorto (il reviewer l'ha ucciso con un mutante che
+    sopravviveva).
+
+    Il presidio guarda la FORMA del .tsx perche' l'harness non esegue i
+    componenti: e' un limite dichiarato, non una svista. Uccide il mutante
+    realistico — reintrodurre la copia — e la logica vera resta provata dai
+    test di `messaggioRisposta` qui sopra, che la eseguono.
+    """
+    from pathlib import Path
+
+    sorgente = Path("apps/web/src/app/(mobile)/m/chat/mobile-chat.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "messaggioRisposta" in sorgente, (
+        "la chat mobile non chiama messaggioRisposta: se ha ricopiato la "
+        "decisione, il prossimo messaggio corretto restera' sbagliato qui"
+    )
+    assert 'from "@/lib/home-chat"' in sorgente, (
+        "messaggioRisposta deve arrivare da lib/home-chat, l'unica copia "
+        "eseguita dai test"
+    )
+    for testo in ("Hai raggiunto il limite di domande",
+                  "La chat non è disponibile nel tuo piano"):
+        assert testo not in sorgente, (
+            f"il .tsx contiene ancora il testo {testo!r}: e' una seconda copia "
+            "del messaggio, e vivrebbe fuori dalla portata dei test"
+        )
