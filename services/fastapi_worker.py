@@ -3657,6 +3657,12 @@ def _build_chat_system_prompt(
                     (float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)) > 0
                     for r in per_data
                 )
+                # Quarto consumatore della stessa regola (23/09): senza, prima del
+                # 15 la chat direbbe "non registrato" mentre briefing e card
+                # «Completezza dati» tacciono. Il cliente non vede tre fonti: vede
+                # l'assistente, che si contraddirebbe da solo.
+                if not _personale_gia_dovuto(_oggi_a, (_mc_anno, _mc_mese)):
+                    personale_ok = True
                 if not personale_ok:
                     _mesi_n2 = ["","gennaio","febbraio","marzo","aprile","maggio","giugno",
                                 "luglio","agosto","settembre","ottobre","novembre","dicembre"]

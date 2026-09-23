@@ -359,3 +359,47 @@ def test_la_campanella_passa_dallo_stesso_gate_del_briefing():
     assert "_briefing_dati_mensili_mancanti(" in src, (
         "la campanella non passa piu' dalla funzione col gate settimanale"
     )
+
+
+def test_il_prompt_chat_non_contraddice_briefing_e_card():
+    """Quarto consumatore: l'assistente non deve smentirsi da solo.
+
+    `_build_chat_system_prompt` calcola un suo `personale_ok` per iniettare
+    l'avviso «Costo del personale non registrato» nel prompt. Senza la guardia,
+    prima del 15 la chat lo direbbe mentre briefing e card «Completezza dati»
+    tacciono: il cliente non vede tre fonti, vede l'assistente.
+
+    Si guarda il TESTO del prompt generato, non il sorgente: e' quello che
+    finisce al modello.
+    """
+    import services.fastapi_worker as fw
+
+    per_riga = {"costo_dipendenti": 0, "costo_personale_extra": 0}
+
+    def _prompt(giorno):
+        sb = _sb_salute([per_riga])
+        # Qui la data NON passa da `datetime.datetime` ma da `_oggi_rome()`:
+        # `_oggi` da solo non basta, va patchato anche quello o la guardia
+        # vedrebbe la data vera e il test misurerebbe il giorno in cui gira.
+        with _oggi(giorno), patch(
+            "services.fastapi_worker._oggi_rome",
+            return_value=date(2026, 9, giorno),
+        ), patch(
+            "services.fastapi_worker._costi_automatici_mese", return_value=5000.0
+        ):
+            return fw._build_chat_system_prompt(
+                {"id": "user-1", "pagine_abilitate": ["margini"]},
+                sb,
+                None,
+                ristorante_id=RID,
+            )
+
+    # Niente try/except: uno skip silenzioso e' un presidio che non misura.
+    prima, dopo = _prompt(3), _prompt(20)
+
+    assert "Costo del personale non registrato" not in prima, (
+        "la chat reclama il personale prima che sia dovuto, mentre il briefing tace"
+    )
+    assert "Costo del personale non registrato" in dopo, (
+        "dal 15 il dato e' dovuto: se manca, la chat deve poterlo dire"
+    )

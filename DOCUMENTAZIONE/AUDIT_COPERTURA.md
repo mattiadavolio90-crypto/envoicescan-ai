@@ -512,8 +512,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   docstring di `home_salute` dichiara di voler evitare, e `_salute_indice_rosso`
 >   e' **il gate della buona notizia**, quindi un dato non ancora dovuto la
 >   sopprimeva. Regola unica in `_personale_gia_dovuto`, col caso del capodanno.
->   `_BRIEFING_CODE_VERSION` 24 -> 25. **Mutanti: 11 applicati, 11 uccisi**, uno
->   alla volta; piu' il ramo "crescita" dichiarato non presidiabile.
+>   `_BRIEFING_CODE_VERSION` 24 -> 25. **Mutanti: 12 applicati, 11 uccisi, 1
+>   sopravvissuto per scelta dichiarata** (cambiare il VALORE del giorno: quale
+>   giorno e' prodotto, non regola — i test lo derivano dalla costante apposta);
+>   piu' il ramo "crescita" della buona notizia, non presidiabile per aritmetica
+>   e percio' non contato. Uno alla volta, ripristino da `git checkout`.
 >   **Tre miei errori di metodo, corretti e registrati perche' si ripetono:**
 >   (1) ho chiamato in due punti una `def` andata persa in una riscrittura —
 >   sintassi valida, suite verde, due `NameError` in produzione, perche' nessun
@@ -537,7 +540,17 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `ristoranti`) e `_briefing_dati_mensili_mancanti` **non lo legge**: una sede
 >   chiusa nel giorno guardato riceve l'avviso a vuoto; (iii) il mobile continua a
 >   scrivere in `notification_inbox` una riga al giorno che nessun lettore in
->   produzione usa piu'. **Non pushato**: lo decide Mattia.
+>   produzione usa piu'; (iv) **due segnali sui ricavi con due politiche
+>   diverse** nello stesso briefing — `upload_ricavi_failed` tollera le chiusure
+>   (`finestra = giorni_chiusura + 1`, `fastapi_worker.py:7341`, e il commento
+>   li lega esplicitamente per coerenza) mentre `incasso_mancante` no. Oggi il
+>   giovedi' lo maschera; riappare il giorno in cui qualcuno ritara la costante.
+>   E' la stessa famiglia di (ii). **Chiuso invece il quarto consumatore della
+>   regola del personale**, trovato dal reviewer nell'ultima passata sulle
+>   inerenze: il prompt della chat (`_build_chat_system_prompt`) calcolava il suo
+>   `personale_ok` senza la guardia e prima del 15 avrebbe detto «non
+>   registrato» mentre briefing e card tacevano — l'assistente si sarebbe
+>   contraddetto da solo. **Non pushato**: lo decide Mattia.
 
 ---
 
