@@ -512,8 +512,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   docstring di `home_salute` dichiara di voler evitare, e `_salute_indice_rosso`
 >   e' **il gate della buona notizia**, quindi un dato non ancora dovuto la
 >   sopprimeva. Regola unica in `_personale_gia_dovuto`, col caso del capodanno.
->   `_BRIEFING_CODE_VERSION` 24 -> 25. **Mutanti: 12 applicati, 11 uccisi, 1
->   sopravvissuto per scelta dichiarata** (cambiare il VALORE del giorno: quale
+>   `_BRIEFING_CODE_VERSION` 24 -> 25. **Mutanti: 13 applicati, 12 uccisi, 1
+>   sopravvissuto per scelta dichiarata** (il tredicesimo e' la guardia della
+>   chat, aggiunta dall'ultimo commit della fase: tolta, cade
+>   `test_il_prompt_chat_non_contraddice_briefing_e_card`; l'unico
+>   sopravvissuto resta cambiare il VALORE del giorno: quale
 >   giorno e' prodotto, non regola — i test lo derivano dalla costante apposta);
 >   piu' il ramo "crescita" della buona notizia, non presidiabile per aritmetica
 >   e percio' non contato. Uno alla volta, ripristino da `git checkout`.
