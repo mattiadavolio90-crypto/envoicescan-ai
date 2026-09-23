@@ -27,10 +27,16 @@ export function formatEuroCompact(v: number): string {
   // `formatEuro`: con lo spazio normale i due rami della funzione
   // produrrebbero una spaziatura diversa a un euro di distanza, e il numero
   // potrebbe andare a capo staccandosi dal simbolo.
-  const milioni = Number((abs / 1_000_000).toFixed(1));
-  if (milioni >= 1) return `${(v / 1_000_000).toFixed(1)}M\u00a0€`;
-  const migliaia = Number((abs / 1000).toFixed(1));
-  if (migliaia >= 1) return `${(v / 1000).toFixed(1)}k\u00a0€`;
+  // La soglia si confronta sul valore VERO: confrontarla sull'arrotondato
+  // faceva collassare tutta la banda superiore (980.000 usciva «1.0M €», e
+  // 951 usciva «1.0k €»). Il gradino mancante si chiude dopo, promuovendo il
+  // RISULTATO quando toFixed lo porta a 1000 — 999.999 dava «1000.0k».
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M\u00a0€`;
+  if (abs >= 1000) {
+    const k = (v / 1000).toFixed(1);
+    if (Math.abs(Number(k)) >= 1000) return `${(v / 1_000_000).toFixed(1)}M\u00a0€`;
+    return `${k}k\u00a0€`;
+  }
   return formatEuro(v);
 }
 

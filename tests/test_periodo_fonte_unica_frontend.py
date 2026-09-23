@@ -14,11 +14,16 @@ Due difetti che le copie avevano:
    il 22/09: zero righe con `data_documento` futura in tutto il parco, quindi
    nessun numero cambia — cambia solo cio' che la pagina dichiara.
 
-**Perche' due implementazioni e non una.** `lib/catena-confronti.ts` tiene la
-propria `intervalloMese`: `tests/helpers_ts.py` esegue quel modulo con node, che
-non risolve un import relativo senza estensione, e un re-export lo rompe
-(provato: 12 test rossi con ERR_MODULE_NOT_FOUND). L'ultimo test di questo file
-e' la rete che impedisce alle due di divergere.
+**Una sola implementazione.** `lib/catena-confronti.ts` la ri-esporta da qui.
+Un primo tentativo con un import RELATIVO (`./periodo`) falliva sotto node e
+mi aveva fatto concludere che servissero due copie: sbagliato, l'harness
+risolve l'alias `@/` (`helpers_ts.py`, `registerHooks`) e con quello funziona.
+
+**Lo zero-padding del giorno finale non e' presidiato, ed e' dichiarato.**
+Nessun mese finisce prima del 28, quindi un test che chiama la funzione non
+puo' vedere la differenza; un assert sul sorgente passerebbe col bug spostato
+in un commento (provato). Meglio dire che la riga non e' presidiabile che
+simulare una copertura.
 """
 import pytest
 
@@ -69,23 +74,6 @@ class TestIntervalloMese:
         for m in range(1, 13):
             assert len(_mese(2026, m)["data_a"]) == 10, m
 
-    def test_il_padding_del_giorno_c_e_davvero(self):
-        """La prova che il test sopra non puo' dare: si guarda il SORGENTE.
-
-        Il mutante «togli `padStart` dal giorno» sopravvive a qualunque test
-        che chiami la funzione con mesi reali. L'unico modo di presidiarlo e'
-        verificare che la formattazione ci sia — il difetto non e' raggiungibile
-        dai dati, ma una riscrittura futura potrebbe renderlo tale (un mese
-        parziale, un range che finisce a meta').
-        """
-        from pathlib import Path
-        sorgente = (Path(__file__).resolve().parents[1] / "apps" / "web" / "src"
-                    / "lib" / "periodo.ts").read_text(encoding="utf-8")
-        assert 'String(ultimo).padStart(2, "0")' in sorgente, (
-            "il giorno finale non e' piu' zero-paddato: `2026-02-9` non e' una "
-            "data ISO valida e il backend la rifiuterebbe"
-        )
-
 
 class TestIntervalloPeriodo:
     def test_il_mese_delega_a_intervallo_mese(self):
@@ -113,19 +101,3 @@ class TestIntervalloPeriodo:
 
     def test_giorno_e_mese_a_due_cifre_anche_a_inizio_anno(self):
         assert _periodo(2026, None, "2026-03-05")["data_a"] == "2026-03-05"
-
-
-def test_le_due_implementazioni_di_intervallo_mese_non_divergono():
-    """`lib/catena-confronti.ts` tiene la sua copia per un limite dell'harness
-    (vedi il docstring in testa). Questa e' la rete che impedisce alle due di
-    allontanarsi in silenzio: l'anno intero, mese per mese, su un bisestile e
-    su un anno normale."""
-    for anno in (2024, 2026):
-        for mese in range(1, 13):
-            dalla_catena = esegui_ts(
-                "lib/catena-confronti",
-                "emit(m.intervalloMese(input.anno, input.mese));",
-                argomento={"anno": anno, "mese": mese},
-                richiede=["intervalloMese"],
-            )
-            assert dalla_catena == _mese(anno, mese), (anno, mese)

@@ -385,10 +385,16 @@ class TestFormatEuroCompact:
         assert _compatto(1000) == "1.0k €"
         assert _compatto(5200) == "5.2k €"
 
-    def test_il_valore_che_arrotonda_a_mille_non_resta_indietro(self):
-        """999,6 usciva «1000 €» mentre 1000 usciva «1.0k»: stesso ordine di
-        grandezza, due scritture diverse."""
-        assert _compatto(999.6) == "1.0k €"
+    def test_sotto_i_mille_resta_in_euro_anche_se_arrotonderebbe(self):
+        """999,6 si scrive «1000 €», non «1.0k €».
+
+        Il 22/09/2026 avevo provato a uniformarlo spostando la soglia sul
+        valore ARROTONDATO. Sbagliato: faceva collassare tutta la banda
+        superiore — 980.000 € usciva «1.0M €», e a DB c'erano 14 celle reali
+        fra 950,50 e 999,99 che si leggevano «1.0k». Un difetto di confine
+        scambiato per un difetto di regola. La soglia resta sul valore vero.
+        """
+        assert _compatto(999.6) == "1000 €"
         assert _compatto(1000) == "1.0k €"
 
     def test_non_esiste_piu_mille_k(self):
@@ -407,12 +413,18 @@ class TestFormatEuroCompact:
     def test_lo_zero(self):
         assert _compatto(0) == "0 €"
 
-    def test_la_soglia_delle_migliaia_cade_dove_si_arrotonda(self):
-        """Sotto 950 resta in euro, sopra passa a k: e' il punto in cui
-        `toFixed(1)` porta a 1.0."""
+    def test_la_soglia_e_mille_esatti_non_il_punto_di_arrotondamento(self):
+        """La banda 951-999 resta in euro: e' la regressione del 22/09, in cui
+        951 usciva «1.0k €» perche' la soglia guardava l'arrotondato."""
         assert _compatto(950) == "950 €"
-        assert _compatto(951) == "1.0k €"
+        assert _compatto(951) == "951 €"
+        assert _compatto(999) == "999 €"
+        assert _compatto(1000) == "1.0k €"
 
-    def test_la_soglia_dei_milioni_cade_dove_si_arrotonda(self):
-        assert _compatto(950_000) == "950.0k €"
-        assert _compatto(950_001) == "1.0M €"
+    def test_la_banda_sotto_il_milione_non_collassa(self):
+        """980.000 € deve leggersi «980.0k €». Con la soglia sull'arrotondato
+        usciva «1.0M €»: 14 celle reali a DB lo mostravano sbagliato."""
+        assert _compatto(951_000) == "951.0k €"
+        assert _compatto(980_000) == "980.0k €"
+        assert _compatto(999_000) == "999.0k €"
+        assert _compatto(1_000_000) == "1.0M €"

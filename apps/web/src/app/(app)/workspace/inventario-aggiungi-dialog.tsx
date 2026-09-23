@@ -260,7 +260,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
                   <span className="font-medium">{a.nome}</span>
                   <span className="ml-2 text-xs text-muted-foreground">
                     {a.categoria} · {a.um}
-                    {a.prezzo_unitario > 0 && ` · €${a.prezzo_unitario.toFixed(4)}`}
+                    {a.prezzo_unitario > 0 && ` · ${formatEuro(a.prezzo_unitario, 4)}`}
                   </span>
                 </button>
               ))}

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { formatEuro } from "@/lib/format";
 import {
   CATEGORIE_RICETTE, FC_BADGE_CLASS, fmtEuro, fmtPct, messaggioErroreRisposta,
   type RicettaDettaglio, type RigaRicetta, type Ingrediente, type IngredientiResponse,
@@ -93,10 +94,10 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
   function labelIngrediente(ing: Ingrediente): string {
     if (ing.tipo === "articolo") {
       const gram = ing.grammatura_str ? ` · ${ing.grammatura_str}` : "";
-      return `${ing.nome}  €${ing.prezzo_unitario.toFixed(2)}/${ing.um}${gram}`;
+      return `${ing.nome}  ${formatEuro(ing.prezzo_unitario, 2)}/${ing.um}${gram}`;
     }
-    if (ing.tipo === "manuale") return `${ing.nome}  €${ing.prezzo_unitario.toFixed(2)}/${ing.um} · manuale`;
-    return `${ing.nome}  €${ing.foodcost_ricetta.toFixed(2)} · semilavorato`;
+    if (ing.tipo === "manuale") return `${ing.nome}  ${formatEuro(ing.prezzo_unitario, 2)}/${ing.um} · manuale`;
+    return `${ing.nome}  ${formatEuro(ing.foodcost_ricetta, 2)} · semilavorato`;
   }
 
   function aggiungiIngrediente(ing: Ingrediente) {

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { RipartisciDialog, type RegolaPreset } from "@/components/fatture/ripartisci-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatEuro } from "@/lib/format";
 
 type FatturaDaAssegnare = {
   queue_id: number;
@@ -633,7 +634,7 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
                             <td className="px-3 py-2 text-right tabular-nums">{r.quantita ?? "—"}</td>
                             <td className="px-3 py-2 text-muted-foreground">{r.unita_misura ?? ""}</td>
                             <td className="px-3 py-2 text-right tabular-nums">
-                              {r.prezzo_unitario != null ? `€${r.prezzo_unitario.toFixed(4)}` : "—"}
+                              {r.prezzo_unitario != null ? formatEuro(r.prezzo_unitario, 4) : "—"}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                               {r.iva_percentuale ?? "—"}%

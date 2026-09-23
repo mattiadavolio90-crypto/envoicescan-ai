@@ -1445,6 +1445,14 @@ export function PersonaleTab() {
   const costoStdTotale = Object.values(costoStdPerPersona).reduce((s, v) => s + v, 0);
   const costoExtTotale = Object.values(costoExtPerPersona).reduce((s, v) => s + v, 0);
   const costoTotale = costoStdTotale + costoExtTotale;
+  // La card «Totale» somma DUE assi — ore e costo — e ha senso se almeno uno
+  // dei due ha davvero due addendi. Guardare le sole ore la nascondeva anche
+  // quando il costo totale era una sintesi vera (straordinario pagato ma con
+  // le ore contate altrove), e la mostrava quando entrambi gli assi avevano
+  // un addendo solo.
+  const sommaDueOre = oreStdTotale > 0 && oreExtTotale > 0;
+  const sommaDueCosti = costoStdTotale > 0 && costoExtTotale > 0;
+  const totaleEUnaSintesi = sommaDueOre || sommaDueCosti;
   const totaleOre = oreStdTotale + oreExtTotale;
 
   // I chip-giorno del dialog sono sempre quelli del mese in vista.
@@ -1546,7 +1554,7 @@ export function PersonaleTab() {
           {/* Due o tre colonne secondo quante card ci sono davvero: con la
               Card 3 nascosta, `sm:grid-cols-3` lascerebbe un buco a destra —
               cioe' la cornice vuota che questo lavoro elimina altrove. */}
-          <div className={`grid grid-cols-1 gap-3 ${oreStdTotale > 0 && oreExtTotale > 0 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+          <div className={`grid grid-cols-1 gap-3 ${totaleEUnaSintesi ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
             {/* Card 1: Ore ordinarie */}
             <Card className="ring-1 ring-border bg-card">
               <CardContent className="py-5 px-6 space-y-2">
@@ -1579,14 +1587,15 @@ export function PersonaleTab() {
               </CardContent>
             </Card>
 
-            {/* Card 3: Totale — solo se somma DUE addendi veri.
-                Con lo straordinario a zero ripeteva parola per parola la Card 1
-                («303h 30m» scritto due volte a due centimetri di distanza); col
-                caso opposto — ore ordinarie a zero e solo straordinario, che
-                capita quando i giorni sono tutti riposo/ferie tranne gli extra —
-                ripeteva la Card 2. Una somma di un addendo solo non e' una
-                sintesi, e' la stessa cifra scritta in grande una seconda volta. */}
-            {oreStdTotale > 0 && oreExtTotale > 0 && (
+            {/* Card 3: Totale — solo se somma DUE addendi veri, su ore O su
+                costo (ne porta entrambi). Con lo straordinario a zero ripeteva
+                parola per parola la Card 1 («303h 30m» scritto due volte a due
+                centimetri di distanza); col caso opposto — ore ordinarie a zero
+                e solo straordinario, che capita quando i giorni sono tutti
+                riposo/ferie tranne gli extra — ripeteva la Card 2. Una somma di
+                un addendo solo non e' una sintesi, e' la stessa cifra scritta in
+                grande una seconda volta. */}
+            {totaleEUnaSintesi && (
             <Card className="ring-1 ring-primary/50 bg-card">
               <CardContent className="py-5 px-6 space-y-2">
                 <div className="flex justify-between">

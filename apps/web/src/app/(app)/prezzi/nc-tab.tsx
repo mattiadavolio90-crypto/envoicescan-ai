@@ -114,9 +114,10 @@ export function NcTab() {
           Variazioni) e del resto dell'app: chip, non due tendine. Fino al
           22/09/2026 questa era l'UNICA pagina su nove col menu a tendina, e
           offriva anche meno: mancava l'intervallo personalizzato che tutte le
-          sorelle hanno. `components/ui/filtro-mese-anno.tsx` resta in casa ma
-          senza consumatori: il suo commento dichiarava «componente unico»
-          mentre lo usava una pagina sola. */}
+          sorelle hanno. Il componente `filtro-mese-anno.tsx` che rendeva le due
+          tendine e' stato RIMOSSO con questa modifica: dichiarava «componente
+          unico → niente piu' copie da mantenere» e lo usava questa sola
+          pagina. */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
           {(["anno_corrente", "mese_specifico", "personalizzato"] as PeriodoPreset[]).map((p) => {

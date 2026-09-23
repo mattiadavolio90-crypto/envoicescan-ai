@@ -38,6 +38,7 @@ _MIGRATI = [
     "app/(mobile)/m/diario/mobile-spese.tsx",
     "app/(mobile)/m/diario/mobile-incassi.tsx",
     "app/(mobile)/m/turni/mobile-turni.tsx",
+    "lib/foodcost.ts",
     "app/(app)/prezzi/sconti-tab.tsx",
     "app/(app)/prezzi/nc-tab.tsx",
     "app/(app)/prezzi/score-tab.tsx",
@@ -46,25 +47,26 @@ _MIGRATI = [
     "app/(app)/analisi-e-tag/analisi-e-tag-client.tsx",
 ]
 
-# L'ECCEZIONE, documentata e presidiata: `lib/foodcost.ts` tiene la sua copia
-# perche' `tests/helpers_ts.py` lo esegue con node, che non risolve un import
-# relativo senza estensione (provato il 22/09/2026: 11 test rossi con
-# ERR_MODULE_NOT_FOUND). Non e' una deroga: l'ultimo test di questo file prova
-# che il suo output resta identico a `formatEuro(v, 2)`, valore per valore.
-_COPIA_AMMESSA = "lib/foodcost.ts"
-
-# `Intl.NumberFormat(... currency ...)`: la formula che le copie ripetevano.
-# Su piu' righe, quindi DOTALL e ricerca sul testo intero.
+# Due grafie, non una. La prima e' `currency: "EUR"`; la seconda e' un
+# `Intl.NumberFormat` NEUTRO con accanto il simbolo dell'euro, che e' come si
+# scrive una copia col simbolo in testa e sfuggiva al regex precedente
+# (provato per mutazione il 22/09: il presidio la lasciava passare).
+# Non basta cercare `Intl.NumberFormat("it-IT")` e basta: formatta anche
+# quantita' e pesi, che euro non sono — cercare la famiglia sbagliata accende
+# il rosso su codice corretto, che e' l'altro modo di rendere inutile un test.
 _FORMULA_VALUTA = re.compile(
     r'Intl\.NumberFormat\(\s*"it-IT"\s*,\s*\{[^}]*currency\s*:\s*"EUR"',
     re.S,
+)
+_SIMBOLO_ACCANTO = re.compile(
+    r'(?:€|\\u20ac)[^\n]{0,20}Intl\.NumberFormat|Intl\.NumberFormat[^\n]{0,80}\}\)[^\n]{0,10}(?:€|\\u20ac)'
 )
 
 
 @pytest.mark.parametrize("percorso", _MIGRATI)
 def test_nessuna_copia_locale_del_formattatore_euro(percorso):
     testo = (_SRC / percorso).read_text(encoding="utf-8")
-    trovate = _FORMULA_VALUTA.findall(testo)
+    trovate = _FORMULA_VALUTA.findall(testo) + _SIMBOLO_ACCANTO.findall(testo)
     assert not trovate, (
         f"{percorso} ridefinisce il formattatore euro invece di usare "
         "`formatEuro` da lib/format: le copie divergono in silenzio "
@@ -78,8 +80,15 @@ def test_il_simbolo_non_torna_in_testa(percorso):
     del prodotto e' «322,10 €». Si cerca il simbolo concatenato PRIMA di un
     numero interpolato, che e' come le copie lo scrivevano."""
     testo = (_SRC / percorso).read_text(encoding="utf-8")
-    # `€ ${...}` dentro un template literal: la firma della forma in testa.
-    in_testa = re.findall(r"`€\s*\$\{", testo)
+    # Tre grafie, non una: il template literal, la concatenazione con `+`, e
+    # l'escape unicode. Col solo pattern del template una copia scritta
+    # `"\u20ac " + ...` passava indisturbata (provato per mutazione).
+    simbolo = r"(?:€|\\u20ac)"
+    in_testa = (
+        re.findall(rf"`{simbolo}\s*\$\{{", testo)
+        + re.findall(rf'"{simbolo}\s*"\s*\+', testo)
+        + re.findall(rf"'{simbolo}\s*'\s*\+", testo)
+    )
     assert not in_testa, (
         f"{percorso} scrive di nuovo il simbolo prima del numero: "
         "lo standard del prodotto e' in coda («322,10 €»), deciso il 22/09."
@@ -94,44 +103,3 @@ def test_il_formattatore_unico_esiste_e_mette_il_simbolo_in_coda():
         "formatEuro non usa piu' Intl con style:currency: in it-IT e' cio' "
         "che mette il simbolo in coda"
     )
-
-
-def test_la_copia_ammessa_di_foodcost_resta_identica_alla_libreria():
-    """L'eccezione non deve diventare una divergenza.
-
-    `lib/foodcost.ts` non puo' importare `formatEuro` (limite dell'harness,
-    vedi `_COPIA_AMMESSA`), quindi la sua `fmtEuro` e' l'unica copia rimasta.
-    Qui si prova che produce la STESSA stringa della libreria — inclusi i
-    limiti di arrotondamento e lo spazio unificatore, che a occhio non si
-    distingue ma in un confronto di stringhe si'.
-    """
-    from tests.helpers_ts import esegui_ts
-
-    valori = [0, 0.5, 1, 1.005, 2.675, 999.99, 1000, 1234.56, -1234.56,
-              1_000_000, 27.6, 730, 322.10, 0.001, 1.2345, 9999.99, 10000]
-    for v in valori:
-        dalla_copia = esegui_ts(
-            "lib/foodcost",
-            "emit(m.fmtEuro(input));",
-            argomento=v,
-            richiede=["fmtEuro"],
-        )
-        dalla_libreria = esegui_ts(
-            "lib/format",
-            "emit(m.formatEuro(input, 2));",
-            argomento=v,
-            richiede=["formatEuro"],
-        )
-        assert dalla_copia == dalla_libreria, (v, dalla_copia, dalla_libreria)
-
-
-def test_la_copia_ammessa_tiene_la_guardia_sul_null():
-    """`formatEuro` su null lancia TypeError: la guardia e' cio' che rende la
-    copia usabile dove il dato puo' mancare."""
-    from tests.helpers_ts import esegui_ts
-
-    assert esegui_ts(
-        "lib/foodcost",
-        "emit(m.fmtEuro(null));",
-        richiede=["fmtEuro"],
-    ) == "—"

@@ -984,7 +984,7 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
                                 <td className="px-3 py-2 text-right tabular-nums">{r.quantita ?? "—"}</td>
                                 <td className="px-3 py-2 text-muted-foreground">{r.unita_misura ?? ""}</td>
                                 <td className="px-3 py-2 text-right tabular-nums">
-                                  {r.prezzo_unitario != null ? `€${r.prezzo_unitario.toFixed(4)}` : "—"}
+                                  {r.prezzo_unitario != null ? formatEuro(r.prezzo_unitario, 4) : "—"}
                                 </td>
                                 <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.iva_percentuale ?? "—"}%</td>
                                 <td className="px-3 py-2 text-right tabular-nums font-medium">{formatEuro(r.totale_riga)}</td>

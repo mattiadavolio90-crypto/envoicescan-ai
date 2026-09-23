@@ -197,19 +197,11 @@ export function pvPiuCaro(row: SpesaPivotRow, pv: { id: string }[]): string | nu
 // Estremi del mese per la query: primo giorno -> ultimo giorno effettivo.
 // `new Date(anno, m, 0)` con m 1-based da' l'ultimo giorno del mese m (giorno 0
 // del mese successivo), quindi gestisce 28/29/30/31 senza tabelle.
-// NOTA (22/09/2026): questa e' l'implementazione su cui sono state unificate le
-// 5 copie sparse di `isoDateRange`/`isoRange` — era l'unica che zero-padda anche
-// il giorno finale. `lib/periodo.ts` la ripete invece di importarla da qui:
-// `tests/helpers_ts.py` esegue questo modulo con node, che non risolve un
-// import relativo senza estensione, e un re-export lo romperebbe (provato).
-// Le due copie sono tenute allineate da un test di equivalenza.
-export function intervalloMese(anno: number, mese: number): { data_da: string; data_a: string } {
-  const ultimo = new Date(anno, mese, 0).getDate(); // ultimo giorno del mese
-  return {
-    data_da: `${anno}-${String(mese).padStart(2, "0")}-01`,
-    data_a: `${anno}-${String(mese).padStart(2, "0")}-${String(ultimo).padStart(2, "0")}`,
-  };
-}
+// Ri-esportata da `lib/periodo`, la fonte unica degli intervalli dal
+// 22/09/2026: questa era l'implementazione su cui sono state unificate le 5
+// copie sparse di `isoDateRange`/`isoRange`, perche' e' l'unica che zero-padda
+// anche il giorno finale. I 12 test che la coprono continuano a puntare qui.
+export { intervalloMese } from "@/lib/periodo";
 
 // Incidenza % di un totale PV sul totale generale.
 //

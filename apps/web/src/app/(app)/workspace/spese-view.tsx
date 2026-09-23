@@ -292,6 +292,10 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
   const totFb = risposta?.totale_fb ?? 0;
   const totGenerale = risposta?.totale_generale ?? 0;
   const totale = risposta?.totale ?? 0;
+  // «Totale extra» somma F&B e Generali: ha senso solo se ci sono voci di
+  // entrambi i tipi, altrimenti ripete la card accanto.
+  const entrambeLeFamiglie =
+    tutteVoci.some(v => v.tipo === "fb") && tutteVoci.some(v => v.tipo === "generale");
 
   // Sta dopo `voci` e non prima come la versione precedente: quella controllava
   // `risposta.voci` (il mese intero) e scriveva `voci` (il mese filtrato), e con
@@ -378,10 +382,15 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
 
       {/* KPI totali — stile coerente con Personale (card grandi).
           La card «Totale extra» compare solo se somma DUE addendi veri: con una
-          delle due componenti a zero ripeteva parola per parola la card accanto
-          («100,00 €» scritto due volte), e la griglia si adatta al numero di
-          card per non lasciare un buco. Stessa regola di Personale. */}
-      <div className={`grid grid-cols-1 gap-3 ${totFb !== 0 && totGenerale !== 0 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+          sola famiglia di voci ripeteva parola per parola la card accanto
+          («100,00 €» scritto due volte), e la griglia si adatta per non
+          lasciare un buco.
+          Il criterio e' l'ESISTENZA delle voci, non il totale diverso da zero:
+          `totale` e' la somma delle altre due (workspace.py), quindi con
+          importi di segno opposto che si annullano un test sullo zero
+          nasconderebbe la card proprio quando non duplica nulla, e la
+          mostrerebbe a «0,00 €» quando invece duplica. */}
+      <div className={`grid grid-cols-1 gap-3 ${entrambeLeFamiglie ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <Card className="ring-1 ring-border bg-card">
           <CardContent className="py-5 px-6 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Costi F&amp;B extra</p>
@@ -394,7 +403,7 @@ export function SpeseView({ settore }: { settore?: Settore | null } = {}) {
             <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtEuro(totGenerale)}</p>
           </CardContent>
         </Card>
-        {totFb !== 0 && totGenerale !== 0 && (
+        {entrambeLeFamiglie && (
           <Card className="ring-1 ring-primary/50 bg-card">
             <CardContent className="py-5 px-6 space-y-2">
               <p className="text-xs font-semibold uppercase tracking-widest text-primary-text">Totale extra</p>
