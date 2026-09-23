@@ -74,14 +74,37 @@ uno strumento che legge il DB**, mai dalla memoria del modello. L'LLM decide
 | Retry su timeout/5xx | 1 | loop interno |
 | Timeout OpenAI | 30s (worker) / 35s (route.ts) | client OpenAI + `CHAT_TIMEOUT_MS` |
 
-**Limiti domande/giorno per piano** (`CHAT_LIMITI_PIANO`):
+**Budget per piano** (dal 23/09/2026 il vincolo primario è il **mese**):
 
-| Piano | Domande/giorno |
-|---|---|
-| `free` | 0 (chat non disponibile → 403) |
-| `base` | 10 |
-| `plus` | 20 |
-| `pro` | 30 |
+| Piano | Domande/mese (`CHAT_BUDGET_MENSILE_PIANO`) | Domande/giorno (derivate) |
+|---|---|---|
+| `free` | 0 (chat non disponibile → 403) | 0 |
+| `base` | 300 | 30 |
+| `plus` | 600 | 60 |
+| `pro` | 900 | 90 |
+
+> Il tetto giornaliero **non si scrive a mano**: è `CHAT_QUOTA_GIORNALIERA_PCT`
+> (10%) applicata al budget mensile, e `CHAT_LIMITI_PIANO` è costruito da quello.
+> Due tabelle di numeri divergono al primo ritocco di una sola.
+>
+> **Perché il 10%**: il mese deve coprire almeno 10 giorni di uso pieno. Al 20%
+> un cliente esaurirebbe il mese in 5 giorni restando fermo per 25 — il problema
+> che questo meccanismo esiste per evitare.
+>
+> Il totale mensile è lo **stesso** di prima (i vecchi 10/20/30 al giorno × 30),
+> ma ora è esigibile: fino al 23/09/2026 esisteva solo il tetto giornaliero e il
+> mese non aveva alcun limite.
+>
+> La RPC applica **entrambe** le finestre e dice quale è scattata: `-1` giorno,
+> `-2` mese. Il mese è controllato **per primo** perché dura di più — dire «torna
+> domani» a chi ha finito il mese lo rimanda a un giorno in cui sarà fermo di
+> nuovo. `p_limite_mensile` NULL = comportamento pre-23/09/2026.
+>
+> ⚠️ **Ordine di deploy OBBLIGATO** per `20260923152816_chat_budget_mensile.sql`:
+> la firma della RPC cambia (parametro nuovo), il codice è fail-closed, quindi
+> **la migration va applicata PRIMA del push** o la chat si spegne per tutti. La
+> vecchia firma a 4 parametri resta viva apposta (nessun `DROP`): durante la
+> finestra un worker non aggiornato continua a funzionare.
 
 > ⚠️ Il modello chat (`gpt-4.1-mini`) è lo stesso della categorizzazione (dal
 > 5/7/2026, dopo A/B test su dati reali), ma **diverso** dal briefing (`gpt-4o-mini`,
@@ -103,7 +126,14 @@ concorrenti + fail-open). Si usa la RPC **`chat_usage_check_and_log`** che, in u
 solo statement, conta le domande di oggi e logga quella nuova solo se sotto soglia:
 
 - ritorna il **numero di domande consumate oggi** se OK;
-- ritorna valore "negato" (gestito come `< 0`) se il limite è già raggiunto → `429`.
+- ritorna `-1` se è finito il **tetto giornaliero** → `429`;
+- ritorna `-2` se è finito il **budget mensile** → `429` con un messaggio diverso.
+
+> I due casi sono frasi diverse, ed è il motivo per cui il ritorno non è più un
+> `-1` secco: «torna domani» a chi ha esaurito il **mese** lo rimanda a un giorno
+> in cui sarà fermo di nuovo. Il mese è controllato **per primo** perché dura di
+> più. Un chiamante che conosce solo il vecchio contratto legge `-2` come
+> "negativo" e blocca comunque: il fail-safe resta dalla parte giusta.
 
 **Fail-closed:** se la RPC fallisce, l'endpoint **rifiuta** la domanda (`503`), non
 la lascia passare. Il log della domanda è già scritto dalla RPC prima della
@@ -290,7 +320,8 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 | Voglio… | File / funzione |
 |---|---|
 | Cambiare modello o parametri (temp, max_tokens, round) | `CHAT_MODEL`, loop in `chat_ai` (fastapi_worker.py) |
-| Cambiare i limiti domande/giorno per piano | `CHAT_LIMITI_PIANO` |
+| Cambiare il budget mensile per piano | `CHAT_BUDGET_MENSILE_PIANO` (il giornaliero si ricalcola da solo) |
+| Cambiare quanto se ne puo' spendere in un giorno | `CHAT_QUOTA_GIORNALIERA_PCT` |
 | Aggiungere un nuovo strumento | lista `tools` + `_esegui_tool` + nuova `_chat_*` + voce in `_TOOL_FLAG` (§5.1) |
 | Cambiare a quale pagina è legato uno strumento | mappa `_TOOL_FLAG` in `chat_ai` |
 | Cambiare cosa sa il modello "a colpo d'occhio" | `_build_chat_system_prompt` (parti 1-2) |

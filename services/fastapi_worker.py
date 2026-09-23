@@ -3193,11 +3193,55 @@ _GIORNO_SOLLECITO_PERSONALE = 15
 # l'avviso a vuoto. E' il residuo vero dietro questa costante.
 _GIORNO_SOLLECITO_INCASSO = 3
 
-CHAT_LIMITI_PIANO: Dict[str, int] = {
+# Budget chat MENSILE per piano, per sede (il pool di un account multi-sede e'
+# la somma delle sue sedi: vedi `_chat_quota_pool`).
+#
+# Il mese e' il vincolo vero, il giorno e' solo un freno perche' nessuno bruci
+# tutto in due giorni (decisione di Mattia, 23/09/2026). Prima esisteva solo il
+# tetto giornaliero (10/20/30) e il mese non aveva alcun limite: un cliente
+# poteva teoricamente fare 300 domande in 30 giorni senza che nulla lo fermasse.
+#
+# I valori nascono dai tetti giornalieri precedenti moltiplicati per 30, quindi
+# il totale mensile e' lo STESSO di prima — cambia solo che ora e' esigibile, e
+# che chi lavora a raffica non resta a secco il primo giorno.
+CHAT_BUDGET_MENSILE_PIANO: Dict[str, int] = {
     "free": 0,
-    "base": 10,
-    "plus": 20,
-    "pro": 30,
+    "base": 300,
+    "plus": 600,
+    "pro": 900,
+}
+
+# Quota del budget mensile spendibile in un solo giorno. Al 10% il mese copre
+# almeno 10 giorni di uso pieno: con una percentuale piu' alta (20%) un cliente
+# puo' esaurire il mese in 5 giorni e restare fermo per 25, che e' esattamente
+# il problema che questo meccanismo deve evitare.
+#
+# Effetto collaterale voluto: il tetto giornaliero TRIPLICA rispetto a prima
+# (base 10 -> 30). Misurato sul DB live il 23/09/2026, il tetto stretto ce
+# l'aveva proprio chi usa la chat (2 sedi base, 20/giorno, in crescita) mentre
+# chi ha 150/giorno non la apre.
+CHAT_QUOTA_GIORNALIERA_PCT = 0.10
+
+
+def _chat_limite_giornaliero_da_mensile(budget_mensile: int) -> int:
+    """Tetto giornaliero derivato dal budget mensile.
+
+    Non e' una costante separata di proposito: due tabelle di numeri divergono
+    al primo ritocco di una sola. Il minimo a 1 evita che un budget piccolo ma
+    non nullo produca un tetto 0, che il codice a valle legge come «chat non
+    disponibile» (`chat_limite_giorno = 0` e' quel gate in 5 punti del frontend).
+    """
+    if budget_mensile <= 0:
+        return 0
+    return max(1, int(budget_mensile * CHAT_QUOTA_GIORNALIERA_PCT))
+
+
+# Retrocompatibilita': il tetto giornaliero resta esposto con questo nome perche'
+# lo leggono `_chat_limite_per_piano` e i suoi chiamanti. Derivato, mai scritto
+# a mano — vedi il commento sopra.
+CHAT_LIMITI_PIANO: Dict[str, int] = {
+    piano: _chat_limite_giornaliero_da_mensile(budget)
+    for piano, budget in CHAT_BUDGET_MENSILE_PIANO.items()
 }
 
 # Modello chat configurabile via env — default gpt-4.1-mini (migliore tool calling, ~2.7x gpt-4o-mini).
@@ -3223,9 +3267,22 @@ _ALERT_PREZZI_EXECUTOR = _concurrent_futures.ThreadPoolExecutor(
 def _chat_limite_per_piano(piano: Optional[str]) -> int:
     """Domande/giorno consentite per il piano del cliente.
 
-    Default = limite "base" (10) per piani non riconosciuti.
+    Default = limite "base" per piani non riconosciuti. Il valore e' DERIVATO dal
+    budget mensile (`CHAT_QUOTA_GIORNALIERA_PCT`), non scritto a mano.
     """
     return CHAT_LIMITI_PIANO.get((piano or "base").lower().strip(), CHAT_LIMITI_PIANO["base"])
+
+
+def _chat_budget_mensile_per_piano(piano: Optional[str]) -> int:
+    """Domande/mese consentite per il piano del cliente.
+
+    Gemello di `_chat_limite_per_piano` e con lo stesso fallback: se i due
+    divergessero sul piano sconosciuto, un cliente potrebbe avere budget mensile
+    'base' e tetto giornaliero 'pro' o viceversa.
+    """
+    return CHAT_BUDGET_MENSILE_PIANO.get(
+        (piano or "base").lower().strip(), CHAT_BUDGET_MENSILE_PIANO["base"]
+    )
 
 
 def _chat_quota_pool(user: Dict[str, Any], supabase_client) -> tuple[int, bool]:
@@ -3257,6 +3314,37 @@ def _chat_quota_pool(user: Dict[str, Any], supabase_client) -> tuple[int, bool]:
     except Exception as exc:
         logger.warning("chat: calcolo pool gruppo fallito, fallback sede: %s", exc)
     return _chat_limite_per_piano(_resolve_piano_effettivo(user, supabase_client)), False
+
+
+def _chat_budget_mensile_pool(user: Dict[str, Any], supabase_client) -> int:
+    """Budget MENSILE della chat per l'account, con la stessa regola del pool.
+
+    Gemello di `_chat_quota_pool` per la finestra del mese: somma il budget di
+    ogni sede attiva, stesso fallback sede.piano → users.piano → 'base', stessa
+    esclusione delle sedi tecniche. La firma di `_chat_quota_pool` non e' stata
+    allargata di proposito: ha sei chiamanti, e un parametro in piu' li avrebbe
+    toccati tutti per un dato che serve a uno solo.
+
+    Se la lettura sedi fallisce ripiega sul budget della sede attiva, come fa il
+    gemello: prudente, non blocca la chat.
+    """
+    try:
+        sedi = (
+            supabase_client.table("ristoranti")
+            .select("piano")
+            .eq("user_id", str(user["id"]))
+            .eq("attivo", True)
+            .eq("sede_tecnica", False)
+            .execute()
+        ).data or []
+        if sedi:
+            return sum(
+                _chat_budget_mensile_per_piano(s.get("piano") or user.get("piano") or "base")
+                for s in sedi
+            )
+    except Exception as exc:
+        logger.warning("chat: calcolo budget mensile fallito, fallback sede: %s", exc)
+    return _chat_budget_mensile_per_piano(_resolve_piano_effettivo(user, supabase_client))
 
 
 def _chat_limite_pool_gruppo(user: Dict[str, Any], supabase_client) -> int:
@@ -4886,6 +4974,7 @@ def chat_ai(
     # PV); sede singola → limite del piano contato sulla sede. La riga è sempre
     # loggata con la sede d'origine (p_ristorante_id) per l'attribuzione.
     limite, is_pool = _chat_quota_pool(user, supabase_client)
+    limite_mensile = _chat_budget_mensile_pool(user, supabase_client)
     rate_ristorante = ristorante_id
 
     # Piano free: chat non disponibile.
@@ -4926,6 +5015,7 @@ def chat_ai(
             "p_ristorante_id": rate_ristorante,
             "p_limite": limite,
             "p_pool": is_pool,
+            "p_limite_mensile": limite_mensile,
         }).execute()
         domande_oggi = int(_rpc.data) if _rpc.data is not None else -1
     except Exception as exc:
@@ -4939,10 +5029,26 @@ def chat_ai(
         # fermato un cliente?" non era rispondibile: non per assenza di blocchi,
         # ma per assenza dello strumento di misura. Senza questa riga la prossima
         # decisione sui limiti si prende di nuovo alla cieca.
+        #
+        # -2 = budget MENSILE esaurito, -1 = tetto giornaliero. Sono due frasi
+        # diverse, e dirgli quella sbagliata e' una promessa falsa: «torna
+        # domani» a chi ha finito il mese lo rimanda a un giorno in cui sara'
+        # fermo di nuovo — lo stesso difetto del «Riprova domani» corretto oggi.
+        mensile_esaurito = domande_oggi == -2
         logger.warning(
-            "chat: limite giornaliero raggiunto (user=%s ristorante=%s limite=%s pool=%s)",
-            user_id, rate_ristorante, limite, is_pool,
+            "chat: %s raggiunto (user=%s ristorante=%s limite_giorno=%s "
+            "limite_mese=%s pool=%s)",
+            "budget mensile" if mensile_esaurito else "limite giornaliero",
+            user_id, rate_ristorante, limite, limite_mensile, is_pool,
         )
+        if mensile_esaurito:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Hai usato tutte le {limite_mensile} domande di questo mese. "
+                    f"Il budget riparte il 1° del mese prossimo."
+                ),
+            )
         raise HTTPException(
             status_code=429,
             detail=(

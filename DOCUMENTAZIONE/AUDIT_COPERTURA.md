@@ -622,10 +622,43 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `tests/test_chat_quota_giorno_di_roma.py` (7 test, casi scelti **dove i due
 >   fusi divergono** — fra mezzanotte e le 02:00 di Roma nei due regimi CET/CEST:
 >   un'ora qualunque non distingue UTC da Roma e lascia vivo il mutante).
->   **Aperto, per Mattia**: i tetti per piano (10/20/30 al giorno). Il consumo e'
->   basso ovunque ma **distribuito al contrario del tetto** — l'unico cliente che
->   usa la chat oggi ha 2 sedi `base`, pool 20/giorno, ed e' in crescita (3, 4, 5,
->   6, 6); chi ha 150 non la apre. E' un valore commerciale: lo decide lui.
+>   **I tetti, decisi da Mattia il 23/09/2026 e implementati.** Il consumo era
+>   **distribuito al contrario del tetto**: l'unico cliente che usa la chat ha 2
+>   sedi `base` (pool 20/giorno) ed e' in crescita (3, 4, 5, 6, 6), mentre chi ha
+>   150/giorno non la apre. La sua decisione ha **rovesciato l'impianto**: il
+>   vincolo vero e' il **mese**, il giorno e' solo un freno perche' nessuno bruci
+>   tutto in due giorni. `CHAT_BUDGET_MENSILE_PIANO` 300/600/900 (gli stessi
+>   totali di prima: i vecchi 10/20/30 × 30, ma prima il mese **non aveva alcun
+>   limite** — un cliente poteva fare 900 domande senza che nulla lo fermasse), e
+>   il tetto giornaliero **derivato** al 10% (`CHAT_QUOTA_GIORNALIERA_PCT`), mai
+>   scritto a mano: due tabelle di numeri divergono al primo ritocco di una sola,
+>   e qui la divergenza sarebbe invisibile perche' l'enforcement usa il
+>   giornaliero e il messaggio il mensile. Effetto voluto: il tetto del giorno
+>   **triplica** (base 10 -> 30), che era il punto di partenza.
+>   **Il 10% e' una scelta, non un arrotondamento**: il mese deve coprire almeno
+>   10 giorni di uso pieno; al 20% un cliente esaurirebbe il mese in 5 giorni e
+>   resterebbe fermo per 25 — il problema che il meccanismo esiste per evitare.
+>   **La RPC ora dice QUALE limite e' scattato** (`-1` giorno, `-2` mese) perche'
+>   le due frasi sono diverse: «torna domani» a chi ha finito il mese lo rimanda a
+>   un giorno in cui sara' fermo di nuovo — lo stesso difetto del «Riprova domani»
+>   corretto poche ore prima, un piano piu' su. Il mese e' controllato **per
+>   primo** perche' dura di piu'. Un chiamante che conosce solo il vecchio
+>   contratto legge `-2` come negativo e blocca comunque: il fail-safe resta dalla
+>   parte giusta. **2 mutanti, 2 uccisi** (i due messaggi collassati in uno; la
+>   tabella giornaliera scritta a mano invece che derivata).
+>   ⚠️ **Ordine di deploy OBBLIGATO, e qui la differenza con la migration del
+>   fuso**: quella non cambiava la firma, `20260923152816_chat_budget_mensile.sql`
+>   **si'**. Il call site passa un parametro nuovo e il codice e' fail-closed:
+>   finche' la migration non e' applicata, PostgREST non trova quella firma e **la
+>   chat si spegne per tutti**. La vecchia firma a 4 parametri resta viva apposta
+>   (nessun `DROP`), cosi' durante la finestra un worker non aggiornato continua a
+>   funzionare. **Migration PRIMA del push.**
+>   **Da pianificare, non fatto** (Mattia, 23/09): il **«Boost AI» fra i Servizi**
+>   — `lib/trigger-servizi.ts` ha gia' l'impianto (4 trigger soft, banner
+>   discreto, max 1 per pagina, dismissibile) e `lib/assistenza.ts` i 6 servizi,
+>   ma **nessuno e' il boost AI**: va aggiunto. Modello da definire con lui: X€ al
+>   mese per N domande in piu' al giorno. Il tono deve restare quello degli altri
+>   trigger, non un blocco che vende.
 >   **Cinque rilievi del reviewer, tutti chiusi.** (1) **Un quarto punto del
 >   messaggio che avevo mancato**: `chat-widget.tsx:189` diceva ancora «torna
 >   domani» — l'header del widget, che il cliente legge **prima** del 429 ed e'
