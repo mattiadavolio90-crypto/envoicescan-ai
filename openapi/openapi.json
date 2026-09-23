@@ -20511,11 +20511,21 @@
           "chat_limite_giorno": {
             "type": "integer",
             "title": "Chat Limite Giorno",
-            "default": 10
+            "default": 30
           },
           "chat_domande_oggi": {
             "type": "integer",
             "title": "Chat Domande Oggi",
+            "default": 0
+          },
+          "chat_limite_mese": {
+            "type": "integer",
+            "title": "Chat Limite Mese",
+            "default": 0
+          },
+          "chat_domande_mese": {
+            "type": "integer",
+            "title": "Chat Domande Mese",
             "default": 0
           },
           "price_alert_threshold": {

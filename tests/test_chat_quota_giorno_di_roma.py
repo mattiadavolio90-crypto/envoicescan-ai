@@ -169,13 +169,57 @@ def test_i_tetti_giornalieri_derivano_dal_budget_mensile():
     Due tabelle di costanti divergono al primo ritocco di una sola — e qui la
     divergenza non sarebbe visibile, perche' l'enforcement usa il giornaliero e
     il messaggio al cliente il mensile.
+
+    ATTENZIONE al modo in cui questo si verifica. Confrontare
+    `CHAT_LIMITI_PIANO[p]` con `_chat_limite_giornaliero_da_mensile(mese)` NON
+    basta: se qualcuno scrive il dict a mano CON I VALORI GIUSTI, i due lati
+    coincidono e il test passa — atteso e ottenuto si muovono insieme, la
+    trappola «costante letta dai due lati». Il code-reviewer l'ha dimostrato
+    con un mutante che scriveva 30/60/90 a mano: sopravvissuto a 15.836 test.
+    Percio' qui si verifica il MECCANISMO: cambiata la percentuale, i tetti
+    devono seguire. Una tabella hardcodata non segue.
     """
+    import importlib
+
     for piano, mese in fw.CHAT_BUDGET_MENSILE_PIANO.items():
         atteso = fw._chat_limite_giornaliero_da_mensile(mese)
         assert fw.CHAT_LIMITI_PIANO[piano] == atteso, (
             f"piano {piano}: tetto giornaliero {fw.CHAT_LIMITI_PIANO[piano]} "
             f"non deriva dal budget mensile {mese} (atteso {atteso})"
         )
+
+    # La prova vera: con una percentuale diversa i tetti DEVONO cambiare.
+    # Si rilegge il sorgente del modulo e si riesegue il solo blocco delle
+    # costanti con la percentuale mutata: se `CHAT_LIMITI_PIANO` e' costruito
+    # dalla comprehension segue, se e' scritto a mano resta fermo e il test cade.
+    import inspect
+    import re
+
+    sorgente = inspect.getsource(fw)
+    blocco = re.search(
+        r"^CHAT_LIMITI_PIANO: Dict\[str, int\] = \{.*?^\}",
+        sorgente, re.S | re.M,
+    )
+    assert blocco, "CHAT_LIMITI_PIANO non trovato nel sorgente"
+
+    ns = {
+        "Dict": dict,
+        "CHAT_BUDGET_MENSILE_PIANO": dict(fw.CHAT_BUDGET_MENSILE_PIANO),
+        # la percentuale mutata: 20% invece di 10%
+        "_chat_limite_giornaliero_da_mensile": lambda b: 0 if b <= 0 else max(1, int(b * 0.20)),
+    }
+    exec(blocco.group(0), ns)
+    ricostruito = ns["CHAT_LIMITI_PIANO"]
+
+    assert ricostruito["base"] == 60, (
+        "raddoppiando la percentuale il tetto 'base' resta "
+        f"{ricostruito['base']} invece di 60: CHAT_LIMITI_PIANO non e' "
+        "derivato dal budget mensile, e' scritto a mano"
+    )
+    assert ricostruito["pro"] == 180, (
+        f"stesso problema sul piano 'pro': {ricostruito['pro']} invece di 180"
+    )
+
     assert fw.CHAT_QUOTA_GIORNALIERA_PCT == 0.10, (
         "la percentuale e' una decisione di prodotto: il mese deve coprire "
         "almeno 10 giorni di uso pieno"
@@ -215,8 +259,14 @@ def test_il_budget_mensile_del_pool_somma_le_sedi(monkeypatch):
     assert tot == atteso, f"pool mensile {tot}, atteso {atteso} (300+300+900)"
 
 
-def _blocca_con(monkeypatch, ritorno_rpc: int):
-    """Esegue `chat_ai` con la RPC che ritorna il codice dato, e torna il 429."""
+def _blocca_con(monkeypatch, ritorno_rpc: int, con_client: bool = False):
+    """Esegue `chat_ai` con la RPC che ritorna il codice dato, e torna il 429.
+
+    Con `con_client=True` ritorna anche il client mockato, per poter asserire
+    COSA e' stato mandato alla RPC: il mock risponde uguale a qualunque payload,
+    quindi senza questa verifica si potrebbe cancellare il parametro del budget
+    mensile — cioe' spegnere la feature — e la suite resterebbe verde.
+    """
     from fastapi import HTTPException
 
     class _Rpc:
@@ -240,6 +290,8 @@ def _blocca_con(monkeypatch, ritorno_rpc: int):
     with pytest.raises(HTTPException) as ei:
         fw.chat_ai(body, "Bearer x")
     assert ei.value.status_code == 429
+    if con_client:
+        return str(ei.value.detail), client
     return str(ei.value.detail)
 
 
@@ -269,3 +321,58 @@ def test_tetto_giornaliero_esaurito_non_parla_del_mese(monkeypatch):
         f"sta dando il messaggio del budget MENSILE a chi ha finito il giorno: {detail!r}"
     )
     assert "30" in detail, f"non dice qual era il tetto di oggi: {detail!r}"
+
+
+def test_la_rpc_riceve_davvero_il_budget_mensile(monkeypatch):
+    """Il parametro del mese deve ARRIVARE alla RPC, non solo essere calcolato.
+
+    Senza questo assert si puo' cancellare `p_limite_mensile` dal payload — cioe'
+    disattivare l'intero budget mensile — e la suite resta verde: il MagicMock
+    risponde uguale a qualunque argomento. E' il difetto «fix server senza
+    presidio sul client», qui fra codice e RPC.
+    """
+    _, client = _blocca_con(monkeypatch, -2, con_client=True)
+
+    assert client.rpc.call_count == 1, f"chiamate alla RPC: {client.rpc.call_count}"
+    nome, payload = client.rpc.call_args[0]
+    assert nome == "chat_usage_check_and_log"
+
+    assert "p_limite_mensile" in payload, (
+        "il budget mensile non arriva alla RPC: la feature e' spenta e nessun "
+        f"altro test se ne accorge. Payload: {sorted(payload)}"
+    )
+    assert payload["p_limite_mensile"] == 300, (
+        f"budget mensile sbagliato nel payload: {payload['p_limite_mensile']}"
+    )
+    # Gli altri quattro non devono sparire nel passaggio alla firma nuova.
+    for atteso in ("p_user_id", "p_ristorante_id", "p_limite", "p_pool"):
+        assert atteso in payload, f"manca {atteso} nel payload: {sorted(payload)}"
+    assert payload["p_limite"] == 30, (
+        f"tetto giornaliero sbagliato nel payload: {payload['p_limite']}"
+    )
+
+
+def test_i_due_fallback_sul_piano_sconosciuto_restano_simmetrici():
+    """Mese e giorno devono ripiegare sullo STESSO piano.
+
+    `_chat_limite_per_piano` e `_chat_budget_mensile_per_piano` hanno ciascuna un
+    fallback per i piani non riconosciuti. Se divergessero, un cliente con un
+    piano scritto male avrebbe budget mensile 'base' e tetto giornaliero 'pro'
+    (o viceversa): il docstring lo dichiara, ma nessun test lo verificava — un
+    mutante del reviewer che spostava un solo fallback su 'pro' sopravviveva a
+    15.836 test.
+    """
+    for sconosciuto in ("enterprise", "", None, "  BASE  ", "premium"):
+        giorno = fw._chat_limite_per_piano(sconosciuto)
+        mese = fw._chat_budget_mensile_per_piano(sconosciuto)
+        atteso_giorno = fw._chat_limite_giornaliero_da_mensile(mese)
+        assert giorno == atteso_giorno, (
+            f"piano {sconosciuto!r}: il tetto giornaliero ({giorno}) non e' il "
+            f"10% del budget mensile ({mese}, atteso {atteso_giorno}) — i due "
+            "fallback sono divergenti"
+        )
+
+    # E il fallback e' 'base', non un piano piu' generoso: un piano scritto male
+    # non deve regalare la quota del pro.
+    assert fw._chat_budget_mensile_per_piano("enterprise") == fw.CHAT_BUDGET_MENSILE_PIANO["base"]
+    assert fw._chat_limite_per_piano("enterprise") == fw.CHAT_LIMITI_PIANO["base"]

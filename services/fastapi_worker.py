@@ -2796,10 +2796,19 @@ class ConfigResponse(BaseModel):
     nome_referente: str = ""
     topics: List[ConfigTopic]
     chat_ai_enabled: bool = True
-    chat_limite_giorno: int = 10  # 0 = piano free, chat non disponibile
+    chat_limite_giorno: int = 30  # 0 = piano free, chat non disponibile
     # Domande gia' consumate oggi: valore iniziale del contatore "ti restano N"
     # del widget chat, mostrato gia' all'apertura (prima ancora di chattare).
     chat_domande_oggi: int = 0
+    # Il MESE, accanto al giorno. Senza questi due campi il contatore mentirebbe
+    # per due terzi del mese: col giorno al 10% del budget, chi va a pieno regime
+    # esaurisce il mese al giorno 10, e dal giorno 11 al 30 il widget direbbe «ti
+    # restano 30 domande oggi» mentre ogni invio prende 429. E' lo stesso difetto
+    # di promessa falsa corretto nel MESSAGGIO poche ore prima, lasciato nella
+    # VISTA. Trovato dal code-reviewer.
+    # 0 = nessun budget mensile (il frontend allora mostra solo il giorno).
+    chat_limite_mese: int = 0
+    chat_domande_mese: int = 0
     # Soglia % alert prezzi (users.price_alert_threshold): da qui si IMPOSTA quando
     # scatta l'avviso "Alert prezzi". In pagina Prezzi resta solo come filtro di
     # visualizzazione, non la salva piu'. Per-utente (non per-ristorante).
@@ -3410,6 +3419,38 @@ def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_clie
         return int(q.execute().count or 0)
     except Exception as exc:
         logger.warning("chat: conteggio domande oggi fallito: %s", exc)
+        return 0
+
+
+def _chat_domande_mese(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
+    """Domande fatte nel mese corrente (Europe/Rome), stessa regola del giorno.
+
+    Gemello di `_chat_domande_oggi` per la finestra del mese, e deve restare
+    allineato alla RPC come lui: la finestra e' il primo del mese a mezzanotte di
+    Roma, non dell'UTC, o il budget ripartirebbe alle 02:00 del 1°.
+
+    Serve alla VISTA, non all'enforcement: senza, il contatore mostrerebbe solo
+    il giorno e direbbe «ti restano 30 domande» a un cliente che ha esaurito il
+    mese e viene rifiutato a ogni invio.
+    """
+    from datetime import datetime as _dt, time as _time
+    from zoneinfo import ZoneInfo as _ZI
+    _roma = _ZI("Europe/Rome")
+    _oggi = _dt.now(_roma).date()
+    inizio = _dt.combine(_oggi.replace(day=1), _time.min, tzinfo=_roma).isoformat()
+    try:
+        q = (
+            supabase_client.table("chat_usage_log")
+            .select("id", count="exact")
+            .gte("created_at", inizio)
+        )
+        if ristorante_id:
+            q = q.eq("ristorante_id", ristorante_id)
+        else:
+            q = q.eq("user_id", user_id)
+        return int(q.execute().count or 0)
+    except Exception as exc:
+        logger.warning("chat: conteggio domande mese fallito: %s", exc)
         return 0
 
 
@@ -8477,8 +8518,14 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     # Domande gia' fatte oggi, solo se la chat e' disponibile (piano > 0 e attiva):
     # evita una query inutile per i piani free / chat spenta.
     domande_oggi = 0
+    chat_limite_mese = 0
+    domande_mese = 0
     if chat_limite > 0 and chat_ai_enabled:
         domande_oggi = _chat_domande_oggi(None if _chat_pool else ristorante_id, str(user["id"]), sb)
+        # Il mese accanto al giorno: senza, dal giorno 11 in poi il contatore
+        # direbbe «ti restano 30 oggi» a chi viene rifiutato a ogni invio.
+        chat_limite_mese = _chat_budget_mensile_pool(user, sb)
+        domande_mese = _chat_domande_mese(None if _chat_pool else ristorante_id, str(user["id"]), sb)
 
     # Soglia alert prezzi (per-utente): qui si IMPOSTA quando scatta l'avviso.
     try:
@@ -8496,6 +8543,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
         nome_referente=nome, topics=topics,
         chat_ai_enabled=chat_ai_enabled, chat_limite_giorno=chat_limite,
         chat_domande_oggi=domande_oggi,
+        chat_limite_mese=chat_limite_mese, chat_domande_mese=domande_mese,
         price_alert_threshold=price_alert_threshold,
         alert_prezzi_solo_preferiti=solo_preferiti,
         giorni_chiusura_settimanali=giorni_chiusura,
@@ -8621,8 +8669,12 @@ def home_config_post(
     # Pool condiviso per gli account multi-sede (coerente con l'endpoint chat).
     chat_limite, _chat_pool = _chat_quota_pool(user, sb)
     domande_oggi = 0
+    chat_limite_mese = 0
+    domande_mese = 0
     if chat_limite > 0 and chat_ai:
         domande_oggi = _chat_domande_oggi(None if _chat_pool else ristorante_id, str(user["id"]), sb)
+        chat_limite_mese = _chat_budget_mensile_pool(user, sb)
+        domande_mese = _chat_domande_mese(None if _chat_pool else ristorante_id, str(user["id"]), sb)
     # Rileggi la flag effettiva: il body puo' non averla passata (None=non toccare),
     # quindi il valore corrente sta nel record salvato o resta quello esistente.
     solo_preferiti = False
@@ -8641,6 +8693,7 @@ def home_config_post(
         nome_referente=str(nome or ""), topics=topics,
         chat_ai_enabled=chat_ai, chat_limite_giorno=chat_limite,
         chat_domande_oggi=domande_oggi,
+        chat_limite_mese=chat_limite_mese, chat_domande_mese=domande_mese,
         price_alert_threshold=soglia,
         alert_prezzi_solo_preferiti=solo_preferiti,
     )

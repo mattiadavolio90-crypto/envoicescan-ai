@@ -206,3 +206,34 @@ def test_la_chat_mobile_non_ricopia_la_decisione_sui_messaggi():
             f"il .tsx contiene ancora il testo {testo!r}: e' una seconda copia "
             "del messaggio, e vivrebbe fuori dalla portata dei test"
         )
+
+
+# ─── quotaEsaurita: giorno o mese, non «un 429 generico» ──────────────────
+
+def test_429_mensile_riconosciuto_come_mese():
+    """Col budget mensile esaurito il cliente NON deve sentirsi dire «domani».
+
+    Il contatore del giorno su un 429 mensile va al massimo — vero ma
+    incompleto: chi legge la barra conclude «riprovo domani» e domani e' fermo
+    di nuovo. `quotaEsaurita` distingue i due casi dal messaggio del backend,
+    che e' l'unico segnale che arriva al client.
+    """
+    msg = "Hai usato tutte le 300 domande di questo mese. Il budget riparte il 1° del mese prossimo."
+    assert _chiama("quotaEsaurita", [429, {"error": msg}]) == "mese"
+
+
+def test_429_giornaliero_riconosciuto_come_giorno():
+    msg = "Hai raggiunto il limite di 30 domande per oggi. Il contatore si azzera a mezzanotte."
+    assert _chiama("quotaEsaurita", [429, {"error": msg}]) == "giorno"
+
+
+def test_429_senza_messaggio_ripiega_sul_giorno():
+    """Senza testo si assume il caso piu' frequente e meno grave: il giorno."""
+    assert _chiama("quotaEsaurita", [429, {}]) == "giorno"
+
+
+def test_fuori_dal_429_nessuna_quota_e_esaurita():
+    for status in (200, 403, 500, 504):
+        assert _chiama("quotaEsaurita", [status, {"error": "questo mese"}]) is None, (
+            f"status {status}: non e' un limite di quota, non deve dire che e' esaurita"
+        )

@@ -48,8 +48,29 @@ export function messaggioRisposta(
   return data.error || "Si è verificato un errore. Riprova.";
 }
 
+// Quale delle due quote ha fermato il cliente. Il backend distingue i due casi
+// nel messaggio (la RPC ritorna -1 per il giorno, -2 per il mese) e qui serve
+// saperlo per non dire la cosa sbagliata: segnare il GIORNO come esaurito su un
+// 429 MENSILE fa concludere al cliente «riprovo domani», e domani sara' fermo di
+// nuovo. Si riconosce dal testo perche' e' l'unico segnale che arriva al client:
+// il campo `error` lo scrive il backend, non l'utente.
+export type QuotaEsaurita = "giorno" | "mese" | null;
+
+export function quotaEsaurita(
+  status: number,
+  data: { error?: string },
+): QuotaEsaurita {
+  if (status !== 429) return null;
+  return (data.error ?? "").includes("questo mese") ? "mese" : "giorno";
+}
+
 // Il contatore segue la verita' del backend quando la manda. Il 429 e' il caso
 // in cui spesso non la manda: li' la quota e' esaurita per definizione.
+//
+// ATTENZIONE: su un 429 MENSILE questo porta il contatore del giorno al suo
+// massimo, il che e' vero (il cliente non puo' piu' chattare) ma incompleto —
+// chi mostra il contatore deve usare `quotaEsaurita` per dire QUALE quota e'
+// finita, o il cliente legge «riprova domani» da una barra che parla del giorno.
 export function contatoreAggiornato(
   status: number,
   data: { domande_oggi?: number },

@@ -25,14 +25,33 @@
 -- riparte a mezzanotte del 1°, non alle 02:00 del 1° come farebbe l'UTC.
 --
 -- ORDINE DI DEPLOY — OBBLIGATO, ed e' la differenza rispetto alla migration
--- precedente: quella non cambiava la firma, questa SI'. Il call site passa due
--- parametri nuovi; finche' questa migration non e' applicata, PostgREST non
+-- precedente: quella non cambiava la firma, questa SI'. Il call site passa un
+-- parametro nuovo; finche' questa migration non e' applicata, PostgREST non
 -- trova la funzione con quella firma, la RPC fallisce e il codice e' fail-closed
 -- -> la chat si spegne per tutti. **Applicare questa migration PRIMA del push.**
--- La vecchia firma a 4 parametri resta viva apposta (nessun DROP): durante la
--- finestra di deploy un worker non ancora aggiornato continua a funzionare.
+--
+-- IL DROP NON E' OPZIONALE, ed e' l'opposto di quello che avevo scritto qui.
+-- La prima stesura lasciava viva la firma a 4 parametri "cosi' un worker non
+-- aggiornato continua a funzionare". Misurato dal code-reviewer su Postgres
+-- vero: fa esattamente il contrario. Con `p_limite_mensile INTEGER DEFAULT NULL`
+-- la firma a 5 e' chiamabile ANCHE con 4 argomenti, quindi le due sono entrambe
+-- candidate e Postgres si rifiuta di scegliere:
+--     function public.chat_usage_check_and_log(p_user_id => uuid, ...,
+--     p_pool => boolean) is not unique
+-- Fallisce con cast espliciti, con letterali non tipizzati e con la notazione
+-- nominale che usa PostgREST. Risultato: fra migration e deploy il worker
+-- vecchio va in AmbiguousFunction, il codice e' fail-closed e la chat si spegne
+-- per tutti — precisamente l'incidente che la frase diceva di evitare.
+--
+-- Col DROP, la retrocompatibilita' ce la da' gia' il DEFAULT NULL: una chiamata
+-- a 4 argomenti risolve sulla firma a 5 e si comporta come prima (nessun budget
+-- mensile). Verificato: worker vecchio -> OK, worker nuovo -> OK.
+-- E' anche il precedente della casa: `20260619100000_chat_usage_pool.sql` fa lo
+-- stesso DROP quando cambio' la firma.
 --
 -- Idempotente. service_role only (auth custom, auth.uid() sempre NULL).
+
+DROP FUNCTION IF EXISTS public.chat_usage_check_and_log(UUID, UUID, INTEGER, BOOLEAN);
 
 CREATE OR REPLACE FUNCTION public.chat_usage_check_and_log(
     p_user_id        UUID,

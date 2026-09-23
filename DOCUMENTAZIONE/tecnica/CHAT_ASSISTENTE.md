@@ -102,9 +102,17 @@ uno strumento che legge il DB**, mai dalla memoria del modello. L'LLM decide
 >
 > ⚠️ **Ordine di deploy OBBLIGATO** per `20260923152816_chat_budget_mensile.sql`:
 > la firma della RPC cambia (parametro nuovo), il codice è fail-closed, quindi
-> **la migration va applicata PRIMA del push** o la chat si spegne per tutti. La
-> vecchia firma a 4 parametri resta viva apposta (nessun `DROP`): durante la
-> finestra un worker non aggiornato continua a funzionare.
+> **la migration va applicata PRIMA del push** o la chat si spegne per tutti.
+>
+> La migration **droppa** la vecchia firma a 4 parametri, e il `DROP` non è
+> opzionale. La prima stesura la lasciava viva «così un worker non aggiornato
+> continua a funzionare»: **misurato su Postgres vero, fa l'opposto.** Con
+> `p_limite_mensile DEFAULT NULL` la firma a 5 è chiamabile anche con 4
+> argomenti, quindi le due sono entrambe candidate e Postgres solleva
+> `AmbiguousFunction` — il worker vecchio si rompe, e con il fail-closed la chat
+> si spegne per tutti. La retrocompatibilità la dà già il `DEFAULT NULL`: una
+> chiamata a 4 argomenti risolve sulla firma a 5 e si comporta come prima.
+> Stesso `DROP` di `20260619100000_chat_usage_pool.sql`, che è il precedente.
 
 > ⚠️ Il modello chat (`gpt-4.1-mini`) è lo stesso della categorizzazione (dal
 > 5/7/2026, dopo A/B test su dati reali), ma **diverso** dal briefing (`gpt-4o-mini`,
