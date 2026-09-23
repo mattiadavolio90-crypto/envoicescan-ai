@@ -1447,8 +1447,8 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
     Configurazione secrets.toml:
         [brevo]
         api_key = "xkeysib-..."
-        sender_email = "noreply@domain.com"
-        sender_name = "App Name"
+        sender_email = "agent@oneflux.it"   # deve essere un sender VERIFICATO in Brevo
+        sender_name = "ONEFLUX"
     """
     try:
         import streamlit as st
@@ -1514,18 +1514,25 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
             logger.error(f"Impossibile salvare codice reset per {email} — né DB né alternativa disponibile")
             return False, "Errore temporaneo, riprova tra qualche minuto"
         
-        # Configurazione Brevo — env var (Railway/FastAPI) o st.secrets (Streamlit)
+        # Configurazione Brevo — env var (Railway/FastAPI) o st.secrets (shim)
         import os as _os
+        from config.constants import (
+            BREVO_SENDER_EMAIL_DEFAULT,
+            BREVO_SENDER_NAME_DEFAULT,
+        )
         api_key = _os.environ.get('BREVO_API_KEY')
-        sender_email = _os.environ.get('BREVO_SENDER_EMAIL', 'contact@updates.brevo.com')
-        sender_name = _os.environ.get('BREVO_SENDER_NAME', 'ONEFLUX')
+        sender_email = _os.environ.get('BREVO_SENDER_EMAIL', BREVO_SENDER_EMAIL_DEFAULT)
+        sender_name = _os.environ.get('BREVO_SENDER_NAME', BREVO_SENDER_NAME_DEFAULT)
 
         if not api_key:
             try:
                 brevo_cfg = st.secrets.get('brevo') if hasattr(st, 'secrets') else {}
                 api_key = api_key or brevo_cfg.get('api_key')
-                sender_email = brevo_cfg.get('sender_email', sender_email)
-                sender_name = brevo_cfg.get('sender_name', sender_name)
+                # `or sender_email`: un valore vuoto nei secrets non deve
+                # sovrascrivere il default verificato (.get restituisce ''
+                # se la chiave c'e' ma e' vuota).
+                sender_email = brevo_cfg.get('sender_email') or sender_email
+                sender_name = brevo_cfg.get('sender_name') or sender_name
             except Exception:
                 pass
 

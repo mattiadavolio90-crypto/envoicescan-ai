@@ -2104,3 +2104,15 @@ SETTORI_SEDE = (SETTORE_RISTORAZIONE, SETTORE_RETAIL)
 # TUTTE_LE_CATEGORIE ne' nelle liste condivise: comparirebbe nei menu dei
 # ristoranti. Le whitelist per settore stanno in services/settore_service.py.
 CATEGORIA_ARTICOLO_DI_VENDITA = "ARTICOLO DI VENDITA"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EMAIL TRANSAZIONALI (Brevo)
+# ═══════════════════════════════════════════════════════════════════════════
+# Sender di DEFAULT, usato quando BREVO_SENDER_EMAIL non e' impostata.
+# DEVE essere un sender verificato in Brevo: un mittente non verificato fa
+# fallire l'invio in silenzio (status != 201). Definito qui e non nei singoli
+# moduli perche' onboarding, reinvio attivazione e reset password self-service
+# devono cadere sullo stesso indirizzo.
+BREVO_SENDER_EMAIL_DEFAULT = "agent@oneflux.it"
+BREVO_SENDER_NAME_DEFAULT = "ONEFLUX"

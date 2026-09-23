@@ -532,7 +532,12 @@ def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_use
 
 # Sender di DEFAULT verificato in Brevo. NON usare noreply@/altro come fallback:
 # un mittente non verificato fa fallire l'invio in silenzio (status != 201).
-_BREVO_SENDER_DEFAULT = "agent@oneflux.it"
+# Definito in config/constants.py: lo stesso default vale per il reset
+# self-service (services/auth_service.py).
+from config.constants import (  # noqa: E402
+    BREVO_SENDER_EMAIL_DEFAULT as _BREVO_SENDER_DEFAULT,
+    BREVO_SENDER_NAME_DEFAULT as _BREVO_SENDER_NAME_DEFAULT,
+)
 
 
 def _brevo_send(to_email: str, to_name: str, subject: str, html_body: str, *, contesto: str = "email") -> bool:
@@ -549,7 +554,7 @@ def _brevo_send(to_email: str, to_name: str, subject: str, html_body: str, *, co
         logger.warning("Email %s non inviata: BREVO_API_KEY mancante", contesto)
         return False
     sender_email = os.getenv("BREVO_SENDER_EMAIL", _BREVO_SENDER_DEFAULT)
-    sender_name = os.getenv("BREVO_SENDER_NAME", "ONEFLUX")
+    sender_name = os.getenv("BREVO_SENDER_NAME", _BREVO_SENDER_NAME_DEFAULT)
     try:
         r = _requests.post(
             "https://api.brevo.com/v3/smtp/email",

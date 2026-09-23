@@ -94,10 +94,15 @@ class _Secrets(dict):
         if any(supabase_section.values()):
             self["supabase"] = {k: v for k, v in supabase_section.items() if v}
 
+        from config.constants import (
+            BREVO_SENDER_EMAIL_DEFAULT,
+            BREVO_SENDER_NAME_DEFAULT,
+        )
+
         brevo_section = {
             "api_key": os.environ.get("BREVO_API_KEY", ""),
-            "sender_email": os.environ.get("BREVO_SENDER_EMAIL", "agent@oneflux.it"),
-            "sender_name": os.environ.get("BREVO_SENDER_NAME", "ONEFLUX"),
+            "sender_email": os.environ.get("BREVO_SENDER_EMAIL", BREVO_SENDER_EMAIL_DEFAULT),
+            "sender_name": os.environ.get("BREVO_SENDER_NAME", BREVO_SENDER_NAME_DEFAULT),
             "reply_to_email": os.environ.get("BREVO_REPLY_TO_EMAIL", "md@oneflux.it"),
             "reply_to_name": os.environ.get("BREVO_REPLY_TO_NAME", "ONEFLUX"),
             "bcc_email": os.environ.get("BREVO_BCC_EMAIL", ""),
