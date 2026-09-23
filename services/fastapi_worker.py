@@ -3168,7 +3168,18 @@ _GIORNO_SOLLECITO_PERSONALE = 15
 # settimana non basta: _build_snapshot raggruppa per `topic_key` e la
 # `dedupe_key` finisce solo in `notifications_fingerprint`, che per suo stesso
 # docstring nessuno rilegge. La soppressione va fatta qui, alla fonte.
-_GIORNO_SOLLECITO_INCASSO = 0
+#
+# MARTEDI', non lunedi' (misurato su ricavi_giornalieri, 90 giorni, tutte le
+# sedi attive, giorni-sede attesi via generate_series): il gate controlla
+# l'incasso di IERI, quindi il giorno scelto decide quale giorno si guarda.
+# Buchi per giorno: lunedi' 16,9% (11 su 65) contro una media del 4-5% e un
+# minimo di 3,1% la domenica. Col lunedi' si guardava la domenica — il giorno
+# in cui il dato manca MENO — e si taceva il martedi', l'unico da cui il buco
+# del lunedi' e' visibile: copertura 2 casi su 27, il 7,4%. Col martedi' si
+# guarda il lunedi': 11 su 27, il 40,7%, a parita' di frequenza (uno a
+# settimana). La prima stesura aveva scelto il lunedi' per abitudine, non sui
+# dati.
+_GIORNO_SOLLECITO_INCASSO = 1
 
 CHAT_LIMITI_PIANO: Dict[str, int] = {
     "free": 0,

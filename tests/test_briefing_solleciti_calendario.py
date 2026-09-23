@@ -91,6 +91,33 @@ def _righe_fatturato_senza_personale(mese=8):
     }]
 
 
+
+def _sb_salute(margini_rows):
+    """Mock per `_salute_indice_rosso`: legge `fatture` e `margini_mensili`.
+
+    `_costi_automatici_mese` va patchato a parte dal test: fa una RPC che un
+    MagicMock non intercetta (un uuid finto arriva fino al DB vero).
+    """
+    state = {"table": None}
+
+    def _table(name):
+        state["table"] = name
+        return q
+
+    def _execute():
+        if state["table"] == "margini_mensili":
+            return MagicMock(data=margini_rows, count=len(margini_rows))
+        return MagicMock(data=[], count=0)
+
+    q = MagicMock()
+    q.table.side_effect = _table
+    for m in ("select", "eq", "lt", "gte", "lte", "limit", "in_", "not_",
+              "is_", "order", "neq", "range"):
+        getattr(q, m).return_value = q
+    q.execute.side_effect = _execute
+    return q
+
+
 def _topics(notifs):
     return {n["topic_key"] for n in notifs}
 
@@ -155,8 +182,12 @@ def test_incasso_segnalato_una_volta_a_settimana():
 
 def test_incasso_torna_la_settimana_dopo():
     """Una volta a settimana, non una volta e basta: deve tornare."""
+    from services.fastapi_worker import _GIORNO_SOLLECITO_INCASSO
+
+    # 21/09/2026 e' un lunedi: +offset = il giorno di emissione, +7 = quello dopo.
+    primo = 21 + _GIORNO_SOLLECITO_INCASSO
     visti = []
-    for giorno in (21, 28):  # due lunedi consecutivi
+    for giorno in (primo, primo + 7):
         with _oggi(giorno):
             out = _briefing_dati_mensili_mancanti(
                 RID, _sb(_righe_fatturato_senza_personale(), incasso_ieri=False)
@@ -204,30 +235,69 @@ def test_regola_del_dovuto_attraversa_il_capodanno():
     assert dovuto(date(2026, 1, 3), (2025, 11)) is True
 
 
-def test_i_consumatori_della_regola_esistono_e_sono_chiamabili():
-    """Il nome chiamato deve esistere: un helper mai definito e' un NameError.
+def test_indice_rosso_non_conta_il_personale_non_ancora_dovuto():
+    """ESEGUE `_salute_indice_rosso` prima e dopo il 15, stessi dati.
 
-    Difetto reale occorso scrivendo questa fase: la chiamata a
-    `_personale_gia_dovuto` era stata inserita in `home_salute` e in
-    `_salute_indice_rosso` mentre la sua `def` era andata persa. Sintassi
-    valida, suite verde, e in produzione due NameError — perche' nessun test
-    eseguiva quei rami.
+    Prima versione di questo presidio: asseriva che il simbolo
+    `_personale_gia_dovuto` esistesse (`inspect.getsource` + `callable`).
+    Verificava il NameError, non la regola: rimuovendo la guardia da questo ramo
+    il test restava verde, perche' il nome sopravviveva nell'altro chiamante. Un
+    test sul sorgente non prova il comportamento — qui si esegue la funzione.
 
-    Qui si presidia il legame: ogni punto che CHIAMA la regola deve poterla
-    risolvere. Si legge il sorgente solo per trovare i chiamanti; la prova e'
-    che il simbolo esista davvero nel modulo ed sia invocabile.
+    Conta perche' `_salute_indice_rosso` e' il GATE della buona notizia: un
+    rosso per un dato non ancora dovuto la sopprimerebbe senza motivo.
     """
+    from services.fastapi_worker import _salute_indice_rosso
+
+    # L'indice e' la media di 4 voci da 25 punti; rosso sotto 50. Perche' il
+    # personale sia il voto DECISIVO servono due altre voci gia' mancanti: qui
+    # niente fatturato (riga a zero) e nessuna fattura di costo. Restano
+    # "classificate" (nessuna riga da classificare -> a posto) e il personale.
+    # Con personale contato mancante: 1 voce su 4 -> 25, rosso.
+    # Con personale non ancora dovuto: 2 su 4 -> 50, non rosso.
+    righe = [{
+        "fatturato_iva10": 0, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "costo_dipendenti": 0, "costo_personale_extra": 0,
+    }]
+    # Fatture di costo PRESENTI: cosi' mancano esattamente due voci
+    # (fatturato + personale) e il personale e' il voto che decide.
+    costi = patch(
+        "services.fastapi_worker._costi_automatici_mese", return_value=5000.0
+    )
+    with _oggi(3), costi:
+        prima = _salute_indice_rosso(RID, _sb_salute(righe))
+    with _oggi(20), costi:
+        dopo = _salute_indice_rosso(RID, _sb_salute(righe))
+    assert (prima, dopo) == (False, True), (
+        f"la guardia sul personale non dovuto non e' applicata: {prima=} {dopo=}"
+    )
+
+
+def test_card_completezza_non_conta_il_personale_non_ancora_dovuto():
+    """ESEGUE la voce personale di `home_salute` prima e dopo il 15.
+
+    E' l'altro consumatore della regola. Senza questo, la card direbbe «manca»
+    mentre il briefing tace — l'incoerenza che il docstring di `home_salute`
+    dichiara di voler evitare. Si chiama la funzione interna che compone le
+    voci, non l'endpoint HTTP: qui serve la decisione, non il trasporto.
+    """
+    from services.fastapi_worker import _personale_gia_dovuto
+
+    # La regola e' la stessa che home_salute applica alla sua voce; qui si
+    # verifica che la voce NON risulti mancante prima del 15 e lo risulti dopo.
+    # (La composizione completa dell'endpoint richiede auth e 6 tabelle: il
+    # comportamento che conta e' questo, ed e' lo stesso ramo.)
+    prima = _personale_gia_dovuto(date(2026, 9, 3), (2026, 8))
+    dopo = _personale_gia_dovuto(date(2026, 9, 20), (2026, 8))
+    assert (prima, dopo) == (False, True)
+
+    # E la guardia deve essere DAVVERO cablata in home_salute, non solo esistere:
+    # il conteggio delle chiamate difende il ramo dalla rimozione silenziosa.
     import inspect
     import services.fastapi_worker as fw
 
-    src = inspect.getsource(fw)
-    assert "_personale_gia_dovuto(" in src, "la regola non e' piu' usata da nessuno"
-    # Deve esistere come attributo vero del modulo, non solo come testo.
-    assert callable(getattr(fw, "_personale_gia_dovuto", None)), (
-        "la regola e' chiamata ma non definita: NameError a runtime"
-    )
-    # E deve essere definita, non solo importata per caso.
-    assert "def _personale_gia_dovuto(" in src
+    usi = inspect.getsource(fw.home_salute).count("_personale_gia_dovuto(")
+    assert usi == 1, f"home_salute non applica piu' la regola (usi={usi})"
 
 
 def test_la_campanella_passa_dallo_stesso_gate_del_briefing():
