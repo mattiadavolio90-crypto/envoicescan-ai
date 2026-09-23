@@ -68,17 +68,45 @@ def test_mese_con_costi_fb_e_completo():
     ) is False
 
 
-def test_bastano_le_spese_generali_senza_food_cost():
-    """La condizione e' AND, non OR: un costo qualsiasi rende il mese leggibile.
+def test_le_sole_spese_generali_non_bastano_senza_food_cost():
+    """La condizione guarda i soli costi F&B: le spese non completano il mese.
 
-    E' la stessa soglia del worker (`_mesi_senza_costi`): un mese con 114 EUR di
-    sole spese generali su 444.000 EUR di ricavi conta come "con costi". La
-    coerenza fra le due definizioni e' voluta — divergendo, la tabella
-    colorerebbe di verde proprio i mesi per cui «Analisi visiva» dichiara di non
-    avere un giudizio.
+    Fino al 23/09/2026 era un AND («F&B E spese entrambi a zero»), e un costo
+    qualsiasi rendeva il mese giudicabile: 114 EUR di sole spese generali su
+    444.000 EUR di ricavi (SUSHILAND gennaio 2026, tutte e tre le sedi) davano
+    un MOL verde all'86% con food cost 0%. Decisione di Mattia: senza fatture
+    della merce il mese non si giudica.
+
+    E' la stessa soglia del worker (`_mesi_senza_costi`): la coerenza fra le due
+    definizioni e' voluta — divergendo, la tabella colorerebbe di verde proprio
+    i mesi per cui «Analisi visiva» dichiara di non avere un giudizio.
     """
     assert _senza_costi(
         _pivot(fatturato_netto=444234.0, costi_spese_totali=114.0)
+    ) is True
+
+
+def test_il_caso_casati_settembre():
+    """Il caso che ha aperto la verifica: 101 EUR di utenze, zero merce.
+
+    Misurato a DB il 23/09/2026: CASATI 14, Set 2026, 5.696 EUR di ricavi, 12
+    righe fattura tutte di spese, nessuna di merce. La tabella mostrava
+    «Margine F&B 5.696 EUR 100%» e «Guadagno finale (MOL) 5.595 EUR 98%» in
+    verde su un mese con «Costi F&B (Fatture) —».
+    """
+    assert _senza_costi(
+        _pivot(fatturato_netto=5696.0, costi_spese_totali=101.0, mol=5595.0)
+    ) is True
+
+
+def test_una_quota_di_riparto_fb_completa_il_mese():
+    """La merce comprata dal gruppo e ripartita sulla sede E' merce.
+
+    `costi_fb_totali` include gia' le quote di riparto F&B: una sede di catena
+    che non compra in proprio non deve finire fra i mesi senza giudizio.
+    """
+    assert _senza_costi(
+        _pivot(fatturato_netto=444234.0, costi_fb_totali=114.0)
     ) is False
 
 

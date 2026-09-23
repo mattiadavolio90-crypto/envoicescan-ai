@@ -106,20 +106,30 @@ export function pctIncidenza(raw: number, netto: number): string | null {
   return `${((raw / netto) * 100).toFixed(0)}%`;
 }
 
-// Un mese con ricavi e NESSUN costo automatico: il suo margine non e' un
+// Un mese con ricavi e NESSUNA FATTURA DELLA MERCE: il suo margine non e' un
 // risultato, e' un buco nei dati. Stessa definizione di `_mesi_senza_costi`
-// (services/routers/margini.py): F&B totali <= 0 E spese totali <= 0, dove
-// "spese totali" include gia' le quote di riparto dei costi di gruppo — un mese
-// con 114 EUR di sola quota conta come "con costi". Le due definizioni devono
-// restare uguali: divergendo, la tabella colorerebbe di verde proprio i mesi per
-// cui «Analisi visiva» dice di non avere un giudizio.
+// (services/routers/margini.py): le due devono restare uguali, divergendo la
+// tabella colorerebbe di verde proprio i mesi per cui «Analisi visiva» dice di
+// non avere un giudizio.
+//
+// La condizione guarda i SOLI costi F&B, non piu' «F&B E spese entrambi a zero»
+// (decisione di Mattia, 23/09/2026). Con l'AND bastava un costo qualsiasi a
+// dichiarare completo un mese senza una sola bolla di merce: misurato lo stesso
+// giorno, CASATI Set 2026 aveva 101 EUR di utenze su 5.696 EUR di ricavi e
+// mostrava «MOL 5.595 EUR, 98%» in verde; SUSHILAND gennaio, 114 EUR di utenze
+// su 444.000 EUR di ricavi, MOL verde all'86% su tutte e tre le sedi. In un
+// ristorante un mese senza merce non e' giudicabile, quale che sia la bolletta
+// della luce: il food cost e' 0% e il MOL e' gonfiato di tutto il costo merce.
+//
+// "costi_fb_totali" include gia' le quote di riparto F&B dei costi di gruppo
+// (catena): una sede che riceve solo quote ripartite resta un mese CON costi.
 //
 // Serve solo per DECIDERE IL COLORE. Il numero non si tocca (decisione di
 // Mattia): il MOL di un mese senza costi resta quello che e', smette solo di
 // essere dichiarato buono.
 export function meseSenzaCosti(m: MesePivot): boolean {
   if ((m.fatturato_netto ?? 0) <= 0) return false;
-  return (m.costi_fb_totali ?? 0) <= 0 && (m.costi_spese_totali ?? 0) <= 0;
+  return (m.costi_fb_totali ?? 0) <= 0;
 }
 
 /* ─── analisi-tab.tsx + carica-ricavi-dialog.tsx: elenco mesi del periodo ─── */

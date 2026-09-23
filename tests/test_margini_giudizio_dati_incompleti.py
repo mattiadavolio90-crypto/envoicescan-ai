@@ -39,9 +39,10 @@ class _Mese:
         self.costi_spese_totali = spese
 
 
-# Il caso reale, coi valori letti a DB: 9 mesi attivi, 3 senza alcun costo
-# (feb, ago, set). Gennaio NON e' fra questi: ha 114,08 EUR di quota di riparto
-# spese, che basta a renderlo un mese "con costi" — vedi docstring.
+# Il caso reale, coi valori letti a DB: 9 mesi attivi, 4 senza fatture merce
+# (gen, feb, ago, set). Gennaio E' fra questi dal 23/09/2026: i suoi 114,08 EUR
+# sono una quota di riparto SPESE, e con la soglia nuova (solo F&B) un mese di
+# sole spese resta scoperto — vedi docstring.
 CASO_REALE = [
     _Mese(fb=0, spese=114.08),     # gen: sola quota di riparto di gruppo
     _Mese(fb=0, spese=0),          # feb
@@ -55,18 +56,27 @@ CASO_REALE = [
 ]
 
 
-def test_conta_i_mesi_senza_alcun_costo():
-    assert _mesi_senza_costi(CASO_REALE) == 3
+def test_conta_i_mesi_senza_fatture_merce():
+    """Quattro, non tre: dal 23/09/2026 anche gennaio (sole spese) e' scoperto."""
+    assert _mesi_senza_costi(CASO_REALE) == 4
 
 
-def test_una_quota_di_riparto_rende_il_mese_completo():
-    """Il caso di gennaio: 114,08 EUR di sola quota di gruppo, e il mese conta.
+def test_una_quota_di_riparto_spese_non_basta_a_completare_il_mese():
+    """Il caso di gennaio: 114,08 EUR di sola quota di gruppo, e il mese NON conta.
+
+    Fino al 23/09/2026 quei 114 EUR bastavano a dichiararlo completo, e la
+    tabella Margini mostrava il MOL in verde all'86% su 444.000 EUR di ricavi
+    con food cost 0% (SUSHILAND, tutte e tre le sedi). Decisione di Mattia:
+    senza fatture della merce il mese non si giudica, quale che sia la bolletta.
+
+    Una quota di riparto F&B invece lo completa davvero: e' merce, comprata dal
+    gruppo e ripartita sulla sede.
 
     E' la stessa soglia di `costi_mancanti` (fastapi_worker._kpi_periodo): la
-    coerenza fra i due e' voluta. Isolato in un test suo perche' e' proprio il
-    dettaglio su cui avevo sbagliato la misura.
+    coerenza fra i due e' voluta.
     """
-    assert _mesi_senza_costi([_Mese(fb=0, spese=114.08)]) == 0
+    assert _mesi_senza_costi([_Mese(fb=0, spese=114.08)]) == 1
+    assert _mesi_senza_costi([_Mese(fb=114.08, spese=0)]) == 0
     assert _mesi_senza_costi([_Mese(fb=0, spese=0)]) == 1
 
 
@@ -75,9 +85,15 @@ def test_un_periodo_tutto_completo_non_ha_mesi_da_segnalare():
     assert _mesi_senza_costi([_Mese(fb=100, spese=50), _Mese(fb=200, spese=80)]) == 0
 
 
-def test_un_mese_con_le_sole_spese_non_e_senza_costi():
-    """Spese senza food: il dato c'e', e' il locale che non ha comprato merce."""
-    assert _mesi_senza_costi([_Mese(fb=0, spese=1200)]) == 0
+def test_un_mese_con_le_sole_spese_resta_senza_costi():
+    """Spese senza merce: le fatture non sono arrivate, non e' un locale a digiuno.
+
+    Era l'assunzione opposta fino al 23/09/2026 («e' il locale che non ha
+    comprato merce»). I dati l'hanno smentita: CASATI Set 2026 incassava
+    5.696 EUR con 101 EUR di sole utenze, e un ristorante che incassa senza
+    comprare merce non esiste — mancano le fatture, e il MOL al 98% e' finto.
+    """
+    assert _mesi_senza_costi([_Mese(fb=0, spese=1200)]) == 1
 
 
 def test_un_mese_con_il_solo_food_non_e_senza_costi():

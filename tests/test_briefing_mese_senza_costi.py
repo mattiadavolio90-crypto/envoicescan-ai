@@ -88,9 +88,22 @@ def test_kpi_costi_mancanti_false_con_food_presente():
     assert _kpi_periodo(margini, {5: 1000.0}, {}, 5)["costi_mancanti"] is False
 
 
-def test_kpi_costi_mancanti_false_con_spese_presenti():
+def test_kpi_costi_mancanti_true_con_le_sole_spese():
+    """50 EUR di spese su 516.152 EUR di ricavi non sono "i costi ci sono".
+
+    Fino al 23/09/2026 `costi_mancanti` era `fb <= 0 and spese <= 0`, quindi
+    bastava una bolletta a spegnere l'avviso su un mese senza una sola fattura
+    di merce. Ora guarda i soli F&B, come le altre tre gemelle della stessa
+    soglia (`_mesi_senza_costi`, `_costi_automatici_mese`, `meseSenzaCosti`).
+    """
     margini = {5: {"fatturato_iva10": 516152, "mol": 280924}}
-    assert _kpi_periodo(margini, {}, {5: 50.0}, 5)["costi_mancanti"] is False
+    assert _kpi_periodo(margini, {}, {5: 50.0}, 5)["costi_mancanti"] is True
+
+
+def test_kpi_costi_mancanti_false_con_merce_presente():
+    """Il contrario: con le fatture della merce il giudizio resta acceso."""
+    margini = {5: {"fatturato_iva10": 516152, "mol": 280924}}
+    assert _kpi_periodo(margini, {5: 120000.0}, {5: 50.0}, 5)["costi_mancanti"] is False
 
 
 def test_kpi_costi_mancanti_false_mese_vuoto():
@@ -251,3 +264,49 @@ def test_narrativa_mese_senza_costi():
     assert "maggio" in bullet
     assert "food cost" in frase.lower()
     assert "maggio" in frase
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# `_costi_automatici_mese` ESEGUITA, non mockata.
+#
+# I test qui sopra sostituiscono la funzione con una lambda, quindi il suo corpo
+# non gira mai: rimettendoci dentro la somma `cfb + csp` (il difetto corretto il
+# 23/09/2026) restavano tutti verdi. Misurato per mutazione lo stesso giorno —
+# era l'unico dei quattro punti della soglia senza un presidio che lo eseguisse.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _costi_mese_eseguita(monkeypatch, cfb: dict, csp: dict):
+    """Chiama la funzione vera, mockando solo la sorgente SQL a valle."""
+    import services.margine_service as ms
+    monkeypatch.setattr(
+        ms, "calcola_costi_automatici_per_anno_sql",
+        lambda user_id, ristorante_id, anno: (cfb, csp),
+    )
+    return fw._costi_automatici_mese("rid", 2026, 1, _SbConUserId(), user_id="uid")
+
+
+class _SbConUserId:
+    """Il minimo perche' la funzione non vada a cercare user_id: glielo passiamo."""
+
+    def table(self, *_a, **_k):  # pragma: no cover - non deve essere chiamato
+        raise AssertionError("con user_id esplicito non deve leggere ristoranti")
+
+
+def test_costi_automatici_mese_ignora_le_spese(monkeypatch):
+    """Il caso SUSHILAND gennaio: 114 EUR di utenze, zero merce -> 0, non 114.
+
+    E' il valore che il chiamante confronta con `<= 0` per decidere se avvisare
+    «mancano le fatture costo»: se qui torna 114, l'avviso tace su un mese senza
+    una sola bolla di merce.
+    """
+    assert _costi_mese_eseguita(monkeypatch, {1: 0.0}, {1: 114.0}) == 0.0
+
+
+def test_costi_automatici_mese_conta_la_merce(monkeypatch):
+    """Il contrario: con le fatture della merce il valore non e' zero."""
+    assert _costi_mese_eseguita(monkeypatch, {1: 29953.0}, {1: 114.0}) == 29953.0
+
+
+def test_costi_automatici_mese_mese_assente_vale_zero(monkeypatch):
+    """Un mese senza riga nel dizionario vale 0, non solleva."""
+    assert _costi_mese_eseguita(monkeypatch, {}, {}) == 0.0

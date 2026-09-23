@@ -912,10 +912,20 @@ _TESTO_SENZA_SOGLIA_RETAIL = (
 # mappa gia' su colore neutro (`coloreDaCommento`, calcolo-tab.tsx), riga che resta
 # al suo posto e dice il valore invece di valutarlo.
 def _mesi_senza_costi(mesi_attivi: list) -> int:
-    """Quanti mesi con fatturato non hanno NESSUN costo automatico (F&B + spese)."""
+    """Quanti mesi con fatturato non hanno NESSUNA fattura della merce (F&B).
+
+    Guarda i soli costi F&B, non piu' «F&B E spese entrambi a zero» (decisione
+    di Mattia, 23/09/2026). Con l'AND bastavano 114 EUR di utenze a dichiarare
+    completo un mese senza una sola bolla di merce: SUSHILAND gennaio 2026
+    mostrava un MOL verde all'86% su 444.000 EUR di ricavi e zero food cost.
+
+    Gemella di `meseSenzaCosti` (apps/web/src/lib/margini-aggregati.ts): le due
+    devono restare uguali, o la tabella colora di verde i mesi per cui questa
+    funzione dichiara di non avere un giudizio.
+    """
     return sum(
         1 for p in mesi_attivi
-        if (p.costi_fb_totali or 0) <= 0 and (p.costi_spese_totali or 0) <= 0
+        if (p.costi_fb_totali or 0) <= 0
     )
 
 

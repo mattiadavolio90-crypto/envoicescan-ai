@@ -6773,7 +6773,7 @@ def _costi_automatici_mese(
     ristorante_id: str, anno: int, mese: int, supabase_client,
     user_id: Optional[str] = None,
 ) -> Optional[float]:
-    """Costi automatici (food + spese, dalle fatture) di un singolo mese.
+    """Costi FATTURE MERCE (F&B, dalle fatture) di un singolo mese.
 
     Stessa fonte della card 'I tuoi conti' (RPC costi_automatici_mensili, con
     COALESCE(data_competenza, data_documento) e categorie reali): cosi' la voce
@@ -6782,6 +6782,16 @@ def _costi_automatici_mese(
     sano. None se non determinabile (RPC/utente non disponibili): il chiamante
     sceglie il fallback prudente. user_id opzionale: se assente lo ricava dal
     ristorante.
+
+    Dal 23/09/2026 somma i soli costi F&B, non piu' F&B + spese (decisione di
+    Mattia). Tutti e tre i chiamanti — l'avviso 'mancano le fatture costo' e le
+    due voci 'Fatture caricate' della Salute — chiedono se e' arrivata la MERCE
+    di quel mese, e con la somma rispondevano di si' per una sola bolletta:
+    misurato lo stesso giorno, SUSHILAND gennaio 2026 aveva 114 EUR di utenze,
+    zero merce, food cost 0% e nessun avviso. Gemella della soglia del colore
+    (`_mesi_senza_costi` in services/routers/margini.py e `meseSenzaCosti` in
+    apps/web/src/lib/margini-aggregati.ts): le tre devono restare allineate, o
+    la tabella colora di verde un mese per cui la Salute tace.
     """
     try:
         if not user_id:
@@ -6796,8 +6806,8 @@ def _costi_automatici_mese(
         if not user_id:
             return None
         from services.margine_service import calcola_costi_automatici_per_anno_sql
-        cfb, csp = calcola_costi_automatici_per_anno_sql(str(user_id), ristorante_id, anno)
-        return float(cfb.get(mese) or 0) + float(csp.get(mese) or 0)
+        cfb, _csp = calcola_costi_automatici_per_anno_sql(str(user_id), ristorante_id, anno)
+        return float(cfb.get(mese) or 0)
     except Exception as exc:
         logger.warning("costi automatici mese fallito: %s", exc)
         return None
@@ -8110,11 +8120,19 @@ def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: in
         "costo_personale": round(personale, 2),
         "spese_generali": round(spese, 2),
         "mol": round(mol, 2),
-        # Mese con ricavi ma SENZA alcun costo automatico (food + spese = 0): il
-        # MOL e' fatturato - personale, non un margine reale. Un ristorante ha
+        # Mese con ricavi ma SENZA fatture della merce (F&B = 0): il MOL e'
+        # fatturato - personale - spese, non un margine reale. Un ristorante ha
         # sempre food cost -> e' un mese a dati incompleti, non una buona notizia
         # da festeggiare (il briefing non deve dire "+172%!" su costi mancanti).
-        "costi_mancanti": fatturato > 0 and fb <= 0 and spese <= 0,
+        #
+        # Guarda i soli costi F&B dal 23/09/2026 (decisione di Mattia): con
+        # `fb <= 0 and spese <= 0` bastavano 114 EUR di utenze a dichiarare
+        # completo un mese senza una sola bolla di merce. Quarta gemella della
+        # stessa soglia, con `_mesi_senza_costi` (services/routers/margini.py),
+        # `_costi_automatici_mese` (qui sopra) e `meseSenzaCosti`
+        # (apps/web/src/lib/margini-aggregati.ts): vanno mosse insieme, o KPI,
+        # tabella, Salute e briefing si contraddicono sulla stessa pagina.
+        "costi_mancanti": fatturato > 0 and fb <= 0,
         "has_data": fatturato > 0 or fb > 0 or spese > 0 or personale > 0,
     }
 
