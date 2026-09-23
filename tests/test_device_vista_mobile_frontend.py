@@ -209,3 +209,142 @@ def test_admin_e_m_restano_esclusi_dal_rimbalzo():
     assert rimbalza("/m") is False
     assert rimbalza("/m/diario") is False
     assert rimbalza("/margini") is True
+
+
+# ── La SEQUENZA dei render, non la singola decisione ────────────────────────
+#
+# I test sopra provano `deveRimbalzareSuMobile` come funzione pura, passando
+# `giaDentro` a mano. Il difetto trovato dalla review del 23/09/2026 non viveva
+# li': viveva nell'ACCUMULO di stato fra un render e l'altro. `useIsMobile()`
+# torna `!!isMobile` e al primo render vale sempre `false` (lo stato parte da
+# `undefined`), quindi la decisione veniva segnata come presa su un falso e al
+# secondo render — quello col valore vero — il rimbalzo non scattava piu'.
+
+_SEQUENZA = """
+Object.defineProperty(globalThis, "navigator", {
+  value: { userAgent: input.ua, maxTouchPoints: input.touch },
+  configurable: true, writable: true,
+});
+globalThis.window = { innerWidth: input.w };
+const _store = new Map(Object.entries(input.storage ?? {}));
+globalThis.localStorage = {
+  getItem: (k) => (_store.has(k) ? _store.get(k) : null),
+  setItem: (k, v) => _store.set(k, String(v)),
+  removeItem: (k) => _store.delete(k),
+};
+
+// Riproduce l'effect di MobileRedirect su piu' render successivi.
+let decisoPer = null;
+let rimbalzi = 0;
+for (const isPhone of input.renders) {
+  if (!m.decisionePresa(isPhone)) continue;
+  const giaDentro = decisoPer === input.pathname;
+  decisoPer = input.pathname;
+  if (m.deveRimbalzareSuMobile({
+    isPhone, pathname: input.pathname,
+    giaDentro, preferisceDesktop: m.preferisceDesktop(),
+  })) rimbalzi++;
+}
+emit(rimbalzi);
+"""
+
+
+def _rimbalzi(renders, ua=UA_IPHONE, touch=5, w=390, pathname="/margini", storage=None):
+    return esegui_ts(
+        MODULO,
+        _SEQUENZA,
+        {"ua": ua, "touch": touch, "w": w, "pathname": pathname,
+         "renders": renders, "storage": storage or {}},
+        richiede=("decisionePresa", "deveRimbalzareSuMobile", "preferisceDesktop"),
+    )
+
+
+def test_il_telefono_rimbalza_anche_col_primo_render_indeterminato():
+    """Il blocco della review: `undefined` poi `true` e' la sequenza REALE.
+
+    Prima del fix dava 0 rimbalzi — i telefoni veri restavano sulla vista
+    desktop, cioe' la regressione che il lavoro dichiarava di non introdurre.
+    """
+    assert _rimbalzi([None, True]) == 1
+
+
+def test_il_ridimensionamento_dopo_l_ingresso_non_rimbalza_di_nuovo():
+    """La ragione per cui il ref esiste: si decide una volta sola.
+
+    Desktop che restringe la finestra mentre lavora: il primo render sa gia'
+    che non e' un telefono, i successivi non devono strapparlo via.
+    """
+    assert _rimbalzi([False, True, True], ua=UA_WINDOWS, touch=0, w=700) == 0
+
+
+def test_render_indeterminati_ripetuti_non_consumano_la_decisione():
+    """StrictMode monta due volte: l'indeterminato non deve "bruciare" il turno."""
+    assert _rimbalzi([None, None, True]) == 1
+
+
+def test_il_tablet_in_split_view_non_finisce_su_mobile():
+    """Uccide il mutante RM1 della review: la guardia `isTabletDevice()`.
+
+    Il caso va scelto dove i due mondi DIVERGONO. A 810px `810 < 768` e' gia'
+    false, quindi togliere la guardia non cambierebbe nulla: il test passerebbe
+    anche sul codice rotto. In Split View (700px) la guardia e' l'unica cosa che
+    tiene l'iPad sull'app completa — ed e' la regola scritta in cima a device.ts.
+    """
+    assert _esegui(
+        "emit(m.serviVistaMobile());",
+        ua=UA_IPAD, touch=5, w=700,
+        richiede=("serviVistaMobile",),
+    ) is False
+
+    UA_IPADOS_MAC = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    )
+    assert _esegui(
+        "emit(m.serviVistaMobile());",
+        ua=UA_IPADOS_MAC, touch=5, w=700,
+        richiede=("serviVistaMobile",),
+    ) is False
+
+
+def test_la_soglia_dei_telefoni_e_768_non_una_qualunque():
+    """Uccide il mutante RM2: soglia allargata (es. `<= 1400`).
+
+    Senza un caso SOPRA la soglia su un dispositivo non-telefono, allargarla
+    resterebbe invisibile: un desktop a schermo pieno finirebbe su /m.
+    """
+    assert _esegui(
+        "emit(m.serviVistaMobile());",
+        ua=UA_WINDOWS, touch=0, w=1400,
+        richiede=("serviVistaMobile",),
+    ) is False
+    assert _esegui(
+        "emit(m.serviVistaMobile());",
+        ua=UA_WINDOWS, touch=0, w=768,
+        richiede=("serviVistaMobile",),
+    ) is False
+    assert _esegui(
+        "emit(m.serviVistaMobile());",
+        ua=UA_WINDOWS, touch=0, w=767,
+        richiede=("serviVistaMobile",),
+    ) is True
+
+
+def test_la_funzione_da_sola_non_rimbalza_su_un_rilevamento_indeterminato():
+    """Difesa in profondita' per un chiamante che salti `decisionePresa`.
+
+    Nel flusso vero MobileRedirect filtra prima, quindi qui `isPhone` e' sempre
+    booleano e `!opts.isPhone` e `opts.isPhone !== true` coincidono (il mutante
+    che li scambia sopravvive, ed e' ridondanza, non un buco). Il giorno in cui
+    un secondo chiamante chiamasse la funzione senza filtrare, `undefined` non
+    deve valere "e' un telefono".
+    """
+    for indeterminato in ("null", "undefined"):
+        assert _esegui(
+            f"""emit(m.deveRimbalzareSuMobile({{
+              isPhone: {indeterminato}, pathname: "/margini",
+              giaDentro: false, preferisceDesktop: false,
+            }}));""",
+            touch=0, w=390,
+            richiede=("deveRimbalzareSuMobile",),
+        ) is False

@@ -59,6 +59,20 @@ export function impostaPreferenzaDesktop(attiva: boolean): void {
   }
 }
 
+// Se la decisione per questa pagina e' stata presa davvero, cioe' se va
+// memorizzata per non ri-decidere a ogni ridimensionamento.
+//
+// Esiste per un difetto trovato dalla review del 23/09/2026: `useIsMobile()`
+// torna `!!isMobile` e al PRIMO render vale sempre `false` (lo stato parte da
+// `undefined`, il valore vero arriva dall'effect). Segnando la decisione come
+// presa su quel falso, al secondo render — quello che sa di essere un telefono
+// — il rimbalzo trovava `giaDentro` e NON scattava piu': i telefoni veri non
+// finivano piu' su /m, cioe' esattamente la regressione che il fix voleva
+// evitare. Finche' il rilevamento e' indeterminato non si decide nulla.
+export function decisionePresa(isPhone: boolean | undefined | null): boolean {
+  return isPhone === true || isPhone === false;
+}
+
 // Se rimbalzare su /m la pagina `pathname`.
 //
 // Nasce da una misura del 23/09/2026: `isPhoneViewport()` decide SOLO sulla
@@ -75,12 +89,14 @@ export function serviVistaMobile(): boolean {
 }
 
 export function deveRimbalzareSuMobile(opts: {
-  isPhone: boolean;
+  isPhone: boolean | undefined;
   pathname: string;
   giaDentro: boolean;
   preferisceDesktop: boolean;
 }): boolean {
-  if (!opts.isPhone) return false;
+  // `undefined` = rilevamento non ancora avvenuto (primo render). NON e'
+  // "non e' un telefono": vedi `decisionePresa`.
+  if (opts.isPhone !== true) return false;
   if (opts.preferisceDesktop) return false;
   if (opts.giaDentro) return false;
   if (opts.pathname.startsWith("/admin")) return false;
