@@ -348,3 +348,26 @@ def test_la_funzione_da_sola_non_rimbalza_su_un_rilevamento_indeterminato():
             touch=0, w=390,
             richiede=("deveRimbalzareSuMobile",),
         ) is False
+
+
+def test_le_due_transizioni_della_preferenza_vanno_in_direzioni_opposte():
+    """Estratte dal .tsx perche' li' nessun test le vedeva.
+
+    Invertire i due booleani non faceva fallire niente, e l'effetto e' visibile:
+    chi fa logout da /m resterebbe bloccato sulla vista desktop al rientro, e
+    chi chiede la versione desktop verrebbe rispedito su /m. Si asseriscono
+    ENTRAMBE le transizioni, non la sola chiamata (rilievo della re-review del
+    23/09/2026).
+    """
+    esito = _esegui(
+        """
+        m.scegliVersioneDesktop();
+        const dopoScelta = m.preferisceDesktop();
+        m.dimenticaPreferenzaAlLogout();
+        const dopoLogout = m.preferisceDesktop();
+        emit({ dopoScelta, dopoLogout });
+        """,
+        ua=UA_IPHONE, touch=5, w=390,
+        richiede=("scegliVersioneDesktop", "dimenticaPreferenzaAlLogout", "preferisceDesktop"),
+    )
+    assert esito == {"dopoScelta": True, "dopoLogout": False}

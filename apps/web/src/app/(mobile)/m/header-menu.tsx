@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { MoreVertical, LogOut, MapPin, Check, Building2, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
-import { impostaPreferenzaDesktop } from "@/lib/device";
+import { scegliVersioneDesktop, dimenticaPreferenzaAlLogout } from "@/lib/device";
 
 function writeViewCookie(v: "chain" | "pv") {
   if (typeof document === "undefined") return;
@@ -89,7 +89,7 @@ export function HeaderMenu() {
   // rispedirebbe subito su /m. Full reload (non router.push) perche' si cambia
   // layout, come per il login.
   function vaiAlDesktop() {
-    impostaPreferenzaDesktop(true);
+    scegliVersioneDesktop();
     window.location.href = "/dashboard";
   }
 
@@ -97,7 +97,7 @@ export function HeaderMenu() {
     try {
       // Il logout chiude anche la preferenza desktop: la prossima persona che
       // entra su questo dispositivo riparte dalla scelta automatica.
-      impostaPreferenzaDesktop(false);
+      dimenticaPreferenzaAlLogout();
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");
       router.refresh();

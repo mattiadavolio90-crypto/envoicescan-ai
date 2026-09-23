@@ -10,6 +10,7 @@ dello stesso giorno).
 Qui si prova cio' che un cliente vedrebbe: che la tavolozza esista, che sia la
 stessa per i due selettori, e che le emoji siano tali.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -66,9 +67,24 @@ def test_i_due_selettori_usano_la_STESSA_tavolozza():
     for f in consumatori:
         assert f.exists(), f"{f} spostato: aggiorna il test invece di cancellarlo"
         testo = f.read_text(encoding="utf-8")
-        assert "EMOJI_TAG" in testo, f"{f.name} non usa piu' la tavolozza condivisa"
-        # La prima emoji della lista scritta a mano: se ricompare come letterale
-        # di un array, qualcuno ha reintrodotto una copia locale.
-        assert '["🐟"' not in testo.replace(" ", ""), (
+
+        # NON basta che `EMOJI_TAG` compaia: un import rimasto orfano soddisfa
+        # la ricerca mentre il selettore usa una copia locale (mutante TM5 della
+        # re-review del 23/09/2026, sopravvissuto alla prima stesura di questo
+        # presidio). Si conta l'uso VERO, cioe' le occorrenze fuori dall'import.
+        fuori_import = [
+            r for r in testo.splitlines()
+            if "EMOJI_TAG" in r and not r.lstrip().startswith("import")
+        ]
+        assert fuori_import, (
+            f"{f.name} importa EMOJI_TAG ma non la usa: il selettore e' "
+            "ri-sganciato dalla tavolozza condivisa"
+        )
+
+        # E nessuna lista di emoji ridichiarata nel file, comunque formattata:
+        # la copia originale stava su una riga sola, ma riformattarla su piu'
+        # righe la rendeva invisibile a un confronto di sottostringa.
+        senza_spazi = re.sub(r"\s+", "", testo)
+        assert '["\U0001F41F"' not in senza_spazi, (
             f"{f.name} ridichiara la tavolozza inline invece di importarla"
         )

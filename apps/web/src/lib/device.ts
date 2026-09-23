@@ -81,6 +81,21 @@ export function decisionePresa(isPhone: boolean | undefined | null): boolean {
 // su /m a meta' lavoro — e da /m non esisteva alcun ritorno. Il redirect resta
 // per i telefoni veri, ma solo come SCELTA DELLA PORTA D'INGRESSO: chi e' gia'
 // dentro una pagina desktop non viene piu' strappato via da un ridimensionamento.
+// Le due transizioni della preferenza desktop, estratte dal menu di /m perche'
+// li' vivevano in un .tsx e nessun test poteva vederle: invertire i due
+// booleani non faceva fallire niente, e l'effetto e' visibile — chi fa logout
+// da /m resterebbe bloccato sulla vista desktop al rientro (rilievo della
+// re-review del 23/09/2026).
+export function scegliVersioneDesktop(): void {
+  impostaPreferenzaDesktop(true);
+}
+
+// Il logout azzera la scelta: la prossima persona che entra su questo
+// dispositivo riparte dal rilevamento automatico.
+export function dimenticaPreferenzaAlLogout(): void {
+  impostaPreferenzaDesktop(false);
+}
+
 // La vista mobile e' quella giusta per questo utente, ORA: telefono e nessuna
 // richiesta esplicita di desktop. Unico punto di verita' per il login, cosi' la
 // preferenza non va ricontrollata a ogni chiamante (e dimenticata in uno).
