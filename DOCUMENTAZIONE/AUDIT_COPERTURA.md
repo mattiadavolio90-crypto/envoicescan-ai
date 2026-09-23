@@ -677,6 +677,41 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   mutanti nella riga **L6** era rimasta a «3»: e' la trappola «la cifra vive in
 >   piu' punti», corretta dove guardavo. **Totale: 6 mutanti, 6 uccisi** — 4 miei
 >   piu' i 2 del reviewer, che sopravvivevano ai miei presidi.
+>   **Tre passate di review, due rosse.** La prima ha trovato **il difetto piu'
+>   grave della sessione**, che sarebbe arrivato in produzione: avevo lasciato
+>   viva la vecchia firma a 4 parametri «cosi' un worker non aggiornato continua
+>   a funzionare». Misurato su Postgres vero: fa **l'esatto contrario**. Col
+>   `DEFAULT NULL` la firma a 5 e' chiamabile anche con 4 argomenti, quindi le
+>   due sono entrambe candidate e Postgres solleva `AmbiguousFunction` — fra
+>   migration e deploy il worker vecchio si rompe e, col fail-closed, **la chat
+>   si spegne per tutti**: precisamente l'incidente che quella frase diceva di
+>   evitare. Il rimedio era una riga, ed era gia' il precedente della casa
+>   (`20260619100000_chat_usage_pool.sql`). Il `DROP` va **prima** del `CREATE`:
+>   in fondo lascerebbe una finestra di pochi istanti in cui le firme coesistono.
+>   **La seconda rossa: lo stesso mio errore due volte di fila.** Ho scritto
+>   codice e non l'ho presidiato — prima il payload verso la RPC (si poteva
+>   cancellare `p_limite_mensile`, cioe' spegnere la feature, con 15.836 test
+>   verdi), poi i campi verso il frontend (`chat_limite_mese`/`chat_domande_mese`
+>   non erano nominati da **nessun** test). Un presidio era anche una tautologia:
+>   confrontava `CHAT_LIMITI_PIANO` con la funzione che lo produce, quindi una
+>   tabella scritta a mano **coi valori giusti** passava. Ora verifica il
+>   MECCANISMO: cambiata la percentuale, i tetti devono seguire.
+>   **E un difetto di vista**: col giorno al 10%, chi va a pieno regime esaurisce
+>   il mese al giorno 10 — dall'11 al 30 il contatore avrebbe detto «ti restano
+>   30 domande oggi» mentre ogni invio prendeva 429. Lo stesso difetto di
+>   promessa falsa corretto nel MESSAGGIO, lasciato nella VISTA.
+>   **Mutanti: 20 riapplicati dal reviewer nella sola terza passata, tutti
+>   ancorati per numero di riga e ripristinati con diff vuoto.** Nessun terzo
+>   livello scoperto: `_chat_budget_mensile_per_piano`, `_chat_budget_mensile_pool`,
+>   `quotaEsaurita`, il ramo `-2`, il `max(1, ...)` e `CHAT_QUOTA_GIORNALIERA_PCT`
+>   hanno tutti un presidio **che esegue**.
+>   **Quattro gap dichiarati e NON chiusi, perche' ereditati e simmetrici**: i
+>   medesimi mutanti sopravvivono sul gemello del GIORNO, codice che questa fase
+>   non tocca. (i) invertire il filtro di proprieta' in `_chat_domande_mese`
+>   (`ristorante_id` <-> `user_id`) sopravvive — **sarebbe un leak fra clienti**,
+>   e vale un presidio quando si torna sul file; (ii) cambiare la tabella letta;
+>   (iii) `None if _chat_pool else ristorante_id` -> `ristorante_id`, che sbaglia
+>   il conteggio dei multi-sede; (iv) il default di `chat_limite_mese`.
 >   **Suite: 15.833 passed, 45 skipped, 0 failed** (`-m "not sql" -p no:randomly`),
 >   misurata su `c240208`; durante il run un'altra sessione ha committato
 >   `bf28328` (fase 3 margini, nessun file mio), quindi la cifra include anche i
