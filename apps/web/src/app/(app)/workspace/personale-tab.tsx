@@ -1505,8 +1505,14 @@ export function PersonaleTab() {
           </button>
         </div>
 
-        {/* Destra: azioni */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* Destra: azioni.
+            `flex-wrap` anche QUI, non solo sul contenitore esterno: i cinque
+            bottoni sono ~700px e senza wrap restano un blocco indivisibile che
+            sfonda il bordo destro. Sotto i ~1100px «Aggiungi turno» usciva
+            tagliato a meta' e trascinava l'INTERA pagina in scroll orizzontale
+            (misurato a 1000px il 23/09, blocco H). `justify-end` tiene i bottoni
+            a destra quando vanno a capo, `ml-auto` da solo non basta piu'. */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" onClick={() => setGestioneDipOpen(true)}>
             <Users className="size-4 mr-1.5" />Gestisci dipendenti
           </Button>
@@ -1540,8 +1546,8 @@ export function PersonaleTab() {
               18/09: le valvole messe per lo spazio producevano esattamente
               questo.) Lo spazio E' comunque stretto, ma per un'altra ragione, ed
               e' strettezza PREESISTENTE, presente ogni volta che le paghe
-              sono inserite: va risolta in fase 3 riducendo la taglia del testo,
-              non tagliando le cifre. Misurato glifo per glifo su Inter: a 1140px
+              sono inserite: RISOLTA il 23/09 (fase 3, blocco H) riducendo la
+              taglia del testo sotto `lg`, non tagliando le cifre. Misurato glifo per glifo su Inter: a 1140px
               restano ~223px utili per card, e "12.450,00 €" a text-4xl ne vale
               ~206 (7 cifre tabulari 0.601em + punteggiatura + "€" 0.636; il peso
               NON allarga le cifre, perche' tabular-nums ne fissa l'advance —
@@ -1549,8 +1555,13 @@ export function PersonaleTab() {
               L'importo da solo quindi ci starebbe: e' la SOMMA a non starci,
               206 + 8 di gap + ~151 delle ore = ~365px su 223. Per questo nessuna
               valvola risolve: non c'e' modo di ripartire 365 in 223. Misure
-              sulle classi e sul font, NON un rendering: da guardare a schermo a
-              1140 e 1280. */}
+              sulle classi e sul font, NON un rendering.
+              Guardato a schermo a 1000px il 23/09: senza paghe inserite le ore
+              ANDAVANO A CAPO IN MEZZO AL NUMERO («409h / 30m» su due righe), che
+              e' lo stesso inganno del troncamento — una durata spezzata si legge
+              come due valori. Ora sotto `lg` i quattro numeri stanno a `text-2xl`
+              (~103px per le ore) e `whitespace-nowrap` vieta il capo: 103 + 8 +
+              ~103 entra nei 223px disponibili. Sopra `lg` resta `text-4xl`. */}
           {/* Due o tre colonne secondo quante card ci sono davvero: con la
               Card 3 nascosta, `sm:grid-cols-3` lascerebbe un buco a destra —
               cioe' la cornice vuota che questo lavoro elimina altrove. */}
@@ -1563,8 +1574,8 @@ export function PersonaleTab() {
                   <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Costo ordinarie</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtOreDisplay(oreStdTotale)}</p>
-                  <p className="shrink-0 text-4xl font-black tabular-nums text-foreground leading-none text-right">
+                  <p className="whitespace-nowrap text-2xl lg:text-4xl font-black tabular-nums text-foreground leading-none">{fmtOreDisplay(oreStdTotale)}</p>
+                  <p className="shrink-0 whitespace-nowrap text-2xl lg:text-4xl font-black tabular-nums text-foreground leading-none text-right">
                     {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-sm font-semibold text-incerto">Paghe non inserite</span>}
                   </p>
                 </div>
@@ -1579,8 +1590,8 @@ export function PersonaleTab() {
                   <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Costo straord.</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="text-4xl font-black tabular-nums text-foreground leading-none">{fmtOreDisplay(oreExtTotale)}</p>
-                  <p className="shrink-0 text-4xl font-black tabular-nums text-foreground leading-none text-right">
+                  <p className="whitespace-nowrap text-2xl lg:text-4xl font-black tabular-nums text-foreground leading-none">{fmtOreDisplay(oreExtTotale)}</p>
+                  <p className="shrink-0 whitespace-nowrap text-2xl lg:text-4xl font-black tabular-nums text-foreground leading-none text-right">
                     {costoExtTotale > 0 ? fmtEuro(costoExtTotale) : <span className="text-sm font-semibold text-incerto">Paghe non inserite</span>}
                   </p>
                 </div>
@@ -1603,8 +1614,8 @@ export function PersonaleTab() {
                   <p className="text-xs font-semibold uppercase tracking-widest text-primary-text">Costo totale</p>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <p className="text-4xl font-black tabular-nums text-primary-text leading-none">{fmtOreDisplay(totaleOre)}</p>
-                  <p className="shrink-0 text-4xl font-black tabular-nums text-primary-text leading-none text-right">
+                  <p className="whitespace-nowrap text-2xl lg:text-4xl font-black tabular-nums text-primary-text leading-none">{fmtOreDisplay(totaleOre)}</p>
+                  <p className="shrink-0 whitespace-nowrap text-2xl lg:text-4xl font-black tabular-nums text-primary-text leading-none text-right">
                     {/* Senza paghe inserite il costo e' 0: fino al 18/09/2026 questa
                         card ripiegava sulla media di ore al giorno, cioe' mostrava delle
                         ORE sotto l'etichetta "Costo totale". Ora dice che manca il dato,
