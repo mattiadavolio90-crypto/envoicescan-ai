@@ -598,10 +598,20 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **La firma della RPC non cambia** (stessi 4 parametri): codice e migration
 >   sono indipendenti, **nessun ordine di deploy obbligato** e nessuna finestra in
 >   cui la chat si spegne — il rischio che il piano segnalava non si applica.
->   **3 mutanti applicati, 3 uccisi** (fuso→UTC, messaggio→«Riprova domani»,
->   logging rimosso), uno alla volta, ripristino per sostituzione inversa: qui
->   `git checkout` avrebbe scartato anche i fix non committati, e il blocco
->   dell'ambiente me l'ha impedito giustamente.
+>   **4 mutanti applicati, 4 uccisi** (fuso→UTC, messaggio backend→«Riprova
+>   domani», logging rimosso, messaggio client→«Riprova domani»), uno alla volta,
+>   ripristino per sostituzione inversa: qui `git checkout` avrebbe scartato anche
+>   i fix non committati, e il blocco dell'ambiente me l'ha impedito giustamente.
+>   **Il quarto e' nato da un rosso che avevo committato**: la suite completa
+>   girava ancora quando ho chiuso `6325bb9`, e conteneva
+>   `test_429_spiega_il_limite_giornaliero`, che asseriva la parola «domani» —
+>   cioe' il testo che avevo appena tolto perche' falso (1 failed, 15.820 passed).
+>   Corretto in `19a7cf5`: il presidio **esegue** il TypeScript vero, quindi a
+>   invecchiare era l'asserzione, non il codice. Il difetto di metodo: avevo
+>   cercato le occorrenze del messaggio nel **codice** ma non i **test che lo
+>   asseriscono** — un messaggio all'utente ha due famiglie di consumatori, e la
+>   seconda vive in `tests/`. Vale anche la regola gia' scritta: **una cifra si
+>   dichiara sullo stato committato, e dopo che la suite ha finito.**
 >   `tests/test_chat_quota_giorno_di_roma.py` (7 test, casi scelti **dove i due
 >   fusi divergono** — fra mezzanotte e le 02:00 di Roma nei due regimi CET/CEST:
 >   un'ora qualunque non distingue UTC da Roma e lascia vivo il mutante).
