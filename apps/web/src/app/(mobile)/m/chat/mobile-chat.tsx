@@ -49,7 +49,7 @@ export function MobileChat() {
       if (data.reply) {
         reply = data.reply;
       } else if (res.status === 429) {
-        reply = data.error || "Hai raggiunto il limite di domande per oggi. Riprova domani.";
+        reply = data.error || "Hai raggiunto il limite di domande per oggi. Il contatore si azzera a mezzanotte.";
       } else if (res.status === 403) {
         reply = data.error || "La chat non è disponibile nel tuo piano attuale.";
       } else if (res.status === 504) {

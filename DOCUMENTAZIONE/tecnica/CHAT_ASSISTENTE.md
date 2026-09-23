@@ -110,7 +110,22 @@ la lascia passare. Il log della domanda è già scritto dalla RPC prima della
 chiamata OpenAI → niente INSERT a valle.
 
 Il conteggio è per **ristorante** (`ristorante_id`) se presente, altrimenti per
-utente. La finestra è il **giorno UTC**.
+utente. La finestra è il **giorno di Europe/Rome**: il contatore si azzera a
+mezzanotte per il ristoratore, non per il server.
+
+> Fino al 23/09/2026 la finestra era il giorno **UTC**, cioè l'01:00 di Roma
+> d'inverno e le 02:00 d'estate: chi chattava dopo mezzanotte spendeva la quota
+> del giorno prima (misurato sul DB live: 1 riga su 95 già addebitata al giorno
+> sbagliato). Il fuso vive in **due punti che devono restare allineati** — la RPC
+> (`20260923141755_chat_quota_giorno_di_roma.sql`) e il gemello Python
+> `_chat_domande_oggi`: se divergono, il contatore mostrato al cliente e quello
+> applicato non coincidono più. Presidio: `tests/test_chat_quota_giorno_di_roma.py`.
+
+**Un blocco lascia traccia nei log** (`logger.warning`, dal 23/09/2026). Prima non
+la lasciava da nessuna parte: la RPC ritorna `-1` **senza inserire**, e il ramo
+`429` non scriveva né su DB né sul logger. Un rifiuto era quindi invisibile, e la
+domanda «il tetto ha mai fermato un cliente?» non era rispondibile — non per
+assenza di blocchi, ma per assenza dello strumento di misura.
 
 Il widget mostra le domande rimaste e si sincronizza con la verità del backend a
 ogni risposta (`domande_oggi` / `limite_giorno` in `ChatResponse`).

@@ -42,7 +42,7 @@ export function messaggioRisposta(
   data: { reply?: string; error?: string },
 ): string {
   if (data.reply) return data.reply;
-  if (status === 429) return data.error || "Hai raggiunto il limite di domande per oggi. Riprova domani.";
+  if (status === 429) return data.error || "Hai raggiunto il limite di domande per oggi. Il contatore si azzera a mezzanotte.";
   if (status === 403) return data.error || "La chat non è disponibile nel tuo piano attuale.";
   if (status === 504) return "L'assistente ha impiegato troppo tempo. Riprova.";
   return data.error || "Si è verificato un errore. Riprova.";

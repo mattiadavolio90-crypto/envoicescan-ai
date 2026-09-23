@@ -3295,9 +3295,20 @@ def _gruppo_chat_disabilitata(user_id: str, supabase_client) -> bool:
 
 
 def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
-    """Conta le domande alla chat fatte oggi (UTC) per il ristorante (o utente)."""
-    from datetime import datetime as _dt, timezone as _tz
-    inizio = _dt.now(_tz.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    """Conta le domande alla chat fatte oggi (Europe/Rome) per il ristorante (o utente).
+
+    Il giorno e' quello del ristoratore, non quello del server: contando in UTC il
+    contatore si azzerava all'01:00 (CET) o alle 02:00 (CEST) di Roma, e chi
+    chattava dopo mezzanotte spendeva la quota del giorno prima. Misurato sul DB
+    live il 23/09/2026: 1 riga su 95 gia' addebitata al giorno sbagliato. Deve
+    restare allineato alla RPC `chat_usage_check_and_log`, che conta la stessa
+    finestra: se i due fusi divergono, il contatore mostrato e quello applicato
+    non coincidono piu'.
+    """
+    from datetime import datetime as _dt, time as _time
+    from zoneinfo import ZoneInfo as _ZI
+    _roma = _ZI("Europe/Rome")
+    inizio = _dt.combine(_dt.now(_roma).date(), _time.min, tzinfo=_roma).isoformat()
     try:
         q = (
             supabase_client.table("chat_usage_log")
@@ -4921,9 +4932,23 @@ def chat_ai(
         logger.warning("chat: rate-limit RPC fallita (fail-closed): %s", exc)
         raise HTTPException(status_code=503, detail="Servizio temporaneamente non disponibile. Riprova.")
     if domande_oggi < 0:
+        # Un rifiuto va lasciato scritto da qualche parte. Fino al 23/09/2026
+        # questo ramo non scriveva NULLA — ne' su DB (la RPC ritorna -1 senza
+        # inserire) ne' sul logger, a differenza del fail-closed qui sopra. Un
+        # blocco era quindi invisibile ovunque, e la domanda "il tetto ha mai
+        # fermato un cliente?" non era rispondibile: non per assenza di blocchi,
+        # ma per assenza dello strumento di misura. Senza questa riga la prossima
+        # decisione sui limiti si prende di nuovo alla cieca.
+        logger.warning(
+            "chat: limite giornaliero raggiunto (user=%s ristorante=%s limite=%s pool=%s)",
+            user_id, rate_ristorante, limite, is_pool,
+        )
         raise HTTPException(
             status_code=429,
-            detail=f"Hai raggiunto il limite di {limite} domande per oggi. Riprova domani.",
+            detail=(
+                f"Hai raggiunto il limite di {limite} domande per oggi. "
+                f"Il contatore si azzera a mezzanotte."
+            ),
         )
 
     system_prompt = (
