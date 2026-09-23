@@ -1809,8 +1809,13 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # al salvataggio della config assistente. Senza questo, un deploy che cambia
 # soglie o regole non si vedeva fino al giorno dopo.
 # BUMPALA quando cambi _calcola_segnali, le soglie qui sotto o la forma dei
-# segnali. Storico: 1 = versione iniziale del presidio (15/09/2026, audit L8).
-_SEGNALI_CODE_VERSION = 1
+# segnali. Storico: 1 = versione iniziale del presidio (15/09/2026, audit L8);
+# 2 = 23/09/2026, `_costi_mese_per_sede` somma i soli costi F&B e non piu'
+# food + spese, quindi il segnale `dati_mancanti` (che la usa via
+# `_completezza_dati_pv`, sopra) cambia insieme: le sedi con sole spese e zero
+# merce prima NON lo ricevevano e ora lo ricevono. Senza bump la catena
+# resterebbe con lo snapshot di ieri fino a mezzanotte di Roma.
+_SEGNALI_CODE_VERSION = 2
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
