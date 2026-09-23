@@ -12,7 +12,7 @@ import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
 import {
-  DERIVE, pctIncidenza, pivotMedia, rowVal,
+  DERIVE, meseSenzaCosti, pctIncidenza, pivotMedia, rowVal, scrollPerMeseCorrente,
   type MesePivot, type RowLike,
 } from "@/lib/margini-aggregati";
 import { InfoPopover } from "@/components/ui/info-popover";
@@ -70,7 +70,7 @@ const ROWS: RowDef[] = [
   { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", derive: DERIVE.costi_fb_auto, valueColor: "white" },
   { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
   { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
-  { key: "primo_margine",         label: "Margine su food&beverage", type: "computed", section: "margine", isMetric: true, labelColor: "text-primary-text", valueColor: "sign" },
+  { key: "primo_margine",         label: "Margine F&B", type: "computed", section: "margine", isMetric: true, labelColor: "text-primary-text", valueColor: "sign" },
   { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", derive: DERIVE.costi_spese_auto, valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
   { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
@@ -79,12 +79,33 @@ const ROWS: RowDef[] = [
   { key: "mol",                   label: "Guadagno finale (MOL)",  type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-primary-text", valueColor: "sign" },
 ];
 
-// Separatori tra blocchi: bordo top più marcato prima di questi indici
+// Separatori tra blocchi: respiro sopra queste righe (indici di ROWS).
+//
+// Dal 23/09/2026 e' ARIA, non un bordo piu' spesso: su quattordici righe alte
+// uguali il gruppo si leggeva solo avvicinando l'occhio al filo grigio. Lo
+// spazio raggruppa senza disegnare niente — sulle tabelle e' la differenza fra
+// un elenco puntato e cinque paragrafi. Il bordo resta, sottile come gli altri.
 const SEP_BEFORE = new Set([4, 8, 12]);
 
+// L'ultima riga di ROWS (il MOL) e' il piede della tabella: e' il punto d'arrivo
+// della lettura, come il totale in fondo a una fattura. Si ricava dalla lunghezza
+// invece di scrivere 13: aggiungendo una riga a ROWS, un indice fisso lascerebbe
+// il piede a meta' tabella senza che niente lo segnali.
+const IDX_PIEDE = ROWS.length - 1;
+
 // Colore dei valori (e della % incidenza) in base al value-color mode.
-function valueColorCls(vc: ValueColor, raw: number): string {
+//
+// `incompleto`: il mese ha ricavi ma nessun costo caricato. Il giudizio di segno
+// (verde = bene) si spegne, il numero resta. Senza questo gate la colonna piu'
+// verde dell'anno era quella dei mesi in cui mancavano le fatture — misurato il
+// 23/09/2026 su SUSHILAND: gennaio e febbraio, «Costi F&B —», MOL 384.120 EUR
+// all'86% e 321.619 EUR all'84%, entrambi in verde. Nella stessa pagina
+// «Analisi visiva» diceva gia' «Nessun giudizio: 4 mesi su 9 non ha costi
+// registrati» (il gate esiste dal 16/09 lato worker, margini.py:914): la tabella
+// e il commento si contraddicevano a 400px di distanza.
+function valueColorCls(vc: ValueColor, raw: number, incompleto = false): string {
   if (vc === "sign") {
+    if (incompleto) return "text-muted-foreground";
     return raw > 0
       ? "text-positivo"
       : raw < 0
@@ -152,6 +173,46 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
         m.costi_personale > 0,
     );
   }, [data]);
+
+  // Il periodo e' incompleto se lo e' anche un solo mese: sull'aggregato la
+  // condizione sarebbe sempre falsa (vedi TotalCell).
+  const periodoIncompleto = useMemo(
+    () => mesiVisibili.some(meseSenzaCosti),
+    [mesiVisibili],
+  );
+
+  // All'apertura la tabella mostra il MESE CORRENTE, non gennaio.
+  //
+  // Con nove mesi a 140px la tabella e' piu' larga dello schermo: entrando si
+  // vedeva Gen-Lug e il mese in corso restava fuori a destra, da cercare a mano
+  // ogni volta. I mesi passati non spariscono: si scorre indietro.
+  //
+  // `scrollLeft` diretto e non `scrollIntoView()`: quest'ultimo scrolla anche
+  // l'ANTENATO, cioe' porterebbe la pagina a meta' tabella saltando le tessere
+  // KPI. Qui si muove solo il contenitore orizzontale.
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const meseCorrenteRef = useRef<HTMLTableCellElement | null>(null);
+  const giaScrollato = useRef(false);
+
+  useEffect(() => {
+    if (giaScrollato.current) return;
+    const scroller = scrollerRef.current;
+    const cella = meseCorrenteRef.current;
+    if (!scroller || !cella) return;
+    // Il conto sta in lib/margini-aggregati (scrollPerMeseCorrente): dentro
+    // l'useEffect nessun test poteva eseguirlo. 160 = la <col> della colonna
+    // Totale, che e' `sticky right` e coprirebbe il mese corrente.
+    scroller.scrollLeft = scrollPerMeseCorrente({
+      offsetCella: cella.offsetLeft,
+      larghezzaCella: cella.offsetWidth,
+      larghezzaTotale: 160,
+      larghezzaVisibile: scroller.clientWidth,
+    });
+    // Una volta sola: dopo comanda il cliente. Riscrollare a ogni ricalcolo
+    // (cambio Totale/Media, salvataggio di una cella) gli strapperebbe la vista
+    // da sotto le mani mentre guarda un altro mese.
+    giaScrollato.current = true;
+  }, [mesiVisibili]);
 
   // Colonna riepilogo: totali grezzi oppure medie mensili sul periodo.
   const isMedia = vista === "media";
@@ -298,8 +359,17 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
       )}
 
       {/* Tabella trasposta — desktop */}
-      <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* Rilievo della card (deciso con Mattia il 23/09).
+          In tema CHIARO `--background` e `--card` sono lo stesso colore
+          (`oklch(1 0 0)`, globals.css:58 e :60): la tabella e' bianca su bianco,
+          separata dalla pagina solo dal bordo. Ombra + anello la sollevano di un
+          millimetro — e' il pattern gia' in uso su popover e dropdown
+          (`shadow-lg ring-1 ring-foreground/10`), non un linguaggio nuovo.
+          `dark:shadow-none`: al buio lo stacco lo da' gia' la differenza di tinta
+          (card 0.205 su fondo 0.145) e un'ombra nera non si vede — per vederla
+          andrebbe esagerata. */}
+      <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden shadow-sm ring-1 ring-foreground/5 dark:shadow-none dark:ring-0">
+        <div className="overflow-x-auto" ref={scrollerRef}>
           <table className="w-full table-auto text-[15px] border-collapse">
             <colgroup>
               <col className="w-[220px]" />
@@ -308,8 +378,10 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
               ))}
               <col className="w-[160px]" />
             </colgroup>
-            <thead className="bg-muted/40">
-              <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            {/* Cappello: bordo inferiore pieno invece del filo, cosi' l'intestazione
+                sembra appoggiata sopra il corpo invece che disegnata dentro. */}
+            <thead className="bg-muted/40 border-b border-border">
+              <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {/* Sfondo OPACO, non bg-muted/40: una cella sticky semitrasparente
                     lascia trasparire le intestazioni dei mesi che le scorrono sotto. */}
                 <th className="sticky left-0 z-20 bg-[color-mix(in_oklab,var(--color-muted)40%,var(--color-card))] text-left px-3 py-2.5 font-semibold border-r border-border">
@@ -320,9 +392,10 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                   return (
                     <th
                       key={`${m.anno}-${m.mese}`}
+                      ref={isCurrent ? meseCorrenteRef : undefined}
                       className={`text-right px-3 py-2.5 font-semibold ${
                         isCurrent
-                          ? "text-primary-text border-l border-r border-primary/50"
+                          ? "text-primary-text border-l border-r border-primary/50 border-t-2 border-t-primary bg-[color-mix(in_oklab,var(--color-muted)55%,var(--color-card))]"
                           : "border-r border-border"
                       }`}
                     >
@@ -339,16 +412,42 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
             <tbody>
               {ROWS.map((row, ri) => {
                 const isMetric = row.isMetric;
+                // Aria sopra i blocchi (SEP_BEFORE) e respiro sul piede (il MOL).
+                // Deciso QUI e passato alle celle: messo sul <tr> come
+                // `[&>*]:py-3.5` competeva col `py-2` scritto sulle <td> a pari
+                // specificita', e vinceva l'ultimo nel CSS generato.
+                const padY =
+                  ri === IDX_PIEDE ? "py-3.5"
+                  : SEP_BEFORE.has(ri) ? "pt-4 pb-2"
+                  : "py-2";
                 return (
                   <tr
                     key={ri}
-                    className={`${SEP_BEFORE.has(ri) ? "border-t-[3px] border-t-border" : "border-t border-border"} ${
+                    className={`border-t border-border ${
                       isMetric ? "font-semibold bg-muted/[0.04]" : ""
+                    } ${
+                      ri === IDX_PIEDE
+                        ? "border-t-2 border-t-border bg-[color-mix(in_oklab,var(--primary)5%,var(--color-card))]"
+                        : ""
                     }`}
                   >
+                    {/* Le righe di DETTAGLIO vanno in grigio, i totali restano pieni.
+                        Prima erano tutte nero su bianco come il titolo di pagina:
+                        «Costo Personale Extra», che e' vuota, pesava quanto
+                        «Guadagno finale (MOL)». Scorrendo la colonna ora si vedono
+                        cinque righe scure — i quattro totali e il MOL — che
+                        disegnano la struttura del conto economico. In tema chiaro
+                        si nota piu' che al buio: il nero su bianco e' piu'
+                        aggressivo del bianco su nero. */}
                     <td
-                      className={`sticky left-0 z-10 bg-card px-3 py-2 border-r border-border whitespace-nowrap ${
-                        isMetric ? `font-bold ${row.labelColor ?? ""}` : row.labelColor ?? ""
+                      className={`sticky left-0 z-10 px-3 ${padY} border-r border-border whitespace-nowrap ${
+                        ri === IDX_PIEDE
+                          ? "bg-[color-mix(in_oklab,var(--primary)5%,var(--color-card))] text-base"
+                          : "bg-card"
+                      } ${
+                        isMetric
+                          ? `font-bold ${row.labelColor ?? ""}`
+                          : row.labelColor ?? "text-muted-foreground"
                       }`}
                     >
                       {row.label}
@@ -361,6 +460,8 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                           row={row}
                           mese={m}
                           isCurrent={isCurrent}
+                          isPiede={ri === IDX_PIEDE}
+                          padY={padY}
                           onSave={saveCell}
                           onOpenCosto={setCostoPersMese}
                           onOpenSpese={(mese, tipo) => setSpeseCella({ mese, tipo })}
@@ -368,7 +469,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                       );
                     })}
                     {/* Total / Media column */}
-                    <TotalCell row={row} totali={totaliRiepilogo ?? data.totali} />
+                    <TotalCell row={row} totali={totaliRiepilogo ?? data.totali} incompleto={periodoIncompleto} padY={padY} />
                   </tr>
                 );
               })}
@@ -428,6 +529,8 @@ function Cell({
   row,
   mese,
   isCurrent,
+  isPiede,
+  padY,
   onSave,
   onOpenCosto,
   onOpenSpese,
@@ -435,18 +538,30 @@ function Cell({
   row: RowDef;
   mese: MesePivot;
   isCurrent: boolean;
+  isPiede: boolean;
+  padY: string;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
   onOpenCosto: (m: MesePivot) => void;
   onOpenSpese: (m: MesePivot, tipo: TipoSpesaCella) => void;
 }) {
   const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
-  const colorCls = valueColorCls(row.valueColor, raw);
+  const colorCls = valueColorCls(row.valueColor, raw, meseSenzaCosti(mese));
   const pct = pctIncidenza(raw, mese.fatturato_netto);
   const display = raw === 0 ? "—" : formatEuro(raw);
 
+  // Il mese corrente ha una corsia propria per tutta l'altezza della tabella.
+  //
+  // Il fondo e' un GRIGIO (muted), non il blu: la colonna Totale usa gia'
+  // `--primary` all'8% e due colonne azzurre a pochi centimetri si leggono come
+  // la stessa cosa. Qui il blu resta solo sui bordi e sul pallino
+  // nell'intestazione — colore uguale, canale diverso.
   const currentCls = isCurrent
-    ? "border-l border-r border-primary/50"
+    ? `border-l border-r border-primary/50 ${
+        // Sul piede la riga ha gia' il suo fondo e deve restare CONTINUA: una
+        // corsia grigia in mezzo lo spezzerebbe in due tronconi.
+        isPiede ? "" : "bg-[color-mix(in_oklab,var(--color-muted)38%,var(--color-card))]"
+      }`
     : "border-r border-border";
 
   // Righe personale: cella cliccabile che apre il widget (recupera da Personale o manuale)
@@ -457,7 +572,7 @@ function Cell({
           type="button"
           onClick={() => onOpenCosto(mese)}
           title="Imposta costo (recupera da Personale o inserisci a mano)"
-          className="w-full px-3 py-2 text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella"
+          className={`w-full px-3 ${padY} text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella`}
         >
           <span className={`inline-flex items-center justify-end gap-1 ${colorCls}`}>
             {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
@@ -478,7 +593,7 @@ function Cell({
           type="button"
           onClick={() => onOpenSpese(mese, tipo)}
           title="Imposta importo (recupera dal tab Spese o inserisci a mano)"
-          className="w-full px-3 py-2 text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella"
+          className={`w-full px-3 ${padY} text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella`}
         >
           <span className="inline-flex items-center justify-end gap-1">
             {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
@@ -508,7 +623,7 @@ function Cell({
   const showLock = row.type === "input-readonly-tooltip" || row.type === "input-readonly";
 
   return (
-    <td className={`text-right px-3 py-2 align-middle ${currentCls}`}>
+    <td className={`text-right px-3 ${padY} align-middle ${currentCls}`}>
       <div
         title={tooltip}
         className={`inline-flex items-center justify-end gap-1 tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls} ${showLock ? "cursor-help" : ""}`}
@@ -593,21 +708,30 @@ function EditableCell({
   );
 }
 
+// `incompleto` arriva da fuori e NON si ricava da `totali`: sull'aggregato i
+// costi di un mese solo bastano a far risultare il periodo "con costi" — e' lo
+// stesso inganno che il worker descrive a margini.py:895 («basta che qualche
+// mese i costi ce li abbia perche' la condizione sia falsa»). Il periodo e'
+// incompleto se lo e' anche UN solo mese.
 function TotalCell({
   row,
   totali,
+  incompleto,
+  padY,
 }: {
   row: RowDef;
   totali: MesePivot;
+  incompleto: boolean;
+  padY: string;
 }) {
   const raw = rowVal(row, totali);
   const display = raw === 0 ? "—" : formatEuro(raw);
   const isMetric = row.isMetric;
-  const colorCls = valueColorCls(row.valueColor, raw);
+  const colorCls = valueColorCls(row.valueColor, raw, incompleto);
   const pct = pctIncidenza(raw, totali.fatturato_netto);
 
   return (
-    <td className="sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 py-2 tabular-nums border-l-2 border-r border-primary align-middle">
+    <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 ${padY} tabular-nums border-l-2 border-r border-primary align-middle`}>
       <div className={`tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>{display}</div>
       {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
     </td>
@@ -635,6 +759,9 @@ function MobileMeseView({
   const [selIdx, setSelIdx] = useState(mesi.length - 1);
   const isTotal = selIdx >= mesi.length;
   const current = isTotal ? totali : mesi[Math.min(selIdx, mesi.length - 1)];
+  // Sul totale vale la regola del periodo (un solo mese scoperto lo rende
+  // incompleto); sul singolo mese vale quel mese. Vedi TotalCell.
+  const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaCosti(current);
 
   return (
     <div className="space-y-3">
@@ -660,7 +787,7 @@ function MobileMeseView({
           const isPersonale = row.section === "personale" && row.type === "input-editable";
           const isSpesa = row.type === "input-editable" && (row.field === "altri_costi_fb" || row.field === "altri_costi_spese");
           const tipoSpesa: TipoSpesaCella | null = row.field === "altri_costi_fb" ? "fb" : row.field === "altri_costi_spese" ? "generale" : null;
-          const colorCls = valueColorCls(row.valueColor, raw);
+          const colorCls = valueColorCls(row.valueColor, raw, incompleto);
           const pct = pctIncidenza(raw, current.fatturato_netto);
 
           return (
@@ -862,7 +989,7 @@ function CascataPL({ t }: { t: MesePivot }) {
   const steps: { label: string; value: number; kind: "result" | "cost"; colore: string }[] = [
     { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", colore: "var(--grafico-1)" },
     { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", colore: "var(--grafico-4)" },
-    { label: "Margine su food&beverage", value: t.primo_margine, kind: "result", colore: t.primo_margine >= 0 ? "var(--positivo)" : "var(--negativo)" },
+    { label: "Margine F&B", value: t.primo_margine, kind: "result", colore: t.primo_margine >= 0 ? "var(--positivo)" : "var(--negativo)" },
     { label: "− Spese Generali + Personale", value: t.costi_spese_totali + t.costi_personale, kind: "cost", colore: "var(--grafico-4)" },
     { label: "= MOL", value: t.mol, kind: "result", colore: t.mol >= 0 ? "var(--positivo)" : "var(--negativo)" },
   ];
@@ -873,12 +1000,31 @@ function CascataPL({ t }: { t: MesePivot }) {
       {steps.map((s) => {
         const w = Math.min(100, (Math.abs(s.value) / refMax) * 100);
         const isResult = s.kind === "result";
+        // A6 — una perdita non deve avere lo stesso disegno di un guadagno.
+        //
+        // Fino al 23/09/2026 la barra usava `Math.abs` e basta: un MOL di
+        // −26.414 EUR era disegnato IDENTICO a un +26.414 EUR, cambiava solo il
+        // colore. Il primo tentativo la faceva partire dalla meta' crescendo a
+        // sinistra, come su un asse con lo zero al centro: provato a schermo su
+        // CASATI e scartato da Mattia — nella cascata l'asse NON c'e' (la traccia
+        // grigia copre solo la parte piena, le altre quattro barre partono da
+        // sinistra), quindi l'unica barra centrata si legge come un errore di
+        // allineamento, non come un segno.
+        //
+        // Qui la barra resta ancorata a sinistra come tutte le altre e la perdita
+        // si dichiara con le STRISCE diagonali: un canale in piu' oltre al colore
+        // (che da solo non basta a chi distingue male rosso e verde) e oltre al
+        // meno sull'importo, che e' scritto in 15px accanto a una barra di 36.
+        const perdita = isResult && s.value < 0;
         return (
           <div key={s.label} className="flex items-center gap-3">
             <span className={`w-36 sm:w-40 shrink-0 text-base ${isResult ? "font-bold" : "text-muted-foreground"}`}>
               {s.label}
             </span>
-            <div className={`flex-1 h-9 rounded overflow-hidden ${isResult ? "bg-muted/40" : "bg-muted/20"}`}>
+            <div
+              className={`relative flex-1 h-9 rounded overflow-hidden ${isResult ? "bg-muted/40" : "bg-muted/20"}`}
+              title={perdita ? `${s.label}: perdita di ${formatEuro(Math.abs(s.value))}` : undefined}
+            >
               <div
                 className="h-full rounded transition-all duration-500"
                 style={{
@@ -886,14 +1032,26 @@ function CascataPL({ t }: { t: MesePivot }) {
                   backgroundColor: s.colore,
                   opacity: isResult ? 0.95 : 0.65,
                   boxShadow: isResult ? `0 0 14px color-mix(in oklch, ${s.colore} 50%, transparent)` : undefined,
+                  // Le strisce sono sovrapposte al colore, non al posto suo: la
+                  // barra resta rossa e leggibile, ma "rigata" — si distingue da
+                  // una barra piena anche in bianco e nero.
+                  backgroundImage: perdita
+                    ? "repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, black 22%, transparent) 6px 12px)"
+                    : undefined,
                 }}
               />
             </div>
+            {/* A4 — gli importi restano SOLO sui tre risultati (Fatturato, Margine,
+                MOL). Sulle due righe di costo erano il terzo posto in cui la
+                pagina scriveva lo stesso numero (tessere in alto, colonna TOTALE
+                della tabella, e qui): la barra grigia dice gia' quanto pesano
+                rispetto al fatturato, che e' l'unica cosa che questo blocco
+                aggiunge. */}
             <span
               className={`w-28 sm:w-32 shrink-0 text-right text-base tabular-nums ${isResult ? "font-bold" : "text-muted-foreground"}`}
               style={isResult ? { color: s.colore } : undefined}
             >
-              {formatEuro(s.value)}
+              {isResult ? formatEuro(s.value) : ""}
             </span>
           </div>
         );
@@ -938,7 +1096,13 @@ function Gauge({
   valueColor: string;
   size?: "sm" | "md";
 }) {
-  const f = clamp01(fraction);
+  // A6 — una percentuale NEGATIVA non e' un anello vuoto.
+  // `clamp01` schiacciava a 0 qualsiasi frazione negativa: un MOL a −55% usciva
+  // come un cerchio quasi vuoto col puntino, indistinguibile da uno 0%. Il
+  // gauge disegna la GRANDEZZA (il valore assoluto) e il colore porta il segno,
+  // che e' gia' deciso dal giudizio del worker (`coloreDaCommento`). Il numero
+  // al centro resta quello vero, col meno: e' li' che si legge il segno.
+  const f = clamp01(Math.abs(fraction));
   const r = 36;
   const startDeg = 225;
   const sweepDeg = 270;

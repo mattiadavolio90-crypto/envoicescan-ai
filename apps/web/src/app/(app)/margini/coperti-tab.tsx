@@ -185,10 +185,16 @@ export function CopertiTab({ dataDa, dataA }: Props) {
           delta={k.delta_coperti_pct}
           deltaLabel={k.confronto_label}
         />
+        {/* La media e' sui giorni CON DATI, non sui giorni di calendario
+            (routers/ricavi.py: `len(giorni_out)`, e `giorni_out` salta i giorni
+            senza coperti). A settembre 2026 sono 22 su 30: senza dirlo, «468» si
+            legge come una media sul mese intero. Il conteggio si fa qui perche'
+            `data.giorni` e' gia' a schermo — nessuna chiamata in piu'. */}
         <KpiCard
           icon={<CalendarDays className="size-4" />}
           label="Media / giorno"
           value={k.coperti_medi_giorno != null ? fmtInt(k.coperti_medi_giorno) : "—"}
+          sub={data.giorni.length > 0 ? `su ${fmtInt(data.giorni.length)} giorni con dati` : undefined}
         />
         <KpiCard
           icon={<Receipt className="size-4" />}

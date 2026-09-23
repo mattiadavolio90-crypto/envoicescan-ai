@@ -810,9 +810,17 @@ function DettaglioCentroDialog({
               </p>
             </div>
           ) : compilati.length === 0 ? (
+            /* Qui la ripartizione c'e' di sicuro: senza, il bottone che apre questo
+               dialog e' disabilitato (centriFatturato.length === 0, riga ~401). Il
+               testo precedente diceva «configura la ripartizione» a chi l'aveva gia'
+               configurata — manda a rifare l'unica cosa che era gia' fatta. Quello
+               che manca sono i ricavi giornalieri del mese, come nel ramo `mensile`. */
             <p className="text-sm text-muted-foreground py-8 text-center">
-              Nessun dato giornaliero per {meseLabel}.<br />
-              <span className="text-xs">Configura la ripartizione per centro tramite &quot;Ripartizione centri&quot;.</span>
+              Nessun ricavo giornaliero per {meseLabel} su questo centro.<br />
+              <span className="text-xs">
+                Carica i ricavi del mese da “Carica ricavi” nel tab Marginalità, oppure
+                scegli un altro centro qui sopra.
+              </span>
             </p>
           ) : (
             <>

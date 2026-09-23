@@ -99,7 +99,8 @@ export function DemoMargini() {
         <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">{periodo.range_label}</span>
       </div>
 
-      <KpiBar kpi={kpiReale} />
+      {/* La demo mostra il tab "calcolo": le tessere seguono quello. */}
+      <KpiBar kpi={kpiReale} tab="calcolo" />
 
       <div className="pb-4" />
 

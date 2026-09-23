@@ -106,6 +106,22 @@ export function pctIncidenza(raw: number, netto: number): string | null {
   return `${((raw / netto) * 100).toFixed(0)}%`;
 }
 
+// Un mese con ricavi e NESSUN costo automatico: il suo margine non e' un
+// risultato, e' un buco nei dati. Stessa definizione di `_mesi_senza_costi`
+// (services/routers/margini.py): F&B totali <= 0 E spese totali <= 0, dove
+// "spese totali" include gia' le quote di riparto dei costi di gruppo — un mese
+// con 114 EUR di sola quota conta come "con costi". Le due definizioni devono
+// restare uguali: divergendo, la tabella colorerebbe di verde proprio i mesi per
+// cui «Analisi visiva» dice di non avere un giudizio.
+//
+// Serve solo per DECIDERE IL COLORE. Il numero non si tocca (decisione di
+// Mattia): il MOL di un mese senza costi resta quello che e', smette solo di
+// essere dichiarato buono.
+export function meseSenzaCosti(m: MesePivot): boolean {
+  if ((m.fatturato_netto ?? 0) <= 0) return false;
+  return (m.costi_fb_totali ?? 0) <= 0 && (m.costi_spese_totali ?? 0) <= 0;
+}
+
 /* ─── analisi-tab.tsx + carica-ricavi-dialog.tsx: elenco mesi del periodo ─── */
 
 // Era duplicata identica nei due file (verificato con `diff`: nessuna riga di
@@ -123,4 +139,30 @@ export function buildMesiList(dataDa: string, dataA: string) {
     }
   }
   return mesi;
+}
+
+// Dove posizionare lo scroller orizzontale della tabella per far vedere il mese
+// corrente all'apertura.
+//
+// Sta qui e non dentro l'useEffect perche' un test possa ESEGUIRLA: il conto ha
+// un pezzo che si sbaglia in silenzio — la colonna Totale e' `sticky right`,
+// quindi senza sottrarre la sua larghezza il mese corrente finisce NASCOSTO
+// sotto di essa invece che accanto, e a schermo sembra che lo scroll non abbia
+// funzionato.
+//
+// Torna 0 quando la tabella ci sta tutta (niente scroll) o quando il target e'
+// negativo: `scrollLeft` negativo non esiste, verrebbe silenziosamente portato
+// a 0 dal browser, ma dichiararlo qui rende la regola verificabile.
+export function scrollPerMeseCorrente(opts: {
+  offsetCella: number;
+  larghezzaCella: number;
+  larghezzaTotale: number;
+  larghezzaVisibile: number;
+  margine?: number;
+}): number {
+  const { offsetCella, larghezzaCella, larghezzaTotale, larghezzaVisibile } = opts;
+  const margine = opts.margine ?? 24;
+  const target =
+    offsetCella + larghezzaCella + larghezzaTotale + margine - larghezzaVisibile;
+  return Math.max(0, target);
 }

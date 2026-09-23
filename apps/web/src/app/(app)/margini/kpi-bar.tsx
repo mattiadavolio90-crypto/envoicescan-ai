@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatEuro } from "./periodi";
 import { puntiSparkline } from "@/lib/sparkline-punti";
 import { kpiNonDisponibile } from "@/lib/esito-caricamento";
+import { colonneGriglia, selezionaKpi } from "@/lib/kpi-margini-tab";
 
 export type KpiData = {
   fatturato_lordo: number;
@@ -42,13 +43,59 @@ export type KpiData = {
   spark_mol?: number[];
 };
 
-function Sparkline({ values: rawValues, color }: { values: number[]; color: string }) {
+// M4 — la linea diceva «sale» o «scende», non di quanto.
+//
+// Nessun asse, nessun `<title>`, nessun hover: una polilinea sospesa. Peggio,
+// `ancoraZero: true` include lo zero nella scala, quindi una serie stabile che
+// finisce a zero (Costo Personale: sei mesi a 60.000 EUR e poi i mesi non
+// caricati) disegna quasi solo il crollo — il dato piu' vistoso del grafico e'
+// un buco nei dati.
+//
+// Non si aggiungono assi (24px di altezza non li reggono): si aggiunge la SCALA
+// come testo accessibile e come tooltip nativo, piu' il punto finale marcato
+// cosi' si vede da che parte si legge la linea.
+// Diametro del punto finale, in PIXEL: non in unita' della viewBox.
+//
+// La prima correzione compensava la deformazione dividendo per una costante
+// `ASPETTO = 2`. Misurata dopo: il fattore vero dipende dalla larghezza della
+// card, che ora cambia col tab (A1). Su un'area da ~1550px viene 2,16 con sei
+// tessere, 4,8 con tre e **15,2 con una sola** (Coperti) — una costante li'
+// non puo' essere giusta, e il punto sarebbe uscito schiacciato 15 volte.
+// Il punto vive quindi in un <span> posizionato in percentuale, fuori dall'SVG:
+// i pixel non passano per `preserveAspectRatio` e restano tondi a ogni
+// larghezza, senza sapere niente della scala.
+const PUNTO_PX = 5;
+
+function Sparkline({ values: rawValues, color, label }: {
+  values: number[]; color: string; label: string;
+}) {
   const w = 100;
   const h = 24;
   const points = puntiSparkline(rawValues, { w, h, ancoraZero: true, padY: 1 });
   if (!points) return null;
+
+  const validi = rawValues.filter((v) => Number.isFinite(v));
+  const min = Math.min(...validi);
+  const max = Math.max(...validi);
+  // L'ultimo punto della polilinea: `puntiSparkline` li emette "x,y" separati da
+  // spazio, nell'ordine della serie.
+  const ultimo = points.split(" ").pop()?.split(",") ?? [];
+  const [cx, cy] = [Number(ultimo[0]), Number(ultimo[1])];
+
+  const scala = `${label}: da ${formatEuro(min)} a ${formatEuro(max)} nei mesi del periodo`;
+
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block w-full">
+    <div className="relative" title={scala}>
+    <svg
+      width="100%"
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="block w-full"
+      role="img"
+      aria-label={scala}
+    >
+      <title>{scala}</title>
       <polyline
         fill="none"
         stroke={color}
@@ -59,6 +106,25 @@ function Sparkline({ values: rawValues, color }: { values: number[]; color: stri
         opacity={0.85}
       />
     </svg>
+      {Number.isFinite(cx) && Number.isFinite(cy) && (
+        // Il punto finale dice da che parte si legge la linea. Sta FUORI dall'SVG,
+        // posizionato in percentuale: misurato in pixel non passa per
+        // `preserveAspectRatio="none"` e resta tondo a ogni larghezza di card.
+        <span
+          aria-hidden
+          className="absolute rounded-full"
+          style={{
+            left: `${cx}%`,
+            top: `${(cy / h) * 100}%`,
+            width: PUNTO_PX,
+            height: PUNTO_PX,
+            marginLeft: -PUNTO_PX / 2,
+            marginTop: -PUNTO_PX / 2,
+            backgroundColor: color,
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -134,7 +200,7 @@ function useCountUp(target: number, enabled: boolean): number {
   return val;
 }
 
-export function KpiBar({ kpi }: { kpi: KpiData }) {
+export function KpiBar({ kpi, tab }: { kpi: KpiData; tab?: string | null }) {
   const molTone: Tone = kpi.mol >= 0 ? "positivo" : "negativo";
 
   const [animate, setAnimate] = useState(false);
@@ -154,13 +220,22 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
     { label: "MOL",              numeric: kpi.mol,                                                                tone: molTone,  spark: kpi.spark_mol },
   ];
 
+  // Selezione e griglia stanno in lib/kpi-margini-tab.ts, non qui: con la
+  // `.filter()` scritta in questo file un test non poteva eseguirla, e
+  // disattivarla lasciava verdi tutti i presidi (mutante del 23/09).
+  const mostrate = selezionaKpi(cards, tab);
+  const colonne = colonneGriglia(mostrate.length);
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-      {cards.map((c) => (
+    <div className={`grid gap-3 ${colonne}`}>
+      {mostrate.map((c) => (
         <KpiCard key={c.label} card={c} animate={animate} nonDisponibile={kpiNonDisponibile(kpi)} />
       ))}
+      {/* `col-span-full`, non `lg:col-span-6`: da quando le colonne seguono il
+          numero di tessere (1, 2, 3, 4, 5 o 6), un 6 fisso sforerebbe la griglia
+          su ogni tab tranne Marginalita' a sei. */}
       {kpiNonDisponibile(kpi) && (
-        <p className="col-span-2 md:col-span-3 lg:col-span-6 text-[11px] text-muted-foreground">
+        <p className="col-span-full text-[11px] text-muted-foreground">
           Non sono riuscito a caricare questi totali. I dati ci sono: ricarica la
           pagina fra un momento. La tabella qui sotto non e' interessata.
         </p>
@@ -189,7 +264,7 @@ function KpiCard({ card: c, animate, nonDisponibile }: {
       )}
       {!nonDisponibile && c.spark && c.spark.length >= 2 && (
         <div className="mt-1">
-          <Sparkline values={c.spark} color={TONE_COLOR[c.tone]} />
+          <Sparkline values={c.spark} color={TONE_COLOR[c.tone]} label={c.label} />
         </div>
       )}
     </div>

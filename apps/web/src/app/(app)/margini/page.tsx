@@ -142,7 +142,7 @@ export default async function MarginiPage({
         <FiltriPeriodo presetCorrente={preset} dataDa={data_da} dataA={data_a} meseSelezionato={mese} />
       </Suspense>
 
-      <KpiBar kpi={kpi} />
+      <KpiBar kpi={kpi} tab={tab} />
 
       <div className="pb-4" />
 
