@@ -12,7 +12,8 @@ import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
 import {
-  DERIVE, meseSenzaCosti, pctIncidenza, pivotMedia, rowVal, scrollPerMeseCorrente,
+  DERIVE, meseSenzaCosti, pctIncidenza, pivotMedia, rowVal, scrollDaNodi,
+  coloreBarraRisultato,
   type MesePivot, type RowLike,
 } from "@/lib/margini-aggregati";
 import { InfoPopover } from "@/components/ui/info-popover";
@@ -199,15 +200,10 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
     const scroller = scrollerRef.current;
     const cella = meseCorrenteRef.current;
     if (!scroller || !cella) return;
-    // Il conto sta in lib/margini-aggregati (scrollPerMeseCorrente): dentro
-    // l'useEffect nessun test poteva eseguirlo. 160 = la <col> della colonna
-    // Totale, che e' `sticky right` e coprirebbe il mese corrente.
-    scroller.scrollLeft = scrollPerMeseCorrente({
-      offsetCella: cella.offsetLeft,
-      larghezzaCella: cella.offsetWidth,
-      larghezzaTotale: 160,
-      larghezzaVisibile: scroller.clientWidth,
-    });
+    // Il conto E LA LARGHEZZA della colonna Totale stanno in
+    // lib/margini-aggregati (scrollDaNodi): dentro l'useEffect nessun test
+    // poteva eseguirli.
+    scroller.scrollLeft = scrollDaNodi(scroller, cella);
     // Una volta sola: dopo comanda il cliente. Riscrollare a ogni ricalcolo
     // (cambio Totale/Media, salvataggio di una cella) gli strapperebbe la vista
     // da sotto le mani mentre guarda un altro mese.
@@ -491,7 +487,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
       </div>
 
       {/* Analisi visiva: cascata conto economico + gauge + commenti */}
-      <AnalisiVisiva data={data} totaliVista={totaliRiepilogo ?? data.totali} isMedia={isMedia} settore={settore} />
+      <AnalisiVisiva data={data} totaliVista={totaliRiepilogo ?? data.totali} isMedia={isMedia} settore={settore} incompleto={periodoIncompleto} />
 
       {costoPersMese && (
         <CostoPersonaleDialog
@@ -896,11 +892,13 @@ function AnalisiVisiva({
   totaliVista,
   isMedia,
   settore,
+  incompleto,
 }: {
   data: AnalisiResponse;
   totaliVista: MesePivot;
   isMedia: boolean;
   settore?: Settore | null;
+  incompleto: boolean;
 }) {
   const t = totaliVista;
   const hasData = t.fatturato_netto > 0 || t.costi_fb_totali > 0;
@@ -945,7 +943,7 @@ function AnalisiVisiva({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-stretch">
           {/* Cascata P&L */}
           <div className="flex flex-col justify-around">
-            <CascataPL t={t} />
+            <CascataPL t={t} incompleto={incompleto} />
           </div>
 
           {/* Gauge con diagnosi integrata */}
@@ -985,13 +983,13 @@ function AnalisiVisiva({
   );
 }
 
-function CascataPL({ t }: { t: MesePivot }) {
+function CascataPL({ t, incompleto }: { t: MesePivot; incompleto: boolean }) {
   const steps: { label: string; value: number; kind: "result" | "cost"; colore: string }[] = [
     { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", colore: "var(--grafico-1)" },
     { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", colore: "var(--grafico-4)" },
-    { label: "Margine F&B", value: t.primo_margine, kind: "result", colore: t.primo_margine >= 0 ? "var(--positivo)" : "var(--negativo)" },
+    { label: "Margine F&B", value: t.primo_margine, kind: "result", colore: coloreBarraRisultato(t.primo_margine, incompleto) },
     { label: "− Spese Generali + Personale", value: t.costi_spese_totali + t.costi_personale, kind: "cost", colore: "var(--grafico-4)" },
-    { label: "= MOL", value: t.mol, kind: "result", colore: t.mol >= 0 ? "var(--positivo)" : "var(--negativo)" },
+    { label: "= MOL", value: t.mol, kind: "result", colore: coloreBarraRisultato(t.mol, incompleto) },
   ];
   const refMax = Math.max(1, ...steps.map((s) => Math.abs(s.value)));
 

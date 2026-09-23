@@ -166,3 +166,48 @@ export function scrollPerMeseCorrente(opts: {
     offsetCella + larghezzaCella + larghezzaTotale + margine - larghezzaVisibile;
   return Math.max(0, target);
 }
+
+// La larghezza della colonna TOTALE, che e' `sticky right` e coprirebbe il mese
+// corrente se lo scroll si fermasse al suo bordo destro. Sta qui e non nel .tsx
+// perche' passandola come letterale al call site nessun presidio la vedeva:
+// metterla a 0 rimetteva il mese corrente sotto la colonna sticky con tutti i
+// test verdi (mutante M14 della review del 23/09).
+export const LARGHEZZA_COLONNA_TOTALE = 160;
+
+/**
+ * Lo scroll orizzontale da applicare al contenitore della tabella per mostrare
+ * il mese corrente, letto direttamente dai due nodi DOM.
+ *
+ * Wrapper attorno a `scrollPerMeseCorrente` che esiste per una ragione sola: il
+ * conto stava dentro un `useEffect` e leggeva `larghezzaTotale: 160` scritto a
+ * mano nel call site. La funzione era provata, il chiamante no.
+ */
+export function scrollDaNodi(
+  scroller: { clientWidth: number },
+  cella: { offsetLeft: number; offsetWidth: number },
+): number {
+  return scrollPerMeseCorrente({
+    offsetCella: cella.offsetLeft,
+    larghezzaCella: cella.offsetWidth,
+    larghezzaTotale: LARGHEZZA_COLONNA_TOTALE,
+    larghezzaVisibile: scroller.clientWidth,
+  });
+}
+
+/**
+ * Il colore di una barra "result" della cascata P&L (Margine F&B, MOL).
+ *
+ * Il verde/rosso dice «bene»/«male»: sui mesi senza costi caricati non lo sa, e
+ * il MOL esce verde pieno perche' i costi mancano, non perche' vada bene. E' lo
+ * stesso difetto gia' chiuso nella tabella il 23/09 — ma la cascata era il
+ * QUARTO punto che colora per segno, e non era stato contato: la barra verde
+ * restava a pochi centimetri dai gauge che dicono «Nessun giudizio: N mesi su M
+ * non ha costi registrati». Trovato dalla terza review, stessa giornata.
+ */
+export function coloreBarraRisultato(
+  valore: number,
+  incompleto: boolean,
+): string {
+  if (incompleto) return "var(--muted-foreground)";
+  return valore >= 0 ? "var(--positivo)" : "var(--negativo)";
+}

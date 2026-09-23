@@ -159,19 +159,113 @@ def test_le_righe_bianche_non_cambiano_colore():
 
 # ─────────── i punti di chiamata: il presidio che manca di piu' ─────────────
 
+def _terzo_argomento(chiamata: str) -> str:
+    """Il 3o argomento di `valueColorCls(a, b, c)`, rispettando le parentesi annidate.
+
+    `split(",")` non basta: `meseSenzaCosti(mese)` non contiene virgole ma un
+    domani `f(a, b)` si', e la chiamata verrebbe troncata a meta'.
+    """
+    livello, pezzi, corrente = 0, [], ""
+    for ch in chiamata:
+        if ch in "([{":
+            livello += 1
+        elif ch in ")]}":
+            livello -= 1
+        if ch == "," and livello == 0:
+            pezzi.append(corrente)
+            corrente = ""
+            continue
+        corrente += ch
+    pezzi.append(corrente)
+    return pezzi[2].strip() if len(pezzi) >= 3 else ""
+
+
+def _valuta_flag(espressione: str, senza_costi: bool) -> bool:
+    """ESEGUE l'espressione del 3o argomento con node, non la legge.
+
+    `meseSenzaCosti(mese)` viene valutata davvero contro il modulo vero; il mese
+    passato e' incompleto o completo a seconda di `senza_costi`. Cosi' `false`,
+    `!meseSenzaCosti(mese)` e `false && meseSenzaCosti(mese)` danno un risultato
+    DIVERSO dall'espressione giusta, mentre contando le virgole erano identici.
+    """
+    # Serve fatturato > 0 in entrambi i casi: `meseSenzaCosti` lo pretende (un
+    # mese senza ricavi non e' «incompleto», e' semplicemente vuoto).
+    mese = (
+        _pivot(fatturato_netto=384120.0, costi_fb_totali=0.0, costi_spese_totali=0.0)
+        if senza_costi
+        else _pivot(fatturato_netto=384120.0, costi_fb_totali=114000.0)
+    )
+    return esegui_ts(
+        _MODULO,
+        "const { meseSenzaCosti } = m;\n"
+        f"const mese = input;\nemit(Boolean({espressione}));",
+        argomento=mese,
+        richiede=["meseSenzaCosti"],
+    )
+
+
+def _prop_incompleto(src: str, componente: str) -> str:
+    """Il valore passato come prop `incompleto` a `<Componente ...>`.
+
+    Serve a distinguere i consumatori l'uno dall'altro: due prop scritte identiche
+    si mascherano a vicenda in una ricerca per sottostringa.
+    """
+    m = re.search(rf"<{componente}\b[^>]*?\bincompleto=\{{([^}}]*)\}}", src, re.S)
+    return m.group(1).strip() if m else ""
+
+
 def test_tutti_e_tre_i_punti_passano_il_flag():
     """Tre superfici calcolano il colore: cella desktop, colonna Totale, card mobile.
 
     Provare la funzione senza i suoi chiamanti e' esattamente l'errore che in
     questa fase ha lasciato passare 6 mutanti su 8 (blocco C): il colore giusto
-    calcolato da nessuno resta un colore sbagliato a schermo. Qui si conta che
-    NESSUNA chiamata a due argomenti sia rimasta indietro.
+    calcolato da nessuno resta un colore sbagliato a schermo.
+
+    La PRIMA stesura di questo presidio contava le virgole del 3o argomento. Era
+    finta: `false` ha le stesse virgole di `meseSenzaCosti(mese)`, e quattro
+    mutanti che rimettevano il difetto (fra cui uno che colorava di verde
+    ESATTAMENTE e SOLO i mesi senza costi) passavano con 53 test verdi. Trovata
+    dalla terza review del 23/09 — quinto presidio della stessa famiglia in una
+    giornata. Ora l'espressione si ESEGUE: deve dire true su un mese senza costi
+    e false su uno completo, che e' il comportamento, non la sua grafia.
     """
     src = _TABELLA.read_text(encoding="utf-8")
-    chiamate = re.findall(r"valueColorCls\((.+?)\);", src)
+    chiamate = re.findall(r"= valueColorCls\((.+?)\);", src)
     assert len(chiamate) == 3, f"attese 3 chiamate, trovate {len(chiamate)}: {chiamate}"
+
+    flag_calcolati, flag_da_prop = [], []
     for c in chiamate:
-        assert c.count(",") >= 2, f"chiamata senza il flag di completezza: valueColorCls({c})"
+        flag = _terzo_argomento(c)
+        assert flag, f"chiamata senza il flag di completezza: valueColorCls({c})"
+        (flag_da_prop if flag == "incompleto" else flag_calcolati).append(flag)
+
+    # Chi calcola il flag sul posto (la cella desktop, che ha il mese sotto mano):
+    # l'espressione si ESEGUE contro il modulo vero.
+    assert flag_calcolati, "nessuna chiamata calcola il flag dal mese"
+    for flag in flag_calcolati:
+        assert _valuta_flag(flag, senza_costi=True) is True, (
+            f"su un mese SENZA costi il flag deve essere true, `{flag}` non lo e'"
+        )
+        assert _valuta_flag(flag, senza_costi=False) is False, (
+            f"su un mese completo il flag deve essere false, `{flag}` non lo e'"
+        )
+
+    # Chi lo riceve dall'alto (colonna Totale, card mobile): il valore lo decide
+    # il chiamante, quindi si verifica che la prop esista e sia alimentata dal
+    # calcolo sui mesi visibili — un letterale `false` qui rimetterebbe il difetto.
+    assert len(flag_da_prop) == 2, (
+        f"attese 2 chiamate che ricevono il flag come prop, trovate {len(flag_da_prop)}"
+    )
+
+    # Ogni consumatore si verifica PER NOME, uno alla volta. Cercare la sola
+    # stringa `incompleto={periodoIncompleto}` non bastava: le occorrenze sono
+    # due e si coprivano a vicenda — spegnendone una il test restava verde
+    # (mutanti M6 e B1c del 23/09, sopravvissuti al primo giro di questo fix).
+    for componente in ("TotalCell", "AnalisiVisiva"):
+        assert _prop_incompleto(src, componente) == "periodoIncompleto", (
+            f"<{componente}> non riceve il flag calcolato sui mesi visibili: "
+            f"riceve `{_prop_incompleto(src, componente)}`"
+        )
 
 
 def test_il_totale_di_periodo_guarda_i_mesi_non_l_aggregato():
@@ -255,10 +349,81 @@ def test_non_torna_mai_un_valore_negativo():
     assert _scroll(offset=0, visibile=5000) == 0
 
 
-def test_il_componente_usa_l_helper_e_non_ricalcola():
-    """Se il .tsx rifacesse il conto a mano, i test sopra non lo vedrebbero."""
+def _estrai_effetto_scroll() -> str:
+    """Ritaglia il corpo dell'useEffect dello scroll e lo rende eseguibile da node.
+
+    I ref diventano oggetti semplici forniti dal test (`scrollerRef`,
+    `meseCorrenteRef`, `giaScrollato`): il corpo dell'effetto non sa che non e'
+    React, perche' usa solo `.current`.
+    """
     src = _TABELLA.read_text(encoding="utf-8")
-    assert "scrollPerMeseCorrente({" in src, "calcolo-tab.tsx non usa piu' l'helper"
+    inizio = src.index("  useEffect(() => {\n    if (giaScrollato.current) return;")
+    fine = src.index("  }, [mesiVisibili]);", inizio)
+    corpo = src[inizio:fine]
+    corpo = corpo[corpo.index("{") + 1:]
+    return "function effetto() {" + corpo + "}"
+
+
+def _gira_effetto(*, ha_cella=True, gia_scrollato=False, giri=1,
+                  offset=1120, larghezza=140, visibile=1000):
+    """Esegue DAVVERO l'effetto su un DOM finto e torna lo scroll finale.
+
+    Torna anche quante volte lo scroll e' stato scritto: la guardia «una volta
+    sola» si misura contando le scritture su piu' giri, non cercando il nome
+    `giaScrollato` nel sorgente.
+    """
+    setup = f"""
+const scritture = [];
+const scroller = {{ clientWidth: {visibile}, _s: 0,
+  get scrollLeft() {{ return this._s; }},
+  set scrollLeft(v) {{ this._s = v; scritture.push(v); }} }};
+const cella = {'{ offsetLeft: %d, offsetWidth: %d }' % (offset, larghezza)};
+const scrollerRef = {{ current: scroller }};
+const meseCorrenteRef = {{ current: {'cella' if ha_cella else 'null'} }};
+const giaScrollato = {{ current: {str(gia_scrollato).lower()} }};
+"""
+    corsa = "\n".join(["effetto();"] * giri)
+    return esegui_ts(
+        _MODULO,
+        "const { scrollDaNodi } = m;\n" + setup + _estrai_effetto_scroll() + "\n" + corsa
+        + "\nemit({ scrollLeft: scroller._s, scritture: scritture.length, armato: !giaScrollato.current });",
+        richiede=["scrollDaNodi"],
+    )
+
+
+def test_il_componente_usa_l_helper_e_non_ricalcola():
+    """Se il .tsx rifacesse il conto a mano, i test sopra non lo vedrebbero.
+
+    Non basta che la chiamata esista: deve produrre il VALORE giusto. Mettere
+    `larghezzaTotale: 0` al call site rimetteva il mese corrente sotto la colonna
+    Totale sticky con tutti i test verdi (mutante M14 della terza review) — per
+    questo la larghezza vive ora in `LARGHEZZA_COLONNA_TOTALE`, dentro il modulo.
+    """
+    esito = _gira_effetto(offset=1120, larghezza=140, visibile=1000)
+    # La larghezza si legge DAL MODULO, non si riscrive qui: un `totale=160`
+    # a mano nel test resterebbe verde se la costante cambiasse nel codice.
+    larghezza_totale = esegui_ts(
+        _MODULO, "emit(m.LARGHEZZA_COLONNA_TOTALE);",
+        richiede=["scrollDaNodi"],
+    )
+    # Il confronto qui sopra prova l'ACCORDO fra effetto e helper, ma leggendo
+    # la costante da entrambi i lati non ne prova il VALORE: raddoppiarla li
+    # muove insieme e il test resta verde (mutante M17). Il valore si ancora a
+    # cio' che rappresenta — la <col> della colonna Totale nel .tsx.
+    assert larghezza_totale > 0, "la colonna Totale sticky ha larghezza zero?"
+    src_tab = _TABELLA.read_text(encoding="utf-8")
+    larghezze_col = re.findall(r'<col\s+className="w-\[(\d+)px\]"', src_tab)
+    assert larghezze_col, "nessuna <col> con larghezza fissa: il layout e' cambiato"
+    assert str(int(larghezza_totale)) in larghezze_col, (
+        f"LARGHEZZA_COLONNA_TOTALE vale {larghezza_totale}px ma nessuna <col> della "
+        f"tabella e' larga cosi' ({larghezze_col}): lo scroll lascerebbe il mese "
+        "corrente sotto la colonna sticky, o lo scavalcherebbe"
+    )
+    atteso = _scroll(1120, larghezza=140, visibile=1000, totale=larghezza_totale)
+    assert esito["scrollLeft"] == atteso, (
+        f"l'effetto scrolla a {esito['scrollLeft']}, l'helper dice {atteso}: "
+        "il componente non sta usando lo stesso conto"
+    )
 
 
 def test_lo_scroll_e_una_volta_sola():
@@ -274,14 +439,20 @@ def test_lo_scroll_e_una_volta_sola():
     (mutante S4, sopravvissuto al primo giro). Le righe di commento sono escluse
     per la stessa ragione.
     """
-    righe = [
-        r.strip() for r in _TABELLA.read_text(encoding="utf-8").splitlines()
-        if not r.lstrip().startswith(("//", "*", "/*"))
-    ]
-    legge = [r for r in righe if "giaScrollato.current" in r and "return" in r]
-    alza = [r for r in righe if re.match(r"giaScrollato\.current\s*=\s*true", r)]
-    assert legge, "manca il return anticipato: l'effetto rigira a ogni ricalcolo"
-    assert alza, "il flag non viene mai alzato: la guardia non scatta mai"
+    primo = _gira_effetto(giri=1)
+    assert primo["scritture"] == 1, "il primo giro deve scrollare una volta"
+    assert primo["scrollLeft"] > 0, "il primo giro non ha scrollato affatto"
+
+    # Tre ricalcoli di fila: lo scroll resta quello del primo giro.
+    ripetuto = _gira_effetto(giri=3)
+    assert ripetuto["scritture"] == 1, (
+        f"l'effetto ha scrollato {ripetuto['scritture']} volte su 3 giri: "
+        "il cliente si vede strappare la vista a ogni ricalcolo"
+    )
+
+    # Se il flag e' gia' alzato (effetto rimontato), non si scrolla piu'.
+    dopo = _gira_effetto(gia_scrollato=True)
+    assert dopo["scritture"] == 0, "con il flag alzato non si deve piu' scrollare"
 
 
 def test_lo_scroll_non_muove_la_pagina():
@@ -304,16 +475,76 @@ def test_senza_il_mese_corrente_lo_scroll_resta_armato():
     resterebbe su gennaio per sempre — un difetto che a schermo sembra
     intermittente e non si lega alla causa.
 
-    Si verifica l'ORDINE delle righe nell'effetto, che e' il comportamento:
-    il return sul ref mancante deve venire prima dell'assegnazione.
+    Si ESEGUE l'effetto senza la cella: non deve scrollare e deve restare armato.
+    Leggere l'ordine delle righe nel sorgente non bastava — e' la famiglia di
+    presidi che in questa fase ha lasciato passare otto mutanti.
+    """
+    senza = _gira_effetto(ha_cella=False)
+    assert senza["scritture"] == 0, "senza la cella non c'e' niente su cui scrollare"
+    assert senza["armato"], (
+        "il flag viene alzato anche senza la cella: quando il mese corrente "
+        "comparira' lo scroll non scattera' piu' e la tabella restera' su gennaio"
+    )
+
+    # E quando la cella arriva, lo scroll scatta davvero.
+    poi = _gira_effetto(ha_cella=True)
+    assert poi["scritture"] == 1, "con la cella presente lo scroll deve scattare"
+
+
+# ─────────── la cascata P&L: il quarto punto, trovato dalla terza review ────────
+
+def _colore_barra(valore, incompleto):
+    return esegui_ts(
+        _MODULO,
+        "emit(m.coloreBarraRisultato(...input));",
+        argomento=[valore, incompleto],
+        richiede=["coloreBarraRisultato"],
+    )
+
+
+def test_la_barra_di_un_periodo_incompleto_non_e_verde():
+    """Il MOL di un periodo senza costi caricati esce positivo perche' mancano i
+    costi, non perche' vada bene: la cascata non deve dipingerlo di verde.
+
+    E' il QUARTO punto della pagina che colora per segno. Il commit 6a5364d ne
+    aveva gateati tre (cella desktop, colonna Totale, card mobile) e dichiarava
+    il difetto chiuso: la barra della cascata restava verde piena a pochi
+    centimetri dai gauge che dicono «Nessun giudizio: N mesi su M non ha costi
+    registrati». Trovato dalla terza review del 23/09.
+    """
+    assert _colore_barra(384120.0, True) == "var(--muted-foreground)"
+    assert _colore_barra(-26988.0, True) == "var(--muted-foreground)"
+
+
+def test_la_barra_di_un_periodo_completo_conserva_il_giudizio():
+    """Il gate spegne il colore SOLO quando i dati mancano, non sempre."""
+    assert _colore_barra(384120.0, False) == "var(--positivo)"
+    assert _colore_barra(-26988.0, False) == "var(--negativo)"
+
+
+def test_le_due_barre_result_passano_il_flag():
+    """Margine F&B e MOL: nessuna delle due deve essere rimasta col ternario.
+
+    Come per i tre punti della tabella, l'espressione del flag si ESEGUE.
     """
     src = _TABELLA.read_text(encoding="utf-8")
-    inizio = src.index("const scrollerRef")
-    fine = src.index("}, [mesiVisibili]);", inizio)
-    corpo = src[inizio:fine]
-    guardia = corpo.index("if (!scroller || !cella) return;")
-    alza = corpo.index("giaScrollato.current = true;")
-    assert guardia < alza, (
-        "il flag viene alzato prima della guardia sul ref: senza il mese corrente "
-        "a schermo lo scroll si disarma e non scatta piu'"
+    chiamate = re.findall(r"coloreBarraRisultato\((.+?)\)", src)
+    assert len(chiamate) == 2, f"attese 2 barre result, trovate {len(chiamate)}: {chiamate}"
+
+    livello_cascata = src.index("function CascataPL(")
+    for c in chiamate:
+        flag = c.split(",")[1].strip()
+        assert flag == "incompleto", (
+            f"la barra usa `{flag}` invece del flag del periodo: "
+            "un letterale qui rimetterebbe il verde sui mesi senza costi"
+        )
+
+    # E il flag deve arrivare davvero dall'alto, non essere inventato dentro.
+    firma = src[livello_cascata:livello_cascata + 200]
+    assert "incompleto" in firma, "CascataPL non riceve il flag come prop"
+    assert "<CascataPL t={t} incompleto={incompleto} />" in src, (
+        "il call site di CascataPL non passa il flag"
+    )
+    assert "incompleto={periodoIncompleto}" in src, (
+        "AnalisiVisiva non riceve il flag calcolato sui mesi visibili"
     )
