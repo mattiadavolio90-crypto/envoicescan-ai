@@ -302,7 +302,7 @@ docker-compose -f docker/docker-compose.prod.yml up -d
 | `INVOICETRONIC_API_KEY` | Worker, GitHub, Supabase EF | API Key Invoicetronic |
 | `INVOICETRONIC_WEBHOOK_SECRET` | Supabase EF | Segreto HMAC webhook |
 | `BREVO_API_KEY` | Worker (Railway) | API key Brevo |
-| `BREVO_SENDER_EMAIL` | Worker (Railway) | Email mittente |
+| `BREVO_SENDER_EMAIL` | Worker (Railway) | Email mittente — DEVE essere un sender verificato in Brevo, o l'invio fallisce in silenzio (status != 201). Se manca si cade su `BREVO_SENDER_EMAIL_DEFAULT` (`config/constants.py`) |
 | `BREVO_SENDER_NAME` | Worker (Railway) | Nome mittente |
 | `WORKER_BATCH_SIZE` | queue-worker | Record per ciclo (default: 10) |
 | `WORKER_XML_RETENTION_HOURS` | queue-worker | Ore prima del purge XML (default: 24) |

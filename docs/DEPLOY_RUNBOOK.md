@@ -33,7 +33,7 @@ instradata da Railway.
 - `INVOICETRONIC_WEBHOOK_SECRET` (verifica firma webhook)
 - `SUPABASE_ANON_KEY`
 - `ENABLE_INLINE_QUEUE_PROCESSOR=0` (la coda la processa il servizio dedicato, non l'API)
-- Brevo: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`
+- Brevo: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` (sender **verificato** in Brevo: uno non verificato fa fallire l'invio in silenzio; default `BREVO_SENDER_EMAIL_DEFAULT` in `config/constants.py`), `BREVO_SENDER_NAME`
 - `ADMIN_EMAILS`, `CHAT_MODEL`
 
 ### Solo `queue-worker`
