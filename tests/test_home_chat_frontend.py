@@ -107,8 +107,25 @@ def test_reply_vince_anche_con_status_di_errore():
 
 
 def test_429_spiega_il_limite_giornaliero():
+    """Il 429 deve dire DUE cose: che il limite e' finito e QUANDO riparte.
+
+    Diceva «Riprova domani», che col contatore sul giorno UTC era falso nelle
+    due direzioni (chi finiva la quota alle 23:00 ripartiva dopo un'ora; chi la
+    finiva alle 00:30 aveva gia' «domani» sul calendario ma aspettava fino
+    all'01:00). Dal 23/09/2026 la finestra e' il giorno di Roma, quindi
+    l'azzeramento e' davvero a mezzanotte — e il messaggio lo dice invece di
+    lasciarlo indovinare.
+    """
     out = _chiama("messaggioRisposta", [429, {}])
-    assert "limite di domande" in out and "domani" in out
+    assert "limite di domande" in out
+    assert "mezzanotte" in out, (
+        "il messaggio non dice quando riparte: «per oggi» da solo non basta, "
+        f"il cliente non sa se aspettare un'ora o un giorno. Testo: {out!r}"
+    )
+    assert "domani" not in out, (
+        "«domani» e' l'indicazione che era falsa: il contatore si azzera a "
+        f"mezzanotte, non a un generico domani. Testo: {out!r}"
+    )
 
 
 def test_403_parla_del_piano():
