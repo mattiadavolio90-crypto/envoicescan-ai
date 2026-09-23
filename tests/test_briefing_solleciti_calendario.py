@@ -228,3 +228,33 @@ def test_i_consumatori_della_regola_esistono_e_sono_chiamabili():
     )
     # E deve essere definita, non solo importata per caso.
     assert "def _personale_gia_dovuto(" in src
+
+
+def test_la_campanella_passa_dallo_stesso_gate_del_briefing():
+    """Il gate settimanale non deve essere aggirabile dalla campanella.
+
+    Esiste un SECONDO percorso che genera `incasso_mancante`:
+    `/api/ricavi/notifica-mancante` (`routers/scadenziario.py`), chiamato dal
+    mobile a ogni apertura (`m/incasso-reminder.tsx`), che scrive in
+    `notification_inbox` con bucket GIORNALIERO. Di per se' sarebbe un bypass:
+    sul telefono l'avviso tornerebbe ogni giorno.
+
+    Non lo e' perche' `get_notifiche` rimuove SEMPRE le righe persistite dei
+    topic in `TOPIC_LIVE_NON_IGNORABILI` e le sostituisce con i live, che
+    passano da `_segnali_live_dati_mancanti` -> `_briefing_dati_mensili_mancanti`,
+    cioe' dalla funzione col gate. Questo test lega i due anelli: se un domani
+    la sostituzione saltasse, o il topic uscisse da quella lista, il bypass si
+    riaprirebbe in silenzio.
+    """
+    import inspect
+    import services.fastapi_worker as fw
+    from services.daily_briefing_service import TOPIC_LIVE_NON_IGNORABILI
+
+    assert "incasso_mancante" in TOPIC_LIVE_NON_IGNORABILI, (
+        "uscendo da questa lista, le righe persistite del mobile tornerebbero "
+        "visibili ogni giorno, aggirando il gate settimanale"
+    )
+    src = inspect.getsource(fw._segnali_live_dati_mancanti)
+    assert "_briefing_dati_mensili_mancanti(" in src, (
+        "la campanella non passa piu' dalla funzione col gate settimanale"
+    )
