@@ -1,5 +1,13 @@
 // Tipi per la pagina Analisi e Tag — allineati all'output di tag_analytics_service.py
 
+// La tavolozza del selettore emoji. Stava scritta a mano, identica byte per
+// byte, in `analisi-e-tag-client.tsx` e in `catena/gruppo-tag-section.tsx`: due
+// copie divergono prima o poi, e da qui la raggiunge anche un test.
+export const EMOJI_TAG: readonly string[] = [
+  "🐟","🍗","🥩","🐄","🦐","🍕","🍝","🥗","🧀","🥚","🧈","🥛","🍞","🌾",
+  "🫒","🍷","🍺","☕","🧃","🌿","🍋","🧅","🥦","🍅","🧄","🥕","🌶️","🍄",
+];
+
 export type CustomTag = {
   id: number;
   nome: string;

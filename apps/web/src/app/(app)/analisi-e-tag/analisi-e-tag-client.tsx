@@ -20,6 +20,7 @@ import type {
   CustomTag, TagSuggestion, TagAnalisiResponse,
   TagProdotto, DescrizioneDistinta,
 } from "@/lib/tag";
+import { EMOJI_TAG } from "@/lib/tag";
 
 /** Tetto di righe renderizzate nei selettori prodotti. Non e' un filtro di
  *  dominio: serve solo a non montare 1800 nodi in un dialog. Quando taglia,
@@ -363,7 +364,7 @@ function TagDialog({
             <div className="space-y-2">
               <label className="text-sm font-medium">Emoji <span className="text-muted-foreground font-normal">(opzionale)</span></label>
               <div className="flex flex-wrap gap-1.5">
-                {["🐟","🍗","🥩","🐄","🦐","🍕","🍝","🥗","🧀","🥚","🧈","🥛","🍞","🌾","🫒","🍷","🍺","☕","🧃","🌿","🍋","🧅","🥦","🍅","🧄","🥕","🌶️","🍄"].map(em => (
+                {EMOJI_TAG.map(em => (
                   <button
                     key={em}
                     type="button"
@@ -624,6 +625,10 @@ function SuggestionCard({
   const [selected, setSelected] = useState<Set<string>>(
     new Set(s.items.map(i => i.descrizione_key))
   );
+  // Un tag accettato da qui nasceva SEMPRE senza emoji: il backend riceveva
+  // `emoji=None` cablato e il selettore esisteva solo nella creazione manuale,
+  // quindi l'unico rimedio era riaprire il tag e modificarlo a mano.
+  const [emoji, setEmoji] = useState("");
   const [acting, setActing] = useState(false);
 
   function toggleItem(key: string) {
@@ -651,7 +656,7 @@ function SuggestionCard({
         .map((i) => i.descrizione_key)
         .filter((k) => selected.has(k));
       const body = s.suggestion_type === "new_tag"
-        ? { suggestion_type: "new_tag", tag_name: tagName.trim() || s.suggested_tag_name, descrizioni_key }
+        ? { suggestion_type: "new_tag", tag_name: tagName.trim() || s.suggested_tag_name, emoji: emoji || null, descrizioni_key }
         : { suggestion_type: "extend_tag", tag_id: s.target_tag_id, descrizioni_key };
       const res = await fetch(`/api/tag/suggestions/${s.id}/accept`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -728,6 +733,31 @@ function SuggestionCard({
               placeholder="Nome tag…"
             />
           </div>
+
+          {/* Emoji: solo per un tag NUOVO. Su extend_tag il tag esiste gia' e ha
+              la sua, sceglierne un'altra qui la sovrascriverebbe di nascosto. */}
+          {isNewTag && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Emoji <span className="normal-case font-normal">(opzionale)</span>
+              </label>
+              <div className="flex flex-wrap gap-1">
+                {EMOJI_TAG.map(em => (
+                  <button
+                    key={em}
+                    type="button"
+                    aria-pressed={emoji === em}
+                    onClick={() => setEmoji(prev => (prev === em ? "" : em))}
+                    className={`w-8 h-8 text-base rounded-md border transition-colors flex items-center justify-center ${
+                      emoji === em ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                    }`}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Lista prodotti con checkbox */}
           <div className="space-y-1">

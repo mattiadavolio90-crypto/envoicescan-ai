@@ -80,6 +80,10 @@ class AcceptSuggestionRequest(BaseModel):
     # (chiamate vecchie) si ricade su selected_by_default, che è sempre True: senza
     # questo campo la deselezione lato UI non arrivava mai al backend.
     descrizioni_key: Optional[list[str]] = None
+    # Un tag accettato da un suggerimento nasceva sempre senza emoji (`emoji=None`
+    # cablato nel service): il selettore esisteva solo nella creazione manuale,
+    # quindi l'unico rimedio era riaprire il tag e modificarlo a mano.
+    emoji: Optional[str] = None
 
 
 class SnoozeSuggestionRequest(BaseModel):
@@ -343,6 +347,7 @@ def accept_tag_suggestion(
             user_id=str(user["id"]),
             ristorante_id=ristorante_id,
             descrizioni_key=body.descrizioni_key,
+            emoji=body.emoji,
         )
     elif s_type == "extend_tag":
         result = accept_suggestion_extend_tag(

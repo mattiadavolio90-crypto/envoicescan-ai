@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { formatEuro, formatEuro as euro, formatPct } from "@/lib/format";
 import { MESI_LUNGHI as MESI_LABEL } from "@/lib/mesi";
 import { calcolaCandidati, MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
+import { EMOJI_TAG } from "@/lib/tag";
 import {
   altezzaBarraTrend,
   analisiVuota,
@@ -50,7 +51,9 @@ function pct(n: number): string {
 }
 
 // Stessi preset emoji del tag di sede (parità UX).
-const EMOJI = ["🐟","🍗","🥩","🐄","🦐","🍕","🍝","🥗","🧀","🥚","🧈","🥛","🍞","🌾","🫒","🍷","🍺","☕","🧃","🌿","🍋","🧅","🥦","🍅","🧄","🥕","🌶️","🍄"];
+// Tavolozza condivisa con la pagina Analisi e Tag: era duplicata qui identica
+// byte per byte.
+const EMOJI = EMOJI_TAG;
 
 // Tag di catena = FINESTRA della plancia /catena (non una pagina separata).
 // Raggruppa lo stesso prodotto su tutti i PV e confronta la spesa per sede.

@@ -799,6 +799,7 @@ def accept_suggestion_create_tag(
     ristorante_id: str,
     supabase_client=None,
     descrizioni_key: List[str] | None = None,
+    emoji: str | None = None,
 ) -> Dict[str, Any]:
     sb = supabase_client or get_supabase_client()
     suggestion = _get_suggestion_with_items(suggestion_id, user_id, ristorante_id, supabase_client=sb)
@@ -817,7 +818,13 @@ def accept_suggestion_create_tag(
         return {'success': False, 'error': 'empty_tag_name'}
 
     try:
-        tag = crea_tag(user_id=user_id, ristorante_id=ristorante_id, nome=new_tag_name, emoji=None, colore=None)
+        tag = crea_tag(
+            user_id=user_id,
+            ristorante_id=ristorante_id,
+            nome=new_tag_name,
+            emoji=(emoji or "").strip() or None,
+            colore=None,
+        )
         tag_id = int(tag['id'])
     except Exception:
         existing = (
