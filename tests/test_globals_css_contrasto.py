@@ -287,11 +287,26 @@ EVIDENZIATI = (
     #    (1.0000:1) con la suite verde. Trovato dalla review del 24/09/2026 —
     #    stessa classe di errore del contenitore sbagliato, ripetuta su un
     #    token che non avevo cercato.
+    #  - `muted` e `secondary`: `hover:bg-muted` e' lo stato PIU' USATO dell'app
+    #    — 180 occorrenze contro le 37 di `bg-accent` — e non era presidiato
+    #    affatto. Poggia sia dentro le card sia sul fondo pagina
+    #    (`SidebarInset` e' `bg-background`: analisi-fatture, agenda, dashboard
+    #    lo usano li'). Quando il fondo e' sceso a 0.985 quella coppia e'
+    #    rimasta a 1.0447, sotto questa stessa soglia, e un mutante che rendeva
+    #    muted identico alla card sopravviveva a 988 test. Quarta volta che lo
+    #    stesso presidio dimentica un contenitore: l'elenco qui sotto ora e'
+    #    derivato dai `<stato>:bg-*` che esistono nel sorgente, non indovinato.
     ("accent", "sidebar"),
     ("accent", "background"),
     ("accent", "card"),
     ("accent", "popover"),
     ("sidebar-accent", "sidebar"),
+    ("muted", "background"),
+    ("muted", "card"),
+    ("muted", "popover"),
+    ("muted", "sidebar"),
+    ("secondary", "background"),
+    ("secondary", "card"),
 )
 
 
@@ -314,4 +329,59 @@ def test_lo_stato_attivo_si_stacca_dal_suo_contenitore(tema, token, contenitore)
     assert cr >= 1.08, (
         f"tema {tema['_nome']}: stacco {token}/{contenitore} {cr:.4f}:1, "
         "l'evidenziazione non si vede"
+    )
+
+
+def test_ogni_tinta_di_evidenziazione_usata_nel_codice_e_presidiata():
+    """Impedisce la QUINTA dimenticanza, rendendola rumorosa.
+
+    `EVIDENZIATI` e' una lista scritta a mano, e in tre giri consecutivi le e'
+    sfuggito un contenitore: prima `sidebar`, poi `background`, poi `popover`,
+    e infine `muted` — il token piu' usato di tutti — che non c'era affatto.
+    Una lista di inclusioni non puo' fallire rumorosamente: se dimentichi una
+    voce il test resta verde, e il buco lo trova una review.
+
+    Qui il perimetro si DERIVA dal sorgente: ogni classe `<stato>:bg-X` che il
+    codice usa davvero deve comparire in `EVIDENZIATI`. Se domani qualcuno
+    introduce `hover:bg-qualcosa` con un volume che conta, questo test diventa
+    rosso e dice quale token manca, invece di tacere.
+
+    La soglia di volume serve a non trasformare ogni uso isolato in un caso:
+    sotto di essa un token e' rumore, sopra e' un contratto visivo dell'app.
+    """
+    import re
+    import subprocess
+
+    radice = Path(__file__).resolve().parent.parent
+    file_ts = subprocess.run(
+        ["git", "ls-files", "apps/web/src/**/*.tsx", "apps/web/src/**/*.ts"],
+        cwd=radice, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    assert file_ts, "git ls-files non ha restituito nulla: il perimetro sarebbe vuoto"
+
+    stato = re.compile(
+        r"(?:hover|focus|active|aria-selected|group-hover|data-\[[^\]]+\]):bg-([a-z][a-z-]*)"
+    )
+    conteggi: dict[str, int] = {}
+    for rel in file_ts:
+        testo = (radice / rel).read_text(encoding="utf-8")
+        for token in stato.findall(testo):
+            conteggi[token] = conteggi.get(token, 0) + 1
+
+    # I token che sono FONDI (una superficie usata come evidenziazione) e non
+    # colori pieni: solo per questi vale il contratto «si stacca dal
+    # contenitore». `primary`, `destructive`, `incerto` e simili sono tinte
+    # sature, lontanissime da qualunque fondo per costruzione.
+    FONDI = {"accent", "sidebar-accent", "muted", "secondary", "card", "popover"}
+    SOGLIA_VOLUME = 10
+
+    presidiati = {token for token, _ in EVIDENZIATI}
+    mancanti = {
+        token: n for token, n in conteggi.items()
+        if token in FONDI and n >= SOGLIA_VOLUME and token not in presidiati
+    }
+    assert not mancanti, (
+        "tinte di evidenziazione usate nel codice ma assenti da EVIDENZIATI: "
+        + ", ".join(f"bg-{t} ({n} usi)" for t, n in sorted(mancanti.items()))
+        + ". Aggiungile con i contenitori su cui poggiano davvero."
     )
