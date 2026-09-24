@@ -18439,6 +18439,17 @@
               }
             ],
             "title": "Descrizioni Key"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
           }
         },
         "type": "object",
