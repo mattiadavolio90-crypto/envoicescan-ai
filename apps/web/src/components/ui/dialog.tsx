@@ -38,7 +38,7 @@ function DialogOverlay({
         // contrastati non si stacca affatto. Con /25 siamo a 1,91:1. Resta
         // comunque molto piu' leggero del default shadcn (/50), che qui e'
         // voluto. (Ri-misurate il 24/09/2026: col fondo pagina sceso a #fafafa
-        // l'overlay/10 passa da #e5e5e5 a #e1e1e1 e il rapporto da 1,25 a
+        // l'overlay/10 passa da #e6e6e6 a #e1e1e1 e il rapporto da 1,25 a
         // 1,31:1. Contro il FONDO PAGINA, che e' un'altra coppia, gli stessi
         // overlay danno 1,25:1 e 1,83:1.)
         "fixed inset-0 isolate z-50 bg-black/25 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",

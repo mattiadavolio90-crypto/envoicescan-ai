@@ -257,14 +257,31 @@ def test_il_testo_resta_leggibile_sul_fondo_abbassato(tema):
 # poggiano sulla card o sulla sidebar, non sul fondo pagina: presidiarli contro
 # `--background` misurerebbe la cosa sbagliata.
 #
-# Perche' esiste: `--accent` ha ~90 usi ed e' la tinta dello STATO ATTIVO della
+# Perche' esiste: `--accent` ha 90 usi di `bg-accent` ed e' la tinta dello STATO ATTIVO della
 # navigazione in tutte e 14 le aree (`app-sidebar.tsx`, `data-active:!bg-accent`).
 # Portandolo a coincidere col contenitore la voce attiva smette di distinguersi
 # e nessun test se ne accorgeva (rilevato dalla re-review del 24/09/2026, che
 # ha mutato quei token e li ha visti sopravvivere).
 
 EVIDENZIATI = (
-    # (token, contenitore su cui poggia)
+    # (token, contenitore su cui poggia DAVVERO)
+    #
+    # `accent` poggia su TRE contenitori diversi, e vanno nominati tutti — la
+    # prima stesura diceva solo `card` ed era sbagliata due volte:
+    #  - `sidebar`: e' li' che sta la voce di nav attiva (`data-active:!bg-accent`
+    #    dentro `bg-sidebar`, sidebar.tsx:172), cioe' il caso per cui questo
+    #    presidio e' nato. Misurando accent/CARD era verde per COINCIDENZA,
+    #    perche' `--card` e `--sidebar` hanno lo stesso valore in entrambi i
+    #    temi: un mutante che rendeva la sidebar uguale ad accent lasciava la
+    #    nav attiva a 1.0000:1 (invisibile) con la suite verde.
+    #  - `background`: `SidebarInset` e' `bg-background` (sidebar.tsx:310),
+    #    quindi il contenuto di pagina NON sta su una card. `PageHeader`
+    #    (presente in ogni area), `trigger-hint` e l'header del layout usano
+    #    `bg-accent` direttamente sul fondo pagina: e' la coppia piu' stretta
+    #    della famiglia e non era coperta da nulla.
+    #  - `card`: gli usi dentro le card.
+    ("accent", "sidebar"),
+    ("accent", "background"),
     ("accent", "card"),
     ("sidebar-accent", "sidebar"),
 )
@@ -279,8 +296,10 @@ def test_lo_stato_attivo_si_stacca_dal_suo_contenitore(tema, token, contenitore)
         f"({hexa(tema[token])}): l'elemento attivo non si distingue"
     )
     # Soglia piu' bassa delle superfici: qui lo stacco e' rinforzato da testo in
-    # grassetto, colore del testo e (per la nav) un bordo sinistro. Ancorata al
-    # valore piu' stretto misurato il 24/09/2026 (sidebar-accent chiaro, 1.0907).
+    # grassetto, colore del testo e (per la nav) un bordo sinistro. Ancorata
+    # sotto il valore piu' stretto della famiglia, misurato il 24/09/2026:
+    # accent su background in chiaro, 1.1382 — non sidebar-accent come diceva
+    # la prima stesura, che quella coppia non la conteneva nemmeno.
     cr = contrasto(tema[token], tema[contenitore])
     assert cr >= 1.08, (
         f"tema {tema['_nome']}: stacco {token}/{contenitore} {cr:.4f}:1, "
