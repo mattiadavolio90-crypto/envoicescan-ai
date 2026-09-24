@@ -2899,7 +2899,7 @@ _CONFIG_TOPICS: List[tuple] = [
     ("andamento_incasso",        "Andamento incasso",        False,
      "Il martedì ti dico se l'incasso delle ultime 4 settimane si è mosso di oltre il 10%."),
     ("food_cost_alto",           "Food cost alto",           False,
-     "Nei primi giorni del mese ti dico se il food cost di un mese chiuso è sopra la norma del settore."),
+     "A cavallo fra un mese e l'altro ti dico se il food cost di un mese chiuso è sopra la norma del settore."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).

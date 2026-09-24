@@ -778,6 +778,22 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   limite di token accettato, settore letto fuori finestra, descrizione del
 >   configuratore («una volta al mese» -> esce per 8 giorni). **8 mutanti nuovi,
 >   8 uccisi.**
+>   **Seconda passata: ancora NON CHIUSA, per il caso speculare.** Avevo
+>   presidiato i coperti parziali nella finestra PRECEDENTE, non nell'ultima: la
+>   sede che smette di inserire i coperti ma non l'incasso (falso «coperti -57%»)
+>   restava scoperta — lo stesso errore del primo giro, sul lato opposto della
+>   stessa regola. Test aggiunto, mutante ucciso. **Totale: 36 mutanti, 36
+>   uccisi.** Ridondanti dichiarati dal reviewer: `cop_b > 0` (implicato da 20
+>   giorni con coperti) e `d > 0` -> `d >= 0` (equivalente).
+>   **Suite: 15.933 passed, 45 skipped, 0 failed** (`-m "not sql" -p
+>   no:randomly`) su `e4d0d44`, HEAD fermo per tutto il run; nel working tree
+>   c'erano file non committati di altre sessioni (tema, brevo). Un primo run su
+>   `3d7ce5b` si era fermato su `test_home_briefing_cache_first` (1 failed):
+>   **non riprodotto** — verde da solo, in coppia col file nuovo e nel run
+>   completo successivo. Causa non identificata, dichiarata come tale.
+>   **Da fare prima del push, non mio**: `openapi/openapi.json` e' in drift per
+>   `AcceptSuggestionRequest.emoji` (commit `e874f8a`, sessione dei tag).
+>   **Non pushato.**
 
 ---
 

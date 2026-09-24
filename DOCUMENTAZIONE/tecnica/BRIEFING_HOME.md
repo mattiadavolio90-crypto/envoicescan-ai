@@ -231,7 +231,7 @@ percentuale dell'osservazione (anche arrotondata) e si ricade sul template.
 
 Presidio: `tests/test_briefing_osservazioni_consulente.py` (serie di incasso
 vere anonimizzate, confini delle soglie, cablaggio async/sync, settore,
-configuratore, validatore). 35 mutanti, 35 uccisi (27 miei + 8 sui buchi trovati dal reviewer). Il testo AI troncato dal limite di token
+configuratore, validatore). 36 mutanti, 36 uccisi (27 miei + 9 sui buchi trovati dal reviewer in due passate). Il testo AI troncato dal limite di token
 (`finish_reason == "length"`) ricade sul template.
 
 ---

@@ -220,6 +220,17 @@ def test_coperti_taciuti_se_inseriti_meno_di_venti_giorni():
     assert "coperti_verso" not in p and "scontrino_verso" not in p
 
 
+def test_coperti_taciuti_se_smettono_nell_ultima_finestra():
+    """Il caso speculare: la sede continua a inserire l'incasso ma smette coi
+    coperti. Con 12 giorni su 28 leggerebbe un falso "coperti scesi del 57%"."""
+    serie = _serie_sintetica(1000.0, 1200.0, 40, 40)
+    serie = [(d, v, c if d < "2026-07-04" else None) for (d, v, c) in serie]
+    assert sum(1 for x in serie if x[0] >= "2026-06-22" and x[2]) == 12
+    p = fw._briefing_andamento_incasso(RID, _SB(_righe(serie)), MARTEDI_SCATTA)["payload"]
+    assert p["delta_pct"] == 20
+    assert "coperti_verso" not in p and "scontrino_verso" not in p
+
+
 def test_scontrino_solo_sui_giorni_con_coperti():
     """21 giorni su 28 con coperti: lo scontrino si calcola sull'incasso di quei
     giorni. Sul totale uscirebbe un falso +33%."""
