@@ -15,9 +15,17 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# Le esclusioni del presidio gemello «colori solo token»: admin, demo, landing
+# e legal sono esentati da quella regola, e questo file deve usare lo STESSO
+# perimetro invece di riscriverlo — due liste separate divergono.
+from test_colori_solo_token_frontend import ESCLUSI  # noqa: E402
 
 GLOBALS_CSS = Path(__file__).resolve().parent.parent / "apps" / "web" / "src" / "app" / "globals.css"
 AA_TESTO = 4.5
@@ -231,7 +239,11 @@ def test_lo_stacco_superfici_fondo_e_percepibile(tema):
     ci passava. La soglia qui e' un valore ANCORATO, non derivato con un
     margine: sotto 1.04 lo stacco non si vede.
     """
+    # Ancorata: abbassarla per far passare un colore che non si vede sarebbe
+    # il modo piu' comodo di aggirare questo presidio, e nessun altro test lo
+    # direbbe (mutante del 24/09/2026, sopravvissuto).
     STACCO_MINIMO = 1.04
+    assert STACCO_MINIMO >= 1.04, "soglia abbassata: si aggira il presidio invece di correggere il colore"
     for superficie in SUPERFICI:
         cr = contrasto(tema[superficie], tema["background"])
         assert cr >= STACCO_MINIMO, (
@@ -325,14 +337,16 @@ def test_lo_stato_attivo_si_stacca_dal_suo_contenitore(tema, token, contenitore)
     # stanno fra 1.1252 e 1.2432). La stesura precedente diceva 1.1382
     # (`accent`/`background`) ed era sbagliata: quello e' il quarto valore, non
     # il minimo, e tarare la soglia li' renderebbe rossa una coppia sana.
+    SOGLIA_EVIDENZIAZIONE = 1.08
+    assert SOGLIA_EVIDENZIAZIONE >= 1.08, "soglia abbassata: si aggira il presidio"
     cr = contrasto(tema[token], tema[contenitore])
-    assert cr >= 1.08, (
+    assert cr >= SOGLIA_EVIDENZIAZIONE, (
         f"tema {tema['_nome']}: stacco {token}/{contenitore} {cr:.4f}:1, "
         "l'evidenziazione non si vede"
     )
 
 
-def _stati_bg_dal_sorgente() -> dict[str, int]:
+def _stati_bg_dal_sorgente(escludi: tuple[str, ...] = ()) -> dict[str, int]:
     """Le classi `<stato>:bg-X` che il codice usa davvero, contate per token.
 
     Legge dall'INDICE git (`ls-files`), non dal filesystem: uno script di
@@ -358,6 +372,9 @@ def _stati_bg_dal_sorgente() -> dict[str, int]:
     )
     conteggi: dict[str, int] = {}
     for rel in file_ts:
+        corto = rel[len("apps/web/src/"):] if rel.startswith("apps/web/src/") else rel
+        if any(corto.startswith(e) or ("/" + e) in ("/" + corto) for e in escludi):
+            continue
         for token in stato.findall((radice / rel).read_text(encoding="utf-8")):
             conteggi[token] = conteggi.get(token, 0) + 1
     return conteggi
@@ -465,11 +482,29 @@ def test_ogni_tinta_di_evidenziazione_usata_nel_codice_e_presidiata():
         "evidenziazione: dichiararlo saturo lo toglie dal controllo."
     )
 
+    # I token SCONOSCIUTI si controllano SENZA soglia di volume — un colore
+    # Tailwind nudo viola «colori solo token» anche con due usi, e il commit
+    # precedente dichiarava «non passano piu' in silenzio» mentre sotto i 10
+    # usi passavano eccome — ma sul PERIMETRO DELLE PAGINE CLIENTE: admin,
+    # demo, landing e legal sono esentati da quella regola, e le esclusioni si
+    # importano da li' invece di riscriverle, cosi' le due liste non divergono.
+    conteggi_cliente = _stati_bg_dal_sorgente(escludi=ESCLUSI)
+    sconosciuti = {
+        t: n for t, n in conteggi_cliente.items()
+        if t not in tema_chiaro and t not in SATURE and t not in presidiati
+    }
     assert not sconosciuti, (
         "classi `<stato>:bg-*` che non corrispondono a nessun token di "
         "globals.css: " + ", ".join(f"bg-{t} ({n} usi)" for t, n in sorted(sconosciuti.items()))
         + ". Se sono colori Tailwind nudi violano il presidio «colori solo token»."
     )
+
+
+def _etichetta(deb: str) -> str:
+    """`file.tsx:630 bg-muted+hover/70 = 1.04` -> `file.tsx bg-muted+hover/70`."""
+    testa = deb.rsplit(" = ", 1)[0]
+    posizione, resto = testa.split(" ", 1)
+    return f"{posizione.rsplit(':', 1)[0]} {resto}"
 
 
 def test_lo_stesso_token_a_due_alpha_resta_distinguibile():
@@ -541,17 +576,18 @@ def test_lo_stesso_token_a_due_alpha_resta_distinguibile():
     #
     # La lista e' ANCORATA: un caso NUOVO fa fallire il test, e uno di questi
     # che venga corretto pure — cosi' la deroga non sopravvive al suo motivo.
+    # Senza il NUMERO DI RIGA: ancorarlo produceva un falso rosso al primo
+    # inserimento di righe sopra, col messaggio «questi hover non esistono
+    # piu'» — fuorviante, perche' esistono e si sono solo spostati.
     NOTI = {
-        "cliente-dettaglio-client.tsx:630 bg-muted+hover/70",
-        "analisi-e-tag-client.tsx:1180 bg-muted+hover/80",
-        "badge.tsx:14 bg-secondary+hover/80",
-        "button.tsx:15 bg-secondary+hover/80",
+        "badge.tsx bg-secondary+hover/80",
+        "button.tsx bg-secondary+hover/80",
     }
-    etichette = {d.rsplit(" = ", 1)[0] for d in deboli}
+    etichette = {_etichetta(d) for d in deboli}
     nuovi = etichette - NOTI
     assert not nuovi, (
         "hover impercettibile NUOVO (stesso token a due alpha, sotto 1.08): "
-        + "; ".join(sorted(d for d in deboli if d.rsplit(" = ", 1)[0] in nuovi))
+        + "; ".join(sorted(d for d in deboli if _etichetta(d) in nuovi))
         + ". Usa un token diverso per l'hover, o un'opacita' piu' distante."
     )
     spariti = NOTI - etichette

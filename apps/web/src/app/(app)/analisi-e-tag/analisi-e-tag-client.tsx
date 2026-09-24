@@ -1177,7 +1177,7 @@ export function AnalisiETagClient({
           disabled={refreshingSuggestions}
           className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium border transition-all disabled:opacity-60 ml-auto ${
             suggestions.length === 0
-              ? "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
+              ? "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-border"
               : suggerimentiAperti
                 ? "bg-incerto/10 border-incerto text-incerto ring-2 ring-incerto/40"
                 : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10"

@@ -627,7 +627,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                         className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-50 ${
                           sede.sdi_attivo
                             ? "bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25"
-                            : "bg-muted text-muted-foreground hover:bg-muted/70"
+                            : "bg-muted text-muted-foreground hover:bg-border"
                         }`}
                       >
                         {sede.sdi_attivo ? "SDI ✓" : "SDI off"}
