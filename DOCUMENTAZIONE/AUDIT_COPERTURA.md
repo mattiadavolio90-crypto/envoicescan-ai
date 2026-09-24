@@ -834,6 +834,41 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   verbale). Aggiornati entrambi; le **7 leve nuove** della tabella §9 entrano
 >   in `test_logica_briefing_tabella_leve_tutta_verificata`, lette dalle
 >   costanti. **7 mutanti sul doc, 7 uccisi.**
+>
+> - **24/09/2026 — fase 6 «assistente consulente»: la catena allo stesso livello
+>   del PV.** Testo fisso, niente AI (decisione di Mattia). Due pezzi.
+>   **A — il personale «dal 15» in catena.** La review pre-push del deploy del
+>   24/9 aveva visto che la regola della fase 1 (`_personale_gia_dovuto`) stava
+>   nei 4 consumatori del PV ma non in `gruppo.py`: dal 1° al 14 la catena
+>   abbassava l'indice della sede, diceva «Mancano il costo del personale» e
+>   «da completare» dove il PV taceva, visibile dal 1° ottobre. Ora
+>   `_personale_non_ancora_dovuto` governa indice, avviso e frase; la sede resta
+>   fuori dal confronto e la card Conti resta ambra, perche' il margine senza
+>   personale e' davvero gonfiato. **B — le osservazioni del PV in catena**
+>   (`_calcola_osservazioni`, riuso integrale di calcolo e frase), lista a parte
+>   nella card «Da sapere», fuori dal conteggio degli avvisi, spegnibili in tre
+>   modi. **La review ha trovato 2 blocchi veri**: due test esistenti sarebbero
+>   diventati **rossi ogni martedi'** (il 29/9 il primo, prima della scadenza),
+>   perche' l'endpoint ora calcolava le osservazioni sul loro client finto e il
+>   mio «degradato» toglieva la cache; e **due mutanti sopravvivevano sul
+>   collegamento dell'endpoint** (config e utente non passati), perche' i miei
+>   test dell'endpoint mockavano la funzione ignorandone gli argomenti. La mia
+>   verifica «al giorno 5» cambiava il giorno del mese, non quello della
+>   settimana. Corretti: osservazioni best-effort come nel PV (il «degradato»
+>   avrebbe spento cache e verde per un giorno intero a un guasto persistente),
+>   uscita anticipata fuori dai giorni utili, rete intorno al calcolo, test che
+>   cattura gli argomenti. Suite rifatta con la data forzata a **tre giorni**
+>   (mar 29/9, dom 5/10, mar 6/10): 1.454 passed ciascuno.
+>   **Mutanti sul codice finale: 37, tutti uccisi** (13 su A, 21 sul backend di
+>   B, 3 sulla logica del frontend) — uno, la versione dei segnali non alzata,
+>   solo dopo il test che ne ancora il valore (`>= 3`, come `_BRIEFING_CODE_VERSION`).
+>   `_SEGNALI_CODE_VERSION` 2→3. Misura sui dati veri (sola lettura, 3 catene):
+>   parlera' poco finche' i dati restano fermi — un'osservazione il martedi' 1/9
+>   su 5 sedi, food cost di ottobre muto per le fatture di settembre assenti.
+>   **Suite: 16.034 passed, 45 skipped** (`-m "not sql" -p no:randomly`) **+ 545
+>   `-m sql`**; drift OpenAPI rigenerato; `tsc` pulito. Un primo giro `-m sql`
+>   aveva dato 541 *errors*: `/dev/shm` pieno di 62 Postgres di test orfani,
+>   non il codice. **Non pushato: va deployato prima del 1/10.**
 
 ---
 

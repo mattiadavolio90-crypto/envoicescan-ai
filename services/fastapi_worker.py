@@ -4215,9 +4215,12 @@ _CHAT_TOOLS_GRUPPO = [
         "function": {
             "name": "gruppo_segnali",
             "description": (
-                "Le segnalazioni aperte della catena (margine in calo, prezzi sopra la "
-                "media, ricavi mancanti) con il punto vendita coinvolto. Usalo per 'cosa "
-                "c'è da vedere', 'ci sono problemi', 'su quali locali devo intervenire'."
+                "Le segnalazioni aperte della catena (dati mancanti, margine in calo, "
+                "categorie sopra la media, ricavi mancanti) con il punto vendita "
+                "coinvolto, e a parte le osservazioni sull'andamento (incasso delle "
+                "ultime settimane, food cost alto) che non sono problemi da risolvere. "
+                "Usalo per 'cosa c'è da vedere', 'ci sono problemi', 'su quali locali "
+                "devo intervenire', 'come vanno i locali'."
             ),
             "parameters": {"type": "object", "properties": {}},
         },

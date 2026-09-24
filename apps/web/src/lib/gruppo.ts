@@ -169,10 +169,22 @@ export type Segnale = {
   cta_page: string; // pagina PV dove approfondire (deep link "Vedi PV →")
 };
 
+// Osservazioni da consulente (fase 6): fatti sull'andamento di un PV, non
+// compiti. Arrivano accanto ai segnali ma non si contano fra loro.
+export type Osservazione = {
+  tipo: "andamento_incasso" | "food_cost_alto";
+  severity: "success" | "warning" | "info";
+  ristorante_id: string;
+  pv_nome: string;
+  testo: string;
+  cta_page: string;
+};
+
 export type SegnaliGruppo = {
   nome_gruppo: string;
   generated_at: string | null;
   segnali: Segnale[];
+  osservazioni?: Osservazione[];
 };
 
 // ─── Tag di catena (Analisi e Tag, solo multi-sede) ───────────────────────

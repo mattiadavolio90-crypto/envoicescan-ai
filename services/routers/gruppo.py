@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from config.constants import MESI_ITA
 from config.logger_setup import get_logger
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
@@ -54,6 +55,32 @@ def _chat_limite_pool_gruppo(*args, **kwargs):
 
 def _chat_domande_oggi(*args, **kwargs):
     return _fw()._chat_domande_oggi(*args, **kwargs)
+
+
+def _oggi_rome():
+    return _fw()._oggi_rome()
+
+
+def _personale_gia_dovuto(*args, **kwargs):
+    return _fw()._personale_gia_dovuto(*args, **kwargs)
+
+
+def _mese_chiuso(oggi) -> tuple:
+    return (oggi.year - 1, 12) if oggi.month == 1 else (oggi.year, oggi.month - 1)
+
+
+def _personale_non_ancora_dovuto() -> Optional[int]:
+    """Il mese chiuso (1-12) se il suo costo del personale NON e' ancora dovuto,
+    altrimenti None.
+
+    La regola del PV (fase 1, `_personale_gia_dovuto`) applicata al mese che la
+    catena misura: il mese appena chiuso. Prima del 15 il costo del personale
+    non e' ancora arrivato dal consulente del lavoro, quindi non e' "mancante".
+    Senza, dal 1° al 14 la catena abbassava l'indice e diceva «Mancano il costo
+    del personale» sulla stessa sede su cui il PV taceva."""
+    oggi = _oggi_rome()
+    anno_mese = _mese_chiuso(oggi)
+    return None if _personale_gia_dovuto(oggi, anno_mese) else anno_mese[1]
 
 
 # `dependencies` a livello di router: la guardia vale per TUTTI gli endpoint,
@@ -321,6 +348,8 @@ def _build_briefing(
     n_fatture_da_collocare: int = 0,
     n_fatture_arrivate_ieri: Optional[int] = None,
     fatture_ieri_da_assegnare: bool = False,
+    personale_in_attesa_ids: Optional[set] = None,
+    mese_personale: Optional[str] = None,
 ) -> "GruppoBriefing":
     """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
     overview + segnali → coerente per costruzione, tono sobrio.
@@ -334,6 +363,7 @@ def _build_briefing(
     from services.daily_briefing_service import salute_e_rossa
 
     incompleti_ids = incompleti_ids or set()
+    personale_in_attesa_ids = personale_in_attesa_ids or set()
     salute_by_id = {
         s.ristorante_id: s.indice
         for s in (salute_pv or [])
@@ -385,8 +415,14 @@ def _build_briefing(
 
     # Sedi con dati da completare: per PRESENZA di dati (costi mancanti). Fallback
     # alla salute rossa (soglia del PV) o, in ultima istanza, al solo fatturato.
+    # Le sedi a cui manca SOLO il personale del mese chiuso, prima del 15, restano
+    # fuori dal confronto (il loro margine e' davvero gonfiato) ma non sono "da
+    # completare": il PV non lo chiede ancora, e la catena non puo' chiederlo al
+    # suo posto (fase 1, `_personale_gia_dovuto`). Se ne dice il fatto, non il
+    # compito.
+    n_in_attesa = len(personale_in_attesa_ids & incompleti_ids) if mese_personale else 0
     if incompleti_ids:
-        n_incompleti = len(incompleti_ids)
+        n_incompleti = len(incompleti_ids) - n_in_attesa
     elif salute_by_id:
         n_incompleti = sum(1 for ix in salute_by_id.values() if salute_e_rossa(ix))
     else:
@@ -396,6 +432,12 @@ def _build_briefing(
             f"{n_incompleti} "
             + ("punto vendita ha" if n_incompleti == 1 else "punti vendita hanno")
             + " i dati di costo ancora da completare: lì il margine non è reale."
+        )
+    if n_in_attesa:
+        frasi.append(
+            ("In un punto vendita" if n_in_attesa == 1 else f"In {n_in_attesa} punti vendita")
+            + f" il costo del personale di {mese_personale} non è ancora inserito:"
+            " fino ad allora il margine è più alto del reale."
         )
 
     # Azione concreta del giorno: fatture di gruppo da collocare (arrivano a nome
@@ -803,6 +845,9 @@ def _salute_indici_batch(
     Prima quella RPC tornava [] e ogni sede finiva a indice 0, cioe' un falso
     ROSSO su tutta la catena: la card affermava un dato che non aveva. Zero e'
     una misura, l'assenza di misura non lo e'.
+
+    PERSONALE (24/9/2026): prima del 15 la voce vale 100 anche senza costo,
+    come in `home_salute` — vedi `_personale_non_ancora_dovuto`.
     """
     from services.daily_briefing_service import calcola_indice_salute
 
@@ -814,6 +859,7 @@ def _salute_indici_batch(
     if rows is None:
         return None
     spente_map = _voci_spente_per_sede(sb, ids)
+    personale_dovuto = _personale_non_ancora_dovuto() is None
     for r in rows:
         rid = str(r.get("ristorante_id"))
         if rid not in out:
@@ -833,7 +879,7 @@ def _salute_indici_batch(
             {
                 "fatture": 100 if fatture_ok else 0,
                 "fatturato": 100 if netto > 0 else 0,
-                "personale": 100 if personale > 0 else 0,
+                "personale": 100 if (personale > 0 or not personale_dovuto) else 0,
                 "classificate": pct_classificate if n_fatture > 0 else 0,
             },
             spente_map.get(rid) or set(),
@@ -1122,6 +1168,14 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
             livello_dati = "food"
         else:
             livello_dati = "completo"
+    personale_in_attesa: set = set()
+    mese_personale: Optional[str] = None
+    mese_in_attesa = _personale_non_ancora_dovuto() if completezza else None
+    if mese_in_attesa is not None:
+        personale_in_attesa = {
+            rid for rid, manca in completezza.items() if manca == [_MANCA_PERSONALE]
+        }
+        mese_personale = MESI_ITA[mese_in_attesa].lower()
 
     kpi = GruppoKpi(
         fatturato=round(tot_lordo, 2),
@@ -1231,6 +1285,8 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         n_fatture_da_collocare=n_da_collocare,
         n_fatture_arrivate_ieri=n_arrivate_ieri_tot or None,
         fatture_ieri_da_assegnare=arrivate_ieri["n_in_coda"] > 0,
+        personale_in_attesa_ids=personale_in_attesa,
+        mese_personale=mese_personale,
     )
 
     return GruppoOverviewResponse(
@@ -1815,7 +1871,11 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # `_completezza_dati_pv`, sopra) cambia insieme: le sedi con sole spese e zero
 # merce prima NON lo ricevevano e ora lo ricevono. Senza bump la catena
 # resterebbe con lo snapshot di ieri fino a mezzanotte di Roma.
-_SEGNALI_CODE_VERSION = 2
+# 3 = 24/09/2026 (fase 6 del piano consulente): `dati_mancanti` non chiede il
+# personale del mese chiuso prima del 15, e lo snapshot porta la lista nuova
+# `osservazioni`. Uno snapshot v2 non ha le osservazioni e chiederebbe il
+# personale il 1° ottobre.
+_SEGNALI_CODE_VERSION = 3
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
@@ -1838,10 +1898,22 @@ class Segnale(BaseModel):
     cta_page: str                   # pagina PV dove approfondire (deep link)
 
 
+class Osservazione(BaseModel):
+    tipo: str                       # "andamento_incasso" | "food_cost_alto"
+    severity: str                   # "success" | "warning"
+    ristorante_id: str
+    pv_nome: str
+    testo: str                      # la frase del PV, con le sue cifre
+    cta_page: str
+
+
 class SegnaliResponse(BaseModel):
     nome_gruppo: str
     generated_at: Optional[str]
     segnali: List[Segnale]
+    # Le osservazioni da consulente (fase 4) non sono segnali: non sono compiti,
+    # non entrano nel conteggio che spegne il «tutto in ordine». Lista a parte.
+    osservazioni: List[Osservazione] = []
 
 
 def _mesi_indietro(anno: int, mese: int, n: int) -> List[tuple]:
@@ -1867,6 +1939,10 @@ _SEGNALI_CATALOGO = [
      "descrizione": "Avvisa quando in un PV una categoria pesa sulla spesa cibo molto più che nelle altre sedi del gruppo."},
     {"key": "ricavi_mancanti", "label": "Ricavi mancanti",
      "descrizione": "Avvisa quando un PV non ha ricavi registrati nel mese in corso."},
+    {"key": "andamento_incasso", "label": "Andamento dell'incasso",
+     "descrizione": "Il martedì dice quando l'incasso di un PV nelle ultime settimane si è mosso rispetto alle settimane prima."},
+    {"key": "food_cost_alto", "label": "Food cost alto",
+     "descrizione": "A inizio mese dice quando il food cost di un PV nel mese già consolidato è sopra la norma del settore."},
 ]
 _SEGNALI_KEYS = {s["key"] for s in _SEGNALI_CATALOGO}
 
@@ -1920,6 +1996,9 @@ def _elenco_it(voci: List[str]) -> str:
     return ", ".join(voci[:-1]) + " e " + voci[-1]
 
 
+_MANCA_PERSONALE = "il costo del personale"
+
+
 def _completezza_dati_pv(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
     anno: Optional[int] = None, mese: Optional[int] = None,
@@ -1966,9 +2045,84 @@ def _completezza_dati_pv(
         if not fatture_ok:
             manca.append("le fatture costo")
         if float(r.get("personale") or 0) <= 0:
-            manca.append("il costo del personale")
+            manca.append(_MANCA_PERSONALE)
         if manca:
             out[rid] = manca
+    return out
+
+
+_OSSERVAZIONI_CATENA = ("andamento_incasso", "food_cost_alto")
+
+
+def _calcola_osservazioni(
+    sb,
+    ids: List[str],
+    rid_to_nome: Dict[str, str],
+    segnali_off: Optional[set] = None,
+    pv_esclusi: Optional[set] = None,
+    user_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Le osservazioni da consulente del PV (fase 4), sede per sede.
+
+    Nessuna regola nuova: calcolo e frase sono quelli del PV
+    (`_briefing_osservazioni` nel worker, `_osservazione_frase` nel briefing),
+    quindi giorno, soglie, finestra del food cost ed esclusione dei negozi sono
+    gli stessi. Si spengono dal configuratore della catena (`segnali_off`), con
+    `pv_esclusi`, e dal configuratore DEL PV: se il cliente ha spento il food
+    cost su una sede, la catena non glielo ripete.
+
+    Solo dal percorso dei segnali, cachato una volta al giorno: fanno query per
+    sede e l'overview e' il percorso veloce (vincolo E7 della fase 4).
+
+    Best-effort come nel PV: un'osservazione che fallisce manca, e basta. Una
+    prima stesura marcava lo snapshot «degradato» per non metterlo in cache, ma
+    un guasto persistente di una sede avrebbe tolto la cache a tutti i segnali
+    e spento il «tutto in ordine» per l'intera giornata (il conteggio letto
+    dall'overview diventa None): un'osservazione che fallisce non puo' pesare
+    piu' di un'osservazione che c'e' (review del 24/09).
+
+    Fuori dal martedi' e dalla finestra del food cost esce subito: senza, ogni
+    prima apertura del giorno leggeva le preferenze di ogni sede per niente.
+    """
+    segnali_off = segnali_off or set()
+    attive = [t for t in _OSSERVAZIONI_CATENA if t not in segnali_off]
+    if not attive or not user_id:
+        return []
+    fw = _fw()
+    oggi = fw._oggi_rome()
+    parla_oggi = (
+        ("andamento_incasso" in attive
+         and oggi.weekday() == fw._ANDAMENTO_INCASSO_GIORNO_SETTIMANA)
+        or ("food_cost_alto" in attive and fw._mese_food_cost_da_dire(oggi) is not None)
+    )
+    if not parla_oggi:
+        return []
+    if pv_esclusi:
+        ids = [r for r in ids if r not in pv_esclusi]
+    from services.daily_briefing_service import _osservazione_frase, espandi_topic_spenti
+    out: List[Dict[str, Any]] = []
+    for rid in ids:
+        spenti = {t for t in _OSSERVAZIONI_CATENA if t not in attive}
+        try:
+            td = fw._get_assistant_preferences(rid, sb).get("topics_disabled")
+            spenti |= set(espandi_topic_spenti(td or []))
+        except Exception as exc:
+            # Fail-open come il PV: senza preferenze non si spegne nulla.
+            logger.warning("catena: preferenze del PV %s non lette: %s", rid, exc)
+        try:
+            for rec in fw._briefing_osservazioni(user_id, rid, sb, spenti):
+                out.append({
+                    "tipo": str(rec.get("topic_key") or ""),
+                    "severity": str(rec.get("severity") or "info"),
+                    "ristorante_id": rid,
+                    "pv_nome": rid_to_nome[rid],
+                    "testo": _osservazione_frase(rec),
+                    "cta_page": str(rec.get("action_page") or "/margini"),
+                })
+        except Exception as exc:
+            logger.warning("catena: osservazioni del PV %s non calcolate: %s", rid, exc)
+    ordine = {t: i for i, t in enumerate(_OSSERVAZIONI_CATENA)}
+    out.sort(key=lambda o: (ordine.get(o["tipo"], len(ordine)), o["pv_nome"]))
     return out
 
 
@@ -2018,8 +2172,13 @@ def _calcola_segnali(
             )
             if comp is None:
                 raise RuntimeError("completezza PV non determinabile")
+            # Il personale del mese chiuso non ancora dovuto non e' "mancante":
+            # e' la regola del PV, che prima del 15 non lo chiede.
+            personale_dovuto = _personale_non_ancora_dovuto() is None
             for rid in ids:
                 manca = comp.get(rid)
+                if manca and not personale_dovuto:
+                    manca = [m for m in manca if m != _MANCA_PERSONALE]
                 if manca:
                     segnali.append({
                         "tipo": "dati_mancanti",
@@ -2306,6 +2465,9 @@ def gruppo_segnali(
                         nome_gruppo=nome_gruppo,
                         generated_at=snap.get("generated_at"),
                         segnali=[Segnale(**s) for s in (snap.get("segnali") or [])],
+                        osservazioni=[
+                            Osservazione(**o) for o in (snap.get("osservazioni") or [])
+                        ],
                     )
         except Exception:
             pass
@@ -2328,6 +2490,13 @@ def gruppo_segnali(
     # cortocircuiterebbe al primo True, lasciando sporchi i successivi.
     marcati = [bool(s.pop("_degradato", False)) for s in segnali]
     degradato = any(marcati)
+    # Le osservazioni non possono far fallire la card dei segnali (ne' il tool
+    # della chat che la legge): un errore imprevisto le toglie, non toglie tutto.
+    try:
+        osservazioni = _calcola_osservazioni(sb, ids, rid_to_nome, seg_off, pv_excl, user_id)
+    except Exception as exc:
+        logger.warning("catena: osservazioni non calcolate: %s", exc)
+        osservazioni = []
 
     # Salva lo snapshot di oggi (best-effort: un errore di scrittura non deve far
     # fallire la lettura dei segnali appena calcolati).
@@ -2338,6 +2507,7 @@ def gruppo_segnali(
                 "generated_for_date": today_iso,
                 "snapshot": {
                     "segnali": segnali,
+                    "osservazioni": osservazioni,
                     "generated_at": generated_at,
                     "code_version": _SEGNALI_CODE_VERSION,
                 },
@@ -2350,6 +2520,7 @@ def gruppo_segnali(
         nome_gruppo=nome_gruppo,
         generated_at=generated_at,
         segnali=[Segnale(**s) for s in segnali],
+        osservazioni=[Osservazione(**o) for o in osservazioni],
     )
 
 

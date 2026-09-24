@@ -231,17 +231,57 @@ Per costruzione, le tre cose non possono contraddirsi.
 
 ## 8. Il briefing della CATENA (gruppo)
 
-Calcolato dal vivo a ogni apertura (non è giornaliero come quello del singolo PV).
-Regole:
+È un **testo fisso scritto dal codice**, senza AI: decisione di Mattia del 24/9, che
+l'AI eventualmente la si aggiunge dopo. Viene calcolato dal vivo a ogni apertura e non
+è giornaliero come quello del singolo PV. Sotto c'è la card «Da vedere nella catena»,
+che invece si calcola una volta al giorno.
 
-- La **completezza di una sede** si misura sulla sua **Salute** (che vede i costi
-  mancanti), non solo sul fatturato. Una sede entra nel confronto dei margini solo
-  se è affidabile (Salute ≥ 50); sotto quella soglia il suo margine non è reale e la
-  sede viene contata come "da completare".
-- Solo le sedi affidabili entrano nel confronto "va meglio / è più indietro".
-- "Tutto sotto controllo" appare **solo se**: nessun avviso aperto, Salute non
-  rossa e nessuna sede incompleta. Mai dire che va tutto bene mentre la salute del
-  gruppo è bassa.
+Regole della frase:
+
+- **Una sede è completa** se nel mese chiuso ha tre cose: il fatturato, le fatture di
+  costo (euro di merce del mese) e il costo del personale. È un controllo sulla
+  **presenza dei dati**, non sulla percentuale di Salute. Se ne manca una, il margine
+  di quella sede non è reale:
+  - la sede resta fuori dal confronto «va meglio / è più indietro»;
+  - la frase dice «N punti vendita hanno i dati di costo ancora da completare».
+- **Il personale, fino al 14 del mese**, segue la regola del PV (§3): quello del mese
+  appena chiuso non si chiede ancora. Se a una sede manca solo quello:
+  - la sede non viene detta «da completare», e al suo posto: «In un punto vendita il
+    costo del personale di settembre non è ancora inserito: fino ad allora il margine
+    è più alto del reale.»
+  - resta comunque fuori dal confronto, perché il margine è davvero gonfiato;
+  - la stessa regola vale per l'indice di Salute di ogni sede e per l'avviso «Mancano
+    il costo del personale» della card.
+- **«Tutto in ordine»** compare solo se non ci sono avvisi aperti, la Salute non è
+  rossa, nessuna sede è da completare e non ci sono fatture di gruppo da smistare.
+  Mai dire che va tutto bene mentre la salute del gruppo è bassa. Le sedi che
+  aspettano solo il personale non lo spengono, come nel PV. La card «I conti del
+  gruppo», però, resta in ambra con «N PV con dati di costo incompleti»: parla del
+  numero, che senza personale è davvero gonfiato, e non di un compito.
+
+**Le osservazioni da consulente** stanno nella card, nel riquadro «Da sapere», sopra
+gli avvisi. Sono quelle del PV (§4-bis): stesso calcolo, stessa frase, stessi giorni.
+- **Andamento dell'incasso**: il martedì.
+- **Food cost alto**: fra l'ultimo giorno del mese e i primi 7; mai per i negozi.
+
+C'è una riga per sede, col nome della sede davanti. Non sono avvisi, quindi non
+spengono il «Tutto in ordine» e non si contano fra gli avvisi aperti. Si spengono in
+tre modi:
+- dal configuratore della catena;
+- escludendo la sede dall'assistente della catena;
+- spegnendole nel configuratore **di quella sede**: se l'hai spento sul PV, la catena
+  non te lo ripete. Vale dal giorno dopo, perché la card della catena si calcola una
+  volta al giorno e cambiare il configuratore del PV non la ricalcola.
+
+Se il calcolo di un'osservazione fallisce, quell'osservazione manca e basta, come nel
+PV: non spegne gli avvisi né il «Tutto in ordine». Nei giorni in cui nessuna delle
+due può uscire, la card non fa nessuna lettura in più.
+
+> ⚠️ **Parleranno poco finché i dati restano fermi**: misurato il 24/9 sulle 3
+> catene. Negli ultimi martedì un'osservazione è comparsa solo il 1° settembre, per
+> una sede su 5. Il food cost di inizio ottobre non esce da nessuna parte, perché le
+> fatture di settembre non ci sono ancora. È lo stesso limite della fase 4: fatture e
+> incassi fermi da settimane.
 
 ### La cascata dei dati del gruppo (RISOLTO, verificato 17/7)
 

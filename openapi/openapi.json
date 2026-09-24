@@ -24044,6 +24044,44 @@
         ],
         "title": "NuovoTurnoBody"
       },
+      "Osservazione": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "pv_nome": {
+            "type": "string",
+            "title": "Pv Nome"
+          },
+          "testo": {
+            "type": "string",
+            "title": "Testo"
+          },
+          "cta_page": {
+            "type": "string",
+            "title": "Cta Page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "severity",
+          "ristorante_id",
+          "pv_nome",
+          "testo",
+          "cta_page"
+        ],
+        "title": "Osservazione"
+      },
       "PagataRequest": {
         "properties": {
           "file_origini": {
@@ -25814,6 +25852,14 @@
             },
             "type": "array",
             "title": "Segnali"
+          },
+          "osservazioni": {
+            "items": {
+              "$ref": "#/components/schemas/Osservazione"
+            },
+            "type": "array",
+            "title": "Osservazioni",
+            "default": []
           }
         },
         "type": "object",

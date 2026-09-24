@@ -16,9 +16,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
-import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
+import type { GruppoOverview, Osservazione, Segnale, SegnaliGruppo } from "@/lib/gruppo";
 import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
 import { raggruppaSegnali } from "@/lib/catena-segnali";
+import { haDestinazione, osservazioniDaMostrare } from "@/lib/catena-osservazioni";
 import { SALUTE_TINT, ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
@@ -51,6 +52,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
   const [segnali, setSegnali] = useState<Segnale[] | null>(null);
+  const [osservazioni, setOsservazioni] = useState<Osservazione[]>([]);
   const [segnaliError, setSegnaliError] = useState(false);
   const segnaliReqRef = useRef(0);
 
@@ -62,7 +64,10 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
     fetch("/api/gruppo/segnali", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j: SegnaliGruppo | null) => {
-        if (my === segnaliReqRef.current) setSegnali(j?.segnali ?? []);
+        if (my === segnaliReqRef.current) {
+          setSegnali(j?.segnali ?? []);
+          setOsservazioni(osservazioniDaMostrare(j));
+        }
       })
       .catch(() => {
         if (my === segnaliReqRef.current) setSegnaliError(true);
@@ -257,6 +262,40 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           <AlertTriangle className="size-4" />
           Da vedere nella catena
         </div>
+        {/* Osservazioni da consulente (fase 6): sopra i segnali e fuori dal
+            loro conteggio, come sul desktop (card-segnali). */}
+        {osservazioni.length > 0 ? (
+          <div className="mt-3">
+            <div className="text-xs font-medium text-muted-foreground">Da sapere</div>
+            <ul className="mt-2 space-y-2">
+              {osservazioni.map((o, i) => (
+                <li key={`${o.tipo}-${o.ristorante_id}-${i}`}>
+                  {haDestinazione(o) ? (
+                    <button
+                      type="button"
+                      disabled={switching}
+                      onClick={() => drill(o.ristorante_id)}
+                      className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left active:bg-accent disabled:opacity-50"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={o.pv_nome}>{o.pv_nome}</span>
+                        <span className="block text-sm">{o.testo}</span>
+                      </span>
+                      <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary-text" />
+                    </button>
+                  ) : (
+                    <div className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={o.pv_nome}>{o.pv_nome}</span>
+                        <span className="block text-sm">{o.testo}</span>
+                      </span>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {segnaliError && segnali === null ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <AlertTriangle className="size-4 text-rose-500" />

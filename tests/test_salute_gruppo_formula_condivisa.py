@@ -52,6 +52,17 @@ def _row(rid=RID, n_fatture=100, n_needs=0, netto=1000.0, personale=500.0):
     }
 
 
+@pytest.fixture(autouse=True)
+def dopo_il_15(monkeypatch):
+    """I casi di questo file hanno il personale a 0 e contano la voce come
+    mancante: vale solo dal 15, quando il personale del mese chiuso e' dovuto
+    (fase 1, `_personale_gia_dovuto`). Senza una data fissa diventavano rossi
+    dal 1° al 14 di ogni mese. La regola prima del 15 e' provata in
+    test_catena_personale_dal_15.py."""
+    from datetime import date
+    monkeypatch.setattr(gruppo, "_oggi_rome", lambda: date(2026, 9, 20))
+
+
 @pytest.fixture
 def no_toggle(monkeypatch):
     """Nessuna voce spenta: isola le altre dimensioni del calcolo."""
