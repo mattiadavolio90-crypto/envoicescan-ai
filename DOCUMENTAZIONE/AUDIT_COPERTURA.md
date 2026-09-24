@@ -859,14 +859,24 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   uscita anticipata fuori dai giorni utili, rete intorno al calcolo, test che
 >   cattura gli argomenti. Suite rifatta con la data forzata a **tre giorni**
 >   (mar 29/9, dom 5/10, mar 6/10): 1.454 passed ciascuno.
->   **Mutanti sul codice finale: 37, tutti uccisi** (13 su A, 21 sul backend di
+>   **Mutanti sul codice finale: 38, tutti uccisi** (13 su A, 22 sul backend di
 >   B, 3 sulla logica del frontend) — uno, la versione dei segnali non alzata,
 >   solo dopo il test che ne ancora il valore (`>= 3`, come `_BRIEFING_CODE_VERSION`).
+>   **Secondo giro della review**: un mutante sopravviveva allo spegnimento dal
+>   configuratore della catena (`spenti = set()`), perche' la mia uscita
+>   anticipata faceva passare i due test sullo spegnimento prima di arrivarci:
+>   la correzione del primo giro aveva svuotato il presidio. Test aggiunto sul
+>   martedi' in finestra, dove parlano entrambe; il reviewer ha girato 31
+>   mutanti suoi, 29 uccisi, 1 equivalente (`cta_page`).
 >   `_SEGNALI_CODE_VERSION` 2→3. Misura sui dati veri (sola lettura, 3 catene):
 >   parlera' poco finche' i dati restano fermi — un'osservazione il martedi' 1/9
 >   su 5 sedi, food cost di ottobre muto per le fatture di settembre assenti.
->   **Suite: 16.034 passed, 45 skipped** (`-m "not sql" -p no:randomly`) **+ 545
->   `-m sql`**; drift OpenAPI rigenerato; `tsc` pulito. Un primo giro `-m sql`
+>   **Suite: 16.037 passed, 45 skipped** (`python -m pytest tests/ -m "not sql"
+>   -q -p no:randomly`, working tree: include +2 test non committati di un'altra
+>   sessione in `test_brevo_mittente_default.py`) **+ 545 `-m sql`**. Il reviewer,
+>   su un clone pulito a `e316533` con `WORKER_DEV_MODE=1` e senza chiavi, misura
+>   16.042: ambiente diverso, cifra non confrontabile 1:1. Drift OpenAPI
+>   rigenerato; `tsc` pulito. Un primo giro `-m sql`
 >   aveva dato 541 *errors*: `/dev/shm` pieno di 62 Postgres di test orfani,
 >   non il codice. **Non pushato: va deployato prima del 1/10.**
 

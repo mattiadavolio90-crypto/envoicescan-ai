@@ -204,6 +204,22 @@ def test_food_cost_spento_in_catena_tace(ambiente, food_cost_alto):
     assert _calcola(_FakeSB(), segnali_off={"food_cost_alto"}) == []
 
 
+@pytest.mark.parametrize("off, atteso", [
+    ({"food_cost_alto"}, ["andamento_incasso"]),
+    ({"andamento_incasso"}, ["food_cost_alto"]),
+])
+def test_martedi_in_finestra_spento_in_catena_tace_solo_lui(ambiente, food_cost_alto, off, atteso):
+    """Nel giorno in cui possono parlare entrambe, l'uscita anticipata non
+    scatta: e' qui che lo spegnimento dal configuratore della catena deve
+    arrivare fino al calcolo per sede. Gli altri test sullo spegnimento
+    passavano gia' per l'uscita anticipata (review del 24/09, secondo giro)."""
+    g = date(2026, 10, 6)
+    ambiente["giorno"](g)
+    sb = _FakeSB({"a": _ricavi_in_crescita(g)})
+    oss = gruppo._calcola_osservazioni(sb, ["a"], NOMI, segnali_off=off, user_id="u1")
+    assert [o["tipo"] for o in oss] == atteso
+
+
 def test_ordine_prima_il_tema_poi_il_nome(ambiente, food_cost_alto, monkeypatch):
     """Un martedi' dentro la finestra parlano entrambe: prima l'incasso di tutte
     le sedi, poi il food cost, e dentro il tema per nome della sede."""
