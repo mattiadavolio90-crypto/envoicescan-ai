@@ -356,12 +356,15 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
 
       {/* Tabella trasposta — desktop */}
       {/* Rilievo della card (deciso con Mattia il 23/09).
-          In tema CHIARO `--background` e `--card` sono lo stesso colore
-          (`oklch(1 0 0)`, globals.css:58 e :60): la tabella e' bianca su bianco,
-          separata dalla pagina solo dal bordo. Ombra + anello la sollevano di un
-          millimetro — e' il pattern gia' in uso su popover e dropdown
-          (`shadow-lg ring-1 ring-foreground/10`), non un linguaggio nuovo.
-          `dark:shadow-none`: al buio lo stacco lo da' gia' la differenza di tinta
+          Nasceva come rimedio locale a un difetto del TEMA: in chiaro
+          `--background` e `--card` erano lo stesso `oklch(1 0 0)` e la tabella
+          era bianca su bianco, separata dalla pagina solo dal bordo. Quel
+          difetto e' stato corretto alla radice lo stesso giorno (fondo a
+          0.985, presidiato in `test_globals_css_contrasto.py`), quindi ombra e
+          anello non sono piu' l'unico stacco: RAFFORZANO quello del tema, come
+          gia' fanno popover e dropdown (`shadow-lg ring-1 ring-foreground/10`).
+          Restano per scelta, non per necessita'.
+          `dark:shadow-none`: al buio lo stacco lo da' la differenza di tinta
           (card 0.205 su fondo 0.145) e un'ombra nera non si vede — per vederla
           andrebbe esagerata. */}
       <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden shadow-sm ring-1 ring-foreground/5 dark:shadow-none dark:ring-0">

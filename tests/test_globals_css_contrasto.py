@@ -184,3 +184,54 @@ def test_le_serie_dei_grafici_sono_una_rampa_del_brand(tema):
     """2 piu' scura del brand, 3 piu' chiara: e' una scala, non tre colori."""
     l1, l2, l3 = (luminanza(tema[n]) for n in ("grafico-1", "grafico-2", "grafico-3"))
     assert l2 < l1 < l3
+
+
+# --------------------------------------------- il fondo pagina e le card ----
+#
+# Fino al 23/09/2026 `--background` e `--card` erano ENTRAMBI `oklch(1 0 0)` nel
+# tema chiaro: ogni card era bianca su bianco e l'unico stacco restava il bordo.
+# Al punto che la tabella di Margini si era dovuta difendere da sola, con ombra
+# e anello scritti nel .tsx (`calcolo-tab.tsx`) invece che col tema. Nel tema
+# scuro il rapporto c'era gia' (card 0.205 su fondo 0.145).
+#
+# Non e' un requisito WCAG — il contrasto del TESTO e' coperto dai test sopra —
+# ma il contratto visivo che distingue una superficie sollevata dal piano della
+# pagina. Senza presidio, riportare il fondo a `oklch(1 0 0)` non farebbe
+# fallire nulla e le card tornerebbero invisibili.
+
+def test_le_card_si_staccano_dal_fondo_pagina(tema):
+    """In ENTRAMBI i temi la card non deve avere la stessa tinta del fondo."""
+    assert tema["card"] != tema["background"], (
+        f"tema {tema['_nome']}: --card e --background sono lo stesso colore "
+        f"({hexa(tema['card'])}), le card spariscono nel fondo"
+    )
+
+
+def test_lo_stacco_card_fondo_e_percepibile(tema):
+    """Una differenza di un centesimo sarebbe invisibile: serve una soglia.
+
+    Il riferimento e' il tema scuro, che il difetto non ha mai avuto: card
+    0.205 su fondo 0.145, cioe' **1.105:1**.
+
+    ATTENZIONE alla taratura, la prima stesura di questo test era finta: con un
+    `minimo * 0.9` la soglia scendeva a 0.994, e un rapporto di contrasto non
+    puo' stare sotto 1 — quindi non bloccava nulla, nemmeno due fondi
+    identici. Un mutante con fondo `oklch(0.998)` (stacco invisibile a occhio)
+    ci passava. La soglia qui e' un valore ANCORATO, non derivato con un
+    margine: sotto 1.04 lo stacco non si vede.
+    """
+    STACCO_MINIMO = 1.04
+    cr = contrasto(tema["card"], tema["background"])
+    assert cr >= STACCO_MINIMO, (
+        f"tema {tema['_nome']}: stacco card/fondo {cr:.4f}:1, sotto "
+        f"{STACCO_MINIMO}:1 — le card non si distinguono dalla pagina"
+    )
+
+
+def test_il_testo_resta_leggibile_sul_fondo_abbassato(tema):
+    """Controprova: abbassare il fondo non deve costare contrasto al testo.
+
+    E' il rischio del fix — scurire il fondo per staccare le card avvicina il
+    fondo al testo. Qui si verifica che il margine su AA resti ampio.
+    """
+    assert _cr(tema, "foreground", "background") >= AA_TESTO

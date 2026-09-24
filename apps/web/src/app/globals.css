@@ -55,7 +55,14 @@
 
 @layer base {
   :root {
-    --background: oklch(1 0 0);
+    /* Il fondo pagina NON e' bianco: --card lo e'. Con entrambi a `oklch(1 0 0)`
+       ogni card era bianca su bianco e l'unico stacco restava il bordo — al
+       punto che la tabella di Margini si era dovuta difendere da sola con
+       ombra + anello (calcolo-tab.tsx). Nel tema scuro lo stacco c'e' gia'
+       (card 0.205 su fondo 0.145): qui si ricostruisce lo stesso rapporto,
+       tenendo il fondo appena sotto il bianco per non toccare il contrasto del
+       testo (foreground 0.145 su 0.985 resta ben oltre AA). */
+    --background: oklch(0.985 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
