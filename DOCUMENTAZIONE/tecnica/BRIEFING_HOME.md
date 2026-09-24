@@ -119,8 +119,8 @@ priorità (più basso = appare prima). **Prima il TEMA, poi la gravità nel tema
 | 20 | `price_alert` | Rincaro rilevante (vedi §6) | ✅ |
 | 30 | `uncategorized_rows` | Righe senza categoria | ✅ |
 | 40 | `fatturato_mancante` | Manca il fatturato del mese scorso | ✅ |
-| 45 | `incasso_mancante` | Manca l'incasso di ieri | ✅ |
-| 50 | `costo_personale_mancante` | Manca il costo del lavoro del mese | ✅ |
+| 45 | `incasso_mancante` | Manca l'incasso di ieri — **solo il giovedì** (`_GIORNO_SOLLECITO_INCASSO`, fase 1) e solo se la sede ha storico di incassi | ✅ |
+| 50 | `costo_personale_mancante` | Manca il costo del lavoro di un mese chiuso — il mese appena chiuso **solo dal 15** (`_personale_gia_dovuto`, fase 1), i più vecchi subito | ✅ |
 | 60 | `scadenza_superata` | Fatture scadute | ✅ |
 | 61 | `scadenza_imminente` | Fatture in scadenza ≤7gg | ✅ |
 | 70 | `appuntamento_imminente` | Appuntamenti in agenda **per oggi** (importanza medio/bassa, severity `info`) | ✅ |
@@ -165,8 +165,8 @@ applica vince), e ritorna `None` se nessuna → briefing to-do puro.
 
 | Priorità | tipo payload | Condizione | Esempio |
 |---|---|---|---|
-| 1 | `mol_mese` | MOL del mese chiuso **> 0 E in crescita** vs mese prima | "🔥 Maggio chiuso con € 280.924, +172,1% rispetto ad aprile" |
-| 2 | `perdita_in_calo` | MOL **< 0 ma migliore** del mese prima | "💪 Maggio in miglioramento: perdita scesa a € 1.037, sei sulla strada giusta" |
+| 1 | `mol_mese` | MOL del mese chiuso **> 0 E in crescita** vs mese prima, due mesi confrontabili (`_mesi_confrontabili`: fatturato > 0 e costi presenti in **entrambi**, fase 1) | "🔥 Maggio chiuso con € 280.924, +172,1% rispetto ad aprile" |
+| 2 | `perdita_in_calo` | MOL **< 0 ma migliore** del mese prima, stesso gate `_mesi_confrontabili` | "💪 Maggio in miglioramento: perdita scesa a € 1.037, sei sulla strada giusta" |
 | 3 | `incasso_ieri` | Esiste un incasso **di IERI** (e solo di ieri) | "💰 Ieri sono entrati € 11.543 di incasso" |
 
 **Decisioni di design (Mattia, 9/6/2026) — NON violare senza motivo:**

@@ -825,6 +825,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `test_briefing_dati_mensili`) davano errore di raccolta lanciati da soli,
 >   verdi in suite solo per l'ordine dei file — ora impostano l'ambiente.
 >   **Non pushato.**
+>   *Coda del 24/9 sera — la documentazione.* `LOGICA_BRIEFING.md`, il doc su
+>   cui Mattia decide soglie e ordine, **non conteneva né la fase 1 né la 4**:
+>   diceva ancora il personale reclamato dal mese precedente senza il giorno 15,
+>   l'incasso mancante ogni giorno, il MOL festeggiato senza guardare il
+>   fatturato, e nessuna osservazione. Anche `BRIEFING_HOME.md` era senza la
+>   fase 1 (i commit `c61043c`/`664724d`/`d81bcbb` toccavano solo questo
+>   verbale). Aggiornati entrambi; le **7 leve nuove** della tabella §9 entrano
+>   in `test_logica_briefing_tabella_leve_tutta_verificata`, lette dalle
+>   costanti. **7 mutanti sul doc, 7 uccisi.**
 
 ---
 

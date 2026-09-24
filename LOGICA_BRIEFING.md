@@ -35,8 +35,8 @@ riusa tutto il giorno. Tre casi:
 - **Già calcolato oggi** → te lo mostra subito, senza rifare i conti (~0,5s).
 - **Non ancora calcolato oggi** (prima apertura della giornata, o subito dopo che
   hai inserito dati) → ne costruisce uno **fresco e coerente all'istante**, saltando
-  solo l'analisi prezzi (l'unica parte lenta). In sottofondo prepara la versione
-  completa per l'apertura successiva.
+  l'analisi prezzi e le **osservazioni** (§4-bis), le parti lente. In sottofondo
+  prepara la versione completa per l'apertura successiva.
 - **Nessun ristorante collegato** → briefing vuoto.
 
 **Si ricalcola da solo** quando cambiano i dati che racconta: carico fatture,
@@ -69,8 +69,8 @@ contraddicono mai. Scattano a queste condizioni:
 | Avviso | Quando compare |
 |---|---|
 | **Fatturato mancante** | il mese precedente non ha fatturato (né normale né in "modalità mensile") |
-| **Costo personale mancante** | il mese precedente non ha costi del personale |
-| **Incasso di ieri mancante** | ieri non risulta nessun incasso (saltato se la sede lavora in "modalità mensile") |
+| **Costo personale mancante** | un mese chiuso non ha costi del personale. Il mese **appena chiuso** si chiede solo **dal 15** (la busta paga arriva a metà mese: prima, 5 sedi su 5 risultavano "in ritardo"); i mesi più vecchi subito |
+| **Incasso di ieri mancante** | ieri non risulta nessun incasso. Si dice **solo il giovedì** (guarda il mercoledì), cioè una volta a settimana, e solo se la sede ha già inserito incassi in passato; saltato in "modalità mensile". Non si può spegnere, quindi l'unico modo per non ripeterlo è non dirlo: tutti i giorni veniva ignorato 25 volte su 35 |
 | **Righe da classificare** | ci sono prodotti da controllare **caricati negli ultimi 7 giorni**; l'arretrato più vecchio non fa card ma viene citato nel testo se supera 20 voci |
 | **Fatture costo mancanti** | mese con ricavi ma **zero costi food+spese**, oppure nessuna fattura caricata da **7 giorni** |
 | **Ricavi automatici assenti** | cliente collegato ai ricavi automatici ma nessun ricavo da più giorni dei suoi giorni di chiusura + 1 |
@@ -91,9 +91,13 @@ contano per il "tutto a posto".
   l'assistenza solo se la Salute è rossa. Mai un rimprovero.
 - **Buona notizia** — sceglie la prima disponibile tra:
   1. **MOL del mese chiuso**, festeggiato **solo se** è positivo, **maggiore del
-     mese prima**, la Salute non è rossa **e** i costi del mese non mancano
-     (altrimenti sarebbe un "+X%" falso);
-  2. altrimenti **perdita in calo** (in rosso ma meno del mese prima);
+     mese prima**, la Salute non è rossa **e** i due mesi sono confrontabili:
+     **entrambi** con fatturato e con i costi presenti (altrimenti sarebbe un
+     "+X%" falso);
+  2. altrimenti **perdita in calo** (in rosso ma meno del mese prima), con la
+     stessa condizione sui due mesi. Fino al 23/9/2026 diceva «la perdita è
+     scesa a € 9.380» su due mesi **senza incassi**: la "perdita" era la somma
+     dei costi, e il "miglioramento" era che ne erano stati inseriti meno;
   3. altrimenti **incasso di ieri** (solo di ieri; più vecchio = silenzio),
      con lo scontrino medio se si scosta ≥10% dalla media, e il confronto con la
      media dello stesso giorno della settimana quando c'è abbastanza storico;
@@ -103,6 +107,39 @@ contano per il "tutto a posto".
      controllare, ripetendo parola per parola la voce che sta due righe sotto e
      rimanda alla stessa card (vedi §5.1);
   5. altrimenti **nessuna apertura**: il briefing è solo lista di cose da fare.
+
+### 4-bis. Le osservazioni: cosa direbbe un consulente (dal 24/9/2026)
+
+Dopo le aperture e prima di "Da sistemare oggi", il briefing può dire un fatto
+sull'**andamento** del locale, non sulla completezza dell'archivio. Come le
+aperture, non sono card e non contano per il "tutto a posto"; a differenza
+delle aperture, **si possono spegnere** dal configuratore. Si calcolano solo
+nella versione completa (§2), non in quella rapida.
+
+- **Andamento dell'incasso**: **solo il martedì**. Confronta l'incasso delle
+  ultime 4 settimane (lunedì-domenica) con le 4 prima e parla solo se si è
+  mosso di **almeno il 10%** in su o in giù. Servono almeno 20 giorni con
+  incasso in ciascuna delle due finestre, o tace. Se i coperti sono inseriti
+  (almeno 20 giorni per finestra) dice anche come si sono mossi coperti e
+  scontrino medio; sotto il 3% li dice "stabili".
+  *Come suona* (cifre di esempio): «📊 Nelle ultime 4 settimane sono entrati € 48.210 di incasso, il
+  16% in più delle 4 settimane prima (€ 41.668).»
+- **Food cost alto**: **solo a cavallo fra un mese e l'altro** (l'ultimo giorno
+  del mese e i primi 7 del successivo), e sul mese di **due mesi prima**:
+  l'ultimo mese caricato è quasi sempre parziale (fatture ancora in arrivo) e
+  darebbe un food cost falsamente basso. Serve che il mese dopo abbia già
+  fatture di food & beverage, o tace. Parla se il food cost supera il **33%**
+  (norma del settore 28-33%), dice "soglia critica" oltre il **38%**, e
+  aggiunge quanti euro di acquisti in più rappresenta rispetto al 33%. Mai per
+  i negozi.
+  *Come suona* (cifre di esempio): «🍽️ A luglio il food cost è stato del 45,8%, oltre la soglia
+  critica del 38%: rispetto al 33% sono circa € 581 di acquisti in più.»
+
+**Perché solo queste due** (misurato sul DB il 24/9): le altre candidate del
+piano erano sempre accese o mai. Il fornitore che pesa più dell'80% di una
+categoria c'era su 7 sedi su 8 (quasi tutto bevande: rumore); nessun prodotto o
+categoria saliva da 3 mesi; le scadenze "accumulate" erano false perché metà
+delle sedi non segna mai le fatture pagate; il MOL mese su mese è un'altalena.
 
 ---
 
@@ -143,21 +180,33 @@ contano per il "tutto a posto".
 
 Ordine di importanza degli argomenti (dal più al meno urgente):
 
-> rientro → buona notizia → upload fallito → upload ricavi fallito → alert prezzi →
+> rientro → buona notizia → andamento incasso → food cost alto → upload fallito → upload ricavi fallito → alert prezzi →
 > righe da classificare → fatture mancanti → fatturato mancante → incasso mancante →
 > costo personale mancante → scadenze → anomalia coperti → appuntamenti
 
 Se **nessuna voce viene selezionata**, e solo allora, il briefing dice che è tutto a posto.
 
+**I dati mancanti sono una riga, non la notizia del giorno** (dal 24/9/2026).
+Fatturato, costo del personale, incasso e fatture di un mese senza costi restano
+card (col loro bottone), ma nel testo non hanno più una frase ciascuno: si
+raccolgono **in una riga sola, in fondo** — «Per completare il quadro mancano il
+fatturato di agosto e il costo del personale di luglio e agosto: finché non ci
+sono, margini e food cost non sono completi.» Fatturato e personale dello stesso
+mese si fondono. Prima «il fatturato non è stato inserito» era l'apertura di 31
+briefing su 43.
+
 ---
 
 ## 6. Il tono
 
-- **Versione scritta a mano**: apertura + "Da sistemare oggi:" + una frase per
-  voce. Fonde fatturato e personale dello stesso mese in un'unica frase.
+- **Versione scritta a mano**: apertura + osservazioni + "Da sistemare oggi:" +
+  una frase per voce + in fondo la riga dei dati mancanti (§5). Se mancano solo
+  dati, il testo è solo quella riga.
 - **Versione riscritta dall'AI** (solo nella rigenerazione completa): tono
   **sobrio**, max 3 frasi, niente entusiasmo da coach, niente aggettivi enfatici,
-  al massimo 1 emoji, vietato inventare numeri. I nomi di prodotti e fornitori
+  al massimo 1 emoji, vietato inventare numeri. Le osservazioni si dicono
+  **sempre** e non contano nelle 3 frasi: se l'AI ne perde la cifra, o il testo
+  esce troncato, si torna alla versione a mano. I nomi di prodotti e fornitori
   vengono **nascosti** prima di inviare il testo all'AI e ripristinati dopo (i nomi
   veri non escono mai). Se l'AI sbaglia o non risponde → torna alla versione a mano.
 
@@ -236,6 +285,13 @@ il breakdown parziale va aggiunto con il suo caveat.
 | Quando festeggiare il MOL | positivo, in crescita, salute ok, costi presenti |
 | Soglia scontrino medio "notevole" | 10% |
 | Soglia anomalia coperti | 20% |
+| Da che giorno si chiede il personale del mese chiuso | dal 15 |
+| Giorno dell'avviso "incasso mancante" | giovedì |
+| Andamento incasso: giorno e soglia | martedì, ±10% su 4 settimane |
+| Andamento incasso: giorni minimi con incasso per finestra | 20 |
+| Coperti e scontrino "stabili" sotto | 3% |
+| Food cost: norma / critico | fino al 33% / oltre il 38% |
+| Food cost: quando se ne parla | ultimo giorno del mese e primi 7 |
 | Da quanti giorni senza fatture scatta l'avviso | 7 giorni |
 | Finestra "novita" da controllare | 7 giorni |
 | Quante voci arretrate prima di dirlo | 20 |

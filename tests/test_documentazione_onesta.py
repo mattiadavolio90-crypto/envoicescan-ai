@@ -235,9 +235,17 @@ def test_logica_briefing_tabella_leve_tutta_verificata() -> None:
     from services.daily_briefing_service import (
         _BRIEFING_TTL_MINUTI, _MAX_CARD, SALUTE_SOGLIA_GIALLO, SALUTE_SOGLIA_VERDE,
     )
+    from config.constants import KPI_SOGLIE
     from services.fastapi_worker import (
-        DA_CONTROLLARE_NOVITA_GIORNI, FATTURE_MANCANTI_GIORNI, _RIENTRO_GIORNI,
+        DA_CONTROLLARE_NOVITA_GIORNI, FATTURE_MANCANTI_GIORNI,
+        MOL_FINESTRA_PRIMI_GIORNI, _ANDAMENTO_INCASSO_GIORNO_SETTIMANA,
+        _ANDAMENTO_INCASSO_MIN_GIORNI, _ANDAMENTO_INCASSO_SETTIMANE,
+        _ANDAMENTO_INCASSO_SOGLIA_PCT, _ANDAMENTO_STABILE_PCT,
+        _GIORNO_SOLLECITO_INCASSO, _GIORNO_SOLLECITO_PERSONALE, _RIENTRO_GIORNI,
     )
+
+    giorni = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"]
+    soglie_fc = [s for s, _, _ in KPI_SOGLIE["food_cost"]]
 
     testo = _leggi(ROOT / "LOGICA_BRIEFING.md")
 
@@ -263,6 +271,22 @@ def test_logica_briefing_tabella_leve_tutta_verificata() -> None:
          "soglie colore"),
         (f"| Soglia di affidabilit\u00e0 sede nella catena | "
          f"Salute \u2265 {SALUTE_SOGLIA_GIALLO} |", "affidabilita catena"),
+        (f"| Da che giorno si chiede il personale del mese chiuso | "
+         f"dal {_GIORNO_SOLLECITO_PERSONALE} |", "giorno sollecito personale"),
+        (f"| Giorno dell'avviso \"incasso mancante\" | "
+         f"{giorni[_GIORNO_SOLLECITO_INCASSO]} |", "giorno sollecito incasso"),
+        (f"| Andamento incasso: giorno e soglia | "
+         f"{giorni[_ANDAMENTO_INCASSO_GIORNO_SETTIMANA]}, "
+         f"\u00b1{int(_ANDAMENTO_INCASSO_SOGLIA_PCT)}% su "
+         f"{_ANDAMENTO_INCASSO_SETTIMANE} settimane |", "andamento incasso"),
+        (f"| Andamento incasso: giorni minimi con incasso per finestra | "
+         f"{_ANDAMENTO_INCASSO_MIN_GIORNI} |", "andamento giorni minimi"),
+        (f"| Coperti e scontrino \"stabili\" sotto | "
+         f"{int(_ANDAMENTO_STABILE_PCT)}% |", "soglia stabile"),
+        (f"| Food cost: norma / critico | fino al {soglie_fc[1]}% / "
+         f"oltre il {soglie_fc[2]}% |", "soglie food cost"),
+        (f"| Food cost: quando se ne parla | ultimo giorno del mese e primi "
+         f"{MOL_FINESTRA_PRIMI_GIORNI} |", "finestra food cost"),
     ]
 
     mancanti = [(riga, cosa) for riga, cosa in attese if riga not in testo]
