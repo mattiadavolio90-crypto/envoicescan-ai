@@ -116,7 +116,13 @@
     --input: oklch(0.90 0 0);
     --ring: oklch(0.685 0.169 237.3);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
+    /* La sidebar e' una SUPERFICIE, non il piano della pagina: nel tema scuro
+       ha sempre avuto la tinta della card (0.205 su fondo 0.145). In chiaro
+       valeva 0.985 perche' il fondo era bianco puro — abbassando il fondo a
+       0.985 sarebbe diventata identica ad esso, e l'unico stacco sarebbe
+       tornato a essere il bordo: lo stesso difetto delle card, spostato sulla
+       navigazione di tutte e 14 le aree. Ora segue la card, come al buio. */
+    --sidebar: oklch(1 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.685 0.169 237.3);
     --sidebar-primary-foreground: oklch(1 0 0);

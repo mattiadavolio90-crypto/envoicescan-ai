@@ -188,7 +188,7 @@ def test_le_serie_dei_grafici_sono_una_rampa_del_brand(tema):
 
 # --------------------------------------------- il fondo pagina e le card ----
 #
-# Fino al 23/09/2026 `--background` e `--card` erano ENTRAMBI `oklch(1 0 0)` nel
+# Fino al 24/09/2026 `--background` e `--card` erano ENTRAMBI `oklch(1 0 0)` nel
 # tema chiaro: ogni card era bianca su bianco e l'unico stacco restava il bordo.
 # Al punto che la tabella di Margini si era dovuta difendere da sola, con ombra
 # e anello scritti nel .tsx (`calcolo-tab.tsx`) invece che col tema. Nel tema
@@ -199,15 +199,26 @@ def test_le_serie_dei_grafici_sono_una_rampa_del_brand(tema):
 # pagina. Senza presidio, riportare il fondo a `oklch(1 0 0)` non farebbe
 # fallire nulla e le card tornerebbero invisibili.
 
-def test_le_card_si_staccano_dal_fondo_pagina(tema):
-    """In ENTRAMBI i temi la card non deve avere la stessa tinta del fondo."""
-    assert tema["card"] != tema["background"], (
-        f"tema {tema['_nome']}: --card e --background sono lo stesso colore "
-        f"({hexa(tema['card'])}), le card spariscono nel fondo"
+# Le superfici SOLLEVATE: tutte devono staccarsi dal piano della pagina, non
+# solo quella che si stava guardando. La prima stesura di questo presidio
+# nominava `card` e basta — cosi' abbassare il fondo lasciava passare
+# `--sidebar` diventato identico ad esso (la navigazione di tutte e 14 le aree
+# bianca su bianco) e due mutanti su `--popover`, che ha lo stesso contratto e
+# 22 usi. E' il pattern «mutanti scelti solo dove ho scritto».
+SUPERFICI = ("card", "popover", "sidebar")
+
+
+@pytest.mark.parametrize("superficie", SUPERFICI)
+def test_le_superfici_si_staccano_dal_fondo_pagina(tema, superficie):
+    """In ENTRAMBI i temi una superficie non deve avere la tinta del fondo."""
+    assert superficie in tema, f"--{superficie} manca nel tema {tema['_nome']}"
+    assert tema[superficie] != tema["background"], (
+        f"tema {tema['_nome']}: --{superficie} e --background sono lo stesso "
+        f"colore ({hexa(tema[superficie])}), la superficie sparisce nel fondo"
     )
 
 
-def test_lo_stacco_card_fondo_e_percepibile(tema):
+def test_lo_stacco_superfici_fondo_e_percepibile(tema):
     """Una differenza di un centesimo sarebbe invisibile: serve una soglia.
 
     Il riferimento e' il tema scuro, che il difetto non ha mai avuto: card
@@ -221,11 +232,12 @@ def test_lo_stacco_card_fondo_e_percepibile(tema):
     margine: sotto 1.04 lo stacco non si vede.
     """
     STACCO_MINIMO = 1.04
-    cr = contrasto(tema["card"], tema["background"])
-    assert cr >= STACCO_MINIMO, (
-        f"tema {tema['_nome']}: stacco card/fondo {cr:.4f}:1, sotto "
-        f"{STACCO_MINIMO}:1 — le card non si distinguono dalla pagina"
-    )
+    for superficie in SUPERFICI:
+        cr = contrasto(tema[superficie], tema["background"])
+        assert cr >= STACCO_MINIMO, (
+            f"tema {tema['_nome']}: stacco {superficie}/fondo {cr:.4f}:1, sotto "
+            f"{STACCO_MINIMO}:1 — la superficie non si distingue dalla pagina"
+        )
 
 
 def test_il_testo_resta_leggibile_sul_fondo_abbassato(tema):
