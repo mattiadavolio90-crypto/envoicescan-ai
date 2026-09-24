@@ -85,8 +85,12 @@
        cinque volte `bg-accent`) e in molte pagine poggia sul fondo pagina, non
        dentro una card: `SidebarInset` e' `bg-background`. A 0.955 lo stacco e'
        1.0920 dal fondo e 1.1401 dalla card, e il testo resta ampiamente sopra
-       AA (muted-foreground 5,99:1). `--secondary` condivide la tinta e la
-       stessa debolezza, quindi si muove con lui. */
+       AA (muted-foreground 5,99:1). Il limite e' 0.958: sopra quel valore la
+       coppia col fondo scende sotto 1.08. E' un MASSIMO, non un minimo —
+       scendendo di L il contrasto aumenta, e la prima stesura di questo
+       commento aveva il verso rovesciato. `--secondary` condivide la tinta e
+       si muove con lui per non creare due grigi quasi-uguali su componenti
+       adiacenti (badge e button): non aveva una debolezza propria. */
     --secondary: oklch(0.955 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.955 0 0);

@@ -332,22 +332,13 @@ def test_lo_stato_attivo_si_stacca_dal_suo_contenitore(tema, token, contenitore)
     )
 
 
-def test_ogni_tinta_di_evidenziazione_usata_nel_codice_e_presidiata():
-    """Impedisce la QUINTA dimenticanza, rendendola rumorosa.
+def _stati_bg_dal_sorgente() -> dict[str, int]:
+    """Le classi `<stato>:bg-X` che il codice usa davvero, contate per token.
 
-    `EVIDENZIATI` e' una lista scritta a mano, e in tre giri consecutivi le e'
-    sfuggito un contenitore: prima `sidebar`, poi `background`, poi `popover`,
-    e infine `muted` — il token piu' usato di tutti — che non c'era affatto.
-    Una lista di inclusioni non puo' fallire rumorosamente: se dimentichi una
-    voce il test resta verde, e il buco lo trova una review.
-
-    Qui il perimetro si DERIVA dal sorgente: ogni classe `<stato>:bg-X` che il
-    codice usa davvero deve comparire in `EVIDENZIATI`. Se domani qualcuno
-    introduce `hover:bg-qualcosa` con un volume che conta, questo test diventa
-    rosso e dice quale token manca, invece di tacere.
-
-    La soglia di volume serve a non trasformare ogni uso isolato in un caso:
-    sotto di essa un token e' rumore, sopra e' un contratto visivo dell'app.
+    Legge dall'INDICE git (`ls-files`), non dal filesystem: uno script di
+    lavoro non versionato non deve entrare nel perimetro, ed e' l'errore che
+    ha gia' fatto divergere un rilevatore fra locale e CI. `ls-files` legge
+    l'indice, quindi funziona anche su checkout shallow.
     """
     import re
     import subprocess
@@ -357,31 +348,214 @@ def test_ogni_tinta_di_evidenziazione_usata_nel_codice_e_presidiata():
         ["git", "ls-files", "apps/web/src/**/*.tsx", "apps/web/src/**/*.ts"],
         cwd=radice, capture_output=True, text=True, check=True,
     ).stdout.split()
-    assert file_ts, "git ls-files non ha restituito nulla: il perimetro sarebbe vuoto"
+    assert len(file_ts) >= 300, (
+        f"il perimetro si e' svuotato: {len(file_ts)} file invece di 300+. "
+        "Il pathspec o la struttura di apps/web/src sono cambiati."
+    )
 
     stato = re.compile(
         r"(?:hover|focus|active|aria-selected|group-hover|data-\[[^\]]+\]):bg-([a-z][a-z-]*)"
     )
     conteggi: dict[str, int] = {}
     for rel in file_ts:
-        testo = (radice / rel).read_text(encoding="utf-8")
-        for token in stato.findall(testo):
+        for token in stato.findall((radice / rel).read_text(encoding="utf-8")):
             conteggi[token] = conteggi.get(token, 0) + 1
+    return conteggi
 
-    # I token che sono FONDI (una superficie usata come evidenziazione) e non
-    # colori pieni: solo per questi vale il contratto «si stacca dal
-    # contenitore». `primary`, `destructive`, `incerto` e simili sono tinte
-    # sature, lontanissime da qualunque fondo per costruzione.
-    FONDI = {"accent", "sidebar-accent", "muted", "secondary", "card", "popover"}
+
+def test_il_perimetro_dei_presidi_colore_non_si_restringe_in_silenzio():
+    """Ancora i NUMERI, non solo il comportamento.
+
+    Provato per mutazione il 24/09/2026: togliere `muted` da `EVIDENZIATI`
+    faceva scendere la suite da 76 a 72 test **senza un solo rosso**, e
+    allargare `SATURE` o alzare `SOGLIA_VOLUME` rendeva innocuo il controllo
+    sui token mancanti. Un presidio che si restringe in silenzio e' peggio di
+    nessun presidio: sembra che copra, e non copre piu'.
+
+    Questi sono valori ancorati a cio' che rappresentano, non riletti dalle
+    strutture che misurano: se cambiano davvero si aggiornano apposta, con una
+    riga di motivazione nel commit.
+    """
+    assert len(SUPERFICI) == 3, f"SUPERFICI: {len(SUPERFICI)} (attese 3: card, popover, sidebar)"
+    assert len(EVIDENZIATI) == 11, (
+        f"EVIDENZIATI: {len(EVIDENZIATI)} coppie invece di 11. Se ne hai "
+        "aggiunta una aggiorna questo numero; se ne e' SPARITA una, il "
+        "perimetro si e' ristretto e nessun altro test lo direbbe."
+    )
+    # I token che devono comparire come primo elemento di una coppia: sono le
+    # tinte di evidenziazione realmente usate nel codice.
+    token_presidiati = {t for t, _ in EVIDENZIATI}
+    assert token_presidiati == {"accent", "sidebar-accent", "muted", "secondary"}, (
+        f"i token presidiati sono cambiati: {sorted(token_presidiati)}"
+    )
+
+
+def test_il_rilevatore_degli_stati_vede_ancora_qualcosa():
+    """Il guardiano del guardiano: senza di lui il presidio sotto e' cieco.
+
+    Provato per mutazione il 24/09/2026: con la regex che non matcha piu' nulla
+    — Tailwind cambia sintassi, o qualcuno tocca il pattern — il presidio sui
+    token sopravviveva a TUTTI i 74 test. Un rilevatore che non trova niente
+    dichiara «nessuna violazione», che e' il modo piu' silenzioso di mentire.
+    Le ancore sono valori NOTI, non riletti dal codice che misurano.
+    """
+    conteggi = _stati_bg_dal_sorgente()
+    assert conteggi, "nessuno `<stato>:bg-*` trovato: il rilevatore e' rotto, non il codice pulito"
+    # `muted` e `accent` sono i due piu' usati e non spariranno senza un
+    # refactor deliberato: se scendono sotto questi minimi, o il codice e'
+    # cambiato molto o la regex non legge piu'. In entrambi i casi si guarda.
+    assert conteggi.get("muted", 0) >= 100, f"bg-muted come stato: {conteggi.get('muted', 0)} (atteso 100+)"
+    assert conteggi.get("accent", 0) >= 20, f"bg-accent come stato: {conteggi.get('accent', 0)} (atteso 20+)"
+
+
+def test_ogni_tinta_di_evidenziazione_usata_nel_codice_e_presidiata():
+    """Impedisce la QUINTA dimenticanza, rendendola rumorosa.
+
+    `EVIDENZIATI` e' una lista scritta a mano, e in tre giri consecutivi le e'
+    sfuggito un contenitore: prima `sidebar`, poi `background`, poi `popover`,
+    e infine `muted` — il token piu' usato di tutti — che non c'era affatto.
+    Una lista di inclusioni non puo' fallire rumorosamente: se dimentichi una
+    voce il test resta verde, e il buco lo trova una review.
+
+    Qui il perimetro si DERIVA dal sorgente e i FONDI si derivano dai token di
+    `globals.css`, non da un elenco: la prima stesura aveva sostituito una
+    lista a mano con DUE (`EVIDENZIATI` + un set `FONDI` scritto a mano), e
+    quel set non falliva mai — un token nuovo come `hover:bg-surface-2` con 40
+    usi restava invisibile. Ora un token sconosciuto **non passa in silenzio**:
+    o e' un fondo e va presidiato, o e' una tinta satura e va dichiarato qui.
+    """
+    conteggi = _stati_bg_dal_sorgente()
+
+    # Le tinte SATURE: evidenziazioni che non sono superfici, lontane da
+    # qualunque fondo per costruzione (croma alto). Elencate una per una
+    # perche' ognuna e' una decisione, non un default.
+    SATURE = {
+        "primary", "destructive", "incerto", "positivo", "negativo",
+        "sidebar-primary", "ring", "background", "foreground",
+    }
     SOGLIA_VOLUME = 10
 
+    tema_chiaro = _tema(":root")
     presidiati = {token for token, _ in EVIDENZIATI}
-    mancanti = {
-        token: n for token, n in conteggi.items()
-        if token in FONDI and n >= SOGLIA_VOLUME and token not in presidiati
-    }
+    sconosciuti, mancanti = {}, {}
+    for token, n in conteggi.items():
+        if n < SOGLIA_VOLUME or token in presidiati or token in SATURE:
+            continue
+        if token in tema_chiaro:
+            mancanti[token] = n      # e' un token del tema: va presidiato
+        else:
+            sconosciuti[token] = n   # non esiste in globals.css: va capito
+
     assert not mancanti, (
         "tinte di evidenziazione usate nel codice ma assenti da EVIDENZIATI: "
         + ", ".join(f"bg-{t} ({n} usi)" for t, n in sorted(mancanti.items()))
-        + ". Aggiungile con i contenitori su cui poggiano davvero."
+        + ". Aggiungile con i contenitori su cui poggiano davvero, oppure "
+        "dichiarale in SATURE se sono tinte piene."
+    )
+    # Ancore sui FILTRI stessi: senza queste, allargare `SATURE` o alzare
+    # `SOGLIA_VOLUME` rende il controllo innocuo e nessun test lo dice (mutanti
+    # M2/M3 del 24/09/2026, sopravvissuti perche' oggi non esiste un token
+    # scoperto da far emergere — domani sì).
+    assert SOGLIA_VOLUME <= 20, (
+        f"SOGLIA_VOLUME={SOGLIA_VOLUME}: alzandola i token con pochi usi "
+        "escono dal perimetro senza che nulla lo segnali."
+    )
+    assert not (SATURE & {t for t, _ in EVIDENZIATI}), (
+        "un token non puo' essere insieme SATURO e presidiato come "
+        "evidenziazione: dichiararlo saturo lo toglie dal controllo."
+    )
+
+    assert not sconosciuti, (
+        "classi `<stato>:bg-*` che non corrispondono a nessun token di "
+        "globals.css: " + ", ".join(f"bg-{t} ({n} usi)" for t, n in sorted(sconosciuti.items()))
+        + ". Se sono colori Tailwind nudi violano il presidio «colori solo token»."
+    )
+
+
+def test_lo_stesso_token_a_due_alpha_resta_distinguibile():
+    """Il pattern `bg-X … hover:bg-X/<alpha>` sullo stesso elemento.
+
+    Trovato dalla review del 24/09/2026: e' un caso che `EVIDENZIATI` non puo'
+    vedere, perche' confronta un token col suo CONTENITORE, mai un token con se
+    stesso a due opacita'. Due punti usavano `bg-muted` con
+    `hover:bg-muted/70|80`, e l'hover valeva 1.04 — impercettibile. Peggiorava
+    man mano che `--muted` si avvicinava al fondo, quindi il fix del token lo
+    stringeva invece di allargarlo.
+    """
+    import re
+    import subprocess
+
+    radice = Path(__file__).resolve().parent.parent
+    file_ts = subprocess.run(
+        ["git", "ls-files", "apps/web/src/**/*.tsx"],
+        cwd=radice, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    # 185 misurati il 24/09/2026 (solo .tsx: i .ts non contengono JSX).
+    assert len(file_ts) >= 150, f"perimetro svuotato: {len(file_ts)} file"
+
+    # `bg-X` opaco e `hover:bg-X/N` nella stessa stringa di classi.
+    # Il `bg-X` di base NON deve essere a sua volta dentro uno stato: in
+    # `hover:bg-muted … dark:hover:bg-muted/50` non esiste un fondo opaco di
+    # partenza, sono due varianti alternative dello stesso hover. La prima
+    # stesura non lo distingueva e produceva 5 falsi positivi sui componenti
+    # base (badge/button, variante `ghost`).
+    coppia = re.compile(
+        r"(?<![:\w-])bg-([a-z][a-z-]*)\b(?![-/])"
+        r"(?=[^\"'`]*?(?:hover|focus|active):bg-\1/(\d+))"
+    )
+    trovati = []
+    for rel in file_ts:
+        for riga_n, riga in enumerate((radice / rel).read_text(encoding="utf-8").splitlines(), 1):
+            for m in coppia.finditer(riga):
+                trovati.append((rel, riga_n, m.group(1), int(m.group(2))))
+
+    # NIENTE return anticipato su "non ho trovato nulla": il pattern esiste in
+    # 4 punti noti, quindi zero occorrenze significa che il RILEVATORE e' rotto,
+    # non che il codice e' pulito. Un mutante che spegneva questa regex
+    # sopravviveva proprio grazie al return che stava qui.
+    assert trovati, (
+        "nessuna coppia `bg-X … hover:bg-X/N` trovata: il rilevatore e' rotto "
+        "(ne esistono 4 note nel codice), non il codice diventato pulito."
+    )
+
+    tema = _tema(":root")
+    deboli = []
+    for rel, riga_n, token, alpha in trovati:
+        if token not in tema:
+            continue
+        # L'hover si compone sul CONTENITORE: il caso peggiore e' la card.
+        base = tema[token]
+        hover = sovrapponi(base, tema["card"], alpha / 100)
+        cr = contrasto(base, hover)
+        if cr < 1.08:
+            deboli.append(f"{Path(rel).name}:{riga_n} bg-{token}+hover/{alpha} = {cr:.4f}")
+
+    # I quattro casi noti al 24/09/2026, DICHIARATI e non corretti: due sono
+    # nei componenti base (`badge.tsx`, `button.tsx` variante `secondary`) e
+    # cambiarli tocca ogni pagina dell'app — e' una decisione di design che
+    # spetta a Mattia, non un fix meccanico. Gli altri due sono singoli
+    # elementi. Nessun bersaglio migliore esiste oggi: abbassare l'alpha
+    # renderebbe l'hover PIU' CHIARO dello stato base (verso sbagliato),
+    # `accent` sta a 1.04 e `--border` nel tema scuro e' un colore con alpha,
+    # quindi non e' un fondo confrontabile.
+    #
+    # La lista e' ANCORATA: un caso NUOVO fa fallire il test, e uno di questi
+    # che venga corretto pure — cosi' la deroga non sopravvive al suo motivo.
+    NOTI = {
+        "cliente-dettaglio-client.tsx:630 bg-muted+hover/70",
+        "analisi-e-tag-client.tsx:1180 bg-muted+hover/80",
+        "badge.tsx:14 bg-secondary+hover/80",
+        "button.tsx:15 bg-secondary+hover/80",
+    }
+    etichette = {d.rsplit(" = ", 1)[0] for d in deboli}
+    nuovi = etichette - NOTI
+    assert not nuovi, (
+        "hover impercettibile NUOVO (stesso token a due alpha, sotto 1.08): "
+        + "; ".join(sorted(d for d in deboli if d.rsplit(" = ", 1)[0] in nuovi))
+        + ". Usa un token diverso per l'hover, o un'opacita' piu' distante."
+    )
+    spariti = NOTI - etichette
+    assert not spariti, (
+        "questi hover deboli non esistono piu': " + ", ".join(sorted(spariti))
+        + ". Toglili da NOTI, o la deroga copre codice che non c'e' piu'."
     )
