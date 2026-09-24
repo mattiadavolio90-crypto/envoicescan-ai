@@ -44,11 +44,14 @@ Le 8 funzioni e la loro firma sul live (verificata su `pg_proc` l'08/09/2026):
   gruppo_tag_descrizioni(uuid[], text, int, bool)    -> descrizione, key, n, spesa
   gruppo_salute_componenti(uuid[], timestamptz, int, int)
   chat_top_categoria_fornitore(uuid, uuid, int, int) -> tipo, voce, spesa
-  chat_usage_check_and_log(uuid, uuid, int, bool)    -> integer
+  chat_usage_check_and_log(uuid, uuid, int, bool, int) -> integer  (dal 23/09/2026:
+      giorno e mese sul fuso di Roma, -1 giorno finito, -2 mese finito)
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -67,6 +70,7 @@ ESTRANEO = "77777777-7777-4777-8777-777777777777"
 SEDE_ESTRANEA = "88888888-8888-4888-8888-888888888888"
 
 DA_CLASSIFICARE = "Da Classificare"
+ROMA = ZoneInfo("Europe/Rome")
 
 
 def _semina_utente_e_sedi(db_sql, sedi=(SEDE,)):
@@ -786,36 +790,126 @@ def test_quota_senza_sede_conta_sull_utente(db_sql, sql):
     assert _quota(sql, sede=None, limite=5) == 3
 
 
-def test_quota_azzera_a_mezzanotte_UTC_non_italiana(db_sql, sql):
-    """DIVERGENZA NOTA E NON DECISA (07/09/2026): il taglio e' mezzanotte UTC,
-    che in Italia cade all'01:00 (inverno) o alle 02:00 (estate). Un cliente che
-    scrive all'00:30 sta ancora consumando la quota del giorno prima.
+def _mezzanotti_di_roma(sql):
+    """La mezzanotte di oggi e quella del primo del mese, sul calendario di Roma.
 
-    Questo test DOCUMENTA il comportamento di oggi, non lo cambia: la decisione
-    e' di Mattia. Se un giorno il taglio passera' al fuso italiano, questo test
-    va aggiornato consapevolmente — ed e' esattamente il suo scopo.
+    Calcolate in Python (zoneinfo) a partire dal `now()` della transazione, non
+    con la stessa espressione SQL della funzione: un test che ricalcola la formula
+    si muove insieme al mutante.
+    """
+    adesso = sql("SELECT now()")[0][0].astimezone(ROMA)
+    giorno = adesso.replace(hour=0, minute=0, second=0, microsecond=0)
+    mese = giorno.replace(day=1)
+    return giorno, mese
+
+
+def _registra(db_sql, istante, *, utente=UTENTE, sede=SEDE):
+    with db_sql.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.chat_usage_log (user_id, ristorante_id, created_at) "
+            "VALUES (%s, %s, %s)",
+            (utente, sede, istante),
+        )
+
+
+def test_quota_azzera_a_mezzanotte_di_roma_non_UTC(db_sql, sql, scalare):
+    """Il giorno della quota e' quello del ristoratore (migration 20260923141755).
+
+    Il 07/09/2026 questo test fotografava il taglio a mezzanotte UTC, e diceva
+    che andava aggiornato consapevolmente quando il taglio fosse passato al fuso
+    italiano: e' passato.
+
+    Le due righe stanno a cavallo della mezzanotte di Roma, che cade alle 22:00 o
+    alle 23:00 UTC: e' la fascia in cui i due calendari divergono. Col taglio UTC
+    il conteggio sarebbe 0 (entrambe ieri, se adesso e' prima delle 22 UTC) o 2
+    (entrambe oggi, se e' dopo): in nessuna ora del giorno darebbe 1.
     """
     _semina_utente_e_sedi(db_sql)
-    with db_sql.cursor() as cur:
-        # una domanda registrata alle 23:30 UTC di ieri: e' PRIMA del taglio,
-        # quindi non deve contare oggi...
-        cur.execute(
-            "INSERT INTO public.chat_usage_log (user_id, ristorante_id, created_at) "
-            "VALUES (%s, %s, date_trunc('day', now() AT TIME ZONE 'UTC') "
-            "AT TIME ZONE 'UTC' - interval '30 minutes')",
-            (UTENTE, SEDE),
-        )
-        # ...mentre una alle 00:30 UTC di oggi conta.
-        cur.execute(
-            "INSERT INTO public.chat_usage_log (user_id, ristorante_id, created_at) "
-            "VALUES (%s, %s, date_trunc('day', now() AT TIME ZONE 'UTC') "
-            "AT TIME ZONE 'UTC' + interval '30 minutes')",
-            (UTENTE, SEDE),
-        )
+    mezzanotte, _ = _mezzanotti_di_roma(sql)
+    _registra(db_sql, mezzanotte - timedelta(minutes=30))   # ieri, a Roma
+    _registra(db_sql, mezzanotte + timedelta(minutes=30))   # oggi, a Roma
+    assert scalare("SELECT count(*) FROM public.chat_usage_log WHERE user_id = %s", UTENTE) == 2
 
-    # limite 2: una sola delle due righe conta, quindi la prossima passa ed e' la 2a
+    # limite 2: conta solo la riga di oggi, quindi la prossima passa ed e' la 2a
     assert _quota(sql, limite=2) == 2
     assert _quota(sql, limite=2) == -1
+
+
+# ---------------------------------------------------------------------------
+# chat_usage_check_and_log — il budget MENSILE (migration 20260923152816)
+#
+# -2 = mese finito, -1 = giorno finito. Il mese si controlla per primo: a
+# entrambi esauriti il cliente deve leggere il vincolo che dura di piu'.
+# ---------------------------------------------------------------------------
+
+def _quota_mese(sql, *, limite_mese, limite=100, utente=UTENTE, sede=SEDE, pool=False):
+    return sql(
+        "SELECT public.chat_usage_check_and_log(%s, %s, %s, %s, %s)",
+        utente, sede, limite, pool, limite_mese,
+    )[0][0]
+
+
+def test_budget_mensile_esaurito_ritorna_meno_due_e_non_scrive(db_sql, sql, scalare):
+    """Tre domande gia' fatte nel mese (al primo, alle 00:00 di Roma): col budget
+    a 3 la quarta e' fermata dal mese, anche se il tetto del giorno e' lontano."""
+    _semina_utente_e_sedi(db_sql)
+    _, primo = _mezzanotti_di_roma(sql)
+    for _ in range(3):
+        _registra(db_sql, primo)
+
+    assert _quota_mese(sql, limite_mese=3, limite=100) == -2
+    assert scalare("SELECT count(*) FROM public.chat_usage_log WHERE user_id = %s", UTENTE) == 3, \
+        "una domanda fermata dal budget mensile ha comunque consumato una riga"
+    # stesso stato, budget piu' largo: passa. Il -2 veniva dal budget, non da altro.
+    assert _quota_mese(sql, limite_mese=4, limite=100) > 0
+
+
+def test_budget_mensile_parte_dal_primo_alle_zero_di_roma(db_sql, sql):
+    """Le righe stanno a cavallo della mezzanotte del primo a Roma (22:00 o 23:00
+    UTC dell'ultimo giorno del mese prima). Una finestra mensile sul calendario
+    UTC le vedrebbe entrambe nel mese scorso, o entrambe in questo."""
+    _semina_utente_e_sedi(db_sql)
+    _, primo = _mezzanotti_di_roma(sql)
+    _registra(db_sql, primo - timedelta(minutes=30))   # mese scorso, a Roma
+    _registra(db_sql, primo + timedelta(minutes=30))   # questo mese, a Roma
+
+    # budget 2: conta solo la seconda, quindi una domanda passa e la successiva no
+    assert _quota_mese(sql, limite_mese=2) > 0
+    assert _quota_mese(sql, limite_mese=2) == -2
+
+
+def test_a_mese_e_giorno_finiti_vince_il_mese(db_sql, sql):
+    """«Torna domani» a budget mensile esaurito sarebbe una promessa falsa."""
+    _semina_utente_e_sedi(db_sql)
+    assert _quota_mese(sql, limite_mese=1, limite=1) == 1
+    assert _quota_mese(sql, limite_mese=1, limite=1) == -2
+    # giorno finito, mese no: e' il tetto del giorno a fermare
+    assert _quota_mese(sql, limite_mese=5, limite=1) == -1
+
+
+def test_budget_mensile_nullo_e_il_comportamento_di_prima(db_sql, sql):
+    """NULL = chiamante vecchio, nessun budget mensile: e' la retrocompatibilita'
+    su cui poggia l'ordine di deploy (migration prima, push dopo)."""
+    _semina_utente_e_sedi(db_sql)
+    _, primo = _mezzanotti_di_roma(sql)
+    for _ in range(5):
+        _registra(db_sql, primo)
+    assert _quota_mese(sql, limite_mese=None, limite=100) > 0
+
+
+def test_budget_mensile_e_per_sede_ma_il_pool_lo_unisce(db_sql, sql):
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE, SEDE_B))
+    assert _quota_mese(sql, sede=SEDE, limite_mese=1) == 1
+    assert _quota_mese(sql, sede=SEDE_B, limite_mese=1) == 1, \
+        "la seconda sede eredita il budget mensile della prima"
+    assert _quota_mese(sql, sede=SEDE, limite_mese=2, pool=True) == -2
+
+
+def test_budget_mensile_non_si_mescola_fra_clienti(db_sql, sql):
+    _semina_utente_e_sedi(db_sql)
+    assert _quota_mese(sql, limite_mese=1) == 1
+    assert _quota_mese(sql, limite_mese=1) == -2
+    assert _quota_mese(sql, utente=ESTRANEO, sede=SEDE_ESTRANEA, limite_mese=1) == 1
 
 
 # ---------------------------------------------------------------------------
