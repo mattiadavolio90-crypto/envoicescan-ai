@@ -32,7 +32,7 @@ stato dismesso con lo switch DNS dell'8/6/2026 e **rimosso dal repo il 17/7/2026
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |
-| Worker API | `services/fastapi_worker.py` (9.377 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
+| Worker API | `services/fastapi_worker.py` (9.979 righe) | FastAPI — `/health`, `/api/*`; logica nei router `services/routers/*.py` |
 | Worker async | `worker/run.py` | Processo separato (queue-worker) per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — `invoicetronic-webhook`, `ricavi-email-webhook` |
 | Migrations | `supabase/migrations/*.sql` (canonico, 148 file) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico, 91 file su numerazione `001`–`082` (vedi `migrations/_LEGGIMI_STATO.md`) |

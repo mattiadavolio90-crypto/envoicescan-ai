@@ -112,6 +112,8 @@ priorità (più basso = appare prima). **Prima il TEMA, poi la gravità nel tema
 | Priorità | topic_key | Quando appare | Card? |
 |---|---|---|---|
 | 0 | `buona_notizia` | C'è un fatto positivo fresco (vedi §5) | ❌ apertura narrativa |
+| 1 | `andamento_incasso` | Martedì, incasso 4 settimane vs 4 prima oltre ±10% (vedi §5-bis) | ❌ osservazione |
+| 2 | `food_cost_alto` | Finestra MOL, food cost di un mese consolidato > 33% (vedi §5-bis) | ❌ osservazione |
 | 10 | `upload_failed` | Fattura automatica non caricata | ✅ |
 | 15 | `upload_ricavi_failed` | Ricavi auto fermi da X giorni (solo clienti mappati) | ✅ |
 | 20 | `price_alert` | Rincaro rilevante (vedi §6) | ✅ |
@@ -186,6 +188,50 @@ l'apertura del briefing **non si contraddicono mai** (stesso numero, stessa %).
 **Rendering testo:** `_buona_notizia_bullet` (per l'AI) e `_buona_notizia_frase`
 (template), entrambi in `daily_briefing_service.py`. Distinguono per
 `payload['tipo']`.
+
+---
+
+## 5-bis. Osservazioni da consulente (fase 4, 24/9/2026)
+
+Fatti sull'**andamento** del locale, calcolati dal worker e detti nell'apertura
+**dopo** la buona notizia e **prima** di «Da sistemare oggi». Non sono card (le
+card sono solo cose da fare), non toccano il verde `tutto_ok`, si spengono dal
+configuratore. Prodotte da `_briefing_osservazioni` (fastapi_worker.py), **solo
+dal path asincrono** (`includi_osservazioni=True` in `_briefing_rigenera_async`):
+il fast-path che la Home aspetta non le calcola (E7).
+
+| topic | Quando | Regola |
+|---|---|---|
+| `andamento_incasso` | **Solo il martedì** | Incasso delle ultime 4 settimane lun-dom contro le 4 prima; ≥ 20 giorni con incasso in **ciascuna** finestra; parla da ±10%. Coperti e scontrino medio solo se inseriti ≥ 20 giorni per finestra; sotto ±3% si dicono «stabili» |
+| `food_cost_alto` | Finestra MOL (ultimo giorno + primi 7) | Mese di **due mesi prima** del mese di riferimento, solo se **consolidato** (fatture di merce del mese dopo già arrivate), food cost > 33% (`KPI_SOGLIE`, `<=` 33 è norma), «critico» oltre 38. Dice anche gli euro sopra il 33%. **Mai per i negozi** (`_TOPIC_OFF_PER_SETTORE`) |
+
+**Perché proprio queste due** — misura sul DB live del 24/9, prima del codice.
+Dei cinque candidati del piano gli altri non reggevano: food cost *sul mese* e
+fornitore dominante erano accesi su 7 sedi su 8 (condizione normale, non
+notizia), prodotto/categoria in salita da 3 mesi su nessuna, le scadenze
+«accumulate» falsate da 4 sedi che non segnano mai «pagata», il MOL mese su mese
+un'altalena di spese a gradini. Da giugno l'andamento dell'incasso scatta 7 volte
+in 17 martedì su 5 sedi; il food cost di giugno sarebbe stato detto a 5 sedi a
+inizio agosto, quello di agosto oggi a nessuna (fatture ferme).
+
+**Perché il martedì**: le finestre finiscono la domenica; misurato sulle
+domeniche da giugno, la riga della domenica **non c'è ancora il lunedì mattina
+nel 28%** dei casi (22 su 78), il martedì nel 15%.
+
+**Perché due mesi fa e «consolidato»**: l'ultimo mese caricato è
+sistematicamente parziale (merce −27/−38% rispetto alla media sulle sedi che
+caricano a mano): un food cost lì direbbe «ottimo» su un mese mezzo vuoto. Il
+consolidamento guarda **solo la merce** del mese dopo: una sede con sole
+utenze a settembre non consolida agosto.
+
+**La narrativa AI non può perderle.** Il riscrittore riceve i bullet (📊, 🍽️) e
+una regola apposita (3-ter-bis), ma un prompt non è una garanzia: il validatore
+(`_narrazione_e_valida`, parametro `obbligatori`) scarta il testo se manca la
+percentuale dell'osservazione (anche arrotondata) e si ricade sul template.
+
+Presidio: `tests/test_briefing_osservazioni_consulente.py` (serie di incasso
+vere anonimizzate, confini delle soglie, cablaggio async/sync, settore,
+configuratore, validatore). 27 mutanti per cancellazione, 27 uccisi.
 
 ---
 
@@ -360,6 +406,10 @@ frontend lo chiama, tenuto per compat OpenAPI).
 
 ## Changelog rilevante
 
+- **24/9/2026 (fase 4 «assistente consulente»)** — due osservazioni calcolate
+  nell'apertura: `andamento_incasso` e `food_cost_alto` (§5-bis). Nuove voci del
+  configuratore, food cost spento per il retail, validatore AI con numeri
+  obbligatori. `_BRIEFING_CODE_VERSION` 26 → 27.
 - **10/6/2026 (Fase D — Agenda nel briefing/notifiche)** — nuovo topic
   `appuntamento_imminente` (priorità **70** = importanza medio/bassa, severity
   `info`), generato da `_briefing_appuntamenti_oggi` **solo per gli appuntamenti

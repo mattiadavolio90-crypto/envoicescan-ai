@@ -32,10 +32,20 @@ def test_un_negozio_non_vede_il_topic_dei_coperti():
     assert "coperti_anomalia" not in _chiavi(SETTORE_RETAIL)
 
 
+def test_un_negozio_non_vede_il_food_cost_alto():
+    """Fase 4: per il retail un benchmark di settore non esiste (la merce pesa
+    dal 35 al 78% secondo cosa si vende): nessun "sopra la norma"."""
+    assert "food_cost_alto" not in _chiavi(SETTORE_RETAIL)
+
+
 def test_un_negozio_vede_tutti_gli_altri_topic():
     """Spegnere il topic sbagliato gli toglierebbe un avviso che gli serve."""
-    attesi = [k for (k, _l, _b, _d) in fw._CONFIG_TOPICS if k != "coperti_anomalia"]
+    attesi = [
+        k for (k, _l, _b, _d) in fw._CONFIG_TOPICS
+        if k not in ("coperti_anomalia", "food_cost_alto")
+    ]
     assert _chiavi(SETTORE_RETAIL) == attesi
+    assert "andamento_incasso" in attesi
 
 
 def test_al_negozio_il_fatturato_non_promette_il_food_cost():

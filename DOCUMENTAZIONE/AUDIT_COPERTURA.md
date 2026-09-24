@@ -716,6 +716,56 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   misurata su `c240208`; durante il run un'altra sessione ha committato
 >   `bf28328` (fase 3 margini, nessun file mio), quindi la cifra include anche i
 >   loro test nuovi. **Non pushato.**
+>
+> - **24/09/2026 — fase 4 «assistente consulente», primo passo: due osservazioni
+>   calcolate nel briefing. La misura ha di nuovo cambiato il lavoro.**
+>   Il piano elencava cinque topic da consulente. **Prima del codice**, misura sul
+>   DB live (sola lettura, stessa pipeline di `home_kpi`) su 8 sedi reali con
+>   dati: food cost del mese sopra il 33% in **22 mesi consolidati su 32, 7 sedi
+>   su 8** (condizione normale, non notizia); fornitore oltre l'80% di una
+>   categoria in **26 coppie su 33, 7 sedi su 8** (quasi tutto bevande da un
+>   distributore); prodotto/categoria in salita da 3 mesi: **0** alle soglie
+>   utili, 3 casi da +1-6% a soglia zero (rilevatore verificato non cieco); le
+>   scadenze «accumulate» falsate da **4 sedi su 8 che non segnano mai
+>   «pagata»** (318-635 fatture «scadute» a sede); il MOL mese su mese cala circa
+>   un mese su due, trainato da spese a gradini. **Il blocco vero e' la
+>   freschezza**: fatture ferme al 30/06 su 4 sedi e a fine luglio su 2, e
+>   l'ultimo mese caricato sistematicamente parziale (merce -27/-38%). L'unico
+>   dato fresco ogni giorno e' l'incasso: 4 settimane contro 4, oltre il 10% in
+>   7 valutazioni su 73. Riportato a Mattia, che ha scelto di procedere.
+>   **Fatto**: `andamento_incasso` (il martedi', 4 settimane lun-dom contro le 4
+>   prima, >= 20 giorni per finestra, da ±10%, coperti e scontrino se inseriti)
+>   e `food_cost_alto` (finestra MOL, mese di due mesi prima solo se consolidato
+>   dalla **merce** del mese dopo, oltre il 33% di `KPI_SOGLIE`, euro sopra la
+>   norma, mai per il retail). Stanno nell'apertura, non sono card, si spengono
+>   dal configuratore, **solo dal path asincrono** (E7). Il validatore della
+>   narrativa ha un terzo controllo, `obbligatori`: se l'AI perde la percentuale
+>   di un'osservazione si ricade sul template — un prompt non e' una garanzia.
+>   `_BRIEFING_CODE_VERSION` 26 -> 27. Dettaglio in
+>   `DOCUMENTAZIONE/tecnica/BRIEFING_HOME.md` §5-bis.
+>   **Due mie affermazioni corrette dalla misura, prima del commit.** (a) Avevo
+>   detto a Mattia che CASATI aveva agosto «consolidato»: la misura contava
+>   qualunque fattura di settembre, ma erano solo utenze e manutenzione — il
+>   codice guarda la merce e giustamente tace. (b) «Il lunedi' mattina l'incasso
+>   della domenica puo' mancare» era un ragionamento: misurato dopo, manca nel
+>   **28%** delle domeniche (22 su 78) il lunedi' e nel **15%** il martedi'.
+>   **Eseguito sul DB live** (sola lettura) per ogni sede: da giugno
+>   l'andamento sarebbe uscito 7 volte in 17 martedi' su 5 sedi; il food cost di
+>   giugno a 5 sedi il 3/8; quello di luglio e agosto a nessuna.
+>   **Mutanti: 27 per cancellazione, 27 uccisi**, uno alla volta, verificato che
+>   il codice fosse cambiato, ripristino dal backup preso prima del primo mutante
+>   con md5 identico (niente `git checkout`). Due guardie tolte **prima** della
+>   mutazione perche' ridondanti (costi mancanti gia' coperti da food cost 0 o
+>   nullo; osservazioni fuori dalle card gia' non azionabili): un mutante
+>   sopravvissuto li' avrebbe accusato il test di una riga morta.
+>   **Aperti, dichiarati:** (i) se la sede non ha altro da fare, «Tutto in ordine
+>   per oggi» puo' comparire sotto un food cost critico — oggi su 0 sedi (tutte
+>   hanno almeno un sollecito); il riquadro e' nel frontend, fermo sulla
+>   decisione interfaccia; (ii) il 15% delle domeniche arriva dopo il martedi':
+>   in quelle settimane l'ultima finestra ha un giorno pesante in meno; (iii) la
+>   regola 3-ter-bis del prompt non e' presidiabile (testo al modello), la
+>   difende il validatore; (iv) il secondo pezzo della fase — i solleciti in una
+>   riga — non e' in questo commit.
 
 ---
 

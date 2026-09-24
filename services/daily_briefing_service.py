@@ -140,7 +140,14 @@ logger = get_logger('daily_briefing')
 #               (CASATI 14 Set 2026, SUSHILAND x3 Gen 2026, 101-114 EUR di sole
 #               spese). Cambia l'insieme delle notifiche nello snapshot: senza
 #               bump quelle sedi resterebbero senza la card fino a scadenza.
-_BRIEFING_CODE_VERSION = 26
+#          v26->v27 (24/09/2026): fase 4, il briefing da consulente. Due
+#               osservazioni calcolate entrano nell'apertura, dopo la buona
+#               notizia: l'andamento dell'incasso (il martedi', ultime 4
+#               settimane contro le 4 prima, oltre il 10%) e il food cost di un
+#               mese consolidato sopra la norma (nella finestra del MOL). Cambia
+#               il testo servito: senza bump chi ha lo snapshot di oggi non le
+#               vedrebbe fino al TTL.
+_BRIEFING_CODE_VERSION = 27
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -269,6 +276,8 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'onboarding':               -2,   # -2. Benvenuto cliente nuovo (apertura, prima di tutto)
     'rientro_assenza':          -1,   # -1. Bentornato al rientro (apertura, prima di tutto)
     'buona_notizia':             0,   # 0. Apertura positiva (NON e' una card to-do)
+    'andamento_incasso':         1,   #    Osservazioni da consulente: apertura, non card
+    'food_cost_alto':            2,   #    (fase 4, vedi _OSSERVAZIONI)
     'upload_failed':            10,   # 1. Upload fatture fallito
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
     'price_alert':              20,   # 3. Alert prezzi
@@ -380,6 +389,87 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
         return base
     if tipo == 'fatture_arrivate':
         return _fatture_arrivate_frase(payload)
+    return ""
+
+
+# Osservazioni da consulente (fase 4): fatti sull'andamento del locale, calcolati
+# dal worker. Stanno nell'apertura, dopo la buona notizia e prima di "Da sistemare
+# oggi": non sono compiti (niente card, non toccano il verde "tutto a posto").
+_OSSERVAZIONI = ('andamento_incasso', 'food_cost_alto')
+
+
+def _pct_it(valore: float) -> str:
+    """45.8 -> '45,8'."""
+    return f"{float(valore):.1f}".replace(".", ",")
+
+
+def _andamento_incasso_frase(payload: Dict[str, Any]) -> str:
+    """Incasso delle ultime N settimane contro le N prima, con coperti e scontrino
+    quando ci sono. Numeri e versi arrivano gia' decisi dal worker."""
+    sett = int(payload.get('settimane') or 4)
+    incasso = _euro_it(float(payload.get('incasso') or 0))
+    prec = _euro_it(float(payload.get('incasso_prec') or 0))
+    dp = payload.get('delta_pct')
+    verso = "in più" if payload.get('su') else "in meno"
+    base = (
+        f"\U0001F4CA Nelle ultime {sett} settimane sono entrati € {incasso} di incasso, "
+        f"il {dp}% {verso} delle {sett} settimane prima (€ {prec})."
+    )
+
+    def _pezzo(nome: str, plurale: bool, v: str, d) -> str:
+        if v == 'stabile':
+            return f"{nome} {'sono rimasti stabili' if plurale else 'è rimasto stabile'}"
+        if plurale:
+            return f"{nome} sono {'saliti' if v == 'su' else 'scesi'} del {d}%"
+        return f"{nome} è {'salito' if v == 'su' else 'sceso'} del {d}%"
+
+    cv, sv = payload.get('coperti_verso'), payload.get('scontrino_verso')
+    if cv and sv:
+        base += (
+            f" {_pezzo('I coperti', True, cv, payload.get('coperti_delta_pct'))}"
+            f" e {_pezzo('lo scontrino medio', False, sv, payload.get('scontrino_delta_pct'))}."
+        )
+    return base
+
+
+def _food_cost_alto_frase(payload: Dict[str, Any]) -> str:
+    """Food cost di un mese chiuso sopra la norma, con quanto vale in euro."""
+    mese = str(payload.get('mese') or '').lower()
+    prep = "Ad" if mese[:1] in ("a", "o") else "A"
+    fc = _pct_it(float(payload.get('food_cost_pct') or 0))
+    norma = int(payload.get('soglia_norma') or 0)
+    if payload.get('critico'):
+        fascia = f"oltre la soglia critica del {int(payload.get('soglia_critica') or 0)}%"
+    else:
+        fascia = f"sopra la norma del settore ({int(payload.get('soglia_min') or 0)}-{norma}%)"
+    frase = f"\U0001F37D️ {prep} {mese} il food cost è stato del {fc}%, {fascia}"
+    eccedenza = float(payload.get('eccedenza') or 0)
+    if eccedenza > 0:
+        frase += f": rispetto al {norma}% sono circa € {_euro_it(eccedenza)} di acquisti in più"
+    return frase + "."
+
+
+def _numeri_obbligatori(osservazioni: List[Dict[str, Any]]) -> List[str]:
+    """La cifra che la narrativa AI non puo' perdere, per ogni osservazione:
+    lo scostamento dell'incasso e il food cost del mese."""
+    out: List[str] = []
+    for n in osservazioni or []:
+        p = n.get('payload') or {}
+        topic = str(n.get('topic_key') or '')
+        if topic == 'andamento_incasso' and p.get('delta_pct') is not None:
+            out.extend(_numeri_di(str(p['delta_pct'])))
+        elif topic == 'food_cost_alto' and p.get('food_cost_pct') is not None:
+            out.extend(_numeri_di(_pct_it(float(p['food_cost_pct']))))
+    return out
+
+
+def _osservazione_frase(notif: Dict[str, Any]) -> str:
+    topic = str(notif.get('topic_key') or '')
+    payload = notif.get('payload') or {}
+    if topic == 'andamento_incasso':
+        return _andamento_incasso_frase(payload)
+    if topic == 'food_cost_alto':
+        return _food_cost_alto_frase(payload)
     return ""
 
 
@@ -569,6 +659,9 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
 
     if topic == 'rientro_assenza':
         return _rientro_bullet(payload)
+
+    if topic in _OSSERVAZIONI:
+        return _osservazione_frase(notif)
 
     if topic == 'scadenza_superata':
         count = payload.get('count')
@@ -1068,6 +1161,7 @@ def _compose_narrative(
     apertura_rientro: Optional[Dict[str, Any]] = None,
     apertura_onboarding: Optional[Dict[str, Any]] = None,
     c_e_arretrato: bool = False,
+    osservazioni: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Compone il testo narrativo colloquiale con apertura, corpo e chiusura.
 
@@ -1087,8 +1181,10 @@ def _compose_narrative(
 
     rientro = _rientro_bullet(apertura_rientro.get('payload') or {}) if apertura_rientro else ""
     buona = _buona_notizia_frase(apertura_buona.get('payload') or {}) if apertura_buona else ""
-    # Aperture concatenate, ognuna sulla sua riga, nell'ordine voluto.
-    apertura = "\n".join(p for p in (rientro, buona) if p)
+    oss = [_osservazione_frase(n) for n in (osservazioni or [])]
+    # Aperture concatenate, ognuna sulla sua riga, nell'ordine voluto: il
+    # bentornato, la buona notizia, poi le osservazioni da consulente.
+    apertura = "\n".join(p for p in (rientro, buona, *oss) if p)
 
     if not selected:
         # Con un arretrato aperto NON si puo' dire "niente da sistemare": sulle sedi
@@ -1178,6 +1274,14 @@ _NARRATION_SYSTEM_PROMPT = (
     "l'importo cosi' come dati, e NIENT'ALTRO — in particolare non aggiungere le "
     "righe da controllare, che sono gia' una voce a se' piu' sotto con la sua "
     "card: dirle due volte e' la ripetizione che questa istruzione evita. "
+    "3-ter-bis) Le voci 📊 (incasso delle ultime settimane contro le precedenti) "
+    "e 🍽️ (food cost di un mese chiuso) sono OSSERVAZIONI sull'andamento, "
+    "calcolate su periodi completi: fanno parte dell'andamento, vanno dette "
+    "SEMPRE, dopo l'eventuale buona notizia e prima delle cose da sistemare, con "
+    "le loro percentuali e i loro importi. Non contano nel limite delle 3 frasi. "
+    "Se altre voci dicono che mancano dati di ALTRI mesi, non tacerle per "
+    "prudenza (regola 3-sexies): riguardano periodi gia' completi. Non aggiungere "
+    "cause o consigli che la voce non contiene. "
     "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋), apri con un saluto "
     "breve e pacato, senza enfasi. Se include un'offerta di aiuto, riportala UNA "
     "volta sola, gentile e senza insistere: mai una pressione ne' un rimprovero. "
@@ -1300,7 +1404,9 @@ def _numeri_di(testo: str) -> set:
     return out
 
 
-def _narrazione_e_valida(testo: str, bullets: List[str]) -> tuple:
+def _narrazione_e_valida(
+    testo: str, bullets: List[str], obbligatori: Optional[List[str]] = None,
+) -> tuple:
     """Controlla che la narrativa AI rispetti le regole ferree del prompt.
 
     Ritorna (valida, motivo). Due controlli, entrambi misurabili:
@@ -1308,6 +1414,10 @@ def _narrazione_e_valida(testo: str, bullets: List[str]) -> tuple:
          E' la regola 1 del prompt ("non inventare, modificare o aggiungere NESSUN
          numero") e finora non era verificata da niente.
       2) BUROCRATESE: le formule vietate dalla 3-octies.
+      3) NUMERI PERSI (fase 4): i numeri in `obbligatori` DEVONO comparire (anche
+         arrotondati). Sono quelli delle osservazioni da consulente: un modello
+         che le salta renderebbe invisibile la parte del briefing che il codice
+         ha deciso di dire.
     Un prompt senza validazione dell'output e' un auspicio, non un vincolo.
     """
     if not testo:
@@ -1335,14 +1445,22 @@ def _narrazione_e_valida(testo: str, bullets: List[str]) -> tuple:
         for variante in (int(f), int(f) + 1):  # troncamento e arrotondamento per eccesso
             ammessi.add(str(variante))
 
-    inventati = _numeri_di(testo) - ammessi - _NUMERI_INNOCUI
+    numeri_testo = _numeri_di(testo)
+    inventati = numeri_testo - ammessi - _NUMERI_INNOCUI
     if inventati:
         return False, f"numeri non presenti nei bullet: {sorted(inventati)}"
+
+    for n in (obbligatori or []):
+        f = float(n)
+        if not ({n, str(int(f)), str(int(f) + 1)} & numeri_testo):
+            return False, f"numero obbligatorio assente: {n}"
 
     return True, ""
 
 
-def _narrate_with_ai(bullets: List[str], fallback: str) -> str:
+def _narrate_with_ai(
+    bullets: List[str], fallback: str, obbligatori: Optional[List[str]] = None,
+) -> str:
     """Genera la narrativa con GPT a partire dai bullet deterministici.
 
     Anonimizza, chiama gpt-4o-mini, ripristina i nomi, traccia i costi.
@@ -1373,7 +1491,7 @@ def _narrate_with_ai(bullets: List[str], fallback: str) -> str:
 
         # Validazione: il testo viene confrontato con i bullet ANONIMI, cioe' con
         # quello che il modello ha davvero ricevuto (i nomi veri non ci sono ancora).
-        valida, motivo = _narrazione_e_valida(text, anon)
+        valida, motivo = _narrazione_e_valida(text, anon, obbligatori)
         if not valida:
             logger.warning("narrazione AI scartata (%s), uso il template", motivo)
             return fallback
@@ -1443,6 +1561,10 @@ def _build_snapshot(
     onboarding = seen_topics.get('onboarding')
     rientro = seen_topics.get('rientro_assenza') if 'rientro_assenza' not in spenti else None
     buona_notizia = seen_topics.get('buona_notizia') if 'buona_notizia' not in spenti else None
+    osservazioni = [
+        seen_topics[t] for t in sorted(_OSSERVAZIONI, key=lambda k: _TOPIC_PRIORITY[k])
+        if t in seen_topics and t not in spenti
+    ]
 
     # Solo topic noti (presenti nella gerarchia), non spenti, E azionabili/utili.
     # Le aperture sono escluse qui: sono narrativa, non to-do.
@@ -1528,11 +1650,13 @@ def _build_snapshot(
         )
     else:
         aperture_bullets = [
-            b for b in (_bullet_for(n) for n in (rientro, buona_notizia) if n is not None) if b
+            b for b in (
+                _bullet_for(n) for n in (rientro, buona_notizia, *osservazioni) if n is not None
+            ) if b
         ]
         template_narrative = _compose_narrative(
             selected, sev_max, apertura_rientro=rientro, apertura_buona=buona_notizia,
-            c_e_arretrato=bool(arretrato_frase),
+            c_e_arretrato=bool(arretrato_frase), osservazioni=osservazioni,
         )
     # I bullet per l'AI NON sono quelli delle card: per i topic in
     # _TOPIC_SENZA_CONTEGGIO_IN_NARRAZIONE il conteggio viene tolto, altrimenti il
@@ -1545,8 +1669,11 @@ def _build_snapshot(
     bullets_ai = aperture_bullets + [_bullet_per_narrazione(n) for n in selected]
     if arretrato_frase:
         bullets_ai = bullets_ai + [arretrato_frase]
-    if use_ai and (selected or onboarding or rientro or buona_notizia or arretrato_frase):
-        narrative = _narrate_with_ai(bullets_ai, template_narrative)
+    if use_ai and (selected or onboarding or rientro or buona_notizia or osservazioni
+                   or arretrato_frase):
+        narrative = _narrate_with_ai(
+            bullets_ai, template_narrative, _numeri_obbligatori(osservazioni),
+        )
     else:
         narrative = template_narrative
 

@@ -2896,6 +2896,10 @@ _CONFIG_TOPICS: List[tuple] = [
      "Ti ricordo gli appuntamenti che hai in agenda per oggi."),
     ("coperti_anomalia",         "Anomalia coperti",         False,
      "Ti avviso quando i coperti di ieri si scostano molto dal solito."),
+    ("andamento_incasso",        "Andamento incasso",        False,
+     "Il martedì ti dico se l'incasso delle ultime 4 settimane si è mosso di oltre il 10%."),
+    ("food_cost_alto",           "Food cost alto",           False,
+     "Una volta al mese ti dico se il food cost di un mese chiuso è sopra la norma del settore."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
@@ -2906,7 +2910,7 @@ _CONFIG_TOPICS_BLOCCATI = frozenset(k for (k, _l, b, _d) in _CONFIG_TOPICS if b)
 # nel configuratore offrirebbe di accendere un avviso su un dato che non arriva
 # mai, e la sua CTA punterebbe a una tab che non puo' aprire.
 _TOPIC_OFF_PER_SETTORE: Dict[str, frozenset] = {
-    SETTORE_RETAIL: frozenset({"coperti_anomalia"}),
+    SETTORE_RETAIL: frozenset({"coperti_anomalia", "food_cost_alto"}),
 }
 
 # Le descrizioni che NOMINANO qualcosa che per il settore non esiste. La voce
@@ -5994,6 +5998,240 @@ def _briefing_buona_notizia(
     return None
 
 
+# ── Osservazioni da consulente (fase 4, 24/09/2026) ─────────────────────────
+# Fatti sull'andamento del locale, calcolati qui e raccontati dal briefing: non
+# sono card "da fare". Tarati sul DB live prima di scriverli: dei cinque
+# candidati del piano solo questi due tacevano abbastanza da essere notizie
+# (food cost e fornitore dominante erano accesi su 7 sedi su 8, il prodotto
+# "in salita da 3 mesi" su nessuna). Verbale in AUDIT_COPERTURA.md.
+
+# Andamento dell'incasso: ultime 4 settimane complete (lun-dom) contro le 4
+# prima. Misurato ogni settimana da giugno su 5 sedi: 7 volte su 73 oltre il
+# 10%. Esce il MARTEDI': le finestre finiscono la domenica, e il lunedi' mattina
+# l'incasso della domenica puo' non essere ancora arrivato — mancherebbe il
+# giorno piu' pesante e il calo sarebbe finto.
+_ANDAMENTO_INCASSO_GIORNO_SETTIMANA = 1
+_ANDAMENTO_INCASSO_SETTIMANE = 4
+# Giorni con incasso richiesti in OGNI finestra: sotto, chiusure e buchi di
+# inserimento pesano piu' dell'andamento.
+_ANDAMENTO_INCASSO_MIN_GIORNI = 20
+_ANDAMENTO_INCASSO_SOGLIA_PCT = 10.0
+# Sotto questo scostamento coperti e scontrino si dicono "stabili".
+_ANDAMENTO_STABILE_PCT = 3.0
+
+# Food cost alto: il mese di DUE mesi fa, solo se consolidato. L'ultimo mese
+# caricato e' sistematicamente parziale (misurato: merce -27/-38% rispetto alla
+# media sulle sedi che caricano a mano): un food cost li' direbbe "ottimo" su un
+# mese mezzo vuoto.
+_FOOD_COST_MESI_INDIETRO = 2
+
+
+def _briefing_andamento_incasso(
+    ristorante_id: str, supabase_client, oggi,
+) -> Optional[Dict[str, Any]]:
+    """Incasso delle ultime 4 settimane contro le 4 precedenti, se si e' mosso.
+
+    Ritorna un record `andamento_incasso` oppure None (non e' martedi', dati
+    insufficienti, scostamento sotto soglia). Coperti e scontrino medio entrano
+    solo se sono stati inseriti in abbastanza giorni in entrambe le finestre.
+    """
+    from datetime import timedelta as _td
+    if oggi.weekday() != _ANDAMENTO_INCASSO_GIORNO_SETTIMANA:
+        return None
+    giorni = 7 * _ANDAMENTO_INCASSO_SETTIMANE
+    fine = oggi - _td(days=oggi.weekday() + 1)
+    inizio_a = fine - _td(days=giorni - 1)
+    inizio_b = inizio_a - _td(days=giorni)
+    resp = (
+        supabase_client.table("ricavi_giornalieri")
+        .select("data,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data", inizio_b.isoformat())
+        .lte("data", fine.isoformat())
+        .execute()
+    )
+    per_giorno: Dict[str, List[float]] = {}
+    for r in (resp.data or []):
+        d = str(r.get("data") or "")[:10]
+        if not d:
+            continue
+        inc = (float(r.get("fatturato_iva10") or 0) + float(r.get("fatturato_iva22") or 0)
+               + float(r.get("altri_ricavi_noiva") or 0))
+        cop = float(r.get("coperti") or 0)
+        acc = per_giorno.setdefault(d, [0.0, 0.0])
+        acc[0] += inc
+        acc[1] += cop
+
+    def _finestra(da, a):
+        inc = cop = inc_cop = 0.0
+        n = n_cop = 0
+        for d, (i, c) in per_giorno.items():
+            if not (da.isoformat() <= d <= a.isoformat()) or i <= 0:
+                continue
+            inc += i
+            n += 1
+            if c > 0:
+                cop += c
+                inc_cop += i
+                n_cop += 1
+        return inc, n, cop, inc_cop, n_cop
+
+    inc_a, n_a, cop_a, ic_a, nc_a = _finestra(inizio_a, fine)
+    inc_b, n_b, cop_b, ic_b, nc_b = _finestra(inizio_b, inizio_a - _td(days=1))
+    if n_a < _ANDAMENTO_INCASSO_MIN_GIORNI or n_b < _ANDAMENTO_INCASSO_MIN_GIORNI or inc_b <= 0:
+        return None
+    delta = (inc_a - inc_b) / inc_b * 100
+    if abs(delta) < _ANDAMENTO_INCASSO_SOGLIA_PCT:
+        return None
+
+    payload: Dict[str, Any] = {
+        "settimane": _ANDAMENTO_INCASSO_SETTIMANE,
+        "incasso": round(inc_a, 0),
+        "incasso_prec": round(inc_b, 0),
+        "delta_pct": round(abs(delta)),
+        "su": delta > 0,
+    }
+    if (nc_a >= _ANDAMENTO_INCASSO_MIN_GIORNI and nc_b >= _ANDAMENTO_INCASSO_MIN_GIORNI
+            and cop_a > 0 and cop_b > 0):
+        d_cop = (cop_a - cop_b) / cop_b * 100
+        sc_a, sc_b = ic_a / cop_a, ic_b / cop_b
+        d_sc = (sc_a - sc_b) / sc_b * 100
+
+        def _verso(d):
+            if abs(d) < _ANDAMENTO_STABILE_PCT:
+                return "stabile"
+            return "su" if d > 0 else "giu"
+
+        payload.update({
+            "coperti_delta_pct": round(abs(d_cop)),
+            "coperti_verso": _verso(d_cop),
+            "scontrino_delta_pct": round(abs(d_sc)),
+            "scontrino_verso": _verso(d_sc),
+        })
+    chiave = f"andamento-incasso-{fine.isoformat()}"
+    return {
+        "id": chiave,
+        "topic_key": "andamento_incasso",
+        "source_type": "live",
+        "severity": "success" if delta > 0 else "warning",
+        "title": "",
+        "body": "",
+        "action_page": "/margini",
+        "payload": payload,
+        "source_event_at": None,
+        "dedupe_key": chiave,
+    }
+
+
+def _mese_food_cost_da_dire(oggi) -> Optional[tuple]:
+    """(mese, anno) di cui il briefing puo' dire il food cost oggi, o None.
+
+    Solo nella finestra del MOL (ultimo giorno del mese e primi giorni del
+    successivo), una volta al mese. Il mese e' quello di DUE mesi prima del mese
+    di riferimento: l'ultimo giorno di settembre vale per ottobre, quindi agosto.
+    """
+    from datetime import timedelta as _td
+    if not _in_finestra_mol(oggi):
+        return None
+    base = oggi if oggi.day <= MOL_FINESTRA_PRIMI_GIORNI else oggi + _td(days=1)
+    mese, anno = base.month - _FOOD_COST_MESI_INDIETRO, base.year
+    if mese <= 0:
+        mese, anno = mese + 12, anno - 1
+    return mese, anno
+
+
+def _briefing_food_cost_alto(
+    user_id: str, ristorante_id: str, supabase_client, oggi,
+) -> Optional[Dict[str, Any]]:
+    """Food cost di un mese consolidato, se sopra la fascia di norma del settore.
+
+    Le soglie sono quelle di KPI_SOGLIE (le stesse della pagina Margini e del
+    prompt della chat), sul NETTO come `_kpi_periodo`. "Consolidato" = sono gia'
+    arrivate fatture di merce del mese dopo: le fatture di fine mese arrivano col
+    mese successivo. Mai per i negozi: per il retail un benchmark non esiste (lo
+    esclude chi chiama, via _TOPIC_OFF_PER_SETTORE).
+    """
+    from config.constants import KPI_SOGLIE
+    from services.margine_service import (
+        carica_margini_anno, calcola_costi_automatici_per_anno_sql,
+    )
+    target = _mese_food_cost_da_dire(oggi)
+    if target is None:
+        return None
+    mese, anno = target
+    mese_dopo, anno_dopo = (1, anno + 1) if mese == 12 else (mese + 1, anno)
+
+    margini = carica_margini_anno(user_id, ristorante_id, anno)
+    margini = _merge_override_mensile(margini, supabase_client, ristorante_id, anno)
+    cfb, csp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, anno)
+    cfb_dopo = cfb if anno_dopo == anno else calcola_costi_automatici_per_anno_sql(
+        user_id, ristorante_id, anno_dopo)[0]
+    if float(cfb_dopo.get(mese_dopo) or 0) <= 0:
+        return None
+
+    kpi = _kpi_periodo(margini, cfb, csp, mese)
+    # None senza incassi (netto 0); 0 senza merce (costi_mancanti): in entrambi i
+    # casi il mese non e' detto. KPI_SOGLIE['food_cost'] e' ordinata (28
+    # eccellente, 33 norma, 38 sopra la media, 100 critico) e `_valuta_soglia`
+    # usa `<=`: fino a 33 compreso e' norma.
+    fc = kpi.get("food_cost_pct")
+    soglie = [s for (s, _e, _c) in KPI_SOGLIE["food_cost"]]
+    soglia_eccellente, soglia_norma, soglia_attenzione = soglie[0], soglie[1], soglie[2]
+    if fc is None or fc <= soglia_norma:
+        return None
+    eccedenza = (fc - soglia_norma) / 100 * float(kpi.get("netto") or 0)
+    chiave = f"food-cost-alto-{anno}-{mese:02d}"
+    return {
+        "id": chiave,
+        "topic_key": "food_cost_alto",
+        "source_type": "live",
+        "severity": "warning",
+        "title": "",
+        "body": "",
+        "action_page": "/margini",
+        "payload": {
+            "mese": _MESI_IT_BRIEFING[mese],
+            "anno": anno,
+            "food_cost_pct": fc,
+            "critico": fc > soglia_attenzione,
+            "soglia_min": soglia_eccellente,
+            "soglia_norma": soglia_norma,
+            "soglia_critica": soglia_attenzione,
+            "eccedenza": round(eccedenza, 0),
+        },
+        "source_event_at": None,
+        "dedupe_key": chiave,
+    }
+
+
+def _briefing_osservazioni(
+    user_id: str, ristorante_id: str, supabase_client, spenti: set,
+) -> List[Dict[str, Any]]:
+    """Le osservazioni da consulente, ciascuna best-effort e rispettosa del
+    configuratore (spenta = non si calcola). Solo dal path asincrono: fanno
+    query in piu' e la Home che aspetta ha un budget di pochi secondi (E7)."""
+    out: List[Dict[str, Any]] = []
+    oggi = _oggi_rome()
+    if "andamento_incasso" not in spenti:
+        try:
+            rec = _briefing_andamento_incasso(ristorante_id, supabase_client, oggi)
+            if rec is not None:
+                out.append(rec)
+        except Exception as exc:
+            logger.warning("briefing osservazioni: andamento incasso fallito: %s", exc)
+    if "food_cost_alto" not in spenti:
+        try:
+            from services.settore_service import settore_sede
+            settore = settore_sede(ristorante_id, supabase_client)
+            if "food_cost_alto" not in _TOPIC_OFF_PER_SETTORE.get(settore, frozenset()):
+                rec = _briefing_food_cost_alto(user_id, ristorante_id, supabase_client, oggi)
+                if rec is not None:
+                    out.append(rec)
+        except Exception as exc:
+            logger.warning("briefing osservazioni: food cost fallito: %s", exc)
+    return out
+
+
 def _briefing_appuntamenti_oggi(
     user_id: str, ristorante_id: str, supabase_client,
 ) -> List[Dict[str, Any]]:
@@ -7381,6 +7619,7 @@ def _briefing_raccogli_notifiche(
     user_id: str, ristorante_id: Optional[str], supabase_client,
     includi_alert_prezzi: bool = True,
     alert_prezzi_budget_generoso: bool = False,
+    includi_osservazioni: bool = False,
 ) -> List[Dict[str, Any]]:
     """Raccoglie le notifiche attive + i segnali LIVE che alimentano il briefing.
 
@@ -7393,6 +7632,9 @@ def _briefing_raccogli_notifiche(
     budget 4s): tutti gli altri segnali live (fatture/righe/dati mancanti) sono
     leggeri. Serve al briefing ISTANTANEO del fast-path 2, che cosi' resta
     coerente (mai un falso "tutto in ordine") senza pagare i 4s dell'alert prezzi.
+
+    `includi_osservazioni=True` aggiunge le osservazioni da consulente
+    (andamento incasso, food cost): query in piu', quindi SOLO dal path async.
 
     `alert_prezzi_budget_generoso=True` usa _ALERT_PREZZI_TIMEOUT_ASYNC_SEC (25s)
     invece dei 4s: da passare SOLO dal path async (_briefing_rigenera_async), dove
@@ -7632,6 +7874,11 @@ def _briefing_raccogli_notifiche(
         except Exception as exc:
             logger.warning("home_briefing: fatture mancanti live fallite: %s", exc)
 
+    if ristorante_id and includi_osservazioni:
+        notifications.extend(
+            _briefing_osservazioni(user_id, ristorante_id, supabase_client, spenti)
+        )
+
     # Promemoria appuntamenti di oggi (Agenda). Importanza medio/bassa: in fondo
     # alla gerarchia (_TOPIC_PRIORITY) e severity 'info'. Persiste in inbox cosi'
     # compare anche nella pagina Avvisi, non solo nel briefing. Rispetta il flag
@@ -7714,6 +7961,7 @@ def _briefing_rigenera_async(user_id: str, ristorante_id: Optional[str]) -> None
         notifications = _briefing_raccogli_notifiche(
             user_id, ristorante_id, supabase_client,
             alert_prezzi_budget_generoso=True,
+            includi_osservazioni=True,
         )
         _, topics_disabled = _briefing_nome_referente(None, ristorante_id, supabase_client)
         generate_and_save_briefing(
@@ -8264,6 +8512,7 @@ def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: in
     food_cost_pct = round(fb / netto * 100, 1) if netto > 0 else None
     return {
         "fatturato": round(fatturato, 2),
+        "netto": round(netto, 2),
         "food_cost_pct": food_cost_pct,
         "costo_personale": round(personale, 2),
         "spese_generali": round(spese, 2),
