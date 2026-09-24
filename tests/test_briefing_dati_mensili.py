@@ -9,6 +9,14 @@ L'helper ricalcola quelle notifiche LIVE dalla stessa fonte della Salute
 (margini_mensili, mese precedente, personale = dipendenti + extra), cosi' le
 due sezioni Home restano sempre coerenti.
 """
+import os
+
+# Il worker rifiuta l'import senza chiave: in suite passava solo perche' un file
+# lanciato prima la impostava. Da solo il file dava errore di raccolta.
+os.environ.setdefault("WORKER_DEV_MODE", "1")
+os.environ.setdefault("SUPABASE_URL", "http://x")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "x")
+
 from datetime import date
 
 from unittest.mock import MagicMock

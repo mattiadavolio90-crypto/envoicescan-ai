@@ -819,6 +819,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   e la fusione che distingueva «Agosto» da «agosto». **3 mutanti, 3 uccisi**
 >   (14 in tutto sul secondo pezzo). Suite su `e0b189e`: **15.948 passed, 45
 >   skipped, 0 failed** (`-m "not sql" -p no:randomly`), HEAD fermo.
+>   **Certificata dal code-reviewer alla quinta passata** (`30e1e16`). Suite su
+>   `30e1e16`: **15.955 passed, 45 skipped, 0 failed**, HEAD fermo. Nella stessa
+>   chiusura: due file di test della fase 1 (`test_briefing_solleciti_calendario`,
+>   `test_briefing_dati_mensili`) davano errore di raccolta lanciati da soli,
+>   verdi in suite solo per l'ordine dei file — ora impostano l'ambiente.
 >   **Non pushato.**
 
 ---

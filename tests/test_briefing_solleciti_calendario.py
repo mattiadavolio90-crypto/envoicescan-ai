@@ -16,6 +16,14 @@ presidia il calendario: personale dal 15, incasso una volta a settimana.
 I test PINNANO la data: senza, l'esito dipenderebbe dal giorno in cui gira la
 suite (verdi dal 15 in poi, rossi prima) — un presidio che si sposta da solo.
 """
+import os
+
+# Il worker rifiuta l'import senza chiave: in suite passava solo perche' un file
+# lanciato prima la impostava. Da solo il file dava errore di raccolta.
+os.environ.setdefault("WORKER_DEV_MODE", "1")
+os.environ.setdefault("SUPABASE_URL", "http://x")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "x")
+
 from datetime import date
 from unittest.mock import MagicMock, patch
 
