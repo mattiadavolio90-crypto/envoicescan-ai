@@ -70,7 +70,7 @@ contraddicono mai. Scattano a queste condizioni:
 |---|---|
 | **Fatturato mancante** | il mese precedente non ha fatturato (né normale né in "modalità mensile") |
 | **Costo personale mancante** | un mese chiuso non ha costi del personale. Il mese **appena chiuso** si chiede solo **dal 15** (la busta paga arriva a metà mese: prima, 5 sedi su 5 risultavano "in ritardo"); i mesi più vecchi subito |
-| **Incasso di ieri mancante** | ieri non risulta nessun incasso. Si dice **solo il giovedì** (guarda il mercoledì), cioè una volta a settimana, e solo se la sede ha già inserito incassi in passato; saltato in "modalità mensile". Non si può spegnere, quindi l'unico modo per non ripeterlo è non dirlo: tutti i giorni veniva ignorato 25 volte su 35 |
+| **Incasso di ieri mancante** | ieri non risulta nessun incasso. Si dice **solo il giovedì** (guarda il mercoledì), cioè una volta a settimana, e solo se la sede ha già inserito incassi in passato; saltato in "modalità mensile". La card non ha il bottone «Ignora», quindi l'unico modo per non ripeterlo è non dirlo: quando usciva tutti i giorni veniva ignorato 25 volte su 35 |
 | **Righe da classificare** | ci sono prodotti da controllare **caricati negli ultimi 7 giorni**; l'arretrato più vecchio non fa card ma viene citato nel testo se supera 20 voci |
 | **Fatture costo mancanti** | mese con ricavi ma **zero costi food+spese**, oppure nessuna fattura caricata da **7 giorni** |
 | **Ricavi automatici assenti** | cliente collegato ai ricavi automatici ma nessun ricavo da più giorni dei suoi giorni di chiusura + 1 |
@@ -134,9 +134,14 @@ nella versione completa (§2), non in quella rapida.
   i negozi.
   *Come suona* (cifre di esempio): «🍽️ A luglio il food cost è stato del 45,8%, oltre la soglia
   critica del 38%: rispetto al 33% sono circa € 581 di acquisti in più.»
+  ⚠️ **Parlerà spesso**: sopra il 33% è la condizione normale di molte sedi
+  (misurato: 22 mesi consolidati su 32, su 7 sedi su 8). Quando le fatture sono
+  al passo, a ogni cambio di mese si accenderà su quasi tutte; oggi tace perché
+  le fatture di molte sedi sono ferme (simulato: 5 sedi il 3/8, nessuna il 2/9).
+  Se ti sembra troppo, la leva è la soglia (§9).
 
-**Perché solo queste due** (misurato sul DB il 24/9): le altre candidate del
-piano erano sempre accese o mai. Il fornitore che pesa più dell'80% di una
+**Perché solo queste due** (misurato sul DB il 24/9): delle altre candidate
+del piano nessuna diceva qualcosa di utile. Il fornitore che pesa più dell'80% di una
 categoria c'era su 7 sedi su 8 (quasi tutto bevande: rumore); nessun prodotto o
 categoria saliva da 3 mesi; le scadenze "accumulate" erano false perché metà
 delle sedi non segna mai le fatture pagate; il MOL mese su mese è un'altalena.
@@ -190,9 +195,9 @@ Se **nessuna voce viene selezionata**, e solo allora, il briefing dice che è tu
 Fatturato, costo del personale, incasso e fatture di un mese senza costi restano
 card (col loro bottone), ma nel testo non hanno più una frase ciascuno: si
 raccolgono **in una riga sola, in fondo** — «Per completare il quadro mancano il
-fatturato di agosto e il costo del personale di luglio e agosto: finché non ci
+fatturato di agosto 2026 e il costo del personale di luglio 2026: finché non ci
 sono, margini e food cost non sono completi.» Fatturato e personale dello stesso
-mese si fondono. Prima «il fatturato non è stato inserito» era l'apertura di 31
+periodo si dicono insieme. Prima «il fatturato non è stato inserito» era l'apertura di 31
 briefing su 43.
 
 ---
@@ -201,7 +206,8 @@ briefing su 43.
 
 - **Versione scritta a mano**: apertura + osservazioni + "Da sistemare oggi:" +
   una frase per voce + in fondo la riga dei dati mancanti (§5). Se mancano solo
-  dati, il testo è solo quella riga.
+  dati, niente "Da sistemare oggi:": dopo l'eventuale apertura c'è solo quella
+  riga.
 - **Versione riscritta dall'AI** (solo nella rigenerazione completa): tono
   **sobrio**, max 3 frasi, niente entusiasmo da coach, niente aggettivi enfatici,
   al massimo 1 emoji, vietato inventare numeri. Le osservazioni si dicono
@@ -282,7 +288,7 @@ il breakdown parziale va aggiunto con il suo caveat.
 | L'ordine di importanza degli argomenti | vedi §5 |
 | Quali avvisi si possono spegnere | tutti tranne gli upload falliti |
 | Dopo quanti giorni dice "bentornato" | 7 giorni |
-| Quando festeggiare il MOL | positivo, in crescita, salute ok, costi presenti |
+| Quando festeggiare il MOL | positivo, in crescita, salute ok, fatturato e costi presenti in entrambi i mesi |
 | Soglia scontrino medio "notevole" | 10% |
 | Soglia anomalia coperti | 20% |
 | Da che giorno si chiede il personale del mese chiuso | dal 15 |

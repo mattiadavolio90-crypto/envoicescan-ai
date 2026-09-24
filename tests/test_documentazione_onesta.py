@@ -277,12 +277,12 @@ def test_logica_briefing_tabella_leve_tutta_verificata() -> None:
          f"{giorni[_GIORNO_SOLLECITO_INCASSO]} |", "giorno sollecito incasso"),
         (f"| Andamento incasso: giorno e soglia | "
          f"{giorni[_ANDAMENTO_INCASSO_GIORNO_SETTIMANA]}, "
-         f"\u00b1{int(_ANDAMENTO_INCASSO_SOGLIA_PCT)}% su "
+         f"\u00b1{_ANDAMENTO_INCASSO_SOGLIA_PCT:g}% su "
          f"{_ANDAMENTO_INCASSO_SETTIMANE} settimane |", "andamento incasso"),
         (f"| Andamento incasso: giorni minimi con incasso per finestra | "
          f"{_ANDAMENTO_INCASSO_MIN_GIORNI} |", "andamento giorni minimi"),
         (f"| Coperti e scontrino \"stabili\" sotto | "
-         f"{int(_ANDAMENTO_STABILE_PCT)}% |", "soglia stabile"),
+         f"{_ANDAMENTO_STABILE_PCT:g}% |", "soglia stabile"),
         (f"| Food cost: norma / critico | fino al {soglie_fc[1]}% / "
          f"oltre il {soglie_fc[2]}% |", "soglie food cost"),
         (f"| Food cost: quando se ne parla | ultimo giorno del mese e primi "

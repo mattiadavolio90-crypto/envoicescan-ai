@@ -165,8 +165,8 @@ applica vince), e ritorna `None` se nessuna → briefing to-do puro.
 
 | Priorità | tipo payload | Condizione | Esempio |
 |---|---|---|---|
-| 1 | `mol_mese` | MOL del mese chiuso **> 0 E in crescita** vs mese prima, due mesi confrontabili (`_mesi_confrontabili`: fatturato > 0 e costi presenti in **entrambi**, fase 1) | "🔥 Maggio chiuso con € 280.924, +172,1% rispetto ad aprile" |
-| 2 | `perdita_in_calo` | MOL **< 0 ma migliore** del mese prima, stesso gate `_mesi_confrontabili` | "💪 Maggio in miglioramento: perdita scesa a € 1.037, sei sulla strada giusta" |
+| 1 | `mol_mese` | MOL del mese chiuso **> 0 E in crescita** vs mese prima, due mesi confrontabili (`_mesi_confrontabili`: fatturato > 0 e costi presenti in **entrambi**, fase 1) | "Maggio si è chiuso con € 280.924 di margine, +172,1% rispetto ad aprile." |
+| 2 | `perdita_in_calo` | MOL **< 0 ma migliore** del mese prima, stesso gate `_mesi_confrontabili` | "Maggio è in miglioramento: la perdita è scesa a € 1.037 rispetto ad aprile." |
 | 3 | `incasso_ieri` | Esiste un incasso **di IERI** (e solo di ieri) | "💰 Ieri sono entrati € 11.543 di incasso" |
 
 **Decisioni di design (Mattia, 9/6/2026) — NON violare senza motivo:**
