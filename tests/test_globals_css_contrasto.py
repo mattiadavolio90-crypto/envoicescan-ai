@@ -31,6 +31,20 @@ GLOBALS_CSS = Path(__file__).resolve().parent.parent / "apps" / "web" / "src" / 
 AA_TESTO = 4.5
 FONDO_VISIBILE = 1.5
 
+# Le due soglie percettive, QUI e non dentro i test che le usano.
+#
+# Stavano come variabili locali con l'assert di ancoraggio due righe sotto —
+# cioe' `X = 1.04` seguito da `assert X >= 1.04`: chi abbassava la soglia
+# abbassava l'ancora nello stesso gesto, e il messaggio d'errore gli diceva
+# pure dove. Due mutanti (soglia + ancora insieme) sopravvivevano, e io li
+# avevo dichiarati uccisi senza rieseguirli DOPO il fix.
+#
+# Qui sono lontane dal punto d'uso e protette da un test dedicato piu' sotto:
+# aggirarle richiede di modificare due zone distanti del file, non due righe
+# adiacenti. Il valore e' ancorato a cio' che rappresenta, non a se stesso.
+STACCO_SUPERFICIE_MINIMO = 1.04   # una superficie sollevata vs il piano pagina
+STACCO_EVIDENZIAZIONE_MINIMO = 1.08  # una voce evidenziata vs il suo contenitore
+
 # ---------------------------------------------------------------- colore ----
 
 def oklch_to_srgb(L: float, C: float, H: float) -> tuple[float, float, float]:
@@ -242,8 +256,7 @@ def test_lo_stacco_superfici_fondo_e_percepibile(tema):
     # Ancorata: abbassarla per far passare un colore che non si vede sarebbe
     # il modo piu' comodo di aggirare questo presidio, e nessun altro test lo
     # direbbe (mutante del 24/09/2026, sopravvissuto).
-    STACCO_MINIMO = 1.04
-    assert STACCO_MINIMO >= 1.04, "soglia abbassata: si aggira il presidio invece di correggere il colore"
+    STACCO_MINIMO = STACCO_SUPERFICIE_MINIMO
     for superficie in SUPERFICI:
         cr = contrasto(tema[superficie], tema["background"])
         assert cr >= STACCO_MINIMO, (
@@ -337,8 +350,7 @@ def test_lo_stato_attivo_si_stacca_dal_suo_contenitore(tema, token, contenitore)
     # stanno fra 1.1252 e 1.2432). La stesura precedente diceva 1.1382
     # (`accent`/`background`) ed era sbagliata: quello e' il quarto valore, non
     # il minimo, e tarare la soglia li' renderebbe rossa una coppia sana.
-    SOGLIA_EVIDENZIAZIONE = 1.08
-    assert SOGLIA_EVIDENZIAZIONE >= 1.08, "soglia abbassata: si aggira il presidio"
+    SOGLIA_EVIDENZIAZIONE = STACCO_EVIDENZIAZIONE_MINIMO
     cr = contrasto(tema[token], tema[contenitore])
     assert cr >= SOGLIA_EVIDENZIAZIONE, (
         f"tema {tema['_nome']}: stacco {token}/{contenitore} {cr:.4f}:1, "
@@ -378,6 +390,31 @@ def _stati_bg_dal_sorgente(escludi: tuple[str, ...] = ()) -> dict[str, int]:
         for token in stato.findall((radice / rel).read_text(encoding="utf-8")):
             conteggi[token] = conteggi.get(token, 0) + 1
     return conteggi
+
+
+def test_le_soglie_percettive_non_sono_state_abbassate():
+    """Impedisce di far passare un colore invisibile abbassando il metro.
+
+    E' l'aggiramento piu' comodo di tutto questo file: invece di correggere un
+    token che non si vede, si abbassa la soglia che lo boccia. Due mutanti che
+    facevano esattamente questo sono sopravvissuti a DUE giri di review, perche'
+    l'ancora stava due righe sotto la costante e si muoveva con lei.
+
+    I valori qui sono ancorati a cio' che rappresentano — il minimo percepibile
+    misurato il 24/09/2026 — e stanno lontani dal punto d'uso: abbassarli
+    richiede di toccare due zone distanti del file, e questo test lo dice.
+    """
+    assert STACCO_SUPERFICIE_MINIMO >= 1.04, (
+        f"STACCO_SUPERFICIE_MINIMO={STACCO_SUPERFICIE_MINIMO}: sotto 1.04 una "
+        "card non si distingue dal fondo. Correggi il colore, non il metro."
+    )
+    assert STACCO_EVIDENZIAZIONE_MINIMO >= 1.08, (
+        f"STACCO_EVIDENZIAZIONE_MINIMO={STACCO_EVIDENZIAZIONE_MINIMO}: sotto "
+        "1.08 un hover non si vede. Correggi il colore, non il metro."
+    )
+    # E non devono nemmeno poter salire di soppiatto: una soglia gonfiata
+    # trasformerebbe il presidio in un generatore di rossi da ignorare.
+    assert STACCO_SUPERFICIE_MINIMO <= 1.10 and STACCO_EVIDENZIAZIONE_MINIMO <= 1.15
 
 
 def test_il_perimetro_dei_presidi_colore_non_si_restringe_in_silenzio():
@@ -562,7 +599,7 @@ def test_lo_stesso_token_a_due_alpha_resta_distinguibile():
         base = tema[token]
         hover = sovrapponi(base, tema["card"], alpha / 100)
         cr = contrasto(base, hover)
-        if cr < 1.08:
+        if cr < STACCO_EVIDENZIAZIONE_MINIMO:
             deboli.append(f"{Path(rel).name}:{riga_n} bg-{token}+hover/{alpha} = {cr:.4f}")
 
     # I quattro casi noti al 24/09/2026, DICHIARATI e non corretti: due sono
