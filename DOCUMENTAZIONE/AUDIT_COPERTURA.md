@@ -766,6 +766,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   regola 3-ter-bis del prompt non e' presidiabile (testo al modello), la
 >   difende il validatore; (iv) il secondo pezzo della fase — i solleciti in una
 >   riga — non e' in questo commit.
+>   **Prima passata del code-reviewer: NON CHIUSA, e aveva ragione.** Mutando su
+>   una copia (`git archive`) ha trovato due regole scritte nella doc e senza
+>   presidio: il minimo di 20 giorni sull'**ultima** finestra (la guardia contro
+>   la sede che smette di inserire: 14 giorni su 28 farebbero un falso «-50%») e
+>   il minimo di 20 giorni per i **coperti** (chi comincia a inserirli avrebbe
+>   letto «+400%»), piu' lo scontrino calcolato sui soli giorni con coperti e la
+>   fusione del fatturato mensile. Il codice era giusto, i test no: i miei 27
+>   mutanti coprivano cio' che avevo scritto, non ogni regola dichiarata. Corretti
+>   anche: numeri obbligatori pretesi nel ramo onboarding, testo AI troncato dal
+>   limite di token accettato, settore letto fuori finestra, descrizione del
+>   configuratore («una volta al mese» -> esce per 8 giorni). **8 mutanti nuovi,
+>   8 uccisi.**
 
 ---
 

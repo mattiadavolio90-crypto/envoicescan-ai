@@ -200,6 +200,51 @@ def test_andamento_tace_sotto_i_venti_giorni():
     assert fw._briefing_andamento_incasso(RID, _SB(_righe(serie)), MARTEDI_SCATTA) is None
 
 
+def test_andamento_tace_se_l_ultima_finestra_ha_diciannove_giorni():
+    """La guardia contro il guasto piu' probabile: la sede smette di inserire.
+    Con 14 giorni su 28 il confronto direbbe un falso "-50%"."""
+    serie = _serie_sintetica(1000.0, 1000.0)
+    buchi = {date.fromordinal(date(2026, 6, 22).toordinal() + i).isoformat() for i in range(9)}
+    serie = [x for x in serie if x[0] not in buchi]
+    assert sum(1 for x in serie if x[0] >= "2026-06-22") == 19
+    assert fw._briefing_andamento_incasso(RID, _SB(_righe(serie)), MARTEDI_SCATTA) is None
+
+
+def test_coperti_taciuti_se_inseriti_meno_di_venti_giorni():
+    """Chi comincia a inserire i coperti non deve leggere "coperti +400%"."""
+    serie = _serie_sintetica(1000.0, 1200.0, 40, 40)
+    serie = [(d, v, c if d >= "2026-06-10" else None) for (d, v, c) in serie]
+    assert sum(1 for x in serie if x[0] < "2026-06-22" and x[2]) == 12
+    p = fw._briefing_andamento_incasso(RID, _SB(_righe(serie)), MARTEDI_SCATTA)["payload"]
+    assert p["delta_pct"] == 20
+    assert "coperti_verso" not in p and "scontrino_verso" not in p
+
+
+def test_scontrino_solo_sui_giorni_con_coperti():
+    """21 giorni su 28 con coperti: lo scontrino si calcola sull'incasso di quei
+    giorni. Sul totale uscirebbe un falso +33%."""
+    serie = []
+    for i in range(56):
+        d = date.fromordinal(date(2026, 5, 25).toordinal() + i).isoformat()
+        if i < 28:
+            serie.append((d, 1000.0, 40))
+        else:
+            serie.append((d, 1200.0, 48 if i < 49 else None))
+    p = fw._briefing_andamento_incasso(RID, _SB(_righe(serie)), MARTEDI_SCATTA)["payload"]
+    assert p["scontrino_verso"] == "stabile"
+    assert p["coperti_verso"] == "giu" and p["coperti_delta_pct"] == 10
+
+
+def test_confine_di_stabile_al_tre_per_cento():
+    """Sotto il 3% stabile, dal 3% in su si dice il verso."""
+    p = fw._briefing_andamento_incasso(
+        RID, _SB(_righe(_serie_sintetica(1000.0, 1200.0, 100, 103))), MARTEDI_SCATTA)["payload"]
+    assert p["coperti_verso"] == "su" and p["coperti_delta_pct"] == 3
+    p = fw._briefing_andamento_incasso(
+        RID, _SB(_righe(_serie_sintetica(1000.0, 1200.0, 100, 102.9))), MARTEDI_SCATTA)["payload"]
+    assert p["coperti_verso"] == "stabile"
+
+
 def test_andamento_legge_solo_la_sua_sede():
     """Le righe di un'altra sede nelle stesse date non devono contare."""
     altra = _righe([(d, v * 5) for (d, v) in SERIE_SCATTA if d >= "2026-06-22"], rid="rid-altra")
@@ -302,6 +347,21 @@ def test_food_cost_scatta_sul_caso_reale():
     assert p["eccedenza"] == 581
 
 
+def test_food_cost_legge_il_fatturato_inserito_come_totale_mensile():
+    """Le sedi che inseriscono il fatturato del mese (ricavi_modalita_mensile)
+    hanno margini_mensili a zero: senza la fusione tacerebbero sempre."""
+    margini = {m: {} for m in range(1, 13)}
+    calc = MagicMock(return_value=({8: 2079.32, 9: 150.0}, {}))
+    ov = {(2026, 8): {"iva10": 0.0, "iva22": 0.0, "altri": 4540.0}}
+    with patch.multiple(
+        "services.margine_service",
+        carica_margini_anno=MagicMock(return_value=margini),
+        calcola_costi_automatici_per_anno_sql=calc,
+    ), patch.object(fw, "_load_mensile_overrides", return_value=ov):
+        rec = fw._briefing_food_cost_alto(UID, RID, _sb_vuoto(), INIZIO_OTTOBRE)
+    assert rec is not None and rec["payload"]["food_cost_pct"] == 45.8
+
+
 def test_food_cost_tace_fino_al_trentatre():
     """Fino a 33 compreso e' la norma di KPI_SOGLIE (`<=`)."""
     for fb in (1498.2, 1400.0):  # 33,0% e 30,8%
@@ -377,14 +437,24 @@ def test_food_cost_di_dicembre_si_consolida_con_gennaio_dell_anno_dopo():
 
 # ── Raccolta: settore, configuratore, solo path asincrono ────────────────────
 
-def _spia_osservazioni(settore, spenti=frozenset()):
+def _spia_osservazioni(settore, spenti=frozenset(), oggi=INIZIO_OTTOBRE):
     rec_inc = {"topic_key": "andamento_incasso", "payload": {}}
     rec_fc = {"topic_key": "food_cost_alto", "payload": {}}
     with patch.object(fw, "_briefing_andamento_incasso", return_value=rec_inc) as a, \
          patch.object(fw, "_briefing_food_cost_alto", return_value=rec_fc) as f, \
-         patch("services.settore_service.settore_sede", return_value=settore):
+         patch.object(fw, "_oggi_rome", return_value=oggi), \
+         patch("services.settore_service.settore_sede", return_value=settore) as s:
         out = fw._briefing_osservazioni(UID, RID, MagicMock(), set(spenti))
+    f.settore = s
     return [r["topic_key"] for r in out], a, f
+
+
+def test_fuori_finestra_il_settore_non_si_legge():
+    """22-23 giorni al mese il food cost non puo' uscire: niente query sul settore."""
+    chiavi, _a, f = _spia_osservazioni(SETTORE_RISTORAZIONE, oggi=date(2026, 9, 24))
+    assert chiavi == ["andamento_incasso"]
+    f.assert_not_called()
+    f.settore.assert_not_called()
 
 
 def test_ristorante_riceve_entrambe_le_osservazioni():
@@ -408,6 +478,7 @@ def test_osservazione_spenta_non_si_calcola():
 def test_un_osservazione_che_fallisce_non_spegne_l_altra():
     with patch.object(fw, "_briefing_andamento_incasso", side_effect=RuntimeError("x")), \
          patch.object(fw, "_briefing_food_cost_alto", return_value={"topic_key": "food_cost_alto"}), \
+         patch.object(fw, "_oggi_rome", return_value=INIZIO_OTTOBRE), \
          patch("services.settore_service.settore_sede", return_value=SETTORE_RISTORAZIONE):
         out = fw._briefing_osservazioni(UID, RID, MagicMock(), set())
     assert [r["topic_key"] for r in out] == ["food_cost_alto"]
@@ -594,6 +665,27 @@ def test_la_sola_osservazione_basta_a_chiamare_l_ai():
     with patch("services.ai_service._get_openai_client", return_value=dice):
         snap = dbs._build_snapshot([OSS_INCASSO], use_ai=True)
     assert snap["narrative"].startswith("Nelle ultime 4 settimane l'incasso e' salito")
+
+
+def test_al_cliente_nuovo_la_narrativa_ai_non_pretende_i_numeri_delle_osservazioni():
+    """Nel ramo onboarding i bullet delle osservazioni non entrano: pretenderne
+    la cifra scarterebbe ogni narrativa."""
+    onb = {"topic_key": "onboarding", "payload": {}}
+    ai = _client_che_risponde("Benvenuto in ONEFLUX, per iniziare bastano i primi dati.")
+    with patch("services.ai_service._get_openai_client", return_value=ai):
+        snap = dbs._build_snapshot([onb, OSS_INCASSO], use_ai=True)
+    assert snap["narrative"] == "Benvenuto in ONEFLUX, per iniziare bastano i primi dati."
+
+
+def test_narrativa_troncata_ricade_sul_template():
+    """Col limite di token il testo puo' finire a meta' frase: i numeri obbligatori
+    stanno all'inizio e il validatore lo lascerebbe passare."""
+    ai = _client_che_risponde(
+        "Nelle ultime 4 settimane l'incasso e' salito del 16%, € 7.102 contro")
+    ai.chat.completions.create.return_value.choices[0].finish_reason = "length"
+    with patch("services.ai_service._get_openai_client", return_value=ai):
+        snap = dbs._build_snapshot([OSS_INCASSO], use_ai=True)
+    assert snap["narrative"].startswith("\U0001F4CA Nelle ultime 4 settimane sono entrati")
 
 
 def test_bump_della_versione_del_briefing():

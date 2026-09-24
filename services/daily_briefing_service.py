@@ -1488,6 +1488,11 @@ def _narrate_with_ai(
         text = (response.choices[0].message.content or "").strip()
         if not text:
             return fallback
+        # Testo troncato dal limite di token: finirebbe a meta' frase, e il
+        # validatore non se ne accorge se i numeri stanno all'inizio.
+        if getattr(response.choices[0], "finish_reason", None) == "length":
+            logger.warning("narrazione AI troncata (max_tokens), uso il template")
+            return fallback
 
         # Validazione: il testo viene confrontato con i bullet ANONIMI, cioe' con
         # quello che il modello ha davvero ricevuto (i nomi veri non ci sono ancora).
@@ -1671,8 +1676,11 @@ def _build_snapshot(
         bullets_ai = bullets_ai + [arretrato_frase]
     if use_ai and (selected or onboarding or rientro or buona_notizia or osservazioni
                    or arretrato_frase):
+        # Al cliente nuovo le osservazioni non si dicono (i loro bullet non
+        # entrano): pretenderne i numeri scarterebbe ogni narrativa.
         narrative = _narrate_with_ai(
-            bullets_ai, template_narrative, _numeri_obbligatori(osservazioni),
+            bullets_ai, template_narrative,
+            [] if onboarding is not None else _numeri_obbligatori(osservazioni),
         )
     else:
         narrative = template_narrative

@@ -2899,7 +2899,7 @@ _CONFIG_TOPICS: List[tuple] = [
     ("andamento_incasso",        "Andamento incasso",        False,
      "Il martedì ti dico se l'incasso delle ultime 4 settimane si è mosso di oltre il 10%."),
     ("food_cost_alto",           "Food cost alto",           False,
-     "Una volta al mese ti dico se il food cost di un mese chiuso è sopra la norma del settore."),
+     "Nei primi giorni del mese ti dico se il food cost di un mese chiuso è sopra la norma del settore."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
@@ -6219,7 +6219,7 @@ def _briefing_osservazioni(
                 out.append(rec)
         except Exception as exc:
             logger.warning("briefing osservazioni: andamento incasso fallito: %s", exc)
-    if "food_cost_alto" not in spenti:
+    if "food_cost_alto" not in spenti and _mese_food_cost_da_dire(oggi) is not None:
         try:
             from services.settore_service import settore_sede
             settore = settore_sede(ristorante_id, supabase_client)
