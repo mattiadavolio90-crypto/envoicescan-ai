@@ -602,7 +602,8 @@ def test_le_osservazioni_aprono_il_briefing_prima_delle_cose_da_fare():
     righe = snap["narrative"].split("\n")
     assert righe[0].startswith("\U0001F4CA Nelle ultime 4 settimane")
     assert righe[1].startswith("\U0001F37D️ Ad agosto il food cost")
-    assert righe[2] == "Da sistemare oggi:"
+    # I soli dati mancanti sono una riga in coda, senza "Da sistemare oggi:".
+    assert righe[2].startswith("Per completare il quadro manca il fatturato di agosto 2026")
     # Non sono card: le card sono solo cose da fare.
     assert [a["topic_key"] for a in snap["azioni"]] == ["fatturato_mancante"]
 

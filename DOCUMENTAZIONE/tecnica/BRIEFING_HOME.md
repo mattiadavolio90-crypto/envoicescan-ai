@@ -234,6 +234,23 @@ vere anonimizzate, confini delle soglie, cablaggio async/sync, settore,
 configuratore, validatore). 36 mutanti, 36 uccisi (27 miei + 9 sui buchi trovati dal reviewer in due passate). Il testo AI troncato dal limite di token
 (`finish_reason == "length"`) ricade sul template.
 
+### I solleciti di dati: una riga in coda (fase 4, 24/9/2026)
+
+`fatturato_mancante`, `costo_personale_mancante`, `incasso_mancante` e
+`fatture_mancanti` di tipo `mese_senza_costi` restano **card** (una per dato,
+con la CTA), ma nel racconto diventano **una riga** dopo le altre cose da fare
+(`_riga_solleciti`): «Per completare il quadro mancano le fatture costo di
+agosto e il costo del personale di luglio e agosto: finché non ci sono, margini
+e food cost non sono completi.» Fatturato e personale dello **stesso mese** si
+fondono; se ci sono solo dati mancanti, niente «Da sistemare oggi:». Prima ogni
+dato era una frase con la sua motivazione e insieme facevano la notizia del
+giorno (31 briefing su 43 aprivano con il fatturato mancante).
+All'AI arrivano come **un solo bullet 🧩** in coda (regola 3-sexies-bis).
+Restano frase propria le fatture che **non arrivano** (flusso SDI fermo, sede in
+avvio): possibile guasto o primo passo, non un dato da completare. Il ramo
+onboarding («Per partire: …») non cambia. Presidio:
+`tests/test_briefing_solleciti_una_riga.py`, 11 mutanti, 11 uccisi.
+
 ---
 
 ## 6. Alert prezzi (price_impact_service.py)
@@ -410,7 +427,8 @@ frontend lo chiama, tenuto per compat OpenAPI).
 - **24/9/2026 (fase 4 «assistente consulente»)** — due osservazioni calcolate
   nell'apertura: `andamento_incasso` e `food_cost_alto` (§5-bis). Nuove voci del
   configuratore, food cost spento per il retail, validatore AI con numeri
-  obbligatori. `_BRIEFING_CODE_VERSION` 26 → 27.
+  obbligatori. I solleciti di dati diventano una riga in coda.
+  `_BRIEFING_CODE_VERSION` 26 → 27.
 - **10/6/2026 (Fase D — Agenda nel briefing/notifiche)** — nuovo topic
   `appuntamento_imminente` (priorità **70** = importanza medio/bassa, severity
   `info`), generato da `_briefing_appuntamenti_oggi` **solo per gli appuntamenti

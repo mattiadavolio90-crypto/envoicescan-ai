@@ -146,7 +146,8 @@ logger = get_logger('daily_briefing')
 #               settimane contro le 4 prima, oltre il 10%) e il food cost di un
 #               mese consolidato sopra la norma (nella finestra del MOL). Cambia
 #               il testo servito: senza bump chi ha lo snapshot di oggi non le
-#               vedrebbe fino al TTL.
+#               vedrebbe fino al TTL. Nella stessa versione (mai deployata da
+#               sola): i solleciti di dati diventano una riga in coda.
 _BRIEFING_CODE_VERSION = 27
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
@@ -1154,6 +1155,74 @@ def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
     return ""
 
 
+# Solleciti di dati (fase 4, 24/09/2026). Prima ognuno era una frase con la sua
+# motivazione, e insieme facevano la notizia del giorno: «il fatturato non e'
+# stato inserito» apriva 31 briefing su 43. Ora restano card (una per dato, con
+# la CTA), ma nel racconto diventano UNA riga in coda alle cose da fare.
+# `fatture_mancanti` entra solo come "mese senza costi": le fatture che non
+# arrivano piu' (flusso automatico fermo, sede in avvio) sono un possibile guasto
+# o un primo passo, non un dato da completare, e restano una frase propria.
+def _voce_sollecito(notif: Dict[str, Any]) -> Optional[tuple]:
+    """(voce, plurale) per la riga dei dati mancanti, o None se il topic resta
+    una frase a se'."""
+    topic = str(notif.get('topic_key') or '')
+    payload = notif.get('payload') or {}
+    title = str(notif.get('title') or '')
+    if topic == 'fatture_mancanti':
+        mese = payload.get('mese')
+        if str(payload.get('tipo') or '') == 'mese_senza_costi' and mese:
+            return f"le fatture costo di {mese}", True
+        return None
+    if topic == 'incasso_mancante':
+        return "l'incasso di ieri", False
+    if topic in ('fatturato_mancante', 'costo_personale_mancante'):
+        cosa = 'il fatturato' if topic == 'fatturato_mancante' else 'il costo del personale'
+        descr = payload.get('descrizione')
+        if topic == 'costo_personale_mancante' and descr and int(payload.get('n_mesi') or 0) >= 2:
+            return f"{cosa} di {descr}", False
+        mese, anno = payload.get('mese'), payload.get('anno')
+        if not (mese and anno):
+            mese, anno = _parse_mese_anno_from_title(title)
+        if mese and anno:
+            return f"{cosa} di {mese} {anno}", False
+    return None
+
+
+def _riga_solleciti(selected: List[Dict[str, Any]]) -> tuple:
+    """(riga, topic raccolti): la frase unica dei dati mancanti e i topic che
+    ha assorbito (non vanno piu' raccontati uno per uno)."""
+    voci: List[tuple] = []
+    raccolti: set = set()
+    for n in selected:
+        v = _voce_sollecito(n)
+        if v is not None:
+            voci.append((str(n.get('topic_key')), n, v))
+            raccolti.add(str(n.get('topic_key')))
+    if not voci:
+        return "", raccolti
+
+    # Fatturato e personale dello stesso mese si dicono insieme.
+    fat = next((x for x in voci if x[0] == 'fatturato_mancante'), None)
+    per = next((x for x in voci if x[0] == 'costo_personale_mancante'), None)
+    if fat and per and fat[2][0][len('il fatturato'):] == per[2][0][len('il costo del personale'):]:
+        periodo = fat[2][0][len('il fatturato di '):]
+        fusa = (f"il fatturato e il costo del personale di {periodo}", True)
+        voci = [
+            (t, n, fusa if t == 'fatturato_mancante' else v)
+            for (t, n, v) in voci if t != 'costo_personale_mancante'
+        ]
+
+    testi = [v[0] for (_t, _n, v) in voci]
+    elenco = testi[0] if len(testi) == 1 else ", ".join(testi[:-1]) + " e " + testi[-1]
+    plurale = len(testi) > 1 or voci[0][2][1]
+    verbo, esserci = ("mancano", "ci sono") if plurale else ("manca", "c'è")
+    riga = (
+        f"Per completare il quadro {verbo} {elenco}: finché non {esserci}, "
+        f"margini e food cost non sono completi."
+    )
+    return riga, raccolti
+
+
 def _compose_narrative(
     selected: List[Dict[str, Any]],
     severity_max: str,
@@ -1200,42 +1269,26 @@ def _compose_narrative(
             return f"{apertura}\nPer oggi non c'è nulla da sistemare."
         return "Tutto in ordine per oggi, niente da sistemare."
 
-    sentences: List[str] = []
-    skip_topics: set = set()
+    riga_solleciti, raccolti = _riga_solleciti(selected)
+    sentences = [
+        _narrative_phrase_for(n) for n in selected
+        if str(n.get('topic_key') or '') not in raccolti
+    ]
 
-    # Fusione fatturato + costo personale stesso mese/anno. NON si fonde se il
-    # personale e' multi-mese (n_mesi>=2): la frase fusa parla di un singolo mese
-    # e perderebbe l'informazione "in N mesi". In quel caso restano due frasi.
-    fat = next((n for n in selected if n.get('topic_key') == 'fatturato_mancante'), None)
-    costo = next((n for n in selected if n.get('topic_key') == 'costo_personale_mancante'), None)
-    costo_multi = costo is not None and int((costo.get('payload') or {}).get('n_mesi') or 0) >= 2
-    if fat and costo and not costo_multi:
-        fp = fat.get('payload') or {}
-        cp = costo.get('payload') or {}
-        fat_mese = fp.get('mese') or _parse_mese_anno_from_title(str(fat.get('title') or ''))[0]
-        fat_anno = fp.get('anno') or _parse_mese_anno_from_title(str(fat.get('title') or ''))[1]
-        cp_mese  = cp.get('mese') or _parse_mese_anno_from_title(str(costo.get('title') or ''))[0]
-        cp_anno  = cp.get('anno') or _parse_mese_anno_from_title(str(costo.get('title') or ''))[1]
-        if fat_mese and fat_mese == cp_mese and fat_anno and fat_anno == cp_anno:
-            mese, anno = fat_mese, fat_anno
-            sentences.append(
-                f"Il fatturato e il costo del personale di {mese} {anno} non li hai ancora inseriti: "
-                f"se li inserisci puoi scoprire quanto stai marginando e se stai migliorando!"
-            )
-            skip_topics = {'fatturato_mancante', 'costo_personale_mancante'}
-
-    for n in selected:
-        if n.get('topic_key') in skip_topics:
-            continue
-        sentences.append(_narrative_phrase_for(n))
-
-    body = "\n".join(sentences)
+    # Le cose da fare, poi in coda la riga dei dati mancanti. Se ci sono solo
+    # dati mancanti niente "Da sistemare oggi:": la riga basta da sola.
+    if sentences:
+        corpo = "Da sistemare oggi:\n" + "\n".join(sentences)
+        if riga_solleciti:
+            corpo += "\n" + riga_solleciti
+    else:
+        corpo = riga_solleciti
     if apertura:
         # Prima il bene, poi la rogna (decisione Mattia): apriamo con la buona
         # notizia e poi passiamo alle cose da chiudere. Tono sobrio, niente
         # incoraggiamenti di chiusura.
-        return f"{apertura}\nDa sistemare oggi:\n{body}"
-    return f"Da sistemare oggi:\n{body}"
+        return f"{apertura}\n{corpo}"
+    return corpo
 
 
 # ============================================================
@@ -1292,6 +1345,10 @@ _NARRATION_SYSTEM_PROMPT = (
     "dati (fatturato, costi, fatture, incassi), NON trarre conclusioni sui margini "
     "e indica che servono quei dati per un quadro corretto. Mai un giudizio "
     "positivo o negativo sulla gestione quando i dati sono incompleti. "
+    "3-sexies-bis) La voce 🧩 raccoglie i dati ancora da inserire: riportala "
+    "come UNA sola frase, DOPO le altre cose da fare, mai come apertura o come "
+    "notizia principale. Elenca i dati cosi' come sono, senza aggiungere "
+    "motivazioni o esortazioni. "
     "3-septies) ALERT PREZZI: nel briefing accenna SOLO che ci sono prodotti con "
     "variazioni di prezzo (aumenti o cali) da controllare, rimandando alle card / "
     "agli avvisi per il dettaglio. NON ripetere nel testo il nome del prodotto, la "
@@ -1671,7 +1728,18 @@ def _build_snapshot(
     # sia nell'input AI, cosi' viene detto in entrambi i percorsi.
     if arretrato_frase:
         template_narrative = f"{template_narrative}\n{arretrato_frase}"
-    bullets_ai = aperture_bullets + [_bullet_per_narrazione(n) for n in selected]
+    # Anche all'AI i solleciti arrivano come UNA voce (🧩), in coda alle cose da
+    # fare: con un bullet per dato il modello li ripeteva come notizia del giorno.
+    if onboarding is not None:
+        _riga_ai, _raccolti_ai = "", set()
+    else:
+        _riga_ai, _raccolti_ai = _riga_solleciti(selected)
+    bullets_ai = aperture_bullets + [
+        _bullet_per_narrazione(n) for n in selected
+        if str(n.get('topic_key') or '') not in _raccolti_ai
+    ]
+    if _riga_ai:
+        bullets_ai.append("\U0001F9E9 " + _riga_ai)
     if arretrato_frase:
         bullets_ai = bullets_ai + [arretrato_frase]
     if use_ai and (selected or onboarding or rientro or buona_notizia or osservazioni

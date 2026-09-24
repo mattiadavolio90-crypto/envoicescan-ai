@@ -793,6 +793,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   completo successivo. Causa non identificata, dichiarata come tale.
 >   **Da fare prima del push, non mio**: `openapi/openapi.json` e' in drift per
 >   `AcceptSuggestionRequest.emoji` (commit `e874f8a`, sessione dei tag).
+>   **Secondo pezzo, stesso giorno: i solleciti in una riga.** Fatturato,
+>   personale, incasso di ieri e fatture del mese senza costi restano card, ma
+>   nel racconto sono una riga in coda alle cose da fare («Per completare il
+>   quadro mancano …»), anche nell'input all'AI (un solo bullet 🧩). Le fatture
+>   che NON arrivano (SDI fermo, avvio) restano frase propria: sono un possibile
+>   guasto, non un dato da inserire. Nessuna nuova versione: la 27 non e' mai
+>   stata deployata. **11 mutanti, 11 uccisi.** Non eseguito sul DB live: la
+>   raccolta delle notifiche scrive (ultimo accesso, promemoria agenda), quindi
+>   il caso reale e' quello di produzione del 23/09 riprodotto nel test.
 >   **Non pushato.**
 
 ---
