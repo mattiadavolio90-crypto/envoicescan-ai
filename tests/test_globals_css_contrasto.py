@@ -253,12 +253,12 @@ def test_il_testo_resta_leggibile_sul_fondo_abbassato(tema):
 #
 # Contratto DIVERSO da quello delle SUPERFICI sopra: non «la superficie si
 # stacca dal piano della pagina», ma «la voce evidenziata si stacca dal suo
-# contenitore». Lo tiene separato perche' `--accent` e `--sidebar-accent`
-# poggiano sulla card o sulla sidebar, non sul fondo pagina: presidiarli contro
-# `--background` misurerebbe la cosa sbagliata.
+# contenitore». Il contenitore pero' non e' uno solo — vedi l'elenco sotto: la
+# stessa tinta di evidenziazione poggia su superfici diverse a seconda di dove
+# la si usa, e ogni coppia va nominata.
 #
-# Perche' esiste: `--accent` ha 90 usi di `bg-accent` ed e' la tinta dello STATO ATTIVO della
-# navigazione in tutte e 14 le aree (`app-sidebar.tsx`, `data-active:!bg-accent`).
+# Perche' esiste: `--accent` ha 90 usi di `bg-accent` ed e' la tinta dello STATO
+# ATTIVO della navigazione in tutte e 14 le aree (`data-active:!bg-accent`).
 # Portandolo a coincidere col contenitore la voce attiva smette di distinguersi
 # e nessun test se ne accorgeva (rilevato dalla re-review del 24/09/2026, che
 # ha mutato quei token e li ha visti sopravvivere).
@@ -280,9 +280,17 @@ EVIDENZIATI = (
     #    `bg-accent` direttamente sul fondo pagina: e' la coppia piu' stretta
     #    della famiglia e non era coperta da nulla.
     #  - `card`: gli usi dentro le card.
+    #  - `popover`: `focus:bg-accent` dentro `bg-popover` (dropdown-menu.tsx,
+    #    4 punti) e' la voce di menu a fuoco. Mancava, e anche qui il presidio
+    #    era verde per coincidenza (`popover` == `card`): un mutante che rendeva
+    #    il popover uguale ad accent lasciava la voce a fuoco invisibile
+    #    (1.0000:1) con la suite verde. Trovato dalla review del 24/09/2026 —
+    #    stessa classe di errore del contenitore sbagliato, ripetuta su un
+    #    token che non avevo cercato.
     ("accent", "sidebar"),
     ("accent", "background"),
     ("accent", "card"),
+    ("accent", "popover"),
     ("sidebar-accent", "sidebar"),
 )
 
@@ -298,8 +306,10 @@ def test_lo_stato_attivo_si_stacca_dal_suo_contenitore(tema, token, contenitore)
     # Soglia piu' bassa delle superfici: qui lo stacco e' rinforzato da testo in
     # grassetto, colore del testo e (per la nav) un bordo sinistro. Ancorata
     # sotto il valore piu' stretto della famiglia, misurato il 24/09/2026:
-    # accent su background in chiaro, 1.1382 — non sidebar-accent come diceva
-    # la prima stesura, che quella coppia non la conteneva nemmeno.
+    # `sidebar-accent` su `sidebar` in chiaro, **1.0907** (le altre coppie
+    # stanno fra 1.1252 e 1.2432). La stesura precedente diceva 1.1382
+    # (`accent`/`background`) ed era sbagliata: quello e' il quarto valore, non
+    # il minimo, e tarare la soglia li' renderebbe rossa una coppia sana.
     cr = contrasto(tema[token], tema[contenitore])
     assert cr >= 1.08, (
         f"tema {tema['_nome']}: stacco {token}/{contenitore} {cr:.4f}:1, "
