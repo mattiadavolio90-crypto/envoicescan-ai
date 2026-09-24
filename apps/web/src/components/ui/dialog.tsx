@@ -31,13 +31,16 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        // bg-black/25 (era /10): con /10 in tema chiaro il fondo diventa
-        // #e1e1e1 e il dialog si stacca di 1,31:1 — quasi solo grazie al blur,
-        // e su schermi poco contrastati non si stacca affatto. Con /25 siamo a
-        // 1,91:1. Resta comunque molto piu' leggero del default shadcn (/50),
-        // che qui e' voluto. (Cifre ri-misurate il 24/09/2026, dopo che il
-        // fondo pagina e' sceso da #ffffff a #fafafa: le precedenti, 1,25:1 su
-        // #e6e6e6, erano calcolate sul bianco puro.)
+        // bg-black/25 (era /10): il rapporto che conta e' fra il DIALOG
+        // (bg-popover, #ffffff in chiaro) e l'overlay che lo circonda, non fra
+        // overlay e pagina. Con /10 l'overlay diventa #e1e1e1 e il dialog si
+        // stacca di 1,31:1 — quasi solo grazie al blur, e su schermi poco
+        // contrastati non si stacca affatto. Con /25 siamo a 1,91:1. Resta
+        // comunque molto piu' leggero del default shadcn (/50), che qui e'
+        // voluto. (Ri-misurate il 24/09/2026: col fondo pagina sceso a #fafafa
+        // l'overlay/10 passa da #e5e5e5 a #e1e1e1 e il rapporto da 1,25 a
+        // 1,31:1. Contro il FONDO PAGINA, che e' un'altra coppia, gli stessi
+        // overlay danno 1,25:1 e 1,83:1.)
         "fixed inset-0 isolate z-50 bg-black/25 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}

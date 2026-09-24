@@ -247,3 +247,42 @@ def test_il_testo_resta_leggibile_sul_fondo_abbassato(tema):
     fondo al testo. Qui si verifica che il margine su AA resti ampio.
     """
     assert _cr(tema, "foreground", "background") >= AA_TESTO
+
+
+# ----------------------------------------- lo stato attivo e il suo fondo ----
+#
+# Contratto DIVERSO da quello delle SUPERFICI sopra: non «la superficie si
+# stacca dal piano della pagina», ma «la voce evidenziata si stacca dal suo
+# contenitore». Lo tiene separato perche' `--accent` e `--sidebar-accent`
+# poggiano sulla card o sulla sidebar, non sul fondo pagina: presidiarli contro
+# `--background` misurerebbe la cosa sbagliata.
+#
+# Perche' esiste: `--accent` ha ~90 usi ed e' la tinta dello STATO ATTIVO della
+# navigazione in tutte e 14 le aree (`app-sidebar.tsx`, `data-active:!bg-accent`).
+# Portandolo a coincidere col contenitore la voce attiva smette di distinguersi
+# e nessun test se ne accorgeva (rilevato dalla re-review del 24/09/2026, che
+# ha mutato quei token e li ha visti sopravvivere).
+
+EVIDENZIATI = (
+    # (token, contenitore su cui poggia)
+    ("accent", "card"),
+    ("sidebar-accent", "sidebar"),
+)
+
+
+@pytest.mark.parametrize("token,contenitore", EVIDENZIATI)
+def test_lo_stato_attivo_si_stacca_dal_suo_contenitore(tema, token, contenitore):
+    """Una voce evidenziata deve distinguersi dalla superficie che la ospita."""
+    assert token in tema, f"--{token} manca nel tema {tema['_nome']}"
+    assert tema[token] != tema[contenitore], (
+        f"tema {tema['_nome']}: --{token} ha la stessa tinta di --{contenitore} "
+        f"({hexa(tema[token])}): l'elemento attivo non si distingue"
+    )
+    # Soglia piu' bassa delle superfici: qui lo stacco e' rinforzato da testo in
+    # grassetto, colore del testo e (per la nav) un bordo sinistro. Ancorata al
+    # valore piu' stretto misurato il 24/09/2026 (sidebar-accent chiaro, 1.0907).
+    cr = contrasto(tema[token], tema[contenitore])
+    assert cr >= 1.08, (
+        f"tema {tema['_nome']}: stacco {token}/{contenitore} {cr:.4f}:1, "
+        "l'evidenziazione non si vede"
+    )
