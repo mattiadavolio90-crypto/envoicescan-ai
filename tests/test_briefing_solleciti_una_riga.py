@@ -10,9 +10,16 @@ Restano frase propria le fatture che NON ARRIVANO (flusso automatico fermo,
 sede in avvio): sono un possibile guasto o un primo passo, non un dato da
 completare.
 """
+import os
 from unittest.mock import patch
 
-import services.daily_briefing_service as dbs
+os.environ.setdefault("WORKER_DEV_MODE", "1")
+os.environ.setdefault("SUPABASE_URL", "http://x")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "x")
+
+import services.daily_briefing_service as dbs  # noqa: E402
+import services.fastapi_worker as fw  # noqa: E402
+from tests.test_costi_auto_fatture_mol import _FakeQuery  # noqa: E402
 
 
 def _n(topic, payload=None, title="", severity="warning"):
@@ -22,7 +29,9 @@ def _n(topic, payload=None, title="", severity="warning"):
 FATTURE_AGOSTO = _n("fatture_mancanti", {"tipo": "mese_senza_costi", "mese": "agosto"})
 PERSONALE_LUG_AGO = _n("costo_personale_mancante", {"descrizione": "luglio e agosto", "n_mesi": 2})
 FATTURATO_AGOSTO = _n("fatturato_mancante", {"mese": "agosto", "anno": 2026})
-PERSONALE_AGOSTO = _n("costo_personale_mancante", {"mese": "agosto", "anno": 2026})
+# Forma VERA del payload di _briefing_dati_mensili_mancanti con un solo mese.
+PERSONALE_AGOSTO = _n("costo_personale_mancante", {
+    "mese": "agosto", "anno": 2026, "mesi": [8], "n_mesi": 1, "descrizione": "agosto"})
 INCASSO_IERI = _n("incasso_mancante")
 RIGHE = _n("uncategorized_rows", {"count": 10})
 SDI_FERMO = _n("fatture_mancanti", {"canale": "sdi"})
@@ -59,6 +68,57 @@ def test_fatturato_e_personale_dello_stesso_mese_si_dicono_insieme():
         "Per completare il quadro mancano il fatturato e il costo del personale "
         "di agosto 2026 e l'incasso di ieri:"
     )
+
+
+def test_la_frase_fusa_da_sola_e_plurale():
+    """Due dati in una voce: "mancano ... ci sono", anche senza altre voci."""
+    assert dbs._build_snapshot([FATTURATO_AGOSTO, PERSONALE_AGOSTO])["narrative"] == (
+        "Per completare il quadro mancano il fatturato e il costo del personale "
+        "di agosto 2026: finché non ci sono, margini e food cost non sono completi."
+    )
+
+
+def test_la_fusione_non_guarda_le_maiuscole():
+    """Una notifica persistita scrive "Agosto", una live "agosto"."""
+    fat = _n("fatturato_mancante", {"mese": "Agosto", "anno": 2026})
+    narr = dbs._build_snapshot([fat, PERSONALE_AGOSTO])["narrative"]
+    assert "il fatturato e il costo del personale di Agosto 2026" in narr
+
+
+class _SB:
+    def __init__(self, righe):
+        self._righe = righe
+
+    def table(self, name):
+        return _FakeQuery(self._righe if name == "margini_mensili" else [], table=name)
+
+
+def test_dal_producer_vero_il_mese_del_personale_e_quello_mancante():
+    """5 ottobre: settembre non si reclama ancora (dal 15), agosto manca davvero.
+    Il payload diceva "settembre" (il mese precedente) e il briefing fondeva col
+    fatturato di settembre: «il fatturato e il costo del personale di settembre»,
+    un mese sbagliato detto con sicurezza."""
+    righe = [
+        {"ristorante_id": "rid-p", "anno": 2026, "mese": m, "fatturato_iva10": 1000.0,
+         "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+         "costo_dipendenti": 0 if m == 8 else 500.0, "costo_personale_extra": 0}
+        for m in range(1, 9)
+    ]
+    # La data si fissa come fanno i presidi della fase 1: il producer legge
+    # `datetime.datetime.now` con un import locale.
+    from tests.test_briefing_solleciti_calendario import _oggi
+    with _oggi(5, mese=10):
+        notif = fw._briefing_dati_mensili_mancanti(
+            "rid-p", _SB(righe), {"incasso_mancante", "coperti_anomalia"})
+    per = next(n for n in notif if n["topic_key"] == "costo_personale_mancante")
+    assert per["payload"]["mese"] == "agosto" and per["payload"]["mesi"] == [8]
+    assert "agosto" in per["title"]
+    narr = dbs._build_snapshot(notif)["narrative"]
+    assert narr.startswith(
+        "Per completare il quadro mancano il fatturato di settembre 2026 e il "
+        "costo del personale di agosto 2026:"
+    ), narr
+    assert "il fatturato e il costo del personale" not in narr
 
 
 def test_mesi_diversi_non_si_fondono():

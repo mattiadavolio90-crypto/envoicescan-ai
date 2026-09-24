@@ -6455,7 +6455,12 @@ def _briefing_dati_mensili_mancanti(
             "title": title,
             "body": "",
             "action_page": "/margini",
-            "payload": {"mese": mese_label, "anno": mc_anno,
+            # Con UN mese mancante `mese` e' QUEL mese, non il precedente: dal 1
+            # al 14 il mese appena chiuso non si reclama, quindi l'unico mese
+            # rimasto e' piu' vecchio — e card, frase e riga dei solleciti lo
+            # leggono da qui. Fino al 24/09/2026 diceva sempre il precedente.
+            "payload": {"mese": _MESI_IT_BRIEFING[mesi_senza_personale[0]] if n == 1 else mese_label,
+                        "anno": mc_anno,
                         "mesi": mesi_senza_personale, "n_mesi": n, "descrizione": descr},
             "source_event_at": None,
             "dedupe_key": f"costo-personale-mancante-live-{mc_anno}",

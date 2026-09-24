@@ -249,7 +249,8 @@ All'AI arrivano come **un solo bullet 🧩** in coda (regola 3-sexies-bis).
 Restano frase propria le fatture che **non arrivano** (flusso SDI fermo, sede in
 avvio): possibile guasto o primo passo, non un dato da completare. Il ramo
 onboarding («Per partire: …») non cambia. Presidio:
-`tests/test_briefing_solleciti_una_riga.py`, 11 mutanti, 11 uccisi.
+`tests/test_briefing_solleciti_una_riga.py`, 14 mutanti, 14 uccisi. Con un solo mese
+di personale mancante `payload['mese']` e' **quel** mese, non il precedente (vedi verbale 24/9).
 
 ---
 

@@ -802,6 +802,23 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   stata deployata. **11 mutanti, 11 uccisi.** Non eseguito sul DB live: la
 >   raccolta delle notifiche scrive (ultimo accesso, promemoria agenda), quindi
 >   il caso reale e' quello di produzione del 23/09 riprodotto nel test.
+>   **Quarta passata del reviewer: NON CHIUSA, per un difetto vero che non avevo
+>   visto.** Il producer `_briefing_dati_mensili_mancanti` metteva in
+>   `payload['mese']` del personale SEMPRE il mese precedente, anche quando
+>   l'unico mese mancante era un altro (il vero stava solo in `descrizione` e
+>   nel titolo). Card, frase e fusione lo leggono da li': con luglio senza
+>   personale e agosto senza fatturato il briefing diceva «il fatturato e il
+>   costo del personale di agosto». **Preesistente dal 25/06**, ma il commit
+>   `0435b0f` della fase 1 (personale dal 15, anch'esso non pushato) lo rende
+>   frequente: dal 1 al 14 di ogni mese il mese appena chiuso esce dalla lista e
+>   resta un mese piu' vecchio. Misura del reviewer: una sede ha solo agosto
+>   scoperto, e dal 1/10 avrebbe letto «settembre». Il mio test non lo vedeva
+>   perche' la fixture era **scritta a mano** con il mese mancante in `mese`:
+>   non aveva la forma del payload vero. Ora un test parte dall'output del
+>   producer. Chiuso anche il caso speculare: la frase fusa da sola (plurale),
+>   e la fusione che distingueva «Agosto» da «agosto». **3 mutanti, 3 uccisi**
+>   (14 in tutto sul secondo pezzo). Suite su `e0b189e`: **15.948 passed, 45
+>   skipped, 0 failed** (`-m "not sql" -p no:randomly`), HEAD fermo.
 >   **Non pushato.**
 
 ---

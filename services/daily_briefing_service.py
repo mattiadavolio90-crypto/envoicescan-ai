@@ -1204,7 +1204,7 @@ def _riga_solleciti(selected: List[Dict[str, Any]]) -> tuple:
     # Fatturato e personale dello stesso mese si dicono insieme.
     fat = next((x for x in voci if x[0] == 'fatturato_mancante'), None)
     per = next((x for x in voci if x[0] == 'costo_personale_mancante'), None)
-    if fat and per and fat[2][0][len('il fatturato'):] == per[2][0][len('il costo del personale'):]:
+    if fat and per and fat[2][0][len('il fatturato'):].lower() == per[2][0][len('il costo del personale'):].lower():
         periodo = fat[2][0][len('il fatturato di '):]
         fusa = (f"il fatturato e il costo del personale di {periodo}", True)
         voci = [
