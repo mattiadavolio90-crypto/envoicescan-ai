@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ClienteDettaglio, Sede, Settore, PIANO_LABEL, PIANO_COLOR, SETTORE_LABEL, SETTORE_OPTIONS, fmtDate, fmtDateTime } from "@/lib/admin";
 import { TAB_SEZIONI, tabOffKey, type SezioneConTab } from "@/lib/tab-flags";
+import { InvioCommercialistaCard } from "@/components/admin/invio-commercialista";
 
 type Props = { cliente: ClienteDettaglio };
 
@@ -704,6 +705,8 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             )}
           </CardContent>
         </Card>
+
+        <InvioCommercialistaCard clienteId={c.id} />
       </div>
 
       {/* Dialog cambia email */}

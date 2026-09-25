@@ -1208,6 +1208,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   del contatore scritta con un altro indirizzo), ucciso. Test: +75 unitari, +42
 >   `-m sql`, +2 del worker. Tutto datato da oggi a Roma, perche' i vincoli del
 >   registro misurano il `now()` del DB: un test a date fisse scadrebbe.
+>
+> - **25/09/2026 — fase D del piano «invio XML al commercialista»: l'area admin.**
+>   Nella scheda cliente (`components/admin/invio-commercialista.tsx`) l'admin:
+>   - collega una P.IVA del cliente a Invoicetronic: il company_id si cerca e si
+>     confronta con quello delle fatture gia' arrivate; il server lo ricerca e lo
+>     salva solo se coincide con quello che l'admin ha visto;
+>   - scrive email, frequenza e data di partenza, e registra il consenso, che vale
+>     per l'email di quel momento;
+>   - lancia la prova a vuoto, l'invio (il primo, poi il periodo maturato) e i
+>     reinvii; chiarisce gli esiti incerti; annulla una richiesta non ancora presa.
+>   Il router `services/routers/invio_commercialista.py` (il quattordicesimo) scrive
+>   solo richieste e traduce i rifiuti del DB in frasi. Un proxy catch-all inoltra
+>   al worker solo i percorsi che `percorsoProxy` riconosce: niente `..`, niente
+>   segmenti arbitrari, della query solo la P.IVA di 11 cifre. Tolti di nuovo i
+>   controlli che il DB fa gia' (periodo fino a ieri, 2 anni, ordine delle date,
+>   «si chiarisce solo un esito incerto»): davano mutanti equivalenti, e le frasi
+>   restano le stesse via `_rifiuto`. **Mutanti: 40, tutti uccisi** (28 sul router,
+>   12 sulla lib). Test: +39 `-m sql` sul router con TestClient e Postgres vero,
+>   +20 sulla lib. Il componente React non ha test: logica estratta nella lib, il
+>   resto e' rendering.
 
 ---
 

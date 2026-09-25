@@ -58,7 +58,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 |---|---|
 | Una pagina che il cliente vede | `apps/web/src/app/(app)/<pagina>/` |
 | Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive |
-| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (173 route, solo proxy) |
+| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (174 route, solo proxy) |
 | Logica di business | `services/*.py` |
 | Un endpoint del worker | `services/routers/*.py` (13 router) |
 | Schema DB | `supabase/migrations/` (canonico) |
@@ -76,7 +76,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | `price_impact_service.py` | Alert prezzi per **impatto** (peso × aumento) |
 | `margine_service.py` | MOL, food cost, margini |
 | `multisede_routing.py` | Smista fatture fra sedi con la stessa P.IVA (upload manuale) |
-| `invoicetronic_client.py` / `invio_commercialista_guardia.py` / `invio_commercialista_service.py` | Invio degli XML al commercialista (in costruzione, spento da `INVIO_COMMERCIALISTA_ATTIVO`): letture Invoicetronic controllate (chiave `ik_live_`, elenco completo o errore), la guardia che blocca l'intero invio al primo documento non del cliente, e il thread del queue-worker che pianifica di notte (ora di Roma), scarica, fa lo ZIP, lo mette nel bucket privato con un link a 30 giorni e manda l'email. Il registro e' la fonte di verita': `inviato` solo dopo il 201 di Brevo, un timeout e' `esito_incerto` e ferma quel cliente finche' l'admin non lo chiarisce. Tabelle e vincoli: migration `20260925113943_invio_commercialista.sql` |
+| `invoicetronic_client.py` / `invio_commercialista_guardia.py` / `invio_commercialista_service.py` | Invio degli XML al commercialista (in costruzione, spento da `INVIO_COMMERCIALISTA_ATTIVO`): letture Invoicetronic controllate (chiave `ik_live_`, elenco completo o errore), la guardia che blocca l'intero invio al primo documento non del cliente, e il thread del queue-worker che pianifica di notte (ora di Roma), scarica, fa lo ZIP, lo mette nel bucket privato con un link a 30 giorni e manda l'email. Il registro e' la fonte di verita': `inviato` solo dopo il 201 di Brevo, un timeout e' `esito_incerto` e ferma quel cliente finche' l'admin non lo chiarisce. Area admin: `routers/invio_commercialista.py` (scheda cliente → collega la P.IVA cercando il company_id, email, consenso, prova a vuoto, invio, reinvio, chiarimento degli esiti incerti; scrive solo richieste, e traduce i rifiuti del DB), componente `apps/web/src/components/admin/invio-commercialista.tsx`, logica pura e percorsi ammessi dal proxy in `apps/web/src/lib/invio-commercialista.ts`. Tabelle e vincoli: migration `20260925113943_invio_commercialista.sql` |
 | `routing_coda.py` | Il cliente di una fattura SDI deciso dall'XML quando il webhook non l'ha potuto leggere: gemello Python del webhook, tenuto allineato da `routing_parita.json` |
 | `notification_inbox_service.py` | Costruisce le notifiche |
 | `auth_service.py` / `session_service.py` | Auth custom (non Supabase Auth) |
