@@ -912,7 +912,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Prima del push che la porta**: applicare la migration (senza, la pagina
 >   Impostazioni va in 500) e impostare `EMAIL_DISISCRIZIONE_SECRET` su Railway.
 >   `EMAIL_SETTIMANALE_ATTIVA` resta assente fino alla 7c (privacy). **Non
->   pushato.**
+>   pushato.** *Secondo giro della review*: CHIUSA, con tre mutanti suoi
+>   sopravvissuti — un errore vero del registro contato come «settimana gia'
+>   gestita» (i miei test sostituivano l'intera funzione invece di farla
+>   fallire dentro), la preferenza fissa a «accesa» in `/api/account/me` e
+>   tolta dall'export art. 20. Chiusi con 4 test (47 mutanti in tutto).
 
 ---
 

@@ -291,6 +291,8 @@ class _Q:
     def execute(self):
         sb = self.sb
         if self._op == "insert":
+            if sb.errore_insert is not None:
+                raise sb.errore_insert
             chiave = (self._dati["user_id"], self._dati["settimana"])
             if chiave in sb.registro:
                 raise Exception('duplicate key value violates unique constraint (23505)')
@@ -314,6 +316,7 @@ class _SB:
         self.utenti, self.sedi = utenti, sedi
         self.registro: Dict[tuple, Dict[str, Any]] = {}
         self.scritture: List[tuple] = []
+        self.errore_insert: Exception | None = None
 
     def table(self, nome):
         return _Q(self, nome)
@@ -453,6 +456,21 @@ def test_un_errore_del_registro_senza_niente_da_dire_non_ferma_gli_altri(monkeyp
     assert r["errori"] == 1 and r["niente_da_dire"] == 1 and invii == []
 
 
+@pytest.mark.parametrize("sezioni", [None, [lambda d, g: None]], ids=["con-frasi", "niente-da-dire"])
+def test_un_errore_vero_del_registro_e_un_errore_non_una_settimana_gia_gestita(monkeypatch, invii, sezioni):
+    """Il ramo dentro `_prendi_la_settimana`: solo il duplicato (23505) vuol dire
+    «gia' gestita». Un timeout contato come gia' gestita toglierebbe l'avviso
+    Telegram e il cliente perderebbe la settimana in silenzio (mutante
+    sopravvissuto alla review del 24/09: gli altri test sostituivano l'intera
+    funzione)."""
+    monkeypatch.setenv(svc.ENV_INVIO_ATTIVO, "1")
+    sb = _sb()
+    sb.errore_insert = Exception("canceling statement due to statement timeout")
+    r = svc.esegui(sb, adesso=LUNEDI_7, dry_run=False, sezioni=sezioni)
+    assert invii == []
+    assert r["errori"] == 2 and r["gia_gestite"] == 0
+
+
 def test_solo_un_utente(monkeypatch, invii):
     monkeypatch.setenv(svc.ENV_INVIO_ATTIVO, "1")
     svc.esegui(_sb(), adesso=LUNEDI_7, dry_run=False, solo_user_id=UID_B)
@@ -557,6 +575,53 @@ def test_i_tre_ingressi_sono_montati_e_dietro_le_guardie():
 
 
 # ── La preferenza nelle Impostazioni ────────────────────────────────────────
+
+def _account_me(monkeypatch, riga):
+    from unittest.mock import MagicMock
+    from services.routers import account
+    sb = MagicMock()
+    q = sb.table.return_value
+    for m in ("select", "eq", "single", "is_", "gte"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=riga)
+    monkeypatch.setattr(account, "_resolve_user_from_token", lambda a: {"id": UID, "email": "a@b.it"})
+    monkeypatch.setattr(account, "_get_supabase_client", lambda: sb)
+    monkeypatch.setattr(account, "_resolve_ristorante_id", lambda u, s: None)
+    monkeypatch.setattr(account, "_chat_quota_view", lambda u, s, r: (0, 0, False))
+    monkeypatch.setattr(account, "_is_admin_email", lambda e: False)
+    return account.account_me(authorization="Bearer x"), sb
+
+
+@pytest.mark.parametrize("valore, atteso", [(False, False), (True, True), (None, True)])
+def test_le_impostazioni_mostrano_la_preferenza_vera(monkeypatch, valore, atteso):
+    """L'interruttore delle Impostazioni legge `/api/account/me`: un valore
+    fisso a True mostrerebbe «accesa» a chi si e' disiscritto (mutante
+    sopravvissuto alla review del 24/09). None = colonna al default."""
+    riga = {"email": "a@b.it", "email_settimanale": valore}
+    r, sb = _account_me(monkeypatch, riga)
+    assert r["email_settimanale"] is atteso
+    colonne = sb.table.return_value.select.call_args_list[0].args[0]
+    assert "email_settimanale" in colonne
+
+
+def test_l_export_art_20_porta_la_preferenza(monkeypatch):
+    """La preferenza e' un dato dell'account come il tema: l'export deve
+    chiederla al DB (mutante sopravvissuto alla review del 24/09)."""
+    from unittest.mock import MagicMock
+    from services.routers import account
+    sb = MagicMock()
+    q = sb.table.return_value
+    for m in ("select", "eq", "limit", "order", "in_", "range"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=[])
+    monkeypatch.setattr(account, "_resolve_user_from_token", lambda a: {"id": UID})
+    monkeypatch.setattr(account, "_get_supabase_client", lambda: sb)
+    monkeypatch.setattr(account, "_resolve_ristorante_id", lambda u, s: None)
+    account.account_esporta_dati(authorization="Bearer x")
+    selezioni = [c.args[0] for c in q.select.call_args_list if c.args]
+    profilo = [c for c in selezioni if "privacy_accepted_at" in c]
+    assert profilo and "email_settimanale" in profilo[0], selezioni
+
 
 def test_la_preferenza_si_salva_dalle_impostazioni(monkeypatch):
     from services.routers import account

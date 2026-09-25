@@ -8,7 +8,7 @@
 --
 -- REGISTRO. Una riga per (utente, settimana), UNIQUE: e' la garanzia che nessuno
 -- riceva due email nella stessa settimana, anche se il cron riparte, gira due
--- volte (lo fa di proposito: 05:30 e 06:30 UTC, per il cambio d'ora) o un
+-- volte (lo fa di proposito: 05:35 e 06:35 UTC, per il cambio d'ora) o un
 -- operatore lo lancia a mano. Chi invia prima INSERISCE la riga e solo se
 -- l'insert riesce spedisce: il vincolo decide, non un controllo in Python fra
 -- una lettura e una scrittura.
