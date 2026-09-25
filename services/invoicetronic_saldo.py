@@ -5,9 +5,10 @@ ogni GET su /receive, anche per documenti gia' scaricati. Il webhook segna la
 fattura `failed`, il worker ritenta 8 volte con attese che raddoppiano fino a
 un'ora e in circa 2 ore ogni fattura in arrivo diventa `dead` — per TUTTI i
 clienti, senza che nessuno lo sappia. Le fatture non sono perse (restano su
-Invoicetronic 2 anni), ma quelle fermate al webhook non hanno il cliente e oggi
-nessuno strumento le rimette in flusso: conta ricaricare presto, perche' ne
-restino ferme il meno possibile.
+Invoicetronic 2 anni): dopo la ricarica quelle ancora in coda ripartono da
+sole, quelle gia' `dead` si rimettono in coda con «Riprova». Il worker le
+riscarica e, se il webhook non ne aveva letto il cliente, lo decide dall'XML
+(services/routing_coda.py, passo 0-bis).
 
 Due strade, indipendenti:
   - controllo periodico di GET /status dal queue-worker (`controlla_saldo`,
@@ -174,7 +175,7 @@ def testo_saldo_esaurito(rimaste: int) -> str:
     return (
         f"🚨 Saldo Invoicetronic ESAURITO ({rimaste} operazioni).\n"
         "Le fatture in arrivo non si scaricano piu' e in circa 2 ore finiscono in errore.\n"
-        "Dopo la ricarica quelle gia' ferme non ripartono da sole: runbook incidenti §4bis."
+        "Dopo la ricarica: quelle finite in errore si rimettono in coda con Riprova (Admin → Flusso dati), runbook incidenti §4bis."
     )
 
 
@@ -297,7 +298,7 @@ def avvisa_saldo_esaurito(origine: str, *, orologio: Callable[[], float] = time.
             "🚨 Invoicetronic ha rifiutato un download per saldo esaurito "
             f"({CODICE_SALDO_ESAURITO}, origine: {origine}).\n"
             "Le fatture in arrivo non si scaricano piu'.\n"
-            "Dopo la ricarica quelle gia' ferme non ripartono da sole: runbook incidenti §4bis."
+            "Dopo la ricarica: quelle finite in errore si rimettono in coda con Riprova (Admin → Flusso dati), runbook incidenti §4bis."
         )
         logger.error("Invoicetronic: download rifiutato per saldo esaurito (origine %s)", origine)
         if _invia_telegram(testo):

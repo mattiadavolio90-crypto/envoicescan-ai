@@ -154,20 +154,26 @@ in arrivo è `dead`, per tutti i clienti. Non è persa: Invoicetronic la conserv
    fattura in più da recuperare. La conferma che è ripartito è il saldo nel
    dashboard; il messaggio «di nuovo sopra soglia» arriva solo se il queue-worker
    non è stato riavviato dopo l'avviso (lo stato degli avvisi vive nel processo).
-2. **Le fatture già ferme NON ripartono da sole, e «Riprova» non basta.** Il webhook
-   le ha salvate senza cliente (`user_id` NULL, `piva_raw` `UNKNOWN`) perché senza
-   saldo non ha potuto leggere l'XML: il worker lo riscarica, ma poi si ferma a
-   «Tenant non risolto». Un recupero automatico ancora non c'è. **Non assegnare il
-   cliente a mano** nella riga di coda: il worker salva la fattura sul cliente
-   scritto lì senza ricontrollare la P.IVA dell'XML. Per contarle:
+2. **Le fatture ferme.** Quelle ancora `failed` ripartono da sole al tentativo
+   successivo del worker. Quelle già `dead` si rimettono in coda con **Riprova**
+   (Admin → Flusso dati): nella scheda del cliente se il cliente è noto, fra le
+   «P.IVA non riconosciute» se il webhook non ha fatto in tempo a leggerlo. Il worker
+   riscarica l'XML e, se la riga è senza cliente, lo decide dalla fattura come il
+   webhook (`services/routing_coda.py`):
+   - una sede, o più sedi e un indirizzo che decide → la fattura entra;
+   - più sedi e nessun indirizzo che decide → finisce fra le «da assegnare»;
+   - P.IVA di nessuna sede → «P.IVA non riconosciute», con «Assegna a…»;
+   - P.IVA su sedi di account diversi, o letta in due modi diversi nell'XML → resta
+     in errore con quel motivo: decide l'admin. Non assegnare il cliente a mano
+     nella riga di coda: il percorso della coda non ricontrolla la P.IVA dell'XML.
+
+   Per contarle:
    ```sql
    SELECT id, status, user_id, created_at FROM fatture_queue
    WHERE payload_meta->>'api_error_code' = 'usage_limit_exceeded'
       OR last_error LIKE '%usage_limit_exceeded%'
    ORDER BY created_at;
    ```
-   Le righe **con** `user_id` valorizzato (fermate dal worker, non dal webhook) il
-   cliente ce l'hanno: per quelle, dopo la ricarica, «Riprova» funziona.
 
 «Non riesco a leggere il saldo» (due controlli falliti di fila): quasi sempre
 `INVOICETRONIC_API_KEY` assente o scaduta sul queue-worker. Soglia e intervallo:

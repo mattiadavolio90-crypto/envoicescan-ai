@@ -60,6 +60,7 @@ from config.constants import CATEGORIA_NON_CLASSIFICATA, SETTORE_RETAIL
 from services.db_service import aggiorna_categoria_fatture, filter_active
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
 from services.invoicetronic_saldo import SaldoInvoicetronicEsaurito, avvisa_saldo_esaurito, e_saldo_esaurito
+from services import routing_coda
 from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
 
 try:
@@ -848,9 +849,9 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
         # xml_content è NULL: purgato (GDPR), non salvato, o 404 transitorio in
         # fase di webhook. Fallback a cascata:
         #   1. xml_url (se la Edge Function l'aveva memorizzato)
-        #   2. API Invoicetronic via resource_id (copre il 404 transitorio —
-        #      ma solo se il webhook aveva gia' risolto il cliente: con user_id
-        #      NULL l'XML scaricato si ferma piu' sotto a «Tenant non risolto»;
+        #   2. API Invoicetronic via resource_id (copre il 404 transitorio;
+        #      se il webhook non aveva potuto decidere il cliente, lo decide
+        #      _risolvi_cliente piu' sotto, dall'XML scaricato;
         #      il webhook arriva prima che /receive/{id} sia disponibile)
         if xml_url:
             xml_content = _fetch_xml_from_url(xml_url)
@@ -858,9 +859,13 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
             resource_id = payload_meta.get("resource_id")
             if resource_id is not None:
                 try:
-                    xml_content = _fetch_xml_via_api(resource_id)
+                    scaricato = _scarica_via_api(resource_id)
                 except SaldoInvoicetronicEsaurito as exc:
                     return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=str(exc))
+                if scaricato:
+                    xml_content, nome_sdi = scaricato
+                    if nome_sdi and not payload_meta.get("nome_file"):
+                        payload_meta = {**payload_meta, "nome_file": nome_sdi}
         if not xml_content:
             return ItemResult(
                 queue_id=queue_id,
@@ -910,6 +915,15 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
                 "(sanitized=%s, resource_id=%s) — si tenta comunque il parsing",
                 queue_id, payload_meta.get("payload_sanitized"), payload_meta.get("resource_id"),
             )
+
+    # ── Cliente: se il webhook non l'ha potuto leggere, lo decide l'XML ───────
+    # Prima del parsing: memoria e settore del cliente (regola 7) dipendono da
+    # user_id, e con user_id NULL un negozio verrebbe letto come un ristorante.
+    if not user_id and not ristorante_id:
+        risolto = _risolvi_cliente(supabase, item, xml_content, payload_meta, worker_id)
+        if isinstance(risolto, ItemResult):
+            return risolto
+        user_id, ristorante_id, piva_raw, payload_meta = risolto
 
     # ── Costruisci un file-like per il parser ─────────────────────────────────
     # estrai_dati_da_xml() accetta UploadedFile (Streamlit) oppure BytesIO
@@ -1211,6 +1225,138 @@ def _make_file_like(data: bytes, name: str) -> "_FakeName":
     return _FakeName(data, name)
 
 
+def _aggiorna_riga_in_lavorazione(supabase, queue_id: int, worker_id: Optional[str],
+                                  valori: dict[str, Any]) -> bool | None:
+    """UPDATE della riga solo se e' ancora in lavorazione da questo worker.
+
+    True = scritta; False = 0 righe (la riga e' passata di mano: timeout del
+    job, lock rilasciato, riconsegna del webhook); None = errore del database.
+    schedule_retry e mark_queue_item_done non guardano ne' lo stato ne' il lock:
+    questa guardia e' l'unica cosa che impedisce a due scritture di
+    sovrapporsi.
+    """
+    try:
+        q = (
+            supabase.table("fatture_queue")
+            .update(valori)
+            .eq("id", queue_id)
+            .eq("status", "processing")
+        )
+        if worker_id:
+            q = q.eq("locked_by", worker_id)
+        return bool(q.execute().data)
+    except Exception as exc:
+        logger.error("[item=%d] aggiornamento della riga in lavorazione fallito: %s", queue_id, exc)
+        return None
+
+
+def _risolvi_cliente(supabase, item: dict[str, Any], xml_content: Any,
+                     payload_meta: dict[str, Any], worker_id: Optional[str]):
+    """Il cliente di una riga che il webhook non ha potuto leggere (user_id NULL).
+
+    Decide come il webhook (services/routing_coda.py) e ritorna
+    (user_id, ristorante_id, piva, payload_meta) se la fattura si puo' salvare
+    subito, altrimenti un ItemResult:
+      - `skip` dopo aver scritto la riga in `unknown_tenant` (P.IVA di nessuno:
+        riparte da sola quando il cliente registra la sede) o in `da_assegnare`
+        (piu' sedi e nessun indirizzo decisivo: sceglie il cliente);
+      - `retry` quando non si puo' decidere senza rischiare il cliente sbagliato:
+        P.IVA letta in due modi diversi, P.IVA su piu' account, sedi illeggibili.
+    Le righe scritte azzerano i tentativi: resolve_unknown_tenant e
+    assegna_fattura_a_sede non lo fanno, e una riga rimessa `pending` con i
+    tentativi esauriti non verrebbe piu' prelevata.
+    """
+    import hashlib
+    from datetime import datetime, timezone
+
+    queue_id = item["id"]
+    event_id = item["event_id"]
+
+    def _ferma(motivo: str) -> ItemResult:
+        logger.warning("[item=%d] Tenant non risolto: %s", queue_id, motivo)
+        return ItemResult(queue_id=queue_id, event_id=event_id, status="retry",
+                          error=f"Tenant non risolto: {motivo}")
+
+    xml = xml_content.decode("utf-8", errors="replace") if isinstance(xml_content, bytes) else str(xml_content)
+    piva = routing_coda.piva_destinatario_verificata(xml)
+    if piva is None:
+        return _ferma("P.IVA del destinatario assente, o letta in due modi diversi nell'XML")
+    try:
+        sedi = (
+            supabase.table("ristoranti")
+            .select("user_id, id, indirizzo_match, nome_ristorante")
+            .eq("partita_iva", piva)
+            .eq("attivo", True)
+            .order("created_at", desc=True)
+            .execute()
+        ).data or []
+    except Exception as exc:
+        return _ferma(f"lettura delle sedi fallita ({type(exc).__name__})")
+
+    decisione = routing_coda.decidi_cliente(xml, sedi)
+    esito = decisione["esito"]
+    if esito == "piu_account":
+        return _ferma(
+            f"la P.IVA del destinatario e' su {decisione['sedi_count']} sedi di account "
+            "diversi: serve una scelta dell'admin"
+        )
+
+    meta = dict(payload_meta)
+    for chiave, valore in routing_coda.estrai_meta_documento(xml).items():
+        meta.setdefault(chiave, valore)
+    indirizzo = routing_coda.estrai_indirizzo_destinatario(xml)
+    if indirizzo:
+        meta.setdefault("indirizzo_destinatario", indirizzo)
+    meta.setdefault("nome_file", f"webhook_{event_id}.xml")
+    for chiave in ("routing", "indirizzo_fallback"):
+        if chiave in decisione:
+            meta[chiave] = decisione[chiave]
+    meta["cliente_dal_worker"] = {"esito": esito, "quando": datetime.now(timezone.utc).isoformat()}
+
+    if esito == "assegnata":
+        sede = next((s for s in sedi if str(s.get("id")) == decisione["ristorante_id"]), None)
+        if sede is None or str(sede.get("user_id")) != decisione["user_id"]:
+            return _ferma("la sede scelta non appartiene al cliente scelto")
+        scritta = _aggiorna_riga_in_lavorazione(supabase, queue_id, worker_id, {
+            "user_id": decisione["user_id"],
+            "ristorante_id": decisione["ristorante_id"],
+            "piva_raw": piva,
+            "payload_meta": meta,
+        })
+        if scritta is None:
+            return _ferma("aggiornamento della coda fallito")
+        if not scritta:
+            return ItemResult(queue_id=queue_id, event_id=event_id, status="skip",
+                              error="riga non piu' in lavorazione da questo worker")
+        logger.info("[item=%d] cliente deciso dall'XML (%s)", queue_id,
+                    (decisione.get("routing") or {}).get("source", "sede unica"))
+        return decisione["user_id"], decisione["ristorante_id"], piva, meta
+
+    stato = "unknown_tenant" if esito == "sconosciuta" else "da_assegnare"
+    scritta = _aggiorna_riga_in_lavorazione(supabase, queue_id, worker_id, {
+        "status": stato,
+        "user_id": decisione.get("user_id"),
+        "ristorante_id": None,
+        "piva_raw": piva,
+        "xml_content": xml,
+        "xml_hash": hashlib.sha256(xml.encode("utf-8")).hexdigest(),
+        "payload_meta": meta,
+        "attempt_count": 0,
+        "locked_at": None,
+        "locked_by": None,
+        "next_retry_at": datetime.now(timezone.utc).isoformat(),
+        "last_error": None,
+    })
+    if scritta is None:
+        return _ferma("aggiornamento della coda fallito")
+    if not scritta:
+        return ItemResult(queue_id=queue_id, event_id=event_id, status="skip",
+                          error="riga non piu' in lavorazione da questo worker")
+    logger.info("[item=%d] cliente dall'XML: riga passata a %s", queue_id, stato)
+    return ItemResult(queue_id=queue_id, event_id=event_id, status="skip",
+                      error=f"passata a {stato}")
+
+
 def _fetch_xml_from_url(url: str) -> str | None:
     """
     Fallback: ri-scarica XML da xml_url (es. dopo purge GDPR anticipata).
@@ -1311,6 +1457,11 @@ def _bytes_to_xml_str(raw: bytes) -> str | None:
 
 
 def _fetch_xml_via_api(resource_id: Any) -> str | None:
+    scaricato = _scarica_via_api(resource_id)
+    return scaricato[0] if scaricato else None
+
+
+def _scarica_via_api(resource_id: Any) -> tuple[str, str | None] | None:
     """
     Fallback di secondo livello: ricostruisce l'endpoint API Invoicetronic dal
     resource_id e riscarica l'XML.
@@ -1321,8 +1472,9 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
     'dead' anche se l'API risponde correttamente pochi secondi dopo.
 
     Replica la logica di estrazione payload della Edge Function (campo `payload`
-    plain o base64). Ritorna None se manca l'API key, il resource_id non e'
-    valido, o l'API non restituisce un XML. Solleva SaldoInvoicetronicEsaurito
+    plain o base64). Ritorna (xml, file_name) — il nome del file SDI serve al
+    controllo dei doppioni e al riparto dalla coda — o None se manca l'API key,
+    il resource_id non e' valido, o l'API non restituisce un XML. Solleva SaldoInvoicetronicEsaurito
     se Invoicetronic rifiuta per saldo: non e' un problema della fattura, e il
     motivo deve arrivare fino a last_error.
     """
@@ -1369,8 +1521,8 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
         if e_saldo_esaurito(exc.code, corpo):
             avvisa_saldo_esaurito("worker")
             raise SaldoInvoicetronicEsaurito(
-                "saldo Invoicetronic esaurito (usage_limit_exceeded): "
-                "dopo la ricarica vedi runbook incidenti §4bis"
+                "saldo Invoicetronic esaurito (usage_limit_exceeded): dopo la ricarica "
+                "riparte da sola; se e' gia' dead, Riprova (runbook incidenti §4bis)"
             ) from None
         logger.warning("Fallback API fetch fallito per resource_id=%s: %s", resource_id, exc)
         return None
@@ -1380,6 +1532,11 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
 
     if not isinstance(data, dict):
         return None
+
+    file_name = data.get("file_name") if isinstance(data.get("file_name"), str) else None
+
+    def _con_nome(xml: str | None) -> tuple[str, str | None] | None:
+        return (xml, file_name) if xml else None
 
     payload = data.get("payload")
     if isinstance(payload, str) and payload.strip():
@@ -1391,8 +1548,8 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
             except Exception as exc:
                 logger.warning("Fallback API: decode base64 fallito: %s", exc)
                 return None
-            return _bytes_to_xml_str(raw)
-        return payload.strip()
+            return _con_nome(_bytes_to_xml_str(raw))
+        return _con_nome(payload.strip())
 
     xml_file = data.get("xml_file")
     if isinstance(xml_file, str) and xml_file.strip():
@@ -1402,11 +1559,11 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
         except Exception as exc:
             logger.warning("Fallback API: decode xml_file fallito: %s", exc)
             return None
-        return _bytes_to_xml_str(raw)
+        return _con_nome(_bytes_to_xml_str(raw))
 
     nested_url = data.get("xml_url")
     if isinstance(nested_url, str) and nested_url.strip():
-        return _fetch_xml_from_url(nested_url.strip())
+        return _con_nome(_fetch_xml_from_url(nested_url.strip()))
 
     logger.warning("Fallback API: response OK ma senza payload/xml_file/xml_url (resource_id=%s)", resource_id)
     return None

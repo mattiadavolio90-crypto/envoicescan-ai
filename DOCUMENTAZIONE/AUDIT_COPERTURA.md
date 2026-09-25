@@ -1042,6 +1042,35 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Suite `-m "not sql"`: 16.314 passed, 48 skipped** (prima dei ritocchi della
 >   review; 553 `-m sql` non rilanciati: nessun SQL toccato); **Deno 126**. Da
 >   deployare: push (queue-worker) + Edge Function a mano.
+>
+> - **25/09/2026 — passo 0-bis del piano «invio XML al commercialista»: le
+>   fatture che il webhook non ha potuto leggere ora ripartono.** Il residuo
+>   aperto dal passo 0: una GET a Invoicetronic fallita nel webhook (saldo, 404,
+>   timeout) lascia la riga senza cliente, e il worker — riscaricato l'XML — si
+>   fermava a «Tenant non risolto»; «Riprova» la riportava a `dead`. Prima la
+>   mappa, in sola lettura, con un workflow di 4 lettori e un critico: il gemello
+>   Python (`multisede_routing`) non e' il webhook (niente candidati di ripiego,
+>   che risolvono 26 fatture OFFSIDE su 34; niente CF; P.IVA normalizzata in un
+>   altro modo). Fatto: `services/routing_coda.py`, porting riga per riga del
+>   routing del webhook, con `routing_parita.json` letto da Deno e da Python;
+>   nel worker `_risolvi_cliente` PRIMA del parsing (memoria e settore del
+>   cliente), una sola UPDATE guardata da stato e lock, tentativi azzerati sulle
+>   righe parcheggiate (senza, resolve_unknown_tenant le rimetteva pending
+>   all'8° tentativo e nessuno le prelevava piu'); il nome SDI vero (serve ai
+>   doppioni e al riparto); «Riprova» anche sulle fatture senza cliente nel
+>   pannello. **Due scarti voluti dal webhook, verso il non assegnare**: la
+>   P.IVA si legge con regex E parser XML e si assegna solo se coincidono (il
+>   file di parita' mostra la regex del webhook ingannata da un commento e dal
+>   RappresentanteFiscale); una P.IVA su piu' account non si assegna (il webhook
+>   prende l'utente della sede piu' recente e la sede dal punteggio). Corretto
+>   un commento falso del webhook sul caso `DE`+11 cifre. **Mutanti: 30, tutti
+>   uccisi**, nella copia del repo in scratchpad (non piu' sul working tree
+>   condiviso): al primo giro 3 sopravvissuti — un confine a 0,40 senza test,
+>   un mutante invalido riscritto, una difesa irraggiungibile resa testabile.
+>   Test: +77 `test_routing_coda`, +17 `test_worker_cliente_dall_xml`, +6 `-m
+>   sql` (vincoli veri, due clienti, il trigger che riscatta una riga
+>   parcheggiata), +10 `test_coda_fatture_frontend`, +7 Deno (133). Nessuna
+>   migration. Il deploy e' lo stesso del passo 0 (push + Edge Function a mano).
 
 ---
 

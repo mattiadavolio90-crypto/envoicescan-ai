@@ -89,11 +89,11 @@ def _item(xml_content, **meta):
     }
 
 
-_ESAURITO = SaldoInvoicetronicEsaurito("saldo Invoicetronic esaurito (usage_limit_exceeded): dopo la ricarica vedi runbook incidenti §4bis")
+_ESAURITO = SaldoInvoicetronicEsaurito("saldo Invoicetronic esaurito (usage_limit_exceeded): dopo la ricarica riparte da sola; se e' gia' dead, Riprova (runbook incidenti §4bis)")
 
 
 def test_xml_assente_e_saldo_esaurito_va_in_retry_col_motivo():
-    with mock.patch.object(qp, "_fetch_xml_via_api", side_effect=_ESAURITO), \
+    with mock.patch.object(qp, "_scarica_via_api", side_effect=_ESAURITO), \
          mock.patch.object(qp, "estrai_dati_da_xml") as parser:
         res = qp._process_item(mock.MagicMock(), _item(None, resource_id=96551))
     assert res.status == "retry"

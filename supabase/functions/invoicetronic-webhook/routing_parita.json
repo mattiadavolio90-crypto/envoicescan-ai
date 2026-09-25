@@ -1,0 +1,308 @@
+{
+  "_nota": "Generato dalle funzioni del webhook (index.ts): la verita' e' TypeScript. Lo leggono saldo/routing test Deno (routing_parita_test.ts) e tests/test_routing_coda.py. Rigenerare solo se cambia il webhook, e poi far passare Python.",
+  "normalizza_piva": [
+    {
+      "input": "IT07863990961",
+      "atteso": "07863990961"
+    },
+    {
+      "input": "it07863990961",
+      "atteso": "07863990961"
+    },
+    {
+      "input": "078 639 909 61",
+      "atteso": "07863990961"
+    },
+    {
+      "input": "DE12345678903",
+      "atteso": "12345678903"
+    },
+    {
+      "input": "DE123456789",
+      "atteso": "DE123456789"
+    },
+    {
+      "input": "0786399096",
+      "atteso": "0786399096"
+    },
+    {
+      "input": "07863990961",
+      "atteso": "07863990961"
+    },
+    {
+      "input": "IT 0786-399-0961",
+      "atteso": "07863990961"
+    }
+  ],
+  "piva_destinatario": [
+    {
+      "nome": "standard",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><Sede><Indirizzo>Via Roma</Indirizzo><NumeroCivico>5</NumeroCivico><CAP>20100</CAP><Comune>Milano</Comune><Nazione>IT</Nazione></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "07863990961"
+    },
+    {
+      "nome": "prefisso_e_spazi",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>IT 0786 3990 961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "07863990961"
+    },
+    {
+      "nome": "solo_cf_persona",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><CodiceFiscale>AAABBB00C11D222E</CodiceFiscale><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "AAABBB00C11D222E"
+    },
+    {
+      "nome": "solo_cf_numerico",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><CodiceFiscale>07863990961</CodiceFiscale><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "07863990961"
+    },
+    {
+      "nome": "cf_minuscolo",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><CodiceFiscale>aaabbb00c11d222e</CodiceFiscale><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "aaabbb00c11d222e"
+    },
+    {
+      "nome": "trattino_e_rappresentante",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>078-63990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><RappresentanteFiscale><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>11111111111</IdCodice></IdFiscaleIVA></RappresentanteFiscale></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "11111111111"
+    },
+    {
+      "nome": "senza_cessionario",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": null
+    },
+    {
+      "nome": "prefisso_namespace",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><ns:CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></ns:CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": null
+    },
+    {
+      "nome": "commento_ingannevole",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><!-- <CessionarioCommittente><IdCodice>33333333333</IdCodice></CessionarioCommittente> --><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "33333333333"
+    },
+    {
+      "nome": "cdata",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice><![CDATA[07863990961]]></IdCodice></IdFiscaleIVA></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": null
+    },
+    {
+      "nome": "estera_con_11_cifre",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>DE12345678903</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "12345678903"
+    },
+    {
+      "nome": "estera_corta",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>DE123456789</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "DE123456789"
+    },
+    {
+      "nome": "idcodice_minuscolo",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>it07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "07863990961"
+    },
+    {
+      "nome": "soglia_esatta_cf_11",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice></IdCodice></IdFiscaleIVA><CodiceFiscale>07863990961</CodiceFiscale><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "07863990961"
+    }
+  ],
+  "indirizzo_destinatario": [
+    {
+      "nome": "con_sede",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><Sede><Indirizzo>Via Roma</Indirizzo><NumeroCivico>5</NumeroCivico><CAP>20100</CAP><Comune>Milano</Comune><Nazione>IT</Nazione></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "Via Roma 5 20100 Milano"
+    },
+    {
+      "nome": "entita",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><Sede><Indirizzo>Via Rossi &amp; Bianchi</Indirizzo><NumeroCivico>3</NumeroCivico><CAP>20100</CAP><Comune>Milano</Comune><Nazione>IT</Nazione></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "Via Rossi &amp; Bianchi 3 20100 Milano"
+    },
+    {
+      "nome": "senza_sede_stabile_org",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><StabileOrganizzazione><Indirizzo>Via X</Indirizzo><CAP>20100</CAP><Comune>Milano</Comune></StabileOrganizzazione></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "Via X 20100 Milano"
+    },
+    {
+      "nome": "tag_minuscoli",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><Sede><indirizzo>Corso Como</indirizzo><cap>20154</cap><comune>Milano</comune></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": "Corso Como 20154 Milano"
+    },
+    {
+      "nome": "sede_vuota",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><Sede></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": null
+    },
+    {
+      "nome": "senza_cessionario",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": null
+    }
+  ],
+  "indirizzo_candidati": [
+    {
+      "nome": "completo",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><Sede><Indirizzo>Via Roma</Indirizzo><NumeroCivico>5</NumeroCivico><CAP>20100</CAP><Comune>Milano</Comune><Nazione>IT</Nazione></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD01</TipoDocumento><Data>2026-09-01</Data><Numero>A/12</Numero><ImportoTotaleDocumento>1234.50</ImportoTotaleDocumento><Causale>abc</Causale><Causale>Consegna presso Viale Monza 10 Milano</Causale></DatiGeneraliDocumento></DatiGenerali><DatiBeniServizi><DettaglioLinee><Descrizione>Via Roma 5 20100 Milano</Descrizione></DettaglioLinee><DettaglioLinee><Descrizione>Birra alla spina</Descrizione></DettaglioLinee><DettaglioLinee><Descrizione>Birra alla spina</Descrizione></DettaglioLinee><AltriDatiGestionali><RiferimentoTesto>Sede operativa Piazza Duomo 1</RiferimentoTesto></AltriDatiGestionali></DettaglioLinee></DatiBeniServizi></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": [
+        "Via Roma 5 20100 Milano",
+        "Sede operativa Piazza Duomo 1",
+        "Consegna presso Viale Monza 10 Milano",
+        "Birra alla spina"
+      ]
+    },
+    {
+      "nome": "senza_body",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici><Sede><Indirizzo>Via Roma</Indirizzo><NumeroCivico>5</NumeroCivico><CAP>20100</CAP><Comune>Milano</Comune><Nazione>IT</Nazione></Sede></CessionarioCommittente></FatturaElettronicaHeader></p:FatturaElettronica>",
+      "atteso": [
+        "Via Roma 5 20100 Milano"
+      ]
+    }
+  ],
+  "normalizza_indirizzo": [
+    {
+      "input": "V.le Roma 5",
+      "atteso": "viale roma 5"
+    },
+    {
+      "input": "VIA ROMA, 5 20100 MILANO",
+      "atteso": "via roma 5 20100 milano"
+    },
+    {
+      "input": "P.zza Duomo 1",
+      "atteso": "piazza duomo 1"
+    },
+    {
+      "input": "Pza Duomo",
+      "atteso": "piazza duomo"
+    },
+    {
+      "input": "C.so Buenos Aires 3",
+      "atteso": "corso buenos aires 3"
+    },
+    {
+      "input": "V.ROMA 5",
+      "atteso": "viaroma 5"
+    },
+    {
+      "input": "STR.GARIBALDI 3",
+      "atteso": "stradagaribaldi 3"
+    },
+    {
+      "input": "Vò 12",
+      "atteso": "via 12"
+    },
+    {
+      "input": "  via   roma  ",
+      "atteso": "via roma"
+    },
+    {
+      "input": "Via Rossi &amp; Bianchi",
+      "atteso": "via rossi amp bianchi"
+    }
+  ],
+  "similarita": [
+    {
+      "a": "via roma 5 milano",
+      "b": "via roma 5 20100 milano",
+      "atteso": 0.8888888888888888
+    },
+    {
+      "a": "",
+      "b": "via roma",
+      "atteso": 0
+    },
+    {
+      "a": "a b",
+      "b": "b c",
+      "atteso": 0.5
+    },
+    {
+      "a": "viale monza 10 milano",
+      "b": "viale monza 10 20127 milano",
+      "atteso": 0.8888888888888888
+    },
+    {
+      "a": "x",
+      "b": "x",
+      "atteso": 1
+    }
+  ],
+  "meta_documento": [
+    {
+      "nome": "standard",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD04</TipoDocumento><Data>2026-08-31</Data><Numero>NC 7</Numero><ImportoTotaleDocumento>12.50</ImportoTotaleDocumento></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {
+        "tipo_documento": "TD04",
+        "data_fattura": "2026-08-31",
+        "numero_fattura": "NC 7",
+        "importo_totale": 12.5,
+        "piva_cedente": "01234567890"
+      }
+    },
+    {
+      "nome": "virgola_italiana",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD04</TipoDocumento><Data>2026-08-31</Data><Numero>NC 7</Numero><ImportoTotaleDocumento>1.234,56</ImportoTotaleDocumento></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {
+        "tipo_documento": "TD04",
+        "data_fattura": "2026-08-31",
+        "numero_fattura": "NC 7",
+        "importo_totale": 1.234,
+        "piva_cedente": "01234567890"
+      }
+    },
+    {
+      "nome": "non_numerico",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD04</TipoDocumento><Data>2026-08-31</Data><Numero>NC 7</Numero><ImportoTotaleDocumento>abc</ImportoTotaleDocumento></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {
+        "tipo_documento": "TD04",
+        "data_fattura": "2026-08-31",
+        "numero_fattura": "NC 7",
+        "importo_totale": null,
+        "piva_cedente": "01234567890"
+      }
+    },
+    {
+      "nome": "senza_importo",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD04</TipoDocumento><Data>2026-08-31</Data><Numero>NC 7</Numero></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {
+        "tipo_documento": "TD04",
+        "data_fattura": "2026-08-31",
+        "numero_fattura": "NC 7",
+        "piva_cedente": "01234567890"
+      }
+    },
+    {
+      "nome": "esponente",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD04</TipoDocumento><Data>2026-08-31</Data><Numero>NC 7</Numero><ImportoTotaleDocumento>1e3</ImportoTotaleDocumento></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {
+        "tipo_documento": "TD04",
+        "data_fattura": "2026-08-31",
+        "numero_fattura": "NC 7",
+        "importo_totale": 1000,
+        "piva_cedente": "01234567890"
+      }
+    },
+    {
+      "nome": "punto_finale",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD04</TipoDocumento><Data>2026-08-31</Data><Numero>NC 7</Numero><ImportoTotaleDocumento>7.</ImportoTotaleDocumento></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {
+        "tipo_documento": "TD04",
+        "data_fattura": "2026-08-31",
+        "numero_fattura": "NC 7",
+        "importo_totale": 7,
+        "piva_cedente": "01234567890"
+      }
+    },
+    {
+      "nome": "tag_minuscolo",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><data>2026-01-01</data></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {
+        "piva_cedente": "01234567890"
+      }
+    },
+    {
+      "nome": "senza_cedente",
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica xmlns:p=\"http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2\" versione=\"FPR12\"><FatturaElettronicaHeader><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>07863990961</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Trattoria Prova</Denominazione></Anagrafica></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody></FatturaElettronicaBody></p:FatturaElettronica>",
+      "atteso": {}
+    }
+  ]
+}

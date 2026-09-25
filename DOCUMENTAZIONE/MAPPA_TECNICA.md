@@ -75,7 +75,8 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | `daily_briefing_service.py` | Briefing Home (cosa dire, in che ordine) |
 | `price_impact_service.py` | Alert prezzi per **impatto** (peso × aumento) |
 | `margine_service.py` | MOL, food cost, margini |
-| `multisede_routing.py` | Smista fatture fra sedi con la stessa P.IVA |
+| `multisede_routing.py` | Smista fatture fra sedi con la stessa P.IVA (upload manuale) |
+| `routing_coda.py` | Il cliente di una fattura SDI deciso dall'XML quando il webhook non l'ha potuto leggere: gemello Python del webhook, tenuto allineato da `routing_parita.json` |
 | `notification_inbox_service.py` | Costruisce le notifiche |
 | `auth_service.py` / `session_service.py` | Auth custom (non Supabase Auth) |
 

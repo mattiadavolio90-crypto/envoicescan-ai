@@ -676,16 +676,20 @@ export function isOtherWebhook(ev: NormalizedWebhookEvent): boolean {
 // pure): rimuove prefisso IT e separatori, MA solo se il risultato e' esattamente
 // 11 cifre. Per P.IVA estere o codici diversi ritorna il valore originale
 // invariato (no-op sui dati attuali, gia' 11 cifre pure).
-// Questa guardia sulle 11 cifre e' il motivo per cui qui NON si e' mai presentato
-// il difetto corretto il 29/8/2026 in utils/piva_validator.normalizza_piva, dove
-// il re.sub cancellava ogni lettera e faceva passare DE12345678903 per italiana.
-function normalizePivaForMatch(raw: string): string {
+// La guardia sulle 11 cifre ferma DE123456789 (9 cifre), non DE12345678903: 11
+// cifre dopo le lettere passano per italiane, come nel difetto corretto il 29/8/2026
+// in utils/piva_validator.normalizza_piva (provato: routing_parita.json,
+// «estera_con_11_cifre»). Nella FatturaPA il paese sta in <IdPaese>, non dentro
+// <IdCodice>: il caso non si e' visto. Il gemello Python, per le fatture che il
+// worker smista (services/routing_coda.py), assegna solo se anche un parser XML
+// legge la stessa P.IVA.
+export function normalizePivaForMatch(raw: string): string {
   const stripped = raw.replace(/^IT/i, '').replace(/[^0-9A-Za-z]/g, '')
   const digitsOnly = stripped.replace(/[^0-9]/g, '')
   return digitsOnly.length === 11 ? digitsOnly : raw
 }
 
-function extractPivaDestinatario(xml: string): string | null {
+export function extractPivaDestinatario(xml: string): string | null {
   // Isola il blocco CessionarioCommittente per evitare falsi match
   const blockMatch = xml.match(
     /<CessionarioCommittente\b[^>]*>([\s\S]*?)<\/CessionarioCommittente>/,
@@ -818,7 +822,7 @@ export function indirizzoSimilarity(a: string, b: string): number {
 // Estrae solo dati strutturati non personali per payload_meta.
 // Non vengono estratti nomi, indirizzi, IBAN o altri dati personali.
 
-function extractDocMeta(xml: string): Record<string, unknown> {
+export function extractDocMeta(xml: string): Record<string, unknown> {
   // Helper: primo tag match nel documento generico
   const tag = (n: string): string | undefined =>
     xml.match(new RegExp(`<${n}>\\s*([^<]+?)\\s*<\\/${n}>`))?.[1]
@@ -890,7 +894,7 @@ export async function notifyTelegramSaldoEsaurito(): Promise<void> {
   await inviaTelegram([
     `🚨 Invoicetronic ha rifiutato un download per saldo esaurito (${CODICE_SALDO_ESAURITO}, origine: webhook).`,
     "Le fatture in arrivo non si scaricano piu' e in circa 2 ore finiscono in errore.",
-    "Dopo la ricarica quelle gia' ferme non ripartono da sole: runbook incidenti §4bis.",
+    "Dopo la ricarica: quelle finite in errore si rimettono in coda con Riprova (Admin → Flusso dati), runbook incidenti §4bis.",
   ].join('\n'))
 }
 

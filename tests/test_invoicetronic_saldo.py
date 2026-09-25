@@ -204,10 +204,9 @@ def test_da_basso_a_esaurito_avvisa_subito():
     assert len(inviati) == 2
 
 
-def test_l_avviso_di_saldo_esaurito_non_promette_un_recupero_che_non_esiste():
+def test_l_avviso_di_saldo_esaurito_indica_il_recupero_che_esiste():
     testo = its.testo_saldo_esaurito(0)
-    assert "non ripartono da sole" in testo and "§4bis" in testo
-    assert "riprova" not in testo.lower()
+    assert "Riprova" in testo and "Flusso dati" in testo and "§4bis" in testo
 
 
 def test_da_esaurito_a_basso_non_riavvisa_prima_di_24_ore():
@@ -355,8 +354,7 @@ def test_avviso_403_al_massimo_ogni_6_ore(senza_avvisi_403_precedenti):
     assert invia.call_count == 2
     testo = invia.call_args.args[0]
     assert "usage_limit_exceeded" in testo and "§4bis" in testo and "worker" in testo
-    assert "non ripartono da sole" in testo
-    assert "riprova" not in testo.lower(), "Riprova non recupera le fatture fermate al webhook: non va consigliato"
+    assert "Riprova" in testo and "Flusso dati" in testo
 
 
 def test_avviso_403_non_consegnato_si_ritenta(senza_avvisi_403_precedenti):

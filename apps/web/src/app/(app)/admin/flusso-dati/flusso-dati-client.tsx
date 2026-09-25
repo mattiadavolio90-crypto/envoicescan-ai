@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RefreshCw, FileText, TrendingUp, Map, RotateCw, Link2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, Mail } from "lucide-react";
 import { RagioneSocialeClient } from "../ragione-sociale/ragione-sociale-client";
+import { azioneFatturaOrfana } from "@/lib/coda-fatture";
 
 // ─── Tipi ───────────────────────────────────────────────────────────────────
 type Sede = { id: string; nome_ristorante: string; partita_iva: string };
@@ -264,7 +265,9 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, ricaviImport
         <Card className="p-4 border-amber-500/40">
           <p className="text-sm font-medium mb-2">⚠ P.IVA non riconosciute ({fatture.orfane.length})</p>
           <p className="text-xs text-muted-foreground mb-3">
-            Fatture arrivate per P.IVA che non corrispondono a nessun ristorante. Assegnale a un cliente per sbloccarle.
+            Fatture senza cliente. Se la P.IVA è letta ma non è di nessun ristorante, assegnala a un cliente.
+            Se il download è fallito (per esempio con il saldo Invoicetronic esaurito), «Riprova»: la fattura
+            viene riscaricata e il cliente si decide dalla fattura stessa.
           </p>
           <div className="space-y-2">
             {fatture.orfane.map((p) => (
@@ -273,10 +276,16 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, ricaviImport
                   <span className="font-mono">{p.piva_raw}</span>
                   <span className="text-muted-foreground"> · {p.numero || "—"} · €{p.importo ?? "—"}</span>
                 </div>
-                <Button size="sm" variant="outline" disabled={busy === p.queue_id}
-                  onClick={() => { setAzione({ tipo: "piva", prob: p, userId: "" }); setSedeScelta(""); }}>
-                  Assegna a…
-                </Button>
+                {azioneFatturaOrfana(p.status) === "riprova" ? (
+                  <Button size="sm" variant="outline" disabled={busy === p.queue_id} onClick={() => setDaRiprovare(p)}>
+                    <RotateCw className="size-4 mr-1" /> Riprova
+                  </Button>
+                ) : azioneFatturaOrfana(p.status) === "assegna" ? (
+                  <Button size="sm" variant="outline" disabled={busy === p.queue_id}
+                    onClick={() => { setAzione({ tipo: "piva", prob: p, userId: "" }); setSedeScelta(""); }}>
+                    Assegna a…
+                  </Button>
+                ) : null}
               </div>
             ))}
           </div>
