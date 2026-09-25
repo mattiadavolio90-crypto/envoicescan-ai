@@ -54,6 +54,14 @@ instradata da Railway.
   allerta se la coda resta bloccata.
 - `WORKER_POLL_INTERVAL_SECONDS` (default 15), `WORKER_ERROR_BACKOFF_SECONDS`,
   `WORKER_MAX_BACKOFF_SECONDS`, `WORKER_ID_PREFIX`
+- `INVOICETRONIC_API_KEY`: recupero delle fatture via API e **controllo del saldo
+  crediti** ogni 6 ore (`services/invoicetronic_saldo.py`). A saldo zero si ferma
+  l'arrivo delle fatture di tutti i clienti.
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: gli avvisi del saldo (basso, esaurito,
+  illeggibile). Se una di queste chiavi manca, all'avvio il log del queue-worker lo
+  scrive come errore (`_segnala_configurazione_avvisi` in `worker/run.py`).
+- `INVOICETRONIC_SOGLIA_OPERAZIONI` (default 100): sotto questa soglia parte
+  l'avviso. `WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS` (default 21600).
 - Healthcheck del servizio: **DISABILITATO** (non espone HTTP).
 
 ## Ricreare un servizio da zero

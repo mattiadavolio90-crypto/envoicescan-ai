@@ -14,6 +14,7 @@
 | ⚠️ "worker LENTO" | `worker_latency_check.yml` (ogni 10 min) | Il worker Railway risponde ma sopra soglia (3s su `/health`, che non tocca nemmeno il DB) — i clienti probabilmente vedono già "Servizio non raggiungibile" |
 | 🚨 "Coda ricavi bloccata" | `ricavi_queue_monitor.yml` (ogni ora) | Il queue-worker non sta consumando `ricavi_email_queue` — gli incassi non entrano in app |
 | 🤖 "Agent notturno completato/FALLITO" | agent notturno (worker, ogni notte) | Riepilogo categorizzazione automatica; se FALLITO è un'anomalia da controllare |
+| ⚠️/🚨 "Saldo Invoicetronic basso / ESAURITO" | queue-worker (ogni 6 ore) e webhook (al primo 403) — **solo Telegram** | Crediti in esaurimento o finiti: a zero le fatture in arrivo non si scaricano — vedi §4bis |
 
 **Canali**: email (`md@oneflux.it`, via Brevo) + Telegram (bot `@Oneflux_alert_bot`). Ridondanti: se uno dei due è giù, l'altro arriva comunque.
 
@@ -140,6 +141,35 @@ Causa storica nota (incidente 9-11/6/2026): `queue-worker` fermo per killswitch 
 railway variables --service queue-worker | grep WORKER_ENABLED
 ```
 Deve essere `1`. Se è `0` o assente → il queue-worker non processa nulla, riattivalo e riavvia.
+
+---
+
+## 4bis. Saldo crediti Invoicetronic (alert dedicato)
+
+A saldo zero Invoicetronic risponde 403 `usage_limit_exceeded` a **ogni** download:
+il webhook segna la fattura `failed`, il worker ritenta e in circa 2 ore ogni fattura
+in arrivo è `dead`, per tutti i clienti. Non è persa: Invoicetronic la conserva 2 anni.
+
+1. **Ricarica subito** dal dashboard Invoicetronic: ogni ora di saldo a zero è una
+   fattura in più da recuperare. La conferma che è ripartito è il saldo nel
+   dashboard; il messaggio «di nuovo sopra soglia» arriva solo se il queue-worker
+   non è stato riavviato dopo l'avviso (lo stato degli avvisi vive nel processo).
+2. **Le fatture già ferme NON ripartono da sole, e «Riprova» non basta.** Il webhook
+   le ha salvate senza cliente (`user_id` NULL, `piva_raw` `UNKNOWN`) perché senza
+   saldo non ha potuto leggere l'XML: il worker lo riscarica, ma poi si ferma a
+   «Tenant non risolto». Un recupero automatico ancora non c'è. **Non assegnare il
+   cliente a mano** nella riga di coda: il worker salva la fattura sul cliente
+   scritto lì senza ricontrollare la P.IVA dell'XML. Per contarle:
+   ```sql
+   SELECT id, status, created_at FROM fatture_queue
+   WHERE payload_meta->>'api_error_code' = 'usage_limit_exceeded'
+      OR last_error LIKE '%usage_limit_exceeded%'
+   ORDER BY created_at;
+   ```
+
+«Non riesco a leggere il saldo» (due controlli falliti di fila): quasi sempre
+`INVOICETRONIC_API_KEY` assente o scaduta sul queue-worker. Soglia e intervallo:
+`docs/DEPLOY_RUNBOOK.md`.
 
 ---
 

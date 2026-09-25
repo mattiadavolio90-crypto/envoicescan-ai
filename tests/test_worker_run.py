@@ -187,10 +187,16 @@ def _patch_main_deps(worker_run_module, run_cycle_mock, email_cycle_mock=None,
     email_qp_mock.run_email_cycle = email_cycle_mock or MagicMock(return_value=_FakeEmailStats())
     email_qp_mock.purge_ricavi_xls_storage = MagicMock()
 
+    # Il controllo del saldo Invoicetronic chiamerebbe l'API vera se la chiave
+    # fosse nell'ambiente (run.py carica .env): nei test del loop resta finto.
+    saldo_mock = MagicMock()
+    saldo_mock.soglia_configurata.return_value = 100
+
     modules_patch = {
         "worker.queue_processor": qp_mock,
         "services.db_service": db_service_mock,
         "worker.email_queue_processor": email_qp_mock,
+        "services.invoicetronic_saldo": saldo_mock,
     }
     return modules_patch, qp_mock, db_service_mock, email_qp_mock
 
@@ -671,3 +677,103 @@ def test_main_email_cycle_errore_non_fatale(worker_run_module):
                 worker_run_module.main()
 
     assert sleep_calls == [15]
+
+
+# ─── main() — controllo del saldo Invoicetronic (passo 0, 25/09/2026) ──────
+
+def _esegui_giri(worker_run_module, modules_patch, giri=1):
+    sleep_calls = []
+
+    def _fake_sleep(seconds):
+        sleep_calls.append(seconds)
+        if len(sleep_calls) >= giri:
+            raise _StopLoop()
+
+    worker_run_module = _reload_worker_run()
+    with patch.dict(sys.modules, modules_patch):
+        with patch.object(time_module, "sleep", side_effect=_fake_sleep):
+            with pytest.raises(_StopLoop):
+                worker_run_module.main()
+    return sleep_calls
+
+
+def test_main_controllo_saldo_scatta_al_primo_giro(worker_run_module, monkeypatch):
+    monkeypatch.setenv("WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS", str(6 * 3600))
+    modules_patch, qp_mock, *_ = _patch_main_deps(
+        worker_run_module, MagicMock(return_value=_FakeCycleStats(batch_claimed=0)),
+    )
+    saldo_mock = modules_patch["services.invoicetronic_saldo"]
+
+    _esegui_giri(worker_run_module, modules_patch)
+
+    saldo_mock.SorveglianzaSaldo.assert_called_once_with(100)
+    saldo_mock.controlla_saldo.assert_called_once_with(
+        saldo_mock.SorveglianzaSaldo.return_value, qp_mock.get_supabase_client.return_value,
+    )
+
+
+def test_main_controllo_saldo_non_riscatta_prima_dellintervallo(worker_run_module, monkeypatch):
+    monkeypatch.setenv("WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS", str(6 * 3600))
+    modules_patch, *_ = _patch_main_deps(
+        worker_run_module, MagicMock(return_value=_FakeCycleStats(batch_claimed=0)),
+    )
+    saldo_mock = modules_patch["services.invoicetronic_saldo"]
+
+    _esegui_giri(worker_run_module, modules_patch, giri=3)
+
+    assert saldo_mock.controlla_saldo.call_count == 1
+
+
+def test_main_controllo_saldo_errore_non_fatale(worker_run_module):
+    modules_patch, *_ = _patch_main_deps(
+        worker_run_module, MagicMock(return_value=_FakeCycleStats(batch_claimed=0)),
+    )
+    modules_patch["services.invoicetronic_saldo"].controlla_saldo.side_effect = RuntimeError("rete giù")
+
+    assert _esegui_giri(worker_run_module, modules_patch) == [15]
+
+
+def test_main_senza_modulo_saldo_il_worker_gira_lo_stesso(worker_run_module, caplog):
+    modules_patch, *_ = _patch_main_deps(
+        worker_run_module, MagicMock(return_value=_FakeCycleStats(batch_claimed=0)),
+    )
+    modules_patch["services.invoicetronic_saldo"] = None
+
+    with caplog.at_level(logging.ERROR, logger="worker.run"):
+        assert _esegui_giri(worker_run_module, modules_patch) == [15]
+    assert "Controllo saldo Invoicetronic non disponibile" in caplog.text
+
+
+def test_segnala_configurazione_avvisi_mancante(worker_run_module, monkeypatch, caplog):
+    monkeypatch.delenv("INVOICETRONIC_API_KEY", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    with caplog.at_level(logging.ERROR, logger="worker.run"):
+        worker_run_module._segnala_configurazione_avvisi()
+    assert "INVOICETRONIC_API_KEY assente" in caplog.text
+    assert "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID assenti" in caplog.text
+
+
+def test_segnala_configurazione_avvisi_completa_tace(worker_run_module, monkeypatch, caplog):
+    monkeypatch.setenv("INVOICETRONIC_API_KEY", "k")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+    with caplog.at_level(logging.ERROR, logger="worker.run"):
+        worker_run_module._segnala_configurazione_avvisi()
+    assert caplog.text == ""
+
+
+def test_main_segnala_la_configurazione_degli_avvisi_all_avvio(worker_run_module):
+    modules_patch, *_ = _patch_main_deps(
+        worker_run_module, MagicMock(return_value=_FakeCycleStats(batch_claimed=0)),
+    )
+    mod = _reload_worker_run()
+    spia = MagicMock()
+    mod._segnala_configurazione_avvisi = spia
+
+    with patch.dict(sys.modules, modules_patch):
+        with patch.object(time_module, "sleep", side_effect=_StopLoop()):
+            with pytest.raises(_StopLoop):
+                mod.main()
+
+    spia.assert_called_once_with()

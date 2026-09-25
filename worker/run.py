@@ -28,6 +28,8 @@ ENV VARS:
     WORKER_PURGE_INTERVAL_SECONDS     default 21600 (purge cestino ogni 6h)
     WORKER_RETENTION_INTERVAL_SECONDS default 86400 (retention fatture >2 anni ogni 24h)
     WORKER_QUEUE_PURGE_INTERVAL_SECONDS default 21600 (purge xml_content/raw_body_sample fatture_queue ogni 6h)
+    WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS default 21600 (controllo saldo crediti Invoicetronic ogni 6h)
+    INVOICETRONIC_SOGLIA_OPERAZIONI   default 100   (sotto questa soglia parte l'avviso Telegram)
 
 EXIT CODES:
     0  — ciclo completato (anche se coda vuota)
@@ -92,6 +94,7 @@ WORKER_MAX_BACKOFF_SECONDS = int(os.environ.get("WORKER_MAX_BACKOFF_SECONDS", "3
 WORKER_PURGE_INTERVAL_SECONDS = int(os.environ.get("WORKER_PURGE_INTERVAL_SECONDS", str(6 * 3600)))  # default 6h
 WORKER_RETENTION_INTERVAL_SECONDS = int(os.environ.get("WORKER_RETENTION_INTERVAL_SECONDS", str(24 * 3600)))  # default 24h
 WORKER_QUEUE_PURGE_INTERVAL_SECONDS = int(os.environ.get("WORKER_QUEUE_PURGE_INTERVAL_SECONDS", str(6 * 3600)))  # default 6h (xml_content + raw_body_sample su fatture_queue)
+WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS = int(os.environ.get("WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS", str(6 * 3600)))  # default 6h
 
 # Retention GDPR su sessioni e log con dati personali (migration
 # 20260909143000_retention_gdpr_log_e_sessioni.sql). I giorni stanno qui e non
@@ -156,6 +159,26 @@ def _ensure_streamlit_available() -> bool:
             return False
 
 
+def _segnala_configurazione_avvisi() -> None:
+    """Il controllo del saldo e gli avvisi del worker hanno bisogno di chiavi che
+    railway.toml non elenca per il queue-worker: se mancano lo si scrive subito
+    nel log, invece di scoprirlo il giorno in cui un avviso non arriva."""
+    if not os.environ.get("INVOICETRONIC_API_KEY"):
+        logger.error(
+            "INVOICETRONIC_API_KEY assente: niente controllo del saldo crediti "
+            "e niente recupero delle fatture via API."
+        )
+    try:
+        from services.telegram_service import telegram_configurato
+        if not telegram_configurato():
+            logger.error(
+                "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID assenti: gli avvisi del worker "
+                "(saldo Invoicetronic esaurito o basso) non partiranno."
+            )
+    except Exception as exc:
+        logger.error("Impossibile verificare la configurazione Telegram: %s", exc)
+
+
 def main() -> int:
     logger.info("==== worker fatture_queue - loop continuo ====")
 
@@ -194,6 +217,16 @@ def main() -> int:
         purge_ricavi_xls_storage = None
         _email_cycle_enabled = False
 
+    # Saldo crediti Invoicetronic: a zero si ferma l'arrivo delle fatture di tutti.
+    try:
+        from services.invoicetronic_saldo import SorveglianzaSaldo, controlla_saldo, soglia_configurata
+        _sorveglianza_saldo = SorveglianzaSaldo(soglia_configurata())
+    except Exception as exc:
+        logger.error("Controllo saldo Invoicetronic non disponibile: %s", exc)
+        controlla_saldo = None
+        _sorveglianza_saldo = None
+    _segnala_configurazione_avvisi()
+
     consecutive_failures = 0
     # Inizializzati nel passato (non 0.0) cosi' il primo ciclo utile esegue subito
     # ogni purge invece di aspettare l'intervallo pieno da un boot recente: 0.0
@@ -203,6 +236,7 @@ def main() -> int:
     last_purge_time = _boot - WORKER_PURGE_INTERVAL_SECONDS
     last_retention_time = _boot - WORKER_RETENTION_INTERVAL_SECONDS
     last_queue_purge_time = _boot - WORKER_QUEUE_PURGE_INTERVAL_SECONDS
+    last_saldo_time = _boot - WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS
 
     while True:
         cycle_started_at = time.monotonic()
@@ -294,6 +328,13 @@ def main() -> int:
                         logger.warning("Errore %s: %s", _rpc, retention_exc)
 
                 last_retention_time = now
+
+            if controlla_saldo and (now - last_saldo_time) >= WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS:
+                try:
+                    controlla_saldo(_sorveglianza_saldo, _qp_get_supabase_client())
+                except Exception as saldo_exc:
+                    logger.warning("Errore controllo saldo Invoicetronic: %s", saldo_exc)
+                last_saldo_time = now
 
             sleep_seconds = 1 if stats.batch_claimed > 0 else WORKER_POLL_INTERVAL_SECONDS
             logger.info(

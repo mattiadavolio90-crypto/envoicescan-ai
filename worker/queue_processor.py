@@ -59,6 +59,7 @@ from defusedxml import ElementTree as _DefusedET
 from config.constants import CATEGORIA_NON_CLASSIFICATA, SETTORE_RETAIL
 from services.db_service import aggiorna_categoria_fatture, filter_active
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, salva_fattura_processata, _to_int_safe
+from services.invoicetronic_saldo import SaldoInvoicetronicEsaurito, avvisa_saldo_esaurito, e_saldo_esaurito
 from services.worker_client import classifica_via_worker_con_confidenza, force_local_worker_path
 
 try:
@@ -847,14 +848,19 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
         # xml_content è NULL: purgato (GDPR), non salvato, o 404 transitorio in
         # fase di webhook. Fallback a cascata:
         #   1. xml_url (se la Edge Function l'aveva memorizzato)
-        #   2. API Invoicetronic via resource_id (copre il 404 transitorio:
+        #   2. API Invoicetronic via resource_id (copre il 404 transitorio —
+        #      ma solo se il webhook aveva gia' risolto il cliente: con user_id
+        #      NULL l'XML scaricato si ferma piu' sotto a «Tenant non risolto»;
         #      il webhook arriva prima che /receive/{id} sia disponibile)
         if xml_url:
             xml_content = _fetch_xml_from_url(xml_url)
         if not xml_content:
             resource_id = payload_meta.get("resource_id")
             if resource_id is not None:
-                xml_content = _fetch_xml_via_api(resource_id)
+                try:
+                    xml_content = _fetch_xml_via_api(resource_id)
+                except SaldoInvoicetronicEsaurito as exc:
+                    return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=str(exc))
         if not xml_content:
             return ItemResult(
                 queue_id=queue_id,
@@ -886,7 +892,10 @@ def _process_item(supabase, item: dict[str, Any], worker_id: Optional[str] = Non
                 logger.warning("[item=%d] sbustamento P7M in-process fallito: %s", queue_id, exc)
         if not _xml_pare_fattura(_recuperato):
             _resource_id = payload_meta.get("resource_id")
-            _recuperato = _fetch_xml_via_api(_resource_id) if _resource_id is not None else None
+            try:
+                _recuperato = _fetch_xml_via_api(_resource_id) if _resource_id is not None else None
+            except SaldoInvoicetronicEsaurito as exc:
+                return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=str(exc))
         if _xml_pare_fattura(_recuperato):
             logger.info(
                 "[item=%d] xml_content non era una FatturaPA valida (sanitized=%s, "
@@ -1313,10 +1322,13 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
 
     Replica la logica di estrazione payload della Edge Function (campo `payload`
     plain o base64). Ritorna None se manca l'API key, il resource_id non e'
-    valido, o l'API non restituisce un XML.
+    valido, o l'API non restituisce un XML. Solleva SaldoInvoicetronicEsaurito
+    se Invoicetronic rifiuta per saldo: non e' un problema della fattura, e il
+    motivo deve arrivare fino a last_error.
     """
     import json as _json
     from urllib.parse import urlparse
+    import urllib.error
     import urllib.request
 
     if resource_id is None or str(resource_id).strip() == "":
@@ -1349,6 +1361,19 @@ def _fetch_xml_via_api(resource_id: Any) -> str | None:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
             raw = resp.read().decode("utf-8", errors="replace")
         data = _json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        try:
+            corpo = exc.read()
+        except Exception:
+            corpo = None
+        if e_saldo_esaurito(exc.code, corpo):
+            avvisa_saldo_esaurito("worker")
+            raise SaldoInvoicetronicEsaurito(
+                "saldo Invoicetronic esaurito (usage_limit_exceeded): "
+                "dopo la ricarica vedi runbook incidenti §4bis"
+            ) from None
+        logger.warning("Fallback API fetch fallito per resource_id=%s: %s", resource_id, exc)
+        return None
     except Exception as exc:
         logger.warning("Fallback API fetch fallito per resource_id=%s: %s", resource_id, exc)
         return None

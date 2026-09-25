@@ -63,6 +63,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | Un endpoint del worker | `services/routers/*.py` (13 router) |
 | Schema DB | `supabase/migrations/` (canonico) |
 | Ricezione fatture SDI | `supabase/functions/invoicetronic-webhook/` (Deno) |
+| Saldo crediti Invoicetronic e i suoi avvisi | `services/invoicetronic_saldo.py` (controllo ogni 6 ore dal queue-worker) + il webhook (avviso al primo 403 `usage_limit_exceeded`) |
 | Costanti, categorie, prompt | `config/` |
 
 ### I servizi che contano

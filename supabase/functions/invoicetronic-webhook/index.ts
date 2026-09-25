@@ -35,6 +35,7 @@
 // Pinnato a versione esatta per stabilità supply-chain.
 // Per upgrade: testare in staging prima di aggiornare in prod.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -213,17 +214,19 @@ export async function notifyTelegramUnrecognizedEvent(
   reason: string,
   ev: NormalizedWebhookEvent,
 ): Promise<void> {
-  const token  = Deno.env.get('TELEGRAM_BOT_TOKEN')
-  const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
-  if (!token || !chatId) return // non configurato: no-op, mai bloccante
-
-  const msg = [
+  await inviaTelegram([
     '⚠️ Webhook Invoicetronic: evento non riconosciuto',
     `Motivo: ${reason}`,
     `endpoint=${ev.endpoint ?? '—'} event=${ev.eventName ?? '—'}`,
     `resource_id=${ev.resourceId ?? '—'} event_id=${ev.eventId ?? '—'}`,
     'Dettaglio: fatture_queue status=failed, payload_meta.unrecognized_event',
-  ].join('\n')
+  ].join('\n'))
+}
+
+async function inviaTelegram(msg: string): Promise<void> {
+  const token  = Deno.env.get('TELEGRAM_BOT_TOKEN')
+  const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
+  if (!token || !chatId) return // non configurato: no-op, mai bloccante
 
   try {
     const ac = new AbortController()
@@ -839,6 +842,65 @@ function extractDocMeta(xml: string): Record<string, unknown> {
   }
 }
 
+// ─── Saldo crediti esaurito (passo 0 del piano invio al commercialista) ───────
+// A saldo zero Invoicetronic risponde 403 con `code` = usage_limit_exceeded a
+// ogni GET su /receive. La fattura resta 'failed' e il worker la porta a 'dead'
+// in circa 2 ore: qui si avvisa subito, e si marca la riga perché dopo la
+// ricarica la si ritrovi. Si decide sul `code`, non sul solo 403 (usato anche
+// per firme e sotto-chiavi) né su `detail` (tradotto). Con il saldo a zero OGNI
+// fattura in arrivo riceve il 403: si avvisa al massimo una volta all'ora,
+// guardando se in coda c'è già una riga marcata di recente.
+export const CODICE_SALDO_ESAURITO = 'usage_limit_exceeded'
+const FINESTRA_AVVISO_SALDO_MS = 60 * 60 * 1000
+
+export async function leggiCodiceProblema(resp: Response): Promise<string | null> {
+  try {
+    const corpo = JSON.parse(await resp.text())
+    return corpo && typeof corpo.code === 'string' ? corpo.code : null
+  } catch {
+    return null
+  }
+}
+
+export function isSaldoEsaurito(status: number, codice: string | null): boolean {
+  return status === 403 && codice === CODICE_SALDO_ESAURITO
+}
+
+// Fail-open: se la coda non si può leggere, meglio un avviso in più che nessuno.
+export async function saldoEsauritoGiaSegnalato(
+  db: SupabaseClient,
+  adessoMs: number = Date.now(),
+): Promise<boolean> {
+  try {
+    const da = new Date(adessoMs - FINESTRA_AVVISO_SALDO_MS).toISOString()
+    const { data, error } = await db
+      .from('fatture_queue')
+      .select('id')
+      .eq('payload_meta->>api_error_code', CODICE_SALDO_ESAURITO)
+      .gte('created_at', da)
+      .limit(1)
+    if (error) return false
+    return Array.isArray(data) && data.length > 0
+  } catch {
+    return false
+  }
+}
+
+export async function notifyTelegramSaldoEsaurito(): Promise<void> {
+  await inviaTelegram([
+    `🚨 Invoicetronic ha rifiutato un download per saldo esaurito (${CODICE_SALDO_ESAURITO}, origine: webhook).`,
+    "Le fatture in arrivo non si scaricano piu' e in circa 2 ore finiscono in errore.",
+    "Dopo la ricarica quelle gia' ferme non ripartono da sole: runbook incidenti §4bis.",
+  ].join('\n'))
+}
+
+// Costruttore del client DB: in produzione è createClient. I test di
+// processaEvento lo sostituiscono per eseguire il flusso vero senza database.
+let creaClientDb: typeof createClient = createClient
+export function _usaClientDbDiTest(fabbrica: typeof createClient | null): void {
+  creaClientDb = fabbrica ?? createClient
+}
+
 // ─── Utility: scarica il payload fattura da Invoicetronic ed estrai l'XML ─────
 // Condivisa dal flusso webhook e dalla modalità reprocess. Ritorna l'XML estratto
 // (con la logica p7m corretta, incluso chunked-DER) o lancia in caso di errore.
@@ -984,7 +1046,7 @@ export const handler = async (req: Request): Promise<Response> => {
 // Elabora UN singolo evento webhook già normalizzato e con HMAC verificato.
 // Ritorna 'ok' se non serve altro, 'retry' se Invoicetronic deve ritentare
 // (errore DB: è l'unica occasione di non perdere la fattura).
-async function processaEvento(
+export async function processaEvento(
   ev: NormalizedWebhookEvent,
   rawBody: string,
   req: Request,
@@ -1033,7 +1095,7 @@ async function processaEvento(
       `event_id=${ev.eventId} resource_id=${ev.resourceId} success=${ev.success}`,
     )
 
-    const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+    const db = creaClientDb(supabaseUrl, serviceKey, { auth: { persistSession: false } })
     // event_id univoco anche quando ev.eventId è null: fallback su resource_id o
     // hash del body, così due eventi diversi non collidono su ON CONFLICT.
     const fallbackKey =
@@ -1118,7 +1180,7 @@ async function processaEvento(
   )
 
   // Client Supabase con service_role (bypassa RLS — mai usare anon key qui)
-  const db = createClient(supabaseUrl, serviceKey, {
+  const db = creaClientDb(supabaseUrl, serviceKey, {
     auth: { persistSession: false },
   })
 
@@ -1166,6 +1228,12 @@ async function processaEvento(
       // API non disponibile o resource_id non trovato → failed per retry
       meta.api_error = `HTTP ${apiResp.status}`
       console.warn(`[wh] API Invoicetronic HTTP ${apiResp.status} per resource_id=${resourceId}`)
+      const codice = apiResp.status === 403 ? await leggiCodiceProblema(apiResp) : null
+      if (isSaldoEsaurito(apiResp.status, codice)) {
+        meta.api_error_code = CODICE_SALDO_ESAURITO
+        console.error(`[wh] Saldo Invoicetronic esaurito: resource_id=${resourceId} non scaricabile`)
+        if (!await saldoEsauritoGiaSegnalato(db)) await notifyTelegramSaldoEsaurito()
+      }
       // status rimane 'failed', pivaRaw rimane 'UNKNOWN'
     } else {
       const data = await apiResp.json() as ReceiveApiRecord
