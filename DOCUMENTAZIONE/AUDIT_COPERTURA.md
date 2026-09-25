@@ -1304,6 +1304,39 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Mutanti: 10, tutti uccisi.** Residuo generale, non di questa funzione: i dati
 >   del commercialista, come altri registri gia' esistenti, non sono
 >   nell'esportazione dei dati del cliente.
+>
+> - **25/09/2026 — i residui dell'invio al commercialista, chiusi.** Tutto cio' che
+>   le review avevano lasciato come «non bloccante»:
+>   - **fatture arrivate in un periodo gia' spedito**, il rischio piu' alto del piano
+>     (Invoicetronic rielabora una fattura con la data vecchia e il commercialista
+>     non la riceve mai): ogni invio registra `documenti_visti` (anche i doppioni
+>     scartati) e primo e ordinario avvisano se nell'elenco c'e' un documento dentro
+>     un periodo spedito che nessuno ha visto. Il reinvio lo recupera e non suona;
+>   - il registro non si cancella nemmeno dal proprietario (trigger su DELETE e
+>     TRUNCATE: passano solo la cascata dell'account e la pulizia, che lo
+>     dichiara e poi si richiude);
+>   - un invio nasce `richiesto` e senza esiti;
+>   - quando l'email parte, il DB ricontrolla che la P.IVA sia ancora solo del
+>     cliente;
+>   - la pulizia non scende sotto i 12 mesi dichiarati;
+>   - l'elenco di Invoicetronic vale solo se il totale resta stabile per tutta la
+>     lettura (una cancellazione a meta' passava), rilegge fino a 3 volte;
+>   - uno ZIP che supera i 20 MB si spezza anche dentro il mese (prima un mese
+>     sopra i 50 MB falliva ogni notte), e l'elenco del bucket va a pagine;
+>   - gli id non validi danno 404 invece di 500;
+>   - configurazione e registro sono nell'esportazione dei dati del cliente.
+>   Verificato e senza intervento: `raw_body_sample` contiene l'evento del webhook,
+>   non l'XML, quindi la frase della privacy regge. **Mutanti: 23.** Al primo giro
+>   18 uccisi su 20; i due sopravvissuti erano equivalenti: Z2, gia' coperto da `ici_email_partita_chk`
+>   (la condizione e' stata tolta dal trigger), e Z7, un trigger AFTER che ferma lo
+>   stesso. Z7 e' stato rifatto togliendo il trigger, e con le due varianti nuove
+>   i tre rifatti sono uccisi.
+>   Un test scritto male e tolto prima di girare: sollevava un'eccezione finta.
+>   Restano fuori, per scelta motivata:
+>   - asn1crypto non strict;
+>   - `disattivata_at` retrodatabile, che anticipa solo la pulizia;
+>   - la chiave del saldo, che e' dell'account;
+>   - i doppioni fra periodi diversi, per costruzione su `created`.
 
 ---
 

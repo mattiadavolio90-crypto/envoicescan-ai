@@ -212,8 +212,30 @@ def test_un_doppione_fra_pagine_si_conta_una_volta():
 
 
 def test_totale_che_non_torna_e_un_errore_non_un_elenco_corto():
-    c, _, _ = _client(_pagina([3, 2], 5), R(200, [], {"Invoicetronic-Total-Count": "5"}))
+    letture = [r for _ in range(ic.LETTURE_ELENCO) for r in (_pagina([3, 2], 5), R(200, [], {"Invoicetronic-Total-Count": "5"}))]
+    c, http, _ = _client(*letture)
     with pytest.raises(ic.ErroreInvoicetronic, match="incompleto"):
+        c.elenco_ricevute(1756)
+    assert len(http.chiamate) == 2 * ic.LETTURE_ELENCO, "si rilegge prima di arrendersi"
+
+
+def test_un_arrivo_durante_la_lettura_fa_rileggere():
+    """Il totale cambia fra una pagina e l'altra: le pagine si sono spostate e un
+    documento puo' essere saltato. Si rilegge; la seconda lettura e' stabile."""
+    c, http, _ = _client(
+        _pagina([3, 2], 3), R(200, [], {"Invoicetronic-Total-Count": "4"}),
+        _pagina([4, 3, 2, 1], 4), R(200, [], {"Invoicetronic-Total-Count": "4"}),
+    )
+    assert sorted(d["id"] for d in c.elenco_ricevute(1756)) == [1, 2, 3, 4]
+    assert len(http.chiamate) == 4
+
+
+def test_una_cancellazione_a_meta_lista_non_passa():
+    """Totale 3 poi 2 e due documenti letti: prima tornava col totale finale, e un
+    documento poteva mancare senza che nessuno lo vedesse."""
+    letture = [r for _ in range(ic.LETTURE_ELENCO) for r in (_pagina([3, 2], 3), R(200, [], {"Invoicetronic-Total-Count": "2"}))]
+    c, _, _ = _client(*letture)
+    with pytest.raises(ic.ErroreInvoicetronic, match="instabile"):
         c.elenco_ricevute(1756)
 
 

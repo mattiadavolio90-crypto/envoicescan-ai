@@ -423,6 +423,8 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
         ("custom_tags", "user_id", "custom_tags"),
         ("turni_personale", "user_id", "turni_personale"),
         ("notification_inbox", "user_id", "notifiche"),
+        ("invio_commercialista_config", "user_id", "invio_commercialista_configurazioni"),
+        ("invio_commercialista_invii", "user_id", "invio_commercialista_invii"),
     ]
     for tabella, col, label in _TABELLE:
         try:

@@ -282,7 +282,12 @@ class ArchivioSupabase:
             self._bucket.remove(list(percorsi))
 
     def elenca(self, prefisso: str) -> List[Dict[str, Any]]:
-        return list(self._bucket.list(prefisso, {"limit": 1000}) or [])
+        voci: List[Dict[str, Any]] = []
+        while True:
+            pagina = list(self._bucket.list(prefisso, {"limit": 1000, "offset": len(voci)}) or [])
+            voci += pagina
+            if len(pagina) < 1000:
+                return voci
 
 
 def _avvisa_telegram(testo: str) -> bool:
@@ -334,48 +339,57 @@ class Parte:
 
 
 class _Pacchi:
-    """Uno ZIP per mese di arrivo, scritto su disco un documento alla volta. A
-    fine lavoro, se il totale sta sotto i 20 MB diventa uno ZIP solo."""
+    """Gli ZIP, scritti su disco un documento alla volta: uno per mese di arrivo, e
+    dentro il mese un altro appena il corrente supera i 20 MB. A fine lavoro, se
+    il totale sta sotto i 20 MB, diventano uno ZIP solo."""
 
     def __init__(self, cartella: Path, dal: date, al: date) -> None:
         self._cartella = cartella
         self._dal = dal
         self._al = al
-        self._zip: Dict[str, zipfile.ZipFile] = {}
-        self._conteggi: Dict[str, int] = {}
+        self._file: Dict[str, List[Path]] = {}
+        self._aperto: Dict[str, zipfile.ZipFile] = {}
+        self._conteggi: Dict[Path, int] = {}
 
-    def _file_mese(self, mese: str) -> Path:
-        return self._cartella / f"mese_{mese}.zip"
+    def _nuovo(self, mese: str) -> zipfile.ZipFile:
+        percorso = self._cartella / f"mese_{mese}_{len(self._file.setdefault(mese, [])) + 1}.zip"
+        self._file[mese].append(percorso)
+        self._conteggi[percorso] = 0
+        archivio = zipfile.ZipFile(percorso, "w", compression=zipfile.ZIP_DEFLATED)
+        self._aperto[mese] = archivio
+        return archivio
 
     def aggiungi(self, arrivo_roma: datetime, doc) -> None:
         mese = f"{arrivo_roma:%Y-%m}"
-        archivio = self._zip.get(mese)
+        archivio = self._aperto.get(mese)
         if archivio is None:
-            archivio = zipfile.ZipFile(self._file_mese(mese), "w", compression=zipfile.ZIP_DEFLATED)
-            self._zip[mese] = archivio
+            archivio = self._nuovo(mese)
+        elif archivio.fp.tell() > SOGLIA_DIVISIONE:
+            archivio.close()
+            archivio = self._nuovo(mese)
         info = zipfile.ZipInfo(doc.nome, date_time=arrivo_roma.timetuple()[:6])
         info.compress_type = zipfile.ZIP_DEFLATED
         archivio.writestr(info, doc.contenuto)
-        self._conteggi[mese] = self._conteggi.get(mese, 0) + 1
+        self._conteggi[self._file[mese][-1]] += 1
 
     def abbandona(self) -> None:
-        for archivio in self._zip.values():
+        for archivio in self._aperto.values():
             archivio.close()
 
     def chiudi(self) -> List[Parte]:
         self.abbandona()
-        mesi = sorted(self._zip)
+        mesi = sorted(self._file)
         if not mesi:
             return []
-        totale = sum(self._file_mese(m).stat().st_size for m in mesi)
-        if totale <= SOGLIA_DIVISIONE:
+        tutti = [f for m in mesi for f in self._file[m]]
+        if sum(f.stat().st_size for f in tutti) <= SOGLIA_DIVISIONE:
             destinazione = self._cartella / f"fatture_{self._dal:%Y-%m-%d}_{self._al:%Y-%m-%d}.zip"
-            if len(mesi) == 1:
-                os.replace(self._file_mese(mesi[0]), destinazione)
+            if len(tutti) == 1:
+                os.replace(tutti[0], destinazione)
             else:
                 with zipfile.ZipFile(destinazione, "w", compression=zipfile.ZIP_DEFLATED) as uscita:
-                    for mese in mesi:
-                        with zipfile.ZipFile(self._file_mese(mese)) as entrata:
+                    for file in tutti:
+                        with zipfile.ZipFile(file) as entrata:
                             for info in entrata.infolist():
                                 uscita.writestr(info, entrata.read(info.filename))
             parti = [Parte(destinazione.name, "Scarica le fatture", destinazione,
@@ -383,11 +397,17 @@ class _Pacchi:
         else:
             parti = []
             for mese in mesi:
-                destinazione = self._cartella / f"fatture_{mese}.zip"
-                os.replace(self._file_mese(mese), destinazione)
                 anno, numero = mese.split("-")
-                parti.append(Parte(destinazione.name, f"Fatture arrivate a {MESI[int(numero) - 1]} {anno}",
-                                   destinazione, self._conteggi[mese], destinazione.stat().st_size))
+                file = self._file[mese]
+                for k, sorgente in enumerate(file, start=1):
+                    suffisso = f"_{k}" if len(file) > 1 else ""
+                    destinazione = self._cartella / f"fatture_{mese}{suffisso}.zip"
+                    os.replace(sorgente, destinazione)
+                    etichetta = f"Fatture arrivate a {MESI[int(numero) - 1]} {anno}"
+                    if len(file) > 1:
+                        etichetta += f" ({k} di {len(file)})"
+                    parti.append(Parte(destinazione.name, etichetta, destinazione,
+                                       self._conteggi[sorgente], destinazione.stat().st_size))
         if any(p.byte > LIMITE_FILE for p in parti):
             raise _Rinuncia("zip_oltre_il_limite_del_bucket", avviso=True)
         return parti
@@ -676,6 +696,34 @@ class _Invio:
             raise _Rinuncia(f"saldo_insufficiente ({rimaste} operazioni, {da_scaricare} documenti)", avviso=True)
         return rimaste
 
+    def _segnala_arrivi_in_periodi_spediti(self, elenco: List[Dict[str, Any]]) -> int:
+        """Il periodo si decide su `created`. Se Invoicetronic rielabora una fattura
+        con la data di prima (le trattenute prima che l'azienda esista), quella cade
+        in un periodo gia' spedito e il commercialista non la riceve mai. Qui si
+        contano: documenti dell'elenco dentro un periodo inviato che nessun invio
+        aveva visto (i doppioni scartati sono in `documenti_visti`, non danno
+        allarmi). Si recuperano con un reinvio, che li include e li segna visti."""
+        spediti = (
+            self.sb.table(INVII).select("tipo,periodo_dal,periodo_al,documenti_visti")
+            .eq("config_id", self.riga["config_id"]).in_("stato", ["inviato", "esito_incerto"])
+            .execute().data or []
+        )
+        coperti = [(_data(r["periodo_dal"]), _data(r["periodo_al"]))
+                   for r in spediti if r.get("tipo") in ("primo", "ordinario")]
+        gia_visti = {i for r in spediti for i in (r.get("documenti_visti") or [])}
+        fuori = [
+            d for d in elenco
+            if d["id"] not in gia_visti
+            and any(dal <= data_roma(d["created"]) <= al for dal, al in coperti)
+        ]
+        if fuori:
+            self._avviso(
+                f"⚠️ Invio al commercialista ({self._intestazione()}): {len(fuori)} documenti risultano "
+                "arrivati su Invoicetronic in periodi gia' spediti, e al commercialista non sono andati. "
+                "Si recuperano con un reinvio di quei periodi dall'area admin."
+            )
+        return len(fuori)
+
     def _controlla_frequenza_email(self, destinatario: str, adesso: datetime) -> None:
         """Anti-loop: al massimo MAX_EMAIL_24H email in 24 ore per ogni
         configurazione attiva che scrive a quell'indirizzo. Un commercialista con
@@ -719,6 +767,9 @@ class _Invio:
             (d for d in elenco if dal <= data_roma(d["created"]) <= al),
             key=lambda d: (_istante(d["created"]), d["id"]),
         )
+        visti = [d["id"] for d in nel_periodo]
+        if r["tipo"] in ("primo", "ordinario"):
+            self._segnala_arrivi_in_periodi_spediti(elenco)
         saldo_prima = self._controlla_saldo(len(nel_periodo)) if nel_periodo else None
 
         pacchi = _Pacchi(cartella, dal, al)
@@ -745,6 +796,7 @@ class _Invio:
                     saldo_dopo = None
             self._aggiorna({
                 "stato": "prova_ok", "n_file": len(ids), "byte_totali": byte_totali, "documenti_ids": ids,
+                "documenti_visti": visti,
                 "motivo": misure_prova(nel_periodo, saldo_prima, saldo_dopo, parti),
                 "conclusa_at": self._adesso(),
             })
@@ -757,7 +809,7 @@ class _Invio:
 
         scade = adesso + VALIDITA_LINK
         link: List[Tuple[str, str]] = []
-        registro = {"n_file": len(ids), "byte_totali": byte_totali, "documenti_ids": ids}
+        registro = {"n_file": len(ids), "byte_totali": byte_totali, "documenti_ids": ids, "documenti_visti": visti}
         if parti:
             percorsi = [f"{r['config_id']}/{self.id}/{p.nome}" for p in parti]
             # Prima di caricare: se il worker muore a meta', la pulizia sa cosa togliere.

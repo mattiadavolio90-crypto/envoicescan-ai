@@ -227,6 +227,7 @@ def test_il_primo_invio_spedisce_gli_originali_con_un_link(db_sql, acceso):
 
     riga = _riga(db_sql, iid)
     assert riga["stato"] == "inviato" and riga["n_file"] == 3 and riga["documenti_ids"] == [1, 2, 3]
+    assert riga["documenti_visti"] == [1, 2, 3]
     assert riga["brevo_http_status"] == 201 and riga["brevo_message_id"] == "<m1@smtp-relay>"
     assert riga["email_tentata_at"] is not None and riga["conclusa_at"] is not None
     percorso = f"{cid}/{iid}/fatture_{dal:%Y-%m-%d}_{al:%Y-%m-%d}.zip"
@@ -771,7 +772,7 @@ def test_lo_stesso_file_sdi_due_volte_va_nello_zip_una_volta(db_sql, acceso):
     iid = _invio(db_sql, cid, "primo", dal, al)
     assert _esegui(db_sql, mondo) == ["inviato"]
     riga = _riga(db_sql, iid)
-    assert (riga["n_file"], riga["documenti_ids"]) == (1, [1])
+    assert (riga["n_file"], riga["documenti_ids"], riga["documenti_visti"]) == (1, [1], [1, 2])
 
 
 def test_un_errore_dopo_il_tentativo_d_email_e_incerto(db_sql, acceso):
@@ -883,3 +884,61 @@ def test_cancellando_l_account_gli_zip_se_ne_vanno_subito(db_sql):
     assert archivio.rimossi == ["c/a.zip", "c/b.zip"]
     assert _riga(db_sql, iid)["file_rimossi_at"] is not None
     assert s.rimuovi_file_del_cliente(_sb(db_sql), U2, archivio=archivio) == 0
+
+
+
+# ─── Fatture arrivate in un periodo gia' spedito ─────────────────────────────
+
+def _primo_spedito(db_sql, cid, dal, al, visti):
+    iid = _invio(db_sql, cid, "primo", dal, al)
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now(), "
+                 "documenti_ids = %s, documenti_visti = %s WHERE id = %s", visti[:1], visti, iid)
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'inviato' WHERE id = %s", iid)
+    return iid
+
+
+def test_una_fattura_comparsa_in_un_periodo_gia_spedito_si_segnala(db_sql, acceso):
+    """Invoicetronic la rielabora con la data di prima: il periodo e' gia' partito e il
+    commercialista non la ricevera' mai. Il doppione scartato (visto, non inviato)
+    non conta."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    primo_dal, primo_al = _oggi() - timedelta(days=40), _oggi() - timedelta(days=21)
+    _primo_spedito(db_sql, cid, primo_dal, primo_al, [1, 2])
+    mondo = _Mondo([
+        _documento(1, _alle(primo_dal + timedelta(days=1))),
+        _documento(2, _alle(primo_dal + timedelta(days=2))),
+        _documento(3, _alle(primo_dal + timedelta(days=3))),
+        _documento(4, _alle(primo_al + timedelta(days=2))),
+    ])
+    _invio(db_sql, cid, "ordinario", primo_al + timedelta(days=1), _oggi() - timedelta(days=1))
+    assert _esegui(db_sql, mondo) == ["inviato"]
+    avvisi = [a for a in mondo.avvisi if "periodi gia' spediti" in a]
+    assert len(avvisi) == 1 and "1 documenti" in avvisi[0]
+    _senza_dati_personali(mondo.avvisi)
+
+
+def test_il_reinvio_recupera_e_l_avviso_tace(db_sql, acceso):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    primo_dal, primo_al = _oggi() - timedelta(days=40), _oggi() - timedelta(days=21)
+    _primo_spedito(db_sql, cid, primo_dal, primo_al, [1])
+    documenti = [_documento(1, _alle(primo_dal + timedelta(days=1))), _documento(3, _alle(primo_dal + timedelta(days=3)))]
+    _invio(db_sql, cid, "reinvio", primo_dal, primo_al)
+    mondo = _Mondo(documenti)
+    assert _esegui(db_sql, mondo) == ["inviato"]
+    assert mondo.avvisi == [], "il reinvio che li recupera non suona"
+    _invio(db_sql, cid, "ordinario", primo_al + timedelta(days=1), _oggi() - timedelta(days=1))
+    dopo = _Mondo(documenti)
+    assert _esegui(db_sql, dopo) == ["inviato"]
+    assert dopo.avvisi == [], "recuperati dal reinvio: niente piu' da segnalare"
+
+
+def test_senza_periodi_spediti_niente_avvisi(db_sql, acceso):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    dal, al = _oggi() - timedelta(days=20), _oggi() - timedelta(days=1)
+    mondo = _Mondo(_tre_documenti(dal) + [_documento(9, _alle(dal - timedelta(days=30)))])
+    _invio(db_sql, cid, "primo", dal, al)
+    assert _esegui(db_sql, mondo) == ["inviato"]
+    assert mondo.avvisi == []

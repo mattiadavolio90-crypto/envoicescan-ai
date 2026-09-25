@@ -189,13 +189,37 @@ def test_oltre_la_soglia_uno_zip_per_mese(tmp_path, monkeypatch):
     pacchi = s._Pacchi(tmp_path, date(2026, 7, 1), AL)
     pacchi.aggiungi(datetime(2026, 7, 31, 23, 0, tzinfo=ROMA), _doc(1))
     pacchi.aggiungi(datetime(2026, 8, 1, 1, 0, tzinfo=ROMA), _doc(2))
-    pacchi.aggiungi(datetime(2026, 8, 2, 1, 0, tzinfo=ROMA), _doc(3))
     parti = pacchi.chiudi()
     assert [(p.nome, p.etichetta, p.n_file) for p in parti] == [
         ("fatture_2026-07.zip", "Fatture arrivate a luglio 2026", 1),
-        ("fatture_2026-08.zip", "Fatture arrivate a agosto 2026", 2),
+        ("fatture_2026-08.zip", "Fatture arrivate a agosto 2026", 1),
     ]
-    assert set(_contenuto(parti[1].percorso)) == {"IT01234567890_00002.xml", "IT01234567890_00003.xml"}
+    assert set(_contenuto(parti[1].percorso)) == {"IT01234567890_00002.xml"}
+
+
+def test_un_mese_oltre_la_soglia_si_spezza(tmp_path, monkeypatch):
+    """Prima un mese sopra i 50 MB falliva ogni notte: ora lo ZIP corrente si chiude
+    appena supera la soglia, e il resto del mese va nel successivo."""
+    monkeypatch.setattr(s, "SOGLIA_DIVISIONE", 10)
+    pacchi = s._Pacchi(tmp_path, DAL, AL)
+    for n in (1, 2, 3):
+        pacchi.aggiungi(datetime(2026, 8, n, 9, 0, tzinfo=ROMA), _doc(n))
+    parti = pacchi.chiudi()
+    assert [(p.nome, p.etichetta, p.n_file) for p in parti] == [
+        ("fatture_2026-08_1.zip", "Fatture arrivate a agosto 2026 (1 di 3)", 1),
+        ("fatture_2026-08_2.zip", "Fatture arrivate a agosto 2026 (2 di 3)", 1),
+        ("fatture_2026-08_3.zip", "Fatture arrivate a agosto 2026 (3 di 3)", 1),
+    ]
+    assert set(_contenuto(parti[2].percorso)) == {"IT01234567890_00003.xml"}
+
+
+def test_sotto_la_soglia_il_mese_resta_intero(tmp_path, monkeypatch):
+    monkeypatch.setattr(s, "SOGLIA_DIVISIONE", 10 ** 6)
+    pacchi = s._Pacchi(tmp_path, DAL, AL)
+    for n in (1, 2, 3):
+        pacchi.aggiungi(datetime(2026, 8, n, 9, 0, tzinfo=ROMA), _doc(n))
+    [parte] = pacchi.chiudi()
+    assert parte.n_file == 3 and len(_contenuto(parte.percorso)) == 3
 
 
 def test_zip_oltre_il_limite_del_bucket_non_parte(tmp_path, monkeypatch):
@@ -469,3 +493,15 @@ def test_la_spazzata_gira_anche_se_la_pulizia_del_registro_fallisce(monkeypatch)
     dip.orologio = lambda: datetime(2026, 9, 25, tzinfo=UTC)
     s.pulizia(object(), dip)
     assert fatte == [datetime(2026, 9, 25, tzinfo=UTC)]
+
+
+
+def test_l_elenco_del_bucket_va_a_pagine():
+    """Oltre 1000 voci in una cartella la spazzata non deve fermarsi alla prima pagina."""
+    bucket = MagicMock()
+    pagine = {0: [{"name": f"f{i}"} for i in range(1000)], 1000: [{"name": "ultimo"}]}
+    bucket.list.side_effect = lambda prefisso, opzioni: pagine.get(opzioni["offset"], [])
+    sb = MagicMock()
+    sb.storage.from_.return_value = bucket
+    voci = s.ArchivioSupabase(sb).elenca("cfg")
+    assert len(voci) == 1001 and voci[-1]["name"] == "ultimo"

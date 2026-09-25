@@ -529,3 +529,25 @@ def test_anche_uno_storico_orfano_incerto_conta_come_gia_inviato(app):
     _completa(app, nuova)
     r = app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"})
     assert r.status_code == 400 and "configurazione cancellata" in r.json()["detail"]
+
+
+
+def test_un_id_che_non_e_un_uuid_e_un_404_non_un_500(app):
+    """Il proxy li ferma prima; chiamando il worker direttamente arrivavano al DB
+    come cast fallito."""
+    assert app.get("/api/admin/clienti/non-un-uuid/invio-commercialista").status_code == 404
+    cid = _collega(app)
+    assert app.patch(f"{_base()}/non-un-uuid", json={"frequenza": "mensile"}).status_code == 404
+    assert app.post(f"{_base()}/{cid}/invii/non-un-uuid/annulla").status_code == 404
+
+
+def test_l_export_dei_dati_del_cliente_contiene_l_invio_al_commercialista(app, monkeypatch):
+    """Art. 15 e 20: l'email del commercialista e il registro sono dati del cliente."""
+    from services.routers import account
+    cid = _collega(app)
+    _completa(app, cid)
+    _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))
+    monkeypatch.setattr(account, "_resolve_user_from_token", lambda authorization: {"id": U1, "email": "a1@ic.test"})
+    dati = app.get("/api/account/esporta-dati").json()
+    assert [c["email_destinatario"] for c in dati["invio_commercialista_configurazioni"]] == [EMAIL]
+    assert len(dati["invio_commercialista_invii"]) == 1

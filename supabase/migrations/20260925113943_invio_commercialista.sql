@@ -31,9 +31,12 @@
 --     incerto. Un timeout e' `esito_incerto`, perche' rispedire il periodo la notte
 --     dopo sarebbe un doppione al commercialista. `inviato` ed `esito_incerto`
 --     esistono solo con l'email tentata (e quindi autorizzata);
---   - il registro non dimentica: nessuna riga si cancella (service_role non ha
---     DELETE; la pulizia e' SECURITY DEFINER, le cascate girano come proprietario)
---     e config_id diventa NULL solo quando la configurazione non c'e' piu'.
+--   - il registro non dimentica: una riga si cancella solo per la cascata della
+--     cancellazione dell'account o dalla pulizia GDPR, mai a mano (nemmeno dal
+--     proprietario: lo ferma un trigger; service_role non ha neanche il DELETE),
+--     e config_id diventa NULL solo quando la configurazione non c'e' piu';
+--   - un invio nasce `richiesto`, senza esiti: li scrive solo chi lo esegue;
+--   - quando l'email parte, la P.IVA e' ancora solo del cliente.
 -- Ogni riga copia cliente, P.IVA, company_id e destinatario: resta la traccia di
 -- cosa e' andato a chi anche dopo un cambio di configurazione, e anche dopo la sua
 -- cancellazione (config_id diventa NULL, la riga resta fino alla retention). La
@@ -172,6 +175,7 @@ CREATE TABLE IF NOT EXISTS public.invio_commercialista_invii (
     n_file                    integer,
     byte_totali               bigint,
     documenti_ids             integer[],
+    documenti_visti           integer[],
     storage_paths             text[],
     link_scade_il             timestamptz,
     file_rimossi_at           timestamptz,
@@ -322,11 +326,36 @@ BEGIN
             RAISE EXCEPTION 'configurazione spenta, sospesa o destinatario senza consenso'
                 USING ERRCODE = 'check_violation';
         END IF;
+        -- Ultima linea sotto la guardia dell'esecutore (che sospende): quando l'email
+        -- parte, la P.IVA e' di una sede del cliente e di nessun altro account.
+        IF NEW.tipo <> 'prova' AND OLD.email_tentata_at IS NULL AND NEW.email_tentata_at IS NOT NULL AND (
+               NOT EXISTS (SELECT 1 FROM public.ristoranti r
+                           WHERE r.partita_iva = NEW.piva AND r.user_id = NEW.user_id)
+            OR EXISTS (SELECT 1 FROM public.ristoranti r
+                       WHERE r.partita_iva = NEW.piva AND r.user_id IS DISTINCT FROM NEW.user_id)
+            OR EXISTS (SELECT 1 FROM public.piva_ristoranti p
+                       WHERE p.piva = NEW.piva AND p.user_id IS DISTINCT FROM NEW.user_id)
+        ) THEN
+            RAISE EXCEPTION 'la P.IVA non e'' piu'' solo del cliente'
+                USING ERRCODE = 'check_violation';
+        END IF;
         RETURN NEW;
     END IF;
 
     -- INSERT. Il lock sulla configurazione serializza gli inserimenti della stessa
-    -- configurazione (per quelli in volo lo fa gia' ici_uno_in_volo).
+    -- configurazione (per quelli in volo lo fa gia' ici_uno_in_volo). Un invio
+    -- nasce richiesto e senza esiti (email_tentata_at la esclude gia'
+    -- ici_email_partita_chk su uno stato `richiesto`).
+    IF NEW.stato <> 'richiesto'
+       OR NEW.iniziata_at IS NOT NULL OR NEW.conclusa_at IS NOT NULL
+       OR NEW.brevo_http_status IS NOT NULL
+       OR NEW.brevo_message_id IS NOT NULL OR NEW.chiarito_non_partito_at IS NOT NULL
+       OR NEW.storage_paths IS NOT NULL OR NEW.file_rimossi_at IS NOT NULL
+       OR NEW.documenti_ids IS NOT NULL OR NEW.documenti_visti IS NOT NULL
+       OR NEW.avviso_inviato_at IS NOT NULL THEN
+        RAISE EXCEPTION 'un invio nasce richiesto e senza esiti: li scrive chi lo esegue'
+            USING ERRCODE = 'check_violation';
+    END IF;
     IF NEW.creata_at > now() + interval '5 minutes' THEN
         RAISE EXCEPTION 'creata_at nel futuro: i limiti sulle date si calcolano da li'''
             USING ERRCODE = 'check_violation';
@@ -389,6 +418,33 @@ CREATE TRIGGER invio_commercialista_invii_guardia
     BEFORE INSERT OR UPDATE ON public.invio_commercialista_invii
     FOR EACH ROW EXECUTE FUNCTION public.invio_commercialista_invii_guardia();
 
+-- Il registro si cancella solo per cascata (account cancellato: il trigger gira
+-- dentro quello della FK, pg_trigger_depth() > 1) o dalla pulizia GDPR, che lo
+-- dichiara. Una riga cancellata a mano farebbe ripartire l'ordinario dal suo
+-- periodo: un doppione. Vale anche per il proprietario, dall'editor SQL.
+CREATE OR REPLACE FUNCTION public.invio_commercialista_invii_non_si_cancella()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $function$
+BEGIN
+    IF pg_trigger_depth() > 1 OR current_setting('invio_commercialista.pulizia', true) = 'on' THEN
+        RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'il registro degli invii non si cancella: lo fanno solo la pulizia GDPR e la cancellazione dell''account'
+        USING ERRCODE = 'insufficient_privilege';
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS invio_commercialista_invii_non_si_cancella ON public.invio_commercialista_invii;
+CREATE TRIGGER invio_commercialista_invii_non_si_cancella
+    BEFORE DELETE ON public.invio_commercialista_invii
+    FOR EACH ROW EXECUTE FUNCTION public.invio_commercialista_invii_non_si_cancella();
+DROP TRIGGER IF EXISTS invio_commercialista_invii_non_si_svuota ON public.invio_commercialista_invii;
+CREATE TRIGGER invio_commercialista_invii_non_si_svuota
+    BEFORE TRUNCATE ON public.invio_commercialista_invii
+    FOR EACH STATEMENT EXECUTE FUNCTION public.invio_commercialista_invii_non_si_cancella();
+
 -- Retention (GDPR): l'email del destinatario non resta oltre il bisogno.
 --   - registro: dopo p_retention_days il destinatario si cancella (resta il resto,
 --     che non e' un dato personale), e le righe rimaste senza configurazione
@@ -409,13 +465,15 @@ DECLARE
     v_registro integer;
     v_config   integer;
 BEGIN
-    IF p_retention_days < 30 OR p_giorni_config < 30 THEN
-        RAISE EXCEPTION 'p_retention_days e p_giorni_config almeno 30: il link di un invio vale 30 giorni';
+    IF p_retention_days < 365 OR p_giorni_config < 30 THEN
+        RAISE EXCEPTION 'p_retention_days almeno 365 (il registro orfano ricorda i periodi gia'' spediti, e la privacy dichiara 12 mesi), p_giorni_config almeno 30 (il link vale 30 giorni)';
     END IF;
+    PERFORM set_config('invio_commercialista.pulizia', 'on', true);
     DELETE FROM public.invio_commercialista_invii
     WHERE config_id IS NULL
       AND creata_at < now() - make_interval(days => p_retention_days);
     GET DIAGNOSTICS v_orfani = ROW_COUNT;
+    PERFORM set_config('invio_commercialista.pulizia', 'off', true);
 
     UPDATE public.invio_commercialista_invii
     SET destinatario = NULL
@@ -446,6 +504,7 @@ REVOKE ALL ON FUNCTION public.invio_commercialista_autorizzato(uuid, text) FROM 
 REVOKE ALL ON FUNCTION public.purge_invio_commercialista(integer, integer) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.invio_commercialista_config_guardia() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.invio_commercialista_invii_guardia() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.invio_commercialista_invii_non_si_cancella() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.invio_commercialista_ultimo_giorno(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.invio_commercialista_autorizzato(uuid, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.purge_invio_commercialista(integer, integer) TO service_role;

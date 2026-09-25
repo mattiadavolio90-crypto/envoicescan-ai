@@ -53,6 +53,7 @@ logger = logging.getLogger("fastapi_worker")
 
 BASE = "/api/admin/clienti/{cliente_id}/invio-commercialista"
 _PIVA = re.compile(r"^[0-9]{11}$")
+_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 DUE_ANNI = (
     "Invoicetronic conserva le fatture ricevute per 2 anni. Per periodi precedenti "
     "usa il Cassetto fiscale dell'Agenzia delle Entrate."
@@ -93,12 +94,20 @@ def _rifiuto(exc: Exception) -> HTTPException:
     raise exc
 
 
+def _ids_validi(*ids: str) -> None:
+    """Un id che non e' un UUID arriverebbe al DB come cast fallito (un 500)."""
+    if not all(_ID.match(i or "") for i in ids):
+        raise HTTPException(status_code=404, detail="Non trovato")
+
+
 def _cliente(sb, cliente_id: str) -> None:
+    _ids_validi(cliente_id)
     if not sb.table("users").select("id").eq("id", cliente_id).limit(1).execute().data:
         raise HTTPException(status_code=404, detail="Cliente non trovato")
 
 
 def _configurazione(sb, cliente_id: str, config_id: str) -> Dict[str, Any]:
+    _ids_validi(cliente_id, config_id)
     righe = (
         sb.table(svc.CONFIG).select("*")
         .eq("id", config_id).eq("user_id", cliente_id).limit(1).execute().data
@@ -394,6 +403,7 @@ def invio_commercialista_richiedi(
 
 
 def _invio(sb, cliente_id: str, config_id: str, invio_id: str) -> None:
+    _ids_validi(invio_id)
     _configurazione(sb, cliente_id, config_id)
     righe = (
         sb.table(svc.INVII).select("id")

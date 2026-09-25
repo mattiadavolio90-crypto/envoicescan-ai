@@ -37,6 +37,7 @@ RITMO_S = 0.5
 ATTESA_429_MAX_S = 60
 TENTATIVI_429 = 5
 ATTESE_RETE_S = (2, 8, 30)
+LETTURE_ELENCO = 3
 INTESTAZIONE_TOTALE = "Invoicetronic-Total-Count"
 
 _HOST_CONSENTITI = {"invoicetronic.com", "api.invoicetronic.com"}
@@ -196,8 +197,21 @@ class ClientInvoicetronic:
         return self._azienda(f"/company/{int(company_id)}")
 
     def elenco_ricevute(self, company_id: int) -> List[Dict[str, Any]]:
-        """Tutti i documenti ricevuti dall'azienda, dal piu' recente. Solleva se la
-        lista non e' completa o non e' ordinata come chiesto."""
+        """Tutti i documenti ricevuti dall'azienda, dal piu' recente. Vale solo una
+        lettura in cui il totale dichiarato resta lo stesso su tutte le pagine e
+        torna coi documenti letti: una fattura arrivata (o cancellata) a meta'
+        sposta le pagine, e allora si rilegge da capo. Solleva se la lista non e'
+        completa, non e' ordinata come chiesto, o non si ferma mai."""
+        for _ in range(LETTURE_ELENCO):
+            documenti, totali = self._leggi_elenco(company_id)
+            if len(set(totali)) == 1 and len(documenti) == totali[0]:
+                return documenti
+        raise ErroreInvoicetronic(
+            f"elenco instabile o incompleto dopo {LETTURE_ELENCO} letture: "
+            f"{len(documenti)} documenti contro {totali[0]}..{totali[-1]} dichiarati"
+        )
+
+    def _leggi_elenco(self, company_id: int) -> tuple[List[Dict[str, Any]], List[int]]:
         visti: Dict[int, Dict[str, Any]] = {}
         totali: List[int] = []
         precedente: Optional[datetime] = None
@@ -227,11 +241,7 @@ class ClientInvoicetronic:
                 visti.setdefault(doc["id"], doc)
         else:
             raise ErroreInvoicetronic("elenco oltre il numero massimo di pagine")
-        if len(visti) not in (totali[0], totali[-1]):
-            raise ErroreInvoicetronic(
-                f"elenco incompleto: {len(visti)} documenti contro {totali[0]} dichiarati"
-            )
-        return list(visti.values())
+        return list(visti.values()), totali
 
     def documento(self, receive_id: int) -> Dict[str, Any]:
         resp = self._get(f"/receive/{int(receive_id)}", {"include_payload": "true"})
