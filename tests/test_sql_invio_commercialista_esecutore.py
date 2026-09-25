@@ -970,3 +970,21 @@ def test_il_reinvio_rispedisce_anche_i_gia_visti(db_sql, acceso):
     iid = _invio(db_sql, cid, "reinvio", primo_dal, primo_al)
     assert _esegui(db_sql, mondo) == ["inviato"]
     assert _riga(db_sql, iid)["documenti_ids"] == [1, 2]
+
+
+
+def test_dopo_un_non_arrivata_il_primo_invio_rispedisce_tutto(db_sql, acceso):
+    """La riga chiarita «non arrivata» ha i suoi documenti visti, ma il commercialista
+    non li ha: non devono contare come gia' consegnati."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    dal, al = _oggi() - timedelta(days=20), _oggi() - timedelta(days=1)
+    iid = _invio(db_sql, cid, "primo", dal, al)
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now(), "
+                 "documenti_ids = ARRAY[1, 2], documenti_visti = ARRAY[1, 2] WHERE id = %s", iid)
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'esito_incerto' WHERE id = %s", iid)
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'errore', chiarito_non_partito_at = now() WHERE id = %s", iid)
+    mondo = _Mondo([_documento(1, _alle(dal + timedelta(days=1))), _documento(2, _alle(dal + timedelta(days=2)))])
+    nuovo = _invio(db_sql, cid, "primo", dal, al)
+    assert _esegui(db_sql, mondo) == ["inviato"]
+    assert _riga(db_sql, nuovo)["documenti_ids"] == [1, 2] and mondo.avvisi == []
