@@ -599,6 +599,24 @@ def test_la_prova_va_solo_all_admin_anche_a_invio_spento(invii):
     assert sb.scritture == [] and sb.registro == {}
 
 
+def test_la_prova_non_porta_la_disiscrizione_del_cliente(invii):
+    """Un clic dell'admin su «Annulla iscrizione» avrebbe disiscritto il
+    cliente a sua insaputa (review del 25/09): nella prova nessun token del
+    cliente, ne' nelle intestazioni ne' nel testo."""
+    svc.invia_prova(_sb(), UID, "md@oneflux.it", adesso=LUNEDI_7)
+    token = svc.token_disiscrizione(UID)
+    (inviata,) = invii
+    assert "List-Unsubscribe" not in (inviata.get("headers") or {})
+    assert token not in inviata["text_body"]
+    assert UID not in inviata["text_body"]
+
+
+def test_l_email_vera_invece_la_porta(invii):
+    email = svc.componi_email(_dest(), ["Una frase."])
+    assert svc.token_disiscrizione(UID) in email["html"]
+    assert "List-Unsubscribe" in email["headers"]
+
+
 def test_la_prova_serve_a_decidere_quindi_non_chiede_l_abilitazione(invii):
     """Si prova PRIMA di abilitare: la prova di un cliente non abilitato parte
     (all'admin), e il lavoro del lunedi' continua a non considerarlo."""

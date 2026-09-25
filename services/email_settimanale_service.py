@@ -451,13 +451,18 @@ def calcola_frasi(
     return frasi
 
 
-def componi_email(dest: Destinatario, frasi: List[str]) -> Dict[str, Any]:
+def componi_email(dest: Destinatario, frasi: List[str], *, prova: bool = False) -> Dict[str, Any]:
     """Oggetto, HTML, testo e intestazioni. Tutto il testo che arriva dai dati
-    passa da `html.escape`: nomi di sedi e frasi non sono HTML fidato."""
+    passa da `html.escape`: nomi di sedi e frasi non sono HTML fidato.
+
+    `prova`: l'email di prova va all'ADMIN, quindi NON porta il link di
+    disiscrizione del cliente, ne' nel testo ne' nelle intestazioni: un clic su
+    «Annulla iscrizione» in Gmail avrebbe disiscritto il cliente a sua insaputa,
+    e per costruzione solo lui puo' riaccenderla (review del 25/09)."""
     from services.email_service import email_template
 
     link_home = f"{APP_URL}/dashboard"
-    link_via = link_disiscrizione(dest.user_id)
+    link_via = f"{APP_URL}/disiscrizione" if prova else link_disiscrizione(dest.user_id)
     saluto = f"Ciao {dest.nome}," if dest.nome else "Ciao,"
     corpo_html = html.escape(saluto) + "<br><br>" + "<br><br>".join(
         html.escape(f).replace("\n", "<br>") for f in frasi
@@ -478,7 +483,7 @@ def componi_email(dest: Destinatario, frasi: List[str]) -> Dict[str, Any]:
             piede_html=piede,
         ),
         "testo": corpo_testo,
-        "headers": {
+        "headers": {} if prova else {
             "List-Unsubscribe": f"<{link_disiscrizione(dest.user_id, api=True)}>",
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
@@ -637,15 +642,15 @@ def invia_prova(sb, user_id: str, a_email: str, *, adesso: datetime) -> Dict[str
     """Compone l'email di quel cliente e la spedisce SOLO a `a_email` (l'admin),
     con «[PROVA]» nell'oggetto. Non tocca il registro e non richiede
     l'interruttore dell'invio: serve a vedere l'email vera nella propria casella
-    prima di accenderla. Il link di disiscrizione resta quello del cliente:
-    non va cliccato."""
+    prima di accenderla. Senza il link di disiscrizione del cliente (vedi
+    `componi_email(prova=True)`)."""
     from services.email_service import brevo_send
 
     a = anteprima(sb, user_id, adesso=adesso)
     if not a.get("riceverebbe"):
         return {"inviata": False, "motivo": a.get("motivo")}
     dest = leggi_destinatari(sb, solo_user_id=user_id, senza_abilitazione=True)[0]
-    email = componi_email(dest, a["frasi"])
+    email = componi_email(dest, a["frasi"], prova=True)
     ok = brevo_send(
         a_email, "Prova ONEFLUX", f"[PROVA] {email['oggetto']}", email["html"],
         contesto="settimanale-prova", text_body=email["testo"], headers=email["headers"],
