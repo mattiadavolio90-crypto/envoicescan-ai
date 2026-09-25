@@ -173,3 +173,67 @@ def test_nessuna_sede_risolta_ritorna_vuoto(monkeypatch):
     monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, sb: None)
     r = fw._chat_query_scadenze({"id": "u-test"}, MagicMock())
     assert r == {"scadenze": [], "totale_da_pagare": 0.0}
+
+
+# ── La chat conta la stessa popolazione della pagina (25/09/2026) ────────────
+#
+# Il docstring di `_chat_query_scadenze` dichiara «riusa la stessa fonte della
+# pagina Gestione Fatture», ma filtrava solo su `pagata`: le note di credito e
+# le fatture escluse dai conti entravano nel totale, mentre la pagina le esclude
+# in sette punti di lib/scadenziario.ts. In produzione le sole note di credito
+# non pagate valevano 44.791 EUR: chi chiedeva «quanto devo pagare»
+# all'assistente leggeva una cifra che il video non confermava.
+#
+# Una nota di credito NON e' un debito (e' un credito verso il fornitore) e una
+# fattura «esclusa dai conti» e' stata tolta dal cliente proprio per non vederla
+# nei totali: contarle qui e' un errore di merito, non di arrotondamento.
+
+
+def _doc_esteso(fornitore, importo, *, pagata=False, nc=False, oscurata=False):
+    d = _doc(fornitore, importo, scadenza="2026-09-15", pagata=pagata)
+    d["is_nota_credito"] = nc
+    d["oscurata"] = oscurata
+    return d
+
+
+def test_le_note_di_credito_non_sono_debito(monkeypatch):
+    docs = [
+        _doc_esteso("Metro", 100.0),
+        _doc_esteso("Reso Metro", 50.0, nc=True),
+    ]
+    r = _query(monkeypatch, docs)
+    assert r["totale_da_pagare"] == 100.0, "la nota di credito e' entrata nel debito"
+    assert [v["fornitore"] for v in r["scadenze"]] == ["Metro"]
+
+
+def test_le_fatture_escluse_dai_conti_non_entrano(monkeypatch):
+    docs = [
+        _doc_esteso("Metro", 100.0),
+        _doc_esteso("Esclusa", 30.0, oscurata=True),
+    ]
+    r = _query(monkeypatch, docs)
+    assert r["totale_da_pagare"] == 100.0, "una fattura esclusa dal cliente e' entrata nel debito"
+    assert [v["fornitore"] for v in r["scadenze"]] == ["Metro"]
+
+
+def test_esclusioni_valgono_anche_chiedendo_le_pagate(monkeypatch):
+    """Con solo_da_pagare=False l'elenco include le pagate, mai NC e oscurate."""
+    docs = [
+        _doc_esteso("Metro", 100.0),
+        _doc_esteso("Saldata", 70.0, pagata=True),
+        _doc_esteso("Reso", 50.0, nc=True),
+        _doc_esteso("Esclusa", 30.0, oscurata=True),
+    ]
+    r = _query(monkeypatch, docs, solo_da_pagare=False)
+    nomi = {v["fornitore"] for v in r["scadenze"]}
+    assert nomi == {"Metro", "Saldata"}
+    assert r["totale_da_pagare"] == 100.0
+
+
+def test_un_documento_senza_i_campi_nuovi_resta_un_debito(monkeypatch):
+    """Un worker che non manda ancora `oscurata`/`is_nota_credito` non deve far
+    sparire le fatture: assente significa «non esclusa», come in lib/scadenziario.ts."""
+    docs = [_doc("Metro", 100.0, scadenza="2026-09-15")]
+    r = _query(monkeypatch, docs)
+    assert r["totale_da_pagare"] == 100.0
+    assert len(r["scadenze"]) == 1

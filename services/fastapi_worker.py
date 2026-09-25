@@ -4602,6 +4602,14 @@ def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: 
     voci = []
     totale = 0.0
     for d in docs:
+        # Stessa precedenza di esclusione della pagina (lib/scadenziario.ts:
+        # computeKpi, bucketizeDocumenti): oscurata -> nota di credito ->
+        # pagata. Senza queste due righe la chat rispondeva con un totale che
+        # il video non confermava — le sole note di credito non pagate valgono
+        # 44.791 EUR in produzione (misurato il 25/09/2026) — pur dichiarando
+        # nel docstring di riusare la stessa fonte.
+        if d.get("oscurata") or d.get("is_nota_credito"):
+            continue
         if solo_da_pagare and d.get("pagata"):
             continue
         imp = float(d.get("totale_documento") or 0)
