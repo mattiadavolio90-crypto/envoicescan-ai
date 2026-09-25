@@ -60,6 +60,9 @@ instradata da Railway.
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: gli avvisi del saldo (basso, esaurito,
   illeggibile). Se una di queste chiavi manca, all'avvio il log del queue-worker lo
   scrive come errore (`_segnala_configurazione_avvisi` in `worker/run.py`).
+- `INVOICETRONIC_EXPORT_KEY` (facoltativa): sotto-chiave Invoicetronic in sola lettura
+  per l'invio al commercialista; se c'e' ha la precedenza su `INVOICETRONIC_API_KEY`.
+  Deve essere di produzione (`ik_live_`): con `ik_test_` il client si rifiuta di partire.
 - `INVOICETRONIC_SOGLIA_OPERAZIONI` (default 100): sotto questa soglia parte
   l'avviso. `WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS` (default 21600).
 - Healthcheck del servizio: **DISABILITATO** (non espone HTTP).

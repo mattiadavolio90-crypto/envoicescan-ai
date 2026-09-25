@@ -106,6 +106,7 @@ _PURGE_RETENTION_GDPR = (
     ("purge_category_change_log", 365),
     ("purge_ai_usage_events", 365),
     ("purge_marketplace_leads", 730),
+    ("purge_invio_commercialista", 365),
 )
 
 # ─── Assicura PROJECT_ROOT in sys.path ────────────────────────────────────────

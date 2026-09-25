@@ -1101,6 +1101,39 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   sola lettura, 25 volte su 40 mesi consolidati oggi, 20 con la proposta
 >   (tace sulle 4 di LAND DEI SAPORI, stabile al 37,8%, e su OFFSIDE ad aprile,
 >   migliorato dal 40,8% al 35,9%). Non scritta: il numero va a Mattia.
+>
+> - **25/09/2026 — fase B del piano «invio XML al commercialista»: tabelle,
+>   client Invoicetronic, guardia. Tutto spento, niente lo chiama ancora.**
+>   Prima del codice, tre critici avversari sul disegno (schema, attacco fra
+>   clienti, API): l'hanno cambiato in 20 punti. I principali: la lista si
+>   legge TUTTA, senza filtri di data (`date_sent` puo' essere nulla, le fatture
+>   trattenute si rielaborano dopo) e deve tornare col totale dichiarato; il
+>   documento si scarica in JSON (il text/plain cambiava gli accenti); XML o
+>   P7M si decide dai byte; la busta si apre solo con asn1crypto, perche' i
+>   ripieghi di invoice_service possono alterare l'XML; un timeout di Brevo e'
+>   «esito incerto», mai un errore da ritentare. Fatto: migration
+>   `20260925113943_invio_commercialista.sql` (configurazione per P.IVA con
+>   consenso legato all'email e P.IVA di un solo account, verificata su
+>   ristoranti E piva_ristoranti; registro con un solo invio in volo, un solo
+>   primo, periodi mai sovrapposti e contigui, reinvio solo nel gia' inviato,
+>   mai oggi ne' oltre 2 anni, stati solo in avanti, `errore` dopo un'email
+>   partita solo con un 4xx; pulizia GDPR nel giro giornaliero; bucket privato
+>   anche se esisteva gia'); `services/invoicetronic_client.py` (chiave
+>   `ik_live_`, 429/403/5xx/rete, elenco completo o errore);
+>   `services/invio_commercialista_guardia.py` (proprieta' della P.IVA, azienda,
+>   ogni voce dell'elenco, riconciliazione con la coda locale, struttura severa
+>   della FatturaPA e della semplificata, un solo destinatario, IdPaese IT e 11
+>   cifre, la regex del webhook d'accordo, nomi ripuliti, doppioni). **Trovato
+>   dai test**: un CHECK con `BETWEEN` su uno stato nullo passava (email partita
+>   poteva diventare `errore`: doppione al commercialista); la pulizia GDPR non
+>   poteva cancellare il destinatario reso immutabile; un BOM seguito da un a
+>   capo fermava il parser. **Mutanti: 56**, 55 uccisi; M22 (il cursore che
+>   conterebbe anche i reinvii) e' equivalente per costruzione, perche' il
+>   trigger vieta gia' un reinvio oltre l'ultimo giorno inviato. C16 sopravviveva
+>   finche' il test girava in UTC: ora gira anche a +14 e a -11. Test: +46
+>   client, +59 guardia, +65 e +11 `-m sql`. Prima del push: applicare la
+>   migration (senza, la pulizia giornaliera scrive un avviso nel log; nient'altro
+>   la usa ancora).
 
 ---
 
