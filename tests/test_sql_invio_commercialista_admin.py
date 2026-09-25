@@ -508,5 +508,24 @@ def test_il_primo_invio_non_si_sovrappone_alla_storia_di_una_configurazione_canc
     _completa(app, nuova)
     r = app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"})
     assert r.status_code == 400 and "configurazione cancellata" in r.json()["detail"]
+    # Partenza proprio sull'ultimo giorno gia' inviato: quel giorno si rispedirebbe.
+    app.patch(f"{_base()}/{nuova}", json={"data_partenza": (_oggi() - timedelta(days=30)).isoformat()})
+    assert app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"}).status_code == 400
     app.patch(f"{_base()}/{nuova}", json={"data_partenza": (_oggi() - timedelta(days=29)).isoformat()})
     assert app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"}).status_code == 200
+
+
+def test_anche_uno_storico_orfano_incerto_conta_come_gia_inviato(app):
+    """Un esito incerto puo' essere arrivato: vale come spedito finche' nessuno lo chiarisce."""
+    cid = _collega(app)
+    _completa(app, cid)
+    iid = str(_cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
+                           "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin') "
+                           "RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, _oggi() - timedelta(days=60), _oggi() - timedelta(days=30))[0][0])
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'esito_incerto' WHERE id = %s", iid)
+    _cur(app.db, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
+    nuova = _collega(app)
+    _completa(app, nuova)
+    r = app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"})
+    assert r.status_code == 400 and "configurazione cancellata" in r.json()["detail"]
