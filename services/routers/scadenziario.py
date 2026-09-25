@@ -1,8 +1,8 @@
 """Router dominio SCADENZIARIO — pagamenti, scadenze, regole fornitore, notifiche.
 
-Estratto da fastapi_worker.py. Include anche /api/ricavi/notifica-mancante, che
-era fisicamente in questa sezione (path e tag invariati). Gli helper condivisi
-sono importati dal worker.
+Estratto da fastapi_worker.py. Gli helper condivisi sono importati dal worker.
+(`/api/ricavi/notifica-mancante`, che stava qui, e' stato tolto il 25/09/2026:
+scriveva ogni giorno una riga che nessuno leggeva piu', vedi get_notifiche.)
 """
 from typing import Dict, List, Optional
 
@@ -533,71 +533,3 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
         "scadute": len(scadute),
         "in_scadenza": len(settimana),
     }
-
-
-@router.post("/api/ricavi/notifica-mancante", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
-def genera_notifica_incasso_mancante(authorization: Optional[str] = Header(None)):
-    """Promemoria in-app: se manca l'incasso di IERI, mette/aggiorna un avviso
-    nella inbox (badge campanella). Se l'incasso di ieri c'e', dismette l'avviso.
-
-    Usa il servizio ufficiale notification_inbox_service (RPC idempotente,
-    dedupe_key + refresh_on_conflict gestiti dalla factory) — NON l'upsert diretto.
-    Topic 'incasso_mancante': source_type 'operativa', bucket giornaliero (ieri
-    cambia ogni giorno), severity 'warning' (non critico, e' un'app di analisi).
-
-    Trigger: chiamato all'apertura della sezione mobile (come scadenze sul tab
-    Scadenziario), non da cron. Raffinamento futuro possibile ("non disturbare nei
-    giorni di chiusura") ma richiederebbe una semantica di chiusura su diario_eventi
-    che oggi non esiste: non la inventiamo qui."""
-    from datetime import timedelta as _td
-    from services.notification_inbox_service import (
-        build_notification_record,
-        upsert_inbox_notifications,
-        dismiss_inbox_topics,
-    )
-
-    user = _resolve_user_from_token(authorization)
-    sb = _get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, sb)
-    if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
-
-    ieri = (_oggi_rome() - _td(days=1)).isoformat()
-
-    # Nota: il rispetto del toggle "Incasso di ieri mancante" e' centralizzato in
-    # get_notifiche (filtro unico per tutti i topic, su campanella + avvisi). Qui
-    # non serve ricontrollarlo: generare l'avviso anche se spento e' innocuo
-    # perche' viene filtrato in lettura, ed evitiamo due logiche sovrapposte.
-
-    # C'e' gia' una riga ricavi per ieri (manuale, xls o email)?
-    resp = (
-        sb.table("ricavi_giornalieri")
-        .select("data")
-        .eq("ristorante_id", ristorante_id)
-        .eq("data", ieri)
-        .limit(1)
-        .execute()
-    )
-    presente = bool(resp.data)
-
-    if presente:
-        # Incasso gia' inserito: spegni l'avviso (soft-delete del topic, se attivo).
-        dismiss_inbox_topics(str(user["id"]), ristorante_id, ["incasso_mancante"], sb)
-        return {"ok": True, "notifica": None}
-
-    record = build_notification_record(
-        user_id=str(user["id"]),
-        ristorante_id=ristorante_id,
-        topic_key="incasso_mancante",
-        source_type="operativa",
-        severity="warning",
-        title="Manca l'incasso di ieri",
-        # NB: questo body (e questo action_page) non arrivano a schermo: `get_notifiche`
-        # rimuove le righe persistite dei topic in `_LIVE_TOPICS_DATI_MANCANTI` e le
-        # sostituisce con la versione live (`fastapi_worker.py`), che ha body vuoto.
-        # Restano corretti per non mentire se un giorno la riga tornasse visibile.
-        body="Usa il pulsante qui sotto per inserirlo e tenere i margini aggiornati.",
-        action_page="/margini",
-    )
-    inserted = upsert_inbox_notifications([record], sb)
-    return {"ok": True, "inserted": inserted}

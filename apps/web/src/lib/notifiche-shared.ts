@@ -201,8 +201,8 @@ export function filtraPerSeverity(notifiche: Notifica[], filtro: Filtro): Notifi
 // La PWA spegne le CTA che porterebbero a viste desktop (`hideCta` qui,
 // `hideLinks` nella card Salute): un link a /margini su un telefono e' peggio
 // di nessun link. Ma "nessuna CTA" ha lasciato scoperto il caso piu' vivo:
-// `incasso_mancante` NASCE sul mobile (`m/incasso-reminder.tsx`) e la sua
-// notifica arrivava li' senza modo di agire.
+// `incasso_mancante` arriva anche sul telefono, e la sua notifica restava li'
+// senza modo di agire.
 //
 // Si mappa per TOPIC, non per path, ed e' una correzione voluta: su /margini
 // desktop confluiscono almeno 6 topic (incasso_mancante, fatturato_mancante,

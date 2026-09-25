@@ -102,6 +102,15 @@ def _sb(margini_rows, incasso_ieri=True, modalita_rows=None, ha_storia=True):
     q.select.return_value = q
     q.eq.side_effect = _eq
     q.lt.side_effect = _lt
+    # Dal 25/09 la domanda «incasso di ieri» e' una finestra (gte/lte su
+    # "data", larga quanto i giorni di chiusura + 1): la riconosce il lte.
+    def _lte(*a, **k):
+        if a and a[0] == "data":
+            state["rg_query"] = "ieri"
+        return q
+
+    q.gte.return_value = q
+    q.lte.side_effect = _lte
     q.in_.return_value = q
     q.limit.return_value = q
     q.execute.side_effect = _execute

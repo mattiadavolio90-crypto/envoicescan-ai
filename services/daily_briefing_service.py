@@ -148,7 +148,11 @@ logger = get_logger('daily_briefing')
 #               il testo servito: senza bump chi ha lo snapshot di oggi non le
 #               vedrebbe fino al TTL. Nella stessa versione (mai deployata da
 #               sola): i solleciti di dati diventano una riga in coda.
-_BRIEFING_CODE_VERSION = 27
+#   28 (25/09): le percentuali col decimale hanno la virgola («+172,1%», non
+#               «+172.1%») nella buona notizia del MOL e negli avvisi prezzi;
+#               e «manca l'incasso di ieri» tollera i giorni di chiusura
+#               dichiarati (oggi nessuna sede ne ha: testo invariato per tutti).
+_BRIEFING_CODE_VERSION = 28
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -349,7 +353,7 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
         prep = "ad" if prec[:1] in ("a", "o") else "a"
         base = f"\U0001F525 {mese} chiuso con € {mol} di margine"
         if delta is not None and prec:
-            base += f", +{float(delta):.1f}% rispetto {prep} {prec}"
+            base += f", +{_pct_it(float(delta))}% rispetto {prep} {prec}"
         return base + "."
     if tipo == 'perdita_in_calo':
         mese = str(payload.get('mese') or '').capitalize()
@@ -755,7 +759,7 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
             # Formato uniforme '\u2014 <Nome> +NN%': consente all'anonimizzazione di
             # catturare SEMPRE il nome (prodotto o tag) prima dell'invio a OpenAI.
             if top_product and top_pct is not None:
-                base += f" \u2014 {top_product} +{top_pct:.1f}%"
+                base += f" \u2014 {top_product} +{_pct_it(top_pct)}%"
                 if impatto:
                     base += f" (\u2248\u20ac{int(impatto)}/mese)"
             elif top_product:
@@ -1104,7 +1108,7 @@ def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
         prec = str(payload.get('mese_prec') or '').lower()
         prep = "ad" if prec[:1] in ("a", "o") else "a"
         if delta is not None and prec:
-            return f"{mese} si è chiuso con € {mol} di margine, +{float(delta):.1f}% rispetto {prep} {prec}."
+            return f"{mese} si è chiuso con € {mol} di margine, +{_pct_it(float(delta))}% rispetto {prep} {prec}."
         return f"{mese} si è chiuso con € {mol} di margine."
     if tipo == 'perdita_in_calo':
         mese = str(payload.get('mese') or '').capitalize()
@@ -1182,15 +1186,21 @@ def _voce_sollecito(notif: Dict[str, Any]) -> Optional[tuple]:
             return f"{cosa} di {descr}", False
         mese, anno = payload.get('mese'), payload.get('anno')
         if not (mese and anno):
+            # Ripiego sul titolo (notifiche persistite senza payload): il parser
+            # restituisce il mese con la maiuscola, che a meta' frase e' un
+            # errore («il fatturato di Agosto 2026»).
             mese, anno = _parse_mese_anno_from_title(title)
         if mese and anno:
-            return f"{cosa} di {mese} {anno}", False
+            return f"{cosa} di {str(mese).lower()} {anno}", False
     return None
 
 
-def _riga_solleciti(selected: List[Dict[str, Any]]) -> tuple:
+def _riga_solleciti(selected: List[Dict[str, Any]], settore: str = "ristorazione") -> tuple:
     """(riga, topic raccolti): la frase unica dei dati mancanti e i topic che
-    ha assorbito (non vanno piu' raccontati uno per uno)."""
+    ha assorbito (non vanno piu' raccontati uno per uno).
+
+    `settore`: a un negozio non si parla di food cost (residuo della fase 4,
+    25/09/2026); per i ristoranti, il default, la frase e' quella di sempre."""
     voci: List[tuple] = []
     raccolti: set = set()
     for n in selected:
@@ -1216,10 +1226,9 @@ def _riga_solleciti(selected: List[Dict[str, Any]]) -> tuple:
     elenco = testi[0] if len(testi) == 1 else ", ".join(testi[:-1]) + " e " + testi[-1]
     plurale = len(testi) > 1 or voci[0][2][1]
     verbo, esserci = ("mancano", "ci sono") if plurale else ("manca", "c'è")
-    riga = (
-        f"Per completare il quadro {verbo} {elenco}: finché non {esserci}, "
-        f"margini e food cost non sono completi."
-    )
+    from services.settore_service import SETTORE_RETAIL
+    cosa = "i margini non sono completi" if settore == SETTORE_RETAIL else "margini e food cost non sono completi"
+    riga = f"Per completare il quadro {verbo} {elenco}: finché non {esserci}, {cosa}."
     return riga, raccolti
 
 
@@ -1231,6 +1240,7 @@ def _compose_narrative(
     apertura_onboarding: Optional[Dict[str, Any]] = None,
     c_e_arretrato: bool = False,
     osservazioni: Optional[List[Dict[str, Any]]] = None,
+    settore: str = "ristorazione",
 ) -> str:
     """Compone il testo narrativo colloquiale con apertura, corpo e chiusura.
 
@@ -1269,7 +1279,7 @@ def _compose_narrative(
             return f"{apertura}\nPer oggi non c'è nulla da sistemare."
         return "Tutto in ordine per oggi, niente da sistemare."
 
-    riga_solleciti, raccolti = _riga_solleciti(selected)
+    riga_solleciti, raccolti = _riga_solleciti(selected, settore)
     sentences = [
         _narrative_phrase_for(n) for n in selected
         if str(n.get('topic_key') or '') not in raccolti
@@ -1542,6 +1552,24 @@ def _narrate_with_ai(
             max_tokens=220,
             temperature=0.5,
         )
+        # Il costo si registra SUBITO: una risposta vuota, troncata o scartata
+        # dal validatore e' stata pagata lo stesso. Prima il tracking stava dopo
+        # i tre `return fallback` e quei token non finivano nel registro dei
+        # costi (residuo della fase 4, 25/09/2026).
+        try:
+            usage = response.usage
+            if usage:
+                from services.ai_cost_service import track_ai_usage
+                track_ai_usage(
+                    operation_type='daily_briefing',
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    ristorante_id=_resolve_ristorante_id(),
+                    item_count=len(bullets),
+                )
+        except Exception as exc:
+            logger.warning("tracking costo briefing AI fallito: %s", exc)
+
         text = (response.choices[0].message.content or "").strip()
         if not text:
             return fallback
@@ -1558,20 +1586,6 @@ def _narrate_with_ai(
             logger.warning("narrazione AI scartata (%s), uso il template", motivo)
             return fallback
 
-        try:
-            usage = response.usage
-            if usage:
-                from services.ai_cost_service import track_ai_usage
-                track_ai_usage(
-                    operation_type='daily_briefing',
-                    prompt_tokens=usage.prompt_tokens,
-                    completion_tokens=usage.completion_tokens,
-                    ristorante_id=_resolve_ristorante_id(),
-                    item_count=len(bullets),
-                )
-        except Exception as exc:
-            logger.warning("tracking costo briefing AI fallito: %s", exc)
-
         return _deanonymize(text, mapping)
     except Exception as exc:
         logger.warning("narrazione AI fallita, uso fallback template: %s", exc)
@@ -1586,6 +1600,7 @@ def _build_snapshot(
     notifications: List[Dict[str, Any]],
     use_ai: bool = False,
     topics_disabled: Optional[List[str]] = None,
+    settore: str = "ristorazione",
 ) -> Dict[str, Any]:
     """Costruisce lo snapshot giornaliero.
 
@@ -1708,7 +1723,7 @@ def _build_snapshot(
         aperture_bullets = [b for b in [_bullet_for(onboarding)] if b]
         template_narrative = _compose_narrative(
             selected, sev_max, apertura_onboarding=onboarding,
-            c_e_arretrato=bool(arretrato_frase),
+            c_e_arretrato=bool(arretrato_frase), settore=settore,
         )
     else:
         aperture_bullets = [
@@ -1719,6 +1734,7 @@ def _build_snapshot(
         template_narrative = _compose_narrative(
             selected, sev_max, apertura_rientro=rientro, apertura_buona=buona_notizia,
             c_e_arretrato=bool(arretrato_frase), osservazioni=osservazioni,
+            settore=settore,
         )
     # I bullet per l'AI NON sono quelli delle card: per i topic in
     # _TOPIC_SENZA_CONTEGGIO_IN_NARRAZIONE il conteggio viene tolto, altrimenti il
@@ -1733,7 +1749,7 @@ def _build_snapshot(
     if onboarding is not None:
         _riga_ai, _raccolti_ai = "", set()
     else:
-        _riga_ai, _raccolti_ai = _riga_solleciti(selected)
+        _riga_ai, _raccolti_ai = _riga_solleciti(selected, settore)
     bullets_ai = aperture_bullets + [
         _bullet_per_narrazione(n) for n in selected
         if str(n.get('topic_key') or '') not in _raccolti_ai
@@ -1915,7 +1931,11 @@ def generate_and_save_briefing(
         return None
     try:
         today = _today_rome()
-        snapshot = _build_snapshot(notifications, use_ai=True, topics_disabled=topics_disabled)
+        from services.settore_service import settore_sede
+        snapshot = _build_snapshot(
+            notifications, use_ai=True, topics_disabled=topics_disabled,
+            settore=settore_sede(ristorante_id, supabase_client),
+        )
         snapshot['generated_for_date'] = today.isoformat()
 
         record = {

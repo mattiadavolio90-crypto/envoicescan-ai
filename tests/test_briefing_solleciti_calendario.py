@@ -68,6 +68,15 @@ def _sb(margini_rows, incasso_ieri=True, ha_storia=True, anno=2026, mese=8):
     q.select.return_value = q
     q.eq.side_effect = _eq
     q.lt.side_effect = _lt
+    # Dal 25/09 la domanda «incasso di ieri» e' una finestra (gte/lte su
+    # "data", larga quanto i giorni di chiusura + 1): la riconosce il lte.
+    def _lte(*a, **k):
+        if a and a[0] == "data":
+            state["rg"] = "ieri"
+        return q
+
+    q.gte.return_value = q
+    q.lte.side_effect = _lte
     q.in_.return_value = q
     q.limit.return_value = q
     q.execute.side_effect = _execute
@@ -342,11 +351,11 @@ def test_card_completezza_non_conta_il_personale_non_ancora_dovuto():
 def test_la_campanella_passa_dallo_stesso_gate_del_briefing():
     """Il gate settimanale non deve essere aggirabile dalla campanella.
 
-    Esiste un SECONDO percorso che genera `incasso_mancante`:
-    `/api/ricavi/notifica-mancante` (`routers/scadenziario.py`), chiamato dal
-    mobile a ogni apertura (`m/incasso-reminder.tsx`), che scrive in
-    `notification_inbox` con bucket GIORNALIERO. Di per se' sarebbe un bypass:
-    sul telefono l'avviso tornerebbe ogni giorno.
+    Esisteva un SECONDO percorso che generava `incasso_mancante`: un endpoint
+    chiamato dal mobile a ogni apertura, che scriveva in `notification_inbox`
+    con bucket GIORNALIERO (tolto il 25/09/2026). Righe vecchie di quel tipo
+    possono restare nella tabella, e sarebbero un bypass: sul telefono l'avviso
+    tornerebbe ogni giorno.
 
     Non lo e' perche' `get_notifiche` rimuove SEMPRE le righe persistite dei
     topic in `TOPIC_LIVE_NON_IGNORABILI` e le sostituisce con i live, che

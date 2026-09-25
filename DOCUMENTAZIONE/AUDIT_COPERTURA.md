@@ -981,6 +981,33 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   insaputa, senza rimedio dall'admin. Ora `componi_email(prova=True)` li toglie
 >   entrambi. 4 mutanti, 4 uccisi.
 >
+> - **25/09/2026 — residui tecnici del piano consulente, tutti chiusi.**
+>   (1) *Il conteggio della chat fra clienti*: invertire il filtro di proprieta'
+>   in `_chat_domande_oggi/_mese` sopravviveva ai test (mock che accettavano
+>   qualunque `eq`); ora un finto DB che filtra davvero, con due clienti e due
+>   sedi, e i quattro chiamanti che passano `None` solo in pool — 15 mutanti
+>   uccisi. (2) *Virgola nelle percentuali* del briefing in 3 frasi (buona
+>   notizia, card MOL, avvisi prezzi); verificato che l'anonimizzazione dei nomi
+>   verso OpenAI riconosce anche «+12,5%», e il test dell'anonimizzazione ora
+>   usa il bullet PRODOTTO dal codice, non una stringa a mano (il suo stesso
+>   commento ricordava un leak nato cosi'). `_BRIEFING_CODE_VERSION` 27 -> 28.
+>   Un primo giro di mutanti dava «no tests ran»: rifatto. (3) *Il 429 della
+>   chat* confrontato intero: «30» e' dentro «300». (4) *Chiusure*: «manca
+>   l'incasso di ieri» tollera N giorni di chiusura come i ricavi automatici
+>   (misurato: oggi nessuna sede ne dichiara, testo invariato per tutti).
+>   (5) *La riga mobile quotidiana*: tolti endpoint e componente che scrivevano
+>   ogni giorno una riga mai letta; e la campanella ora la scarta sempre — lo
+>   scarto stava dentro il try del calcolo live, e un suo errore mostrava la
+>   riga vecchia. (6) *Negozi*: la riga dei dati mancanti non dice «food cost»
+>   (settore passato fino al testo, all'AI e al percorso veloce della Home).
+>   (7) Ripiego sul titolo con il mese minuscolo. (8) *Costi AI*: il tracking
+>   stava dopo i tre ritorni al template, quindi le frasi scartate erano pagate
+>   ma non registrate. Mutanti totali: ~45, tutti uccisi o dichiarati
+>   equivalenti (2). Suite `-m "not sql"`: 16.360 passed (1 rosso che fissava
+>   «di Agosto» maiuscolo a meta' frase: aggiornato), `-m sql` 553, OpenAPI
+>   202, `tsc` pulito sui sorgenti (un file generato dal dev server locale in
+>   `.next/dev` cita la route tolta: non e' nel repo). **Non pushato.**
+>
 > - **25/09/2026 — passo 0 del piano «invio XML al commercialista»: l'avviso
 >   sul saldo crediti Invoicetronic.** Prima la misura: a saldo zero il webhook
 >   segna `failed` con «HTTP 403», il worker ritenta 8 volte e in circa 2 ore

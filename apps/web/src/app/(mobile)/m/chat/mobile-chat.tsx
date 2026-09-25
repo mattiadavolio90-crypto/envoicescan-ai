@@ -8,9 +8,6 @@ import { Logo } from "@/components/brand/logo";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-// Il backend accetta al massimo 20 messaggi: inviamo solo la coda piu' recente
-// per non sforare dopo ~20 scambi (la conversazione resta intera a schermo).
-
 const SUGGERIMENTI = [
   "Qual è il mio food cost?",
   "Cosa devo pagare?",

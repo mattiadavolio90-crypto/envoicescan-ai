@@ -152,7 +152,7 @@ class TestBulletFor:
         b = _bullet_for(n)
         assert "3" in b
         assert "Mozzarella" in b
-        assert "12.5" in b
+        assert "12,5" in b
 
     def test_price_alert_without_top_product(self):
         n = _notif("price_alert", "warning", {"count": 2})
@@ -203,7 +203,7 @@ class TestAppuntamentoActionable:
         })
         b = _bullet_for(n)
         assert "Prezzo in aumento" in b
-        assert "— Mozzarella +23.8%" in b
+        assert "— Mozzarella +23,8%" in b
         assert "prodotti" not in b  # singolare: niente plurale
 
     def test_price_alert_bullet_singolo_tag(self):
@@ -213,7 +213,7 @@ class TestAppuntamentoActionable:
         })
         b = _bullet_for(n)
         assert "Categoria in aumento" in b
-        assert "— BAR, CAFFE' +119.6%" in b
+        assert "— BAR, CAFFE' +119,6%" in b
         assert "prodotto" not in b.lower()
 
     def test_price_alert_bullet_piu_tag(self):
@@ -223,7 +223,7 @@ class TestAppuntamentoActionable:
         })
         b = _bullet_for(n)
         assert "su 4 categorie" in b
-        assert "— BIRRE +15.0%" in b
+        assert "— BIRRE +15,0%" in b
 
     def test_uncategorized_rows_payload_key(self):
         n = _notif("uncategorized_rows", "warning", {"uncategorized_rows": 7})
@@ -288,7 +288,7 @@ class TestNarrativePriceAlert:
         frase = _narrative_phrase_for(n)
         assert "3 prodotti" in frase
         assert "Mozzarella" not in frase
-        assert "12.5" not in frase
+        assert "12,5" not in frase and "12.5" not in frase
 
     def test_piu_voci_tag_dice_categorie(self):
         n = _notif("price_alert", "warning", {
@@ -555,6 +555,24 @@ class TestNarrazioneAI:
         assert "Mozzarella" not in anon[0]
         assert "<<P1>>" in anon[0]
         assert mapping["<<P1>>"] == "Mozzarella"
+
+    @pytest.mark.parametrize("payload, nome", [
+        ({"count": 2, "top_product": "Mozzarella di bufala", "top_increase_pct": 12.5,
+          "impatto_mensile": 80}, "Mozzarella di bufala"),
+        ({"count": 1, "top_product": "BAR, CAFFE'", "top_increase_pct": 119.6,
+          "top_tipo": "tag"}, "BAR, CAFFE'"),
+        ({"count": 3, "top_product": "Scamone", "top_increase_pct": 8.0}, "Scamone"),
+    ])
+    def test_anonymize_sul_bullet_prodotto_dal_codice(self, payload, nome):
+        """Col bullet VERO di _bullet_for, non una stringa scritta a mano: dal
+        25/09 la percentuale ha la virgola («+12,5%») e un test col vecchio
+        formato resterebbe verde anche se l'anonimizzazione smettesse di
+        riconoscere quello reale (e' gia' successo: vedi il test sopra)."""
+        bullet = _bullet_for(_notif("price_alert", "warning", payload))
+        assert "," in bullet.split("+")[-1], bullet   # il formato nuovo e' davvero quello
+        anon, mapping = _anonymize_bullets([bullet])
+        assert nome not in anon[0], anon[0]
+        assert mapping["<<P1>>"] == nome
 
     def test_anonymize_leaves_other_bullets_untouched(self):
         bullets = ["⚠️ 3 fatture scadute per € 1.200,00 — controlla."]
@@ -870,3 +888,23 @@ class TestRientroAssenza:
         # La to-do resta una card vera.
         assert len(snap["azioni"]) == 1
         assert snap["tutto_ok"] is False
+
+
+def test_la_versione_del_briefing_e_stata_alzata_per_la_virgola():
+    """La virgola nelle percentuali (25/09) cambia il testo servito: senza bump
+    chi ha lo snapshot di oggi vedrebbe «+172.1%» fino al TTL."""
+    import services.daily_briefing_service as dbs
+    assert dbs._BRIEFING_CODE_VERSION >= 28
+
+
+@pytest.mark.parametrize("funzione, atteso", [
+    ("_buona_notizia_frase", "Maggio si è chiuso con € 280.924 di margine, +172,1% rispetto ad aprile."),
+    ("_buona_notizia_bullet", "\U0001F525 Maggio chiuso con € 280.924 di margine, +172,1% rispetto ad aprile."),
+])
+def test_la_buona_notizia_del_margine_ha_la_virgola(funzione, atteso):
+    """«+172.1%» trovato dalla review del 24/09 sull'output vero: la percentuale
+    decimale e' all'italiana in entrambe le forme, frase e riga della card."""
+    import services.daily_briefing_service as dbs
+    payload = {"tipo": "mol_mese", "mese": "maggio", "mol": 280924,
+               "delta_pct": 172.1, "mese_prec": "aprile"}
+    assert getattr(dbs, funzione)(payload) == atteso

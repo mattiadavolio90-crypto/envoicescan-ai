@@ -65,8 +65,10 @@ class TestConteggioFuoriDallaNarrazione:
     def test_prezzi_perdono_percentuale_e_impatto(self):
         card = _bullet_for(_notif_prezzi())
         narrazione = _bullet_per_narrazione(_notif_prezzi())
-        assert "6.4" in card and "30" in card
-        assert "6.4" not in narrazione, "la % del singolo prodotto sta solo nella card"
+        assert "6,4" in card and "30" in card
+        assert "6,4" not in narrazione and "6.4" not in narrazione, (
+            "la % del singolo prodotto sta solo nella card"
+        )
         assert "30" not in narrazione, "l'impatto €/mese sta solo nella card"
 
     def test_prezzi_mantengono_emoji_e_nome_per_anonimizzazione(self):

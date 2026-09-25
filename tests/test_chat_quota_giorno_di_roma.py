@@ -310,6 +310,12 @@ def test_budget_mensile_esaurito_non_dice_torna_domani(monkeypatch):
         f"{detail!r}"
     )
     assert "300" in detail, f"non dice quante domande aveva: {detail!r}"
+    # Il messaggio intero, non un pezzo: con `in` un «999» o il numero del
+    # giorno al posto di quello del mese passavano (residuo 2c della fase 2).
+    assert detail == (
+        "Hai usato tutte le 300 domande di questo mese. "
+        "Il budget riparte il 1° del mese prossimo."
+    ), detail
 
 
 def test_tetto_giornaliero_esaurito_non_parla_del_mese(monkeypatch):
@@ -321,6 +327,12 @@ def test_tetto_giornaliero_esaurito_non_parla_del_mese(monkeypatch):
         f"sta dando il messaggio del budget MENSILE a chi ha finito il giorno: {detail!r}"
     )
     assert "30" in detail, f"non dice qual era il tetto di oggi: {detail!r}"
+    # «30» e' contenuto in «300»: solo il confronto intero distingue il tetto
+    # del giorno dal budget del mese (residuo 2c della fase 2).
+    assert detail == (
+        "Hai raggiunto il limite di 30 domande per oggi. "
+        "Il contatore si azzera a mezzanotte."
+    ), detail
 
 
 def test_la_rpc_riceve_davvero_il_budget_mensile(monkeypatch):

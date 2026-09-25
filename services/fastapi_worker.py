@@ -3025,15 +3025,19 @@ def get_notifiche(
     # duplicano ne' restano stantii) e aggiungiamo i live ricalcolati. Niente
     # alert prezzi qui: pesante, la campanella non deve mai essere lenta.
     if ristorante_id and not include_dismissed:
+        # I topic live sono la fonte AUTOREVOLE: rimuovi SEMPRE le persistite di
+        # questi topic (anche se il live ora e' vuoto), cosi' una versione
+        # stantia — es. "manca fatturato" non aggiornata dopo l'inserimento —
+        # sparisce dalla campanella invece di restare fino a expires_at.
+        # PRIMA del calcolo live e fuori dal suo try (25/09/2026): dentro, un
+        # errore del calcolo saltava lo scarto e la campanella mostrava la riga
+        # scritta ogni giorno dalla vecchia app mobile, senza le regole del
+        # briefing (giovedi', chiusure). Senza live si mostra meno, non il vecchio.
+        rows = [r for r in rows if r.get("topic_key") not in _LIVE_TOPICS_DATI_MANCANTI]
         try:
             live = _segnali_live_dati_mancanti(ristorante_id, supabase_client)
             # Topic spenti dell'utente valgono anche per i live (coerenza col briefing).
             live = _filtra_notifiche_topic_spenti(live, td)
-            # I topic live sono la fonte AUTOREVOLE: rimuovi SEMPRE le persistite di
-            # questi topic (anche se il live ora e' vuoto), cosi' una versione
-            # stantia — es. "manca fatturato" non aggiornata dopo l'inserimento —
-            # sparisce dalla campanella invece di restare fino a expires_at.
-            rows = [r for r in rows if r.get("topic_key") not in _LIVE_TOPICS_DATI_MANCANTI]
             _now_iso = __import__("datetime").datetime.now(
                 __import__("datetime").timezone.utc
             ).isoformat()
@@ -6341,7 +6345,7 @@ def _briefing_dati_mensili_mancanti(
 ) -> List[Dict[str, Any]]:
     """Notifiche LIVE dati mancanti per il briefing Home: fatturato e costo
     personale del mese precedente (fonte: /api/home/salute) + incasso di ieri
-    (fonte: /api/ricavi/notifica-mancante).
+    (un tempo anche /api/ricavi/notifica-mancante, tolto il 25/09/2026).
 
     Replica ESATTAMENTE la logica di quelle fonti (mese precedente, tabella
     margini_mensili, personale = dipendenti + extra; incasso = riga
@@ -6474,11 +6478,17 @@ def _briefing_dati_mensili_mancanti(
             "dedupe_key": f"costo-personale-mancante-live-{mc_anno}",
         })
 
-    # Incasso di IERI mancante: stessa logica dell'endpoint dedicato
-    # (/api/ricavi/notifica-mancante) ma calcolata live qui, cosi' compare nel
-    # briefing anche sull'app nuova senza dipendere da quella chiamata. Niente
-    # tolleranza weekend/chiusura: identico all'endpoint (non inventiamo qui una
-    # semantica di chiusura che non esiste in DB). Toggle spento -> non calcolare.
+    # Incasso di IERI mancante, calcolato live qui cosi' compare nel briefing
+    # anche sull'app nuova. Toggle spento -> non calcolare.
+    #
+    # CHIUSURE (25/09/2026, residuo della fase 1): la stessa tolleranza di
+    # `upload_ricavi_failed` (finestra = giorni di chiusura + 1, decisione
+    # 19/06). Prima i due segnali sui ricavi avevano due politiche nello stesso
+    # briefing: una sede chiusa il mercoledi' riceveva «manca l'incasso di ieri»
+    # il giovedi'. `giorni_chiusura_settimanali` e' un NUMERO, non quali giorni:
+    # si guarda se c'e' almeno un incasso negli ultimi N+1 giorni. Con 0 (tutte
+    # le sedi al 25/09) e' esattamente la regola di prima: solo ieri. Se le
+    # preferenze non si leggono, 0: la regola severa di sempre.
     if "incasso_mancante" not in spenti:
         try:
             # Se il mese corrente è in modalità 'mensile' il cliente non inserisce i
@@ -6488,12 +6498,20 @@ def _briefing_dati_mensili_mancanti(
                 supabase_client, ristorante_id, [oggi.year]
             )
             ieri_d = oggi - _td2(days=1)
+            try:
+                _chiusura = int(_get_assistant_preferences(ristorante_id, supabase_client)
+                                .get("giorni_chiusura_settimanali") or 0)
+            except Exception:
+                _chiusura = 0
+            _chiusura = max(0, min(_chiusura, 6))
+            inizio_finestra = (ieri_d - _td2(days=_chiusura)).isoformat()
             ieri = ieri_d.isoformat()
             ric = (
                 supabase_client.table("ricavi_giornalieri")
                 .select("data")
                 .eq("ristorante_id", ristorante_id)
-                .eq("data", ieri)
+                .gte("data", inizio_finestra)
+                .lte("data", ieri)
                 .limit(1)
                 .execute()
             )
@@ -8050,7 +8068,11 @@ def home_briefing(
             logger.warning("home_briefing: raccolta istantanea fallita: %s", exc)
             notifications = []
             raccolta_ok = False
-        snapshot = _build_snapshot(notifications, use_ai=False, topics_disabled=topics_disabled)
+        from services.settore_service import settore_sede as _settore_sede
+        snapshot = _build_snapshot(
+            notifications, use_ai=False, topics_disabled=topics_disabled,
+            settore=_settore_sede(ristorante_id, supabase_client),
+        )
         # Se la raccolta e' fallita NON affermare "tutto a posto": un verde su una
         # raccolta vuota-per-errore e' il falso positivo che vogliamo evitare. La
         # rigenerazione async dara' il quadro vero al load successivo.
@@ -9842,7 +9864,7 @@ def reset_password_confirm(body: ResetConfirmBody, request: Request):
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SCADENZIARIO + /api/ricavi/notifica-mancante — estratti in services/routers/scadenziario.py
+# SCADENZIARIO — estratto in services/routers/scadenziario.py
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════════════════

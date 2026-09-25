@@ -48,8 +48,8 @@ type Props = {
   //
   // Non spegne piu' TUTTE le CTA: quando la destinazione ha un equivalente
   // nella PWA (`ctaMobile`) il pulsante compare e resta dentro l'app. Serviva
-  // per `incasso_mancante`, che nasce SUL mobile (`m/incasso-reminder.tsx`) e
-  // arrivava li' senza modo di agire. Le destinazioni senza equivalente mobile
+  // per `incasso_mancante`, che arriva anche sul telefono e li' restava senza
+  // modo di agire. Le destinazioni senza equivalente mobile
   // restano senza pulsante, come prima.
   hideCta?: boolean;
 };

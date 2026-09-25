@@ -11,7 +11,6 @@ import { HeaderMenu } from "./header-menu";
 import { NotificheBell } from "./notifiche-bell";
 import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
-import { IncassoReminder } from "./incasso-reminder";
 import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
 import type { Metadata } from "next";
 
@@ -100,7 +99,6 @@ export default async function MobileLayout({ children }: { children: React.React
       </main>
 
       <InstallPrompt />
-      <IncassoReminder />
       <BottomNav chatEnabled={chatEnabled} />
     </div>
   );

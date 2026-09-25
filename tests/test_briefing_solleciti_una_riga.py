@@ -82,7 +82,9 @@ def test_la_fusione_non_guarda_le_maiuscole():
     """Una notifica persistita scrive "Agosto", una live "agosto"."""
     fat = _n("fatturato_mancante", {"mese": "Agosto", "anno": 2026})
     narr = dbs._build_snapshot([fat, PERSONALE_AGOSTO])["narrative"]
-    assert "il fatturato e il costo del personale di Agosto 2026" in narr
+    # Fusi nonostante la maiuscola; e dal 25/09 il mese a meta' frase e'
+    # minuscolo anche quando la notifica lo porta maiuscolo.
+    assert "il fatturato e il costo del personale di agosto 2026" in narr
 
 
 class _SB:

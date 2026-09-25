@@ -286,8 +286,8 @@ def test_visibili_puo_svuotare_tutto():
 
 # ─── CTA sul mobile: la PWA non ha le stesse pagine del desktop ──────────────
 # `hideCta` spegneva TUTTE le CTA sul mobile, perche' portavano a viste
-# desktop. Ma `incasso_mancante` NASCE sul mobile (`m/incasso-reminder.tsx`):
-# l'avviso arrivava sul telefono senza modo di agire. Ora la CTA compare quando
+# desktop. Ma `incasso_mancante` arriva anche sul telefono, e li' restava senza
+# modo di agire. Ora la CTA compare quando
 # — e solo quando — la destinazione esiste anche nella PWA.
 
 def _cta_mobile(page, topic="incasso_mancante"):

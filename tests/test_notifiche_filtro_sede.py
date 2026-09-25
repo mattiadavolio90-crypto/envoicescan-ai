@@ -113,3 +113,28 @@ def test_campanella_scarta_persistita_stantia_se_live_assente():
     assert "fatturato_mancante" not in topics, (
         "una persistita stantia deve sparire se il segnale live non la conferma piu'"
     )
+
+
+def test_campanella_scarta_la_persistita_anche_se_il_live_fallisce():
+    """Lo scarto stava DENTRO il try del calcolo live: se il calcolo falliva, la
+    campanella mostrava la riga «incasso mancante» scritta ogni giorno dalla
+    vecchia app mobile, senza le regole del briefing (25/09/2026)."""
+    persistite = [
+        {"id": "p1", "topic_key": "incasso_mancante", "source_type": "operativa",
+         "severity": "warning", "title": "Manca l'incasso di ieri", "body": None,
+         "action_page": "/margini", "dismissed_at": None, "expires_at": None,
+         "created_at": "2026-09-24T06:00:00Z"},
+        {"id": "p2", "topic_key": "tag_suggestion_new_tag", "source_type": "operativa",
+         "severity": "info", "title": "Tag", "body": None, "action_page": None,
+         "dismissed_at": None, "expires_at": None, "created_at": "2026-09-24T06:00:00Z"},
+    ]
+    sb = _make_sb(rows=persistite)
+    with patch.object(fw, "_resolve_user_from_token", return_value=_USER), \
+         patch("services.get_supabase_client", return_value=sb), \
+         patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
+         patch.object(fw, "_segnali_live_dati_mancanti", side_effect=RuntimeError("giu'")):
+        res = fw.get_notifiche(authorization="Bearer tok")
+
+    topics = {n.topic_key for n in res.notifiche}
+    assert "incasso_mancante" not in topics
+    assert "tag_suggestion_new_tag" in topics, "le notifiche minori restano"
