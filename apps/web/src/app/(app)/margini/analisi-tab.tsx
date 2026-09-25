@@ -451,7 +451,7 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
         <button
           type="button"
           onClick={() => setRipartizioneOpen(true)}
-          className="flex w-full items-center gap-3 rounded-lg border border-incerto/40 bg-incerto/10 px-4 py-3 text-left text-sm transition-colors hover:bg-incerto/15"
+          className="flex w-full items-center gap-3 rounded-lg border border-incerto/40 bg-incerto/10 px-4 py-3 text-left text-sm transition-colors hover:bg-incerto/10"
         >
           <TriangleAlert className="size-4 text-incerto flex-shrink-0" />
           <span className="flex-1 text-incerto">

@@ -244,3 +244,50 @@ def test_la_stessa_etichetta_scritta_in_due_modi_ha_la_stessa_chiave():
         '<span className="text-incerto">Paghe non inserite</span>'
     )
     assert {t for _, t in _etichette_semantiche(src)} == {"Paghe non inserite"}
+
+
+# ── Il fondo sul padre, il testo sul figlio (25/09/2026) ─────────────────────
+#
+# `test_nessun_testo_semantico_sul_proprio_fondo_sopra_il_10` cerca `text-X` e
+# `bg-X/NN` nella STESSA stringa di classi. Ma il contrasto non dipende da dove
+# sono scritte le classi: se un contenitore ha `bg-incerto/15` e un suo figlio
+# `text-incerto`, il testo e' sul fondo tinto esattamente come se fossero
+# nello stesso className — e passava il controllo.
+#
+# Trovato su un banner reale della pagina Gestione Fatture: il fondo stava sul
+# `<button>` e il testo su uno `<span>` annidato. Un solo file lo aveva, piu'
+# margini/analisi-tab.tsx con lo stesso `/15` su hover.
+#
+# La misura del perche' /15 non basta sta in test_globals_css_contrasto.py:
+# gia' a /15 il tema light scende sotto 4,5:1.
+#
+# Questo presidio e' volutamente GROSSOLANO: non costruisce l'albero DOM, si
+# limita a dire che dentro un file lo stesso token compare come fondo sopra /10
+# e come testo. Puo' segnalare un falso positivo se i due elementi sono davvero
+# scollegati; e' un prezzo accettabile perche' l'alternativa — un fondo tinto e
+# un testo dello stesso colore che nessuno verifica — e' gia' costata due
+# occorrenze in produzione. Se capita un falso positivo, si sposta il testo su
+# `text-foreground` o si abbassa il fondo a /10: entrambe le uscite sono
+# miglioramenti, non aggiramenti.
+
+FONDO_SOPRA_IL_10 = {
+    t: re.compile(rf"\bbg-{t}/(1[1-9]|[2-9]\d|100)\b") for t in SEMANTICI
+}
+TESTO_SEMANTICO = {t: re.compile(rf"\btext-{t}\b") for t in SEMANTICI}
+
+
+@pytest.mark.parametrize("file", PERIMETRO, ids=lambda p: p.relative_to(SRC).as_posix())
+def test_nessun_fondo_tinto_sopra_il_10_col_testo_dello_stesso_token(file: Path):
+    src = _senza_commenti(file.read_text(encoding="utf-8"))
+    violazioni = []
+    for t in SEMANTICI:
+        fondo = FONDO_SOPRA_IL_10[t].search(src)
+        if not fondo:
+            continue
+        if TESTO_SEMANTICO[t].search(src):
+            violazioni.append(f"{t}: {fondo.group(0)} e text-{t} nello stesso file")
+    assert not violazioni, (
+        "fondo tinto sopra /10 e testo dello stesso token (anche su elementi "
+        f"annidati): {violazioni}. Sotto 4,5:1 nel tema light — abbassa il "
+        "fondo a /10 o porta il testo su un token neutro."
+    )

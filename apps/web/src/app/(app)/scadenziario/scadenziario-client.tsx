@@ -224,14 +224,14 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
       </div>
 
       <div className="text-right flex-shrink-0">
-        <p className="font-semibold text-sm">{formatEuro(doc.totale_documento)}</p>
+        <p className="font-semibold text-sm tabular-nums">{formatEuro(doc.totale_documento)}</p>
       </div>
 
       {mostraScadenze && !doc.pagata && (
         <Button
           variant="outline"
           size="sm"
-          className="h-7 text-xs flex-shrink-0 gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-7 text-xs flex-shrink-0 gap-1 opacity-60 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
           onClick={(e) => { e.stopPropagation(); onPaga(doc); }}
         >
           <Check className="size-3" /> Paga
@@ -314,7 +314,7 @@ function AgendaSection({
               <span className="text-xs text-primary font-medium">{selectedCount} sel.</span>
             )}
           </div>
-          <span className="text-sm font-medium text-muted-foreground">{formatEuro(totale)}</span>
+          <span className="text-sm font-medium text-muted-foreground tabular-nums">{formatEuro(totale)}</span>
         </button>
       </div>
 
@@ -367,7 +367,7 @@ function OscurateSection({
               non conteggiate
             </span>
           </div>
-          <span className="text-sm font-medium text-muted-foreground">{formatEuro(totale)}</span>
+          <span className="text-sm font-medium text-muted-foreground tabular-nums">{formatEuro(totale)}</span>
         </button>
       </div>
 
@@ -394,7 +394,7 @@ function OscurateSection({
                   </div>
                 )}
               </button>
-              <span className="text-sm font-medium text-muted-foreground flex-shrink-0">
+              <span className="text-sm font-medium text-muted-foreground flex-shrink-0 tabular-nums">
                 {formatEuro(doc.totale_documento)}
               </span>
               <Button
@@ -438,7 +438,7 @@ function NoteCreditoSection({
               non da pagare
             </span>
           </div>
-          <span className="text-sm font-medium text-muted-foreground">{formatEuro(totale)}</span>
+          <span className="text-sm font-medium text-muted-foreground tabular-nums">{formatEuro(totale)}</span>
         </button>
       </div>
 
@@ -470,7 +470,7 @@ function NoteCreditoSection({
                 )}
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="font-semibold text-sm text-primary-text">
+                <p className="font-semibold text-sm text-primary-text tabular-nums">
                   {formatEuro(Math.abs(doc.totale_documento || 0))}
                 </p>
               </div>

@@ -1,7 +1,12 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Skeleton struttura pagina Gestione Fatture / Scadenziario: header + filtri +
-// lista fatture.
+// Skeleton della pagina Gestione Fatture: ricerca + KPI + filtri + lista.
+//
+// Le forme seguono quelle vere, altrimenti al caricamento la pagina "salta":
+// il contenitore lista e' `rounded-lg` come in scadenziario-client.tsx (era
+// `rounded-2xl`, e gli angoli cambiavano sotto gli occhi), e i chip di filtro
+// sono alti quanto quelli reali (~h-7, non h-9: lo scheletro prometteva
+// controlli piu' grandi di quelli che arrivavano).
 export default function Loading() {
   return (
     <div className="space-y-5">
@@ -10,6 +15,8 @@ export default function Loading() {
         <Skeleton className="h-4 w-80 max-w-full" />
       </div>
 
+      <Skeleton className="h-10 w-full rounded-md" />
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-[88px] w-full rounded-xl" />
@@ -17,12 +24,12 @@ export default function Loading() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Skeleton className="h-9 w-28 rounded-full" />
-        <Skeleton className="h-9 w-28 rounded-full" />
-        <Skeleton className="h-9 w-36 rounded-full" />
+        <Skeleton className="h-7 w-28 rounded-full" />
+        <Skeleton className="h-7 w-28 rounded-full" />
+        <Skeleton className="h-7 w-36 rounded-full" />
       </div>
 
-      <div className="space-y-2 rounded-2xl border bg-card p-4">
+      <div className="space-y-2 rounded-lg border bg-card p-4">
         {Array.from({ length: 9 }).map((_, i) => (
           <Skeleton key={i} className="h-14 w-full" />
         ))}
