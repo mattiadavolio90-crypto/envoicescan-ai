@@ -451,3 +451,79 @@ def test_cashflow_totale_uguale_al_da_pagare_meno_senza_scadenza(tz):
         "La barra cash-flow e i KPI devono raccontare lo stesso debito, a meno "
         "dei documenti senza scadenza (che la barra non puo' collocare)."
     )
+
+
+# ── La quota senza scadenza (25/09/2026) ─────────────────────────────────────
+#
+# Misurato in produzione: 1.073 fatture non pagate senza scadenza per 959.319
+# EUR, il 35% del non pagato, su tutte e 11 le sedi. Erano gia' dentro
+# "Da pagare" — sono debiti a tutti gli effetti — ma sfuggono a ogni fascia
+# temporale e nessun numero in cima le nominava: chi leggeva i KPI non aveva
+# modo di sapere che un terzo del debito non ha una data.
+#
+# L'asserzione che protegge davvero e' che i QUATTRO KPI storici non cambino:
+# sono le cifre che 11 sedi leggono per prime, e il rischio di questa aggiunta
+# e' spostarle.
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_i_quattro_kpi_storici_non_cambiano(tz):
+    """L'aggiunta non deve muovere una sola delle cifre gia' a video."""
+    _, docs = _campione(tz)
+    k = _kpi(docs, tz)
+    assert (k["scadute_count"], k["scadute_totale"]) == (1, 80)
+    assert (k["settimana_count"], k["settimana_totale"]) == (2, 30)
+    # "senza" (160) resta dentro da_pagare: 10+20+40+80+160 = 310
+    assert (k["da_pagare_count"], k["da_pagare_totale"]) == (5, 310)
+    assert (k["pagate_mese_count"], k["pagate_mese_totale"]) == (1, 320)
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_quota_senza_scadenza_e_contata(tz):
+    _, docs = _campione(tz)
+    k = _kpi(docs, tz)
+    assert (k["senza_scadenza_count"], k["senza_scadenza_totale"]) == (1, 160)
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_quota_e_un_sottoinsieme_di_da_pagare(tz):
+    """Non e' una quinta colonna che si somma: e' una parte di «Da pagare».
+
+    Se qualcuno la trasformasse in un totale indipendente, la somma delle card
+    smetterebbe di tornare e il cliente vedrebbe il debito due volte.
+    """
+    _, docs = _campione(tz)
+    k = _kpi(docs, tz)
+    assert k["senza_scadenza_totale"] <= k["da_pagare_totale"]
+    assert k["senza_scadenza_count"] <= k["da_pagare_count"]
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_quota_esclude_pagate_note_di_credito_e_oscurate(tz):
+    """Stessa popolazione di `da_pagare`: una nota di credito senza scadenza
+    non e' un debito senza data, e' un credito."""
+    oggi = _oggi_in(tz)
+    docs = [
+        _doc(id="debito", totale_documento=100, scadenza_effettiva=None),
+        _doc(id="nc", totale_documento=500, scadenza_effettiva=None, is_nota_credito=True),
+        _doc(id="pagata", totale_documento=700, scadenza_effettiva=None,
+             pagata=True, pagata_at=oggi.isoformat()),
+        _doc(id="osc", totale_documento=900, scadenza_effettiva=None, oscurata=True),
+    ]
+    k = _kpi(docs, tz)
+    assert (k["senza_scadenza_count"], k["senza_scadenza_totale"]) == (1, 100)
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_quota_concorda_col_bucket(tz):
+    """Due implementazioni degli stessi documenti: devono contare lo stesso.
+
+    `computeKpi` e `bucketizeDocumenti` si separano al primo refactor di una
+    sola delle due — e' la stessa ragione per cui esiste
+    test_cashflow_concorda_con_i_kpi_sulle_scadute.
+    """
+    _, docs = _campione(tz)
+    k = _kpi(docs, tz)
+    b = _buckets(docs, tz)
+    # `_buckets` restituisce gia' le lunghezze, non gli array.
+    assert k["senza_scadenza_count"] == b["senzaScadenza"]

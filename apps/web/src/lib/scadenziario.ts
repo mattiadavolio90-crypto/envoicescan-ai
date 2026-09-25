@@ -56,6 +56,9 @@ export type ScadenzarioKpi = {
   da_pagare_totale: number;
   pagate_mese_count: number;
   pagate_mese_totale: number;
+  /** Gia' incluse in `da_pagare_*`: contate a parte perche' sfuggono a ogni fascia. */
+  senza_scadenza_count: number;
+  senza_scadenza_totale: number;
 };
 
 export const MODALITA_LABELS: Record<string, string> = {
@@ -185,6 +188,11 @@ export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   let settimana_count = 0, settimana_totale = 0;
   let da_pagare_count = 0, da_pagare_totale = 0;
   let pagate_mese_count = 0, pagate_mese_totale = 0;
+  // Le senza-scadenza sono gia' dentro `da_pagare` (sono debiti a tutti gli
+  // effetti): qui si contano ANCHE a parte, perche' sfuggono a ogni fascia
+  // temporale e nessun numero in cima le nominava. In produzione sono un terzo
+  // del non pagato.
+  let senza_scadenza_count = 0, senza_scadenza_totale = 0;
 
   for (const doc of documenti) {
     // Esclusa dai conti = ne' costo ne' debito: se restasse qui il cliente la
@@ -212,7 +220,11 @@ export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
     da_pagare_totale += totale;
 
     const scad = parseLocalDate(doc.scadenza_effettiva);
-    if (!scad) continue;
+    if (!scad) {
+      senza_scadenza_count++;
+      senza_scadenza_totale += totale;
+      continue;
+    }
 
     if (scad < today) {
       scadute_count++;
@@ -228,6 +240,7 @@ export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
     settimana_count, settimana_totale,
     da_pagare_count, da_pagare_totale,
     pagate_mese_count, pagate_mese_totale,
+    senza_scadenza_count, senza_scadenza_totale,
   };
 }
 
@@ -309,7 +322,12 @@ export function buildCashFlow(documenti: Documento[]): CashFascia[] {
   for (const doc of documenti) {
     if (doc.pagata || doc.is_nota_credito || doc.oscurata) continue;
     const s = parseLocalDate(doc.scadenza_effettiva);
-    if (!s) continue; // le senza scadenza hanno già il loro alert dedicato
+    // Fuori dal cash-flow di proposito: il riquadro si intitola "Quando
+    // pagherai" ed e' una distribuzione nel TEMPO — una fattura senza data non
+    // ha un "quando", e inventarle una colonna direbbe una cosa priva di senso.
+    // Il loro peso si legge nel KPI dedicato (computeKpi.senza_scadenza_*) e il
+    // rimedio sta nel riquadro dei fornitori sopra la lista.
+    if (!s) continue;
     const t = doc.totale_documento || 0;
     let i: number;
     if (s < today) i = 0;

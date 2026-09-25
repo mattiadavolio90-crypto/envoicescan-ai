@@ -53,6 +53,8 @@ function useCountUp(target: number, duration = 600) {
 }
 
 type KpiCardProps = {
+  /** Riga di dettaglio sotto il conteggio (es. la quota senza scadenza). */
+  sub?: string;
   label: string;
   count: number;
   totale: number;
@@ -85,7 +87,7 @@ const TONE_ACTIVE = {
   positivo: "border-positivo ring-2 ring-positivo/30",
 };
 
-function KpiCard({ label, count, totale, tone, active = false, onClick }: KpiCardProps) {
+function KpiCard({ label, count, totale, tone, sub, active = false, onClick }: KpiCardProps) {
   const valRef = useCountUp(totale);
   const clickable = !!onClick;
   return (
@@ -103,6 +105,7 @@ function KpiCard({ label, count, totale, tone, active = false, onClick }: KpiCar
         <span ref={valRef as RefObject<HTMLSpanElement>}>{formatEuro(totale)}</span>
       </p>
       <p className="text-[11px] text-muted-foreground">{count} fattur{count === 1 ? "a" : "e"}</p>
+      {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
     </button>
   );
 }
@@ -2108,9 +2111,17 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           active={filtroPeriodo === "settimana"}
           onClick={() => setFiltroPeriodo(p => p === "settimana" ? "tutti" : "settimana")}
         />
+        {/* La quota senza scadenza sta QUI e non in una quinta tessera: quelle
+            fatture sono gia' dentro "Da pagare" (sono debiti a tutti gli
+            effetti), ma sfuggono a ogni fascia temporale e nessun numero in
+            cima le nominava — in produzione un terzo del non pagato. Una
+            quinta card sbilancerebbe la griglia grid-cols-2 lg:grid-cols-4. */}
         <KpiCard
           label={filtriAttivi ? "Da pagare (filtro)" : "Da pagare"}
           count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="blu"
+          sub={kpi.senza_scadenza_count > 0
+            ? `di cui ${formatEuro(kpi.senza_scadenza_totale)} senza scadenza`
+            : undefined}
           active={filtroPeriodo === "tutti" && !filtriAttivi}
           onClick={() => resetFiltri()}
         />
