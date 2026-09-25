@@ -126,6 +126,16 @@ def _esegui(db, xml, nome_sdi="IT01234567890_abc12.xml.p7m", item=None, worker_i
     return res, parser, salva
 
 
+def _registra_rpc(db):
+    db.rpc_chiamate = []
+
+    def rpc(nome, params):
+        db.rpc_chiamate.append((nome, params))
+        return mock.MagicMock(execute=mock.MagicMock(return_value=_Esito(0)))
+
+    return rpc
+
+
 def _filtri(passi):
     return {(p[1], p[2]) for p in passi if p[0] == "eq"}
 
@@ -197,6 +207,7 @@ def test_piu_sedi_nessun_indirizzo_decisivo_la_riga_va_da_assegnare():
 
 def test_piva_di_nessuno_la_riga_va_in_unknown_tenant_con_la_piva_vera():
     db = DBFinto(sedi=[])
+    db.rpc = _registra_rpc(db)
     res, parser, _ = _esegui(db, _fattura())
     assert res.status == "skip" and "unknown_tenant" in res.error
     parser.assert_not_called()
@@ -205,16 +216,31 @@ def test_piva_di_nessuno_la_riga_va_in_unknown_tenant_con_la_piva_vera():
     assert valori["user_id"] is None and valori["ristorante_id"] is None
     assert valori["piva_raw"] == PIVA, "resolve_unknown_tenant la cerca per piva_raw"
     assert valori["attempt_count"] == 0
+    assert db.rpc_chiamate == [("resolve_unknown_tenant", {"p_piva": PIVA})], \
+        "una sede registrata durante la decisione non verrebbe mai piu' agganciata"
 
 
 # ─── Nel dubbio non si assegna ───────────────────────────────────────────────
 
+def _conservata(db, xml, piva_attesa, esito):
+    """La riga ferma tiene XML e metadati (niente nuovi download ai tentativi
+    dopo) ma NON prende un cliente ne' cambia stato."""
+    assert len(db.update) == 1
+    assert _filtri(db.update[0]) == {("id", 901), ("status", "processing"), ("locked_by", "w-1")}
+    valori = _valori(db.update[0])
+    assert set(valori) == {"xml_content", "xml_hash", "payload_meta", "piva_raw"}
+    assert valori["xml_content"] == xml and valori["piva_raw"] == piva_attesa
+    assert valori["payload_meta"]["resource_id"] == 96551
+    assert valori["payload_meta"]["cliente_dal_worker"]["esito"] == esito
+
+
 def test_piva_su_piu_account_non_si_assegna():
     altra = {**SEDE_B, "user_id": U2}
     db = DBFinto(sedi=[SEDE_A, altra])
-    res, parser, salva = _esegui(db, _fattura("Viale Monza", "10", "20127", "Milano"))
+    xml = _fattura("Viale Monza", "10", "20127", "Milano")
+    res, parser, salva = _esegui(db, xml)
     assert res.status == "retry" and "account diversi" in res.error
-    assert db.update == []
+    _conservata(db, xml, PIVA, "piu_account")
     parser.assert_not_called()
     salva.assert_not_called()
 
@@ -225,7 +251,8 @@ def test_piva_letta_in_due_modi_non_si_assegna_e_non_si_cercano_sedi(nome):
     db = DBFinto(sedi=[SEDE_A])
     res, parser, _ = _esegui(db, xml)
     assert res.status == "retry" and "due modi" in res.error
-    assert db.letture_sedi == [] and db.update == []
+    assert db.letture_sedi == []
+    _conservata(db, xml, "UNKNOWN", "piva_illeggibile")
     parser.assert_not_called()
 
 

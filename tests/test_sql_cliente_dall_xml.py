@@ -146,3 +146,44 @@ def test_le_sedi_disattivate_non_contano(db_sql):
     esito = _risolvi(db_sql, _fattura(PIVA, "Via Roma", "5", "20100", "Milano"))
     assert esito.status == "skip"
     assert _riga(db_sql)[0] == "unknown_tenant"
+
+
+def test_sede_registrata_mentre_il_worker_decide_viene_agganciata_lo_stesso(db_sql, monkeypatch):
+    """La corsa trovata dalla revisione: il worker legge 0 sedi, il cliente
+    registra la sede (il trigger cerca righe unknown_tenant e non trova la
+    nostra, ancora processing), poi il worker parcheggia. Senza la chiamata a
+    resolve_unknown_tenant dopo il parcheggio la riga restava ferma per sempre."""
+    from worker import queue_processor as qp
+
+    _semina(db_sql, sedi_u1=(), altro_cliente=False)
+    originale = qp.routing_coda.decidi_cliente
+
+    def decide_e_intanto_arriva_la_sede(xml, sedi):
+        esito = originale(xml, sedi)
+        with db_sql.cursor() as cur:
+            cur.execute(
+                "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) "
+                "VALUES (%s, %s, 'Arrivata adesso', %s, TRUE)",
+                (SEDE_A, U1, PIVA),
+            )
+        return esito
+
+    monkeypatch.setattr(qp.routing_coda, "decidi_cliente", decide_e_intanto_arriva_la_sede)
+    esito = _risolvi(db_sql, _fattura(PIVA, "Via Roma", "5", "20100", "Milano"))
+    assert esito.status == "skip"
+    assert _riga(db_sql)[:3] == ("pending", U1, SEDE_A)
+
+
+def test_piva_su_piu_account_la_riga_tiene_xml_e_piva_ma_nessun_cliente(db_sql):
+    _semina(db_sql)
+    with db_sql.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) "
+            "VALUES (%s, %s, 'Stessa P.IVA, altro account', %s, TRUE)",
+            (SEDE_B, U2, PIVA),
+        )
+    esito = _risolvi(db_sql, _fattura(PIVA, "Via Roma", "5", "20100", "Milano"))
+    assert esito.status == "retry" and "account diversi" in esito.error
+    status, uid, rid, piva, tentativi, lock, ha_xml, meta = _riga(db_sql)
+    assert (status, uid, rid, piva, ha_xml) == ("processing", None, None, PIVA, True)
+    assert meta["cliente_dal_worker"]["esito"] == "piu_account" and meta["numero_fattura"] == "77"

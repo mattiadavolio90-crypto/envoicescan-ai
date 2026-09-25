@@ -210,3 +210,19 @@ def test_punteggio_esattamente_0_40_basta_come_nel_webhook():
     assert rc.indirizzo_similarity("a b c d e", "a b x y z") == rc.MIN_SCORE
     d = rc.decidi_cliente(xml, [sede_1, sede_2])
     assert d["esito"] == "assegnata" and d["ristorante_id"] == "s1"
+
+
+@pytest.mark.parametrize("prefisso", ["﻿", "  \n", "﻿\n  ", "\n﻿"])
+def test_bom_e_spazi_prima_della_dichiarazione_non_fermano_la_lettura(prefisso):
+    """Expat rifiuta un BOM o degli spazi prima di <?xml; il webhook no
+    (TextDecoder toglie il BOM, la regex non guarda l'inizio). Senza questa
+    tolleranza la riga resterebbe in retry con la P.IVA giusta."""
+    xml = prefisso + _xml("standard")
+    assert rc.estrai_piva_destinatario_strutturata(xml) == "07863990961"
+    assert rc.piva_destinatario_verificata(xml) == "07863990961"
+
+
+def test_un_dtd_nell_xml_non_si_legge():
+    xml = _xml("standard").replace('<?xml version="1.0" encoding="UTF-8"?>', '<?xml version="1.0"?><!DOCTYPE FatturaElettronica>')
+    assert rc.estrai_piva_destinatario_strutturata(xml) is None
+    assert rc.piva_destinatario_verificata(xml) is None

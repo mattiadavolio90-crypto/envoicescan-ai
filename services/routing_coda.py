@@ -96,11 +96,14 @@ def estrai_piva_destinatario_strutturata(xml: str) -> Optional[str]:
     IdCodice, poi DatiAnagrafici/CodiceFiscale. None se l'XML non si legge."""
     from defusedxml import ElementTree
 
+    # Un BOM o degli spazi prima di <?xml fanno fallire expat, non il webhook
+    # (TextDecoder toglie il BOM e la regex non guarda l'inizio).
+    testo = xml.lstrip().lstrip("\ufeff").lstrip()
     try:
-        radice = ElementTree.fromstring(xml)
+        radice = ElementTree.fromstring(testo, forbid_dtd=True)
     except Exception:
         try:
-            radice = ElementTree.fromstring(xml.encode("utf-8"))
+            radice = ElementTree.fromstring(testo.encode("utf-8"), forbid_dtd=True)
         except Exception:
             return None
     cessionario = next((e for e in radice.iter() if _nome_locale(e.tag) == "CessionarioCommittente"), None)

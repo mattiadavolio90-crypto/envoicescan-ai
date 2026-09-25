@@ -1278,9 +1278,35 @@ def _risolvi_cliente(supabase, item: dict[str, Any], xml_content: Any,
                           error=f"Tenant non risolto: {motivo}")
 
     xml = xml_content.decode("utf-8", errors="replace") if isinstance(xml_content, bytes) else str(xml_content)
+
+    def _meta(esito: str) -> dict[str, Any]:
+        meta = dict(payload_meta)
+        for chiave, valore in routing_coda.estrai_meta_documento(xml).items():
+            meta.setdefault(chiave, valore)
+        indirizzo = routing_coda.estrai_indirizzo_destinatario(xml)
+        if indirizzo:
+            meta.setdefault("indirizzo_destinatario", indirizzo)
+        meta.setdefault("nome_file", f"webhook_{event_id}.xml")
+        meta["cliente_dal_worker"] = {"esito": esito, "quando": datetime.now(timezone.utc).isoformat()}
+        return meta
+
+    def _ferma_conservando(motivo: str, esito: str, piva_vera: Optional[str]) -> ItemResult:
+        # Chi decide e' l'admin: intanto la riga tiene XML e metadati, cosi' i
+        # tentativi (e «Riprova») non riscaricano da Invoicetronic, e l'admin
+        # vede di che fattura si tratta.
+        _aggiorna_riga_in_lavorazione(supabase, queue_id, worker_id, {
+            "xml_content": xml,
+            "xml_hash": hashlib.sha256(xml.encode("utf-8")).hexdigest(),
+            "payload_meta": _meta(esito),
+            "piva_raw": piva_vera or "UNKNOWN",
+        })
+        return _ferma(motivo)
+
     piva = routing_coda.piva_destinatario_verificata(xml)
     if piva is None:
-        return _ferma("P.IVA del destinatario assente, o letta in due modi diversi nell'XML")
+        return _ferma_conservando(
+            "P.IVA del destinatario assente, o letta in due modi diversi nell'XML", "piva_illeggibile", None,
+        )
     try:
         sedi = (
             supabase.table("ristoranti")
@@ -1296,22 +1322,15 @@ def _risolvi_cliente(supabase, item: dict[str, Any], xml_content: Any,
     decisione = routing_coda.decidi_cliente(xml, sedi)
     esito = decisione["esito"]
     if esito == "piu_account":
-        return _ferma(
+        return _ferma_conservando(
             f"la P.IVA del destinatario e' su {decisione['sedi_count']} sedi di account "
-            "diversi: serve una scelta dell'admin"
+            "diversi: serve una scelta dell'admin", esito, piva,
         )
 
-    meta = dict(payload_meta)
-    for chiave, valore in routing_coda.estrai_meta_documento(xml).items():
-        meta.setdefault(chiave, valore)
-    indirizzo = routing_coda.estrai_indirizzo_destinatario(xml)
-    if indirizzo:
-        meta.setdefault("indirizzo_destinatario", indirizzo)
-    meta.setdefault("nome_file", f"webhook_{event_id}.xml")
+    meta = _meta(esito)
     for chiave in ("routing", "indirizzo_fallback"):
         if chiave in decisione:
             meta[chiave] = decisione[chiave]
-    meta["cliente_dal_worker"] = {"esito": esito, "quando": datetime.now(timezone.utc).isoformat()}
 
     if esito == "assegnata":
         sede = next((s for s in sedi if str(s.get("id")) == decisione["ristorante_id"]), None)
@@ -1352,6 +1371,14 @@ def _risolvi_cliente(supabase, item: dict[str, Any], xml_content: Any,
     if not scritta:
         return ItemResult(queue_id=queue_id, event_id=event_id, status="skip",
                           error="riga non piu' in lavorazione da questo worker")
+    if stato == "unknown_tenant":
+        # Se la sede e' stata registrata fra la lettura delle sedi e l'UPDATE, il
+        # trigger su ristoranti ha cercato la riga quando era ancora processing:
+        # la si cerca di nuovo adesso. Idempotente: senza sede non fa niente.
+        try:
+            supabase.rpc("resolve_unknown_tenant", {"p_piva": piva}).execute()
+        except Exception as exc:
+            logger.warning("[item=%d] resolve_unknown_tenant dopo il parcheggio fallita: %s", queue_id, exc)
     logger.info("[item=%d] cliente dall'XML: riga passata a %s", queue_id, stato)
     return ItemResult(queue_id=queue_id, event_id=event_id, status="skip",
                       error=f"passata a {stato}")

@@ -1071,6 +1071,16 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   sql` (vincoli veri, due clienti, il trigger che riscatta una riga
 >   parcheggiata), +10 `test_coda_fatture_frontend`, +7 Deno (133). Nessuna
 >   migration. Il deploy e' lo stesso del passo 0 (push + Edge Function a mano).
+>   *Review (verde, nessun blocco; 3 lenti, una col code-reviewer)*: tre rilievi
+>   bassi corretti — una sede registrata proprio mentre il worker decide
+>   lasciava la riga `unknown_tenant` per sempre (ora `resolve_unknown_tenant`
+>   subito dopo il parcheggio); le righe ferme per «piu' account» o P.IVA letta
+>   in due modi riscaricavano a ogni tentativo (ora tengono XML e metadati); un
+>   BOM prima di `<?xml` fermava il parser (e il DTD ora e' vietato). 7 mutanti,
+>   7 uccisi. **Residuo, decide Mattia**: `resolve_unknown_tenant` (SQL, usata
+>   anche dal webhook) assegna alla sede piu' recente senza la regola «P.IVA su
+>   piu' account»; oggi tocca solo l'ambiente di test (00000000000). E nessuna
+>   azione admin sblocca una riga ferma per «piu' account».
 >
 > - **25/09/2026 — due piccole decisioni del piano consulente.** (1) *Buona
 >   notizia sul margine*: si confronta solo se il costo del personale c'e' in
