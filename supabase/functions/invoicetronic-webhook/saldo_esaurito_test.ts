@@ -102,7 +102,8 @@ Deno.test('403 saldo esaurito: riga marcata e un avviso Telegram', async () => {
   assertEquals(telegram.length, 1)
   assertStringIncludes(telegram[0], 'usage_limit_exceeded')
   assertStringIncludes(telegram[0], '§4bis')
-  assert(!telegram[0].includes('Riprova'), 'Riprova non recupera le fatture fermate al webhook: non va consigliato')
+  assertStringIncludes(telegram[0], 'non ripartono da sole')
+  assert(!telegram[0].toLowerCase().includes('riprova'), 'Riprova non recupera le fatture fermate al webhook: non va consigliato')
 })
 
 Deno.test('403 saldo esaurito: l\'anti-ripetizione cerca le righe marcate nell\'ultima ora', async () => {

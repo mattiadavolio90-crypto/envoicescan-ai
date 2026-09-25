@@ -161,11 +161,13 @@ in arrivo è `dead`, per tutti i clienti. Non è persa: Invoicetronic la conserv
    cliente a mano** nella riga di coda: il worker salva la fattura sul cliente
    scritto lì senza ricontrollare la P.IVA dell'XML. Per contarle:
    ```sql
-   SELECT id, status, created_at FROM fatture_queue
+   SELECT id, status, user_id, created_at FROM fatture_queue
    WHERE payload_meta->>'api_error_code' = 'usage_limit_exceeded'
       OR last_error LIKE '%usage_limit_exceeded%'
    ORDER BY created_at;
    ```
+   Le righe **con** `user_id` valorizzato (fermate dal worker, non dal webhook) il
+   cliente ce l'hanno: per quelle, dopo la ricarica, «Riprova» funziona.
 
 «Non riesco a leggere il saldo» (due controlli falliti di fila): quasi sempre
 `INVOICETRONIC_API_KEY` assente o scaduta sul queue-worker. Soglia e intervallo:
