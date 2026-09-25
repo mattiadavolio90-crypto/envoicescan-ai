@@ -14,6 +14,7 @@ import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { messaggioListaVuota } from "@/lib/esito-caricamento";
 import { Separator } from "@/components/ui/separator";
 import { RipartisciDialog } from "@/components/fatture/ripartisci-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -1640,6 +1641,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   const [filtroSoloNuove, setFiltroSoloNuove] = useState(false);
   const [ricerca, setRicerca] = useState("");
   const ricercaRef = useRef<HTMLInputElement>(null);
+  // `null` = nessuna conferma aperta; true/false = il verso dell'operazione.
+  // Un'azione di massa irreversibile una-per-una va confermata: stornare 50
+  // pagamenti segnati per sbaglio costava ~150 clic.
+  const [confermaBulk, setConfermaBulk] = useState<boolean | null>(null);
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
 
   const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove || filtroSede !== "tutte" || ricerca.trim() !== "";
@@ -1799,7 +1804,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     }
   }
 
-  async function handleBulkPaga() {
+  async function handleBulkPaga(pagata: boolean) {
     if (selectedFileOrigini.size === 0) return;
     setBulkPaying(true);
     try {
@@ -1822,7 +1827,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         const res = await fetch("/api/scadenziario/pagata", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file_origini, pagata: true, ristorante_id }),
+          body: JSON.stringify({ file_origini, pagata, ristorante_id }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { ok = false; continue; }
@@ -1830,11 +1835,15 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       }
 
       if (!ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
-      toast.success(`${aggiornate} fattur${aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`);
-      const pagata_at = todayLocalIso();
+      toast.success(
+        pagata
+          ? `${aggiornate} fattur${aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`
+          : `${aggiornate} fattur${aggiornate === 1 ? "a riportata" : "e riportate"} fra le da pagare`
+      );
+      const pagata_at = pagata ? todayLocalIso() : null;
       const paidSet = selectedFileOrigini;
       setDocumenti(prev => prev.map(d =>
-        paidSet.has(d.file_origine) ? { ...d, pagata: true, pagata_at, data_pagamento: pagata_at } : d
+        paidSet.has(d.file_origine) ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
       ));
       setSelectedFileOrigini(new Set());
     } catch {
@@ -2621,9 +2630,20 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           <span className="text-sm font-medium">
             {selectedFileOrigini.size} selezionat{selectedFileOrigini.size === 1 ? "a" : "e"}
           </span>
-          <Button size="sm" className="h-8 gap-1.5 rounded-full" onClick={handleBulkPaga} disabled={bulkPaying}>
+          <Button size="sm" className="h-8 gap-1.5 rounded-full" onClick={() => setConfermaBulk(true)} disabled={bulkPaying}>
             <Check className="size-3.5" />
-            {bulkPaying ? "Salvataggio..." : "Segna pagate"}
+            {bulkPaying ? "Salvataggio…" : "Segna pagate"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-full"
+            onClick={() => setConfermaBulk(false)}
+            disabled={bulkPaying}
+            title="Riporta le fatture selezionate fra quelle da pagare"
+          >
+            <X className="size-3.5" />
+            Segna non pagate
           </Button>
           <Button
             variant="ghost"
@@ -2635,6 +2655,26 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           </Button>
         </div>
       )}
+
+      {/* La conferma dice QUANTE fatture e QUANTI euro: "12 fatture, 8.450,00 €"
+          e' verificabile a colpo d'occhio, "12 selezionate" no. */}
+      <ConfirmDialog
+        open={confermaBulk !== null}
+        titolo={confermaBulk ? "Segnare come pagate?" : "Riportare fra le da pagare?"}
+        messaggio={(() => {
+          const n = selectedFileOrigini.size;
+          const tot = documenti
+            .filter(d => selectedFileOrigini.has(d.file_origine))
+            .reduce((acc, d) => acc + (d.totale_documento || 0), 0);
+          const quante = `${n} fattur${n === 1 ? "a" : "e"} per ${formatEuro(tot)}`;
+          return confermaBulk
+            ? `${quante}. Puoi sempre riportarle indietro selezionandole di nuovo.`
+            : `${quante} torneranno fra quelle da pagare, e la data di pagamento verrà rimossa.`;
+        })()}
+        confermaLabel={confermaBulk ? "Segna pagate" : "Segna non pagate"}
+        onConferma={() => { if (confermaBulk !== null) handleBulkPaga(confermaBulk); }}
+        onClose={() => setConfermaBulk(null)}
+      />
 
       <PeekDialog
         doc={peekDoc}
