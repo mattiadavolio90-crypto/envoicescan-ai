@@ -2093,6 +2093,222 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         )}
       </div>
 
+      {/* Filtri — in cima, accanto alla ricerca: e' l'ancora della pagina,
+          come filtri-periodo.tsx in Margini e Analisi Fatture. Erano una card
+          grigia a meta' schermo, dopo toolbar e cestino. */}
+      <div className="space-y-3">
+        {/* Riga 1 — stato scadenza vs finestra temporale: due assi concettualmente
+            diversi, separati da un divider verticale così non sembrano un'unica
+            lista di pillole equivalenti. "Personalizzato" è un'azione che apre un
+            pannello (icona calendario), non una pillola di stato/finestra. */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="size-3.5 text-muted-foreground flex-shrink-0" />
+
+          {/* Stato scadenza */}
+          <div className="flex items-center gap-1.5">
+            {(["tutti", "scadute"] as Periodo[]).map(p => {
+              const labels: Partial<Record<Periodo, string>> = { tutti: "Tutti", scadute: "Solo scadute" };
+              return (
+                <button
+                  key={p}
+                  onClick={() => setFiltroPeriodo(p)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+                    ${filtroPeriodo === p
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:bg-muted text-muted-foreground"}`}
+                >
+                  {labels[p]}
+                </button>
+              );
+            })}
+          </div>
+
+          <Separator orientation="vertical" className="h-5" />
+
+          {/* Finestra temporale — filtra su `scadenza_effettiva`, quindi in
+              "Per mese" non avrebbe alcun effetto visibile: un chip che si
+              accende e non cambia l'elenco e' peggio di un chip assente. */}
+          <div className={`items-center gap-1.5 ${view === "lista_mensile" ? "hidden" : "flex"}`}>
+            {(["settimana", "mese"] as Periodo[]).map(p => {
+              const labels: Partial<Record<Periodo, string>> = { settimana: "Questa settimana", mese: "Questo mese" };
+              return (
+                <button
+                  key={p}
+                  onClick={() => setFiltroPeriodo(f => f === p ? "tutti" : p)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+                    ${filtroPeriodo === p
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:bg-muted text-muted-foreground"}`}
+                >
+                  {labels[p]}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setFiltroPeriodo(f => f === "personalizzato" ? "tutti" : "personalizzato")}
+              title="Intervallo di date personalizzato"
+              className={`flex items-center justify-center size-7 rounded-full border transition-colors flex-shrink-0
+                ${filtroPeriodo === "personalizzato"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border hover:bg-muted text-muted-foreground"}`}
+            >
+              <Calendar className="size-3.5" />
+            </button>
+          </div>
+
+          {filtriAttivi && (
+            <button
+              onClick={resetFiltri}
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="size-3" /> Pulisci filtri
+            </button>
+          )}
+        </div>
+
+        {/* Date personalizzate */}
+        {filtroPeriodo === "personalizzato" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Scadenza da</span>
+            <Input type="date" value={filtroDateDa} onChange={e => setFiltroDateDa(e.target.value)} className="h-7 text-xs w-36" />
+            <span className="text-xs text-muted-foreground">a</span>
+            <Input type="date" value={filtroDateA} onChange={e => setFiltroDateA(e.target.value)} className="h-7 text-xs w-36" />
+          </div>
+        )}
+
+        {/* Per sede — solo modalità catena. Stesso livello delle altre pillole di
+            filtro (fornitori/nuove): un unico sistema di filtro, non più una
+            striscia isolata sopra. Nome sede come contenuto primario, importo
+            come sottotesto; badge/icona coerenti con SedeBadge (viola+Split per
+            la sede tecnica "Gruppo", MapPin per le sedi reali). */}
+        {modalitaCatena && kpiPerSede.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <MapPin className="size-3.5 text-muted-foreground flex-shrink-0" />
+            {kpiPerSede.map(s => {
+              const value = s.is_sede_tecnica ? "gruppo" : s.id;
+              const active = filtroSede === value;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setFiltroSede(f => f === value ? "tutte" : value)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold border transition-colors
+                    ${active
+                      ? s.is_sede_tecnica
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-primary text-primary-foreground border-primary"
+                      : s.is_sede_tecnica
+                        ? "border-primary/40 bg-accent text-primary-text hover:bg-primary/10"
+                        : "border-border hover:bg-muted text-foreground"}`}
+                >
+                  {s.is_sede_tecnica ? <Split className="size-3.5 flex-shrink-0" /> : <MapPin className="size-3.5 flex-shrink-0" />}
+                  {s.nome}
+                  <span className={`font-normal ${active ? "opacity-80" : "opacity-60"}`}>· {formatEuro(s.totale)}</span>
+                </button>
+              );
+            })}
+            {filtroSede !== "tutte" && (
+              <button
+                onClick={() => setFiltroSede("tutte")}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="size-3" /> Tutte le sedi
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Filtro fornitori multi-select + toggle "Nuove" */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <FornitoreMultiSelect
+            fornitori={fornitoriUnici}
+            selected={filtroFornitori}
+            onChange={setFiltroFornitori}
+          />
+          {filtroFornitori.size > 0 && (
+            <button onClick={() => setFiltroFornitori(new Set())} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <X className="size-3" /> Rimuovi
+            </button>
+          )}
+          <Separator orientation="vertical" className="h-5" />
+          <button
+            type="button"
+            onClick={() => setFiltroSoloNuove(v => !v)}
+            title="Mostra solo le fatture arrivate dall'ultimo caricamento"
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+              ${filtroSoloNuove
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"}`}
+          >
+            Nuove
+          </button>
+
+          {/* Ordinamento — nelle due viste a lista. Nel calendario no: li'
+              l'ordine e' la griglia dei giorni, e un selettore sarebbe un
+              controllo che non muove niente. */}
+          {view !== "calendario" && (
+            <div className="ml-auto flex items-center gap-1.5">
+              <ArrowUpDown className="size-3.5 text-muted-foreground flex-shrink-0" />
+              {view === "agenda" ? (
+                <NativeSelect
+                  value={ordine}
+                  onValueChange={(v) => setOrdine(v as Ordine)}
+                  className="h-8 text-xs w-auto"
+                  aria-label="Ordina fatture"
+                >
+                  {(Object.keys(ORDINE_LABELS) as Ordine[]).map(k => (
+                    <option key={k} value={k}>{ORDINE_LABELS[k]}</option>
+                  ))}
+                </NativeSelect>
+              ) : (
+                <NativeSelect
+                  value={ordineArchivio}
+                  onValueChange={(v) => setOrdineArchivio(v as OrdineArchivio)}
+                  className="h-8 text-xs w-auto"
+                  aria-label="Ordina fatture"
+                >
+                  {(Object.keys(ORDINE_ARCHIVIO_LABELS) as OrdineArchivio[]).map(k => (
+                    <option key={k} value={k}>{ORDINE_ARCHIVIO_LABELS[k]}</option>
+                  ))}
+                </NativeSelect>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Risultati + select all */}
+        {view === "agenda" && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
+            <span>
+              {/* Conta le fatture DA PAGARE, la stessa popolazione dei bucket di
+                  scadenza elencati sotto. Fino al 16/09/2026 contava ogni
+                  documento filtrato: su Villa Guardia diceva "426 su 581" mentre
+                  la sezione Scadute ne elencava 414, perche' dentro i 426
+                  c'erano anche le 12 note di credito scadute (che hanno la loro
+                  sezione, non un bucket di scadenza) e le escluse dai conti.
+                  Due popolazioni diverse a due centimetri di distanza. */}
+              {filtriAttivi
+                ? `${contaDaPagare(documentiFiltrati)} su ${contaDaPagare(documenti)} fatture da pagare`
+                : `${contaDaPagare(documenti)} fatture da pagare`}
+            </span>
+            <div className="flex gap-3">
+              {totaleSelezionabiliFiltrate > 0 && (
+                <button className="text-primary hover:underline" onClick={selectAllVisible}>
+                  Seleziona tutte ({totaleSelezionabiliFiltrate})
+                </button>
+              )}
+              {selectedFileOrigini.size > 0 && (
+                <button className="hover:underline" onClick={deselectAll}>
+                  Deseleziona tutto
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+
       {/* KPI bar — le card sono cliccabili e applicano il filtro periodo
           corrispondente (toggle: riclicco la card attiva → torno a "tutti").
           "Pagate (mese)" è un consuntivo, non un filtro: resta informativa.
@@ -2421,219 +2637,6 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           )}
         </div>
       )}
-
-      {/* Filtri (visibili in entrambe le viste) */}
-      <div className="rounded-lg border bg-card p-3 space-y-3">
-        {/* Riga 1 — stato scadenza vs finestra temporale: due assi concettualmente
-            diversi, separati da un divider verticale così non sembrano un'unica
-            lista di pillole equivalenti. "Personalizzato" è un'azione che apre un
-            pannello (icona calendario), non una pillola di stato/finestra. */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="size-3.5 text-muted-foreground flex-shrink-0" />
-
-          {/* Stato scadenza */}
-          <div className="flex items-center gap-1.5">
-            {(["tutti", "scadute"] as Periodo[]).map(p => {
-              const labels: Partial<Record<Periodo, string>> = { tutti: "Tutti", scadute: "Solo scadute" };
-              return (
-                <button
-                  key={p}
-                  onClick={() => setFiltroPeriodo(p)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
-                    ${filtroPeriodo === p
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  {labels[p]}
-                </button>
-              );
-            })}
-          </div>
-
-          <Separator orientation="vertical" className="h-5" />
-
-          {/* Finestra temporale — filtra su `scadenza_effettiva`, quindi in
-              "Per mese" non avrebbe alcun effetto visibile: un chip che si
-              accende e non cambia l'elenco e' peggio di un chip assente. */}
-          <div className={`items-center gap-1.5 ${view === "lista_mensile" ? "hidden" : "flex"}`}>
-            {(["settimana", "mese"] as Periodo[]).map(p => {
-              const labels: Partial<Record<Periodo, string>> = { settimana: "Questa settimana", mese: "Questo mese" };
-              return (
-                <button
-                  key={p}
-                  onClick={() => setFiltroPeriodo(f => f === p ? "tutti" : p)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
-                    ${filtroPeriodo === p
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  {labels[p]}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => setFiltroPeriodo(f => f === "personalizzato" ? "tutti" : "personalizzato")}
-              title="Intervallo di date personalizzato"
-              className={`flex items-center justify-center size-7 rounded-full border transition-colors flex-shrink-0
-                ${filtroPeriodo === "personalizzato"
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border hover:bg-muted text-muted-foreground"}`}
-            >
-              <Calendar className="size-3.5" />
-            </button>
-          </div>
-
-          {filtriAttivi && (
-            <button
-              onClick={resetFiltri}
-              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="size-3" /> Pulisci filtri
-            </button>
-          )}
-        </div>
-
-        {/* Date personalizzate */}
-        {filtroPeriodo === "personalizzato" && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground">Scadenza da</span>
-            <Input type="date" value={filtroDateDa} onChange={e => setFiltroDateDa(e.target.value)} className="h-7 text-xs w-36" />
-            <span className="text-xs text-muted-foreground">a</span>
-            <Input type="date" value={filtroDateA} onChange={e => setFiltroDateA(e.target.value)} className="h-7 text-xs w-36" />
-          </div>
-        )}
-
-        {/* Per sede — solo modalità catena. Stesso livello delle altre pillole di
-            filtro (fornitori/nuove): un unico sistema di filtro, non più una
-            striscia isolata sopra. Nome sede come contenuto primario, importo
-            come sottotesto; badge/icona coerenti con SedeBadge (viola+Split per
-            la sede tecnica "Gruppo", MapPin per le sedi reali). */}
-        {modalitaCatena && kpiPerSede.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <MapPin className="size-3.5 text-muted-foreground flex-shrink-0" />
-            {kpiPerSede.map(s => {
-              const value = s.is_sede_tecnica ? "gruppo" : s.id;
-              const active = filtroSede === value;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setFiltroSede(f => f === value ? "tutte" : value)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold border transition-colors
-                    ${active
-                      ? s.is_sede_tecnica
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-primary text-primary-foreground border-primary"
-                      : s.is_sede_tecnica
-                        ? "border-primary/40 bg-accent text-primary-text hover:bg-primary/10"
-                        : "border-border hover:bg-muted text-foreground"}`}
-                >
-                  {s.is_sede_tecnica ? <Split className="size-3.5 flex-shrink-0" /> : <MapPin className="size-3.5 flex-shrink-0" />}
-                  {s.nome}
-                  <span className={`font-normal ${active ? "opacity-80" : "opacity-60"}`}>· {formatEuro(s.totale)}</span>
-                </button>
-              );
-            })}
-            {filtroSede !== "tutte" && (
-              <button
-                onClick={() => setFiltroSede("tutte")}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="size-3" /> Tutte le sedi
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Filtro fornitori multi-select + toggle "Nuove" */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <FornitoreMultiSelect
-            fornitori={fornitoriUnici}
-            selected={filtroFornitori}
-            onChange={setFiltroFornitori}
-          />
-          {filtroFornitori.size > 0 && (
-            <button onClick={() => setFiltroFornitori(new Set())} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-              <X className="size-3" /> Rimuovi
-            </button>
-          )}
-          <Separator orientation="vertical" className="h-5" />
-          <button
-            type="button"
-            onClick={() => setFiltroSoloNuove(v => !v)}
-            title="Mostra solo le fatture arrivate dall'ultimo caricamento"
-            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
-              ${filtroSoloNuove
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"}`}
-          >
-            Nuove
-          </button>
-
-          {/* Ordinamento — nelle due viste a lista. Nel calendario no: li'
-              l'ordine e' la griglia dei giorni, e un selettore sarebbe un
-              controllo che non muove niente. */}
-          {view !== "calendario" && (
-            <div className="ml-auto flex items-center gap-1.5">
-              <ArrowUpDown className="size-3.5 text-muted-foreground flex-shrink-0" />
-              {view === "agenda" ? (
-                <NativeSelect
-                  value={ordine}
-                  onValueChange={(v) => setOrdine(v as Ordine)}
-                  className="h-8 text-xs w-auto"
-                  aria-label="Ordina fatture"
-                >
-                  {(Object.keys(ORDINE_LABELS) as Ordine[]).map(k => (
-                    <option key={k} value={k}>{ORDINE_LABELS[k]}</option>
-                  ))}
-                </NativeSelect>
-              ) : (
-                <NativeSelect
-                  value={ordineArchivio}
-                  onValueChange={(v) => setOrdineArchivio(v as OrdineArchivio)}
-                  className="h-8 text-xs w-auto"
-                  aria-label="Ordina fatture"
-                >
-                  {(Object.keys(ORDINE_ARCHIVIO_LABELS) as OrdineArchivio[]).map(k => (
-                    <option key={k} value={k}>{ORDINE_ARCHIVIO_LABELS[k]}</option>
-                  ))}
-                </NativeSelect>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Risultati + select all */}
-        {view === "agenda" && (
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
-            <span>
-              {/* Conta le fatture DA PAGARE, la stessa popolazione dei bucket di
-                  scadenza elencati sotto. Fino al 16/09/2026 contava ogni
-                  documento filtrato: su Villa Guardia diceva "426 su 581" mentre
-                  la sezione Scadute ne elencava 414, perche' dentro i 426
-                  c'erano anche le 12 note di credito scadute (che hanno la loro
-                  sezione, non un bucket di scadenza) e le escluse dai conti.
-                  Due popolazioni diverse a due centimetri di distanza. */}
-              {filtriAttivi
-                ? `${contaDaPagare(documentiFiltrati)} su ${contaDaPagare(documenti)} fatture da pagare`
-                : `${contaDaPagare(documenti)} fatture da pagare`}
-            </span>
-            <div className="flex gap-3">
-              {totaleSelezionabiliFiltrate > 0 && (
-                <button className="text-primary hover:underline" onClick={selectAllVisible}>
-                  Seleziona tutte ({totaleSelezionabiliFiltrate})
-                </button>
-              )}
-              {selectedFileOrigini.size > 0 && (
-                <button className="hover:underline" onClick={deselectAll}>
-                  Deseleziona tutto
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Content */}
       {view === "agenda" ? (
