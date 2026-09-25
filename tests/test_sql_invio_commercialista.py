@@ -63,10 +63,11 @@ def _config(db_sql, attiva=True, email=EMAIL, consenso_email=None, company=1756,
     return righe[0][0]
 
 
-def _invio(db_sql, cid, tipo, dal, al, stato="richiesto", da="admin", creata=ORA, **extra):
+def _invio(db_sql, cid, tipo, dal, al, stato="richiesto", da="admin", creata=ORA, destinatario=EMAIL,
+           user=U1, piva=PIVA, company=1756, **extra):
     colonne = ["config_id", "user_id", "piva", "invoicetronic_company_id", "destinatario", "tipo",
                "periodo_dal", "periodo_al", "stato", "richiesto_da", "creata_at", *extra]
-    valori = [cid, U1, PIVA, 1756, EMAIL, tipo, dal, al, stato, da, creata, *extra.values()]
+    valori = [cid, user, piva, company, destinatario, tipo, dal, al, stato, da, creata, *extra.values()]
     righe = _esegui(
         db_sql,
         f"INSERT INTO public.invio_commercialista_invii ({', '.join(colonne)}) VALUES ({', '.join(['%s'] * len(valori))}) RETURNING id",
@@ -280,12 +281,12 @@ def test_le_prove_non_spostano_il_cursore(db_sql, scalare):
 
 def test_mai_un_periodo_che_arriva_a_oggi_a_roma(db_sql, psycopg, scalare):
     """Il 31/12 alle 23:30 UTC a Roma e' gia' il 1° gennaio: il periodo puo'
-    arrivare al 31/12, non al 1/1."""
+    arrivare al 31/12, non al 1/1. (Il 2025: creata_at nel futuro e' rifiutata.)"""
     _semina(db_sql)
     cid = _config(db_sql)
     with pytest.raises(psycopg.errors.CheckViolation):
-        _invio(db_sql, cid, "prova", "2026-12-01", "2027-01-01", creata="2026-12-31 23:30:00+00")
-    _invio(db_sql, cid, "prova", "2026-12-01", "2026-12-31", creata="2026-12-31 23:30:00+00")
+        _invio(db_sql, cid, "prova", "2025-12-01", "2026-01-01", creata="2025-12-31 23:30:00+00")
+    _invio(db_sql, cid, "prova", "2025-12-01", "2025-12-31", creata="2025-12-31 23:30:00+00")
     assert scalare("SELECT count(*) FROM public.invio_commercialista_invii") == 1
 
 
@@ -400,14 +401,26 @@ def test_la_pulizia_non_scende_sotto_i_30_giorni(db_sql, psycopg):
         _esegui(db_sql, "SELECT public.purge_invio_commercialista(10, 90)")
 
 
-def test_cancellare_il_cliente_cancella_configurazione_e_registro(db_sql, scalare):
+def test_cancellare_il_cliente_lascia_la_traccia_fino_alla_pulizia(db_sql, scalare):
+    """La configurazione se ne va col cliente; il registro resta (senza
+    configurazione) come traccia di cosa e' andato a chi, fino alla retention."""
     _semina(db_sql)
     cid = _config(db_sql)
-    _invio(db_sql, cid, "prova", "2026-07-01", "2026-07-31")
+    recente = _invio(db_sql, cid, "prova", "2026-07-01", "2026-07-31")
+    vecchio = _invio(db_sql, cid, "prova", "2025-05-01", "2025-05-31", stato="errore", creata="2025-06-01 10:00:00+00")
     _esegui(db_sql, "DELETE FROM public.ristoranti WHERE user_id = %s", U1)
     _esegui(db_sql, "DELETE FROM public.users WHERE id = %s", U1)
-    assert scalare("SELECT count(*) FROM public.invio_commercialista_invii") == 0
     assert scalare("SELECT count(*) FROM public.invio_commercialista_config") == 0
+    assert scalare("SELECT count(*) FROM public.invio_commercialista_invii WHERE config_id IS NULL") == 2
+    assert scalare("SELECT public.purge_invio_commercialista(365, 90)") == 1
+    assert [r[0] for r in _esegui(db_sql, "SELECT id FROM public.invio_commercialista_invii")] == [recente]
+    assert vecchio != recente
+
+
+def test_senza_configurazione_non_si_registra_niente(db_sql, psycopg):
+    _semina(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, None, "prova", "2026-07-01", "2026-07-31")
 
 
 @pytest.mark.parametrize("tabella", ["invio_commercialista_config", "invio_commercialista_invii"])
@@ -422,15 +435,16 @@ def test_i_ruoli_pubblici_non_toccano_le_tabelle(db_sql, scalare, ruolo, tabella
         assert scalare(f"SELECT has_table_privilege(%s, 'public.{tabella}', %s)", ruolo, permesso) is False, permesso
 
 
+@pytest.mark.parametrize("funzione", ["purge_invio_commercialista(integer, integer)",
+                                      "invio_commercialista_autorizzato(uuid, text)",
+                                      "invio_commercialista_ultimo_giorno(uuid)"])
 @pytest.mark.parametrize("ruolo", ["anon", "authenticated"])
-def test_i_ruoli_pubblici_non_eseguono_la_pulizia(db_sql, scalare, ruolo):
+def test_i_ruoli_pubblici_non_eseguono_le_funzioni(db_sql, scalare, ruolo, funzione):
     if not scalare("SELECT count(*) FROM pg_roles WHERE rolname = %s", ruolo):
         pytest.skip(f"ruolo {ruolo} assente nello snapshot")
-    _esegui(db_sql, f"GRANT EXECUTE ON FUNCTION public.purge_invio_commercialista(integer, integer) TO {ruolo}")
+    _esegui(db_sql, f"GRANT EXECUTE ON FUNCTION public.{funzione} TO {ruolo}")
     _esegui(db_sql, MIGRATION.read_text(encoding="utf-8"))
-    assert scalare(
-        "SELECT has_function_privilege(%s, 'public.purge_invio_commercialista(integer, integer)', 'EXECUTE')", ruolo
-    ) is False
+    assert scalare(f"SELECT has_function_privilege(%s, 'public.{funzione}', 'EXECUTE')", ruolo) is False
 
 
 def test_un_bucket_gia_pubblico_torna_privato(db_sql, scalare):
@@ -476,3 +490,264 @@ def test_piva_di_nessuna_sede_rifiutata(db_sql, psycopg):
     _semina(db_sql)
     with pytest.raises(psycopg.errors.CheckViolation):
         _config(db_sql, attiva=False, piva="11111111111")
+
+
+# ─── Review della fase B: solo invii autorizzati (B1) ────────────────────────
+
+def test_si_registra_solo_verso_l_indirizzo_col_consenso(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31", destinatario="estraneo@evil.test")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31", destinatario=None)
+
+
+@pytest.mark.parametrize("modifica", ["attivo = false", "sospesa_at = now()"])
+def test_configurazione_spenta_o_sospesa_non_registra_invii(db_sql, psycopg, modifica):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _esegui(db_sql, f"UPDATE public.invio_commercialista_config SET {modifica} WHERE id = %s", cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+
+
+def test_la_prova_si_registra_anche_prima_dell_attivazione(db_sql, scalare):
+    """La prova non spedisce: serve proprio prima di attivare."""
+    _semina(db_sql)
+    cid = _config(db_sql, attiva=False)
+    _invio(db_sql, cid, "prova", "2026-07-01", "2026-07-31")
+    assert scalare("SELECT count(*) FROM public.invio_commercialista_invii") == 1
+
+
+@pytest.mark.parametrize("campo,valore", [("user", U2), ("piva", "12345678903"), ("company", 99)])
+def test_l_invio_copia_la_sua_configurazione(db_sql, psycopg, campo, valore):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "prova", "2026-07-01", "2026-07-31", **{campo: valore})
+
+
+def test_spegnere_la_configurazione_ferma_la_presa(db_sql, psycopg, scalare):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET attivo = false WHERE id = %s", cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _stato(db_sql, iid, "in_corso")
+    _stato(db_sql, iid, "errore", motivo="configurazione spenta")
+    assert scalare("SELECT stato FROM public.invio_commercialista_invii WHERE id = %s", iid) == "errore"
+
+
+def test_cambiare_email_ferma_l_email_in_partenza(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _stato(db_sql, iid, "in_corso")
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET email_destinatario = 'nuovo@studio.test' WHERE id = %s", cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "UPDATE public.invio_commercialista_invii SET email_tentata_at = now() WHERE id = %s", iid)
+
+
+def test_una_prova_non_tenta_mai_l_email(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "prova", "2026-07-01", "2026-07-31")
+    _stato(db_sql, iid, "in_corso")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "UPDATE public.invio_commercialista_invii SET email_tentata_at = now() WHERE id = %s", iid)
+
+
+# ─── Review della fase B: un'email partita resta partita (B2) ────────────────
+
+def _partita(db_sql, cid):
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _stato(db_sql, iid, "in_corso", email_tentata_at="2026-09-25 10:05:00+00")
+    return iid
+
+
+def test_email_partita_non_diventa_bloccata(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _partita(db_sql, cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _stato(db_sql, iid, "bloccato", motivo="guardia")
+
+
+@pytest.mark.parametrize("campo,primo,poi", [
+    ("email_tentata_at", "'2026-09-25 10:05:00+00'", "NULL"),
+    ("email_tentata_at", "'2026-09-25 10:05:00+00'", "'2026-09-25 11:00:00+00'"),
+    ("brevo_http_status", "503", "NULL"),
+    ("brevo_message_id", "'<m1@brevo>'", "'<m2@brevo>'"),
+])
+def test_l_esito_dell_email_si_scrive_una_volta(db_sql, psycopg, scalare, campo, primo, poi):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _stato(db_sql, iid, "in_corso")
+    _esegui(db_sql, f"UPDATE public.invio_commercialista_invii SET {campo} = {primo} WHERE id = %s", iid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, f"UPDATE public.invio_commercialista_invii SET {campo} = {poi} WHERE id = %s", iid)
+    assert scalare(f"SELECT {campo} IS NOT NULL FROM public.invio_commercialista_invii WHERE id = %s", iid) is True
+
+
+def test_azzerare_l_email_tentata_non_libera_il_periodo(db_sql, psycopg):
+    """La sonda della review: errore + email_tentata_at azzerata, poi lo stesso
+    periodo di nuovo. Il primo passo e' gia' rifiutato."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _partita(db_sql, cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'errore', email_tentata_at = NULL WHERE id = %s", iid)
+    with pytest.raises((psycopg.errors.UniqueViolation, psycopg.errors.ExclusionViolation)):
+        _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+
+
+def test_esito_incerto_chiarito_come_non_partito_libera_il_periodo(db_sql, scalare):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _partita(db_sql, cid)
+    _stato(db_sql, iid, "esito_incerto")
+    _stato(db_sql, iid, "errore", chiarito_non_partito_at="2026-09-25 12:00:00+00", motivo="admin: non arrivata")
+    _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    assert scalare("SELECT count(*) FROM public.invio_commercialista_invii WHERE tipo = 'primo'") == 2
+
+
+def test_si_chiarisce_come_non_partito_solo_un_esito_incerto(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _partita(db_sql, cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _stato(db_sql, iid, "errore", chiarito_non_partito_at="2026-09-25 12:00:00+00")
+    _stato(db_sql, iid, "inviato")
+    senza_email = _invio(db_sql, cid, "reinvio", "2026-07-01", "2026-07-31")
+    _stato(db_sql, senza_email, "in_corso")
+    _stato(db_sql, senza_email, "esito_incerto")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _stato(db_sql, senza_email, "errore", chiarito_non_partito_at="2026-09-25 12:00:00+00")
+
+
+def test_il_chiarimento_non_si_riscrive(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _partita(db_sql, cid)
+    _stato(db_sql, iid, "esito_incerto")
+    _stato(db_sql, iid, "errore", chiarito_non_partito_at="2026-09-25 12:00:00+00")
+    # Un'altra data e non NULL: NULL lo fermerebbe gia' ici_email_partita_chk.
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "UPDATE public.invio_commercialista_invii SET chiarito_non_partito_at = now() WHERE id = %s", iid)
+
+
+# ─── Review della fase B: garanzie senza un test (B3) ────────────────────────
+
+@pytest.mark.parametrize("da,a", [("in_corso", "richiesto"), ("esito_incerto", "bloccato"),
+                                  ("esito_incerto", "in_corso")])
+def test_transizioni_vietate_che_rispedirebbero(db_sql, psycopg, da, a):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    for passo in {"in_corso": ["in_corso"], "esito_incerto": ["in_corso", "esito_incerto"]}[da]:
+        _stato(db_sql, iid, passo)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _stato(db_sql, iid, a)
+
+
+@pytest.mark.parametrize("campo,valore", [("periodo_al", "'2026-08-31'"), ("config_id", "gen_random_uuid()"),
+                                          ("piva", "'12345678903'")])
+def test_un_invio_registrato_non_cambia_neanche_qui(db_sql, psycopg, campo, valore):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, f"UPDATE public.invio_commercialista_invii SET {campo} = {valore} WHERE id = %s", iid)
+
+
+def test_chi_ha_chiesto_l_invio_non_cambia(db_sql, psycopg):
+    """Su un ordinario: da notturno ad admin nessun CHECK protesta, solo il trigger."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _inviato(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    iid = _invio(db_sql, cid, "ordinario", "2026-08-01", "2026-08-31", da="notturno")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "UPDATE public.invio_commercialista_invii SET richiesto_da = 'admin' WHERE id = %s", iid)
+
+
+def test_attivare_ricontrolla_la_piva(db_sql, psycopg):
+    """Creata spenta quando la P.IVA era solo del cliente, poi condivisa: non si accende."""
+    _semina(db_sql)
+    cid = _config(db_sql, attiva=False)
+    _esegui(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) VALUES (%s, %s, 'B', %s, TRUE)", SEDE_2, U2, PIVA)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "UPDATE public.invio_commercialista_config SET email_destinatario = %s, consenso_ricevuto = true, "
+                        "consenso_data = '2026-09-20', consenso_email = %s, data_partenza = '2026-07-01', attivo = true "
+                        "WHERE id = %s", EMAIL, EMAIL, cid)
+
+
+def test_sospendere_riesce_anche_con_la_piva_condivisa_e_riattivare_ricontrolla(db_sql, psycopg, scalare):
+    """E' la guardia dell'esecutore a sospendere, proprio quando la P.IVA e' passata
+    anche a un altro account: il trigger non deve impedirglielo."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _esegui(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) VALUES (%s, %s, 'B', %s, TRUE)", SEDE_2, U2, PIVA)
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET sospesa_at = now(), sospesa_motivo = 'piva_non_solo_del_cliente' WHERE id = %s", cid)
+    assert scalare("SELECT sospesa_at IS NOT NULL FROM public.invio_commercialista_config WHERE id = %s", cid) is True
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "UPDATE public.invio_commercialista_config SET sospesa_at = NULL WHERE id = %s", cid)
+
+
+def test_riattivare_azzera_la_data_di_disattivazione(db_sql, scalare):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET attivo = false WHERE id = %s", cid)
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET attivo = true WHERE id = %s", cid)
+    assert scalare("SELECT disattivata_at FROM public.invio_commercialista_config WHERE id = %s", cid) is None
+
+
+def test_l_ordinario_dopo_due_anni_riparte_dal_limite(db_sql, psycopg, scalare):
+    """L'ultimo invio riuscito e' di tre anni fa: si riparte da oggi meno 2 anni,
+    non dal giorno dopo (quei documenti Invoicetronic non li ha piu')."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "primo", "2023-06-01", "2023-06-10", creata="2023-06-15 10:00:00+00")
+    _stato(db_sql, iid, "in_corso")
+    _stato(db_sql, iid, "inviato")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "ordinario", "2023-06-11", "2024-09-30", da="notturno")
+    _invio(db_sql, cid, "ordinario", "2024-09-25", "2024-09-30", da="notturno")
+    assert scalare("SELECT count(*) FROM public.invio_commercialista_invii WHERE tipo = 'ordinario'") == 1
+
+
+# ─── Review della fase B: rilievi non bloccanti ──────────────────────────────
+
+def test_l_email_del_consenso_e_normalizzata(db_sql, psycopg):
+    _semina(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "INSERT INTO public.invio_commercialista_config (user_id, piva, consenso_email) VALUES (%s, %s, ' Studio@X.test')", U1, PIVA)
+
+
+def test_non_si_reinvia_prima_del_primo_invio(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _inviato(db_sql, cid, "primo", "2026-07-10", "2026-07-31")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "reinvio", "2026-07-01", "2026-07-15")
+    _invio(db_sql, cid, "reinvio", "2026-07-10", "2026-07-15")
+
+
+def test_creata_at_nel_futuro_rifiutata(db_sql, psycopg):
+    """Coi limiti sulle date calcolati da creata_at, una data futura li sposterebbe."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
+                        "destinatario, tipo, periodo_dal, periodo_al, richiesto_da, creata_at) VALUES "
+                        "(%s, %s, %s, 1756, %s, 'prova', '2026-07-01', now()::date, 'admin', now() + interval '2 days')",
+                cid, U1, PIVA, EMAIL)
+
+
+def test_la_pulizia_toglie_l_email_delle_configurazioni_mai_accese(db_sql, scalare):
+    _semina(db_sql)
+    ferma = _esegui(db_sql, "INSERT INTO public.invio_commercialista_config (user_id, piva, email_destinatario, aggiornata_at) "
+                            "VALUES (%s, %s, %s, now() - interval '91 days') RETURNING id", U1, PIVA, EMAIL)[0][0]
+    assert scalare("SELECT public.purge_invio_commercialista(365, 90)") == 1
+    assert scalare("SELECT email_destinatario FROM public.invio_commercialista_config WHERE id = %s", ferma) is None

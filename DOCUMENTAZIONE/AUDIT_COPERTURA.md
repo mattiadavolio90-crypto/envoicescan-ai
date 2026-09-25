@@ -1134,6 +1134,46 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   client, +59 guardia, +65 e +11 `-m sql`. Prima del push: applicare la
 >   migration (senza, la pulizia giornaliera scrive un avviso nel log; nient'altro
 >   la usa ancora).
+>   *Rivista dalla review: la voce seguente.*
+>
+> - **25/09/2026 — review della fase B: il DB non impediva due cose che la voce
+>   sopra dice impedite.** Il code-reviewer, con sonde SQL su una copia, ha fatto
+>   passare (1) un invio registrato verso un indirizzo senza consenso, per una
+>   configurazione spenta o con cliente e P.IVA diversi dai suoi: il trigger
+>   bloccava la riga della configurazione ma non la leggeva; (2) un'email partita
+>   rimessa «non partita», perche' `bloccato` non era nel CHECK ed
+>   `email_tentata_at` si poteva azzerare. Dopo, lo stesso periodo si reinseriva:
+>   un doppione. Corretto nella stessa migration, non ancora applicata:
+>   - l'autorizzazione (configurazione attiva e non sospesa, destinatario uguale
+>     all'email col consenso) si verifica alla creazione della riga, alla presa e
+>     alla partenza dell'email, con cliente, P.IVA e company_id copiati dalla
+>     configurazione;
+>   - l'esito dell'email si scrive una volta sola; «non partita» vale solo con un
+>     4xx o con `chiarito_non_partito_at`, che mette l'admin chiarendo un esito
+>     incerto;
+>   - sospendere riesce anche con la P.IVA passata a un altro account: il trigger
+>     lo rifiutava proprio nel caso che fa scattare la guardia;
+>   - cancellando la configurazione il registro resta (config_id NULL) fino alla
+>     retention, poi se ne va;
+>   - la pulizia GDPR prende anche le configurazioni mai accese; l'email del
+>     consenso e' normalizzata; nessun reinvio prima del primo invio; creata_at
+>     mai nel futuro.
+>   Nove garanzie dichiarate non avevano un test: il reviewer le ha mutate e
+>   sopravvivevano, ora ognuna ha il suo. **Mutanti nuovi: 38, tutti uccisi.** R16
+>   sopravviveva finche' il test azzerava il chiarimento: il NULL lo fermava gia'
+>   il CHECK, adesso il test lo riscrive con un'altra data. Rigiro dei 56 della fase
+>   B sulla migration corretta: 50 uccisi, M22 equivalente come allora, 5 non piu'
+>   applicabili perche' la riga e' cambiata. M5 e M14 ora sono R20-R22, M11 e M21
+>   (sulle due pulizie) rifatti sulle righe nuove: 3 su 3 uccisi. G16 si rifa' con
+>   la fase C, che ha cambiato il filtro dei doppioni. Lasciati com'erano, e perche':
+>   - `disattivata_at` retrodatabile a mano sposta la pulizia solo *prima*;
+>   - asn1crypto non strict: una busta con byte in coda resta del cliente, perche'
+>     la guardia legge l'XML che c'e' dentro;
+>   - il totale di Invoicetronic con una cancellazione a meta' lista: OneFlux non
+>     cancella ricevute.
+>   La voce sopra resta com'e': «`errore` dopo un'email partita solo con un 4xx» e
+>   «55 su 56» erano veri per i test di allora, non per il DB. Test `-m sql` del
+>   registro: da 65 a 104.
 
 ---
 

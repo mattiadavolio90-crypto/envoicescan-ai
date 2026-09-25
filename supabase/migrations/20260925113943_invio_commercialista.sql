@@ -11,6 +11,10 @@
 --
 -- REGISTRO. Il DB garantisce cio' che nessun controllo in Python fra una lettura e
 -- una scrittura puo' garantire:
+--   - si spedisce solo per una configurazione attiva, non sospesa, al destinatario
+--     che ha il consenso, con cliente/P.IVA/company_id copiati da lei: alla
+--     creazione della riga, quando l'esecutore la prende e quando l'email parte
+--     (la configurazione puo' cambiare fra un momento e l'altro);
 --   - un solo invio in volo (o dall'esito incerto) per configurazione;
 --   - un solo «primo» riuscito o in corso;
 --   - periodi di primo/ordinario mai sovrapposti, e l'ordinario che riparte dal
@@ -20,12 +24,15 @@
 --     ordinario rispedirebbe quei giorni);
 --   - mai un periodo che arriva a oggi (le fatture di oggi non sono finite) ne' che
 --     va oltre i 2 anni che Invoicetronic conserva;
---   - stati solo in avanti. Un invio la cui email e' partita (email_tentata_at) non
---     diventa `errore` senza un rifiuto certo di Brevo (4xx): un timeout e'
---     `esito_incerto`, perche' rispedire il periodo la notte dopo sarebbe un
---     doppione al commercialista.
+--   - stati solo in avanti. Un invio la cui email e' partita (email_tentata_at,
+--     scrivibile una volta sola) non torna mai «non partito»: ne' `bloccato` ne'
+--     `errore`, salvo un rifiuto certo di Brevo (4xx) o l'admin che lo dichiara
+--     esplicitamente (chiarito_non_partito_at) chiarendo un esito incerto. Un
+--     timeout e' `esito_incerto`, perche' rispedire il periodo la notte dopo
+--     sarebbe un doppione al commercialista.
 -- Ogni riga copia cliente, P.IVA, company_id e destinatario: resta la traccia di
--- cosa e' andato a chi anche dopo un cambio di configurazione.
+-- cosa e' andato a chi anche dopo un cambio di configurazione, e anche dopo la sua
+-- cancellazione (config_id diventa NULL, la riga resta).
 --
 -- Idempotente e rieseguibile per intero. service_role only: anon e authenticated
 -- nominati nella REVOKE, perche' su Supabase hanno grant propri dalle default
@@ -58,6 +65,9 @@ CREATE TABLE IF NOT EXISTS public.invio_commercialista_config (
     ),
     CONSTRAINT icc_consenso_chk CHECK (
         NOT consenso_ricevuto OR (consenso_data IS NOT NULL AND consenso_email IS NOT NULL)
+    ),
+    CONSTRAINT icc_consenso_email_chk CHECK (
+        consenso_email IS NULL OR consenso_email = lower(btrim(consenso_email))
     ),
     CONSTRAINT icc_attivabile_chk CHECK (
         NOT attivo OR (
@@ -112,8 +122,11 @@ BEGIN
     -- La P.IVA deve essere di una sede del cliente e di nessun altro account, su
     -- ristoranti E su piva_ristoranti: il trigger che tiene piva_ristoranti non
     -- segue lo spostamento di una sede fra account. Solo alla creazione e per le
-    -- configurazioni attive: spegnerne una deve riuscire sempre.
-    IF TG_OP = 'UPDATE' AND NOT NEW.attivo THEN
+    -- configurazioni attive e non sospese: spegnerne o sospenderne una deve
+    -- riuscire sempre, anche e soprattutto quando la P.IVA e' passata a un altro
+    -- account (e' la guardia dell'esecutore a sospenderla, proprio per questo).
+    -- Togliere la sospensione rifa' il controllo.
+    IF TG_OP = 'UPDATE' AND (NOT NEW.attivo OR NEW.sospesa_at IS NOT NULL) THEN
         RETURN NEW;
     END IF;
     SELECT count(*) INTO v_sedi_proprie
@@ -141,7 +154,7 @@ CREATE TRIGGER invio_commercialista_config_guardia
 
 CREATE TABLE IF NOT EXISTS public.invio_commercialista_invii (
     id                        uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    config_id                 uuid        NOT NULL REFERENCES public.invio_commercialista_config(id) ON DELETE CASCADE,
+    config_id                 uuid        REFERENCES public.invio_commercialista_config(id) ON DELETE SET NULL,
     user_id                   uuid        NOT NULL,
     piva                      text        NOT NULL,
     invoicetronic_company_id  integer     NOT NULL,
@@ -161,6 +174,7 @@ CREATE TABLE IF NOT EXISTS public.invio_commercialista_invii (
     brevo_http_status         integer,
     brevo_message_id          text,
     avviso_inviato_at         timestamptz,
+    chiarito_non_partito_at   timestamptz,
     motivo                    text,
     creata_at                 timestamptz NOT NULL DEFAULT now(),
     iniziata_at               timestamptz,
@@ -178,9 +192,15 @@ CREATE TABLE IF NOT EXISTS public.invio_commercialista_invii (
     CONSTRAINT ici_due_anni_chk CHECK (
         periodo_dal >= (timezone('Europe/Rome', creata_at)::date - interval '2 years')::date
     ),
-    CONSTRAINT ici_errore_solo_se_rifiutata_chk CHECK (
-        stato <> 'errore' OR email_tentata_at IS NULL
-        OR coalesce(brevo_http_status BETWEEN 400 AND 499, false)
+    CONSTRAINT ici_email_partita_chk CHECK (
+        email_tentata_at IS NULL
+        OR stato IN ('in_corso', 'inviato', 'esito_incerto')
+        OR (stato = 'errore' AND (coalesce(brevo_http_status BETWEEN 400 AND 499, false)
+                                  OR chiarito_non_partito_at IS NOT NULL))
+    ),
+    CONSTRAINT ici_prova_senza_email_chk CHECK (tipo <> 'prova' OR email_tentata_at IS NULL),
+    CONSTRAINT ici_chiarito_chk CHECK (
+        chiarito_non_partito_at IS NULL OR (stato = 'errore' AND email_tentata_at IS NOT NULL)
     )
 );
 
@@ -214,18 +234,38 @@ AS $function$
       AND stato IN ('inviato', 'esito_incerto');
 $function$;
 
+-- Si puo' spedire a questo destinatario per questa configurazione, adesso?
+-- `attivo` porta con se' il consenso rilasciato per quell'email
+-- (icc_attivabile_chk): basta che il destinatario sia l'email della configurazione.
+CREATE OR REPLACE FUNCTION public.invio_commercialista_autorizzato(p_config_id uuid, p_destinatario text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path TO 'public'
+AS $function$
+    SELECT coalesce((
+        SELECT c.attivo AND c.sospesa_at IS NULL AND c.email_destinatario = p_destinatario
+        FROM public.invio_commercialista_config c
+        WHERE c.id = p_config_id
+    ), false);
+$function$;
+
 CREATE OR REPLACE FUNCTION public.invio_commercialista_invii_guardia()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path TO 'public'
 AS $function$
 DECLARE
+    v_cfg     public.invio_commercialista_config%ROWTYPE;
     v_ultimo  date;
+    v_primo   date;
     v_limite  date;
     v_attesa  date;
 BEGIN
     IF TG_OP = 'UPDATE' THEN
-        IF NEW.config_id IS DISTINCT FROM OLD.config_id
+        -- config_id puo' solo diventare NULL: e' la cancellazione della
+        -- configurazione (ON DELETE SET NULL), e la riga resta come traccia.
+        IF (NEW.config_id IS DISTINCT FROM OLD.config_id AND NEW.config_id IS NOT NULL)
            OR NEW.tipo IS DISTINCT FROM OLD.tipo
            OR NEW.periodo_dal IS DISTINCT FROM OLD.periodo_dal
            OR NEW.periodo_al IS DISTINCT FROM OLD.periodo_al
@@ -238,6 +278,20 @@ BEGIN
             RAISE EXCEPTION 'un invio registrato non cambia periodo, tipo ne'' destinatario'
                 USING ERRCODE = 'check_violation';
         END IF;
+        -- Cio' che dice se e come l'email e' partita si scrive una volta sola.
+        IF (OLD.email_tentata_at IS NOT NULL AND NEW.email_tentata_at IS DISTINCT FROM OLD.email_tentata_at)
+           OR (OLD.brevo_http_status IS NOT NULL AND NEW.brevo_http_status IS DISTINCT FROM OLD.brevo_http_status)
+           OR (OLD.brevo_message_id IS NOT NULL AND NEW.brevo_message_id IS DISTINCT FROM OLD.brevo_message_id)
+           OR (OLD.chiarito_non_partito_at IS NOT NULL
+               AND NEW.chiarito_non_partito_at IS DISTINCT FROM OLD.chiarito_non_partito_at) THEN
+            RAISE EXCEPTION 'l''esito dell''email di un invio si scrive una volta sola'
+                USING ERRCODE = 'check_violation';
+        END IF;
+        IF OLD.chiarito_non_partito_at IS NULL AND NEW.chiarito_non_partito_at IS NOT NULL
+           AND NOT (OLD.stato = 'esito_incerto' AND NEW.stato = 'errore') THEN
+            RAISE EXCEPTION 'solo un esito incerto si chiarisce come non partito'
+                USING ERRCODE = 'check_violation';
+        END IF;
         IF NEW.stato IS DISTINCT FROM OLD.stato AND NOT (
                (OLD.stato = 'richiesto' AND NEW.stato IN ('in_corso', 'errore'))
             OR (OLD.stato = 'in_corso' AND NEW.stato IN ('inviato', 'errore', 'bloccato', 'prova_ok', 'esito_incerto'))
@@ -246,11 +300,35 @@ BEGIN
             RAISE EXCEPTION 'transizione di stato non ammessa: % -> %', OLD.stato, NEW.stato
                 USING ERRCODE = 'check_violation';
         END IF;
+        -- L'esecutore prende la riga, poi l'email parte: la configurazione puo'
+        -- essere stata spenta o cambiata nel frattempo.
+        IF NEW.tipo <> 'prova' AND (
+               (OLD.stato = 'richiesto' AND NEW.stato = 'in_corso')
+            OR (OLD.email_tentata_at IS NULL AND NEW.email_tentata_at IS NOT NULL)
+        ) AND NOT public.invio_commercialista_autorizzato(NEW.config_id, NEW.destinatario) THEN
+            RAISE EXCEPTION 'configurazione spenta, sospesa o destinatario senza consenso'
+                USING ERRCODE = 'check_violation';
+        END IF;
         RETURN NEW;
     END IF;
 
     -- INSERT. Serializza gli inserimenti della stessa configurazione.
-    PERFORM 1 FROM public.invio_commercialista_config WHERE id = NEW.config_id FOR UPDATE;
+    IF NEW.creata_at > now() + interval '5 minutes' THEN
+        RAISE EXCEPTION 'creata_at nel futuro: i limiti sulle date si calcolano da li'''
+            USING ERRCODE = 'check_violation';
+    END IF;
+    SELECT * INTO v_cfg FROM public.invio_commercialista_config WHERE id = NEW.config_id FOR UPDATE;
+    IF NOT FOUND
+       OR NEW.user_id IS DISTINCT FROM v_cfg.user_id
+       OR NEW.piva IS DISTINCT FROM v_cfg.piva
+       OR NEW.invoicetronic_company_id IS DISTINCT FROM v_cfg.invoicetronic_company_id THEN
+        RAISE EXCEPTION 'l''invio copia cliente, P.IVA e company_id della sua configurazione'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.tipo <> 'prova' AND NOT public.invio_commercialista_autorizzato(NEW.config_id, NEW.destinatario) THEN
+        RAISE EXCEPTION 'configurazione spenta, sospesa o destinatario senza consenso'
+            USING ERRCODE = 'check_violation';
+    END IF;
     v_ultimo := public.invio_commercialista_ultimo_giorno(NEW.config_id);
     v_limite := (timezone('Europe/Rome', NEW.creata_at)::date - interval '2 years')::date;
 
@@ -277,9 +355,16 @@ BEGIN
         END IF;
     END IF;
 
-    IF NEW.tipo = 'reinvio' AND (v_ultimo IS NULL OR NEW.periodo_al > v_ultimo) THEN
-        RAISE EXCEPTION 'si reinvia solo cio'' che e'' gia'' stato inviato'
-            USING ERRCODE = 'check_violation';
+    IF NEW.tipo = 'reinvio' THEN
+        SELECT min(periodo_dal) INTO v_primo
+        FROM public.invio_commercialista_invii
+        WHERE config_id = NEW.config_id
+          AND tipo IN ('primo', 'ordinario')
+          AND stato IN ('inviato', 'esito_incerto');
+        IF v_ultimo IS NULL OR NEW.periodo_al > v_ultimo OR NEW.periodo_dal < v_primo THEN
+            RAISE EXCEPTION 'si reinvia solo cio'' che e'' gia'' stato inviato'
+                USING ERRCODE = 'check_violation';
+        END IF;
     END IF;
     RETURN NEW;
 END;
@@ -292,8 +377,10 @@ CREATE TRIGGER invio_commercialista_invii_guardia
 
 -- Retention (GDPR): l'email del destinatario non resta oltre il bisogno.
 --   - registro: dopo p_retention_days il destinatario si cancella (resta il resto,
---     che non e' un dato personale);
---   - configurazione disattivata da piu' di p_giorni_config: email e consenso via.
+--     che non e' un dato personale), e le righe rimaste senza configurazione
+--     (cliente o configurazione cancellati) spariscono del tutto;
+--   - configurazione spenta da piu' di p_giorni_config (o mai accesa e ferma da
+--     altrettanto): email e consenso via.
 CREATE OR REPLACE FUNCTION public.purge_invio_commercialista(
     p_retention_days integer DEFAULT 365,
     p_giorni_config integer DEFAULT 90
@@ -304,12 +391,18 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
 DECLARE
+    v_orfani   integer;
     v_registro integer;
     v_config   integer;
 BEGIN
     IF p_retention_days < 30 OR p_giorni_config < 30 THEN
         RAISE EXCEPTION 'p_retention_days e p_giorni_config almeno 30: il link di un invio vale 30 giorni';
     END IF;
+    DELETE FROM public.invio_commercialista_invii
+    WHERE config_id IS NULL
+      AND creata_at < now() - make_interval(days => p_retention_days);
+    GET DIAGNOSTICS v_orfani = ROW_COUNT;
+
     UPDATE public.invio_commercialista_invii
     SET destinatario = NULL
     WHERE destinatario IS NOT NULL
@@ -319,11 +412,10 @@ BEGIN
     UPDATE public.invio_commercialista_config
     SET email_destinatario = NULL, consenso_ricevuto = false, consenso_data = NULL, consenso_email = NULL
     WHERE NOT attivo
-      AND disattivata_at IS NOT NULL
-      AND disattivata_at < now() - make_interval(days => p_giorni_config)
+      AND coalesce(disattivata_at, aggiornata_at) < now() - make_interval(days => p_giorni_config)
       AND (email_destinatario IS NOT NULL OR consenso_email IS NOT NULL);
     GET DIAGNOSTICS v_config = ROW_COUNT;
-    RETURN v_registro + v_config;
+    RETURN v_orfani + v_registro + v_config;
 END;
 $function$;
 
@@ -334,10 +426,12 @@ REVOKE ALL ON public.invio_commercialista_invii FROM PUBLIC, anon, authenticated
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.invio_commercialista_config TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.invio_commercialista_invii TO service_role;
 REVOKE ALL ON FUNCTION public.invio_commercialista_ultimo_giorno(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.invio_commercialista_autorizzato(uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.purge_invio_commercialista(integer, integer) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.invio_commercialista_config_guardia() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.invio_commercialista_invii_guardia() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.invio_commercialista_ultimo_giorno(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.invio_commercialista_autorizzato(uuid, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.purge_invio_commercialista(integer, integer) TO service_role;
 
 -- Bucket privato degli ZIP. Lo schema storage non c'e' nel Postgres dei test: li'
