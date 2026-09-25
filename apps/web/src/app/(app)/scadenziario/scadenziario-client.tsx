@@ -23,9 +23,9 @@ import { NativeSelect } from "@/components/ui/select";
 import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
-  type Periodo, type Ordine, type FornitoreEntry,
+  type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
-  ordinaDocumenti, elencaFornitori, statoDocumento,
+  ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
   chiaviSelezionaTutte, statoSelezioneSezione,
@@ -1529,6 +1529,12 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
 
 type View = "agenda" | "calendario" | "lista_mensile";
 
+const ORDINE_ARCHIVIO_LABELS: Record<OrdineArchivio, string> = {
+  data: "Data fattura",
+  importo: "Importo",
+  fornitore: "Fornitore",
+};
+
 const ORDINE_LABELS: Record<Ordine, string> = {
   scadenza: "Scadenza (prima le vicine)",
   importo: "Importo (prima i più alti)",
@@ -1646,6 +1652,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // pagamenti segnati per sbaglio costava ~150 clic.
   const [confermaBulk, setConfermaBulk] = useState<boolean | null>(null);
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
+  const [ordineArchivio, setOrdineArchivio] = useState<OrdineArchivio>("data");
 
   const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove || filtroSede !== "tutte" || ricerca.trim() !== "";
 
@@ -1722,7 +1729,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   const buckets = useMemo(() => {
     const b = bucketizeDocumenti(documentiFiltrati);
     return {
-      scadute: ordinaDocumenti(b.scadute, ordine),
+      scadute: ordinaScadute(b.scadute, ordine),
       settimana: ordinaDocumenti(b.settimana, ordine),
       mese: ordinaDocumenti(b.mese, ordine),
       oltre: ordinaDocumenti(b.oltre, ordine),
@@ -2027,8 +2034,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // Vista "Per mese": stessi filtri della Lista (fornitore, sede, ricerca), ma
   // NON il periodo — quello filtra su `scadenza_effettiva`, che qui non esiste.
   const gruppiMensili = useMemo(
-    () => raggruppaPerMeseFattura(documentiCalendario),
-    [documentiCalendario],
+    () => raggruppaPerMeseFattura(documentiCalendario, ordineArchivio),
+    [documentiCalendario, ordineArchivio],
   );
 
   const sharedProps = {
@@ -2486,20 +2493,35 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             Nuove
           </button>
 
-          {/* Ordinamento — rilevante solo nella vista lista */}
-          {view === "agenda" && (
+          {/* Ordinamento — nelle due viste a lista. Nel calendario no: li'
+              l'ordine e' la griglia dei giorni, e un selettore sarebbe un
+              controllo che non muove niente. */}
+          {view !== "calendario" && (
             <div className="ml-auto flex items-center gap-1.5">
               <ArrowUpDown className="size-3.5 text-muted-foreground flex-shrink-0" />
-              <NativeSelect
-                value={ordine}
-                onValueChange={(v) => setOrdine(v as Ordine)}
-                className="h-8 text-xs w-auto"
-                aria-label="Ordina fatture"
-              >
-                {(Object.keys(ORDINE_LABELS) as Ordine[]).map(k => (
-                  <option key={k} value={k}>{ORDINE_LABELS[k]}</option>
-                ))}
-              </NativeSelect>
+              {view === "agenda" ? (
+                <NativeSelect
+                  value={ordine}
+                  onValueChange={(v) => setOrdine(v as Ordine)}
+                  className="h-8 text-xs w-auto"
+                  aria-label="Ordina fatture"
+                >
+                  {(Object.keys(ORDINE_LABELS) as Ordine[]).map(k => (
+                    <option key={k} value={k}>{ORDINE_LABELS[k]}</option>
+                  ))}
+                </NativeSelect>
+              ) : (
+                <NativeSelect
+                  value={ordineArchivio}
+                  onValueChange={(v) => setOrdineArchivio(v as OrdineArchivio)}
+                  className="h-8 text-xs w-auto"
+                  aria-label="Ordina fatture"
+                >
+                  {(Object.keys(ORDINE_ARCHIVIO_LABELS) as OrdineArchivio[]).map(k => (
+                    <option key={k} value={k}>{ORDINE_ARCHIVIO_LABELS[k]}</option>
+                  ))}
+                </NativeSelect>
+              )}
             </div>
           )}
         </div>

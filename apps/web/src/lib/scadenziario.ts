@@ -341,6 +341,10 @@ export function buildCashFlow(documenti: Documento[]): CashFascia[] {
 
 export type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 export type Ordine = "scadenza" | "importo" | "fornitore";
+
+/** Criteri della vista Archivio: li' si guarda la data del documento,
+ * non la scadenza (le fatture sono gia' raggruppate per mese di emissione). */
+export type OrdineArchivio = "data" | "importo" | "fornitore";
 export type StatoDocumento =
   | "Escluse da te" | "Nota di credito" | "Pagata" | "Scaduta"
   | "Senza scadenza" | "Da pagare";
@@ -392,6 +396,32 @@ export function ordinaDocumenti(docs: Documento[], ordine: Ordine): Documento[] 
     });
   }
   return arr;
+}
+
+/**
+ * Ordina le SCADUTE, dove "prima" significa l'opposto che altrove.
+ *
+ * In ogni altra fascia la scadenza cresce verso il futuro e la piu' vicina e'
+ * la piu' urgente. Fra le scadute il tempo va all'indietro: la piu' vicina a
+ * oggi e' quella appena scaduta — ancora recuperabile con una telefonata —
+ * mentre in fondo c'e' l'arretrato storico. Con l'ordine crescente di
+ * `ordinaDocumenti` la lista si apriva sulla fattura piu' vecchia: su una sede
+ * reale, 456 relitti oltre i 90 giorni prima delle 20 su cui si agisce
+ * (misurato in produzione il 25/09/2026).
+ *
+ * Solo il criterio "scadenza" si rovescia: per importo o per fornitore il
+ * verso non cambia di significato, e delegano a `ordinaDocumenti`.
+ */
+export function ordinaScadute(docs: Documento[], ordine: Ordine): Documento[] {
+  if (ordine !== "scadenza") return ordinaDocumenti(docs, ordine);
+  return [...docs].sort((a, b) => {
+    // Le senza-data restano in coda come in `ordinaDocumenti`: qui non
+    // dovrebbero esserci (il bucket "scadute" ha per definizione una data) ma
+    // l'invariante non si appoggia a una garanzia di un'altra funzione.
+    const da = parseLocalDate(a.scadenza_effettiva)?.getTime() ?? -Infinity;
+    const db = parseLocalDate(b.scadenza_effettiva)?.getTime() ?? -Infinity;
+    return db - da;
+  });
 }
 
 /**
@@ -660,7 +690,10 @@ const SENZA_DATA = "";
  * UTC, che a ovest di Greenwich cade il 28 febbraio e sposta la fattura nel mese
  * sbagliato. E' il difetto gia' corretto due volte in questo modulo.
  */
-export function raggruppaPerMeseFattura(documenti: Documento[]): GruppoMese[] {
+export function raggruppaPerMeseFattura(
+  documenti: Documento[],
+  ordine: OrdineArchivio = "data",
+): GruppoMese[] {
   const gruppi = new Map<string, Documento[]>();
 
   for (const doc of documenti) {
@@ -684,9 +717,14 @@ export function raggruppaPerMeseFattura(documenti: Documento[]): GruppoMese[] {
     return {
       chiave,
       label,
-      // Dentro il mese, la piu' recente in alto: stesso verso dei mesi.
-      docs: [...docs].sort((a, b) =>
-        (b.data_documento ?? "").localeCompare(a.data_documento ?? "")),
+      // Dentro il mese l'ordine lo sceglie chi guarda. Il default "data"
+      // tiene la piu' recente in alto, stesso verso dei mesi; gli altri criteri
+      // passano da `ordinaDocumenti`, cosi' il selettore in vista Archivio
+      // muove davvero le righe invece di essere un controllo inerte.
+      docs: ordine === "data"
+        ? [...docs].sort((a, b) =>
+            (b.data_documento ?? "").localeCompare(a.data_documento ?? ""))
+        : ordinaDocumenti(docs, ordine as Ordine),
       totale: docs.reduce((s, d) => s + (d.totale_documento || 0), 0),
       count: docs.length,
     };
