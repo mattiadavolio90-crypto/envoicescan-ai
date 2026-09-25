@@ -64,7 +64,16 @@ instradata da Railway.
   per l'invio al commercialista; se c'e' ha la precedenza su `INVOICETRONIC_API_KEY`.
   Deve essere di produzione (`ik_live_`): con `ik_test_` il client si rifiuta di partire.
 - `INVOICETRONIC_SOGLIA_OPERAZIONI` (default 100): sotto questa soglia parte
-  l'avviso. `WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS` (default 21600).
+  l'avviso. `WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS` (default 21600). La stessa
+  soglia la rispetta l'invio al commercialista: non scarica un arretrato se dopo
+  resterebbero meno operazioni di cosi'.
+- `INVIO_COMMERCIALISTA_ATTIVO` — **interruttore** dell'invio degli XML al
+  commercialista (`services/invio_commercialista_service.py`, thread del
+  queue-worker). Assente o diverso da `1`: il pianificatore notturno (02:00-04:59 di
+  Roma) non crea invii e l'esecutore chiude in errore ogni invio chiesto dall'admin;
+  girano solo le prove a vuoto e la pulizia degli ZIP. Acceso, servono anche
+  `BREVO_API_KEY` (senza, all'avvio il log lo scrive come errore e ogni invio finisce
+  in `brevo_non_configurato`) e la chiave Invoicetronic.
 - Healthcheck del servizio: **DISABILITATO** (non espone HTTP).
 
 ## Ricreare un servizio da zero

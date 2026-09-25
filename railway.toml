@@ -18,7 +18,9 @@
 #     Env extra:  WORKER_ENABLED=1 (killswitch), WORKER_POLL_INTERVAL_SECONDS,
 #                 WORKER_ERROR_BACKOFF_SECONDS, WORKER_MAX_BACKOFF_SECONDS,
 #                 INVOICETRONIC_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-#                 (controllo del saldo crediti Invoicetronic e i suoi avvisi)
+#                 (controllo del saldo crediti Invoicetronic e i suoi avvisi),
+#                 INVIO_COMMERCIALISTA_ATTIVO + BREVO_API_KEY (invio degli XML
+#                 al commercialista; spento se la prima manca o non vale 1)
 #     Healthcheck: DISABILITATO (non espone HTTP)
 #
 # Env comuni obbligatorie (entrambi): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,

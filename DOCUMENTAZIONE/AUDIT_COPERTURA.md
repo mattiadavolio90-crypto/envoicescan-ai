@@ -1174,6 +1174,40 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   La voce sopra resta com'e': «`errore` dopo un'email partita solo con un 4xx» e
 >   «55 su 56» erano veri per i test di allora, non per il DB. Test `-m sql` del
 >   registro: da 65 a 104.
+>
+> - **25/09/2026 — fase C del piano «invio XML al commercialista»: pianificatore,
+>   esecutore, ZIP, link, email. Spenta: parte solo con
+>   `INVIO_COMMERCIALISTA_ATTIVO=1` sul queue-worker.**
+>   `services/invio_commercialista_service.py` gira in un thread del queue-worker,
+>   che e' un processo solo (nel worker FastAPI partirebbe 4 volte). Ogni minuto:
+>   - chiude le righe appese: `in_corso` da 2 ore senza email tentata → `errore`,
+>     con email tentata → `esito_incerto`, segnalato una volta e mai ritentato;
+>   - fra le 02:00 e le 04:59 di Roma crea gli ordinari dovuti, un tentativo per
+>     notte, dal giorno dopo l'ultimo inviato a ieri;
+>   - esegue le righe richieste: guardia, saldo, download, ZIP su disco, Storage
+>     privato con link a 30 giorni, email. Il saldo deve restare sopra la soglia
+>     dell'avviso anche dopo i download: un arretrato lungo non svuota il saldo che
+>     serve alle fatture in arrivo di tutti. Sopra i 20 MB, uno ZIP per mese.
+>   `brevo_invia_con_esito` (nuova, accanto a `brevo_send` che resta com'e')
+>   distingue il 201, il 4xx e tutto il resto: solo un rifiuto certo libera il
+>   periodo. `email_rate_log` ha il suo primo scrittore: 3 email in 24 ore allo
+>   stesso indirizzo bloccano l'invio. Gli ZIP si tolgono un giorno dopo la
+>   scadenza del link, e una spazzata del bucket prende quelli che il registro non
+>   conosce piu'. Il filtro dei doppioni della guardia ora ricorda impronte, non
+>   contenuti: l'arretrato di due anni non sta in memoria.
+>   **Trovato scrivendo**:
+>   - il trigger della configurazione impediva di sospenderla proprio quando la
+>     P.IVA era passata anche a un altro account (corretto nella migration);
+>   - dopo la review della B il DB rifiuta la presa di una riga non piu'
+>     autorizzata: l'esecutore la chiude in `errore` invece di riprovarla ogni
+>     minuto.
+>   Tolti due controlli che il DB fa gia' (invio in volo; configurazione attiva,
+>   non sospesa, col destinatario giusto): davano mutanti equivalenti. **Mutanti:
+>   62, tutti uccisi**, piu' G16 della fase B rifatto sul filtro nuovo. C30 moriva
+>   per un crash del mutante e non per il test giusto: rifatto silenzioso (la riga
+>   del contatore scritta con un altro indirizzo), ucciso. Test: +75 unitari, +42
+>   `-m sql`, +2 del worker. Tutto datato da oggi a Roma, perche' i vincoli del
+>   registro misurano il `now()` del DB: un test a date fisse scadrebbe.
 
 ---
 

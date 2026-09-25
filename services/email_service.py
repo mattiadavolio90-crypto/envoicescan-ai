@@ -77,6 +77,71 @@ def brevo_send(
         return False
 
 
+class EsitoBrevo:
+    """L'esito di un invio, in tre casi che contano per chi non puo' rispedire:
+    `inviata` (201), `rifiutata` (4xx: di sicuro non partita), `incerta` (timeout,
+    rete, 5xx: puo' essere partita)."""
+
+    __slots__ = ("stato", "http_status", "message_id")
+
+    def __init__(self, stato: str, http_status: Optional[int] = None, message_id: Optional[str] = None) -> None:
+        self.stato = stato
+        self.http_status = http_status
+        self.message_id = message_id
+
+
+def brevo_invia_con_esito(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    html_body: str,
+    *,
+    text_body: Optional[str] = None,
+    contesto: str = "email",
+) -> EsitoBrevo:
+    """Come brevo_send, ma dice COME e' andata. Serve a chi non deve mai
+    spedire due volte la stessa cosa (l'invio al commercialista): un timeout
+    non e' un rifiuto."""
+    import requests as _requests
+
+    brevo_key = os.getenv("BREVO_API_KEY", "")
+    if not brevo_key:
+        logger.warning("Email %s non inviata: BREVO_API_KEY mancante", contesto)
+        return EsitoBrevo("rifiutata")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", BREVO_SENDER_EMAIL_DEFAULT)
+    sender_name = os.getenv("BREVO_SENDER_NAME", BREVO_SENDER_NAME_DEFAULT)
+    payload = {
+        "sender": {"email": sender_email, "name": sender_name},
+        "to": [{"email": to_email, "name": to_name} if to_name else {"email": to_email}],
+        "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
+        "subject": subject,
+        "htmlContent": html_body,
+    }
+    if text_body:
+        payload["textContent"] = text_body
+    try:
+        r = _requests.post(
+            BREVO_URL,
+            json=payload,
+            headers={"api-key": brevo_key, "Content-Type": "application/json"},
+            timeout=(10, 30),
+        )
+    except Exception as exc:
+        logger.warning("Brevo %s esito incerto: %s", contesto, type(exc).__name__)
+        return EsitoBrevo("incerta")
+    if r.status_code == 201:
+        try:
+            message_id = (r.json() or {}).get("messageId")
+        except Exception:
+            message_id = None
+        return EsitoBrevo("inviata", 201, message_id if isinstance(message_id, str) else None)
+    if 400 <= r.status_code < 500:
+        logger.warning("Brevo %s rifiutata: status=%s", contesto, r.status_code)
+        return EsitoBrevo("rifiutata", r.status_code)
+    logger.warning("Brevo %s esito incerto: status=%s", contesto, r.status_code)
+    return EsitoBrevo("incerta", r.status_code)
+
+
 def email_template(
     *,
     titolo: str,

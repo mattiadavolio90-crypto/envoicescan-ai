@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -250,25 +251,34 @@ def verifica_documento(documento: Dict[str, Any], company_id: int, piva: str) ->
     )
 
 
-def senza_doppioni(documenti: Iterable[DocumentoVerificato]) -> List[DocumentoVerificato]:
-    """Lo stesso file SDI una volta sola. Stesso identificativo SDI o stesso nome
-    con contenuto identico: e' un doppione e si tiene il primo. Stesso nome con
-    contenuto diverso: blocco (il commercialista non deve scegliere lui)."""
-    per_nome: Dict[str, DocumentoVerificato] = {}
-    per_id_sdi: Dict[str, DocumentoVerificato] = {}
-    tenuti: List[DocumentoVerificato] = []
-    for doc in documenti:
-        if doc.identificativo and doc.identificativo in per_id_sdi:
-            if per_id_sdi[doc.identificativo].contenuto != doc.contenuto:
+class FiltroDoppioni:
+    """Lo stesso file SDI una volta sola, un documento alla volta (l'arretrato di
+    due anni non sta in memoria): ricorda solo l'impronta di cio' che ha tenuto.
+    Stesso identificativo SDI o stesso nome con contenuto identico: e' un doppione
+    e si tiene il primo. Stesso nome o identificativo con contenuto diverso:
+    blocco (il commercialista non deve scegliere lui)."""
+
+    def __init__(self) -> None:
+        self._per_nome: Dict[str, bytes] = {}
+        self._per_id_sdi: Dict[str, bytes] = {}
+
+    def ammetti(self, doc: DocumentoVerificato) -> bool:
+        impronta = hashlib.sha256(doc.contenuto).digest()
+        if doc.identificativo and doc.identificativo in self._per_id_sdi:
+            if self._per_id_sdi[doc.identificativo] != impronta:
                 raise GuardiaViolata("stesso_identificativo_sdi_contenuto_diverso")
-            continue
-        gia = per_nome.get(doc.nome.lower())
+            return False
+        gia = self._per_nome.get(doc.nome.lower())
         if gia is not None:
-            if gia.contenuto != doc.contenuto:
+            if gia != impronta:
                 raise GuardiaViolata("stesso_nome_contenuto_diverso")
-            continue
-        per_nome[doc.nome.lower()] = doc
+            return False
+        self._per_nome[doc.nome.lower()] = impronta
         if doc.identificativo:
-            per_id_sdi[doc.identificativo] = doc
-        tenuti.append(doc)
-    return tenuti
+            self._per_id_sdi[doc.identificativo] = impronta
+        return True
+
+
+def senza_doppioni(documenti: Iterable[DocumentoVerificato]) -> List[DocumentoVerificato]:
+    filtro = FiltroDoppioni()
+    return [doc for doc in documenti if filtro.ammetti(doc)]

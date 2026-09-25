@@ -29,6 +29,7 @@ ENV VARS:
     WORKER_RETENTION_INTERVAL_SECONDS default 86400 (retention fatture >2 anni ogni 24h)
     WORKER_QUEUE_PURGE_INTERVAL_SECONDS default 21600 (purge xml_content/raw_body_sample fatture_queue ogni 6h)
     WORKER_SALDO_INVOICETRONIC_INTERVAL_SECONDS default 21600 (controllo saldo crediti Invoicetronic ogni 6h)
+    INVIO_COMMERCIALISTA_ATTIVO       default spento (1 = invio notturno degli XML al commercialista)
     INVOICETRONIC_SOGLIA_OPERAZIONI   default 100   (sotto questa soglia parte l'avviso Telegram)
 
 EXIT CODES:
@@ -227,6 +228,15 @@ def main() -> int:
         controlla_saldo = None
         _sorveglianza_saldo = None
     _segnala_configurazione_avvisi()
+
+    # Invio degli XML al commercialista: thread suo, cosi' un arretrato lungo non
+    # ferma le fatture in arrivo. Senza INVIO_COMMERCIALISTA_ATTIVO=1 esegue solo
+    # le prove a vuoto chieste dall'admin e la pulizia degli ZIP.
+    try:
+        from services.invio_commercialista_service import avvia_thread as _avvia_invio_commercialista
+        _avvia_invio_commercialista(_qp_get_supabase_client)
+    except Exception as exc:
+        logger.error("Invio al commercialista non avviato: %s", exc)
 
     consecutive_failures = 0
     # Inizializzati nel passato (non 0.0) cosi' il primo ciclo utile esegue subito

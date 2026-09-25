@@ -192,11 +192,15 @@ def _patch_main_deps(worker_run_module, run_cycle_mock, email_cycle_mock=None,
     saldo_mock = MagicMock()
     saldo_mock.soglia_configurata.return_value = 100
 
+    # Il thread dell'invio al commercialista girerebbe davvero, accanto al loop.
+    invio_commercialista_mock = MagicMock()
+
     modules_patch = {
         "worker.queue_processor": qp_mock,
         "services.db_service": db_service_mock,
         "worker.email_queue_processor": email_qp_mock,
         "services.invoicetronic_saldo": saldo_mock,
+        "services.invio_commercialista_service": invio_commercialista_mock,
     }
     return modules_patch, qp_mock, db_service_mock, email_qp_mock
 
@@ -777,3 +781,23 @@ def test_main_segnala_la_configurazione_degli_avvisi_all_avvio(worker_run_module
                 mod.main()
 
     spia.assert_called_once_with()
+
+
+def test_main_avvia_il_thread_dell_invio_al_commercialista(worker_run_module):
+    modules_patch, qp_mock, *_ = _patch_main_deps(
+        worker_run_module, MagicMock(return_value=_FakeCycleStats(batch_claimed=0)),
+    )
+    assert _esegui_giri(worker_run_module, modules_patch) == [15]
+    avvio = modules_patch["services.invio_commercialista_service"].avvia_thread
+    avvio.assert_called_once_with(qp_mock.get_supabase_client)
+
+
+def test_main_senza_modulo_invio_commercialista_il_worker_gira_lo_stesso(worker_run_module, caplog):
+    modules_patch, *_ = _patch_main_deps(
+        worker_run_module, MagicMock(return_value=_FakeCycleStats(batch_claimed=0)),
+    )
+    modules_patch["services.invio_commercialista_service"] = None
+
+    with caplog.at_level(logging.ERROR, logger="worker.run"):
+        assert _esegui_giri(worker_run_module, modules_patch) == [15]
+    assert "Invio al commercialista non avviato" in caplog.text
