@@ -320,6 +320,33 @@ il breakdown parziale va aggiunto con il suo caveat.
 
 ---
 
+## 8-bis. L'email settimanale del lunedì
+
+Una volta a settimana, il lunedì fra le 7 e le 10, l'assistente scrive a ogni
+cliente attivo, anche se non apre l'app (fase 7, deciso il 24-25/9). **Oggi è
+spenta**: parte solo quando si accende l'interruttore sul server, dopo
+l'aggiornamento della privacy. Chi non la vuole la spegne dal link nell'email o
+dalle Impostazioni.
+
+La regola è la tua: **mai informazioni inutili o incomplete**. Ogni argomento
+compare solo se per quel cliente il dato è affidabile:
+
+| Argomento | Quando compare | Esempio |
+|---|---|---|
+| Incasso della settimana | Sia la settimana chiusa sia quella prima hanno almeno 6 giorni registrati (uno in meno per ogni giorno di chiusura dichiarato nelle impostazioni del locale) | «La settimana scorsa hai incassato € 2.012, in linea con la settimana prima.» Sotto il 3% è «in linea» |
+| Fatture arrivate | Solo dove le fatture arrivano **in automatico dallo SDI** (almeno una negli ultimi 30 giorni). Chi carica a mano lo fa a blocchi, e «0 fatture questa settimana» sarebbe falso. Le note di credito non si contano | «La settimana scorsa sono arrivate dallo SDI 7 fatture per € 5.081.» |
+| Osservazioni (§4-bis) | Quando scattano, con le stesse regole del briefing. L'andamento dell'incasso parla il martedì, quindi di lunedì tace: c'è già l'incasso della settimana | — |
+| Invito a riprendere | Solo a chi **non manda dati da 4 settimane** (né fatture né incassi, su nessuna sede) | «Non riceviamo dati dal 15 luglio: bastano le fatture per ricominciare.» |
+
+Non entrano i compiti (righe da classificare, dati mancanti): non sono notizie.
+Una catena riceve un'email sola, con una riga per sede. **Se nessun argomento ha
+qualcosa da dire, quella settimana l'email non parte.**
+
+> Misurato sui dati del 21/9: su 6 clienti, 3 avrebbero ricevuto numeri (incasso
+> per SUSHILAND e CASATI 14, fatture dallo SDI per OFFSIDE) e 3 l'invito a
+> riprendere (FISH HOUSE, TIME CAFE, ASI). Il 7/9 CASATI 14 non l'avrebbe
+> ricevuta: la settimana prima aveva solo 4 giorni di incasso.
+
 ## 9. Le leve su cui puoi chiedermi di intervenire
 
 | Cosa vuoi cambiare | Valore attuale |

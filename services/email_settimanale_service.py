@@ -4,10 +4,18 @@ Una volta a settimana, il lunedi' alle 7 di Roma, l'assistente raggiunge il
 cliente anche se non apre l'app. Decisioni di Mattia (24/09/2026): parte a tutti
 i clienti attivi con la disiscrizione in ogni email; il link porta alla Home.
 
-IL CONTENUTO NON E' QUI. Mattia vuole studiarlo a parte (fase 7b): le sezioni
-sono una lista di funzioni (`SEZIONI`), ognuna riceve i dati del cliente e
-restituisce una frase o None. Oggi c'e' un solo segnaposto. Se tutte tacciono
-l'email non parte: meglio nessuna email che un'email vuota.
+IL CONTENUTO (fase 7b, deciso da Mattia il 25/09): «mi spaventa inviare
+informazioni inutili o incomplete». Ogni argomento parla SOLO se per quel
+cliente il dato e' affidabile, e le sezioni sono una lista di funzioni
+(`SEZIONI`) che restituiscono una frase o None:
+- l'incasso della settimana contro la precedente, se ENTRAMBE hanno i giorni
+  registrati (almeno 6 su 7, meno i giorni di chiusura dichiarati);
+- le fatture arrivate dallo SDI, solo dove arrivano davvero in automatico
+  (misurato: l'SDI «attivo» non basta, una catena lo ha e carica a mano);
+- le osservazioni della fase 4, quando scattano;
+- a chi non manda dati da 4 settimane, un invito a riprendere.
+Niente compiti (righe da classificare, dati mancanti): non sono notizie. Se
+tutte le sezioni tacciono l'email non parte.
 
 TRE SICURE PRIMA DI UN INVIO VERO, tutte e tre necessarie:
 - `dry_run` (default True nell'endpoint);
@@ -169,28 +177,226 @@ def leggi_destinatari(sb, solo_user_id: Optional[str] = None) -> List[Destinatar
 
 # ── Contenuto: le sezioni ───────────────────────────────────────────────────
 
-Sezione = Callable[[Destinatario, date], Optional[str]]
+Sezione = Callable[[Any, Destinatario, date], Optional[str]]
+
+GIORNI_MINIMI_INCASSO = 6      # su 7, in entrambe le settimane
+GIORNI_FERMO = 28              # senza dati da tanto = invito a riprendere
+GIORNI_FLUSSO_SDI = 30         # fatture dallo SDI in questa finestra = flusso automatico
+_NOTE_DI_CREDITO = ("TD04", "TD08")
+_MESI = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+         "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
 
 
-def _sezione_segnaposto(dest: Destinatario, oggi: date) -> Optional[str]:
-    """SEGNAPOSTO della fase 7a: prova la catena di montaggio, non e' il
-    contenuto. La fase 7b lo sostituisce con le sezioni scelte da Mattia."""
-    nomi = ", ".join(s["nome"] for s in dest.sedi if s["nome"])
-    if not nomi:
+def _roma():
+    from zoneinfo import ZoneInfo
+    return ZoneInfo("Europe/Rome")
+
+
+def settimana_chiusa(oggi: date) -> tuple:
+    """(lunedi', domenica) della settimana appena finita."""
+    lun = lunedi_della_settimana(oggi)
+    return lun - timedelta(days=7), lun - timedelta(days=1)
+
+
+def _inizio_giorno(g: date) -> str:
+    return datetime(g.year, g.month, g.day, tzinfo=_roma()).isoformat()
+
+
+def _euro(valore: float) -> str:
+    from services.daily_briefing_service import _euro_it
+    return _euro_it(valore)
+
+
+def _per_sedi(dest: Destinatario, righe: List[tuple], singola: str, elenco: str) -> Optional[str]:
+    """Una sede: la frase `singola` con il testo al posto di {}. Piu' sedi
+    (catena): l'intestazione `elenco` e una riga per sede col nome davanti."""
+    if not righe:
         return None
-    return f"Il riepilogo della settimana di {nomi} è pronto nella Home di ONEFLUX."
+    if len(dest.sedi) == 1:
+        return singola.format(righe[0][1])
+    return f"{elenco}:\n" + "\n".join(f"• {nome}: {testo}" for nome, testo in righe)
 
 
-SEZIONI: List[Sezione] = [_sezione_segnaposto]
+def percentuale_con_articolo(n: int) -> str:
+    """«il 5%», ma «l'8%», «l'11%», «l'80%»: l'articolo segue il suono del
+    numero (uno, otto, undici, ottanta...)."""
+    cifre = str(n)
+    vocale = cifre in ("1", "11") or cifre.startswith("8")
+    return f"{'l' + chr(39) if vocale else 'il '}{cifre}%"
 
 
-def calcola_frasi(dest: Destinatario, oggi: date, sezioni: Optional[List[Sezione]] = None) -> List[str]:
+def _giorni_chiusura(sb, ristorante_id: str) -> int:
+    try:
+        from services import fastapi_worker as fw
+        v = int(fw._get_assistant_preferences(ristorante_id, sb).get("giorni_chiusura_settimanali") or 0)
+        return max(0, min(v, 3))
+    except Exception:
+        return 0
+
+
+def _incassi_per_giorno(sb, ristorante_id: str, da: date, a: date) -> Dict[str, float]:
+    from utils.supabase_paging import fetch_all
+    righe = fetch_all(
+        sb.table("ricavi_giornalieri")
+        .select("id,data,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data", da.isoformat())
+        .lte("data", a.isoformat())
+        .order("id")
+    )
+    per_giorno: Dict[str, float] = {}
+    for r in righe:
+        giorno = str(r.get("data") or "")[:10]
+        valore = (float(r.get("fatturato_iva10") or 0) + float(r.get("fatturato_iva22") or 0)
+                  + float(r.get("altri_ricavi_noiva") or 0))
+        per_giorno[giorno] = per_giorno.get(giorno, 0.0) + valore
+    return {g: v for g, v in per_giorno.items() if v > 0}
+
+
+def _sezione_incasso(sb, dest: Destinatario, oggi: date) -> Optional[str]:
+    """L'incasso della settimana chiusa contro quella prima, sede per sede.
+    Solo se ENTRAMBE le settimane hanno i giorni registrati: un confronto con
+    una settimana a buchi direbbe «-40%» per un dato che manca."""
+    from services import fastapi_worker as fw
+
+    da, a = settimana_chiusa(oggi)
+    da_prima, a_prima = da - timedelta(days=7), da - timedelta(days=1)
+    righe: List[tuple] = []
+    for s in dest.sedi:
+        minimo = GIORNI_MINIMI_INCASSO - _giorni_chiusura(sb, s["id"])
+        giorni = _incassi_per_giorno(sb, s["id"], da_prima, a)
+        # Il limite superiore (domenica) lo mette gia' la query.
+        ora = [v for g, v in giorni.items() if g >= da.isoformat()]
+        prima = [v for g, v in giorni.items() if da_prima.isoformat() <= g <= a_prima.isoformat()]
+        if len(ora) < minimo or len(prima) < minimo:
+            continue
+        tot, tot_prima = sum(ora), sum(prima)
+        delta = (tot - tot_prima) / tot_prima * 100
+        if abs(delta) < fw._ANDAMENTO_STABILE_PCT:
+            confronto = "in linea con la settimana prima"
+        else:
+            confronto = (f"{percentuale_con_articolo(round(abs(delta)))} in "
+                         f"{'più' if delta > 0 else 'meno'} della settimana prima")
+        righe.append((s["nome"], f"€ {_euro(tot)}, {confronto}"))
+    return _per_sedi(dest, righe, "La settimana scorsa hai incassato {}.",
+                     "Incasso della settimana scorsa")
+
+
+def _sezione_fatture_sdi(sb, dest: Destinatario, oggi: date) -> Optional[str]:
+    """Le fatture arrivate dallo SDI nella settimana chiusa, solo dove il flusso
+    e' automatico. Chi carica a mano lo fa a blocchi (214 fatture in un giorno,
+    misurato): «questa settimana ne sono arrivate 0» sarebbe falso. Le note di
+    credito sono salvate con importo positivo: non si sommano alle fatture."""
+    from utils.supabase_paging import fetch_all
+
+    da, a = settimana_chiusa(oggi)
+    fine = a + timedelta(days=1)
+    dal_flusso = fine - timedelta(days=GIORNI_FLUSSO_SDI)
+    righe: List[tuple] = []
+    for s in dest.sedi:
+        docs = fetch_all(
+            sb.table("fatture_documenti")
+            .select("id,totale_documento,tipo_documento,source_origin,created_at,deleted_at")
+            .eq("ristorante_id", s["id"])
+            .eq("source_origin", "invoicetronic")
+            .gte("created_at", _inizio_giorno(dal_flusso))
+            .lt("created_at", _inizio_giorno(fine))
+            .order("id")
+        )
+        docs = [d for d in docs if not d.get("deleted_at")]
+        if not docs:
+            continue
+        # Il limite superiore (mezzanotte di lunedi' a Roma) lo mette gia' la query.
+        fatture = [
+            d for d in docs
+            if _giorno_a_roma(d.get("created_at")) >= da
+            and str(d.get("tipo_documento") or "") not in _NOTE_DI_CREDITO
+        ]
+        if not fatture:
+            continue
+        n = len(fatture)
+        tot = sum(float(d.get("totale_documento") or 0) for d in fatture)
+        righe.append((s["nome"], f"{n} {'fattura' if n == 1 else 'fatture'} per € {_euro(tot)}"))
+    return _per_sedi(dest, righe, "La settimana scorsa sono arrivate dallo SDI {}.",
+                     "Fatture arrivate dallo SDI la settimana scorsa")
+
+
+def _giorno_a_roma(created_at: Any) -> date:
+    try:
+        istante = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    except ValueError:
+        return date.min
+    return istante.astimezone(_roma()).date()
+
+
+def _sezione_osservazioni(sb, dest: Destinatario, oggi: date) -> Optional[str]:
+    """Le osservazioni della fase 4 (andamento dell'incasso, food cost alto),
+    con le loro regole e rispettando le voci spente nel configuratore della
+    sede. Oggi parlano poco: si accendono quando i dati ci sono."""
+    from services import fastapi_worker as fw
+    from services.daily_briefing_service import _osservazione_frase, espandi_topic_spenti
+
+    righe: List[tuple] = []
+    for s in dest.sedi:
+        try:
+            td = fw._get_assistant_preferences(s["id"], sb).get("topics_disabled")
+            spenti = set(espandi_topic_spenti(td or []))
+        except Exception:
+            spenti = set()
+        for rec in fw._briefing_osservazioni(dest.user_id, s["id"], sb, spenti):
+            righe.append((s["nome"], _osservazione_frase(rec)))
+    if not righe:
+        return None
+    if len(dest.sedi) == 1:
+        return "\n".join(testo for _nome, testo in righe)
+    return "\n".join(f"• {nome}: {testo}" for nome, testo in righe)
+
+
+def _ultimo_dato(sb, dest: Destinatario, oggi: date) -> Optional[date]:
+    """Il giorno piu' recente in cui e' arrivato un dato da una delle sedi:
+    una fattura (qualunque canale) o un incasso."""
+    ultimo: Optional[date] = None
+    for s in dest.sedi:
+        f = (sb.table("fatture_documenti").select("created_at")
+             .eq("ristorante_id", s["id"]).is_("deleted_at", "null")
+             .order("created_at", desc=True).limit(1).execute().data or [])
+        if f:
+            g = datetime.fromisoformat(str(f[0]["created_at"]).replace("Z", "+00:00")).astimezone(_roma()).date()
+            ultimo = g if ultimo is None or g > ultimo else ultimo
+        r = (sb.table("ricavi_giornalieri").select("data")
+             .eq("ristorante_id", s["id"]).lte("data", oggi.isoformat())
+             .order("data", desc=True).limit(1).execute().data or [])
+        if r:
+            g = date.fromisoformat(str(r[0]["data"])[:10])
+            ultimo = g if ultimo is None or g > ultimo else ultimo
+    return ultimo
+
+
+def _sezione_invito(sb, dest: Destinatario, oggi: date) -> Optional[str]:
+    """A chi non manda dati da 4 settimane: una riga, senza numeri (Mattia,
+    25/09). Chi manda dati non la riceve mai."""
+    ultimo = _ultimo_dato(sb, dest, oggi)
+    if ultimo is not None and (oggi - ultimo).days < GIORNI_FERMO:
+        return None
+    if ultimo is None:
+        dove = "dai tuoi locali" if len(dest.sedi) > 1 else "dal tuo locale"
+        return f"Non abbiamo ancora ricevuto dati {dove}: bastano le fatture per cominciare."
+    quando = f"{ultimo.day} {_MESI[ultimo.month]}"
+    if ultimo.year != oggi.year:
+        quando += f" {ultimo.year}"
+    return f"Non riceviamo dati dal {quando}: bastano le fatture per ricominciare."
+
+
+SEZIONI: List[Sezione] = [_sezione_invito, _sezione_incasso, _sezione_fatture_sdi, _sezione_osservazioni]
+
+
+def calcola_frasi(sb, dest: Destinatario, oggi: date, sezioni: Optional[List[Sezione]] = None) -> List[str]:
     """Una frase per sezione che ha qualcosa da dire. Una sezione che fallisce
     tace, e basta: non puo' far saltare l'email delle altre."""
     frasi: List[str] = []
     for sezione in (SEZIONI if sezioni is None else sezioni):
         try:
-            frase = sezione(dest, oggi)
+            frase = sezione(sb, dest, oggi)
         except Exception as exc:
             logger.warning("email settimanale: sezione %s fallita per %s: %s",
                            getattr(sezione, "__name__", "?"), dest.user_id, exc)
@@ -208,7 +414,9 @@ def componi_email(dest: Destinatario, frasi: List[str]) -> Dict[str, Any]:
     link_home = f"{APP_URL}/dashboard"
     link_via = link_disiscrizione(dest.user_id)
     saluto = f"Ciao {dest.nome}," if dest.nome else "Ciao,"
-    corpo_html = html.escape(saluto) + "<br><br>" + "<br><br>".join(html.escape(f) for f in frasi)
+    corpo_html = html.escape(saluto) + "<br><br>" + "<br><br>".join(
+        html.escape(f).replace("\n", "<br>") for f in frasi
+    )
     piede = (
         "Ricevi questa email una volta a settimana perché usi ONEFLUX. "
         f'<a href="{html.escape(link_via)}" style="color:#64748b;">Non voglio più riceverla</a>.'
@@ -296,7 +504,7 @@ def esegui(
     destinatari = leggi_destinatari(sb, solo_user_id=solo_user_id)
     resoconto["destinatari"] = len(destinatari)
     for dest in destinatari:
-        frasi = calcola_frasi(dest, oggi, sezioni)
+        frasi = calcola_frasi(sb, dest, oggi, sezioni)
         if not spedisce:
             if not frasi:
                 resoconto["niente_da_dire"] += 1
@@ -355,7 +563,7 @@ def anteprima(sb, user_id: str, *, adesso: datetime) -> Dict[str, Any]:
     if not destinatari:
         return {"riceverebbe": False, "motivo": "non e' fra i destinatari"}
     dest = destinatari[0]
-    frasi = calcola_frasi(dest, adesso.date())
+    frasi = calcola_frasi(sb, dest, adesso.date())
     if not frasi:
         return {"riceverebbe": False, "motivo": "niente da dire", "sedi": dest.sedi}
     try:

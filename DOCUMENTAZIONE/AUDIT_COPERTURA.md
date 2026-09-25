@@ -917,6 +917,27 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   gestita» (i miei test sostituivano l'intera funzione invece di farla
 >   fallire dentro), la preferenza fissa a «accesa» in `/api/account/me` e
 >   tolta dall'export art. 20. Chiusi con 4 test (47 mutanti in tutto).
+>
+> - **25/09/2026 — fase 7b: il contenuto dell'email settimanale.** Prima la
+>   misura, in sola lettura sui 4 lunedi' precedenti: 3 clienti con numeri
+>   affidabili, 3 fermi (nessun dato da 4 settimane o mai). Poi la decisione di
+>   Mattia: «mi spaventa inviare informazioni inutili o incomplete» — ogni
+>   argomento parla solo se per quel cliente il dato e' affidabile. **La misura
+>   ha smentito l'ipotesi di partenza**: l'SDI «attivo» non vuol dire fatture
+>   automatiche (una catena lo ha su 4 sedi e carica tutto a mano, 214 fatture in
+>   un giorno); il criterio e' il canale d'arrivo (`invoicetronic`) negli ultimi
+>   30 giorni. Le note di credito sono salvate con importo positivo: escluse.
+>   Quattro sezioni (incasso della settimana con entrambe le settimane a ≥6
+>   giorni meno la chiusura dichiarata, fatture dallo SDI sul calendario di
+>   Roma, osservazioni della fase 4 col producer vero, invito a riprendere a chi
+>   e' fermo da 28 giorni); niente compiti. **Mutanti: 31**, 29 uccisi e 2
+>   equivalenti (il limite superiore della settimana controllato due volte, in
+>   query e in Python): tolto il doppione, i 5 mutanti sul controllo rimasto
+>   muoiono. Il presidio L5 (`test_audit_ciclo_vita_colonne`) ha visto il file
+>   nuovo che nomina `deleted_at`: taratura 33 → 34, motivata. Regole per Mattia
+>   in LOGICA_BRIEFING §8-bis. **Suite: 16.196 passed, 47 skipped** (`-m "not
+>   sql" -p no:randomly`, working tree con +2 test di un'altra sessione) **+ 553
+>   `-m sql`**. L'email resta SPENTA: manca la 7c (privacy, segreto, prova).
 
 ---
 

@@ -196,17 +196,18 @@ def _dest(nome="Anna", sedi=None):
 
 
 def test_una_sezione_che_fallisce_tace_e_le_altre_parlano():
-    def rotta(d, g):
+    def rotta(sb, d, g):
         raise RuntimeError("giu'")
 
-    frasi = svc.calcola_frasi(_dest(), date(2026, 9, 28),
-                              [rotta, lambda d, g: "  prima  ", lambda d, g: "", lambda d, g: None])
+    frasi = svc.calcola_frasi(None, _dest(), date(2026, 9, 28),
+                              [rotta, lambda sb, d, g: "  prima  ", lambda sb, d, g: "", lambda sb, d, g: None])
     assert frasi == ["prima"]
 
 
-def test_il_segnaposto_parla_solo_se_ci_sono_sedi_con_un_nome():
-    assert svc._sezione_segnaposto(_dest(sedi=[{"id": "r1", "nome": ""}]), date(2026, 9, 28)) is None
-    assert "Trattoria" in svc._sezione_segnaposto(_dest(), date(2026, 9, 28))
+def test_una_frase_su_piu_righe_diventa_piu_righe_anche_in_html():
+    email = svc.componi_email(_dest(), ["Incasso:\n• A: € 1\n• B: € 2"])
+    assert "Incasso:<br>• A: € 1<br>• B: € 2" in email["html"]
+    assert "Incasso:\n• A: € 1\n• B: € 2" in email["testo"]
 
 
 def test_l_html_non_si_fida_di_nomi_e_frasi():
@@ -322,6 +323,14 @@ class _SB:
         return _Q(self, nome)
 
 
+@pytest.fixture(autouse=True)
+def sezione_fissa(monkeypatch):
+    """Questo file prova le sicure, non il contenuto: una sezione fissa al
+    posto delle quattro vere, che sono provate in
+    test_email_settimanale_contenuto.py col loro finto database."""
+    monkeypatch.setattr(svc, "SEZIONI", [lambda sb, d, g: f"Frase per {d.sedi[0]['nome']}."])
+
+
 @pytest.fixture
 def invii(monkeypatch):
     chiamate = []
@@ -396,7 +405,7 @@ def test_la_settimana_dopo_si_riparte(monkeypatch, invii):
 def test_niente_da_dire_non_spedisce_e_occupa_la_settimana(monkeypatch, invii):
     monkeypatch.setenv(svc.ENV_INVIO_ATTIVO, "1")
     sb = _sb()
-    r = svc.esegui(sb, adesso=LUNEDI_7, dry_run=False, sezioni=[lambda d, g: None])
+    r = svc.esegui(sb, adesso=LUNEDI_7, dry_run=False, sezioni=[lambda sb, d, g: None])
     assert invii == []
     assert r["niente_da_dire"] == 2
     assert {v["stato"] for v in sb.registro.values()} == {"saltata"}
@@ -451,12 +460,12 @@ def test_un_errore_del_registro_senza_niente_da_dire_non_ferma_gli_altri(monkeyp
         return True
 
     monkeypatch.setattr(svc, "_prendi_la_settimana", _rotto_per_uno)
-    r = svc.esegui(_sb(), adesso=LUNEDI_7, dry_run=False, sezioni=[lambda d, g: None])
+    r = svc.esegui(_sb(), adesso=LUNEDI_7, dry_run=False, sezioni=[lambda sb, d, g: None])
     assert sorted(chiamate) == sorted([UID, UID_B])
     assert r["errori"] == 1 and r["niente_da_dire"] == 1 and invii == []
 
 
-@pytest.mark.parametrize("sezioni", [None, [lambda d, g: None]], ids=["con-frasi", "niente-da-dire"])
+@pytest.mark.parametrize("sezioni", [None, [lambda sb, d, g: None]], ids=["con-frasi", "niente-da-dire"])
 def test_un_errore_vero_del_registro_e_un_errore_non_una_settimana_gia_gestita(monkeypatch, invii, sezioni):
     """Il ramo dentro `_prendi_la_settimana`: solo il duplicato (23505) vuol dire
     «gia' gestita». Un timeout contato come gia' gestita toglierebbe l'avviso
@@ -507,7 +516,7 @@ def test_anteprima_admin_rifiuta_un_id_che_non_e_un_uuid(monkeypatch):
 def test_anteprima_non_scrive_e_non_spedisce(invii):
     sb = _sb()
     a = svc.anteprima(sb, UID, adesso=LUNEDI_7)
-    assert a["riceverebbe"] is True and "Trattoria" in a["frasi"][0]
+    assert a["riceverebbe"] is True and a["frasi"] == ["Frase per Trattoria."]
     assert invii == [] and sb.scritture == []
     assert svc.anteprima(_SB([_u(email_settimanale=False)], [_s()]), UID, adesso=LUNEDI_7)["riceverebbe"] is False
 

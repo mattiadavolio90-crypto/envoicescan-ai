@@ -124,10 +124,12 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # filesystem con 4 script di lavoro non committati in `scripts/`, e in CI (checkout
 # pulito) ne risultavano 33 — rosso sul solo ambiente, col repo identico. Ora il
 # perimetro e' `git ls-files`, quindi la cifra giusta e' 33 ovunque.
+# 34 dal 25/09/2026: `services/email_settimanale_service.py` (email settimanale,
+# fase 7b) legge l'ultima fattura NON cancellata per l'invito a riprendere.
 TARATURA_FILE_CODICE = {
     "correzioni_count": 0, "ultimo_correttore": 0,           # morte, confermate da L4
     "consecutive_correct_classifications": 4, "categoria_fonte": 12,
-    "tipo_attivita": 16, "deleted_at": 33,                   # vive
+    "tipo_attivita": 16, "deleted_at": 34,                   # vive
 }
 
 
