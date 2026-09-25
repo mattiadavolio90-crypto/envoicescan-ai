@@ -505,3 +505,15 @@ def test_l_elenco_del_bucket_va_a_pagine():
     sb.storage.from_.return_value = bucket
     voci = s.ArchivioSupabase(sb).elenca("cfg")
     assert len(voci) == 1001 and voci[-1]["name"] == "ultimo"
+
+
+
+def test_l_elenco_del_bucket_non_gira_all_infinito():
+    """Se lo Storage ignorasse l'offset, ogni pagina sarebbe piena per sempre."""
+    bucket = MagicMock()
+    bucket.list.side_effect = lambda prefisso, opzioni: [{"name": f"f{i}"} for i in range(1000)]
+    sb = MagicMock()
+    sb.storage.from_.return_value = bucket
+    with pytest.raises(RuntimeError, match="massimo di pagine"):
+        s.ArchivioSupabase(sb).elenca("cfg")
+    assert bucket.list.call_count == s.PAGINE_BUCKET

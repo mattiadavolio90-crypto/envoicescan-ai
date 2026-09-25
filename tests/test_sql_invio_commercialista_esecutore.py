@@ -942,3 +942,31 @@ def test_senza_periodi_spediti_niente_avvisi(db_sql, acceso):
     _invio(db_sql, cid, "primo", dal, al)
     assert _esegui(db_sql, mondo) == ["inviato"]
     assert mondo.avvisi == []
+
+
+
+def test_un_documento_gia_visto_con_l_arrivo_spostato_non_riparte(db_sql, acceso):
+    """Lo stesso id riappare con una data d'arrivo nel periodo nuovo: il
+    commercialista l'ha gia' avuto, l'ordinario non lo rispedisce."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    primo_dal, primo_al = _oggi() - timedelta(days=40), _oggi() - timedelta(days=21)
+    _primo_spedito(db_sql, cid, primo_dal, primo_al, [1])
+    mondo = _Mondo([_documento(1, _alle(primo_al + timedelta(days=3))), _documento(4, _alle(primo_al + timedelta(days=4)))])
+    iid = _invio(db_sql, cid, "ordinario", primo_al + timedelta(days=1), _oggi() - timedelta(days=1))
+    assert _esegui(db_sql, mondo) == ["inviato"]
+    riga = _riga(db_sql, iid)
+    assert (riga["documenti_ids"], riga["documenti_visti"]) == ([4], [4])
+    assert mondo.client.scaricati == [4] and mondo.avvisi == []
+
+
+def test_il_reinvio_rispedisce_anche_i_gia_visti(db_sql, acceso):
+    """Il reinvio e' voluto: rimanda tutto il periodo."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    primo_dal, primo_al = _oggi() - timedelta(days=40), _oggi() - timedelta(days=21)
+    _primo_spedito(db_sql, cid, primo_dal, primo_al, [1, 2])
+    mondo = _Mondo([_documento(1, _alle(primo_dal + timedelta(days=1))), _documento(2, _alle(primo_dal + timedelta(days=2)))])
+    iid = _invio(db_sql, cid, "reinvio", primo_dal, primo_al)
+    assert _esegui(db_sql, mondo) == ["inviato"]
+    assert _riga(db_sql, iid)["documenti_ids"] == [1, 2]

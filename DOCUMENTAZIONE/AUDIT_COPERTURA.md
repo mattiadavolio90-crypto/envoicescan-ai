@@ -1335,8 +1335,16 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Restano fuori, per scelta motivata:
 >   - asn1crypto non strict;
 >   - `disattivata_at` retrodatabile, che anticipa solo la pulizia;
->   - la chiave del saldo, che e' dell'account;
->   - i doppioni fra periodi diversi, per costruzione su `created`.
+>   - la chiave del saldo, che e' dell'account.
+>   La verifica finale e' CHIUSA, con 8 mutanti indipendenti del reviewer uccisi.
+>   Chiusi anche i suoi ultimi tre rilievi:
+>   - un documento gia' visto che riappare con l'arrivo spostato nel periodo nuovo
+>     non riparte con primo e ordinario (il reinvio lo rimanda, apposta);
+>   - l'elenco del bucket ha un tetto di pagine;
+>   - il commento della migration non sopravvaluta il trigger: e' un freno contro
+>     gli errori, non una barriera per chi ha i privilegi DDL.
+>   Mutanti: 4 uccisi (U1, U2, e U3 rifatto in due varianti misurabili: la prima
+>   stesura girava all'infinito e non arrivava al riepilogo).
 
 ---
 

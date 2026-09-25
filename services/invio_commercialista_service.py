@@ -73,6 +73,7 @@ INTERVALLO_S = 60
 PULIZIA_OGNI_S = 6 * 3600
 ATTESA_MASSIMA_S = 3600
 RIGHE_PER_CICLO = 20
+PAGINE_BUCKET = 100
 CONFIG = "invio_commercialista_config"
 INVII = "invio_commercialista_invii"
 RIFIUTO_DEL_DB = "23514"
@@ -283,11 +284,12 @@ class ArchivioSupabase:
 
     def elenca(self, prefisso: str) -> List[Dict[str, Any]]:
         voci: List[Dict[str, Any]] = []
-        while True:
+        for _ in range(PAGINE_BUCKET):
             pagina = list(self._bucket.list(prefisso, {"limit": 1000, "offset": len(voci)}) or [])
             voci += pagina
             if len(pagina) < 1000:
                 return voci
+        raise RuntimeError("elenco del bucket oltre il numero massimo di pagine")
 
 
 def _avvisa_telegram(testo: str) -> bool:
@@ -696,7 +698,7 @@ class _Invio:
             raise _Rinuncia(f"saldo_insufficiente ({rimaste} operazioni, {da_scaricare} documenti)", avviso=True)
         return rimaste
 
-    def _segnala_arrivi_in_periodi_spediti(self, elenco: List[Dict[str, Any]]) -> int:
+    def _segnala_arrivi_in_periodi_spediti(self, elenco: List[Dict[str, Any]]) -> set:
         """Il periodo si decide su `created`. Se Invoicetronic rielabora una fattura
         con la data di prima (le trattenute prima che l'azienda esista), quella cade
         in un periodo gia' spedito e il commercialista non la riceve mai. Qui si
@@ -722,7 +724,7 @@ class _Invio:
                 "arrivati su Invoicetronic in periodi gia' spediti, e al commercialista non sono andati. "
                 "Si recuperano con un reinvio di quei periodi dall'area admin."
             )
-        return len(fuori)
+        return gia_visti
 
     def _controlla_frequenza_email(self, destinatario: str, adesso: datetime) -> None:
         """Anti-loop: al massimo MAX_EMAIL_24H email in 24 ore per ogni
@@ -767,9 +769,12 @@ class _Invio:
             (d for d in elenco if dal <= data_roma(d["created"]) <= al),
             key=lambda d: (_istante(d["created"]), d["id"]),
         )
-        visti = [d["id"] for d in nel_periodo]
         if r["tipo"] in ("primo", "ordinario"):
-            self._segnala_arrivi_in_periodi_spediti(elenco)
+            # Un documento gia' visto da un invio precedente non riparte, anche se
+            # Invoicetronic ne ha spostato la data d'arrivo nel periodo nuovo.
+            gia_visti = self._segnala_arrivi_in_periodi_spediti(elenco)
+            nel_periodo = [d for d in nel_periodo if d["id"] not in gia_visti]
+        visti = [d["id"] for d in nel_periodo]
         saldo_prima = self._controlla_saldo(len(nel_periodo)) if nel_periodo else None
 
         pacchi = _Pacchi(cartella, dal, al)

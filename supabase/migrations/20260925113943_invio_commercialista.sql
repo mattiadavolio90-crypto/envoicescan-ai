@@ -32,8 +32,9 @@
 --     dopo sarebbe un doppione al commercialista. `inviato` ed `esito_incerto`
 --     esistono solo con l'email tentata (e quindi autorizzata);
 --   - il registro non dimentica: una riga si cancella solo per la cascata della
---     cancellazione dell'account o dalla pulizia GDPR, mai a mano (nemmeno dal
---     proprietario: lo ferma un trigger; service_role non ha neanche il DELETE),
+--     cancellazione dell'account o dalla pulizia GDPR. service_role non ha il
+--     DELETE; per il proprietario un trigger fa da freno contro gli errori (non da
+--     barriera: chi ha i privilegi DDL lo aggira apposta, dichiarandolo),
 --     e config_id diventa NULL solo quando la configurazione non c'e' piu';
 --   - un invio nasce `richiesto`, senza esiti: li scrive solo chi lo esegue;
 --   - quando l'email parte, la P.IVA e' ancora solo del cliente.
@@ -421,7 +422,8 @@ CREATE TRIGGER invio_commercialista_invii_guardia
 -- Il registro si cancella solo per cascata (account cancellato: il trigger gira
 -- dentro quello della FK, pg_trigger_depth() > 1) o dalla pulizia GDPR, che lo
 -- dichiara. Una riga cancellata a mano farebbe ripartire l'ordinario dal suo
--- periodo: un doppione. Vale anche per il proprietario, dall'editor SQL.
+-- periodo: un doppione. Ferma anche il proprietario dall'editor SQL, per errore;
+-- non chi accende la GUC o scrive un trigger apposta.
 CREATE OR REPLACE FUNCTION public.invio_commercialista_invii_non_si_cancella()
 RETURNS trigger
 LANGUAGE plpgsql
