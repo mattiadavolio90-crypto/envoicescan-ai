@@ -454,6 +454,98 @@ export function elencaFornitori(documenti: Documento[]): FornitoreEntry[] {
  * IDENTICO a `bucketizeDocumenti` (NC → pagata → senza scadenza → scaduta), cosi'
  * il CSV non puo' divergere da cio' che si vede a video.
  */
+export type FornitoreSenzaScadenza = {
+  key: string;
+  label: string;
+  /** `null` = nessuna P.IVA: una regola non puo' agganciarlo. */
+  piva: string | null;
+  count: number;
+  totale: number;
+};
+
+export type RiepilogoSenzaScadenza = {
+  /** I fornitori che pesano di piu', per valore. */
+  top: FornitoreSenzaScadenza[];
+  /** Quanti fornitori restano fuori dall'elenco, e quanto valgono. */
+  restoCount: number;
+  restoTotale: number;
+  /** Fatture non agganciabili da una regola (fornitore senza P.IVA). */
+  senzaPivaCount: number;
+  senzaPivaTotale: number;
+};
+
+/**
+ * I fornitori delle fatture senza scadenza, ordinati per quanto pesano.
+ *
+ * Misurato in produzione il 25/09/2026: 1.073 fatture non pagate senza
+ * scadenza, per 959.319 EUR — il 35% del non pagato — sparse su 168 fornitori.
+ * Ma **7 fornitori valgono meta' del problema e 33 ne valgono l'80%**: il
+ * lavoro e' alla portata, se la pagina dice su CHI agire. Il banner diceva solo
+ * «1.073 fatture senza scadenza» e apriva una finestra con 168 nomi in ordine
+ * alfabetico, dove i 7 che contano sono indistinguibili dal fornitore con una
+ * fattura sola.
+ *
+ * Si ordina per EURO, non per numero di righe: tre fatture da mille euro pesano
+ * piu' di cinquanta da dieci, e chi imposta i termini di pagamento sta decidendo
+ * quanto debito rendere prevedibile, non quante righe sistemare.
+ *
+ * Chi non ha P.IVA resta FUORI dall'elenco: il match delle regole avviene per
+ * P.IVA (documenti_service.py), quindi offrirgli un menu che non puo' salvare
+ * nulla sarebbe una promessa che la finestra non mantiene. Si contano a parte,
+ * e si dice che vanno sistemate a mano.
+ */
+export function fornitoriSenzaScadenza(
+  documenti: Documento[],
+  limite = 5,
+): RiepilogoSenzaScadenza {
+  // Stessa precedenza di esclusione di `bucketizeDocumenti`: una nota di
+  // credito o una fattura esclusa dai conti non e' un debito da pianificare.
+  const rilevanti = documenti.filter(
+    d => !d.oscurata && !d.is_nota_credito && !d.pagata && !d.scadenza_effettiva,
+  );
+
+  let senzaPivaCount = 0;
+  let senzaPivaTotale = 0;
+  const per = new Map<string, { nomi: Map<string, number>; count: number; totale: number }>();
+
+  for (const d of rilevanti) {
+    const importo = d.totale_documento || 0;
+    const piva = (d.piva_fornitore || "").trim();
+    if (!piva) {
+      senzaPivaCount++;
+      senzaPivaTotale += importo;
+      continue;
+    }
+    const voce = per.get(piva) ?? { nomi: new Map<string, number>(), count: 0, totale: 0 };
+    voce.nomi.set(d.fornitore, (voce.nomi.get(d.fornitore) ?? 0) + 1);
+    voce.count++;
+    voce.totale += importo;
+    per.set(piva, voce);
+  }
+
+  const tutti: FornitoreSenzaScadenza[] = [...per.entries()].map(([piva, v]) => ({
+    key: piva,
+    piva,
+    // Stessa regola di `elencaFornitori`: la ragione sociale piu' frequente per
+    // quella P.IVA, cosi' due grafie dello stesso fornitore non fanno due voci.
+    label: [...v.nomi.entries()].sort((a, b) => b[1] - a[1])[0][0],
+    count: v.count,
+    totale: v.totale,
+  }));
+
+  tutti.sort((a, b) => b.totale - a.totale);
+  const top = tutti.slice(0, limite);
+  const resto = tutti.slice(limite);
+
+  return {
+    top,
+    restoCount: resto.length,
+    restoTotale: resto.reduce((s, f) => s + f.totale, 0),
+    senzaPivaCount,
+    senzaPivaTotale,
+  };
+}
+
 export function statoDocumento(d: Documento, today?: Date): StatoDocumento {
   if (d.oscurata) return "Escluse da te";
   if (d.is_nota_credito) return "Nota di credito";

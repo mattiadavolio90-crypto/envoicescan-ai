@@ -25,7 +25,7 @@ import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
-  ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
+  ordinaDocumenti, ordinaScadute, elencaFornitori, fornitoriSenzaScadenza, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
   chiaviSelezionaTutte, statoSelezioneSezione,
@@ -1178,11 +1178,15 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
 type FornitoreOption = { fornitore: string; piva_fornitore: string | null };
 
 type RegoleDialogProps = {
+  /** Fornitore da preselezionare (P.IVA), quando si arriva dal riquadro. */
+  pivaIniziale?: string | null;
+  /** Chiamata dopo un salvataggio andato a buon fine. */
+  onSalvato?: () => void;
   open: boolean;
   onClose: () => void;
 };
 
-function RegoleDialog({ open, onClose }: RegoleDialogProps) {
+function RegoleDialog({ open, onClose, pivaIniziale, onSalvato }: RegoleDialogProps) {
   const [regole, setRegole] = useState<RegolaPagamento[]>([]);
   const [fornitori, setFornitori] = useState<FornitoreOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1206,8 +1210,11 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
   }, []);
 
   useEffect(() => {
-    if (open) { loadAll(); setSelectedNomi(new Set()); setSearchForn(""); setModalitaInput("30gg"); }
-  }, [open, loadAll]);
+    // Arrivando dal riquadro dei fornitori che pesano, quel fornitore e' gia'
+    // spuntato: il clic sulla riga deve portare a un solo gesto, scegliere i
+    // termini. Dalla toolbar `pivaIniziale` e' assente e la selezione parte vuota.
+    if (open) { loadAll(); setSelectedNomi(pivaIniziale ? new Set([pivaIniziale]) : new Set()); setSearchForn(""); setModalitaInput("30gg"); }
+  }, [open, loadAll, pivaIniziale]);
 
   const fornitoriDisponibili = useMemo(() => {
     const giaCon = new Set(regole.map(r => r.piva_fornitore));
@@ -1260,6 +1267,9 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
         toast.warning(`${senzaPiva.length} fornitore/i senza P.IVA non salvat${senzaPiva.length === 1 ? "o" : "i"}`);
       setSelectedNomi(new Set());
       await loadAll();
+      // La lista sta nel genitore: senza questo la regola veniva creata e le
+      // scadenze a video restavano quelle di prima, fino a un "Aggiorna" a mano.
+      if (salvate > 0) onSalvato?.();
     } finally {
       setSaving(false);
     }
@@ -1651,6 +1661,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // Un'azione di massa irreversibile una-per-una va confermata: stornare 50
   // pagamenti segnati per sbaglio costava ~150 clic.
   const [confermaBulk, setConfermaBulk] = useState<boolean | null>(null);
+  // P.IVA da preselezionare in RegoleDialog quando si arriva dal riquadro.
+  const [regolaPiva, setRegolaPiva] = useState<string | null>(null);
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
   const [ordineArchivio, setOrdineArchivio] = useState<OrdineArchivio>("data");
 
@@ -2116,28 +2128,83 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         const n = buckets.senzaScadenza.length;
         const tot = buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0);
         const inBlocco = n >= SOGLIA_REGOLE_FORNITORE;
+        // Ordinati per euro: 7 fornitori valgono meta' delle fatture senza
+        // scadenza (misurato in produzione il 25/09/2026). Il banner diceva solo
+        // quante sono e apriva una finestra con 168 nomi in ordine alfabetico,
+        // dove i 7 che contano sono indistinguibili da chi ne ha una sola.
+        const riepilogo = fornitoriSenzaScadenza(buckets.senzaScadenza, 5);
         return (
-          <button
-            type="button"
-            onClick={() => setRegoleOpen(true)}
-            className="flex w-full items-center gap-3 rounded-lg border border-incerto/40 bg-incerto/10 px-4 py-3 text-left text-sm transition-colors hover:bg-incerto/15"
-          >
-            <AlertTriangle className="size-4 text-incerto flex-shrink-0" />
-            <span className="text-incerto flex-1">
-              <strong>{n}</strong> fattur{n === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(tot)}).{" "}
-              {/* In catena il conteggio e' di TUTTE le sedi, ma le regole
-                  fornitore sono per-sede (routers/scadenziario.py risolve una
-                  sola sede con _resolve_ristorante_id): su SUSHILAND il banner
-                  diceva 723 e la finestra ne poteva sistemare 114. Il testo
-                  non promette piu' di quanto la finestra mantenga. */}
-              {inBlocco
-                ? modalitaCatena
-                  ? "Imposta i termini di pagamento del fornitore: valgono per la sede su cui stai lavorando, e vanno ripetuti sulle altre."
-                  : "Imposta i termini di pagamento del fornitore e si risolvono tutte insieme."
-                : "Imposta i termini del fornitore, oppure apri la fattura e scrivi la data a mano."}
-            </span>
-            <Settings2 className="size-3.5 text-incerto flex-shrink-0" />
-          </button>
+          <div className="rounded-lg border border-incerto/40 bg-incerto/10 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="size-4 text-incerto flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="text-sm text-incerto">
+                  <strong>{n}</strong> fattur{n === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(tot)}).{" "}
+                  {inBlocco
+                    ? modalitaCatena
+                      ? "Imposta i termini di pagamento del fornitore: valgono per la sede su cui stai lavorando, e vanno ripetuti sulle altre."
+                      : "Imposta i termini del fornitore e si risolvono tutte insieme."
+                    : "Imposta i termini del fornitore, oppure apri la fattura e scrivi la data a mano."}
+                </p>
+              </div>
+            </div>
+
+            {riepilogo.top.length > 0 && (
+              <ul className="space-y-1">
+                {riepilogo.top.map(f => (
+                  <li key={f.key}>
+                    {/* In catena le regole sono per-sede mentre il conteggio e'
+                        di tutte: un clic prometterebbe piu' di quanto la
+                        finestra mantenga, quindi li' la classifica e' in sola
+                        lettura (stessa ragione del testo differenziato sopra). */}
+                    {modalitaCatena ? (
+                      <div className="flex items-center justify-between gap-3 rounded-md bg-card/60 px-3 py-2 text-sm">
+                        <span className="truncate font-medium" title={f.label}>{f.label}</span>
+                        <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
+                          {f.count} fattur{f.count === 1 ? "a" : "e"} · {formatEuro(f.totale)}
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setRegolaPiva(f.piva); setRegoleOpen(true); }}
+                        className="flex w-full items-center justify-between gap-3 rounded-md bg-card/60 px-3 py-2 text-left text-sm transition-colors hover:bg-card"
+                        title={`Imposta i termini di pagamento di ${f.label}`}
+                      >
+                        <span className="truncate font-medium" title={f.label}>{f.label}</span>
+                        <span className="flex flex-shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                          <span className="tabular-nums">
+                            {f.count} fattur{f.count === 1 ? "a" : "e"} · {formatEuro(f.totale)}
+                          </span>
+                          <Settings2 className="size-3.5" />
+                        </span>
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {riepilogo.restoCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setRegolaPiva(null); setRegoleOpen(true); }}
+                  className="text-primary-text hover:underline"
+                >
+                  Altri {riepilogo.restoCount} fornitor{riepilogo.restoCount === 1 ? "e" : "i"} ({formatEuro(riepilogo.restoTotale)})
+                </button>
+              )}
+              {riepilogo.senzaPivaCount > 0 && (
+                // Senza P.IVA una regola non puo' agganciarli: dirlo qui evita
+                // di mandare il cliente in una finestra che li scarta con un errore.
+                <span>
+                  {riepilogo.senzaPivaCount} fattur{riepilogo.senzaPivaCount === 1 ? "a" : "e"} senza
+                  partita IVA del fornitore ({formatEuro(riepilogo.senzaPivaTotale)}): da sistemare aprendo la fattura.
+                </span>
+              )}
+            </div>
+          </div>
         );
       })()}
 
@@ -2709,7 +2776,12 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         modalitaCatena={modalitaCatena}
       />
 
-      <RegoleDialog open={regoleOpen} onClose={() => setRegoleOpen(false)} />
+      <RegoleDialog
+        open={regoleOpen}
+        onClose={() => { setRegoleOpen(false); setRegolaPiva(null); }}
+        pivaIniziale={regolaPiva}
+        onSalvato={loadData}
+      />
     </div>
   );
 }
