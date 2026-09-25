@@ -21,6 +21,9 @@ def _stato(tutto_ok, n_visibili, n_mancanti):
 
 @pytest.mark.parametrize("tutto_ok,n_visibili,n_mancanti,atteso", [
     (True, 0, 0, "verde"),
+    # Il backend li rende esclusivi; se arrivassero insieme decide tutto_ok,
+    # come prima dell'estrazione (`tuttoOk ? … : datiMancanti…`).
+    (True, 0, 2, "verde"),
     # Il verde lo decide il backend, ma una card ancora visibile vince: l'ha
     # sempre deciso cosi' `tutto_ok && visibili.length === 0`.
     (True, 2, 0, "lista"),

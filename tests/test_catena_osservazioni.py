@@ -386,9 +386,10 @@ def test_endpoint_dalla_cache_restituisce_le_osservazioni(monkeypatch):
     assert sb.upsert == [], "servito dalla cache, niente ricalcolo"
 
 
-def test_le_osservazioni_non_contano_come_segnali_aperti():
-    """Il conteggio alimenta il «tutto in ordine» della narrativa: un fatto
-    sull'incasso non e' una segnalazione aperta (come nel PV)."""
+def test_le_osservazioni_positive_non_contano_come_segnali_aperti():
+    """Il conteggio alimenta il «tutto in ordine» della narrativa: un incasso
+    salito non e' una segnalazione aperta (come nel PV). Le negative si': vedi
+    test_un_osservazione_negativa_spegne_il_tutto_in_ordine."""
     snap = {"segnali": [], "osservazioni": [OSS, dict(OSS, ristorante_id="b")],
             "generated_at": "x", "code_version": gruppo._SEGNALI_CODE_VERSION}
     sb = _FakeSB()

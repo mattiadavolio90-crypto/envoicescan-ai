@@ -105,7 +105,8 @@ export function HomeBriefing({ briefing }: Props) {
   const datiMancanti = briefing.dati_mancanti ?? [];
   // Il verde "tutto a posto" lo decide SOLO il backend (gateato su dati mancanti e
   // Salute): l'archiviazione locale non deve poterlo forzare. Se non ci sono card
-  // visibili ma il backend non dice tutto_ok, mostriamo la nota neutra, mai il verde.
+  // visibili ma il backend non dice tutto_ok, mai il verde: la nota neutra se
+  // mancano dati, altrimenti niente (la narrativa sopra dice gia' perche').
   const stato = statoAzioni(briefing.tutto_ok, visibili.length, datiMancanti.length);
 
   return (
