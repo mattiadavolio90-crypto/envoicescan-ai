@@ -33,6 +33,11 @@ export default function TerminiPage() {
         <li>Gestione area Foodcost (ricette, ingredienti, diario)</li>
         <li>Controllo prezzi e confronto fornitori</li>
         <li>Worker automatico di elaborazione fatture con coda persistente</li>
+        <li>
+          Su richiesta scritta del cliente, invio periodico al suo commercialista di una copia
+          delle fatture passive ricevute via SDI: una copia di comodo, che non sostituisce il
+          Cassetto fiscale dell&apos;Agenzia delle Entrate né gli obblighi di conservazione
+        </li>
       </ul>
       <LegalCallout>
         <strong>⚠️ Il Servizio NON sostituisce la consulenza fiscale, contabile o legale</strong> e

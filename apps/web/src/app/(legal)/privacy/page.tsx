@@ -49,6 +49,11 @@ export default function PrivacyPage() {
           incassi giornalieri
         </li>
         <li>
+          <strong>Dati del commercialista</strong> (solo se il cliente chiede l&apos;invio automatico
+          delle fatture al proprio commercialista): indirizzo email del commercialista o dello
+          studio indicato dal cliente, e data del consenso del cliente
+        </li>
+        <li>
           <strong>Dati del personale</strong> (solo se l&apos;utente utilizza la sezione Personale):
           nome del dipendente, turni di lavoro e costo orario o retribuzione lorda mensile,
           inseriti dall&apos;utente per il calcolo del costo del lavoro
@@ -119,7 +124,18 @@ export default function PrivacyPage() {
         <li>
           <strong>File XML/P7M originali:</strong> purgati automaticamente dopo il processing (non
           archiviati in forma grezza). I file ricevuti via SDI (Invoicetronic) vengono purgati dalla
-          coda entro 24 ore dall&apos;elaborazione.
+          coda entro 24 ore dall&apos;elaborazione. Unica eccezione, solo per chi ha chiesto
+          l&apos;invio automatico al commercialista: una copia degli originali ricevuti via SDI
+          viene raccolta in un archivio ZIP, tenuta in un&apos;area privata e resa scaricabile al
+          commercialista con un link personale valido 30 giorni; il giorno dopo la scadenza del
+          link viene cancellata.
+        </li>
+        <li>
+          <strong>Invio al commercialista:</strong> il registro degli invii (periodo, numero di
+          file, esito) resta fino alla cancellazione dell&apos;account, e l&apos;indirizzo del
+          destinatario vi viene cancellato dopo 12 mesi. Se l&apos;invio viene disattivato, o non
+          viene mai attivato, l&apos;indirizzo del commercialista e il consenso vengono cancellati
+          dopo 90 giorni.
         </li>
         <li>
           <strong>Log operativi (upload, utilizzo AI, modifiche di categoria):</strong> conservati
@@ -158,7 +174,7 @@ export default function PrivacyPage() {
         rows={[
           [
             "Supabase Inc.",
-            "Hosting database",
+            "Hosting database; archivio privato temporaneo dei file per l'invio al commercialista",
             "UE — Frankfurt 🇩🇪",
             "Dati persistiti esclusivamente in UE",
           ],
@@ -170,15 +186,15 @@ export default function PrivacyPage() {
           ],
           [
             "Brevo SAS",
-            "Invio delle email transazionali e dell'email settimanale di riepilogo; ricezione email con allegati ricavi",
+            "Invio delle email transazionali, dell'email settimanale di riepilogo e dell'email al commercialista; ricezione email con allegati ricavi",
             "UE — Francia 🇫🇷",
-            "Nessun contenuto di fatture trasmesso; transitano i file di riepilogo incassi inviati dal gestionale di cassa",
+            "Nessun contenuto di fatture trasmesso: all'email al commercialista passano solo il link a tempo, la ragione sociale e il periodo; transitano i file di riepilogo incassi inviati dal gestionale di cassa",
           ],
           [
             "Invoicetronic S.r.l.",
             "Ricezione fatture SDI e inoltro webhook",
             "Italia 🇮🇹",
-            "Eventi webhook e metadati fatture inoltrati verso l'infrastruttura ONEFLUX; XML grezzo non archiviato dopo la consegna",
+            "Eventi webhook e metadati fatture inoltrati verso l'infrastruttura ONEFLUX; XML grezzo non archiviato dopo la consegna, salvo la copia a 30 giorni per l'invio al commercialista",
           ],
           [
             "Vercel Inc.",
@@ -200,6 +216,14 @@ export default function PrivacyPage() {
           ],
         ]}
       />
+
+      <p>
+        <strong>Il commercialista indicato dal cliente</strong> riceve, su richiesta scritta del
+        cliente, una copia delle fatture passive ricevute tramite SDI sul codice destinatario
+        gestito da ONEFLUX, con un link personale valido 30 giorni. È un destinatario scelto dal
+        cliente, non un fornitore di ONEFLUX. È una copia di comodo: non è un servizio di
+        conservazione e non sostituisce il Cassetto fiscale dell&apos;Agenzia delle Entrate.
+      </p>
 
       <h3>Cosa viene trasmesso a OpenAI</h3>
       <p>

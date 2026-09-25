@@ -1228,6 +1228,25 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   12 sulla lib). Test: +39 `-m sql` sul router con TestClient e Postgres vero,
 >   +20 sulla lib. Il componente React non ha test: logica estratta nella lib, il
 >   resto e' rendering.
+>
+> - **25/09/2026 — fase E del piano «invio XML al commercialista»: privacy,
+>   termini, dossier GDPR.** Privacy:
+>   - l'eccezione alla frase «XML/P7M originali non archiviati», con la copia a 30
+>     giorni;
+>   - i dati del commercialista fra i dati raccolti, e lui fra i destinatari, come
+>     destinatario scelto dal cliente e non come fornitore;
+>   - le retention (12 mesi per l'indirizzo nel registro, 90 giorni per una
+>     configurazione spenta o mai accesa);
+>   - le righe di Supabase, Brevo e Invoicetronic.
+>   Termini: il servizio in elenco, come copia di comodo che non sostituisce il
+>   Cassetto fiscale. COMPLIANCE_GDPR: il trattamento nel registro, i
+>   sub-responsabili e le retention. Presidio in `test_privacy_policy_veritiera.py`:
+>   i giorni dichiarati si leggono dal codice (`VALIDITA_LINK`, la retention del
+>   worker, il default della migration), e «conservazione a norma» non compare mai.
+>   **Trovato scrivendo**: il registro sopravviveva alla cancellazione
+>   dell'account (config_id ON DELETE SET NULL), contro la promessa della privacy.
+>   Corretto nella migration con la FK di user_id a cascata (ce62880). **Mutanti:
+>   10, tutti uccisi, piu' B39 sulla FK.**
 
 ---
 

@@ -258,3 +258,87 @@ def test_telegram_non_riceve_email_in_chiaro() -> None:
         f"Alert Telegram con email non mascherata: {non_mascherati}. "
         f"Usa maskEmail(), o dichiara Telegram fra i sub-responsabili."
     )
+
+
+# --------------------------------------------------------------------------
+# 6. Invio al commercialista: la copia a tempo e' dichiarata coi numeri veri
+# --------------------------------------------------------------------------
+
+# Prima dell'invio al commercialista (25/09/2026) la privacy diceva «file XML/P7M
+# originali: non archiviati in forma grezza». Con gli ZIP a 30 giorni quella frase,
+# da sola, diventa falsa: qui l'eccezione deve esserci, coi giorni del codice.
+
+WORKER_RUN = ROOT / "worker" / "run.py"
+MIGRATION_INVIO = next((ROOT / "supabase" / "migrations").glob("*_invio_commercialista.sql"))
+_IN_PAROLE = {365: "12 mesi", 730: "24 mesi"}
+
+
+def _voce(testo: str, inizio: str) -> str:
+    """La voce di elenco (<li>) della privacy che contiene `inizio`."""
+    posizione = testo.index(inizio)
+    return testo[testo.rindex("<li>", 0, posizione):testo.index("</li>", posizione)]
+
+
+def _giorni_invio_commercialista() -> tuple[int, int, int]:
+    """(validita' del link, email nel registro, email della configurazione spenta)."""
+    from services.invio_commercialista_service import VALIDITA_LINK
+
+    registro = re.search(r'\("purge_invio_commercialista",\s*(\d+)\)', _leggi(WORKER_RUN))
+    config = re.search(r"p_giorni_config\s+integer\s+DEFAULT\s+(\d+)", _leggi(MIGRATION_INVIO))
+    assert registro and config, "retention dell'invio al commercialista non trovate: il test non misura piu' nulla"
+    return VALIDITA_LINK.days, int(registro.group(1)), int(config.group(1))
+
+
+def test_privacy_dichiara_la_copia_a_tempo_per_il_commercialista() -> None:
+    link, _, _ = _giorni_invio_commercialista()
+    testo = _senza_commenti_jsx(_leggi(PRIVACY_TSX))
+    originali = _voce(testo, "File XML/P7M originali")
+    assert "commercialista" in originali and f"valido {link} giorni" in originali, (
+        "La privacy dice che gli XML/P7M originali non sono archiviati, ma l'invio al "
+        f"commercialista ne tiene una copia con un link a {link} giorni: l'eccezione va "
+        "scritta nella stessa voce, coi giorni del codice (VALIDITA_LINK)."
+    )
+    assert f"link personale valido {link} giorni" in testo.split("Destinatari dei Dati", 1)[1], (
+        "Il commercialista riceve i file ma non compare fra i destinatari dei dati."
+    )
+
+
+def test_privacy_dichiara_le_retention_dell_invio_al_commercialista() -> None:
+    _, registro, config = _giorni_invio_commercialista()
+    voce = _voce(_senza_commenti_jsx(_leggi(PRIVACY_TSX)), "Invio al commercialista:")
+    assert _IN_PAROLE.get(registro, f"{registro} giorni") in voce, (
+        f"Il worker toglie l'email del destinatario dal registro dopo {registro} giorni: "
+        "la privacy deve dire lo stesso."
+    )
+    assert f"dopo {config} giorni" in voce, (
+        f"Email e consenso di una configurazione spenta si cancellano dopo {config} giorni "
+        "(p_giorni_config): la privacy deve dire lo stesso."
+    )
+
+
+def test_compliance_dichiara_la_copia_a_tempo_per_il_commercialista() -> None:
+    link, registro, config = _giorni_invio_commercialista()
+    testo = _leggi(COMPLIANCE_MD)
+    assert f"link {link} giorni" in testo and "purge_invio_commercialista" in testo
+    assert f"{registro} giorni" in testo and f"{config} giorni" in testo
+
+
+@pytest.mark.parametrize("sorgente", [PRIVACY_TSX, TERMINI_TSX], ids=lambda p: p.parent.name)
+def test_mai_conservazione_a_norma(sorgente: Path) -> None:
+    """Dire che il servizio NON e' conservazione sostitutiva va bene; dire che lo e'
+    no: l'invio al commercialista e' una copia di comodo."""
+    assert not re.search(r"conservazione a norma", _senza_commenti_jsx(_leggi(sorgente)), re.IGNORECASE)
+
+
+def test_l_email_al_commercialista_dice_cosa_non_e() -> None:
+    from datetime import date
+
+    from services.invio_commercialista_service import componi_email
+
+    for n_file, link in ((3, [("Scarica", "https://x.test/a")]), (0, [])):
+        _, corpo, testo = componi_email("OFFSIDE SRL", "07863990961", date(2026, 8, 1), date(2026, 8, 31),
+                                        n_file, link, date(2026, 10, 1))
+        for parte in (corpo, testo):
+            assert "non sostituisce il Cassetto fiscale" in parte
+            assert "non è un servizio di" in parte
+            assert not re.search(r"conservazione a norma", parte, re.IGNORECASE)

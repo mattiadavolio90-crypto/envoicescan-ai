@@ -24,6 +24,7 @@ su larga scala di categorie particolari, no monitoraggio sistematico su larga sc
 | Gestione account | Erogazione servizio, autenticazione | Art. 6.1.b (contratto) + consenso | Email, nome ristorante, P.IVA, ragione sociale, password (hash) | Durata del rapporto; cancellazione self-service |
 | Analisi fatture | Categorizzazione costi, report margini | Art. 6.1.b (contratto) | Fatture elettroniche, importi, fornitori | Fino a eliminazione volontaria; XML grezzo purgato dopo processing |
 | Ricezione SDI | Ingest automatico fatture da Invoicetronic | Art. 6.1.b (contratto) | Metadati ed eventi webhook fattura | XML purgato dalla coda entro 24h dall'elaborazione |
+| Invio al commercialista | Copia di comodo delle fatture passive ricevute via SDI al commercialista indicato dal cliente (`services/invio_commercialista_service.py`) | Art. 6.1.b (contratto), su istruzione scritta del cliente (clausola firmata; il consenso e' registrato per l'email a cui vale) | File XML/P7M originali; email del commercialista; registro degli invii (periodo, numero di file, esito) | ZIP nel bucket privato `invii-commercialista`: link 30 giorni, file cancellati il giorno dopo la scadenza (`rimuovi_file_scaduti`, piu' `spazza_bucket` oltre 33 giorni). Email del destinatario nel registro: 12 mesi. Email e consenso di una configurazione spenta o mai accesa: 90 giorni (`purge_invio_commercialista`). Registro rimasto senza configurazione: 12 mesi. Cancellazione dell'account: tutto, a cascata |
 | Dati operativi | Foodcost, ricette, margini, diario | Art. 6.1.b (contratto) | Ricette, ingredienti, note, margini, ricavi | Durata del rapporto |
 | Log operativi | Trasparenza, supporto tecnico | Art. 6.1.f (legittimo interesse) | Log upload, log utilizzo AI (modello, token, costo) | Durata dell'account |
 | Sicurezza accessi | Anti-brute-force | Art. 6.1.f (legittimo interesse) | Tentativi di login | 24 ore (blocco dopo 5 tentativi per 15 min), poi eliminati |
@@ -34,10 +35,10 @@ su larga scala di categorie particolari, no monitoraggio sistematico su larga sc
 
 | Fornitore | Ruolo | Sede dati | Garanzie trasferimento | Stato DPA (verificato 08/07/2026) |
 |---|---|---|---|---|
-| Supabase Inc. | Hosting database PostgreSQL | UE — Frankfurt 🇩🇪 | Dati persistiti solo in UE | Disponibile, **non automatico**: da richiedere dal dashboard org ("legal documents") → firma via PandaDoc. [supabase.com/legal/dpa](https://supabase.com/legal/dpa) |
+| Supabase Inc. | Hosting database PostgreSQL; Storage privato degli ZIP per l'invio al commercialista (30 giorni) | UE — Frankfurt 🇩🇪 | Dati persistiti solo in UE | Disponibile, **non automatico**: da richiedere dal dashboard org ("legal documents") → firma via PandaDoc. [supabase.com/legal/dpa](https://supabase.com/legal/dpa) |
 | OpenAI LP | AI: categorizzazione articoli, lettura documenti (Vision) e assistente conversazionale | USA | SCC UE; dati elaborati on-the-fly, non usati per training | Disponibile, **non automatico**: serve account business (non personale) + modulo online con ragione sociale/org ID → firma elettronica. [openai.com/policies/data-processing-addendum](https://openai.com/policies/data-processing-addendum/) |
-| Brevo SAS | Email transazionale (SMTP) + email settimanale di riepilogo (dal 25/09/2026, abilitata dall'admin per cliente, disiscrizione in ogni email) + inbound allegati ricavi | UE — Francia 🇫🇷 | Nessun contenuto fattura trasmesso; transitano gli XLS dei ricavi | **Automatico** — incluso come Annex 2 delle General Terms accettate alla creazione account, nessuna azione richiesta |
-| Invoicetronic S.r.l. | Ricezione fatture SDI + webhook | Italia 🇮🇹 | XML grezzo non archiviato dopo la consegna | **Non trovato** un DPA pubblico standard (piccola società IT) — da richiedere via email/supporto diretto |
+| Brevo SAS | Email transazionale (SMTP) + email settimanale di riepilogo (dal 25/09/2026, abilitata dall'admin per cliente, disiscrizione in ogni email) + email al commercialista (link a tempo, ragione sociale e periodo; mai i file) + inbound allegati ricavi | UE — Francia 🇫🇷 | Nessun contenuto fattura trasmesso; transitano gli XLS dei ricavi | **Automatico** — incluso come Annex 2 delle General Terms accettate alla creazione account, nessuna azione richiesta |
+| Invoicetronic S.r.l. | Ricezione fatture SDI + webhook; rilettura degli originali per l'invio al commercialista (solo letture, mai cancellazioni) | Italia 🇮🇹 | XML grezzo non archiviato dopo la consegna, salvo la copia a 30 giorni per l'invio al commercialista | **Non trovato** un DPA pubblico standard (piccola società IT) — da richiedere via email/supporto diretto |
 | Vercel Inc. | Hosting frontend (Next.js) | UE / USA | SCC UE; nessun dato applicativo persistito | Disponibile ([vercel.com/legal/dpa](https://vercel.com/legal/dpa)), non verificato con certezza se automatico o da accettare esplicitamente — da confermare |
 | Railway Corp. | Worker elaborazione + API | USA | SCC UE; nessun dato applicativo persistito (log tecnici con identificativi utente sullo stdout del fornitore) | Disponibile, **non automatico**: da compilare un modulo DocuSign dedicato. [railway.com/legal/dpa](https://railway.com/legal/dpa) |
 
@@ -154,6 +155,12 @@ Reclamo all'autorità di controllo: **Garante per la Protezione dei Dati Persona
 - `email_rate_log` (destinatario): 90 giorni (`purge_email_rate_log`).
 - `category_change_log` (actor_email) e `ai_usage_events` (nomi file): 365 giorni
   (`purge_category_change_log`, `purge_ai_usage_events`).
+- Invio al commercialista: ZIP nel bucket privato cancellati il giorno dopo la
+  scadenza del link a 30 giorni (`rimuovi_file_scaduti`) e comunque oltre 33 giorni
+  (`spazza_bucket`); email del destinatario nel registro 365 giorni, email e consenso
+  di una configurazione spenta o mai accesa 90 giorni, registro senza configurazione
+  365 giorni (`purge_invio_commercialista`). Il commercialista e' un destinatario
+  scelto dal cliente, non un sub-responsabile.
 - `marketplace_leads` (email, nome, messaggio): 730 giorni, **solo stato
   `archiviato`** (`purge_marketplace_leads`) — un lead aperto e' una trattativa
   in corso e non si cancella a tempo.
