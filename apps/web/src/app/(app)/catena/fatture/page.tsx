@@ -19,6 +19,9 @@ type GruppoScadenziarioResponse = {
 function FattureSkeleton() {
   return (
     <div className="space-y-5">
+      {/* La barra di ricerca sta in cima alla pagina vera: senza il suo posto
+          qui, al caricamento il contenuto scatta in giu' di una riga. */}
+      <div className="h-10 animate-pulse rounded-md bg-muted/40" />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-24 animate-pulse rounded-xl border bg-muted/40" />
