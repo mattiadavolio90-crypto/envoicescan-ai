@@ -51,6 +51,10 @@ class _Q:
         self.filtri.append(lambda r: r.get(col) == val)
         return self
 
+    def in_(self, col, valori):
+        self.filtri.append(lambda r: r.get(col) in valori)
+        return self
+
     def gte(self, col, val):
         self.filtri.append(lambda r: r.get(col) is not None and _valore(r[col]) >= _valore(val))
         return self
@@ -95,7 +99,13 @@ class _Q:
 
 class _DB:
     def __init__(self):
-        self.tabelle: Dict[str, List[Dict[str, Any]]] = {"ricavi_giornalieri": [], "fatture_documenti": []}
+        self.tabelle: Dict[str, List[Dict[str, Any]]] = {
+            "ricavi_giornalieri": [], "fatture_documenti": [],
+            "users": [{"id": UID, "email": "anna@cliente.it", "attivo": True, "ruolo": "cliente",
+                       "email_settimanale": True, "nome_referente": "Anna"}],
+            "ristoranti": [{"id": "r1", "user_id": UID, "nome_ristorante": "Trattoria",
+                            "attivo": True, "sede_tecnica": False}],
+        }
 
     def table(self, nome):
         return _Q(self.tabelle.get(nome, []))
@@ -291,6 +301,44 @@ def test_fatture_catena_elenco():
     )
 
 
+def _con_comuni(*sedi):
+    d = _dest(*sedi)
+    d.sedi_tecniche = [{"id": "t", "nome": "Costi comuni di gruppo"}]
+    return d
+
+
+def test_i_costi_comuni_entrano_nelle_fatture_sdi():
+    """Mattia (25/09): senza, per OFFSIDE l'email elencava 7 + 8 fatture e
+    taceva sulle 10 arrivate ai costi comuni — ogni riga vera, quadro
+    incompleto."""
+    db = _DB()
+    db.fattura("a", "2026-09-15T09:00:00+00:00", 300)
+    db.fattura("t", "2026-09-16T09:00:00+00:00", 150)
+    db.fattura("t", "2026-09-17T09:00:00+00:00", 150)
+    assert svc._sezione_fatture_sdi(db, _con_comuni(("a", "Alfa"), ("b", "Beta")), LUNEDI) == (
+        "Fatture arrivate dallo SDI la settimana scorsa:\n• Alfa: 1 fattura per € 300\n"
+        "• Costi comuni di gruppo: 2 fatture per € 300"
+    )
+
+
+def test_una_sede_piu_i_costi_comuni_e_un_elenco():
+    db = _DB()
+    db.fattura("r1", "2026-09-15T09:00:00+00:00", 300)
+    db.fattura("t", "2026-09-16T09:00:00+00:00", 100)
+    testo = svc._sezione_fatture_sdi(db, _con_comuni(), LUNEDI)
+    assert testo.startswith("Fatture arrivate dallo SDI la settimana scorsa:\n• Trattoria")
+    assert "• Costi comuni di gruppo: 1 fattura per € 100" in testo
+
+
+def test_i_costi_comuni_non_entrano_nell_incasso_ne_nell_invito():
+    db = _DB()
+    db.settimana("t", PRIMA, 1000)
+    db.settimana("t", ORA, 1000)
+    db.fattura("t", "2026-09-15T09:00:00+00:00", 100)
+    assert svc._sezione_incasso(db, _con_comuni(), LUNEDI) is None
+    assert svc._sezione_invito(db, _con_comuni(), LUNEDI) is not None
+
+
 # ── Invito a riprendere ─────────────────────────────────────────────────────
 
 def test_mai_un_dato_invito_a_cominciare():
@@ -307,6 +355,17 @@ def test_fermo_da_luglio_invito_a_ricominciare_con_la_data():
     assert svc._sezione_invito(db, _dest(), LUNEDI) == (
         "Non riceviamo dati dal 15 luglio: bastano le fatture per ricominciare."
     )
+
+
+@pytest.mark.parametrize("giorno, atteso", [
+    (date(2026, 8, 1), "dal 1° agosto"), (date(2026, 8, 8), "dall'8 agosto"),
+    (date(2026, 8, 11), "dall'11 agosto"), (date(2026, 8, 15), "dal 15 agosto"),
+    (date(2026, 8, 18), "dal 18 agosto"), (date(2025, 12, 8), "dall'8 dicembre 2025"),
+])
+def test_la_preposizione_davanti_alla_data(giorno, atteso):
+    """«dal 8 agosto» e «dal 11 agosto» trovati dalla review del 25/09 sulle
+    date vere: tre giorni del mese su 31, nel testo che il cliente legge."""
+    assert svc.dal_giorno(giorno, 2026) == atteso
 
 
 def test_fermo_dall_anno_prima_dice_l_anno():
@@ -376,6 +435,30 @@ def test_osservazioni_catena_col_nome_della_sede(monkeypatch):
     assert testo.startswith("• Beta: ") and "Alfa" not in testo
 
 
+def test_osservazioni_senza_preferenze_tacciono(monkeypatch):
+    """Fail-closed: senza le preferenze non sappiamo se il cliente ha spento
+    l'osservazione, e un'email spedita non si ritira."""
+    monkeypatch.setattr(fw, "_oggi_rome", lambda: MARTEDI)
+
+    def _rotte(rid, sb):
+        raise RuntimeError("preferenze giu'")
+
+    monkeypatch.setattr(fw, "_get_assistant_preferences", _rotte)
+    db = _DB()
+    _otto_settimane(db, "r1")
+    assert svc._sezione_osservazioni(db, _dest(), MARTEDI) is None
+
+
+def test_osservazioni_usano_il_giorno_dell_email_non_quello_di_oggi(monkeypatch):
+    """L'anteprima fatta di martedi' non deve mostrare l'andamento, che
+    l'email del lunedi' non conterra' (review del 25/09)."""
+    monkeypatch.setattr(fw, "_oggi_rome", lambda: MARTEDI)
+    db = _DB()
+    _otto_settimane(db, "r1")
+    assert svc._sezione_osservazioni(db, _dest(), MARTEDI - timedelta(days=1)) is None
+    assert svc._sezione_osservazioni(db, _dest(), MARTEDI) is not None
+
+
 def test_il_lunedi_l_andamento_tace(monkeypatch):
     """L'andamento della fase 4 parla il martedi': l'email del lunedi' ha
     gia' l'incasso della settimana, non lo ripete."""
@@ -402,6 +485,21 @@ def test_cliente_attivo_riceve_solo_cio_che_e_affidabile(monkeypatch):
     assert svc.calcola_frasi(db, _dest(), LUNEDI) == [
         "La settimana scorsa hai incassato € 7.000, in linea con la settimana prima."
     ]
+
+
+def test_il_lavoro_del_lunedi_passa_il_database_alle_sezioni(monkeypatch):
+    """Da `esegui` e `anteprima`, con le SEZIONI vere: un `sb` non passato
+    farebbe fallire ogni sezione (mutante sopravvissuto alla review del 25/09,
+    perche' gli altri test usavano una sezione fissa)."""
+    monkeypatch.setenv(svc.ENV_SEGRETO, "s")
+    monkeypatch.setattr(fw, "_oggi_rome", lambda: LUNEDI)
+    db = _DB()
+    db.settimana("r1", PRIMA, 1000)
+    db.settimana("r1", ORA, 1000)
+    r = svc.esegui(db, adesso=datetime(2026, 9, 21, 7, 35, tzinfo=svc._roma()), dry_run=True)
+    assert r["composte"] == 1 and r["errori"] == 0 and r["sezioni_fallite"] == 0
+    a = svc.anteprima(db, UID, adesso=datetime(2026, 9, 21, 7, 35, tzinfo=svc._roma()))
+    assert a["frasi"] == ["La settimana scorsa hai incassato € 7.000, in linea con la settimana prima."]
 
 
 def test_cliente_attivo_senza_dati_affidabili_non_riceve_niente(monkeypatch):

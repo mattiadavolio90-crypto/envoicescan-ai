@@ -6209,12 +6209,17 @@ def _briefing_food_cost_alto(
 
 def _briefing_osservazioni(
     user_id: str, ristorante_id: str, supabase_client, spenti: set,
+    oggi: Optional[date] = None,
 ) -> List[Dict[str, Any]]:
     """Le osservazioni da consulente, ciascuna best-effort e rispettosa del
     configuratore (spenta = non si calcola). Solo dal path asincrono: fanno
-    query in piu' e la Home che aspetta ha un budget di pochi secondi (E7)."""
+    query in piu' e la Home che aspetta ha un budget di pochi secondi (E7).
+
+    `oggi` di default e' il giorno di Roma; l'email settimanale passa il suo,
+    cosi' l'anteprima fatta di martedi' non mostra cio' che l'email del lunedi'
+    non conterra'."""
     out: List[Dict[str, Any]] = []
-    oggi = _oggi_rome()
+    oggi = oggi or _oggi_rome()
     if "andamento_incasso" not in spenti:
         try:
             rec = _briefing_andamento_incasso(ristorante_id, supabase_client, oggi)

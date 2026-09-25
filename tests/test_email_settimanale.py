@@ -186,6 +186,13 @@ def test_la_catena_riceve_una_email_con_tutte_le_sue_sedi():
     assert len(dest) == 1
     assert dest[0].nome == "Gruppo Sushi"
     assert [s["nome"] for s in dest[0].sedi] == ["Alfa", "Zeta"]
+    assert dest[0].sedi_tecniche == [{"id": "r3", "nome": "Tecnica"}]
+
+
+def test_la_sede_tecnica_spenta_non_entra_e_da_sola_non_basta():
+    dest = svc.scegli_destinatari([_u()], [_s(), _s(rid="t", nome="Comuni", sede_tecnica=True, attivo=False)])
+    assert dest[0].sedi_tecniche == []
+    assert svc.scegli_destinatari([_u()], [_s(rid="t", nome="Comuni", sede_tecnica=True)]) == []
 
 
 # ── Sezioni e composizione ──────────────────────────────────────────────────
@@ -478,6 +485,42 @@ def test_un_errore_vero_del_registro_e_un_errore_non_una_settimana_gia_gestita(m
     r = svc.esegui(sb, adesso=LUNEDI_7, dry_run=False, sezioni=sezioni)
     assert invii == []
     assert r["errori"] == 2 and r["gia_gestite"] == 0
+
+
+def _rotta(sb, d, g):
+    raise RuntimeError("colonna rinominata")
+
+
+def test_una_sezione_fallita_e_un_errore_non_niente_da_dire(monkeypatch, invii):
+    """Se tutte le sezioni falliscono (es. una colonna rinominata) la settimana
+    NON si registra come «niente da dire»: e' un errore, fa scattare l'avviso,
+    e un nuovo giro puo' riprovare (review del 25/09)."""
+    monkeypatch.setenv(svc.ENV_INVIO_ATTIVO, "1")
+    sb = _sb()
+    r = svc.esegui(sb, adesso=LUNEDI_7, dry_run=False, sezioni=[_rotta])
+    assert invii == [] and sb.registro == {}
+    assert r["errori"] == 2 and r["sezioni_fallite"] == 2 and r["niente_da_dire"] == 0
+
+
+def test_una_sezione_fallita_non_ferma_le_altre_ma_si_conta(monkeypatch, invii):
+    monkeypatch.setenv(svc.ENV_INVIO_ATTIVO, "1")
+    r = svc.esegui(_sb(), adesso=LUNEDI_7, dry_run=False,
+                   sezioni=[_rotta, lambda sb, d, g: "Una frase."])
+    assert len(invii) == 2
+    assert r["inviate"] == 2 and r["errori"] == 2 and r["sezioni_fallite"] == 2
+
+
+def test_anche_in_prova_la_sezione_fallita_si_vede(invii):
+    r = svc.esegui(_sb(), adesso=LUNEDI_7, dry_run=True, sezioni=[_rotta])
+    assert r["errori"] == 2 and r["composte"] == 0
+    a = svc.anteprima(_sb(), UID, adesso=LUNEDI_7)
+    assert a["riceverebbe"] is True
+
+
+def test_anteprima_dice_quale_sezione_e_fallita(monkeypatch):
+    monkeypatch.setattr(svc, "SEZIONI", [_rotta])
+    a = svc.anteprima(_sb(), UID, adesso=LUNEDI_7)
+    assert a["riceverebbe"] is False and "_rotta" in a["motivo"]
 
 
 def test_solo_un_utente(monkeypatch, invii):

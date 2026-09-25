@@ -938,6 +938,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   in LOGICA_BRIEFING §8-bis. **Suite: 16.196 passed, 47 skipped** (`-m "not
 >   sql" -p no:randomly`, working tree con +2 test di un'altra sessione) **+ 553
 >   `-m sql`**. L'email resta SPENTA: manca la 7c (privacy, segreto, prova).
+>   *Review (CHIUSA, nessun blocco), cinque punti chiusi prima della 7c*: il
+>   database non passato alle sezioni restava verde (i test del lavoro del lunedi'
+>   usavano una sezione fissa) — ora un test fa girare `esegui` e `anteprima` con
+>   le sezioni vere; una sezione fallita diventava «niente da dire» senza avviso
+>   — ora e' un errore e la settimana non si registra; «dal 8», «dal 11», «dal
+>   1» nelle date vere — ora «dall'8», «dall'11», «dal 1°»; preferenze
+>   illeggibili = osservazioni ferme (fail-closed: un'email non si ritira);
+>   l'anteprima di martedi' mostrava l'andamento che il lunedi' tace — la
+>   sezione passa il suo giorno a `_briefing_osservazioni`. 10 mutanti, 10
+>   uccisi.
+>   Decisione di Mattia sul sesto punto: le fatture dallo SDI della sede
+>   tecnica «Costi comuni di gruppo» entrano nell'elenco (per OFFSIDE erano 10
+>   in una settimana, taciute), e solo li'. 5 mutanti, 5 uccisi.
 
 ---
 

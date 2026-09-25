@@ -334,13 +334,18 @@ compare solo se per quel cliente il dato è affidabile:
 | Argomento | Quando compare | Esempio |
 |---|---|---|
 | Incasso della settimana | Sia la settimana chiusa sia quella prima hanno almeno 6 giorni registrati (uno in meno per ogni giorno di chiusura dichiarato nelle impostazioni del locale) | «La settimana scorsa hai incassato € 2.012, in linea con la settimana prima.» Sotto il 3% è «in linea» |
-| Fatture arrivate | Solo dove le fatture arrivano **in automatico dallo SDI** (almeno una negli ultimi 30 giorni). Chi carica a mano lo fa a blocchi, e «0 fatture questa settimana» sarebbe falso. Le note di credito non si contano | «La settimana scorsa sono arrivate dallo SDI 7 fatture per € 5.081.» |
+| Fatture arrivate | Solo dove le fatture arrivano **in automatico dallo SDI** (almeno una negli ultimi 30 giorni). Chi carica a mano lo fa a blocchi, e «0 fatture questa settimana» sarebbe falso. Le note di credito non si contano. In una catena c'è anche la riga dei **costi comuni di gruppo** (le fatture intestate alla società), l'unico argomento in cui compare | «La settimana scorsa sono arrivate dallo SDI 7 fatture per € 5.081.» |
 | Osservazioni (§4-bis) | Quando scattano, con le stesse regole del briefing. L'andamento dell'incasso parla il martedì, quindi di lunedì tace: c'è già l'incasso della settimana | — |
 | Invito a riprendere | Solo a chi **non manda dati da 4 settimane** (né fatture né incassi, su nessuna sede) | «Non riceviamo dati dal 15 luglio: bastano le fatture per ricominciare.» |
 
 Non entrano i compiti (righe da classificare, dati mancanti): non sono notizie.
 Una catena riceve un'email sola, con una riga per sede. **Se nessun argomento ha
 qualcosa da dire, quella settimana l'email non parte.**
+
+Se un argomento non si riesce a calcolare (un guasto), non si finge che non ci sia
+niente da dire: scatta un avviso a noi, e senza altri argomenti quella email non
+parte. Se le impostazioni del locale non si leggono, le osservazioni non partono:
+un'email spedita non si ritira.
 
 > Misurato sui dati del 21/9: su 6 clienti, 3 avrebbero ricevuto numeri (incasso
 > per SUSHILAND e CASATI 14, fatture dallo SDI per OFFSIDE) e 3 l'invito a

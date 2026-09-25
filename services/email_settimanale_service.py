@@ -121,6 +121,10 @@ class Destinatario:
     email: str
     nome: str
     sedi: List[Dict[str, Any]] = field(default_factory=list)
+    # La sede tecnica di una catena («Costi comuni di gruppo») riceve le fatture
+    # intestate alla societa'. Non e' un locale: entra SOLO nelle fatture dallo
+    # SDI (Mattia, 25/09), mai in incasso, invito o osservazioni.
+    sedi_tecniche: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def scegli_destinatari(utenti: List[Dict[str, Any]], sedi: List[Dict[str, Any]]) -> List[Destinatario]:
@@ -132,12 +136,13 @@ def scegli_destinatari(utenti: List[Dict[str, Any]], sedi: List[Dict[str, Any]])
     """
     admin = {e.strip().lower() for e in ADMIN_EMAILS}
     per_utente: Dict[str, List[Dict[str, Any]]] = {}
+    tecniche: Dict[str, List[Dict[str, Any]]] = {}
     for s in sedi:
-        if s.get("attivo") is False or s.get("sede_tecnica") is True:
+        if s.get("attivo") is False:
             continue
-        per_utente.setdefault(str(s.get("user_id")), []).append(
-            {"id": str(s.get("id")), "nome": str(s.get("nome_ristorante") or "").strip()}
-        )
+        voce = {"id": str(s.get("id")), "nome": str(s.get("nome_ristorante") or "").strip()}
+        dove = tecniche if s.get("sede_tecnica") is True else per_utente
+        dove.setdefault(str(s.get("user_id")), []).append(voce)
     out: List[Destinatario] = []
     for u in utenti:
         email = str(u.get("email") or "").strip()
@@ -150,7 +155,10 @@ def scegli_destinatari(utenti: List[Dict[str, Any]], sedi: List[Dict[str, Any]])
         if not sedi_utente:
             continue
         nome = str(u.get("nome_referente") or u.get("nome_gruppo") or u.get("nome_ristorante") or "").strip()
-        out.append(Destinatario(user_id=uid, email=email, nome=nome, sedi=sedi_utente))
+        out.append(Destinatario(
+            user_id=uid, email=email, nome=nome, sedi=sedi_utente,
+            sedi_tecniche=sorted(tecniche.get(uid, []), key=lambda x: x["nome"]),
+        ))
     return out
 
 
@@ -207,14 +215,30 @@ def _euro(valore: float) -> str:
     return _euro_it(valore)
 
 
-def _per_sedi(dest: Destinatario, righe: List[tuple], singola: str, elenco: str) -> Optional[str]:
+def _per_sedi(dest: Destinatario, righe: List[tuple], singola: str, elenco: str,
+              n_sedi: Optional[int] = None) -> Optional[str]:
     """Una sede: la frase `singola` con il testo al posto di {}. Piu' sedi
-    (catena): l'intestazione `elenco` e una riga per sede col nome davanti."""
+    (catena): l'intestazione `elenco` e una riga per sede col nome davanti.
+    `n_sedi` conta anche la sede tecnica, dove la sezione la include."""
     if not righe:
         return None
-    if len(dest.sedi) == 1:
+    if (len(dest.sedi) if n_sedi is None else n_sedi) == 1:
         return singola.format(righe[0][1])
     return f"{elenco}:\n" + "\n".join(f"• {nome}: {testo}" for nome, testo in righe)
+
+
+def dal_giorno(g: date, anno_di_oggi: int) -> str:
+    """«dal 15 luglio», ma «dall'8 agosto», «dall'11 agosto», «dal 1° agosto».
+    Con l'anno se diverso da quello corrente."""
+    if g.day == 1:
+        testo = f"dal 1° {_MESI[g.month]}"
+    elif g.day in (8, 11):
+        testo = f"dall{chr(39)}{g.day} {_MESI[g.month]}"
+    else:
+        testo = f"dal {g.day} {_MESI[g.month]}"
+    if g.year != anno_di_oggi:
+        testo += f" {g.year}"
+    return testo
 
 
 def percentuale_con_articolo(n: int) -> str:
@@ -293,7 +317,8 @@ def _sezione_fatture_sdi(sb, dest: Destinatario, oggi: date) -> Optional[str]:
     fine = a + timedelta(days=1)
     dal_flusso = fine - timedelta(days=GIORNI_FLUSSO_SDI)
     righe: List[tuple] = []
-    for s in dest.sedi:
+    tutte = [*dest.sedi, *dest.sedi_tecniche]
+    for s in tutte:
         docs = fetch_all(
             sb.table("fatture_documenti")
             .select("id,totale_documento,tipo_documento,source_origin,created_at,deleted_at")
@@ -318,7 +343,7 @@ def _sezione_fatture_sdi(sb, dest: Destinatario, oggi: date) -> Optional[str]:
         tot = sum(float(d.get("totale_documento") or 0) for d in fatture)
         righe.append((s["nome"], f"{n} {'fattura' if n == 1 else 'fatture'} per € {_euro(tot)}"))
     return _per_sedi(dest, righe, "La settimana scorsa sono arrivate dallo SDI {}.",
-                     "Fatture arrivate dallo SDI la settimana scorsa")
+                     "Fatture arrivate dallo SDI la settimana scorsa", n_sedi=len(tutte))
 
 
 def _giorno_a_roma(created_at: Any) -> date:
@@ -341,9 +366,13 @@ def _sezione_osservazioni(sb, dest: Destinatario, oggi: date) -> Optional[str]:
         try:
             td = fw._get_assistant_preferences(s["id"], sb).get("topics_disabled")
             spenti = set(espandi_topic_spenti(td or []))
-        except Exception:
-            spenti = set()
-        for rec in fw._briefing_osservazioni(dest.user_id, s["id"], sb, spenti):
+        except Exception as exc:
+            # Fail-CLOSED, al contrario della Home: un'email spedita non si
+            # ritira, e senza preferenze non sappiamo se il cliente ha spento
+            # questa osservazione. Quella sede tace.
+            logger.warning("email settimanale: preferenze di %s illeggibili: %s", s["id"], exc)
+            continue
+        for rec in fw._briefing_osservazioni(dest.user_id, s["id"], sb, spenti, oggi=oggi):
             righe.append((s["nome"], _osservazione_frase(rec)))
     if not righe:
         return None
@@ -381,18 +410,20 @@ def _sezione_invito(sb, dest: Destinatario, oggi: date) -> Optional[str]:
     if ultimo is None:
         dove = "dai tuoi locali" if len(dest.sedi) > 1 else "dal tuo locale"
         return f"Non abbiamo ancora ricevuto dati {dove}: bastano le fatture per cominciare."
-    quando = f"{ultimo.day} {_MESI[ultimo.month]}"
-    if ultimo.year != oggi.year:
-        quando += f" {ultimo.year}"
-    return f"Non riceviamo dati dal {quando}: bastano le fatture per ricominciare."
+    return f"Non riceviamo dati {dal_giorno(ultimo, oggi.year)}: bastano le fatture per ricominciare."
 
 
 SEZIONI: List[Sezione] = [_sezione_invito, _sezione_incasso, _sezione_fatture_sdi, _sezione_osservazioni]
 
 
-def calcola_frasi(sb, dest: Destinatario, oggi: date, sezioni: Optional[List[Sezione]] = None) -> List[str]:
+def calcola_frasi(
+    sb, dest: Destinatario, oggi: date, sezioni: Optional[List[Sezione]] = None,
+    fallite: Optional[List[str]] = None,
+) -> List[str]:
     """Una frase per sezione che ha qualcosa da dire. Una sezione che fallisce
-    tace, e basta: non puo' far saltare l'email delle altre."""
+    tace e non fa saltare le altre, ma finisce in `fallite`: chi chiama la
+    conta come errore, o un guasto (una colonna rinominata) spegnerebbe
+    l'email di tutti in silenzio, registrata come «niente da dire»."""
     frasi: List[str] = []
     for sezione in (SEZIONI if sezioni is None else sezioni):
         try:
@@ -400,6 +431,8 @@ def calcola_frasi(sb, dest: Destinatario, oggi: date, sezioni: Optional[List[Sez
         except Exception as exc:
             logger.warning("email settimanale: sezione %s fallita per %s: %s",
                            getattr(sezione, "__name__", "?"), dest.user_id, exc)
+            if fallite is not None:
+                fallite.append(getattr(sezione, "__name__", "?"))
             continue
         if frase and frase.strip():
             frasi.append(frase.strip())
@@ -491,7 +524,7 @@ def esegui(
         "dry_run": dry_run,
         "invio_attivo": invio_attivo(),
         "destinatari": 0, "inviate": 0, "niente_da_dire": 0,
-        "gia_gestite": 0, "errori": 0, "composte": 0,
+        "gia_gestite": 0, "errori": 0, "composte": 0, "sezioni_fallite": 0,
     }
     if not dry_run and not invio_attivo():
         # Il cron chiama con dry_run=false: finche' l'invio e' spento non c'e'
@@ -504,7 +537,16 @@ def esegui(
     destinatari = leggi_destinatari(sb, solo_user_id=solo_user_id)
     resoconto["destinatari"] = len(destinatari)
     for dest in destinatari:
-        frasi = calcola_frasi(sb, dest, oggi, sezioni)
+        fallite: List[str] = []
+        frasi = calcola_frasi(sb, dest, oggi, sezioni, fallite)
+        if fallite:
+            # Un guasto e' un errore: fa scattare l'avviso del workflow.
+            resoconto["sezioni_fallite"] += len(fallite)
+            resoconto["errori"] += 1
+            if not frasi:
+                # Non si registra «niente da dire»: non lo sappiamo. Senza la
+                # riga, un nuovo giro della stessa settimana puo' riprovare.
+                continue
         if not spedisce:
             if not frasi:
                 resoconto["niente_da_dire"] += 1
@@ -563,9 +605,11 @@ def anteprima(sb, user_id: str, *, adesso: datetime) -> Dict[str, Any]:
     if not destinatari:
         return {"riceverebbe": False, "motivo": "non e' fra i destinatari"}
     dest = destinatari[0]
-    frasi = calcola_frasi(sb, dest, adesso.date())
+    fallite: List[str] = []
+    frasi = calcola_frasi(sb, dest, adesso.date(), fallite=fallite)
     if not frasi:
-        return {"riceverebbe": False, "motivo": "niente da dire", "sedi": dest.sedi}
+        motivo = f"sezioni fallite: {', '.join(fallite)}" if fallite else "niente da dire"
+        return {"riceverebbe": False, "motivo": motivo, "sedi": dest.sedi, "sezioni_fallite": fallite}
     try:
         email = componi_email(dest, frasi)
     except RuntimeError as exc:
