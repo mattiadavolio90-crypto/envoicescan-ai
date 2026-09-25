@@ -401,20 +401,30 @@ def test_la_pulizia_non_scende_sotto_i_30_giorni(db_sql, psycopg):
         _esegui(db_sql, "SELECT public.purge_invio_commercialista(10, 90)")
 
 
-def test_cancellare_il_cliente_lascia_la_traccia_fino_alla_pulizia(db_sql, scalare):
-    """La configurazione se ne va col cliente; il registro resta (senza
-    configurazione) come traccia di cosa e' andato a chi, fino alla retention."""
+def test_cancellare_la_configurazione_lascia_la_traccia_fino_alla_pulizia(db_sql, scalare):
+    """Il registro resta (senza configurazione) come traccia di cosa e' andato a
+    chi, fino alla retention: serve per riassegnare una P.IVA a un altro account."""
     _semina(db_sql)
     cid = _config(db_sql)
     recente = _invio(db_sql, cid, "prova", "2026-07-01", "2026-07-31")
     vecchio = _invio(db_sql, cid, "prova", "2025-05-01", "2025-05-31", stato="errore", creata="2025-06-01 10:00:00+00")
-    _esegui(db_sql, "DELETE FROM public.ristoranti WHERE user_id = %s", U1)
-    _esegui(db_sql, "DELETE FROM public.users WHERE id = %s", U1)
-    assert scalare("SELECT count(*) FROM public.invio_commercialista_config") == 0
+    _esegui(db_sql, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
     assert scalare("SELECT count(*) FROM public.invio_commercialista_invii WHERE config_id IS NULL") == 2
     assert scalare("SELECT public.purge_invio_commercialista(365, 90)") == 1
     assert [r[0] for r in _esegui(db_sql, "SELECT id FROM public.invio_commercialista_invii")] == [recente]
     assert vecchio != recente
+
+
+def test_cancellare_l_account_cancella_configurazione_e_registro(db_sql, scalare):
+    """La privacy promette l'eliminazione a cascata di tutto alla cancellazione
+    dell'account: vale anche per la traccia degli invii."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _invio(db_sql, cid, "prova", "2026-07-01", "2026-07-31")
+    _esegui(db_sql, "DELETE FROM public.ristoranti WHERE user_id = %s", U1)
+    _esegui(db_sql, "DELETE FROM public.users WHERE id = %s", U1)
+    assert scalare("SELECT count(*) FROM public.invio_commercialista_config") == 0
+    assert scalare("SELECT count(*) FROM public.invio_commercialista_invii") == 0
 
 
 def test_senza_configurazione_non_si_registra_niente(db_sql, psycopg):

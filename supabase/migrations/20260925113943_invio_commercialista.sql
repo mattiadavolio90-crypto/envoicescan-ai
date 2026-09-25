@@ -32,7 +32,8 @@
 --     sarebbe un doppione al commercialista.
 -- Ogni riga copia cliente, P.IVA, company_id e destinatario: resta la traccia di
 -- cosa e' andato a chi anche dopo un cambio di configurazione, e anche dopo la sua
--- cancellazione (config_id diventa NULL, la riga resta).
+-- cancellazione (config_id diventa NULL, la riga resta fino alla retention). La
+-- cancellazione dell'ACCOUNT invece porta via tutto, come promette la privacy.
 --
 -- Idempotente e rieseguibile per intero. service_role only: anon e authenticated
 -- nominati nella REVOKE, perche' su Supabase hanno grant propri dalle default
@@ -155,7 +156,7 @@ CREATE TRIGGER invio_commercialista_config_guardia
 CREATE TABLE IF NOT EXISTS public.invio_commercialista_invii (
     id                        uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     config_id                 uuid        REFERENCES public.invio_commercialista_config(id) ON DELETE SET NULL,
-    user_id                   uuid        NOT NULL,
+    user_id                   uuid        NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     piva                      text        NOT NULL,
     invoicetronic_company_id  integer     NOT NULL,
     destinatario              text,
