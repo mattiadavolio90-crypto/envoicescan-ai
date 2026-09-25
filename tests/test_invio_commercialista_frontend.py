@@ -179,3 +179,18 @@ def test_date_e_byte_in_italiano():
         " m.spostaGiorni('2026-03-01', -1), m.spostaGiorni('2026-12-31', 1)]);",
         richiede=["formattaData", "formattaByte", "spostaGiorni"],
     ) == ["05/09/2026", "05/09/2026", "—", "512 byte", "20 KB", "3,2 MB", "—", "2026-02-28", "2027-01-01"]
+
+
+
+def test_l_avviso_sulla_storia_di_una_configurazione_cancellata():
+    assert esegui_ts(
+        MODULO,
+        "emit([m.avvisoStoricoOrfano({'07863990961': '2026-08-31'}, '07863990961'),"
+        " m.avvisoStoricoOrfano({'07863990961': '2026-08-31'}, '12345678903'), m.avvisoStoricoOrfano(undefined, 'x')]);",
+        richiede=["avvisoStoricoOrfano"],
+    ) == [
+        "Una configurazione cancellata ha già inviato le fatture di questa P.IVA fino al 31/08/2026: "
+        "scegli la partenza dopo, o il commercialista le riceve due volte.",
+        None,
+        None,
+    ]

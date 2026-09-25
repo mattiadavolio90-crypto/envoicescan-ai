@@ -73,7 +73,14 @@ instradata da Railway.
   Roma) non crea invii e l'esecutore chiude in errore ogni invio chiesto dall'admin;
   girano solo le prove a vuoto e la pulizia degli ZIP. Acceso, servono anche
   `BREVO_API_KEY` (senza, all'avvio il log lo scrive come errore e ogni invio finisce
-  in `brevo_non_configurato`) e la chiave Invoicetronic.
+  in `brevo_non_configurato`) e la chiave Invoicetronic. **Con l'interruttore acceso
+  non si pusha fra le 02:00 e le 05:00 di Roma**: un riavvio a meta' invio lascia un
+  `esito_incerto` da chiarire a mano.
+  La migration `20260925113943_invio_commercialista.sql` va applicata **prima** del
+  push che porta questo codice, e una volta sola nella sua versione finale: prima di
+  applicarla, `SELECT to_regclass('public.invio_commercialista_invii')` deve dare
+  NULL. Se la tabella esiste gia' (versione vecchia), `CREATE TABLE IF NOT EXISTS`
+  non la aggiorna e mancherebbero colonne e vincoli: serve una migration nuova.
 - Healthcheck del servizio: **DISABILITATO** (non espone HTTP).
 
 ## Ricreare un servizio da zero

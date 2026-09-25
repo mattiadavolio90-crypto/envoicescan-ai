@@ -102,7 +102,7 @@ def _invio_inviato(app, cid, dal, al):
     iid = str(_cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
                            "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin') "
                            "RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, dal, al)[0][0])
-    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso' WHERE id = %s", iid)
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
     _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'inviato' WHERE id = %s", iid)
     return iid
 
@@ -415,3 +415,58 @@ def test_invoicetronic_in_errore(app):
     app.finto.azienda_per_piva = rotto
     r = app.get(f"{_base()}/azienda", params={"piva": PIVA})
     assert r.status_code == 503 and "HTTP 401" in r.json()["detail"]
+
+
+
+# ─── Storia orfana e cancellazione dell'account ──────────────────────────────
+
+def test_la_storia_di_una_configurazione_cancellata_si_vede(app):
+    """Chi ricollega la P.IVA deve sapere fin dove e' gia' stato spedito."""
+    cid = _collega(app)
+    _completa(app, cid)
+    _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))
+    assert app.get(_base()).json()["storico_orfano"] == {}, "la configurazione e' viva: non e' storia orfana"
+    _cur(app.db, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
+    dati = app.get(_base()).json()
+    assert dati["piva_disponibili"] == [PIVA]
+    assert dati["storico_orfano"] == {PIVA: (_oggi() - timedelta(days=10)).isoformat()}
+
+
+class _ArchivioFinto:
+    rimossi = []
+
+    def __init__(self, sb):
+        pass
+
+    def rimuovi(self, percorsi):
+        _ArchivioFinto.rimossi += list(percorsi)
+
+
+def _con_zip(app, monkeypatch):
+    from services import invio_commercialista_service as svc
+    _ArchivioFinto.rimossi = []
+    monkeypatch.setattr(svc, "ArchivioSupabase", _ArchivioFinto)
+    cid = _collega(app)
+    _completa(app, cid)
+    iid = _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET storage_paths = ARRAY['c/fatture.zip'], "
+                 "link_scade_il = now() + interval '20 days' WHERE id = %s", iid)
+
+
+def test_l_admin_che_cancella_il_cliente_toglie_subito_gli_zip(app, monkeypatch):
+    _con_zip(app, monkeypatch)
+    r = app.delete(f"/api/admin/clienti/{U1}")
+    assert r.status_code == 200, r.text
+    assert _ArchivioFinto.rimossi == ["c/fatture.zip"]
+    assert _cur(app.db, "SELECT count(*) FROM public.users WHERE id = %s", U1)[0][0] == 0
+    assert _cur(app.db, "SELECT count(*) FROM public.invio_commercialista_invii")[0][0] == 0
+
+
+def test_il_cliente_che_si_cancella_toglie_subito_gli_zip(app, monkeypatch):
+    from services.routers import account
+    _con_zip(app, monkeypatch)
+    monkeypatch.setattr(account, "_resolve_user_from_token", lambda authorization: {"id": U1, "email": "a1@ic.test"})
+    r = app.post("/api/account/elimina", json={"conferma": "ELIMINA"})
+    assert r.status_code == 200, r.text
+    assert _ArchivioFinto.rimossi == ["c/fatture.zip"]
+    assert _cur(app.db, "SELECT count(*) FROM public.users WHERE id = %s", U1)[0][0] == 0

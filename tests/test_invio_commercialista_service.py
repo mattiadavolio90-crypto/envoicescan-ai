@@ -246,15 +246,18 @@ def brevo(monkeypatch):
 
     monkeypatch.setenv("BREVO_API_KEY", "xkeysib-test")
     chiamate = []
+    timeouts = []
 
     def imposta(risposta):
         def post(url, json=None, headers=None, timeout=None):
             chiamate.append(json)
+            timeouts.append(timeout)
             if isinstance(risposta, Exception):
                 raise risposta
             return risposta
         monkeypatch.setattr(requests, "post", post)
         return chiamate
+    imposta.timeouts = timeouts
     return imposta
 
 
@@ -438,3 +441,19 @@ def test_ciclo_pianifica_solo_di_notte_e_con_l_interruttore(monkeypatch):
         dip.orologio = lambda ora=ora: datetime(2027, 1, 1, ora, 30, tzinfo=UTC)
         s.ciclo(object(), dip)
         assert chiamate == (["appese", "pianifica", "esegui"] if attesa else ["appese", "esegui"])
+
+
+def test_brevo_ha_sempre_un_timeout(brevo):
+    """Senza, un Brevo bloccato congela il thread: niente piu' invii, righe appese
+    e pulizie degli ZIP, e nessun avviso."""
+    from services.email_service import brevo_invia_con_esito
+    brevo(_Risposta(201, {"messageId": "x"}))
+    brevo_invia_con_esito("studio@x.test", "", "O", "<p/>")
+    assert brevo.timeouts == [(10, 30)]
+
+
+def test_il_client_invoicetronic_si_chiude():
+    from services.invoicetronic_client import ClientInvoicetronic
+    http = MagicMock()
+    ClientInvoicetronic("ik_live_x", http=http).chiudi()
+    http.close.assert_called_once_with()

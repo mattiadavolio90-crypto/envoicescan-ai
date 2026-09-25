@@ -26,10 +26,14 @@
 --     va oltre i 2 anni che Invoicetronic conserva;
 --   - stati solo in avanti. Un invio la cui email e' partita (email_tentata_at,
 --     scrivibile una volta sola) non torna mai «non partito»: ne' `bloccato` ne'
---     `errore`, salvo un rifiuto certo di Brevo (4xx) o l'admin che lo dichiara
---     esplicitamente (chiarito_non_partito_at) chiarendo un esito incerto. Un
---     timeout e' `esito_incerto`, perche' rispedire il periodo la notte dopo
---     sarebbe un doppione al commercialista.
+--     `errore`, salvo un rifiuto certo di Brevo (4xx) mentre e' in corso, o l'admin
+--     che lo dichiara esplicitamente (chiarito_non_partito_at) chiarendo un esito
+--     incerto. Un timeout e' `esito_incerto`, perche' rispedire il periodo la notte
+--     dopo sarebbe un doppione al commercialista. `inviato` ed `esito_incerto`
+--     esistono solo con l'email tentata (e quindi autorizzata);
+--   - il registro non dimentica: nessuna riga si cancella (service_role non ha
+--     DELETE; la pulizia e' SECURITY DEFINER, le cascate girano come proprietario)
+--     e config_id diventa NULL solo quando la configurazione non c'e' piu'.
 -- Ogni riga copia cliente, P.IVA, company_id e destinatario: resta la traccia di
 -- cosa e' andato a chi anche dopo un cambio di configurazione, e anche dopo la sua
 -- cancellazione (config_id diventa NULL, la riga resta fino alla retention). La
@@ -200,6 +204,9 @@ CREATE TABLE IF NOT EXISTS public.invio_commercialista_invii (
                                   OR chiarito_non_partito_at IS NOT NULL))
     ),
     CONSTRAINT ici_prova_senza_email_chk CHECK (tipo <> 'prova' OR email_tentata_at IS NULL),
+    CONSTRAINT ici_spedito_con_email_chk CHECK (
+        tipo = 'prova' OR stato NOT IN ('inviato', 'esito_incerto') OR email_tentata_at IS NOT NULL
+    ),
     CONSTRAINT ici_chiarito_chk CHECK (
         chiarito_non_partito_at IS NULL OR (stato = 'errore' AND email_tentata_at IS NOT NULL)
     )
@@ -264,9 +271,13 @@ DECLARE
     v_attesa  date;
 BEGIN
     IF TG_OP = 'UPDATE' THEN
-        -- config_id puo' solo diventare NULL: e' la cancellazione della
-        -- configurazione (ON DELETE SET NULL), e la riga resta come traccia.
-        IF (NEW.config_id IS DISTINCT FROM OLD.config_id AND NEW.config_id IS NOT NULL)
+        -- config_id puo' solo diventare NULL, e solo quando la configurazione non
+        -- c'e' piu' (ON DELETE SET NULL: durante la cascata la riga e' gia'
+        -- invisibile). A mano, con la configurazione viva, la riga uscirebbe dal
+        -- cursore e il suo periodo si potrebbe rispedire.
+        IF (NEW.config_id IS DISTINCT FROM OLD.config_id
+            AND (NEW.config_id IS NOT NULL
+                 OR EXISTS (SELECT 1 FROM public.invio_commercialista_config c WHERE c.id = OLD.config_id)))
            OR NEW.tipo IS DISTINCT FROM OLD.tipo
            OR NEW.periodo_dal IS DISTINCT FROM OLD.periodo_dal
            OR NEW.periodo_al IS DISTINCT FROM OLD.periodo_al
@@ -296,7 +307,8 @@ BEGIN
         IF NEW.stato IS DISTINCT FROM OLD.stato AND NOT (
                (OLD.stato = 'richiesto' AND NEW.stato IN ('in_corso', 'errore'))
             OR (OLD.stato = 'in_corso' AND NEW.stato IN ('inviato', 'errore', 'bloccato', 'prova_ok', 'esito_incerto'))
-            OR (OLD.stato = 'esito_incerto' AND NEW.stato IN ('inviato', 'errore'))
+            OR (OLD.stato = 'esito_incerto' AND (NEW.stato = 'inviato'
+                OR (NEW.stato = 'errore' AND NEW.chiarito_non_partito_at IS NOT NULL)))
         ) THEN
             RAISE EXCEPTION 'transizione di stato non ammessa: % -> %', OLD.stato, NEW.stato
                 USING ERRCODE = 'check_violation';
@@ -313,7 +325,8 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- INSERT. Serializza gli inserimenti della stessa configurazione.
+    -- INSERT. Il lock sulla configurazione serializza gli inserimenti della stessa
+    -- configurazione (per quelli in volo lo fa gia' ici_uno_in_volo).
     IF NEW.creata_at > now() + interval '5 minutes' THEN
         RAISE EXCEPTION 'creata_at nel futuro: i limiti sulle date si calcolano da li'''
             USING ERRCODE = 'check_violation';
@@ -425,7 +438,9 @@ ALTER TABLE public.invio_commercialista_invii ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.invio_commercialista_config FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.invio_commercialista_invii FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.invio_commercialista_config TO service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.invio_commercialista_invii TO service_role;
+GRANT SELECT, INSERT, UPDATE ON public.invio_commercialista_invii TO service_role;
+-- Esplicita: su Supabase le default privileges danno ALL a service_role.
+REVOKE DELETE, TRUNCATE ON public.invio_commercialista_invii FROM service_role;
 REVOKE ALL ON FUNCTION public.invio_commercialista_ultimo_giorno(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.invio_commercialista_autorizzato(uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.purge_invio_commercialista(integer, integer) FROM PUBLIC, anon, authenticated;

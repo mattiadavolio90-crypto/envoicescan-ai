@@ -82,7 +82,7 @@ def _invio(db_sql, cid, tipo, dal, al, da="admin", creata=None):
 
 def _inviato(db_sql, cid, tipo, dal, al, creata=None):
     iid = _invio(db_sql, cid, tipo, dal, al, creata=creata)
-    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso' WHERE id = %s", iid)
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
     _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'inviato' WHERE id = %s", iid)
     return iid
 
@@ -116,6 +116,10 @@ class _Client:
         self.azienda_restituita = {"id": AZIENDA, "vat": f"IT{PIVA}"}
         self.scaricati = []
         self.al_download = None
+        self.chiuso = False
+
+    def chiudi(self):
+        self.chiuso = True
 
     def azienda(self, company_id):
         return self.azienda_restituita
@@ -202,6 +206,14 @@ def _esegui(db_sql, mondo):
     return s.esegui_richiesti(_sb(db_sql), mondo.dip())
 
 
+def _senza_dati_personali(avvisi):
+    """Telegram non e' un sub-responsabile dichiarato (piano A3.6): negli avvisi
+    solo id e motivi."""
+    for testo in avvisi:
+        for dato in (EMAIL, "OFFSIDE", PIVA):
+            assert dato not in testo, (dato, testo)
+
+
 # ─── Esecutore: la strada buona ──────────────────────────────────────────────
 
 def test_il_primo_invio_spedisce_gli_originali_con_un_link(db_sql, acceso):
@@ -226,6 +238,9 @@ def test_il_primo_invio_spedisce_gli_originali_con_un_link(db_sql, acceso):
     [email] = mondo.email
     assert email["a"] == EMAIL and "OFFSIDE SRL" in email["oggetto"]
     assert f"https://firmato.test/{percorso}?scade=2592000" in email["testo"]
+    ultimo_giorno_pieno = (s.a_roma(riga["link_scade_il"]).date() - timedelta(days=1)).strftime("%d/%m/%Y")
+    assert f"vale fino al {ultimo_giorno_pieno}" in email["testo"]
+    assert mondo.client.chiuso
     assert _uno(db_sql, "SELECT count(*) FROM public.email_rate_log WHERE destinatario = %s", EMAIL) == 1
     assert _uno(db_sql, "SELECT public.invio_commercialista_ultimo_giorno(%s)", cid) == al
     assert mondo.avvisi == []
@@ -313,7 +328,8 @@ def test_un_documento_di_un_altro_destinatario_blocca_tutto_e_sospende(db_sql, a
     assert mondo.client.scaricati == [] and mondo.email == []
     sospesa = _cur(db_sql, "SELECT sospesa_at IS NOT NULL, sospesa_motivo FROM public.invio_commercialista_config WHERE id = %s", cid)[0]
     assert sospesa == (True, "documento_con_altro_destinatario")
-    assert len(mondo.avvisi) == 1 and "BLOCCATO" in mondo.avvisi[0] and EMAIL not in mondo.avvisi[0]
+    assert len(mondo.avvisi) == 1 and "BLOCCATO" in mondo.avvisi[0]
+    _senza_dati_personali(mondo.avvisi)
 
 
 def test_la_piva_passata_anche_a_un_altro_account_sospende_davvero(db_sql, acceso):
@@ -356,6 +372,7 @@ def test_saldo_insufficiente_non_scarica_niente(db_sql, acceso):
     assert _esegui(db_sql, mondo) == ["errore"]
     assert _riga(db_sql, iid)["motivo"] == "saldo_insufficiente (102 operazioni, 3 documenti)"
     assert mondo.client.scaricati == [] and len(mondo.avvisi) == 1
+    _senza_dati_personali(mondo.avvisi)
 
 
 def test_saldo_giusto_alla_soglia_basta(db_sql, acceso):
@@ -398,6 +415,7 @@ def test_brevo_rifiuta_errore_e_file_tolti_subito(db_sql, acceso):
     assert (riga["stato"], riga["brevo_http_status"], riga["motivo"]) == ("errore", 400, "brevo_rifiutata_http_400")
     assert riga["file_rimossi_at"] is not None and mondo.archivio.file == {}
     assert mondo.archivio.rimossi == riga["storage_paths"] and len(mondo.avvisi) == 1
+    _senza_dati_personali(mondo.avvisi)
 
 
 @pytest.mark.parametrize("esito", [EsitoBrevo("incerta", 502), EsitoBrevo("incerta"), EsitoBrevo("rifiutata")])
@@ -416,6 +434,7 @@ def test_brevo_incerto_blocca_la_configurazione_e_avvisa_una_volta(db_sql, acces
     s.gestisci_appese(sb, mondo.dip())
     s.gestisci_appese(sb, mondo.dip())
     assert len(mondo.avvisi) == 1 and "incerto" in mondo.avvisi[0]
+    _senza_dati_personali(mondo.avvisi)
     assert _riga(db_sql, iid)["avviso_inviato_at"] is not None
 
 
@@ -636,6 +655,7 @@ def test_dopo_due_anni_si_riparte_dal_limite_e_si_avvisa(db_sql):
     [(dal, al, *_)] = _ordinari(db_sql, cid)
     assert (dal, al) == (s.limite_due_anni(adesso.date()), adesso.date() - timedelta(days=1))
     assert len(avvisi) == 1 and "2 anni" in avvisi[0]
+    _senza_dati_personali(avvisi)
 
 
 def test_il_ciclo_di_notte_pianifica_ed_esegue(db_sql, acceso):
@@ -665,6 +685,7 @@ def test_seconda_notte_di_errore_si_avvisa(db_sql, acceso):
     _pianifica(db_sql, adesso + timedelta(days=1))
     assert _esegui(db_sql, mondo) == ["errore"]
     assert len(mondo.avvisi) == 1 and "saldo_illeggibile" in mondo.avvisi[0]
+    _senza_dati_personali(mondo.avvisi)
 
 
 # ─── Casi aggiunti per la mutazione ──────────────────────────────────────────
@@ -763,3 +784,102 @@ def test_un_errore_dopo_il_tentativo_d_email_e_incerto(db_sql, acceso):
     iid = _invio(db_sql, cid, "primo", dal, al)
     assert _esegui(db_sql, mondo) == ["esito_incerto"]
     assert _riga(db_sql, iid)["motivo"] == "errore_interno: RuntimeError"
+
+
+
+def test_anti_loop_per_configurazione(db_sql, acceso):
+    """Due clienti con lo stesso commercialista: sei email in 24 ore non sono un loop."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    seconda = "98765432109"
+    _cur(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) "
+                 "VALUES ('3e0e0000-0000-4000-8000-0000000000a3', %s, 'B', %s, TRUE)", U1, seconda)
+    _cur(db_sql, "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, "
+                 "email_destinatario, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email) "
+                 "VALUES (%s, %s, 3000, %s, '2026-07-01', true, true, '2026-09-20', %s)", U1, seconda, EMAIL, EMAIL)
+    for _ in range(5):
+        _cur(db_sql, "INSERT INTO public.email_rate_log (destinatario, created_at) VALUES (%s, now() - interval '1 hour')", EMAIL)
+    _invio(db_sql, cid, "primo", _oggi() - timedelta(days=5), _oggi() - timedelta(days=1))
+    assert _esegui(db_sql, _Mondo()) == ["inviato"]
+    _cur(db_sql, "INSERT INTO public.email_rate_log (destinatario, created_at) VALUES (%s, now())", EMAIL)
+    _invio(db_sql, cid, "reinvio", _oggi() - timedelta(days=5), _oggi() - timedelta(days=1))
+    assert _esegui(db_sql, _Mondo()) == ["bloccato"]
+
+
+def test_la_cartella_temporanea_non_resta_sul_disco(db_sql, acceso, tmp_path, monkeypatch):
+    """Dentro ci sono le fatture: su un errore come su un invio riuscito, via."""
+    cartelle = []
+
+    def mkdtemp(prefix=""):
+        cartella = tmp_path / f"lavoro{len(cartelle)}"
+        cartella.mkdir()
+        cartelle.append(cartella)
+        return str(cartella)
+    monkeypatch.setattr(s.tempfile, "mkdtemp", mkdtemp)
+    _semina(db_sql)
+    cid = _config(db_sql)
+    dal, al = _oggi() - timedelta(days=20), _oggi() - timedelta(days=1)
+    _invio(db_sql, cid, "primo", dal, al)
+    mondo = _Mondo(_tre_documenti(dal))
+    mondo.esito = EsitoBrevo("rifiutata", 400)
+    assert _esegui(db_sql, mondo) == ["errore"]
+    assert cartelle and not any(c.exists() for c in cartelle)
+
+
+def test_una_configurazione_che_fallisce_non_ferma_le_altre(db_sql, monkeypatch):
+    _semina(db_sql)
+    prima = _config(db_sql)
+    seconda_piva = "98765432109"
+    _cur(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo, sdi_attivo) "
+                 "VALUES ('3e0e0000-0000-4000-8000-0000000000a3', %s, 'B', %s, TRUE, TRUE)", U1, seconda_piva)
+    seconda = str(_uno(db_sql, "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, "
+                               "email_destinatario, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email) "
+                               "VALUES (%s, %s, 3000, %s, '2026-07-01', true, true, '2026-09-20', %s) RETURNING id",
+                               U1, seconda_piva, EMAIL, EMAIL))
+    adesso, fine_mese_prima, ultimo = _scenario()
+    for cid, piva, azienda in ((prima, PIVA, AZIENDA), (seconda, seconda_piva, 3000)):
+        iid = str(_uno(db_sql, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
+                               "destinatario, tipo, periodo_dal, periodo_al, richiesto_da, creata_at) "
+                               "VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin', %s) RETURNING id",
+                               cid, U1, piva, azienda, EMAIL, ultimo - timedelta(days=9), ultimo, _alle(ultimo + timedelta(days=1))))
+        _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
+        _cur(db_sql, "UPDATE public.invio_commercialista_invii SET stato = 'inviato' WHERE id = %s", iid)
+    vero = s.ultimo_giorno_inviato
+
+    def rotto(sb, config_id):
+        if config_id == min(prima, seconda):
+            raise RuntimeError("giu'")
+        return vero(sb, config_id)
+    monkeypatch.setattr(s, "ultimo_giorno_inviato", rotto)
+    assert _pianifica(db_sql, adesso) == 1
+
+
+def test_l_errore_inatteso_non_scrive_l_email_nei_log(db_sql, acceso, caplog):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    dal, al = _oggi() - timedelta(days=20), _oggi() - timedelta(days=1)
+    mondo = _Mondo(_tre_documenti(dal))
+
+    def rotto(receive_id):
+        raise ValueError(f"Failing row contains (..., {EMAIL}, ...)")
+    mondo.client.al_download = rotto
+    _invio(db_sql, cid, "primo", dal, al)
+    with caplog.at_level("ERROR"):
+        assert _esegui(db_sql, mondo) == ["errore"]
+    assert "ValueError" in caplog.text and EMAIL not in caplog.text
+
+
+def test_cancellando_l_account_gli_zip_se_ne_vanno_subito(db_sql):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _inviato(db_sql, cid, "primo", _oggi() - timedelta(days=20), _oggi() - timedelta(days=1))
+    rimosso = _inviato(db_sql, cid, "reinvio", _oggi() - timedelta(days=20), _oggi() - timedelta(days=10))
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET storage_paths = ARRAY['c/a.zip', 'c/b.zip'], "
+                 "link_scade_il = now() + interval '20 days' WHERE id = %s", iid)
+    _cur(db_sql, "UPDATE public.invio_commercialista_invii SET storage_paths = ARRAY['c/vecchio.zip'], "
+                 "file_rimossi_at = now() WHERE id = %s", rimosso)
+    archivio = _Archivio()
+    assert s.rimuovi_file_del_cliente(_sb(db_sql), U1, archivio=archivio) == 2
+    assert archivio.rimossi == ["c/a.zip", "c/b.zip"]
+    assert _riga(db_sql, iid)["file_rimossi_at"] is not None
+    assert s.rimuovi_file_del_cliente(_sb(db_sql), U2, archivio=archivio) == 0

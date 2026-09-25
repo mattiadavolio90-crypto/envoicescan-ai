@@ -34,6 +34,7 @@ import shutil
 import tempfile
 import threading
 import time
+import traceback
 import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -544,6 +545,7 @@ class _Invio:
         self.id = riga["id"]
         self.email_tentata = False
         self.caricati: List[str] = []
+        self.client: Any = None
 
     # stato
 
@@ -626,10 +628,19 @@ class _Invio:
         except _Rinuncia as exc:
             return self._fallisci(exc.motivo, avviso=exc.avviso)
         except Exception as exc:
-            logger.exception("Invio %s: errore inatteso", _breve(self.id))
+            # Senza il messaggio: quello di un vincolo del DB riporta la riga intera,
+            # email del commercialista compresa, e finirebbe nei log di Railway.
+            logger.error("Invio %s: errore inatteso %s\n%s", _breve(self.id), type(exc).__name__,
+                         "".join(traceback.format_tb(exc.__traceback__)))
             return self._fallisci(f"errore_interno: {type(exc).__name__}", avviso=True)
         finally:
             shutil.rmtree(cartella, ignore_errors=True)
+            chiudi = getattr(self.client, "chiudi", None)
+            if callable(chiudi):
+                try:
+                    chiudi()
+                except Exception:
+                    pass
 
     def _config(self) -> Dict[str, Any]:
         righe = (
@@ -666,15 +677,23 @@ class _Invio:
         return rimaste
 
     def _controlla_frequenza_email(self, destinatario: str, adesso: datetime) -> None:
+        """Anti-loop: al massimo MAX_EMAIL_24H email in 24 ore per ogni
+        configurazione attiva che scrive a quell'indirizzo. Un commercialista con
+        quattro clienti riceve quattro email l'1 del mese, e non e' un loop."""
         risposta = (
             self.sb.table("email_rate_log").select("id", count="exact", head=True)
             .eq("destinatario", destinatario).gte("created_at", _iso(adesso - timedelta(hours=24)))
             .execute()
         )
         conteggio = getattr(risposta, "count", None)
-        if not isinstance(conteggio, int):
+        configurazioni = getattr(
+            self.sb.table(CONFIG).select("id", count="exact", head=True)
+            .eq("email_destinatario", destinatario).eq("attivo", True).execute(),
+            "count", None,
+        )
+        if not isinstance(conteggio, int) or not isinstance(configurazioni, int):
             raise _Rinuncia("contatore_email_illeggibile")
-        if conteggio >= MAX_EMAIL_24H:
+        if conteggio >= MAX_EMAIL_24H * max(configurazioni, 1):
             raise _Bloccato("troppe_email_allo_stesso_destinatario_in_24_ore")
 
     def _esegui(self, cartella: Path) -> str:
@@ -690,7 +709,7 @@ class _Invio:
         adesso = self.dip.orologio()
 
         controlla_proprieta_piva(self.sb, piva, user_id)
-        client = self.dip.client()
+        client = self.client = self.dip.client()
         controlla_azienda(client.azienda(azienda), azienda, piva)
         elenco = client.elenco_ricevute(azienda)
         controlla_elenco(elenco, azienda, piva)
@@ -754,8 +773,10 @@ class _Invio:
         elif not self._aggiorna(registro):
             raise _Rinuncia("riga_non_piu_in_corso")
 
+        # Il link scade all'ora dell'invio di quel giorno: l'ultimo giorno pieno e' il precedente.
         oggetto, corpo_html, corpo_testo = componi_email(
-            config.get("invoicetronic_nome"), piva, dal, al, len(ids), link, a_roma(scade).date(),
+            config.get("invoicetronic_nome"), piva, dal, al, len(ids), link,
+            a_roma(scade).date() - timedelta(days=1),
         )
         self.sb.table("email_rate_log").insert({
             "destinatario": destinatario,
@@ -861,6 +882,23 @@ def rimuovi_file_scaduti(sb, archivio, adesso: datetime) -> int:
         sb.table(INVII).update({"file_rimossi_at": _iso(adesso)}).eq("id", riga["id"]).execute()
         rimossi += len(riga["storage_paths"])
     return rimossi
+
+
+def rimuovi_file_del_cliente(sb, user_id: str, archivio=None) -> int:
+    """Alla cancellazione dell'account gli ZIP non aspettano la scadenza del link:
+    la privacy promette che se ne va tutto. Va chiamata PRIMA di cancellare
+    `users`: dopo, il registro non dice piu' quali file erano suoi."""
+    righe = (
+        sb.table(INVII).select("id,storage_paths")
+        .eq("user_id", user_id).not_.is_("storage_paths", "null").is_("file_rimossi_at", "null")
+        .execute().data or []
+    )
+    percorsi = [percorso for riga in righe for percorso in (riga.get("storage_paths") or [])]
+    if percorsi:
+        (archivio or ArchivioSupabase(sb)).rimuovi(percorsi)
+        sb.table(INVII).update({"file_rimossi_at": _iso(adesso_utc())}) \
+            .in_("id", [riga["id"] for riga in righe]).execute()
+    return len(percorsi)
 
 
 def _file_vecchi(archivio, prefisso: str, soglia: datetime, profondita: int) -> List[str]:

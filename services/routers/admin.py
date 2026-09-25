@@ -2853,6 +2853,14 @@ def admin_elimina_cliente(
         except Exception as exc:
             logger.warning("Errore eliminazione %s: %s", table, exc)
 
+    # Gli ZIP dell'invio al commercialista stanno nello Storage, non in una
+    # tabella: si tolgono ora, finche' il registro dice quali sono.
+    try:
+        from services.invio_commercialista_service import rimuovi_file_del_cliente
+        deleted["zip_commercialista"] = rimuovi_file_del_cliente(sb, cliente_id)
+    except Exception as exc:
+        logger.warning("Errore eliminazione zip commercialista: %s", type(exc).__name__)
+
     # prodotti_master (memoria AI globale) NON ha user_id: è condivisa fra tutti
     # i clienti e non è dato personale del singolo (stessa policy documentata in
     # account.py per l'auto-cancellazione). Non va toccata qui.

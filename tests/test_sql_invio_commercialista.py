@@ -81,9 +81,12 @@ def _stato(db_sql, iid, stato, **extra):
     _esegui(db_sql, f"UPDATE public.invio_commercialista_invii SET {campi} WHERE id = %s", stato, *extra.values(), iid)
 
 
+TENTATA = "2026-09-25 10:05:00+00"
+
+
 def _inviato(db_sql, cid, tipo, dal, al):
     iid = _invio(db_sql, cid, tipo, dal, al)
-    _stato(db_sql, iid, "in_corso")
+    _stato(db_sql, iid, "in_corso", email_tentata_at=TENTATA)
     _stato(db_sql, iid, "inviato")
     return iid
 
@@ -262,7 +265,7 @@ def test_il_reinvio_resta_dentro_il_gia_inviato(db_sql, psycopg, scalare):
     with pytest.raises(psycopg.errors.CheckViolation):
         _invio(db_sql, cid, "reinvio", "2026-07-15", "2026-08-05")
     iid = _invio(db_sql, cid, "reinvio", "2026-07-10", "2026-07-20")
-    _stato(db_sql, iid, "in_corso")
+    _stato(db_sql, iid, "in_corso", email_tentata_at=TENTATA)
     _stato(db_sql, iid, "inviato")
     assert scalare("SELECT public.invio_commercialista_ultimo_giorno(%s)", cid).isoformat() == "2026-07-31", \
         "il reinvio non sposta il cursore"
@@ -308,7 +311,7 @@ def test_transizioni_vietate(db_sql, psycopg, da, a):
     iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
     percorso = {"richiesto": [], "inviato": ["in_corso", "inviato"], "errore": ["errore"], "bloccato": ["in_corso", "bloccato"]}[da]
     for passo in percorso:
-        _stato(db_sql, iid, passo)
+        _stato(db_sql, iid, passo, **({"email_tentata_at": TENTATA} if (da, passo) == ("inviato", "in_corso") else {}))
     with pytest.raises(psycopg.errors.CheckViolation):
         _stato(db_sql, iid, a)
 
@@ -630,11 +633,11 @@ def test_si_chiarisce_come_non_partito_solo_un_esito_incerto(db_sql, psycopg):
     with pytest.raises(psycopg.errors.CheckViolation):
         _stato(db_sql, iid, "errore", chiarito_non_partito_at="2026-09-25 12:00:00+00")
     _stato(db_sql, iid, "inviato")
-    senza_email = _invio(db_sql, cid, "reinvio", "2026-07-01", "2026-07-31")
-    _stato(db_sql, senza_email, "in_corso")
-    _stato(db_sql, senza_email, "esito_incerto")
+    # Senza email tentata un esito incerto non esiste piu' (ici_spedito_con_email_chk):
+    # il chiarimento senza email si prova sull'unica strada rimasta, l'INSERT.
     with pytest.raises(psycopg.errors.CheckViolation):
-        _stato(db_sql, senza_email, "errore", chiarito_non_partito_at="2026-09-25 12:00:00+00")
+        _invio(db_sql, cid, "reinvio", "2026-07-01", "2026-07-31", stato="errore",
+               chiarito_non_partito_at="2026-09-25 12:00:00+00")
 
 
 def test_il_chiarimento_non_si_riscrive(db_sql, psycopg):
@@ -657,7 +660,7 @@ def test_transizioni_vietate_che_rispedirebbero(db_sql, psycopg, da, a):
     cid = _config(db_sql)
     iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
     for passo in {"in_corso": ["in_corso"], "esito_incerto": ["in_corso", "esito_incerto"]}[da]:
-        _stato(db_sql, iid, passo)
+        _stato(db_sql, iid, passo, **({"email_tentata_at": TENTATA} if passo == "in_corso" else {}))
     with pytest.raises(psycopg.errors.CheckViolation):
         _stato(db_sql, iid, a)
 
@@ -719,7 +722,7 @@ def test_l_ordinario_dopo_due_anni_riparte_dal_limite(db_sql, psycopg, scalare):
     _semina(db_sql)
     cid = _config(db_sql)
     iid = _invio(db_sql, cid, "primo", "2023-06-01", "2023-06-10", creata="2023-06-15 10:00:00+00")
-    _stato(db_sql, iid, "in_corso")
+    _stato(db_sql, iid, "in_corso", email_tentata_at="2023-06-15 10:05:00+00")
     _stato(db_sql, iid, "inviato")
     with pytest.raises(psycopg.errors.CheckViolation):
         _invio(db_sql, cid, "ordinario", "2023-06-11", "2024-09-30", da="notturno")
@@ -761,3 +764,78 @@ def test_la_pulizia_toglie_l_email_delle_configurazioni_mai_accese(db_sql, scala
                             "VALUES (%s, %s, %s, now() - interval '91 days') RETURNING id", U1, PIVA, EMAIL)[0][0]
     assert scalare("SELECT public.purge_invio_commercialista(365, 90)") == 1
     assert scalare("SELECT email_destinatario FROM public.invio_commercialista_config WHERE id = %s", ferma) is None
+
+
+# ─── Seconda review della fase B: il registro non dimentica ──────────────────
+
+def test_config_id_non_si_azzera_a_mano(db_sql, psycopg):
+    """Con la configurazione viva, config_id a NULL toglierebbe la riga dal
+    cursore e dai controlli: il suo periodo si potrebbe rispedire."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    inviato = _inviato(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    in_volo = _invio(db_sql, cid, "reinvio", "2026-07-01", "2026-07-10")
+    _stato(db_sql, in_volo, "in_corso", email_tentata_at=TENTATA)
+    for iid in (inviato, in_volo):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            _esegui(db_sql, "UPDATE public.invio_commercialista_invii SET config_id = NULL WHERE id = %s", iid)
+
+
+def test_service_role_non_cancella_il_registro(db_sql, psycopg, scalare):
+    """Cancellare una riga inviata farebbe ripartire l'ordinario da quel periodo.
+    Su Supabase le default privileges danno ALL a service_role: si simula, poi la
+    migration lo toglie. Pulizia (SECURITY DEFINER) e cascate funzionano ancora."""
+    if not scalare("SELECT count(*) FROM pg_roles WHERE rolname = 'service_role'"):
+        pytest.skip("ruolo service_role assente nello snapshot")
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _inviato(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _esegui(db_sql, "GRANT ALL ON public.invio_commercialista_invii TO service_role")
+    _esegui(db_sql, MIGRATION.read_text(encoding="utf-8"))
+    for permesso in ("DELETE", "TRUNCATE"):
+        assert scalare("SELECT has_table_privilege('service_role', 'public.invio_commercialista_invii', %s)", permesso) is False
+    _esegui(db_sql, "SET LOCAL ROLE service_role")
+    try:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            _esegui(db_sql, "DELETE FROM public.invio_commercialista_invii WHERE id = %s", iid)
+        assert _esegui(db_sql, "SELECT public.purge_invio_commercialista(365, 90)")[0][0] == 0
+        _esegui(db_sql, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
+        assert _esegui(db_sql, "SELECT current_user")[0][0] == "service_role"
+    finally:
+        _esegui(db_sql, "RESET ROLE")
+    assert scalare("SELECT config_id FROM public.invio_commercialista_invii WHERE id = %s", iid) is None
+
+
+def test_la_pulizia_risparmia_le_configurazioni_attive(db_sql, scalare):
+    """Ferma da 91 giorni ma accesa: email e consenso restano."""
+    _semina(db_sql)
+    cid = _esegui(
+        db_sql,
+        "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, email_destinatario, "
+        "data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email, aggiornata_at) "
+        "VALUES (%s, %s, 1756, %s, '2026-07-01', true, true, '2026-06-01', %s, now() - interval '91 days') RETURNING id",
+        U1, PIVA, EMAIL, EMAIL,
+    )[0][0]
+    assert scalare("SELECT public.purge_invio_commercialista(365, 90)") == 0
+    assert _esegui(db_sql, "SELECT attivo, email_destinatario FROM public.invio_commercialista_config WHERE id = %s", cid)[0] == (True, EMAIL)
+
+
+def test_un_esito_incerto_diventa_errore_solo_col_chiarimento(db_sql, psycopg):
+    """Un 4xx scritto dopo, su una riga andata in timeout, liberava il periodo."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _partita(db_sql, cid)
+    _stato(db_sql, iid, "esito_incerto")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _stato(db_sql, iid, "errore", brevo_http_status=400)
+
+
+@pytest.mark.parametrize("stato", ["inviato", "esito_incerto"])
+def test_inviato_o_incerto_solo_con_l_email_tentata(db_sql, psycopg, stato):
+    """E' il tentativo d'email che il trigger autorizza: senza, il controllo si saltava."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _stato(db_sql, iid, "in_corso")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _stato(db_sql, iid, stato)

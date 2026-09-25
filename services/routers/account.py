@@ -512,6 +512,13 @@ def account_elimina(
             deleted_extra[tabella] = len(r.data or [])
         except Exception as exc:
             logger.warning("elimina-account: %s: %s", tabella, exc)
+    # Gli ZIP dell'invio al commercialista stanno nello Storage, non in una
+    # tabella: si tolgono ora, finche' il registro dice quali sono.
+    try:
+        from services.invio_commercialista_service import rimuovi_file_del_cliente
+        deleted_extra["zip_commercialista"] = rimuovi_file_del_cliente(sb, user_id)
+    except Exception as exc:
+        logger.warning("elimina-account: zip commercialista: %s", type(exc).__name__)
 
     sb.table("users").delete().eq("id", user_id).execute()
     logger.warning("ELIMINA_ACCOUNT_SELF: email=%s | id=%s | extra=%s", email, user_id, deleted_extra)

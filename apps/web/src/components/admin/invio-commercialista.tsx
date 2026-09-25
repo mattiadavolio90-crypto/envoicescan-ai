@@ -14,7 +14,8 @@ import {
 import {
   type Configurazione, type Frequenza, type Invio, type StatoInvioCommercialista, type Tono,
   ETICHETTA_FREQUENZA, ETICHETTA_STATO, ETICHETTA_TIPO, TONO_STATO,
-  erroreDelPeriodo, formattaByte, formattaData, periodoInviaOra, spostaGiorni, statoConfigurazione, testoMotivo,
+  avvisoStoricoOrfano, erroreDelPeriodo, formattaByte, formattaData, periodoInviaOra, spostaGiorni,
+  statoConfigurazione, testoMotivo,
 } from "@/lib/invio-commercialista";
 
 const CLASSE_TONO: Record<Tono, string> = {
@@ -112,11 +113,16 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
           <p className="text-muted-foreground">Nessuna sede di questo cliente ha una P.IVA di 11 cifre.</p>
         )}
         {dati?.piva_disponibili.map((piva) => (
-          <div key={piva} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
-            <span className="tabular-nums">P.IVA {piva}</span>
-            <Button size="sm" variant="outline" disabled={occupato} onClick={() => cercaAzienda(piva)}>
-              Collega a Invoicetronic
-            </Button>
+          <div key={piva} className="space-y-1 rounded-lg border px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="tabular-nums">P.IVA {piva}</span>
+              <Button size="sm" variant="outline" disabled={occupato} onClick={() => cercaAzienda(piva)}>
+                Collega a Invoicetronic
+              </Button>
+            </div>
+            {avvisoStoricoOrfano(dati.storico_orfano, piva) && (
+              <p className="text-xs text-incerto">{avvisoStoricoOrfano(dati.storico_orfano, piva)}</p>
+            )}
           </div>
         ))}
         {dati?.configurazioni.map((c) => (
@@ -124,6 +130,7 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
             key={`${c.id}-${c.aggiornata_at}`}
             c={c}
             oggi={oggi}
+            avvisoStorico={avvisoStoricoOrfano(dati.storico_orfano, c.piva)}
             occupato={occupato}
             chiama={chiama}
             onPeriodo={(tipo) => setPeriodo({
@@ -248,9 +255,10 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
   );
 }
 
-function BloccoConfigurazione({ c, oggi, occupato, chiama, onPeriodo, onInviaOra }: {
+function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeriodo, onInviaOra }: {
   c: Configurazione;
   oggi: string;
+  avvisoStorico: string | null;
   occupato: boolean;
   chiama: Chiama;
   onPeriodo: (tipo: "prova" | "reinvio") => void;
@@ -298,6 +306,7 @@ function BloccoConfigurazione({ c, oggi, occupato, chiama, onPeriodo, onInviaOra
           <Input id={`partenza-${c.id}`} type="date" value={partenza} onChange={(e) => setPartenza(e.target.value)} />
         </div>
       </div>
+      {avvisoStorico && !c.ultimo_giorno_inviato && <p className="text-xs text-incerto">{avvisoStorico}</p>}
       {modificata && (
         <Button
           size="sm"

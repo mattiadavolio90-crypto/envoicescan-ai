@@ -1247,6 +1247,41 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   dell'account (config_id ON DELETE SET NULL), contro la promessa della privacy.
 >   Corretto nella migration con la FK di user_id a cascata (ce62880). **Mutanti:
 >   10, tutti uccisi, piu' B39 sulla FK.**
+>
+> - **25/09/2026 — seconda review della fase B e review della fase C
+>   dell'invio al commercialista.** La C e' chiusa senza blocchi. La B era ancora
+>   rossa: B1 e B2 chiusi (tutte le sonde rifiutate), ma il fix ne aveva aperto
+>   uno nuovo, e ne restava un altro della stessa famiglia:
+>   - `config_id` si azzerava a mano con la configurazione viva: la riga usciva dal
+>     cursore e il periodo si rispediva. Ora diventa NULL solo quando la
+>     configurazione non c'e' piu';
+>   - una riga del registro si poteva cancellare, e l'ordinario ripartiva dal
+>     periodo cancellato. Ora service_role non ha DELETE ne' TRUNCATE; pulizia e
+>     cascate girano come proprietario;
+>   - la pulizia che risparmia le configurazioni attive non aveva un test.
+>   Adottati tre rilievi non bloccanti, finche' la migration non e' applicata:
+>   - da `esito_incerto` a `errore` si passa solo col chiarimento;
+>   - `inviato` ed `esito_incerto` esistono solo con l'email tentata;
+>   - la scheda admin mostra fin dove una configurazione cancellata aveva gia'
+>     spedito.
+>   Nella voce della B mancava un dato: al primo giro era sopravvissuto anche R38,
+>   non solo R16. Dalla review C:
+>   - l'anti-loop conta per configurazione attiva (con quattro clienti dello stesso
+>     commercialista la quarta email veniva bloccata ogni mese);
+>   - l'email dice come ultimo giorno quello prima della scadenza del link;
+>   - il client Invoicetronic si chiude a fine invio;
+>   - l'errore inatteso va nel log senza il messaggio, che puo' contenere la riga
+>     del DB con l'email;
+>   - gli ZIP si tolgono subito alla cancellazione dell'account, da entrambe le
+>     strade (la privacy promette che se ne va tutto);
+>   - hanno un test il timeout di Brevo, l'assenza di dati personali in tutti gli
+>     avvisi Telegram, la cartella temporanea cancellata e il ciclo per
+>     configurazione del pianificatore.
+>   **Mutanti: 20, tutti uccisi.** Lasciati, con il perche':
+>   - un rilevatore di fatture arrivate in un periodo gia' spedito: i doppioni
+>     scartati non sono in `documenti_ids`, quindi darebbe falsi allarmi. La misura
+>     la fa la prova a vuoto;
+>   - l'INSERT diretto in uno stato finale: lascia al piu' un buco, non un doppione.
 
 ---
 

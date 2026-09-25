@@ -159,8 +159,10 @@ Reclamo all'autorità di controllo: **Garante per la Protezione dei Dati Persona
   scadenza del link a 30 giorni (`rimuovi_file_scaduti`) e comunque oltre 33 giorni
   (`spazza_bucket`); email del destinatario nel registro 365 giorni, email e consenso
   di una configurazione spenta o mai accesa 90 giorni, registro senza configurazione
-  365 giorni (`purge_invio_commercialista`). Il commercialista e' un destinatario
-  scelto dal cliente, non un sub-responsabile.
+  365 giorni (`purge_invio_commercialista`). Alla cancellazione dell'account gli
+  ZIP si tolgono subito (`rimuovi_file_del_cliente`, chiamata da entrambe le
+  cancellazioni prima di `users`; se lo Storage non risponde, li prende la spazzata).
+  Il commercialista e' un destinatario scelto dal cliente, non un sub-responsabile.
 - `marketplace_leads` (email, nome, messaggio): 730 giorni, **solo stato
   `archiviato`** (`purge_marketplace_leads`) — un lead aperto e' una trattativa
   in corso e non si cancella a tempo.

@@ -184,12 +184,31 @@ def invio_commercialista_stato(cliente_id: str, admin_user: dict = Depends(_veri
             "invii": invii,
         })
     collegate = {c["piva"] for c in configurazioni}
+    pive = _piva_del_cliente(sb, cliente_id)
     return {
         "oggi": oggi.isoformat(),
         "limite_due_anni": svc.limite_due_anni(oggi).isoformat(),
-        "piva_disponibili": [p for p in _piva_del_cliente(sb, cliente_id) if p not in collegate],
+        "piva_disponibili": [p for p in pive if p not in collegate],
+        "storico_orfano": _storico_orfano(sb, sorted(set(pive) | collegate)),
         "configurazioni": risultato,
     }
+
+
+def _storico_orfano(sb, pive: List[str]) -> Dict[str, str]:
+    """Fin dove una configurazione ormai cancellata ha gia' spedito, per P.IVA: chi
+    ricollega quella P.IVA non deve scegliere una partenza che rispedisce."""
+    if not pive:
+        return {}
+    righe = fetch_all(
+        sb.table(svc.INVII).select("id,piva,periodo_al")
+        .is_("config_id", "null").in_("piva", pive)
+        .in_("tipo", ["primo", "ordinario"]).in_("stato", ["inviato", "esito_incerto"]).order("id")
+    )
+    storico: Dict[str, str] = {}
+    for riga in righe:
+        al = str(riga["periodo_al"])[:10]
+        storico[riga["piva"]] = max(storico.get(riga["piva"], al), al)
+    return storico
 
 
 @router.get(BASE + "/azienda", tags=["Admin"])

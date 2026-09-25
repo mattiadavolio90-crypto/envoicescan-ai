@@ -51,7 +51,16 @@ export interface StatoInvioCommercialista {
   oggi: string;
   limite_due_anni: string;
   piva_disponibili: string[];
+  /** P.IVA → ultimo giorno gia' spedito da una configurazione ormai cancellata. */
+  storico_orfano: Record<string, string>;
   configurazioni: Configurazione[];
+}
+
+export function avvisoStoricoOrfano(storico: Record<string, string> | undefined, piva: string): string | null {
+  const fino = storico?.[piva];
+  return fino
+    ? `Una configurazione cancellata ha già inviato le fatture di questa P.IVA fino al ${formattaData(fino)}: scegli la partenza dopo, o il commercialista le riceve due volte.`
+    : null;
 }
 
 export const DUE_ANNI =

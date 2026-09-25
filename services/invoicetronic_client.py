@@ -113,6 +113,11 @@ class ClientInvoicetronic:
         self._orologio = orologio
         self._ultima: Optional[float] = None
 
+    def chiudi(self) -> None:
+        chiudi = getattr(self._http, "close", None)
+        if callable(chiudi):
+            chiudi()
+
     def _rispetta_ritmo(self) -> None:
         if self._ultima is not None:
             mancante = RITMO_S - (self._orologio() - self._ultima)
