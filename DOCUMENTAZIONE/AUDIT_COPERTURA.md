@@ -980,31 +980,6 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   clic su «Annulla iscrizione» in Gmail avrebbe disiscritto il cliente a sua
 >   insaputa, senza rimedio dall'admin. Ora `componi_email(prova=True)` li toglie
 >   entrambi. 4 mutanti, 4 uccisi.
->
-> - **25/09/2026 — passo 0 del piano «invio XML al commercialista»: l'avviso
->   sul saldo crediti Invoicetronic.** Prima la misura: a saldo zero il webhook
->   segna `failed` con «HTTP 403», il worker ritenta 8 volte e in circa 2 ore
->   ogni fattura in arrivo e' `dead`, per tutti i clienti e senza avviso (nessuna
->   chiamata a `/status` nel repo). Fatto: `services/invoicetronic_saldo.py`
->   (`GET /status` solo verso l'host Invoicetronic; soglia 100 da env; avvisi
->   Telegram sotto soglia subito e poi ogni 24 ore, subito se peggiora,
->   «rientrato» una volta, «illeggibile» al 2° controllo fallito e poi ogni 4),
->   controllo ogni 6 ore nel queue-worker con errore nel log all'avvio se
->   mancano le chiavi. Il 403 del saldo si riconosce dal `code` (il 403 da solo
->   vale anche per firme e sotto-chiavi): nel webhook la riga e' marcata
->   `payload_meta.api_error_code` e l'avviso parte al massimo una volta all'ora;
->   nel recupero XML del worker il motivo arriva a `last_error`. **Prima prova
->   del flusso vero della Edge Function**: nessun test eseguiva `processaEvento`;
->   ora un punto d'iniezione del client DB lo fa girare con un 403 simulato.
->   **Trovato**: `fetchXmlForResource` non ha chiamanti dal 30/7 (tolto il
->   reprocess), lasciata dov'e'; la Edge Function in produzione (v40) e' indietro
->   di un solo commit, che cambia un commento. **Mutanti: 37, tutti uccisi** —
->   uno sopravviveva al primo giro (la chiamata del controllo chiavi dentro
->   `main` non era osservata): aggiunto il test. Durante i mutanti la suite di
->   un'altra sessione ha visto 2 rossi di passaggio: e' la trappola nota dei
->   mutanti letti da una suite in corso. **Suite `-m "not sql"`: 16.314 passed,
->   48 skipped** (553 `-m sql` non rilanciati: nessun SQL toccato); **Deno 126**.
->   Da deployare: push (queue-worker) + Edge Function a mano.
 
 ---
 
