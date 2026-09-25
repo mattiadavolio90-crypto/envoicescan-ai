@@ -243,6 +243,8 @@ type AgendaSectionProps = {
   title: string;
   docs: Documento[];
   defaultOpen?: boolean;
+  /** Ricerca attiva: la sezione si apre anche se chiusa di default. */
+  forzaAperta?: boolean;
   selectedFileOrigini: Set<string>;
   onToggleSelect: (fo: string) => void;
   onToggleAll: (docs: Documento[], selectAll: boolean) => void;
@@ -257,12 +259,18 @@ type AgendaSectionProps = {
 };
 
 function AgendaSection({
-  title, docs, defaultOpen = true,
+  title, docs, defaultOpen = true, forzaAperta = false,
   selectedFileOrigini, onToggleSelect, onToggleAll, onPaga, onPeek, accentClass = "", sedeTecnicaId,
   mostraScadenze = true, sommario,
 }: AgendaSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const checkboxRef = useRef<HTMLInputElement>(null);
+
+  // Con una ricerca attiva la sezione si apre da sola: cercare dentro "Scadute"
+  // — chiusa di default perche' su una sede reale sono 414 righe — altrimenti
+  // non mostrerebbe NULLA, cioe' proprio il difetto che la ricerca deve togliere.
+  // Finita la ricerca ogni sezione torna al suo stato naturale.
+  const aperta = open || forzaAperta;
 
   const selectableDocs = documentiSelezionabili(docs);
   const { selezionati: selectedCount, tutte: allSelected } =
@@ -295,7 +303,7 @@ function AgendaSection({
           onClick={() => setOpen(o => !o)}
         >
           <div className="flex items-center gap-2">
-            {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+            {aperta ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
             <span className={`font-semibold text-sm ${accentClass}`}>{title}</span>
             <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
             {selectedCount > 0 && (
@@ -306,7 +314,7 @@ function AgendaSection({
         </button>
       </div>
 
-      {open && (
+      {aperta && (
         <div className="border-t divide-y divide-border/50">
           {docs.map((doc) => (
             <DocumentoRow
@@ -1630,9 +1638,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   const [filtroDateDa, setFiltroDateDa] = useState("");
   const [filtroDateA, setFiltroDateA] = useState("");
   const [filtroSoloNuove, setFiltroSoloNuove] = useState(false);
+  const [ricerca, setRicerca] = useState("");
+  const ricercaRef = useRef<HTMLInputElement>(null);
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
 
-  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove || filtroSede !== "tutte";
+  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove || filtroSede !== "tutte" || ricerca.trim() !== "";
 
   function resetFiltri() {
     setFiltroPeriodo("tutti");
@@ -1641,7 +1651,21 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     setFiltroDateA("");
     setFiltroSoloNuove(false);
     setFiltroSede("tutte");
+    setRicerca("");
   }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+      e.preventDefault();
+      ricercaRef.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function matchFiltroSede(d: Documento): boolean {
     if (filtroSede === "tutte") return true;
@@ -1664,7 +1688,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     soloNuove: filtroSoloNuove,
     dataDa: filtroDateDa,
     dataA: filtroDateA,
-  }), [filtroPeriodo, filtroFornitori, filtroSoloNuove, filtroDateDa, filtroDateA]);
+    ricerca,
+  }), [filtroPeriodo, filtroFornitori, filtroSoloNuove, filtroDateDa, filtroDateA, ricerca]);
 
   const documentiFiltrati = useMemo(
     () => filtraDocumenti(documenti, filtriComuni, matchFiltroSede),
@@ -1708,11 +1733,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   const documentiCalendario = useMemo(() =>
     filtraDocumenti(
       documenti,
-      { periodo: "tutti", fornitori: [...filtroFornitori], soloNuove: filtroSoloNuove },
+      { periodo: "tutti", fornitori: [...filtroFornitori], soloNuove: filtroSoloNuove, ricerca },
       matchFiltroSede,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [documenti, filtroFornitori, filtroSoloNuove, filtroSede, sedeTecnicaId]
+    [documenti, filtroFornitori, filtroSoloNuove, ricerca, filtroSede, sedeTecnicaId]
   );
 
   const loadData = useCallback(async () => {
@@ -2004,10 +2029,39 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     onPaga: (doc: Documento) => handlePaga(doc, true),
     onPeek: setPeekDoc,
     sedeTecnicaId,
+    forzaAperta: ricerca.trim() !== "",
   };
 
   return (
     <div className="space-y-5 pb-20">
+      {/* Ricerca — il primo gesto di chi lavora qui: il fornitore chiama e
+          chiede di una fattura. Cerca su fornitore, numero documento e importo
+          (matchRicerca in lib/scadenziario.ts, presidio
+          tests/test_scadenziario_ricerca_frontend.py). Sta in cima perche' e'
+          l'ancora della pagina, come i filtri periodo in Margini. */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          ref={ricercaRef}
+          type="search"
+          value={ricerca}
+          onChange={e => setRicerca(e.target.value)}
+          placeholder="Cerca fattura: fornitore, numero o importo"
+          aria-label="Cerca fattura per fornitore, numero documento o importo"
+          className="h-10 pl-9 pr-9"
+        />
+        {ricerca !== "" && (
+          <button
+            type="button"
+            onClick={() => { setRicerca(""); ricercaRef.current?.focus(); }}
+            aria-label="Pulisci la ricerca"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+
       {/* KPI bar — le card sono cliccabili e applicano il filtro periodo
           corrispondente (toggle: riclicco la card attiva → torno a "tutti").
           "Pagate (mese)" è un consuntivo, non un filtro: resta informativa.

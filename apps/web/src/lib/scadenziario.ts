@@ -356,6 +356,8 @@ export type FiltriScadenziario = {
   soloNuove?: boolean;
   dataDa?: string;
   dataA?: string;
+  /** Testo libero: fornitore, numero documento o importo. Vedi `normalizzaRicerca`. */
+  ricerca?: string;
 };
 
 export function confiniPeriodo(now: Date = new Date()): ConfiniPeriodo {
@@ -478,6 +480,54 @@ export function scaduteFuoriDalMese(
  * il KPI per-sede deve riflettere gli altri filtri attivi ma non quello di sede,
  * altrimenti sarebbe sempre un'unica barra.
  */
+/**
+ * Forma confrontabile di un testo digitato: minuscole, accenti sciolti, e via
+ * tutto cio' che separa le cifre o decora un numero di documento.
+ *
+ * Il contabile digita quello che ha sotto gli occhi — "N. 4521/A", "1.250,00",
+ * "Caffe'" — e non la grafia esatta che sta a DB. Senza questa normalizzazione
+ * la ricerca fallirebbe proprio sui casi per cui viene usata.
+ */
+export function normalizzaRicerca(testo: string): string {
+  return (testo || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    // Prefissi di numerazione: sulla fattura il numero e' scritto "N. 4521/A"
+    // o "Fatt. 4521", a DB sta come "4521/A". Si tolgono PRIMA dei separatori,
+    // altrimenti "n." e' gia' diventato "n" e resterebbe attaccato alle cifre.
+    .replace(/\b(n|nr|num|numero|fatt|fattura|doc)\b\.?/g, "")
+    .replace(/[\s.,/\\#-]/g, "");
+}
+
+/**
+ * Il documento corrisponde al testo cercato.
+ *
+ * Tre campi, in ordine di come li usa chi cerca: il fornitore, il numero di
+ * documento e l'importo. L'importo si confronta sia come sta a DB (`1250.5`)
+ * sia nella grafia italiana che il cliente LEGGE a video (`1.250,50`): cercare
+ * "1250,50" copiandolo dalla riga deve trovare la riga stessa.
+ */
+export function matchRicerca(d: Documento, ricerca: string): boolean {
+  const q = normalizzaRicerca(ricerca);
+  if (!q) return true;
+
+  if (normalizzaRicerca(d.fornitore).includes(q)) return true;
+  if (d.numero_documento && normalizzaRicerca(d.numero_documento).includes(q)) return true;
+
+  const importo = d.totale_documento;
+  if (importo !== null && importo !== undefined) {
+    if (normalizzaRicerca(String(importo)).includes(q)) return true;
+    const italiano = importo.toLocaleString("it-IT", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    if (normalizzaRicerca(italiano).includes(q)) return true;
+  }
+
+  return false;
+}
+
 export function matchDocumento(
   d: Documento,
   filtri: FiltriScadenziario,
@@ -487,11 +537,12 @@ export function matchDocumento(
   // worker). Il contratto pubblico resta l'array, che i test serializzano.
   chiaviFornitori?: ReadonlySet<string> | null,
 ): boolean {
-  const { periodo, fornitori, soloNuove, dataDa = "", dataA = "" } = filtri;
+  const { periodo, fornitori, soloNuove, dataDa = "", dataA = "", ricerca = "" } = filtri;
 
   const chiavi = chiaviFornitori ?? (fornitori && fornitori.length > 0 ? new Set(fornitori) : null);
   if (chiavi && chiavi.size > 0 && !chiavi.has(fornitoreKey(d))) return false;
   if (soloNuove && !d.is_nuovo) return false;
+  if (ricerca && !matchRicerca(d, ricerca)) return false;
 
   // Filtro periodo (solo su non pagate con scadenza, tranne "tutti").
   // parseLocalDate interpreta "YYYY-MM-DD" a mezzanotte LOCALE: con new Date()
