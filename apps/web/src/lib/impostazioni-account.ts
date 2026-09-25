@@ -60,3 +60,14 @@ export function confermaSvuotamentoValida(testo: string | null | undefined): boo
 export function confermaEliminazioneValida(testo: string | null | undefined): boolean {
   return (testo ?? "").trim().toUpperCase() === "ELIMINA";
 }
+
+// La scheda «Email settimanale» nelle Impostazioni: solo se l'admin l'ha
+// abilitata per questo cliente (Mattia, 25/09/2026: la accende lui, cliente per
+// cliente) e mai a un admin, escluso dai destinatari. Fuori da questi casi
+// l'interruttore prometterebbe un'email che non parte. Assente = non abilitata.
+export function mostraEmailSettimanale(data: {
+  is_admin?: boolean | null;
+  email_settimanale_abilitata?: boolean | null;
+}): boolean {
+  return data.is_admin !== true && data.email_settimanale_abilitata === true;
+}

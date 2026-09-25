@@ -27,6 +27,7 @@ import {
   statoChatAi,
   confermaSvuotamentoValida,
   confermaEliminazioneValida,
+  mostraEmailSettimanale,
   type LivelloUso,
 } from "@/lib/impostazioni-account";
 
@@ -44,6 +45,7 @@ type AccountData = {
   price_alert_threshold: number | null;
   tema?: "dark" | "light";
   email_settimanale?: boolean;
+  email_settimanale_abilitata?: boolean;
   membro_dal: string | null;
   ultimo_accesso: string | null;
   is_admin: boolean;
@@ -684,8 +686,9 @@ export function AccountClient({
         <GruppoCard nomeGruppo={nomeGruppo} email={data.email} membroDal={data.membro_dal} numPv={sedi.length} />
         <SediGruppoCard sedi={sedi} />
         <AspettoCard temaSalvato={data.tema ?? "dark"} />
-        {/* Gli admin non la ricevono (esclusi dai destinatari): l'interruttore mentirebbe. */}
-        {!data.is_admin && <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />}
+        {mostraEmailSettimanale(data) && (
+          <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />
+        )}
         <CambioPasswordForm />
       </div>
     );
@@ -787,7 +790,9 @@ export function AccountClient({
       <AspettoCard temaSalvato={data.tema ?? "dark"} />
 
       {/* Email settimanale dell'assistente */}
-      {!data.is_admin && <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />}
+      {mostraEmailSettimanale(data) && (
+        <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />
+      )}
 
       {/* Cambio password */}
       <CambioPasswordForm />

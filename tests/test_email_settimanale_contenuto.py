@@ -43,8 +43,14 @@ def _valore(v):
 class _Q:
     def __init__(self, righe):
         self.righe, self.filtri, self._ordine, self._limite = list(righe), [], None, None
+        self._colonne = None
 
-    def select(self, *_a, **_k):
+    def select(self, colonne="*", **_k):
+        # Come PostgREST: arrivano SOLO le colonne chieste. Un finto database
+        # che restituisce la riga intera terrebbe verde un codice che dimentica
+        # di chiedere una colonna (mock generoso).
+        if colonne != "*":
+            self._colonne = [c.strip() for c in colonne.split(",")]
         return self
 
     def eq(self, col, val):
@@ -94,6 +100,8 @@ class _Q:
             out = out[a:b + 1]
         if self._limite is not None:
             out = out[: self._limite]
+        if self._colonne:
+            out = [{c: r.get(c) for c in self._colonne if c in r} for r in out]
         return type("R", (), {"data": out})()
 
 
@@ -102,7 +110,8 @@ class _DB:
         self.tabelle: Dict[str, List[Dict[str, Any]]] = {
             "ricavi_giornalieri": [], "fatture_documenti": [],
             "users": [{"id": UID, "email": "anna@cliente.it", "attivo": True, "ruolo": "cliente",
-                       "email_settimanale": True, "nome_referente": "Anna"}],
+                       "email_settimanale": True, "email_settimanale_abilitata": True,
+                       "nome_referente": "Anna"}],
             "ristoranti": [{"id": "r1", "user_id": UID, "nome_ristorante": "Trattoria",
                             "attivo": True, "sede_tecnica": False}],
         }
@@ -457,6 +466,31 @@ def test_osservazioni_usano_il_giorno_dell_email_non_quello_di_oggi(monkeypatch)
     _otto_settimane(db, "r1")
     assert svc._sezione_osservazioni(db, _dest(), MARTEDI - timedelta(days=1)) is None
     assert svc._sezione_osservazioni(db, _dest(), MARTEDI) is not None
+
+
+@pytest.fixture
+def food_cost_alto(monkeypatch):
+    """Agosto a food cost 45,8%, settembre gia' arrivato: i dati che
+    `_briefing_food_cost_alto` legge, finti alla sorgente."""
+    monkeypatch.setattr("services.margine_service.carica_margini_anno", lambda *a, **k: {})
+    monkeypatch.setattr(fw, "_merge_override_mensile", lambda m, *a, **k: m)
+    monkeypatch.setattr("services.margine_service.calcola_costi_automatici_per_anno_sql",
+                        lambda *a, **k: ({8: 4580.0, 9: 100.0}, {}))
+    monkeypatch.setattr(fw, "_kpi_periodo", lambda *a, **k: {"food_cost_pct": 45.8, "netto": 10000.0})
+    monkeypatch.setattr("services.settore_service.settore_sede", lambda rid, sb: "ristorazione")
+
+
+@pytest.mark.parametrize("oggi_reale, giorno_email, parla", [
+    (date(2026, 9, 21), date(2026, 10, 5), True),    # email nella finestra, oggi fuori
+    (date(2026, 10, 5), date(2026, 9, 21), False),   # oggi nella finestra, email fuori
+])
+def test_il_food_cost_segue_il_giorno_dell_email(monkeypatch, food_cost_alto, oggi_reale, giorno_email, parla):
+    """Il parametro `oggi` di _briefing_osservazioni era provato solo
+    sull'andamento (review del 25/09): anche la finestra del food cost deve
+    seguire il giorno dell'email, non quello in cui si guarda l'anteprima."""
+    monkeypatch.setattr(fw, "_oggi_rome", lambda: oggi_reale)
+    testo = svc._sezione_osservazioni(_DB(), _dest(), giorno_email)
+    assert (testo is not None and "food cost" in testo) is parla, testo
 
 
 def test_il_lunedi_l_andamento_tace(monkeypatch):

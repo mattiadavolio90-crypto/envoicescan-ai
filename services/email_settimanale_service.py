@@ -1,8 +1,10 @@
 """Email settimanale dell'assistente (fase 7 del piano consulente) — la struttura.
 
 Una volta a settimana, il lunedi' alle 7 di Roma, l'assistente raggiunge il
-cliente anche se non apre l'app. Decisioni di Mattia (24/09/2026): parte a tutti
-i clienti attivi con la disiscrizione in ogni email; il link porta alla Home.
+cliente anche se non apre l'app. Decisioni di Mattia: il link porta alla Home
+(24/09); la riceve SOLO chi l'admin ha abilitato, cliente per cliente (25/09,
+`users.email_settimanale_abilitata`), e il cliente la puo' sempre spegnere
+(`users.email_settimanale`, la sua scelta, che nessuno sovrascrive).
 
 IL CONTENUTO (fase 7b, deciso da Mattia il 25/09): «mi spaventa inviare
 informazioni inutili o incomplete». Ogni argomento parla SOLO se per quel
@@ -130,9 +132,11 @@ class Destinatario:
 def scegli_destinatari(utenti: List[Dict[str, Any]], sedi: List[Dict[str, Any]]) -> List[Destinatario]:
     """Funzione pura: chi riceve l'email, a partire dalle righe gia' lette.
 
-    Riceve: utente attivo, con la preferenza accesa, non admin (per ruolo o per
-    email), con almeno una sede attiva e non tecnica. Una email per utente: la
-    catena ha tutte le sue sedi nella stessa email.
+    Riceve: utente attivo, ABILITATO dall'admin, con la sua preferenza accesa,
+    non admin (per ruolo o per email), con almeno una sede attiva e non tecnica.
+    Abilitazione assente = non abilitato: si spedisce solo a chi e' stato
+    scelto. Una email per utente: la catena ha tutte le sue sedi nella stessa
+    email.
     """
     admin = {e.strip().lower() for e in ADMIN_EMAILS}
     per_utente: Dict[str, List[Dict[str, Any]]] = {}
@@ -148,6 +152,8 @@ def scegli_destinatari(utenti: List[Dict[str, Any]], sedi: List[Dict[str, Any]])
         email = str(u.get("email") or "").strip()
         if not email or u.get("attivo") is False or u.get("email_settimanale") is False:
             continue
+        if u.get("email_settimanale_abilitata") is not True:
+            continue
         if str(u.get("ruolo") or "").strip().lower() == "admin" or email.lower() in admin:
             continue
         uid = str(u.get("id"))
@@ -162,11 +168,15 @@ def scegli_destinatari(utenti: List[Dict[str, Any]], sedi: List[Dict[str, Any]])
     return out
 
 
-def leggi_destinatari(sb, solo_user_id: Optional[str] = None) -> List[Destinatario]:
+def leggi_destinatari(sb, solo_user_id: Optional[str] = None,
+                      senza_abilitazione: bool = False) -> List[Destinatario]:
+    """`senza_abilitazione`: solo per anteprima e prova all'admin, che servono
+    a decidere SE abilitare un cliente. La scelta del cliente resta rispettata."""
     from utils.supabase_paging import fetch_all
 
     q = sb.table("users").select(
-        "id,email,attivo,ruolo,email_settimanale,nome_referente,nome_gruppo,nome_ristorante"
+        "id,email,attivo,ruolo,email_settimanale,email_settimanale_abilitata,"
+        "nome_referente,nome_gruppo,nome_ristorante"
     )
     if solo_user_id:
         q = q.eq("id", solo_user_id)
@@ -180,6 +190,8 @@ def leggi_destinatari(sb, solo_user_id: Optional[str] = None) -> List[Destinatar
         .in_("user_id", ids)
         .order("id")
     )
+    if senza_abilitazione:
+        utenti = [{**u, "email_settimanale_abilitata": True} for u in utenti]
     return scegli_destinatari(utenti, sedi)
 
 
@@ -599,11 +611,12 @@ def esegui(
 
 
 def anteprima(sb, user_id: str, *, adesso: datetime) -> Dict[str, Any]:
-    """L'email che quel cliente riceverebbe adesso, senza spedirla: lo
-    strumento della fase 7b per studiare il contenuto sui dati veri."""
-    destinatari = leggi_destinatari(sb, solo_user_id=user_id)
+    """L'email che quel cliente riceverebbe adesso SE fosse abilitato, senza
+    spedirla: serve all'admin per decidere se abilitarlo."""
+    destinatari = leggi_destinatari(sb, solo_user_id=user_id, senza_abilitazione=True)
     if not destinatari:
-        return {"riceverebbe": False, "motivo": "non e' fra i destinatari"}
+        return {"riceverebbe": False, "motivo": "non e' fra i destinatari (disattivata dal cliente, "
+                                                "account spento, admin o senza sedi)"}
     dest = destinatari[0]
     fallite: List[str] = []
     frasi = calcola_frasi(sb, dest, adesso.date(), fallite=fallite)
@@ -616,8 +629,28 @@ def anteprima(sb, user_id: str, *, adesso: datetime) -> Dict[str, Any]:
         # Senza EMAIL_DISISCRIZIONE_SECRET l'email non si compone (e non
         # partirebbe): l'anteprima lo dice invece di rispondere 500.
         return {"riceverebbe": False, "motivo": str(exc), "sedi": dest.sedi, "frasi": frasi}
-    return {"riceverebbe": True, "sedi": dest.sedi, "frasi": frasi,
+    return {"riceverebbe": True, "sedi": dest.sedi, "frasi": frasi, "sezioni_fallite": fallite,
             "oggetto": email["oggetto"], "html": email["html"], "testo": email["testo"]}
+
+
+def invia_prova(sb, user_id: str, a_email: str, *, adesso: datetime) -> Dict[str, Any]:
+    """Compone l'email di quel cliente e la spedisce SOLO a `a_email` (l'admin),
+    con «[PROVA]» nell'oggetto. Non tocca il registro e non richiede
+    l'interruttore dell'invio: serve a vedere l'email vera nella propria casella
+    prima di accenderla. Il link di disiscrizione resta quello del cliente:
+    non va cliccato."""
+    from services.email_service import brevo_send
+
+    a = anteprima(sb, user_id, adesso=adesso)
+    if not a.get("riceverebbe"):
+        return {"inviata": False, "motivo": a.get("motivo")}
+    dest = leggi_destinatari(sb, solo_user_id=user_id, senza_abilitazione=True)[0]
+    email = componi_email(dest, a["frasi"])
+    ok = brevo_send(
+        a_email, "Prova ONEFLUX", f"[PROVA] {email['oggetto']}", email["html"],
+        contesto="settimanale-prova", text_body=email["testo"], headers=email["headers"],
+    )
+    return {"inviata": ok, "a": a_email, "frasi": a["frasi"]}
 
 
 def disiscrivi(sb, user_id: str, token: str) -> bool:

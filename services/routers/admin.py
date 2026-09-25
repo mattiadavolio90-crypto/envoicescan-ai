@@ -413,7 +413,8 @@ def admin_dettaglio_cliente(cliente_id: str):
 
     resp = sb.table("users").select(
         "id,email,nome_ristorante,nome_gruppo,ragione_sociale,partita_iva,attivo,piano,piano_inizio_at,created_at,"
-        "last_seen_at,trial_active,trial_activated_at,pagine_abilitate,price_alert_threshold"
+        "last_seen_at,trial_active,trial_activated_at,pagine_abilitate,price_alert_threshold,"
+        "email_settimanale,email_settimanale_abilitata"
     ).eq("id", cliente_id).limit(1).execute()
 
     if not resp.data:
@@ -477,6 +478,10 @@ def admin_dettaglio_cliente(cliente_id: str):
         "trial": trial_info,
         "pagine_abilitate": u.get("pagine_abilitate") or {},
         "chat_ai_enabled": chat_ai_enabled,
+        "email_settimanale_abilitata": u.get("email_settimanale_abilitata") is True,
+        # La scelta del cliente, in sola lettura per l'admin: se l'ha spenta,
+        # abilitarlo non la riaccende.
+        "email_settimanale_cliente": u.get("email_settimanale") is not False,
         "sedi": sedi,
         # n_fatture/n_sedi/piano_inizio_at sono dichiarati obbligatori in
         # lib/admin.ts ma non venivano restituiti: "Fatture totali" mostrava "—"
@@ -3230,6 +3235,7 @@ class FlagsBody(BaseModel):
     chat_ai_enabled: Optional[bool] = None
     attivo: Optional[bool] = None
     trial_reset: Optional[bool] = None
+    email_settimanale_abilitata: Optional[bool] = None
 
 
 @router.patch("/api/admin/clienti/{cliente_id}/flags", tags=["Admin"])
@@ -3260,6 +3266,10 @@ def admin_aggiorna_flags(
     if body.trial_reset:
         update["trial_active"] = False
         update["trial_activated_at"] = None
+    if body.email_settimanale_abilitata is not None:
+        # Solo l'abilitazione dell'admin: la scelta del cliente
+        # (`email_settimanale`) non si tocca da qui.
+        update["email_settimanale_abilitata"] = bool(body.email_settimanale_abilitata)
 
     if not update and body.chat_ai_enabled is None:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
@@ -3411,3 +3421,21 @@ def admin_email_settimanale_anteprima(user_id: str) -> Dict[str, Any]:
     except ValueError:
         raise HTTPException(status_code=400, detail="user_id non valido")
     return svc.anteprima(get_supabase_client(), user_id, adesso=svc.adesso_roma())
+
+
+@router.post("/api/admin/email-settimanale/prova", tags=["Admin"])
+def admin_email_settimanale_prova(user_id: str, admin_user: dict = Depends(_verify_admin)) -> Dict[str, Any]:
+    """Spedisce all'ADMIN che chiama l'email che quel cliente riceverebbe, con
+    «[PROVA]» nell'oggetto. Il cliente non riceve niente e il registro non si
+    tocca: e' la prova della fase 7c prima dell'accensione."""
+    import uuid as _uuid
+    from services import email_settimanale_service as svc
+
+    try:
+        _uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="user_id non valido")
+    destinatario = str(admin_user.get("email") or "").strip()
+    if not destinatario:
+        raise HTTPException(status_code=400, detail="Email admin sconosciuta")
+    return svc.invia_prova(get_supabase_client(), user_id, destinatario, adesso=svc.adesso_roma())

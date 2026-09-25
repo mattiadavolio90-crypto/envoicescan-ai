@@ -359,6 +359,28 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     }
   }
 
+  async function handleToggleEmailSettimanale(enabled: boolean) {
+    try {
+      await patch(`/api/admin/clienti/${c.id}/flags`, "PATCH", { email_settimanale_abilitata: enabled });
+      setC((prev) => ({ ...prev, email_settimanale_abilitata: enabled }));
+      toast.success(`Email settimanale ${enabled ? "abilitata" : "disabilitata"}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
+  async function handleProvaEmailSettimanale() {
+    try {
+      const res = await fetch(`/api/admin/clienti/${c.id}/email-settimanale-prova`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail || data?.error || "Errore");
+      if (data.inviata) toast.success(`Prova inviata a ${data.a}`);
+      else toast.error(`Nessuna email: ${data.motivo || "il cliente non la riceverebbe"}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
   async function handleEliminaAccount() {
     setEliminaSaving(true);
     try {
@@ -557,6 +579,27 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 checked={c.chat_ai_enabled}
                 onCheckedChange={handleToggleChatAi}
               />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-1 border-b">
+              <div>
+                <p className="text-sm font-medium">Email settimanale</p>
+                <p className="text-xs text-muted-foreground">
+                  {/* La scelta del cliente vince sempre: abilitarlo non riaccende
+                      un'email che ha spento lui. */}
+                  {c.email_settimanale_cliente === false
+                    ? "Il cliente l'ha disattivata: non la riceve finché non la riaccende lui"
+                    : "Il lunedì mattina, il riepilogo della settimana del locale"}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <Button variant="outline" size="sm" onClick={handleProvaEmailSettimanale}>
+                  Mandami una prova
+                </Button>
+                <Switch
+                  checked={c.email_settimanale_abilitata === true}
+                  onCheckedChange={handleToggleEmailSettimanale}
+                />
+              </div>
             </div>
             <div className="flex items-center justify-between gap-4 py-1">
               <div>

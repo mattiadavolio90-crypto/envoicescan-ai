@@ -134,7 +134,7 @@ def test_i_due_link_portano_alla_pagina_e_all_api():
 
 def _u(uid=UID, **kw):
     base = {"id": uid, "email": f"{uid[:4]}@cliente.it", "attivo": True, "ruolo": "cliente",
-            "email_settimanale": True, "nome_referente": "Anna"}
+            "email_settimanale": True, "email_settimanale_abilitata": True, "nome_referente": "Anna"}
     base.update(kw)
     return base
 
@@ -164,6 +164,21 @@ def test_il_cliente_attivo_con_una_sede_la_riceve():
 ])
 def test_chi_non_la_riceve(utente, motivo):
     assert svc.scegli_destinatari([utente], [_s()]) == [], motivo
+
+
+@pytest.mark.parametrize("abilitata", [False, None, "true", 1])
+def test_senza_l_abilitazione_dell_admin_non_la_riceve(abilitata):
+    """Mattia (25/09): la accende l'admin, cliente per cliente. Solo True
+    abilita: assente, None o un valore «quasi vero» no."""
+    u = _u(email_settimanale_abilitata=abilitata)
+    if abilitata is None:
+        del u["email_settimanale_abilitata"]
+    assert svc.scegli_destinatari([u], [_s()]) == []
+
+
+def test_abilitato_ma_disiscritto_non_la_riceve():
+    """La scelta del cliente vince sull'abilitazione dell'admin."""
+    assert svc.scegli_destinatari([_u(email_settimanale=False, email_settimanale_abilitata=True)], [_s()]) == []
 
 
 def test_preferenza_assente_vale_accesa():
@@ -517,6 +532,12 @@ def test_anche_in_prova_la_sezione_fallita_si_vede(invii):
     assert a["riceverebbe"] is True
 
 
+def test_anteprima_dice_le_sezioni_cadute_anche_se_ne_restano_altre(monkeypatch):
+    monkeypatch.setattr(svc, "SEZIONI", [_rotta, lambda sb, d, g: "Una frase."])
+    a = svc.anteprima(_sb(), UID, adesso=LUNEDI_7)
+    assert a["riceverebbe"] is True and a["sezioni_fallite"] == ["_rotta"]
+
+
 def test_anteprima_dice_quale_sezione_e_fallita(monkeypatch):
     monkeypatch.setattr(svc, "SEZIONI", [_rotta])
     a = svc.anteprima(_sb(), UID, adesso=LUNEDI_7)
@@ -562,6 +583,55 @@ def test_anteprima_non_scrive_e_non_spedisce(invii):
     assert a["riceverebbe"] is True and a["frasi"] == ["Frase per Trattoria."]
     assert invii == [] and sb.scritture == []
     assert svc.anteprima(_SB([_u(email_settimanale=False)], [_s()]), UID, adesso=LUNEDI_7)["riceverebbe"] is False
+
+
+# ── L'invio di prova all'admin (fase 7c) ────────────────────────────────────
+
+def test_la_prova_va_solo_all_admin_anche_a_invio_spento(invii):
+    """Gli admin sono esclusi dai destinatari: la prova compone l'email di un
+    cliente e la manda all'admin, con [PROVA], senza registro e senza bisogno
+    dell'interruttore (spento in questo test)."""
+    sb = _sb()
+    r = svc.invia_prova(sb, UID, "md@oneflux.it", adesso=LUNEDI_7)
+    assert r["inviata"] is True and r["a"] == "md@oneflux.it"
+    assert [c["to"] for c in invii] == ["md@oneflux.it"]
+    assert invii[0]["subject"].startswith("[PROVA] ")
+    assert sb.scritture == [] and sb.registro == {}
+
+
+def test_la_prova_serve_a_decidere_quindi_non_chiede_l_abilitazione(invii):
+    """Si prova PRIMA di abilitare: la prova di un cliente non abilitato parte
+    (all'admin), e il lavoro del lunedi' continua a non considerarlo."""
+    sb = _SB([_u(email_settimanale_abilitata=False)], [_s()])
+    assert svc.invia_prova(sb, UID, "md@oneflux.it", adesso=LUNEDI_7)["inviata"] is True
+    assert svc.leggi_destinatari(sb) == []
+
+
+def test_la_prova_rispetta_la_disiscrizione_del_cliente(invii):
+    sb = _SB([_u(email_settimanale=False)], [_s()])
+    r = svc.invia_prova(sb, UID, "md@oneflux.it", adesso=LUNEDI_7)
+    assert r["inviata"] is False and invii == []
+    assert svc.anteprima(sb, UID, adesso=LUNEDI_7)["riceverebbe"] is False
+
+
+def test_endpoint_prova_manda_all_admin_che_chiama(monkeypatch):
+    from fastapi import HTTPException
+    from services.routers import admin
+    chiamate = []
+    monkeypatch.setattr(admin, "get_supabase_client", lambda: "sb")
+    monkeypatch.setattr(svc, "invia_prova", lambda sb, uid, a, **k: chiamate.append((uid, a)) or {"inviata": True})
+    assert admin.admin_email_settimanale_prova(UID, admin_user={"email": " md@oneflux.it "}) == {"inviata": True}
+    assert chiamate == [(UID, "md@oneflux.it")]
+    with pytest.raises(HTTPException) as e:
+        admin.admin_email_settimanale_prova("non-un-uuid", admin_user={"email": "md@oneflux.it"})
+    assert e.value.status_code == 400
+
+
+def test_endpoint_prova_e_dietro_la_guardia_admin():
+    import services.fastapi_worker as fw
+    from services.routers import admin
+    rotta = next(r for r in fw.app.routes if getattr(r, "path", "") == "/api/admin/email-settimanale/prova")
+    assert admin._verify_admin in {d.call for d in rotta.dependant.dependencies}
 
 
 # ── Gli ingressi HTTP ───────────────────────────────────────────────────────
@@ -644,6 +714,15 @@ def _account_me(monkeypatch, riga):
     return account.account_me(authorization="Bearer x"), sb
 
 
+@pytest.mark.parametrize("valore, atteso", [(False, False), (True, True), (None, False)])
+def test_me_dice_se_l_admin_l_ha_abilitata(monkeypatch, valore, atteso):
+    """La scheda delle Impostazioni compare solo se abilitata: /me deve dirlo,
+    e un valore assente e' «non abilitata»."""
+    r, sb = _account_me(monkeypatch, {"email": "a@b.it", "email_settimanale_abilitata": valore})
+    assert r["email_settimanale_abilitata"] is atteso
+    assert "email_settimanale_abilitata" in sb.table.return_value.select.call_args_list[0].args[0]
+
+
 @pytest.mark.parametrize("valore, atteso", [(False, False), (True, True), (None, True)])
 def test_le_impostazioni_mostrano_la_preferenza_vera(monkeypatch, valore, atteso):
     """L'interruttore delle Impostazioni legge `/api/account/me`: un valore
@@ -673,6 +752,56 @@ def test_l_export_art_20_porta_la_preferenza(monkeypatch):
     selezioni = [c.args[0] for c in q.select.call_args_list if c.args]
     profilo = [c for c in selezioni if "privacy_accepted_at" in c]
     assert profilo and "email_settimanale" in profilo[0], selezioni
+
+
+def _admin_sb(riga, scritture):
+    from unittest.mock import MagicMock
+    sb = MagicMock()
+    q = sb.table.return_value
+    for m in ("select", "eq", "limit"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=[riga])
+    q.update.side_effect = lambda d: scritture.append(d) or q
+    return sb
+
+
+def test_l_admin_abilita_senza_toccare_la_scelta_del_cliente(monkeypatch):
+    from services.routers import admin
+    scritture = []
+    monkeypatch.setattr(admin, "get_supabase_client",
+                        lambda: _admin_sb({"email": "c@cliente.it", "pagine_abilitate": {}}, scritture))
+    monkeypatch.setattr(admin, "_admin_emails_set", lambda: {"md@oneflux.it"})
+    corpo = admin.FlagsBody(email_settimanale_abilitata=True)
+    assert admin.admin_aggiorna_flags(UID, corpo, admin_user={"email": "md@oneflux.it"}) == {"ok": True}
+    assert scritture == [{"email_settimanale_abilitata": True}]
+    admin.admin_aggiorna_flags(UID, admin.FlagsBody(email_settimanale_abilitata=False),
+                               admin_user={"email": "md@oneflux.it"})
+    assert scritture[-1] == {"email_settimanale_abilitata": False}
+
+
+@pytest.mark.parametrize("abilitata, cliente, atteso", [
+    (True, True, (True, True)), (None, None, (False, True)), (False, False, (False, False)),
+])
+def test_la_scheda_admin_mostra_i_due_interruttori(monkeypatch, abilitata, cliente, atteso):
+    """L'admin vede la sua abilitazione e, in sola lettura, la scelta del
+    cliente: se l'ha spenta lui, abilitarlo non la riaccende."""
+    from unittest.mock import MagicMock
+    from services.routers import admin
+    riga = {"id": UID, "email": "c@cliente.it", "attivo": True, "piano": "pro",
+            "email_settimanale_abilitata": abilitata, "email_settimanale": cliente}
+    sb = MagicMock()
+    q = sb.table.return_value
+    for m in ("select", "eq", "limit"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=[riga])
+    sb.rpc.return_value.execute.return_value = MagicMock(data=[])
+    monkeypatch.setattr(admin, "get_supabase_client", lambda: sb)
+    monkeypatch.setattr(admin, "_admin_emails_set", lambda: {"md@oneflux.it"})
+    monkeypatch.setattr(admin, "_get_ristorante_id_for_user", lambda uid, s: None)
+    r = admin.admin_dettaglio_cliente(UID)
+    assert (r["email_settimanale_abilitata"], r["email_settimanale_cliente"]) == atteso
+    colonne = q.select.call_args_list[0].args[0]
+    assert "email_settimanale_abilitata" in colonne and "email_settimanale" in colonne
 
 
 def test_la_preferenza_si_salva_dalle_impostazioni(monkeypatch):

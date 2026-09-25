@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Privacy & Cookie Policy</h1>
       <p className="text-xs text-muted-foreground">
-        Ultimo aggiornamento: 9 settembre 2026 — versione 4.2
+        Ultimo aggiornamento: 25 settembre 2026 — versione 4.3
       </p>
 
       <h2>Titolare del Trattamento</h2>
@@ -65,7 +65,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Preferenze applicazione:</strong> stato periodo di prova, preferenze notifiche
-          in-app (ID notifiche nascoste)
+          in-app (ID notifiche nascoste), preferenza sull&apos;email settimanale
         </li>
       </ul>
 
@@ -73,6 +73,14 @@ export default function PrivacyPage() {
       <p>
         Erogazione del servizio di analisi fatture, controllo gestionale costi e supporto operativo
         per attività di ristorazione.
+      </p>
+      <p>
+        <strong>Email settimanale dell&apos;assistente:</strong> se è attiva per il tuo account,
+        una volta a settimana, il lunedì mattina, ti inviamo un riepilogo costruito con i dati del
+        tuo locale già presenti in ONEFLUX (incassi, fatture arrivate, osservazioni
+        sull&apos;andamento) oppure, se da alcune settimane non riceviamo dati, un invito a
+        riprenderne il caricamento. Non contiene pubblicità. Puoi disattivarla in qualsiasi
+        momento dal link presente in ogni email o dalle Impostazioni.
       </p>
       <LegalCallout>
         <strong>⚠️ Importante:</strong> questo servizio NON effettua Conservazione Sostitutiva ai
@@ -91,7 +99,8 @@ export default function PrivacyPage() {
       <h2>Base Giuridica del Trattamento</h2>
       <ul>
         <li>
-          <strong>Art. 6.1.b GDPR</strong> — esecuzione del contratto di servizio
+          <strong>Art. 6.1.b GDPR</strong> — esecuzione del contratto di servizio, comprese le
+          comunicazioni di servizio come l&apos;email settimanale
         </li>
         <li>
           <strong>Consenso esplicito</strong> — raccolto mediante checkbox obbligatorio al primo
@@ -133,6 +142,10 @@ export default function PrivacyPage() {
           automaticamente entro 24 ore.
         </li>
         <li>
+          <strong>Registro degli invii dell&apos;email settimanale</strong> (settimana ed esito,
+          senza il contenuto): fino alla cancellazione dell&apos;account.
+        </li>
+        <li>
           Alla cancellazione dell&apos;account, <strong>tutti i dati vengono eliminati in modo
           permanente</strong> (eliminazione a cascata su tutte le tabelle correlate — Art. 17 GDPR).
         </li>
@@ -157,7 +170,7 @@ export default function PrivacyPage() {
           ],
           [
             "Brevo SAS",
-            "Invio email transazionali e ricezione email con allegati ricavi",
+            "Invio delle email transazionali e dell'email settimanale di riepilogo; ricezione email con allegati ricavi",
             "UE — Francia 🇫🇷",
             "Nessun contenuto di fatture trasmesso; transitano i file di riepilogo incassi inviati dal gestionale di cassa",
           ],

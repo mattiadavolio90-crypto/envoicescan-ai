@@ -65,6 +65,9 @@ export type Cliente = {
 export type ClienteDettaglio = Cliente & {
   price_alert_threshold: number | null;
   chat_ai_enabled: boolean;
+  // Email settimanale: abilitazione dell'admin e scelta del cliente (sola lettura).
+  email_settimanale_abilitata?: boolean;
+  email_settimanale_cliente?: boolean;
 };
 
 // Le etichette vivono in lib/piani.ts insieme a quelle cliente: un solo record

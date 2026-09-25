@@ -94,7 +94,8 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     user_row = (
         sb.table("users")
         .select("id, email, nome_ristorante, ragione_sociale, partita_iva, piano, "
-                "price_alert_threshold, tema, vista_fatture, email_settimanale, created_at, last_login")
+                "price_alert_threshold, tema, vista_fatture, email_settimanale, "
+                "email_settimanale_abilitata, created_at, last_login")
         .eq("id", user_id)
         .single()
         .execute()
@@ -163,6 +164,9 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "tema": (row.get("tema") or "dark"),
         # Default acceso come la colonna: un valore assente non e' una disiscrizione.
         "email_settimanale": row.get("email_settimanale") is not False,
+        # L'interruttore nelle Impostazioni compare solo se l'admin ha abilitato
+        # l'email per questo cliente: altrimenti prometterebbe un'email che non parte.
+        "email_settimanale_abilitata": row.get("email_settimanale_abilitata") is True,
         "membro_dal": row.get("created_at"),
         "ultimo_accesso": row.get("last_login"),
         "is_admin": _is_admin_email(row.get("email")),

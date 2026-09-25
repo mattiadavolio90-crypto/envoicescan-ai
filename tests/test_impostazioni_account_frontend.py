@@ -13,6 +13,8 @@ La logica e' stata confrontata con l'originale di HEAD tramite un oracolo su 225
 combinazioni (NaN e Infinity inclusi): 0 divergenze.
 """
 
+import pytest
+
 from tests.helpers_ts import esegui_ts
 
 MODULO = "lib/impostazioni-account"
@@ -148,3 +150,23 @@ def test_testo_diverso_non_conferma_mai():
         assert _conferma(funzione, "") is False
         assert _conferma(funzione, "SVUOTAX") is False
         assert _conferma(funzione, None) is False
+
+
+# ─── scheda «Email settimanale»: solo se l'admin l'ha abilitata ─────────────
+
+def _mostra_email(data):
+    return esegui_ts(MODULO, "emit(m.mostraEmailSettimanale(input));",
+                     argomento=data, richiede=["mostraEmailSettimanale"])
+
+
+@pytest.mark.parametrize("data, atteso", [
+    ({"is_admin": False, "email_settimanale_abilitata": True}, True),
+    ({"is_admin": False, "email_settimanale_abilitata": False}, False),
+    ({"is_admin": False}, False),                                  # campo assente: non abilitata
+    ({"is_admin": False, "email_settimanale_abilitata": None}, False),
+    ({"is_admin": True, "email_settimanale_abilitata": True}, False),  # admin: esclusi dai destinatari
+])
+def test_la_scheda_email_settimanale_compare_solo_se_abilitata(data, atteso):
+    """Mattia (25/09): la abilita l'admin, cliente per cliente. Mostrarla a chi
+    non e' abilitato prometterebbe un'email che non parte."""
+    assert _mostra_email(data) is atteso

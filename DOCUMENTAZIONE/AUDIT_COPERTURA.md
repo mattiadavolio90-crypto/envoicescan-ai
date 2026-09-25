@@ -951,6 +951,30 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Decisione di Mattia sul sesto punto: le fatture dallo SDI della sede
 >   tecnica «Costi comuni di gruppo» entrano nell'elenco (per OFFSIDE erano 10
 >   in una settimana, taciute), e solo li'. 5 mutanti, 5 uccisi.
+>
+> - **25/09/2026 — fase 7c: privacy e chi la riceve.** Alla richiesta di
+>   approvare il testo privacy Mattia ha cambiato una decisione della 7a: «non e'
+>   per tutti, e probabilmente per nessuno degli attuali clienti» — la abilita lui,
+>   cliente per cliente. **Due interruttori, non uno**:
+>   `users.email_settimanale_abilitata` (admin, default spento, migration
+>   `20260925084916`) e `users.email_settimanale` (la scelta del cliente, che
+>   resta): con una colonna sola, abilitare un cliente disiscritto avrebbe
+>   annullato la sua disiscrizione. Scheda admin con l'interruttore e «Mandami una
+>   prova» (compone l'email del cliente e la spedisce all'admin con [PROVA], senza
+>   registro e anche prima di abilitarlo: gli admin sono esclusi dai
+>   destinatari, quindi senza questo la «prova sulla tua casella» del piano non
+>   era possibile). Nelle Impostazioni la scheda compare solo se abilitata
+>   (`mostraEmailSettimanale`, provata con node). Informativa privacy v4.3 col
+>   testo approvato da Mattia (+ «se e' attiva per il tuo account»); nessun
+>   preavviso: per decisione di Mattia oggi non la riceve nessuno. Chiusi i
+>   residui della review 7b (food cost col giorno dell'email, testo dell'avviso,
+>   sezioni cadute nell'anteprima). Il finto DB dei test ora restituisce solo
+>   le colonne chieste (un mock generoso non vedeva una colonna dimenticata nel
+>   select). **Mutanti: 23, tutti uccisi.** Suite `-m "not sql"`: 2 rossi di
+>   passaggio dal lavoro in corso di un'altra sessione (saldo Invoicetronic), verdi
+>   al rilancio; `-m sql` 553 passed; OpenAPI 203 endpoint. Due file di doc
+>   condivisi con quella sessione (MAPPA_TECNICA, DEPLOY_RUNBOOK): committate solo
+>   le mie righe.
 
 ---
 

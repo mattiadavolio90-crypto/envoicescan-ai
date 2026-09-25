@@ -41,8 +41,10 @@ instradata da Railway.
     già al deploy della 7a**: da solo non spedisce niente, ma senza l'anteprima admin
     (lo strumento della 7b) e il dry_run non compongono (fail-closed). **Non
     cambiarlo** dopo l'accensione: invaliderebbe i link delle email già spedite.
-  - `EMAIL_SETTIMANALE_ATTIVA=1` (**assente fino alla fase 7c**): l'interruttore
-    dell'invio vero. Assente o diverso da
+  - `EMAIL_SETTIMANALE_ATTIVA=1`: l'interruttore generale dell'invio vero. Anche
+    acceso, l'email parte solo ai clienti che l'admin ha abilitato uno per uno
+    (`users.email_settimanale_abilitata`, dalla scheda cliente) e che non l'hanno
+    spenta. Assente o diverso da
     `1`, il cron del lunedì (`.github/workflows/email_settimanale.yml`) non fa niente.
     Si accende **solo** dopo l'aggiornamento della privacy.
 

@@ -322,11 +322,15 @@ il breakdown parziale va aggiunto con il suo caveat.
 
 ## 8-bis. L'email settimanale del lunedì
 
-Una volta a settimana, il lunedì fra le 7 e le 10, l'assistente scrive a ogni
-cliente attivo, anche se non apre l'app (fase 7, deciso il 24-25/9). **Oggi è
-spenta**: parte solo quando si accende l'interruttore sul server, dopo
-l'aggiornamento della privacy. Chi non la vuole la spegne dal link nell'email o
-dalle Impostazioni.
+Una volta a settimana, il lunedì fra le 7 e le 10, l'assistente scrive al
+cliente, anche se non apre l'app (fase 7, deciso il 24-25/9). **La ricevono solo i
+clienti che abiliti tu**, uno per uno, dalla scheda cliente nel pannello admin
+(«Email settimanale»): di default è spenta per tutti. Il cliente abilitato la
+può sempre spegnere dal link nell'email o dalle Impostazioni, e la sua scelta
+vince: se l'ha spenta, riabilitarlo non la riaccende. Dalla stessa scheda,
+«Mandami una prova» ti spedisce l'email che quel cliente riceverebbe, anche
+prima di abilitarlo. In più c'è un interruttore generale sul server
+(`EMAIL_SETTIMANALE_ATTIVA`): finché è spento non parte niente per nessuno.
 
 La regola è la tua: **mai informazioni inutili o incomplete**. Ogni argomento
 compare solo se per quel cliente il dato è affidabile:

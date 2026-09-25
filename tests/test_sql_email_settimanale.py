@@ -37,9 +37,13 @@ def _invio(db_sql, uid, settimana, stato="in_corso"):
         )
 
 
-def test_la_preferenza_nasce_accesa(db_sql, scalare):
+def test_la_preferenza_nasce_accesa_ma_l_abilitazione_spenta(db_sql, scalare):
+    """Due interruttori (25/09): la scelta del cliente nasce accesa, quella
+    dell'admin spenta. Un cliente nuovo non riceve niente finche' l'admin non
+    lo abilita."""
     _utente(db_sql, UTENTE, "a@cliente.it")
     assert scalare("SELECT email_settimanale FROM public.users WHERE id = %s", UTENTE) is True
+    assert scalare("SELECT email_settimanale_abilitata FROM public.users WHERE id = %s", UTENTE) is False
 
 
 def test_due_invii_nella_stessa_settimana_sono_rifiutati(db_sql):

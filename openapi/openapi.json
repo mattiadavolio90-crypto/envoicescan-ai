@@ -16239,6 +16239,83 @@
         }
       }
     },
+    "/api/admin/email-settimanale/prova": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Email Settimanale Prova",
+        "description": "Spedisce all'ADMIN che chiama l'email che quel cliente riceverebbe, con\n«[PROVA]» nell'oggetto. Il cliente non riceve niente e il registro non si\ntocca: e' la prova della fase 7c prima dell'accensione.",
+        "operationId": "admin_email_settimanale_prova_api_admin_email_settimanale_prova_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Admin Email Settimanale Prova Api Admin Email Settimanale Prova Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/overview": {
       "get": {
         "tags": [
@@ -21603,6 +21680,17 @@
               }
             ],
             "title": "Trial Reset"
+          },
+          "email_settimanale_abilitata": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Settimanale Abilitata"
           }
         },
         "type": "object",
