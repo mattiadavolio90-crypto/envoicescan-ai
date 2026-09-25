@@ -17,6 +17,7 @@ import { puoIgnorare } from "@/lib/briefing-shared";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { cn } from "@/lib/utils";
+import { statoAzioni } from "@/lib/briefing-azioni";
 
 // Effetto typewriter abilitato (spegnibile in 1 riga): solo al primo load del
 // giorno, max ~600ms. Dietro flag perche' deve restare sobrio e veloce.
@@ -105,7 +106,7 @@ export function HomeBriefing({ briefing }: Props) {
   // Il verde "tutto a posto" lo decide SOLO il backend (gateato su dati mancanti e
   // Salute): l'archiviazione locale non deve poterlo forzare. Se non ci sono card
   // visibili ma il backend non dice tutto_ok, mostriamo la nota neutra, mai il verde.
-  const tuttoOk = briefing.tutto_ok && visibili.length === 0;
+  const stato = statoAzioni(briefing.tutto_ok, visibili.length, datiMancanti.length);
 
   return (
     <section className="space-y-5">
@@ -132,7 +133,7 @@ export function HomeBriefing({ briefing }: Props) {
       </div>
 
       {/* AZIONI — le card da svuotare */}
-      {tuttoOk ? (
+      {stato === "vuoto" ? null : stato === "verde" ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-positivo/20 bg-gradient-to-br from-positivo/[0.07] via-transparent to-transparent py-10 text-center">
           <div className="rounded-full bg-positivo/10 p-3 ring-1 ring-positivo/20">
             <Check className="size-7 text-positivo" />
@@ -144,7 +145,7 @@ export function HomeBriefing({ briefing }: Props) {
             Nessuna azione da fare. Buon lavoro!
           </p>
         </div>
-      ) : visibili.length === 0 && datiMancanti.length > 0 ? (
+      ) : stato === "dati_mancanti" ? (
         // Nessuna card urgente, ma mancano dati: senza quelli i numeri sono falsi.
         // Niente verde: nota neutra che dice cosa completare per il quadro reale.
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-incerto/20 bg-gradient-to-br from-incerto/[0.07] via-transparent to-transparent py-8 text-center">

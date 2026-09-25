@@ -165,7 +165,7 @@ applica vince), e ritorna `None` se nessuna → briefing to-do puro.
 
 | Priorità | tipo payload | Condizione | Esempio |
 |---|---|---|---|
-| 1 | `mol_mese` | MOL del mese chiuso **> 0 E in crescita** vs mese prima, due mesi confrontabili (`_mesi_confrontabili`: fatturato > 0 e costi presenti in **entrambi**, fase 1) | "Maggio si è chiuso con € 280.924 di margine, +172,1% rispetto ad aprile." |
+| 1 | `mol_mese` | MOL del mese chiuso **> 0 E in crescita** vs mese prima, due mesi confrontabili (`_mesi_confrontabili`: fatturato > 0, costi presenti e costo del personale > 0 in **entrambi**, fase 1 + 25/9) | "Maggio si è chiuso con € 280.924 di margine, +172,1% rispetto ad aprile." |
 | 2 | `perdita_in_calo` | MOL **< 0 ma migliore** del mese prima, stesso gate `_mesi_confrontabili` | "Maggio è in miglioramento: la perdita è scesa a € 1.037 rispetto ad aprile." |
 | 3 | `incasso_ieri` | Esiste un incasso **di IERI** (e solo di ieri) | "💰 Ieri sono entrati € 11.543 di incasso" |
 
@@ -195,8 +195,10 @@ l'apertura del briefing **non si contraddicono mai** (stesso numero, stessa %).
 
 Fatti sull'**andamento** del locale, calcolati dal worker e detti nell'apertura
 **dopo** la buona notizia e **prima** di «Da sistemare oggi». Non sono card (le
-card sono solo cose da fare), non toccano il verde `tutto_ok`, si spengono dal
-configuratore. Prodotte da `_briefing_osservazioni` (fastapi_worker.py), **solo
+card sono solo cose da fare), si spengono dal configuratore. Il verde `tutto_ok`
+resta acceso solo se sono tutte `success` (`osservazione_positiva`, 25/9): un food
+cost alto o un incasso sceso lo spengono, anche nella catena
+(`_conta_segnali_cache`). Prodotte da `_briefing_osservazioni` (fastapi_worker.py), **solo
 dal path asincrono** (`includi_osservazioni=True` in `_briefing_rigenera_async`):
 il fast-path che la Home aspetta non le calcola (E7).
 

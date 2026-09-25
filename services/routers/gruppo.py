@@ -604,7 +604,12 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
     scriveva "Nessuna segnalazione aperta: tutto in ordine." ogni mattina,
     mentre la card sotto stava ancora calcolando e poteva poi mostrare avvisi.
     Chi legge deve trattare None come "non determinabile" (vedi tutto_ok in
-    _build_briefing), mai come "nessun segnale"."""
+    _build_briefing), mai come "nessun segnale".
+
+    Il conteggio include le osservazioni NEGATIVE (food cost alto, incasso
+    sceso: `osservazione_positiva` falsa), che non sono segnali ma spengono
+    il «tutto in ordine» come nel PV (decisione di Mattia, 25/09/2026). Non
+    toccano severity_max: quella resta dei segnali."""
     from datetime import datetime as _dt
     try:
         from zoneinfo import ZoneInfo
@@ -628,12 +633,17 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
             if not _snapshot_versione_corrente(snap):
                 return None, "info"
             segnali = snap.get("segnali") or []
+            from services.daily_briefing_service import osservazione_positiva
+            negative = [
+                o for o in (snap.get("osservazioni") or [])
+                if not osservazione_positiva(o)
+            ]
             sev_rank = {"error": 2, "warning": 1, "info": 0}
             sev_max = "info"
             for s in segnali:
                 if sev_rank.get(s.get("severity"), 0) > sev_rank.get(sev_max, 0):
                     sev_max = s.get("severity")
-            return len(segnali), sev_max
+            return len(segnali) + len(negative), sev_max
     except Exception:
         return None, "info"
     return None, "info"
@@ -1912,7 +1922,8 @@ class SegnaliResponse(BaseModel):
     generated_at: Optional[str]
     segnali: List[Segnale]
     # Le osservazioni da consulente (fase 4) non sono segnali: non sono compiti,
-    # non entrano nel conteggio che spegne il «tutto in ordine». Lista a parte.
+    # lista a parte. Solo quelle negative spengono il «tutto in ordine»
+    # (_conta_segnali_cache).
     osservazioni: List[Osservazione] = []
 
 

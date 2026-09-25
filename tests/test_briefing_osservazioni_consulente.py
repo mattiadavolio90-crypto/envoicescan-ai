@@ -18,6 +18,8 @@ import os
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 os.environ.setdefault("WORKER_DEV_MODE", "1")
 os.environ.setdefault("SUPABASE_URL", "http://x")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "x")
@@ -177,6 +179,8 @@ def test_andamento_scatta_sulla_serie_reale():
     assert rec["topic_key"] == "andamento_incasso"
     assert p["incasso"] == 7102 and p["incasso_prec"] == 6136
     assert p["delta_pct"] == 16 and p["su"] is True
+    # Il verso che legge il verde (osservazione_positiva): salito = success.
+    assert rec["severity"] == "success"
     assert p["settimane"] == 4
     # Senza coperti inseriti, coperti e scontrino non si inventano.
     assert "coperti_verso" not in p and "scontrino_verso" not in p
@@ -350,6 +354,7 @@ def test_food_cost_scatta_sul_caso_reale():
     assert rec is not None, "food cost al 45,8% su mese consolidato non detto"
     p = rec["payload"]
     assert rec["topic_key"] == "food_cost_alto"
+    assert rec["severity"] == "warning", "spegne il verde (osservazione_positiva)"
     assert p["mese"] == "agosto" and p["anno"] == 2026
     assert p["food_cost_pct"] == 45.8
     assert p["critico"] is True
@@ -608,10 +613,48 @@ def test_le_osservazioni_aprono_il_briefing_prima_delle_cose_da_fare():
     assert [a["topic_key"] for a in snap["azioni"]] == ["fatturato_mancante"]
 
 
-def test_le_osservazioni_non_toccano_il_verde():
+def test_una_buona_notizia_lascia_il_verde():
     snap = dbs._build_snapshot([OSS_INCASSO])
     assert snap["azioni"] == [] and snap["tutto_ok"] is True
     assert snap["narrative"].startswith("\U0001F4CA")
+
+
+OSS_INCASSO_GIU = {
+    "topic_key": "andamento_incasso", "severity": "warning",
+    "payload": {"settimane": 4, "incasso": 5200, "incasso_prec": 6136,
+                "delta_pct": 15, "su": False},
+}
+
+
+@pytest.mark.parametrize("oss", [OSS_FC, OSS_INCASSO_GIU], ids=["food_cost", "incasso_giu"])
+def test_un_osservazione_negativa_spegne_il_verde(oss):
+    """Decisione di Mattia (25/09): «Tutto in ordine per oggi» sotto «il food
+    cost è stato del 45,8%» e' un'affermazione falsa. Niente card: resta la
+    frase dell'osservazione, senza il riquadro verde."""
+    snap = dbs._build_snapshot([oss])
+    assert snap["azioni"] == [] and snap["dati_mancanti"] == []
+    assert snap["tutto_ok"] is False
+    assert snap["narrative"].split("\n")[0] == dbs._osservazione_frase(oss)
+
+
+def test_basta_una_negativa_fra_piu_osservazioni():
+    assert dbs._build_snapshot([OSS_INCASSO, OSS_FC])["tutto_ok"] is False
+    assert dbs._build_snapshot([OSS_FC, OSS_INCASSO])["tutto_ok"] is False
+
+
+def test_una_negativa_spenta_dal_configuratore_non_spegne_il_verde():
+    """Il cliente che ha spento il food cost non lo legge: non puo' essere lui
+    a togliergli il verde."""
+    snap = dbs._build_snapshot([OSS_INCASSO, OSS_FC], topics_disabled=["food_cost_alto"])
+    assert snap["tutto_ok"] is True
+
+
+@pytest.mark.parametrize("sev", [None, "", "info", "boh"])
+def test_verso_sconosciuto_non_accende_il_verde(sev):
+    """Affermativa: serve SAPERE che e' una buona notizia."""
+    oss = dict(OSS_INCASSO, severity=sev)
+    assert dbs.osservazione_positiva(oss) is False
+    assert dbs._build_snapshot([oss])["tutto_ok"] is False
 
 
 def test_osservazione_spenta_dal_configuratore_non_si_dice():

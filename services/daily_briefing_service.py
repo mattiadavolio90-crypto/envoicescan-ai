@@ -152,6 +152,9 @@ logger = get_logger('daily_briefing')
 #               «+172.1%») nella buona notizia del MOL e negli avvisi prezzi;
 #               e «manca l'incasso di ieri» tollera i giorni di chiusura
 #               dichiarati (oggi nessuna sede ne ha: testo invariato per tutti).
+#               Nella stessa versione (mai deployata da sola): il MOL si
+#               confronta solo col personale in entrambi i mesi, e il verde
+#               «tutto a posto» si spegne sotto un'osservazione negativa.
 _BRIEFING_CODE_VERSION = 28
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
@@ -399,8 +402,21 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
 
 # Osservazioni da consulente (fase 4): fatti sull'andamento del locale, calcolati
 # dal worker. Stanno nell'apertura, dopo la buona notizia e prima di "Da sistemare
-# oggi": non sono compiti (niente card, non toccano il verde "tutto a posto").
+# oggi": non sono compiti (niente card). Il verde "tutto a posto" lo lasciano acceso
+# solo se sono buone notizie: vedi osservazione_positiva.
 _OSSERVAZIONI = ('andamento_incasso', 'food_cost_alto')
+
+
+def osservazione_positiva(notif: Dict[str, Any]) -> bool:
+    """Un'osservazione che lascia acceso il verde "tutto in ordine".
+
+    Decisione di Mattia (25/09/2026): "tutto in ordine" sotto «il food cost è
+    stato del 45%» o «l'incasso è sceso del 18%» e' un'affermazione falsa. Il
+    verso lo decide il worker nella severity: success se l'incasso e' salito,
+    warning se e' sceso e per il food cost alto. Affermativa: una severity
+    assente o sconosciuta spegne il verde, non lo accende.
+    """
+    return str(notif.get('severity') or '') == 'success'
 
 
 def _pct_it(valore: float) -> str:
@@ -1630,8 +1646,9 @@ def _build_snapshot(
     }
 
     # Aperture: estratte a parte. NON sono card "Da fare oggi" (non si ignorano,
-    # non hanno CTA-card) e non contano per 'tutto_ok': sono il contesto con cui
-    # l'AI apre il briefing. Restano fuori da candidati/azioni.
+    # non hanno CTA-card): sono il contesto con cui l'AI apre il briefing. Restano
+    # fuori da candidati/azioni. Per 'tutto_ok' conta solo il verso delle
+    # osservazioni (osservazione_positiva).
     #  - onboarding: benvenuto al cliente nuovo (senza dati), prima di tutto.
     #  - rientro_assenza: bentornato dopo un'assenza.
     #  - buona_notizia: il fatto fresco positivo (MOL/incasso).
@@ -1786,9 +1803,12 @@ def _build_snapshot(
         # Il verde si spegne anche con un ARRETRATO aperto: "tutto a posto" accanto
         # a 112 prodotti da controllare sarebbe falso quanto il verde su un dato
         # mancante. Nessuna novita' != tutto in ordine.
+        # E si spegne sotto un'osservazione negativa: "tutto in ordine" accanto
+        # a un food cost sopra la soglia non e' vero.
         'tutto_ok': (
             len(selected) == 0 and len(dati_mancanti) == 0
             and onboarding is None and not arretrato_frase
+            and all(osservazione_positiva(n) for n in osservazioni)
         ),
         'dati_mancanti': dati_mancanti,
         'narrative': narrative,

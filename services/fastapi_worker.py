@@ -5746,11 +5746,20 @@ def _mesi_confrontabili(kpi: Dict[str, Any], kpi_prec: Dict[str, Any]) -> bool:
     a 9.380 EUR» su due mesi con fatturato 0,00 — dove la "perdita" era la sola
     somma dei costi e il "miglioramento" era che ne erano stati inseriti meno.
     Un mese senza incassi non e' un mese andato meglio: non se ne parla.
+
+    PERSONALE (25/09/2026, decisione di Mattia): anche senza il costo del
+    personale il MOL e' gonfiato, e il confronto mente. Misurato: LAND DEI SAPORI
+    ha il personale a luglio e non ad agosto, quindi agosto risultava «molto
+    meglio» di luglio perche' mancavano gli stipendi. Serve in ENTRAMBI i mesi, a
+    qualunque data: il vecchio dubbio «la buona notizia prima del 15» si chiude
+    qui, perche' prima del 15 il personale del mese chiuso di solito non c'e'.
     """
     for k in (kpi, kpi_prec):
         if float(k.get("fatturato") or 0) <= 0:
             return False
         if k.get("costi_mancanti"):
+            return False
+        if float(k.get("costo_personale") or 0) <= 0:
             return False
     return True
 

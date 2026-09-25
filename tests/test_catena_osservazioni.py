@@ -397,6 +397,48 @@ def test_le_osservazioni_non_contano_come_segnali_aperti():
     assert n == 0
 
 
+def _conta(osservazioni, segnali=()):
+    snap = {"segnali": list(segnali), "osservazioni": osservazioni,
+            "generated_at": "x", "code_version": gruppo._SEGNALI_CODE_VERSION}
+    sb = _FakeSB()
+    sb.table = lambda nome: _QueryConSnapshot(sb, snap)
+    return gruppo._conta_segnali_cache(sb, "u1")
+
+
+OSS_FC_B = dict(OSS, tipo="food_cost_alto", severity="warning", ristorante_id="b",
+                pv_nome="PV Beta", testo="🍽️ Ad agosto il food cost è stato del 45,8%…")
+
+
+def test_un_osservazione_negativa_spegne_il_tutto_in_ordine():
+    """Decisione di Mattia (25/09), come nel PV: «tutto in ordine» sopra «PV Beta:
+    il food cost è stato del 45,8%» non e' vero."""
+    n, sev = _conta([OSS, OSS_FC_B])
+    assert n == 1
+    # Non e' un avviso: la severity del briefing resta quella dei segnali.
+    assert sev == "info"
+
+
+def test_verso_sconosciuto_spegne_il_tutto_in_ordine():
+    for sev in (None, "", "info"):
+        assert _conta([dict(OSS, severity=sev)])[0] == 1, sev
+
+
+def test_segnali_e_osservazioni_negative_si_sommano():
+    seg = {"tipo": "margine_calo", "severity": "error", "ristorante_id": "a",
+           "pv_nome": "PV Alfa", "testo": "x", "cta_page": "/margini"}
+    n, sev = _conta([OSS_FC_B, dict(OSS_FC_B, ristorante_id="c")], segnali=[seg])
+    assert (n, sev) == (3, "error")
+
+
+def test_col_conteggio_negativo_il_briefing_non_dice_tutto_in_ordine():
+    """Dal conteggio alla frase: il gate e' `n_segnali == 0` in _build_briefing."""
+    n, sev = _conta([OSS_FC_B])
+    b = gruppo._build_briefing("G", [], 85, "verde", n, sev, completezza_nota=True)
+    assert "tutto in ordine" not in b.narrativa
+    b0 = gruppo._build_briefing("G", [], 85, "verde", 0, sev, completezza_nota=True)
+    assert "tutto in ordine" in b0.narrativa
+
+
 def test_le_due_chiavi_nuove_sono_configurabili():
     """Senza la voce nel catalogo il salvataggio della config le scarterebbe
     (`k in _SEGNALI_KEYS`) e il cliente non potrebbe spegnerle."""

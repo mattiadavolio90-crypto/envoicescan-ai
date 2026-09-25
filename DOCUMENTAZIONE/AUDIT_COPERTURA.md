@@ -1071,6 +1071,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   sql` (vincoli veri, due clienti, il trigger che riscatta una riga
 >   parcheggiata), +10 `test_coda_fatture_frontend`, +7 Deno (133). Nessuna
 >   migration. Il deploy e' lo stesso del passo 0 (push + Edge Function a mano).
+>
+> - **25/09/2026 — due piccole decisioni del piano consulente.** (1) *Buona
+>   notizia sul margine*: si confronta solo se il costo del personale c'e' in
+>   ENTRAMBI i mesi (`_mesi_confrontabili`). Misurato: LAND DEI SAPORI ha il
+>   personale a luglio e non ad agosto, e agosto sarebbe risultato «molto meglio»
+>   solo perche' mancavano gli stipendi. Chiude anche il dubbio «prima del 15».
+>   (2) *Il verde «Tutto in ordine»* si spegne sotto un'osservazione negativa
+>   (food cost alto, incasso sceso), nel PV (`osservazione_positiva`, affermativa:
+>   severity sconosciuta = spento) e nella catena (`_conta_segnali_cache` conta le
+>   osservazioni negative, senza toccare la severity). Nella Home e in `/m` il
+>   nuovo caso «niente card, niente dati mancanti, niente verde» non mostra piu'
+>   il titolo «Da fare oggi (0)» sopra una lista vuota: `lib/briefing-azioni.ts`
+>   (il caso esisteva gia' con un arretrato aperto). `_BRIEFING_CODE_VERSION`
+>   resta 28: non ancora deployata. Mutanti: 2 + 6, tutti uccisi; il cablaggio
+>   nei due `.tsx` non ha presidio (rendering), dichiarato. Suite: `-m "not sql"` 16.507 passed + 49 skip, `-m
+>   sql` 559, OpenAPI 202, `tsc` pulito sui sorgenti.
+>   (3) *Soglia del food cost* confrontata con la storia della sede: misurata in
+>   sola lettura, 25 volte su 40 mesi consolidati oggi, 20 con la proposta
+>   (tace sulle 4 di LAND DEI SAPORI, stabile al 37,8%, e su OFFSIDE ad aprile,
+>   migliorato dal 40,8% al 35,9%). Non scritta: il numero va a Mattia.
 
 ---
 

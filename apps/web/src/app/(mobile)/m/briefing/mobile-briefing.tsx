@@ -14,6 +14,7 @@ import { type Briefing, type BriefingAzione } from "@/lib/home";
 import { puoIgnorare } from "@/lib/briefing-shared";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { cn } from "@/lib/utils";
+import { statoAzioni } from "@/lib/briefing-azioni";
 
 // Effetto typewriter sulla narrativa, come la Home desktop: solo al primo load
 // del giorno, durata ~costante.
@@ -97,7 +98,7 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
   const datiMancanti = briefing.dati_mancanti ?? [];
   // Verde deciso SOLO dal backend (gate dati mancanti + Salute): l'archiviazione
   // locale non lo forza. Parità con la Home desktop.
-  const tuttoOk = briefing.tutto_ok && visibili.length === 0;
+  const stato = statoAzioni(briefing.tutto_ok, visibili.length, datiMancanti.length);
 
   return (
     <div className="space-y-5">
@@ -122,7 +123,7 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
 
       {/* Azioni da fare: solo informative + "Ignora". Nessun link verso la
           vista desktop (la Home mobile resta dentro la PWA). */}
-      {tuttoOk ? (
+      {stato === "vuoto" ? null : stato === "verde" ? (
         <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.07] to-transparent py-10 text-center">
           <div className="rounded-full bg-emerald-500/15 p-2.5 ring-1 ring-emerald-500/20">
             <Check className="size-6 text-emerald-500" />
@@ -132,7 +133,7 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
           </p>
           <p className="text-sm text-muted-foreground">Nessuna azione da fare oggi.</p>
         </div>
-      ) : visibili.length === 0 && datiMancanti.length > 0 ? (
+      ) : stato === "dati_mancanti" ? (
         <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.07] to-transparent py-8 text-center">
           <div className="rounded-full bg-amber-500/15 p-2.5 ring-1 ring-amber-500/20">
             <Info className="size-6 text-amber-500" />

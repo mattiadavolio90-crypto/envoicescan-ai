@@ -92,8 +92,9 @@ contano per il "tutto a posto".
 - **Buona notizia** — sceglie la prima disponibile tra:
   1. **MOL del mese chiuso**, festeggiato **solo se** è positivo, **maggiore del
      mese prima**, la Salute non è rossa **e** i due mesi sono confrontabili:
-     **entrambi** con fatturato e con i costi presenti (altrimenti sarebbe un
-     "+X%" falso);
+     **entrambi** con fatturato, con i costi presenti **e** con il costo del
+     personale inserito (altrimenti sarebbe un "+X%" falso: dal 25/9/2026, un
+     agosto senza stipendi non è un agosto andato meglio);
   2. altrimenti **perdita in calo** (in rosso ma meno del mese prima), con la
      stessa condizione sui due mesi. Fino al 23/9/2026 diceva «la perdita è
      scesa a € 9.380» su due mesi **senza incassi**: la "perdita" era la somma
@@ -112,8 +113,10 @@ contano per il "tutto a posto".
 
 Dopo le aperture e prima di "Da sistemare oggi", il briefing può dire un fatto
 sull'**andamento** del locale, non sulla completezza dell'archivio. Come le
-aperture, non sono card e non contano per il "tutto a posto"; a differenza
-delle aperture, **si possono spegnere** dal configuratore. Si calcolano solo
+aperture, non sono card; a differenza delle aperture, **si possono spegnere**
+dal configuratore. Il "tutto a posto" lo lasciano acceso solo se sono buone
+notizie (l'incasso salito): un food cost alto o un incasso sceso lo spengono,
+perché "tutto a posto" accanto a quella frase non sarebbe vero (dal 25/9/2026). Si calcolano solo
 nella versione completa (§2), non in quella rapida.
 
 - **Andamento dell'incasso**: **solo il martedì**. Confronta l'incasso delle
@@ -264,8 +267,9 @@ gli avvisi. Sono quelle del PV (§4-bis): stesso calcolo, stessa frase, stessi g
 - **Andamento dell'incasso**: il martedì.
 - **Food cost alto**: fra l'ultimo giorno del mese e i primi 7; mai per i negozi.
 
-C'è una riga per sede, col nome della sede davanti. Non sono avvisi, quindi non
-spengono il «Tutto in ordine» e non si contano fra gli avvisi aperti. Si spengono in
+C'è una riga per sede, col nome della sede davanti. Non sono avvisi e non si contano
+fra gli avvisi aperti; come nel PV, però, quelle negative (food cost alto, incasso
+sceso) spengono il «Tutto in ordine» (dal 25/9/2026). Si spengono in
 tre modi:
 - dal configuratore della catena;
 - escludendo la sede dall'assistente della catena;
@@ -364,7 +368,7 @@ un'email spedita non si ritira.
 | L'ordine di importanza degli argomenti | vedi §5 |
 | Quali avvisi si possono spegnere | tutti tranne gli upload falliti |
 | Dopo quanti giorni dice "bentornato" | 7 giorni |
-| Quando festeggiare il MOL | positivo, in crescita, salute ok, fatturato e costi presenti in entrambi i mesi |
+| Quando festeggiare il MOL | positivo, in crescita, salute ok, fatturato, costi e personale presenti in entrambi i mesi |
 | Soglia scontrino medio "notevole" | 10% |
 | Soglia anomalia coperti | 20% |
 | Da che giorno si chiede il personale del mese chiuso | dal 15 |

@@ -97,7 +97,8 @@ def test_mol_in_crescita_scatta_quando_entrambi_i_mesi_hanno_incassi():
     Senza questo, «non dice mai niente» passerebbe per un presidio verde.
     """
     margini = {
-        m: {"altri_ricavi_noiva": 40000.0 + m * 1000} for m in range(1, 13)
+        m: {"altri_ricavi_noiva": 40000.0 + m * 1000, "costo_dipendenti": 8000.0}
+        for m in range(1, 13)
     }
     cfb = {m: 5000.0 for m in range(1, 13)}
     csp = {m: 1000.0 for m in range(1, 13)}
@@ -112,12 +113,34 @@ def test_mol_in_crescita_scatta_quando_entrambi_i_mesi_hanno_incassi():
 
 def test_regola_in_isolamento():
     """La regola da sola, senza il resto della funzione."""
-    pieno = {"fatturato": 10000.0, "costi_mancanti": False}
-    vuoto = {"fatturato": 0.0, "costi_mancanti": False}
-    senza_costi = {"fatturato": 10000.0, "costi_mancanti": True}
+    pieno = {"fatturato": 10000.0, "costi_mancanti": False, "costo_personale": 3000.0}
+    vuoto = {"fatturato": 0.0, "costi_mancanti": False, "costo_personale": 3000.0}
+    senza_costi = {"fatturato": 10000.0, "costi_mancanti": True, "costo_personale": 3000.0}
+    senza_personale = {"fatturato": 10000.0, "costi_mancanti": False, "costo_personale": 0.0}
 
     assert _mesi_confrontabili(pieno, pieno) is True
     assert _mesi_confrontabili(vuoto, pieno) is False
     assert _mesi_confrontabili(pieno, vuoto) is False
     assert _mesi_confrontabili(senza_costi, pieno) is False
     assert _mesi_confrontabili(pieno, senza_costi) is False
+    # 25/09: senza personale il MOL e' gonfiato, in uno qualunque dei due mesi.
+    assert _mesi_confrontabili(senza_personale, pieno) is False
+    assert _mesi_confrontabili(pieno, senza_personale) is False
+    assert _mesi_confrontabili({"fatturato": 10000.0, "costi_mancanti": False}, pieno) is False
+
+
+
+def test_agosto_senza_stipendi_non_e_un_agosto_migliore():
+    """Il caso misurato il 25/09 su LAND DEI SAPORI: personale a luglio, non ad
+    agosto. Il MOL di agosto sembra molto piu' alto solo perche' mancano gli
+    stipendi: non e' una buona notizia."""
+    margini = {m: {"altri_ricavi_noiva": 40000.0, "costo_dipendenti": 12000.0} for m in range(1, 13)}
+    margini[8] = {"altri_ricavi_noiva": 40000.0}
+    cfb = {m: 5000.0 for m in range(1, 13)}
+    csp = {m: 1000.0 for m in range(1, 13)}
+    sb = _sb_senza_incasso()
+    with _DENTRO_FINESTRA_MOL, _patch_loaders(margini, cfb, csp), patch(
+        "services.fastapi_worker._salute_indice_rosso", return_value=False
+    ):
+        out = _briefing_buona_notizia(UID, RID, sb)
+    assert out is None or out["payload"]["tipo"] != "mol_mese", out

@@ -46,7 +46,8 @@ def _margini_in_crescita():
     food/spese fissi del patch (5000+1000), il MOL = (10000 + m*1000) − 6000 =
     4000 + m*1000, positivo e crescente mese su mese.
     """
-    return {m: {"altri_ricavi_noiva": 10000 + m * 1000} for m in range(1, 13)}
+    # Con il personale: dal 25/09 senza personale il confronto non vale.
+    return {m: {"altri_ricavi_noiva": 10000 + m * 1000, "costo_dipendenti": 1000} for m in range(1, 13)}
 
 
 def _patch_loaders(costi=True):
