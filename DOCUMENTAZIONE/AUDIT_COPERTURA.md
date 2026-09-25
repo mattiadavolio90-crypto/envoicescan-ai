@@ -879,6 +879,40 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   rigenerato; `tsc` pulito. Un primo giro `-m sql`
 >   aveva dato 541 *errors*: `/dev/shm` pieno di 62 Postgres di test orfani,
 >   non il codice. **Non pushato: va deployato prima del 1/10.**
+>
+> - **24-25/09/2026 — fase 7a «assistente consulente»: la STRUTTURA
+>   dell'email settimanale, spenta.** Mattia: «il contenuto va studiato, la
+>   struttura si pianifica»; a tutti i clienti attivi con disiscrizione, lunedi'
+>   mattina, link alla Home. Fatto: invio condiviso (`services/email_service.py`,
+>   template identico byte per byte a quello di admin.py, verificato), migration
+>   `20260924223755_email_settimanale.sql` (preferenza default accesa + registro
+>   UNIQUE utente/lunedi', CHECK, REVOKE nominale), `email_settimanale_service`
+>   (destinatari, sezioni con un solo segnaposto, token HMAC fail-closed, tre
+>   sicure: dry_run, `EMAIL_SETTIMANALE_ATTIVA`, registro-come-prenotazione),
+>   13° router, anteprima admin, pagina pubblica `/disiscrizione` (nessun GET
+>   che agisce) e one-click RFC 8058, interruttore nelle Impostazioni, cron del
+>   lunedi'. **Due presidi esistenti hanno fermato il lavoro, giustamente**: la
+>   guardia dei router (ogni endpoint dichiara la sua protezione, e il conteggio
+>   dei router e' fissato) e quella dell'identita' dichiarativa (un endpoint
+>   senza utente va motivato per iscritto), piu' la ricetta d'isolamento per
+>   `solo_user_id`. **La review ha trovato un difetto vero**: col runbook come
+>   l'avevo scritto (segreto assente fino alla 7c) l'anteprima — lo strumento
+>   della 7b — andava in 500 in produzione, e i test non lo vedevano perche' la
+>   fixture impostava sempre il segreto. Corretti anche: finestra d'invio 7-9:59
+>   (con un'ora sola, un cron in ritardo di mezz'ora perdeva la settimana in
+>   silenzio), cron spostati al :35 (alle 06:30 gira gia' un altro controllo),
+>   token non ASCII (500 → 400), un errore del registro che fermava tutti i
+>   clienti successivi, falso allarme Telegram ogni lunedi' a invio spento.
+>   **Mutanti: 43, tutti uccisi** — 3 sopravvissuti al primo giro (intestazioni
+>   verso Brevo, REVOKE su anon e authenticated: lo snapshot dei test non
+>   riproduce le default privileges di Supabase, ora simulate e la migration
+>   rieseguita), chiusi con test nuovi. **Suite: 16.144 passed, 47 skipped**
+>   (`-m "not sql" -p no:randomly`, working tree con +2 test non committati di
+>   un'altra sessione) **+ 553 `-m sql`**; OpenAPI 202 endpoint, `tsc` pulito.
+>   **Prima del push che la porta**: applicare la migration (senza, la pagina
+>   Impostazioni va in 500) e impostare `EMAIL_DISISCRIZIONE_SECRET` su Railway.
+>   `EMAIL_SETTIMANALE_ATTIVA` resta assente fino alla 7c (privacy). **Non
+>   pushato.**
 
 ---
 

@@ -88,6 +88,12 @@ SENZA_RICETTA_MOTIVATE = {
     ("POST", "/api/parse"): (
         "Come /api/classify: chiamato dal queue-worker, non dal browser."
     ),
+    ("POST", "/api/interno/email-settimanale"): (
+        "Server-to-server: lo chiama il cron di GitHub Actions "
+        "(email_settimanale.yml) con la sola X-Worker-Key; nessuna route Next.js "
+        "lo espone. `solo_user_id` e' un filtro dell'operatore per provare "
+        "l'invio su un account, non una risorsa di un cliente (24/09/2026)."
+    ),
 }
 
 

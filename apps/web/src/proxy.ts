@@ -14,7 +14,9 @@ const SESSION_COOKIE = "oneflux_session";
 // footer della landing pubblica. Erano rimaste fuori da questa whitelist
 // (bug scoperto 10/07 verificando il deploy): senza sessione finivano
 // rediretti a /login invece di essere leggibili da chiunque.
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/demo", "/termini", "/privacy"];
+// /disiscrizione: il link «Non voglio più riceverla» dell'email settimanale.
+// Chi lo apre di solito non ha una sessione, e il token firmato basta.
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/demo", "/termini", "/privacy", "/disiscrizione"];
 
 // Asset SEO/social a route (NON file statici: non hanno estensione nel path, quindi
 // il matcher non li esclude e finirebbero rediretti al login dalla regola "rotta

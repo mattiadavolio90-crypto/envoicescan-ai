@@ -77,6 +77,17 @@ SENZA_IDENTITA_MOTIVATI = {
         "sopra, argomentata in admin.py: per esporlo alla pagina admin "
         "servirebbe _verify_admin."
     ),
+    ("POST", "/api/interno/email-settimanale"): (
+        "Consumatore dichiarato: workflow GitHub Actions email_settimanale.yml "
+        "(fase 7, 24/09/2026), che ha solo WORKER_SECRET_KEY. Nessuna route "
+        "Next.js lo espone; l'invio vero richiede anche EMAIL_SETTIMANALE_ATTIVA=1."
+    ),
+    ("POST", "/api/email/disiscrizione"): (
+        "Disiscrizione dall'email settimanale: chi clicca il link di norma non ha "
+        "una sessione, e il client di posta (one-click RFC 8058) non ne ha mai una. "
+        "L'identita' e' il token HMAC sull'id utente, verificato con compare_digest "
+        "(email_settimanale_service.verifica_token), fail-closed senza segreto."
+    ),
     ("POST", "/api/admin/riparto/auto-pulisci"): (
         "Stesso gate macchina di /incoerenze (riparto.py:1069-1070). Con ?apply=true "
         "SCRIVE su qualunque account: rischio noto e accettato, non una dimenticanza."

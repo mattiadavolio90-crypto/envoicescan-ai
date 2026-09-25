@@ -35,6 +35,16 @@ instradata da Railway.
 - `ENABLE_INLINE_QUEUE_PROCESSOR=0` (la coda la processa il servizio dedicato, non l'API)
 - Brevo: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` (sender **verificato** in Brevo: uno non verificato fa fallire l'invio in silenzio; default `BREVO_SENDER_EMAIL_DEFAULT` in `config/constants.py`), `BREVO_SENDER_NAME`
 - `ADMIN_EMAILS`, `CHAT_MODEL`
+- Email settimanale (fase 7, `services/email_settimanale_service.py`):
+  - `EMAIL_DISISCRIZIONE_SECRET`: segreto HMAC dei link «Non voglio più riceverla»
+    (es. `python -c "import secrets; print(secrets.token_hex(32))"`). **Da impostare
+    già al deploy della 7a**: da solo non spedisce niente, ma senza l'anteprima admin
+    (lo strumento della 7b) e il dry_run non compongono (fail-closed). **Non
+    cambiarlo** dopo l'accensione: invaliderebbe i link delle email già spedite.
+  - `EMAIL_SETTIMANALE_ATTIVA=1` (**assente fino alla fase 7c**): l'interruttore
+    dell'invio vero. Assente o diverso da
+    `1`, il cron del lunedì (`.github/workflows/email_settimanale.yml`) non fa niente.
+    Si accende **solo** dopo l'aggiornamento della privacy.
 
 ### Solo `queue-worker`
 - `WORKER_ENABLED=1` — **killswitch**. A `0` la coda non viene drenata (causa incidente

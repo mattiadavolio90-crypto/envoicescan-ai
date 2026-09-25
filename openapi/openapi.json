@@ -3766,7 +3766,7 @@
           "Account"
         ],
         "summary": "Account Preferenze",
-        "description": "Salva le preferenze del cliente (tema, vista di Gestione Fatture).\n\nSegue l'account e non il browser: in localStorage si perderebbe al primo\naccesso da un altro dispositivo.\n\nWhitelist SEPARATA per campo: un solo `if ... not in (...)` condiviso\nrifiuterebbe la vista perche' non e' un tema.",
+        "description": "Salva le preferenze del cliente (tema, vista di Gestione Fatture, email\nsettimanale dell'assistente).\n\nSegue l'account e non il browser: in localStorage si perderebbe al primo\naccesso da un altro dispositivo.\n\nWhitelist SEPARATA per campo: un solo `if ... not in (...)` condiviso\nrifiuterebbe la vista perche' non e' un tema.",
         "operationId": "account_preferenze_api_account_preferenze_post",
         "parameters": [
           {
@@ -16162,6 +16162,83 @@
         }
       }
     },
+    "/api/admin/email-settimanale/anteprima": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Email Settimanale Anteprima",
+        "description": "L'email settimanale che quel cliente riceverebbe adesso, senza spedirla\n(fase 7a). E' lo strumento per studiare il contenuto sui dati veri (7b):\nnessuna scrittura, nessuna chiamata a Brevo.",
+        "operationId": "admin_email_settimanale_anteprima_api_admin_email_settimanale_anteprima_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Admin Email Settimanale Anteprima Api Admin Email Settimanale Anteprima Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/overview": {
       "get": {
         "tags": [
@@ -18371,6 +18448,156 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Gruppo Costi Comuni Api Gruppo Costi Comuni Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/interno/email-settimanale": {
+      "post": {
+        "tags": [
+          "Email"
+        ],
+        "summary": "Email Settimanale Esegui",
+        "description": "Il lavoro del lunedi'. Senza `forza` lavora solo se a Roma e' lunedi'\nfra le 7 e le 9:59: il cron gira due volte (05:35 e 06:35 UTC) e almeno una\ncade nella finestra, qualunque sia l'ora legale. `dry_run` e' vero di\ndefault: per spedire servono `dry_run=false` E `EMAIL_SETTIMANALE_ATTIVA=1`.",
+        "operationId": "email_settimanale_esegui_api_interno_email_settimanale_post",
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Dry Run"
+            }
+          },
+          {
+            "name": "solo_user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Solo User Id"
+            }
+          },
+          {
+            "name": "forza",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Forza"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Email Settimanale Esegui Api Interno Email Settimanale Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/email/disiscrizione": {
+      "post": {
+        "tags": [
+          "Email"
+        ],
+        "summary": "Email Disiscrizione",
+        "description": "Spegne l'email settimanale per l'utente del token. Nessun login: il\ntoken firmato e' la prova. Risposta identica per token sbagliato e utente\ninesistente, per non dire quali id esistono.",
+        "operationId": "email_disiscrizione_api_email_disiscrizione_post",
+        "parameters": [
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisiscrizioneBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Email Disiscrizione Api Email Disiscrizione Post"
                 }
               }
             }
@@ -21134,6 +21361,24 @@
           "top_categorie"
         ],
         "title": "DashboardStats"
+      },
+      "DisiscrizioneBody": {
+        "properties": {
+          "u": {
+            "type": "string",
+            "title": "U"
+          },
+          "t": {
+            "type": "string",
+            "title": "T"
+          }
+        },
+        "type": "object",
+        "required": [
+          "u",
+          "t"
+        ],
+        "title": "DisiscrizioneBody"
       },
       "EliminaAccountBody": {
         "properties": {
@@ -24258,6 +24503,17 @@
               }
             ],
             "title": "Vista Fatture"
+          },
+          "email_settimanale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Settimanale"
           }
         },
         "type": "object",

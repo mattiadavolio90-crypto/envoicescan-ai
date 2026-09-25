@@ -9947,6 +9947,7 @@ from services.routers.workspace import router as _workspace_router  # noqa: E402
 from services.routers.admin import router as _admin_router  # noqa: E402
 from services.routers.gruppo import router as _gruppo_router  # noqa: E402
 from services.routers.riparto import router as _riparto_router  # noqa: E402
+from services.routers.email_settimanale import router as _email_settimanale_router  # noqa: E402
 app.include_router(_tag_router)
 app.include_router(_scadenziario_router)
 app.include_router(_cestino_router)
@@ -9959,6 +9960,7 @@ app.include_router(_workspace_router)
 app.include_router(_admin_router)
 app.include_router(_gruppo_router)
 app.include_router(_riparto_router)
+app.include_router(_email_settimanale_router)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

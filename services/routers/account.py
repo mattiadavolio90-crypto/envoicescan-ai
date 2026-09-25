@@ -94,7 +94,7 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     user_row = (
         sb.table("users")
         .select("id, email, nome_ristorante, ragione_sociale, partita_iva, piano, "
-                "price_alert_threshold, tema, vista_fatture, created_at, last_login")
+                "price_alert_threshold, tema, vista_fatture, email_settimanale, created_at, last_login")
         .eq("id", user_id)
         .single()
         .execute()
@@ -161,6 +161,8 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "chat_pool": chat_pool,
         "price_alert_threshold": row.get("price_alert_threshold"),
         "tema": (row.get("tema") or "dark"),
+        # Default acceso come la colonna: un valore assente non e' una disiscrizione.
+        "email_settimanale": row.get("email_settimanale") is not False,
         "membro_dal": row.get("created_at"),
         "ultimo_accesso": row.get("last_login"),
         "is_admin": _is_admin_email(row.get("email")),
@@ -238,6 +240,7 @@ class PreferenzeBody(BaseModel):
     # il tema — e un client che non lo facesse prenderebbe un 422 senza motivo.
     tema: Optional[str] = None
     vista_fatture: Optional[str] = None
+    email_settimanale: Optional[bool] = None
 
 
 VISTE_FATTURE = ("agenda", "calendario", "lista_mensile")
@@ -248,7 +251,8 @@ def account_preferenze(
     body: PreferenzeBody,
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
-    """Salva le preferenze del cliente (tema, vista di Gestione Fatture).
+    """Salva le preferenze del cliente (tema, vista di Gestione Fatture, email
+    settimanale dell'assistente).
 
     Segue l'account e non il browser: in localStorage si perderebbe al primo
     accesso da un altro dispositivo.
@@ -270,6 +274,9 @@ def account_preferenze(
         if vista not in VISTE_FATTURE:
             raise HTTPException(status_code=400, detail="Vista non valida")
         aggiornamenti["vista_fatture"] = vista
+
+    if body.email_settimanale is not None:
+        aggiornamenti["email_settimanale"] = bool(body.email_settimanale)
 
     if not aggiornamenti:
         raise HTTPException(status_code=400, detail="Nessuna preferenza da salvare")
@@ -388,7 +395,7 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
     try:
         prof = sb.table("users").select(
             "id,email,nome_ristorante,nome_referente,partita_iva,ragione_sociale,"
-            "tema,vista_fatture,piano,privacy_accepted_at,created_at"
+            "tema,vista_fatture,email_settimanale,piano,privacy_accepted_at,created_at"
         ).eq("id", user_id).limit(1).execute()
         export["profilo"] = (prof.data or [None])[0]
     except Exception as exc:

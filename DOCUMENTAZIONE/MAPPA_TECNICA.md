@@ -58,9 +58,9 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 |---|---|
 | Una pagina che il cliente vede | `apps/web/src/app/(app)/<pagina>/` |
 | Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive |
-| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (171 route, solo proxy) |
+| Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (173 route, solo proxy) |
 | Logica di business | `services/*.py` |
-| Un endpoint del worker | `services/routers/*.py` (12 router) |
+| Un endpoint del worker | `services/routers/*.py` (13 router) |
 | Schema DB | `supabase/migrations/` (canonico) |
 | Ricezione fatture SDI | `supabase/functions/invoicetronic-webhook/` (Deno) |
 | Costanti, categorie, prompt | `config/` |

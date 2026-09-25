@@ -530,114 +530,13 @@ def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_use
 
 # ── Crea cliente ─────────────────────────────────────────────────────────────
 
-# Sender di DEFAULT verificato in Brevo. NON usare noreply@/altro come fallback:
-# un mittente non verificato fa fallire l'invio in silenzio (status != 201).
-# Definito in config/constants.py: lo stesso default vale per il reset
-# self-service (services/auth_service.py).
-from config.constants import (  # noqa: E402
-    BREVO_SENDER_EMAIL_DEFAULT as _BREVO_SENDER_DEFAULT,
-    BREVO_SENDER_NAME_DEFAULT as _BREVO_SENDER_NAME_DEFAULT,
+# Invio e template vivono in services/email_service.py dal 24/09/2026: li usa
+# anche l'email settimanale, e un router non importa un altro router. I nomi
+# restano qui come alias perche' i chiamanti (e i test) li cercano in admin.
+from services.email_service import (  # noqa: E402
+    brevo_send as _brevo_send,
+    email_template as _email_template,
 )
-
-
-def _brevo_send(to_email: str, to_name: str, subject: str, html_body: str, *, contesto: str = "email") -> bool:
-    """Invia un'email transazionale via Brevo. Ritorna True solo su status 201.
-
-    Mittente: BREVO_SENDER_EMAIL, che DEVE essere un sender verificato in Brevo
-    (default agent@oneflux.it). Centralizza l'invio: onboarding, reinvio
-    attivazione e reset password passano tutti da qui.
-    """
-    import requests as _requests
-
-    brevo_key = os.getenv("BREVO_API_KEY", "")
-    if not brevo_key:
-        logger.warning("Email %s non inviata: BREVO_API_KEY mancante", contesto)
-        return False
-    sender_email = os.getenv("BREVO_SENDER_EMAIL", _BREVO_SENDER_DEFAULT)
-    sender_name = os.getenv("BREVO_SENDER_NAME", _BREVO_SENDER_NAME_DEFAULT)
-    try:
-        r = _requests.post(
-            "https://api.brevo.com/v3/smtp/email",
-            json={
-                "sender": {"email": sender_email, "name": sender_name},
-                "to": [{"email": to_email, "name": to_name}],
-                "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
-                "subject": subject,
-                "htmlContent": html_body,
-            },
-            headers={"api-key": brevo_key, "Content-Type": "application/json"},
-            timeout=10,
-        )
-        if r.status_code != 201:
-            logger.warning("Brevo %s KO: status=%s (sender=%s)", contesto, r.status_code, sender_email)
-        return r.status_code == 201
-    except Exception as exc:
-        logger.warning("Errore invio email %s: %s", contesto, exc)
-        return False
-
-
-def _email_template(*, titolo: str, corpo_html: str, cta_label: str, cta_link: str, nota: str = "") -> str:
-    """Template HTML condiviso per le email transazionali (onboarding, reset).
-
-    Tabella con attributi bgcolor/width invece di solo CSS: i client aziendali
-    (Outlook desktop su motore Word) ignorano gran parte del CSS moderno.
-    """
-    nota_html = f'<tr><td align="center" style="padding:20px 40px 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#f59e0b;text-align:center;">{nota}</td></tr>' if nota else ""
-    return f"""
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e14;padding:32px 16px;">
-  <tr>
-    <td align="center">
-      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#12161f;border:1px solid #232936;border-radius:12px;">
-        <tr>
-          <td style="padding:32px 40px 8px;font-family:Arial,Helvetica,sans-serif;">
-            <table role="presentation" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="padding-right:10px;vertical-align:middle;">
-                  <img src="https://app.oneflux.it/icons/icon-192.png" width="28" height="28" alt="ONEFLUX" style="display:block;border-radius:50%;">
-                </td>
-                <td style="vertical-align:middle;">
-                  <span style="font-size:20px;font-weight:bold;color:#38bdf8;">ONEFLUX</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:8px 40px 0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#f1f5f9;">
-            {titolo}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:16px 40px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#cbd5e1;">
-            {corpo_html}
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding:28px 40px 8px;">
-            <table role="presentation" cellpadding="0" cellspacing="0">
-              <tr>
-                <td align="center" bgcolor="#0ea5e9" style="border-radius:8px;">
-                  <a href="{cta_link}" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">
-                    {cta_label}
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        {nota_html}
-        <tr>
-          <td style="padding:24px 40px 32px;">
-            <hr style="border:none;border-top:1px solid #232936;margin:0 0 16px;">
-            <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">
-              ONEFLUX Team — <a href="mailto:agent@oneflux.it" style="color:#64748b;">agent@oneflux.it</a>
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>"""
 
 
 def _invia_email_onboarding(email: str, nome_ristorante: str, link: str) -> bool:
@@ -3496,3 +3395,19 @@ def retail_categorie_incoerenti(ore: int = RETAIL_MONITOR_ORE_DEFAULT) -> Dict[s
         "retail_con_categoria_food": per_tipo["retail_con_categoria_food"],
         "altro": altro,
     }
+
+
+@router.get("/api/admin/email-settimanale/anteprima", tags=["Admin"],
+            dependencies=[Depends(_verify_admin)])
+def admin_email_settimanale_anteprima(user_id: str) -> Dict[str, Any]:
+    """L'email settimanale che quel cliente riceverebbe adesso, senza spedirla
+    (fase 7a). E' lo strumento per studiare il contenuto sui dati veri (7b):
+    nessuna scrittura, nessuna chiamata a Brevo."""
+    import uuid as _uuid
+    from services import email_settimanale_service as svc
+
+    try:
+        _uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="user_id non valido")
+    return svc.anteprima(get_supabase_client(), user_id, adesso=svc.adesso_roma())

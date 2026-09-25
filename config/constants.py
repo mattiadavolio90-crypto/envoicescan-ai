@@ -2116,3 +2116,7 @@ CATEGORIA_ARTICOLO_DI_VENDITA = "ARTICOLO DI VENDITA"
 # devono cadere sullo stesso indirizzo.
 BREVO_SENDER_EMAIL_DEFAULT = "agent@oneflux.it"
 BREVO_SENDER_NAME_DEFAULT = "ONEFLUX"
+
+# Indirizzo pubblico dell'app, per i link dentro le email. Le email partono dal
+# worker, che non conosce il dominio della richiesta: serve scritto.
+APP_URL = "https://app.oneflux.it"

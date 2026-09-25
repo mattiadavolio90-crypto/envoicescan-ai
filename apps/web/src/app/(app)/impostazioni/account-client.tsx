@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,7 @@ type AccountData = {
   chat_pool?: boolean;
   price_alert_threshold: number | null;
   tema?: "dark" | "light";
+  email_settimanale?: boolean;
   membro_dal: string | null;
   ultimo_accesso: string | null;
   is_admin: boolean;
@@ -421,6 +423,57 @@ function PrivacyGdprCard() {
   );
 }
 
+// L'email settimanale dell'assistente (fase 7): la preferenza vive solo
+// sull'account, quindi a un salvataggio fallito l'interruttore TORNA indietro —
+// al contrario del tema, che resta applicato sul dispositivo.
+function EmailSettimanaleCard({ attivaSalvata }: { attivaSalvata: boolean }) {
+  const [attiva, setAttiva] = useState(attivaSalvata);
+  const [saving, setSaving] = useState(false);
+
+  async function cambia(nuovo: boolean) {
+    if (saving) return;
+    const prima = attiva;
+    setAttiva(nuovo);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/account/preferenze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_settimanale: nuovo }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(nuovo ? "Riceverai l'email settimanale" : "Non riceverai più l'email settimanale");
+    } catch {
+      setAttiva(prima);
+      toast.error("Preferenza non salvata. Riprova più tardi.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Email settimanale</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-sm text-muted-foreground">
+            Il lunedì mattina l&apos;assistente ti scrive com&apos;è andata la settimana del tuo
+            locale, anche se non apri l&apos;app.
+          </p>
+          <Switch
+            checked={attiva}
+            disabled={saving}
+            aria-label="Ricevi l'email settimanale"
+            onCheckedChange={(v: boolean) => cambia(v)}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AspettoCard({ temaSalvato }: { temaSalvato: "dark" | "light" }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -631,6 +684,8 @@ export function AccountClient({
         <GruppoCard nomeGruppo={nomeGruppo} email={data.email} membroDal={data.membro_dal} numPv={sedi.length} />
         <SediGruppoCard sedi={sedi} />
         <AspettoCard temaSalvato={data.tema ?? "dark"} />
+        {/* Gli admin non la ricevono (esclusi dai destinatari): l'interruttore mentirebbe. */}
+        {!data.is_admin && <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />}
         <CambioPasswordForm />
       </div>
     );
@@ -730,6 +785,9 @@ export function AccountClient({
 
       {/* Aspetto (tema chiaro/scuro) */}
       <AspettoCard temaSalvato={data.tema ?? "dark"} />
+
+      {/* Email settimanale dell'assistente */}
+      {!data.is_admin && <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />}
 
       {/* Cambio password */}
       <CambioPasswordForm />
