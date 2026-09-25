@@ -134,7 +134,8 @@ def test_lo_stato_propone_le_piva_del_cliente(app):
 
 def test_si_cerca_l_azienda_e_si_collega(app):
     r = app.get(f"{_base()}/azienda", params={"piva": PIVA})
-    assert r.json() == {"company_id": AZIENDA, "nome": "OFFSIDE SRL", "vat": f"IT{PIVA}", "gia_viste": []}
+    assert r.json() == {"company_id": AZIENDA, "nome": "OFFSIDE SRL", "vat": f"IT{PIVA}", "gia_viste": [],
+                        "senza_company": 0}
     cid = _collega(app)
     config = app.get(_base()).json()["configurazioni"]
     assert [c["id"] for c in config] == [cid] and config[0]["invoicetronic_company_id"] == AZIENDA
@@ -470,3 +471,42 @@ def test_il_cliente_che_si_cancella_toglie_subito_gli_zip(app, monkeypatch):
     assert r.status_code == 200, r.text
     assert _ArchivioFinto.rimossi == ["c/fatture.zip"]
     assert _cur(app.db, "SELECT count(*) FROM public.users WHERE id = %s", U1)[0][0] == 0
+
+
+
+def test_le_fatture_arrivate_senza_azienda_si_contano(app):
+    """Con quelle il confronto non si puo' fare: la scheda non deve dire «nessuna
+    fattura arrivata»."""
+    for i, meta in enumerate(({"resource_id": 5}, {"invoicetronic_company_id": AZIENDA}, {})):
+        _cur(app.db, "INSERT INTO public.fatture_queue (id, event_id, piva_raw, status, user_id, ristorante_id, source, payload_meta) "
+                     "VALUES (%s, %s, %s, 'done', %s, %s, 'invoicetronic', %s::jsonb)",
+             i + 1, f"evt-s{i}", PIVA, U1, SEDE_1, json.dumps(meta))
+    r = app.get(f"{_base()}/azienda", params={"piva": PIVA}).json()
+    assert (r["gia_viste"], r["senza_company"]) == ([AZIENDA], 2)
+
+
+def test_invia_ora_con_un_invio_da_chiarire_lo_dice(app):
+    """L'esito incerto copre fino a ieri: senza il controllo la risposta era
+    «Niente da inviare», che nasconde l'invio da chiarire."""
+    cid = _collega(app)
+    _completa(app, cid)
+    iid = str(_cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
+                           "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin') "
+                           "RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, _oggi() - timedelta(days=40), _oggi() - timedelta(days=1))[0][0])
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'esito_incerto' WHERE id = %s", iid)
+    r = app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"})
+    assert r.status_code == 409 and "da chiarire" in r.json()["detail"]
+
+
+def test_il_primo_invio_non_si_sovrappone_alla_storia_di_una_configurazione_cancellata(app):
+    cid = _collega(app)
+    _completa(app, cid)
+    _invio_inviato(app, cid, _oggi() - timedelta(days=60), _oggi() - timedelta(days=30))
+    _cur(app.db, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
+    nuova = _collega(app)
+    _completa(app, nuova)
+    r = app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"})
+    assert r.status_code == 400 and "configurazione cancellata" in r.json()["detail"]
+    app.patch(f"{_base()}/{nuova}", json={"data_partenza": (_oggi() - timedelta(days=29)).isoformat()})
+    assert app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"}).status_code == 200

@@ -342,3 +342,51 @@ def test_l_email_al_commercialista_dice_cosa_non_e() -> None:
             assert "non sostituisce il Cassetto fiscale" in parte
             assert "non è un servizio di" in parte
             assert not re.search(r"conservazione a norma", parte, re.IGNORECASE)
+
+
+# Ogni parametro di componi_email e' un dato che finisce nell'email al
+# commercialista, cioe' che passa da Brevo: la riga di Brevo li nomina tutti.
+# La prima stesura della privacy ne dimenticava due (P.IVA e numero di file).
+DATI_EMAIL_COMMERCIALISTA = {
+    "nome": "ragione sociale", "piva": "P.IVA", "dal": "periodo", "al": "periodo",
+    "n_file": "numero di file", "link": "link a tempo", "scade": "scadenza",
+}
+
+
+def _riga_fornitore(testo: str, fornitore: str) -> str:
+    inizio = testo.index(f'"{fornitore}"')
+    return testo[inizio:testo.index("],", inizio)]
+
+
+def test_la_riga_di_brevo_nomina_ogni_dato_dell_email_al_commercialista() -> None:
+    import inspect
+    from datetime import date
+
+    from services.invio_commercialista_service import componi_email
+
+    assert set(inspect.signature(componi_email).parameters) == set(DATI_EMAIL_COMMERCIALISTA), (
+        "L'email al commercialista porta un dato nuovo: va dichiarato nella riga di Brevo "
+        "della privacy (e in DATI_EMAIL_COMMERCIALISTA)."
+    )
+    _, _, email = componi_email("ROSSI SRL", "07863990961", date(2026, 8, 1), date(2026, 8, 31), 3,
+                                [("Scarica", "https://x.test/zz")], date(2026, 9, 30))
+    for valore in ("ROSSI SRL", "07863990961", "01/08/2026", "31/08/2026", "3 file", "https://x.test/zz", "30/09/2026"):
+        assert valore in email, f"{valore!r} non e' nell'email: l'elenco dei dati non e' piu' vero"
+    riga = _riga_fornitore(_senza_commenti_jsx(_leggi(PRIVACY_TSX)), "Brevo SAS")
+    mancanti = sorted({e for e in DATI_EMAIL_COMMERCIALISTA.values() if e not in riga})
+    assert not mancanti, f"La riga di Brevo non dichiara: {mancanti}"
+
+
+def test_la_riga_di_invoicetronic_dice_la_rilettura_e_la_conservazione() -> None:
+    """L'invio rilegge gli originali da Invoicetronic, che li conserva quanto dice
+    limite_due_anni: la riga del fornitore lo deve dire, coi suoi anni."""
+    from datetime import date
+
+    from services.invio_commercialista_service import limite_due_anni
+
+    oggi = date(2026, 9, 25)
+    anni = oggi.year - limite_due_anni(oggi).year
+    riga = _riga_fornitore(_senza_commenti_jsx(_leggi(PRIVACY_TSX)), "Invoicetronic S.r.l.")
+    assert "rilettura" in riga and f"{anni} anni" in riga, (
+        f"La privacy non dice che gli originali si rileggono da Invoicetronic, che li tiene {anni} anni."
+    )

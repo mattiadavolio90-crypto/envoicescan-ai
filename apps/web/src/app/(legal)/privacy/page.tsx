@@ -188,13 +188,13 @@ export default function PrivacyPage() {
             "Brevo SAS",
             "Invio delle email transazionali, dell'email settimanale di riepilogo e dell'email al commercialista; ricezione email con allegati ricavi",
             "UE — Francia 🇫🇷",
-            "Nessun contenuto di fatture trasmesso: all'email al commercialista passano solo il link a tempo, la ragione sociale e il periodo; transitano i file di riepilogo incassi inviati dal gestionale di cassa",
+            "Nessun contenuto di fatture trasmesso: nell'email al commercialista ci sono solo la ragione sociale e la P.IVA del cliente, il periodo, il numero di file, il link a tempo e la sua scadenza; transitano i file di riepilogo incassi inviati dal gestionale di cassa",
           ],
           [
             "Invoicetronic S.r.l.",
-            "Ricezione fatture SDI e inoltro webhook",
+            "Ricezione fatture SDI e inoltro webhook; per chi ha chiesto l'invio al commercialista, rilettura dei file originali",
             "Italia 🇮🇹",
-            "Eventi webhook e metadati fatture inoltrati verso l'infrastruttura ONEFLUX; XML grezzo non archiviato dopo la consegna, salvo la copia a 30 giorni per l'invio al commercialista",
+            "Invoicetronic conserva le fatture ricevute per 2 anni, ed è da lì che si rileggono gli originali da inviare al commercialista. ONEFLUX non archivia l'XML dopo l'elaborazione, salvo la copia a 30 giorni per l'invio al commercialista",
           ],
           [
             "Vercel Inc.",

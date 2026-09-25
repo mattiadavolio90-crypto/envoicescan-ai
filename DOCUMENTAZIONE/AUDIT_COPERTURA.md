@@ -1282,6 +1282,28 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >     scartati non sono in `documenti_ids`, quindi darebbe falsi allarmi. La misura
 >     la fa la prova a vuoto;
 >   - l'INSERT diretto in uno stato finale: lascia al piu' un buco, non un doppione.
+>
+> - **25/09/2026 — review cumulativa dell'invio al commercialista (60b594c ..
+>   13da581).** Codice, DB e area admin reggono: tutte le sonde della seconda review
+>   ora vengono rifiutate, e i 7 mutanti di conferma del reviewer sono uccisi.
+>   Restavano due frasi false nella privacy, che col push va online anche a
+>   interruttore spento:
+>   - la riga di Brevo taceva P.IVA e numero di file, che l'email al commercialista
+>     contiene;
+>   - la riga di Invoicetronic non diceva che gli originali si rileggono da li', e
+>     che li' restano 2 anni.
+>   Corrette, anche nel dossier. Nuovo presidio: ogni parametro di `componi_email`
+>   e' un dato dell'email, e la riga di Brevo li deve nominare tutti; gli anni di
+>   Invoicetronic si leggono da `limite_due_anni`. Chiusi anche, prima di accendere:
+>   - «È arrivata» e «Non è arrivata» chiedono conferma;
+>   - il dialogo «Collega» distingue «nessuna fattura arrivata» da «fatture arrivate
+>     senza l'azienda» (sul live una P.IVA ne ha 121);
+>   - «Invia ora» con un invio da chiarire lo dice, invece di «niente da inviare»;
+>   - il primo invio non si sovrappone alla storia di una configurazione cancellata;
+>   - la spazzata del bucket gira anche se la pulizia guidata dal registro fallisce.
+>   **Mutanti: 10, tutti uccisi.** Residuo generale, non di questa funzione: i dati
+>   del commercialista, come altri registri gia' esistenti, non sono
+>   nell'esportazione dei dati del cliente.
 
 ---
 

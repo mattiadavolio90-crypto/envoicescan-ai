@@ -115,18 +115,22 @@ def _piva_del_cliente(sb, cliente_id: str) -> List[str]:
     return sorted(p for p in tutte if isinstance(p, str) and _PIVA.match(p))
 
 
-def _company_gia_viste(sb, piva: str) -> Set[int]:
-    """I company_id che il webhook ha gia' scritto per questa P.IVA."""
+def _company_gia_viste(sb, piva: str) -> tuple[Set[int], int]:
+    """I company_id che il webhook ha gia' scritto per questa P.IVA, e quante righe
+    arrivate non lo riportano (con quelle il confronto non si puo' fare)."""
     righe = fetch_all(
         sb.table("fatture_queue").select("id,payload_meta")
         .eq("source", "invoicetronic").eq("piva_raw", piva).order("id")
     )
-    viste = set()
+    viste: Set[int] = set()
+    senza = 0
     for riga in righe:
         valore = (riga.get("payload_meta") or {}).get("invoicetronic_company_id")
         if isinstance(valore, int) and not isinstance(valore, bool):
             viste.add(valore)
-    return viste
+        else:
+            senza += 1
+    return viste, senza
 
 
 def _trova_azienda(sb, cliente_id: str, piva: str) -> Dict[str, Any]:
@@ -144,7 +148,7 @@ def _trova_azienda(sb, cliente_id: str, piva: str) -> Dict[str, Any]:
             detail="Su Invoicetronic questa P.IVA non c'e' ancora: l'azienda nasce all'arrivo della prima "
                    "fattura sul codice destinatario di OneFlux.",
         )
-    viste = _company_gia_viste(sb, piva)
+    viste, senza_company = _company_gia_viste(sb, piva)
     if viste and viste != {azienda["id"]}:
         raise HTTPException(
             status_code=409,
@@ -152,7 +156,7 @@ def _trova_azienda(sb, cliente_id: str, piva: str) -> Dict[str, Any]:
                    f"questa P.IVA vengono da {sorted(viste)}: non si collega, va chiarito col supporto.",
         )
     return {"company_id": azienda["id"], "nome": azienda.get("name"), "vat": azienda.get("vat"),
-            "gia_viste": sorted(viste)}
+            "gia_viste": sorted(viste), "senza_company": senza_company}
 
 
 # ── Letture ─────────────────────────────────────────────────────────────────
@@ -340,11 +344,21 @@ def invio_commercialista_richiedi(
     ieri, limite = oggi - timedelta(days=1), svc.limite_due_anni(oggi)
 
     if body.tipo == "invia_ora":
+        if (sb.table(svc.INVII).select("id").eq("config_id", config_id)
+                .in_("stato", ["richiesto", "in_corso", "esito_incerto"]).limit(1).execute().data):
+            raise HTTPException(status_code=409, detail=_VINCOLI["ici_uno_in_volo"][1])
         ultimo = svc.ultimo_giorno_inviato(sb, config_id)
         if ultimo is None:
             if not config.get("data_partenza"):
                 raise HTTPException(status_code=400, detail="Manca la data di partenza.")
             tipo, dal = "primo", max(date.fromisoformat(str(config["data_partenza"])[:10]), limite)
+            gia = _storico_orfano(sb, [config["piva"]]).get(config["piva"])
+            if gia and date.fromisoformat(gia) >= dal:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Una configurazione cancellata ha gia' inviato fino al {date.fromisoformat(gia):%d/%m/%Y}: "
+                           "sposta la data di partenza dopo, o il commercialista riceve due volte le stesse fatture.",
+                )
         else:
             tipo, dal = "ordinario", max(ultimo + timedelta(days=1), limite)
         al = ieri

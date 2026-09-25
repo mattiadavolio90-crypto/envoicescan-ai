@@ -457,3 +457,15 @@ def test_il_client_invoicetronic_si_chiude():
     http = MagicMock()
     ClientInvoicetronic("ik_live_x", http=http).chiudi()
     http.close.assert_called_once_with()
+
+
+
+def test_la_spazzata_gira_anche_se_la_pulizia_del_registro_fallisce(monkeypatch):
+    """La spazzata e' la rete sotto il registro: non deve dipendere da lui."""
+    fatte = []
+    monkeypatch.setattr(s, "rimuovi_file_scaduti", MagicMock(side_effect=RuntimeError("giu'")))
+    monkeypatch.setattr(s, "spazza_bucket", lambda archivio, adesso: fatte.append(adesso))
+    dip = MagicMock()
+    dip.orologio = lambda: datetime(2026, 9, 25, tzinfo=UTC)
+    s.pulizia(object(), dip)
+    assert fatte == [datetime(2026, 9, 25, tzinfo=UTC)]

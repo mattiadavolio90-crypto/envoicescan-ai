@@ -952,10 +952,16 @@ def ciclo(sb, dip: Dipendenze) -> List[str]:
 
 
 def pulizia(sb, dip: Dipendenze) -> None:
+    """Le due pulizie sono indipendenti: la spazzata e' la rete sotto il registro,
+    e deve girare anche quando la pulizia guidata dal registro fallisce."""
     archivio = dip.archivio(sb)
     adesso = dip.orologio()
-    rimuovi_file_scaduti(sb, archivio, adesso)
-    spazza_bucket(archivio, adesso)
+    for nome, passo in (("registro", lambda: rimuovi_file_scaduti(sb, archivio, adesso)),
+                        ("spazzata", lambda: spazza_bucket(archivio, adesso))):
+        try:
+            passo()
+        except Exception as exc:
+            logger.warning("Invio commercialista: pulizia ZIP (%s) fallita (%s)", nome, type(exc).__name__)
 
 
 def avvia_thread(get_client: Callable[[], Any], dip: Optional[Dipendenze] = None,

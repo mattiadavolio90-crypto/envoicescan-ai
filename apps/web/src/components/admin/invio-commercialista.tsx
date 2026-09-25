@@ -25,7 +25,10 @@ const CLASSE_TONO: Record<Tono, string> = {
   neutro: "text-muted-foreground",
 };
 
-type Azienda = { piva: string; company_id: number; nome: string | null; vat: string | null; gia_viste: number[] };
+type Azienda = {
+  piva: string; company_id: number; nome: string | null; vat: string | null; gia_viste: number[]; senza_company: number;
+};
+type Chiarimento = { cfg: string; invio: Invio; esito: "arrivata" | "non_arrivata" };
 type RichiestaPeriodo = { config: Configurazione; tipo: "prova" | "reinvio"; dal: string; al: string };
 type Chiama = (path: string, metodo: "POST" | "PATCH", body?: object, ok?: string) => Promise<boolean>;
 
@@ -46,6 +49,7 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
   const [azienda, setAzienda] = useState<Azienda | null>(null);
   const [periodo, setPeriodo] = useState<RichiestaPeriodo | null>(null);
   const [inviaOra, setInviaOra] = useState<Configurazione | null>(null);
+  const [chiarimento, setChiarimento] = useState<Chiarimento | null>(null);
 
   const carica = useCallback(async () => {
     try {
@@ -140,6 +144,7 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
               al: tipo === "prova" ? spostaGiorni(oggi, -1) : (c.ultimo_giorno_inviato ?? spostaGiorni(oggi, -1)),
             })}
             onInviaOra={() => setInviaOra(c)}
+            onChiarisci={(invio, esito) => setChiarimento({ cfg: `/${c.id}`, invio, esito })}
           />
         ))}
       </CardContent>
@@ -158,7 +163,9 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
               <p className="text-muted-foreground">
                 {azienda.gia_viste.length
                   ? "Coincide con quella delle fatture già arrivate."
-                  : "Nessuna fattura di questa P.IVA è ancora arrivata a OneFlux: non c'è uno storico con cui confrontarla."}
+                  : azienda.senza_company
+                    ? `Le ${azienda.senza_company} fatture già arrivate per questa P.IVA non riportano l'azienda Invoicetronic: il confronto non si può fare, controlla ragione sociale e P.IVA.`
+                    : "Nessuna fattura di questa P.IVA è ancora arrivata a OneFlux: non c'è uno storico con cui confrontarla."}
               </p>
             </div>
           )}
@@ -218,6 +225,39 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={chiarimento !== null} onOpenChange={(v) => !v && setChiarimento(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{chiarimento?.esito === "arrivata" ? "L'email è arrivata" : "L'email non è arrivata"}</DialogTitle>
+            <DialogDescription>
+              {chiarimento?.esito === "arrivata"
+                ? "Il periodo resta inviato e l'invio automatico riparte dal giorno dopo. Solo se nei log di Brevo risulta consegnata."
+                : "Il periodo torna da inviare: il prossimo invio lo rispedisce. Solo se nei log di Brevo risulta non partita o rifiutata: se è arrivata, il commercialista riceverebbe le stesse fatture due volte."}
+            </DialogDescription>
+          </DialogHeader>
+          {chiarimento && (
+            <p className="py-2">
+              {ETICHETTA_TIPO[chiarimento.invio.tipo]} del periodo {formattaData(chiarimento.invio.periodo_dal)} – {formattaData(chiarimento.invio.periodo_al)}.
+              Non si torna indietro.
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChiarimento(null)}>Annulla</Button>
+            <Button
+              disabled={occupato}
+              onClick={async () => {
+                if (chiarimento && await chiama(`${chiarimento.cfg}/invii/${chiarimento.invio.id}/chiarisci`, "POST",
+                  { esito: chiarimento.esito }, chiarimento.esito === "arrivata" ? "Segnato come arrivato" : "Il periodo si rispedirà")) {
+                  setChiarimento(null);
+                }
+              }}
+            >
+              Conferma
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={inviaOra !== null} onOpenChange={(v) => !v && setInviaOra(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -255,7 +295,7 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
   );
 }
 
-function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeriodo, onInviaOra }: {
+function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeriodo, onInviaOra, onChiarisci }: {
   c: Configurazione;
   oggi: string;
   avvisoStorico: string | null;
@@ -263,6 +303,7 @@ function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeri
   chiama: Chiama;
   onPeriodo: (tipo: "prova" | "reinvio") => void;
   onInviaOra: () => void;
+  onChiarisci: (invio: Invio, esito: "arrivata" | "non_arrivata") => void;
 }) {
   const [email, setEmail] = useState(c.email_destinatario ?? "");
   const [frequenza, setFrequenza] = useState<Frequenza>(c.frequenza);
@@ -379,7 +420,7 @@ function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeri
         <div className="space-y-1.5 border-t pt-3">
           <p className="text-xs font-medium text-muted-foreground">Registro (ultimi {c.invii.length})</p>
           {c.invii.map((i) => (
-            <RigaRegistro key={i.id} i={i} occupato={occupato} chiama={chiama} cfg={cfg} />
+            <RigaRegistro key={i.id} i={i} occupato={occupato} chiama={chiama} cfg={cfg} onChiarisci={onChiarisci} />
           ))}
         </div>
       )}
@@ -387,7 +428,13 @@ function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeri
   );
 }
 
-function RigaRegistro({ i, occupato, chiama, cfg }: { i: Invio; occupato: boolean; chiama: Chiama; cfg: string }) {
+function RigaRegistro({ i, occupato, chiama, cfg, onChiarisci }: {
+  i: Invio;
+  occupato: boolean;
+  chiama: Chiama;
+  cfg: string;
+  onChiarisci: (invio: Invio, esito: "arrivata" | "non_arrivata") => void;
+}) {
   const motivo = testoMotivo(i.motivo);
   return (
     <div className="rounded-md border px-2.5 py-2 text-xs">
@@ -407,10 +454,10 @@ function RigaRegistro({ i, occupato, chiama, cfg }: { i: Invio; occupato: boolea
       {motivo && <p className="mt-1 text-muted-foreground">{motivo}</p>}
       {i.stato === "esito_incerto" && (
         <div className="mt-1.5 flex gap-2">
-          <Button size="sm" variant="outline" disabled={occupato} onClick={() => chiama(`${cfg}/invii/${i.id}/chiarisci`, "POST", { esito: "arrivata" }, "Segnato come arrivato")}>
+          <Button size="sm" variant="outline" disabled={occupato} onClick={() => onChiarisci(i, "arrivata")}>
             È arrivata
           </Button>
-          <Button size="sm" variant="outline" disabled={occupato} onClick={() => chiama(`${cfg}/invii/${i.id}/chiarisci`, "POST", { esito: "non_arrivata" }, "Il periodo si rispedirà")}>
+          <Button size="sm" variant="outline" disabled={occupato} onClick={() => onChiarisci(i, "non_arrivata")}>
             Non è arrivata
           </Button>
         </div>
