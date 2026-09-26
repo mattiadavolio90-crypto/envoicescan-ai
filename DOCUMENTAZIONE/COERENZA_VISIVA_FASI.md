@@ -284,7 +284,10 @@ Va scritto, o alla prossima sessione sembrerà completa.
    responsive, e va allineato a mano.
 
 **Chiusura dei punti 1-4:** giro con l'estensione Chrome di Claude su
-`app.oneflux.it` (materiale già pronto in `prompt_audit_visivo_chrome.md`).
+`app.oneflux.it`. Il prompt per quel giro sta in `scratchpad/`, che dal
+26/9/2026 è git-ignorato: **è locale, non nel repo**, e un `git clean` lo
+porta via. Se serve ancora quando si apre la fase 3, va riscritto o
+committato prima.
 Le fasi 0-2 **non** dipendono da quel giro — poggiano su misure del codice.
 La fase 3 **sì**: va rivista dopo.
 
