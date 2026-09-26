@@ -10,6 +10,10 @@
 > **Stato repo alla stesura**: `e3f59ff`, **coda push 0** (Punti 1 e 2 spediti
 > l'08/09 mattina, CI verde, worker in produzione sul commit giusto), suite
 > **13.177 verdi + 113 SQL**.
+> ⚠️ **Nota del 26/09/2026** (questa riga sola e' posteriore alla stesura):
+> `AUDIT_ULTIMO_PERIMETRO_2026-09.md` oggi e' **tracciato** e **archiviato**,
+> non «ignorato da git» ne' «vivo» come dice la riga qui sopra. Il documento
+> da cui si riparte e' `DOCUMENTAZIONE/AUDIT_COPERTURA.md`.
 
 ---
 

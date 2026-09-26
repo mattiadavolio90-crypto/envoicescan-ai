@@ -84,8 +84,33 @@ def _riga_di(testo: str, pos: int) -> str:
     return testo[inizio:fine if fine != -1 else len(testo)]
 
 
+def _e_riga_di_tabella(riga: str) -> bool:
+    """Una riga di tabella markdown: `| percorso | a cosa serve |`.
+
+    E' la forma dell'INDICE, e un indice non racconta: promette che il documento
+    esiste. Quindi li' l'esenzione della narrazione non vale.
+    """
+    return riga.lstrip().startswith("|") and riga.count("|") >= 3
+
+
 def _e_narrazione_al_passato(riga: str) -> bool:
-    """La riga racconta che quel file e' stato tolto, invece di rimandarci."""
+    """La riga racconta che quel file e' stato tolto, invece di rimandarci.
+
+    NON si applica dentro una riga di tabella. Provato il 26/9/2026 (rilievo del
+    code-reviewer): la voce d'indice «| `DOCUMENTAZIONE/GUIDA_MARGINI.md` | Come
+    si e' **spostata** la logica dei margini: guida viva |» — percorso
+    inesistente — usciva pulita, e cambiando la sola parola in «calcola» il
+    controllo tornava rosso: a silenziare era una parola di passaggio, non il
+    senso della frase. Su celle lunghe pescare una delle 13 radici e' facile.
+
+    Restringere a una finestra di caratteri attorno al backtick e' stato provato
+    e **scartato**: misurando, la narrazione genuina sta fino a 50 caratteri dal
+    riferimento e il falso negativo a 46 — la distanza non separa i due casi. La
+    forma della riga si': dei 7 riferimenti oggi silenziati nei doc vivi, 7 su 7
+    sono prosa e 0 sono righe di tabella.
+    """
+    if _e_riga_di_tabella(riga):
+        return False
     return bool(_PASSATO.search(riga))
 
 

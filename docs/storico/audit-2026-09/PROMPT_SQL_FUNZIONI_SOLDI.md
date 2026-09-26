@@ -7,6 +7,10 @@
 > git, sta su disco), sezione «Da dove riparte la prossima sessione».
 > **Stato repo alla stesura**: `98f2ec9`, coda push **0**, suite **13.078 verdi**,
 > 38 test SQL verdi (07/09/2026, ore 16:00).
+> ⚠️ **Nota del 26/09/2026** (questa riga sola e' posteriore alla stesura):
+> `AUDIT_ULTIMO_PERIMETRO_2026-09.md` oggi e' **tracciato** e **archiviato**,
+> non «ignorato da git» ne' «vivo» come dice la riga qui sopra. Il documento
+> da cui si riparte e' `DOCUMENTAZIONE/AUDIT_COPERTURA.md`.
 
 ---
 

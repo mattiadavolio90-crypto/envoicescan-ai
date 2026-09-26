@@ -10,6 +10,10 @@
 > verdi + 104 test SQL**. Ri-verificato l'**08/09/2026**: 104 SQL ancora verdi,
 > coda ancora vuota, nessun commit nuovo da altre sessioni, e il fix del 07/09
 > regge sul DB live (una sola variante di `get_distinct_files`, chiusa ad `anon`).
+> ⚠️ **Nota del 26/09/2026** (questa riga sola e' posteriore alla stesura):
+> `AUDIT_ULTIMO_PERIMETRO_2026-09.md` oggi e' **tracciato** e **archiviato**,
+> non «ignorato da git» ne' «vivo» come dice la riga qui sopra. Il documento
+> da cui si riparte e' `DOCUMENTAZIONE/AUDIT_COPERTURA.md`.
 
 ---
 

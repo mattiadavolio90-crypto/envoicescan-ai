@@ -14,6 +14,10 @@
 > esattamente il lavoro di A1), suite **13.180 verdi + 44 skip** su copia
 > pulita (119 SQL inclusi, ri-verificati verdi alle 15:40), copertura
 > **letta 97%**, **eseguita 61%** del backend.
+> ⚠️ **Nota del 26/09/2026** (questa riga sola e' posteriore alla stesura):
+> `AUDIT_ULTIMO_PERIMETRO_2026-09.md` oggi e' **tracciato** e **archiviato**,
+> non «ignorato da git» ne' «vivo» come dice la riga qui sopra. Il documento
+> da cui si riparte e' `DOCUMENTAZIONE/AUDIT_COPERTURA.md`.
 
 > ---
 >
