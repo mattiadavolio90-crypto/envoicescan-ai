@@ -37,7 +37,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 
-ESCLUDI_DIR = {".venv", "node_modules", ".git", ".next", "__pycache__", ".claude"}
+# scratchpad/ e' git-ignorato dal 26/9/2026: sono prompt di sessione usa e
+# getta. Questo script cammina sul FILESYSTEM, non su `git ls-files`, quindi
+# senza escluderlo li leggeva come documenti vivi e un appunto poteva far
+# suonare il presidio — il rumore che questo file esiste per evitare.
+ESCLUDI_DIR = {".venv", "node_modules", ".git", ".next", "__pycache__", ".claude",
+               "scratchpad"}
 
 MARCATORI_CHIUSURA = re.compile(
     r"✅\s*\**\s*(?:CHIUSO|DEPLOYAT[OA]|COMPLETAT[OA]|VERIFICAT[OA]|SUPERAT[OA])"
