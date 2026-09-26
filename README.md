@@ -129,8 +129,8 @@ python -m pytest tests/ -q                              # suite Python
 deno test --allow-env --allow-net supabase/functions/**/*_test.ts   # Edge Functions
 ```
 
-~16.900 test Python + 126 test Deno (auth HMAC, routing multi-sede e saldo crediti
-del webhook fatture; misurati il 25/09/2026). La CI (`.github/workflows/tests.yml`) lancia entrambe le suite su ogni push
+~17.800 test Python + 133 test Deno (auth HMAC, routing multi-sede e saldo crediti
+del webhook fatture; misurati il 26/09/2026). La CI (`.github/workflows/tests.yml`) lancia entrambe le suite su ogni push
 e pull request.
 
 Il frontend non ha un runner npm: la sua logica pura (`apps/web/src/lib/`) è coperta

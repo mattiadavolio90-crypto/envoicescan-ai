@@ -60,7 +60,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive |
 | Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (174 route, solo proxy) |
 | Logica di business | `services/*.py` |
-| Un endpoint del worker | `services/routers/*.py` (13 router) |
+| Un endpoint del worker | `services/routers/*.py` (14 router) |
 | Schema DB | `supabase/migrations/` (canonico) |
 | Ricezione fatture SDI | `supabase/functions/invoicetronic-webhook/` (Deno) |
 | Saldo crediti Invoicetronic e i suoi avvisi | `services/invoicetronic_saldo.py` (controllo ogni 6 ore dal queue-worker) + il webhook (avviso al primo 403 `usage_limit_exceeded`) |
