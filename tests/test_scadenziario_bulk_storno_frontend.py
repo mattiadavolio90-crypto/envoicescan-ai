@@ -127,7 +127,7 @@ def test_segnare_pagata_scrive_la_data():
 # ── 2. Il cablaggio del client ───────────────────────────────────────────────
 
 def _corpi_onclick(src: str) -> list[str]:
-    """I corpi di ogni `onClick={...}`, con le graffe bilanciate.
+    r"""I corpi di ogni `onClick={...}`, con le graffe bilanciate.
 
     Un `re.findall` su `onClick=\{([^}]*)\}` si fermerebbe alla prima `}`,
     troncando proprio le arrow con un blocco — cioe' i casi che contano.

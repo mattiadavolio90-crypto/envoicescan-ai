@@ -32,6 +32,8 @@ Mutazioni provate (25/09/2026), tutte uccise:
 5. tolto `!d.oscurata` -> idem
 6. etichetta presa dal primo nome invece che dal piu' frequente -> test_una_piva_una_voce_sola
 """
+import re
+
 import pytest
 
 from tests.helpers_ts import esegui_ts
@@ -223,6 +225,33 @@ def test_il_riquadro_preseleziona_il_fornitore(sorgente: str):
     assert "pivaIniziale" not in sorgente, (
         "tornata la preselezione per P.IVA: non matcha selectedNomi"
     )
+    # E il dialog deve USARE `nomeIniziale` all'apertura: ignorarlo (selezione
+    # sempre vuota) e' la stessa regressione e restava verde (mutante del 26/09).
+    testo = re.sub(r"\s+", " ", sorgente)
+    assert "setSelectedNomi(nomeIniziale ? new Set([nomeIniziale]) : new Set());" in testo, (
+        "RegoleDialog non preseleziona piu' il fornitore che riceve"
+    )
+
+
+def test_eliminare_una_regola_ricarica_la_lista_solo_se_riuscita(sorgente: str):
+    """Togliere una regola ricalcola le scadenze delle sue fatture: senza
+    `onSalvato` la lista restava quella di prima (mutante sopravvissuto il
+    26/09). E senza guardare la risposta diceva «Regola eliminata» anche quando
+    il server aveva rifiutato."""
+    # Due handleDelete nel file: questa e' quella delle regole (l'altra elimina
+    # la fattura dal dettaglio).
+    i = sorgente.index("async function handleDelete(id: string)")
+    corpo = re.sub(r"\s+", " ", sorgente[i:sorgente.index("const pivaToNome", i)])
+    ordine = [
+        'const res = await fetch(`/api/scadenziario/regole/${id}`, { method: "DELETE" });',
+        'if (!res.ok) { toast.error("Errore eliminazione"); return; }',
+        "setRegole(r => r.filter(x => x.id !== id));",
+        'toast.success("Regola eliminata");',
+        "onSalvato?.();",
+    ]
+    posizioni = [corpo.find(riga) for riga in ordine]
+    assert -1 not in posizioni, f"manca un passo dell'eliminazione: {list(zip(ordine, posizioni))}"
+    assert posizioni == sorted(posizioni), f"passi dell'eliminazione fuori ordine: {corpo}"
 
 
 def _blocco_riquadro(src: str) -> str:
@@ -253,6 +282,22 @@ def test_in_catena_la_classifica_non_promette_un_clic(sorgente: str):
     # Il ramo cliccabile deve stare nell'altro corno del ternario, non fuori.
     assert "setRegolaNome(f.label)" in blocco, (
         "il ramo cliccabile e' uscito dal riquadro"
+    )
+    # E i due corni nell'ordine giusto: la sottostringa `modalitaCatena ? (`
+    # c'e' anche in `{!modalitaCatena ? (`, che rende cliccabile proprio la
+    # catena e in sola lettura la sede singola (mutante sopravvissuto il 26/09).
+    testo = re.sub(r"\s+", " ", blocco)
+    i = testo.index("modalitaCatena ? (")
+    assert testo[i - 2:i] == "{ " or testo[i - 1] == "{", (
+        f"la condizione del ternario non e' piu' `modalitaCatena`: {testo[i - 10:i + 20]!r}"
+    )
+    corno_catena = testo[i:testo.index(") : (", i)]
+    corno_sede = testo[testo.index(") : (", i):testo.index(")}", testo.index(") : (", i))]
+    assert "<div" in corno_catena and "onClick" not in corno_catena, (
+        "in catena la riga e' tornata cliccabile"
+    )
+    assert "<button" in corno_sede and "setRegolaNome(f.label); setRegoleOpen(true);" in corno_sede, (
+        "nella sede singola la riga non apre piu' le regole del fornitore"
     )
 
 

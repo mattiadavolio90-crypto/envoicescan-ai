@@ -164,6 +164,28 @@ export function chiaviSelezionaTutte(documenti: Documento[]): string[] {
  * «Tutte» deve valere sulla stessa popolazione che il pulsante seleziona, o la
  * spunta di sezione non diventa mai piena dopo un «Seleziona tutte».
  */
+export type AperturaSezione = { open: boolean; primaDellaRicerca: boolean | null };
+
+/**
+ * Apertura di una sezione dell'agenda quando la ricerca parte o finisce.
+ *
+ * Con una ricerca attiva la sezione si apre (cercare dentro «Scadute», chiusa
+ * di default perche' su una sede reale sono 414 righe, altrimenti non
+ * mostrerebbe nulla) e ricorda com'era prima. Svuotata la ricerca torna com'era:
+ * prima restava aperta, e «Scadute» si ritrovava stesa per intero. Durante la
+ * ricerca il chevron resta di chi guarda: si cambia `open`, non si tiene un
+ * `open || forzaAperta` che renderebbe il clic inerte.
+ */
+export function aperturaSezione(stato: AperturaSezione, forzaAperta: boolean): AperturaSezione {
+  if (forzaAperta && stato.primaDellaRicerca === null) {
+    return { open: true, primaDellaRicerca: stato.open };
+  }
+  if (!forzaAperta && stato.primaDellaRicerca !== null) {
+    return { open: stato.primaDellaRicerca, primaDellaRicerca: null };
+  }
+  return stato;
+}
+
 export function statoSelezioneSezione(
   docs: Documento[],
   selezionate: Iterable<string>,
@@ -228,18 +250,39 @@ export function pianoAzioneDiMassa(
 }
 
 /**
- * L'aggiornamento a video dopo l'azione di massa: cambiano solo le fatture del
- * piano. Una gia' pagata finita nella selezione tiene la sua data di pagamento.
- * La chiave include la sede: in catena lo stesso file_origine puo' stare su due.
+ * Perche' un pulsante della barra di selezione e' spento, o `null` se e' acceso.
+ * Il testo va sia nel title (su uno span: un Button disabilitato non lo mostra)
+ * sia a chi usa uno screen reader.
  */
-export function applicaPianoAVideo(
+export function motivoAzioneSpenta(piano: PianoAzioneDiMassa, pagata: boolean): string | null {
+  if (piano.cambiano.length > 0) return null;
+  return pagata
+    ? "Le fatture selezionate sono già tutte pagate"
+    : "Le fatture selezionate sono già tutte da pagare";
+}
+
+/** Il toast dopo l'azione di massa, con le fatture che il worker ha aggiornato. */
+export function messaggioEsitoAzioneDiMassa(aggiornate: number, pagata: boolean): string {
+  const una = aggiornate === 1;
+  return pagata
+    ? `${aggiornate} fattur${una ? "a segnata come pagata" : "e segnate come pagate"}`
+    : `${aggiornate} fattur${una ? "a riportata" : "e riportate"} fra le da pagare`;
+}
+
+/**
+ * L'aggiornamento a video dopo aver segnato pagate o da pagare: cambiano solo le
+ * fatture passate. Una gia' pagata finita nella selezione tiene la sua data di
+ * pagamento. La chiave include la sede: in catena lo stesso file_origine puo'
+ * stare su due.
+ */
+export function applicaPagataAVideo(
   documenti: Documento[],
-  piano: PianoAzioneDiMassa,
+  cambiano: Documento[],
   pagata: boolean,
   oggi: string,
 ): Documento[] {
   const chiave = (d: Documento) => `${d.ristorante_id ?? ""}|${d.file_origine}`;
-  const cambiate = new Set(piano.cambiano.map(chiave));
+  const cambiate = new Set(cambiano.map(chiave));
   const pagata_at = pagata ? oggi : null;
   return documenti.map(d =>
     cambiate.has(chiave(d)) ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
@@ -558,11 +601,6 @@ export function elencaFornitori(documenti: Documento[]): FornitoreEntry[] {
   return entries.sort((a, b) => a.label.localeCompare(b.label, "it"));
 }
 
-/**
- * Stato mostrato nel CSV scaricato e nel bordo della riga. Ordine di precedenza
- * IDENTICO a `bucketizeDocumenti` (NC → pagata → senza scadenza → scaduta), cosi'
- * il CSV non puo' divergere da cio' che si vede a video.
- */
 export type FornitoreSenzaScadenza = {
   key: string;
   label: string;
@@ -655,6 +693,11 @@ export function fornitoriSenzaScadenza(
   };
 }
 
+/**
+ * Stato mostrato nel CSV scaricato e nel bordo della riga. Ordine di precedenza
+ * IDENTICO a `bucketizeDocumenti` (NC → pagata → senza scadenza → scaduta), cosi'
+ * il CSV non puo' divergere da cio' che si vede a video.
+ */
 export function statoDocumento(d: Documento, today?: Date): StatoDocumento {
   if (d.oscurata) return "Escluse da te";
   if (d.is_nota_credito) return "Nota di credito";
@@ -707,11 +750,6 @@ export function scaduteFuoriDalMese(
 }
 
 /**
- * Filtri comuni: periodo + fornitori + is_nuovo. NON include il filtro sede —
- * il KPI per-sede deve riflettere gli altri filtri attivi ma non quello di sede,
- * altrimenti sarebbe sempre un'unica barra.
- */
-/**
  * Forma confrontabile di un testo digitato: minuscole, accenti sciolti, e via
  * tutto cio' che separa le cifre o decora un numero di documento.
  *
@@ -759,6 +797,20 @@ export function matchRicerca(d: Documento, ricerca: string): boolean {
   return false;
 }
 
+/**
+ * La ricerca filtra davvero qualcosa. «n», «doc» o «fattura» da soli si
+ * normalizzano a vuoto e non filtrano niente: se aprissero comunque tutte le
+ * sezioni, la prima lettera digitata stenderebbe fino a ~1.700 righe.
+ */
+export function ricercaAttiva(ricerca: string): boolean {
+  return normalizzaRicerca(ricerca) !== "";
+}
+
+/**
+ * Filtri comuni: periodo + fornitori + is_nuovo + ricerca. NON include il
+ * filtro sede — il KPI per-sede deve riflettere gli altri filtri attivi ma non
+ * quello di sede, altrimenti sarebbe sempre un'unica barra.
+ */
 export function matchDocumento(
   d: Documento,
   filtri: FiltriScadenziario,

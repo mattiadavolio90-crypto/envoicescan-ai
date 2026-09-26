@@ -28,8 +28,9 @@ import {
   ordinaDocumenti, ordinaScadute, elencaFornitori, fornitoriSenzaScadenza, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
-  chiaviSelezionaTutte, statoSelezioneSezione, pianoAzioneDiMassa, applicaPianoAVideo,
-  messaggioConfermaAzioneDiMassa,
+  chiaviSelezionaTutte, statoSelezioneSezione, pianoAzioneDiMassa, applicaPagataAVideo,
+  messaggioConfermaAzioneDiMassa, messaggioEsitoAzioneDiMassa, motivoAzioneSpenta,
+  aperturaSezione, type AperturaSezione, ricercaAttiva,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -268,19 +269,14 @@ function AgendaSection({
   selectedFileOrigini, onToggleSelect, onToggleAll, onPaga, onPeek, accentClass = "", sedeTecnicaId,
   mostraScadenze = true, sommario,
 }: AgendaSectionProps) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [apertura, setApertura] = useState<AperturaSezione>({ open: defaultOpen, primaDellaRicerca: null });
+  const open = apertura.open;
   const checkboxRef = useRef<HTMLInputElement>(null);
 
-  // Con una ricerca attiva la sezione si apre da sola: cercare dentro "Scadute"
-  // — chiusa di default perche' su una sede reale sono 414 righe — altrimenti
-  // non mostrerebbe NULLA, cioe' proprio il difetto che la ricerca deve togliere.
-  //
-  // Si SCRIVE `open` invece di tenere un `open || forzaAperta`: con l'OR il
-  // chevron chiamava setOpen ma la sezione restava aperta, quindi il clic
-  // sembrava registrato e non faceva nulla. Cosi' la ricerca apre una volta e
-  // poi il controllo torna a chi guarda.
+  // La ricerca apre la sezione e, svuotata, la riporta com'era: aperturaSezione
+  // in lib/scadenziario.ts.
   useEffect(() => {
-    if (forzaAperta) setOpen(true);
+    setApertura(s => aperturaSezione(s, forzaAperta));
   }, [forzaAperta]);
 
   const selectableDocs = documentiSelezionabili(docs);
@@ -311,7 +307,7 @@ function AgendaSection({
         )}
         <button
           className="flex-1 flex items-center justify-between"
-          onClick={() => setOpen(o => !o)}
+          onClick={() => setApertura(s => ({ ...s, open: !s.open }))}
         >
           <div className="flex items-center gap-2">
             {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
@@ -1288,7 +1284,8 @@ function RegoleDialog({ open, onClose, nomeIniziale, onSalvato }: RegoleDialogPr
 
   async function handleDelete(id: string) {
     try {
-      await fetch(`/api/scadenziario/regole/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/scadenziario/regole/${id}`, { method: "DELETE" });
+      if (!res.ok) { toast.error("Errore eliminazione"); return; }
       setRegole(r => r.filter(x => x.id !== id));
       toast.success("Regola eliminata");
       // Togliere una regola ricalcola `scadenza_effettiva` delle sue fatture:
@@ -1749,6 +1746,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     () => pianoAzioneDiMassa(documenti, selectedFileOrigini, false),
     [documenti, selectedFileOrigini],
   );
+  const motivoPagateSpento = motivoAzioneSpenta(pianoPagate, true);
+  const motivoNonPagateSpento = motivoAzioneSpenta(pianoNonPagate, false);
 
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
@@ -1840,12 +1839,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file_origini: [doc.file_origine], pagata, ristorante_id: doc.ristorante_id }),
       });
-      if (!res.ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
+      const data = await res.json().catch(() => ({}));
+      // Il worker risponde 200 anche se la scrittura fallisce: lo dice `ok`.
+      if (!res.ok || data.ok === false) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(pagata ? "Fattura segnata come pagata" : "Pagamento annullato");
-      const pagata_at = pagata ? todayLocalIso() : null;
-      setDocumenti(prev => prev.map(d =>
-        d.file_origine === doc.file_origine ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
-      ));
+      setDocumenti(prev => applicaPagataAVideo(prev, [doc], pagata, todayLocalIso()));
     } catch {
       toast.error("Errore di connessione");
       await loadData();
@@ -1872,12 +1870,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       }
 
       if (!ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
-      toast.success(
-        pagata
-          ? `${aggiornate} fattur${aggiornate === 1 ? "a segnata come pagata" : "e segnate come pagate"}`
-          : `${aggiornate} fattur${aggiornate === 1 ? "a riportata" : "e riportate"} fra le da pagare`
-      );
-      setDocumenti(prev => applicaPianoAVideo(prev, piano, pagata, todayLocalIso()));
+      toast.success(messaggioEsitoAzioneDiMassa(aggiornate, pagata));
+      setDocumenti(prev => applicaPagataAVideo(prev, piano.cambiano, pagata, todayLocalIso()));
       setSelectedFileOrigini(new Set());
     } catch {
       toast.error("Errore di connessione");
@@ -2071,7 +2065,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     onPaga: (doc: Documento) => handlePaga(doc, true),
     onPeek: setPeekDoc,
     sedeTecnicaId,
-    forzaAperta: ricerca.trim() !== "",
+    forzaAperta: ricercaAttiva(ricerca),
   };
 
   return (
@@ -2704,7 +2698,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               // Come nella vista Da pagare: con una ricerca attiva i mesi si
               // aprono, o cercare una fattura di marzo in Archivio mostrerebbe
               // solo un elenco di mesi chiusi.
-              forzaAperta={ricerca.trim() !== ""}
+              forzaAperta={ricercaAttiva(ricerca)}
               mostraScadenze={false}
               selectedFileOrigini={selectedFileOrigini}
               onToggleSelect={() => {}}
@@ -2748,36 +2742,35 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           <span className="text-sm font-medium">
             {selectedFileOrigini.size} selezionat{selectedFileOrigini.size === 1 ? "a" : "e"}
           </span>
-          {/* Il title sta sullo span: un Button disabilitato ha pointer-events-none
-              e il suo title non comparirebbe mai. */}
-          <span title={pianoPagate.cambiano.length === 0 ? "Le fatture selezionate sono già tutte pagate" : undefined}>
+          {/* Il motivo sta sullo span (un Button disabilitato ha pointer-events-none
+              e il suo title non comparirebbe mai) e, per gli screen reader, in
+              aria-describedby. */}
+          <span title={motivoPagateSpento ?? undefined}>
             <Button
               size="sm"
               className="h-8 gap-1.5 rounded-full"
               onClick={() => setConfermaBulk(true)}
-              disabled={bulkPaying || pianoPagate.cambiano.length === 0}
+              disabled={bulkPaying || motivoPagateSpento !== null}
+              aria-describedby={motivoPagateSpento ? "motivo-segna-pagate" : undefined}
             >
               <Check className="size-3.5" />
               {bulkPaying ? "Salvataggio…" : "Segna pagate"}
             </Button>
+            {motivoPagateSpento && <span id="motivo-segna-pagate" className="sr-only">{motivoPagateSpento}</span>}
           </span>
-          <span
-            title={
-              pianoNonPagate.cambiano.length === 0
-                ? "Le fatture selezionate sono già tutte da pagare"
-                : "Riporta le fatture selezionate fra quelle da pagare"
-            }
-          >
+          <span title={motivoNonPagateSpento ?? "Riporta le fatture selezionate fra quelle da pagare"}>
             <Button
               variant="outline"
               size="sm"
               className="h-8 gap-1.5 rounded-full"
               onClick={() => setConfermaBulk(false)}
-              disabled={bulkPaying || pianoNonPagate.cambiano.length === 0}
+              disabled={bulkPaying || motivoNonPagateSpento !== null}
+              aria-describedby={motivoNonPagateSpento ? "motivo-segna-non-pagate" : undefined}
             >
               <X className="size-3.5" />
               Segna non pagate
             </Button>
+            {motivoNonPagateSpento && <span id="motivo-segna-non-pagate" className="sr-only">{motivoNonPagateSpento}</span>}
           </span>
           <Button
             variant="ghost"

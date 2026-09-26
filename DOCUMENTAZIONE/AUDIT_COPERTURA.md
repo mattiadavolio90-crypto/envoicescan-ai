@@ -1419,6 +1419,34 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `selectedFileOrigini`). **+15 test** in `tests/test_scadenziario_azione_di_massa_frontend.py`.
 >   Suite **17.016 verdi, 53 skip** con `python -m pytest tests/ -q -p
 >   no:cacheprovider -m "not sql"` (797 deselezionati).
+>
+> - **26/09/2026 — Gestione Fatture: chiusi i residui delle due review** (stessa
+>   sessione, su richiesta di Mattia di chiudere ogni punto aperto).
+>   - **Ricerca:** «n», «doc» o «fattura» da soli si normalizzano a vuoto e non
+>     filtrano, ma aprivano tutte le sezioni (fino a ~1.700 righe in catena): ora
+>     le apre solo `ricercaAttiva`. Svuotata la ricerca, le sezioni tornano
+>     com'erano (`aperturaSezione`): «Scadute», chiusa di default, restava stesa.
+>   - **Pulsante sulla singola fattura:** stessi due difetti dell'azione di massa
+>     (HTTP 200 con `ok:false` preso per successo, aggiornamento a video per solo
+>     `file_origine`). **Eliminare una regola** diceva «Regola eliminata» anche
+>     con la DELETE rifiutata.
+>   - **Testi:** toast e motivo del pulsante spento in lib (`messaggioEsitoAzioneDiMassa`,
+>     `motivoAzioneSpenta`); il motivo arriva anche agli screen reader
+>     (`aria-describedby`). `ConfirmDialog` (19 pagine) non mostra piu' il contenuto
+>     nuovo durante l'animazione di chiusura («0 fatture per 0 €»).
+>   - **Presidi:** i **5 mutanti sopravvissuti** della review su `8857560` (ternario
+>     catena invertito, `nomeIniziale` ignorato, Archivio senza `forzaAperta`,
+>     eliminazione che non ricarica, `useEffect` della sezione svuotato) ora
+>     muoiono; due commenti di `lib/scadenziario.ts` tornati sopra la loro
+>     funzione; docstring non raw che dava un warning.
+>   **26 mutanti su 26 uccisi**, tutti applicati. **+13 test** (7 in
+>   `tests/test_scadenziario_ricerca_e_sezioni_frontend.py`). Suite **17.029
+>   verdi, 53 skip** con `python -m pytest tests/ -q -p no:cacheprovider -m "not
+>   sql"` (797 deselezionati).
+>   Fuori dal codice, stessa sera: applicata la migration di retention GDPR del
+>   09/09 (`20260909143000`), rimasta nel repo senza essere sul DB — le 5 purge
+>   fallivano in `PGRST202` a ogni giro; al riavvio del queue-worker 183 sessioni
+>   inattive da oltre 90 giorni cancellate.
 
 ---
 

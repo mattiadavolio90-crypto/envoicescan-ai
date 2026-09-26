@@ -14,7 +14,8 @@ verso:
   sua data di pagamento, sostituita da oggi.
 
 La decisione (`pianoAzioneDiMassa`), l'aggiornamento a video
-(`applicaPianoAVideo`) e il testo della conferma (`messaggioConfermaAzioneDiMassa`)
+(`applicaPagataAVideo`), i testi (`messaggioConfermaAzioneDiMassa`,
+`messaggioEsitoAzioneDiMassa`, `motivoAzioneSpenta`)
 vivono in lib/scadenziario.ts e qui si eseguono davvero. Il componente React non
 si esegue (`tests/helpers_ts.py` copre solo `lib/`): la terza parte controlla che
 il .tsx usi quelle funzioni e non la selezione grezza, che e' la regressione
@@ -166,10 +167,10 @@ def _dopo_l_azione(documenti, selezionate, pagata, oggi="2026-09-26"):
     return esegui_ts(
         MODULO,
         "const p = m.pianoAzioneDiMassa(input.documenti, input.selezionate, input.pagata);"
-        "emit(m.applicaPianoAVideo(input.documenti, p, input.pagata, input.oggi)"
+        "emit(m.applicaPagataAVideo(input.documenti, p.cambiano, input.pagata, input.oggi)"
         "  .map(d => ({ fo: d.file_origine, sede: d.ristorante_id ?? null, pagata: d.pagata, pagata_at: d.pagata_at })));",
         argomento={"documenti": documenti, "selezionate": selezionate, "pagata": pagata, "oggi": oggi},
-        richiede=["pianoAzioneDiMassa", "applicaPianoAVideo"],
+        richiede=["pianoAzioneDiMassa", "applicaPagataAVideo"],
     )
 
 
@@ -321,8 +322,8 @@ def test_handle_bulk_paga_manda_solo_il_piano(sorgente: str):
         "handleBulkPaga legge di nuovo la selezione grezza: le fatture che non "
         "cambiano verrebbero riscritte"
     )
-    assert "setDocumenti(prev => applicaPianoAVideo(prev, piano, pagata, todayLocalIso()));" in corpo, (
-        "l'aggiornamento a video non passa piu' da applicaPianoAVideo: una fattura "
+    assert "setDocumenti(prev => applicaPagataAVideo(prev, piano.cambiano, pagata, todayLocalIso()));" in corpo, (
+        "l'aggiornamento a video non passa piu' da applicaPagataAVideo: una fattura "
         "gia' pagata nella selezione mostrerebbe la data di oggi"
     )
     assert "if (!res.ok || data.ok === false) { ok = false; continue; }" in corpo, (
@@ -344,24 +345,27 @@ def test_i_piani_si_ricalcolano_quando_cambia_la_selezione(sorgente: str):
 
 
 def test_i_pulsanti_si_spengono_e_dicono_perche(sorgente: str):
-    pagate = _tag_button_con(sorgente, "onClick={() => setConfermaBulk(true)}")
-    assert "disabled={bulkPaying || pianoPagate.cambiano.length === 0}" in pagate, (
-        f"«Segna pagate» non si spegne quando sono gia' tutte pagate: {pagate}"
-    )
-    non_pagate = _tag_button_con(sorgente, "onClick={() => setConfermaBulk(false)}")
-    assert "disabled={bulkPaying || pianoNonPagate.cambiano.length === 0}" in non_pagate, (
-        f"«Segna non pagate» non si spegne quando sono gia' tutte da pagare: {non_pagate}"
-    )
+    testo = _normalizza(sorgente)
+    assert "const motivoPagateSpento = motivoAzioneSpenta(pianoPagate, true);" in testo
+    assert "const motivoNonPagateSpento = motivoAzioneSpenta(pianoNonPagate, false);" in testo
 
     # Il title sul Button disabilitato non compare (pointer-events-none): sta
-    # sullo span che lo avvolge, e deve leggere il piano del suo stesso verso.
-    for onclick, span in (
-        ("onClick={() => setConfermaBulk(true)}",
-         '<span title={pianoPagate.cambiano.length === 0 ? "Le fatture selezionate sono già tutte pagate" : undefined}>'),
-        ("onClick={() => setConfermaBulk(false)}",
-         '<span title={ pianoNonPagate.cambiano.length === 0 ? "Le fatture selezionate sono già tutte da pagare" '
-         ': "Riporta le fatture selezionate fra quelle da pagare" } >'),
+    # sullo span che lo avvolge. Il motivo arriva anche agli screen reader, con
+    # aria-describedby verso uno span sr-only.
+    for onclick, motivo, span, ident in (
+        ("onClick={() => setConfermaBulk(true)}", "motivoPagateSpento",
+         "<span title={motivoPagateSpento ?? undefined}>", "motivo-segna-pagate"),
+        ("onClick={() => setConfermaBulk(false)}", "motivoNonPagateSpento",
+         '<span title={motivoNonPagateSpento ?? "Riporta le fatture selezionate fra quelle da pagare"}>',
+         "motivo-segna-non-pagate"),
     ):
+        tag = _tag_button_con(sorgente, onclick)
+        assert f"disabled={{bulkPaying || {motivo} !== null}}" in tag, (
+            f"il pulsante non si spegne piu' quando non cambierebbe nulla: {tag}"
+        )
+        assert f'aria-describedby={{{motivo} ? "{ident}" : undefined}}' in tag, tag
+        assert "title=" not in tag
+
         i = sorgente.find(onclick)
         inizio_button = sorgente.rfind("<Button", 0, i)
         inizio_span = sorgente.rfind("<span", 0, inizio_button)
@@ -369,7 +373,78 @@ def test_i_pulsanti_si_spengono_e_dicono_perche(sorgente: str):
             f"il motivo del pulsante spento non e' piu' sullo span che lo avvolge: "
             f"{_normalizza(sorgente[inizio_span:inizio_button])}"
         )
-        assert "title=" not in _tag_button_con(sorgente, onclick)
+        fine_button = sorgente.find("</Button>", i)
+        dopo = _normalizza(sorgente[fine_button:sorgente.find("</span>\n", fine_button)])
+        assert f'{{{motivo} && <span id="{ident}" className="sr-only">{{{motivo}}}' in dopo, (
+            f"il motivo non arriva piu' agli screen reader: {dopo}"
+        )
+
+
+def test_il_motivo_del_pulsante_spento():
+    esito = esegui_ts(
+        MODULO,
+        "const pag = m.pianoAzioneDiMassa(input.docs, ['a.xml'], true);"
+        "const non = m.pianoAzioneDiMassa(input.docs, ['a.xml'], false);"
+        "emit([m.motivoAzioneSpenta(pag, true), m.motivoAzioneSpenta(non, false),"
+        "      m.motivoAzioneSpenta(m.pianoAzioneDiMassa(input.docs, ['p.xml'], true), true)]);",
+        argomento={"docs": [_doc("a.xml"), _doc("p.xml", pagata=True)]},
+        richiede=["pianoAzioneDiMassa", "motivoAzioneSpenta"],
+    )
+    assert esito == [None, "Le fatture selezionate sono già tutte da pagare",
+                     "Le fatture selezionate sono già tutte pagate"]
+
+
+def test_il_toast_dopo_l_azione_di_massa():
+    esito = esegui_ts(
+        MODULO,
+        "emit([m.messaggioEsitoAzioneDiMassa(1, true), m.messaggioEsitoAzioneDiMassa(3, true),"
+        "      m.messaggioEsitoAzioneDiMassa(1, false), m.messaggioEsitoAzioneDiMassa(2, false)]);",
+        richiede=["messaggioEsitoAzioneDiMassa"],
+    )
+    assert esito == [
+        "1 fattura segnata come pagata",
+        "3 fatture segnate come pagate",
+        "1 fattura riportata fra le da pagare",
+        "2 fatture riportate fra le da pagare",
+    ]
+
+
+def test_handle_bulk_paga_usa_il_toast_della_lib(sorgente: str):
+    corpo = _normalizza(_corpo_funzione(sorgente, "async function handleBulkPaga("))
+    assert "toast.success(messaggioEsitoAzioneDiMassa(aggiornate, pagata));" in corpo
+    assert "aggiornate += data.aggiornate ?? 0;" in corpo, (
+        "il toast non conta piu' le fatture che il worker ha davvero aggiornato"
+    )
+
+
+def test_il_pulsante_della_singola_fattura(sorgente: str):
+    """Stessi due difetti corretti sull'azione di massa: un 200 con ok:false
+    passava per successo, e l'aggiornamento a video guardava il solo
+    file_origine (in catena lo stesso file puo' stare su due sedi)."""
+    corpo = _normalizza(_corpo_funzione(sorgente, "async function handlePaga("))
+    assert (
+        'if (!res.ok || data.ok === false) { toast.error("Errore nel salvataggio"); await loadData(); return; }'
+        in corpo
+    ), corpo
+    assert "setDocumenti(prev => applicaPagataAVideo(prev, [doc], pagata, todayLocalIso()));" in corpo
+    assert "d.file_origine === doc.file_origine" not in corpo
+
+
+def test_confirm_dialog_non_cambia_contenuto_mentre_si_chiude():
+    """Durante l'animazione di chiusura il genitore ha gia' azzerato il verso e
+    svuotato la selezione: il dialog mostrava per un attimo «0 fatture per 0 €»
+    col titolo del verso opposto. Vale per tutte le pagine che lo usano."""
+    src = (
+        Path(__file__).resolve().parents[1] / "apps/web/src/components/ui/confirm-dialog.tsx"
+    ).read_text(encoding="utf-8")
+    testo = _normalizza(src)
+    assert "useEffect(() => { if (open) setUltimo({ titolo, messaggio, confermaLabel }); }, [open, titolo, messaggio, confermaLabel]);" in testo
+    assert "const mostrato = open ? { titolo, messaggio, confermaLabel } : ultimo;" in testo
+    assert "<DialogTitle>{mostrato.titolo}</DialogTitle>" in testo
+    assert "{mostrato.messaggio && <p" in testo and "{mostrato.messaggio}</p>" in testo
+    assert "{mostrato.confermaLabel}" in testo
+    for grezzo in ("{titolo}</DialogTitle>", "{messaggio}</p>", "{confermaLabel}\n"):
+        assert grezzo not in src, f"il dialog mostra di nuovo le prop grezze: {grezzo!r}"
 
 
 def test_la_conferma_usa_il_messaggio_del_piano(sorgente: str):
