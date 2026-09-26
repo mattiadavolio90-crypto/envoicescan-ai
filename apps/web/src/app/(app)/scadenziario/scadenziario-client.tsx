@@ -273,8 +273,14 @@ function AgendaSection({
   // Con una ricerca attiva la sezione si apre da sola: cercare dentro "Scadute"
   // — chiusa di default perche' su una sede reale sono 414 righe — altrimenti
   // non mostrerebbe NULLA, cioe' proprio il difetto che la ricerca deve togliere.
-  // Finita la ricerca ogni sezione torna al suo stato naturale.
-  const aperta = open || forzaAperta;
+  //
+  // Si SCRIVE `open` invece di tenere un `open || forzaAperta`: con l'OR il
+  // chevron chiamava setOpen ma la sezione restava aperta, quindi il clic
+  // sembrava registrato e non faceva nulla. Cosi' la ricerca apre una volta e
+  // poi il controllo torna a chi guarda.
+  useEffect(() => {
+    if (forzaAperta) setOpen(true);
+  }, [forzaAperta]);
 
   const selectableDocs = documentiSelezionabili(docs);
   const { selezionati: selectedCount, tutte: allSelected } =
@@ -307,7 +313,7 @@ function AgendaSection({
           onClick={() => setOpen(o => !o)}
         >
           <div className="flex items-center gap-2">
-            {aperta ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+            {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
             <span className={`font-semibold text-sm ${accentClass}`}>{title}</span>
             <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
             {selectedCount > 0 && (
@@ -318,7 +324,7 @@ function AgendaSection({
         </button>
       </div>
 
-      {aperta && (
+      {open && (
         <div className="border-t divide-y divide-border/50">
           {docs.map((doc) => (
             <DocumentoRow
@@ -1181,15 +1187,16 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
 type FornitoreOption = { fornitore: string; piva_fornitore: string | null };
 
 type RegoleDialogProps = {
-  /** Fornitore da preselezionare (P.IVA), quando si arriva dal riquadro. */
-  pivaIniziale?: string | null;
+  /** Fornitore da preselezionare, per NOME: `selectedNomi` e' keyed su
+   *  `f.fornitore`, non sulla P.IVA. */
+  nomeIniziale?: string | null;
   /** Chiamata dopo un salvataggio andato a buon fine. */
   onSalvato?: () => void;
   open: boolean;
   onClose: () => void;
 };
 
-function RegoleDialog({ open, onClose, pivaIniziale, onSalvato }: RegoleDialogProps) {
+function RegoleDialog({ open, onClose, nomeIniziale, onSalvato }: RegoleDialogProps) {
   const [regole, setRegole] = useState<RegolaPagamento[]>([]);
   const [fornitori, setFornitori] = useState<FornitoreOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1215,9 +1222,9 @@ function RegoleDialog({ open, onClose, pivaIniziale, onSalvato }: RegoleDialogPr
   useEffect(() => {
     // Arrivando dal riquadro dei fornitori che pesano, quel fornitore e' gia'
     // spuntato: il clic sulla riga deve portare a un solo gesto, scegliere i
-    // termini. Dalla toolbar `pivaIniziale` e' assente e la selezione parte vuota.
-    if (open) { loadAll(); setSelectedNomi(pivaIniziale ? new Set([pivaIniziale]) : new Set()); setSearchForn(""); setModalitaInput("30gg"); }
-  }, [open, loadAll, pivaIniziale]);
+    // termini. Dalla toolbar `nomeIniziale` e' assente e la selezione parte vuota.
+    if (open) { loadAll(); setSelectedNomi(nomeIniziale ? new Set([nomeIniziale]) : new Set()); setSearchForn(""); setModalitaInput("30gg"); }
+  }, [open, loadAll, nomeIniziale]);
 
   const fornitoriDisponibili = useMemo(() => {
     const giaCon = new Set(regole.map(r => r.piva_fornitore));
@@ -1283,6 +1290,10 @@ function RegoleDialog({ open, onClose, pivaIniziale, onSalvato }: RegoleDialogPr
       await fetch(`/api/scadenziario/regole/${id}`, { method: "DELETE" });
       setRegole(r => r.filter(x => x.id !== id));
       toast.success("Regola eliminata");
+      // Togliere una regola ricalcola `scadenza_effettiva` delle sue fatture:
+      // senza questo la lista resta quella di prima, lo stesso difetto corretto
+      // per il salvataggio e lasciato sul verso opposto.
+      onSalvato?.();
     } catch { toast.error("Errore eliminazione"); }
   }
 
@@ -1664,8 +1675,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // Un'azione di massa irreversibile una-per-una va confermata: stornare 50
   // pagamenti segnati per sbaglio costava ~150 clic.
   const [confermaBulk, setConfermaBulk] = useState<boolean | null>(null);
-  // P.IVA da preselezionare in RegoleDialog quando si arriva dal riquadro.
-  const [regolaPiva, setRegolaPiva] = useState<string | null>(null);
+  // Nome del fornitore da preselezionare in RegoleDialog dal riquadro.
+  const [regolaNome, setRegolaNome] = useState<string | null>(null);
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
   const [ordineArchivio, setOrdineArchivio] = useState<OrdineArchivio>("data");
 
@@ -1687,6 +1698,9 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+      // Con una modale aperta il campo di ricerca e' dietro l'overlay: dargli il
+      // fuoco sposterebbe il cursore su un elemento che non si vede.
+      if (document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       ricercaRef.current?.focus();
     }
@@ -2394,7 +2408,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                     ) : (
                       <button
                         type="button"
-                        onClick={() => { setRegolaPiva(f.piva); setRegoleOpen(true); }}
+                        onClick={() => { setRegolaNome(f.label); setRegoleOpen(true); }}
                         className="flex w-full items-center justify-between gap-3 rounded-md bg-card/60 px-3 py-2 text-left text-sm transition-colors hover:bg-card"
                         title={`Imposta i termini di pagamento di ${f.label}`}
                       >
@@ -2416,7 +2430,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               {riepilogo.restoCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => { setRegolaPiva(null); setRegoleOpen(true); }}
+                  onClick={() => { setRegolaNome(null); setRegoleOpen(true); }}
                   className="text-primary-text hover:underline"
                 >
                   Altri {riepilogo.restoCount} fornitor{riepilogo.restoCount === 1 ? "e" : "i"} ({formatEuro(riepilogo.restoTotale)})
@@ -2690,6 +2704,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               // Solo il mese piu' recente aperto: con anni di storico, aprirli
               // tutti riempirebbe la pagina di righe che nessuno ha chiesto.
               defaultOpen={g === gruppiMensili[0]}
+              // Come nella vista Da pagare: con una ricerca attiva i mesi si
+              // aprono, o cercare una fattura di marzo in Archivio mostrerebbe
+              // solo un elenco di mesi chiusi.
+              forzaAperta={ricerca.trim() !== ""}
               mostraScadenze={false}
               selectedFileOrigini={selectedFileOrigini}
               onToggleSelect={() => {}}
@@ -2792,8 +2810,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       <RegoleDialog
         open={regoleOpen}
-        onClose={() => { setRegoleOpen(false); setRegolaPiva(null); }}
-        pivaIniziale={regolaPiva}
+        onClose={() => { setRegoleOpen(false); setRegolaNome(null); }}
+        nomeIniziale={regolaNome}
         onSalvato={loadData}
       />
     </div>

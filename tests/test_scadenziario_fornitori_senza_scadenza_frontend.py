@@ -212,14 +212,63 @@ def test_salvare_una_regola_ricarica_la_lista(sorgente: str):
 
 def test_il_riquadro_preseleziona_il_fornitore(sorgente: str):
     """Un clic sulla riga deve lasciare un solo gesto: scegliere i termini."""
-    assert "setRegolaPiva(f.piva)" in sorgente
-    assert "pivaIniziale={regolaPiva}" in sorgente
+    # Il NOME, non la P.IVA: `selectedNomi` dentro RegoleDialog e' keyed su
+    # `f.fornitore` (sei punti). Passando la P.IVA il set non matchava nessuno e
+    # il dialog si apriva con zero selezionati e il Salva disabilitato — la
+    # preselezione non esisteva, pur essendo dichiarata nel commit.
+    assert "setRegolaNome(f.label)" in sorgente, (
+        "la preselezione non passa piu' il nome del fornitore"
+    )
+    assert "nomeIniziale={regolaNome}" in sorgente
+    assert "pivaIniziale" not in sorgente, (
+        "tornata la preselezione per P.IVA: non matcha selectedNomi"
+    )
+
+
+def _blocco_riquadro(src: str) -> str:
+    """Il solo blocco del riquadro fornitori, dalla classifica alla sua chiusura.
+
+    Cercare un letterale in TUTTO il file non dice che stia nel punto giusto: il
+    reviewer ha bucato la prima stesura spostando `modalitaCatena ? (` in un
+    punto scollegato e il test restava verde.
+    """
+    i = src.index("fornitoriSenzaScadenza(buckets.senzaScadenza")
+    j = src.index("{/* Toolbar */}", i)
+    return src[i:j]
 
 
 def test_in_catena_la_classifica_non_promette_un_clic(sorgente: str):
     """Le regole sono per-sede, il conteggio e' di tutte: in catena la lista
-    resta in sola lettura, come gia' fa il testo del banner."""
-    assert "modalitaCatena ? (" in sorgente, (
-        "il riquadro non distingue piu' la modalita' catena: un clic "
-        "prometterebbe piu' di quanto la finestra mantenga"
+    resta in sola lettura, come gia' fa il testo del banner.
+
+    Il ramo si cerca DENTRO il blocco del riquadro, non nel file: vedi
+    `_blocco_riquadro`.
+    """
+    blocco = _blocco_riquadro(sorgente)
+    assert "modalitaCatena ? (" in blocco, (
+        "dentro il riquadro non c'e' piu' il ramo per la modalita' catena: un "
+        "clic prometterebbe di sistemare tutte le sedi mentre la regola vale "
+        "solo per quella su cui si lavora"
+    )
+    # Il ramo cliccabile deve stare nell'altro corno del ternario, non fuori.
+    assert "setRegolaNome(f.label)" in blocco, (
+        "il ramo cliccabile e' uscito dal riquadro"
+    )
+
+
+def test_il_riquadro_viene_davvero_renderizzato(sorgente: str):
+    """Calcolare la classifica e non mostrarla e' il difetto gemello.
+
+    Il docstring di questo file dichiara di coprire anche «essere chiamata e non
+    portare a nulla»: il reviewer ha sostituito la condizione di render con
+    `false &&` e tutti i test restavano verdi. Ora la condizione e' ancorata.
+    """
+    blocco = _blocco_riquadro(sorgente)
+    assert "{riepilogo.top.length > 0 && (" in blocco, (
+        "il riquadro non e' piu' condizionato alla classifica non vuota: se la "
+        "condizione e' stata cambiata in qualcosa di sempre falso, la "
+        "classifica viene calcolata e mai mostrata"
+    )
+    assert "riepilogo.top.map(" in blocco, (
+        "le voci della classifica non vengono piu' iterate a video"
     )

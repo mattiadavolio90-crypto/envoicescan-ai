@@ -126,6 +126,30 @@ def test_segnare_pagata_scrive_la_data():
 
 # ── 2. Il cablaggio del client ───────────────────────────────────────────────
 
+def _corpi_onclick(src: str) -> list[str]:
+    """I corpi di ogni `onClick={...}`, con le graffe bilanciate.
+
+    Un `re.findall` su `onClick=\{([^}]*)\}` si fermerebbe alla prima `}`,
+    troncando proprio le arrow con un blocco — cioe' i casi che contano.
+    """
+    corpi = []
+    i = 0
+    while True:
+        i = src.find("onClick={", i)
+        if i == -1:
+            return corpi
+        j = i + len("onClick={")
+        prof = 1
+        while j < len(src) and prof:
+            if src[j] == "{":
+                prof += 1
+            elif src[j] == "}":
+                prof -= 1
+            j += 1
+        corpi.append(src[i + len("onClick={"):j - 1])
+        i = j
+
+
 def test_il_client_non_scrive_piu_pagata_true_fisso(sorgente: str):
     """La chiamata di massa manda il verso scelto, non una costante.
 
@@ -156,13 +180,38 @@ def test_l_azione_di_massa_passa_da_una_conferma(sorgente: str):
     """Entrambe le azioni aprono la conferma invece di partire subito.
 
     `ConfirmDialog` e' lo stesso componente usato da altre 11 pagine: questa
-    era l'unica con un'azione di massa irreversibile senza conferma.
+    era l'unica con un'azione di massa irreversibile — fino a 1.089 fatture —
+    senza conferma.
+
+    **Perche' si guarda dentro gli `onClick` e non il file intero.** La prima
+    stesura asseriva `"setConfermaBulk(true)" in sorgente` e
+    `"onClick={handleBulkPaga}" not in sorgente`: entrambe restano vere se il
+    bottone chiama `onClick={() => handleBulkPaga(true)}` — una arrow che
+    scavalca la conferma — perche' la stringa cercata compare comunque altrove
+    e quella vietata e' solo il riferimento nudo. Il reviewer l'ha bucato
+    esattamente cosi'. Ora si estrae il corpo di OGNI onClick e si pretende che
+    nessuno chiami l'handler di massa: l'unico ad avere il diritto di chiamarlo
+    e' `onConferma` del dialog.
     """
     assert "ConfirmDialog" in sorgente, "ConfirmDialog non e' piu' montato"
-    assert "setConfermaBulk(true)" in sorgente and "setConfermaBulk(false)" in sorgente, (
-        "le azioni di massa non passano piu' dalla conferma"
+
+    onclick = _corpi_onclick(sorgente)
+    assert onclick, "nessun onClick trovato: il parser di questo test e' da rivedere"
+
+    scavalcano = [c for c in onclick if "handleBulkPaga" in c]
+    assert not scavalcano, (
+        "un onClick chiama handleBulkPaga direttamente, scavalcando la conferma: "
+        f"{scavalcano[:2]}. L'azione di massa deve passare da setConfermaBulk."
     )
-    # Il bottone non deve chiamare direttamente l'handler: sarebbe la conferma scavalcata.
-    assert "onClick={handleBulkPaga}" not in sorgente, (
-        "il bottone chiama handleBulkPaga direttamente: la conferma e' scavalcata"
+
+    apre_conferma = [c for c in onclick if "setConfermaBulk(" in c]
+    assert len(apre_conferma) >= 2, (
+        "servono due azioni che aprono la conferma (segna pagate e storno), "
+        f"trovate {len(apre_conferma)}"
+    )
+
+    # L'handler va chiamato SOLO dalla conferma del dialog.
+    assert "onConferma={() => { if (confermaBulk !== null) handleBulkPaga(confermaBulk); }}" in sorgente, (
+        "la conferma non chiama piu' handleBulkPaga col verso scelto: "
+        "il dialog si aprirebbe senza fare nulla"
     )

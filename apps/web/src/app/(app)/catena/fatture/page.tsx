@@ -22,6 +22,12 @@ function FattureSkeleton() {
       {/* La barra di ricerca sta in cima alla pagina vera: senza il suo posto
           qui, al caricamento il contenuto scatta in giu' di una riga. */}
       <div className="h-10 animate-pulse rounded-md bg-muted/40" />
+      {/* Filtri sopra i KPI, come nella pagina vera. */}
+      <div className="flex flex-wrap gap-2">
+        {[28, 28, 36].map((w, i) => (
+          <div key={i} className="h-7 animate-pulse rounded-full bg-muted/40" style={{ width: `${w * 4}px` }} />
+        ))}
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-24 animate-pulse rounded-xl border bg-muted/40" />
