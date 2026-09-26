@@ -1346,6 +1346,54 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Mutanti: 4 uccisi (U1, U2, e U3 rifatto in due varianti misurabili: la prima
 >   stesura girava all'infinito e non arrivava al riepilogo).
 
+> - **26/09/2026, `baf6a03`..`8857560` — Gestione Fatture (`/scadenziario`): la
+>   pagina di ricerca fatture, rifatta su estetica, scadenze e lavoro del
+>   contabile.** 10 commit, 14 file, nessuna migration. Partito da una richiesta
+>   estetica: l'ipotesi «colori sbagliati» e' stata **misurata e smentita** (0
+>   classi di palette grezza nel codice attivo, i KPI sono lo stampo identico di
+>   `margini/kpi-bar.tsx`), e lo scostamento vero era strutturale — filtri in una
+>   card a meta' schermo mentre le altre pagine li hanno in cima, importi senza
+>   `tabular-nums` (8 occorrenze contro 48 di margini) proprio sul dato ripetuto
+>   414 volte per sede, skeleton con forme diverse dalla pagina.
+>   **Misurato a DB prima di scegliere** (11 sedi): 1.073 non pagate su 3.041
+>   **senza scadenza per 959.319 EUR** — 0 con dato XML, tutte con data documento,
+>   168 fornitori di cui **7 valgono metà del buco e 33 l'80%**; 1.909 scadute di
+>   cui **1.313 oltre i 90 giorni** contro 53 entro 7; le note di credito che la
+>   chat contava come debito valevano **44.791 EUR**; numero documento presente
+>   sull'**88,8%** (quindi cercabile).
+>   Fatto: ricerca per fornitore/numero/importo (non esisteva: era il gesto piu'
+>   frequente di chi ci lavora), storno in blocco + `ConfirmDialog` sulle azioni di
+>   massa (il client scriveva `pagata: true` fisso mentre l'endpoint accettava gia'
+>   `body.pagata`; stornare 50 errori costava ~150 clic), chat allineata alla
+>   popolazione della pagina, scadute dalla piu' recente, i 7 fornitori che pesano
+>   con la regola a un clic, «di cui X senza scadenza» nel riepilogo, filtri in
+>   cima. Piu' un **punto cieco del presidio colori**: la regola «/10 mai /15»
+>   cercava testo e fondo nella stessa stringa e non vedeva il caso
+>   padre-tinto/figlio-testo (2 occorrenze nel perimetro).
+>   **NON fatto, deliberato:** le senza-scadenza restano fuori dal cash-flow — tre
+>   test esistenti hanno respinto l'aggiunta e avevano ragione, «Quando pagherai»
+>   e' una distribuzione nel tempo e una fattura senza data non ha un «quando».
+>   **Review rossa, 4 blocchi chiusi in `8857560`:** la preselezione del fornitore
+>   passava la P.IVA a un set keyed sul nome (feature dichiarata funzionante e
+>   inerte: dialog con zero selezionati e Salva disabilitato); **3 mutanti
+>   sopravvissuti** perche' i miei 22 stavano tutti dentro le funzioni pure di
+>   `lib/` o sulle righe appena scritte, mai sul cablaggio che i presidi
+>   «sorgente» dovrebbero presidiare (`mutanti-scelti-solo-dove-ho-scritto`);
+>   skeleton che promettevano i KPI dove `4c412bd` aveva messo i filtri; ricerca
+>   che non apriva i mesi in vista Archivio. I presidi sono stati riscritti sul
+>   **legame** — corpo di ogni `onClick` a graffe bilanciate, ramo cercato dentro
+>   il blocco del riquadro — e i 3 mutanti del reviewer ora muoiono. Chiusi anche
+>   4 non bloccanti: hover diventato no-op, regola cancellata che non ricaricava,
+>   `/` che rubava il fuoco con una modale aperta, chevron inerte durante la
+>   ricerca.
+>   **+55 test** (45 in 5 file nuovi, 10 funzioni sui file esistenti). Suite
+>   **16.985 verdi, 53 skip** con `python -m pytest tests/ -m "not sql" -q -p
+>   no:randomly` (17.038 raccolti, 797 deselezionati; **senza marker, come gira la
+>   CI, sono 17.835**). Una cifra dichiarata a 16.984 durante il lavoro era vecchia
+>   di alcuni commit: il reviewer l'ha ri-misurata, e questa e' ri-misurata dopo i
+>   fix. `-m sql` non toccato (nessuna migration). Non pushato al momento della
+>   scrittura.
+
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
