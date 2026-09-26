@@ -220,7 +220,7 @@ nemmeno in chat.**
 > secondo mancava: un utente senza `margini` non poteva chiamare `query_margini`
 > ma trovava il MOL già scritto nel prompt — l'invariante dichiarata qui era
 > violata da `_build_chat_system_prompt`. È il fratello del **guard di route**
-> lato Next (`requirePagina`, vedi `MIGRAZIONE_NEXTJS.md`): uno impedisce di
+> lato Next (`requirePagina` in `apps/web/src/lib/page-guard.ts`): uno impedisce di
 > *aprire* la pagina, l'altro di *interrogarne i dati* via chat.
 
 ### 5.2 Troncamento onesto di `query_scadenze` (dal 25/8/2026)

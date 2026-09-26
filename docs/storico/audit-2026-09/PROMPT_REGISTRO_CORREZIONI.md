@@ -3,7 +3,7 @@
 > **Modello**: **Opus**. `ultrathink` sull'apertura (è una decisione di dominio:
 > *cosa* deve dichiarare uno scrittore), normale sull'esecuzione.
 > **Sforzo**: medio. Il pezzo che vale è far dichiarare gli scrittori, non il test.
-> **Documento vivo**: `DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` (ignorato da git,
+> **Documento vivo**: `docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md` (ignorato da git,
 > sta su disco), sezione «Da dove riparte la prossima sessione».
 > **Stato repo alla stesura**: `9a74f8f`, **coda push 0** (tutto spedito il
 > 07/09 sera, CI verde, worker in produzione sul commit giusto), suite **13.040
@@ -201,7 +201,7 @@ senza rispondere significa lasciarlo aperto.
 ## Chiusura (WORKFLOW.md §5)
 
 Presidio provato per mutazione, commit su `main` locale, contatore
-`DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` aggiornato, `check_documentazione.py`
+`docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md` aggiornato, `check_documentazione.py`
 pulito, `/code-reviewer` verde. Chiuso il Punto 2 si passa al **Punto 3** (gli
 script che scrivono in produzione: 8 vivi da leggere, 15 monouso da cancellare),
 descritto nello stesso documento — di cui il Punto 2 è la **precondizione**.

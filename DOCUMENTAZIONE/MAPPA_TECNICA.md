@@ -263,10 +263,11 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `scripts/check_documentazione.py` | A fine feature (WORKFLOW.md §7): trova documenti chiusi da archiviare/eliminare, link rotti, indice fuori sync |
 | `IMPLEMENTAZIONI.md` | Roadmap feature future non ancora iniziate (push PWA, data entry via chat AI, benchmark KPI) |
 | `GRUPPO_ACQUISTO.md` | Concept "gruppo d'acquisto" — benchmark prezzi prodotto + bacheca offerte fornitori, componente di `IMPLEMENTAZIONI.md` |
-| `PIANO_WEB_MARKETING.md` | Roadmap SEO/marketing viva, 4 pilastri |
 | `docs/piani/PIANO_<feature>.md` | Solo se esiste — lavoro multi-sessione in corso ora (git-ignorato, effimero) |
 | `LOGICA_BRIEFING.md` | Per cambiare **cosa dice** il briefing Home (soglie, priorità, tono) |
 | `DOCUMENTAZIONE/RETAIL_FASI.md` | Apertura ai clienti retail: fasi, gate, vincolo zero-cambiamenti per i ristoranti. **Implementazione chiusa l'11/9/2026**, rientrata su `main`; migration applicate |
+| `DOCUMENTAZIONE/COERENZA_VISIVA_FASI.md` | Coerenza visiva delle pagine cliente: fasi 0-3, inventario, residui R1-R10. **Lavoro in corso** (fasi 0-2 chiuse, fase 3 densità aperta). Spostato qui da `scratchpad/` il 26/9/2026 |
+| `DOCUMENTAZIONE/COERENZA_VISIVA_ANALISI_CARICO.md` | Cosa rende l'app faticosa da capire (16/9/2026): analisi del carico visivo sulle pagine cliente desktop, metro «ristoratore poco avvezzo». È l'analisi che ha prodotto il piano qui sopra |
 
 ### Voglio capire un dominio tecnico specifico
 | Documento | Quando aprirlo |
@@ -315,7 +316,6 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 ### Marketing, brand, roadmap commerciale
 | Documento | Quando aprirlo |
 |---|---|
-| `PIANO_WEB_MARKETING.md` | Piano SEO/marketing vivo, 4 pilastri, si aggiorna nel tempo |
 | `BRIEF_LANDING_ONEFLUX_1.md` | Copy/stile validato della landing pubblica |
 | `GRUPPO_ACQUISTO.md` | Concept prodotto "gruppo d'acquisto" (non ancora costruito) |
 | `LOGO.md` | Tool per rigenerare logo/wordmark |
@@ -328,7 +328,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `docs/storico/DIAGNOSI_OFFSIDE_INVOICETRONIC_2026-07-14.md` | Sandbox-vs-live Invoicetronic, bug P7M byte nulli |
 | `docs/storico/MIGRAZIONE_APP.md` | Come fu fatto lo switch Streamlit → Next.js |
 | `docs/storico/CHECKLIST_069_072.md` | Migration legacy applicate (cartella `migrations/` congelata) |
-| `docs/storico/WEBHOOK_PARSER_BODY_2026-07-22.md`, `WEBHOOK_SCARTO_SILENZIOSO_2026-07-21.md` | Pattern di debug sui webhook Edge Function |
+| `docs/storico/WEBHOOK_PARSER_BODY_2026-07-22.md`, `docs/storico/WEBHOOK_SCARTO_SILENZIOSO_2026-07-21.md` | Pattern di debug sui webhook Edge Function |
 | `docs/storico/DEVCONTAINER_PERMESSI_DIAGNOSI_2026-08-26.md` | Volume `.claude/` root-owned, login loop, CLI da rilinkare a cascata |
 
 ### Stato/decisioni tra sessioni (non file — memoria persistente)

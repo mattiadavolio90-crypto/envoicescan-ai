@@ -5,7 +5,7 @@
 > solo se decidi di cambiare la forma della guardia.
 > **Sforzo**: medio. Il pezzo che vale è la guardia sulle correzioni manuali,
 > non la cancellazione dei monouso.
-> **Documento vivo**: `DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` (ignorato da
+> **Documento vivo**: `docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md` (ignorato da
 > git, sta su disco), sezione «Da dove riparte la prossima sessione».
 > **Stato repo alla stesura**: `e3f59ff`, **coda push 0** (Punti 1 e 2 spediti
 > l'08/09 mattina, CI verde, worker in produzione sul commit giusto), suite
@@ -197,7 +197,7 @@ scrivere sui dati dei clienti. La convenzione dry-run diventa una riga in
 ## Chiusura (WORKFLOW.md §5)
 
 Presidio provato per mutazione, commit su `main` locale, contatore
-`DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` aggiornato, `check_documentazione.py`
+`docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md` aggiornato, `check_documentazione.py`
 pulito, `/code-reviewer` verde.
 
 > Il gate `claude_hook_reviewer_gate.py` **consuma** il marker

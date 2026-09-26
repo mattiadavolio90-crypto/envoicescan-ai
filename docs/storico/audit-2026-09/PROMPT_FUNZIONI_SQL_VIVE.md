@@ -5,7 +5,7 @@
 > gruppo, articoli da fatture, limite della chat). Normale sull'esecuzione.
 > **Sforzo**: alto. La Parte A è corta ma va chiusa **prima**, o la Parte B
 > parte da uno snapshot che non è il live.
-> **Documento vivo**: `DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` (ignorato da
+> **Documento vivo**: `docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md` (ignorato da
 > git, sta su disco). Il contatore `AUDIT_COPERTURA.md` è **archiviato** in
 > `docs/storico/audit-2026-09/` e non si aggiorna: le cifre vanno nel vivo.
 > **Stato repo alla stesura (08/09/2026, ore 15:40)**: HEAD `2105d44`,
@@ -45,7 +45,7 @@
 > 5 sedi, 3.052,27 € potenziali; caso peggiore `COMMISSION` di San Giuliano,
 > 33% di scarto) e il limite chat che azzera a mezzanotte **UTC**.
 >
-> Verbale completo: `DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md`.
+> Verbale completo: `docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md`.
 
 ---
 

@@ -54,6 +54,61 @@ STATO_CICLO = re.compile(r"AUDIT_ONEFLUX_STATO_\d{4}-\d{2}(?:-\d{2})?\.md$")
 
 _LINK_MD = re.compile(r"\[[^\]]+\]\(([^)#]+\.md)[^)]*\)")
 
+# I percorsi scritti fra BACKTICK, non come link markdown. Sono il modo in cui
+# l'indice di MAPPA_TECNICA §6 elenca i documenti — cioe' proprio il file che
+# per mestiere non fa altro che nominare percorsi era l'unico che _LINK_MD non
+# guardava. Il 26/09/2026 ci sono stati trovati 3 riferimenti rotti, fra cui un
+# `PIANO_WEB_MARKETING.md` cancellato mesi prima e ancora descritto come "vivo".
+_PATH_BACKTICK = re.compile(r"`([^`\n]+\.md)`")
+
+# Un allarme che suona a vuoto viene disattivato mentalmente al terzo giro (e'
+# la ragione per cui altrove qui si copre meno pur di non mentire mai). Questi
+# non sono riferimenti a un file: sono forme con un segnaposto dentro.
+_SEGNAPOSTO = re.compile(r"[<>*?]|\{|\}")
+
+
+# Un documento vivo puo' nominare legittimamente un file che NON esiste piu':
+# sta raccontando di averlo eliminato, rinominato o sostituito. E' il caso di
+# "`X.md` eliminato alla Chiusura", "era una copia rimossa", "rinominato X -> Y".
+# Senza questa distinzione restavano 10 segnalazioni di cui 8 di questo tipo.
+_PASSATO = re.compile(
+    r"\b(elimin|rimoss|rimuov|cancell|rinominat|sostituit|superat|spostat|"
+    r"archiviat|era una|non esiste|stava in|assorbit)",
+    re.IGNORECASE,
+)
+
+
+def _riga_di(testo: str, pos: int) -> str:
+    inizio = testo.rfind("\n", 0, pos) + 1
+    fine = testo.find("\n", pos)
+    return testo[inizio:fine if fine != -1 else len(testo)]
+
+
+def _e_narrazione_al_passato(riga: str) -> bool:
+    """La riga racconta che quel file e' stato tolto, invece di rimandarci."""
+    return bool(_PASSATO.search(riga))
+
+
+def _e_vivo(p: Path) -> bool:
+    """Un documento e' vivo se non e' una fotografia archiviata.
+
+    docs/storico/ contiene per definizione "fotografie datate di problemi
+    chiusi" (la stessa esclusione che fa DOC_VIVI in test_documentazione_onesta).
+    """
+    rel = p.relative_to(ROOT).as_posix()
+    return not rel.startswith("docs/storico/")
+
+
+def _risolvi_nome_nudo(nome: str, md_files: list[Path]) -> Path | None:
+    """Un nome citato senza percorso e' valido se il repo ha UN solo file cosi'.
+
+    L'indice scrive a volte `README.md` o `WORKFLOW.md` senza cartella. Se il
+    nome e' ambiguo (piu' file lo portano) non si decide: non e' un link rotto,
+    e' una citazione generica.
+    """
+    candidati = [p for p in md_files if p.name == nome]
+    return candidati[0] if len(candidati) == 1 else None
+
 
 def _tutti_i_md() -> list[Path]:
     """I .md del repo, saltando le cartelle escluse SENZA discenderle.
@@ -113,6 +168,53 @@ def check_link_rotti(md_files: list[Path]) -> list[tuple[str, str]]:
                 continue
             if not (p.parent / target).resolve().exists():
                 problemi.append((p.relative_to(ROOT).as_posix(), target))
+    return problemi
+
+
+def check_percorsi_backtick(md_files: list[Path]) -> list[tuple[str, str]]:
+    """I percorsi .md fra backtick dei documenti VIVI esistono davvero?
+
+    Complementare a check_link_rotti, che vede solo la sintassi markdown: l'indice
+    di MAPPA_TECNICA §6 elenca i documenti fra backtick, quindi proprio il file
+    che per mestiere non fa altro che nominare percorsi non era controllato da
+    nessuno. Il 26/09/2026 ci sono stati trovati 3 riferimenti rotti, fra cui un
+    `PIANO_WEB_MARKETING.md` cancellato mesi prima e ancora descritto come "vivo".
+
+    **Solo i documenti vivi.** Un file sotto docs/storico/ e' una fotografia
+    datata: nominare un documento poi cancellato e' il suo mestiere, non un
+    difetto — docs/storico/README.md, per dirne uno, elenca apposta i file che
+    ha rimosso. Provato senza questa distinzione: 45 segnalazioni di cui ~3
+    vere. Un allarme che suona a vuoto viene disattivato mentalmente al terzo
+    giro, ed e' la ragione per cui altrove qui si copre meno pur di non mentire.
+    """
+    problemi: list[tuple[str, str]] = []
+    for p in md_files:
+        if not _e_vivo(p):
+            continue
+        testo = _leggi(p)
+        for match in _PATH_BACKTICK.finditer(testo):
+            target = match.group(1).strip()
+            if _SEGNAPOSTO.search(target) or target.startswith(("http://", "https://", "~")):
+                continue
+            # Abbreviazioni come `..._STORICO.md`: citano un file per suffisso,
+            # non per percorso.
+            if target.startswith(".."):
+                continue
+            # `_STORICO.md`: un suffisso generico usato in prosa per indicare la
+            # famiglia dei file, non un percorso ("il `_STORICO.md` raccoglie i
+            # verbali"). Un nome che comincia con "_" e non ha cartella non e'
+            # un riferimento risolvibile.
+            if "/" not in target and target.startswith("_"):
+                continue
+            if (ROOT / target).exists() or (p.parent / target).exists():
+                continue
+            if "/" not in target and _risolvi_nome_nudo(target, md_files):
+                continue
+            if _e_narrazione_al_passato(_riga_di(testo, match.start())):
+                continue
+            voce = (p.relative_to(ROOT).as_posix(), target)
+            if voce not in problemi:
+                problemi.append(voce)
     return problemi
 
 
@@ -277,6 +379,7 @@ def main() -> int:
 
     chiusi = check_marcatori_chiusura(md_files)
     link_rotti = check_link_rotti(md_files)
+    backtick_rotti = check_percorsi_backtick(md_files)
     piani = check_piani_orfani()
     fuori_sync = check_indice_fuori_sync(md_files)
     cifre = check_cifre_dichiarate()
@@ -297,6 +400,13 @@ def main() -> int:
         print(f"\n[LINK ROTTI] {len(link_rotti)} link puntano a file inesistenti:")
         for doc, target in link_rotti:
             print(f"  - {doc} -> {target}")
+
+    if backtick_rotti:
+        ha_problemi = True
+        print(f"\n[PERCORSI INESISTENTI] {len(backtick_rotti)} percorso/i citato/i fra backtick non esiste:")
+        for doc, target in backtick_rotti:
+            print(f"  - {doc} -> {target}")
+        print("  -> L'indice promette un documento che non c'e': correggi il percorso o togli la riga.")
 
     if piani:
         print(f"\n[PIANI ATTIVI] {len(piani)} file in docs/piani/ (normale se lavoro in corso, verifica se orfani):")

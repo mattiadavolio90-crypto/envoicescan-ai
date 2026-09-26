@@ -3,7 +3,7 @@
 > **Modello**: **Opus**. Non serve `ultrathink`: l'impianto è deciso e provato,
 > questa è esecuzione. Serve invece per la voce 3, che è una decisione di dominio.
 > **Sforzo**: medio. Tre voci, la seconda vale l'80% del valore.
-> **Documento vivo**: `DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` (ignorato da
+> **Documento vivo**: `docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md` (ignorato da
 > git, sta su disco), sezione «Da dove riparte la prossima sessione».
 > **Stato repo alla stesura**: `98f2ec9`, coda push **0**, suite **13.078 verdi**,
 > 38 test SQL verdi (07/09/2026, ore 16:00).
@@ -130,7 +130,7 @@ Non correggerle di iniziativa: sono decisioni di prodotto.
 ## Chiusura (WORKFLOW.md §5)
 
 Presidio provato per mutazione, commit su `main` locale, contatore
-`DOCUMENTAZIONE/AUDIT_ULTIMO_PERIMETRO.md` aggiornato, `check_documentazione.py`
+`docs/storico/AUDIT_ULTIMO_PERIMETRO_2026-09.md` aggiornato, `check_documentazione.py`
 pulito, `/code-reviewer` verde. Quando le tre voci sono chiuse, il Punto 1 è
 chiuso e si passa al **Punto 2** (il registro delle correzioni che non sa chi ha
 scritto), descritto nello stesso documento.
