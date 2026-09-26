@@ -1,10 +1,20 @@
 # L'ultimo perimetro — cosa resta da controllare
 
-> **A cosa serve questo file.** È **l'unico documento di audit vivo**. Sostituisce
-> i quattro del ciclo 2026-09 (stato, storico, contatore, Fable), archiviati il
-> 07/09/2026 in [`docs/storico/audit-2026-09/`](../docs/storico/audit-2026-09/).
-> Non racconta cosa è stato fatto — quello sta nell'archivio. Dice **cosa non è
-> mai stato guardato**, e perché proprio quello.
+> **ARCHIVIATO (26/09/2026).** Questo file è il **verbale del perimetro aperto il
+> 07/09/2026**: dice cosa, a quella data, non era mai stato guardato. Non è più il
+> documento di audit vivo — quel ruolo è di `DOCUMENTAZIONE/AUDIT_COPERTURA.md`,
+> che è il certificato da cui si riparte (lo indica `CLAUDE.md`). Il perimetro
+> descritto qui è stato in gran parte consumato: la logica SQL dentro il database,
+> il registro delle correzioni e gli script che scrivono in produzione sono stati
+> auditati, e i verbali stanno in `AUDIT_COPERTURA.md`.
+>
+> Fino a oggi si dichiarava «l'unico documento di audit vivo» pur stando in
+> `docs/storico/`, la cartella delle fotografie datate: un documento che dice una
+> cosa e sta nell'altra manda fuori strada chi apre una sessione. Resta qui per le
+> misure e le query di ogni punto, che hanno valore predittivo.
+>
+> Sostituiva i quattro del ciclo 2026-09 (stato, storico, contatore, Fable),
+> archiviati il 07/09/2026 in [`docs/storico/audit-2026-09/`](audit-2026-09/).
 
 **Aperto il 07/09/2026, riscritto lo stesso giorno dopo una seconda misura.** La
 prima stesura aveva scelto due punti dentro `scripts/` e `tools/`. Rimisurando,

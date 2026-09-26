@@ -44,7 +44,10 @@ DOC_VIVI = [
     # MAX_FILES_PER_UPLOAD, upload_handler.py:1028, i 4 nomi di funzione SQL del
     # residuo R1) e le fasi 2-3 lo riscriveranno: senza presidio invecchia in
     # silenzio, che e' cio' che questo test esiste per impedire.
-    ROOT / "scratchpad" / "piano_coerenza_visiva.md",
+    # Spostato il 26/9/2026 da scratchpad/piano_coerenza_visiva.md: un piano
+    # vivo e presidiato non puo' stare in una cartella che si chiama "scratch"
+    # (in questo progetto due piani sono gia' stati persi da un `git clean`).
+    ROOT / "DOCUMENTAZIONE" / "COERENZA_VISIVA_FASI.md",
 ]
 
 # P.IVA reale del titolare (RECOMASYSTEM Srl, Trezzano sul Naviglio).

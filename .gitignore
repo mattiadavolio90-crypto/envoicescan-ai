@@ -103,6 +103,12 @@ docs/piani/*.md
 # Anche gli script di lavoro di un piano (rilevatori, prototipi) sono effimeri:
 # se uno serve stabilmente, il suo posto e' scripts/, non qui.
 docs/piani/*.py
+# scratchpad/: prompt di sessione e appunti usa e getta, come dice il nome.
+# Fino al 26/9/2026 nessuna regola lo copriva e ci erano finiti 7 file TRACCIATI,
+# fra cui il piano di coerenza visiva (63 KB, in DOC_VIVI) e 5 verbali di audit
+# che nessun indice nominava. Spostati in DOCUMENTAZIONE/ e docs/storico/: un
+# documento che vale la pena tracciare non sta in una cartella chiamata scratch.
+scratchpad/
 
 # Marker di stato per l'hook Stop claude_hook_reviewer_gate.py: effimero, per-sessione.
 .claude/.reviewer_gate_ok

@@ -469,7 +469,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Aperto, dichiarato:** l'app non e' stata guardata a schermo (da questa
 >   sessione non si renderizza): la verifica nei due temi la fa Mattia, partendo
 >   da `/style-guide` che ora mostra tutti i token. Residui nuovi in
->   `scratchpad/piano_coerenza_visiva.md` §12: il bianco sui bottoni
+>   `DOCUMENTAZIONE/COERENZA_VISIVA_FASI.md` §12: il bianco sui bottoni
 >   `bg-primary` (2,71:1 / 2,17:1, kit shadcn, decisione di Mattia) e «Viola»
 >   tolto dal selettore del diario (nessun token; gli appunti gia' viola si
 >   vedono blu, da confermare).

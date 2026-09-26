@@ -5,7 +5,16 @@
 admin, demo e `/m` (frontend separato, va allineato a mano in un secondo tempo).
 
 **Origine:** analisi di 26 screenshot light+dark (`SCREEN APP 18.09/`) più misure
-sul codice. Prosegue `analisi_carico_visivo_cliente.md` (16/09) e i fix del 17/09.
+sul codice. Prosegue `DOCUMENTAZIONE/COERENZA_VISIVA_ANALISI_CARICO.md` (16/09)
+e i fix del 17/09.
+
+> **Spostato qui il 26/09/2026** da `scratchpad/piano_coerenza_visiva.md`, con
+> l'analisi che lo precede. Un piano vivo, protetto dal presidio di
+> `tests/test_documentazione_onesta.py`, non puo' stare in una cartella che si
+> chiama "scratch": in questo progetto due piani sono gia' stati persi da un
+> `git clean` di un'altra sessione. Sta accanto a `RETAIL_FASI.md`, che e' il
+> precedente identico (documento unico di un'implementazione, tracciato e in
+> `DOC_VIVI`).
 
 ---
 
