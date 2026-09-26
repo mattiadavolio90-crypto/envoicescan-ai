@@ -1,3 +1,5 @@
+import { formatEuro } from "@/lib/format";
+
 export type Documento = {
   id: string;
   file_origine: string;
@@ -174,6 +176,95 @@ export function statoSelezioneSezione(
     selezionati,
     tutte: selezionabili.length > 0 && selezionati === selezionabili.length,
   };
+}
+
+export type PianoAzioneDiMassa = {
+  gruppi: { ristorante_id: string | undefined; file_origini: string[] }[];
+  cambiano: Documento[];
+  giaCosi: number;
+};
+
+/**
+ * Cosa fanno davvero «Segna pagate» e «Segna non pagate» sulla selezione: solo
+ * le fatture che cambiano stato, raggruppate per sede (l'endpoint risolve UN
+ * ristorante_id per richiesta).
+ *
+ * L'endpoint scrive `pagata_manuale_at` su ogni fattura che riceve, ed e' la
+ * dichiarazione che spegne l'automatismo RID su quella fattura
+ * (`get_documenti_scadenziario`). «Seleziona tutte» prende solo fatture da
+ * pagare: «Segna non pagate» le riscriveva tutte senza cambiarne nessuna, e una
+ * regola RID messa dopo non le avrebbe piu' segnate pagate. Nel verso opposto
+ * una fattura gia' pagata finita nella selezione perdeva la sua data di
+ * pagamento, sostituita da oggi.
+ *
+ * `pagata` e' lo stato che il cliente vede, RID compreso: una fattura pagata
+ * per RID si riporta fra le da pagare proprio cosi'.
+ */
+export function pianoAzioneDiMassa(
+  documenti: Documento[],
+  selezionate: Iterable<string>,
+  pagata: boolean,
+): PianoAzioneDiMassa {
+  const set = new Set(selezionate);
+  const perSede = new Map<string | undefined, string[]>();
+  const cambiano: Documento[] = [];
+  let giaCosi = 0;
+  for (const d of documenti) {
+    if (!set.has(d.file_origine)) continue;
+    if (d.pagata === pagata) {
+      giaCosi++;
+      continue;
+    }
+    cambiano.push(d);
+    const arr = perSede.get(d.ristorante_id) ?? [];
+    arr.push(d.file_origine);
+    perSede.set(d.ristorante_id, arr);
+  }
+  return {
+    gruppi: [...perSede].map(([ristorante_id, file_origini]) => ({ ristorante_id, file_origini })),
+    cambiano,
+    giaCosi,
+  };
+}
+
+/**
+ * L'aggiornamento a video dopo l'azione di massa: cambiano solo le fatture del
+ * piano. Una gia' pagata finita nella selezione tiene la sua data di pagamento.
+ * La chiave include la sede: in catena lo stesso file_origine puo' stare su due.
+ */
+export function applicaPianoAVideo(
+  documenti: Documento[],
+  piano: PianoAzioneDiMassa,
+  pagata: boolean,
+  oggi: string,
+): Documento[] {
+  const chiave = (d: Documento) => `${d.ristorante_id ?? ""}|${d.file_origine}`;
+  const cambiate = new Set(piano.cambiano.map(chiave));
+  const pagata_at = pagata ? oggi : null;
+  return documenti.map(d =>
+    cambiate.has(chiave(d)) ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
+  );
+}
+
+/**
+ * Il testo della conferma: quante fatture e quanti euro l'azione tocca davvero,
+ * e quante selezionate restano come sono.
+ */
+export function messaggioConfermaAzioneDiMassa(piano: PianoAzioneDiMassa, pagata: boolean): string {
+  const n = piano.cambiano.length;
+  const una = n === 1;
+  const tot = piano.cambiano.reduce((acc, d) => acc + (d.totale_documento || 0), 0);
+  const quante = `${n} fattur${una ? "a" : "e"} per ${formatEuro(tot)}`;
+  const g = piano.giaCosi;
+  const stato = pagata ? (g === 1 ? "pagata" : "pagate") : "da pagare";
+  const restano = g === 0
+    ? ""
+    : g === 1
+      ? ` 1 selezionata è già ${stato}: resta com'è.`
+      : ` ${g} selezionate sono già ${stato}: restano come sono.`;
+  return pagata
+    ? `${quante}. Puoi sempre ${una ? "riportarla" : "riportarle"} indietro ${una ? "selezionandola" : "selezionandole"} di nuovo.${restano}`
+    : `${quante} ${una ? "tornerà" : "torneranno"} fra quelle da pagare, e la data di pagamento verrà rimossa.${restano}`;
 }
 
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {

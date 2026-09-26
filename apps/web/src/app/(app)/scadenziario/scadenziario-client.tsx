@@ -28,7 +28,8 @@ import {
   ordinaDocumenti, ordinaScadute, elencaFornitori, fornitoriSenzaScadenza, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
-  chiaviSelezionaTutte, statoSelezioneSezione,
+  chiaviSelezionaTutte, statoSelezioneSezione, pianoAzioneDiMassa, applicaPianoAVideo,
+  messaggioConfermaAzioneDiMassa,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -1738,6 +1739,17 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     [documenti, filtriComuni, filtroSede, sedeTecnicaId],
   );
 
+  // Le due azioni della barra di selezione agiscono solo sulle fatture che
+  // cambiano stato: un pulsante che non cambierebbe nulla resta spento.
+  const pianoPagate = useMemo(
+    () => pianoAzioneDiMassa(documenti, selectedFileOrigini, true),
+    [documenti, selectedFileOrigini],
+  );
+  const pianoNonPagate = useMemo(
+    () => pianoAzioneDiMassa(documenti, selectedFileOrigini, false),
+    [documenti, selectedFileOrigini],
+  );
+
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
 
@@ -1841,46 +1853,31 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   }
 
   async function handleBulkPaga(pagata: boolean) {
-    if (selectedFileOrigini.size === 0) return;
+    const piano = pianoAzioneDiMassa(documenti, selectedFileOrigini, pagata);
+    if (piano.gruppi.length === 0) return;
     setBulkPaying(true);
     try {
-      // L'endpoint risolve UN ristorante_id per l'intera richiesta: se la
-      // selezione attraversa più sedi (modalità catena), raggruppa per sede
-      // e chiama l'endpoint una volta per gruppo, altrimenti i documenti delle
-      // sedi "in più" fallirebbero silenziosamente lato worker.
-      const perSede = new Map<string | undefined, string[]>();
-      for (const d of documenti) {
-        if (!selectedFileOrigini.has(d.file_origine)) continue;
-        const key = d.ristorante_id;
-        const arr = perSede.get(key) ?? [];
-        arr.push(d.file_origine);
-        perSede.set(key, arr);
-      }
-
       let aggiornate = 0;
       let ok = true;
-      for (const [ristorante_id, file_origini] of perSede) {
+      for (const { ristorante_id, file_origini } of piano.gruppi) {
         const res = await fetch("/api/scadenziario/pagata", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ file_origini, pagata, ristorante_id }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) { ok = false; continue; }
+        // Il worker risponde 200 anche se una parte fallisce: lo dice `ok`.
+        if (!res.ok || data.ok === false) { ok = false; continue; }
         aggiornate += data.aggiornate ?? 0;
       }
 
       if (!ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
       toast.success(
         pagata
-          ? `${aggiornate} fattur${aggiornate === 1 ? "a segnata" : "e segnate"} come pagate`
+          ? `${aggiornate} fattur${aggiornate === 1 ? "a segnata come pagata" : "e segnate come pagate"}`
           : `${aggiornate} fattur${aggiornate === 1 ? "a riportata" : "e riportate"} fra le da pagare`
       );
-      const pagata_at = pagata ? todayLocalIso() : null;
-      const paidSet = selectedFileOrigini;
-      setDocumenti(prev => prev.map(d =>
-        paidSet.has(d.file_origine) ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
-      ));
+      setDocumenti(prev => applicaPianoAVideo(prev, piano, pagata, todayLocalIso()));
       setSelectedFileOrigini(new Set());
     } catch {
       toast.error("Errore di connessione");
@@ -2751,21 +2748,37 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           <span className="text-sm font-medium">
             {selectedFileOrigini.size} selezionat{selectedFileOrigini.size === 1 ? "a" : "e"}
           </span>
-          <Button size="sm" className="h-8 gap-1.5 rounded-full" onClick={() => setConfermaBulk(true)} disabled={bulkPaying}>
-            <Check className="size-3.5" />
-            {bulkPaying ? "Salvataggio…" : "Segna pagate"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 rounded-full"
-            onClick={() => setConfermaBulk(false)}
-            disabled={bulkPaying}
-            title="Riporta le fatture selezionate fra quelle da pagare"
+          {/* Il title sta sullo span: un Button disabilitato ha pointer-events-none
+              e il suo title non comparirebbe mai. */}
+          <span title={pianoPagate.cambiano.length === 0 ? "Le fatture selezionate sono già tutte pagate" : undefined}>
+            <Button
+              size="sm"
+              className="h-8 gap-1.5 rounded-full"
+              onClick={() => setConfermaBulk(true)}
+              disabled={bulkPaying || pianoPagate.cambiano.length === 0}
+            >
+              <Check className="size-3.5" />
+              {bulkPaying ? "Salvataggio…" : "Segna pagate"}
+            </Button>
+          </span>
+          <span
+            title={
+              pianoNonPagate.cambiano.length === 0
+                ? "Le fatture selezionate sono già tutte da pagare"
+                : "Riporta le fatture selezionate fra quelle da pagare"
+            }
           >
-            <X className="size-3.5" />
-            Segna non pagate
-          </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-full"
+              onClick={() => setConfermaBulk(false)}
+              disabled={bulkPaying || pianoNonPagate.cambiano.length === 0}
+            >
+              <X className="size-3.5" />
+              Segna non pagate
+            </Button>
+          </span>
           <Button
             variant="ghost"
             size="icon"
@@ -2782,16 +2795,9 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       <ConfirmDialog
         open={confermaBulk !== null}
         titolo={confermaBulk ? "Segnare come pagate?" : "Riportare fra le da pagare?"}
-        messaggio={(() => {
-          const n = selectedFileOrigini.size;
-          const tot = documenti
-            .filter(d => selectedFileOrigini.has(d.file_origine))
-            .reduce((acc, d) => acc + (d.totale_documento || 0), 0);
-          const quante = `${n} fattur${n === 1 ? "a" : "e"} per ${formatEuro(tot)}`;
-          return confermaBulk
-            ? `${quante}. Puoi sempre riportarle indietro selezionandole di nuovo.`
-            : `${quante} torneranno fra quelle da pagare, e la data di pagamento verrà rimossa.`;
-        })()}
+        messaggio={confermaBulk
+          ? messaggioConfermaAzioneDiMassa(pianoPagate, true)
+          : messaggioConfermaAzioneDiMassa(pianoNonPagate, false)}
         confermaLabel={confermaBulk ? "Segna pagate" : "Segna non pagate"}
         onConferma={() => { if (confermaBulk !== null) handleBulkPaga(confermaBulk); }}
         onClose={() => setConfermaBulk(null)}

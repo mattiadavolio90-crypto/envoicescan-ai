@@ -1393,6 +1393,32 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   di alcuni commit: il reviewer l'ha ri-misurata, e questa e' ri-misurata dopo i
 >   fix. `-m sql` non toccato (nessuna migration). Non pushato al momento della
 >   scrittura.
+>
+> - **26/09/2026 — Gestione Fatture: le azioni di massa agiscono solo sulle fatture
+>   che cambiano stato** (sessione invio al commercialista, su richiesta di Mattia).
+>   Lo storno in blocco qui sopra mandava all'endpoint **tutta** la selezione, e
+>   `segna_fattura_pagata` scrive `pagata_manuale_at` su ogni fattura ricevuta: e'
+>   la dichiarazione che spegne l'automatismo RID. «Seleziona tutte» prende solo
+>   fatture da pagare, quindi «Segna non pagate» le riscriveva tutte senza
+>   cambiarne nessuna; nel verso opposto una gia' pagata nella selezione perdeva la
+>   data di pagamento. **Danni in produzione: nessuno** (misurato dal reviewer:
+>   ultima scrittura di `pagata_manuale_at` il 25/09 alle 14:42 UTC, prima del
+>   commit che ha introdotto l'azione; 0 fatture con `pagata_manuale_at` e
+>   `pagata=false`).
+>   Fatto: `pianoAzioneDiMassa`, `applicaPianoAVideo` e
+>   `messaggioConfermaAzioneDiMassa` in `lib/scadenziario.ts`; i pulsanti si
+>   spengono quando non cambierebbero nulla, con il motivo sullo span (un Button
+>   disabilitato non mostra il suo title); la conferma conta e somma solo le
+>   fatture che cambiano, al singolare quando e' una; un fallimento parziale
+>   (HTTP 200 con `ok:false`) non passa piu' per successo. Nessuna guardia server:
+>   il server non conosce lo stato RID effettivo, e la review l'ha confermato.
+>   Review: nessun blocco nel codice; 3 non bloccanti chiusi (title invisibile,
+>   mutanti vivi sull'aggiornamento a video e sulle dipendenze dei `useMemo`,
+>   singolare/plurale). **27 mutanti su 27 uccisi**, tutti applicati, compresi
+>   quelli del reviewer (alias `paidSet` del codice vecchio, `useMemo` senza
+>   `selectedFileOrigini`). **+15 test** in `tests/test_scadenziario_azione_di_massa_frontend.py`.
+>   Suite **17.016 verdi, 53 skip** con `python -m pytest tests/ -q -p
+>   no:cacheprovider -m "not sql"` (797 deselezionati).
 
 ---
 
