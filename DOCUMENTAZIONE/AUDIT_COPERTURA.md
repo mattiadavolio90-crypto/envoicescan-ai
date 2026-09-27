@@ -1417,8 +1417,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   singolare/plurale). **27 mutanti su 27 uccisi**, tutti applicati, compresi
 >   quelli del reviewer (alias `paidSet` del codice vecchio, `useMemo` senza
 >   `selectedFileOrigini`). **+15 test** in `tests/test_scadenziario_azione_di_massa_frontend.py`.
->   Suite **17.016 verdi, 53 skip** con `python -m pytest tests/ -q -p
->   no:cacheprovider -m "not sql"` (797 deselezionati).
+>   Suite **17.014 verdi, 53 skip** sul codice committato con `python -m pytest
+>   tests/ -q -p no:cacheprovider -m "not sql"` (797 deselezionati); la cifra
+>   scritta la prima volta, 17.016, contava 2 test di una modifica non committata
+>   di un'altra sessione (`tests/test_brevo_mittente_default.py`).
 >
 > - **26/09/2026 — Gestione Fatture: chiusi i residui delle due review** (stessa
 >   sessione, su richiesta di Mattia di chiudere ogni punto aperto).
@@ -1448,10 +1450,12 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >     funzione; docstring non raw che dava un warning.
 >   **30 mutanti su 30 uccisi**, tutti applicati: i 26 del commit e i 4 rifatti
 >   dopo la review (due sopravvivevano: ricerca di un solo carattere, seconda
->   ricerca di fila). **+14 test** (8 in
->   `tests/test_scadenziario_ricerca_e_sezioni_frontend.py`). Suite **17.030
->   verdi, 53 skip** con `python -m pytest tests/ -q -p no:cacheprovider -m "not
->   sql"` (797 deselezionati).
+>   ricerca di fila); sopravvive solo il toast con 0 fatture, equivalente (a piano
+>   vuoto il pulsante e' spento). **+14 test** (8 in
+>   `tests/test_scadenziario_ricerca_e_sezioni_frontend.py`). Suite **17.028
+>   verdi, 53 skip** sul codice committato con `python -m pytest tests/ -q -p
+>   no:cacheprovider -m "not sql"` (797 deselezionati; nel working tree erano
+>   17.030 per i 2 test non committati di un'altra sessione, vedi sopra).
 >   Fuori dal codice, stessa sera: applicata la migration di retention GDPR del
 >   09/09 (`20260909143000`), rimasta nel repo senza essere sul DB — le 5 purge
 >   fallivano in `PGRST202` a ogni giro; al riavvio del queue-worker 183 sessioni
