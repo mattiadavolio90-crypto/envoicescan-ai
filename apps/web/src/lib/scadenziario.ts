@@ -159,11 +159,6 @@ export function chiaviSelezionaTutte(documenti: Documento[]): string[] {
   return documentiSelezionabili(documenti).map(d => d.file_origine);
 }
 
-/**
- * Stato della checkbox in testa a una sezione: [selezionabili, selezionati].
- * «Tutte» deve valere sulla stessa popolazione che il pulsante seleziona, o la
- * spunta di sezione non diventa mai piena dopo un «Seleziona tutte».
- */
 export type AperturaSezione = { open: boolean; primaDellaRicerca: boolean | null };
 
 /**
@@ -186,6 +181,11 @@ export function aperturaSezione(stato: AperturaSezione, forzaAperta: boolean): A
   return stato;
 }
 
+/**
+ * Stato della checkbox in testa a una sezione: [selezionabili, selezionati].
+ * «Tutte» deve valere sulla stessa popolazione che il pulsante seleziona, o la
+ * spunta di sezione non diventa mai piena dopo un «Seleziona tutte».
+ */
 export function statoSelezioneSezione(
   docs: Documento[],
   selezionate: Iterable<string>,
@@ -220,7 +220,7 @@ export type PianoAzioneDiMassa = {
  * pagamento, sostituita da oggi.
  *
  * `pagata` e' lo stato che il cliente vede, RID compreso: una fattura pagata
- * per RID si riporta fra le da pagare proprio cosi'.
+ * per RID si riporta fra quelle da pagare proprio cosi'.
  */
 export function pianoAzioneDiMassa(
   documenti: Documento[],
@@ -266,7 +266,7 @@ export function messaggioEsitoAzioneDiMassa(aggiornate: number, pagata: boolean)
   const una = aggiornate === 1;
   return pagata
     ? `${aggiornate} fattur${una ? "a segnata come pagata" : "e segnate come pagate"}`
-    : `${aggiornate} fattur${una ? "a riportata" : "e riportate"} fra le da pagare`;
+    : `${aggiornate} fattur${una ? "a riportata" : "e riportate"} fra quelle da pagare`;
 }
 
 /**

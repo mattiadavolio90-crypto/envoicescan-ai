@@ -351,7 +351,7 @@ def test_i_pulsanti_si_spengono_e_dicono_perche(sorgente: str):
 
     # Il title sul Button disabilitato non compare (pointer-events-none): sta
     # sullo span che lo avvolge. Il motivo arriva anche agli screen reader, con
-    # aria-describedby verso uno span sr-only.
+    # aria-describedby verso uno span `hidden` (sr-only lo farebbe leggere due volte).
     for onclick, motivo, span, ident in (
         ("onClick={() => setConfermaBulk(true)}", "motivoPagateSpento",
          "<span title={motivoPagateSpento ?? undefined}>", "motivo-segna-pagate"),
@@ -375,7 +375,7 @@ def test_i_pulsanti_si_spengono_e_dicono_perche(sorgente: str):
         )
         fine_button = sorgente.find("</Button>", i)
         dopo = _normalizza(sorgente[fine_button:sorgente.find("</span>\n", fine_button)])
-        assert f'{{{motivo} && <span id="{ident}" className="sr-only">{{{motivo}}}' in dopo, (
+        assert f'{{{motivo} && <span id="{ident}" hidden>{{{motivo}}}' in dopo, (
             f"il motivo non arriva piu' agli screen reader: {dopo}"
         )
 
@@ -404,8 +404,8 @@ def test_il_toast_dopo_l_azione_di_massa():
     assert esito == [
         "1 fattura segnata come pagata",
         "3 fatture segnate come pagate",
-        "1 fattura riportata fra le da pagare",
-        "2 fatture riportate fra le da pagare",
+        "1 fattura riportata fra quelle da pagare",
+        "2 fatture riportate fra quelle da pagare",
     ]
 
 

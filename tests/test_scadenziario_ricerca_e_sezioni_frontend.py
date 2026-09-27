@@ -32,7 +32,10 @@ CLIENT = (
 # ── 1. Le decisioni, eseguite ────────────────────────────────────────────────
 
 def test_la_ricerca_e_attiva_solo_se_filtra():
-    testi = ["", "   ", "n", "N.", "doc", "fattura", "n 4521", "Metro", "1.250,00", "fatt. 12"]
+    # «5» e «m» si normalizzano a UN carattere e filtrano davvero: una soglia
+    # «almeno 2 caratteri» li lascerebbe filtrati ma con le sezioni chiuse, cioe'
+    # il difetto originale (mutante sopravvissuto alla review del 26/09).
+    testi = ["", "   ", "n", "N.", "doc", "fattura", "5", "m", "n 4521", "Metro", "1.250,00", "fatt. 12"]
     esito = esegui_ts(
         MODULO,
         "emit(input.map(t => [t, m.ricercaAttiva(t), m.normalizzaRicerca(t)]));",
@@ -42,6 +45,7 @@ def test_la_ricerca_e_attiva_solo_se_filtra():
     attive = {t: a for t, a, _ in esito}
     assert attive == {
         "": False, "   ": False, "n": False, "N.": False, "doc": False, "fattura": False,
+        "5": True, "m": True,
         "n 4521": True, "Metro": True, "1.250,00": True, "fatt. 12": True,
     }
     # Stessa base del filtro: attiva se e solo se la query normalizzata non e' vuota.
@@ -72,6 +76,12 @@ def test_la_ricerca_apre_una_sezione_chiusa_e_svuotata_la_richiude():
 
 def test_una_sezione_gia_aperta_resta_aperta():
     assert _sequenza(True, [True, False]) == [True, True]
+
+
+def test_la_seconda_ricerca_apre_ancora():
+    """Finita una ricerca lo stato «di prima» si azzera: se restasse, la ricerca
+    successiva non aprirebbe piu' niente (mutante sopravvissuto il 26/09)."""
+    assert _sequenza(False, [True, False, True, False]) == [True, False, True, False]
 
 
 def test_durante_la_ricerca_il_chevron_resta_di_chi_guarda():

@@ -2744,7 +2744,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           </span>
           {/* Il motivo sta sullo span (un Button disabilitato ha pointer-events-none
               e il suo title non comparirebbe mai) e, per gli screen reader, in
-              aria-describedby. */}
+              aria-describedby verso uno span `hidden`: letto una volta sola, come
+              descrizione del pulsante. */}
           <span title={motivoPagateSpento ?? undefined}>
             <Button
               size="sm"
@@ -2756,7 +2757,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               <Check className="size-3.5" />
               {bulkPaying ? "Salvataggio…" : "Segna pagate"}
             </Button>
-            {motivoPagateSpento && <span id="motivo-segna-pagate" className="sr-only">{motivoPagateSpento}</span>}
+            {motivoPagateSpento && <span id="motivo-segna-pagate" hidden>{motivoPagateSpento}</span>}
           </span>
           <span title={motivoNonPagateSpento ?? "Riporta le fatture selezionate fra quelle da pagare"}>
             <Button
@@ -2770,7 +2771,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               <X className="size-3.5" />
               Segna non pagate
             </Button>
-            {motivoNonPagateSpento && <span id="motivo-segna-non-pagate" className="sr-only">{motivoNonPagateSpento}</span>}
+            {motivoNonPagateSpento && <span id="motivo-segna-non-pagate" hidden>{motivoNonPagateSpento}</span>}
           </span>
           <Button
             variant="ghost"
@@ -2787,7 +2788,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           e' verificabile a colpo d'occhio, "12 selezionate" no. */}
       <ConfirmDialog
         open={confermaBulk !== null}
-        titolo={confermaBulk ? "Segnare come pagate?" : "Riportare fra le da pagare?"}
+        titolo={confermaBulk ? "Segnare come pagate?" : "Riportare fra quelle da pagare?"}
         messaggio={confermaBulk
           ? messaggioConfermaAzioneDiMassa(pianoPagate, true)
           : messaggioConfermaAzioneDiMassa(pianoNonPagate, false)}

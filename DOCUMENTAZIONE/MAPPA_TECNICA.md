@@ -117,7 +117,7 @@ stupide.
 > (`margini.ts`, `foodcost.ts`, `home-kpi.ts`, `ore-turno.ts`). Sono derivazioni
 > di presentazione — ordinamenti, soglie, ripartizioni di un totale già
 > calcolato — e **stanno in `lib/` proprio perché lì i test eseguono il
-> TypeScript vero** (30 file `tests/test_*_frontend.py` via `helpers_ts.py`); un
+> TypeScript vero** (59 file `tests/test_*_frontend.py` via `helpers_ts.py`, 26/09/2026); un
 > `.tsx` non è testabile. La regola che regge non è "zero calcolo lato client" ma
 > **una sola fonte per ogni regola**: se una formula esiste sia nel worker sia nel
 > frontend, i due valori divergeranno. È già successo quattro volte sul calcolo

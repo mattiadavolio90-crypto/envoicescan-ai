@@ -1432,15 +1432,24 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >     con la DELETE rifiutata.
 >   - **Testi:** toast e motivo del pulsante spento in lib (`messaggioEsitoAzioneDiMassa`,
 >     `motivoAzioneSpenta`); il motivo arriva anche agli screen reader
->     (`aria-describedby`). `ConfirmDialog` (19 pagine) non mostra piu' il contenuto
->     nuovo durante l'animazione di chiusura («0 fatture per 0 €»).
+>     (`aria-describedby` verso uno span `hidden`). «fra le da pagare» → «fra
+>     quelle da pagare». `applicaPianoAVideo` (voce sopra) ora si chiama
+>     `applicaPagataAVideo` e serve anche al pulsante singolo. `ConfirmDialog`
+>     (usato da 18 file) non mostra piu' il contenuto nuovo durante l'animazione
+>     di chiusura («0 fatture per 0 €»).
+>   - **Limite noto, lasciato:** in Archivio un mese che sparisce e ricompare
+>     durante la ricerca si rimonta con l'apertura di default di quel momento, e a
+>     ricerca svuotata possono restare aperti due mesi (prima restavano aperti
+>     tutti).
 >   - **Presidi:** i **5 mutanti sopravvissuti** della review su `8857560` (ternario
 >     catena invertito, `nomeIniziale` ignorato, Archivio senza `forzaAperta`,
 >     eliminazione che non ricarica, `useEffect` della sezione svuotato) ora
 >     muoiono; due commenti di `lib/scadenziario.ts` tornati sopra la loro
 >     funzione; docstring non raw che dava un warning.
->   **26 mutanti su 26 uccisi**, tutti applicati. **+13 test** (7 in
->   `tests/test_scadenziario_ricerca_e_sezioni_frontend.py`). Suite **17.029
+>   **30 mutanti su 30 uccisi**, tutti applicati: i 26 del commit e i 4 rifatti
+>   dopo la review (due sopravvivevano: ricerca di un solo carattere, seconda
+>   ricerca di fila). **+14 test** (8 in
+>   `tests/test_scadenziario_ricerca_e_sezioni_frontend.py`). Suite **17.030
 >   verdi, 53 skip** con `python -m pytest tests/ -q -p no:cacheprovider -m "not
 >   sql"` (797 deselezionati).
 >   Fuori dal codice, stessa sera: applicata la migration di retention GDPR del
