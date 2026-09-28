@@ -21,6 +21,8 @@ import { LINK_ANALISI_MARGINI, LINK_ANALISI_SPESA } from "@/lib/catena-schede";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
 import { TestataHome } from "@/components/home/testata-home";
+import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
+import { vistaCatena } from "@/lib/home-chat";
 import {
   AndamentoMargine,
   CardHome,
@@ -44,7 +46,17 @@ const TINT = SALUTE_TINT;
 type ColoreTint = keyof typeof TINT;
 
 // ─── Briefing di gruppo: lo stesso riquadro della Home del punto vendita ────
-function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; nomeGruppo: string }) {
+type QuotaChat = { limiteGiorno: number; domandeOggi: number };
+
+function BriefingGruppo({
+  briefing,
+  nomeGruppo,
+  chat,
+}: {
+  briefing: GruppoBriefing;
+  nomeGruppo: string;
+  chat: QuotaChat | null;
+}) {
   // Le fatture da collocare sono una voce del «Da fare» qui sotto (28/9/2026).
   // Nell'audio restano: e' l'unica azione di gruppo del giorno, e chi ascolta
   // non vede la lista.
@@ -57,7 +69,15 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
       testoAscolta={[`${briefing.saluto}, ${nomeGruppo}.`, briefing.narrativa, msgDaCollocare]
         .filter(Boolean)
         .join(" ")}
-    />
+    >
+      {chat && (
+        <ConversazioneAssistente
+          vista={vistaCatena(nomeGruppo)}
+          limiteGiorno={chat.limiteGiorno}
+          domandeOggiIniziali={chat.domandeOggi}
+        />
+      )}
+    </RiquadroAssistente>
   );
 }
 
@@ -303,7 +323,14 @@ function SaluteGruppoCard({
 
 // Home della catena (28/9/2026): recap e assistenza. Coda da collocare e costi
 // di gruppo stanno in Gestione Fatture, i confronti fra sedi in Analisi catena.
-export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
+export function SintesiCatena({
+  overview,
+  chat = null,
+}: {
+  overview: GruppoOverview;
+  /** Quota della chat di catena; null = chat non disponibile (pool a 0). */
+  chat?: QuotaChat | null;
+}) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
 
@@ -338,7 +365,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
       />
 
       <section className="space-y-5">
-        <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
+        <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} chat={chat} />
         <DaFareCatena
           nDaCollocare={overview.briefing?.n_fatture_da_collocare}
           vaiAlPV={vaiAlPV}
@@ -369,9 +396,6 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
         />
       </div>
 
-      {/* Spazio riservato in fondo: il FAB "Chiedi a ONEFLUX" (fixed bottom-right)
-          altrimenti resta sovrapposto all'ultimo contenuto durante lo scroll. */}
-      <div aria-hidden className="h-20" />
     </div>
   );
 }

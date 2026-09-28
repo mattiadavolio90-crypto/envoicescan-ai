@@ -9,7 +9,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Wordmark } from "@/components/brand/logo";
 import { DemoSidebar } from "@/components/demo/demo-sidebar";
-import { DemoChat } from "@/components/demo/demo-chat";
 import { SpotlightTour } from "@/components/demo/spotlight-tour";
 import { DemoTopBar } from "@/components/demo/demo-topbar";
 import { DemoCover } from "@/components/demo/demo-cover";
@@ -27,10 +26,10 @@ import { DEMO_STEPS, type DemoScreen } from "@/lib/demo-steps";
 // Il chrome (sidebar + header) è identico al layout (app), ma inerte: sidebar
 // disabilitata, header senza azioni. La schermata sotto dipende dallo step.
 
-function Screen({ screen, openConfig }: { screen: DemoScreen; openConfig: boolean }) {
+function Screen({ screen, openConfig, openChat }: { screen: DemoScreen; openConfig: boolean; openChat: boolean }) {
   switch (screen) {
     case "home":
-      return <DemoHome openConfig={openConfig} />;
+      return <DemoHome openConfig={openConfig} chatAttiva={openChat} />;
     case "analisi":
       return <DemoAnalisi />;
     case "prezzi":
@@ -90,23 +89,13 @@ export function DemoShell() {
           {/* Il main scrolla internamente (per portare in vista l'ancora), ma lo
               scroll manuale dell'utente è disattivato durante il tour. */}
           <main className="flex-1 overflow-y-auto overscroll-contain p-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <Screen screen={step.screen} openConfig={step.anchorId === "config"} />
+            <Screen screen={step.screen} openConfig={step.anchorId === "config"} openChat={Boolean(step.openChat)} />
           </main>
         </SidebarInset>
       </SidebarProvider>
 
-      {/* Velo dietro la chat: sullo step chat la Home sotto (badge, testi)
-          competeva con le bolle e infastidiva soprattutto su schermi piccoli.
-          z-20: sopra il contenuto (z-0), sotto la chat (z-30) e la topbar (z-70). */}
-      {step.openChat && (
-        <div
-          aria-hidden
-          className="fixed inset-0 z-20 bg-background/70 backdrop-blur-sm"
-        />
-      )}
-
-      {/* Chat AI: montata sempre, si "apre" solo nello step dedicato. */}
-      <DemoChat open={Boolean(step.openChat)} />
+      {/* La chat del tour sta nel riquadro del briefing, come nella Home vera:
+          niente piu' pannello flottante ne' velo dietro. */}
 
       {/* Faretto: cerchia l'elemento del passo. key forza il remount a ogni step
           così la misura dell'ancora riparte pulita. */}

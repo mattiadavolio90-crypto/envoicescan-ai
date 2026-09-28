@@ -237,3 +237,159 @@ def test_fuori_dal_429_nessuna_quota_e_esaurita():
         assert _chiama("quotaEsaurita", [status, {"error": "questo mese"}]) is None, (
             f"status {status}: non e' un limite di quota, non deve dire che e' esaurita"
         )
+
+
+# ─── Una conversazione sola, con la vista di ogni messaggio (28/9/2026) ──────
+#
+# Il pulsante flottante teneva lo storico in una chiave di sessionStorage
+# condivisa fra catena e punto vendita: al backend arrivavano, come contesto,
+# domande fatte su un altro locale. Ora ogni voce porta la vista in cui e' stata
+# scritta, e al backend va solo la vista corrente.
+
+
+def _vs(id_="r1", nome="CASATI 14"):
+    return _chiama("vistaSede", [id_, nome])
+
+
+def _vc(nome="SUSHILAND"):
+    return _chiama("vistaCatena", [nome])
+
+
+def _u(testo, vista):
+    return {"role": "user", "content": testo, "vista": vista}
+
+
+def _a(testo, vista):
+    return {"role": "assistant", "content": testo, "vista": vista}
+
+
+def test_la_vista_di_una_sede_e_diversa_da_quella_di_un_altra():
+    a, b = _vs("r1", "A"), _vs("r2", "B")
+    assert a["chiave"] != b["chiave"]
+    assert a["contesto"] == b["contesto"] == "sede"
+    assert a["frase"] == "Ora sei in A"
+
+
+def test_la_vista_catena():
+    v = _vc("SUSHILAND")
+    assert v == {"chiave": "catena", "contesto": "catena", "frase": "Ora sei nella vista catena del gruppo SUSHILAND"}
+
+
+def test_nomi_assenti_non_lasciano_frasi_rotte():
+    assert _vs("r1", None)["frase"] == "Ora sei nel tuo locale"
+    assert _vs("r1", "   ")["frase"] == "Ora sei nel tuo locale"
+    assert _vc(None)["frase"] == "Ora sei nella vista catena"
+
+
+def test_la_conversazione_salvata_scarta_le_voci_senza_vista():
+    """Il formato del vecchio pulsante non diceva a quale locale apparteneva."""
+    grezzo = (
+        '[{"role":"user","content":"vecchia"},'
+        '{"role":"user","content":"ok","vista":"catena"},'
+        '{"role":"vista","content":"Ora sei in A","vista":"sede:r1"},'
+        '{"role":"assistant","content":"x","vista":""},'
+        '{"role":"hacker","content":"x","vista":"catena"},'
+        'null]'
+    )
+    out = _chiama("parseConversazione", [grezzo])
+    assert [v["content"] for v in out] == ["ok", "Ora sei in A"]
+
+
+def test_la_conversazione_salvata_non_lancia_mai():
+    for raw in [None, "", "{rotto", "42", "null", '{"a":1}']:
+        assert _chiama("parseConversazione", [raw]) == []
+
+
+def test_si_salvano_solo_le_ultime_voci():
+    voci = [_u(f"m{i}", "catena") for i in range(250)]
+    out = _chiama("daSalvare", [voci])
+    assert len(out) == 200
+    assert out[0]["content"] == "m50" and out[-1]["content"] == "m249"
+
+
+def test_in_una_conversazione_vuota_niente_riga_ora_sei_in():
+    assert _chiama("entraInVista", [[], _vc()]) == []
+
+
+def test_nella_stessa_vista_niente_riga():
+    voci = [_u("q", "catena"), _a("r", "catena")]
+    assert _chiama("entraInVista", [voci, _vc()]) == voci
+
+
+def test_cambiando_vista_compare_la_riga():
+    voci = [_u("q", "catena"), _a("r", "catena")]
+    out = _chiama("entraInVista", [voci, _vs("r1", "CASATI 14")])
+    assert out[-1] == {"role": "vista", "content": "Ora sei in CASATI 14", "vista": "sede:r1"}
+    assert out[:-1] == voci
+
+
+def test_due_cambi_di_fila_lasciano_una_riga_sola():
+    voci = [_u("q", "catena"), {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"}]
+    out = _chiama("entraInVista", [voci, _vs("r2", "B")])
+    assert [v["content"] for v in out] == ["q", "Ora sei in B"]
+
+
+def test_tornare_dove_si_era_senza_scrivere_toglie_la_riga():
+    voci = [_u("q", "catena"), {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"}]
+    assert _chiama("entraInVista", [voci, _vc()]) == [_u("q", "catena")]
+
+
+def test_al_backend_solo_i_messaggi_della_vista_corrente():
+    """LA regressione: prima tutto lo storico, di tutte le viste."""
+    voci = [
+        _u("catena?", "catena"), _a("gruppo", "catena"),
+        {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"},
+        _u("sede?", "sede:r1"), _a("locale", "sede:r1"),
+        {"role": "vista", "content": "Ora sei in B", "vista": "sede:r2"},
+        _u("altra?", "sede:r2"),
+    ]
+    out = _chiama("codaPerVista", [voci, _vs("r1", "A")])
+    assert out == [{"role": "user", "content": "sede?"}, {"role": "assistant", "content": "locale"}]
+
+
+def test_al_backend_mai_le_righe_ora_sei_in_e_al_massimo_16():
+    voci = [{"role": "vista", "content": "Ora sei nella vista catena", "vista": "catena"}]
+    voci += [_u(f"m{i}", "catena") for i in range(20)]
+    out = _chiama("codaPerVista", [voci, _vc()])
+    assert len(out) == 16
+    assert out[-1]["content"] == "m19"
+    assert all(set(m) == {"role", "content"} for m in out)
+
+
+def test_le_domande_proposte_finche_in_questa_vista_non_si_e_scritto():
+    voci = [_u("q", "catena"), _a("r", "catena")]
+    assert _chiama("mostraSuggerimenti", [voci, _vc()]) is False
+    assert _chiama("mostraSuggerimenti", [voci, _vs()]) is True
+    assert _chiama("mostraSuggerimenti", [[], _vc()]) is True
+
+
+def test_la_risposta_va_sotto_la_sua_domanda_non_sotto_la_riga_del_cambio():
+    """Domanda in catena, poi il cliente scende in un locale prima della risposta."""
+    voci = [
+        _u("q", "catena"),
+        {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"},
+    ]
+    out = _chiama("conRisposta", [voci, "catena", "risposta"])
+    assert [v["content"] for v in out] == ["q", "risposta", "Ora sei in A"]
+    assert out[1] == _a("risposta", "catena")
+
+
+def test_la_risposta_senza_domanda_va_in_fondo():
+    out = _chiama("conRisposta", [[], "catena", "r"])
+    assert out == [_a("r", "catena")]
+
+
+def test_la_chiave_di_sessionstorage_e_per_utente():
+    """sessionStorage sopravvive al logout nella stessa scheda."""
+    a = _chiama("chiaveConversazione", ["u1"])
+    b = _chiama("chiaveConversazione", ["u2"])
+    assert a != b and a != "oneflux:chat-messages"
+
+
+def test_contatore_e_attesa():
+    assert _chiama("testoContatore", [1]) == "Ti restano 1 domanda oggi"
+    assert _chiama("testoContatore", [5]) == "Ti restano 5 domande oggi"
+    assert _chiama("testoContatore", [0]).startswith("Limite di oggi raggiunto")
+    assert [_chiama("testoAttesa", [i]) for i in (0, 1, 2, 7)] == [
+        "Sto cercando...", "Sto leggendo le tue fatture...", "Ci sono quasi, un attimo...", "Ci sono quasi, un attimo...",
+    ]

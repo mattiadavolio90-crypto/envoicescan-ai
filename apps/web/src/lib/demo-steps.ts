@@ -17,7 +17,7 @@ export type DemoStep = {
   screen: DemoScreen;
   // Elemento da cerchiare col faretto. null = nessun faretto (schermata intera).
   anchorId: string | null;
-  // Se true, apre il pannello Chat AI sopra la Home (step dedicato).
+  // Se true, la conversazione nel riquadro del briefing «recita» lo scambio (step dedicato).
   openChat?: boolean;
   title: string;
   body: string;

@@ -37,8 +37,9 @@ contraddice mai la schermata.
 ## 2. Flusso end-to-end
 
 ```
-ChatWidget (chat-widget.tsx)            ← pannello flottante, storico in sessionStorage
-        │  POST /api/chat  { messages: [...ultimi 16] }
+ConversazioneAssistente                 ← nel riquadro del briefing della Home (dal 28/9/2026)
+  + AssistenteProvider (layout di (app)) ← una conversazione per scheda, in sessionStorage
+        │  POST /api/chat  { messages: [...ultimi 16 DELLA VISTA], contesto }
         ▼
 route.ts (apps/web/.../api/chat)        ← inoltra al worker con Bearer + X-Worker-Key
         │                                  timeout 35s
@@ -338,8 +339,9 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 | Cambiare la gestione "mese corrente vuoto" | coda di `_chat_query_costi` (`mese_non_ancora_caricato`) |
 | Cambiare il rate-limit | RPC `chat_usage_check_and_log` (DB) + `_chat_limite_per_piano` |
 | Cambiare timeout | `OpenAI(timeout=...)` (worker) + `CHAT_TIMEOUT_MS` (route.ts) |
-| Cambiare suggerimenti / testo widget | `SUGGERIMENTI`, copy in `chat-widget.tsx` |
-| Cambiare il feedback d'attesa | stato `attesa` + effetto in `chat-widget.tsx` |
+| Cambiare le domande proposte | `SUGGERIMENTI_SEDE` / `SUGGERIMENTI_CATENA` in `lib/home-chat.ts` |
+| Cambiare il feedback d'attesa | `testoAttesa` in `lib/home-chat.ts` + effetto in `assistente-provider.tsx` |
+| Cambiare la riga «Ora sei in…» o cosa si manda al backend | `vistaSede`, `vistaCatena`, `entraInVista`, `codaPerVista` in `lib/home-chat.ts` |
 
 ### Testare la chat in locale
 
@@ -381,7 +383,10 @@ reale del cliente.
 |---|---|
 | `services/fastapi_worker.py` | endpoint `chat_ai`, prompt, 7 tool `_chat_*`, gate `_TOOL_FLAG`, limiti |
 | `apps/web/src/app/api/chat/route.ts` | proxy Next.js → worker (auth + timeout) |
-| `apps/web/src/app/(app)/dashboard/chat-widget.tsx` | UI pannello, storico, quota, attesa |
+| `apps/web/src/components/home/assistente-provider.tsx` | stato della conversazione (layout di `(app)`), invio, attesa |
+| `apps/web/src/components/home/conversazione-assistente.tsx` | la conversazione nel riquadro del briefing: vista, quota, domande proposte |
+| `apps/web/src/components/home/pannello-conversazione.tsx` | il disegno, comune alla Home e al Demo Tour |
+| `apps/web/src/lib/home-chat.ts` | logica pura: vista dei messaggi, riga «Ora sei in…», coda da inviare, contatore |
 | RPC `chat_usage_check_and_log` (DB) | rate-limit atomico |
 | `services/ai_cost_service.py` | `track_ai_usage` (ledger costi) |
 
@@ -389,6 +394,14 @@ reale del cliente.
 
 ## Changelog rilevante
 
+- **28/9/2026 (interfaccia dell'assistente, step 4)** — via il pulsante flottante
+  «Chiedi a ONEFLUX»: la conversazione vive nel riquadro del briefing delle due
+  Home, con domande proposte, casella e contatore. Una conversazione sola per
+  scheda (stato in `AssistenteProvider`, montato nel layout di `(app)`), con la
+  riga «Ora sei in…» al cambio di sede o di vista. Al backend vanno solo i
+  messaggi della vista in cui si scrive (prima catena e PV condividevano la
+  chiave `oneflux:chat-messages` e lo storico). La chiave di sessionStorage è
+  per utente. `/m` non cambia (fase 8).
 - **19/6/2026 (hardening + SQL)** — limiti domande/giorno **base 10 / plus 20 / pro 30**
   (`CHAT_LIMITI_PIANO`). Loop tool-calling **unificato** su `_chat_loop_openai` (sede
   + catena, niente più duplicazione) con **chiamata finale `tool_choice="none"`** a

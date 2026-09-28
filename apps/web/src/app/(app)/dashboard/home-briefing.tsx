@@ -9,11 +9,16 @@ import { vociDaAzioniPV } from "@/lib/home-da-fare";
 import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
 import { DaFareOggi } from "@/components/home/da-fare-oggi";
 
-type Props = { briefing: Briefing };
+type Props = {
+  briefing: Briefing;
+  /** La conversazione con l'assistente, dentro il riquadro. Assente = chat non
+   *  disponibile nel piano (o config non letta): il riquadro resta il briefing. */
+  conversazione?: React.ReactNode;
+};
 
 // Home del punto vendita: riquadro dell'assistente + «Da fare oggi», con gli
 // stessi componenti della Home di catena (28/9/2026).
-export function HomeBriefing({ briefing }: Props) {
+export function HomeBriefing({ briefing, conversazione }: Props) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
 
@@ -57,7 +62,9 @@ export function HomeBriefing({ briefing }: Props) {
         narrativa={briefing.narrativa}
         testoAscolta={`${briefing.saluto}. ${briefing.narrativa}`}
         chiaveGiorno={briefing.data}
-      />
+      >
+        {conversazione}
+      </RiquadroAssistente>
       <DaFareOggi
         voci={stato === "lista" ? vociDaAzioniPV(visibili, puoIgnorare) : []}
         verde={stato === "verde"}

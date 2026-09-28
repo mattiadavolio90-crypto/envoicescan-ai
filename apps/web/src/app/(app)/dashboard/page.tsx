@@ -4,7 +4,6 @@ import { fetchNotifiche } from "@/lib/notifiche";
 import { chatVisibile, statoBlocchi } from "@/lib/home-kpi";
 import { HomeBriefing } from "./home-briefing";
 import { NotificheWidget } from "./notifiche-widget";
-import { ChatWidget } from "./chat-widget";
 import { SaluteCard } from "./salute-card";
 import { KpiBlock } from "./kpi-block";
 import { ConfigAssistente } from "./config-assistente";
@@ -14,6 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 import { getCurrentSession, getCurrentUser } from "@/lib/auth";
 import { TestataHome } from "@/components/home/testata-home";
+import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
+import { vistaSede } from "@/lib/home-chat";
 import { costoMerceLabel } from "@/lib/categorie-spesa";
 
 // Streaming con Suspense per blocco: ogni sezione carica i suoi dati in modo
@@ -44,7 +45,9 @@ async function TestataBlock() {
 }
 
 async function BriefingBlock() {
-  const briefing = await fetchBriefing();
+  // config e utente sono in cache() per la richiesta (li legge anche la testata):
+  // la conversazione non costa chiamate in piu'.
+  const [briefing, config, utente] = await Promise.all([fetchBriefing(), fetchConfig(), getCurrentUser()]);
   if (!briefing) {
     // Briefing assente = worker non ha risposto (cold-start/timeout): NON il
     // fallback muto di prima (header "Dashboard" e nient'altro, che sembrava
@@ -61,7 +64,22 @@ async function BriefingBlock() {
       </BlockRetry>
     );
   }
-  return <HomeBriefing briefing={briefing} />;
+  // La conversazione c'e' solo se la chat e' abilitata e con quota > 0 (i piani
+  // free hanno 0): stessa regola del vecchio pulsante flottante.
+  return (
+    <HomeBriefing
+      briefing={briefing}
+      conversazione={
+        chatVisibile(config) && (
+          <ConversazioneAssistente
+            vista={vistaSede(utente?.sede_attiva_id, utente?.sede_attiva_nome ?? utente?.nome_ristorante)}
+            limiteGiorno={config?.chat_limite_giorno ?? 0}
+            domandeOggiIniziali={config?.chat_domande_oggi ?? 0}
+          />
+        )
+      }
+    />
+  );
 }
 
 async function NotificheBlock() {
@@ -137,19 +155,6 @@ async function KpiSaluteBlock() {
   );
 }
 
-// La chat compare solo se abilitata e con limite > 0 (piani free = 0). Caricata
-// nel suo Suspense per non ritardare il resto.
-async function ChatBlock() {
-  const config = await fetchConfig();
-  if (!chatVisibile(config)) return null;
-  return (
-    <ChatWidget
-      limiteGiorno={config?.chat_limite_giorno ?? 0}
-      domandeOggiIniziali={config?.chat_domande_oggi ?? 0}
-    />
-  );
-}
-
 export default async function DashboardPage() {
   // /dashboard è la Home del PUNTO VENDITA (sede attiva), anche per i clienti
   // catena: ci si arriva scendendo in un PV dalla plancia /catena. L'atterraggio
@@ -179,15 +184,7 @@ export default async function DashboardPage() {
         <Suspense fallback={<div className="grid gap-4 lg:grid-cols-2"><CardSkeleton /><CardSkeleton /></div>}>
           <KpiSaluteBlock />
         </Suspense>
-
-        {/* Spazio riservato in fondo: il FAB "Chiedi a ONEFLUX" (fixed bottom-right)
-            altrimenti resta sovrapposto all'ultimo contenuto durante lo scroll. */}
-        <div aria-hidden className="h-20" />
       </div>
-
-      <Suspense fallback={null}>
-        <ChatBlock />
-      </Suspense>
     </>
   );
 }

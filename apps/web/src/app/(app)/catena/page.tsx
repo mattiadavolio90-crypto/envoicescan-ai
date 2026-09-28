@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { SintesiCatena } from "./sintesi-catena";
-import { ChatWidget } from "../dashboard/chat-widget";
 import { BlockRetry } from "../dashboard/block-retry";
 
 // Home della catena: recap e assistenza (28/9/2026). Le funzioni di lavoro
@@ -26,7 +25,9 @@ function SintesiSkeleton() {
 }
 
 async function SintesiBlock() {
-  const overview = await fetchGruppoOverview();
+  // La quota della chat di catena (pool AI: somma dei limiti delle sedi) si
+  // legge insieme alla sintesi: la conversazione vive nel riquadro del briefing.
+  const [overview, chatConfig] = await Promise.all([fetchGruppoOverview(), fetchGruppoChatConfig()]);
   // Account mono-sede (o worker che risponde 400): non c'è un gruppo da mostrare,
   // si torna alla Home del PV. Worker giù/lento (null) → BlockRetry ripinga e fa
   // refresh da solo appena risponde (niente più vicolo cieco "ricarica a mano").
@@ -40,20 +41,14 @@ async function SintesiBlock() {
   if (deveRedirigereAPuntoVendita(overview)) {
     redirect("/dashboard");
   }
-  return <SintesiCatena overview={overview} />;
-}
-
-// Chat di catena: pool AI unico (limite = somma dei limiti delle sedi). Compare
-// solo se il pool è > 0 (almeno una sede con piano a pagamento). Suspense a parte
-// per non ritardare la Sintesi.
-async function ChatBlockCatena() {
-  const config = await fetchGruppoChatConfig();
-  if (!chatCatenaAttiva(config)) return null;
   return (
-    <ChatWidget
-      contesto="catena"
-      limiteGiorno={config.limite_giorno}
-      domandeOggiIniziali={config.domande_oggi}
+    <SintesiCatena
+      overview={overview}
+      chat={
+        chatCatenaAttiva(chatConfig)
+          ? { limiteGiorno: chatConfig.limite_giorno, domandeOggi: chatConfig.domande_oggi }
+          : null
+      }
     />
   );
 }
@@ -63,9 +58,6 @@ export default async function CatenaPage() {
     <>
       <Suspense fallback={<SintesiSkeleton />}>
         <SintesiBlock />
-      </Suspense>
-      <Suspense fallback={null}>
-        <ChatBlockCatena />
       </Suspense>
     </>
   );

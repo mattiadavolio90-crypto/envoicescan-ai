@@ -11,6 +11,7 @@ import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 import { MobileRedirect } from "@/components/mobile-redirect";
 import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
 import { LifeBuoy, WifiOff } from "lucide-react";
+import { AssistenteProvider } from "@/components/home/assistente-provider";
 
 // PWA solo dentro l'app: manifest + flag installazione vivono qui, non nel root,
 // cosi' la landing pubblica "/" non mostra il prompt "Installa ONEFLUX" di Chrome.
@@ -80,6 +81,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <MobileRedirect />
     <PrivacyConsentModal needsConsent={user.privacy_accepted === false} />
     <ImpersonaBanner />
+    {/* La conversazione con l'assistente: qui e non nella Home, perche'
+        sopravviva al cambio di pagina e di sede. La Home la mostra. */}
+    <AssistenteProvider utenteId={user.id}>
     <SidebarProvider>
       <AppSidebar
         userEmail={user.email}
@@ -108,6 +112,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 min-w-0 p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
+    </AssistenteProvider>
     </>
   );
 }

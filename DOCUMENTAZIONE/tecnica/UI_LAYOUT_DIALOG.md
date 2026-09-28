@@ -339,7 +339,10 @@ sono tutti contrasto, opacità e stacking.
 
 ### Il difetto peggiore non era un colore
 
-Il contenitore del FAB "Chiedi a ONEFLUX" (`dashboard/chat-widget.tsx`) è
+> Dal 28/9/2026 il FAB non c'è più: la conversazione vive nel riquadro del
+> briefing della Home. La lezione qui sotto resta valida per ogni elemento `fixed`.
+
+Il contenitore del FAB "Chiedi a ONEFLUX" (allora `dashboard/chat-widget.tsx`) è
 `fixed bottom-6 right-6` ma **senza larghezza**: da flex container si estendeva
 per tutto il viewport, e la sua metà **invisibile a sinistra** intercettava i
 click. In `/catena` il bottone "Vedi PV" non era premibile. Risolto con `w-fit`.

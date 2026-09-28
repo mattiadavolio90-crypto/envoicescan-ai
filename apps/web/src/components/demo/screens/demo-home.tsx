@@ -6,6 +6,7 @@ import { SaluteCard } from "@/app/(app)/dashboard/salute-card";
 import { KpiBlock } from "@/app/(app)/dashboard/kpi-block";
 import { demoBriefing, demoConfig, demoKpi, demoSalute } from "@/lib/demo-data";
 import { DemoAnchor } from "../demo-anchor";
+import { DemoConversazione } from "../demo-chat";
 
 // Home del Demo Tour: RIUSA i componenti presentazionali reali della Home
 // (stessa identica UI del prodotto), alimentati con i dati finti "Marea".
@@ -13,7 +14,7 @@ import { DemoAnchor } from "../demo-anchor";
 // uniche azioni interne (CTA con <Link>, "Ignora" con fetch) sono neutralizzate
 // da DemoAnchor, che cattura i click così nessuna interazione esce dal tour.
 
-export function DemoHome({ openConfig = false }: { openConfig?: boolean }) {
+export function DemoHome({ openConfig = false, chatAttiva = false }: { openConfig?: boolean; chatAttiva?: boolean }) {
   return (
     <div className="space-y-8">
       {/* Nello step "config" il pannello si apre da solo (defaultOpen) e si
@@ -31,7 +32,7 @@ export function DemoHome({ openConfig = false }: { openConfig?: boolean }) {
       </DemoAnchor>
 
       <DemoAnchor id="briefing">
-        <HomeBriefing briefing={demoBriefing} />
+        <HomeBriefing briefing={demoBriefing} conversazione={<DemoConversazione attiva={chatAttiva} />} />
       </DemoAnchor>
 
       <DemoAnchor className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
