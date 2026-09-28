@@ -93,3 +93,35 @@ def test_nella_home_pv_i_conti_vengono_prima_della_completezza():
     assert t.index("<KpiBlock ") < t.index("<SaluteCard ")
     c = _senza_commenti(_testo(_CATENA))
     assert c.index("<ContiGruppoCard") < c.index("<SaluteGruppoCard")
+
+
+# ─── I collegamenti che decidono, riscritti in questo step ───────────────────
+#
+# Le regole stanno in lib/ e sono eseguite altrove; qui il punto e' che i .tsx
+# riscritti le passino ancora nel verso giusto. Segnalato dal revisore il 28/9:
+# invertire uno di questi collegamenti lasciava verde tutta la suite.
+
+
+def _norm(t: str) -> str:
+    return re.sub(r"\s+", "", _senza_commenti(t))
+
+
+def test_il_trend_del_mol_non_e_mai_verde_se_in_perdita_o_con_costi_mancanti():
+    assert "neutro={!molPos||!molAttendibile}" in _norm(_testo(_PV_CONTI))
+    assert "constmolAttendibile=!kpi.costi_mancanti;" in _norm(_testo(_PV_CONTI))
+
+
+def test_l_andamento_del_pv_segue_l_attendibilita_del_mol():
+    assert "<AndamentoMarginepunti={kpi.mol_mensile}anno={kpi.mol_mensile_anno}affidabile={molAttendibile}/>" in _norm(_testo(_PV_CONTI))
+
+
+def test_in_catena_personale_e_spese_solo_con_dati_affidabili():
+    n = _norm(_testo(_CATENA))
+    assert 'constaffidabile=metrica.stato==="mol"&&metrica.affidabile;' in n
+    i = n.index("{affidabile&&(<><TesseraVocelabel=\"Costopersonale\"")
+    assert 'label="Spesegenerali"' in n[i:i + 400]
+    assert "<AndamentoMarginepunti={overview.mol_mensile}anno={overview.mol_mensile_anno}affidabile={affidabile}/>" in n
+
+
+def test_in_catena_il_margine_percentuale_solo_con_dati_affidabili():
+    assert '{affidabile&&<spanclassName="tabular-nums">margine{pct(kpi.margine_medio_perc)}</span>}' in _norm(_testo(_CATENA))

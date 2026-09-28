@@ -160,7 +160,7 @@ function ContiGruppoCard({
           prodotti diversi. Quando non e' reale lo dice l'avviso sotto, non il
           silenzio; il colore lo decide tintConti (giallo finche' non e' reale).
           L'andamento segue il MOL: se il numero si vede, si vede la sua curva. */}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <button
           type="button"
           onClick={onApriMargini}

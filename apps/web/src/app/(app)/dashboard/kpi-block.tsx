@@ -76,13 +76,13 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
       {/* MOL — il numero che conta, l'unico colorato. Porta alla pagina Margini.
           Accanto, l'andamento nell'anno (nessuna soglia qui: calcolaSparkline
           torna null con meno di 2 punti). */}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <Link href="/margini" className="flex min-w-0 flex-col gap-1 rounded-md hover:opacity-80">
           <EtichettaKpi>MOL (margine)</EtichettaKpi>
           <span className={cn("text-2xl font-bold leading-tight tabular-nums", tint.text)}>
             {formatEuro(kpi.mol)}
           </span>
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
             {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
             {/* MOL negativo -> trend neutro (mai verde): "meno in perdita" non e'
                 una vittoria. Stessa cosa coi costi mancanti: il delta confronta

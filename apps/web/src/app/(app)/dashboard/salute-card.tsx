@@ -11,8 +11,12 @@ import { CardHome, RiepilogoCompletezza } from "@/components/home/card-home";
 // la vista desktop.
 export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hideLinks?: boolean }) {
   const { daSistemare, aPosto } = vociCompletezza(salute.voci);
+  // Con tutte le voci spente dal configuratore non c'e' niente da dire: «tutte a
+  // posto» sarebbe vero a vuoto.
   const nota =
-    daSistemare.length === 0
+    salute.voci.length === 0
+      ? undefined
+      : daSistemare.length === 0
       ? "Tutte le voci sono a posto"
       : `${daSistemare.length} ${daSistemare.length === 1 ? "voce" : "voci"} su ${salute.voci.length} da sistemare`;
 

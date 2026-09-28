@@ -64,7 +64,7 @@ export function TesseraVoce({
         {segno && <span className="mr-1">{segno}</span>}
         {label}
       </EtichettaKpi>
-      <span className="flex items-baseline justify-between gap-2">
+      <span className="flex flex-wrap items-baseline justify-between gap-x-2">
         <span className="text-base font-semibold tabular-nums">{valore}</span>
         {extra}
       </span>
