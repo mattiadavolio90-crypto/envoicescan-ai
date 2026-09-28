@@ -16722,7 +16722,7 @@
           "Catena"
         ],
         "summary": "Avvisi di tutte le sedi del gruppo, ognuno col nome della sua sede",
-        "description": "Il pulsante degli avvisi nella Home di catena (28/9/2026).\n\nPer ogni sede del gruppo, le stesse regole della campanella del punto\nvendita (`_righe_notifiche_sede`: persistite + segnali live, topic spenti\ndi QUELLA sede esclusi). Le sedi sono solo quelle dell'account\n(`_resolve_gruppo`), e ogni lettura filtra anche per `user_id`.",
+        "description": "Il pulsante degli avvisi nella Home di catena (28/9/2026).\n\nPer ogni sede del gruppo, le stesse regole della campanella del punto\nvendita (`_righe_notifiche_sede`: persistite + segnali live, topic spenti\ndi QUELLA sede esclusi). Le sedi sono solo quelle dell'account\n(`_resolve_gruppo`), e ogni lettura filtra anche per `user_id`.\n\nLe sedi spente in «Punti vendita monitorati» restano fuori, come per\nsegnali e osservazioni: il configuratore promette «I punti vendita spenti\nnon generano avvisi».",
         "operationId": "gruppo_notifiche_api_gruppo_notifiche_get",
         "parameters": [
           {
