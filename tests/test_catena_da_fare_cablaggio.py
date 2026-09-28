@@ -107,3 +107,11 @@ def test_il_pulsante_segue_la_destinazione_decisa_in_lib():
     assert "destinazioneAvviso(n,ambito)" in n
     assert "ctaDi(" not in t
     assert "onVaiSede(dest.ristoranteId,dest.href)" in n
+
+
+def test_carica_fatture_in_catena_segue_la_stessa_regola_del_pv():
+    """La regola vive in lib (caricaFattureInHome, provata in
+    test_home_kpi_frontend.py); qui che la Home di catena la usi davvero."""
+    pagina = _normalizza((_WEB / "app/(app)/catena/page.tsx").read_text(encoding="utf-8"))
+    assert "caricaFatture={caricaFattureInHome(pagine)}" in pagina
+    assert "{caricaFatture&&<UploadModal/>}" in _normalizza(_SINTESI.read_text(encoding="utf-8"))

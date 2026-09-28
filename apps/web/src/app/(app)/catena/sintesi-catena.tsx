@@ -428,7 +428,13 @@ function SaluteGruppoCard({
 
 // Home della catena (28/9/2026): recap e assistenza. Coda da collocare e costi
 // di gruppo stanno in Gestione Fatture, i confronti fra sedi in Analisi catena.
-export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
+export function SintesiCatena({
+  overview,
+  caricaFatture = true,
+}: {
+  overview: GruppoOverview;
+  caricaFatture?: boolean;
+}) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
 
@@ -462,7 +468,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
         dettaglio={`${overview.num_pv} punti vendita`}
         azioni={
           <>
-            <UploadModal />
+            {caricaFatture && <UploadModal />}
             <ConfigAssistenteCatena />
           </>
         }

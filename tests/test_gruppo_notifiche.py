@@ -29,7 +29,7 @@ def _riga(id_, topic="tag", created="2026-09-27T10:00:00+00:00", dismissed=None)
     }
 
 
-def _chiama(per_sede, errori=()):
+def _chiama(per_sede, errori=(), esclusi=()):
     chiamate = []
 
     def finto(user_id, rid, sb, *a, **k):
@@ -40,6 +40,7 @@ def _chiama(per_sede, errori=()):
 
     with patch.object(gruppo, "_resolve_gruppo",
                       return_value=("sb", "u-1", SEDI, "Gruppo", RID_TO_NOME, ["r1", "r2"])), \
+         patch.object(gruppo, "_get_gruppo_config", return_value=(set(), set(esclusi))), \
          patch.object(gruppo, "_righe_notifiche_sede", side_effect=finto):
         out = gruppo.gruppo_notifiche(authorization="Bearer t")
     return out, chiamate
@@ -97,3 +98,13 @@ def test_account_mono_sede_non_ha_gruppo():
         with pytest.raises(HTTPException) as e:
             gruppo.gruppo_notifiche(authorization="Bearer t")
     assert e.value.status_code == 400
+
+
+def test_una_sede_spenta_nel_configuratore_non_genera_avvisi():
+    """Il configuratore di catena promette «I punti vendita spenti non
+    generano avvisi»: vale per segnali e osservazioni, e anche qui. Trovato
+    dal code-reviewer il 28/9."""
+    out, chiamate = _chiama({"r1": [_riga("a")], "r2": [_riga("b")]}, esclusi={"r2"})
+    assert chiamate == [("u-1", "r1")]
+    assert [n.sede_nome for n in out.notifiche] == ["Centro"]
+    assert out.sedi_non_lette == []

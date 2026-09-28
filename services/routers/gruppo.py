@@ -2485,11 +2485,18 @@ def gruppo_notifiche(authorization: Optional[str] = Header(None)) -> GruppoNotif
     vendita (`_righe_notifiche_sede`: persistite + segnali live, topic spenti
     di QUELLA sede esclusi). Le sedi sono solo quelle dell'account
     (`_resolve_gruppo`), e ogni lettura filtra anche per `user_id`.
+
+    Le sedi spente in «Punti vendita monitorati» restano fuori, come per
+    segnali e osservazioni: il configuratore promette «I punti vendita spenti
+    non generano avvisi».
     """
     sb, user_id, _sedi, _nome, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _seg_off, pv_excl = _get_gruppo_config(sb, user_id)
     notifiche: List[GruppoNotifica] = []
     non_lette: List[str] = []
     for rid in ids:
+        if rid in pv_excl:
+            continue
         try:
             righe = _righe_notifiche_sede(user_id, rid, sb)
         except Exception as exc:
