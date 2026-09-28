@@ -35,8 +35,8 @@ export function DemoHome({ openConfig = false }: { openConfig?: boolean }) {
       </DemoAnchor>
 
       <DemoAnchor className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-        <SaluteCard salute={demoSalute} hideLinks />
         <KpiBlock kpi={demoKpi} />
+        <SaluteCard salute={demoSalute} hideLinks />
       </DemoAnchor>
     </div>
   );

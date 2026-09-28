@@ -117,14 +117,14 @@ async function KpiSaluteBlock() {
   // eliminata quella, senza questo ripristino sul desktop sparirebbe senza
   // sostituto — il mobile la voce non l'aveva mai persa.
   return (
+    // Conti a sinistra e completezza a destra, come nella Home di catena.
     <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-      {salute && <SaluteCard salute={salute} />}
       {kpi && !kpiVuoto && <KpiBlock kpi={kpi} settore={user?.tipo_attivita} />}
       {kpiVuoto && (
         <Card>
-          <CardContent className="flex h-full flex-col items-center justify-center py-16 text-center">
-            <Receipt className="mx-auto size-12 text-muted-foreground/40" />
-            <p className="mt-4 text-base font-medium">Nessun dato di margine per questo mese</p>
+          <CardContent className="flex h-full flex-col items-center justify-center py-8 text-center">
+            <Receipt className="mx-auto size-8 text-muted-foreground/40" />
+            <p className="mt-3 text-sm font-medium">Nessun dato di margine per questo mese</p>
             <p className="text-sm text-muted-foreground mt-1">
               Carica le fatture e inserisci il fatturato per vedere qui{" "}
               {costoMerceLabel(user?.tipo_attivita).toLowerCase()} e MOL.
@@ -132,6 +132,7 @@ async function KpiSaluteBlock() {
           </CardContent>
         </Card>
       )}
+      {salute && <SaluteCard salute={salute} />}
     </div>
   );
 }

@@ -84,3 +84,19 @@ export function chatVisibile(
 ): boolean {
   return (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
 }
+
+/* ─── salute-card.tsx: quali voci della completezza si aprono ────────────── */
+
+// La card della completezza era alta mezza pagina perche' ogni voce, anche
+// quelle a posto, aveva la sua riga con dettaglio (Mattia, 28/9: «enormi»).
+// Ora si aprono solo le voci da sistemare; quelle a posto stanno in una riga
+// sola coi nomi. L'ordine del backend si conserva in entrambe le liste.
+export function vociCompletezza<V extends { ok: boolean }>(
+  voci: readonly V[] | null | undefined,
+): { daSistemare: V[]; aPosto: V[] } {
+  const tutte = voci ?? [];
+  return {
+    daSistemare: tutte.filter((v) => !v.ok),
+    aPosto: tutte.filter((v) => v.ok),
+  };
+}

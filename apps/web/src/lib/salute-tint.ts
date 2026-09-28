@@ -6,6 +6,10 @@
  * le varianti dark del testo (emerald-600 su fondo scuro), la catena si'. Una
  * copia della palette e' un tema che diverge in silenzio; qui ce n'e' una sola.
  *
+ * Dal 28/9/2026 niente piu' gradiente ne' aloni (`card`, `orb1`, `orb2`): le card
+ * della Home hanno il fondo neutro delle altre pagine, e il colore sta solo sul
+ * numero e sull'anello.
+ *
  * `grigio` = "non lo so" (indice non determinabile, lettura fallita): lo usa la
  * catena; il PV oggi non lo emette ma la chiave e' qui perche' se un giorno lo
  * emettera' avra' gia' il suo colore, non un crash su una chiave assente.
@@ -28,9 +32,6 @@ export const SALUTE_TINT = {
     ring: "text-positivo",
     text: "text-positivo",
     badge: "bg-positivo/10 text-positivo",
-    card: "bg-gradient-to-br from-positivo/10 via-positivo/[0.03] to-background",
-    orb1: "bg-positivo/10",
-    orb2: "bg-positivo/8",
     dot: "bg-positivo",
     label: "Completo",
   },
@@ -38,9 +39,6 @@ export const SALUTE_TINT = {
     ring: "text-incerto",
     text: "text-incerto",
     badge: "bg-incerto/10 text-incerto",
-    card: "bg-gradient-to-br from-incerto/10 via-incerto/[0.03] to-background",
-    orb1: "bg-incerto/10",
-    orb2: "bg-incerto/8",
     dot: "bg-incerto",
     label: "Quasi completo",
   },
@@ -48,9 +46,6 @@ export const SALUTE_TINT = {
     ring: "text-negativo",
     text: "text-negativo",
     badge: "bg-negativo/10 text-negativo",
-    card: "bg-gradient-to-br from-negativo/10 via-negativo/[0.03] to-background",
-    orb1: "bg-negativo/10",
-    orb2: "bg-negativo/8",
     dot: "bg-negativo",
     label: ETICHETTA_INCOMPLETO,
   },
@@ -58,9 +53,6 @@ export const SALUTE_TINT = {
     ring: "text-muted-foreground/40",
     text: "text-muted-foreground",
     badge: "bg-muted text-muted-foreground",
-    card: "bg-card",
-    orb1: "bg-transparent",
-    orb2: "bg-transparent",
     dot: "bg-muted-foreground/40",
     // "Non lo so", non "i dati mancano": il grigio copre anche il caso in cui
     // la lettura e' fallita, dove non sappiamo nemmeno se i dati ci siano.
@@ -77,7 +69,7 @@ export type Tint = (typeof SALUTE_TINT)[ColoreSalute];
  *  garantisce il token (`positivo`, `incerto`, `negativo`), che porta i due
  *  valori. Il difetto da cercare e' quindi una classe di palette cruda
  *  (`emerald-600`, `sky-500`...), che ha un valore solo e non conosce il tema. */
-export function tintUsaSoloToken(t: Pick<Tint, "ring" | "text" | "badge" | "card" | "orb1" | "orb2" | "dot">): boolean {
+export function tintUsaSoloToken(t: Pick<Tint, "ring" | "text" | "badge" | "dot">): boolean {
   const crudo = /\b(?:text|bg|from|via|to|border|ring)-(?:sky|blue|indigo|violet|purple|pink|emerald|green|teal|amber|yellow|orange|rose|red|slate|gray|zinc)-\d{2,3}\b/;
-  return ![t.ring, t.text, t.badge, t.card, t.orb1, t.orb2, t.dot].some((cls) => crudo.test(cls));
+  return ![t.ring, t.text, t.badge, t.dot].some((cls) => crudo.test(cls));
 }

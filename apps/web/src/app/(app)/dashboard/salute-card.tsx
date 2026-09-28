@@ -1,115 +1,64 @@
 import Link from "next/link";
 import { Check, ArrowRight } from "lucide-react";
 import { type Salute } from "@/lib/home";
-import { offsetAnello } from "@/lib/catena-confronti";
-import { cn } from "@/lib/utils";
-import { SALUTE_TINT } from "@/lib/salute-tint";
+import { vociCompletezza } from "@/lib/home-kpi";
+import { CardHome, RiepilogoCompletezza } from "@/components/home/card-home";
 
-// Palette per i 3 stati dell'indice. Verde >=80, Giallo 50-79, Rosso <50
-// (soglie decise lato backend, qui solo i colori).
-const COLORI = SALUTE_TINT;
-
-function Anello({ indice, colore }: { indice: number; colore: Salute["colore"] }) {
-  const r = 52;
-  const c = 2 * Math.PI * r;
-  const offset = offsetAnello(indice, r);
-  const tint = COLORI[colore];
-  return (
-    <div className="relative size-28 shrink-0">
-      <svg viewBox="0 0 120 120" className="size-28 -rotate-90">
-        <circle
-          cx="60" cy="60" r={r}
-          className="stroke-muted"
-          strokeWidth="10"
-          fill="none"
-        />
-        <circle
-          cx="60" cy="60" r={r}
-          className={cn("transition-all", tint.ring)}
-          stroke="currentColor"
-          strokeWidth="10"
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={offset}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn("text-3xl font-bold tabular-nums", tint.text)}>{indice}%</span>
-      </div>
-    </div>
-  );
-}
-
-// hideLinks: su mobile (PWA) non mostriamo le CTA "Vai alla pagina" che
-// porterebbero fuori dalla Home verso la vista desktop. Default false: il
-// desktop resta invariato.
+// Soglie dell'indice decise lato backend (verde >=80, giallo 50-79, rosso <50):
+// qui solo il disegno.
+//
+// hideLinks: su mobile (PWA) niente «Vai» che porterebbe fuori dalla Home verso
+// la vista desktop.
 export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hideLinks?: boolean }) {
-  const tint = COLORI[salute.colore];
+  const { daSistemare, aPosto } = vociCompletezza(salute.voci);
+  const nota =
+    daSistemare.length === 0
+      ? "Tutte le voci sono a posto"
+      : `${daSistemare.length} ${daSistemare.length === 1 ? "voce" : "voci"} su ${salute.voci.length} da sistemare`;
 
   return (
-    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-5 sm:p-6", tint.card)}>
-      <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
-      <div className={cn("pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full blur-3xl", tint.orb2)} />
-      <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Completezza dati</h2>
-        {salute.mese_label && (
-          <span className="text-xs capitalize text-muted-foreground/70">{salute.mese_label}</span>
-        )}
-      </div>
-      <div className="flex flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">
-        <Anello indice={salute.indice} colore={salute.colore} />
+    <CardHome titolo="Completezza dati" meta={<span className="capitalize">{salute.mese_label}</span>}>
+      <RiepilogoCompletezza indice={salute.indice} colore={salute.colore} nota={nota} />
 
-        <div className="flex-1 space-y-3">
-          <span className={cn("inline-block rounded-full px-3 py-1 text-xs font-medium", tint.badge)}>
-            {tint.label}
+      {daSistemare.length > 0 && (
+        <ul className="divide-y divide-border">
+          {daSistemare.map((v) => (
+            <li key={v.key} className="flex items-start gap-2.5 py-2 text-sm first:pt-0">
+              <span className="mt-1.5 size-2 shrink-0 rounded-full bg-incerto" />
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="font-medium">{v.label}</span>
+                <span className="text-xs text-muted-foreground">{v.dettaglio}</span>
+                {/* L'effetto sui numeri, quando c'e'. Ambra come il pallino. */}
+                {v.conseguenza && <span className="text-xs text-incerto">{v.conseguenza}</span>}
+              </div>
+              {!hideLinks && v.cta_page && (
+                <Link
+                  href={v.cta_page}
+                  title="Vai alla pagina"
+                  className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary-text hover:underline"
+                >
+                  Vai
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Le voci a posto in una riga sola: il loro dettaglio resta nel title. */}
+      {aPosto.length > 0 && (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-medium text-positivo">
+            <Check className="size-3.5" />A posto:
           </span>
-
-          <ul className="space-y-2.5">
-              {salute.voci.map((v) => (
-                <li key={v.key} className="flex items-start gap-3 text-sm">
-                  {v.ok ? (
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-positivo/10">
-                      <Check className="size-3.5 text-positivo" />
-                    </span>
-                  ) : (
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-incerto/10">
-                      <span className="size-2 rounded-full bg-incerto" />
-                    </span>
-                  )}
-                  <div className="flex flex-1 flex-col gap-0.5">
-                    <span className={cn(v.ok ? "text-foreground" : "font-medium")}>
-                      {v.label}
-                    </span>
-                    {/* Dettaglio come sottotitolo (niente piu' colonna duplicata
-                        a destra), e CTA sotto solo se c'e' qualcosa da fare. */}
-                    <span className="text-xs text-muted-foreground">{v.dettaglio}</span>
-                    {/* L'effetto sui numeri, quando c'e'. Ambra come il pallino
-                        della voce a cui appartiene: dentro una lista allineata un
-                        riquadro farebbe rumore, qui basta il colore. Gateato sul
-                        campo, quindi sparisce da solo quando non c'e' nulla da
-                        dire — nessuna riga vuota, `gap-0.5` collassa. */}
-                    {v.conseguenza && (
-                      <span className="text-xs text-incerto">
-                        {v.conseguenza}
-                      </span>
-                    )}
-                    {!hideLinks && !v.ok && v.cta_page && (
-                      <Link
-                        href={v.cta_page}
-                        title="Vai alla pagina"
-                        className="mt-0.5 inline-flex w-fit items-center gap-1 text-xs font-medium text-primary hover:underline"
-                      >
-                        Vai alla pagina
-                        <ArrowRight className="size-3.5" />
-                      </Link>
-                    )}
-                  </div>
-                </li>
-              ))}
-          </ul>
-        </div>
-      </div>
-    </div>
+          {aPosto.map((v) => (
+            <span key={v.key} title={v.dettaglio}>
+              {v.label}
+            </span>
+          ))}
+        </p>
+      )}
+    </CardHome>
   );
 }

@@ -150,3 +150,34 @@ def test_chat_quota_negativa_non_apre():
     """Difesa: un limite negativo non deve passare il `> 0`."""
     assert _chiama("chatVisibile", [{"chat_ai_enabled": True, "chat_limite_giorno": -5}]) is False
 
+
+
+# ─── vociCompletezza: la card della completezza apre solo cio' che manca ────
+#
+# Step 3 dell'interfaccia (28/9/2026): la card era alta mezza pagina perche'
+# ogni voce, anche a posto, aveva la sua riga con dettaglio. Ora si aprono solo
+# le voci da sistemare; quelle a posto stanno in una riga coi nomi.
+
+
+def _v(key, ok):
+    return {"key": key, "label": key.upper(), "ok": ok, "dettaglio": f"d-{key}", "cta_page": None}
+
+
+def test_voci_divise_in_da_sistemare_e_a_posto_nell_ordine_del_backend():
+    voci = [_v("a", True), _v("b", False), _v("c", True), _v("d", False)]
+    out = _chiama("vociCompletezza", [voci])
+    assert [v["key"] for v in out["daSistemare"]] == ["b", "d"]
+    assert [v["key"] for v in out["aPosto"]] == ["a", "c"]
+
+
+def test_voce_senza_ok_non_e_a_posto():
+    """Un campo assente (backend vecchio, rinomina) non deve finire fra le voci
+    a posto: lo stesso default prudente di tutta la Home."""
+    voce = {"key": "x", "label": "X", "dettaglio": "", "cta_page": None}
+    out = _chiama("vociCompletezza", [[voce]])
+    assert [v["key"] for v in out["daSistemare"]] == ["x"]
+    assert out["aPosto"] == []
+
+
+def test_voci_assenti_non_rompono_la_card():
+    assert _chiama("vociCompletezza", [None]) == {"daSistemare": [], "aPosto": []}

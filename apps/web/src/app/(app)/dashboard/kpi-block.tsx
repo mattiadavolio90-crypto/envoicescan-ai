@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Minus } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, TriangleAlert } from "lucide-react";
 import { type HomeKpi } from "@/lib/home";
-import { calcolaSparkline, tintContiPV, type PuntoMol } from "@/lib/catena-confronti";
+import { tintContiPV } from "@/lib/catena-confronti";
 import { formatEuro } from "@/lib/format";
 import { tintaTrend } from "@/lib/home-kpi";
 import { costoMerceLabel, type Settore } from "@/lib/categorie-spesa";
 import { SALUTE_TINT } from "@/lib/salute-tint";
 import { cn } from "@/lib/utils";
+import { AndamentoMargine, CardHome, EtichettaKpi, TesseraVoce } from "@/components/home/card-home";
 
 function Trend({
   delta,
@@ -49,124 +50,6 @@ function Trend({
   );
 }
 
-function RigaVoce({
-  colore,
-  label,
-  value,
-  delta,
-  suffix,
-  buonoSeSu,
-  segno,
-  valoreZero = false,
-  href,
-}: {
-  colore: "emerald" | "amber";
-  label: string;
-  value: string;
-  delta: number | null;
-  suffix: string;
-  buonoSeSu: boolean;
-  segno?: string;
-  // true = il valore corrente della voce e' 0/assente: il trend va soppresso
-  // (vedi commento in Trend).
-  valoreZero?: boolean;
-  // Pagina dove approfondire/sistemare la voce. Rende la riga cliccabile: vedo
-  // un numero che non mi piace -> un click e sono dove lo controllo.
-  href?: string;
-}) {
-  const dotCn = colore === "emerald" ? "bg-positivo" : "bg-incerto";
-  const contenuto = (
-    <>
-      <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", dotCn)} />
-      <span className="flex-1 text-sm text-muted-foreground">
-        {segno && <span className="mr-1 text-muted-foreground/50">{segno}</span>}
-        {label}
-      </span>
-      <span className="flex items-baseline gap-2">
-        <span className="text-sm font-semibold tabular-nums">{value}</span>
-        <span className="w-12 text-right">
-          <Trend delta={delta} suffix={suffix} buonoSeSu={buonoSeSu} sopprimi={valoreZero} />
-        </span>
-      </span>
-    </>
-  );
-  const base = "flex items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5";
-  if (href) {
-    return (
-      <Link href={href} className={cn(base, "transition-colors hover:bg-background/70")}>
-        {contenuto}
-      </Link>
-    );
-  }
-  return <div className={base}>{contenuto}</div>;
-}
-
-// Fascia "Andamento MOL nell'anno": una sezione a sé in fondo alla card, con la
-// sua etichetta (anno + range mesi), la mini-linea piu' larga e una % di
-// variazione YTD (dal primo all'ultimo mese con dati). Prima la sparkline era
-// schiacciata sotto al numero grande, senza scala ne' periodo: un graffio
-// illeggibile. Qui ha spazio e contesto -> si capisce cosa racconta.
-//
-// La geometria e la % NON si calcolano qui: le fa calcolaSparkline in lib/,
-// dove sono coperte da test. Fino all'1/9 questo file ne teneva una copia
-// integrale — stessa formula scritta due volte, con la soglia dei 2 punti gia'
-// divergente fra le due. Qui resta solo il disegno.
-function MolAndamento({
-  punti,
-  anno,
-  affidabile,
-}: {
-  punti: PuntoMol[];
-  anno: number | null;
-  affidabile: boolean;
-}) {
-  const spark = calcolaSparkline(punti);
-  if (!spark) return null;
-  const { d, ytdPct, su, stroke, meseDa, meseA, cx, cy } = spark;
-  // Con i costi mancanti questa curva e' quella del MOL gonfiato: ambra come la
-  // card, e il delta senza verde/rosso. Copiato da `MolSparkline` della catena
-  // (sintesi-catena.tsx), che risolveva gia' lo stesso caso: fino al 17/09/2026
-  // la Home neutralizzava il numero grande e il Trend ma lasciava qui sotto una
-  // curva verde con la freccia in su, cioe' la stessa contraddizione ottanta
-  // righe piu' in basso.
-  const colore = affidabile ? stroke : "text-incerto";
-  const coloreDelta = affidabile
-    ? su ? "text-positivo" : "text-negativo"
-    : "text-muted-foreground";
-
-  return (
-    <div className="mt-4 border-t pt-3">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground/70">
-          Andamento margine{anno ? ` ${anno}` : ""}{!affidabile && " · dati incompleti"}
-        </span>
-        {ytdPct != null && (
-          <span
-            className={cn("inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums", coloreDelta)}
-          >
-            {/* La freccia e' un giudizio quanto il colore: su un MOL gonfiato
-                niente direzione certificata, resta solo il numero. */}
-            {affidabile && (su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
-            {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
-            <span className="ml-1 font-normal text-muted-foreground/60">
-              {meseDa} → {meseA}
-            </span>
-          </span>
-        )}
-      </div>
-      <svg
-        viewBox="0 0 240 40"
-        className="h-10 w-full overflow-visible"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Andamento del margine nei mesi dell'anno"
-      >
-        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", colore)} />
-        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", colore)} />
-      </svg>
-    </div>
-  );
-}
 
 export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | null }) {
   if (!kpi.has_data) return null;
@@ -175,14 +58,12 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
    * Con i costi mancanti il MOL non e' un risultato: e' un buco.
    *
    * Il banner ambra qui sotto lo dichiara dal 18/06, ma fino al 17/09/2026 il
-   * numero restava verde e gigante e il trend restava "in meglio" — la pagina si
+   * numero restava verde e il trend restava "in meglio" — la pagina si
    * contraddiceva nella stessa schermata. Su una sede reale mostrava 416.798 €
    * in verde su un mese con costi e personale a zero, cioe' un margine del 100%.
    *
    * Il giallo, non il grigio: e' quello che la Catena fa gia' col MOL di gruppo
-   * (`tintConti`, «il presidio che impedisce a un MOL gonfiato di sembrare una
-   * vittoria»), e lega il numero al banner ambra che lo spiega. Stessa palette
-   * condivisa, cosi' le due viste non divergono.
+   * (`tintConti`), e lega il numero al banner ambra che lo spiega.
    *
    * La decisione sta in `tintContiPV` (lib/catena-confronti) e non qui: dentro
    * il .tsx nessun test la raggiungerebbe.
@@ -191,49 +72,36 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
   const molAttendibile = !kpi.costi_mancanti;
 
   return (
-    <div
-      className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-2xl border p-5 sm:p-6",
-        tint.card,
-      )}
-    >
-      <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
-      <div className={cn("pointer-events-none absolute -bottom-20 left-1/4 size-52 rounded-full blur-3xl", tint.orb2)} />
-
-      <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">I tuoi conti</h2>
-        <span className="text-xs text-muted-foreground/70">{kpi.periodo_label}</span>
+    <CardHome titolo="I tuoi conti" meta={kpi.periodo_label}>
+      {/* MOL — il numero che conta, l'unico colorato. Porta alla pagina Margini.
+          Accanto, l'andamento nell'anno (nessuna soglia qui: calcolaSparkline
+          torna null con meno di 2 punti). */}
+      <div className="flex items-end justify-between gap-4">
+        <Link href="/margini" className="flex min-w-0 flex-col gap-1 rounded-md hover:opacity-80">
+          <EtichettaKpi>MOL (margine)</EtichettaKpi>
+          <span className={cn("text-2xl font-bold leading-tight tabular-nums", tint.text)}>
+            {formatEuro(kpi.mol)}
+          </span>
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
+            {/* MOL negativo -> trend neutro (mai verde): "meno in perdita" non e'
+                una vittoria. Stessa cosa coi costi mancanti: il delta confronta
+                un margine gonfiato con uno vero. */}
+            <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos || !molAttendibile} />
+          </span>
+        </Link>
+        <AndamentoMargine punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} affidabile={molAttendibile} />
       </div>
-
-      {/* MOL — il numero che conta. Cliccabile: porta alla pagina Margini. */}
-      <Link
-        href="/margini"
-        className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
-      >
-        <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
-          = MOL (margine)
-        </span>
-        <div className={cn("text-4xl font-black tabular-nums leading-none sm:text-5xl", tint.text)}>
-          {formatEuro(kpi.mol)}
-        </div>
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground/60">
-          {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
-          {/* MOL negativo -> trend neutro (mai verde): "meno in perdita" non e' una
-              vittoria da festeggiare. Stessa cosa coi costi mancanti: il delta
-              confronta un margine gonfiato con uno vero. */}
-          <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos || !molAttendibile} />
-        </div>
-      </Link>
 
       {/* Costi mancanti: il mese ha ricavi ma zero fatture costo (food cost 0%).
           Il MOL e' gonfiato — lo diciamo chiaro invece di mostrare un margine
-          finto e un trend "in meglio". Coerente con la card Salute e il briefing. */}
+          finto. Coerente con la card della completezza e il briefing. */}
       {kpi.costi_mancanti && (
         <Link
           href="/analisi-fatture"
-          className="mt-2 flex items-start gap-2 rounded-xl border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors hover:bg-incerto/10"
+          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors hover:border-incerto/60"
         >
-          <span className="mt-px">⚠</span>
+          <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
             Mancano le fatture costo di {kpi.periodo_label.toLowerCase()}: il{" "}
             {costoMerceLabel(settore).toLowerCase()} risulta 0 e questo margine non è reale.
@@ -242,65 +110,45 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
         </Link>
       )}
 
-      {/* Breakdown */}
-      <div className="mt-auto space-y-1.5">
-        <RigaVoce
-          colore="emerald"
+      <div className="grid grid-cols-2 gap-2">
+        <TesseraVoce
           label="Fatturato"
-          value={formatEuro(kpi.fatturato)}
-          delta={kpi.fatturato_delta_pct}
-          suffix="%"
-          buonoSeSu
-          valoreZero={kpi.fatturato === 0}
+          valore={formatEuro(kpi.fatturato)}
+          extra={<Trend delta={kpi.fatturato_delta_pct} suffix="%" buonoSeSu sopprimi={kpi.fatturato === 0} />}
           href="/margini"
         />
-        <RigaVoce
-          colore="amber"
+        <TesseraVoce
           // La Home scrive "Food cost" con la c minuscola, `costoMerceLabel`
           // restituisce "Food Cost": usarla qui cambierebbe un'etichetta a un
           // ristorante, che e' esattamente il vincolo da non violare.
           label={settore === "retail" ? costoMerceLabel(settore) : "Food cost"}
-          value={
-            kpi.food_cost_pct != null
-              ? `${kpi.food_cost_pct.toLocaleString("it-IT")}%`
-              : "—"
-          }
-          delta={kpi.food_cost_delta_pp}
-          suffix="pp"
-          buonoSeSu={false}
           segno="−"
-          valoreZero={kpi.food_cost_pct == null || kpi.food_cost_pct === 0}
+          valore={kpi.food_cost_pct != null ? `${kpi.food_cost_pct.toLocaleString("it-IT")}%` : "—"}
+          extra={
+            <Trend
+              delta={kpi.food_cost_delta_pp}
+              suffix="pp"
+              buonoSeSu={false}
+              sopprimi={kpi.food_cost_pct == null || kpi.food_cost_pct === 0}
+            />
+          }
           href="/prezzi"
         />
-        <RigaVoce
-          colore="amber"
+        <TesseraVoce
           label="Costo personale"
-          value={formatEuro(kpi.costo_personale)}
-          delta={kpi.personale_delta_pct}
-          suffix="%"
-          buonoSeSu={false}
           segno="−"
-          valoreZero={kpi.costo_personale === 0}
+          valore={formatEuro(kpi.costo_personale)}
+          extra={<Trend delta={kpi.personale_delta_pct} suffix="%" buonoSeSu={false} sopprimi={kpi.costo_personale === 0} />}
           href="/margini"
         />
-        <RigaVoce
-          colore="amber"
+        <TesseraVoce
           label="Spese generali"
-          value={formatEuro(kpi.spese_generali)}
-          delta={kpi.spese_delta_pct}
-          suffix="%"
-          buonoSeSu={false}
           segno="−"
-          valoreZero={kpi.spese_generali === 0}
+          valore={formatEuro(kpi.spese_generali)}
+          extra={<Trend delta={kpi.spese_delta_pct} suffix="%" buonoSeSu={false} sopprimi={kpi.spese_generali === 0} />}
           href="/margini"
         />
       </div>
-
-      {/* Andamento MOL nell'anno: fascia a sé in fondo, con periodo e % YTD.
-          Nessuna soglia qui: la decide calcolaSparkline (che con < 2 punti
-          torna null). Prima questo call-site diceva `> 0` mentre la guardia
-          vera era `< 2` — due numeri per la stessa regola, in due file. */}
-      <MolAndamento punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} affidabile={molAttendibile} />
-    </div>
+    </CardHome>
   );
 }

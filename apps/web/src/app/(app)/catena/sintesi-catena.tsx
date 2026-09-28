@@ -3,34 +3,31 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  Receipt,
-  ChevronRight,
-  ArrowUp,
-  ArrowDown,
-  ArrowRight,
-  TriangleAlert,
-} from "lucide-react";
+import { Receipt, ChevronRight, ArrowRight, TriangleAlert } from "lucide-react";
 import {
   type GruppoOverview,
   type GruppoBriefing,
   type SalutePV,
   type RankingPV,
-  type MolMensile,
 } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
 import { formatEuro as euro, formatPct } from "@/lib/format";
 import {
-  calcolaSparkline,
   messaggioFattureDaCollocare,
   metricaPrincipaleConti,
-  offsetAnello,
   tintConti,
 } from "@/lib/catena-confronti";
 import { LINK_ANALISI_MARGINI, LINK_ANALISI_SPESA } from "@/lib/catena-schede";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
 import { TestataHome } from "@/components/home/testata-home";
+import {
+  AndamentoMargine,
+  CardHome,
+  EtichettaKpi,
+  RiepilogoCompletezza,
+  TesseraVoce,
+} from "@/components/home/card-home";
 import { DaFareCatena } from "./da-fare-catena";
 import { NotificheWidget } from "../dashboard/notifiche-widget";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
@@ -64,83 +61,48 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
   );
 }
 
-// ─── Sparkline andamento MOL del gruppo (come MolAndamento della Home) ──────
+// ─── Card "I conti del gruppo": stessi pezzi della Home PV (card-home) ─────
 
-function MolSparkline({ punti, anno, affidabile }: { punti: MolMensile[]; anno: number; affidabile: boolean }) {
-  const W = 240;
-  const H = 40;
-  const spark = calcolaSparkline(punti, W, H, 4);
-  if (!spark) return null;
-  const { d, ytdPct, su, stroke, meseDa, meseA, cx, cy } = spark;
-  // Con dati di costo incompleti la curva e' quella del MOL gonfiato: ambra come
-  // la card, e il delta SENZA verde/rosso — un "in meglio" potrebbe essere solo
-  // un costo che manca, non una vittoria da certificare (stessa regola del
-  // Trend neutro del PV sul MOL negativo).
-  const colore = affidabile ? stroke : "text-incerto";
-  const coloreDelta = affidabile
-    ? su ? "text-positivo" : "text-negativo"
-    : "text-muted-foreground";
-
-  return (
-    <div className="mt-4 border-t pt-3">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground/70">
-          Andamento margine {anno}{!affidabile && " · dati incompleti"}
-        </span>
-        {ytdPct != null && (
-          <span
-            className={cn("inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums", coloreDelta)}
-          >
-            {/* La freccia e' un giudizio quanto il colore: su un MOL gonfiato
-                niente direzione certificata, resta solo il numero. */}
-            {affidabile && (su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
-            {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
-            <span className="ml-1 font-normal text-muted-foreground/60">
-              {meseDa} → {meseA}
-            </span>
-          </span>
-        )}
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-10 w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="Andamento del margine del gruppo">
-        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", colore)} />
-        <circle cx={cx} cy={cy} r="3" className={cn("fill-current", colore)} />
-      </svg>
-    </div>
-  );
-}
-
-// Riga del breakdown conti (gemella di RigaVoce della Home PV): pallino + label
-// + valore, cliccabile per aprire la finestra di confronto.
-function VoceConto({
-  colore,
-  label,
-  value,
-  segno,
-  onClick,
+// Stato senza numeri (errore di lettura, dati assenti): la stessa card, piccola.
+function ContiSenzaNumeri({
+  periodo,
+  icona,
+  titolo,
+  testo,
+  tono,
+  riprova = false,
 }: {
-  colore: "emerald" | "amber";
-  label: string;
-  value: string;
-  segno?: string;
-  onClick: () => void;
+  periodo: string;
+  icona: React.ReactNode;
+  titolo: string;
+  testo: string;
+  tono: "negativo" | "incerto";
+  riprova?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
-    >
-      <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", colore === "emerald" ? "bg-positivo" : "bg-incerto")} />
-      <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-        {segno && <span className="mr-1 text-muted-foreground/50">{segno}</span>}
-        {label}
-      </span>
-      <span className="text-sm font-semibold tabular-nums">{value}</span>
-    </button>
+    <CardHome titolo="I conti del gruppo" meta={periodo}>
+      <div className="flex items-start gap-3">
+        <div className={cn("rounded-full p-2", tono === "negativo" ? "bg-negativo/10 text-negativo" : "bg-incerto/10 text-incerto")}>
+          {icona}
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-sm font-semibold">{titolo}</p>
+          <p className="text-sm text-muted-foreground">{testo}</p>
+          {riprova && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="w-fit text-xs font-medium text-primary-text transition-colors hover:underline"
+            >
+              Riprova
+            </button>
+          )}
+        </div>
+      </div>
+    </CardHome>
   );
 }
 
-// ─── Card "I conti del gruppo" (gemella di KpiBlock) ───────────────────────
 function ContiGruppoCard({
   overview,
   onApriSpesa,
@@ -155,7 +117,7 @@ function ContiGruppoCard({
   // lib/catena-confronti.ts (condivisa con /m, e testabile — questo .tsx no).
   // Il default prudente sul campo assente sta li', insieme a quello di tintConti.
   const metrica = metricaPrincipaleConti(kpi);
-  // A cascata: con dati incompleti il MOL e' falso -> card neutra (no verde/rosso).
+  // A cascata: con dati incompleti il MOL e' falso -> numero giallo, mai verde.
   const tint = TINT[tintConti(kpi)];
   const affidabile = metrica.stato === "mol" && metrica.affidabile;
   const avviso = metrica.stato === "mol" ? metrica.avviso : null;
@@ -166,88 +128,58 @@ function ContiGruppoCard({
   // offre il retry, come fa il PV con BlockRetry.
   if (metrica.stato === "errore") {
     return (
-      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card p-6 sm:p-7">
-        <div className="mb-4 flex items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold">I conti del gruppo</h2>
-          <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <div className="rounded-full bg-negativo/10 p-3 ring-1 ring-negativo/20">
-            <TriangleAlert className="size-6 text-negativo" />
-          </div>
-          <p className="text-sm font-semibold">Conti del gruppo non disponibili</p>
-          <p className="max-w-xs text-sm text-muted-foreground">
-            Non è stato possibile leggere i dati dei punti vendita: i numeri del
-            gruppo non sono affidabili in questo momento.
-          </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="text-xs font-medium text-primary transition-colors hover:underline"
-          >
-            Riprova
-          </button>
-        </div>
-      </div>
+      <ContiSenzaNumeri
+        periodo={overview.periodo_label}
+        icona={<TriangleAlert className="size-5" />}
+        titolo="Conti del gruppo non disponibili"
+        testo="Non è stato possibile leggere i dati dei punti vendita: i numeri del gruppo non sono affidabili in questo momento."
+        tono="negativo"
+        riprova
+      />
     );
   }
 
   // Livello "nessuno": niente numeri, si indirizza a completare i PV.
   if (metrica.stato === "vuoto") {
     return (
-      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card p-6 sm:p-7">
-        <div className="mb-4 flex items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold">I conti del gruppo</h2>
-          <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <div className="rounded-full bg-incerto/10 p-3 ring-1 ring-incerto/20">
-            <Receipt className="size-6 text-incerto" />
-          </div>
-          <p className="text-sm font-semibold text-incerto">Dati ancora incompleti</p>
-          <p className="max-w-xs text-sm text-muted-foreground">
-            Mancano fatturato e costi nei punti vendita: completa i dati per leggere
-            food cost e margini del gruppo.
-          </p>
-        </div>
-      </div>
+      <ContiSenzaNumeri
+        periodo={overview.periodo_label}
+        icona={<Receipt className="size-5" />}
+        titolo="Dati ancora incompleti"
+        testo="Mancano fatturato e costi nei punti vendita: completa i dati per leggere food cost e margini del gruppo."
+        tono="incerto"
+      />
     );
   }
 
   return (
-    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7", tint.card)}>
-      <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
-      <div className={cn("pointer-events-none absolute -bottom-20 left-1/4 size-52 rounded-full blur-3xl", tint.orb2)} />
-
-      <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">I conti del gruppo</h2>
-        <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
-      </div>
-
+    <CardHome titolo="I conti del gruppo" meta={overview.periodo_label}>
       {/* MOL del gruppo → scheda Margini e coperti di Analisi catena. SEMPRE, anche con
           dati di costo incompleti (9/9/2026): il PV lo mostra sempre, e qui
           nasconderlo dietro il food cost faceva sembrare le due viste due
           prodotti diversi. Quando non e' reale lo dice l'avviso sotto, non il
-          silenzio; il colore lo decide tintConti (giallo finche' non e' reale). */}
-      <button
-        type="button"
-        onClick={onApriMargini}
-        className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
-      >
-        <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">MOL del gruppo</span>
-        <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>{euro(kpi.mol)}</div>
-        <div className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground/70">
-          {/* margine_medio_perc e' Σmol/Σnetto (gruppo.py:76): lo STESSO numero
-              gonfiato, in percentuale. Un numero falso con l'avviso e' la
-              decisione; due sarebbero rumore. Solo quando il MOL e' reale. */}
-          {affidabile && (
-            <span className={cn("rounded-full px-2 py-0.5 font-medium", tint.badge)}>margine {pct(kpi.margine_medio_perc)}</span>
-          )}
-          <span className="inline-flex items-center gap-0.5 font-medium text-primary">
-            confronta i PV <ArrowRight className="size-3" />
+          silenzio; il colore lo decide tintConti (giallo finche' non e' reale).
+          L'andamento segue il MOL: se il numero si vede, si vede la sua curva. */}
+      <div className="flex items-end justify-between gap-4">
+        <button
+          type="button"
+          onClick={onApriMargini}
+          className="flex min-w-0 flex-col items-start gap-1 rounded-md text-left hover:opacity-80"
+        >
+          <EtichettaKpi>MOL del gruppo</EtichettaKpi>
+          <span className={cn("text-2xl font-bold leading-tight tabular-nums", tint.text)}>{euro(kpi.mol)}</span>
+          <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {/* margine_medio_perc e' Σmol/Σnetto (gruppo.py:76): lo STESSO numero
+                gonfiato, in percentuale. Un numero falso con l'avviso e' la
+                decisione; due sarebbero rumore. Solo quando il MOL e' reale. */}
+            {affidabile && <span className="tabular-nums">margine {pct(kpi.margine_medio_perc)}</span>}
+            <span className="inline-flex items-center gap-0.5 font-medium text-primary-text">
+              confronta i PV <ArrowRight className="size-3" />
+            </span>
           </span>
-        </div>
-      </button>
+        </button>
+        <AndamentoMargine punti={overview.mol_mensile} anno={overview.mol_mensile_anno} affidabile={affidabile} />
+      </div>
 
       {/* Dati di costo incompleti: il MOL sopra e' gonfiato verso l'alto (mancano
           costi). Lo si dice chiaro — il banner ambra del PV per le fatture
@@ -257,7 +189,7 @@ function ContiGruppoCard({
         <button
           type="button"
           onClick={onApriMargini}
-          className="mb-1 flex items-start gap-2 rounded-xl border border-incerto/30 bg-incerto/10 px-3 py-2 text-left text-xs text-incerto transition-colors hover:bg-incerto/10"
+          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-left text-xs text-incerto transition-colors hover:border-incerto/60"
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
@@ -266,76 +198,35 @@ function ContiGruppoCard({
         </button>
       )}
 
-      {/* Breakdown: Fatturato e Food cost sempre (il food cost UNA volta: prima,
-          nel ramo incompleto, stava anche come numero grande). Personale/Spese
+      {/* Fatturato e Food cost sempre (il food cost UNA volta). Personale/Spese
           solo con costi completi.
           DIVERGENZA DELIBERATA dal PV (9/9/2026): KpiBlock con `costi_mancanti`
-          mostra il MOL E tutto il breakdown, Personale e Spese inclusi. Qui no:
-          li' i costi mancano a UNA sede e le righe sono comunque i suoi numeri;
+          mostra il MOL E tutte le voci, Personale e Spese incluse. Qui no:
+          li' i costi mancano a UNA sede e le voci sono comunque i suoi numeri;
           qui una somma di gruppo a cui manca il personale di 2 PV su 4,
           etichettata "Costo personale", sarebbe un secondo numero falso sotto
           il primo — e senza un avviso suo. Scelta di prodotto, non un bug: se
-          si vuole il breakdown parziale, serve anche il suo caveat. */}
-      <div className="mt-auto space-y-1.5">
-        <VoceConto colore="emerald" label="Fatturato gruppo (IVA incl.)" value={euro(kpi.fatturato)} onClick={onApriMargini} />
-        <VoceConto
-          colore="amber"
-          segno="−"
+          si vuole il dettaglio parziale, serve anche il suo caveat. */}
+      <div className="grid grid-cols-2 gap-2">
+        <TesseraVoce label="Fatturato (IVA incl.)" valore={euro(kpi.fatturato)} onClick={onApriMargini} />
+        <TesseraVoce
           label="Food cost"
-          value={kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
+          segno="−"
+          valore={kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
           onClick={onApriSpesa}
         />
         {affidabile && (
           <>
-            <VoceConto colore="amber" segno="−" label="Costo personale" value={euro(kpi.costo_personale)} onClick={onApriMargini} />
-            <VoceConto colore="amber" segno="−" label="Spese generali" value={euro(kpi.spese_generali)} onClick={onApriMargini} />
+            <TesseraVoce label="Costo personale" segno="−" valore={euro(kpi.costo_personale)} onClick={onApriMargini} />
+            <TesseraVoce label="Spese generali" segno="−" valore={euro(kpi.spese_generali)} onClick={onApriMargini} />
           </>
         )}
       </div>
-
-      {/* L'andamento segue il MOL: se il numero si vede, si vede la sua curva —
-          in ambra finche' non e' reale. Il PV la mostra sempre. */}
-      <MolSparkline punti={overview.mol_mensile} anno={overview.mol_mensile_anno} affidabile={affidabile} />
-    </div>
+    </CardHome>
   );
 }
 
-// ─── Card "Salute del gruppo" (gemella di SaluteCard) ──────────────────────
-function AnelloSalute({ indice, colore }: { indice: number | null; colore: ColoreTint }) {
-  const r = 52;
-  const c = 2 * Math.PI * r;
-  // indice null = non determinabile: anello VUOTO e "—" al centro. Uno zero
-  // disegnerebbe un anello a fondo scala, cioe' "sede messa malissimo", che e'
-  // un'affermazione — e non sappiamo niente.
-  const offset = indice != null ? offsetAnello(indice, r) : c;
-  const tint = TINT[colore];
-  return (
-    <div className="relative size-32 shrink-0">
-      <svg viewBox="0 0 120 120" className="size-32 -rotate-90">
-        <circle cx="60" cy="60" r={r} className="stroke-muted" strokeWidth="10" fill="none" />
-        <circle
-          cx="60" cy="60" r={r}
-          className={cn("transition-all", tint.ring)}
-          stroke="currentColor" strokeWidth="10" fill="none" strokeLinecap="round"
-          strokeDasharray={c} strokeDashoffset={offset}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        {/* Stessa unità della card Salute del PV ("78%"): era "78 su 100" qui e
-            "78/100" sul mobile — tre letture per lo stesso numero (9/9/2026). */}
-        <span className={cn("text-3xl font-bold tabular-nums", tint.text)}>
-          {indice != null ? `${indice}%` : "—"}
-        </span>
-        {indice == null && (
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
-            non disponibile
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
+// ─── Card "Completezza dati e margini per sede" ────────────────────────────
 function SaluteGruppoCard({
   indice,
   colore,
@@ -351,77 +242,62 @@ function SaluteGruppoCard({
   onApriPV: (id: string) => void;
   switching: boolean;
 }) {
-  const tint = TINT[colore];
   // Margine% e fatturato per PV (dal ranking) → mostrati accanto all'indice di salute,
   // così questa card assorbe il vecchio "Ranking punti vendita" (una lista di PV sola).
   const rankById = new Map(ranking.map((r) => [r.ristorante_id, r]));
   return (
-    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7", tint.card)}>
-      <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
-      <div className={cn("pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full blur-3xl", tint.orb2)} />
-      <div className="mb-4 flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Completezza dati e margini per sede</h2>
-        <span className="text-xs text-muted-foreground/70">media {salutePv.length} {salutePv.length === 1 ? "sede" : "sedi"}</span>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">
-        <AnelloSalute indice={indice} colore={colore} />
-        <div className="min-w-0 flex-1 space-y-3">
-          <span className={cn("inline-block rounded-full px-3 py-1 text-xs font-medium", tint.badge)}>{tint.label}</span>
-          <ul className="space-y-1.5">
-            {salutePv.map((pv) => {
-              const t = TINT[pv.colore];
-              const r = rankById.get(pv.ristorante_id);
-              return (
-                <li key={pv.ristorante_id}>
-                  <button
-                    type="button"
-                    disabled={switching}
-                    onClick={() => onApriPV(pv.ristorante_id)}
-                    className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3 py-2 text-left text-sm transition-colors hover:bg-background/70 disabled:opacity-50"
-                  >
-                    <span className={cn("size-2.5 shrink-0 rounded-full", t.dot)} />
-                    {/* min-w, non solo flex-1: fino al 16/09/2026 il nome era l'UNICO
-                        elemento della riga senza shrink-0 — pallino, "dati incompleti",
-                        indice e freccia erano tutti incomprimibili. A 1140px (un
-                        portatile) l'unico che poteva cedere era lui, e truncate lo
-                        portava a larghezza ZERO: la riga diceva "● dati incompleti 0 ›"
-                        senza dire di quale sede. In una pagina che serve a confrontare
-                        i punti vendita. Il nome e' il dato, non l'accessorio.
-                        (Le due stringhe qui sopra sono quelle del 16/09: dal 18/09
-                        l'etichetta e' ETICHETTA_INCOMPLETO, "Incompleto".) */}
-                    <span className="min-w-[7ch] flex-1 truncate" title={pv.nome}>{pv.nome}</span>
-                    {r?.dati_incompleti ? (
-                      // Dati incompleti: l'indice sotto è inaffidabile (calcolato su dati
-                      // parziali), quindi NON lo affianchiamo a un margine% che darebbe
-                      // l'illusione di due numeri attendibili. Il dettaglio di cosa manca
-                      // vive in "Da vedere nella catena" — un solo posto per quell'info.
-                      <span className="min-w-0 truncate text-xs text-muted-foreground/60">{ETICHETTA_INCOMPLETO}</span>
-                    ) : r && r.margine_perc != null ? (
-                      <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
-                        margine {pct(r.margine_perc)}
-                      </span>
-                    ) : null}
-                    {/* L'indice e' una completezza 0-100, ma fino al 18/09/2026 era
-                        un numero nudo (0, 25, 49): sembrava euro o un voto. L'unita'
-                        sta sul numero, non in una parola accanto, perche' a 1140px
-                        questa riga aveva gia' schiacciato il nome della sede. */}
-                    <span
-                      className={cn(
-                        "w-12 text-right text-sm font-semibold tabular-nums",
-                        r?.dati_incompleti ? "text-muted-foreground/40" : t.text,
-                      )}
-                    >
-                      {pv.indice != null ? `${pv.indice}%` : "—"}
-                    </span>
-                    <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </div>
-    </div>
+    <CardHome titolo="Completezza dati e margini per sede">
+      <RiepilogoCompletezza
+        indice={indice}
+        colore={colore}
+        nota={`media di ${salutePv.length} ${salutePv.length === 1 ? "sede" : "sedi"}`}
+      />
+      <ul className="divide-y divide-border">
+        {salutePv.map((pv) => {
+          const t = TINT[pv.colore];
+          const r = rankById.get(pv.ristorante_id);
+          return (
+            <li key={pv.ristorante_id}>
+              <button
+                type="button"
+                disabled={switching}
+                onClick={() => onApriPV(pv.ristorante_id)}
+                className="flex w-full items-center gap-3 rounded-md px-1 py-1.5 text-left text-sm transition-colors hover:bg-muted/60 disabled:opacity-50"
+              >
+                <span className={cn("size-2 shrink-0 rounded-full", t.dot)} />
+                {/* min-w, non solo flex-1: fino al 16/09/2026 il nome era l'UNICO
+                    elemento della riga senza shrink-0. A 1140px (un portatile)
+                    l'unico che poteva cedere era lui, e truncate lo portava a
+                    larghezza ZERO: la riga non diceva di quale sede. Il nome e'
+                    il dato, non l'accessorio. */}
+                <span className="min-w-[7ch] flex-1 truncate" title={pv.nome}>{pv.nome}</span>
+                {r?.dati_incompleti ? (
+                  // Dati incompleti: l'indice sotto è inaffidabile (calcolato su dati
+                  // parziali), quindi NON lo affianchiamo a un margine% che darebbe
+                  // l'illusione di due numeri attendibili. Il dettaglio di cosa manca
+                  // vive nel «Da fare» — un solo posto per quell'info.
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">{ETICHETTA_INCOMPLETO}</span>
+                ) : r && r.margine_perc != null ? (
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    margine {pct(r.margine_perc)}
+                  </span>
+                ) : null}
+                {/* L'unita' sta sul numero: nudo (0, 25, 49) sembrava euro o un voto. */}
+                <span
+                  className={cn(
+                    "w-11 text-right text-sm font-semibold tabular-nums",
+                    r?.dati_incompleti ? "text-muted-foreground/60" : t.text,
+                  )}
+                >
+                  {pv.indice != null ? `${pv.indice}%` : "—"}
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </CardHome>
   );
 }
 
@@ -476,7 +352,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           lascerebbe un buco nella spaziatura. */}
       <NotificheWidget ambito="gruppo" onVaiSede={(id, pagina) => vaiAlPV(id, pagina)} />
 
-      {/* Due card grandi come la Home PV: Conti + Salute */}
+      {/* Le due card della Home PV, nello stesso ordine: conti e completezza. */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
         <ContiGruppoCard
           overview={overview}

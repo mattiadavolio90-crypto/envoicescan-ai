@@ -29,7 +29,15 @@ def test_i_quattro_colori_del_contratto_ci_sono_tutti():
 @pytest.mark.parametrize("colore", ["verde", "giallo", "rosso", "grigio"])
 def test_ogni_colore_ha_le_chiavi_che_le_due_viste_usano(colore):
     chiavi = set(_tint()[colore].keys())
-    assert {"ring", "text", "badge", "card", "orb1", "orb2", "dot", "label"} <= chiavi
+    assert {"ring", "text", "badge", "dot", "label"} <= chiavi
+
+
+@pytest.mark.parametrize("colore", ["verde", "giallo", "rosso", "grigio"])
+def test_niente_gradiente_ne_aloni(colore):
+    """Step 3 dell'interfaccia (28/9/2026): le card della Home hanno il fondo
+    neutro delle altre pagine. Una chiave `card`/`orb` tornata nella palette e'
+    il primo passo per rimettere il gradiente."""
+    assert not ({"card", "orb1", "orb2"} & set(_tint()[colore].keys()))
 
 
 @pytest.mark.parametrize("colore", ["verde", "giallo", "rosso", "grigio"])
@@ -44,7 +52,7 @@ def test_nessuna_classe_di_palette_cruda(colore):
 @pytest.mark.parametrize("chiave,cruda", [
     ("text", "text-emerald-600 dark:text-emerald-400"),
     ("badge", "bg-amber-50 text-incerto"),
-    ("card", "bg-gradient-to-br from-sky-500/10 to-background"),
+    ("ring", "text-sky-500"),
     ("dot", "bg-rose-500"),
 ])
 def test_la_guardia_vede_davvero_una_classe_cruda(chiave, cruda):
