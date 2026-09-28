@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ArchiveRestore, ArrowUpDown, Calendar, CalendarDays, Check, ChevronDown,
+  ArchiveRestore, ArrowUpDown, Calendar, CalendarDays, Check, ChevronDown,
   CalendarRange, ChevronRight, Download, Eye, EyeOff, Filter, List, Loader2, MapPin, Pencil, Search, Settings2,
   Split, Trash2, X,
 } from "lucide-react";
@@ -25,8 +25,7 @@ import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
-  ordinaDocumenti, ordinaScadute, elencaFornitori, fornitoriSenzaScadenza, statoDocumento,
-  mostraRiquadroSenzaScadenza,
+  ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
   chiaviSelezionaTutte, statoSelezioneSezione, pianoAzioneDiMassa, applicaPagataAVideo,
@@ -65,11 +64,6 @@ type KpiCardProps = {
   active?: boolean;
   onClick?: () => void;
 };
-
-// Sopra questa soglia «apri la fattura e scrivi la data» non e' piu' un
-// consiglio ma un lavoro: per il gruppo SUSHILAND sono 723 aperture. Il banner
-// passa a proporre la regola per fornitore, che le risolve in blocco.
-const SOGLIA_REGOLE_FORNITORE = 10;
 
 // Stesso linguaggio delle tessere di Margini e Analisi Fatture (Mattia, 28/9):
 // bordo neutro, colore solo sul numero che giudica — scadute e in scadenza, e
@@ -1179,16 +1173,13 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
 type FornitoreOption = { fornitore: string; piva_fornitore: string | null };
 
 type RegoleDialogProps = {
-  /** Fornitore da preselezionare, per NOME: `selectedNomi` e' keyed su
-   *  `f.fornitore`, non sulla P.IVA. */
-  nomeIniziale?: string | null;
   /** Chiamata dopo un salvataggio andato a buon fine. */
   onSalvato?: () => void;
   open: boolean;
   onClose: () => void;
 };
 
-function RegoleDialog({ open, onClose, nomeIniziale, onSalvato }: RegoleDialogProps) {
+function RegoleDialog({ open, onClose, onSalvato }: RegoleDialogProps) {
   const [regole, setRegole] = useState<RegolaPagamento[]>([]);
   const [fornitori, setFornitori] = useState<FornitoreOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1212,11 +1203,8 @@ function RegoleDialog({ open, onClose, nomeIniziale, onSalvato }: RegoleDialogPr
   }, []);
 
   useEffect(() => {
-    // Arrivando dal riquadro dei fornitori che pesano, quel fornitore e' gia'
-    // spuntato: il clic sulla riga deve portare a un solo gesto, scegliere i
-    // termini. Dalla toolbar `nomeIniziale` e' assente e la selezione parte vuota.
-    if (open) { loadAll(); setSelectedNomi(nomeIniziale ? new Set([nomeIniziale]) : new Set()); setSearchForn(""); setModalitaInput("30gg"); }
-  }, [open, loadAll, nomeIniziale]);
+    if (open) { loadAll(); setSelectedNomi(new Set()); setSearchForn(""); setModalitaInput("30gg"); }
+  }, [open, loadAll]);
 
   const fornitoriDisponibili = useMemo(() => {
     const giaCon = new Set(regole.map(r => r.piva_fornitore));
@@ -1668,8 +1656,6 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // Un'azione di massa irreversibile una-per-una va confermata: stornare 50
   // pagamenti segnati per sbaglio costava ~150 clic.
   const [confermaBulk, setConfermaBulk] = useState<boolean | null>(null);
-  // Nome del fornitore da preselezionare in RegoleDialog dal riquadro.
-  const [regolaNome, setRegolaNome] = useState<string | null>(null);
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
   const [ordineArchivio, setOrdineArchivio] = useState<OrdineArchivio>("data");
 
@@ -2344,87 +2330,9 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="neutro" />
       </div>
 
-      {/* Alert senza scadenza (solo senza filtri attivi per non confondere).
-          Il consiglio era «Apri una fattura e imposta la data manualmente»,
-          scritto in un div inerte: per il gruppo SUSHILAND sono 723 fatture,
-          cioe' 723 aperture a mano. La scorciatoia che le risolve in blocco —
-          una regola per fornitore, «30gg» — esisteva gia' 25 righe piu' sotto
-          nella toolbar, ma il banner non la nominava. Sopra la soglia il
-          consiglio diventa quello giusto, e l'intero banner ci porta.
-          In catena non c'e': vedi mostraRiquadroSenzaScadenza. */}
-      {mostraRiquadroSenzaScadenza({
-        modalitaCatena: !!modalitaCatena,
-        filtriAttivi,
-        senzaScadenza: buckets.senzaScadenza.length,
-      }) && (() => {
-        const n = buckets.senzaScadenza.length;
-        const tot = buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0);
-        const inBlocco = n >= SOGLIA_REGOLE_FORNITORE;
-        // Ordinati per euro: 7 fornitori valgono meta' delle fatture senza
-        // scadenza (misurato in produzione il 25/09/2026). Il banner diceva solo
-        // quante sono e apriva una finestra con 168 nomi in ordine alfabetico,
-        // dove i 7 che contano sono indistinguibili da chi ne ha una sola.
-        const riepilogo = fornitoriSenzaScadenza(buckets.senzaScadenza, 5);
-        return (
-          <div className="rounded-lg border border-incerto/40 bg-incerto/10 p-4 space-y-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="size-4 text-incerto flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1">
-                <p className="text-sm text-incerto">
-                  <strong>{n}</strong> fattur{n === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(tot)}).{" "}
-                  {inBlocco
-                    ? "Imposta i termini del fornitore e si risolvono tutte insieme."
-                    : "Imposta i termini del fornitore, oppure apri la fattura e scrivi la data a mano."}
-                </p>
-              </div>
-            </div>
-
-            {riepilogo.top.length > 0 && (
-              <ul className="space-y-1">
-                {riepilogo.top.map(f => (
-                  <li key={f.key}>
-                    <button
-                      type="button"
-                      onClick={() => { setRegolaNome(f.label); setRegoleOpen(true); }}
-                      className="flex w-full items-center justify-between gap-3 rounded-md bg-card/60 px-3 py-2 text-left text-sm transition-colors hover:bg-card"
-                      title={`Imposta i termini di pagamento di ${f.label}`}
-                    >
-                      <span className="truncate font-medium" title={f.label}>{f.label}</span>
-                      <span className="flex flex-shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                        <span className="tabular-nums">
-                          {f.count} fattur{f.count === 1 ? "a" : "e"} · {formatEuro(f.totale)}
-                        </span>
-                        <Settings2 className="size-3.5" />
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {riepilogo.restoCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => { setRegolaNome(null); setRegoleOpen(true); }}
-                  className="text-primary-text hover:underline"
-                >
-                  Altri {riepilogo.restoCount} fornitor{riepilogo.restoCount === 1 ? "e" : "i"} ({formatEuro(riepilogo.restoTotale)})
-                </button>
-              )}
-              {riepilogo.senzaPivaCount > 0 && (
-                // Senza P.IVA una regola non puo' agganciarli: dirlo qui evita
-                // di mandare il cliente in una finestra che li scarta con un errore.
-                <span>
-                  {riepilogo.senzaPivaCount} fattur{riepilogo.senzaPivaCount === 1 ? "a" : "e"} senza
-                  partita IVA del fornitore ({formatEuro(riepilogo.senzaPivaTotale)}): da sistemare aprendo la fattura.
-                </span>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-
+      {/* Niente riquadro giallo «N fatture senza scadenza» (Mattia, 28/9): il
+          totale sta gia' sotto «Da pagare», le fatture nella sezione «Senza
+          scadenza» dell'elenco, e i termini si impostano da «Regole fornitore». */}
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* L'unica pagina dell'app senza aiuto, ed e' quella con tre viste e
@@ -2795,8 +2703,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
       <RegoleDialog
         open={regoleOpen}
-        onClose={() => { setRegoleOpen(false); setRegolaNome(null); }}
-        nomeIniziale={regolaNome}
+        onClose={() => setRegoleOpen(false)}
         onSalvato={loadData}
       />
     </div>
