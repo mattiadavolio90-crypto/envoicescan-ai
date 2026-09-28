@@ -84,3 +84,11 @@ export function chatVisibile(
 ): boolean {
   return (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
 }
+
+// «Carica fatture» nella testata della Home del punto vendita (28/9/2026). Il
+// caricamento vive in Analisi Fatture, che l'admin puo' spegnere: se e' spenta,
+// la Home non deve riaprirlo da un'altra porta. `null` = admin / nessuna
+// restrizione, come in requirePagina.
+export function caricaFattureInHome(pagine: string[] | null | undefined): boolean {
+  return pagine == null || pagine.includes("analisi_fatture");
+}

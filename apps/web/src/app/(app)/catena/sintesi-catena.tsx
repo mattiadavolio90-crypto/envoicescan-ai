@@ -1,18 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  Building2,
   Receipt,
   ChevronRight,
-  Sparkles,
   ArrowUp,
   ArrowDown,
   ArrowRight,
-  ClipboardList,
   TriangleAlert,
 } from "lucide-react";
 import {
@@ -31,11 +27,12 @@ import {
   offsetAnello,
   tintConti,
 } from "@/lib/catena-confronti";
-import { LINK_ANALISI_MARGINI, LINK_ANALISI_SPESA, LINK_CODA_GRUPPO } from "@/lib/catena-schede";
+import { LINK_ANALISI_MARGINI, LINK_ANALISI_SPESA } from "@/lib/catena-schede";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
-import { AscoltaButton } from "@/components/ascolta-button";
+import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
+import { TestataHome } from "@/components/home/testata-home";
 import { UploadModal } from "@/app/(app)/analisi-fatture/upload-modal";
-import { CardSegnali } from "./card-segnali";
+import { DaFareCatena } from "./da-fare-catena";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
 import { ETICHETTA_INCOMPLETO, SALUTE_TINT } from "@/lib/salute-tint";
 
@@ -49,49 +46,21 @@ const TINT = SALUTE_TINT;
 
 type ColoreTint = keyof typeof TINT;
 
-// ─── Briefing di gruppo (hero) ─────────────────────────────────────────────
+// ─── Briefing di gruppo: lo stesso riquadro della Home del punto vendita ────
 function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; nomeGruppo: string }) {
-  // Default codaRaggiungibile=true: sul desktop la coda e' la scheda «Da
-  // collocare» di Gestione Fatture, e il link sta accanto alla frase.
+  // Le fatture da collocare sono una voce del «Da fare» qui sotto (28/9/2026).
+  // Nell'audio restano: e' l'unica azione di gruppo del giorno, e chi ascolta
+  // non vede la lista.
   const msgDaCollocare = messaggioFattureDaCollocare(briefing);
   return (
-    <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background p-6 sm:p-8">
-      <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-accent blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-primary/10 blur-3xl" />
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs font-medium text-primary/80">
-          <Sparkles className="size-4" />
-          <span>Il tuo assistente · catena</span>
-        </div>
-        {/* La riga "fatture da collocare" entra nell'audio: e' l'unica AZIONE
-            del giorno, e da quando non sta piu' nella narrativa chi ascolta non
-            la sentirebbe affatto. */}
-        <AscoltaButton
-          testo={[`${briefing.saluto}, ${nomeGruppo}.`, briefing.narrativa, msgDaCollocare]
-            .filter(Boolean)
-            .join(" ")}
-        />
-      </div>
-      <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
-        {briefing.saluto}, {nomeGruppo}
-      </h1>
-      <p className="mt-4 max-w-none text-base leading-relaxed text-foreground/90 sm:text-lg">
-        {briefing.narrativa}
-      </p>
-      {msgDaCollocare && (
-        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-incerto">
-          <ClipboardList className="size-4 shrink-0" />
-          {msgDaCollocare}
-          <Link
-            href={LINK_CODA_GRUPPO}
-            className="inline-flex items-center gap-1 underline underline-offset-2"
-          >
-            Collocale ora
-            <ArrowRight className="size-3.5" />
-          </Link>
-        </p>
-      )}
-    </div>
+    <RiquadroAssistente
+      etichetta="Il tuo assistente · catena"
+      saluto={`${briefing.saluto}, ${nomeGruppo}`}
+      narrativa={briefing.narrativa}
+      testoAscolta={[`${briefing.saluto}, ${nomeGruppo}.`, briefing.narrativa, msgDaCollocare]
+        .filter(Boolean)
+        .join(" ")}
+    />
   );
 }
 
@@ -482,27 +451,30 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
 
   return (
     <div className="space-y-6">
-      {/* Header gruppo (lo switch PV è nella sidebar, in basso a sinistra) */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          <Building2 className="size-6 text-primary" />
-          Gruppo {overview.nome_gruppo}
-          <span className="text-base font-normal text-muted-foreground">· {overview.num_pv} punti vendita</span>
-        </h1>
-        <div className="flex items-center gap-2">
-          {/* Caricare fatture dalla catena: il documento decide da solo il locale
-              (P.IVA/indirizzo), la sede da cui si carica non c'entra. Prima l'unico
-              punto di upload era dentro una pagina PV, quindi da qui bisognava
-              scendere in un locale a caso per caricare — e per le catene same-P.IVA
-              (OFFSIDE) le ambigue finivano nella coda di gruppo, che dal PV non si
-              vede. Stesso identico componente del PV: nessun secondo canale. */}
-          <UploadModal />
-          <ConfigAssistenteCatena />
-        </div>
-      </div>
+      {/* Stessi blocchi, nello stesso ordine, della Home del punto vendita:
+          testata · assistente · Da fare · card. Lo switch PV e' nella sidebar.
+          «Carica fatture» anche da qui: il documento decide da solo il locale
+          (P.IVA/indirizzo), la sede da cui si carica non c'entra. */}
+      <TestataHome
+        vista="catena"
+        nome={`Gruppo ${overview.nome_gruppo}`}
+        dettaglio={`${overview.num_pv} punti vendita`}
+        azioni={
+          <>
+            <UploadModal />
+            <ConfigAssistenteCatena />
+          </>
+        }
+      />
 
-      {/* Briefing di gruppo — la voce macro, in cima */}
-      <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
+      <section className="space-y-5">
+        <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
+        <DaFareCatena
+          nDaCollocare={overview.briefing?.n_fatture_da_collocare}
+          vaiAlPV={vaiAlPV}
+          switching={switching}
+        />
+      </section>
 
       {/* Due card grandi come la Home PV: Conti + Salute */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
@@ -520,9 +492,6 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           switching={switching}
         />
       </div>
-
-      {/* Da vedere nella catena (segnali) */}
-      <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />
 
       {/* Spazio riservato in fondo: il FAB "Chiedi a ONEFLUX" (fixed bottom-right)
           altrimenti resta sovrapposto all'ultimo contenuto durante lo scroll. */}

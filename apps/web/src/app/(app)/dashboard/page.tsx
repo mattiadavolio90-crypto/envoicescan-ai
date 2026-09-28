@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
-import { chatVisibile, statoBlocchi } from "@/lib/home-kpi";
+import { caricaFattureInHome, chatVisibile, statoBlocchi } from "@/lib/home-kpi";
 import { HomeBriefing } from "./home-briefing";
 import { NotificheWidget } from "./notifiche-widget";
 import { ChatWidget } from "./chat-widget";
@@ -12,7 +12,9 @@ import { BlockRetry } from "./block-retry";
 import { HomeAutoRefresh } from "./home-auto-refresh";
 import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentSession, getCurrentUser } from "@/lib/auth";
+import { TestataHome } from "@/components/home/testata-home";
+import { UploadModal } from "../analisi-fatture/upload-modal";
 import { costoMerceLabel } from "@/lib/categorie-spesa";
 
 // Streaming con Suspense per blocco: ogni sezione carica i suoi dati in modo
@@ -26,13 +28,23 @@ function CardSkeleton() {
   return <div className="h-56 animate-pulse rounded-2xl border bg-muted/40" />;
 }
 
-async function ConfigBlock() {
-  const config = await fetchConfig();
-  if (!config) return null;
+// Testata comune alle due Home (28/9/2026): nome della sede, «Carica fatture»,
+// «Configura assistente». `getCurrentSession` e' in cache() per la richiesta:
+// il nome costa zero chiamate in piu'.
+async function TestataBlock() {
+  const [config, sessione] = await Promise.all([fetchConfig(), getCurrentSession()]);
+  const utente = sessione.status === "ok" ? sessione.user : null;
   return (
-    <div className="flex justify-end">
-      <ConfigAssistente config={config} />
-    </div>
+    <TestataHome
+      vista="pv"
+      nome={utente?.sede_attiva_nome ?? utente?.nome_ristorante}
+      azioni={
+        <>
+          {caricaFattureInHome(utente?.pagine_abilitate) && <UploadModal />}
+          {config && <ConfigAssistente config={config} />}
+        </>
+      }
+    />
   );
 }
 
@@ -152,8 +164,8 @@ export default async function DashboardPage() {
     <>
       <HomeAutoRefresh />
       <div className="space-y-6">
-        <Suspense fallback={null}>
-          <ConfigBlock />
+        <Suspense fallback={<div className="h-9" />}>
+          <TestataBlock />
         </Suspense>
 
         <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl border bg-muted/40" />}>

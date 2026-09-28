@@ -5,7 +5,7 @@ di `gruppo_segnali_state`, dal 28/06 al 15/09 su 3 account, senza alcuna chiave
 `code_version` nello snapshot. La cache e' per (user_id, giorno di Roma) e l'unico
 svuotamento esistente e' per-account, al salvataggio della config assistente
 (`gruppo.py`, `salva_gruppo_assistant_config`). Nessun frontend passa `force=true`
-(`card-segnali.tsx`, `mobile-catena.tsx`, `api/gruppo/segnali/route.ts`).
+(`da-fare-catena.tsx`, `mobile-catena.tsx`, `api/gruppo/segnali/route.ts`).
 
 Conseguenza: per un account multi-sede che aveva gia' letto i segnali di oggi, un
 deploy che cambiava `_calcola_segnali` o le sue soglie NON si vedeva fino a

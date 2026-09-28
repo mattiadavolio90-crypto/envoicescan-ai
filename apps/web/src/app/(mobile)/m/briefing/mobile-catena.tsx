@@ -56,7 +56,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   const [segnaliError, setSegnaliError] = useState(false);
   const segnaliReqRef = useRef(0);
 
-  // Come sul desktop (card-segnali): un errore non deve diventare lista vuota, che
+  // Come sul desktop (lib/home-da-fare): un errore non deve diventare lista vuota, che
   // qui si legge "tutto sotto controllo" — rassicurazione falsa proprio sugli avvisi.
   const caricaSegnali = useCallback(() => {
     const my = ++segnaliReqRef.current;
@@ -263,7 +263,8 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           Da vedere nella catena
         </div>
         {/* Osservazioni da consulente (fase 6): sopra i segnali e fuori dal
-            loro conteggio, come sul desktop (card-segnali). */}
+            loro conteggio. Il desktop dal 28/9/2026 le mette nel «Da fare»
+            (lib/home-da-fare): /m si allinea in fase 8. */}
         {osservazioni.length > 0 ? (
           <div className="mt-3">
             <div className="text-xs font-medium text-muted-foreground">Da sapere</div>
