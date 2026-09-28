@@ -1,8 +1,8 @@
 import { Building2, Store } from "lucide-react";
 
-// Testata delle due Home (Mattia, 28/9): nome, «Carica fatture», «Configura
-// assistente». Prima il punto vendita non l'aveva (solo il bottone di
-// configurazione, allineato a destra) e la catena ne aveva una sua.
+// Testata delle due Home (Mattia, 28/9): nome e «Configura assistente». Prima
+// il punto vendita non l'aveva (solo il bottone di configurazione, allineato a
+// destra) e la catena ne aveva una sua. «Carica fatture» sta in Analisi Fatture.
 export function TestataHome({
   vista,
   nome,

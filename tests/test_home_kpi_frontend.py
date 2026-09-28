@@ -11,7 +11,6 @@ buco silenzioso nella pagina): e' il motivo per cui i tre stati sono qui,
 separati e coperti uno per uno.
 """
 
-import pytest
 
 from tests.helpers_ts import esegui_ts
 
@@ -151,27 +150,3 @@ def test_chat_quota_negativa_non_apre():
     """Difesa: un limite negativo non deve passare il `> 0`."""
     assert _chiama("chatVisibile", [{"chat_ai_enabled": True, "chat_limite_giorno": -5}]) is False
 
-
-# ─── «Carica fatture» nella testata della Home (28/9/2026) ──────────────────
-
-
-@pytest.mark.parametrize(
-    "pagine, atteso",
-    [
-        (None, True),
-        (["analisi_fatture"], True),
-        (["margini", "analisi_fatture"], True),
-        ([], False),
-        (["margini", "scadenziario"], False),
-    ],
-)
-def test_carica_fatture_in_home_segue_la_pagina_analisi_fatture(pagine, atteso):
-    """Il caricamento vive in Analisi Fatture: se l'admin la spegne, la Home non
-    deve riaprirlo da un'altra porta."""
-    out = esegui_ts(
-        "lib/home-kpi",
-        "emit(m.caricaFattureInHome(input));",
-        argomento=pagine,
-        richiede=["caricaFattureInHome"],
-    )
-    assert out is atteso

@@ -26,6 +26,7 @@ import {
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
   computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, fornitoriSenzaScadenza, statoDocumento,
+  mostraRiquadroSenzaScadenza,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
   chiaviSelezionaTutte, statoSelezioneSezione, pianoAzioneDiMassa, applicaPagataAVideo,
@@ -60,7 +61,7 @@ type KpiCardProps = {
   label: string;
   count: number;
   totale: number;
-  tone: "negativo" | "incerto" | "blu" | "positivo";
+  tone: "negativo" | "incerto" | "neutro";
   active?: boolean;
   onClick?: () => void;
 };
@@ -70,24 +71,18 @@ type KpiCardProps = {
 // passa a proporre la regola per fornitore, che le risolve in blocco.
 const SOGLIA_REGOLE_FORNITORE = 10;
 
-const TONE_CLASSES = {
-  negativo: "border-negativo/40 hover:border-negativo/70",
-  incerto:  "border-incerto/40 hover:border-incerto/70",
-  blu:      "border-primary/40 hover:border-primary/70",
-  positivo: "border-positivo/40 hover:border-positivo/70",
-};
+// Stesso linguaggio delle tessere di Margini e Analisi Fatture (Mattia, 28/9):
+// bordo neutro, colore solo sul numero che giudica — scadute e in scadenza, e
+// solo se non sono zero. Prima ogni tessera aveva bordo e cifra di un colore
+// suo (rosso, giallo, blu, verde): il blu e il verde non giudicavano niente.
+// La tessera attiva e' una selezione, non un giudizio: anello del colore primario.
 const TONE_VALUE = {
   negativo: "text-negativo",
   incerto:  "text-incerto",
-  blu:      "text-primary-text",
-  positivo: "text-positivo",
+  neutro:   "text-foreground",
 };
-const TONE_ACTIVE = {
-  negativo: "border-negativo ring-2 ring-negativo/30",
-  incerto:  "border-incerto ring-2 ring-incerto/30",
-  blu:      "border-primary ring-2 ring-primary/30",
-  positivo: "border-positivo ring-2 ring-positivo/30",
-};
+const BORDO_NEUTRO = "border-border hover:border-muted-foreground/40";
+const BORDO_ATTIVO = "border-primary ring-2 ring-primary/30";
 
 function KpiCard({ label, count, totale, tone, sub, active = false, onClick }: KpiCardProps) {
   const valRef = useCountUp(totale);
@@ -99,11 +94,11 @@ function KpiCard({ label, count, totale, tone, sub, active = false, onClick }: K
       disabled={!clickable}
       aria-pressed={clickable ? active : undefined}
       className={`text-left rounded-xl border bg-card px-4 pt-3 pb-3 transition-all flex flex-col gap-1
-        ${active ? TONE_ACTIVE[tone] : TONE_CLASSES[tone]}
+        ${active ? BORDO_ATTIVO : BORDO_NEUTRO}
         ${clickable ? "cursor-pointer hover:-translate-y-0.5" : "cursor-default"}`}
     >
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
-      <p className={`text-2xl font-bold tracking-tight tabular-nums ${TONE_VALUE[tone]}`}>
+      <p className={`text-2xl font-bold tracking-tight tabular-nums ${TONE_VALUE[totale > 0 ? tone : "neutro"]}`}>
         <span ref={valRef as RefObject<HTMLSpanElement>}>{formatEuro(totale)}</span>
       </p>
       <p className="text-[11px] text-muted-foreground">{count} fattur{count === 1 ? "a" : "e"}</p>
@@ -2339,14 +2334,14 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             quinta card sbilancerebbe la griglia grid-cols-2 lg:grid-cols-4. */}
         <KpiCard
           label={filtriAttivi ? "Da pagare (filtro)" : "Da pagare"}
-          count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="blu"
+          count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="neutro"
           sub={kpi.senza_scadenza_count > 0
             ? `di cui ${formatEuro(kpi.senza_scadenza_totale)} senza scadenza`
             : undefined}
           active={filtroPeriodo === "tutti" && !filtriAttivi}
           onClick={() => resetFiltri()}
         />
-        <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="positivo" />
+        <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="neutro" />
       </div>
 
       {/* Alert senza scadenza (solo senza filtri attivi per non confondere).
@@ -2355,8 +2350,13 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           cioe' 723 aperture a mano. La scorciatoia che le risolve in blocco —
           una regola per fornitore, «30gg» — esisteva gia' 25 righe piu' sotto
           nella toolbar, ma il banner non la nominava. Sopra la soglia il
-          consiglio diventa quello giusto, e l'intero banner ci porta. */}
-      {!filtriAttivi && buckets.senzaScadenza.length > 0 && (() => {
+          consiglio diventa quello giusto, e l'intero banner ci porta.
+          In catena non c'e': vedi mostraRiquadroSenzaScadenza. */}
+      {mostraRiquadroSenzaScadenza({
+        modalitaCatena: !!modalitaCatena,
+        filtriAttivi,
+        senzaScadenza: buckets.senzaScadenza.length,
+      }) && (() => {
         const n = buckets.senzaScadenza.length;
         const tot = buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0);
         const inBlocco = n >= SOGLIA_REGOLE_FORNITORE;
@@ -2373,9 +2373,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                 <p className="text-sm text-incerto">
                   <strong>{n}</strong> fattur{n === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(tot)}).{" "}
                   {inBlocco
-                    ? modalitaCatena
-                      ? "Imposta i termini di pagamento del fornitore: valgono per la sede su cui stai lavorando, e vanno ripetuti sulle altre."
-                      : "Imposta i termini del fornitore e si risolvono tutte insieme."
+                    ? "Imposta i termini del fornitore e si risolvono tutte insieme."
                     : "Imposta i termini del fornitore, oppure apri la fattura e scrivi la data a mano."}
                 </p>
               </div>
@@ -2385,33 +2383,20 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               <ul className="space-y-1">
                 {riepilogo.top.map(f => (
                   <li key={f.key}>
-                    {/* In catena le regole sono per-sede mentre il conteggio e'
-                        di tutte: un clic prometterebbe piu' di quanto la
-                        finestra mantenga, quindi li' la classifica e' in sola
-                        lettura (stessa ragione del testo differenziato sopra). */}
-                    {modalitaCatena ? (
-                      <div className="flex items-center justify-between gap-3 rounded-md bg-card/60 px-3 py-2 text-sm">
-                        <span className="truncate font-medium" title={f.label}>{f.label}</span>
-                        <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
+                    <button
+                      type="button"
+                      onClick={() => { setRegolaNome(f.label); setRegoleOpen(true); }}
+                      className="flex w-full items-center justify-between gap-3 rounded-md bg-card/60 px-3 py-2 text-left text-sm transition-colors hover:bg-card"
+                      title={`Imposta i termini di pagamento di ${f.label}`}
+                    >
+                      <span className="truncate font-medium" title={f.label}>{f.label}</span>
+                      <span className="flex flex-shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                        <span className="tabular-nums">
                           {f.count} fattur{f.count === 1 ? "a" : "e"} · {formatEuro(f.totale)}
                         </span>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => { setRegolaNome(f.label); setRegoleOpen(true); }}
-                        className="flex w-full items-center justify-between gap-3 rounded-md bg-card/60 px-3 py-2 text-left text-sm transition-colors hover:bg-card"
-                        title={`Imposta i termini di pagamento di ${f.label}`}
-                      >
-                        <span className="truncate font-medium" title={f.label}>{f.label}</span>
-                        <span className="flex flex-shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                          <span className="tabular-nums">
-                            {f.count} fattur{f.count === 1 ? "a" : "e"} · {formatEuro(f.totale)}
-                          </span>
-                          <Settings2 className="size-3.5" />
-                        </span>
-                      </button>
-                    )}
+                        <Settings2 className="size-3.5" />
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>

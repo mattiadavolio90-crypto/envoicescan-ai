@@ -8,15 +8,19 @@
 
 import type { TabDef } from "./tab-flags";
 
+// «Scadenze» prima (Mattia, 28/9): e' la scheda su cui si apre la pagina, e
+// stava terza.
 export const SCHEDE_FATTURE_CATENA: readonly TabDef[] = [
+  { key: "scadenze", label: "Scadenze" },
   { key: "collocare", label: "Da collocare" },
   { key: "costi", label: "Costi di gruppo" },
-  { key: "scadenze", label: "Scadenze" },
 ];
 
 // Chi apre «Gestione Fatture» dal menu ci va quasi sempre per pagare: prima di
 // questa pagina a schede la voce apriva lo scadenziario, e resta cosi'. Alla
 // coda si arriva col link esplicito (LINK_CODA_GRUPPO) da Home e caricamento.
+// Resta dichiarata anche ora che e' la prima: con lo scadenziario spento la
+// scheda non c'e', e risolviScheda ricade sulla prima disponibile.
 export const SCHEDA_FATTURE_PREDEFINITA = "scadenze";
 
 export const SCHEDE_ANALISI_CATENA: readonly TabDef[] = [

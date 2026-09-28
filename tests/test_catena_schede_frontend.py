@@ -42,6 +42,10 @@ def _chiavi(schede):
     return [s["key"] for s in schede]
 
 
+def _etichetta(schede, chiave):
+    return next(s["label"] for s in schede if s["key"] == chiave)
+
+
 # ─── Quale scheda si apre ───────────────────────────────────────────────────
 
 
@@ -101,7 +105,8 @@ def test_il_link_della_coda_porta_alla_scheda_collocare():
 
 @pytest.mark.parametrize("pagine", [None, ["scadenziario"], ["margini", "scadenziario"]])
 def test_con_lo_scadenziario_le_schede_sono_tre(pagine):
-    assert _chiavi(_schede_fatture(0, pagine)) == ["collocare", "costi", "scadenze"]
+    """«Scadenze» per prima (Mattia, 28/9): e' quella su cui si apre la pagina."""
+    assert _chiavi(_schede_fatture(0, pagine)) == ["scadenze", "collocare", "costi"]
 
 
 @pytest.mark.parametrize("pagine", [[], ["margini", "analisi_fatture"]])
@@ -116,18 +121,18 @@ def test_senza_scadenziario_restano_coda_e_costi(pagine):
 
 @pytest.mark.parametrize("n, attesa", [(1, "Da collocare (1)"), (12, "Da collocare (12)")])
 def test_il_conteggio_sta_sull_etichetta(n, attesa):
-    assert _schede_fatture(n, None)[0]["label"] == attesa
+    assert _etichetta(_schede_fatture(n, None), "collocare") == attesa
 
 
 @pytest.mark.parametrize("n", [0, None, -1])
 def test_niente_numero_se_zero_o_non_letto(n):
     """`null` = worker giu': niente numero, non uno zero inventato."""
-    assert _schede_fatture(n, None)[0]["label"] == "Da collocare"
+    assert _etichetta(_schede_fatture(n, None), "collocare") == "Da collocare"
 
 
 def test_il_conteggio_non_si_attacca_alle_altre_schede():
     etichette = [s["label"] for s in _schede_fatture(5, None)]
-    assert etichette == ["Da collocare (5)", "Costi di gruppo", "Scadenze"]
+    assert etichette == ["Scadenze", "Da collocare (5)", "Costi di gruppo"]
 
 
 def test_le_etichette_non_si_accumulano_fra_chiamate():
@@ -135,7 +140,7 @@ def test_le_etichette_non_si_accumulano_fra_chiamate():
     chiamata leggerebbe «Da collocare (3) (3)»."""
     out = esegui_ts(
         MODULO,
-        "m.schedeFattureCatena(3, null); emit(m.schedeFattureCatena(3, null)[0].label);",
+        'm.schedeFattureCatena(3, null); emit(m.schedeFattureCatena(3, null).find((s) => s.key === "collocare").label);',
         richiede=["schedeFattureCatena"],
     )
     assert out == "Da collocare (3)"

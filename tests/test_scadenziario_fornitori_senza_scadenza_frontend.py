@@ -266,38 +266,49 @@ def _blocco_riquadro(src: str) -> str:
     return src[i:j]
 
 
-def test_in_catena_la_classifica_non_promette_un_clic(sorgente: str):
-    """Le regole sono per-sede, il conteggio e' di tutte: in catena la lista
-    resta in sola lettura, come gia' fa il testo del banner.
+def _mostra(catena, filtri, n):
+    return esegui_ts(
+        MODULO,
+        "emit(m.mostraRiquadroSenzaScadenza(input));",
+        {"modalitaCatena": catena, "filtriAttivi": filtri, "senzaScadenza": n},
+        richiede=["mostraRiquadroSenzaScadenza"],
+    )
 
-    Il ramo si cerca DENTRO il blocco del riquadro, non nel file: vedi
-    `_blocco_riquadro`.
-    """
-    blocco = _blocco_riquadro(sorgente)
-    assert "modalitaCatena ? (" in blocco, (
-        "dentro il riquadro non c'e' piu' il ramo per la modalita' catena: un "
-        "clic prometterebbe di sistemare tutte le sedi mentre la regola vale "
-        "solo per quella su cui si lavora"
-    )
-    # Il ramo cliccabile deve stare nell'altro corno del ternario, non fuori.
-    assert "setRegolaNome(f.label)" in blocco, (
-        "il ramo cliccabile e' uscito dal riquadro"
-    )
-    # E i due corni nell'ordine giusto: la sottostringa `modalitaCatena ? (`
-    # c'e' anche in `{!modalitaCatena ? (`, che rende cliccabile proprio la
-    # catena e in sola lettura la sede singola (mutante sopravvissuto il 26/09).
-    testo = re.sub(r"\s+", " ", blocco)
-    i = testo.index("modalitaCatena ? (")
-    assert testo[i - 2:i] == "{ " or testo[i - 1] == "{", (
-        f"la condizione del ternario non e' piu' `modalitaCatena`: {testo[i - 10:i + 20]!r}"
-    )
-    corno_catena = testo[i:testo.index(") : (", i)]
-    corno_sede = testo[testo.index(") : (", i):testo.index(")}", testo.index(") : (", i))]
-    assert "<div" in corno_catena and "onClick" not in corno_catena, (
-        "in catena la riga e' tornata cliccabile"
-    )
-    assert "<button" in corno_sede and "setRegolaNome(f.label); setRegoleOpen(true);" in corno_sede, (
-        "nella sede singola la riga non apre piu' le regole del fornitore"
+
+def test_il_riquadro_c_e_nella_sede_senza_filtri():
+    assert _mostra(False, False, 1) is True
+
+
+@pytest.mark.parametrize(
+    "catena, filtri, n",
+    [
+        # In catena no (Mattia, 28/9): le regole sono per-sede, e la classifica
+        # in sola lettura ripeteva la sezione «Senza scadenza» dell'elenco.
+        (True, False, 723),
+        # Con un filtro il conteggio non e' piu' quello di tutto il debito.
+        (False, True, 5),
+        (False, False, 0),
+    ],
+)
+def test_il_riquadro_non_c_e(catena, filtri, n):
+    assert _mostra(catena, filtri, n) is False
+
+
+def test_il_render_usa_la_regola_della_lib(sorgente: str):
+    """La regola in lib non serve se il .tsx non la chiama sul riquadro."""
+    testo = re.sub(r"\s+", " ", sorgente)
+    i = testo.index("{mostraRiquadroSenzaScadenza({")
+    j = testo.index("fornitoriSenzaScadenza(buckets.senzaScadenza", i)
+    # Fra la condizione e la classifica c'e' un solo blocco: il suo.
+    assert testo[i:j].count("&& (() => {") == 1, "la condizione non e' piu' quella del riquadro"
+    assert "modalitaCatena: !!modalitaCatena," in testo[i:j]
+
+
+def test_nel_riquadro_ogni_fornitore_apre_le_sue_regole(sorgente: str):
+    blocco = re.sub(r"\s+", " ", _blocco_riquadro(sorgente))
+    assert "<button" in blocco
+    assert "setRegolaNome(f.label); setRegoleOpen(true);" in blocco, (
+        "la riga del fornitore non apre piu' le regole"
     )
 
 

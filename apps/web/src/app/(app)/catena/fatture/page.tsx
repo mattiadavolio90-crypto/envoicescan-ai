@@ -121,7 +121,7 @@ export default async function CatenaFatturePage({
       <PageHeader
         icon="calendar"
         title="Gestione Fatture — Gruppo"
-        hint="Fatture da collocare, costi divisi fra le sedi, scadenze di tutti i punti vendita"
+        hint="Scadenze di tutti i punti vendita, fatture da collocare, costi divisi fra le sedi"
       />
       <Suspense fallback={<FattureSkeleton />}>
         <FattureBlock richiesta={tab} />

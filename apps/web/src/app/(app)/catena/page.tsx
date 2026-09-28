@@ -3,8 +3,6 @@ import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { SintesiCatena } from "./sintesi-catena";
-import { getCurrentSession } from "@/lib/auth";
-import { caricaFattureInHome } from "@/lib/home-kpi";
 import { ChatWidget } from "../dashboard/chat-widget";
 import { BlockRetry } from "../dashboard/block-retry";
 
@@ -42,11 +40,7 @@ async function SintesiBlock() {
   if (deveRedirigereAPuntoVendita(overview)) {
     redirect("/dashboard");
   }
-  // Stessa regola della Home del punto vendita: il caricamento vive in Analisi
-  // Fatture, e se l'admin la spegne la Home non lo riapre.
-  const sessione = await getCurrentSession();
-  const pagine = sessione.status === "ok" ? sessione.user.pagine_abilitate : null;
-  return <SintesiCatena overview={overview} caricaFatture={caricaFattureInHome(pagine)} />;
+  return <SintesiCatena overview={overview} />;
 }
 
 // Chat di catena: pool AI unico (limite = somma dei limiti delle sedi). Compare

@@ -109,9 +109,17 @@ def test_il_pulsante_segue_la_destinazione_decisa_in_lib():
     assert "onVaiSede(dest.ristoranteId,dest.href)" in n
 
 
-def test_carica_fatture_in_catena_segue_la_stessa_regola_del_pv():
-    """La regola vive in lib (caricaFattureInHome, provata in
-    test_home_kpi_frontend.py); qui che la Home di catena la usi davvero."""
-    pagina = _normalizza((_WEB / "app/(app)/catena/page.tsx").read_text(encoding="utf-8"))
-    assert "caricaFatture={caricaFattureInHome(pagine)}" in pagina
-    assert "{caricaFatture&&<UploadModal/>}" in _normalizza(_SINTESI.read_text(encoding="utf-8"))
+@pytest.mark.parametrize(
+    "home",
+    ["app/(app)/dashboard/page.tsx", "app/(app)/catena/page.tsx", "app/(app)/catena/sintesi-catena.tsx"],
+)
+def test_carica_fatture_non_sta_in_home(home):
+    """Mattia, 28/9: la Home e' recap e assistenza, «Carica fatture» sta solo in
+    Analisi Fatture del punto vendita. Si cerca il componente, non il testo."""
+    assert "upload-modal" not in (_WEB / home).read_text(encoding="utf-8")
+
+
+def test_carica_fatture_resta_in_analisi_fatture():
+    """Il gemello: toglierlo dalle Home non deve toglierlo dall'unico posto dove resta."""
+    pagina = _normalizza((_WEB / "app/(app)/analisi-fatture/page.tsx").read_text(encoding="utf-8"))
+    assert "actions={<UploadModal/>}" in pagina

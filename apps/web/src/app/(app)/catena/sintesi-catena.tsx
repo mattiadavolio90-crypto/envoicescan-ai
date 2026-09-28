@@ -31,7 +31,6 @@ import { LINK_ANALISI_MARGINI, LINK_ANALISI_SPESA } from "@/lib/catena-schede";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
 import { TestataHome } from "@/components/home/testata-home";
-import { UploadModal } from "@/app/(app)/analisi-fatture/upload-modal";
 import { DaFareCatena } from "./da-fare-catena";
 import { NotificheWidget } from "../dashboard/notifiche-widget";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
@@ -428,13 +427,7 @@ function SaluteGruppoCard({
 
 // Home della catena (28/9/2026): recap e assistenza. Coda da collocare e costi
 // di gruppo stanno in Gestione Fatture, i confronti fra sedi in Analisi catena.
-export function SintesiCatena({
-  overview,
-  caricaFatture = true,
-}: {
-  overview: GruppoOverview;
-  caricaFatture?: boolean;
-}) {
+export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
 
@@ -460,18 +453,12 @@ export function SintesiCatena({
     <div className="space-y-6">
       {/* Stessi blocchi, nello stesso ordine, della Home del punto vendita:
           testata · assistente · Da fare · card. Lo switch PV e' nella sidebar.
-          «Carica fatture» anche da qui: il documento decide da solo il locale
-          (P.IVA/indirizzo), la sede da cui si carica non c'entra. */}
+          «Carica fatture» non c'e': sta in Analisi Fatture del punto vendita. */}
       <TestataHome
         vista="catena"
         nome={`Gruppo ${overview.nome_gruppo}`}
         dettaglio={`${overview.num_pv} punti vendita`}
-        azioni={
-          <>
-            {caricaFatture && <UploadModal />}
-            <ConfigAssistenteCatena />
-          </>
-        }
+        azioni={<ConfigAssistenteCatena />}
       />
 
       <section className="space-y-5">

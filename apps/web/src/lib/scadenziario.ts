@@ -622,6 +622,22 @@ export type RiepilogoSenzaScadenza = {
 };
 
 /**
+ * Il riquadro giallo «N fatture senza scadenza» sopra l'elenco.
+ *
+ * Solo nella sede singola, e senza filtri attivi (con un filtro il conteggio
+ * non e' piu' quello di tutto il debito, e confonde). In catena no (Mattia,
+ * 28/9): le regole di pagamento sono per-sede, quindi li' la classifica non
+ * poteva aprirle e ripeteva in giallo la sezione «Senza scadenza» dell'elenco.
+ */
+export function mostraRiquadroSenzaScadenza(opts: {
+  modalitaCatena: boolean;
+  filtriAttivi: boolean;
+  senzaScadenza: number;
+}): boolean {
+  return !opts.modalitaCatena && !opts.filtriAttivi && opts.senzaScadenza > 0;
+}
+
+/**
  * I fornitori delle fatture senza scadenza, ordinati per quanto pesano.
  *
  * Misurato in produzione il 25/09/2026: 1.073 fatture non pagate senza

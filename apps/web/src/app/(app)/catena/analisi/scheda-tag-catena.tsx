@@ -131,50 +131,55 @@ export function SchedaTagCatena() {
           </>
         }
       >
-        <div className="max-w-3xl">
-          <p className="text-sm text-muted-foreground">
-            Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
-            per sede. Sono separati dai tag del singolo locale.
-          </p>
+        {/* Due colonne da lg (Mattia, 28/9): con un solo blocco largo 3xl la
+            scheda restava schiacciata a sinistra e mezza pagina vuota. A
+            sinistra si crea, a destra si lavora sui tag. */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
+              per sede. Sono separati dai tag del singolo locale.
+            </p>
 
-          {/* Crea nuovo tag: nome + emoji (opzionale) → poi si aprono i prodotti */}
-          <div className="mt-4 space-y-2">
-            <div className="flex gap-2">
-              <Input
-                value={nuovo}
-                onChange={(e) => setNuovo(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && creaTag()}
-                placeholder="Nuovo tag di catena (es. Salmone, Imballaggi…)"
-                disabled={creating}
-              />
-              <Button onClick={creaTag} disabled={creating || !nuovo.trim()}>
-                <Plus className="size-4" />
-                Crea
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="mr-1 text-xs text-muted-foreground">Emoji:</span>
-              {EMOJI.map((em) => (
-                <button
-                  key={em}
-                  type="button"
-                  onClick={() => setNuovaEmoji((p) => (p === em ? "" : em))}
-                  className={`flex size-7 items-center justify-center rounded-md border text-base transition-colors ${
-                    nuovaEmoji === em ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"
-                  }`}
-                >
-                  {em}
-                </button>
-              ))}
+            {/* Crea nuovo tag: nome + emoji (opzionale) → poi si aprono i prodotti */}
+            <div className="mt-4 space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  value={nuovo}
+                  onChange={(e) => setNuovo(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && creaTag()}
+                  placeholder="Nuovo tag di catena (es. Salmone, Imballaggi…)"
+                  disabled={creating}
+                />
+                <Button onClick={creaTag} disabled={creating || !nuovo.trim()}>
+                  <Plus className="size-4" />
+                  Crea
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="mr-1 text-xs text-muted-foreground">Emoji:</span>
+                {EMOJI.map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => setNuovaEmoji((p) => (p === em ? "" : em))}
+                    className={`flex size-7 items-center justify-center rounded-md border text-base transition-colors ${
+                      nuovaEmoji === em ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"
+                    }`}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Lista tag */}
-          <div className="mt-4 space-y-2">
+          <div className="grid content-start gap-2 2xl:grid-cols-2">
             {loading ? (
               <p className="text-sm text-muted-foreground">Caricamento…</p>
             ) : tags.length === 0 ? (
-              <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+              <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground 2xl:col-span-2">
                 Nessun tag di catena. Creane uno per confrontare un prodotto fra i punti vendita.
               </p>
             ) : (

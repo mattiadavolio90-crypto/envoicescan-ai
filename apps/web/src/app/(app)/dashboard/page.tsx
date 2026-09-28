@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
-import { caricaFattureInHome, chatVisibile, statoBlocchi } from "@/lib/home-kpi";
+import { chatVisibile, statoBlocchi } from "@/lib/home-kpi";
 import { HomeBriefing } from "./home-briefing";
 import { NotificheWidget } from "./notifiche-widget";
 import { ChatWidget } from "./chat-widget";
@@ -14,7 +14,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 import { getCurrentSession, getCurrentUser } from "@/lib/auth";
 import { TestataHome } from "@/components/home/testata-home";
-import { UploadModal } from "../analisi-fatture/upload-modal";
 import { costoMerceLabel } from "@/lib/categorie-spesa";
 
 // Streaming con Suspense per blocco: ogni sezione carica i suoi dati in modo
@@ -28,9 +27,10 @@ function CardSkeleton() {
   return <div className="h-56 animate-pulse rounded-2xl border bg-muted/40" />;
 }
 
-// Testata comune alle due Home (28/9/2026): nome della sede, «Carica fatture»,
-// «Configura assistente». `getCurrentSession` e' in cache() per la richiesta:
-// il nome costa zero chiamate in piu'.
+// Testata comune alle due Home (28/9/2026): nome della sede e «Configura
+// assistente». «Carica fatture» sta solo in Analisi Fatture (Mattia, 28/9: la
+// Home e' recap e assistenza). `getCurrentSession` e' in cache() per la
+// richiesta: il nome costa zero chiamate in piu'.
 async function TestataBlock() {
   const [config, sessione] = await Promise.all([fetchConfig(), getCurrentSession()]);
   const utente = sessione.status === "ok" ? sessione.user : null;
@@ -38,12 +38,7 @@ async function TestataBlock() {
     <TestataHome
       vista="pv"
       nome={utente?.sede_attiva_nome ?? utente?.nome_ristorante}
-      azioni={
-        <>
-          {caricaFattureInHome(utente?.pagine_abilitate) && <UploadModal />}
-          {config && <ConfigAssistente config={config} />}
-        </>
-      }
+      azioni={config && <ConfigAssistente config={config} />}
     />
   );
 }
