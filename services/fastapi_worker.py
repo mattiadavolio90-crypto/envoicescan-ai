@@ -2986,6 +2986,26 @@ def get_notifiche(
     # filtro una sede a 0 fatture mostrava i tag/scadenze di un'altra sede.
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
 
+    rows = _righe_notifiche_sede(user_id, ristorante_id, supabase_client, include_dismissed)
+    notifiche = [_notifica_item(r) for r in rows]
+    unread = sum(1 for n in notifiche if not n.dismissed_at)
+
+    return NotificheResponse(notifiche=notifiche, total=len(notifiche), unread=unread)
+
+
+def _righe_notifiche_sede(
+    user_id: str,
+    ristorante_id: Optional[str],
+    supabase_client,
+    include_dismissed: bool = False,
+) -> List[Dict[str, Any]]:
+    """Le notifiche di UNA sede: persistite + segnali live, topic spenti esclusi.
+
+    Estratta da get_notifiche il 28/9/2026 per la Home di catena, che mostra gli
+    avvisi di tutte le sedi (gruppo.py, gruppo_notifiche) con le stesse regole
+    della campanella del punto vendita. `ristorante_id` None = nessun filtro
+    sede (account senza sede risolvibile), come prima.
+    """
     query = (
         supabase_client.table("notification_inbox")
         .select("id,topic_key,source_type,severity,title,body,action_page,dismissed_at,expires_at,created_at")
@@ -3058,29 +3078,26 @@ def get_notifiche(
         except Exception as exc:
             logger.warning("get_notifiche: fusione segnali live fallita: %s", exc)
 
-    notifiche = [
-        NotificaItem(
-            id=str(r["id"]),
-            topic_key=r.get("topic_key"),
-            source_type=r.get("source_type"),
-            severity=r.get("severity") or "info",
-            title=r.get("title") or "",
-            body=r.get("body"),
-            action_page=r.get("action_page"),
-            payload=r.get("payload"),
-            # Un segnale live non e' archiviabile (non ha riga in inbox): la X
-            # sparirebbe ma riapparirebbe al refresh. Si chiude da solo col dato.
-            dismissible=(r.get("topic_key") not in _LIVE_TOPICS_DATI_MANCANTI),
-            dismissed_at=str(r["dismissed_at"]) if r.get("dismissed_at") else None,
-            expires_at=str(r["expires_at"]) if r.get("expires_at") else None,
-            created_at=str(r["created_at"]) if r.get("created_at") else None,
-        )
-        for r in rows
-    ]
+    return rows
 
-    unread = sum(1 for n in notifiche if not n.dismissed_at)
 
-    return NotificheResponse(notifiche=notifiche, total=len(notifiche), unread=unread)
+def _notifica_item(r: Dict[str, Any]) -> "NotificaItem":
+    return NotificaItem(
+        id=str(r["id"]),
+        topic_key=r.get("topic_key"),
+        source_type=r.get("source_type"),
+        severity=r.get("severity") or "info",
+        title=r.get("title") or "",
+        body=r.get("body"),
+        action_page=r.get("action_page"),
+        payload=r.get("payload"),
+        # Un segnale live non e' archiviabile (non ha riga in inbox): la X
+        # sparirebbe ma riapparirebbe al refresh. Si chiude da solo col dato.
+        dismissible=(r.get("topic_key") not in _LIVE_TOPICS_DATI_MANCANTI),
+        dismissed_at=str(r["dismissed_at"]) if r.get("dismissed_at") else None,
+        expires_at=str(r["expires_at"]) if r.get("expires_at") else None,
+        created_at=str(r["created_at"]) if r.get("created_at") else None,
+    )
 
 
 @app.post(

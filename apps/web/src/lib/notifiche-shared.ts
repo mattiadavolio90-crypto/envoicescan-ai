@@ -21,6 +21,10 @@ export type Notifica = {
   dismissed_at: string | null;
   expires_at: string | null;
   created_at: string | null;
+  // Solo negli avvisi di catena (/api/gruppo/notifiche, 28/9/2026): di quale
+  // punto vendita e' l'avviso.
+  ristorante_id?: string | null;
+  sede_nome?: string | null;
 };
 
 // Lookup che NON attraversa Object.prototype: `MAPPA["toString"]` su un object
@@ -145,6 +149,30 @@ export function ctaDi(n: Notifica): { href: string; label: string } | null {
       ? LEGACY_TO_NEXT[low]
       : undefined;
   return mapped ? { href: mapped, label: "Vai" } : null;
+}
+
+// --- Dove porta il pulsante di un avviso -------------------------------------
+// In catena un avviso parla di UN punto vendita, ma la sua pagina (/margini,
+// /analisi-fatture…) e' una pagina del punto vendita APERTO. Un link diretto
+// aprirebbe la pagina giusta della sede sbagliata: si cambia prima sede, come
+// fa «Vedi PV» nel «Da fare». Senza sede nota, in catena niente pulsante.
+export type DestinazioneAvviso =
+  | { tipo: "pagina"; href: string; label: string }
+  | { tipo: "sede"; ristoranteId: string; href: string; label: string }
+  | null;
+
+export function destinazioneAvviso(n: Notifica, ambito: "sede" | "gruppo"): DestinazioneAvviso {
+  const cta = ctaDi(n);
+  if (!cta) return null;
+  if (ambito === "sede") return { tipo: "pagina", ...cta };
+  const rid = (n.ristorante_id ?? "").trim();
+  return rid ? { tipo: "sede", ristoranteId: rid, ...cta } : null;
+}
+
+// Chiave di rendering: in catena lo stesso segnale live ha lo stesso id in
+// ogni sede ("live-personale"…), quindi l'id da solo non basta.
+export function chiaveAvviso(n: Notifica): string {
+  return n.ristorante_id ? `${n.ristorante_id}:${n.id}` : n.id;
 }
 
 // --- Pulizia testo (markdown grezzo -> testo semplice) ----------------------

@@ -619,6 +619,7 @@ GET_SESSIONE: Dict[str, Dict[str, Any]] = {
     "/api/gruppo/spreco-categorie": {"mese": 3}, "/api/gruppo/scadenziario": {}, "/api/gruppo/cestino": {},
     "/api/gruppo/segnali": {"force": True}, "/api/gruppo/assistant-config": {}, "/api/gruppo/tag": {},
     "/api/gruppo/tag/descrizioni": {"q": "PRODOTTO"}, "/api/gruppo/chat-config": {},
+    "/api/gruppo/notifiche": {},
     "/api/riparto/regola-fornitore": {"fornitore": "$mio.fornitore"}, "/api/gruppo/costi-comuni": _MESE,
 }
 
@@ -757,7 +758,7 @@ GET_CHE_MOSTRANO_IL_PROPRIO = {
     "/api/gruppo/scadenziario", "/api/gruppo/cestino", "/api/gruppo/segnali",
     "/api/gruppo/assistant-config", "/api/gruppo/costi-comuni",
     "/api/gruppo/margini-coperti", "/api/gruppo/spesa-pivot",
-    "/api/gruppo/spreco-categorie", "/api/notifiche",
+    "/api/gruppo/spreco-categorie", "/api/notifiche", "/api/gruppo/notifiche",
 }
 
 

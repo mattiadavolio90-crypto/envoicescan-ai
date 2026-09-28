@@ -236,8 +236,12 @@ Per costruzione, le tre cose non possono contraddirsi.
 
 È un **testo fisso scritto dal codice**, senza AI: decisione di Mattia del 24/9, che
 l'AI eventualmente la si aggiunge dopo. Viene calcolato dal vivo a ogni apertura e non
-è giornaliero come quello del singolo PV. Sotto c'è la card «Da vedere nella catena»,
-che invece si calcola una volta al giorno.
+è giornaliero come quello del singolo PV. Sotto c'è il «Da fare oggi» della catena
+(fino al 28/9/2026 la card «Da vedere nella catena»): segnali e osservazioni di ogni
+sede, che si calcolano una volta al giorno, più le fatture di gruppo da collocare.
+È lo stesso componente della Home del PV; lo compone `lib/home-da-fare.ts`, e un
+errore nel leggere i segnali non diventa mai «Tutto in ordine». Sotto ancora, gli
+avvisi di tutte le sedi, ognuno col nome della sua (`/api/gruppo/notifiche`).
 
 Regole della frase:
 

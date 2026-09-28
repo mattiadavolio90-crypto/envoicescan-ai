@@ -78,3 +78,32 @@ def test_il_componente_comune_guarda_l_errore_prima_del_verde():
     i_verde = t.find("if (verde) {")
     assert i_nota != -1 and i_verde != -1
     assert i_nota < i_verde, "il verde viene controllato prima dell'avviso di errore"
+
+
+# ─── Gli avvisi della Home di catena ────────────────────────────────────────
+
+_WIDGET = _WEB / "app/(app)/dashboard/notifiche-widget.tsx"
+_SINTESI = _WEB / "app/(app)/catena/sintesi-catena.tsx"
+
+
+def test_la_home_di_catena_chiede_gli_avvisi_del_gruppo():
+    n = _normalizza(_SINTESI.read_text(encoding="utf-8"))
+    assert '<NotificheWidgetambito="gruppo"onVaiSede={(id,pagina)=>vaiAlPV(id,pagina)}/>' in n, (
+        "la Home di catena non mostra piu' gli avvisi di gruppo, o il loro "
+        "pulsante non cambia sede prima di aprire la pagina"
+    )
+
+
+def test_il_widget_legge_l_endpoint_del_suo_ambito():
+    n = _normalizza(_WIDGET.read_text(encoding="utf-8"))
+    assert 'fetch(ambito==="gruppo"?"/api/gruppo/notifiche":"/api/notifiche"' in n
+
+
+def test_il_pulsante_segue_la_destinazione_decisa_in_lib():
+    """In catena un <Link> diretto aprirebbe la pagina della sede sbagliata: il
+    widget non deve usare `ctaDi` da solo, ma `destinazioneAvviso` con l'ambito."""
+    t = _WIDGET.read_text(encoding="utf-8")
+    n = _normalizza(t)
+    assert "destinazioneAvviso(n,ambito)" in n
+    assert "ctaDi(" not in t
+    assert "onVaiSede(dest.ristoranteId,dest.href)" in n

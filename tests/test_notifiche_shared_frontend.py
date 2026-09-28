@@ -11,6 +11,8 @@ fetch lo ri-esporta).
 Le usano due pagine: il widget della Home e la pagina /notifiche.
 """
 
+import pytest
+
 from tests.helpers_ts import esegui_ts
 
 MODULO = "lib/notifiche-shared"
@@ -379,3 +381,58 @@ def test_raggruppa_manda_le_chiavi_ereditate_in_altro():
             argomento=[_n("a", source=k)], richiede=["raggruppa"],
         )
         assert gruppi == ["altro"], k
+
+
+# ─── Avvisi di catena: dove porta il pulsante (28/9/2026) ───────────────────
+
+def _dest(notifica, ambito):
+    return esegui_ts(
+        "lib/notifiche-shared",
+        "emit(m.destinazioneAvviso(input.n, input.ambito));",
+        argomento={"n": notifica, "ambito": ambito},
+        richiede=["destinazioneAvviso"],
+    )
+
+
+def _avviso(action_page="/margini", rid="r7", id_="n1"):
+    return {
+        "id": id_, "topic_key": "t", "source_type": "radar", "severity": "warning",
+        "title": "T", "body": None, "action_page": action_page, "dismissed_at": None,
+        "expires_at": None, "created_at": None, "ristorante_id": rid, "sede_nome": "Porto",
+    }
+
+
+def test_nel_pv_il_pulsante_e_un_link():
+    assert _dest(_avviso(), "sede") == {"tipo": "pagina", "href": "/margini", "label": "Vai"}
+
+
+def test_in_catena_il_pulsante_cambia_prima_sede():
+    """Un link diretto aprirebbe /margini della sede APERTA, non di quella
+    dell'avviso."""
+    assert _dest(_avviso(rid="r7"), "gruppo") == {
+        "tipo": "sede", "ristoranteId": "r7", "href": "/margini", "label": "Vai"}
+
+
+@pytest.mark.parametrize("rid", [None, "", "  "])
+def test_in_catena_senza_sede_niente_pulsante(rid):
+    assert _dest(_avviso(rid=rid), "gruppo") is None
+
+
+def test_in_catena_le_pagine_legacy_si_traducono_come_nel_pv():
+    assert _dest(_avviso(action_page="pages/1_calcolo_margine.py"), "gruppo")["href"] == "/margini"
+
+
+def test_senza_pagina_niente_pulsante_in_nessun_ambito():
+    assert _dest(_avviso(action_page=None), "sede") is None
+    assert _dest(_avviso(action_page=None), "gruppo") is None
+
+
+def test_la_chiave_distingue_lo_stesso_segnale_in_due_sedi():
+    out = esegui_ts(
+        "lib/notifiche-shared",
+        "emit(input.map(m.chiaveAvviso));",
+        argomento=[_avviso(id_="live-personale", rid="r1"), _avviso(id_="live-personale", rid="r2"),
+                   {**_avviso(id_="x"), "ristorante_id": None}],
+        richiede=["chiaveAvviso"],
+    )
+    assert out == ["r1:live-personale", "r2:live-personale", "x"]

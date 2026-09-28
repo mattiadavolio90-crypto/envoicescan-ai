@@ -65,6 +65,14 @@ def _personale_gia_dovuto(*args, **kwargs):
     return _fw()._personale_gia_dovuto(*args, **kwargs)
 
 
+def _righe_notifiche_sede(*args, **kwargs):
+    return _fw()._righe_notifiche_sede(*args, **kwargs)
+
+
+def _notifica_item(*args, **kwargs):
+    return _fw()._notifica_item(*args, **kwargs)
+
+
 def _mese_chiuso(oggi) -> tuple:
     return (oggi.year - 1, 12) if oggi.month == 1 else (oggi.year, oggi.month - 1)
 
@@ -2433,6 +2441,71 @@ def _calcola_segnali(
         s["pv_nome"],
     ))
     return segnali
+
+
+class GruppoNotifica(BaseModel):
+    # Gli stessi campi di NotificaItem (fastapi_worker.py), piu' la sede: in
+    # catena ogni avviso dice di quale punto vendita parla (Mattia, 28/9).
+    id: str
+    topic_key: Optional[str] = None
+    source_type: Optional[str] = None
+    severity: str = "info"
+    title: str
+    body: Optional[str] = None
+    action_page: Optional[str] = None
+    dismissed_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    created_at: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+    dismissible: bool = True
+    ristorante_id: str
+    sede_nome: str
+
+
+class GruppoNotificheResponse(BaseModel):
+    notifiche: List[GruppoNotifica]
+    total: int
+    unread: int
+    # Sedi le cui notifiche non si sono potute leggere: il client lo dice
+    # invece di mostrare un elenco che sembra completo (dato assente ≠ niente).
+    sedi_non_lette: List[str] = []
+
+
+@router.get(
+    "/api/gruppo/notifiche",
+    tags=["Catena"],
+    summary="Avvisi di tutte le sedi del gruppo, ognuno col nome della sua sede",
+    response_model=GruppoNotificheResponse,
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_notifiche(authorization: Optional[str] = Header(None)) -> GruppoNotificheResponse:
+    """Il pulsante degli avvisi nella Home di catena (28/9/2026).
+
+    Per ogni sede del gruppo, le stesse regole della campanella del punto
+    vendita (`_righe_notifiche_sede`: persistite + segnali live, topic spenti
+    di QUELLA sede esclusi). Le sedi sono solo quelle dell'account
+    (`_resolve_gruppo`), e ogni lettura filtra anche per `user_id`.
+    """
+    sb, user_id, _sedi, _nome, rid_to_nome, ids = _resolve_gruppo(authorization)
+    notifiche: List[GruppoNotifica] = []
+    non_lette: List[str] = []
+    for rid in ids:
+        try:
+            righe = _righe_notifiche_sede(user_id, rid, sb)
+        except Exception as exc:
+            logger.warning("gruppo_notifiche: sede %s non letta: %s", rid, exc)
+            non_lette.append(rid_to_nome[rid])
+            continue
+        for r in righe:
+            item = _notifica_item(r)
+            notifiche.append(
+                GruppoNotifica(**item.model_dump(), ristorante_id=rid, sede_nome=rid_to_nome[rid])
+            )
+    notifiche.sort(key=lambda n: n.created_at or "", reverse=True)
+    unread = sum(1 for n in notifiche if not n.dismissed_at)
+    return GruppoNotificheResponse(
+        notifiche=notifiche, total=len(notifiche), unread=unread, sedi_non_lette=non_lette,
+    )
 
 
 @router.get(

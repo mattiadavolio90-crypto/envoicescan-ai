@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -24,7 +24,7 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type Notifica } from "@/lib/notifiche";
-import { ctaDi, pulisci, raggruppa } from "@/lib/notifiche-shared";
+import { chiaveAvviso, destinazioneAvviso, pulisci, raggruppa } from "@/lib/notifiche-shared";
 
 function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
   if (severity === "warning") return <AlertTriangle className="size-5 text-incerto shrink-0" />;
@@ -41,9 +41,19 @@ const SEVERITY_ACCENT: Record<Notifica["severity"], string> = {
   success: "border-l-positivo",
 };
 
-type Props = { count: number };
+type Props = {
+  /** Sede: il conteggio arriva dal server (Home del PV). */
+  count?: number;
+  /** «gruppo» = Home di catena: gli avvisi di tutte le sedi, ognuno col nome
+   * della sua (28/9/2026). Il conteggio si legge qui, dopo il render della
+   * Home, perche' chiede una lettura per sede. */
+  ambito?: "sede" | "gruppo";
+  /** In catena il pulsante di un avviso cambia prima sede (vedi
+   * destinazioneAvviso). */
+  onVaiSede?: (ristoranteId: string, pagina: string) => void;
+};
 
-export function NotificheWidget({ count }: Props) {
+export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onVaiSede }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -57,20 +67,36 @@ export function NotificheWidget({ count }: Props) {
   // chiusura e non ad ogni dismiss per non rigenerare la Home mentre l'utente
   // sta ancora archiviando (eviterebbe sfarfallii e round-trip inutili).
   const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [sediNonLette, setSediNonLette] = useState<string[]>([]);
+  const [erroreLista, setErroreLista] = useState(false);
 
   async function carica() {
     setLoadingList(true);
+    setErroreLista(false);
     try {
-      const res = await fetch("/api/notifiche", { cache: "no-store" });
+      const res = await fetch(ambito === "gruppo" ? "/api/gruppo/notifiche" : "/api/notifiche", {
+        cache: "no-store",
+      });
       if (res.ok) {
-        const data = (await res.json()) as { notifiche?: Notifica[] };
+        const data = (await res.json()) as { notifiche?: Notifica[]; sedi_non_lette?: string[] };
         setNotifiche(data.notifiche ?? []);
+        setSediNonLette(data.sedi_non_lette ?? []);
+      } else {
+        setErroreLista(true);
       }
+    } catch {
+      setErroreLista(true);
     } finally {
       setLoaded(true);
       setLoadingList(false);
     }
   }
+
+  // In catena il conteggio non arriva dal server: si legge l'elenco subito.
+  useEffect(() => {
+    if (ambito === "gruppo") carica();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ambito]);
 
   function onOpenChange(v: boolean) {
     setOpen(v);
@@ -82,8 +108,10 @@ export function NotificheWidget({ count }: Props) {
     }
   }
 
-  async function archivia(id: string) {
-    setDismissing((prev) => new Set(prev).add(id));
+  async function archivia(n: Notifica) {
+    const id = n.id;
+    const chiave = chiaveAvviso(n);
+    setDismissing((prev) => new Set(prev).add(chiave));
     try {
       const res = await fetch("/api/notifiche/dismiss", {
         method: "POST",
@@ -94,21 +122,27 @@ export function NotificheWidget({ count }: Props) {
       // Nascondiamo la notifica SOLO se il dismiss e' riuscito: altrimenti
       // sparirebbe dalla UI ma ricomparirebbe al refresh (stato incoerente).
       // Stesso comportamento del briefing (home-briefing.tsx).
-      setDismissed((prev) => new Set(prev).add(id));
+      setDismissed((prev) => new Set(prev).add(chiave));
       setNeedsRefresh(true);
     } catch {
       toast.error("Non sono riuscito ad archiviare l'avviso. Riprova.");
     } finally {
       setDismissing((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(chiave);
         return next;
       });
     }
   }
 
-  const visibili = notifiche.filter((n) => !dismissed.has(n.id));
+  const visibili = notifiche.filter((n) => !dismissed.has(chiaveAvviso(n)));
   const gruppi = raggruppa(visibili);
+  // In catena il numero e' quello letto qui (meno gli archiviati); nel PV
+  // quello del server finche' l'elenco non e' stato aperto.
+  const count = ambito === "gruppo" ? visibili.filter((n) => !n.dismissed_at).length : countIniziale;
+  // Chiuso l'elenco, senza avvisi il pulsante non c'e' (come nel PV). Aperto,
+  // resta: archiviare l'ultimo non deve chiudere la finestra sotto le dita.
+  if (ambito === "gruppo" && !open && count === 0 && sediNonLette.length === 0 && !erroreLista) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -134,17 +168,27 @@ export function NotificheWidget({ count }: Props) {
         <DialogHeader>
           <DialogTitle>Avvisi</DialogTitle>
           <DialogDescription>
-            Tutti gli avvisi del tuo assistente. Archivia quelli che hai gestito.
+            {ambito === "gruppo"
+              ? "Gli avvisi di tutti i punti vendita. Archivia quelli che hai gestito."
+              : "Tutti gli avvisi del tuo assistente. Archivia quelli che hai gestito."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[60vh] space-y-3 overflow-y-auto py-1">
+          {(erroreLista || sediNonLette.length > 0) && (
+            <p className="flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              {erroreLista
+                ? "Non è stato possibile leggere gli avvisi."
+                : `Avvisi non letti per: ${sediNonLette.join(", ")}.`}
+            </p>
+          )}
           {loadingList && !loaded ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
               Carico le notifiche…
             </div>
-          ) : visibili.length === 0 ? (
+          ) : visibili.length === 0 && !erroreLista ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center text-muted-foreground">
               <Bell className="size-10 opacity-30" />
               <p className="text-sm">Nessuna notifica attiva</p>
@@ -157,10 +201,11 @@ export function NotificheWidget({ count }: Props) {
                   <span className="ml-1.5 text-muted-foreground/60">{g.notifiche.length}</span>
                 </p>
                 {g.notifiche.map((n) => {
-                  const cta = ctaDi(n);
+                  const dest = destinazioneAvviso(n, ambito);
+                  const chiave = chiaveAvviso(n);
                   return (
                     <div
-                      key={n.id}
+                      key={chiave}
                       className={cn(
                         "flex items-start gap-3 rounded-xl border border-l-4 bg-card p-3.5",
                         SEVERITY_ACCENT[n.severity],
@@ -168,6 +213,11 @@ export function NotificheWidget({ count }: Props) {
                     >
                       <SeverityIcon severity={n.severity} />
                       <div className="min-w-0 flex-1">
+                        {ambito === "gruppo" && n.sede_nome && (
+                          <p className="truncate text-xs font-semibold text-muted-foreground" title={n.sede_nome}>
+                            {n.sede_nome}
+                          </p>
+                        )}
                         <p className="text-sm font-medium">{pulisci(n.title)}</p>
                         {n.body && (
                           <p className="mt-0.5 whitespace-pre-line text-sm text-muted-foreground">
@@ -175,14 +225,27 @@ export function NotificheWidget({ count }: Props) {
                           </p>
                         )}
                         <div className="mt-2 flex items-center gap-3">
-                          {cta && (
+                          {dest?.tipo === "pagina" && (
                             <Link
-                              href={cta.href}
+                              href={dest.href}
                               onClick={() => setOpen(false)}
                               className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs")}
                             >
-                              {cta.label}
+                              {dest.label}
                             </Link>
+                          )}
+                          {dest?.tipo === "sede" && onVaiSede && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                setOpen(false);
+                                onVaiSede(dest.ristoranteId, dest.href);
+                              }}
+                            >
+                              {dest.label}
+                            </Button>
                           )}
                           {n.created_at && (
                             <span className="text-xs text-muted-foreground">
@@ -202,8 +265,8 @@ export function NotificheWidget({ count }: Props) {
                           variant="ghost"
                           size="icon"
                           className="size-7 shrink-0 text-muted-foreground"
-                          disabled={dismissing.has(n.id)}
-                          onClick={() => archivia(n.id)}
+                          disabled={dismissing.has(chiave)}
+                          onClick={() => archivia(n)}
                           title="Archivia"
                         >
                           <X className="size-4" />

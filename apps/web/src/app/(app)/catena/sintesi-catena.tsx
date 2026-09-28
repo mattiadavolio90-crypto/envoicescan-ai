@@ -33,6 +33,7 @@ import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
 import { TestataHome } from "@/components/home/testata-home";
 import { UploadModal } from "@/app/(app)/analisi-fatture/upload-modal";
 import { DaFareCatena } from "./da-fare-catena";
+import { NotificheWidget } from "../dashboard/notifiche-widget";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
 import { ETICHETTA_INCOMPLETO, SALUTE_TINT } from "@/lib/salute-tint";
 
@@ -475,6 +476,12 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           switching={switching}
         />
       </section>
+
+      {/* Avvisi, come nel punto vendita: un pulsante che apre l'elenco. In
+          catena sono quelli di tutte le sedi, ognuno col nome della sua. Senza
+          wrapper: senza avvisi il widget non rende niente, e un div vuoto
+          lascerebbe un buco nella spaziatura. */}
+      <NotificheWidget ambito="gruppo" onVaiSede={(id, pagina) => vaiAlPV(id, pagina)} />
 
       {/* Due card grandi come la Home PV: Conti + Salute */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">

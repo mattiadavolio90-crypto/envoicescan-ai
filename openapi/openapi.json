@@ -16716,6 +16716,72 @@
         }
       }
     },
+    "/api/gruppo/notifiche": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Avvisi di tutte le sedi del gruppo, ognuno col nome della sua sede",
+        "description": "Il pulsante degli avvisi nella Home di catena (28/9/2026).\n\nPer ogni sede del gruppo, le stesse regole della campanella del punto\nvendita (`_righe_notifiche_sede`: persistite + segnali live, topic spenti\ndi QUELLA sede esclusi). Le sedi sono solo quelle dell'account\n(`_resolve_gruppo`), e ogni lettura filtra anche per `user_id`.",
+        "operationId": "gruppo_notifiche_api_gruppo_notifiche_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoNotificheResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/segnali": {
       "get": {
         "tags": [
@@ -22650,6 +22716,167 @@
           "spese_generali"
         ],
         "title": "GruppoKpi"
+      },
+      "GruppoNotifica": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "topic_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Key"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "info"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "action_page": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Page"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "dismissible": {
+            "type": "boolean",
+            "title": "Dismissible",
+            "default": true
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "sede_nome": {
+            "type": "string",
+            "title": "Sede Nome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "ristorante_id",
+          "sede_nome"
+        ],
+        "title": "GruppoNotifica"
+      },
+      "GruppoNotificheResponse": {
+        "properties": {
+          "notifiche": {
+            "items": {
+              "$ref": "#/components/schemas/GruppoNotifica"
+            },
+            "type": "array",
+            "title": "Notifiche"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "unread": {
+            "type": "integer",
+            "title": "Unread"
+          },
+          "sedi_non_lette": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sedi Non Lette",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "notifiche",
+          "total",
+          "unread"
+        ],
+        "title": "GruppoNotificheResponse"
       },
       "GruppoOverviewResponse": {
         "properties": {
