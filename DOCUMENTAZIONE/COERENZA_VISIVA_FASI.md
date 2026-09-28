@@ -181,7 +181,7 @@ I fix del 17/09 si vedono: "Scadute" chiusa, niente muro di barrette rosse.
 | F1 | **"Esposizione futura" non guadagna lo spazio:** 120px per un blocco rosso e 5 colonne a 0 € → mostrarlo solo con ≥2 fasce popolate | C |
 | F2 | **Tre livelli di controlli prima del contenuto:** 5 tab + 4 filtri + 2 filtri fornitore | C |
 | F3 | **"Fuori dai conti" e "Note di credito"**: stessa cosa, due nomi in due schermate | A |
-| F4 | **Gruppo: "723 fatture senza scadenza (810.335 €)"** in un avviso giallo sottile largo quanto la pagina. Un numero così merita più di una riga | C |
+| F4 | ~~**Gruppo: "723 fatture senza scadenza (810.335 €)"** in un avviso giallo sottile largo quanto la pagina. Un numero così merita più di una riga~~ **Superato il 28/09/2026**: Mattia ha tolto l'avviso in catena e nel PV (il totale sta sotto «Da pagare», le fatture nella sezione «Senza scadenza», i termini in «Regole fornitore») | C |
 
 ### Analisi Fatture (`analisi-fatture/`) — 70 occorrenze, 5 file
 
@@ -1006,9 +1006,10 @@ tornerà da solo, e allora sarà un bug con una causa nota.
 - **O4** — la frase di sintesi dei fornitori si ripete identica: 4 frasi in
   tutto per tutti (`prezzi.py:1317-1322`). Screen 31, 36.
 
-**Il resto** (6): H2, M1, F2, F4, T3 (resta solo la sovrapposizione
+**Il resto** (6): H2, M1, F2, T3 (resta solo la sovrapposizione
 dell'etichetta «Media», il colore è già a posto), T4 (nessun limite sui
-prodotti, `analisi-e-tag-client.tsx:1366-1415`), W5.
+prodotti, `analisi-e-tag-client.tsx:1366-1415`), W5. F4 superato il
+28/09/2026: l'avviso non c'è più.
 
 ### 14.3 Il vincolo che non cambia
 
