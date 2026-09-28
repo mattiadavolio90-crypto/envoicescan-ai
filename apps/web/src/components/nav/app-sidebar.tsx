@@ -268,7 +268,7 @@ export function AppSidebar({
           <SidebarMenu>
             {inChain ? (
               /* CONTESTO CATENA (Mattia, 28/9): Home = recap e assistente;
-                 Gestione Fatture = coda da collocare, costi di gruppo, scadenze;
+                 Gestione Fatture = scadenze, coda da collocare, costi di gruppo;
                  Analisi catena = i confronti fra sedi, che fino ad allora
                  erano finestre della Home. */
               <>

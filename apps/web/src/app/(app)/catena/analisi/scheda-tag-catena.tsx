@@ -131,10 +131,12 @@ export function SchedaTagCatena() {
           </>
         }
       >
-        {/* Due colonne da lg (Mattia, 28/9): con un solo blocco largo 3xl la
+        {/* Due colonne da xl (Mattia, 28/9): con un solo blocco largo 3xl la
             scheda restava schiacciata a sinistra e mezza pagina vuota. A
-            sinistra si crea, a destra si lavora sui tag. */}
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+            sinistra si crea, a destra si lavora sui tag. Non da lg: con la
+            sidebar aperta la colonna dei tag scende sotto i ~390px che una
+            riga occupa senza il nome, e i bottoni sbordano. */}
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
           <div>
             <p className="text-sm text-muted-foreground">
               Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
@@ -175,11 +177,14 @@ export function SchedaTagCatena() {
           </div>
 
           {/* Lista tag */}
-          <div className="grid content-start gap-2 2xl:grid-cols-2">
+          {/* Tante colonne quante ne entrano da 28rem: decide lo spazio vero
+              della colonna, non la larghezza dello schermo (con la sidebar
+              aperta o chiusa cambia di 256px). */}
+          <div className="grid content-start gap-2 grid-cols-[repeat(auto-fill,minmax(min(100%,28rem),1fr))]">
             {loading ? (
               <p className="text-sm text-muted-foreground">Caricamento…</p>
             ) : tags.length === 0 ? (
-              <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground 2xl:col-span-2">
+              <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground col-span-full">
                 Nessun tag di catena. Creane uno per confrontare un prodotto fra i punti vendita.
               </p>
             ) : (
