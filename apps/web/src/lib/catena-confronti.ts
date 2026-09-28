@@ -16,7 +16,7 @@
 // resolve hook di helpers_ts.py non riscrive. Verificato: rompe l'harness.
 import type { MarginiCopertiPV, SpesaPivotRow, SprecoCategoriaRiga } from "@/lib/gruppo";
 
-/* ─── finestra-margini-coperti.tsx: heatmap, soglie, ordinamento ─────────── */
+/* ─── catena/analisi/scheda-margini-coperti.tsx: heatmap, soglie, ordinamento */
 
 // Soglie del pallino salute — le stesse del ranking calcolato dal worker.
 // Esportate perche' un test possa verificare la coerenza senza riscrivere i
@@ -157,7 +157,7 @@ export function rigaExtremes(r: SprecoCategoriaRiga): { best: number | null; wor
   return { best: Math.min(...vals), worst: Math.max(...vals) };
 }
 
-/* ─── finestra-spesa-pv.tsx: heatmap pivot, PV piu' caro, intervallo mese ─── */
+/* ─── catena/analisi/scheda-spesa-pv.tsx: heatmap pivot, PV piu' caro, mese ─ */
 
 // Heatmap a token di tema (dark/light-safe): intensità sfondo dalla frazione
 // della cella sul massimo della pivot. Usa la primary con alpha → contrasto su
@@ -361,36 +361,39 @@ export function offsetAnello(indice: number, r: number): number {
 // novità di ieri (apertura "sono arrivate N fatture"), qui basta il numero totale
 // senza ripetere l'imperativo "assegnale/dividile" — già dato sopra.
 //
-// `codaVisibile` (9/9/2026): la coda da assegnare esiste SOLO sul desktop. Il
-// backend non sa su quale client finirà la frase, quindi il wording lo sceglie
-// chi rende: "qui sotto" dove la coda c'è, "dal computer" dove non c'è. Prima il
-// mobile riscriveva il messaggio a mano, senza il ramo che evita il doppio
-// imperativo: con novità + arretrato usciva "le trovi qui sotto" (falso su
-// mobile) seguito da "falle dal computer per assegnarle". Una sola funzione per
-// due superfici = non possono più divergere.
+// `codaRaggiungibile`: la coda da assegnare esiste SOLO sul desktop. Il backend
+// non sa su quale client finirà la frase, quindi il wording lo sceglie chi
+// rende: "in Gestione Fatture" dove la coda si raggiunge, "dal computer" dove
+// no. Prima il mobile riscriveva il messaggio a mano, senza il ramo che evita il
+// doppio imperativo: con novità + arretrato usciva un rimando falso su mobile
+// seguito da "falle dal computer per assegnarle". Una sola funzione per due
+// superfici = non possono più divergere.
+//
+// Fino al 28/9/2026 la coda stava nella Home di catena e il rimando era "qui
+// sotto"; ora è la scheda «Da collocare» di Gestione Fatture, e chi rende la
+// frase affianca il link (LINK_CODA_GRUPPO).
 export function messaggioFattureDaCollocare(
   briefing: {
     n_fatture_da_collocare?: number;
     n_fatture_arrivate_ieri?: number | null;
   },
-  codaVisibile = true,
+  codaRaggiungibile = true,
 ): string | null {
   const n = briefing.n_fatture_da_collocare ?? 0;
   if (n <= 0) return null;
   const uno = n === 1;
   const cosa = uno ? "1 fattura di gruppo da collocare" : `${n} fatture di gruppo da collocare`;
-  // Solo dove la coda esiste si può dire "qui sotto": su mobile sarebbe falso.
-  const dove = codaVisibile ? " qui sotto" : "";
+  // Solo dove la coda si raggiunge si può indicare dove sta: su mobile sarebbe falso.
+  const dove = codaRaggiungibile ? " in Gestione Fatture" : "";
   // Si toglie l'imperativo SOLO se la narrativa ha davvero dato il rimando — e
-  // lo dà solo dove la coda è visibile ("da assegnare a un locale", col desktop
-  // che ha la coda subito sotto). Su mobile la narrativa NON rimanda a nulla:
-  // togliere anche l'imperativo lascerebbe il cliente con un numero e nessuna
-  // azione. Le due condizioni vanno insieme: la seconda da sola era una
-  // regressione introdotta insieme a `codaVisibile`.
-  if (briefing.n_fatture_arrivate_ieri && codaVisibile) {
+  // lo dà solo dove la coda si raggiunge ("da assegnare a un locale"). Su mobile
+  // la narrativa NON rimanda a nulla: togliere anche l'imperativo lascerebbe il
+  // cliente con un numero e nessuna azione. Le due condizioni vanno insieme: la
+  // seconda da sola era una regressione introdotta insieme al parametro.
+  if (briefing.n_fatture_arrivate_ieri && codaRaggiungibile) {
     return uno ? `In tutto c'è ${cosa}${dove}.` : `In tutto ci sono ${cosa}${dove}.`;
   }
-  const azione = codaVisibile
+  const azione = codaRaggiungibile
     ? uno
       ? "assegnala a una sede o dividila fra i locali"
       : "assegnale a una sede o dividile fra i locali"

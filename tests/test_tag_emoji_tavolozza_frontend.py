@@ -62,7 +62,7 @@ def test_i_due_selettori_usano_la_STESSA_tavolozza():
     web = Path(__file__).resolve().parents[1] / "apps/web/src"
     consumatori = [
         web / "app/(app)/analisi-e-tag/analisi-e-tag-client.tsx",
-        web / "app/(app)/catena/gruppo-tag-section.tsx",
+        web / "app/(app)/catena/analisi/scheda-tag-catena.tsx",
     ]
     for f in consumatori:
         assert f.exists(), f"{f} spostato: aggiorna il test invece di cancellarlo"

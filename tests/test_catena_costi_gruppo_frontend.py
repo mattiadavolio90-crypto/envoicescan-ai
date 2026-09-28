@@ -1,6 +1,6 @@
 """Quello che le due finestre di catena mandano al backend.
 
-`lib/catena-costi-gruppo.ts` raccoglie la logica di `finestra-costi-gruppo.tsx` e
+`lib/catena-costi-gruppo.ts` raccoglie la logica di `fatture/scheda-costi-gruppo.tsx` e
 `config-assistente-catena.tsx`: le due schermate dell'area che SCRIVONO. Un
 errore nelle formule di `catena-tag.ts` sbaglia dei pixel; un errore qui persiste
 — un importo storto, o dei punti vendita riattivati che l'utente aveva escluso.

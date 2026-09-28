@@ -253,9 +253,11 @@ _CATENA = pathlib.Path(__file__).resolve().parents[1] / "apps/web/src/app/(app)/
 # coincidono, non che il codice usi quella condivisa. (Trovato dal
 # code-reviewer il 3/9; il gemello `test_iva_divisori_fonte_unica.py` questa
 # verifica ce l'aveva.)
+# Percorsi dal 28/9/2026: le finestre della Home di catena sono diventate le
+# schede di /catena/analisi e /catena/fatture.
 _MIGRATI = [
-    "finestra-spesa-pv.tsx", "gruppo-tag-section.tsx",
-    "finestra-costi-gruppo.tsx", "sintesi-catena.tsx",
+    "analisi/scheda-spesa-pv.tsx", "analisi/scheda-tag-catena.tsx",
+    "fatture/scheda-costi-gruppo.tsx", "sintesi-catena.tsx",
 ]
 
 
@@ -271,7 +273,7 @@ def test_i_file_migrati_non_ridefiniscono_euro(nome):
     )
 
 
-@pytest.mark.parametrize("nome", _MIGRATI + ["finestra-margini-coperti.tsx"])
+@pytest.mark.parametrize("nome", _MIGRATI + ["analisi/scheda-margini-coperti.tsx"])
 def test_i_file_migrati_non_ridefiniscono_mesi(nome):
     testo = (_CATENA / nome).read_text(encoding="utf-8")
     assert not re.search(r"^const MESI(_LABEL)? = \[", testo, re.M), (
@@ -280,7 +282,7 @@ def test_i_file_migrati_non_ridefiniscono_mesi(nome):
     )
 
 
-@pytest.mark.parametrize("nome", ["gruppo-tag-section.tsx", "finestra-margini-coperti.tsx"])
+@pytest.mark.parametrize("nome", ["analisi/scheda-tag-catena.tsx", "analisi/scheda-margini-coperti.tsx"])
 def test_le_due_euro2_chiamano_la_fonte_unica(nome):
     """Che la decisione del 3/9 non venga disfatta in silenzio.
 
@@ -307,7 +309,7 @@ def test_num_nel_sorgente_arrotonda_a_un_decimale():
     quello, rimettere `n.toLocaleString("it-IT")` senza opzioni lasciava la
     suite verde — mutante sopravvissuto, misurato il 3/9.
     """
-    for nome in ("finestra-margini-coperti.tsx", "gruppo-tag-section.tsx"):
+    for nome in ("analisi/scheda-margini-coperti.tsx", "analisi/scheda-tag-catena.tsx"):
         testo = (_CATENA / nome).read_text(encoding="utf-8")
         corpo = re.search(r"function num\([^)]*\): string \{(.*?)\n\}", testo, re.S)
         assert corpo, f"{nome}: `num` non c'e' piu'"
@@ -318,7 +320,7 @@ def test_num_nel_sorgente_arrotonda_a_un_decimale():
         )
 
 
-_CON_PCT = ["sintesi-catena.tsx", "finestra-margini-coperti.tsx", "gruppo-tag-section.tsx"]
+_CON_PCT = ["sintesi-catena.tsx", "analisi/scheda-margini-coperti.tsx", "analisi/scheda-tag-catena.tsx"]
 
 
 @pytest.mark.parametrize("nome", _CON_PCT)

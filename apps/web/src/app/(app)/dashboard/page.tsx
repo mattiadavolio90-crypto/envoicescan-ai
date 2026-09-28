@@ -166,7 +166,7 @@ export default async function DashboardPage() {
 
         {/* La coda fatture "da assegnare" NON vive più qui: è un fenomeno di gruppo
             (catene same-P.IVA) e si gestisce solo in modalità catena, dove non si
-            duplica per ogni PV. Vedi CodaDaAssegnare contesto="catena" in sintesi-catena. */}
+            duplica per ogni PV: la scheda «Da collocare» di /catena/fatture. */}
 
         <Suspense fallback={<div className="grid gap-4 lg:grid-cols-2"><CardSkeleton /><CardSkeleton /></div>}>
           <KpiSaluteBlock />

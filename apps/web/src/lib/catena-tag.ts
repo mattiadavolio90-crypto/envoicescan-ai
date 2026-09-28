@@ -1,4 +1,5 @@
-// Logica del tag di gruppo — estratta da `(app)/catena/gruppo-tag-section.tsx`.
+// Logica del tag di gruppo — estratta da `(app)/catena/analisi/scheda-tag-catena.tsx`
+// (fino al 28/9/2026 `gruppo-tag-section.tsx`).
 //
 // Stessa ragione di `catena-confronti.ts`: finche' queste espressioni stavano
 // dentro un componente di 721 righe, fra hook e JSX, `tests/helpers_ts.py` non

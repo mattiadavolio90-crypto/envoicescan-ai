@@ -267,11 +267,10 @@ export function AppSidebar({
           <SidebarGroupLabel>{inChain ? "Catena" : "Menu principale"}</SidebarGroupLabel>
           <SidebarMenu>
             {inChain ? (
-              /* CONTESTO CATENA: la catena è di norma UNA pagina (confronti, segnali
-                 e tag vivono come finestre dentro /catena). "Gestione Fatture" è
-                 un'eccezione voluta: la lista documenti di gruppo (con ownership
-                 check per sede sulle azioni di scrittura) è troppo densa per stare
-                 in una finestra, quindi ha una voce di navigazione dedicata. */
+              /* CONTESTO CATENA (Mattia, 28/9): Home = recap e assistente;
+                 Gestione Fatture = coda da collocare, costi di gruppo, scadenze;
+                 Analisi catena = i confronti fra sedi, che fino ad allora
+                 erano finestre della Home. */
               <>
                 <SidebarMenuItem>
                   <SidebarMenuButton
@@ -279,8 +278,8 @@ export function AppSidebar({
                     isActive={pathname === "/catena"}
                     className="data-active:!bg-accent data-active:!text-primary-text data-active:!font-semibold data-active:!border-l-2 data-active:!border-primary"
                   >
-                    <Building2 />
-                    <span>Catena</span>
+                    <Home />
+                    <span>Home</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
@@ -291,6 +290,16 @@ export function AppSidebar({
                   >
                     <CalendarCheck />
                     <span>Gestione Fatture</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    render={<Link href="/catena/analisi" />}
+                    isActive={pathname === "/catena/analisi"}
+                    className="data-active:!bg-accent data-active:!text-primary-text data-active:!font-semibold data-active:!border-l-2 data-active:!border-primary"
+                  >
+                    <BarChart3 />
+                    <span>Analisi catena</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </>

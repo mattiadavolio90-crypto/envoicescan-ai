@@ -1,20 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Settore } from "@/lib/categorie-spesa";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
   Building2,
-  TrendingUp,
   Receipt,
   ChevronRight,
   Sparkles,
-  Tags,
   ArrowUp,
   ArrowDown,
   ArrowRight,
-  Split,
   ClipboardList,
   TriangleAlert,
 } from "lucide-react";
@@ -34,15 +31,11 @@ import {
   offsetAnello,
   tintConti,
 } from "@/lib/catena-confronti";
+import { LINK_ANALISI_MARGINI, LINK_ANALISI_SPESA, LINK_CODA_GRUPPO } from "@/lib/catena-schede";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { AscoltaButton } from "@/components/ascolta-button";
-import { FinestraSpesaPV } from "./finestra-spesa-pv";
-import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
-import { FinestraCostiGruppo } from "./finestra-costi-gruppo";
-import { CodaDaAssegnare } from "@/components/fatture/coda-da-assegnare";
 import { UploadModal } from "@/app/(app)/analisi-fatture/upload-modal";
 import { CardSegnali } from "./card-segnali";
-import { TagCatenaDialog } from "./gruppo-tag-section";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
 import { ETICHETTA_INCOMPLETO, SALUTE_TINT } from "@/lib/salute-tint";
 
@@ -58,7 +51,8 @@ type ColoreTint = keyof typeof TINT;
 
 // ─── Briefing di gruppo (hero) ─────────────────────────────────────────────
 function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; nomeGruppo: string }) {
-  // Default codaVisibile=true: sul desktop la coda da assegnare sta subito sotto.
+  // Default codaRaggiungibile=true: sul desktop la coda e' la scheda «Da
+  // collocare» di Gestione Fatture, e il link sta accanto alla frase.
   const msgDaCollocare = messaggioFattureDaCollocare(briefing);
   return (
     <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background p-6 sm:p-8">
@@ -85,9 +79,16 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
         {briefing.narrativa}
       </p>
       {msgDaCollocare && (
-        <p className="mt-3 flex items-center gap-2 text-sm font-medium text-incerto">
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-incerto">
           <ClipboardList className="size-4 shrink-0" />
           {msgDaCollocare}
+          <Link
+            href={LINK_CODA_GRUPPO}
+            className="inline-flex items-center gap-1 underline underline-offset-2"
+          >
+            Collocale ora
+            <ArrowRight className="size-3.5" />
+          </Link>
         </p>
       )}
     </div>
@@ -254,7 +255,7 @@ function ContiGruppoCard({
         <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
       </div>
 
-      {/* MOL del gruppo → apre il confronto Margini e Coperti. SEMPRE, anche con
+      {/* MOL del gruppo → scheda Margini e coperti di Analisi catena. SEMPRE, anche con
           dati di costo incompleti (9/9/2026): il PV lo mostra sempre, e qui
           nasconderlo dietro il food cost faceva sembrare le due viste due
           prodotti diversi. Quando non e' reale lo dice l'avviso sotto, non il
@@ -281,7 +282,7 @@ function ContiGruppoCard({
 
       {/* Dati di costo incompleti: il MOL sopra e' gonfiato verso l'alto (mancano
           costi). Lo si dice chiaro — il banner ambra del PV per le fatture
-          mancanti fa lo stesso — e si porta a vedere QUALI PV: la finestra
+          mancanti fa lo stesso — e si porta a vedere QUALI PV: la scheda
           Margini e Coperti li marca come "Incompleto". */}
       {avviso && (
         <button
@@ -455,43 +456,11 @@ function SaluteGruppoCard({
   );
 }
 
-// ─── Card-azione "Confronti / strumenti" (apre una finestra) ───────────────
-function ConfrontoCard({
-  icon: Icon,
-  titolo,
-  sottotitolo,
-  onClick,
-}: {
-  icon: typeof Receipt;
-  titolo: string;
-  sottotitolo: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex items-center gap-4 rounded-2xl border bg-card p-5 text-left transition-colors hover:bg-accent"
-    >
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-        <Icon className="size-5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold">{titolo}</span>
-        <span className="block text-xs text-muted-foreground">{sottotitolo}</span>
-      </span>
-      <ArrowRight className="size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
-    </button>
-  );
-}
-
-export function SintesiCatena({ overview, settore }: { overview: GruppoOverview; settore?: Settore | null }) {
+// Home della catena (28/9/2026): recap e assistenza. Coda da collocare e costi
+// di gruppo stanno in Gestione Fatture, i confronti fra sedi in Analisi catena.
+export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
-  const [spesaOpen, setSpesaOpen] = useState(false);
-  const [marginiOpen, setMarginiOpen] = useState(false);
-  const [tagOpen, setTagOpen] = useState(false);
-  const [costiGruppoOpen, setCostiGruppoOpen] = useState(false);
 
   // Deep link catena→PV: cambia la sede attiva e naviga alla pagina giusta del PV
   // (default Home). Il "fare" è nel PV; la catena indirizza.
@@ -525,10 +494,9 @@ export function SintesiCatena({ overview, settore }: { overview: GruppoOverview;
               (P.IVA/indirizzo), la sede da cui si carica non c'entra. Prima l'unico
               punto di upload era dentro una pagina PV, quindi da qui bisognava
               scendere in un locale a caso per caricare — e per le catene same-P.IVA
-              (OFFSIDE) le ambigue finivano nella coda qui sotto, cioè in un posto
-              che dal PV non si vede. Qui invece carico e le colloco nello stesso
-              schermo. Stesso identico componente del PV: nessun secondo canale. */}
-          <UploadModal contesto="catena" />
+              (OFFSIDE) le ambigue finivano nella coda di gruppo, che dal PV non si
+              vede. Stesso identico componente del PV: nessun secondo canale. */}
+          <UploadModal />
           <ConfigAssistenteCatena />
         </div>
       </div>
@@ -536,28 +504,12 @@ export function SintesiCatena({ overview, settore }: { overview: GruppoOverview;
       {/* Briefing di gruppo — la voce macro, in cima */}
       <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
 
-      {/* Fatture di gruppo + Costi di gruppo: stessa origine (documenti a nome
-          società, non di un singolo locale) → un unico riquadro con le due card
-          affiancate, così la parentela si vede dalla posizione e non solo dal
-          colore. La coda resta la voce prominente (bordo ambra, badge conteggio);
-          "Costi di gruppo" era isolata in mezzo alle altre 3 card di confronto,
-          lontana dalla coda che la alimenta. */}
-      <div className="rounded-2xl border border-primary/20 bg-accent p-3 sm:p-4">
-        <span className="mb-2 inline-block px-1 text-xs font-medium uppercase tracking-wide text-primary-text">
-          Gruppo
-        </span>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <CodaDaAssegnare contesto="catena" />
-          <ConfrontoCard icon={Split} titolo="Costi di gruppo" sottotitolo="Costi comuni divisi fra le sedi" onClick={() => setCostiGruppoOpen(true)} />
-        </div>
-      </div>
-
       {/* Due card grandi come la Home PV: Conti + Salute */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
         <ContiGruppoCard
           overview={overview}
-          onApriSpesa={() => setSpesaOpen(true)}
-          onApriMargini={() => setMarginiOpen(true)}
+          onApriSpesa={() => router.push(LINK_ANALISI_SPESA)}
+          onApriMargini={() => router.push(LINK_ANALISI_MARGINI)}
         />
         <SaluteGruppoCard
           indice={overview.salute_indice}
@@ -569,25 +521,12 @@ export function SintesiCatena({ overview, settore }: { overview: GruppoOverview;
         />
       </div>
 
-      {/* Strumenti di confronto del gruppo: si aprono in finestra (no pagine) */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <ConfrontoCard icon={Receipt} titolo="Spesa per PV" sottotitolo="Dove spende di più ogni sede" onClick={() => setSpesaOpen(true)} />
-        <ConfrontoCard icon={TrendingUp} titolo="Margini e coperti" sottotitolo="Chi rende di più, per metrica" onClick={() => setMarginiOpen(true)} />
-        <ConfrontoCard icon={Tags} titolo="Tag di catena" sottotitolo="Confronta un prodotto fra i PV" onClick={() => setTagOpen(true)} />
-      </div>
-
       {/* Da vedere nella catena (segnali) */}
       <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />
 
       {/* Spazio riservato in fondo: il FAB "Chiedi a ONEFLUX" (fixed bottom-right)
           altrimenti resta sovrapposto all'ultimo contenuto durante lo scroll. */}
       <div aria-hidden className="h-20" />
-
-      {/* Finestre: caricano i dati solo all'apertura (lazy). */}
-      <FinestraSpesaPV open={spesaOpen} onOpenChange={setSpesaOpen} />
-      <FinestraCostiGruppo open={costiGruppoOpen} onOpenChange={setCostiGruppoOpen} settore={settore} />
-      <FinestraMarginiCoperti open={marginiOpen} onOpenChange={setMarginiOpen} />
-      <TagCatenaDialog open={tagOpen} onOpenChange={setTagOpen} />
     </div>
   );
 }

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { LINK_CODA_GRUPPO } from "@/lib/catena-schede";
 
 type FileStatus = "waiting" | "uploading" | "success" | "error" | "skipped" | "queued";
 
@@ -61,13 +62,13 @@ function humanSize(b: number): string {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// `contesto` cambia SOLO cosa si dice delle fatture finite in coda, mai come si
-// caricano: il worker decide il locale dal documento (P.IVA + indirizzo) e non
-// riceve alcun ristorante_id dal client, quindi caricare dalla catena o da un PV
-// dà lo stesso identico esito. Ma la coda "da assegnare" vive solo in catena: da
-// un PV va detto dove sono finite, altrimenti spariscono in un posto che da lì
-// non si vede.
-export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } = {}) {
+// Caricare dalla catena o da un PV dà lo stesso identico esito: il worker decide
+// il locale dal documento (P.IVA + indirizzo) e non riceve alcun ristorante_id
+// dal client. Le fatture che non sa attribuire finiscono nella coda di gruppo,
+// e l'avviso sotto dice dove: la scheda «Da collocare» di Gestione Fatture della
+// catena. Fino al 28/9/2026 dalla catena diceva "qui sotto" (la coda stava in
+// Home) e da un PV rimandava alla vista del gruppo: ora il posto e' uno solo.
+export function UploadModal() {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [confermaChiusuraConErrori, setConfermaChiusuraConErrori] = useState(false);
@@ -342,9 +343,8 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
         )}
 
         {/* Fatture finite in coda: l'istruzione su cosa fare va data UNA volta, qui,
-            non ripetuta su ogni riga. Dal PV la coda non è raggiungibile (vive solo
-            in catena): senza questo avviso le fatture sparirebbero in un posto che
-            da qui non si vede. */}
+            non ripetuta su ogni riga. La coda vive solo in catena: senza questo
+            avviso le fatture sparirebbero in un posto che da qui non si vede. */}
         {queued > 0 && !uploading && (
           <div className="flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/5 p-3 text-xs">
             <MapPin className="size-4 shrink-0 text-incerto" />
@@ -355,19 +355,15 @@ export function UploadModal({ contesto = "pv" }: { contesto?: "pv" | "catena" } 
                   : `${queued} fatture sono intestate alla società, non a un locale`}
               </p>
               <p className="mt-0.5 text-muted-foreground">
-                {contesto === "catena"
-                  ? "Le trovi qui sotto in “Gestione fatture di gruppo”: assegnale a un locale o dividile tra i locali."
-                  : "Per assegnarle a un locale o dividerle tra i locali, vai nella vista del gruppo."}
+                Assegnale a un locale o dividile tra i locali in Gestione Fatture del gruppo, scheda «Da collocare».
               </p>
-              {contesto === "pv" && (
-                <Link
-                  href="/catena"
-                  className="mt-1.5 inline-flex items-center gap-1 font-medium text-incerto underline underline-offset-2 hover:text-incerto"
-                >
-                  Vai alla vista del gruppo
-                  <ArrowRight className="size-3" />
-                </Link>
-              )}
+              <Link
+                href={LINK_CODA_GRUPPO}
+                className="mt-1.5 inline-flex items-center gap-1 font-medium text-incerto underline underline-offset-2 hover:text-incerto"
+              >
+                Vai alle fatture da collocare
+                <ArrowRight className="size-3" />
+              </Link>
             </div>
           </div>
         )}

@@ -24,7 +24,7 @@ from tests.helpers_ts import esegui_ts
 
 MODULO = "lib/catena-confronti"
 
-# Colonne come le definisce finestra-margini-coperti.tsx: la direzione e' per
+# Colonne come le definisce analisi/scheda-margini-coperti.tsx: la direzione e' per
 # metrica, non globale (regola catena: NON e' sempre "numero alto = verde").
 COLS = [
     {"key": "margine_perc", "label": "Margine %", "altoMeglio": True},
@@ -875,12 +875,12 @@ def test_messaggio_torna_all_imperativo_se_ieri_non_e_arrivato_nulla(ieri):
     assert "assegnale" in out
 
 
-# ─── codaVisibile: il wording lo sceglie chi rende (9/9/2026) ───────────────
+# ─── codaRaggiungibile: il wording lo sceglie chi rende (9/9 e 28/9/2026) ──
 
 
 @pytest.mark.parametrize("n", [1, 3])
 def test_senza_coda_visibile_non_si_dice_qui_sotto(n):
-    """Su mobile la coda da assegnare NON esiste: "qui sotto" sarebbe falso.
+    """Su mobile la coda da assegnare NON esiste: indicare dove sta sarebbe falso.
 
     Il backend non sa su quale client finira' la frase, quindi il rimando lo
     sceglie chi rende. Prima il mobile riscriveva il messaggio a mano e le due
@@ -890,18 +890,20 @@ def test_senza_coda_visibile_non_si_dice_qui_sotto(n):
         "messaggioFattureDaCollocare",
         [{"n_fatture_da_collocare": n, "n_fatture_arrivate_ieri": None}, False],
     )
+    assert "Gestione Fatture" not in out
     assert "qui sotto" not in out
     assert "dal computer" in out
 
 
-def test_con_coda_visibile_il_testo_desktop_non_cambia():
-    """Contro-prova: il default resta il comportamento desktop di prima."""
+def test_con_coda_raggiungibile_il_desktop_rimanda_a_gestione_fatture():
+    """Contro-prova: il default e' il desktop, che dal 28/9 rimanda alla scheda
+    «Da collocare» di Gestione Fatture (prima: "qui sotto", la coda era in Home)."""
     out = _chiama(
         "messaggioFattureDaCollocare",
         [{"n_fatture_da_collocare": 3, "n_fatture_arrivate_ieri": None}],
     )
     assert out == (
-        "Ci sono 3 fatture di gruppo da collocare qui sotto: "
+        "Ci sono 3 fatture di gruppo da collocare in Gestione Fatture: "
         "assegnale a una sede o dividile fra i locali."
     )
 
@@ -923,6 +925,7 @@ def test_su_mobile_l_azione_resta_anche_se_ieri_e_arrivato_qualcosa():
         [{"n_fatture_da_collocare": 3, "n_fatture_arrivate_ieri": 2}, False],
     )
     assert "dal computer" in out, "su mobile l'azione va detta: la narrativa non la da'"
+    assert "Gestione Fatture" not in out
     assert "qui sotto" not in out
 
 
@@ -934,7 +937,7 @@ def test_su_desktop_niente_doppio_imperativo_quando_la_narrativa_ha_parlato():
         "messaggioFattureDaCollocare",
         [{"n_fatture_da_collocare": 3, "n_fatture_arrivate_ieri": 2}],
     )
-    assert out == "In tutto ci sono 3 fatture di gruppo da collocare qui sotto."
+    assert out == "In tutto ci sono 3 fatture di gruppo da collocare in Gestione Fatture."
     assert "assegna" not in out
 
 

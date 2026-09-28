@@ -3,16 +3,15 @@ import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { SintesiCatena } from "./sintesi-catena";
-import { getCurrentUser } from "@/lib/auth";
 import { ChatWidget } from "../dashboard/chat-widget";
 import { BlockRetry } from "../dashboard/block-retry";
 
-// Modalità catena (Fase 1) — UNA pagina: la Sintesi (plancia di sola lettura).
-// La catena è un layer superiore di analisi/visualizzazione sopra i PV;
-// l'inserimento vive solo nel punto vendita.
+// Home della catena: recap e assistenza (28/9/2026). Le funzioni di lavoro
+// stanno in /catena/fatture (coda, costi di gruppo, scadenze) e le analisi in
+// /catena/analisi; l'inserimento dei dati vive nel punto vendita.
 
 function SintesiSkeleton() {
-  // Rispecchia il layout reale: testata + briefing + 2 card grandi + 3 confronti + ranking.
+  // Rispecchia il layout reale: testata + briefing + 2 card grandi + segnali.
   return (
     <div className="space-y-6">
       <div className="h-8 w-64 animate-pulse rounded-xl bg-muted/40" />
@@ -20,11 +19,6 @@ function SintesiSkeleton() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="h-72 animate-pulse rounded-2xl border bg-muted/40" />
         <div className="h-72 animate-pulse rounded-2xl border bg-muted/40" />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
-        <div className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
-        <div className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
       </div>
       <div className="h-56 animate-pulse rounded-2xl border bg-muted/40" />
     </div>
@@ -46,12 +40,7 @@ async function SintesiBlock() {
   if (deveRedirigereAPuntoVendita(overview)) {
     redirect("/dashboard");
   }
-  // Serve alla finestra dei costi di gruppo, il cui menu deve offrire solo le
-  // categorie che il worker accetta per questo settore. Costa un /api/auth/me
-  // per render: il layout chiama getCurrentSession, che e' una entry cache()
-  // diversa sopra un verifySession non memoizzato.
-  const settore = (await getCurrentUser())?.tipo_attivita;
-  return <SintesiCatena overview={overview} settore={settore} />;
+  return <SintesiCatena overview={overview} />;
 }
 
 // Chat di catena: pool AI unico (limite = somma dei limiti delle sedi). Compare

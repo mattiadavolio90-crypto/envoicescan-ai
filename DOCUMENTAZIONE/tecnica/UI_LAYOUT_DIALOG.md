@@ -119,6 +119,13 @@ Audit su **tutti i 65 `DialogContent`** dell'app. Corretti:
 | `sintesi-catena.tsx`, `app-sidebar.tsx` | `min-w-0` mancante sui contenitori intermedi |
 | ~15 file | `flex-1 truncate` senza `min-w-0` |
 
+> **Dal 28/09/2026** le finestre principali della Catena non sono più dialog:
+> `finestra-spesa-pv.tsx`, `finestra-margini-coperti.tsx` e `gruppo-tag-section.tsx`
+> sono le schede di `catena/analisi/` (`scheda-*.tsx`), `finestra-costi-gruppo.tsx`
+> e la coda di `coda-da-assegnare.tsx` le schede di `catena/fatture/`. Restano
+> dialog le finestre secondarie (materia prima per categoria, prodotti e analisi
+> di un tag, anteprima fattura, ripartizione).
+
 ### Verificato e scartato — non rifare
 
 - **`DialogFooter`** (`dialog.tsx`) ha `-mx-4 -mb-4`, che presume un genitore

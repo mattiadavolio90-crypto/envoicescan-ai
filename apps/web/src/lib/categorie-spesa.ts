@@ -62,7 +62,7 @@ export function tipoDaCategoria(categoria: string): TipoSpesa {
 //
 // Restano fuori DI PROPOSITO le forme brevi dei badge compatti, dove il nome
 // per esteso non entra: "F&B"/"Gen." in spese-view e "F&B"/"spese generali" in
-// catena/finestra-costi-gruppo:222. Non sono copie divergenti da unificare, ma
+// catena/fatture/scheda-costi-gruppo. Non sono copie divergenti da unificare, ma
 // abbreviazioni: se un giorno servisse l'etichetta intera, va presa da qui.
 export const TIPO_SPESA_LABEL: Record<TipoSpesa, string> = {
   fb: "Costi F&B",

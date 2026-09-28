@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin, Split, CheckCircle2, ChevronRight, Eye, Ban, Wand2, CheckSquare, Square } from "lucide-react";
+import { AlertTriangle, MapPin, Split, CheckCircle2, Eye, Ban, Wand2, CheckSquare, Square } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { RipartisciDialog, type RegolaPreset } from "@/components/fatture/ripartisci-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Button } from "@/components/ui/button";
+import { PannelloScheda } from "@/components/ui/pannello-scheda";
 import { formatEuro } from "@/lib/format";
 
 type FatturaDaAssegnare = {
@@ -66,21 +68,20 @@ function fmtEuro4(v: number | null | undefined): string {
 
 // Coda delle fatture che l'app non ha saputo attribuire a un locale (P.IVA condivisa
 // fra più sedi + indirizzo assente/ambiguo). È un fenomeno DI GRUPPO: esiste solo per
-// le catene same-P.IVA. Perciò vive SOLO in modalità catena — nel contesto PV il
-// componente non renderizza nulla.
-//
-// In catena si mostra come CARD COMPATTA (riepilogo + totale): un click apre la
-// finestra con la lista completa e le azioni (assegna a un locale / dividi sul gruppo),
-// stesso pattern delle altre finestre catena (Spesa, Costi di gruppo, Margini). Così la
-// Sintesi resta una plancia a colpo d'occhio, senza scroll infinito.
-export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena" }) {
+// le catene same-P.IVA. Perciò vive SOLO in modalità catena: è la scheda «Da
+// collocare» di Gestione Fatture della catena (28/9/2026). Fino ad allora era una
+// card della Home di catena che apriva la lista in una finestra; la Home ora è
+// solo recap e assistenza, e ne tiene l'avviso col conteggio.
+export function CodaDaAssegnare() {
   const router = useRouter();
   const [items, setItems] = useState<FatturaDaAssegnare[]>([]);
   const [sedi, setSedi] = useState<Sede[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Guasto ≠ coda vuota: prima un errore di rete finiva in `items` vuoto e la
+  // card diceva «Tutte le fatture sono al loro posto» su fatture mai lette.
+  const [erroreCarico, setErroreCarico] = useState(false);
   const [busy, setBusy] = useState<Set<number>>(new Set());
   const [ripartisci, setRipartisci] = useState<FatturaDaAssegnare | null>(null);
-  const [finestraOpen, setFinestraOpen] = useState(false);
   const [anteprima, setAnteprima] = useState<FatturaDaAssegnare | null>(null);
   const [righeAnteprima, setRigheAnteprima] = useState<RigaAnteprima[]>([]);
   // Esito anteprima: "ok" mostra le righe; "occupato" = worker lento/irraggiungibile
@@ -143,13 +144,13 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     };
   }, [anteprima]);
 
-  useEffect(() => {
-    if (contesto !== "catena") return;
-    let alive = true;
+  const carica = useCallback((alive: () => boolean = () => true) => {
+    setLoaded(false);
+    setErroreCarico(false);
     fetch("/api/account/sedi", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((sediRes) => {
-        if (!alive) return;
+        if (!alive()) return;
         const lista = (sediRes?.sedi ?? []) as Sede[];
         setSedi(lista);
         if (lista.length < 2) {
@@ -157,20 +158,27 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
           return;
         }
         return fetch("/api/fatture/da-assegnare", { cache: "no-store" })
-          .then((r) => (r.ok ? r.json() : null))
+          .then((r) => (r.ok ? r.json() : Promise.reject()))
           .then((coda) => {
-            if (!alive) return;
-            if (coda?.items) setItems(coda.items as FatturaDaAssegnare[]);
+            if (!alive()) return;
+            setItems(Array.isArray(coda?.items) ? (coda.items as FatturaDaAssegnare[]) : []);
             setLoaded(true);
           });
       })
       .catch(() => {
-        if (alive) setLoaded(true);
+        if (!alive()) return;
+        setErroreCarico(true);
+        setLoaded(true);
       });
+  }, []);
+
+  useEffect(() => {
+    let vivo = true;
+    carica(() => vivo);
     return () => {
-      alive = false;
+      vivo = false;
     };
-  }, [contesto]);
+  }, [carica]);
 
   // `busy` tiene i queue_id in lavorazione, non un id solo: con un valore singolo
   // assegnare UNA riga disabilitava i bottoni di TUTTE (i test erano `busy !== null`),
@@ -312,8 +320,10 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
     setBulkConfermaOpen(true);
   }
 
-  if (contesto !== "catena" || (loaded && sedi.length < 2)) return null;
-  if (!loaded) return null;
+  // Con meno di due sedi non c'e' dove collocare: la pagina di catena rimanda
+  // gia' alla Home del PV, quindi qui ci si arriva solo se l'elenco sedi e il
+  // conteggio del gruppo non concordano. Meglio dirlo che lasciare la scheda vuota.
+  const senzaSedi = loaded && !erroreCarico && sedi.length < 2;
 
   const totale = items.reduce((a, f) => a + (f.importo_totale ?? 0), 0);
   const vuoto = items.length === 0;
@@ -322,240 +332,212 @@ export function CodaDaAssegnare({ contesto = "pv" }: { contesto?: "pv" | "catena
 
   return (
     <>
-      {/* Card compatta: riepilogo a colpo d'occhio, apre la finestra con la lista. */}
-      <button
-        type="button"
-        onClick={() => !vuoto && setFinestraOpen(true)}
-        disabled={vuoto}
-        className={
-          vuoto
-            ? "flex w-full items-center gap-3 rounded-2xl border bg-card p-5 text-left"
-            : "group flex w-full items-center gap-4 rounded-2xl border border-l-4 border-l-incerto bg-card p-5 text-left transition-colors hover:bg-accent"
-        }
-      >
-        <span
-          className={
-            vuoto
-              ? "flex size-11 shrink-0 items-center justify-center rounded-xl bg-positivo/10 text-positivo"
-              : "flex size-11 shrink-0 items-center justify-center rounded-xl bg-incerto/10 text-incerto"
-          }
-        >
-          {vuoto ? <CheckCircle2 className="size-5" /> : <Split className="size-5" />}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2 text-sm font-semibold">
-            Gestione fatture di gruppo
+      <PannelloScheda
+        titolo={
+          <>
+            <Split className="size-4 text-incerto" />
+            Fatture di gruppo da collocare
             {!vuoto && (
               <span className="rounded-full bg-incerto/10 px-2 py-0.5 text-xs font-medium text-incerto">
                 {items.length}
               </span>
             )}
-          </span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            {vuoto
-              ? "Tutte le fatture sono al loro posto."
-              : `Fatture arrivate a nome della società, da collocare · totale ${euro(totale)}`}
-          </span>
-        </span>
-        {!vuoto && (
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
-        )}
-      </button>
-
-      {/* Finestra con la lista completa e le azioni. */}
-      <Dialog
-        open={finestraOpen}
-        onOpenChange={(v) => {
-          setFinestraOpen(v);
-          if (!v) setSelezione(new Set());
-        }}
+          </>
+        }
+        azioni={
+          !vuoto ? (
+            <span>
+              Totale <span className="font-semibold tabular-nums text-foreground">{euro(totale)}</span>
+            </span>
+          ) : undefined
+        }
       >
-        <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,48rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-          <DialogHeader className="shrink-0 border-b px-5 py-4">
-            <DialogTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
-              <span className="flex items-center gap-2">
-                <Split className="size-4 text-incerto" />
-                Gestione fatture di gruppo
-                <span className="rounded-full bg-incerto/10 px-2 py-0.5 text-xs font-medium text-incerto">
-                  {items.length}
-                </span>
-              </span>
-              {!vuoto && (
-                <span className="text-xs font-normal text-muted-foreground">
-                  Totale <span className="font-semibold tabular-nums text-foreground">{euro(totale)}</span>
-                </span>
-              )}
-            </DialogTitle>
-          </DialogHeader>
+        <div className="max-w-4xl">
+          {!loaded ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
+          ) : erroreCarico ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <AlertTriangle className="size-7 text-negativo" />
+              <p className="text-sm text-muted-foreground">
+                Non è stato possibile caricare le fatture da collocare.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => carica()}>
+                Riprova
+              </Button>
+            </div>
+          ) : senzaSedi ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              Per collocare le fatture servono almeno due punti vendita attivi.
+            </div>
+          ) : vuoto ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              <CheckCircle2 className="size-7 text-positivo" />
+              <p className="text-sm text-muted-foreground">Tutte le fatture sono al loro posto.</p>
+            </div>
+          ) : (
+            <>
+              <p className="mb-3 text-sm font-medium text-incerto">
+                Scegli la sede se è di un locale, oppure “Dividi tra i locali” se è un costo comune.
+              </p>
 
-          <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3">
-            <p className="mb-3 text-sm font-medium text-incerto">
-              Scegli la sede se è di un locale, oppure “Dividi tra i locali” se è un costo comune.
-            </p>
-
-            {/* Riga selezione: "seleziona tutte" + barra azioni bulk quando c'è almeno
-                una fattura flaggata. Le azioni bulk valgono per la destinazione comune
-                (stessa sede) o per lo scarto; il riparto resta per-fattura (ogni costo
-                comune ha le sue quote), quindi non entra nel bulk. */}
-            {items.length > 0 && (
-              <div className="mb-3 space-y-2">
-                <button
-                  type="button"
-                  onClick={toggleTutte}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {tutteSelezionate ? (
-                    <CheckSquare className="size-3.5 text-primary" />
-                  ) : (
-                    <Square className="size-3.5" />
-                  )}
-                  {tutteSelezionate ? "Deseleziona tutte" : "Seleziona tutte"}
-                </button>
-
-                {nSelezionate > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-                    <span className="text-xs font-semibold text-primary">
-                      {nSelezionate} {nSelezionate === 1 ? "selezionata" : "selezionate"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">→ assegna a:</span>
-                    {sedi.map((s) => (
-                      <button
-                        key={s.id}
-                        disabled={bulkBusy}
-                        onClick={() => eseguiBulk((id) => assegnaCore(id, s.id), `assegnate a ${s.nome}`)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-accent hover:border-primary disabled:opacity-50"
-                      >
-                        <MapPin className="size-3.5" />
-                        {s.nome}
-                      </button>
-                    ))}
-                    <button
-                      disabled={bulkBusy}
-                      onClick={bulkScarta}
-                      className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                    >
-                      <Ban className="size-3.5" />
-                      Non sono di nessun locale
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {items.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                Nessuna fattura da collocare.
-              </div>
-            ) : (
-              <ul className="space-y-3">
-                {items.map((f) => (
-                  <li
-                    key={f.queue_id}
-                    className={
-                      selezione.has(f.queue_id)
-                        ? "rounded-xl border border-primary/50 bg-primary/5 p-3 space-y-2"
-                        : "rounded-xl border border-border bg-card p-3 space-y-2"
-                    }
+              {/* Riga selezione: "seleziona tutte" + barra azioni bulk quando c'è almeno
+                  una fattura flaggata. Le azioni bulk valgono per la destinazione comune
+                  (stessa sede) o per lo scarto; il riparto resta per-fattura (ogni costo
+                  comune ha le sue quote), quindi non entra nel bulk. */}
+              {items.length > 0 && (
+                <div className="mb-3 space-y-2">
+                  <button
+                    type="button"
+                    onClick={toggleTutte}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleSelezione(f.queue_id)}
-                        aria-label={selezione.has(f.queue_id) ? "Deseleziona fattura" : "Seleziona fattura"}
-                        className="self-center text-muted-foreground transition-colors hover:text-primary"
-                      >
-                        {selezione.has(f.queue_id) ? (
-                          <CheckSquare className="size-4 text-primary" />
-                        ) : (
-                          <Square className="size-4" />
-                        )}
-                      </button>
-                      {/* Il nome del fornitore è ciò che fa riconoscere la fattura:
-                          la P.IVA da sola non dice niente a chi deve decidere il locale. */}
-                      <span className="font-medium">
-                        {f.fornitore_nome || (f.fornitore ? `Fornitore P.IVA ${f.fornitore}` : "Fattura")}
+                    {tutteSelezionate ? (
+                      <CheckSquare className="size-3.5 text-primary" />
+                    ) : (
+                      <Square className="size-3.5" />
+                    )}
+                    {tutteSelezionate ? "Deseleziona tutte" : "Seleziona tutte"}
+                  </button>
+
+                  {nSelezionate > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                      <span className="text-xs font-semibold text-primary">
+                        {nSelezionate} {nSelezionate === 1 ? "selezionata" : "selezionate"}
                       </span>
-                      {f.numero_fattura && <span className="text-muted-foreground">n. {f.numero_fattura}</span>}
-                      {f.data_fattura && <span className="text-muted-foreground">{f.data_fattura}</span>}
-                      {f.importo_totale != null && (
-                        <span className="ml-auto font-medium tabular-nums">
-                          € {f.importo_totale.toLocaleString("it-IT", { minimumFractionDigits: 2 })}
-                        </span>
-                      )}
-                    </div>
-
-                    {f.indirizzo_destinatario && (
-                      <div className="text-xs text-muted-foreground">
-                        Indirizzo in fattura: <span className="font-medium">{f.indirizzo_destinatario}</span>
-                      </div>
-                    )}
-
-                    {/* Regola memorizzata per questo fornitore: la fattura è già pronta
-                        da dividere come le volte scorse. Un click apre il dialog
-                        pre-compilato (il cliente conferma sempre, mai auto-applicazione). */}
-                    {f.regola_fornitore && (
-                      <div className="rounded-md bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
-                        Criterio memorizzato per questo fornitore:{" "}
-                        <span className="font-medium">{descriveRegola(f.regola_fornitore, sedi.length)}</span>.
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <button
-                        onClick={() => setAnteprima(f)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-incerto/40 px-3 py-1.5 text-xs font-medium text-incerto transition-colors hover:bg-incerto/10 hover:border-incerto"
-                      >
-                        <Eye className="size-3.5" />
-                        Anteprima
-                      </button>
-                      {f.regola_fornitore && (
-                        <button
-                          disabled={inCorso(f.queue_id)}
-                          onClick={() => setRipartisci(f)}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-                        >
-                          <Wand2 className="size-3.5" />
-                          Dividi come al solito
-                        </button>
-                      )}
+                      <span className="text-xs text-muted-foreground">→ assegna a:</span>
                       {sedi.map((s) => (
                         <button
                           key={s.id}
-                          disabled={inCorso(f.queue_id)}
-                          onClick={() => assegna(f.queue_id, s.id)}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:border-primary disabled:opacity-50"
+                          disabled={bulkBusy}
+                          onClick={() => eseguiBulk((id) => assegnaCore(id, s.id), `assegnate a ${s.nome}`)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium transition-colors hover:bg-accent hover:border-primary disabled:opacity-50"
                         >
                           <MapPin className="size-3.5" />
                           {s.nome}
                         </button>
                       ))}
                       <button
-                        disabled={inCorso(f.queue_id)}
-                        onClick={() => setRipartisci(f)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 hover:border-primary disabled:opacity-50"
-                      >
-                        <Split className="size-3.5" />
-                        Dividi tra i locali
-                      </button>
-                      {/* Terza via, oltre ad assegnare e dividere: il documento non
-                          riguarda nessun locale. Defilato (ml-auto, grigio) perché è
-                          l'eccezione, non l'azione attesa. */}
-                      <button
-                        disabled={inCorso(f.queue_id)}
-                        onClick={() => setDaScartare(f)}
-                        className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                        disabled={bulkBusy}
+                        onClick={bulkScarta}
+                        className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                       >
                         <Ban className="size-3.5" />
-                        Non è di nessun locale
+                        Non sono di nessun locale
                       </button>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+                  )}
+                </div>
+              )}
+
+              <ul className="space-y-3">
+                  {items.map((f) => (
+                    <li
+                      key={f.queue_id}
+                      className={
+                        selezione.has(f.queue_id)
+                          ? "rounded-xl border border-primary/50 bg-primary/5 p-3 space-y-2"
+                          : "rounded-xl border border-border bg-card p-3 space-y-2"
+                      }
+                    >
+                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelezione(f.queue_id)}
+                          aria-label={selezione.has(f.queue_id) ? "Deseleziona fattura" : "Seleziona fattura"}
+                          className="self-center text-muted-foreground transition-colors hover:text-primary"
+                        >
+                          {selezione.has(f.queue_id) ? (
+                            <CheckSquare className="size-4 text-primary" />
+                          ) : (
+                            <Square className="size-4" />
+                          )}
+                        </button>
+                        {/* Il nome del fornitore è ciò che fa riconoscere la fattura:
+                            la P.IVA da sola non dice niente a chi deve decidere il locale. */}
+                        <span className="font-medium">
+                          {f.fornitore_nome || (f.fornitore ? `Fornitore P.IVA ${f.fornitore}` : "Fattura")}
+                        </span>
+                        {f.numero_fattura && <span className="text-muted-foreground">n. {f.numero_fattura}</span>}
+                        {f.data_fattura && <span className="text-muted-foreground">{f.data_fattura}</span>}
+                        {f.importo_totale != null && (
+                          <span className="ml-auto font-medium tabular-nums">
+                            € {f.importo_totale.toLocaleString("it-IT", { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                      </div>
+
+                      {f.indirizzo_destinatario && (
+                        <div className="text-xs text-muted-foreground">
+                          Indirizzo in fattura: <span className="font-medium">{f.indirizzo_destinatario}</span>
+                        </div>
+                      )}
+
+                      {/* Regola memorizzata per questo fornitore: la fattura è già pronta
+                          da dividere come le volte scorse. Un click apre il dialog
+                          pre-compilato (il cliente conferma sempre, mai auto-applicazione). */}
+                      {f.regola_fornitore && (
+                        <div className="rounded-md bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
+                          Criterio memorizzato per questo fornitore:{" "}
+                          <span className="font-medium">{descriveRegola(f.regola_fornitore, sedi.length)}</span>.
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          onClick={() => setAnteprima(f)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-incerto/40 px-3 py-1.5 text-xs font-medium text-incerto transition-colors hover:bg-incerto/10 hover:border-incerto"
+                        >
+                          <Eye className="size-3.5" />
+                          Anteprima
+                        </button>
+                        {f.regola_fornitore && (
+                          <button
+                            disabled={inCorso(f.queue_id)}
+                            onClick={() => setRipartisci(f)}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                          >
+                            <Wand2 className="size-3.5" />
+                            Dividi come al solito
+                          </button>
+                        )}
+                        {sedi.map((s) => (
+                          <button
+                            key={s.id}
+                            disabled={inCorso(f.queue_id)}
+                            onClick={() => assegna(f.queue_id, s.id)}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:border-primary disabled:opacity-50"
+                          >
+                            <MapPin className="size-3.5" />
+                            {s.nome}
+                          </button>
+                        ))}
+                        <button
+                          disabled={inCorso(f.queue_id)}
+                          onClick={() => setRipartisci(f)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 hover:border-primary disabled:opacity-50"
+                        >
+                          <Split className="size-3.5" />
+                          Dividi tra i locali
+                        </button>
+                        {/* Terza via, oltre ad assegnare e dividere: il documento non
+                            riguarda nessun locale. Defilato (ml-auto, grigio) perché è
+                            l'eccezione, non l'azione attesa. */}
+                        <button
+                          disabled={inCorso(f.queue_id)}
+                          onClick={() => setDaScartare(f)}
+                          className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                        >
+                          <Ban className="size-3.5" />
+                          Non è di nessun locale
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+            </>
+          )}
+        </div>
+      </PannelloScheda>
 
       {/* Anteprima: righe reali della fattura, stesso dettaglio di Gestione Fatture.
           Parsing "a caldo" dal documento ancora in coda (nessuna scrittura, categoria

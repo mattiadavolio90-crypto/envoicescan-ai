@@ -1,5 +1,5 @@
-// Quello che le finestre di catena MANDANO al backend — estratto da
-// `(app)/catena/finestra-costi-gruppo.tsx` e `config-assistente-catena.tsx`.
+// Quello che le schermate di catena MANDANO al backend — estratto da
+// `(app)/catena/fatture/scheda-costi-gruppo.tsx` e `config-assistente-catena.tsx`.
 //
 // I due file stanno nello stesso modulo per una ragione di dominio, non di
 // comodita': sono le due schermate dell'area che scrivono. Un errore nelle
@@ -15,7 +15,7 @@
 import { parseNumeroIt } from "@/lib/format";
 import { daScegliereCategoria } from "@/lib/categorie-spesa";
 
-/* ─── finestra-costi-gruppo.tsx: il costo manuale che si scrive ──────────── */
+/* ─── fatture/scheda-costi-gruppo.tsx: il costo manuale che si scrive ────── */
 
 /**
  * Importo digitato a mano nel dialog "Aggiungi costo".

@@ -36,6 +36,7 @@ import type {
   GruppoTagProdotto,
   GruppoTagAnalisi,
 } from "@/lib/gruppo";
+import { PannelloScheda } from "@/components/ui/pannello-scheda";
 
 // `formatEuro(v, 2)` con la guardia sul null: "—" e non "0,00 €" quando il dato
 // non c'e'. Le due copie di questa funzione divergevano (una con il separatore
@@ -55,15 +56,10 @@ function pct(n: number): string {
 // byte per byte.
 const EMOJI = EMOJI_TAG;
 
-// Tag di catena = FINESTRA della plancia /catena (non una pagina separata).
-// Raggruppa lo stesso prodotto su tutti i PV e confronta la spesa per sede.
-export function TagCatenaDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
+// Tag di catena = scheda di «Analisi catena» (fino al 28/9 era una finestra
+// della Home di catena). Raggruppa lo stesso prodotto su tutti i PV e confronta
+// la spesa per sede.
+export function SchedaTagCatena() {
   const [tags, setTags] = useState<GruppoTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [nuovo, setNuovo] = useState("");
@@ -85,10 +81,9 @@ export function TagCatenaDialog({
     }
   }, []);
 
-  // Carica solo all'apertura della finestra (lazy → non pesa sulla Sintesi).
   useEffect(() => {
-    if (open) loadTags();
-  }, [open, loadTags]);
+    loadTags();
+  }, [loadTags]);
 
   async function creaTag() {
     const nome = nuovo.trim();
@@ -128,98 +123,97 @@ export function TagCatenaDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,46rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-          <DialogHeader className="shrink-0 border-b px-5 py-4">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Building2 className="size-5 text-primary" />
-              Tag di catena
-            </DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-auto p-5">
-            <p className="text-sm text-muted-foreground">
-              Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
-              per sede. Sono separati dai tag del singolo locale.
-            </p>
+      <PannelloScheda
+        titolo={
+          <>
+            <Building2 className="size-5 text-primary-text" />
+            Tag di catena
+          </>
+        }
+      >
+        <div className="max-w-3xl">
+          <p className="text-sm text-muted-foreground">
+            Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
+            per sede. Sono separati dai tag del singolo locale.
+          </p>
 
-            {/* Crea nuovo tag: nome + emoji (opzionale) → poi si aprono i prodotti */}
-            <div className="mt-4 space-y-2">
-              <div className="flex gap-2">
-                <Input
-                  value={nuovo}
-                  onChange={(e) => setNuovo(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && creaTag()}
-                  placeholder="Nuovo tag di catena (es. Salmone, Imballaggi…)"
-                  disabled={creating}
-                />
-                <Button onClick={creaTag} disabled={creating || !nuovo.trim()}>
-                  <Plus className="size-4" />
-                  Crea
-                </Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="mr-1 text-xs text-muted-foreground">Emoji:</span>
-                {EMOJI.map((em) => (
-                  <button
-                    key={em}
-                    type="button"
-                    onClick={() => setNuovaEmoji((p) => (p === em ? "" : em))}
-                    className={`flex size-7 items-center justify-center rounded-md border text-base transition-colors ${
-                      nuovaEmoji === em ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"
-                    }`}
-                  >
-                    {em}
-                  </button>
-                ))}
-              </div>
+          {/* Crea nuovo tag: nome + emoji (opzionale) → poi si aprono i prodotti */}
+          <div className="mt-4 space-y-2">
+            <div className="flex gap-2">
+              <Input
+                value={nuovo}
+                onChange={(e) => setNuovo(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && creaTag()}
+                placeholder="Nuovo tag di catena (es. Salmone, Imballaggi…)"
+                disabled={creating}
+              />
+              <Button onClick={creaTag} disabled={creating || !nuovo.trim()}>
+                <Plus className="size-4" />
+                Crea
+              </Button>
             </div>
-
-            {/* Lista tag */}
-            <div className="mt-4 space-y-2">
-              {loading ? (
-                <p className="text-sm text-muted-foreground">Caricamento…</p>
-              ) : tags.length === 0 ? (
-                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
-                  Nessun tag di catena. Creane uno per confrontare un prodotto fra i punti vendita.
-                </p>
-              ) : (
-                tags.map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-3 rounded-xl border bg-background/40 px-4 py-3"
-                  >
-                    {t.emoji ? (
-                      <span className="shrink-0 text-base">{t.emoji}</span>
-                    ) : (
-                      <TagIcon className="size-4 shrink-0 text-muted-foreground" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium" title={t.nome}>{t.nome}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {t.n_prodotti ?? 0} {t.n_prodotti === 1 ? "prodotto" : "prodotti"}
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={() => setProdottiTag(t)}>
-                      <Search className="size-4" />
-                      Prodotti
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setAnalisiTag(t)}>
-                      <BarChart3 className="size-4" />
-                      Analisi
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => eliminaTag(t.id)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                ))
-              )}
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-xs text-muted-foreground">Emoji:</span>
+              {EMOJI.map((em) => (
+                <button
+                  key={em}
+                  type="button"
+                  onClick={() => setNuovaEmoji((p) => (p === em ? "" : em))}
+                  className={`flex size-7 items-center justify-center rounded-md border text-base transition-colors ${
+                    nuovaEmoji === em ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"
+                  }`}
+                >
+                  {em}
+                </button>
+              ))}
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+
+          {/* Lista tag */}
+          <div className="mt-4 space-y-2">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Caricamento…</p>
+            ) : tags.length === 0 ? (
+              <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                Nessun tag di catena. Creane uno per confrontare un prodotto fra i punti vendita.
+              </p>
+            ) : (
+              tags.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-3 rounded-xl border bg-background/40 px-4 py-3"
+                >
+                  {t.emoji ? (
+                    <span className="shrink-0 text-base">{t.emoji}</span>
+                  ) : (
+                    <TagIcon className="size-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium" title={t.nome}>{t.nome}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t.n_prodotti ?? 0} {t.n_prodotti === 1 ? "prodotto" : "prodotti"}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => setProdottiTag(t)}>
+                    <Search className="size-4" />
+                    Prodotti
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setAnalisiTag(t)}>
+                    <BarChart3 className="size-4" />
+                    Analisi
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => eliminaTag(t.id)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </PannelloScheda>
 
       {prodottiTag && (
         <ProdottiDialog

@@ -26,6 +26,7 @@ import { categorieSelezionabili, type Settore } from "@/lib/categorie-spesa";
 import { formatEuro as euro } from "@/lib/format";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { daScegliereCategoria } from "@/lib/categorie-spesa";
+import { PannelloScheda } from "@/components/ui/pannello-scheda";
 
 type Quota = {
   ristorante_id: string;
@@ -87,15 +88,7 @@ type CostiComuniRes = {
   da_classificare_non_correggibili?: number;
 };
 
-export function FinestraCostiGruppo({
-  open,
-  onOpenChange,
-  settore,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  settore?: Settore | null;
-}) {
+export function SchedaCostiGruppo({ settore }: { settore?: Settore | null }) {
   // Le categorie offerte devono essere quelle che il worker accetta: le sei
   // whitelist di scrittura rifiutano CARNE per un negozio con un 400, e questo
   // menu la offriva. Senza settore resta la lista di oggi.
@@ -138,9 +131,8 @@ export function FinestraCostiGruppo({
   }, [annoCorrente, mese]);
 
   useEffect(() => {
-    if (!open) return;
     carica();
-  }, [open, carica]);
+  }, [carica]);
 
   async function elimina(c: Costo) {
     if (busy) return;
@@ -211,200 +203,196 @@ export function FinestraCostiGruppo({
   const righeDaControllare = contaRigheDaClassificare(data?.costi);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,56rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="shrink-0 border-b px-5 py-4">
-          <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
-            <span>Costi di gruppo</span>
-            <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-              <NativeSelect
-                value={String(mese)}
-                onValueChange={(v) => setMese(Number(v))}
-                className="h-8 w-40 text-xs"
-              >
-                {MESI.slice(0, meseCorrente).map((m, i) => (
-                  <option key={i + 1} value={String(i + 1)}>
-                    {m} {annoCorrente}
-                  </option>
-                ))}
-              </NativeSelect>
-              <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-                <Plus className="size-3.5" />
-                Aggiungi costo
-              </Button>
-            </span>
-          </DialogTitle>
-        </DialogHeader>
+    <PannelloScheda
+      titolo="Costi di gruppo"
+      azioni={
+        <>
+          <NativeSelect
+            value={String(mese)}
+            onValueChange={(v) => setMese(Number(v))}
+            className="h-8 w-40 text-xs"
+          >
+            {MESI.slice(0, meseCorrente).map((m, i) => (
+              <option key={i + 1} value={String(i + 1)}>
+                {m} {annoCorrente}
+              </option>
+            ))}
+          </NativeSelect>
+          <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+            <Plus className="size-3.5" />
+            Aggiungi costo
+          </Button>
+        </>
+      }
+    >
+      <div className="max-w-4xl">
+        <p className="mb-3 text-xs text-muted-foreground">
+          Costi di struttura intestati alla sede legale, divisi fra i punti vendita. La quota di
+          ogni sede entra nel suo MOL; nell&apos;analisi fatture il documento resta intero.
+        </p>
 
-        <div className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3">
-          <p className="mb-3 text-xs text-muted-foreground">
-            Costi di struttura intestati alla sede legale, divisi fra i punti vendita. La quota di
-            ogni sede entra nel suo MOL; nell&apos;analisi fatture il documento resta intero.
-          </p>
-
-          {loading && !data ? (
-            <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
-          ) : loadError && !data ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <AlertTriangle className="size-7 text-negativo" />
-              <p className="text-sm text-muted-foreground">
-                Non è stato possibile caricare i dati.
-              </p>
-              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
-                Riprova
-              </Button>
-            </div>
-          ) : !data || data.costi.length === 0 ? (
-            <div className="py-16 text-center text-sm text-muted-foreground">
-              Nessun costo di gruppo in {MESI[mese - 1]}. Ripartisci una fattura dal suo dettaglio, o
-              aggiungi un costo manuale (es. stipendi ufficio).
-            </div>
-          ) : (
-            <ul className="space-y-3">
-              {data.costi.map((c) => (
-                <li key={c.id} className="rounded-lg border bg-card p-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <span className="flex items-center gap-1.5 text-sm font-medium">
-                      {c.origine === "fattura" ? (
-                        <FileText className="size-3.5 text-muted-foreground" />
-                      ) : (
-                        <PencilLine className="size-3.5 text-muted-foreground" />
-                      )}
-                      {c.descrizione}
-                      <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[0.65rem] font-normal text-muted-foreground">
-                        {c.tipo === "fb" ? "F&B" : "spese generali"}
-                      </span>
-                    </span>
-                    <span className="font-semibold tabular-nums">{euro(c.importo_totale)}</span>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    {c.quote.map((q) => (
-                      <span key={q.ristorante_id}>
-                        {q.sede}{" "}
-                        <span className="font-medium text-foreground tabular-nums">{euro(q.quota_importo)}</span>{" "}
-                        ({q.quota_perc.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%)
-                      </span>
-                    ))}
-                    <span className="text-muted-foreground/70">
-                      {c.regola === "equa" ? "parti uguali" : "percentuali"}
-                    </span>
-                  </div>
-
-                  <DettagliCosto costo={c} onCorretto={carica} categorieMenu={categorieMenu} />
-
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {c.regola === "percentuali" && (
-                      <button
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() => setDaRiequilibrare(c)}
-                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-50"
-                      >
-                        <Scale className="size-3.5" />
-                        Riporta a parti uguali
-                      </button>
+        {loading && !data ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+        ) : loadError && !data ? (
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <AlertTriangle className="size-7 text-negativo" />
+            <p className="text-sm text-muted-foreground">
+              Non è stato possibile caricare i dati.
+            </p>
+            <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+              Riprova
+            </Button>
+          </div>
+        ) : !data || data.costi.length === 0 ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">
+            Nessun costo di gruppo in {MESI[mese - 1]}. Ripartisci una fattura dal suo dettaglio, o
+            aggiungi un costo manuale (es. stipendi ufficio).
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {data.costi.map((c) => (
+              <li key={c.id} className="rounded-lg border bg-card p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <span className="flex items-center gap-1.5 text-sm font-medium">
+                    {c.origine === "fattura" ? (
+                      <FileText className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <PencilLine className="size-3.5 text-muted-foreground" />
                     )}
-                    {c.origine === "manuale" && (
-                      <button
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() => duplica(c)}
-                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-50"
-                      >
-                        <CopyPlus className="size-3.5" />
-                        Duplica sul mese dopo
-                      </button>
-                    )}
+                    {c.descrizione}
+                    <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[0.65rem] font-normal text-muted-foreground">
+                      {c.tipo === "fb" ? "F&B" : "spese generali"}
+                    </span>
+                  </span>
+                  <span className="font-semibold tabular-nums">{euro(c.importo_totale)}</span>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {c.quote.map((q) => (
+                    <span key={q.ristorante_id}>
+                      {q.sede}{" "}
+                      <span className="font-medium text-foreground tabular-nums">{euro(q.quota_importo)}</span>{" "}
+                      ({q.quota_perc.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%)
+                    </span>
+                  ))}
+                  <span className="text-muted-foreground/70">
+                    {c.regola === "equa" ? "parti uguali" : "percentuali"}
+                  </span>
+                </div>
+
+                <DettagliCosto costo={c} onCorretto={carica} categorieMenu={categorieMenu} />
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {c.regola === "percentuali" && (
                     <button
                       type="button"
                       disabled={busy !== null}
-                      onClick={() => setDaEliminare(c)}
-                      className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                      onClick={() => setDaRiequilibrare(c)}
+                      className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-50"
                     >
-                      <Trash2 className="size-3.5" />
-                      {c.origine === "fattura" ? "Rimuovi ripartizione" : "Elimina"}
+                      <Scale className="size-3.5" />
+                      Riporta a parti uguali
                     </button>
-                  </div>
-                </li>
-              ))}
-              <li className="flex items-center justify-between border-t pt-3 text-sm font-semibold">
-                <span>Totale costi di gruppo</span>
-                <span className="tabular-nums">{euro(data.totale)}</span>
-              </li>
-            </ul>
-          )}
-
-          {/* Due avvisi indipendenti, non piu' uno annidato nell'altro.
-              Il primo conta le righe da controllare (correggibili da qui, subito
-              sotto); il secondo parla dei costi la cui fattura d'origine non
-              esiste piu' — un problema che da questa finestra non si risolve e
-              che il conteggio a righe, per costruzione, non vede. */}
-          {mostraAvvisoDaClassificare(righeDaControllare) && (
-            <div className="mt-3 flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <p>
-                Il MOL di questo mese non è ancora affidabile:{" "}
-                <strong className="tabular-nums">
-                  {frammentoRigheDaControllare(righeDaControllare)}
-                </strong>{" "}
-                da controllare. Aprile qui sopra e assegna la categoria.
-              </p>
-            </div>
-          )}
-
-          {frammentoNonCorreggibili(
-            data?.da_classificare_non_correggibili,
-            data?.da_classificare_costi,
-          ) && (
-            <div className="mt-3 flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <p>
-                <strong>
-                  {frammentoNonCorreggibili(
-                    data!.da_classificare_non_correggibili,
-                    data!.da_classificare_costi,
                   )}
-                </strong>{" "}
-                da cui correggere le quote non classificate: la fattura
-                d&apos;origine non è più presente, quindi vanno rifatti
-                eliminando e ricreando il costo di gruppo.
-              </p>
-            </div>
-          )}
-        </div>
+                  {c.origine === "manuale" && (
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => duplica(c)}
+                      className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-50"
+                    >
+                      <CopyPlus className="size-3.5" />
+                      Duplica sul mese dopo
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => setDaEliminare(c)}
+                    className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                  >
+                    <Trash2 className="size-3.5" />
+                    {c.origine === "fattura" ? "Rimuovi ripartizione" : "Elimina"}
+                  </button>
+                </div>
+              </li>
+            ))}
+            <li className="flex items-center justify-between border-t pt-3 text-sm font-semibold">
+              <span>Totale costi di gruppo</span>
+              <span className="tabular-nums">{euro(data.totale)}</span>
+            </li>
+          </ul>
+        )}
 
-        <AggiungiCostoDialog
-          open={addOpen}
-          onOpenChange={setAddOpen}
-          anno={annoCorrente}
-          mese={mese}
-          onDone={() => {
-            setAddOpen(false);
-            carica();
-          }}
-          categorieMenu={categorieMenu}
-        />
+        {/* Due avvisi indipendenti, non piu' uno annidato nell'altro.
+            Il primo conta le righe da controllare (correggibili da qui, subito
+            sotto); il secondo parla dei costi la cui fattura d'origine non
+            esiste piu' — un problema che da questa finestra non si risolve e
+            che il conteggio a righe, per costruzione, non vede. */}
+        {mostraAvvisoDaClassificare(righeDaControllare) && (
+          <div className="mt-3 flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>
+              Il MOL di questo mese non è ancora affidabile:{" "}
+              <strong className="tabular-nums">
+                {frammentoRigheDaControllare(righeDaControllare)}
+              </strong>{" "}
+              da controllare. Aprile qui sopra e assegna la categoria.
+            </p>
+          </div>
+        )}
 
-        <ConfirmDialog
-          open={daRiequilibrare !== null}
-          titolo="Ripartire in parti uguali?"
-          messaggio="Le percentuali impostate su questo costo verranno sostituite e non sono recuperabili."
-          confermaLabel="Riparti in parti uguali"
-          onConferma={() => { if (daRiequilibrare) riportaAParitUguali(daRiequilibrare); }}
-          onClose={() => setDaRiequilibrare(null)}
-        />
+        {frammentoNonCorreggibili(
+          data?.da_classificare_non_correggibili,
+          data?.da_classificare_costi,
+        ) && (
+          <div className="mt-3 flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>
+              <strong>
+                {frammentoNonCorreggibili(
+                  data!.da_classificare_non_correggibili,
+                  data!.da_classificare_costi,
+                )}
+              </strong>{" "}
+              da cui correggere le quote non classificate: la fattura
+              d&apos;origine non è più presente, quindi vanno rifatti
+              eliminando e ricreando il costo di gruppo.
+            </p>
+          </div>
+        )}
+      </div>
 
-        <ConfirmDialog
-          open={daEliminare !== null}
-          titolo={daEliminare?.origine === "fattura" ? "Rimuovere la ripartizione?" : "Eliminare questo costo di gruppo?"}
-          messaggio={daEliminare?.origine === "fattura" ? "Il costo tornerà intero sulla sede intestataria." : undefined}
-          confermaLabel={daEliminare?.origine === "fattura" ? "Rimuovi" : "Elimina"}
-          onConferma={() => { if (daEliminare) elimina(daEliminare); }}
-          onClose={() => setDaEliminare(null)}
-        />
-      </DialogContent>
-    </Dialog>
+      <AggiungiCostoDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        anno={annoCorrente}
+        mese={mese}
+        onDone={() => {
+          setAddOpen(false);
+          carica();
+        }}
+        categorieMenu={categorieMenu}
+      />
+
+      <ConfirmDialog
+        open={daRiequilibrare !== null}
+        titolo="Ripartire in parti uguali?"
+        messaggio="Le percentuali impostate su questo costo verranno sostituite e non sono recuperabili."
+        confermaLabel="Riparti in parti uguali"
+        onConferma={() => { if (daRiequilibrare) riportaAParitUguali(daRiequilibrare); }}
+        onClose={() => setDaRiequilibrare(null)}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo={daEliminare?.origine === "fattura" ? "Rimuovere la ripartizione?" : "Eliminare questo costo di gruppo?"}
+        messaggio={daEliminare?.origine === "fattura" ? "Il costo tornerà intero sulla sede intestataria." : undefined}
+        confermaLabel={daEliminare?.origine === "fattura" ? "Rimuovi" : "Elimina"}
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
+      />
+    </PannelloScheda>
   );
 }
 

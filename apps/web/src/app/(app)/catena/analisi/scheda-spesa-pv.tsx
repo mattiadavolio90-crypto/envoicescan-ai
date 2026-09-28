@@ -1,0 +1,248 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { AlertTriangle, Download, Truck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { formatEuro as euro } from "@/lib/format";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
+import { type SpesaPivot } from "@/lib/gruppo";
+import { abbreviaNomiPv, calcolaMaxCell, cellStyle, incidenzaPct, intervalloMese, pvPiuCaro } from "@/lib/catena-confronti";
+import {
+  etichettaDimensione,
+  headerPivot,
+  nomeFilePivot,
+  nomeFoglioPivot,
+  rigaExportPivot,
+  rigaTotalePivot,
+} from "@/lib/catena-export";
+import { AREA_TABELLA, PannelloScheda } from "@/components/ui/pannello-scheda";
+
+export function SchedaSpesaPV() {
+  const [dimensione, setDimensione] = useState<"categoria" | "fornitore">("categoria");
+  // Periodo: "anno" = anno in corso (default), oppure un mese (1-12) dell'anno in corso.
+  const [periodo, setPeriodo] = useState<string>("anno");
+  const [data, setData] = useState<SpesaPivot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const reqRef = useRef(0);
+
+  const annoCorrente = new Date().getFullYear();
+  const meseCorrente = new Date().getMonth() + 1; // 1-12
+
+  const intestazioniPv = useMemo(
+    () => abbreviaNomiPv((data?.pv ?? []).map((p) => p.nome)),
+    [data],
+  );
+
+  const carica = useCallback(() => {
+    const my = ++reqRef.current;
+    setLoading(true);
+    setLoadError(false);
+    const qs = new URLSearchParams({ dimensione });
+    if (periodo !== "anno") {
+      const { data_da, data_a } = intervalloMese(annoCorrente, Number(periodo));
+      qs.set("data_da", data_da);
+      qs.set("data_a", data_a);
+    }
+    fetch(`/api/gruppo/spesa-pivot?${qs.toString()}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => {
+        if (my === reqRef.current) setData(j);
+      })
+      .catch(() => {
+        if (my === reqRef.current) {
+          setLoadError(true);
+          toast.error("Errore nel caricamento della spesa per PV");
+        }
+      })
+      .finally(() => {
+        if (my === reqRef.current) setLoading(false);
+      });
+  }, [dimensione, periodo, annoCorrente]);
+
+  useEffect(() => {
+    carica();
+  }, [carica]);
+
+  const maxCell = data ? calcolaMaxCell(data.rows, data.pv) : 0;
+
+  // Export Excel della pivot (xlsx lazy: libreria pesante, solo al click).
+  async function exportXls() {
+    if (!data) return;
+    const XLSX = await import("xlsx");
+    const dimLabel = etichettaDimensione(data.dimensione);
+    // Nomi INTERI, non le intestazioni abbreviate dello schermo: li' il prefisso
+    // comune si toglie perche' le altre colonne danno il contesto, in un foglio
+    // Excel aperto mesi dopo «MARIANO» da solo non dice di chi e'.
+    const header = headerPivot(dimLabel, data.pv);
+    const rows = data.rows.map((r) => rigaExportPivot(r, data.pv, dimLabel));
+    const totaleRow = rigaTotalePivot(data.totali_pv, data.grand_total, data.pv, dimLabel);
+    const ws = XLSX.utils.json_to_sheet([...rows, totaleRow], { header });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, nomeFoglioPivot(dimLabel));
+    // Nome file coerente col periodo selezionato (es. spesa_per_pv_categoria_giugno-2026.xlsx).
+    XLSX.writeFile(
+      wb,
+      nomeFilePivot(data.dimensione, data.periodo_label, new Date().toISOString().slice(0, 10)),
+    );
+  }
+
+  return (
+    <PannelloScheda
+      titolo="Spesa per punto vendita"
+      azioni={
+        <>
+          <NativeSelect
+            value={periodo}
+            onValueChange={setPeriodo}
+            className="h-8 w-48 text-xs"
+          >
+            <option value="anno">Anno in corso ({annoCorrente})</option>
+            {MESI.slice(0, meseCorrente).map((m, i) => (
+              <option key={i + 1} value={String(i + 1)}>
+                {m} {annoCorrente}
+              </option>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            value={dimensione}
+            onValueChange={(v) => setDimensione(v as "categoria" | "fornitore")}
+            className="h-8 w-36 text-xs"
+          >
+            <option value="categoria">Per categoria</option>
+            <option value="fornitore">Per fornitore</option>
+          </NativeSelect>
+          <button
+            type="button"
+            onClick={exportXls}
+            disabled={!data || data.rows.length === 0}
+            className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
+          >
+            <Download className="size-3.5" />
+            Esporta
+          </button>
+        </>
+      }
+    >
+      <div className={AREA_TABELLA}>
+        {loading && !data ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+        ) : loadError && !data ? (
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <AlertTriangle className="size-7 text-negativo" />
+            <p className="text-sm text-muted-foreground">
+              Non è stato possibile caricare i dati.
+            </p>
+            <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+              Riprova
+            </Button>
+          </div>
+        ) : !data || data.rows.length === 0 ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">
+            Nessuna spesa nel periodo.
+          </div>
+        ) : (
+          <table className="w-full border-separate border-spacing-0 text-sm">
+            <thead className="sticky top-0 z-30 bg-card shadow-[0_1px_0_0_var(--color-border)]">
+              <tr>
+                <th className="sticky left-0 z-40 bg-card px-3 py-2 text-left font-semibold">
+                  {data.dimensione === "fornitore" ? "Fornitore" : "Categoria"}
+                </th>
+                {/* Le intestazioni sono troncate a 10rem: con cinque colonne
+                    che iniziano tutte per «SUSHILAND» si leggeva «SUSHILAND
+                    VILLA G… / SUSHILAND SAN GIU… / SUSHILAND MARIAN…», cioe'
+                    spariva la parte che le distingue. Il nome intero resta
+                    nel title. */}
+                {data.pv.map((p, i) => (
+                  <th key={p.id} className="px-3 py-2 text-right font-semibold">
+                    <span className="block max-w-[10rem] truncate" title={p.nome}>{intestazioniPv[i]}</span>
+                  </th>
+                ))}
+                <th className="px-3 py-2 text-right font-semibold">Totale</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((row) => {
+                const maxPvId = pvPiuCaro(row, data.pv);
+                return (
+                <tr key={row.dim_val} className="border-t">
+                  <td className="sticky left-0 z-10 max-w-[14rem] bg-card px-3 py-2 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      {row.emoji ? (
+                        <span className="shrink-0">{row.emoji}</span>
+                      ) : (
+                        <Truck className="size-3.5 shrink-0 text-muted-foreground/60" />
+                      )}
+                      <span className="truncate" title={row.dim_val}>{row.dim_val}</span>
+                    </span>
+                  </td>
+                  {data.pv.map((p) => {
+                    const v = row.per_pv[p.id] ?? 0;
+                    const isMax = p.id === maxPvId;
+                    return (
+                      <td
+                        key={p.id}
+                        style={cellStyle(v, maxCell)}
+                        className={cn(
+                          "px-3 py-2 text-right tabular-nums",
+                          // Il PV piu' caro si segnala col PESO, non col
+                          // colore: sopra una cella di heatmap tinta nessuna
+                          // tinta azzurra regge in ENTRAMBI i temi (text-primary
+                          // dava 1,80:1 in light; sky-300 scendeva a 1,89:1 in
+                          // dark). Il neutro sta a 11,8:1 / 5,8:1, e il triangolo
+                          // accanto al numero porta gia' l'informazione.
+                          isMax && "font-bold",
+                        )}
+                        title={isMax ? "Punto vendita che spende di più in questa voce" : undefined}
+                      >
+                        {v > 0 ? (
+                          <>
+                            {isMax && <span className="mr-1 text-[0.65rem] align-middle">▲</span>}
+                            {euro(v)}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  {/* Totale riga: valore assoluto con l'incidenza % sotto. */}
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    <span className="block font-semibold">{euro(row.totale)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {row.incidenza_pct.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
+                    </span>
+                  </td>
+                </tr>
+                );
+              })}
+              {/* Riga TOTALE per PV */}
+              <tr className="border-t-2 border-foreground/20 font-semibold">
+                <td className="sticky left-0 z-10 bg-card px-3 py-2">Totale</td>
+                {data.pv.map((p) => {
+                  const tot = data.totali_pv[p.id] ?? 0;
+                  const inc = incidenzaPct(tot, data.grand_total);
+                  return (
+                    <td key={p.id} className="px-3 py-2 text-right tabular-nums">
+                      <span className="block">{euro(tot)}</span>
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {inc.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
+                      </span>
+                    </td>
+                  );
+                })}
+                <td className="px-3 py-2 text-right tabular-nums">
+                  <span className="block">{euro(data.grand_total)}</span>
+                  <span className="block text-xs font-normal text-muted-foreground">100%</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+    </PannelloScheda>
+  );
+}

@@ -459,7 +459,7 @@ function PivotTable({
 // Il fondo era `rgba(14,165,233, a)`: un azzurro fisso, IDENTICO nei due temi,
 // mentre il testo eredita --foreground e si ribalta. In dark il contrasto se lo
 // mangiava la cella piu' intensa. Stessa soluzione gia' adottata in
-// catena/finestra-margini-coperti (via `heatStyle` in lib/catena-confronti):
+// catena/analisi/scheda-margini-coperti (via `heatStyle` in lib/catena-confronti):
 // color-mix su un token, cosi' il fondo segue il tema come il testo.
 // La CURVA resta quella di prima (max 0.35, soglia 0.02): la copia di heatStyle
 // arriva a 0.50 e partirebbe da 0.14, cioe' tingerebbe molto piu' di oggi —

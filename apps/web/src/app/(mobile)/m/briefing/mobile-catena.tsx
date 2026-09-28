@@ -112,7 +112,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   const avviso = metrica.stato === "mol" ? metrica.avviso : null;
   const nonDeterminabile = metrica.stato === "errore";
   const vuoto = metrica.stato === "vuoto";
-  // codaVisibile=false: su /m la coda da assegnare non esiste, quindi il testo
+  // codaRaggiungibile=false: su /m la coda da assegnare non esiste, quindi il testo
   // rimanda al computer invece che "qui sotto".
   const msgDaCollocare = messaggioFattureDaCollocare(overview.briefing, false);
 
@@ -140,7 +140,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           {overview.briefing.saluto}, {overview.nome_gruppo}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-foreground/90">{overview.briefing.narrativa}</p>
-        {/* Stessa funzione del desktop, con codaVisibile=false: qui la coda da
+        {/* Stessa funzione del desktop, con codaRaggiungibile=false: qui la coda da
             assegnare non esiste. Prima questo messaggio era una copia a mano,
             SENZA il ramo che evita il doppio imperativo quando la narrativa ha
             gia' parlato — il vincolo esisteva solo sul desktop. */}
