@@ -46,7 +46,7 @@ const TINT = SALUTE_TINT;
 type ColoreTint = keyof typeof TINT;
 
 // ─── Briefing di gruppo: lo stesso riquadro della Home del punto vendita ────
-type QuotaChat = { limiteGiorno: number; domandeOggi: number };
+type QuotaChat = { limiteGiorno: number; domandeOggi: number; lettoAlle: number };
 
 function BriefingGruppo({
   briefing,
@@ -75,6 +75,7 @@ function BriefingGruppo({
           vista={vistaCatena(nomeGruppo)}
           limiteGiorno={chat.limiteGiorno}
           domandeOggiIniziali={chat.domandeOggi}
+          lettoAlle={chat.lettoAlle}
         />
       )}
     </RiquadroAssistente>

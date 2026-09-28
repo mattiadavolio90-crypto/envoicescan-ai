@@ -86,17 +86,25 @@ export function PannelloConversazione({
 
       {suggerimenti && suggerimenti.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {suggerimenti.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onSuggerimento?.(s)}
-              disabled={bloccato}
-              className="rounded-full border border-primary/30 bg-card px-3 py-1 text-xs text-primary-text transition-colors hover:bg-primary/10 disabled:opacity-50"
-            >
-              {s}
-            </button>
-          ))}
+          {/* Senza onSuggerimento (il Demo Tour) sono solo da leggere: non
+              spente, che in vetrina sembrerebbe un prodotto rotto. */}
+          {suggerimenti.map((s) =>
+            onSuggerimento ? (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onSuggerimento(s)}
+                disabled={bloccato}
+                className="rounded-full border border-primary/30 bg-card px-3 py-1 text-xs text-primary-text transition-colors hover:bg-primary/10 disabled:opacity-50"
+              >
+                {s}
+              </button>
+            ) : (
+              <span key={s} className="rounded-full border border-primary/30 bg-card px-3 py-1 text-xs text-primary-text">
+                {s}
+              </span>
+            ),
+          )}
         </div>
       )}
 

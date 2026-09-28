@@ -46,7 +46,7 @@ async function SintesiBlock() {
       overview={overview}
       chat={
         chatCatenaAttiva(chatConfig)
-          ? { limiteGiorno: chatConfig.limite_giorno, domandeOggi: chatConfig.domande_oggi }
+          ? { limiteGiorno: chatConfig.limite_giorno, domandeOggi: chatConfig.domande_oggi, lettoAlle: Date.now() }
           : null
       }
     />

@@ -393,3 +393,68 @@ def test_contatore_e_attesa():
     assert [_chiama("testoAttesa", [i]) for i in (0, 1, 2, 7)] == [
         "Sto cercando...", "Sto leggendo le tue fatture...", "Ci sono quasi, un attimo...", "Ci sono quasi, un attimo...",
     ]
+
+
+# ─── Il contatore: una quota per account, vince la lettura piu' recente ─────
+#
+# Revisore, 28/9: il conteggio era tenuto per vista e il provider non si
+# rimonta mai. Tornando in catena dopo domande nel PV il numero vecchio vinceva
+# sul server (il backend conta UN pool per account); il mattino dopo, con la
+# scheda aperta, la casella restava bloccata finche' non si ricaricava.
+
+
+def _stato(limite, server, risposta):
+    return _chiama("statoDomande", [limite, server, risposta])
+
+
+def test_senza_risposte_conta_il_server():
+    out = _stato(20, {"valore": 3, "alle": 100}, None)
+    assert out == {"usate": 3, "rimanenti": 17, "esaurite": False, "testo": "Ti restano 17 domande oggi"}
+
+
+def test_la_risposta_piu_recente_vince_sul_server():
+    out = _stato(20, {"valore": 3, "alle": 100}, {"valore": 4, "alle": 200})
+    assert out["usate"] == 4
+
+
+def test_tornando_in_catena_vince_il_server_riletto():
+    """3 domande in catena, 2 nel PV: la Home di catena rilegge 5 dal server."""
+    out = _stato(20, {"valore": 5, "alle": 300}, {"valore": 3, "alle": 200})
+    assert out["usate"] == 5
+
+
+def test_il_mattino_dopo_la_casella_si_sblocca():
+    out = _stato(20, {"valore": 0, "alle": 900}, {"valore": 20, "alle": 500})
+    assert out["esaurite"] is False and out["rimanenti"] == 20
+
+
+def test_limite_mensile_detto_come_mensile():
+    """Un 429 mensile che dice «si azzera a mezzanotte» fa riprovare domani."""
+    out = _stato(20, {"valore": 2, "alle": 100}, {"valore": 20, "alle": 200, "finita": "mese"})
+    assert out["esaurite"] is True and out["rimanenti"] == 0
+    assert "mese" in out["testo"] and "mezzanotte" not in out["testo"]
+
+
+def test_limite_giornaliero_detto_come_giornaliero():
+    out = _stato(20, {"valore": 2, "alle": 100}, {"valore": 20, "alle": 200, "finita": "giorno"})
+    assert out["testo"] == "Limite di oggi raggiunto — si azzera a mezzanotte"
+
+
+def test_una_lettura_nuova_del_server_toglie_il_limite_mensile_vecchio():
+    out = _stato(20, {"valore": 0, "alle": 300}, {"valore": 20, "alle": 200, "finita": "mese"})
+    assert out["esaurite"] is False
+
+
+def test_sede_senza_id_manda_solo_l_ultima_domanda():
+    """Senza id tutte le sedi avrebbero la chiave «sede:»: niente storico."""
+    v = _vs(None, "A")
+    assert v["chiave"] == "sede:"
+    voci = [_u("vecchia", "sede:"), _a("r", "sede:"), _u("nuova", "sede:")]
+    assert _chiama("codaPerVista", [voci, v]) == [{"role": "user", "content": "nuova"}]
+
+
+def test_limite_mensile_blocca_anche_con_domande_di_oggi_rimaste():
+    """Il 429 mensile puo' portare `domande_oggi` (5 su 20): il giorno ne avrebbe
+    ancora 15, ma il mese e' finito. La casella va bloccata."""
+    out = _stato(20, {"valore": 2, "alle": 100}, {"valore": 5, "alle": 200, "finita": "mese"})
+    assert out["rimanenti"] == 0 and out["esaurite"] is True

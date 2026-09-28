@@ -46,7 +46,10 @@ def test_niente_spazio_riservato_al_pulsante(p):
 
 def test_la_conversazione_sta_nel_layout_dell_app_per_utente():
     n = _n(_LAYOUT)
-    assert "<AssistenteProviderutenteId={user.id}>" in n
+    # key: l'admin che entra in un cliente e ne esce con router.push non
+    # ricarica il layout; senza, conversazione e conteggio passavano da un
+    # cliente all'altro (revisore, 28/9).
+    assert "<AssistenteProviderkey={user.id}utenteId={user.id}>" in n
     assert n.index("<AssistenteProvider") < n.index("<mainclassName") < n.index("</AssistenteProvider>")
 
 
@@ -71,7 +74,7 @@ def test_la_home_pv_passa_la_sede_aperta_e_la_regola_della_chat():
 
 def test_la_home_di_catena_passa_il_pool_solo_se_attivo():
     n = _n(_CATENA_PAGE)
-    assert "chatCatenaAttiva(chatConfig)?{limiteGiorno:chatConfig.limite_giorno,domandeOggi:chatConfig.domande_oggi}:null" in n
+    assert "chatCatenaAttiva(chatConfig)?{limiteGiorno:chatConfig.limite_giorno,domandeOggi:chatConfig.domande_oggi,lettoAlle:Date.now()}:null" in n
     c = _n(_CATENA)
     assert "{chat&&(<ConversazioneAssistentevista={vistaCatena(nomeGruppo)}" in c
     assert "chat={chat}" in c
@@ -90,3 +93,17 @@ def test_la_demo_usa_lo_stesso_pannello_dentro_il_riquadro():
     assert "conversazione={<DemoConversazioneattiva={chatAttiva}/>}" in _n(_DEMO_HOME)
     assert "chatAttiva={openChat}" in _n(_DEMO_SHELL)
     assert "<DemoChat" not in _n(_DEMO_SHELL)
+
+
+def test_il_contatore_e_uno_per_account_e_segue_la_lettura_piu_recente():
+    p = _n(_PROVIDER)
+    assert "useState<Conteggio|null>(null)" in p
+    assert "finita:quotaEsaurita(res.status,data)" in p
+    c = _n(_CONV)
+    assert "statoDomande(limiteGiorno,server,domande)" in c
+    assert "},[domandeOggiIniziali,lettoAlle]);" in c
+
+
+@pytest.mark.parametrize("p", [_PV, _CATENA_PAGE], ids=lambda p: p.name)
+def test_ogni_render_della_home_porta_l_ora_della_lettura(p):
+    assert "lettoAlle" in _n(p) and "Date.now()" in _n(p)

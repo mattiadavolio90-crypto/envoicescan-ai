@@ -75,6 +75,7 @@ async function BriefingBlock() {
             vista={vistaSede(utente?.sede_attiva_id, utente?.sede_attiva_nome ?? utente?.nome_ristorante)}
             limiteGiorno={config?.chat_limite_giorno ?? 0}
             domandeOggiIniziali={config?.chat_domande_oggi ?? 0}
+            lettoAlle={Date.now()}
           />
         )
       }

@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import {
   SUGGERIMENTI_CATENA,
   SUGGERIMENTI_SEDE,
-  domandeRimanenti,
   mostraSuggerimenti,
+  statoDomande,
   testoAttesa,
-  testoContatore,
+  type Conteggio,
   type Vista,
 } from "@/lib/home-chat";
 import { useAssistente } from "./assistente-provider";
@@ -20,10 +20,14 @@ export function ConversazioneAssistente({
   vista,
   limiteGiorno,
   domandeOggiIniziali,
+  lettoAlle,
 }: {
   vista: Vista;
   limiteGiorno: number;
   domandeOggiIniziali: number;
+  /** Quando il server ha letto il numero: cambia a ogni render della pagina,
+   *  anche se il numero e' uguale (il mattino dopo, 0 com'era ieri mattina). */
+  lettoAlle: number;
 }) {
   const { pronta, voci, inCorso, attesa, domande, entraIn, invia, nuova } = useAssistente();
   const [valore, setValore] = useState("");
@@ -35,9 +39,16 @@ export function ConversazioneAssistente({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pronta, vista.chiave, entraIn]);
 
-  const domandeOggi = domande[vista.chiave] ?? domandeOggiIniziali;
-  const rimanenti = domandeRimanenti(limiteGiorno, domandeOggi);
-  const esaurite = rimanenti <= 0;
+  // Il numero della pagina, con il momento in cui e' arrivato: un router.refresh
+  // o una Home riaperta lo rinnovano e vince su una risposta piu' vecchia.
+  const [server, setServer] = useState<Conteggio>(() => ({ valore: domandeOggiIniziali, alle: Date.now() }));
+  // `alle` e' l'ora del browser, non `lettoAlle`: gli orologi di server e
+  // browser non si confrontano. `lettoAlle` serve solo a sapere che c'e' una
+  // lettura nuova.
+  useEffect(() => {
+    setServer({ valore: domandeOggiIniziali, alle: Date.now() });
+  }, [domandeOggiIniziali, lettoAlle]);
+  const { usate: domandeOggi, esaurite, testo } = statoDomande(limiteGiorno, server, domande);
   const bloccato = inCorso !== null || esaurite;
 
   function manda(testo: string) {
@@ -67,7 +78,7 @@ export function ConversazioneAssistente({
             : "Chiedimi dei tuoi costi, fornitori, margini…"
       }
       bloccato={bloccato}
-      stato={testoContatore(rimanenti)}
+      stato={testo}
       statoAvviso={esaurite}
       onNuova={nuova}
     />

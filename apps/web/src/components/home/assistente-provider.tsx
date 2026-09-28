@@ -7,6 +7,8 @@ import {
   codaPerVista,
   conRisposta,
   contatoreAggiornato,
+  quotaEsaurita,
+  type Conteggio,
   daSalvare,
   entraInVista,
   messaggioRisposta,
@@ -32,8 +34,9 @@ type StatoAssistente = {
   inCorso: string | null;
   /** 0, 1, 2: il messaggio d'attesa avanza col tempo. */
   attesa: number;
-  /** Domande di oggi come le ha contate il backend nell'ultima risposta, per vista. */
-  domande: Record<string, number>;
+  /** Domande di oggi come le ha contate il backend nell'ultima risposta (una
+   *  quota per account), col momento in cui e' arrivata. */
+  domande: Conteggio | null;
   entraIn: (vista: Vista) => void;
   invia: (testo: string, vista: Vista, quota: Quota) => Promise<void>;
   nuova: () => void;
@@ -54,7 +57,7 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
   const [pronta, setPronta] = useState(false);
   const [inCorso, setInCorso] = useState<string | null>(null);
   const [attesa, setAttesa] = useState(0);
-  const [domande, setDomande] = useState<Record<string, number>>({});
+  const [domande, setDomande] = useState<Conteggio | null>(null);
 
   const aggiorna = useCallback((f: (v: VoceChat[]) => VoceChat[]) => {
     vociRef.current = f(vociRef.current);
@@ -118,10 +121,11 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
           body: JSON.stringify({ messages: codaPerVista(vociRef.current, vista), contesto: vista.contesto }),
         });
         const data = (await res.json()) as { reply?: string; error?: string; domande_oggi?: number };
-        setDomande((d) => ({
-          ...d,
-          [vista.chiave]: contatoreAggiornato(res.status, data, quota.limiteGiorno, d[vista.chiave] ?? quota.domandeOggi),
-        }));
+        setDomande({
+          valore: contatoreAggiornato(res.status, data, quota.limiteGiorno, quota.domandeOggi),
+          alle: Date.now(),
+          finita: quotaEsaurita(res.status, data),
+        });
         aggiorna((v) => conRisposta(v, vista.chiave, messaggioRisposta(res.status, data)));
       } catch {
         aggiorna((v) => conRisposta(v, vista.chiave, "Errore di connessione. Controlla la rete e riprova."));

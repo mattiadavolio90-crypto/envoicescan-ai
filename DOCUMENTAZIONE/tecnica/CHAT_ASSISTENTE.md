@@ -2,8 +2,9 @@
 
 Versione: 1.1 | Aggiornamento: 10 Giugno 2026
 
-Questo documento spiega **come funziona la chat con l'assistente AI** (il pannello
-flottante in basso a destra nella Home) e **dove mettere le mani** per modificarla.
+Questo documento spiega **come funziona la chat con l'assistente AI** (dal
+28/9/2026 dentro il riquadro del briefing della Home, prima un pannello
+flottante) e **dove mettere le mani** per modificarla.
 È gemello di `BRIEFING_HOME.md`: insieme coprono i due volti dell'AI verso il
 cliente (briefing = "ti dico io cosa guardare"; chat = "chiedimi quello che vuoi").
 

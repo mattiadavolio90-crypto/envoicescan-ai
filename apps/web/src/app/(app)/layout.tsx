@@ -82,8 +82,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <PrivacyConsentModal needsConsent={user.privacy_accepted === false} />
     <ImpersonaBanner />
     {/* La conversazione con l'assistente: qui e non nella Home, perche'
-        sopravviva al cambio di pagina e di sede. La Home la mostra. */}
-    <AssistenteProvider utenteId={user.id}>
+        sopravviva al cambio di pagina e di sede. La Home la mostra. La key la
+        rimonta quando cambia l'utente (l'admin che entra in un cliente e ne
+        esce con router.push, senza ricaricare): niente conversazione, conteggio
+        o risposta in arrivo che passa da un cliente all'altro. */}
+    <AssistenteProvider key={user.id} utenteId={user.id}>
     <SidebarProvider>
       <AppSidebar
         userEmail={user.email}

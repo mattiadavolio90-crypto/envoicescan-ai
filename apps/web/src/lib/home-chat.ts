@@ -73,6 +73,7 @@ export function quotaEsaurita(
 // massimo, il che e' vero (il cliente non puo' piu' chattare) ma incompleto —
 // chi mostra il contatore deve usare `quotaEsaurita` per dire QUALE quota e'
 // finita, o il cliente legge «riprova domani» da una barra che parla del giorno.
+// Dal 28/9/2026 la usa il provider dell'assistente, via `statoDomande`.
 export function contatoreAggiornato(
   status: number,
   data: { domande_oggi?: number },
@@ -177,12 +178,15 @@ export function entraInVista(voci: VoceChat[], vista: Vista): VoceChat[] {
 // catena e il punto vendita condividevano la stessa chiave di sessionStorage e
 // lo stesso storico, e al backend arrivavano domande fatte su un altro locale
 // come contesto di questa. Le righe «Ora sei in…» non si mandano mai.
+//
+// Una sede senza id (il worker lo lascia vuoto se la risoluzione della sede
+// fallisce) darebbe la stessa chiave a tutti i locali: li' si manda solo la
+// domanda appena scritta, mai lo storico.
 export function codaPerVista(voci: VoceChat[], vista: Vista): Msg[] {
-  return codaDaInviare(
-    voci
-      .filter((v): v is VoceChat & { role: "user" | "assistant" } => v.role !== "vista" && v.vista === vista.chiave)
-      .map((v) => ({ role: v.role, content: v.content })),
-  );
+  const della = voci
+    .filter((v): v is VoceChat & { role: "user" | "assistant" } => v.role !== "vista" && v.vista === vista.chiave)
+    .map((v) => ({ role: v.role, content: v.content }));
+  return codaDaInviare(vista.chiave.endsWith(":") ? della.slice(-1) : della);
 }
 
 // Le domande proposte si vedono finche' in questa vista non si e' scritto niente.
@@ -220,7 +224,31 @@ export function testoAttesa(passo: number): string {
   return "Ci sono quasi, un attimo...";
 }
 
-export function testoContatore(rimanenti: number): string {
+export function testoContatore(rimanenti: number, finita: QuotaEsaurita = null): string {
+  // Il 429 mensile non si azzera a mezzanotte: dirlo farebbe riprovare domani.
+  if (finita === "mese") return "Limite del mese raggiunto — riparte il mese prossimo";
   if (rimanenti <= 0) return "Limite di oggi raggiunto — si azzera a mezzanotte";
   return `Ti restano ${rimanenti} ${rimanenti === 1 ? "domanda" : "domande"} oggi`;
+}
+
+/* ─── Il contatore delle domande di oggi ─────────────────────────────────── */
+
+// Il backend conta UNA quota per account, spesa fra la catena e tutti i punti
+// vendita. Le due fonti del numero sono la pagina (il config letto dal server a
+// ogni render) e l'ultima risposta di /api/chat: vince la piu' recente. Con una
+// mappa per vista, e il provider che non si rimonta mai, un conteggio vecchio
+// vinceva sul server — tornando in catena dopo domande nel PV, o il mattino
+// dopo con la scheda aperta, quando la casella restava bloccata (revisore, 28/9).
+export type Conteggio = { valore: number; alle: number; finita?: QuotaEsaurita };
+
+export function statoDomande(
+  limiteGiorno: number,
+  server: Conteggio,
+  risposta: Conteggio | null,
+): { usate: number; rimanenti: number; esaurite: boolean; testo: string } {
+  const recente = risposta && risposta.alle > server.alle ? risposta : server;
+  const finita = recente.finita ?? null;
+  const usate = recente.valore;
+  const rimanenti = finita ? 0 : domandeRimanenti(limiteGiorno, usate);
+  return { usate, rimanenti, esaurite: rimanenti <= 0, testo: testoContatore(rimanenti, finita) };
 }
