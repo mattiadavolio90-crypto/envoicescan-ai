@@ -1460,6 +1460,41 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   09/09 (`20260909143000`), rimasta nel repo senza essere sul DB — le 5 purge
 >   fallivano in `PGRST202` a ogni giro; al riavvio del queue-worker 183 sessioni
 >   inattive da oltre 90 giorni cancellate.
+>
+> - **28-29/09/2026, `190fa6d`..`9866c70` — fase «Interfaccia dell'assistente» del
+>   piano consulente: chiusa** (step 0-6, `e8591da` in mezzo e' della sessione
+>   sotto-utenti). **Fatto:** funzioni di catena spostate in Gestione Fatture e
+>   Analisi catena; una Home sola per PV e catena («Da fare» comune); card conti e
+>   completezza compatte, pezzi comuni in `components/home/card-home.tsx`; via il
+>   pulsante flottante, la conversazione vive nel riquadro del briefing
+>   (`AssistenteProvider` nel layout, messaggi con la vista, riga «Ora sei in…»);
+>   nella vista PV il prompt nomina la sede aperta e rimanda alla catena; in catena
+>   la chat usa anche gli strumenti di UNA sede, con `sede` verificata fra quelle
+>   dell'account (`_chat_risolvi_sede`, CHAT_ASSISTENTE.md §5.3).
+>   **Trovato:** catena e PV condividevano storico e chiave di sessionStorage (al
+>   backend arrivavano domande su un altro locale), e la chiave non era per utente;
+>   il prompt PV nominava l'account, non la sede aperta; `diario_eventi` filtrato
+>   solo per sede; nella vista PV il gate pagina valeva sulla lista offerta ma non
+>   all'esecuzione. Due difetti miei presi dal revisore prima del push: il
+>   contatore domande per vista (la quota e' per account: casella bloccata il
+>   mattino dopo) e una guardia 409 sulla sede a schermo, tolta perche' `/auth/me`
+>   e `chat_ai` leggono la sede attiva da cache per processo diverse (falso blocco
+>   nel passaggio catena -> PV).
+>   **Prove:** ogni step per mutazione (step 3: 11/11; step 4: 18/18; step 5:
+>   9/9 poi 7/7; step 6: 12/12 + 2/2), revisore verde su ogni step. Isolamento
+>   della chat di catena su Postgres vero con due clienti
+>   (`tests/test_chat_catena_sede_sql.py`, sede di B per nome e per id + controllo
+>   sulle proprie). Suite a `851ed17`: **17.330 verdi, 54 skip** (`python -m pytest
+>   tests/ -q -m "not sql" -p no:randomly -p no:cacheprovider`) e **841** con
+>   `-m sql`; a `9866c70` il perimetro chat (647) verde.
+>   **Non fatto (residui):** sotto-utenti — uno senza Catena puo' chiedere la chat
+>   di catena, uno con una sede in un account catena riceve il nome dell'account
+>   (sessione sotto-utenti, fase 1c/1d); dopo un 429 mensile un refresh riapre la
+>   casella (serve lo stato mensile nel config); la conversazione sparisce se il
+>   briefing non arriva; in catena niente auto-refresh dopo mezzanotte; due sedi
+>   omonime non sono nominabili (0 casi sul live); `/m` invariato (fase 8). Nessuna
+>   schermata con dati reali: le ho fatte con dati finti, Mattia controlla
+>   nell'app. **Non pushato.**
 
 ---
 
