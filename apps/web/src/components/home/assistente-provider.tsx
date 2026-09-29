@@ -118,11 +118,7 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: codaPerVista(vociRef.current, vista),
-            contesto: vista.contesto,
-            ...(vista.sedeId ? { sede_id: vista.sedeId } : {}),
-          }),
+          body: JSON.stringify({ messages: codaPerVista(vociRef.current, vista), contesto: vista.contesto }),
         });
         const data = (await res.json()) as { reply?: string; error?: string; domande_oggi?: number };
         setDomande({

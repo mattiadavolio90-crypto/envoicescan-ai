@@ -130,18 +130,14 @@ export function suggerimentiPer(
 // Dove si trova il cliente quando scrive: una sede precisa o la vista catena.
 // `chiave` distingue le sedi fra loro (due locali non sono la stessa vista);
 // `frase` e' la riga che la conversazione mostra quando si cambia.
-// `sedeId` va al backend con la domanda: se nel frattempo la sede attiva e'
-// cambiata (da un'altra scheda) risponde 409 invece di parlare di un altro locale.
-export type Vista = { chiave: string; contesto: "sede" | "catena"; frase: string; sedeId: string | null };
+export type Vista = { chiave: string; contesto: "sede" | "catena"; frase: string };
 
 export function vistaSede(id: string | null | undefined, nome: string | null | undefined): Vista {
   const n = (nome ?? "").trim();
-  const sedeId = (id ?? "").trim();
   return {
-    chiave: `sede:${sedeId}`,
+    chiave: `sede:${(id ?? "").trim()}`,
     contesto: "sede",
     frase: n ? `Ora sei in ${n}` : "Ora sei nel tuo locale",
-    sedeId: sedeId || null,
   };
 }
 
@@ -151,7 +147,6 @@ export function vistaCatena(nomeGruppo: string | null | undefined): Vista {
     chiave: "catena",
     contesto: "catena",
     frase: n ? `Ora sei nella vista catena del gruppo ${n}` : "Ora sei nella vista catena",
-    sedeId: null,
   };
 }
 

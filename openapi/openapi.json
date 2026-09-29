@@ -21191,18 +21191,6 @@
             "pattern": "^(sede|catena)$",
             "title": "Contesto",
             "default": "sede"
-          },
-          "sede_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sede Id"
           }
         },
         "type": "object",

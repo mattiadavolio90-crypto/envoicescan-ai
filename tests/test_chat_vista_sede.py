@@ -1,5 +1,5 @@
 """L'assistente nella vista punto vendita parla solo del locale aperto
-(step 5 dell'interfaccia, decisione di Mattia del 28/9/2026).
+(step 5 dell'interfaccia, decisione di Mattia del 28/9/2026, fatto il 29/9).
 
 Due difetti chiusi:
 - il prompt della vista PV nominava l'ACCOUNT (users.nome_ristorante, cioe'
@@ -9,9 +9,11 @@ Due difetti chiusi:
   strumenti sono legati alla sede attiva, quindi rispondevano con i numeri di
   questo locale a una domanda su un altro.
 
-E una guardia nuova: dal 28/9 la conversazione sopravvive al cambio di sede.
-Se la sede a schermo (`sede_id`) non e' piu' quella attiva, la domanda si ferma
-con un 409 PRIMA di consumare quota.
+Una guardia 409 sulla sede a schermo (`sede_id`) e' stata scritta e tolta
+prima del push: /auth/me e chat_ai leggono la sede attiva da cache per processo
+diverse, e subito dopo un cambio di sede divergono — la guardia bloccava la chat
+proprio nel passaggio catena -> punto vendita (revisore, 29/9). Il test in fondo
+fissa che il campo non torni senza una fonte unica della sede.
 
 Gli account mono-sede non vedono cambiamenti: il loro prompt e' byte per byte
 quello di prima (lo fissa anche test_chat_settore_retail.py).
@@ -55,7 +57,9 @@ def test_catena_in_vista_pv_rimanda_alla_catena_per_gli_altri_locali():
     p = _prompt(sede_nome="NAVIGLI", multi_sede=True)
     assert "## Solo questo locale (IMPORTANTE)" in p
     assert 'da qui vedi solo "NAVIGLI"' in p
-    assert "«Torna alla catena»" in p
+    assert "deve passare alla vista catena" in p
+    # Niente pulsanti del menu desktop: su /m non c'e' la sidebar.
+    assert "menu a sinistra" not in p
     assert "NON rispondere con i numeri di \"NAVIGLI\"" in p
 
 
@@ -142,55 +146,45 @@ def _prepara(monkeypatch, *, pool, attiva="rid-2"):
     return sb, visto
 
 
-def _req(sede_id=None):
-    return fw.ChatRequest(messages=[fw.ChatMessage(role="user", content="ciao")], contesto="sede", sede_id=sede_id)
+def _req():
+    return fw.ChatRequest(messages=[fw.ChatMessage(role="user", content="ciao")], contesto="sede")
 
 
 def test_account_catena_passa_nome_sede_e_multi_sede(monkeypatch):
     _, visto = _prepara(monkeypatch, pool=True)
     with pytest.raises(_Fermo):
-        fw.chat_ai(_req("rid-2"), authorization="Bearer t")
+        fw.chat_ai(_req(), authorization="Bearer t")
     assert visto == {"sede_nome": "NAVIGLI", "multi_sede": True}
 
 
 def test_mono_sede_non_legge_il_nome_ne_cambia_il_prompt(monkeypatch):
     sb, visto = _prepara(monkeypatch, pool=False)
     with pytest.raises(_Fermo):
-        fw.chat_ai(_req("rid-2"), authorization="Bearer t")
+        fw.chat_ai(_req(), authorization="Bearer t")
     assert visto == {"sede_nome": None, "multi_sede": False}
 
 
-def test_sede_a_schermo_diversa_dalla_attiva_409_senza_consumare_quota(monkeypatch):
-    sb, _ = _prepara(monkeypatch, pool=True, attiva="rid-3")
-    with pytest.raises(HTTPException) as e:
-        fw.chat_ai(_req("rid-2"), authorization="Bearer t")
-    assert e.value.status_code == 409
-    assert "Ricarica la pagina" in e.value.detail
-    sb.rpc.assert_not_called()
-
-
-def test_stessa_sede_passa(monkeypatch):
-    _, _ = _prepara(monkeypatch, pool=True, attiva="rid-2")
+def test_sotto_utente_con_una_sola_sede_non_viene_mandato_alla_catena(monkeypatch):
+    """Il pool conta le sedi del titolare; il sotto-utente con una sede sola
+    non ha altri locali ne' la vista catena."""
+    _, visto = _prepara(monkeypatch, pool=True)
+    monkeypatch.setattr(fw._su, "e_sotto_utente", lambda u: True)
+    monkeypatch.setattr(fw, "_num_sedi_sotto_utente", lambda u: 1)
     with pytest.raises(_Fermo):
-        fw.chat_ai(_req("rid-2"), authorization="Bearer t")
+        fw.chat_ai(_req(), authorization="Bearer t")
+    assert visto == {"sede_nome": None, "multi_sede": False}
 
 
-def test_client_senza_sede_id_non_e_bloccato(monkeypatch):
-    """Client vecchio durante il deploy: nessun controllo, come prima."""
-    _, _ = _prepara(monkeypatch, pool=True, attiva="rid-3")
+def test_sotto_utente_con_piu_sedi_resta_nella_regola(monkeypatch):
+    _, visto = _prepara(monkeypatch, pool=True)
+    monkeypatch.setattr(fw._su, "e_sotto_utente", lambda u: True)
+    monkeypatch.setattr(fw, "_num_sedi_sotto_utente", lambda u: 2)
     with pytest.raises(_Fermo):
-        fw.chat_ai(_req(None), authorization="Bearer t")
+        fw.chat_ai(_req(), authorization="Bearer t")
+    assert visto == {"sede_nome": "NAVIGLI", "multi_sede": True}
 
 
-def test_la_guardia_non_tocca_la_catena(monkeypatch):
-    _, _ = _prepara(monkeypatch, pool=True, attiva="rid-3")
-    monkeypatch.setattr(fw, "_gruppo_chat_disabilitata", lambda uid, s: False)
-    monkeypatch.setattr(fw, "_build_chat_system_prompt_catena", lambda *a, **k: (_ for _ in ()).throw(_Fermo()))
-    req = fw.ChatRequest(messages=[fw.ChatMessage(role="user", content="ciao")], contesto="catena", sede_id="rid-2")
-    with pytest.raises(_Fermo):
-        fw.chat_ai(req, authorization="Bearer t")
-
-
-def test_sede_id_troppo_lungo_rifiutato():
-    with pytest.raises(Exception):
-        fw.ChatRequest(messages=[fw.ChatMessage(role="user", content="x")], sede_id="x" * 65)
+def test_la_guardia_sulla_sede_a_schermo_non_torna():
+    """Tolta il 29/9: le due letture della sede attiva non hanno una fonte
+    unica. Se si vuole rimetterla, prima serve quella."""
+    assert "sede_id" not in fw.ChatRequest.model_fields

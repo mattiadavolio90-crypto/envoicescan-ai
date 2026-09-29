@@ -109,10 +109,6 @@ def test_ogni_render_della_home_porta_l_ora_della_lettura(p):
     assert "lettoAlle" in _n(p) and "Date.now()" in _n(p)
 
 
-def test_il_provider_manda_la_sede_a_schermo():
-    assert "...(vista.sedeId?{sede_id:vista.sedeId}:{})" in _n(_PROVIDER)
-
-
 def test_le_domande_proposte_seguono_il_settore():
     assert "suggerimentiPer(vista.contesto,settore)" in _n(_CONV)
     assert "settore={utente?.tipo_attivita}" in _n(_PV)

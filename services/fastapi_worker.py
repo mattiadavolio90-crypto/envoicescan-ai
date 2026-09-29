@@ -3525,12 +3525,6 @@ class ChatRequest(BaseModel):
     # "catena" = chat in modalità catena (/catena): tool di gruppo, pool AI unico
     # (SUM limiti effettivi sedi). Default "sede" = chat del singolo PV, invariata.
     contesto: str = Field("sede", pattern="^(sede|catena)$")
-    # La sede che il cliente ha a schermo quando scrive (dal 28/9/2026 la
-    # conversazione vive nella Home e sopravvive al cambio di sede). Se non e'
-    # piu' la sede attiva — cambiata da un'altra scheda — la domanda si ferma
-    # prima di consumare quota: risponderebbe su un locale diverso da quello
-    # che il cliente vede. Assente = client vecchio, nessun controllo.
-    sede_id: Optional[str] = Field(None, max_length=64)
 
     @model_validator(mode="after")
     def _cap_caratteri_totali(self) -> "ChatRequest":
@@ -4091,7 +4085,7 @@ Spiega la causa GIUSTA: il food cost si calcola come (costi food ÷ fatturato). 
 
 ## Solo questo {_unita} (IMPORTANTE)
 Il cliente ha più punti vendita e qui sta guardando "{nome}": i dati qui sotto e gli strumenti riguardano SOLO questo {_unita}.
-Se chiede di un altro punto vendita, o di confrontare i punti vendita tra loro, NON rispondere con i numeri di "{nome}" e non inventare: spiega che da qui vedi solo "{nome}" e che per gli altri punti vendita, o per confrontarli, deve tornare alla vista catena (nel menu a sinistra, «Torna alla catena»), dove l'assistente vede tutto il gruppo."""
+Se chiede di un altro punto vendita, o di confrontare i punti vendita tra loro, NON rispondere con i numeri di "{nome}" e non inventare: spiega che da qui vedi solo "{nome}" e che per gli altri punti vendita, o per confrontarli, deve passare alla vista catena, dove l'assistente vede tutto il gruppo."""
         if multi_sede else ""
     )
 
@@ -5126,17 +5120,12 @@ def chat_ai(
         if _n_sedi_gruppo < 2:
             raise HTTPException(status_code=400, detail="Account non multi-sede: nessun gruppo da mostrare.")
 
-    # La sede a schermo non e' piu' quella attiva (cambiata da un'altra scheda):
-    # fermarsi PRIMA della quota. Rispondere sulla sede attiva darebbe al
-    # cliente i numeri di un locale diverso da quello che sta guardando.
-    if not is_catena and body.sede_id and ristorante_id and str(body.sede_id) != str(ristorante_id):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Nel frattempo è stato aperto un altro punto vendita, forse da un'altra "
-                "scheda. Ricarica la pagina per parlare del locale giusto."
-            ),
-        )
+    # NIENTE guardia fra la sede a schermo e quella attiva (tolta il 29/9/2026,
+    # prima del push). /auth/me e questa richiesta leggono la sede attiva da
+    # cache diverse, per processo (4 worker): subito dopo un cambio di sede
+    # divergono per qualche secondo, e un 409 bloccava la chat proprio nel
+    # passaggio catena -> punto vendita. Il prompt nomina la sede su cui
+    # risponde: se non e' quella che il cliente guarda, lo legge subito.
 
     # Quota AI: un SOLO pool per account. Multi-sede → limite = somma sedi e
     # conteggio condiviso per user_id (lo stesso pool è speso tra catena e tutti i
@@ -5226,13 +5215,19 @@ def chat_ai(
             ),
         )
 
+    # Piu' sedi VISIBILI a chi scrive: il pool conta le sedi del titolare, ma un
+    # sotto-utente con una sola sede non ha altri locali ne' la vista catena, e
+    # il prompt non deve rimandarlo li'.
+    _piu_sedi_visibili = is_pool and (
+        not _su.e_sotto_utente(user) or _num_sedi_sotto_utente(user) > 1
+    )
     system_prompt = (
         _build_chat_system_prompt_catena(user, supabase_client, authorization, settore_chat)
         if is_catena
         else _build_chat_system_prompt(
             user, supabase_client, authorization, ristorante_id, settore_chat,
-            sede_nome=_chat_nome_sede(ristorante_id, supabase_client) if is_pool else None,
-            multi_sede=is_pool,
+            sede_nome=_chat_nome_sede(ristorante_id, supabase_client) if _piu_sedi_visibili else None,
+            multi_sede=_piu_sedi_visibili,
         )
     )
 
