@@ -3698,7 +3698,7 @@ def _build_chat_system_prompt(
     kpi_testo = ""
     _qualche_sezione_fallita = False
     # Gate permessi pagina applicato anche ai DATI iniettati nel prompt, non solo
-    # ai tool: senza questo il gate tool (vedi chat_ai piu' in basso, _TOOL_FLAG)
+    # ai tool: senza questo il gate tool (_CHAT_TOOL_FLAG, _chat_tools_sede_offerti)
     # era un'invariante violata dalla stessa funzione che la dichiara — un utente
     # senza 'margini' non puo' chiamare query_margini ma trovava gia' il MOL
     # scritto qui. pagine=None (admin/nessun flag) => tutto visibile, come i tool.
@@ -4172,7 +4172,7 @@ Regole per gli strumenti:
 
 def _build_chat_system_prompt_catena(
     user: Dict[str, Any], supabase_client, authorization: Optional[str],
-    settore: Optional[str] = None,
+    settore: Optional[str] = None, sedi: Optional[List[str]] = None,
 ) -> str:
     """System prompt per la chat in modalità catena: parla del GRUPPO, non del
     singolo PV. Inietta la sintesi di gruppo (KPI + ranking) come contesto, gli
@@ -4202,6 +4202,21 @@ Costo personale: <24% contenuto | 24-30% norma | 30-35% elevato | >35% critico
 Spese generali: <15% contenute | 15-22% norma | 22-28% elevate | >28% fuori controllo
 NON inventare benchmark diversi da questi."""
         _riga_coperti_catena = '- Per "quale PV ha il margine/scontrino/coperti migliore o peggiore" usa gruppo_margini_coperti.'
+
+    # Step 6 (29/9/2026): con l'elenco delle sedi la chat di catena risponde
+    # anche sul singolo punto vendita, con gli strumenti di sede e `sede`.
+    # Senza elenco (lettura fallita) resta la frase di prima.
+    _nomi_sedi = [n for n in (sedi or []) if n]
+    if _nomi_sedi:
+        _riga_singolo_pv = (
+            f"Puoi rispondere anche su UN singolo {_singolo_pv} (le sue spese, i fornitori, "
+            "le scadenze, i margini, gli appuntamenti) con gli strumenti che hanno l'argomento "
+            "`sede`: scrivi il nome esatto dall'elenco qui sotto. Se non è chiaro di quale "
+            "punto vendita si parla, chiedilo prima di rispondere."
+            f"\n\n## Punti vendita del gruppo\n" + "\n".join(f"- {n}" for n in _nomi_sedi)
+        )
+    else:
+        _riga_singolo_pv = f"Per domande sul singolo {_singolo_pv} invita ad aprire quel punto vendita."
 
     contesto = ""
     nome_gruppo = "il gruppo"
@@ -4238,7 +4253,7 @@ NON inventare benchmark diversi da questi."""
 ## Data
 Oggi è {oggi.day}/{oggi.month}/{oggi.year}. L'anno corrente è {oggi.year}.
 
-Rispondi SOLO a domande sul confronto e l'andamento dei punti vendita del gruppo: chi va meglio/peggio, margini, spesa fornitori,{_coperti_elenco} segnalazioni. Per domande sul singolo {_singolo_pv} invita ad aprire quel punto vendita.
+Rispondi SOLO a domande sul confronto e l'andamento dei punti vendita del gruppo: chi va meglio/peggio, margini, spesa fornitori,{_coperti_elenco} segnalazioni. {_riga_singolo_pv}
 
 Tono: diretto, concreto, da direttore di catena. Risposte brevi (2-5 righe). Importi in euro con 2 decimali. Confronta SEMPRE per percentuali/incidenze quando paragoni PV di taglia diversa (i valori assoluti in € ingannano).
 
@@ -4681,11 +4696,15 @@ _CHAT_SCADENZE_LIMIT = 30
 _CHAT_SCADENZE_QUOTA_SENZA_DATA = 10
 
 
-def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: bool = True) -> Dict[str, Any]:
+def _chat_query_scadenze(
+    user: Dict[str, Any], supabase_client, solo_da_pagare: bool = True,
+    ristorante_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Scadenze del ristorante (per il tool della chat). Riusa la stessa fonte
-    della pagina Gestione Fatture."""
+    della pagina Gestione Fatture. `ristorante_id` esplicito dalla vista catena
+    (gia' verificato fra le sedi dell'account); assente = la sede attiva."""
     from services.documenti_service import get_documenti_scadenziario
-    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    ristorante_id = ristorante_id or _resolve_ristorante_id(user, supabase_client)
     if not ristorante_id:
         return {"scadenze": [], "totale_da_pagare": 0.0}
     docs = get_documenti_scadenziario(str(user["id"]), ristorante_id)
@@ -4781,6 +4800,9 @@ def _chat_query_appuntamenti(
     righe = (
         supabase_client.table("diario_eventi")
         .select("data_evento,titolo,descrizione,ora_inizio,ora_fine")
+        # user_id oltre alla sede: in catena la sede arriva da un nome scelto
+        # dal modello. E' gia' verificata, ma il filtro tenant non si delega.
+        .eq("user_id", str(user["id"]))
         .eq("ristorante_id", ristorante_id)
         .gte("data_evento", d_da)
         .lte("data_evento", d_a)
@@ -4931,12 +4953,16 @@ def _chat_trend_prezzo(
     }
 
 
-def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Optional[str]) -> Dict[str, Any]:
+def _chat_query_margini(
+    user: Dict[str, Any], supabase_client, authorization: Optional[str],
+    ristorante_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Andamento margini/MOL degli ultimi mesi (per il tool della chat).
-    Riusa margine_service, stessa fonte della pagina Margini e della Home."""
+    Riusa margine_service, stessa fonte della pagina Margini e della Home.
+    `ristorante_id` esplicito dalla vista catena; assente = la sede attiva."""
     from datetime import date as _date
     user_id = str(user["id"])
-    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    ristorante_id = ristorante_id or _resolve_ristorante_id(user, supabase_client)
     if not ristorante_id:
         return {"mesi": []}
 
@@ -5066,6 +5092,376 @@ def _chat_confronto_prezzi(
         key=lambda x: x["prezzo"],
     )
     return {"prodotto": prodotto, "fornitori": confronto[:10], "trovati": len(confronto)}
+
+
+# ─── Strumenti della chat di SEDE (usati anche in vista catena, step 6) ─────
+#
+# Fino al 29/9/2026 la lista e il dispatcher vivevano dentro chat_ai. Stanno qui
+# perche' la vista catena li offre anche lei, con una `sede` obbligatoria
+# (_chat_tools_sede_per_catena): due copie divergerebbero nei gate.
+
+_CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "query_costi",
+            "description": (
+                "Interroga i costi fatturati del ristorante con filtri opzionali. "
+                "Usalo per domande su un periodo specifico (un mese o un anno) o "
+                "per cercare la spesa su una categoria, un fornitore o un prodotto."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mese": {"type": "integer", "description": "Numero del mese 1-12 (opzionale)"},
+                    "anno": {"type": "integer", "description": "Anno es. 2026 (opzionale)"},
+                    "categoria": {"type": "string", "description": "Categoria di spesa, es. 'carne' (opzionale)"},
+                    "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
+                    "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella' (opzionale)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_scadenze",
+            "description": (
+                "Elenco delle scadenze di pagamento (fatture fornitori) con importi "
+                "e date. Usalo per 'cosa devo pagare', 'quanto devo a X', 'scadenze "
+                "questa settimana'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "solo_da_pagare": {"type": "boolean", "description": "true (default) = solo non pagate"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_margini",
+            "description": (
+                "Andamento di fatturato, food cost % e MOL negli ultimi mesi. "
+                "Usalo per 'com'è andato il MOL', 'andamento margini', 'food cost "
+                "nel tempo'."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_coperti",
+            "description": (
+                "Coperti (persone servite) e scontrino medio negli ultimi mesi. "
+                "Usalo per 'quanti coperti ho fatto', 'qual e' il mio scontrino "
+                "medio', 'quante persone servo al giorno', 'qual e' il giorno piu' "
+                "pieno'. Diverso da query_margini (che da' fatturato/MOL)."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "confronto_prezzi",
+            "description": (
+                "Confronta il prezzo di un prodotto tra i fornitori per trovare il "
+                "migliore. Usalo per 'chi mi fa X al prezzo migliore', 'confronta i "
+                "prezzi di Y'. Guarda gli ULTIMI 180 GIORNI: se l'utente chiede un "
+                "periodo piu' vecchio, dillo (vedi solo gli ultimi 6 mesi)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prodotto": {"type": "string", "description": "Nome o parte del prodotto da confrontare"},
+                },
+                "required": ["prodotto"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ultimi_acquisti",
+            "description": (
+                "Le ultime righe d'acquisto in ordine di data (piu' recente prima), "
+                "con data, prodotto, fornitore e importo. Usalo per 'qual e' l'ultimo "
+                "acquisto', 'ultima fattura', 'l'ultima volta che ho comprato X', "
+                "'cosa ho comprato di recente da Y'. NON usarlo per totali di spesa "
+                "(quello e' query_costi)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prodotto": {"type": "string", "description": "Nome o parte del prodotto (opzionale)"},
+                    "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
+                    "limite": {"type": "integer", "description": "Quante righe restituire, 1-15 (default 5)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trend_prezzo",
+            "description": (
+                "Andamento del PREZZO UNITARIO di un prodotto mese per mese, con la "
+                "variazione % dal primo all'ultimo mese. Usalo per 'la mozzarella e' "
+                "aumentata?', 'il prezzo di X e' salito/sceso?', 'come e' cambiato il "
+                "prezzo di Y'. Diverso da query_costi (che da' la spesa totale). "
+                "Guarda gli ULTIMI ~7 MESI: se l'utente chiede un confronto piu' "
+                "vecchio (es. 'un anno fa'), dillo esplicitamente."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella'"},
+                },
+                "required": ["prodotto"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_appuntamenti",
+            "description": (
+                "Appuntamenti in agenda del ristorante (titolo, data, ora). Usalo per "
+                "'cosa ho oggi', 'che appuntamenti ho questa settimana', 'ho impegni "
+                "domani'. Sola lettura: non crea ne' modifica nulla."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "da": {"type": "string", "description": "Data inizio YYYY-MM-DD (opzionale, default oggi)"},
+                    "a": {"type": "string", "description": "Data fine YYYY-MM-DD (opzionale, default +7 giorni)"},
+                },
+            },
+        },
+    },
+]
+
+# Gate per permessi pagina: la chat offre al modello solo gli strumenti delle
+# pagine abilitate per l'utente. pagine_abilitate None (admin) => tutti i tool.
+# Coerente con la visibilita' della sidebar: chi non vede una pagina non puo'
+# nemmeno interrogarne i dati via chat.
+_CHAT_TOOL_FLAG = {
+    "query_costi": "analisi_fatture",
+    "ultimi_acquisti": "analisi_fatture",
+    "query_scadenze": "scadenziario",
+    "query_margini": "margini",
+    "query_coperti": "margini",
+    "confronto_prezzi": "prezzi",
+    "trend_prezzo": "prezzi",
+    "query_appuntamenti": "agenda",
+}
+
+
+def _chat_tools_sede_offerti(user: Dict[str, Any], settore: Optional[str]) -> List[Dict[str, Any]]:
+    """Gli strumenti di sede che il modello puo' vedere, dopo i due gate."""
+    tools = list(_CHAT_TOOLS_SEDE)
+    pagine = _normalize_pagine(user.get("pagine_abilitate"))
+    if pagine is not None:
+        pagine_set = set(pagine)
+        tools = [
+            t for t in tools
+            if _CHAT_TOOL_FLAG.get(t["function"]["name"]) in pagine_set
+        ]
+
+    # Gate per SETTORE, e non per pagina come quello sopra. La Fase 3 ha spento a
+    # un negozio la tab Coperti con `tab_off_margini_coperti`, ma i `tab_off_*`
+    # non sono chiavi-pagina: il gate sopra non li guarda, e il negozio non
+    # vedeva la tab e poteva comunque chiedere i coperti in chat.
+    # Spegnerli via `pagine_abilitate` non e' un'alternativa: `query_margini` e
+    # `query_coperti` sono mappati sullo STESSO flag `margini`, quindi togliere i
+    # coperti toglierebbe anche i margini — che al negozio servono.
+    if settore == SETTORE_RETAIL:
+        tools = [
+            t for t in tools
+            if t["function"]["name"] not in _TOOL_VIETATI_PER_SETTORE[SETTORE_RETAIL]
+        ]
+    return tools
+
+
+def _chat_esegui_tool_sede(
+    nome: str, args: Dict[str, Any], *, user: Dict[str, Any], supabase_client,
+    authorization: Optional[str], ristorante_id: Optional[str], settore: Optional[str],
+) -> Dict[str, Any]:
+    """Esegue uno strumento di sede su `ristorante_id`.
+
+    In vista punto vendita e' la sede attiva; in vista catena e' la sede che il
+    modello ha nominato, gia' verificata fra quelle dell'account
+    (_chat_esegui_tool_catena). Qui non si risolve piu' niente dal token."""
+    user_id = str(user["id"])
+    # Il gate dei tool toglie lo strumento dalla LISTA OFFERTA al modello; qui si
+    # controlla anche l'ESECUZIONE. Non e' ridondante: il dispatcher esegue
+    # per nome e non consulta `tools`, quindi un nome allucinato passerebbe
+    # comunque. E' lo stesso difetto di famiglia dei sette buchi della Fase 1
+    # — un gate a monte che non copre il punto a valle.
+    if nome in _TOOL_VIETATI_PER_SETTORE.get(settore or "", frozenset()):
+        return {"errore": f"strumento non disponibile per questa attivita': {nome}"}
+    if nome == "query_costi":
+        return _chat_query_costi(
+            user_id=user_id,
+            supabase_client=supabase_client,
+            mese=args.get("mese"),
+            anno=args.get("anno"),
+            categoria=args.get("categoria"),
+            fornitore=args.get("fornitore"),
+            prodotto=args.get("prodotto"),
+            ristorante_id=ristorante_id,
+        )
+    if nome == "query_scadenze":
+        return _chat_query_scadenze(
+            user, supabase_client, args.get("solo_da_pagare", True), ristorante_id=ristorante_id,
+        )
+    if nome == "query_margini":
+        return _chat_query_margini(user, supabase_client, authorization, ristorante_id=ristorante_id)
+    if nome == "query_coperti":
+        return _chat_query_coperti(user, supabase_client, authorization)
+    if nome == "confronto_prezzi":
+        return _chat_confronto_prezzi(user, supabase_client, args.get("prodotto", ""), ristorante_id)
+    if nome == "ultimi_acquisti":
+        return _chat_ultimi_acquisti(
+            user_id=user_id,
+            supabase_client=supabase_client,
+            prodotto=args.get("prodotto"),
+            fornitore=args.get("fornitore"),
+            limite=args.get("limite", 5),
+            ristorante_id=ristorante_id,
+        )
+    if nome == "trend_prezzo":
+        return _chat_trend_prezzo(
+            user_id=user_id,
+            supabase_client=supabase_client,
+            prodotto=args.get("prodotto", ""),
+            ristorante_id=ristorante_id,
+        )
+    if nome == "query_appuntamenti":
+        return _chat_query_appuntamenti(
+            user, supabase_client, ristorante_id,
+            da=args.get("da"), a=args.get("a"),
+        )
+    return {"errore": f"strumento sconosciuto: {nome}"}
+
+
+# ─── In vista catena, gli strumenti di UNA sede (step 6, 29/9/2026) ────────
+#
+# Prima la chat di catena aveva solo i quattro strumenti di gruppo, e per una
+# domanda su un locale diceva «apri quel punto vendita». Ora offre anche quelli
+# di sede, con un argomento `sede` obbligatorio. Il nome arriva dal MODELLO,
+# cioe' da testo che il cliente puo' influenzare: si accetta solo se e' una
+# sede dell'account (attiva, non tecnica; per un sotto-utente, una delle sue),
+# e l'id che va alle query e' quello della riga letta con il filtro user_id,
+# mai un valore preso dagli argomenti.
+#
+# query_coperti resta fuori: legge la sede dal token (get_coperti_analisi), e
+# per i coperti di gruppo c'e' gruppo_margini_coperti.
+_CHAT_TOOLS_SEDE_IN_CATENA = frozenset({
+    "query_costi", "query_scadenze", "query_margini", "confronto_prezzi",
+    "ultimi_acquisti", "trend_prezzo", "query_appuntamenti",
+})
+
+
+def _chat_sedi_catena(user: Dict[str, Any], supabase_client) -> List[Dict[str, str]]:
+    """Le sedi che la chat di catena puo' nominare: [{id, nome}]."""
+    righe = (
+        supabase_client.table("ristoranti")
+        .select("id, nome_ristorante")
+        .eq("user_id", str(user["id"]))
+        .eq("attivo", True)
+        .eq("sede_tecnica", False)
+        .order("created_at")
+        .execute()
+    ).data or []
+    sedi = [
+        {"id": str(r["id"]), "nome": (r.get("nome_ristorante") or "").strip()}
+        for r in righe if r.get("id")
+    ]
+    if _su.e_sotto_utente(user):
+        ammesse = {str(x) for x in ((_su.contesto(user) or {}).get("sedi_operative") or [])}
+        sedi = [s for s in sedi if s["id"] in ammesse]
+    return [s for s in sedi if s["nome"]]
+
+
+def _chat_norm_sede(testo: Any) -> str:
+    return " ".join(str(testo or "").casefold().split())
+
+
+def _chat_risolvi_sede(richiesta: Any, sedi: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    """La sede nominata dal modello, SOLO fra `sedi`; None se non c'e' o e' ambigua.
+
+    Nome esatto (senza maiuscole e spazi doppi) o id di una delle sedi; poi un
+    pezzo di nome di almeno 3 lettere che identifica UNA sola sede
+    ("Navigli" per "SUSHILAND NAVIGLI"). Mai un id che non stia nell'elenco."""
+    q = _chat_norm_sede(richiesta)
+    if not q:
+        return None
+    esatte = [s for s in sedi if _chat_norm_sede(s["nome"]) == q or s["id"] == str(richiesta).strip()]
+    if esatte:
+        return esatte[0] if len(esatte) == 1 else None
+    if len(q) < 3:
+        return None
+    parziali = [s for s in sedi if q in _chat_norm_sede(s["nome"])]
+    return parziali[0] if len(parziali) == 1 else None
+
+
+def _chat_tools_sede_per_catena(
+    user: Dict[str, Any], settore: Optional[str], sedi: List[Dict[str, str]],
+) -> List[Dict[str, Any]]:
+    """Gli strumenti di sede ammessi in catena, con `sede` obbligatoria.
+
+    Stessi gate della vista punto vendita (pagine, settore): la catena non deve
+    poter leggere quello che la sede non mostra."""
+    import copy as _copy
+    nomi = list(dict.fromkeys(s["nome"] for s in sedi))
+    if not nomi:
+        return []
+    out = []
+    for t in _chat_tools_sede_offerti(user, settore):
+        if t["function"]["name"] not in _CHAT_TOOLS_SEDE_IN_CATENA:
+            continue
+        f = _copy.deepcopy(t["function"])
+        params = f.setdefault("parameters", {"type": "object", "properties": {}})
+        params.setdefault("properties", {})["sede"] = {
+            "type": "string",
+            "enum": nomi,
+            "description": "Il punto vendita, col nome esatto dell'elenco.",
+        }
+        params["required"] = sorted(set(params.get("required", [])) | {"sede"})
+        f["description"] = "Dati di UN SOLO punto vendita, indicato in `sede`. " + f["description"]
+        out.append({"type": "function", "function": f})
+    return out
+
+
+def _chat_esegui_tool_catena(
+    nome: str, args: Dict[str, Any], *, user: Dict[str, Any], supabase_client,
+    authorization: Optional[str], settore: Optional[str],
+    sedi: List[Dict[str, str]], nomi_di_sede: frozenset,
+) -> Dict[str, Any]:
+    """Dispatcher della chat di catena: strumenti di gruppo e, con una `sede`
+    verificata, quelli di sede. `nomi_di_sede` sono gli strumenti di sede
+    OFFERTI (dopo i gate): un nome che non c'e' va al dispatcher di gruppo,
+    che risponde «sconosciuto»."""
+    if nome in nomi_di_sede:
+        args = args or {}
+        sede = _chat_risolvi_sede(args.get("sede"), sedi)
+        if sede is None:
+            return {
+                "errore": "punto vendita non riconosciuto: usa uno di questi nomi",
+                "punti_vendita": [s["nome"] for s in sedi],
+            }
+        resto = {k: v for k, v in args.items() if k != "sede"}
+        out = _chat_esegui_tool_sede(
+            nome, resto, user=user, supabase_client=supabase_client,
+            authorization=authorization, ristorante_id=sede["id"], settore=settore,
+        )
+        return {"sede": sede["nome"], **out} if isinstance(out, dict) else out
+    return _chat_esegui_tool_gruppo(nome, args, authorization)
 
 
 @app.post(
@@ -5221,8 +5617,20 @@ def chat_ai(
     _piu_sedi_visibili = is_pool and (
         not _su.e_sotto_utente(user) or _num_sedi_sotto_utente(user) > 1
     )
+    # In catena, le sedi che la chat puo' nominare (step 6): servono al prompt
+    # (l'elenco dei nomi) e agli strumenti di sede. Lettura fallita = solo gli
+    # strumenti di gruppo, come prima.
+    sedi_chat: List[Dict[str, str]] = []
+    if is_catena:
+        try:
+            sedi_chat = _chat_sedi_catena(user, supabase_client)
+        except Exception as exc:
+            logger.warning("chat catena: sedi non lette, solo strumenti di gruppo: %s", exc)
     system_prompt = (
-        _build_chat_system_prompt_catena(user, supabase_client, authorization, settore_chat)
+        _build_chat_system_prompt_catena(
+            user, supabase_client, authorization, settore_chat,
+            sedi=[s["nome"] for s in sedi_chat],
+        )
         if is_catena
         else _build_chat_system_prompt(
             user, supabase_client, authorization, ristorante_id, settore_chat,
@@ -5239,161 +5647,24 @@ def chat_ai(
     messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     messages += [{"role": m.role, "content": m.content} for m in body.messages]
 
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "query_costi",
-                "description": (
-                    "Interroga i costi fatturati del ristorante con filtri opzionali. "
-                    "Usalo per domande su un periodo specifico (un mese o un anno) o "
-                    "per cercare la spesa su una categoria, un fornitore o un prodotto."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "mese": {"type": "integer", "description": "Numero del mese 1-12 (opzionale)"},
-                        "anno": {"type": "integer", "description": "Anno es. 2026 (opzionale)"},
-                        "categoria": {"type": "string", "description": "Categoria di spesa, es. 'carne' (opzionale)"},
-                        "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
-                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella' (opzionale)"},
-                    },
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "query_scadenze",
-                "description": (
-                    "Elenco delle scadenze di pagamento (fatture fornitori) con importi "
-                    "e date. Usalo per 'cosa devo pagare', 'quanto devo a X', 'scadenze "
-                    "questa settimana'."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "solo_da_pagare": {"type": "boolean", "description": "true (default) = solo non pagate"},
-                    },
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "query_margini",
-                "description": (
-                    "Andamento di fatturato, food cost % e MOL negli ultimi mesi. "
-                    "Usalo per 'com'è andato il MOL', 'andamento margini', 'food cost "
-                    "nel tempo'."
-                ),
-                "parameters": {"type": "object", "properties": {}},
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "query_coperti",
-                "description": (
-                    "Coperti (persone servite) e scontrino medio negli ultimi mesi. "
-                    "Usalo per 'quanti coperti ho fatto', 'qual e' il mio scontrino "
-                    "medio', 'quante persone servo al giorno', 'qual e' il giorno piu' "
-                    "pieno'. Diverso da query_margini (che da' fatturato/MOL)."
-                ),
-                "parameters": {"type": "object", "properties": {}},
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "confronto_prezzi",
-                "description": (
-                    "Confronta il prezzo di un prodotto tra i fornitori per trovare il "
-                    "migliore. Usalo per 'chi mi fa X al prezzo migliore', 'confronta i "
-                    "prezzi di Y'. Guarda gli ULTIMI 180 GIORNI: se l'utente chiede un "
-                    "periodo piu' vecchio, dillo (vedi solo gli ultimi 6 mesi)."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto da confrontare"},
-                    },
-                    "required": ["prodotto"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "ultimi_acquisti",
-                "description": (
-                    "Le ultime righe d'acquisto in ordine di data (piu' recente prima), "
-                    "con data, prodotto, fornitore e importo. Usalo per 'qual e' l'ultimo "
-                    "acquisto', 'ultima fattura', 'l'ultima volta che ho comprato X', "
-                    "'cosa ho comprato di recente da Y'. NON usarlo per totali di spesa "
-                    "(quello e' query_costi)."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto (opzionale)"},
-                        "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
-                        "limite": {"type": "integer", "description": "Quante righe restituire, 1-15 (default 5)"},
-                    },
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "trend_prezzo",
-                "description": (
-                    "Andamento del PREZZO UNITARIO di un prodotto mese per mese, con la "
-                    "variazione % dal primo all'ultimo mese. Usalo per 'la mozzarella e' "
-                    "aumentata?', 'il prezzo di X e' salito/sceso?', 'come e' cambiato il "
-                    "prezzo di Y'. Diverso da query_costi (che da' la spesa totale). "
-                    "Guarda gli ULTIMI ~7 MESI: se l'utente chiede un confronto piu' "
-                    "vecchio (es. 'un anno fa'), dillo esplicitamente."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella'"},
-                    },
-                    "required": ["prodotto"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "query_appuntamenti",
-                "description": (
-                    "Appuntamenti in agenda del ristorante (titolo, data, ora). Usalo per "
-                    "'cosa ho oggi', 'che appuntamenti ho questa settimana', 'ho impegni "
-                    "domani'. Sola lettura: non crea ne' modifica nulla."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "da": {"type": "string", "description": "Data inizio YYYY-MM-DD (opzionale, default oggi)"},
-                        "a": {"type": "string", "description": "Data fine YYYY-MM-DD (opzionale, default +7 giorni)"},
-                    },
-                },
-            },
-        },
-    ]
-
     # Doppia competenza per contesto (gate tool per "pagina"): in /catena la chat
     # accende SOLO i tool di gruppo (leggono /api/gruppo/*) e spegne quelli per-sede;
     # nei PV resta com'era. Stesso meccanismo del gate per flag pagina, applicato al
     # contesto. I tool di gruppo sono definiti/dispatchati a parte (_CHAT_TOOLS_GRUPPO).
     if is_catena:
+        tools_di_sede = (
+            _chat_tools_sede_per_catena(user, settore_chat, sedi_chat) if sedi_chat else []
+        )
+        nomi_di_sede = frozenset(t["function"]["name"] for t in tools_di_sede)
         reply, p_tok, c_tok = _chat_loop_openai(
             client,
             messages,
-            _chat_tools_gruppo(settore_chat),
-            lambda nome, args: _chat_esegui_tool_gruppo(nome, args, authorization),
+            _chat_tools_gruppo(settore_chat) + tools_di_sede,
+            lambda nome, args: _chat_esegui_tool_catena(
+                nome, args, user=user, supabase_client=supabase_client,
+                authorization=authorization, settore=settore_chat,
+                sedi=sedi_chat, nomi_di_sede=nomi_di_sede,
+            ),
             log_ctx="chat[catena]",
         )
         try:
@@ -5411,90 +5682,13 @@ def chat_ai(
             limite_giorno=limite,
         )
 
-    # Gate per permessi pagina: la chat offre al modello solo gli strumenti delle
-    # pagine abilitate per l'utente. pagine_abilitate None (admin) => tutti i tool.
-    # Coerente con la visibilita' della sidebar: chi non vede una pagina non puo'
-    # nemmeno interrogarne i dati via chat.
-    _TOOL_FLAG = {
-        "query_costi": "analisi_fatture",
-        "ultimi_acquisti": "analisi_fatture",
-        "query_scadenze": "scadenziario",
-        "query_margini": "margini",
-        "query_coperti": "margini",
-        "confronto_prezzi": "prezzi",
-        "trend_prezzo": "prezzi",
-        "query_appuntamenti": "agenda",
-    }
-    pagine = _normalize_pagine(user.get("pagine_abilitate"))
-    if pagine is not None:
-        pagine_set = set(pagine)
-        tools = [
-            t for t in tools
-            if _TOOL_FLAG.get(t["function"]["name"]) in pagine_set
-        ]
-
-    # Gate per SETTORE, e non per pagina come quello sopra. La Fase 3 ha spento a
-    # un negozio la tab Coperti con `tab_off_margini_coperti`, ma i `tab_off_*`
-    # non sono chiavi-pagina: il gate sopra non li guarda, e il negozio non
-    # vedeva la tab e poteva comunque chiedere i coperti in chat.
-    # Spegnerli via `pagine_abilitate` non e' un'alternativa: `query_margini` e
-    # `query_coperti` sono mappati sullo STESSO flag `margini`, quindi togliere i
-    # coperti toglierebbe anche i margini — che al negozio servono.
-    if settore_chat == SETTORE_RETAIL:
-        tools = [
-            t for t in tools
-            if t["function"]["name"] not in _TOOL_VIETATI_PER_SETTORE[SETTORE_RETAIL]
-        ]
+    tools = _chat_tools_sede_offerti(user, settore_chat)
 
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
-        # Il gate sopra toglie il tool dalla LISTA OFFERTA al modello; qui si
-        # controlla anche l'ESECUZIONE. Non e' ridondante: il dispatcher esegue
-        # per nome e non consulta `tools`, quindi un nome allucinato passerebbe
-        # comunque. E' lo stesso difetto di famiglia dei sette buchi della Fase 1
-        # — un gate a monte che non copre il punto a valle.
-        if nome in _TOOL_VIETATI_PER_SETTORE.get(settore_chat or "", frozenset()):
-            return {"errore": f"strumento non disponibile per questa attivita': {nome}"}
-        if nome == "query_costi":
-            return _chat_query_costi(
-                user_id=user_id,
-                supabase_client=supabase_client,
-                mese=args.get("mese"),
-                anno=args.get("anno"),
-                categoria=args.get("categoria"),
-                fornitore=args.get("fornitore"),
-                prodotto=args.get("prodotto"),
-                ristorante_id=ristorante_id,
-            )
-        if nome == "query_scadenze":
-            return _chat_query_scadenze(user, supabase_client, args.get("solo_da_pagare", True))
-        if nome == "query_margini":
-            return _chat_query_margini(user, supabase_client, authorization)
-        if nome == "query_coperti":
-            return _chat_query_coperti(user, supabase_client, authorization)
-        if nome == "confronto_prezzi":
-            return _chat_confronto_prezzi(user, supabase_client, args.get("prodotto", ""), ristorante_id)
-        if nome == "ultimi_acquisti":
-            return _chat_ultimi_acquisti(
-                user_id=user_id,
-                supabase_client=supabase_client,
-                prodotto=args.get("prodotto"),
-                fornitore=args.get("fornitore"),
-                limite=args.get("limite", 5),
-                ristorante_id=ristorante_id,
-            )
-        if nome == "trend_prezzo":
-            return _chat_trend_prezzo(
-                user_id=user_id,
-                supabase_client=supabase_client,
-                prodotto=args.get("prodotto", ""),
-                ristorante_id=ristorante_id,
-            )
-        if nome == "query_appuntamenti":
-            return _chat_query_appuntamenti(
-                user, supabase_client, ristorante_id,
-                da=args.get("da"), a=args.get("a"),
-            )
-        return {"errore": f"strumento sconosciuto: {nome}"}
+        return _chat_esegui_tool_sede(
+            nome, args, user=user, supabase_client=supabase_client,
+            authorization=authorization, ristorante_id=ristorante_id, settore=settore_chat,
+        )
 
     # Loop tool-calling condiviso (stesso motore della chat catena): round,
     # retry, chiamata finale tool_choice="none" e osservabilità sono centralizzati.

@@ -100,7 +100,7 @@ aggirabile aspettando un redeploy.
 **Guard di pagina** (`requirePagina`, `apps/web/src/lib/page-guard.ts`): le pagine
 con feature flag chiamano `requirePagina(flag)` in cima. Flag spento →
 `notFound()`. Prima `pagine_abilitate` filtrava **solo la sidebar**, quindi l'URL
-diretto era raggiungibile. Doppia difesa con il gate tool della chat (`_TOOL_FLAG`).
+diretto era raggiungibile. Doppia difesa con il gate tool della chat (`_CHAT_TOOL_FLAG`).
 
 > Non sostituisce l'isolamento dati del §1: è controllo di accesso alla
 > **funzionalità**, non al **dato**.

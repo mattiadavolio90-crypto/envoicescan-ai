@@ -174,8 +174,10 @@ ogni risposta (`domande_oggi` / `limite_giorno` in `ChatResponse`).
 
 ## 5. Gli strumenti (function calling)
 
-Tutti definiti in `chat_ai` (lista `tools`) e dispatchati da `_esegui_tool`. Sono
-**scoped per ristorante** e filtrano `deleted_at IS NULL` (soft-delete).
+Definiti a livello modulo in `_CHAT_TOOLS_SEDE` e dispatchati da
+`_chat_esegui_tool_sede` (fino al 29/9/2026 stavano dentro `chat_ai`). Sono
+**scoped per ristorante** e filtrano `deleted_at IS NULL` (soft-delete). In
+vista catena si usano anche loro, con una `sede` obbligatoria (§5.3).
 
 | Strumento | Funzione | Per domande tipo | Note |
 |---|---|---|---|
@@ -201,7 +203,8 @@ ma è il punto da spostare lato DB se i volumi crescono.
 ### 5.1 Gate degli strumenti per permessi pagina (dal 10/6/2026)
 
 Prima di passare la lista `tools` a OpenAI, `chat_ai` la **filtra** in base a
-`pagine_abilitate` dell'utente (mappa **`_TOOL_FLAG`** in `chat_ai`). Coerente con
+`pagine_abilitate` dell'utente (mappa **`_CHAT_TOOL_FLAG`**, applicata da
+`_chat_tools_sede_offerti`). Coerente con
 la visibilità della sidebar: **chi non vede una pagina non ne interroga i dati
 nemmeno in chat.**
 
@@ -217,13 +220,36 @@ nemmeno in chat.**
   (stessa semantica di `_normalize_pagine`: None = tutto abilitato).
 - Lista presente → resta solo il tool il cui flag è nella lista.
 
-> Il gate vale **su due fronti**: quali tool offrire al modello (`_TOOL_FLAG`
+> Il gate vale **su due fronti**: quali tool offrire al modello (`_CHAT_TOOL_FLAG`
 > qui) **e** quali dati iniettare nel system prompt (§6). Fino al 25/8/2026 il
 > secondo mancava: un utente senza `margini` non poteva chiamare `query_margini`
 > ma trovava il MOL già scritto nel prompt — l'invariante dichiarata qui era
 > violata da `_build_chat_system_prompt`. È il fratello del **guard di route**
 > lato Next (`requirePagina` in `apps/web/src/lib/page-guard.ts`): uno impedisce di
 > *aprire* la pagina, l'altro di *interrogarne i dati* via chat.
+
+### 5.3 In vista catena, gli strumenti di UNA sede (dal 29/9/2026)
+
+La chat di catena offre, oltre ai quattro strumenti di gruppo, gli strumenti di
+sede di `_CHAT_TOOLS_SEDE_IN_CATENA` (tutti tranne `query_coperti`, che legge la
+sede dal token) con un argomento **`sede` obbligatorio** (`enum` dei nomi).
+Il prompt di catena elenca i punti vendita del gruppo.
+
+- **La sede la sceglie il modello**, quindi è testo influenzabile dal cliente:
+  `_chat_risolvi_sede` la accetta solo se è una delle sedi lette da
+  `_chat_sedi_catena` (filtro `user_id`, attive, non tecniche; per un
+  sotto-utente solo le sue `sedi_operative`). Nome esatto, id di una di quelle
+  sedi o un pezzo di nome di almeno 3 lettere che ne identifica una sola.
+  Altrimenti l'errore elenca i nomi validi e **nessuna query parte**.
+- Alle query va l'**id della riga letta**, mai un valore degli argomenti; la
+  `sede` non arriva allo strumento.
+- Stessi gate della vista punto vendita (pagine, settore), anche
+  all'esecuzione: uno strumento non offerto va al dispatcher di gruppo, che
+  risponde «sconosciuto».
+- `query_appuntamenti` filtra anche per `user_id` (prima solo per sede).
+- Isolamento provato su Postgres vero con due clienti:
+  `tests/test_chat_catena_sede_sql.py` (sede di B per nome e per id, più il
+  controllo sulle proprie sedi).
 
 ### 5.2 Troncamento onesto di `query_scadenze` (dal 25/8/2026)
 
@@ -332,8 +358,8 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 | Cambiare modello o parametri (temp, max_tokens, round) | `CHAT_MODEL`, loop in `chat_ai` (fastapi_worker.py) |
 | Cambiare il budget mensile per piano | `CHAT_BUDGET_MENSILE_PIANO` (il giornaliero si ricalcola da solo) |
 | Cambiare quanto se ne puo' spendere in un giorno | `CHAT_QUOTA_GIORNALIERA_PCT` |
-| Aggiungere un nuovo strumento | lista `tools` + `_esegui_tool` + nuova `_chat_*` + voce in `_TOOL_FLAG` (§5.1) |
-| Cambiare a quale pagina è legato uno strumento | mappa `_TOOL_FLAG` in `chat_ai` |
+| Aggiungere un nuovo strumento | `_CHAT_TOOLS_SEDE` + `_chat_esegui_tool_sede` + nuova `_chat_*` + voce in `_CHAT_TOOL_FLAG` (§5.1); se vale anche in catena, `_CHAT_TOOLS_SEDE_IN_CATENA` (§5.3) |
+| Cambiare a quale pagina è legato uno strumento | mappa `_CHAT_TOOL_FLAG` |
 | Cambiare cosa sa il modello "a colpo d'occhio" | `_build_chat_system_prompt` (parti 1-2) |
 | Cambiare le regole di comportamento/tono | testo `sistema` in `_build_chat_system_prompt` |
 | Cambiare la ricerca tollerante (singolare/plurale) | `_varianti` in `_chat_query_costi` |
@@ -382,7 +408,7 @@ reale del cliente.
 
 | File | Ruolo |
 |---|---|
-| `services/fastapi_worker.py` | endpoint `chat_ai`, prompt, 7 tool `_chat_*`, gate `_TOOL_FLAG`, limiti |
+| `services/fastapi_worker.py` | endpoint `chat_ai`, prompt, tool `_chat_*`, gate `_CHAT_TOOL_FLAG`, strumenti di sede in catena (§5.3), limiti |
 | `apps/web/src/app/api/chat/route.ts` | proxy Next.js → worker (auth + timeout) |
 | `apps/web/src/components/home/assistente-provider.tsx` | stato della conversazione (layout di `(app)`), invio, attesa |
 | `apps/web/src/components/home/conversazione-assistente.tsx` | la conversazione nel riquadro del briefing: vista, quota, domande proposte |
@@ -395,6 +421,13 @@ reale del cliente.
 
 ## Changelog rilevante
 
+- **29/9/2026 (interfaccia dell'assistente, step 6)** — in vista catena la chat
+  usa anche gli strumenti di una sede, con `sede` obbligatoria e verificata fra
+  le sedi dell'account (§5.3). Lista e dispatcher degli strumenti di sede
+  spostati da `chat_ai` a livello modulo (`_CHAT_TOOLS_SEDE`,
+  `_chat_esegui_tool_sede`, `_CHAT_TOOL_FLAG`). `query_appuntamenti` filtra
+  anche per `user_id`. Il prompt di catena elenca i punti vendita e non dice
+  più «apri quel punto vendita» quando l'elenco c'è.
 - **29/9/2026 (interfaccia dell'assistente, step 5)** — nella vista punto
   vendita di chi vede più sedi il prompt nomina la **sede aperta**
   (`_chat_nome_sede`), non l'account, e un blocco «Solo questo locale» dice di
