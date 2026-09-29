@@ -54,27 +54,19 @@ export function PannelloConversazione({
     <div data-demo-anchor={ancoraDemo} className="relative mt-5 space-y-3 border-t border-primary/15 pt-4">
       {(voci.length > 0 || attesa) && (
         <div ref={lista} className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1" aria-live="polite">
-          {voci.map((v, i) =>
-            v.role === "vista" ? (
-              <div key={i} className="flex items-center gap-3 py-1 text-[11px] text-muted-foreground">
-                <span className="h-px flex-1 bg-border" />
-                <span>{v.content}</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-            ) : (
-              <div
-                key={i}
-                className={cn(
-                  "w-fit max-w-[85%] whitespace-pre-line rounded-xl px-3 py-2 text-sm leading-relaxed",
-                  v.role === "user"
-                    ? "ml-auto bg-primary text-primary-foreground"
-                    : "mr-auto border border-border bg-card text-foreground",
-                )}
-              >
-                {v.content}
-              </div>
-            ),
-          )}
+          {voci.map((v, i) => (
+            <div
+              key={i}
+              className={cn(
+                "w-fit max-w-[85%] whitespace-pre-line rounded-xl px-3 py-2 text-sm leading-relaxed",
+                v.role === "user"
+                  ? "ml-auto bg-primary text-primary-foreground"
+                  : "mr-auto border border-border bg-card text-foreground",
+              )}
+            >
+              {v.content}
+            </div>
+          ))}
           {attesa && (
             <div className="mr-auto flex w-fit items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />

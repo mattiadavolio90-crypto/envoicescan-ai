@@ -10,19 +10,20 @@ import {
   quotaEsaurita,
   type Conteggio,
   daSalvare,
-  entraInVista,
   messaggioRisposta,
   parseConversazione,
+  senzaVista,
   type Vista,
   type VoceChat,
 } from "@/lib/home-chat";
 
-// La conversazione con l'assistente, una per scheda del browser (28/9/2026).
+// Le conversazioni con l'assistente, una per locale e una per la catena, per
+// scheda del browser (28/9/2026; una per vista dal 29/9).
 //
 // Sta nel layout di (app) e non nella Home perche' deve sopravvivere al cambio
 // di pagina e di sede: una domanda partita dalla Home arriva anche se nel
-// frattempo il cliente e' andato altrove, e tornando la trova. La Home la
-// mostra, dentro il riquadro del briefing. Fino alla fase 5 vive in
+// frattempo il cliente e' andato altrove, e tornando la trova. La Home mostra
+// quella della vista aperta, dentro il riquadro del briefing. Fino alla fase 5 vive in
 // sessionStorage: resta finche' la scheda e' aperta, non passa al server.
 
 type Quota = { limiteGiorno: number; domandeOggi: number };
@@ -37,9 +38,9 @@ type StatoAssistente = {
   /** Domande di oggi come le ha contate il backend nell'ultima risposta (una
    *  quota per account), col momento in cui e' arrivata. */
   domande: Conteggio | null;
-  entraIn: (vista: Vista) => void;
   invia: (testo: string, vista: Vista, quota: Quota) => Promise<void>;
-  nuova: () => void;
+  /** Ricomincia la conversazione di questa vista; le altre restano. */
+  nuova: (vistaChiave: string) => void;
 };
 
 const Contesto = createContext<StatoAssistente | null>(null);
@@ -64,8 +65,7 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
     setVoci(vociRef.current);
   }, []);
 
-  // sessionStorage non esiste in SSR: si legge dopo il mount. Chi mostra la
-  // conversazione aspetta `pronta` prima di aggiungere la riga «Ora sei in…».
+  // sessionStorage non esiste in SSR: si legge dopo il mount.
   useEffect(() => {
     let salvate: VoceChat[] = [];
     try {
@@ -104,8 +104,6 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
     };
   }, [inCorso]);
 
-  const entraIn = useCallback((vista: Vista) => aggiorna((v) => entraInVista(v, vista)), [aggiorna]);
-
   const inCorsoRef = useRef(false);
   const invia = useCallback(
     async (testo: string, vista: Vista, quota: Quota) => {
@@ -137,10 +135,10 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
     [aggiorna],
   );
 
-  const nuova = useCallback(() => aggiorna(() => []), [aggiorna]);
+  const nuova = useCallback((vistaChiave: string) => aggiorna((v) => senzaVista(v, vistaChiave)), [aggiorna]);
 
   return (
-    <Contesto.Provider value={{ pronta, voci, inCorso, attesa, domande, entraIn, invia, nuova }}>
+    <Contesto.Provider value={{ pronta, voci, inCorso, attesa, domande, invia, nuova }}>
       {children}
     </Contesto.Provider>
   );

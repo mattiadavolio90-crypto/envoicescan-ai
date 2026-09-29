@@ -1,8 +1,9 @@
 """La conversazione nel riquadro del briefing — step 4, 28/9/2026.
 
 Mattia: via il pulsante flottante «Chiedi a ONEFLUX», l'assistente vive solo in
-Home, dentro il riquadro del briefing. La logica (vista dei messaggi, riga «Ora
-sei in…», cosa va al backend) e' eseguita in `test_home_chat_frontend.py`; qui
+Home, dentro il riquadro del briefing. Dal 29/9 una conversazione per vista:
+sotto il briefing di un locale si vedono solo i suoi messaggi. La logica (quali
+messaggi, cosa va al backend) e' eseguita in `test_home_chat_frontend.py`; qui
 si guarda che i componenti la usino, e che il vecchio pulsante non torni.
 """
 import re
@@ -61,14 +62,22 @@ def test_il_provider_manda_solo_la_vista_corrente_e_col_suo_contesto():
     assert "sessionStorage.removeItem(CHIAVE_VECCHIA)" in n
 
 
-def test_la_riga_ora_sei_in_aspetta_la_conversazione_salvata():
-    """Aggiunta prima della lettura, finiva su una conversazione vuota e si perdeva."""
-    assert "if(pronta)entraIn(vista);" in _n(_CONV)
+def test_a_schermo_la_conversazione_della_sola_vista_aperta():
+    """Mattia, 29/9: la conversazione che continuava sotto il briefing di un
+    altro locale confondeva. Il pannello riceve i soli messaggi della vista, e
+    «Nuova conversazione» e l'attesa riguardano solo lei."""
+    c = _n(_CONV)
+    assert "constvoci=vociDellaVista(tutte,vista.chiave);" in c
+    assert "<PannelloConversazionevoci={voci}" in c
+    assert "onNuova={()=>nuova(vista.chiave)}" in c
+    assert "attesa={inCorso===vista.chiave?testoAttesa(attesa):null}" in c
+    assert "entraIn" not in c and "entraIn" not in _n(_PROVIDER)
+    assert "nuova=useCallback((vistaChiave:string)=>aggiorna((v)=>senzaVista(v,vistaChiave))" in _n(_PROVIDER)
 
 
 def test_la_home_pv_passa_la_sede_aperta_e_la_regola_della_chat():
     n = _n(_PV)
-    assert "chatVisibile(config)&&(<ConversazioneAssistentevista={vistaSede(utente?.sede_attiva_id,utente?.sede_attiva_nome??utente?.nome_ristorante)}" in n
+    assert "chatVisibile(config)&&(<ConversazioneAssistentevista={vistaSede(utente?.sede_attiva_id)}" in n
     assert "limiteGiorno={config?.chat_limite_giorno??0}domandeOggiIniziali={config?.chat_domande_oggi??0}" in n
 
 
@@ -76,7 +85,7 @@ def test_la_home_di_catena_passa_il_pool_solo_se_attivo():
     n = _n(_CATENA_PAGE)
     assert "chatCatenaAttiva(chatConfig)?{limiteGiorno:chatConfig.limite_giorno,domandeOggi:chatConfig.domande_oggi,lettoAlle:Date.now(),settore:utente?.tipo_attivita??null,}:null" in n
     c = _n(_CATENA)
-    assert "{chat&&(<ConversazioneAssistentevista={vistaCatena(nomeGruppo)}" in c
+    assert "{chat&&(<ConversazioneAssistentevista={vistaCatena()}" in c
     assert "chat={chat}" in c
 
 

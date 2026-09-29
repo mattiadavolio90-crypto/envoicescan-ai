@@ -72,7 +72,7 @@ function BriefingGruppo({
     >
       {chat && (
         <ConversazioneAssistente
-          vista={vistaCatena(nomeGruppo)}
+          vista={vistaCatena()}
           limiteGiorno={chat.limiteGiorno}
           domandeOggiIniziali={chat.domandeOggi}
           lettoAlle={chat.lettoAlle}

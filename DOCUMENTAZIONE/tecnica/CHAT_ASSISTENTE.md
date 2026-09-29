@@ -368,7 +368,7 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 | Cambiare timeout | `OpenAI(timeout=...)` (worker) + `CHAT_TIMEOUT_MS` (route.ts) |
 | Cambiare le domande proposte | `SUGGERIMENTI_SEDE` / `SUGGERIMENTI_CATENA` in `lib/home-chat.ts` |
 | Cambiare il feedback d'attesa | `testoAttesa` in `lib/home-chat.ts` + effetto in `assistente-provider.tsx` |
-| Cambiare la riga «Ora sei in…» o cosa si manda al backend | `vistaSede`, `vistaCatena`, `entraInVista`, `codaPerVista` in `lib/home-chat.ts` |
+| Cambiare quali messaggi si vedono o cosa si manda al backend | `vistaSede`, `vistaCatena`, `vociDellaVista`, `senzaVista`, `codaPerVista` in `lib/home-chat.ts` |
 
 ### Testare la chat in locale
 
@@ -413,7 +413,7 @@ reale del cliente.
 | `apps/web/src/components/home/assistente-provider.tsx` | stato della conversazione (layout di `(app)`), invio, attesa |
 | `apps/web/src/components/home/conversazione-assistente.tsx` | la conversazione nel riquadro del briefing: vista, quota, domande proposte |
 | `apps/web/src/components/home/pannello-conversazione.tsx` | il disegno, comune alla Home e al Demo Tour |
-| `apps/web/src/lib/home-chat.ts` | logica pura: vista dei messaggi, riga «Ora sei in…», coda da inviare, contatore |
+| `apps/web/src/lib/home-chat.ts` | logica pura: messaggi della vista aperta, coda da inviare, contatore |
 | RPC `chat_usage_check_and_log` (DB) | rate-limit atomico |
 | `services/ai_cost_service.py` | `track_ai_usage` (ledger costi) |
 
@@ -439,6 +439,14 @@ reale del cliente.
   (falso blocco nel passaggio catena → punto vendita). Domande proposte per
   settore (`suggerimentiPer`: i negozi non leggono food cost, pesce né
   scontrino).
+- **29/9/2026 (una conversazione per vista)** — Mattia: la conversazione unica
+  che continuava cambiando locale, sotto un briefing diverso, confondeva. Ora
+  ogni locale e la catena hanno la loro: sotto il briefing si vedono solo i
+  messaggi di quella vista (`vociDellaVista`), cioè esattamente quelli che il
+  modello riceve; le altre restano salvate e si ritrovano tornandoci. «Nuova
+  conversazione» ricomincia solo quella della vista (`senzaVista`). Via le righe
+  «Ora sei in…». Sui 5xx la chat mostra un messaggio suo, mai il testo tecnico
+  del server (`messaggioRisposta`).
 - **28/9/2026 (interfaccia dell'assistente, step 4)** — via il pulsante flottante
   «Chiedi a ONEFLUX»: la conversazione vive nel riquadro del briefing delle due
   Home, con domande proposte, casella e contatore. Una conversazione sola per

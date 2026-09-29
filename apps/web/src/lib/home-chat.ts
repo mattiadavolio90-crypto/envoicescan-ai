@@ -89,7 +89,13 @@ export function contatoreAggiornato(
   return attuale;
 }
 
-/* ─── Una conversazione sola, con la vista in cui e' stato scritto ogni messaggio ─ */
+/* ─── Una conversazione per vista: ogni locale la sua, e la catena la sua ─── */
+//
+// Mattia, 29/9: una conversazione unica che continuava cambiando locale, sotto
+// un briefing che nel frattempo era cambiato, era «molto confusionaria» — e il
+// modello riceveva comunque solo i messaggi del locale aperto (codaPerVista).
+// Ora a schermo c'e' esattamente cio' che l'assistente ricorda: i messaggi di
+// questa vista. Quelli delle altre restano salvati e si ritrovano tornandoci.
 
 // Domande proposte nel riquadro, per vista. Guidano chi non sa cosa chiedere.
 export const SUGGERIMENTI_SEDE = [
@@ -132,31 +138,20 @@ export function suggerimentiPer(
 }
 
 // Dove si trova il cliente quando scrive: una sede precisa o la vista catena.
-// `chiave` distingue le sedi fra loro (due locali non sono la stessa vista);
-// `frase` e' la riga che la conversazione mostra quando si cambia.
-export type Vista = { chiave: string; contesto: "sede" | "catena"; frase: string };
+// `chiave` distingue le sedi fra loro (due locali non sono la stessa vista).
+export type Vista = { chiave: string; contesto: "sede" | "catena" };
 
-export function vistaSede(id: string | null | undefined, nome: string | null | undefined): Vista {
-  const n = (nome ?? "").trim();
-  return {
-    chiave: `sede:${(id ?? "").trim()}`,
-    contesto: "sede",
-    frase: n ? `Ora sei in ${n}` : "Ora sei nel tuo locale",
-  };
+export function vistaSede(id: string | null | undefined): Vista {
+  return { chiave: `sede:${(id ?? "").trim()}`, contesto: "sede" };
 }
 
-export function vistaCatena(nomeGruppo: string | null | undefined): Vista {
-  const n = (nomeGruppo ?? "").trim();
-  return {
-    chiave: "catena",
-    contesto: "catena",
-    frase: n ? `Ora sei nella vista catena del gruppo ${n}` : "Ora sei nella vista catena",
-  };
+export function vistaCatena(): Vista {
+  return { chiave: "catena", contesto: "catena" };
 }
 
-// Una voce della conversazione: un messaggio, o la riga «Ora sei in…».
+// Un messaggio della conversazione, con la vista in cui e' stato scritto.
 export type VoceChat = {
-  role: "user" | "assistant" | "vista";
+  role: "user" | "assistant";
   content: string;
   vista: string;
 };
@@ -167,7 +162,8 @@ export const MAX_VOCI_SALVATE = 200;
 
 // Stesso contratto di parseStorico: contenuto fuori dal nostro controllo, mai
 // un throw. Una voce senza vista (formato del vecchio pulsante flottante) si
-// scarta: non sapremmo a quale locale apparteneva.
+// scarta: non sapremmo a quale locale apparteneva. Cosi' anche le righe «Ora
+// sei in…» salvate prima del 29/9 (role "vista").
 export function parseConversazione(raw: string | null): VoceChat[] {
   if (!raw) return [];
   try {
@@ -176,7 +172,7 @@ export function parseConversazione(raw: string | null): VoceChat[] {
     return parsed.filter(
       (v): v is VoceChat =>
         !!v &&
-        (v.role === "user" || v.role === "assistant" || v.role === "vista") &&
+        (v.role === "user" || v.role === "assistant") &&
         typeof v.content === "string" &&
         typeof v.vista === "string" &&
         v.vista !== "",
@@ -190,30 +186,28 @@ export function daSalvare(voci: VoceChat[]): VoceChat[] {
   return voci.slice(-MAX_VOCI_SALVATE);
 }
 
-// Il cliente e' arrivato in `vista`: se la conversazione era altrove, compare la
-// riga «Ora sei in…». In una conversazione vuota niente riga (non c'e' niente da
-// cui distinguersi); due cambi di fila non lasciano due righe; tornare dove si
-// era prima di un cambio senza aver scritto niente la toglie.
-export function entraInVista(voci: VoceChat[], vista: Vista): VoceChat[] {
-  if (!voci.some((v) => v.role !== "vista")) return voci;
-  const ultima = voci[voci.length - 1];
-  if (ultima.vista === vista.chiave) return voci;
-  const base = ultima.role === "vista" ? voci.slice(0, -1) : voci;
-  if (base.length === 0 || base[base.length - 1].vista === vista.chiave) return base;
-  return [...base, { role: "vista", content: vista.frase, vista: vista.chiave }];
+// Cosa si vede sotto il briefing: i soli messaggi di questa vista.
+export function vociDellaVista(voci: VoceChat[], vistaChiave: string): VoceChat[] {
+  return voci.filter((v) => v.vista === vistaChiave);
+}
+
+// «Nuova conversazione» ricomincia quella di questa vista: le conversazioni
+// degli altri locali restano dove sono.
+export function senzaVista(voci: VoceChat[], vistaChiave: string): VoceChat[] {
+  return voci.filter((v) => v.vista !== vistaChiave);
 }
 
 // Cosa si manda a /api/chat: solo i messaggi scritti in QUESTA vista. Prima la
 // catena e il punto vendita condividevano la stessa chiave di sessionStorage e
 // lo stesso storico, e al backend arrivavano domande fatte su un altro locale
-// come contesto di questa. Le righe «Ora sei in…» non si mandano mai.
+// come contesto di questa.
 //
 // Una sede senza id (il worker lo lascia vuoto se la risoluzione della sede
 // fallisce) darebbe la stessa chiave a tutti i locali: li' si manda solo la
 // domanda appena scritta, mai lo storico.
 export function codaPerVista(voci: VoceChat[], vista: Vista): Msg[] {
   const della = voci
-    .filter((v): v is VoceChat & { role: "user" | "assistant" } => v.role !== "vista" && v.vista === vista.chiave)
+    .filter((v) => v.vista === vista.chiave)
     .map((v) => ({ role: v.role, content: v.content }));
   return codaDaInviare(vista.chiave.endsWith(":") ? della.slice(-1) : della);
 }
@@ -234,11 +228,11 @@ export function chiaveConversazione(utenteId: string): string {
 // cancella al primo caricamento.
 export const CHIAVE_VECCHIA = "oneflux:chat-messages";
 
-// La risposta va subito dopo la sua domanda, non in fondo: se nel frattempo il
-// cliente ha cambiato sede, in fondo c'e' gia' la riga «Ora sei in…», e una
-// risposta sotto quella riga sembrerebbe detta sul locale nuovo. Una domanda
-// alla volta (il campo e' bloccato mentre si aspetta), quindi e' l'ultima
-// domanda di quella vista.
+// La risposta va subito dopo la sua domanda, nella sua vista: se nel frattempo
+// il cliente ha cambiato locale e scritto li', la risposta resta nella
+// conversazione del locale dove e' partita la domanda. Una domanda alla volta
+// (il campo e' bloccato mentre si aspetta), quindi e' l'ultima domanda di
+// quella vista.
 export function conRisposta(voci: VoceChat[], vistaChiave: string, testo: string): VoceChat[] {
   let i = voci.length - 1;
   while (i >= 0 && !(voci[i].role === "user" && voci[i].vista === vistaChiave)) i--;

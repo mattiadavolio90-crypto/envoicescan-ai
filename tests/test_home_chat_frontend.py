@@ -262,12 +262,12 @@ def test_fuori_dal_429_nessuna_quota_e_esaurita():
 # scritta, e al backend va solo la vista corrente.
 
 
-def _vs(id_="r1", nome="CASATI 14"):
-    return _chiama("vistaSede", [id_, nome])
+def _vs(id_="r1"):
+    return _chiama("vistaSede", [id_])
 
 
-def _vc(nome="SUSHILAND"):
-    return _chiama("vistaCatena", [nome])
+def _vc():
+    return _chiama("vistaCatena", [])
 
 
 def _u(testo, vista):
@@ -279,25 +279,18 @@ def _a(testo, vista):
 
 
 def test_la_vista_di_una_sede_e_diversa_da_quella_di_un_altra():
-    a, b = _vs("r1", "A"), _vs("r2", "B")
+    a, b = _vs("r1"), _vs("r2")
     assert a["chiave"] != b["chiave"]
     assert a["contesto"] == b["contesto"] == "sede"
-    assert a["frase"] == "Ora sei in A"
 
 
 def test_la_vista_catena():
-    v = _vc("SUSHILAND")
-    assert v == {"chiave": "catena", "contesto": "catena", "frase": "Ora sei nella vista catena del gruppo SUSHILAND"}
-
-
-def test_nomi_assenti_non_lasciano_frasi_rotte():
-    assert _vs("r1", None)["frase"] == "Ora sei nel tuo locale"
-    assert _vs("r1", "   ")["frase"] == "Ora sei nel tuo locale"
-    assert _vc(None)["frase"] == "Ora sei nella vista catena"
+    assert _vc() == {"chiave": "catena", "contesto": "catena"}
 
 
 def test_la_conversazione_salvata_scarta_le_voci_senza_vista():
-    """Il formato del vecchio pulsante non diceva a quale locale apparteneva."""
+    """Il formato del vecchio pulsante non diceva a quale locale apparteneva; le
+    righe «Ora sei in…» salvate prima del 29/9 non si mostrano piu'."""
     grezzo = (
         '[{"role":"user","content":"vecchia"},'
         '{"role":"user","content":"ok","vista":"catena"},'
@@ -307,7 +300,7 @@ def test_la_conversazione_salvata_scarta_le_voci_senza_vista():
         'null]'
     )
     out = _chiama("parseConversazione", [grezzo])
-    assert [v["content"] for v in out] == ["ok", "Ora sei in A"]
+    assert [v["content"] for v in out] == ["ok"]
 
 
 def test_la_conversazione_salvata_non_lancia_mai():
@@ -322,49 +315,42 @@ def test_si_salvano_solo_le_ultime_voci():
     assert out[0]["content"] == "m50" and out[-1]["content"] == "m249"
 
 
-def test_in_una_conversazione_vuota_niente_riga_ora_sei_in():
-    assert _chiama("entraInVista", [[], _vc()]) == []
+# ─── Una conversazione per vista (Mattia, 29/9) ─────────────────────────
+
+_TRE_VISTE = [
+    _u("catena?", "catena"), _a("gruppo", "catena"),
+    _u("sede?", "sede:r1"), _a("locale", "sede:r1"),
+    _u("altra?", "sede:r2"),
+]
 
 
-def test_nella_stessa_vista_niente_riga():
-    voci = [_u("q", "catena"), _a("r", "catena")]
-    assert _chiama("entraInVista", [voci, _vc()]) == voci
+def test_a_schermo_solo_la_conversazione_della_vista_aperta():
+    """Sotto il briefing di un locale non compaiono domande fatte su un altro:
+    era la confusione della foto del 29/9."""
+    assert _chiama("vociDellaVista", [_TRE_VISTE, "sede:r1"]) == [_u("sede?", "sede:r1"), _a("locale", "sede:r1")]
+    assert _chiama("vociDellaVista", [_TRE_VISTE, "catena"]) == [_u("catena?", "catena"), _a("gruppo", "catena")]
+    assert _chiama("vociDellaVista", [_TRE_VISTE, "sede:r9"]) == []
 
 
-def test_cambiando_vista_compare_la_riga():
-    voci = [_u("q", "catena"), _a("r", "catena")]
-    out = _chiama("entraInVista", [voci, _vs("r1", "CASATI 14")])
-    assert out[-1] == {"role": "vista", "content": "Ora sei in CASATI 14", "vista": "sede:r1"}
-    assert out[:-1] == voci
+def test_tornando_nel_locale_la_conversazione_c_e_ancora():
+    """Cambiare locale non cancella niente: e' la stessa lista, filtrata."""
+    dopo = _TRE_VISTE + [_u("ancora?", "sede:r2")]
+    assert [v["content"] for v in _chiama("vociDellaVista", [dopo, "sede:r1"])] == ["sede?", "locale"]
 
 
-def test_due_cambi_di_fila_lasciano_una_riga_sola():
-    voci = [_u("q", "catena"), {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"}]
-    out = _chiama("entraInVista", [voci, _vs("r2", "B")])
-    assert [v["content"] for v in out] == ["q", "Ora sei in B"]
-
-
-def test_tornare_dove_si_era_senza_scrivere_toglie_la_riga():
-    voci = [_u("q", "catena"), {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"}]
-    assert _chiama("entraInVista", [voci, _vc()]) == [_u("q", "catena")]
+def test_nuova_conversazione_ricomincia_solo_quella_della_vista():
+    out = _chiama("senzaVista", [_TRE_VISTE, "sede:r1"])
+    assert [v["content"] for v in out] == ["catena?", "gruppo", "altra?"]
 
 
 def test_al_backend_solo_i_messaggi_della_vista_corrente():
     """LA regressione: prima tutto lo storico, di tutte le viste."""
-    voci = [
-        _u("catena?", "catena"), _a("gruppo", "catena"),
-        {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"},
-        _u("sede?", "sede:r1"), _a("locale", "sede:r1"),
-        {"role": "vista", "content": "Ora sei in B", "vista": "sede:r2"},
-        _u("altra?", "sede:r2"),
-    ]
-    out = _chiama("codaPerVista", [voci, _vs("r1", "A")])
+    out = _chiama("codaPerVista", [_TRE_VISTE, _vs("r1")])
     assert out == [{"role": "user", "content": "sede?"}, {"role": "assistant", "content": "locale"}]
 
 
-def test_al_backend_mai_le_righe_ora_sei_in_e_al_massimo_16():
-    voci = [{"role": "vista", "content": "Ora sei nella vista catena", "vista": "catena"}]
-    voci += [_u(f"m{i}", "catena") for i in range(20)]
+def test_al_backend_al_massimo_16_e_solo_role_e_content():
+    voci = [_u(f"m{i}", "catena") for i in range(20)]
     out = _chiama("codaPerVista", [voci, _vc()])
     assert len(out) == 16
     assert out[-1]["content"] == "m19"
@@ -378,15 +364,13 @@ def test_le_domande_proposte_finche_in_questa_vista_non_si_e_scritto():
     assert _chiama("mostraSuggerimenti", [[], _vc()]) is True
 
 
-def test_la_risposta_va_sotto_la_sua_domanda_non_sotto_la_riga_del_cambio():
-    """Domanda in catena, poi il cliente scende in un locale prima della risposta."""
-    voci = [
-        _u("q", "catena"),
-        {"role": "vista", "content": "Ora sei in A", "vista": "sede:r1"},
-    ]
+def test_la_risposta_resta_nella_vista_della_sua_domanda():
+    """Domanda in catena, poi il cliente scende in un locale e ci scrive prima
+    che arrivi la risposta: la risposta resta nella conversazione della catena."""
+    voci = [_u("q", "catena"), _u("altro", "sede:r1")]
     out = _chiama("conRisposta", [voci, "catena", "risposta"])
-    assert [v["content"] for v in out] == ["q", "risposta", "Ora sei in A"]
     assert out[1] == _a("risposta", "catena")
+    assert _chiama("vociDellaVista", [out, "catena"]) == [_u("q", "catena"), _a("risposta", "catena")]
 
 
 def test_la_risposta_senza_domanda_va_in_fondo():
@@ -462,7 +446,7 @@ def test_una_lettura_nuova_del_server_toglie_il_limite_mensile_vecchio():
 
 def test_sede_senza_id_manda_solo_l_ultima_domanda():
     """Senza id tutte le sedi avrebbero la chiave «sede:»: niente storico."""
-    v = _vs(None, "A")
+    v = _vs(None)
     assert v["chiave"] == "sede:"
     voci = [_u("vecchia", "sede:"), _a("r", "sede:"), _u("nuova", "sede:")]
     assert _chiama("codaPerVista", [voci, v]) == [{"role": "user", "content": "nuova"}]
