@@ -5683,8 +5683,14 @@ def chat_ai(
         )
 
     tools = _chat_tools_sede_offerti(user, settore_chat)
+    # Il gate pagina anche all'ESECUZIONE, come fa la catena con `nomi_di_sede`:
+    # il dispatcher esegue per nome, e un nome allucinato di uno strumento spento
+    # per pagina passava (segnalato dal revisore il 29/9, esisteva da prima).
+    _offerti = frozenset(t["function"]["name"] for t in tools)
 
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        if nome not in _offerti:
+            return {"errore": f"strumento non disponibile: {nome}"}
         return _chat_esegui_tool_sede(
             nome, args, user=user, supabase_client=supabase_client,
             authorization=authorization, ristorante_id=ristorante_id, settore=settore_chat,

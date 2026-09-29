@@ -279,3 +279,64 @@ def test_chat_ai_catena_offre_gruppo_e_sede(monkeypatch):
     assert "query_coperti" not in visto["tools"]
     fuori = visto["esegui"]("query_costi", {"sede": "rid-99"})
     assert "errore" in fuori, "il dispatcher vero di chat_ai deve rifiutare una sede non dell'account"
+
+
+# ─── Vista punto vendita: il gate pagina vale anche all'esecuzione ──────────
+#
+# Segnalato dal revisore il 29/9 (esisteva da prima): la catena lo aveva con
+# `nomi_di_sede`, la vista PV solo sulla lista offerta.
+
+
+def _esegui_pv(monkeypatch, user):
+    visto = {}
+    sb = MagicMock()
+    q = MagicMock()
+    for m in ("select", "eq", "order", "limit", "is_", "single"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=[{"nome_ristorante": "X"}], count=1)
+    sb.table.return_value = q
+    sb.rpc.return_value.execute.return_value = MagicMock(data=1)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(fw, "_resolve_user_from_token", lambda auth: dict(user))
+    monkeypatch.setattr("services.get_supabase_client", lambda: sb)
+    monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, s: "rid-1")
+    monkeypatch.setattr(fw, "_chat_quota_pool", lambda u, s: (30, False))
+    monkeypatch.setattr(fw, "_chat_budget_mensile_pool", lambda u, s: 600)
+    monkeypatch.setattr(fw, "_get_assistant_preferences", lambda rid, s: {"chat_ai_enabled": True})
+    monkeypatch.setattr("services.settore_service.settore_utente", lambda uid, s=None: "ristorazione")
+    monkeypatch.setattr(fw, "_build_chat_system_prompt", lambda *a, **k: "prompt")
+
+    def _loop(client, messages, tools, esegui, log_ctx=""):
+        visto["esegui"] = esegui
+        return ("ok", 1, 1)
+
+    monkeypatch.setattr(fw, "_chat_loop_openai", _loop)
+    fw.chat_ai(fw.ChatRequest(messages=[fw.ChatMessage(role="user", content="x")]), authorization="Bearer t")
+    return visto["esegui"]
+
+
+def test_pv_uno_strumento_spento_per_pagina_non_si_esegue_anche_se_nominato(monkeypatch):
+    senza_scadenze = dict(USER, pagine_abilitate={"analisi_fatture": True, "scadenziario": False})
+    chiamato = []
+    monkeypatch.setattr(fw, "_chat_query_scadenze", lambda *a, **k: chiamato.append(1) or {})
+    esegui = _esegui_pv(monkeypatch, senza_scadenze)
+    out = esegui("query_scadenze", {})
+    assert chiamato == [] and "non disponibile" in out["errore"]
+
+
+def test_pv_uno_strumento_offerto_si_esegue(monkeypatch):
+    chiamato = []
+    monkeypatch.setattr(fw, "_chat_query_scadenze", lambda *a, **k: chiamato.append(k) or {})
+    esegui = _esegui_pv(monkeypatch, USER)
+    esegui("query_scadenze", {})
+    assert chiamato == [{"ristorante_id": "rid-1"}]
+
+
+def test_il_controllo_di_settore_resta_anche_nel_dispatcher_di_sede():
+    """Seconda difesa: da chat_ai ora il gate della lista arriva prima, ma chi
+    chiama il dispatcher di sede direttamente trova ancora il rifiuto."""
+    out = fw._chat_esegui_tool_sede(
+        "query_coperti", {}, user=USER, supabase_client=MagicMock(), authorization=None,
+        ristorante_id="rid-1", settore="retail",
+    )
+    assert "non disponibile per questa attivita'" in out["errore"]

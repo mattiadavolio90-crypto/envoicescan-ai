@@ -228,29 +228,6 @@ nemmeno in chat.**
 > lato Next (`requirePagina` in `apps/web/src/lib/page-guard.ts`): uno impedisce di
 > *aprire* la pagina, l'altro di *interrogarne i dati* via chat.
 
-### 5.3 In vista catena, gli strumenti di UNA sede (dal 29/9/2026)
-
-La chat di catena offre, oltre ai quattro strumenti di gruppo, gli strumenti di
-sede di `_CHAT_TOOLS_SEDE_IN_CATENA` (tutti tranne `query_coperti`, che legge la
-sede dal token) con un argomento **`sede` obbligatorio** (`enum` dei nomi).
-Il prompt di catena elenca i punti vendita del gruppo.
-
-- **La sede la sceglie il modello**, quindi è testo influenzabile dal cliente:
-  `_chat_risolvi_sede` la accetta solo se è una delle sedi lette da
-  `_chat_sedi_catena` (filtro `user_id`, attive, non tecniche; per un
-  sotto-utente solo le sue `sedi_operative`). Nome esatto, id di una di quelle
-  sedi o un pezzo di nome di almeno 3 lettere che ne identifica una sola.
-  Altrimenti l'errore elenca i nomi validi e **nessuna query parte**.
-- Alle query va l'**id della riga letta**, mai un valore degli argomenti; la
-  `sede` non arriva allo strumento.
-- Stessi gate della vista punto vendita (pagine, settore), anche
-  all'esecuzione: uno strumento non offerto va al dispatcher di gruppo, che
-  risponde «sconosciuto».
-- `query_appuntamenti` filtra anche per `user_id` (prima solo per sede).
-- Isolamento provato su Postgres vero con due clienti:
-  `tests/test_chat_catena_sede_sql.py` (sede di B per nome e per id, più il
-  controllo sulle proprie sedi).
-
 ### 5.2 Troncamento onesto di `query_scadenze` (dal 25/8/2026)
 
 L'elenco restituito si ferma a `_CHAT_SCADENZE_LIMIT` (30) voci, ma
@@ -273,6 +250,29 @@ totale) e prima del fix sparivano sempre dietro il troncamento. Il campo
 `senza_scadenza_non_mostrate` conta quante ne restano davvero fuori.
 
 ---
+
+### 5.3 In vista catena, gli strumenti di UNA sede (dal 29/9/2026)
+
+La chat di catena offre, oltre ai quattro strumenti di gruppo, gli strumenti di
+sede di `_CHAT_TOOLS_SEDE_IN_CATENA` (tutti tranne `query_coperti`, che legge la
+sede dal token) con un argomento **`sede` obbligatorio** (`enum` dei nomi).
+Il prompt di catena elenca i punti vendita del gruppo.
+
+- **La sede la sceglie il modello**, quindi è testo influenzabile dal cliente:
+  `_chat_risolvi_sede` la accetta solo se è una delle sedi lette da
+  `_chat_sedi_catena` (filtro `user_id`, attive, non tecniche; per un
+  sotto-utente solo le sue `sedi_operative`). Nome esatto, id di una di quelle
+  sedi o un pezzo di nome di almeno 3 lettere che ne identifica una sola.
+  Altrimenti l'errore elenca i nomi validi e **nessuna query parte**.
+- Alle query va l'**id della riga letta**, mai un valore degli argomenti; la
+  `sede` non arriva allo strumento.
+- Stessi gate della vista punto vendita (pagine, settore), anche
+  all'esecuzione: uno strumento non offerto va al dispatcher di gruppo, che
+  risponde «sconosciuto».
+- `query_appuntamenti` filtra anche per `user_id` (prima solo per sede).
+- Isolamento provato su Postgres vero con due clienti:
+  `tests/test_chat_catena_sede_sql.py` (sede di B per nome e per id, più il
+  controllo sulle proprie sedi).
 
 ## 6. Il system prompt (`_build_chat_system_prompt`)
 
