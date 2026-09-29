@@ -37,8 +37,11 @@ export function domandeRimanenti(limiteGiorno: number, domandeOggi: number): num
 }
 
 // Cosa legge l'utente quando la chiamata non porta una risposta. `error` del
-// backend vince quando c'e'; il 504 no, perche' li' il messaggio del gateway
-// non e' scritto per un ristoratore.
+// backend vince sui 4xx, scritti per il cliente; sui 5xx no: li' arrivano il
+// testo del gateway, «Internal Server Error» o un motivo tecnico come
+// «OPENAI_API_KEY non configurata», mostrato cosi' in chat il 29/9.
+export const MESSAGGIO_NON_DISPONIBILE = "L'assistente non è disponibile in questo momento. Riprova tra poco.";
+
 export function messaggioRisposta(
   status: number,
   data: { reply?: string; error?: string },
@@ -47,6 +50,7 @@ export function messaggioRisposta(
   if (status === 429) return data.error || "Hai raggiunto il limite di domande per oggi. Il contatore si azzera a mezzanotte.";
   if (status === 403) return data.error || "La chat non è disponibile nel tuo piano attuale.";
   if (status === 504) return "L'assistente ha impiegato troppo tempo. Riprova.";
+  if (status >= 500) return MESSAGGIO_NON_DISPONIBILE;
   return data.error || "Si è verificato un errore. Riprova.";
 }
 

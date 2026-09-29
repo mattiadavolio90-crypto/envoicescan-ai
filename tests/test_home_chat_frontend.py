@@ -141,9 +141,22 @@ def test_504_NON_usa_il_messaggio_del_backend():
     assert out == "L'assistente ha impiegato troppo tempo. Riprova."
 
 
-def test_errore_generico_usa_error_se_c_e():
-    assert _chiama("messaggioRisposta", [500, {"error": "boom"}]) == "boom"
-    assert "errore" in _chiama("messaggioRisposta", [500, {}]).lower()
+def test_errore_4xx_usa_error_se_c_e():
+    assert _chiama("messaggioRisposta", [400, {"error": "boom"}]) == "boom"
+    assert "errore" in _chiama("messaggioRisposta", [400, {}]).lower()
+
+
+@pytest.mark.parametrize("status,error", [
+    (500, "OPENAI_API_KEY non configurata"),
+    (500, "Internal Server Error"),
+    (502, "Errore worker"),
+    (503, "Servizio temporaneamente non disponibile. Riprova."),
+])
+def test_5xx_NON_mostra_il_testo_tecnico(status, error):
+    """29/9: in chat e' comparso «OPENAI_API_KEY non configurata». Sui 5xx il
+    testo viene dal server o dal gateway, non e' scritto per un ristoratore."""
+    out = _chiama("messaggioRisposta", [status, {"error": error}])
+    assert out == "L'assistente non è disponibile in questo momento. Riprova tra poco."
 
 
 # ─── contatore: segue il backend, tranne quando tace su un 429 ────────────
