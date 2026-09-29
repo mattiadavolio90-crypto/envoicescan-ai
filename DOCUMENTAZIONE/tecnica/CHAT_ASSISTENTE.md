@@ -39,7 +39,7 @@ contraddice mai la schermata.
 
 ```
 ConversazioneAssistente                 ← nel riquadro del briefing della Home (dal 28/9/2026)
-  + AssistenteProvider (layout di (app)) ← una conversazione per scheda, in sessionStorage
+  + AssistenteProvider (layout di (app)) ← una conversazione per vista (sede o catena), in sessionStorage
         │  POST /api/chat  { messages: [...ultimi 16 DELLA VISTA], contesto }
         ▼
 route.ts (apps/web/.../api/chat)        ← inoltra al worker con Bearer + X-Worker-Key

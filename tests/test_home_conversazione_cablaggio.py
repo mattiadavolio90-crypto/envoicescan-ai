@@ -122,3 +122,12 @@ def test_le_domande_proposte_seguono_il_settore():
     assert "suggerimentiPer(vista.contesto,settore)" in _n(_CONV)
     assert "settore={utente?.tipo_attivita}" in _n(_PV)
     assert "settore={chat.settore}" in _n(_CATENA)
+
+
+def test_la_casella_ferma_per_una_domanda_altrove_dice_perche():
+    """Revisore, 29/9: domanda nella sede A, passaggio alla B prima della
+    risposta. In B la casella e' ferma (una domanda alla volta) e senza attesa
+    visibile sembrava rotta."""
+    c = _n(_CONV)
+    assert "constbloccato=inCorso!==null||esaurite;" in c
+    assert ":inCorso!==null&&inCorso!==vista.chiave?\"Storispondendoalladomandachehaifattoinun'altravista…\"" in c

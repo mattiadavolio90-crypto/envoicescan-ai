@@ -71,7 +71,11 @@ export function ConversazioneAssistente({
       placeholder={
         esaurite
           ? "Limite di oggi raggiunto"
-          : vista.contesto === "catena"
+          : inCorso !== null && inCorso !== vista.chiave
+            // Una domanda alla volta per account: se aspetta la risposta in
+            // un'altra vista, qui la casella e' ferma e deve dire perche'.
+            ? "Sto rispondendo alla domanda che hai fatto in un'altra vista…"
+            : vista.contesto === "catena"
             ? "Chiedimi dei tuoi punti vendita…"
             : "Chiedimi dei tuoi costi, fornitori, margini…"
       }

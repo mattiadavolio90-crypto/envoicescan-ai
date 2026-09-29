@@ -328,12 +328,9 @@ function SezioneSprecoCategorie({ mese }: { mese: number | null }) {
     fetch(`/api/gruppo/spreco-categorie${qs}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j) => { if (my === reqRef.current) setData(j); })
-      .catch(() => {
-        if (my === reqRef.current) {
-          setLoadError(true);
-          toast.error("Errore nel caricamento dello spreco per categoria");
-        }
-      })
+      // Niente toast: la sezione si carica da sola con la scheda, e l'errore
+      // lo dice gia' il riquadro «Non è stato possibile caricare i dati».
+      .catch(() => { if (my === reqRef.current) setLoadError(true); })
       .finally(() => { if (my === reqRef.current) setLoading(false); });
   }, [mese]);
 

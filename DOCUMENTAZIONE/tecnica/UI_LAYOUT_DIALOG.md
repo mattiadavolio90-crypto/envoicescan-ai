@@ -206,7 +206,8 @@ famiglia: **la UI dice una cosa falsa e l'utente ci crede**.
 
 ### Il difetto
 
-Il dialog "Spreco per categoria" (Catena → Margini e coperti → Categorie)
+Il dialog "Spreco per categoria" (allora Catena → Margini e coperti → Categorie;
+dal 29/9/2026 è una sezione in pagina della stessa scheda)
 mostrava insieme il toast d'errore e il messaggio *"Nessun dato: servono coperti
 e fatture F&B classificate nel periodo"* — cioè dava la colpa ai dati del
 cliente per un errore del server, mandandolo a cercare coperti che non gli

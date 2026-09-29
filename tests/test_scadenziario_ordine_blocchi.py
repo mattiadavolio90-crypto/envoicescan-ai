@@ -105,3 +105,13 @@ def test_il_filtro_punti_vendita_e_la_tendina_multipla(sorgente: str):
     assert corpo, "matchFiltroSede non c'e' piu'"
     assert "inPuntiVendita(d.ristorante_id, filtroSede)" in corpo.group(1)
     assert "setFiltroSede(f => f === value" not in sorgente, "sono tornate le pillole a scelta singola"
+
+
+def test_il_filtro_punti_vendita_accende_e_spegne_pulisci_filtri(sorgente: str):
+    """Senza, un punto vendita scelto non accenderebbe «Pulisci filtri» (e il
+    conteggio «N su M»), o «Pulisci filtri» lo lascerebbe acceso."""
+    import re
+    n = re.sub(r"\s+", "", sorgente)
+    assert "filtroSoloNuove||filtroSede.size>0||" in n
+    corpo = re.search(r"functionresetFiltri\(\)\{(.*?)\}", n)
+    assert corpo and "setFiltroSede(newSet());" in corpo.group(1)

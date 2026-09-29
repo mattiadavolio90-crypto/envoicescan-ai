@@ -167,7 +167,7 @@ def test_lo_spreco_per_categoria_e_una_sezione_sempre_montata():
     montaggi = re.findall(r"^(.*)<SezioneSprecoCategorie\b", testo, re.M)
     assert len(montaggi) == 1, f"attesa una sola <SezioneSprecoCategorie>, trovate {len(montaggi)}"
     prima = testo.split("<SezioneSprecoCategorie", 1)[0].rstrip()
-    assert not prima.endswith(("&& (", "&&", "? (", "?")), (
+    assert not prima.endswith(("&& (", "&&", "? (", "?", ": (", ":")), (
         "lo spreco per categoria e' tornato dietro una condizione: si vede solo "
         "dopo un clic, come la finestra che nessuno trovava"
     )
@@ -179,3 +179,11 @@ def test_lo_spreco_per_categoria_non_e_piu_una_finestra():
         "la scheda Margini e coperti importa di nuovo una finestra: lo spreco "
         "per categoria sta in pagina (Mattia, 29/9)"
     )
+
+
+def test_lo_spreco_segue_il_periodo_della_scheda():
+    """«Stesso periodo» dei margini: con `mese={null}` mostrerebbe sempre l'anno
+    mentre la tabella sopra e' su un mese."""
+    import re
+    testo = re.sub(r"\s+", "", _scheda_margini())
+    assert '<SezioneSprecoCategoriemese={periodo!=="anno"?Number(periodo):null}/>' in testo
