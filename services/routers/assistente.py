@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, NamedTuple, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -165,11 +165,25 @@ def _conflitto(motivo: str, attuale: Optional[Dict[str, float]] = None) -> HTTPE
 
 # ─── Letture ──────────────────────────────────────────────────────────────────
 # Le usera' anche lo strumento di proposta (step 2): la card mostra come
-# «risulta …» esattamente cio' che qui si confronta. None = niente da mostrare
-# (riga assente o tutta a zero), e con None la card dice «nessun valore».
-# Il primo elemento e' l'id della riga da aggiornare, anche quando e' a zero.
+# «risulta …» esattamente `attuale`, cioe' cio' che qui si confronta. None =
+# niente da mostrare (riga assente o importi tutti a zero), e la card dice
+# «nessun valore». `grezzo` sono i valori letti cosi' come stanno nel DB: l'update
+# li rimette come condizione, e se nel frattempo sono cambiati non scrive.
+class Letto(NamedTuple):
+    id: Optional[str]
+    attuale: Optional[Dict[str, float]]
+    grezzo: Dict[str, Any]
+    fonte: Optional[str] = None
+    info: Optional[Dict[str, float]] = None
+
+
 def _num(v: Any) -> float:
     return round(float(v or 0), 2)
+
+
+def _importi_o_none(riga: Dict[str, Any]) -> Optional[Dict[str, float]]:
+    valori = {c: _num(riga.get(c)) for c in CAMPI_INCASSO}
+    return valori if sum(valori.values()) > 0 else None
 
 
 def sede_scrivibile(user: Dict[str, Any], sb, ristorante_id: str) -> str:
@@ -196,7 +210,7 @@ def sede_scrivibile(user: Dict[str, Any], sb, ristorante_id: str) -> str:
     return rid
 
 
-def leggi_incasso_giorno(sb, rid: str, giorno: date) -> Tuple[Optional[str], Optional[Dict[str, float]]]:
+def leggi_incasso_giorno(sb, rid: str, giorno: date) -> Letto:
     resp = (
         sb.table("ricavi_giornalieri")
         .select("id, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva")
@@ -206,29 +220,9 @@ def leggi_incasso_giorno(sb, rid: str, giorno: date) -> Tuple[Optional[str], Opt
         .execute()
     )
     if not resp.data:
-        return None, None
+        return Letto(None, None, {})
     riga = resp.data[0]
-    valori = {c: _num(riga.get(c)) for c in CAMPI_INCASSO}
-    return str(riga["id"]), (valori if sum(valori.values()) > 0 else None)
-
-
-def leggi_mese_a_totale(sb, rid: str, anno: int, mese: int) -> Tuple[Optional[str], Optional[Dict[str, float]]]:
-    """(id della riga di modalita', importi se il mese e' tenuto a totale)."""
-    resp = (
-        sb.table("ricavi_modalita_mensile")
-        .select("id, modalita, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva")
-        .eq("ristorante_id", rid)
-        .eq("anno", anno)
-        .eq("mese", mese)
-        .limit(1)
-        .execute()
-    )
-    if not resp.data:
-        return None, None
-    riga = resp.data[0]
-    if riga.get("modalita") != "mensile":
-        return str(riga["id"]), None
-    return str(riga["id"]), {c: _num(riga.get(c)) for c in CAMPI_INCASSO}
+    return Letto(str(riga["id"]), _importi_o_none(riga), {c: riga.get(c) for c in CAMPI_INCASSO})
 
 
 def mese_ha_giorni(sb, rid: str, anno: int, mese: int) -> bool:
@@ -246,10 +240,52 @@ def mese_ha_giorni(sb, rid: str, anno: int, mese: int) -> bool:
     return bool(resp.data)
 
 
-def leggi_personale(sb, rid: str, anno: int, mese: int) -> Tuple[Optional[str], Optional[Dict[str, float]]]:
+def leggi_fatturato_mese(sb, rid: str, anno: int, mese: int) -> Letto:
+    """Il fatturato del mese dalle sue tre fonti, nell'ordine in cui le legge la
+    pagina Margini (`_merge_override_mensile`):
+    - `mensile`: il totale in `ricavi_modalita_mensile` (vince su tutto);
+    - `giorni`: gli incassi giornalieri (il trigger li somma in `margini_mensili`);
+    - `margini`: il fatturato scritto a mano in `margini_mensili` senza giorni
+      (`POST /api/margini`; TIME CAFE e CASATI 14 al 29/9).
+    `id` e `grezzo` sono della riga di `ricavi_modalita_mensile`, l'unica che si
+    scrive: la card mostra comunque cio' che il cliente vede in Margini.
+    """
+    resp = (
+        sb.table("ricavi_modalita_mensile")
+        .select("id, modalita, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva")
+        .eq("ristorante_id", rid)
+        .eq("anno", anno)
+        .eq("mese", mese)
+        .limit(1)
+        .execute()
+    )
+    riga = resp.data[0] if resp.data else None
+    if riga is None:
+        mod_id, grezzo = None, {}
+    else:
+        mod_id, grezzo = str(riga["id"]), {"modalita": riga.get("modalita")}
+    if riga is not None and riga.get("modalita") == "mensile":
+        grezzo.update({c: riga.get(c) for c in CAMPI_INCASSO})
+        return Letto(mod_id, _importi_o_none(riga), grezzo, fonte="mensile")
+    if mese_ha_giorni(sb, rid, anno, mese):
+        return Letto(mod_id, None, grezzo, fonte="giorni")
+    mm = (
+        sb.table("margini_mensili")
+        .select("fatturato_iva10, fatturato_iva22, altri_ricavi_noiva")
+        .eq("ristorante_id", rid)
+        .eq("anno", anno)
+        .eq("mese", mese)
+        .limit(1)
+        .execute()
+    )
+    a_mano = _importi_o_none(mm.data[0]) if mm.data else None
+    return Letto(mod_id, a_mano, grezzo, fonte="margini" if a_mano else None)
+
+
+def leggi_personale(sb, rid: str, anno: int, mese: int) -> Letto:
     resp = (
         sb.table("margini_mensili")
-        .select("id, costo_dipendenti")
+        .select("id, costo_dipendenti, costo_personale_extra")
         .eq("ristorante_id", rid)
         .eq("anno", anno)
         .eq("mese", mese)
@@ -257,11 +293,17 @@ def leggi_personale(sb, rid: str, anno: int, mese: int) -> Tuple[Optional[str], 
         .execute()
     )
     if not resp.data:
-        return None, None
+        return Letto(None, None, {})
+    riga = resp.data[0]
     # La riga del mese nasce col trigger dei ricavi e `costo_dipendenti` ha
     # default 0: zero vuol dire «non registrato», come per l'avviso del briefing.
-    valore = _num(resp.data[0].get("costo_dipendenti"))
-    return str(resp.data[0]["id"]), ({"costo_dipendenti": valore} if valore > 0 else None)
+    valore = _num(riga.get("costo_dipendenti"))
+    return Letto(
+        str(riga["id"]),
+        {"costo_dipendenti": valore} if valore > 0 else None,
+        {"costo_dipendenti": riga.get("costo_dipendenti")},
+        info={"costo_personale_extra": _num(riga.get("costo_personale_extra"))},
+    )
 
 
 # ─── Scritture ────────────────────────────────────────────────────────────────
@@ -269,80 +311,95 @@ def _adesso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _inserisci_o_409(sb, tabella: str, riga: Dict[str, Any], rileggi) -> None:
+def _gia_registrato(rileggi, dettato: Dict[str, float]) -> Letto:
+    """Dopo una scrittura non andata a buon fine: se il DB ha gia' il dettato (la
+    risposta di una scrittura riuscita si e' persa, o qualcuno ha scritto la stessa
+    cifra) e' un successo, non un conflitto del cliente con se stesso."""
+    letto = rileggi()
+    if letto.attuale is not None and _uguali(dettato, {k: letto.attuale.get(k) for k in dettato}):
+        return letto
+    raise _conflitto("valore_cambiato", letto.attuale) if letto.id else HTTPException(
+        status_code=500, detail="Registrazione non riuscita"
+    )
+
+
+def _inserisci(sb, tabella: str, riga: Dict[str, Any], dettato: Dict[str, float], rileggi) -> None:
     """Insert quando la card diceva «nessun valore». Se nel frattempo la riga e'
     nata (vincolo unico), 409 col valore nuovo: non un 500, non una sovrascrittura."""
     try:
         sb.table(tabella).insert(riga).execute()
     except Exception as exc:
-        _, attuale = rileggi()
-        if attuale is not None:
-            raise _conflitto("valore_cambiato", attuale)
-        logger.error("assistente/registra: insert %s fallito: %s", tabella, exc)
-        raise HTTPException(status_code=500, detail="Registrazione non riuscita")
+        logger.warning("assistente/registra: insert %s non riuscito: %s", tabella, exc)
+        _gia_registrato(rileggi, dettato)
+
+
+def _aggiorna(sb, tabella: str, letto: Letto, rid: str, payload: Dict[str, Any],
+              dettato: Dict[str, float], rileggi) -> None:
+    """Update condizionato ai valori letti: se fra la lettura e la scrittura e'
+    arrivata un'email di cassa o un'altra conferma, nessuna riga combacia e si
+    risponde 409 invece di far vincere l'ultima scrittura."""
+    q = sb.table(tabella).update(payload).eq("id", letto.id).eq("ristorante_id", rid)
+    for col, val in letto.grezzo.items():
+        q = q.is_(col, "null") if val is None else q.eq(col, val)
+    if not q.execute().data:
+        _gia_registrato(rileggi, dettato)
 
 
 def _registra_incasso(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
     giorno = valida_giorno(body.data, _oggi())
     valori = valida_importi_incasso(body, TETTO_INCASSO_GIORNO)
-    _, a_totale = leggi_mese_a_totale(sb, rid, giorno.year, giorno.month)
-    if a_totale is not None:
+    # Un giorno su un mese tenuto a totale (override, o fatturato scritto a mano
+    # senza giorni) spegnerebbe il totale: il trigger rifa' il mese coi soli giorni.
+    if leggi_fatturato_mese(sb, rid, giorno.year, giorno.month).fonte in ("mensile", "margini"):
         raise _conflitto("mese_a_totale")
-    riga_id, attuale = leggi_incasso_giorno(sb, rid, giorno)
-    if not _uguali(body.precedente, attuale):
-        raise _conflitto("valore_cambiato", attuale)
-    if riga_id:
-        sb.table("ricavi_giornalieri").update(
-            {**valori, "source": "manuale", "updated_at": _adesso()}
-        ).eq("id", riga_id).eq("ristorante_id", rid).execute()
+    letto = leggi_incasso_giorno(sb, rid, giorno)
+    if not _uguali(body.precedente, letto.attuale):
+        raise _conflitto("valore_cambiato", letto.attuale)
+    rileggi = lambda: leggi_incasso_giorno(sb, rid, giorno)  # noqa: E731
+    if letto.id:
+        _aggiorna(sb, "ricavi_giornalieri", letto, rid,
+                  {**valori, "source": "manuale", "updated_at": _adesso()}, valori, rileggi)
     else:
-        _inserisci_o_409(
-            sb, "ricavi_giornalieri",
-            {"user_id": str(user["id"]), "ristorante_id": rid, "data": giorno.isoformat(),
-             **valori, "source": "manuale"},
-            lambda: leggi_incasso_giorno(sb, rid, giorno),
-        )
+        _inserisci(sb, "ricavi_giornalieri",
+                   {"user_id": str(user["id"]), "ristorante_id": rid, "data": giorno.isoformat(),
+                    **valori, "source": "manuale"}, valori, rileggi)
     return {"data": giorno.isoformat(), **valori}
 
 
 def _registra_fatturato_mese(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
     anno, mese = valida_mese(body.anno, body.mese, _oggi())
     valori = valida_importi_incasso(body, TETTO_FATTURATO_MESE)
-    riga_id, attuale = leggi_mese_a_totale(sb, rid, anno, mese)
-    if attuale is None and mese_ha_giorni(sb, rid, anno, mese):
+    letto = leggi_fatturato_mese(sb, rid, anno, mese)
+    if letto.fonte == "giorni":
         raise _conflitto("mese_con_giorni")
-    if not _uguali(body.precedente, attuale):
-        raise _conflitto("valore_cambiato", attuale)
-    if riga_id:
-        sb.table("ricavi_modalita_mensile").update(
-            {**valori, "modalita": "mensile", "updated_at": _adesso()}
-        ).eq("id", riga_id).eq("ristorante_id", rid).execute()
+    if not _uguali(body.precedente, letto.attuale):
+        raise _conflitto("valore_cambiato", letto.attuale)
+    rileggi = lambda: leggi_fatturato_mese(sb, rid, anno, mese)  # noqa: E731
+    if letto.id:
+        _aggiorna(sb, "ricavi_modalita_mensile", letto, rid,
+                  {**valori, "modalita": "mensile", "updated_at": _adesso()}, valori, rileggi)
     else:
-        _inserisci_o_409(
-            sb, "ricavi_modalita_mensile",
-            {"ristorante_id": rid, "anno": anno, "mese": mese, "modalita": "mensile", **valori},
-            lambda: leggi_mese_a_totale(sb, rid, anno, mese),
-        )
+        _inserisci(sb, "ricavi_modalita_mensile",
+                   {"ristorante_id": rid, "anno": anno, "mese": mese, "modalita": "mensile", **valori},
+                   valori, rileggi)
     return {"anno": anno, "mese": mese, **valori}
 
 
 def _registra_personale(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
     anno, mese = valida_mese(body.anno, body.mese, _oggi())
     valore = valida_personale(body)
-    riga_id, attuale = leggi_personale(sb, rid, anno, mese)
-    if not _uguali(body.precedente, attuale):
-        raise _conflitto("valore_cambiato", attuale)
-    if riga_id:
-        sb.table("margini_mensili").update(
-            {"costo_dipendenti": valore, "updated_at": _adesso()}
-        ).eq("id", riga_id).eq("ristorante_id", rid).execute()
+    letto = leggi_personale(sb, rid, anno, mese)
+    if not _uguali(body.precedente, letto.attuale):
+        raise _conflitto("valore_cambiato", letto.attuale)
+    dettato = {"costo_dipendenti": valore}
+    rileggi = lambda: leggi_personale(sb, rid, anno, mese)  # noqa: E731
+    if letto.id:
+        _aggiorna(sb, "margini_mensili", letto, rid,
+                  {"costo_dipendenti": valore, "updated_at": _adesso()}, dettato, rileggi)
     else:
-        _inserisci_o_409(
-            sb, "margini_mensili",
-            {"user_id": str(user["id"]), "ristorante_id": rid, "anno": anno, "mese": mese,
-             "costo_dipendenti": valore},
-            lambda: leggi_personale(sb, rid, anno, mese),
-        )
+        _inserisci(sb, "margini_mensili",
+                   {"user_id": str(user["id"]), "ristorante_id": rid, "anno": anno, "mese": mese,
+                    "costo_dipendenti": valore}, dettato, rileggi)
     return {"anno": anno, "mese": mese, "costo_dipendenti": valore}
 
 

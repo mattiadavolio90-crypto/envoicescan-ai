@@ -90,26 +90,65 @@ def test_uguali(precedente, attuale, uguali):
     assert A._uguali(precedente, attuale) is uguali
 
 
-# ─── La corsa sull'insert ─────────────────────────────────────────────────────
-class _SbCheFallisce:
+# ─── Le corse sulla scrittura ─────────────────────────────────────────────────
+class _SbFinto:
+    """Un insert che solleva (vincolo unico) o un update che non trova la riga."""
+
+    def __init__(self, insert_solleva=False):
+        self.insert_solleva = insert_solleva
+
     def table(self, _nome):
         return self
 
     def insert(self, _riga):
         return self
 
+    def update(self, _payload):
+        return self
+
+    def eq(self, *_a):
+        return self
+
+    def is_(self, *_a):
+        return self
+
     def execute(self):
-        raise RuntimeError("duplicate key value violates unique constraint")
+        if self.insert_solleva:
+            raise RuntimeError("duplicate key value violates unique constraint")
+        return type("R", (), {"data": []})()
+
+
+DETTATO = {"costo_dipendenti": 12000.0}
+LETTO = A.Letto("id-riga", {"costo_dipendenti": 8000.0}, {"costo_dipendenti": 8000})
 
 
 def test_riga_nata_durante_la_conferma_e_409_col_valore_nuovo():
     with pytest.raises(HTTPException) as exc:
-        A._inserisci_o_409(_SbCheFallisce(), "t", {}, lambda: ("id", {"costo_dipendenti": 5.0}))
+        A._inserisci(_SbFinto(insert_solleva=True), "t", {}, DETTATO,
+                     lambda: A.Letto("id", {"costo_dipendenti": 5.0}, {}))
     assert exc.value.status_code == 409
     assert exc.value.detail == {"motivo": "valore_cambiato", "attuale": {"costo_dipendenti": 5.0}}
 
 
 def test_insert_fallito_senza_riga_nuova_e_500_non_un_successo():
     with pytest.raises(HTTPException) as exc:
-        A._inserisci_o_409(_SbCheFallisce(), "t", {}, lambda: (None, None))
+        A._inserisci(_SbFinto(insert_solleva=True), "t", {}, DETTATO, lambda: A.Letto(None, None, {}))
     assert exc.value.status_code == 500
+
+
+def test_insert_riuscito_con_risposta_persa_non_e_un_conflitto():
+    A._inserisci(_SbFinto(insert_solleva=True), "t", {}, DETTATO,
+                 lambda: A.Letto("id", {"costo_dipendenti": 12000.0}, {}))
+
+
+def test_update_che_non_trova_i_valori_letti_e_409():
+    with pytest.raises(HTTPException) as exc:
+        A._aggiorna(_SbFinto(), "t", LETTO, "rid", {}, DETTATO,
+                    lambda: A.Letto("id-riga", {"costo_dipendenti": 9000.0}, {}))
+    assert exc.value.status_code == 409
+    assert exc.value.detail["attuale"] == {"costo_dipendenti": 9000.0}
+
+
+def test_update_che_trova_gia_il_dettato_e_un_successo():
+    A._aggiorna(_SbFinto(), "t", LETTO, "rid", {}, DETTATO,
+                lambda: A.Letto("id-riga", {"costo_dipendenti": 12000.0}, {}))

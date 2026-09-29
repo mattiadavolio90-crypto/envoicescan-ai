@@ -338,6 +338,135 @@ def test_fatturato_su_riga_giornaliera_senza_giorni_la_porta_a_totale(scenario):
     assert _modalita(scenario, a.ids["sede1"])[:3] == ("mensile", 30000.0, 2000.0)
 
 
+# ─── Fatturato scritto a mano in Margini (terza fonte) ────────────────────────
+def _fatturato_a_mano(sc, anno, mese, iva10=76225):
+    sc.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, fatturato_iva10) "
+        "VALUES (%s, %s, %s, %s, %s)",
+        (sc.a.ids["user_id"], sc.a.ids["sede1"], anno, mese, iva10),
+    )
+
+
+def test_fatturato_a_mano_in_margini_e_il_valore_da_mostrare_sulla_card(scenario):
+    a = scenario.a
+    _fatturato_a_mano(scenario, MESE_SCORSO.year, MESE_SCORSO.month)
+    resp = _registra(scenario, a, **_fatturato(a.ids["sede1"]))
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"] == {
+        "motivo": "valore_cambiato",
+        "attuale": {"fatturato_iva10": 76225.0, "altri_ricavi_noiva": 0.0, "fatturato_iva22": 0.0},
+    }
+    assert _modalita(scenario, a.ids["sede1"]) is None
+    precedente = {"fatturato_iva10": 76225, "altri_ricavi_noiva": 0, "fatturato_iva22": 0}
+    resp = _registra(scenario, a, **_fatturato(a.ids["sede1"], precedente=precedente))
+    assert resp.status_code == 200, resp.text
+    assert _modalita(scenario, a.ids["sede1"]) == ("mensile", 30000.0, 2000.0, None)
+
+
+def test_giorno_su_mese_col_fatturato_a_mano_e_409_e_il_totale_resta(scenario):
+    a = scenario.a
+    _fatturato_a_mano(scenario, IERI.year, IERI.month)
+    resp = _registra(scenario, a, **_incasso(a.ids["sede1"]))
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["motivo"] == "mese_a_totale"
+    assert _giorno(scenario, a.ids["sede1"], IERI) is None
+    assert _riga(scenario, "SELECT fatturato_iva10::float FROM public.margini_mensili WHERE ristorante_id = %s "
+                           "AND anno = %s AND mese = %s", a.ids["sede1"], IERI.year, IERI.month)[0] == 76225.0
+
+
+def test_giorno_su_mese_a_totale_con_importi_a_zero_resta_rifiutato(scenario):
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.ricavi_modalita_mensile (ristorante_id, anno, mese, modalita) "
+        "VALUES (%s, %s, %s, 'mensile')",
+        (a.ids["sede1"], IERI.year, IERI.month),
+    )
+    resp = _registra(scenario, a, **_incasso(a.ids["sede1"]))
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"]["motivo"] == "mese_a_totale"
+
+
+@pytest.mark.parametrize("delta_mesi,importo", [(1, 30000), (-13, 30000), (-1, 500_001), (-1, 0)],
+                         ids=["futuro", "troppo-indietro", "fuori-scala", "zero"])
+def test_fatturato_mese_non_valido_e_400(scenario, delta_mesi, importo):
+    a = scenario.a
+    anno, mese0 = divmod(OGGI.year * 12 + OGGI.month - 1 + delta_mesi, 12)
+    corpo = {**_fatturato(a.ids["sede1"]), "anno": anno, "mese": mese0 + 1,
+             "fatturato_iva10": importo, "altri_ricavi_noiva": 0}
+    resp = _registra(scenario, a, **corpo)
+    assert resp.status_code == 400, resp.text
+    assert _riga(scenario, "SELECT count(*) FROM public.ricavi_modalita_mensile WHERE ristorante_id = %s",
+                 a.ids["sede1"])[0] == 0
+
+
+def test_il_tetto_del_fatturato_mese_ammette_il_limite(scenario):
+    a = scenario.a
+    resp = _registra(scenario, a, **_fatturato(a.ids["sede1"], fatturato_iva10=500_000, altri_ricavi_noiva=0))
+    assert resp.status_code == 200, resp.text
+
+
+# ─── updated_at e scritture concorrenti ───────────────────────────────────────
+def test_l_aggiornamento_del_personale_rinfresca_updated_at(scenario):
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti, updated_at) "
+        "VALUES (%s, %s, %s, %s, 0, '2020-01-01')",
+        (a.ids["user_id"], a.ids["sede1"], OGGI.year, OGGI.month),
+    )
+    assert _registra(scenario, a, **_personale(a.ids["sede1"])).status_code == 200
+    assert _riga(scenario, "SELECT updated_at > '2021-01-01' FROM public.margini_mensili WHERE ristorante_id = %s "
+                           "AND anno = %s AND mese = %s", a.ids["sede1"], OGGI.year, OGGI.month)[0] is True
+
+
+def test_l_aggiornamento_del_totale_rinfresca_updated_at(scenario):
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.ricavi_modalita_mensile (ristorante_id, anno, mese, modalita, updated_at) "
+        "VALUES (%s, %s, %s, 'giornaliero', '2020-01-01')",
+        (a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+    )
+    assert _registra(scenario, a, **_fatturato(a.ids["sede1"])).status_code == 200
+    assert _riga(scenario, "SELECT updated_at > '2021-01-01' FROM public.ricavi_modalita_mensile "
+                           "WHERE ristorante_id = %s", a.ids["sede1"])[0] is True
+
+
+def test_valore_cambiato_fra_lettura_e_scrittura_non_viene_sovrascritto(scenario):
+    """La corsa vera: la lettura ha visto 500, poi un'email di cassa scrive 700
+    prima dell'update. L'update condizionato non trova la riga e risponde 409."""
+    from fastapi import HTTPException
+
+    from services.routers import assistente as A
+
+    a = scenario.a
+    _semina_giorno(scenario, a.ids["sede1"], IERI, iva10=500)
+    letto = A.leggi_incasso_giorno(scenario.sb, a.ids["sede1"], IERI)
+    scenario.conn.execute(
+        "UPDATE public.ricavi_giornalieri SET fatturato_iva10 = 700 WHERE ristorante_id = %s AND data = %s",
+        (a.ids["sede1"], IERI),
+    )
+    dettato = {"fatturato_iva10": 1800.0, "altri_ricavi_noiva": 540.0, "fatturato_iva22": 0.0}
+    with pytest.raises(HTTPException) as exc:
+        A._aggiorna(scenario.sb, "ricavi_giornalieri", letto, a.ids["sede1"], dettato, dettato,
+                    lambda: A.leggi_incasso_giorno(scenario.sb, a.ids["sede1"], IERI))
+    assert exc.value.status_code == 409
+    assert exc.value.detail["attuale"]["fatturato_iva10"] == 700.0
+    assert _giorno(scenario, a.ids["sede1"], IERI)[0] == 700.0
+
+
+def test_il_personale_mostra_anche_l_extra_per_la_card(scenario):
+    from services.routers import assistente as A
+
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti, "
+        "costo_personale_extra) VALUES (%s, %s, %s, %s, 8000, 450.5)",
+        (a.ids["user_id"], a.ids["sede1"], OGGI.year, OGGI.month),
+    )
+    letto = A.leggi_personale(scenario.sb, a.ids["sede1"], OGGI.year, OGGI.month)
+    assert letto.attuale == {"costo_dipendenti": 8000.0}
+    assert letto.info == {"costo_personale_extra": 450.5}
+
+
 # ─── Dopo la scrittura ────────────────────────────────────────────────────────
 def test_dopo_la_conferma_si_invalidano_kpi_briefing_e_campanella(scenario, worker, monkeypatch):
     from services import daily_briefing_service
