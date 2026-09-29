@@ -19330,6 +19330,81 @@
           }
         }
       }
+    },
+    "/api/assistente/registra": {
+      "post": {
+        "tags": [
+          "Assistente"
+        ],
+        "summary": "Assistente Registra",
+        "operationId": "assistente_registra_api_assistente_registra_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistraRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistraResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -25658,6 +25733,131 @@
           "dati_incompleti"
         ],
         "title": "RankingPV"
+      },
+      "RegistraRequest": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "incasso_giorno",
+              "personale_mese",
+              "fatturato_mese"
+            ],
+            "title": "Tipo"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "anno": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anno"
+          },
+          "mese": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mese"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10",
+            "default": 0.0
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva",
+            "default": 0.0
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22",
+            "default": 0.0
+          },
+          "costo_dipendenti": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Dipendenti"
+          },
+          "precedente": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precedente"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "ristorante_id"
+        ],
+        "title": "RegistraRequest"
+      },
+      "RegistraResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "valori": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Valori"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "tipo",
+          "ristorante_id",
+          "valori"
+        ],
+        "title": "RegistraResponse"
       },
       "ResetConfirmBody": {
         "properties": {

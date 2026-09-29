@@ -60,7 +60,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.routing import APIRoute
@@ -468,6 +470,11 @@ def _risolvi(valore, mio: Cliente, altro: Cliente):
 
 
 DESCRIZIONI = {"descrizioni": [{"descrizione": "$mio.prodotto"}]}
+# Le cifre dettate all'assistente si confermano solo negli ultimi giorni/mesi
+# (giorno di Roma): le date delle ricette seguono il calendario.
+_OGGI = datetime.now(tz=ZoneInfo("Europe/Rome")).date()
+_IERI = _OGGI - timedelta(days=1)
+_MESE_SCORSO = _OGGI.replace(day=1) - timedelta(days=1)
 
 RICETTE: List[Ricetta] = [
     R("POST", "/api/notifiche/{notifica_id}/dismiss"),
@@ -569,6 +576,16 @@ RICETTE: List[Ricetta] = [
     R("DELETE", "/api/riparto/{riparto_id}"),
     R("POST", "/api/riparto/{riparto_id}/duplica"),
     R("GET", "/api/riparto/anteprima-coda", params={"queue_id": "$altro.queue_id"}),
+    # conferma delle cifre dettate all'assistente: la sede viaggia nel corpo
+    R("POST", "/api/assistente/registra",
+      {"tipo": "incasso_giorno", "ristorante_id": "$altro.sede1", "data": _IERI.isoformat(),
+       "fatturato_iva10": 1000, "altri_ricavi_noiva": 100}),
+    R("POST", "/api/assistente/registra",
+      {"tipo": "personale_mese", "ristorante_id": "$altro.sede1", "anno": _OGGI.year, "mese": _OGGI.month,
+       "costo_dipendenti": 5000}),
+    R("POST", "/api/assistente/registra",
+      {"tipo": "fatturato_mese", "ristorante_id": "$altro.sede1", "anno": _MESE_SCORSO.year,
+       "mese": _MESE_SCORSO.month, "fatturato_iva10": 30000, "altri_ricavi_noiva": 2000}),
 ]
 
 # Il path OpenAPI di una ricetta: i segnaposto `{mio.x}` / `{altro.x}` tornano al
