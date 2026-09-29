@@ -453,6 +453,93 @@ def test_valore_cambiato_fra_lettura_e_scrittura_non_viene_sovrascritto(scenario
     assert _giorno(scenario, a.ids["sede1"], IERI)[0] == 700.0
 
 
+def _corsa(scenario, tabella, leggi, sql_intanto, params_intanto, dettato):
+    """Legge, lascia che un altro scriva, poi prova l'update condizionato."""
+    from fastapi import HTTPException
+
+    from services.routers import assistente as A
+
+    letto = leggi()
+    scenario.conn.execute(sql_intanto, params_intanto)
+    with pytest.raises(HTTPException) as exc:
+        A._aggiorna(scenario.sb, tabella, letto, scenario.a.ids["sede1"], dettato, dettato, leggi)
+    return exc.value
+
+
+def test_totale_mensile_cambiato_fra_lettura_e_scrittura_e_409(scenario):
+    from services.routers import assistente as A
+
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.ricavi_modalita_mensile (ristorante_id, anno, mese, modalita, fatturato_iva10) "
+        "VALUES (%s, %s, %s, 'mensile', 25000)",
+        (a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+    )
+    errore = _corsa(
+        scenario, "ricavi_modalita_mensile",
+        lambda: A.leggi_fatturato_mese(scenario.sb, a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+        "UPDATE public.ricavi_modalita_mensile SET fatturato_iva10 = 26000 WHERE ristorante_id = %s",
+        (a.ids["sede1"],),
+        {"fatturato_iva10": 30000.0, "altri_ricavi_noiva": 0.0, "fatturato_iva22": 0.0, "modalita": "mensile"},
+    )
+    assert errore.status_code == 409 and errore.detail["attuale"]["fatturato_iva10"] == 26000.0
+    assert _modalita(scenario, a.ids["sede1"])[1] == 26000.0
+
+
+def test_mese_passato_a_totale_fra_lettura_e_scrittura_e_409(scenario):
+    from services.routers import assistente as A
+
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.ricavi_modalita_mensile (ristorante_id, anno, mese, modalita, fatturato_iva10) "
+        "VALUES (%s, %s, %s, 'giornaliero', 40000)",
+        (a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+    )
+    errore = _corsa(
+        scenario, "ricavi_modalita_mensile",
+        lambda: A.leggi_fatturato_mese(scenario.sb, a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+        "UPDATE public.ricavi_modalita_mensile SET modalita = 'mensile' WHERE ristorante_id = %s",
+        (a.ids["sede1"],),
+        {"fatturato_iva10": 30000.0, "altri_ricavi_noiva": 0.0, "fatturato_iva22": 0.0, "modalita": "mensile"},
+    )
+    assert errore.status_code == 409
+    assert _modalita(scenario, a.ids["sede1"])[:2] == ("mensile", 40000.0)
+
+
+def test_personale_cambiato_fra_lettura_e_scrittura_e_409(scenario):
+    from services.routers import assistente as A
+
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti) "
+        "VALUES (%s, %s, %s, %s, 8000)",
+        (a.ids["user_id"], a.ids["sede1"], OGGI.year, OGGI.month),
+    )
+    errore = _corsa(
+        scenario, "margini_mensili",
+        lambda: A.leggi_personale(scenario.sb, a.ids["sede1"], OGGI.year, OGGI.month),
+        "UPDATE public.margini_mensili SET costo_dipendenti = 9000 WHERE ristorante_id = %s",
+        (a.ids["sede1"],),
+        {"costo_dipendenti": 12000.0},
+    )
+    assert errore.status_code == 409 and errore.detail["attuale"] == {"costo_dipendenti": 9000.0}
+    assert _margini(scenario, a.ids["sede1"], OGGI.year, OGGI.month)[0] == 9000.0
+
+
+def test_personale_null_nel_db_si_aggiorna(scenario):
+    """La condizione dell'update su un valore NULL e' `is null`, non `= null`
+    (che non combacia mai e darebbe un 409 a vuoto)."""
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti) "
+        "VALUES (%s, %s, %s, %s, NULL)",
+        (a.ids["user_id"], a.ids["sede1"], OGGI.year, OGGI.month),
+    )
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"]))
+    assert resp.status_code == 200, resp.text
+    assert _margini(scenario, a.ids["sede1"], OGGI.year, OGGI.month)[0] == 12000.0
+
+
 def test_il_personale_mostra_anche_l_extra_per_la_card(scenario):
     from services.routers import assistente as A
 
