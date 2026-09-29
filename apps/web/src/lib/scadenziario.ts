@@ -783,6 +783,42 @@ export function filtraDocumenti(
 }
 
 /**
+ * Filtro punti vendita della catena (Mattia, 29/9: da pillole a scelta singola a
+ * una tendina con piu' punti vendita insieme). Nessuno scelto = tutti. La sede
+ * tecnica «Gruppo» e' un punto vendita come gli altri, per id.
+ */
+export function inPuntiVendita(
+  ristoranteId: string | null | undefined,
+  scelti: ReadonlySet<string>,
+): boolean {
+  if (scelti.size === 0) return true;
+  return !!ristoranteId && scelti.has(ristoranteId);
+}
+
+// Spuntare l'ultimo punto vendita che mancava equivale a «tutti»: si torna al
+// filtro vuoto, cosi' «Pulisci filtri» non resta acceso su una scelta che non
+// toglie niente.
+export function alternaPuntoVendita(
+  scelti: ReadonlySet<string>,
+  id: string,
+  tutti: readonly string[],
+): Set<string> {
+  const next = new Set(scelti);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  return tutti.length > 0 && tutti.every(t => next.has(t)) ? new Set() : next;
+}
+
+export function etichettaPuntiVendita(
+  scelti: ReadonlySet<string>,
+  sedi: readonly { id: string; nome: string }[],
+): string {
+  const presenti = sedi.filter(s => scelti.has(s.id));
+  if (presenti.length === 0 || presenti.length === sedi.length) return "Tutti i punti vendita";
+  if (presenti.length === 1) return presenti[0].nome;
+  return `${presenti.length} punti vendita`;
+}
+
+/**
  * Aggrega i DEBITI (non pagate, non note di credito) per ristorante_id,
  * applicando i filtri comuni ma NON quello di sede.
  */
