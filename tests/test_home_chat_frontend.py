@@ -10,6 +10,8 @@ accetta 20 (ChatRequest.max_length): senza, dopo ~20 scambi ogni invio falliva
 con 422 e un errore generico.
 """
 
+import pytest
+
 from tests.helpers_ts import esegui_ts
 
 MODULO = "lib/home-chat"
@@ -272,7 +274,7 @@ def test_la_vista_di_una_sede_e_diversa_da_quella_di_un_altra():
 
 def test_la_vista_catena():
     v = _vc("SUSHILAND")
-    assert v == {"chiave": "catena", "contesto": "catena", "frase": "Ora sei nella vista catena del gruppo SUSHILAND"}
+    assert v == {"chiave": "catena", "contesto": "catena", "frase": "Ora sei nella vista catena del gruppo SUSHILAND", "sedeId": None}
 
 
 def test_nomi_assenti_non_lasciano_frasi_rotte():
@@ -458,3 +460,31 @@ def test_limite_mensile_blocca_anche_con_domande_di_oggi_rimaste():
     ancora 15, ma il mese e' finito. La casella va bloccata."""
     out = _stato(20, {"valore": 2, "alle": 100}, {"valore": 5, "alle": 200, "finita": "mese"})
     assert out["rimanenti"] == 0 and out["esaurite"] is True
+
+
+def test_la_vista_di_una_sede_porta_il_suo_id_per_il_backend():
+    """Il backend confronta `sede_id` con la sede attiva: 409 se e' cambiata."""
+    assert _vs("r7", "A")["sedeId"] == "r7"
+    assert _vs("  ", "A")["sedeId"] is None
+    assert _vs(None, "A")["sedeId"] is None
+
+
+# ─── Domande proposte per settore (regola 7) ───────────────────────────────
+
+
+def test_i_ristoranti_hanno_le_domande_di_sempre():
+    assert _chiama("suggerimentiPer", ["sede", "ristorazione"]) == [
+        "Qual è il mio food cost?", "Cosa devo pagare?", "Com'è andato il MOL?", "Chi è il mio fornitore più caro?",
+    ]
+    assert _chiama("suggerimentiPer", ["sede", None]) == _chiama("suggerimentiPer", ["sede", "ristorazione"])
+    assert _chiama("suggerimentiPer", ["catena", None]) == [
+        "Quale punto vendita ha il margine peggiore?", "Dove si spende di più in pesce?",
+        "Cosa c'è da vedere nella catena?", "Chi ha lo scontrino medio più alto?",
+    ]
+
+
+@pytest.mark.parametrize("contesto", ["sede", "catena"])
+def test_i_negozi_non_leggono_food_cost_pesce_ne_scontrino(contesto):
+    testo = " ".join(_chiama("suggerimentiPer", [contesto, "retail"])).lower()
+    for parola in ("food cost", "pesce", "scontrino", "coperti"):
+        assert parola not in testo

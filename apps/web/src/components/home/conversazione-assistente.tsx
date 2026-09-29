@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import {
-  SUGGERIMENTI_CATENA,
-  SUGGERIMENTI_SEDE,
   mostraSuggerimenti,
+  suggerimentiPer,
   statoDomande,
   testoAttesa,
   type Conteggio,
@@ -21,8 +20,11 @@ export function ConversazioneAssistente({
   limiteGiorno,
   domandeOggiIniziali,
   lettoAlle,
+  settore,
 }: {
   vista: Vista;
+  /** Settore dell'account: i negozi hanno domande proposte loro. */
+  settore?: string | null;
   limiteGiorno: number;
   domandeOggiIniziali: number;
   /** Quando il server ha letto il numero: cambia a ogni render della pagina,
@@ -63,7 +65,7 @@ export function ConversazioneAssistente({
       attesa={inCorso ? testoAttesa(attesa) : null}
       suggerimenti={
         !esaurite && mostraSuggerimenti(voci, vista)
-          ? vista.contesto === "catena" ? SUGGERIMENTI_CATENA : SUGGERIMENTI_SEDE
+          ? suggerimentiPer(vista.contesto, settore)
           : null
       }
       onSuggerimento={manda}

@@ -74,7 +74,7 @@ def test_la_home_pv_passa_la_sede_aperta_e_la_regola_della_chat():
 
 def test_la_home_di_catena_passa_il_pool_solo_se_attivo():
     n = _n(_CATENA_PAGE)
-    assert "chatCatenaAttiva(chatConfig)?{limiteGiorno:chatConfig.limite_giorno,domandeOggi:chatConfig.domande_oggi,lettoAlle:Date.now()}:null" in n
+    assert "chatCatenaAttiva(chatConfig)?{limiteGiorno:chatConfig.limite_giorno,domandeOggi:chatConfig.domande_oggi,lettoAlle:Date.now(),settore:utente?.tipo_attivita??null,}:null" in n
     c = _n(_CATENA)
     assert "{chat&&(<ConversazioneAssistentevista={vistaCatena(nomeGruppo)}" in c
     assert "chat={chat}" in c
@@ -107,3 +107,13 @@ def test_il_contatore_e_uno_per_account_e_segue_la_lettura_piu_recente():
 @pytest.mark.parametrize("p", [_PV, _CATENA_PAGE], ids=lambda p: p.name)
 def test_ogni_render_della_home_porta_l_ora_della_lettura(p):
     assert "lettoAlle" in _n(p) and "Date.now()" in _n(p)
+
+
+def test_il_provider_manda_la_sede_a_schermo():
+    assert "...(vista.sedeId?{sede_id:vista.sedeId}:{})" in _n(_PROVIDER)
+
+
+def test_le_domande_proposte_seguono_il_settore():
+    assert "suggerimentiPer(vista.contesto,settore)" in _n(_CONV)
+    assert "settore={utente?.tipo_attivita}" in _n(_PV)
+    assert "settore={chat.settore}" in _n(_CATENA)

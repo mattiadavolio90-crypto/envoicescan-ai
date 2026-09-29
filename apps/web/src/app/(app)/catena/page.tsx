@@ -4,6 +4,7 @@ import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { SintesiCatena } from "./sintesi-catena";
 import { BlockRetry } from "../dashboard/block-retry";
+import { getCurrentUser } from "@/lib/auth";
 
 // Home della catena: recap e assistenza (28/9/2026). Le funzioni di lavoro
 // stanno in /catena/fatture (coda, costi di gruppo, scadenze) e le analisi in
@@ -27,7 +28,11 @@ function SintesiSkeleton() {
 async function SintesiBlock() {
   // La quota della chat di catena (pool AI: somma dei limiti delle sedi) si
   // legge insieme alla sintesi: la conversazione vive nel riquadro del briefing.
-  const [overview, chatConfig] = await Promise.all([fetchGruppoOverview(), fetchGruppoChatConfig()]);
+  const [overview, chatConfig, utente] = await Promise.all([
+    fetchGruppoOverview(),
+    fetchGruppoChatConfig(),
+    getCurrentUser(),
+  ]);
   // Account mono-sede (o worker che risponde 400): non c'è un gruppo da mostrare,
   // si torna alla Home del PV. Worker giù/lento (null) → BlockRetry ripinga e fa
   // refresh da solo appena risponde (niente più vicolo cieco "ricarica a mano").
@@ -46,7 +51,12 @@ async function SintesiBlock() {
       overview={overview}
       chat={
         chatCatenaAttiva(chatConfig)
-          ? { limiteGiorno: chatConfig.limite_giorno, domandeOggi: chatConfig.domande_oggi, lettoAlle: Date.now() }
+          ? {
+              limiteGiorno: chatConfig.limite_giorno,
+              domandeOggi: chatConfig.domande_oggi,
+              lettoAlle: Date.now(),
+              settore: utente?.tipo_attivita ?? null,
+            }
           : null
       }
     />

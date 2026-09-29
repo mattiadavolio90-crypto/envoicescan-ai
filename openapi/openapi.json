@@ -21191,6 +21191,18 @@
             "pattern": "^(sede|catena)$",
             "title": "Contesto",
             "default": "sede"
+          },
+          "sede_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sede Id"
           }
         },
         "type": "object",
@@ -28222,6 +28234,11 @@
             ],
             "title": "Tipo Attivita",
             "default": "ristorazione"
+          },
+          "sotto_utente": {
+            "type": "boolean",
+            "title": "Sotto Utente",
+            "default": false
           }
         },
         "type": "object",
@@ -28234,11 +28251,6 @@
       "ValidationError": {
         "properties": {
           "loc": {
-          },
-          "sotto_utente": {
-            "type": "boolean",
-            "title": "Sotto Utente",
-            "default": false
             "items": {
               "anyOf": [
                 {

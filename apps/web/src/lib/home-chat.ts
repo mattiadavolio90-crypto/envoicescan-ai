@@ -102,17 +102,46 @@ export const SUGGERIMENTI_CATENA = [
   "Chi ha lo scontrino medio più alto?",
 ] as const;
 
+// I negozi non hanno food cost, pesce ne' coperti (regola 7: la deviazione
+// scatta sul settore, i ristoranti restano con le liste di sopra).
+export const SUGGERIMENTI_SEDE_RETAIL = [
+  "Qual è il mio costo merce?",
+  "Cosa devo pagare?",
+  "Com'è andato il MOL?",
+  "Chi è il mio fornitore più caro?",
+] as const;
+
+export const SUGGERIMENTI_CATENA_RETAIL = [
+  "Quale punto vendita ha il margine peggiore?",
+  "Dove si spende di più?",
+  "Cosa c'è da vedere nella catena?",
+  "Quale punto vendita incassa di più?",
+] as const;
+
+export function suggerimentiPer(
+  contesto: "sede" | "catena",
+  settore: string | null | undefined,
+): readonly string[] {
+  const retail = settore === "retail";
+  if (contesto === "catena") return retail ? SUGGERIMENTI_CATENA_RETAIL : SUGGERIMENTI_CATENA;
+  return retail ? SUGGERIMENTI_SEDE_RETAIL : SUGGERIMENTI_SEDE;
+}
+
 // Dove si trova il cliente quando scrive: una sede precisa o la vista catena.
 // `chiave` distingue le sedi fra loro (due locali non sono la stessa vista);
 // `frase` e' la riga che la conversazione mostra quando si cambia.
-export type Vista = { chiave: string; contesto: "sede" | "catena"; frase: string };
+// `sedeId` va al backend con la domanda: se nel frattempo la sede attiva e'
+// cambiata (da un'altra scheda) risponde 409 invece di parlare di un altro locale.
+export type Vista = { chiave: string; contesto: "sede" | "catena"; frase: string; sedeId: string | null };
 
 export function vistaSede(id: string | null | undefined, nome: string | null | undefined): Vista {
   const n = (nome ?? "").trim();
+  const sedeId = (id ?? "").trim();
   return {
-    chiave: `sede:${(id ?? "").trim()}`,
+    chiave: `sede:${sedeId}`,
     contesto: "sede",
     frase: n ? `Ora sei in ${n}` : "Ora sei nel tuo locale",
+    sedeId: sedeId || null,
   };
 }
 
@@ -122,6 +151,7 @@ export function vistaCatena(nomeGruppo: string | null | undefined): Vista {
     chiave: "catena",
     contesto: "catena",
     frase: n ? `Ora sei nella vista catena del gruppo ${n}` : "Ora sei nella vista catena",
+    sedeId: null,
   };
 }
 

@@ -3525,6 +3525,12 @@ class ChatRequest(BaseModel):
     # "catena" = chat in modalità catena (/catena): tool di gruppo, pool AI unico
     # (SUM limiti effettivi sedi). Default "sede" = chat del singolo PV, invariata.
     contesto: str = Field("sede", pattern="^(sede|catena)$")
+    # La sede che il cliente ha a schermo quando scrive (dal 28/9/2026 la
+    # conversazione vive nella Home e sopravvive al cambio di sede). Se non e'
+    # piu' la sede attiva — cambiata da un'altra scheda — la domanda si ferma
+    # prima di consumare quota: risponderebbe su un locale diverso da quello
+    # che il cliente vede. Assente = client vecchio, nessun controllo.
+    sede_id: Optional[str] = Field(None, max_length=64)
 
     @model_validator(mode="after")
     def _cap_caratteri_totali(self) -> "ChatRequest":
@@ -3595,9 +3601,32 @@ def _chat_top_cat_forn(
     return cat, forn
 
 
+def _chat_nome_sede(ristorante_id: Optional[str], supabase_client) -> Optional[str]:
+    """Nome della sede attiva, per il prompt della vista punto vendita.
+
+    None se la lettura fallisce o la sede non c'e': chi chiama ripiega sul nome
+    dell'account, cioe' sul prompt di prima."""
+    if not ristorante_id:
+        return None
+    try:
+        row = (
+            supabase_client.table("ristoranti")
+            .select("nome_ristorante")
+            .eq("id", str(ristorante_id))
+            .limit(1)
+            .execute()
+        ).data or []
+        nome = (row[0].get("nome_ristorante") or "").strip() if row else ""
+        return nome or None
+    except Exception as exc:
+        logger.warning("chat: nome sede non letto (%s): %s", ristorante_id, exc)
+        return None
+
+
 def _build_chat_system_prompt(
     user: Dict[str, Any], supabase_client, authorization: Optional[str],
     ristorante_id: Optional[str] = None, settore: Optional[str] = None,
+    sede_nome: Optional[str] = None, multi_sede: bool = False,
 ) -> str:
     """Costruisce il system prompt con i dati freschi del ristorante.
 
@@ -3606,7 +3635,14 @@ def _build_chat_system_prompt(
     che il cliente vede a schermo. Aggiunge il dettaglio costi per categoria e
     fornitore (per domande tipo "quanto ho speso in birra").
     """
-    nome = user.get("nome_ristorante") or user.get("email", "")
+    # Account con piu' sedi: il prompt nomina la sede APERTA, non l'account
+    # (users.nome_ristorante e' la prima sede). Fino al 28/9/2026 un cliente
+    # catena dentro NAVIGLI parlava con «il gestionale del ristorante CASATI».
+    # Mono-sede: il testo di prima, byte per byte (i presidi lo confrontano).
+    nome = (
+        (sede_nome if multi_sede and sede_nome else None)
+        or user.get("nome_ristorante") or user.get("email", "")
+    )
     referente = user.get("nome_referente") or ""
 
     # Deviazione retail: il prompt di oggi nomina il ristorante, il food cost e i
@@ -4044,8 +4080,23 @@ NON inventare benchmark diversi da questi. Se non riesci a calcolare la % perch�
         _blocco_merce_zero = """## Food cost "0.0%" o "n/d": NON è cibo a costo zero
 Spiega la causa GIUSTA: il food cost si calcola come (costi food ÷ fatturato). Se è 0% o n/d quando IL FATTURATO C'È, vuol dire che mancano i COSTI FOOD del mese — le fatture fornitori non sono ancora state caricate o categorizzate per quel mese, NON che mancano i ricavi. Dillo così: "il food cost non è ancora calcolabile: per quel mese i ricavi ci sono ma mancano i costi delle fatture food". Solo se manca anche il fatturato di' che mancano i ricavi."""
 
+    # Vista punto vendita di un account catena (decisione di Mattia, 28/9/2026):
+    # l'assistente parla SOLO del locale aperto. Per gli altri locali, o per
+    # confrontarli, rimanda alla vista catena, che vede tutto il gruppo. Senza
+    # questa riga gli strumenti (legati alla sede attiva) rispondevano con i
+    # numeri di questo locale a una domanda su un altro.
+    _unita = "negozio" if _retail else "locale"
+    _blocco_solo_sede = (
+        f"""
+
+## Solo questo {_unita} (IMPORTANTE)
+Il cliente ha più punti vendita e qui sta guardando "{nome}": i dati qui sotto e gli strumenti riguardano SOLO questo {_unita}.
+Se chiede di un altro punto vendita, o di confrontare i punti vendita tra loro, NON rispondere con i numeri di "{nome}" e non inventare: spiega che da qui vedi solo "{nome}" e che per gli altri punti vendita, o per confrontarli, deve tornare alla vista catena (nel menu a sinistra, «Torna alla catena»), dove l'assistente vede tutto il gruppo."""
+        if multi_sede else ""
+    )
+
     sistema = f"""Sei l'assistente AI di ONEFLUX, integrato nel gestionale del {_attivita} "{nome}".
-{f"Stai parlando con {referente}." if referente else ""}
+{f"Stai parlando con {referente}." if referente else ""}{_blocco_solo_sede}
 
 ## Data e periodo (IMPORTANTE)
 Oggi e' {oggi_str}. L'anno corrente e' {oggi.year}. {range_dati}
@@ -5075,6 +5126,18 @@ def chat_ai(
         if _n_sedi_gruppo < 2:
             raise HTTPException(status_code=400, detail="Account non multi-sede: nessun gruppo da mostrare.")
 
+    # La sede a schermo non e' piu' quella attiva (cambiata da un'altra scheda):
+    # fermarsi PRIMA della quota. Rispondere sulla sede attiva darebbe al
+    # cliente i numeri di un locale diverso da quello che sta guardando.
+    if not is_catena and body.sede_id and ristorante_id and str(body.sede_id) != str(ristorante_id):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Nel frattempo è stato aperto un altro punto vendita, forse da un'altra "
+                "scheda. Ricarica la pagina per parlare del locale giusto."
+            ),
+        )
+
     # Quota AI: un SOLO pool per account. Multi-sede → limite = somma sedi e
     # conteggio condiviso per user_id (lo stesso pool è speso tra catena e tutti i
     # PV); sede singola → limite del piano contato sulla sede. La riga è sempre
@@ -5168,6 +5231,8 @@ def chat_ai(
         if is_catena
         else _build_chat_system_prompt(
             user, supabase_client, authorization, ristorante_id, settore_chat,
+            sede_nome=_chat_nome_sede(ristorante_id, supabase_client) if is_pool else None,
+            multi_sede=is_pool,
         )
     )
 

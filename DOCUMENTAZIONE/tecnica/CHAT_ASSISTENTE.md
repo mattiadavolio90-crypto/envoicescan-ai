@@ -395,6 +395,15 @@ reale del cliente.
 
 ## Changelog rilevante
 
+- **28/9/2026 (interfaccia dell'assistente, step 5)** — nella vista punto
+  vendita di un account catena il prompt nomina la **sede aperta**
+  (`_chat_nome_sede`), non l'account, e un blocco «Solo questo locale» dice di
+  non rispondere su altri punti vendita ma di rimandare alla vista catena
+  («Torna alla catena»). Mono-sede: prompt byte per byte invariato. Il client
+  manda `sede_id` (la sede a schermo): se non è più la sede attiva (cambiata da
+  un'altra scheda) `chat_ai` risponde **409 prima della quota**. Domande
+  proposte per settore (`suggerimentiPer`: i negozi non leggono food cost, pesce
+  né scontrino).
 - **28/9/2026 (interfaccia dell'assistente, step 4)** — via il pulsante flottante
   «Chiedi a ONEFLUX»: la conversazione vive nel riquadro del briefing delle due
   Home, con domande proposte, casella e contatore. Una conversazione sola per

@@ -126,10 +126,12 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # perimetro e' `git ls-files`, quindi la cifra giusta e' 33 ovunque.
 # 34 dal 25/09/2026: `services/email_settimanale_service.py` (email settimanale,
 # fase 7b) legge l'ultima fattura NON cancellata per l'invito a riprendere.
+# `tipo_attivita` 17 dal 28/09/2026: `app/(app)/catena/page.tsx` passa il settore
+# alla conversazione della Home di catena (i negozi hanno domande proposte loro).
 TARATURA_FILE_CODICE = {
     "correzioni_count": 0, "ultimo_correttore": 0,           # morte, confermate da L4
     "consecutive_correct_classifications": 4, "categoria_fonte": 12,
-    "tipo_attivita": 16, "deleted_at": 34,                   # vive
+    "tipo_attivita": 17, "deleted_at": 34,                   # vive
 }
 
 
