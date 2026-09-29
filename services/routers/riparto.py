@@ -26,6 +26,7 @@ import logging
 from utils.validation import normalizza_categoria_richiesta, importo_riga_per_guardrail
 # db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
 from services.db_service import aggiorna_categoria_fatture
+from services import sotto_utenti_service as _su
 from utils.supabase_paging import fetch_all
 from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIA_NON_CLASSIFICATA as _CATEGORIA_NON_CLASSIFICATA
 
@@ -362,8 +363,11 @@ class RipartoRigaCategoriaBody(BaseModel):
 
 # ─── Gating 2+ sedi ──────────────────────────────────────────────────────────
 
-def _require_catena(user_id: str, sb) -> List[Dict[str, Any]]:
-    sedi = _carica_sedi_attive(user_id, sb)
+def _require_catena(user: Dict[str, Any], sb) -> List[Dict[str, Any]]:
+    # Il riparto scrive su tutte le sedi: a un sotto-utente serve la Catena
+    # effettiva (flag acceso e tutte le sedi), qualunque rotta l'abbia portato qui.
+    _su.verifica_catena(user)
+    sedi = _carica_sedi_attive(str(user["id"]), sb)
     if len(sedi) < 2:
         raise HTTPException(status_code=400, detail="La ripartizione è disponibile solo per gli account con più sedi.")
     return sedi
@@ -379,7 +383,7 @@ def riparto_da_fattura(body: RipartoDaFatturaBody, authorization: Optional[str] 
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    sedi = _require_catena(user_id, sb)
+    sedi = _require_catena(user, sb)
     fo = (body.file_origine or "").strip()
     if not fo:
         raise HTTPException(status_code=400, detail="file_origine mancante")
@@ -469,7 +473,7 @@ def riparto_da_coda(body: RipartoDaCodaBody, authorization: Optional[str] = Head
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    sedi = _require_catena(user_id, sb)
+    sedi = _require_catena(user, sb)
     if body.tipo not in ("generale", "fb"):
         raise HTTPException(status_code=400, detail="tipo non valido")
 
@@ -574,7 +578,7 @@ def riparto_manuale(body: RipartoManualeBody, authorization: Optional[str] = Hea
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    sedi = _require_catena(user_id, sb)
+    sedi = _require_catena(user, sb)
     from services.settore_service import settore_utente
     try:
         categoria = normalizza_categoria_richiesta(
@@ -634,7 +638,7 @@ def riparto_riga_categoria(
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    _require_catena(user_id, sb)
+    _require_catena(user, sb)
 
     from services.settore_service import settore_utente
     try:
@@ -756,7 +760,7 @@ def riparto_modifica(riparto_id: str, body: RipartoModificaBody, authorization: 
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    sedi = _require_catena(user_id, sb)
+    sedi = _require_catena(user, sb)
 
     rip = (
         sb.table("riparto_costi_catena").select("*")
@@ -867,7 +871,7 @@ def riparto_duplica(riparto_id: str, authorization: Optional[str] = Header(None)
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    _require_catena(user_id, sb)
+    _require_catena(user, sb)
 
     rip = (
         sb.table("riparto_costi_catena").select("*")
@@ -1050,7 +1054,7 @@ def riparto_regola_fornitore(fornitore: str, authorization: Optional[str] = Head
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    _require_catena(user_id, sb)
+    _require_catena(user, sb)
     piva = (fornitore or "").strip()
     if not piva:
         return {"regola": None}
@@ -1283,7 +1287,7 @@ def gruppo_costi_comuni(anno: int, mese: int, authorization: Optional[str] = Hea
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
-    sedi = _require_catena(user_id, sb)
+    sedi = _require_catena(user, sb)
     nomi = {str(s["id"]): s.get("nome_ristorante") for s in sedi}
 
     costi = (

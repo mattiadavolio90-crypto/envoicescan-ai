@@ -562,8 +562,13 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
 
+from services.permessi_rotte import registra_rotta as _registra_rotta
+
 app = FastAPI(
     lifespan=lifespan,
+    # Rotta della richiesta per il controllo pagine dei sotto-utenti
+    # (services/permessi_rotte.py). Per il titolare non fa niente.
+    dependencies=[Depends(_registra_rotta)],
     title="ONEFLUX — Worker API",
     description=(
         "Worker API per classificazione AI e parsing fatture. "
@@ -5496,6 +5501,13 @@ def chat_ai(
 
     # Contesto: catena (vista gruppo /catena) o sede (singolo PV, default).
     is_catena = body.contesto == "catena"
+
+    # Sotto-utente: la rotta /api/chat vale con la Home o con la Catena; qui il
+    # contesto sceglie quale serve, prima di spendere quota.
+    if is_catena:
+        _su.verifica_catena(user)
+    elif not _su.ha_pagina(user, _su.PAGINA_HOME):
+        raise HTTPException(status_code=403, detail="Assistente non consentito per questo utente")
 
     # Un account single-sede che invii contesto="catena" oggi arrivava fino a
     # _build_chat_system_prompt_catena -> _resolve_gruppo, che solleva 400 "Account

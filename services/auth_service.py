@@ -1295,6 +1295,27 @@ def verifica_sessione_da_cookie(
     inactivity_hours: int = 8,
     supabase_client=None,
 ) -> Optional[Dict]:
+    """La sessione del token (vedi `_verifica_sessione_da_cookie`), e per un
+    sotto-utente il controllo della rotta di questa richiesta.
+
+    Il controllo sta qui e non in una lettura separata della sessione: ogni
+    endpoint che risolve la sessione lo attraversa, e una lettura che fallisce
+    non puo' lasciar passare. Per il titolare non scatta.
+    """
+    from services.sotto_utenti_service import e_sotto_utente
+
+    user = _verifica_sessione_da_cookie(token, inactivity_hours, supabase_client)
+    if e_sotto_utente(user):
+        from services.permessi_rotte import verifica_rotta_corrente
+        verifica_rotta_corrente(user)
+    return user
+
+
+def _verifica_sessione_da_cookie(
+    token: str,
+    inactivity_hours: int = 8,
+    supabase_client=None,
+) -> Optional[Dict]:
     """
     Verifica un token da cookie e controlla timeout inattività.
 
@@ -1325,6 +1346,11 @@ def verifica_sessione_da_cookie(
         _now = _t.time()
         _cached = _SESSIONE_CACHE.get(_ck)
         if _cached is not None and _cached[0] > _now:
+            if _cached[1] is not None and _cached[1].get("_sotto_utente"):
+                # Pagine e sedi sono annidate: una copia superficiale lascerebbe
+                # a un endpoint la possibilita' di allargarle per le richieste dopo.
+                import copy as _copy
+                return _copy.deepcopy(_cached[1])
             return dict(_cached[1]) if _cached[1] is not None else None
 
         if supabase_client is None:
@@ -1424,7 +1450,11 @@ def verifica_sessione_da_cookie(
                         return None
                     _ttl = _SESSIONE_CACHE_TTL_SOTTO_UTENTE
                 tocca_sessione(token, supabase_client=supabase_client)
-                _SESSIONE_CACHE[_ck] = (_now + _ttl, dict(_u))
+                if _sess_sotto_utente:
+                    import copy as _copy
+                    _SESSIONE_CACHE[_ck] = (_now + _ttl, _copy.deepcopy(_u))
+                else:
+                    _SESSIONE_CACHE[_ck] = (_now + _ttl, dict(_u))
                 return _u
             # utente disattivato/eliminato: la sessione non vale più
             return None

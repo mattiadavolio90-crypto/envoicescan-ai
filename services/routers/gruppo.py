@@ -24,6 +24,7 @@ from config.constants import MESI_ITA
 from config.logger_setup import get_logger
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
+from services import sotto_utenti_service as _su
 
 logger = get_logger("router_gruppo")
 
@@ -952,6 +953,9 @@ def _resolve_gruppo(authorization: Optional[str]):
     nome_gruppo e l'elenco PV restano coerenti fra loro.
     """
     user = _resolve_user_from_token(authorization)
+    # Le viste catena leggono tutte le sedi: a un sotto-utente serve la Catena
+    # effettiva, anche quando ci arriva da una chiamata interna (chat, briefing).
+    _su.verifica_catena(user)
     user_id = str(user["id"])
     sb = _get_supabase_client()
 

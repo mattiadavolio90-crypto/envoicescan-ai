@@ -430,3 +430,281 @@ def test_tabelle_chiuse_ad_anon_e_authenticated(scenario):
 
 def test_chiavi_pagina_allineate_al_worker(worker):
     assert su.PAGINE_ACCOUNT == worker._PAGINE_FLAG
+
+
+# ─── Fase 1b: pagine bloccate dal server ─────────────────────────────────────
+#
+# Un sotto-utente percorre TUTTE le rotte dell'app con richieste valide (le
+# ricette e le GET del test di isolamento, sugli id di A): senza pagine ogni
+# rotta risponde 403, con tutte le pagine nessuna risponde col 403 del controllo.
+# Le rotte senza ricetta partono con la richiesta minima valida letta dallo
+# schema OpenAPI: un 422 vorrebbe dire che l'endpoint non e' stato eseguito, e
+# non proverebbe il controllo, quindi e' un fallimento anche quello.
+
+_RIFIUTO_PAGINA = "Pagina non consentita per questo utente"
+_UUID_FINTO = "00000000-0000-4000-8000-000000000001"
+
+
+# Rotte senza ricetta che rispondono 400/422 prima di guardare la sessione.
+# Una tupla e' un file da caricare.
+_CORPI_SENZA_RICETTA = {
+    ("POST", "/api/account/elimina"): {"conferma": "ELIMINA"},
+    ("POST", "/api/prezzi/soglia-alert"): {"soglia": 5},
+    ("POST", "/api/ricavi/import-xls"): ("ricavi.xlsx", b"non importa", "application/octet-stream"),
+    ("POST", "/api/chat"): {"messages": [{"role": "user", "content": "ciao"}]},
+}
+
+
+def _rotte_app(worker):
+    from fastapi.routing import APIRoute
+
+    out = set()
+    for r in worker.app.routes:
+        if isinstance(r, APIRoute):
+            out |= {(m, r.path) for m in r.methods if m not in ("HEAD", "OPTIONS")}
+    return out
+
+
+def _richieste(sc, worker):
+    """{(metodo, rotta): (metodo, path, params, json, valida)} per ogni rotta dell'app."""
+    import re
+
+    from tests.test_isolamento_per_risorsa import GET_SESSIONE, RICETTE, _risolvi
+
+    rotte = _rotte_app(worker)
+    forma = {(m, re.sub(r"\{\w+\}", "{}", p)): (m, p) for m, p in rotte}
+    a = sc.a
+    out = {}
+    for r in RICETTE:
+        generico = re.sub(r"\{(?:mio|altro)\.", "{", r.path)
+        chiave = forma.get((r.metodo, re.sub(r"\{\w+\}", "{}", generico)))
+        if chiave and chiave not in out:
+            out[chiave] = (r.metodo, _risolvi(r.path, a, a), _risolvi(r.params, a, a),
+                           _risolvi(r.json_, a, a), True)
+    for path, params in GET_SESSIONE.items():
+        if ("GET", path) in rotte:
+            out.setdefault(("GET", path), ("GET", path, _risolvi(params, a, a), None, True))
+    for chiave, corpo in _CORPI_SENZA_RICETTA.items():
+        out[chiave] = (chiave[0], chiave[1], None, corpo, True)
+    schema = worker.app.openapi()
+    for metodo, path in rotte:
+        if (metodo, path) in out:
+            continue
+        concreto = re.sub(r"\{\w+\}", _UUID_FINTO, path)
+        params, corpo = _minimi_da_openapi(schema, metodo, path)
+        out[(metodo, path)] = (metodo, concreto, params, corpo, False)
+    return out
+
+
+def _valore_minimo(sch, comp, profondita=0):
+    """Il valore piu' semplice che passa lo schema: serve a superare la validazione."""
+    if "$ref" in sch:
+        return _valore_minimo(comp[sch["$ref"].split("/")[-1]], comp, profondita)
+    for chiave in ("anyOf", "oneOf", "allOf"):
+        if chiave in sch:
+            varianti = [v for v in sch[chiave] if v.get("type") != "null"] or sch[chiave]
+            return _valore_minimo(varianti[0], comp, profondita)
+    if "enum" in sch:
+        return sch["enum"][0]
+    if "default" in sch and sch["default"] is not None:
+        return sch["default"]
+    tipo, formato = sch.get("type"), sch.get("format")
+    if tipo == "object" or "properties" in sch:
+        return {k: _valore_minimo(sch["properties"][k], comp, profondita + 1)
+                for k in sch.get("required", []) if k in sch.get("properties", {})}
+    if tipo == "array":
+        n = sch.get("minItems", 0) or (1 if profondita == 0 else 0)
+        return [_valore_minimo(sch.get("items", {}), comp, profondita + 1) for _ in range(n)]
+    if tipo == "integer":
+        return max(1, int(sch.get("minimum", 1)))
+    if tipo == "number":
+        return max(1, sch.get("minimum", 1))
+    if tipo == "boolean":
+        return False
+    if formato == "date":
+        return "2026-03-03"
+    if formato == "date-time":
+        return "2026-03-03T10:00:00"
+    if formato == "uuid":
+        return _UUID_FINTO
+    if formato == "binary":
+        return b"x"
+    lunghezza = max(1, sch.get("minLength", 1))
+    return "x" * lunghezza
+
+
+def _minimi_da_openapi(schema, metodo, path):
+    op = schema["paths"].get(path, {}).get(metodo.lower(), {})
+    comp = schema.get("components", {}).get("schemas", {})
+    params = {
+        p["name"]: _valore_minimo(p.get("schema", {}), comp)
+        for p in op.get("parameters", []) if p.get("in") == "query" and p.get("required")
+    } or None
+    contenuto = op.get("requestBody", {}).get("content", {})
+    if "multipart/form-data" in contenuto:
+        return params, ("file.xml", b"<x/>", "application/xml")
+    if "application/json" in contenuto:
+        return params, _valore_minimo(contenuto["application/json"]["schema"], comp)
+    return params, ({} if metodo in ("POST", "PUT", "PATCH") else None)
+
+
+def _esegui(sc, token, richiesta):
+    metodo, path, params, corpo, _ = richiesta
+    if isinstance(corpo, tuple):
+        return sc.client.request(
+            metodo, path, files={"file": corpo},
+            headers={"Authorization": f"Bearer {token}", "X-Worker-Key": CHIAVE_WORKER},
+        )
+    return sc.client.request(
+        metodo, path, params=params, json=corpo,
+        headers={"Authorization": f"Bearer {token}", "X-Worker-Key": CHIAVE_WORKER},
+    )
+
+
+def _rifiuto_di_pagina(resp):
+    try:
+        return resp.status_code == 403 and resp.json().get("detail") == _RIFIUTO_PAGINA
+    except ValueError:
+        return False
+
+
+def test_sotto_utente_senza_pagine_e_fermato_su_ogni_rotta(scenario, worker):
+    from services import permessi_rotte as pr
+
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "nessuna@isolamento.test", [sc.a.ids["sede1"]], {})
+    token = _login(sc, "nessuna@isolamento.test").json()["token"]
+    esenti = pr.ROTTE_COMUNI | pr.ROTTE_SENZA_SESSIONE
+    passate = []
+    for chiave, richiesta in sorted(_richieste(sc, worker).items()):
+        if chiave in esenti:
+            continue
+        resp = _esegui(sc, token, richiesta)
+        if not _rifiuto_di_pagina(resp):
+            passate.append((chiave, resp.status_code, resp.text[:120]))
+    assert not passate, "\n".join(f"{k} {st} {t}" for k, st, t in passate)
+
+
+def test_sotto_utente_con_tutte_le_pagine_non_e_fermato_dal_controllo(scenario, worker, monkeypatch):
+    from services import permessi_rotte as pr
+
+    # /api/chat passa il controllo: senza chiave si ferma prima di OpenAI.
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    sc = scenario
+    tutte = {p: True for p in su.PAGINE_SOTTO_UTENTE}
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "tutto@isolamento.test",
+                       [sc.a.ids["sede1"], sc.a.ids["sede2"]], tutte)
+    token = _login(sc, "tutto@isolamento.test").json()["token"]
+    # logout e cambio password chiuderebbero la sessione a meta' giro.
+    consentite = (set(pr.PAGINE_PER_ROTTA) | pr.ROTTE_COMUNI) - {
+        ("POST", "/api/auth/logout"), ("POST", "/api/account/cambia-password"),
+    }
+    richieste = _richieste(sc, worker)
+    fermate = [k for k in sorted(consentite) if _rifiuto_di_pagina(_esegui(sc, token, richieste[k]))]
+    assert not fermate, fermate
+    vietate = sorted(pr.ROTTE_VIETATE) + [("GET", "/api/admin/overview")]
+    for chiave in vietate:
+        assert _esegui(sc, token, richieste[chiave]).status_code == 403, chiave
+
+
+def test_titolare_mai_fermato_dal_controllo(scenario, worker):
+    from services import permessi_rotte as pr
+
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "nessuna@isolamento.test", [sc.a.ids["sede1"]], {})
+    richieste = _richieste(sc, worker)
+    fermate = [
+        k for k in sorted(set(pr.PAGINE_PER_ROTTA) | pr.ROTTE_COMUNI - {("POST", "/api/auth/logout")})
+        if _rifiuto_di_pagina(_esegui(sc, sc.a.token, richieste[k]))
+    ]
+    assert not fermate, fermate
+
+
+def test_solo_analisi_fatture_su_una_sede(scenario):
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "fatture@isolamento.test",
+                       [sc.a.ids["sede1"]], {"analisi_fatture": True})
+    token = _login(sc, "fatture@isolamento.test").json()["token"]
+    periodo = {"data_da": "2026-01-01", "data_a": "2026-12-31"}
+    assert _chiama(sc, token, "GET", "/api/fatture/kpi", params=periodo).status_code == 200
+    for metodo, path, kw in [
+        ("GET", "/api/margini/kpi", {"params": periodo}),
+        ("GET", "/api/prezzi/variazioni", {"params": periodo}),
+        ("POST", "/api/chat", {"json": {"messages": [{"role": "user", "content": "ciao"}]}}),
+        ("GET", "/api/gruppo/overview", {}),
+        ("GET", "/api/home/kpi", {}),
+        ("POST", "/api/account/elimina", {"json": {"conferma": "ELIMINA"}}),
+        ("GET", "/api/account/esporta-dati", {}),
+    ]:
+        assert _chiama(sc, token, metodo, path, **kw).status_code == 403, path
+
+
+def _domande_registrate(sc):
+    return sc.conn.execute(
+        "SELECT count(*) FROM public.chat_usage_log WHERE user_id = %s", (sc.a.ids["user_id"],)
+    ).fetchone()[0]
+
+
+@pytest.mark.parametrize("pagine,sedi,contesto", [
+    ({"home": True, "catena": True}, ["sede1"], "catena"),          # flag senza tutte le sedi
+    ({"home": True}, ["sede1", "sede2"], "catena"),                 # tutte le sedi senza flag
+    ({"catena": True}, ["sede1", "sede2"], "sede"),                 # catena senza Home
+])
+def test_chat_rifiutata_per_contesto_prima_della_quota(scenario, monkeypatch, pagine, sedi, contesto):
+    sc = scenario
+    monkeypatch.setenv("OPENAI_API_KEY", "chiave-finta")
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "chat@isolamento.test",
+                       [sc.a.ids[s] for s in sedi], pagine)
+    token = _login(sc, "chat@isolamento.test").json()["token"]
+    prima = _domande_registrate(sc)
+    r = _chiama(sc, token, "POST", "/api/chat",
+                json={"messages": [{"role": "user", "content": "ciao"}], "contesto": contesto})
+    assert r.status_code == 403, r.text
+    assert _domande_registrate(sc) == prima
+
+
+def test_home_completa_uguale_al_titolare_sulla_stessa_sede(scenario):
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "home@isolamento.test", [sc.a.ids["sede1"]], {"home": True})
+    token = _login(sc, "home@isolamento.test").json()["token"]
+    assert _sede_attiva_titolare(sc) == sc.a.ids["sede1"]
+    for path in ("/api/home/kpi", "/api/home/salute", "/api/home/briefing"):
+        mio = _chiama(sc, token, "GET", path)
+        assert mio.status_code == 200, (path, mio.text[:200])
+    assert _chiama(sc, token, "GET", "/api/home/kpi").json() == _chiama(sc, sc.a.token, "GET", "/api/home/kpi").json()
+
+
+def test_riparto_solo_con_la_catena(scenario):
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "scad@isolamento.test",
+                       [sc.a.ids["sede1"], sc.a.ids["sede2"]], {"scadenziario": True, "analisi_fatture": True})
+    token = _login(sc, "scad@isolamento.test").json()["token"]
+    assert _chiama(sc, token, "POST", "/api/riparto/da-fattura",
+                   json={"file_origine": sc.a.ids["file"], "descrizione": "x"}).status_code == 403
+    assert _chiama(sc, token, "GET", "/api/riparto/regola-fornitore",
+                   params={"fornitore": sc.a.ids["fornitore"]}).status_code == 403
+    assert _chiama(sc, token, "GET", "/api/scadenziario").status_code == 200
+
+
+def test_modificare_il_dict_di_sessione_non_allarga_le_richieste_dopo(scenario):
+    from services import permessi_rotte as pr
+    from services.auth_service import verifica_sessione_da_cookie
+
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "cache@isolamento.test",
+                       [sc.a.ids["sede1"]], {"analisi_fatture": True})
+    token = _login(sc, "cache@isolamento.test").json()["token"]
+    _clear_sessione_cache()
+    segno = pr._ROTTA_CORRENTE.set(("GET", "/api/auth/me"))
+    try:
+        for _ in range(2):  # prima dalla lettura (e scrittura in cache), poi dalla cache
+            u = verifica_sessione_da_cookie(token)
+            assert u["pagine_abilitate"]["margini"] is False
+            assert su.sedi_consentite(u) == {sc.a.ids["sede1"]}
+            u["pagine_abilitate"]["margini"] = True
+            u["_sotto_utente"]["sedi"].append(sc.a.ids["sede2"])
+        u = verifica_sessione_da_cookie(token)
+        assert u["pagine_abilitate"]["margini"] is False
+        assert su.sedi_consentite(u) == {sc.a.ids["sede1"]}
+    finally:
+        pr._ROTTA_CORRENTE.reset(segno)
