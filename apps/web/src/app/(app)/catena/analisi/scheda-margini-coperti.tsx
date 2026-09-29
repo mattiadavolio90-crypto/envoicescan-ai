@@ -368,6 +368,17 @@ function SezioneSprecoCategorie({ mese }: { mese: number | null }) {
         </div>
       ) : (
         <>
+          {/* Un ricaricamento fallito (cambio mese) lascia i dati di prima: si
+              dice quali sono, o sembrerebbero quelli del periodo scelto. */}
+          {loadError && (
+            <p className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-negativo/30 px-3 py-2 text-xs text-negativo">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              Aggiornamento non riuscito: restano i dati di {data.periodo_label}.
+              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={carica} disabled={loading}>
+                Riprova
+              </Button>
+            </p>
+          )}
           <div className={AREA_TABELLA}>
             <table className="w-full border-separate border-spacing-0 text-sm">
               <thead className="sticky top-0 z-30 bg-card shadow-[0_1px_0_0_var(--color-border)]">

@@ -187,3 +187,17 @@ def test_lo_spreco_segue_il_periodo_della_scheda():
     import re
     testo = re.sub(r"\s+", "", _scheda_margini())
     assert '<SezioneSprecoCategoriemese={periodo!=="anno"?Number(periodo):null}/>' in testo
+
+
+def test_un_ricaricamento_fallito_dice_che_i_dati_sono_vecchi():
+    """Revisore, 29/9: senza toast, un cambio mese fallito lasciava a schermo i
+    dati del mese prima senza nessun segnale. Il riquadro con la tabella deve
+    avvisare quando `loadError` e' acceso ma `data` c'e' ancora."""
+    import re
+    testo = re.sub(r"\s+", " ", _scheda_margini())
+    i = testo.index("function SezioneSprecoCategorie")
+    sezione = testo[i:]
+    j = sezione.index("<div className={AREA_TABELLA}>")
+    prima_tabella = sezione[:j]
+    assert "{loadError && (" in prima_tabella[prima_tabella.rindex(") : ("):]
+    assert "Aggiornamento non riuscito: restano i dati di {data.periodo_label}." in prima_tabella
