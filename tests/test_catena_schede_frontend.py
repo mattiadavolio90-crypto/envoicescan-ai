@@ -144,3 +144,38 @@ def test_le_etichette_non_si_accumulano_fra_chiamate():
         richiede=["schedeFattureCatena"],
     )
     assert out == "Da collocare (3)"
+
+
+# ─── Spreco per categoria: in pagina, non in una finestra ─────────────────
+# Mattia, 29/9: come finestra aperta dal bottone «Categorie» nella scheda
+# «Margini e coperti» non la trovava nessuno. Ora e' una sezione della stessa
+# scheda, sotto la tabella dei margini. Non c'e' un runner per il rendering:
+# si controlla che la sezione sia montata senza condizioni e che la finestra
+# non sia tornata.
+
+def _scheda_margini():
+    from pathlib import Path
+    return (
+        Path(__file__).resolve().parents[1]
+        / "apps/web/src/app/(app)/catena/analisi/scheda-margini-coperti.tsx"
+    ).read_text(encoding="utf-8")
+
+
+def test_lo_spreco_per_categoria_e_una_sezione_sempre_montata():
+    import re
+    testo = _scheda_margini()
+    montaggi = re.findall(r"^(.*)<SezioneSprecoCategorie\b", testo, re.M)
+    assert len(montaggi) == 1, f"attesa una sola <SezioneSprecoCategorie>, trovate {len(montaggi)}"
+    prima = testo.split("<SezioneSprecoCategorie", 1)[0].rstrip()
+    assert not prima.endswith(("&& (", "&&", "? (", "?")), (
+        "lo spreco per categoria e' tornato dietro una condizione: si vede solo "
+        "dopo un clic, come la finestra che nessuno trovava"
+    )
+
+
+def test_lo_spreco_per_categoria_non_e_piu_una_finestra():
+    testo = _scheda_margini()
+    assert "@/components/ui/dialog" not in testo, (
+        "la scheda Margini e coperti importa di nuovo una finestra: lo spreco "
+        "per categoria sta in pagina (Mattia, 29/9)"
+    )
