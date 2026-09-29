@@ -601,6 +601,7 @@ from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centr
 from config.constants import CATEGORIE_SPESE_GENERALI as _CATEGORIE_SPESE_GENERALI
 from config.constants import CATEGORIA_NON_CLASSIFICATA
 from config.constants import SETTORE_RETAIL
+from services import sotto_utenti_service as _su
 from utils.ttl_cache import TTLCache  # cache TTL thread-safe con single-flight
 from utils.supabase_paging import fetch_all  # paginazione oltre il cap PostgREST
 
@@ -1250,6 +1251,10 @@ class UserPublic(BaseModel):
     # default, cosi' token e client che non lo conoscono non cambiano. In v1 e'
     # per account (sedi omogenee): lo risolve services/settore_service.py.
     tipo_attivita: Literal["ristorazione", "retail"] = "ristorazione"
+    # True se chi e' loggato e' un sotto-utente dell'account (credenziali proprie,
+    # pagine e sedi limitate). In quel caso `pagine_abilitate` e' sempre una lista
+    # e porta anche `home`/`catena` quando accese; `num_sedi` conta le SUE sedi.
+    sotto_utente: bool = False
 
 
 class LoginResponse(BaseModel):
@@ -1261,6 +1266,19 @@ class LoginResponse(BaseModel):
 # env): gli unici due admin del progetto. Centralizzato per evitare drift con
 # l'altro default in _admin_emails_set().
 _DEFAULT_ADMIN_EMAILS = "md@oneflux.it,mattiadavolio90@gmail.com"
+
+
+def _num_sedi_sotto_utente(user: Dict[str, Any]) -> int:
+    ctx = _su.contesto(user) or {}
+    return len(ctx.get("sedi_operative") or [])
+
+
+def _is_admin_utente(user: Optional[Dict[str, Any]]) -> bool:
+    """Admin per email, MAI per un sotto-utente: nemmeno se la sua email fosse in
+    ADMIN_EMAILS, e nemmeno se lo e' quella del suo titolare."""
+    if not user or _su.e_sotto_utente(user):
+        return False
+    return _is_admin_email(user.get("email"))
 
 
 def _is_admin_email(email: Optional[str]) -> bool:
@@ -1421,7 +1439,10 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
         from services.session_service import crea_sessione
         _ua = request.headers.get("user-agent") if request else None
         _ip = request.client.host if (request and request.client) else None
-        token = crea_sessione(user["id"], source="login", user_agent=_ua, ip=_ip)
+        token = crea_sessione(
+            user["id"], source="login", user_agent=_ua, ip=_ip,
+            sotto_utente_id=_su.sotto_utente_id(user),
+        )
     except Exception:
         logger.exception("Errore creazione sessione")
         raise HTTPException(status_code=500, detail="Errore creazione sessione")
@@ -1443,6 +1464,8 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
             num_sedi = int(cnt.count)
     except Exception:
         pass
+    if _su.e_sotto_utente(user):
+        num_sedi = _num_sedi_sotto_utente(user)
 
     from services.settore_service import settore_utente
 
@@ -1457,11 +1480,12 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
             email=user["email"],
             nome_ristorante=user.get("nome_ristorante"),
             num_sedi=num_sedi,
-            pagine_abilitate=_pagine_con_settore(
+            pagine_abilitate=_su.pagine_per_client(user, _pagine_con_settore(
                 user.get("pagine_abilitate"), _settore_login
-            ),
-            is_admin=_is_admin_email(user.get("email")),
+            )),
+            is_admin=_is_admin_utente(user),
             tipo_attivita=_settore_login,
+            sotto_utente=_su.e_sotto_utente(user),
             # NON valorizza le PREFERENZE (`tema`, `vista_fatture`): qui escono
             # sempre col default. Oggi e' inerte — il frontend legge il `token` da
             # questa risposta e scarta il resto, e le preferenze le prende da
@@ -1517,6 +1541,8 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
             num_sedi = int(cnt.count)
     except Exception:
         pass
+    if _su.e_sotto_utente(user):
+        num_sedi = _num_sedi_sotto_utente(user)
 
     from services.settore_service import settore_utente
 
@@ -1530,10 +1556,11 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         sede_attiva_nome=sede_nome,
         sede_attiva_id=sede_id,
         num_sedi=num_sedi,
-        pagine_abilitate=_pagine_con_settore(
+        pagine_abilitate=_su.pagine_per_client(user, _pagine_con_settore(
             user.get("pagine_abilitate"), _settore_sessione
-        ),
-        is_admin=_is_admin_email(user.get("email")),
+        )),
+        is_admin=_is_admin_utente(user),
+        sotto_utente=_su.e_sotto_utente(user),
         tema=(user.get("tema") or "dark"),
         vista_fatture=(user.get("vista_fatture") or "agenda"),
         privacy_accepted=bool(user.get("privacy_accepted_at")),
@@ -1677,8 +1704,10 @@ def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
     # switch. Micro-cache TTL 5s keyed per token: i ~6 endpoint di un singolo load
     # condividono una SELECT invece di rifarla 6 volte; lo switch invalida la cache
     # (account_cambia_sede), quindi resta immediato.
-    # Non tocchiamo un eventuale ristorante_id esplicito (impersonazione admin).
-    if not user.get("ristorante_id"):
+    # Non tocchiamo un eventuale ristorante_id esplicito (impersonazione admin), ne'
+    # la sede di un sotto-utente: la sua e' gia' risolta e validata fra le sue
+    # sedi, mentre users.ultimo_ristorante_id e' quella del titolare.
+    if not user.get("ristorante_id") and not _su.e_sotto_utente(user):
         import time as _t
         _now = _t.monotonic()
         _cached = _SEDE_ATTIVA_CACHE.get(token)
@@ -2465,7 +2494,7 @@ async def upload_invoice(
         _blocco = valuta_policy_data(
             righe[0].get("Data_Documento") or righe[0].get("data_documento"),
             _pagine_cfg,
-            is_admin=_is_admin_email(user.get("email")),
+            is_admin=_is_admin_utente(user),
             is_trial=_is_trial,
             oggi=_oggi_rome(),
         )

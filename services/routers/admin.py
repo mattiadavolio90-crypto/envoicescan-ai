@@ -171,7 +171,9 @@ def _verify_admin(
     token = authorization.split(" ", 1)[1].strip()
     from services.auth_service import verifica_sessione_da_cookie
     user = verifica_sessione_da_cookie(token)
-    if not user or not _is_admin_email(user.get("email")):
+    # _is_admin_utente e non la sola email: una sessione di sotto-utente non e'
+    # mai admin, qualunque email abbia lui o il suo titolare.
+    if not user or not _fw()._is_admin_utente(user):
         raise HTTPException(status_code=403, detail="Accesso riservato agli amministratori")
     return user
 

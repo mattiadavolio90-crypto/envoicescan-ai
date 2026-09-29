@@ -843,6 +843,90 @@ def _sincronizza_password_in_supabase_auth(user_id: str, email: str, password: s
         return False
 
 
+def _verifica_credenziali_sotto_utente(email_norm: str, password: str, supabase_client) -> Optional[Dict]:
+    """Login di un sotto-utente. Ritorna il dict del TITOLARE sovrapposto, o None.
+
+    Solo argon2: i sotto-utenti non hanno una riga in auth.users (il ponte
+    Supabase Auth e' per id di `users`) ne' hash SHA256 legacy. Vuole attivi sia
+    il sotto-utente sia il titolare: un account disattivato (o con la prova
+    scaduta) chiude anche i suoi responsabili.
+    """
+    try:
+        resp = supabase_client.table("sotto_utenti") \
+            .select("id, titolare_id, password_hash, last_login") \
+            .eq("email", email_norm) \
+            .eq("attivo", True) \
+            .limit(1) \
+            .execute()
+    except Exception as exc:
+        # Tabella non ancora creata (codice arrivato prima della migration): non
+        # esistono sotto-utenti, e il login prosegue come «credenziali errate».
+        # Qualunque altro errore sale: un guasto transitorio del DB non deve
+        # contare come tentativo fallito (5 guasti = lockout di 15 minuti).
+        testo = str(exc)
+        if "sotto_utenti" in testo and any(
+            codice in testo for codice in ("42P01", "PGRST205", "does not exist")
+        ):
+            return None
+        raise
+    if not resp.data:
+        return None
+    riga = resp.data[0]
+    stored = (riga.get("password_hash") or "").strip()
+    if not stored.startswith("$argon2"):
+        return None
+    try:
+        ph.verify(stored, password)
+    except Exception:
+        return None
+
+    titolare_resp = supabase_client.table("users") \
+        .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, "
+                "tema, vista_fatture, ultimo_ristorante_id, privacy_accepted_at, "
+                "trial_active, trial_activated_at") \
+        .eq("id", riga["titolare_id"]) \
+        .eq("attivo", True) \
+        .limit(1) \
+        .execute()
+    if not titolare_resp.data:
+        return None
+    titolare = titolare_resp.data[0]
+    if titolare.get("trial_active") is True and titolare.get("trial_activated_at"):
+        try:
+            _inizio = datetime.fromisoformat(str(titolare["trial_activated_at"]).replace("Z", "+00:00"))
+            if _inizio.tzinfo is None:
+                _inizio = _inizio.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > _inizio + timedelta(days=7):
+                return None
+        except (ValueError, TypeError):
+            return None
+    for _k in ("trial_active", "trial_activated_at"):
+        titolare.pop(_k, None)
+
+    from services.sotto_utenti_service import carica_e_sovrapponi
+    utente = carica_e_sovrapponi(titolare, riga["id"], supabase_client)
+    if utente is None:
+        return None
+
+    adesso = datetime.now(timezone.utc).isoformat()
+    try:
+        if ph.check_needs_rehash(stored):
+            supabase_client.table("sotto_utenti").update(
+                {"password_hash": ph.hash(password), "last_login": adesso}
+            ).eq("id", riga["id"]).execute()
+        else:
+            supabase_client.table("sotto_utenti").update(
+                {"last_login": adesso}
+            ).eq("id", riga["id"]).execute()
+    except Exception:
+        logger.exception("Aggiornamento last_login sotto-utente fallito (non bloccante)")
+
+    utente["last_login_precedente"] = riga.get("last_login")
+    utente["last_login"] = adesso
+    utente["login_at"] = adesso
+    return utente
+
+
 def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tuple[Optional[Dict], Optional[str]]:
     """
     Verifica credenziali utente e aggiorna last_login / last_seen_at.
@@ -897,6 +981,13 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             .execute()
 
         if not response.data:
+            # Non e' un titolare: puo' essere un sotto-utente. Stesso lockout
+            # (per email, gia' controllato sopra) e stesso messaggio d'errore,
+            # cosi' la risposta non dice quale dei due tipi di account esiste.
+            sotto = _verifica_credenziali_sotto_utente(email_norm, password, supabase_client)
+            if sotto is not None:
+                registra_tentativo(email, True, supabase_client)
+                return sotto, None
             registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate o account disattivato"
 
@@ -1186,6 +1277,9 @@ def riepilogo_fatture_auto_da_ultimo_login(
 # Cache validazione sessione: {token: (expires_at, user_dict_or_None)}. TTL breve.
 _SESSIONE_CACHE: Dict[str, tuple] = {}
 _SESSIONE_CACHE_TTL = 30.0  # secondi
+# Sotto-utenti: pagine e sedi si possono togliere mentre sono collegati, e la
+# cache e' per processo. Il costo e' 3 query in piu' ogni 2 s per sessione attiva.
+_SESSIONE_CACHE_TTL_SOTTO_UTENTE = 2.0
 
 
 def _clear_sessione_cache(token: Optional[str] = None) -> None:
@@ -1303,8 +1397,10 @@ def verifica_sessione_da_cookie(
         # sessioni.last_seen_at. Se il token non è qui, prosegue il path legacy
         # (sessioni create prima del deploy multi-token su users.session_token).
         # ----------------------------------------------------------------
-        from services.session_service import risolvi_sessione, tocca_sessione
-        _sess_user_id = risolvi_sessione(token, supabase_client=supabase_client)
+        from services.session_service import risolvi_sessione_dettaglio, tocca_sessione
+        _sess = risolvi_sessione_dettaglio(token, supabase_client=supabase_client)
+        _sess_user_id = _sess["user_id"] if _sess else None
+        _sess_sotto_utente = _sess.get("sotto_utente_id") if _sess else None
         if _sess_user_id:
             _ur = supabase_client.table('users') \
                 .select("id, email, nome_ristorante, nome_referente, attivo, "
@@ -1316,8 +1412,19 @@ def verifica_sessione_da_cookie(
                 _u = _ur.data[0]
                 for _sk in ('password_hash', 'reset_code', 'reset_expires', 'session_token'):
                     _u.pop(_sk, None)
+                _ttl = _SESSIONE_CACHE_TTL
+                if _sess_sotto_utente:
+                    # Sessione di un sotto-utente: il dict del titolare con sopra
+                    # le sue restrizioni. TTL breve perche' la cache e' per
+                    # processo: una disattivazione o un cambio di pagine/sedi
+                    # deve arrivare in pochi secondi anche agli altri processi.
+                    from services.sotto_utenti_service import carica_e_sovrapponi
+                    _u = carica_e_sovrapponi(_u, _sess_sotto_utente, supabase_client)
+                    if _u is None:
+                        return None
+                    _ttl = _SESSIONE_CACHE_TTL_SOTTO_UTENTE
                 tocca_sessione(token, supabase_client=supabase_client)
-                _SESSIONE_CACHE[_ck] = (_now + _SESSIONE_CACHE_TTL, dict(_u))
+                _SESSIONE_CACHE[_ck] = (_now + _ttl, dict(_u))
                 return _u
             # utente disattivato/eliminato: la sessione non vale più
             return None

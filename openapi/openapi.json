@@ -28234,6 +28234,11 @@
       "ValidationError": {
         "properties": {
           "loc": {
+          },
+          "sotto_utente": {
+            "type": "boolean",
+            "title": "Sotto Utente",
+            "default": false
             "items": {
               "anyOf": [
                 {

@@ -8,6 +8,8 @@ per le sessioni create prima del deploy (vedi migration 20260606130000).
 Funzioni pubbliche:
 - crea_sessione(user_id, ...) -> token        : nuovo token + evict oltre il cap
 - risolvi_sessione(token) -> user_id | None    : valida (attiva + non scaduta per inattività)
+- risolvi_sessione_dettaglio(token) -> dict     : come sopra, con chi agisce (sotto_utente_id)
+- revoca_sessioni_sotto_utente(id) -> int      : revoca le sessioni di un sotto-utente
 - tocca_sessione(token)                        : aggiorna last_seen_at (throttled)
 - revoca_sessione(token) -> bool               : revoca la singola sessione (logout/exit)
 """
@@ -87,11 +89,15 @@ def crea_sessione(
     user_agent: Optional[str] = None,
     ip: Optional[str] = None,
     supabase_client=None,
+    sotto_utente_id: Optional[str] = None,
 ) -> str:
     """Crea una nuova sessione per l'utente e ritorna il token opaco.
 
     Dopo l'inserimento applica il cap MAX_SESSIONI_ATTIVE: se l'utente supera il
     numero di sessioni attive, revoca le più vecchie per last_seen_at (evict).
+
+    `sotto_utente_id`: la sessione e' di un sotto-utente. `user_id` resta il
+    TITOLARE (il tenant non cambia); la colonna dice chi sta agendo.
     """
     if not user_id:
         raise ValueError("user_id obbligatorio per crea_sessione")
@@ -106,6 +112,9 @@ def crea_sessione(
         "user_agent": (user_agent or "")[:500] or None,
         "ip": (ip or "")[:100] or None,
     }
+    # Solo quando c'e': il payload del titolare resta quello di prima.
+    if sotto_utente_id:
+        payload["sotto_utente_id"] = str(sotto_utente_id)
 
     # Una connessione chiusa lato server ma ancora nel pool fa fallire il primo
     # riuso (RemoteProtocolError). httpx non ritenta un INSERT, quindi senza
@@ -137,22 +146,32 @@ def crea_sessione(
     if ultimo_errore is not None:
         raise ultimo_errore
 
-    _evict_oltre_cap(str(user_id), sb)
+    _evict_oltre_cap(str(user_id), sb, sotto_utente_id=sotto_utente_id)
     return token
 
 
-def _evict_oltre_cap(user_id: str, sb) -> None:
-    """Revoca le sessioni attive più vecchie oltre il cap (per last_seen_at desc)."""
+def _evict_oltre_cap(user_id: str, sb, sotto_utente_id: Optional[str] = None) -> None:
+    """Revoca le sessioni attive più vecchie oltre il cap (per last_seen_at desc).
+
+    Il cap e' per PERSONA: le sessioni dei sotto-utenti hanno lo stesso user_id
+    del titolare, e contarle insieme farebbe buttare fuori il titolare dai login
+    dei suoi responsabili. Il filtro e' in Python perche' `select("*")` funziona
+    anche prima che esista la colonna sotto_utente_id.
+    """
     try:
         resp = (
             sb.table("sessioni")
-            .select("id")
+            .select("*")
             .eq("user_id", user_id)
             .is_("revoked_at", "null")
             .order("last_seen_at", desc=True)
             .execute()
         )
-        rows = resp.data or []
+        chi = str(sotto_utente_id) if sotto_utente_id else None
+        rows = [
+            r for r in (resp.data or [])
+            if (str(r["sotto_utente_id"]) if r.get("sotto_utente_id") else None) == chi
+        ]
         if len(rows) <= MAX_SESSIONI_ATTIVE:
             return
         da_revocare = [r["id"] for r in rows[MAX_SESSIONI_ATTIVE:]]
@@ -169,6 +188,18 @@ def risolvi_sessione(token: str, supabase_client=None) -> Optional[str]:
     Ritorna None anche se il token non esiste in `sessioni` (il chiamante applica
     il fallback legacy su users.session_token).
     """
+    dettaglio = risolvi_sessione_dettaglio(token, supabase_client=supabase_client)
+    return dettaglio["user_id"] if dettaglio else None
+
+
+def risolvi_sessione_dettaglio(token: str, supabase_client=None) -> Optional[dict]:
+    """Come `risolvi_sessione`, ma dice anche CHI agisce.
+
+    Ritorna `{"user_id": <titolare>, "sotto_utente_id": <id> | None}`.
+    `select("*")` e non l'elenco delle colonne: prima della migration dei
+    sotto-utenti la colonna non esiste, e chiederla per nome farebbe fallire la
+    lookup di TUTTE le sessioni.
+    """
     if not token:
         return None
 
@@ -176,7 +207,7 @@ def risolvi_sessione(token: str, supabase_client=None) -> Optional[str]:
     try:
         resp = (
             sb.table("sessioni")
-            .select("id, user_id, last_seen_at")
+            .select("*")
             .eq("token", token)
             .is_("revoked_at", "null")
             .limit(1)
@@ -210,7 +241,10 @@ def risolvi_sessione(token: str, supabase_client=None) -> Optional[str]:
         logger.info("Sessione scaduta per inattività (>%sh) revocata: user=%s", SESSION_INACTIVITY_HOURS, row.get("user_id"))
         return None
 
-    return str(row["user_id"])
+    return {
+        "user_id": str(row["user_id"]),
+        "sotto_utente_id": str(row["sotto_utente_id"]) if row.get("sotto_utente_id") else None,
+    }
 
 
 def tocca_sessione(token: str, supabase_client=None) -> None:
@@ -253,6 +287,28 @@ def revoca_tutte_sessioni(user_id: str, supabase_client=None, escludi_token: str
         return len(res.data or [])
     except Exception:
         logger.exception("Errore revoca tutte le sessioni")
+        return 0
+
+
+def revoca_sessioni_sotto_utente(sotto_utente_id: str, supabase_client=None) -> int:
+    """Revoca tutte le sessioni di un sotto-utente (disattivazione, modifica
+    permessi, cambio password da admin). Svuota la cache: la revoca vale subito
+    in questo processo, e negli altri entro il TTL breve dei sotto-utenti."""
+    if not sotto_utente_id:
+        return 0
+    try:
+        sb = _client(supabase_client)
+        res = (
+            sb.table("sessioni")
+            .update({"revoked_at": _now_iso()})
+            .eq("sotto_utente_id", str(sotto_utente_id))
+            .is_("revoked_at", "null")
+            .execute()
+        )
+        _clear_sessione_cache_auth()
+        return len(res.data or [])
+    except Exception:
+        logger.exception("Errore revoca sessioni sotto-utente")
         return 0
 
 

@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from services import sotto_utenti_service as _su
+
 # utils/ e config/ non importano services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
 from config.constants import PIANO_LIMITI_FATTURE_MESE, PIANO_LIMITE_FATTURE_DEFAULT
@@ -552,7 +554,9 @@ def account_sedi(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         .order("created_at")
         .execute()
     )
-    sedi = resp.data or []
+    # Un sotto-utente vede solo le sedi assegnate: e' anche l'elenco del selettore.
+    consentite = set(_su.filtra_sedi(user, [str(s["id"]) for s in (resp.data or [])]))
+    sedi = [s for s in (resp.data or []) if str(s["id"]) in consentite]
     attiva = _resolve_ristorante_id(user, sb)
 
     # nome_gruppo (etichetta account, vive su users): la sidebar lo usa come
@@ -614,8 +618,16 @@ def account_cambia_sede(
     )
     if not chk.data:
         raise HTTPException(status_code=404, detail="Sede non trovata per questo account")
+    _su.verifica_sede_consentita(user, rid)
 
-    sb.table("users").update({"ultimo_ristorante_id": rid}).eq("id", user_id).execute()
+    # La sede attiva e' della PERSONA: quella di un sotto-utente sta sulla sua
+    # riga, o spostarla sposterebbe anche quella del titolare e degli altri.
+    _sotto_utente_id = _su.sotto_utente_id(user)
+    if _sotto_utente_id:
+        sb.table("sotto_utenti").update({"ultimo_ristorante_id": rid}) \
+            .eq("id", _sotto_utente_id).eq("titolare_id", user_id).execute()
+    else:
+        sb.table("users").update({"ultimo_ristorante_id": rid}).eq("id", user_id).execute()
 
     # Invalida la cache di sessione (TTL 30s, keyed sul token): senza questo
     # /api/auth/me e tutti gli endpoint che risolvono la sede attiva
