@@ -243,3 +243,43 @@ def test_la_sede_attiva_si_legge_dalla_sessione_non_da_users():
     fuori = [c for c in chiamanti if not c.startswith("services/routers/admin.py")]
     assert chiamanti, "il rilevatore non trova nemmeno i chiamanti dell'admin"
     assert not fuori, fuori
+
+
+# ─── notifica_visibile: ogni percorso porta alla SUA pagina ─────────────────
+# Le pagine attese sono scritte per esteso, non lette da _PAGINA_DI_PERCORSO:
+# una voce sbagliata nella mappa (es. agenda -> workspace) deve far fallire.
+
+PERCORSO_PAGINA = [
+    ("/analisi-fatture?tab=articoli", "analisi_fatture"),
+    ("/margini", "margini"),
+    ("/analisi-e-tag", "analisi_e_tag"),
+    ("/prezzi/fornitori", "prezzi"),
+    ("/scadenziario", "scadenziario"),
+    ("/agenda", "agenda"),
+    ("/workspace/foodcost", "workspace"),
+    ("/catena", "catena"),
+    ("/dashboard", "home"),
+]
+PAGINE = sorted({p for _, p in PERCORSO_PAGINA})
+
+
+@pytest.mark.parametrize("percorso,pagina", PERCORSO_PAGINA)
+def test_notifica_visibile_solo_con_la_sua_pagina(percorso, pagina):
+    con = _sotto_utente({pagina: True}, sedi=("s1", "s2"))
+    assert pr.notifica_visibile(con, percorso) is True
+    for altra in PAGINE:
+        if altra in (pagina, "home"):
+            continue
+        senza = _sotto_utente({altra: True}, sedi=("s1", "s2"))
+        assert pr.notifica_visibile(senza, percorso) is False, (percorso, altra)
+
+
+def test_notifica_visibile_titolare_e_home_vedono_tutto():
+    assert pr.notifica_visibile(TITOLARE, "/margini") is True
+    assert pr.notifica_visibile(TITOLARE, None) is True
+    home = _sotto_utente({"home": True})
+    assert pr.notifica_visibile(home, None) is True
+    assert pr.notifica_visibile(home, "/pagina-sconosciuta") is True
+    solo_fatture = _sotto_utente({"analisi_fatture": True})
+    assert pr.notifica_visibile(solo_fatture, None) is False
+    assert pr.notifica_visibile(solo_fatture, "/pagina-sconosciuta") is False

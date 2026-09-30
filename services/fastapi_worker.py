@@ -2381,7 +2381,7 @@ async def upload_invoice(
     # Un sotto-utente carica solo sulle sue sedi: una fattura smistata su un altro
     # locale si rifiuta, non si intesta alla sua sede. Lo smistamento resta su tutte
     # le sedi dell'account proprio per accorgersene.
-    if ristorante_id and not _su.sede_consentita(user, ristorante_id):
+    if not _su.sede_consentita(user, ristorante_id):
         logger.info(
             "upload SCARTATA sede non consentita al sotto-utente: user=%s file=%s sede=%s",
             user_id, filename, ristorante_id,

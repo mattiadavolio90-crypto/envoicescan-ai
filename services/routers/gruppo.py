@@ -25,6 +25,7 @@ from config.logger_setup import get_logger
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
 from services import sotto_utenti_service as _su
+from services.permessi_rotte import notifica_visibile
 
 logger = get_logger("router_gruppo")
 
@@ -2495,6 +2496,7 @@ def gruppo_notifiche(authorization: Optional[str] = Header(None)) -> GruppoNotif
     non generano avvisi».
     """
     sb, user_id, _sedi, _nome, rid_to_nome, ids = _resolve_gruppo(authorization)
+    user = _resolve_user_from_token(authorization)
     _seg_off, pv_excl = _get_gruppo_config(sb, user_id)
     notifiche: List[GruppoNotifica] = []
     non_lette: List[str] = []
@@ -2507,6 +2509,9 @@ def gruppo_notifiche(authorization: Optional[str] = Header(None)) -> GruppoNotif
             logger.warning("gruppo_notifiche: sede %s non letta: %s", rid, exc)
             non_lette.append(rid_to_nome[rid])
             continue
+        # Come la campanella: un sotto-utente senza Home vede solo le sue pagine.
+        if _su.e_sotto_utente(user):
+            righe = [r for r in righe if notifica_visibile(user, r.get("action_page"))]
         for r in righe:
             item = _notifica_item(r)
             notifiche.append(

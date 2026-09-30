@@ -40,6 +40,7 @@ def _chiama(per_sede, errori=(), esclusi=()):
 
     with patch.object(gruppo, "_resolve_gruppo",
                       return_value=("sb", "u-1", SEDI, "Gruppo", RID_TO_NOME, ["r1", "r2"])), \
+         patch.object(gruppo, "_resolve_user_from_token", return_value={"id": "u-1"}), \
          patch.object(gruppo, "_get_gruppo_config", return_value=(set(), set(esclusi))), \
          patch.object(gruppo, "_righe_notifiche_sede", side_effect=finto):
         out = gruppo.gruppo_notifiche(authorization="Bearer t")

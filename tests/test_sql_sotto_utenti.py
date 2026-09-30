@@ -821,6 +821,19 @@ def test_sposta_sede_solo_fra_le_sue_sedi(scenario):
     _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "scad@isolamento.test",
                        [sc.a.ids["sede2"]], {"scadenziario": True})
     token = _login(sc, "scad@isolamento.test").json()["token"]
+    # Fattura divisa fra la sede 1 (non sua) e la sede 2 (sua): basta una riga
+    # altrui per rifiutare, o lo spostamento si porterebbe dietro anche quella.
+    sc.conn.execute(
+        "UPDATE public.fatture SET ristorante_id = %s WHERE ctid = (SELECT ctid FROM public.fatture "
+        "WHERE file_origine = %s AND deleted_at IS NULL LIMIT 1)", (sc.a.ids["sede2"], sc.a.ids["file"]))
+    r = _chiama(sc, token, "POST", "/api/fatture/sposta-sede",
+                json={"file_origine": sc.a.ids["file"], "ristorante_id": sc.a.ids["sede2"]})
+    assert r.status_code == 404, r.text
+    divisa = sc.conn.execute("SELECT DISTINCT ristorante_id::text FROM public.fatture "
+                             "WHERE file_origine = %s AND deleted_at IS NULL ORDER BY 1", (sc.a.ids["file"],)).fetchall()
+    assert sorted(divisa) == sorted([(sc.a.ids["sede1"],), (sc.a.ids["sede2"],)]), divisa
+    sc.conn.execute("UPDATE public.fatture SET ristorante_id = %s WHERE file_origine = %s",
+                    (sc.a.ids["sede1"], sc.a.ids["file"]))
     # La fattura sta sulla sede 1: non la puo' portare sulla sua.
     r = _chiama(sc, token, "POST", "/api/fatture/sposta-sede",
                 json={"file_origine": sc.a.ids["file"], "ristorante_id": sc.a.ids["sede2"]})
@@ -861,6 +874,22 @@ def test_notifiche_solo_delle_sue_pagine_senza_home(scenario):
     assert "AVVISO_FATTURE" in senza_home
     assert "AVVISO_MARGINI" not in senza_home and "AVVISO_SENZA_PAGINA" not in senza_home
     assert all(t in con_home for t in ("AVVISO_MARGINI", "AVVISO_FATTURE", "AVVISO_SENZA_PAGINA"))
+
+
+def test_notifiche_di_catena_solo_delle_sue_pagine_senza_home(scenario):
+    # La Home di catena legge le stesse righe della campanella: stesso filtro.
+    sc = scenario
+    _notifica(sc, sc.a.ids["sede1"], "/margini", "AVVISO_MARGINI")
+    _notifica(sc, sc.a.ids["sede2"], "/analisi-fatture", "AVVISO_FATTURE")
+    tutte = [sc.a.ids["sede1"], sc.a.ids["sede2"]]
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "c@isolamento.test", tutte,
+                       {"catena": True, "analisi_fatture": True})
+    token = _login(sc, "c@isolamento.test").json()["token"]
+    r = _chiama(sc, token, "GET", "/api/gruppo/notifiche")
+    assert r.status_code == 200, r.text
+    assert "AVVISO_FATTURE" in r.text and "AVVISO_MARGINI" not in r.text
+    titolare = _chiama(sc, sc.a.token, "GET", "/api/gruppo/notifiche").text
+    assert "AVVISO_FATTURE" in titolare and "AVVISO_MARGINI" in titolare
 
 
 def test_archiviare_una_notifica_di_un_altra_sede_non_ha_effetto(scenario):
