@@ -163,9 +163,10 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
           body: JSON.stringify(corpoConferma(card.proposta)),
         });
         const data: unknown = await res.json().catch(() => null);
-        aggiorna((v) => conCard(v, cardId, (c) => esitoConferma(res.status, data, c)));
+        const esito = esitoConferma(res.status, data, trovaCard(vociRef.current, cardId) ?? card);
+        aggiorna((v) => conCard(v, cardId, () => esito));
         // Briefing e card della Home rileggono i numeri appena scritti.
-        if (res.ok) router.refresh();
+        if (esito.stato === "registrata") router.refresh();
       } catch {
         aggiorna((v) => conCard(v, cardId, (c) => esitoConferma(0, null, c)));
       }

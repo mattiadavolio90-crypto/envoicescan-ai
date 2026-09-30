@@ -364,7 +364,8 @@ export function cardDaProposte(proposte: unknown, ora: number): CardCifra[] {
 
 // Da sessionStorage: una card rimasta «invio» (pagina ricaricata mentre la
 // Conferma viaggiava) torna in attesa. Ripeterla e' innocuo: se la cifra e' gia'
-// scritta, il server risponde che e' registrata.
+// scritta, il server risponde 409 col valore attuale uguale al dettato, ed
+// `esitoConferma` lo legge come registrata.
 function cardSalvate(x: unknown): CardCifra[] {
   if (!Array.isArray(x)) return [];
   return x
@@ -390,11 +391,23 @@ export function totaleIncasso(p: Pick<PropostaCifra, "fatturato_iva10" | "altri_
 
 // Il corpo di POST /api/assistente/registra: la proposta senza i campi che
 // servono solo a scrivere la card.
+// Solo i campi di RegistraRequest: la proposta puo' venire da sessionStorage.
+const CAMPI_CONFERMA = [
+  "tipo", "ristorante_id", "data", "anno", "mese",
+  "fatturato_iva10", "altri_ricavi_noiva", "fatturato_iva22", "costo_dipendenti", "precedente",
+] as const;
+
 export function corpoConferma(p: PropostaCifra): Record<string, unknown> {
-  const corpo: Record<string, unknown> = { ...p };
-  delete corpo.sede_nome;
-  delete corpo.costo_personale_extra;
-  return corpo;
+  return Object.fromEntries(CAMPI_CONFERMA.filter((k) => k in p).map((k) => [k, p[k]]));
+}
+
+// I campi che la Conferma scrive, come il server li confronta (al centesimo).
+function giaCosi(p: PropostaCifra, attuale: Record<string, number>): boolean {
+  const dettati: Record<string, number> =
+    p.tipo === "personale_mese"
+      ? { costo_dipendenti: p.costo_dipendenti ?? 0 }
+      : { fatturato_iva10: p.fatturato_iva10, altri_ricavi_noiva: p.altri_ricavi_noiva, fatturato_iva22: p.fatturato_iva22 };
+  return Object.entries(dettati).every(([k, v]) => Math.abs(v - (attuale[k] ?? 0)) < 0.005);
 }
 
 export function confermabile(c: CardCifra): boolean {
@@ -475,6 +488,11 @@ export function esitoConferma(status: number, data: unknown, card: CardCifra): C
   if (status === 409 && detail && typeof detail === "object") {
     const { motivo, attuale } = detail as { motivo?: unknown; attuale?: unknown };
     if (motivo === "valore_cambiato" && (attuale == null || valoriValidi(attuale))) {
+      // La stessa Conferma ripetuta (pagina ricaricata, risposta persa): il
+      // valore «cambiato» e' proprio quello dettato.
+      if (attuale && giaCosi(card.proposta, attuale as Record<string, number>)) {
+        return { ...card, stato: "registrata", messaggio: "Registrato." };
+      }
       const precedente = (attuale as Record<string, number> | null | undefined) ?? null;
       return {
         ...card,
@@ -493,7 +511,7 @@ export function esitoConferma(status: number, data: unknown, card: CardCifra): C
     }
   }
   if (status === 400 && typeof detail === "string" && detail) {
-    return { ...card, stato: "errore", messaggio: `Non registrato: ${detail}.` };
+    return { ...card, stato: "errore", messaggio: `Non registrato. ${detail}.` };
   }
   if (status === 404) return { ...card, stato: "errore", messaggio: "Non registrato: questo locale non è più disponibile." };
   if (status === 403) return { ...card, stato: "errore", messaggio: "Non registrato: non hai il permesso di registrare questa cifra." };

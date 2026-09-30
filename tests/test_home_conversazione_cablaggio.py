@@ -151,8 +151,9 @@ def test_la_conferma_scrive_solo_dall_endpoint_dedicato_e_una_volta():
     assert corpo.index('stato:"invio"') < corpo.index("awaitfetch(")
     assert 'fetch("/api/assistente/registra",{method:"POST"' in corpo
     assert "body:JSON.stringify(corpoConferma(card.proposta))" in corpo
-    assert "conCard(v,cardId,(c)=>esitoConferma(res.status,data,c))" in corpo
-    assert "if(res.ok)router.refresh();" in corpo
+    assert "constesito=esitoConferma(res.status,data,trovaCard(vociRef.current,cardId)??card);" in corpo
+    assert "aggiorna((v)=>conCard(v,cardId,()=>esito));" in corpo
+    assert 'if(esito.stato==="registrata")router.refresh();' in corpo
     assert "/api/chat" not in corpo
 
 

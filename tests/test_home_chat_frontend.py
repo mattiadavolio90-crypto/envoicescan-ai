@@ -561,8 +561,8 @@ def test_le_card_salvate_tornano_e_quelle_rotte_si_scartano():
 
 
 def test_card_salvata_in_invio_torna_confermabile():
-    """Pagina ricaricata mentre la Conferma viaggiava: ripeterla e' innocuo, il
-    server risponde «gia' registrata»; restare «invio» la bloccherebbe per sempre."""
+    """Pagina ricaricata mentre la Conferma viaggiava: ripeterla e' innocuo (vedi
+    test_conferma_ripetuta_e_registrata); restare «invio» la bloccherebbe per sempre."""
     import json
     voci = [{"role": "assistant", "content": "Ecco", "vista": "sede:r-1", "card": [_card(stato="invio")]}]
     [voce] = _chiama("parseConversazione", [json.dumps(voci)])
@@ -581,8 +581,7 @@ def test_card_non_array_o_su_voce_del_cliente_si_toglie_la_voce_resta():
 
 
 def test_la_conferma_rimanda_la_proposta_senza_i_campi_della_card():
-    out = _chiama("corpoConferma", [PERSONALE])
-    assert "sede_nome" not in out and "costo_personale_extra" not in out
+    out = _chiama("corpoConferma", [{**PERSONALE, "user_id": "altro", "extra": 1}])
     assert out == {k: v for k, v in PERSONALE.items() if k not in ("sede_nome", "costo_personale_extra")}
 
 
@@ -648,6 +647,29 @@ def test_valore_cambiato_mostra_il_nuovo_e_chiede_una_conferma_nuova():
     assert _chiama("confermabile", [out]) is True
 
 
+@pytest.mark.parametrize("proposta,attuale", [
+    (PROPOSTA, {"fatturato_iva10": 1800, "altri_ricavi_noiva": 540, "fatturato_iva22": 0}),
+    (PROPOSTA, {"fatturato_iva10": 1800.004, "altri_ricavi_noiva": 540, "fatturato_iva22": 0}),
+    (PERSONALE, {"costo_dipendenti": 12000}),
+], ids=["incasso", "al-centesimo", "personale"])
+def test_conferma_ripetuta_e_registrata(proposta, attuale):
+    """La seconda Conferma della stessa cifra (pagina ricaricata, risposta persa,
+    scheda duplicata): il server dice 409 col valore uguale al dettato. Non e'
+    «cambiato»: e' gia' registrato."""
+    out = _esito(409, {"detail": {"motivo": "valore_cambiato", "attuale": attuale}}, _card(proposta))
+    assert (out["stato"], out["messaggio"]) == ("registrata", "Registrato.")
+
+
+@pytest.mark.parametrize("proposta,attuale", [
+    (PROPOSTA, {"fatturato_iva10": 1800, "altri_ricavi_noiva": 0, "fatturato_iva22": 0}),
+    (PROPOSTA, {"fatturato_iva10": 1800, "altri_ricavi_noiva": 540, "fatturato_iva22": 10}),
+    (PERSONALE, {"costo_dipendenti": 8000}),
+], ids=["senza-iva-diverso", "22-diverso", "personale-diverso"])
+def test_uguale_solo_in_parte_resta_cambiato(proposta, attuale):
+    out = _esito(409, {"detail": {"motivo": "valore_cambiato", "attuale": attuale}}, _card(proposta))
+    assert out["stato"] == "cambiata"
+
+
 def test_valore_tolto_nel_frattempo():
     card = _card(proposta={**PROPOSTA, "precedente": {"fatturato_iva10": 700}})
     out = _esito(409, {"detail": {"motivo": "valore_cambiato", "attuale": None}}, card)
@@ -670,7 +692,7 @@ def test_mese_tenuto_in_altro_modo_errore_leggibile(motivo, testo):
 def test_400_mostra_il_motivo_del_server():
     """La card preparata al limite dei 60 giorni e confermata dopo mezzanotte."""
     out = _esito(400, {"detail": "Data troppo lontana: usa Movimenti"})
-    assert (out["stato"], out["messaggio"]) == ("errore", "Non registrato: Data troppo lontana: usa Movimenti.")
+    assert (out["stato"], out["messaggio"]) == ("errore", "Non registrato. Data troppo lontana: usa Movimenti.")
 
 
 @pytest.mark.parametrize("status,stato,testo", [
