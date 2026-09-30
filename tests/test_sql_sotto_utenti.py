@@ -1100,12 +1100,17 @@ def test_consenso_privacy_del_sotto_utente_sulla_sua_riga(scenario):
 def test_account_me_del_sotto_utente_mostra_la_persona(scenario):
     sc = scenario
     sc.conn.execute("UPDATE public.users SET email_settimanale_abilitata = true WHERE id = %s", (sc.a.ids["user_id"],))
-    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "me@isolamento.test", [sc.a.ids["sede1"]], {"margini": True})
+    sc.conn.execute("UPDATE public.users SET tema = 'dark', email_settimanale = true, "
+                    "created_at = '2020-01-01' WHERE id = %s", (sc.a.ids["user_id"],))
+    su_id = _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "me@isolamento.test", [sc.a.ids["sede1"]], {"margini": True})
+    sc.conn.execute("UPDATE public.sotto_utenti SET tema = 'light', created_at = '2026-09-01' WHERE id = %s", (su_id,))
     token = _login(sc, "me@isolamento.test").json()["token"]
     me = _chiama(sc, token, "GET", "/api/account/me").json()
     assert me["email"] == "me@isolamento.test"
     assert me["sotto_utente"] is True and me["is_admin"] is False
     assert me["email_settimanale_abilitata"] is False and me["ultimo_accesso"]
+    assert me["tema"] == "light" and me["email_settimanale"] is False
+    assert me["membro_dal"].startswith("2026-09-01")
     titolare = _chiama(sc, sc.a.token, "GET", "/api/account/me").json()
     assert "sotto_utente" not in titolare and titolare["email_settimanale_abilitata"] is True
 

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/nav/app-sidebar";
-import { haCatena, haHome } from "@/lib/sotto-utente";
+import { haCatena, haHome, idPersona } from "@/lib/sotto-utente";
 import { Wordmark } from "@/components/brand/logo";
 import { Separator } from "@/components/ui/separator";
 import { getCurrentSession } from "@/lib/auth";
@@ -86,8 +86,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         sopravviva al cambio di pagina e di sede. La Home la mostra. La key la
         rimonta quando cambia l'utente (l'admin che entra in un cliente e ne
         esce con router.push, senza ricaricare): niente conversazione, conteggio
-        o risposta in arrivo che passa da un cliente all'altro. */}
-    <AssistenteProvider key={user.id} utenteId={user.id}>
+        o risposta in arrivo che passa da un cliente all'altro. Per PERSONA, non
+        per account: un sotto-utente ha l'id del titolare (idPersona). */}
+    <AssistenteProvider key={idPersona(user)} utenteId={idPersona(user)}>
     <SidebarProvider>
       <AppSidebar
         userEmail={user.email}

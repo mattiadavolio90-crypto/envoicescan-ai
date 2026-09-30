@@ -50,7 +50,7 @@ def test_la_conversazione_sta_nel_layout_dell_app_per_utente():
     # key: l'admin che entra in un cliente e ne esce con router.push non
     # ricarica il layout; senza, conversazione e conteggio passavano da un
     # cliente all'altro (revisore, 28/9).
-    assert "<AssistenteProviderkey={user.id}utenteId={user.id}>" in n
+    assert "<AssistenteProviderkey={idPersona(user)}utenteId={idPersona(user)}>" in n
     assert n.index("<AssistenteProvider") < n.index("<mainclassName") < n.index("</AssistenteProvider>")
 
 

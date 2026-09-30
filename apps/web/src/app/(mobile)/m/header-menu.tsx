@@ -41,7 +41,12 @@ export function HeaderMenu() {
   const router = useRouter();
   const [sedi, setSedi] = useState<Sede[]>([]);
   const [switching, setSwitching] = useState(false);
-  const [inChain, setInChain] = useState(false);
+  const [inChainCookie, setInChain] = useState(false);
+  // Solo un sotto-utente senza Catena riceve `catena: false` da /api/account/sedi:
+  // per lui niente «Vista catena», e il cookie `chain` non vale (layout e Home
+  // non entrano in catena).
+  const [catenaNegata, setCatenaNegata] = useState(false);
+  const inChain = inChainCookie && !catenaNegata;
 
   useEffect(() => {
     let alive = true;
@@ -49,7 +54,10 @@ export function HeaderMenu() {
     fetch("/api/account/sedi", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (alive && d?.sedi) setSedi(d.sedi as Sede[]);
+        if (alive && d?.sedi) {
+          setSedi(d.sedi as Sede[]);
+          setCatenaNegata(d.catena === false);
+        }
       })
       .catch(() => {});
     return () => {
@@ -123,15 +131,19 @@ export function HeaderMenu() {
       <DropdownMenuContent side="bottom" align="end" className="w-60">
         {multiSede && (
           <>
-            <DropdownMenuItem onClick={vaiAllaCatena} className="flex items-center gap-2 py-2.5">
-              <Building2 className="size-4 shrink-0 text-sky-500" />
-              <span className="flex flex-1 flex-col leading-tight">
-                <span className="text-sm font-medium">Vista catena</span>
-                <span className="text-xs text-muted-foreground">Tutti i punti vendita</span>
-              </span>
-              {inChain && <Check className="ml-auto size-4 shrink-0 text-sky-500" />}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {!catenaNegata && (
+              <>
+              <DropdownMenuItem onClick={vaiAllaCatena} className="flex items-center gap-2 py-2.5">
+                <Building2 className="size-4 shrink-0 text-sky-500" />
+                <span className="flex flex-1 flex-col leading-tight">
+                  <span className="text-sm font-medium">Vista catena</span>
+                  <span className="text-xs text-muted-foreground">Tutti i punti vendita</span>
+                </span>
+                {inChain && <Check className="ml-auto size-4 shrink-0 text-sky-500" />}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
               <MapPin className="size-3.5" />
               Sedi

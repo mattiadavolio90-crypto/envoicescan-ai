@@ -128,3 +128,17 @@ def test_nessun_redirect_porta_alla_pagina_negata():
         emit(out);
     """, None, richiede=FUNZIONI + FUNZIONI_M)
     assert risultati == []
+
+
+def test_la_conversazione_e_della_persona_non_dell_account():
+    """Stesso dispositivo, stesso account: titolare e dipendenti non devono
+    ritrovarsi la conversazione (e le card da confermare) l'uno dell'altro."""
+    ids = esegui_ts(MODULO, "emit(input.map((u) => m.idPersona(u)));", [
+        {"id": "u-1", "email": "titolare@x.it"},
+        {"id": "u-1", "email": "titolare@x.it", "sotto_utente": False},
+        {"id": "u-1", "email": "sala@x.it", "sotto_utente": True},
+        {"id": "u-1", "email": "cucina@x.it", "sotto_utente": True},
+    ], richiede=["idPersona"])
+    # Il titolare tiene la chiave di sempre: la sua conversazione aperta resta.
+    assert ids[:2] == ["u-1", "u-1"]
+    assert ids[2] == "u-1:sala@x.it" and ids[3] == "u-1:cucina@x.it"

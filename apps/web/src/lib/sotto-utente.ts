@@ -86,3 +86,14 @@ export function primaTabMobile(utente: UtenteVisibilita): string {
   }
   return "/m/impostazioni";
 }
+
+/**
+ * L'identita' della PERSONA nel browser (chiave della conversazione con
+ * l'assistente in sessionStorage). Per un sotto-utente `id` e' quello del
+ * titolare: senza l'email, sullo stesso dispositivo la conversazione del
+ * titolare (cifre e card da confermare) passerebbe al dipendente. Per il
+ * titolare resta `id`, cioe' la chiave di sempre.
+ */
+export function idPersona(utente: { id: string; email?: string; sotto_utente?: boolean }): string {
+  return utente.sotto_utente ? `${utente.id}:${utente.email ?? ""}` : utente.id;
+}
