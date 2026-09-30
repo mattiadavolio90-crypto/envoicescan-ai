@@ -33,7 +33,7 @@ export function ConversazioneAssistente({
    *  anche se il numero e' uguale (il mattino dopo, 0 com'era ieri mattina). */
   lettoAlle: number;
 }) {
-  const { voci: tutte, inCorso, attesa, domande, invia, nuova } = useAssistente();
+  const { voci: tutte, inCorso, attesa, domande, invia, nuova, conferma, annulla } = useAssistente();
   const [valore, setValore] = useState("");
   const voci = vociDellaVista(tutte, vista.chiave);
 
@@ -83,6 +83,8 @@ export function ConversazioneAssistente({
       stato={testo}
       statoAvviso={esaurite}
       onNuova={() => nuova(vista.chiave)}
+      onConferma={(id) => void conferma(id)}
+      onAnnulla={annulla}
     />
   );
 }

@@ -56,8 +56,9 @@ def test_la_conversazione_sta_nel_layout_dell_app_per_utente():
 
 def test_il_provider_manda_solo_la_vista_corrente_e_col_suo_contesto():
     n = _n(_PROVIDER)
-    assert "messages:codaPerVista(vociRef.current,vista),contesto:vista.contesto" in n
-    assert "conRisposta(v,vista.chiave,messaggioRisposta(res.status,data))" in n
+    assert "messages:codaPerVista(vociRef.current,vista),contesto:vista.contesto,card_conferma:true" in n
+    assert ("conRisposta(v,vista.chiave,messaggioRisposta(res.status,data),"
+            "data.reply?cardDaProposte(data.proposte,Date.now()):[])") in n
     assert "constchiave=chiaveConversazione(utenteId);" in n
     assert "sessionStorage.removeItem(CHIAVE_VECCHIA)" in n
 
@@ -131,3 +132,48 @@ def test_la_casella_ferma_per_una_domanda_altrove_dice_perche():
     c = _n(_CONV)
     assert "constbloccato=inCorso!==null||esaurite;" in c
     assert ":inCorso!==null&&inCorso!==vista.chiave?\"Storispondendoalladomandachehaifattoinun'altravista…\"" in c
+
+
+# ─── Fase 3: la card delle cifre dettate ──────────────────────────────────────
+# La logica (validazione, testi, esiti) e' eseguita in test_home_chat_frontend.py;
+# qui che la Conferma rimandi la proposta all'endpoint giusto, una volta sola, e
+# che la card arrivi a schermo solo con chi sa gestirla.
+_CARD = _WEB / "components/home/card-cifra.tsx"
+_PANNELLO = _WEB / "components/home/pannello-conversazione.tsx"
+
+
+def test_la_conferma_scrive_solo_dall_endpoint_dedicato_e_una_volta():
+    n = _n(_PROVIDER)
+    i = n.index("constconferma=useCallback(")
+    corpo = n[i:n.index("constannulla=useCallback(", i)]
+    assert "if(!card||!confermabile(card))return;" in corpo
+    assert 'aggiorna((v)=>conCard(v,cardId,(c)=>({...c,stato:"invio",messaggio:undefined})));' in corpo
+    assert corpo.index('stato:"invio"') < corpo.index("awaitfetch(")
+    assert 'fetch("/api/assistente/registra",{method:"POST"' in corpo
+    assert "body:JSON.stringify(corpoConferma(card.proposta))" in corpo
+    assert "conCard(v,cardId,(c)=>esitoConferma(res.status,data,c))" in corpo
+    assert "if(res.ok)router.refresh();" in corpo
+    assert "/api/chat" not in corpo
+
+
+def test_annulla_non_chiama_il_server():
+    n = _n(_PROVIDER)
+    i = n.index("constannulla=useCallback(")
+    corpo = n[i:n.index("return(", i)]
+    assert "fetch" not in corpo
+    assert 'confermabile(c)?{...c,stato:"annullata"' in corpo
+
+
+def test_la_card_arriva_a_schermo_con_i_suoi_pulsanti():
+    c = _n(_CONV)
+    assert "onConferma={(id)=>voidconferma(id)}onAnnulla={annulla}" in c
+    p = _n(_PANNELLO)
+    assert "v.card?.map((c)=>(<CardCifraDettatakey={c.id}card={c}onConferma={onConferma}onAnnulla={onAnnulla}/>))" in p
+    k = _n(_CARD)
+    assert '{onConferma&&(aperta||card.stato==="invio")&&(' in k
+    assert "constaperta=confermabile(card);" in k
+    assert 'disabled={card.stato==="invio"}onClick={()=>onConferma(card.id)}' in k
+
+
+def test_la_demo_non_conferma_niente():
+    assert "onConferma" not in _n(_DEMO_CHAT)

@@ -478,3 +478,237 @@ def test_i_negozi_non_leggono_food_cost_pesce_ne_scontrino(contesto):
     testo = " ".join(_chiama("suggerimentiPer", [contesto, "retail"])).lower()
     for parola in ("food cost", "pesce", "scontrino", "coperti"):
         assert parola not in testo
+
+
+# ─── Fase 3: la card delle cifre dettate ──────────────────────────────────────
+# La proposta arriva dal worker (`ChatResponse.proposte`) ed e' gia' il corpo di
+# POST /api/assistente/registra; resta in sessionStorage con la sua voce. Qui:
+# cosa si accetta, cosa dice la card, cosa si rimanda, com'e' andata.
+
+PROPOSTA = {
+    "tipo": "incasso_giorno", "ristorante_id": "r-1", "sede_nome": "NAVIGLI", "data": "2026-09-29",
+    "fatturato_iva10": 1800, "altri_ricavi_noiva": 540, "fatturato_iva22": 0, "precedente": None,
+    "anno": None, "mese": None, "costo_dipendenti": None, "costo_personale_extra": None,
+}
+PERSONALE = {**PROPOSTA, "tipo": "personale_mese", "data": None, "anno": 2026, "mese": 8,
+             "fatturato_iva10": 0, "altri_ricavi_noiva": 0, "costo_dipendenti": 12000,
+             "costo_personale_extra": 450}
+FATTURATO = {**PROPOSTA, "tipo": "fatturato_mese", "data": None, "anno": 2026, "mese": 8,
+             "fatturato_iva10": 30000, "altri_ricavi_noiva": 2000, "fatturato_iva22": 500}
+
+
+def _card(proposta=PROPOSTA, stato="attesa", **kw):
+    return {"id": "1-0", "proposta": proposta, "stato": stato, **kw}
+
+
+@pytest.mark.parametrize("p", [PROPOSTA, PERSONALE, FATTURATO], ids=["incasso", "personale", "fatturato"])
+def test_proposta_del_worker_valida(p):
+    assert _chiama("propostaValida", [p]) is True
+
+
+@pytest.mark.parametrize("modifica", [
+    {"tipo": "costo_affitto"}, {"ristorante_id": ""}, {"ristorante_id": 7},
+    {"fatturato_iva10": -1}, {"fatturato_iva10": "1800"}, {"altri_ricavi_noiva": None},
+    {"data": "29/09/2026"}, {"data": None},
+    {"fatturato_iva10": 0, "altri_ricavi_noiva": 0},
+    {"precedente": {"fatturato_iva10": "700"}}, {"precedente": [1]},
+    {"sede_nome": 3}, {"costo_personale_extra": -5},
+], ids=lambda m: ",".join(f"{k}={v!r}" for k, v in m.items()))
+def test_proposta_incasso_malformata_scartata(modifica):
+    assert _chiama("propostaValida", [{**PROPOSTA, **modifica}]) is False
+
+
+@pytest.mark.parametrize("p", [
+    {**PERSONALE, "costo_dipendenti": 0}, {**PERSONALE, "costo_dipendenti": None},
+    {**PERSONALE, "mese": 13}, {**PERSONALE, "mese": 0}, {**PERSONALE, "anno": 2026.5},
+    {**FATTURATO, "fatturato_iva10": 0, "altri_ricavi_noiva": 0, "fatturato_iva22": 0},
+    {**FATTURATO, "anno": None},
+], ids=["pers-zero", "pers-null", "mese-13", "mese-0", "anno-decimale", "fatt-zero", "fatt-senza-anno"])
+def test_proposta_mensile_malformata_scartata(p):
+    assert _chiama("propostaValida", [p]) is False
+
+
+def test_card_dalle_proposte_con_id_unici_e_solo_le_valide():
+    out = _chiama("cardDaProposte", [[PROPOSTA, {"tipo": "x"}, PERSONALE], 99])
+    assert [(c["id"], c["stato"], c["proposta"]["tipo"]) for c in out] == [
+        ("99-0", "attesa", "incasso_giorno"), ("99-1", "attesa", "personale_mese")]
+    assert _chiama("cardDaProposte", [None, 1]) == []
+    assert _chiama("cardDaProposte", [{"tipo": "x"}, 1]) == []
+
+
+def test_la_risposta_porta_le_sue_card():
+    voci = [{"role": "user", "content": "ieri 2.340", "vista": "sede:r-1"}]
+    out = _chiama("conRisposta", [voci, "sede:r-1", "Ecco", [_card()]])
+    assert out[1]["card"] == [_card()]
+    senza = _chiama("conRisposta", [voci, "sede:r-1", "Ecco"])
+    assert "card" not in senza[1]
+
+
+def test_al_worker_si_manda_solo_il_testo_non_le_card():
+    voci = [{"role": "user", "content": "ieri 2.340", "vista": "sede:r-1"},
+            {"role": "assistant", "content": "Ecco", "vista": "sede:r-1", "card": [_card()]}]
+    out = _chiama("codaPerVista", [voci, {"chiave": "sede:r-1", "contesto": "sede"}])
+    assert out == [{"role": "user", "content": "ieri 2.340"}, {"role": "assistant", "content": "Ecco"}]
+
+
+def test_le_card_salvate_tornano_e_quelle_rotte_si_scartano():
+    import json
+    voci = [{"role": "assistant", "content": "Ecco", "vista": "sede:r-1",
+             "card": [_card(), _card(stato="boh"), _card(proposta={"tipo": "x"}), None,
+                      _card(stato="registrata", messaggio="Registrato.")]}]
+    [voce] = _chiama("parseConversazione", [json.dumps(voci)])
+    assert [c["stato"] for c in voce["card"]] == ["attesa", "registrata"]
+
+
+def test_card_salvata_in_invio_torna_confermabile():
+    """Pagina ricaricata mentre la Conferma viaggiava: ripeterla e' innocuo, il
+    server risponde «gia' registrata»; restare «invio» la bloccherebbe per sempre."""
+    import json
+    voci = [{"role": "assistant", "content": "Ecco", "vista": "sede:r-1", "card": [_card(stato="invio")]}]
+    [voce] = _chiama("parseConversazione", [json.dumps(voci)])
+    assert voce["card"][0]["stato"] == "attesa"
+
+
+def test_card_non_array_o_su_voce_del_cliente_si_toglie_la_voce_resta():
+    import json
+    voci = [{"role": "assistant", "content": "A", "vista": "v", "card": "rotto"},
+            {"role": "user", "content": "U", "vista": "v", "card": [_card()]},
+            {"role": "assistant", "content": "B", "vista": "v", "extra": 1}]
+    out = _chiama("parseConversazione", [json.dumps(voci)])
+    assert out == [{"role": "assistant", "content": "A", "vista": "v"},
+                   {"role": "user", "content": "U", "vista": "v"},
+                   {"role": "assistant", "content": "B", "vista": "v"}]
+
+
+def test_la_conferma_rimanda_la_proposta_senza_i_campi_della_card():
+    out = _chiama("corpoConferma", [PERSONALE])
+    assert "sede_nome" not in out and "costo_personale_extra" not in out
+    assert out == {k: v for k, v in PERSONALE.items() if k not in ("sede_nome", "costo_personale_extra")}
+
+
+# ─── Cosa dice la card ────────────────────────────────────────────────────────
+def test_testo_card_incasso_con_divisione_e_totale():
+    t = _chiama("testoCard", [PROPOSTA, 2026])
+    assert t["titolo"] == "Incasso di martedì 29 settembre"
+    assert t["sede"] == "NAVIGLI"
+    assert t["righe"] == [["Al 10%", "1.800,00\u00a0€"], ["Senza IVA", "540,00\u00a0€"]]
+    assert t["totale"] == "2.340,00\u00a0€"
+    assert t["nota"] is None
+
+
+def test_testo_card_il_22_solo_se_c_e_e_l_anno_se_non_e_quest_anno():
+    t = _chiama("testoCard", [{**PROPOSTA, "data": "2025-12-31", "fatturato_iva22": 100}, 2026])
+    assert t["titolo"] == "Incasso di mercoledì 31 dicembre 2025"
+    assert t["righe"][-1] == ["Al 22%", "100,00\u00a0€"]
+    assert t["totale"] == "2.440,00\u00a0€"
+
+
+def test_testo_card_valore_gia_presente():
+    prima = {"fatturato_iva10": 700, "altri_ricavi_noiva": 0, "fatturato_iva22": 0}
+    t = _chiama("testoCard", [{**PROPOSTA, "precedente": prima}, 2026])
+    assert t["nota"] == "Risulta già 700,00\u00a0€: lo sostituisco."
+
+
+def test_testo_card_fatturato_del_mese():
+    t = _chiama("testoCard", [FATTURATO, 2026])
+    assert t["titolo"] == "Fatturato di agosto 2026"
+    assert t["totale"] == "32.500,00\u00a0€"
+
+
+def test_testo_card_personale_con_extra_e_precedente():
+    t = _chiama("testoCard", [{**PERSONALE, "precedente": {"costo_dipendenti": 8000}}, 2026])
+    assert t["titolo"] == "Costo del personale di agosto 2026"
+    assert t["righe"] == [["Personale", "12.000,00\u00a0€"]]
+    assert t["totale"] is None
+    assert t["nota"] == "Risulta già 8.000,00\u00a0€: lo sostituisco. Più 450,00\u00a0€ di extra già registrati, che restano."
+    senza = _chiama("testoCard", [{**PERSONALE, "costo_personale_extra": None}, 2026])
+    assert senza["nota"] is None
+
+
+def test_senza_nome_della_sede_niente_riga_vuota():
+    assert _chiama("testoCard", [{**PROPOSTA, "sede_nome": "  "}, 2026])["sede"] is None
+
+
+# ─── Com'e' andata la Conferma ────────────────────────────────────────────────
+def _esito(status, data, card=None):
+    return _chiama("esitoConferma", [status, data, card or _card()])
+
+
+def test_conferma_riuscita():
+    out = _esito(200, {"ok": True})
+    assert (out["stato"], out["messaggio"]) == ("registrata", "Registrato.")
+
+
+def test_valore_cambiato_mostra_il_nuovo_e_chiede_una_conferma_nuova():
+    attuale = {"fatturato_iva10": 900, "altri_ricavi_noiva": 0, "fatturato_iva22": 0}
+    out = _esito(409, {"detail": {"motivo": "valore_cambiato", "attuale": attuale}})
+    assert out["stato"] == "cambiata"
+    assert out["proposta"]["precedente"] == attuale
+    assert "premi di nuovo Conferma" in out["messaggio"]
+    assert _chiama("confermabile", [out]) is True
+
+
+def test_valore_tolto_nel_frattempo():
+    card = _card(proposta={**PROPOSTA, "precedente": {"fatturato_iva10": 700}})
+    out = _esito(409, {"detail": {"motivo": "valore_cambiato", "attuale": None}}, card)
+    assert out["stato"] == "cambiata" and out["proposta"]["precedente"] is None
+    assert "è stato tolto" in out["messaggio"]
+
+
+@pytest.mark.parametrize("motivo,testo", [
+    ("mese_a_totale", "tenuto come totale del mese"),
+    ("mese_con_giorni", "già gli incassi giorno per giorno"),
+])
+def test_mese_tenuto_in_altro_modo_errore_leggibile(motivo, testo):
+    """Due card sullo stesso mese (giorno + mese intero): la seconda Conferma e'
+    per forza 409 — il cliente deve capire perche'."""
+    out = _esito(409, {"detail": {"motivo": motivo, "attuale": None}})
+    assert out["stato"] == "errore" and testo in out["messaggio"]
+    assert _chiama("confermabile", [out]) is False
+
+
+def test_400_mostra_il_motivo_del_server():
+    """La card preparata al limite dei 60 giorni e confermata dopo mezzanotte."""
+    out = _esito(400, {"detail": "Data troppo lontana: usa Movimenti"})
+    assert (out["stato"], out["messaggio"]) == ("errore", "Non registrato: Data troppo lontana: usa Movimenti.")
+
+
+@pytest.mark.parametrize("status,stato,testo", [
+    (404, "errore", "non è più disponibile"),
+    (403, "errore", "non hai il permesso"),
+    (401, "attesa", "sessione è scaduta"),
+    (502, "attesa", "Riprova tra poco"),
+    (0, "attesa", "Riprova tra poco"),
+    (409, "attesa", "Riprova tra poco"),
+])
+def test_altri_esiti(status, stato, testo):
+    out = _esito(status, {"detail": "x"} if status != 409 else {"detail": {"motivo": "boh"}})
+    assert out["stato"] == stato and testo in out["messaggio"]
+
+
+def test_409_con_attuale_malformato_non_diventa_la_nuova_card():
+    out = _esito(409, {"detail": {"motivo": "valore_cambiato", "attuale": {"fatturato_iva10": "x"}}})
+    assert out["stato"] == "attesa" and out["proposta"]["precedente"] is None
+
+
+def test_esito_con_corpo_non_json():
+    assert _esito(500, None)["stato"] == "attesa"
+
+
+@pytest.mark.parametrize("stato,atteso", [
+    ("attesa", True), ("cambiata", True), ("invio", False),
+    ("registrata", False), ("annullata", False), ("errore", False),
+])
+def test_confermabile(stato, atteso):
+    assert _chiama("confermabile", [_card(stato=stato)]) is atteso
+
+
+def test_con_card_tocca_solo_quella_card():
+    voci = [{"role": "assistant", "content": "A", "vista": "v", "card": [_card(), {**_card(), "id": "1-1"}]},
+            {"role": "user", "content": "U", "vista": "v"}]
+    out = esegui_ts(MODULO, 'emit(m.conCard(input, "1-1", (c) => ({...c, stato: "annullata"})));',
+                    argomento=voci, richiede=["conCard"])
+    assert [c["stato"] for c in out[0]["card"]] == ["attesa", "annullata"]
+    assert out[1] == voci[1]
+    assert _chiama("trovaCard", [voci, "1-1"])["id"] == "1-1"
+    assert _chiama("trovaCard", [voci, "9-9"]) is None

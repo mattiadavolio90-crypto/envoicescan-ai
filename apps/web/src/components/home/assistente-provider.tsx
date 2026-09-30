@@ -1,12 +1,19 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CHIAVE_VECCHIA,
+  cardDaProposte,
   chiaveConversazione,
   codaPerVista,
+  conCard,
   conRisposta,
+  confermabile,
   contatoreAggiornato,
+  corpoConferma,
+  esitoConferma,
+  trovaCard,
   quotaEsaurita,
   type Conteggio,
   daSalvare,
@@ -41,6 +48,9 @@ type StatoAssistente = {
   invia: (testo: string, vista: Vista, quota: Quota) => Promise<void>;
   /** Ricomincia la conversazione di questa vista; le altre restano. */
   nuova: (vistaChiave: string) => void;
+  /** La cifra dettata: solo qui si scrive (POST /api/assistente/registra). */
+  conferma: (cardId: string) => Promise<void>;
+  annulla: (cardId: string) => void;
 };
 
 const Contesto = createContext<StatoAssistente | null>(null);
@@ -59,6 +69,7 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
   const [inCorso, setInCorso] = useState<string | null>(null);
   const [attesa, setAttesa] = useState(0);
   const [domande, setDomande] = useState<Conteggio | null>(null);
+  const router = useRouter();
 
   const aggiorna = useCallback((f: (v: VoceChat[]) => VoceChat[]) => {
     vociRef.current = f(vociRef.current);
@@ -116,15 +127,17 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: codaPerVista(vociRef.current, vista), contesto: vista.contesto }),
+          // card_conferma: questo client mostra le card con Conferma, quindi il
+          // worker puo' offrire all'assistente gli strumenti che le preparano.
+          body: JSON.stringify({ messages: codaPerVista(vociRef.current, vista), contesto: vista.contesto, card_conferma: true }),
         });
-        const data = (await res.json()) as { reply?: string; error?: string; domande_oggi?: number };
+        const data = (await res.json()) as { reply?: string; error?: string; domande_oggi?: number; proposte?: unknown };
         setDomande({
           valore: contatoreAggiornato(res.status, data, quota.limiteGiorno, quota.domandeOggi),
           alle: Date.now(),
           finita: quotaEsaurita(res.status, data),
         });
-        aggiorna((v) => conRisposta(v, vista.chiave, messaggioRisposta(res.status, data)));
+        aggiorna((v) => conRisposta(v, vista.chiave, messaggioRisposta(res.status, data), data.reply ? cardDaProposte(data.proposte, Date.now()) : []));
       } catch {
         aggiorna((v) => conRisposta(v, vista.chiave, "Errore di connessione. Controlla la rete e riprova."));
       } finally {
@@ -137,8 +150,41 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
 
   const nuova = useCallback((vistaChiave: string) => aggiorna((v) => senzaVista(v, vistaChiave)), [aggiorna]);
 
+  // Una Conferma alla volta per card: un doppio clic non manda due scritture.
+  const conferma = useCallback(
+    async (cardId: string) => {
+      const card = trovaCard(vociRef.current, cardId);
+      if (!card || !confermabile(card)) return;
+      aggiorna((v) => conCard(v, cardId, (c) => ({ ...c, stato: "invio", messaggio: undefined })));
+      try {
+        const res = await fetch("/api/assistente/registra", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(corpoConferma(card.proposta)),
+        });
+        const data: unknown = await res.json().catch(() => null);
+        aggiorna((v) => conCard(v, cardId, (c) => esitoConferma(res.status, data, c)));
+        // Briefing e card della Home rileggono i numeri appena scritti.
+        if (res.ok) router.refresh();
+      } catch {
+        aggiorna((v) => conCard(v, cardId, (c) => esitoConferma(0, null, c)));
+      }
+    },
+    [aggiorna, router],
+  );
+
+  const annulla = useCallback(
+    (cardId: string) =>
+      aggiorna((v) =>
+        conCard(v, cardId, (c) =>
+          confermabile(c) ? { ...c, stato: "annullata", messaggio: "Annullato: non ho registrato niente." } : c,
+        ),
+      ),
+    [aggiorna],
+  );
+
   return (
-    <Contesto.Provider value={{ pronta, voci, inCorso, attesa, domande, invia, nuova }}>
+    <Contesto.Provider value={{ pronta, voci, inCorso, attesa, domande, invia, nuova, conferma, annulla }}>
       {children}
     </Contesto.Provider>
   );

@@ -5,6 +5,7 @@ import { Loader2, Send, SquarePen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type VoceChat } from "@/lib/home-chat";
+import { CardCifraDettata } from "./card-cifra";
 
 // Il disegno della conversazione dentro il riquadro dell'assistente: lo usano
 // la Home vera (ConversazioneAssistente) e il Demo Tour (DemoConversazione),
@@ -23,6 +24,8 @@ export function PannelloConversazione({
   stato,
   statoAvviso = false,
   onNuova,
+  onConferma,
+  onAnnulla,
   ancoraDemo,
 }: {
   voci: VoceChat[];
@@ -39,6 +42,9 @@ export function PannelloConversazione({
   stato: string;
   statoAvviso?: boolean;
   onNuova?: () => void;
+  /** Le card delle cifre dettate; senza (il Demo Tour) sono da leggere. */
+  onConferma?: (cardId: string) => void;
+  onAnnulla?: (cardId: string) => void;
   ancoraDemo?: string;
 }) {
   const lista = useRef<HTMLDivElement>(null);
@@ -55,16 +61,20 @@ export function PannelloConversazione({
       {(voci.length > 0 || attesa) && (
         <div ref={lista} className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1" aria-live="polite">
           {voci.map((v, i) => (
-            <div
-              key={i}
-              className={cn(
-                "w-fit max-w-[85%] whitespace-pre-line rounded-xl px-3 py-2 text-sm leading-relaxed",
-                v.role === "user"
-                  ? "ml-auto bg-primary text-primary-foreground"
-                  : "mr-auto border border-border bg-card text-foreground",
-              )}
-            >
-              {v.content}
+            <div key={i} className="space-y-2">
+              <div
+                className={cn(
+                  "w-fit max-w-[85%] whitespace-pre-line rounded-xl px-3 py-2 text-sm leading-relaxed",
+                  v.role === "user"
+                    ? "ml-auto bg-primary text-primary-foreground"
+                    : "mr-auto border border-border bg-card text-foreground",
+                )}
+              >
+                {v.content}
+              </div>
+              {v.card?.map((c) => (
+                <CardCifraDettata key={c.id} card={c} onConferma={onConferma} onAnnulla={onAnnulla} />
+              ))}
             </div>
           ))}
           {attesa && (

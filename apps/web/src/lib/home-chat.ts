@@ -149,11 +149,13 @@ export function vistaCatena(): Vista {
   return { chiave: "catena", contesto: "catena" };
 }
 
-// Un messaggio della conversazione, con la vista in cui e' stato scritto.
+// Un messaggio della conversazione, con la vista in cui e' stato scritto. Una
+// risposta dell'assistente puo' portare le card delle cifre dettate (fase 3).
 export type VoceChat = {
   role: "user" | "assistant";
   content: string;
   vista: string;
+  card?: CardCifra[];
 };
 
 // Oltre, le voci piu' vecchie si lasciano cadere: la conversazione vive nel
@@ -169,14 +171,20 @@ export function parseConversazione(raw: string | null): VoceChat[] {
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (v): v is VoceChat =>
-        !!v &&
-        (v.role === "user" || v.role === "assistant") &&
-        typeof v.content === "string" &&
-        typeof v.vista === "string" &&
-        v.vista !== "",
-    );
+    return parsed
+      .filter(
+        (v): v is VoceChat =>
+          !!v &&
+          (v.role === "user" || v.role === "assistant") &&
+          typeof v.content === "string" &&
+          typeof v.vista === "string" &&
+          v.vista !== "",
+      )
+      .map((v) => {
+        const voce: VoceChat = { role: v.role, content: v.content, vista: v.vista };
+        const card = v.role === "assistant" ? cardSalvate(v.card) : [];
+        return card.length ? { ...voce, card } : voce;
+      });
   } catch {
     return [];
   }
@@ -233,10 +241,16 @@ export const CHIAVE_VECCHIA = "oneflux:chat-messages";
 // conversazione del locale dove e' partita la domanda. Una domanda alla volta
 // (il campo e' bloccato mentre si aspetta), quindi e' l'ultima domanda di
 // quella vista.
-export function conRisposta(voci: VoceChat[], vistaChiave: string, testo: string): VoceChat[] {
+export function conRisposta(
+  voci: VoceChat[],
+  vistaChiave: string,
+  testo: string,
+  card: CardCifra[] = [],
+): VoceChat[] {
   let i = voci.length - 1;
   while (i >= 0 && !(voci[i].role === "user" && voci[i].vista === vistaChiave)) i--;
   const risposta: VoceChat = { role: "assistant", content: testo, vista: vistaChiave };
+  if (card.length) risposta.card = card;
   if (i < 0) return [...voci, risposta];
   return [...voci.slice(0, i + 1), risposta, ...voci.slice(i + 1)];
 }
@@ -274,4 +288,226 @@ export function statoDomande(
   const usate = recente.valore;
   const rimanenti = finita ? 0 : domandeRimanenti(limiteGiorno, usate);
   return { usate, rimanenti, esaurite: rimanenti <= 0, testo: testoContatore(rimanenti, finita) };
+}
+
+/* ─── Le cifre dettate: la card con Conferma (fase 3) ────────────────────── */
+//
+// L'assistente PROPONE (il worker restituisce `proposte` accanto a `reply`), il
+// cliente preme Conferma, e solo allora POST /api/assistente/registra scrive.
+// La proposta e' gia' il corpo di quella chiamata: il client la rimanda com'e',
+// senza ricalcolare niente. Il numero sulla card e' il controllo umano.
+
+export type TipoCifra = "incasso_giorno" | "personale_mese" | "fatturato_mese";
+
+export type PropostaCifra = {
+  tipo: TipoCifra;
+  ristorante_id: string;
+  sede_nome?: string | null;
+  data?: string | null;
+  anno?: number | null;
+  mese?: number | null;
+  fatturato_iva10: number;
+  altri_ricavi_noiva: number;
+  fatturato_iva22: number;
+  costo_dipendenti?: number | null;
+  costo_personale_extra?: number | null;
+  /** Cio' che la card mostra come «risulta …»; null = nessun valore. */
+  precedente?: Record<string, number> | null;
+};
+
+/** attesa: Conferma e Annulla; invio: la Conferma e' partita; cambiata: nel
+ *  frattempo il valore e' cambiato, si chiede una conferma nuova; errore: la
+ *  Conferma e' stata rifiutata e non si puo' ripetere. */
+export type StatoCard = "attesa" | "invio" | "registrata" | "annullata" | "cambiata" | "errore";
+
+export type CardCifra = { id: string; proposta: PropostaCifra; stato: StatoCard; messaggio?: string };
+
+const TIPI_CIFRA: readonly string[] = ["incasso_giorno", "personale_mese", "fatturato_mese"];
+const STATI_CARD: readonly string[] = ["attesa", "invio", "registrata", "annullata", "cambiata", "errore"];
+
+function importo(x: unknown): x is number {
+  return typeof x === "number" && Number.isFinite(x) && x >= 0;
+}
+
+function intero(x: unknown): x is number {
+  return typeof x === "number" && Number.isInteger(x);
+}
+
+function valoriValidi(x: unknown): x is Record<string, number> {
+  return !!x && typeof x === "object" && !Array.isArray(x) && Object.values(x).every(importo);
+}
+
+// Arriva dal worker o da sessionStorage: in entrambi i casi si controlla prima
+// di mostrarla, perche' Conferma la rimanda al server cosi' com'e'.
+export function propostaValida(x: unknown): x is PropostaCifra {
+  if (!x || typeof x !== "object") return false;
+  const p = x as Record<string, unknown>;
+  if (typeof p.tipo !== "string" || !TIPI_CIFRA.includes(p.tipo)) return false;
+  if (typeof p.ristorante_id !== "string" || !p.ristorante_id) return false;
+  if (!importo(p.fatturato_iva10) || !importo(p.altri_ricavi_noiva) || !importo(p.fatturato_iva22)) return false;
+  if (p.precedente != null && !valoriValidi(p.precedente)) return false;
+  if (p.sede_nome != null && typeof p.sede_nome !== "string") return false;
+  if (p.costo_personale_extra != null && !importo(p.costo_personale_extra)) return false;
+  if (p.tipo === "incasso_giorno") {
+    return typeof p.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.data) && totaleIncasso(p as PropostaCifra) > 0;
+  }
+  if (!intero(p.anno) || !intero(p.mese) || p.mese < 1 || p.mese > 12) return false;
+  if (p.tipo === "personale_mese") return importo(p.costo_dipendenti) && p.costo_dipendenti > 0;
+  return totaleIncasso(p as PropostaCifra) > 0;
+}
+
+// Le card di una risposta di /api/chat. `ora` rende gli id unici fra risposte.
+export function cardDaProposte(proposte: unknown, ora: number): CardCifra[] {
+  if (!Array.isArray(proposte)) return [];
+  return proposte.filter(propostaValida).map((proposta, i) => ({ id: `${ora}-${i}`, proposta, stato: "attesa" }));
+}
+
+// Da sessionStorage: una card rimasta «invio» (pagina ricaricata mentre la
+// Conferma viaggiava) torna in attesa. Ripeterla e' innocuo: se la cifra e' gia'
+// scritta, il server risponde che e' registrata.
+function cardSalvate(x: unknown): CardCifra[] {
+  if (!Array.isArray(x)) return [];
+  return x
+    .filter(
+      (c): c is CardCifra =>
+        !!c &&
+        typeof c.id === "string" &&
+        typeof c.stato === "string" &&
+        STATI_CARD.includes(c.stato) &&
+        (c.messaggio === undefined || typeof c.messaggio === "string") &&
+        propostaValida(c.proposta),
+    )
+    .map((c) => {
+      const card: CardCifra = { id: c.id, proposta: c.proposta, stato: c.stato === "invio" ? "attesa" : c.stato };
+      if (c.messaggio !== undefined) card.messaggio = c.messaggio;
+      return card;
+    });
+}
+
+export function totaleIncasso(p: Pick<PropostaCifra, "fatturato_iva10" | "altri_ricavi_noiva" | "fatturato_iva22">): number {
+  return Math.round((p.fatturato_iva10 + p.altri_ricavi_noiva + p.fatturato_iva22) * 100) / 100;
+}
+
+// Il corpo di POST /api/assistente/registra: la proposta senza i campi che
+// servono solo a scrivere la card.
+export function corpoConferma(p: PropostaCifra): Record<string, unknown> {
+  const corpo: Record<string, unknown> = { ...p };
+  delete corpo.sede_nome;
+  delete corpo.costo_personale_extra;
+  return corpo;
+}
+
+export function confermabile(c: CardCifra): boolean {
+  return c.stato === "attesa" || c.stato === "cambiata";
+}
+
+// Sulla card il punto delle migliaia sempre: l'italiano di Intl non lo mette
+// sotto i 10.000 («1800,00 €»), e accanto al «1.800» detto dal cliente sembra
+// un'altra cifra.
+function euro(v: number): string {
+  return v.toLocaleString("it-IT", {
+    style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: "always",
+  });
+}
+
+const MESI = [
+  "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+  "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+];
+
+function giornoInChiaro(iso: string, annoCorrente: number): string {
+  const [a, m, g] = iso.split("-").map(Number);
+  const d = new Date(Date.UTC(a, m - 1, g));
+  const settimana = d.toLocaleDateString("it-IT", { weekday: "long", timeZone: "UTC" });
+  return `${settimana} ${g} ${MESI[m - 1]}${a !== annoCorrente ? ` ${a}` : ""}`;
+}
+
+export type TestoCard = { titolo: string; sede: string | null; righe: [string, string][]; totale: string | null; nota: string | null };
+
+// Cosa dice la card: cosa, dove, quando, gli importi in chiaro e il valore che
+// sostituisce. `annoCorrente` (di Roma) toglie l'anno dai giorni di quest'anno.
+export function testoCard(p: PropostaCifra, annoCorrente: number): TestoCard {
+  const sede = p.sede_nome?.trim() || null;
+  const quando =
+    p.tipo === "incasso_giorno" ? giornoInChiaro(p.data ?? "", annoCorrente) : `${MESI[(p.mese ?? 1) - 1]} ${p.anno}`;
+  if (p.tipo === "personale_mese") {
+    const extra = p.costo_personale_extra ?? 0;
+    const prima = p.precedente?.costo_dipendenti;
+    return {
+      titolo: `Costo del personale di ${quando}`,
+      sede,
+      righe: [["Personale", euro(p.costo_dipendenti ?? 0)]],
+      totale: null,
+      nota: [
+        prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
+        extra > 0 ? `Più ${euro(extra)} di extra già registrati, che restano.` : null,
+      ].filter(Boolean).join(" ") || null,
+    };
+  }
+  const righe: [string, string][] = [
+    ["Al 10%", euro(p.fatturato_iva10)],
+    ["Senza IVA", euro(p.altri_ricavi_noiva)],
+  ];
+  if (p.fatturato_iva22 > 0) righe.push(["Al 22%", euro(p.fatturato_iva22)]);
+  const prima = p.precedente
+    ? totaleIncasso({
+        fatturato_iva10: p.precedente.fatturato_iva10 ?? 0,
+        altri_ricavi_noiva: p.precedente.altri_ricavi_noiva ?? 0,
+        fatturato_iva22: p.precedente.fatturato_iva22 ?? 0,
+      })
+    : null;
+  return {
+    titolo: p.tipo === "incasso_giorno" ? `Incasso di ${quando}` : `Fatturato di ${quando}`,
+    sede,
+    righe,
+    totale: euro(totaleIncasso(p)),
+    nota: prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
+  };
+}
+
+// Com'e' andata la Conferma. Il 409 «valore_cambiato» porta il valore di adesso:
+// diventa il nuovo «risulta …» e si chiede una conferma nuova, mai in automatico.
+export function esitoConferma(status: number, data: unknown, card: CardCifra): CardCifra {
+  const detail = data && typeof data === "object" ? (data as { detail?: unknown }).detail : undefined;
+  if (status >= 200 && status < 300) {
+    return { ...card, stato: "registrata", messaggio: "Registrato." };
+  }
+  if (status === 409 && detail && typeof detail === "object") {
+    const { motivo, attuale } = detail as { motivo?: unknown; attuale?: unknown };
+    if (motivo === "valore_cambiato" && (attuale == null || valoriValidi(attuale))) {
+      const precedente = (attuale as Record<string, number> | null | undefined) ?? null;
+      return {
+        ...card,
+        proposta: { ...card.proposta, precedente },
+        stato: "cambiata",
+        messaggio: precedente
+          ? "Nel frattempo il valore è cambiato (lo vedi qui sopra). Se vuoi sostituirlo, premi di nuovo Conferma."
+          : "Nel frattempo il valore registrato è stato tolto. Se vuoi registrare questa cifra, premi di nuovo Conferma.",
+      };
+    }
+    if (motivo === "mese_a_totale") {
+      return { ...card, stato: "errore", messaggio: "Questo mese è tenuto come totale del mese: il singolo giorno non si registra. Puoi dettarmi il nuovo totale del mese." };
+    }
+    if (motivo === "mese_con_giorni") {
+      return { ...card, stato: "errore", messaggio: "Questo mese ha già gli incassi giorno per giorno: il fatturato del mese è la loro somma. Puoi dettarmi l'incasso di un giorno." };
+    }
+  }
+  if (status === 400 && typeof detail === "string" && detail) {
+    return { ...card, stato: "errore", messaggio: `Non registrato: ${detail}.` };
+  }
+  if (status === 404) return { ...card, stato: "errore", messaggio: "Non registrato: questo locale non è più disponibile." };
+  if (status === 403) return { ...card, stato: "errore", messaggio: "Non registrato: non hai il permesso di registrare questa cifra." };
+  if (status === 401) return { ...card, stato: "attesa", messaggio: "La sessione è scaduta: rientra e premi di nuovo Conferma." };
+  return { ...card, stato: "attesa", messaggio: "Non sono riuscito a registrarla. Riprova tra poco." };
+}
+
+export function conCard(voci: VoceChat[], id: string, f: (c: CardCifra) => CardCifra): VoceChat[] {
+  return voci.map((v) =>
+    v.card?.some((c) => c.id === id) ? { ...v, card: v.card.map((c) => (c.id === id ? f(c) : c)) } : v,
+  );
+}
+
+export function trovaCard(voci: VoceChat[], id: string): CardCifra | null {
+  for (const v of voci) for (const c of v.card ?? []) if (c.id === id) return c;
+  return null;
 }
