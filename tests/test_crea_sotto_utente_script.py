@@ -123,3 +123,15 @@ def test_se_le_sedi_non_si_scrivono_non_resta_un_sotto_utente_a_meta(scenario, m
     with pytest.raises(RuntimeError):
         script.crea(sc.sb, _args(sc, esegui=True))
     assert _righe(sc) == 0
+
+
+@pytest.mark.sql
+def test_lo_script_rifiuta_una_pagina_che_il_titolare_non_ha(scenario):
+    # Il controllo e' nella funzione pura: qui si prova che lo script gliela passa.
+    sc = scenario
+    sc.conn.execute("UPDATE public.users SET pagine_abilitate = %s WHERE id = %s",
+                    ('{"analisi_fatture": true}', sc.a.ids["user_id"]))
+    with pytest.raises(SystemExit) as e:
+        script.crea(sc.sb, _args(sc, pagine="home,margini", esegui=True))
+    assert "titolare non ha: margini" in str(e.value)
+    assert _righe(sc) == 0
