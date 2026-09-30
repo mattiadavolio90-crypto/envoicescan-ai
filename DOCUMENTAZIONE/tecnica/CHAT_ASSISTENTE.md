@@ -188,6 +188,7 @@ vista catena si usano anche loro, con una `sede` obbligatoria (§5.3).
 | `ultimi_acquisti` | `_chat_ultimi_acquisti` | "ultimo acquisto", "ultima fattura di X" | ordine data desc; NON per totali |
 | `trend_prezzo` | `_chat_trend_prezzo` | "la mozzarella è aumentata?" | prezzo unitario medio ponderato/mese, ~7 mesi |
 | `query_appuntamenti` | `_chat_query_appuntamenti` | "cosa ho oggi", "appuntamenti questa settimana" | **sola lettura** su `diario_eventi`; default oggi→+7gg (10/6) |
+| `proponi_incasso` / `proponi_personale` / `proponi_fatturato_mese` | `proponi` in `services/routers/assistente.py` | "ieri ho fatto 2.340: 1.800 al 10% e 540 senza IVA" | **non scrivono**: preparano una card con Conferma (§5.4); solo con `card_conferma` e pagina `margini`, mai in catena |
 
 **Ricerca tollerante (`query_costi`, `trend_prezzo`, `confronto_prezzi`):** un
 termine generico viene cercato **sia su categoria sia su descrizione**, con
@@ -273,6 +274,43 @@ Il prompt di catena elenca i punti vendita del gruppo.
 - Isolamento provato su Postgres vero con due clienti:
   `tests/test_chat_catena_sede_sql.py` (sede di B per nome e per id, più il
   controllo sulle proprie sedi).
+
+### 5.4 Le cifre dettate: proposta, card, Conferma (fase 3, dal 30/9/2026)
+
+Il cliente detta incasso di un giorno, personale o fatturato di un mese;
+l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive.
+
+- **Chi le vede.** `ChatRequest.card_conferma` (default `False`) dice che il
+  client mostra le card: senza, niente strumenti `proponi_*`, niente regole nel
+  prompt (`cifre_dettate` di `_build_chat_system_prompt` e
+  `_build_chat_system_prompt_catena`) e gli avvisi di prima. La Home lo manda;
+  `/m` no (fase 8). Strumenti mappati su `margini` in `_CHAT_TOOL_FLAG`, fuori
+  da `_CHAT_TOOLS_SEDE_IN_CATENA` e rifiutati da `_chat_esegui_tool_sede`: in
+  catena il prompt rimanda alla Home del locale.
+- **Divisione IVA** (decisione di Mattia, 29/9): si detta IVA inclusa; se il
+  cliente dà solo il totale l'assistente chiede quanto al 10% e quanto senza
+  IVA, il 22% solo se lo nomina (i negozi: anche il 22%, `_chiedi_divisione`).
+  Mai una divisione inventata.
+- **La proposta** (`PropostaCifra`) usa le stesse validazioni e letture della
+  Conferma (`valida_giorno`, `valida_mese`, tetti, `leggi_fatturato_mese` con la
+  sua `fonte`): la card non promette cio' che la Conferma rifiuterebbe. Esce in
+  `ChatResponse.proposte` (massimo 3, la stessa cifra due volte = l'ultima,
+  nessuna senza `reply`). Importi passati come testo rifiutati («2.340» sarebbe
+  2,34).
+- **La Conferma**: `POST /api/assistente/registra` (router
+  `services/routers/assistente.py`, proxy `app/api/assistente/registra/route.ts`).
+  Ricontrolla sede (account, attiva, non tecnica, consentita al sotto-utente) e
+  pagina; 409 `valore_cambiato` se il valore non e' piu' quello mostrato
+  (`precedente`), `mese_a_totale` / `mese_con_giorni` se il mese e' tenuto in
+  altro modo; update condizionato ai valori letti; invalida KPI, briefing e
+  campanella.
+- **La card** (`components/home/card-cifra.tsx`, logica in `lib/home-chat.ts`:
+  `propostaValida`, `testoCard`, `esitoConferma`, `corpoConferma`) vive sulla
+  voce della risposta in sessionStorage. Una Conferma ripetuta riceve 409 con
+  `attuale` uguale al dettato: il client la legge come registrata.
+- Test: `tests/test_sql_assistente_registra.py`, `tests/test_sql_chat_proposte.py`
+  (Postgres vero, due clienti), `tests/test_chat_proposte_prompt.py`,
+  `tests/test_home_chat_frontend.py`.
 
 ## 6. Il system prompt (`_build_chat_system_prompt`)
 
@@ -369,6 +407,8 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 | Cambiare le domande proposte | `SUGGERIMENTI_SEDE` / `SUGGERIMENTI_CATENA` in `lib/home-chat.ts` |
 | Cambiare il feedback d'attesa | `testoAttesa` in `lib/home-chat.ts` + effetto in `assistente-provider.tsx` |
 | Cambiare quali messaggi si vedono o cosa si manda al backend | `vistaSede`, `vistaCatena`, `vociDellaVista`, `senzaVista`, `codaPerVista` in `lib/home-chat.ts` |
+| Cambiare cosa si puo' dettare, tetti, finestre | `services/routers/assistente.py` (`TETTO_*`, `GIORNI_INDIETRO_INCASSO`, `MESI_INDIETRO`, `proponi`) |
+| Cambiare cosa dice la card o come legge l'esito | `testoCard`, `esitoConferma` in `lib/home-chat.ts`; resa in `components/home/card-cifra.tsx` |
 
 ### Testare la chat in locale
 
@@ -413,13 +453,21 @@ reale del cliente.
 | `apps/web/src/components/home/assistente-provider.tsx` | stato della conversazione (layout di `(app)`), invio, attesa |
 | `apps/web/src/components/home/conversazione-assistente.tsx` | la conversazione nel riquadro del briefing: vista, quota, domande proposte |
 | `apps/web/src/components/home/pannello-conversazione.tsx` | il disegno, comune alla Home e al Demo Tour |
-| `apps/web/src/lib/home-chat.ts` | logica pura: messaggi della vista aperta, coda da inviare, contatore |
+| `apps/web/src/lib/home-chat.ts` | logica pura: messaggi della vista aperta, coda da inviare, contatore, card delle cifre dettate |
+| `services/routers/assistente.py` | cifre dettate: proposta (`proponi`) e Conferma (`POST /api/assistente/registra`) (§5.4) |
+| `apps/web/src/components/home/card-cifra.tsx` | la card con Conferma / Annulla |
 | RPC `chat_usage_check_and_log` (DB) | rate-limit atomico |
 | `services/ai_cost_service.py` | `track_ai_usage` (ledger costi) |
 
 ---
 
 ## Changelog rilevante
+
+- **30/9/2026 (fase 3, step 1-3; non ancora pushati al momento della nota)** —
+  cifre dettate con Conferma (§5.4): endpoint `POST /api/assistente/registra`,
+  strumenti `proponi_*` accesi da `card_conferma`, card nella conversazione della
+  Home. La data «di oggi» dei due prompt ora e' quella di Roma (`_oggi_rome`):
+  fra mezzanotte e le 2 il server in UTC diceva il giorno prima.
 
 - **29/9/2026 (interfaccia dell'assistente, step 6)** — in vista catena la chat
   usa anche gli strumenti di una sede, con `sede` obbligatoria e verificata fra
