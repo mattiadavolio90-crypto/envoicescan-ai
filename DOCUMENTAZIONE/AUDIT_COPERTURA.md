@@ -1562,15 +1562,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   sessione, cache 2 s, ogni rotta con pagine spente/accese, dati e risorse
 >   dell'altra sede con gli id veri, i casi del brief), `test_permessi_rotte.py`,
 >   `test_sotto_utente_frontend.py`, `test_crea_sotto_utente_script.py`.
->   Mutazione: 1b 15/15, 1c 23/23, inventario 1/1, 1d 28/28, 1e 6/6 (6 sopravvissuti
->   al primo giro, chiusi con un test; il revisore ne ha trovati altri 6, chiusi, e
->   5 sul cablaggio `.tsx`, rimasti: vedi residui). Revisore verde su ogni fase.
+>   Mutazione, fase per fase: 1a 17 (`e8591da`); 1b 15/15; 1c 12/12 + 11/11 sui
+>   rilievi (`0810f1d`); inventario 1/1; 1d 23/23 (account 9, chat 4, logica
+>   frontend 10) + 5/5 sui rilievi (`1b23ea1`); 1e 6/6 + 4/4 sui rilievi (`58a7a18`).
+>   Sopravvissuti ai miei primi giri: 6 (chat 1, logica frontend 4, script 1), tutti
+>   chiusi con un test. Trovati dai revisori: 3 in 1c e 3 in 1d, chiusi; 5 sul
+>   cablaggio `.tsx` della 1d, rimasti (residuo sotto). Revisore verde su ogni fase.
 >   Suite su copia dell'indice a
 >   `ffe4eaa`: **17.629 verdi, 57 skip** (`python -m pytest tests/ -q -m "not sql"
->   -p no:randomly -p no:cacheprovider`; +4 rossi non della fase: i 3 di
->   `test_globals_css_contrasto`, rossi anche su HEAD pulito, e
->   `test_scratchpad_non_viene_letto`, che dipende dal percorso della copia) e **976**
->   con `-m sql`.
+>   -p no:randomly -p no:cacheprovider`; +4 rossi solo perche' la copia non ha
+>   `.git` ne' sta fuori dallo scratchpad: i 3 di `test_globals_css_contrasto` usano
+>   `git ls-files`, `test_scratchpad_non_viene_letto` il percorso; nel repo passano,
+>   94/94) e **976** con `-m sql`.
 >   **Non fatto (residui):** pannello Admin e attivazione via email (Fase 2);
 >   `last_briefing_seen` resta per account (lo scrive la rigenerazione in
 >   background); il cablaggio dei `.tsx` non ha test di rendering (il server nega
