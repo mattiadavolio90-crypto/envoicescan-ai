@@ -646,10 +646,16 @@ const ArticoloRiga = memo(function ArticoloRiga({
         const dettaglio =
           dataGruppo?.detail ?? dataGruppo?.error ?? dataPV?.detail ?? dataPV?.error;
         const parziale = conGruppo && conRighePV && falliti.length === 1;
+        // 403 sulla quota di gruppo = utente senza la Catena: riprovare non serve.
+        const gruppoNegato = resGruppo?.status === 403;
         toast.error(
-          parziale
-            ? `Aggiornamento parziale: ${dettaglio ?? "una delle due scritture è fallita"}. Riprova.`
-            : (dettaglio ?? "Errore aggiornamento"),
+          gruppoNegato
+            ? conRighePV && resPV?.ok
+              ? "Categoria aggiornata sulle righe della sede. La quota di gruppo la può correggere solo chi gestisce la catena."
+              : "È un costo di gruppo: lo può correggere solo chi gestisce la catena."
+            : parziale
+              ? `Aggiornamento parziale: ${dettaglio ?? "una delle due scritture è fallita"}. Riprova.`
+              : (dettaglio ?? "Errore aggiornamento"),
         );
       }
     } catch {

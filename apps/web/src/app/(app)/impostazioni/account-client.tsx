@@ -49,6 +49,8 @@ type AccountData = {
   membro_dal: string | null;
   ultimo_accesso: string | null;
   is_admin: boolean;
+  // Sotto-utente: niente piano ne' azioni sull'intero account (le nega il worker).
+  sotto_utente?: boolean;
 };
 
 // `new Date(iso)` su una data NUDA ("2026-06-01") la parserebbe a mezzanotte UTC
@@ -735,7 +737,7 @@ export function AccountClient({
 
       {/* Piano e contatori — solo per i clienti. Un admin non ha un piano
           abbonamento ne' limiti fatture/chat: per lui questa card non ha senso. */}
-      {!data.is_admin && (
+      {!data.is_admin && !data.sotto_utente && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Piano abbonamento</CardTitle>
@@ -798,7 +800,7 @@ export function AccountClient({
       <CambioPasswordForm />
 
       {/* Privacy e dati (GDPR) — solo clienti: export Art.20 + elimina account Art.17 */}
-      {!data.is_admin && <PrivacyGdprCard />}
+      {!data.is_admin && !data.sotto_utente && <PrivacyGdprCard />}
 
       {/* Zona pericolosa — solo admin: svuota i dati del proprio ambiente di test */}
       {data.is_admin && <ZonaPericolosa />}

@@ -151,7 +151,7 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     # in catena); sede singola → limite del piano sulla sede.
     chat_limite_g, chat_oggi, chat_pool = _chat_quota_view(user, sb, ristorante_id)
 
-    return {
+    risposta = {
         "email": row.get("email", user.get("email", "")),
         "nome_ristorante": sede.get("nome_ristorante") or row.get("nome_ristorante") or user.get("nome_ristorante", ""),
         "ragione_sociale": sede.get("ragione_sociale") or row.get("ragione_sociale"),
@@ -173,6 +173,37 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "ultimo_accesso": row.get("last_login"),
         "is_admin": _is_admin_email(row.get("email")),
     }
+    if _su.e_sotto_utente(user):
+        risposta.update(_account_me_sotto_utente(user, sb))
+    return risposta
+
+
+def _account_me_sotto_utente(user: Dict[str, Any], sb) -> Dict[str, Any]:
+    """Cio' che in `account/me` e' della PERSONA, non dell'account.
+
+    La riga letta sopra e' del titolare: email, tema e ultimo accesso sono i
+    suoi. L'email settimanale e' un'impostazione dell'account, che il
+    sotto-utente non puo' cambiare: l'interruttore non deve comparire.
+    """
+    riga = (
+        sb.table("sotto_utenti")
+        .select("created_at, last_login")
+        .eq("id", _su.sotto_utente_id(user))
+        .eq("titolare_id", str(user["id"]))
+        .limit(1)
+        .execute()
+    )
+    su = (riga.data or [{}])[0]
+    return {
+        "email": user.get("email") or "",
+        "tema": user.get("tema") or "dark",
+        "email_settimanale": False,
+        "email_settimanale_abilitata": False,
+        "membro_dal": su.get("created_at"),
+        "ultimo_accesso": su.get("last_login"),
+        "is_admin": False,
+        "sotto_utente": True,
+    }
 
 
 class CambioPasswordBody(BaseModel):
@@ -189,6 +220,8 @@ def account_cambia_password(
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     user_id = str(user["id"])
+    if _su.e_sotto_utente(user):
+        return _cambia_password_sotto_utente(user, body, authorization, sb)
 
     # Carica hash attuale
     row = (
@@ -240,6 +273,49 @@ def account_cambia_password(
     return {"ok": True}
 
 
+def _cambia_password_sotto_utente(user, body: CambioPasswordBody, authorization, sb) -> Dict[str, Any]:
+    """La password del sotto-utente, sulla SUA riga: quella del titolare non si tocca.
+
+    Stesse regole del titolare (verifica dell'attuale, policy GDPR, logout dagli
+    altri dispositivi), ma solo sulle sue sessioni. Solo argon2: i sotto-utenti
+    non hanno mai avuto hash SHA256.
+    """
+    from services.auth_service import valida_password_compliance, ph
+    from services.session_service import revoca_sessioni_sotto_utente
+
+    sotto_utente_id = _su.sotto_utente_id(user)
+    riga = (
+        sb.table("sotto_utenti")
+        .select("id, password_hash, email")
+        .eq("id", sotto_utente_id)
+        .eq("titolare_id", str(user["id"]))
+        .limit(1)
+        .execute()
+    )
+    if not riga.data:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    stored = riga.data[0].get("password_hash") or ""
+    try:
+        ph.verify(stored, body.password_attuale)
+    except Exception:
+        raise HTTPException(status_code=400, detail="La password attuale non è corretta")
+
+    errori = valida_password_compliance(
+        body.nuova_password, riga.data[0].get("email") or "", user.get("nome_ristorante") or "",
+    )
+    if errori:
+        raise HTTPException(status_code=400, detail=" ".join(errori))
+
+    sb.table("sotto_utenti").update({
+        "password_hash": ph.hash(body.nuova_password),
+        "password_changed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", sotto_utente_id).eq("titolare_id", str(user["id"])).execute()
+
+    token_corrente = (authorization or "").split(" ", 1)[-1].strip() or None
+    revoca_sessioni_sotto_utente(sotto_utente_id, sb, escludi_token=token_corrente)
+    return {"ok": True}
+
+
 class PreferenzeBody(BaseModel):
     # Entrambi opzionali: il client manda SOLO il campo che sta cambiando. Con
     # `tema` obbligatorio, salvare la vista avrebbe richiesto di rispedire anche
@@ -282,12 +358,21 @@ def account_preferenze(
         aggiornamenti["vista_fatture"] = vista
 
     if body.email_settimanale is not None:
+        # Impostazione dell'account, non della persona: la cambia il titolare.
+        if _su.e_sotto_utente(user):
+            raise HTTPException(status_code=403, detail="Impostazione dell'account: la può cambiare solo il titolare")
         aggiornamenti["email_settimanale"] = bool(body.email_settimanale)
 
     if not aggiornamenti:
         raise HTTPException(status_code=400, detail="Nessuna preferenza da salvare")
 
     sb = _get_supabase_client()
+    if _su.e_sotto_utente(user):
+        # Tema e vista sono della persona: sulla riga del titolare due persone
+        # si sovrascriverebbero a vicenda.
+        sb.table("sotto_utenti").update(aggiornamenti) \
+            .eq("id", _su.sotto_utente_id(user)).eq("titolare_id", str(user["id"])).execute()
+        return {"ok": True, **aggiornamenti}
     sb.table("users").update(aggiornamenti).eq("id", str(user["id"])).execute()
     return {"ok": True, **aggiornamenti}
 
@@ -570,7 +655,7 @@ def account_sedi(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     except Exception:
         nome_gruppo = ""
 
-    return {
+    risposta: Dict[str, Any] = {
         "nome_gruppo": nome_gruppo or None,
         "sedi": [
             {
@@ -584,6 +669,11 @@ def account_sedi(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         ],
         "ristorante_attivo_id": str(attiva) if attiva else None,
     }
+    # Per il sotto-utente: se ha la Catena. Con piu' sedi ma senza Catena, le
+    # azioni di gruppo (Ripartisci, vista catena) gli risponderebbero 403.
+    if _su.e_sotto_utente(user):
+        risposta["catena"] = _su.ha_pagina(user, _su.PAGINA_CATENA)
+    return risposta
 
 
 class CambiaSedeBody(BaseModel):

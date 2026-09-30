@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/nav/app-sidebar";
+import { haCatena, haHome } from "@/lib/sotto-utente";
 import { Wordmark } from "@/components/brand/logo";
 import { Separator } from "@/components/ui/separator";
 import { getCurrentSession } from "@/lib/auth";
@@ -94,6 +95,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ristoranteNome={user.sede_attiva_nome ?? user.nome_ristorante ?? attivitaLabel(user.tipo_attivita)}
         isAdmin={user.is_admin}
         pagineAbilitate={user.pagine_abilitate}
+        mostraHome={haHome(user)}
+        mostraCatena={!user.sotto_utente || haCatena(user)}
       />
       <SidebarInset className="min-w-0">
         <header className="relative flex h-14 items-center gap-2 px-4 border-b border-border">

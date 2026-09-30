@@ -42,6 +42,9 @@ export type SessionUser = {
   // Settore dell'account: 'ristorazione' o 'retail'. Opzionale per i token
   // precedenti alla colonna: assente vale 'ristorazione'.
   tipo_attivita?: "ristorazione" | "retail";
+  // True per un sotto-utente: pagine e sedi limitate, `pagine_abilitate` porta
+  // anche "home"/"catena" quando accese, `num_sedi` conta le SUE sedi.
+  sotto_utente?: boolean;
 };
 
 function workerHeaders(extra: HeadersInit = {}): HeadersInit {

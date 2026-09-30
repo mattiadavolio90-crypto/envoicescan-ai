@@ -4,6 +4,7 @@ import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 import { PageHeader } from "@/components/ui/page-header";
 import { AccountClient } from "./account-client";
+import { haCatena } from "@/lib/sotto-utente";
 
 async function workerGetJson(path: string, token: string) {
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
@@ -49,7 +50,7 @@ export default async function ImpostazioniPage() {
   }[];
   const nomeGruppo = (sediRes?.nome_gruppo as string | null) ?? null;
   const viewMode = cookieStore.get("oneflux_view")?.value;
-  const chain = sedi.length > 1 && viewMode !== "pv";
+  const chain = sedi.length > 1 && (!user.sotto_utente || haCatena(user)) && viewMode !== "pv";
 
   return (
     <div className="space-y-6">

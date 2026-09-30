@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth";
 import { risolviTab, tabAttive, type SezioneConTab, type TabDef } from "@/lib/tab-flags";
+import { haCatena, haHome, primaPaginaAbilitata, primaTabMobile, vedeTabMobile } from "@/lib/sotto-utente";
 
 /**
  * Guard di permesso pagina lato route (server component).
@@ -24,6 +25,36 @@ export async function requirePagina(flag: string): Promise<void> {
   const pagine = session.user.pagine_abilitate;
   if (pagine == null) return; // admin / nessuna restrizione
   if (!pagine.includes(flag)) notFound();
+}
+
+/**
+ * Home e Catena per i sotto-utenti (per il titolare non fanno nulla: la Home e'
+ * sempre sua, e la Catena si governa come prima).
+ *
+ * Qui non 404 ma redirect alla prima pagina che ha: /dashboard e /catena sono
+ * gli atterraggi di sempre (link, bookmark, logo), e un 404 sulla pagina di
+ * ingresso sembrerebbe un guasto. `primaPaginaAbilitata` non restituisce mai la
+ * pagina che si sta negando, quindi niente ciclo.
+ */
+export async function requireHome(): Promise<void> {
+  const session = await getCurrentSession();
+  if (session.status !== "ok" || !session.user.sotto_utente) return;
+  if (!haHome(session.user)) redirect(primaPaginaAbilitata(session.user) ?? "/impostazioni");
+}
+
+export async function requireCatena(): Promise<void> {
+  const session = await getCurrentSession();
+  if (session.status !== "ok" || !session.user.sotto_utente) return;
+  if (!haCatena(session.user)) {
+    redirect(haHome(session.user) ? "/dashboard" : (primaPaginaAbilitata(session.user) ?? "/impostazioni"));
+  }
+}
+
+/** Le tab di /m per i sotto-utenti: stessa regola della bottom-nav. */
+export async function requireTabMobile(href: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (session.status !== "ok" || !session.user.sotto_utente) return;
+  if (!vedeTabMobile(session.user, href)) redirect(primaTabMobile(session.user));
 }
 
 /**

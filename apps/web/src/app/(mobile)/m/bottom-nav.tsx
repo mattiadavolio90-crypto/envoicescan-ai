@@ -24,10 +24,11 @@ const TABS: Tab[] = [
   { href: "/m/impostazioni", label: "Profilo", icon: Settings },
 ];
 
-export function BottomNav({ chatEnabled }: { chatEnabled: boolean }) {
+export function BottomNav({ chatEnabled, nascoste = [] }: { chatEnabled: boolean; nascoste?: string[] }) {
   const pathname = usePathname();
-  // Tab Assistente nascosta se la chat non e' disponibile per il piano.
-  const tabs = chatEnabled ? TABS : TABS.filter((t) => t.href !== "/m/chat");
+  // Tab Assistente nascosta se la chat non e' disponibile per il piano; per un
+  // sotto-utente anche le tab delle pagine che non ha.
+  const tabs = TABS.filter((t) => (chatEnabled || t.href !== "/m/chat") && !nascoste.includes(t.href));
 
   return (
     <nav

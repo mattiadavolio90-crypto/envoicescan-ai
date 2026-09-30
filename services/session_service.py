@@ -290,21 +290,28 @@ def revoca_tutte_sessioni(user_id: str, supabase_client=None, escludi_token: str
         return 0
 
 
-def revoca_sessioni_sotto_utente(sotto_utente_id: str, supabase_client=None) -> int:
+def revoca_sessioni_sotto_utente(
+    sotto_utente_id: str, supabase_client=None, escludi_token: str | None = None,
+) -> int:
     """Revoca tutte le sessioni di un sotto-utente (disattivazione, modifica
-    permessi, cambio password da admin). Svuota la cache: la revoca vale subito
-    in questo processo, e negli altri entro il TTL breve dei sotto-utenti."""
+    permessi, cambio password). Svuota la cache: la revoca vale subito in questo
+    processo, e negli altri entro il TTL breve dei sotto-utenti.
+
+    `escludi_token`: come in `revoca_tutte_sessioni`, per il cambio password
+    self-service (resta attivo il dispositivo da cui lo si cambia)."""
     if not sotto_utente_id:
         return 0
     try:
         sb = _client(supabase_client)
-        res = (
+        q = (
             sb.table("sessioni")
             .update({"revoked_at": _now_iso()})
             .eq("sotto_utente_id", str(sotto_utente_id))
             .is_("revoked_at", "null")
-            .execute()
         )
+        if escludi_token:
+            q = q.neq("token", escludi_token)
+        res = q.execute()
         _clear_sessione_cache_auth()
         return len(res.data or [])
     except Exception:

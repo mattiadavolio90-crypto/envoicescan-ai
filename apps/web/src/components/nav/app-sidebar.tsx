@@ -95,6 +95,10 @@ type AppSidebarProps = {
   ristoranteNome?: string;
   isAdmin?: boolean;
   pagineAbilitate?: string[] | null;
+  // Sotto-utenti: Home e Catena possono essere spente. Per il titolare sempre
+  // true (la Catena resta governata dal numero di sedi, come prima).
+  mostraHome?: boolean;
+  mostraCatena?: boolean;
 };
 
 type Sede = {
@@ -111,6 +115,8 @@ export function AppSidebar({
   ristoranteNome = "Ristorante",
   isAdmin = false,
   pagineAbilitate,
+  mostraHome = true,
+  mostraCatena = true,
 }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -122,8 +128,8 @@ export function AppSidebar({
     ? navMain
     : navMain.filter(
         (item) =>
-          item.flag === null ||
-          (pagineAbilitate.includes(item.flag) && sezioneHaTabAttive(pagineAbilitate, item.flag)),
+          (item.flag === null && mostraHome) ||
+          (item.flag !== null && pagineAbilitate.includes(item.flag) && sezioneHaTabAttive(pagineAbilitate, item.flag)),
       );
 
   async function handleLogout() {
@@ -161,6 +167,8 @@ export function AppSidebar({
   }, []);
 
   const hasMultiSede = sedi.length > 1;
+  // Le sedi si scelgono con piu' di una; la plancia di gruppo serve anche la Catena.
+  const catenaRaggiungibile = hasMultiSede && mostraCatena;
 
   // Nome da mostrare in testata: se conosciamo le sedi (multi-sede caricato),
   // la fonte di verità è lo stato client `sedi` — lo stesso che pilota la
@@ -196,7 +204,7 @@ export function AppSidebar({
   // Contesto catena = sei sulla plancia /catena, OPPURE sei un account multi-sede
   // su una pagina condivisa con modalità "chain". Sulle pagine operative del PV è
   // sempre falso. Su /catena è sempre vero (ci arriva solo un multi-sede).
-  const inChain = isCatenaPage || (hasMultiSede && !isPerPvPage && viewMode === "chain");
+  const inChain = isCatenaPage || (catenaRaggiungibile && !isPerPvPage && viewMode === "chain");
 
   // Estratta perche' serve due volte: nel testo e nel `title` che lo rende
   // leggibile quando tronca (nomi come "SUSHILAND MARIANO COMENSE SRL" non ci
@@ -246,7 +254,7 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              render={<Link href={hasMultiSede ? "/catena" : "/dashboard"} />}
+              render={<Link href={catenaRaggiungibile ? "/catena" : "/dashboard"} />}
               className="h-auto items-center gap-3 py-3 group-data-[collapsible=icon]:!size-12 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center [&_svg]:!size-full"
             >
               <Logo variant="icon" size={40} glow className="shrink-0" />
@@ -307,7 +315,7 @@ export function AppSidebar({
               <>
                 {/* CONTESTO PV (account catena dentro un punto vendita): ritorno
                     esplicito alla plancia di gruppo, sopra le pagine del PV. */}
-                {hasMultiSede && (
+                {catenaRaggiungibile && (
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       render={<Link href="/catena" />}
@@ -411,18 +419,22 @@ export function AppSidebar({
                   <>
                     {/* Ingresso alla plancia di gruppo: la vista catena è il "piano
                         superiore", separata dalle singole sedi (drill-down sotto). */}
-                    <DropdownMenuItem
-                      onClick={() => router.push("/catena")}
-                      className="flex items-center gap-2 py-2.5"
-                    >
-                      <Building2 className="size-4 shrink-0 text-primary" />
-                      <span className="flex flex-1 flex-col leading-tight">
-                        <span className="text-sm font-medium">Vista catena</span>
-                        <span className="text-xs text-muted-foreground">Tutti i punti vendita</span>
-                      </span>
-                      {inChain && <Check className="ml-auto size-4 shrink-0 text-primary" />}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
+                    {catenaRaggiungibile && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={() => router.push("/catena")}
+                          className="flex items-center gap-2 py-2.5"
+                        >
+                          <Building2 className="size-4 shrink-0 text-primary" />
+                          <span className="flex flex-1 flex-col leading-tight">
+                            <span className="text-sm font-medium">Vista catena</span>
+                            <span className="text-xs text-muted-foreground">Tutti i punti vendita</span>
+                          </span>
+                          {inChain && <Check className="ml-auto size-4 shrink-0 text-primary" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
                     <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
                       <MapPin className="size-3.5" />
                       Sedi

@@ -762,6 +762,9 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
   const [sedi, setSedi] = useState<SedeOpt[]>([]);
   const [spostandoVerso, setSpostandoVerso] = useState<string | null>(null);
   const [ripartisciOpen, setRipartisciOpen] = useState(false);
+  // Solo un sotto-utente senza Catena riceve `catena: false`: per lui il riparto
+  // (che scrive su tutte le sedi) e' negato dal worker.
+  const [catenaNegata, setCatenaNegata] = useState(false);
 
   useEffect(() => {
     if (doc) { setScadenzaInput(doc.scadenza_effettiva ?? ""); }
@@ -783,7 +786,12 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
     let alive = true;
     fetch("/api/account/sedi", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d?.sedi) setSedi(d.sedi as SedeOpt[]); })
+      .then((d) => {
+        if (alive && d?.sedi) {
+          setSedi(d.sedi as SedeOpt[]);
+          setCatenaNegata(d.catena === false);
+        }
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, [doc, sedi.length, modalitaCatena]);
@@ -1063,6 +1071,8 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
                     </div>
                   </div>
 
+                  {!catenaNegata && (
+                  <>
                   {/* Ripartisci sul gruppo — costi di struttura comuni (commercialista,
                       auto…) intestati alla sede legale, divisi fra i punti vendita.
                       La quota di ogni sede entra nel suo MOL; il documento resta intero. */}
@@ -1094,6 +1104,8 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
                     sedi={sedi.map((s) => ({ id: s.id, nome: s.nome }))}
                     onDone={() => onClose()}
                   />
+                  </>
+                  )}
                 </>
               )}
 

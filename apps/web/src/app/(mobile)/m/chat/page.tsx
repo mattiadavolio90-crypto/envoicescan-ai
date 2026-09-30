@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { fetchConfig } from "@/lib/home";
+import { requireTabMobile } from "@/lib/page-guard";
 import { MobileChat } from "./mobile-chat";
 
 export default async function MobileChatPage() {
+  await requireTabMobile("/m/chat");
   // Stessa regola della bottom nav: chat solo se abilitata e piano con limite.
   // Guard anche qui per chi arriva via URL diretto a tab nascosta.
   const config = await fetchConfig();

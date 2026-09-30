@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Logo, Wordmark } from "@/components/brand/logo";
 import { LogoSpinner } from "@/components/brand/logo-spinner";
 import { serviVistaMobile } from "@/lib/device";
+import { primaPaginaAbilitata } from "@/lib/sotto-utente";
 
 // Su TELEFONO, in assenza di un next esplicito, il default e' /m (la PWA): cosi'
 // il login fa un full reload direttamente sulla vista mobile, senza il rimbalzo
@@ -101,10 +102,9 @@ function LoginForm() {
       // Atterraggio: admin → /admin; cliente catena (≥2 sedi) su desktop → /catena
       // (la plancia di gruppo è il suo punto di vista naturale, "prima l'insieme,
       // poi scendi nel PV"); tutti gli altri → default (/dashboard o /m su telefono).
-      const isCatena = (data.user?.num_sedi ?? 1) >= 2 && !serviVistaMobile();
+      // Un sotto-utente senza Home o senza Catena va alla prima pagina che ha.
       const destination =
-        next ||
-        (data.user?.is_admin ? "/admin" : isCatena ? "/catena" : defaultNext());
+        next || (data.user ? primaPaginaAbilitata(data.user, serviVistaMobile()) : null) || defaultNext();
       window.location.href = destination;
     } catch (err) {
       console.error(err);

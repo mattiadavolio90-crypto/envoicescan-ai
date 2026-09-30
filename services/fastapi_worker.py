@@ -1601,6 +1601,13 @@ def auth_accetta_privacy(authorization: Optional[str] = Header(None)) -> Dict[st
 
     sb = _get_supabase_client()
     _now = datetime.now(timezone.utc).isoformat()
+    # Il consenso e' della PERSONA: quello di un sotto-utente non vale per il
+    # titolare, ne' viceversa.
+    if _su.e_sotto_utente(user):
+        sb.table("sotto_utenti").update({"privacy_accepted_at": _now}) \
+            .eq("id", _su.sotto_utente_id(user)).eq("titolare_id", str(user["id"])).execute()
+        logger.info(f"✅ Consenso privacy registrato per sotto_utente_id={_su.sotto_utente_id(user)}")
+        return {"success": True}
     sb.table("users").update({"privacy_accepted_at": _now}).eq("id", user["id"]).execute()
     logger.info(f"✅ Consenso privacy retroattivo registrato per user_id={user['id']}")
     return {"success": True}
@@ -3634,6 +3641,24 @@ def _chat_top_cat_forn(
     cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:top]
     forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:top]
     return cat, forn
+
+
+def _utente_prompt_sede(
+    user: Dict[str, Any], is_pool: bool, piu_sedi_visibili: bool,
+    ristorante_id: Optional[str], supabase_client,
+) -> Dict[str, Any]:
+    """L'utente come lo vede il prompt della vista punto vendita.
+
+    Un sotto-utente con UNA sola sede in un account con piu' sedi riceve il
+    prompt mono-sede (niente rimandi alla catena che non ha), ma il nome
+    dell'account (`nome_ristorante` = la prima sede del titolare) non e' il suo
+    locale: lo si sostituisce col nome della sua sede. Per chiunque altro, lo
+    stesso dict.
+    """
+    if not (is_pool and not piu_sedi_visibili and _su.e_sotto_utente(user)):
+        return user
+    nome = _chat_nome_sede(ristorante_id, supabase_client)
+    return dict(user, nome_ristorante=nome) if nome else user
 
 
 def _chat_nome_sede(ristorante_id: Optional[str], supabase_client) -> Optional[str]:
@@ -5799,7 +5824,8 @@ def chat_ai(
         )
         if is_catena
         else _build_chat_system_prompt(
-            user, supabase_client, authorization, ristorante_id, settore_chat,
+            _utente_prompt_sede(user, is_pool, _piu_sedi_visibili, ristorante_id, supabase_client),
+            supabase_client, authorization, ristorante_id, settore_chat,
             sede_nome=_chat_nome_sede(ristorante_id, supabase_client) if _piu_sedi_visibili else None,
             multi_sede=_piu_sedi_visibili,
             cifre_dettate=body.card_conferma,

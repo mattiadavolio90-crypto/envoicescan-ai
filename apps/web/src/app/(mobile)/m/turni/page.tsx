@@ -1,11 +1,13 @@
 import { MobileTurni } from "./mobile-turni";
 import { getCurrentUser } from "@/lib/auth";
+import { requireTabMobile } from "@/lib/page-guard";
 
 // Pagina interamente client-driven (fetch da useEffect): evitiamo qualsiasi
 // tentativo di prerender statico.
 export const dynamic = "force-dynamic";
 
 export default async function MobileTurniPage() {
+  await requireTabMobile("/m/turni");
   // Il settore arriva dalla sessione lato server. Serve qui perche' le
   // etichette dei costi sono diverse per un negozio, e /m e' un frontend
   // separato che va allineato a mano. Costa un /api/auth/me per render:

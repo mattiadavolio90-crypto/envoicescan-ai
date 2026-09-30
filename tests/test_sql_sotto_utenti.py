@@ -1035,3 +1035,88 @@ def test_il_titolare_cancella_l_inventario_di_una_data_solo_sulla_sede_attiva(sc
         "SELECT ristorante_id::text FROM public.inventario_voci WHERE data_inventario = '2026-04-30'"
     ).fetchall()
     assert restano == [(sc.a.ids["sede1"],)]
+
+
+# ─── Fase 1d: l'area Account scrive sulla riga della PERSONA ────────────────
+
+NUOVA_PASSWORD = "Altra-Password-Sede-2027!"
+
+
+def _riga_titolare(sc, colonne):
+    return sc.conn.execute(f"SELECT {colonne} FROM public.users WHERE id = %s", (sc.a.ids["user_id"],)).fetchone()
+
+
+def test_cambia_password_del_sotto_utente_non_tocca_il_titolare(scenario):
+    sc = scenario
+    su_id = _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "pw@isolamento.test", [sc.a.ids["sede1"]], {"margini": True})
+    corrente = _login(sc, "pw@isolamento.test").json()["token"]
+    altro_dispositivo = _login(sc, "pw@isolamento.test").json()["token"]
+    prima = _riga_titolare(sc, "password_hash, password_changed_at")
+
+    sbagliata = _chiama(sc, corrente, "POST", "/api/account/cambia-password",
+                        json={"password_attuale": "non-e-questa", "nuova_password": NUOVA_PASSWORD})
+    assert sbagliata.status_code == 400, sbagliata.text
+    r = _chiama(sc, corrente, "POST", "/api/account/cambia-password",
+                json={"password_attuale": PASSWORD, "nuova_password": NUOVA_PASSWORD})
+    assert r.status_code == 200, r.text
+
+    assert _riga_titolare(sc, "password_hash, password_changed_at") == prima
+    assert sc.conn.execute("SELECT password_changed_at IS NOT NULL FROM public.sotto_utenti WHERE id = %s",
+                           (su_id,)).fetchone()[0]
+    assert _login(sc, "pw@isolamento.test").status_code == 401
+    assert _login(sc, "pw@isolamento.test", NUOVA_PASSWORD).status_code == 200
+    # Fuori gli altri dispositivi del sotto-utente, non lui ne' il titolare.
+    assert _chiama(sc, corrente, "GET", "/api/auth/me").status_code == 200
+    assert _chiama(sc, altro_dispositivo, "GET", "/api/auth/me").status_code == 401
+    assert _chiama(sc, sc.a.token, "GET", "/api/auth/me").status_code == 200
+
+
+def test_preferenze_del_sotto_utente_sulla_sua_riga(scenario):
+    sc = scenario
+    su_id = _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "pref@isolamento.test", [sc.a.ids["sede1"]], {"margini": True})
+    token = _login(sc, "pref@isolamento.test").json()["token"]
+    prima = _riga_titolare(sc, "tema, vista_fatture, email_settimanale")
+    r = _chiama(sc, token, "POST", "/api/account/preferenze", json={"tema": "light", "vista_fatture": "calendario"})
+    assert r.status_code == 200, r.text
+    assert sc.conn.execute("SELECT tema, vista_fatture FROM public.sotto_utenti WHERE id = %s",
+                           (su_id,)).fetchone() == ("light", "calendario")
+    r = _chiama(sc, token, "POST", "/api/account/preferenze", json={"email_settimanale": False})
+    assert r.status_code == 403, r.text
+    assert _riga_titolare(sc, "tema, vista_fatture, email_settimanale") == prima
+
+
+def test_consenso_privacy_del_sotto_utente_sulla_sua_riga(scenario):
+    sc = scenario
+    sc.conn.execute("UPDATE public.users SET privacy_accepted_at = NULL WHERE id = %s", (sc.a.ids["user_id"],))
+    su_id = _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "priv@isolamento.test", [sc.a.ids["sede1"]], {"margini": True})
+    token = _login(sc, "priv@isolamento.test").json()["token"]
+    r = _chiama(sc, token, "POST", "/api/auth/accetta-privacy")
+    assert r.status_code == 200, r.text
+    assert sc.conn.execute("SELECT privacy_accepted_at IS NOT NULL FROM public.sotto_utenti WHERE id = %s",
+                           (su_id,)).fetchone()[0]
+    assert _riga_titolare(sc, "privacy_accepted_at") == (None,)
+
+
+def test_account_me_del_sotto_utente_mostra_la_persona(scenario):
+    sc = scenario
+    sc.conn.execute("UPDATE public.users SET email_settimanale_abilitata = true WHERE id = %s", (sc.a.ids["user_id"],))
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "me@isolamento.test", [sc.a.ids["sede1"]], {"margini": True})
+    token = _login(sc, "me@isolamento.test").json()["token"]
+    me = _chiama(sc, token, "GET", "/api/account/me").json()
+    assert me["email"] == "me@isolamento.test"
+    assert me["sotto_utente"] is True and me["is_admin"] is False
+    assert me["email_settimanale_abilitata"] is False and me["ultimo_accesso"]
+    titolare = _chiama(sc, sc.a.token, "GET", "/api/account/me").json()
+    assert "sotto_utente" not in titolare and titolare["email_settimanale_abilitata"] is True
+
+
+def test_elenco_sedi_dice_al_sotto_utente_se_ha_la_catena(scenario):
+    sc = scenario
+    tutte = [sc.a.ids["sede1"], sc.a.ids["sede2"]]
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "senza@isolamento.test", tutte, {"scadenziario": True})
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "con@isolamento.test", tutte, {"scadenziario": True, "catena": True})
+    senza = _chiama(sc, _login(sc, "senza@isolamento.test").json()["token"], "GET", "/api/account/sedi").json()
+    con = _chiama(sc, _login(sc, "con@isolamento.test").json()["token"], "GET", "/api/account/sedi").json()
+    assert len(senza["sedi"]) == 2 and senza["catena"] is False
+    assert con["catena"] is True
+    assert "catena" not in _chiama(sc, sc.a.token, "GET", "/api/account/sedi").json()

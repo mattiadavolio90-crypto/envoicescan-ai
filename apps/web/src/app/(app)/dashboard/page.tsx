@@ -12,6 +12,7 @@ import { HomeAutoRefresh } from "./home-auto-refresh";
 import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 import { getCurrentSession, getCurrentUser } from "@/lib/auth";
+import { requireHome } from "@/lib/page-guard";
 import { TestataHome } from "@/components/home/testata-home";
 import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
 import { vistaSede } from "@/lib/home-chat";
@@ -158,6 +159,8 @@ async function KpiSaluteBlock() {
 }
 
 export default async function DashboardPage() {
+  // Un sotto-utente senza la Home va alla prima pagina che ha.
+  await requireHome();
   // /dashboard è la Home del PUNTO VENDITA (sede attiva), anche per i clienti
   // catena: ci si arriva scendendo in un PV dalla plancia /catena. L'atterraggio
   // dei clienti catena su /catena avviene al login (vista di gruppo = il loro
