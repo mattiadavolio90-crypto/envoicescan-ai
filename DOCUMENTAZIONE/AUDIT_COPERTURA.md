@@ -1536,6 +1536,47 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   chi ha scritto; rifiuti 422/500 letti come «riprova» nella card; titolare senza
 >   `margini` non ha la card ma la Conferma lo accetterebbe (direzione sicura).
 >   Nessuna schermata con dati reali: Mattia prova dopo il push. **Non pushato.**
+>
+> - **28-30/09/2026, `e8591da`..`ffe4eaa` — sotto-utenti, Fase 1 (1a-1e): chiusa**
+>   (piano approvato da Mattia il 28/9; in mezzo commit della sessione assistente).
+>   **Fatto:** credenziali in piu' sopra l'account di un titolare (tabella
+>   `sotto_utenti`, il tenant resta il titolare), limitate a pagine e sedi scelte;
+>   blocchi tutti sul worker: mappa rotta → pagina chiusa per default
+>   (`services/permessi_rotte.py`), sede attiva solo dalla sessione (48 punti di
+>   `routers/workspace.py` leggevano quella del TITOLARE), sedi esplicite, upload,
+>   notifiche, inventario; area Account della persona; Catena solo con tutte le
+>   sedi; frontend (atterraggio, guardie Home/Catena//m, sidebar, impostazioni) in
+>   `apps/web/src/lib/sotto-utente.ts`; script `scripts/crea_sotto_utente.py`
+>   (dry-run di default) finche' non c'e' il pannello. Doc: `SICUREZZA_GDPR.md`
+>   §5bis, `DATABASE_SCHEMA.md`, `CHAT_ASSISTENTE.md` §5.1, riga in `CLAUDE.md`.
+>   Chiusi i due residui «sotto-utenti» della voce sopra (chat di catena senza
+>   Catena: `46ab02a`; nome dell'account nel prompt: `bea4a45`).
+>   **Trovato:** `cambia-password` di un sotto-utente avrebbe cambiato quella del
+>   titolare buttandolo fuori ovunque; la conversazione dell'assistente in
+>   sessionStorage era per account (un dipendente sul PC del locale ritrovava
+>   quella del titolare, cifre e card comprese); per i TITOLARI «elimina
+>   inventario» di una data cancellava tutte le sedi (corretto per tutti,
+>   decisione di Mattia, `9f0fb6b`; sul live 0 date su piu' sedi). Tutti prima
+>   del primo sotto-utente reale.
+>   **Prove:** `tests/test_sql_sotto_utenti.py` (56 su Postgres vero: login,
+>   sessione, cache 2 s, ogni rotta con pagine spente/accese, dati e risorse
+>   dell'altra sede con gli id veri, i casi del brief), `test_permessi_rotte.py`,
+>   `test_sotto_utente_frontend.py`, `test_crea_sotto_utente_script.py`.
+>   Mutazione: 1b 15/15, 1c 23/23, inventario 1/1, 1d 28/28, 1e 6/6 (6 sopravvissuti
+>   al primo giro, chiusi con un test; il revisore ne ha trovati altri 6, chiusi, e
+>   5 sul cablaggio `.tsx`, rimasti: vedi residui). Revisore verde su ogni fase.
+>   Suite su copia dell'indice a
+>   `ffe4eaa`: **17.629 verdi, 57 skip** (`python -m pytest tests/ -q -m "not sql"
+>   -p no:randomly -p no:cacheprovider`; +4 rossi non della fase: i 3 di
+>   `test_globals_css_contrasto`, rossi anche su HEAD pulito, e
+>   `test_scratchpad_non_viene_letto`, che dipende dal percorso della copia) e **976**
+>   con `-m sql`.
+>   **Non fatto (residui):** pannello Admin e attivazione via email (Fase 2);
+>   `last_briefing_seen` resta per account (lo scrive la rigenerazione in
+>   background); il cablaggio dei `.tsx` non ha test di rendering (il server nega
+>   comunque con 403); archiviare una notifica la archivia per tutto l'account.
+>   **Prima del push:** migration `20260928215000_sotto_utenti.sql` sul live (oggi
+>   assente). Nessun sotto-utente sul live. **Non pushato.**
 
 ---
 
