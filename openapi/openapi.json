@@ -20748,6 +20748,41 @@
         ],
         "title": "Body_upload_invoice_api_upload_invoice_post"
       },
+      "BozzaFornitore": {
+        "properties": {
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "sede_nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sede Nome"
+          },
+          "periodo": {
+            "type": "string",
+            "title": "Periodo",
+            "default": ""
+          },
+          "testo": {
+            "type": "string",
+            "title": "Testo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fornitore",
+          "testo"
+        ],
+        "title": "BozzaFornitore",
+        "description": "La card con «Copia». `sede_nome` dice su quali acquisti e' scritta."
+      },
       "BozzaTrattativa": {
         "properties": {
           "attiva": {
@@ -21301,6 +21336,13 @@
             },
             "type": "array",
             "title": "Proposte"
+          },
+          "bozze": {
+            "items": {
+              "$ref": "#/components/schemas/BozzaFornitore"
+            },
+            "type": "array",
+            "title": "Bozze"
           }
         },
         "type": "object",

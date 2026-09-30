@@ -734,3 +734,71 @@ def test_con_card_tocca_solo_quella_card():
     assert out[1] == voci[1]
     assert _chiama("trovaCard", [voci, "1-1"])["id"] == "1-1"
     assert _chiama("trovaCard", [voci, "9-9"]) is None
+
+
+# ─── Fase 3, step 4: la bozza al fornitore ────────────────────────────────────
+# Arriva dal worker (`ChatResponse.bozze`) e resta in sessionStorage con la sua
+# voce: si tengono solo i campi noti, niente di rotto arriva a schermo.
+
+BOZZA = {"fornitore": "ITTICA MARINA SRL", "sede_nome": "NAVIGLI", "periodo": "feb–ago 2026",
+         "testo": "Gentile Ittica Marina Srl,\n\nanalizzando i miei acquisti..."}
+
+
+def test_bozza_del_worker_valida():
+    assert _chiama("bozzaValida", [BOZZA]) is True
+    assert _chiama("bozzaValida", [{**BOZZA, "sede_nome": None, "periodo": None}]) is True
+
+
+@pytest.mark.parametrize("modifica", [
+    {"fornitore": ""}, {"fornitore": "  "}, {"fornitore": 3}, {"testo": ""}, {"testo": "  \n"},
+    {"testo": None}, {"testo": "x" * 4001}, {"sede_nome": 5}, {"periodo": 2026},
+], ids=lambda m: ",".join(f"{k}={str(v)[:12]!r}" for k, v in m.items()))
+def test_bozza_malformata_scartata(modifica):
+    assert _chiama("bozzaValida", [{**BOZZA, **modifica}]) is False
+
+
+def test_bozza_al_limite_dei_caratteri_passa():
+    assert _chiama("bozzaValida", [{**BOZZA, "testo": "x" * 4000}]) is True
+
+
+def test_bozze_dalla_risposta_solo_le_valide_al_massimo_tre_e_solo_i_campi_noti():
+    altre = [{**BOZZA, "fornitore": f"F{i}"} for i in range(4)]
+    out = _chiama("bozzeDaRisposta", [[{**BOZZA, "extra": "x", "sede_nome": "  "}, None, {"testo": "t"}, *altre]])
+    assert [b["fornitore"] for b in out] == ["ITTICA MARINA SRL", "F0", "F1"]
+    assert out[0] == {**BOZZA, "sede_nome": None}
+    assert _chiama("bozzeDaRisposta", [{**BOZZA}]) == []
+    assert _chiama("bozzeDaRisposta", [[{**BOZZA, "periodo": None}]])[0]["periodo"] == ""
+
+
+def test_la_risposta_porta_le_sue_bozze():
+    voci = [{"role": "user", "content": "preparami un messaggio", "vista": "sede:r-1"}]
+    out = _chiama("conRisposta", [voci, "sede:r-1", "Ecco", [], [BOZZA]])
+    assert out[1]["bozze"] == [BOZZA]
+    assert "card" not in out[1]
+    assert "bozze" not in _chiama("conRisposta", [voci, "sede:r-1", "Ecco"])[1]
+
+
+def test_le_bozze_salvate_tornano_e_quelle_rotte_si_scartano():
+    import json
+    voci = [{"role": "assistant", "content": "Ecco", "vista": "sede:r-1", "bozze": [BOZZA, {"testo": ""}]},
+            {"role": "user", "content": "U", "vista": "sede:r-1", "bozze": [BOZZA]},
+            {"role": "assistant", "content": "B", "vista": "sede:r-1", "bozze": "rotto"}]
+    out = _chiama("parseConversazione", [json.dumps(voci)])
+    assert out[0]["bozze"] == [BOZZA]
+    assert "bozze" not in out[1], "una voce del cliente non porta bozze"
+    assert "bozze" not in out[2]
+
+
+def test_al_worker_non_va_la_bozza():
+    voci = [{"role": "assistant", "content": "Ecco", "vista": "sede:r-1", "bozze": [BOZZA]}]
+    assert _chiama("codaPerVista", [voci, {"chiave": "sede:r-1", "contesto": "sede"}]) == \
+        [{"role": "assistant", "content": "Ecco"}]
+
+
+@pytest.mark.parametrize("modifica,atteso", [
+    ({}, "NAVIGLI · acquisti feb–ago 2026"),
+    ({"sede_nome": None}, "acquisti feb–ago 2026"),
+    ({"periodo": ""}, "NAVIGLI · acquisti di quest'anno"),
+])
+def test_sottotitolo_della_bozza(modifica, atteso):
+    assert _chiama("sottotitoloBozza", [{**BOZZA, **modifica}]) == atteso

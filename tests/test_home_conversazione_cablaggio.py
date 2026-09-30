@@ -58,7 +58,8 @@ def test_il_provider_manda_solo_la_vista_corrente_e_col_suo_contesto():
     n = _n(_PROVIDER)
     assert "messages:codaPerVista(vociRef.current,vista),contesto:vista.contesto,card_conferma:true" in n
     assert ("conRisposta(v,vista.chiave,messaggioRisposta(res.status,data),"
-            "data.reply?cardDaProposte(data.proposte,Date.now()):[])") in n
+            "data.reply?cardDaProposte(data.proposte,Date.now()):[],"
+            "data.reply?bozzeDaRisposta(data.bozze):[],)") in n
     assert "constchiave=chiaveConversazione(utenteId);" in n
     assert "sessionStorage.removeItem(CHIAVE_VECCHIA)" in n
 
@@ -174,6 +175,24 @@ def test_la_card_arriva_a_schermo_con_i_suoi_pulsanti():
     assert '{onConferma&&(aperta||card.stato==="invio")&&(' in k
     assert "constaperta=confermabile(card);" in k
     assert 'disabled={card.stato==="invio"}onClick={()=>onConferma(card.id)}' in k
+
+
+def test_la_bozza_arriva_a_schermo_con_copia():
+    """Fase 3, step 4: la bozza al fornitore sta sotto la risposta, col suo «Copia»."""
+    p = _n(_PANNELLO)
+    assert "v.bozze?.map((b,j)=>(<CardBozzaFornitorekey={j}bozza={b}/>))" in p
+    b = _n(_WEB / "components/home/card-bozza.tsx")
+    assert "<CopyButtontesto={bozza.testo}/>" in b
+    assert "{bozza.testo}</pre>" in b
+    assert "fetch" not in b, "la card della bozza non manda niente a nessuno"
+
+
+def test_score_e_la_home_usano_lo_stesso_copia():
+    s = _n(_WEB / "app/(app)/prezzi/score-tab.tsx")
+    assert 'import{CopyButton}from"@/components/ui/copy-button";' in s
+    assert "functionCopyButton" not in s
+    c = _n(_WEB / "components/ui/copy-button.tsx")
+    assert "awaitnavigator.clipboard.writeText(testo);" in c
 
 
 def test_la_demo_non_conferma_niente():

@@ -618,3 +618,91 @@ def _proponi_personale(args, sb, rid, sede_nome, oggi):
     if extra:
         al_modello["extra_gia_registrati"] = extra
     return proposta, al_modello
+
+
+# ─── La bozza al fornitore (step 4): testo da copiare, nessun invio ──────────
+# Lo stesso testo che il cliente trova in Prezzi → Score (`_bozza_trattativa`),
+# calcolato sulla sede aperta e sul periodo di default di quella pagina (dal 1°
+# gennaio a oggi): la chat non deve dire una cosa e la pagina un'altra. Il
+# modello non scrive la lettera: se i dati non mostrano niente da trattare, non
+# c'e' card e il modello riceve il motivo.
+STRUMENTO_BOZZA = "bozza_fornitore"
+STRUMENTI_CARD = STRUMENTI_PROPOSTA + (STRUMENTO_BOZZA,)
+MAX_BOZZE = 3
+
+
+class BozzaFornitore(BaseModel):
+    """La card con «Copia». `sede_nome` dice su quali acquisti e' scritta."""
+    fornitore: str
+    sede_nome: Optional[str] = None
+    periodo: str = ""
+    testo: str
+
+
+_BOZZA_PRONTA = (
+    "Sotto la tua risposta il cliente vede la bozza in una card con il pulsante Copia: non "
+    "riscriverla. Non parte verso nessuno: la copia lui e la usa dove preferisce. Di' in una "
+    "o due righe su cosa si basa, con i fatti qui sopra."
+)
+
+
+def _norm(testo: Any) -> str:
+    return " ".join(str(testo or "").casefold().split())
+
+
+def chiave_bozza(b: BozzaFornitore) -> str:
+    """Due bozze per lo stesso fornitore nella stessa risposta: vale l'ultima."""
+    return _norm(b.fornitore)
+
+
+def _trova_fornitore(richiesta: Any, fornitori: list) -> Tuple[Optional[Any], Dict[str, Any]]:
+    """(fornitore, {}) oppure (None, cio' che legge il modello).
+
+    Nome esatto (senza maiuscole e spazi doppi), poi un pezzo di nome di almeno 3
+    lettere che identifica UN solo fornitore ("Ittica Marina" per "ITTICA MARINA
+    SRL"). Ambiguo o assente: l'elenco al modello, che chiede al cliente."""
+    q = _norm(richiesta)
+    esatti = [f for f in fornitori if _norm(f.fornitore) == q]
+    candidati = esatti or ([f for f in fornitori if q in _norm(f.fornitore)] if len(q) >= 3 else [])
+    if len(candidati) == 1:
+        return candidati[0], {}
+    if candidati:
+        return None, {"errore": "piu' fornitori corrispondono: chiedi al cliente quale",
+                      "fornitori": [f.fornitore for f in candidati][:15]}
+    per_spesa = sorted(fornitori, key=lambda f: -f.spesa_periodo)
+    return None, {"errore": "fornitore non trovato negli acquisti di quest'anno di questo locale",
+                  "fornitori": [f.fornitore for f in per_spesa][:15]}
+
+
+def prepara_bozza(args: Dict[str, Any], *, sb, ristorante_id: Optional[str],
+                  sede_nome: Optional[str]) -> Tuple[Optional[BozzaFornitore], Dict[str, Any]]:
+    """(bozza o None, cio' che legge il modello). Sola lettura."""
+    from services.routers import prezzi as _prezzi
+    if not ristorante_id:
+        return None, {"errore": "nessun locale aperto: la bozza non e' pronta"}
+    try:
+        oggi = _oggi()
+        data_da, data_a = f"{oggi.year}-01-01", oggi.isoformat()
+        righe = _prezzi._load_fatture_for_prezzi(sb, ristorante_id, data_da, data_a)
+        if not righe:
+            return None, {"errore": "nessuna fattura quest'anno in questo locale: non c'e' niente "
+                                    "su cui basare una bozza"}
+        variazioni = _prezzi._calcola_variazioni_prezzi_sync(righe, _prezzi._PRICE_ALERT_DEFAULT)
+        nc = _prezzi._nc_credito_per_fornitore(sb, ristorante_id, data_da, data_a, rows=righe)
+        fornitori = _prezzi._calcola_score_fornitori(righe, variazioni, nc)
+    except Exception as exc:
+        logger.warning("bozza al fornitore non preparata: %s", exc)
+        return None, {"errore": "non sono riuscito a leggere i dati: la bozza non e' pronta, "
+                                "di' al cliente di riprovare fra poco"}
+    trovato, errore = _trova_fornitore(args.get("fornitore"), fornitori)
+    if trovato is None:
+        return None, errore
+    fatti = {"fornitore": trovato.fornitore, "periodo": trovato.periodo,
+             "sintesi": trovato.frase_sintesi, "segnali": [s.testo for s in trovato.segnali][:4]}
+    if not trovato.bozza.attiva:
+        return None, {**fatti, "bozza": "nessuna", "motivo": trovato.bozza.motivo,
+                      "cosa_fare": "Spiega al cliente il motivo. Non scrivere tu una bozza: i suoi "
+                                   "dati non mostrano niente da portare al fornitore."}
+    bozza = BozzaFornitore(fornitore=trovato.fornitore, sede_nome=sede_nome,
+                           periodo=trovato.periodo, testo=trovato.bozza.testo)
+    return bozza, {**fatti, "bozza_pronta": True, "istruzione": _BOZZA_PRONTA}

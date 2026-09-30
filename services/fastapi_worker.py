@@ -3559,6 +3559,7 @@ _CHAT_MAX_CHARS_TOT = 24000
 
 from services.routers import assistente as _assistente  # noqa: E402
 from services.routers.assistente import PropostaCifra as _PropostaCifra  # noqa: E402
+from services.routers.assistente import BozzaFornitore as _BozzaFornitore  # noqa: E402
 
 
 class ChatRequest(BaseModel):
@@ -3566,9 +3567,10 @@ class ChatRequest(BaseModel):
     # "catena" = chat in modalità catena (/catena): tool di gruppo, pool AI unico
     # (SUM limiti effettivi sedi). Default "sede" = chat del singolo PV, invariata.
     contesto: str = Field("sede", pattern="^(sede|catena)$")
-    # Il client sa mostrare le card con Conferma (fase 3): la Home si', `/m` non
-    # ancora (fase 8). Senza, niente strumenti proponi_* e niente regole: un
-    # modello che dice «premi Conferma» a chi non vede la card mente.
+    # Il client sa mostrare le card dell'assistente (fase 3): quelle con Conferma
+    # delle cifre dettate e quella con Copia della bozza al fornitore. La Home si',
+    # `/m` non ancora (fase 8). Senza, niente strumenti che preparano card e
+    # niente regole: un modello che dice «premi Conferma» a chi non vede la card mente.
     card_conferma: bool = False
 
     @model_validator(mode="after")
@@ -3592,6 +3594,9 @@ class ChatResponse(BaseModel):
     # Le cifre dettate che il cliente puo' confermare (fase 3): le prepara il
     # modello con `proponi_*`, le scrive solo POST /api/assistente/registra.
     proposte: List[_PropostaCifra] = Field(default_factory=list)
+    # La bozza al fornitore da copiare (fase 3, step 4): la prepara `bozza_fornitore`,
+    # nessuno la invia.
+    bozze: List[_BozzaFornitore] = Field(default_factory=list)
 
 
 def _chat_top_cat_forn(
@@ -3799,6 +3804,15 @@ def _build_chat_system_prompt(
         "- Le date relative (\"ieri\", \"sabato scorso\") calcolale da oggi e scrivi nella "
         "risposta il giorno per esteso.\n"
     ) if _cifre_dettate else ""
+    # La bozza al fornitore (step 4): stesso interruttore delle card, strumento
+    # sulla pagina Prezzi.
+    _pag_prezzi = _pagine_set is None or "prezzi" in _pagine_set
+    _riga_bozza = (
+        "- Se il cliente ti chiede un messaggio o una bozza per trattare con un fornitore usa "
+        "bozza_fornitore: il testo lo vede in una card con il pulsante Copia, non riscriverlo. "
+        "Se lo strumento dice che non c'e' niente da trattare, spiegagli il motivo e non "
+        "scrivere una bozza tua.\n"
+    ) if cifre_dettate and _pag_prezzi else ""
     _detta_fatturato = (
         ", oppure di dettarti qui il fatturato del mese: prepari tu la registrazione."
         if _cifre_dettate else "."
@@ -4262,7 +4276,7 @@ Regole per gli strumenti:
 - Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
 - Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
 - Per appuntamenti e impegni in agenda ("cosa ho oggi", "appuntamenti di questa settimana") usa query_appuntamenti.
-{_riga_coperti}{_riga_cifre}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
+{_riga_coperti}{_riga_cifre}{_riga_bozza}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
 
@@ -4323,6 +4337,11 @@ NON inventare benchmark diversi da questi."""
         "\n- Se il cliente ti detta una cifra da registrare (incasso, personale, fatturato), "
         f"qui non si registra: spiega che basta aprire la Home di quel {_singolo_pv} e dirla li'."
     ) if cifre_dettate else ""
+    _pagine_catena = _normalize_pagine(user.get("pagine_abilitate"))
+    _riga_bozza_catena = (
+        "\n- Se il cliente ti chiede una bozza per trattare con un fornitore, qui non si prepara: "
+        f"spiega che nella Home di quel {_singolo_pv} la trova pronta da copiare, con i suoi acquisti."
+    ) if cifre_dettate and (_pagine_catena is None or "prezzi" in _pagine_catena) else ""
 
     contesto = ""
     nome_gruppo = "il gruppo"
@@ -4376,7 +4395,7 @@ Regole strumenti:
 {_riga_coperti_catena}
 - Per "dove si spende di più per categoria/fornitore" usa gruppo_spesa.
 - Per "cosa c'è da vedere/sistemare" usa gruppo_segnali.
-- Non inventare numeri: se uno strumento torna vuoto, dillo.{_riga_cifre_catena}{contesto}"""
+- Non inventare numeri: se uno strumento torna vuoto, dillo.{_riga_cifre_catena}{_riga_bozza_catena}{contesto}"""
 
 
 _CHAT_TOOLS_GRUPPO = [
@@ -5419,6 +5438,28 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             },
         },
     },
+    # Step 4: la bozza al fornitore. Sola lettura, nessun invio: il testo va al
+    # cliente in una card con Copia (ChatResponse.bozze).
+    {
+        "type": "function",
+        "function": {
+            "name": "bozza_fornitore",
+            "description": (
+                "Prepara una bozza di messaggio per trattare con un fornitore, scritta dai "
+                "rincari e dagli sconti persi che risultano dalle fatture di quest'anno (la "
+                "stessa di Prezzi → Score). Il cliente la vede in una card con il pulsante "
+                "Copia: NON la invia nessuno. Usalo per 'preparami un messaggio per il "
+                "fornitore X', 'come tratto con X'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fornitore": {"type": "string", "description": "Nome o parte del nome del fornitore"},
+                },
+                "required": ["fornitore"],
+            },
+        },
+    },
 ]
 
 # Gate per permessi pagina: la chat offre al modello solo gli strumenti delle
@@ -5437,6 +5478,7 @@ _CHAT_TOOL_FLAG = {
     "proponi_incasso": "margini",
     "proponi_personale": "margini",
     "proponi_fatturato_mese": "margini",
+    "bozza_fornitore": "prezzi",
 }
 
 
@@ -5525,10 +5567,10 @@ def _chat_esegui_tool_sede(
             user, supabase_client, ristorante_id,
             da=args.get("da"), a=args.get("a"),
         )
-    if nome in _assistente.STRUMENTI_PROPOSTA:
-        # Le proposte hanno bisogno della lista di chat_ai (vista punto vendita):
-        # arrivare qui vuol dire un chiamante che non la passa, cioe' la catena.
-        return {"errore": "le registrazioni si preparano solo nella Home del singolo locale"}
+    if nome in _assistente.STRUMENTI_CARD:
+        # Le card hanno bisogno delle liste di chat_ai (vista punto vendita):
+        # arrivare qui vuol dire un chiamante che non le passa, cioe' la catena.
+        return {"errore": "registrazioni e bozze si preparano solo nella Home del singolo locale"}
     return {"errore": f"strumento sconosciuto: {nome}"}
 
 
@@ -5877,7 +5919,7 @@ def chat_ai(
 
     tools = _chat_tools_sede_offerti(user, settore_chat)
     if not body.card_conferma:
-        tools = [t for t in tools if t["function"]["name"] not in _assistente.STRUMENTI_PROPOSTA]
+        tools = [t for t in tools if t["function"]["name"] not in _assistente.STRUMENTI_CARD]
     # Il gate pagina anche all'ESECUZIONE, come fa la catena con `nomi_di_sede`:
     # il dispatcher esegue per nome, e un nome allucinato di uno strumento spento
     # per pagina passava (segnalato dal revisore il 29/9, esisteva da prima).
@@ -5885,14 +5927,27 @@ def chat_ai(
     # Le card con Conferma preparate in questa risposta (fase 3). Il loop consegna
     # al modello solo cio' che gli strumenti ritornano: le proposte escono da qui.
     proposte: Dict[Any, Any] = {}
+    bozze: Dict[str, Any] = {}
     _nome_sede_proposte: List[Optional[str]] = []
 
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
         if nome not in _offerti:
             return {"errore": f"strumento non disponibile: {nome}"}
+        if nome in _assistente.STRUMENTI_CARD and not _nome_sede_proposte:
+            _nome_sede_proposte.append(_chat_nome_sede(ristorante_id, supabase_client))
+        if nome == _assistente.STRUMENTO_BOZZA:
+            bozza, al_modello = _assistente.prepara_bozza(
+                args, sb=supabase_client, ristorante_id=ristorante_id,
+                sede_nome=_nome_sede_proposte[0],
+            )
+            if bozza is not None:
+                chiave = _assistente.chiave_bozza(bozza)
+                if chiave not in bozze and len(bozze) >= _assistente.MAX_BOZZE:
+                    return {"errore": "troppe bozze in una risposta: prima fai copiare queste"}
+                bozze.pop(chiave, None)
+                bozze[chiave] = bozza
+            return al_modello
         if nome in _assistente.STRUMENTI_PROPOSTA:
-            if not _nome_sede_proposte:
-                _nome_sede_proposte.append(_chat_nome_sede(ristorante_id, supabase_client))
             proposta, al_modello = _assistente.proponi(
                 nome, args, user=user, sb=supabase_client,
                 ristorante_id=ristorante_id, sede_nome=_nome_sede_proposte[0],
@@ -5933,14 +5988,15 @@ def chat_ai(
 
     # Il log della domanda e' gia' stato scritto atomicamente dalla RPC di
     # rate-limit prima della chiamata OpenAI: niente INSERT qui.
-    logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d proposte=%d",
-                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi, len(proposte))
+    logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d proposte=%d bozze=%d",
+                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi, len(proposte), len(bozze))
     return ChatResponse(
         reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
         domande_oggi=domande_oggi,
         limite_giorno=limite,
         # Senza una risposta del modello la card resterebbe senza spiegazione.
         proposte=list(proposte.values()) if reply else [],
+        bozze=list(bozze.values()) if reply else [],
     )
 
 

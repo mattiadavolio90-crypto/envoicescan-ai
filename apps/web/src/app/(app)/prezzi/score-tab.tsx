@@ -8,8 +8,6 @@ import {
   ShieldCheck,
   Eye,
   ChevronRight,
-  Copy,
-  Check,
   Info,
   TriangleAlert,
   Sparkles,
@@ -23,6 +21,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { CopyButton } from "@/components/ui/copy-button";
 import { formatEuro } from "@/lib/format";
 import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
 import type {
@@ -101,28 +100,6 @@ function StatoBadge({ stato, size = "md" }: { stato: ScoreStato; size?: "sm" | "
       <span className={`${size === "sm" ? "size-1.5" : "size-2"} rounded-full ${meta.dot}`} />
       {meta.label}
     </span>
-  );
-}
-
-function CopyButton({ testo }: { testo: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(testo);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      toast.error("Copia non riuscita");
-    }
-  }
-  return (
-    <button
-      onClick={copy}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
-    >
-      {copied ? <Check className="size-3.5 text-positivo" /> : <Copy className="size-3.5" />}
-      {copied ? "Copiato" : "Copia"}
-    </button>
   );
 }
 

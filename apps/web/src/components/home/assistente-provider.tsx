@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useRouter } from "next/navigation";
 import {
   CHIAVE_VECCHIA,
+  bozzeDaRisposta,
   cardDaProposte,
   chiaveConversazione,
   codaPerVista,
@@ -131,13 +132,27 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
           // worker puo' offrire all'assistente gli strumenti che le preparano.
           body: JSON.stringify({ messages: codaPerVista(vociRef.current, vista), contesto: vista.contesto, card_conferma: true }),
         });
-        const data = (await res.json()) as { reply?: string; error?: string; domande_oggi?: number; proposte?: unknown };
+        const data = (await res.json()) as {
+          reply?: string;
+          error?: string;
+          domande_oggi?: number;
+          proposte?: unknown;
+          bozze?: unknown;
+        };
         setDomande({
           valore: contatoreAggiornato(res.status, data, quota.limiteGiorno, quota.domandeOggi),
           alle: Date.now(),
           finita: quotaEsaurita(res.status, data),
         });
-        aggiorna((v) => conRisposta(v, vista.chiave, messaggioRisposta(res.status, data), data.reply ? cardDaProposte(data.proposte, Date.now()) : []));
+        aggiorna((v) =>
+          conRisposta(
+            v,
+            vista.chiave,
+            messaggioRisposta(res.status, data),
+            data.reply ? cardDaProposte(data.proposte, Date.now()) : [],
+            data.reply ? bozzeDaRisposta(data.bozze) : [],
+          ),
+        );
       } catch {
         aggiorna((v) => conRisposta(v, vista.chiave, "Errore di connessione. Controlla la rete e riprova."));
       } finally {
