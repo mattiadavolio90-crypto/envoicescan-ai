@@ -27,7 +27,8 @@ USO
 Pagine: analisi_fatture, margini, analisi_e_tag, prezzi, scadenziario, agenda,
 workspace, home (= Home e assistente AI), catena (solo con TUTTE le sedi).
 Sedi: nomi o id separati da virgola, oppure "tutte".
-Senza --password ne genera una conforme e la stampa UNA volta (solo con --esegui).
+Senza --password ne genera una conforme e la stampa UNA volta (solo con --esegui):
+e' il modo consigliato, perche' --password resta nella history della shell.
 """
 
 from __future__ import annotations
@@ -41,33 +42,54 @@ from typing import Any, Dict, List, Tuple
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from services.sotto_utenti_service import PAGINA_CATENA, PAGINE_SOTTO_UTENTE  # noqa: E402
+from services.sotto_utenti_service import (  # noqa: E402
+    PAGINA_CATENA, PAGINE_ACCOUNT, PAGINE_SOTTO_UTENTE, _pagine_account_del_titolare,
+)
 
 
 def valida_richiesta(
     pagine: List[str], sedi_richieste: List[str], sedi_account: List[Dict[str, Any]],
+    pagine_titolare: Any = None,
 ) -> Tuple[Dict[str, bool], List[str], List[str]]:
     """(pagine come dict esplicito, id delle sedi, errori). Nessun accesso al DB.
 
     `sedi_account`: le sedi attive NON tecniche del titolare (`id`, `nome_ristorante`).
-    La Catena si rifiuta qui senza tutte le sedi, anche se il worker la spegnerebbe
-    comunque: meglio un errore adesso che un flag acceso che non fa niente.
+    `pagine_titolare`: `users.pagine_abilitate` del titolare.
+    Meglio un errore adesso che un flag acceso che non fa niente: la Catena senza
+    tutte le sedi e una pagina che il titolare non ha il worker le spegnerebbe in
+    silenzio.
     """
     errori: List[str] = []
     richieste = [p.strip().lower() for p in pagine if p.strip()]
     sconosciute = sorted(set(richieste) - PAGINE_SOTTO_UTENTE)
     if sconosciute:
         errori.append(f"pagine sconosciute: {', '.join(sconosciute)}")
+    if not richieste:
+        errori.append("serve almeno una pagina")
+    del_titolare = _pagine_account_del_titolare(pagine_titolare)
+    if del_titolare is not None:
+        spente = sorted(p for p in set(richieste) & PAGINE_ACCOUNT if p not in del_titolare)
+        if spente:
+            errori.append(f"pagine che il titolare non ha: {', '.join(spente)}")
     dict_pagine = {p: (p in richieste) for p in sorted(PAGINE_SOTTO_UTENTE)}
 
     per_id = {str(s["id"]): str(s["id"]) for s in sedi_account}
-    per_nome = {str(s.get("nome_ristorante") or "").strip().lower(): str(s["id"]) for s in sedi_account}
+    per_nome: Dict[str, str] = {}
+    omonime = set()
+    for s in sedi_account:
+        nome = str(s.get("nome_ristorante") or "").strip().lower()
+        if nome in per_nome:
+            omonime.add(nome)
+        per_nome[nome] = str(s["id"])
     voci = [s.strip() for s in sedi_richieste if s.strip()]
     if [v.lower() for v in voci] == ["tutte"]:
         ids = list(per_id)
     else:
         ids = []
         for v in voci:
+            if v not in per_id and v.lower() in omonime:
+                errori.append(f"piu' sedi si chiamano {v!r}: indicala per id")
+                continue
             rid = per_id.get(v) or per_nome.get(v.lower())
             if rid is None:
                 errori.append(f"sede non trovata fra quelle attive del titolare: {v!r}")
@@ -81,7 +103,10 @@ def valida_richiesta(
 
 
 def _titolare(sb, email: str) -> Dict[str, Any]:
-    r = sb.table("users").select("id, email, nome_ristorante").eq("email", email.strip().lower()).limit(1).execute()
+    r = (
+        sb.table("users").select("id, email, nome_ristorante, pagine_abilitate")
+        .eq("email", email.strip().lower()).limit(1).execute()
+    )
     if not r.data:
         sys.exit(f"Titolare non trovato: {email}")
     return r.data[0]
@@ -117,7 +142,9 @@ def crea(sb, args) -> None:
 
     t = _titolare(sb, args.titolare)
     sedi = _sedi_operative(sb, t["id"])
-    pagine, ids, errori = valida_richiesta(args.pagine.split(","), args.sedi.split(","), sedi)
+    pagine, ids, errori = valida_richiesta(
+        args.pagine.split(","), args.sedi.split(","), sedi, t.get("pagine_abilitate"),
+    )
     email = args.email.strip().lower()
     if sb.table("users").select("id").eq("email", email).limit(1).execute().data:
         errori.append(f"{email} e' gia' l'email di un account")

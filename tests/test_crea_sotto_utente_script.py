@@ -33,6 +33,21 @@ def test_errori_di_richiesta():
     assert script.valida_richiesta(["home"], [""], SEDI)[2] == ["serve almeno una sede"]
 
 
+def test_nessuna_pagina_o_pagina_che_il_titolare_non_ha():
+    assert script.valida_richiesta([""], ["r1"], SEDI)[2] == ["serve almeno una pagina"]
+    errori = script.valida_richiesta(["margini", "home"], ["r1"], SEDI, {"analisi_fatture": True})[2]
+    assert errori == ["pagine che il titolare non ha: margini"]
+    # Titolare senza restrizioni (NULL, o solo impostazioni come OFFSIDE): tutto ok.
+    assert script.valida_richiesta(["margini"], ["r1"], SEDI, None)[2] == []
+    assert script.valida_richiesta(["margini"], ["r1"], SEDI, {"blocco_mesi_precedenti": True})[2] == []
+
+
+def test_sedi_omonime_si_indicano_per_id():
+    omonime = SEDI + [{"id": "r3", "nome_ristorante": "Navigli"}]
+    assert "indicala per id" in script.valida_richiesta(["home"], ["NAVIGLI"], omonime)[2][0]
+    assert script.valida_richiesta(["home"], ["r3"], omonime)[1] == ["r3"]
+
+
 def test_catena_solo_con_tutte_le_sedi():
     assert script.valida_richiesta(["catena"], ["r1"], SEDI)[2] == ["la Catena si puo' dare solo con TUTTE le sedi"]
     assert script.valida_richiesta(["catena"], ["tutte"], SEDI)[2] == []
@@ -87,4 +102,24 @@ def test_password_debole_non_crea_niente(scenario):
     with pytest.raises(SystemExit) as e:
         script.crea(sc.sb, _args(sc, password="ristorante", esegui=True))
     assert "password" in str(e.value).lower()
+    assert _righe(sc) == 0
+
+
+@pytest.mark.sql
+def test_se_le_sedi_non_si_scrivono_non_resta_un_sotto_utente_a_meta(scenario, monkeypatch):
+    """Senza sedi il sotto-utente non entrerebbe, e la sua email resterebbe presa."""
+    sc = scenario
+    vera = sc.sb.table
+
+    def tabella(nome):
+        t = vera(nome)
+        if nome == "sotto_utenti_sedi":
+            def rotta(*a, **k):
+                raise RuntimeError("scrittura sedi fallita")
+            t.insert = rotta
+        return t
+
+    monkeypatch.setattr(sc.sb, "table", tabella)
+    with pytest.raises(RuntimeError):
+        script.crea(sc.sb, _args(sc, esegui=True))
     assert _righe(sc) == 0
