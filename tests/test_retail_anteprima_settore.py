@@ -124,7 +124,7 @@ def _upload_ambiguo(settore_risposta):
     with patch.object(fw, "_resolve_user_from_token", return_value={"id": "u-shop"}), \
          patch("services.get_supabase_client", return_value=sb), \
          patch.object(fw, "_carica_sedi_attive_per_user", return_value=sedi), \
-         patch.object(fw, "_get_ristorante_id_for_user", return_value="r1"), \
+         patch.object(fw, "_resolve_ristorante_id", return_value="r1"), \
          patch("services.multisede_routing.decidi_destinazione_upload",
                return_value={"mode": "ambiguo", "best_score": 0.0, "gap": 0.0}), \
          patch("services.invoice_service.estrai_dati_da_xml", side_effect=_parser_finto), \

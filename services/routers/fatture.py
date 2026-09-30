@@ -19,6 +19,7 @@ from config.constants import SETTORE_RETAIL, TUTTE_LE_CATEGORIE
 from utils.supabase_paging import fetch_all
 # db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
 from services.db_service import aggiorna_categoria_fatture
+from services import sotto_utenti_service as _su
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -1566,6 +1567,22 @@ def fatture_sposta_sede(
     )
     if not owns.data:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    # Sotto-utente: sposta solo fra le sue sedi. La fattura deve stare gia' su sue
+    # sedi (404 come per una fattura altrui: non si rivela che esiste), la
+    # destinazione dev'essere sua.
+    if _su.e_sotto_utente(user):
+        sedi_file = (
+            sb.table("fatture")
+            .select("ristorante_id")
+            .eq("file_origine", fo)
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        if not all(_su.sede_consentita(user, r.get("ristorante_id")) for r in (sedi_file.data or [])):
+            raise HTTPException(status_code=404, detail="Fattura non trovata")
+        _su.verifica_sede_consentita(user, rid)
 
     # Guard: una fattura ripartita sul gruppo non si sposta (avrebbe quote su sedi
     # diverse dalla sede intestataria → stato incoerente). Prima si toglie il

@@ -1945,7 +1945,8 @@ class UploadInvoiceResponse(BaseModel):
     # dalla P.IVA (o indirizzo se P.IVA condivisa); 'piva_estranea' = nessuna sede
     # del cliente ha quella P.IVA (scartata); 'ambiguo' = stessa P.IVA, indirizzo
     # non distingue -> messa in coda 'da_assegnare' (NON piu' scartata, vedi
-    # queue_id); None = fallback sede attiva (P.IVA dest assente).
+    # queue_id); 'sede_non_consentita' = smistata su una sede che il sotto-utente
+    # non ha (scartata); None = fallback sede attiva (P.IVA dest assente).
     # sede_assegnata = nome sede vinta. cross_sede = la sede dedotta e' diversa da
     # quella attiva (la fattura e' stata spostata su un'altra sede del cliente).
     routing_status: Optional[str] = None
@@ -2222,7 +2223,7 @@ async def upload_invoice(
     )
     piva_dest = estrai_piva_cessionario_xml(fattura_dict) if fattura_dict else None
     indirizzo_dest = estrai_indirizzo_destinatario(fattura_dict) if fattura_dict else None
-    sede_attiva_id = _get_ristorante_id_for_user(user_id, supabase_client)
+    sede_attiva_id = _resolve_ristorante_id(user, supabase_client)
 
     # Ambiente test: se UNA QUALSIASI sede del cliente ha bypass_guardia_piva
     # (tipicamente account test mono-sede), l'upload manuale accetta qualsiasi
@@ -2376,6 +2377,23 @@ async def upload_invoice(
 
     # mode == 'auto' (smistata per P.IVA/indirizzo) o 'fallback' (P.IVA dest assente).
     ristorante_id = dest["ristorante_id"]
+
+    # Un sotto-utente carica solo sulle sue sedi: una fattura smistata su un altro
+    # locale si rifiuta, non si intesta alla sua sede. Lo smistamento resta su tutte
+    # le sedi dell'account proprio per accorgersene.
+    if ristorante_id and not _su.sede_consentita(user, ristorante_id):
+        logger.info(
+            "upload SCARTATA sede non consentita al sotto-utente: user=%s file=%s sede=%s",
+            user_id, filename, ristorante_id,
+        )
+        return UploadInvoiceResponse(
+            success=False,
+            filename=filename[:-4] if ext == "p7m" else filename,
+            righe_salvate=0,
+            error="Questa fattura è di un locale che non ti è assegnato: non è stata caricata.",
+            routing_status="sede_non_consentita",
+            elapsed_ms=int((_time.monotonic() - t0) * 1000),
+        )
     if dest["mode"] == "auto":
         sede_assegnata = dest["nome"]
         routing_status = "auto"
@@ -3021,6 +3039,9 @@ def get_notifiche(
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
 
     rows = _righe_notifiche_sede(user_id, ristorante_id, supabase_client, include_dismissed)
+    if _su.e_sotto_utente(user):
+        from services.permessi_rotte import notifica_visibile
+        rows = [r for r in rows if notifica_visibile(user, r.get("action_page"))]
     notifiche = [_notifica_item(r) for r in rows]
     unread = sum(1 for n in notifiche if not n.dismissed_at)
 
@@ -3151,9 +3172,13 @@ def dismiss_notifica(
     from datetime import datetime, timezone
     supabase_client = get_supabase_client()
 
-    supabase_client.table("notification_inbox").update(
+    query = supabase_client.table("notification_inbox").update(
         {"dismissed_at": datetime.now(timezone.utc).isoformat()}
-    ).eq("id", notifica_id).eq("user_id", user_id).execute()
+    ).eq("id", notifica_id).eq("user_id", user_id)
+    # Sotto-utente: solo le notifiche delle sue sedi (l'inbox e' dell'account).
+    if _su.e_sotto_utente(user):
+        query = query.in_("ristorante_id", sorted(_su.sedi_consentite(user)))
+    query.execute()
 
     return {"status": "ok"}
 

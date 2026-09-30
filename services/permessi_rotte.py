@@ -327,3 +327,25 @@ def verifica_rotta_corrente(user: Optional[dict]) -> None:
     """403 se chi agisce e' un sotto-utente e la rotta di questa richiesta non gli e' consentita."""
     if not rotta_consentita(user, _ROTTA_CORRENTE.get()):
         raise HTTPException(status_code=403, detail="Pagina non consentita per questo utente")
+
+
+# ─── Notifiche: la pagina a cui portano ──────────────────────────────────────
+# Il primo segmento di `action_page` e' la pagina del frontend (apps/web/src/app/(app)).
+_PAGINA_DI_PERCORSO = {
+    "analisi-fatture": F, "margini": M, "analisi-e-tag": T, "prezzi": P,
+    "scadenziario": S, "agenda": A, "workspace": W, "catena": C, "dashboard": H,
+}
+
+
+def notifica_visibile(user: Optional[dict], action_page: Optional[str]) -> bool:
+    """Una notifica mostra dati della pagina a cui porta.
+
+    Titolare, e sotto-utente con la Home (la vede identica al titolare): tutte.
+    Sotto-utente senza Home: solo quelle di una sua pagina; senza pagina
+    riconoscibile, nessuna (chiuso per default, come le rotte).
+    """
+    if not _su.e_sotto_utente(user) or _su.ha_pagina(user, H):
+        return True
+    segmento = (action_page or "").split("?", 1)[0].strip("/").split("/", 1)[0]
+    pagina = _PAGINA_DI_PERCORSO.get(segmento)
+    return bool(pagina) and _su.ha_pagina(user, pagina)

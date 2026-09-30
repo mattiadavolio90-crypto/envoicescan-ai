@@ -6,6 +6,8 @@ Path, gate e response invariati.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+
+from services import sotto_utenti_service as _su
 from pydantic import BaseModel
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
@@ -100,6 +102,7 @@ def _resolve_ristorante_scrivibile(user, sb, ristorante_id_body: Optional[str]) 
     )
     if not owns.data:
         raise HTTPException(status_code=404, detail="Sede non trovata")
+    _su.verifica_sede_consentita(user, rid_body)
     return rid_body
 
 

@@ -219,3 +219,27 @@ def test_rotte_di_gruppo_e_riparto_solo_con_la_catena():
         if r[1].startswith(("/api/gruppo/", "/api/riparto/")) and p != frozenset({pr.C})
     }
     assert not aperte, aperte
+
+
+# ─── Sede attiva: una sola fonte ─────────────────────────────────────────────
+
+
+def test_la_sede_attiva_si_legge_dalla_sessione_non_da_users():
+    # `_get_ristorante_id_for_user(user_id, sb)` rilegge users.ultimo_ristorante_id:
+    # per un sotto-utente e' la sede del TITOLARE. Resta solo all'admin, che
+    # lavora su un cliente scelto da lui; gli endpoint usano la sessione.
+    import ast
+    from pathlib import Path
+
+    radice = Path(__file__).resolve().parents[1]
+    chiamanti = []
+    for f in sorted((radice / "services").rglob("*.py")):
+        albero = ast.parse(f.read_text(encoding="utf-8-sig"))
+        for nodo in ast.walk(albero):
+            if isinstance(nodo, ast.Call):
+                nome = getattr(nodo.func, "id", None) or getattr(nodo.func, "attr", None)
+                if nome == "_get_ristorante_id_for_user":
+                    chiamanti.append(f"{f.relative_to(radice)}:{nodo.lineno}")
+    fuori = [c for c in chiamanti if not c.startswith("services/routers/admin.py")]
+    assert chiamanti, "il rilevatore non trova nemmeno i chiamanti dell'admin"
+    assert not fuori, fuori

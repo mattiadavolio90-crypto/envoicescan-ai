@@ -44,7 +44,7 @@ def _patch_workspace(table_side_effect):
         workspace,
         _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
         _get_supabase_client=MagicMock(return_value=client),
-        _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
     ), client
 
 
@@ -482,7 +482,7 @@ class TestRinominaDipendente:
             workspace,
             _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
             _get_supabase_client=MagicMock(return_value=client),
-            _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
+            _resolve_ristorante_id=MagicMock(return_value="rist-1"),
         ), client
 
     def test_rename_valido_tocca_solo_dipendenti(self):

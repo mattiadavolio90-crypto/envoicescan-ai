@@ -46,7 +46,7 @@ def _patch_common(voci):
         workspace,
         _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
         _get_supabase_client=MagicMock(return_value=client),
-        _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
     )
 
 
@@ -169,7 +169,7 @@ class TestSpeseCrea:
             workspace,
             _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
             _get_supabase_client=MagicMock(return_value=client),
-            _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
+            _resolve_ristorante_id=MagicMock(return_value="rist-1"),
         ):
             res = workspace.ws_spese_crea(body=body, authorization="Bearer x")
         # Verifica che l'importo sia stato arrotondato a 2 decimali e descrizione strippata nel payload
@@ -194,7 +194,7 @@ def _crea_e_leggi_payload(body):
         workspace,
         _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
         _get_supabase_client=MagicMock(return_value=client),
-        _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
     ):
         workspace.ws_spese_crea(body=body, authorization="Bearer x")
     return q.insert.call_args[0][0]
@@ -210,7 +210,7 @@ def _patch_e_leggi_updates(body, categoria_corrente):
         workspace,
         _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
         _get_supabase_client=MagicMock(return_value=client),
-        _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
     ):
         workspace.ws_spese_aggiorna(spesa_id="sp-1", body=body, authorization="Bearer x")
     return q.update.call_args[0][0]

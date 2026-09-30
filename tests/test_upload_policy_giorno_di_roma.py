@@ -64,7 +64,7 @@ def endpoint(monkeypatch):
     monkeypatch.setattr(fw, "_resolve_user_from_token", lambda authorization: utente)
     monkeypatch.setattr(services, "get_supabase_client", lambda: _CatenaSupabase())
     monkeypatch.setattr(fw, "_carica_sedi_attive_per_user", lambda user_id, sb: [sede])
-    monkeypatch.setattr(fw, "_get_ristorante_id_for_user", lambda user_id, sb: sede["id"])
+    monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda user, sb: sede["id"])
     monkeypatch.setattr(
         invoice_service, "estrai_dati_da_xml",
         lambda file_like, user_id=None, **k: [

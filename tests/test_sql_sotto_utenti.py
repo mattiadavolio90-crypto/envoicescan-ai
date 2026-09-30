@@ -708,3 +708,282 @@ def test_modificare_il_dict_di_sessione_non_allarga_le_richieste_dopo(scenario):
         assert su.sedi_consentite(u) == {sc.a.ids["sede1"]}
     finally:
         pr._ROTTA_CORRENTE.reset(segno)
+
+
+# ─── Fase 1c: sedi ───────────────────────────────────────────────────────────
+#
+# Lo scenario semina tutto sulla sede 1 di A. Un sotto-utente con TUTTE le pagine
+# (tranne la Catena) ma solo sulla sede 2 percorre ogni GET dell'app: nessuna
+# risposta deve contenere un dato della sede 1. E' il test che trova gli
+# endpoint filtrati solo per account (user_id) e non per sede.
+
+# Marcatori dell'account, non di una sede: il sotto-utente li vede di diritto.
+_MARCATORI_DELL_ACCOUNT = {"RISTORANTE", "GRUPPO", "RAGIONE", "SEDE2"}
+
+
+def _marcatori_sede1(sc):
+    import re
+
+    righe = sc.conn.execute(
+        "SELECT to_jsonb(t)::text FROM public.fatture t WHERE user_id = %s", (sc.a.ids["user_id"],)
+    ).fetchall()
+    testo = " ".join(r[0] for r in righe)
+    tutti = set(re.findall(r"(\w+?)_A_SEGRETO", testo))
+    # Anche quelli seminati altrove (tag, personale, workspace, notifiche...).
+    tutti |= {"SEDE1", "TAG", "SUGGERIMENTO", "DIPENDENTE", "DIPENDENTE2", "NOTA_TURNO", "NOTA_MENSILE",
+              "SPESA", "RICETTA", "NOTA_RICETTA", "INGREDIENTE", "VOCE", "EVENTO", "DESCRIZIONE_EVENTO",
+              "NOTIFICA", "CORPO_NOTIFICA", "NOTA_REGOLA", "NUMDOC", "PRODOTTO", "FORNITORE"}
+    return {f"{m}_A_SEGRETO" for m in tutti - _MARCATORI_DELL_ACCOUNT}
+
+
+def test_sotto_utente_di_una_sede_non_vede_i_dati_dell_altra(scenario, worker):
+    from services import permessi_rotte as pr
+    from tests.test_isolamento_per_risorsa import GET_SESSIONE, _risolvi
+
+    sc = scenario
+    pagine = {p: True for p in su.PAGINE_SOTTO_UTENTE if p != su.PAGINA_CATENA}
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "sede2@isolamento.test", [sc.a.ids["sede2"]], pagine)
+    token = _login(sc, "sede2@isolamento.test").json()["token"]
+    marcatori = _marcatori_sede1(sc)
+    # Controllo: il titolare, sulla sede 1, li vede davvero (altrimenti il test non misura).
+    visti_dal_titolare = set()
+    trapelati = []
+    for path, params in sorted(GET_SESSIONE.items()):
+        if path.startswith(("/api/gruppo/", "/api/riparto/")) or path == "/api/fatture/da-assegnare":
+            continue  # Catena: gia' negata dalla mappa (1b)
+        if ("GET", path) in pr.ROTTE_VIETATE:
+            continue
+        p = _risolvi(params, sc.a, sc.a)
+        mio = _chiama(sc, token, "GET", path, params=p)
+        assert mio.status_code != 403, (path, mio.text[:200])
+        trovati = sorted(m for m in marcatori if m in mio.text)
+        if trovati or sc.a.ids["sede1"] in mio.text:
+            trapelati.append((path, mio.status_code, trovati[:4]))
+        visti_dal_titolare |= {m for m in marcatori if m in _chiama(sc, sc.a.token, "GET", path, params=p).text}
+    assert not trapelati, "\n".join(map(str, trapelati))
+    assert len(visti_dal_titolare) >= 10, sorted(visti_dal_titolare)
+
+
+def _xml_per(piva):
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">'
+        "<FatturaElettronicaHeader><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese>"
+        f"<IdCodice>{piva}</IdCodice></IdFiscaleIVA></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader>"
+        "<FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD01</TipoDocumento>"
+        "<Data>2026-09-20</Data><Numero>77</Numero></DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody>"
+        "</p:FatturaElettronica>"
+    ).encode()
+
+
+def _carica(sc, token, nome, piva):
+    return sc.client.post(
+        "/api/upload/invoice", files={"file": (nome, _xml_per(piva), "application/xml")},
+        headers={"Authorization": f"Bearer {token}", "X-Worker-Key": CHIAVE_WORKER},
+    )
+
+
+def test_upload_smistato_su_una_sede_non_sua_e_rifiutato(scenario):
+    sc = scenario
+    piva_sede1 = sc.conn.execute("SELECT partita_iva FROM public.ristoranti WHERE id = %s",
+                                 (sc.a.ids["sede1"],)).fetchone()[0]
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "sede2@isolamento.test",
+                       [sc.a.ids["sede2"]], {"analisi_fatture": True})
+    token = _login(sc, "sede2@isolamento.test").json()["token"]
+    # FATT_A.xml esiste gia' sulla sede 1: col titolare lo smistamento ci arriva e
+    # si ferma al controllo dei doppioni (nessuna AI, nessuna scrittura).
+    titolare = _carica(sc, sc.a.token, sc.a.ids["file"], piva_sede1).json()
+    assert (titolare.get("error") or "").startswith("ALREADY_LOADED"), titolare
+    r = _carica(sc, token, sc.a.ids["file"], piva_sede1)
+    assert r.status_code == 200, r.text
+    assert r.json()["success"] is False and r.json()["routing_status"] == "sede_non_consentita", r.json()
+
+
+def test_sede_esplicita_non_assegnata_rifiutata_su_cestino_e_scadenziario(scenario):
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "scad@isolamento.test",
+                       [sc.a.ids["sede2"]], {"scadenziario": True})
+    token = _login(sc, "scad@isolamento.test").json()["token"]
+    for path, corpo in [
+        ("/api/scadenziario/pagata", {"file_origini": [sc.a.ids["file"]]}),
+        ("/api/scadenziario/scadenza", {"file_origine": sc.a.ids["file"], "scadenza_override": "2026-05-01"}),
+        ("/api/cestino/ripristina", {"file_origine": sc.a.ids["file_cancellato"]}),
+        ("/api/fatture/oscura", {"file_origine": sc.a.ids["file"], "oscurata": True}),
+    ]:
+        altrui = _chiama(sc, token, "POST", path, json={**corpo, "ristorante_id": sc.a.ids["sede1"]})
+        assert altrui.status_code == 403, (path, altrui.text)
+        # Controllo: la stessa chiamata sulla sua sede non e' rifiutata per la sede.
+        mia = _chiama(sc, token, "POST", path, json={**corpo, "ristorante_id": sc.a.ids["sede2"]})
+        assert mia.status_code != 403, (path, mia.text)
+
+
+def test_sposta_sede_solo_fra_le_sue_sedi(scenario):
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "scad@isolamento.test",
+                       [sc.a.ids["sede2"]], {"scadenziario": True})
+    token = _login(sc, "scad@isolamento.test").json()["token"]
+    # La fattura sta sulla sede 1: non la puo' portare sulla sua.
+    r = _chiama(sc, token, "POST", "/api/fatture/sposta-sede",
+                json={"file_origine": sc.a.ids["file"], "ristorante_id": sc.a.ids["sede2"]})
+    assert r.status_code == 404, r.text
+    sede = sc.conn.execute("SELECT DISTINCT ristorante_id::text FROM public.fatture WHERE file_origine = %s",
+                           (sc.a.ids["file"],)).fetchall()
+    assert sede == [(sc.a.ids["sede1"],)]
+    # Controllo: una fattura della sua sede si sposta, ma non verso una sede non sua.
+    sc.conn.execute("UPDATE public.fatture SET ristorante_id = %s WHERE file_origine = %s",
+                    (sc.a.ids["sede2"], sc.a.ids["file"]))
+    r = _chiama(sc, token, "POST", "/api/fatture/sposta-sede",
+                json={"file_origine": sc.a.ids["file"], "ristorante_id": sc.a.ids["sede1"]})
+    assert r.status_code == 403, r.text
+    # E il titolare la sposta come sempre.
+    r = _chiama(sc, sc.a.token, "POST", "/api/fatture/sposta-sede",
+                json={"file_origine": sc.a.ids["file"], "ristorante_id": sc.a.ids["sede1"]})
+    assert r.status_code == 200, r.text
+
+
+def _notifica(sc, sede, action_page, titolo):
+    return str(sc.conn.execute(
+        "INSERT INTO public.notification_inbox (user_id, ristorante_id, topic_key, source_type, severity, "
+        "title, body, dedupe_key, action_page) VALUES (%s, %s, 'prova', 'operativa', 'info', %s, '', %s, %s) RETURNING id",
+        (sc.a.ids["user_id"], sede, titolo, f"dk-{titolo}", action_page),
+    ).fetchone()[0])
+
+
+def test_notifiche_solo_delle_sue_pagine_senza_home(scenario):
+    sc = scenario
+    s1 = sc.a.ids["sede1"]
+    _notifica(sc, s1, "/margini", "AVVISO_MARGINI")
+    _notifica(sc, s1, "/analisi-fatture?tab=articoli", "AVVISO_FATTURE")
+    _notifica(sc, s1, None, "AVVISO_SENZA_PAGINA")
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "f@isolamento.test", [s1], {"analisi_fatture": True})
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "h@isolamento.test", [s1], {"home": True})
+    senza_home = _chiama(sc, _login(sc, "f@isolamento.test").json()["token"], "GET", "/api/notifiche").text
+    con_home = _chiama(sc, _login(sc, "h@isolamento.test").json()["token"], "GET", "/api/notifiche").text
+    assert "AVVISO_FATTURE" in senza_home
+    assert "AVVISO_MARGINI" not in senza_home and "AVVISO_SENZA_PAGINA" not in senza_home
+    assert all(t in con_home for t in ("AVVISO_MARGINI", "AVVISO_FATTURE", "AVVISO_SENZA_PAGINA"))
+
+
+def test_archiviare_una_notifica_di_un_altra_sede_non_ha_effetto(scenario):
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "h@isolamento.test", [sc.a.ids["sede2"]], {"home": True})
+    token = _login(sc, "h@isolamento.test").json()["token"]
+    altrui = sc.a.ids["notifica_id"]  # sulla sede 1
+    mia = _notifica(sc, sc.a.ids["sede2"], None, "AVVISO_SEDE2")
+    for nid in (altrui, mia):
+        assert _chiama(sc, token, "POST", f"/api/notifiche/{nid}/dismiss").status_code == 200
+    archiviate = {r[0] for r in sc.conn.execute(
+        "SELECT id::text FROM public.notification_inbox WHERE dismissed_at IS NOT NULL AND user_id = %s",
+        (sc.a.ids["user_id"],)).fetchall()}
+    assert str(altrui) not in archiviate
+    assert mia in archiviate
+
+
+def test_agenda_scrive_sulla_sede_del_sotto_utente(scenario):
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "ag@isolamento.test", [sc.a.ids["sede2"]], {"agenda": True})
+    token = _login(sc, "ag@isolamento.test").json()["token"]
+    r = _chiama(sc, token, "POST", "/api/workspace/diario",
+                json={"data_evento": "2026-03-20", "titolo": "EVENTO_DEL_RESPONSABILE"})
+    assert r.status_code == 200, r.text
+    sede = sc.conn.execute("SELECT ristorante_id::text FROM public.diario_eventi WHERE titolo = %s",
+                           ("EVENTO_DEL_RESPONSABILE",)).fetchone()[0]
+    assert sede == sc.a.ids["sede2"]
+    assert _sede_attiva_titolare(sc) == sc.a.ids["sede1"]
+
+
+def _impronta_sede(sc, sede):
+    import json
+
+    tabelle = [r[0] for r in sc.conn.execute(
+        "SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema = 'public' "
+        "AND column_name = 'ristorante_id' AND table_name IN (SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE') ORDER BY 1"
+    ).fetchall()]
+    out = {}
+    for t in tabelle:
+        righe = sc.conn.execute(
+            f'SELECT to_jsonb(x) FROM public."{t}" x WHERE x.ristorante_id::text = %s', (sede,)
+        ).fetchall()
+        out[t] = sorted(json.dumps(r[0], sort_keys=True, default=str) for r in righe)
+    return out
+
+
+def test_sotto_utente_non_raggiunge_le_risorse_di_un_altra_sede(scenario, worker):
+    """Le ricette dell'isolamento, con gli id della sede 1, eseguite da un
+    sotto-utente della sede 2: nessuna riga della sede 1 cambia, nessun suo dato
+    torna indietro. E' l'isolamento fra clienti portato dentro lo stesso account."""
+    from services import permessi_rotte as pr
+    from tests.test_isolamento_per_risorsa import RICETTE, _contiene_id, _risolvi, _valori_inviati
+
+    sc = scenario
+    pagine = {p: True for p in su.PAGINE_SOTTO_UTENTE if p != su.PAGINA_CATENA}
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "sede2@isolamento.test", [sc.a.ids["sede2"]], pagine)
+    token = _login(sc, "sede2@isolamento.test").json()["token"]
+    marcatori = _marcatori_sede1(sc)
+    rotte = _richieste(sc, worker)
+    forma = {(m, __import__("re").sub(r"\{\w+\}", "{}", p)): (m, p) for m, p in rotte}
+    problemi, non_raggiunte, eseguite = [], [], 0
+    ids_sede1 = set(sc.a.id_noti()) - {sc.a.ids["user_id"], sc.a.ids["sede2"]}
+    for r in RICETTE:
+        generico = __import__("re").sub(r"\{(?:mio|altro)\.", "{", r.path)
+        chiave = forma.get((r.metodo, __import__("re").sub(r"\{\w+\}", "{}", generico)))
+        if chiave is None or not pr.rotta_consentita(
+            {"_sotto_utente": {"id": "x"}, "pagine_abilitate": {**pagine, "catena": False}}, chiave
+        ):
+            continue  # rotte di Catena o vietate: le ferma gia' la mappa
+        richiesta = {"path": _risolvi(r.path, sc.a, sc.a), "params": _risolvi(r.params, sc.a, sc.a),
+                     "json": _risolvi(r.json_, sc.a, sc.a)}
+        prima = _impronta_sede(sc, sc.a.ids["sede1"])
+        prima2 = _impronta_sede(sc, sc.a.ids["sede2"])
+        resp = _chiama(sc, token, r.metodo, richiesta["path"], params=richiesta["params"], json=richiesta["json"])
+        dopo = _impronta_sede(sc, sc.a.ids["sede1"])
+        nuove = {x for t in _impronta_sede(sc, sc.a.ids["sede2"]).values() for x in t} - {
+            x for t in prima2.values() for x in t}
+        puntano = [i for i in ids_sede1 if any(_contiene_id(x, i) for x in nuove)]
+        if puntano:
+            problemi.append(f"{r.etichetta} -> {resp.status_code} righe della sede 2 che puntano alla sede 1: {puntano}")
+        corpo = resp.text or ""
+        for inviato in sorted(_valori_inviati(richiesta), key=len, reverse=True):
+            corpo = corpo.replace(inviato, "")
+        cambiate = [t for t in dopo if dopo[t] != prima.get(t)]
+        trovati = sorted(m for m in marcatori if m.lower() in corpo.lower())
+        if cambiate or trovati or resp.status_code >= 500:
+            problemi.append(f"{r.etichetta} -> {resp.status_code} cambiate={cambiate} dati={trovati[:3]}")
+        # Controllo: la stessa ricetta dal titolare (sede 1) raggiunge la risorsa.
+        # Nel savepoint: le ricette dopo trovano le risorse intatte.
+        sc.conn.execute("SAVEPOINT controllo_titolare")
+        try:
+            suo = _chiama(sc, sc.a.token, r.metodo, richiesta["path"], params=richiesta["params"],
+                          json=richiesta["json"])
+            suo_corpo = suo.text or ""
+            for inviato in sorted(_valori_inviati(richiesta), key=len, reverse=True):
+                suo_corpo = suo_corpo.replace(inviato, "")
+            raggiunta = (_impronta_sede(sc, sc.a.ids["sede1"]) != prima
+                         or any(m.lower() in suo_corpo.lower() for m in marcatori))
+            if not raggiunta:
+                non_raggiunte.append(f"{r.etichetta} -> {suo.status_code}")
+        finally:
+            sc.conn.execute("ROLLBACK TO SAVEPOINT controllo_titolare")
+            _clear_sessione_cache()
+        eseguite += 1
+    assert not problemi, "\n".join(problemi)
+    # Le ricette che neanche il titolare fa arrivare alla risorsa non provano niente.
+    assert eseguite >= 40 and len(non_raggiunte) <= eseguite // 4, (eseguite, non_raggiunte)
+
+
+def test_cancellare_l_inventario_di_una_data_resta_sulla_sua_sede(scenario):
+    sc = scenario
+    for sede in (sc.a.ids["sede1"], sc.a.ids["sede2"]):
+        sc.conn.execute(
+            "INSERT INTO public.inventario_voci (user_id, ristorante_id, data_inventario, nome, quantita, "
+            "prezzo_unitario) VALUES (%s, %s, '2026-04-30', 'VOCE_APRILE', 1, 1)",
+            (sc.a.ids["user_id"], sede),
+        )
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "w@isolamento.test", [sc.a.ids["sede2"]], {"workspace": True})
+    token = _login(sc, "w@isolamento.test").json()["token"]
+    r = _chiama(sc, token, "DELETE", "/api/workspace/inventario", params={"data": "2026-04-30"})
+    assert r.status_code == 200 and r.json()["n_eliminate"] == 1, r.text
+    restano = sc.conn.execute(
+        "SELECT ristorante_id::text FROM public.inventario_voci WHERE data_inventario = '2026-04-30'"
+    ).fetchall()
+    assert restano == [(sc.a.ids["sede1"],)]

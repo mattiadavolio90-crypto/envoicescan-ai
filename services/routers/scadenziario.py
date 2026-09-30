@@ -7,6 +7,8 @@ scriveva ogni giorno una riga che nessuno leggeva piu', vedi get_notifiche.)
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+
+from services import sotto_utenti_service as _su
 from pydantic import BaseModel
 
 from utils.supabase_paging import fetch_all
@@ -83,6 +85,7 @@ def _resolve_ristorante_scrivibile(user, sb, ristorante_id_body: Optional[str]) 
     )
     if not owns.data:
         raise HTTPException(status_code=404, detail="Sede non trovata")
+    _su.verifica_sede_consentita(user, rid_body)
     return rid_body
 
 

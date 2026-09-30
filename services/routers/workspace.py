@@ -2,7 +2,7 @@
 personale (turni, regole ricorrenti), spese extra.
 
 Estratto da fastapi_worker.py. Gli helper condivisi (_verify_worker_key,
-_resolve_user_from_token, _get_supabase_client, _get_ristorante_id_for_user,
+_resolve_user_from_token, _get_supabase_client, _resolve_ristorante_id,
 _oggi_rome, _ore_turno, logger) restano nel worker e sono importati da qui.
 _ore_turno in particolare e' condiviso col router margini, quindi NON viene
 spostato. Logica copiata identica. Path/gate/response invariati.
@@ -11,6 +11,8 @@ import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+
+from services import sotto_utenti_service as _su
 from pydantic import BaseModel
 
 from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIE_SPESE_GENERALI
@@ -39,8 +41,22 @@ def _get_supabase_client(*args, **kwargs):
     return _fw()._get_supabase_client(*args, **kwargs)
 
 
-def _get_ristorante_id_for_user(*args, **kwargs):
-    return _fw()._get_ristorante_id_for_user(*args, **kwargs)
+def _resolve_ristorante_id(*args, **kwargs):
+    # La sede attiva della SESSIONE: per un sotto-utente e' la sua, fra le sue
+    # sedi. Rileggere users.ultimo_ristorante_id per id darebbe quella del titolare.
+    return _fw()._resolve_ristorante_id(*args, **kwargs)
+
+
+def _solo_sede_del_sotto_utente(query, user, sb):
+    """Per un sotto-utente limita la query alla sua sede attiva.
+
+    Le voci d'inventario si toccano per id o per data filtrando solo l'account:
+    per il titolare resta com'e' (anche la cancellazione per data vale su tutte
+    le sue sedi), per un sotto-utente l'account non basta.
+    """
+    if _su.e_sotto_utente(user):
+        return query.eq("ristorante_id", _resolve_ristorante_id(user, sb))
+    return query
 
 
 def _oggi_rome(*args, **kwargs):
@@ -100,7 +116,7 @@ def ws_ingredienti(authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -158,7 +174,7 @@ def ws_ricette(authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -242,7 +258,7 @@ def ws_ricetta_detail(ricetta_id: str, authorization: Optional[str] = Header(Non
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
 
     resp = (
         sb.table("ricette")
@@ -304,7 +320,7 @@ def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Heade
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -347,7 +363,7 @@ def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
 
     if body.categoria not in CATEGORIE_RICETTE:
         raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
@@ -373,7 +389,7 @@ def ws_elimina_ricetta(ricetta_id: str, authorization: Optional[str] = Header(No
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     sb.table("ricette").delete().eq("id", ricetta_id).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
@@ -388,7 +404,7 @@ def ws_riordina_ricette(body: RiordinaBody, authorization: Optional[str] = Heade
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     for idx, rid in enumerate(body.ordine):
         sb.table("ricette").update({"ordine_visualizzazione": idx + 1}).eq("id", rid).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
@@ -399,7 +415,7 @@ def ws_ingredienti_manuali(authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     resp = sb.table("ingredienti_workspace").select("id,nome,prezzo_per_um,um").eq("user_id", user_id).eq("ristorante_id", ristorante_id).order("nome").execute()
     return {"ingredienti": resp.data or []}
 
@@ -409,7 +425,7 @@ def ws_crea_ingrediente_manuale(body: NuovoIngredienteManualeBody, authorization
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     try:
@@ -432,7 +448,7 @@ def ws_aggiorna_ingrediente_manuale(ing_id: str, body: AggiornaIngredienteManual
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     if "um" in payload:
         payload["um"] = payload["um"].upper()
@@ -445,7 +461,7 @@ def ws_elimina_ingrediente_manuale(ing_id: str, authorization: Optional[str] = H
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     sb.table("ingredienti_workspace").delete().eq("id", ing_id).eq("user_id", user_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
@@ -496,7 +512,7 @@ def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     from config.constants import CATEGORIE_SPESE_GENERALI
     from services.db_service import escludi_oscurate, filter_active
     from utils.supabase_paging import fetch_all
@@ -530,7 +546,7 @@ def ws_inventario_snapshot_dates(authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     resp = (
         sb.table("inventario_voci")
         .select("data_inventario,valore_totale")
@@ -561,7 +577,7 @@ def ws_inventario_copia_snapshot(body: CopiaSnapshotInventarioBody, authorizatio
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     resp = (
         sb.table("inventario_voci")
         .select("nome,categoria,um,prezzo_unitario")
@@ -598,7 +614,7 @@ def ws_inventario_list(
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not data:
         data = _oggi_rome().isoformat()
     resp = (
@@ -645,7 +661,7 @@ def ws_inventario_crea(body: NuovaVoceInventarioBody, authorization: Optional[st
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     resp = sb.table("inventario_voci").insert({
@@ -668,7 +684,7 @@ def ws_inventario_crea_batch(body: NuoveVociInventarioBody, authorization: Optio
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     rows = [
@@ -701,7 +717,8 @@ def ws_inventario_aggiorna(voce_id: str, body: AggiornaVoceInventarioBody, autho
     payload = {k: v for k, v in body.model_dump().items() if v is not None}
     if "um" in payload:
         payload["um"] = payload["um"].upper()
-    sb.table("inventario_voci").update(payload).eq("id", voce_id).eq("user_id", user_id).execute()
+    query = sb.table("inventario_voci").update(payload).eq("id", voce_id).eq("user_id", user_id)
+    _solo_sede_del_sotto_utente(query, user, sb).execute()
     return {"ok": True}
 
 
@@ -711,7 +728,8 @@ def ws_inventario_elimina(voce_id: str, authorization: Optional[str] = Header(No
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    sb.table("inventario_voci").delete().eq("id", voce_id).eq("user_id", user_id).execute()
+    query = sb.table("inventario_voci").delete().eq("id", voce_id).eq("user_id", user_id)
+    _solo_sede_del_sotto_utente(query, user, sb).execute()
     return {"ok": True}
 
 
@@ -721,7 +739,8 @@ def ws_inventario_elimina_data(data: str = Query(..., description="Data inventar
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    resp = sb.table("inventario_voci").delete().eq("user_id", user_id).eq("data_inventario", data).execute()
+    query = sb.table("inventario_voci").delete().eq("user_id", user_id).eq("data_inventario", data)
+    resp = _solo_sede_del_sotto_utente(query, user, sb).execute()
     n = len(resp.data) if resp.data else 0
     return {"ok": True, "n_eliminate": n}
 
@@ -755,7 +774,7 @@ def ws_diario_list(
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     q = sb.table("diario_eventi").select("*").eq("ristorante_id", ristorante_id)
@@ -775,7 +794,7 @@ def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[str] = H
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     payload: dict = {
@@ -808,7 +827,7 @@ def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, authoriza
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump(exclude_unset=True)
@@ -836,7 +855,7 @@ def ws_diario_elimina(evento_id: str, authorization: Optional[str] = Header(None
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("diario_eventi").delete().eq("id", evento_id).eq("ristorante_id", ristorante_id).execute()
@@ -898,7 +917,7 @@ def ws_dipendenti_list(
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     q = sb.table("dipendenti").select("*").eq("ristorante_id", ristorante_id)
@@ -913,7 +932,7 @@ def ws_dipendenti_crea(body: NuovoDipendenteBody, authorization: Optional[str] =
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     nome_norm = body.nome.strip()
@@ -941,7 +960,7 @@ def ws_dipendenti_aggiorna(dipendente_id: str, body: AggiornaDipendenteBody, aut
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump(exclude_unset=True)
@@ -974,7 +993,7 @@ def ws_dipendenti_disattiva(dipendente_id: str, authorization: Optional[str] = H
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     resp = (
@@ -992,7 +1011,7 @@ def ws_dipendenti_riattiva(dipendente_id: str, authorization: Optional[str] = He
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     corrente = (
@@ -1026,7 +1045,7 @@ def ws_dipendenti_elimina(dipendente_id: str, authorization: Optional[str] = Hea
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1064,7 +1083,7 @@ def ws_dipendenti_merge(dipendente_id: str, target_id: str, authorization: Optio
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     if dipendente_id == target_id:
@@ -1210,7 +1229,7 @@ def ws_personale_list(
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     q = sb.table("turni_personale").select("*").eq("ristorante_id", ristorante_id)
@@ -1394,7 +1413,7 @@ def ws_personale_export_mensile(
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1504,7 +1523,7 @@ def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Heade
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
@@ -1548,7 +1567,7 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1620,7 +1639,7 @@ def ws_personale_copia_mese(body: CopiaMeseBody, authorization: Optional[str] = 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1718,7 +1737,7 @@ def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[st
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1779,7 +1798,7 @@ def ws_personale_aggiorna_mensile(turno_id: str, body: AggiornaTurnoMensileBody,
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump(exclude_unset=True)
@@ -1864,7 +1883,7 @@ def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization:
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump()
@@ -1934,7 +1953,7 @@ def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(No
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("turni_personale").delete().eq("id", turno_id).eq("ristorante_id", ristorante_id).execute()
@@ -1960,7 +1979,7 @@ def ws_personale_stato_giorno(turno_id: str, body: StatoGiornoBody, authorizatio
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     _valida_stato_giorno(body.tipo_giorno, body.importo_a_carico)
@@ -1990,7 +2009,7 @@ def ws_personale_stato_giorno_intervallo(body: StatoGiornoIntervalloBody, author
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
@@ -2117,7 +2136,7 @@ def ws_regole_turni_list(
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     q = sb.table("regole_turni_ricorrenti").select("*").eq("ristorante_id", ristorante_id)
@@ -2134,7 +2153,7 @@ def ws_regole_turni_crea(body: NuovaRegolaTurnoBody, authorization: Optional[str
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
@@ -2164,7 +2183,7 @@ def ws_regole_turni_aggiorna(regola_id: str, body: AggiornaRegolaTurnoBody, auth
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     esistente = (
@@ -2222,7 +2241,7 @@ def ws_regole_turni_elimina(regola_id: str, authorization: Optional[str] = Heade
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("regole_turni_ricorrenti").delete().eq("id", regola_id).eq("ristorante_id", ristorante_id).execute()
@@ -2246,7 +2265,7 @@ def ws_regole_turni_genera(body: GeneraTurniDaRegoleBody, authorization: Optiona
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -2371,7 +2390,7 @@ def ws_spese_list(
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     q = sb.table("spese_extra").select("*").eq("ristorante_id", ristorante_id)
@@ -2404,7 +2423,7 @@ def ws_spese_crea(body: NuovaSpesaBody, authorization: Optional[str] = Header(No
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     if body.tipo not in _TIPI_SPESA:
@@ -2439,7 +2458,7 @@ def ws_spese_aggiorna(spesa_id: str, body: AggiornaSpesaBody, authorization: Opt
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump(exclude_unset=True)
@@ -2494,7 +2513,7 @@ def ws_spese_elimina(spesa_id: str, authorization: Optional[str] = Header(None))
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("spese_extra").delete().eq("id", spesa_id).eq("ristorante_id", ristorante_id).execute()

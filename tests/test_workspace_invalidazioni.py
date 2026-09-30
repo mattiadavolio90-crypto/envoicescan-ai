@@ -132,7 +132,7 @@ def _patch_ws(client, user_id="user-1", rid="rist-1"):
         workspace,
         _resolve_user_from_token=MagicMock(return_value={"id": user_id}),
         _get_supabase_client=MagicMock(return_value=client),
-        _get_ristorante_id_for_user=MagicMock(return_value=rid),
+        _resolve_ristorante_id=MagicMock(return_value=rid),
     )
 
 
