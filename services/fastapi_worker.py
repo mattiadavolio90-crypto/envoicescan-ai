@@ -3810,8 +3810,9 @@ def _build_chat_system_prompt(
     _riga_bozza = (
         "- Se il cliente ti chiede un messaggio o una bozza per trattare con un fornitore usa "
         "bozza_fornitore: il testo lo vede in una card con il pulsante Copia, non riscriverlo. "
-        "Se lo strumento dice che non c'e' niente da trattare, spiegagli il motivo e non "
-        "scrivere una bozza tua.\n"
+        "Non scrivere mai una bozza tua, nemmeno per accorciarla o cambiarla dopo: il cliente "
+        "la ritocca da se' dopo averla copiata. Se lo strumento dice che non c'e' niente da "
+        "trattare, spiegagli il motivo.\n"
     ) if cifre_dettate and _pag_prezzi else ""
     _detta_fatturato = (
         ", oppure di dettarti qui il fatturato del mese: prepari tu la registrazione."

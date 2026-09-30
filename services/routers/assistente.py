@@ -670,7 +670,8 @@ def _trova_fornitore(richiesta: Any, fornitori: list) -> Tuple[Optional[Any], Di
         return None, {"errore": "piu' fornitori corrispondono: chiedi al cliente quale",
                       "fornitori": [f.fornitore for f in candidati][:15]}
     per_spesa = sorted(fornitori, key=lambda f: -f.spesa_periodo)
-    return None, {"errore": "fornitore non trovato negli acquisti di quest'anno di questo locale",
+    return None, {"errore": "fornitore non trovato negli acquisti di quest'anno di questo locale "
+                            "(utenze e servizi non hanno una bozza)",
                   "fornitori": [f.fornitore for f in per_spesa][:15]}
 
 

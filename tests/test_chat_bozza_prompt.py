@@ -36,7 +36,8 @@ def _con_prezzi(prezzi: bool):
 def test_con_prezzi_e_card_la_regola_c_e(monkeypatch):
     p = _prompt(monkeypatch, user=_con_prezzi(True))
     assert REGOLA in p
-    assert "spiegagli il motivo e non scrivere una bozza tua" in p
+    assert "Non scrivere mai una bozza tua, nemmeno per accorciarla o cambiarla dopo" in p
+    assert "Se lo strumento dice che non c'e' niente da trattare, spiegagli il motivo." in p
 
 
 def test_senza_prezzi_niente_regola(monkeypatch):
