@@ -440,3 +440,160 @@ def assistente_registra(body: RegistraRequest, authorization: Optional[str] = He
     _invalida(str(user["id"]), rid, sb)
     logger.info("assistente/registra: %s registrato su sede %s (utente %s)", body.tipo, rid, user["id"])
     return RegistraResponse(ok=True, tipo=body.tipo, ristorante_id=rid, valori=valori)
+
+
+# ─── Le proposte (step 2): cosa prepara lo strumento della chat ───────────────
+# Il modello chiama `proponi_*` con le cifre dettate; qui si validano con le
+# stesse regole della Conferma e si legge il valore attuale con le stesse letture,
+# cosi' la card non propone mai cio' che la Conferma rifiuterebbe. Niente si
+# scrive: la proposta torna al cliente nella risposta della chat.
+STRUMENTI_PROPOSTA = ("proponi_incasso", "proponi_personale", "proponi_fatturato_mese")
+MAX_PROPOSTE = 3
+
+_MESI = ("", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio",
+         "agosto", "settembre", "ottobre", "novembre", "dicembre")
+
+
+class PropostaCifra(BaseModel):
+    """Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra
+    (il frontend lo rimanda cosi' com'e'); `sede_nome` e `costo_personale_extra`
+    servono solo a scrivere la card."""
+    tipo: Literal["incasso_giorno", "personale_mese", "fatturato_mese"]
+    ristorante_id: str
+    sede_nome: Optional[str] = None
+    data: Optional[str] = None
+    anno: Optional[int] = None
+    mese: Optional[int] = None
+    fatturato_iva10: float = 0.0
+    altri_ricavi_noiva: float = 0.0
+    fatturato_iva22: float = 0.0
+    costo_dipendenti: Optional[float] = None
+    precedente: Optional[Dict[str, float]] = None
+    costo_personale_extra: Optional[float] = None
+
+
+def chiave_proposta(p: PropostaCifra) -> Tuple[str, Any]:
+    """Due proposte sulla stessa cifra nella stessa risposta: vale l'ultima."""
+    return (p.tipo, p.data if p.tipo == "incasso_giorno" else (p.anno, p.mese))
+
+
+def _numero(args: Dict[str, Any], nome: str) -> Optional[float]:
+    v = args.get(nome)
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _intero(args: Dict[str, Any], nome: str) -> Optional[int]:
+    v = _numero(args, nome)
+    return int(v) if v is not None and math.isfinite(v) and v == int(v) else None
+
+
+_PRONTA = (
+    "Sotto la tua risposta il cliente vede una card con il pulsante Conferma: la cifra "
+    "si registra SOLO quando la preme. Non dire che e' registrata. Riepiloga in una "
+    "riga cosa stai per registrare e digli di premere Conferma."
+)
+
+
+def proponi(nome: str, args: Dict[str, Any], *, user: Dict[str, Any], sb,
+            ristorante_id: Optional[str], sede_nome: Optional[str]) -> Tuple[Optional[PropostaCifra], Dict[str, Any]]:
+    """(proposta o None, cio' che legge il modello)."""
+    # La pagina Margini non si ricontrolla qui: senza, lo strumento non e' offerto
+    # e chat_ai rifiuta cio' che non ha offerto. La sede si': la sede attiva di una
+    # sessione puo' essere stata spenta, e una card che la Conferma rifiuterebbe
+    # e' una promessa falsa.
+    try:
+        rid = sede_scrivibile(user, sb, ristorante_id or "")
+        oggi = _oggi()
+        if nome == "proponi_incasso":
+            return _proponi_incasso(args, sb, rid, sede_nome, oggi)
+        if nome == "proponi_fatturato_mese":
+            return _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi)
+        if nome == "proponi_personale":
+            return _proponi_personale(args, sb, rid, sede_nome, oggi)
+        return None, {"errore": f"strumento sconosciuto: {nome}"}
+    except HTTPException as exc:
+        motivo = exc.detail if isinstance(exc.detail, str) else "richiesta non valida"
+        return None, {"errore": motivo}
+
+
+def _importi_dettati(args: Dict[str, Any]) -> Optional[Dict[str, Optional[float]]]:
+    iva10, senza_iva = _numero(args, "iva10"), _numero(args, "senza_iva")
+    if iva10 is None or senza_iva is None:
+        return None
+    return {"fatturato_iva10": iva10, "altri_ricavi_noiva": senza_iva,
+            "fatturato_iva22": _numero(args, "iva22") or 0.0}
+
+
+_CHIEDI_DIVISIONE = {
+    "errore": "divisione IVA mancante",
+    "cosa_fare": ("Chiedi al cliente quanto e' al 10% e quanto e' senza IVA (il 22% solo "
+                  "se lo dice lui). Non dividere tu il totale."),
+}
+
+
+def _gia_cosi(attuale: Optional[Dict[str, float]], dettato: Dict[str, float]) -> bool:
+    return attuale is not None and _uguali(dettato, {k: attuale.get(k) for k in dettato})
+
+
+def _proponi_incasso(args, sb, rid, sede_nome, oggi):
+    importi = _importi_dettati(args)
+    if importi is None:
+        return None, _CHIEDI_DIVISIONE
+    giorno = valida_giorno(args.get("data"), oggi)
+    corpo = RegistraRequest(tipo="incasso_giorno", ristorante_id=rid, data=giorno.isoformat(), **importi)
+    valori = valida_importi_incasso(corpo, TETTO_INCASSO_GIORNO)
+    if leggi_fatturato_mese(sb, rid, giorno.year, giorno.month).fonte in ("mensile", "margini"):
+        return None, {"errore": (f"{_MESI[giorno.month]} {giorno.year} e' tenuto come totale del mese: "
+                                 "non si registra il singolo giorno. Se il cliente vuole, puo' "
+                                 "dettarti il nuovo totale del mese.")}
+    attuale = leggi_incasso_giorno(sb, rid, giorno).attuale
+    if _gia_cosi(attuale, valori):
+        return None, {"gia_registrato": True, "valore_attuale": attuale}
+    proposta = PropostaCifra(tipo="incasso_giorno", ristorante_id=rid, sede_nome=sede_nome,
+                             data=giorno.isoformat(), precedente=attuale, **valori)
+    return proposta, {"proposta_pronta": True, "giorno": giorno.isoformat(), **valori,
+                      "valore_attuale": attuale or "nessun valore", "istruzione": _PRONTA}
+
+
+def _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi):
+    importi = _importi_dettati(args)
+    if importi is None:
+        return None, _CHIEDI_DIVISIONE
+    anno, mese = valida_mese(_intero(args, "anno"), _intero(args, "mese"), oggi)
+    corpo = RegistraRequest(tipo="fatturato_mese", ristorante_id=rid, anno=anno, mese=mese, **importi)
+    valori = valida_importi_incasso(corpo, TETTO_FATTURATO_MESE)
+    letto = leggi_fatturato_mese(sb, rid, anno, mese)
+    if letto.fonte == "giorni":
+        return None, {"errore": (f"{_MESI[mese]} {anno} ha gia' incassi giorno per giorno: il fatturato "
+                                 "del mese e' la loro somma. Si puo' registrare l'incasso di un "
+                                 "giorno, non il totale del mese.")}
+    if _gia_cosi(letto.attuale, valori):
+        return None, {"gia_registrato": True, "valore_attuale": letto.attuale}
+    proposta = PropostaCifra(tipo="fatturato_mese", ristorante_id=rid, sede_nome=sede_nome,
+                             anno=anno, mese=mese, precedente=letto.attuale, **valori)
+    return proposta, {"proposta_pronta": True, "mese": f"{_MESI[mese]} {anno}", **valori,
+                      "valore_attuale": letto.attuale or "nessun valore", "istruzione": _PRONTA}
+
+
+def _proponi_personale(args, sb, rid, sede_nome, oggi):
+    anno, mese = valida_mese(_intero(args, "anno"), _intero(args, "mese"), oggi)
+    corpo = RegistraRequest(tipo="personale_mese", ristorante_id=rid, anno=anno, mese=mese,
+                            costo_dipendenti=_numero(args, "importo"))
+    valore = valida_personale(corpo)
+    letto = leggi_personale(sb, rid, anno, mese)
+    extra = (letto.info or {}).get("costo_personale_extra") or 0.0
+    if _gia_cosi(letto.attuale, {"costo_dipendenti": valore}):
+        return None, {"gia_registrato": True, "valore_attuale": letto.attuale}
+    proposta = PropostaCifra(tipo="personale_mese", ristorante_id=rid, sede_nome=sede_nome,
+                             anno=anno, mese=mese, costo_dipendenti=valore, precedente=letto.attuale,
+                             costo_personale_extra=extra or None)
+    al_modello = {"proposta_pronta": True, "mese": f"{_MESI[mese]} {anno}", "costo_dipendenti": valore,
+                  "valore_attuale": letto.attuale or "nessun valore", "istruzione": _PRONTA}
+    if extra:
+        al_modello["extra_gia_registrati"] = extra
+    return proposta, al_modello

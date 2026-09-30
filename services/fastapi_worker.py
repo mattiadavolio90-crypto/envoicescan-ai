@@ -3525,11 +3525,19 @@ class ChatMessage(BaseModel):
 _CHAT_MAX_CHARS_TOT = 24000
 
 
+from services.routers import assistente as _assistente  # noqa: E402
+from services.routers.assistente import PropostaCifra as _PropostaCifra  # noqa: E402
+
+
 class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(..., min_length=1, max_length=20)
     # "catena" = chat in modalità catena (/catena): tool di gruppo, pool AI unico
     # (SUM limiti effettivi sedi). Default "sede" = chat del singolo PV, invariata.
     contesto: str = Field("sede", pattern="^(sede|catena)$")
+    # Il client sa mostrare le card con Conferma (fase 3): la Home si', `/m` non
+    # ancora (fase 8). Senza, niente strumenti proponi_* e niente regole: un
+    # modello che dice «premi Conferma» a chi non vede la card mente.
+    card_conferma: bool = False
 
     @model_validator(mode="after")
     def _cap_caratteri_totali(self) -> "ChatRequest":
@@ -3549,6 +3557,9 @@ class ChatResponse(BaseModel):
     # sbattendo contro il 429). domande_oggi = quante gia' consumate oggi.
     domande_oggi: int = 0
     limite_giorno: int = 0
+    # Le cifre dettate che il cliente puo' confermare (fase 3): le prepara il
+    # modello con `proponi_*`, le scrive solo POST /api/assistente/registra.
+    proposte: List[_PropostaCifra] = Field(default_factory=list)
 
 
 def _chat_top_cat_forn(
@@ -3626,6 +3637,7 @@ def _build_chat_system_prompt(
     user: Dict[str, Any], supabase_client, authorization: Optional[str],
     ristorante_id: Optional[str] = None, settore: Optional[str] = None,
     sede_nome: Optional[str] = None, multi_sede: bool = False,
+    cifre_dettate: bool = False,
 ) -> str:
     """Costruisce il system prompt con i dati freschi del ristorante.
 
@@ -3692,6 +3704,16 @@ def _build_chat_system_prompt(
     # il gate tool (chat_ai, _TOOL_VIETATI_PER_SETTORE) toglie query_coperti dagli
     # strumenti. Senza togliere ANCHE questa riga il prompt continuerebbe a
     # promettere uno strumento che il modello non ha piu'.
+    _divisione_iva = (
+        "Incasso e fatturato vanno divisi per aliquota. Se il cliente ti da' solo il totale, "
+        "CHIEDIGLI quanto e' al 22%, quanto al 10% e quanto senza IVA prima di preparare la "
+        "card: non dividerlo mai tu."
+    ) if _retail else (
+        "Incasso e fatturato vanno divisi fra la parte al 10% e la parte senza IVA. Se il "
+        "cliente ti da' solo il totale, CHIEDIGLI quanto e' al 10% e quanto senza IVA prima "
+        "di preparare la card: non dividerlo mai tu. Il 22% indicalo solo se lo nomina il "
+        "cliente."
+    )
     _riga_coperti = "" if _retail else (
         "- Per coperti e scontrino medio (\"quanti coperti\", \"scontrino medio\", "
         "\"quante persone servo\", \"giorno più pieno\") usa query_coperti. Il coperto è "
@@ -3711,6 +3733,29 @@ def _build_chat_system_prompt(
     _pagine_set = set(pagine) if pagine is not None else None
     _pag_margini = _pagine_set is None or "margini" in _pagine_set
     _pag_fatture = _pagine_set is None or "analisi_fatture" in _pagine_set
+    # Le cifre dettate (fase 3): gli strumenti proponi_* stanno sulla pagina
+    # Margini e ci sono solo se il client mostra le card (ChatRequest.card_conferma):
+    # la regola non promette cio' che il modello non ha.
+    _cifre_dettate = cifre_dettate and _pag_margini
+    _riga_cifre = (
+        "- Se il cliente ti DETTA una cifra da registrare (l'incasso di un giorno, il costo del "
+        "personale di un mese, il fatturato di un mese intero) usa proponi_incasso, "
+        "proponi_personale o proponi_fatturato_mese. Solo cifre dette dal cliente: mai una tua "
+        "stima o un tuo calcolo.\n"
+        "- Questi strumenti NON registrano: preparano una card con il pulsante Conferma che il "
+        "cliente vede sotto la tua risposta. Non dire mai che la cifra e' registrata: riepiloga "
+        "cosa stai per registrare e digli di premere Conferma.\n"
+        f"- {_divisione_iva}\n"
+        "- Le date relative (\"ieri\", \"sabato scorso\") calcolale da oggi e scrivi nella "
+        "risposta il giorno per esteso.\n"
+    ) if _cifre_dettate else ""
+    _detta_fatturato = (
+        ", oppure di dettarti qui il fatturato del mese: prepari tu la registrazione."
+        if _cifre_dettate else "."
+    )
+    _detta_personale = (
+        ", oppure di dirti qui la cifra: prepari tu la registrazione." if _cifre_dettate else "."
+    )
 
     # 1) KPI Home — stessa fonte, stessi numeri (margini_mensili + costi)
     try:
@@ -3864,7 +3909,7 @@ def _build_chat_system_prompt(
                     alert_testo += (
                         f"\n- ⚠️ Fatturato/ricavi non registrati per {_mesi_n[_mc_mese]} {_mc_anno}:"
                         f" MOL e food cost % non sono calcolabili senza il fatturato."
-                        f" Suggerisci di registrare i ricavi in Movimenti → Ricavi."
+                        f" Suggerisci di registrare i ricavi in Movimenti → Ricavi{_detta_fatturato}"
                     )
             except Exception as exc:
                 logger.warning("chat alert 2 (ricavi mancanti) non calcolabile: %s", exc)
@@ -3898,7 +3943,7 @@ def _build_chat_system_prompt(
                     alert_testo += (
                         f"\n- ⚠️ Costo del personale non registrato per {_mesi_n2[_mc_mese]} {_mc_anno}:"
                         f" il MOL risulta sovrastimato senza questa voce."
-                        f" Suggerisci di inserirlo in Movimenti → Ricavi (sezione Personale)."
+                        f" Suggerisci di inserirlo in Movimenti → Ricavi (sezione Personale){_detta_personale}"
                     )
             except Exception as exc:
                 logger.warning("chat alert 3 (personale mancante) non calcolabile: %s", exc)
@@ -4168,7 +4213,7 @@ Regole per gli strumenti:
 - Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
 - Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
 - Per appuntamenti e impegni in agenda ("cosa ho oggi", "appuntamenti di questa settimana") usa query_appuntamenti.
-{_riga_coperti}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
+{_riga_coperti}{_riga_cifre}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
 
@@ -4275,7 +4320,8 @@ Regole strumenti:
 {_riga_coperti_catena}
 - Per "dove si spende di più per categoria/fornitore" usa gruppo_spesa.
 - Per "cosa c'è da vedere/sistemare" usa gruppo_segnali.
-- Non inventare numeri: se uno strumento torna vuoto, dillo.{contesto}"""
+- Non inventare numeri: se uno strumento torna vuoto, dillo.
+- Se il cliente ti detta una cifra da registrare (incasso, personale, fatturato), qui non si registra: spiega che basta aprire la Home di quel {_singolo_pv} e dirla li'.{contesto}"""
 
 
 _CHAT_TOOLS_GRUPPO = [
@@ -5248,6 +5294,76 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             },
         },
     },
+    # Fase 3 (M4): le cifre DETTATE dal cliente. Non scrivono: preparano una card
+    # con Conferma (ChatResponse.proposte); scrive POST /api/assistente/registra.
+    {
+        "type": "function",
+        "function": {
+            "name": "proponi_incasso",
+            "description": (
+                "Prepara la registrazione dell'INCASSO DI UN GIORNO che il cliente ti ha "
+                "DETTATO (es. 'ieri ho incassato 2.340: 1.800 al 10% e 540 senza IVA'). NON "
+                "registra: mostra al cliente una card con il pulsante Conferma. Servono la "
+                "parte al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
+                "chiediglielo prima. Solo cifre dette dal cliente, mai stime tue."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data": {"type": "string", "description": "Giorno dell'incasso YYYY-MM-DD"},
+                    "iva10": {"type": "number", "description": "Incasso lordo al 10% in euro (0 se non c'e')"},
+                    "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
+                    "iva22": {"type": "number", "description": "Incasso lordo al 22% in euro: solo se il cliente lo nomina"},
+                },
+                "required": ["data", "iva10", "senza_iva"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "proponi_personale",
+            "description": (
+                "Prepara la registrazione del COSTO DEL PERSONALE DI UN MESE dettato dal "
+                "cliente (es. 'il personale di settembre e' 12.000'). NON registra: mostra "
+                "una card con il pulsante Conferma. Solo la cifra detta dal cliente."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "anno": {"type": "integer", "description": "Anno es. 2026"},
+                    "mese": {"type": "integer", "description": "Numero del mese 1-12"},
+                    "importo": {"type": "number", "description": "Costo del personale del mese in euro"},
+                },
+                "required": ["anno", "mese", "importo"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "proponi_fatturato_mese",
+            "description": (
+                "Prepara la registrazione del FATTURATO DI UN MESE INTERO dettato dal cliente, "
+                "per chi tiene il fatturato come totale del mese (es. 'ad agosto ho fatturato "
+                "80.000'). NON registra: mostra una card con il pulsante Conferma. Se il mese "
+                "ha gia' incassi giorno per giorno lo strumento lo rifiuta. Servono la parte "
+                "al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
+                "chiediglielo prima."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "anno": {"type": "integer", "description": "Anno es. 2026"},
+                    "mese": {"type": "integer", "description": "Numero del mese 1-12"},
+                    "iva10": {"type": "number", "description": "Fatturato lordo al 10% in euro (0 se non c'e')"},
+                    "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
+                    "iva22": {"type": "number", "description": "Fatturato lordo al 22% in euro: solo se il cliente lo nomina"},
+                },
+                "required": ["anno", "mese", "iva10", "senza_iva"],
+            },
+        },
+    },
 ]
 
 # Gate per permessi pagina: la chat offre al modello solo gli strumenti delle
@@ -5263,6 +5379,9 @@ _CHAT_TOOL_FLAG = {
     "confronto_prezzi": "prezzi",
     "trend_prezzo": "prezzi",
     "query_appuntamenti": "agenda",
+    "proponi_incasso": "margini",
+    "proponi_personale": "margini",
+    "proponi_fatturato_mese": "margini",
 }
 
 
@@ -5351,6 +5470,10 @@ def _chat_esegui_tool_sede(
             user, supabase_client, ristorante_id,
             da=args.get("da"), a=args.get("a"),
         )
+    if nome in _assistente.STRUMENTI_PROPOSTA:
+        # Le proposte hanno bisogno della lista di chat_ai (vista punto vendita):
+        # arrivare qui vuol dire un chiamante che non la passa, cioe' la catena.
+        return {"errore": "le registrazioni si preparano solo nella Home del singolo locale"}
     return {"errore": f"strumento sconosciuto: {nome}"}
 
 
@@ -5648,6 +5771,7 @@ def chat_ai(
             user, supabase_client, authorization, ristorante_id, settore_chat,
             sede_nome=_chat_nome_sede(ristorante_id, supabase_client) if _piu_sedi_visibili else None,
             multi_sede=_piu_sedi_visibili,
+            cifre_dettate=body.card_conferma,
         )
     )
 
@@ -5695,14 +5819,34 @@ def chat_ai(
         )
 
     tools = _chat_tools_sede_offerti(user, settore_chat)
+    if not body.card_conferma:
+        tools = [t for t in tools if t["function"]["name"] not in _assistente.STRUMENTI_PROPOSTA]
     # Il gate pagina anche all'ESECUZIONE, come fa la catena con `nomi_di_sede`:
     # il dispatcher esegue per nome, e un nome allucinato di uno strumento spento
     # per pagina passava (segnalato dal revisore il 29/9, esisteva da prima).
     _offerti = frozenset(t["function"]["name"] for t in tools)
+    # Le card con Conferma preparate in questa risposta (fase 3). Il loop consegna
+    # al modello solo cio' che gli strumenti ritornano: le proposte escono da qui.
+    proposte: Dict[Any, Any] = {}
+    _nome_sede_proposte: List[Optional[str]] = []
 
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
         if nome not in _offerti:
             return {"errore": f"strumento non disponibile: {nome}"}
+        if nome in _assistente.STRUMENTI_PROPOSTA:
+            if not _nome_sede_proposte:
+                _nome_sede_proposte.append(_chat_nome_sede(ristorante_id, supabase_client))
+            proposta, al_modello = _assistente.proponi(
+                nome, args, user=user, sb=supabase_client,
+                ristorante_id=ristorante_id, sede_nome=_nome_sede_proposte[0],
+            )
+            if proposta is not None:
+                chiave = _assistente.chiave_proposta(proposta)
+                if chiave not in proposte and len(proposte) >= _assistente.MAX_PROPOSTE:
+                    return {"errore": "troppe registrazioni in una risposta: falle confermare, poi prosegui"}
+                proposte.pop(chiave, None)
+                proposte[chiave] = proposta
+            return al_modello
         return _chat_esegui_tool_sede(
             nome, args, user=user, supabase_client=supabase_client,
             authorization=authorization, ristorante_id=ristorante_id, settore=settore_chat,
@@ -5731,12 +5875,14 @@ def chat_ai(
 
     # Il log della domanda e' gia' stato scritto atomicamente dalla RPC di
     # rate-limit prima della chiamata OpenAI: niente INSERT qui.
-    logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d",
-                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi)
+    logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d proposte=%d",
+                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi, len(proposte))
     return ChatResponse(
         reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
         domande_oggi=domande_oggi,
         limite_giorno=limite,
+        # Senza una risposta del modello la card resterebbe senza spiegazione.
+        proposte=list(proposte.values()) if reply else [],
     )
 
 

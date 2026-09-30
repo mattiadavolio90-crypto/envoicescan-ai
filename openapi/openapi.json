@@ -21266,6 +21266,11 @@
             "pattern": "^(sede|catena)$",
             "title": "Contesto",
             "default": "sede"
+          },
+          "card_conferma": {
+            "type": "boolean",
+            "title": "Card Conferma",
+            "default": false
           }
         },
         "type": "object",
@@ -21289,6 +21294,13 @@
             "type": "integer",
             "title": "Limite Giorno",
             "default": 0
+          },
+          "proposte": {
+            "items": {
+              "$ref": "#/components/schemas/PropostaCifra"
+            },
+            "type": "array",
+            "title": "Proposte"
           }
         },
         "type": "object",
@@ -25688,6 +25700,125 @@
           "prodotto"
         ],
         "title": "PreferitoRequest"
+      },
+      "PropostaCifra": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "incasso_giorno",
+              "personale_mese",
+              "fatturato_mese"
+            ],
+            "title": "Tipo"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "sede_nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sede Nome"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "anno": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anno"
+          },
+          "mese": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mese"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10",
+            "default": 0.0
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva",
+            "default": 0.0
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22",
+            "default": 0.0
+          },
+          "costo_dipendenti": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Dipendenti"
+          },
+          "precedente": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precedente"
+          },
+          "costo_personale_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Personale Extra"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "ristorante_id"
+        ],
+        "title": "PropostaCifra",
+        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome` e `costo_personale_extra`\nservono solo a scrivere la card."
       },
       "RankingPV": {
         "properties": {

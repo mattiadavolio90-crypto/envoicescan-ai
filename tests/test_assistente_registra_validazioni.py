@@ -77,6 +77,15 @@ def test_personale_mancante_zero_o_oltre_il_tetto_e_400():
     assert A.valida_personale(_body(tipo="personale_mese", costo_dipendenti=A.TETTO_PERSONALE_MESE)) == A.TETTO_PERSONALE_MESE
 
 
+# ─── Gli argomenti del modello ────────────────────────────────────────────────
+@pytest.mark.parametrize("valore,atteso", [
+    (2026, 2026), ("9", 9), (9.0, 9), (9.5, None), (True, None), ("nove", None),
+    (float("inf"), None), (float("nan"), None), ("Infinity", None),
+])
+def test_intero_dal_modello(valore, atteso):
+    assert A._intero({"x": valore}, "x") == atteso
+
+
 # ─── Il confronto con la card ─────────────────────────────────────────────────
 @pytest.mark.parametrize("precedente,attuale,uguali", [
     (None, None, True),
