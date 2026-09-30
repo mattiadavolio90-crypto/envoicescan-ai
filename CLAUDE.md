@@ -193,7 +193,7 @@ python scripts/export_openapi.py --check-drift   # guida completa: DEV_SERVICES_
 - Password: Argon2id (m=65536, t=3, p=4) — non cambiare parametri. Sono espliciti
   in `services/auth_service.py` e asseriti da `tests/test_auth_argon2_parametri.py`:
   se li cambi lì senza aggiornare questa riga, i test falliscono (e viceversa)
-- Sessioni: token `secrets.token_urlsafe(32)`, scadenza 30 giorni
+- Sessioni: token `secrets.token_urlsafe(32)`, scadenza 30 giorni. **Sotto-utenti** (30/9): ogni rotta nuova del worker va dichiarata in `services/permessi_rotte.py` (se no 403 e presidio rosso) — `DOCUMENTAZIONE/tecnica/SICUREZZA_GDPR.md` §5bis
 - Rate limiting login: 5 tentativi → blocco 15 min
 - File upload: validazione magic bytes (PDF, XML, P7M)
 - Non esporre `SUPABASE_KEY`, `OPENAI_API_KEY` lato client

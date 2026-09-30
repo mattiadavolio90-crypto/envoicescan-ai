@@ -107,6 +107,44 @@ diretto era raggiungibile. Doppia difesa con il gate tool della chat (`_CHAT_TOO
 
 ---
 
+## 5bis. Sotto-utenti: due livelli di accesso (30/9/2026)
+
+Un account può avere più credenziali (tabella `sotto_utenti`, schema in
+`DATABASE_SCHEMA.md`), ognuna limitata a certe pagine e certe sedi. I blocchi
+sono **tutti sul worker**; il frontend si limita a non mandare nessuno su una
+pagina che gli risponderebbe 403.
+
+- **Il tenant non cambia.** La sessione di un sotto-utente si risolve nel dict
+  del titolare (`id` = titolare) con sopra uno strato di restrizione
+  (`services/sotto_utenti_service.py`, `sovrapponi`): tutti i filtri `user_id`
+  del §1 restano quelli di prima. `email` è quella della persona, così un
+  titolare admin non trasmette l'accesso admin.
+- **Pagine: chiuso per default.** Ogni rotta del worker è dichiarata in
+  `services/permessi_rotte.py` (`PAGINE_PER_ROTTA`, `ROTTE_COMUNI`,
+  `ROTTE_VIETATE`, `ROTTE_SENZA_SESSIONE`); una rotta non dichiarata risponde 403
+  a un sotto-utente, e `tests/test_permessi_rotte.py` fallisce finché non la si
+  dichiara. Il controllo gira dentro `verifica_sessione_da_cookie`, sulla rotta
+  registrata in un ContextVar da una dipendenza globale: non rilegge la sessione,
+  quindi non può fallire aperto.
+- **Sedi.** La sede attiva si legge solo dalla sessione (`_resolve_ristorante_id`;
+  `_get_ristorante_id_for_user` è ammesso solo in `services/routers/admin.py`,
+  presidio AST). Le sedi esplicite (cestino, scadenziario, sposta-sede), l'upload
+  smistato per P.IVA, notifiche e inventario verificano `sede_consentita`.
+- **Catena** solo con tutte le sedi attive, ricalcolata a ogni risoluzione: una
+  sede nuova la spegne finché non la si assegna.
+- **Account.** Password, preferenze e consenso privacy della persona stanno
+  sulla sua riga; elimina, esporta, svuota, admin e impostazioni di business
+  sono vietati.
+- **Cache.** Il dict di un sotto-utente vive al massimo 2 s (non i 30 s del
+  titolare): una disattivazione arriva ovunque in pochi secondi, e disattivare
+  revoca comunque le sessioni.
+- **Limiti noti.** `users.last_briefing_seen` (il «bentornato» della Home) resta
+  per account: lo scrive la rigenerazione in background, che non sa chi guarda.
+  I sotto-utenti si creano con `scripts/crea_sotto_utente.py` (dry-run di
+  default) finché non c'è il pannello Admin.
+
+---
+
 ## 6. Misure applicative
 
 | Vettore | Misura |

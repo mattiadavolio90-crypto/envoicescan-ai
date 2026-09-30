@@ -282,6 +282,35 @@ Mappa ragione sociale (dal gestionale) → `ristorante_id`. Usato nell'import XL
 
 Indice su `(email, attempted_at DESC)`. Solo `service_role` può scrivere.
 
+### `sotto_utenti` — Credenziali in più sopra un account (30/9/2026)
+
+Migration `supabase/migrations/20260928215000_sotto_utenti.sql`. Un sotto-utente
+**non è** una riga di `users`: il tenant resta il titolare, quindi job, email e
+liste admin (che leggono `users`) non lo vedono per costruzione.
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | UUID (PK) | |
+| titolare_id | UUID NOT NULL → `users` ON DELETE CASCADE | Immutabile (trigger) |
+| email | TEXT NOT NULL | Minuscola, unica anche contro `users.email` (trigger nei due versi) |
+| password_hash | TEXT NOT NULL | Argon2id, stesse regole del titolare |
+| nome, attivo | TEXT, BOOLEAN | `attivo=false` = login rifiutato |
+| pagine | JSONB NOT NULL `{}` | Chiavi esplicite, assente = spenta; `home`, `catena` esistono solo qui |
+| ultimo_ristorante_id | UUID → `ristoranti` ON DELETE SET NULL | Sede attiva DELLA PERSONA |
+| tema, vista_fatture, privacy_accepted_at, last_briefing_seen | | Preferenze della persona |
+| reset_code, reset_expires, password_changed_at, last_login, created_at | | Attivazione (Fase 2) e audit minimo |
+
+### `sotto_utenti_sedi` — Sedi assegnate
+
+PK `(sotto_utente_id, ristorante_id)`, FK con CASCADE. Il trigger
+`sotto_utenti_sedi_guardia` rifiuta una sede di un altro account.
+
+**`sessioni.sotto_utente_id`** (nullable → `sotto_utenti` ON DELETE CASCADE): chi
+sta agendo. `sessioni.user_id` resta **il titolare**; il trigger
+`sessioni_sotto_utente_del_titolare` impedisce di intestare la sessione di un
+sotto-utente a un altro account. È l'aggancio per un futuro audit «chi ha fatto
+cosa». RLS attiva senza policy e REVOKE esplicita ad `anon`/`authenticated`.
+
 ### `upload_events` — Log upload fatture
 
 | Colonna | Tipo | Note |

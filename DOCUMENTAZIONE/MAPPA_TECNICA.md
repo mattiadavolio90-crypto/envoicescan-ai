@@ -80,6 +80,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | `routing_coda.py` | Il cliente di una fattura SDI deciso dall'XML quando il webhook non l'ha potuto leggere: gemello Python del webhook, tenuto allineato da `routing_parita.json` |
 | `notification_inbox_service.py` | Costruisce le notifiche |
 | `auth_service.py` / `session_service.py` | Auth custom (non Supabase Auth) |
+| `sotto_utenti_service.py` / `permessi_rotte.py` | Sotto-utenti: sessione ristretta a pagine e sedi, mappa rotta → pagina chiusa per default (`tecnica/SICUREZZA_GDPR.md` §5bis) |
 
 ### I router del worker
 

@@ -221,6 +221,16 @@ nemmeno in chat.**
 - **`pagine_abilitate` = `None`** (admin / nessuna restrizione) → **tutti** i tool
   (stessa semantica di `_normalize_pagine`: None = tutto abilitato).
 - Lista presente → resta solo il tool il cui flag è nella lista.
+- **Sotto-utenti (30/9/2026).** La chat di sede richiede la pagina `home`
+  (Home = accesso all'AI), quella di catena la Catena effettiva: il controllo
+  in `chat_ai` scatta **prima** della quota. Per loro `pagine_abilitate` è già il
+  dict effettivo (pagine del titolare ∩ sue), quindi questo gate e il prompt
+  applicano l'intersezione senza codice in più. La quota è **una per account**:
+  `user["id"]` è il titolare. Con una sola sede in un account catena il prompt
+  nomina la **sua** sede (`_utente_prompt_sede`), non l'account. La
+  conversazione in sessionStorage è per persona (`idPersona` in
+  `apps/web/src/lib/sotto-utente.ts`). Modello completo:
+  `SICUREZZA_GDPR.md` §5bis.
 
 > Il gate vale **su due fronti**: quali tool offrire al modello (`_CHAT_TOOL_FLAG`
 > qui) **e** quali dati iniettare nel system prompt (§6). Fino al 25/8/2026 il

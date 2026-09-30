@@ -1125,3 +1125,67 @@ def test_elenco_sedi_dice_al_sotto_utente_se_ha_la_catena(scenario):
     assert len(senza["sedi"]) == 2 and senza["catena"] is False
     assert con["catena"] is True
     assert "catena" not in _chiama(sc, sc.a.token, "GET", "/api/account/sedi").json()
+
+
+# ─── Fase 1e: i casi del brief che mancavano ────────────────────────────────
+
+
+def test_home_su_due_sedi_strumenti_delle_sue_pagine_e_quota_del_titolare(scenario):
+    """Caso del brief: Home (= AI) su 2 sedi con la sola pagina Margini. La chat
+    gli offre solo gli strumenti delle sue pagine, le sue domande consumano il
+    contatore unico dell'account, e vede entrambe le sue sedi."""
+    import services.fastapi_worker as fw
+    from services import permessi_rotte as pr
+
+    sc = scenario
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "home2@isolamento.test",
+                       [sc.a.ids["sede1"], sc.a.ids["sede2"]], {"home": True, "margini": True})
+    token = _login(sc, "home2@isolamento.test").json()["token"]
+
+    rotta = pr._ROTTA_CORRENTE.set(("POST", "/api/chat"))
+    try:
+        utente = fw._resolve_user_from_token(f"Bearer {token}")
+    finally:
+        pr._ROTTA_CORRENTE.reset(rotta)
+    assert str(utente["id"]) == sc.a.ids["user_id"]
+    offerti = {t["function"]["name"] for t in fw._chat_tools_sede_offerti(utente, "ristorazione")}
+    assert offerti and all(fw._CHAT_TOOL_FLAG[n] == "margini" for n in offerti), offerti
+    assert "query_margini" in offerti and "query_costi" not in offerti
+
+    # Un solo contatore: una domanda registrata dal titolare la vede anche lui.
+    sc.conn.execute("SELECT public.chat_usage_check_and_log(%s, %s, 100, true, NULL)",
+                    (sc.a.ids["user_id"], sc.a.ids["sede1"]))
+    suo = _chiama(sc, token, "GET", "/api/account/me").json()["chat_usate_oggi"]
+    del_titolare = _chiama(sc, sc.a.token, "GET", "/api/account/me").json()["chat_usate_oggi"]
+    assert suo == del_titolare >= 1
+
+    # Le sue due sedi: su entrambe la Home risponde.
+    for sede in (sc.a.ids["sede1"], sc.a.ids["sede2"]):
+        assert _chiama(sc, token, "POST", "/api/account/cambia-sede", json={"ristorante_id": sede}).status_code == 200
+        assert _chiama(sc, token, "GET", "/api/home/kpi").status_code == 200
+
+
+def test_soft_delete_visto_dal_sotto_utente_come_dal_titolare(scenario, worker):
+    """Una fattura nel cestino compare solo dove compare al titolare (il cestino),
+    mai nelle pagine: il sotto-utente usa le stesse query, non una copia."""
+    from services import permessi_rotte as pr
+    from tests.test_isolamento_per_risorsa import GET_SESSIONE, _risolvi
+
+    sc = scenario
+    pagine = {p: True for p in su.PAGINE_SOTTO_UTENTE if p != su.PAGINA_CATENA}
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "cestino@isolamento.test", [sc.a.ids["sede1"]], pagine)
+    token = _login(sc, "cestino@isolamento.test").json()["token"]
+    assert _sede_attiva_titolare(sc) == sc.a.ids["sede1"]
+    cancellato = sc.a.ids["file_cancellato"]
+    dove_suo, dove_titolare = set(), set()
+    for path, params in sorted(GET_SESSIONE.items()):
+        if path.startswith(("/api/gruppo/", "/api/riparto/")) or ("GET", path) in pr.ROTTE_VIETATE:
+            continue
+        p = _risolvi(params, sc.a, sc.a)
+        if cancellato in _chiama(sc, token, "GET", path, params=p).text:
+            dove_suo.add(path)
+        if cancellato in _chiama(sc, sc.a.token, "GET", path, params=p).text:
+            dove_titolare.add(path)
+    assert dove_titolare, "il file cancellato non compare nemmeno nel cestino del titolare: il test non misura"
+    assert all(p.startswith("/api/cestino") for p in dove_titolare), dove_titolare
+    assert dove_suo == dove_titolare
