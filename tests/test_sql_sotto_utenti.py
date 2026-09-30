@@ -1016,3 +1016,22 @@ def test_cancellare_l_inventario_di_una_data_resta_sulla_sua_sede(scenario):
         "SELECT ristorante_id::text FROM public.inventario_voci WHERE data_inventario = '2026-04-30'"
     ).fetchall()
     assert restano == [(sc.a.ids["sede1"],)]
+
+
+def test_il_titolare_cancella_l_inventario_di_una_data_solo_sulla_sede_attiva(scenario):
+    # Lista e storico sono per sede: la cancellazione valeva su tutte le sedi.
+    sc = scenario
+    for sede in (sc.a.ids["sede1"], sc.a.ids["sede2"]):
+        sc.conn.execute(
+            "INSERT INTO public.inventario_voci (user_id, ristorante_id, data_inventario, nome, quantita, "
+            "prezzo_unitario) VALUES (%s, %s, '2026-04-30', 'VOCE_APRILE', 1, 1)",
+            (sc.a.ids["user_id"], sede),
+        )
+    sc.conn.execute("UPDATE public.users SET ultimo_ristorante_id = %s WHERE id = %s",
+                    (sc.a.ids["sede2"], sc.a.ids["user_id"]))
+    r = _chiama(sc, sc.a.token, "DELETE", "/api/workspace/inventario", params={"data": "2026-04-30"})
+    assert r.status_code == 200 and r.json()["n_eliminate"] == 1, r.text
+    restano = sc.conn.execute(
+        "SELECT ristorante_id::text FROM public.inventario_voci WHERE data_inventario = '2026-04-30'"
+    ).fetchall()
+    assert restano == [(sc.a.ids["sede1"],)]

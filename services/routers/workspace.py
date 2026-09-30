@@ -50,9 +50,8 @@ def _resolve_ristorante_id(*args, **kwargs):
 def _solo_sede_del_sotto_utente(query, user, sb):
     """Per un sotto-utente limita la query alla sua sede attiva.
 
-    Le voci d'inventario si toccano per id o per data filtrando solo l'account:
-    per il titolare resta com'e' (anche la cancellazione per data vale su tutte
-    le sue sedi), per un sotto-utente l'account non basta.
+    Le voci d'inventario si toccano per id filtrando solo l'account: per il
+    titolare resta com'e', per un sotto-utente l'account non basta.
     """
     if _su.e_sotto_utente(user):
         return query.eq("ristorante_id", _resolve_ristorante_id(user, sb))
@@ -735,12 +734,20 @@ def ws_inventario_elimina(voce_id: str, authorization: Optional[str] = Header(No
 
 @router.delete("/api/workspace/inventario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_inventario_elimina_data(data: str = Query(..., description="Data inventario YYYY-MM-DD"), authorization: Optional[str] = Header(None)):
-    """Elimina tutte le voci inventario per una data."""
+    """Elimina tutte le voci inventario di una data, sulla sede attiva.
+
+    Lista e storico sono per sede: fino al 30/9/2026 la cancellazione valeva
+    invece su tutte le sedi dell'account, anche per il titolare.
+    """
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
-    query = sb.table("inventario_voci").delete().eq("user_id", user_id).eq("data_inventario", data)
-    resp = _solo_sede_del_sotto_utente(query, user, sb).execute()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    resp = (
+        sb.table("inventario_voci").delete()
+        .eq("user_id", user_id).eq("ristorante_id", ristorante_id).eq("data_inventario", data)
+        .execute()
+    )
     n = len(resp.data) if resp.data else 0
     return {"ok": True, "n_eliminate": n}
 
