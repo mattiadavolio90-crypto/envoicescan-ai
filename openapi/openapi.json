@@ -9535,7 +9535,7 @@
           "Workspace"
         ],
         "summary": "Ws Inventario Elimina Data",
-        "description": "Elimina tutte le voci inventario per una data.",
+        "description": "Elimina tutte le voci inventario di una data, sulla sede attiva.\n\nLista e storico sono per sede: fino al 30/9/2026 la cancellazione valeva\ninvece su tutte le sedi dell'account, anche per il titolare.",
         "operationId": "ws_inventario_elimina_data_api_workspace_inventario_delete",
         "parameters": [
           {
