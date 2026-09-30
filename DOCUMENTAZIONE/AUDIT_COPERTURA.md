@@ -1495,6 +1495,47 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   omonime non sono nominabili (0 casi sul live); `/m` invariato (fase 8). Nessuna
 >   schermata con dati reali: le ho fatte con dati finti, Mattia controlla
 >   nell'app. **Non pushato.**
+>
+> - **29-30/09/2026, `7a09df0`..`ea6e0f2` — fase 3 del piano consulente, «l'assistente
+>   scrive le cifre dettate»: chiusa** (step 0-4; in mezzo commit della sessione
+>   sotto-utenti, fra cui `1b23ea1` con la chiave della conversazione per persona).
+>   **Fatto:** `POST /api/assistente/registra` (router `services/routers/assistente.py`):
+>   la «Conferma» che scrive incasso di un giorno, personale o fatturato di un mese,
+>   con sede riverificata, 409 se il valore non e' piu' quello mostrato, update
+>   condizionato ai valori letti; strumenti `proponi_*` che NON scrivono e preparano
+>   la card (`ChatResponse.proposte`), accesi solo da `ChatRequest.card_conferma`;
+>   card con Conferma nella conversazione della Home; bozza al fornitore
+>   (`bozza_fornitore`, la stessa di Prezzi → Score) in una card con Copia, nessun
+>   invio. IVA decisa da Mattia: se il cliente da' solo il totale, l'assistente chiede
+>   quanto al 10% e quanto senza IVA. Doc: CHAT_ASSISTENTE.md §5.4-5.5.
+>   **Trovato:** il fatturato del mese ha TRE fonti (override mensile, giorni,
+>   `margini_mensili` scritto a mano: TIME CAFE, CASATI 14); la data «di oggi» dei due
+>   prompt era UTC (fra 00 e 02 «ieri» era il giorno sbagliato); «2.340» passato come
+>   testo sarebbe stato 2,34 €; la riga «vai nella Home del locale» del prompt catena
+>   era accesa anche per chi non vede la card; la Conferma ripetuta diceva «valore
+>   cambiato» accanto alla stessa cifra. Tutti presi dal revisore o dai test prima del
+>   push.
+>   **Prove:** 52 + 29 + 14 test su Postgres vero (`test_sql_assistente_registra`,
+>   `test_sql_chat_proposte`, `test_sql_chat_bozza`, due clienti: la bozza della chat
+>   e' uguale a quella di `GET /api/prezzi/score-fornitori`) + 3 ricette in
+>   `test_isolamento_per_risorsa`; unitari 45 + 9 + 17; frontend in
+>   `test_home_chat_frontend.py`. Mutazione per step: 1) 29/29 poi 44/45 (il
+>   sopravvissuto era una rilettura ridondante, tolta) + 4 del revisore; 2) 30/30 +
+>   12/12; 3) 27/27; 4) backend 21/21 (una condizione ridondante tolta) + 1, frontend
+>   14/14. Revisore verde su ogni step. Suite a `ea6e0f2` su copia pulita:
+>   **17.630 verdi, 57 skip** (`python -m pytest tests/ -q -m "not sql" -p no:randomly
+>   -p no:cacheprovider`: 17.626 + i 4 che nella copia senza git sono rossi e nel
+>   repo verdi) e
+>   **971** con `-m sql`. Un run `-m sql` del 30/9 ha dato 2 rossi sulla coda
+>   fatture (`claim_batch_for_processing` senza limite di lotto), non riprodotti in
+>   due run successivi ne' isolati: instabilita' da capire, non legata alla fase.
+>   **Non fatto (residui):** `/m` non mostra le card (fase 8); la demo mostra la bozza
+>   dentro la risposta, non nella card (scelta di vetrina, Mattia); la bozza usa solo
+>   l'anno in corso, a gennaio quasi non esce (Mattia); precedenza fra cifra dettata
+>   ed email di cassa arrivata dopo (vince l'ultima, come nei form); nessun audit di
+>   chi ha scritto; rifiuti 422/500 letti come «riprova» nella card; titolare senza
+>   `margini` non ha la card ma la Conferma lo accetterebbe (direzione sicura).
+>   Nessuna schermata con dati reali: Mattia prova dopo il push. **Non pushato.**
 
 ---
 
