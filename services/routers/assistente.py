@@ -28,6 +28,7 @@ from typing import Any, Dict, Literal, NamedTuple, Optional, Tuple
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from config.constants import SETTORE_RETAIL
 from config.logger_setup import get_logger
 from services import sotto_utenti_service as _su
 
@@ -500,7 +501,8 @@ _PRONTA = (
 
 
 def proponi(nome: str, args: Dict[str, Any], *, user: Dict[str, Any], sb,
-            ristorante_id: Optional[str], sede_nome: Optional[str]) -> Tuple[Optional[PropostaCifra], Dict[str, Any]]:
+            ristorante_id: Optional[str], sede_nome: Optional[str],
+            settore: Optional[str] = None) -> Tuple[Optional[PropostaCifra], Dict[str, Any]]:
     """(proposta o None, cio' che legge il modello)."""
     # La pagina Margini non si ricontrolla qui: senza, lo strumento non e' offerto
     # e chat_ai rifiuta cio' che non ha offerto. La sede si': la sede attiva di una
@@ -510,40 +512,57 @@ def proponi(nome: str, args: Dict[str, Any], *, user: Dict[str, Any], sb,
         rid = sede_scrivibile(user, sb, ristorante_id or "")
         oggi = _oggi()
         if nome == "proponi_incasso":
-            return _proponi_incasso(args, sb, rid, sede_nome, oggi)
+            return _proponi_incasso(args, sb, rid, sede_nome, oggi, settore)
         if nome == "proponi_fatturato_mese":
-            return _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi)
+            return _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi, settore)
         if nome == "proponi_personale":
             return _proponi_personale(args, sb, rid, sede_nome, oggi)
         return None, {"errore": f"strumento sconosciuto: {nome}"}
     except HTTPException as exc:
         motivo = exc.detail if isinstance(exc.detail, str) else "richiesta non valida"
         return None, {"errore": motivo}
+    except Exception as exc:
+        # Una lettura fallita non fa cadere la chat (la domanda e' gia' contata).
+        logger.warning("proposta %s non preparata: %s", nome, exc)
+        return None, {"errore": "non sono riuscito a leggere i dati: la cifra non e' pronta, "
+                                "di' al cliente di riprovare fra poco"}
 
 
-def _importi_dettati(args: Dict[str, Any]) -> Optional[Dict[str, Optional[float]]]:
+def _importi_dettati(args: Dict[str, Any], settore: Optional[str]) -> Tuple[Optional[Dict[str, float]], Dict[str, Any]]:
+    """(importi, None) oppure (None, cio' che legge il modello)."""
+    # «2.340» come stringa diventerebbe 2,34: il punto delle migliaia non si indovina.
+    if any(isinstance(args.get(k), str) for k in ("iva10", "senza_iva", "iva22")):
+        return None, _IMPORTO_IN_TESTO
     iva10, senza_iva = _numero(args, "iva10"), _numero(args, "senza_iva")
     if iva10 is None or senza_iva is None:
-        return None
+        return None, _chiedi_divisione(settore)
     return {"fatturato_iva10": iva10, "altri_ricavi_noiva": senza_iva,
-            "fatturato_iva22": _numero(args, "iva22") or 0.0}
+            "fatturato_iva22": _numero(args, "iva22") or 0.0}, {}
 
 
-_CHIEDI_DIVISIONE = {
-    "errore": "divisione IVA mancante",
-    "cosa_fare": ("Chiedi al cliente quanto e' al 10% e quanto e' senza IVA (il 22% solo "
-                  "se lo dice lui). Non dividere tu il totale."),
+_IMPORTO_IN_TESTO = {
+    "errore": "importo passato come testo",
+    "cosa_fare": "Ripeti la chiamata con gli importi come numeri: 2340, non \"2.340\".",
 }
+
+
+def _chiedi_divisione(settore: Optional[str]) -> Dict[str, str]:
+    if settore == SETTORE_RETAIL:
+        come = "quanto e' al 22%, quanto al 10% e quanto senza IVA"
+    else:
+        come = "quanto e' al 10% e quanto senza IVA (il 22% solo se lo dice lui)"
+    return {"errore": "divisione IVA mancante",
+            "cosa_fare": f"Chiedi al cliente {come}. Non dividere tu il totale."}
 
 
 def _gia_cosi(attuale: Optional[Dict[str, float]], dettato: Dict[str, float]) -> bool:
     return attuale is not None and _uguali(dettato, {k: attuale.get(k) for k in dettato})
 
 
-def _proponi_incasso(args, sb, rid, sede_nome, oggi):
-    importi = _importi_dettati(args)
+def _proponi_incasso(args, sb, rid, sede_nome, oggi, settore):
+    importi, errore = _importi_dettati(args, settore)
     if importi is None:
-        return None, _CHIEDI_DIVISIONE
+        return None, errore
     giorno = valida_giorno(args.get("data"), oggi)
     corpo = RegistraRequest(tipo="incasso_giorno", ristorante_id=rid, data=giorno.isoformat(), **importi)
     valori = valida_importi_incasso(corpo, TETTO_INCASSO_GIORNO)
@@ -560,10 +579,10 @@ def _proponi_incasso(args, sb, rid, sede_nome, oggi):
                       "valore_attuale": attuale or "nessun valore", "istruzione": _PRONTA}
 
 
-def _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi):
-    importi = _importi_dettati(args)
+def _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi, settore):
+    importi, errore = _importi_dettati(args, settore)
     if importi is None:
-        return None, _CHIEDI_DIVISIONE
+        return None, errore
     anno, mese = valida_mese(_intero(args, "anno"), _intero(args, "mese"), oggi)
     corpo = RegistraRequest(tipo="fatturato_mese", ristorante_id=rid, anno=anno, mese=mese, **importi)
     valori = valida_importi_incasso(corpo, TETTO_FATTURATO_MESE)
@@ -581,6 +600,8 @@ def _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi):
 
 
 def _proponi_personale(args, sb, rid, sede_nome, oggi):
+    if isinstance(args.get("importo"), str):
+        return None, _IMPORTO_IN_TESTO
     anno, mese = valida_mese(_intero(args, "anno"), _intero(args, "mese"), oggi)
     corpo = RegistraRequest(tipo="personale_mese", ristorante_id=rid, anno=anno, mese=mese,
                             costo_dipendenti=_numero(args, "importo"))

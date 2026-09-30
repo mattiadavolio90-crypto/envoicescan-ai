@@ -5,6 +5,7 @@ Il prompt intero del ristorante e' confrontato byte per byte in
 regole non ci sono (gli strumenti non ci sono), il negozio chiede anche il 22%,
 la catena rimanda al locale.
 """
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import services.fastapi_worker as fw
@@ -58,19 +59,42 @@ def test_il_negozio_chiede_anche_il_22(monkeypatch):
     assert "Il 22% indicalo solo se lo nomina il cliente." not in p
 
 
-def _prompt_catena(monkeypatch, settore):
+def _prompt_catena(monkeypatch, settore, cifre=True):
     monkeypatch.setattr(
         fw, "_gruppo_router_mod",
         lambda: MagicMock(gruppo_overview=MagicMock(side_effect=RuntimeError("no"))),
     )
-    return fw._build_chat_system_prompt_catena(USER, _sb(), None, settore)
+    return fw._build_chat_system_prompt_catena(USER, _sb(), None, settore, cifre_dettate=cifre)
 
 
 def test_la_catena_rimanda_alla_home_del_locale(monkeypatch):
     p = _prompt_catena(monkeypatch, SETTORE_RISTORAZIONE)
+    assert "dillo.\n- Se il cliente ti detta una cifra da registrare" in p
     assert "qui non si registra: spiega che basta aprire la Home di quel locale" in p
     assert "proponi_" not in p
     assert "aprire la Home di quel punto vendita" in _prompt_catena(monkeypatch, SETTORE_RETAIL)
+
+
+def test_senza_card_la_catena_non_rimanda_alla_home(monkeypatch):
+    """Senza card nella Home del locale il rinvio sarebbe una promessa falsa."""
+    p = _prompt_catena(monkeypatch, SETTORE_RISTORAZIONE, cifre=False)
+    assert "qui non si registra" not in p
+    assert "Non inventare numeri: se uno strumento torna vuoto, dillo." in p
+
+
+class _Notte(datetime):
+    """00:30 del 1/10 a Roma = 22:30 del 30/9 in UTC, l'ora dei server."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 9, 30, 22, 30, tzinfo=timezone.utc).astimezone(tz)
+
+
+def test_dopo_mezzanotte_oggi_e_il_giorno_di_roma(monkeypatch):
+    """«Ieri» si calcola da qui: dopo la chiusura un giorno sbagliato finirebbe sulla card."""
+    monkeypatch.setattr(fw, "datetime", _Notte)
+    assert "Oggi e' 1 ottobre 2026." in _prompt(monkeypatch)
+    assert "Oggi è 1/10/2026." in _prompt_catena(monkeypatch, SETTORE_RISTORAZIONE)
 
 
 def test_le_regole_nominano_solo_strumenti_che_esistono():

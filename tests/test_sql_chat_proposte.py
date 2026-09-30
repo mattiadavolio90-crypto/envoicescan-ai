@@ -128,13 +128,57 @@ def test_fatturato_del_mese_e_la_sua_conferma(scenario, modello):
 @pytest.mark.parametrize("args", [
     {"data": IERI.isoformat(), "iva10": 2340},
     {"data": IERI.isoformat(), "senza_iva": 2340},
-    {"data": IERI.isoformat(), "iva10": "duemila", "senza_iva": 0},
-], ids=["manca-senza-iva", "manca-10", "non-numero"])
+], ids=["manca-senza-iva", "manca-10"])
 def test_senza_divisione_iva_il_modello_deve_chiedere(scenario, modello, args):
     modello["chiamate"] = [("proponi_incasso", args)]
     resp = _chat(scenario)
     assert resp.json()["proposte"] == []
     assert "Chiedi al cliente" in modello["letti"][0]["cosa_fare"]
+
+
+@pytest.mark.parametrize("nome,args", [
+    ("proponi_incasso", {**INCASSO, "iva10": "2.340"}),
+    ("proponi_incasso", {**INCASSO, "iva22": "100"}),
+    ("proponi_fatturato_mese", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month,
+                                "iva10": 30000, "senza_iva": "2.000"}),
+    ("proponi_personale", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month, "importo": "12.000"}),
+], ids=["incasso-10", "incasso-22", "fatturato-senza-iva", "personale"])
+def test_importo_in_testo_nessuna_card_e_si_ripete_in_numeri(scenario, modello, nome, args):
+    """«2.340» in stringa diventerebbe 2,34 euro: il punto delle migliaia non si indovina."""
+    modello["chiamate"] = [(nome, args)]
+    assert _chat(scenario).json()["proposte"] == []
+    assert modello["letti"][0]["errore"] == "importo passato come testo"
+
+
+def test_lettura_fallita_nessuna_card_e_la_chat_risponde(scenario, modello, worker, monkeypatch):
+    def _rotta(*_a, **_k):
+        raise RuntimeError("timeout PostgREST")
+
+    monkeypatch.setattr(worker._assistente, "leggi_incasso_giorno", _rotta)
+    modello["chiamate"] = [("proponi_incasso", INCASSO)]
+    resp = _chat(scenario)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["proposte"] == []
+    assert "riprovare" in modello["letti"][0]["errore"]
+
+
+def test_il_settore_arriva_alla_proposta(scenario, modello, worker, monkeypatch):
+    visto = {}
+    vera = worker._assistente.proponi
+
+    def _spia(*a, **k):
+        visto["settore"] = k.get("settore")
+        return vera(*a, **k)
+
+    monkeypatch.setattr(worker._assistente, "proponi", _spia)
+    monkeypatch.setattr("services.settore_service.settore_utente", lambda *a, **k: "retail")
+    modello["chiamate"] = [
+        ("proponi_incasso", {"data": IERI.isoformat(), "iva10": 2340}),
+        ("proponi_fatturato_mese", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month, "iva10": 30000}),
+    ]
+    _chat(scenario)
+    assert visto["settore"] == "retail"
+    assert ["al 22%" in letto["cosa_fare"] for letto in modello["letti"]] == [True, True]
 
 
 def test_mese_a_totale_nessuna_card_e_il_motivo_al_modello(scenario, modello):
@@ -264,6 +308,11 @@ def test_la_richiesta_che_mostra_le_card_arriva_al_prompt(scenario, modello, wor
     monkeypatch.setattr(worker, "_build_chat_system_prompt", _spia)
     _chat(scenario, card=True)
     assert visto["cifre"] is True
+    monkeypatch.setattr(worker, "_build_chat_system_prompt_catena", _spia)
+    _chat(scenario, contesto="catena", card=True)
+    assert visto["cifre"] is True, "la catena rimanda alla Home solo se la Home mostra la card"
+    _chat(scenario, contesto="catena", card=False)
+    assert visto["cifre"] is False
 
 
 def test_sede_attiva_spenta_nessuna_card(scenario, modello):

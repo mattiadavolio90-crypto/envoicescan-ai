@@ -4059,8 +4059,7 @@ def _build_chat_system_prompt(
     # Data di oggi + intervallo dati: SENZA questo il modello usa il suo knowledge
     # cutoff (2024) come anno di default e cerca sistematicamente nell'anno
     # sbagliato -> "non risulta nulla" anche quando il dato c'e'.
-    from datetime import date as _date_today
-    oggi = _date_today.today()
+    oggi = _oggi_rome()
     _MESI_NOMI = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
                   "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
     oggi_str = f"{oggi.day} {_MESI_NOMI[oggi.month]} {oggi.year}"
@@ -4223,12 +4222,12 @@ Regole per gli strumenti:
 def _build_chat_system_prompt_catena(
     user: Dict[str, Any], supabase_client, authorization: Optional[str],
     settore: Optional[str] = None, sedi: Optional[List[str]] = None,
+    cifre_dettate: bool = False,
 ) -> str:
     """System prompt per la chat in modalità catena: parla del GRUPPO, non del
     singolo PV. Inietta la sintesi di gruppo (KPI + ranking) come contesto, gli
     stessi numeri che il cliente vede su /catena."""
-    from datetime import date as _date_today
-    oggi = _date_today.today()
+    oggi = _oggi_rome()
     referente = user.get("nome_referente") or ""
 
     # Stesse deviazioni della chat di sede: un account retail multi-sede arriva
@@ -4267,6 +4266,13 @@ NON inventare benchmark diversi da questi."""
         )
     else:
         _riga_singolo_pv = f"Per domande sul singolo {_singolo_pv} invita ad aprire quel punto vendita."
+
+    # Fase 3: si rimanda alla Home del locale solo se quella Home mostra la card
+    # (lo stesso client che la mostra lo dichiara anche qui).
+    _riga_cifre_catena = (
+        "\n- Se il cliente ti detta una cifra da registrare (incasso, personale, fatturato), "
+        f"qui non si registra: spiega che basta aprire la Home di quel {_singolo_pv} e dirla li'."
+    ) if cifre_dettate else ""
 
     contesto = ""
     nome_gruppo = "il gruppo"
@@ -4320,8 +4326,7 @@ Regole strumenti:
 {_riga_coperti_catena}
 - Per "dove si spende di più per categoria/fornitore" usa gruppo_spesa.
 - Per "cosa c'è da vedere/sistemare" usa gruppo_segnali.
-- Non inventare numeri: se uno strumento torna vuoto, dillo.
-- Se il cliente ti detta una cifra da registrare (incasso, personale, fatturato), qui non si registra: spiega che basta aprire la Home di quel {_singolo_pv} e dirla li'.{contesto}"""
+- Non inventare numeri: se uno strumento torna vuoto, dillo.{_riga_cifre_catena}{contesto}"""
 
 
 _CHAT_TOOLS_GRUPPO = [
@@ -5313,7 +5318,7 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                     "data": {"type": "string", "description": "Giorno dell'incasso YYYY-MM-DD"},
                     "iva10": {"type": "number", "description": "Incasso lordo al 10% in euro (0 se non c'e')"},
                     "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
-                    "iva22": {"type": "number", "description": "Incasso lordo al 22% in euro: solo se il cliente lo nomina"},
+                    "iva22": {"type": "number", "description": "Incasso lordo al 22% in euro (0 se non c'e')"},
                 },
                 "required": ["data", "iva10", "senza_iva"],
             },
@@ -5358,7 +5363,7 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                     "mese": {"type": "integer", "description": "Numero del mese 1-12"},
                     "iva10": {"type": "number", "description": "Fatturato lordo al 10% in euro (0 se non c'e')"},
                     "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
-                    "iva22": {"type": "number", "description": "Fatturato lordo al 22% in euro: solo se il cliente lo nomina"},
+                    "iva22": {"type": "number", "description": "Fatturato lordo al 22% in euro (0 se non c'e')"},
                 },
                 "required": ["anno", "mese", "iva10", "senza_iva"],
             },
@@ -5765,6 +5770,7 @@ def chat_ai(
         _build_chat_system_prompt_catena(
             user, supabase_client, authorization, settore_chat,
             sedi=[s["nome"] for s in sedi_chat],
+            cifre_dettate=body.card_conferma,
         )
         if is_catena
         else _build_chat_system_prompt(
@@ -5839,6 +5845,7 @@ def chat_ai(
             proposta, al_modello = _assistente.proponi(
                 nome, args, user=user, sb=supabase_client,
                 ristorante_id=ristorante_id, sede_nome=_nome_sede_proposte[0],
+                settore=settore_chat,
             )
             if proposta is not None:
                 chiave = _assistente.chiave_proposta(proposta)

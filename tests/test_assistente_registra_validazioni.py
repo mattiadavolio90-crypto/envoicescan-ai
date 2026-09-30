@@ -86,6 +86,13 @@ def test_intero_dal_modello(valore, atteso):
     assert A._intero({"x": valore}, "x") == atteso
 
 
+def test_la_divisione_da_chiedere_dipende_dal_settore():
+    assert "(il 22% solo se lo dice lui)" in A._chiedi_divisione("ristorazione")["cosa_fare"]
+    assert "(il 22% solo se lo dice lui)" in A._chiedi_divisione(None)["cosa_fare"]
+    negozio = A._chiedi_divisione("retail")["cosa_fare"]
+    assert "quanto e' al 22%, quanto al 10% e quanto senza IVA" in negozio
+
+
 # ─── Il confronto con la card ─────────────────────────────────────────────────
 @pytest.mark.parametrize("precedente,attuale,uguali", [
     (None, None, True),
